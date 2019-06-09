@@ -109,7 +109,11 @@ TVM_REGISTER_API("arith._CreateAnalyzer")
         });
       } else if (name == "canonical_simplify") {
         return PackedFunc([self](TVMArgs args, TVMRetValue *ret) {
-            *ret = self->canonical_simplify(args[0]);
+          *ret = self->canonical_simplify(args[0]);
+        });
+      } else if (name == "equation_simplify") {
+        return PackedFunc([self](TVMArgs args, TVMRetValue *ret) {
+          *ret = self->equation_simplify(args[0]);
         });
       } else if (name == "int_set") {
         return PackedFunc([self](TVMArgs args, TVMRetValue *ret) {
@@ -136,7 +140,9 @@ TVM_REGISTER_API("arith._CreateAnalyzer")
             *ret = PackedFunc(fexit);
         });
       }
-      return PackedFunc();
+      return PackedFunc([name](TVMArgs args, TVMRetValue *ret) {
+        LOG(FATAL) << "Try to get invalid function: " << name;
+      });
     };
     *ret = TypedPackedFunc<PackedFunc(std::string)>(f);
 });

@@ -142,7 +142,11 @@ Mutate_(const Add* op, const Expr& self) {
   }
 
   if (IsIndexType(op->type)) {
-    // Index rules
+    // common factor
+    TVM_TRY_REWRITE_IF(
+        x * c1 + y * c2, (x * (c1 / c2) + y) * c2,
+        c1.Eval()->value % c2.Eval()->value == 0);
+
     // cancelation rules
     TVM_TRY_REWRITE((x - y) + y, x);
     TVM_TRY_REWRITE(x + (y - x), y);
@@ -467,7 +471,7 @@ Mutate_(const Div* op, const Expr& self) {
   // Pattern var to match any expression
   PVar<Expr> x, y, z, b1;
   // Pattern var match IntImm
-  PVar<Integer> c1, c2, c3;
+  PVar<Integer> c1, c2, c3, c4;
   // Pattern var for lanes in broadcast and ramp
   PVar<int> lanes;
 
@@ -525,6 +529,19 @@ Mutate_(const Div* op, const Expr& self) {
                        c2.Eval()->value >= 0 &&
                        c3.Eval()->value > 0 &&
                        CanProveGreaterEqual(x.Eval(), 0));
+
+    TVM_TRY_REWRITE((x * c1) / x, c1);
+    TVM_TRY_REWRITE_IF((x * c1 + c2) / (x * c3 + c4), c1 / c3,
+                       c3.Eval()->value > 0 && c4.Eval()->value > 0 &&
+                       c1.Eval()->value % c3.Eval()->value == 0 &&
+                       c2.Eval()->value % c4.Eval()->value == 0 &&
+                       c1.Eval()->value / c3.Eval()->value == c2.Eval()->value / c4.Eval()->value);
+    TVM_TRY_REWRITE_IF((x * c1 + c2) / (x + c4), c1,
+                       c4.Eval()->value > 0 &&
+                       c2.Eval()->value % c4.Eval()->value == 0 &&
+                       c1.Eval()->value == c2.Eval()->value / c4.Eval()->value);
+
+
 
     if (((x * c1) / c2).Match(ret)) {
       int64_t c1val = c1.Eval()->value;

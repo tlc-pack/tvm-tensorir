@@ -40,7 +40,7 @@ using namespace ir;
 /*!
  * \brief Rewrite-based simplifier.
  *
- * This class can be inheritated for other simplifiers.
+ * This class can be inherited for other simplifiers.
  */
 class RewriteSimplifier::Impl : public IRMutator {
  public:

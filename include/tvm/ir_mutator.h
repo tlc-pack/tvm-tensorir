@@ -41,7 +41,7 @@ namespace ir {
  *  It also makes changing return types easier.
  *
  * \note If you want to return a different type other than Expr and Stmt,
- *       Simply following the same pattern as IRMutator and create a seperate class.
+ *       Simply following the same pattern as IRMutator and create a separate class.
  * \sa IRFunctor
  */
 class TVM_DLL IRMutator {

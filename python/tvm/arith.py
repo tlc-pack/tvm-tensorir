@@ -116,6 +116,7 @@ class Analyzer:
         self._canonical_simplify = _mod("canonical_simplify")
         self._int_set = _mod("int_set")
         self._enter_constraint_context = _mod("enter_constraint_context")
+        self._equation_simplify = _mod("equation_simplify")
 
     def const_int_bound(self, expr):
         """Find constant integer bound for expr.
@@ -195,6 +196,9 @@ class Analyzer:
         """
         return self._int_set(expr, dom_map)
 
+    def equation_simplify(self, expr):
+        return self._equation_simplify(expr)
+
     def bind(self, var, expr):
         """Bind a variable to the expression.
 
@@ -238,7 +242,7 @@ class Analyzer:
         return ConstraintScope(_fenter)
 
     def update(self, var, info, override=False):
-        """Update infomation about var
+        """Update information about var
 
         Parameters
         ----------

@@ -33,7 +33,8 @@ Analyzer::Analyzer()
       modular_set(this),
       rewrite_simplify(this),
       canonical_simplify(this),
-      int_set(this) {
+      int_set(this),
+      equation_simplify(this) {
 }
 
 void Analyzer::Bind(const VarExpr& v, const Expr& expr) {
@@ -47,6 +48,7 @@ void Analyzer::Bind(const VarExpr& v, const Expr& expr) {
   this->modular_set.Update(var, this->modular_set(new_expr));
   this->rewrite_simplify.Update(var, new_expr);
   this->canonical_simplify.Update(var, new_expr);
+  this->equation_simplify.Update(var, new_expr);
 }
 
 void Analyzer::Bind(const VarExpr& v, const Range& range) {
@@ -58,7 +60,7 @@ void Analyzer::Bind(const VarExpr& v, const Range& range) {
     this->canonical_simplify.Update(var, range->min);
   }
   // skip modular_set
-  // skip rewrite simplify
+  // skip equation_simplify
 }
 
 

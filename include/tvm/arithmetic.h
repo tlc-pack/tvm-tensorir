@@ -289,6 +289,24 @@ class CanonicalSimplifier {
   Impl* impl_;
 };
 
+
+class EquationSimplifier {
+ public:
+
+  Expr operator()(const Expr& expr);
+  void Update(const Var& var,
+              const Expr& new_expr,
+              bool override = false);
+
+ private:
+  friend class Analyzer;
+  explicit EquationSimplifier(Analyzer* parent);
+  ~EquationSimplifier();
+  class Impl;
+  Impl* impl_;
+};
+
+
 /*!
  * \brief Constraint context.
  *
