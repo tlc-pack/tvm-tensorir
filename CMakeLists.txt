@@ -128,6 +128,7 @@ file(GLOB COMPILER_SRCS
     src/op/*.cc
     src/node/*.cc
     src/schedule/*.cc
+    src/tensorir/*.cc
     )
 
 file(GLOB_RECURSE RELAY_SRCS
