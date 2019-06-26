@@ -404,7 +404,7 @@ Array<Tensor> CacheWriteWithReLayoutTensor(Schedule sch,
   Array<Region> new_regions;
   for (Region old_region : tensor_op->input_regions) {
     Region region;
-    for (Range r : old_region) {
+    for (const auto& r : old_region) {
       Expr min = VarReplacer(vsub2newvar).Mutate(r->min);
       Expr extent = VarReplacer(vsub2newvar).Mutate(r->extent);
       region.push_back(Range::make_by_min_extent(min, extent));
