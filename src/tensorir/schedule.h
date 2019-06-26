@@ -33,6 +33,9 @@ class ScheduleNode : public Node {
 
   FatherMap father_map;
 
+  StdNodeMap<Tensor, Region> raw_realize_region; // todo(lmzheng): refactor Map and use Map instead
+  StdNodeMap<FunctionRef, std::string> raw_realize_scope;
+
   void VisitAttrs(AttrVisitor* v) final {
     v->Visit("root", &root);
   }
@@ -64,6 +67,7 @@ class Schedule : public NodeRef {
   AxisTreeNode fuse(AxisTreeNode outer, AxisTreeNode inner);
   Array<AxisTreeNode> reorder(AxisTreeNode outer, AxisTreeNode inner);
   Array<ScheduleTreeNode> unroll(AxisTreeNode axis);
+
   void compute_inline(BlockTreeNode block);
   BlockTreeNode compute_at(BlockTreeNode block, AxisTreeNode axis);
   BlockTreeNode compute_after(BlockTreeNode block, AxisTreeNode axis);
@@ -71,11 +75,15 @@ class Schedule : public NodeRef {
 
   void bind(AxisTreeNode axis, std::string name);
 
+  BlockTreeNode cache_read();
+  BlockTreeNode cache_write();
+  BlockTreeNode double_buffer();
+
   // dependency analysis
   Array<Array<arith::IntSet> > GatherRegion(Array<Tensor> tensors, AxisTreeNode axis) const;
 
   // output
-  Stmt ToHalide(ScheduleTreeNode node) const;
+  Stmt ToHalide() const;
 
   using ContainerType = ScheduleNode;
 
@@ -83,7 +91,7 @@ class Schedule : public NodeRef {
   // tree manipulation (Because we need to update the father_map, these functions are
   // set to be the member functions of Schedule. Considering moving them to another place later)
   void UpdateFather(ScheduleTreeNode father, bool recursive = false);
-  ScheduleTreeNode LeastCommonAncestor(ScheduleTreeNode a, ScheduleTreeNode b) const;
+  ScheduleTreeNode LowestCommonAncestor(Array<ScheduleTreeNode> nodes, bool inclusive) const;
   inline void ReplaceChild(ScheduleTreeNode old_child, ScheduleTreeNode new_child);
   void RemoveLeaf(ScheduleTreeNode node);
 

@@ -11,7 +11,7 @@ def get_phase0(s, args, simple_mode=True):
         ret.append(stmt)
         return stmt
 
-    with tvm.build_config(add_lower_pass=[(0, fetch_pass)]):
+    with tvm.build_ToHalideconfig(add_lower_pass=[(0, fetch_pass)]):
         tvm.lower(s, args, simple_mode=simple_mode)
 
     return ret[0]
@@ -31,23 +31,28 @@ def test_decompile_fuse():
     io, jo, ii, ji = s[C].tile(C.op.axis[0], C.op.axis[1], 8, 8)
     ko, ki = s[C].split(C.op.reduce_axis[0], 8)
     s[C].reorder(jo, io, ko, ji, ii, ki)
-    stmt = get_phase0(s, [A, B, D])
 
     # schedule
-    s = tensorir.create_schedule(stmt)
+    def _schedule_pass(stmt):
+        s = tensorir.create_schedule(stmt)
 
-    init, reduction, relu = s.blocks()
+        init, reduction, relu = s.blocks()
 
-    jo, io, ji_init, ii_init = s.axis(init)
-    _, _, ko, ji, ii, ki = s.axis(reduction)
+        jo, io, ji_init, ii_init = s.axis(init)
+        _, _, ko, ji, ii, ki = s.axis(reduction)
 
-    ji, ko = s.reorder(ko, ji)
-    ii, ko = s.reorder(ko, ii)
+        ji, ko = s.reorder(ko, ji)
+        ii, ko = s.reorder(ko, ii)
 
-    s.fuse(ji_init, ii_init)
-    s.fuse(ko, ki)
+        s.fuse(ji_init, ii_init)
+        s.fuse(ko, ki)
 
-    print(s.root)
+        stmt = s.to_halide()
+        return stmt
+
+    with tvm.build_config(add_lower_pass=[(0, _schedule_pass)]):
+        func = tvm.build(s, [A, B, D], 'llvm')
+
 
 
 def test_inline():
@@ -199,9 +204,9 @@ def test_gpu():
 
 if __name__ == "__main__":
     test_decompile_fuse()
-    test_inline()
-    test_compute_at()
-    test_unroll()
+    #test_inline()
+    #test_compute_at()
+    #test_unroll()
     #test_tile()
     #test_partial_tile()
     #test_gpu()

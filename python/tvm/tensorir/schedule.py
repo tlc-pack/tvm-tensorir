@@ -17,6 +17,7 @@ def register_tensorir_node(type_key=None):
             "tensorir." + type_key.__name__)(type_key)
     return register_node(type_key)
 
+
 @register_node("tensorir.Schedule")
 class Schedule(NodeBase):
 
@@ -51,23 +52,27 @@ class Schedule(NodeBase):
         return ScheduleComputeRoot(self, stmt)
 
     def to_halide(self):
-        return ScheduleToHalide(self, self.root)
+        return ScheduleToHalide(self)
+
 
 @register_tensorir_node
 class ScheduleTreeNode(NodeBase):
-
     def __str__(self):
         return PrintTreeNode(self)
+
 
 @register_tensorir_node
 class AxisTreeNode(ScheduleTreeNode):
     pass
 
+
 @register_tensorir_node
 class BlockTreeNode(ScheduleTreeNode):
     pass
 
+
 def create_schedule(stmt):
     return CreateSchedule(stmt)
+
 
 _init_api('tvm.tensorir.schedule')

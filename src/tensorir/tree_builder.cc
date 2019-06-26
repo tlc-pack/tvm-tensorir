@@ -9,6 +9,7 @@
 #include <tvm/ir_visitor.h>
 #include <tvm/api_registry.h>
 #include <tvm/arithmetic.h>
+#include <ir/Expr.h>
 #include "tree_builder.h"
 #include "dependency_graph.h"
 #include "util.h"
@@ -19,22 +20,35 @@ namespace tensorir {
 // remove realize, produce, and attr annotations to get a cleaner IR
 class IRCleaner : public IRMutator {
   Stmt Mutate_(const AttrStmt* op, const Stmt& s) {
+    if (op->attr_key == attr::realize_scope) {
+      const StringImm* str = op->value.as<StringImm>();
+      CHECK(str != nullptr);
+      raw_realize_scope[FunctionRef(op->node.node_)] = str->value;
+    }
+
     return Mutate(op->body);
   }
 
   Stmt Mutate_(const Realize* op, const Stmt& s) {
+    Tensor t = Downcast<Operation>(op->func).output(op->value_index);
+    raw_realize_region[t] = op->bounds;
     return Mutate(op->body);
   }
 
   Stmt Mutate_(const ProducerConsumer* op, const Stmt& s) {
     return Mutate(op->body);
   }
+
+ public:
+  StdNodeMap<Tensor, Region> raw_realize_region;
+  StdNodeMap<FunctionRef, std::string> raw_realize_scope;
 };
 
 
 Schedule TreeBuilder::Build(Stmt stmt) {
   // remove redundant ast nodes from Halide
-  stmt = IRCleaner().Mutate(stmt);
+  IRCleaner ir_cleaner;
+  stmt = ir_cleaner.Mutate(stmt);
 
   // insert an auxiliary root node and start building schedule tree
   stmt = For::make(Var("root"), 0, 1, ForType::Parallel, DeviceAPI::None, stmt);
@@ -46,6 +60,8 @@ Schedule TreeBuilder::Build(Stmt stmt) {
   node->root = std::move(root_node);
   node->dep_graph = std::move(dep_graph);
   node->block_list = std::move(block_list_);
+  node->raw_realize_region = std::move(ir_cleaner.raw_realize_region);
+  node->raw_realize_scope = std::move(ir_cleaner.raw_realize_scope);
 
   Schedule ret(node);
   ret.UpdateFather(ret->root, true);
