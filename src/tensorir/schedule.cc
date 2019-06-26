@@ -6,6 +6,7 @@
 #include <tvm/ir_pass.h>
 #include <tvm/ir_mutator.h>
 #include <tvm/arithmetic.h>
+#include <tvm/build_module.h>
 #include "../arithmetic/int_set_internal.h"
 #include "schedule.h"
 #include "tree_builder.h"
@@ -25,6 +26,8 @@ using arith::IntSet;
 void GatherChildrenBlocks(ScheduleTreeNode node, StdNodeSet<BlockTreeNode>* ret);
 void GatherVarDomain(ScheduleTreeNode node,
                      std::unordered_map<const Variable*, arith::IntSet>* dom_map);
+ScheduleTreeNode SubstituteArgOnly(ScheduleTreeNode node, const Map<Var, Expr>& vmap);
+Array<ScheduleTreeNode> SubstituteArgOnly(Array<ScheduleTreeNode> nodes, const Map<Var, Expr>& vmap);
 
 // maker
 Schedule ScheduleNode::make(Stmt stmt) {
@@ -36,11 +39,11 @@ Array<BlockTreeNode> Schedule::blocks() const {
   return operator->()->block_list;
 }
 
-Array<AxisTreeNode> Schedule::axis(ScheduleTreeNode stmt) const {
+Array<AxisTreeNode> Schedule::axis(ScheduleTreeNode block) const {
   Array<AxisTreeNode> ret;
   const FatherMap& father_map = operator->()->father_map;
 
-  const AxisTreeNodeNode* now = father_map[stmt].as<AxisTreeNodeNode>();
+  const AxisTreeNodeNode* now = father_map[block].as<AxisTreeNodeNode>();
   const AxisTreeNodeNode* root = operator->()->root.as<AxisTreeNodeNode>();
 
   while (now != root) {
@@ -52,6 +55,236 @@ Array<AxisTreeNode> Schedule::axis(ScheduleTreeNode stmt) const {
 }
 
 // schedule primitives
+Array<AxisTreeNode> Schedule::split(AxisTreeNode axis, Expr factor) {
+  Var outer_var = axis->loop_var.copy_with_suffix(".outer");
+  Var inner_var = axis->loop_var.copy_with_suffix(".inner");
+
+  Expr outer_min = axis->min;
+  Expr outer_extent = (axis->extent + factor - 1) / factor;
+
+  Expr inner_min = 0;
+  Expr inner_extent = factor;
+
+  Map<Var, Expr> vmap;
+  vmap.Set(axis->loop_var, outer_var * factor + inner_var);
+
+  AxisTreeNode inner_node = AxisTreeNodeNode::make(inner_var, inner_min, inner_extent,
+                                                   axis->axis_type,
+                                                   SubstituteArgOnly(axis->children, vmap));
+  UpdateFather(inner_node);
+
+  AxisTreeNode outer_node = AxisTreeNodeNode::make(outer_var, outer_min, outer_extent,
+                                                   axis->axis_type,
+                                                   Array<ScheduleTreeNode>{inner_node});
+  UpdateFather(outer_node);
+
+  // relink
+  ReplaceChild(axis, outer_node);
+
+  return Array<AxisTreeNode>{outer_node, inner_node};
+}
+
+AxisType FuseAxisType(AxisType t1, AxisType t2) {
+  switch (t1) {
+    case kSpace:
+      switch (t2) {
+        case kSpace: return kSpace;
+        case kReduce: return kMix;
+        default : return kOpaque;
+      };
+    case kReduce:
+      switch (t2) {
+        case kSpace: return kMix;
+        case kReduce: return kReduce;
+        default: return kOpaque;
+      };
+    default: return kOpaque;
+  }
+}
+
+AxisTreeNode Schedule::fuse(AxisTreeNode outer, AxisTreeNode inner) {
+  // Can only fuse neighbor axes without any extra branches.
+  // Future Enhancement: this condition can be eliminated by lifting all siblings of inner
+  // as the children of the father of outer
+  CHECK(operator->()->father_map[inner] == outer);
+  CHECK(outer->children.size() == 1 && outer->children[0] == inner);
+
+  Expr min = 0;
+  Expr extent = outer->extent * inner->extent;
+
+  Var fused_var = outer->loop_var.copy_with_suffix("." + inner->loop_var.get()->name_hint + ".fused");
+
+  Map<Var, Expr> vmap;
+  vmap.Set(outer->loop_var, fused_var/inner->extent + outer->min);
+  vmap.Set(inner->loop_var, fused_var%inner->extent + inner->min);
+
+  AxisTreeNode fused_node = AxisTreeNodeNode::make(fused_var, min, extent,
+                                                   FuseAxisType(outer->axis_type, inner->axis_type),
+                                                   SubstituteArgOnly(inner->children, vmap));
+  UpdateFather(fused_node);
+
+  // relink
+  ReplaceChild(outer, fused_node);
+
+  return fused_node;
+}
+
+Array<AxisTreeNode> Schedule::reorder(AxisTreeNode outer, AxisTreeNode inner) {
+  // Can only reorder neighbor axes without any extra branches.
+  // Future Enhancement: this condition can be eliminated by lifting all siblings of inner
+  // as the children of the father of outer
+  CHECK(operator->()->father_map[inner] == outer);
+  CHECK(outer->children.size() == 1 && outer->children[0] == inner);
+
+  ReplaceChild(outer, inner);
+
+  outer->children = inner->children;
+  UpdateFather(outer);
+
+  inner->children = Array<ScheduleTreeNode>{outer};
+  UpdateFather(inner);
+
+  return Array<AxisTreeNode>{inner, outer};
+}
+
+
+// Inline a single provide
+class StatementInliner : public IRMutator {
+ public:
+  StatementInliner(const Provide* op) : op_(op) {
+    auto analyzer = std::make_shared<arith::Analyzer>();
+
+    Set<Var> old_space_vars;
+
+    for (size_t i = 0; i < op->args.size(); ++i) {
+      Var var = Var("i" + std::to_string(i));
+      vars_.push_back(var);
+      analyzer->Bind(var, op->args[i]);
+      old_space_vars = old_space_vars.Union(GatherVars(op->args[i]));
+    }
+
+    value_ = analyzer->equation_simplify(op->value);
+    Set<Var> simplified_vars = GatherVars(value_);
+
+    // check simplification result : all old space vars should be simplified out
+    CHECK(simplified_vars.Intersection(old_space_vars).size() == 0)
+      << "Equation simplification fails to simplify all index vars: " << value_;
+  };
+
+  Expr Mutate_(const Call* op, const Expr& e) {
+    if (op->call_type == Call::CallType::Halide && op->func == op_->func
+        && op->value_index == op_->value_index) {
+      StdNodeMap<Var, Expr> vmap;
+      for (size_t i = 0; i < op->args.size(); ++i) {
+        vmap[vars_[i]] = op->args[i];
+      }
+      return Substitute(value_, vmap);
+    }
+    return IRMutator::Mutate_(op, e);
+  }
+
+ private:
+  const Provide* op_;
+  Array<Var> vars_;
+  Expr value_;
+};
+
+void Schedule::compute_inline(BlockTreeNode block) {
+  // conditions:
+  // 1. only write to one element
+  // 2. is terminal block
+  // -> The inner stmt is a Provide
+
+  CHECK(block->stmt->is_type<Provide>())
+    << "Can only inline single assignment statement";
+  CHECK_EQ(block->outputs.size(), 1)
+    << "Can only inline statement with one output";  // Note: this can be relaxed.
+
+  RemoveLeaf(block);
+  operator->()->block_list.Remove(block);
+
+  // check validity of inline : don't exist a dst that has both WAW and RAW relation
+  // (e.g. cannot inline init statement to reduction statement)
+  StdNodeMap<BlockTreeNode, std::set<EdgeType> > dst_edges;
+  for (const auto& x : operator->()->dep_graph->forward_edges[block]) {
+    dst_edges[x->dst].insert(x->type);
+  }
+  for (auto x : dst_edges) {
+    if (x.second.count(kRAW) && x.second.count(kWAW)) {
+      LOG(FATAL) << "Cannot inline this statements due to dependency constraint with: " << x.first->stmt;
+    }
+  }
+
+  for (auto& x : operator->()->dep_graph->forward_edges[block]) {
+    BlockTreeNode dst = x->dst;
+    dst->stmt = StatementInliner(block->stmt.as<Provide>()).Mutate(x->dst->stmt);
+
+    Array<TensorRegion> new_inputs = CreateInputRegions(dst->stmt);
+
+    // Update vars : remove useless vars
+    Array<Var> new_vars;
+    Array<Expr> new_args;
+    Set<Var> all_vars = GatherVars(dst->stmt);
+    for (size_t i = 0; i < dst->vars.size(); ++i) {
+      if (all_vars.count(dst->vars[i])) {
+        new_vars.push_back(dst->vars[i]);
+        new_args.push_back(dst->args[i]);
+      }
+    }
+
+    dst->inputs = new_inputs;
+    dst->vars = new_vars;
+    dst->args = new_args;
+  }
+
+  // update in dependency graph
+  operator->()->dep_graph.InlineNode(block);
+}
+
+Array<ScheduleTreeNode> Schedule::unroll(AxisTreeNode axis) {
+  CHECK(axis->min->is_type<IntImm>()) << "Cannot unroll non-const loop";
+  CHECK(axis->extent->is_type<IntImm>()) << "Cannot unroll non-const loop";
+
+  Array<ScheduleTreeNode> expanded_stmts;
+
+  // expand statements, replace var
+  int min_v = axis->min.as<IntImm>()->value, extent_v = axis->extent.as<IntImm>()->value;
+  StdNodeMap<Var, Expr> var_map;
+  for (int v = min_v; v < min_v + extent_v; v++) {
+    var_map[axis->loop_var] = v;
+    for (size_t i = 0; i < axis->children.size(); i++) {
+      expanded_stmts.push_back(SubstituteArgOnly(axis->children[i].Copy(), var_map));
+    }
+  }
+
+  // relink
+  ScheduleTreeNode father = operator->()->father_map[axis];
+  Array<ScheduleTreeNode> father_new_children;
+  size_t index = father->children.Index(axis);
+  for (size_t i = 0; i < father->children.size(); ++i) {
+    if (i == index) {
+      for (size_t j = 0; j < expanded_stmts.size(); ++j) {
+        father_new_children.push_back(expanded_stmts[j]);
+      }
+    } else {
+      father_new_children.push_back(father->children[i]);
+    }
+  }
+  father->children = father_new_children;
+
+  return expanded_stmts;
+}
+
+BlockTreeNode Schedule::compute_after(BlockTreeNode block, AxisTreeNode axis) {
+  // todo (syfeng):
+  // 1. check dependency using operator->()->DependencyGraph
+  //    a) the iteration domains of all parent axes match
+  //    b) all regions required by read is already produced
+  //    c) cannot move across WAW relation
+  // 2. move tree nodes
+  return BlockTreeNode(nullptr);
+}
+
 BlockTreeNode Schedule::compute_at(BlockTreeNode block, AxisTreeNode axis) {
   ScheduleTreeNode father = operator->()->father_map[block];
 
@@ -108,7 +341,7 @@ BlockTreeNode Schedule::compute_at(BlockTreeNode block, AxisTreeNode axis) {
 
     if (!iter_domain[i].defined()) {  // for unsolvable reduction axes, copy it from old trees
       CHECK(block->args[i].get()->is_type<Variable>()) << "Unsolvable reduction iteration domain "
-                                                          "can only contains single variable";
+            "can only contains single variable";
       // todo(lmzheng): check it is reduction axis
       node = AxisTreeNodeNode::make(iter_var,
                                     dom_map[iter_var]->min,
@@ -161,6 +394,10 @@ BlockTreeNode Schedule::compute_at(BlockTreeNode block, AxisTreeNode axis) {
   UpdateFather(axis);
 
   return block;
+}
+
+BlockTreeNode Schedule::compute_root(BlockTreeNode block) {
+  return compute_at(block, operator->()->root);
 }
 
 ScheduleTreeNode Schedule::LeastCommonAncestor(ScheduleTreeNode a, ScheduleTreeNode b) const {
@@ -239,6 +476,29 @@ Array<Array<IntSet> > Schedule::GatherRegion(Array<Tensor> tensors, AxisTreeNode
   return ret;
 }
 
+// output
+Stmt Schedule::ToHalide(ScheduleTreeNode node) const {
+  if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
+    Array<Stmt> stmts;
+    for (const auto& x : n->children) {
+      stmts.push_back(ToHalide(x));
+    }
+    return For::make(n->loop_var,
+                     n->min, n->extent,
+                     ForType::Serial, DeviceAPI::None,
+                     ArrayToBlock(stmts));
+  } else if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
+    StdNodeMap<Var, Expr> var_map;
+    for (size_t i = 0; i < n->args.size(); ++i) {
+      var_map[n->vars[i]] = n->args[i];
+    }
+    return Substitute(n->stmt, var_map);
+  } else {
+    LOG(FATAL) << "Internal error : unknown tree node";
+  }
+  return Stmt(nullptr);
+}
+
 // tree manipulation (requires father map)
 void Schedule::UpdateFather(ScheduleTreeNode father, bool recursive) {
   for (auto x : father->children) {
@@ -267,7 +527,13 @@ void Schedule::RemoveLeaf(ScheduleTreeNode node) {
   next->children.Remove(node);
 }
 
-// tree utility that do not require father map
+void Schedule::ReplaceChild(ScheduleTreeNode old_child, ScheduleTreeNode new_child) {
+  ScheduleTreeNode father = operator->()->father_map[old_child];
+  father->children.Set(father->children.Index(old_child), new_child);
+  operator->()->father_map.Set(new_child, father);
+}
+
+// tree utilities that do not require father map
 void GatherChildrenBlocks(ScheduleTreeNode node, StdNodeSet<BlockTreeNode> *ret) {
   if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
     for (auto x : n->children) {
@@ -290,6 +556,32 @@ void GatherVarDomain(ScheduleTreeNode node,
   } else if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
     CHECK(n != nullptr); // useless check to eliminate warnings
   }
+}
+
+Array<ScheduleTreeNode> SubstituteArgOnly(Array<ScheduleTreeNode> nodes, const Map<Var, Expr>& vmap) {
+  for (auto x : nodes) {
+    SubstituteArgOnly(x, vmap);
+  }
+  return nodes;
+}
+
+ScheduleTreeNode SubstituteArgOnly(ScheduleTreeNode node, const Map<Var, Expr>& vmap) {
+  if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
+    AxisTreeNode axis = GetRef<AxisTreeNode>(n);
+    axis->min = Substitute(axis->min, vmap);
+    axis->extent = Substitute(axis->extent, vmap);
+    SubstituteArgOnly(axis->children, vmap);
+  } else if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
+    BlockTreeNode block = GetRef<BlockTreeNode>(n);
+    Array<Expr> args;
+    for (const auto& x : block->args) {
+      args.push_back(Substitute(x, vmap));
+    }
+    block->args = args;
+  } else {
+    LOG(FATAL) << "Invalid node in schedule tree";
+  }
+  return node;
 }
 
 } // namespace tensorir

@@ -7,6 +7,7 @@
 
 #include <tvm/ir.h>
 #include <tvm/ir_visitor.h>
+#include <tvm/ir_pass.h>
 #include "node_util.h"
 
 namespace tvm {
@@ -43,13 +44,13 @@ class TensorAccessGather : public ir::IRVisitor {
     }
   }
 
-  void GatherAndGroup(Expr expr) {
-    Visit(expr);
+  template <typename T>
+  void GatherAndGroup(T expr_or_stmt) {
+    Visit(expr_or_stmt);
     for (auto x : access_all) {
       access_grouped[x.first].push_back(x.second);
     }
   }
-
 
   StdNodeMap<Tensor, std::vector<std::vector<Expr> > > access_grouped; // grouped accesses by target tensor
   std::vector<std::pair<Tensor, std::vector<Expr> > > access_all; // all accesses
@@ -76,6 +77,23 @@ inline bool is_single_point(Range range) {
   return is_zero(ir::Simplify(range->extent));
 }
 
+// Convert an array of Halide Stmt to a Block
+inline Stmt ArrayToBlock(Array<Stmt> stmts) {
+  if (stmts.size() == 0) {
+    return Stmt(nullptr);
+  }
+  if (stmts.size() == 1) {
+    return stmts[0];
+  }
+  int ct = static_cast<int>(stmts.size()) - 2;
+  Stmt now = ir::Block::make(stmts[ct], stmts[ct+1]);
+  while (ct > 0) {
+    now = ir::Block::make(stmts[ct-1], now);
+    ct--;
+  }
+  return now;
+}
+
 // Flatten a two-dimensional array
 template <typename T>
 inline Array<T> Flatten2DArray(Array<Array<T> > input) {
@@ -88,8 +106,8 @@ inline Array<T> Flatten2DArray(Array<Array<T> > input) {
   return ret;
 }
 
-// Gather all vars in an expression
-Set<Var> GatherVars(Expr expr);
+// Gather all vars in an expression or statement
+Set<Var> GatherVars(const NodeRef& expr_or_stmt);
 
 } // namespace tensorir
 } // namespace tvm

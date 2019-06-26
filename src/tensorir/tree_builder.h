@@ -43,6 +43,10 @@ class TreeBuilder : public StmtFunctor<ScheduleTreeNode(const Stmt&)> {
   Array<BlockTreeNode> block_list_;
 };
 
+// Create input regions for an expression or statement
+Array<TensorRegion> CreateInputRegions(const NodeRef& expr_or_stmt);
+
+
 } // namespace tensorir
 } // namespace tvm
 

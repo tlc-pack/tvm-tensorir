@@ -2,7 +2,6 @@
  *  Copyright (c) 2019 by Contributors
  */
 
-#include <tvm/ir_pass.h>
 #include "util.h"
 
 namespace tvm {
@@ -25,10 +24,10 @@ Array<Stmt> ExpandBlockChain(Stmt stmt) {
   return ret;
 }
 
-Set<Var> GatherVars(Expr expr) {
+Set<Var> GatherVars(const NodeRef& expr_or_stmt) {
   Set<Var> ret;
 
-  PostOrderVisit(expr, [&ret](const NodeRef& node) {
+  ir::PostOrderVisit(expr_or_stmt, [&ret](const NodeRef& node) {
     if (node->is_type<Variable>()) {
       ret.insert(Downcast<Var>(node));
     }

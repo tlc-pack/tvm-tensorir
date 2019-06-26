@@ -27,23 +27,32 @@ TVM_REGISTER_API("tensorir.schedule.ScheduleBlocks")
 TVM_REGISTER_API("tensorir.schedule.ScheduleAxis")
 .set_body_method(&Schedule::axis);
 
-//TVM_REGISTER_API("tensorir.schedule.ScheduleSplit")
-//.set_body_method(&Schedule::split);
-//
-//TVM_REGISTER_API("tensorir.schedule.ScheduleFuse")
-//.set_body_method(&Schedule::fuse);
-//
-//TVM_REGISTER_API("tensorir.schedule.ScheduleReorder")
-//.set_body_method(&Schedule::reorder);
-//
-//TVM_REGISTER_API("tensorir.schedule.ScheduleComputeInline")
-//.set_body_method(&Schedule::compute_inline);
+TVM_REGISTER_API("tensorir.schedule.ScheduleSplit")
+.set_body_method(&Schedule::split);
+
+TVM_REGISTER_API("tensorir.schedule.ScheduleFuse")
+.set_body_method(&Schedule::fuse);
+
+TVM_REGISTER_API("tensorir.schedule.ScheduleReorder")
+.set_body_method(&Schedule::reorder);
+
+TVM_REGISTER_API("tensorir.schedule.ScheduleUnroll")
+.set_body_method(&Schedule::unroll);
+
+TVM_REGISTER_API("tensorir.schedule.ScheduleComputeInline")
+.set_body_method(&Schedule::compute_inline);
 
 TVM_REGISTER_API("tensorir.schedule.ScheduleComputeAt")
 .set_body_method(&Schedule::compute_at);
 
-//TVM_REGISTER_API("tensorir.schedule.ScheduleComputeRoot")
-//.set_body_method(&Schedule::compute_root);
+TVM_REGISTER_API("tensorir.schedule.ScheduleComputeAfter")
+.set_body_method(&Schedule::compute_after);
+
+TVM_REGISTER_API("tensorir.schedule.ScheduleComputeRoot")
+.set_body_method(&Schedule::compute_root);
+
+TVM_REGISTER_API("tensorir.schedule.ScheduleToHalide")
+.set_body_method(&Schedule::ToHalide);
 
 //TVM_REGISTER_API("tensorir.schedule.ScheduleBind")
 //.set_body([](TVMArgs args, TVMRetValue* rv) {

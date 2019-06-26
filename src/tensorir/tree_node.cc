@@ -35,6 +35,22 @@ ScheduleTreeNodeNode* ScheduleTreeNode::operator->() {
 //  return static_cast<ScheduleTreeNodeNode*>(node_.get());
 //}
 
+ScheduleTreeNode ScheduleTreeNode::Copy() const {
+  CHECK(node_ != nullptr);
+  if (node_->is_type<AxisTreeNodeNode>()) {
+    NodePtr<AxisTreeNodeNode> n =
+        make_node<AxisTreeNodeNode>(*static_cast<const AxisTreeNodeNode*>((operator->())));
+    return ScheduleTreeNode(n);
+  } else if (node_->is_type<BlockTreeNodeNode>()) {
+    NodePtr<BlockTreeNodeNode> n =
+        make_node<BlockTreeNodeNode>(*static_cast<const BlockTreeNodeNode*>((operator->())));
+    return ScheduleTreeNode(n);
+  } else {
+    LOG(FATAL) << "Internal error : unknown tree node type";
+  }
+  return ScheduleTreeNode(nullptr);
+}
+
 TensorRegion TensorRegionNode::make(Tensor data, Array<Range> ranges) {
   NodePtr<TensorRegionNode> node = make_node<TensorRegionNode>();
 

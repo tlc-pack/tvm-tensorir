@@ -1,6 +1,7 @@
 import tvm
 import topi
 from tvm import tensorir
+from tvm import ir_pass
 
 def get_phase0(s, args, simple_mode=True):
     """get statement after phase 0"""
@@ -35,7 +36,7 @@ def test_decompile_fuse():
     # schedule
     s = tensorir.create_schedule(stmt)
 
-    init, reduction, relu = s.statements()
+    init, reduction, relu = s.blocks()
 
     jo, io, ji_init, ii_init = s.axis(init)
     _, _, ko, ji, ii, ki = s.axis(reduction)
@@ -62,17 +63,19 @@ def test_inline():
     s[D].split(s[D].op.axis[0], 8)
     stmt = get_phase0(s, [A, C, D])
 
+    print(stmt)
+
     s = tensorir.create_schedule(stmt)
 
-    B, C, D = s.statements()
+    B, C, D = s.blocks()
     i, j = s.axis(C)
 
-    io, ii = s.split(i, 16)
-    jo, ji = s.split(j, 16)
+    io, ii = s.split(i, 16)  # useless split
 
     s.compute_inline(C)
-    print(s.root)
 
+    print(s.root)
+    print(s.to_halide())
 
 
 def test_compute_at():
@@ -90,16 +93,34 @@ def test_compute_at():
     stmt = get_phase0(s, [A, C, D])
 
     s = tensorir.create_schedule(stmt)
-
     print(s.root)
 
     B, C, D = s.blocks()
-
     i, j, k = s.axis(D)
-
     s.compute_at(C, i)
 
     print(s.root)
+
+def test_unroll():
+    N = 128
+    M = 8
+
+    A = tvm.placeholder((N, M), name='A')
+    B = tvm.compute((N, M), lambda i, j: A[tvm.if_then_else(j % 2 == 0, 0, 1)][j], name='B')
+
+    s = tvm.create_schedule([B.op])
+    s[B].unroll(B.op.axis[1])
+    stmt = get_phase0(s, [A, B])
+
+    s = tensorir.create_schedule(stmt)
+
+    print(s.root)
+    B, = s.blocks()
+    i, j = s.axis(B)
+
+    blocks = s.unroll(j)
+
+    print(ir_pass.CanonicalSimplify(s.to_halide()))
 
 
 def test_tile():
@@ -168,7 +189,7 @@ def test_gpu():
 
     #
     s = tensorir.create_schedule(stmt)
-    B, C = s.statements
+    B, C = s.blocks()
 
     i, j = s.axis(B)
     s.move(C, j)
@@ -177,9 +198,10 @@ def test_gpu():
     s.bind(j, tvm.thread_axis('threadIdx.x'))
 
 if __name__ == "__main__":
-    #test_decompile_fuse()
-    #test_inline()
+    test_decompile_fuse()
+    test_inline()
     test_compute_at()
+    test_unroll()
     #test_tile()
     #test_partial_tile()
     #test_gpu()

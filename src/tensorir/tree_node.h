@@ -46,7 +46,7 @@ class ScheduleTreeNode : public NodeRef {
   const ScheduleTreeNodeNode* operator->() const;
   ScheduleTreeNodeNode* operator->();
 
-  inline ScheduleTreeNodeNode* CopyOnWrite();
+  ScheduleTreeNode Copy() const;
   using ContainerType = ScheduleTreeNodeNode;
 };
 

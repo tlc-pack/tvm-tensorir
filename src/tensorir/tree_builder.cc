@@ -144,6 +144,29 @@ BlockTreeNode SortBlockArgs(BlockTreeNode node) {
   return BlockTreeNodeNode::make(args, vars, node->inputs, node->outputs, node->stmt);
 }
 
+Array<TensorRegion> CreateInputRegions(const NodeRef& expr_or_stmt) {
+  Array<TensorRegion> inputs;
+
+  TensorAccessGather gather;
+  gather.GatherAndGroup(expr_or_stmt);
+
+  for (auto iter : gather.access_grouped) { // for all tensors
+    Array<Range> ranges;
+
+    for (size_t i = 0; i < iter.first->shape.size(); ++i) { // for all dimensions
+      Array<arith::IntSet> sets;
+      for (const auto &x : iter.second) {   // for multiple accesses
+        sets.push_back(arith::IntSet::single_point(x[i]));
+      }
+      arith::IntSet unioned = arith::Union(sets);
+      ranges.push_back(Range::make_by_min_extent(unioned.min(), simplify(unioned.max() - unioned.min()+1)));
+    }
+
+    inputs.push_back(TensorRegionNode::make(iter.first, ranges));
+  }
+  return inputs;
+}
+
 ScheduleTreeNode TreeBuilder::VisitStmt_(const Provide* op) {
   size_t ct = 0;
 
@@ -196,24 +219,8 @@ ScheduleTreeNode TreeBuilder::VisitStmt_(const Provide* op) {
   }
 
   // create input regions
-  TensorAccessGather gather;
-  gather.GatherAndGroup(op->value);
-
-  Array<TensorRegion> inputs;
-  for (auto iter : gather.access_grouped) {
-    Array<Range> ranges;
-
-    for (size_t i = 0; i < iter.first->shape.size(); ++i) {
-      Array<arith::IntSet> sets;
-      for (const auto &x : iter.second) {
-        sets.push_back(arith::IntSet::single_point(Substitute(analyzer->equation_simplify(x[i]), var_map)));
-      }
-      arith::IntSet unioned = arith::Union(sets);
-      ranges.push_back(Range::make_by_min_extent(unioned.min(), simplify(unioned.max() - unioned.min()+1)));
-    }
-
-    inputs.push_back(TensorRegionNode::make(iter.first, ranges));
-  }
+  Expr value = Substitute(analyzer->equation_simplify(op->value), var_map);
+  Array<TensorRegion> inputs = CreateInputRegions(value);
 
   // make node
   Array<Expr> halide_call_args;
@@ -222,7 +229,7 @@ ScheduleTreeNode TreeBuilder::VisitStmt_(const Provide* op) {
   }
   Stmt stmt = Provide::make(op->func,
                             op->value_index,
-                            Substitute(analyzer->equation_simplify(op->value), var_map),
+                            value,
                             halide_call_args);
 
   BlockTreeNode ret = BlockTreeNodeNode::make(args, vars, inputs, outputs, stmt);

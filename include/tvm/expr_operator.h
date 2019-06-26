@@ -128,7 +128,13 @@ inline bool is_one(const Expr& x) {
  * \note This only return true for integer types.
  */
 inline bool is_zero(const Expr& x) {
-  return is_const_int(x, 0);
+  if (is_const_int(x, 0)) {
+    return true;
+  } else if (const ir::FloatImm* imm = x.as<ir::FloatImm>()) {
+    return imm->value == 0.0;
+  } else {
+    return false;
+  }
 }
 
 /*!

@@ -20,33 +20,38 @@ def register_tensorir_node(type_key=None):
 @register_node("tensorir.Schedule")
 class Schedule(NodeBase):
 
-    def split(self, node, factor):
-        return ScheduleSplit(self, node, factor)
-
     def blocks(self):
         return ScheduleBlocks(self)
 
     def axis(self, stmt):
         return ScheduleAxis(self, stmt)
 
+    def split(self, node, factor):
+        return ScheduleSplit(self, node, factor)
+
     def fuse(self, outer_axis, inner_axis):
         return ScheduleFuse(self, outer_axis, inner_axis)
+
+    def unroll(self, axis):
+        return ScheduleUnroll(self, axis)
 
     def reorder(self, outer_axis, inner_axis):
         return ScheduleReorder(self, outer_axis, inner_axis)
 
-    def compute_root(self, stmt):
-        return ScheduleComputeRoot(self, stmt)
+    def compute_inline(self, stmt):
+        return ScheduleComputeInline(self, stmt)
 
     def compute_at(self, stmt, axis):
         return ScheduleComputeAt(self, stmt, axis)
 
-    def compute_inline(self, stmt):
-        return ScheduleComputeInline(self, stmt)
+    def compute_after(self, stmt, axis):
+        return ScheduleComputeAfter(self, stmt, axis)
 
-    def shrink_layout(self, stmt):
-        return ScheduleShrinkLayout(self, stmt)
+    def compute_root(self, stmt):
+        return ScheduleComputeRoot(self, stmt)
 
+    def to_halide(self):
+        return ScheduleToHalide(self, self.root)
 
 @register_tensorir_node
 class ScheduleTreeNode(NodeBase):

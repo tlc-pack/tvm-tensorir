@@ -63,14 +63,19 @@ class Schedule : public NodeRef {
   Array<AxisTreeNode> split(AxisTreeNode axis, Expr factor);
   AxisTreeNode fuse(AxisTreeNode outer, AxisTreeNode inner);
   Array<AxisTreeNode> reorder(AxisTreeNode outer, AxisTreeNode inner);
-  void compute_inline(BlockTreeNode stmt);
-  void compute_root(BlockTreeNode stmt);
-  BlockTreeNode compute_at(BlockTreeNode stmt, AxisTreeNode axis);
+  Array<ScheduleTreeNode> unroll(AxisTreeNode axis);
+  void compute_inline(BlockTreeNode block);
+  BlockTreeNode compute_at(BlockTreeNode block, AxisTreeNode axis);
+  BlockTreeNode compute_after(BlockTreeNode block, AxisTreeNode axis);
+  BlockTreeNode compute_root(BlockTreeNode block);
 
   void bind(AxisTreeNode axis, std::string name);
 
   // dependency analysis
   Array<Array<arith::IntSet> > GatherRegion(Array<Tensor> tensors, AxisTreeNode axis) const;
+
+  // output
+  Stmt ToHalide(ScheduleTreeNode node) const;
 
   using ContainerType = ScheduleNode;
 
@@ -79,7 +84,7 @@ class Schedule : public NodeRef {
   // set to be the member functions of Schedule. Considering moving them to another place later)
   void UpdateFather(ScheduleTreeNode father, bool recursive = false);
   ScheduleTreeNode LeastCommonAncestor(ScheduleTreeNode a, ScheduleTreeNode b) const;
-//  inline void ReplaceChild(ScheduleTreeNode old_child, ScheduleTreeNode new_child);
+  inline void ReplaceChild(ScheduleTreeNode old_child, ScheduleTreeNode new_child);
   void RemoveLeaf(ScheduleTreeNode node);
 
 };
