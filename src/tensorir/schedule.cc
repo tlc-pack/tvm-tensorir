@@ -271,6 +271,7 @@ Array<ScheduleTreeNode> Schedule::unroll(AxisTreeNode axis) {
     }
   }
   father->children = father_new_children;
+  UpdateFather(father, false);
 
   return expanded_stmts;
 }
@@ -476,7 +477,6 @@ bool FindAccess(ScheduleTreeNode node, Tensor t) {
 
 // output
 Stmt Schedule::ToHalide() const {
-
   // compute allocation locations for all tensors
   StdNodeMap<Tensor, Array<ScheduleTreeNode> > related_nodes;
 
@@ -547,11 +547,11 @@ Stmt Schedule::ToHalide() const {
                                      Evaluate::make(0)));
 
         ret.push_back(Realize::make(tensor->op,
-                            tensor->value_index,
-                            tensor->dtype,
-                            operator->()->raw_realize_region.at(tensor),
-                            const_true(1),
-                            Evaluate::make(0)));
+                                    tensor->value_index,
+                                    tensor->dtype,
+                                    operator->()->raw_realize_region.at(tensor),
+                                    const_true(1),
+                                    Evaluate::make(0)));
       }
     }
 

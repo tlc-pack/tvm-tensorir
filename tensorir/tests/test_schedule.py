@@ -1,21 +1,37 @@
+import numpy as np
 import tvm
 import topi
 from tvm import tensorir
 from tvm import ir_pass
 
-def get_phase0(s, args, simple_mode=True):
-    """get statement after phase 0"""
-    ret = []
+def check_correctness(s, args, inserted_pass, target='llvm'):
+    """Check correctness by building the function with and without inserted_pass"""
 
-    def fetch_pass(stmt):
-        ret.append(stmt)
-        return stmt
+    if isinstance(target, tuple) or isinstance(target, list):
+        target1, target2 = target
+    else:
+        target1 = target2 = target
 
-    with tvm.build_ToHalideconfig(add_lower_pass=[(0, fetch_pass)]):
-        tvm.lower(s, args, simple_mode=simple_mode)
+    with tvm.build_config(add_lower_pass=[(0, inserted_pass)]):
+        func1 = tvm.build(s, args, target1)
 
-    return ret[0]
+    func2 = tvm.build(s, args, target2)
 
+    ctx1 = tvm.context(target1)
+    ctx2 = tvm.context(target2)
+
+    bufs1 = [tvm.nd.array(np.random.randn(*topi.util.get_const_tuple(x.shape)).astype(x.dtype), ctx=ctx1)
+            for x in args]
+    bufs2 = [tvm.nd.array(x, ctx=ctx2) for x in bufs1]
+
+    func1(*bufs1)
+    func2(*bufs2)
+
+    bufs1_np = [x.asnumpy() for x in bufs1]
+    bufs2_np = [x.asnumpy() for x in bufs2]
+
+    for x, y in zip(bufs1_np, bufs2_np):
+        np.testing.assert_allclose(x, y)
 
 def test_decompile_fuse():
     N = M = K = 128
@@ -32,7 +48,6 @@ def test_decompile_fuse():
     ko, ki = s[C].split(C.op.reduce_axis[0], 8)
     s[C].reorder(jo, io, ko, ji, ii, ki)
 
-    # schedule
     def _schedule_pass(stmt):
         s = tensorir.create_schedule(stmt)
 
@@ -51,14 +66,13 @@ def test_decompile_fuse():
         return stmt
 
     with tvm.build_config(add_lower_pass=[(0, _schedule_pass)]):
-        func = tvm.build(s, [A, B, D], 'llvm')
+        tvm.build(s, [A, B, D], 'llvm')
 
-
+    check_correctness(s, [A, B, D], _schedule_pass)
 
 def test_inline():
     N = M = 128
 
-    # 
     A = tvm.placeholder((N, M), name='A')
     B = tvm.compute((N, M), lambda i, j: A[i][j] + 1, name='B')
     C = tvm.compute((N, M), lambda i, j: B[i][j] * 2, name='C')
@@ -66,27 +80,26 @@ def test_inline():
 
     s = tvm.create_schedule([C.op, D.op])
     s[D].split(s[D].op.axis[0], 8)
-    stmt = get_phase0(s, [A, C, D])
 
-    print(stmt)
+    def _schedule_pass(stmt):
+        s = tensorir.create_schedule(stmt)
 
-    s = tensorir.create_schedule(stmt)
+        B, C, D = s.blocks()
+        i, j = s.axis(C)
 
-    B, C, D = s.blocks()
-    i, j = s.axis(C)
+        io, ii = s.split(i, 16)  # useless split
 
-    io, ii = s.split(i, 16)  # useless split
+        s.compute_inline(C)
 
-    s.compute_inline(C)
+        stmt = s.to_halide()
+        return stmt
 
-    print(s.root)
-    print(s.to_halide())
+    check_correctness(s, [A, D], _schedule_pass)
 
 
 def test_compute_at():
     N = M = K = 128
 
-    # 
     A = tvm.placeholder((N, M, K), name='A')
     B = tvm.compute((N, M, K), lambda i, j, k: A[i, j, k] + 1, name='B')
     C = tvm.compute((N, M, K), lambda i, j, k: B[i, j, k] * 2, name='C')
@@ -95,120 +108,123 @@ def test_compute_at():
     s = tvm.create_schedule([C.op, D.op])
     i, j, k = C.op.axis
     s[C].split(i, 8)
-    stmt = get_phase0(s, [A, C, D])
 
-    s = tensorir.create_schedule(stmt)
-    print(s.root)
+    def _schedule_pass(stmt):
+        s = tensorir.create_schedule(stmt)
 
-    B, C, D = s.blocks()
-    i, j, k = s.axis(D)
-    s.compute_at(C, i)
+        B, C, D = s.blocks()
+        i, j, k = s.axis(D)
+        s.compute_at(C, i)
 
-    print(s.root)
+        stmt = s.to_halide()
+        return stmt
+
+    check_correctness(s, [A, D], _schedule_pass)
+
 
 def test_unroll():
-    N = 128
-    M = 8
+    N = 4
+    M = 4
 
     A = tvm.placeholder((N, M), name='A')
     B = tvm.compute((N, M), lambda i, j: A[tvm.if_then_else(j % 2 == 0, 0, 1)][j], name='B')
 
     s = tvm.create_schedule([B.op])
+
+    def _schedule_pass(stmt):
+        s = tensorir.create_schedule(stmt)
+        B, = s.blocks()
+        i, j = s.axis(B)
+
+        blocks = s.unroll(j)
+
+        stmt = s.to_halide()
+        return stmt
+
+    check_correctness(s, [A, B], _schedule_pass)
+
+def test_from_unroll():
+    N = 4
+    M = 4
+
+    A = tvm.placeholder((N, M), name='A')
+    B = tvm.compute((N, M), lambda i, j: A[tvm.if_then_else(j % 2 == 0, 0, 1)][j], name='B')
+
+    s = tvm.create_schedule([B.op])
+
     s[B].unroll(B.op.axis[1])
-    stmt = get_phase0(s, [A, B])
 
-    s = tensorir.create_schedule(stmt)
+    def _schedule_pass(stmt):
+        stmt = ir_pass.UnrollLoop(stmt, -1, -1, -1, True)
 
-    print(s.root)
-    B, = s.blocks()
-    i, j = s.axis(B)
+        s = tensorir.create_schedule(stmt)
+        i, = s.axis(s.blocks()[0])
+        s.unroll(i)
 
-    blocks = s.unroll(j)
+        stmt = s.to_halide()
+        return stmt
 
-    print(ir_pass.CanonicalSimplify(s.to_halide()))
-
+    check_correctness(s, [A, B], _schedule_pass)
 
 def test_tile():
-    N = M = K = 128
-
-    # a vanilla gemm
-    A = tvm.placeholder((N, K), name='A')
-    B = tvm.placeholder((M, K), name='B')
-    k = tvm.reduce_axis((0, K), name='k')
-    C = tvm.compute((N, M), lambda i, j: tvm.sum(A[i, k] * B[j, k], axis=k), name='C')
-
-    s = tvm.create_schedule([C.op])
-    stmt = get_phase0(s, [A, B, C])
-
-    # schedule
-    print(stmt)
-
-    s = tensorir.create_schedule(stmt)
-    init, reduction = s.statements()
-
-    i, j, k = s.axis(reduction)
-
-    io, ii = s.split(i, 8)
-    jo, ji = s.split(j, 8)
-    ko, ki = s.split(k, 8)
-    s.reorder(io, jo, ko, ji, ii, ki)    # automatic done : move init part
-
-    stmt = s.gen_stmt()
-    print(stmt)
+    pass
 
 def test_partial_tile():
-    N = M = K = 128
+    pass
 
-    # a vanilla gemm
-    A = tvm.placeholder((N, K), name='A')
-    B = tvm.placeholder((M, K), name='B')
-    k = tvm.reduce_axis((0, K), name='k')
-    C = tvm.compute((N, M), lambda i, j: tvm.sum(A[i, k] * B[j, k], axis=k), name='C')
-
-    s = tvm.create_schedule([C.op])
-    stmt = get_phase0(s, [A, B, C])
-
-    # schedule
-    print(stmt)
-
-    s = tensorir.create_schedule(stmt)
-    init, reduction = s.statements()
-
-    i, j, k = s.axis(reduction)
-
-    io, ii = s.split(i, 7)   # partial tile binded to io
-    jo, ji = s.split(j, 7)
-    ko, ki = s.split(k, 7)
-    s.reorder(io, jo, ko, ji, ii, ki)
-
-def test_gpu():
+def test_from_gpu():
+    """Test naive translation of GPU code"""
     N = M = 128
 
-    # 
     A = tvm.placeholder((N, M), name='A')
     B = tvm.compute((N, M), lambda i, j: A[i][j] + 1, name='B')
-    C = tvm.compute((N, M), lambda i, j: B[i][j] * 2, name='C')
 
-    s = tvm.create_schedule([C.op])
-    stmt = get_phase0(s, [A, B, C])
+    s = tvm.create_schedule([B.op])
+    s[B].bind(B.op.axis[0], tvm.thread_axis('blockIdx.x'))
+    s[B].bind(B.op.axis[1], tvm.thread_axis('threadIdx.x'))
 
-    #
-    s = tensorir.create_schedule(stmt)
-    B, C = s.blocks()
+    def _schedule_pass(stmt):
+        s = tensorir.create_schedule(stmt)
 
-    i, j = s.axis(B)
-    s.move(C, j)
+        stmt = s.to_halide()
+        return stmt
 
-    s.bind(i, tvm.thread_axis('blockIdx.x'))
-    s.bind(j, tvm.thread_axis('threadIdx.x'))
+    check_correctness(s, [A, B], _schedule_pass, 'cuda')
+
+
+def test_bind():
+    """Test schedule primitive bind"""
+    N = M = 128
+
+    A = tvm.placeholder((N, M), name='A')
+    B = tvm.compute((N, M), lambda i, j: A[i][j] + 1, name='B')
+
+    s = tvm.create_schedule([B.op])
+
+    def _schedule_pass(stmt):
+        s = tensorir.create_schedule(stmt)
+
+        B, = s.blocks()
+        i, j = s.axis(B)
+
+        s.bind(i, 'blockIdx.x')
+        s.bind(j, 'threadId.x')
+
+        stmt = s.to_halide()
+        return stmt
+
+    check_correctness(s, [A, B], _schedule_pass, ['cuda', 'llvm'])
+
 
 if __name__ == "__main__":
     test_decompile_fuse()
-    #test_inline()
+    test_inline()
     #test_compute_at()
-    #test_unroll()
+    test_unroll()
+    test_from_unroll()
     #test_tile()
     #test_partial_tile()
-    #test_gpu()
-    #test_memory_scope()
+
+    #test_from_gpu()
+    #test_bind()
 
