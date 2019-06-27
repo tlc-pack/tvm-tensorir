@@ -103,6 +103,18 @@ def test_fuse():
     expr = analyzer.equation_simplify((joii_fused * 2) % 16 + io * 16)
     assert _is_equal(expr, 2 * p)
 
+def test_const_case():
+    analyzer = tvm.arith.Analyzer()
+
+    p, q, a = _get_vars(['p', 'q', 'a'])
+
+    analyzer.bind(p, tvm.const(0, 'int32'))
+
+    expr = analyzer.equation_simplify(a+1)
+    assert _is_equal(expr, a+1)
+
+    expr = analyzer.equation_simplify(tvm.const(1, 'int32'))
+    assert _is_equal(expr, tvm.const(1, 'int32'))
 
 def test_equation_solver():
     """
@@ -151,6 +163,8 @@ if __name__ == "__main__":
     test_reduction()
     test_matching()
     test_fuse()
+    test_const_case()
+
     #test_equation_solver()
     #test_non_linear()
 

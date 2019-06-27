@@ -32,7 +32,9 @@ namespace arith {
 
 using namespace ir;
 
-bool DoNotContain(const Expr& expr, const Expr& vars) {
+// Return whether `expr` contains any variable used in `vars`
+// Return true if `vars` contains no variable
+bool Contain(const Expr& expr, const Expr& vars) {
   std::set<const Variable*> var_set;
 
   // gather vars
@@ -41,12 +43,16 @@ bool DoNotContain(const Expr& expr, const Expr& vars) {
       var_set.insert(op);
   });
 
+  if (var_set.empty()) {
+    return true;
+  }
+
   // check
-  bool ret = true;
+  bool ret = false;
   PostOrderVisit(expr, [&var_set, &ret](const NodeRef &node) {
     if (const Variable *op = node.as<Variable>()) {
       if (var_set.count(op) != 0) {
-        ret = false;
+        ret = true;
       }
     }
   });
@@ -60,12 +66,16 @@ class MatchingSimplifier : public IRMutator {
                      Analyzer* parent) : var_map_(var_map), parent_(parent) {}
 
   Expr Mutate(Expr expr) override {
+    if (is_const(expr)) {
+      return expr;
+    }
+
     for (auto x : var_map_) {
       Expr diff = parent_->rewrite_simplify(parent_->canonical_simplify(expr - x.second));
 
       // direct replace
-      if (is_zero(diff)) {
-        return x.first;
+      if (is_const(diff)) {
+        return x.first + diff;
       }
 
       Expr quet;
@@ -82,12 +92,12 @@ class MatchingSimplifier : public IRMutator {
         return x.first * quet;
       }
 
-      if (inv_quet.defined() && is_const(inv_quet)) {
+      if (inv_quet.defined() && is_const(inv_quet) && !is_zero(inv_quet)) {
         return x.first / inv_quet;
       }
 
       // sub
-      if (DoNotContain(diff, x.second)) {
+      if (!Contain(diff, x.second)) {
         return Mutate(diff + x.first);
       }
     }
