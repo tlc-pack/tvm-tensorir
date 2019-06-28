@@ -65,8 +65,7 @@ Schedule TreeBuilder::Build(Stmt stmt) {
 
   Schedule ret(node);
   ret.UpdateFather(ret->root, true);
-
-  //PrintDependencyGraph(std::cerr, ret->dep_graph);
+  ret->father_map.Set(ret->root, ret->root);
 
   return ret;
 }

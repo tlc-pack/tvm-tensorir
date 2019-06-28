@@ -145,8 +145,8 @@ class DependencyGraph : public NodeRef {
   void AddNode(BlockTreeNode op_stmt);
   void AddEdge(BlockTreeNode from, BlockTreeNode to, EdgeType type);
   void InlineNode(BlockTreeNode op_stmt);
-  Array<BlockTreeNode> GetSuccessor(BlockTreeNode op_stmt);
-  Array<BlockTreeNode> GetPredecessor(BlockTreeNode op_stmt);
+  Set<BlockTreeNode> GetSuccessor(BlockTreeNode op_stmt);
+  Set<BlockTreeNode> GetPredecessor(BlockTreeNode op_stmt);
 
   using ContainerType = DependencyGraphNode;
 };

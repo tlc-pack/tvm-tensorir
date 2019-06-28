@@ -43,7 +43,7 @@ Array<IntSet> SolveCover(Array<Var> vars, Array<IntSet> produce, Array<IntSet> r
 
       Expr base = require->i.min;
       Expr produce_len = simplify(iset->i.max - iset->i.min + 1);
-      Expr extent = simplify((require->i.max - require->i.min + produce_len - 1) / produce_len);
+      Expr extent = simplify((require->i.max - require->i.min + 1 + produce_len - 1) / produce_len);
       Expr strides = produce_len;
 
       to_merge[id].push_back(StrideSet::make(Interval::single_point(base),

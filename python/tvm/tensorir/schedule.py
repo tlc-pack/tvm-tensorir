@@ -54,6 +54,9 @@ class Schedule(NodeBase):
     def to_halide(self):
         return ScheduleToHalide(self)
 
+    def check_father_link(self):
+        return ScheduleCheckFatherLink(self)
+
 
 @register_tensorir_node
 class ScheduleTreeNode(NodeBase):

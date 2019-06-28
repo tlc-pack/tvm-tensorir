@@ -54,6 +54,10 @@ TVM_REGISTER_API("tensorir.schedule.ScheduleComputeRoot")
 TVM_REGISTER_API("tensorir.schedule.ScheduleToHalide")
 .set_body_method(&Schedule::ToHalide);
 
+TVM_REGISTER_API("tensorir.schedule.ScheduleCheckFatherLink")
+.set_body_method(&Schedule::CheckFatherLink);
+
+
 //TVM_REGISTER_API("tensorir.schedule.ScheduleBind")
 //.set_body([](TVMArgs args, TVMRetValue* rv) {
 //  *rv = args[0].operator Schedule().bind(args[0], args[1]);

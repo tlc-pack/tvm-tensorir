@@ -286,31 +286,63 @@ BlockTreeNode Schedule::compute_after(BlockTreeNode block, AxisTreeNode axis) {
   return BlockTreeNode(nullptr);
 }
 
+// Return whether the subtree rooted by node has any block in `set`
+bool FindAny(ScheduleTreeNode node, Set<BlockTreeNode> set) {
+  if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
+    for (const auto& x : n->children) {
+      if (FindAny(x, set)) {
+        return true;
+      }
+    }
+  } else if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
+    return static_cast<bool>(set.count(GetRef<BlockTreeNode>(n)));
+  }
+  return false;
+}
+
 BlockTreeNode Schedule::compute_at(BlockTreeNode block, AxisTreeNode axis) {
   ScheduleTreeNode father = operator->()->father_map[block];
 
   // check dependency:
   // 1. all successors are at the subtree
   // 2. WAW cannot across reduce axis
-
   StdNodeSet<BlockTreeNode> child_blocks;
   GatherChildrenBlocks(axis, &child_blocks);
 
-  for (auto x : operator->()->dep_graph.GetSuccessor(block)) {
+  const auto& predecessors = operator->()->dep_graph.GetPredecessor(block);
+  const auto& successor = operator->()->dep_graph.GetSuccessor(block);
+
+  for (auto x : successor) {
     if (!child_blocks.count(x)) {
       LOG(FATAL) << "This block cannot compute at this point because some other "
           "blocks outside the scope of this point are also dependent on this block.";
     }
   }
-
   // todo(lmzheng): check compute_at across reduction axis for WAW
+
+  // find insert position : after all predecessors in dependency graph and before all successors in dep graph.
+  int after_pos, before_pos;
+  for (after_pos = static_cast<int>(axis->children.size()) - 1; after_pos >= 0; after_pos--) {
+    if (FindAny(axis->children[after_pos], predecessors)) {
+      break;
+    }
+  }
+  after_pos++;
+  for (before_pos = 0; before_pos < static_cast<int>(axis->children.size()); before_pos++) {
+    if (FindAny(axis->children[before_pos], successor)) {
+      break;
+    }
+  }
+  if (after_pos > before_pos) {
+    LOG(FATAL) << "Cannot satisfy dependency";
+  }
 
   // gather required bound for all outputs
   Array<Tensor> output_tensors;
   for (const auto x : block->outputs) {
     output_tensors.push_back(x->data);
   }
-  Array<Array<IntSet> > ranges = GatherRegion(output_tensors, axis);
+  Array<Array<IntSet> > ranges = GatherRegion(output_tensors, axis, after_pos);
 
   // copy domain for reduction axis
   StdNodeMap<Var, Range> dom_map;
@@ -330,7 +362,6 @@ BlockTreeNode Schedule::compute_at(BlockTreeNode block, AxisTreeNode axis) {
       produces.push_back(IntSet::range(ran));
     }
   }
-
   Array<IntSet> iter_domain = arith::SolveCover(block->vars, produces, Flatten2DArray(ranges));
 
   // generate for AxisNodes
@@ -355,23 +386,23 @@ BlockTreeNode Schedule::compute_at(BlockTreeNode block, AxisTreeNode axis) {
     if (const arith::IntervalSet* set = iter_domain[i].as<arith::IntervalSet>()) {
       node = AxisTreeNodeNode::make(iter_var,
                                     set->i.min,
-                                    set->i.max - set->i.min,
+                                    set->i.max - set->i.min + 1,
                                     kOpaque, // todo(lmzheng): fill correct type to replace kOpaque x 3
                                     Array<ScheduleTreeNode>{last});
       new_args[i] = iter_var;
     } else if (const arith::StrideSet* set = iter_domain[i].as<arith::StrideSet>()) {
       CHECK(set->extents.size() == 1);
       CHECK(set->base.is_single_point());
-      if (!is_zero(set->extents[0])) {
+      if (is_one(set->extents[0])) {
+        node = AxisTreeNode(nullptr);
+        new_args[i] = set->base.min;
+      } else {
         node = AxisTreeNodeNode::make(iter_var,
                                       0,
                                       set->extents[0],
                                       kOpaque,
                                       Array<ScheduleTreeNode>{last});
         new_args[i] = iter_var * set->strides[0] + set->base.min;
-      } else {
-        new_args[i] = set->base.min;
-        node = AxisTreeNode(nullptr);
       }
     } else {
       LOG(FATAL) << "Cannot handle int set : " << iter_domain[i];
@@ -390,8 +421,9 @@ BlockTreeNode Schedule::compute_at(BlockTreeNode block, AxisTreeNode axis) {
     RemoveLeaf(father);
   }
 
+  // insert to father's children list
   ArrayNode* new_children = axis->children.CopyOnWrite();
-  new_children->data.insert(new_children->data.begin(), last.node_);
+  new_children->data.insert(new_children->data.begin() + after_pos, last.node_);
   UpdateFather(axis);
 
   return block;
@@ -402,7 +434,7 @@ BlockTreeNode Schedule::compute_root(BlockTreeNode block) {
 }
 
 // dependency analysis
-Array<Array<IntSet> > Schedule::GatherRegion(Array<Tensor> tensors, AxisTreeNode axis) const {
+Array<Array<IntSet> > Schedule::GatherRegion(Array<Tensor> tensors, AxisTreeNode axis, int start_child_index) const {
   std::unordered_map<const Variable*, IntSet> dom_map;
 
   // set father as a single point
@@ -419,7 +451,9 @@ Array<Array<IntSet> > Schedule::GatherRegion(Array<Tensor> tensors, AxisTreeNode
   }
 
   StdNodeSet<BlockTreeNode> blocks;
-  GatherChildrenBlocks(axis, &blocks);
+  for (size_t i = start_child_index; i < axis->children.size(); ++i) {
+    GatherChildrenBlocks(axis->children[i], &blocks);
+  }
 
   Array<Array<IntSet> > ret;
 
@@ -459,20 +493,25 @@ Array<Array<IntSet> > Schedule::GatherRegion(Array<Tensor> tensors, AxisTreeNode
 
 // Return whether the subtree rooted by node accesses tensor t
 bool FindAccess(ScheduleTreeNode node, Tensor t) {
-  bool ret = false;
   if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
     for (const auto& x : n->children) {
-      ret |= FindAccess(x, t);
+      if (FindAccess(x, t)) {
+        return true;
+      }
     }
   } else if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
     for (const auto& x : n->inputs) {
-      ret |= x->data == t;
+      if (x->data == t) {
+        return true;
+      }
     }
     for (const auto& x : n->outputs) {
-      ret |= x->data == t;
+      if (x->data == t) {
+        return true;
+      }
     }
   }
-  return ret;
+  return false;
 }
 
 // output
@@ -653,6 +692,23 @@ ScheduleTreeNode Schedule::LowestCommonAncestor(Array<ScheduleTreeNode> nodes, b
   }
 
   return now;
+}
+
+void Schedule::CheckFatherLink() {
+  std::function<void(ScheduleTreeNode)> check_func;
+
+  check_func = [this, &check_func](ScheduleTreeNode node) {
+    if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
+      for (auto x : n->children) {
+        if (operator->()->father_map[x] != node) {
+          std::cerr << "Father link error (f to c):  " << n->loop_var << " to " << x << std::endl;
+        }
+        check_func(x);
+      }
+    }
+  };
+
+  check_func(operator->()->root);
 }
 
 // tree utilities that do not require father map

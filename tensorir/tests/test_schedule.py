@@ -105,16 +105,18 @@ def test_compute_at():
     C = tvm.compute((N, M, K), lambda i, j, k: B[i, j, k] * 2, name='C')
     D = tvm.compute((N, M, K), lambda i, j, k: C[i, j, k] - 3, name='D')
 
-    s = tvm.create_schedule([C.op, D.op])
+    s = tvm.create_schedule([D.op])
     i, j, k = C.op.axis
-    s[C].split(i, 8)
+    s[C].split(j, 8)
 
     def _schedule_pass(stmt):
         s = tensorir.create_schedule(stmt)
 
         B, C, D = s.blocks()
         i, j, k = s.axis(D)
+
         s.compute_at(C, i)
+        s.compute_root(C)
 
         stmt = s.to_halide()
         return stmt
@@ -219,7 +221,7 @@ def test_bind():
 if __name__ == "__main__":
     test_decompile_fuse()
     test_inline()
-    #test_compute_at()
+    test_compute_at()
     test_unroll()
     test_from_unroll()
     #test_tile()

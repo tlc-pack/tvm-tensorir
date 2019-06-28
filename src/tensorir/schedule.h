@@ -54,6 +54,7 @@ class Schedule : public NodeRef {
   ScheduleNode* operator->() {
     return static_cast<ScheduleNode*>(node_.get());
   }
+
   const ScheduleNode* operator->() const {
     return static_cast<const ScheduleNode*>(node_.get());
   }
@@ -80,7 +81,7 @@ class Schedule : public NodeRef {
   BlockTreeNode double_buffer();
 
   // dependency analysis
-  Array<Array<arith::IntSet> > GatherRegion(Array<Tensor> tensors, AxisTreeNode axis) const;
+  Array<Array<arith::IntSet> > GatherRegion(Array<Tensor> tensors, AxisTreeNode axis, int start_child_index) const;
 
   // output
   Stmt ToHalide() const;
@@ -94,6 +95,8 @@ class Schedule : public NodeRef {
   ScheduleTreeNode LowestCommonAncestor(Array<ScheduleTreeNode> nodes, bool inclusive) const;
   inline void ReplaceChild(ScheduleTreeNode old_child, ScheduleTreeNode new_child);
   void RemoveLeaf(ScheduleTreeNode node);
+
+  void CheckFatherLink();
 
 };
 
