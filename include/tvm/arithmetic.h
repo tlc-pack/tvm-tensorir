@@ -587,7 +587,7 @@ IntSet EvalSet(Expr e,
  * \param dom_map The domain of each variable.
  * \return An integer set that can cover all the possible values.
  */
-IntSet EvalSet(Range r,
+IntSet EvalSet(HalideIR::IR::Range r,
                const Map<IterVar, IntSet>& dom_map);
 
 /*!
@@ -607,7 +607,7 @@ IntSet EvalSet(IntSet s,
  * \param dom_map The domain of each variable.
  * \return An integer set that can cover all the possible values of e.
  */
-IntSet EvalSet(Range r,
+IntSet EvalSet(HalideIR::IR::Range r,
                const std::unordered_map<const Variable*, IntSet>& dom_map);
 
 /*! \brief Map from Expr to IntSet */

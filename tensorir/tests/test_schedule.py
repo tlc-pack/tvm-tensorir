@@ -97,7 +97,6 @@ def test_inline():
 
     check_correctness(s, [A, D], _schedule_pass)
 
-
 def test_compute_at():
     N = M = K = 128
 
@@ -123,7 +122,6 @@ def test_compute_at():
         return stmt
 
     check_correctness(s, [A, D], _schedule_pass)
-
 
 def test_unroll():
     N = 4
@@ -231,7 +229,6 @@ def test_from_gpu():
     s = tvm.create_schedule([B.op])
     s[B].bind(B.op.axis[0], tvm.thread_axis('blockIdx.x'))
     s[B].bind(B.op.axis[1], tvm.thread_axis('threadIdx.x'))
-
     def _schedule_pass(stmt):
         s = tensorir.create_schedule(stmt)
 
@@ -239,7 +236,6 @@ def test_from_gpu():
         return stmt
 
     check_correctness(s, [A, B], _schedule_pass, 'cuda')
-
 
 def test_bind():
     """Test schedule primitive bind"""
@@ -275,6 +271,7 @@ if __name__ == "__main__":
     test_blockize()
 
     #test_partial_tile()
-    #test_from_gpu()
-    #test_bind()
+
+    test_from_gpu()
+    test_bind()
 

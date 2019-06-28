@@ -815,7 +815,7 @@ ExprIntSetMap EvalSetForEachSubExpr(
   return m.expr_map;
 }
 
-IntSet EvalSet(Range r,
+IntSet EvalSet(HalideIR::IR::Range r,
                const Map<IterVar, IntSet>& dom_map) {
   return EvalSet(r, ConvertDomMap(dom_map));
 }
