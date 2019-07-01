@@ -64,6 +64,7 @@ Schedule TreeBuilder::Build(Stmt stmt) {
   node->raw_realize_region = std::move(ir_cleaner.raw_realize_region);
   node->raw_realize_scope = std::move(ir_cleaner.raw_realize_scope);
   node->bind_var = std::move(ir_cleaner.bind_var);
+  node->replace_var = StdNodeMap<Var, Var>();
 
   Schedule ret(node);
   ret.UpdateFather(ret->root, true);

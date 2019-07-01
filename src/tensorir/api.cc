@@ -101,5 +101,7 @@ TVM_REGISTER_API("_TensorRegion_MakeView")
 TVM_REGISTER_API("_TensorIntrinsic_Instantiate")
 .set_body_method(&TensorIntrinsic::Instantiate);
 
+TVM_REGISTER_API("tensorir.schedule.ScheduleBind")
+.set_body_method(&Schedule::bind);
 } // namespace tensorir
 } // namespace tvm

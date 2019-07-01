@@ -61,6 +61,9 @@ class Schedule(NodeBase):
     def to_halide(self):
         return ScheduleToHalide(self, self.root)
 
+    def bind(self, axis, name):
+        return ScheduleBind(self, axis, name)
+
 def create_schedule(stmt):
     return CreateSchedule(stmt)
 

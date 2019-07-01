@@ -37,6 +37,7 @@ class ScheduleNode : public Node {
   StdNodeMap<Tensor, Region> raw_realize_region; // todo(lmzheng): refactor Map and use Map instead
   StdNodeMap<FunctionRef, std::string> raw_realize_scope;
   StdNodeMap<Var, Expr> bind_var;
+  StdNodeMap<Var, Var> replace_var;
 
   void VisitAttrs(AttrVisitor* v) final {
     v->Visit("root", &root);

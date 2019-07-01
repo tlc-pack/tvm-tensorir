@@ -253,7 +253,7 @@ def test_bind():
         i, j = s.axis(B)
 
         s.bind(i, 'blockIdx.x')
-        s.bind(j, 'threadId.x')
+        s.bind(j, 'threadIdx.x')
 
         stmt = s.to_halide()
         return stmt
@@ -272,6 +272,6 @@ if __name__ == "__main__":
 
     #test_partial_tile()
 
-    test_from_gpu()
+    # test_from_gpu()
     test_bind()
 
