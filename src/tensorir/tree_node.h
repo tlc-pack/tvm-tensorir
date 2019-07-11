@@ -72,6 +72,7 @@ enum AxisType: int {
 };
 
 // Two kinds of node : 1. AxisTreeNode
+// It represents a for loop
 class AxisTreeNode;
 class AxisTreeNodeNode : public ScheduleTreeNodeNode {
  public:
@@ -80,6 +81,7 @@ class AxisTreeNodeNode : public ScheduleTreeNodeNode {
   AxisType axis_type;
 
   void VisitAttrs(AttrVisitor* v) final {
+    ScheduleTreeNodeNode::VisitAttrs(v);
     v->Visit("loop_var", &loop_var);
     v->Visit("min", &min);
     v->Visit("extent", &extent);
@@ -96,6 +98,7 @@ class AxisTreeNodeNode : public ScheduleTreeNodeNode {
 TVM_DEFINE_MUTABLE_NODE_REF(AxisTreeNode, ScheduleTreeNode, AxisTreeNodeNode);
 
 // Two kinds of node : 2. BlockTreeNode
+// It represents a computation block
 class BlockTreeNode;
 class BlockTreeNodeNode : public ScheduleTreeNodeNode {
  public:
@@ -108,6 +111,7 @@ class BlockTreeNodeNode : public ScheduleTreeNodeNode {
   Array<Expr> predicates; // ??
 
   void VisitAttrs(AttrVisitor* v) final {
+    ScheduleTreeNodeNode::VisitAttrs(v);
     v->Visit("stmt", &stmt);
   }
 
@@ -115,7 +119,8 @@ class BlockTreeNodeNode : public ScheduleTreeNodeNode {
                                     Array<Var> vars,
                                     Array<TensorRegion> inputs,
                                     Array<TensorRegion> outputs,
-                                    Stmt stmt);
+                                    Stmt stmt,
+                                    Array<ScheduleTreeNode> children);
 
   static constexpr const char* _type_key = "tensorir.BlockTreeNode";
   TVM_DECLARE_NODE_TYPE_INFO(BlockTreeNodeNode, ScheduleTreeNodeNode);

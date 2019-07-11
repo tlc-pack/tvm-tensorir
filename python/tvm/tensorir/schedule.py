@@ -51,6 +51,12 @@ class Schedule(NodeBase):
     def compute_root(self, stmt):
         return ScheduleComputeRoot(self, stmt)
 
+    def blockize(self, axis):
+        return ScheduleBlockize(self, axis)
+
+    def unblockize(self, block):
+        return ScheduleUnblockize(self, block)
+
     def to_halide(self):
         return ScheduleToHalide(self)
 

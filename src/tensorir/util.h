@@ -77,7 +77,7 @@ inline bool is_single_point(Range range) {
   return is_zero(ir::Simplify(range->extent));
 }
 
-// Convert an array of Halide Stmt to a Block
+// Convert an array of Halide Stmt to a Halide::IR::Block
 inline Stmt ArrayToBlock(Array<Stmt> stmts) {
   if (stmts.size() == 0) {
     return Stmt(nullptr);

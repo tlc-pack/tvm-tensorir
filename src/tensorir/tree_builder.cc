@@ -93,31 +93,40 @@ ScheduleTreeNode TreeBuilder::VisitStmt_(const AssertStmt* op) {
   return ScheduleTreeNode(NodePtr<Node>(nullptr));
 }
 
-std::pair<Array<TensorRegion>, Map<Var, Expr> > CanonicalizeBlockRegion(
-    Array<TensorRegion> outputs, std::shared_ptr<arith::Analyzer> analyzer) {
+std::tuple<Array<Expr>, Array<Var>, Array<TensorRegion>, Map<Var, Expr> > CreateOutputRegions(
+    Array<TensorRegion> outputs,
+    Set<Var> used_vars,
+    std::shared_ptr<arith::Analyzer> analyzer) {
   static size_t var_ct = 0;
   Map<Var, Expr> replace_map;
 
+  // Canonicalize output regions. The format for every range: [x:f(x)]
   // simplify min and store them
   std::vector<Expr> mins;
   for (const auto& t : outputs) {
     for (const auto& ran : t->ranges) {
       Expr min = ran->min;
-      if (!min->is_type<Variable>()) {
-        min = analyzer->equation_simplify(min);
+
+      if (is_const(min)) {
+        // do nothing for constants
+      } else {
+        if (!min->is_type<Variable>()) {
+          min = analyzer->equation_simplify(min);
+        }
+        if (!min->is_type<Variable>()) {
+          Var min_var("p" + std::to_string(var_ct++));
+          replace_map.Set(min_var, min);
+          analyzer->Bind(min_var, min);
+          min = min_var;
+        }
       }
-      if (!min->is_type<Variable>()) {
-        Var min_var("p" + std::to_string(var_ct++));
-        replace_map.Set(min_var, min);
-        analyzer->Bind(min_var, min);
-        min = min_var;
-      }
+
       mins.push_back(min);
     }
   }
 
   // simplify extent
-  Array<TensorRegion> ret;
+  Array<TensorRegion> regions;
   size_t ct = 0;
   for (const auto& t : outputs) {
     Array<Range> ranges;
@@ -125,17 +134,48 @@ std::pair<Array<TensorRegion>, Map<Var, Expr> > CanonicalizeBlockRegion(
       Expr extent = analyzer->equation_simplify(ran->extent);
       ranges.push_back(Range::make_by_min_extent(mins[ct++], extent));
     }
+    regions.push_back(TensorRegionNode::make(t->data, ranges));
+  }
+
+  // create formal and actual arguments
+  Array<Var> vars;
+  Array<Expr> args;
+  Set<Var> deleted_vars;
+  for (const auto& x : replace_map) {
+    vars.push_back(x.first);
+    args.push_back(x.second);
+    deleted_vars.insert(GatherVars(x.second));
+  }
+
+  used_vars = used_vars.Difference(deleted_vars);
+
+  StdNodeMap<Var, Expr> var_map;
+  for (const auto& x : used_vars) {
+    Var var("v" + std::to_string(ct++));
+    var_map[x] = var;
+    vars.push_back(var);
+    args.push_back(x);
+  }
+
+  // create output regions
+  Array<TensorRegion> ret;
+  for (const auto& t : regions) {
+    Array<Range> ranges;
+    for (const auto& ran : t->ranges) {
+      ranges.push_back(Range::make_by_min_extent(Substitute(ran->min, var_map),
+                                                 Substitute(ran->extent, var_map)));
+    }
     ret.push_back(TensorRegionNode::make(t->data, ranges));
   }
 
-  return std::make_pair(ret, replace_map);
+  return std::make_tuple(args, vars, ret, var_map);
 }
 
 BlockTreeNode SortBlockArgs(BlockTreeNode node) {
   StdNodeMap<Var, int> weight;
   int ct = 0;
 
-  for (const auto& t : node->inputs) {
+  for (const auto& t : node->outputs) {
     for (const auto& ran : t->ranges) {
       if (ran->min->is_type<Variable>()) {
         weight[Downcast<Var>(ran->min)] = std::numeric_limits<int>::min() + (ct++);
@@ -143,7 +183,7 @@ BlockTreeNode SortBlockArgs(BlockTreeNode node) {
     }
   }
 
-  std::vector<int> indices;
+  std::vector<size_t> indices;
   for (size_t i = 0; i < node->vars.size(); ++i) {
     indices.push_back(i);
   }
@@ -156,7 +196,8 @@ BlockTreeNode SortBlockArgs(BlockTreeNode node) {
     vars.push_back(node->vars[indices[i]]);
     args.push_back(node->args[indices[i]]);
   }
-  return BlockTreeNodeNode::make(args, vars, node->inputs, node->outputs, node->stmt);
+  return BlockTreeNodeNode::make(args, vars, node->inputs, node->outputs,
+                                 node->stmt, node->children);
 }
 
 Array<TensorRegion> CreateInputRegions(const NodeRef& expr_or_stmt) {
@@ -183,10 +224,8 @@ Array<TensorRegion> CreateInputRegions(const NodeRef& expr_or_stmt) {
 }
 
 ScheduleTreeNode TreeBuilder::VisitStmt_(const Provide* op) {
-  size_t ct = 0;
-
-  // canonicalize output regions
-  Tensor output = Downcast<Operation>(op->func).output(op->value_index);
+  // create output regions
+  Tensor output = Downcast<Operation>(op->func).output(static_cast<size_t>(op->value_index));
   Array<Range> output_range;
   for (size_t i = 0; i < op->args.size(); ++i) {
     output_range.push_back(Range::make_by_min_extent(op->args[i], 1));
@@ -194,44 +233,19 @@ ScheduleTreeNode TreeBuilder::VisitStmt_(const Provide* op) {
   Array<TensorRegion> raw_outputs;
   raw_outputs.push_back(TensorRegionNode::make(output, output_range));
 
+  Set<Var> used_vars;
+  for (const auto& arg : op->args) {
+    used_vars.insert(GatherVars(arg));
+  }
+  used_vars.insert(GatherVars(op->value));
+
   auto analyzer = std::make_shared<arith::Analyzer>();
-  Map<Var, Expr> simplify_map;
-  std::tie(raw_outputs, simplify_map) = CanonicalizeBlockRegion(raw_outputs, analyzer);
-
-  // create formal and actual arguments
-  Array<Var> vars;
   Array<Expr> args;
-  Set<Var> deleted_vars;
-  for (const auto& x : simplify_map) {
-    vars.push_back(x.first);
-    args.push_back(x.second);
-    deleted_vars = deleted_vars.Union(GatherVars(x.second));
-  }
-
-  Set<Var> used_vars = GatherVars(op->value);
-  for (size_t i = 0; i < op->args.size(); ++i) {
-    used_vars = used_vars.Union(GatherVars(op->args[i]));
-  }
-  used_vars = used_vars.Difference(deleted_vars);
-
-  StdNodeMap<Var, Expr> var_map;
-  for (const auto& x : used_vars) {
-    Var var("v" + std::to_string(ct++));
-    var_map[x] = var;
-    vars.push_back(var);
-    args.push_back(x);
-  }
-
-  // create output regions
+  Array<Var> vars;
   Array<TensorRegion> outputs;
-  for (const auto& t : raw_outputs) {
-    Array<Range> ranges;
-    for (const auto& ran : t->ranges) {
-      ranges.push_back(Range::make_by_min_extent(Substitute(ran->min, var_map),
-                                                 Substitute(ran->extent, var_map)));
-    }
-    outputs.push_back(TensorRegionNode::make(t->data, ranges));
-  }
+  Map<Var, Expr> var_map;
+  std::tie(args, vars, outputs, var_map) =
+      CreateOutputRegions(raw_outputs, used_vars, analyzer);
 
   // create input regions
   Expr value = Substitute(analyzer->equation_simplify(op->value), var_map);
@@ -247,7 +261,8 @@ ScheduleTreeNode TreeBuilder::VisitStmt_(const Provide* op) {
                             value,
                             halide_call_args);
 
-  BlockTreeNode ret = BlockTreeNodeNode::make(args, vars, inputs, outputs, stmt);
+  BlockTreeNode ret = BlockTreeNodeNode::make(args, vars, inputs, outputs,
+                                              stmt, Array<ScheduleTreeNode>{});
   ret = SortBlockArgs(ret);
   block_list_.push_back(ret);
   return ret;

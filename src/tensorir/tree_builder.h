@@ -46,6 +46,14 @@ class TreeBuilder : public StmtFunctor<ScheduleTreeNode(const Stmt&)> {
 // Create input regions for an expression or statement
 Array<TensorRegion> CreateInputRegions(const NodeRef& expr_or_stmt);
 
+// Create output regions
+std::tuple<Array<Expr>, Array<Var>, Array<TensorRegion>, Map<Var, Expr> > CreateOutputRegions(
+    Array<TensorRegion> outputs,
+    Set<Var> used_vars,
+    std::shared_ptr<arith::Analyzer> analyzer);
+
+// Sort arguments of a block according to its appearances in output regions
+BlockTreeNode SortBlockArgs(BlockTreeNode node);
 
 } // namespace tensorir
 } // namespace tvm

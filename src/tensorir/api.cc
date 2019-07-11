@@ -51,6 +51,12 @@ TVM_REGISTER_API("tensorir.schedule.ScheduleComputeAfter")
 TVM_REGISTER_API("tensorir.schedule.ScheduleComputeRoot")
 .set_body_method(&Schedule::compute_root);
 
+TVM_REGISTER_API("tensorir.schedule.ScheduleBlockize")
+.set_body_method(&Schedule::blockize);
+
+TVM_REGISTER_API("tensorir.schedule.ScheduleUnblockize")
+.set_body_method(&Schedule::unblockize);
+
 TVM_REGISTER_API("tensorir.schedule.ScheduleToHalide")
 .set_body_method(&Schedule::ToHalide);
 

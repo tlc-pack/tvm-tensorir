@@ -76,6 +76,13 @@ class Schedule : public NodeRef {
 
   void bind(AxisTreeNode axis, std::string name);
 
+  BlockTreeNode blockize(AxisTreeNode axis);
+  ScheduleTreeNode unblockize(BlockTreeNode block);
+  BlockTreeNode merge(Array<ScheduleTreeNode> nodes);
+
+//  BlockTreeNode tensorize(AxisTreeNode axis);
+//  ScheduleTreeNode untensorize(BlockTreeNode block);
+
   BlockTreeNode cache_read();
   BlockTreeNode cache_write();
   BlockTreeNode double_buffer();

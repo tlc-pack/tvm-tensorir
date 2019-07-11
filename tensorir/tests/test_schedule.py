@@ -168,6 +168,44 @@ def test_from_unroll():
 
     check_correctness(s, [A, B], _schedule_pass)
 
+def test_blockize():
+    N = M = K = 4
+
+    A = tvm.placeholder((N, M, K), name='A')
+    B = tvm.compute((N, M, K), lambda i, j, k: A[i, j, k] + 1.0, name='B')
+
+    # test invariant
+    def _schedule_pass(stmt):
+        s = tensorir.create_schedule(stmt)
+
+        B, = s.blocks()
+        i, j, k = s.axis(B)
+        Bb = s.blockize(j)
+        s.unblockize(Bb)
+
+        stmt = s.to_halide()
+        return stmt
+
+    s = tvm.create_schedule([B.op])
+    check_correctness(s, [A, B], _schedule_pass)
+
+    # test compilation
+    def _schedule_pass2(stmt):
+        s = tensorir.create_schedule(stmt)
+
+        B, = s.blocks()
+        i, j, k = s.axis(B)
+        Bb = s.blockize(j)
+
+        stmt = s.to_halide()
+        return stmt
+
+    s = tvm.create_schedule([B.op])
+    check_correctness(s, [A, B], _schedule_pass2)
+
+def test_tensorize():
+    pass
+
 def test_tile():
     pass
 
@@ -219,11 +257,13 @@ def test_bind():
 
 
 if __name__ == "__main__":
-    test_decompile_fuse()
-    test_inline()
-    test_compute_at()
-    test_unroll()
-    test_from_unroll()
+    #test_decompile_fuse()
+    #test_inline()
+    #test_compute_at()
+    #test_unroll()
+    #test_from_unroll()
+    test_blockize()
+    test_tensorize()
     #test_tile()
     #test_partial_tile()
 

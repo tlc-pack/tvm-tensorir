@@ -78,15 +78,15 @@ BlockTreeNode BlockTreeNodeNode::make(Array<Expr> args,
                                       Array<Var> vars,
                                       Array<TensorRegion> inputs,
                                       Array<TensorRegion> outputs,
-                                      Stmt stmt) {
+                                      Stmt stmt,
+                                      Array<ScheduleTreeNode> children) {
   NodePtr<BlockTreeNodeNode> node = make_node<BlockTreeNodeNode>();
-
   node->args = std::move(args);
   node->vars = std::move(vars);
   node->inputs = std::move(inputs);
   node->outputs = std::move(outputs);
   node->stmt = std::move(stmt);
-
+  node->children = std::move(children);
   return BlockTreeNode(node);
 }
 
