@@ -81,7 +81,7 @@ inline Stmt ArrayToBlock(Array<Stmt> stmts) {
     return stmts[0];
   }
   int ct = static_cast<int>(stmts.size()) - 2;
-  Stmt now = stmts[ct+1];
+  Stmt now = stmts[ct + 1];
   do {
     if (const ir::AttrStmt* op = stmts[ct].as<ir::AttrStmt>()) {
       now = ir::AttrStmt::make(op->node, op->attr_key, op->value, now);

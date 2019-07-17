@@ -17,10 +17,10 @@ namespace tensorir {
 // remove realize, produce, and attr annotations to get a cleaner IR
 class IRCleaner : public IRMutator {
   Stmt Mutate_(const AttrStmt* op, const Stmt& s) {
-    if (op->attr_key == attr::thread_extent) {
-      Var var =((IterVarNode *)op->node.get())->var;
+    if (op->attr_key == attr::thread_extent || op->attr_key == attr::virtual_thread) {
+      Var var =IterVar(op->node.node_)->var;
       Expr extent = op->value;
-      bind_var[var] = extent;
+      bind_var[var] = AttrNode::make(IterVar(op->node.node_), op->attr_key, op->value);
       return For::make(var, 0, extent, ForType::Serial, DeviceAPI::None, Mutate(op->body));
     } else if (op->attr_key == attr::realize_scope) {
       const StringImm* str = op->value.as<StringImm>();
@@ -43,7 +43,7 @@ class IRCleaner : public IRMutator {
  public:
   StdNodeMap<Tensor, Region> raw_realize_region;
   StdNodeMap<FunctionRef, std::string> raw_realize_scope;
-  StdNodeMap<Var, Expr> bind_var;
+  StdNodeMap<Var, Attr> bind_var;
 };
 
 Schedule TreeBuilder::Build(Stmt stmt) {

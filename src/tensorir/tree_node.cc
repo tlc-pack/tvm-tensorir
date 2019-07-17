@@ -141,6 +141,14 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
   p->stream << "]";
 });
 
+Attr AttrNode::make(NodeRef node, std::string attr_key, Expr value) {
+  NodePtr<AttrNode> _node = make_node<AttrNode>();
+  _node->node = std::move(node);
+  _node->attr_key = std::move(attr_key);
+  _node->value = std::move(value);
+  return Attr(_node);
+}
+
 // Debug tools
 void PrintTreeNode(std::ostream &output, ScheduleTreeNode node, size_t indent) {
   for (size_t i = 0; i < indent; ++i) {

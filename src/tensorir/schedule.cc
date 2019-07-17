@@ -709,7 +709,7 @@ void Schedule::bind(AxisTreeNode axis, std::string name) {
     LOG(WARNING) << "The IterVar has bind to another axis";
   }
   replace_var[old_var] = new_var;
-  bind_var[new_var] = axis->extent;
+  bind_var[new_var] = AttrNode::make(new_var, attr::thread_extent, axis->extent);
 }
 
 // output
@@ -757,6 +757,7 @@ Stmt Schedule::ToHalide() const {
 
   // For tensor T, let A be the lowest common ancestor of all nodes accessing it.
   // We place its allocation before the first children of A that accesses T.
+
   StdNodeMap<ScheduleTreeNode, std::vector<Tensor> > attached_allocation;
   for (const auto x : related_nodes) {
     ScheduleTreeNode lca = LowestCommonAncestor(x.second, false);
@@ -774,6 +775,13 @@ Stmt Schedule::ToHalide() const {
   std::function<Array<Stmt>(const ScheduleTreeNode& n)> to_halide_stmt;
   to_halide_stmt = [this, &to_halide_stmt, &attached_allocation, &replace_stack](const ScheduleTreeNode& node) {
     std::vector<Stmt> ret;
+
+    if (node.same_as(operator->()->root)) {
+      for (const auto& var: operator->()->bind_var) {
+        const auto& attr = var.second;
+        ret.push_back(AttrStmt::make(attr->node, attr->attr_key, attr->value, Evaluate::make(0)));
+      }
+    }
 
     // attach realize scope
     for (const auto& tensor : attached_allocation[node]) {
@@ -814,9 +822,8 @@ Stmt Schedule::ToHalide() const {
         auto bind_var = operator->()->bind_var;
         auto it = bind_var.find(var);
         if (it != bind_var.end()) {
-          ret.push_back(AttrStmt::make(
-              IterVarNode::make(Range(), (var), kThreadIndex, var->name_hint),
-              attr::thread_extent, it->second, ArrayToBlock(stmts)));
+          Attr attr = it->second;
+            ret.push_back(ArrayToBlock(stmts));
         } else {
           ret.push_back(For::make(var,
                                   n->min, n->extent,
