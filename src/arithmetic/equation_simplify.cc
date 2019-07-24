@@ -71,34 +71,36 @@ class MatchingSimplifier : public IRMutator {
     }
 
     for (auto x : var_map_) {
-      Expr diff = parent_->rewrite_simplify(parent_->canonical_simplify(expr - x.second));
+      if (x.first.type() == expr.type()) {
+        Expr diff = parent_->rewrite_simplify(parent_->canonical_simplify(expr - x.second));
 
-      // direct replace
-      if (is_const(diff)) {
-        return x.first + diff;
-      }
+        // direct replace
+        if (is_const(diff)) {
+          return x.first + diff;
+        }
 
-      Expr quet;
-      Expr inv_quet;
-      if (!is_zero(x.second)) {
-        quet = parent_->rewrite_simplify(parent_->canonical_simplify(expr / x.second));
-      }
-      if (!is_zero(expr)) {
-        inv_quet = parent_->rewrite_simplify(parent_->canonical_simplify(x.second / expr));
-      }
+        Expr quet;
+        Expr inv_quet;
+        if (!is_zero(x.second)) {
+          quet = parent_->rewrite_simplify(parent_->canonical_simplify(expr / x.second));
+        }
+        if (!is_zero(expr)) {
+          inv_quet = parent_->rewrite_simplify(parent_->canonical_simplify(x.second / expr));
+        }
 
-      // multiplier
-      if (quet.defined() && is_const(quet)) {
-        return x.first * quet;
-      }
+        // multiplier
+        if (quet.defined() && is_const(quet)) {
+          return x.first * quet;
+        }
 
-      if (inv_quet.defined() && is_const(inv_quet) && !is_zero(inv_quet)) {
-        return x.first / inv_quet;
-      }
+        if (inv_quet.defined() && is_const(inv_quet) && !is_zero(inv_quet)) {
+          return x.first / inv_quet;
+        }
 
-      // sub
-      if (!Contain(diff, x.second)) {
-        return Mutate(diff + x.first);
+        // sub
+        if (!Contain(diff, x.second)) {
+          return Mutate(diff + x.first);
+        }
       }
     }
     return IRMutator::Mutate(expr);
@@ -117,7 +119,7 @@ class EquationSimplifier::Impl {
   Expr Simplify(const Expr &expr) {
     // step 1, matching simplify
     MatchingSimplifier ms(var_map_, parent_);
-    Expr new_expr = ms.Mutate(expr);
+    Expr new_expr = ms.Mutate(parent_->canonical_simplify(expr));
 
     // step 2, linear equation solver
 
