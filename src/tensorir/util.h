@@ -92,7 +92,6 @@ inline Stmt ArrayToBlock(Array<Stmt> stmts) {
     }
     ct--;
   } while (ct >= 0);
-
   return now;
 }
 

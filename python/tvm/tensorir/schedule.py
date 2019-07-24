@@ -55,14 +55,8 @@ class Schedule(NodeBase):
     def check_father_link(self):
         return ScheduleCheckFatherLink(self)
 
-    def compute_root(self, stmt):
-        return ScheduleComputeRoot(self, stmt)
-
-    def to_halide(self):
-        return ScheduleToHalide(self, self.root)
-
-    def bind(self, axis, name):
-        return ScheduleBind(self, axis, name)
+    def bind(self, axis, iter_var):
+        return ScheduleBind(self, axis, iter_var)
 
 def create_schedule(stmt):
     return CreateSchedule(stmt)

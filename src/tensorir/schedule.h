@@ -78,7 +78,7 @@ class Schedule : public NodeRef {
   BlockTreeNode compute_after(BlockTreeNode block, AxisTreeNode axis);
   BlockTreeNode compute_root(BlockTreeNode block);
 
-  void bind(AxisTreeNode axis, std::string name);  // unimplemented
+  void bind(AxisTreeNode axis, IterVar thread_iter);
 
   BlockTreeNode blockize(AxisTreeNode axis);
   ScheduleTreeNode unblockize(BlockTreeNode block);

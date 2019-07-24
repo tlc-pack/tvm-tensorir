@@ -53,6 +53,9 @@ TVM_REGISTER_API("tensorir.schedule.ScheduleComputeAfter")
 TVM_REGISTER_API("tensorir.schedule.ScheduleComputeRoot")
 .set_body_method(&Schedule::compute_root);
 
+TVM_REGISTER_API("tensorir.schedule.ScheduleBind")
+.set_body_method(&Schedule::bind);
+
 TVM_REGISTER_API("tensorir.schedule.ScheduleBlockize")
 .set_body_method(&Schedule::blockize);
 
@@ -101,7 +104,5 @@ TVM_REGISTER_API("_TensorRegion_MakeView")
 TVM_REGISTER_API("_TensorIntrinsic_Instantiate")
 .set_body_method(&TensorIntrinsic::Instantiate);
 
-TVM_REGISTER_API("tensorir.schedule.ScheduleBind")
-.set_body_method(&Schedule::bind);
 } // namespace tensorir
 } // namespace tvm

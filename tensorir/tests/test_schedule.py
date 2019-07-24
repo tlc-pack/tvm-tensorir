@@ -4,35 +4,10 @@ import topi
 from tvm import tensorir
 from tvm import ir_pass, register_func
 
-
-def check_correctness(s, args, inserted_pass, target='llvm'):
-    """Check correctness by building the function with and without inserted_pass"""
-
-    if isinstance(target, tuple) or isinstance(target, list):
-        target1, target2 = target
-    else:
-        target1 = target2 = target
-
-    with tvm.build_config(add_lower_pass=[(0, inserted_pass)]):
-        func1 = tvm.build(s, args, target1)
-
-    func2 = tvm.build(s, args, target2)
-
-    ctx1 = tvm.context(target1)
-    ctx2 = tvm.context(target2)
-
-    bufs1 = [tvm.nd.array(np.array(np.random.randn(*topi.util.get_const_tuple(x.shape)),
-                                   dtype=x.dtype), ctx=ctx1) for x in args]
-    bufs2 = [tvm.nd.array(x, ctx=ctx2) for x in bufs1]
-
-    func1(*bufs1)
-    func2(*bufs2)
-
-    bufs1_np = [x.asnumpy() for x in bufs1]
-    bufs2_np = [x.asnumpy() for x in bufs2]
-
-    for x, y in zip(bufs1_np, bufs2_np):
-        np.testing.assert_allclose(x, y, atol=1e-4)
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from common import check_correctness
 
 def test_decompile_fuse():
     N = M = K = 128
@@ -252,8 +227,10 @@ def test_bind():
         B, = s.blocks()
         i, j = s.axis(B)
 
-        s.bind(i, 'blockIdx.x')
-        s.bind(j, 'threadIdx.x')
+        bx = tvm.thread_axis('blockIdx.x')
+        tx = tvm.thread_axis('threadIdx.x')
+        s.bind(i, bx)
+        s.bind(j, tx)
 
         stmt = s.to_halide()
         return stmt
@@ -272,6 +249,6 @@ if __name__ == "__main__":
 
     #test_partial_tile()
 
-    # test_from_gpu()
+    test_from_gpu()
     test_bind()
 

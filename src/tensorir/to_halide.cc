@@ -112,15 +112,35 @@ Stmt Schedule::ToHalide() const {
     }
   }
 
+  StdNodeMap<Var, Expr> replace_map;
+  for (const auto& replace_var : operator->()->replace_var) {
+    replace_map[replace_var.first] = replace_var.second;
+  }
+
   // # 2. Translate to HalideIR
   std::function<Array<Stmt> (const ScheduleTreeNode& n)> to_halide_stmt;
-  to_halide_stmt = [this, &to_halide_stmt, &attached_allocation](const ScheduleTreeNode& node) {
+  to_halide_stmt = [this, &to_halide_stmt, &attached_allocation, &replace_map](const ScheduleTreeNode& node) {
     std::vector<Stmt> ret;
+
+    // todo(@siyuan): determine the correct place to insert thread_extent & virtual_thread attr
+    if (node.same_as(operator->()->root)) {
+      for (const auto& var: operator->()->bind_var) {
+        const auto& attr = var.second;
+        ret.push_back(AttrStmt::make(attr->node, attr->attr_key, attr->value, Evaluate::make(0)));
+      }
+    }
 
     // attach realize scope
     for (const auto& tensor : attached_allocation[node]) {
       if (operator->()->raw_realize_region.count(tensor)) {
         CHECK_GE(operator->()->raw_realize_scope.count(tensor->op), 1);
+
+        Region region = operator->()->raw_realize_region.at(tensor);
+        Region new_region;
+        for (auto &range : region) {
+          new_region.push_back(Range::make_by_min_extent(Substitute(range->min, replace_map),
+                                                         Substitute(range->extent, replace_map)));
+        }
 
         ret.push_back(AttrStmt::make(tensor->op,
                                      attr::realize_scope,
@@ -130,7 +150,7 @@ Stmt Schedule::ToHalide() const {
         ret.push_back(Realize::make(tensor->op,
                                     tensor->value_index,
                                     tensor->dtype,
-                                    operator->()->raw_realize_region.at(tensor),
+                                    new_region,
                                     const_true(1),
                                     Evaluate::make(0)));
       }
@@ -139,6 +159,8 @@ Stmt Schedule::ToHalide() const {
     // translate nodes
     if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
       Array<Stmt> stmts;
+      auto replace_var = operator->()->replace_var;
+      auto it_var = replace_var.find(n->loop_var);
       for (const auto& child : n->children) {
         for (const auto& stmt : to_halide_stmt(child)) {
           stmts.push_back(stmt);
@@ -147,10 +169,18 @@ Stmt Schedule::ToHalide() const {
       if (node == operator->()->root) {
         ret.push_back(ArrayToBlock(stmts));
       } else {
-        ret.push_back(For::make(n->loop_var,
-                                n->min, n->extent,
-                                ForType::Serial, DeviceAPI::None,
-                                ArrayToBlock(stmts)));
+        auto var = it_var != replace_var.end() ? it_var->second : n->loop_var;
+        auto bind_var = operator->()->bind_var;
+        auto it = bind_var.find(var);
+        if (it != bind_var.end()) {
+          Attr attr = it->second;
+          ret.push_back(ArrayToBlock(stmts));
+        } else {
+          ret.push_back(For::make(var,
+                                  n->min, n->extent,
+                                  ForType::Serial, DeviceAPI::None,
+                                  ArrayToBlock(stmts)));
+        }
       }
     } else if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
       StdNodeMap<Var, Expr> var_map;
@@ -158,7 +188,7 @@ Stmt Schedule::ToHalide() const {
         var_map[n->vars[i]] = n->args[i];
       }
       if (n->stmt.defined()) {
-        ret.push_back(Substitute(n->stmt, var_map));
+        ret.push_back(Substitute(Substitute(n->stmt, var_map), replace_map));
       } else {
         CHECK_EQ(n->children.size(), 1) << "Encounter invalid block" << std::endl;
         Array<Stmt> tmp = to_halide_stmt(SubstituteCopy(n->children[0], var_map));

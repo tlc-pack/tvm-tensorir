@@ -149,6 +149,7 @@ Attr AttrNode::make(NodeRef node, std::string attr_key, Expr value) {
   return Attr(_node);
 }
 
+
 // Debug tools
 void PrintTreeNode(std::ostream &output, ScheduleTreeNode node, size_t indent) {
   for (size_t i = 0; i < indent; ++i) {
@@ -174,7 +175,8 @@ void PrintTreeNode(std::ostream &output, ScheduleTreeNode node, size_t indent) {
     output << " R: " << n->inputs;
     output << std::endl;
   } else {
-    LOG(FATAL);
+    output << "Error";
+//    LOG(FATAL);
   }
 }
 

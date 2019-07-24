@@ -265,7 +265,7 @@ class Range : public NodeRef {
 /*! \brief container class of iteration variable. */
 class IterVarNode;
 
-using HalideIR::Internal::Region;
+using Region = Array<Range>;
 
 /*!
  * \brief Type of iteration variable.

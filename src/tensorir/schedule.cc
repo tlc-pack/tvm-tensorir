@@ -136,21 +136,58 @@ AxisTreeNode Schedule::fuse(AxisTreeNode outer, AxisTreeNode inner) {
 }
 
 Array<AxisTreeNode> Schedule::reorder(AxisTreeNode outer, AxisTreeNode inner) {
-  // Can only reorder neighbor axes without any extra branches.
-  // Future Enhancement: this condition can be eliminated by lifting all siblings of inner
-  // as the children of the father of outer
-  CHECK(operator->()->father_map[inner] == outer);
-  CHECK(outer->children.size() == 1 && outer->children[0] == inner);
+  // Just lower the outer axis under the inner axis.
+  // If there are extra branches, build a new outer axis above the branches
+  AxisTreeNode root = operator->()->root;
+  CHECK(outer != root) << "Cannot reorder root axis";
+  ScheduleTreeNode now = inner;
+  const auto& father_map = operator->()->father_map;
+  while (father_map[now] != outer && now != root) {
+    now = father_map[now];
+  }
+  CHECK(now != root) << "outer node is not the ancestor of the inner node";
+  AxisTreeNode new_outer;
 
-  ReplaceChild(outer, inner);
+  // Update nodes in the path
+  ScheduleTreeNode last = inner;
+  now = inner;
+  while (now != father_map[outer]) {
+    if (now == inner || now->children.size() > 1) {
+      for (const auto& child : now->children) {
+        if (child != last) {
+          AxisTreeNode new_node = AxisTreeNodeNode::make(outer->loop_var, outer->min, outer->extent, outer->axis_type, Array<ScheduleTreeNode>{child});
+          ReplaceChild(child, new_node);
+          UpdateFather(new_node);
+          if (now == inner) {
+            new_outer = new_node;
+          }
+        }
+      }
+    }
+    last = now;
+    now = father_map[now];
+  }
+  CHECK(now == father_map[outer]);
 
-  outer->children = inner->children;
-  UpdateFather(outer);
-
-  inner->children = Array<ScheduleTreeNode>{outer};
-  UpdateFather(inner);
-
-  return Array<AxisTreeNode>{inner, outer};
+  auto index = now->children.Index(outer);
+  if (outer->children.size() == 1) {
+    now->children.Set(index, outer->children[0]);
+  }
+  else {
+    size_t offset = outer->children.size() - 1;
+    for (size_t i = 0; i < offset; ++i) {
+      now->children.push_back(outer->children[i]);
+    }
+    for (size_t i = now->children.size() - 1 - offset; i > index; --i) {
+      now->children.Set(i + offset, now->children[i]);
+    }
+    for (size_t i = 0; i < outer->children.size(); ++i) {
+      now->children.Set(i + index, outer->children[i]);
+    }
+  }
+  operator->()->father_map.erase(outer);
+  UpdateFather(now);
+  return Array<AxisTreeNode>{inner, new_outer};
 }
 
 // Inline a single provide
@@ -348,7 +385,48 @@ BlockTreeNode Schedule::compute_at(BlockTreeNode block, AxisTreeNode axis) {
     output_tensors.push_back(x->data);
   }
   Array<Array<IntSet> > ranges = GatherRegion(output_tensors, axis, after_pos);
+  auto& realize_region = operator->()->raw_realize_region;
 
+  Array<ScheduleTreeNode> dependent_blocks;
+  for (const auto& block_tree_node : blocks()) {
+    if (block == block_tree_node) continue;
+    bool finished = false;
+    for (const auto& tensor_region : block_tree_node->inputs) {
+      if (finished) break;
+      for (const auto& tensor : output_tensors) {
+        if (tensor->op == tensor_region->data->op) {
+          dependent_blocks.push_back(block_tree_node);
+          finished = true;
+          break;
+        }
+      }
+    }
+  }
+  dependent_blocks.push_back(axis);
+  ScheduleTreeNode _lca = LowestCommonAncestor(dependent_blocks, true);
+
+  std::unordered_map<const Variable*, IntSet> reduction_dom_map;
+  for (ScheduleTreeNode node = axis; node != _lca; node = operator->()->father_map[node]) {
+    if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
+      reduction_dom_map[n->loop_var.get()] = IntSet::range(Range::make_by_min_extent(n->min, n->extent));
+    }
+  }
+
+  for (size_t i = 0; i < output_tensors.size(); ++i) {
+    Region region;
+    const auto& tensor = output_tensors[i];
+    for (const auto& int_set : ranges[i]) {
+      Range real = Range::make_by_min_extent(int_set.min(), int_set.max() - int_set.min() + 1);
+      IntSet o = arith::EvalSet(real, reduction_dom_map);
+      if (const arith::IntervalSetNode* set = o.as<arith::IntervalSetNode>()) {
+        region.push_back(Range::make_by_min_extent(set->min_value, set->max_value - set->min_value + 1));
+      }
+      else {
+        LOG(FATAL);
+      }
+    }
+    realize_region[tensor] = region;
+  }
   // copy domain for reduction axis
   StdNodeMap<Var, Range> dom_map;
   ScheduleTreeNode lca = LowestCommonAncestor(Array<ScheduleTreeNode>{block, axis}, false);
@@ -367,8 +445,8 @@ BlockTreeNode Schedule::compute_at(BlockTreeNode block, AxisTreeNode axis) {
       produces.push_back(IntSet::range(ran));
     }
   }
-  Array<IntSet> iter_domain = arith::SolveCover(block->vars, produces, Flatten2DArray(ranges));
 
+  Array<IntSet> iter_domain = arith::SolveCover(block->vars, produces, Flatten2DArray(ranges));
   // generate for AxisNodes
   std::vector<Expr> new_args(iter_domain.size());
   ScheduleTreeNode last = block;
@@ -380,15 +458,16 @@ BlockTreeNode Schedule::compute_at(BlockTreeNode block, AxisTreeNode axis) {
       CHECK(block->args[i].get()->is_type<Variable>()) << "Unsolvable reduction iteration domain "
                                                           "can only contains single variable";
       // todo(lmzheng): check it is reduction axis
-      node = AxisTreeNodeNode::make(iter_var,
-                                    dom_map[iter_var]->min,
-                                    dom_map[iter_var]->extent,
+      const auto * variable = block->args[i].as<Variable>();
+      Var var(variable->GetNodePtr());
+      node = AxisTreeNodeNode::make(var,
+                                    dom_map[var]->min,
+                                    dom_map[var]->extent,
                                     kOpaque,
                                     Array<ScheduleTreeNode>{last});
       new_args[i] = block->args[i];
-    }
 
-    if (const arith::IntervalSetNode* set = iter_domain[i].as<arith::IntervalSetNode>()) {
+    } else if (const arith::IntervalSetNode* set = iter_domain[i].as<arith::IntervalSetNode>()) {
       node = AxisTreeNodeNode::make(iter_var,
                                     set->min_value,
                                     set->max_value - set->min_value + 1,
@@ -575,7 +654,6 @@ BlockTreeNode Schedule::blockize(AxisTreeNode axis) {
   return ret;
 }
 
-
 ScheduleTreeNode Schedule::unblockize(BlockTreeNode block) {
   // check it is a block created by schedule primitive blockize
   CHECK(!block->stmt.defined()) << "Cannot unblockize a block that is not created by blockize" << std::endl;
@@ -632,9 +710,33 @@ ScheduleTreeNode Schedule::untensorize(BlockTreeNode block) {
 // dependency analysis
 Array<Array<IntSet> > Schedule::GatherRegion(Array<Tensor> tensors, AxisTreeNode axis, int start_child_index) const {
   std::unordered_map<const Variable*, IntSet> dom_map;
+  std::unordered_map<const Variable*, IntSet> shared_dom_map;
 
-  BuildDomMapContext(operator->()->father_map, operator->()->root, axis, &dom_map);
-  dom_map[axis->loop_var.get()] = IntSet::single_point(axis->loop_var);
+  ScheduleTreeNode father = axis;
+
+  while (father != operator->()->root) {
+    if (const AxisTreeNodeNode* n = father.as<AxisTreeNodeNode>()) {
+      dom_map[n->loop_var.get()] = IntSet::single_point(n->loop_var);
+      const auto& bind_var = operator->()->bind_var;
+      const auto& var = operator->()->replace_var.count(n->loop_var) ? operator->()->replace_var.at(n->loop_var) :n->loop_var;
+      if (bind_var.count(var) &&
+          (bind_var.at(var)->attr_key == attr::virtual_thread ||
+          (bind_var.at(var)->attr_key == attr::thread_extent &&
+          (var->name_hint.find("threadIdx.") == 0)))) {
+        const auto& attr = operator->()->bind_var.at(var);
+        shared_dom_map[n->loop_var.get()] = IntSet::range(Range::make_by_min_extent(0, attr->value));
+      }
+      else {
+        shared_dom_map[n->loop_var.get()] = IntSet::single_point(n->loop_var);
+      }
+    }
+    father = operator->()->father_map[father];
+  }
+
+  for (auto x : axis->children) {
+    GatherVarDomain(x, &dom_map);
+    GatherVarDomain(x, &shared_dom_map);
+  }
 
   StdNodeSet<BlockTreeNode> blocks;
   for (size_t i = start_child_index; i < axis->children.size(); ++i) {
@@ -659,7 +761,14 @@ Array<Array<IntSet> > Schedule::GatherRegion(Array<Tensor> tensors, AxisTreeNode
           for (size_t i = 0; i < tensor.ndim(); ++i) {
             Range real = Range::make_by_min_extent(Substitute(read->ranges[i]->min, arg_map),
                                                    Substitute(read->ranges[i]->extent, arg_map));
-            IntSet o = arith::EvalSet(real, dom_map);
+            CHECK(operator->()->raw_realize_scope.count(tensor->op));
+            IntSet o;
+            if (operator->()->raw_realize_scope.at(tensor->op) == "shared") {
+              o = arith::EvalSet(real, shared_dom_map);
+            }
+            else {
+              o = arith::EvalSet(real, dom_map);
+            }
             isets_to_merge[i].push_back(o);
           }
         }
@@ -677,177 +786,20 @@ Array<Array<IntSet> > Schedule::GatherRegion(Array<Tensor> tensors, AxisTreeNode
   return ret;
 }
 
-// Return whether the subtree rooted by node accesses tensor t
-bool FindAccess(ScheduleTreeNode node, Tensor t) {
-  if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
-    for (const auto& x : n->children) {
-      if (FindAccess(x, t)) {
-        return true;
-      }
-    }
-  } else if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
-    for (const auto& x : n->inputs) {
-      if (x->data == t) {
-        return true;
-      }
-    }
-    for (const auto& x : n->outputs) {
-      if (x->data == t) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-void Schedule::bind(AxisTreeNode axis, std::string name) {
+void Schedule::bind(AxisTreeNode axis, IterVar thread_iter) {
+  CHECK(thread_iter->iter_type == kThreadIndex)
+    << "Cannot rebase by " << axis->loop_var
+    << ", only thread axis is allowed so far";
   auto& bind_var = operator->()->bind_var;
   Var old_var = axis->loop_var;
-  Var new_var(name);
+  Var new_var = thread_iter->var;
   auto& replace_var = operator->()->replace_var;
   if (replace_var.find(old_var) != replace_var.end()) {
-    LOG(WARNING) << "The IterVar has bind to another axis";
+    LOG(WARNING) << "The loop_var has bind to another axis";
   }
   replace_var[old_var] = new_var;
-  bind_var[new_var] = AttrNode::make(new_var, attr::thread_extent, axis->extent);
-}
-
-// output
-Stmt Schedule::ToHalide() const {
-  // compute allocation locations for all tensors
-  StdNodeMap<Tensor, Array<ScheduleTreeNode> > related_nodes;
-
-  // get root node for computation blocks
-  std::function<void(const ScheduleTreeNode& n)> get_tensor_location;
-  get_tensor_location = [this, &get_tensor_location, &related_nodes](const ScheduleTreeNode& node) {
-    if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
-      for (const auto& x : n->children) {
-        get_tensor_location(x);
-      }
-    } else if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
-      Set<Var> used_vars;
-      Set<Var> seen;
-      for (size_t i = 0; i < n->args.size(); ++i) {
-        used_vars = used_vars.Union(GatherVars(n->args[i]));
-      }
-
-      // Go upwards until all used vars are fetched.
-      // Then we find the root node of this block
-      ScheduleTreeNode now = node;
-      while (operator->()->father_map[now] != operator->()->root
-          && used_vars.size() > seen.size()) {
-        now = operator->()->father_map[now];
-        if (const AxisTreeNodeNode* loop = now.as<AxisTreeNodeNode>()) {
-          Var v = loop->loop_var;
-          if (used_vars.count(v) && !seen.count(v)) {
-            seen.insert(v);
-          }
-        }
-      }
-
-      for (const auto& x : n->outputs) {
-        related_nodes[x->data].push_back(now);
-      }
-      for (const auto& x : n->inputs) {
-        related_nodes[x->data].push_back(now);
-      }
-    }
-  };
-  get_tensor_location(operator->()->root);
-
-  // For tensor T, let A be the lowest common ancestor of all nodes accessing it.
-  // We place its allocation before the first children of A that accesses T.
-
-  StdNodeMap<ScheduleTreeNode, std::vector<Tensor> > attached_allocation;
-  for (const auto x : related_nodes) {
-    ScheduleTreeNode lca = LowestCommonAncestor(x.second, false);
-    for (const auto& child : lca->children) {
-      if (FindAccess(child, x.first)) {
-        attached_allocation[child].push_back(x.first);
-        break;
-      }
-    }
-  }
-
-  StdNodeMap<Var, Expr> replace_stack;
-
-  // translate to halide
-  std::function<Array<Stmt>(const ScheduleTreeNode& n)> to_halide_stmt;
-  to_halide_stmt = [this, &to_halide_stmt, &attached_allocation, &replace_stack](const ScheduleTreeNode& node) {
-    std::vector<Stmt> ret;
-
-    if (node.same_as(operator->()->root)) {
-      for (const auto& var: operator->()->bind_var) {
-        const auto& attr = var.second;
-        ret.push_back(AttrStmt::make(attr->node, attr->attr_key, attr->value, Evaluate::make(0)));
-      }
-    }
-
-    // attach realize scope
-    for (const auto& tensor : attached_allocation[node]) {
-      if (operator->()->raw_realize_region.count(tensor)) {
-        CHECK_GE(operator->()->raw_realize_scope.count(tensor->op), 1);
-
-        ret.push_back(AttrStmt::make(tensor->op,
-                                     attr::realize_scope,
-                                     operator->()->raw_realize_scope.at(tensor->op),
-                                     Evaluate::make(0)));
-
-        ret.push_back(Realize::make(tensor->op,
-                                    tensor->value_index,
-                                    tensor->dtype,
-                                    operator->()->raw_realize_region.at(tensor),
-                                    const_true(1),
-                                    Evaluate::make(0)));
-      }
-    }
-
-    // translate nodes
-    if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
-      Array<Stmt> stmts;
-      auto replace_var = operator->()->replace_var;
-      auto it_var = replace_var.find(n->loop_var);
-      if (it_var != replace_var.end()) {
-        replace_stack[n->loop_var] = it_var->second;
-      }
-      for (const auto& child : n->children) {
-        for (const auto& stmt : to_halide_stmt(child)) {
-          stmts.push_back(stmt);
-        }
-      }
-      if (node == operator->()->root) {
-        ret.push_back(ArrayToBlock(stmts));
-      } else {
-        auto var = it_var != replace_var.end() ? it_var->second : n->loop_var;
-        auto bind_var = operator->()->bind_var;
-        auto it = bind_var.find(var);
-        if (it != bind_var.end()) {
-          Attr attr = it->second;
-            ret.push_back(ArrayToBlock(stmts));
-        } else {
-          ret.push_back(For::make(var,
-                                  n->min, n->extent,
-                                  ForType::Serial, DeviceAPI::None,
-                                  ArrayToBlock(stmts)));
-        }
-      }
-      if (it_var != replace_var.end()) {
-        replace_stack.erase(it_var->first);
-      }
-    } else if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
-      StdNodeMap<Var, Expr> var_map;
-      for (size_t i = 0; i < n->args.size(); ++i) {
-        var_map[n->vars[i]] = n->args[i];
-      }
-      ret.push_back(Substitute(Substitute(n->stmt, var_map), replace_stack));
-    } else {
-      LOG(FATAL) << "Internal error: unknown node type";
-    }
-
-    return ret;
-  };
-
-  return ArrayToBlock(to_halide_stmt(operator->()->root));
+  std::string attr_type = thread_iter->thread_tag == "vthread" ? attr::virtual_thread : attr::thread_extent;
+  bind_var[new_var] = AttrNode::make(thread_iter, attr_type, axis->extent);
 }
 
 // tree manipulation (requires father map)
