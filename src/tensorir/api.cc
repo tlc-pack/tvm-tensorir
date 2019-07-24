@@ -5,6 +5,7 @@
 
 #include <sstream>
 #include <tvm/api_registry.h>
+#include <tvm/operation.h>
 #include "schedule.h"
 #include "tree_builder.h"
 
@@ -14,13 +15,14 @@ namespace tensorir {
 TVM_REGISTER_API("tensorir.schedule.CreateSchedule")
 .set_body_typed(ScheduleNode::make);
 
-TVM_REGISTER_API("tensorir.schedule.PrintTreeNode")
+TVM_REGISTER_API("tensorir.tree_node.PrintTreeNode")
 .set_body([](TVMArgs args, TVMRetValue* rv) {
   std::ostringstream os;
   PrintTreeNode(os, args[0], 0);
   *rv = os.str();
 });
 
+// Schedule primitives
 TVM_REGISTER_API("tensorir.schedule.ScheduleBlocks")
 .set_body_method(&Schedule::blocks);
 
@@ -57,6 +59,12 @@ TVM_REGISTER_API("tensorir.schedule.ScheduleBlockize")
 TVM_REGISTER_API("tensorir.schedule.ScheduleUnblockize")
 .set_body_method(&Schedule::unblockize);
 
+TVM_REGISTER_API("tensorir.schedule.ScheduleTensorize")
+.set_body_method(&Schedule::tensorize);
+
+TVM_REGISTER_API("tensorir.schedule.ScheduleUntensorize")
+.set_body_method(&Schedule::untensorize);
+
 TVM_REGISTER_API("tensorir.schedule.ScheduleToHalide")
 .set_body_method(&Schedule::ToHalide);
 
@@ -64,11 +72,34 @@ TVM_REGISTER_API("tensorir.schedule.ScheduleCheckFatherLink")
 .set_body_method(&Schedule::CheckFatherLink);
 
 
-//TVM_REGISTER_API("tensorir.schedule.ScheduleBind")
-//.set_body([](TVMArgs args, TVMRetValue* rv) {
-//  *rv = args[0].operator Schedule().bind(args[0], args[1]);
-//});
+// maker
+TVM_REGISTER_API("make.TensorRegion")
+.set_body_typed(TensorRegionNode::make);
+
+TVM_REGISTER_API("make.BlockTreeNode")
+.set_body_typed(BlockTreeNodeNode::make);
+
+TVM_REGISTER_API("make.AxisTreeNode")
+.set_body_typed<AxisTreeNode(Var, Expr, Expr, int, Array<ScheduleTreeNode>)>([](
+    Var loop_var, Expr min, Expr extent,
+    int axis_type,
+    Array<ScheduleTreeNode> children) {
+  return AxisTreeNodeNode::make(loop_var,
+                                min,
+                                extent,
+                                static_cast<AxisType>(axis_type),
+                                children);
+});
+
+TVM_REGISTER_API("make._TensorIntrinsic")
+.set_body_typed(TensorIntrinsicNode::make);
+
+// other member functions
+TVM_REGISTER_API("_TensorRegion_MakeView")
+.set_body_method(&TensorRegion::MakeView);
+
+TVM_REGISTER_API("_TensorIntrinsic_Instantiate")
+.set_body_method(&TensorIntrinsic::Instantiate);
 
 } // namespace tensorir
 } // namespace tvm
-

@@ -8,13 +8,14 @@
 #include <tvm/ir.h>
 #include <tvm/ir_visitor.h>
 #include <tvm/ir_pass.h>
+#include <tvm/arithmetic.h>
 #include "node_util.h"
 
 namespace tvm {
 namespace tensorir {
 
 // Flatten a chain of block statements to a list of statements.
-// Gather all statements with depth of 1 when ignoring Block statement.
+// It will gather all statements with depth of 1 (Ignore ir::Block when computing depth).
 Array<Stmt> ExpandBlockChain(Stmt stmt);
 
 // Gather all accesses to all tensors or a specific tensor
@@ -115,6 +116,26 @@ inline Array<T> Flatten2DArray(Array<Array<T> > input) {
 
 // Gather all vars in an expression or statement
 Set<Var> GatherVars(const NodeRef& expr_or_stmt);
+
+// Rewrite expression with both equation_simplify (expr to var)
+// and direct substitute (var to expr)
+Expr SubstituteAndEquationSimplify(Expr expr, Map<Var, Expr> var_map, arith::Analyzer* analyzer);
+Stmt SubstituteAndEquationSimplify(Stmt stmt, Map<Var, Expr> var_map, arith::Analyzer* analyzer);
+
+// Substitute expressions in range
+inline Range SubstituteRange(Range range, StdNodeMap<Var, Expr> var_map) {
+  return Range::make_by_min_extent(ir::Substitute(range->min, var_map),
+                                   ir::Substitute(range->extent, var_map));
+}
+
+inline Array<Range> SubstituteRange(Array<Range> ranges, StdNodeMap<Var, Expr> var_map) {
+  Array<Range> ret;
+  for (size_t i = 0; i < ranges.size(); ++i) {
+    ret.push_back(Range::make_by_min_extent(ir::Substitute(ranges[i]->min, var_map),
+                                            ir::Substitute(ranges[i]->extent, var_map)));
+  }
+  return ret;
+}
 
 } // namespace tensorir
 } // namespace tvm

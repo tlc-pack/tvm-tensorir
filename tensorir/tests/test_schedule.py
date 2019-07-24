@@ -2,7 +2,8 @@ import numpy as np
 import tvm
 import topi
 from tvm import tensorir
-from tvm import ir_pass
+from tvm import ir_pass, register_func
+
 
 def check_correctness(s, args, inserted_pass, target='llvm'):
     """Check correctness by building the function with and without inserted_pass"""
@@ -20,7 +21,9 @@ def check_correctness(s, args, inserted_pass, target='llvm'):
     ctx1 = tvm.context(target1)
     ctx2 = tvm.context(target2)
 
-    bufs1 = [tvm.nd.array(np.random.randn(*topi.util.get_const_tuple(x.shape)).astype(x.dtype), ctx=ctx1)
+    #bufs1 = [tvm.nd.array(np.random.randn(*topi.util.get_const_tuple(x.shape)).astype(x.dtype), ctx=ctx1)
+    #        for x in args]
+    bufs1 = [tvm.nd.array(np.ones(topi.util.get_const_tuple(x.shape)).astype(x.dtype), ctx=ctx1)
             for x in args]
     bufs2 = [tvm.nd.array(x, ctx=ctx2) for x in bufs1]
 
@@ -168,6 +171,10 @@ def test_from_unroll():
 
     check_correctness(s, [A, B], _schedule_pass)
 
+def test_rank_zero():
+    A = tvm.placeholder((), name='A')
+    B = tvm.compute((), lambda : A, name='B')
+
 def test_blockize():
     N = M = K = 4
 
@@ -202,12 +209,6 @@ def test_blockize():
 
     s = tvm.create_schedule([B.op])
     check_correctness(s, [A, B], _schedule_pass2)
-
-def test_tensorize():
-    pass
-
-def test_tile():
-    pass
 
 def test_partial_tile():
     pass
@@ -257,14 +258,14 @@ def test_bind():
 
 
 if __name__ == "__main__":
-    #test_decompile_fuse()
-    #test_inline()
-    #test_compute_at()
-    #test_unroll()
-    #test_from_unroll()
+    test_decompile_fuse()
+    test_inline()
+    test_compute_at()
+    test_unroll()
+    test_from_unroll()
+    #test_rank_zero()
     test_blockize()
-    test_tensorize()
-    #test_tile()
+
     #test_partial_tile()
 
     #test_from_gpu()

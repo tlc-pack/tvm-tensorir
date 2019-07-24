@@ -29,13 +29,22 @@ class TensorRegionNode : public Node {
 
   TVM_DLL static TensorRegion make(Tensor data, Array<Range> ranges);
 
-  static constexpr const char* _type_key = "tensorir.TensorRegionNode";
+  static constexpr const char* _type_key = "tensorir.TensorRegion";
   TVM_DECLARE_NODE_TYPE_INFO(TensorRegionNode, Node);
 };
 
-TVM_DEFINE_NODE_REF(TensorRegion, TensorRegionNode);
+class TensorRegion : public NodeRef {
+ public:
+  TensorRegion() {}
+  explicit TensorRegion(NodePtr<Node> n): NodeRef(n) {}
 
-// base class of the nodes in schedule tree
+  const TensorRegionNode* operator->() const;
+  TensorRegion MakeView(Array<Expr> mins, Array<Expr> extents) const;
+
+  using ContainerType = TensorRegionNode;
+};
+
+// base class of the nodes in the schedule tree
 class ScheduleTreeNodeNode;
 
 class ScheduleTreeNode : public NodeRef {
@@ -106,7 +115,9 @@ class BlockTreeNodeNode : public ScheduleTreeNodeNode {
   Array<Var> vars;
   Array<TensorRegion> inputs;
   Array<TensorRegion> outputs;
-  Stmt stmt;              // terminal block has a halide stmt
+
+  Stmt stmt;               // terminal block has a halide stmt
+  NodeRef intrin;          // tensorized block has a intrin
 
   Array<Expr> predicates; // ??
 
@@ -126,15 +137,7 @@ class BlockTreeNodeNode : public ScheduleTreeNodeNode {
   TVM_DECLARE_NODE_TYPE_INFO(BlockTreeNodeNode, ScheduleTreeNodeNode);
 };
 
-class BlockTreeNode : public ScheduleTreeNode {
- public:
-  BlockTreeNode CopyWithNewArgs(Array<Expr> new_args);
-
-  BlockTreeNodeNode* operator->(){
-    return static_cast<BlockTreeNodeNode*>(node_.get());
-  }
-  TVM_DEFINE_NODE_REF_METHODS(BlockTreeNode, ScheduleTreeNode, BlockTreeNodeNode);
-};
+TVM_DEFINE_MUTABLE_NODE_REF(BlockTreeNode, ScheduleTreeNode, BlockTreeNodeNode);
 
 // debug tools
 void PrintTreeNode(std::ostream &output, ScheduleTreeNode node, size_t indent=0);

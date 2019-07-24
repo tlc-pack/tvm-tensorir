@@ -125,7 +125,7 @@ class IRBuilder(object):
             if callable(s):
                 stmt = s(stmt)
             else:
-                assert isinstance(s, _stmt.Stmt)
+                # assert isinstance(s, _stmt.Stmt)
                 stmt = _make.Block(s, stmt)
         return stmt
 
@@ -139,7 +139,7 @@ class IRBuilder(object):
         """
         if isinstance(stmt, _expr.Call):
             stmt = _make.Evaluate(stmt)
-        assert isinstance(stmt, _stmt.Stmt) or callable(stmt)
+        # assert isinstance(stmt, _stmt.Stmt) or callable(stmt)
         self._seq_stack[-1].append(stmt)
 
     def scope_attr(self, node, attr_key, value):
@@ -226,6 +226,17 @@ class IRBuilder(object):
                 raise ValueError("Unknown for_type")
             self.emit(_make.For(
                 loop_var, begin, extent, for_type_id, 0, self._pop_seq()))
+        return WithScope(loop_var, _exit_cb)
+
+    def axis_tree_node(self, name, begin, end, dtype='int32', axis_type=0):
+        self._seq_stack.append([])
+        loop_var = _api.var(name, dtype=dtype)
+        extent = end if begin == 0 else _pass.Simplify(end - begin)
+        def _exit_cb():
+            seq = self._seq_stack.pop()
+            # todo(lmzheng): check the type of its elements
+            self.emit(_make.AxisTreeNode(loop_var, begin, extent, axis_type, seq))
+
         return WithScope(loop_var, _exit_cb)
 
     def if_scope(self, cond):

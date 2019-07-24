@@ -4,13 +4,46 @@
  */
 
 #include <tvm/operation.h>
+#include <tvm/ir_pass.h>
 #include "tree_node.h"
 #include "schedule.h"
 
 namespace tvm {
 namespace tensorir {
 
-// access methods
+// TensorRegion
+TensorRegion TensorRegionNode::make(Tensor data, Array<Range> ranges) {
+  NodePtr<TensorRegionNode> node = make_node<TensorRegionNode>();
+
+  node->data = std::move(data);
+  Array<Range> simplified_ranges;
+  for (const auto& x : ranges) {
+    simplified_ranges.push_back(
+      Range::make_by_min_extent(ir::Simplify(x->min), ir::Simplify(x->extent)));
+  }
+  node->ranges = std::move(simplified_ranges);
+
+  return TensorRegion(node);
+}
+
+const TensorRegionNode* TensorRegion::operator->() const {
+  return static_cast<const TensorRegionNode*>(node_.get());
+}
+
+TensorRegion TensorRegion::MakeView(Array<Expr> mins, Array<Expr> extents) const {
+  CHECK_EQ(mins.size(), operator->()->data.ndim());
+  CHECK_EQ(mins.size(), extents.size());
+
+  Array<Range> ranges;
+  for (size_t i = 0; i < mins.size(); ++i) {
+    Expr min = operator->()->ranges[i]->min + mins[i];
+    ranges.push_back(Range::make_by_min_extent(min, extents[i]));
+  }
+
+  return TensorRegionNode::make(operator->()->data, ranges);
+}
+
+// Tree nodes
 const ScheduleTreeNodeNode* ScheduleTreeNode::operator->() const {
   return static_cast<const ScheduleTreeNodeNode*>(node_.get());
 }
@@ -19,48 +52,24 @@ ScheduleTreeNodeNode* ScheduleTreeNode::operator->() {
   return static_cast<ScheduleTreeNodeNode*>(node_.get());
 }
 
-//inline ScheduleTreeNodeNode* ScheduleTreeNode::CopyOnWrite() {
-//  CHECK(node_ != nullptr);
-//  if (!node_.unique()) {
-//    if (node_->is_type<AxisTreeNodeNode>()) {
-//      NodePtr<AxisTreeNodeNode> n =
-//          make_node<AxisTreeNodeNode>(*static_cast<const AxisTreeNodeNode*>((operator->())));
-//      NodePtr<Node>(std::move(n)).swap(node_);
-//    } else if (node_->is_type<StmtTreeNodeNode>()) {
-//      NodePtr<StmtTreeNodeNode> n =
-//          make_node<StmtTreeNodeNode>(*static_cast<const StmtTreeNodeNode*>((operator->())));
-//      NodePtr<Node>(std::move(n)).swap(node_);
-//    }
-//  }
-//  return static_cast<ScheduleTreeNodeNode*>(node_.get());
-//}
-
 ScheduleTreeNode ScheduleTreeNode::Copy() const {
-  CHECK(node_ != nullptr);
-  if (node_->is_type<AxisTreeNodeNode>()) {
-    NodePtr<AxisTreeNodeNode> n =
-        make_node<AxisTreeNodeNode>(*static_cast<const AxisTreeNodeNode*>((operator->())));
-    return ScheduleTreeNode(n);
-  } else if (node_->is_type<BlockTreeNodeNode>()) {
-    NodePtr<BlockTreeNodeNode> n =
-        make_node<BlockTreeNodeNode>(*static_cast<const BlockTreeNodeNode*>((operator->())));
-    return ScheduleTreeNode(n);
+  Array<ScheduleTreeNode> new_children;
+  if (operator->()->children.defined()) {
+    for (const auto& x : operator->()->children) {
+      new_children.push_back(x.Copy());
+    }
+  }
+
+  if (const AxisTreeNodeNode* n = this->as<AxisTreeNodeNode>()) {
+    return AxisTreeNodeNode::make(n->loop_var, n->min, n->extent, n->axis_type, new_children);
+  } else if (const BlockTreeNodeNode* n = this->as<BlockTreeNodeNode>()) {
+    return BlockTreeNodeNode::make(n->args, n->vars, n->inputs, n->outputs, n->stmt, new_children);
   } else {
     LOG(FATAL) << "Internal error : unknown tree node type";
   }
   return ScheduleTreeNode(nullptr);
 }
 
-TensorRegion TensorRegionNode::make(Tensor data, Array<Range> ranges) {
-  NodePtr<TensorRegionNode> node = make_node<TensorRegionNode>();
-
-  node->data = data;
-  node->ranges = ranges;
-
-  return TensorRegion(node);
-}
-
-// maker
 AxisTreeNode AxisTreeNodeNode::make(Var loop_var, Expr min, Expr extent,
                                     AxisType axis_type,
                                     Array<ScheduleTreeNode> children) {
@@ -81,26 +90,43 @@ BlockTreeNode BlockTreeNodeNode::make(Array<Expr> args,
                                       Stmt stmt,
                                       Array<ScheduleTreeNode> children) {
   NodePtr<BlockTreeNodeNode> node = make_node<BlockTreeNodeNode>();
-  node->args = std::move(args);
-  node->vars = std::move(vars);
+
+  // sort block args according to its appearance order in outputs
+  StdNodeMap<Var, int> weight;
+  int ct = 0;
+
+  for (const auto& t : outputs) {
+    for (const auto& ran : t->ranges) {
+      if (ran->min->is_type<Variable>()) {
+        weight[Downcast<Var>(ran->min)] = std::numeric_limits<int>::min() + (ct++);
+      }
+    }
+  }
+
+  std::vector<size_t> indices;
+  for (size_t i = 0; i < vars.size(); ++i) {
+    indices.push_back(i);
+  }
+  std::sort(indices.begin(), indices.end(),
+            [&](int a, int b) -> bool { return weight[vars[a]] < weight[vars[b]]; });
+
+  Array<Expr> sorted_args;
+  Array<Var> sorted_vars;
+  for (size_t i = 0; i < vars.size(); ++i) {
+    sorted_args.push_back(args[indices[i]]);
+    sorted_vars.push_back(vars[indices[i]]);
+  }
+
+  // set members
+  node->args = std::move(sorted_args);
+  node->vars = std::move(sorted_vars);
   node->inputs = std::move(inputs);
   node->outputs = std::move(outputs);
   node->stmt = std::move(stmt);
   node->children = std::move(children);
+
   return BlockTreeNode(node);
 }
-
-//BlockTreeNode BlockTreeNode::CopyWithNewArgs(Array<Expr> new_args) {
-//  NodePtr<BlockTreeNodeNode> node = make_node<BlockTreeNodeNode>();
-//
-//  node->args = node->args;
-//  node->vars = node->vars;
-//  node->inputs = node->inputs;
-//  node->outputs = node->outputs;
-//  node->stmt = node->stmt;
-//
-//  return BlockTreeNode(node);
-//}
 
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
 .set_dispatch<TensorRegionNode>([](const TensorRegionNode *t, IRPrinter *p) {

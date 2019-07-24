@@ -12,6 +12,7 @@
 #include <tvm/arithmetic.h>
 #include "dependency_graph.h"
 #include "tree_node.h"
+#include "intrinsic.h"
 
 namespace tvm {
 namespace tensorir {
@@ -46,6 +47,7 @@ class ScheduleNode : public Node {
   TVM_DECLARE_NODE_TYPE_INFO(ScheduleNode, Node);
 };
 
+
 class Schedule : public NodeRef {
  public:
   Schedule() {}
@@ -74,18 +76,18 @@ class Schedule : public NodeRef {
   BlockTreeNode compute_after(BlockTreeNode block, AxisTreeNode axis);
   BlockTreeNode compute_root(BlockTreeNode block);
 
-  void bind(AxisTreeNode axis, std::string name);
+  void bind(AxisTreeNode axis, std::string name);  // unimplemented
 
   BlockTreeNode blockize(AxisTreeNode axis);
   ScheduleTreeNode unblockize(BlockTreeNode block);
   BlockTreeNode merge(Array<ScheduleTreeNode> nodes);
 
-//  BlockTreeNode tensorize(AxisTreeNode axis);
-//  ScheduleTreeNode untensorize(BlockTreeNode block);
+  BlockTreeNode tensorize(BlockTreeNode block, TensorIntrinsic intrin);
+  ScheduleTreeNode untensorize(BlockTreeNode block);
 
-  BlockTreeNode cache_read();
-  BlockTreeNode cache_write();
-  BlockTreeNode double_buffer();
+  BlockTreeNode cache_read();        // unimplemented
+  BlockTreeNode cache_write();       // unimplemented
+  BlockTreeNode double_buffer();     // unimplemented
 
   // dependency analysis
   Array<Array<arith::IntSet> > GatherRegion(Array<Tensor> tensors, AxisTreeNode axis, int start_child_index) const;
@@ -94,7 +96,6 @@ class Schedule : public NodeRef {
   Stmt ToHalide() const;
 
   using ContainerType = ScheduleNode;
-
 
   // tree manipulation (Because we need to update the father_map, these functions are
   // set to be the member functions of Schedule. Considering moving them to another place later)
@@ -105,6 +106,8 @@ class Schedule : public NodeRef {
 
   void CheckFatherLink();
 
+ private:
+  size_t ct_{0};
 };
 
 } // namespace tensorir

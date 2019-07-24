@@ -96,7 +96,7 @@ ScheduleTreeNode TreeBuilder::VisitStmt_(const AssertStmt* op) {
 std::tuple<Array<Expr>, Array<Var>, Array<TensorRegion>, Map<Var, Expr> > CreateOutputRegions(
     Array<TensorRegion> outputs,
     Set<Var> used_vars,
-    std::shared_ptr<arith::Analyzer> analyzer) {
+    arith::Analyzer* analyzer) {
   static size_t var_ct = 0;
   Map<Var, Expr> replace_map;
 
@@ -151,7 +151,7 @@ std::tuple<Array<Expr>, Array<Var>, Array<TensorRegion>, Map<Var, Expr> > Create
 
   StdNodeMap<Var, Expr> var_map;
   for (const auto& x : used_vars) {
-    Var var("v" + std::to_string(ct++));
+    Var var("v" + std::to_string(var_ct++));
     var_map[x] = var;
     vars.push_back(var);
     args.push_back(x);
@@ -169,35 +169,6 @@ std::tuple<Array<Expr>, Array<Var>, Array<TensorRegion>, Map<Var, Expr> > Create
   }
 
   return std::make_tuple(args, vars, ret, var_map);
-}
-
-BlockTreeNode SortBlockArgs(BlockTreeNode node) {
-  StdNodeMap<Var, int> weight;
-  int ct = 0;
-
-  for (const auto& t : node->outputs) {
-    for (const auto& ran : t->ranges) {
-      if (ran->min->is_type<Variable>()) {
-        weight[Downcast<Var>(ran->min)] = std::numeric_limits<int>::min() + (ct++);
-      }
-    }
-  }
-
-  std::vector<size_t> indices;
-  for (size_t i = 0; i < node->vars.size(); ++i) {
-    indices.push_back(i);
-  }
-  std::sort(indices.begin(), indices.end(),
-            [&](int a, int b) -> bool { return weight[node->vars[a]] < weight[node->vars[b]]; });
-
-  Array<Var> vars;
-  Array<Expr> args;
-  for (size_t i = 0; i < node->vars.size(); ++i) {
-    vars.push_back(node->vars[indices[i]]);
-    args.push_back(node->args[indices[i]]);
-  }
-  return BlockTreeNodeNode::make(args, vars, node->inputs, node->outputs,
-                                 node->stmt, node->children);
 }
 
 Array<TensorRegion> CreateInputRegions(const NodeRef& expr_or_stmt) {
@@ -239,22 +210,22 @@ ScheduleTreeNode TreeBuilder::VisitStmt_(const Provide* op) {
   }
   used_vars.insert(GatherVars(op->value));
 
-  auto analyzer = std::make_shared<arith::Analyzer>();
+  arith::Analyzer analyzer;
   Array<Expr> args;
   Array<Var> vars;
   Array<TensorRegion> outputs;
   Map<Var, Expr> var_map;
   std::tie(args, vars, outputs, var_map) =
-      CreateOutputRegions(raw_outputs, used_vars, analyzer);
+      CreateOutputRegions(raw_outputs, used_vars, &analyzer);
 
   // create input regions
-  Expr value = Substitute(analyzer->equation_simplify(op->value), var_map);
+  Expr value = SubstituteAndEquationSimplify(op->value, var_map, &analyzer);
   Array<TensorRegion> inputs = CreateInputRegions(value);
 
   // make node
   Array<Expr> halide_call_args;
   for (const auto& x : op->args) {
-    halide_call_args.push_back(Substitute(analyzer->equation_simplify(x), var_map));
+    halide_call_args.push_back(SubstituteAndEquationSimplify(x, var_map, &analyzer));
   }
   Stmt stmt = Provide::make(op->func,
                             op->value_index,
@@ -263,7 +234,6 @@ ScheduleTreeNode TreeBuilder::VisitStmt_(const Provide* op) {
 
   BlockTreeNode ret = BlockTreeNodeNode::make(args, vars, inputs, outputs,
                                               stmt, Array<ScheduleTreeNode>{});
-  ret = SortBlockArgs(ret);
   block_list_.push_back(ret);
   return ret;
 }

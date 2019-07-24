@@ -16,9 +16,7 @@
 namespace tvm {
 namespace tensorir {
 
-// Two-level vector : the first level is for multiple access, the second level is for multiple dimension.
-// This might be extended to handle the tensor region.
-using AccessSet = int;  // currently it is useless
+using AccessSet = int;  // Currently, it is useless
 
 // Dependency type
 enum EdgeType : int {
@@ -29,6 +27,7 @@ enum EdgeType : int {
   kUnknown
 };
 
+// An edge in the dependency graph
 class Edge;
 class EdgeNode : public Node {
  public:
@@ -50,7 +49,7 @@ TVM_DEFINE_MUTABLE_NODE_REF(Edge, NodeRef, EdgeNode);
 
 /*!
  * \brief A bipartite graph to store
- * read/write access information between tensors and statements
+ * read/write access information between tensors and blocks
  */
 class ReadWriteGraph {
  public:
@@ -117,7 +116,7 @@ class ReadWriteGraph {
 };
 
 /*!
- * \brief Dependency Graph for elemwise-defined dependency relationship
+ * \brief Dependency Graph that stores read/write dependency between BlockTreeNode
  */
 class DependencyGraph;
 class DependencyGraphNode : public Node {
@@ -144,7 +143,7 @@ class DependencyGraph : public NodeRef {
 
   void AddNode(BlockTreeNode op_stmt);
   void AddEdge(BlockTreeNode from, BlockTreeNode to, EdgeType type);
-  void InlineNode(BlockTreeNode op_stmt);
+  void InlineNode(BlockTreeNode op_stmt);  // to support compute_inline which deletes a block in the graph
   Set<BlockTreeNode> GetSuccessor(BlockTreeNode op_stmt);
   Set<BlockTreeNode> GetPredecessor(BlockTreeNode op_stmt);
 

@@ -46,14 +46,15 @@ class TreeBuilder : public StmtFunctor<ScheduleTreeNode(const Stmt&)> {
 // Create input regions for an expression or statement
 Array<TensorRegion> CreateInputRegions(const NodeRef& expr_or_stmt);
 
-// Create output regions
+// Create canonicalized output regions
+// Canonilized form means the regions must be Tensor[x:f(x), y:f(y), .., z:f(z)]
+// (i.e. the min must be a single varaible)
+//
+// Returns args, vars, canonicalized_outputs, replace_var_map
 std::tuple<Array<Expr>, Array<Var>, Array<TensorRegion>, Map<Var, Expr> > CreateOutputRegions(
     Array<TensorRegion> outputs,
     Set<Var> used_vars,
-    std::shared_ptr<arith::Analyzer> analyzer);
-
-// Sort arguments of a block according to its appearances in output regions
-BlockTreeNode SortBlockArgs(BlockTreeNode node);
+    arith::Analyzer* analyzer);
 
 } // namespace tensorir
 } // namespace tvm

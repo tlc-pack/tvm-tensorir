@@ -7,6 +7,8 @@
 #include <tvm/ir_mutator.h>
 #include <tvm/arithmetic.h>
 #include <tvm/build_module.h>
+#include <tvm/packed_func_ext.h>
+#include <tvm/operation.h>
 #include "../arithmetic/int_set_internal.h"
 #include "schedule.h"
 #include "tree_builder.h"
@@ -29,9 +31,8 @@ void GatherVarDomain(ScheduleTreeNode node,
 
 ScheduleTreeNode SubstituteArgOnly(ScheduleTreeNode node, const Map<Var, Expr>& vmap);
 Array<ScheduleTreeNode> SubstituteArgOnly(Array<ScheduleTreeNode> nodes, const Map<Var, Expr>& vmap);
-ScheduleTreeNode SubstituteEquationSimplify(ScheduleTreeNode node, const Map<Var, Expr>& vmap,
-                                            std::shared_ptr<arith::Analyzer> analyzer);
-ScheduleTreeNode SubstituteCopy(ScheduleTreeNode node, const Map<Var, Expr>& vmap);
+ScheduleTreeNode SubstituteAndEquationSimplify(ScheduleTreeNode node, const Map<Var, Expr>& vmap,
+                                               arith::Analyzer* analyzer);
 
 // maker
 Schedule ScheduleNode::make(Stmt stmt) {
@@ -156,18 +157,17 @@ Array<AxisTreeNode> Schedule::reorder(AxisTreeNode outer, AxisTreeNode inner) {
 class StatementInliner : public IRMutator {
  public:
   StatementInliner(const Provide* op) : op_(op) {
-    auto analyzer = std::make_shared<arith::Analyzer>();
 
     Set<Var> old_space_vars;
 
     for (size_t i = 0; i < op->args.size(); ++i) {
       Var var = Var("i" + std::to_string(i));
       vars_.push_back(var);
-      analyzer->Bind(var, op->args[i]);
+      analyzer.Bind(var, op->args[i]);
       old_space_vars.insert(GatherVars(op->args[i]));
     }
 
-    value_ = analyzer->equation_simplify(op->value);
+    value_ = analyzer.equation_simplify(op->value);
     Set<Var> simplified_vars = GatherVars(value_);
 
     // check simplification result : all old space vars should be simplified out
@@ -191,6 +191,7 @@ class StatementInliner : public IRMutator {
   const Provide* op_;
   Array<Var> vars_;
   Expr value_;
+  arith::Analyzer analyzer;
 };
 
 void Schedule::compute_inline(BlockTreeNode block) {
@@ -252,10 +253,10 @@ Array<ScheduleTreeNode> Schedule::unroll(AxisTreeNode axis) {
   Array<ScheduleTreeNode> expanded_stmts;
 
   // expand statements, replace var
-  int min_v = axis->min.as<IntImm>()->value, extent_v = axis->extent.as<IntImm>()->value;
+  int64_t min_v = axis->min.as<IntImm>()->value, extent_v = axis->extent.as<IntImm>()->value;
   StdNodeMap<Var, Expr> var_map;
-  for (int v = min_v; v < min_v + extent_v; v++) {
-    var_map[axis->loop_var] = v;
+  for (int64_t v = min_v; v < min_v + extent_v; v++) {
+    var_map[axis->loop_var] = IntImm::make(axis->loop_var.type(), v);
     for (size_t i = 0; i < axis->children.size(); i++) {
       expanded_stmts.push_back(SubstituteArgOnly(axis->children[i].Copy(), var_map));
     }
@@ -523,13 +524,13 @@ BlockTreeNode Schedule::blockize(AxisTreeNode axis) {
   }
 
   // canonicalize output regions
-  auto analyzer = std::make_shared<arith::Analyzer>();
+  arith::Analyzer analyzer;
   Array<Expr> args;
   Array<Var> vars;
   Array<TensorRegion> outputs;
   Map<Var, Expr> var_map;
   std::tie(args, vars, outputs, var_map) =
-    CreateOutputRegions(raw_outputs, used_vars.Difference(deleted_vars), analyzer);
+    CreateOutputRegions(raw_outputs, used_vars.Difference(deleted_vars), &analyzer);
 
   // create inputs regions
   Array<TensorRegion> inputs;
@@ -541,8 +542,8 @@ BlockTreeNode Schedule::blockize(AxisTreeNode axis) {
         const arith::IntervalSet* set = y[i].as<arith::IntervalSet>();
         CHECK(set != nullptr);
         IntSet b = arith::IntervalSet::make(
-            Substitute(analyzer->equation_simplify(set->i.min), var_map),
-            Substitute(analyzer->equation_simplify(set->i.max), var_map));
+            SubstituteAndEquationSimplify(set->i.min, var_map, &analyzer),
+            SubstituteAndEquationSimplify(set->i.max, var_map, &analyzer));
         to_merge.push_back(b);
       }
       IntSet merged = arith::Union(to_merge);
@@ -552,10 +553,9 @@ BlockTreeNode Schedule::blockize(AxisTreeNode axis) {
   }
 
   // make node
-  ScheduleTreeNode child = SubstituteEquationSimplify(axis, var_map, analyzer);
+  ScheduleTreeNode child = SubstituteAndEquationSimplify(axis, var_map, &analyzer);
   BlockTreeNode ret = BlockTreeNodeNode::make(args, vars, inputs, outputs,
                                               Stmt(nullptr), Array<ScheduleTreeNode>{child});
-  ret = SortBlockArgs(ret);
 
   // relink
   ReplaceChild(axis, ret);
@@ -587,6 +587,37 @@ ScheduleTreeNode Schedule::unblockize(BlockTreeNode block) {
   // Todo(lmzheng) : Update dependency graph, block_list
 
   return child;
+}
+
+BlockTreeNode Schedule::tensorize(BlockTreeNode block, TensorIntrinsic intrin) {
+  // todo (lmzheng): 1. check whether the shapes match   2. check the semantics
+
+  // get new body
+  NodeRef ret = intrin->intrin_func(block->inputs, block->outputs);
+  BlockTreeNode new_block;
+  if (ret->derived_from<ScheduleTreeNodeNode>()) {
+    new_block = BlockTreeNodeNode::make(block->args, block->vars,
+                                        block->inputs, block->outputs,
+                                        Stmt(NodePtr<Node>(nullptr)),
+                                        Array<ScheduleTreeNode>{Downcast<ScheduleTreeNode>(ret)});
+  } else if (ret->derived_from<HalideIR::Internal::BaseStmtNode>()) {
+    new_block = BlockTreeNodeNode::make(block->args, block->vars,
+                                        block->inputs, block->outputs,
+                                        Downcast<Stmt>(ret), Array<ScheduleTreeNode>{});
+  } else {
+    LOG(FATAL) << "The intrin func returns invalid value";
+  }
+
+  // Relink
+  ReplaceChild(block, new_block);
+
+  // todo (lmzheng): update block_list and dependency graph
+
+  return new_block;
+}
+
+ScheduleTreeNode Schedule::untensorize(BlockTreeNode block) {
+  return ScheduleTreeNode(nullptr);
 }
 
 // dependency analysis
@@ -635,148 +666,6 @@ Array<Array<IntSet> > Schedule::GatherRegion(Array<Tensor> tensors, AxisTreeNode
   }
 
   return ret;
-}
-
-// Return whether the subtree rooted by node accesses tensor t
-bool FindAccess(ScheduleTreeNode node, Tensor t) {
-  if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
-    for (const auto& x : n->children) {
-      if (FindAccess(x, t)) {
-        return true;
-      }
-    }
-  } else if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
-    for (const auto& x : n->inputs) {
-      if (x->data == t) {
-        return true;
-      }
-    }
-    for (const auto& x : n->outputs) {
-      if (x->data == t) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-// output
-Stmt Schedule::ToHalide() const {
-  // compute allocation locations for all tensors
-  StdNodeMap<Tensor, Array<ScheduleTreeNode> > related_nodes;
-
-  // get root node for computation blocks
-  std::function<void(const ScheduleTreeNode& n)> get_tensor_location;
-  get_tensor_location = [this, &get_tensor_location, &related_nodes](const ScheduleTreeNode& node) {
-    if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
-      for (const auto& x : n->children) {
-        get_tensor_location(x);
-      }
-    } else if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
-      Set<Var> used_vars;
-      Set<Var> seen;
-      for (size_t i = 0; i < n->args.size(); ++i) {
-        used_vars.insert(GatherVars(n->args[i]));
-      }
-
-      // Go upwards until all used vars are fetched.
-      // Then we find the root node of this block
-      ScheduleTreeNode now = node;
-      while (operator->()->father_map[now] != operator->()->root
-             && used_vars.size() > seen.size()) {
-        now = operator->()->father_map[now];
-        if (const AxisTreeNodeNode* loop = now.as<AxisTreeNodeNode>()) {
-          Var v = loop->loop_var;
-          if (used_vars.count(v) && !seen.count(v)) {
-            seen.insert(v);
-          }
-        }
-      }
-
-      for (const auto& x : n->outputs) {
-        related_nodes[x->data].push_back(now);
-      }
-      for (const auto& x : n->inputs) {
-        related_nodes[x->data].push_back(now);
-      }
-    }
-  };
-  get_tensor_location(operator->()->root);
-
-  // For tensor T, let A be the lowest common ancestor of all nodes accessing it.
-  // We place its allocation before the first children of A that accesses T.
-  StdNodeMap<ScheduleTreeNode, std::vector<Tensor> > attached_allocation;
-  for (const auto x : related_nodes) {
-    ScheduleTreeNode lca = LowestCommonAncestor(x.second, false);
-    for (const auto& child : lca->children) {
-      if (FindAccess(child, x.first)) {
-        attached_allocation[child].push_back(x.first);
-        break;
-      }
-    }
-  }
-
-  // translate to halide
-  std::function<Array<Stmt> (const ScheduleTreeNode& n)> to_halide_stmt;
-  to_halide_stmt = [this, &to_halide_stmt, &attached_allocation](const ScheduleTreeNode& node) {
-    std::vector<Stmt> ret;
-
-    // attach realize scope
-    for (const auto& tensor : attached_allocation[node]) {
-      if (operator->()->raw_realize_region.count(tensor)) {
-        CHECK_GE(operator->()->raw_realize_scope.count(tensor->op), 1);
-
-        ret.push_back(AttrStmt::make(tensor->op,
-                                     attr::realize_scope,
-                                     operator->()->raw_realize_scope.at(tensor->op),
-                                     Evaluate::make(0)));
-
-        ret.push_back(Realize::make(tensor->op,
-                                    tensor->value_index,
-                                    tensor->dtype,
-                                    operator->()->raw_realize_region.at(tensor),
-                                    const_true(1),
-                                    Evaluate::make(0)));
-      }
-    }
-
-    // translate nodes
-    if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
-      Array<Stmt> stmts;
-      for (const auto& child : n->children) {
-        for (const auto& stmt : to_halide_stmt(child)) {
-          stmts.push_back(stmt);
-        }
-      }
-      if (node == operator->()->root) {
-        ret.push_back(ArrayToBlock(stmts));
-      } else {
-        ret.push_back(For::make(n->loop_var,
-                                n->min, n->extent,
-                                ForType::Serial, DeviceAPI::None,
-                                ArrayToBlock(stmts)));
-      }
-    } else if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
-      StdNodeMap<Var, Expr> var_map;
-      for (size_t i = 0; i < n->args.size(); ++i) {
-        var_map[n->vars[i]] = n->args[i];
-      }
-      if (n->stmt.defined()) {
-        ret.push_back(Substitute(n->stmt, var_map));
-      } else {
-        CHECK_EQ(n->children.size(), 1) << "Encounter invalid block" << std::endl;
-        Array<Stmt> tmp = to_halide_stmt(SubstituteCopy(n->children[0], var_map));
-        CHECK_EQ(tmp.size(), 1);
-        ret.push_back(tmp[0]);
-      }
-    } else {
-      LOG(FATAL) << "Internal error: unknown node type";
-    }
-
-    return ret;
-  };
-
-  return ArrayToBlock(to_halide_stmt(operator->()->root));
 }
 
 // tree manipulation (requires father map)
@@ -920,45 +809,26 @@ ScheduleTreeNode SubstituteArgOnly(ScheduleTreeNode node, const Map<Var, Expr>& 
 }
 
 // Note : inplace substitute
-ScheduleTreeNode SubstituteEquationSimplify(ScheduleTreeNode node, const Map<Var, Expr>& vmap,
-                            std::shared_ptr<arith::Analyzer> analyzer) {
+ScheduleTreeNode SubstituteAndEquationSimplify(ScheduleTreeNode node, const Map<Var, Expr>& vmap,
+                                               arith::Analyzer* analyzer) {
   if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
     AxisTreeNode axis = GetRef<AxisTreeNode>(n);
-    axis->min = Substitute(analyzer->equation_simplify(axis->min), vmap);
-    axis->extent = Substitute(analyzer->equation_simplify(axis->extent), vmap);
+    axis->min = SubstituteAndEquationSimplify(axis->min, vmap, analyzer);
+    axis->extent = SubstituteAndEquationSimplify(axis->extent, vmap, analyzer);
     for (auto x : axis->children) {
-      SubstituteEquationSimplify(x, vmap, analyzer);
+      SubstituteAndEquationSimplify(x, vmap, analyzer);
     }
   } else if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
     BlockTreeNode block = GetRef<BlockTreeNode>(n);
     Array<Expr> args;
     for (const auto& x : block->args) {
-      args.push_back(Substitute(analyzer->equation_simplify(x), vmap));
+      args.push_back(SubstituteAndEquationSimplify(x, vmap, analyzer));
     }
     block->args = args;
   } else {
     LOG(FATAL) << "Invalid node in schedule tree";
   }
   return node;
-}
-
-ScheduleTreeNode SubstituteCopy(ScheduleTreeNode node, const Map<Var, Expr>& vmap) {
-  if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
-    Array<ScheduleTreeNode> children;
-    for (const auto& x : n->children) {
-      children.push_back(SubstituteCopy(x, vmap));
-    }
-    return AxisTreeNodeNode::make(n->loop_var, Substitute(n->min, vmap), Substitute(n->extent, vmap),
-                                  n->axis_type, children);
-  } else if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
-    Array<Expr> args;
-    for (const auto& x : n->args) {
-      args.push_back(Substitute(x, vmap));
-    }
-    return BlockTreeNodeNode::make(args, n->vars, n->inputs, n->outputs, n->stmt, n->children);
-  } else {
-    LOG(FATAL) << "Invalid node in schedule tree";
-  }
 }
 
 } // namespace tensorir
