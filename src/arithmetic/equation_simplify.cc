@@ -131,8 +131,15 @@ class EquationSimplifier::Impl {
     if (!override) {
       CHECK(!var_map_.count(var));
     }
+
+    // Do not expand already simplified vars.
+    // This is for avoiding infinite recursion during rewrite
+    parent_->rewrite_simplify.Update(var, var, true);
+    parent_->canonical_simplify.Update(var, var, true);
+
     var_map_[var] = info;
   }
+
 
  private:
   Analyzer* parent_;

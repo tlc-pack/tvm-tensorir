@@ -535,6 +535,19 @@ class IntervalSetEvaluator :
   bool eval_vec_{false};
 };
 
+
+StrideSet::StrideSet(Expr base_min, Expr base_extent, Array<Expr> extents, Array<Expr> strides) {
+  auto node = make_node<StrideSetNode>();
+
+  node->base_min = std::move(base_min);
+  node->base_extent = std::move(base_extent);
+  node->extents = std::move(extents);
+  node->strides = std::move(strides);
+
+  node_ = std::move(node);
+}
+
+
 class IntSetAnalyzer::Impl {
  public:
   explicit Impl(Analyzer* analyzer)
@@ -744,7 +757,6 @@ IntSet EvalSet(Expr e,
 }
 
 IntSet EvalSet(Expr e,
-IntSet EvalSet(HalideIR::IR::Range r,
                const std::unordered_map<const Variable*, IntSet>& dom_map) {
   return EvalSet(e, ConvertDomMap(dom_map));
 }
@@ -803,7 +815,7 @@ ExprIntSetMap EvalSetForEachSubExpr(
   return m.expr_map;
 }
 
-IntSet EvalSet(HalideIR::IR::Range r,
+IntSet EvalSet(Range r,
                const Map<IterVar, IntSet>& dom_map) {
   return EvalSet(r, ConvertDomMap(dom_map));
 }

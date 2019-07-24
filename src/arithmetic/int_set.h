@@ -137,6 +137,50 @@ TVM_DLL IntervalSet Union(Analyzer* analyzer, IntervalSet a, IntervalSet b);
  */
 TVM_DLL IntervalSet Intersect(Analyzer *analzyer, IntervalSet a, IntervalSet b);
 
+
+/*!
+ * \brief Set represented by strided integers
+ * \note Set = [base_min, base_extent] + Union([x * strides[i] for x in range(extents[i])])
+ */
+struct StrideSetNode : public IntSetNode {
+  /*! \brief the base interval */
+  Expr base_min;
+  Expr base_extent;
+  /*! \brief additional extents in positive number */
+  Array<Expr> extents;
+  /*! \brief additional strides in positive number */
+  Array<Expr> strides;
+
+  void VisitAttrs(tvm::AttrVisitor* v) final {
+    v->Visit("base_min", &base_min);
+    v->Visit("base_extent", &base_extent);
+    v->Visit("extents", &extents);
+    v->Visit("strides", &strides);
+  }
+
+  static constexpr const char* _type_key = "arith.StrideSet";
+  TVM_DECLARE_NODE_TYPE_INFO(StrideSetNode, IntSetNode);
+};
+
+/*!
+ * \brief Set represented by strided integers
+ */
+class StrideSet : public IntSet {
+ public:
+  /*!
+   * \brief Make a new instance of stride set.
+   * \param base_min The minimum value in the interval.
+   * \param base_extent The maximum value in the interval.
+   * \param extents The
+   * \param strides The maximum
+   * \return The created set.
+   */
+  TVM_DLL StrideSet(Expr base_min, Expr base_extent, Array<Expr> extents, Array<Expr> strides);
+
+  TVM_DEFINE_NODE_REF_COW(StrideSetNode);
+  TVM_DEFINE_NODE_REF_METHODS(StrideSet, IntSet, StrideSetNode);
+};
+
 }  // namespace arith
 }  // namespace tvm
 

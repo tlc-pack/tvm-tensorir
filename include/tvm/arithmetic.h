@@ -292,7 +292,6 @@ class CanonicalSimplifier {
 
 class EquationSimplifier {
  public:
-
   Expr operator()(const Expr& expr);
   void Update(const Var& var,
               const Expr& new_expr,
@@ -499,6 +498,9 @@ class Analyzer {
   CanonicalSimplifier canonical_simplify;
   /*! \brief sub-analyzer: int set */
   IntSetAnalyzer int_set;
+  /*! \brief sub-analyzer: equation simplify */
+  EquationSimplifier equation_simplify;
+
   /*! \brief constructor */
   Analyzer();
   /*!
@@ -585,7 +587,7 @@ IntSet EvalSet(Expr e,
  * \param dom_map The domain of each variable.
  * \return An integer set that can cover all the possible values.
  */
-IntSet EvalSet(HalideIR::IR::Range r,
+IntSet EvalSet(Range r,
                const Map<IterVar, IntSet>& dom_map);
 
 /*!
@@ -605,7 +607,7 @@ IntSet EvalSet(IntSet s,
  * \param dom_map The domain of each variable.
  * \return An integer set that can cover all the possible values of e.
  */
-IntSet EvalSet(HalideIR::IR::Range r,
+IntSet EvalSet(Range r,
                const std::unordered_map<const Variable*, IntSet>& dom_map);
 
 /*! \brief Map from Expr to IntSet */
