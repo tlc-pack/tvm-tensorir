@@ -9,6 +9,7 @@
 #include <tvm/ir_visitor.h>
 #include <tvm/ir_pass.h>
 #include <tvm/arithmetic.h>
+#include <tvm/operation.h>
 #include "node_util.h"
 
 namespace tvm {
@@ -72,11 +73,6 @@ class TensorGather : public ir::IRVisitor {
 
   std::unordered_set<Tensor> tensors;
 };
-
-// Return whether a range is a single point
-inline bool is_single_point(Range range) {
-  return is_zero(ir::Simplify(range->extent));
-}
 
 // Convert an array of Halide Stmt to a Halide::IR::Block
 inline Stmt ArrayToBlock(Array<Stmt> stmts) {

@@ -7,9 +7,6 @@
 #include <tvm/ir_pass.h>
 #include <tvm/ir_mutator.h>
 #include <tvm/ir_visitor.h>
-#include <tvm/api_registry.h>
-#include <tvm/arithmetic.h>
-#include <ir/Expr.h>
 #include "tree_builder.h"
 #include "dependency_graph.h"
 #include "util.h"
@@ -186,7 +183,8 @@ Array<TensorRegion> CreateInputRegions(const NodeRef& expr_or_stmt) {
         sets.push_back(arith::IntSet::single_point(x[i]));
       }
       arith::IntSet unioned = arith::Union(sets);
-      ranges.push_back(Range::make_by_min_extent(unioned.min(), simplify(unioned.max() - unioned.min()+1)));
+      ranges.push_back(Range::make_by_min_extent(unioned.min(),
+                                                 unioned.max() - unioned.min()+1));
     }
 
     inputs.push_back(TensorRegionNode::make(iter.first, ranges));

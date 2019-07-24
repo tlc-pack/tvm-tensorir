@@ -13,6 +13,7 @@
 #include "schedule.h"
 #include "tree_builder.h"
 #include "util.h"
+#include "../arithmetic/int_set.h"
 
 namespace tvm {
 
@@ -388,26 +389,26 @@ BlockTreeNode Schedule::compute_at(BlockTreeNode block, AxisTreeNode axis) {
       new_args[i] = block->args[i];
     }
 
-    if (const arith::IntervalSet* set = iter_domain[i].as<arith::IntervalSet>()) {
+    if (const arith::IntervalSetNode* set = iter_domain[i].as<arith::IntervalSetNode>()) {
       node = AxisTreeNodeNode::make(iter_var,
-                                    set->i.min,
-                                    set->i.max - set->i.min + 1,
+                                    set->min_value,
+                                    set->max_value - set->min_value + 1,
                                     kOpaque, // todo(lmzheng): fill correct type to replace kOpaque x 3
                                     Array<ScheduleTreeNode>{last});
       new_args[i] = iter_var;
-    } else if (const arith::StrideSet* set = iter_domain[i].as<arith::StrideSet>()) {
+    } else if (const arith::StrideSetNode* set = iter_domain[i].as<arith::StrideSetNode>()) {
       CHECK(set->extents.size() == 1);
-      CHECK(set->base.is_single_point());
+      CHECK(is_one(set->base_extent));
       if (is_one(set->extents[0])) {
         node = AxisTreeNode(nullptr);
-        new_args[i] = set->base.min;
+        new_args[i] = set->base_min;
       } else {
         node = AxisTreeNodeNode::make(iter_var,
                                       0,
                                       set->extents[0],
                                       kOpaque,
                                       Array<ScheduleTreeNode>{last});
-        new_args[i] = iter_var * set->strides[0] + set->base.min;
+        new_args[i] = iter_var * set->strides[0] + set->base_min;
       }
     } else {
       LOG(FATAL) << "Cannot handle int set : " << iter_domain[i];
@@ -539,11 +540,11 @@ BlockTreeNode Schedule::blockize(AxisTreeNode axis) {
     for (size_t i = 0; i < iter.first.ndim(); ++i) {
       Array<IntSet> to_merge;
       for (const std::vector<IntSet>& y : iter.second) {
-        const arith::IntervalSet* set = y[i].as<arith::IntervalSet>();
+        const arith::IntervalSetNode* set = y[i].as<arith::IntervalSetNode>();
         CHECK(set != nullptr);
-        IntSet b = arith::IntervalSet::make(
-            SubstituteAndEquationSimplify(set->i.min, var_map, &analyzer),
-            SubstituteAndEquationSimplify(set->i.max, var_map, &analyzer));
+        IntSet b = arith::IntervalSet(
+            SubstituteAndEquationSimplify(set->min_value, var_map, &analyzer),
+            SubstituteAndEquationSimplify(set->max_value, var_map, &analyzer));
         to_merge.push_back(b);
       }
       IntSet merged = arith::Union(to_merge);
@@ -600,7 +601,7 @@ BlockTreeNode Schedule::tensorize(BlockTreeNode block, TensorIntrinsic intrin) {
                                         block->inputs, block->outputs,
                                         Stmt(NodePtr<Node>(nullptr)),
                                         Array<ScheduleTreeNode>{Downcast<ScheduleTreeNode>(ret)});
-  } else if (ret->derived_from<HalideIR::Internal::BaseStmtNode>()) {
+  } else if (ret->derived_from<StmtNode>()) {
     new_block = BlockTreeNodeNode::make(block->args, block->vars,
                                         block->inputs, block->outputs,
                                         Downcast<Stmt>(ret), Array<ScheduleTreeNode>{});

@@ -161,7 +161,31 @@ def test_untensorize():
     pass
 
 def test_schedule_after_tensorize():
-    pass
+    N = 128
+    M = 128
+
+    A = tvm.placeholder((N, M), name='A')
+    B = tvm.placeholder((N, M), name='B')
+    C = tvm.compute((N, M), lambda i, j: A[i][j] + B[i][j], name='C')
+    D = tvm.compute((N, M), lambda i, j: C[i][j] + B[i][j], name='D')
+
+    def _schedule_pass(stmt):
+        s = tensorir.create_schedule(stmt)
+
+#        C, = s.blocks()
+#        i, j = s.axis(C)
+#
+#        jo, ji = s.split(j, 8)
+#
+#        bb = s.blockize(ji)
+#        bb = s.tensorize(bb, intrin_vadd(8))
+#
+        stmt = s.to_halide()
+        return stmt
+
+    s = tvm.create_schedule([D.op])
+    check_correctness(s, [A, B, C, D], _schedule_pass)
+
 
 def test_usage_in_compute_dsl():
     pass

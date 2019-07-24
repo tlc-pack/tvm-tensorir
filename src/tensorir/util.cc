@@ -32,7 +32,7 @@ Set<Var> GatherVars(const NodeRef& expr_or_stmt) {
   Set<Var> ret;
 
   ir::PostOrderVisit(expr_or_stmt, [&ret](const NodeRef& node) {
-    if (node->is_type<Variable>() && Downcast<Var>(node).type().code() != halideir_type_handle) {
+    if (node->is_type<Variable>() && !Downcast<Var>(node).type().is_handle()) {
       ret.insert(Downcast<Var>(node));
     }
   });
