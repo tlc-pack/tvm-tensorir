@@ -357,5 +357,6 @@ struct NodeEqual {
     return a.get() == b.get();
   }
 };
+
 }  // namespace tvm
 #endif  // TVM_NODE_NODE_H_

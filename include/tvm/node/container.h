@@ -72,8 +72,7 @@ class SetNode : public Node {
   }
 
   /*! \brief The corresponding container type */
-  using ContainerType = std::unordered_set<
-      NodePtr<Node>, NodePtrHash, NodePtrEqual>;
+  using ContainerType = std::unordered_set<NodePtr<Node>, NodePtrHash, NodePtrEqual>;
 
   /*! \brief the data content */
   ContainerType data;
@@ -110,9 +109,7 @@ class StrMapNode : public Node {
     // Visitor to map have no effect.
   }
   /*! \brief The corresponding conatiner type */
-  using ContainerType = std::unordered_map<
-      std::string,
-      NodePtr<Node> >;
+  using ContainerType = std::unordered_map<std::string, NodePtr<Node> >;
 
   /*! \brief the data content */
   ContainerType data;
@@ -130,18 +127,28 @@ template<typename Converter,
     typename TIter>
 class IterAdapter {
  public:
+  using difference_type = typename std::iterator_traits<TIter>::difference_type;
+  using value_type = typename std::iterator_traits<TIter>::value_type;
+  using pointer = typename std::iterator_traits<TIter>::pointer;
+  using reference = typename std::iterator_traits<TIter>::reference;
+  using iterator_category = typename std::iterator_traits<TIter>::iterator_category;
+
   explicit IterAdapter(TIter iter) : iter_(iter) {}
-  inline IterAdapter& operator++() {  // NOLINT(*)
+  inline IterAdapter& operator++() {
     ++iter_;
     return *this;
   }
-  inline IterAdapter& operator++(int) {  // NOLINT(*)
-    ++iter_;
-    return *this;
-  }
-  inline IterAdapter operator+(int offset) const {  // NOLINT(*)
+  inline IterAdapter operator+(difference_type offset) const {
     return IterAdapter(iter_ + offset);
   }
+
+  template<typename T = IterAdapter>
+  typename std::enable_if<std::is_same<iterator_category, std::random_access_iterator_tag>::value,
+                          typename T::difference_type>::type
+  inline operator-(const IterAdapter& rhs) const {
+    return iter_ - rhs.iter_;
+  }
+
   inline bool operator==(IterAdapter other) const {
     return iter_ == other.iter_;
   }
@@ -161,7 +168,7 @@ class IterAdapter {
  *  Array implements copy on write semantics, which means array is mutable
  *  but copy will happen when array is referenced in more than two places.
  *
- * operator[] only provide const acces, use Set to mutate the content.
+ * operator[] only provide const access, use Set to mutate the content.
  * \tparam T The content NodeRef type.
  */
 template<typename T,
@@ -323,26 +330,28 @@ class Array : public NodeRef {
   /*!
    * \brief Remove the first occurrence of a value.
    * \param value The value to remove
-   * \return idx The index of the elements deleted. Returns -1 if not find
+   * \return idx The index of the elements deleted. Returns std::string::npos if not find
    */
   size_t Remove(const T& value) {
-    const std::vector<NodePtr<Node> > &old_data = static_cast<const ArrayNode*>(node_.get())->data;
-    auto tmp_node = make_node<ArrayNode>();
+    ArrayNode* n = this->CopyOnWrite();
+
     size_t find_idx = std::string::npos;
 
     size_t i = 0;
-    for (i = 0; i < old_data.size(); ++i) {
-      if (old_data[i] == value.node_) {
+    for (i = 0; i < n->data.size(); ++i) {
+      if (n->data[i] == value.node_) {
         find_idx = i;
         break;
       }
-      tmp_node->data.push_back(old_data[i]);
-    }
-    for (i = i + 1; i < old_data.size(); ++i) {
-      tmp_node->data.push_back(old_data[i]);
     }
 
-    node_ = std::move(tmp_node);
+    if (find_idx != std::string::npos) {
+      for (; i < n->data.size()-1; ++i) {
+        n->data[i] = n->data[i+1];
+      }
+      n->data.pop_back();
+    }
+
     return find_idx;
   }
 
@@ -469,11 +478,34 @@ class Set : public NodeRef {
     }
     node_ = std::move(n);
   }
-
   /*! \return The size of the array */
   inline size_t size() const {
     if (node_.get() == nullptr) return 0;
     return static_cast<const SetNode*>(node_.get())->data.size();
+  }
+  /*! \return whether array is empty */
+  inline bool empty() const {
+    return size() == 0;
+  }
+  /*! \return The number of elements of the value */
+  inline int count(const T& value) const {
+    return static_cast<const SetNode*>(node_.get())->data.count(value.node_);
+  }
+  /*!
+   * \brief insert a value to set
+   * \param value The value to insert
+   */
+  inline void insert(const T& value) {
+    SetNode* n = CopyOnWrite();
+    n->data.insert(value.node_);
+  }
+  /*!
+   * \brief Remove an element
+   * \param value The key of the element to remove
+   */
+  inline void erase(const T& value) {
+    MapNode* n = this->CopyOnWrite();
+    n->data.erase(value.node_);
   }
   /*!
    * \brief copy on write semantics
@@ -492,21 +524,28 @@ class Set : public NodeRef {
     return static_cast<SetNode*>(node_.get());
   }
   /*!
-   * \brief insert a value to set
-   * \param value The value to insert
-   * */
-  inline void insert(const T& value) {
-    SetNode* n = CopyOnWrite();
-    n->data.insert(value.node_);
-  }
-
+   * \brief insert all elements from another set
+   * \param other The set to insert
+   */
   inline void insert(const Set<T>& other) {
     SetNode* n = CopyOnWrite();
     const SetNode* other_n = static_cast<const SetNode*>(other.node_.get());
 
     n->data.insert(other_n->data.begin(), other_n->data.end());
   }
-
+  /*!
+   * \brief insert all elements in a range from an iterator
+   * \param begin The begin position of the range
+   * \param end The end position of the range
+   */
+  template<typename IterType>
+  inline void insert(IterType begin, IterType end) {
+    SetNode* n = CopyOnWrite();
+    for (IterType it = begin; it != end; ++it) {
+      n->data.insert((*it).node_);
+    }
+  }
+  /*! \return whether this set is a subset of another set */
   inline bool IsSubset(const Set<T>& other) const {
     for (const auto &x : *this) {
       if (!other.count(x)) {
@@ -515,46 +554,65 @@ class Set : public NodeRef {
     }
     return true;
   }
+  /*! \return whether this set is a superset of another set */
   inline bool IsSuperset(const Set<T>& other) const {
-    return other.IsSubset(*this);
+    return other.IsSubsetOf(*this);
   }
-
+  /*!
+   * \brief return the intersection of this set and another set as a new set
+   * \param other The other operand
+   * \return The new intersection set
+   */
   Set<T> Intersection(const Set<T>& other) const {
     NodePtr<SetNode> n = make_node<SetNode>();
-    for (const auto &x : *this) {
-      if (other.count(x)) {
-        n->data.insert(x.node_);
+    const SetNode::ContainerType& a = static_cast<const SetNode*>(node_.get())->data;
+    const SetNode::ContainerType& b = static_cast<const SetNode*>(other.node_.get())->data;
+
+    if (a.size() <= b.size()) {
+      for (const auto& x : a) {
+        if (b.count(x)) {
+          n->data.insert(x);
+        }
+      }
+    } else {
+      for (const auto& x : b) {
+        if (a.count(x)) {
+          n->data.insert(x);
+        }
       }
     }
+
     return Set<T>(n);
   }
-
+  /*!
+   * \brief return the difference between this set and another set as a new set
+   * \param other The other operand
+   * \return The new difference set
+   */
   Set<T> Difference(const Set<T>& other) const {
     NodePtr<SetNode> n = make_node<SetNode>();
-    for (const auto &x : *this) {
-      if (!other.count(x)) {
-        n->data.insert(x.node_);
+    const SetNode::ContainerType& a = static_cast<const SetNode*>(node_.get())->data;
+    const SetNode::ContainerType& b = static_cast<const SetNode*>(other.node_.get())->data;
+
+    for (const auto& x : a) {
+      if (!b.count(x)) {
+        n->data.insert(x);
       }
     }
     return Set<T>(n);
   }
-
+  /*!
+   * \brief return the union of this set and another set as a new set
+   * \param other The other operand
+   * \return The new union set
+   */
   Set<T> Union(const Set<T>& other) const {
     NodePtr<SetNode> n = make_node<SetNode>();
-    const SetNode* a = static_cast<const SetNode*>(node_.get());
-    const SetNode* b = static_cast<const SetNode*>(other.node_.get());
-    n->data.insert(a->data.begin(), a->data.end());
-    n->data.insert(b->data.begin(), b->data.end());
+    const SetNode::ContainerType& a = static_cast<const SetNode*>(node_.get())->data;
+    const SetNode::ContainerType& b = static_cast<const SetNode*>(other.node_.get())->data;
+    n->data.insert(a.begin(), a.end());
+    n->data.insert(b.begin(), b.end());
     return Set<T>(n);
-  }
-
-  /*! \return whether array is empty */
-  inline bool empty() const {
-    return size() == 0;
-  }
-  /*! \return The number of elements of the key */
-  inline int count(const T& value) const {
-    return static_cast<const SetNode*>(node_.get())->data.count(value.node_);
   }
 
   /*! \brief specify container node */
@@ -705,6 +763,18 @@ class Map : public NodeRef {
     return static_cast<const MapNode*>(node_.get())->data.count(key.node_);
   }
   /*!
+   * \brief Remove an element
+   * \param key The key of the element to remove
+   */
+  inline void erase(const K& key) {
+    MapNode* n = this->CopyOnWrite();
+    n->data.erase(key.node_);
+  }
+  /*! \return whether array is empty */
+  inline bool empty() const {
+    return size() == 0;
+  }
+  /*!
    * \brief copy on write semantics
    *  Do nothing if current handle is the unique copy of the array.
    *  Otherwise make a new copy of the array to ensure the current handle
@@ -729,19 +799,7 @@ class Map : public NodeRef {
     MapNode* n = this->CopyOnWrite();
     n->data[key.node_] = value.node_;
   }
-  /*!
-   * \brief Remove an element
-   * \param key The key of the element to remove
-   */
-  inline void erase(const K& key) {
-    MapNode* n = this->CopyOnWrite();
-    n->data.erase(key.node_);
-  }
 
-  /*! \return whether array is empty */
-  inline bool empty() const {
-    return size() == 0;
-  }
   /*! \brief specify container node */
   using ContainerType = MapNode;
 
