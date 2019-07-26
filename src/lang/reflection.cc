@@ -56,7 +56,7 @@ inline Type String2Type(std::string s) {
 using runtime::Object;
 using runtime::ObjectCell;
 
-// indexer to index all the ndoes
+// indexer to index all the nodes
 class NodeIndexer : public AttrVisitor {
  public:
   std::unordered_map<Node*, size_t> node_index{{nullptr, 0}};
@@ -92,6 +92,10 @@ class NodeIndexer : public AttrVisitor {
     CHECK_EQ(vm_obj_index.size(), vm_obj_list.size());
     vm_obj_index[ptr] = vm_obj_list.size();
     vm_obj_list.push_back(ptr);
+  }
+
+  void Visit(const char* key, runtime::PackedFunc* value) final {
+    LOG(FATAL) << "not allowed to index a PackedFunction or use it in JSON serialization";
   }
 
   // make index of all the children of node
@@ -216,6 +220,9 @@ class JSONAttrGetter : public AttrVisitor {
     node_->attrs[key] = std::to_string(
         vm_obj_index_->at(value->ptr_.get()));
   }
+  void Visit(const char* key, runtime::PackedFunc* value) final {
+    LOG(FATAL) << "not allowed to serialize a PackedFunction";
+  }
   // Get the node
   void Get(Node* node) {
     if (node == nullptr) {
@@ -330,6 +337,9 @@ class JSONAttrSetter : public AttrVisitor {
     ParseValue(key, &index);
     CHECK_LE(index, vm_obj_list_->size());
     *value = vm_obj_list_->at(index);
+  }
+  void Visit(const char* key, runtime::PackedFunc* value) final {
+    LOG(FATAL) << "not allowed to deserialize a PackedFunction";
   }
   // set node to be current JSONNode
   void Set(Node* node) {
@@ -508,8 +518,11 @@ class NodeAttrSetter : public AttrVisitor {
   void Visit(const char* key, runtime::NDArray* value) final {
     *value = GetAttr(key).operator runtime::NDArray();
   }
-  void Visit(const char* key, Object* value) final {
+  void Visit(const char* key, runtime::Object* value) final {
     *value = GetAttr(key).operator Object();
+  }
+  void Visit(const char* key, runtime::PackedFunc* value) final {
+    *value = GetAttr(key).operator PackedFunc();
   }
 
  private:

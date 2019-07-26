@@ -26,6 +26,7 @@
 #include <dmlc/logging.h>
 #include <tvm/runtime/c_runtime_api.h>
 #include <tvm/runtime/node_base.h>
+#include <tvm/runtime/packed_func.h>
 #include <string>
 #include <vector>
 #include <utility>
@@ -64,6 +65,7 @@ class TVM_DLL AttrVisitor {
   virtual void Visit(const char* key, NodeRef* value) = 0;
   virtual void Visit(const char* key, runtime::NDArray* value) = 0;
   virtual void Visit(const char* key, runtime::Object* value) = 0;
+  virtual void Visit(const char* key, runtime::PackedFunc* value) = 0;
   template<typename ENum,
            typename = typename std::enable_if<std::is_enum<ENum>::value>::type>
   void Visit(const char* key, ENum* ptr) {
