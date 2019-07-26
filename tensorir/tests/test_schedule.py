@@ -32,7 +32,7 @@ def check_correctness(s, args, inserted_pass, target='llvm'):
     bufs2_np = [x.asnumpy() for x in bufs2]
 
     for x, y in zip(bufs1_np, bufs2_np):
-        np.testing.assert_allclose(x, y)
+        np.testing.assert_allclose(x, y, atol=1e-4)
 
 def test_decompile_fuse():
     N = M = K = 128

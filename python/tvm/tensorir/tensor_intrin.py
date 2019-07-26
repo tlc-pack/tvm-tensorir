@@ -12,4 +12,12 @@ class TensorIntrinsic(NodeBase):
         return _api_internal._TensorIntrinsic_Instantiate(self, inputs, outputs)
 
 def decl_tensor_intrin(op, intrin_func, name):
+    """decleare a new tensor intrinsic
+
+    Parameters
+    ----------
+    op: Operation
+    intrin_func: (List[TensorRegion], List[TensorRegion]) -> Stmt or BlockTreeNode
+    name: str
+    """
     return _make._TensorIntrinsic(op, intrin_func, name)

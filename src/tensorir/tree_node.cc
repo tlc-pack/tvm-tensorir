@@ -170,5 +170,16 @@ void PrintTreeNode(std::ostream &output, ScheduleTreeNode node, size_t indent) {
   }
 }
 
+TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
+.set_dispatch<AxisTreeNodeNode>([](const AxisTreeNodeNode* op, IRPrinter* p) {
+  PrintTreeNode(p->stream, GetRef<ScheduleTreeNode>(op), 0);
+});
+
+TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
+.set_dispatch<BlockTreeNodeNode>([](const BlockTreeNodeNode* op, IRPrinter* p) {
+  PrintTreeNode(p->stream, GetRef<ScheduleTreeNode>(op), 0);
+});
+
+
 } // namespace tensorir
 } // namespace tvm
