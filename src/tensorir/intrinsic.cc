@@ -13,7 +13,10 @@ namespace tvm {
 namespace tensorir {
 
 // maker
-TensorIntrinsic TensorIntrinsicNode::make(Operation op, PackedFunc intrin_func, std::string name) {
+TensorIntrinsic TensorIntrinsicNode::make(
+    Operation op,
+    TypedPackedFunc<NodeRef(Array<TensorRegion>, Array<TensorRegion>)> intrin_func,
+    std::string name) {
   NodePtr<TensorIntrinsicNode> node = make_node<TensorIntrinsicNode>();
 
   node->op = std::move(op);
