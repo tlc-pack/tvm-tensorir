@@ -78,6 +78,7 @@ enum AxisType: int {
   kReduce = 1,
   kMix = 2,
   kOpaque = 3,
+  vectorized = 4,
 };
 
 // Two kinds of node : 1. AxisTreeNode

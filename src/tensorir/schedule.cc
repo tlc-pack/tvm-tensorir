@@ -707,6 +707,31 @@ ScheduleTreeNode Schedule::untensorize(BlockTreeNode block) {
   return ScheduleTreeNode(nullptr);
 }
 
+AxisTreeNode Schedule::vectorize(AxisTreeNode axis) {
+  axis->axis_type = AxisType::vectorized;
+  return axis;
+}
+
+void Schedule::bind(AxisTreeNode axis, IterVar thread_iter) {
+  CHECK(thread_iter->iter_type == kThreadIndex)
+    << "Cannot rebase by " << axis->loop_var
+    << ", only thread axis is allowed so far";
+  auto& bind_var = operator->()->bind_var;
+  Var old_var = axis->loop_var;
+  CHECK(bind_var.count(old_var) == 0) << "The axis has been bind to another axis";
+
+  // Create new loop var
+  Var new_var = thread_iter->var;
+  std::string attr_type = thread_iter->thread_tag == "vthread" ? attr::virtual_thread : attr::thread_extent;
+  bind_var[new_var] = AttrNode::make(thread_iter, attr_type, axis->extent);
+
+  // Replace the axis loop var to the new one
+  Map<Var, Expr> bind_map;
+  bind_map.Set(old_var, new_var);
+  SubstituteArgOnly(axis, bind_map);
+  axis->loop_var = new_var;
+}
+
 // dependency analysis
 Array<Array<IntSet> > Schedule::GatherRegion(Array<Tensor> tensors, AxisTreeNode axis, int start_child_index) const {
   std::unordered_map<const Variable*, IntSet> dom_map;
@@ -718,7 +743,7 @@ Array<Array<IntSet> > Schedule::GatherRegion(Array<Tensor> tensors, AxisTreeNode
     if (const AxisTreeNodeNode* n = father.as<AxisTreeNodeNode>()) {
       dom_map[n->loop_var.get()] = IntSet::single_point(n->loop_var);
       const auto& bind_var = operator->()->bind_var;
-      const auto& var = operator->()->replace_var.count(n->loop_var) ? operator->()->replace_var.at(n->loop_var) :n->loop_var;
+      const auto& var = n->loop_var;
       if (bind_var.count(var) &&
           (bind_var.at(var)->attr_key == attr::virtual_thread ||
           (bind_var.at(var)->attr_key == attr::thread_extent &&
@@ -784,22 +809,6 @@ Array<Array<IntSet> > Schedule::GatherRegion(Array<Tensor> tensors, AxisTreeNode
   }
 
   return ret;
-}
-
-void Schedule::bind(AxisTreeNode axis, IterVar thread_iter) {
-  CHECK(thread_iter->iter_type == kThreadIndex)
-    << "Cannot rebase by " << axis->loop_var
-    << ", only thread axis is allowed so far";
-  auto& bind_var = operator->()->bind_var;
-  Var old_var = axis->loop_var;
-  Var new_var = thread_iter->var;
-  auto& replace_var = operator->()->replace_var;
-  if (replace_var.find(old_var) != replace_var.end()) {
-    LOG(WARNING) << "The loop_var has bind to another axis";
-  }
-  replace_var[old_var] = new_var;
-  std::string attr_type = thread_iter->thread_tag == "vthread" ? attr::virtual_thread : attr::thread_extent;
-  bind_var[new_var] = AttrNode::make(thread_iter, attr_type, axis->extent);
 }
 
 // tree manipulation (requires father map)
@@ -902,8 +911,11 @@ void GatherChildrenBlocks(ScheduleTreeNode node, StdNodeSet<BlockTreeNode>* ret)
 
 void GatherVarDomain(ScheduleTreeNode node,
                      std::unordered_map<const Variable*, arith::IntSet>* dom_map) {
+  // todo(@siyuan)
   if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
-    (*dom_map)[n->loop_var.get()] = IntSet::range(Range::make_by_min_extent(n->min, n->extent));
+    if ((*dom_map).count(n->loop_var.get()) == 0) {
+      (*dom_map)[n->loop_var.get()] = IntSet::range(Range::make_by_min_extent(n->min, n->extent));
+    }
     for (auto x : n->children) {
       GatherVarDomain(x, dom_map);
     }

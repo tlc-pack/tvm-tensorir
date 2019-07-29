@@ -37,7 +37,6 @@ class ScheduleNode : public Node {
   StdNodeMap<Tensor, Region> raw_realize_region; // todo(lmzheng): refactor Map and use Map instead
   StdNodeMap<FunctionRef, std::string> raw_realize_scope;
   StdNodeMap<Var, Attr> bind_var;
-  StdNodeMap<Var, Var> replace_var;
 
   void VisitAttrs(AttrVisitor* v) final {
     v->Visit("root", &root);
@@ -90,6 +89,7 @@ class Schedule : public NodeRef {
   BlockTreeNode cache_read();        // unimplemented
   BlockTreeNode cache_write();       // unimplemented
   BlockTreeNode double_buffer();     // unimplemented
+  AxisTreeNode vectorize(AxisTreeNode axis);
 
   // dependency analysis
   Array<Array<arith::IntSet> > GatherRegion(Array<Tensor> tensors, AxisTreeNode axis, int start_child_index) const;
