@@ -32,8 +32,7 @@ def test_decompile_fuse():
         jo, io, ji_init, ii_init = s.axis(init)
         _, _, ko, ji, ii, ki = s.axis(reduction)
 
-        ji, ko = s.reorder(ko, ji)
-        ii, ko = s.reorder(ko, ii)
+        ji, ii, ko = s.reorder(ji, ii, ko)
 
         s.fuse(ji_init, ii_init)
         s.fuse(ko, ki)

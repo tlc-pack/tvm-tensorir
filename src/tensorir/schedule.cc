@@ -90,6 +90,10 @@ Array<AxisTreeNode> Schedule::split(AxisTreeNode axis, Expr factor) {
   return Array<AxisTreeNode>{outer_node, inner_node};
 }
 
+Array<AxisTreeNode> Schedule::split_nparts(AxisTreeNode axis, Expr nparts) {
+  return split(axis, (axis->extent + nparts - 1) / nparts);
+}
+
 AxisType FuseAxisType(AxisType t1, AxisType t2) {
   switch (t1) {
     case kSpace:
@@ -135,7 +139,46 @@ AxisTreeNode Schedule::fuse(AxisTreeNode outer, AxisTreeNode inner) {
   return fused_node;
 }
 
-Array<AxisTreeNode> Schedule::reorder(AxisTreeNode outer, AxisTreeNode inner) {
+Array<AxisTreeNode> Schedule::reorder(Array<AxisTreeNode> axises) {
+  // Get the depth of each axises
+  std::map<int, AxisTreeNode> depth;
+  for (auto axis : axises) {
+    int axis_depth = 0;
+    ScheduleTreeNode node = axis;
+    while (node != operator->()->root) {
+      ++axis_depth;
+      node = operator->()->father_map[node];
+    }
+    CHECK_EQ(depth.count(axis_depth), 0) << "try to reorder two axises with same depth";
+    depth[axis_depth] = axis;
+  }
+
+  Array<AxisTreeNode> origin;
+  for (auto x : depth) {
+    origin.push_back(x.second);
+  }
+
+  // reorder axises
+  for (int i = axises.size() - 1; i >= 0; --i) {
+    auto axis = axises[i];
+    auto origin_axis = origin[i];
+    if (origin_axis != axis) {
+      auto tmp = binary_reorder(axis, origin_axis);
+      auto new_outer = tmp[0], new_inner = tmp[1];
+      for (int j = origin.Index(axis); j < i - 1; ++j) {
+        origin.Set(j, origin[j + 1]);
+      }
+      origin.Set(i - 1, new_outer);
+      origin.Set(i, new_inner);
+
+      axises.Set(i, new_inner);
+      axises.Set(axises.Index(origin_axis), new_outer);
+    }
+  }
+  return origin;
+}
+
+Array<AxisTreeNode> Schedule::binary_reorder(AxisTreeNode outer, AxisTreeNode inner) {
   // Just lower the outer axis under the inner axis.
   // If there are extra branches, build a new outer axis above the branches
   AxisTreeNode root = operator->()->root;

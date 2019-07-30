@@ -68,8 +68,10 @@ class Schedule : public NodeRef {
 
   // schedule primitives
   Array<AxisTreeNode> split(AxisTreeNode axis, Expr factor);
+  Array<AxisTreeNode> split_nparts(AxisTreeNode axis, Expr nparts);
   AxisTreeNode fuse(AxisTreeNode outer, AxisTreeNode inner);
-  Array<AxisTreeNode> reorder(AxisTreeNode outer, AxisTreeNode inner);
+  Array<AxisTreeNode> reorder(Array<AxisTreeNode> axises);
+  Array<AxisTreeNode> binary_reorder(AxisTreeNode outer, AxisTreeNode inner);
   Array<ScheduleTreeNode> unroll(AxisTreeNode axis);
 
   void compute_inline(BlockTreeNode block);

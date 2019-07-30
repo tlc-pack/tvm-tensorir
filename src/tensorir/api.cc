@@ -32,6 +32,9 @@ TVM_REGISTER_API("tensorir.schedule.ScheduleAxis")
 TVM_REGISTER_API("tensorir.schedule.ScheduleSplit")
 .set_body_method(&Schedule::split);
 
+TVM_REGISTER_API("tensorir.schedule.ScheduleSplitNParts")
+.set_body_method(&Schedule::split_nparts);
+
 TVM_REGISTER_API("tensorir.schedule.ScheduleFuse")
 .set_body_method(&Schedule::fuse);
 

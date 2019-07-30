@@ -149,49 +149,38 @@ def test_gemm_schedule():
         thread_xz = tvm.thread_axis((0, 2), "vthread", name="vx")
         thread_yz = tvm.thread_axis((0, 2), "vthread", name="vy")
 
-        blocks = s.blocks()
-
-        AA = blocks[0]
-        AL = blocks[1]
-        BB = blocks[2]
-        BL = blocks[3]
-        CC = blocks[4]
-        CC_ = blocks[5]
-        C = blocks[6]
+        AA, AL, BB, BL, CC, CC_, C = s.blocks()
 
         def split_calc(block):
             by, yi = s.split(s.axis(block)[-2], factor=block_factor)
             bx, xi = s.split(s.axis(block)[-1], factor=block_factor)
             s.bind(by, block_y)
             s.bind(bx, block_x)
-            bx, yi = s.reorder(yi, bx)
+            bx, yi = s.reorder(bx, yi)
 
-            tyz, yi = s.split(yi, factor=32)
-            ty, yi = s.split(yi, factor=4)
-            txz, xi = s.split(xi, factor=32)
-            tx, xi = s.split(xi, factor=4)
+            tyz, yi = s.split(yi, nparts=2)
+            ty, yi = s.split(yi, nparts=num_thread)
+            txz, xi = s.split(xi, nparts=2)
+            tx, xi = s.split(xi, nparts=num_thread)
             s.bind(tyz, thread_yz)
             s.bind(txz, thread_xz)
             s.bind(ty, thread_y)
             s.bind(tx, thread_x)
+            tyz, txz, ty, tx, yi, xi = s.reorder(tyz, txz, ty, tx, yi, xi)
 
-            txz, ty = s.reorder(ty, txz)
-            ty, yi = s.reorder(yi, ty)
-            tx, yi = s.reorder(yi, tx)
             return tx, yi
 
-        split_calc(CC)
+        tx, yi = split_calc(CC)
         tx, yi = split_calc(C)
 
         s.compute_at(CC_, tx)
         s.compute_at(CC, s.axis(CC_)[-2])
 
-        k = s.axis(blocks[5])[-1]
+        k = s.axis(CC_)[-1]
         yo, xo = s.axis(CC)[-2:]
         ko, ki = s.split(k, factor=8)
         kt, ki = s.split(ki, factor=1)
-        ki, xo = s.reorder(xo, ki)
-        ki, yo = s.reorder(yo, ki)
+        ko, kt, ki, yo, xo = s.reorder(ko, kt, ki, yo, xo)
 
         s.compute_at(AL, kt)
         s.compute_at(BL, kt)
@@ -202,16 +191,16 @@ def test_gemm_schedule():
 
         # Schedule for A's shared memory load
         ty, tx = s.axis(AA)[-2:]
-        _, xi = s.split(tx, num_thread * 4)
-        tx, xi = s.split(xi, 4)
+        _, xi = s.split(tx, factor=num_thread * 4)
+        tx, xi = s.split(xi, nparts=num_thread)
         s.bind(ty, thread_y)
         s.bind(tx, thread_x)
         s.vectorize(xi)
 
         # Schedule for B's shared memory load
         ty, tx = s.axis(BB)[-2:]
-        _, xi = s.split(tx, num_thread * 4)
-        tx, xi = s.split(xi, 4)
+        _, xi = s.split(tx, factor=num_thread * 4)
+        tx, xi = s.split(xi, nparts=num_thread)
         s.bind(ty, thread_y)
         s.bind(tx, thread_x)
         s.vectorize(xi)

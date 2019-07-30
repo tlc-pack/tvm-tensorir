@@ -2,7 +2,7 @@ import tvm
 import numpy as np
 import topi
 
-def check_correctness(s, args, inserted_pass, target='llvm', std_func = None):
+def check_correctness(s, args, inserted_pass, target='llvm', std_func = None, speed_test=False):
     """Check correctness by building the function with and without inserted_pass"""
 
     if isinstance(s, tuple) or isinstance(s, list):
@@ -27,8 +27,14 @@ def check_correctness(s, args, inserted_pass, target='llvm', std_func = None):
              for x in args]
     bufs2 = [tvm.nd.array(x, ctx=ctx2) for x in bufs1]
 
-    func1(*bufs1)
-    func2(*bufs2)
+    if not speed_test:
+        func1(*bufs1)
+        func2(*bufs2)
+    else:
+        evaluator = func1.time_evaluator(func1.entry_name, ctx1, number=1)
+        print('Target 1: %f ms' % (evaluator(*bufs1).mean * 1e3))
+        evaluator = func1.time_evaluator(func2.entry_name, ctx2, number=1)
+        print('Target 2: %f ms' % (evaluator(*bufs2).mean * 1e3))
 
     bufs1_np = [x.asnumpy() for x in bufs1]
     bufs2_np = [x.asnumpy() for x in bufs2]

@@ -107,11 +107,8 @@ Stmt Schedule::ToHalide() const {
 
       for (const auto& x : n->outputs) {
         if (operator->()->raw_realize_scope.count(x->data->op)) {
-          if (operator->()->raw_realize_scope.at(x->data->op) == "local") {
+          if (operator->()->raw_realize_scope.at(x->data->op) != "") {
             related_nodes[x->data].push_back(node);
-          }
-          else if (operator->()->raw_realize_scope.at(x->data->op) == "shared") {
-            related_nodes[x->data].push_back(shared_memory_node);
           }
           else {
             related_nodes[x->data].push_back(now);
@@ -120,8 +117,11 @@ Stmt Schedule::ToHalide() const {
       }
       for (const auto& x : n->inputs) {
         if (operator->()->raw_realize_scope.count(x->data->op)) {
-          if (operator->()->raw_realize_scope.at(x->data->op) == "local") {
+          if (operator->()->raw_realize_scope.at(x->data->op) != "") {
             related_nodes[x->data].push_back(node);
+          }
+          else {
+            related_nodes[x->data].push_back(now);
           }
         }
       }
