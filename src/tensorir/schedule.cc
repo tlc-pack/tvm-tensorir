@@ -462,13 +462,16 @@ BlockTreeNode Schedule::blockize(AxisTreeNode axis) {
   Set<Var> used_vars, deleted_vars;
   StdNodeMap<Tensor, std::vector<std::vector<IntSet> > > gathered_output_regions;
   StdNodeMap<Tensor, std::vector<std::vector<IntSet> > > gathered_input_regions;
+  std::vector<Tensor> raw_output_order; // To keep the original order of input/output arguments
+  std::vector<Tensor> raw_input_order;  //
 
   std::unordered_map<const Variable*, IntSet> dom_map;
   BuildDomMapContext(operator->()->father_map, operator->()->root, axis, &dom_map);
 
   std::function<void(ScheduleTreeNode)> gather_vars_and_regions;
   gather_vars_and_regions = [&gather_vars_and_regions, &used_vars, &deleted_vars, &dom_map,
-                             &gathered_input_regions, &gathered_output_regions]
+                             &gathered_input_regions, &raw_input_order,
+                             &gathered_output_regions, &raw_output_order]
       (ScheduleTreeNode node) {
     if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
       for (auto x : n->children) {
@@ -492,6 +495,9 @@ BlockTreeNode Schedule::blockize(AxisTreeNode axis) {
               Range::make_by_min_extent(Substitute(range->min, var_map),
                                         Substitute(range->extent, var_map)), dom_map));
         }
+        if (!gathered_input_regions.count(tensor->data)) {
+          raw_input_order.push_back(tensor->data);
+        }
         gathered_input_regions[tensor->data].push_back(ranges);
       }
 
@@ -502,6 +508,9 @@ BlockTreeNode Schedule::blockize(AxisTreeNode axis) {
               Range::make_by_min_extent(Substitute(range->min, var_map),
                                         Substitute(range->extent, var_map)), dom_map));
         }
+        if (!gathered_output_regions.count(tensor->data)) {
+          raw_output_order.push_back(tensor->data);
+        }
         gathered_output_regions[tensor->data].push_back(ranges);
       }
     } else {
@@ -511,17 +520,17 @@ BlockTreeNode Schedule::blockize(AxisTreeNode axis) {
   gather_vars_and_regions(axis);
 
   Array<TensorRegion> raw_outputs;
-  for (const auto iter : gathered_output_regions) {
+  for (const auto& tensor : raw_output_order) {
     Array<Range> ranges;
-    for (size_t i = 0; i < iter.first.ndim(); ++i) {
+    for (size_t i = 0; i < tensor.ndim(); ++i) {
       Array<IntSet> to_merge;
-      for (const auto& y : iter.second) {
+      for (const auto& y : gathered_output_regions[tensor]) {
         to_merge.push_back(y[i]);
       }
       IntSet merged = arith::Union(to_merge);
       ranges.push_back(Range::make_by_min_extent(merged.min(), merged.max() - merged.min() + 1));
     }
-    raw_outputs.push_back(TensorRegionNode::make(iter.first, ranges));
+    raw_outputs.push_back(TensorRegionNode::make(tensor, ranges));
   }
 
   // canonicalize output regions
@@ -535,11 +544,11 @@ BlockTreeNode Schedule::blockize(AxisTreeNode axis) {
 
   // create inputs regions
   Array<TensorRegion> inputs;
-  for (const auto iter : gathered_input_regions) {
+  for (const auto tensor : raw_input_order) {
     Array<Range> ranges;
-    for (size_t i = 0; i < iter.first.ndim(); ++i) {
+    for (size_t i = 0; i < tensor.ndim(); ++i) {
       Array<IntSet> to_merge;
-      for (const std::vector<IntSet>& y : iter.second) {
+      for (const std::vector<IntSet>& y : gathered_input_regions[tensor]) {
         const arith::IntervalSetNode* set = y[i].as<arith::IntervalSetNode>();
         CHECK(set != nullptr);
         IntSet b = arith::IntervalSet(
@@ -550,7 +559,7 @@ BlockTreeNode Schedule::blockize(AxisTreeNode axis) {
       IntSet merged = arith::Union(to_merge);
       ranges.push_back(Range::make_by_min_extent(merged.min(), merged.max() - merged.min() + 1));
     }
-    inputs.push_back(TensorRegionNode::make(iter.first, ranges));
+    inputs.push_back(TensorRegionNode::make(tensor, ranges));
   }
 
   // make node

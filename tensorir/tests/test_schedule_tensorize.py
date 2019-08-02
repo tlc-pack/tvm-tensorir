@@ -13,7 +13,7 @@ def intrin_vadd(n):
     Y = tvm.placeholder((n,), name='Y')
     Z = tvm.compute(X.shape, lambda i: X[i] + Y[i], name='Z')
 
-    def intrin_func(ins, outs):  # (List[TensorRegion]) -> Stmt or BlockTreeNode
+    def intrin_func(ins, outs):  # (List[TensorRegion], List[TensorRegion]) -> Stmt or BlockTreeNode
         ib = tvm.ir_builder.create()
 
         Bx = ins[0].emit_buffer_bind(ib)
@@ -51,7 +51,7 @@ def test_tensorize_vadd():
     check_correctness(s, [A, B, C], _schedule_pass)
 
 @register_func
-def dot_for_test(c, a, b):
+def dot_for_test(a, b, c):
     c[:] = c.asnumpy() + a.asnumpy().dot(b.asnumpy())
 
 def intrin_dot(n):
@@ -63,11 +63,14 @@ def intrin_dot(n):
     def intrin_func(ins, outs):
         ib = tvm.ir_builder.create()
 
-        Bx = ins[0].emit_buffer_bind(ib)
-        By = ins[1].emit_buffer_bind(ib)
-        Bz = outs[0].emit_buffer_bind(ib)
+        C = outs[0]
+        A, B = [x for x in ins if x.data != C.data]
 
-        ib.emit(tvm.call_packed('dot_for_test', Bz, Bx, By))
+        Bx = A.emit_buffer_bind(ib)
+        By = B.emit_buffer_bind(ib)
+        Bz = C.emit_buffer_bind(ib)
+
+        ib.emit(tvm.call_packed('dot_for_test', Bx, By, Bz))
         return ib.get()
 
     return tensorir.decl_tensor_intrin(Z.op, intrin_func, 'dot')
@@ -86,10 +89,10 @@ def test_tensorize_dot():
         init, update = s.blocks()
         i, j, k = s.axis(update)
 
-        ko, ki = s.split(k, 16)
+        ko, ki = s.split(k, 8)
 
         B = s.blockize(ki)
-        s.tensorize(B, intrin_dot(16))
+        s.tensorize(B, intrin_dot(8))
 
         stmt = s.to_halide()
         return stmt
@@ -110,9 +113,8 @@ def intrin_composed_gemm(N, M, K):
     def intrin_func(ins, outs):
         ib = tvm.ir_builder.create()
 
-
-        C, = outs
-        A, B, _ = ins
+        C = outs[0]
+        A, B = [x for x in ins if x.data != C.data]
 
         with ib.axis_tree_node('i', 0, N) as i:
             with ib.axis_tree_node('j', 0, M) as j:
@@ -148,8 +150,10 @@ def test_tensorize_composed_gemm():
         s.reorder(ji, ko)
         s.reorder(ii, ko)
 
+
         B = s.blockize(ii)
         B = s.tensorize(B, intrin_composed_gemm(8, 8, 8))
+
 
         stmt = s.to_halide()
         return stmt
@@ -172,14 +176,6 @@ def test_schedule_after_tensorize():
     def _schedule_pass(stmt):
         s = tensorir.create_schedule(stmt)
 
-#        C, = s.blocks()
-#        i, j = s.axis(C)
-#
-#        jo, ji = s.split(j, 8)
-#
-#        bb = s.blockize(ji)
-#        bb = s.tensorize(bb, intrin_vadd(8))
-#
         stmt = s.to_halide()
         return stmt
 
@@ -194,8 +190,8 @@ if __name__ == "__main__":
     test_tensorize_vadd()
     test_tensorize_dot()
     test_tensorize_composed_gemm()
+
     test_untensorize()
-
     test_schedule_after_tensorize()
-    test_usage_in_compute_dsl()
 
+    test_usage_in_compute_dsl()

@@ -1065,6 +1065,18 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
   });
 
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
+.set_dispatch<SetNode>([](const SetNode* op, IRPrinter* p) {
+  p->stream << '{';
+  for (auto it = op->data.begin(); it != op->data.end(); ++it) {
+    if (it != op->data.begin()) {
+      p->stream << ", ";
+    }
+    p->Print(NodeRef(*it));
+  }
+  p->stream << '}';
+});
+
+TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
 .set_dispatch<StrMapNode>([](const StrMapNode* op, IRPrinter* p) {
     p->stream << '{';
     for (auto it = op->data.begin(); it != op->data.end(); ++it) {

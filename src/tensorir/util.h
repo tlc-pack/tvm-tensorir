@@ -42,21 +42,19 @@ class TensorAccessGather : public ir::IRVisitor {
           acc.second.push_back(x);
         }
         access_all.push_back(acc);
+        if (!access_grouped.count(acc.first)) {
+          tensor_order.push_back(acc.first);
+        }
+        access_grouped[acc.first].push_back(acc.second);
       }
-    }
-  }
-
-  template <typename T>
-  void GatherAndGroup(T expr_or_stmt) {
-    Visit(expr_or_stmt);
-    for (auto x : access_all) {
-      access_grouped[x.first].push_back(x.second);
     }
   }
 
   StdNodeMap<Tensor, std::vector<std::vector<Expr> > > access_grouped; // grouped accesses by target tensor
   std::vector<std::pair<Tensor, std::vector<Expr> > > access_all; // all accesses
   std::vector<std::vector<Expr> > access_one;                     // accesses to the target buffer
+
+  std::vector<Tensor> tensor_order;  // a list to keep the original order of tensors
  private:
   Tensor target_tensor_;
 };

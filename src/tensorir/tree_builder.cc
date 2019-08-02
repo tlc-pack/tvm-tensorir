@@ -172,14 +172,15 @@ Array<TensorRegion> CreateInputRegions(const NodeRef& expr_or_stmt) {
   Array<TensorRegion> inputs;
 
   TensorAccessGather gather;
-  gather.GatherAndGroup(expr_or_stmt);
+  gather.Visit(expr_or_stmt);
 
-  for (auto iter : gather.access_grouped) { // for all tensors
+  for (auto t : gather.tensor_order) { // for all tensors
     Array<Range> ranges;
+    const std::vector<std::vector<Expr > >& access_info = gather.access_grouped[t];
 
-    for (size_t i = 0; i < iter.first->shape.size(); ++i) { // for all dimensions
+    for (size_t i = 0; i < t->shape.size(); ++i) { // for all dimensions
       Array<arith::IntSet> sets;
-      for (const auto &x : iter.second) {   // for multiple accesses
+      for (const auto &x : access_info) {   // for multiple accesses
         sets.push_back(arith::IntSet::single_point(x[i]));
       }
       arith::IntSet unioned = arith::Union(sets);
@@ -187,7 +188,7 @@ Array<TensorRegion> CreateInputRegions(const NodeRef& expr_or_stmt) {
                                                  unioned.max() - unioned.min()+1));
     }
 
-    inputs.push_back(TensorRegionNode::make(iter.first, ranges));
+    inputs.push_back(TensorRegionNode::make(t, ranges));
   }
   return inputs;
 }

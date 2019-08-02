@@ -817,6 +817,9 @@ class PrettyPrinter::AttrPrinter : public AttrVisitor {
   void Visit(const char* key, runtime::Object* obj) final {
     LOG(FATAL) << "do not allow Object as argument";
   }
+  void Visit(const char* key, runtime::PackedFunc* obj) final {
+    LOG(FATAL) << "do not allow PackedFunction as argument";
+  }
 
  private:
   std::vector<Doc>* docs;

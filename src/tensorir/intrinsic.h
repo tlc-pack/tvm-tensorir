@@ -12,23 +12,27 @@ namespace tvm {
 namespace tensorir {
 
 using runtime::PackedFunc;
+using runtime::TypedPackedFunc;
 
 // A tensor intrinsic replaces a block to another block
 class TensorIntrinsic;
 class TensorIntrinsicNode : public Node {
  public:
   Operation op;             // semantic form
-  PackedFunc intrin_func;   // (Array<TensorRegion>, Array<TensorRegion>) -> ScheduleTreeNode or Stmt,
-                            // todo(lmzheng): use TypedPackedFunc？
+  TypedPackedFunc<NodeRef(Array<TensorRegion>, Array<TensorRegion>)> intrin_func;
   std::string name;
 
   void VisitAttrs(AttrVisitor *v) final {
+    PackedFunc packed = intrin_func.packed();
     v->Visit("op", &op);
-    //v->Visit("intrin_func", &intrin_func);  // todo(lmzheng): fix AttrVisitor
+    v->Visit("intrin_func", &packed);
     v->Visit("name", &name);
   }
 
-  TVM_DLL static TensorIntrinsic make(Operation op, PackedFunc intrin_func, std::string name);
+  TVM_DLL static TensorIntrinsic make(
+      Operation op,
+      TypedPackedFunc<NodeRef(Array<TensorRegion>, Array<TensorRegion>)> intrin_func,
+      std::string name);
 
   static constexpr const char *_type_key = "tensorir.TensorIntrinsic";
   TVM_DECLARE_NODE_TYPE_INFO(TensorIntrinsicNode, Node);

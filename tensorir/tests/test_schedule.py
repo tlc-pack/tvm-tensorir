@@ -21,10 +21,8 @@ def check_correctness(s, args, inserted_pass, target='llvm'):
     ctx1 = tvm.context(target1)
     ctx2 = tvm.context(target2)
 
-    #bufs1 = [tvm.nd.array(np.random.randn(*topi.util.get_const_tuple(x.shape)).astype(x.dtype), ctx=ctx1)
-    #        for x in args]
-    bufs1 = [tvm.nd.array(np.ones(topi.util.get_const_tuple(x.shape)).astype(x.dtype), ctx=ctx1)
-            for x in args]
+    bufs1 = [tvm.nd.array(np.array(np.random.randn(*topi.util.get_const_tuple(x.shape)),
+                                   dtype=x.dtype), ctx=ctx1) for x in args]
     bufs2 = [tvm.nd.array(x, ctx=ctx2) for x in bufs1]
 
     func1(*bufs1)
@@ -34,7 +32,7 @@ def check_correctness(s, args, inserted_pass, target='llvm'):
     bufs2_np = [x.asnumpy() for x in bufs2]
 
     for x, y in zip(bufs1_np, bufs2_np):
-        np.testing.assert_allclose(x, y)
+        np.testing.assert_allclose(x, y, atol=1e-4)
 
 def test_decompile_fuse():
     N = M = K = 128
@@ -171,9 +169,19 @@ def test_from_unroll():
 
     check_correctness(s, [A, B], _schedule_pass)
 
+
 def test_rank_zero():
     A = tvm.placeholder((), name='A')
-    B = tvm.compute((), lambda : A, name='B')
+    B = tvm.compute((), lambda : A(), name='B')
+
+    # test invariant
+    def _schedule_pass(stmt):
+        s = tensorir.create_schedule(stmt)
+        return  s.to_halide()
+
+    s = tvm.create_schedule([B.op])
+    check_correctness(s, [A, B], _schedule_pass)
+
 
 def test_blockize():
     N = M = K = 4
@@ -263,11 +271,10 @@ if __name__ == "__main__":
     test_compute_at()
     test_unroll()
     test_from_unroll()
-    #test_rank_zero()
+    test_rank_zero()
     test_blockize()
 
     #test_partial_tile()
-
     #test_from_gpu()
     #test_bind()
 
