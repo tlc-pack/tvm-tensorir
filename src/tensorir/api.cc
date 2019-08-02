@@ -71,8 +71,8 @@ TVM_REGISTER_API("tensorir.schedule.ScheduleTensorize")
 TVM_REGISTER_API("tensorir.schedule.ScheduleUntensorize")
 .set_body_method(&Schedule::untensorize);
 
-TVM_REGISTER_API("tensorir.schedule.ScheduleVectorize")
-.set_body_method(&Schedule::vectorize);
+TVM_REGISTER_API("tensorir.schedule.ScheduleAnnotate")
+.set_body_method(&Schedule::annotate);
 
 TVM_REGISTER_API("tensorir.schedule.ScheduleToHalide")
 .set_body_method(&Schedule::ToHalide);

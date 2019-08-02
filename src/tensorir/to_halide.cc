@@ -225,18 +225,17 @@ Stmt Schedule::ToHalide() const {
               ret.push_back(ArrayToBlock((stmts)));
             }
           } else {
+            ForType type;
             if (n->axis_type == AxisType::vectorized) {
-              ret.push_back(For::make(var,
-                                      n->min, n->extent,
-                                      ForType::Vectorized, DeviceAPI::None,
-                                      ArrayToBlock(stmts)));
+              type = ForType::Vectorized;
+            } else if (n->axis_type == AxisType::unrolled) {
+              type = ForType::Unrolled;
             } else {
-              ret.push_back(For::make(var,
-                                      n->min, n->extent,
-                                      ForType::Serial, DeviceAPI::None,
-                                      ArrayToBlock(stmts)));
+              type = ForType::Serial;
             }
-
+            ret.push_back(For::make(var, n->min, n->extent,
+                                    type, DeviceAPI::None,
+                                    ArrayToBlock(stmts)));
           }
         }
       }

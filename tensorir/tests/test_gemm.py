@@ -195,7 +195,7 @@ def test_gemm_schedule():
         tx, xi = s.split(xi, nparts=num_thread)
         s.bind(ty, thread_y)
         s.bind(tx, thread_x)
-        s.vectorize(xi)
+        s.annotate(xi, "vectorize")
 
         # Schedule for B's shared memory load
         ty, tx = s.axis(BB)[-2:]
@@ -203,12 +203,12 @@ def test_gemm_schedule():
         tx, xi = s.split(xi, nparts=num_thread)
         s.bind(ty, thread_y)
         s.bind(tx, thread_x)
-        s.vectorize(xi)
+        s.annotate(xi, "vectorize")
         stmt = s.to_halide()
         return stmt
 
     check_correctness(s, [A, B, C], _schedule_pass, 'cuda', tvm.build(*origin_schedule(), 'cuda'))
 
 if __name__ == "__main__":
-    # test_gemm()
+    test_gemm()
     test_gemm_schedule()

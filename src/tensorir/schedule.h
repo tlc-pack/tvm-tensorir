@@ -91,7 +91,7 @@ class Schedule : public NodeRef {
   BlockTreeNode cache_read();        // unimplemented
   BlockTreeNode cache_write();       // unimplemented
   BlockTreeNode double_buffer();     // unimplemented
-  AxisTreeNode vectorize(AxisTreeNode axis);
+  void annotate(AxisTreeNode axis, std::string type);
 
   // dependency analysis
   Array<Array<arith::IntSet> > GatherRegion(Array<Tensor> tensors, AxisTreeNode axis, int start_child_index) const;

@@ -192,9 +192,6 @@ def test_conv_schedule():
     WL = s.cache_read(WW, "local", [B])
     BL = s.cache_write(B, "local")
 
-
-
-
     def _schedule_pass(stmt):
         s = tensorir.create_schedule(stmt)
 
@@ -264,7 +261,7 @@ def test_conv_schedule():
         ty, tx, ci, ni = s.reorder(ty, tx, ci, ni)
         s.bind(ty, thread_y)
         s.bind(tx, thread_x)
-        s.vectorize(ni)  # vectorize memory load
+        s.annotate(ni, "vectorize")  # vectorize memory load
 
         # Schedule for W's shared memory load
         ci, fi = s.axis(WW)[-2:]
@@ -274,7 +271,7 @@ def test_conv_schedule():
         ty, tx, ci, fi = s.reorder(ty, tx, ci, fi)
         s.bind(ty, thread_y)
         s.bind(tx, thread_x)
-        s.vectorize(fi)  # vectorize memory load
+        s.annotate(fi, "vectorize")  # vectorize memory load
 
         stmt = s.to_halide()
         return stmt

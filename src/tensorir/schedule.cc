@@ -750,9 +750,14 @@ ScheduleTreeNode Schedule::untensorize(BlockTreeNode block) {
   return ScheduleTreeNode(nullptr);
 }
 
-AxisTreeNode Schedule::vectorize(AxisTreeNode axis) {
-  axis->axis_type = AxisType::vectorized;
-  return axis;
+void Schedule::annotate(AxisTreeNode axis, std::string type) {
+  if (type == "vectorize") {
+    axis->axis_type = AxisType::vectorized;
+  } else if (type == "unroll") {
+    axis->axis_type = AxisType::unrolled;
+  } else {
+    LOG(FATAL) << "Unsupported type of " << type;
+  }
 }
 
 void Schedule::bind(AxisTreeNode axis, IterVar thread_iter) {
