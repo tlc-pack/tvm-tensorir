@@ -3,10 +3,6 @@ import tvm
 import topi
 from tvm import tensorir
 from tvm import ir_pass, register_func
-
-import os
-import sys
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from common import check_correctness
 
 def test_decompile_fuse():

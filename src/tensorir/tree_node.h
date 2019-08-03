@@ -141,28 +141,6 @@ class BlockTreeNodeNode : public ScheduleTreeNodeNode {
 
 TVM_DEFINE_MUTABLE_NODE_REF(BlockTreeNode, ScheduleTreeNode, BlockTreeNodeNode);
 
-class Attr;
-
-class AttrNode : public Node {
- public:
-  NodeRef node;
-  std::string attr_key;
-  Expr value;
-
-  void VisitAttrs(AttrVisitor* v) final {
-    v->Visit("node", &node);
-    v->Visit("attr_key", &attr_key);
-    v->Visit("value", &value);
-  }
-
-  TVM_DLL static Attr make(NodeRef node, std::string attr_key, Expr value);
-
-  static constexpr const char* _type_key = "tensorir.AttrNode";
-  TVM_DECLARE_NODE_TYPE_INFO(AttrNode, Node);
-};
-
-TVM_DEFINE_NODE_REF(Attr, AttrNode);
-
 // debug tools
 void PrintTreeNode(std::ostream &output, ScheduleTreeNode node, size_t indent=0);
 

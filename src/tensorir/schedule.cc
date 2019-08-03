@@ -139,17 +139,17 @@ AxisTreeNode Schedule::fuse(AxisTreeNode outer, AxisTreeNode inner) {
   return fused_node;
 }
 
-Array<AxisTreeNode> Schedule::reorder(Array<AxisTreeNode> axises) {
-  // Get the depth of each axises
+Array<AxisTreeNode> Schedule::reorder(Array<AxisTreeNode> axes) {
+  // Get the depth of each axes
   std::map<int, AxisTreeNode> depth;
-  for (auto axis : axises) {
+  for (auto axis : axes) {
     int axis_depth = 0;
     ScheduleTreeNode node = axis;
     while (node != operator->()->root) {
       ++axis_depth;
       node = operator->()->father_map[node];
     }
-    CHECK_EQ(depth.count(axis_depth), 0) << "try to reorder two axises with same depth";
+    CHECK_EQ(depth.count(axis_depth), 0) << "try to reorder two axes with same depth";
     depth[axis_depth] = axis;
   }
 
@@ -158,9 +158,9 @@ Array<AxisTreeNode> Schedule::reorder(Array<AxisTreeNode> axises) {
     origin.push_back(x.second);
   }
 
-  // reorder axises
-  for (int i = axises.size() - 1; i >= 0; --i) {
-    auto axis = axises[i];
+  // reorder axes
+  for (int i = axes.size() - 1; i >= 0; --i) {
+    auto axis = axes[i];
     auto origin_axis = origin[i];
     if (origin_axis != axis) {
       auto tmp = binary_reorder(axis, origin_axis);
@@ -171,8 +171,8 @@ Array<AxisTreeNode> Schedule::reorder(Array<AxisTreeNode> axises) {
       origin.Set(i - 1, new_outer);
       origin.Set(i, new_inner);
 
-      axises.Set(i, new_inner);
-      axises.Set(axises.Index(origin_axis), new_outer);
+      axes.Set(i, new_inner);
+      axes.Set(axes.Index(origin_axis), new_outer);
     }
   }
   return origin;
@@ -182,18 +182,13 @@ Array<AxisTreeNode> Schedule::binary_reorder(AxisTreeNode outer, AxisTreeNode in
   // Just lower the outer axis under the inner axis.
   // If there are extra branches, build a new outer axis above the branches
   AxisTreeNode root = operator->()->root;
+  const auto &father_map = operator->()->father_map;
   CHECK(outer != root) << "Cannot reorder root axis";
-  ScheduleTreeNode now = inner;
-  const auto& father_map = operator->()->father_map;
-  while (father_map[now] != outer && now != root) {
-    now = father_map[now];
-  }
-  CHECK(now != root) << "outer node is not the ancestor of the inner node";
+  CHECK(IsAncestor(outer, inner)) << "outer node is not the ancestor of the inner node";
   AxisTreeNode new_outer;
 
   // Update nodes in the path
-  ScheduleTreeNode last = inner;
-  now = inner;
+  ScheduleTreeNode last = inner, now = inner;
   while (now != father_map[outer]) {
     if (now == inner || now->children.size() > 1) {
       for (const auto& child : now->children) {
@@ -212,24 +207,8 @@ Array<AxisTreeNode> Schedule::binary_reorder(AxisTreeNode outer, AxisTreeNode in
   }
   CHECK(now == father_map[outer]);
 
-  auto index = now->children.Index(outer);
-  if (outer->children.size() == 1) {
-    now->children.Set(index, outer->children[0]);
-  }
-  else {
-    size_t offset = outer->children.size() - 1;
-    for (size_t i = 0; i < offset; ++i) {
-      now->children.push_back(outer->children[i]);
-    }
-    for (size_t i = now->children.size() - 1 - offset; i > index; --i) {
-      now->children.Set(i + offset, now->children[i]);
-    }
-    for (size_t i = 0; i < outer->children.size(); ++i) {
-      now->children.Set(i + index, outer->children[i]);
-    }
-  }
+  ReplaceChild(outer, outer->children);
   operator->()->father_map.erase(outer);
-  UpdateFather(now);
   return Array<AxisTreeNode>{inner, new_outer};
 }
 
@@ -428,48 +407,7 @@ BlockTreeNode Schedule::compute_at(BlockTreeNode block, AxisTreeNode axis) {
     output_tensors.push_back(x->data);
   }
   Array<Array<IntSet> > ranges = GatherRegion(output_tensors, axis, after_pos);
-  auto& realize_region = operator->()->raw_realize_region;
 
-  Array<ScheduleTreeNode> dependent_blocks;
-  for (const auto& block_tree_node : blocks()) {
-    if (block == block_tree_node) continue;
-    bool finished = false;
-    for (const auto& tensor_region : block_tree_node->inputs) {
-      if (finished) break;
-      for (const auto& tensor : output_tensors) {
-        if (tensor->op == tensor_region->data->op) {
-          dependent_blocks.push_back(block_tree_node);
-          finished = true;
-          break;
-        }
-      }
-    }
-  }
-  dependent_blocks.push_back(axis);
-  ScheduleTreeNode _lca = LowestCommonAncestor(dependent_blocks, true);
-
-  std::unordered_map<const Variable*, IntSet> reduction_dom_map;
-  for (ScheduleTreeNode node = axis; node != _lca; node = operator->()->father_map[node]) {
-    if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
-      reduction_dom_map[n->loop_var.get()] = IntSet::range(Range::make_by_min_extent(n->min, n->extent));
-    }
-  }
-
-  for (size_t i = 0; i < output_tensors.size(); ++i) {
-    Region region;
-    const auto& tensor = output_tensors[i];
-    for (const auto& int_set : ranges[i]) {
-      Range real = Range::make_by_min_extent(int_set.min(), int_set.max() - int_set.min() + 1);
-      IntSet o = arith::EvalSet(real, reduction_dom_map);
-      if (const arith::IntervalSetNode* set = o.as<arith::IntervalSetNode>()) {
-        region.push_back(Range::make_by_min_extent(set->min_value, set->max_value - set->min_value + 1));
-      }
-      else {
-        LOG(FATAL);
-      }
-    }
-    realize_region[tensor] = region;
-  }
   // copy domain for reduction axis
   StdNodeMap<Var, Range> dom_map;
   ScheduleTreeNode lca = LowestCommonAncestor(Array<ScheduleTreeNode>{block, axis}, false);
@@ -501,8 +439,7 @@ BlockTreeNode Schedule::compute_at(BlockTreeNode block, AxisTreeNode axis) {
       CHECK(block->args[i].get()->is_type<Variable>()) << "Unsolvable reduction iteration domain "
                                                           "can only contains single variable";
       // todo(lmzheng): check it is reduction axis
-      const auto * variable = block->args[i].as<Variable>();
-      Var var(variable->GetNodePtr());
+      Var var = Downcast<Var>(block->args[i]);
       node = AxisTreeNodeNode::make(var,
                                     dom_map[var]->min,
                                     dom_map[var]->extent,
@@ -771,13 +708,47 @@ void Schedule::bind(AxisTreeNode axis, IterVar thread_iter) {
   // Create new loop var
   Var new_var = thread_iter->var;
   std::string attr_type = thread_iter->thread_tag == "vthread" ? attr::virtual_thread : attr::thread_extent;
-  bind_var[new_var] = AttrNode::make(thread_iter, attr_type, axis->extent);
+  bind_var[new_var] = AttrStmt::make(thread_iter, attr_type, axis->extent, Stmt());
 
   // Replace the axis loop var to the new one
   Map<Var, Expr> bind_map;
   bind_map.Set(old_var, new_var);
   SubstituteArgOnly(axis, bind_map);
   axis->loop_var = new_var;
+
+  // Handle with cooperative fetch
+  //Down to leaf
+  std::function<void(const ScheduleTreeNode& n)> delete_duplicate_axis;
+  delete_duplicate_axis = [this, &thread_iter, &delete_duplicate_axis](const ScheduleTreeNode& node) {
+    if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
+      if (operator->()->bind_var.count(n->loop_var) &&
+          operator->()->bind_var[n->loop_var].as<AttrStmt>()->node == thread_iter) {
+        AxisTreeNode axis = GetRef<AxisTreeNode>(n);
+        ReplaceChild(axis, axis->children);
+      } else {
+        for (const auto& child : n->children) {
+          delete_duplicate_axis(child);
+        }
+      }
+    }
+  };
+  for (const auto& child : axis->children) {
+    delete_duplicate_axis(child);
+  }
+
+  // Up to root
+  ScheduleTreeNode now = operator->()->father_map[axis];
+  while (now != operator->()->root) {
+    if (const AxisTreeNodeNode* n = now.as<AxisTreeNodeNode>()) {
+      if (operator->()->bind_var.count(n->loop_var) &&
+          operator->()->bind_var[n->loop_var].as<AttrStmt>()->node == thread_iter) {
+        ReplaceChild(axis, axis->children);
+        // We guarantee there is only one bound axis to the root.
+        break;
+      }
+      now = operator->()->father_map[now];
+    }
+  }
 }
 
 // dependency analysis
@@ -793,13 +764,12 @@ Array<Array<IntSet> > Schedule::GatherRegion(Array<Tensor> tensors, AxisTreeNode
       const auto& bind_var = operator->()->bind_var;
       const auto& var = n->loop_var;
       if (bind_var.count(var) &&
-          (bind_var.at(var)->attr_key == attr::virtual_thread ||
-          (bind_var.at(var)->attr_key == attr::thread_extent &&
+          (bind_var.at(var).as<AttrStmt>()->attr_key == attr::virtual_thread ||
+          (bind_var.at(var).as<AttrStmt>()->attr_key == attr::thread_extent &&
           (var->name_hint.find("threadIdx.") == 0)))) {
-        const auto& attr = operator->()->bind_var.at(var);
+        const auto& attr = operator->()->bind_var.at(var).as<AttrStmt>();
         shared_dom_map[n->loop_var.get()] = IntSet::range(Range::make_by_min_extent(0, attr->value));
-      }
-      else {
+      } else {
         shared_dom_map[n->loop_var.get()] = IntSet::single_point(n->loop_var);
       }
     }
@@ -838,8 +808,7 @@ Array<Array<IntSet> > Schedule::GatherRegion(Array<Tensor> tensors, AxisTreeNode
             IntSet o;
             if (operator->()->raw_realize_scope.at(tensor->op) == "shared") {
               o = arith::EvalSet(real, shared_dom_map);
-            }
-            else {
+            } else {
               o = arith::EvalSet(real, dom_map);
             }
             isets_to_merge[i].push_back(o);
@@ -893,6 +862,27 @@ void Schedule::ReplaceChild(ScheduleTreeNode old_child, ScheduleTreeNode new_chi
   operator->()->father_map.Set(new_child, father);
 }
 
+void Schedule::ReplaceChild(ScheduleTreeNode old_child, Array<ScheduleTreeNode> new_children) {
+  if (new_children.size() == 1) {
+    ReplaceChild(old_child, new_children[0]);
+  } else {
+    ScheduleTreeNode father = operator->()->father_map[old_child];
+    auto index = father->children.Index(old_child);
+    size_t offset = new_children.size() - 1;
+    for (size_t i = 0; i < offset; ++i) {
+      father->children.push_back(new_children[i]);
+    }
+    for (size_t i = father->children.size() - 1 - offset; i > index; --i) {
+      father->children.Set(i + offset, father->children[i]);
+    }
+    for (size_t i = 0; i < new_children.size(); ++i) {
+      father->children.Set(i + index, new_children[i]);
+    }
+
+    UpdateFather(father);
+  }
+}
+
 ScheduleTreeNode Schedule::LowestCommonAncestor(Array<ScheduleTreeNode> nodes, bool inclusive) const {
   // Todo (lmzheng): better alg?
   std::vector<StdNodeSet<ScheduleTreeNode> > father_set;
@@ -944,6 +934,17 @@ void Schedule::CheckFatherLink() {
   check_func(operator->()->root);
 }
 
+bool Schedule::IsAncestor(ScheduleTreeNode outer, ScheduleTreeNode inner) const{
+  ScheduleTreeNode now = inner;
+  while (now != operator->()->root) {
+    now = operator->()->father_map[now];
+    if (now == outer) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // tree utilities that do not require father map
 void GatherChildrenBlocks(ScheduleTreeNode node, StdNodeSet<BlockTreeNode>* ret) {
   if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
@@ -959,7 +960,6 @@ void GatherChildrenBlocks(ScheduleTreeNode node, StdNodeSet<BlockTreeNode>* ret)
 
 void GatherVarDomain(ScheduleTreeNode node,
                      std::unordered_map<const Variable*, arith::IntSet>* dom_map) {
-  // todo(@siyuan)
   if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
     if ((*dom_map).count(n->loop_var.get()) == 0) {
       (*dom_map)[n->loop_var.get()] = IntSet::range(Range::make_by_min_extent(n->min, n->extent));

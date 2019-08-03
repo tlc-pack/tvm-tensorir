@@ -36,7 +36,7 @@ class ScheduleNode : public Node {
 
   StdNodeMap<Tensor, Region> raw_realize_region; // todo(lmzheng): refactor Map and use Map instead
   StdNodeMap<FunctionRef, std::string> raw_realize_scope;
-  StdNodeMap<Var, Attr> bind_var;
+  StdNodeMap<Var, Stmt> bind_var;
 
   void VisitAttrs(AttrVisitor* v) final {
     v->Visit("root", &root);
@@ -70,7 +70,7 @@ class Schedule : public NodeRef {
   Array<AxisTreeNode> split(AxisTreeNode axis, Expr factor);
   Array<AxisTreeNode> split_nparts(AxisTreeNode axis, Expr nparts);
   AxisTreeNode fuse(AxisTreeNode outer, AxisTreeNode inner);
-  Array<AxisTreeNode> reorder(Array<AxisTreeNode> axises);
+  Array<AxisTreeNode> reorder(Array<AxisTreeNode> axes);
   Array<AxisTreeNode> binary_reorder(AxisTreeNode outer, AxisTreeNode inner);
   Array<ScheduleTreeNode> unroll(AxisTreeNode axis);
 
@@ -106,7 +106,9 @@ class Schedule : public NodeRef {
   void UpdateFather(ScheduleTreeNode father, bool recursive = false);
   ScheduleTreeNode LowestCommonAncestor(Array<ScheduleTreeNode> nodes, bool inclusive) const;
   inline void ReplaceChild(ScheduleTreeNode old_child, ScheduleTreeNode new_child);
+  inline void ReplaceChild(ScheduleTreeNode old_child, Array<ScheduleTreeNode> new_children);
   void RemoveLeaf(ScheduleTreeNode node);
+  bool IsAncestor(ScheduleTreeNode outer, ScheduleTreeNode inner) const;
 
   void CheckFatherLink();
 

@@ -17,9 +17,6 @@
 """Example code to do square matrix multiplication."""
 import tvm
 from tvm import tensorir
-import os
-import sys
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from common import check_correctness
 
 def origin_schedule():
@@ -170,7 +167,6 @@ def test_gemm_schedule():
 
             return tx, yi
 
-        tx, yi = split_calc(CC)
         tx, yi = split_calc(C)
 
         s.compute_at(CC_, tx)
@@ -187,7 +183,7 @@ def test_gemm_schedule():
 
         s.compute_at(AA, ko)
         s.compute_at(BB, ko)
-        # s.unroll(kt)
+        s.annotate(kt, "unroll")
 
         # Schedule for A's shared memory load
         ty, tx = s.axis(AA)[-2:]

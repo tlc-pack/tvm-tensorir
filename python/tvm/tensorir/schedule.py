@@ -56,8 +56,8 @@ class Schedule(NodeBase):
     def untensorize(self, block):
         return ScheduleUntensorize(self, block)
 
-    def annotate(self, axis, type):
-        return ScheduleAnnotate(self, axis, type)
+    def annotate(self, axis, type_name):
+        return ScheduleAnnotate(self, axis, type_name)
 
     def to_halide(self):
         return ScheduleToHalide(self)

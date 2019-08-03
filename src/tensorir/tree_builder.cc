@@ -20,7 +20,7 @@ class IRCleaner : public IRMutator {
     if (op->attr_key == attr::thread_extent || op->attr_key == attr::virtual_thread) {
       Var var =IterVar(op->node.node_)->var;
       Expr extent = op->value;
-      bind_var[var] = AttrNode::make(IterVar(op->node.node_), op->attr_key, op->value);
+      bind_var[var] = AttrStmt::make(op->node, op->attr_key, op->value, Stmt());
       return For::make(var, 0, extent, ForType::Serial, DeviceAPI::None, Mutate(op->body));
     } else if (op->attr_key == attr::realize_scope) {
       const StringImm* str = op->value.as<StringImm>();
@@ -43,7 +43,7 @@ class IRCleaner : public IRMutator {
  public:
   StdNodeMap<Tensor, Region> raw_realize_region;
   StdNodeMap<FunctionRef, std::string> raw_realize_scope;
-  StdNodeMap<Var, Attr> bind_var;
+  StdNodeMap<Var, Stmt> bind_var;
 };
 
 Schedule TreeBuilder::Build(Stmt stmt) {

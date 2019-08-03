@@ -14,12 +14,9 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Example code to do square matrix multiplication."""
+"""Example code to do Conv2d."""
 import tvm
 from tvm import tensorir
-import os
-import sys
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from common import check_correctness
 
 def origin_schedule():

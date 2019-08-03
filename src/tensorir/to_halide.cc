@@ -72,56 +72,39 @@ Stmt Schedule::ToHalide() const {
     } else if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
       Set<Var> used_vars;
       Set<Var> seen;
-      Set<Var> used_thread_vars;
-      Set<Var> seen_thread_vars;
       for (size_t i = 0; i < n->args.size(); ++i) {
-        const auto vars = GatherVars(n->args[i]);
-        used_vars.insert(vars);
-        for (const auto & var : vars) {
-          if (var->name_hint.find("threadIdx.") == 0) {
-            used_thread_vars.insert(var);
-          }
-        }
+        used_vars.insert(GatherVars(n->args[i]));
       }
 
       // Go upwards until all used vars are fetched.
       // Then we find the root node of this block
       ScheduleTreeNode now = node;
-      ScheduleTreeNode shared_memory_node = node;
       while (operator->()->father_map[now] != operator->()->root
           && used_vars.size() > seen.size()) {
         now = operator->()->father_map[now];
-        if (used_thread_vars.size() > seen_thread_vars.size()) {
-          shared_memory_node = now;
-        }
         if (const AxisTreeNodeNode* loop = now.as<AxisTreeNodeNode>()) {
           Var v = loop->loop_var;
           if (used_vars.count(v) && !seen.count(v)) {
             seen.insert(v);
-            if (v->name_hint.find("threadIdx.") == 0) {
-              seen_thread_vars.insert(v);
-            }
           }
         }
       }
 
       for (const auto& x : n->outputs) {
-        if (operator->()->raw_realize_scope.count(x->data->op)) {
-          if (operator->()->raw_realize_scope.at(x->data->op) != "") {
-            related_nodes[x->data].push_back(node);
-          }
-          else {
-            related_nodes[x->data].push_back(now);
-          }
+        const std::string& str = operator->()->raw_realize_scope.at(x->data->op);
+        if (str == "" || str == "global") {
+          related_nodes[x->data].push_back(now);
+        } else {
+          related_nodes[x->data].push_back(node);
         }
       }
       for (const auto& x : n->inputs) {
         if (operator->()->raw_realize_scope.count(x->data->op)) {
-          if (operator->()->raw_realize_scope.at(x->data->op) != "") {
-            related_nodes[x->data].push_back(node);
-          }
-          else {
+          const std::string& str = operator->()->raw_realize_scope.at(x->data->op);
+          if (str == "" || str == "global") {
             related_nodes[x->data].push_back(now);
+          } else {
+            related_nodes[x->data].push_back(node);
           }
         }
       }
@@ -139,13 +122,14 @@ Stmt Schedule::ToHalide() const {
     for (const auto& child : lca->children) {
       if (FindAccess(child, x.first)) {
         attached_allocation[child].push_back(x.first);
-        if (operator->()->raw_realize_scope.at(x.first->op) != "") {
+        const auto& str = operator->()->raw_realize_scope.at(x.first->op);
+        if (str != "" && str != "global") {
           const auto *axis = lca.as<AxisTreeNodeNode>();
+          CHECK(axis != nullptr);
           auto regions = GatherRegion(Array<Tensor>{x.first}, GetRef<AxisTreeNode>(axis), 0);
           Region region;
           for (const auto& int_set : regions[0]) {
-            arith::Analyzer analyzer;
-            Range real = Range::make_by_min_extent(int_set.min(), analyzer.canonical_simplify(int_set.max() - int_set.min() + 1));
+            Range real = Range::make_by_min_extent(int_set.min(), Simplify(int_set.max() - int_set.min() + 1));
             region.push_back(real);
           }
           realize_region[x.first] = region;
@@ -155,10 +139,9 @@ Stmt Schedule::ToHalide() const {
     }
   }
 
-  std::unordered_set<std::string> binded_threads;
   // # 2. Translate to HalideIR
   std::function<Array<Stmt> (const ScheduleTreeNode& n)> to_halide_stmt;
-  to_halide_stmt = [this, &to_halide_stmt, &attached_allocation, &binded_threads, &realize_region](const ScheduleTreeNode& node) {
+  to_halide_stmt = [this, &to_halide_stmt, &attached_allocation, &realize_region](const ScheduleTreeNode& node) {
     std::vector<Stmt> ret;
 
     // attach realize scope
@@ -183,17 +166,6 @@ Stmt Schedule::ToHalide() const {
 
     // translate nodes
     if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
-      bool new_thread_axis;
-      if (operator->()->bind_var.count(n->loop_var)) {
-        const auto& name = n->loop_var->name_hint;
-        if (binded_threads.count(name)) {
-          new_thread_axis = false;
-        }
-        else {
-          binded_threads.insert(name);
-          new_thread_axis = true;
-        }
-      }
       Array<Stmt> stmts;
       for (const auto& child : n->children) {
         for (const auto& stmt : to_halide_stmt(child)) {
@@ -206,40 +178,27 @@ Stmt Schedule::ToHalide() const {
         Map<Var, Expr> vmap;
         vmap.Set(n->loop_var, 0);
         Array<Stmt> new_stmts;
-        for (const auto &stmt : stmts) {
-          arith::Analyzer analyzer;
-          new_stmts.push_back(SubstituteAndEquationSimplify(stmt, vmap, &analyzer));
+        for (const auto& stmt : stmts) {
+          new_stmts.push_back(Substitute(stmt, vmap));
         }
         ret.push_back(ArrayToBlock(new_stmts));
+      } else if (operator->()->bind_var.count(n->loop_var)) {
+        const AttrStmt* attr = operator->()->bind_var.at(n->loop_var).as<AttrStmt>();
+        ret.push_back(AttrStmt::make(attr->node, attr->attr_key, attr->value, ArrayToBlock(stmts)));
       } else {
-          auto var = n->loop_var;
-          auto bind_var = operator->()->bind_var;
-          auto it = bind_var.find(var);
-          if (it != bind_var.end()) {
-            Attr attr = it->second;
-            if (new_thread_axis) {
-              ret.push_back(AttrStmt::make(attr->node, attr->attr_key, attr->value, ArrayToBlock(stmts)));
-              binded_threads.erase(var->name_hint);
-            }
-            else {
-              ret.push_back(ArrayToBlock((stmts)));
-            }
-          } else {
-            ForType type;
-            if (n->axis_type == AxisType::vectorized) {
-              type = ForType::Vectorized;
-            } else if (n->axis_type == AxisType::unrolled) {
-              type = ForType::Unrolled;
-            } else {
-              type = ForType::Serial;
-            }
-            ret.push_back(For::make(var, n->min, n->extent,
-                                    type, DeviceAPI::None,
-                                    ArrayToBlock(stmts)));
-          }
+        ForType type;
+        if (n->axis_type == AxisType::vectorized) {
+          type = ForType::Vectorized;
+        } else if (n->axis_type == AxisType::unrolled) {
+          type = ForType::Unrolled;
+        } else {
+          type = ForType::Serial;
         }
+        ret.push_back(For::make(n->loop_var, n->min, n->extent,
+                                type, DeviceAPI::None,
+                                ArrayToBlock(stmts)));
       }
-    else if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
+    } else if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
       StdNodeMap<Var, Expr> var_map;
       for (size_t i = 0; i < n->args.size(); ++i) {
         var_map[n->vars[i]] = n->args[i];
