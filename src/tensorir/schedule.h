@@ -80,6 +80,7 @@ class Schedule : public NodeRef {
   BlockTreeNode compute_root(BlockTreeNode block);
 
   void bind(AxisTreeNode axis, IterVar thread_iter);
+  void annotate(AxisTreeNode axis, std::string type);
 
   BlockTreeNode blockize(AxisTreeNode axis);
   ScheduleTreeNode unblockize(BlockTreeNode block);
@@ -91,7 +92,6 @@ class Schedule : public NodeRef {
   BlockTreeNode cache_read();        // unimplemented
   BlockTreeNode cache_write();       // unimplemented
   BlockTreeNode double_buffer();     // unimplemented
-  void annotate(AxisTreeNode axis, std::string type);
 
   // dependency analysis
   Array<Array<arith::IntSet> > GatherRegion(Array<Tensor> tensors, AxisTreeNode axis, int start_child_index) const;
