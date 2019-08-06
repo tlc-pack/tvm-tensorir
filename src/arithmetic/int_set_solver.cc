@@ -60,7 +60,9 @@ Array<IntSet> SolveCover(Array<Var> vars, Array<IntSet> produce, Array<IntSet> r
     if (to_merge[i].size() == 0) { // unbounded free vars
       ret.push_back(IntSet(NodePtr<Node>(nullptr)));
     }
-    ret.push_back(Union(to_merge[i]));
+    else {
+      ret.push_back(Union(to_merge[i]));
+    }
   }
 
   return ret;

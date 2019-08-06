@@ -17,13 +17,17 @@ namespace tensorir {
 // remove realize, produce, and attr annotations to get a cleaner IR
 class IRCleaner : public IRMutator {
   Stmt Mutate_(const AttrStmt* op, const Stmt& s) {
-    if (op->attr_key == attr::realize_scope) {
+    if (op->attr_key == attr::thread_extent || op->attr_key == attr::virtual_thread) {
+      Var var =IterVar(op->node.node_)->var;
+      Expr extent = op->value;
+      bind_var[var] = AttrStmt::make(op->node, op->attr_key, op->value, Stmt());
+      return For::make(var, 0, extent, ForType::Serial, DeviceAPI::None, Mutate(op->body));
+    } else if (op->attr_key == attr::realize_scope) {
       const StringImm* str = op->value.as<StringImm>();
       CHECK(str != nullptr);
       raw_realize_scope[FunctionRef(op->node.node_)] = str->value;
-    }
-
-    return Mutate(op->body);
+      return Mutate(op->body);
+    } else return Mutate(op->body);
   }
 
   Stmt Mutate_(const Realize* op, const Stmt& s) {
@@ -39,8 +43,8 @@ class IRCleaner : public IRMutator {
  public:
   StdNodeMap<Tensor, Region> raw_realize_region;
   StdNodeMap<FunctionRef, std::string> raw_realize_scope;
+  StdNodeMap<Var, Stmt> bind_var;
 };
-
 
 Schedule TreeBuilder::Build(Stmt stmt) {
   // remove redundant ast nodes from Halide
@@ -59,6 +63,7 @@ Schedule TreeBuilder::Build(Stmt stmt) {
   node->block_list = std::move(block_list_);
   node->raw_realize_region = std::move(ir_cleaner.raw_realize_region);
   node->raw_realize_scope = std::move(ir_cleaner.raw_realize_scope);
+  node->bind_var = std::move(ir_cleaner.bind_var);
 
   Schedule ret(node);
   ret.UpdateFather(ret->root, true);

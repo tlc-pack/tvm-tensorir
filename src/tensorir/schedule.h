@@ -36,6 +36,7 @@ class ScheduleNode : public Node {
 
   StdNodeMap<Tensor, Region> raw_realize_region; // todo(lmzheng): refactor Map and use Map instead
   StdNodeMap<FunctionRef, std::string> raw_realize_scope;
+  StdNodeMap<Var, Stmt> bind_var;
 
   void VisitAttrs(AttrVisitor* v) final {
     v->Visit("root", &root);
@@ -67,8 +68,10 @@ class Schedule : public NodeRef {
 
   // schedule primitives
   Array<AxisTreeNode> split(AxisTreeNode axis, Expr factor);
+  Array<AxisTreeNode> split_nparts(AxisTreeNode axis, Expr nparts);
   AxisTreeNode fuse(AxisTreeNode outer, AxisTreeNode inner);
-  Array<AxisTreeNode> reorder(AxisTreeNode outer, AxisTreeNode inner);
+  Array<AxisTreeNode> reorder(Array<AxisTreeNode> axes);
+  Array<AxisTreeNode> binary_reorder(AxisTreeNode outer, AxisTreeNode inner);
   Array<ScheduleTreeNode> unroll(AxisTreeNode axis);
 
   void compute_inline(BlockTreeNode block);
@@ -76,7 +79,7 @@ class Schedule : public NodeRef {
   BlockTreeNode compute_after(BlockTreeNode block, AxisTreeNode axis);
   BlockTreeNode compute_root(BlockTreeNode block);
 
-  void bind(AxisTreeNode axis, std::string name);  // unimplemented
+  void bind(AxisTreeNode axis, IterVar thread_iter);
 
   BlockTreeNode blockize(AxisTreeNode axis);
   ScheduleTreeNode unblockize(BlockTreeNode block);
@@ -88,6 +91,7 @@ class Schedule : public NodeRef {
   BlockTreeNode cache_read();        // unimplemented
   BlockTreeNode cache_write();       // unimplemented
   BlockTreeNode double_buffer();     // unimplemented
+  void annotate(AxisTreeNode axis, std::string type);
 
   // dependency analysis
   Array<Array<arith::IntSet> > GatherRegion(Array<Tensor> tensors, AxisTreeNode axis, int start_child_index) const;
@@ -102,7 +106,9 @@ class Schedule : public NodeRef {
   void UpdateFather(ScheduleTreeNode father, bool recursive = false);
   ScheduleTreeNode LowestCommonAncestor(Array<ScheduleTreeNode> nodes, bool inclusive) const;
   inline void ReplaceChild(ScheduleTreeNode old_child, ScheduleTreeNode new_child);
+  inline void ReplaceChild(ScheduleTreeNode old_child, Array<ScheduleTreeNode> new_children);
   void RemoveLeaf(ScheduleTreeNode node);
+  bool IsAncestor(ScheduleTreeNode outer, ScheduleTreeNode inner) const;
 
   void CheckFatherLink();
 

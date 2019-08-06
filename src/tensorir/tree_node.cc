@@ -166,7 +166,8 @@ void PrintTreeNode(std::ostream &output, ScheduleTreeNode node, size_t indent) {
     output << " R: " << n->inputs;
     output << std::endl;
   } else {
-    LOG(FATAL);
+    output << "Error";
+//    LOG(FATAL);
   }
 }
 
