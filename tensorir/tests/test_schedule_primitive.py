@@ -3,7 +3,8 @@ import tvm
 import topi
 from tvm import tensorir
 from tvm import ir_pass, register_func
-from common import check_correctness
+
+from test_common import check_correctness
 
 def test_decompile_fuse():
     N = M = K = 128
@@ -186,11 +187,7 @@ def test_blockize():
     s = tvm.create_schedule([B.op])
     check_correctness(s, [A, B], _schedule_pass2)
 
-def test_partial_tile():
-    pass
-
 def test_from_gpu():
-    """Test naive translation of GPU code"""
     N = M = 128
 
     A = tvm.placeholder((N, M), name='A')
@@ -199,6 +196,7 @@ def test_from_gpu():
     s = tvm.create_schedule([B.op])
     s[B].bind(B.op.axis[0], tvm.thread_axis('blockIdx.x'))
     s[B].bind(B.op.axis[1], tvm.thread_axis('threadIdx.x'))
+
     def _schedule_pass(stmt):
         s = tensorir.create_schedule(stmt)
 
@@ -208,7 +206,6 @@ def test_from_gpu():
     check_correctness(s, [A, B], _schedule_pass, 'cuda')
 
 def test_bind():
-    """Test schedule primitive bind"""
     N = M = 128
 
     A = tvm.placeholder((N, M), name='A')
@@ -241,9 +238,6 @@ if __name__ == "__main__":
     test_from_unroll()
     test_rank_zero()
     test_blockize()
-
-    #test_partial_tile()
-
     test_from_gpu()
     test_bind()
 

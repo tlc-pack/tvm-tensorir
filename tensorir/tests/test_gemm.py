@@ -17,7 +17,7 @@
 """Example code to do square matrix multiplication."""
 import tvm
 from tvm import tensorir
-from common import check_correctness
+from test_common import check_correctness
 
 def origin_schedule():
     # graph
@@ -35,10 +35,10 @@ def origin_schedule():
 
     # schedule
     s = tvm.create_schedule(C.op)
-    AA = s.cache_read(A, "shared", [C])
-    BB = s.cache_read(B, "shared", [C])
-    AL = s.cache_read(AA, "local", [C])
-    BL = s.cache_read(BB, "local", [C])
+    AS = s.cache_read(A, "shared", [C])
+    BS = s.cache_read(B, "shared", [C])
+    AL = s.cache_read(AS, "local", [C])
+    BL = s.cache_read(BS, "local", [C])
     CC = s.cache_write(C, "local")
     #
     scale = 8
@@ -73,33 +73,32 @@ def origin_schedule():
     kt, ki = s[CC].split(ki, factor=1)
     s[CC].reorder(ko, kt, ki, yo, xo)
 
-    s[AA].compute_at(s[CC], ko)
-    s[BB].compute_at(s[CC], ko)
+    s[AS].compute_at(s[CC], ko)
+    s[BS].compute_at(s[CC], ko)
 
     s[CC].unroll(kt)
     s[AL].compute_at(s[CC], kt)
     s[BL].compute_at(s[CC], kt)
 
     # Schedule for A's shared memory load
-    ty, xi = s[AA].split(s[AA].op.axis[0], nparts=num_thread)
-    _, xi = s[AA].split(s[AA].op.axis[1], factor=num_thread * 4)
-    tx, xi = s[AA].split(xi, nparts=num_thread)
-    s[AA].bind(ty, thread_y)
-    s[AA].bind(tx, thread_x)
-    s[AA].vectorize(xi)
+    ty, xi = s[AS].split(s[AS].op.axis[0], nparts=num_thread)
+    _, xi = s[AS].split(s[AS].op.axis[1], factor=num_thread * 4)
+    tx, xi = s[AS].split(xi, nparts=num_thread)
+    s[AS].bind(ty, thread_y)
+    s[AS].bind(tx, thread_x)
+    s[AS].vectorize(xi)
     # Schedule for B' shared memory load
-    ty, xi = s[BB].split(s[BB].op.axis[0], nparts=num_thread)
-    _, xi = s[BB].split(s[BB].op.axis[1], factor=num_thread * 4)
-    tx, xi = s[BB].split(xi, nparts=num_thread)
-    s[BB].bind(ty, thread_y)
-    s[BB].bind(tx, thread_x)
-    s[BB].vectorize(xi)
-    s[AA].double_buffer()
-    s[BB].double_buffer()
+    ty, xi = s[BS].split(s[BS].op.axis[0], nparts=num_thread)
+    _, xi = s[BS].split(s[BS].op.axis[1], factor=num_thread * 4)
+    tx, xi = s[BS].split(xi, nparts=num_thread)
+    s[BS].bind(ty, thread_y)
+    s[BS].bind(tx, thread_x)
+    s[BS].vectorize(xi)
+    s[AS].double_buffer()
+    s[BS].double_buffer()
     return s, [A, B, C]
 
 def test_gemm():
-
     s, args = origin_schedule()
 
     def _schedule_pass(stmt):
@@ -112,10 +111,7 @@ def test_gemm():
 
 def test_gemm_schedule():
     # graph
-    nn = 2048
-    n = tvm.var('n')
-    n = tvm.convert(nn)
-    m, l = n, n
+    n, m, l = 2048, 2048, 2048
     A = tvm.placeholder((l, n), name='A')
     B = tvm.placeholder((l, m), name='B')
     k = tvm.reduce_axis((0, l), name='k')
@@ -126,12 +122,11 @@ def test_gemm_schedule():
 
     # schedule
     s = tvm.create_schedule(C.op)
-    AA = s.cache_read(A, "shared", [C])
-    BB = s.cache_read(B, "shared", [C])
-    AL = s.cache_read(AA, "local", [C])
-    BL = s.cache_read(BB, "local", [C])
+    AS = s.cache_read(A, "shared", [C])
+    BS = s.cache_read(B, "shared", [C])
+    AL = s.cache_read(AS, "local", [C])
+    BL = s.cache_read(BS, "local", [C])
     CC = s.cache_write(C, "local")
-
 
     def _schedule_pass(stmt):
         s = tensorir.create_schedule(stmt)
@@ -139,14 +134,15 @@ def test_gemm_schedule():
         scale = 8
         num_thread = 8
         block_factor = scale * num_thread
-        block_x = tvm.thread_axis("blockIdx.x")
-        thread_x = tvm.thread_axis((0, num_thread), "threadIdx.x")
-        block_y = tvm.thread_axis("blockIdx.y")
-        thread_y = tvm.thread_axis((0, num_thread), "threadIdx.y")
-        thread_xz = tvm.thread_axis((0, 2), "vthread", name="vx")
-        thread_yz = tvm.thread_axis((0, 2), "vthread", name="vy")
 
-        AA, AL, BB, BL, CC, CC_, C = s.blocks()
+        block_x = tvm.thread_axis("blockIdx.x")
+        thread_x = tvm.thread_axis("threadIdx.x")
+        block_y = tvm.thread_axis("blockIdx.y")
+        thread_y = tvm.thread_axis("threadIdx.y")
+        thread_xz = tvm.thread_axis("vthread", name="vx")
+        thread_yz = tvm.thread_axis("vthread", name="vy")
+
+        AS, AL, BS, BL, CL_init, CL_update, C = s.blocks()
 
         def split_calc(block):
             by, yi = s.split(s.axis(block)[-2], factor=block_factor)
@@ -169,11 +165,11 @@ def test_gemm_schedule():
 
         tx, yi = split_calc(C)
 
-        s.compute_at(CC_, tx)
-        s.compute_at(CC, s.axis(CC_)[-2])
+        s.compute_at(CL_update, tx)
+        s.compute_at(CL_init, s.axis(CL_update)[-2])
 
-        k = s.axis(CC_)[-1]
-        yo, xo = s.axis(CC)[-2:]
+        k = s.axis(CL_update)[-1]
+        yo, xo = s.axis(CL_init)[-2:]
         ko, ki = s.split(k, factor=8)
         kt, ki = s.split(ki, factor=1)
         ko, kt, ki, yo, xo = s.reorder(ko, kt, ki, yo, xo)
@@ -181,12 +177,12 @@ def test_gemm_schedule():
         s.compute_at(AL, kt)
         s.compute_at(BL, kt)
 
-        s.compute_at(AA, ko)
-        s.compute_at(BB, ko)
+        s.compute_at(AS, ko)
+        s.compute_at(BS, ko)
         s.annotate(kt, "unroll")
 
         # Schedule for A's shared memory load
-        ty, tx = s.axis(AA)[-2:]
+        ty, tx = s.axis(AS)[-2:]
         _, xi = s.split(tx, factor=num_thread * 4)
         tx, xi = s.split(xi, nparts=num_thread)
         s.bind(ty, thread_y)
@@ -194,7 +190,7 @@ def test_gemm_schedule():
         s.annotate(xi, "vectorize")
 
         # Schedule for B's shared memory load
-        ty, tx = s.axis(BB)[-2:]
+        ty, tx = s.axis(BS)[-2:]
         _, xi = s.split(tx, factor=num_thread * 4)
         tx, xi = s.split(xi, nparts=num_thread)
         s.bind(ty, thread_y)
@@ -208,3 +204,4 @@ def test_gemm_schedule():
 if __name__ == "__main__":
     test_gemm()
     test_gemm_schedule()
+

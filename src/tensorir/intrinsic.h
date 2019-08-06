@@ -1,11 +1,13 @@
 /*!
  *  Copyright (c) 2019 by Contributors
- *  \brief Tensor intrinsics
+ *  \brief Tensor intrinsics for tensorize
  */
 
 #ifndef TVM_TENSORIR_INTRINSIC_H_
 #define TVM_TENSORIR_INTRINSIC_H_
 
+#include <string>
+#include "intrinsic.h"
 #include "tree_node.h"
 
 namespace tvm {
@@ -40,18 +42,14 @@ class TensorIntrinsicNode : public Node {
 
 class TensorIntrinsic : public NodeRef {
  public:
-  TensorIntrinsic() {}
-  explicit TensorIntrinsic(NodePtr<Node> n): NodeRef(n) {}
-
-  const TensorIntrinsicNode* operator->() const;
+  // Generate intrinsic code for the given inputs and outputs region
   ScheduleTreeNode Instantiate(Array<TensorRegion> inputs, Array<TensorRegion> outputs) const;
 
-  using ContainerType = TensorIntrinsicNode;
+  TVM_DEFINE_NODE_REF_METHODS(TensorIntrinsic, NodeRef, TensorIntrinsicNode);
 };
 
 
-} // namespace tensorir
-} // namespace tvm
+}  // namespace tensorir
+}  // namespace tvm
 
-
-#endif // TVM_TENSORIR_INTRINSIC_H_
+#endif  // TVM_TENSORIR_INTRINSIC_H_

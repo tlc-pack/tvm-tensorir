@@ -2,7 +2,7 @@ import tvm
 from tvm import tensorir
 from tvm import ir_pass, register_func
 
-from test_schedule import check_correctness
+from test_common import check_correctness
 
 @register_func
 def vadd_for_test(c, a, b):
@@ -144,16 +144,11 @@ def test_tensorize_composed_gemm():
         jo, ji = s.split(j, 8)
         ko, ki = s.split(k, 8)
 
-        s.reorder(ii, jo)
+        io, jo, ko, ii, ji, ki = s.reorder(io, jo, ko, ii, ji, ki)
         s.compute_at(init, jo)
-
-        s.reorder(ji, ko)
-        s.reorder(ii, ko)
-
 
         B = s.blockize(ii)
         B = s.tensorize(B, intrin_composed_gemm(8, 8, 8))
-
 
         stmt = s.to_halide()
         return stmt
@@ -165,23 +160,7 @@ def test_untensorize():
     pass
 
 def test_schedule_after_tensorize():
-    N = 128
-    M = 128
-
-    A = tvm.placeholder((N, M), name='A')
-    B = tvm.placeholder((N, M), name='B')
-    C = tvm.compute((N, M), lambda i, j: A[i][j] + B[i][j], name='C')
-    D = tvm.compute((N, M), lambda i, j: C[i][j] + B[i][j], name='D')
-
-    def _schedule_pass(stmt):
-        s = tensorir.create_schedule(stmt)
-
-        stmt = s.to_halide()
-        return stmt
-
-    s = tvm.create_schedule([D.op])
-    check_correctness(s, [A, B, C, D], _schedule_pass)
-
+    pass
 
 def test_usage_in_compute_dsl():
     pass
@@ -193,5 +172,5 @@ if __name__ == "__main__":
 
     test_untensorize()
     test_schedule_after_tensorize()
-
     test_usage_in_compute_dsl()
+

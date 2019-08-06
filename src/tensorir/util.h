@@ -10,6 +10,8 @@
 #include <tvm/ir_pass.h>
 #include <tvm/arithmetic.h>
 #include <tvm/operation.h>
+#include <utility>
+#include <vector>
 #include "node_util.h"
 
 namespace tvm {
@@ -22,15 +24,16 @@ Array<Stmt> ExpandBlockChain(Stmt stmt);
 // Gather all accesses to all tensors or a specific tensor
 class TensorAccessGather : public ir::IRVisitor {
  public:
-  TensorAccessGather() {}
-  TensorAccessGather(Tensor target_tensor) : target_tensor_(target_tensor) {}
+  TensorAccessGather() = default;
+  explicit TensorAccessGather(Tensor target_tensor) :
+      target_tensor_(target_tensor) {}
 
   void Visit_(const ir::Call* op) {
     if (op->call_type == ir::Call::CallType::Halide) {
       if (target_tensor_.defined()) {
         if (target_tensor_ == (Downcast<Operation>(op->func)).output(op->value_index)) {
           std::vector<Expr> args;
-          for(const auto& x : op->args) {
+          for (const auto& x : op->args) {
             args.push_back(x);
           }
           access_one.push_back(args);
@@ -50,11 +53,13 @@ class TensorAccessGather : public ir::IRVisitor {
     }
   }
 
-  StdNodeMap<Tensor, std::vector<std::vector<Expr> > > access_grouped; // grouped accesses by target tensor
-  std::vector<std::pair<Tensor, std::vector<Expr> > > access_all; // all accesses
-  std::vector<std::vector<Expr> > access_one;                     // accesses to the target buffer
+  // grouped accesses by target tensor
+  StdNodeMap<Tensor, std::vector<std::vector<Expr> > > access_grouped;
+  std::vector<std::pair<Tensor, std::vector<Expr> > > access_all;  // all accesses
+  std::vector<std::vector<Expr> > access_one;                      // accesses to the target buffer
 
   std::vector<Tensor> tensor_order;  // a list to keep the original order of tensors
+
  private:
   Tensor target_tensor_;
 };
@@ -62,7 +67,6 @@ class TensorAccessGather : public ir::IRVisitor {
 // Gather all accessed tensors
 class TensorGather : public ir::IRVisitor {
  public:
-
   void Visit_(const ir::Call* op) {
     if (op->call_type == ir::Call::CallType::Halide) {
       tensors.insert((Downcast<Operation>(op->func)).output(op->value_index));
@@ -130,7 +134,7 @@ inline Array<Range> SubstituteRange(Array<Range> ranges, StdNodeMap<Var, Expr> v
   return ret;
 }
 
-} // namespace tensorir
-} // namespace tvm
+}  // namespace tensorir
+}  // namespace tvm
 
-#endif // TVM_TENSORIR_UTIL_H_
+#endif  // TVM_TENSORIR_UTIL_H_

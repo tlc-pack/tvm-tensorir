@@ -3,9 +3,9 @@
  *  \brief API registration
  */
 
-#include <sstream>
 #include <tvm/api_registry.h>
 #include <tvm/operation.h>
+#include <sstream>
 #include "schedule.h"
 #include "tree_builder.h"
 
@@ -110,5 +110,5 @@ TVM_REGISTER_API("_TensorRegion_MakeView")
 TVM_REGISTER_API("_TensorIntrinsic_Instantiate")
 .set_body_method(&TensorIntrinsic::Instantiate);
 
-} // namespace tensorir
-} // namespace tvm
+}  // namespace tensorir
+}  // namespace tvm

@@ -20,7 +20,8 @@ ScheduleTreeNode SubstituteCopy(ScheduleTreeNode node, const Map<Var, Expr>& vma
     for (const auto& x : n->children) {
       children.push_back(SubstituteCopy(x, vmap));
     }
-    return AxisTreeNodeNode::make(n->loop_var, Substitute(n->min, vmap), Substitute(n->extent, vmap),
+    return AxisTreeNodeNode::make(n->loop_var,
+                                  Substitute(n->min, vmap), Substitute(n->extent, vmap),
                                   n->axis_type, children);
   } else if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
     Array<Expr> args;
@@ -129,7 +130,8 @@ Stmt Schedule::ToHalide() const {
           auto regions = GatherRegion(Array<Tensor>{x.first}, GetRef<AxisTreeNode>(axis), 0);
           Region region;
           for (const auto& int_set : regions[0]) {
-            Range real = Range::make_by_min_extent(int_set.min(), Simplify(int_set.max() - int_set.min() + 1));
+            Range real = Range::make_by_min_extent(int_set.min(),
+                                                   Simplify(int_set.max() - int_set.min() + 1));
             region.push_back(real);
           }
           realize_region[x.first] = region;
@@ -141,7 +143,8 @@ Stmt Schedule::ToHalide() const {
 
   // # 2. Translate to HalideIR
   std::function<Array<Stmt> (const ScheduleTreeNode& n)> to_halide_stmt;
-  to_halide_stmt = [this, &to_halide_stmt, &attached_allocation, &realize_region](const ScheduleTreeNode& node) {
+  to_halide_stmt = [this, &to_halide_stmt, &attached_allocation, &realize_region]
+      (const ScheduleTreeNode& node) {
     std::vector<Stmt> ret;
 
     // attach realize scope
@@ -172,6 +175,7 @@ Stmt Schedule::ToHalide() const {
           stmts.push_back(stmt);
         }
       }
+
       if (node == operator->()->root) {
         ret.push_back(ArrayToBlock(stmts));
       } else if (is_one(n->extent)) {
@@ -221,5 +225,5 @@ Stmt Schedule::ToHalide() const {
   return ArrayToBlock(to_halide_stmt(operator->()->root));
 }
 
-} // namespace tensorir
-} // namespace tvm
+}  // namespace tensorir
+}  // namespace tvm

@@ -1,9 +1,10 @@
 /*!
  *  Copyright (c) 2019 by Contributors
- *  \brief Tensor intrinsics
+ *  \brief Tensor intrinsics for tensorize
  */
 
 #include <tvm/packed_func_ext.h>
+#include <string>
 #include "tree_node.h"
 #include "tree_builder.h"
 #include "intrinsic.h"
@@ -23,13 +24,9 @@ TensorIntrinsic TensorIntrinsicNode::make(
   node->intrin_func = std::move(intrin_func);
   node->name = std::move(name);
 
-  // todo (lmzheng): build BlockTreeNode `from`  for checking and untensorize
+  // todo (lmzheng): build BlockTreeNode `from` for checking and untensorize
 
   return TensorIntrinsic(node);
-}
-
-const TensorIntrinsicNode* TensorIntrinsic::operator->() const {
-  return static_cast<const TensorIntrinsicNode*>(node_.get());
 }
 
 ScheduleTreeNode TensorIntrinsic::Instantiate(Array<TensorRegion> inputs,
@@ -48,13 +45,13 @@ ScheduleTreeNode TensorIntrinsic::Instantiate(Array<TensorRegion> inputs,
 
     // gather vars
     for (const auto& x : inputs) {
-      for (const auto& ran: x->ranges) {
+      for (const auto& ran : x->ranges) {
         used_vars.insert(GatherVars(ran->min));
         used_vars.insert(GatherVars(ran->extent));
       }
     }
     for (const auto& x : outputs) {
-      for (const auto& ran: x->ranges) {
+      for (const auto& ran : x->ranges) {
         used_vars.insert(GatherVars(ran->min));
         used_vars.insert(GatherVars(ran->extent));
       }
@@ -69,7 +66,7 @@ ScheduleTreeNode TensorIntrinsic::Instantiate(Array<TensorRegion> inputs,
     Array<TensorRegion> new_inputs;
     for (const auto& x : inputs) {
       Array<Range> ranges;
-      for (const auto& ran: x->ranges) {
+      for (const auto& ran : x->ranges) {
         ranges.push_back(Range::make_by_min_extent(
             SubstituteAndEquationSimplify(ran->min, var_map, &analyzer),
             SubstituteAndEquationSimplify(ran->extent, var_map, &analyzer)));
@@ -88,5 +85,5 @@ ScheduleTreeNode TensorIntrinsic::Instantiate(Array<TensorRegion> inputs,
   return ScheduleTreeNode(nullptr);
 }
 
-} // namespace tensorir
-} // namespace tvm
+}  // namespace tensorir
+}  // namespace tvm

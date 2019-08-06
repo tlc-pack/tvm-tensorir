@@ -17,7 +17,7 @@
 """Example code to do Conv2d."""
 import tvm
 from tvm import tensorir
-from common import check_correctness
+from test_common import check_correctness
 
 def origin_schedule():
     # The sizes of inputs and filters
@@ -136,7 +136,6 @@ def origin_schedule():
     return s, [A, W, B]
 
 def test_conv():
-
     s, args = origin_schedule()
 
     def _schedule_pass(stmt):
@@ -208,10 +207,10 @@ def test_conv_schedule():
         block_x = tvm.thread_axis("blockIdx.x")
         block_y = tvm.thread_axis("blockIdx.y")
         block_z = tvm.thread_axis("blockIdx.z")
-        thread_x = tvm.thread_axis((0, num_thread), "threadIdx.x")
-        thread_y = tvm.thread_axis((0, num_thread), "threadIdx.y")
-        thread_xz = tvm.thread_axis((0, vthread), "vthread", name="vx")
-        thread_yz = tvm.thread_axis((0, vthread), "vthread", name="vy")
+        thread_x = tvm.thread_axis("threadIdx.x")
+        thread_y = tvm.thread_axis("threadIdx.y")
+        thread_xz = tvm.thread_axis("vthread", name="vx")
+        thread_yz = tvm.thread_axis("vthread", name="vy")
 
         # Split the workloads
         hi, wi, fi, ni = s.axis(B)
@@ -278,3 +277,4 @@ def test_conv_schedule():
 if __name__ == "__main__":
     test_conv()
     test_conv_schedule()
+

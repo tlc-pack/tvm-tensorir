@@ -3,10 +3,11 @@
  *  \brief Build Schedule Tree from Halide IR
  */
 
-#include <tuple>
 #include <tvm/ir_pass.h>
 #include <tvm/ir_mutator.h>
 #include <tvm/ir_visitor.h>
+#include <tuple>
+#include <string>
 #include "tree_builder.h"
 #include "dependency_graph.h"
 #include "util.h"
@@ -18,7 +19,7 @@ namespace tensorir {
 class IRCleaner : public IRMutator {
   Stmt Mutate_(const AttrStmt* op, const Stmt& s) {
     if (op->attr_key == attr::thread_extent || op->attr_key == attr::virtual_thread) {
-      Var var =IterVar(op->node.node_)->var;
+      Var var = IterVar(op->node.node_)->var;
       Expr extent = op->value;
       bind_var[var] = AttrStmt::make(op->node, op->attr_key, op->value, Stmt());
       return For::make(var, 0, extent, ForType::Serial, DeviceAPI::None, Mutate(op->body));
@@ -27,7 +28,9 @@ class IRCleaner : public IRMutator {
       CHECK(str != nullptr);
       raw_realize_scope[FunctionRef(op->node.node_)] = str->value;
       return Mutate(op->body);
-    } else return Mutate(op->body);
+    } else {
+      return Mutate(op->body);
+    }
   }
 
   Stmt Mutate_(const Realize* op, const Stmt& s) {
@@ -80,7 +83,7 @@ ScheduleTreeNode TreeBuilder::VisitStmt_(const For* op) {
   Array<Stmt> children_stmt = ExpandBlockChain(op->body);
   Array<ScheduleTreeNode> children;
 
-  // TODO (lmzheng): Merge consecutive blocks
+  // TODO(lmzheng): Merge consecutive blocks
   for (auto x : children_stmt) {
     children.push_back(VisitStmt(x));
   }
@@ -179,11 +182,11 @@ Array<TensorRegion> CreateInputRegions(const NodeRef& expr_or_stmt) {
   TensorAccessGather gather;
   gather.Visit(expr_or_stmt);
 
-  for (auto t : gather.tensor_order) { // for all tensors
+  for (auto t : gather.tensor_order) {  // for all tensors
     Array<Range> ranges;
     const std::vector<std::vector<Expr > >& access_info = gather.access_grouped[t];
 
-    for (size_t i = 0; i < t->shape.size(); ++i) { // for all dimensions
+    for (size_t i = 0; i < t->shape.size(); ++i) {  // for all dimensions
       Array<arith::IntSet> sets;
       for (const auto &x : access_info) {   // for multiple accesses
         sets.push_back(arith::IntSet::single_point(x[i]));
@@ -242,5 +245,5 @@ ScheduleTreeNode TreeBuilder::VisitStmt_(const Provide* op) {
   return ret;
 }
 
-} // namespace tensorir
-} // namespace tvm
+}  // namespace tensorir
+}  // namespace tvm

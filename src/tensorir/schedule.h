@@ -10,6 +10,7 @@
 #include <tvm/ir.h>
 #include <tvm/tensor.h>
 #include <tvm/arithmetic.h>
+#include <string>
 #include "dependency_graph.h"
 #include "tree_node.h"
 #include "intrinsic.h"
@@ -34,7 +35,7 @@ class ScheduleNode : public Node {
 
   FatherMap father_map;
 
-  StdNodeMap<Tensor, Region> raw_realize_region; // todo(lmzheng): refactor Map and use Map instead
+  StdNodeMap<Tensor, Region> raw_realize_region;  // todo(lmzheng): try to use tvm::Map instead
   StdNodeMap<FunctionRef, std::string> raw_realize_scope;
   StdNodeMap<Var, Stmt> bind_var;
 
@@ -51,17 +52,6 @@ class ScheduleNode : public Node {
 
 class Schedule : public NodeRef {
  public:
-  Schedule() {}
-  explicit Schedule(NodePtr<Node> n): NodeRef(n) {}
-
-  ScheduleNode* operator->() {
-    return static_cast<ScheduleNode*>(node_.get());
-  }
-
-  const ScheduleNode* operator->() const {
-    return static_cast<const ScheduleNode*>(node_.get());
-  }
-
   // getter
   Array<BlockTreeNode> blocks() const;
   Array<AxisTreeNode> axis(ScheduleTreeNode node) const;
@@ -94,12 +84,12 @@ class Schedule : public NodeRef {
   void annotate(AxisTreeNode axis, std::string type);
 
   // dependency analysis
-  Array<Array<arith::IntSet> > GatherRegion(Array<Tensor> tensors, AxisTreeNode axis, int start_child_index) const;
+  Array<Array<arith::IntSet> > GatherRegion(Array<Tensor> tensors,
+                                            AxisTreeNode axis,
+                                            int start_child_index) const;
 
   // output
   Stmt ToHalide() const;
-
-  using ContainerType = ScheduleNode;
 
   // tree manipulation (Because we need to update the father_map, these functions are
   // set to be the member functions of Schedule. Considering moving them to another place later)
@@ -112,11 +102,13 @@ class Schedule : public NodeRef {
 
   void CheckFatherLink();
 
+  TVM_DEFINE_MUTABLE_NODE_REF_METHODS(Schedule, NodeRef, ScheduleNode);
+
  private:
   size_t ct_{0};
 };
 
-} // namespace tensorir
-} // namespace tvm
+}  // namespace tensorir
+}  // namespace tvm
 
-#endif // TVM_TENSORIR_SCHEDULE_H_
+#endif  // TVM_TENSORIR_SCHEDULE_H_
