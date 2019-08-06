@@ -4,35 +4,7 @@ import topi
 from tvm import tensorir
 from tvm import ir_pass, register_func
 
-
-def check_correctness(s, args, inserted_pass, target='llvm'):
-    """Check correctness by building the function with and without inserted_pass"""
-
-    if isinstance(target, tuple) or isinstance(target, list):
-        target1, target2 = target
-    else:
-        target1 = target2 = target
-
-    with tvm.build_config(add_lower_pass=[(0, inserted_pass)]):
-        func1 = tvm.build(s, args, target1)
-
-    func2 = tvm.build(s, args, target2)
-
-    ctx1 = tvm.context(target1)
-    ctx2 = tvm.context(target2)
-
-    bufs1 = [tvm.nd.array(np.array(np.random.randn(*topi.util.get_const_tuple(x.shape)),
-                                   dtype=x.dtype), ctx=ctx1) for x in args]
-    bufs2 = [tvm.nd.array(x, ctx=ctx2) for x in bufs1]
-
-    func1(*bufs1)
-    func2(*bufs2)
-
-    bufs1_np = [x.asnumpy() for x in bufs1]
-    bufs2_np = [x.asnumpy() for x in bufs2]
-
-    for x, y in zip(bufs1_np, bufs2_np):
-        np.testing.assert_allclose(x, y, atol=1e-4)
+from test_common import check_correctness
 
 def test_decompile_fuse():
     N = M = K = 128
@@ -57,8 +29,7 @@ def test_decompile_fuse():
         jo, io, ji_init, ii_init = s.axis(init)
         _, _, ko, ji, ii, ki = s.axis(reduction)
 
-        ji, ko = s.reorder(ko, ji)
-        ii, ko = s.reorder(ko, ii)
+        ji, ii, ko = s.reorder(ji, ii, ko)
 
         s.fuse(ji_init, ii_init)
         s.fuse(ko, ki)
@@ -97,7 +68,6 @@ def test_inline():
 
     check_correctness(s, [A, D], _schedule_pass)
 
-
 def test_compute_at():
     N = M = K = 128
 
@@ -123,7 +93,6 @@ def test_compute_at():
         return stmt
 
     check_correctness(s, [A, D], _schedule_pass)
-
 
 def test_unroll():
     N = 4
@@ -218,11 +187,7 @@ def test_blockize():
     s = tvm.create_schedule([B.op])
     check_correctness(s, [A, B], _schedule_pass2)
 
-def test_partial_tile():
-    pass
-
 def test_from_gpu():
-    """Test naive translation of GPU code"""
     N = M = 128
 
     A = tvm.placeholder((N, M), name='A')
@@ -240,9 +205,7 @@ def test_from_gpu():
 
     check_correctness(s, [A, B], _schedule_pass, 'cuda')
 
-
 def test_bind():
-    """Test schedule primitive bind"""
     N = M = 128
 
     A = tvm.placeholder((N, M), name='A')
@@ -256,8 +219,10 @@ def test_bind():
         B, = s.blocks()
         i, j = s.axis(B)
 
-        s.bind(i, 'blockIdx.x')
-        s.bind(j, 'threadId.x')
+        bx = tvm.thread_axis('blockIdx.x')
+        tx = tvm.thread_axis('threadIdx.x')
+        s.bind(i, bx)
+        s.bind(j, tx)
 
         stmt = s.to_halide()
         return stmt
@@ -273,8 +238,6 @@ if __name__ == "__main__":
     test_from_unroll()
     test_rank_zero()
     test_blockize()
-
-    #test_partial_tile()
-    #test_from_gpu()
-    #test_bind()
+    test_from_gpu()
+    test_bind()
 

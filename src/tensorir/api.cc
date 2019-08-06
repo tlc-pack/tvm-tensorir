@@ -3,9 +3,9 @@
  *  \brief API registration
  */
 
-#include <sstream>
 #include <tvm/api_registry.h>
 #include <tvm/operation.h>
+#include <sstream>
 #include "schedule.h"
 #include "tree_builder.h"
 
@@ -32,6 +32,9 @@ TVM_REGISTER_API("tensorir.schedule.ScheduleAxis")
 TVM_REGISTER_API("tensorir.schedule.ScheduleSplit")
 .set_body_method(&Schedule::split);
 
+TVM_REGISTER_API("tensorir.schedule.ScheduleSplitNParts")
+.set_body_method(&Schedule::split_nparts);
+
 TVM_REGISTER_API("tensorir.schedule.ScheduleFuse")
 .set_body_method(&Schedule::fuse);
 
@@ -53,6 +56,9 @@ TVM_REGISTER_API("tensorir.schedule.ScheduleComputeAfter")
 TVM_REGISTER_API("tensorir.schedule.ScheduleComputeRoot")
 .set_body_method(&Schedule::compute_root);
 
+TVM_REGISTER_API("tensorir.schedule.ScheduleBind")
+.set_body_method(&Schedule::bind);
+
 TVM_REGISTER_API("tensorir.schedule.ScheduleBlockize")
 .set_body_method(&Schedule::blockize);
 
@@ -64,6 +70,9 @@ TVM_REGISTER_API("tensorir.schedule.ScheduleTensorize")
 
 TVM_REGISTER_API("tensorir.schedule.ScheduleUntensorize")
 .set_body_method(&Schedule::untensorize);
+
+TVM_REGISTER_API("tensorir.schedule.ScheduleAnnotate")
+.set_body_method(&Schedule::annotate);
 
 TVM_REGISTER_API("tensorir.schedule.ScheduleToHalide")
 .set_body_method(&Schedule::ToHalide);
@@ -101,5 +110,5 @@ TVM_REGISTER_API("_TensorRegion_MakeView")
 TVM_REGISTER_API("_TensorIntrinsic_Instantiate")
 .set_body_method(&TensorIntrinsic::Instantiate);
 
-} // namespace tensorir
-} // namespace tvm
+}  // namespace tensorir
+}  // namespace tvm

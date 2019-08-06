@@ -8,6 +8,7 @@
 #include "schedule.h"
 #include "node_util.h"
 #include "util.h"
+#include "../arithmetic/int_set.h"
 
 namespace tvm {
 namespace tensorir {
@@ -19,7 +20,8 @@ ScheduleTreeNode SubstituteCopy(ScheduleTreeNode node, const Map<Var, Expr>& vma
     for (const auto& x : n->children) {
       children.push_back(SubstituteCopy(x, vmap));
     }
-    return AxisTreeNodeNode::make(n->loop_var, Substitute(n->min, vmap), Substitute(n->extent, vmap),
+    return AxisTreeNodeNode::make(n->loop_var,
+                                  Substitute(n->min, vmap), Substitute(n->extent, vmap),
                                   n->axis_type, children);
   } else if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
     Array<Expr> args;
@@ -90,14 +92,28 @@ Stmt Schedule::ToHalide() const {
       }
 
       for (const auto& x : n->outputs) {
-        related_nodes[x->data].push_back(now);
+        const std::string& str = operator->()->raw_realize_scope.at(x->data->op);
+        if (str == "" || str == "global") {
+          related_nodes[x->data].push_back(now);
+        } else {
+          related_nodes[x->data].push_back(node);
+        }
       }
       for (const auto& x : n->inputs) {
-        related_nodes[x->data].push_back(now);
+        if (operator->()->raw_realize_scope.count(x->data->op)) {
+          const std::string& str = operator->()->raw_realize_scope.at(x->data->op);
+          if (str == "" || str == "global") {
+            related_nodes[x->data].push_back(now);
+          } else {
+            related_nodes[x->data].push_back(node);
+          }
+        }
       }
     }
   };
   get_tensor_location(operator->()->root);
+
+  auto realize_region = operator->()->raw_realize_region;
 
   // For tensor T, let A be the lowest common ancestor of all nodes accessing it.
   // We place its allocation before the first children of A that accesses T.
@@ -107,6 +123,19 @@ Stmt Schedule::ToHalide() const {
     for (const auto& child : lca->children) {
       if (FindAccess(child, x.first)) {
         attached_allocation[child].push_back(x.first);
+        const auto& str = operator->()->raw_realize_scope.at(x.first->op);
+        if (str != "" && str != "global") {
+          const auto *axis = lca.as<AxisTreeNodeNode>();
+          CHECK(axis != nullptr);
+          auto regions = GatherRegion(Array<Tensor>{x.first}, GetRef<AxisTreeNode>(axis), 0);
+          Region region;
+          for (const auto& int_set : regions[0]) {
+            Range real = Range::make_by_min_extent(int_set.min(),
+                                                   Simplify(int_set.max() - int_set.min() + 1));
+            region.push_back(real);
+          }
+          realize_region[x.first] = region;
+        }
         break;
       }
     }
@@ -114,14 +143,16 @@ Stmt Schedule::ToHalide() const {
 
   // # 2. Translate to HalideIR
   std::function<Array<Stmt> (const ScheduleTreeNode& n)> to_halide_stmt;
-  to_halide_stmt = [this, &to_halide_stmt, &attached_allocation](const ScheduleTreeNode& node) {
+  to_halide_stmt = [this, &to_halide_stmt, &attached_allocation, &realize_region]
+      (const ScheduleTreeNode& node) {
     std::vector<Stmt> ret;
 
     // attach realize scope
     for (const auto& tensor : attached_allocation[node]) {
-      if (operator->()->raw_realize_region.count(tensor)) {
+      if (realize_region.count(tensor)) {
         CHECK_GE(operator->()->raw_realize_scope.count(tensor->op), 1);
 
+        Region region = realize_region.at(tensor);
         ret.push_back(AttrStmt::make(tensor->op,
                                      attr::realize_scope,
                                      operator->()->raw_realize_scope.at(tensor->op),
@@ -130,7 +161,7 @@ Stmt Schedule::ToHalide() const {
         ret.push_back(Realize::make(tensor->op,
                                     tensor->value_index,
                                     tensor->dtype,
-                                    operator->()->raw_realize_region.at(tensor),
+                                    region,
                                     const_true(1),
                                     Evaluate::make(0)));
       }
@@ -144,12 +175,31 @@ Stmt Schedule::ToHalide() const {
           stmts.push_back(stmt);
         }
       }
+
       if (node == operator->()->root) {
         ret.push_back(ArrayToBlock(stmts));
+      } else if (is_one(n->extent)) {
+        Map<Var, Expr> vmap;
+        vmap.Set(n->loop_var, 0);
+        Array<Stmt> new_stmts;
+        for (const auto& stmt : stmts) {
+          new_stmts.push_back(Substitute(stmt, vmap));
+        }
+        ret.push_back(ArrayToBlock(new_stmts));
+      } else if (operator->()->bind_var.count(n->loop_var)) {
+        const AttrStmt* attr = operator->()->bind_var.at(n->loop_var).as<AttrStmt>();
+        ret.push_back(AttrStmt::make(attr->node, attr->attr_key, attr->value, ArrayToBlock(stmts)));
       } else {
-        ret.push_back(For::make(n->loop_var,
-                                n->min, n->extent,
-                                ForType::Serial, DeviceAPI::None,
+        ForType type;
+        if (n->axis_type == AxisType::vectorized) {
+          type = ForType::Vectorized;
+        } else if (n->axis_type == AxisType::unrolled) {
+          type = ForType::Unrolled;
+        } else {
+          type = ForType::Serial;
+        }
+        ret.push_back(For::make(n->loop_var, n->min, n->extent,
+                                type, DeviceAPI::None,
                                 ArrayToBlock(stmts)));
       }
     } else if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
@@ -175,5 +225,5 @@ Stmt Schedule::ToHalide() const {
   return ArrayToBlock(to_halide_stmt(operator->()->root));
 }
 
-} // namespace tensorir
-} // namespace tvm
+}  // namespace tensorir
+}  // namespace tvm

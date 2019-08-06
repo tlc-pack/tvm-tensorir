@@ -3,6 +3,10 @@
  *  \brief Dependency between blocks
  */
 
+#include <vector>
+#include <algorithm>
+#include <string>
+#include <utility>
 #include "dependency_graph.h"
 
 namespace tvm {
@@ -21,6 +25,7 @@ DependencyGraph DependencyGraphNode::make(ScheduleTreeNode node) {
   StdNodeMap<ScheduleTreeNode, size_t> block_order;
   StdNodeSet<Tensor> tensor_list;
 
+  // gather read/write info
   size_t ct = 0;
   std::function<void(ScheduleTreeNode)> access_visitor = [&](ScheduleTreeNode n) {
     if (const AxisTreeNodeNode* node = n.as<AxisTreeNodeNode>()) {
@@ -42,8 +47,8 @@ DependencyGraph DependencyGraphNode::make(ScheduleTreeNode node) {
   };
   access_visitor(node);
 
+  // build dependency for all blocks that write to/read from a same tensor
   DependencyGraph dep_graph(make_node<DependencyGraphNode>());
-  // build dependency for all blocks write to/read from a same tensor
   for (const auto& t : tensor_list) {
     enum AccessType {
       kRead = 0,
@@ -52,15 +57,16 @@ DependencyGraph DependencyGraphNode::make(ScheduleTreeNode node) {
 
     std::vector<std::pair<BlockTreeNode, AccessType> > blocks;
     for (auto x : rwgraph.GetReadBy(t)) {
-      blocks.push_back(std::make_pair<>(x.first, kRead));
+      blocks.push_back(std::make_pair(x.first, kRead));
     }
     for (auto x : rwgraph.GetWriteBy(t)) {
-      blocks.push_back(std::make_pair<>(x.first, kWrite));
+      blocks.push_back(std::make_pair(x.first, kWrite));
     }
 
     // sort according to original order
     std::sort(blocks.begin(), blocks.end(), [block_order]
-        (const std::pair<BlockTreeNode, AccessType>& a, const std::pair<BlockTreeNode, AccessType>& b) -> bool {
+        (const std::pair<BlockTreeNode, AccessType>& a,
+         const std::pair<BlockTreeNode, AccessType>& b) -> bool {
       return block_order.at(a.first) < block_order.at(b.first);
     });
 
@@ -93,7 +99,7 @@ DependencyGraph DependencyGraphNode::make(ScheduleTreeNode node) {
 }
 
 // Graph operations
-void DependencyGraph::AddNode(BlockTreeNode stmt) {
+void DependencyGraph::AddNode(BlockTreeNode block) {
   // Do nothing, because std::unordered_map will init value for unseen key.
 }
 
@@ -105,17 +111,17 @@ void DependencyGraph::AddEdge(BlockTreeNode from, BlockTreeNode to, EdgeType typ
   operator->()->backward_edges[to].push_back(EdgeNode::make(from, type));
 }
 
-Set<BlockTreeNode> DependencyGraph::GetSuccessor(BlockTreeNode stmt) {
+Set<BlockTreeNode> DependencyGraph::GetSuccessor(BlockTreeNode block) {
   Set<BlockTreeNode> ret;
-  for (const auto& x : operator->()->forward_edges[stmt]) {
+  for (const auto& x : operator->()->forward_edges[block]) {
     ret.insert(x->dst);
   }
   return ret;
 }
 
-Set<BlockTreeNode> DependencyGraph::GetPredecessor(BlockTreeNode stmt) {
+Set<BlockTreeNode> DependencyGraph::GetPredecessor(BlockTreeNode block) {
   Set<BlockTreeNode> ret;
-  for (const auto& x : operator->()->backward_edges[stmt]) {
+  for (const auto& x : operator->()->backward_edges[block]) {
     ret.insert(x->dst);
   }
   return ret;
@@ -167,7 +173,8 @@ void DependencyGraph::InlineNode(BlockTreeNode stmt) {
       } else if (src->type == kWAR && dst->type == kWAW) {
         AddEdge(src->dst, dst->dst, kWAR);
       }
-      // for all other cases, their relation does not change or only changes to "RAR" which is useless.
+      // for all other cases, their relation does not change
+      // or only changes to "RAR" which is useless.
     }
   }
 }
@@ -190,5 +197,5 @@ std::ostream& PrintDependencyGraph(std::ostream &os,  DependencyGraph g) {
   return os;
 }
 
-} // namespace tvm
-} // namespace tensorir
+}  // namespace tensorir
+}  // namespace tvm

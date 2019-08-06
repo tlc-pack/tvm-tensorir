@@ -6,17 +6,18 @@
 #ifndef TVM_TENSORIR_DEPENDENCY_GRAPH_H_
 #define TVM_TENSORIR_DEPENDENCY_GRAPH_H_
 
-#include <list>
 #include <tvm/base.h>
 #include <tvm/ir.h>
 #include <tvm/node/container.h>
 #include <tvm/tensor.h>
+#include <list>
 #include "tree_node.h"
 
 namespace tvm {
 namespace tensorir {
 
-using AccessSet = int;  // Currently, it is useless
+// Detailed access information. NOTE: Currently, it is useless.
+using AccessSet = int;
 
 // Dependency type
 enum EdgeType : int {
@@ -33,7 +34,6 @@ class EdgeNode : public Node {
  public:
   BlockTreeNode dst;
   EdgeType type;
-  Array<Array<Expr> > access; // Todo(lmzheng) : define type
 
   void VisitAttrs(AttrVisitor* v) final {
   }
@@ -54,10 +54,13 @@ TVM_DEFINE_MUTABLE_NODE_REF(Edge, NodeRef, EdgeNode);
 class ReadWriteGraph {
  public:
   // build 4 indexes for query
-  using QueryByTensorMap = StdNodeMap<Tensor, StdNodeMap<BlockTreeNode, std::shared_ptr<AccessSet> > >;
-  using QueryByBlockMap   = StdNodeMap<BlockTreeNode, StdNodeMap<Tensor, std::shared_ptr<AccessSet> > >;
+  using QueryByTensorMap =
+    StdNodeMap<Tensor, StdNodeMap<BlockTreeNode, std::shared_ptr<AccessSet> > >;
+  using QueryByBlockMap  =
+    StdNodeMap<BlockTreeNode, StdNodeMap<Tensor, std::shared_ptr<AccessSet> > >;
 
   // insert read/write access
+  // Block read from a tensor
   void InsertRead(BlockTreeNode block, Tensor tensor) {
     std::shared_ptr<AccessSet> acc_set = query_by_block_read[block][tensor];
     if (acc_set == nullptr) {
@@ -66,7 +69,7 @@ class ReadWriteGraph {
       query_by_tensor_read[tensor][block] = acc_set;
     }
   }
-
+  // Block write to a tensor
   void InsertWrite(BlockTreeNode block, Tensor tensor) {
     std::shared_ptr<AccessSet> acc_set = query_by_block_write[block][tensor];
     if (acc_set == nullptr) {
@@ -77,42 +80,46 @@ class ReadWriteGraph {
   }
 
   // query
+  // Get all tensors read by the block
   StdNodeMap<Tensor, std::shared_ptr<AccessSet> > GetRead(BlockTreeNode block) const {
     auto iter = query_by_block_read.find(block);
     if (iter != query_by_block_read.end()) {
       return iter->second;
     }
     return StdNodeMap<Tensor, std::shared_ptr<AccessSet> >();
-  };
+  }
 
+  // Get all tensors write by the block
   StdNodeMap<Tensor, std::shared_ptr<AccessSet> > GetWrite(BlockTreeNode block) const {
     auto iter = query_by_block_write.find(block);
     if (iter != query_by_block_write.end()) {
       return iter->second;
     }
     return StdNodeMap<Tensor, std::shared_ptr<AccessSet> >();
-  };
+  }
 
+  // Get all blocks that read from a tensor
   StdNodeMap<BlockTreeNode, std::shared_ptr<AccessSet> > GetReadBy(Tensor tensor) const {
     auto iter = query_by_tensor_read.find(tensor);
     if (iter != query_by_tensor_read.end()) {
       return iter->second;
     }
     return StdNodeMap<BlockTreeNode, std::shared_ptr<AccessSet> >();
-  };
+  }
 
+  // Get all blocks that write to a tensor
   StdNodeMap<BlockTreeNode, std::shared_ptr<AccessSet> > GetWriteBy(Tensor tensor) const {
     auto iter = query_by_tensor_write.find(tensor);
     if (iter != query_by_tensor_write.end()) {
       return iter->second;
     }
     return StdNodeMap<BlockTreeNode, std::shared_ptr<AccessSet> >();
-  };
+  }
 
   QueryByTensorMap query_by_tensor_read;
   QueryByTensorMap query_by_tensor_write;
-  QueryByBlockMap   query_by_block_read;
-  QueryByBlockMap   query_by_block_write;
+  QueryByBlockMap query_by_block_read;
+  QueryByBlockMap query_by_block_write;
 };
 
 /*!
@@ -135,33 +142,25 @@ class DependencyGraphNode : public Node {
 
 class DependencyGraph : public NodeRef {
  public:
-  DependencyGraph() {}
-  explicit DependencyGraph(NodePtr<Node> n) : NodeRef(n) {}
-
-  inline const DependencyGraphNode* operator->() const;
-  inline DependencyGraphNode* operator->();
-
-  void AddNode(BlockTreeNode op_stmt);
+  // Add a node to the graph
+  void AddNode(BlockTreeNode block);
+  // Add a dependency edge
   void AddEdge(BlockTreeNode from, BlockTreeNode to, EdgeType type);
-  void InlineNode(BlockTreeNode op_stmt);  // to support compute_inline which deletes a block in the graph
-  Set<BlockTreeNode> GetSuccessor(BlockTreeNode op_stmt);
-  Set<BlockTreeNode> GetPredecessor(BlockTreeNode op_stmt);
+  // to support compute_inline which deletes a block in the graph
+  void InlineNode(BlockTreeNode op_stmt);
+  // Get all blocks that are dependent on block
+  Set<BlockTreeNode> GetSuccessor(BlockTreeNode block);
+  // Get all blocks that this block dependent on
+  Set<BlockTreeNode> GetPredecessor(BlockTreeNode block);
 
-  using ContainerType = DependencyGraphNode;
+  TVM_DEFINE_MUTABLE_NODE_REF_METHODS(
+      DependencyGraph, NodeRef, DependencyGraphNode);
 };
-
-const DependencyGraphNode* DependencyGraph::operator->() const {
-  return static_cast<const DependencyGraphNode*>(node_.get());;
-}
-
-DependencyGraphNode* DependencyGraph::operator->() {
-  return static_cast<DependencyGraphNode*>(node_.get());
-}
 
 // Debug tool
 std::ostream& PrintDependencyGraph(std::ostream &os,  DependencyGraph g);
 
-} // namespace tensorir
-} // namespace tvm
+}  // namespace tensorir
+}  // namespace tvm
 
-#endif // TVM_TENSORIR_DEPENDENCY_GRAPH_H_
+#endif  // TVM_TENSORIR_DEPENDENCY_GRAPH_H_

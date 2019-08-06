@@ -3,10 +3,11 @@
  *  \brief Build Schedule Tree from Halide IR
  */
 
-#include <tuple>
 #include <tvm/ir_pass.h>
 #include <tvm/ir_mutator.h>
 #include <tvm/ir_visitor.h>
+#include <tuple>
+#include <string>
 #include "tree_builder.h"
 #include "dependency_graph.h"
 #include "util.h"
@@ -17,13 +18,19 @@ namespace tensorir {
 // remove realize, produce, and attr annotations to get a cleaner IR
 class IRCleaner : public IRMutator {
   Stmt Mutate_(const AttrStmt* op, const Stmt& s) {
-    if (op->attr_key == attr::realize_scope) {
+    if (op->attr_key == attr::thread_extent || op->attr_key == attr::virtual_thread) {
+      Var var = IterVar(op->node.node_)->var;
+      Expr extent = op->value;
+      bind_var[var] = AttrStmt::make(op->node, op->attr_key, op->value, Stmt());
+      return For::make(var, 0, extent, ForType::Serial, DeviceAPI::None, Mutate(op->body));
+    } else if (op->attr_key == attr::realize_scope) {
       const StringImm* str = op->value.as<StringImm>();
       CHECK(str != nullptr);
       raw_realize_scope[FunctionRef(op->node.node_)] = str->value;
+      return Mutate(op->body);
+    } else {
+      return Mutate(op->body);
     }
-
-    return Mutate(op->body);
   }
 
   Stmt Mutate_(const Realize* op, const Stmt& s) {
@@ -39,8 +46,8 @@ class IRCleaner : public IRMutator {
  public:
   StdNodeMap<Tensor, Region> raw_realize_region;
   StdNodeMap<FunctionRef, std::string> raw_realize_scope;
+  StdNodeMap<Var, Stmt> bind_var;
 };
-
 
 Schedule TreeBuilder::Build(Stmt stmt) {
   // remove redundant ast nodes from Halide
@@ -59,6 +66,7 @@ Schedule TreeBuilder::Build(Stmt stmt) {
   node->block_list = std::move(block_list_);
   node->raw_realize_region = std::move(ir_cleaner.raw_realize_region);
   node->raw_realize_scope = std::move(ir_cleaner.raw_realize_scope);
+  node->bind_var = std::move(ir_cleaner.bind_var);
 
   Schedule ret(node);
   ret.UpdateFather(ret->root, true);
@@ -75,7 +83,7 @@ ScheduleTreeNode TreeBuilder::VisitStmt_(const For* op) {
   Array<Stmt> children_stmt = ExpandBlockChain(op->body);
   Array<ScheduleTreeNode> children;
 
-  // TODO (lmzheng): Merge consecutive blocks
+  // TODO(lmzheng): Merge consecutive blocks
   for (auto x : children_stmt) {
     children.push_back(VisitStmt(x));
   }
@@ -174,11 +182,11 @@ Array<TensorRegion> CreateInputRegions(const NodeRef& expr_or_stmt) {
   TensorAccessGather gather;
   gather.Visit(expr_or_stmt);
 
-  for (auto t : gather.tensor_order) { // for all tensors
+  for (auto t : gather.tensor_order) {  // for all tensors
     Array<Range> ranges;
     const std::vector<std::vector<Expr > >& access_info = gather.access_grouped[t];
 
-    for (size_t i = 0; i < t->shape.size(); ++i) { // for all dimensions
+    for (size_t i = 0; i < t->shape.size(); ++i) {  // for all dimensions
       Array<arith::IntSet> sets;
       for (const auto &x : access_info) {   // for multiple accesses
         sets.push_back(arith::IntSet::single_point(x[i]));
@@ -237,5 +245,5 @@ ScheduleTreeNode TreeBuilder::VisitStmt_(const Provide* op) {
   return ret;
 }
 
-} // namespace tensorir
-} // namespace tvm
+}  // namespace tensorir
+}  // namespace tvm

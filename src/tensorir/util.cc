@@ -4,6 +4,7 @@
 
 #include <tvm/ir_mutator.h>
 #include <tvm/ir_functor_ext.h>
+#include <vector>
 #include "util.h"
 
 namespace tvm {
@@ -70,5 +71,5 @@ Stmt SubstituteAndEquationSimplify(Stmt stmt, Map<Var, Expr> var_map, arith::Ana
 }
 
 
-} // namespace tvm
-} // namespace tensorir
+}  // namespace tensorir
+}  // namespace tvm

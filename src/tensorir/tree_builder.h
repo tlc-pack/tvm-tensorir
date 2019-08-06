@@ -3,11 +3,12 @@
  *  \brief Build Schedule Tree from Halide IR
  */
 
-#ifndef TVM_TREE_BUILDER_H_
-#define TVM_TREE_BUILDER_H_
+#ifndef TVM_TENSORIR_TREE_BUILDER_H_
+#define TVM_TENSORIR_TREE_BUILDER_H_
 
 #include <tvm/ir_functor_ext.h>
 #include <vector>
+#include <tuple>
 #include "tree_node.h"
 #include "schedule.h"
 
@@ -56,7 +57,7 @@ std::tuple<Array<Expr>, Array<Var>, Array<TensorRegion>, Map<Var, Expr> > Create
     Set<Var> used_vars,
     arith::Analyzer* analyzer);
 
-} // namespace tensorir
-} // namespace tvm
+}  // namespace tensorir
+}  // namespace tvm
 
-#endif // TVM_TENSORIR_UTIL_H_
+#endif  // TVM_TENSORIR_TREE_BUILDER_H_

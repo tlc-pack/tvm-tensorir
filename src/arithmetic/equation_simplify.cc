@@ -155,7 +155,7 @@ void EquationSimplifier::Update(const Var& var, const Expr& new_expr, bool overr
 }
 
 EquationSimplifier::EquationSimplifier(Analyzer *parent)
-    : impl_(new Impl(parent)){
+    : impl_(new Impl(parent)) {
 }
 
 EquationSimplifier::~EquationSimplifier() {

@@ -13,8 +13,15 @@ class Schedule(NodeBase):
     def axis(self, stmt):
         return ScheduleAxis(self, stmt)
 
-    def split(self, node, factor):
-        return ScheduleSplit(self, node, factor)
+    def split(self, node, factor=None, nparts=None):
+        if factor is not None:
+            if nparts is not None:
+                raise ValueError("Do not need to provide both outer and nparts")
+            return ScheduleSplit(self, node, factor)
+        else:
+            if nparts is None:
+                raise ValueError("Either nparts or factor need to be provided")
+            return ScheduleSplitNParts(self, node, nparts)
 
     def fuse(self, outer_axis, inner_axis):
         return ScheduleFuse(self, outer_axis, inner_axis)
@@ -22,8 +29,8 @@ class Schedule(NodeBase):
     def unroll(self, axis):
         return ScheduleUnroll(self, axis)
 
-    def reorder(self, outer_axis, inner_axis):
-        return ScheduleReorder(self, outer_axis, inner_axis)
+    def reorder(self, *args):
+        return ScheduleReorder(self, args)
 
     def compute_inline(self, stmt):
         return ScheduleComputeInline(self, stmt)
@@ -49,12 +56,17 @@ class Schedule(NodeBase):
     def untensorize(self, block):
         return ScheduleUntensorize(self, block)
 
+    def annotate(self, axis, type_name):
+        return ScheduleAnnotate(self, axis, type_name)
+
     def to_halide(self):
         return ScheduleToHalide(self)
 
     def check_father_link(self):
         return ScheduleCheckFatherLink(self)
 
+    def bind(self, axis, iter_var):
+        return ScheduleBind(self, axis, iter_var)
 
 def create_schedule(stmt):
     return CreateSchedule(stmt)

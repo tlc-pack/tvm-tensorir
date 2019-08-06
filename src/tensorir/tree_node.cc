@@ -5,6 +5,9 @@
 
 #include <tvm/operation.h>
 #include <tvm/ir_pass.h>
+#include <limits>
+#include <vector>
+#include <algorithm>
 #include "tree_node.h"
 #include "schedule.h"
 
@@ -24,10 +27,6 @@ TensorRegion TensorRegionNode::make(Tensor data, Array<Range> ranges) {
   node->ranges = std::move(simplified_ranges);
 
   return TensorRegion(node);
-}
-
-const TensorRegionNode* TensorRegion::operator->() const {
-  return static_cast<const TensorRegionNode*>(node_.get());
 }
 
 TensorRegion TensorRegion::MakeView(Array<Expr> mins, Array<Expr> extents) const {
@@ -166,7 +165,8 @@ void PrintTreeNode(std::ostream &output, ScheduleTreeNode node, size_t indent) {
     output << " R: " << n->inputs;
     output << std::endl;
   } else {
-    LOG(FATAL);
+    output << "Error";
+//    LOG(FATAL);
   }
 }
 
@@ -181,5 +181,5 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
 });
 
 
-} // namespace tensorir
-} // namespace tvm
+}  // namespace tensorir
+}  // namespace tvm
