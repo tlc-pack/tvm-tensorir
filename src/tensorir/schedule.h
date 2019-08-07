@@ -88,10 +88,23 @@ class Schedule : public NodeRef {
   void annotate(AxisTreeNode axis, std::string type);
 
   // Dependency analysis
+  /*
+   * \brief Gather required regions for a list of tensors
+   * \param tensors The tensor of interest
+   * \param axis The root axis for gathering
+   * \param start_child_index The blocks in the children of root axis with index less
+   *                          then this number will be ignored
+   * \param block_filter If this is defined, the func only considers the blocks in this set.
+   *                     If this is not defined, the function will consider all blocks.
+   * \param gather_inputs Whether gather inputs of blocks
+   * \param gather_outputs Whether gather outputs of blocks
+   * \param aggregate_mode Aggregation mode. 'U' for union, 'I' for intersect.
+   *
+   */
   Array<Array<arith::IntSet> > GatherRegion(Array<Tensor> tensors,
-                                            Set<BlockTreeNode> block_filter,
                                             AxisTreeNode axis,
                                             int start_child_index,
+                                            Set<BlockTreeNode> block_filter,
                                             bool gather_inputs,
                                             bool gather_outputs,
                                             char aggregate_mode) const;

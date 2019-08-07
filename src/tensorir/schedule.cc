@@ -556,9 +556,8 @@ BlockTreeNode Schedule::compute_at(BlockTreeNode block, AxisTreeNode axis) {
   for (const auto& x : block->outputs) {
     output_tensors.push_back(x->data);
   }
-  Array<Array<IntSet> > ranges = GatherRegion(output_tensors, Set<BlockTreeNode>(nullptr),
-                                              axis, after_pos,
-                                              true, false, 'U');
+  Array<Array<IntSet> > ranges = GatherRegion(output_tensors, axis, after_pos,
+                                              Set<BlockTreeNode>(nullptr), true, false, 'U');
 
   // solve range for vars
   Array<IntSet> produces;
@@ -593,9 +592,8 @@ BlockTreeNode Schedule::compute_after(BlockTreeNode block, AxisTreeNode axis) {
   for (const auto& x : block->inputs) {
     input_tensors.push_back(x->data);
   }
-  Array<Array<IntSet> > ranges = GatherRegion(input_tensors, predecessor,
-                                              axis, 0,
-                                              false, true, 'I');
+  Array<Array<IntSet> > ranges = GatherRegion(input_tensors, axis, 0,
+                                              predecessor, false, true, 'I');
   // solve range for vars
   Array<IntSet> consumes;
   Array<IntSet> flatten_ranges;
@@ -888,9 +886,9 @@ void Schedule::bind(AxisTreeNode axis, IterVar thread_iter) {
 
 // dependency analysis
 Array<Array<IntSet> > Schedule::GatherRegion(Array<Tensor> tensors,
-                                             Set<BlockTreeNode> block_filter,
                                              AxisTreeNode axis,
                                              int start_child_index,
+                                             Set<BlockTreeNode> block_filter,
                                              bool gather_inputs,
                                              bool gather_outputs,
                                              char aggregate_mode) const {

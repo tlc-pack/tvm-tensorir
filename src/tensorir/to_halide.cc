@@ -128,9 +128,8 @@ Stmt Schedule::ToHalide() const {
         if (str != "" && str != "global") { // recompute region
           const auto *axis = lca.as<AxisTreeNodeNode>();
           CHECK(axis != nullptr);
-          auto regions = GatherRegion(Array<Tensor>{x.first}, Set<BlockTreeNode>(nullptr), 
-                                      GetRef<AxisTreeNode>(axis), 0,
-                                      true, false, 'U');
+          auto regions = GatherRegion(Array<Tensor>{x.first}, GetRef<AxisTreeNode>(axis), 0,
+                                      Set<BlockTreeNode>(nullptr), true, false, 'U');
           Region region;
           for (const auto& int_set : regions[0]) {
             Range real = Range::make_by_min_extent(int_set.min(),
