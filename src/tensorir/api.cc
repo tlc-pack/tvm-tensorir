@@ -8,6 +8,7 @@
 #include <sstream>
 #include "schedule.h"
 #include "tree_builder.h"
+#include "schedule_helper.h"
 
 namespace tvm {
 namespace tensorir {
@@ -22,12 +23,24 @@ TVM_REGISTER_API("tensorir.tree_node.PrintTreeNode")
   *rv = os.str();
 });
 
-// Schedule primitives
+// Schedule member functions
 TVM_REGISTER_API("tensorir.schedule.ScheduleBlocks")
 .set_body_method(&Schedule::blocks);
 
 TVM_REGISTER_API("tensorir.schedule.ScheduleAxis")
 .set_body_method(&Schedule::axis);
+
+TVM_REGISTER_API("tensorir.schedule.ScheduleOutputBlocks")
+.set_body_method(&Schedule::output_blocks);
+
+TVM_REGISTER_API("tensorir.schedule.ScheduleReductionBlocks")
+.set_body_method(&Schedule::reduction_blocks);
+
+TVM_REGISTER_API("tensorir.schedule.SchedulePredecessor")
+.set_body_method(&Schedule::predecessor);
+
+TVM_REGISTER_API("tensorir.schedule.ScheduleSuccessor")
+.set_body_method(&Schedule::successor);
 
 TVM_REGISTER_API("tensorir.schedule.ScheduleSplit")
 .set_body_method(&Schedule::split);
@@ -80,6 +93,8 @@ TVM_REGISTER_API("tensorir.schedule.ScheduleToHalide")
 TVM_REGISTER_API("tensorir.schedule.ScheduleCheckFatherLink")
 .set_body_method(&Schedule::CheckFatherLink);
 
+TVM_REGISTER_API("tensorir.schedule.ScheduleInlineAllInjective")
+.set_body_typed(InlineAllInjective);
 
 // maker
 TVM_REGISTER_API("make.TensorRegion")
