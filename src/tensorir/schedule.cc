@@ -85,7 +85,7 @@ Array<BlockTreeNode> Schedule::reduction_blocks() const {
       for (size_t j = 0; j < block->inputs.size(); ++j) {
         if (block->outputs[i]->data == block->inputs[j]->data) {
           bool match = true;
-          for (size_t k = 0; k < block->outputs[i]; ++k) {
+          for (size_t k = 0; k < block->outputs[i]->ranges.size(); ++k) {
             if (!is_zero(Simplify(block->outputs[i]->ranges[k]->min
                                   - block->outputs[j]->ranges[k]->min)) ||
                 !is_zero(Simplify(block->outputs[i]->ranges[k]->extent
@@ -582,7 +582,7 @@ BlockTreeNode Schedule::compute_after(BlockTreeNode block, AxisTreeNode axis) {
 
   for (auto x : predecessor) {
     if (!child_blocks.count(x)) {
-      LOG(FATAL) << "This block cannot compute at this point because some other "
+      LOG(FATAL) << "This block cannot compute after this point because some other "
                     "blocks outside the scope of this point are also dependent on this block.";
     }
   }
