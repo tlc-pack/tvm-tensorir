@@ -111,18 +111,24 @@ void DependencyGraph::AddEdge(BlockTreeNode from, BlockTreeNode to, EdgeType typ
   operator->()->backward_edges[to].push_back(EdgeNode::make(from, type));
 }
 
-Set<BlockTreeNode> DependencyGraph::GetSuccessor(BlockTreeNode block) {
+Set<BlockTreeNode> DependencyGraph::GetSuccessor(BlockTreeNode block) const {
   Set<BlockTreeNode> ret;
-  for (const auto& x : operator->()->forward_edges[block]) {
-    ret.insert(x->dst);
+  auto iter = operator->()->forward_edges.find(block);
+  if (iter != operator->()->forward_edges.end()) {
+    for (const auto& x : iter->second) {
+      ret.insert(x->dst);
+    }
   }
   return ret;
 }
 
-Set<BlockTreeNode> DependencyGraph::GetPredecessor(BlockTreeNode block) {
+Set<BlockTreeNode> DependencyGraph::GetPredecessor(BlockTreeNode block) const {
   Set<BlockTreeNode> ret;
-  for (const auto& x : operator->()->backward_edges[block]) {
-    ret.insert(x->dst);
+  auto iter = operator->()->backward_edges.find(block);
+  if (iter != operator->()->backward_edges.end()) {
+    for (const auto& x : iter->second) {
+      ret.insert(x->dst);
+    }
   }
   return ret;
 }

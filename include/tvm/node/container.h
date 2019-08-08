@@ -158,6 +158,9 @@ class IterAdapter {
   inline const typename Converter::ResultType operator*() const {
     return Converter::convert(*iter_);
   }
+  inline TIter& base_iter() {
+    return iter_;
+  }
 
  private:
   TIter iter_;
@@ -175,6 +178,15 @@ template<typename T,
     typename = typename std::enable_if<std::is_base_of<NodeRef, T>::value>::type >
 class Array : public NodeRef {
  public:
+  struct Ptr2NodeRef {
+    using ResultType = T;
+    static inline T convert(const NodePtr<Node>& n) {
+      return T(n);
+    }
+  };
+  using iterator = IterAdapter<Ptr2NodeRef,
+                               std::vector<NodePtr<Node> >::const_iterator>;
+
   /*!
    * \brief default constructor
    */
@@ -280,6 +292,15 @@ class Array : public NodeRef {
     if (node_.get() == nullptr) return 0;
     return static_cast<const ArrayNode*>(node_.get())->data.size();
   }
+  /*! \return The the first element */
+  inline const T front() const {
+    return T(static_cast<const ArrayNode*>(node_.get())->data.front());
+  }
+  /*! \return The the last element */
+  inline const T back() const {
+    return T(static_cast<const ArrayNode*>(node_.get())->data.back());
+  }
+
   /*!
    * \brief copy on write semantics
    *  Do nothing if current handle is the unique copy of the array.
@@ -304,6 +325,15 @@ class Array : public NodeRef {
     ArrayNode* n = this->CopyOnWrite();
     n->data.push_back(item.node_);
   }
+  /*!
+   * \brief insert a new item to a position
+   * \param item The item to be pushed.
+   */
+  inline void insert(iterator pos, const T& item) {
+    ArrayNode* n = this->CopyOnWrite();
+    n->data.insert(pos.base_iter(), item.node_);
+  }
+
   /*!
    * \brief set i-th element of the array.
    * \param i The index
@@ -359,17 +389,6 @@ class Array : public NodeRef {
   inline bool empty() const {
     return size() == 0;
   }
-  /*! \brief specify container node */
-  using ContainerType = ArrayNode;
-
-  struct Ptr2NodeRef {
-    using ResultType = T;
-    static inline T convert(const NodePtr<Node>& n) {
-      return T(n);
-    }
-  };
-  using iterator = IterAdapter<Ptr2NodeRef,
-                               std::vector<NodePtr<Node> >::const_iterator>;
 
   using reverse_iterator = IterAdapter<
       Ptr2NodeRef,
@@ -391,6 +410,9 @@ class Array : public NodeRef {
   inline reverse_iterator rend() const {
     return reverse_iterator(static_cast<const ArrayNode*>(node_.get())->data.rend());
   }
+
+  /*! \brief specify container node */
+  using ContainerType = ArrayNode;
 };
 
 template<typename T,

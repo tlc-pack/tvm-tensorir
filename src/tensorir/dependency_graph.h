@@ -149,9 +149,9 @@ class DependencyGraph : public NodeRef {
   // to support compute_inline which deletes a block in the graph
   void InlineNode(BlockTreeNode op_stmt);
   // Get all blocks that are dependent on block
-  Set<BlockTreeNode> GetSuccessor(BlockTreeNode block);
+  Set<BlockTreeNode> GetSuccessor(BlockTreeNode block) const;
   // Get all blocks that this block dependent on
-  Set<BlockTreeNode> GetPredecessor(BlockTreeNode block);
+  Set<BlockTreeNode> GetPredecessor(BlockTreeNode block) const;
 
   TVM_DEFINE_MUTABLE_NODE_REF_METHODS(
       DependencyGraph, NodeRef, DependencyGraphNode);

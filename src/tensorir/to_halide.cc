@@ -123,11 +123,13 @@ Stmt Schedule::ToHalide() const {
     for (const auto& child : lca->children) {
       if (FindAccess(child, x.first)) {
         attached_allocation[child].push_back(x.first);
+
         const auto& str = operator->()->raw_realize_scope.at(x.first->op);
-        if (str != "" && str != "global") {
+        if (str != "" && str != "global") { // recompute region
           const auto *axis = lca.as<AxisTreeNodeNode>();
           CHECK(axis != nullptr);
-          auto regions = GatherRegion(Array<Tensor>{x.first}, GetRef<AxisTreeNode>(axis), 0);
+          auto regions = GatherRegion(Array<Tensor>{x.first}, GetRef<AxisTreeNode>(axis), 0,
+                                      Set<BlockTreeNode>(nullptr), true, false, 'U');
           Region region;
           for (const auto& int_set : regions[0]) {
             Range real = Range::make_by_min_extent(int_set.min(),

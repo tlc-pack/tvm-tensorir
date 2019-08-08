@@ -7,12 +7,67 @@ from .tree_node import register_tensorir_node
 @register_tensorir_node
 class Schedule(NodeBase):
 
+    ##### Getters #####
     def blocks(self):
+        """Return all blocks in the schedule
+        
+        Returns
+        -------
+        blocks : List of BlockTreeNode
+        """
         return ScheduleBlocks(self)
 
-    def axis(self, stmt):
-        return ScheduleAxis(self, stmt)
+    def output_blocks(self):
+        """Return all output blocks in the schedule
+        Definition of output block: The last blocks that write to output tensors
 
+        Returns
+        -------
+        blocks : List of BlockTreeNode
+        """
+        return ScheduleOutputBlocks(self)
+
+    def reduction_blocks(self):
+        """Get all blocks that perform reduction computation
+
+        Returns
+        -------
+        blocks : List of BlockTreeNode
+            All reduction blocks
+        """
+        return ScheduleReductionBlocks(self)
+
+    def axis(self, node):
+        """Return all axes in the path which starts from this block to the root node
+
+        Returns
+        -------
+        axes : List of AxisTreeNode
+            All axes in the path to the root node
+        """
+        return ScheduleAxis(self, node)
+
+    def predecessor(self, block):
+        """Return all predecessor blocks of a block in the dependency graph
+
+        Returns
+        -------
+        block : List of BlockTreeNode
+            Successor blocks
+        """
+        return SchedulePredecessor(self, block)
+
+    def successor(self, block):
+        """Return all successor blocks of a block in the dependency graph
+
+        Returns
+        -------
+        block : List of BlockTreeNode
+            Successor blocks
+        """
+        return ScheduleSuccessorBlocks(self, block)
+
+    ##### Schedule Primitives #####
     def split(self, node, factor=None, nparts=None):
         if factor is not None:
             if nparts is not None:
@@ -59,16 +114,45 @@ class Schedule(NodeBase):
     def annotate(self, axis, type_name):
         return ScheduleAnnotate(self, axis, type_name)
 
+    def bind(self, axis, thread_var):
+        """Bind an axis to a thread index"""
+        return ScheduleBind(self, axis, thread_var)
+
+    ##### Schedule Helper #####
+    def inline_all_injective(self):
+        """Inline all elemwise and broadcast blocks"""
+        return ScheduleInlineAllInjective(self)
+
+    ##### Output #####
     def to_halide(self):
+        """Lower TensorIR to halide statement
+
+        Returns
+        ----------
+        stmt: Stmt
+        """
         return ScheduleToHalide(self)
 
+    ##### Debug Tools #####
     def check_father_link(self):
+        """ Check the correctness of double-link between every father-child pair in the
+        schedule tree. Print error message if finding erros.
+        This is used for debug.
+        """
         return ScheduleCheckFatherLink(self)
 
-    def bind(self, axis, iter_var):
-        return ScheduleBind(self, axis, iter_var)
 
 def create_schedule(stmt):
+    """ Create a schedule for a statement
+
+    Parameters
+    ----------
+    stmt: Stmt
+
+    Returns
+    ------
+    schedule: Schedule
+    """
     return CreateSchedule(stmt)
 
 

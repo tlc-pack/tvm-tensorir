@@ -20,8 +20,25 @@
 namespace tvm {
 
 namespace arith {
-// move this to arithmetic.h when this is stable
-Array<IntSet> SolveCover(Array<Var> vars, Array<IntSet> produce, Array<IntSet> requirement);
+// TODO(lmzheng): move this section to arithmetic.h when this is stable
+
+/*!
+ * \brief Return int sets with minimal sizes to make `produce` cover `requirement`
+ * \param vars The unknown vars to solve
+ * \param produces The produced int sets
+ * \param requirements The required int sets
+ * \return sets The set of unknown vars
+ */
+Array<IntSet> SolveCover(Array<Var> vars, Array<IntSet> produces, Array<IntSet> requirements);
+
+/*!
+ * \brief Return int sets with maximum sizes to make `consume` covered by `requirement`
+ * \param vars The unknown vars to solve
+ * \param produces The produced int sets
+ * \param requirements The required int sets
+ * \return sets The set of unknown vars
+ */
+Array<IntSet> SolveCoverBy(Array<Var> vars, Array<IntSet> produces, Array<IntSet> requirements);
 }
 
 namespace tensorir {
@@ -58,6 +75,50 @@ Schedule ScheduleNode::make(Stmt stmt) {
 // accessor
 Array<BlockTreeNode> Schedule::blocks() const {
   return operator->()->block_list;
+}
+
+Array<BlockTreeNode> Schedule::reduction_blocks() const {
+  Array<BlockTreeNode> ret;
+  for (const auto& block : operator->()->block_list) {
+    // TODO(lmzheng) : the condition can be stricter
+    for (size_t i = 0; i < block->outputs.size(); ++i) {
+      for (size_t j = 0; j < block->inputs.size(); ++j) {
+        if (block->outputs[i]->data == block->inputs[j]->data) {
+          bool match = true;
+          for (size_t k = 0; k < block->outputs[i]->ranges.size(); ++k) {
+            if (!is_zero(Simplify(block->outputs[i]->ranges[k]->min
+                                  - block->outputs[j]->ranges[k]->min)) ||
+                !is_zero(Simplify(block->outputs[i]->ranges[k]->extent
+                                  - block->outputs[j]->ranges[k]->extent))) {
+              match = false;
+              break;
+            }
+          }
+
+          if (match) {
+            ret.push_back(block);
+            continue;
+          }
+        }
+      }
+    }
+  }
+  return ret;
+}
+
+Array<BlockTreeNode> Schedule::output_blocks() const {
+  // FIXME(lmzheng) : add concept of output tensor and fix this function
+  return Array<BlockTreeNode>{operator->()->block_list.back()};
+}
+
+Array<BlockTreeNode> Schedule::successor(BlockTreeNode block) const {
+  Set<BlockTreeNode> tmp = operator->()->dep_graph.GetSuccessor(block);
+  return Array<BlockTreeNode>(tmp.begin(), tmp.end());
+}
+
+Array<BlockTreeNode> Schedule::predecessor(BlockTreeNode block) const {
+  Set<BlockTreeNode> tmp = operator->()->dep_graph.GetPredecessor(block);
+  return Array<BlockTreeNode>(tmp.begin(), tmp.end());
 }
 
 Array<AxisTreeNode> Schedule::axis(ScheduleTreeNode block) const {
@@ -359,16 +420,6 @@ Array<ScheduleTreeNode> Schedule::unroll(AxisTreeNode axis) {
   return expanded_stmts;
 }
 
-BlockTreeNode Schedule::compute_after(BlockTreeNode block, AxisTreeNode axis) {
-  // todo (syfeng):
-  // 1. check dependency using operator->()->DependencyGraph
-  //    a) the iteration domains of all parent axes match
-  //    b) all regions required by read is already produced
-  //    c) cannot move across WAW relation
-  // 2. move tree nodes
-  return BlockTreeNode(nullptr);
-}
-
 // Return whether the subtree rooted by node has any block in `set`
 bool FindAny(ScheduleTreeNode node, Set<BlockTreeNode> set) {
   if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
@@ -383,50 +434,9 @@ bool FindAny(ScheduleTreeNode node, Set<BlockTreeNode> set) {
   return false;
 }
 
-BlockTreeNode Schedule::compute_at(BlockTreeNode block, AxisTreeNode axis) {
+BlockTreeNode Schedule::RegenerateLoopAxis(BlockTreeNode block, AxisTreeNode axis, 
+                                           Array<IntSet> iter_domain, int insert_pos) {
   ScheduleTreeNode father = operator->()->father_map[block];
-
-  // check dependency:
-  // 1. all successors are at the subtree
-  // 2. WAW cannot across reduce axis
-  StdNodeSet<BlockTreeNode> child_blocks;
-  GatherChildrenBlocks(axis, &child_blocks);
-
-  const auto& predecessors = operator->()->dep_graph.GetPredecessor(block);
-  const auto& successor = operator->()->dep_graph.GetSuccessor(block);
-
-  for (auto x : successor) {
-    if (!child_blocks.count(x)) {
-      LOG(FATAL) << "This block cannot compute at this point because some other "
-                    "blocks outside the scope of this point are also dependent on this block.";
-    }
-  }
-  // todo(lmzheng): check compute_at across reduction axis for WAW
-
-  // find insert position : after all predecessors in dependency graph
-  // and before all successors in dep graph.
-  int after_pos, before_pos;
-  for (after_pos = static_cast<int>(axis->children.size()) - 1; after_pos >= 0; after_pos--) {
-    if (FindAny(axis->children[after_pos], predecessors)) {
-      break;
-    }
-  }
-  after_pos++;
-  for (before_pos = 0; before_pos < static_cast<int>(axis->children.size()); before_pos++) {
-    if (FindAny(axis->children[before_pos], successor)) {
-      break;
-    }
-  }
-  if (after_pos > before_pos) {
-    LOG(FATAL) << "Cannot satisfy dependency";
-  }
-
-  // gather required bound for all outputs
-  Array<Tensor> output_tensors;
-  for (const auto x : block->outputs) {
-    output_tensors.push_back(x->data);
-  }
-  Array<Array<IntSet> > ranges = GatherRegion(output_tensors, axis, after_pos);
 
   // copy domain for reduction axis
   StdNodeMap<Var, Range> dom_map;
@@ -439,15 +449,6 @@ BlockTreeNode Schedule::compute_at(BlockTreeNode block, AxisTreeNode axis) {
     now = operator->()->father_map[now];
   }
 
-  // solve range for vars
-  Array<IntSet> produces;
-  for (const auto x : block->outputs) {
-    for (const auto ran : x->ranges) {
-      produces.push_back(IntSet::range(ran));
-    }
-  }
-
-  Array<IntSet> iter_domain = arith::SolveCover(block->vars, produces, Flatten2DArray(ranges));
   // generate for AxisNodes
   std::vector<Expr> new_args(iter_domain.size());
   ScheduleTreeNode last = block;
@@ -460,6 +461,7 @@ BlockTreeNode Schedule::compute_at(BlockTreeNode block, AxisTreeNode axis) {
                                                           "can only contains single variable";
       // todo(lmzheng): check it is reduction axis
       Var var = Downcast<Var>(block->args[i]);
+      CHECK(dom_map.count(var));
       node = AxisTreeNodeNode::make(var,
                                     dom_map[var]->min,
                                     dom_map[var]->extent,
@@ -507,12 +509,118 @@ BlockTreeNode Schedule::compute_at(BlockTreeNode block, AxisTreeNode axis) {
   }
 
   // insert to father's children list
-  ArrayNode* new_children = axis->children.CopyOnWrite();
-  new_children->data.insert(new_children->data.begin() + after_pos, last.node_);
+  axis->children.insert(axis->children.begin() + insert_pos, last);
   UpdateFather(axis);
 
   return block;
 }
+
+BlockTreeNode Schedule::compute_at(BlockTreeNode block, AxisTreeNode axis) {
+  // check dependency:
+  // 1. all successors are in the subtree rooted by `axis`
+  // 2. WAW cannot across reduce axis
+  StdNodeSet<BlockTreeNode> child_blocks;
+  GatherChildrenBlocks(axis, &child_blocks);
+
+  const auto& predecessors = operator->()->dep_graph.GetPredecessor(block);
+  const auto& successor = operator->()->dep_graph.GetSuccessor(block);
+
+  for (auto x : successor) {
+    if (!child_blocks.count(x)) {
+      LOG(FATAL) << "This block cannot compute at this point because some other "
+                    "blocks outside the scope of this point are also dependent on this block.";
+    }
+  }
+  // todo(lmzheng): check compute_at across reduction axis for WAW
+
+  // find insert position : after all predecessors in dependency graph
+  // and before all successors in dep graph.
+  int after_pos, before_pos;
+  for (after_pos = static_cast<int>(axis->children.size()) - 1; after_pos >= 0; after_pos--) {
+    if (FindAny(axis->children[after_pos], predecessors)) {
+      break;
+    }
+  }
+  after_pos++;
+  for (before_pos = 0; before_pos < static_cast<int>(axis->children.size()); before_pos++) {
+    if (FindAny(axis->children[before_pos], successor)) {
+      break;
+    }
+  }
+  if (after_pos > before_pos) {
+    LOG(FATAL) << "Cannot satisfy dependency";
+  }
+
+  // gather required bound for all outputs
+  Array<Tensor> output_tensors;
+  for (const auto& x : block->outputs) {
+    output_tensors.push_back(x->data);
+  }
+  Array<Array<IntSet> > ranges = GatherRegion(output_tensors, axis, after_pos,
+                                              Set<BlockTreeNode>(nullptr), true, false, 'U');
+
+  // solve range for vars
+  Array<IntSet> produces;
+  for (const auto& x : block->outputs) {
+    for (const auto& ran : x->ranges) {
+      produces.push_back(IntSet::range(ran));
+    }
+  }
+
+  Array<IntSet> iter_domain = arith::SolveCover(block->vars, produces, Flatten2DArray(ranges));
+
+  return RegenerateLoopAxis(block, axis, iter_domain, after_pos);
+}
+
+BlockTreeNode Schedule::compute_after(BlockTreeNode block, AxisTreeNode axis) {
+  // check dependency 
+  // 1. all predecessors are in the subtree rooted by `axis`
+  StdNodeSet<BlockTreeNode> child_blocks;
+  GatherChildrenBlocks(axis, &child_blocks);
+
+  const auto& predecessor = operator->()->dep_graph.GetPredecessor(block);
+
+  for (auto x : predecessor) {
+    if (!child_blocks.count(x)) {
+      LOG(FATAL) << "This block cannot compute after this point because some other "
+                    "blocks outside the scope of this point are also dependent on this block.";
+    }
+  }
+
+  // gather the generated input regions by predecessor blocks
+  Array<Tensor> input_tensors;
+  for (const auto& x : block->inputs) {
+    input_tensors.push_back(x->data);
+  }
+  Array<Array<IntSet> > ranges = GatherRegion(input_tensors, axis, 0,
+                                              predecessor, false, true, 'I');
+  // solve range for vars
+  Array<IntSet> consumes;
+  Array<IntSet> flatten_ranges;
+
+  for (size_t i = 0; i < block->inputs.size(); ++i) {
+    if (ranges[i].size() > 0 && ranges[i][0].is_nothing()) {  // it is an input placeholder
+      for (size_t j = 0; j < ranges[i].size(); ++j) {
+        // TODO(lmzheng): replace this by strictly checking it is an input placeholder
+        CHECK(ranges[i][j].is_nothing());
+      }
+      continue;
+    }
+
+    for (const auto& iset : ranges[i]) {
+      flatten_ranges.push_back(iset);
+    }
+    for (const auto& ran : block->inputs[i]->ranges) {
+      consumes.push_back(IntSet::range(ran));
+    }
+  }
+
+  Array<IntSet> iter_domain = arith::SolveCoverBy(block->vars, consumes, flatten_ranges);
+
+  // TOOD(lmzheng): check the output region of the moved block keeps the same
+  return RegenerateLoopAxis(block, axis, iter_domain, axis->children.size());
+}
+
 
 BlockTreeNode Schedule::compute_root(BlockTreeNode block) {
   return compute_at(block, operator->()->root);
@@ -779,7 +887,11 @@ void Schedule::bind(AxisTreeNode axis, IterVar thread_iter) {
 // dependency analysis
 Array<Array<IntSet> > Schedule::GatherRegion(Array<Tensor> tensors,
                                              AxisTreeNode axis,
-                                             int start_child_index) const {
+                                             int start_child_index,
+                                             Set<BlockTreeNode> block_filter,
+                                             bool gather_inputs,
+                                             bool gather_outputs,
+                                             char aggregate_mode) const {
   std::unordered_map<const Variable*, IntSet> dom_map;
   std::unordered_map<const Variable*, IntSet> shared_dom_map;
 
@@ -821,36 +933,55 @@ Array<Array<IntSet> > Schedule::GatherRegion(Array<Tensor> tensors,
     std::vector<Array<IntSet> > isets_to_merge(tensor.ndim());
 
     for (const auto& block : blocks) {
+      
+      if (block_filter.defined() && !block_filter.count(block)) {
+        continue;
+      }
+
       // replace formal parameters with actual parameters
       std::unordered_map<const Variable*, Expr> arg_map;
       for (size_t i = 0; i < block->vars.size(); ++i) {
         arg_map[block->vars[i].get()] = block->args[i];
       }
 
-      for (const auto& read : block->inputs) {
-        if (read->data == tensor) {
-          for (size_t i = 0; i < tensor.ndim(); ++i) {
-            Range real = Range::make_by_min_extent(Substitute(read->ranges[i]->min, arg_map),
-                                                   Substitute(read->ranges[i]->extent, arg_map));
-            CHECK(operator->()->raw_realize_scope.count(tensor->op));
-            IntSet o;
-            if (operator->()->raw_realize_scope.at(tensor->op) == "shared") {
-              o = arith::EvalSet(real, shared_dom_map);
-            } else {
-              o = arith::EvalSet(real, dom_map);
+      auto gather_func = [&tensor, &arg_map, this, &isets_to_merge,
+                          &dom_map, &shared_dom_map]
+          (const Array<TensorRegion>& regions) {
+        for (const auto& reg : regions) {
+          if (reg->data == tensor) {
+            for (size_t i = 0; i < tensor.ndim(); ++i) {
+              Range real = Range::make_by_min_extent(Substitute(reg->ranges[i]->min, arg_map),
+                                                     Substitute(reg->ranges[i]->extent, arg_map));
+              CHECK(operator->()->raw_realize_scope.count(tensor->op));
+              IntSet o;
+              if (operator->()->raw_realize_scope.at(tensor->op) == "shared") {
+                o = arith::EvalSet(real, shared_dom_map);
+              } else {
+                o = arith::EvalSet(real, dom_map);
+              }
+              isets_to_merge[i].push_back(o);
             }
-            isets_to_merge[i].push_back(o);
           }
         }
+      };
+
+      if (gather_inputs) {
+        gather_func(block->inputs);
+      }
+      if (gather_outputs) {
+        gather_func(block->outputs);
       }
     }
 
-    Array<IntSet> required_region;
+    Array<IntSet> aggregated_region;
     for (size_t i = 0; i < tensor.ndim(); ++i) {
-      IntSet tmp = arith::Union(isets_to_merge[i]);
-      required_region.push_back(tmp);
+      if (aggregate_mode == 'U') {
+        aggregated_region.push_back(arith::Union(isets_to_merge[i]));
+      } else {
+        aggregated_region.push_back(arith::Intersect(isets_to_merge[i]));
+      }
     }
-    ret.push_back(required_region);
+    ret.push_back(aggregated_region);
   }
 
   return ret;

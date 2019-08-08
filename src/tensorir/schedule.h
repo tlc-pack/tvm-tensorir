@@ -52,11 +52,15 @@ class ScheduleNode : public Node {
 
 class Schedule : public NodeRef {
  public:
-  // getter
+  // Getter
   Array<BlockTreeNode> blocks() const;
+  Array<BlockTreeNode> output_blocks() const;
+  Array<BlockTreeNode> reduction_blocks() const;
+  Array<BlockTreeNode> predecessor(BlockTreeNode block) const;
+  Array<BlockTreeNode> successor(BlockTreeNode block) const;
   Array<AxisTreeNode> axis(ScheduleTreeNode node) const;
 
-  // schedule primitives
+  // Schedule primitives
   Array<AxisTreeNode> split(AxisTreeNode axis, Expr factor);
   Array<AxisTreeNode> split_nparts(AxisTreeNode axis, Expr nparts);
   AxisTreeNode fuse(AxisTreeNode outer, AxisTreeNode inner);
@@ -83,16 +87,34 @@ class Schedule : public NodeRef {
   BlockTreeNode double_buffer();     // unimplemented
   void annotate(AxisTreeNode axis, std::string type);
 
-  // dependency analysis
+  // Dependency analysis
+  /*
+   * \brief Gather required regions for a list of tensors
+   * \param tensors The tensor of interest
+   * \param axis The root axis for gathering
+   * \param start_child_index The blocks in the children of root axis with index less
+   *                          then this number will be ignored
+   * \param block_filter If this is defined, the func only considers the blocks in this set.
+   *                     If this is not defined, the function will consider all blocks.
+   * \param gather_inputs Whether gather inputs of blocks
+   * \param gather_outputs Whether gather outputs of blocks
+   * \param aggregate_mode Aggregation mode. 'U' for union, 'I' for intersect.
+   *
+   */
   Array<Array<arith::IntSet> > GatherRegion(Array<Tensor> tensors,
                                             AxisTreeNode axis,
-                                            int start_child_index) const;
+                                            int start_child_index,
+                                            Set<BlockTreeNode> block_filter,
+                                            bool gather_inputs,
+                                            bool gather_outputs,
+                                            char aggregate_mode) const;
 
-  // output
+  // Output
   Stmt ToHalide() const;
 
-  // tree manipulation (Because we need to update the father_map, these functions are
-  // set to be the member functions of Schedule. Considering moving them to another place later)
+  // Tree manipulation
+  // Note: Because we need to update the father_map, these functions are set to be the member 
+  // functions of Schedule. Considering moving them to another place later
   void UpdateFather(ScheduleTreeNode father, bool recursive = false);
   ScheduleTreeNode LowestCommonAncestor(Array<ScheduleTreeNode> nodes, bool inclusive) const;
   inline void ReplaceChild(ScheduleTreeNode old_child, ScheduleTreeNode new_child);
@@ -100,11 +122,17 @@ class Schedule : public NodeRef {
   void RemoveLeaf(ScheduleTreeNode node);
   bool IsAncestor(ScheduleTreeNode outer, ScheduleTreeNode inner) const;
 
+  // Debug tools
   void CheckFatherLink();
 
   TVM_DEFINE_MUTABLE_NODE_REF_METHODS(Schedule, NodeRef, ScheduleNode);
 
  private:
+  // Generate loop axes according to the solved iteration domain
+  // This is the common part of compute_at and compute_after
+  BlockTreeNode RegenerateLoopAxis(BlockTreeNode block, AxisTreeNode axis, 
+                                   Array<arith::IntSet> iter_domain, int insert_pos);
+
   size_t ct_{0};
 };
 
