@@ -185,6 +185,80 @@ void DependencyGraph::InlineNode(BlockTreeNode stmt) {
   }
 }
 
+void DependencyGraph::CacheReadNode(BlockTreeNode old_block, BlockTreeNode cache_block, Array<BlockTreeNode> relative_blocks) {
+  AddNode(cache_block);
+  auto& forward_edges = operator->()->forward_edges;
+  auto& backward_edges = operator->()->backward_edges;
+
+  if (old_block.defined()) {
+
+    std::vector<std::list<Edge>::iterator> to_delete;
+    for (auto iter = forward_edges[old_block].begin(); iter != forward_edges[old_block].end(); ++iter) {
+      if (relative_blocks.Index((*iter)->dst) != std::string::npos) {
+        to_delete.push_back(iter);
+        forward_edges[cache_block].push_back(*iter);
+      }
+    }
+    for (const auto& iter : to_delete) {
+      forward_edges[old_block].erase(iter);
+    }
+
+    for (const auto& block : relative_blocks) {
+      auto& edges = backward_edges[block];
+      std::vector<Edge> to_push;
+      for (auto iter = edges.begin(); iter != edges.end();) {
+        if ((*iter)->dst == old_block) {
+          Edge edge = *iter;
+          iter = edges.erase(iter);
+          to_push.push_back(EdgeNode::make(cache_block, edge->type));
+        } else {
+          ++iter;
+        }
+      }
+      for (const auto& x : to_push) {
+        edges.push_back(std::move(x));
+      }
+    }
+
+    forward_edges[old_block].push_back(EdgeNode::make(cache_block, EdgeType::kRAW));
+    backward_edges[cache_block].push_back(EdgeNode::make(old_block, EdgeType::kRAW));
+  } else {
+    for (const auto& block : relative_blocks) {
+      if (FindInput(block, cache_block->outputs[0]->data)) {
+        backward_edges[block].push_back(EdgeNode::make(cache_block, EdgeType::kRAW));
+        forward_edges[cache_block].push_back(EdgeNode::make(block, EdgeType::kRAW));
+      }
+    }
+  }
+}
+
+void DependencyGraph::CacheWriteNode(BlockTreeNode old_block, BlockTreeNode cache_block, Array<BlockTreeNode> relative_blocks) {
+  AddNode(cache_block);
+  auto& forward_edges = operator->()->forward_edges;
+  auto& backward_edges = operator->()->backward_edges;
+
+  for (const auto& edge : forward_edges[old_block]) {
+    auto& edges = backward_edges[edge->dst];
+    std::vector<Edge> to_push;
+    for (auto iter = edges.begin(); iter != edges.end();) {
+      if ((*iter)->dst == old_block) {
+        Edge edge = *iter;
+        iter = edges.erase(iter);
+        to_push.push_back(EdgeNode::make(cache_block, edge->type));
+      } else {
+        ++iter;
+      }
+    }
+    for (const auto& x : to_push) {
+      edges.push_back(std::move(x));
+    }
+    forward_edges[cache_block].push_back(edge);
+  }
+
+  forward_edges[old_block].push_back(EdgeNode::make(cache_block, EdgeType::kRAW));
+  backward_edges[cache_block].push_back(EdgeNode::make(old_block, EdgeType::kRAW));
+}
+
 // Debug tool
 std::ostream& PrintDependencyGraph(std::ostream &os,  DependencyGraph g) {
   for (const auto& x : g->forward_edges) {

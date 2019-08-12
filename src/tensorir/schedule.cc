@@ -58,6 +58,10 @@ void GatherVarDomain(ScheduleTreeNode node,
 ScheduleTreeNode SubstituteArgOnly(ScheduleTreeNode node, const Map<Var, Expr>& vmap);
 Array<ScheduleTreeNode> SubstituteArgOnly(Array<ScheduleTreeNode> nodes,
                                           const Map<Var, Expr>& vmap);
+ScheduleTreeNode SubstituteTensorOnly(ScheduleTreeNode node,
+                                      const StdNodeMap<Tensor, Tensor>& vmap,
+                                      bool read, bool write);
+
 
 // Substitute variables with expression and do equation simplification
 // using the information from analyzer.
@@ -434,7 +438,7 @@ bool FindAny(ScheduleTreeNode node, Set<BlockTreeNode> set) {
   return false;
 }
 
-BlockTreeNode Schedule::RegenerateLoopAxis(BlockTreeNode block, AxisTreeNode axis, 
+BlockTreeNode Schedule::RegenerateLoopAxis(BlockTreeNode block, AxisTreeNode axis,
                                            Array<IntSet> iter_domain, int insert_pos) {
   ScheduleTreeNode father = operator->()->father_map[block];
 
@@ -573,7 +577,7 @@ BlockTreeNode Schedule::compute_at(BlockTreeNode block, AxisTreeNode axis) {
 }
 
 BlockTreeNode Schedule::compute_after(BlockTreeNode block, AxisTreeNode axis) {
-  // check dependency 
+  // check dependency
   // 1. all predecessors are in the subtree rooted by `axis`
   StdNodeSet<BlockTreeNode> child_blocks;
   GatherChildrenBlocks(axis, &child_blocks);
@@ -884,6 +888,161 @@ void Schedule::bind(AxisTreeNode axis, IterVar thread_iter) {
   }
 }
 
+BlockTreeNode Schedule::cache(Tensor tensor, std::string scope, std::string type) {
+  CHECK(type == "read" || type == "write") << "Not supported type: " + type;
+  Set<BlockTreeNode> predecessors, successor;
+  for (const auto& block : operator->()->block_list) {
+    if (FindOutput(block, tensor)) {
+      predecessors.insert(block);
+    }
+    else if (FindInput(block, tensor)) {
+      successor.insert(block);
+    }
+  }
+  auto root = operator->()->root;
+  int after_pos, before_pos;
+  for (after_pos = static_cast<int>(root->children.size()) - 1; after_pos >= 0; --after_pos) {
+    if (FindAny(root->children[after_pos], predecessors)) {
+      break;
+    }
+  }
+  after_pos++;
+  for (before_pos = 0; before_pos < static_cast<int>(root->children.size()); ++before_pos) {
+    if (FindAny(root->children[before_pos], successor)) {
+      break;
+    }
+  }
+  if (after_pos > before_pos) {
+    LOG(FATAL) << "Cannot satisfy dependency";
+  }
+  Array<Range> ranges;
+  for (const auto& expr : tensor->shape) {
+    ranges.push_back(Range::make_by_min_extent(0, expr));
+  }
+
+  Array<Var> iter_vars;
+  Set<Var> used_vars;
+  Array<Expr> args;
+  arith::Analyzer analyzer;
+  Array<Expr> halide_call_args;
+  Array<IterVar> tmp_iter_vars;
+  Map<Var, Expr> var_map;
+  Array<Var> vars;
+
+  for (size_t i = 0; i < tensor->shape.size(); ++i) {
+    Var iter_var("ax" + std::to_string(i));
+    tmp_iter_vars.push_back(IterVarNode::make(ranges[i], iter_var, IterVarType::kDataPar, iter_var->name_hint));
+    iter_vars.push_back(iter_var);
+    used_vars.insert(iter_var);
+    args.push_back(iter_var);
+  }
+
+  Tensor new_tensor;
+  Expr value;
+  if (type == "read") {
+    value = Call::make(tensor->dtype, tensor->op->name, args, Call::CallType::Halide, tensor->op);
+    new_tensor = ComputeOpNode::make(
+        tensor->op->name + "." + scope, tensor->op->tag, Map<std::string, NodeRef>(),
+        tmp_iter_vars, Array<Expr>{value}).output(0);
+  } else if (type == "write") {
+    new_tensor = PlaceholderOpNode::make(tensor->op->name + "." + scope, tensor->shape, tensor->dtype).output(0);
+    value = Call::make(new_tensor->dtype, new_tensor->op->name, args, Call::CallType::Halide, new_tensor->op);
+  }
+
+  Array<Range> output_range;
+  for (size_t i = 0; i < iter_vars.size(); ++i) {
+    output_range.push_back(Range::make_by_min_extent(iter_vars[i], 1));
+  }
+
+  Array<TensorRegion> raw_outputs = {TensorRegionNode::make(new_tensor, output_range)};
+  Array<TensorRegion> outputs;
+
+  std::tie(args, vars, outputs, var_map) = CreateOutputRegions(raw_outputs, used_vars, &analyzer);
+
+  for (const auto& x : iter_vars) {
+    halide_call_args.push_back(SubstituteAndEquationSimplify(x, var_map, &analyzer));
+  }
+  value = SubstituteAndEquationSimplify(value, var_map, &analyzer);
+
+  Stmt stmt;
+  if (type == "read") {
+    stmt = Provide::make(new_tensor->op, 0, value, halide_call_args);
+  } else if (type == "write"){
+    stmt = Provide::make(tensor->op, 0, value, halide_call_args);
+  }
+
+  Array<TensorRegion> inputs = CreateInputRegions(value);
+  BlockTreeNode new_block = BlockTreeNodeNode::make(args, vars, inputs, outputs, stmt, Array<ScheduleTreeNode>{});
+  ScheduleTreeNode last = new_block;
+  for (int i = static_cast<int>(ranges.size()) - 1; i >= 0; --i) {
+    last = AxisTreeNodeNode::make(iter_vars[i], ranges[i]->min,
+                                  ranges[i]->extent, AxisType::kOpaque,
+                                  Array<ScheduleTreeNode>{last});
+  }
+  UpdateFather(last, true);
+  // Update children of root
+  auto& block_list = operator->()->block_list;
+  root->children.push_back(last);
+  for (int i = static_cast<int>(root->children.size()) - 1; i > static_cast<int>(after_pos); --i) {
+    root->children.Set(i, root->children[i - 1]);
+  }
+  root->children.Set(after_pos, last);
+  UpdateFather(root);
+
+  size_t block_pos = 0;
+  for (int i = 0; i < after_pos; ++i) {
+    block_pos += BlockNum(root->children[i]);
+  }
+
+  // Update block_list
+  block_list.push_back(new_block);
+  for (int i = static_cast<int>(block_list.size()) - 1; i > static_cast<int>(block_pos); --i) {
+    block_list.Set(i, block_list[i - 1]);
+  }
+  block_list.Set(block_pos, new_block);
+
+  // Calculate the last block produce the tensor
+  int last_block;
+  for (last_block = static_cast<int>(block_list.size()) - 1; last_block >= 0; --last_block) {
+    if (predecessors.count(block_list[last_block]) && FindOutput(block_list[last_block], tensor)) {
+      break;
+    }
+  }
+
+  StdNodeMap<Tensor, Tensor> vmap;
+  vmap[tensor] = new_tensor;
+
+  if (type == "read") {
+    for (auto& block : successor) {
+      SubstituteTensorOnly(block, vmap, true, false);
+    }
+
+    // Update dependency graph
+    operator->()->dep_graph.CacheReadNode(last_block >= 0 ? block_list[last_block] : BlockTreeNode(),
+                                          new_block, Array<BlockTreeNode>(successor.begin(), successor.end()));
+
+  } else if (type == "write") {
+    for (auto& block : predecessors) {
+      SubstituteTensorOnly(block, vmap, true, true);
+    }
+
+    // Update dependency graph
+    operator->()->dep_graph.CacheWriteNode(last_block >= 0 ? block_list[last_block] : BlockTreeNode(),
+                                           new_block, Array<BlockTreeNode>(predecessors.begin(), predecessors.end()));
+  }
+  operator->()->raw_realize_region[new_tensor] = ranges;
+  operator->()->raw_realize_scope[new_tensor->op] = scope;
+  return new_block;
+}
+
+BlockTreeNode Schedule::cache_read(Tensor tensor, std::string scope) {
+  return cache(tensor, scope, "read");
+}
+
+BlockTreeNode Schedule::cache_write(Tensor tensor, std::string scope) {
+  return cache(tensor, scope, "write");
+}
+
 // dependency analysis
 Array<Array<IntSet> > Schedule::GatherRegion(Array<Tensor> tensors,
                                              AxisTreeNode axis,
@@ -927,13 +1086,11 @@ Array<Array<IntSet> > Schedule::GatherRegion(Array<Tensor> tensors,
   }
 
   Array<Array<IntSet> > ret;
-
   // for all tensors, compute required regions
   for (const auto& tensor : tensors) {
     std::vector<Array<IntSet> > isets_to_merge(tensor.ndim());
-
     for (const auto& block : blocks) {
-      
+
       if (block_filter.defined() && !block_filter.count(block)) {
         continue;
       }
@@ -1013,6 +1170,17 @@ void Schedule::RemoveLeaf(ScheduleTreeNode node) {
 
   // destroy to remove circular reference
   next->children.Remove(node);
+}
+
+size_t Schedule::BlockNum(ScheduleTreeNode node) const {
+  size_t ret = 0;
+  if (node.as<BlockTreeNodeNode>()) {
+    ret += 1;
+  }
+  for (const auto& x : node->children) {
+    ret += BlockNum(x);
+  }
+  return ret;
 }
 
 void Schedule::ReplaceChild(ScheduleTreeNode old_child, ScheduleTreeNode new_child) {
@@ -1179,6 +1347,36 @@ ScheduleTreeNode SubstituteAndEquationSimplify(ScheduleTreeNode node, const Map<
     block->args = args;
   } else {
     LOG(FATAL) << "Invalid node in schedule tree";
+  }
+  return node;
+}
+
+ScheduleTreeNode SubstituteTensorOnly(ScheduleTreeNode node, const StdNodeMap<Tensor, Tensor>& vmap, bool read, bool write) {
+  std::unordered_map<TensorKey, TensorKey> smap;
+  for (const auto x : vmap) {
+    TensorKey key = {x.first->op, x.first->value_index};
+    TensorKey value = {x.second->op, x.second->value_index};
+    smap[key] = value;
+  }
+  if (const BlockTreeNodeNode* n = node.as<BlockTreeNodeNode>()) {
+    BlockTreeNode block = GetRef<BlockTreeNode>(n);  // get ref to remove const qualifier
+    if (read) {
+      Array<TensorRegion> inputs;
+      for (const auto& x : block->inputs) {
+        Tensor t = vmap.count(x->data) ? vmap.at(x->data) : x->data;
+        inputs.push_back(TensorRegionNode::make(t, x->ranges));
+      }
+      block->inputs = inputs;
+    }
+    if (write) {
+      Array<TensorRegion> outputs;
+      for (const auto& x : block->outputs) {
+        Tensor t = vmap.count(x->data) ? vmap.at(x->data) : x->data;
+        outputs.push_back(TensorRegionNode::make(t, x->ranges));
+      }
+      block->outputs = outputs;
+    }
+    block->stmt = Substitute(block->stmt, smap, read, write);
   }
   return node;
 }

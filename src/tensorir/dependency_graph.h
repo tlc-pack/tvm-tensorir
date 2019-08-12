@@ -148,6 +148,9 @@ class DependencyGraph : public NodeRef {
   void AddEdge(BlockTreeNode from, BlockTreeNode to, EdgeType type);
   // to support compute_inline which deletes a block in the graph
   void InlineNode(BlockTreeNode op_stmt);
+  // Replace dependency
+  void CacheReadNode(BlockTreeNode old_block, BlockTreeNode cache_block, Array<BlockTreeNode> relative_blocks);
+  void CacheWriteNode(BlockTreeNode old_block, BlockTreeNode cache_block, Array<BlockTreeNode> relative_blocks);
   // Get all blocks that are dependent on block
   Set<BlockTreeNode> GetSuccessor(BlockTreeNode block) const;
   // Get all blocks that this block dependent on

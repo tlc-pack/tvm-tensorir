@@ -140,6 +140,24 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
   p->stream << "]";
 });
 
+bool FindInput(BlockTreeNode node, Tensor tensor) {
+  for (const auto& input : node->inputs) {
+    if (input->data == tensor) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool FindOutput(BlockTreeNode node, Tensor tensor) {
+  for (const auto& output : node->outputs) {
+    if (output->data == tensor) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Debug tools
 void PrintTreeNode(std::ostream &output, ScheduleTreeNode node, size_t indent) {
   for (size_t i = 0; i < indent; ++i) {

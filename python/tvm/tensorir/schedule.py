@@ -142,6 +142,12 @@ class Schedule(NodeBase):
         return ScheduleCheckFatherLink(self)
 
 
+    def cache_read(self, tensor, type_name):
+        return ScheduleCacheRead(self, tensor, type_name)
+
+    def cache_write(self, tensor, type_name):
+        return ScheduleCacheWrite(self, tensor, type_name)
+
 def create_schedule(stmt):
     """ Create a schedule for a statement
 

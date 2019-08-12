@@ -141,6 +141,12 @@ class BlockTreeNodeNode : public ScheduleTreeNodeNode {
 
 TVM_DEFINE_MUTABLE_NODE_REF(BlockTreeNode, ScheduleTreeNode, BlockTreeNodeNode);
 
+// determine whether tensor is one of inputs
+bool FindInput(BlockTreeNode node, Tensor tensor);
+
+// determine whether tensor is one of outputs
+bool FindOutput(BlockTreeNode node, Tensor tensor);
+
 // debug tools
 void PrintTreeNode(std::ostream &output, ScheduleTreeNode node, size_t indent = 0);
 

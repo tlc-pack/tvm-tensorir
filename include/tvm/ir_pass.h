@@ -176,6 +176,17 @@ Stmt Substitute(Stmt stmt, const Map<Var, Expr>& value_map);
 Expr Substitute(Expr expr, const Map<Var, Expr>& value_map);
 
 /*!
+ * \brief Substitute the var specified in tensor->tensor to be value.
+ * \param stmt The source statement to be substituted
+ * \param value_map The map of new tensors.
+ * \param read Whether substitute Call operators
+ * \param write Whether substitute Provide operators
+ * \return The converted form.
+ */
+Stmt Substitute(Stmt stmt,
+                const std::unordered_map<TensorKey, TensorKey>& value_map, bool read = true, bool write = true);
+
+/*!
  * \brief inline all calls of f in stmt.
  *
  * \param stmt The statement to apply inline optimization.

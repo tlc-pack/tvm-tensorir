@@ -82,8 +82,9 @@ class Schedule : public NodeRef {
   BlockTreeNode tensorize(BlockTreeNode block, TensorIntrinsic intrin);
   ScheduleTreeNode untensorize(BlockTreeNode block);
 
-  BlockTreeNode cache_read();        // unimplemented
-  BlockTreeNode cache_write();       // unimplemented
+  BlockTreeNode cache(Tensor, std::string scope, std::string type);
+  BlockTreeNode cache_read(Tensor tensor, std::string scope);
+  BlockTreeNode cache_write(Tensor tensor, std::string scope);
   BlockTreeNode double_buffer();     // unimplemented
   void annotate(AxisTreeNode axis, std::string type);
 
@@ -121,6 +122,7 @@ class Schedule : public NodeRef {
   inline void ReplaceChild(ScheduleTreeNode old_child, Array<ScheduleTreeNode> new_children);
   void RemoveLeaf(ScheduleTreeNode node);
   bool IsAncestor(ScheduleTreeNode outer, ScheduleTreeNode inner) const;
+  size_t BlockNum(ScheduleTreeNode node) const;
 
   // Debug tools
   void CheckFatherLink();

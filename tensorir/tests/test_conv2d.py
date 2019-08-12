@@ -181,12 +181,6 @@ def test_conv_schedule():
         name='B')
 
     s = tvm.create_schedule(B.op)
-    s[Apad].compute_inline() # compute Apad inline
-    AA = s.cache_read(Apad, 'shared', [B])
-    WW = s.cache_read(W, "shared", [B])
-    AL = s.cache_read(AA, "local", [B])
-    WL = s.cache_read(WW, "local", [B])
-    BL = s.cache_write(B, "local")
 
     def _schedule_pass(stmt):
         s = tensorir.create_schedule(stmt)
@@ -199,7 +193,14 @@ def test_conv_schedule():
         vthread = 2
 
         # Get blocks
-        AA, AL, WW, WL, BL, BL_, B = s.blocks()
+        Apad, BL, BL_ = s.blocks()
+        AA = s.cache_read(BL_.inputs[1].data, 'shared')
+        WW = s.cache_read(BL_.inputs[2].data, "shared")
+        AL = s.cache_read(BL_.inputs[1].data, "local")
+        WL = s.cache_read(BL_.inputs[2].data, "local")
+        B = s.cache_write(BL_.outputs[0].data, "local")
+        s.compute_inline(Apad)
+
         t1, t2 = s.split(s.axis(BL)[-1], factor=1)
         BL = s.blockize(t2)
 

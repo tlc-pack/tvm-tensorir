@@ -84,6 +84,12 @@ TVM_REGISTER_API("tensorir.schedule.ScheduleTensorize")
 TVM_REGISTER_API("tensorir.schedule.ScheduleUntensorize")
 .set_body_method(&Schedule::untensorize);
 
+TVM_REGISTER_API("tensorir.schedule.ScheduleCacheRead")
+.set_body_method(&Schedule::cache_read);
+
+TVM_REGISTER_API("tensorir.schedule.ScheduleCacheWrite")
+.set_body_method(&Schedule::cache_write);
+
 TVM_REGISTER_API("tensorir.schedule.ScheduleAnnotate")
 .set_body_method(&Schedule::annotate);
 

@@ -122,15 +122,9 @@ def test_gemm_schedule():
 
     # schedule
     s = tvm.create_schedule(C.op)
-    AS = s.cache_read(A, "shared", [C])
-    BS = s.cache_read(B, "shared", [C])
-    AL = s.cache_read(AS, "local", [C])
-    BL = s.cache_read(BS, "local", [C])
-    CC = s.cache_write(C, "local")
 
     def _schedule_pass(stmt):
         s = tensorir.create_schedule(stmt)
-
         scale = 8
         num_thread = 8
         block_factor = scale * num_thread
@@ -142,7 +136,12 @@ def test_gemm_schedule():
         thread_xz = tvm.thread_axis("vthread", name="vx")
         thread_yz = tvm.thread_axis("vthread", name="vy")
 
-        AS, AL, BS, BL, CL_init, CL_update, C = s.blocks()
+        CL_init, CL_update = s.blocks()
+        AS = s.cache_read(CL_update.inputs[1].data, "shared")
+        BS = s.cache_read(CL_update.inputs[2].data, "shared")
+        AL = s.cache_read(CL_update.inputs[1].data, "local")
+        BL = s.cache_read(CL_update.inputs[2].data, "local")
+        C = s.cache_write(CL_update.outputs[0].data, "local")
 
         def split_calc(block):
             by, yi = s.split(s.axis(block)[-2], factor=block_factor)
@@ -162,7 +161,6 @@ def test_gemm_schedule():
             tyz, txz, ty, tx, yi, xi = s.reorder(tyz, txz, ty, tx, yi, xi)
 
             return tx, yi
-
         tx, yi = split_calc(C)
 
         s.compute_at(CL_update, tx)

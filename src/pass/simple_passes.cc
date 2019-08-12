@@ -74,6 +74,48 @@ class IRSubstitue : public IRMutator {
   const std::unordered_map<const Variable*, Expr>& smap_;
 };
 
+class IRTensorSubstitue : public IRMutator {
+ public:
+  explicit IRTensorSubstitue(
+      const std::unordered_map<TensorKey, TensorKey>& vmap, bool read, bool write)
+      : vmap(vmap), read(read), write(write) {
+  }
+
+  Stmt Mutate_(const Provide* op, const Stmt& s) final {
+    Stmt stmt = IRMutator::Mutate_(op, s);
+    if (!write) {
+      return stmt;
+    }
+    op = stmt.as<Provide>();
+    TensorKey key{op->func, op->value_index};
+    auto it = vmap.find(key);
+    if (it != vmap.end()) {
+      return Provide::make(vmap.at(key).f, vmap.at(key).value_index, op->value, op->args);
+    } else {
+      return stmt;
+    }
+  }
+
+  Expr Mutate_(const Call* op, const Expr& e) final {
+    Expr expr = IRMutator::Mutate_(op, e);
+    if (!read) {
+      return expr;
+    }
+    op = expr.as<Call>();
+    TensorKey key{op->func, op->value_index};
+    auto it = vmap.find(key);
+    if (it != vmap.end()) {
+      return Call::make(op->type, vmap.at(key).GetName(), op->args, op->call_type, vmap.at(key).f, vmap.at(key).value_index);
+    } else {
+      return e;
+    }
+  }
+
+ private:
+  const std::unordered_map<TensorKey, TensorKey>& vmap;
+  bool read, write;
+};
+
 Stmt Substitute(Stmt stmt,
                 const std::unordered_map<const Variable*, Expr>& value_map) {
   if (value_map.size() == 0) return stmt;
@@ -81,9 +123,15 @@ Stmt Substitute(Stmt stmt,
 }
 
 Expr Substitute(Expr expr,
-                const std::unordered_map<const Variable*, Expr>& value_map) {
+                 const std::unordered_map<const Variable*, Expr>& value_map) {
   if (value_map.size() == 0) return expr;
   return IRSubstitue(value_map).Mutate(expr);
+}
+
+Stmt Substitute(Stmt stmt,
+                const std::unordered_map<TensorKey, TensorKey>& value_map, bool read, bool write) {
+  if (value_map.size() == 0) return stmt;
+  return IRTensorSubstitue(value_map, read, write).Mutate(stmt);
 }
 
 Stmt Substitute(Stmt stmt, const Map<Var, Expr>& value_map) {
