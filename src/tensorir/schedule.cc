@@ -982,11 +982,7 @@ BlockTreeNode Schedule::cache(Tensor tensor, std::string scope, std::string type
   UpdateFather(last, true);
   // Update children of root
   auto& block_list = operator->()->block_list;
-  root->children.push_back(last);
-  for (int i = static_cast<int>(root->children.size()) - 1; i > static_cast<int>(after_pos); --i) {
-    root->children.Set(i, root->children[i - 1]);
-  }
-  root->children.Set(after_pos, last);
+  root->children.insert(root->children.begin() + after_pos, last);
   UpdateFather(root);
 
   size_t block_pos = 0;
@@ -995,11 +991,7 @@ BlockTreeNode Schedule::cache(Tensor tensor, std::string scope, std::string type
   }
 
   // Update block_list
-  block_list.push_back(new_block);
-  for (int i = static_cast<int>(block_list.size()) - 1; i > static_cast<int>(block_pos); --i) {
-    block_list.Set(i, block_list[i - 1]);
-  }
-  block_list.Set(block_pos, new_block);
+  block_list.insert(block_list.begin() + block_pos, new_block);
 
   // Calculate the last block produce the tensor
   int last_block;
