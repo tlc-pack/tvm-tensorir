@@ -76,6 +76,7 @@ enum AxisType: int {
   kOpaque = 3,
   vectorized = 4,
   unrolled = 5,
+  parallel = 6,
 };
 
 // Two kinds of node : 1. AxisTreeNode

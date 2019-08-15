@@ -88,7 +88,11 @@ inline Stmt ArrayToBlock(Array<Stmt> stmts) {
   Stmt now = stmts[ct + 1];
   do {
     if (const ir::AttrStmt* op = stmts[ct].as<ir::AttrStmt>()) {
-      now = ir::AttrStmt::make(op->node, op->attr_key, op->value, now);
+      if (op->body.as<ir::Evaluate>()) {
+        now = ir::AttrStmt::make(op->node, op->attr_key, op->value, now);
+      } else {
+        now = ir::Block::make(stmts[ct], now);
+      }
     } else if (const ir::Realize* op = stmts[ct].as<ir::Realize>()) {
       now = ir::Realize::make(op->func, op->value_index, op->type, op->bounds, op->condition, now);
     } else {

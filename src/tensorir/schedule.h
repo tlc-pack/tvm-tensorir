@@ -10,7 +10,6 @@
 #include <tvm/ir.h>
 #include <tvm/tensor.h>
 #include <tvm/arithmetic.h>
-#include <string>
 #include "dependency_graph.h"
 #include "tree_node.h"
 #include "intrinsic.h"
@@ -38,6 +37,7 @@ class ScheduleNode : public Node {
   StdNodeMap<Tensor, Region> raw_realize_region;  // todo(lmzheng): try to use tvm::Map instead
   StdNodeMap<FunctionRef, std::string> raw_realize_scope;
   StdNodeMap<Var, Stmt> bind_var;
+  StdNodeMap<FunctionRef, Stmt> attrs;
 
   void VisitAttrs(AttrVisitor* v) final {
     v->Visit("root", &root);
@@ -87,6 +87,7 @@ class Schedule : public NodeRef {
   BlockTreeNode cache_write(Tensor tensor, std::string scope);
   BlockTreeNode double_buffer();     // unimplemented
   void annotate(AxisTreeNode axis, std::string type);
+  void double_buffer_scope(Tensor tensor);
 
   // Dependency analysis
   /*
@@ -114,7 +115,7 @@ class Schedule : public NodeRef {
   Stmt ToHalide() const;
 
   // Tree manipulation
-  // Note: Because we need to update the father_map, these functions are set to be the member 
+  // Note: Because we need to update the father_map, these functions are set to be the member
   // functions of Schedule. Considering moving them to another place later
   void UpdateFather(ScheduleTreeNode father, bool recursive = false);
   ScheduleTreeNode LowestCommonAncestor(Array<ScheduleTreeNode> nodes, bool inclusive) const;
@@ -132,7 +133,7 @@ class Schedule : public NodeRef {
  private:
   // Generate loop axes according to the solved iteration domain
   // This is the common part of compute_at and compute_after
-  BlockTreeNode RegenerateLoopAxis(BlockTreeNode block, AxisTreeNode axis, 
+  BlockTreeNode RegenerateLoopAxis(BlockTreeNode block, AxisTreeNode axis,
                                    Array<arith::IntSet> iter_domain, int insert_pos);
 
   size_t ct_{0};

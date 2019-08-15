@@ -114,7 +114,6 @@ Stmt Schedule::ToHalide() const {
   get_tensor_location(operator->()->root);
 
   auto realize_region = operator->()->raw_realize_region;
-
   // For tensor T, let A be the lowest common ancestor of all nodes accessing it.
   // We place its allocation before the first children of A that accesses T.
   StdNodeMap<ScheduleTreeNode, std::vector<Tensor> > attached_allocation;
@@ -148,6 +147,7 @@ Stmt Schedule::ToHalide() const {
   to_halide_stmt = [this, &to_halide_stmt, &attached_allocation, &realize_region]
       (const ScheduleTreeNode& node) {
     std::vector<Stmt> ret;
+    std::vector<Stmt> attrs;
 
     // attach realize scope
     for (const auto& tensor : attached_allocation[node]) {
@@ -166,10 +166,14 @@ Stmt Schedule::ToHalide() const {
                                     region,
                                     const_true(1),
                                     Evaluate::make(0)));
+        if (operator->()->attrs.count(tensor->op)) {
+          attrs.push_back(operator->()->attrs.at(tensor->op));
+        }
       }
     }
 
     // translate nodes
+    std::vector<Stmt> scope_stmt;
     if (const AxisTreeNodeNode* n = node.as<AxisTreeNodeNode>()) {
       Array<Stmt> stmts;
       for (const auto& child : n->children) {
@@ -179,7 +183,7 @@ Stmt Schedule::ToHalide() const {
       }
 
       if (node == operator->()->root) {
-        ret.push_back(ArrayToBlock(stmts));
+        scope_stmt.push_back(ArrayToBlock(stmts));
       } else if (is_one(n->extent)) {
         Map<Var, Expr> vmap;
         vmap.Set(n->loop_var, 0);
@@ -187,20 +191,22 @@ Stmt Schedule::ToHalide() const {
         for (const auto& stmt : stmts) {
           new_stmts.push_back(Substitute(stmt, vmap));
         }
-        ret.push_back(ArrayToBlock(new_stmts));
+        scope_stmt.push_back(ArrayToBlock(new_stmts));
       } else if (operator->()->bind_var.count(n->loop_var)) {
         const AttrStmt* attr = operator->()->bind_var.at(n->loop_var).as<AttrStmt>();
-        ret.push_back(AttrStmt::make(attr->node, attr->attr_key, attr->value, ArrayToBlock(stmts)));
+        scope_stmt.push_back(AttrStmt::make(attr->node, attr->attr_key, attr->value, ArrayToBlock(stmts)));
       } else {
         ForType type;
         if (n->axis_type == AxisType::vectorized) {
           type = ForType::Vectorized;
         } else if (n->axis_type == AxisType::unrolled) {
           type = ForType::Unrolled;
+        } else if (n->axis_type == AxisType::parallel) {
+          type = ForType::Parallel;
         } else {
           type = ForType::Serial;
         }
-        ret.push_back(For::make(n->loop_var, n->min, n->extent,
+        scope_stmt.push_back(For::make(n->loop_var, n->min, n->extent,
                                 type, DeviceAPI::None,
                                 ArrayToBlock(stmts)));
       }
@@ -210,17 +216,28 @@ Stmt Schedule::ToHalide() const {
         var_map[n->vars[i]] = n->args[i];
       }
       if (n->stmt.defined()) {
-        ret.push_back(Substitute(n->stmt, var_map));
+        scope_stmt.push_back(Substitute(n->stmt, var_map));
       } else {
         CHECK_EQ(n->children.size(), 1) << "Encounter invalid block" << std::endl;
         Array<Stmt> tmp = to_halide_stmt(SubstituteCopy(n->children[0], var_map));
         CHECK_EQ(tmp.size(), 1);
-        ret.push_back(tmp[0]);
+        scope_stmt.push_back(tmp[0]);
       }
     } else {
       LOG(FATAL) << "Internal error: unknown node type";
     }
-
+    Stmt stmt = ArrayToBlock(scope_stmt);
+    for (const auto& s : attrs) {
+      if (const AttrStmt* attr = s.as<AttrStmt>()) {
+        if (attr->attr_key == attr::double_buffer_scope) {
+          stmt = AttrStmt::make(attr->node,
+                                attr->attr_key,
+                                attr->value,
+                                stmt);
+        }
+      }
+    }
+    ret.push_back(stmt);
     return ret;
   };
 

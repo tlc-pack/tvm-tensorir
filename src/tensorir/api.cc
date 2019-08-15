@@ -93,6 +93,9 @@ TVM_REGISTER_API("tensorir.schedule.ScheduleCacheWrite")
 TVM_REGISTER_API("tensorir.schedule.ScheduleAnnotate")
 .set_body_method(&Schedule::annotate);
 
+TVM_REGISTER_API("tensorir.schedule.DoubleBufferScope")
+.set_body_method(&Schedule::double_buffer_scope);
+
 TVM_REGISTER_API("tensorir.schedule.ScheduleToHalide")
 .set_body_method(&Schedule::ToHalide);
 

@@ -832,6 +832,10 @@ void Schedule::annotate(AxisTreeNode axis, std::string type) {
   }
 }
 
+void Schedule::double_buffer_scope(Tensor tensor) {
+  operator->()->attrs[tensor->op] = AttrStmt::make(tensor->op, attr::double_buffer_scope, 1, Stmt());
+}
+
 void Schedule::bind(AxisTreeNode axis, IterVar thread_iter) {
   CHECK(thread_iter->iter_type == kThreadIndex)
     << "Cannot rebase by " << axis->loop_var
@@ -954,7 +958,12 @@ BlockTreeNode Schedule::cache(Tensor tensor, std::string scope, std::string type
     output_range.push_back(Range::make_by_min_extent(iter_vars[i], 1));
   }
 
-  Array<TensorRegion> raw_outputs = {TensorRegionNode::make(new_tensor, output_range)};
+  Array<TensorRegion> raw_outputs;
+  if (type == "read") {
+    raw_outputs.push_back(TensorRegionNode::make(new_tensor, output_range));
+  } else if (type == "write") {
+    raw_outputs.push_back(TensorRegionNode::make(tensor, output_range));
+  }
   Array<TensorRegion> outputs;
 
   std::tie(args, vars, outputs, var_map) = CreateOutputRegions(raw_outputs, used_vars, &analyzer);
@@ -1015,7 +1024,7 @@ BlockTreeNode Schedule::cache(Tensor tensor, std::string scope, std::string type
 
   } else if (type == "write") {
     for (auto& block : predecessors) {
-      SubstituteTensorOnly(block, vmap, true, true);
+      SubstituteTensorOnly(block, vmap, block != new_block, true);
     }
 
     // Update dependency graph

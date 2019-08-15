@@ -10,7 +10,7 @@ class Schedule(NodeBase):
     ##### Getters #####
     def blocks(self):
         """Return all blocks in the schedule
-        
+
         Returns
         -------
         blocks : List of BlockTreeNode
@@ -117,6 +117,9 @@ class Schedule(NodeBase):
     def bind(self, axis, thread_var):
         """Bind an axis to a thread index"""
         return ScheduleBind(self, axis, thread_var)
+
+    def double_buffer_scope(self, tensor):
+        return DoubleBufferScope(self, tensor)
 
     ##### Schedule Helper #####
     def inline_all_injective(self):

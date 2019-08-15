@@ -194,6 +194,9 @@ def test_gemm_schedule():
         s.bind(ty, thread_y)
         s.bind(tx, thread_x)
         s.annotate(xi, "vectorize")
+
+        s.double_buffer_scope(AS.outputs[0].data)
+        s.double_buffer_scope(BS.outputs[0].data)
         stmt = s.to_halide()
         return stmt
 
@@ -202,4 +205,3 @@ def test_gemm_schedule():
 if __name__ == "__main__":
     test_gemm()
     test_gemm_schedule()
-

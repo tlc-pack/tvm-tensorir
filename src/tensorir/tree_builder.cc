@@ -87,7 +87,19 @@ ScheduleTreeNode TreeBuilder::VisitStmt_(const For* op) {
   for (auto x : children_stmt) {
     children.push_back(VisitStmt(x));
   }
-  return AxisTreeNodeNode::make(var, op->min, op->extent, AxisType::kOpaque, children);
+  AxisType axis_type;
+  if (op->for_type == ForType::Serial) {
+    axis_type = AxisType::kOpaque;
+  } else if (op->for_type == ForType::Parallel) {
+    axis_type = AxisType::parallel;
+  } else if (op->for_type == ForType::Unrolled) {
+    axis_type = AxisType::unrolled;
+  } else if (op->for_type == ForType::Vectorized) {
+    axis_type = AxisType::vectorized;
+  } else {
+    LOG(FATAL) << "Unsupported axis type";
+  }
+  return AxisTreeNodeNode::make(var, op->min, op->extent, axis_type, children);
 }
 
 ScheduleTreeNode TreeBuilder::VisitStmt_(const Allocate* op) {
