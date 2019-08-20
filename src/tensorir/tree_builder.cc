@@ -64,8 +64,8 @@ Schedule TreeBuilder::Build(Stmt stmt) {
   node->root = std::move(root_node);
   node->dep_graph = std::move(dep_graph);
   node->block_list = std::move(block_list_);
-  node->raw_realize_region = std::move(ir_cleaner.raw_realize_region);
-  node->raw_realize_scope = std::move(ir_cleaner.raw_realize_scope);
+  node->realize_region = std::move(ir_cleaner.raw_realize_region);
+  node->realize_scope = std::move(ir_cleaner.raw_realize_scope);
   node->bind_var = std::move(ir_cleaner.bind_var);
 
   Schedule ret(node);

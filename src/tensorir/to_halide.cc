@@ -92,7 +92,7 @@ Stmt Schedule::ToHalide() const {
       }
 
       for (const auto& x : n->outputs) {
-        const std::string& str = operator->()->raw_realize_scope.at(x->data->op);
+        const std::string& str = operator->()->realize_scope.at(x->data->op);
         if (str == "" || str == "global") {
           related_nodes[x->data].push_back(now);
         } else {
@@ -100,8 +100,8 @@ Stmt Schedule::ToHalide() const {
         }
       }
       for (const auto& x : n->inputs) {
-        if (operator->()->raw_realize_scope.count(x->data->op)) {
-          const std::string& str = operator->()->raw_realize_scope.at(x->data->op);
+        if (operator->()->realize_scope.count(x->data->op)) {
+          const std::string& str = operator->()->realize_scope.at(x->data->op);
           if (str == "" || str == "global") {
             related_nodes[x->data].push_back(now);
           } else {
@@ -113,7 +113,7 @@ Stmt Schedule::ToHalide() const {
   };
   get_tensor_location(operator->()->root);
 
-  auto realize_region = operator->()->raw_realize_region;
+  auto realize_region = operator->()->realize_region;
   // For tensor T, let A be the lowest common ancestor of all nodes accessing it.
   // We place its allocation before the first children of A that accesses T.
   StdNodeMap<ScheduleTreeNode, std::vector<Tensor> > attached_allocation;
@@ -123,7 +123,7 @@ Stmt Schedule::ToHalide() const {
       if (FindAccess(child, x.first)) {
         attached_allocation[child].push_back(x.first);
 
-        const auto& str = operator->()->raw_realize_scope.at(x.first->op);
+        const auto& str = operator->()->realize_scope.at(x.first->op);
         if (str != "" && str != "global") { // recompute region
           const auto *axis = lca.as<AxisTreeNodeNode>();
           CHECK(axis != nullptr);
@@ -152,12 +152,12 @@ Stmt Schedule::ToHalide() const {
     // attach realize scope
     for (const auto& tensor : attached_allocation[node]) {
       if (realize_region.count(tensor)) {
-        CHECK_GE(operator->()->raw_realize_scope.count(tensor->op), 1);
+        CHECK_GE(operator->()->realize_scope.count(tensor->op), 1);
 
         Region region = realize_region.at(tensor);
         ret.push_back(AttrStmt::make(tensor->op,
                                      attr::realize_scope,
-                                     operator->()->raw_realize_scope.at(tensor->op),
+                                     operator->()->realize_scope.at(tensor->op),
                                      Evaluate::make(0)));
 
         ret.push_back(Realize::make(tensor->op,

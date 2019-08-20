@@ -1031,8 +1031,8 @@ BlockTreeNode Schedule::cache(Tensor tensor, std::string scope, std::string type
     operator->()->dep_graph.CacheWriteNode(last_block >= 0 ? block_list[last_block] : BlockTreeNode(),
                                            new_block, Array<BlockTreeNode>(predecessors.begin(), predecessors.end()));
   }
-  operator->()->raw_realize_region[new_tensor] = ranges;
-  operator->()->raw_realize_scope[new_tensor->op] = scope;
+  operator->()->realize_region[new_tensor] = ranges;
+  operator->()->realize_scope[new_tensor->op] = scope;
   return new_block;
 }
 
@@ -1042,6 +1042,10 @@ BlockTreeNode Schedule::cache_read(Tensor tensor, std::string scope) {
 
 BlockTreeNode Schedule::cache_write(Tensor tensor, std::string scope) {
   return cache(tensor, scope, "write");
+}
+
+void Schedule::set_scope(Tensor tensor, std::string scope) {
+  operator->()->realize_scope[tensor->op] = scope;
 }
 
 // dependency analysis
@@ -1110,9 +1114,9 @@ Array<Array<IntSet> > Schedule::GatherRegion(Array<Tensor> tensors,
             for (size_t i = 0; i < tensor.ndim(); ++i) {
               Range real = Range::make_by_min_extent(Substitute(reg->ranges[i]->min, arg_map),
                                                      Substitute(reg->ranges[i]->extent, arg_map));
-              CHECK(operator->()->raw_realize_scope.count(tensor->op));
+              CHECK(operator->()->realize_scope.count(tensor->op));
               IntSet o;
-              if (operator->()->raw_realize_scope.at(tensor->op) == "shared") {
+              if (operator->()->realize_scope.at(tensor->op) == "shared") {
                 o = arith::EvalSet(real, shared_dom_map);
               } else {
                 o = arith::EvalSet(real, dom_map);

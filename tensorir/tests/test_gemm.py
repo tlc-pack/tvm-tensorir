@@ -17,7 +17,7 @@
 """Example code to do square matrix multiplication."""
 import tvm
 from tvm import tensorir
-from test_common import check_correctness
+from test_common import *
 
 def origin_schedule():
     # graph
@@ -200,7 +200,7 @@ def test_gemm_schedule():
         stmt = s.to_halide()
         return stmt
 
-    check_correctness(s, [A, B, C], _schedule_pass, 'cuda', tvm.build(*origin_schedule(), 'cuda'))
+    check_correctness(s, [A, B, C], _schedule_pass, 'cuda', build_time(*origin_schedule(), 'cuda', "origin"), print_time=True)
 
 if __name__ == "__main__":
     test_gemm()

@@ -3,8 +3,9 @@
 import numpy as np
 import tvm
 import topi
+import time
 
-def check_correctness(s, args, inserted_pass, target='llvm', func2=None, return_stmt=False):
+def check_correctness(s, args, inserted_pass, target='llvm', func2=None, return_stmt=False, print_time=False):
     """Check correctness by building the function with and without inserted_pass
 
     s: schedule
@@ -22,9 +23,9 @@ def check_correctness(s, args, inserted_pass, target='llvm', func2=None, return_
         target1 = target2 = target
 
     with tvm.build_config(add_lower_pass=[(0, inserted_pass)]):
-        func1 = tvm.build(s, args, target1)
+        func1 = build_time(s, args, target1, "tensorir", print_time)
 
-    func2 = func2 or tvm.build(s, args, target2)
+    func2 = func2 or build_time(s, args, target2, "origin", print_time)
 
     ctx1 = tvm.context(target1)
     ctx2 = tvm.context(target2)
@@ -46,3 +47,11 @@ def check_correctness(s, args, inserted_pass, target='llvm', func2=None, return_
         with tvm.build_config(add_lower_pass=[(0, inserted_pass)]):
             return tvm.lower(s, args, target1, simple_mode=True)
 
+
+def build_time(s, args, target, name, print_time=True):
+    start_time = time.time()
+    ret = tvm.build(s, args, target)
+    end_time = time.time()
+    if print_time:
+        print('%s: %.2fs' % (name, end_time - start_time))
+    return ret

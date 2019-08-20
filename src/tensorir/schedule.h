@@ -34,8 +34,8 @@ class ScheduleNode : public Node {
 
   FatherMap father_map;
 
-  StdNodeMap<Tensor, Region> raw_realize_region;  // todo(lmzheng): try to use tvm::Map instead
-  StdNodeMap<FunctionRef, std::string> raw_realize_scope;
+  StdNodeMap<Tensor, Region> realize_region;  // todo(lmzheng): try to use tvm::Map instead
+  StdNodeMap<FunctionRef, std::string> realize_scope;
   StdNodeMap<Var, Stmt> bind_var;
   StdNodeMap<FunctionRef, Stmt> attrs;
 
@@ -85,7 +85,7 @@ class Schedule : public NodeRef {
   BlockTreeNode cache(Tensor, std::string scope, std::string type);
   BlockTreeNode cache_read(Tensor tensor, std::string scope);
   BlockTreeNode cache_write(Tensor tensor, std::string scope);
-  BlockTreeNode double_buffer();     // unimplemented
+  void set_scope(Tensor tensor, std::string scope);
   void annotate(AxisTreeNode axis, std::string type);
   void double_buffer_scope(Tensor tensor);
 

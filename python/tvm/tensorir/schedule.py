@@ -111,8 +111,8 @@ class Schedule(NodeBase):
     def untensorize(self, block):
         return ScheduleUntensorize(self, block)
 
-    def annotate(self, axis, type_name):
-        return ScheduleAnnotate(self, axis, type_name)
+    def annotate(self, axis, scope):
+        return ScheduleAnnotate(self, axis, scope)
 
     def bind(self, axis, thread_var):
         """Bind an axis to a thread index"""
@@ -120,6 +120,15 @@ class Schedule(NodeBase):
 
     def double_buffer_scope(self, tensor):
         return DoubleBufferScope(self, tensor)
+
+    def cache_read(self, tensor, scope):
+        return ScheduleCacheRead(self, tensor, scope)
+
+    def cache_write(self, tensor, scope):
+        return ScheduleCacheWrite(self, tensor, scope)
+
+    def set_scope(self, tensor, scope):
+        return ScheduleSetScope(self, tensor, scope)
 
     ##### Schedule Helper #####
     def inline_all_injective(self):
@@ -144,12 +153,6 @@ class Schedule(NodeBase):
         """
         return ScheduleCheckFatherLink(self)
 
-
-    def cache_read(self, tensor, type_name):
-        return ScheduleCacheRead(self, tensor, type_name)
-
-    def cache_write(self, tensor, type_name):
-        return ScheduleCacheWrite(self, tensor, type_name)
 
 def create_schedule(stmt):
     """ Create a schedule for a statement

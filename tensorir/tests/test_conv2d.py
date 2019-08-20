@@ -17,7 +17,7 @@
 """Example code to do Conv2d."""
 import tvm
 from tvm import tensorir
-from test_common import check_correctness
+from test_common import *
 
 def origin_schedule():
     # The sizes of inputs and filters
@@ -273,7 +273,7 @@ def test_conv_schedule():
         stmt = s.to_halide()
         return stmt
 
-    check_correctness(s, [A, W, B], _schedule_pass, 'cuda', tvm.build(*origin_schedule(), 'cuda'))
+    check_correctness(s, [A, W, B], _schedule_pass, 'cuda', build_time(*origin_schedule(), 'cuda', "origin"), print_time=True)
 
 if __name__ == "__main__":
     test_conv()
