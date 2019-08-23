@@ -29,6 +29,7 @@ from ... import tensor, expr, container, target as _target
 from ..util import get_const_int, get_const_tuple, get_func_name
 from .dispatcher import DispatchContext, ApplyConfig, dispatcher
 from .space import ConfigSpace
+from ... import lower, build_config
 
 def _raise_error(*args, **kwargs):  # pylint: disable=unused-argument
     raise RuntimeError("The function of this task is not found. Possibly the function "
@@ -78,11 +79,12 @@ class Task(object):
         """
         config.flop = 0
         with ApplyConfig(config):
-            sch, arg_bufs = self.func(*self.args, **self.kwargs)
+            rets = self.func(*self.args, **self.kwargs)
         if not self.flop:
+            sch = rets[0]
             config.flop = config.flop or compute_flop(sch)
             self.flop = config.flop
-        return sch, arg_bufs
+        return rets
 
     def __getstate__(self):
         # custom pickle implementation is required for
@@ -188,7 +190,8 @@ def create(func_name, args, target, target_host=None, template_key=None):
     ctx = ApplyConfig(ret.config_space)
     with ctx:
         with target:
-            sch, _ = func(*args)
+            rets = func(*args)
+            sch = rets[0]
             ret.config_space.code_hash = getattr(sch, 'code_hash', None)
 
     ret.workload = ctx.workload
@@ -293,7 +296,14 @@ def template(func):
     def template_call(cfg, *args, **kwargs):
         assert not kwargs, "Do not support kwargs in template function call"
         with ApplyConfig(cfg):
-            return func(*args, **kwargs)
+            ret = func(*args, **kwargs)
+            if len(ret) == 3:
+                sch, arg_bufs, _pass = ret
+                with build_config(add_lower_pass=[(0, _pass)]):
+                    return sch, arg_bufs, lower(sch, arg_bufs)
+            else:
+                return ret
+
 
     config_dispatcher.func_name = fname
     return config_dispatcher

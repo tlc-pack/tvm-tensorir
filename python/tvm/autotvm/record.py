@@ -305,7 +305,12 @@ if __name__ == '__main__':
         for i, (inp, result) in enumerate(load_from_file(args.i)):
             if args.begin <= i < args.end:
                 with inp.target:
-                    s, arg_bufs = inp.task.instantiate(inp.config)
+                    rets = inp.task.instantiate(inp.config)
+
+                s, arg_bufs = rets[:2]
+                if len(rets) == 3:
+                    stmt = rets[2]
+                    use_tensorir = True
 
                 print("")
                 print(inp.target, inp.task, inp.config)
@@ -313,11 +318,18 @@ if __name__ == '__main__':
 
                 if args.ir:
                     with inp.target:
-                        print(lower(s, arg_bufs, simple_mode=True))
+                        if stmt:
+                            print(stmt)
+                        else:
+                            print(lower(s, arg_bufs, simple_mode=True))
 
                 if args.code:
                     with inp.target:
-                        func = build(s, arg_bufs)
+                        if stmt:
+                            func = build(stmt)
+                        else:
+                            func = build(s, arg_bufs)
                         print(func.imported_modules[0].get_source())
+
     elif args.mode == 'split':
         split_workload(args.i)

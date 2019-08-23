@@ -32,7 +32,7 @@ import math
 from collections import namedtuple, OrderedDict
 import numpy as np
 
-from tvm import schedule, thread_axis
+from tvm import schedule, thread_axis, tensorir
 from tvm.autotvm.util import get_const_int
 
 Axis = namedtuple('Axis', ['space', 'index'])
@@ -133,6 +133,8 @@ class VirtualAxis(TransformSpace):
                 self.length = get_const_int(var.dom.extent)
         elif isinstance(var, VirtualAxis):
             self.length = var.length
+        elif isinstance(var, tensorir.tree_node.AxisTreeNode):
+            self.length = get_const_int(var.extent)
         else:
             raise RuntimeError("Invalid type of axis: " + str(type(var)))
 
@@ -236,7 +238,7 @@ class SplitEntity(object):
     def __init__(self, size):
         self.size = size
 
-    def apply(self, sch, op, axis):
+    def apply(self, sch, op, axis, use_tensorir=False):
         """Apply split to an axis
 
         Parameters
@@ -255,7 +257,10 @@ class SplitEntity(object):
         """
         ret = []
         for i in range(1, len(self.size)):
-            ax0, ax1 = sch[op].split(axis, int(np.prod(self.size[i:])))
+            if use_tensorir:
+                ax0, ax1 = sch.split(axis, factor=int(np.prod(self.size[i:])))
+            else:
+                ax0, ax1 = sch[op].split(axis, int(np.prod(self.size[i:])))
             ret.append(ax0)
             axis = ax1
         return ret + [axis]
@@ -360,7 +365,7 @@ class ReorderEntity(object):
     def __init__(self, perm):
         self.perm = perm
 
-    def apply(self, sch, op, axes):
+    def apply(self, sch, op, axes, use_tensorir=False):
         """Apply reorder to an array of axes
 
         Parameters
@@ -381,7 +386,10 @@ class ReorderEntity(object):
             new_order = [axes[i] for i in self.perm]
         else:
             new_order = [axes[i] for i in self.perm if i < len(axes)]
-        sch[op].reorder(*new_order)
+        if use_tensorir:
+            sch.reorder(*new_order)
+        else:
+            sch[op].reorder(*new_order)
         return new_order
 
     def __repr__(self):

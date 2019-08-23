@@ -33,6 +33,7 @@ import tempfile
 
 import numpy as np
 
+from ...container import LoweredFunc
 from ... import ir_pass, build, build_config, nd, TVMError, register_func, \
     rpc as _rpc, target as _target
 from ...contrib import nvcc, ndk, tar
@@ -347,7 +348,8 @@ def _build_func_common(measure_input, check_gpu=None, cuda_arch=None, build_opti
     target, task, config = measure_input
 
     with target:
-        s, args = task.instantiate(config)
+        rets = task.instantiate(config)
+        s, args = rets[:2]
 
         # check invalidity of template and code hash consistency
         if not config.valid():
@@ -363,10 +365,16 @@ def _build_func_common(measure_input, check_gpu=None, cuda_arch=None, build_opti
         if hasattr(measure_input.target, 'device_name') and \
             measure_input.target.device_name == 'vta':
             import vta
-            func = vta.build(s, args, target_host=task.target_host)
+            if len(rets) >= 3 and isinstance(rets[2], LoweredFunc):
+                func = vta.build(rets[2], target_host=task.target_host)
+            else:
+                func = vta.build(s, args, target_host=task.target_host)
         else:
             with build_config(**opts):
-                func = build(s, args, target_host=task.target_host)
+                if len(rets) >= 3 and isinstance(rets[2], LoweredFunc):
+                    func = build(rets[2], target_host=task.target_host)
+                else:
+                    func = build(s, args, target_host=task.target_host)
     return func, tuple((get_const_tuple(x.shape), x.dtype) for x in args)
 
 
