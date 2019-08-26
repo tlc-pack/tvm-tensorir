@@ -32,6 +32,9 @@ Array<IntSet> SolveCover(Array<Var> vars, Array<IntSet> produces, Array<IntSet> 
   for (size_t i = 0; i < produces.size(); ++i) {
     const IntervalSetNode* iset = produces[i].as<IntervalSetNode>();
     CHECK(iset != nullptr);
+    if (is_const(iset->min_value) && is_const(iset->max_value)) {
+      continue;
+    }
 
     CHECK(iset->max_value->is_type<Variable>())
       << "The min of produces range must be a single variable";

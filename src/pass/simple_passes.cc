@@ -123,7 +123,7 @@ Stmt Substitute(Stmt stmt,
 }
 
 Expr Substitute(Expr expr,
-                 const std::unordered_map<const Variable*, Expr>& value_map) {
+                const std::unordered_map<const Variable*, Expr>& value_map) {
   if (value_map.size() == 0) return expr;
   return IRSubstitue(value_map).Mutate(expr);
 }
