@@ -24,12 +24,14 @@ from . import make as _make
 from . import ir_pass as _pass
 from . import container as _container
 from ._ffi.base import string_types
-from ._ffi.node import NodeGeneric
+from ._ffi.node import NodeGeneric, register_node, NodeBase
 from ._ffi.runtime_ctypes import TVMType
 from .expr import Call as _Call
 
+
 class WithScope(object):
     """Auxiliary scope  with"""
+
     def __init__(self, enter_value, exit_cb):
         self._enter_value = enter_value
         self._exit_cb = exit_cb
@@ -65,6 +67,7 @@ class BufferVar(NodeGeneric):
     IRBuilder.buffer_ptr
     IRBuilder.allocate
     """
+
     def __init__(self, builder, buffer_var, content_type):
         self._builder = builder
         self._buffer_var = buffer_var
@@ -81,7 +84,17 @@ class BufferVar(NodeGeneric):
         t = TVMType(self._content_type)
         if t.lanes > 1:
             index = _make.Ramp(index * t.lanes, 1, t.lanes)
-        return _make.Load(self._content_type, self._buffer_var, index)
+        if not isinstance(index, tuple):
+            index = [index]
+        if isinstance(index[0], slice):
+            doms = []
+            for id in index:
+                assert isinstance(id, slice)
+                assert id.step == 1 or id.step is None
+                doms.append(_make.range_by_min_extent(id.start, id.stop - id.start))
+            return _make.TensorRegion(self._buffer_var, doms)
+        else:
+            return _make.BufferLoad(self._content_type, self._buffer_var, index)
 
     def __setitem__(self, index, value):
         value = _api.convert(value)
@@ -92,7 +105,14 @@ class BufferVar(NodeGeneric):
         t = TVMType(self._content_type)
         if t.lanes > 1:
             index = _make.Ramp(index * t.lanes, 1, t.lanes)
-        self._builder.emit(_make.Store(self._buffer_var, value, index))
+        if isinstance(index, _expr.Expr):
+            index = [index]
+        self._builder.emit(_make.BufferStore(self._buffer_var, value, index))
+
+
+@register_node
+class BlockVar(NodeBase):
+    """BlockVar Node."""
 
 
 class IRBuilder(object):
@@ -111,6 +131,7 @@ class IRBuilder(object):
         # The result stmt.
         stmt = ib.get()
     """
+
     def __init__(self):
         self._seq_stack = [[]]
         self.nidx = 0
@@ -213,6 +234,7 @@ class IRBuilder(object):
         self._seq_stack.append([])
         loop_var = _api.var(name, dtype=dtype)
         extent = end if begin == 0 else _pass.Simplify(end - begin)
+
         def _exit_cb():
             if for_type == "serial":
                 for_type_id = 0
@@ -226,6 +248,7 @@ class IRBuilder(object):
                 raise ValueError("Unknown for_type")
             self.emit(_make.For(
                 loop_var, begin, extent, for_type_id, 0, self._pop_seq()))
+
         return WithScope(loop_var, _exit_cb)
 
     def if_scope(self, cond):
@@ -252,8 +275,10 @@ class IRBuilder(object):
                 x[i] = x[i - 1] + 1
         """
         self._seq_stack.append([])
+
         def _exit_cb():
             self.emit(_make.IfThenElse(cond, self._pop_seq(), None))
+
         return WithScope(None, _exit_cb)
 
     def else_scope(self):
@@ -285,8 +310,10 @@ class IRBuilder(object):
             raise RuntimeError("else_scope can only follow an if_scope")
         self._seq_stack[-1].pop()
         self._seq_stack.append([])
+
         def _exit_cb():
             self.emit(_make.IfThenElse(prev.condition, prev.then_case, self._pop_seq()))
+
         return WithScope(None, _exit_cb)
 
     def new_scope(self):
@@ -300,8 +327,10 @@ class IRBuilder(object):
            The result new scope.
         """
         self._seq_stack.append([])
+
         def _exit_cb():
             self.emit(self._pop_seq())
+
         return WithScope(None, _exit_cb)
 
     def allocate(self, dtype, shape, name="buf", scope=None):
@@ -394,6 +423,123 @@ class IRBuilder(object):
         if self._seq_stack:
             raise RuntimeError("cannot call get inside construction scope")
         return seq
+
+    def loop_range(self, begin, end, name="i", dtype="int32", iter_type="data_par"):
+        """Create a for te loop scope.
+
+        Parameters
+        ----------
+        begin : Expr
+            The min iteration scope.
+
+        end : Expr
+            The end iteration scope
+
+        name : str, optional
+            The name of iteration variable, if no input names,
+            using typical index names i, j, k, then i_nidx
+
+        dtype : str, optional
+            The data type of iteration variable.
+
+        iter_type : str, optional
+            The special tag on the for loop.
+
+        Returns
+        -------
+        loop_scope : With.Scope of Var
+            The for scope, when enters returns loop_var
+        """
+        if name == 'i':
+            name = chr(ord(name) + self.nidx) if self.nidx < 3 else name + "_" + str(self.nidx - 3)
+            self.nidx += 1
+        self._seq_stack.append([])
+        loop_var = _api.var(name, dtype=dtype)
+        extent = end if begin == 0 else _pass.Simplify(end - begin)
+
+        def _exit_cb():
+            if iter_type == "data_par":
+                iter_type_id = 0
+            elif iter_type == "reduce":
+                iter_type_id = 1
+            elif iter_type == "scan":
+                iter_type_id = 2
+            elif iter_type == "opaque":
+                iter_type_id = 3
+            else:
+                raise ValueError("Unknown iter_type")
+            self.emit(_make.Loop(
+                loop_var, begin, extent, iter_type_id, [], self._pop_seq()))
+
+        return WithScope(loop_var, _exit_cb)
+
+    def block_var(self, value, dom, name="v", iter_type="data_par"):
+        """Create block var.
+
+        Parameters
+        ----------
+        value : Expr
+            The value of block var.
+
+        dom : Range
+            The required iteration range of the block var
+
+        name: optional, str
+            The name of the block var
+
+        iter_type: optional, str
+            The required iteration type of the block var
+        """
+        var = _api.var(name)
+        if iter_type == "data_par":
+            iter_type_id = 0
+        elif iter_type == "reduce":
+            iter_type_id = 1
+        elif iter_type == "scan":
+            iter_type_id = 2
+        elif iter_type == "opaque":
+            iter_type_id = 3
+        else:
+            raise ValueError("Unknown iter_type")
+        return _make.BlockVarNode(var, value, iter_type_id, dom)
+
+    def block(self, block_vars, inputs, outputs, predicate=1, annotations=[], name=""):
+        """Create a Te block.
+
+        Parameters
+        ----------
+        block_vars : list of BlockVar
+            The value of block var.
+
+        inputs : list of TensorRegion
+            The input tensor regions of the block
+
+        outputs : list of TensorRegion
+            The output tensor regions of the block
+
+        predicate: optional, Expr
+            The block predicate
+
+        annotations: optional, list of Annotation
+            The annotation list appended on the block
+
+        name: optional, str
+            The name of the block
+        """
+        self._seq_stack.append([])
+
+        if not isinstance(block_vars, list) and not isinstance(block_vars, tuple):
+            block_vars = [block_vars]
+        if not isinstance(inputs, list) and not isinstance(inputs, tuple):
+            inputs = [inputs]
+        if not isinstance(outputs, list) and not isinstance(outputs, tuple):
+            outputs = [outputs]
+
+        def _exit_cb():
+            self.emit(_make.TeBlock(
+                block_vars, inputs, outputs, self._pop_seq(), predicate, annotations, name))
+
+        return WithScope(None, _exit_cb)
 
 
 def create():

@@ -362,6 +362,85 @@ class Prefetch(Stmt):
             _make.Prefetch, func, value_index, dtype, bounds)
 
 
+@register_node
+class Loop(Stmt):
+    """Loop node.
+
+    Parameters
+    ----------
+    loop_var : Var
+        The loop variable.
+
+    min_val : Expr
+        The begining value.
+
+    extent : Expr
+        The length of the loop.
+
+    iter_type : int
+        The iter type.
+
+    annotations : List
+        The list of annotations.
+
+    body : Stmt
+        The body statement.
+    """
+    DataPar = 0
+    Reduce = 1
+    Scan = 2
+    Opaque = 3
+    def __init__(self,
+                 loop_var,
+                 min_val,
+                 extent,
+                 iter_type,
+                 annotations,
+                 body):
+        self.__init_handle_by_constructor__(
+            _make.Loop, loop_var, min_val, extent,
+            iter_type, annotations, body)
+
+@register_node
+class BufferStore(Stmt):
+    """BufferStore node.
+
+    Parameters
+    ----------
+    buffer_var : Var
+        The buffer Variable.
+
+    value : Expr
+        The value we want to store.
+
+    indices : list of Expr
+        The index in the store expression.
+
+    """
+    def __init__(self, buffer_var, value, indices):
+        self.__init_handle_by_constructor__(
+            _make.BufferStore, buffer_var, value, indices)
+
+@register_node
+class TeBlock(Stmt):
+    """TeBlock node.
+
+    Parameters
+    ----------
+    buffer_var : Var
+        The buffer Variable.
+
+    value : Expr
+        The value we want to store.
+
+    indices : list of Expr
+        The index in the store expression.
+
+    """
+    def __init__(self, buffer_var, value, indices):
+        self.__init_handle_by_constructor__(
+            _make.TeBlock, buffer_var, value, indices)
+
 def stmt_seq(*args):
     """Make sequence of statements
 

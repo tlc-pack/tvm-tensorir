@@ -1,4 +1,31 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+/*!
+ * \file tvm/te/ir.cc
+ * \brief Additional high level nodes in the TensorIR
+ */
+
 #include "ir.h"
+#include <tvm/api_registry.h>
+#include <tvm/arithmetic.h>
+#include <tvm/ir_pass.h>
 
 namespace tvm {
 namespace te {
@@ -24,7 +51,7 @@ Stmt Block::make(Array<BlockVar> vars,
                  Array<TensorRegion> inputs,
                  Array<TensorRegion> outputs,
                  Stmt body,
-                 Expr predicates,
+                 Expr predicate,
                  Array<Annotation> annotations,
                  std::string tag) {
   NodePtr<Block> node = make_node<Block>();
@@ -32,15 +59,15 @@ Stmt Block::make(Array<BlockVar> vars,
   node->inputs = std::move(inputs);
   node->outputs = std::move(outputs);
   node->body = std::move(body);
-  node->predicate = std::move(predicates);
+  node->predicate = std::move(predicate);
   node->annotations = std::move(annotations);
   node->tag = std::move(tag);
   return Stmt(node);
 }
 
-TensorRegion TensorRegionNode::make(Tensor data, Array<Range> ranges) {
+TensorRegion TensorRegionNode::make(Var buffer, Array<Range> ranges) {
   NodePtr<TensorRegionNode> node = make_node<TensorRegionNode>();
-  node->data = std::move(data);
+  node->buffer = std::move(buffer);
   node->ranges = std::move(ranges);
   return TensorRegion(node);
 }
@@ -68,13 +95,25 @@ Stmt Loop::make(Var loop_var,
   return Stmt(node);
 }
 
-BlockVar BlockVarNode::make(Var data, Expr value, LoopType type, Range range) {
+BlockVar BlockVarNode::make(Var var, Expr value, LoopType type, Range range) {
   NodePtr<BlockVarNode> node = make_node<BlockVarNode>();
-  node->data = std::move(data);
+  node->var = std::move(var);
   node->value = std::move(value);
   node->type = std::move(type);
   node->range = std::move(range);
   return BlockVar(node);
+}
+
+Expr BufferBindNode::make(tvm::runtime::NDArray data,
+                          tvm::Array<tvm::Expr> shape,
+                          tvm::DataType type,
+                          std::string name) {
+  NodePtr<BufferBindNode> node = make_node<BufferBindNode>();
+  node->data = std::move(data);
+  node->shape = std::move(shape);
+  node->type = std::move(type);
+  node->name = std::move(name);
+  return Expr(node);
 }
 
 std::ostream &operator<<(std::ostream &out, LoopType type) {
@@ -101,6 +140,7 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
 .set_dispatch<BufferStore>([](const ObjectRef &node, IRPrinter* p) {
   auto* op = static_cast<const BufferStore*>(node.get());
+  p->PrintIndent();
   p->Print(op->buffer_var);
   p->Print(op->indices);
   p->stream << " = ";
@@ -118,17 +158,32 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
 .set_dispatch<TensorRegionNode>([](const ObjectRef &node, IRPrinter* p) {
   auto* op = static_cast<const TensorRegionNode*>(node.get());
-  p->Print(op->data);
-  p->Print(op->ranges);
+  p->Print(op->buffer);
+  p->stream << "[";
+  for (size_t i = 0; i < op->ranges.size(); ++i) {
+    const auto &range = op->ranges[i];
+    p->Print(range->min);
+    p->stream << ":";
+    p->Print(Simplify(range->min + range->extent));
+    if (i != op->ranges.size() - 1) {
+      p->stream << ", ";
+    }
+  }
+  p->stream << "]";
 });
 
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
 .set_dispatch<BlockVarNode>([](const ObjectRef &node, IRPrinter* p) {
   auto* op = static_cast<const BlockVarNode*>(node.get());
-  p->stream << op->type << " ";
-  p->Print(op->data);
-  p->Print(op->range);
-  p->stream << "=";
+  if (op->type != LoopType::kDataPar) {
+    p->stream << op->type << " ";
+  }
+  p->Print(op->var);
+  p->stream << "[";
+  p->Print(op->range->min);
+  p->stream << ":";
+  p->Print(op->range->min + op->range->extent);
+  p->stream << "]=";
   p->Print(op->value);
 });
 
@@ -137,20 +192,24 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
   auto* op = static_cast<const Loop*>(node.get());
 
   // print loop and annotations
+  p->PrintIndent();
   p->stream << "for ";
   p->Print(op->loop_var);
   p->stream << " = ";
   p->Print(op->min);
   p->stream << " to ";
   p->Print(op->extent);
-  p->stream << "  (" << op->loop_type;
+  if (op->loop_type != LoopType::kDataPar) {
+    p->stream << " (" << op->loop_type <<")";
+  }
   if (op->annotations.size() > 0) {
-    p->stream << ", attr: ";
+    p->stream << " (attr: ";
     p->Print(op->annotations);
+    p->stream << ")";
   }
 
   // print body
-  p->stream << ") {\n";
+  p->stream << " {\n";
   p->indent += 2;
   p->Print(op->body);
   p->indent -= 2;
@@ -163,7 +222,8 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
   auto* op = static_cast<const Block*>(node.get());
 
   // print block name and block vars
-  p->stream << "block " << op->tag << " (";
+  p->PrintIndent();
+  p->stream << "block " << op->tag << "(";
   for (size_t i = 0; i < op->vars.size(); ++i) {
     p->Print(op->vars[i]);
     if (i != op->vars.size() - 1) {
@@ -194,6 +254,40 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
   p->PrintIndent();
   p->stream << "}\n";
 });
+
+TVM_REGISTER_NODE_TYPE(TensorRegionNode);
+TVM_REGISTER_NODE_TYPE(BufferLoad);
+TVM_REGISTER_NODE_TYPE(BufferStore);
+TVM_REGISTER_NODE_TYPE(BlockVarNode);
+TVM_REGISTER_NODE_TYPE(Loop);
+TVM_REGISTER_NODE_TYPE(Block);
+TVM_REGISTER_API("make.TensorRegion")
+.set_body_typed(TensorRegionNode::make);
+TVM_REGISTER_API("make.BufferLoad")
+.set_body_typed(BufferLoad::make);
+TVM_REGISTER_API("make.BufferStore")
+.set_body_typed(BufferStore::make);
+TVM_REGISTER_API("make.BlockVarNode")
+.set_body_typed<BlockVar(Var, Expr, int, Range)>([](
+    Var data, Expr value, int type, Range range) {
+  return BlockVarNode::make(data,
+                            value,
+                            static_cast<LoopType>(type),
+                            range);
+});
+TVM_REGISTER_API("make.Loop")
+.set_body_typed<Stmt(Var, Expr, Expr, int, Array<Annotation>, Stmt)>([](
+    Var loop_var, Expr min, Expr extent,
+    int loop_type, Array<Annotation> annotations, Stmt body) {
+  return Loop::make(loop_var,
+                    min,
+                    extent,
+                    static_cast<LoopType>(loop_type),
+                    annotations,
+                    body);
+});
+TVM_REGISTER_API("make.TeBlock").
+set_body_typed(Block::make);
 
 } // namespace te
 } // namespace tvm
