@@ -26,16 +26,16 @@ def test_simple_print():
     dom = tvm.make.range_by_min_extent(0, 16)
     with ib.loop_range(0, 16, name="i") as i:
         with ib.loop_range(0, 16, name="j") as j:
-            bv_i = ib.block_var(dom, name="vi")
-            bv_j = ib.block_var(dom, name="vj")
+            bv_i = ib.iter_var(dom, name="vi")
+            bv_j = ib.iter_var(dom, name="vj")
             vi = bv_i.var
             vj = bv_j.var
             with ib.block([bv_i, bv_j], [i, j], [], A[vi:vi+1, vj:vj+1], name="init"):
                 A[vi, vj] = 0.0
             with ib.loop_range(0, 16, name="k") as k:
-                ii = ib.block_var(dom, name="vi")
-                jj = ib.block_var(dom, name="vj")
-                kk = ib.block_var(dom, iter_type="reduce", name="vk")
+                ii = ib.iter_var(dom, name="vi")
+                jj = ib.iter_var(dom, name="vj")
+                kk = ib.iter_var(dom, iter_type="reduce", name="vk")
                 vi = ii.var
                 vj = jj.var
                 vk = kk.var

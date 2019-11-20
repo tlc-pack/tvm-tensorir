@@ -487,8 +487,8 @@ class IRBuilder(object):
 
         return WithScope(loop_var, _exit_cb)
 
-    def block_var(self, dom, name="v", iter_type="data_par"):
-        """Create block var.
+    def iter_var(self, dom, name="v", iter_type="data_par"):
+        """Create IterVar.
 
         Parameters
         ----------
