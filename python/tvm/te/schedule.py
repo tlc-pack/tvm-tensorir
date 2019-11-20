@@ -63,7 +63,6 @@ def create_schedule(ops):
 @tvm._ffi.register_object
 class Schedule(Object):
     """Schedule for all the stages."""
-
     def __getitem__(self, k):
         if isinstance(k, _tensor.Tensor):
             k = k.op
@@ -113,7 +112,8 @@ class Schedule(Object):
             outputs = [outputs]
         if isinstance(inputs, _tensor.Tensor):
             inputs = [inputs]
-        return _ffi_api.ScheduleCreateGroup(self, outputs, inputs, include_inputs)
+        return _ffi_api.ScheduleCreateGroup(
+            self, outputs, inputs, include_inputs)
 
     def cache_read(self, tensor, scope, readers):
         """Create a cache read of original tensor for readers.
@@ -170,7 +170,7 @@ class Schedule(Object):
         return _ffi_api.ScheduleCacheWrite(self, tensor, scope)
 
     def rfactor(self, tensor, axis, factor_axis=0):
-        """Factor a reduction axis in tensor's schedule to be an explicit axis.
+        """ Factor a reduction axis in tensor's schedule to be an explicit axis.
 
         This will create a new stage that generated the new tensor with axis
         as the first dimension. The tensor's body will be rewritten as a reduction
@@ -197,7 +197,6 @@ class Schedule(Object):
 @tvm._ffi.register_object
 class Stage(Object):
     """A Stage represents schedule for one operation."""
-
     def split(self, parent, factor=None, nparts=None):
         """Split the stage either by factor providing outer scope, or both
 
@@ -341,7 +340,7 @@ class Stage(Object):
         _ffi_api.StageReorder(self, args)
 
     def tile(self, x_parent, y_parent, x_factor, y_factor):
-        """Perform tiling on two dimensions
+        """ Perform tiling on two dimensions
 
         The final loop order from outmost to inner most are
         [x_outer, y_outer, x_inner, y_inner]
@@ -369,8 +368,7 @@ class Stage(Object):
             Inner axis of y dimension
         """
         x_outer, y_outer, x_inner, y_inner = _ffi_api.StageTile(
-            self, x_parent, y_parent, x_factor, y_factor
-        )
+            self, x_parent, y_parent, x_factor, y_factor)
         return x_outer, y_outer, x_inner, y_inner
 
     def vectorize(self, var):
@@ -511,11 +509,17 @@ class Stage(Object):
         """
         _ffi_api.StageDoubleBuffer(self)
 
+    def opengl(self):
+        """The special OpenGL schedule
+
+        Maps each output element to a pixel.
+        """
+        _ffi_api.StageOpenGL(self)
+
 
 @tvm._ffi.register_object
 class SpecializedCondition(Object):
     """Specialized condition to enable op specialization."""
-
     def __init__(self, conditions):
         """Create a specialized condition.
 
@@ -532,7 +536,8 @@ class SpecializedCondition(Object):
         """
         if not isinstance(conditions, (list, _container.Array)):
             conditions = [conditions]
-        self.__init_handle_by_constructor__(_ffi_api.CreateSpecializedCondition, conditions)
+        self.__init_handle_by_constructor__(
+            _ffi_api.CreateSpecializedCondition, conditions)
 
     @staticmethod
     def current():

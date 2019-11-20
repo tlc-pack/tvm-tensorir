@@ -1,3 +1,4 @@
+#!/bin/bash
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -15,8 +16,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
-message(STATUS "Build with contrib.hybriddump")
-file(GLOB HYBRID_CONTRIB_SRC
-	src/contrib/hybrid/*.cc
-	src/contrib/hybrid_tir/*.cc)
-list(APPEND COMPILER_SRCS ${HYBRID_CONTRIB_SRC})
+set -e
+set -u
+
+export PYTHONPATH=python:topi/python
+
+# cleanup pycache
+find . -type f -path "*.pyc" | xargs rm -f
+
+TVM_FFI=ctypes python3 -m pytest -v tests/python/tir
