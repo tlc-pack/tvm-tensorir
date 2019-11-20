@@ -407,8 +407,8 @@ class BufferStore(Stmt):
 
     Parameters
     ----------
-    buffer_var : Var
-        The buffer Variable.
+    buffer : Buffer
+        The store buffer.
 
     value : Expr
         The value we want to store.
@@ -417,7 +417,7 @@ class BufferStore(Stmt):
         The index in the store expression.
 
     """
-    def __init__(self, buffer_var, value, indices):
+    def __init__(self, buffer, value, indices):
         self.__init_handle_by_constructor__(
             _make.BufferStore, buffer_var, value, indices)
 
@@ -427,7 +427,7 @@ class TeBlock(Stmt):
 
     Parameters
     ----------
-    buffer_var : Var
+    buffer_var : IterVar
         The buffer Variable.
 
     value : Expr
@@ -440,6 +440,20 @@ class TeBlock(Stmt):
     def __init__(self, buffer_var, value, indices):
         self.__init_handle_by_constructor__(
             _make.TeBlock, buffer_var, value, indices)
+
+@register_node
+class BufferAllocate(Stmt):
+    """BufferAllocate node.
+
+    Parameters
+    ----------
+    buffer : Buffer
+        The buffer to be allocated
+
+    """
+    def __init__(self, buffer):
+        self.__init_handle_by_constructor__(
+            _make.BufferAllocate, buffer)
 
 def stmt_seq(*args):
     """Make sequence of statements

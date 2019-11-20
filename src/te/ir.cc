@@ -22,53 +22,55 @@
  * \brief Additional high level nodes in the TensorIR
  */
 
-#include "ir.h"
+#include <tvm/te/ir.h>
 #include <tvm/api_registry.h>
 #include <tvm/arithmetic.h>
-#include <tvm/ir_pass.h>
 
 namespace tvm {
 namespace te {
 using namespace ir;
 
-Expr BufferLoad::make(DataType type, Var buffer_var, Array<Expr> indices) {
-  NodePtr<BufferLoad> node = make_node<BufferLoad>();
+BufferLoad BufferLoadNode::make(DataType type, Buffer buffer, Array<Expr> indices) {
+  NodePtr<BufferLoadNode> node = make_node<BufferLoadNode>();
   node->type = type;
-  node->buffer_var = std::move(buffer_var);
+  node->buffer = std::move(buffer);
   node->indices = std::move(indices);
-  return Expr(node);
+  return BufferLoad(node);
 }
 
-Stmt BufferStore::make(Var buffer_var, Expr value, Array<Expr> indices) {
-  NodePtr<BufferStore> node = make_node<BufferStore>();
-  node->buffer_var = std::move(buffer_var);
+BufferStore BufferStoreNode::make(Buffer buffer, Expr value, Array<Expr> indices) {
+  NodePtr<BufferStoreNode> node = make_node<BufferStoreNode>();
+  node->buffer = std::move(buffer);
   node->value = std::move(value);
   node->indices = std::move(indices);
-  return Stmt(node);
+  return BufferStore(node);
 }
 
-Stmt Block::make(Array<BlockVar> vars,
-                 Array<TensorRegion> inputs,
-                 Array<TensorRegion> outputs,
-                 Stmt body,
-                 Expr predicate,
-                 Array<Annotation> annotations,
-                 std::string tag) {
-  NodePtr<Block> node = make_node<Block>();
-  node->vars = std::move(vars);
-  node->inputs = std::move(inputs);
-  node->outputs = std::move(outputs);
+Block BlockNode::make(Array<IterVar> iter_vars,
+                      Array<Expr> values,
+                      Array<TensorRegion> reads,
+                      Array<TensorRegion> writes,
+                      Stmt body,
+                      Expr predicate,
+                      Array<Annotation> annotations,
+                      std::string tag) {
+  NodePtr<BlockNode> node = make_node<BlockNode>();
+  CHECK_EQ(iter_vars.size(), values.size());
+  node->iter_vars = std::move(iter_vars);
+  node->values = std::move(values);
+  node->reads = std::move(reads);
+  node->writes = std::move(writes);
   node->body = std::move(body);
   node->predicate = std::move(predicate);
   node->annotations = std::move(annotations);
   node->tag = std::move(tag);
-  return Stmt(node);
+  return Block(node);
 }
 
-TensorRegion TensorRegionNode::make(Var buffer, Array<Range> ranges) {
+TensorRegion TensorRegionNode::make(Buffer buffer, Array<Range> region) {
   NodePtr<TensorRegionNode> node = make_node<TensorRegionNode>();
   node->buffer = std::move(buffer);
-  node->ranges = std::move(ranges);
+  node->region = std::move(region);
   return TensorRegion(node);
 }
 
@@ -79,69 +81,38 @@ Annotation AnnotationNode::make(std::string attr_key, Expr value) {
   return Annotation(node);
 }
 
-Stmt Loop::make(Var loop_var,
-                Expr min,
-                Expr extent,
-                LoopType loop_type,
-                Array<Annotation> annotations,
-                Stmt body) {
-  NodePtr<Loop> node = make_node<Loop>();
+Loop LoopNode::make(Var loop_var,
+                    Expr min,
+                    Expr extent,
+                    Array<Annotation> annotations,
+                    Stmt body) {
+  NodePtr<LoopNode> node = make_node<LoopNode>();
   node->loop_var = std::move(loop_var);
   node->min = std::move(min);
   node->extent = std::move(extent);
-  node->loop_type = std::move(loop_type);
   node->annotations = std::move(annotations);
   node->body = std::move(body);
-  return Stmt(node);
+  return Loop(node);
 }
 
-BlockVar BlockVarNode::make(Var var, Expr value, LoopType type, Range range) {
-  NodePtr<BlockVarNode> node = make_node<BlockVarNode>();
-  node->var = std::move(var);
-  node->value = std::move(value);
-  node->type = std::move(type);
-  node->range = std::move(range);
-  return BlockVar(node);
-}
-
-Expr BufferBindNode::make(tvm::runtime::NDArray data,
-                          tvm::Array<tvm::Expr> shape,
-                          tvm::DataType type,
-                          std::string name) {
-  NodePtr<BufferBindNode> node = make_node<BufferBindNode>();
-  node->data = std::move(data);
-  node->shape = std::move(shape);
-  node->type = std::move(type);
-  node->name = std::move(name);
-  return Expr(node);
-}
-
-std::ostream &operator<<(std::ostream &out, LoopType type) {
-  switch (type) {
-    case LoopType::kDataPar:out << "";
-      break;
-    case LoopType::kReduce:out << "reduce";
-      break;
-    case LoopType::kScan:out << "scan";
-      break;
-    case LoopType::kOpaque:out << "opaque";
-      break;
-  }
-  return out;
+BufferAllocate BufferAllocateNode::make(Buffer buffer) {
+  NodePtr<BufferAllocateNode> node = make_node<BufferAllocateNode>();
+  node->buffer = std::move(buffer);
+  return BufferAllocate(node);
 }
 
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<BufferLoad>([](const ObjectRef &node, IRPrinter* p) {
-  auto* op = static_cast<const BufferLoad*>(node.get());
-  p->Print(op->buffer_var);
+.set_dispatch<BufferLoadNode>([](const ObjectRef &node, IRPrinter* p) {
+  auto* op = static_cast<const BufferLoadNode*>(node.get());
+  p->Print(op->buffer->data);
   p->Print(op->indices);
 });
 
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<BufferStore>([](const ObjectRef &node, IRPrinter* p) {
-  auto* op = static_cast<const BufferStore*>(node.get());
+.set_dispatch<BufferStoreNode>([](const ObjectRef &node, IRPrinter* p) {
+  auto* op = static_cast<const BufferStoreNode*>(node.get());
   p->PrintIndent();
-  p->Print(op->buffer_var);
+  p->Print(op->buffer->data);
   p->Print(op->indices);
   p->stream << " = ";
   p->Print(op->value);
@@ -158,14 +129,14 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
 .set_dispatch<TensorRegionNode>([](const ObjectRef &node, IRPrinter* p) {
   auto* op = static_cast<const TensorRegionNode*>(node.get());
-  p->Print(op->buffer);
+  p->Print(op->buffer->data);
   p->stream << "[";
-  for (size_t i = 0; i < op->ranges.size(); ++i) {
-    const auto &range = op->ranges[i];
+  for (size_t i = 0; i < op->region.size(); ++i) {
+    const auto &range = op->region[i];
     p->Print(range->min);
     p->stream << ":";
-    p->Print(Simplify(range->min + range->extent));
-    if (i != op->ranges.size() - 1) {
+    p->Print(range->min + range->extent);
+    if (i != op->region.size() - 1) {
       p->stream << ", ";
     }
   }
@@ -173,23 +144,8 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
 });
 
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<BlockVarNode>([](const ObjectRef &node, IRPrinter* p) {
-  auto* op = static_cast<const BlockVarNode*>(node.get());
-  if (op->type != LoopType::kDataPar) {
-    p->stream << op->type << " ";
-  }
-  p->Print(op->var);
-  p->stream << "[";
-  p->Print(op->range->min);
-  p->stream << ":";
-  p->Print(op->range->min + op->range->extent);
-  p->stream << "]=";
-  p->Print(op->value);
-});
-
-TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<Loop>([](const ObjectRef &node, IRPrinter* p) {
-  auto* op = static_cast<const Loop*>(node.get());
+.set_dispatch<LoopNode>([](const ObjectRef &node, IRPrinter* p) {
+  auto* op = static_cast<const LoopNode*>(node.get());
 
   // print loop and annotations
   p->PrintIndent();
@@ -199,9 +155,6 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
   p->Print(op->min);
   p->stream << " to ";
   p->Print(op->extent);
-  if (op->loop_type != LoopType::kDataPar) {
-    p->stream << " (" << op->loop_type <<")";
-  }
   if (op->annotations.size() > 0) {
     p->stream << " (attr: ";
     p->Print(op->annotations);
@@ -218,15 +171,36 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
 });
 
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<Block>([](const ObjectRef &node, IRPrinter* p) {
-  auto* op = static_cast<const Block*>(node.get());
+.set_dispatch<BlockNode>([](const ObjectRef &node, IRPrinter* p) {
+  auto* op = static_cast<const BlockNode*>(node.get());
 
   // print block name and block vars
   p->PrintIndent();
   p->stream << "block " << op->tag << "(";
-  for (size_t i = 0; i < op->vars.size(); ++i) {
-    p->Print(op->vars[i]);
-    if (i != op->vars.size() - 1) {
+  for (size_t i = 0; i < op->iter_vars.size(); ++i) {
+    const auto &iter_var = op->iter_vars[i];
+    if (iter_var->iter_type != kDataPar) {
+      std::string str;
+      switch (iter_var->iter_type) {
+        case kCommReduce:
+          str = "reduce"; break;
+        case kOrdered:
+          str = "ordered"; break;
+        case kOpaque:
+          str = "opaque"; break;
+        default:
+          str = "unknown"; break;
+      }
+      p->stream << str << " ";
+    }
+    p->Print(iter_var->var);
+    p->stream << "[";
+    p->Print(iter_var->dom->min);
+    p->stream << ":";
+    p->Print(iter_var->dom->min + iter_var->dom->extent);
+    p->stream << "]=";
+    p->Print(op->values[i]);
+    if (i != op->iter_vars.size() - 1) {
       p->stream << ", ";
     }
   }
@@ -234,9 +208,9 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
 
   // print tensor region and annotations
   p->stream << " W: ";
-  p->Print(op->outputs);
+  p->Print(op->writes);
   p->stream << " R: ";
-  p->Print(op->inputs);
+  p->Print(op->reads);
   if (!is_one(op->predicate)) {
     p->stream << " pred: ";
     p->Print(op->predicate);
@@ -255,39 +229,35 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
   p->stream << "}\n";
 });
 
+TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
+.set_dispatch<BufferAllocateNode>([](const ObjectRef &node, IRPrinter* p) {
+  auto* op = static_cast<const BufferAllocateNode*>(node.get());
+  p->PrintIndent();
+  p->stream << "BufferAllocate(";
+  p->stream << op->buffer->name;
+  p->Print(op->buffer->shape);
+  p->stream << ", " << op->buffer->dtype << ")\n";
+});
+
+
 TVM_REGISTER_NODE_TYPE(TensorRegionNode);
-TVM_REGISTER_NODE_TYPE(BufferLoad);
-TVM_REGISTER_NODE_TYPE(BufferStore);
-TVM_REGISTER_NODE_TYPE(BlockVarNode);
-TVM_REGISTER_NODE_TYPE(Loop);
-TVM_REGISTER_NODE_TYPE(Block);
+TVM_REGISTER_NODE_TYPE(BufferLoadNode);
+TVM_REGISTER_NODE_TYPE(BufferStoreNode);
+TVM_REGISTER_NODE_TYPE(BufferAllocateNode);
+TVM_REGISTER_NODE_TYPE(LoopNode);
+TVM_REGISTER_NODE_TYPE(BlockNode);
 TVM_REGISTER_API("make.TensorRegion")
 .set_body_typed(TensorRegionNode::make);
+TVM_REGISTER_API("make.BufferAllocate")
+.set_body_typed(BufferAllocateNode::make);
 TVM_REGISTER_API("make.BufferLoad")
-.set_body_typed(BufferLoad::make);
+.set_body_typed(BufferLoadNode::make);
 TVM_REGISTER_API("make.BufferStore")
-.set_body_typed(BufferStore::make);
-TVM_REGISTER_API("make.BlockVarNode")
-.set_body_typed<BlockVar(Var, Expr, int, Range)>([](
-    Var data, Expr value, int type, Range range) {
-  return BlockVarNode::make(data,
-                            value,
-                            static_cast<LoopType>(type),
-                            range);
-});
-TVM_REGISTER_API("make.Loop")
-.set_body_typed<Stmt(Var, Expr, Expr, int, Array<Annotation>, Stmt)>([](
-    Var loop_var, Expr min, Expr extent,
-    int loop_type, Array<Annotation> annotations, Stmt body) {
-  return Loop::make(loop_var,
-                    min,
-                    extent,
-                    static_cast<LoopType>(loop_type),
-                    annotations,
-                    body);
-});
+.set_body_typed(BufferStoreNode::make);
+TVM_REGISTER_API("make.Loop").
+    set_body_typed(LoopNode::make);
 TVM_REGISTER_API("make.TeBlock").
-set_body_typed(Block::make);
+    set_body_typed(BlockNode::make);
 
 } // namespace te
 } // namespace tvm

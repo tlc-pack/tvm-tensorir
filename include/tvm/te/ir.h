@@ -18,10 +18,11 @@
  */
 
 /*!
- * \file tvm/te/ir.h
+ * \file tvm/include/te/ir.h
  * \brief Additional high level nodes in the TensorIR
  */
-#pragma once
+#ifndef TVM_TE_IR_H_
+#define TVM_TE_IR_H_
 
 #include <tvm/expr.h>
 #include <tvm/ir.h>
@@ -41,24 +42,30 @@ using namespace ir;
  * \endcode
  * \sa BufferStore
  */
-class BufferLoad : public ExprNode {
+class BufferLoad;
+class BufferLoadNode : public ExprNode {
  public:
   /*! \brief The buffer variable. */
-  Var buffer_var;
+  Buffer buffer;
   /*! \brief The indices location to be loaded. */
   Array<Expr> indices;
 
   void VisitAttrs(AttrVisitor* v) {
-    v->Visit("buffer_var", &buffer_var);
+    v->Visit("buffer", &buffer);
     v->Visit("indices", &indices);
   }
 
-  TVM_DLL static Expr make(DataType type,
-                           Var buffer_var,
-                           Array<Expr> indices);
+  TVM_DLL static BufferLoad make(DataType type,
+                                 Buffer buffer,
+                                 Array<Expr> indices);
 
   static constexpr const char* _type_key = "BufferLoad";
-  TVM_DECLARE_NODE_TYPE_INFO(BufferLoad, ExprNode);
+  TVM_DECLARE_NODE_TYPE_INFO(BufferLoadNode, ExprNode);
+};
+
+class BufferLoad : public Expr {
+ public:
+  TVM_DEFINE_NODE_REF_METHODS(BufferLoad, Expr, BufferLoadNode);
 };
 
 /*!
@@ -71,39 +78,32 @@ class BufferLoad : public ExprNode {
  * \endcode
  * \sa BufferLoad
  */
-class BufferStore : public StmtNode {
+class BufferStore;
+class BufferStoreNode : public StmtNode {
  public:
   /*! \brief The buffer variable. */
-  Var buffer_var;
+  Buffer buffer;
   /*! \brief The value to be stored. */
   Expr value;
   /*! \brief The indices location to be stored. */
   Array<Expr> indices;
 
   void VisitAttrs(AttrVisitor* v) {
-    v->Visit("buffer_var", &buffer_var);
+    v->Visit("buffer", &buffer);
     v->Visit("value", &value);
     v->Visit("indices", &indices);
   }
 
-  TVM_DLL static Stmt make(Var buffer_var,
-                           Expr value,
-                           Array<Expr> indices);
+  TVM_DLL static BufferStore make(Buffer buffer,
+                                  Expr value,
+                                  Array<Expr> indices);
 
   static constexpr const char* _type_key = "BufferStore";
-  TVM_DECLARE_NODE_TYPE_INFO(BufferStore, StmtNode);
+  TVM_DECLARE_NODE_TYPE_INFO(BufferStoreNode, StmtNode);
 };
-
-/*! \brief Additional annotation of for loop. */
-enum class LoopType : int {
-  /*! \brief data parallel. */
-  kDataPar = 0,
-  /*! \brief reduce loop. */
-  kReduce = 1,
-  /*! \brief scan loop. */
-  kScan = 2,
-  /*! \brief opaque loop. */
-  kOpaque = 3
+class BufferStore : public Stmt {
+ public:
+  TVM_DEFINE_NODE_REF_METHODS(BufferStore, Stmt, BufferStoreNode);
 };
 
 /*!
@@ -145,7 +145,8 @@ class Annotation : public NodeRef {
  *
  * \endcode
  */
-class Loop : public StmtNode {
+class Loop;
+class LoopNode : public StmtNode {
  public:
   /*! \brief The loop variable. */
   Var loop_var;
@@ -153,17 +154,14 @@ class Loop : public StmtNode {
   Expr min;
   /*! \brief The extent of the iteration. */
   Expr extent;
-  /*! \brief The type of the for loop. */
-  LoopType loop_type;
   /*! \brief Loop annotations. */
   Array<Annotation> annotations;
   /*! \brief The body of the for loop. */
   Stmt body;
 
-  TVM_DLL static Stmt make(Var loop_var,
+  TVM_DLL static Loop make(Var loop_var,
                            Expr min,
                            Expr extent,
-                           LoopType loop_type,
                            Array<Annotation> annotations,
                            Stmt body);
 
@@ -171,46 +169,17 @@ class Loop : public StmtNode {
     v->Visit("loop_var", &loop_var);
     v->Visit("min", &min);
     v->Visit("extent", &extent);
-    v->Visit("loop_type", &loop_type);
     v->Visit("annotations", &annotations);
     v->Visit("body", &body);
   }
 
   static constexpr const char* _type_key = "Loop";
-  TVM_DECLARE_NODE_TYPE_INFO(Loop, StmtNode);
+  TVM_DECLARE_NODE_TYPE_INFO(LoopNode, StmtNode);
 };
 
-/*!
- * \brief A block variable with value, iteration type and required ranges
- */
-class BlockVar;
-class BlockVarNode : public Node {
+class Loop : public Stmt {
  public:
-  /*! \brief The variable of the block var. */
-  Var var;
-  /*! \brief The value of the block var. */
-  Expr value;
-  /*! \brief The required iteration type of the block var. */
-  LoopType type;
-  /*! \brief The required ranges the block var. */
-  Range range;
-
-  void VisitAttrs(AttrVisitor* v) {
-    v->Visit("var", &var);
-    v->Visit("value", &value);
-    v->Visit("type", &type);
-    v->Visit("range", &range);
-  }
-
-  TVM_DLL static BlockVar make(Var var, Expr value, LoopType type, Range range);
-
-  static constexpr const char* _type_key = "BlockVar";
-  TVM_DECLARE_NODE_TYPE_INFO(BlockVarNode, Node);
-};
-
-class BlockVar : public NodeRef {
- public:
-  TVM_DEFINE_NODE_REF_METHODS(BlockVar, NodeRef, BlockVarNode);
+  TVM_DEFINE_NODE_REF_METHODS(Loop, Stmt, LoopNode);
 };
 
 /*!
@@ -220,16 +189,16 @@ class TensorRegion;
 class TensorRegionNode : public Node {
  public:
   /*! \brief The tensor of the tensor region. */
-  Var buffer;
-  /*! \brief The ranges array of the tensor region. */
-  Array<Range> ranges;
+  Buffer buffer;
+  /*! \brief The region array of the tensor region. */
+  Array<Range> region;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("buffer", &buffer);
-    v->Visit("ranges", &ranges);
+    v->Visit("region", &region);
   }
 
-  TVM_DLL static TensorRegion make(Var buffer, Array<Range> ranges);
+  TVM_DLL static TensorRegion make(Buffer buffer, Array<Range> region);
 
   static constexpr const char* _type_key = "TensorRegion";
   TVM_DECLARE_NODE_TYPE_INFO(TensorRegionNode, Node);
@@ -255,14 +224,17 @@ class TensorRegion : public NodeRef {
  *
  * \endcode
  */
-class Block : public StmtNode {
+class Block;
+class BlockNode : public StmtNode {
  public:
   /*! \brief The variables of the block. */
-  Array<BlockVar> vars;
-  /*! \brief The input tensor region of the block. */
-  Array<TensorRegion> inputs;
-  /*! \brief The output tensor region of the block. */
-  Array<TensorRegion> outputs;
+  Array<IterVar> iter_vars;
+  /*! \brief The corresponding value of the iter vars. */
+  Array<Expr> values;
+  /*! \brief The read tensor region of the block. */
+  Array<TensorRegion> reads;
+  /*! \brief The write tensor region of the block. */
+  Array<TensorRegion> writes;
   /*! \brief The body of the block. */
   Stmt body;
   /*! \brief The predicates of the block. */
@@ -272,57 +244,65 @@ class Block : public StmtNode {
   /*! \brief The tag of the block. */
   std::string tag;
 
-  TVM_DLL static Stmt make(Array<BlockVar> vars,
-                           Array<TensorRegion> inputs,
-                           Array<TensorRegion> outputs,
-                           Stmt body,
-                           Expr predicate,
-                           Array<Annotation> annotations,
-                           std::string tag);
+  TVM_DLL static Block make(Array<IterVar> iter_vars,
+                            Array<Expr> values,
+                            Array<TensorRegion> reads,
+                            Array<TensorRegion> writes,
+                            Stmt body,
+                            Expr predicate,
+                            Array<Annotation> annotations,
+                            std::string tag);
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("body", &body);
-    v->Visit("vars", &vars);
-    v->Visit("inputs", &inputs);
-    v->Visit("outputs", &outputs);
+    v->Visit("iter_vars", &iter_vars);
+    v->Visit("reads", &reads);
+    v->Visit("writes", &writes);
     v->Visit("predicate", &predicate);
     v->Visit("annotations", &annotations);
     v->Visit("tag", &tag);
   }
 
   static constexpr const char* _type_key = "TeBlock";
-  TVM_DECLARE_NODE_TYPE_INFO(Block, StmtNode);
+  TVM_DECLARE_NODE_TYPE_INFO(BlockNode, StmtNode);
 };
 
-class BufferBind;
-class BufferBindNode : public ExprNode {
+class Block : public Stmt {
  public:
-  /*! \brief The source NDArray. */
-  tvm::runtime::NDArray data;
-  /*! \brief The array shape of the buffer. */
-  Array<Expr> shape;
-  /*! \brief The name of the buffer. */
-  std::string name;
+  TVM_DEFINE_NODE_REF_METHODS(Block, Stmt, BlockNode);
+};
+
+/*!
+ * \brief Allocate a new buffer in TE
+ * \code
+ *
+ * BufferAllocate(buffer[shape], type)
+ * 
+ * \endcode
+ */
+class BufferAllocate;
+class BufferAllocateNode : public StmtNode {
+ public:
+  /*! \brief The buffer to be allocated. */
+  Buffer buffer;
+
+  
+  TVM_DLL static BufferAllocate make(Buffer buffer);
 
   void VisitAttrs(AttrVisitor* v) {
-    v->Visit("data", &data);
-    v->Visit("shape", &shape);
-    v->Visit("name", &name);
+    v->Visit("buffer", &buffer);
   }
 
-  TVM_DLL static Expr make(tvm::runtime::NDArray data,
-                           Array<Expr> shape,
-                           DataType type,
-                           std::string name);
-
-  static constexpr const char* _type_key = "BufferBind";
-  TVM_DECLARE_NODE_TYPE_INFO(BufferBindNode, Node);
+  static constexpr const char* _type_key = "BufferAllocate";
+  TVM_DECLARE_NODE_TYPE_INFO(BufferAllocateNode, StmtNode);
 };
 
-class BufferBind : public Expr {
+class BufferAllocate : public Stmt {
  public:
-  TVM_DEFINE_NODE_REF_METHODS(BufferBind, Expr, BufferBindNode);
+  TVM_DEFINE_NODE_REF_METHODS(BufferAllocate, Stmt, BufferAllocateNode);
 };
 
 } // namespace te
 } // namespace tvm
+
+#endif  // TVM_TE_IR_H_

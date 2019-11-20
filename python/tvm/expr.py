@@ -870,12 +870,12 @@ class BufferLoad(Expr):
     dtype : str
         The type of new expression
 
-    buffer_var : Var
-        The buffer var of the buffer to be read.
+    buffer : Buffer
+        The buffer to be read.
 
     indices : list of Expr
         The indices in the load.
     """
-    def __init__(self, dtype, buffer_var, indices):
+    def __init__(self, dtype, buffer, indices):
         self.__init_handle_by_constructor__(
-            _make.BufferLoad, dtype, buffer_var, indices)
+            _make.BufferLoad, dtype, buffer, indices)

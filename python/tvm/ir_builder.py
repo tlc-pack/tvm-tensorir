@@ -24,9 +24,10 @@ from . import make as _make
 from . import ir_pass as _pass
 from . import container as _container
 from ._ffi.base import string_types
-from ._ffi.node import NodeGeneric, register_node, NodeBase
+from ._ffi.node import NodeGeneric
 from ._ffi.runtime_ctypes import TVMType
 from .expr import Call as _Call
+from . import ir_pass
 
 
 class WithScope(object):
@@ -42,6 +43,46 @@ class WithScope(object):
     def __exit__(self, ptype, value, trace):
         self._exit_cb()
 
+class Buffer(NodeGeneric):
+    """Buffer type used in TE.
+
+    Do not create it directly, create use IRBuilder.
+    """
+
+    def __init__(self, builder, buffer, content_type):
+        self._builder = builder
+        self._buffer = buffer
+        self._content_type = content_type
+
+    def asnode(self):
+        return self._buffer
+
+    @property
+    def dtype(self):
+        return self._content_type
+
+    def __getitem__(self, index):
+        if not isinstance(index, tuple):
+            index = [index]
+        if isinstance(index[0], slice):
+            doms = []
+            for id in index:
+                assert isinstance(id, slice)
+                assert id.step == 1 or id.step is None
+                doms.append(_make.range_by_min_extent(id.start, ir_pass.Simplify(id.stop - id.start)))
+            return _make.TensorRegion(self._buffer, doms)
+        else:
+            return _make.BufferLoad(self._content_type, self._buffer, index)
+
+    def __setitem__(self, index, value):
+        value = _api.convert(value)
+        if value.dtype != self._content_type:
+            raise ValueError(
+                "data type does not match content type %s vs %s" % (
+                    value.dtype, self._content_type))
+        if isinstance(index, _expr.Expr):
+            index = [index]
+        self._builder.emit(_make.BufferStore(self._buffer, value, index))
 
 class BufferVar(NodeGeneric):
     """Buffer variable with content type, makes load store easily.
@@ -84,17 +125,7 @@ class BufferVar(NodeGeneric):
         t = TVMType(self._content_type)
         if t.lanes > 1:
             index = _make.Ramp(index * t.lanes, 1, t.lanes)
-        if not isinstance(index, tuple):
-            index = [index]
-        if isinstance(index[0], slice):
-            doms = []
-            for id in index:
-                assert isinstance(id, slice)
-                assert id.step == 1 or id.step is None
-                doms.append(_make.range_by_min_extent(id.start, id.stop - id.start))
-            return _make.TensorRegion(self._buffer_var, doms)
-        else:
-            return _make.BufferLoad(self._content_type, self._buffer_var, index)
+        return _make.Load(self._content_type, self._buffer_var, index)
 
     def __setitem__(self, index, value):
         value = _api.convert(value)
@@ -105,14 +136,7 @@ class BufferVar(NodeGeneric):
         t = TVMType(self._content_type)
         if t.lanes > 1:
             index = _make.Ramp(index * t.lanes, 1, t.lanes)
-        if isinstance(index, _expr.Expr):
-            index = [index]
-        self._builder.emit(_make.BufferStore(self._buffer_var, value, index))
-
-
-@register_node
-class BlockVar(NodeBase):
-    """BlockVar Node."""
+        self._builder.emit(_make.Store(self._buffer_var, value, index))
 
 
 class IRBuilder(object):
@@ -424,7 +448,7 @@ class IRBuilder(object):
             raise RuntimeError("cannot call get inside construction scope")
         return seq
 
-    def loop_range(self, begin, end, name="i", dtype="int32", iter_type="data_par"):
+    def loop_range(self, begin, end, name="i", dtype="int32"):
         """Create a for te loop scope.
 
         Parameters
@@ -458,22 +482,12 @@ class IRBuilder(object):
         extent = end if begin == 0 else _pass.Simplify(end - begin)
 
         def _exit_cb():
-            if iter_type == "data_par":
-                iter_type_id = 0
-            elif iter_type == "reduce":
-                iter_type_id = 1
-            elif iter_type == "scan":
-                iter_type_id = 2
-            elif iter_type == "opaque":
-                iter_type_id = 3
-            else:
-                raise ValueError("Unknown iter_type")
             self.emit(_make.Loop(
-                loop_var, begin, extent, iter_type_id, [], self._pop_seq()))
+                loop_var, begin, extent,  [], self._pop_seq()))
 
         return WithScope(loop_var, _exit_cb)
 
-    def block_var(self, value, dom, name="v", iter_type="data_par"):
+    def block_var(self, dom, name="v", iter_type="data_par"):
         """Create block var.
 
         Parameters
@@ -490,20 +504,19 @@ class IRBuilder(object):
         iter_type: optional, str
             The required iteration type of the block var
         """
-        var = _api.var(name)
         if iter_type == "data_par":
             iter_type_id = 0
         elif iter_type == "reduce":
-            iter_type_id = 1
-        elif iter_type == "scan":
             iter_type_id = 2
-        elif iter_type == "opaque":
+        elif iter_type == "scan":
             iter_type_id = 3
+        elif iter_type == "opaque":
+            iter_type_id = 4
         else:
             raise ValueError("Unknown iter_type")
-        return _make.BlockVarNode(var, value, iter_type_id, dom)
+        return _api._IterVar(dom, name, iter_type_id)
 
-    def block(self, block_vars, inputs, outputs, predicate=1, annotations=[], name=""):
+    def block(self, block_vars, values, reads, writes, predicate=1, annotations=[], name=""):
         """Create a Te block.
 
         Parameters
@@ -511,10 +524,10 @@ class IRBuilder(object):
         block_vars : list of BlockVar
             The value of block var.
 
-        inputs : list of TensorRegion
+        reads : list of TensorRegion
             The input tensor regions of the block
 
-        outputs : list of TensorRegion
+        writes : list of TensorRegion
             The output tensor regions of the block
 
         predicate: optional, Expr
@@ -530,16 +543,35 @@ class IRBuilder(object):
 
         if not isinstance(block_vars, list) and not isinstance(block_vars, tuple):
             block_vars = [block_vars]
-        if not isinstance(inputs, list) and not isinstance(inputs, tuple):
-            inputs = [inputs]
-        if not isinstance(outputs, list) and not isinstance(outputs, tuple):
-            outputs = [outputs]
+        if not isinstance(reads, list) and not isinstance(reads, tuple):
+            reads = [reads]
+        if not isinstance(writes, list) and not isinstance(writes, tuple):
+            writes = [writes]
 
         def _exit_cb():
             self.emit(_make.TeBlock(
-                block_vars, inputs, outputs, self._pop_seq(), predicate, annotations, name))
+                block_vars, values, reads, writes, self._pop_seq(), predicate, annotations, name))
 
         return WithScope(None, _exit_cb)
+
+    def allocate_buffer(self, shape, dtype="float32", name="buf"):
+        """Create a TE buffer.
+
+        Parameters
+        ----------
+        shape : list of Expr
+            The buffer shape
+
+        dtype : str
+            The buffer data type
+
+        name: optional, str
+            The name of the buffer
+
+        """
+        _buffer = _api.decl_buffer(shape, dtype=dtype, name=name)
+        self.emit(_make.BufferAllocate(_buffer))
+        return Buffer(self, _buffer, dtype)
 
 
 def create():
