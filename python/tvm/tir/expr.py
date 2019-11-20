@@ -1199,3 +1199,22 @@ class Any(PrimExpr):
 
     def __init__(self, span=None):
         self.__init_handle_by_constructor__(_ffi_api.Any, span)
+
+@register_node
+class BufferLoad(Expr):
+    """BufferLoad node.
+
+    Parameters
+    ----------
+    dtype : str
+        The type of new expression
+
+    buffer : Buffer
+        The buffer to be read.
+
+    indices : list of Expr
+        The indices in the load.
+    """
+    def __init__(self, dtype, buffer, indices):
+        self.__init_handle_by_constructor__(
+            _make.BufferLoad, dtype, buffer, indices)
