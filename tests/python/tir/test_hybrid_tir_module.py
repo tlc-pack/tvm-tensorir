@@ -15,8 +15,19 @@
 # specific language governing permissions and limitations
 # under the License.
 
-message(STATUS "Build with contrib.hybriddump")
-file(GLOB HYBRID_CONTRIB_SRC
-	src/contrib/hybrid/*.cc
-	src/contrib/hybrid_tir/*.cc)
-list(APPEND COMPILER_SRCS ${HYBRID_CONTRIB_SRC})
+import tvm
+import util
+
+
+def test_module_define():
+    func1 = util.matmul_stmt()
+    func2 = util.element_wise_stmt()
+    func3 = util.predicate_stmt()
+    mod1 = tvm.tir.hybrid.create_module({"func1": func1, "func2": func2, "func3": func3})
+    mod2 = tvm.tir.hybrid.create_module(
+        {"func1": util.matmul, "func2": util.element_wise, "func3": util.predicate})
+    tvm.ir.assert_structural_equal(mod1, mod2)
+
+
+if __name__ == '__main__':
+    test_module_define()

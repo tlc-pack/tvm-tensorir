@@ -532,6 +532,19 @@ def VerifyMemory():
     return _ffi_api.VerifyMemory()  # type: ignore
 
 
+def BufferFlatten():
+    """Flatten the multi-dimensional BufferLoad and BufferStore
+    to single dimensional Load/Store. Also remove Block so that
+    ensure that the Tir after flatten can not be scheduled again.
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.BufferFlatten()
+
+
 # pylint: disable=no-else-return,inconsistent-return-statements
 def HoistIfThenElse(variant: Optional[str] = None):
     """Hoist loop-invariant IfThenElse nodes to outside the eligible loops.
