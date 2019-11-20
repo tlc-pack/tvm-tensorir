@@ -135,6 +135,7 @@ file(GLOB COMPILER_SRCS
     src/pass/*.cc
     src/op/*.cc
     src/schedule/*.cc
+    src/te/*.cc
     )
 
 file(GLOB_RECURSE RELAY_OP_SRCS
