@@ -14,9 +14,20 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+"""Utilities for TIR"""
 
-message(STATUS "Build with contrib.hybriddump")
-file(GLOB HYBRID_CONTRIB_SRC
-	src/contrib/hybrid/*.cc
-	src/contrib/hybrid_tir/*.cc)
-list(APPEND COMPILER_SRCS ${HYBRID_CONTRIB_SRC})
+from tvm._ffi import register_object
+
+
+def register_tir_object(type_key=None):
+    """Register a Relay node type.
+
+    Parameters
+    ----------
+    type_key : str or cls
+        The type key of the node.
+    """
+    if not isinstance(type_key, str):
+        return register_object(
+            "tir." + type_key.__name__)(type_key)
+    return register_object(type_key)

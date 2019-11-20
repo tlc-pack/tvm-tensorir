@@ -193,6 +193,18 @@ class TVM_DLL Object {
    */
   inline bool unique() const;
   /*!
+   * \return The usage count of the cell.
+   * \note We use stl style naming to be consistent with known API in shared_ptr.
+   */
+  inline int use_count() const;
+
+  /*!
+   * \return Weather the cell has only one reference
+   * \note We use stl style naming to be consistent with known API in shared_ptr.
+   */
+  inline bool unique() const;
+
+  /*!
    * \brief Get the type key of the corresponding index from runtime.
    * \param tindex The type index.
    * \return the result.
@@ -301,11 +313,6 @@ class TVM_DLL Object {
   inline void DecRef();
 
  private:
-  /*!
-   * \return The usage count of the cell.
-   * \note We use stl style naming to be consistent with known API in shared_ptr.
-   */
-  inline int use_count() const;
   /*!
    * \brief Check of this object is derived from the parent.
    * \param parent_tindex The parent type index.
@@ -802,6 +809,10 @@ inline void Object::DecRef() {
 
 inline int Object::use_count() const { return ref_counter_.load(std::memory_order_relaxed); }
 
+inline bool Object::unique() const {
+  return use_count() == 1;
+}
+
 #else
 
 inline void Object::IncRef() { ++ref_counter_; }
@@ -891,6 +902,12 @@ inline SubRef Downcast(BaseRef ref) {
                                       << SubRef::ContainerType::_type_key;
   }
   return SubRef(std::move(ref.data_));
+}
+
+template<typename SubType, typename BaseType>
+const SubType* DowncastPtr(BaseType* node) {
+  if (node->template IsInstance<SubType>()) return static_cast<const SubType*>(node);
+  return nullptr;
 }
 
 }  // namespace runtime

@@ -14,9 +14,8 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+"""FFI APIs for tvm.tir.hybrid"""
+import tvm._ffi
 
-message(STATUS "Build with contrib.hybriddump")
-file(GLOB HYBRID_CONTRIB_SRC
-	src/contrib/hybrid/*.cc
-	src/contrib/hybrid_tir/*.cc)
-list(APPEND COMPILER_SRCS ${HYBRID_CONTRIB_SRC})
+
+tvm._ffi._init_api("tir.hybrid", __name__)

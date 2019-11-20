@@ -14,9 +14,8 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+"""Hybrid Programming APIs of TVM Python Package, aimed to support TIR"""
 
-message(STATUS "Build with contrib.hybriddump")
-file(GLOB HYBRID_CONTRIB_SRC
-	src/contrib/hybrid/*.cc
-	src/contrib/hybrid_tir/*.cc)
-list(APPEND COMPILER_SRCS ${HYBRID_CONTRIB_SRC})
+from .utils import create_module, ashybrid, script
+from .registry import register_intrin as register
+from .parser import source_to_op as from_source
