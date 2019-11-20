@@ -16,7 +16,7 @@
 # under the License.
 """Developer API of IR node builder make function."""
 from tvm._ffi.base import string_types
-from tvm.runtime import ObjectGeneric, DataType, convert, const
+from tvm.runtime import ObjectGeneric, DataType, convert, const, Object
 from tvm.ir import container as _container, PointerType, PrimType
 
 from . import stmt as _stmt
@@ -37,6 +37,50 @@ class WithScope(object):
     def __exit__(self, ptype, value, trace):
         self._exit_cb()
 
+
+class Buffer(ObjectGeneric):
+    """Buffer type for BufferLoad and BufferStore in TIR.
+
+    Do not create it directly, create use IRBuilder.
+    """
+
+    def __init__(self, builder, buffer, content_type):
+        self._builder = builder
+        self._buffer = buffer
+        self._content_type = content_type
+
+    def asobject(self):
+        return self._buffer
+
+    @property
+    def dtype(self):
+        return self._content_type
+
+    def __getitem__(self, index):
+        if not isinstance(index, tuple):
+            index = [index]
+        if isinstance(index[0], slice):
+            doms = []
+            for x in index:
+                assert isinstance(x, slice)
+                assert x.step == 1 or x.step is None
+                extent = x.stop - x.start
+                if isinstance(extent, _expr.PrimExpr):
+                    extent = _pass.Simplify(x.stop - x.start)
+                doms.append(_make.range_by_min_extent(
+                    x.start, extent))
+            return _make.TensorRegion(self._buffer, doms)
+        return _make.BufferLoad(self._content_type, self._buffer, index)
+
+    def __setitem__(self, index, value):
+        value = _api.convert(value)
+        if value.dtype != self._content_type:
+            raise ValueError(
+                "data type does not match content type %s vs %s" % (
+                    value.dtype, self._content_type))
+        if isinstance(index, _expr.PrimExpr):
+            index = [index]
+        self._builder.emit(_make.BufferStore(self._buffer, value, index))
 
 class BufferVar(ObjectGeneric):
     """Buffer variable with content type, makes load store easily.
@@ -142,6 +186,7 @@ class IRBuilder(object):
 
     def __init__(self):
         self._seq_stack = [[]]
+        self._allocate_stack = [[]]
         self.nidx = 0
 
     def _pop_seq(self):
@@ -184,7 +229,7 @@ class IRBuilder(object):
         node : Node
             The attribute node to annottate on.
 
-        value : Expr
+        value : PrimExpr
             Attribute value.
 
         Examples
@@ -211,10 +256,10 @@ class IRBuilder(object):
 
         Parameters
         ----------
-        begin : Expr
+        begin : PrimExpr
             The min iteration scope.
 
-        end : Expr
+        end : PrimExpr
             The end iteration scope
 
         name : str, optional
@@ -297,7 +342,7 @@ class IRBuilder(object):
 
         Parameters
         ----------
-        cond : Expr
+        cond : PrimExpr
             The condition.
 
         Returns
@@ -402,7 +447,7 @@ class IRBuilder(object):
         dtype : str
             The content data type.
 
-        shape : tuple of Expr
+        shape : tuple of PrimExpr
             The shape of array to be allocated.
 
         name : str, optional
@@ -465,11 +510,11 @@ class IRBuilder(object):
         """Add likely tag for expression.
         Parameters
         ----------
-        expr : Expr
+        expr : PrimExpr
             The expression. Usually a condition expression.
         Returns
         -------
-        expr : Expr
+        expr : PrimExpr
             The expression will likely tag.
         """
         return _expr.Call(expr.dtype, "tir.likely", [expr])
@@ -486,6 +531,156 @@ class IRBuilder(object):
         if self._seq_stack:
             raise RuntimeError("cannot call get inside construction scope")
         return seq
+
+    def loop_range(self, begin, end, name="i", dtype="int32"):
+        """Create a for te loop scope.
+
+        Parameters
+        ----------
+        begin : PrimExpr
+            The min iteration scope.
+
+        end : PrimExpr
+            The end iteration scope
+
+        name : str, optional
+            The name of iteration variable, if no input names,
+            using typical index names i, j, k, then i_nidx
+
+        dtype : str, optional
+            The data type of iteration variable.
+
+        Returns
+        -------
+        loop_scope : With.Scope of Var
+            The for scope, when enters returns loop_var
+        """
+        if name == 'i':
+            name = chr(ord(name) + self.nidx) if self.nidx < 3 else name + "_" + str(self.nidx - 3)
+            self.nidx += 1
+        self._seq_stack.append([])
+        loop_var = _api.var(name, dtype=dtype)
+        extent = end if begin == 0 else _pass.Simplify(end - begin)
+
+        def _exit_cb():
+            self.emit(_make.Loop(
+                loop_var, begin, extent, [], self._pop_seq()))
+
+        return WithScope(loop_var, _exit_cb)
+
+    def iter_var(self, dom, name="v", iter_type="data_par"):
+        """Create IterVar.
+
+        Parameters
+        ----------
+        value : PrimExpr
+            The value of block var.
+
+        dom : Range
+            The required iteration range of the block var
+
+        name: optional, str
+            The name of the block var
+
+        iter_type: optional, str
+            The required iteration type of the block var
+        """
+        if iter_type == "data_par":
+            iter_type_id = 0
+        elif iter_type == "reduce":
+            iter_type_id = 2
+        elif iter_type == "scan":
+            iter_type_id = 3
+        elif iter_type == "opaque":
+            iter_type_id = 4
+        else:
+            raise ValueError("Unknown iter_type")
+        return _api._IterVar(dom, name, iter_type_id)
+
+    def block(self, block_vars, values, reads, writes, predicate=True, annotations=None, name=""):
+        """Create a Te block.
+
+        Parameters
+        ----------
+        block_vars : list of BlockVar
+            The BlockVar list
+
+        values: list of PrimExpr
+            The value of block var.
+
+        reads : list of TensorRegion
+            The input tensor regions of the block
+
+        writes : list of TensorRegion
+            The output tensor regions of the block
+
+        predicate: optional, PrimExpr
+            The block predicate
+
+        annotations: optional, list of Annotation
+            The annotation list appended on the block
+
+        name: optional, str
+            The name of the block
+        """
+        if annotations is None:
+            annotations = []
+        self._seq_stack.append([])
+        self._allocate_stack.append([])
+
+        if not isinstance(block_vars, list) and not isinstance(block_vars, tuple):
+            block_vars = [block_vars]
+        if not isinstance(reads, list) and not isinstance(reads, tuple):
+            reads = [reads]
+        if not isinstance(writes, list) and not isinstance(writes, tuple):
+            writes = [writes]
+
+        def _exit_cb():
+            self.emit(_make.Block(
+                block_vars, values, reads, writes, self._pop_seq(), predicate,
+                self._allocate_stack.pop(), annotations, name))
+
+        return WithScope(None, _exit_cb)
+
+    def allocate_buffer(self, shape, dtype="float32", name="buf", scope=""):
+        """Allocate a buffer.
+
+        Parameters
+        ----------
+        shape : list of PrimExpr
+            The buffer shape
+
+        dtype : str
+            The buffer data type
+
+        name: optional, str
+            The name of the buffer
+
+        scope: optional, str
+            The buffer scope
+
+        """
+        _buffer = _api.decl_buffer(shape, dtype=dtype, name=name, scope=scope)
+        self._allocate_stack[-1].append(_make.BufferAllocate(_buffer, scope))
+        return Buffer(self, _buffer, dtype)
+
+    def declare_buffer(self, shape, dtype="float32", name="buf"):
+        """create a TIR buffer.
+
+        Parameters
+        ----------
+        shape : list of PrimExpr
+            The buffer shape
+
+        dtype : str
+            The buffer data type
+
+        name: optional, str
+            The name of the buffer
+
+        """
+        _buffer = _api.decl_buffer(shape, dtype=dtype, name=name)
+        return Buffer(self, _buffer, dtype)
 
 
 def create():

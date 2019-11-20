@@ -171,6 +171,8 @@ def lower(
     lower_phase2 = [x[1] for x in add_lower_pass if x[0] == 2]
     lower_phase3 = [x[1] for x in add_lower_pass if x[0] > 2]
 
+    is_tir_schedule = False
+
     # Phase 0
     pass_list = lower_phase0
     is_legacy_te_schedule: bool = False
@@ -413,8 +415,8 @@ def build(
     ----
     See the note on :any:`tvm.target` on target string format.
     """
-    if isinstance(inputs, schedule.Schedule):
-        if args is None:
+    if isinstance(inputs, (schedule.Schedule, tvm.tir.PrimFunc)):
+        if args is None and isinstance(inputs, schedule.Schedule):
             raise ValueError("args must be given for build from schedule")
         input_mod = lower(inputs, args, name=name, binds=binds)
     elif isinstance(inputs, (list, tuple, container.Array)):
