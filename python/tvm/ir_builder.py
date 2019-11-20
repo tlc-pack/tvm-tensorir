@@ -27,9 +27,12 @@ from ._ffi.base import string_types
 from ._ffi.object import ObjectGeneric
 from ._ffi.runtime_ctypes import TVMType
 from .expr import Call as _Call
+from . import ir_pass
+
 
 class WithScope(object):
     """Auxiliary scope  with"""
+
     def __init__(self, enter_value, exit_cb):
         self._enter_value = enter_value
         self._exit_cb = exit_cb
@@ -40,6 +43,46 @@ class WithScope(object):
     def __exit__(self, ptype, value, trace):
         self._exit_cb()
 
+class Buffer(NodeGeneric):
+    """Buffer type used in TE.
+
+    Do not create it directly, create use IRBuilder.
+    """
+
+    def __init__(self, builder, buffer, content_type):
+        self._builder = builder
+        self._buffer = buffer
+        self._content_type = content_type
+
+    def asnode(self):
+        return self._buffer
+
+    @property
+    def dtype(self):
+        return self._content_type
+
+    def __getitem__(self, index):
+        if not isinstance(index, tuple):
+            index = [index]
+        if isinstance(index[0], slice):
+            doms = []
+            for id in index:
+                assert isinstance(id, slice)
+                assert id.step == 1 or id.step is None
+                doms.append(_make.range_by_min_extent(id.start, ir_pass.Simplify(id.stop - id.start)))
+            return _make.TensorRegion(self._buffer, doms)
+        else:
+            return _make.BufferLoad(self._content_type, self._buffer, index)
+
+    def __setitem__(self, index, value):
+        value = _api.convert(value)
+        if value.dtype != self._content_type:
+            raise ValueError(
+                "data type does not match content type %s vs %s" % (
+                    value.dtype, self._content_type))
+        if isinstance(index, _expr.Expr):
+            index = [index]
+        self._builder.emit(_make.BufferStore(self._buffer, value, index))
 
 class BufferVar(ObjectGeneric):
     """Buffer variable with content type, makes load store easily.
@@ -65,6 +108,7 @@ class BufferVar(ObjectGeneric):
     IRBuilder.buffer_ptr
     IRBuilder.allocate
     """
+
     def __init__(self, builder, buffer_var, content_type):
         self._builder = builder
         self._buffer_var = buffer_var
@@ -111,6 +155,7 @@ class IRBuilder(object):
         # The result stmt.
         stmt = ib.get()
     """
+
     def __init__(self):
         self._seq_stack = [[]]
         self.nidx = 0
@@ -215,6 +260,7 @@ class IRBuilder(object):
         self._seq_stack.append([])
         loop_var = _api.var(name, dtype=dtype)
         extent = end if begin == 0 else _pass.Simplify(end - begin)
+
         def _exit_cb():
             if for_type == "serial":
                 for_type_id = 0
@@ -228,6 +274,7 @@ class IRBuilder(object):
                 raise ValueError("Unknown for_type")
             self.emit(_make.For(
                 loop_var, begin, extent, for_type_id, 0, self._pop_seq()))
+
         return WithScope(loop_var, _exit_cb)
 
     def if_scope(self, cond):
@@ -254,8 +301,10 @@ class IRBuilder(object):
                 x[i] = x[i - 1] + 1
         """
         self._seq_stack.append([])
+
         def _exit_cb():
             self.emit(_make.IfThenElse(cond, self._pop_seq(), None))
+
         return WithScope(None, _exit_cb)
 
     def else_scope(self):
@@ -287,8 +336,10 @@ class IRBuilder(object):
             raise RuntimeError("else_scope can only follow an if_scope")
         self._seq_stack[-1].pop()
         self._seq_stack.append([])
+
         def _exit_cb():
             self.emit(_make.IfThenElse(prev.condition, prev.then_case, self._pop_seq()))
+
         return WithScope(None, _exit_cb)
 
     def new_scope(self):
@@ -302,8 +353,10 @@ class IRBuilder(object):
            The result new scope.
         """
         self._seq_stack.append([])
+
         def _exit_cb():
             self.emit(self._pop_seq())
+
         return WithScope(None, _exit_cb)
 
     def allocate(self, dtype, shape, name="buf", scope=None):
@@ -396,6 +449,131 @@ class IRBuilder(object):
         if self._seq_stack:
             raise RuntimeError("cannot call get inside construction scope")
         return seq
+
+    def loop_range(self, begin, end, name="i", dtype="int32"):
+        """Create a for te loop scope.
+
+        Parameters
+        ----------
+        begin : Expr
+            The min iteration scope.
+
+        end : Expr
+            The end iteration scope
+
+        name : str, optional
+            The name of iteration variable, if no input names,
+            using typical index names i, j, k, then i_nidx
+
+        dtype : str, optional
+            The data type of iteration variable.
+
+        iter_type : str, optional
+            The special tag on the for loop.
+
+        Returns
+        -------
+        loop_scope : With.Scope of Var
+            The for scope, when enters returns loop_var
+        """
+        if name == 'i':
+            name = chr(ord(name) + self.nidx) if self.nidx < 3 else name + "_" + str(self.nidx - 3)
+            self.nidx += 1
+        self._seq_stack.append([])
+        loop_var = _api.var(name, dtype=dtype)
+        extent = end if begin == 0 else _pass.Simplify(end - begin)
+
+        def _exit_cb():
+            self.emit(_make.Loop(
+                loop_var, begin, extent,  [], self._pop_seq()))
+
+        return WithScope(loop_var, _exit_cb)
+
+    def iter_var(self, dom, name="v", iter_type="data_par"):
+        """Create IterVar.
+
+        Parameters
+        ----------
+        value : Expr
+            The value of block var.
+
+        dom : Range
+            The required iteration range of the block var
+
+        name: optional, str
+            The name of the block var
+
+        iter_type: optional, str
+            The required iteration type of the block var
+        """
+        if iter_type == "data_par":
+            iter_type_id = 0
+        elif iter_type == "reduce":
+            iter_type_id = 2
+        elif iter_type == "scan":
+            iter_type_id = 3
+        elif iter_type == "opaque":
+            iter_type_id = 4
+        else:
+            raise ValueError("Unknown iter_type")
+        return _api._IterVar(dom, name, iter_type_id)
+
+    def block(self, block_vars, values, reads, writes, predicate=1, annotations=[], name=""):
+        """Create a Te block.
+
+        Parameters
+        ----------
+        block_vars : list of BlockVar
+            The value of block var.
+
+        reads : list of TensorRegion
+            The input tensor regions of the block
+
+        writes : list of TensorRegion
+            The output tensor regions of the block
+
+        predicate: optional, Expr
+            The block predicate
+
+        annotations: optional, list of Annotation
+            The annotation list appended on the block
+
+        name: optional, str
+            The name of the block
+        """
+        self._seq_stack.append([])
+
+        if not isinstance(block_vars, list) and not isinstance(block_vars, tuple):
+            block_vars = [block_vars]
+        if not isinstance(reads, list) and not isinstance(reads, tuple):
+            reads = [reads]
+        if not isinstance(writes, list) and not isinstance(writes, tuple):
+            writes = [writes]
+
+        def _exit_cb():
+            self.emit(_make.TeBlock(
+                block_vars, values, reads, writes, self._pop_seq(), predicate, annotations, name))
+
+        return WithScope(None, _exit_cb)
+
+    def allocate_buffer(self, shape, dtype="float32", name="buf"):
+        """Create a TE buffer.
+
+        Parameters
+        ----------
+        shape : list of Expr
+            The buffer shape
+
+        dtype : str
+            The buffer data type
+
+        name: optional, str
+            The name of the buffer
+
+        """
+        _buffer = _api.decl_buffer(shape, dtype=dtype, name=name)
+        self.emit(_make.BufferAllocate(_buffer))
+        return Buffer(self, _buffer, dtype)
 
 
 def create():
