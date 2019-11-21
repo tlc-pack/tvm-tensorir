@@ -555,7 +555,7 @@ class IRBuilder(object):
 
         return WithScope(None, _exit_cb)
 
-    def function(self, params, buffers, name="func"):
+    def function(self, params, buffer_map, stmt, name="func"):
         """Create a Te block.
 
         Parameters
@@ -563,28 +563,30 @@ class IRBuilder(object):
         params : list of Var
             The parameters of the function
 
-        buffers : list of Buffer
+        buffer_map : dict of Var to Buffer
             The parameters requirement of the function
 
+        stmt : Stmt
+            The body of the function
+
+        name : optional, str
+            The name of the function
+
         """
-        self._seq_stack.append([])
-
-        if not isinstance(buffers, list) and not isinstance(buffers, tuple):
-            buffers = [buffers]
-
         if not isinstance(params, list) and not isinstance(params, tuple):
             params = [params]
 
-        assert len(buffers) == len(params)
         tensors = []
-        for buffer in buffers:
-            _buffer = buffer._buffer
-            tensors.append(_api_internal._Placeholder(
-                _buffer.shape, _buffer.dtype, _buffer.name))
-        def _exit_cb():
-            self.emit(_make.TeFunction(params, buffers, name, self._pop_seq()))
+        tensor_map = {}
+        for param in params:
+            if param in buffer_map.keys():
+                _buffer = buffer_map[param]._buffer
+                _tensor = _api_internal._Placeholder(_buffer.shape, _buffer.dtype, _buffer.name)
+                tensors.append(_tensor)
+                tensor_map[_buffer] = _tensor
 
-        return WithScope(tensors, _exit_cb)
+        func = _make.TeFunction(params, buffer_map, name, stmt)
+        return func, tensors, tensor_map
 
     def allocate_buffer(self, shape, dtype="float32", name="buf", scope=""):
         """Allocate a TE buffer.

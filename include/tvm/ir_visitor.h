@@ -148,7 +148,6 @@ class TVM_DLL IRVisitor {
   virtual void Visit_(const te::BlockNode* op);
   virtual void Visit_(const te::BufferStoreNode *op);
   virtual void Visit_(const te::BufferAllocateNode* op);
-  virtual void Visit_(const te::FunctionNode* op);
   virtual void Visit_(const te::LoopNode* op);
   virtual void Visit_(const te::BufferLoadNode* op);
 };

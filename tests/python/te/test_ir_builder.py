@@ -27,33 +27,34 @@ def test_ir_builder():
     A = ib.declare_buffer((16, 16), "float32", name="A")
     B = ib.declare_buffer((16, 16), "float32", name="B")
     C = ib.declare_buffer((16, 16), "float32", name="C")
+    buffer_map = {a: A, b: B, c: C}
     dom = tvm.make.range_by_min_extent(0, 16)
-    with ib.function([b, c, a], [B, C, A]) as tensors:
-        with ib.loop_range(0, 16, name="i") as i:
-            with ib.loop_range(0, 16, name="j") as j:
-                bv_i = ib.iter_var(dom, name="vi")
-                bv_j = ib.iter_var(dom, name="vj")
-                vi = bv_i.var
-                vj = bv_j.var
-                with ib.block([bv_i, bv_j], [i, j], [], A[vi:vi+1, vj:vj+1], name="init"):
-                    A[vi, vj] = 0.0
-                with ib.loop_range(0, 16, name="k") as k:
-                    ii = ib.iter_var(dom, name="vi")
-                    jj = ib.iter_var(dom, name="vj")
-                    kk = ib.iter_var(dom, iter_type="reduce", name="vk")
-                    vi = ii.var
-                    vj = jj.var
-                    vk = kk.var
-                    reads = [A[vi:vi+1, vj:vj+1], B[vi:vi+1, vk:vk+1], C[vj:vj+1, vk:vk+1]]
-                    writes = [A[vi:vi+1, vj:vj+1]]
-                    with ib.block([ii, jj, kk], [i, j, k], reads, writes, name="update"):
-                        A[vi, vj] = A[vi, vj] + B[vi, vk] * C[vj, vk]
+
+    with ib.loop_range(0, 16, name="i") as i:
+        with ib.loop_range(0, 16, name="j") as j:
+            bv_i = ib.iter_var(dom, name="vi")
+            bv_j = ib.iter_var(dom, name="vj")
+            vi = bv_i.var
+            vj = bv_j.var
+            with ib.block([bv_i, bv_j], [i, j], [], A[vi:vi+1, vj:vj+1], name="init"):
+                A[vi, vj] = 0.0
+            with ib.loop_range(0, 16, name="k") as k:
+                ii = ib.iter_var(dom, name="vi")
+                jj = ib.iter_var(dom, name="vj")
+                kk = ib.iter_var(dom, iter_type="reduce", name="vk")
+                vi = ii.var
+                vj = jj.var
+                vk = kk.var
+                reads = [A[vi:vi+1, vj:vj+1], B[vi:vi+1, vk:vk+1], C[vj:vj+1, vk:vk+1]]
+                writes = [A[vi:vi+1, vj:vj+1]]
+                with ib.block([ii, jj, kk], [i, j, k], reads, writes, name="update"):
+                    A[vi, vj] = A[vi, vj] + B[vi, vk] * C[vj, vk]
 
     stmt = ib.get()
-    print(stmt)
-    stmt = tvm.ir_pass.TeLower(stmt, tensors)
-    print(stmt)
-    lower_func = tvm.lower(stmt, tensors)
+    func, tensors, tensor_map = ib.function([b, c, a], buffer_map, stmt)
+    func = tvm.ir_pass.TeLower(func, tensor_map)
+    print(func)
+    lower_func = tvm.lower(func, tensors)
     func = tvm.build(lower_func)
     a_np = np.random.uniform(size=(16, 16)).astype("float32")
     b_np = np.random.uniform(size=(16, 16)).astype("float32")

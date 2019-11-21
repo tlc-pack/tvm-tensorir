@@ -242,10 +242,6 @@ void IRVisitor::Visit_(const te::BufferStoreNode *op) {
 
 void IRVisitor::Visit_(const te::BufferAllocateNode* op) {}
 
-void IRVisitor::Visit_(const te::FunctionNode* op) {
-  this->Visit(op->body);
-}
-
 void IRVisitor::Visit_(const te::LoopNode* op) {
   this->Visit(op->min);
   this->Visit(op->extent);
@@ -319,7 +315,6 @@ TVM_STATIC_IR_FUNCTOR(IRVisitor, vtable)
 .DISPATCH_TO_VISIT(te::BlockNode)
 .DISPATCH_TO_VISIT(te::BufferStoreNode)
 .DISPATCH_TO_VISIT(te::BufferAllocateNode)
-.DISPATCH_TO_VISIT(te::FunctionNode)
 .DISPATCH_TO_VISIT(te::LoopNode)
 .DISPATCH_TO_VISIT(te::BufferLoadNode);
 

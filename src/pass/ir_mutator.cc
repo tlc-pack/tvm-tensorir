@@ -358,15 +358,6 @@ Stmt IRMutator::Mutate_(const te::BufferAllocateNode* op, const Stmt &s) {
   return s;
 }
 
-Stmt IRMutator::Mutate_(const te::FunctionNode* op, const Stmt &s) {
-  Stmt body = this->Mutate(op->body);
-  if (body.same_as(op->body)) {
-    return s;
-  } else {
-    return te::FunctionNode::make(op->params, op->match_buffer, op->name, body);
-  }
-}
-
 Stmt IRMutator::Mutate_(const te::LoopNode* op, const Stmt &s) {
   Expr min = this->Mutate(op->min);
   Expr extent = this->Mutate(op->extent);
@@ -398,7 +389,6 @@ TVM_STATIC_IR_FUNCTOR(IRMutator, vtable_stmt)
 .DISPATCH_TO_MUTATE_STMT(te::BlockNode)
 .DISPATCH_TO_MUTATE_STMT(te::BufferStoreNode)
 .DISPATCH_TO_MUTATE_STMT(te::BufferAllocateNode)
-.DISPATCH_TO_MUTATE_STMT(te::FunctionNode)
 .DISPATCH_TO_MUTATE_STMT(te::LoopNode);
 
 

@@ -177,6 +177,5 @@ REGISTER_PASS(InstrumentBoundCheckers);
 REGISTER_PASS(VerifyCompactBuffer);
 REGISTER_PASS(HoistIfThenElse);
 REGISTER_PASS(InferFragment);
-REGISTER_PASS(TeLower);
 }  // namespace ir
 }  // namespace tvm

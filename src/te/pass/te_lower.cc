@@ -21,79 +21,79 @@
  *  Copyright (c) by Contributors
  * \file te_lower.cc
  */
-#include <tvm/ir_pass.h>
 #include <tvm/te/ir.h>
 #include <tvm/ir_mutator.h>
+#include <tvm/te/transform.h>
+#include <tvm/api_registry.h>
 
 namespace tvm {
-namespace ir {
+namespace te {
 
+// Lower Te expression and statement to current tvm
 class TeLowerMutator : public IRMutator {
  public:
-  explicit TeLowerMutator(Array<Tensor> tensors) {
-    this->tensors = std::move(tensors);
-  }
-
-  Stmt Mutate_(const te::FunctionNode* op, const Stmt& s) final {
-    CHECK_EQ(op->match_buffer.size(), tensors.size());
-    for (size_t i = 0; i < tensors.size(); ++i) {
-      op_map.Set(op->match_buffer[i], tensors[i]->op);
+  explicit TeLowerMutator(Map<Buffer, Tensor> tensor_map) {
+    for (const auto& pair : tensor_map) {
+      op_map_[pair.first] = pair.second->op;
     }
-    Stmt stmt = IRMutator::Mutate_(op, s);
-    op = stmt.as<te::FunctionNode>();
-    return op->body;
   }
 
-  Stmt Mutate_(const te::BlockNode* op, const Stmt& s) final {
+  // delete block annotation and inline block vars
+  Stmt Mutate_(const BlockNode* op, const Stmt& s) final {
     for (size_t i = 0; i < op->iter_vars.size(); ++i) {
       const auto& iter = op->iter_vars[i];
       const auto& v = op->values[i];
-      block_var[iter->var.get()] = v;
+      block_var_[iter->var.get()] = v;
     }
     Stmt stmt = IRMutator::Mutate_(op, s);
-    op = stmt.as<te::BlockNode>();
+    op = stmt.as<BlockNode>();
+    CHECK(op != nullptr);
     for (size_t i = 0; i < op->iter_vars.size(); ++i) {
       const auto& iter = op->iter_vars[i];
       const auto& v = op->values[i];
-      block_var.erase(iter->var.get());
+      block_var_.erase(iter->var.get());
     }
     return op->body;
   }
 
-  Stmt Mutate_(const te::LoopNode* op, const Stmt& s) final {
+  // transform Loop to ir::For
+  Stmt Mutate_(const LoopNode* op, const Stmt& s) final {
     Stmt stmt = IRMutator::Mutate_(op, s);
-    op = stmt.as<te::LoopNode>();
-
+    op = stmt.as<LoopNode>();
+    CHECK(op != nullptr);
     return For::make(op->loop_var, op->min, op->extent,
                      ForType::Serial, DeviceAPI::None, op->body);
   }
 
-  Stmt Mutate_(const te::BufferStoreNode* op, const Stmt& s) final {
-    Stmt stmt = IRMutator::Mutate_(op, s);
-    op = stmt.as<te::BufferStoreNode>();
-    Operation operation = op_map.at(op->buffer);
+  // transform BufferStore to ir::Provide
+  Stmt Mutate_(const BufferStoreNode* op, const Stmt& s) final {
+    Stmt stmt = ir::IRMutator::Mutate_(op, s);
+    op = stmt.as<BufferStoreNode>();
+    CHECK(op != nullptr);
+    Operation operation = op_map_.at(op->buffer);
     return Provide::make(operation, 0, op->value, op->indices);
   }
 
   Stmt Mutate_(const ir::Block* op, const Stmt& s) final {
-    if (const te::BufferAllocateNode* allocate = op->first.as<te::BufferAllocateNode>()) {
+    if (const BufferAllocateNode* allocate = op->first.as<BufferAllocateNode>()) {
       const auto& buffer = allocate->buffer;
       Operation op = PlaceholderOpNode::make(buffer->name,
                                              buffer->shape,
                                              buffer->dtype);
-      op_map.Set(buffer, op);
+      op_map_[buffer] = op;
     }
     Stmt stmt = IRMutator::Mutate_(op, s);
     op = stmt.as<ir::Block>();
-    if (const te::BufferAllocateNode* allocate = op->first.as<te::BufferAllocateNode>()) {
+    CHECK(op != nullptr);
+    if (const BufferAllocateNode* allocate = op->first.as<BufferAllocateNode>()) {
       const auto& buffer = allocate->buffer;
       Region region;
       for (const auto& extent : buffer->shape) {
         region.push_back(Range::make_by_min_extent(0, extent));
       }
-      Stmt realize = Realize::make(op_map.at(allocate->buffer), 0,
+      Stmt realize = Realize::make(op_map_.at(allocate->buffer), 0,
                            buffer->dtype, region, const_true(), op->rest);
-      return AttrStmt::make(op_map.at(allocate->buffer),
+      return AttrStmt::make(op_map_.at(allocate->buffer),
                             attr::realize_scope,
                             allocate->scope,
                             realize);
@@ -103,32 +103,39 @@ class TeLowerMutator : public IRMutator {
 
   }
 
+  // replace black var with expr
   Expr Mutate_(const Variable* op, const Expr& e) final {
-    auto it = block_var.find(op);
-    if (it != block_var.end()) {
+    auto it = block_var_.find(op);
+    if (it != block_var_.end()) {
       return it->second;
     } else {
       return e;
     }
   }
 
-  Expr Mutate_(const te::BufferLoadNode* op, const Expr& e) final {
+  // transform BufferLoad to ir::Call
+  Expr Mutate_(const BufferLoadNode* op, const Expr& e) final {
     Expr expr = IRMutator::Mutate_(op, e);
-    op = expr.as<te::BufferLoadNode>();
-    Operation operation = op_map.at(op->buffer);
+    op = expr.as<BufferLoadNode>();
+    Operation operation = op_map_.at(op->buffer);
     return Call::make(op->type, op->buffer->name, op->indices,
                       Call::CallType::Halide, operation, 0);
   }
 
  private:
-  Map<Buffer, Operation> op_map;
-  std::unordered_map<const Variable*, Expr> block_var;
-  Array<Tensor> tensors;
+  // maps the buffer to the corresponding operation
+  std::unordered_map<Buffer, Operation, NodeHash, NodeEqual> op_map_;
+  // maps the block variable to the binded expression
+  std::unordered_map<const Variable*, Expr> block_var_;
 };
 
-Stmt TeLower(Stmt stmt, Array<Tensor> tensors) {
-  return TeLowerMutator(tensors).Mutate(stmt);
+Function TeLower(Function func, Map<Buffer, Tensor> tensor_map) {
+  Stmt stmt = TeLowerMutator(tensor_map).Mutate(func->body);
+  return FunctionNode::make(func->params, func->match_buffer, func->name, stmt);
 }
 
-}  // namespace ir
+TVM_REGISTER_API("ir_pass.TeLower")
+.set_body_typed(TeLower);
+
+}  // namespace te
 }  // namespace tvm

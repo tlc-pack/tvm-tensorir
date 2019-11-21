@@ -315,19 +315,19 @@ class BufferAllocate : public Stmt {
  */
 //TODO(siyuan): add matches in the text format.
 class Function;
-class FunctionNode : public StmtNode {
+class FunctionNode : public Node {
  public:
   /*! \brief Function parameters */
   Array<Var> params;
-  /*! \brief Parameter shape constraints */
-  Array<Buffer> match_buffer;
+  /*! \brief Parameter shape and type constraints */
+  Map<Var, Buffer> match_buffer;
   /*! \brief Function body */
   Stmt body;
   /*! \brief Function name */
   std::string name;
 
   TVM_DLL static Function make(Array<Var> params,
-                               Array<Buffer> match_buffer,
+                               Map<Var, Buffer> match_buffer,
                                std::string name,
                                Stmt body);
 
@@ -339,12 +339,12 @@ class FunctionNode : public StmtNode {
   }
 
   static constexpr const char* _type_key = "TeFunction";
-  TVM_DECLARE_NODE_TYPE_INFO(FunctionNode, StmtNode);
+  TVM_DECLARE_NODE_TYPE_INFO(FunctionNode, Node);
 };
 
-class Function : public Stmt {
+class Function : public NodeRef {
  public:
-  TVM_DEFINE_NODE_REF_METHODS(Function, Stmt, FunctionNode);
+  TVM_DEFINE_NODE_REF_METHODS(Function, NodeRef, FunctionNode);
 };
 
 } // namespace te

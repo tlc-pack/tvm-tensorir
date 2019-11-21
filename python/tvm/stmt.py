@@ -472,19 +472,6 @@ class BufferAllocate(Stmt):
         self.__init_handle_by_constructor__(
             _make.BufferAllocate, buffer)
 
-@register_node
-class TeFunction(Stmt):
-    """TeFunction node.
-
-    Parameters
-    ----------
-    buffer : Buffer
-        The buffer to be allocated
-
-    """
-    def __init__(self, params, match_buffer, name, body):
-        self.__init_handle_by_constructor__(
-            _make.TeFunction, params, match_buffer, name, body)
 
 def stmt_seq(*args):
     """Make sequence of statements

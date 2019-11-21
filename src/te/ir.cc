@@ -103,7 +103,7 @@ BufferAllocate BufferAllocateNode::make(Buffer buffer, std::string scope) {
 }
 
 Function FunctionNode::make(Array<Var> params,
-                            Array<Buffer> match_buffer,
+                            Map<Var, Buffer> match_buffer,
                             std::string name,
                             Stmt body) {
   NodePtr<FunctionNode> node = make_node<FunctionNode>();
