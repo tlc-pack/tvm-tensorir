@@ -285,12 +285,13 @@ class BufferAllocateNode : public StmtNode {
  public:
   /*! \brief The buffer to be allocated. */
   Buffer buffer;
+  std::string scope;
 
-  
-  TVM_DLL static BufferAllocate make(Buffer buffer);
+  TVM_DLL static BufferAllocate make(Buffer buffer, std::string scope);
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("buffer", &buffer);
+    v->Visit("scope", &scope);
   }
 
   static constexpr const char* _type_key = "BufferAllocate";
@@ -300,6 +301,50 @@ class BufferAllocateNode : public StmtNode {
 class BufferAllocate : public Stmt {
  public:
   TVM_DEFINE_NODE_REF_METHODS(BufferAllocate, Stmt, BufferAllocateNode);
+};
+
+/*!
+ * \brief A function in TE
+ * \code
+ *
+ *  func func_name(var_0, ..., var_n) {
+ *    // body
+ *  }
+ *
+ * \endcode
+ */
+//TODO(siyuan): add matches in the text format.
+class Function;
+class FunctionNode : public StmtNode {
+ public:
+  /*! \brief Function parameters */
+  Array<Var> params;
+  /*! \brief Parameter shape constraints */
+  Array<Buffer> match_buffer;
+  /*! \brief Function body */
+  Stmt body;
+  /*! \brief Function name */
+  std::string name;
+
+  TVM_DLL static Function make(Array<Var> params,
+                               Array<Buffer> match_buffer,
+                               std::string name,
+                               Stmt body);
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("params", &params);
+    v->Visit("match_buffer", &match_buffer);
+    v->Visit("body", &body);
+    v->Visit("name", &name);
+  }
+
+  static constexpr const char* _type_key = "TeFunction";
+  TVM_DECLARE_NODE_TYPE_INFO(FunctionNode, StmtNode);
+};
+
+class Function : public Stmt {
+ public:
+  TVM_DEFINE_NODE_REF_METHODS(Function, Stmt, FunctionNode);
 };
 
 } // namespace te

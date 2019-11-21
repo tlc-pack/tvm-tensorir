@@ -29,6 +29,7 @@
 #include "expr.h"
 #include "ir.h"
 #include "tvm/node/functor.h"
+#include <tvm/te/ir.h>
 
 namespace tvm {
 namespace ir {
@@ -88,6 +89,11 @@ class TVM_DLL IRMutator {
   virtual Stmt Mutate_(const Prefetch* op, const Stmt& s);
   virtual Stmt Mutate_(const Block* op, const Stmt& s);
   virtual Stmt Mutate_(const Evaluate* op, const Stmt& s);
+  virtual Stmt Mutate_(const te::BlockNode* op, const Stmt& s);
+  virtual Stmt Mutate_(const te::BufferStoreNode *op, const Stmt& s);
+  virtual Stmt Mutate_(const te::BufferAllocateNode* op, const Stmt& s);
+  virtual Stmt Mutate_(const te::FunctionNode* op, const Stmt& s);
+  virtual Stmt Mutate_(const te::LoopNode* op, const Stmt& s);
 
   virtual Expr Mutate_(const Variable* op, const Expr& e);
   virtual Expr Mutate_(const Load* op, const Expr& e);
@@ -121,6 +127,7 @@ class TVM_DLL IRMutator {
   virtual Expr Mutate_(const FloatImm* op, const Expr& e);
   virtual Expr Mutate_(const StringImm* op, const Expr& e);
   virtual Expr Mutate_(const Shuffle* op, const Expr& e);
+  virtual Expr Mutate_(const te::BufferLoadNode* op, const Expr& e);
 };
 
 /*!

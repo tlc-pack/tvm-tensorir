@@ -399,6 +399,16 @@ Stmt DecorateDeviceScope(Stmt stmt);
 Stmt HoistIfThenElse(Stmt stmt);
 
 /*!
+ * \brief Lower TE IR to current TVM IR. It is a temporary pass and will be
+ * removed after rewriting all IR passes.
+ *
+ * \param stmt The stmt to do if statement hoisting.
+ * \param tensors The tensors used in lower
+ * \return Transformed stmt.
+ */
+Stmt TeLower(Stmt stmt, Array<Tensor> tensors);
+
+/*!
  * \brief Make an user callable API LoweredFunc.
  *
  *  The main task of this function is to create code to :

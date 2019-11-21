@@ -23,6 +23,7 @@ from . import expr as _expr
 from . import make as _make
 from . import ir_pass as _pass
 from . import container as _container
+from . import _api_internal
 from ._ffi.base import string_types
 from ._ffi.node import NodeGeneric
 from ._ffi.runtime_ctypes import TVMType
@@ -516,7 +517,7 @@ class IRBuilder(object):
             raise ValueError("Unknown iter_type")
         return _api._IterVar(dom, name, iter_type_id)
 
-    def block(self, block_vars, values, reads, writes, predicate=1, annotations=[], name=""):
+    def block(self, block_vars, values, reads, writes, predicate=True, annotations=[], name=""):
         """Create a Te block.
 
         Parameters
@@ -554,8 +555,39 @@ class IRBuilder(object):
 
         return WithScope(None, _exit_cb)
 
-    def allocate_buffer(self, shape, dtype="float32", name="buf"):
-        """Create a TE buffer.
+    def function(self, params, buffers, name="func"):
+        """Create a Te block.
+
+        Parameters
+        ----------
+        params : list of Var
+            The parameters of the function
+
+        buffers : list of Buffer
+            The parameters requirement of the function
+
+        """
+        self._seq_stack.append([])
+
+        if not isinstance(buffers, list) and not isinstance(buffers, tuple):
+            buffers = [buffers]
+
+        if not isinstance(params, list) and not isinstance(params, tuple):
+            params = [params]
+
+        assert len(buffers) == len(params)
+        tensors = []
+        for buffer in buffers:
+            _buffer = buffer._buffer
+            tensors.append(_api_internal._Placeholder(
+                _buffer.shape, _buffer.dtype, _buffer.name))
+        def _exit_cb():
+            self.emit(_make.TeFunction(params, buffers, name, self._pop_seq()))
+
+        return WithScope(tensors, _exit_cb)
+
+    def allocate_buffer(self, shape, dtype="float32", name="buf", scope=""):
+        """Allocate a TE buffer.
 
         Parameters
         ----------
@@ -570,7 +602,25 @@ class IRBuilder(object):
 
         """
         _buffer = _api.decl_buffer(shape, dtype=dtype, name=name)
-        self.emit(_make.BufferAllocate(_buffer))
+        self.emit(_make.BufferAllocate(_buffer, scope))
+        return Buffer(self, _buffer, dtype)
+
+    def declare_buffer(self, shape, dtype="float32", name="buf"):
+        """create a TE buffer.
+
+        Parameters
+        ----------
+        shape : list of Expr
+            The buffer shape
+
+        dtype : str
+            The buffer data type
+
+        name: optional, str
+            The name of the buffer
+
+        """
+        _buffer = _api.decl_buffer(shape, dtype=dtype, name=name)
         return Buffer(self, _buffer, dtype)
 
 

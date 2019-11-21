@@ -419,7 +419,7 @@ class BufferStore(Stmt):
     """
     def __init__(self, buffer, value, indices):
         self.__init_handle_by_constructor__(
-            _make.BufferStore, buffer_var, value, indices)
+            _make.BufferStore, buffer, value, indices)
 
 @register_node
 class TeBlock(Stmt):
@@ -427,19 +427,36 @@ class TeBlock(Stmt):
 
     Parameters
     ----------
-    buffer_var : IterVar
-        The buffer Variable.
+    iter_vars : list of IterVar
+        The block Variable.
 
-    value : Expr
-        The value we want to store.
+    values : list of Expr
+        The binding value of the block var.
 
-    indices : list of Expr
-        The index in the store expression.
+    reads : list of TensorRegion
+        The read tensor region of the block.
+
+    writes: list of TensorRegion
+        The write tensor region of the block.
+
+    body: Stmt
+        The body of the block.
+
+    predicate: Expr
+        The predicates of the block.
+
+    annotations: list of Annotation
+        The annotation of the block.
+
+    tag: str
+        the tag of the block.
 
     """
-    def __init__(self, buffer_var, value, indices):
+    def __init__(self, iter_vars, values, reads, writes,
+                 body, predicate, annotations, tag):
         self.__init_handle_by_constructor__(
-            _make.TeBlock, buffer_var, value, indices)
+            _make.TeBlock, iter_vars, values, reads, writes,
+            body, predicate, annotations, tag)
 
 @register_node
 class BufferAllocate(Stmt):
@@ -454,6 +471,20 @@ class BufferAllocate(Stmt):
     def __init__(self, buffer):
         self.__init_handle_by_constructor__(
             _make.BufferAllocate, buffer)
+
+@register_node
+class TeFunction(Stmt):
+    """TeFunction node.
+
+    Parameters
+    ----------
+    buffer : Buffer
+        The buffer to be allocated
+
+    """
+    def __init__(self, params, match_buffer, name, body):
+        self.__init_handle_by_constructor__(
+            _make.TeFunction, params, match_buffer, name, body)
 
 def stmt_seq(*args):
     """Make sequence of statements

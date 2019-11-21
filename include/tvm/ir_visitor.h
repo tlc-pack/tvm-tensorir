@@ -24,6 +24,7 @@
 #ifndef TVM_IR_VISITOR_H_
 #define TVM_IR_VISITOR_H_
 
+#include <tvm/te/ir.h>
 #include "ir.h"
 #include "tvm/node/functor.h"
 
@@ -144,6 +145,12 @@ class TVM_DLL IRVisitor {
   virtual void Visit_(const UIntImm* op);
   virtual void Visit_(const FloatImm* op);
   virtual void Visit_(const StringImm* op);
+  virtual void Visit_(const te::BlockNode* op);
+  virtual void Visit_(const te::BufferStoreNode *op);
+  virtual void Visit_(const te::BufferAllocateNode* op);
+  virtual void Visit_(const te::FunctionNode* op);
+  virtual void Visit_(const te::LoopNode* op);
+  virtual void Visit_(const te::BufferLoadNode* op);
 };
 
 /*!

@@ -229,6 +229,33 @@ void IRVisitor::Visit_(const Evaluate *op) {
   this->Visit(op->value);
 }
 
+void IRVisitor::Visit_(const te::BlockNode* op) {
+  this->Visit(op->values);
+  this->Visit(op->predicate);
+  this->Visit(op->body);
+}
+
+void IRVisitor::Visit_(const te::BufferStoreNode *op) {
+  this->Visit(op->indices);
+  this->Visit(op->value);
+}
+
+void IRVisitor::Visit_(const te::BufferAllocateNode* op) {}
+
+void IRVisitor::Visit_(const te::FunctionNode* op) {
+  this->Visit(op->body);
+}
+
+void IRVisitor::Visit_(const te::LoopNode* op) {
+  this->Visit(op->min);
+  this->Visit(op->extent);
+  this->Visit(op->body);
+}
+
+void IRVisitor::Visit_(const te::BufferLoadNode* op) {
+  this->Visit(op->indices);
+}
+
 #define DEFINE_OP_NO_VISIT_(OP)                     \
   void IRVisitor::Visit_(const OP* op) {}
 
@@ -288,7 +315,13 @@ TVM_STATIC_IR_FUNCTOR(IRVisitor, vtable)
 .DISPATCH_TO_VISIT(UIntImm)
 .DISPATCH_TO_VISIT(FloatImm)
 .DISPATCH_TO_VISIT(StringImm)
-.DISPATCH_TO_VISIT(Prefetch);
+.DISPATCH_TO_VISIT(Prefetch)
+.DISPATCH_TO_VISIT(te::BlockNode)
+.DISPATCH_TO_VISIT(te::BufferStoreNode)
+.DISPATCH_TO_VISIT(te::BufferAllocateNode)
+.DISPATCH_TO_VISIT(te::FunctionNode)
+.DISPATCH_TO_VISIT(te::LoopNode)
+.DISPATCH_TO_VISIT(te::BufferLoadNode);
 
 }  // namespace ir
 }  // namespace tvm

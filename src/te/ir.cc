@@ -95,10 +95,24 @@ Loop LoopNode::make(Var loop_var,
   return Loop(node);
 }
 
-BufferAllocate BufferAllocateNode::make(Buffer buffer) {
+BufferAllocate BufferAllocateNode::make(Buffer buffer, std::string scope) {
   NodePtr<BufferAllocateNode> node = make_node<BufferAllocateNode>();
   node->buffer = std::move(buffer);
+  node->scope = std::move(scope);
   return BufferAllocate(node);
+}
+
+Function FunctionNode::make(Array<Var> params,
+                            Array<Buffer> match_buffer,
+                            std::string name,
+                            Stmt body) {
+  NodePtr<FunctionNode> node = make_node<FunctionNode>();
+  CHECK_EQ(params.size(), match_buffer.size());
+  node->params = std::move(params);
+  node->match_buffer = std::move(match_buffer);
+  node->name = std::move(name);
+  node->body = std::move(body);
+  return Function(node);
 }
 
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
@@ -211,7 +225,7 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
   p->Print(op->writes);
   p->stream << " R: ";
   p->Print(op->reads);
-  if (!is_one(op->predicate)) {
+  if (is_one(op->predicate)) {
     p->stream << " pred: ";
     p->Print(op->predicate);
   }
@@ -236,9 +250,28 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
   p->stream << "BufferAllocate(";
   p->stream << op->buffer->name;
   p->Print(op->buffer->shape);
-  p->stream << ", " << op->buffer->dtype << ")\n";
+  p->stream << ", " << op->buffer->dtype;
+  p->stream << ", \"" << op->scope << ")\n";
 });
 
+TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
+.set_dispatch<FunctionNode>([](const ObjectRef &node, IRPrinter* p) {
+  auto* op = static_cast<const FunctionNode*>(node.get());
+  p->PrintIndent();
+  p->stream << "func " << op->name << "(";
+  for (size_t i = 0; i < op->params.size(); ++i) {
+    p->Print(op->params[i]);
+    if (i != op->params.size() - 1) {
+      p->stream << ", ";
+    }
+  }
+  p->stream << ") {\n";
+  p->indent += 2;
+  p->Print(op->body);
+  p->indent -= 2;
+  p->PrintIndent();
+  p->stream << "}\n";
+});
 
 TVM_REGISTER_NODE_TYPE(TensorRegionNode);
 TVM_REGISTER_NODE_TYPE(BufferLoadNode);
@@ -246,6 +279,7 @@ TVM_REGISTER_NODE_TYPE(BufferStoreNode);
 TVM_REGISTER_NODE_TYPE(BufferAllocateNode);
 TVM_REGISTER_NODE_TYPE(LoopNode);
 TVM_REGISTER_NODE_TYPE(BlockNode);
+TVM_REGISTER_NODE_TYPE(FunctionNode);
 TVM_REGISTER_API("make.TensorRegion")
 .set_body_typed(TensorRegionNode::make);
 TVM_REGISTER_API("make.BufferAllocate")
@@ -258,6 +292,7 @@ TVM_REGISTER_API("make.Loop").
     set_body_typed(LoopNode::make);
 TVM_REGISTER_API("make.TeBlock").
     set_body_typed(BlockNode::make);
-
+TVM_REGISTER_API("make.TeFunction").
+    set_body_typed(FunctionNode::make);
 } // namespace te
 } // namespace tvm
