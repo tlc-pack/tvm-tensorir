@@ -100,7 +100,6 @@ class TeLowerMutator : public IRMutator {
     } else {
       return stmt;
     }
-
   }
 
   // replace black var with expr

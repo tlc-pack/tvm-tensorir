@@ -371,7 +371,7 @@ class BufferAllocate : public Stmt {
  *
  * \endcode
  */
-//TODO(siyuan): add matches in the text format.
+// TODO(siyuan): add matches in the text format.
 class Function;
 class FunctionNode : public Node {
  public:
@@ -405,7 +405,7 @@ class Function : public NodeRef {
   TVM_DEFINE_NODE_REF_METHODS(Function, NodeRef, FunctionNode);
 };
 
-} // namespace te
-} // namespace tvm
+}  // namespace te
+}  // namespace tvm
 
 #endif  // TVM_TE_IR_H_

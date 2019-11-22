@@ -311,5 +311,5 @@ TVM_REGISTER_API("make.TeBlock").
     set_body_typed(BlockNode::make);
 TVM_REGISTER_API("make.TeFunction").
     set_body_typed(FunctionNode::make);
-} // namespace te
-} // namespace tvm
+}  // namespace te
+}  // namespace tvm

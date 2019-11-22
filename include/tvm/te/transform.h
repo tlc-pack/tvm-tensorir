@@ -40,7 +40,7 @@ namespace te {
  */
 Function TeLower(Function func, Map<Buffer, Tensor> tensor_map);
 
-}
-}
+}  // namespace te
+}  // namespace tvm
 
-#endif //TVM_TE_TRANSFORM_H_
+#endif  // TVM_TE_TRANSFORM_H_

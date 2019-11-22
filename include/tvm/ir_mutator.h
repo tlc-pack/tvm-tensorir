@@ -29,7 +29,7 @@
 #include "expr.h"
 #include "ir.h"
 #include "tvm/node/functor.h"
-#include <tvm/te/ir.h>
+#include "tvm/te/ir.h"
 
 namespace tvm {
 namespace ir {
