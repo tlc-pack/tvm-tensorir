@@ -27,10 +27,67 @@
 #include <tvm/expr.h>
 #include <tvm/ir.h>
 #include <tvm/operation.h>
+#include <string>
 
 namespace tvm {
 namespace te {
 using namespace ir;
+
+// forward declare class.
+class SeqStmt;
+
+/*! \brief The container of seq statement. */
+class SeqStmtNode : public StmtNode {
+ public:
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("seq", &seq);
+  }
+  /*! \return get the size of the sequence */
+  size_t size() const {
+    return seq.size();
+  }
+  /*!
+   * \brief Get the index-th element in the sequence.
+   */
+  Stmt operator[](size_t index) const {
+    return seq[index];
+  }
+
+  static constexpr const char* _type_key = "SeqStmt";
+  TVM_DECLARE_NODE_TYPE_INFO(SeqStmtNode, StmtNode);
+
+ private:
+  friend class SeqStmt;
+  /*!
+   * \brief Hide seq for now, use SeqStmt.operator[] for iteration.
+   * \note We may change the SeqStmtNode data structure later
+   *       to directly contain the array content.
+   */
+  Array<Stmt> seq;
+};
+
+/*! \brief Sequence statemnt. */
+class SeqStmt : public Stmt {
+ public:
+  /*!
+   * \brief Construct SeqStmt.
+   * \param seq The sequence.
+   */
+  explicit SeqStmt(Array<Stmt> seq);
+
+  /*! \return get the size of the sequence */
+  size_t size() const {
+    return operator->()->size();
+  }
+  /*!
+   * \brief Get the index-th element in the sequence.
+   */
+  Stmt operator[](size_t index) const {
+    return (*(operator->()))[index];
+  }
+
+  TVM_DEFINE_NODE_REF_METHODS(SeqStmt, Stmt, SeqStmtNode);
+};
 
 /*!
  * \brief Load value from the high dimension buffer.
@@ -101,6 +158,7 @@ class BufferStoreNode : public StmtNode {
   static constexpr const char* _type_key = "BufferStore";
   TVM_DECLARE_NODE_TYPE_INFO(BufferStoreNode, StmtNode);
 };
+
 class BufferStore : public Stmt {
  public:
   TVM_DEFINE_NODE_REF_METHODS(BufferStore, Stmt, BufferStoreNode);
@@ -277,7 +335,7 @@ class Block : public Stmt {
  * \code
  *
  * BufferAllocate(buffer[shape], type)
- * 
+ *
  * \endcode
  */
 class BufferAllocate;
