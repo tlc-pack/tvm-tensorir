@@ -395,6 +395,182 @@ class IRBuilder(object):
             raise RuntimeError("cannot call get inside construction scope")
         return seq
 
+    def loop_range(self, begin, end, name="i", dtype="int32"):
+        """Create a for te loop scope.
+
+        Parameters
+        ----------
+        begin : Expr
+            The min iteration scope.
+
+        end : Expr
+            The end iteration scope
+
+        name : str, optional
+            The name of iteration variable, if no input names,
+            using typical index names i, j, k, then i_nidx
+
+        dtype : str, optional
+            The data type of iteration variable.
+
+        iter_type : str, optional
+            The special tag on the for loop.
+
+        Returns
+        -------
+        loop_scope : With.Scope of Var
+            The for scope, when enters returns loop_var
+        """
+        if name == 'i':
+            name = chr(ord(name) + self.nidx) if self.nidx < 3 else name + "_" + str(self.nidx - 3)
+            self.nidx += 1
+        self._seq_stack.append([])
+        loop_var = _api.var(name, dtype=dtype)
+        extent = end if begin == 0 else _pass.Simplify(end - begin)
+
+        def _exit_cb():
+            self.emit(_make.Loop(
+                loop_var, begin, extent,  [], self._pop_seq()))
+
+        return WithScope(loop_var, _exit_cb)
+
+    def iter_var(self, dom, name="v", iter_type="data_par"):
+        """Create IterVar.
+
+        Parameters
+        ----------
+        value : Expr
+            The value of block var.
+
+        dom : Range
+            The required iteration range of the block var
+
+        name: optional, str
+            The name of the block var
+
+        iter_type: optional, str
+            The required iteration type of the block var
+        """
+        if iter_type == "data_par":
+            iter_type_id = 0
+        elif iter_type == "reduce":
+            iter_type_id = 2
+        elif iter_type == "scan":
+            iter_type_id = 3
+        elif iter_type == "opaque":
+            iter_type_id = 4
+        else:
+            raise ValueError("Unknown iter_type")
+        return _api._IterVar(dom, name, iter_type_id)
+
+    def block(self, block_vars, values, reads, writes, predicate=True, annotations=[], name=""):
+        """Create a Te block.
+
+        Parameters
+        ----------
+        block_vars : list of BlockVar
+            The value of block var.
+
+        reads : list of TensorRegion
+            The input tensor regions of the block
+
+        writes : list of TensorRegion
+            The output tensor regions of the block
+
+        predicate: optional, Expr
+            The block predicate
+
+        annotations: optional, list of Annotation
+            The annotation list appended on the block
+
+        name: optional, str
+            The name of the block
+        """
+        self._seq_stack.append([])
+
+        if not isinstance(block_vars, list) and not isinstance(block_vars, tuple):
+            block_vars = [block_vars]
+        if not isinstance(reads, list) and not isinstance(reads, tuple):
+            reads = [reads]
+        if not isinstance(writes, list) and not isinstance(writes, tuple):
+            writes = [writes]
+
+        def _exit_cb():
+            self.emit(_make.TeBlock(
+                block_vars, values, reads, writes, self._pop_seq(), predicate, annotations, name))
+
+        return WithScope(None, _exit_cb)
+
+    def function(self, params, buffer_map, stmt, name="func"):
+        """Create a Te block.
+
+        Parameters
+        ----------
+        params : list of Var
+            The parameters of the function
+
+        buffer_map : dict of Var to Buffer
+            The parameters requirement of the function
+
+        stmt : Stmt
+            The body of the function
+
+        name : optional, str
+            The name of the function
+
+        """
+        if not isinstance(params, list) and not isinstance(params, tuple):
+            params = [params]
+
+        tensors = []
+        tensor_map = {}
+        for param in params:
+            if param in buffer_map.keys():
+                _buffer = buffer_map[param]._buffer
+                _tensor = _api_internal._Placeholder(_buffer.shape, _buffer.dtype, _buffer.name)
+                tensors.append(_tensor)
+                tensor_map[_buffer] = _tensor
+
+        func = _make.TeFunction(params, buffer_map, name, stmt)
+        return func, tensors, tensor_map
+
+    def allocate_buffer(self, shape, dtype="float32", name="buf", scope=""):
+        """Allocate a TE buffer.
+
+        Parameters
+        ----------
+        shape : list of Expr
+            The buffer shape
+
+        dtype : str
+            The buffer data type
+
+        name: optional, str
+            The name of the buffer
+
+        """
+        _buffer = _api.decl_buffer(shape, dtype=dtype, name=name)
+        self.emit(_make.BufferAllocate(_buffer, scope))
+        return Buffer(self, _buffer, dtype)
+
+    def declare_buffer(self, shape, dtype="float32", name="buf"):
+        """create a TE buffer.
+
+        Parameters
+        ----------
+        shape : list of Expr
+            The buffer shape
+
+        dtype : str
+            The buffer data type
+
+        name: optional, str
+            The name of the buffer
+
+        """
+        _buffer = _api.decl_buffer(shape, dtype=dtype, name=name)
+        return Buffer(self, _buffer, dtype)
+
 
 def create():
     """Create a new IRBuilder
