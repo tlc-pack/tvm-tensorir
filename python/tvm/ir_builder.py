@@ -23,6 +23,7 @@ from . import expr as _expr
 from . import make as _make
 from . import ir_pass as _pass
 from . import container as _container
+from . import _api_internal
 from ._ffi.base import string_types
 from ._ffi.node import NodeGeneric
 from ._ffi.runtime_ctypes import TVMType
@@ -518,7 +519,7 @@ class IRBuilder(object):
             raise ValueError("Unknown iter_type")
         return _api._IterVar(dom, name, iter_type_id)
 
-    def block(self, block_vars, values, reads, writes, predicate=1, annotations=[], name=""):
+    def block(self, block_vars, values, reads, writes, predicate=True, annotations=[], name=""):
         """Create a Te block.
 
         Parameters
@@ -556,8 +557,41 @@ class IRBuilder(object):
 
         return WithScope(None, _exit_cb)
 
-    def allocate_buffer(self, shape, dtype="float32", name="buf"):
-        """Create a TE buffer.
+    def function(self, params, buffer_map, stmt, name="func"):
+        """Create a Te block.
+
+        Parameters
+        ----------
+        params : list of Var
+            The parameters of the function
+
+        buffer_map : dict of Var to Buffer
+            The parameters requirement of the function
+
+        stmt : Stmt
+            The body of the function
+
+        name : optional, str
+            The name of the function
+
+        """
+        if not isinstance(params, list) and not isinstance(params, tuple):
+            params = [params]
+
+        tensors = []
+        tensor_map = {}
+        for param in params:
+            if param in buffer_map.keys():
+                _buffer = buffer_map[param]._buffer
+                _tensor = _api_internal._Placeholder(_buffer.shape, _buffer.dtype, _buffer.name)
+                tensors.append(_tensor)
+                tensor_map[_buffer] = _tensor
+
+        func = _make.TeFunction(params, buffer_map, name, stmt)
+        return func, tensors, tensor_map
+
+    def allocate_buffer(self, shape, dtype="float32", name="buf", scope=""):
+        """Allocate a TE buffer.
 
         Parameters
         ----------
@@ -572,7 +606,25 @@ class IRBuilder(object):
 
         """
         _buffer = _api.decl_buffer(shape, dtype=dtype, name=name)
-        self.emit(_make.BufferAllocate(_buffer))
+        self.emit(_make.BufferAllocate(_buffer, scope))
+        return Buffer(self, _buffer, dtype)
+
+    def declare_buffer(self, shape, dtype="float32", name="buf"):
+        """create a TE buffer.
+
+        Parameters
+        ----------
+        shape : list of Expr
+            The buffer shape
+
+        dtype : str
+            The buffer data type
+
+        name: optional, str
+            The name of the buffer
+
+        """
+        _buffer = _api.decl_buffer(shape, dtype=dtype, name=name)
         return Buffer(self, _buffer, dtype)
 
 
