@@ -325,6 +325,52 @@ Stmt IRMutator::Mutate_(const Free *op, const Stmt& s) {
   return s;
 }
 
+Stmt IRMutator::Mutate_(const te::BlockNode* op, const Stmt& s) {
+  Array<Expr> v = MutateArray(op->values, this);
+  Expr pred = this->Mutate(op->predicate);
+  Stmt body = this->Mutate(op->body);
+  if (v.same_as(op->values) && pred.same_as(op->predicate)
+      && body.same_as(op->body)) {
+    return s;
+  } else {
+    return te::BlockNode::make(op->iter_vars,
+                               v,
+                               op->reads,
+                               op->writes,
+                               body,
+                               pred,
+                               op->annotations,
+                               op->tag);
+  }
+}
+
+Stmt IRMutator::Mutate_(const te::BufferStoreNode* op, const Stmt &s) {
+  Array<Expr> indices = MutateArray(op->indices, this);
+  Expr v = this->Mutate(op->value);
+  if (v.same_as(op->value) && indices.same_as(op->indices)) {
+    return s;
+  } else {
+    return te::BufferStoreNode::make(op->buffer, v, indices);
+  }
+}
+
+Stmt IRMutator::Mutate_(const te::BufferAllocateNode* op, const Stmt &s) {
+  return s;
+}
+
+Stmt IRMutator::Mutate_(const te::LoopNode* op, const Stmt &s) {
+  Expr min = this->Mutate(op->min);
+  Expr extent = this->Mutate(op->extent);
+  Stmt body = this->Mutate(op->body);
+  if (min.same_as(op->min) && extent.same_as(op->extent) &&
+      body.same_as(op->body)) {
+    return s;
+  } else {
+    return te::LoopNode::make(op->loop_var, min, extent, op->annotations, body);
+  }
+}
+
+
 TVM_STATIC_IR_FUNCTOR(IRMutator, vtable_stmt)
 .DISPATCH_TO_MUTATE_STMT(LetStmt)
 .DISPATCH_TO_MUTATE_STMT(AttrStmt)
@@ -339,7 +385,11 @@ TVM_STATIC_IR_FUNCTOR(IRMutator, vtable_stmt)
 .DISPATCH_TO_MUTATE_STMT(Realize)
 .DISPATCH_TO_MUTATE_STMT(Block)
 .DISPATCH_TO_MUTATE_STMT(Evaluate)
-.DISPATCH_TO_MUTATE_STMT(Prefetch);
+.DISPATCH_TO_MUTATE_STMT(Prefetch)
+.DISPATCH_TO_MUTATE_STMT(te::BlockNode)
+.DISPATCH_TO_MUTATE_STMT(te::BufferStoreNode)
+.DISPATCH_TO_MUTATE_STMT(te::BufferAllocateNode)
+.DISPATCH_TO_MUTATE_STMT(te::LoopNode);
 
 
 // Mutate Expr
@@ -488,6 +538,15 @@ Expr IRMutator::Mutate_(const Shuffle *op, const Expr& e) {
   }
 }
 
+Expr IRMutator::Mutate_(const te::BufferLoadNode* op, const Expr& e) {
+  Array<Expr> indices = MutateArray(op->indices, this);
+  if (op->indices.same_as(indices)) {
+    return e;
+  } else {
+    return te::BufferLoadNode::make(op->type, op->buffer, indices);
+  }
+}
+
 #define DEFINE_OP_RETURN_SELF_EXPR_MUTATE_(OP)              \
   Expr IRMutator::Mutate_(const OP *op, const Expr& e) {    \
     return e;                                               \
@@ -530,7 +589,8 @@ TVM_STATIC_IR_FUNCTOR(IRMutator, vtable_expr)
 .DISPATCH_TO_MUTATE_EXPR(UIntImm)
 .DISPATCH_TO_MUTATE_EXPR(FloatImm)
 .DISPATCH_TO_MUTATE_EXPR(StringImm)
-.DISPATCH_TO_MUTATE_EXPR(Shuffle);
+.DISPATCH_TO_MUTATE_EXPR(Shuffle)
+.DISPATCH_TO_MUTATE_EXPR(te::BufferLoadNode);
 
 }  // namespace ir
 }  // namespace tvm
