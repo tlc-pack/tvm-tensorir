@@ -149,6 +149,8 @@ def lower(sch,
     # Phase 0
     if isinstance(sch, schedule.Schedule):
         stmt = form_body(sch)
+    elif isinstance(sch, container.TeFunction):
+        stmt = sch.body
 
     for f in lower_phase0:
         stmt = f(stmt)
@@ -157,7 +159,8 @@ def lower(sch,
     binds, arg_list = get_binds(args, compact, binds)
 
     # Phase 1
-    stmt = ir_pass.RewriteForTensorCore(stmt, sch, binds)
+    if isinstance(sch, schedule.Schedule):
+        stmt = ir_pass.RewriteForTensorCore(stmt, sch, binds)
     stmt = ir_pass.StorageFlatten(stmt, binds, 64, cfg.instrument_bound_checkers)
     stmt = ir_pass.CanonicalSimplify(stmt)
     for f in lower_phase1:
