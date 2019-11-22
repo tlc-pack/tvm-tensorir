@@ -30,6 +30,12 @@ namespace tvm {
 namespace te {
 using namespace ir;
 
+SeqStmt::SeqStmt(Array<Stmt> seq) {
+  NodePtr<SeqStmtNode> node = make_node<SeqStmtNode>();
+  node->seq = std::move(seq);
+  data_ = std::move(node);
+}
+
 BufferLoad BufferLoadNode::make(DataType type, Buffer buffer, Array<Expr> indices) {
   NodePtr<BufferLoadNode> node = make_node<BufferLoadNode>();
   node->type = type;
@@ -114,6 +120,15 @@ Function FunctionNode::make(Array<Var> params,
   node->body = std::move(body);
   return Function(node);
 }
+
+
+TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
+.set_dispatch<SeqStmtNode>([](const ObjectRef &node, IRPrinter* p) {
+  auto* op = static_cast<const SeqStmtNode*>(node.get());
+  for (size_t i = 0; i < op->size(); ++i) {
+    p->Print((*op)[i]);
+  }
+});
 
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
 .set_dispatch<BufferLoadNode>([](const ObjectRef &node, IRPrinter* p) {
@@ -273,6 +288,8 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
   p->stream << "}\n";
 });
 
+
+TVM_REGISTER_NODE_TYPE(SeqStmtNode);
 TVM_REGISTER_NODE_TYPE(TensorRegionNode);
 TVM_REGISTER_NODE_TYPE(BufferLoadNode);
 TVM_REGISTER_NODE_TYPE(BufferStoreNode);
