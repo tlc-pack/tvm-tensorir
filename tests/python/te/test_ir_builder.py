@@ -16,14 +16,20 @@
 # under the License.
 
 import tvm
+import numpy as np
 
-def test_simple_print():
 
+def test_ir_builder():
     ib = tvm.ir_builder.create()
-    A = ib.allocate_buffer((16, 16), "float32", name="A")
-    B = ib.allocate_buffer((16, 16), "float32", name="B")
-    C = ib.allocate_buffer((16, 16), "float32", name="C")
+    a = tvm.var("a")
+    b = tvm.var("b")
+    c = tvm.var("c")
+    A = ib.declare_buffer((16, 16), "float32", name="A")
+    B = ib.declare_buffer((16, 16), "float32", name="B")
+    C = ib.declare_buffer((16, 16), "float32", name="C")
+    buffer_map = {a: A, b: B, c: C}
     dom = tvm.make.range_by_min_extent(0, 16)
+
     with ib.loop_range(0, 16, name="i") as i:
         with ib.loop_range(0, 16, name="j") as j:
             bv_i = ib.iter_var(dom, name="vi")
@@ -44,7 +50,20 @@ def test_simple_print():
                 with ib.block([ii, jj, kk], [i, j, k], reads, writes, name="update"):
                     A[vi, vj] = A[vi, vj] + B[vi, vk] * C[vj, vk]
 
-    print(ib.get())
+    stmt = ib.get()
+    func, tensors, tensor_map = ib.function([b, c, a], buffer_map, stmt)
+    func = tvm.ir_pass.TeLower(func, tensor_map)
+    print(func)
+    lower_func = tvm.lower(func, tensors)
+    func = tvm.build(lower_func)
+    a_np = np.random.uniform(size=(16, 16)).astype("float32")
+    b_np = np.random.uniform(size=(16, 16)).astype("float32")
+    a = tvm.nd.array(a_np)
+    b = tvm.nd.array(b_np)
+    c = tvm.nd.array(np.zeros((16, 16)).astype("float32"))
+    func(a, b, c)
+    tvm.testing.assert_allclose(c.asnumpy(), np.dot(a_np, b_np.transpose()), rtol=1e-6)
+
 
 if __name__ == "__main__":
-    test_simple_print()
+    test_ir_builder()
