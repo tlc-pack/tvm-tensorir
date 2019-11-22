@@ -107,6 +107,10 @@ class Range(NodeBase):
     Python lists and tuples will be converted automatically to a Range in API functions.
     """
 
+@register_node
+class TeFunction(NodeBase):
+    """TeFunction node."""
+
 
 @register_node
 class LoweredFunc(NodeBase):
