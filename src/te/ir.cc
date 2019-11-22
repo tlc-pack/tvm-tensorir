@@ -103,13 +103,13 @@ BufferAllocate BufferAllocateNode::make(Buffer buffer, std::string scope) {
 }
 
 Function FunctionNode::make(Array<Var> params,
-                            Map<Var, Buffer> match_buffer,
+                            Map<Var, Buffer> buffer_map,
                             std::string name,
                             Stmt body) {
   NodePtr<FunctionNode> node = make_node<FunctionNode>();
-  CHECK_EQ(params.size(), match_buffer.size());
+  CHECK_EQ(params.size(), buffer_map.size());
   node->params = std::move(params);
-  node->match_buffer = std::move(match_buffer);
+  node->buffer_map = std::move(buffer_map);
   node->name = std::move(name);
   node->body = std::move(body);
   return Function(node);

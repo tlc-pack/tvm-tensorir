@@ -131,7 +131,7 @@ class TeLowerMutator : public IRMutator {
 
 Function TeLower(Function func, Map<Buffer, Tensor> tensor_map) {
   Stmt stmt = TeLowerMutator(tensor_map).Mutate(func->body);
-  return FunctionNode::make(func->params, func->match_buffer, func->name, stmt);
+  return FunctionNode::make(func->params, func->buffer_map, func->name, stmt);
 }
 
 TVM_REGISTER_API("ir_pass.TeLower")

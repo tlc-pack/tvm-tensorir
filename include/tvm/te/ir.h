@@ -320,20 +320,20 @@ class FunctionNode : public Node {
   /*! \brief Function parameters */
   Array<Var> params;
   /*! \brief Parameter shape and type constraints */
-  Map<Var, Buffer> match_buffer;
+  Map<Var, Buffer> buffer_map;
   /*! \brief Function body */
   Stmt body;
   /*! \brief Function name */
   std::string name;
 
   TVM_DLL static Function make(Array<Var> params,
-                               Map<Var, Buffer> match_buffer,
+                               Map<Var, Buffer> buffer_map,
                                std::string name,
                                Stmt body);
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("params", &params);
-    v->Visit("match_buffer", &match_buffer);
+    v->Visit("buffer_map", &buffer_map);
     v->Visit("body", &body);
     v->Visit("name", &name);
   }
