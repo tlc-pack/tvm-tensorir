@@ -122,6 +122,9 @@ class BufferLoadNode : public ExprNode {
 
 class BufferLoad : public Expr {
  public:
+  explicit BufferLoad(DataType type,
+                      Buffer buffer,
+                      Array<Expr> indices);
   TVM_DEFINE_NODE_REF_METHODS(BufferLoad, Expr, BufferLoadNode);
 };
 
@@ -237,7 +240,7 @@ class LoopNode : public StmtNode {
 
 class Loop : public Stmt {
  public:
-  TVM_DEFINE_NODE_REF_METHODS(Loop, Stmt, LoopNode);
+  TVM_DEFINE_MUTABLE_NODE_REF_METHODS(Loop, Stmt, LoopNode);
 };
 
 /*!
@@ -327,7 +330,7 @@ class BlockNode : public StmtNode {
 
 class Block : public Stmt {
  public:
-  TVM_DEFINE_NODE_REF_METHODS(Block, Stmt, BlockNode);
+  TVM_DEFINE_MUTABLE_NODE_REF_METHODS(Block, Stmt, BlockNode);
 };
 
 /*!

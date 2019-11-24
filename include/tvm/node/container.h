@@ -27,6 +27,7 @@
 #include <vector>
 #include <initializer_list>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <string>
 #include "node.h"
@@ -47,13 +48,31 @@ class ArrayNode : public Node {
   TVM_DECLARE_FINAL_OBJECT_INFO(ArrayNode, Node);
 };
 
+/*! \brief set node content */
+class SetNode : public Node {
+ public:
+  void VisitAttrs(AttrVisitor* visitor) {
+  }
+
+  /*! \brief The corresponding container type */
+  using ContainerType = std::unordered_set<
+      ObjectRef,
+      ObjectHash, ObjectEqual>;
+
+  /*! \brief the data content */
+  ContainerType data;
+
+  static constexpr const char* _type_key = "Set";
+  TVM_DECLARE_FINAL_OBJECT_INFO(SetNode, Node);
+};
+
 /*! \brief map node content */
 class MapNode : public Node {
  public:
   void VisitAttrs(AttrVisitor* visitor) {
   }
 
-  /*! \brief The corresponding conatiner type */
+  /*! \brief The corresponding container type */
   using ContainerType = std::unordered_map<
     ObjectRef,
     ObjectRef,
@@ -70,7 +89,7 @@ class MapNode : public Node {
 /*! \brief specialized map node with string as key */
 class StrMapNode : public Node {
  public:
-  /*! \brief The corresponding conatiner type */
+  /*! \brief The corresponding container type */
   using ContainerType = std::unordered_map<std::string, ObjectRef>;
 
   void VisitAttrs(AttrVisitor* visitor) {
@@ -315,6 +334,250 @@ class Array : public NodeRef {
   /*! \return rend iterator */
   inline reverse_iterator rend() const {
     return reverse_iterator(static_cast<const ArrayNode*>(data_.get())->data.rend());
+  }
+};
+
+template<typename T,
+    typename = typename std::enable_if<std::is_base_of<NodeRef, T>::value>::type >
+class Set : public NodeRef {
+ public:
+  /*!
+   * \brief default constructor
+   */
+  Set() {
+    data_ = make_node<SetNode>();
+  }
+  /*!
+   * \brief move constructor
+   * \param other source
+   */
+  Set(Set<T> && other) {  // NOLINT(*)
+    data_ = std::move(other.data_);
+  }
+  /*!
+   * \brief copy constructor
+   * \param other source
+   */
+  Set(const Set<T> &other) : NodeRef(other.data_) { // NOLINT(*)
+  }
+  /*!
+   * \brief constructor from pointer
+   * \param n the container pointer
+   */
+  explicit Set(NodePtr<Node> n) : NodeRef(n) {}
+  /*!
+   * \brief constructor from iterator
+   * \param begin begin of iterator
+   * \param end end of iterator
+   * \tparam IterType The type of iterator
+   */
+  template<typename IterType>
+  Set(IterType begin, IterType end) {
+    assign(begin, end);
+  }
+  /*!
+   * \brief constructor from initializer list
+   * \param init The initializer list
+   */
+  Set(std::initializer_list<T> init) { // NOLINT(*)
+    assign(init.begin(), init.end());
+  }
+  /*!
+   * \brief constructor from vector
+   * \param init The set
+   */
+  template<typename Hash, typename Equal>
+  Set(const std::unordered_set<T, Hash, Equal>& init) { // NOLINT(*)
+    assign(init.begin(), init.end());
+  }
+  /*!
+   * \brief move assign operator
+   * \param other The source of assignment
+   * \return reference to self.
+   */
+  Set<T>& operator=(Set<T> && other) {
+    data_ = std::move(other.data_);
+    return *this;
+  }
+  /*!
+   * \brief copy assign operator
+   * \param other The source of assignment
+   * \return reference to self.
+   */
+  Set<T>& operator=(const Set<T> & other) {
+    data_ = other.data_;
+    return *this;
+  }
+  /*!
+   * \brief reset the array to content from iterator.
+   * \param begin begin of iterator
+   * \param end end of iterator
+   * \tparam IterType The type of iterator
+   */
+  template<typename IterType>
+  void assign(IterType begin, IterType end) {
+    auto n = make_node<SetNode>();
+    for (IterType it = begin; it != end; ++it) {
+      n->data.insert((*it).data_);
+    }
+    data_ = std::move(n);
+  }
+  /*! \return The size of the array */
+  inline size_t size() const {
+    if (data_.get() == nullptr) return 0;
+    return static_cast<const SetNode*>(data_.get())->data.size();
+  }
+  /*! \return whether array is empty */
+  inline bool empty() const {
+    return size() == 0;
+  }
+  /*! \return The number of elements of the value */
+  inline int count(const T& value) const {
+    return static_cast<const SetNode*>(data_.get())->data.count(value.data_);
+  }
+  /*!
+   * \brief insert a value to set
+   * \param value The value to insert
+   */
+  inline void insert(const T& value) {
+    SetNode* n = CopyOnWrite();
+    n->data.insert(value.data_);
+  }
+  /*!
+   * \brief Remove an element
+   * \param value The key of the element to remove
+   */
+  inline void erase(const T& value) {
+    MapNode* n = this->CopyOnWrite();
+    n->data.erase(value.data_);
+  }
+  /*!
+   * \brief copy on write semantics
+   *  Do nothing if current handle is the unique copy of the array.
+   *  Otherwise make a new copy of the array to ensure the current handle
+   *  hold a unique copy.
+   *
+   * \return Handle to the internal node container(which ganrantees to be unique)
+   */
+  inline SetNode* CopyOnWrite() {
+    if (data_.get() == nullptr || !data_.unique())  {
+      NodePtr<SetNode> n = make_node<SetNode>();
+      n->data = static_cast<SetNode*>(data_.get())->data;
+      NodePtr<Node>(std::move(n)).swap(data_);
+    }
+    return static_cast<SetNode*>(data_.get());
+  }
+  /*!
+   * \brief insert all elements from another set
+   * \param other The set to insert
+   */
+  inline void insert(const Set<T>& other) {
+    SetNode* n = CopyOnWrite();
+    const SetNode* other_n = static_cast<const SetNode*>(other.data_.get());
+
+    n->data.insert(other_n->data.begin(), other_n->data.end());
+  }
+  /*!
+   * \brief insert all elements in a range from an iterator
+   * \param begin The begin position of the range
+   * \param end The end position of the range
+   */
+  template<typename IterType>
+  inline void insert(IterType begin, IterType end) {
+    SetNode* n = CopyOnWrite();
+    for (IterType it = begin; it != end; ++it) {
+      n->data.insert((*it).data_);
+    }
+  }
+  /*! \return whether this set is a subset of another set */
+  inline bool IsSubset(const Set<T>& other) const {
+    for (const auto &x : *this) {
+      if (!other.count(x)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  /*! \return whether this set is a superset of another set */
+  inline bool IsSuperset(const Set<T>& other) const {
+    return other.IsSubsetOf(*this);
+  }
+  /*!
+   * \brief return the intersection of this set and another set as a new set
+   * \param other The other operand
+   * \return The new intersection set
+   */
+  Set<T> Intersection(const Set<T>& other) const {
+    NodePtr<SetNode> n = make_node<SetNode>();
+    const SetNode::ContainerType& a = static_cast<const SetNode*>(data_.get())->data;
+    const SetNode::ContainerType& b = static_cast<const SetNode*>(other.data_.get())->data;
+
+    if (a.size() <= b.size()) {
+      for (const auto& x : a) {
+        if (b.count(x)) {
+          n->data.insert(x);
+        }
+      }
+    } else {
+      for (const auto& x : b) {
+        if (a.count(x)) {
+          n->data.insert(x);
+        }
+      }
+    }
+
+    return Set<T>(n);
+  }
+  /*!
+   * \brief return the difference between this set and another set as a new set
+   * \param other The other operand
+   * \return The new difference set
+   */
+  Set<T> Difference(const Set<T>& other) const {
+    NodePtr<SetNode> n = make_node<SetNode>();
+    const SetNode::ContainerType& a = static_cast<const SetNode*>(data_.get())->data;
+    const SetNode::ContainerType& b = static_cast<const SetNode*>(other.data_.get())->data;
+
+    for (const auto& x : a) {
+      if (!b.count(x)) {
+        n->data.insert(x);
+      }
+    }
+    return Set<T>(n);
+  }
+  /*!
+   * \brief return the union of this set and another set as a new set
+   * \param other The other operand
+   * \return The new union set
+   */
+  Set<T> Union(const Set<T>& other) const {
+    NodePtr<SetNode> n = make_node<SetNode>();
+    const SetNode::ContainerType& a = static_cast<const SetNode*>(data_.get())->data;
+    const SetNode::ContainerType& b = static_cast<const SetNode*>(other.data_.get())->data;
+    n->data.insert(a.begin(), a.end());
+    n->data.insert(b.begin(), b.end());
+    return Set<T>(n);
+  }
+
+  /*! \brief specify container node */
+  using ContainerType = SetNode;
+
+  struct Ptr2NodeRef {
+    using ResultType = T;
+    static inline T convert(const NodePtr<Node>& n) {
+      return T(n);
+    }
+  };
+  using iterator = IterAdapter<Ptr2NodeRef,
+                               SetNode::ContainerType::const_iterator>;
+
+  /*! \return begin iterator */
+  inline iterator begin() const {
+    return iterator(static_cast<const SetNode*>(data_.get())->data.begin());
+  }
+  /*! \return end iterator */
+  inline iterator end() const {
+    return iterator(static_cast<const SetNode*>(data_.get())->data.end());
   }
 };
 

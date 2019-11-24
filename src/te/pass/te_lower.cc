@@ -133,8 +133,5 @@ Function TeLower(Function func, Map<Buffer, Tensor> tensor_map) {
   return FunctionNode::make(func->params, func->buffer_map, func->name, stmt);
 }
 
-TVM_REGISTER_API("ir_pass.TeLower")
-.set_body_typed(TeLower);
-
 }  // namespace te
 }  // namespace tvm

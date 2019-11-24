@@ -17,31 +17,14 @@
  * under the License.
  */
 
-/*!
- * \file tvm/include/te/transform.h
- * \brief Additional transform util for TE
- */
-#ifndef TVM_TE_TRANSFORM_H_
-#define TVM_TE_TRANSFORM_H_
-
-#include <tvm/expr.h>
-#include <tvm/buffer.h>
-#include <tvm/tensor.h>
-#include <tvm/te/ir.h>
+#ifndef TVM_TE_UTIL_H_
+#define TVM_TE_UTIL_H_
 
 namespace tvm {
 namespace te {
-/*!
- * \brief Lower TE IR to current TVM IR. It is a temporary pass and will be
- * removed after rewriting all IR passes.
- *
- * \param func The TeFunc to be lowerd
- * \param tensor_map Tensors to bind to the argument during lowering.
- * \return Transformed stmt.
- */
-Function TeLower(Function func, Map<Buffer, Tensor> tensor_map);
 
-}  // namespace te
+
 }  // namespace tvm
+}  // namespace te
 
-#endif  // TVM_TE_TRANSFORM_H_
+#endif //TVM_TE_UTIL_H_
