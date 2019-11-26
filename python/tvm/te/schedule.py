@@ -34,9 +34,8 @@ class Schedule(NodeBase):
         """
         blocks = ScheduleBlocks(self)
         if len(blocks) == 1:
-            return blocks[0]
-        else:
-            return blocks
+            blocks = blocks[0]
+        return blocks
 
     def get_block(self, arg):
         """Return blocks with queried patten
@@ -56,9 +55,8 @@ class Schedule(NodeBase):
         else:
             blocks = ScheduleGetBlocksFromBuffer(self, arg)
         if len(blocks) == 1:
-            return blocks[0]
-        else:
-            return blocks
+            blocks = blocks[0]
+        return blocks
 
     def get_axes(self, block):
         """Return all axes of the specific block
@@ -75,9 +73,8 @@ class Schedule(NodeBase):
         """
         axes = ScheduleGetAxes(self, block)
         if len(axes) == 1:
-            return axes[0]
-        else:
-            return axes
+            axes = axes[0]
+        return axes
 
 
 def create_schedule(func):

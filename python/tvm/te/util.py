@@ -14,8 +14,9 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+"""Utilities for TE"""
 
-from .._ffi.node import NodeBase, register_node
+from .._ffi.node import register_node
 
 
 def register_te_node(type_key=None):

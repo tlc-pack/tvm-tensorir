@@ -86,7 +86,7 @@ Stmt ScheduleCreator::Mutate_(const ir::Block* op, const Stmt& s) {
       new_stmt.push_back(Mutate(op->rest));
       break;
     }
-  } while(op);
+  } while (op);
   return te::SeqStmt(new_stmt);
 }
 

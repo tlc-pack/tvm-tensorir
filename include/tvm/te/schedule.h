@@ -27,6 +27,7 @@
 
 #include <tvm/te/ir.h>
 #include <tvm/te/dependency_graph.h>
+#include <string>
 
 namespace tvm {
 namespace te {
@@ -89,10 +90,9 @@ class Schedule : public NodeRef {
    * \param recursive whether recursively update whole sub AST.
    */
   void UpdateFather(Stmt father_stmt, bool recursive = false);
-
 };
 
 }  // namespace te
 }  // namespace tvm
 
-#endif  //TVM_TE_SCHEDULE_H_
+#endif  // TVM_TE_SCHEDULE_H_
