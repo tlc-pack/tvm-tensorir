@@ -69,23 +69,23 @@ void DependencyGraph::AddEdge(Block from, Block to, EdgeType type) {
   }
 }
 
-Set<Block> DependencyGraph::GetSuccessor(Block block) const {
-  Set<Block> ret;
+Array<Block> DependencyGraph::GetSuccessor(Block block) const {
+  Array<Block> ret;
   auto iter = operator->()->forward_edges.find(block);
   if (iter != operator->()->forward_edges.end()) {
     for (const auto& x : iter->second) {
-      ret.insert(x->dst);
+      ret.push_back(x->dst);
     }
   }
   return ret;
 }
 
-Set<Block> DependencyGraph::GetPredecessor(Block block) const {
-  Set<Block> ret;
+Array<Block> DependencyGraph::GetPredecessor(Block block) const {
+  Array<Block> ret;
   auto iter = operator->()->backward_edges.find(block);
   if (iter != operator->()->backward_edges.end()) {
     for (const auto& x : iter->second) {
-      ret.insert(x->dst);
+      ret.push_back(x->dst);
     }
   }
   return ret;

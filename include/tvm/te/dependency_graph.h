@@ -101,12 +101,12 @@ class DependencyGraph : public NodeRef {
   * \brief Get all blocks that are dependent on block.
   * \param stmt The query block
   */
-  Set<Block> GetSuccessor(Block block) const;
+  Array<Block> GetSuccessor(Block block) const;
   /*!
    * \brief get all blocks that this block dependent on.
    * \param stmt The query block
    * */
-  Set<Block> GetPredecessor(Block block) const;
+  Array<Block> GetPredecessor(Block block) const;
 
   TVM_DEFINE_MUTABLE_NODE_REF_METHODS(DependencyGraph, NodeRef, DependencyGraphNode);
 };
