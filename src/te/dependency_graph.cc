@@ -25,7 +25,10 @@ namespace te {
 
 class DependencyAnalyzer : public IRVisitor {
  public:
-  DependencyAnalyzer(DependencyGraph* graph) {}
+  explicit DependencyAnalyzer(Function func) : func_(func) {
+    NodePtr<DependencyGraphNode> node = make_node<DependencyGraphNode>();
+    graph_ = DependencyGraph(node);
+  }
   void Visit_(const BlockNode* op) {
     Block block = GetRef<Block>(op);
     for (const auto& read : op->reads) {
@@ -36,13 +39,15 @@ class DependencyAnalyzer : public IRVisitor {
     }
   }
 
-  DependencyGraph GetDependency() const {
+  DependencyGraph GetDependency() {
+    Visit(func_->body);
     return graph_;
   }
 
  private:
   std::unordered_map<Buffer, std::list<Block>,
                      NodeHash, NodeEqual> write_map_;
+  Function func_;
   DependencyGraph graph_;
 };
 
@@ -51,6 +56,10 @@ DepEdge::DepEdge(Block dst, EdgeType type) {
   node->dst = std::move(dst);
   node->type = std::move(type);
   data_ = std::move(node);
+}
+
+DependencyGraph::DependencyGraph(Function func) {
+  data_ = DependencyAnalyzer(func).GetDependency().data_;
 }
 
 void DependencyGraph::AddEdge(Block from, Block to, EdgeType type) {
@@ -132,5 +141,8 @@ void DependencyGraph::InlineBlock(Block block) {
   }
 }
 
+TVM_REGISTER_NODE_TYPE(DependencyGraphNode);
+TVM_REGISTER_NODE_TYPE(DepEdgeNode);
+
 }  // namespace te
-}  // namesapce tvm
+}  // namespace tvm

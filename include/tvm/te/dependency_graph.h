@@ -26,6 +26,8 @@
 #define TVM_TE_DEPENDENCY_GRAPH_H_
 
 #include <tvm/te/ir.h>
+#include <list>
+#include <unordered_map>
 
 namespace tvm {
 namespace te {
@@ -72,12 +74,17 @@ class DependencyGraphNode : public Node {
 
   void VisitAttrs(AttrVisitor* v) {}
 
-  static constexpr const char* _type_key = "tensorir.DependencyGraph";
+  static constexpr const char* _type_key = "te.DependencyGraph";
   TVM_DECLARE_NODE_TYPE_INFO(DependencyGraphNode, Node);
 };
 
 class DependencyGraph : public NodeRef {
  public:
+  /*!
+   * \brief Construct DependencyGraph.
+   * \param the function to be analysed
+   */
+  explicit DependencyGraph(Function func);
   /*!
    * \brief Add a dependency edge.
    * \param from The departure of the edge

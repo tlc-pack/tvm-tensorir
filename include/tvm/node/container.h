@@ -441,7 +441,7 @@ class Set : public NodeRef {
    */
   inline void insert(const T& value) {
     SetNode* n = CopyOnWrite();
-    n->data.insert(value.data_);
+    n->data.insert(value);
   }
   /*!
    * \brief Remove an element
@@ -449,7 +449,7 @@ class Set : public NodeRef {
    */
   inline void erase(const T& value) {
     MapNode* n = this->CopyOnWrite();
-    n->data.erase(value.data_);
+    n->data.erase(value);
   }
   /*!
    * \brief copy on write semantics

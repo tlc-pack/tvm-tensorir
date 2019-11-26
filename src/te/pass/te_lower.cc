@@ -130,7 +130,7 @@ class TeLowerMutator : public IRMutator {
 
 Function TeLower(Function func, Map<Buffer, Tensor> tensor_map) {
   Stmt stmt = TeLowerMutator(tensor_map).Mutate(func->body);
-  return FunctionNode::make(func->params, func->buffer_map, func->name, stmt);
+  return Function(func->params, func->buffer_map, func->name, stmt);
 }
 
 }  // namespace te

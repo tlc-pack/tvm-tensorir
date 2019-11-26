@@ -467,9 +467,6 @@ class IRBuilder(object):
         dtype : str, optional
             The data type of iteration variable.
 
-        iter_type : str, optional
-            The special tag on the for loop.
-
         Returns
         -------
         loop_scope : With.Scope of Var

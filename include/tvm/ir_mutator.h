@@ -93,6 +93,7 @@ class TVM_DLL IRMutator {
   virtual Stmt Mutate_(const te::BufferStoreNode *op, const Stmt& s);
   virtual Stmt Mutate_(const te::BufferAllocateNode* op, const Stmt& s);
   virtual Stmt Mutate_(const te::LoopNode* op, const Stmt& s);
+  virtual Stmt Mutate_(const te::SeqStmtNode* op, const Stmt& s);
 
   virtual Expr Mutate_(const Variable* op, const Expr& e);
   virtual Expr Mutate_(const Load* op, const Expr& e);

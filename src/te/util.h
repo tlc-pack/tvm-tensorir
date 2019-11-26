@@ -24,7 +24,7 @@ namespace tvm {
 namespace te {
 
 
-}  // namespace tvm
 }  // namespace te
+}  // namespace tvm
 
-#endif //TVM_TE_UTIL_H_
+#endif  // TVM_TE_UTIL_H_

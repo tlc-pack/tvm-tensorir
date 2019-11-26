@@ -35,6 +35,7 @@ using namespace ir;
 
 // forward declare class.
 class SeqStmt;
+class Schedule;
 
 /*! \brief The container of seq statement. */
 class SeqStmtNode : public StmtNode {
@@ -58,6 +59,7 @@ class SeqStmtNode : public StmtNode {
 
  private:
   friend class SeqStmt;
+  friend class Schedule;
   /*!
    * \brief Hide seq for now, use SeqStmt.operator[] for iteration.
    * \note We may change the SeqStmtNode data structure later
@@ -112,10 +114,6 @@ class BufferLoadNode : public ExprNode {
     v->Visit("indices", &indices);
   }
 
-  TVM_DLL static BufferLoad make(DataType type,
-                                 Buffer buffer,
-                                 Array<Expr> indices);
-
   static constexpr const char* _type_key = "BufferLoad";
   TVM_DECLARE_NODE_TYPE_INFO(BufferLoadNode, ExprNode);
 };
@@ -154,16 +152,15 @@ class BufferStoreNode : public StmtNode {
     v->Visit("indices", &indices);
   }
 
-  TVM_DLL static BufferStore make(Buffer buffer,
-                                  Expr value,
-                                  Array<Expr> indices);
-
   static constexpr const char* _type_key = "BufferStore";
   TVM_DECLARE_NODE_TYPE_INFO(BufferStoreNode, StmtNode);
 };
 
 class BufferStore : public Stmt {
  public:
+  explicit BufferStore(Buffer buffer,
+                       Expr value,
+                       Array<Expr> indices);
   TVM_DEFINE_NODE_REF_METHODS(BufferStore, Stmt, BufferStoreNode);
 };
 
@@ -183,14 +180,13 @@ class AnnotationNode : public Node {
     v->Visit("value", &value);
   }
 
-  TVM_DLL static Annotation make(std::string attr_key, Expr value);
-
   static constexpr const char* _type_key = "te.AnnotationNode";
   TVM_DECLARE_NODE_TYPE_INFO(AnnotationNode, Node);
 };
 
 class Annotation : public NodeRef {
  public:
+  explicit Annotation(std::string attr_key, Expr value);
   TVM_DEFINE_NODE_REF_METHODS(Annotation, NodeRef, AnnotationNode)
 };
 
@@ -220,12 +216,6 @@ class LoopNode : public StmtNode {
   /*! \brief The body of the for loop. */
   Stmt body;
 
-  TVM_DLL static Loop make(Var loop_var,
-                           Expr min,
-                           Expr extent,
-                           Array<Annotation> annotations,
-                           Stmt body);
-
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("loop_var", &loop_var);
     v->Visit("min", &min);
@@ -240,6 +230,12 @@ class LoopNode : public StmtNode {
 
 class Loop : public Stmt {
  public:
+  explicit Loop(Var loop_var,
+                Expr min,
+                Expr extent,
+                Array<Annotation> annotations,
+                Stmt body);
+
   TVM_DEFINE_MUTABLE_NODE_REF_METHODS(Loop, Stmt, LoopNode);
 };
 
@@ -259,14 +255,14 @@ class TensorRegionNode : public Node {
     v->Visit("region", &region);
   }
 
-  TVM_DLL static TensorRegion make(Buffer buffer, Array<Range> region);
-
   static constexpr const char* _type_key = "TensorRegion";
   TVM_DECLARE_NODE_TYPE_INFO(TensorRegionNode, Node);
 };
 
 class TensorRegion : public NodeRef {
  public:
+  explicit TensorRegion(Buffer buffer, Array<Range> region);
+
   TVM_DEFINE_NODE_REF_METHODS(TensorRegion, NodeRef, TensorRegionNode);
 };
 
@@ -305,15 +301,6 @@ class BlockNode : public StmtNode {
   /*! \brief The tag of the block. */
   std::string tag;
 
-  TVM_DLL static Block make(Array<IterVar> iter_vars,
-                            Array<Expr> values,
-                            Array<TensorRegion> reads,
-                            Array<TensorRegion> writes,
-                            Stmt body,
-                            Expr predicate,
-                            Array<Annotation> annotations,
-                            std::string tag);
-
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("body", &body);
     v->Visit("iter_vars", &iter_vars);
@@ -330,6 +317,15 @@ class BlockNode : public StmtNode {
 
 class Block : public Stmt {
  public:
+  explicit Block(Array<IterVar> iter_vars,
+                 Array<Expr> values,
+                 Array<TensorRegion> reads,
+                 Array<TensorRegion> writes,
+                 Stmt body,
+                 Expr predicate,
+                 Array<Annotation> annotations,
+                 std::string tag);
+
   TVM_DEFINE_MUTABLE_NODE_REF_METHODS(Block, Stmt, BlockNode);
 };
 
@@ -348,8 +344,6 @@ class BufferAllocateNode : public StmtNode {
   Buffer buffer;
   std::string scope;
 
-  TVM_DLL static BufferAllocate make(Buffer buffer, std::string scope);
-
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("buffer", &buffer);
     v->Visit("scope", &scope);
@@ -361,6 +355,8 @@ class BufferAllocateNode : public StmtNode {
 
 class BufferAllocate : public Stmt {
  public:
+  explicit BufferAllocate(Buffer buffer, std::string scope);
+
   TVM_DEFINE_NODE_REF_METHODS(BufferAllocate, Stmt, BufferAllocateNode);
 };
 
@@ -387,11 +383,6 @@ class FunctionNode : public Node {
   /*! \brief Function name */
   std::string name;
 
-  TVM_DLL static Function make(Array<Var> params,
-                               Map<Var, Buffer> buffer_map,
-                               std::string name,
-                               Stmt body);
-
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("params", &params);
     v->Visit("buffer_map", &buffer_map);
@@ -405,6 +396,11 @@ class FunctionNode : public Node {
 
 class Function : public NodeRef {
  public:
+  explicit Function(Array<Var> params,
+                    Map<Var, Buffer> buffer_map,
+                    std::string name,
+                    Stmt body);
+
   TVM_DEFINE_NODE_REF_METHODS(Function, NodeRef, FunctionNode);
 };
 
