@@ -25,13 +25,23 @@ def test_create_schedule():
     te.create_schedule(func)
 
 
+def test_block_axis():
+    func, tensors, tensor_map = util.matmul_stmt()
+    s = te.create_schedule(func)
+    init = s.get_block("init")
+    update = s.get_block("update")
+    assert len(s.get_axes(init)) == 2
+    assert len(s.get_axes(update)) == 3
+
+
 def test_fuse():
     func, tensors, tensor_map = util.element_wise_stmt()
     s = te.create_schedule(func)
-    print(s.get_block("B"))
-
+    B = s.get_block("B")
+    axes = s.get_axes(B)
 
 
 if __name__ == "__main__":
     test_create_schedule()
+    test_block_axis()
     test_fuse()

@@ -71,10 +71,16 @@ class Schedule : public NodeRef {
   Array<Block> GetBlock(Buffer buffer) const;
 
   /*!
-    * \brief Get all blocks in the schedule
-    * \return the block list
-    * */
+   * \brief Get all blocks in the schedule
+   * \return the block list
+   * */
   Array<Block> Blocks() const;
+  /*!
+   * \brief Get axes of the block
+   * \param block The query block
+   * \return the axis list
+   * */
+  Array<Loop> GetAxes(Block block) const;
 
  private:
   /*!
@@ -84,9 +90,7 @@ class Schedule : public NodeRef {
    */
   void UpdateFather(Stmt father_stmt, bool recursive = false);
 
-
 };
-
 
 }  // namespace te
 }  // namespace tvm

@@ -78,9 +78,7 @@ Stmt ScheduleCreator::Mutate_(const te::SeqStmtNode* op, const Stmt& s) {
 
 Stmt ScheduleCreator::Mutate_(const ir::Block* op, const Stmt& s) {
   std::vector<Stmt> new_stmt;
-  new_stmt.push_back(Mutate(op->first));
-  op = op->rest.as<ir::Block>();
-  while (op) {
+  do {
     new_stmt.push_back(Mutate(op->first));
     if (const ir::Block* t = op->rest.as<ir::Block>()) {
       op = t;
@@ -88,7 +86,7 @@ Stmt ScheduleCreator::Mutate_(const ir::Block* op, const Stmt& s) {
       new_stmt.push_back(Mutate(op->rest));
       break;
     }
-  }
+  } while(op);
   return te::SeqStmt(new_stmt);
 }
 

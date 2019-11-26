@@ -34,7 +34,7 @@ bool is_block(Stmt stmt) {
   return stmt.as<BlockNode>() != nullptr;
 }
 
-bool is_Loop(Stmt stmt) {
+bool is_loop(Stmt stmt) {
   return stmt.as<LoopNode>() != nullptr;
 }
 
@@ -60,7 +60,6 @@ Array<Stmt> GetChildren(Stmt stmt) {
   return children;
 }
 
-
 Schedule::Schedule(Function func,
                    DependencyGraph dependency_graph,
                    Map<Buffer, Array<Block>> write_map) {
@@ -70,27 +69,27 @@ Schedule::Schedule(Function func,
   node->write_map_ = std::move(write_map);
   node->father_map_ = std::move(Map<Stmt, Stmt>());
   data_ = std::move(node);
-  UpdateFather(operator->()->func_->body, true);
-}
-
-void Schedule::UpdateFather(Stmt stmt, bool recursive) {
-  // handle root stmt
+  Stmt stmt = operator->()->func_->body;
   if (const auto* seq = stmt.as<SeqStmtNode>()) {
-    for (size_t i = 0; i < seq->size(); ++i) {
-      Stmt s = seq->operator[](i);
-      if (is_Loop(s) || is_block(s)) {
+    for (const auto s : seq->seq) {
+      if (is_loop(s) || is_block(s)) {
+        UpdateFather(s, true);
         operator->()->father_map_.Set(s, s);
-        if (recursive) {
-          UpdateFather(s, recursive);
-        }
       }
     }
   } else {
-    for (auto x : GetChildren(stmt)) {
-      operator->()->father_map_.Set(x, stmt);
-      if (recursive) {
-        UpdateFather(x, recursive);
-      }
+    if (is_loop(stmt) || is_block(stmt)) {
+      UpdateFather(stmt, true);
+      operator->()->father_map_.Set(stmt, stmt);
+    }
+  }
+}
+
+void Schedule::UpdateFather(Stmt stmt, bool recursive) {
+  for (auto x : GetChildren(stmt)) {
+    operator->()->father_map_.Set(x, stmt);
+    if (recursive) {
+      UpdateFather(x, recursive);
     }
   }
 }
@@ -118,6 +117,23 @@ Array<Block> Schedule::Blocks() const {
   for (const auto& x : operator->()->write_map_) {
     for (const auto& block : x.second) {
       ret.push_back(block);
+    }
+  }
+  return ret;
+}
+
+Array<Loop> Schedule::GetAxes(Block block) const {
+  Array<Loop> ret;
+  Stmt stmt = operator->()->father_map_[block];
+  while (stmt) {
+    if (is_loop(stmt)) {
+      ret.push_back(Downcast<Loop>(stmt));
+    }
+    Stmt father = operator->()->father_map_[stmt];
+    if (stmt != father) {
+      stmt = father;
+    } else {
+      break;
     }
   }
   return ret;

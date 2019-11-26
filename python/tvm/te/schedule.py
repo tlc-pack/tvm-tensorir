@@ -29,7 +29,7 @@ class Schedule(NodeBase):
 
         Returns
         -------
-        blocks : List of TeBlock
+        blocks : List of TeBlock or TeBlock
             The blocks in the schedule
         """
         blocks = ScheduleBlocks(self)
@@ -48,7 +48,7 @@ class Schedule(NodeBase):
 
         Returns
         -------
-        blocks : List of TeBlock
+        blocks : List of TeBlock or TeBlock
             The blocks that match the arguments
         """
         if isinstance(arg, str):
@@ -60,9 +60,28 @@ class Schedule(NodeBase):
         else:
             return blocks
 
+    def get_axes(self, block):
+        """Return all axes of the specific block
+
+        Parameters
+        ----------
+        block: TeBlock
+            The queried block
+
+        Returns
+        -------
+        blocks : List of Loop or Loop
+            The axes of the block
+        """
+        axes = ScheduleGetAxes(self, block)
+        if len(axes) == 1:
+            return axes[0]
+        else:
+            return axes
+
 
 def create_schedule(func):
-    """ Create a schedule for a function
+    """Create a schedule for a function
 
     Parameters
     ----------
