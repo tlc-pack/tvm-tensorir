@@ -20,6 +20,8 @@
 #ifndef TVM_TE_UTIL_H_
 #define TVM_TE_UTIL_H_
 
+#include <tvm/te/ir.h>
+
 namespace tvm {
 namespace te {
 

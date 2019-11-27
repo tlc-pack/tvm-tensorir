@@ -20,6 +20,7 @@
 #include <tvm/te/schedule.h>
 #include <tvm/api_registry.h>
 #include <tvm/ir_functor_ext.h>
+#include <tvm/te/transform.h>
 
 namespace tvm {
 namespace te {
@@ -38,9 +39,8 @@ bool is_loop(Stmt stmt) {
   return stmt.as<LoopNode>() != nullptr;
 }
 
-Array<Stmt> GetChildren(Stmt stmt) {
+Array<Stmt> Schedule::GetChildren(Stmt stmt) {
   Stmt body;
-  Array<Stmt> children;
   if (const auto* block = stmt.as<BlockNode>()) {
     body = block->body;
   } else if (const auto* loop = stmt.as<LoopNode>()) {
@@ -51,25 +51,66 @@ Array<Stmt> GetChildren(Stmt stmt) {
   // Don't support ir::Block in schedule
   CHECK(!body.as<ir::Block>());
   if (const auto* seq = body.as<SeqStmtNode>()) {
-    for (size_t i = 0; i < seq->size(); ++i) {
-      children.push_back(seq->operator[](i));
+    return seq->seq;
+  } else {
+    Array<Stmt> children;
+    children.push_back(body);
+    return children;
+  }
+}
+
+void Schedule::SetChild(Stmt father, Stmt child, size_t index) {
+  if (const auto* s = father.as<BlockNode>()) {
+    Block block = GetRef<Block>(s);
+    if (const auto* n = block->body.as<SeqStmtNode>()) {
+      SeqStmt seq = GetRef<SeqStmt>(n);
+      seq->seq.Set(index, child);
+    } else {
+      CHECK_EQ(index, 0);
+      block->body = child;
+    }
+  } else if (const auto* s = father.as<LoopNode>()) {
+    Loop loop = GetRef<Loop>(s);
+    if (const auto* n = loop->body.as<SeqStmtNode>()) {
+      SeqStmt seq = GetRef<SeqStmt>(n);
+      seq->seq.Set(index, child);
+    } else {
+      CHECK_EQ(index, 0);
+      loop->body = child;
     }
   } else {
-    children.push_back(body);
+    LOG(FATAL) << "Only support set child to Block or Loop";
   }
-  return children;
+}
+
+void Schedule::ReplaceStmt(Stmt old_stmt, Stmt new_stmt) {
+  Stmt father = operator->()->father_map_[old_stmt];
+  if (father.same_as(old_stmt)) {
+    Stmt& stmt = operator->()->func->body;
+    if (const auto* n = stmt.as<SeqStmtNode>()) {
+      SeqStmt seq = GetRef<SeqStmt>(n);
+      seq->seq.Set(seq->seq.Index(old_stmt), new_stmt);
+      operator->()->father_map_.Set(new_stmt, new_stmt);
+    } else {
+      stmt = new_stmt;
+    }
+  } else {
+    size_t index = GetChildren(father).Index(old_stmt);
+    SetChild(father, new_stmt, index);
+    UpdateFather(father);
+  }
 }
 
 Schedule::Schedule(Function func,
                    DependencyGraph dependency_graph,
                    Map<Buffer, Array<Block>> write_map) {
   NodePtr<ScheduleNode> node = make_node<ScheduleNode>();
-  node->func_ = std::move(func);
+  node->func = std::move(func);
   node->dependency_graph_ = std::move(dependency_graph);
   node->write_map_ = std::move(write_map);
   node->father_map_ = std::move(Map<Stmt, Stmt>());
   data_ = std::move(node);
-  Stmt stmt = operator->()->func_->body;
+  Stmt stmt = operator->()->func->body;
   if (const auto* seq = stmt.as<SeqStmtNode>()) {
     for (const auto s : seq->seq) {
       if (is_loop(s) || is_block(s)) {
@@ -136,7 +177,41 @@ Array<Loop> Schedule::GetAxes(Block block) const {
       break;
     }
   }
-  return ret;
+  return Array<Loop>(ret.rbegin(), ret.rend());
+}
+
+Loop Schedule::fuse(Loop outer, Loop inner) {
+  // Can only fuse neighbor axes without any extra branches.
+  // Future Enhancement: this condition can be eliminated by lifting all siblings of inner
+  // as the children of the father of outer
+  CHECK(operator->()->father_map_[inner] == outer);
+  auto outer_children = GetChildren(outer);
+  CHECK(outer_children.size() == 1 && outer_children[0] == inner);
+
+  // Currently, can not fuse Loops with annotations
+  CHECK_EQ(outer->annotations.size(), 0);
+  CHECK_EQ(inner->annotations.size(), 0);
+
+  Expr min = 0;
+  Expr extent = outer->extent * inner->extent;
+
+  Var fused_var = outer->loop_var.copy_with_suffix(
+      "." + inner->loop_var.get()->name_hint + ".fused");
+
+  Map<Var, Expr> vmap;
+  vmap.Set(outer->loop_var, truncdiv(fused_var, inner->extent) + outer->min);
+  vmap.Set(inner->loop_var, truncmod(fused_var, inner->extent) + inner->min);
+
+  Loop fused_node = Loop(
+      fused_var, min, extent, outer->annotations,
+      Substitute(inner->body, vmap));
+
+  UpdateFather(fused_node);
+
+  // relink
+  ReplaceStmt(outer, fused_node);
+
+  return fused_node;
 }
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);

@@ -41,6 +41,16 @@ namespace te {
  */
 Function TeLower(Function func, Map<Buffer, Tensor> tensor_map);
 
+Stmt Substitute(Stmt stmt,
+                const std::unordered_map<const Variable*, Expr>& value_map);
+
+Expr Substitute(Expr expr,
+                const std::unordered_map<const Variable*, Expr>& value_map);
+
+Stmt Substitute(Stmt stmt, const Map<Var, Expr>& value_map);
+
+Expr Substitute(Expr expr, const Map<Var, Expr>& value_map);
+
 }  // namespace te
 }  // namespace tvm
 

@@ -88,7 +88,7 @@ class SeqStmt : public Stmt {
     return (*(operator->()))[index];
   }
 
-  TVM_DEFINE_NODE_REF_METHODS(SeqStmt, Stmt, SeqStmtNode);
+  TVM_DEFINE_MUTABLE_NODE_REF_METHODS(SeqStmt, Stmt, SeqStmtNode);
 };
 
 /*!
@@ -401,7 +401,7 @@ class Function : public NodeRef {
                     std::string name,
                     Stmt body);
 
-  TVM_DEFINE_NODE_REF_METHODS(Function, NodeRef, FunctionNode);
+  TVM_DEFINE_MUTABLE_NODE_REF_METHODS(Function, NodeRef, FunctionNode);
 };
 
 }  // namespace te

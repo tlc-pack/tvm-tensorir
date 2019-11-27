@@ -68,13 +68,31 @@ class Schedule(NodeBase):
 
         Returns
         -------
-        blocks : List of Loop or Loop
+        blocks: List of Loop or Loop
             The axes of the block
         """
         axes = ScheduleGetAxes(self, block)
         if len(axes) == 1:
             axes = axes[0]
         return axes
+
+    def fuse(self, outer_axis, inner_axis):
+        """Return all axes of the specific block
+
+        Parameters
+        ----------
+        outer_axis: Loop
+            The outer axis
+
+        inner_axis: Loop
+            The inner axis
+
+        Returns
+        -------
+        axis: Loop
+            The fused axis
+        """
+        return ScheduleFuse(self, outer_axis, inner_axis)
 
 
 def create_schedule(func):

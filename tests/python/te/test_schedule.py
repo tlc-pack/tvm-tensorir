@@ -18,6 +18,7 @@
 import tvm
 from tvm import te
 import util
+import numpy as np
 
 
 def test_create_schedule():
@@ -35,10 +36,34 @@ def test_block_axis():
 
 
 def test_fuse():
+    m, n = 128, 128
     func, tensors, tensor_map = util.element_wise_stmt()
+
+    # build
+    lower_func = tvm.lower(tvm.ir_pass.TeLower(func, tensor_map), tensors)
+    build_func = tvm.build(lower_func)
+    a_np = np.random.uniform(size=(m, n)).astype("float32")
+    a = tvm.nd.array(a_np)
+    c1 = tvm.nd.array(np.zeros((m, n)).astype("float32"))
+    build_func(a, c1)
+
+    # schedule
     s = te.create_schedule(func)
     B = s.get_block("B")
-    axes = s.get_axes(B)
+    C = s.get_block("C")
+    outer, inner = s.get_axes(B)
+    s.fuse(outer, inner)
+    outer, inner = s.get_axes(C)
+    s.fuse(outer, inner)
+    func = s.func
+
+    # build
+    lower_func = tvm.lower(tvm.ir_pass.TeLower(func, tensor_map), tensors)
+    build_func = tvm.build(lower_func)
+    c2 = tvm.nd.array(np.zeros((m, n)).astype("float32"))
+    build_func(a, c2)
+
+    tvm.testing.assert_allclose(c1.asnumpy(), c2.asnumpy(), rtol=1e-6)
 
 
 if __name__ == "__main__":

@@ -39,6 +39,9 @@ TVM_REGISTER_API("te.schedule.ScheduleGetBlocksFromBuffer")
 TVM_REGISTER_API("te.schedule.ScheduleGetAxes")
 .set_body_method(&Schedule::GetAxes);
 
+TVM_REGISTER_API("te.schedule.ScheduleFuse")
+.set_body_method(&Schedule::fuse);
+
 // maker
 TVM_REGISTER_API("make.TensorRegion")
 .set_body_typed<TensorRegion(Buffer, Array<Range>)>(

@@ -35,13 +35,15 @@ namespace te {
 class Schedule;
 class ScheduleNode : public Node {
  public:
-  void VisitAttrs(AttrVisitor* v) {}
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("func", &func);
+  }
+  /*! \brief The function to be scheduled */
+  Function func;
   static constexpr const char* _type_key = "te.Schedule";
   TVM_DECLARE_NODE_TYPE_INFO(ScheduleNode, Node);
  private:
   friend class Schedule;
-  /*! \brief The function to be scheduled */
-  Function func_;
   /*! \brief The mapping from AST node to its father */
   Map<Stmt, Stmt> father_map_;
   /*! \brief The dependency graph used in some primitives */
@@ -76,12 +78,20 @@ class Schedule : public NodeRef {
    * \return the block list
    * */
   Array<Block> Blocks() const;
+
   /*!
    * \brief Get axes of the block
    * \param block The query block
    * \return the axis list
    * */
   Array<Loop> GetAxes(Block block) const;
+
+  /*!
+   * \brief Get axes of the block
+   * \param block The query block
+   * \return the axis list
+   * */
+  Loop fuse(Loop outer, Loop inner);
 
  private:
   /*!
@@ -90,6 +100,12 @@ class Schedule : public NodeRef {
    * \param recursive whether recursively update whole sub AST.
    */
   void UpdateFather(Stmt father_stmt, bool recursive = false);
+
+  void ReplaceStmt(Stmt old_stmt, Stmt new_stmt);
+
+  Array<Stmt> GetChildren(Stmt stmt);
+
+  void SetChild(Stmt father, Stmt child, size_t index);
 };
 
 }  // namespace te
