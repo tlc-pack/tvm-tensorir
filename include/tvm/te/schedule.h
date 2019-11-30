@@ -57,7 +57,7 @@ class Schedule : public NodeRef {
   explicit Schedule(Function func,
                     DependencyGraph dependency_graph,
                     Map<Buffer, Array<Block>> write_map);
-  TVM_DEFINE_MUTABLE_NODE_REF_METHODS(Schedule, NodeRef, ScheduleNode);
+  TVM_DEFINE_NODE_REF_METHODS(Schedule, NodeRef, ScheduleNode);
 
   /*!
    * \brief Get block from its tag
@@ -106,6 +106,10 @@ class Schedule : public NodeRef {
   Array<Stmt> GetChildren(Stmt stmt);
 
   void SetChild(Stmt father, Stmt child, size_t index);
+
+  ScheduleNode* Mutable() {
+    return static_cast<ScheduleNode*>(data_.get());
+  }
 };
 
 }  // namespace te

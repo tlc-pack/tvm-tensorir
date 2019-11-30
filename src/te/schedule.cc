@@ -62,21 +62,23 @@ Array<Stmt> Schedule::GetChildren(Stmt stmt) {
 void Schedule::SetChild(Stmt father, Stmt child, size_t index) {
   if (const auto* s = father.as<BlockNode>()) {
     Block block = GetRef<Block>(s);
-    if (const auto* n = block->body.as<SeqStmtNode>()) {
-      SeqStmt seq = GetRef<SeqStmt>(n);
-      seq->seq.Set(index, child);
+    if (const auto* seq = block->body.as<SeqStmtNode>()) {
+      Array<Stmt> seq_stmt = seq->seq;
+      seq_stmt.Set(index, child);
+      block.Mutable()->body = SeqStmt(seq_stmt);
     } else {
       CHECK_EQ(index, 0);
-      block->body = child;
+      block.Mutable()->body = child;
     }
   } else if (const auto* s = father.as<LoopNode>()) {
     Loop loop = GetRef<Loop>(s);
-    if (const auto* n = loop->body.as<SeqStmtNode>()) {
-      SeqStmt seq = GetRef<SeqStmt>(n);
-      seq->seq.Set(index, child);
+    if (const auto* seq = loop->body.as<SeqStmtNode>()) {
+      Array<Stmt> seq_stmt = seq->seq;
+      seq_stmt.Set(index, child);
+      loop.Mutable()->body = SeqStmt(seq_stmt);
     } else {
       CHECK_EQ(index, 0);
-      loop->body = child;
+      loop.Mutable()->body = child;
     }
   } else {
     LOG(FATAL) << "Only support set child to Block or Loop";
@@ -86,16 +88,19 @@ void Schedule::SetChild(Stmt father, Stmt child, size_t index) {
 void Schedule::ReplaceStmt(Stmt old_stmt, Stmt new_stmt) {
   Stmt father = operator->()->father_map_[old_stmt];
   if (father.same_as(old_stmt)) {
-    Stmt& stmt = operator->()->func->body;
-    if (const auto* n = stmt.as<SeqStmtNode>()) {
-      SeqStmt seq = GetRef<SeqStmt>(n);
-      seq->seq.Set(seq->seq.Index(old_stmt), new_stmt);
-      operator->()->father_map_.Set(new_stmt, new_stmt);
+    Stmt stmt = operator->()->func->body;
+    if (const auto* seq = stmt.as<SeqStmtNode>()) {
+      Array<Stmt> seq_stmt = seq->seq;
+      size_t index = std::find(seq->seq.begin(), seq->seq.end(), old_stmt) - seq->seq.begin();
+      seq_stmt.Set(index, new_stmt);
+      Mutable()->father_map_.Set(new_stmt, new_stmt);
+      Mutable()->func.Mutable()->body = SeqStmt(seq_stmt);
     } else {
-      stmt = new_stmt;
+      Mutable()->func.Mutable()->body = new_stmt;
     }
   } else {
-    size_t index = GetChildren(father).Index(old_stmt);
+    const auto& children = GetChildren(father);
+    size_t index = std::find(children.begin(), children.end(), old_stmt) - children.begin();
     SetChild(father, new_stmt, index);
     UpdateFather(father);
   }
@@ -115,20 +120,20 @@ Schedule::Schedule(Function func,
     for (const auto s : seq->seq) {
       if (is_loop(s) || is_block(s)) {
         UpdateFather(s, true);
-        operator->()->father_map_.Set(s, s);
+        Mutable()->father_map_.Set(s, s);
       }
     }
   } else {
     if (is_loop(stmt) || is_block(stmt)) {
       UpdateFather(stmt, true);
-      operator->()->father_map_.Set(stmt, stmt);
+      Mutable()->father_map_.Set(stmt, stmt);
     }
   }
 }
 
 void Schedule::UpdateFather(Stmt stmt, bool recursive) {
   for (auto x : GetChildren(stmt)) {
-    operator->()->father_map_.Set(x, stmt);
+    Mutable()->father_map_.Set(x, stmt);
     if (recursive) {
       UpdateFather(x, recursive);
     }
@@ -189,8 +194,10 @@ Loop Schedule::fuse(Loop outer, Loop inner) {
   CHECK(outer_children.size() == 1 && outer_children[0] == inner);
 
   // Currently, can not fuse Loops with annotations
-  CHECK_EQ(outer->annotations.size(), 0);
-  CHECK_EQ(inner->annotations.size(), 0);
+  if (outer->annotations.size() != 0 || inner->annotations.size() != 0) {
+    // TODO(tvm-team): Add ReportError
+    LOG(FATAL) << "InvalidScheduleError: " << "Cannot fuse loops that already has annotations";
+  }
 
   Expr min = 0;
   Expr extent = outer->extent * inner->extent;
@@ -198,9 +205,15 @@ Loop Schedule::fuse(Loop outer, Loop inner) {
   Var fused_var = outer->loop_var.copy_with_suffix(
       "." + inner->loop_var.get()->name_hint + ".fused");
 
-  Map<Var, Expr> vmap;
-  vmap.Set(outer->loop_var, truncdiv(fused_var, inner->extent) + outer->min);
-  vmap.Set(inner->loop_var, truncmod(fused_var, inner->extent) + inner->min);
+  auto vmap = [&](const Variable* v) -> Expr {
+    if (GetRef<Var>(v).same_as(outer->loop_var)) {
+      return truncdiv(fused_var, inner->extent) + outer->min;
+    } else if (GetRef<Var>(v).same_as(inner->loop_var)) {
+      return truncmod(fused_var, inner->extent) + inner->min;
+    } else {
+      return Expr(NodePtr<Node>(nullptr));
+    }
+  };
 
   Loop fused_node = Loop(
       fused_var, min, extent, outer->annotations,

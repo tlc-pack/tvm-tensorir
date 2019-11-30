@@ -280,21 +280,6 @@ class Array : public NodeRef {
     ArrayNode* n = this->CopyOnWrite();
     n->data[i] = value;
   }
-  /*!
-   * \brief Get the index of the first occurrence of a value.
-   * \param value The value to search
-   * \return idx The index. Returns std::string::npos if not find
-   */
-  inline size_t Index(const T& value) const {
-    const std::vector<ObjectRef> &data =
-        static_cast<const ArrayNode*>(data_.get())->data;
-    for (size_t i = 0; i < data.size(); ++i) {
-      if (data[i].same_as(value)) {
-        return i;
-      }
-    }
-    return std::string::npos;
-  }
   /*! \return whether array is empty */
   inline bool empty() const {
     return size() == 0;

@@ -108,7 +108,7 @@ class DependencyGraph : public NodeRef {
    * */
   Array<Block> GetPredecessor(Block block) const;
 
-  TVM_DEFINE_MUTABLE_NODE_REF_METHODS(DependencyGraph, NodeRef, DependencyGraphNode);
+  TVM_DEFINE_NODE_REF_METHODS(DependencyGraph, NodeRef, DependencyGraphNode);
 };
 
 

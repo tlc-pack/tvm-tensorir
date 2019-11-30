@@ -64,8 +64,10 @@ DependencyGraph::DependencyGraph(Function func) {
 
 void DependencyGraph::AddEdge(Block from, Block to, EdgeType type) {
   if (!from.same_as(to)) {
-    operator->()->forward_edges[from].push_back(DepEdge(to, type));
-    operator->()->backward_edges[to].push_back(DepEdge(from, type));
+    const_cast<DependencyGraphNode*>(operator->())
+        ->forward_edges[from].push_back(DepEdge(to, type));
+    const_cast<DependencyGraphNode*>(operator->())
+        ->backward_edges[to].push_back(DepEdge(from, type));
   }
 }
 
@@ -92,8 +94,8 @@ Array<Block> DependencyGraph::GetPredecessor(Block block) const {
 }
 
 void DependencyGraph::InlineBlock(Block block) {
-  auto& forward_edges = operator->()->forward_edges;
-  auto& backward_edges = operator->()->backward_edges;
+  auto& forward_edges = const_cast<DependencyGraphNode*>(operator->())->forward_edges;
+  auto& backward_edges = const_cast<DependencyGraphNode*>(operator->())->backward_edges;
 
   std::list<DepEdge> successors = forward_edges[block];
   std::list<DepEdge> predecessors = backward_edges[block];

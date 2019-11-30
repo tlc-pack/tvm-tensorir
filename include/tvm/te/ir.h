@@ -30,6 +30,10 @@
 #include <string>
 
 namespace tvm {
+namespace ir {
+class IRSubstitue;
+}  // namespace ir
+
 namespace te {
 using namespace ir;
 
@@ -88,7 +92,7 @@ class SeqStmt : public Stmt {
     return (*(operator->()))[index];
   }
 
-  TVM_DEFINE_MUTABLE_NODE_REF_METHODS(SeqStmt, Stmt, SeqStmtNode);
+  TVM_DEFINE_NODE_REF_METHODS(SeqStmt, Stmt, SeqStmtNode);
 };
 
 /*!
@@ -236,7 +240,18 @@ class Loop : public Stmt {
                 Array<Annotation> annotations,
                 Stmt body);
 
-  TVM_DEFINE_MUTABLE_NODE_REF_METHODS(Loop, Stmt, LoopNode);
+  TVM_DEFINE_NODE_REF_METHODS(Loop, Stmt, LoopNode);
+
+ private:
+  friend Schedule;
+  friend ir::IRSubstitue;
+  /*! \brief mutate the node
+   * Node that the mutate can be only used in schedule
+   * and will be replaced later
+   */
+  LoopNode* Mutable() {
+    return static_cast<LoopNode*>(data_.get());
+  }
 };
 
 /*!
@@ -326,7 +341,18 @@ class Block : public Stmt {
                  Array<Annotation> annotations,
                  std::string tag);
 
-  TVM_DEFINE_MUTABLE_NODE_REF_METHODS(Block, Stmt, BlockNode);
+  TVM_DEFINE_NODE_REF_METHODS(Block, Stmt, BlockNode);
+
+ private:
+  friend Schedule;
+  friend ir::IRSubstitue;
+  /*! \brief mutate the node
+   * Node that the mutate can be only used in schedule
+   * and will be replaced later
+   */
+  BlockNode* Mutable() {
+    return static_cast<BlockNode*>(data_.get());
+  }
 };
 
 /*!
@@ -401,7 +427,13 @@ class Function : public NodeRef {
                     std::string name,
                     Stmt body);
 
-  TVM_DEFINE_MUTABLE_NODE_REF_METHODS(Function, NodeRef, FunctionNode);
+  TVM_DEFINE_NODE_REF_METHODS(Function, NodeRef, FunctionNode);
+
+ private:
+  friend Schedule;
+  FunctionNode* Mutable() {
+    return static_cast<FunctionNode*>(data_.get());
+  }
 };
 
 }  // namespace te

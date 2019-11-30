@@ -6,9 +6,9 @@
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
- * 
+ *
  *   http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -26,6 +26,7 @@
 #include <tvm/ir_visitor.h>
 #include <tvm/ir_mutator.h>
 #include <tvm/ir_pass.h>
+#include <tvm/te/ir.h>
 
 namespace tvm {
 namespace ir {
@@ -57,33 +58,75 @@ bool HasSideEffect(const Expr& e) {
 class IRSubstitue : public IRMutator {
  public:
   explicit IRSubstitue(
-      const std::unordered_map<const Variable*, Expr>& smap)
-      : smap_(smap) {
+      const std::function<Expr(const Variable*)>& fmap)
+      : fmap_(fmap) {
   }
 
   Expr Mutate_(const Variable* op, const Expr& e) final {
-    auto it = smap_.find(op);
-    if (it != smap_.end()) {
-      return it->second;
+    auto it = fmap_(op);
+    if (it.defined()) {
+      return it;
     } else {
       return e;
     }
   }
 
+  Stmt Mutate_(const te::LoopNode* op, const Stmt& s) final {
+    te::Loop loop = GetRef<te::Loop>(op);
+    loop.Mutable()->min = Mutate(loop->min);
+    loop.Mutable()->extent = Mutate(loop->extent);
+    loop.Mutable()->body = Mutate(loop->body);
+    return loop;
+  }
+
+  Stmt Mutate_(const te::BlockNode* op, const Stmt& s) final {
+    te::Block block = GetRef<te::Block>(op);
+    Array<Expr> values;
+    for (const auto& expr : block->values) {
+      values.push_back(Mutate(expr));
+    }
+    block.Mutable()->values = values;
+    return block;
+  }
+
  private:
-  const std::unordered_map<const Variable*, Expr>& smap_;
+  const std::function<Expr(const Variable*)> fmap_;
 };
+
+Stmt Substitute(Stmt stmt, const std::function<Expr(const Variable*)>& value_func) {
+  return IRSubstitue(value_func).Mutate(stmt);
+}
+
+Expr Substitute(Expr expr, const std::function<Expr(const Variable*)>& value_func) {
+  return IRSubstitue(value_func).Mutate(expr);
+}
 
 Stmt Substitute(Stmt stmt,
                 const std::unordered_map<const Variable*, Expr>& value_map) {
-  if (value_map.size() == 0) return stmt;
-  return IRSubstitue(value_map).Mutate(stmt);
+  if (!value_map.empty()) return stmt;
+  auto fmap = [&](const Variable* v) -> Expr {
+    auto it = value_map.find(v);
+    if (it != value_map.end()) {
+      return it->second;
+    } else {
+      return Expr(NodePtr<Node>(nullptr));
+    }
+  };
+  return IRSubstitue(fmap).Mutate(stmt);
 }
 
 Expr Substitute(Expr expr,
                 const std::unordered_map<const Variable*, Expr>& value_map) {
-  if (value_map.size() == 0) return expr;
-  return IRSubstitue(value_map).Mutate(expr);
+  if (!value_map.empty()) return expr;
+  auto fmap = [&](const Variable* v) -> Expr {
+    auto it = value_map.find(v);
+    if (it != value_map.end()) {
+      return it->second;
+    } else {
+      return Expr(NodePtr<Node>(nullptr));
+    }
+  };
+  return IRSubstitue(fmap).Mutate(expr);
 }
 
 Stmt Substitute(Stmt stmt, const Map<Var, Expr>& value_map) {
