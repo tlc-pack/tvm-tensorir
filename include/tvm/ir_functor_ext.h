@@ -26,6 +26,7 @@
 
 #include <tvm/node/functor.h>
 #include <tvm/ir.h>
+#include <tvm/te/ir.h>
 
 #include <utility>
 
@@ -164,6 +165,7 @@ class ExprFunctor<R(const Expr& n, Args...)> {
   virtual R VisitExpr_(const UIntImm* op, Args... args) EXPR_FUNCTOR_DEFAULT;
   virtual R VisitExpr_(const FloatImm* op, Args... args) EXPR_FUNCTOR_DEFAULT;
   virtual R VisitExpr_(const StringImm* op, Args... args) EXPR_FUNCTOR_DEFAULT;
+  virtual R VisitExpr_(const te::BufferLoadNode* op, Args... args) EXPR_FUNCTOR_DEFAULT;
   virtual R VisitExprDefault_(const Object* op, Args ...) {
     LOG(FATAL) << "Do not have a default for " << op->GetTypeKey();
     return R();
@@ -206,6 +208,7 @@ class ExprFunctor<R(const Expr& n, Args...)> {
     IR_EXPR_FUNCTOR_DISPATCH(UIntImm);
     IR_EXPR_FUNCTOR_DISPATCH(FloatImm);
     IR_EXPR_FUNCTOR_DISPATCH(StringImm);
+    IR_EXPR_FUNCTOR_DISPATCH(te::BufferLoadNode);
     return vtable;
   }
 };
@@ -255,6 +258,11 @@ class StmtFunctor<R(const Stmt& n, Args... args)> {
   virtual R VisitStmt_(const Prefetch* op, Args... args) STMT_FUNCTOR_DEFAULT;
   virtual R VisitStmt_(const SeqStmtNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
   virtual R VisitStmt_(const Evaluate* op, Args... args) STMT_FUNCTOR_DEFAULT;
+  virtual R VisitStmt_(const te::BlockNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
+  virtual R VisitStmt_(const te::LoopNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
+  virtual R VisitStmt_(const te::BufferAllocateNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
+  virtual R VisitStmt_(const te::BufferStoreNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
+  virtual R VisitStmt_(const te::SeqStmtNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
   virtual R VisitStmtDefault_(const Object* op, Args ...) {
     LOG(FATAL) << "Do not have a default for " << op->GetTypeKey();
     return R();
@@ -278,6 +286,11 @@ class StmtFunctor<R(const Stmt& n, Args... args)> {
     IR_STMT_FUNCTOR_DISPATCH(Prefetch);
     IR_STMT_FUNCTOR_DISPATCH(SeqStmtNode);
     IR_STMT_FUNCTOR_DISPATCH(Evaluate);
+    IR_STMT_FUNCTOR_DISPATCH(te::BlockNode);
+    IR_STMT_FUNCTOR_DISPATCH(te::LoopNode);
+    IR_STMT_FUNCTOR_DISPATCH(te::BufferAllocateNode);
+    IR_STMT_FUNCTOR_DISPATCH(te::BufferStoreNode);
+    IR_STMT_FUNCTOR_DISPATCH(te::SeqStmtNode);
     return vtable;
   }
 };
