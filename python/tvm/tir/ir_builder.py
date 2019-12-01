@@ -35,6 +35,46 @@ class WithScope(object):
     def __exit__(self, ptype, value, trace):
         self._exit_cb()
 
+class Buffer(NodeGeneric):
+    """Buffer type used in TE.
+
+    Do not create it directly, create use IRBuilder.
+    """
+
+    def __init__(self, builder, buffer, content_type):
+        self._builder = builder
+        self._buffer = buffer
+        self._content_type = content_type
+
+    def asnode(self):
+        return self._buffer
+
+    @property
+    def dtype(self):
+        return self._content_type
+
+    def __getitem__(self, index):
+        if not isinstance(index, tuple):
+            index = [index]
+        if isinstance(index[0], slice):
+            doms = []
+            for x in index:
+                assert isinstance(x, slice)
+                assert x.step == 1 or x.step is None
+                doms.append(_make.range_by_min_extent(
+                    x.start, ir_pass.Simplify(x.stop - x.start)))
+            return _make.TensorRegion(self._buffer, doms)
+        return _make.BufferLoad(self._content_type, self._buffer, index)
+
+    def __setitem__(self, index, value):
+        value = _api.convert(value)
+        if value.dtype != self._content_type:
+            raise ValueError(
+                "data type does not match content type %s vs %s" % (
+                    value.dtype, self._content_type))
+        if isinstance(index, _expr.Expr):
+            index = [index]
+        self._builder.emit(_make.BufferStore(self._buffer, value, index))
 
 class BufferVar(ObjectGeneric):
     """Buffer variable with content type, makes load store easily.
@@ -412,9 +452,6 @@ class IRBuilder(object):
         dtype : str, optional
             The data type of iteration variable.
 
-        iter_type : str, optional
-            The special tag on the for loop.
-
         Returns
         -------
         loop_scope : With.Scope of Var
@@ -429,7 +466,7 @@ class IRBuilder(object):
 
         def _exit_cb():
             self.emit(_make.Loop(
-                loop_var, begin, extent,  [], self._pop_seq()))
+                loop_var, begin, extent, [], self._pop_seq()))
 
         return WithScope(loop_var, _exit_cb)
 
@@ -462,12 +499,15 @@ class IRBuilder(object):
             raise ValueError("Unknown iter_type")
         return _api._IterVar(dom, name, iter_type_id)
 
-    def block(self, block_vars, values, reads, writes, predicate=True, annotations=[], name=""):
+    def block(self, block_vars, values, reads, writes, predicate=True, annotations=None, name=""):
         """Create a Te block.
 
         Parameters
         ----------
         block_vars : list of BlockVar
+            The BlockVar list
+
+        values: list of Expr
             The value of block var.
 
         reads : list of TensorRegion
@@ -485,6 +525,8 @@ class IRBuilder(object):
         name: optional, str
             The name of the block
         """
+        if annotations is None:
+            annotations = []
         self._seq_stack.append([])
 
         if not isinstance(block_vars, list) and not isinstance(block_vars, tuple):
