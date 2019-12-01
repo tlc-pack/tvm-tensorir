@@ -53,7 +53,11 @@ class TeLowerMutator : public IRMutator {
       const auto& v = op->values[i];
       block_var_.erase(iter->var.get());
     }
-    return op->body;
+    if (is_one(op->predicate)) {
+      return op->body;
+    } else {
+      return IfThenElse::make(op->predicate, op->body);
+    }
   }
 
   // transform Loop to ir::For

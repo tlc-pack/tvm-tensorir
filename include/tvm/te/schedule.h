@@ -87,11 +87,20 @@ class Schedule : public NodeRef {
   Array<Loop> GetAxes(Block block) const;
 
   /*!
-   * \brief Get axes of the block
-   * \param block The query block
-   * \return the axis list
+   * \brief fuse two consecutive axises of one computation.
+   * \param outer The outer loop
+   * \param inner The inner loop
+   * \return the fused loop
    * */
   Loop fuse(Loop outer, Loop inner);
+
+  /*!
+   * \brief split a specified axis into two axises by factor.
+   * \param loop The loop to be split
+   * \param factor The split factor
+   * \return the loops after splitting
+   * */
+  Array<Loop> split(Loop loop, Expr factor);
 
  private:
   /*!
@@ -107,7 +116,9 @@ class Schedule : public NodeRef {
 
   void SetChild(Stmt father, Stmt child, size_t index);
 
-  ScheduleNode* Mutable() {
+  void AddPredicate(Stmt stmt, Expr predicate);
+
+  inline ScheduleNode* Mutable() {
     return static_cast<ScheduleNode*>(data_.get());
   }
 };

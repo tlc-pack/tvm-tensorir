@@ -16,6 +16,8 @@
 # under the License.
 
 import tvm
+import topi
+import numpy as np
 
 
 def element_wise_stmt(m=128, n=128):
@@ -88,3 +90,32 @@ def matmul_stmt(m=128, n=128, l=128):
     stmt = ib.get()
     func, tensors, tensor_map = ib.function([a, b, c], buffer_map, stmt)
     return func, tensors, tensor_map
+
+
+def check_correctness(func1, func2, args, tensor_map=None, target='llvm'):
+    if isinstance(func1, tvm.container.TeFunction):
+        func1 = tvm.ir_pass.TeLower(func1, tensor_map)
+    if isinstance(func2, tvm.container.TeFunction):
+        func2 = tvm.ir_pass.TeLower(func2, tensor_map)
+
+    if isinstance(target, tuple) or isinstance(target, list):
+        target1, target2 = target
+    else:
+        target1 = target2 = target
+
+    func1 = tvm.build(tvm.lower(func1, args), target=target1)
+    func2 = tvm.build(tvm.lower(func2, args), target=target2)
+
+    ctx1 = tvm.context(target1)
+    ctx2 = tvm.context(target2)
+
+    bufs1 = [tvm.nd.array(np.array(np.random.randn(*topi.util.get_const_tuple(x.shape)),
+                                   dtype=x.dtype), ctx=ctx1) for x in args]
+    bufs2 = [tvm.nd.array(x, ctx=ctx2) for x in bufs1]
+    func1(*bufs1)
+    func2(*bufs2)
+    bufs1_np = [x.asnumpy() for x in bufs1]
+    bufs2_np = [x.asnumpy() for x in bufs2]
+
+    for x, y in zip(bufs1_np, bufs2_np):
+        np.testing.assert_allclose(x, y, rtol=1e-5, atol=1e-5)

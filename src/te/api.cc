@@ -42,6 +42,15 @@ TVM_REGISTER_API("te.schedule.ScheduleGetAxes")
 TVM_REGISTER_API("te.schedule.ScheduleFuse")
 .set_body_method(&Schedule::fuse);
 
+TVM_REGISTER_API("te.schedule.ScheduleSplitByFactor")
+.set_body_method(&Schedule::split);
+
+TVM_REGISTER_API("te.schedule.ScheduleSplitByNParts")
+.set_body_typed<Array<Loop>(Schedule, Loop, Expr)>(
+    [](Schedule schedule, Loop loop, Expr nparts) {
+      return schedule.split(loop, truncdiv(loop->extent + nparts - 1, nparts));
+    });
+
 // maker
 TVM_REGISTER_API("make.TensorRegion")
 .set_body_typed<TensorRegion(Buffer, Array<Range>)>(
@@ -90,6 +99,11 @@ TVM_REGISTER_API("make.TeBlock")
        Expr predicate,
        Array<Annotation> annotations,
        std::string tag) {
+      if (!predicate.type().is_bool()) {
+        // To support python ir_builder
+        CHECK(is_one(predicate));
+        predicate = UIntImm::make(Bool(), 1);
+      }
       return Block(iter_vars, values, reads, writes,
                    body, predicate, annotations, tag);
     });

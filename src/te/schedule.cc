@@ -31,13 +31,6 @@ namespace te {
  * \return the child nodes
  */
 
-bool is_block(Stmt stmt) {
-  return stmt.as<BlockNode>() != nullptr;
-}
-
-bool is_loop(Stmt stmt) {
-  return stmt.as<LoopNode>() != nullptr;
-}
 
 Array<Stmt> Schedule::GetChildren(Stmt stmt) {
   Stmt body;
@@ -118,16 +111,28 @@ Schedule::Schedule(Function func,
   Stmt stmt = operator->()->func->body;
   if (const auto* seq = stmt.as<SeqStmtNode>()) {
     for (const auto s : seq->seq) {
-      if (is_loop(s) || is_block(s)) {
+      if (s.as<LoopNode>() || s.as<BlockNode>()) {
         UpdateFather(s, true);
         Mutable()->father_map_.Set(s, s);
       }
     }
   } else {
-    if (is_loop(stmt) || is_block(stmt)) {
+    if (stmt.as<LoopNode>() || stmt.as<BlockNode>()) {
       UpdateFather(stmt, true);
       Mutable()->father_map_.Set(stmt, stmt);
     }
+  }
+}
+
+void Schedule::AddPredicate(Stmt stmt, Expr predicate) {
+  if (const auto* n = stmt.as<LoopNode>()) {
+    auto loop = GetRef<Loop>(n);
+    for (auto child : GetChildren(loop)) {
+      AddPredicate(child, predicate);
+    }
+  } else if (const auto* n = stmt.as<BlockNode>()) {
+    Block block = GetRef<Block>(n);
+    block.Mutable()->predicate = block->predicate && predicate;
   }
 }
 
@@ -172,7 +177,7 @@ Array<Loop> Schedule::GetAxes(Block block) const {
   Array<Loop> ret;
   Stmt stmt = operator->()->father_map_[block];
   while (stmt) {
-    if (is_loop(stmt)) {
+    if (stmt.as<LoopNode>()) {
       ret.push_back(Downcast<Loop>(stmt));
     }
     Stmt father = operator->()->father_map_[stmt];
@@ -225,6 +230,44 @@ Loop Schedule::fuse(Loop outer, Loop inner) {
   ReplaceStmt(outer, fused_node);
 
   return fused_node;
+}
+
+Array<Loop> Schedule::split(Loop loop, Expr factor) {
+  Var outer_var = loop->loop_var.copy_with_suffix(".outer");
+  Var inner_var = loop->loop_var.copy_with_suffix(".inner");
+
+  Expr outer_min = loop->min;
+  Expr outer_extent = (loop->extent + factor - 1) / factor;
+
+  Expr inner_min = 0;
+  Expr inner_extent = factor;
+
+  auto vmap = [&](const Variable* v) -> Expr {
+    if (GetRef<Var>(v).same_as(loop->loop_var)) {
+      return outer_var * factor + inner_var;
+    } else {
+      return Expr(NodePtr<Node>(nullptr));
+    }
+  };
+
+  Map<Var, Range> vrange;
+  vrange.Set(outer_var, Range::make_by_min_extent(outer_min, outer_extent));
+  vrange.Set(inner_var, Range::make_by_min_extent(inner_min, inner_extent));
+  Expr predicate = Simplify(outer_var * factor + inner_var < loop->extent, vrange);
+
+  Loop inner_loop(inner_var, inner_min, inner_extent, loop->annotations,
+                  Substitute(loop->body, vmap));
+  UpdateFather(inner_loop);
+
+  Loop outer_loop(outer_var, outer_min, outer_extent, loop->annotations, inner_loop);
+  UpdateFather(outer_loop);
+
+  AddPredicate(outer_loop, predicate);
+
+  // relink
+  ReplaceStmt(loop, outer_loop);
+
+  return Array<Loop>{outer_loop, inner_loop};
 }
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);

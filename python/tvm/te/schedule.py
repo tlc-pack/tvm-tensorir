@@ -94,6 +94,38 @@ class Schedule(NodeBase):
         """
         return ScheduleFuse(self, outer_axis, inner_axis)
 
+    def split(self, axis, factor=None, nparts=None):
+        """split a specified axis into two axises by factor or nparts
+
+        Parameters
+        ----------
+        axis: Loop
+            The axis to be split
+
+        factor : Expr, optional
+             The splitting factor
+
+        nparts : Expr, optional
+             The number of outer parts.
+
+        Returns
+        -------
+        outer : Loop
+            The outer loop.
+
+        inner : Loop
+            The inner loop.
+        """
+        if nparts is not None:
+            if factor is not None:
+                raise ValueError("Do not need to provide both outer and nparts")
+            outer, inner = ScheduleSplitByNParts(self, axis, nparts)
+        else:
+            if factor is None:
+                raise ValueError("Either nparts or factor need to be provided")
+            outer, inner = ScheduleSplitByFactor(self, axis, factor)
+        return outer, inner
+
 
 def create_schedule(func):
     """Create a schedule for a function
