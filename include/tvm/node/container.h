@@ -59,7 +59,7 @@ class ArrayNode : public Object {
 /*! \brief map node content */
 class MapNode : public Object {
  public:
-  /*! \brief The corresponding conatiner type */
+  /*! \brief The corresponding container type */
   using ContainerType = std::unordered_map<
     ObjectRef,
     ObjectRef,
@@ -76,7 +76,7 @@ class MapNode : public Object {
 /*! \brief specialized map node with string as key */
 class StrMapNode : public Object {
  public:
-  /*! \brief The corresponding conatiner type */
+  /*! \brief The corresponding container type */
   using ContainerType = std::unordered_map<std::string, ObjectRef>;
 
   /*! \brief the data content */
