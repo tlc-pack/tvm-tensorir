@@ -36,30 +36,30 @@ SeqStmt::SeqStmt(Array<Stmt> seq) {
   data_ = std::move(node);
 }
 
-BufferLoad BufferLoadNode::make(DataType type, Buffer buffer, Array<Expr> indices) {
+BufferLoad::BufferLoad(DataType type, Buffer buffer, Array<Expr> indices) {
   NodePtr<BufferLoadNode> node = make_node<BufferLoadNode>();
   node->type = type;
   node->buffer = std::move(buffer);
   node->indices = std::move(indices);
-  return BufferLoad(node);
+  data_ = std::move(node);
 }
 
-BufferStore BufferStoreNode::make(Buffer buffer, Expr value, Array<Expr> indices) {
+BufferStore::BufferStore(Buffer buffer, Expr value, Array<Expr> indices) {
   NodePtr<BufferStoreNode> node = make_node<BufferStoreNode>();
   node->buffer = std::move(buffer);
   node->value = std::move(value);
   node->indices = std::move(indices);
-  return BufferStore(node);
+  data_ = std::move(node);
 }
 
-Block BlockNode::make(Array<IterVar> iter_vars,
-                      Array<Expr> values,
-                      Array<TensorRegion> reads,
-                      Array<TensorRegion> writes,
-                      Stmt body,
-                      Expr predicate,
-                      Array<Annotation> annotations,
-                      std::string tag) {
+Block::Block(Array<IterVar> iter_vars,
+             Array<Expr> values,
+             Array<TensorRegion> reads,
+             Array<TensorRegion> writes,
+             Stmt body,
+             Expr predicate,
+             Array<Annotation> annotations,
+             std::string tag) {
   NodePtr<BlockNode> node = make_node<BlockNode>();
   CHECK_EQ(iter_vars.size(), values.size());
   node->iter_vars = std::move(iter_vars);
@@ -70,60 +70,59 @@ Block BlockNode::make(Array<IterVar> iter_vars,
   node->predicate = std::move(predicate);
   node->annotations = std::move(annotations);
   node->tag = std::move(tag);
-  return Block(node);
+  data_ = std::move(node);
 }
 
-TensorRegion TensorRegionNode::make(Buffer buffer, Array<Range> region) {
+TensorRegion::TensorRegion(Buffer buffer, Array<Range> region) {
   NodePtr<TensorRegionNode> node = make_node<TensorRegionNode>();
   node->buffer = std::move(buffer);
   node->region = std::move(region);
-  return TensorRegion(node);
+  data_ = std::move(node);
 }
 
-Annotation AnnotationNode::make(std::string attr_key, Expr value) {
+Annotation::Annotation(std::string attr_key, Expr value) {
   NodePtr<AnnotationNode> node = make_node<AnnotationNode>();
   node->attr_key = std::move(attr_key);
   node->value = std::move(value);
-  return Annotation(node);
+  data_ = std::move(node);
 }
 
-Loop LoopNode::make(Var loop_var,
-                    Expr min,
-                    Expr extent,
-                    Array<Annotation> annotations,
-                    Stmt body) {
+Loop::Loop(Var loop_var,
+           Expr min,
+           Expr extent,
+           Array<Annotation> annotations,
+           Stmt body) {
   NodePtr<LoopNode> node = make_node<LoopNode>();
   node->loop_var = std::move(loop_var);
   node->min = std::move(min);
   node->extent = std::move(extent);
   node->annotations = std::move(annotations);
   node->body = std::move(body);
-  return Loop(node);
+  data_ = std::move(node);
 }
 
-BufferAllocate BufferAllocateNode::make(Buffer buffer, std::string scope) {
+BufferAllocate::BufferAllocate(Buffer buffer, std::string scope) {
   NodePtr<BufferAllocateNode> node = make_node<BufferAllocateNode>();
   node->buffer = std::move(buffer);
   node->scope = std::move(scope);
-  return BufferAllocate(node);
+  data_ = std::move(node);
 }
 
-Function FunctionNode::make(Array<Var> params,
-                            Map<Var, Buffer> buffer_map,
-                            std::string name,
-                            Stmt body) {
+Function::Function(Array<Var> params,
+                   Map<Var, Buffer> buffer_map,
+                   std::string name,
+                   Stmt body) {
   NodePtr<FunctionNode> node = make_node<FunctionNode>();
   CHECK_EQ(params.size(), buffer_map.size());
   node->params = std::move(params);
   node->buffer_map = std::move(buffer_map);
   node->name = std::move(name);
   node->body = std::move(body);
-  return Function(node);
+  data_ = std::move(node);
 }
 
-
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<SeqStmtNode>([](const ObjectRef &node, IRPrinter* p) {
+.set_dispatch<SeqStmtNode>([](const ObjectRef& node, IRPrinter* p) {
   auto* op = static_cast<const SeqStmtNode*>(node.get());
   for (size_t i = 0; i < op->size(); ++i) {
     p->Print((*op)[i]);
@@ -131,14 +130,14 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
 });
 
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<BufferLoadNode>([](const ObjectRef &node, IRPrinter* p) {
+.set_dispatch<BufferLoadNode>([](const ObjectRef& node, IRPrinter* p) {
   auto* op = static_cast<const BufferLoadNode*>(node.get());
   p->Print(op->buffer->data);
   p->Print(op->indices);
 });
 
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<BufferStoreNode>([](const ObjectRef &node, IRPrinter* p) {
+.set_dispatch<BufferStoreNode>([](const ObjectRef& node, IRPrinter* p) {
   auto* op = static_cast<const BufferStoreNode*>(node.get());
   p->PrintIndent();
   p->Print(op->buffer->data);
@@ -149,19 +148,19 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
 });
 
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<AnnotationNode>([](const ObjectRef &node, IRPrinter* p) {
+.set_dispatch<AnnotationNode>([](const ObjectRef& node, IRPrinter* p) {
   auto* op = static_cast<const AnnotationNode*>(node.get());
   p->stream << op->attr_key << ": ";
   p->Print(op->value);
 });
 
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<TensorRegionNode>([](const ObjectRef &node, IRPrinter* p) {
+.set_dispatch<TensorRegionNode>([](const ObjectRef& node, IRPrinter* p) {
   auto* op = static_cast<const TensorRegionNode*>(node.get());
   p->Print(op->buffer->data);
   p->stream << "[";
   for (size_t i = 0; i < op->region.size(); ++i) {
-    const auto &range = op->region[i];
+    const auto& range = op->region[i];
     p->Print(range->min);
     p->stream << ":";
     p->Print(range->min + range->extent);
@@ -173,7 +172,7 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
 });
 
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<LoopNode>([](const ObjectRef &node, IRPrinter* p) {
+.set_dispatch<LoopNode>([](const ObjectRef& node, IRPrinter* p) {
   auto* op = static_cast<const LoopNode*>(node.get());
 
   // print loop and annotations
@@ -200,25 +199,25 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
 });
 
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<BlockNode>([](const ObjectRef &node, IRPrinter* p) {
+.set_dispatch<BlockNode>([](const ObjectRef& node, IRPrinter* p) {
   auto* op = static_cast<const BlockNode*>(node.get());
 
   // print block name and block vars
   p->PrintIndent();
   p->stream << "block " << op->tag << "(";
   for (size_t i = 0; i < op->iter_vars.size(); ++i) {
-    const auto &iter_var = op->iter_vars[i];
+    const auto& iter_var = op->iter_vars[i];
     if (iter_var->iter_type != kDataPar) {
       std::string str;
       switch (iter_var->iter_type) {
-        case kCommReduce:
-          str = "reduce"; break;
-        case kOrdered:
-          str = "ordered"; break;
-        case kOpaque:
-          str = "opaque"; break;
-        default:
-          str = "unknown"; break;
+        case kCommReduce:str = "reduce";
+          break;
+        case kOrdered:str = "ordered";
+          break;
+        case kOpaque:str = "opaque";
+          break;
+        default:str = "unknown";
+          break;
       }
       p->stream << str << " ";
     }
@@ -240,7 +239,7 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
   p->Print(op->writes);
   p->stream << " R: ";
   p->Print(op->reads);
-  if (is_one(op->predicate)) {
+  if (!is_one(op->predicate)) {
     p->stream << " pred: ";
     p->Print(op->predicate);
   }
@@ -259,18 +258,18 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
 });
 
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<BufferAllocateNode>([](const ObjectRef &node, IRPrinter* p) {
+.set_dispatch<BufferAllocateNode>([](const ObjectRef& node, IRPrinter* p) {
   auto* op = static_cast<const BufferAllocateNode*>(node.get());
   p->PrintIndent();
   p->stream << "BufferAllocate(";
   p->stream << op->buffer->name;
   p->Print(op->buffer->shape);
   p->stream << ", " << op->buffer->dtype;
-  p->stream << ", \"" << op->scope << ")\n";
+  p->stream << ", \"" << op->scope << "\")\n";
 });
 
 TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<FunctionNode>([](const ObjectRef &node, IRPrinter* p) {
+.set_dispatch<FunctionNode>([](const ObjectRef& node, IRPrinter* p) {
   auto* op = static_cast<const FunctionNode*>(node.get());
   p->PrintIndent();
   p->stream << "func " << op->name << "(";
@@ -288,7 +287,6 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
   p->stream << "}\n";
 });
 
-
 TVM_REGISTER_NODE_TYPE(SeqStmtNode);
 TVM_REGISTER_NODE_TYPE(TensorRegionNode);
 TVM_REGISTER_NODE_TYPE(BufferLoadNode);
@@ -297,19 +295,6 @@ TVM_REGISTER_NODE_TYPE(BufferAllocateNode);
 TVM_REGISTER_NODE_TYPE(LoopNode);
 TVM_REGISTER_NODE_TYPE(BlockNode);
 TVM_REGISTER_NODE_TYPE(FunctionNode);
-TVM_REGISTER_API("make.TensorRegion")
-.set_body_typed(TensorRegionNode::make);
-TVM_REGISTER_API("make.BufferAllocate")
-.set_body_typed(BufferAllocateNode::make);
-TVM_REGISTER_API("make.BufferLoad")
-.set_body_typed(BufferLoadNode::make);
-TVM_REGISTER_API("make.BufferStore")
-.set_body_typed(BufferStoreNode::make);
-TVM_REGISTER_API("make.Loop").
-    set_body_typed(LoopNode::make);
-TVM_REGISTER_API("make.TeBlock").
-    set_body_typed(BlockNode::make);
-TVM_REGISTER_API("make.TeFunction").
-    set_body_typed(FunctionNode::make);
-} // namespace te
-} // namespace tvm
+
+}  // namespace te
+}  // namespace tvm
