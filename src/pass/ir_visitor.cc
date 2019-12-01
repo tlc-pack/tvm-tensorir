@@ -251,6 +251,12 @@ void IRVisitor::Visit_(const te::BufferLoadNode* op) {
   this->Visit(op->indices);
 }
 
+void IRVisitor::Visit_(const te::SeqStmtNode* op) {
+  for (size_t i = 0; i < op->size(); ++i) {
+    this->Visit((*op)[i]);
+  }
+}
+
 #define DEFINE_OP_NO_VISIT_(OP)                     \
   void IRVisitor::Visit_(const OP* op) {}
 
@@ -315,7 +321,8 @@ TVM_STATIC_IR_FUNCTOR(IRVisitor, vtable)
 .DISPATCH_TO_VISIT(te::BufferStoreNode)
 .DISPATCH_TO_VISIT(te::BufferAllocateNode)
 .DISPATCH_TO_VISIT(te::LoopNode)
-.DISPATCH_TO_VISIT(te::BufferLoadNode);
+.DISPATCH_TO_VISIT(te::BufferLoadNode)
+.DISPATCH_TO_VISIT(te::SeqStmtNode);
 
 }  // namespace ir
 }  // namespace tvm

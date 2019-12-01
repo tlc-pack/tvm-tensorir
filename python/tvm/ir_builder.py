@@ -67,13 +67,13 @@ class Buffer(NodeGeneric):
             index = [index]
         if isinstance(index[0], slice):
             doms = []
-            for id in index:
-                assert isinstance(id, slice)
-                assert id.step == 1 or id.step is None
-                doms.append(_make.range_by_min_extent(id.start, ir_pass.Simplify(id.stop - id.start)))
+            for x in index:
+                assert isinstance(x, slice)
+                assert x.step == 1 or x.step is None
+                doms.append(_make.range_by_min_extent(
+                    x.start, ir_pass.Simplify(x.stop - x.start)))
             return _make.TensorRegion(self._buffer, doms)
-        else:
-            return _make.BufferLoad(self._content_type, self._buffer, index)
+        return _make.BufferLoad(self._content_type, self._buffer, index)
 
     def __setitem__(self, index, value):
         value = _api.convert(value)
@@ -467,9 +467,6 @@ class IRBuilder(object):
         dtype : str, optional
             The data type of iteration variable.
 
-        iter_type : str, optional
-            The special tag on the for loop.
-
         Returns
         -------
         loop_scope : With.Scope of Var
@@ -484,7 +481,7 @@ class IRBuilder(object):
 
         def _exit_cb():
             self.emit(_make.Loop(
-                loop_var, begin, extent,  [], self._pop_seq()))
+                loop_var, begin, extent, [], self._pop_seq()))
 
         return WithScope(loop_var, _exit_cb)
 
@@ -517,12 +514,15 @@ class IRBuilder(object):
             raise ValueError("Unknown iter_type")
         return _api._IterVar(dom, name, iter_type_id)
 
-    def block(self, block_vars, values, reads, writes, predicate=True, annotations=[], name=""):
+    def block(self, block_vars, values, reads, writes, predicate=True, annotations=None, name=""):
         """Create a Te block.
 
         Parameters
         ----------
         block_vars : list of BlockVar
+            The BlockVar list
+
+        values: list of Expr
             The value of block var.
 
         reads : list of TensorRegion
@@ -540,6 +540,8 @@ class IRBuilder(object):
         name: optional, str
             The name of the block
         """
+        if annotations is None:
+            annotations = []
         self._seq_stack.append([])
 
         if not isinstance(block_vars, list) and not isinstance(block_vars, tuple):

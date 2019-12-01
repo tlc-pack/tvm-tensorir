@@ -53,7 +53,7 @@ class MapNode : public Node {
   void VisitAttrs(AttrVisitor* visitor) {
   }
 
-  /*! \brief The corresponding conatiner type */
+  /*! \brief The corresponding container type */
   using ContainerType = std::unordered_map<
     ObjectRef,
     ObjectRef,
@@ -70,7 +70,7 @@ class MapNode : public Node {
 /*! \brief specialized map node with string as key */
 class StrMapNode : public Node {
  public:
-  /*! \brief The corresponding conatiner type */
+  /*! \brief The corresponding container type */
   using ContainerType = std::unordered_map<std::string, ObjectRef>;
 
   void VisitAttrs(AttrVisitor* visitor) {

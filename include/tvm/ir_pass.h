@@ -176,6 +176,22 @@ Stmt Substitute(Stmt stmt, const Map<Var, Expr>& value_map);
 Expr Substitute(Expr expr, const Map<Var, Expr>& value_map);
 
 /*!
+ * \brief Substitute the var specified in key->var to be value.
+ * \param expr The source expression to be substituted
+ * \param value_func The function of new values mapping.
+ * \return The converted expression.
+ */
+Expr Substitute(Expr expr, const std::function<Expr(const Variable*)>& value_func);
+
+/*!
+ * \brief Substitute the var specified in key->var to be value.
+ * \param stmt The source statement to be substituted
+ * \param value_func The function of new values mapping.
+ * \return The converted form.
+ */
+Stmt Substitute(Stmt stmt, const std::function<Expr(const Variable*)>& value_func);
+
+/*!
  * \brief inline all calls of f in stmt.
  *
  * \param stmt The statement to apply inline optimization.

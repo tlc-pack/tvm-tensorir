@@ -332,14 +332,14 @@ Stmt IRMutator::Mutate_(const te::BlockNode* op, const Stmt& s) {
       && body.same_as(op->body)) {
     return s;
   } else {
-    return te::BlockNode::make(op->iter_vars,
-                               v,
-                               op->reads,
-                               op->writes,
-                               body,
-                               pred,
-                               op->annotations,
-                               op->tag);
+    return te::Block(op->iter_vars,
+                     v,
+                     op->reads,
+                     op->writes,
+                     body,
+                     pred,
+                     op->annotations,
+                     op->tag);
   }
 }
 
@@ -349,7 +349,7 @@ Stmt IRMutator::Mutate_(const te::BufferStoreNode* op, const Stmt &s) {
   if (v.same_as(op->value) && indices.same_as(op->indices)) {
     return s;
   } else {
-    return te::BufferStoreNode::make(op->buffer, v, indices);
+    return te::BufferStore(op->buffer, v, indices);
   }
 }
 
@@ -365,7 +365,23 @@ Stmt IRMutator::Mutate_(const te::LoopNode* op, const Stmt &s) {
       body.same_as(op->body)) {
     return s;
   } else {
-    return te::LoopNode::make(op->loop_var, min, extent, op->annotations, body);
+    return te::Loop(op->loop_var, min, extent, op->annotations, body);
+  }
+}
+
+Stmt IRMutator::Mutate_(const te::SeqStmtNode* op, const Stmt& s) {
+  std::vector<Stmt> new_stmt(op->size());
+  bool changed = false;
+  for (size_t i = 0; i < op->size(); ++i) {
+    Stmt old_elem = (*op)[i];
+    Stmt new_elem = Mutate(old_elem);
+    if (!new_elem.same_as(old_elem)) changed = true;
+    new_stmt[i] = new_elem;
+  }
+  if (!changed) {
+    return s;
+  } else {
+    return te::SeqStmt(new_stmt);
   }
 }
 
@@ -388,7 +404,8 @@ TVM_STATIC_IR_FUNCTOR(IRMutator, vtable_stmt)
 .DISPATCH_TO_MUTATE_STMT(te::BlockNode)
 .DISPATCH_TO_MUTATE_STMT(te::BufferStoreNode)
 .DISPATCH_TO_MUTATE_STMT(te::BufferAllocateNode)
-.DISPATCH_TO_MUTATE_STMT(te::LoopNode);
+.DISPATCH_TO_MUTATE_STMT(te::LoopNode)
+.DISPATCH_TO_MUTATE_STMT(te::SeqStmtNode);
 
 
 // Mutate Expr
@@ -542,7 +559,7 @@ Expr IRMutator::Mutate_(const te::BufferLoadNode* op, const Expr& e) {
   if (op->indices.same_as(indices)) {
     return e;
   } else {
-    return te::BufferLoadNode::make(op->type, op->buffer, indices);
+    return te::BufferLoad(op->type, op->buffer, indices);
   }
 }
 
