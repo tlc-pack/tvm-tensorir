@@ -22,7 +22,8 @@ import util
 
 def test_create_schedule():
     func, tensors, tensor_map = util.element_wise_stmt()
-    te.create_schedule(func)
+    s = te.create_schedule(func)
+    print(s.func)
 
 
 def test_block_axis():
@@ -61,13 +62,26 @@ def test_split():
     outer, inner = s.get_axes(B)
     s.split(outer, factor=8)
     outer, inner = s.get_axes(C)
-    s.split(outer, nparts=10)
+    s.split(inner, nparts=10)
+
+    util.check_correctness(func, s.func, tensors, tensor_map)
+
+
+def test_compute_inline():
+    m, n = 128, 128
+    func, tensors, tensor_map = util.element_wise_stmt(m, n)
+
+    # schedule
+    s = te.create_schedule(func)
+    B = s.get_block("B")
+    s.compute_inline(B)
 
     util.check_correctness(func, s.func, tensors, tensor_map)
 
 
 if __name__ == "__main__":
-    test_create_schedule()
-    test_block_axis()
+    # test_create_schedule()
+    # test_block_axis()
     test_fuse()
-    test_split()
+    # test_split()
+    # test_compute_inline()
