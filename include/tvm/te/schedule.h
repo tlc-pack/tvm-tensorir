@@ -27,7 +27,9 @@
 
 #include <tvm/te/ir.h>
 #include <tvm/te/dependency_graph.h>
+#include <tvm/te/schedule_tree.h>
 #include <string>
+#include <unordered_map>
 
 namespace tvm {
 namespace te {
@@ -40,23 +42,28 @@ class ScheduleNode : public Node {
   }
   /*! \brief The function to be scheduled */
   Function func;
+  /*! \brief The root of auxiliary structure */
+  ScheduleTreeNodeRef root;
+  /*! \brief The dependency graph used in some primitives */
+  Map<BlockTreeNodeRef, DependencyGraph> dependency_graph;
+  /*! \brief The mapping from output buffer to its producer blocks */
+  Map<Buffer, Array<BlockTreeNodeRef>> write_map;
+  /*! \brief The mapping from stmt to its auxiliary structure */
+  std::unordered_map<const StmtNode*, ScheduleTreeNodeRef> stmt_map;
+
   static constexpr const char* _type_key = "te.Schedule";
   TVM_DECLARE_NODE_TYPE_INFO(ScheduleNode, Node);
  private:
   friend class Schedule;
-  /*! \brief The mapping from AST node to its father */
-  Map<Stmt, Stmt> father_map_;
-  /*! \brief The dependency graph used in some primitives */
-  DependencyGraph dependency_graph_;
-  /*! \brief The maping from output buffer to its producer blocks */
-  Map<Buffer, Array<Block>> write_map_;
 };
 
 class Schedule : public NodeRef {
  public:
   explicit Schedule(Function func,
-                    DependencyGraph dependency_graph,
-                    Map<Buffer, Array<Block>> write_map);
+                    ScheduleTreeNodeRef root,
+                    Map<BlockTreeNodeRef, DependencyGraph> dependency_graph,
+                    Map<Buffer, Array<BlockTreeNodeRef>> write_map,
+                    std::unordered_map<const StmtNode*, ScheduleTreeNodeRef> stmt_map);
   TVM_DEFINE_NODE_REF_METHODS(Schedule, NodeRef, ScheduleNode);
 
   /*!
@@ -64,27 +71,27 @@ class Schedule : public NodeRef {
    * \param tag The query tag
    * \return the block list
    * */
-  Array<Block> GetBlock(std::string tag) const;
+  Array<BlockTreeNodeRef> GetBlock(std::string tag) const;
 
   /*!
    * \brief Get block from its output tensor
    * \param tag The query buffer
    * \return the block list
    * */
-  Array<Block> GetBlock(Buffer buffer) const;
+  Array<BlockTreeNodeRef> GetBlock(Buffer buffer) const;
 
   /*!
    * \brief Get all blocks in the schedule
    * \return the block list
    * */
-  Array<Block> Blocks() const;
+  Array<BlockTreeNodeRef> Blocks() const;
 
   /*!
    * \brief Get axes of the block
    * \param block The query block
    * \return the axis list
    * */
-  Array<Loop> GetAxes(Block block) const;
+  Array<AxisTreeNodeRef> GetAxes(BlockTreeNodeRef block) const;
 
   /*!
    * \brief fuse two consecutive axises of one computation.
@@ -92,7 +99,7 @@ class Schedule : public NodeRef {
    * \param inner The inner loop
    * \return the fused loop
    * */
-  Loop fuse(Loop outer, Loop inner);
+  AxisTreeNodeRef fuse(AxisTreeNodeRef outer, AxisTreeNodeRef inner);
 
   /*!
    * \brief split a specified axis into two axises by factor.
@@ -100,25 +107,28 @@ class Schedule : public NodeRef {
    * \param factor The split factor
    * \return the loops after splitting
    * */
-  Array<Loop> split(Loop loop, Expr factor);
+  Array<AxisTreeNodeRef> split(AxisTreeNodeRef loop, Expr factor);
+
+  /*!
+   * \brief make one block inline, then the body of computation
+   *  will be expanded and inserted at the address where the tensor
+   *  is required.
+   * \param block the inline block
+   */
+  void compute_inline(BlockTreeNodeRef block);
 
  private:
-  /*!
-   * \brief Update the father of AST node
-   * \param father_stmt the node whose children need update.
-   * \param recursive whether recursively update whole sub AST.
-   */
-  void UpdateFather(Stmt father_stmt, bool recursive = false);
+  void Replace(ScheduleTreeNodeRef old_node, Stmt new_stmt);
 
-  void ReplaceStmt(Stmt old_stmt, Stmt new_stmt);
+  static BlockTreeNodeRef GetFatherBlock(ScheduleTreeNodeRef node);
 
-  Array<Stmt> GetChildren(Stmt stmt);
+  static Array<Stmt> GetChildren(const Stmt& stmt);
 
-  void SetChild(Stmt father, Stmt child, size_t index);
+  bool IsCompleteBlock(BlockTreeNodeRef block);
 
-  void AddPredicate(Stmt stmt, Expr predicate);
+  void UpdateChildren(const Stmt& stmt, const ScheduleTreeNodeRef& father);
 
-  inline ScheduleNode* Mutable() {
+  inline ScheduleNode* operator->() {
     return static_cast<ScheduleNode*>(data_.get());
   }
 };

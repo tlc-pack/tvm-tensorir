@@ -80,7 +80,7 @@ class ExprFunctor;
 template<typename FType>
 class StmtFunctor;
 
-// functions to be overriden.
+// functions to be overridden.
 #define EXPR_FUNCTOR_DEFAULT {                                      \
     return VisitExprDefault_(op, std::forward<Args>(args)...);      \
   }

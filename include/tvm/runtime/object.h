@@ -286,12 +286,13 @@ class Object {
    */
   inline void DecRef();
 
- private:
   /*!
    * \return The usage count of the cell.
    * \note We use stl style naming to be consistent with known API in shared_ptr.
    */
   inline int use_count() const;
+
+ private:
   /*!
    * \brief Check of this object is derived from the parent.
    * \param parent_tindex The parent type index.

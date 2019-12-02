@@ -126,6 +126,18 @@ class Schedule(NodeBase):
             outer, inner = ScheduleSplitByFactor(self, axis, factor)
         return outer, inner
 
+    def compute_inline(self, block):
+        """Mark one stage as inline, then the body of computation will be expanded and
+        inserted at the address where the tensor is required.
+
+        Parameters
+        ----------
+        block: Block
+            The Block to be inlined
+
+        """
+        return ScheduleComputeInline(self, block)
+
 
 def create_schedule(func):
     """Create a schedule for a function
@@ -140,5 +152,16 @@ def create_schedule(func):
     """
     return CreateSchedule(func)
 
+
+def create_scheduleX(func):
+    return CreateScheduleX(func)
+
+@register_te_node
+class ScheduleX(NodeBase):
+    def replace(self, sref, target_stmt):
+        return ReplaceX(self, sref, target_stmt)
+
+    def get_s_ref(self, stmt):
+        return GetStmtSRef(self, stmt)
 
 _init_api('tvm.te.schedule')
