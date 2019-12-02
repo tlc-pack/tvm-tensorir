@@ -75,7 +75,7 @@ class IRSubstitue : public IRMutator {
     loop.Mutable()->min = Mutate(loop->min);
     loop.Mutable()->extent = Mutate(loop->extent);
     loop.Mutable()->body = Mutate(loop->body);
-    return loop;
+    return std::move(loop);
   }
 
   Stmt Mutate_(const te::BlockNode* op, const Stmt& s) final {
@@ -85,7 +85,7 @@ class IRSubstitue : public IRMutator {
       values.push_back(Mutate(expr));
     }
     block.Mutable()->values = values;
-    return block;
+    return std::move(block);
   }
 
  private:

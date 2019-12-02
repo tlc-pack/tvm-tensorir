@@ -21,6 +21,8 @@
 #include <tvm/api_registry.h>
 #include <tvm/ir_functor_ext.h>
 #include <tvm/te/transform.h>
+#include <tvm/ir_mutator.h>
+#include "../util.h"
 
 namespace tvm {
 namespace te {
@@ -97,6 +99,10 @@ void Schedule::ReplaceStmt(Stmt old_stmt, Stmt new_stmt) {
     SetChild(father, new_stmt, index);
     UpdateFather(father);
   }
+}
+
+void Schedule::RemoveStmt(Stmt stmt) {
+
 }
 
 Schedule::Schedule(Function func,
@@ -268,6 +274,25 @@ Array<Loop> Schedule::split(Loop loop, Expr factor) {
   ReplaceStmt(loop, outer_loop);
 
   return Array<Loop>{outer_loop, inner_loop};
+}
+
+bool Schedule::IsCompleteBlock(Block block) {
+  // Check the block is the only producer for every output tensors
+  for (const auto& write : block->writes) {
+    Buffer buffer = write->buffer;
+    if (operator->()->write_map_[buffer].size() != 1) {
+      CHECK(operator->()->write_map_[buffer][0].same_as(block));
+      return false;
+    }
+  }
+
+  // Check all the block vars are at data_par IterType
+  for (const auto& iter_var : block->iter_vars) {
+    if (iter_var->iter_type != kDataPar) {
+      return false;
+    }
+  }
+  return true;
 }
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);

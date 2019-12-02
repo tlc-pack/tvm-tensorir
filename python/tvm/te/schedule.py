@@ -126,6 +126,10 @@ class Schedule(NodeBase):
             outer, inner = ScheduleSplitByFactor(self, axis, factor)
         return outer, inner
 
+    def compute_inline(self, block):
+        #TODO(comment)
+        return ScheduleComputeInline(self, block)
+
 
 def create_schedule(func):
     """Create a schedule for a function

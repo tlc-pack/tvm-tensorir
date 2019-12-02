@@ -21,10 +21,41 @@
 #define TVM_TE_UTIL_H_
 
 #include <tvm/te/ir.h>
+#include <tvm/ir_mutator.h>
+#include <tvm/ir_visitor.h>
 
 namespace tvm {
 namespace te {
 
+class TensorAccessGather : public IRVisitor {
+ public:
+  TensorAccessGather() = default;
+  explicit TensorAccessGather(Buffer target_tensor) :
+      target_tensor_(target_tensor) {}
+
+  void Visit_(const BufferLoadNode* op) final;
+
+  // grouped accesses by target tensor
+  std::unordered_map<Buffer, std::vector<std::vector<Expr>>, NodeHash, NodeEqual> access_grouped;
+  std::vector<std::pair<Buffer, std::vector<Expr>>> access_all;  // all accesses
+  std::vector<std::vector<Expr>> access_one;                      // accesses to the target buffer
+
+  std::vector<Buffer> tensor_order;  // a list to keep the original order of tensors
+
+ private:
+  Buffer target_tensor_;
+};
+
+class ScheduleMutator : public IRMutator {
+ public:
+  ScheduleMutator() = default;
+  virtual Stmt Mutate_(const BlockNode* op, const Stmt& s) override;
+  virtual Stmt Mutate_(const LoopNode* op, const Stmt& s) override;
+};
+
+Array<Var> GatherVars(const NodeRef& expr_or_stmt);
+
+Array<TensorRegion> CreateInputRegions(const Stmt& stmt);
 
 }  // namespace te
 }  // namespace tvm

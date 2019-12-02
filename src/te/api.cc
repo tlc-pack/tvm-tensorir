@@ -6,7 +6,7 @@
 #include <tvm/te/transform.h>
 #include <tvm/api_registry.h>
 #include <tvm/te/schedule.h>
-#include "schedule_creator.h"
+#include "schedule/schedule_creator.h"
 
 namespace tvm {
 namespace te {
@@ -50,6 +50,9 @@ TVM_REGISTER_API("te.schedule.ScheduleSplitByNParts")
     [](Schedule schedule, Loop loop, Expr nparts) {
       return schedule.split(loop, truncdiv(loop->extent + nparts - 1, nparts));
     });
+
+TVM_REGISTER_API("te.schedule.ScheduleComputeInline")
+.set_body_method(&Schedule::compute_inline);
 
 // maker
 TVM_REGISTER_API("make.TensorRegion")

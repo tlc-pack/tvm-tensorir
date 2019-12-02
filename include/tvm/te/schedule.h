@@ -48,7 +48,7 @@ class ScheduleNode : public Node {
   Map<Stmt, Stmt> father_map_;
   /*! \brief The dependency graph used in some primitives */
   DependencyGraph dependency_graph_;
-  /*! \brief The maping from output buffer to its producer blocks */
+  /*! \brief The mapping from output buffer to its producer blocks */
   Map<Buffer, Array<Block>> write_map_;
 };
 
@@ -102,6 +102,14 @@ class Schedule : public NodeRef {
    * */
   Array<Loop> split(Loop loop, Expr factor);
 
+  /*!
+   * \brief make one block inline, then the body of computation
+   * will be expanded and inserted at the address where the tensor
+   * is required.
+   * \param block the inline block
+   */
+  void compute_inline(Block block);
+
  private:
   /*!
    * \brief Update the father of AST node
@@ -110,6 +118,8 @@ class Schedule : public NodeRef {
    */
   void UpdateFather(Stmt father_stmt, bool recursive = false);
 
+  void RemoveStmt(Stmt stmt);
+
   void ReplaceStmt(Stmt old_stmt, Stmt new_stmt);
 
   Array<Stmt> GetChildren(Stmt stmt);
@@ -117,6 +127,8 @@ class Schedule : public NodeRef {
   void SetChild(Stmt father, Stmt child, size_t index);
 
   void AddPredicate(Stmt stmt, Expr predicate);
+
+  bool IsCompleteBlock(Block block);
 
   inline ScheduleNode* Mutable() {
     return static_cast<ScheduleNode*>(data_.get());

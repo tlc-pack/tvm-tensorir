@@ -40,6 +40,7 @@ using namespace ir;
 // forward declare class.
 class SeqStmt;
 class Schedule;
+class ScheduleMutator;
 
 /*! \brief The container of seq statement. */
 class SeqStmtNode : public StmtNode {
@@ -245,6 +246,7 @@ class Loop : public Stmt {
  private:
   friend Schedule;
   friend ir::IRSubstitue;
+  friend ScheduleMutator;
   /*! \brief mutate the node
    * Node that the mutate can be only used in schedule
    * and will be replaced later
@@ -343,16 +345,17 @@ class Block : public Stmt {
 
   TVM_DEFINE_NODE_REF_METHODS(Block, Stmt, BlockNode);
 
- private:
-  friend Schedule;
-  friend ir::IRSubstitue;
   /*! \brief mutate the node
-   * Node that the mutate can be only used in schedule
-   * and will be replaced later
-   */
+    * Node that the mutate can be only used in schedule
+    * and will be replaced later
+    */
   BlockNode* Mutable() {
     return static_cast<BlockNode*>(data_.get());
   }
+ private:
+  friend Schedule;
+  friend ir::IRSubstitue;
+  friend ScheduleMutator;
 };
 
 /*!
