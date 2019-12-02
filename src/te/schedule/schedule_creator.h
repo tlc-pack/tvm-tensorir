@@ -22,10 +22,11 @@
  * \file schedule_creator.h
  */
 
-#ifndef TVM_TE_SCHEDULE_CREATOR_H_
-#define TVM_TE_SCHEDULE_CREATOR_H_
+#ifndef TVM_TE_SCHEDULE_SCHEDULE_CREATOR_H_
+#define TVM_TE_SCHEDULE_SCHEDULE_CREATOR_H_
 #include <tvm/ir_mutator.h>
 #include <tvm/te/schedule.h>
+#include <tvm/te/schedule_tree.h>
 
 namespace tvm {
 namespace te {
@@ -49,10 +50,14 @@ class ScheduleCreator : public IRMutator {
   Schedule Create();
  private:
   Function func_;
-  Map<Buffer, Array<Block>> write_map_;
+  Map<Buffer, Array<BlockTreeNodeRef>> write_map_;
+  Map<BlockTreeNodeRef, DependencyGraph> dependency_graph_;
+  std::unordered_map<const StmtNode*, ScheduleTreeNodeRef> stmt_map;
+  ScheduleTreeNodeRef father_node_;
+  BlockTreeNodeRef current_block_;
 };
 
 }  // namespace te
 }  // namespace tvm
 
-#endif  // TVM_TE_SCHEDULE_CREATOR_H_
+#endif  // TVM_TE_SCHEDULE_SCHEDULE_CREATOR_H_
