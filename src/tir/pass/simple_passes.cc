@@ -68,24 +68,6 @@ class IRSubstitue : public StmtExprMutator {
     }
   }
 
-  Stmt Mutate_(const te::LoopNode* op, const Stmt& s) final {
-    te::Loop loop = GetRef<te::Loop>(op);
-    loop.Mutable()->min = Mutate(loop->min);
-    loop.Mutable()->extent = Mutate(loop->extent);
-    loop.Mutable()->body = Mutate(loop->body);
-    return loop;
-  }
-
-  Stmt Mutate_(const te::BlockNode* op, const Stmt& s) final {
-    te::Block block = GetRef<te::Block>(op);
-    Array<Expr> values;
-    for (const auto& expr : block->values) {
-      values.push_back(Mutate(expr));
-    }
-    block.Mutable()->values = values;
-    return block;
-  }
-
  private:
   const std::function<Expr(const Variable*)> fmap_;
 };
@@ -100,7 +82,7 @@ Expr Substitute(Expr expr, const std::function<Expr(const Variable*)>& value_fun
 
 Stmt Substitute(Stmt stmt,
                 const std::unordered_map<const VarNode*, PrimExpr>& value_map) {
-  if (!value_map.empty()) return stmt;
+  if (value_map.empty()) return stmt;
   auto fmap = [&](const Variable* v) -> Expr {
     auto it = value_map.find(v);
     if (it != value_map.end()) {
@@ -114,7 +96,7 @@ Stmt Substitute(Stmt stmt,
 
 PrimExpr Substitute(PrimExpr expr,
                 const std::unordered_map<const VarNode*, PrimExpr>& value_map) {
-  if (!value_map.empty()) return expr;
+  if (value_map.empty()) return expr;
   auto fmap = [&](const Variable* v) -> Expr {
     auto it = value_map.find(v);
     if (it != value_map.end()) {

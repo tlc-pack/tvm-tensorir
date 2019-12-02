@@ -6,7 +6,8 @@
 #include <tvm/te/transform.h>
 #include <tvm/api_registry.h>
 #include <tvm/te/schedule.h>
-#include "schedule_creator.h"
+#include "schedule/schedule_creator.h"
+#include <tvm/te/scheduleX.h>
 
 namespace tvm {
 namespace te {
@@ -25,13 +26,13 @@ TVM_REGISTER_API("te.schedule.ScheduleBlocks")
 .set_body_method(&Schedule::Blocks);
 
 TVM_REGISTER_API("te.schedule.ScheduleGetBlocksFromTag")
-.set_body_typed<Array<Block>(Schedule, std::string)>(
+.set_body_typed<Array<BlockTreeNodeRef>(Schedule, std::string)>(
     [](Schedule schedule, std::string tag) {
       return schedule.GetBlock(tag);
     });
 
 TVM_REGISTER_API("te.schedule.ScheduleGetBlocksFromBuffer")
-.set_body_typed<Array<Block>(Schedule, Buffer)>(
+.set_body_typed<Array<BlockTreeNodeRef>(Schedule, Buffer)>(
     [](Schedule schedule, Buffer buffer) {
       return schedule.GetBlock(buffer);
     });
@@ -46,10 +47,13 @@ TVM_REGISTER_API("te.schedule.ScheduleSplitByFactor")
 .set_body_method(&Schedule::split);
 
 TVM_REGISTER_API("te.schedule.ScheduleSplitByNParts")
-.set_body_typed<Array<Loop>(Schedule, Loop, Expr)>(
-    [](Schedule schedule, Loop loop, Expr nparts) {
-      return schedule.split(loop, truncdiv(loop->extent + nparts - 1, nparts));
+.set_body_typed<Array<AxisTreeNodeRef>(Schedule, AxisTreeNodeRef, Expr)>(
+    [](Schedule schedule, AxisTreeNodeRef loop, Expr nparts) {
+      return schedule.split(loop, truncdiv(loop->loop->extent + nparts - 1, nparts));
     });
+
+TVM_REGISTER_API("te.schedule.ScheduleComputeInline")
+.set_body_method(&Schedule::compute_inline);
 
 // maker
 TVM_REGISTER_API("make.TensorRegion")
@@ -89,6 +93,7 @@ TVM_REGISTER_API("make.TeBlock")
                       Array<TensorRegion>,
                       Array<TensorRegion>,
                       Stmt, Expr,
+                      Array<BufferAllocate>,
                       Array<Annotation>,
                       std::string)>(
     [](Array<IterVar> iter_vars,
@@ -97,6 +102,7 @@ TVM_REGISTER_API("make.TeBlock")
        Array<TensorRegion> writes,
        Stmt body,
        Expr predicate,
+       Array<BufferAllocate> allocates,
        Array<Annotation> annotations,
        std::string tag) {
       if (!predicate.type().is_bool()) {
@@ -105,7 +111,7 @@ TVM_REGISTER_API("make.TeBlock")
         predicate = UIntImm::make(Bool(), 1);
       }
       return Block(iter_vars, values, reads, writes,
-                   body, predicate, annotations, tag);
+                   body, predicate, allocates, annotations, tag);
     });
 
 TVM_REGISTER_API("make.TeFunction")
@@ -116,5 +122,16 @@ TVM_REGISTER_API("make.TeFunction")
       return Function(params, buffer_map, name, body);
     });
 
+TVM_REGISTER_API("te.schedule.CreateScheduleX")
+.set_body_typed(ScheduleX::Create);
+
+TVM_REGISTER_API("te.schedule.ReplaceX")
+.set_body_method(&ScheduleX::Replace);
+
+TVM_REGISTER_API("te.schedule.GetStmtSRef")
+.set_body_typed<StmtSRef(ScheduleX, Stmt)>(
+    [](ScheduleX schedule_x, Stmt stmt) {
+      return schedule_x->stmt2ref.at(stmt.operator->());
+    });
 }  // namespace te
 }  // namespace tvm
