@@ -23,56 +23,23 @@
 namespace tvm {
 namespace te {
 
-class DependencyAnalyzer : public IRVisitor {
- public:
-  explicit DependencyAnalyzer(Function func) : func_(func) {
-    NodePtr<DependencyGraphNode> node = make_node<DependencyGraphNode>();
-    graph_ = DependencyGraph(node);
-  }
-  void Visit_(const BlockNode* op) {
-    Block block = GetRef<Block>(op);
-    for (const auto& read : op->reads) {
-      const auto& read_buffer = read->buffer;
-      for (const auto& write_block : write_map_[read_buffer]) {
-        graph_.AddEdge(block, write_block, kWAR);
-      }
-    }
-  }
-
-  DependencyGraph GetDependency() {
-    Visit(func_->body);
-    return graph_;
-  }
-
- private:
-  std::unordered_map<Buffer, std::list<Block>,
-                     NodeHash, NodeEqual> write_map_;
-  Function func_;
-  DependencyGraph graph_;
-};
-
-DepEdge::DepEdge(Block dst, EdgeType type) {
+DepEdge::DepEdge(BlockTreeNodeRef dst, EdgeType type) {
   NodePtr<DepEdgeNode> node = make_node<DepEdgeNode>();
   node->dst = std::move(dst);
-  node->type = std::move(type);
+  node->type = type;
   data_ = std::move(node);
 }
 
-DependencyGraph::DependencyGraph(Function func) {
-  data_ = DependencyAnalyzer(func).GetDependency().data_;
-}
-
-void DependencyGraph::AddEdge(Block from, Block to, EdgeType type) {
+void DependencyGraph::AddEdge(BlockTreeNodeRef from, BlockTreeNodeRef to, EdgeType type) {
   if (!from.same_as(to)) {
-    const_cast<DependencyGraphNode*>(operator->())
-        ->forward_edges[from].push_back(DepEdge(to, type));
-    const_cast<DependencyGraphNode*>(operator->())
-        ->backward_edges[to].push_back(DepEdge(from, type));
+    DependencyGraphNode* node = static_cast<DependencyGraphNode*>(data_.get());
+    node->forward_edges[from].push_back(DepEdge(to, type));
+    node->backward_edges[to].push_back(DepEdge(from, type));
   }
 }
 
-Array<Block> DependencyGraph::GetSuccessor(Block block) const {
-  Array<Block> ret;
+Array<BlockTreeNodeRef> DependencyGraph::GetSuccessor(BlockTreeNodeRef block) const {
+  Array<BlockTreeNodeRef> ret;
   auto iter = operator->()->forward_edges.find(block);
   if (iter != operator->()->forward_edges.end()) {
     for (const auto& x : iter->second) {
@@ -82,8 +49,8 @@ Array<Block> DependencyGraph::GetSuccessor(Block block) const {
   return ret;
 }
 
-Array<Block> DependencyGraph::GetPredecessor(Block block) const {
-  Array<Block> ret;
+Array<BlockTreeNodeRef> DependencyGraph::GetPredecessor(BlockTreeNodeRef block) const {
+  Array<BlockTreeNodeRef> ret;
   auto iter = operator->()->backward_edges.find(block);
   if (iter != operator->()->backward_edges.end()) {
     for (const auto& x : iter->second) {
@@ -93,12 +60,12 @@ Array<Block> DependencyGraph::GetPredecessor(Block block) const {
   return ret;
 }
 
-void DependencyGraph::InlineBlock(Block block) {
+void DependencyGraph::InlineBlock(BlockTreeNodeRef block) {
   auto& forward_edges = const_cast<DependencyGraphNode*>(operator->())->forward_edges;
   auto& backward_edges = const_cast<DependencyGraphNode*>(operator->())->backward_edges;
 
-  std::list<DepEdge> successors = forward_edges[block];
-  std::list<DepEdge> predecessors = backward_edges[block];
+  std::vector<DepEdge> successors = forward_edges[block];
+  std::vector<DepEdge> predecessors = backward_edges[block];
 
   // delete old edges
   forward_edges.erase(block);

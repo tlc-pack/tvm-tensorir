@@ -26,7 +26,8 @@
 #define TVM_TE_DEPENDENCY_GRAPH_H_
 
 #include <tvm/te/ir.h>
-#include <list>
+#include <tvm/te/schedule_tree.h>
+#include <vector>
 #include <unordered_map>
 
 namespace tvm {
@@ -46,7 +47,7 @@ enum EdgeType : int {
 class DepEdge;
 class DepEdgeNode : public Node {
  public:
-  Block dst;
+  BlockTreeNodeRef dst;
   EdgeType type;
 
   void VisitAttrs(AttrVisitor* v) {}
@@ -57,7 +58,7 @@ class DepEdgeNode : public Node {
 
 class DepEdge : public NodeRef {
  public:
-  DepEdge(Block, EdgeType type);
+  DepEdge(BlockTreeNodeRef, EdgeType type);
   TVM_DEFINE_NODE_REF_METHODS(DepEdge, NodeRef, DepEdgeNode);
 };
 
@@ -68,9 +69,9 @@ class DependencyGraph;
 class DependencyGraphNode : public Node {
  public:
   /*! \brief The forward dependency edges of the block*/
-  std::unordered_map<Block, std::list<DepEdge>, NodeHash, NodeEqual> forward_edges;
+  std::unordered_map<BlockTreeNodeRef, std::vector<DepEdge>, NodeHash, NodeEqual> forward_edges;
   /*! \brief The backward dependency edges of the block*/
-  std::unordered_map<Block, std::list<DepEdge>, NodeHash, NodeEqual> backward_edges;
+  std::unordered_map<BlockTreeNodeRef, std::vector<DepEdge>, NodeHash, NodeEqual> backward_edges;
 
   void VisitAttrs(AttrVisitor* v) {}
 
@@ -81,32 +82,27 @@ class DependencyGraphNode : public Node {
 class DependencyGraph : public NodeRef {
  public:
   /*!
-   * \brief Construct DependencyGraph.
-   * \param the function to be analysed
-   */
-  explicit DependencyGraph(Function func);
-  /*!
    * \brief Add a dependency edge.
    * \param from The departure of the edge
    * \param to The destination of the edge
    * \param type The dependency type
    */
-  void AddEdge(Block from, Block to, EdgeType type);
+  void AddEdge(BlockTreeNodeRef from, BlockTreeNodeRef to, EdgeType type);
   /*!
   * \brief Inline a block when compute_inline.
   * \param stmt The block to be inline
   */
-  void InlineBlock(Block block);
+  void InlineBlock(BlockTreeNodeRef block);
   /*!
   * \brief Get all blocks that are dependent on block.
   * \param stmt The query block
   */
-  Array<Block> GetSuccessor(Block block) const;
+  Array<BlockTreeNodeRef> GetSuccessor(BlockTreeNodeRef block) const;
   /*!
    * \brief get all blocks that this block dependent on.
    * \param stmt The query block
    * */
-  Array<Block> GetPredecessor(Block block) const;
+  Array<BlockTreeNodeRef> GetPredecessor(BlockTreeNodeRef block) const;
 
   TVM_DEFINE_NODE_REF_METHODS(DependencyGraph, NodeRef, DependencyGraphNode);
 };
