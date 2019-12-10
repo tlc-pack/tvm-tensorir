@@ -87,6 +87,12 @@ class StmtNode : public Node {
 /*! \brief Container of all statements */
 class Stmt : public NodeRef {
  public:
+  inline bool unique() const {
+    return data_.unique();
+  }
+  inline bool use_count() const {
+    return data_.use_count();
+  }
   TVM_DEFINE_NODE_REF_METHODS(Stmt, NodeRef, StmtNode);
 };
 

@@ -46,13 +46,6 @@ class TensorAccessGather : public IRVisitor {
   Buffer target_tensor_;
 };
 
-class ScheduleMutator : public IRMutator {
- public:
-  ScheduleMutator() = default;
-  virtual Stmt Mutate_(const BlockNode* op, const Stmt& s) override;
-  virtual Stmt Mutate_(const LoopNode* op, const Stmt& s) override;
-};
-
 Array<Var> GatherVars(const NodeRef& expr_or_stmt);
 
 Array<TensorRegion> CreateInputRegions(const Stmt& stmt);

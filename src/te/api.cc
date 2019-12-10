@@ -25,13 +25,13 @@ TVM_REGISTER_API("te.schedule.ScheduleBlocks")
 .set_body_method(&Schedule::Blocks);
 
 TVM_REGISTER_API("te.schedule.ScheduleGetBlocksFromTag")
-.set_body_typed<Array<Block>(Schedule, std::string)>(
+.set_body_typed<Array<BlockTreeNodeRef>(Schedule, std::string)>(
     [](Schedule schedule, std::string tag) {
       return schedule.GetBlock(tag);
     });
 
 TVM_REGISTER_API("te.schedule.ScheduleGetBlocksFromBuffer")
-.set_body_typed<Array<Block>(Schedule, Buffer)>(
+.set_body_typed<Array<BlockTreeNodeRef>(Schedule, Buffer)>(
     [](Schedule schedule, Buffer buffer) {
       return schedule.GetBlock(buffer);
     });
@@ -46,13 +46,13 @@ TVM_REGISTER_API("te.schedule.ScheduleSplitByFactor")
 .set_body_method(&Schedule::split);
 
 TVM_REGISTER_API("te.schedule.ScheduleSplitByNParts")
-.set_body_typed<Array<Loop>(Schedule, Loop, Expr)>(
-    [](Schedule schedule, Loop loop, Expr nparts) {
-      return schedule.split(loop, truncdiv(loop->extent + nparts - 1, nparts));
+.set_body_typed<Array<AxisTreeNodeRef>(Schedule, AxisTreeNodeRef, Expr)>(
+    [](Schedule schedule, AxisTreeNodeRef loop, Expr nparts) {
+      return schedule.split(loop, truncdiv(loop->loop->extent + nparts - 1, nparts));
     });
 
-TVM_REGISTER_API("te.schedule.ScheduleComputeInline")
-.set_body_method(&Schedule::compute_inline);
+//TVM_REGISTER_API("te.schedule.ScheduleComputeInline")
+//.set_body_method(&Schedule::compute_inline);
 
 // maker
 TVM_REGISTER_API("make.TensorRegion")

@@ -70,24 +70,6 @@ class IRSubstitue : public IRMutator {
     }
   }
 
-  Stmt Mutate_(const te::LoopNode* op, const Stmt& s) final {
-    te::Loop loop = GetRef<te::Loop>(op);
-    loop.Mutable()->min = Mutate(loop->min);
-    loop.Mutable()->extent = Mutate(loop->extent);
-    loop.Mutable()->body = Mutate(loop->body);
-    return std::move(loop);
-  }
-
-  Stmt Mutate_(const te::BlockNode* op, const Stmt& s) final {
-    te::Block block = GetRef<te::Block>(op);
-    Array<Expr> values;
-    for (const auto& expr : block->values) {
-      values.push_back(Mutate(expr));
-    }
-    block.Mutable()->values = values;
-    return std::move(block);
-  }
-
  private:
   const std::function<Expr(const Variable*)> fmap_;
 };

@@ -45,21 +45,6 @@ inline Array<Expr> MutateArray(Array<Expr> arr, IRMutator* m) {
   }
 }
 
-Stmt ScheduleMutator::Mutate_(const BlockNode* op, const Stmt& s) {
-  te::Block block = GetRef<te::Block>(op);
-  block.Mutable()->values = MutateArray(op->values, this);
-  block.Mutable()->predicate = this->Mutate(op->predicate);
-  block.Mutable()->body = this->Mutate(op->body);
-}
-
-Stmt ScheduleMutator::Mutate_(const LoopNode* op, const Stmt& s) {
-  te::Loop loop = GetRef<te::Loop>(op);
-  loop.Mutable()->min = Mutate(loop->min);
-  loop.Mutable()->extent = Mutate(loop->extent);
-  loop.Mutable()->body = Mutate(loop->body);
-  return std::move(loop);
-}
-
 Array<Var> GatherVars(const NodeRef& expr_or_stmt) {
   Array<Var> ret;
   ir::PostOrderVisit(expr_or_stmt, [&ret](const NodeRef& node) {

@@ -251,9 +251,6 @@ class Loop : public Stmt {
    * Node that the mutate can be only used in schedule
    * and will be replaced later
    */
-  LoopNode* Mutable() {
-    return static_cast<LoopNode*>(data_.get());
-  }
 };
 
 /*!
@@ -349,9 +346,6 @@ class Block : public Stmt {
     * Node that the mutate can be only used in schedule
     * and will be replaced later
     */
-  BlockNode* Mutable() {
-    return static_cast<BlockNode*>(data_.get());
-  }
  private:
   friend Schedule;
   friend ir::IRSubstitue;
