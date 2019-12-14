@@ -26,24 +26,9 @@
 #include <tvm/ir_visitor.h>
 #include <tvm/ir_mutator.h>
 
+
 namespace tvm {
 namespace te {
-
-inline Array<Expr> MutateArray(Array<Expr> arr, IRMutator* m) {
-  std::vector<Expr> new_arr(arr.size());
-  bool changed = false;
-  for (size_t i = 0; i < arr.size(); ++i) {
-    Expr old_elem = arr[i];
-    Expr new_elem = m->Mutate(old_elem);
-    if (!new_elem.same_as(old_elem)) changed = true;
-    new_arr[i] = new_elem;
-  }
-  if (!changed) {
-    return arr;
-  } else {
-    return Array<Expr>(new_arr);
-  }
-}
 
 Array<Var> GatherVars(const NodeRef& expr_or_stmt) {
   Array<Var> ret;

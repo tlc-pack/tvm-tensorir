@@ -84,7 +84,7 @@ Expr Substitute(Expr expr, const std::function<Expr(const Variable*)>& value_fun
 
 Stmt Substitute(Stmt stmt,
                 const std::unordered_map<const Variable*, Expr>& value_map) {
-  if (!value_map.empty()) return stmt;
+  if (value_map.empty()) return stmt;
   auto fmap = [&](const Variable* v) -> Expr {
     auto it = value_map.find(v);
     if (it != value_map.end()) {
@@ -98,7 +98,7 @@ Stmt Substitute(Stmt stmt,
 
 Expr Substitute(Expr expr,
                 const std::unordered_map<const Variable*, Expr>& value_map) {
-  if (!value_map.empty()) return expr;
+  if (value_map.empty()) return expr;
   auto fmap = [&](const Variable* v) -> Expr {
     auto it = value_map.find(v);
     if (it != value_map.end()) {

@@ -235,7 +235,7 @@ void IRVisitor::Visit_(const te::BlockNode* op) {
 }
 
 void IRVisitor::Visit_(const te::BufferStoreNode *op) {
-  this->Visit(op->indices);
+  VisitArray(op->indices, this);
   this->Visit(op->value);
 }
 
@@ -248,7 +248,7 @@ void IRVisitor::Visit_(const te::LoopNode* op) {
 }
 
 void IRVisitor::Visit_(const te::BufferLoadNode* op) {
-  this->Visit(op->indices);
+  VisitArray(op->indices, this);
 }
 
 void IRVisitor::Visit_(const te::SeqStmtNode* op) {

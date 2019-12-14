@@ -46,7 +46,6 @@ def test_fuse():
     s.fuse(outer, inner)
     outer, inner = s.get_axes(C)
     s.fuse(outer, inner)
-    print(s.func)
 
     util.check_correctness(func, s.func, tensors, tensor_map)
 
@@ -62,8 +61,7 @@ def test_split():
     outer, inner = s.get_axes(B)
     s.split(outer, factor=8)
     outer, inner = s.get_axes(C)
-    s.split(outer, nparts=10)
-    print(s.func)
+    s.split(inner, nparts=10)
 
     util.check_correctness(func, s.func, tensors, tensor_map)
 
@@ -81,8 +79,8 @@ def test_compute_inline():
 
 
 if __name__ == "__main__":
-    # test_create_schedule()
-    # test_block_axis()
-    # test_fuse()
+    test_create_schedule()
+    test_block_axis()
+    test_fuse()
     test_split()
-    # test_compute_inline()
+    test_compute_inline()

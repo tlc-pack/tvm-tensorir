@@ -555,7 +555,7 @@ Expr IRMutator::Mutate_(const Shuffle *op, const Expr& e) {
 }
 
 Expr IRMutator::Mutate_(const te::BufferLoadNode* op, const Expr& e) {
-  Array<Expr> indices = MutateArray(op->indices, this);
+  auto indices = MutateArray(op->indices, this);
   if (op->indices.same_as(indices)) {
     return e;
   } else {

@@ -67,7 +67,7 @@ Stmt ScheduleCreator::Mutate_(const BlockNode* op, const Stmt& s) {
     const auto& read_buffer = read->buffer;
     if (write_map_.count(read_buffer)) {
       for (const auto& write_block : write_map_[read_buffer]) {
-        dependency_graph_.AddEdge(block_node, write_block, kWAR);
+        dependency_graph_.AddEdge(write_block, block_node, kWAR);
       }
     }
   }

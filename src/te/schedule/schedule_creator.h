@@ -22,8 +22,8 @@
  * \file schedule_creator.h
  */
 
-#ifndef TVM_TE_SCHEDULE_CREATOR_H_
-#define TVM_TE_SCHEDULE_CREATOR_H_
+#ifndef TVM_TE_SCHEDULE_SCHEDULE_CREATOR_H_
+#define TVM_TE_SCHEDULE_SCHEDULE_CREATOR_H_
 #include <tvm/ir_mutator.h>
 #include <tvm/te/schedule.h>
 #include <tvm/te/schedule_tree.h>
@@ -59,4 +59,4 @@ class ScheduleCreator : public IRMutator {
 }  // namespace te
 }  // namespace tvm
 
-#endif  // TVM_TE_SCHEDULE_CREATOR_H_
+#endif  // TVM_TE_SCHEDULE_SCHEDULE_CREATOR_H_

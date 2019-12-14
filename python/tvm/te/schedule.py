@@ -127,7 +127,15 @@ class Schedule(NodeBase):
         return outer, inner
 
     def compute_inline(self, block):
-        #TODO(comment)
+        """Mark one stage as inline, then the body of computation will be expanded and
+        inserted at the address where the tensor is required.
+
+        Parameters
+        ----------
+        block: Block
+            The Block to be inlined
+
+        """
         return ScheduleComputeInline(self, block)
 
 

@@ -118,7 +118,6 @@ class Schedule : public NodeRef {
   void compute_inline(BlockTreeNodeRef block);
 
  private:
-
   void RemoveStmt(Stmt stmt);
 
   void Replace(ScheduleTreeNodeRef old_node, Stmt new_stmt);

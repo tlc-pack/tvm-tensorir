@@ -51,8 +51,8 @@ TVM_REGISTER_API("te.schedule.ScheduleSplitByNParts")
       return schedule.split(loop, truncdiv(loop->loop->extent + nparts - 1, nparts));
     });
 
-//TVM_REGISTER_API("te.schedule.ScheduleComputeInline")
-//.set_body_method(&Schedule::compute_inline);
+TVM_REGISTER_API("te.schedule.ScheduleComputeInline")
+.set_body_method(&Schedule::compute_inline);
 
 // maker
 TVM_REGISTER_API("make.TensorRegion")

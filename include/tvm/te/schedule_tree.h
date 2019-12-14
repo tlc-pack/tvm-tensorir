@@ -36,14 +36,14 @@ class ScheduleTreeNode;
 class ScheduleTreeNodeRef : public NodeRef {
  public:
   ScheduleTreeNodeRef() {}
-  explicit ScheduleTreeNodeRef(NodePtr<Node> n): NodeRef(n) {}
+  explicit ScheduleTreeNodeRef(NodePtr<Node> n) : NodeRef(n) {}
 
   const ScheduleTreeNode* operator->() const;
   ScheduleTreeNode* operator->();
   operator bool() const { return this->defined(); }
   using ContainerType = ScheduleTreeNode;
-
 };
+
 class ScheduleTreeNode : public Node {
  public:
   ScheduleTreeNodeRef father;
@@ -52,8 +52,6 @@ class ScheduleTreeNode : public Node {
   TVM_DECLARE_NODE_TYPE_INFO(ScheduleTreeNode, Node);
   virtual const StmtNode* stmt() const { return nullptr; }
 };
-
-
 
 class BlockTreeNodeRef;
 class BlockTreeNode : public ScheduleTreeNode {
@@ -73,7 +71,7 @@ class BlockTreeNode : public ScheduleTreeNode {
 class BlockTreeNodeRef : public ScheduleTreeNodeRef {
  public:
   explicit BlockTreeNodeRef(const BlockNode* block,
-                           ScheduleTreeNodeRef father);
+                            ScheduleTreeNodeRef father);
   TVM_DEFINE_NODE_REF_METHODS(BlockTreeNodeRef, ScheduleTreeNodeRef, BlockTreeNode);
   inline BlockTreeNode* operator->() {
     return static_cast<BlockTreeNode*>(data_.get());
@@ -106,7 +104,7 @@ class AxisTreeNodeRef : public ScheduleTreeNodeRef {
   }
 };
 
-}
-}
+}  // namespace te
+}  // namespace tvm
 
-#endif  //TVM_TE_SCHEDULE_TREE_H_
+#endif  // TVM_TE_SCHEDULE_TREE_H_

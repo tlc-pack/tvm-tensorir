@@ -19,10 +19,9 @@
 
 #include <tvm/te/schedule.h>
 #include <tvm/api_registry.h>
-#include <tvm/ir_functor_ext.h>
 #include <tvm/te/transform.h>
 #include <tvm/ir_mutator.h>
-#include "../util.h"
+#include "sub_replacer.h"
 
 namespace tvm {
 namespace te {
@@ -81,111 +80,25 @@ void Schedule::UpdateChildren(Stmt stmt, ScheduleTreeNodeRef father) {
   }
 }
 
-class SubReplacer : public IRMutator {
- public:
-  SubReplacer(ScheduleNode* schedule, Stmt old_stmt, Stmt new_stmt)
-      : schedule_(schedule), old_stmt_(old_stmt), new_stmt_(new_stmt) {}
-
-  Stmt Mutate_(const SeqStmtNode* op, const Stmt& s) final {
-    if (s.unique()) {
-      SeqStmtNode* seq = const_cast<SeqStmtNode*>(op);
-      for (size_t i = 0; i < seq->size(); ++i) {
-        if (seq->operator[](i).same_as(old_stmt_)) {
-          seq->operator[](i) = new_stmt_;
-        }
-      }
-      need_copy = false;
-      return s;
-    } else {
-      Array<Stmt> stmt;
-      for (size_t i = 0; i < op->size(); ++i) {
-        if (op->operator[](i).same_as(old_stmt_)) {
-          stmt.push_back(new_stmt_);
-        } else {
-          stmt.push_back(op->operator[](i));
-        }
-      }
-      return SeqStmt(stmt);
-    }
-  }
-  Stmt Mutate_(const BlockNode* op, const Stmt& s) final {
-    Stmt body;
-    if (op->body.as<SeqStmtNode>()) {
-      body = Mutate(op->body);
-    } else {
-      CHECK(op->body.same_as(old_stmt_));
-      body = new_stmt_;
-    }
-    LOG(INFO) << op->predicate;
-    if (need_copy && s.unique()) {
-      auto* seq = const_cast<BlockNode*>(op);
-      seq->body = body;
-      need_copy = false;
-      return s;
-    } else if (need_copy && !s.unique()) {
-      Block new_block(op->iter_vars, op->values,
-                      op->reads, op->writes,
-                      body, op->predicate,
-                      op->annotations, op->tag);
-      const auto* stmt_node = new_block.as<StmtNode>();
-      const auto* old_stmt = static_cast<const StmtNode*>(op);
-      schedule_->stmt_map[stmt_node] = schedule_->stmt_map[old_stmt];
-      schedule_->stmt_map.erase(old_stmt);
-      return std::move(new_block);
-    } else {
-      return s;
-    }
-
-  }
-  Stmt Mutate_(const LoopNode* op, const Stmt& s) final {
-    Stmt body;
-    if (op->body.as<SeqStmtNode>()) {
-      body = Mutate(op->body);
-    } else {
-      CHECK(op->body.same_as(old_stmt_));
-      body = new_stmt_;
-    }
-    if (need_copy && s.unique()) {
-      auto* seq = const_cast<LoopNode*>(op);
-      seq->body = body;
-      need_copy = false;
-      return s;
-    } else if (need_copy && !s.unique()) {
-      Loop new_loop(op->loop_var, op->min, op->extent,
-                    op->annotations, body);
-      const auto* stmt_node = new_loop.as<StmtNode>();
-      const auto* old_stmt = static_cast<const StmtNode*>(op);
-      schedule_->stmt_map[stmt_node] = schedule_->stmt_map[old_stmt];
-      schedule_->stmt_map.erase(old_stmt);
-      return std::move(new_loop);
-    } else {
-      return s;
-    }
-  }
-
-  bool need_copy{true};
- private:
-  ScheduleNode* schedule_;
-  Stmt old_stmt_;
-  Stmt new_stmt_;
-};
-
 void Schedule::Replace(ScheduleTreeNodeRef old_node, Stmt new_stmt) {
-  CHECK(new_stmt.as<LoopNode>() || new_stmt.as<BlockNode>());
-  UpdateChildren(new_stmt, old_node->father);
+  if (new_stmt.as<LoopNode>() || new_stmt.as<BlockNode>()) {
+    UpdateChildren(new_stmt, old_node->father);
+  } else {
+    CHECK(new_stmt.as<Evaluate>());
+  }
   bool need_copy = true;
   ScheduleTreeNodeRef node = old_node;
   Stmt old_stmt = GetRef<Stmt>(node->stmt());
   while (node->father != operator->()->root &&
       node != operator->()->root) {
     node = node->father;
-    old_stmt = GetRef<Stmt>(node->stmt());
     SubReplacer sub_replacer(operator->(), old_stmt, new_stmt);
-    new_stmt = sub_replacer.Mutate(GetRef<Stmt>(node->stmt()));
+    new_stmt = sub_replacer.Mutate(node->stmt());
     if (!sub_replacer.need_copy) {
       need_copy = false;
       break;
     }
+    old_stmt = GetRef<Stmt>(node->stmt());
   }
   if (need_copy) {
     const auto& func = operator->()->func;
@@ -299,7 +212,7 @@ AxisTreeNodeRef Schedule::fuse(AxisTreeNodeRef outer, AxisTreeNodeRef inner) {
 
 class PredicateAdder : public IRMutator {
  public:
-  PredicateAdder(Expr predicate) : predicate_(predicate) {}
+  explicit PredicateAdder(Expr predicate) : predicate_(predicate) {}
 
   Stmt Mutate_(const BlockNode* op, const Stmt& s) final {
     return Block(op->iter_vars, op->values,

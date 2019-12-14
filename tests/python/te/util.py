@@ -33,8 +33,8 @@ def element_wise_stmt(m=128, n=128):
 
     with ib.loop_range(0, m, name="i0") as i:
         with ib.loop_range(0, n, name="j0") as j:
-            bv_i = ib.iter_var(dom_i, name="vi")
-            bv_j = ib.iter_var(dom_j, name="vj")
+            bv_i = ib.iter_var(dom_i, name="vi0")
+            bv_j = ib.iter_var(dom_j, name="vj0")
             vi = bv_i.var
             vj = bv_j.var
             with ib.block([bv_i, bv_j], [i, j], A[vi:vi + 1, vj:vj + 1], B[vi:vi + 1, vj:vj + 1], name="B"):
@@ -42,8 +42,8 @@ def element_wise_stmt(m=128, n=128):
 
     with ib.loop_range(0, m, name="i1") as i:
         with ib.loop_range(0, n, name="j1") as j:
-            bv_i = ib.iter_var(dom_i, name="vi")
-            bv_j = ib.iter_var(dom_j, name="vj")
+            bv_i = ib.iter_var(dom_i, name="vi1")
+            bv_j = ib.iter_var(dom_j, name="vj1")
             vi = bv_i.var
             vj = bv_j.var
             with ib.block([bv_i, bv_j], [i, j], B[vi:vi + 1, vj:vj + 1], C[vi:vi + 1, vj:vj + 1], name="C"):
@@ -69,15 +69,15 @@ def matmul_stmt(m=128, n=128, l=128):
 
     with ib.loop_range(0, m, name="i") as i:
         with ib.loop_range(0, n, name="j") as j:
-            bv_i = ib.iter_var(dom_i, name="vi")
-            bv_j = ib.iter_var(dom_j, name="vj")
+            bv_i = ib.iter_var(dom_i, name="vi0")
+            bv_j = ib.iter_var(dom_j, name="vj0")
             vi = bv_i.var
             vj = bv_j.var
             with ib.block([bv_i, bv_j], [i, j], [], C[vi:vi + 1, vj:vj + 1], name="init"):
                 C[vi, vj] = 0.0
             with ib.loop_range(0, l, name="k") as k:
-                ii = ib.iter_var(dom_i, name="vi")
-                jj = ib.iter_var(dom_j, name="vj")
+                ii = ib.iter_var(dom_i, name="vi1")
+                jj = ib.iter_var(dom_j, name="vj1")
                 kk = ib.iter_var(dom_k, iter_type="reduce", name="vk")
                 vi = ii.var
                 vj = jj.var

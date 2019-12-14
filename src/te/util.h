@@ -23,6 +23,8 @@
 #include <tvm/te/ir.h>
 #include <tvm/ir_mutator.h>
 #include <tvm/ir_visitor.h>
+#include <utility>
+#include <vector>
 
 namespace tvm {
 namespace te {
