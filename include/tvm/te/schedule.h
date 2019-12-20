@@ -17,120 +17,88 @@
  * under the License.
  */
 
-/*!
- * \file tvm/te/schedule.h
- * \brief The schedule of TE IR
- */
-
 #ifndef TVM_TE_SCHEDULE_H_
 #define TVM_TE_SCHEDULE_H_
-
 #include <tvm/te/ir.h>
-#include <tvm/te/dependency_graph.h>
-#include <tvm/te/schedule_tree.h>
-#include <string>
-#include <unordered_map>
 
 namespace tvm {
 namespace te {
 
-class Schedule;
+/*!
+ * \brief The container of stmt schedulable ref.
+ */
+class StmtSRefNode : public Node {
+ public:
+  /*! \brief The corresponding stmt node */
+  const StmtNode* node;
+  /*! \brief The parent sref */
+  StmtSRefNode* parent{nullptr};
+  /*! \brief The location in an array if parent contains SeqStmt. */
+  int64_t seq_index{-1};
+
+  void VisitAttrs(AttrVisitor* v) {}
+
+  static constexpr const char* _type_key = "StmtSRef";
+  TVM_DECLARE_NODE_TYPE_INFO(StmtSRefNode, Node);
+};
+
+/*!
+ * \brief The stmt schedulable ref.
+ */
+class StmtSRef : public NodeRef {
+ public:
+  StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index = -1);
+
+  StmtSRefNode* operator->() {
+    return static_cast<StmtSRefNode*>(NodeRef::get_mutable());
+  }
+  TVM_DEFINE_NODE_REF_METHODS(StmtSRef, NodeRef, StmtSRefNode);
+};
+
 class ScheduleNode : public Node {
  public:
+  /*! \brief The function to be scheduled */
+  Function func;
+  /*! \brief The root of schedulable reference tree */
+  StmtSRef root;
+  /*!
+   * \brief The mapping from stmt to its schedulable reference node
+   * \note This is a hint to improve mutation efficiency
+   * */
+  std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
+
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("func", &func);
   }
-  /*! \brief The function to be scheduled */
-  Function func;
-  /*! \brief The root of auxiliary structure */
-  ScheduleTreeNodeRef root;
-  /*! \brief The dependency graph used in some primitives */
-  Map<BlockTreeNodeRef, DependencyGraph> dependency_graph;
-  /*! \brief The mapping from output buffer to its producer blocks */
-  Map<Buffer, Array<BlockTreeNodeRef>> write_map;
-  /*! \brief The mapping from stmt to its auxiliary structure */
-  std::unordered_map<const StmtNode*, ScheduleTreeNodeRef> stmt_map;
 
   static constexpr const char* _type_key = "te.Schedule";
   TVM_DECLARE_NODE_TYPE_INFO(ScheduleNode, Node);
- private:
-  friend class Schedule;
 };
 
 class Schedule : public NodeRef {
  public:
-  explicit Schedule(Function func,
-                    ScheduleTreeNodeRef root,
-                    Map<BlockTreeNodeRef, DependencyGraph> dependency_graph,
-                    Map<Buffer, Array<BlockTreeNodeRef>> write_map,
-                    std::unordered_map<const StmtNode*, ScheduleTreeNodeRef> stmt_map);
+  /*!
+   * \brief Create a new schedule
+   * \param func The function to be scheduled
+   * \return The schedule
+   * */
+  static Schedule Create(const Function& func);
+
+  /*!
+   * \brief replace part of AST with new stmt
+   * \param ref The schedulable reference of the old stmt
+   * \param target The new stmt
+   * */
+  void Replace(StmtSRef ref, Stmt target);
+
   TVM_DEFINE_NODE_REF_METHODS(Schedule, NodeRef, ScheduleNode);
 
-  /*!
-   * \brief Get block from its tag
-   * \param tag The query tag
-   * \return the block list
-   * */
-  Array<BlockTreeNodeRef> GetBlock(std::string tag) const;
-
-  /*!
-   * \brief Get block from its output tensor
-   * \param tag The query buffer
-   * \return the block list
-   * */
-  Array<BlockTreeNodeRef> GetBlock(Buffer buffer) const;
-
-  /*!
-   * \brief Get all blocks in the schedule
-   * \return the block list
-   * */
-  Array<BlockTreeNodeRef> Blocks() const;
-
-  /*!
-   * \brief Get axes of the block
-   * \param block The query block
-   * \return the axis list
-   * */
-  Array<AxisTreeNodeRef> GetAxes(BlockTreeNodeRef block) const;
-
-  /*!
-   * \brief fuse two consecutive axises of one computation.
-   * \param outer The outer loop
-   * \param inner The inner loop
-   * \return the fused loop
-   * */
-  AxisTreeNodeRef fuse(AxisTreeNodeRef outer, AxisTreeNodeRef inner);
-
-  /*!
-   * \brief split a specified axis into two axises by factor.
-   * \param loop The loop to be split
-   * \param factor The split factor
-   * \return the loops after splitting
-   * */
-  Array<AxisTreeNodeRef> split(AxisTreeNodeRef loop, Expr factor);
-
-  /*!
-   * \brief make one block inline, then the body of computation
-   *  will be expanded and inserted at the address where the tensor
-   *  is required.
-   * \param block the inline block
-   */
-  void compute_inline(BlockTreeNodeRef block);
+  ScheduleNode* operator->() {
+    return static_cast<ScheduleNode*>(NodeRef::get_mutable());
+  }
 
  private:
-  void Replace(ScheduleTreeNodeRef old_node, Stmt new_stmt);
-
-  static BlockTreeNodeRef GetFatherBlock(ScheduleTreeNodeRef node);
-
-  static Array<Stmt> GetChildren(const Stmt& stmt);
-
-  bool IsCompleteBlock(BlockTreeNodeRef block);
-
-  void UpdateChildren(const Stmt& stmt, const ScheduleTreeNodeRef& father);
-
-  inline ScheduleNode* operator->() {
-    return static_cast<ScheduleNode*>(data_.get());
-  }
+  void UpdateSRef(StmtSRefNode* sref, const Stmt& stmt);
 };
 
 }  // namespace te
