@@ -119,7 +119,6 @@ Function::Function(Array<Var> params,
   node->params = std::move(params);
   node->buffer_map = std::move(buffer_map);
   node->name = std::move(name);
-  CHECK(body.as<BlockNode>());
   node->body = std::move(body);
   data_ = std::move(node);
 }
