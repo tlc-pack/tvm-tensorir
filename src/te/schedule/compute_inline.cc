@@ -66,6 +66,7 @@ class StatementInliner : public IRMutator {
                  op->writes,
                  op->body,
                  op->predicate,
+                 op->allocations,
                  op->annotations,
                  op->tag);
   }
@@ -95,13 +96,14 @@ void Schedule::compute_inline(BlockTreeNodeRef block) {
   // -> The inner stmt is a BufferStore
   // TODO(siyuan): remove useless Loops and BufferAllocate
   Block block_stmt = GetRef<Block>(block->block);
+  BlockTreeNodeRef father_block = GetFatherBlock(block);
   CHECK(block_stmt->body.as<BufferStoreNode>())
     << "Can only inline single assignment statement";
   CHECK_EQ(block_stmt->writes.size(), 1)
     << "Can only inline statement with one output";
   CHECK(IsCompleteBlock(block))
     << "Can only inline a complete block";
-  CHECK(!operator->()->dependency_graph->forward_edges.at(block).empty())
+  CHECK(!operator->()->dependency_graph.at(father_block)->forward_edges.at(block).empty())
     << "Can not inline a output block";
 
   auto write = block_stmt->writes[0];
@@ -115,13 +117,15 @@ void Schedule::compute_inline(BlockTreeNodeRef block) {
   }
 
   operator->()->write_map.Set(write->buffer, new_blocks);
-  for (const auto& x : operator->()->dependency_graph->forward_edges.at(block)) {
+  for (const auto& x : operator->()->dependency_graph.at(father_block)->forward_edges.at(block)) {
     Block dst = GetRef<Block>(x->dst->block);
     Replace(x->dst, StatementInliner(block_stmt->body.as<BufferStoreNode>()).Mutate(dst));
   }
 
   // update in dependency graph
-  operator->()->dependency_graph.InlineBlock(block);
+  const auto* graph_ptr = operator->()->dependency_graph[father_block].as<DependencyGraphNode>();
+  auto graph = GetRef<DependencyGraph>(graph_ptr);
+  graph.InlineBlock(block);
 }
 
 }  // namespace te

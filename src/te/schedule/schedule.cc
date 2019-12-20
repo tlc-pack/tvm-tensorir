@@ -26,7 +26,7 @@
 namespace tvm {
 namespace te {
 
-Array<Stmt> Schedule::GetChildren(Stmt stmt) {
+Array<Stmt> Schedule::GetChildren(const Stmt& stmt) {
   Stmt body;
   if (const auto* block = stmt.as<BlockNode>()) {
     body = block->body;
@@ -46,12 +46,24 @@ Array<Stmt> Schedule::GetChildren(Stmt stmt) {
   }
 }
 
+BlockTreeNodeRef Schedule::GetFatherBlock(ScheduleTreeNodeRef node) {
+  while (node.defined()) {
+    node = node->father;
+    if (node.as<BlockTreeNode>()) {
+      return Downcast<BlockTreeNodeRef>(node);
+    }
+  }
+  LOG(FATAL) << "Cannot find a father block";
+  return BlockTreeNodeRef();
+}
+
 Schedule::Schedule(Function func,
                    ScheduleTreeNodeRef root,
-                   DependencyGraph dependency_graph,
+                   Map<BlockTreeNodeRef, DependencyGraph> dependency_graph,
                    Map<Buffer, Array<BlockTreeNodeRef>> write_map,
                    std::unordered_map<const StmtNode*, ScheduleTreeNodeRef> stmt_map) {
   NodePtr<ScheduleNode> node = make_node<ScheduleNode>();
+  LOG(INFO) << func;
   node->func = std::move(func);
   node->dependency_graph = std::move(dependency_graph);
   node->write_map = std::move(write_map);
@@ -60,7 +72,7 @@ Schedule::Schedule(Function func,
   data_ = std::move(node);
 }
 
-void Schedule::UpdateChildren(Stmt stmt, ScheduleTreeNodeRef father) {
+void Schedule::UpdateChildren(const Stmt& stmt, const ScheduleTreeNodeRef& father) {
   const auto* stmt_ptr = stmt.as<StmtNode>();
   if (operator->()->stmt_map.count(stmt_ptr) == 0) {
     ScheduleTreeNodeRef ref;
@@ -86,43 +98,35 @@ void Schedule::Replace(ScheduleTreeNodeRef old_node, Stmt new_stmt) {
   } else {
     CHECK(new_stmt.as<Evaluate>());
   }
-  bool need_copy = true;
   ScheduleTreeNodeRef node = old_node;
   Stmt old_stmt = GetRef<Stmt>(node->stmt());
-  while (node->father != operator->()->root &&
-      node != operator->()->root) {
+  while (node != operator->()->root) {
     node = node->father;
     SubReplacer sub_replacer(operator->(), old_stmt, new_stmt);
     new_stmt = sub_replacer.Mutate(node->stmt());
-    if (!sub_replacer.need_copy) {
-      need_copy = false;
-      break;
-    }
     old_stmt = GetRef<Stmt>(node->stmt());
   }
-  if (need_copy) {
-    const auto& func = operator->()->func;
-    if (func->body != old_stmt) {
-      Array<Stmt> stmts;
-      const auto* seq = func->body.as<SeqStmtNode>();
-      CHECK(seq);
-      bool found = false;
-      for (size_t i = 0; i < seq->size(); ++i) {
-        if (seq->operator[](i) == old_stmt) {
-          stmts.push_back(new_stmt);
-          found = true;
-        } else {
-          stmts.push_back(seq->operator[](i));
-        }
+  const auto& func = operator->()->func;
+  if (func->body != old_stmt) {
+    Array<Stmt> stmts;
+    const auto* seq = func->body.as<SeqStmtNode>();
+    CHECK(seq);
+    bool found = false;
+    for (size_t i = 0; i < seq->size(); ++i) {
+      if (seq->operator[](i) == old_stmt) {
+        stmts.push_back(new_stmt);
+        found = true;
+      } else {
+        stmts.push_back(seq->operator[](i));
       }
-      CHECK(found) << "Can not find stmt to be replace";
-      new_stmt = SeqStmt(stmts);
     }
-    if (func.unique()) {
-      operator->()->func.Mutable()->body = new_stmt;
-    } else {
-      operator->()->func = Function(func->params, func->buffer_map, func->name, new_stmt);
-    }
+    CHECK(found) << "Can not find stmt to be replace";
+    new_stmt = SeqStmt(stmts);
+  }
+  if (func.unique()) {
+    operator->()->func.Mutable()->body = new_stmt;
+  } else {
+    operator->()->func = Function(func->params, func->buffer_map, func->name, new_stmt);
   }
 }
 
@@ -157,7 +161,7 @@ Array<BlockTreeNodeRef> Schedule::Blocks() const {
 Array<AxisTreeNodeRef> Schedule::GetAxes(BlockTreeNodeRef block) const {
   Array<AxisTreeNodeRef> ret;
   ScheduleTreeNodeRef node = block->father;
-  while (!node.same_as(operator->()->root)) {
+  while (!node.as<BlockTreeNode>()) {
     if (node.as<AxisTreeNode>()) {
       ret.push_back(Downcast<AxisTreeNodeRef>(node));
     }
@@ -170,12 +174,14 @@ AxisTreeNodeRef Schedule::fuse(AxisTreeNodeRef outer, AxisTreeNodeRef inner) {
   // Can only fuse neighbor axes without any extra branches.
   // Future Enhancement: this condition can be eliminated by lifting all siblings of inner
   // as the children of the father of outer
+  LOG(INFO) << GetRef<Stmt>(operator->()->root->stmt());
   Loop outer_loop = GetRef<Loop>(outer->loop);
   Loop inner_loop = GetRef<Loop>(inner->loop);
 
   CHECK(inner->father == outer);
   auto outer_children = GetChildren(outer_loop);
   CHECK(outer_children.size() == 1 && outer_children[0] == inner_loop);
+  CHECK_EQ(GetFatherBlock(outer), GetFatherBlock(inner));
 
   // Currently, can not fuse Loops with annotations
   if (!outer->loop->annotations.empty() || !inner->loop->annotations.empty()) {
@@ -212,13 +218,13 @@ AxisTreeNodeRef Schedule::fuse(AxisTreeNodeRef outer, AxisTreeNodeRef inner) {
 
 class PredicateAdder : public IRMutator {
  public:
-  explicit PredicateAdder(Expr predicate) : predicate_(predicate) {}
+  explicit PredicateAdder(const Expr& predicate) : predicate_(predicate) {}
 
   Stmt Mutate_(const BlockNode* op, const Stmt& s) final {
     return Block(op->iter_vars, op->values,
                  op->reads, op->writes,
                  op->body, op->predicate && predicate_,
-                 op->annotations, op->tag);
+                 op->allocations, op->annotations, op->tag);
   }
  private:
   Expr predicate_;

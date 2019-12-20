@@ -36,7 +36,6 @@ Stmt SubReplacer::Mutate_(const LoopNode* op) {
     need_copy = false;
     return GetRef<Loop>(op);
   } else if (need_copy && !op->unique()) {
-    LOG(INFO) << op->use_count();
     Loop new_loop(op->loop_var, op->min, op->extent,
                   op->annotations, body);
     const auto* stmt_node = new_loop.as<StmtNode>();
@@ -66,6 +65,7 @@ Stmt SubReplacer::Mutate_(const BlockNode* op) {
     Block new_block(op->iter_vars, op->values,
                     op->reads, op->writes,
                     body, op->predicate,
+                    op->allocations,
                     op->annotations, op->tag);
     const auto* stmt_node = new_block.as<StmtNode>();
     const auto* old_stmt = static_cast<const StmtNode*>(op);

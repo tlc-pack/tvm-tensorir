@@ -51,9 +51,10 @@ class ScheduleCreator : public IRMutator {
  private:
   Function func_;
   Map<Buffer, Array<BlockTreeNodeRef>> write_map_;
-  DependencyGraph dependency_graph_;
+  Map<BlockTreeNodeRef, DependencyGraph> dependency_graph_;
   std::unordered_map<const StmtNode*, ScheduleTreeNodeRef> stmt_map;
   ScheduleTreeNodeRef father_node_;
+  BlockTreeNodeRef current_block_;
 };
 
 }  // namespace te

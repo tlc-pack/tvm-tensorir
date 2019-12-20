@@ -153,4 +153,15 @@ def create_schedule(func):
     return CreateSchedule(func)
 
 
+def create_scheduleX(func):
+    return CreateScheduleX(func)
+
+@register_te_node
+class ScheduleX(NodeBase):
+    def replace(self, sref, target_stmt):
+        return ReplaceX(self, sref, target_stmt)
+
+    def get_s_ref(self, stmt):
+        return GetStmtSRef(self, stmt)
+
 _init_api('tvm.te.schedule')

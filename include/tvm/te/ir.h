@@ -62,15 +62,13 @@ class SeqStmtNode : public StmtNode {
   static constexpr const char* _type_key = "SeqStmt";
   TVM_DECLARE_NODE_TYPE_INFO(SeqStmtNode, StmtNode);
 
- private:
-  friend class SeqStmt;
-  friend class Schedule;
   /*!
    * \brief Hide seq for now, use SeqStmt.operator[] for iteration.
    * \note We may change the SeqStmtNode data structure later
    *       to directly contain the array content.
    */
   Array<Stmt> seq;
+
 };
 
 /*! \brief Sequence statemnt. */
@@ -281,6 +279,37 @@ class TensorRegion : public NodeRef {
 };
 
 /*!
+ * \brief Allocate a new buffer in TE
+ * \code
+ *
+ * BufferAllocate(buffer[shape], type)
+ *
+ * \endcode
+ */
+class BufferAllocate;
+class BufferAllocateNode : public StmtNode {
+ public:
+  /*! \brief The buffer to be allocated. */
+  Buffer buffer;
+  std::string scope;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("buffer", &buffer);
+    v->Visit("scope", &scope);
+  }
+
+  static constexpr const char* _type_key = "BufferAllocate";
+  TVM_DECLARE_NODE_TYPE_INFO(BufferAllocateNode, StmtNode);
+};
+
+class BufferAllocate : public Stmt {
+ public:
+  explicit BufferAllocate(Buffer buffer, std::string scope);
+
+  TVM_DEFINE_NODE_REF_METHODS(BufferAllocate, Stmt, BufferAllocateNode);
+};
+
+/*!
  * \brief A block is the basic schedule unit in tensor expression
  * \code
  *
@@ -310,6 +339,8 @@ class BlockNode : public StmtNode {
   Stmt body;
   /*! \brief The predicates of the block. */
   Expr predicate;
+  /*! \brief The buffer allocated in the block. */
+  Array<BufferAllocate> allocations;
   /*! \brief The annotation of the block. */
   Array<Annotation> annotations;
   /*! \brief The tag of the block. */
@@ -321,6 +352,7 @@ class BlockNode : public StmtNode {
     v->Visit("reads", &reads);
     v->Visit("writes", &writes);
     v->Visit("predicate", &predicate);
+    v->Visit("allocations", &allocations);
     v->Visit("annotations", &annotations);
     v->Visit("tag", &tag);
   }
@@ -331,14 +363,15 @@ class BlockNode : public StmtNode {
 
 class Block : public Stmt {
  public:
-  explicit Block(Array<IterVar> iter_vars,
-                 Array<Expr> values,
-                 Array<TensorRegion> reads,
-                 Array<TensorRegion> writes,
-                 Stmt body,
-                 Expr predicate,
-                 Array<Annotation> annotations,
-                 std::string tag);
+  Block(Array<IterVar> iter_vars,
+        Array<Expr> values,
+        Array<TensorRegion> reads,
+        Array<TensorRegion> writes,
+        Stmt body,
+        Expr predicate,
+        Array<BufferAllocate> allocations,
+        Array<Annotation> annotations,
+        std::string tag);
 
   TVM_DEFINE_NODE_REF_METHODS(Block, Stmt, BlockNode);
 
@@ -350,37 +383,6 @@ class Block : public Stmt {
   friend Schedule;
   friend ir::IRSubstitue;
   friend ScheduleMutator;
-};
-
-/*!
- * \brief Allocate a new buffer in TE
- * \code
- *
- * BufferAllocate(buffer[shape], type)
- *
- * \endcode
- */
-class BufferAllocate;
-class BufferAllocateNode : public StmtNode {
- public:
-  /*! \brief The buffer to be allocated. */
-  Buffer buffer;
-  std::string scope;
-
-  void VisitAttrs(AttrVisitor* v) {
-    v->Visit("buffer", &buffer);
-    v->Visit("scope", &scope);
-  }
-
-  static constexpr const char* _type_key = "BufferAllocate";
-  TVM_DECLARE_NODE_TYPE_INFO(BufferAllocateNode, StmtNode);
-};
-
-class BufferAllocate : public Stmt {
- public:
-  explicit BufferAllocate(Buffer buffer, std::string scope);
-
-  TVM_DEFINE_NODE_REF_METHODS(BufferAllocate, Stmt, BufferAllocateNode);
 };
 
 /*!

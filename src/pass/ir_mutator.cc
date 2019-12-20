@@ -338,6 +338,7 @@ Stmt IRMutator::Mutate_(const te::BlockNode* op, const Stmt& s) {
                      op->writes,
                      body,
                      pred,
+                     op->allocations,
                      op->annotations,
                      op->tag);
   }

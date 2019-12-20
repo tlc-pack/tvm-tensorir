@@ -22,7 +22,8 @@ import util
 
 def test_create_schedule():
     func, tensors, tensor_map = util.element_wise_stmt()
-    te.create_schedule(func)
+    s = te.create_schedule(func)
+    print(s.func)
 
 
 def test_block_axis():
@@ -79,8 +80,8 @@ def test_compute_inline():
 
 
 if __name__ == "__main__":
-    test_create_schedule()
-    test_block_axis()
+    # test_create_schedule()
+    # test_block_axis()
     test_fuse()
-    test_split()
-    test_compute_inline()
+    # test_split()
+    # test_compute_inline()

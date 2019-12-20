@@ -29,32 +29,58 @@ namespace tvm {
 namespace te {
 
 ScheduleCreator::ScheduleCreator(Function func)
-    : func_(func),
-      dependency_graph_(make_node<DependencyGraphNode>()),
-      father_node_(make_node<ScheduleTreeNode>()) {}
+    : func_(func) {
+  const auto* block = func_->body.as<BlockNode>();
+  CHECK(block) << "The function body must a block";
+  dependency_graph_.Set(current_block_,
+                        static_cast<DependencyGraph>(make_node<DependencyGraphNode>()));
+}
 
 Schedule ScheduleCreator::Create() {
-  NodePtr<ScheduleNode> node = make_node<ScheduleNode>();
   Stmt new_stmt = Mutate(func_->body);
   Function new_func = Function(func_->params, func_->buffer_map, func_->name, new_stmt);
-  return Schedule(new_func, father_node_, dependency_graph_, write_map_, stmt_map);
+  LOG(WARNING) << new_func;
+  return Schedule(new_func, current_block_, dependency_graph_, write_map_, stmt_map);
 }
 
 Stmt ScheduleCreator::Mutate_(const BlockNode* op, const Stmt& s) {
   ScheduleTreeNodeRef father = father_node_;
   BlockTreeNodeRef block_node(nullptr, father_node_);
+  BlockTreeNodeRef father_block = current_block_;
+
+  // Update recursive information
+  father_node_ = current_block_ = block_node;
+  dependency_graph_.Set(block_node, static_cast<DependencyGraph>(make_node<DependencyGraphNode>()));
+  auto write_map_back = write_map_;
+  write_map_ = Map<Buffer, Array<BlockTreeNodeRef>>();
+
+  // Recursive visit
   Stmt body = this->Mutate(op->body);
-  Block new_block = te::Block(op->iter_vars,
-                              op->values,
-                              op->reads,
-                              op->writes,
-                              body,
-                              op->predicate,
-                              op->annotations,
-                              op->tag);
+
+  // Restore recursive information
+  write_map_ = write_map_back;
+  current_block_ = father_block;
+  father_node_ = father;
+
+  Block new_block = Block(op->iter_vars,
+                          op->values,
+                          op->reads,
+                          op->writes,
+                          body,
+                          op->predicate,
+                          op->allocations,
+                          op->annotations,
+                          op->tag);
+
+  LOG(INFO) << new_block;
+
   block_node->block = new_block.as<BlockNode>();
   stmt_map[new_block.as<StmtNode>()] = block_node;
 
+  if (!current_block_.defined()) {
+    return std::move(new_block);
+  }
+  LOG(INFO) << 1;
   for (const auto& write : op->writes) {
     Array<BlockTreeNodeRef> array;
     if (write_map_.count(write->buffer)) {
@@ -67,11 +93,15 @@ Stmt ScheduleCreator::Mutate_(const BlockNode* op, const Stmt& s) {
     const auto& read_buffer = read->buffer;
     if (write_map_.count(read_buffer)) {
       for (const auto& write_block : write_map_[read_buffer]) {
-        dependency_graph_.AddEdge(write_block, block_node, kWAR);
+        // remove const
+        const auto* graph_ptr =
+            dependency_graph_[current_block_].as<DependencyGraphNode>();
+        auto graph = GetRef<DependencyGraph>(graph_ptr);
+        graph.AddEdge(write_block, block_node, kWAR);
       }
     }
   }
-  return new_block;
+  return std::move(new_block);
 }
 
 Stmt ScheduleCreator::Mutate_(const LoopNode* op, const Stmt& s) {
@@ -100,7 +130,7 @@ Stmt ScheduleCreator::Mutate_(const ir::Block* op, const Stmt& s) {
   std::vector<Stmt> new_stmt;
   do {
     new_stmt.push_back(Mutate(op->first));
-    if (const ir::Block* t = op->rest.as<ir::Block>()) {
+    if (const auto* t = op->rest.as<ir::Block>()) {
       op = t;
     } else {
       new_stmt.push_back(Mutate(op->rest));

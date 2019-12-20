@@ -45,7 +45,7 @@ class ScheduleNode : public Node {
   /*! \brief The root of auxiliary structure */
   ScheduleTreeNodeRef root;
   /*! \brief The dependency graph used in some primitives */
-  DependencyGraph dependency_graph;
+  Map<BlockTreeNodeRef, DependencyGraph> dependency_graph;
   /*! \brief The mapping from output buffer to its producer blocks */
   Map<Buffer, Array<BlockTreeNodeRef>> write_map;
   /*! \brief The mapping from stmt to its auxiliary structure */
@@ -61,7 +61,7 @@ class Schedule : public NodeRef {
  public:
   explicit Schedule(Function func,
                     ScheduleTreeNodeRef root,
-                    DependencyGraph dependency_graph,
+                    Map<BlockTreeNodeRef, DependencyGraph> dependency_graph,
                     Map<Buffer, Array<BlockTreeNodeRef>> write_map,
                     std::unordered_map<const StmtNode*, ScheduleTreeNodeRef> stmt_map);
   TVM_DEFINE_NODE_REF_METHODS(Schedule, NodeRef, ScheduleNode);
@@ -118,19 +118,15 @@ class Schedule : public NodeRef {
   void compute_inline(BlockTreeNodeRef block);
 
  private:
-  void RemoveStmt(Stmt stmt);
-
   void Replace(ScheduleTreeNodeRef old_node, Stmt new_stmt);
 
-  Array<Stmt> GetChildren(Stmt stmt);
+  static BlockTreeNodeRef GetFatherBlock(ScheduleTreeNodeRef node);
 
-  void SetChild(Stmt father, Stmt child, size_t index);
-
-  void AddPredicate(Stmt stmt, Expr predicate);
+  static Array<Stmt> GetChildren(const Stmt& stmt);
 
   bool IsCompleteBlock(BlockTreeNodeRef block);
 
-  void UpdateChildren(Stmt stmt, ScheduleTreeNodeRef father);
+  void UpdateChildren(const Stmt& stmt, const ScheduleTreeNodeRef& father);
 
   inline ScheduleNode* operator->() {
     return static_cast<ScheduleNode*>(data_.get());
