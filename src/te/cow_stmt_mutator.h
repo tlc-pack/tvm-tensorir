@@ -88,9 +88,6 @@ class COWStmtMutator :
     if (allow_copy_on_write_) {
       // return the old node.
       auto n = runtime::GetObjectPtr<TNode>(const_cast<TNode*>(node));
-      // invariance: copy on write only happens when node is refered once.
-      // After creating a strong ref, node will be referred twice.
-      // CHECK_EQ(n.use_count(), 2U);
       return n;
     } else {
       // Make a new copy of the node.

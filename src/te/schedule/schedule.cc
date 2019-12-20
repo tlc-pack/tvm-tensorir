@@ -18,276 +18,309 @@
  */
 
 #include <tvm/te/schedule.h>
-#include <tvm/api_registry.h>
-#include <tvm/te/transform.h>
 #include <tvm/ir_mutator.h>
-#include "sub_replacer.h"
+#include <tvm/ir_visitor.h>
+#include "../cow_stmt_mutator.h"
 
 namespace tvm {
 namespace te {
 
-Array<Stmt> Schedule::GetChildren(const Stmt& stmt) {
-  Stmt body;
-  if (const auto* block = stmt.as<BlockNode>()) {
-    body = block->body;
-  } else if (const auto* loop = stmt.as<LoopNode>()) {
-    body = loop->body;
-  } else {
-    return Array<Stmt>();
-  }
-  // Don't support ir::Block in schedule
-  CHECK(!body.as<ir::Block>());
-  if (const auto* seq = body.as<SeqStmtNode>()) {
-    return seq->seq;
-  } else {
-    Array<Stmt> children;
-    children.push_back(body);
-    return children;
-  }
-}
-
-BlockTreeNodeRef Schedule::GetFatherBlock(ScheduleTreeNodeRef node) {
-  while (node.defined()) {
-    node = node->father;
-    if (node.as<BlockTreeNode>()) {
-      return Downcast<BlockTreeNodeRef>(node);
-    }
-  }
-  LOG(FATAL) << "Cannot find a father block";
-  return BlockTreeNodeRef();
-}
-
-Schedule::Schedule(Function func,
-                   ScheduleTreeNodeRef root,
-                   Map<BlockTreeNodeRef, DependencyGraph> dependency_graph,
-                   Map<Buffer, Array<BlockTreeNodeRef>> write_map,
-                   std::unordered_map<const StmtNode*, ScheduleTreeNodeRef> stmt_map) {
-  NodePtr<ScheduleNode> node = make_node<ScheduleNode>();
-  LOG(INFO) << func;
-  node->func = std::move(func);
-  node->dependency_graph = std::move(dependency_graph);
-  node->write_map = std::move(write_map);
-  node->root = std::move(root);
-  node->stmt_map = std::move(stmt_map);
-  data_ = std::move(node);
-}
-
-void Schedule::UpdateChildren(const Stmt& stmt, const ScheduleTreeNodeRef& father) {
-  const auto* stmt_ptr = stmt.as<StmtNode>();
-  if (operator->()->stmt_map.count(stmt_ptr) == 0) {
-    ScheduleTreeNodeRef ref;
-    if (const auto* loop = stmt.as<LoopNode>()) {
-      ref = AxisTreeNodeRef(loop, father);
-    } else {
-      const auto* block = stmt.as<BlockNode>();
-      CHECK(block);
-      ref = BlockTreeNodeRef(block, father);
-    }
-    operator->()->stmt_map[stmt_ptr] = ref;
-    if (stmt.as<LoopNode>()) {
-      for (auto child : GetChildren(stmt)) {
-        UpdateChildren(child, ref);
-      }
-    }
-  }
-}
-
-void Schedule::Replace(ScheduleTreeNodeRef old_node, Stmt new_stmt) {
-  if (new_stmt.as<LoopNode>() || new_stmt.as<BlockNode>()) {
-    UpdateChildren(new_stmt, old_node->father);
-  } else {
-    CHECK(new_stmt.as<Evaluate>());
-  }
-  ScheduleTreeNodeRef node = old_node;
-  Stmt old_stmt = GetRef<Stmt>(node->stmt());
-  while (node != operator->()->root) {
-    node = node->father;
-    SubReplacer sub_replacer(operator->(), old_stmt, new_stmt);
-    new_stmt = sub_replacer.Mutate(node->stmt());
-    old_stmt = GetRef<Stmt>(node->stmt());
-  }
-  const auto& func = operator->()->func;
-  if (func->body != old_stmt) {
-    Array<Stmt> stmts;
-    const auto* seq = func->body.as<SeqStmtNode>();
-    CHECK(seq);
-    bool found = false;
-    for (size_t i = 0; i < seq->size(); ++i) {
-      if (seq->operator[](i) == old_stmt) {
-        stmts.push_back(new_stmt);
-        found = true;
-      } else {
-        stmts.push_back(seq->operator[](i));
-      }
-    }
-    CHECK(found) << "Can not find stmt to be replace";
-    new_stmt = SeqStmt(stmts);
-  }
-  if (func.unique()) {
-    operator->()->func.Mutable()->body = new_stmt;
-  } else {
-    operator->()->func = Function(func->params, func->buffer_map, func->name, new_stmt);
-  }
-}
-
-Array<BlockTreeNodeRef> Schedule::GetBlock(std::string tag) const {
-  Array<BlockTreeNodeRef> ret;
-  for (const auto& block : Blocks()) {
-    if (block->block->tag == tag) {
-      ret.push_back(block);
-    }
-  }
-  return ret;
-}
-
-Array<BlockTreeNodeRef> Schedule::GetBlock(Buffer buffer) const {
-  if (operator->()->write_map.count(buffer)) {
-    return operator->()->write_map.at(buffer);
-  } else {
-    return Array<BlockTreeNodeRef>();
-  }
-}
-
-Array<BlockTreeNodeRef> Schedule::Blocks() const {
-  Array<BlockTreeNodeRef> ret;
-  for (const auto& x : operator->()->write_map) {
-    for (const auto& block : x.second) {
-      ret.push_back(block);
-    }
-  }
-  return ret;
-}
-
-Array<AxisTreeNodeRef> Schedule::GetAxes(BlockTreeNodeRef block) const {
-  Array<AxisTreeNodeRef> ret;
-  ScheduleTreeNodeRef node = block->father;
-  while (!node.as<BlockTreeNode>()) {
-    if (node.as<AxisTreeNode>()) {
-      ret.push_back(Downcast<AxisTreeNodeRef>(node));
-    }
-    node = node->father;
-  }
-  return Array<AxisTreeNodeRef>(ret.rbegin(), ret.rend());
-}
-
-AxisTreeNodeRef Schedule::fuse(AxisTreeNodeRef outer, AxisTreeNodeRef inner) {
-  // Can only fuse neighbor axes without any extra branches.
-  // Future Enhancement: this condition can be eliminated by lifting all siblings of inner
-  // as the children of the father of outer
-  LOG(INFO) << GetRef<Stmt>(operator->()->root->stmt());
-  Loop outer_loop = GetRef<Loop>(outer->loop);
-  Loop inner_loop = GetRef<Loop>(inner->loop);
-
-  CHECK(inner->father == outer);
-  auto outer_children = GetChildren(outer_loop);
-  CHECK(outer_children.size() == 1 && outer_children[0] == inner_loop);
-  CHECK_EQ(GetFatherBlock(outer), GetFatherBlock(inner));
-
-  // Currently, can not fuse Loops with annotations
-  if (!outer->loop->annotations.empty() || !inner->loop->annotations.empty()) {
-    // TODO(tvm-team): Add ReportError
-    LOG(FATAL) << "InvalidScheduleError: " << "Cannot fuse loops that already has annotations";
-  }
-
-  Expr min = 0;
-  Expr extent = outer_loop->extent * inner_loop->extent;
-
-  Var fused_var = outer_loop->loop_var.copy_with_suffix(
-      "." + inner_loop->loop_var.get()->name_hint + ".fused");
-
-  auto vmap = [&](const Variable* v) -> Expr {
-    if (GetRef<Var>(v).same_as(outer_loop->loop_var)) {
-      return truncdiv(fused_var, inner_loop->extent) + outer_loop->min;
-    } else if (GetRef<Var>(v).same_as(inner_loop->loop_var)) {
-      return truncmod(fused_var, inner_loop->extent) + inner_loop->min;
-    } else {
-      return Expr(NodePtr<Node>(nullptr));
-    }
-  };
-
-  Loop fused_node = Loop(
-      fused_var, min, extent, outer_loop->annotations,
-      Substitute(inner_loop->body, vmap));
-
-  // relink
-  Replace(outer, fused_node);
-
-  return Downcast<AxisTreeNodeRef>(
-      operator->()->stmt_map[fused_node.as<StmtNode>()]);
-}
-
-class PredicateAdder : public IRMutator {
+/*! \brief The tool to create schedule */
+class ScheduleCreator : public IRMutator {
  public:
-  explicit PredicateAdder(const Expr& predicate) : predicate_(predicate) {}
+  explicit ScheduleCreator(std::unordered_map<const StmtNode*, StmtSRef>* stmt_map)
+      : stmt_map_(stmt_map) {}
 
-  Stmt Mutate_(const BlockNode* op, const Stmt& s) final {
-    return Block(op->iter_vars, op->values,
-                 op->reads, op->writes,
-                 op->body, op->predicate && predicate_,
-                 op->allocations, op->annotations, op->tag);
+  Stmt Mutate_(const te::BlockNode* op, const Stmt& s) final {
+    return MutateSRefStmt(op, s);
   }
+
+  Stmt Mutate_(const te::LoopNode* op, const Stmt& s) final {
+    return MutateSRefStmt(op, s);
+  }
+
+  void FlattenBlock(const ir::Block* op, std::vector<Stmt>* seq) {
+    if (const auto block = op->first.as<ir::Block>()) {
+      FlattenBlock(block, seq);
+    } else {
+      seq->push_back(Mutate(op->first));
+    }
+    if (const auto block = op->rest.as<ir::Block>()) {
+      FlattenBlock(block, seq);
+    } else {
+      seq->push_back(Mutate(op->rest));
+    }
+  }
+
+  Stmt Mutate_(const ir::Block* op, const Stmt& s) final {
+    std::vector<Stmt> new_stmt;
+    FlattenBlock(op, &new_stmt);
+    return te::SeqStmt(new_stmt);
+  }
+
  private:
-  Expr predicate_;
+  template <typename T>
+  Stmt MutateSRefStmt(const T* op, const Stmt& s) {
+    StmtSRef sref_node(nullptr, parent_scope_);
+    auto tmp = sref_node.operator->();
+
+    std::swap(parent_scope_, tmp);
+    Stmt new_stmt = IRMutator::Mutate_(op, s);
+    std::swap(parent_scope_, tmp);
+
+    sref_node->node = new_stmt.operator->();
+    (*stmt_map_)[sref_node->node] = sref_node;
+    return new_stmt;
+  }
+
+  std::unordered_map<const StmtNode*, StmtSRef>* stmt_map_;
+  StmtSRefNode* parent_scope_{nullptr};
 };
 
-Array<AxisTreeNodeRef> Schedule::split(AxisTreeNodeRef loop, Expr factor) {
-  Var outer_var = loop->loop->loop_var.copy_with_suffix(".outer");
-  Var inner_var = loop->loop->loop_var.copy_with_suffix(".inner");
-
-  Expr outer_min = loop->loop->min;
-  Expr outer_extent = (loop->loop->extent + factor - 1) / factor;
-
-  Expr inner_min = 0;
-  Expr inner_extent = factor;
-
-  auto vmap = [&](const Variable* v) -> Expr {
-    if (GetRef<Var>(v).same_as(loop->loop->loop_var)) {
-      return outer_var * factor + inner_var;
-    } else {
-      return Expr(NodePtr<Node>(nullptr));
+class SubReplacer : protected COWStmtMutator {
+ public:
+  SubReplacer(StmtSRefNode* sref, const Stmt& target)
+      : sref_(sref), target_(target) {}
+  /*!
+   * \brief mutate weakref
+   * \param weakref The statement to be mutated.
+   * \param allow_copy_on_write Whether we allow copy on write in the weakref.
+   *        That means weakref is only referenced once, and all its
+   *        parents are also only referenced once.
+   * \return The result of the mutation.
+   */
+  Stmt operator()(const StmtNode* weakref,
+                  bool allow_copy_on_write) {
+    std::swap(allow_copy_on_write, allow_copy_on_write_);
+    auto n = runtime::GetObjectPtr<StmtNode>(const_cast<StmtNode*>(weakref));
+    if (allow_copy_on_write_) {
+      // We have just get a reference of n, so if the original
+      // object is unique, the use_count will be 2
+      CHECK_EQ(n.use_count(), 2U);
     }
-  };
+    Stmt stmt = Stmt(n);
+    stmt = VisitStmt(stmt);
+    std::swap(allow_copy_on_write, allow_copy_on_write_);
+    if (allow_copy_on_write) {
+      CHECK(stmt.operator->() == weakref);
+    }
+    return stmt;
+  }
 
-  Map<Var, Range> vrange;
-  vrange.Set(outer_var, Range::make_by_min_extent(outer_min, outer_extent));
-  vrange.Set(inner_var, Range::make_by_min_extent(inner_min, inner_extent));
-  Expr predicate = Simplify(outer_var * factor + inner_var < loop->loop->extent, vrange);
-  Stmt new_stmt = PredicateAdder(predicate).Mutate(Substitute(loop->loop->body, vmap));
+  Stmt VisitStmt(const Stmt& stmt) final {
+    if (stmt.get() == sref_->node) {
+      // if the statement matches the replace target
+      // just return the target stmt
+      return target_;
+    } else {
+      return COWStmtMutator::VisitStmt(stmt);
+    }
+  }
 
-  Loop inner_loop(inner_var, inner_min, inner_extent, loop->loop->annotations, new_stmt);
-  Loop outer_loop(outer_var, outer_min, outer_extent, loop->loop->annotations, inner_loop);
+  Stmt VisitStmt_(const BlockNode* op) final {
+    return VisitSRefStmt(op);
+  }
 
-  // relink
-  Replace(loop, outer_loop);
+  Stmt VisitStmt_(const LoopNode* op) final {
+    return VisitSRefStmt(op);
+  }
 
-  AxisTreeNodeRef inner_axis = Downcast<AxisTreeNodeRef>(
-      operator->()->stmt_map[inner_loop.as<StmtNode>()]);
-  AxisTreeNodeRef outer_axis = Downcast<AxisTreeNodeRef>(
-      operator->()->stmt_map[outer_loop.as<StmtNode>()]);
+  Stmt VisitStmt_(const SeqStmtNode* stmt) final {
+    int64_t seq_index = sref_->seq_index;
+    // fast path
+    if (seq_index >= 0 &&
+        (*stmt)[seq_index].get() == sref_->node) {
+      auto n = CopyOnWrite(stmt);
+      n->seq.Set(seq_index, target_);
+      return Stmt(n);
+    } else {
+      return COWStmtMutator::VisitStmt_(stmt);
+    }
+  }
 
-  return Array<AxisTreeNodeRef>{outer_axis, inner_axis};
+ private:
+  template <typename T>
+  Stmt VisitSRefStmt(const T* op) {
+    if (sref_scope_counter_ > 0) {
+      return GetRef<Stmt>(op);
+    } else {
+      ++sref_scope_counter_;
+      return COWStmtMutator::VisitStmt_(op);
+    }
+  }
+
+  // Node that this counter works for faster visiting.
+  // We guarantee that each visit will only visit Schedulable
+  // Stmt Node (BlockNode and LoopNode) once, the parent node.
+  // As for its children, they can be either replaced or remain unchanged
+  int sref_scope_counter_{0};
+  StmtSRefNode* sref_;
+  const Stmt& target_;
+};
+
+Function UpdateFuncBody(FunctionNode* func, Stmt new_body) {
+  if (func->unique()) {
+    func->body = std::move(new_body);
+    return GetRef<Function>(func);
+  } else {
+    auto n = make_object<FunctionNode>(*func);
+    n->body = std::move(new_body);
+    return Function(n);
+  }
 }
 
-bool Schedule::IsCompleteBlock(BlockTreeNodeRef block) {
-  // Check the block is the only producer for every output tensors
-  for (const auto& write : block->block->writes) {
-    Buffer buffer = write->buffer;
-    if (operator->()->write_map[buffer].size() != 1) {
-      CHECK(operator->()->write_map[buffer][0].same_as(block));
-      return false;
+/*!
+ * \brief remove useless schedulable reference during Schedule.Replace
+ * \note The Schedule.Replace will remove nodes from AST. This visitor will help to
+ *       remove their schedulable reference.
+ */
+class SRefRemover : public IRVisitor {
+ public:
+  SRefRemover(std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref,
+              std::unordered_set<StmtSRef, NodeHash, NodeEqual>&& used_border)
+      : used_border_(used_border), stmt2ref_(stmt2ref) {}
+
+  void Visit_(const LoopNode* op) final {
+    VisitSRefStmt(op);
+  }
+
+  void Visit_(const BlockNode* op) final {
+    VisitSRefStmt(op);
+  }
+ private:
+  template <typename T>
+  void VisitSRefStmt(const T* op) {
+    const auto* stmt_ptr = GetRef<Stmt>(op).operator->();
+    // Remove useless StmtSRef until the border
+    CHECK(stmt2ref_->count(stmt_ptr));
+    StmtSRef sref = stmt2ref_->at(stmt_ptr);
+    if (used_border_.count(sref) == 0) {
+      sref->node = nullptr;
+      sref->parent = nullptr;
+      stmt2ref_->erase(stmt_ptr);
+      Visit(op->body);
     }
   }
 
-  // Check all the block vars are at data_par IterType
-  for (const auto& iter_var : block->block->iter_vars) {
-    if (iter_var->iter_type != kDataPar) {
-      return false;
+  std::unordered_set<StmtSRef, NodeHash, NodeEqual> used_border_;
+  std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
+};
+
+/*!
+ * \brief create schedulable reference during Schedule.Replace
+ * \note This Visitor will create schedulable reference corresponding
+ *       AST node in target stmt.
+ */
+class SRefCreator : public IRVisitor {
+ public:
+  SRefCreator(std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref,
+              StmtSRefNode* parent)
+      : parent_(parent), stmt2ref_(stmt2ref) {}
+
+  void Visit_(const LoopNode* op) final {
+    VisitSRefStmt(op);
+  }
+
+  void Visit_(const BlockNode* op) final {
+    VisitSRefStmt(op);
+  }
+
+ private:
+  template <typename T>
+  void VisitSRefStmt(const T* op) {
+    const auto* stmt_ptr = GetRef<Stmt>(op).operator->();
+    if (stmt2ref_->count(stmt_ptr) == 0) {
+      // Create corresponding StmtSRef
+      // note that we only create the StmtSRef whose node is not
+      // in the AST and reuse those StmtSRef when node is in the AST.
+      StmtSRef ref = StmtSRef(stmt_ptr, parent_);
+      (*stmt2ref_)[stmt_ptr] = ref;
+      auto current = ref.operator->();
+      std::swap(current, parent_);
+      Visit(op->body);
+      std::swap(current, parent_);
+    } else {
+      // Mark the border of reused StmtSRef
+      used_border_.insert(stmt2ref_->at(stmt_ptr));
     }
   }
-  return true;
+
+  friend class Schedule;
+  StmtSRefNode* parent_;
+  std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
+  std::unordered_set<StmtSRef, NodeHash, NodeEqual> used_border_;
+};
+
+void Schedule::Replace(StmtSRef ref, Stmt target) {
+  ScheduleNode* self = operator->();
+  SRefCreator creator(&self->stmt2ref, ref->parent);
+  creator.Visit(target);
+  SRefRemover remover(&self->stmt2ref, std::move(creator.used_border_));
+  StmtSRef origin_ref = ref;
+  // num_copy_steps: maximum number of hops until we don't need to copy
+  int curr_step = 0;
+  int num_copy_steps = -1;
+
+  for (StmtSRefNode* ptr = ref.operator->(); ptr != self->root.get();
+       ptr = ptr->parent, ++curr_step) {
+    if (ptr->node->unique()) {
+      num_copy_steps = curr_step;
+    }
+  }
+  if (!self->func.unique()) num_copy_steps = curr_step;
+
+  curr_step = 0;
+  for (StmtSRefNode* ptr = ref.operator->(); ptr != self->root.get();
+       ptr = ptr->parent, ++curr_step) {
+    StmtSRefNode* parent = ptr->parent;
+    bool allow_direct_write = curr_step + 1 > num_copy_steps;
+
+    Stmt new_stmt = SubReplacer(ptr, target)(parent->node, allow_direct_write);
+    UpdateSRef(ptr, target);
+    if (allow_direct_write) {
+      CHECK(new_stmt.get() == parent->node);
+      // if one node has been direct write, there is no need to
+      // update its parent and the function
+      remover.Visit(GetRef<Stmt>(origin_ref->node));
+      return;
+    }
+    target = new_stmt;
+  }
+  remover.Visit(GetRef<Stmt>(origin_ref->node));
+  UpdateSRef(self->root.operator->(), target);
+  self->func = UpdateFuncBody(self->func.operator->(), target);
+}
+
+Schedule Schedule::Create(const Function& func) {
+  std::unordered_map<const StmtNode*, StmtSRef> stmt_map;
+  ScheduleCreator creator(&stmt_map);
+  Stmt new_stmt = creator.Mutate(func->body);
+  Function new_func = Function(func->params, func->buffer_map, func->name, new_stmt);
+  CHECK(func->body.as<BlockNode>());
+  auto n = make_node<ScheduleNode>();
+  n->func = std::move(new_func);
+  n->stmt2ref = std::move(stmt_map);
+  n->root = n->stmt2ref[n->func->body.operator->()];
+  return Schedule(n);
+}
+
+void Schedule::UpdateSRef(StmtSRefNode* sref, const Stmt& stmt) {
+  ScheduleNode* self = operator->();
+  self->stmt2ref[stmt.operator->()] = GetRef<StmtSRef>(sref);
+  self->stmt2ref.erase(sref->node);
+  sref->node = stmt.operator->();
+}
+
+StmtSRef::StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index) {
+  auto n = make_node<StmtSRefNode>();
+  n->node = node;
+  n->parent = parent;
+  n->seq_index = seq_index;
+  data_ = std::move(n);
 }
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
+TVM_REGISTER_NODE_TYPE(StmtSRefNode);
 
 }  // namespace te
 }  // namespace tvm

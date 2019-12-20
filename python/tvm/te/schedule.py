@@ -339,6 +339,37 @@ class Stage(Object):
         """
         _ffi_api.StageReorder(self, args)
 
+    def get_sref(self, stmt):
+        """Get the stmt schedulable reference of the specific stmt
+
+        Parameters
+        ----------
+        stmt: Stmt
+            The Stmt to be queried
+
+        Returns
+        -------
+        sref : StmtSRef
+            The stmt schedulable reference
+
+        """
+        return GetStmtSRef(self, stmt)
+
+    def replace(self, sref, target_stmt):
+        """Replace a subtree of AST with new stmt
+        and auto maintain the schedulable reference tree
+
+        Parameters
+        ----------
+        sref: StmtSRef
+            The stmt schedulable reference of the Stmt to be replaced
+
+        target_stmt: Stmt
+            The target stmt
+
+        """
+        return Replace(self, sref, target_stmt)
+
     def tile(self, x_parent, y_parent, x_factor, y_factor):
         """ Perform tiling on two dimensions
 
@@ -444,6 +475,8 @@ class Stage(Object):
 
         - **parallel_launch_point**
 
+def get_stmt(sref):
+    """Get Stmt from sref
           Specify to launch parallel threads outside the
           specified iteration loop. By default the threads
           launch at the point of parallel construct.
@@ -451,8 +484,16 @@ class Stage(Object):
           The threads are launched once and reused across multiple
           parallel constructs as BSP style program.
 
+    Parameters
+    ----------
+    sref: StmtSRef
         - **parallel_barrier_when_finish**
 
+    Returns
+    ------
+    stmt: stmt
+    """
+    return GetStmt(sref)
           Insert a synchronization barrier between working threads
           after the specified loop iteration finishes.
 
