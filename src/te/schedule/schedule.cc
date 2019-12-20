@@ -24,43 +24,15 @@
 namespace tvm {
 namespace te {
 
+/*! \brief The tool to create schedule */
 class ScheduleCreator : public IRMutator {
  public:
-  /*!
-   * \brief Constructor
-   * \param func The target function
-   */
-
-  template <typename T>
-  Stmt MutateSRefStmt(const T* op, const Stmt& s) {
-    StmtSRef sref_node(nullptr, parent_node_);
-    auto tmp = sref_node.operator->();
-
-    std::swap(parent_node_, tmp);
-    Stmt new_stmt = IRMutator::Mutate_(op, s);
-    std::swap(parent_node_, tmp);
-
-    sref_node->node = new_stmt.operator->();
-    stmt_map[sref_node->node] = sref_node;
-    return new_stmt;
-  }
-
   Stmt Mutate_(const te::BlockNode* op, const Stmt& s) final {
     return MutateSRefStmt(op, s);
   }
 
   Stmt Mutate_(const te::LoopNode* op, const Stmt& s) final {
     return MutateSRefStmt(op, s);
-  }
-
-  Stmt Mutate_(const te::SeqStmtNode* op, const Stmt& s) final {
-    std::vector<Stmt> new_stmt(op->size());
-    for (size_t i = 0; i < op->size(); ++i) {
-      Stmt old_elem = (*op)[i];
-      Stmt new_elem = Mutate(old_elem);
-      new_stmt[i] = new_elem;
-    }
-    return te::SeqStmt(new_stmt);
   }
 
   void FlattenBlock(const ir::Block* op, std::vector<Stmt>* seq) {
@@ -82,10 +54,27 @@ class ScheduleCreator : public IRMutator {
     return te::SeqStmt(new_stmt);
   }
 
-  std::unordered_map<const StmtNode*, StmtSRef> stmt_map;
+  const std::unordered_map<const StmtNode*, StmtSRef> GetStmtMap() const {
+    return stmt_map_;
+  }
 
  private:
-  StmtSRefNode* parent_node_;
+  template <typename T>
+  Stmt MutateSRefStmt(const T* op, const Stmt& s) {
+    StmtSRef sref_node(nullptr, parent_scope_);
+    auto tmp = sref_node.operator->();
+
+    std::swap(parent_scope_, tmp);
+    Stmt new_stmt = IRMutator::Mutate_(op, s);
+    std::swap(parent_scope_, tmp);
+
+    sref_node->node = new_stmt.operator->();
+    stmt_map_[sref_node->node] = sref_node;
+    return new_stmt;
+  }
+
+  std::unordered_map<const StmtNode*, StmtSRef> stmt_map_;
+  StmtSRefNode* parent_scope_{nullptr};
 };
 
 class SubReplacer : protected COWStmtMutator {
@@ -120,6 +109,8 @@ class SubReplacer : protected COWStmtMutator {
 
   Stmt VisitStmt(const Stmt& stmt) final {
     if (stmt.get() == sref_->node) {
+      // if the statement matches the replace target
+      // just return the target stmt
       return target_;
     } else {
       return COWStmtMutator::VisitStmt(stmt);
@@ -127,21 +118,11 @@ class SubReplacer : protected COWStmtMutator {
   }
 
   Stmt VisitStmt_(const BlockNode* op) final {
-    if (sref_counter_ > 0) {
-      return GetRef<Stmt>(op);
-    } else {
-      ++sref_counter_;
-      return COWStmtMutator::VisitStmt_(op);
-    }
+    return VisitSRefStmt(op);
   }
 
   Stmt VisitStmt_(const LoopNode* op) final {
-    if (sref_counter_ > 0) {
-      return GetRef<Stmt>(op);
-    } else {
-      ++sref_counter_;
-      return COWStmtMutator::VisitStmt_(op);
-    }
+    return VisitSRefStmt(op);
   }
 
   Stmt VisitStmt_(const SeqStmtNode* stmt) final {
@@ -158,12 +139,23 @@ class SubReplacer : protected COWStmtMutator {
   }
 
  protected:
-  int sref_counter_{0};
+  template <typename T>
+  Stmt VisitSRefStmt(const T* op) {
+    if (sref_scope_counter_ > 0) {
+      return GetRef<Stmt>(op);
+    } else {
+      ++sref_scope_counter_;
+      return COWStmtMutator::VisitStmt_(op);
+    }
+  }
+
+  /*! \brief */
+  int sref_scope_counter_{0};
   StmtSRefNode* sref_;
   const Stmt& target_;
 };
 
-Function UpdateFuncBody(Function func, Stmt new_body) {
+Function UpdateFuncBody(const Function& func, Stmt new_body) {
   auto n = make_object<FunctionNode>(*(func.operator->()));
   n->body = std::move(new_body);
   return Function(n);
@@ -171,26 +163,25 @@ Function UpdateFuncBody(Function func, Stmt new_body) {
 
 void Schedule::Replace(StmtSRef ref, Stmt target) {
   UpdateChildren(target, ref->parent);
-  // copy_depth: maximum number of hops until we don't need to copy
-  int curr_depth = 0;
-  int copy_depth = -1;
-  const auto& func = operator->()->func;
+  // num_copy_steps: maximum number of hops until we don't need to copy
+  int curr_step = 0;
+  int num_copy_steps = -1;
+  ScheduleNode* self = operator->();
+  const auto& func = self->func;
 
-  for (StmtSRefNode* ptr = ref.operator->(); ptr != operator->()->root.get();
-       ptr = ptr->parent, ++curr_depth) {
-    auto n = runtime::GetObjectPtr<StmtNode>(const_cast<StmtNode*>(ptr->node));
-
-    // We have just get a reference of n, so if the original
-    // object is unique, the use_count will be 2
-    if (n.use_count() > 2) copy_depth = curr_depth;
+  for (StmtSRefNode* ptr = ref.operator->(); ptr != self->root.get();
+       ptr = ptr->parent, ++curr_step) {
+    if (ptr->node->unique()) {
+      num_copy_steps = curr_step;
+    }
   }
-  if (!func.unique()) copy_depth = curr_depth;
+  if (!func.unique()) num_copy_steps = curr_step;
 
-  curr_depth = 0;
-  for (StmtSRefNode* ptr = ref.operator->(); ptr != operator->()->root.get();
-       ptr = ptr->parent, ++curr_depth) {
+  curr_step = 0;
+  for (StmtSRefNode* ptr = ref.operator->(); ptr != self->root.get();
+       ptr = ptr->parent, ++curr_step) {
     StmtSRefNode* parent = ptr->parent;
-    bool allow_direct_write = curr_depth + 1 > copy_depth;
+    bool allow_direct_write = curr_step + 1 > num_copy_steps;
 
     Stmt new_stmt = SubReplacer(ptr, target)(parent->node, allow_direct_write);
     UpdateSRef(ptr, target);
@@ -200,13 +191,12 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
     }
     target = new_stmt;
   }
-  if (curr_depth + 1 <= copy_depth) {
-    UpdateSRef(operator->()->root.operator->(), target);
+  if (curr_step + 1 <= num_copy_steps) {
+    UpdateSRef(self->root.operator->(), target);
   }
 
-
   if (!func.unique()) {
-    operator->()->func = UpdateFuncBody(func, target);
+    self->func = UpdateFuncBody(func, target);
   }
 }
 
@@ -232,22 +222,22 @@ void IterChildren(const Stmt& stmt, F fupdate) {
 }
 
 void Schedule::UpdateChildren(const Stmt& stmt, StmtSRefNode* parent) {
-  const auto* stmt_ptr = stmt.as<StmtNode>();
+  const auto* stmt_ptr = stmt.operator->();
   if (operator->()->stmt2ref.count(stmt_ptr) == 0) {
-    StmtSRef ref = StmtSRef(stmt.operator->(), parent);
+    StmtSRef ref = StmtSRef(stmt_ptr, parent);
     operator->()->stmt2ref[stmt_ptr] = ref;
     IterChildren(stmt, [this, &ref](const Stmt& s) { return UpdateChildren(s, ref.operator->()); });
   }
 }
 
-Schedule Schedule::Create(Function func) {
+Schedule Schedule::Create(const Function& func) {
   ScheduleCreator creator;
   Stmt new_stmt = creator.Mutate(func->body);
   Function new_func = Function(func->params, func->buffer_map, func->name, new_stmt);
   CHECK(func->body.as<BlockNode>());
   auto n = make_node<ScheduleNode>();
   n->func = std::move(new_func);
-  n->stmt2ref = std::move(creator.stmt_map);
+  n->stmt2ref = creator.GetStmtMap();
   n->root = n->stmt2ref[n->func->body.operator->()];
   return Schedule(n);
 }
@@ -258,6 +248,13 @@ StmtSRef::StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index
   n->parent = parent;
   n->seq_index = seq_index;
   data_ = std::move(n);
+}
+
+void Schedule::UpdateSRef(StmtSRefNode* sref, const Stmt& stmt) {
+  ScheduleNode* self = operator->();
+  self->stmt2ref[stmt.operator->()] = GetRef<StmtSRef>(sref);
+  self->stmt2ref.erase(sref->node);
+  sref->node = stmt.operator->();
 }
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);

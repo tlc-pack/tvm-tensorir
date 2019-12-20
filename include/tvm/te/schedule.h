@@ -24,14 +24,16 @@
 namespace tvm {
 namespace te {
 
-// node container
+/*!
+ * \brief The container of stmt schedulable ref.
+ */
 class StmtSRefNode : public Node {
  public:
-  // the corresponding stmt node
+  /*! \brief The corresponding stmt node */
   const StmtNode* node;
-  // parent sref
+  /*! \brief The parent sref */
   StmtSRefNode* parent{nullptr};
-  // location in an array if parent contains SeqStmt.
+  /*! \brief The location in an array if parent contains SeqStmt. */
   int64_t seq_index{-1};
 
   void VisitAttrs(AttrVisitor* v) {}
@@ -40,10 +42,13 @@ class StmtSRefNode : public Node {
   TVM_DECLARE_NODE_TYPE_INFO(StmtSRefNode, Node);
 };
 
-// strong ref
+/*!
+ * \brief The stmt schedulable ref.
+ */
 class StmtSRef : public NodeRef {
  public:
   StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index = -1);
+
   StmtSRefNode* operator->() {
     return static_cast<StmtSRefNode*>(NodeRef::get_mutable());
   }
@@ -56,7 +61,10 @@ class ScheduleNode : public Node {
   Function func;
   /*! \brief The root of schedulable reference tree */
   StmtSRef root;
-  /*! \brief The mapping from stmt to its schedulable reference node */
+  /*!
+   * \brief The mapping from stmt to its schedulable reference node
+   * \note This is a hint to improve mutation efficiency
+   * */
   std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
 
   void VisitAttrs(AttrVisitor* v) {
@@ -74,7 +82,7 @@ class Schedule : public NodeRef {
    * \param func The function to be scheduled
    * \return The schedule
    * */
-  static Schedule Create(Function func);
+  static Schedule Create(const Function& func);
 
   /*!
    * \brief replace part of AST with new stmt
@@ -92,11 +100,7 @@ class Schedule : public NodeRef {
  private:
   void UpdateChildren(const Stmt& stmt, StmtSRefNode* father);
 
-  inline void UpdateSRef(StmtSRefNode* sref, Stmt stmt) {
-    operator->()->stmt2ref[stmt.operator->()] = GetRef<StmtSRef>(sref);
-    operator->()->stmt2ref.erase(sref->node);
-    sref->node = stmt.operator->();
-  }
+  void UpdateSRef(StmtSRefNode* sref, const Stmt& stmt);
 };
 
 }  // namespace te

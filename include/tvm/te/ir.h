@@ -70,7 +70,7 @@ class SeqStmtNode : public StmtNode {
   Array<Stmt> seq;
 };
 
-/*! \brief Sequence statemnt. */
+/*! \brief Sequence statement. */
 class SeqStmt : public Stmt {
  public:
   /*!
