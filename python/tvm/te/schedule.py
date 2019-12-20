@@ -138,6 +138,37 @@ class Schedule(NodeBase):
         """
         return ScheduleComputeInline(self, block)
 
+    def get_sref(self, stmt):
+        """Get the stmt schedulable reference of the specific stmt
+
+        Parameters
+        ----------
+        stmt: Stmt
+            The Stmt to be queried
+
+        Returns
+        -------
+        sref : StmtSRef
+            The stmt schedulable reference
+
+        """
+        return GetStmtSRef(self, stmt)
+
+    def replace(self, sref, target_stmt):
+        """Replace a subtree of AST with new stmt
+        and auto maintain the schedulable reference tree
+
+        Parameters
+        ----------
+        sref: StmtSRef
+            The stmt schedulable reference of the Stmt to be replaced
+
+        target_stmt: Stmt
+            The target stmt
+
+        """
+        return Replace(self, sref, target_stmt)
+
 
 def create_schedule(func):
     """Create a schedule for a function
@@ -151,17 +182,5 @@ def create_schedule(func):
     schedule: te.Schedule
     """
     return CreateSchedule(func)
-
-
-def create_scheduleX(func):
-    return CreateScheduleX(func)
-
-@register_te_node
-class ScheduleX(NodeBase):
-    def replace(self, sref, target_stmt):
-        return ReplaceX(self, sref, target_stmt)
-
-    def get_s_ref(self, stmt):
-        return GetStmtSRef(self, stmt)
 
 _init_api('tvm.te.schedule')

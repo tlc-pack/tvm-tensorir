@@ -19,4 +19,4 @@
 
 from . import schedule
 
-from .schedule import create_schedule, create_scheduleX
+from .schedule import create_schedule

@@ -80,12 +80,6 @@ class Expr : public NodeRef {
 /*! \brief Base node of all statements. */
 class StmtNode : public Node {
  public:
-  inline bool unique() const {
-    return use_count() == 1;
-  }
-  inline int use_count() const {
-    return Object::use_count();
-  }
   static constexpr const char* _type_key = "Stmt";
   TVM_DECLARE_BASE_NODE_INFO(StmtNode, Node);
 };

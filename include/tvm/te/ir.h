@@ -68,7 +68,6 @@ class SeqStmtNode : public StmtNode {
    *       to directly contain the array content.
    */
   Array<Stmt> seq;
-
 };
 
 /*! \brief Sequence statemnt. */

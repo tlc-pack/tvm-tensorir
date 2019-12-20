@@ -6,8 +6,6 @@
 #include <tvm/te/transform.h>
 #include <tvm/api_registry.h>
 #include <tvm/te/schedule.h>
-#include "schedule/schedule_creator.h"
-#include <tvm/te/scheduleX.h>
 
 namespace tvm {
 namespace te {
@@ -15,45 +13,18 @@ namespace te {
 TVM_REGISTER_API("ir_pass.TeLower")
 .set_body_typed(TeLower);
 
-
 // schedule
 TVM_REGISTER_API("te.schedule.CreateSchedule")
-.set_body_typed<Schedule(Function)>([](Function func) {
-  return ScheduleCreator(func).Create();
-});
+.set_body_typed(Schedule::Create);
 
-TVM_REGISTER_API("te.schedule.ScheduleBlocks")
-.set_body_method(&Schedule::Blocks);
+TVM_REGISTER_API("te.schedule.Replace")
+.set_body_method(&Schedule::Replace);
 
-TVM_REGISTER_API("te.schedule.ScheduleGetBlocksFromTag")
-.set_body_typed<Array<BlockTreeNodeRef>(Schedule, std::string)>(
-    [](Schedule schedule, std::string tag) {
-      return schedule.GetBlock(tag);
+TVM_REGISTER_API("te.schedule.GetStmtSRef")
+.set_body_typed<StmtSRef(Schedule, Stmt)>(
+    [](Schedule schedule_x, Stmt stmt) {
+      return schedule_x->stmt2ref.at(stmt.operator->());
     });
-
-TVM_REGISTER_API("te.schedule.ScheduleGetBlocksFromBuffer")
-.set_body_typed<Array<BlockTreeNodeRef>(Schedule, Buffer)>(
-    [](Schedule schedule, Buffer buffer) {
-      return schedule.GetBlock(buffer);
-    });
-
-TVM_REGISTER_API("te.schedule.ScheduleGetAxes")
-.set_body_method(&Schedule::GetAxes);
-
-TVM_REGISTER_API("te.schedule.ScheduleFuse")
-.set_body_method(&Schedule::fuse);
-
-TVM_REGISTER_API("te.schedule.ScheduleSplitByFactor")
-.set_body_method(&Schedule::split);
-
-TVM_REGISTER_API("te.schedule.ScheduleSplitByNParts")
-.set_body_typed<Array<AxisTreeNodeRef>(Schedule, AxisTreeNodeRef, Expr)>(
-    [](Schedule schedule, AxisTreeNodeRef loop, Expr nparts) {
-      return schedule.split(loop, truncdiv(loop->loop->extent + nparts - 1, nparts));
-    });
-
-TVM_REGISTER_API("te.schedule.ScheduleComputeInline")
-.set_body_method(&Schedule::compute_inline);
 
 // maker
 TVM_REGISTER_API("make.TensorRegion")
@@ -122,16 +93,5 @@ TVM_REGISTER_API("make.TeFunction")
       return Function(params, buffer_map, name, body);
     });
 
-TVM_REGISTER_API("te.schedule.CreateScheduleX")
-.set_body_typed(ScheduleX::Create);
-
-TVM_REGISTER_API("te.schedule.ReplaceX")
-.set_body_method(&ScheduleX::Replace);
-
-TVM_REGISTER_API("te.schedule.GetStmtSRef")
-.set_body_typed<StmtSRef(ScheduleX, Stmt)>(
-    [](ScheduleX schedule_x, Stmt stmt) {
-      return schedule_x->stmt2ref.at(stmt.operator->());
-    });
 }  // namespace te
 }  // namespace tvm
