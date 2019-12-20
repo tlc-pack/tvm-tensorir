@@ -45,6 +45,13 @@ class TeLowerMutator : public IRMutator {
       const auto& v = op->values[i];
       block_var_[iter->var.get()] = v;
     }
+    for (const auto& allocate : op->allocations) {
+      const auto& buffer = allocate->buffer;
+      Operation op_ = PlaceholderOpNode::make(buffer->name,
+                                              buffer->shape,
+                                              buffer->dtype);
+      op_map_[buffer] = op_;
+    }
     Stmt stmt = IRMutator::Mutate_(op, s);
     op = stmt.as<BlockNode>();
     CHECK(op != nullptr);
@@ -53,11 +60,27 @@ class TeLowerMutator : public IRMutator {
       const auto& v = op->values[i];
       block_var_.erase(iter->var.get());
     }
+    Stmt last_stmt;
     if (is_one(op->predicate)) {
-      return op->body;
+      last_stmt = op->body;
     } else {
-      return IfThenElse::make(op->predicate, op->body);
+      last_stmt = IfThenElse::make(op->predicate, op->body);
     }
+    for (const auto& allocate : op->allocations) {
+      // TODO(siyuan): enhance realize
+      const auto& buffer = allocate->buffer;
+      Region region;
+      for (const auto& extent : buffer->shape) {
+        region.push_back(Range::make_by_min_extent(0, extent));
+      }
+      Stmt realize = Realize::make(op_map_.at(allocate->buffer), 0,
+                                   buffer->dtype, region, const_true(), last_stmt);
+      last_stmt = AttrStmt::make(op_map_.at(allocate->buffer),
+                                 attr::realize_scope,
+                                 allocate->scope,
+                                 realize);
+    }
+    return last_stmt;
   }
 
   // transform Loop to ir::For
@@ -79,49 +102,15 @@ class TeLowerMutator : public IRMutator {
   }
 
   Stmt Mutate_(const SeqStmtNode* op, const Stmt& s) final {
-    int last_allocate = -1;
-    for (size_t i = 0; i < op->size(); ++i) {
-      const auto& stmt = op->operator[](i);
-      if (const BufferAllocateNode* allocate = stmt.as<BufferAllocateNode>()) {
-        const auto& buffer = allocate->buffer;
-        Operation op = PlaceholderOpNode::make(buffer->name,
-                                               buffer->shape,
-                                               buffer->dtype);
-        op_map_[buffer] = op;
-        last_allocate = i;
-      }
-    }
     Stmt stmt = IRMutator::Mutate_(op, s);
     op = stmt.as<SeqStmtNode>();
     CHECK(op != nullptr);
-    if (last_allocate >= 0) {
-      size_t last = static_cast<size_t>(last_allocate);
-      Stmt last_stmt = op->operator[](op->size() - 1);
-      CHECK_LT(last + 1, op->size());
-      for (size_t i = op->size() - 1; i > last + 1; --i) {
-        size_t index = i - 1;
-        last_stmt = ir::Block::make(op->operator[](index), last_stmt);
-      }
-      for (size_t i = last + 1; i != 0; --i) {
-        size_t index = i - 1;
-        if (const BufferAllocateNode* allocate = op->operator[](index).as<BufferAllocateNode>()) {
-          const auto& buffer = allocate->buffer;
-          Region region;
-          for (const auto& extent : buffer->shape) {
-            region.push_back(Range::make_by_min_extent(0, extent));
-          }
-          Stmt realize = Realize::make(op_map_.at(allocate->buffer), 0,
-                                       buffer->dtype, region, const_true(), last_stmt);
-          last_stmt = AttrStmt::make(op_map_.at(allocate->buffer),
-                                     attr::realize_scope,
-                                     allocate->scope,
-                                     realize);
-        }
-      }
-      return last_stmt;
-    } else {
-      return stmt;
+    Stmt last_stmt = op->operator[](op->size() - 1);
+    for (size_t i = op->size() - 1; i > 0; --i) {
+      size_t index = i - 1;
+      last_stmt = ir::Block::make(op->operator[](index), last_stmt);
     }
+    return last_stmt;
   }
 
   Stmt Mutate_(const ir::Block* op, const Stmt& s) final {
