@@ -21,9 +21,9 @@
  * \brief Stmt mutator that implements COW semantics
  * \file cow_stmt_mutator.cc
  */
-#include <utility>
 #include "cow_stmt_mutator.h"
 #include <tvm/te/ir.h>
+#include <utility>
 #include "../pass/ir_util.h"
 
 namespace tvm {

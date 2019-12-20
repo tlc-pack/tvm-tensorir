@@ -160,7 +160,7 @@ class IRDeepCompare :
     if (CompareNodeRef(op->func, rhs->func) != 0) return;
     if (CompareValue(op->value_index, rhs->value_index) != 0) return;
     if (CompareExpr(op->value, rhs->value) != 0) return;
-    if (CompareArray(op->args, rhs->args) != 0) return;
+    if (CompareExprArray(op->args, rhs->args) != 0) return;
   }
 
   void VisitStmt_(const RealizeNode* op, const Stmt& other) final {
@@ -191,6 +191,74 @@ class IRDeepCompare :
   void VisitStmt_(const EvaluateNode* op, const Stmt& other) final {
     const EvaluateNode* rhs = other.as<EvaluateNode>();
     CompareExpr(op->value, rhs->value);
+  }
+
+  void VisitStmt_(const te::BlockNode* op, const Stmt& other) final {
+    const auto* rhs = other.as<te::BlockNode>();
+    if (tie_def_) {
+      if (CompareValue(op->iter_vars.size(), rhs->iter_vars.size()) != 0) return;
+      for (size_t i = 0; i < op->iter_vars.size(); ++i) {
+        vmap_[op->iter_vars[i]->var.get()] = rhs->iter_vars[i]->var.get();
+      }
+    } else {
+      if (CompareArray(op->iter_vars, op->iter_vars,
+                       [this](const NodeRef& a, const NodeRef& b) {
+                         return CompareNodeRef(a, b);
+                       }) != 0) return;
+    }
+    if (CompareExprArray(op->values, rhs->values) != 0) return;
+    if (CompareArray(op->reads, rhs->reads,
+                     [this](const te::TensorRegion& a, const te::TensorRegion& b) {
+                       return CompareTensorRegion(a, b);
+                     }) != 0) return;
+    if (CompareArray(op->writes, rhs->writes,
+                     [this](const te::TensorRegion& a, const te::TensorRegion& b) {
+                       return CompareTensorRegion(a, b);
+                     }) != 0) return;
+    if (CompareExpr(op->predicate, rhs->predicate) != 0) return;
+    if (CompareArray(op->allocations, rhs->allocations,
+                     [this](const Stmt& a, const Stmt& b) {
+                       return CompareStmt(a, b);
+                     }) != 0) return;
+    if (CompareArray(op->annotations, rhs->annotations,
+                     [this](const NodeRef& a, const NodeRef& b) {
+                       return CompareNodeRef(a, b);
+                     }) != 0) return;
+    if (CompareStmt(op->body, rhs->body) != 0) return;
+    if (CompareString(op->tag, rhs->tag) != 0) return;
+  }
+
+  void VisitStmt_(const te::BufferStoreNode* op, const Stmt& other) final {
+    const auto* rhs = other.as<te::BufferStoreNode>();
+    if (CompareNodeRef(op->buffer, rhs->buffer) != 0) return;
+    if (CompareExprArray(op->indices, rhs->indices) != 0) return;
+    if (CompareExpr(op->value, rhs->value) != 0) return;
+  }
+
+  void VisitStmt_(const te::BufferAllocateNode* op, const Stmt& other) final {
+    const auto* rhs = other.as<te::BufferAllocateNode>();
+    if (CompareNodeRef(op->buffer, rhs->buffer) != 0) return;
+    if (CompareString(op->scope, rhs->scope) != 0) return;
+  }
+
+  void VisitStmt_(const te::LoopNode* op, const Stmt& other) final {
+    const auto* rhs = other.as<te::LoopNode>();
+    if (CompareExpr(op->min, rhs->min) != 0) return;
+    if (CompareExpr(op->extent, rhs->extent) != 0) return;
+    if (tie_def_) {
+      vmap_[op->loop_var.get()] = rhs->loop_var.get();
+    } else {
+      if (CompareExpr(op->loop_var, rhs->loop_var) != 0) return;
+    }
+    if (CompareStmt(op->body, rhs->body) != 0) return;
+  }
+
+  void VisitStmt_(const te::SeqStmtNode* op, const Stmt& other) final {
+    const auto* rhs = other.as<te::SeqStmtNode>();
+    if (CompareValue(op->size(), rhs->size()) != 0) return;
+    for (size_t i = 0; i < op->size(); ++i) {
+      if (CompareStmt((*op)[i], (*rhs)[i]) != 0) return;
+    }
   }
 
   // Exprs
@@ -225,7 +293,7 @@ class IRDeepCompare :
   void VisitExpr_(const CallNode* op, const PrimExpr& other) final {
     const CallNode* rhs = other.as<CallNode>();
     if (CompareString(op->name, rhs->name)) return;
-    if (CompareArray(op->args, rhs->args)) return;
+    if (CompareExprArray(op->args, rhs->args)) return;
     if (CompareValue(op->call_type, rhs->call_type) != 0) return;
     if (CompareNodeRef(op->func, rhs->func) != 0) return;
     if (CompareValue(op->value_index, rhs->value_index) != 0) return;
@@ -246,7 +314,7 @@ class IRDeepCompare :
       }
     }
     if (CompareExpr(op->condition, rhs->condition) != 0) return;
-    if (CompareArray(op->source, rhs->source) != 0) return;
+    if (CompareExprArray(op->source, rhs->source) != 0) return;
   }
 
   void VisitExpr_(const IntImmNode *op, const PrimExpr& other) final {
@@ -295,6 +363,13 @@ class IRDeepCompare :
     if (CompareArray(op->indices, rhs->indices) != 0) return;
   }
 
+  void VisitExpr_(const te::BufferLoadNode* op, const Expr& other) final {
+    const auto* rhs = other.as<te::BufferLoadNode>();
+    if (CompareNodeRef(op->buffer, rhs->buffer) != 0) return;
+    if (CompareExprArray(op->indices, rhs->indices) != 0) return;
+    if (CompareType(op->type, rhs->type) != 0) return;
+  }
+
   DEFINE_BIOP_EXPR_CMP_(AddNode)
   DEFINE_BIOP_EXPR_CMP_(SubNode)
   DEFINE_BIOP_EXPR_CMP_(MulNode)
@@ -338,13 +413,20 @@ class IRDeepCompare :
     return order_;
   }
 
-  int CompareArray(const Array<PrimExpr>& lhs, const Array<PrimExpr>& rhs) {
+  template <typename T, typename F>
+  int CompareArray(const Array<T>& lhs, const Array<T>& rhs, F comp) {
     if (order_ != 0) return order_;
     if (CompareValue(lhs.size(), rhs.size()) != 0) return order_;
     for (size_t i = 0; i < lhs.size(); ++i) {
-      if (CompareExpr(lhs[i], rhs[i]) != 0) return order_;
+      if (comp(lhs[i], rhs[i]) != 0) return order_;
     }
     return order_;
+  }
+
+  int CompareExprArray(const Array<Expr>& lhs, const Array<Expr>& rhs) {
+    return CompareArray(lhs, rhs, [this](const Expr& a, const Expr& b) {
+      return CompareExpr(a, b);
+    });
   }
 
   int CompareRegion(const Region& lhs, const Region& rhs) {
@@ -415,7 +497,14 @@ class IRDeepCompare :
         if (CompareExpr(lhs->rhs[i], rhs->rhs[i]) != 0) return order_;
       }
     }
-    order_ = cmp.CompareArray(lhs->result, rhs->result);
+    order_ = cmp.CompareExprArray(lhs->result, rhs->result);
+    return order_;
+  }
+
+  int CompareTensorRegion(const te::TensorRegion& lhs, const te::TensorRegion& rhs) {
+    if (order_ != 0) return order_;
+    if (CompareNodeRef(lhs->buffer, rhs->buffer) != 0) return order_;
+    if (CompareRegion(lhs->region, rhs->region) != 0) return order_;
     return order_;
   }
   // The order flag, smaller, -1, bigger: +1, equal: 0
@@ -429,6 +518,8 @@ class IRDeepCompare :
   // varaible remap if any
   std::unordered_map<const VarNode*, const VarNode*> vmap_;
 };
+
+
 
 
 bool Equal(const Stmt& lhs, const Stmt& rhs) {

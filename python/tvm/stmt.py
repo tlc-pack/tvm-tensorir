@@ -489,6 +489,10 @@ class SeqStmt(Stmt):
         self.__init_handle_by_constructor__(
             _make.SeqStmt, seq)
 
+    def __getitem__(self, item):
+        return self.seq[item]
+
+
 
 def stmt_seq(*args):
     """Make sequence of statements
