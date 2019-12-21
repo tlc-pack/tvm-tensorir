@@ -427,11 +427,13 @@ class Function : public NodeRef {
 
   TVM_DEFINE_NODE_REF_METHODS(Function, NodeRef, FunctionNode);
 
- private:
-  friend Schedule;
-  FunctionNode* Mutable() {
+  FunctionNode* operator->() {
     return static_cast<FunctionNode*>(data_.get());
   }
+
+ private:
+  friend Schedule;
+
 };
 
 }  // namespace te

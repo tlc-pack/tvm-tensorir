@@ -231,6 +231,7 @@ void IRVisitor::Visit_(const Evaluate *op) {
 void IRVisitor::Visit_(const te::BlockNode* op) {
   this->Visit(op->values);
   this->Visit(op->predicate);
+  this->Visit(op->allocations);
   this->Visit(op->body);
 }
 

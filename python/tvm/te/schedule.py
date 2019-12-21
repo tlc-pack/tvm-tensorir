@@ -183,4 +183,17 @@ def create_schedule(func):
     """
     return CreateSchedule(func)
 
+def get_stmt(sref):
+    """Get Stmt from sref
+
+    Parameters
+    ----------
+    sref: StmtSRef
+
+    Returns
+    ------
+    stmt: stmt
+    """
+    return GetStmt(sref)
+
 _init_api('tvm.te.schedule')

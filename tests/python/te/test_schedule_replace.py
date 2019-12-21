@@ -115,6 +115,7 @@ def test_replace_root_write():
     sref = s.get_sref(s.func.body)
     s.replace(sref, target)
     assert old_hash == s.func.__hash__()
+    assert isinstance(s.func.body.body, tvm.stmt.Loop)
 
     util.check_correctness(func, s.func, tensors, tensor_map)
 
@@ -132,9 +133,21 @@ def test_replace_root_copy():
     util.check_correctness(func, s.func, tensors, tensor_map)
 
 
+def test_replace_remove_sref():
+    s, func, target, tensors, tensor_map = replace_root_ir_builder()
+
+    sref = s.get_sref(s.func.body.body.seq[0])
+    s.replace(s.get_sref(s.func.body), target)
+
+    assert te.get_stmt(sref) is None
+
+    util.check_correctness(func, s.func, tensors, tensor_map)
+
+
 if __name__ == "__main__":
     test_replace_direct_write()
     test_replace_copy()
     test_replace_partial_copy()
     test_replace_root_write()
     test_replace_root_copy()
+    test_replace_remove_sref()

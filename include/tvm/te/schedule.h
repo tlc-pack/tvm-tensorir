@@ -98,8 +98,6 @@ class Schedule : public NodeRef {
   }
 
  private:
-  void UpdateChildren(const Stmt& stmt, StmtSRefNode* father);
-
   void UpdateSRef(StmtSRefNode* sref, const Stmt& stmt);
 };
 

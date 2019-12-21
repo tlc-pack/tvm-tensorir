@@ -26,6 +26,13 @@ TVM_REGISTER_API("te.schedule.GetStmtSRef")
       return schedule_x->stmt2ref.at(stmt.operator->());
     });
 
+TVM_REGISTER_API("te.schedule.GetStmt")
+.set_body_typed<Stmt(StmtSRef)>(
+    [](StmtSRef sref) {
+      return GetRef<Stmt>(sref->node);
+    });
+
+
 // maker
 TVM_REGISTER_API("make.TensorRegion")
 .set_body_typed<TensorRegion(Buffer, Array<Range>)>(
