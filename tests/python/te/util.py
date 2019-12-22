@@ -55,7 +55,7 @@ def element_wise_stmt(m=128, n=128):
 
     stmt = ib.get()
     func, tensors, tensor_map = ib.function([a, c], buffer_map, stmt)
-    return func, tensors, tensor_map, [A, B, C]
+    return func, tensors, tensor_map
 
 
 def matmul_stmt(m=128, n=128, l=128):
@@ -94,7 +94,7 @@ def matmul_stmt(m=128, n=128, l=128):
 
     stmt = ib.get()
     func, tensors, tensor_map = ib.function([a, b, c], buffer_map, stmt)
-    return func, tensors, tensor_map, [A, B, C]
+    return func, tensors, tensor_map
 
 
 def check_correctness(func1, func2, args, tensor_map=None, target='llvm'):

@@ -17,121 +17,103 @@
 
 import tvm
 from tvm import te
+from tvm.ir_pass import Equal
 import util
 
 
 def replace_ir_builder():
     m, n = 128, 128
-    func, tensors, tensor_map, (A, B, C) = util.element_wise_stmt(m, n)
+    func, tensors, tensor_map = util.element_wise_stmt(m, n)
     s = te.create_schedule(func)
-    ib = tvm.ir_builder.create()
 
-    A._builder = ib
-    B._builder = ib
-    with ib.loop_range(0, m * n, name="i0") as fused:
-        bv = ib.iter_var((0, m * n), name="vi0")
-        v = bv.var
-        i = tvm.truncdiv(v, n)
-        j = tvm.truncmod(v, n)
-        with ib.block([bv], [fused], A[i:i + 1, j:j + 1], B[i:i + 1, j:j + 1],
-                name="B"):
-            B[i, j] = A[i, j] * 2
+    # The target stmt
+    target = tvm.make.TeBlock(
+        [], [], [], [], s.func.body.body[1], 1,
+        [], [], 'target')
 
-    target = ib.get()
-
-    return s, func, target, tensors, tensor_map
-
-
-def replace_root_ir_builder():
-    m, n = 128, 128
-    func, tensors, tensor_map, (A, B, C) = util.element_wise_stmt(m, n)
-    s = te.create_schedule(func)
-    ib = tvm.ir_builder.create()
-
-    A._builder = ib
-    C._builder = ib
-    dom_i = tvm.make.range_by_min_extent(0, m)
-    dom_j = tvm.make.range_by_min_extent(0, n)
-    with ib.block([], [], A[0:m, 0:n], C[0:m, 0:n], name="root"):
-        with ib.loop_range(0, m, name="i") as i:
-            with ib.loop_range(0, n, name="j") as j:
-                bv_i = ib.iter_var(dom_i, name="vi")
-                bv_j = ib.iter_var(dom_j, name="vj")
-                vi = bv_i.var
-                vj = bv_j.var
-                with ib.block([bv_i, bv_j], [i, j], A[vi:vi + 1, vj:vj + 1], B[vi:vi + 1, vj:vj + 1],
-                        name="B"):
-                    C[vi, vj] = A[vi, vj] * 2 + 1
-
-    target = ib.get()
-
-    return s, func, target, tensors, tensor_map
+    return s, target
 
 
 def test_replace_direct_write():
-    s, func, target, tensors, tensor_map = replace_ir_builder()
+    s, target = replace_ir_builder()
 
     old_hash = s.func.__hash__()
-    sref = s.get_sref(s.func.body.body[0])
+    sref = s.get_sref(s.func.body.body[1])
     s.replace(sref, target)
-    assert old_hash == s.func.__hash__()
 
-    util.check_correctness(func, s.func, tensors, tensor_map)
+    # There is no other reference so the AST node can be write directly
+    assert old_hash == s.func.__hash__()
+    # Check the replaced part is equal to the target
+    assert Equal(s.func.body.body[1], target)
+    # The target reuse the sref's stmt, so the sref won't be none
+    assert te.get_stmt(sref) is not None
 
 
 def test_replace_copy():
-    s, func, target, tensors, tensor_map = replace_ir_builder()
+    s, target = replace_ir_builder()
 
     old_hash = s.func.__hash__()
-    func_ref = s.func
+    # We hold another reference of func
+    old_func = s.func
     sref = s.get_sref(s.func.body.body[0])
     s.replace(sref, target)
-    assert old_hash != s.func.__hash__()
-    assert old_hash == func_ref.__hash__()
 
-    util.check_correctness(func, s.func, tensors, tensor_map)
+    # We need to copy the whole func to remain the old_func unchanged
+    assert old_hash != s.func.__hash__()
+    assert not Equal(old_func.body, s.func.body)
+    assert old_hash == old_func.__hash__()
+    # Check the replaced part is equal to the target
+    assert Equal(s.func.body.body[0], target)
+    # The replaced AST node will be deleted, so the ref will be None
+    assert te.get_stmt(sref) is None
 
 
 def test_replace_partial_copy():
-    s, func, target, tensors, tensor_map = replace_ir_builder()
+    s, target = replace_ir_builder()
 
-    old_hash = s.func.__hash__()
-    func_ref = s.func.body.body
-    ref_old_hash = func_ref.__hash__()
-    sref = s.get_sref(s.func.body.body[0])
+    func_old_hash = s.func.__hash__()
+    hold_ref = s.func.body.body[0]
+    ref_old_hash = hold_ref.__hash__()
+    sref = s.get_sref(s.func.body.body[0].body)
     other_part_hash = s.func.body.body[1].__hash__()
     s.replace(sref, target)
-    assert old_hash == s.func.__hash__()
-    assert ref_old_hash != s.func.body.body.__hash__()
-    assert other_part_hash == s.func.body.body[1].__hash__()
-    assert te.get_stmt(sref) is None
 
-    util.check_correctness(func, s.func, tensors, tensor_map)
+    # The hold stmt will not change but copy a new one
+    assert ref_old_hash != s.func.body.body[0].__hash__()
+    assert not Equal(ref_old_hash.body, target)
+    # The function and the other part stmt can be directly write
+    assert func_old_hash == s.func.__hash__()
+    assert other_part_hash == s.func.body.body[1].__hash__()
+    # Check the replaced part is equal to the target
+    assert Equal(s.func.body.body[0].body, target)
+    # The replaced AST node will be deleted, so the ref will be None
+    assert te.get_stmt(sref) is None
 
 
 def test_replace_root_write():
-    s, func, target, tensors, tensor_map = replace_root_ir_builder()
+    s, target = replace_ir_builder()
 
     old_hash = s.func.__hash__()
     sref = s.get_sref(s.func.body)
     s.replace(sref, target)
+    # Check no copy and the new body equals to target
     assert old_hash == s.func.__hash__()
-    assert isinstance(s.func.body.body, tvm.stmt.Loop)
-
-    util.check_correctness(func, s.func, tensors, tensor_map)
+    assert Equal(s.func.body, target)
 
 
 def test_replace_root_copy():
-    s, func, target, tensors, tensor_map = replace_root_ir_builder()
+    s, target = replace_ir_builder()
 
     old_hash = s.func.__hash__()
     func_ref = s.func
     sref = s.get_sref(s.func.body)
     s.replace(sref, target)
+    # Check the new body equals to target
     assert old_hash != s.func.__hash__()
+    assert Equal(s.func.body, target)
+    # Check the original func remains unchanged
     assert old_hash == func_ref.__hash__()
-
-    util.check_correctness(func, s.func, tensors, tensor_map)
+    assert not Equal(func_ref.body, target)
 
 
 if __name__ == "__main__":
