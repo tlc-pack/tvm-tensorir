@@ -58,6 +58,7 @@ Block::Block(Array<IterVar> iter_vars,
              Array<TensorRegion> writes,
              Stmt body,
              Expr predicate,
+             Array<BufferAllocate> allocations,
              Array<Annotation> annotations,
              std::string tag) {
   NodePtr<BlockNode> node = make_node<BlockNode>();
@@ -68,6 +69,7 @@ Block::Block(Array<IterVar> iter_vars,
   node->writes = std::move(writes);
   node->body = std::move(body);
   node->predicate = std::move(predicate);
+  node->allocations = std::move(allocations);
   node->annotations = std::move(annotations);
   node->tag = std::move(tag);
   data_ = std::move(node);
@@ -243,7 +245,7 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
     p->stream << " pred: ";
     p->Print(op->predicate);
   }
-  if (op->annotations.size() > 0) {
+  if (!op->annotations.empty()) {
     p->stream << " attr: ";
     p->Print(op->annotations);
   }
@@ -251,6 +253,9 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
   // print body
   p->stream << " {\n";
   p->indent += 2;
+  for (const auto& allocate : op->allocations) {
+    p->Print(allocate);
+  }
   p->Print(op->body);
   p->indent -= 2;
   p->PrintIndent();

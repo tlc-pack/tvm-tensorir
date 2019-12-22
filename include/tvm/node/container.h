@@ -253,7 +253,7 @@ class Array : public NodeRef {
    *  Otherwise make a new copy of the array to ensure the current handle
    *  hold a unique copy.
    *
-   * \return Handle to the internal node container(which ganrantees to be unique)
+   * \return Handle to the internal node container(which guarantees to be unique)
    */
   inline ArrayNode* CopyOnWrite() {
     if (data_.get() == nullptr || !data_.unique())  {

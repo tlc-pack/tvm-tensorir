@@ -28,7 +28,6 @@ from ._ffi.base import string_types
 from ._ffi.node import NodeGeneric
 from ._ffi.runtime_ctypes import TVMType
 from .expr import Call as _Call
-from . import ir_pass
 
 
 class WithScope(object):
@@ -43,6 +42,7 @@ class WithScope(object):
 
     def __exit__(self, ptype, value, trace):
         self._exit_cb()
+
 
 class Buffer(NodeGeneric):
     """Buffer type used in TE.
@@ -70,8 +70,11 @@ class Buffer(NodeGeneric):
             for x in index:
                 assert isinstance(x, slice)
                 assert x.step == 1 or x.step is None
+                extent = x.stop - x.start
+                if isinstance(extent, _expr.Expr):
+                    extent = _pass.Simplify(x.stop - x.start)
                 doms.append(_make.range_by_min_extent(
-                    x.start, ir_pass.Simplify(x.stop - x.start)))
+                    x.start, extent))
             return _make.TensorRegion(self._buffer, doms)
         return _make.BufferLoad(self._content_type, self._buffer, index)
 
@@ -84,6 +87,7 @@ class Buffer(NodeGeneric):
         if isinstance(index, _expr.Expr):
             index = [index]
         self._builder.emit(_make.BufferStore(self._buffer, value, index))
+
 
 class BufferVar(NodeGeneric):
     """Buffer variable with content type, makes load store easily.
@@ -159,6 +163,7 @@ class IRBuilder(object):
 
     def __init__(self):
         self._seq_stack = [[]]
+        self._allocate_stack = [[]]
         self.nidx = 0
 
     def _pop_seq(self):
@@ -543,6 +548,7 @@ class IRBuilder(object):
         if annotations is None:
             annotations = []
         self._seq_stack.append([])
+        self._allocate_stack.append([])
 
         if not isinstance(block_vars, list) and not isinstance(block_vars, tuple):
             block_vars = [block_vars]
@@ -553,7 +559,8 @@ class IRBuilder(object):
 
         def _exit_cb():
             self.emit(_make.TeBlock(
-                block_vars, values, reads, writes, self._pop_seq(), predicate, annotations, name))
+                block_vars, values, reads, writes, self._pop_seq(), predicate,
+                self._allocate_stack.pop(), annotations, name))
 
         return WithScope(None, _exit_cb)
 
@@ -604,9 +611,12 @@ class IRBuilder(object):
         name: optional, str
             The name of the buffer
 
+        scope: optional, str
+            The buffer scope
+
         """
         _buffer = _api.decl_buffer(shape, dtype=dtype, name=name)
-        self.emit(_make.BufferAllocate(_buffer, scope))
+        self._allocate_stack[-1].append(_make.BufferAllocate(_buffer, scope))
         return Buffer(self, _buffer, dtype)
 
     def declare_buffer(self, shape, dtype="float32", name="buf"):

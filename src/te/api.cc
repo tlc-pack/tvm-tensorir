@@ -6,7 +6,6 @@
 #include <tvm/te/transform.h>
 #include <tvm/api_registry.h>
 #include <tvm/te/schedule.h>
-#include "schedule_creator.h"
 
 namespace tvm {
 namespace te {
@@ -14,42 +13,25 @@ namespace te {
 TVM_REGISTER_API("ir_pass.TeLower")
 .set_body_typed(TeLower);
 
-
 // schedule
 TVM_REGISTER_API("te.schedule.CreateSchedule")
-.set_body_typed<Schedule(Function)>([](Function func) {
-  return ScheduleCreator(func).Create();
-});
+.set_body_typed(Schedule::Create);
 
-TVM_REGISTER_API("te.schedule.ScheduleBlocks")
-.set_body_method(&Schedule::Blocks);
+TVM_REGISTER_API("te.schedule.Replace")
+.set_body_method(&Schedule::Replace);
 
-TVM_REGISTER_API("te.schedule.ScheduleGetBlocksFromTag")
-.set_body_typed<Array<Block>(Schedule, std::string)>(
-    [](Schedule schedule, std::string tag) {
-      return schedule.GetBlock(tag);
+TVM_REGISTER_API("te.schedule.GetStmtSRef")
+.set_body_typed<StmtSRef(Schedule, Stmt)>(
+    [](Schedule schedule_x, Stmt stmt) {
+      return schedule_x->stmt2ref.at(stmt.operator->());
     });
 
-TVM_REGISTER_API("te.schedule.ScheduleGetBlocksFromBuffer")
-.set_body_typed<Array<Block>(Schedule, Buffer)>(
-    [](Schedule schedule, Buffer buffer) {
-      return schedule.GetBlock(buffer);
+TVM_REGISTER_API("te.schedule.GetStmt")
+.set_body_typed<Stmt(StmtSRef)>(
+    [](StmtSRef sref) {
+      return GetRef<Stmt>(sref->node);
     });
 
-TVM_REGISTER_API("te.schedule.ScheduleGetAxes")
-.set_body_method(&Schedule::GetAxes);
-
-TVM_REGISTER_API("te.schedule.ScheduleFuse")
-.set_body_method(&Schedule::fuse);
-
-TVM_REGISTER_API("te.schedule.ScheduleSplitByFactor")
-.set_body_method(&Schedule::split);
-
-TVM_REGISTER_API("te.schedule.ScheduleSplitByNParts")
-.set_body_typed<Array<Loop>(Schedule, Loop, Expr)>(
-    [](Schedule schedule, Loop loop, Expr nparts) {
-      return schedule.split(loop, truncdiv(loop->extent + nparts - 1, nparts));
-    });
 
 // maker
 TVM_REGISTER_API("make.TensorRegion")
@@ -89,6 +71,7 @@ TVM_REGISTER_API("make.TeBlock")
                       Array<TensorRegion>,
                       Array<TensorRegion>,
                       Stmt, Expr,
+                      Array<BufferAllocate>,
                       Array<Annotation>,
                       std::string)>(
     [](Array<IterVar> iter_vars,
@@ -97,6 +80,7 @@ TVM_REGISTER_API("make.TeBlock")
        Array<TensorRegion> writes,
        Stmt body,
        Expr predicate,
+       Array<BufferAllocate> allocates,
        Array<Annotation> annotations,
        std::string tag) {
       if (!predicate.type().is_bool()) {
@@ -105,7 +89,7 @@ TVM_REGISTER_API("make.TeBlock")
         predicate = UIntImm::make(Bool(), 1);
       }
       return Block(iter_vars, values, reads, writes,
-                   body, predicate, annotations, tag);
+                   body, predicate, allocates, annotations, tag);
     });
 
 TVM_REGISTER_API("make.TeFunction")

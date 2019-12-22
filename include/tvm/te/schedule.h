@@ -17,110 +17,88 @@
  * under the License.
  */
 
-/*!
- * \file tvm/te/schedule.h
- * \brief The schedule of TE IR
- */
-
 #ifndef TVM_TE_SCHEDULE_H_
 #define TVM_TE_SCHEDULE_H_
-
 #include <tvm/te/ir.h>
-#include <tvm/te/dependency_graph.h>
-#include <string>
 
 namespace tvm {
 namespace te {
 
-class Schedule;
+/*!
+ * \brief The container of stmt schedulable ref.
+ */
+class StmtSRefNode : public Node {
+ public:
+  /*! \brief The corresponding stmt node */
+  const StmtNode* node;
+  /*! \brief The parent sref */
+  StmtSRefNode* parent{nullptr};
+  /*! \brief The location in an array if parent contains SeqStmt. */
+  int64_t seq_index{-1};
+
+  void VisitAttrs(AttrVisitor* v) {}
+
+  static constexpr const char* _type_key = "StmtSRef";
+  TVM_DECLARE_NODE_TYPE_INFO(StmtSRefNode, Node);
+};
+
+/*!
+ * \brief The stmt schedulable ref.
+ */
+class StmtSRef : public NodeRef {
+ public:
+  StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index = -1);
+
+  StmtSRefNode* operator->() {
+    return static_cast<StmtSRefNode*>(NodeRef::get_mutable());
+  }
+  TVM_DEFINE_NODE_REF_METHODS(StmtSRef, NodeRef, StmtSRefNode);
+};
+
 class ScheduleNode : public Node {
  public:
+  /*! \brief The function to be scheduled */
+  Function func;
+  /*! \brief The root of schedulable reference tree */
+  StmtSRef root;
+  /*!
+   * \brief The mapping from stmt to its schedulable reference node
+   * \note This is a hint to improve mutation efficiency
+   * */
+  std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
+
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("func", &func);
   }
-  /*! \brief The function to be scheduled */
-  Function func;
+
   static constexpr const char* _type_key = "te.Schedule";
   TVM_DECLARE_NODE_TYPE_INFO(ScheduleNode, Node);
- private:
-  friend class Schedule;
-  /*! \brief The mapping from AST node to its father */
-  Map<Stmt, Stmt> father_map_;
-  /*! \brief The dependency graph used in some primitives */
-  DependencyGraph dependency_graph_;
-  /*! \brief The maping from output buffer to its producer blocks */
-  Map<Buffer, Array<Block>> write_map_;
 };
 
 class Schedule : public NodeRef {
  public:
-  explicit Schedule(Function func,
-                    DependencyGraph dependency_graph,
-                    Map<Buffer, Array<Block>> write_map);
+  /*!
+   * \brief Create a new schedule
+   * \param func The function to be scheduled
+   * \return The schedule
+   * */
+  static Schedule Create(const Function& func);
+
+  /*!
+   * \brief replace part of AST with new stmt
+   * \param ref The schedulable reference of the old stmt
+   * \param target The new stmt
+   * */
+  void Replace(StmtSRef ref, Stmt target);
+
   TVM_DEFINE_NODE_REF_METHODS(Schedule, NodeRef, ScheduleNode);
 
-  /*!
-   * \brief Get block from its tag
-   * \param tag The query tag
-   * \return the block list
-   * */
-  Array<Block> GetBlock(std::string tag) const;
-
-  /*!
-   * \brief Get block from its output tensor
-   * \param tag The query buffer
-   * \return the block list
-   * */
-  Array<Block> GetBlock(Buffer buffer) const;
-
-  /*!
-   * \brief Get all blocks in the schedule
-   * \return the block list
-   * */
-  Array<Block> Blocks() const;
-
-  /*!
-   * \brief Get axes of the block
-   * \param block The query block
-   * \return the axis list
-   * */
-  Array<Loop> GetAxes(Block block) const;
-
-  /*!
-   * \brief fuse two consecutive axises of one computation.
-   * \param outer The outer loop
-   * \param inner The inner loop
-   * \return the fused loop
-   * */
-  Loop fuse(Loop outer, Loop inner);
-
-  /*!
-   * \brief split a specified axis into two axises by factor.
-   * \param loop The loop to be split
-   * \param factor The split factor
-   * \return the loops after splitting
-   * */
-  Array<Loop> split(Loop loop, Expr factor);
+  ScheduleNode* operator->() {
+    return static_cast<ScheduleNode*>(NodeRef::get_mutable());
+  }
 
  private:
-  /*!
-   * \brief Update the father of AST node
-   * \param father_stmt the node whose children need update.
-   * \param recursive whether recursively update whole sub AST.
-   */
-  void UpdateFather(Stmt father_stmt, bool recursive = false);
-
-  void ReplaceStmt(Stmt old_stmt, Stmt new_stmt);
-
-  Array<Stmt> GetChildren(Stmt stmt);
-
-  void SetChild(Stmt father, Stmt child, size_t index);
-
-  void AddPredicate(Stmt stmt, Expr predicate);
-
-  inline ScheduleNode* Mutable() {
-    return static_cast<ScheduleNode*>(data_.get());
-  }
+  void UpdateSRef(StmtSRefNode* sref, const Stmt& stmt);
 };
 
 }  // namespace te

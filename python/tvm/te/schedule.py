@@ -126,6 +126,49 @@ class Schedule(NodeBase):
             outer, inner = ScheduleSplitByFactor(self, axis, factor)
         return outer, inner
 
+    def compute_inline(self, block):
+        """Mark one stage as inline, then the body of computation will be expanded and
+        inserted at the address where the tensor is required.
+
+        Parameters
+        ----------
+        block: Block
+            The Block to be inlined
+
+        """
+        return ScheduleComputeInline(self, block)
+
+    def get_sref(self, stmt):
+        """Get the stmt schedulable reference of the specific stmt
+
+        Parameters
+        ----------
+        stmt: Stmt
+            The Stmt to be queried
+
+        Returns
+        -------
+        sref : StmtSRef
+            The stmt schedulable reference
+
+        """
+        return GetStmtSRef(self, stmt)
+
+    def replace(self, sref, target_stmt):
+        """Replace a subtree of AST with new stmt
+        and auto maintain the schedulable reference tree
+
+        Parameters
+        ----------
+        sref: StmtSRef
+            The stmt schedulable reference of the Stmt to be replaced
+
+        target_stmt: Stmt
+            The target stmt
+
+        """
+        return Replace(self, sref, target_stmt)
+
 
 def create_schedule(func):
     """Create a schedule for a function
@@ -140,5 +183,17 @@ def create_schedule(func):
     """
     return CreateSchedule(func)
 
+def get_stmt(sref):
+    """Get Stmt from sref
+
+    Parameters
+    ----------
+    sref: StmtSRef
+
+    Returns
+    ------
+    stmt: stmt
+    """
+    return GetStmt(sref)
 
 _init_api('tvm.te.schedule')

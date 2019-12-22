@@ -111,27 +111,6 @@ inline NodePtr<T> make_node(Args&&... args) {
   using ContainerType = NodeName;
 
 /*!
- * \brief Macro to define mutable node ref methods.
- * Note that mutable node can be only used TE schedule
- * \param TypeName The name of the NodeRef.
- * \param BaseTypeName The Base type.
- * \param NodeName The node container type.
- */
-#define TVM_DEFINE_MUTABLE_NODE_REF_METHODS(TypeName,                      \
-                                            BaseTypeName, NodeName)        \
-  TypeName() {}                                                            \
-  explicit TypeName(::tvm::ObjectPtr<::tvm::Object> n)                     \
-      : BaseTypeName(n) {}                                                 \
-  const NodeName* operator->() const {                                     \
-    return static_cast<const NodeName*>(data_.get());                      \
-  }                                                                        \
-  NodeName* operator->() {                                                 \
-    return static_cast<NodeName*>(data_.get());                            \
-  }                                                                        \
-  operator bool() const { return this->defined(); }                        \
-  using ContainerType = NodeName;
-
-/*!
  * \brief Macro to define CopyOnWrite function in a NodeRef.
  * \param NodeName The Type of the Node.
  *
