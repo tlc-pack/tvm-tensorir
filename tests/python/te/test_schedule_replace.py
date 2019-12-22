@@ -72,7 +72,7 @@ def test_replace_direct_write():
     s, func, target, tensors, tensor_map = replace_ir_builder()
 
     old_hash = s.func.__hash__()
-    sref = s.get_sref(s.func.body.body.seq[0])
+    sref = s.get_sref(s.func.body.body[0])
     s.replace(sref, target)
     assert old_hash == s.func.__hash__()
 
@@ -84,7 +84,7 @@ def test_replace_copy():
 
     old_hash = s.func.__hash__()
     func_ref = s.func
-    sref = s.get_sref(s.func.body.body.seq[0])
+    sref = s.get_sref(s.func.body.body[0])
     s.replace(sref, target)
     assert old_hash != s.func.__hash__()
     assert old_hash == func_ref.__hash__()
@@ -98,12 +98,13 @@ def test_replace_partial_copy():
     old_hash = s.func.__hash__()
     func_ref = s.func.body.body
     ref_old_hash = func_ref.__hash__()
-    sref = s.get_sref(s.func.body.body.seq[0])
-    other_part_hash = s.func.body.body.seq[1].__hash__()
+    sref = s.get_sref(s.func.body.body[0])
+    other_part_hash = s.func.body.body[1].__hash__()
     s.replace(sref, target)
     assert old_hash == s.func.__hash__()
     assert ref_old_hash != s.func.body.body.__hash__()
-    assert other_part_hash == s.func.body.body.seq[1].__hash__()
+    assert other_part_hash == s.func.body.body[1].__hash__()
+    assert te.get_stmt(sref) is None
 
     util.check_correctness(func, s.func, tensors, tensor_map)
 
@@ -133,21 +134,9 @@ def test_replace_root_copy():
     util.check_correctness(func, s.func, tensors, tensor_map)
 
 
-def test_replace_remove_sref():
-    s, func, target, tensors, tensor_map = replace_root_ir_builder()
-
-    sref = s.get_sref(s.func.body.body.seq[0])
-    s.replace(s.get_sref(s.func.body), target)
-
-    assert te.get_stmt(sref) is None
-
-    util.check_correctness(func, s.func, tensors, tensor_map)
-
-
 if __name__ == "__main__":
     test_replace_direct_write()
     test_replace_copy()
     test_replace_partial_copy()
     test_replace_root_write()
     test_replace_root_copy()
-    test_replace_remove_sref()
