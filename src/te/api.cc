@@ -22,8 +22,8 @@ TVM_REGISTER_API("te.schedule.Replace")
 
 TVM_REGISTER_API("te.schedule.GetStmtSRef")
 .set_body_typed<StmtSRef(Schedule, Stmt)>(
-    [](Schedule schedule_x, Stmt stmt) {
-      return schedule_x->stmt2ref.at(stmt.operator->());
+    [](Schedule schedule, Stmt stmt) {
+      return schedule->stmt2ref.at(stmt.operator->());
     });
 
 TVM_REGISTER_API("te.schedule.GetStmt")
@@ -32,6 +32,30 @@ TVM_REGISTER_API("te.schedule.GetStmt")
       return GetRef<Stmt>(sref->node);
     });
 
+TVM_REGISTER_API("te.schedule.GetBlocksFromTag")
+.set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, std::string)>(
+    [](Schedule schedule, StmtSRef scope, std::string tag) {
+      return schedule.GetBlock(scope, tag);
+    });
+
+TVM_REGISTER_API("te.schedule.GetBlocksFromBuffer")
+.set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, Buffer)>(
+    [](Schedule schedule, StmtSRef scope, Buffer buffer) {
+      return schedule.GetBlock(scope, buffer);
+    });
+
+// dependency graph
+TVM_REGISTER_API("te.schedule.GetSuccessor")
+.set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, StmtSRef)>(
+    [](Schedule schedule, StmtSRef scope, StmtSRef block) {
+      return schedule->dependency_graphs_[scope].GetSuccessor(block);
+    });
+
+TVM_REGISTER_API("te.schedule.GetPredecessor")
+.set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, StmtSRef)>(
+    [](Schedule schedule, StmtSRef scope, StmtSRef block) {
+      return schedule->dependency_graphs_[scope].GetPredecessor(block);
+    });
 
 // maker
 TVM_REGISTER_API("make.TensorRegion")

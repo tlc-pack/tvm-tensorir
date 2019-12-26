@@ -52,7 +52,8 @@ IRVisitor::FVisit& IRVisitor::vtable() {  // NOLINT(*)
   static FVisit inst; return inst;
 }
 
-inline void VisitArray(const Array<Expr>& arr, IRVisitor* v) {
+template <typename T>
+inline void VisitArray(const Array<T>& arr, IRVisitor* v) {
   for (size_t i = 0; i < arr.size(); i++) {
     v->Visit(arr[i]);
   }
@@ -229,9 +230,9 @@ void IRVisitor::Visit_(const Evaluate *op) {
 }
 
 void IRVisitor::Visit_(const te::BlockNode* op) {
-  this->Visit(op->values);
+  VisitArray(op->values, this);
   this->Visit(op->predicate);
-  this->Visit(op->allocations);
+  VisitArray(op->allocations, this);
   this->Visit(op->body);
 }
 
