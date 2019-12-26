@@ -24,37 +24,46 @@ from ..api import _init_api
 class Schedule(NodeBase):
     """The schedule node for TE IR"""
 
-    def blocks(self):
+    # Utils
+    def blocks(self, scope=None):
         """Return all blocks in the schedule
 
         Returns
         -------
         blocks : List of TeBlock or TeBlock
             The blocks in the schedule
+        scope: StmtSRef, optional
+            The scope block stmt sref
         """
-        blocks = ScheduleBlocks(self)
-        if len(blocks) == 1:
+        blocks = ScheduleBlocks(self, scope)
+        if len(blocks) == 0:
+            return None
+        elif len(blocks) == 1:
             blocks = blocks[0]
         return blocks
 
-    def get_block(self, arg):
+    def get_block(self, arg, scope=None):
         """Return blocks with queried patten
 
         Parameters
         ----------
         arg: str or Buffer
             The queried arguments
+        scope: StmtSRef, optional
+            The scope block stmt sref
 
         Returns
         -------
-        blocks : List of TeBlock or TeBlock
-            The blocks that match the arguments
+        blocks : List of StmtSRef or StmtSRef
+            The blocks sref that match the arguments
         """
         if isinstance(arg, str):
-            blocks = ScheduleGetBlocksFromTag(self, arg)
+            blocks = GetBlocksFromTag(self, arg, scope)
         else:
-            blocks = ScheduleGetBlocksFromBuffer(self, arg)
-        if len(blocks) == 1:
+            blocks = GetBlocksFromBuffer(self, arg, scope)
+        if len(blocks) == 0:
+            return None
+        elif len(blocks) == 1:
             blocks = blocks[0]
         return blocks
 
@@ -63,18 +72,92 @@ class Schedule(NodeBase):
 
         Parameters
         ----------
-        block: TeBlock
-            The queried block
+        block: StmtSRef
+            The queried block sref
 
         Returns
         -------
-        blocks: List of Loop or Loop
+        axes: List of StmtSRef or StmtSRef
             The axes of the block
         """
         axes = ScheduleGetAxes(self, block)
         if len(axes) == 1:
             axes = axes[0]
         return axes
+
+    def get_sref(self, stmt):
+        """Get the stmt schedulable reference of the specific stmt
+
+        Parameters
+        ----------
+        stmt: Stmt
+            The Stmt to be queried
+
+        Returns
+        -------
+        sref : StmtSRef
+            The stmt schedulable reference
+
+        """
+        return GetStmtSRef(self, stmt)
+
+    def replace(self, sref, target_stmt):
+        """Replace a subtree of AST with new stmt
+        and auto maintain the schedulable reference tree
+
+        Parameters
+        ----------
+        sref: StmtSRef
+            The stmt schedulable reference of the Stmt to be replaced
+
+        target_stmt: Stmt
+            The target stmt
+
+        """
+        return Replace(self, sref, target_stmt)
+
+    # Dependency
+    def get_successors(self, block, scope=None):
+        """Get the dependency successors of the block
+
+        Parameters
+        ----------
+        block: StmtSRef
+            The queried block
+
+        scope: StmtSRef
+            The scope
+
+        Returns
+        -------
+        blocks: List of StmtSRef or StmtSRef
+            The successors of the block
+        """
+
+        if scope is None:
+            scope = self.root
+        return GetSuccessors(self, scope, block)
+
+    def get_predecessors(self, block, scope=None):
+        """Get the dependency predecessors of the block
+
+        Parameters
+        ----------
+        block: StmtSRef
+            The queried block
+
+        scope: StmtSRef
+            The scope
+
+        Returns
+        -------
+        blocks: List of StmtSRef or StmtSRef
+            The predecessors of the block
+        """
+
+        if scope is None:
+            scope = self.root
+        return GetPredecessors(self, scope, block)
 
     def fuse(self, outer_axis, inner_axis):
         """Return all axes of the specific block
@@ -138,38 +221,6 @@ class Schedule(NodeBase):
         """
         return ScheduleComputeInline(self, block)
 
-    def get_sref(self, stmt):
-        """Get the stmt schedulable reference of the specific stmt
-
-        Parameters
-        ----------
-        stmt: Stmt
-            The Stmt to be queried
-
-        Returns
-        -------
-        sref : StmtSRef
-            The stmt schedulable reference
-
-        """
-        return GetStmtSRef(self, stmt)
-
-    def replace(self, sref, target_stmt):
-        """Replace a subtree of AST with new stmt
-        and auto maintain the schedulable reference tree
-
-        Parameters
-        ----------
-        sref: StmtSRef
-            The stmt schedulable reference of the Stmt to be replaced
-
-        target_stmt: Stmt
-            The target stmt
-
-        """
-        return Replace(self, sref, target_stmt)
-
-
 def create_schedule(func):
     """Create a schedule for a function
 
@@ -195,5 +246,11 @@ def get_stmt(sref):
     stmt: stmt
     """
     return GetStmt(sref)
+
+
+@register_te_node
+class StmtSRef(NodeBase):
+    """The schedulable reference node for TE IR"""
+
 
 _init_api('tvm.te.schedule')
