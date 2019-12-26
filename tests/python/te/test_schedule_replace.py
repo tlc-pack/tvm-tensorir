@@ -23,7 +23,7 @@ import util
 
 def replace_ir_builder():
     m, n = 128, 128
-    func, tensors, tensor_map = util.element_wise_stmt(m, n)
+    func, tensors, tensor_map, _ = util.element_wise_stmt(m, n)
     s = te.create_schedule(func)
 
     # The target stmt
@@ -80,7 +80,7 @@ def test_replace_partial_copy():
 
     # The hold stmt will not change but copy a new one
     assert ref_old_hash != s.func.body.body[0].__hash__()
-    assert not Equal(ref_old_hash.body, target)
+    assert not Equal(hold_ref.body, target)
     # The function and the other part stmt can be directly write
     assert func_old_hash == s.func.__hash__()
     assert other_part_hash == s.func.body.body[1].__hash__()

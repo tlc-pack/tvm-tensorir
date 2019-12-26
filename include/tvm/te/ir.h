@@ -433,7 +433,6 @@ class Function : public NodeRef {
 
  private:
   friend Schedule;
-
 };
 
 }  // namespace te
