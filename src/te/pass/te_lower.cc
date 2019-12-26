@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) by Contributors
  * \file te_lower.cc
  */
 #include <tvm/te/ir.h>
