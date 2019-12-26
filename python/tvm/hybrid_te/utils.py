@@ -19,6 +19,12 @@
 import inspect
 
 
+def _internal_assert(cond, err, lineno=1):
+    """Simplify the code segment like if not cond then raise an error"""
+    if not cond:
+        raise ValueError("TVM Hybrid Script Error in line " + str(lineno) + " : " + err)
+
+
 def _pruned_source(func):
     """Prune source code's extra leading spaces"""
     lines = inspect.getsource(func).split('\n')
