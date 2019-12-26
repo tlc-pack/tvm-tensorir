@@ -1,0 +1,216 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+"""Intrinsic Function Calls in Hybrid Script Parser For TE IR"""
+
+from .utils import _internal_assert
+from .. import api as _api
+from .. import expr as _expr
+from .. import ir_pass as _pass
+from .. import make as _make
+from ..ir_builder import Buffer
+
+
+class Symbol:
+    """Enumerates types in the symbol table"""
+    Input = 0
+    Var = 1
+    Buffer = 2
+    IterVar = 3
+    LoopVar = 4
+    ListOfTensorRegions = 5
+
+
+def _get_func_compulsory_arg(args, kwargs, pos, func_name, name, node):
+    """Get corresponding function argument from argument list which is compulsory"""
+    if len(args) >= pos:
+        return args[pos - 1]
+    else:
+        _internal_assert(name in kwargs.keys(), func_name + " misses arugument " + name, node.lineno)
+        return kwargs[name]
+
+
+def _get_func_optional_arg(args, kwargs, pos, func_name, name, node, default):
+    """Get corresponding function argument from argument list which is optional.
+    If user doesn't provide the argument, set it to default value
+    """
+    if len(args) >= pos:
+        return args[pos - 1]
+    else:
+        if name in kwargs.keys():
+            return kwargs[name]
+        else:
+            return default
+
+
+def _wrap_list(sth):
+    if not isinstance(sth, list):
+        return [sth]
+    return sth
+
+
+def _type_check(arg, type_expected, node):
+    _internal_assert(isinstance(arg, type_expected),
+                     str(type_expected) + " expected while " + str(type(arg)) + " found", node.lineno)
+
+
+def _type_check_list(args, type_expected, node):
+    for arg in args:
+        _type_check(arg, type_expected, node)
+
+
+def _buffer_bind(parser, node, args, kwargs):
+    _internal_assert(len(args) + len(kwargs) >= 2, "buffer_bind() takes at least 2 arguments : var, shape")
+    # var
+    var = _get_func_compulsory_arg(args, kwargs, 1, "buffer_bind", "var", node)
+    _type_check(var, _expr.Var, node)
+    _internal_assert(parser.symbols[var.name][0] == Symbol.Input, "Can not bind non-input args to buffer")
+    # shape
+    shape = _get_func_compulsory_arg(args, kwargs, 2, "buffer_bind", "shape", node)
+    _type_check(shape, tuple, node)
+    _type_check_list(shape, _expr.Expr, node)
+    # dtype
+    dtype = _get_func_optional_arg(args, kwargs, 3, "buffer_bind", "dtype", node, "float32")
+    _type_check(dtype, str, node)
+    # name
+    name = _get_func_optional_arg(args, kwargs, 4, "buffer_bind", "name", node, "buf")
+    _type_check(name, str, node)
+
+    return parser.ir_builder.declare_buffer(shape=shape, dtype=dtype, name=name)
+
+
+buffer_bind = _buffer_bind
+
+
+def _buffer_allocate(parser, node, args, kwargs):
+    _internal_assert(len(args) + len(kwargs) >= 1, "buffer_allocate() takes at least 1 argument : shape")
+    # shape
+    shape = _get_func_compulsory_arg(args, kwargs, 1, "buffer_allocate", "shape", node)
+    _type_check(shape, tuple, node)
+    _type_check_list(shape, _expr.Expr, node)
+    # dtype
+    dtype = _get_func_optional_arg(args, kwargs, 2, "buffer_allocate", "dtype", node, "float32")
+    _type_check(dtype, str, node)
+    # name
+    name = _get_func_optional_arg(args, kwargs, 3, "buffer_allocate", "name", node, "buf")
+    _type_check(name, str, node)
+    # scope
+    scope = _get_func_optional_arg(args, kwargs, 4, "buffer_allocate", "scope", node, "")
+    _type_check(scope, str, node)
+
+    _buffer = _api.decl_buffer(shape, dtype=dtype, name=name)
+    parser.allocate_stack[-1].append(_make.BufferAllocate(_buffer, scope))
+    return Buffer(parser.ir_builder, _buffer, dtype)
+
+
+buffer_allocate = _buffer_allocate
+
+
+def _block_vars(parser, node, args, kwargs):
+    _internal_assert(len(args) + len(kwargs) >= 2, "block_vars() takes at least 2 arguments : begin, end")
+    # begin
+    begin = _get_func_compulsory_arg(args, kwargs, 1, "block_vars", "begin", node)
+    _type_check(begin, _expr.Expr, node)
+    # end
+    end = _get_func_compulsory_arg(args, kwargs, 2, "block_vars", "end", node)
+    _type_check(end, _expr.Expr, node)
+    # name
+    name = _get_func_optional_arg(args, kwargs, 3, "block_vars", "name", node, "bv")
+    _type_check(name, str, node)
+    # iter_type
+    iter_type = _get_func_optional_arg(args, kwargs, 4, "block_vars", "iter_type", node, "data_par")
+
+    extent = end if begin == 0 else _pass.Simplify(end - begin)
+
+    block_var_dom = _make.range_by_min_extent(begin, extent)
+    block_var = parser.ir_builder.iter_var(block_var_dom, name=name, iter_type=iter_type)
+
+    parser.add_symbol(block_var.var.name, Symbol.IterVar, block_var.var, node.lineno)
+
+    return block_var
+
+
+block_vars = _block_vars
+
+
+class With:
+    @staticmethod
+    def _block(parser, node, args, kwargs):
+        _internal_assert(len(args) + len(kwargs) >= 3,
+                         "block() takes at least 4 arguments : block_vars, values, reads, writes",
+                         node.lineno)
+        # block_vars
+        block_vars = _get_func_compulsory_arg(args, kwargs, 1, "block", "block_vars", node)
+        block_vars = _wrap_list(block_vars)
+        # values
+        values = _get_func_compulsory_arg(args, kwargs, 2, "block", "values", node)
+        values = _wrap_list(values)
+        _type_check_list(values, _expr.Expr, node)
+        # reads
+        reads = _get_func_compulsory_arg(args, kwargs, 3, "block", "reads", node)
+        reads = _wrap_list(reads)
+        # writes
+        writes = _get_func_compulsory_arg(args, kwargs, 4, "block", "writes", node)
+        writes = _wrap_list(writes)
+        # predicate
+        predicate = _get_func_optional_arg(args, kwargs, 5, "block", "predicate", node, True)
+        # annotations
+        annotations = _get_func_optional_arg(args, kwargs, 6, "block", "annotations", node, [])
+        annotations = _wrap_list(annotations)
+        # name
+        name = _get_func_optional_arg(args, kwargs, 7, "block", "name", node, "")
+
+        parser.seq_stack.append([])
+        parser.allocate_stack.append([])
+
+        for stmt in node.body:
+            parser.visit(stmt)
+
+        for block_var in block_vars:
+            parser.remove_symbol(block_var.var.name)
+
+        parser.emit(
+            _make.TeBlock(block_vars, values, reads, writes, parser.pop_seq(), predicate, parser.allocate_stack.pop(),
+                          annotations, name))
+
+    block = _block
+
+
+class For:
+    @staticmethod
+    def _range(parser, node, args, kwargs):
+        _internal_assert(len(args) + len(kwargs) == 2, "range() takes exactly 2 arguments : begin, end")
+        # begin
+        begin = _get_func_compulsory_arg(args, kwargs, 1, "range", "begin", node)
+        _type_check(begin, _expr.Expr, node)
+        # end
+        end = _get_func_compulsory_arg(args, kwargs, 2, "range", "end", node)
+        _type_check(end, _expr.Expr, node)
+
+        extent = end if begin == 0 else _pass.Simplify(end - begin)
+
+        loop_var_name = node.target.id
+        loop_var = _api.var(loop_var_name, dtype="int32")
+        parser.add_symbol(loop_var_name, Symbol.LoopVar, loop_var, node.lineno)
+        parser.seq_stack.append([])
+
+        for stmt in node.body:
+            parser.visit(stmt)
+
+        parser.emit(_make.Loop(loop_var, begin, extent, [], parser.pop_seq()))
+        parser.remove_symbol(loop_var_name)
+
+    range = _range
