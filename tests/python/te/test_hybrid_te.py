@@ -17,7 +17,6 @@
 
 import numpy as np
 import tvm
-import util
 
 
 @tvm.hybrid_te.script
@@ -62,16 +61,6 @@ def element_wise(a, c):
 def test_matmul(a, b, c):
     m, n, l = 16, 16, 16
     func, tensors, tensor_map = matmul(a, b, c)
-    func_ib, tensors_ib, tensor_map_ib = util.matmul_stmt(a, b, c)
-
-    assert isinstance(func.body, tvm.stmt.TeBlock)
-    assert isinstance(func.body.body, tvm.stmt.Loop)
-    assert isinstance(func.body.body.body, tvm.stmt.Loop)
-    assert isinstance(func.body.body.body.body, tvm.stmt.Block)
-    assert isinstance(func.body.body.body.body.first, tvm.stmt.TeBlock)
-    assert isinstance(func.body.body.body.body.rest, tvm.stmt.Loop)
-    assert isinstance(func.body.body.body.body.rest.body, tvm.stmt.TeBlock)
-
     func = tvm.ir_pass.TeLower(func, tensor_map)
     print(func)
     lower_func = tvm.lower(func, tensors)
@@ -89,20 +78,6 @@ def test_matmul(a, b, c):
 def test_element_wise(a, c):
     m, n = 16, 16
     func, tensors, tensor_map = element_wise(a, c)
-    func_ib, tensors_ib, tensor_map_ib = util.element_wise_stmt(a, c)
-
-    print(func)
-
-    assert isinstance(func.body, tvm.stmt.TeBlock)
-    assert isinstance(func.body.body, tvm.stmt.Block)
-    assert isinstance(func.body.body.first, tvm.stmt.Loop)
-    assert isinstance(func.body.body.first.body, tvm.stmt.Loop)
-    assert isinstance(func.body.body.first.body.body, tvm.stmt.TeBlock)
-
-    assert isinstance(func.body.body.rest, tvm.stmt.Loop)
-    assert isinstance(func.body.body.rest.body, tvm.stmt.Loop)
-    assert isinstance(func.body.body.rest.body.body, tvm.stmt.TeBlock)
-
     func = tvm.ir_pass.TeLower(func, tensor_map)
     print(func)
     lower_func = tvm.lower(func, tensors)
