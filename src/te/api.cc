@@ -45,16 +45,16 @@ TVM_REGISTER_API("te.schedule.GetBlocksFromBuffer")
     });
 
 // dependency graph
-TVM_REGISTER_API("te.schedule.GetSuccessor")
+TVM_REGISTER_API("te.schedule.GetSuccessors")
 .set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, StmtSRef)>(
     [](Schedule schedule, StmtSRef scope, StmtSRef block) {
-      return schedule->dependency_graphs_[scope].GetSuccessor(block);
+      return schedule->block_scopes_[scope].block_dep.GetSuccessors(block);
     });
 
-TVM_REGISTER_API("te.schedule.GetPredecessor")
+TVM_REGISTER_API("te.schedule.GetPredecessors")
 .set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, StmtSRef)>(
     [](Schedule schedule, StmtSRef scope, StmtSRef block) {
-      return schedule->dependency_graphs_[scope].GetPredecessor(block);
+      return schedule->block_scopes_[scope].block_dep.GetPredecessors(block);
     });
 
 // maker

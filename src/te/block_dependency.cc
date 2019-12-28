@@ -17,50 +17,38 @@
  * under the License.
  */
 
-#include <tvm/te/dependency_graph.h>
+#include <tvm/te/block_dependency.h>
 
 namespace tvm {
 namespace te {
 
-DepEdge::DepEdge(StmtSRef dst, EdgeType type) {
-  NodePtr<DepEdgeNode> node = make_node<DepEdgeNode>();
-  node->dst = std::move(dst);
-  node->type = type;
-  data_ = std::move(node);
-}
-
-void DependencyGraph::AddEdge(const StmtSRef& from, const StmtSRef& to, EdgeType type) {
+void BlockDependency::AddEdge(const StmtSRef& from, const StmtSRef& to) {
   if (!from.same_as(to)) {
-    DependencyGraphNode* node = operator->();
-    node->forward_edges[from].push_back(DepEdge(to, type));
-    node->backward_edges[to].push_back(DepEdge(from, type));
+    BlockDependencyNode* node = operator->();
+    node->forward_edges[from].push_back(to);
+    node->backward_edges[to].push_back(from);
   }
 }
 
-Array<StmtSRef> DependencyGraph::GetSuccessor(const StmtSRef& block) const {
-  Array<StmtSRef> ret;
+Array<StmtSRef> BlockDependency::GetSuccessors(const StmtSRef& block) const {
   auto iter = operator->()->forward_edges.find(block);
   if (iter != operator->()->forward_edges.end()) {
-    for (const auto& x : iter->second) {
-      ret.push_back(x->dst);
-    }
+    return iter->second;
+  } else {
+    return Array<StmtSRef>();
   }
-  return ret;
 }
 
-Array<StmtSRef> DependencyGraph::GetPredecessor(const StmtSRef& block) const {
-  Array<StmtSRef> ret;
+Array<StmtSRef> BlockDependency::GetPredecessors(const StmtSRef& block) const {
   auto iter = operator->()->backward_edges.find(block);
   if (iter != operator->()->backward_edges.end()) {
-    for (const auto& x : iter->second) {
-      ret.push_back(x->dst);
-    }
+    return iter->second;
+  } else {
+    return Array<StmtSRef>();
   }
-  return ret;
 }
 
-TVM_REGISTER_NODE_TYPE(DependencyGraphNode);
-TVM_REGISTER_NODE_TYPE(DepEdgeNode);
+TVM_REGISTER_NODE_TYPE(BlockDependencyNode);
 
 }  // namespace te
 }  // namespace tvm

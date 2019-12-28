@@ -84,50 +84,45 @@ class ScheduleCreator : public IRVisitor {
 class DependencyAnalyzer : public ScheduleCreator {
  public:
   DependencyAnalyzer(std::unordered_map<const StmtNode*, StmtSRef>* stmt_map,
-                     Map<StmtSRef, WriteMap>* write_maps,
-                     Map<StmtSRef, DependencyGraph>* dependency_graphs)
-      : ScheduleCreator(stmt_map), write_maps_(write_maps), dependency_graphs_(dependency_graphs) {}
+                     std::unordered_map<StmtSRef, BlockScope, NodeHash, NodeEqual>* block_scopes)
+      : ScheduleCreator(stmt_map), block_scopes_(block_scopes) {}
 
   void Visit_(const BlockNode* op) final {
-    DependencyGraph dependency_graph(make_object<DependencyGraphNode>());
-    WriteMap write_map;
+    BlockScope scope;
+    scope.block_dep = BlockDependency(make_object<BlockDependencyNode>());
 
-    std::swap(scope_dependency_graph_, dependency_graph);
-    std::swap(scope_write_map_, write_map);
+    std::swap(current_scope_, scope);
     ScheduleCreator::Visit_(op);
-    std::swap(scope_dependency_graph_, dependency_graph);
-    std::swap(scope_write_map_, write_map);
+    std::swap(current_scope_, scope);
 
     StmtSRef block_sref = stmt_map_->at(op);
-    write_maps_->Set(block_sref, write_map);
-    dependency_graphs_->Set(block_sref, dependency_graph);
+    (*block_scopes_)[block_sref] = scope;
 
     // Update tensor write map
+    auto& write_map = current_scope_.write_map;
     for (const auto& write : op->writes) {
       Array<StmtSRef> array;
-      if (scope_write_map_.count(write->buffer)) {
-        array = scope_write_map_.at(write->buffer);
+      if (write_map.count(write->buffer)) {
+        array = write_map.at(write->buffer);
       }
       array.push_back(block_sref);
-      scope_write_map_.Set(write->buffer, array);
+      write_map.Set(write->buffer, array);
     }
     // Update dependency graph
     for (const auto& read : op->reads) {
       const auto& read_buffer = read->buffer;
-      if (scope_write_map_.count(read_buffer)) {
+      if (write_map.count(read_buffer)) {
         // The block depends on every block who write a input tensor
-        for (const auto& write_block : scope_write_map_[read_buffer]) {
-          scope_dependency_graph_.AddEdge(write_block, block_sref, kWAR);
+        for (const auto& write_block : write_map[read_buffer]) {
+          current_scope_.block_dep.AddEdge(write_block, block_sref);
         }
       }
     }
   }
 
  private:
-  Map<StmtSRef, WriteMap>* write_maps_;
-  Map<StmtSRef, DependencyGraph>* dependency_graphs_;
-  WriteMap scope_write_map_;
-  DependencyGraph scope_dependency_graph_;
+  std::unordered_map<StmtSRef, BlockScope, NodeHash, NodeEqual>* block_scopes_;
+  BlockScope current_scope_;
 };
 
 class SubReplacer : protected COWStmtMutator {
@@ -349,10 +344,9 @@ Schedule Schedule::Create(const Function& func) {
   Stmt new_stmt = BlockFlattener().Mutate(func->body);
 
   std::unordered_map<const StmtNode*, StmtSRef> stmt_map;
-  Map<StmtSRef, WriteMap> write_maps;
-  Map<StmtSRef, DependencyGraph> dependency_graphs;
+  std::unordered_map<StmtSRef, BlockScope, NodeHash, NodeEqual> block_scopes;
 
-  DependencyAnalyzer dependency_analyzer(&stmt_map, &write_maps, &dependency_graphs);
+  DependencyAnalyzer dependency_analyzer(&stmt_map, &block_scopes);
   dependency_analyzer.Visit(new_stmt);
   Function new_func = Function(func->params, func->buffer_map, func->name, new_stmt);
   CHECK(func->body.as<BlockNode>());
@@ -360,8 +354,7 @@ Schedule Schedule::Create(const Function& func) {
   n->func = std::move(new_func);
   n->stmt2ref = std::move(stmt_map);
   n->root = n->stmt2ref[n->func->body.operator->()];
-  n->write_maps_ = write_maps;
-  n->dependency_graphs_ = dependency_graphs;
+  n->block_scopes_ = block_scopes;
   return Schedule(n);
 }
 
@@ -385,8 +378,8 @@ Array<StmtSRef> Schedule::GetBlock(const StmtSRef& scope, const std::string& tag
 
 Array<StmtSRef> Schedule::GetBlock(const StmtSRef& scope, const Buffer& buffer) const {
   CHECK(GetRef<Stmt>(scope->node).as<BlockNode>());
-  CHECK_GT(operator->()->write_maps_.count(scope), 0);
-  const auto& write_map = operator->()->write_maps_.at(scope);
+  CHECK_GT(operator->()->block_scopes_.count(scope), 0);
+  const auto& write_map = operator->()->block_scopes_.at(scope).write_map;
   if (write_map.count(buffer)) {
     return write_map.at(buffer);
   } else {
@@ -396,8 +389,8 @@ Array<StmtSRef> Schedule::GetBlock(const StmtSRef& scope, const Buffer& buffer) 
 
 Array<StmtSRef> Schedule::Blocks(const StmtSRef& scope) const {
   CHECK(GetRef<Stmt>(scope->node).as<BlockNode>());
-  CHECK_GT(operator->()->write_maps_.count(scope), 0);
-  const auto& write_map = operator->()->write_maps_.at(scope);
+  CHECK_GT(operator->()->block_scopes_.count(scope), 0);
+  const auto& write_map = operator->()->block_scopes_.at(scope).write_map;
   Array<StmtSRef> ret;
   for (const auto& x : write_map) {
     for (const auto& block : x.second) {

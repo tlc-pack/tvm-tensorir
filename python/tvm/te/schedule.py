@@ -76,12 +76,12 @@ class Schedule(NodeBase):
 
         Parameters
         ----------
-        block: TeBlock
-            The queried block
+        block: StmtSRef
+            The queried block sref
 
         Returns
         -------
-        blocks: List of Loop or Loop
+        axes: List of StmtSRef or StmtSRef
             The axes of the block
         """
         axes = ScheduleGetAxes(self, block)
@@ -121,15 +121,47 @@ class Schedule(NodeBase):
         return Replace(self, sref, target_stmt)
 
     # Dependency
-    def get_successor(self, block, scope=None):
-        if scope is None:
-            scope = self.root
-        return GetSuccessor(self, scope, block)
+    def get_successors(self, block, scope=None):
+        """Get the dependency successors of the block
 
-    def get_predecessor(self, block, scope=None):
+        Parameters
+        ----------
+        block: StmtSRef
+            The queried block
+
+        scope: StmtSRef
+            The scope
+
+        Returns
+        -------
+        blocks: List of StmtSRef or StmtSRef
+            The successors of the block
+        """
+
         if scope is None:
             scope = self.root
-        return GetPredecessor(self, scope, block)
+        return GetSuccessors(self, scope, block)
+
+    def get_predecessors(self, block, scope=None):
+        """Get the dependency predecessors of the block
+
+        Parameters
+        ----------
+        block: StmtSRef
+            The queried block
+
+        scope: StmtSRef
+            The scope
+
+        Returns
+        -------
+        blocks: List of StmtSRef or StmtSRef
+            The predecessors of the block
+        """
+
+        if scope is None:
+            scope = self.root
+        return GetPredecessors(self, scope, block)
 
     def fuse(self, outer_axis, inner_axis):
         """Return all axes of the specific block

@@ -22,8 +22,8 @@
  *  \brief Dependency between blocks
  */
 
-#ifndef TVM_TE_DEPENDENCY_GRAPH_H_
-#define TVM_TE_DEPENDENCY_GRAPH_H_
+#ifndef TVM_TE_BLOCK_DEPENDENCY_H_
+#define TVM_TE_BLOCK_DEPENDENCY_H_
 
 #include <tvm/te/ir.h>
 #include <tvm/te/stmt_sref.h>
@@ -35,76 +35,51 @@ namespace te {
 
 class StmtSRef;
 
-// Dependency type. NOTE: Currently only kRAW is useful
-enum EdgeType : int {
-  kRAW,
-  kWAW,
-  kWAR,
-  kUnknown
-};
-
-/*!
- * \brief A edge in dependency graph
- */
-class DepEdge;
-class DepEdgeNode : public Node {
- public:
-  StmtSRef dst;
-  EdgeType type;
-
-  void VisitAttrs(AttrVisitor* v) {}
-
-  static constexpr const char* _type_key = "te.DefEdge";
-  TVM_DECLARE_NODE_TYPE_INFO(DepEdgeNode, Node);
-};
-
-class DepEdge : public NodeRef {
- public:
-  DepEdge(StmtSRef, EdgeType type);
-  TVM_DEFINE_NODE_REF_METHODS(DepEdge, NodeRef, DepEdgeNode);
-};
-
 /*!
  * \brief Dependency Graph that stores read/write dependency between Blocks
+ * \note It is not a traditional and complete dependency graph, but only a
+ *       dependency hint. If there is an edge from A to B, iff B writes at
+ *       least one of the read tensors of A. That's means B must produce the
+ *       necessary element (but not all the element) before A under the Lowest
+ *       Common Ancestor (LCA) Loop of the A and B.
  */
-class DependencyGraph;
-class DependencyGraphNode : public Node {
+class BlockDependency;
+class BlockDependencyNode : public Node {
  public:
   /*! \brief The forward dependency edges of the block*/
-  std::unordered_map<StmtSRef, std::vector<DepEdge>, NodeHash, NodeEqual> forward_edges;
+  std::unordered_map<StmtSRef, Array<StmtSRef>, NodeHash, NodeEqual> forward_edges;
   /*! \brief The backward dependency edges of the block*/
-  std::unordered_map<StmtSRef, std::vector<DepEdge>, NodeHash, NodeEqual> backward_edges;
+  std::unordered_map<StmtSRef, Array<StmtSRef>, NodeHash, NodeEqual> backward_edges;
 
   void VisitAttrs(AttrVisitor* v) {}
 
-  static constexpr const char* _type_key = "te.DependencyGraph";
-  TVM_DECLARE_NODE_TYPE_INFO(DependencyGraphNode, Node);
+  static constexpr const char* _type_key = "te.BlockDependency";
+  TVM_DECLARE_NODE_TYPE_INFO(BlockDependencyNode, Node);
 };
 
-class DependencyGraph : public NodeRef {
+class BlockDependency : public NodeRef {
  public:
   /*!
    * \brief Add a dependency edge.
    * \param from The departure of the edge
    * \param to The destination of the edge
-   * \param type The dependency type
    */
-  void AddEdge(const StmtSRef& from, const StmtSRef& to, EdgeType type);
+  void AddEdge(const StmtSRef& from, const StmtSRef& to);
   /*!
   * \brief Get all blocks that are dependent on block.
   * \param stmt The query block
   */
-  Array<StmtSRef> GetSuccessor(const StmtSRef& block) const;
+  Array<StmtSRef> GetSuccessors(const StmtSRef& block) const;
   /*!
    * \brief get all blocks that this block dependent on.
    * \param stmt The query block
    * */
-  Array<StmtSRef> GetPredecessor(const StmtSRef& block) const;
+  Array<StmtSRef> GetPredecessors(const StmtSRef& block) const;
 
-  TVM_DEFINE_NODE_REF_METHODS(DependencyGraph, NodeRef, DependencyGraphNode);
+  TVM_DEFINE_NODE_REF_METHODS(BlockDependency, NodeRef, BlockDependencyNode);
 
-  DependencyGraphNode* operator->() {
-    return static_cast<DependencyGraphNode*>(data_.get());
+  BlockDependencyNode* operator->() {
+    return static_cast<BlockDependencyNode*>(data_.get());
   }
 };
 
@@ -112,4 +87,4 @@ class DependencyGraph : public NodeRef {
 }  // namespace te
 }  // namespace tvm
 
-#endif  // TVM_TE_DEPENDENCY_GRAPH_H_
+#endif  // TVM_TE_BLOCK_DEPENDENCY_H_

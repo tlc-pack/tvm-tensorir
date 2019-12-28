@@ -26,11 +26,11 @@ def test_element_wise_dependency():
 
     block_B = s.get_block("B")
     block_C = s.get_block("C")
-    predecessor_c = s.get_predecessor(block_C)
+    predecessor_c = s.get_predecessors(block_C)
     assert len(predecessor_c) == 1
     assert predecessor_c[0] == block_B
 
-    successor_b = s.get_successor(block_B)
+    successor_b = s.get_successors(block_B)
     assert len(successor_b) == 1
     assert successor_b[0] == block_C
 
@@ -44,11 +44,11 @@ def test_matmul_dependency():
     assert len(block_C) == 2
     init, update = block_C
 
-    predecessor_update = s.get_predecessor(update)
+    predecessor_update = s.get_predecessors(update)
     assert len(predecessor_update) == 1
     assert predecessor_update[0] == init
 
-    successor_init = s.get_successor(init)
+    successor_init = s.get_successors(init)
     assert len(successor_init) == 1
     assert successor_init[0] == update
 
