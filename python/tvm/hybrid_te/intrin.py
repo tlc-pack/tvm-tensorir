@@ -26,12 +26,11 @@ from ..ir_builder import Buffer
 
 class Symbol:
     """Enumerates types in the symbol table"""
-    Input = 0
-    Var = 1
-    Buffer = 2
-    IterVar = 3
-    LoopVar = 4
-    ListOfTensorRegions = 5
+    Var = 0
+    Buffer = 1
+    IterVar = 2
+    LoopVar = 3
+    ListOfTensorRegions = 4
 
 
 def _get_func_compulsory_arg(args, kwargs, pos, func_name, name, node):
@@ -73,11 +72,19 @@ def _type_check_list(args, type_expected, node):
 
 
 def _buffer_bind(parser, node, args, kwargs):
-    _internal_assert(len(args) + len(kwargs) >= 2, "buffer_bind() takes at least 2 arguments : var, shape")
+    """ Intrin function buffer_bind(var, shape, dtype, name)
+
+    e.g.
+        A = buffer_bind(a, (128, 128), dtype="float32", name="A")
+    <=> A = ib.declare_buffer((128, 128), dtype="float32", name="A")
+        buffer_map[a] = A
+    """
+
+    _internal_assert(len(args) + len(kwargs) >= 2, "buffer_bind() takes at least 2 arguments : var, shape", node.lineno)
     # var
     var = _get_func_compulsory_arg(args, kwargs, 1, "buffer_bind", "var", node)
     _type_check(var, _expr.Var, node)
-    _internal_assert(parser.symbols[var.name][0] == Symbol.Input, "Can not bind non-input args to buffer")
+    _internal_assert(var in parser.params, "Can not bind non-input args to buffer", node.lineno)
     # shape
     shape = _get_func_compulsory_arg(args, kwargs, 2, "buffer_bind", "shape", node)
     _type_check(shape, tuple, node)
@@ -96,7 +103,14 @@ buffer_bind = _buffer_bind
 
 
 def _buffer_allocate(parser, node, args, kwargs):
-    _internal_assert(len(args) + len(kwargs) >= 1, "buffer_allocate() takes at least 1 argument : shape")
+    """ Intrin function buffer_allocate(var, shape, dtype, name)
+
+    e.g.
+        A = buffer_allocate((128, 128), dtype="float32", name="A")
+    <=> A = ib.allocate_buffer((128, 128), dtype="float32", name="A")
+    """
+
+    _internal_assert(len(args) + len(kwargs) >= 1, "buffer_allocate() takes at least 1 argument : shape", node.lineno)
     # shape
     shape = _get_func_compulsory_arg(args, kwargs, 1, "buffer_allocate", "shape", node)
     _type_check(shape, tuple, node)
@@ -120,7 +134,14 @@ buffer_allocate = _buffer_allocate
 
 
 def _block_vars(parser, node, args, kwargs):
-    _internal_assert(len(args) + len(kwargs) >= 2, "block_vars() takes at least 2 arguments : begin, end")
+    """ Intrin function buffer_bind(var, shape, dtype, name)
+
+    e.g.
+        vi(0, 128, iter_type="reduce")
+    <=> ib.IterVar(tvm.make_range_by_min_text(0, 128), name="vi", iter_type="reduce")
+    """
+
+    _internal_assert(len(args) + len(kwargs) >= 2, "block_vars() takes at least 2 arguments : begin, end", node.lineno)
     # begin
     begin = _get_func_compulsory_arg(args, kwargs, 1, "block_vars", "begin", node)
     _type_check(begin, _expr.Expr, node)
@@ -147,8 +168,18 @@ block_vars = _block_vars
 
 
 class With:
+    """All the functions supported in With stmt are registered here"""
+
     @staticmethod
     def _block(parser, node, args, kwargs):
+        """ Intrin function block(block_vars, values, reads, writes, predicate, annotations, name)
+
+        e.g.
+            with block([vi(0, 128), vj(0, 128)], [i, j], reads=[], writes=C[vi : vi + 1, vj : vj + 1], name="init"):
+        <=> with ib.block([vi, vj], [i, j], reads=[], writes=C[vi : vi + 1, vj : vj + 1], name="init"):
+            (Note that block_vars has been processed ahead)
+        """
+
         _internal_assert(len(args) + len(kwargs) >= 3,
                          "block() takes at least 4 arguments : block_vars, values, reads, writes",
                          node.lineno)
@@ -190,9 +221,13 @@ class With:
 
 
 class For:
+    """All the functions supported in For stmt are registered here"""
+
     @staticmethod
     def _range(parser, node, args, kwargs):
-        _internal_assert(len(args) + len(kwargs) == 2, "range() takes exactly 2 arguments : begin, end")
+        """ Intrin function range(begin, end)"""
+
+        _internal_assert(len(args) + len(kwargs) == 2, "range() takes exactly 2 arguments : begin, end", node.lineno)
         # begin
         begin = _get_func_compulsory_arg(args, kwargs, 1, "range", "begin", node)
         _type_check(begin, _expr.Expr, node)
