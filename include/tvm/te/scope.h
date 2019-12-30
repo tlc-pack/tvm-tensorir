@@ -18,7 +18,6 @@
  */
 
 /*!
- *  Copyright (c) 2019 by Contributors
  *  \brief Dependency between blocks
  */
 
@@ -43,21 +42,23 @@ class StmtSRef;
  *       necessary element (but not all the element) before A under the Lowest
  *       Common Ancestor (LCA) Loop of the A and B.
  */
-class BlockDependency;
-class BlockDependencyNode : public Node {
+class Scope;
+class ScopeNode : public Node {
  public:
-  /*! \brief The forward dependency edges of the block*/
+  /*! \brief The forward dependency edges of the block */
   std::unordered_map<StmtSRef, Array<StmtSRef>, NodeHash, NodeEqual> forward_edges;
-  /*! \brief The backward dependency edges of the block*/
+  /*! \brief The backward dependency edges of the block */
   std::unordered_map<StmtSRef, Array<StmtSRef>, NodeHash, NodeEqual> backward_edges;
+  /*! \brief The mapping from the buffer to the blocks who write it */
+  std::unordered_map<Buffer, Array<StmtSRef>, NodeHash, NodeEqual> write_map;
 
   void VisitAttrs(AttrVisitor* v) {}
 
-  static constexpr const char* _type_key = "te.BlockDependency";
-  TVM_DECLARE_NODE_TYPE_INFO(BlockDependencyNode, Node);
+  static constexpr const char* _type_key = "te.Scope";
+  TVM_DECLARE_NODE_TYPE_INFO(ScopeNode, Node);
 };
 
-class BlockDependency : public NodeRef {
+class Scope : public NodeRef {
  public:
   /*!
    * \brief Add a dependency edge.
@@ -66,20 +67,20 @@ class BlockDependency : public NodeRef {
    */
   void AddEdge(const StmtSRef& from, const StmtSRef& to);
   /*!
-  * \brief Get all blocks that are dependent on block.
+  * \brief get all blocks that this block dependent on.
   * \param stmt The query block
   */
   Array<StmtSRef> GetSuccessors(const StmtSRef& block) const;
   /*!
-   * \brief get all blocks that this block dependent on.
+   * \brief Get all blocks that are dependent on block.
    * \param stmt The query block
    * */
   Array<StmtSRef> GetPredecessors(const StmtSRef& block) const;
 
-  TVM_DEFINE_NODE_REF_METHODS(BlockDependency, NodeRef, BlockDependencyNode);
+  TVM_DEFINE_NODE_REF_METHODS(Scope, NodeRef, ScopeNode);
 
-  BlockDependencyNode* operator->() {
-    return static_cast<BlockDependencyNode*>(data_.get());
+  ScopeNode* operator->() {
+    return static_cast<ScopeNode*>(data_.get());
   }
 };
 

@@ -17,20 +17,20 @@
  * under the License.
  */
 
-#include <tvm/te/block_dependency.h>
+#include <tvm/te/scope.h>
 
 namespace tvm {
 namespace te {
 
-void BlockDependency::AddEdge(const StmtSRef& from, const StmtSRef& to) {
+void Scope::AddEdge(const StmtSRef& from, const StmtSRef& to) {
   if (!from.same_as(to)) {
-    BlockDependencyNode* node = operator->();
+    ScopeNode* node = operator->();
     node->forward_edges[from].push_back(to);
     node->backward_edges[to].push_back(from);
   }
 }
 
-Array<StmtSRef> BlockDependency::GetSuccessors(const StmtSRef& block) const {
+Array<StmtSRef> Scope::GetSuccessors(const StmtSRef& block) const {
   auto iter = operator->()->forward_edges.find(block);
   if (iter != operator->()->forward_edges.end()) {
     return iter->second;
@@ -39,7 +39,7 @@ Array<StmtSRef> BlockDependency::GetSuccessors(const StmtSRef& block) const {
   }
 }
 
-Array<StmtSRef> BlockDependency::GetPredecessors(const StmtSRef& block) const {
+Array<StmtSRef> Scope::GetPredecessors(const StmtSRef& block) const {
   auto iter = operator->()->backward_edges.find(block);
   if (iter != operator->()->backward_edges.end()) {
     return iter->second;
@@ -48,7 +48,7 @@ Array<StmtSRef> BlockDependency::GetPredecessors(const StmtSRef& block) const {
   }
 }
 
-TVM_REGISTER_NODE_TYPE(BlockDependencyNode);
+TVM_REGISTER_NODE_TYPE(ScopeNode);
 
 }  // namespace te
 }  // namespace tvm

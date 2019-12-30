@@ -21,18 +21,12 @@
 #define TVM_TE_SCHEDULE_H_
 #include <tvm/te/ir.h>
 #include <tvm/te/stmt_sref.h>
-#include <tvm/te/block_dependency.h>
+#include <tvm/te/scope.h>
 #include <string>
 
 namespace tvm {
 namespace te {
 
-typedef Map<Buffer, Array<StmtSRef>> WriteMap;
-
-struct BlockScope {
-  BlockDependency block_dep;
-  WriteMap write_map;
-};
 
 class ScheduleNode : public Node {
  public:
@@ -46,7 +40,7 @@ class ScheduleNode : public Node {
    * */
   std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
   /*! \brief The block scopes of each block */
-  std::unordered_map<StmtSRef, BlockScope, NodeHash, NodeEqual> block_scopes_;
+  std::unordered_map<StmtSRef, Scope, NodeHash, NodeEqual> scopes_;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("func", &func);

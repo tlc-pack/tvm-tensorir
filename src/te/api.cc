@@ -1,5 +1,4 @@
 /*!
- *  Copyright (c) 2019 by Contributors
  *  \brief TE API registration
  */
 
@@ -48,13 +47,13 @@ TVM_REGISTER_API("te.schedule.GetBlocksFromBuffer")
 TVM_REGISTER_API("te.schedule.GetSuccessors")
 .set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, StmtSRef)>(
     [](Schedule schedule, StmtSRef scope, StmtSRef block) {
-      return schedule->block_scopes_[scope].block_dep.GetSuccessors(block);
+      return schedule->scopes_[scope].GetSuccessors(block);
     });
 
 TVM_REGISTER_API("te.schedule.GetPredecessors")
 .set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, StmtSRef)>(
     [](Schedule schedule, StmtSRef scope, StmtSRef block) {
-      return schedule->block_scopes_[scope].block_dep.GetPredecessors(block);
+      return schedule->scopes_[scope].GetPredecessors(block);
     });
 
 // maker
