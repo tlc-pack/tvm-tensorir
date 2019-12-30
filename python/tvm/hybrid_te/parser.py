@@ -23,7 +23,6 @@ from typed_ast import ast3 as ast
 
 from . import intrin
 from .intrin import Symbol
-from .utils import _internal_assert
 from .. import api as _api
 from .. import expr as _expr
 from .. import ir_builder as _ib
@@ -82,11 +81,13 @@ class HybridParser(ast.NodeVisitor):
         ast.Not: operator.not_
     }
 
-    def __init__(self, args):
+    def __init__(self, func_lineno, *args):
         self.args = list(args)
         self.symbols = {}  # Symbol table
         self.te_function_name = None
         self.ir_builder = _ib.create()
+        self.func_lineno = func_lineno
+        self.current_lineno = 0
 
         self._is_block_vars = False
         self._in_with_func_arg = False
@@ -95,7 +96,22 @@ class HybridParser(ast.NodeVisitor):
         self.seq_stack = [[]]  # IR stmts of scopes
         self.allocate_stack = [[]]  # Buffer allocations of scopes
 
-    def add_symbol(self, name, symbol_type, symbol, lineno):
+    def visit(self, node):
+        """Visit a node."""
+        if hasattr(node, "lineno"):
+            self.current_lineno = self.func_lineno + node.lineno - 1
+        method = 'visit_' + node.__class__.__name__
+        visitor = getattr(self, method, self.generic_visit)
+        return visitor(node)
+
+    def report_error(self, message):
+        raise ValueError("TVM Hybrid Python Parser Error in line " + str(self.current_lineno) + " : " + message)
+
+    def generic_visit(self, node):
+        """To directly filter out invalidate type of stmt"""
+        self.report_error(type(node).__name__ + " stmt is not supported now")
+
+    def add_symbol(self, name, symbol_type, symbol):
         """ Add value to the symbol table context
 
         Parameters
@@ -108,18 +124,15 @@ class HybridParser(ast.NodeVisitor):
 
         symbol : Var, IterVar, Buffer or List of TensorRegion
             the symbol
-
-        lineno : int
-            the line number, used to report error
         """
         if name in self.symbols.keys():
             old = str(self.symbols[name])
             new = str((symbol_type, symbol))
-            _internal_assert(False, "Name conflict in symbol table! [%s] %s -> %s" % (name, old, new), lineno)
+            self.report_error("Name conflict in symbol table! [%s] %s -> %s" % (name, old, new))
 
         self.symbols[name] = (symbol_type, symbol)
 
-    def update_symbol(self, name, symbol_type, symbol, lineno):
+    def update_symbol(self, name, symbol_type, symbol):
         """ Update value to the symbol table context
 
         Parameters
@@ -132,14 +145,11 @@ class HybridParser(ast.NodeVisitor):
 
         symbol : Var, IterVar, Buffer or List of TensorRegion
             the symbol
-
-        lineno : int
-            the line number, used to report error
         """
         if name in self.symbols.keys():
             self.symbols[name] = (symbol_type, symbol)
         else:
-            self.add_symbol(name, symbol_type, symbol, lineno)
+            self.add_symbol(name, symbol_type, symbol)
 
     def remove_symbol(self, name):
         """ Remove value to the symbol table context
@@ -171,10 +181,6 @@ class HybridParser(ast.NodeVisitor):
                 stmt = _make.Block(s, stmt)
         return stmt
 
-    def generic_visit(self, node):
-        """To directly filter out invalidate type of stmt"""
-        _internal_assert(False, type(node).__name__ + " stmt is not supported now", node.lineno)
-
     def visit_Module(self, node):
         """ Module visitor
         AST abstract grammar :
@@ -183,7 +189,8 @@ class HybridParser(ast.NodeVisitor):
         By now we only support Module with a single FunctionDef
         """
 
-        _internal_assert(len(node.body) == 1, "Only one-function source code is allowed", 1)
+        if not (len(node.body) == 1):
+            self.report_error("Only one-function source code is allowed")
         return self.visit(node.body[0])
 
     def visit_FunctionDef(self, node):
@@ -195,21 +202,25 @@ class HybridParser(ast.NodeVisitor):
             arguments = (arg* posonlyargs, arg* args, arg? vararg, arg* kwonlyargs, expr* kw_defaults, arg? kwarg, expr* defaults)
             arg = (identifier arg, expr? annotation, string? type_comment)
         """
+        if not (len(node.args.args) == len(self.args)):
+            self.report_error("The number of arguments passed")
 
-        _internal_assert(len(node.args.args) == len(self.args), "The number of arguments passed", node.lineno)
         if self.te_function_name is None:
             self.te_function_name = node.name
         # add parameters of function
         self.params = []
         for idx, arg in enumerate(node.args.args):
-            self.add_symbol(arg.arg, Symbol.Var, self.args[idx], node.lineno)
+            self.add_symbol(arg.arg, Symbol.Var, self.args[idx])
             self.params.append(self.args[idx])
         # visit the body of function
         for body_element in node.body:
             self.visit(body_element)
         # fetch the body and return a TeFunction
         body = self.pop_seq()
-        _internal_assert(len(self.seq_stack) == 0, "Runtime Error", node.lineno)
+
+        if not (len(self.seq_stack) == 0):
+            self.report_error("Runtime Error")
+
         return self.ir_builder.function(self.params, self.buffer_map, body, name=self.te_function_name)
 
     def visit_Assign(self, node):
@@ -222,27 +233,31 @@ class HybridParser(ast.NodeVisitor):
             2. Buffer[expr, expr, .. expr] = Expr
         """
 
-        _internal_assert(len(node.targets) == 1, "Only one-valued assignment is supported now", node.lineno)
+        if not (len(node.targets) == 1):
+            self.report_error("Only one-valued assignment is supported now")
+
         target = node.targets[0]
         if isinstance(target, ast.Name):
             # Name = List of TensorRegion, Buffer(buffer_bind, buffer_allocate)
             rhs = self.visit(node.value)
-            _internal_assert(isinstance(rhs, (_ib.Buffer, list)),
-                             "The value of assign ought to be list of TensorRegions or Buffer typed", node.lineno)
-            self.update_symbol(target.id, HybridParser._symbol_type[type(rhs)], rhs, node.lineno)
+            if not isinstance(rhs, (_ib.Buffer, list)):
+                self.report_error("The value of assign ought to be list of TensorRegions or Buffer typed")
+            self.update_symbol(target.id, HybridParser._symbol_type[type(rhs)], rhs)
             if isinstance(node.value, ast.Call) and node.value.func.id == "buffer_bind":
                 self.buffer_map[self.symbols[node.value.args[0].id][1]] = rhs
         elif isinstance(target, ast.Subscript):
             # Buffer[expr, expr, .. expr] = Expr
             buffer, buffer_indexes = self.visit(target)
             rhs = self.visit(node.value)
-            _internal_assert(isinstance(rhs, _expr.Expr), "The rhs of Assign stmt ought to be Expr typed", node.lineno)
+            if not isinstance(rhs, _expr.Expr):
+                self.report_error("The rhs of Assign stmt ought to be Expr typed")
             value = _api.convert(rhs)
-            if value.dtype != buffer._content_type:
-                raise ValueError("data type does not match content type %s vs %s" % (value.dtype, buffer._content_type))
+            if not value.dtype == buffer._content_type:
+                self.report_error(
+                    "data type does not match content type %s vs %s" % (value.dtype, buffer._content_type))
             self.emit(_make.BufferStore(buffer._buffer, value, buffer_indexes))
         else:
-            _internal_assert(False, "The target of Assign ought to be a name variable or a Buffer element")
+            self.report_error("The target of Assign ought to be a name variable or a Buffer element")
 
     def visit_For(self, node):
         """ For visitor
@@ -253,8 +268,10 @@ class HybridParser(ast.NodeVisitor):
             1. for name in range(begin, end)
         """
 
-        _internal_assert(isinstance(node.target, ast.Name), "The loop variable should be a name variable", node.lineno)
-        _internal_assert(isinstance(node.iter, ast.Call), "The loop iter should be a Call", node.lineno)
+        if not isinstance(node.target, ast.Name):
+            self.report_error("The loop variable should be a name variable")
+        if not isinstance(node.iter, ast.Call):
+            self.report_error("The loop iter should be a Call")
         # check node.iter, which is a Call
         func_name = node.iter.func.id
         # position args, e.g. func(a, b)
@@ -263,8 +280,8 @@ class HybridParser(ast.NodeVisitor):
         kw_args = [self.visit(keyword) for keyword in node.iter.keywords]
         kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
         # All the functions supported in For stmt are registered in intrin.For
-        _internal_assert(hasattr(intrin.For, func_name),
-                         "Function " + func_name + " used in For stmt is not supported now", node.lineno)
+        if not hasattr(intrin.For, func_name):
+            self.report_error("Function " + func_name + " used in For stmt is not supported now")
         getattr(intrin.For, func_name)(self, node, args, kw_args)
 
     def visit_With(self, node):
@@ -277,11 +294,33 @@ class HybridParser(ast.NodeVisitor):
             1. with block(block_vars, values, reads, writes, predicate, annotations, name):
                 Note that block_vars is a list of Calls, e.g. vi(0, 128, "reduce")
                 It's a syntax sugar, which is equivalent with defining a IterVar named vi and used in the following block definition
+
+                Example
+                -------
+                If we want to define a block and we use the primitive APIs in IRBuilder, we should write
+
+                .. code-block:: python
+
+                    bv_i = ib.iter_var(tvm.make.range_by_min_extent(0, 128), name="vi")
+                    bv_j = ib.iter_var(tvm.make.range_by_min_extent(0, 128), name="vj")
+                    vi = bv_i.var
+                    vj = bv_j.var
+                    with ib.block([bv_i, bv_j], [i, j], reads = A[vi:vi+1, vj:vj+1], wrtite = B[vi:vi+1, vj:vj+1])
+
+                The IterVar variable bv_i and bv_j are only used once, so I planned to give a sugar here and the user can
+                simply write in one line code like
+
+                .. code-block:: python
+                with block([vi(0, 128), vj(0, 128)], [i, j], reads = A[vi:vi+1, vj:vj+1], wrtite = B[vi:vi+1, vj:vj+1])
+
+                The problem it brings is that vi, vj will be parsed as Call here, so when parsing the Call which is
+                actually to defining a block var, we leave it to a intrinsic function block_vars() to handle them.
         """
 
-        _internal_assert(len(node.items) == 1, "Only one with element is supported now", node.lineno)
-        _internal_assert(isinstance(node.items[0].context_expr, ast.Call),
-                         "The context expression of with should be a Call", node.lineno)
+        if not len(node.items) == 1:
+            self.report_error("Only one with element is supported now")
+        if not isinstance(node.items[0].context_expr, ast.Call):
+            self.report_error("The context expression of with should be a Call")
 
         func_name = node.items[0].context_expr.func.id
         # preprocess block_var definitions
@@ -294,7 +333,7 @@ class HybridParser(ast.NodeVisitor):
                     block_vars_arg = keyword.value
 
         if block_vars_arg is None:
-            _internal_assert(False, "block() misses argument block_vars", node.lineno)
+            self.report_error("block() misses argument block_vars")
 
         self._is_block_vars = True
         block_vars = self.visit(block_vars_arg)
@@ -305,8 +344,8 @@ class HybridParser(ast.NodeVisitor):
                    not keyword.arg == "block_vars"]
         kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
         # All the functions supported in With stmt are registered in intrin.With
-        _internal_assert(hasattr(intrin.With, func_name),
-                         "Function " + func_name + " used in With stmt is not supported now", node.lineno)
+        if not hasattr(intrin.With, func_name):
+            self.report_error("Function " + func_name + " used in With stmt is not supported now")
         getattr(intrin.With, func_name)(self, node, args, kw_args)
 
     def visit_BinOp(self, node):
@@ -337,7 +376,8 @@ class HybridParser(ast.NodeVisitor):
         All the functions used outside With and For are registered in intrin
         """
 
-        _internal_assert(isinstance(node.func, ast.Name), "Only id function call is supported now", node.lineno)
+        if not isinstance(node.func, ast.Name):
+            self.report_error("Only id function call is supported now")
 
         func_name = node.func.id
         # collect arguments
@@ -349,7 +389,8 @@ class HybridParser(ast.NodeVisitor):
             kw_args["name"] = func_name
             func_name = "block_vars"
         else:
-            _internal_assert(hasattr(intrin, func_name), "Function " + func_name + " is not supported now", node.lineno)
+            if not hasattr(intrin, func_name):
+                self.report_error("Function " + func_name + " is not supported now")
         return getattr(intrin, func_name)(self, node, args, kw_args)
 
     def visit_Subscript(self, node):
@@ -365,8 +406,10 @@ class HybridParser(ast.NodeVisitor):
             2. Buffer[slice, slice, ...], TensorRegion
         """
 
-        _internal_assert(isinstance(node.value, ast.Name), "Only buffer variable can be subscriptable", node.lineno)
-        _internal_assert(node.value.id in self.symbols, node.value.id + " is not defined", node.lineno)
+        if not isinstance(node.value, ast.Name):
+            self.report_error("Only buffer variable can be subscriptable")
+        if node.value.id not in self.symbols:
+            self.report_error(node.value.id + " is not defined")
         symbol_type, symbol = self.symbols[node.value.id]
 
         if isinstance(node.slice, ast.Index):
@@ -379,7 +422,8 @@ class HybridParser(ast.NodeVisitor):
                 # Buffer[index]
                 indexes = [self.visit(node.slice.value)]
             for index in indexes:
-                _internal_assert(isinstance(index, _expr.Expr), "Expression expected", node.lineno)
+                if not isinstance(index, _expr.Expr):
+                    self.report_error("Expression expected")
 
             if isinstance(node.ctx, ast.Load):
                 return _make.BufferLoad(symbol._content_type, symbol._buffer, indexes)
@@ -390,18 +434,22 @@ class HybridParser(ast.NodeVisitor):
             slices = []
             if isinstance(node.slice, ast.Slice):
                 # Buffer[begin:end]
-                _internal_assert(node.slice.step is None, "step is not allowed in TensorRegion", node.lineno)
+                if node.slice.step is not None:
+                    self.report_error("step is not allowed in TensorRegion")
                 slices = [(self.visit(node.slice.lower), self.visit(node.slice.upper))]
             elif isinstance(node.slice, ast.ExtSlice):
                 # Buffer[begin:end, begin:end]
                 for dim in node.slice.dims:
-                    _internal_assert(dim.step is None, "step is not allowed in TensorRegion", node.lineno)
+                    if dim.step is not None:
+                        self.report_error("step is not allowed in TensorRegion")
                     slices.append((self.visit(dim.lower), self.visit(dim.upper)))
 
             doms = []
             for dom in slices:
-                _internal_assert(isinstance(dom[0], _expr.Expr), "Expression expected", node.lineno)
-                _internal_assert(isinstance(dom[1], _expr.Expr), "Expression expected", node.lineno)
+                if not isinstance(dom[0], _expr.Expr):
+                    self.report_error("Expression expected")
+                if not isinstance(dom[1], _expr.Expr):
+                    self.report_error("Expression expected")
                 extent = dom[1] - dom[0]
                 if isinstance(extent, _expr.Expr):
                     extent = _pass.Simplify(dom[1] - dom[0])
@@ -416,7 +464,8 @@ class HybridParser(ast.NodeVisitor):
         """
 
         name = node.id
-        _internal_assert(name in self.symbols, "Unknown symbol %s" % name, node.lineno)
+        if name not in self.symbols:
+            self.report_error("Unknown symbol %s" % name)
         symbol_type, symbol = self.symbols[name]
         return symbol
 
@@ -433,6 +482,7 @@ class HybridParser(ast.NodeVisitor):
         AST abstract grammar :
             List(expr* elts, expr_context ctx)
         """
+
         return [self.visit(element) for element in node.elts]
 
     def visit_keyword(self, node):
@@ -440,6 +490,7 @@ class HybridParser(ast.NodeVisitor):
         AST abstract grammar :
             keyword = (identifier? arg, expr value)
         """
+
         return node.arg, self.visit(node.value)
 
     def visit_Constant(self, node):
@@ -451,18 +502,21 @@ class HybridParser(ast.NodeVisitor):
         elif isinstance(node.n, float):
             dtype = "float32"
         else:
-            _internal_assert(False, "The data type should be one of (int, float)", node.lineno)
+            self.report_error("The data type should be one of (int, float)")
         return _api.const(node.n, dtype)
 
     def visit_Str(self, node):
         return node.s
 
 
-def source_to_op(src, *args, **kwargs):
+def source_to_op(func_lineno, src, *args, **kwargs):
     """ Another level of wrapper
 
     Parameters
     ----------
+    func_lineno : int
+        The line number of the first line of the function to be parsed
+
     src : str
         Pruned source of original function
 
@@ -482,5 +536,5 @@ def source_to_op(src, *args, **kwargs):
     """
 
     root = ast.parse(src)
-    parser = HybridParser(args)
+    parser = HybridParser(func_lineno, *args)
     return parser.visit(root)

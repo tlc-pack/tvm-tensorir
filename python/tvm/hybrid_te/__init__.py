@@ -42,8 +42,7 @@ def script(origin_func):
     """
 
     def wrapped_func(func, *args, **kwargs):
-        utils.set_lineno(func.__code__.co_firstlineno)
         src = _pruned_source(func)
-        return source_to_op(src, *args, **kwargs)
+        return source_to_op(func.__code__.co_firstlineno, src, *args, **kwargs)
 
     return decorate(origin_func, wrapped_func)

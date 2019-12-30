@@ -16,7 +16,6 @@
 # under the License.
 """Intrinsic Function Calls in Hybrid Script Parser For TE IR"""
 
-from .utils import _internal_assert
 from .. import api as _api
 from .. import expr as _expr
 from .. import ir_pass as _pass
@@ -33,16 +32,17 @@ class Symbol:
     ListOfTensorRegions = 4
 
 
-def _get_func_compulsory_arg(args, kwargs, pos, func_name, name, node):
+def _get_func_compulsory_arg(args, kwargs, pos, func_name, name, parser):
     """Get corresponding function argument from argument list which is compulsory"""
     if len(args) >= pos:
         return args[pos - 1]
     else:
-        _internal_assert(name in kwargs.keys(), func_name + " misses arugument " + name, node.lineno)
+        if name not in kwargs.keys():
+            parser.report_error(func_name + " misses argument " + name)
         return kwargs[name]
 
 
-def _get_func_optional_arg(args, kwargs, pos, func_name, name, node, default):
+def _get_func_optional_arg(args, kwargs, pos, func_name, name, parser, default):
     """Get corresponding function argument from argument list which is optional.
     If user doesn't provide the argument, set it to default value
     """
@@ -61,14 +61,14 @@ def _wrap_list(sth):
     return sth
 
 
-def _type_check(arg, type_expected, node):
-    _internal_assert(isinstance(arg, type_expected),
-                     str(type_expected) + " expected while " + str(type(arg)) + " found", node.lineno)
+def _type_check(arg, type_expected, parser):
+    if not isinstance(arg, type_expected):
+        parser.report_error(str(type_expected) + " expected while " + str(type(arg)) + " found")
 
 
-def _type_check_list(args, type_expected, node):
+def _type_check_list(args, type_expected, parser):
     for arg in args:
-        _type_check(arg, type_expected, node)
+        _type_check(arg, type_expected, parser)
 
 
 def _buffer_bind(parser, node, args, kwargs):
@@ -80,21 +80,21 @@ def _buffer_bind(parser, node, args, kwargs):
         buffer_map[a] = A
     """
 
-    _internal_assert(len(args) + len(kwargs) >= 2, "buffer_bind() takes at least 2 arguments : var, shape", node.lineno)
     # var
-    var = _get_func_compulsory_arg(args, kwargs, 1, "buffer_bind", "var", node)
-    _type_check(var, _expr.Var, node)
-    _internal_assert(var in parser.params, "Can not bind non-input args to buffer", node.lineno)
+    var = _get_func_compulsory_arg(args, kwargs, 1, "buffer_bind", "var", parser)
+    _type_check(var, _expr.Var, parser)
+    if var not in parser.params:
+        parser.report_error("Can not bind non-input args to buffer")
     # shape
-    shape = _get_func_compulsory_arg(args, kwargs, 2, "buffer_bind", "shape", node)
-    _type_check(shape, tuple, node)
-    _type_check_list(shape, _expr.Expr, node)
+    shape = _get_func_compulsory_arg(args, kwargs, 2, "buffer_bind", "shape", parser)
+    _type_check(shape, tuple, parser)
+    _type_check_list(shape, _expr.Expr, parser)
     # dtype
-    dtype = _get_func_optional_arg(args, kwargs, 3, "buffer_bind", "dtype", node, "float32")
-    _type_check(dtype, str, node)
+    dtype = _get_func_optional_arg(args, kwargs, 3, "buffer_bind", "dtype", parser, "float32")
+    _type_check(dtype, str, parser)
     # name
-    name = _get_func_optional_arg(args, kwargs, 4, "buffer_bind", "name", node, "buf")
-    _type_check(name, str, node)
+    name = _get_func_optional_arg(args, kwargs, 4, "buffer_bind", "name", parser, "buf")
+    _type_check(name, str, parser)
 
     return parser.ir_builder.declare_buffer(shape=shape, dtype=dtype, name=name)
 
@@ -110,20 +110,19 @@ def _buffer_allocate(parser, node, args, kwargs):
     <=> A = ib.allocate_buffer((128, 128), dtype="float32", name="A")
     """
 
-    _internal_assert(len(args) + len(kwargs) >= 1, "buffer_allocate() takes at least 1 argument : shape", node.lineno)
     # shape
-    shape = _get_func_compulsory_arg(args, kwargs, 1, "buffer_allocate", "shape", node)
-    _type_check(shape, tuple, node)
-    _type_check_list(shape, _expr.Expr, node)
+    shape = _get_func_compulsory_arg(args, kwargs, 1, "buffer_allocate", "shape", parser)
+    _type_check(shape, tuple, parser)
+    _type_check_list(shape, _expr.Expr, parser)
     # dtype
-    dtype = _get_func_optional_arg(args, kwargs, 2, "buffer_allocate", "dtype", node, "float32")
-    _type_check(dtype, str, node)
+    dtype = _get_func_optional_arg(args, kwargs, 2, "buffer_allocate", "dtype", parser, "float32")
+    _type_check(dtype, str, parser)
     # name
-    name = _get_func_optional_arg(args, kwargs, 3, "buffer_allocate", "name", node, "buf")
-    _type_check(name, str, node)
+    name = _get_func_optional_arg(args, kwargs, 3, "buffer_allocate", "name", parser, "buf")
+    _type_check(name, str, parser)
     # scope
-    scope = _get_func_optional_arg(args, kwargs, 4, "buffer_allocate", "scope", node, "")
-    _type_check(scope, str, node)
+    scope = _get_func_optional_arg(args, kwargs, 4, "buffer_allocate", "scope", parser, "")
+    _type_check(scope, str, parser)
 
     _buffer = _api.decl_buffer(shape, dtype=dtype, name=name)
     parser.allocate_stack[-1].append(_make.BufferAllocate(_buffer, scope))
@@ -141,25 +140,24 @@ def _block_vars(parser, node, args, kwargs):
     <=> ib.IterVar(tvm.make_range_by_min_text(0, 128), name="vi", iter_type="reduce")
     """
 
-    _internal_assert(len(args) + len(kwargs) >= 2, "block_vars() takes at least 2 arguments : begin, end", node.lineno)
     # begin
-    begin = _get_func_compulsory_arg(args, kwargs, 1, "block_vars", "begin", node)
-    _type_check(begin, _expr.Expr, node)
+    begin = _get_func_compulsory_arg(args, kwargs, 1, "block_vars", "begin", parser)
+    _type_check(begin, _expr.Expr, parser)
     # end
-    end = _get_func_compulsory_arg(args, kwargs, 2, "block_vars", "end", node)
-    _type_check(end, _expr.Expr, node)
+    end = _get_func_compulsory_arg(args, kwargs, 2, "block_vars", "end", parser)
+    _type_check(end, _expr.Expr, parser)
     # name
-    name = _get_func_optional_arg(args, kwargs, 3, "block_vars", "name", node, "bv")
-    _type_check(name, str, node)
+    name = _get_func_optional_arg(args, kwargs, 3, "block_vars", "name", parser, "bv")
+    _type_check(name, str, parser)
     # iter_type
-    iter_type = _get_func_optional_arg(args, kwargs, 4, "block_vars", "iter_type", node, "data_par")
+    iter_type = _get_func_optional_arg(args, kwargs, 4, "block_vars", "iter_type", parser, "data_par")
 
     extent = end if begin == 0 else _pass.Simplify(end - begin)
 
     block_var_dom = _make.range_by_min_extent(begin, extent)
     block_var = parser.ir_builder.iter_var(block_var_dom, name=name, iter_type=iter_type)
 
-    parser.add_symbol(block_var.var.name, Symbol.IterVar, block_var.var, node.lineno)
+    parser.add_symbol(block_var.var.name, Symbol.IterVar, block_var.var)
 
     return block_var
 
@@ -180,29 +178,26 @@ class With:
             (Note that block_vars has been processed ahead)
         """
 
-        _internal_assert(len(args) + len(kwargs) >= 3,
-                         "block() takes at least 4 arguments : block_vars, values, reads, writes",
-                         node.lineno)
         # block_vars
-        block_vars = _get_func_compulsory_arg(args, kwargs, 1, "block", "block_vars", node)
+        block_vars = _get_func_compulsory_arg(args, kwargs, 1, "block", "block_vars", parser)
         block_vars = _wrap_list(block_vars)
         # values
-        values = _get_func_compulsory_arg(args, kwargs, 2, "block", "values", node)
+        values = _get_func_compulsory_arg(args, kwargs, 2, "block", "values", parser)
         values = _wrap_list(values)
-        _type_check_list(values, _expr.Expr, node)
+        _type_check_list(values, _expr.Expr, parser)
         # reads
-        reads = _get_func_compulsory_arg(args, kwargs, 3, "block", "reads", node)
+        reads = _get_func_compulsory_arg(args, kwargs, 3, "block", "reads", parser)
         reads = _wrap_list(reads)
         # writes
-        writes = _get_func_compulsory_arg(args, kwargs, 4, "block", "writes", node)
+        writes = _get_func_compulsory_arg(args, kwargs, 4, "block", "writes", parser)
         writes = _wrap_list(writes)
         # predicate
-        predicate = _get_func_optional_arg(args, kwargs, 5, "block", "predicate", node, True)
+        predicate = _get_func_optional_arg(args, kwargs, 5, "block", "predicate", parser, True)
         # annotations
-        annotations = _get_func_optional_arg(args, kwargs, 6, "block", "annotations", node, [])
+        annotations = _get_func_optional_arg(args, kwargs, 6, "block", "annotations", parser, [])
         annotations = _wrap_list(annotations)
         # name
-        name = _get_func_optional_arg(args, kwargs, 7, "block", "name", node, "")
+        name = _get_func_optional_arg(args, kwargs, 7, "block", "name", parser, "")
 
         parser.seq_stack.append([])
         parser.allocate_stack.append([])
@@ -227,19 +222,18 @@ class For:
     def _range(parser, node, args, kwargs):
         """ Intrin function range(begin, end)"""
 
-        _internal_assert(len(args) + len(kwargs) == 2, "range() takes exactly 2 arguments : begin, end", node.lineno)
         # begin
-        begin = _get_func_compulsory_arg(args, kwargs, 1, "range", "begin", node)
-        _type_check(begin, _expr.Expr, node)
+        begin = _get_func_compulsory_arg(args, kwargs, 1, "range", "begin", parser)
+        _type_check(begin, _expr.Expr, parser)
         # end
-        end = _get_func_compulsory_arg(args, kwargs, 2, "range", "end", node)
-        _type_check(end, _expr.Expr, node)
+        end = _get_func_compulsory_arg(args, kwargs, 2, "range", "end", parser)
+        _type_check(end, _expr.Expr, parser)
 
         extent = end if begin == 0 else _pass.Simplify(end - begin)
 
         loop_var_name = node.target.id
         loop_var = _api.var(loop_var_name, dtype="int32")
-        parser.add_symbol(loop_var_name, Symbol.LoopVar, loop_var, node.lineno)
+        parser.add_symbol(loop_var_name, Symbol.LoopVar, loop_var)
         parser.seq_stack.append([])
 
         for stmt in node.body:

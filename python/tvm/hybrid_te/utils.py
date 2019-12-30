@@ -18,20 +18,6 @@
 
 import inspect
 
-start_lineno = 0
-
-
-def set_lineno(lineno):
-    global start_lineno
-    start_lineno = lineno
-
-
-def _internal_assert(cond, err, lineno):
-    """Simplify the code segment like if not cond then raise an error"""
-    global start_lineno
-    if not cond:
-        raise ValueError("TVM Hybrid Script Error in line " + str(start_lineno + lineno - 1) + " : " + err)
-
 
 def _pruned_source(func):
     """Prune source code's extra leading spaces"""
