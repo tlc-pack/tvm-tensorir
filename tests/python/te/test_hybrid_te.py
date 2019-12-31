@@ -17,7 +17,7 @@
 
 import numpy as np
 import tvm
-
+import util
 
 @tvm.hybrid_te.script
 def matmul(a, b, c):
@@ -61,6 +61,7 @@ def element_wise(a, c):
 def test_matmul(a, b, c):
     m, n, l = 16, 16, 16
     func, tensors, tensor_map = matmul(a, b, c)
+    func_ib, tensors_ib, tensor_map_ib = util.matmul_stmt(a, b, c)
 
     assert isinstance(func.body, tvm.stmt.TeBlock)
     assert isinstance(func.body.body, tvm.stmt.Loop)
@@ -87,6 +88,8 @@ def test_matmul(a, b, c):
 def test_element_wise(a, c):
     m, n = 16, 16
     func, tensors, tensor_map = element_wise(a, c)
+    func_ib, tensors_ib, tensor_map_ib = util.element_wise_stmt(a, c)
+
     print(func)
 
     assert isinstance(func.body, tvm.stmt.TeBlock)
