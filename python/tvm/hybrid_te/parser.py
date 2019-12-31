@@ -21,14 +21,13 @@ import operator
 
 from typed_ast import ast3 as ast
 
-from . import intrin
+from . import intrin, ScopeEmitter
 from .intrin import Symbol
 from .. import api as _api
 from .. import expr as _expr
 from .. import ir_builder as _ib
 from .. import ir_pass as _pass
 from .. import make as _make
-from .. import stmt as _stmt
 from ..api import all as _all
 from ..api import any as _any
 
@@ -86,20 +85,22 @@ class HybridParser(ast.NodeVisitor):
         self.symbols = {}  # Symbol table
         self.te_function_name = None
         self.ir_builder = _ib.create()
+        self.buffer_map = {}
+        self.params = []  # input argument map
+        self.src = src.split('\n')
+        self.scope_emitter = ScopeEmitter.ScopeEmitter(self)
+
         self.func_lineno = func_lineno
         self.current_lineno = 0
         self.current_col_offset = 0
+
         self._is_block_vars = False
         self._in_with_func_arg = False
-        self.buffer_map = {}
-        self.params = []  # input argument map
-        self.seq_stack = [[]]  # IR stmts of scopes
-        self.allocate_stack = [[]]  # Buffer allocations of scopes
-        self.src = src.split('\n')
 
     def visit(self, node):
         """Visit a node."""
         old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
+
         if hasattr(node, "lineno"):
             self.current_lineno = self.func_lineno + node.lineno - 1
         if hasattr(node, "col_offset"):
@@ -184,26 +185,6 @@ class HybridParser(ast.NodeVisitor):
 
         self.symbols.pop(name)
 
-    def emit(self, stmt):
-        """Emit a stmt into current scope"""
-        if isinstance(stmt, _expr.Call):
-            stmt = _make.Evaluate(stmt)
-        self.seq_stack[-1].append(stmt)
-
-    def pop_seq(self):
-        """Pop the inner most scope"""
-        seq = self.seq_stack.pop()
-        if not seq or callable(seq[-1]):
-            seq.append(_make.Evaluate(0))
-        stmt = seq[-1]
-        for s in reversed(seq[:-1]):
-            if callable(s):
-                stmt = s(stmt)
-            else:
-                assert isinstance(s, _stmt.Stmt)
-                stmt = _make.Block(s, stmt)
-        return stmt
-
     def visit_Module(self, node):
         """ Module visitor
         AST abstract grammar :
@@ -240,9 +221,9 @@ class HybridParser(ast.NodeVisitor):
         for body_element in node.body:
             self.visit(body_element)
         # fetch the body and return a TeFunction
-        body = self.pop_seq()
+        body = self.scope_emitter.pop_seq()
 
-        if not (len(self.seq_stack) == 0):
+        if not (len(self.scope_emitter.seq_stack) == 0):
             self.report_error("Runtime Error")
 
         return self.ir_builder.function(self.params, self.buffer_map, body, name=self.te_function_name)
@@ -279,7 +260,7 @@ class HybridParser(ast.NodeVisitor):
             if not value.dtype == buffer._content_type:
                 self.report_error(
                     "data type does not match content type %s vs %s" % (value.dtype, buffer._content_type))
-            self.emit(_make.BufferStore(buffer._buffer, value, buffer_indexes))
+            self.scope_emitter.emit(_make.BufferStore(buffer._buffer, value, buffer_indexes))
         else:
             self.report_error("The target of Assign ought to be a name variable or a Buffer element")
 

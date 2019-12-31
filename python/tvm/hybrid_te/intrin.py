@@ -34,6 +34,7 @@ class Symbol:
 
 
 class CallArgumentReader:
+    """A helper class which read argument and do type check if needed"""
 
     def __init__(self, func_name, args, kwargs, parser):
         self.func_name = func_name
@@ -139,7 +140,7 @@ def buffer_allocate(parser, node, args, kwargs):
     scope = reader.get_func_optional_arg(4, "scope", "", type_expected=str)
 
     _buffer = _api.decl_buffer(shape, dtype=dtype, name=name)
-    parser.allocate_stack[-1].append(_make.BufferAllocate(_buffer, scope))
+    parser.scope_emitter.allocate_stack[-1].append(_make.BufferAllocate(_buffer, scope))
     return Buffer(parser.ir_builder, _buffer, dtype)
 
 
@@ -189,8 +190,7 @@ class With:
         annotations = reader.get_func_optional_arg(6, "annotations", [], wrap_list=True)
         name = reader.get_func_optional_arg(7, "name", "", type_expected=str)
 
-        parser.seq_stack.append([])
-        parser.allocate_stack.append([])
+        parser.scope_emitter.new_block_scope()
 
         for stmt in node.body:
             parser.visit(stmt)
@@ -198,9 +198,9 @@ class With:
         for block_var in block_vars:
             parser.remove_symbol(block_var.var.name)
 
-        parser.emit(
-            _make.TeBlock(block_vars, values, reads, writes, parser.pop_seq(), predicate, parser.allocate_stack.pop(),
-                          annotations, name))
+        parser.scope_emitter.emit(
+            _make.TeBlock(block_vars, values, reads, writes, parser.scope_emitter.pop_seq(), predicate,
+                          parser.scope_emitter.allocate_stack.pop(), annotations, name))
 
 
 class For:
@@ -219,10 +219,11 @@ class For:
         loop_var_name = node.target.id
         loop_var = _api.var(loop_var_name, dtype="int32")
         parser.add_symbol(loop_var_name, Symbol.LoopVar, loop_var)
-        parser.seq_stack.append([])
+
+        parser.scope_emitter.new_loop_scope()
 
         for stmt in node.body:
             parser.visit(stmt)
 
-        parser.emit(_make.Loop(loop_var, begin, extent, [], parser.pop_seq()))
+        parser.scope_emitter.emit(_make.Loop(loop_var, begin, extent, [], parser.scope_emitter.pop_seq()))
         parser.remove_symbol(loop_var_name)

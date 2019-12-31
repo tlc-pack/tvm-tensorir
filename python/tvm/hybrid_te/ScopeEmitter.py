@@ -1,0 +1,57 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+"""Hybrid Script Scope Emitter for TE IR"""
+
+from .. import expr as _expr
+from .. import make as _make
+from .. import stmt as _stmt
+
+
+class ScopeEmitter:
+    """Maintain the stmt of scopes"""
+
+    def __init__(self, parser):
+        self.seq_stack = [[]]  # IR stmts of scopes
+        self.allocate_stack = [[]]  # Buffer allocations of scopes
+        self.parser = parser
+
+    def emit(self, stmt):
+        """Emit a stmt into current scope"""
+        if isinstance(stmt, _expr.Call):
+            stmt = _make.Evaluate(stmt)
+        self.seq_stack[-1].append(stmt)
+
+    def pop_seq(self):
+        """Pop the inner most scope"""
+        seq = self.seq_stack.pop()
+        if not seq or callable(seq[-1]):
+            seq.append(_make.Evaluate(0))
+        stmt = seq[-1]
+        for s in reversed(seq[:-1]):
+            if callable(s):
+                stmt = s(stmt)
+            else:
+                assert isinstance(s, _stmt.Stmt)
+                stmt = _make.Block(s, stmt)
+        return stmt
+
+    def new_block_scope(self):
+        self.seq_stack.append([])
+        self.allocate_stack.append([])
+
+    def new_loop_scope(self):
+        self.seq_stack.append([])
