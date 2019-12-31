@@ -32,15 +32,15 @@ TVM_REGISTER_API("te.schedule.GetStmt")
     });
 
 TVM_REGISTER_API("te.schedule.GetBlocksFromTag")
-.set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, std::string)>(
-    [](Schedule schedule, StmtSRef scope, std::string tag) {
-      return schedule.GetBlock(scope, tag);
+.set_body_typed<Array<StmtSRef>(Schedule, std::string, StmtSRef)>(
+    [](Schedule schedule, std::string tag, StmtSRef scope) {
+      return schedule.GetBlock(tag, scope);
     });
 
 TVM_REGISTER_API("te.schedule.GetBlocksFromBuffer")
-.set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, Buffer)>(
-    [](Schedule schedule, StmtSRef scope, Buffer buffer) {
-      return schedule.GetBlock(scope, buffer);
+.set_body_typed<Array<StmtSRef>(Schedule, Buffer, StmtSRef)>(
+    [](Schedule schedule, Buffer buffer, StmtSRef scope) {
+      return schedule.GetBlock(buffer, scope);
     });
 
 // dependency graph

@@ -364,7 +364,10 @@ void Schedule::UpdateSRef(StmtSRefNode* sref, const Stmt& stmt) {
   sref->node = stmt.operator->();
 }
 
-Array<StmtSRef> Schedule::GetBlock(const StmtSRef& scope, const std::string& tag) const {
+Array<StmtSRef> Schedule::GetBlock(const std::string& tag, StmtSRef scope) const {
+  if (!scope.defined()) {
+    scope = operator->()->root;
+  }
   CHECK(GetRef<Stmt>(scope->node).as<BlockNode>());
   Array<StmtSRef> ret;
   for (const auto& block : Blocks(scope)) {
@@ -375,7 +378,10 @@ Array<StmtSRef> Schedule::GetBlock(const StmtSRef& scope, const std::string& tag
   return ret;
 }
 
-Array<StmtSRef> Schedule::GetBlock(const StmtSRef& scope, const Buffer& buffer) const {
+Array<StmtSRef> Schedule::GetBlock(const Buffer& buffer, StmtSRef scope) const {
+  if (!scope.defined()) {
+    scope = operator->()->root;
+  }
   CHECK(GetRef<Stmt>(scope->node).as<BlockNode>());
   CHECK_GT(operator->()->scopes_.count(scope), 0);
   const auto& write_map = operator->()->scopes_.at(scope)->write_map;
@@ -386,7 +392,10 @@ Array<StmtSRef> Schedule::GetBlock(const StmtSRef& scope, const Buffer& buffer) 
   }
 }
 
-Array<StmtSRef> Schedule::Blocks(const StmtSRef& scope) const {
+Array<StmtSRef> Schedule::Blocks(StmtSRef scope) const {
+  if (!scope.defined()) {
+    scope = operator->()->root;
+  }
   CHECK(GetRef<Stmt>(scope->node).as<BlockNode>());
   CHECK_GT(operator->()->scopes_.count(scope), 0);
   const auto& write_map = operator->()->scopes_.at(scope)->write_map;

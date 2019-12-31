@@ -35,8 +35,6 @@ class Schedule(NodeBase):
         scope: StmtSRef, optional
             The scope block stmt sref
         """
-        if scope is None:
-            scope = self.root
         blocks = ScheduleBlocks(self, scope)
         if len(blocks) == 0:
             return None
@@ -59,12 +57,10 @@ class Schedule(NodeBase):
         blocks : List of StmtSRef or StmtSRef
             The blocks sref that match the arguments
         """
-        if scope is None:
-            scope = self.root
         if isinstance(arg, str):
-            blocks = GetBlocksFromTag(self, scope, arg)
+            blocks = GetBlocksFromTag(self, arg, scope)
         else:
-            blocks = GetBlocksFromBuffer(self, scope, arg)
+            blocks = GetBlocksFromBuffer(self, arg, scope)
         if len(blocks) == 0:
             return None
         elif len(blocks) == 1:

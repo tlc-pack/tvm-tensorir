@@ -73,7 +73,7 @@ class Schedule : public NodeRef {
    * \param tag The query tag
    * \return the block schedulable reference list
    */
-  Array<StmtSRef> GetBlock(const StmtSRef& scope, const std::string& tag) const;
+  Array<StmtSRef> GetBlock(const std::string& tag, StmtSRef scope = StmtSRef()) const;
 
   /*!
    * \brief Get block from its output tensor
@@ -81,14 +81,14 @@ class Schedule : public NodeRef {
    * \param buffer The query buffer
    * \return the block schedulable reference list
    */
-  Array<StmtSRef> GetBlock(const StmtSRef& scope, const Buffer& buffer) const;
+  Array<StmtSRef> GetBlock(const Buffer& buffer, StmtSRef scope = StmtSRef()) const;
 
   /*!
    * \brief Get all blocks in the scope
    * \param scope The block scope
    * \return the block schedulable reference list
    */
-  Array<StmtSRef> Blocks(const StmtSRef& scope) const;
+  Array<StmtSRef> Blocks(StmtSRef scope) const;
 
   TVM_DEFINE_NODE_REF_METHODS(Schedule, NodeRef, ScheduleNode);
 
