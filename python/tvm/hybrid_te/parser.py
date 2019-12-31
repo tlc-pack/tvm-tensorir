@@ -81,31 +81,51 @@ class HybridParser(ast.NodeVisitor):
         ast.Not: operator.not_
     }
 
-    def __init__(self, func_lineno, *args):
+    def __init__(self, src, func_lineno, *args):
         self.args = list(args)
         self.symbols = {}  # Symbol table
         self.te_function_name = None
         self.ir_builder = _ib.create()
         self.func_lineno = func_lineno
         self.current_lineno = 0
-
+        self.current_col_offset = 0
         self._is_block_vars = False
         self._in_with_func_arg = False
         self.buffer_map = {}
         self.params = []  # input argument map
         self.seq_stack = [[]]  # IR stmts of scopes
         self.allocate_stack = [[]]  # Buffer allocations of scopes
+        self.src = src.split('\n')
 
     def visit(self, node):
         """Visit a node."""
+        old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
         if hasattr(node, "lineno"):
             self.current_lineno = self.func_lineno + node.lineno - 1
+        if hasattr(node, "col_offset"):
+            self.current_col_offset = node.col_offset
+
         method = 'visit_' + node.__class__.__name__
         visitor = getattr(self, method, self.generic_visit)
-        return visitor(node)
+        visit_res = visitor(node)
 
-    def report_error(self, message):
-        raise ValueError("TVM Hybrid Python Parser Error in line " + str(self.current_lineno) + " : " + message)
+        self.current_lineno, self.current_col_offset = old_lineno, old_col_offset
+
+        return visit_res
+
+    def wrap_line_col(self, message, lineno, col_offset):
+        src_line = self.src[lineno - self.func_lineno]
+        leading_space = len(src_line) - len(src_line.lstrip(' '))
+        col_offset = col_offset - leading_space
+        src_line = src_line[leading_space:]
+        return "\n  " + src_line + "\n  " + " " * col_offset + "^\n" + "TVM Hybrid Python Parser Error in line " \
+               + str(lineno) + " : " + message + "\n"
+
+    def report_error(self, message, lineno=None, col_offset=None):
+        if (lineno is None) and (col_offset is None):
+            raise ValueError(self.wrap_line_col(message, self.current_lineno, self.current_col_offset))
+        else:
+            raise ValueError(self.wrap_line_col(message, lineno, col_offset))
 
     def generic_visit(self, node):
         """To directly filter out invalidate type of stmt"""
@@ -125,6 +145,7 @@ class HybridParser(ast.NodeVisitor):
         symbol : Var, IterVar, Buffer or List of TensorRegion
             the symbol
         """
+
         if name in self.symbols.keys():
             old = str(self.symbols[name])
             new = str((symbol_type, symbol))
@@ -146,6 +167,7 @@ class HybridParser(ast.NodeVisitor):
         symbol : Var, IterVar, Buffer or List of TensorRegion
             the symbol
         """
+
         if name in self.symbols.keys():
             self.symbols[name] = (symbol_type, symbol)
         else:
@@ -159,6 +181,7 @@ class HybridParser(ast.NodeVisitor):
         name : str
             name of symbol
         """
+
         self.symbols.pop(name)
 
     def emit(self, stmt):
@@ -202,6 +225,7 @@ class HybridParser(ast.NodeVisitor):
             arguments = (arg* posonlyargs, arg* args, arg? vararg, arg* kwonlyargs, expr* kw_defaults, arg? kwarg, expr* defaults)
             arg = (identifier arg, expr? annotation, string? type_comment)
         """
+
         if not (len(node.args.args) == len(self.args)):
             self.report_error("The number of arguments passed")
 
@@ -270,15 +294,14 @@ class HybridParser(ast.NodeVisitor):
 
         if not isinstance(node.target, ast.Name):
             self.report_error("The loop variable should be a name variable")
+        # check node.iter, which is a Call
         if not isinstance(node.iter, ast.Call):
             self.report_error("The loop iter should be a Call")
-        # check node.iter, which is a Call
         func_name = node.iter.func.id
-        # position args, e.g. func(a, b)
-        args = [self.visit(arg) for arg in node.iter.args]
-        # keyword args, e.g. func(a=a, b=b)
-        kw_args = [self.visit(keyword) for keyword in node.iter.keywords]
-        kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
+        # collect arguments
+        args = [(self.visit(arg), arg) for arg in node.iter.args]
+        kw_args = [(self.visit(keyword), keyword) for keyword in node.iter.keywords]
+        kw_args = {kw_arg[0][0]: (kw_arg[0][1], kw_arg[1]) for kw_arg in kw_args}
         # All the functions supported in For stmt are registered in intrin.For
         if not hasattr(intrin.For, func_name):
             self.report_error("Function " + func_name + " used in For stmt is not supported now")
@@ -295,26 +318,27 @@ class HybridParser(ast.NodeVisitor):
                 Note that block_vars is a list of Calls, e.g. vi(0, 128, "reduce")
                 It's a syntax sugar, which is equivalent with defining a IterVar named vi and used in the following block definition
 
-                Example
-                -------
-                If we want to define a block and we use the primitive APIs in IRBuilder, we should write
+        Example
+        -------
+        If we want to define a block and we use the primitive APIs in IRBuilder, we should write
 
-                .. code-block:: python
+        .. code-block:: python
 
-                    bv_i = ib.iter_var(tvm.make.range_by_min_extent(0, 128), name="vi")
-                    bv_j = ib.iter_var(tvm.make.range_by_min_extent(0, 128), name="vj")
-                    vi = bv_i.var
-                    vj = bv_j.var
-                    with ib.block([bv_i, bv_j], [i, j], reads = A[vi:vi+1, vj:vj+1], wrtite = B[vi:vi+1, vj:vj+1])
+            bv_i = ib.iter_var(tvm.make.range_by_min_extent(0, 128), name="vi")
+            bv_j = ib.iter_var(tvm.make.range_by_min_extent(0, 128), name="vj")
+            vi = bv_i.var
+            vj = bv_j.var
+            with ib.block([bv_i, bv_j], [i, j], reads = A[vi:vi+1, vj:vj+1], write = B[vi:vi+1, vj:vj+1])
 
-                The IterVar variable bv_i and bv_j are only used once, so I planned to give a sugar here and the user can
-                simply write in one line code like
+        The IterVar variable bv_i and bv_j are only used once, so I planned to give a sugar here and the user can
+        simply write in one line code like
 
-                .. code-block:: python
-                with block([vi(0, 128), vj(0, 128)], [i, j], reads = A[vi:vi+1, vj:vj+1], wrtite = B[vi:vi+1, vj:vj+1])
+        .. code-block:: python
 
-                The problem it brings is that vi, vj will be parsed as Call here, so when parsing the Call which is
-                actually to defining a block var, we leave it to a intrinsic function block_vars() to handle them.
+            with block([vi(0, 128), vj(0, 128)], [i, j], reads = A[vi:vi+1, vj:vj+1], write = B[vi:vi+1, vj:vj+1])
+
+        The problem it brings is that vi, vj will be parsed as Call here, so when parsing the Call which is
+        actually to defining a block var, we leave it to a intrinsic function block_vars() to handle them.
         """
 
         if not len(node.items) == 1:
@@ -323,49 +347,41 @@ class HybridParser(ast.NodeVisitor):
             self.report_error("The context expression of with should be a Call")
 
         func_name = node.items[0].context_expr.func.id
-        # preprocess block_var definitions
-        block_vars_arg = None
-        if len(node.items[0].context_expr.args) >= 1:
-            block_vars_arg = node.items[0].context_expr.args[0]
+
+        if func_name == 'block':
+            # preprocess block_var definitions
+            block_vars_arg = None
+            if len(node.items[0].context_expr.args) >= 1:
+                block_vars_arg = node.items[0].context_expr.args[0]
+            else:
+                for keyword in node.items[0].context_expr.keywords:
+                    if keyword.arg == 'block_vars':
+                        block_vars_arg = keyword.value
+
+            if block_vars_arg is None:
+                self.report_error("block() misses argument block_vars", lineno=self.current_lineno,
+                                  col_offset=block_vars_arg)
+
+            self._is_block_vars = True
+            block_vars = self.visit(block_vars_arg)
+            self._is_block_vars = False
+            # collect arguments
+            args = [(block_vars, block_vars_arg)] + [(self.visit(arg), arg) for arg in
+                                                     node.items[0].context_expr.args[1:]]
+            kw_args = [(self.visit(keyword), keyword) for keyword in node.items[0].context_expr.keywords if
+                       not keyword.arg == "block_vars"]
+            kw_args = {kw_arg[0][0]: (kw_arg[0][1], kw_arg[1]) for kw_arg in kw_args}
+        elif hasattr(intrin.With, func_name):
+            # reserved for future use
+            # collect arguments
+            args = [(self.visit(arg), arg) for arg in node.iter.args]
+            kw_args = [(self.visit(keyword), keyword) for keyword in node.iter.keywords]
+            kw_args = {kw_arg[0][0]: (kw_arg[0][1], kw_arg[1]) for kw_arg in kw_args}
         else:
-            for keyword in node.items[0].context_expr.keywords:
-                if keyword.arg == 'block_vars':
-                    block_vars_arg = keyword.value
-
-        if block_vars_arg is None:
-            self.report_error("block() misses argument block_vars")
-
-        self._is_block_vars = True
-        block_vars = self.visit(block_vars_arg)
-        self._is_block_vars = False
-        # collect arguments
-        args = [block_vars] + [self.visit(arg) for arg in node.items[0].context_expr.args[1:]]
-        kw_args = [self.visit(keyword) for keyword in node.items[0].context_expr.keywords if
-                   not keyword.arg == "block_vars"]
-        kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
-        # All the functions supported in With stmt are registered in intrin.With
-        if not hasattr(intrin.With, func_name):
             self.report_error("Function " + func_name + " used in With stmt is not supported now")
+
+        # All the functions supported in With stmt are registered in intrin.With
         getattr(intrin.With, func_name)(self, node, args, kw_args)
-
-    def visit_BinOp(self, node):
-        """ BinOp visitor
-        AST abstract grammar :
-            BinOp(expr left, operator op, expr right)
-        """
-
-        lhs = self.visit(node.left)
-        rhs = self.visit(node.right)
-        return HybridParser._binop_maker[type(node.op)](lhs, rhs)
-
-    def visit_UnaryOp(self, node):
-        """ UnaryOp visitor
-        AST abstract grammar :
-            UnaryOp(unaryop op, expr operand)
-        """
-
-        operand = self.visit(node.operand)
-        return HybridParser._unaryop_maker[type(node.op)](operand)
 
     def visit_Call(self, node):
         """ Call visitor
@@ -380,18 +396,44 @@ class HybridParser(ast.NodeVisitor):
             self.report_error("Only id function call is supported now")
 
         func_name = node.func.id
+
         # collect arguments
-        args = [self.visit(arg) for arg in node.args]
-        kw_args = [self.visit(keyword) for keyword in node.keywords]
-        kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
-        # handle block_var sugar
+        args = [(self.visit(arg), arg) for arg in node.args]
+        kw_args = [(self.visit(keyword), keyword) for keyword in node.keywords]
+        kw_args = {kw_arg[0][0]: (kw_arg[0][1], kw_arg[1]) for kw_arg in kw_args}
+
         if self._is_block_vars:
-            kw_args["name"] = func_name
+            # special judge block_var sugar
+            kw_args["name"] = func_name, None
             func_name = "block_vars"
-        else:
-            if not hasattr(intrin, func_name):
-                self.report_error("Function " + func_name + " is not supported now")
+        elif not hasattr(intrin, func_name):
+            self.report_error("Function " + func_name + " is not supported now")
+
+        # All the functions supported in With stmt are registered in intrin
         return getattr(intrin, func_name)(self, node, args, kw_args)
+
+    def visit_BinOp(self, node):
+        """ BinOp visitor
+        AST abstract grammar :
+            BinOp(expr left, operator op, expr right)
+        """
+
+        lhs = self.visit(node.left)
+        rhs = self.visit(node.right)
+        if type(node.op) not in HybridParser._binop_maker.keys():
+            self.report_error("BinOp " + str(type(node.op)) + " is not supported now")
+        return HybridParser._binop_maker[type(node.op)](lhs, rhs)
+
+    def visit_UnaryOp(self, node):
+        """ UnaryOp visitor
+        AST abstract grammar :
+            UnaryOp(unaryop op, expr operand)
+        """
+
+        operand = self.visit(node.operand)
+        if type(node.op) not in HybridParser._unaryop_maker.keys():
+            self.report_error("UnaryOp " + str(type(node.op)) + " is not supported now")
+        return HybridParser._unaryop_maker[type(node.op)](operand)
 
     def visit_Subscript(self, node):
         """ Subscript visitor
@@ -536,5 +578,5 @@ def source_to_op(func_lineno, src, *args, **kwargs):
     """
 
     root = ast.parse(src)
-    parser = HybridParser(func_lineno, *args)
+    parser = HybridParser(src, func_lineno, *args)
     return parser.visit(root)

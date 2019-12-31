@@ -20,7 +20,8 @@ from .. import api as _api
 from .. import expr as _expr
 from .. import ir_pass as _pass
 from .. import make as _make
-from ..ir_builder import Buffer
+from .. import schedule as _schedule
+from ..ir_builder import TensorRegion, Buffer
 
 
 class Symbol:
@@ -32,46 +33,77 @@ class Symbol:
     ListOfTensorRegions = 4
 
 
-def _get_func_compulsory_arg(args, kwargs, pos, func_name, name, parser):
-    """Get corresponding function argument from argument list which is compulsory"""
-    if len(args) >= pos:
-        return args[pos - 1]
-    else:
-        if name not in kwargs.keys():
-            parser.report_error(func_name + " misses argument " + name)
-        return kwargs[name]
+class CallArgumentReader:
 
+    def __init__(self, func_name, args, kwargs, parser):
+        self.func_name = func_name
+        self.args = args
+        self.kwargs = kwargs
+        self.parser = parser
 
-def _get_func_optional_arg(args, kwargs, pos, func_name, name, parser, default):
-    """Get corresponding function argument from argument list which is optional.
-    If user doesn't provide the argument, set it to default value
-    """
-    if len(args) >= pos:
-        return args[pos - 1]
-    else:
-        if name in kwargs.keys():
-            return kwargs[name]
+    def get_func_compulsory_arg(self, pos, name, wrap_list=False, type_expected=None, elem_type_expected=None):
+        """Get corresponding function argument from argument list which is compulsory"""
+
+        if len(self.args) >= pos:
+            arg, arg_node = self.args[pos - 1]
+        elif name not in self.kwargs.keys():
+            self.parser.report_error(self.func_name + " misses argument " + name)
+            return
+        else:
+            arg, arg_node = self.kwargs[name]
+
+        if wrap_list:
+            arg = self._wrap_list(arg)
+
+        if type_expected is not None:
+            self._type_check(arg, arg_node, type_expected)
+
+        if elem_type_expected is not None:
+            self._type_check(arg, arg_node, (list, tuple))
+            self._type_check_list(arg, arg_node, elem_type_expected)
+
+        return arg
+
+    def get_func_optional_arg(self, pos, name, default, wrap_list=False, type_expected=None, elem_type_expected=None):
+        """Get corresponding function argument from argument list which is optional.
+        If user doesn't provide the argument, set it to default value
+        """
+        if len(self.args) >= pos:
+            arg, arg_node = self.args[pos - 1]
+        elif name in self.kwargs.keys():
+            arg, arg_node = self.kwargs[name]
         else:
             return default
 
+        if wrap_list:
+            arg = self._wrap_list(arg)
 
-def _wrap_list(sth):
-    if not isinstance(sth, list):
-        return [sth]
-    return sth
+        if type_expected is not None:
+            self._type_check(arg, arg_node, type_expected)
+
+        if elem_type_expected is not None:
+            self._type_check(arg, arg_node, (list, tuple))
+            self._type_check_list(arg, arg_node, elem_type_expected)
+
+        return arg
+
+    @staticmethod
+    def _wrap_list(sth):
+        if not isinstance(sth, list):
+            return [sth]
+        return sth
+
+    def _type_check(self, arg, arg_node, type_expected):
+        if not isinstance(arg, type_expected):
+            self.parser.report_error(str(type_expected) + " expected while " + str(type(arg[0])) + " found",
+                                     self.parser.current_lineno, arg_node.col_offset)
+
+    def _type_check_list(self, args, arg_node, type_expected):
+        for arg in args:
+            self._type_check(arg, arg_node, type_expected)
 
 
-def _type_check(arg, type_expected, parser):
-    if not isinstance(arg, type_expected):
-        parser.report_error(str(type_expected) + " expected while " + str(type(arg)) + " found")
-
-
-def _type_check_list(args, type_expected, parser):
-    for arg in args:
-        _type_check(arg, type_expected, parser)
-
-
-def _buffer_bind(parser, node, args, kwargs):
+def buffer_bind(parser, node, args, kwargs):
     """ Intrin function buffer_bind(var, shape, dtype, name)
 
     e.g.
@@ -80,29 +112,19 @@ def _buffer_bind(parser, node, args, kwargs):
         buffer_map[a] = A
     """
 
-    # var
-    var = _get_func_compulsory_arg(args, kwargs, 1, "buffer_bind", "var", parser)
-    _type_check(var, _expr.Var, parser)
+    reader = CallArgumentReader("buffer_bind", args, kwargs, parser)
+    var = reader.get_func_compulsory_arg(1, "var", type_expected=_expr.Var)
+    shape = reader.get_func_compulsory_arg(2, "shape", type_expected=tuple, elem_type_expected=_expr.Expr)
+    dtype = reader.get_func_optional_arg(3, "dtype", "float32", type_expected=str)
+    name = reader.get_func_optional_arg(4, "name", "buf", type_expected=str)
+
     if var not in parser.params:
         parser.report_error("Can not bind non-input args to buffer")
-    # shape
-    shape = _get_func_compulsory_arg(args, kwargs, 2, "buffer_bind", "shape", parser)
-    _type_check(shape, tuple, parser)
-    _type_check_list(shape, _expr.Expr, parser)
-    # dtype
-    dtype = _get_func_optional_arg(args, kwargs, 3, "buffer_bind", "dtype", parser, "float32")
-    _type_check(dtype, str, parser)
-    # name
-    name = _get_func_optional_arg(args, kwargs, 4, "buffer_bind", "name", parser, "buf")
-    _type_check(name, str, parser)
 
     return parser.ir_builder.declare_buffer(shape=shape, dtype=dtype, name=name)
 
 
-buffer_bind = _buffer_bind
-
-
-def _buffer_allocate(parser, node, args, kwargs):
+def buffer_allocate(parser, node, args, kwargs):
     """ Intrin function buffer_allocate(var, shape, dtype, name)
 
     e.g.
@@ -110,29 +132,18 @@ def _buffer_allocate(parser, node, args, kwargs):
     <=> A = ib.allocate_buffer((128, 128), dtype="float32", name="A")
     """
 
-    # shape
-    shape = _get_func_compulsory_arg(args, kwargs, 1, "buffer_allocate", "shape", parser)
-    _type_check(shape, tuple, parser)
-    _type_check_list(shape, _expr.Expr, parser)
-    # dtype
-    dtype = _get_func_optional_arg(args, kwargs, 2, "buffer_allocate", "dtype", parser, "float32")
-    _type_check(dtype, str, parser)
-    # name
-    name = _get_func_optional_arg(args, kwargs, 3, "buffer_allocate", "name", parser, "buf")
-    _type_check(name, str, parser)
-    # scope
-    scope = _get_func_optional_arg(args, kwargs, 4, "buffer_allocate", "scope", parser, "")
-    _type_check(scope, str, parser)
+    reader = CallArgumentReader("buffer_allocate", args, kwargs, parser)
+    shape = reader.get_func_compulsory_arg(1, "shape", type_expected=tuple, elem_type_expected=_expr.Expr)
+    dtype = reader.get_func_optional_arg(2, "dtype", "float32", type_expected=str)
+    name = reader.get_func_optional_arg(3, "name", "buf", type_expected=str)
+    scope = reader.get_func_optional_arg(4, "scope", "", type_expected=str)
 
     _buffer = _api.decl_buffer(shape, dtype=dtype, name=name)
     parser.allocate_stack[-1].append(_make.BufferAllocate(_buffer, scope))
     return Buffer(parser.ir_builder, _buffer, dtype)
 
 
-buffer_allocate = _buffer_allocate
-
-
-def _block_vars(parser, node, args, kwargs):
+def block_vars(parser, node, args, kwargs):
     """ Intrin function buffer_bind(var, shape, dtype, name)
 
     e.g.
@@ -140,20 +151,13 @@ def _block_vars(parser, node, args, kwargs):
     <=> ib.IterVar(tvm.make_range_by_min_text(0, 128), name="vi", iter_type="reduce")
     """
 
-    # begin
-    begin = _get_func_compulsory_arg(args, kwargs, 1, "block_vars", "begin", parser)
-    _type_check(begin, _expr.Expr, parser)
-    # end
-    end = _get_func_compulsory_arg(args, kwargs, 2, "block_vars", "end", parser)
-    _type_check(end, _expr.Expr, parser)
-    # name
-    name = _get_func_optional_arg(args, kwargs, 3, "block_vars", "name", parser, "bv")
-    _type_check(name, str, parser)
-    # iter_type
-    iter_type = _get_func_optional_arg(args, kwargs, 4, "block_vars", "iter_type", parser, "data_par")
+    reader = CallArgumentReader("block_var", args, kwargs, parser)
+    begin = reader.get_func_compulsory_arg(1, "begin", type_expected=_expr.Expr)
+    end = reader.get_func_compulsory_arg(2, "end", type_expected=_expr.Expr)
+    name = reader.get_func_optional_arg(3, "name", "bv", type_expected=str)
+    iter_type = reader.get_func_optional_arg(4, "iter_type", "data_par", type_expected=str)
 
     extent = end if begin == 0 else _pass.Simplify(end - begin)
-
     block_var_dom = _make.range_by_min_extent(begin, extent)
     block_var = parser.ir_builder.iter_var(block_var_dom, name=name, iter_type=iter_type)
 
@@ -162,14 +166,11 @@ def _block_vars(parser, node, args, kwargs):
     return block_var
 
 
-block_vars = _block_vars
-
-
 class With:
     """All the functions supported in With stmt are registered here"""
 
     @staticmethod
-    def _block(parser, node, args, kwargs):
+    def block(parser, node, args, kwargs):
         """ Intrin function block(block_vars, values, reads, writes, predicate, annotations, name)
 
         e.g.
@@ -178,26 +179,15 @@ class With:
             (Note that block_vars has been processed ahead)
         """
 
-        # block_vars
-        block_vars = _get_func_compulsory_arg(args, kwargs, 1, "block", "block_vars", parser)
-        block_vars = _wrap_list(block_vars)
-        # values
-        values = _get_func_compulsory_arg(args, kwargs, 2, "block", "values", parser)
-        values = _wrap_list(values)
-        _type_check_list(values, _expr.Expr, parser)
-        # reads
-        reads = _get_func_compulsory_arg(args, kwargs, 3, "block", "reads", parser)
-        reads = _wrap_list(reads)
-        # writes
-        writes = _get_func_compulsory_arg(args, kwargs, 4, "block", "writes", parser)
-        writes = _wrap_list(writes)
-        # predicate
-        predicate = _get_func_optional_arg(args, kwargs, 5, "block", "predicate", parser, True)
-        # annotations
-        annotations = _get_func_optional_arg(args, kwargs, 6, "block", "annotations", parser, [])
-        annotations = _wrap_list(annotations)
-        # name
-        name = _get_func_optional_arg(args, kwargs, 7, "block", "name", parser, "")
+        reader = CallArgumentReader("block", args, kwargs, parser)
+        block_vars = reader.get_func_compulsory_arg(1, "block_vars", wrap_list=True,
+                                                    elem_type_expected=_schedule.IterVar)
+        values = reader.get_func_compulsory_arg(2, "values", wrap_list=True, elem_type_expected=_expr.Expr)
+        reads = reader.get_func_compulsory_arg(3, "reads", wrap_list=True, elem_type_expected=TensorRegion)
+        writes = reader.get_func_compulsory_arg(4, "writes", wrap_list=True, elem_type_expected=TensorRegion)
+        predicate = reader.get_func_optional_arg(5, "predicate", True, type_expected=_expr.Expr)
+        annotations = reader.get_func_optional_arg(6, "annotations", [], wrap_list=True)
+        name = reader.get_func_optional_arg(7, "name", "", type_expected=str)
 
         parser.seq_stack.append([])
         parser.allocate_stack.append([])
@@ -212,22 +202,17 @@ class With:
             _make.TeBlock(block_vars, values, reads, writes, parser.pop_seq(), predicate, parser.allocate_stack.pop(),
                           annotations, name))
 
-    block = _block
-
 
 class For:
     """All the functions supported in For stmt are registered here"""
 
     @staticmethod
-    def _range(parser, node, args, kwargs):
+    def range(parser, node, args, kwargs):
         """ Intrin function range(begin, end)"""
 
-        # begin
-        begin = _get_func_compulsory_arg(args, kwargs, 1, "range", "begin", parser)
-        _type_check(begin, _expr.Expr, parser)
-        # end
-        end = _get_func_compulsory_arg(args, kwargs, 2, "range", "end", parser)
-        _type_check(end, _expr.Expr, parser)
+        reader = CallArgumentReader("range", args, kwargs, parser)
+        begin = reader.get_func_compulsory_arg(1, "begin", type_expected=_expr.Expr)
+        end = reader.get_func_compulsory_arg(2, "end", type_expected=_expr.Expr)
 
         extent = end if begin == 0 else _pass.Simplify(end - begin)
 
@@ -241,5 +226,3 @@ class For:
 
         parser.emit(_make.Loop(loop_var, begin, extent, [], parser.pop_seq()))
         parser.remove_symbol(loop_var_name)
-
-    range = _range
