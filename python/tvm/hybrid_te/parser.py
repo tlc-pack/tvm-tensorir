@@ -284,9 +284,9 @@ class HybridParser(ast.NodeVisitor):
         kw_args = [(self.visit(keyword), keyword) for keyword in node.iter.keywords]
         kw_args = {kw_arg[0][0]: (kw_arg[0][1], kw_arg[1]) for kw_arg in kw_args}
         # All the functions supported in For stmt are registered in intrin.For
-        if not hasattr(intrin.For, func_name):
+        if not hasattr(intrin.ForScope, func_name):
             self.report_error("Function " + func_name + " used in For stmt is not supported now")
-        getattr(intrin.For, func_name)(self, node, args, kw_args)
+        getattr(intrin.ForScope, func_name)(self, node, args, kw_args)
 
     def visit_With(self, node):
         """ With visitor
@@ -352,7 +352,7 @@ class HybridParser(ast.NodeVisitor):
             kw_args = [(self.visit(keyword), keyword) for keyword in node.items[0].context_expr.keywords if
                        not keyword.arg == "block_vars"]
             kw_args = {kw_arg[0][0]: (kw_arg[0][1], kw_arg[1]) for kw_arg in kw_args}
-        elif hasattr(intrin.With, func_name):
+        elif hasattr(intrin.WithScope, func_name):
             # reserved for future use
             # collect arguments
             args = [(self.visit(arg), arg) for arg in node.iter.args]
@@ -362,7 +362,7 @@ class HybridParser(ast.NodeVisitor):
             self.report_error("Function " + func_name + " used in With stmt is not supported now")
 
         # All the functions supported in With stmt are registered in intrin.With
-        getattr(intrin.With, func_name)(self, node, args, kw_args)
+        getattr(intrin.WithScope, func_name)(self, node, args, kw_args)
 
     def visit_Call(self, node):
         """ Call visitor
@@ -387,11 +387,11 @@ class HybridParser(ast.NodeVisitor):
             # special judge block_var sugar
             kw_args["name"] = func_name, None
             func_name = "block_vars"
-        elif not hasattr(intrin, func_name):
+        elif not hasattr(intrin.GlobalScope, func_name):
             self.report_error("Function " + func_name + " is not supported now")
 
         # All the functions supported in With stmt are registered in intrin
-        return getattr(intrin, func_name)(self, node, args, kw_args)
+        return getattr(intrin.GlobalScope, func_name)(self, node, args, kw_args)
 
     def visit_BinOp(self, node):
         """ BinOp visitor
