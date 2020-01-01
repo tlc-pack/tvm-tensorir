@@ -16,6 +16,10 @@
 # under the License.
 """Intrinsic Function Calls in Hybrid Script Parser For TE IR"""
 
+from typing import List, Tuple
+
+from typeguard import check_type
+
 from .. import api as _api
 from .. import expr as _expr
 from .. import ir_pass as _pass
@@ -42,7 +46,7 @@ class CallArgumentReader:
         self.kwargs = kwargs
         self.parser = parser
 
-    def get_func_compulsory_arg(self, pos, name, wrap_list=False, type_expected=None, elem_type_expected=None):
+    def get_func_compulsory_arg(self, pos, name, wrap_list=False, type_expected=None):
         """Get corresponding function argument from argument list which is compulsory"""
 
         if len(self.args) >= pos:
@@ -57,15 +61,11 @@ class CallArgumentReader:
             arg = self._wrap_list(arg)
 
         if type_expected is not None:
-            self._type_check(arg, arg_node, type_expected)
-
-        if elem_type_expected is not None:
-            self._type_check(arg, arg_node, (list, tuple))
-            self._type_check_list(arg, arg_node, elem_type_expected)
+            self._type_check(name, arg, arg_node, type_expected)
 
         return arg
 
-    def get_func_optional_arg(self, pos, name, default, wrap_list=False, type_expected=None, elem_type_expected=None):
+    def get_func_optional_arg(self, pos, name, default, wrap_list=False, type_expected=None):
         """Get corresponding function argument from argument list which is optional.
         If user doesn't provide the argument, set it to default value
         """
@@ -80,11 +80,7 @@ class CallArgumentReader:
             arg = self._wrap_list(arg)
 
         if type_expected is not None:
-            self._type_check(arg, arg_node, type_expected)
-
-        if elem_type_expected is not None:
-            self._type_check(arg, arg_node, (list, tuple))
-            self._type_check_list(arg, arg_node, elem_type_expected)
+            self._type_check(name, arg, arg_node, type_expected)
 
         return arg
 
@@ -94,14 +90,11 @@ class CallArgumentReader:
             return [sth]
         return sth
 
-    def _type_check(self, arg, arg_node, type_expected):
-        if not isinstance(arg, type_expected):
-            self.parser.report_error(str(type_expected) + " expected while " + str(type(arg[0])) + " found",
-                                     self.parser.current_lineno, arg_node.col_offset)
-
-    def _type_check_list(self, args, arg_node, type_expected):
-        for arg in args:
-            self._type_check(arg, arg_node, type_expected)
+    def _type_check(self, name, arg, arg_node, type_expected):
+        try:
+            check_type(name, arg, type_expected)
+        except TypeError as e:
+            self.parser.report_error(str(e), self.parser.current_lineno, arg_node.col_offset)
 
 
 def buffer_bind(parser, node, args, kwargs):
@@ -115,7 +108,7 @@ def buffer_bind(parser, node, args, kwargs):
 
     reader = CallArgumentReader("buffer_bind", args, kwargs, parser)
     var = reader.get_func_compulsory_arg(1, "var", type_expected=_expr.Var)
-    shape = reader.get_func_compulsory_arg(2, "shape", type_expected=tuple, elem_type_expected=_expr.Expr)
+    shape = reader.get_func_compulsory_arg(2, "shape", type_expected=Tuple[_expr.Expr, ...])
     dtype = reader.get_func_optional_arg(3, "dtype", "float32", type_expected=str)
     name = reader.get_func_optional_arg(4, "name", "buf", type_expected=str)
 
@@ -134,7 +127,7 @@ def buffer_allocate(parser, node, args, kwargs):
     """
 
     reader = CallArgumentReader("buffer_allocate", args, kwargs, parser)
-    shape = reader.get_func_compulsory_arg(1, "shape", type_expected=tuple, elem_type_expected=_expr.Expr)
+    shape = reader.get_func_compulsory_arg(1, "shape", type_expected=Tuple[_expr.Expr, ...])
     dtype = reader.get_func_optional_arg(2, "dtype", "float32", type_expected=str)
     name = reader.get_func_optional_arg(3, "name", "buf", type_expected=str)
     scope = reader.get_func_optional_arg(4, "scope", "", type_expected=str)
@@ -182,10 +175,10 @@ class With:
 
         reader = CallArgumentReader("block", args, kwargs, parser)
         block_vars = reader.get_func_compulsory_arg(1, "block_vars", wrap_list=True,
-                                                    elem_type_expected=_schedule.IterVar)
-        values = reader.get_func_compulsory_arg(2, "values", wrap_list=True, elem_type_expected=_expr.Expr)
-        reads = reader.get_func_compulsory_arg(3, "reads", wrap_list=True, elem_type_expected=TensorRegion)
-        writes = reader.get_func_compulsory_arg(4, "writes", wrap_list=True, elem_type_expected=TensorRegion)
+                                                    type_expected=List[_schedule.IterVar])
+        values = reader.get_func_compulsory_arg(2, "values", wrap_list=True, type_expected=List[_expr.Expr])
+        reads = reader.get_func_compulsory_arg(3, "reads", wrap_list=True, type_expected=List[TensorRegion])
+        writes = reader.get_func_compulsory_arg(4, "writes", wrap_list=True, type_expected=List[TensorRegion])
         predicate = reader.get_func_optional_arg(5, "predicate", True, type_expected=_expr.Expr)
         annotations = reader.get_func_optional_arg(6, "annotations", [], wrap_list=True)
         name = reader.get_func_optional_arg(7, "name", "", type_expected=str)
