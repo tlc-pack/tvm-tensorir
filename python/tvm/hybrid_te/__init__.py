@@ -18,9 +18,18 @@
 
 from __future__ import absolute_import as _abs
 
+from . import intrin
 from .parser import source_to_op
 from .utils import _pruned_source
 from .._ffi.base import decorate
+
+
+def init_scope():
+    intrin.register_buffer_bind(intrin.GlobalScope)
+    intrin.register_buffer_allocate(intrin.GlobalScope)
+    intrin.register_block_vars(intrin.GlobalScope)
+    intrin.register_block(intrin.WithScope)
+    intrin.register_range(intrin.ForScope)
 
 
 def script(origin_func):
@@ -42,6 +51,7 @@ def script(origin_func):
     """
 
     def wrapped_func(func, *args, **kwargs):
+        init_scope()
         src = _pruned_source(func)
         return source_to_op(func.__code__.co_firstlineno, src, *args, **kwargs)
 

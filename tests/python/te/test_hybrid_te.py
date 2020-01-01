@@ -19,6 +19,7 @@ import numpy as np
 import tvm
 import util
 
+
 @tvm.hybrid_te.script
 def matmul(a, b, c):
     A = buffer_bind(a, (16, 16), "float32", name="A")
