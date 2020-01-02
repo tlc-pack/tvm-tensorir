@@ -16,7 +16,7 @@
 # under the License.
 """Intrinsic Function Calls in Hybrid Script Parser For TE IR"""
 
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Any
 
 from typeguard import check_type
 
@@ -83,7 +83,8 @@ class CallArgumentReader:
         try:
             check_type(name, arg, type_expected)
         except TypeError as e:
-            self.parser.report_error(str(e), self.parser.current_lineno, arg_node.col_offset)
+            col_offset = arg_node.col_offset if hasattr(arg_node, "col_offset") else self.parser.current_col_offset
+            self.parser.report_error(str(e), self.parser.current_lineno, col_offset)
 
 
 class GlobalScope:
@@ -102,6 +103,11 @@ def register_func(class_name, func_name, func_to_register, arg_list, need_parser
     def wrap_func(parser, node, args, kwargs):
         reader = CallArgumentReader(func_name, args, kwargs, parser)
         internal_args = list()
+
+        if need_parser_and_node:
+            internal_args.append(parser)
+            internal_args.append(node)
+
         for i, arg_info in enumerate(arg_list):
             if len(arg_info) == 2:
                 arg_name, type_expcted = arg_info
@@ -110,9 +116,6 @@ def register_func(class_name, func_name, func_to_register, arg_list, need_parser
                 arg_name, type_expcted, default = arg_info
                 internal_args.append(
                     reader.get_func_optional_arg(i + 1, arg_name, type_expected=type_expcted, default=default))
-        if need_parser_and_node:
-            internal_args.append(parser)
-            internal_args.append(node)
 
         if need_return:
             return func_to_register(*internal_args)
@@ -122,101 +125,79 @@ def register_func(class_name, func_name, func_to_register, arg_list, need_parser
     setattr(class_name, func_name, wrap_func)
 
 
-def register_buffer_bind(scope):
-    def buffer_bind(var, shape, dtype, name, parser, node):
-        """ Intrin function buffer_bind(var, shape, dtype, name)
+def buffer_bind(parser, node, var: _expr.Var, shape: Tuple[_expr.Expr, ...], dtype: str = "float32",
+                name: str = "buf") -> Any:
+    """ Intrin function buffer_bind(var, shape, dtype, name)
 
-        e.g.
-            A = buffer_bind(a, (128, 128), dtype="float32", name="A")
-        <=> A = ib.declare_buffer((128, 128), dtype="float32", name="A")
-            buffer_map[a] = A
-        """
-
-        if var not in parser.params:
-            parser.report_error("Can not bind non-input args to buffer")
-        return parser.ir_builder.declare_buffer(shape=shape, dtype=dtype, name=name)
-
-    arg_list = [("var", _expr.Var), ("shape", Tuple[_expr.Expr, ...]), ("dtype", str, "float32"), ("name", str, "buf")]
-    register_func(scope, "buffer_bind", buffer_bind, arg_list, need_parser_and_node=True, need_return=True)
+    e.g.
+        A = buffer_bind(a, (128, 128), dtype="float32", name="A")
+    <=> A = ib.declare_buffer((128, 128), dtype="float32", name="A")
+        buffer_map[a] = A
+    """
+    if var not in parser.params:
+        parser.report_error("Can not bind non-input args to buffer")
+    return parser.ir_builder.declare_buffer(shape=shape, dtype=dtype, name=name)
 
 
-def register_buffer_allocate(scope):
-    def buffer_allocate(shape, dtype, name, scope, parser, node):
-        """ Intrin function buffer_allocate(var, shape, dtype, name)
+def buffer_allocate(parser, node, shape: Tuple[_expr.Expr, ...], dtype: str = "float32", name: str = "buf",
+                    scope: str = "") -> Any:
+    """ Intrin function buffer_allocate(var, shape, dtype, name)
 
-        e.g.
-            A = buffer_allocate((128, 128), dtype="float32", name="A")
-        <=> A = ib.allocate_buffer((128, 128), dtype="float32", name="A")
-        """
-
-        _buffer = _api.decl_buffer(shape, dtype=dtype, name=name)
-        parser.scope_emitter.allocate_stack[-1].append(_make.BufferAllocate(_buffer, scope))
-        return Buffer(parser.ir_builder, _buffer, dtype)
-
-    arg_list = [("shape", Tuple[_expr.Expr, ...]), ("dtype", str, "float32"), ("name", str, "buf"), ("scope", str, "")]
-    register_func(scope, "buffer_allocate", buffer_allocate, arg_list, need_parser_and_node=True, need_return=True)
+    e.g.
+        A = buffer_allocate((128, 128), dtype="float32", name="A")
+    <=> A = ib.allocate_buffer((128, 128), dtype="float32", name="A")
+    """
+    _buffer = _api.decl_buffer(shape, dtype=dtype, name=name)
+    parser.scope_emitter.allocate_stack[-1].append(_make.BufferAllocate(_buffer, scope))
+    return Buffer(parser.ir_builder, _buffer, dtype)
 
 
-def register_block_vars(scope):
-    def block_vars(begin, end, name, iter_type, parser, node):
-        """ Intrin function buffer_bind(var, shape, dtype, name)
+def block_vars(parser, node, begin: _expr.Expr, end: _expr.Expr, name: str = "bv", iter_type: str = "data_par") -> Any:
+    """ Intrin function buffer_bind(var, shape, dtype, name)
 
-        e.g.
-            vi(0, 128, iter_type="reduce")
-        <=> ib.IterVar(tvm.make_range_by_min_text(0, 128), name="vi", iter_type="reduce")
-        """
-
-        extent = end if begin == 0 else _pass.Simplify(end - begin)
-        block_var_dom = _make.range_by_min_extent(begin, extent)
-        block_var = parser.ir_builder.iter_var(block_var_dom, name=name, iter_type=iter_type)
-        parser.add_symbol(block_var.var.name, Symbol.IterVar, block_var.var)
-        return block_var
-
-    arg_list = [("begin", _expr.Expr), ("end", _expr.Expr), ("name", str, "bv"), ("iter_type", str, "data_par")]
-    register_func(scope, "block_vars", block_vars, arg_list, need_parser_and_node=True, need_return=True)
+    e.g.
+        vi(0, 128, iter_type="reduce")
+    <=> ib.IterVar(tvm.make_range_by_min_text(0, 128), name="vi", iter_type="reduce")
+    """
+    extent = end if begin == 0 else _pass.Simplify(end - begin)
+    block_var_dom = _make.range_by_min_extent(begin, extent)
+    block_var = parser.ir_builder.iter_var(block_var_dom, name=name, iter_type=iter_type)
+    parser.add_symbol(block_var.var.name, Symbol.IterVar, block_var.var)
+    return block_var
 
 
-def register_block(scope):
-    def block(block_vars, values, reads, writes, predicate, annotations, name, parser, node):
-        """ Intrin function block(block_vars, values, reads, writes, predicate, annotations, name)
+def block(parser, node, block_vars: List[_schedule.IterVar], values: List[_expr.Expr],
+          reads: Union[TensorRegion, List[TensorRegion]], writes: Union[TensorRegion, List[TensorRegion]],
+          predicate: _expr.Expr = True, annotations: None = [], name: str = "", ):
+    """ Intrin function block(block_vars, values, reads, writes, predicate, annotations, name)
 
-        e.g.
-            with block([vi(0, 128), vj(0, 128)], [i, j], reads=[], writes=C[vi : vi + 1, vj : vj + 1], name="init"):
-        <=> with ib.block([vi, vj], [i, j], reads=[], writes=C[vi : vi + 1, vj : vj + 1], name="init"):
-            (Note that block_vars has been processed ahead)
-        """
-        if not isinstance(reads, list):
-            reads = [reads]
-        if not isinstance(writes, list):
-            writes = [writes]
-        parser.scope_emitter.new_block_scope()
-        for stmt in node.body:
-            parser.visit(stmt)
-        for block_var in block_vars:
-            parser.remove_symbol(block_var.var.name)
-        parser.scope_emitter.emit(
-            _make.TeBlock(block_vars, values, reads, writes, parser.scope_emitter.pop_seq(), predicate,
-                          parser.scope_emitter.allocate_stack.pop(), annotations, name))
-
-    arg_list = [("block_vars", List[_schedule.IterVar]), ("values", List[_expr.Expr]),
-                ("reads", Union[TensorRegion, List[TensorRegion]]), ("writes", Union[TensorRegion, List[TensorRegion]]),
-                ("predicate", _expr.Expr, True), ("annotations", None, []), ("name", str, "")]
-    register_func(scope, "block", block, arg_list, need_parser_and_node=True, need_return=False)
+    e.g.
+        with block([vi(0, 128), vj(0, 128)], [i, j], reads=[], writes=C[vi : vi + 1, vj : vj + 1], name="init"):
+    <=> with ib.block([vi, vj], [i, j], reads=[], writes=C[vi : vi + 1, vj : vj + 1], name="init"):
+        (Note that block_vars has been processed ahead)
+    """
+    if not isinstance(reads, list):
+        reads = [reads]
+    if not isinstance(writes, list):
+        writes = [writes]
+    parser.scope_emitter.new_block_scope()
+    for stmt in node.body:
+        parser.visit(stmt)
+    for block_var in block_vars:
+        parser.remove_symbol(block_var.var.name)
+    parser.scope_emitter.emit(
+        _make.TeBlock(block_vars, values, reads, writes, parser.scope_emitter.pop_seq(), predicate,
+                      parser.scope_emitter.allocate_stack.pop(), annotations, name))
 
 
-def register_range(scope):
-    def range(begin, end, parser, node):
-        """ Intrin function range(begin, end)"""
-
-        extent = end if begin == 0 else _pass.Simplify(end - begin)
-        loop_var_name = node.target.id
-        loop_var = _api.var(loop_var_name, dtype="int32")
-        parser.add_symbol(loop_var_name, Symbol.LoopVar, loop_var)
-        parser.scope_emitter.new_loop_scope()
-        for stmt in node.body:
-            parser.visit(stmt)
-        parser.scope_emitter.emit(_make.Loop(loop_var, begin, extent, [], parser.scope_emitter.pop_seq()))
-        parser.remove_symbol(loop_var_name)
-
-    arg_list = [("begin", _expr.Expr), ("end", _expr.Expr)]
-    register_func(scope, "range", range, arg_list, need_parser_and_node=True, need_return=False)
+def range(parser, node, begin: _expr.Expr, end: _expr.Expr, ):
+    """ Intrin function range(begin, end)"""
+    extent = end if begin == 0 else _pass.Simplify(end - begin)
+    loop_var_name = node.target.id
+    loop_var = _api.var(loop_var_name, dtype="int32")
+    parser.add_symbol(loop_var_name, Symbol.LoopVar, loop_var)
+    parser.scope_emitter.new_loop_scope()
+    for stmt in node.body:
+        parser.visit(stmt)
+    parser.scope_emitter.emit(_make.Loop(loop_var, begin, extent, [], parser.scope_emitter.pop_seq()))
+    parser.remove_symbol(loop_var_name)

@@ -19,11 +19,11 @@ import numpy as np
 import tvm
 
 
-def add(a, b):
+def add(a: tvm.expr.Expr, b: tvm.expr.Expr) -> tvm.expr.Expr:
     return a + b
 
 
-def mul(a, b=1):
+def mul(a: tvm.expr.Expr, b: tvm.expr.Expr) -> tvm.expr.Expr:
     return a * b
 
 
@@ -39,7 +39,6 @@ def element_wise(a, c):
             for j in range(0, 16):
                 with block([vi(0, 16), vj(0, 16)], [i, j], A[vi: vi + 1, vj: vj + 1], B[vi: vi + 1, vj: vj + 1],
                            name="B"):
-                    B[vi, vj] = mul(A[vi, vj])
                     B[vi, vj] = mul(A[vi, vj], 2)
 
         for i in range(0, 16):
