@@ -99,7 +99,9 @@ class ForScope:
     pass
 
 
-def register_func(class_name, func_name, func_to_register, arg_list, need_parser_and_node, need_return):
+def register_func(scope, func_name, func_to_register, arg_list, need_parser_and_node, need_return):
+    """Helper function to register a function to the scope """
+
     def wrap_func(parser, node, args, kwargs):
         reader = CallArgumentReader(func_name, args, kwargs, parser)
         internal_args = list()
@@ -122,7 +124,7 @@ def register_func(class_name, func_name, func_to_register, arg_list, need_parser
         else:
             func_to_register(*internal_args)
 
-    setattr(class_name, func_name, wrap_func)
+    setattr(scope, func_name, wrap_func)
 
 
 def buffer_bind(parser, node, var: _expr.Var, shape: Tuple[_expr.Expr, ...], dtype: str = "float32",
