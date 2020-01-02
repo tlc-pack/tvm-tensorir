@@ -27,9 +27,27 @@ from .._ffi.base import decorate
 
 
 def register(origin_func, scope_name="global", need_parser_node=False):
+    """Register an external function to parser under scope
+
+    Parameters
+    ----------
+    origin_func: python function
+        The function to be registered
+        You can write annotations of the arguments to ask the parser do runtime type check.
+        Default value is also supported.
+
+    scope_name: str
+        The scope name where the function is to be registered， could be "global", "for", "with"
+
+    need_parser_node: Bool
+        Whether the function to be registered need parser and ast node as its argument.
+        If True, the first and the second argument of origin_func ought to be parser and node
+        Check intrin.buffer_bind, intrin.buffer_allocate for an example
+    """
+
     scope_dict = {"global": intrin.GlobalScope, "for": intrin.ForScope, "with": intrin.WithScope}
     if scope_name not in scope_dict.keys():
-        raise RuntimeError("TVM Hybrid Script register error : scope should be \"global\", \"for\" or \"block\"")
+        raise RuntimeError("TVM Hybrid Script register error : scope should be \"global\", \"for\" or \"with\"")
     else:
         scope = scope_dict[scope_name]
 
@@ -57,7 +75,8 @@ def register(origin_func, scope_name="global", need_parser_node=False):
                          need_return="return" in type_hints.keys())
 
 
-def init_scope():
+def _init_scope():
+    """Register primitive intrinsic functions"""
     register(intrin.buffer_bind, need_parser_node=True)
     register(intrin.buffer_allocate, need_parser_node=True)
     register(intrin.block_vars, need_parser_node=True)
@@ -68,8 +87,7 @@ def init_scope():
 def script(origin_func):
     """Decorate a python function function as hybrid script.
 
-    The hybrid function support emulation mode and parsing to
-    the internal language IR.
+    The hybrid function support parsing to the internal TE IR.
 
     Returns
     -------
@@ -84,7 +102,7 @@ def script(origin_func):
     """
 
     def wrapped_func(func, *args, **kwargs):
-        init_scope()
+        _init_scope()
         src = _pruned_source(func)
         return source_to_op(func.__code__.co_firstlineno, src, *args, **kwargs)
 

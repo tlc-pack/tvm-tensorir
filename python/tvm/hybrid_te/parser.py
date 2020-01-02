@@ -115,6 +115,7 @@ class HybridParser(ast.NodeVisitor):
         return visit_res
 
     def wrap_line_col(self, message, lineno, col_offset):
+        """Wrap the message with line number and column offset"""
         src_line = self.src[lineno - self.func_lineno]
         leading_space = len(src_line) - len(src_line.lstrip(' '))
         col_offset = col_offset - leading_space
@@ -123,6 +124,7 @@ class HybridParser(ast.NodeVisitor):
                + str(lineno) + " : " + message + "\n"
 
     def report_error(self, message, lineno=None, col_offset=None):
+        """Report an error occur in line lineno and column col_offset"""
         if (lineno is None) and (col_offset is None):
             raise ValueError(self.wrap_line_col(message, self.current_lineno, self.current_col_offset))
         else:
