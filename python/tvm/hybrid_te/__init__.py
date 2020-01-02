@@ -26,15 +26,14 @@ from .utils import _pruned_source
 from .._ffi.base import decorate
 
 
-def register(origin_func, scope_name="global", need_parser_node=False):
+def register(origin_func, scope_name="global", need_parser_node=False, need_return=True):
     """Register an external function to parser under scope
 
     Parameters
     ----------
     origin_func: python function
-        The function to be registered
-        You can write annotations of the arguments to ask the parser do runtime type check.
-        Default value is also supported.
+        The function to be registered.
+        Default value is supported.
 
     scope_name: str
         The scope name where the function is to be registered， could be "global", "for", "with"
@@ -52,7 +51,8 @@ def register(origin_func, scope_name="global", need_parser_node=False):
         scope = scope_dict[scope_name]
 
     full_arg_spec = inspect.getfullargspec(origin_func)
-    type_hints, args, defaults = full_arg_spec.annotations, full_arg_spec.args, full_arg_spec.defaults
+    args, defaults = full_arg_spec.args, full_arg_spec.defaults
+
     if defaults is None:
         defaults = tuple()
     if need_parser_node:
@@ -67,12 +67,12 @@ def register(origin_func, scope_name="global", need_parser_node=False):
 
     arg_list = list()
     for arg in args[: len(args) - len(defaults)]:
-        arg_list.append((arg, type_hints.get(arg, None)))
+        arg_list.append((arg,))
     for default, arg in zip(defaults, args[len(args) - len(defaults):]):
-        arg_list.append((arg, type_hints.get(arg, None), default))
+        arg_list.append((arg, default))
 
     intrin.register_func(scope, origin_func.__name__, origin_func, arg_list, need_parser_and_node=need_parser_node,
-                         need_return="return" in type_hints.keys())
+                         need_return=need_return)
 
 
 def _init_scope():
@@ -80,8 +80,8 @@ def _init_scope():
     register(intrin.buffer_bind, need_parser_node=True)
     register(intrin.buffer_allocate, need_parser_node=True)
     register(intrin.block_vars, need_parser_node=True)
-    register(intrin.block, scope_name="with", need_parser_node=True)
-    register(intrin.range, scope_name="for", need_parser_node=True)
+    register(intrin.block, scope_name="with", need_parser_node=True, need_return=False)
+    register(intrin.range, scope_name="for", need_parser_node=True, need_return=False)
 
 
 def script(origin_func):
