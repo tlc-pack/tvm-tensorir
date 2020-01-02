@@ -19,11 +19,11 @@ import numpy as np
 import tvm
 
 
-def add(a: tvm.expr.Expr, b: tvm.expr.Expr) -> tvm.expr.Expr:
+def add(a, b):
     return a + b
 
 
-def mul(a: tvm.expr.Expr, b: tvm.expr.Expr = 1) -> tvm.expr.Expr:
+def mul(a, b=1):
     return a * b
 
 

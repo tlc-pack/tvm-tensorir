@@ -16,16 +16,10 @@
 # under the License.
 """Intrinsic Function Calls in Hybrid Script Parser For TE IR"""
 
-from typing import List, Tuple, Union, Any
-
-from typeguard import check_type
-
 from .. import api as _api
-from .. import expr as _expr
 from .. import ir_pass as _pass
 from .. import make as _make
-from .. import schedule as _schedule
-from ..ir_builder import TensorRegion, Buffer
+from ..ir_builder import Buffer
 
 
 class Symbol:
@@ -46,7 +40,7 @@ class CallArgumentReader:
         self.kwargs = kwargs
         self.parser = parser
 
-    def get_func_compulsory_arg(self, pos, name, type_expected=None):
+    def get_func_compulsory_arg(self, pos, name):
         """Get corresponding function argument from argument list which is compulsory"""
 
         if len(self.args) >= pos:
@@ -57,12 +51,9 @@ class CallArgumentReader:
         else:
             arg, arg_node = self.kwargs[name]
 
-        if type_expected is not None:
-            self._type_check(name, arg, arg_node, type_expected)
-
         return arg
 
-    def get_func_optional_arg(self, pos, name, default, type_expected=None):
+    def get_func_optional_arg(self, pos, name, default):
         """Get corresponding function argument from argument list which is optional.
         If user doesn't provide the argument, set it to default value
         """
@@ -74,17 +65,7 @@ class CallArgumentReader:
         else:
             return default
 
-        if type_expected is not None:
-            self._type_check(name, arg, arg_node, type_expected)
-
         return arg
-
-    def _type_check(self, name, arg, arg_node, type_expected):
-        try:
-            check_type(name, arg, type_expected)
-        except TypeError as e:
-            col_offset = arg_node.col_offset if hasattr(arg_node, "col_offset") else self.parser.current_col_offset
-            self.parser.report_error(str(e), self.parser.current_lineno, col_offset)
 
 
 class GlobalScope:
@@ -111,13 +92,12 @@ def register_func(scope, func_name, func_to_register, arg_list, need_parser_and_
             internal_args.append(node)
 
         for i, arg_info in enumerate(arg_list):
-            if len(arg_info) == 2:
-                arg_name, type_expcted = arg_info
-                internal_args.append(reader.get_func_compulsory_arg(i + 1, arg_name, type_expected=type_expcted))
+            if len(arg_info) == 1:
+                arg_name, = arg_info
+                internal_args.append(reader.get_func_compulsory_arg(i + 1, arg_name))
             else:
-                arg_name, type_expcted, default = arg_info
-                internal_args.append(
-                    reader.get_func_optional_arg(i + 1, arg_name, type_expected=type_expcted, default=default))
+                arg_name, default = arg_info
+                internal_args.append(reader.get_func_optional_arg(i + 1, arg_name, default=default))
 
         if need_return:
             return func_to_register(*internal_args)
@@ -127,8 +107,7 @@ def register_func(scope, func_name, func_to_register, arg_list, need_parser_and_
     setattr(scope, func_name, wrap_func)
 
 
-def buffer_bind(parser, node, var: _expr.Var, shape: Tuple[_expr.Expr, ...], dtype: str = "float32",
-                name: str = "buf") -> Any:
+def buffer_bind(parser, node, var, shape, dtype="float32", name="buf"):
     """ Intrin function buffer_bind(var, shape, dtype, name)
 
     e.g.
@@ -141,8 +120,7 @@ def buffer_bind(parser, node, var: _expr.Var, shape: Tuple[_expr.Expr, ...], dty
     return parser.ir_builder.declare_buffer(shape=shape, dtype=dtype, name=name)
 
 
-def buffer_allocate(parser, node, shape: Tuple[_expr.Expr, ...], dtype: str = "float32", name: str = "buf",
-                    scope: str = "") -> Any:
+def buffer_allocate(parser, node, shape, dtype="float32", name="buf", scope=""):
     """ Intrin function buffer_allocate(var, shape, dtype, name)
 
     e.g.
@@ -154,7 +132,7 @@ def buffer_allocate(parser, node, shape: Tuple[_expr.Expr, ...], dtype: str = "f
     return Buffer(parser.ir_builder, _buffer, dtype)
 
 
-def block_vars(parser, node, begin: _expr.Expr, end: _expr.Expr, name: str = "bv", iter_type: str = "data_par") -> Any:
+def block_vars(parser, node, begin, end, name="bv", iter_type="data_par"):
     """ Intrin function buffer_bind(var, shape, dtype, name)
 
     e.g.
@@ -168,9 +146,7 @@ def block_vars(parser, node, begin: _expr.Expr, end: _expr.Expr, name: str = "bv
     return block_var
 
 
-def block(parser, node, block_vars: List[_schedule.IterVar], values: List[_expr.Expr],
-          reads: Union[TensorRegion, List[TensorRegion]], writes: Union[TensorRegion, List[TensorRegion]],
-          predicate: _expr.Expr = True, annotations: None = [], name: str = "", ):
+def block(parser, node, block_vars, values, reads, writes, predicate=True, annotations=[], name="", ):
     """ Intrin function block(block_vars, values, reads, writes, predicate, annotations, name)
 
     e.g.
@@ -192,7 +168,7 @@ def block(parser, node, block_vars: List[_schedule.IterVar], values: List[_expr.
                       parser.scope_emitter.allocate_stack.pop(), annotations, name))
 
 
-def range(parser, node, begin: _expr.Expr, end: _expr.Expr, ):
+def range(parser, node, begin, end, ):
     """ Intrin function range(begin, end)"""
     extent = end if begin == 0 else _pass.Simplify(end - begin)
     loop_var_name = node.target.id

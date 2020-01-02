@@ -113,4 +113,4 @@ if __name__ == '__main__':
     wrap_error(undefined_block_var, a)
     wrap_error(unsupported_stmt, a)
     wrap_error(unsupported_function_call, a)
-    wrap_error(type_check, a)
+    # wrap_error(type_check, a)
