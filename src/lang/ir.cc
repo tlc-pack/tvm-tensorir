@@ -646,7 +646,7 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
     auto* op = static_cast<const Mul*>(node.get());
     p->stream << '(';
     p->Print(op->a);
-    p->stream << "*";
+    p->stream << " * ";
     p->Print(op->b);
     p->stream << ')';
   })

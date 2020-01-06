@@ -18,15 +18,13 @@
 
 from __future__ import absolute_import as _abs
 
-import inspect
-
-from . import intrin
+from . import registry, intrin, special_stmt, scope_handler
 from .parser import source_to_op
 from .utils import _pruned_source
 from .._ffi.base import decorate
 
 
-def register(origin_func, scope_name="global", need_parser_node=False, need_return=True):
+def register(origin_func):
     """Register an external function to parser under scope
 
     Parameters
@@ -34,54 +32,18 @@ def register(origin_func, scope_name="global", need_parser_node=False, need_retu
     origin_func: python function
         The function to be registered.
         Default value is supported.
-
-    scope_name: str
-        The scope name where the function is to be registered， could be "global", "for", "with"
-
-    need_parser_node: Bool
-        Whether the function to be registered need parser and ast node as its argument.
-        If True, the first and the second argument of origin_func ought to be parser and node
-        Check intrin.buffer_bind, intrin.buffer_allocate for an example
     """
 
-    scope_dict = {"global": intrin.GlobalScope, "for": intrin.ForScope, "with": intrin.WithScope}
-    if scope_name not in scope_dict.keys():
-        raise RuntimeError("TVM Hybrid Script register error : scope should be \"global\", \"for\" or \"with\"")
-    else:
-        scope = scope_dict[scope_name]
-
-    full_arg_spec = inspect.getfullargspec(origin_func)
-    args, defaults = full_arg_spec.args, full_arg_spec.defaults
-
-    if defaults is None:
-        defaults = tuple()
-    if need_parser_node:
-        args = args[2:]
-
-    if full_arg_spec.varargs is not None:
-        raise RuntimeError("TVM Hybrid Script register error : variable argument is not supported now")
-    if full_arg_spec.varkw is not None:
-        raise RuntimeError("TVM Hybrid Script register error : variable keyword argument is not supported now")
-    if not len(full_arg_spec.kwonlyargs) == 0:
-        raise RuntimeError("TVM Hybrid Script register error : keyword only argument is not supported now")
-
-    arg_list = list()
-    for arg in args[: len(args) - len(defaults)]:
-        arg_list.append((arg,))
-    for default, arg in zip(defaults, args[len(args) - len(defaults):]):
-        arg_list.append((arg, default))
-
-    intrin.register_func(scope, origin_func.__name__, origin_func, arg_list, need_parser_and_node=need_parser_node,
-                         need_return=need_return)
+    intrin.register_intrin(origin_func)
 
 
 def _init_scope():
     """Register primitive intrinsic functions"""
-    register(intrin.buffer_bind, need_parser_node=True)
-    register(intrin.buffer_allocate, need_parser_node=True)
-    register(intrin.block_vars, need_parser_node=True)
-    register(intrin.block, scope_name="with", need_parser_node=True, need_return=False)
-    register(intrin.range, scope_name="for", need_parser_node=True, need_return=False)
+    special_stmt.register_special_stmt(special_stmt.buffer_bind)
+    special_stmt.register_special_stmt(special_stmt.buffer_allocate)
+    special_stmt.register_special_stmt(special_stmt.block_vars)
+    scope_handler.register_scope_handler(scope_handler.block, scope_name="with")
+    scope_handler.register_scope_handler(scope_handler.range, scope_name="for")
 
 
 def script(origin_func):

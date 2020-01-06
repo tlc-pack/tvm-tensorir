@@ -18,11 +18,11 @@
 
 import numbers
 import operator
+from enum import Enum
 
 from typed_ast import ast3 as ast
 
-from . import intrin, ScopeEmitter
-from .intrin import Symbol
+from . import intrin, scope_handler, special_stmt, scope_emitter
 from .. import api as _api
 from .. import expr as _expr
 from .. import ir_builder as _ib
@@ -48,6 +48,14 @@ def _floormod(x, y):
 
 class HybridParser(ast.NodeVisitor):
     """Python AST visitor pass which finally lowers it to TE IR"""
+
+    class Symbol(Enum):
+        """Enumerates types in the symbol table"""
+        Var = 0
+        Buffer = 1
+        IterVar = 2
+        LoopVar = 3
+        ListOfTensorRegions = 4
 
     _symbol_type = {
         list: Symbol.ListOfTensorRegions,
@@ -88,7 +96,7 @@ class HybridParser(ast.NodeVisitor):
         self.buffer_map = {}
         self.params = []  # input argument map
         self.src = src.split('\n')
-        self.scope_emitter = ScopeEmitter.ScopeEmitter(self)
+        self.scope_emitter = scope_emitter.ScopeEmitter(self)
 
         self.func_lineno = func_lineno
         self.current_lineno = 0
@@ -217,7 +225,7 @@ class HybridParser(ast.NodeVisitor):
         # add parameters of function
         self.params = []
         for idx, arg in enumerate(node.args.args):
-            self.add_symbol(arg.arg, Symbol.Var, self.args[idx])
+            self.add_symbol(arg.arg, HybridParser.Symbol.Var, self.args[idx])
             self.params.append(self.args[idx])
         # visit the body of function
         for body_element in node.body:
@@ -285,10 +293,15 @@ class HybridParser(ast.NodeVisitor):
         args = [(self.visit(arg), arg) for arg in node.iter.args]
         kw_args = [(self.visit(keyword), keyword) for keyword in node.iter.keywords]
         kw_args = {kw_arg[0][0]: (kw_arg[0][1], kw_arg[1]) for kw_arg in kw_args}
-        # All the functions supported in For stmt are registered in intrin.For
-        if not hasattr(intrin.ForScope, func_name):
-            self.report_error("Function " + func_name + " used in For stmt is not supported now")
-        getattr(intrin.ForScope, func_name)(self, node, args, kw_args)
+        # All the functions supported in For stmt are registered in scope_handler.ForScope
+        if not hasattr(scope_handler.ForScope, func_name):
+            self.report_error("Function " + func_name + " used in For stmt is not supported now", self.current_lineno,
+                              node.iter.col_offset)
+
+        old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
+        self.current_lineno, self.current_col_offset = self.func_lineno + node.iter.lineno - 1, node.iter.col_offset
+        getattr(scope_handler.ForScope, func_name)(self, node, args, kw_args)
+        self.current_lineno, self.current_col_offset = old_lineno, old_col_offset
 
     def visit_With(self, node):
         """ With visitor
@@ -354,17 +367,21 @@ class HybridParser(ast.NodeVisitor):
             kw_args = [(self.visit(keyword), keyword) for keyword in node.items[0].context_expr.keywords if
                        not keyword.arg == "block_vars"]
             kw_args = {kw_arg[0][0]: (kw_arg[0][1], kw_arg[1]) for kw_arg in kw_args}
-        elif hasattr(intrin.WithScope, func_name):
+        elif hasattr(scope_handler.WithScope, func_name):
             # reserved for future use
             # collect arguments
-            args = [(self.visit(arg), arg) for arg in node.iter.args]
-            kw_args = [(self.visit(keyword), keyword) for keyword in node.iter.keywords]
+            args = [(self.visit(arg), arg) for arg in node.items[0].context_expr.args]
+            kw_args = [(self.visit(keyword), keyword) for keyword in node.items[0].context_expr.keywords]
             kw_args = {kw_arg[0][0]: (kw_arg[0][1], kw_arg[1]) for kw_arg in kw_args}
         else:
             self.report_error("Function " + func_name + " used in With stmt is not supported now")
 
-        # All the functions supported in With stmt are registered in intrin.With
-        getattr(intrin.WithScope, func_name)(self, node, args, kw_args)
+        # All the functions supported in With stmt are registered in scope_handler.WithScope
+        old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
+        self.current_lineno, self.current_col_offset = self.func_lineno + node.items[0].context_expr.lineno - 1, \
+                                                       node.items[0].context_expr.col_offset
+        getattr(scope_handler.WithScope, func_name)(self, node, args, kw_args)
+        self.current_lineno, self.current_col_offset = old_lineno, old_col_offset
 
     def visit_Call(self, node):
         """ Call visitor
@@ -372,7 +389,7 @@ class HybridParser(ast.NodeVisitor):
             Call(expr func, expr* args, keyword* keywords)
             keyword = (identifier? arg, expr value)
 
-        All the functions used outside With and For are registered in intrin
+        All the functions used outside With and For are registered in special_stmt or intrin
         """
 
         if not isinstance(node.func, ast.Name):
@@ -389,11 +406,13 @@ class HybridParser(ast.NodeVisitor):
             # special judge block_var sugar
             kw_args["name"] = func_name, None
             func_name = "block_vars"
-        elif not hasattr(intrin.GlobalScope, func_name):
-            self.report_error("Function " + func_name + " is not supported now")
 
-        # All the functions supported in With stmt are registered in intrin
-        return getattr(intrin.GlobalScope, func_name)(self, node, args, kw_args)
+        if hasattr(special_stmt.SpecialStmt, func_name):
+            return getattr(special_stmt.SpecialStmt, func_name)(self, node, args, kw_args)
+        elif hasattr(intrin.Intrin, func_name):
+            return getattr(intrin.Intrin, func_name)(self, node, args, kw_args)
+        else:
+            self.report_error("Function " + func_name + " is not supported now")
 
     def visit_BinOp(self, node):
         """ BinOp visitor

@@ -38,20 +38,15 @@ class ScopeEmitter:
     def pop_seq(self):
         """Pop the inner most scope"""
         seq = self.seq_stack.pop()
-        if not seq or callable(seq[-1]):
+        if not seq:
             seq.append(_make.Evaluate(0))
         stmt = seq[-1]
         for s in reversed(seq[:-1]):
-            if callable(s):
-                stmt = s(stmt)
-            else:
-                assert isinstance(s, _stmt.Stmt)
-                stmt = _make.Block(s, stmt)
+            assert isinstance(s, _stmt.Stmt)
+            stmt = _make.Block(s, stmt)
         return stmt
 
-    def new_block_scope(self):
+    def new_scope(self, is_block=False):
         self.seq_stack.append([])
-        self.allocate_stack.append([])
-
-    def new_loop_scope(self):
-        self.seq_stack.append([])
+        if is_block:
+            self.allocate_stack.append([])
