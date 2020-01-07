@@ -295,9 +295,9 @@ class HybridParser(ast.NodeVisitor):
             self.report_error("The loop iter should be a Call")
         func_name = node.iter.func.id
         # collect arguments
-        args = [(self.visit(arg), arg) for arg in node.iter.args]
-        kw_args = [(self.visit(keyword), keyword) for keyword in node.iter.keywords]
-        kw_args = {kw_arg[0][0]: (kw_arg[0][1], kw_arg[1]) for kw_arg in kw_args}
+        args = [self.visit(arg) for arg in node.iter.args]
+        kw_args = [self.visit(keyword) for keyword in node.iter.keywords]
+        kw_args = {kw_arg[0]:  kw_arg[1] for kw_arg in kw_args}
         # All the functions supported in For stmt are registered in scope_handler.ForScope
         if func_name not in Registry.for_scope.keys():
             self.report_error("Function " + func_name + " used in For stmt is not supported now", self.current_lineno,
@@ -369,16 +369,15 @@ class HybridParser(ast.NodeVisitor):
             block_vars = self.visit(block_vars_arg)
             self._is_block_vars = False
             # collect arguments
-            args = [(block_vars, block_vars_arg)] + [(self.visit(arg), arg) for arg in func_call.args[1:]]
-            kw_args = [(self.visit(keyword), keyword) for keyword in func_call.keywords if
-                       not keyword.arg == "block_vars"]
-            kw_args = {kw_arg[0][0]: (kw_arg[0][1], kw_arg[1]) for kw_arg in kw_args}
+            args = [block_vars] + [self.visit(arg) for arg in func_call.args[1:]]
+            kw_args = [self.visit(keyword) for keyword in func_call.keywords if not keyword.arg == "block_vars"]
+            kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
         elif func_name in Registry.with_scope.keys():
             # reserved for future use
             # collect arguments
-            args = [(self.visit(arg), arg) for arg in func_call.args]
-            kw_args = [(self.visit(keyword), keyword) for keyword in func_call.keywords]
-            kw_args = {kw_arg[0][0]: (kw_arg[0][1], kw_arg[1]) for kw_arg in kw_args}
+            args = [self.visit(arg) for arg in func_call.args]
+            kw_args = [self.visit(keyword) for keyword in func_call.keywords]
+            kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
         else:
             self.report_error("Function " + func_name + " used in With stmt is not supported now")
 
@@ -403,13 +402,13 @@ class HybridParser(ast.NodeVisitor):
         func_name = node.func.id
 
         # collect arguments
-        args = [(self.visit(arg), arg) for arg in node.args]
-        kw_args = [(self.visit(keyword), keyword) for keyword in node.keywords]
-        kw_args = {kw_arg[0][0]: (kw_arg[0][1], kw_arg[1]) for kw_arg in kw_args}
+        args = [self.visit(arg) for arg in node.args]
+        kw_args = [self.visit(keyword) for keyword in node.keywords]
+        kw_args = {kw_arg[0]:  kw_arg[1] for kw_arg in kw_args}
 
         if self._is_block_vars:
             # special judge block_var sugar
-            kw_args["name"] = func_name, None
+            kw_args["name"] = func_name
             func_name = "block_vars"
 
         if func_name in Registry.special_stmt.keys():
@@ -426,7 +425,7 @@ class HybridParser(ast.NodeVisitor):
 
         lhs = self.visit(node.left)
         rhs = self.visit(node.right)
-        if not isinstance(node.op, HybridParser._binop_maker.keys()):
+        if not isinstance(node.op, tuple(HybridParser._binop_maker.keys())):
             self.report_error("BinOp " + str(type(node.op)) + " is not supported now")
         return HybridParser._binop_maker[type(node.op)](lhs, rhs)
 
@@ -437,7 +436,7 @@ class HybridParser(ast.NodeVisitor):
         """
 
         operand = self.visit(node.operand)
-        if not isinstance(node.op, HybridParser._unaryop_maker.keys()):
+        if not isinstance(node.op, tuple(HybridParser._unaryop_maker.keys())):
             self.report_error("UnaryOp " + str(type(node.op)) + " is not supported now")
         return HybridParser._unaryop_maker[type(node.op)](operand)
 

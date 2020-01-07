@@ -141,3 +141,18 @@ def register_func(category, origin_func, need_parser_and_node, need_return):
     Registry.host_dict[category][origin_func.__name__] = func_wrapper(origin_func.__name__, origin_func, arg_list,
                                                                       need_parser_and_node=need_parser_and_node,
                                                                       need_return=need_return)
+
+
+def register_intrin(origin_func):
+    """Register function under category intrin"""
+    register_func("intrin", origin_func, need_parser_and_node=False, need_return=True)
+
+
+def register_scope_handler(origin_func, scope_name):
+    """Register function under category with_scope or for_scope"""
+    register_func(scope_name, origin_func, need_parser_and_node=True, need_return=False)
+
+
+def register_special_stmt(origin_func):
+    """Register function under category special_stmt"""
+    register_func("special_stmt", origin_func, need_parser_and_node=True, need_return=True)

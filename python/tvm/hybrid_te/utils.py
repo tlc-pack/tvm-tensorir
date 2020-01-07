@@ -18,8 +18,6 @@
 
 import inspect
 
-from .registry import register_func
-
 
 def _pruned_source(func):
     """Prune source code's extra leading spaces"""
@@ -27,18 +25,3 @@ def _pruned_source(func):
     leading_space = len(lines[0]) - len(lines[0].lstrip(' '))
     lines = [line[leading_space:] for line in lines]
     return '\n'.join(lines)
-
-
-def register_intrin(origin_func):
-    """Register function under category intrin"""
-    register_func("intrin", origin_func, need_parser_and_node=False, need_return=True)
-
-
-def register_scope_handler(origin_func, scope_name):
-    """Register function under category with_scope or for_scope"""
-    register_func(scope_name, origin_func, need_parser_and_node=True, need_return=False)
-
-
-def register_special_stmt(origin_func):
-    """Register function under category special_stmt"""
-    register_func("special_stmt", origin_func, need_parser_and_node=True, need_return=True)
