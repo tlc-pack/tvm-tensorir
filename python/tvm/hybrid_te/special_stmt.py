@@ -18,13 +18,13 @@
 
 This module provides the functions registered into parser under special_stmt category.
 Special Stmt functions are used to provide some primitive functions for specific use.
-Typically, a special stmt function has return value and accepts parser and node as its first 2 arguments.
+Typically, a special stmt function has return value and accepts parser and
+node as its first 2 arguments.
 """
 
 from .. import api as _api
 from .. import ir_pass as _pass
 from .. import make as _make
-from ..ir_builder import Buffer
 
 
 def buffer_bind(parser, node, var, shape, dtype="float32", name="buf"):
@@ -39,7 +39,7 @@ def buffer_bind(parser, node, var, shape, dtype="float32", name="buf"):
     """
     if var not in parser.params:
         parser.report_error("Can not bind non-input args to buffer")
-    return parser.ir_builder.declare_buffer(shape=shape, dtype=dtype, name=name)
+    return _api.decl_buffer(shape, dtype=dtype, name=name)
 
 
 def buffer_allocate(parser, node, shape, dtype="float32", name="buf", scope=""):
@@ -54,7 +54,7 @@ def buffer_allocate(parser, node, shape, dtype="float32", name="buf", scope=""):
     """
     _buffer = _api.decl_buffer(shape, dtype=dtype, name=name)
     parser.scope_emitter.allocate_stack[-1].append(_make.BufferAllocate(_buffer, scope))
-    return Buffer(parser.ir_builder, _buffer, dtype)
+    return _buffer
 
 
 def block_vars(parser, node, begin, end, name="bv", iter_type="data_par"):
@@ -69,6 +69,18 @@ def block_vars(parser, node, begin, end, name="bv", iter_type="data_par"):
     """
     extent = end if begin == 0 else _pass.Simplify(end - begin)
     block_var_dom = _make.range_by_min_extent(begin, extent)
-    block_var = parser.ir_builder.iter_var(block_var_dom, name=name, iter_type=iter_type)
-    parser.add_symbol(block_var.var.name, parser.Symbol.IterVar, block_var.var)
+
+    if iter_type == "data_par":
+        iter_type_id = 0
+    elif iter_type == "reduce":
+        iter_type_id = 2
+    elif iter_type == "scan":
+        iter_type_id = 3
+    elif iter_type == "opaque":
+        iter_type_id = 4
+    else:
+        raise ValueError("Unknown iter_type")
+
+    block_var = _api._IterVar(block_var_dom, name, iter_type_id)
+    parser.update_symbol(block_var.var.name, parser.Symbol.IterVar, block_var.var)
     return block_var

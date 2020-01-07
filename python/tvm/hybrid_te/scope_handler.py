@@ -61,7 +61,7 @@ def range(parser, node, begin, end):
     extent = end if begin == 0 else _pass.Simplify(end - begin)
     loop_var_name = node.target.id
     loop_var = _api.var(loop_var_name, dtype="int32")
-    parser.add_symbol(loop_var_name, parser.Symbol.LoopVar, loop_var)
+    parser.update_symbol(loop_var_name, parser.Symbol.LoopVar, loop_var)
     parser.scope_emitter.new_scope()
     for stmt in node.body:
         parser.visit(stmt)

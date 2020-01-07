@@ -18,17 +18,6 @@
 import tvm
 
 
-def wrap_error(func, *args):
-    try:
-        res, _, _ = func(*args)
-        print(res)
-    except BaseException as e:
-        print(e)
-        return
-
-    assert False
-
-
 @tvm.hybrid_te.script
 def buffer_bind_missing_args(a):
     A = buffer_bind((16, 16), "float32", name="A")
@@ -90,15 +79,39 @@ def unsupported_function_call(a):
                 A[vi, vk] = 0.0
 
 
+@tvm.hybrid_te.script
+def type_check(a):
+    A = buffer_bind(a, (16, 16), "float32", name="A")
+
+    for i in range(0, 16):
+        for j in range(0, 16):
+            with block([vi(0, 16), vj(0, 16)], [i, j], reads=[], writes=a[vi: vi + 1, vj: vj + 1], name="init"):
+                A[vi, vj] = 0.0
+
+
+def wrap_error(func, lineno, *args):
+    try:
+        res = func(*args)
+        print(res)
+    except BaseException as e:
+        print(e)
+        msg = str(e).split('\n')[-1].split(':', maxsplit=1)[0].strip().split(' ')[-1].strip()
+        assert int(msg) == lineno
+        return
+
+    assert False
+
+
 if __name__ == '__main__':
     a = tvm.var("a")
     b = tvm.var("b")
     c = tvm.var("c")
 
-    wrap_error(buffer_bind_missing_args, a)
-    wrap_error(range_missing_args, a)
-    wrap_error(block_missing_args, a)
-    wrap_error(undefined_buffer, a)
-    wrap_error(undefined_block_var, a)
-    wrap_error(unsupported_stmt, a)
-    wrap_error(unsupported_function_call, a)
+    wrap_error(buffer_bind_missing_args, 23, a)
+    wrap_error(range_missing_args, 30, a)
+    wrap_error(block_missing_args, 42, a)
+    wrap_error(undefined_buffer, 52, a)
+    wrap_error(undefined_block_var, 63, a)
+    wrap_error(unsupported_stmt, 68, a)
+    wrap_error(unsupported_function_call, 76, a)
+    wrap_error(type_check, 88, a)

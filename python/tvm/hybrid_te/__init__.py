@@ -55,12 +55,6 @@ def script(origin_func):
     -------
     function : TeFunction
         The TeFunction in IR.
-
-    tensors : list of Placeholders
-        List of tensors for buffers in function
-
-    tensor_maps : dict of Buffer to Tensor
-        Map between buffers in function and tensors
     """
 
     def wrapped_func(func, *args, **kwargs):

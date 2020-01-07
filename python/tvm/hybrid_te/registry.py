@@ -19,8 +19,10 @@
 import inspect
 
 
-class Registry:
-    """Registration map"""
+class Registry(object):
+    """Registration map
+    All these maps are static
+    """
     intrin = dict()
     with_scope = dict()
     for_scope = dict()
@@ -34,7 +36,7 @@ class Registry:
     }
 
 
-class CallArgumentReader:
+class CallArgumentReader(object):
     """A helper class which read required argument from passed arguments"""
 
     def __init__(self, func_name, args, kwargs, parser):
@@ -47,12 +49,11 @@ class CallArgumentReader:
         """Get corresponding function argument from argument list which is compulsory"""
 
         if len(self.args) >= pos:
-            arg, arg_node = self.args[pos - 1]
+            arg = self.args[pos - 1]
         elif name not in self.kwargs.keys():
             self.parser.report_error(self.func_name + " misses argument " + name)
-            return
         else:
-            arg, arg_node = self.kwargs[name]
+            arg = self.kwargs[name]
 
         return arg
 
@@ -62,9 +63,9 @@ class CallArgumentReader:
         """
 
         if len(self.args) >= pos:
-            arg, arg_node = self.args[pos - 1]
+            arg = self.args[pos - 1]
         elif name in self.kwargs.keys():
-            arg, arg_node = self.kwargs[name]
+            arg = self.kwargs[name]
         else:
             return default
 
@@ -92,8 +93,7 @@ def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, ne
 
         if need_return:
             return func_to_register(*internal_args)
-        else:
-            func_to_register(*internal_args)
+        func_to_register(*internal_args)
 
     return wrap_func
 
@@ -115,6 +115,7 @@ def register_func(category, origin_func, need_parser_and_node, need_return):
     need_return: bool
         Whether the function has return value
     """
+
     full_arg_spec = inspect.getfullargspec(origin_func)
 
     args, defaults = full_arg_spec.args, full_arg_spec.defaults

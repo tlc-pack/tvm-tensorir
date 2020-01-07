@@ -15,7 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import numpy as np
 import tvm
 
 
@@ -52,8 +51,9 @@ def element_wise(a, c):
 
 
 def test_element_wise(a, c):
-    m, n = 16, 16
-    func, tensors, tensor_map = element_wise(a, c)
+    func = element_wise(a, c)
+
+    print(func)
 
     assert isinstance(func.body, tvm.stmt.TeBlock)
     assert isinstance(func.body.body, tvm.stmt.Block)
@@ -64,17 +64,6 @@ def test_element_wise(a, c):
     assert isinstance(func.body.body.rest, tvm.stmt.Loop)
     assert isinstance(func.body.body.rest.body, tvm.stmt.Loop)
     assert isinstance(func.body.body.rest.body.body, tvm.stmt.TeBlock)
-
-    func = tvm.ir_pass.TeLower(func, tensor_map)
-    print(func)
-    lower_func = tvm.lower(func, tensors)
-
-    func = tvm.build(lower_func)
-    a_np = np.random.uniform(size=(m, n)).astype("float32")
-    a = tvm.nd.array(a_np)
-    c = tvm.nd.array(np.zeros((m, n)).astype("float32"))
-    func(a, c)
-    tvm.testing.assert_allclose(c.asnumpy(), a_np * 2 + 1, rtol=1e-6)
 
 
 if __name__ == '__main__':

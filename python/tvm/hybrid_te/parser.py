@@ -15,6 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """Hybrid Script Parser For TE IR"""
+# pylint: disable=invalid-name, missing-docstring
 
 import numbers
 import operator
@@ -26,9 +27,10 @@ from . import scope_emitter
 from .registry import Registry
 from .. import api as _api
 from .. import expr as _expr
-from .. import ir_builder as _ib
 from .. import ir_pass as _pass
 from .. import make as _make
+from .. import schedule as _schedule
+from .._ffi.base import TVMError
 from ..api import all as _all
 from ..api import any as _any
 
@@ -47,8 +49,29 @@ def _floormod(x, y):
     return operator.mod(x, y)
 
 
+class HybridParserError(RuntimeError):
+    """Hybrid Parser Runtime Error"""
+
+
 class HybridParser(ast.NodeVisitor):
-    """Python AST visitor pass which finally lowers it to TE IR"""
+    """Python AST visitor pass which finally lowers it to TE IR
+
+    Notes for extension:
+    1. To support new types of AST nodes. Add a function visit_xxx().
+    2. To support new functions
+        We divide allowed function calls in hybrid script into 3 categories,
+        which is intrin, scope_handler and special_stmt.
+        1) intrin functions ought to have return value.
+        User can also register intrin category function into parser.
+        2) scope_handler functions have no return value and accepts parser and AST node
+        as its arguments, which is used in for scope and with scope.
+        3) special_stmt functions have return value and accepts parser and AST node as its arguments
+
+        When visiting Call node, we check special_stmt registry at first. If no registered function
+        is found, we then check intrin.
+        When visiting With node, we check with_scope registry.
+        When visiting For node, we check for_scope registry.
+    """
 
     class Symbol(Enum):
         """Enumerates types in the symbol table"""
@@ -56,11 +79,11 @@ class HybridParser(ast.NodeVisitor):
         Buffer = 1
         IterVar = 2
         LoopVar = 3
-        ListOfTensorRegions = 4
+        List = 4
 
     _symbol_type = {
-        list: Symbol.ListOfTensorRegions,
-        _ib.Buffer: Symbol.Buffer
+        list: Symbol.List,
+        _schedule.Buffer: Symbol.Buffer
     }
 
     _binop_maker = {
@@ -92,10 +115,8 @@ class HybridParser(ast.NodeVisitor):
     def __init__(self, src, func_lineno, *args):
         self.args = list(args)
         self.symbols = {}  # Symbol table
-        self.te_function_name = None
-        self.ir_builder = _ib.create()
+        self.params = []
         self.buffer_map = {}
-        self.params = []  # input argument map
         self.src = src.split('\n')
         self.scope_emitter = scope_emitter.ScopeEmitter(self)
 
@@ -107,7 +128,7 @@ class HybridParser(ast.NodeVisitor):
         self._in_with_func_arg = False
 
     def visit(self, node):
-        """Visit a node."""
+        """Override method in ast.NodeVisitor"""
         old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
 
         if hasattr(node, "lineno"):
@@ -129,41 +150,37 @@ class HybridParser(ast.NodeVisitor):
         leading_space = len(src_line) - len(src_line.lstrip(' '))
         col_offset = col_offset - leading_space
         src_line = src_line[leading_space:]
-        return "\n  " + src_line + "\n  " + " " * col_offset + "^\n" + "TVM Hybrid Python Parser Error in line " \
-               + str(lineno) + " : " + message + "\n"
+        return "  " + src_line + "\n  " + " " * col_offset + "^\n" + "ParserError in line " \
+               + str(lineno) + " : " + message
 
     def report_error(self, message, lineno=None, col_offset=None):
-        """Report an error occur in line lineno and column col_offset"""
-        if (lineno is None) and (col_offset is None):
-            raise ValueError(self.wrap_line_col(message, self.current_lineno, self.current_col_offset))
-        else:
-            raise ValueError(self.wrap_line_col(message, lineno, col_offset))
-
-    def generic_visit(self, node):
-        """To directly filter out invalidate type of stmt"""
-        self.report_error(type(node).__name__ + " stmt is not supported now")
-
-    def add_symbol(self, name, symbol_type, symbol):
-        """ Add value to the symbol table context
+        """ Report an error occur in line lineno and column col_offset
 
         Parameters
         ----------
-        name : str
-            name of symbol
+        message : str
+            Error message
 
-        symbol_type : enum, intrin.Symbol
-            type of symbol
+        lineno : int
+            Line number of error line
 
-        symbol : Var, IterVar, Buffer or List of TensorRegion
-            the symbol
+        col_offset : int
+            Column offset of error line
         """
 
-        if name in self.symbols.keys():
-            old = str(self.symbols[name])
-            new = str((symbol_type, symbol))
-            self.report_error("Name conflict in symbol table! [%s] %s -> %s" % (name, old, new))
+        if lineno is None:
+            lineno = self.current_lineno
+        if col_offset is None:
+            col_offset = self.current_col_offset
+        raise HybridParserError(self.wrap_line_col(message, lineno, col_offset))
 
-        self.symbols[name] = (symbol_type, symbol)
+    def generic_visit(self, node):
+        """ Override method in ast.NodeVisitor.
+
+        To directly filter out invalidate type of stmt.
+        """
+
+        self.report_error(type(node).__name__ + " stmt is not supported now")
 
     def update_symbol(self, name, symbol_type, symbol):
         """ Update value to the symbol table context
@@ -180,10 +197,7 @@ class HybridParser(ast.NodeVisitor):
             the symbol
         """
 
-        if name in self.symbols.keys():
-            self.symbols[name] = (symbol_type, symbol)
-        else:
-            self.add_symbol(name, symbol_type, symbol)
+        self.symbols[name] = (symbol_type, symbol)
 
     def remove_symbol(self, name):
         """ Remove value to the symbol table context
@@ -204,38 +218,34 @@ class HybridParser(ast.NodeVisitor):
         By now we only support Module with a single FunctionDef
         """
 
-        if not (len(node.body) == 1):
+        if not len(node.body) == 1:
             self.report_error("Only one-function source code is allowed")
         return self.visit(node.body[0])
 
     def visit_FunctionDef(self, node):
         """ FunctionDef visitor
         AST abstract grammar:
-            FunctionDef(identifier name, arguments args, stmt* body, expr* decorator_list, expr? returns, string? type_comment)
-            arguments = (arg* posonlyargs, arg* args, arg? vararg, arg* kwonlyargs, expr* kw_defaults, arg? kwarg, expr* defaults)
+            FunctionDef(identifier name, arguments args, stmt* body, expr* decorator_list,
+                        expr? returns, string? type_comment)
+            arguments = (arg* posonlyargs, arg* args, arg? vararg, arg* kwonlyargs,
+                         expr* kw_defaults, arg? kwarg, expr* defaults)
             arg = (identifier arg, expr? annotation, string? type_comment)
         """
 
-        if not (len(node.args.args) == len(self.args)):
+        if not len(node.args.args) == len(self.args):
             self.report_error("The number of arguments passed")
 
-        if self.te_function_name is None:
-            self.te_function_name = node.name
         # add parameters of function
         self.params = []
         for idx, arg in enumerate(node.args.args):
-            self.add_symbol(arg.arg, HybridParser.Symbol.Var, self.args[idx])
+            self.update_symbol(arg.arg, HybridParser.Symbol.Var, self.args[idx])
             self.params.append(self.args[idx])
         # visit the body of function
         for body_element in node.body:
             self.visit(body_element)
         # fetch the body and return a TeFunction
         body = self.scope_emitter.pop_seq()
-
-        if not (len(self.scope_emitter.seq_stack) == 0):
-            self.report_error("Runtime Error")
-
-        return self.ir_builder.function(self.params, self.buffer_map, body, name=self.te_function_name)
+        return _make.TeFunction(self.params, self.buffer_map, node.name, body)
 
     def visit_Assign(self, node):
         """ Assign visitor
@@ -243,20 +253,21 @@ class HybridParser(ast.NodeVisitor):
             Assign(expr* targets, expr value, string? type_comment)
 
         By now only 2 types of Assign is supported:
-            1. Name = List of TensorRegion, Buffer(buffer_bind, buffer_allocate)
+            1. Target = List, Buffer(buffer_bind, buffer_allocate)
             2. Buffer[expr, expr, .. expr] = Expr
         """
 
-        if not (len(node.targets) == 1):
+        if not len(node.targets) == 1:
             self.report_error("Only one-valued assignment is supported now")
 
         target = node.targets[0]
         if isinstance(target, ast.Name):
-            # Name = List of TensorRegion, Buffer(buffer_bind, buffer_allocate)
+            # Target = List, Buffer(buffer_bind, buffer_allocate)
             rhs = self.visit(node.value)
-            if not isinstance(rhs, (_ib.Buffer, list)):
+            if not isinstance(rhs, (_schedule.Buffer, list)):
                 self.report_error("The value of assign ought to be list of TensorRegions or Buffer typed")
             self.update_symbol(target.id, HybridParser._symbol_type[type(rhs)], rhs)
+            # special judge buffer_bind
             if isinstance(node.value, ast.Call) and node.value.func.id == "buffer_bind":
                 self.buffer_map[self.symbols[node.value.args[0].id][1]] = rhs
         elif isinstance(target, ast.Subscript):
@@ -264,10 +275,7 @@ class HybridParser(ast.NodeVisitor):
             buffer, buffer_indexes = self.visit(target)
             rhs = self.visit(node.value)
             value = _api.convert(rhs)
-            if not value.dtype == buffer._content_type:
-                self.report_error(
-                    "data type does not match content type %s vs %s" % (value.dtype, buffer._content_type))
-            self.scope_emitter.emit(_make.BufferStore(buffer._buffer, value, buffer_indexes))
+            self.scope_emitter.emit(_make.BufferStore(buffer, value, buffer_indexes))
         else:
             self.report_error("The target of Assign ought to be a name variable or a Buffer element")
 
@@ -309,7 +317,8 @@ class HybridParser(ast.NodeVisitor):
         By now only 1 type of With is supported:
             1. with block(block_vars, values, reads, writes, predicate, annotations, name):
                 Note that block_vars is a list of Calls, e.g. vi(0, 128, "reduce")
-                It's a syntax sugar, which is equivalent with defining a IterVar named vi and used in the following block definition
+                It's a syntax sugar, which is equivalent with defining a IterVar named vi and
+                used in the following block definition
 
         Example
         -------
@@ -354,7 +363,7 @@ class HybridParser(ast.NodeVisitor):
 
             if block_vars_arg is None:
                 self.report_error("block() misses argument block_vars", lineno=self.current_lineno,
-                                  col_offset=block_vars_arg)
+                                  col_offset=block_vars_arg.col_offset)
 
             self._is_block_vars = True
             block_vars = self.visit(block_vars_arg)
@@ -405,10 +414,9 @@ class HybridParser(ast.NodeVisitor):
 
         if func_name in Registry.special_stmt.keys():
             return Registry.special_stmt.get(func_name)(self, node, args, kw_args)
-        elif func_name in Registry.intrin.keys():
+        if func_name in Registry.intrin.keys():
             return Registry.intrin.get(func_name)(self, node, args, kw_args)
-        else:
-            self.report_error("Function " + func_name + " is not supported now")
+        self.report_error("Function " + func_name + " is not supported now")
 
     def visit_BinOp(self, node):
         """ BinOp visitor
@@ -418,7 +426,7 @@ class HybridParser(ast.NodeVisitor):
 
         lhs = self.visit(node.left)
         rhs = self.visit(node.right)
-        if type(node.op) not in HybridParser._binop_maker.keys():
+        if not isinstance(node.op, HybridParser._binop_maker.keys()):
             self.report_error("BinOp " + str(type(node.op)) + " is not supported now")
         return HybridParser._binop_maker[type(node.op)](lhs, rhs)
 
@@ -429,7 +437,7 @@ class HybridParser(ast.NodeVisitor):
         """
 
         operand = self.visit(node.operand)
-        if type(node.op) not in HybridParser._unaryop_maker.keys():
+        if not isinstance(node.op, HybridParser._unaryop_maker.keys()):
             self.report_error("UnaryOp " + str(type(node.op)) + " is not supported now")
         return HybridParser._unaryop_maker[type(node.op)](operand)
 
@@ -444,6 +452,7 @@ class HybridParser(ast.NodeVisitor):
         By now only 2 types of Subscript are supported:
             1. Buffer[index, index, ...], Buffer element access(BufferLoad & BufferStore)
             2. Buffer[slice, slice, ...], TensorRegion
+            TODO(long term): TensorRegion can be Buffer[index, index, ...]?
         """
 
         if not isinstance(node.value, ast.Name):
@@ -454,7 +463,6 @@ class HybridParser(ast.NodeVisitor):
 
         if isinstance(node.slice, ast.Index):
             # BufferLoad & BufferStore
-            indexes = []
             if isinstance(node.slice.value, ast.Tuple):
                 # Buffer[index, index, ...]
                 indexes = [self.visit(element) for element in node.slice.value.elts]
@@ -463,9 +471,8 @@ class HybridParser(ast.NodeVisitor):
                 indexes = [self.visit(node.slice.value)]
 
             if isinstance(node.ctx, ast.Load):
-                return _make.BufferLoad(symbol._content_type, symbol._buffer, indexes)
-            else:
-                return symbol, indexes
+                return _make.BufferLoad(symbol.dtype, symbol, indexes)
+            return symbol, indexes
         else:
             # TensorRegion
             slices = []
@@ -488,7 +495,7 @@ class HybridParser(ast.NodeVisitor):
                     extent = _pass.Simplify(dom[1] - dom[0])
                 doms.append(_make.range_by_min_extent(dom[0], extent))
 
-            return _make.TensorRegion(symbol._buffer, doms)
+            return _make.TensorRegion(symbol, doms)
 
     def visit_Name(self, node):
         """ Name visitor
@@ -556,18 +563,28 @@ def source_to_op(func_lineno, src, *args, **kwargs):
     args : list of Vars
         input of original function
 
+    kwargs : dict
+        keyword arguments
+
     Returns
     -------
     function : TeFunction
         The TeFunction in IR.
-
-    tensors : list of Placeholders
-        List of tensors for buffers in function
-
-    tensor_maps: dict of TeBuffer to Tensor
-        Map between buffers in function and tensors
     """
 
     root = ast.parse(src)
     parser = HybridParser(src, func_lineno, *args)
-    return parser.visit(root)
+
+    try:
+        return parser.visit(root)
+    except HybridParserError as e:
+        # Parser report error, just throw the error
+        raise e
+    except TVMError as e:
+        # TVM internal c++ error, we have to process the error message and inject line info
+        inject_e = str(e).split('\n')
+        msg = inject_e[-1].split(':', maxsplit=1)[1].strip()
+        inject_e = inject_e[:-1]
+        inject_e.extend(parser.wrap_line_col(msg, parser.current_lineno, parser.current_col_offset).split('\n'))
+        inject_e[-1] = "TVM" + inject_e[-1][6:]
+        raise TVMError('\n'.join(inject_e))
