@@ -14,13 +14,28 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Intrinsic Function Calls in Hybrid Script Parser For TE IR"""
+"""Hybrid Script Parser Function Registry """
 
 import inspect
 
 
+class Registry:
+    """Registration map"""
+    intrin = dict()
+    with_scope = dict()
+    for_scope = dict()
+    special_stmt = dict()
+
+    host_dict = {
+        "intrin": intrin,
+        "with_scope": with_scope,
+        "for_scope": for_scope,
+        "special_stmt": special_stmt
+    }
+
+
 class CallArgumentReader:
-    """A helper class which read argument and do type check if needed"""
+    """A helper class which read required argument from passed arguments"""
 
     def __init__(self, func_name, args, kwargs, parser):
         self.func_name = func_name
@@ -57,7 +72,7 @@ class CallArgumentReader:
 
 
 def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, need_return):
-    """Helper function to register a function to the host """
+    """Helper function to wrap a function to be registered """
 
     def wrap_func(parser, node, args, kwargs):
         reader = CallArgumentReader(func_name, args, kwargs, parser)
@@ -83,7 +98,23 @@ def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, ne
     return wrap_func
 
 
-def register_func(host, origin_func, need_parser_and_node, need_return):
+def register_func(category, origin_func, need_parser_and_node, need_return):
+    """Helper function to register a function under category
+
+    Parameters
+    ----------
+    category: str
+        The category of function to be registered, ought to be "intrin", "with_scope", "for_scope", "special_stmt"
+
+    origin_func: function
+        The function to be registered
+
+    need_parser_and_node: bool
+        Whether the function need parser and node in its arguments
+
+    need_return: bool
+        Whether the function has return value
+    """
     full_arg_spec = inspect.getfullargspec(origin_func)
 
     args, defaults = full_arg_spec.args, full_arg_spec.defaults
@@ -106,6 +137,6 @@ def register_func(host, origin_func, need_parser_and_node, need_return):
     for default, arg in zip(defaults, args[len(args) - len(defaults):]):
         arg_list.append((arg, default))
 
-    setattr(host, origin_func.__name__,
-            func_wrapper(origin_func.__name__, origin_func, arg_list, need_parser_and_node=need_parser_and_node,
-                         need_return=need_return))
+    Registry.host_dict[category][origin_func.__name__] = func_wrapper(origin_func.__name__, origin_func, arg_list,
+                                                                      need_parser_and_node=need_parser_and_node,
+                                                                      need_return=need_return)

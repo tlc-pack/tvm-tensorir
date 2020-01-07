@@ -90,17 +90,6 @@ def unsupported_function_call(a):
                 A[vi, vk] = 0.0
 
 
-@tvm.hybrid_te.script
-def type_check(a):
-    A = buffer_bind(a, (16, 16), "float32", name="A")
-
-    for i in range(0, 16):
-        for j in range(0, 16):
-            B = buffer_allocate(A, (16, 16), "float32", name="A")
-            with block([vi(0, 16), vj(0, 16)], [i, j], reads=[], writes=A[vi: vi + 1, vj: vj + 1], name="init"):
-                A[vi, vj] = 0.0
-
-
 if __name__ == '__main__':
     a = tvm.var("a")
     b = tvm.var("b")
@@ -113,4 +102,3 @@ if __name__ == '__main__':
     wrap_error(undefined_block_var, a)
     wrap_error(unsupported_stmt, a)
     wrap_error(unsupported_function_call, a)
-    # wrap_error(type_check, a)

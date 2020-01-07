@@ -14,29 +14,33 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+"""Hybrid Script Parser Scope Handler Functions
 
-from . import registry
+This module provides the functions registered into parser under with_scope or for_scope category.
+Scope handler functions are used to handle such scenarios.
+
+.. code-block:: python
+
+    for x in name():
+    with name():
+
+Typically, a scope handler function has no return value and accepts parser and node as its first 2 arguments.
+"""
+
 from .. import api as _api
 from .. import ir_pass as _pass
 from .. import make as _make
 
 
-def register_scope_handler(origin_func, scope_name):
-    registry.register_func(WithScope if scope_name == "with" else ForScope, origin_func, need_parser_and_node=True,
-                           need_return=False)
-
-
-class WithScope:
-    pass
-
-
 def block(parser, node, block_vars, values, reads, writes, predicate=True, annotations=[], name=""):
     """ With scope handler function block(block_vars, values, reads, writes, predicate, annotations, name)
 
-    e.g.
+    Example
+    -------
+    .. code-block:: python
+
         with block([vi(0, 128), vj(0, 128)], [i, j], reads=[], writes=C[vi : vi + 1, vj : vj + 1], name="init"):
-    <=> with ib.block([vi, vj], [i, j], reads=[], writes=C[vi : vi + 1, vj : vj + 1], name="init"):
-        (Note that block_vars has been processed ahead)
+
     """
     if not isinstance(reads, list):
         reads = [reads]
@@ -50,10 +54,6 @@ def block(parser, node, block_vars, values, reads, writes, predicate=True, annot
     parser.scope_emitter.emit(
         _make.TeBlock(block_vars, values, reads, writes, parser.scope_emitter.pop_seq(), predicate,
                       parser.scope_emitter.allocate_stack.pop(), annotations, name))
-
-
-class ForScope:
-    pass
 
 
 def range(parser, node, begin, end):

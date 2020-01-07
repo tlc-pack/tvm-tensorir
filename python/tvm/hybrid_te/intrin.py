@@ -14,13 +14,20 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+"""Hybrid Script Parser Intrinsic Functions
 
-from . import registry
+This module provides the functions registered into parser under intrin category.
+Typically, a intrin function has return value.
+Meanwhile, user can register intrin functions into parser.
 
+Example
+-------
 
-class Intrin:
-    pass
+.. code-block:: python
 
+    def add(a, b):
+        return a + b
+    def mul(a, b=1):
+        return a * b
 
-def register_intrin(origin_func):
-    registry.register_func(Intrin, origin_func, need_parser_and_node=False, need_return=True)
+"""

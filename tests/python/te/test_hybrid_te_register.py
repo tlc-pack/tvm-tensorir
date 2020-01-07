@@ -19,10 +19,12 @@ import numpy as np
 import tvm
 
 
+@tvm.hybrid_te.register
 def add(a, b):
     return a + b
 
 
+@tvm.hybrid_te.register
 def mul(a, b=1):
     return a * b
 
@@ -76,8 +78,6 @@ def test_element_wise(a, c):
 
 
 if __name__ == '__main__':
-    tvm.hybrid_te.register(add)
-    tvm.hybrid_te.register(mul)
     a = tvm.var("a")
     c = tvm.var("c")
 

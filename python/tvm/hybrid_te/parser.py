@@ -22,7 +22,8 @@ from enum import Enum
 
 from typed_ast import ast3 as ast
 
-from . import intrin, scope_handler, special_stmt, scope_emitter
+from . import scope_emitter
+from .registry import Registry
 from .. import api as _api
 from .. import expr as _expr
 from .. import ir_builder as _ib
@@ -197,7 +198,7 @@ class HybridParser(ast.NodeVisitor):
 
     def visit_Module(self, node):
         """ Module visitor
-        AST abstract grammar :
+        AST abstract grammar:
             Module(stmt* body, type_ignore* type_ignore)
 
         By now we only support Module with a single FunctionDef
@@ -209,10 +210,8 @@ class HybridParser(ast.NodeVisitor):
 
     def visit_FunctionDef(self, node):
         """ FunctionDef visitor
-        AST abstract grammar :
-            FunctionDef(identifier name, arguments args,
-                       stmt* body, expr* decorator_list, expr? returns,
-                       string? type_comment)
+        AST abstract grammar:
+            FunctionDef(identifier name, arguments args, stmt* body, expr* decorator_list, expr? returns, string? type_comment)
             arguments = (arg* posonlyargs, arg* args, arg? vararg, arg* kwonlyargs, expr* kw_defaults, arg? kwarg, expr* defaults)
             arg = (identifier arg, expr? annotation, string? type_comment)
         """
@@ -240,10 +239,10 @@ class HybridParser(ast.NodeVisitor):
 
     def visit_Assign(self, node):
         """ Assign visitor
-        AST abstract grammar :
+        AST abstract grammar:
             Assign(expr* targets, expr value, string? type_comment)
 
-        By now only 2 types of Assign is supported :
+        By now only 2 types of Assign is supported:
             1. Name = List of TensorRegion, Buffer(buffer_bind, buffer_allocate)
             2. Buffer[expr, expr, .. expr] = Expr
         """
@@ -264,8 +263,6 @@ class HybridParser(ast.NodeVisitor):
             # Buffer[expr, expr, .. expr] = Expr
             buffer, buffer_indexes = self.visit(target)
             rhs = self.visit(node.value)
-            if not isinstance(rhs, _expr.Expr):
-                self.report_error("The rhs of Assign stmt ought to be Expr typed")
             value = _api.convert(rhs)
             if not value.dtype == buffer._content_type:
                 self.report_error(
@@ -276,7 +273,7 @@ class HybridParser(ast.NodeVisitor):
 
     def visit_For(self, node):
         """ For visitor
-        AST abstract grammar :
+        AST abstract grammar:
             For(expr target, expr iter, stmt* body, stmt* orelse, string? type_comment)
 
         By now only 1 type of For is supported:
@@ -294,18 +291,18 @@ class HybridParser(ast.NodeVisitor):
         kw_args = [(self.visit(keyword), keyword) for keyword in node.iter.keywords]
         kw_args = {kw_arg[0][0]: (kw_arg[0][1], kw_arg[1]) for kw_arg in kw_args}
         # All the functions supported in For stmt are registered in scope_handler.ForScope
-        if not hasattr(scope_handler.ForScope, func_name):
+        if func_name not in Registry.for_scope.keys():
             self.report_error("Function " + func_name + " used in For stmt is not supported now", self.current_lineno,
                               node.iter.col_offset)
 
         old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
         self.current_lineno, self.current_col_offset = self.func_lineno + node.iter.lineno - 1, node.iter.col_offset
-        getattr(scope_handler.ForScope, func_name)(self, node, args, kw_args)
+        Registry.for_scope.get(func_name)(self, node, args, kw_args)
         self.current_lineno, self.current_col_offset = old_lineno, old_col_offset
 
     def visit_With(self, node):
         """ With visitor
-        AST abstract grammar :
+        AST abstract grammar:
             With(withitem* items, stmt* body, string? type_comment)
             withitem = (expr context_expr, expr? optional_vars)
 
@@ -342,15 +339,16 @@ class HybridParser(ast.NodeVisitor):
         if not isinstance(node.items[0].context_expr, ast.Call):
             self.report_error("The context expression of with should be a Call")
 
-        func_name = node.items[0].context_expr.func.id
+        func_call = node.items[0].context_expr
+        func_name = func_call.func.id
 
         if func_name == 'block':
             # preprocess block_var definitions
             block_vars_arg = None
-            if len(node.items[0].context_expr.args) >= 1:
-                block_vars_arg = node.items[0].context_expr.args[0]
+            if len(func_call.args) >= 1:
+                block_vars_arg = func_call.args[0]
             else:
-                for keyword in node.items[0].context_expr.keywords:
+                for keyword in func_call.keywords:
                     if keyword.arg == 'block_vars':
                         block_vars_arg = keyword.value
 
@@ -362,25 +360,23 @@ class HybridParser(ast.NodeVisitor):
             block_vars = self.visit(block_vars_arg)
             self._is_block_vars = False
             # collect arguments
-            args = [(block_vars, block_vars_arg)] + [(self.visit(arg), arg) for arg in
-                                                     node.items[0].context_expr.args[1:]]
-            kw_args = [(self.visit(keyword), keyword) for keyword in node.items[0].context_expr.keywords if
+            args = [(block_vars, block_vars_arg)] + [(self.visit(arg), arg) for arg in func_call.args[1:]]
+            kw_args = [(self.visit(keyword), keyword) for keyword in func_call.keywords if
                        not keyword.arg == "block_vars"]
             kw_args = {kw_arg[0][0]: (kw_arg[0][1], kw_arg[1]) for kw_arg in kw_args}
-        elif hasattr(scope_handler.WithScope, func_name):
+        elif func_name in Registry.with_scope.keys():
             # reserved for future use
             # collect arguments
-            args = [(self.visit(arg), arg) for arg in node.items[0].context_expr.args]
-            kw_args = [(self.visit(keyword), keyword) for keyword in node.items[0].context_expr.keywords]
+            args = [(self.visit(arg), arg) for arg in func_call.args]
+            kw_args = [(self.visit(keyword), keyword) for keyword in func_call.keywords]
             kw_args = {kw_arg[0][0]: (kw_arg[0][1], kw_arg[1]) for kw_arg in kw_args}
         else:
             self.report_error("Function " + func_name + " used in With stmt is not supported now")
 
         # All the functions supported in With stmt are registered in scope_handler.WithScope
         old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
-        self.current_lineno, self.current_col_offset = self.func_lineno + node.items[0].context_expr.lineno - 1, \
-                                                       node.items[0].context_expr.col_offset
-        getattr(scope_handler.WithScope, func_name)(self, node, args, kw_args)
+        self.current_lineno, self.current_col_offset = self.func_lineno + func_call.lineno - 1, func_call.col_offset
+        Registry.with_scope.get(func_name)(self, node, args, kw_args)
         self.current_lineno, self.current_col_offset = old_lineno, old_col_offset
 
     def visit_Call(self, node):
@@ -407,16 +403,16 @@ class HybridParser(ast.NodeVisitor):
             kw_args["name"] = func_name, None
             func_name = "block_vars"
 
-        if hasattr(special_stmt.SpecialStmt, func_name):
-            return getattr(special_stmt.SpecialStmt, func_name)(self, node, args, kw_args)
-        elif hasattr(intrin.Intrin, func_name):
-            return getattr(intrin.Intrin, func_name)(self, node, args, kw_args)
+        if func_name in Registry.special_stmt.keys():
+            return Registry.special_stmt.get(func_name)(self, node, args, kw_args)
+        elif func_name in Registry.intrin.keys():
+            return Registry.intrin.get(func_name)(self, node, args, kw_args)
         else:
             self.report_error("Function " + func_name + " is not supported now")
 
     def visit_BinOp(self, node):
         """ BinOp visitor
-        AST abstract grammar :
+        AST abstract grammar:
             BinOp(expr left, operator op, expr right)
         """
 
@@ -428,7 +424,7 @@ class HybridParser(ast.NodeVisitor):
 
     def visit_UnaryOp(self, node):
         """ UnaryOp visitor
-        AST abstract grammar :
+        AST abstract grammar:
             UnaryOp(unaryop op, expr operand)
         """
 
@@ -465,9 +461,6 @@ class HybridParser(ast.NodeVisitor):
             else:
                 # Buffer[index]
                 indexes = [self.visit(node.slice.value)]
-            for index in indexes:
-                if not isinstance(index, _expr.Expr):
-                    self.report_error("Expression expected")
 
             if isinstance(node.ctx, ast.Load):
                 return _make.BufferLoad(symbol._content_type, symbol._buffer, indexes)
@@ -490,10 +483,6 @@ class HybridParser(ast.NodeVisitor):
 
             doms = []
             for dom in slices:
-                if not isinstance(dom[0], _expr.Expr):
-                    self.report_error("Expression expected")
-                if not isinstance(dom[1], _expr.Expr):
-                    self.report_error("Expression expected")
                 extent = dom[1] - dom[0]
                 if isinstance(extent, _expr.Expr):
                     extent = _pass.Simplify(dom[1] - dom[0])
@@ -503,7 +492,7 @@ class HybridParser(ast.NodeVisitor):
 
     def visit_Name(self, node):
         """ Name visitor
-        AST abstract grammar :
+        AST abstract grammar:
             Name(identifier id, expr_context ctx)
         """
 
@@ -515,7 +504,7 @@ class HybridParser(ast.NodeVisitor):
 
     def visit_Tuple(self, node):
         """ Tuple visitor
-        AST abstract grammar :
+        AST abstract grammar:
             Tuple(expr* elts, expr_context ctx)
         """
 
@@ -523,7 +512,7 @@ class HybridParser(ast.NodeVisitor):
 
     def visit_List(self, node):
         """ List visitor
-        AST abstract grammar :
+        AST abstract grammar:
             List(expr* elts, expr_context ctx)
         """
 
@@ -531,7 +520,7 @@ class HybridParser(ast.NodeVisitor):
 
     def visit_keyword(self, node):
         """ Keyword visitor
-        AST abstract grammar :
+        AST abstract grammar:
             keyword = (identifier? arg, expr value)
         """
 

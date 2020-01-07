@@ -18,32 +18,32 @@
 
 from __future__ import absolute_import as _abs
 
-from . import registry, intrin, special_stmt, scope_handler
+from . import utils, intrin, special_stmt, scope_handler
 from .parser import source_to_op
 from .utils import _pruned_source
 from .._ffi.base import decorate
 
 
 def register(origin_func):
-    """Register an external function to parser under scope
+    """Register an external function to parser under intrin
+    The registered function ought to have return value.
 
     Parameters
     ----------
-    origin_func: python function
+    origin_func : python function
         The function to be registered.
-        Default value is supported.
+        Default value in parameter list is supported.
     """
-
-    intrin.register_intrin(origin_func)
+    utils.register_intrin(origin_func)
 
 
 def _init_scope():
-    """Register primitive intrinsic functions"""
-    special_stmt.register_special_stmt(special_stmt.buffer_bind)
-    special_stmt.register_special_stmt(special_stmt.buffer_allocate)
-    special_stmt.register_special_stmt(special_stmt.block_vars)
-    scope_handler.register_scope_handler(scope_handler.block, scope_name="with")
-    scope_handler.register_scope_handler(scope_handler.range, scope_name="for")
+    """Register primitive functions"""
+    utils.register_special_stmt(special_stmt.buffer_bind)
+    utils.register_special_stmt(special_stmt.buffer_allocate)
+    utils.register_special_stmt(special_stmt.block_vars)
+    utils.register_scope_handler(scope_handler.block, scope_name="with_scope")
+    utils.register_scope_handler(scope_handler.range, scope_name="for_scope")
 
 
 def script(origin_func):
