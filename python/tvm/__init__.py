@@ -40,6 +40,7 @@ from . import ir_builder
 from . import target
 from . import generic
 from . import hybrid
+from . import hybrid_te
 from . import testing
 from . import error
 from . import datatype

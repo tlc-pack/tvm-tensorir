@@ -17,13 +17,13 @@
 """Developer API of IR node builder make function."""
 from __future__ import absolute_import as _abs
 
-from . import api as _api
-from . import stmt as _stmt
-from . import expr as _expr
-from . import make as _make
-from . import ir_pass as _pass
-from . import container as _container
 from . import _api_internal
+from . import api as _api
+from . import container as _container
+from . import expr as _expr
+from . import ir_pass as _pass
+from . import make as _make
+from . import stmt as _stmt
 from ._ffi.base import string_types
 from ._ffi.object import ObjectGeneric
 from ._ffi.runtime_ctypes import TVMType
@@ -42,6 +42,23 @@ class WithScope(object):
 
     def __exit__(self, ptype, value, trace):
         self._exit_cb()
+
+
+@register_node
+class TensorRegion(NodeBase):
+    """TensorRegion Node
+
+    Parameters
+    ----------
+    buffer : Buffer
+        The tensor of the tensor region
+
+    region : list of Range
+        The region array of the tensor region
+    """
+
+    def __init__(self, buffer, region):
+        self.__init_handle_by_constructor__(_make.TensorRegion(buffer, region))
 
 
 class Buffer(NodeGeneric):
