@@ -112,6 +112,7 @@ class BufferLoadNode : public ExprNode {
   Array<Expr> indices;
 
   void VisitAttrs(AttrVisitor* v) {
+    v->Visit("dtype", &(this->type));
     v->Visit("buffer", &buffer);
     v->Visit("indices", &indices);
   }
