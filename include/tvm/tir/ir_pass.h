@@ -149,7 +149,7 @@ TVM_DLL Stmt ConvertSSA(Stmt stmt);
  * \param value_map The map of new values.
  * \return The converted form.
  */
-Stmt Substitute(Stmt stmt,
+Stmt Substitute(const Stmt& stmt,
                 const std::unordered_map<const VarNode*, PrimExpr>& value_map);
 
 /*!
@@ -167,7 +167,7 @@ PrimExpr Substitute(PrimExpr expr,
  * \param value_map The map of new values.
  * \return The converted form.
  */
-Stmt Substitute(Stmt stmt, const Map<Var, PrimExpr>& value_map);
+Stmt Substitute(const Stmt& stmt, const Map<Var, PrimExpr>& value_map);
 
 /*!
  * \brief Substitute the var specified in key->var to be value.
@@ -183,7 +183,7 @@ PrimExpr Substitute(PrimExpr expr, const Map<Var, PrimExpr>& value_map);
  * \param value_func The function of new values mapping.
  * \return The converted expression.
  */
-Expr Substitute(Expr expr, const std::function<Expr(const Variable*)>& value_func);
+Expr Substitute(const Expr& expr, const std::function<Expr(const Variable*)>& value_func);
 
 /*!
  * \brief Substitute the var specified in key->var to be value.
@@ -191,7 +191,7 @@ Expr Substitute(Expr expr, const std::function<Expr(const Variable*)>& value_fun
  * \param value_func The function of new values mapping.
  * \return The converted form.
  */
-Stmt Substitute(Stmt stmt, const std::function<Expr(const Variable*)>& value_func);
+Stmt Substitute(const Stmt& stmt, const std::function<Expr(const Variable*)>& value_func);
 
 /*!
  * \brief inline all calls of f in stmt.

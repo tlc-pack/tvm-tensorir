@@ -55,8 +55,8 @@ bool HasSideEffect(const PrimExpr& e) {
 class IRSubstitue : public StmtExprMutator {
  public:
   explicit IRSubstitue(
-      const std::function<PrimExpr(const Variable*)>& fmap)
-      : fmap_(fmap) {
+      std::function<PrimExpr(const Variable*)> fmap)
+      : fmap_(std::move(fmap)) {
   }
 
   PrimExpr VisitExpr_(const VarNode* op) final {
@@ -72,15 +72,15 @@ class IRSubstitue : public StmtExprMutator {
   const std::function<Expr(const Variable*)> fmap_;
 };
 
-Stmt Substitute(Stmt stmt, const std::function<Expr(const Variable*)>& value_func) {
-  return IRSubstitue(value_func)(std::move(stmt));
+Stmt Substitute(const Stmt& stmt, const std::function<Expr(const Variable*)>& value_func) {
+  return IRSubstitue(value_func)(stmt);
 }
 
-Expr Substitute(Expr expr, const std::function<Expr(const Variable*)>& value_func) {
-  return IRSubstitue(value_func)(std::move(expr));
+Expr Substitute(const Expr& expr, const std::function<Expr(const Variable*)>& value_func) {
+  return IRSubstitue(value_func)(expr);
 }
 
-Stmt Substitute(Stmt stmt,
+Stmt Substitute(const Stmt& stmt,
                 const std::unordered_map<const VarNode*, PrimExpr>& value_map) {
   if (value_map.empty()) return stmt;
   auto fmap = [&](const Variable* v) -> Expr {
@@ -88,10 +88,10 @@ Stmt Substitute(Stmt stmt,
     if (it != value_map.end()) {
       return it->second;
     } else {
-      return Expr(ObjectPtr<Stmt>(nullptr));
+      return Expr();
     }
   };
-  return IRSubstitue(fmap)(std::move(stmt));
+  return IRSubstitue(fmap)(stmt);
 }
 
 PrimExpr Substitute(PrimExpr expr,
@@ -102,13 +102,13 @@ PrimExpr Substitute(PrimExpr expr,
     if (it != value_map.end()) {
       return it->second;
     } else {
-      return Expr(ObjectPtr<Expr>(nullptr));
+      return Expr();
     }
   };
-  return IRSubstitue(fmap)(std::move(expr));
+  return IRSubstitue(fmap)(expr);
 }
 
-Stmt Substitute(Stmt stmt, const Map<Var, PrimExpr>& value_map) {
+Stmt Substitute(const Stmt& stmt, const Map<Var, PrimExpr>& value_map) {
   std::unordered_map<const VarNode*, PrimExpr> vmap;
   for (const auto& kv : value_map) {
     vmap[kv.first.get()] = kv.second;
