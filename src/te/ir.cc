@@ -23,29 +23,23 @@
  */
 
 #include <tvm/te/ir.h>
-#include <tvm/api_registry.h>
 #include <tvm/arithmetic.h>
 
 namespace tvm {
 namespace te {
 using namespace ir;
 
-SeqStmt::SeqStmt(Array<Stmt> seq) {
-  NodePtr<SeqStmtNode> node = make_node<SeqStmtNode>();
-  node->seq = std::move(seq);
-  data_ = std::move(node);
-}
 
 BufferLoad::BufferLoad(DataType type, Buffer buffer, Array<Expr> indices) {
-  NodePtr<BufferLoadNode> node = make_node<BufferLoadNode>();
-  node->type = type;
+  ObjectPtr<BufferLoadNode> node = make_object<BufferLoadNode>();
+  node->dtype = type;
   node->buffer = std::move(buffer);
   node->indices = std::move(indices);
   data_ = std::move(node);
 }
 
 BufferStore::BufferStore(Buffer buffer, Expr value, Array<Expr> indices) {
-  NodePtr<BufferStoreNode> node = make_node<BufferStoreNode>();
+  ObjectPtr<BufferStoreNode> node = make_object<BufferStoreNode>();
   node->buffer = std::move(buffer);
   node->value = std::move(value);
   node->indices = std::move(indices);
@@ -61,7 +55,7 @@ Block::Block(Array<IterVar> iter_vars,
              Array<BufferAllocate> allocations,
              Array<Annotation> annotations,
              std::string tag) {
-  NodePtr<BlockNode> node = make_node<BlockNode>();
+  ObjectPtr<BlockNode> node = make_object<BlockNode>();
   CHECK_EQ(iter_vars.size(), values.size());
   node->iter_vars = std::move(iter_vars);
   node->values = std::move(values);
@@ -76,14 +70,14 @@ Block::Block(Array<IterVar> iter_vars,
 }
 
 TensorRegion::TensorRegion(Buffer buffer, Array<Range> region) {
-  NodePtr<TensorRegionNode> node = make_node<TensorRegionNode>();
+  ObjectPtr<TensorRegionNode> node = make_object<TensorRegionNode>();
   node->buffer = std::move(buffer);
   node->region = std::move(region);
   data_ = std::move(node);
 }
 
 Annotation::Annotation(std::string attr_key, Expr value) {
-  NodePtr<AnnotationNode> node = make_node<AnnotationNode>();
+  ObjectPtr<AnnotationNode> node = make_object<AnnotationNode>();
   node->attr_key = std::move(attr_key);
   node->value = std::move(value);
   data_ = std::move(node);
@@ -94,7 +88,7 @@ Loop::Loop(Var loop_var,
            Expr extent,
            Array<Annotation> annotations,
            Stmt body) {
-  NodePtr<LoopNode> node = make_node<LoopNode>();
+  ObjectPtr<LoopNode> node = make_object<LoopNode>();
   node->loop_var = std::move(loop_var);
   node->min = std::move(min);
   node->extent = std::move(extent);
@@ -104,7 +98,7 @@ Loop::Loop(Var loop_var,
 }
 
 BufferAllocate::BufferAllocate(Buffer buffer, std::string scope) {
-  NodePtr<BufferAllocateNode> node = make_node<BufferAllocateNode>();
+  ObjectPtr<BufferAllocateNode> node = make_object<BufferAllocateNode>();
   node->buffer = std::move(buffer);
   node->scope = std::move(scope);
   data_ = std::move(node);
@@ -114,7 +108,7 @@ Function::Function(Array<Var> params,
                    Map<Var, Buffer> buffer_map,
                    std::string name,
                    Stmt body) {
-  NodePtr<FunctionNode> node = make_node<FunctionNode>();
+  ObjectPtr<FunctionNode> node = make_object<FunctionNode>();
   CHECK_EQ(params.size(), buffer_map.size());
   node->params = std::move(params);
   node->buffer_map = std::move(buffer_map);
@@ -123,23 +117,15 @@ Function::Function(Array<Var> params,
   data_ = std::move(node);
 }
 
-TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<SeqStmtNode>([](const ObjectRef& node, IRPrinter* p) {
-  auto* op = static_cast<const SeqStmtNode*>(node.get());
-  for (size_t i = 0; i < op->size(); ++i) {
-    p->Print((*op)[i]);
-  }
-});
-
-TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<BufferLoadNode>([](const ObjectRef& node, IRPrinter* p) {
+TVM_STATIC_IR_FUNCTOR(NodePrinter, vtable)
+.set_dispatch<BufferLoadNode>([](const ObjectRef& node, NodePrinter* p) {
   auto* op = static_cast<const BufferLoadNode*>(node.get());
   p->Print(op->buffer->data);
   p->Print(op->indices);
 });
 
-TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<BufferStoreNode>([](const ObjectRef& node, IRPrinter* p) {
+TVM_STATIC_IR_FUNCTOR(NodePrinter, vtable)
+.set_dispatch<BufferStoreNode>([](const ObjectRef& node, NodePrinter* p) {
   auto* op = static_cast<const BufferStoreNode*>(node.get());
   p->PrintIndent();
   p->Print(op->buffer->data);
@@ -149,15 +135,15 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
   p->stream << '\n';
 });
 
-TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<AnnotationNode>([](const ObjectRef& node, IRPrinter* p) {
+TVM_STATIC_IR_FUNCTOR(NodePrinter, vtable)
+.set_dispatch<AnnotationNode>([](const ObjectRef& node, NodePrinter* p) {
   auto* op = static_cast<const AnnotationNode*>(node.get());
   p->stream << op->attr_key << ": ";
   p->Print(op->value);
 });
 
-TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<TensorRegionNode>([](const ObjectRef& node, IRPrinter* p) {
+TVM_STATIC_IR_FUNCTOR(NodePrinter, vtable)
+.set_dispatch<TensorRegionNode>([](const ObjectRef& node, NodePrinter* p) {
   auto* op = static_cast<const TensorRegionNode*>(node.get());
   p->Print(op->buffer->data);
   p->stream << "[";
@@ -173,8 +159,8 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
   p->stream << "]";
 });
 
-TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<LoopNode>([](const ObjectRef& node, IRPrinter* p) {
+TVM_STATIC_IR_FUNCTOR(NodePrinter, vtable)
+.set_dispatch<LoopNode>([](const ObjectRef& node, NodePrinter* p) {
   auto* op = static_cast<const LoopNode*>(node.get());
 
   // print loop and annotations
@@ -200,8 +186,8 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
   p->stream << "}\n";
 });
 
-TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<BlockNode>([](const ObjectRef& node, IRPrinter* p) {
+TVM_STATIC_IR_FUNCTOR(NodePrinter, vtable)
+.set_dispatch<BlockNode>([](const ObjectRef& node, NodePrinter* p) {
   auto* op = static_cast<const BlockNode*>(node.get());
 
   // print block name and block vars
@@ -262,8 +248,8 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
   p->stream << "}\n";
 });
 
-TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<BufferAllocateNode>([](const ObjectRef& node, IRPrinter* p) {
+TVM_STATIC_IR_FUNCTOR(NodePrinter, vtable)
+.set_dispatch<BufferAllocateNode>([](const ObjectRef& node, NodePrinter* p) {
   auto* op = static_cast<const BufferAllocateNode*>(node.get());
   p->PrintIndent();
   p->stream << "BufferAllocate(";
@@ -273,8 +259,8 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
   p->stream << ", \"" << op->scope << "\")\n";
 });
 
-TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
-.set_dispatch<FunctionNode>([](const ObjectRef& node, IRPrinter* p) {
+TVM_STATIC_IR_FUNCTOR(NodePrinter, vtable)
+.set_dispatch<FunctionNode>([](const ObjectRef& node, NodePrinter* p) {
   auto* op = static_cast<const FunctionNode*>(node.get());
   p->PrintIndent();
   p->stream << "func " << op->name << "(";
@@ -292,7 +278,6 @@ TVM_STATIC_IR_FUNCTOR(IRPrinter, vtable)
   p->stream << "}\n";
 });
 
-TVM_REGISTER_NODE_TYPE(SeqStmtNode);
 TVM_REGISTER_NODE_TYPE(TensorRegionNode);
 TVM_REGISTER_NODE_TYPE(BufferLoadNode);
 TVM_REGISTER_NODE_TYPE(BufferStoreNode);
