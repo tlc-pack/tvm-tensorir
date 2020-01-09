@@ -262,7 +262,6 @@ class StmtFunctor<R(const Stmt& n, Args... args)> {
   virtual R VisitStmt_(const te::LoopNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
   virtual R VisitStmt_(const te::BufferAllocateNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
   virtual R VisitStmt_(const te::BufferStoreNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
-  virtual R VisitStmt_(const te::SeqStmtNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
   virtual R VisitStmtDefault_(const Object* op, Args ...) {
     LOG(FATAL) << "Do not have a default for " << op->GetTypeKey();
     return R();
@@ -290,7 +289,6 @@ class StmtFunctor<R(const Stmt& n, Args... args)> {
     IR_STMT_FUNCTOR_DISPATCH(te::LoopNode);
     IR_STMT_FUNCTOR_DISPATCH(te::BufferAllocateNode);
     IR_STMT_FUNCTOR_DISPATCH(te::BufferStoreNode);
-    IR_STMT_FUNCTOR_DISPATCH(te::SeqStmtNode);
     return vtable;
   }
 };
@@ -343,6 +341,7 @@ class TVM_DLL ExprVisitor :
   void VisitExpr_(const UIntImm* op) override;
   void VisitExpr_(const FloatImm* op) override;
   void VisitExpr_(const StringImm* op) override;
+  void VisitExpr_(const te::BufferLoadNode* op) override;
 };
 
 /*!
@@ -388,6 +387,7 @@ class TVM_DLL ExprMutator :
   Expr VisitExpr_(const UIntImm* op) override;
   Expr VisitExpr_(const FloatImm* op) override;
   Expr VisitExpr_(const StringImm* op) override;
+  Expr VisitExpr_(const te::BufferLoadNode* op) override;
 };
 
 /*!
@@ -423,6 +423,10 @@ class TVM_DLL StmtVisitor :
   void VisitStmt_(const Prefetch* op) override;
   void VisitStmt_(const SeqStmtNode* op) override;
   void VisitStmt_(const Evaluate* op) override;
+  void VisitStmt_(const te::BlockNode* op) override;
+  void VisitStmt_(const te::LoopNode* op) override;
+  void VisitStmt_(const te::BufferAllocateNode* op) override;
+  void VisitStmt_(const te::BufferStoreNode* op) override;
 };
 
 /*!
@@ -517,6 +521,10 @@ class TVM_DLL StmtMutator :
   Stmt VisitStmt_(const Prefetch* op) override;
   Stmt VisitStmt_(const SeqStmtNode* op) override;
   Stmt VisitStmt_(const Evaluate* op) override;
+  Stmt VisitStmt_(const te::BlockNode* op) override;
+  Stmt VisitStmt_(const te::LoopNode* op) override;
+  Stmt VisitStmt_(const te::BufferAllocateNode* op) override;
+  Stmt VisitStmt_(const te::BufferStoreNode* op) override;
   /*!
    * \brief Alternative advance method for SeqStmtNode.
    *

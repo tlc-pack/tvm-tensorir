@@ -219,6 +219,24 @@ void StmtVisitor::VisitStmt_(const Evaluate* op) {
   this->VisitExpr(op->value);
 }
 
+void StmtVisitor::VisitStmt_(const te::BlockNode* op) {
+  VisitArray(op->values, [this](const Expr& e) { this->VisitExpr(e); });
+  VisitArray(op->allocations, [this](const Stmt& s) { this->VisitStmt(s); });
+  this->VisitExpr(op->predicate);
+  this->VisitStmt(op->body);
+}
+void StmtVisitor::VisitStmt_(const te::LoopNode* op) {
+  this->VisitExpr(op->min);
+  this->VisitExpr(op->extent);
+  this->VisitStmt(op->body);
+}
+void StmtVisitor::VisitStmt_(const te::BufferAllocateNode* op) {}
+
+void StmtVisitor::VisitStmt_(const te::BufferStoreNode* op) {
+  VisitArray(op->indices, [this](const Expr& e) { this->VisitExpr(e); });
+  this->VisitExpr(op->value);
+}
+
 void ExprVisitor::VisitExpr_(const Variable* op) {}
 
 void ExprVisitor::VisitExpr_(const Load* op) {
@@ -233,6 +251,10 @@ void ExprVisitor::VisitExpr_(const Let* op) {
 
 void ExprVisitor::VisitExpr_(const Call* op) {
   VisitArray(op->args, [this](const Expr& e) { this->VisitExpr(e); });
+}
+
+void ExprVisitor::VisitExpr_(const te::BufferLoadNode* op) {
+  VisitArray(op->indices, [this](const Expr& e) { this->VisitExpr(e); });
 }
 
 #define DEFINE_BINOP_VISIT_(OP)                           \
@@ -592,6 +614,56 @@ Stmt StmtMutator::VisitStmt_(const Free* op) {
   return GetRef<Stmt>(op);
 }
 
+Stmt StmtMutator::VisitStmt_(const te::BlockNode* op) {
+  auto fmutate = [this](const Expr& e) { return this->VisitExpr(e); };
+  Array<Expr> v = MutateArray(op->values, fmutate);
+  Expr pred = this->VisitExpr(op->predicate);
+  Stmt body = this->VisitStmt(op->body);
+  if (v.same_as(op->values) && pred.same_as(op->predicate)
+      && body.same_as(op->body)) {
+    return GetRef<Stmt>(op);
+  } else {
+    auto n = CopyOnWrite(op);
+    n->values = std::move(v);
+    n->predicate = std::move(pred);
+    n->body = std::move(body);
+    return Stmt(n);
+  }
+}
+
+Stmt StmtMutator::VisitStmt_(const te::LoopNode* op) {
+  Expr min = this->VisitExpr(op->min);
+  Expr extent = this->VisitExpr(op->extent);
+  Stmt body = this->VisitStmt(op->body);
+  if (min.same_as(op->min) && extent.same_as(op->extent) &&
+      body.same_as(op->body)) {
+    return GetRef<Stmt>(op);
+  } else {
+    auto n = CopyOnWrite(op);
+    n->min = std::move(min);
+    n->extent = std::move(extent);
+    n->body = std::move(body);
+    return Stmt(n);
+  }
+}
+
+Stmt StmtMutator::VisitStmt_(const te::BufferAllocateNode* op) {
+  return GetRef<Stmt>(op);
+}
+
+Stmt StmtMutator::VisitStmt_(const te::BufferStoreNode* op) {
+  auto fmutate = [this](const Expr& e) { return this->VisitExpr(e); };
+  Array<Expr> indices = MutateArray(op->indices, fmutate);
+  Expr v = this->VisitExpr(op->value);
+  if (v.same_as(op->value) && indices.same_as(op->indices)) {
+    return GetRef<Stmt>(op);
+  } else {
+    auto n = CopyOnWrite(op);
+    n->value = std::move(v);
+    n->indices = std::move(indices);
+    return Stmt(n);
+  }
+}
 
 Expr ExprMutator::VisitExpr_(const Variable* op) {
   return GetRef<Expr>(op);
@@ -631,6 +703,16 @@ Expr ExprMutator::VisitExpr_(const Call* op) {
                       op->call_type,
                       op->func,
                       op->value_index);
+  }
+}
+
+Expr ExprMutator::VisitExpr_(const te::BufferLoadNode* op) {
+  auto fmutate = [this](const Expr& e) { return this->VisitExpr(e); };
+  auto indices = MutateArray(op->indices, fmutate);
+  if (op->indices.same_as(indices)) {
+    return GetRef<Expr>(op);
+  } else {
+    return te::BufferLoad(op->dtype, op->buffer, indices);
   }
 }
 

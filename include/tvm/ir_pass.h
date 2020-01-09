@@ -147,7 +147,7 @@ TVM_DLL Stmt ConvertSSA(Stmt stmt);
  * \param value_map The map of new values.
  * \return The converted form.
  */
-Stmt Substitute(Stmt stmt,
+Stmt Substitute(const Stmt& stmt,
                 const std::unordered_map<const Variable*, Expr>& value_map);
 
 /*!
@@ -156,7 +156,7 @@ Stmt Substitute(Stmt stmt,
  * \param value_map The map of new values.
  * \return The converted expression.
  */
-Expr Substitute(Expr expr,
+Expr Substitute(const Expr& expr,
                 const std::unordered_map<const Variable*, Expr>& value_map);
 
 /*!
@@ -165,7 +165,7 @@ Expr Substitute(Expr expr,
  * \param value_map The map of new values.
  * \return The converted form.
  */
-Stmt Substitute(Stmt stmt, const Map<Var, Expr>& value_map);
+Stmt Substitute(const Stmt& stmt, const Map<Var, Expr>& value_map);
 
 /*!
  * \brief Substitute the var specified in key->var to be value.
@@ -173,7 +173,7 @@ Stmt Substitute(Stmt stmt, const Map<Var, Expr>& value_map);
  * \param value_map The map of new values.
  * \return The converted expression.
  */
-Expr Substitute(Expr expr, const Map<Var, Expr>& value_map);
+Expr Substitute(const Expr& expr, const Map<Var, Expr>& value_map);
 
 /*!
  * \brief Substitute the var specified in key->var to be value.
@@ -181,7 +181,7 @@ Expr Substitute(Expr expr, const Map<Var, Expr>& value_map);
  * \param value_func The function of new values mapping.
  * \return The converted expression.
  */
-Expr Substitute(Expr expr, const std::function<Expr(const Variable*)>& value_func);
+Expr Substitute(const Expr& expr, const std::function<Expr(const Variable*)>& value_func);
 
 /*!
  * \brief Substitute the var specified in key->var to be value.
@@ -189,7 +189,7 @@ Expr Substitute(Expr expr, const std::function<Expr(const Variable*)>& value_fun
  * \param value_func The function of new values mapping.
  * \return The converted form.
  */
-Stmt Substitute(Stmt stmt, const std::function<Expr(const Variable*)>& value_func);
+Stmt Substitute(const Stmt& stmt, const std::function<Expr(const Variable*)>& value_func);
 
 /*!
  * \brief inline all calls of f in stmt.

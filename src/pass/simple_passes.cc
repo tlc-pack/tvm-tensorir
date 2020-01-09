@@ -56,8 +56,8 @@ bool HasSideEffect(const Expr& e) {
 class IRSubstitue : public StmtExprMutator {
  public:
   explicit IRSubstitue(
-      const std::function<Expr(const Variable*)>& fmap)
-      : fmap_(fmap) {
+      std::function<Expr(const Variable*)> fmap)
+      : fmap_(std::move(fmap)) {
   }
 
   Expr VisitExpr_(const Variable* op) final {
@@ -73,15 +73,15 @@ class IRSubstitue : public StmtExprMutator {
   const std::function<Expr(const Variable*)> fmap_;
 };
 
-Stmt Substitute(Stmt stmt, const std::function<Expr(const Variable*)>& value_func) {
-  return IRSubstitue(value_func)(std::move(stmt));
+Stmt Substitute(const Stmt& stmt, const std::function<Expr(const Variable*)>& value_func) {
+  return IRSubstitue(value_func)(stmt);
 }
 
-Expr Substitute(Expr expr, const std::function<Expr(const Variable*)>& value_func) {
-  return IRSubstitue(value_func)(std::move(expr));
+Expr Substitute(const Expr& expr, const std::function<Expr(const Variable*)>& value_func) {
+  return IRSubstitue(value_func)(expr);
 }
 
-Stmt Substitute(Stmt stmt,
+Stmt Substitute(const Stmt& stmt,
                 const std::unordered_map<const Variable*, Expr>& value_map) {
   if (value_map.empty()) return stmt;
   auto fmap = [&](const Variable* v) -> Expr {
@@ -89,13 +89,13 @@ Stmt Substitute(Stmt stmt,
     if (it != value_map.end()) {
       return it->second;
     } else {
-      return Expr(ObjectPtr<Stmt>(nullptr));
+      return Expr();
     }
   };
-  return IRSubstitue(fmap)(std::move(stmt));
+  return IRSubstitue(fmap)(stmt);
 }
 
-Expr Substitute(Expr expr,
+Expr Substitute(const Expr& expr,
                 const std::unordered_map<const Variable*, Expr>& value_map) {
   if (value_map.empty()) return expr;
   auto fmap = [&](const Variable* v) -> Expr {
@@ -103,13 +103,13 @@ Expr Substitute(Expr expr,
     if (it != value_map.end()) {
       return it->second;
     } else {
-      return Expr(ObjectPtr<Expr>(nullptr));
+      return Expr();
     }
   };
-  return IRSubstitue(fmap)(std::move(expr));
+  return IRSubstitue(fmap)(expr);
 }
 
-Stmt Substitute(Stmt stmt, const Map<Var, Expr>& value_map) {
+Stmt Substitute(const Stmt& stmt, const Map<Var, Expr>& value_map) {
   std::unordered_map<const Variable*, Expr> vmap;
   for (const auto& kv : value_map) {
     vmap[kv.first.get()] = kv.second;
@@ -117,7 +117,7 @@ Stmt Substitute(Stmt stmt, const Map<Var, Expr>& value_map) {
   return Substitute(stmt, vmap);
 }
 
-Expr Substitute(Expr expr, const Map<Var, Expr>& value_map) {
+Expr Substitute(const Expr& expr, const Map<Var, Expr>& value_map) {
   std::unordered_map<const Variable*, Expr> vmap;
   for (const auto& kv : value_map) {
     vmap[kv.first.get()] = kv.second;

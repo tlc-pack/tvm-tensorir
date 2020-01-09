@@ -28,7 +28,7 @@ namespace tvm {
 namespace te {
 
 
-class ScheduleNode : public Node {
+class ScheduleNode : public Object {
  public:
   /*! \brief The function to be scheduled */
   Function func;
@@ -40,7 +40,7 @@ class ScheduleNode : public Node {
    * */
   std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
   /*! \brief The block scopes of each block */
-  std::unordered_map<StmtSRef, Scope, NodeHash, NodeEqual> scopes_;
+  std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> scopes_;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("func", &func);
@@ -48,10 +48,10 @@ class ScheduleNode : public Node {
   }
 
   static constexpr const char* _type_key = "te.Schedule";
-  TVM_DECLARE_NODE_TYPE_INFO(ScheduleNode, Node);
+  TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleNode, Object);
 };
 
-class Schedule : public NodeRef {
+class Schedule : public ObjectRef {
  public:
   /*!
    * \brief Create a new schedule
@@ -90,10 +90,10 @@ class Schedule : public NodeRef {
    */
   Array<StmtSRef> Blocks(StmtSRef scope) const;
 
-  TVM_DEFINE_NODE_REF_METHODS(Schedule, NodeRef, ScheduleNode);
+  TVM_DEFINE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
 
   ScheduleNode* operator->() {
-    return static_cast<ScheduleNode*>(NodeRef::get_mutable());
+    return static_cast<ScheduleNode*>(ObjectRef::get_mutable());
   }
 
  private:
