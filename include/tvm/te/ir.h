@@ -40,58 +40,6 @@ using namespace ir;
 // forward declare class.
 class SeqStmt;
 class Schedule;
-class ScheduleMutator;
-
-/*! \brief The container of seq statement. */
-class SeqStmtNode : public StmtNode {
- public:
-  void VisitAttrs(AttrVisitor* v) {
-    v->Visit("seq", &seq);
-  }
-  /*! \return get the size of the sequence */
-  size_t size() const {
-    return seq.size();
-  }
-  /*!
-   * \brief Get the index-th element in the sequence.
-   */
-  Stmt operator[](size_t index) const {
-    return seq[index];
-  }
-
-  static constexpr const char* _type_key = "SeqStmt";
-  TVM_DECLARE_NODE_TYPE_INFO(SeqStmtNode, StmtNode);
-
-  /*!
-   * \brief Hide seq for now, use SeqStmt.operator[] for iteration.
-   * \note We may change the SeqStmtNode data structure later
-   *       to directly contain the array content.
-   */
-  Array<Stmt> seq;
-};
-
-/*! \brief Sequence statement. */
-class SeqStmt : public Stmt {
- public:
-  /*!
-   * \brief Construct SeqStmt.
-   * \param seq The sequence.
-   */
-  explicit SeqStmt(Array<Stmt> seq);
-
-  /*! \return get the size of the sequence */
-  size_t size() const {
-    return operator->()->size();
-  }
-  /*!
-   * \brief Get the index-th element in the sequence.
-   */
-  Stmt operator[](size_t index) const {
-    return (*(operator->()))[index];
-  }
-
-  TVM_DEFINE_NODE_REF_METHODS(SeqStmt, Stmt, SeqStmtNode);
-};
 
 /*!
  * \brief Load value from the high dimension buffer.
@@ -112,13 +60,13 @@ class BufferLoadNode : public ExprNode {
   Array<Expr> indices;
 
   void VisitAttrs(AttrVisitor* v) {
-    v->Visit("dtype", &(this->type));
+    v->Visit("dtype", &(this->dtype));
     v->Visit("buffer", &buffer);
     v->Visit("indices", &indices);
   }
 
   static constexpr const char* _type_key = "BufferLoad";
-  TVM_DECLARE_NODE_TYPE_INFO(BufferLoadNode, ExprNode);
+  TVM_DECLARE_FINAL_OBJECT_INFO(BufferLoadNode, ExprNode);
 };
 
 class BufferLoad : public Expr {
@@ -126,7 +74,7 @@ class BufferLoad : public Expr {
   explicit BufferLoad(DataType type,
                       Buffer buffer,
                       Array<Expr> indices);
-  TVM_DEFINE_NODE_REF_METHODS(BufferLoad, Expr, BufferLoadNode);
+  TVM_DEFINE_OBJECT_REF_METHODS(BufferLoad, Expr, BufferLoadNode);
 };
 
 /*!
@@ -156,7 +104,7 @@ class BufferStoreNode : public StmtNode {
   }
 
   static constexpr const char* _type_key = "BufferStore";
-  TVM_DECLARE_NODE_TYPE_INFO(BufferStoreNode, StmtNode);
+  TVM_DECLARE_FINAL_OBJECT_INFO(BufferStoreNode, StmtNode);
 };
 
 class BufferStore : public Stmt {
@@ -164,14 +112,14 @@ class BufferStore : public Stmt {
   explicit BufferStore(Buffer buffer,
                        Expr value,
                        Array<Expr> indices);
-  TVM_DEFINE_NODE_REF_METHODS(BufferStore, Stmt, BufferStoreNode);
+  TVM_DEFINE_OBJECT_REF_METHODS(BufferStore, Stmt, BufferStoreNode);
 };
 
 /*!
  * \brief A loop annotation node to show attribute to the loop
  */
 class Annotation;
-class AnnotationNode : public Node {
+class AnnotationNode : public Object {
  public:
   /*! \brief the type key of the attribute */
   std::string attr_key;
@@ -184,13 +132,13 @@ class AnnotationNode : public Node {
   }
 
   static constexpr const char* _type_key = "te.AnnotationNode";
-  TVM_DECLARE_NODE_TYPE_INFO(AnnotationNode, Node);
+  TVM_DECLARE_FINAL_OBJECT_INFO(AnnotationNode, Object);
 };
 
-class Annotation : public NodeRef {
+class Annotation : public ObjectRef {
  public:
   explicit Annotation(std::string attr_key, Expr value);
-  TVM_DEFINE_NODE_REF_METHODS(Annotation, NodeRef, AnnotationNode)
+  TVM_DEFINE_OBJECT_REF_METHODS(Annotation, ObjectRef, AnnotationNode)
 };
 
 /*!
@@ -228,7 +176,7 @@ class LoopNode : public StmtNode {
   }
 
   static constexpr const char* _type_key = "Loop";
-  TVM_DECLARE_NODE_TYPE_INFO(LoopNode, StmtNode);
+  TVM_DECLARE_FINAL_OBJECT_INFO(LoopNode, StmtNode);
 };
 
 class Loop : public Stmt {
@@ -239,12 +187,11 @@ class Loop : public Stmt {
                 Array<Annotation> annotations,
                 Stmt body);
 
-  TVM_DEFINE_NODE_REF_METHODS(Loop, Stmt, LoopNode);
+  TVM_DEFINE_OBJECT_REF_METHODS(Loop, Stmt, LoopNode);
 
  private:
   friend Schedule;
   friend ir::IRSubstitue;
-  friend ScheduleMutator;
   /*! \brief mutate the node
    * Node that the mutate can be only used in schedule
    * and will be replaced later
@@ -255,7 +202,7 @@ class Loop : public Stmt {
  * \brief A sub-region of a specific tensor.
  */
 class TensorRegion;
-class TensorRegionNode : public Node {
+class TensorRegionNode : public Object {
  public:
   /*! \brief The tensor of the tensor region. */
   Buffer buffer;
@@ -268,14 +215,14 @@ class TensorRegionNode : public Node {
   }
 
   static constexpr const char* _type_key = "TensorRegion";
-  TVM_DECLARE_NODE_TYPE_INFO(TensorRegionNode, Node);
+  TVM_DECLARE_FINAL_OBJECT_INFO(TensorRegionNode, Object);
 };
 
-class TensorRegion : public NodeRef {
+class TensorRegion : public ObjectRef {
  public:
   explicit TensorRegion(Buffer buffer, Array<Range> region);
 
-  TVM_DEFINE_NODE_REF_METHODS(TensorRegion, NodeRef, TensorRegionNode);
+  TVM_DEFINE_OBJECT_REF_METHODS(TensorRegion, ObjectRef, TensorRegionNode);
 };
 
 /*!
@@ -299,14 +246,14 @@ class BufferAllocateNode : public StmtNode {
   }
 
   static constexpr const char* _type_key = "BufferAllocate";
-  TVM_DECLARE_NODE_TYPE_INFO(BufferAllocateNode, StmtNode);
+  TVM_DECLARE_FINAL_OBJECT_INFO(BufferAllocateNode, StmtNode);
 };
 
 class BufferAllocate : public Stmt {
  public:
   explicit BufferAllocate(Buffer buffer, std::string scope);
 
-  TVM_DEFINE_NODE_REF_METHODS(BufferAllocate, Stmt, BufferAllocateNode);
+  TVM_DEFINE_OBJECT_REF_METHODS(BufferAllocate, Stmt, BufferAllocateNode);
 };
 
 /*!
@@ -358,7 +305,7 @@ class BlockNode : public StmtNode {
   }
 
   static constexpr const char* _type_key = "TeBlock";
-  TVM_DECLARE_NODE_TYPE_INFO(BlockNode, StmtNode);
+  TVM_DECLARE_FINAL_OBJECT_INFO(BlockNode, StmtNode);
 };
 
 class Block : public Stmt {
@@ -373,7 +320,7 @@ class Block : public Stmt {
         Array<Annotation> annotations,
         std::string tag);
 
-  TVM_DEFINE_NODE_REF_METHODS(Block, Stmt, BlockNode);
+  TVM_DEFINE_OBJECT_REF_METHODS(Block, Stmt, BlockNode);
 
   /*! \brief mutate the node
     * Node that the mutate can be only used in schedule
@@ -382,7 +329,6 @@ class Block : public Stmt {
  private:
   friend Schedule;
   friend ir::IRSubstitue;
-  friend ScheduleMutator;
 };
 
 /*!
@@ -397,7 +343,7 @@ class Block : public Stmt {
  */
 // TODO(siyuan): add matches in the text format.
 class Function;
-class FunctionNode : public Node {
+class FunctionNode : public Object {
  public:
   /*! \brief Function parameters */
   Array<Var> params;
@@ -416,17 +362,17 @@ class FunctionNode : public Node {
   }
 
   static constexpr const char* _type_key = "TeFunction";
-  TVM_DECLARE_NODE_TYPE_INFO(FunctionNode, Node);
+  TVM_DECLARE_FINAL_OBJECT_INFO(FunctionNode, Object);
 };
 
-class Function : public NodeRef {
+class Function : public ObjectRef {
  public:
   explicit Function(Array<Var> params,
                     Map<Var, Buffer> buffer_map,
                     std::string name,
                     Stmt body);
 
-  TVM_DEFINE_NODE_REF_METHODS(Function, NodeRef, FunctionNode);
+  TVM_DEFINE_OBJECT_REF_METHODS(Function, ObjectRef, FunctionNode);
 
   FunctionNode* operator->() {
     return static_cast<FunctionNode*>(data_.get());
