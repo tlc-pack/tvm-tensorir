@@ -475,24 +475,6 @@ class BufferAllocate(Stmt):
         self.__init_handle_by_constructor__(
             _make.BufferAllocate, buffer)
 
-@register_node
-class SeqStmt(Stmt):
-    """BufferAllocate node.
-
-    Parameters
-    ----------
-    seq : list of Stmt
-        The buffer to be allocated
-
-    """
-    def __init__(self, seq):
-        self.__init_handle_by_constructor__(
-            _make.SeqStmt, seq)
-
-    def __getitem__(self, item):
-        return self.seq[item]
-
-
 
 def stmt_seq(*args):
     """Make sequence of statements

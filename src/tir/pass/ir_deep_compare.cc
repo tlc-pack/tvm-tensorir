@@ -121,7 +121,7 @@ class IRDeepCompare :
       if (CompareExpr(op->buffer_var, rhs->buffer_var) != 0) return;
     }
     if (CompareType(op->dtype, rhs->dtype) != 0) return;
-    if (CompareArray(op->extents, rhs->extents) != 0) return;
+    if (CompareExprArray(op->extents, rhs->extents) != 0) return;
     if (CompareExpr(op->condition, rhs->condition) != 0) return;
     if (CompareStmt(op->body, rhs->body) != 0) return;
     if (CompareExpr(op->new_expr, rhs->new_expr) != 0) return;
@@ -202,7 +202,7 @@ class IRDeepCompare :
       }
     } else {
       if (CompareArray(op->iter_vars, op->iter_vars,
-                       [this](const NodeRef& a, const NodeRef& b) {
+                       [this](const ObjectRef& a, const ObjectRef& b) {
                          return CompareNodeRef(a, b);
                        }) != 0) return;
     }
@@ -221,7 +221,7 @@ class IRDeepCompare :
                        return CompareStmt(a, b);
                      }) != 0) return;
     if (CompareArray(op->annotations, rhs->annotations,
-                     [this](const NodeRef& a, const NodeRef& b) {
+                     [this](const ObjectRef& a, const ObjectRef& b) {
                        return CompareNodeRef(a, b);
                      }) != 0) return;
     if (CompareStmt(op->body, rhs->body) != 0) return;
@@ -251,14 +251,6 @@ class IRDeepCompare :
       if (CompareExpr(op->loop_var, rhs->loop_var) != 0) return;
     }
     if (CompareStmt(op->body, rhs->body) != 0) return;
-  }
-
-  void VisitStmt_(const te::SeqStmtNode* op, const Stmt& other) final {
-    const auto* rhs = other.as<te::SeqStmtNode>();
-    if (CompareValue(op->size(), rhs->size()) != 0) return;
-    for (size_t i = 0; i < op->size(); ++i) {
-      if (CompareStmt((*op)[i], (*rhs)[i]) != 0) return;
-    }
   }
 
   // Exprs
@@ -367,7 +359,7 @@ class IRDeepCompare :
     const auto* rhs = other.as<te::BufferLoadNode>();
     if (CompareNodeRef(op->buffer, rhs->buffer) != 0) return;
     if (CompareExprArray(op->indices, rhs->indices) != 0) return;
-    if (CompareType(op->type, rhs->type) != 0) return;
+    if (CompareType(op->dtype, rhs->dtype) != 0) return;
   }
 
   DEFINE_BIOP_EXPR_CMP_(AddNode)

@@ -140,6 +140,9 @@ def test_any():
     assert str(tvm.any(x < y)) == '(%s < %s)' % (x.name, y.name)
     assert str(tvm.any(x < y, x > z)) == '((%s < %s) || (%s > %s))' % (
         x.name, y.name, x.name, z.name)
+    print(tvm.any(x < y, y > z + 1, x < z * 2))
+    print('(((%s < %s) || (%s > (%s + 1))) || (%s < (%s*2)))' % (
+        x.name, y.name, y.name, z.name, x.name, z.name))
     assert str(tvm.any(x < y, y > z + 1, x < z * 2)) == \
         '(((%s < %s) || (%s > (%s + 1))) || (%s < (%s*2)))' % (
             x.name, y.name, y.name, z.name, x.name, z.name)
