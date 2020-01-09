@@ -27,7 +27,7 @@ namespace te {
 /*!
  * \brief The container of stmt schedulable ref.
  */
-class StmtSRefNode : public Node {
+class StmtSRefNode : public Object {
  public:
   /*! \brief The corresponding stmt node */
   const StmtNode* node;
@@ -39,20 +39,20 @@ class StmtSRefNode : public Node {
   void VisitAttrs(AttrVisitor* v) {}
 
   static constexpr const char* _type_key = "te.StmtSRef";
-  TVM_DECLARE_NODE_TYPE_INFO(StmtSRefNode, Node);
+  TVM_DECLARE_FINAL_OBJECT_INFO(StmtSRefNode, Object);
 };
 
 /*!
  * \brief The stmt schedulable ref.
  */
-class StmtSRef : public NodeRef {
+class StmtSRef : public ObjectRef {
  public:
   StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index = -1);
 
   StmtSRefNode* operator->() {
-    return static_cast<StmtSRefNode*>(NodeRef::get_mutable());
+    return static_cast<StmtSRefNode*>(ObjectRef::get_mutable());
   }
-  TVM_DEFINE_NODE_REF_METHODS(StmtSRef, NodeRef, StmtSRefNode);
+  TVM_DEFINE_OBJECT_REF_METHODS(StmtSRef, ObjectRef, StmtSRefNode);
 };
 
 }  // namespace te

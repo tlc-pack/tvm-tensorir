@@ -43,22 +43,22 @@ class StmtSRef;
  *       Common Ancestor (LCA) Loop of the A and B.
  */
 class Scope;
-class ScopeNode : public Node {
+class ScopeNode : public Object {
  public:
   /*! \brief The forward dependency edges of the block */
-  std::unordered_map<StmtSRef, Array<StmtSRef>, NodeHash, NodeEqual> forward_edges;
+  std::unordered_map<StmtSRef, Array<StmtSRef>, ObjectHash, ObjectEqual> forward_edges;
   /*! \brief The backward dependency edges of the block */
-  std::unordered_map<StmtSRef, Array<StmtSRef>, NodeHash, NodeEqual> backward_edges;
+  std::unordered_map<StmtSRef, Array<StmtSRef>, ObjectHash, ObjectEqual> backward_edges;
   /*! \brief The mapping from the buffer to the blocks who write it */
-  std::unordered_map<Buffer, Array<StmtSRef>, NodeHash, NodeEqual> write_map;
+  std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual> write_map;
 
   void VisitAttrs(AttrVisitor* v) {}
 
   static constexpr const char* _type_key = "te.Scope";
-  TVM_DECLARE_NODE_TYPE_INFO(ScopeNode, Node);
+  TVM_DECLARE_FINAL_OBJECT_INFO(ScopeNode, Object);
 };
 
-class Scope : public NodeRef {
+class Scope : public ObjectRef {
  public:
   /*!
    * \brief Add a dependency edge.
@@ -77,7 +77,7 @@ class Scope : public NodeRef {
    * */
   Array<StmtSRef> GetPredecessors(const StmtSRef& block) const;
 
-  TVM_DEFINE_NODE_REF_METHODS(Scope, NodeRef, ScopeNode);
+  TVM_DEFINE_OBJECT_REF_METHODS(Scope, ObjectRef, ScopeNode);
 
   ScopeNode* operator->() {
     return static_cast<ScopeNode*>(data_.get());
