@@ -68,7 +68,7 @@ def test_replace_copy():
     assert te.get_stmt(sref) is None
 
 
-def test_replace_partial_copy():
+def test_replace_partial_copy0():
     s, target = replace_ir_builder()
 
     func_old_hash = s.func.__hash__()
@@ -86,6 +86,28 @@ def test_replace_partial_copy():
     assert other_part_hash == s.func.body.body[1].__hash__()
     # Check the replaced part is equal to the target
     assert Equal(s.func.body.body[0].body, target)
+    # The replaced AST node will be deleted, so the ref will be None
+    assert te.get_stmt(sref) is None
+
+
+def test_replace_partial_copy1():
+    s, target = replace_ir_builder()
+
+    func_old_hash = s.func.__hash__()
+    hold_ref = s.func.body.body[0].body
+    stmt_old_hash = s.func.body.body[0].__hash__()
+    sref = s.get_sref(s.func.body.body[0].body.body)
+    other_part_hash = s.func.body.body[1].__hash__()
+    s.replace(sref, target)
+
+    # The father stmt will change since there is only one reference
+    assert stmt_old_hash == s.func.body.body[0].__hash__()
+    assert not Equal(hold_ref.body, target)
+    # The function and the other part stmt can be directly write
+    assert func_old_hash == s.func.__hash__()
+    assert other_part_hash == s.func.body.body[1].__hash__()
+    # Check the replaced part is equal to the target
+    assert Equal(s.func.body.body[0].body.body, target)
     # The replaced AST node will be deleted, so the ref will be None
     assert te.get_stmt(sref) is None
 
@@ -119,6 +141,7 @@ def test_replace_root_copy():
 if __name__ == "__main__":
     test_replace_direct_write()
     test_replace_copy()
-    test_replace_partial_copy()
+    test_replace_partial_copy0()
+    test_replace_partial_copy1()
     test_replace_root_write()
     test_replace_root_copy()
