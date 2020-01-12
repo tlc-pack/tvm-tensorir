@@ -34,7 +34,7 @@ def replace_ir_builder():
     return s, target
 
 
-def test_replace_direct_write():
+def test_replace_direct_write0():
     s, target = replace_ir_builder()
 
     old_hash = s.func.__hash__()
@@ -43,6 +43,23 @@ def test_replace_direct_write():
 
     # There is no other reference so the AST node can be write directly
     assert old_hash == s.func.__hash__()
+    # Check the replaced part is equal to the target
+    assert Equal(s.func.body.body[1], target)
+    # The target reuse the sref's stmt, so the sref won't be none
+    assert te.get_stmt(sref) is not None
+
+
+def test_replace_direct_write1():
+    s, target = replace_ir_builder()
+
+    old_hash = s.func.body.body.__hash__()
+    hold_ref = s.func.body.body[1]
+    sref = s.get_sref(s.func.body.body[1])
+    s.replace(sref, target)
+
+    # There is no other reference so the AST node can be write directly
+    assert old_hash == s.func.body.body.__hash__()
+    assert not Equal(hold_ref.body, target)
     # Check the replaced part is equal to the target
     assert Equal(s.func.body.body[1], target)
     # The target reuse the sref's stmt, so the sref won't be none
@@ -139,7 +156,8 @@ def test_replace_root_copy():
 
 
 if __name__ == "__main__":
-    test_replace_direct_write()
+    test_replace_direct_write0()
+    test_replace_direct_write1()
     test_replace_copy()
     test_replace_partial_copy0()
     test_replace_partial_copy1()
