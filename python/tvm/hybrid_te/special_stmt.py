@@ -21,6 +21,7 @@ Special Stmt functions are used to provide some primitive functions for specific
 Typically, a special stmt function has return value and accepts parser and
 node as its first 2 arguments.
 """
+# pylint: disable=unused-argument
 
 from .. import api as _api
 from .. import ir_pass as _pass

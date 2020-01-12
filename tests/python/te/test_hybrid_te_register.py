@@ -33,21 +33,22 @@ def element_wise(a, c):
     A = buffer_bind(a, (16, 16), "float32", name="A")
     C = buffer_bind(c, (16, 16), "float32", name="C")
 
-    with block([], [], A[0: 16, 0: 16], C[0: 16, 0: 16], name="root"):
+    with block({}, A[0: 16, 0: 16], C[0: 16, 0: 16], name="root"):
         B = buffer_allocate((16, 16), "float32", name="B")
 
         for i in range(0, 16):
             for j in range(0, 16):
-                with block([vi(0, 16), vj(0, 16)], [i, j], A[vi: vi + 1, vj: vj + 1], B[vi: vi + 1, vj: vj + 1],
+                with block({vi(0, 16): i, vj(0, 16): j}, A[vi: vi + 1, vj: vj + 1],
+                           B[vi: vi + 1, vj: vj + 1],
                            name="B"):
-                    B[vi, vj] = mul(A[vi, vj])
-                    B[vi, vj] = mul(A[vi, vj], 2)
+                    B[vi, vj] = A[vi, vj] * 2
 
         for i in range(0, 16):
             for j in range(0, 16):
-                with block([vi(0, 16), vj(0, 16)], [i, j], B[vi: vi + 1, vj: vj + 1], C[vi: vi + 1, vj: vj + 1],
+                with block({vi(0, 16): i, vj(0, 16): j}, B[vi: vi + 1, vj: vj + 1],
+                           C[vi: vi + 1, vj: vj + 1],
                            name="C"):
-                    C[vi, vj] = add(B[vi, vj], 1)
+                    C[vi, vj] = B[vi, vj] + 1
 
 
 def test_element_wise(a, c):
@@ -56,14 +57,14 @@ def test_element_wise(a, c):
     print(func)
 
     assert isinstance(func.body, tvm.stmt.TeBlock)
-    assert isinstance(func.body.body, tvm.stmt.Block)
-    assert isinstance(func.body.body.first, tvm.stmt.Loop)
-    assert isinstance(func.body.body.first.body, tvm.stmt.Loop)
-    assert isinstance(func.body.body.first.body.body, tvm.stmt.TeBlock)
+    assert isinstance(func.body.body, tvm.stmt.SeqStmt)
+    assert isinstance(func.body.body[0], tvm.stmt.Loop)
+    assert isinstance(func.body.body[0].body, tvm.stmt.Loop)
+    assert isinstance(func.body.body[0].body.body, tvm.stmt.TeBlock)
 
-    assert isinstance(func.body.body.rest, tvm.stmt.Loop)
-    assert isinstance(func.body.body.rest.body, tvm.stmt.Loop)
-    assert isinstance(func.body.body.rest.body.body, tvm.stmt.TeBlock)
+    assert isinstance(func.body.body[1], tvm.stmt.Loop)
+    assert isinstance(func.body.body[1].body, tvm.stmt.Loop)
+    assert isinstance(func.body.body[1].body.body, tvm.stmt.TeBlock)
 
 
 if __name__ == '__main__':
