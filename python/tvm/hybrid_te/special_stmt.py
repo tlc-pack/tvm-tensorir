@@ -44,7 +44,7 @@ def buffer_bind(parser, node, var, shape, dtype="float32", name="buf"):
 
 
 def buffer_allocate(parser, node, shape, dtype="float32", name="buf", scope=""):
-    """ Special function buffer_allocate(var, shape, dtype, name)
+    """ Special function buffer_allocate(var, shape, dtype, name, scope)
 
     Example
     -------

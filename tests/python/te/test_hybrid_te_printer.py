@@ -16,6 +16,7 @@
 # under the License.
 
 import tvm
+from tvm.hybrid_te import source_to_op
 
 
 @tvm.hybrid_te.script
@@ -65,7 +66,10 @@ def test_matmul(a, b, c):
     func = matmul(a, b, c)
 
     print(func)
-    print(tvm.hybrid_te.to_python(func))
+    rt_func = source_to_op(0, tvm.hybrid_te.to_python(func), a, b, c)
+    print(rt_func)
+
+    assert str(func) == str(rt_func)
 
     assert isinstance(func.body, tvm.stmt.TeBlock)
     assert isinstance(func.body.body, tvm.stmt.Loop)
@@ -80,7 +84,10 @@ def test_element_wise(a, c):
     func = element_wise(a, c)
 
     print(func)
-    print(tvm.hybrid_te.to_python(func))
+    rt_func = source_to_op(0, tvm.hybrid_te.to_python(func), a, c)
+    print(rt_func)
+
+    assert str(func) == str(rt_func)
 
     assert isinstance(func.body, tvm.stmt.TeBlock)
     assert isinstance(func.body.body, tvm.stmt.SeqStmt)
