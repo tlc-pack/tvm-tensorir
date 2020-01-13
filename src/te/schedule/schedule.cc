@@ -112,14 +112,12 @@ class SubReplacer : protected StmtMutator {
   Stmt operator()(const StmtNode* weakref,
                   bool allow_copy_on_write) {
     std::swap(allow_copy_on_write, allow_copy_on_write_);
-    auto n = runtime::GetObjectPtr<StmtNode>(const_cast<StmtNode*>(weakref));
     if (allow_copy_on_write_) {
       // We have just get a reference of n, so if the original
       // object is unique, the use_count will be 2
-      CHECK_EQ(n.use_count(), 2U) << GetRef<Stmt>(weakref);
+      CHECK(weakref->unique()) << GetRef<Stmt>(weakref);
     }
-    Stmt stmt = Stmt(n);
-    stmt = VisitStmt(stmt);
+    Stmt stmt = VisitStmt(GetRef<Stmt>(weakref));
     std::swap(allow_copy_on_write, allow_copy_on_write_);
     if (allow_copy_on_write) {
       CHECK(stmt.operator->() == weakref);
@@ -133,7 +131,7 @@ class SubReplacer : protected StmtMutator {
       // just return the target stmt
       return target_;
     } else {
-      return StmtMutator::VisitStmt(stmt);
+      return StmtFunctor::VisitStmt(stmt);
     }
   }
 
@@ -284,7 +282,7 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
 
   for (StmtSRefNode* ptr = ref.operator->(); ptr != self->root.get();
        ptr = ptr->parent, ++curr_step) {
-    if (ptr->node->unique()) {
+    if (!ptr->node->unique()) {
       num_copy_steps = curr_step;
     }
   }
@@ -294,8 +292,7 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
   for (StmtSRefNode* ptr = ref.operator->(); ptr != self->root.get();
        ptr = ptr->parent, ++curr_step) {
     StmtSRefNode* parent = ptr->parent;
-    bool allow_direct_write = curr_step - 1 > num_copy_steps;
-
+    bool allow_direct_write = curr_step + 1 > num_copy_steps;
     Stmt new_stmt = SubReplacer(ptr, target)(parent->node, allow_direct_write);
     UpdateSRef(ptr, target);
     if (allow_direct_write) {
