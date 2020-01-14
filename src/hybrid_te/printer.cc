@@ -36,15 +36,13 @@ void TePrinter::Print(const ObjectRef& node) {
   } else if (node.as<ExprNode>()) {
     VisitExpr(Downcast<Expr>(node));
   } else {
-    // TODO : maybe we need an ir visitor/ir functor?
-    if (node.as<FunctionNode>()) {
-      VisitOther(static_cast<const FunctionNode*>(node.get()));
-    } else if (node.as<TensorRegionNode>()) {
-      VisitOther(static_cast<const TensorRegionNode*>(node.get()));
-    } else if (node.as<AnnotationNode>()) {
-      VisitOther(static_cast<const AnnotationNode*>(node.get()));
-    } else if (node.as<ArrayNode>()) {
-      VisitOther(static_cast<const ArrayNode*>(node.get()));
+    // TODO
+    static const FType& f = vtable();
+    if (f.can_dispatch(node)) {
+      f(node, this);
+    } else {
+      // default value, output type key and addr.
+      stream << node->GetTypeKey() << "(" << node.get() << ")";
     }
   }
 }
@@ -358,77 +356,85 @@ void TePrinter::VisitStmt_(const te::BufferStoreNode* op) {
   this->stream << '\n';
 }
 
-void TePrinter::VisitExpr(const Expr& e) {
-  StmtExprVisitor::VisitExpr(e);
-}
-
-void TePrinter::VisitOther(const FunctionNode* op) {
-  this->PrintIndent();
-  this->stream << "def " << op->name << "(";
+TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
+.set_dispatch<FunctionNode>([](const ObjectRef& node, TePrinter* p) {
+  auto* op = static_cast<const FunctionNode*>(node.get());
+  p->PrintIndent();
+  p->stream << "def " << op->name << "(";
   for (size_t i = 0; i < op->params.size(); ++i) {
-    this->Print(op->params[i]);
+    p->Print(op->params[i]);
     if (i != op->params.size() - 1) {
-      this->stream << ", ";
+      p->stream << ", ";
     }
   }
-  this->stream << "): \n";
-  this->indent += 2;
+  p->stream << "): \n";
+  p->indent += 2;
 
   // print buffer_bind
   for (auto it = op->buffer_map.begin(); it != op->buffer_map.end(); ++it) {
-    this->PrintIndent();
-    this->stream << (*it).second->name << " = buffer_bind(";
-    this->Print((*it).first);
-    this->stream << ", (";
+    p->PrintIndent();
+    p->stream << (*it).second->name << " = buffer_bind(";
+    p->Print((*it).first);
+    p->stream << ", (";
     for (size_t i = 0; i < (*it).second->shape.size(); ++i) {
       if (i != 0) {
-        this->stream << ", ";
+        p->stream << ", ";
       }
-      this->Print((*it).second->shape[i]);
+      p->Print((*it).second->shape[i]);
     }
-    this->stream << ')';
-    this->stream << ", \"" << (*it).second->dtype << "\"";
-    this->stream << ", \"" << (*it).second->name << "\")\n";
+    p->stream << ')';
+    p->stream << ", \"" << (*it).second->dtype << "\"";
+    p->stream << ", \"" << (*it).second->name << "\")\n";
   }
 
   // print body
-  this->Print(op->body);
-  this->indent -= 2;
-  this->PrintIndent();
-  this->stream << "\n";
-}
+  p->Print(op->body);
+  p->indent -= 2;
+  p->PrintIndent();
+  p->stream << "\n";
+});
 
-void TePrinter::VisitOther(const TensorRegionNode* op) {
-  this->Print(op->buffer->data);
-  this->stream << "[";
+TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
+.set_dispatch<TensorRegionNode>([](const ObjectRef& node, TePrinter* p) {
+  auto* op = static_cast<const TensorRegionNode*>(node.get());
+  p->Print(op->buffer->data);
+  p->stream << "[";
   for (size_t i = 0; i < op->region.size(); ++i) {
     const auto& range = op->region[i];
-    this->Print(range->min);
-    this->stream << ":";
-    this->Print(range->min + range->extent);
+    p->Print(range->min);
+    p->stream << ":";
+    p->Print(range->min + range->extent);
     if (i != op->region.size() - 1) {
-      this->stream << ", ";
+      p->stream << ", ";
     }
   }
-  this->stream << "]";
-}
+  p->stream << "]";
+});
 
-void TePrinter::VisitOther(const AnnotationNode* op) {
-  this->stream << op->attr_key << ": ";
-  this->Print(op->value);
-}
+TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
+.set_dispatch<AnnotationNode>([](const ObjectRef& node, TePrinter* p) {
+  auto* op = static_cast<const AnnotationNode*>(node.get());
+  p->stream << op->attr_key << ": ";
+  p->Print(op->value);
+});
 
-void TePrinter::VisitOther(const ArrayNode* op) {
-  this->stream << '[';
+TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
+.set_dispatch<ArrayNode>([](const ObjectRef& node, TePrinter* p) {
+  auto* op = static_cast<const ArrayNode*>(node.get());
+  p->stream << '[';
   for (size_t i = 0; i < op->data.size(); ++i) {
     if (i != 0) {
-      this->stream << ", ";
+      p->stream << ", ";
     }
-    this->Print(op->data[i]);
+    p->Print(op->data[i]);
   }
-  this->stream << ']';
-}
+  p->stream << ']';
+});
 
+TePrinter::FType& TePrinter::vtable() {
+  static FType inst;
+  return inst;
+}
 
 } // namespace te
 } // namespace tvm

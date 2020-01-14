@@ -38,16 +38,14 @@ class TePrinter :
 
   explicit TePrinter(std::ostream& stream) // NOLINT(*)
       : stream(stream) {}
-
   /*! \brief Print the node */
   TVM_DLL void Print(const ObjectRef& node);
   /*! \brief Print indent to the stream  */
   TVM_DLL void PrintIndent();
 
-  void VisitOther(const FunctionNode* op);
-  void VisitOther(const TensorRegionNode* op);
-  void VisitOther(const AnnotationNode* op);
-  void VisitOther(const ArrayNode* op);
+  // Allow registration to be printer.
+  using FType = NodeFunctor<void(const ObjectRef&, TePrinter*)>;
+  static FType& vtable();
 
   void VisitExpr_(const Variable* op) override;
   void VisitExpr_(const Add* op) override;
@@ -79,7 +77,6 @@ class TePrinter :
   void VisitStmt_(const te::LoopNode* op) override;
   void VisitStmt_(const te::BufferAllocateNode* op) override;
   void VisitStmt_(const te::BufferStoreNode* op) override;
-  void VisitExpr(const Expr& e) override;
 };
 
 } // namespace te
