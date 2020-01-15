@@ -293,7 +293,8 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
        ptr = ptr->parent, ++curr_step) {
     StmtSRefNode* parent = ptr->parent;
     // parent_step = current_step + 1
-    // if parent_step <= num_copy_step, then it implies that parent is not unique. and we need ot copy
+    // if parent_step <= num_copy_step, then it implies
+    // that parent is not unique and we need to copy
     bool parent_is_uniquely_referenced = curr_step + 1 > num_copy_steps;
     Stmt new_stmt = SubReplacer(ptr, target)(parent->node, parent_is_uniquely_referenced);
     UpdateSRef(ptr, target);
@@ -458,6 +459,55 @@ StmtSRef Schedule::fuse(StmtSRef outer, StmtSRef inner) {
   Replace(outer, fused_node);
 
   return operator->()->stmt2ref[fused_node.operator->()];
+}
+
+class PredicateAdder : public StmtMutator {
+ public:
+  explicit PredicateAdder(const Expr& predicate) : predicate_(predicate) {}
+
+  Stmt VisitStmt_(const BlockNode* op) final {
+    auto n = CopyOnWrite(op);
+    n->predicate = n->predicate && predicate_;
+    return Stmt(n);
+  }
+ private:
+  Expr predicate_;
+};
+
+Array<StmtSRef> Schedule::split(StmtSRef node, Expr factor) {
+  const auto* loop = GetRef<Stmt>(node->node).as<LoopNode>();
+  Var outer_var = loop->loop_var.copy_with_suffix(".outer");
+  Var inner_var = loop->loop_var.copy_with_suffix(".inner");
+
+  Expr outer_min = loop->min;
+  Expr outer_extent = (loop->extent + factor - 1) / factor;
+
+  Expr inner_min = 0;
+  Expr inner_extent = factor;
+
+  auto vmap = [&](const Variable* v) -> Expr {
+    if (GetRef<Var>(v).same_as(loop->loop_var)) {
+      return outer_var * factor + inner_var;
+    } else {
+      return Expr(ObjectPtr<Object>(nullptr));
+    }
+  };
+
+  Map<Var, Range> vrange;
+  vrange.Set(outer_var, Range::make_by_min_extent(outer_min, outer_extent));
+  vrange.Set(inner_var, Range::make_by_min_extent(inner_min, inner_extent));
+  Expr predicate = Simplify(outer_var * factor + inner_var < loop->extent, vrange);
+  Stmt new_stmt = PredicateAdder(predicate)(Substitute(loop->body, vmap));
+
+  Loop inner_loop(inner_var, inner_min, inner_extent, loop->annotations, new_stmt);
+  Loop outer_loop(outer_var, outer_min, outer_extent, loop->annotations, inner_loop);
+
+  // relink
+  Replace(node, outer_loop);
+
+  StmtSRef inner_sref = operator->()->stmt2ref[inner_loop.as<StmtNode>()];
+  StmtSRef outer_sref = operator->()->stmt2ref[outer_loop.as<StmtNode>()];
+  return Array<StmtSRef>{outer_sref, inner_sref};
 }
 
 StmtSRef::StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index) {

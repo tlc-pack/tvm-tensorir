@@ -23,6 +23,7 @@
 #include <tvm/te/stmt_sref.h>
 #include <tvm/te/scope.h>
 #include <string>
+#include <unordered_map>
 
 namespace tvm {
 namespace te {
@@ -111,6 +112,14 @@ class Schedule : public ObjectRef {
    * \return the fused loop
    * */
   StmtSRef fuse(StmtSRef outer, StmtSRef inner);
+
+  /*!
+   * \brief split a specified axis into two axises by factor.
+   * \param node The loop to be split
+   * \param factor The split factor
+   * \return the loops after splitting
+   * */
+  Array<StmtSRef> split(StmtSRef node, Expr factor);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
 

@@ -35,6 +35,21 @@ def test_fuse():
 
     util.check_correctness(func, s.func, tensors, tensor_map)
 
+def test_split():
+    m, n = 128, 128
+    func, tensors, tensor_map, _ = util.element_wise_stmt(m, n)
+
+    # schedule
+    s = te.create_schedule(func)
+    B = s.get_block("B")
+    C = s.get_block("C")
+    outer, inner = s.get_axes(B)
+    s.split(outer, factor=8)
+    outer, inner = s.get_axes(C)
+    s.split(inner, nparts=10)
+
+    util.check_correctness(func, s.func, tensors, tensor_map)
 
 if __name__ == "__main__":
     test_fuse()
+    test_split()
