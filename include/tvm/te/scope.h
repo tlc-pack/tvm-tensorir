@@ -21,8 +21,8 @@
  *  \brief Dependency between blocks
  */
 
-#ifndef TVM_TE_BLOCK_DEPENDENCY_H_
-#define TVM_TE_BLOCK_DEPENDENCY_H_
+#ifndef TVM_TE_SCOPE_H_
+#define TVM_TE_SCOPE_H_
 
 #include <tvm/te/ir.h>
 #include <tvm/te/stmt_sref.h>
@@ -88,4 +88,4 @@ class Scope : public ObjectRef {
 }  // namespace te
 }  // namespace tvm
 
-#endif  // TVM_TE_BLOCK_DEPENDENCY_H_
+#endif  // TVM_TE_SCOPE_H_

@@ -31,6 +31,9 @@ TVM_REGISTER_GLOBAL("te.schedule.GetStmt")
       return GetRef<Stmt>(sref->node);
     });
 
+TVM_REGISTER_GLOBAL("te.schedule.ScheduleBlocks")
+.set_body_method(&Schedule::Blocks);
+
 TVM_REGISTER_GLOBAL("te.schedule.GetBlocksFromTag")
 .set_body_typed<Array<StmtSRef>(Schedule, std::string, StmtSRef)>(
     [](Schedule schedule, std::string tag, StmtSRef scope) {
@@ -42,6 +45,13 @@ TVM_REGISTER_GLOBAL("te.schedule.GetBlocksFromBuffer")
     [](Schedule schedule, Buffer buffer, StmtSRef scope) {
       return schedule.GetBlock(buffer, scope);
     });
+
+TVM_REGISTER_GLOBAL("te.schedule.ScheduleGetAxes")
+.set_body_method(&Schedule::GetAxes);
+
+// schedule primitive
+TVM_REGISTER_GLOBAL("te.schedule.ScheduleFuse")
+.set_body_method(&Schedule::fuse);
 
 // dependency graph
 TVM_REGISTER_GLOBAL("te.schedule.GetSuccessors")

@@ -58,7 +58,7 @@ class Schedule : public ObjectRef {
    * \param func The function to be scheduled
    * \return The schedule
    */
-  static Schedule Create(const Function& func);
+  static Schedule Create(Function func);
 
   /*!
    * \brief replace part of AST with new stmt
@@ -90,6 +90,28 @@ class Schedule : public ObjectRef {
    */
   Array<StmtSRef> Blocks(StmtSRef scope) const;
 
+  /*!
+   * \brief Get axes of the block
+   * \param block The query block
+   * \return the axis list
+   */
+  Array<StmtSRef> GetAxes(StmtSRef block) const;
+
+  /*!
+   * \brief Get the scope of the schedulable reference
+   * \param node The queried node
+   * \return the block scope reference
+   */
+  StmtSRef GetScope(StmtSRef node) const;
+
+  /*!
+   * \brief fuse two consecutive axises of one computation.
+   * \param outer The outer loop
+   * \param inner The inner loop
+   * \return the fused loop
+   * */
+  StmtSRef fuse(StmtSRef outer, StmtSRef inner);
+
   TVM_DEFINE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
 
   ScheduleNode* operator->() {
@@ -98,6 +120,8 @@ class Schedule : public ObjectRef {
 
  private:
   void UpdateSRef(StmtSRefNode* sref, const Stmt& stmt);
+
+  static Array<Stmt> GetChildren(const Stmt& stmt);
 };
 
 }  // namespace te
