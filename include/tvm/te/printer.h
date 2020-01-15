@@ -24,6 +24,7 @@
 #include <tvm/te/ir.h>
 #include <tvm/ir.h>
 #include <tvm/ir_functor_ext.h>
+#include "meta_context.h"
 
 namespace tvm {
 namespace te {
@@ -46,6 +47,10 @@ class TePrinter :
   // Allow registration to be printer.
   using FType = NodeFunctor<void(const ObjectRef&, TePrinter*)>;
   static FType& vtable();
+
+ private:
+  /*! \brief meta data context */
+  TextMetaDataContext meta_;
 
   void VisitExpr_(const Variable* op) override;
   void VisitExpr_(const Add* op) override;
@@ -70,6 +75,7 @@ class TePrinter :
   void VisitExpr_(const FloatImm* op) override;
   void VisitExpr_(const StringImm* op) override;
   void VisitExpr_(const te::BufferLoadNode* op) override;
+  void VisitExprDefault_(const Object* op) override;
 
   void VisitStmt_(const SeqStmtNode* op) override;
   void VisitStmt_(const Evaluate* op) override;
@@ -77,6 +83,7 @@ class TePrinter :
   void VisitStmt_(const te::LoopNode* op) override;
   void VisitStmt_(const te::BufferAllocateNode* op) override;
   void VisitStmt_(const te::BufferStoreNode* op) override;
+  void VisitStmtDefault_(const Object* op) override;
 };
 
 } // namespace te

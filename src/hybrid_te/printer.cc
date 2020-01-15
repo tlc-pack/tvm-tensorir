@@ -24,6 +24,7 @@
 #include <tvm/te/ir.h>
 #include <tvm/ir.h>
 #include <tvm/te/printer.h>
+#include <tvm/te/meta_context.h>
 #include <tvm/ir_pass.h>
 
 namespace tvm {
@@ -36,13 +37,11 @@ void TePrinter::Print(const ObjectRef& node) {
   } else if (node.as<ExprNode>()) {
     VisitExpr(Downcast<Expr>(node));
   } else {
-    // TODO
     static const FType& f = vtable();
     if (f.can_dispatch(node)) {
       f(node, this);
     } else {
-      // default value, output type key and addr.
-      stream << node->GetTypeKey() << "(" << node.get() << ")";
+      this->stream << this->meta_.GetMetaNode(node);
     }
   }
 }
@@ -51,6 +50,14 @@ void TePrinter::PrintIndent() {
   for (int i = 0; i < indent; ++i) {
     stream << ' ';
   }
+}
+
+void TePrinter::VisitExprDefault_(const Object* op) {
+  this->stream << this->meta_.GetMetaNode(GetRef<ObjectRef>(op));
+}
+
+void TePrinter::VisitStmtDefault_(const Object* op) {
+  this->stream << this->meta_.GetMetaNode(GetRef<ObjectRef>(op));
 }
 
 void TePrinter::VisitExpr_(const Variable* op) {
