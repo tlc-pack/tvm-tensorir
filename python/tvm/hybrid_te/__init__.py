@@ -39,7 +39,7 @@ def to_python(func):
         The Python script
     """
 
-    return Print(func)
+    return AsText(func)
 
 
 def register(origin_func):

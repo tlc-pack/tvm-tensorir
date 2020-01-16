@@ -22,14 +22,105 @@
  */
 
 #include <tvm/te/ir.h>
+#include <tvm/runtime/registry.h>
 #include <tvm/ir.h>
-#include <tvm/te/printer.h>
-#include <tvm/te/meta_context.h>
 #include <tvm/ir_pass.h>
+#include <tvm/ir_functor_ext.h>
+#include <tvm/node/serialization.h>
+
 
 namespace tvm {
 namespace te {
 using namespace ir;
+
+class TextMetaDataContext {
+ public:
+  std::string GetMetaNode(const ObjectRef& node) {
+    auto it = meta_repr_.find(node);
+    if (it != meta_repr_.end()) {
+      return it->second;
+    }
+    std::string type_key = node->GetTypeKey();
+    CHECK(!type_key.empty());
+    Array<ObjectRef>& mvector = meta_data_[type_key];
+    auto index = static_cast<int64_t>(mvector.size());
+    mvector.push_back(node);
+    std::ostringstream doc;
+    doc << "meta[" << type_key << "][" << index << "]";
+    meta_repr_[node] = doc.str();
+    return meta_repr_[node];
+  }
+
+  std::string GetMetaSection() const {
+    if (meta_data_.empty()) return std::string();
+    return SaveJSON(Map<std::string, ObjectRef>(meta_data_.begin(), meta_data_.end()));
+  }
+
+  bool empty() const {
+    return meta_data_.empty();
+  }
+
+ private:
+  std::unordered_map<std::string, Array<ObjectRef> > meta_data_;
+  std::unordered_map<ObjectRef, std::string, ObjectHash, ObjectEqual> meta_repr_;
+};
+
+class TePrinter :
+      public StmtExprVisitor {
+ public:
+  /*! \brief The output stream */
+  std::ostream& stream;
+  /*! \brief The indentation level */
+  int indent{0};
+
+  explicit TePrinter(std::ostream& stream) // NOLINT(*)
+      : stream(stream) {}
+  /*! \brief Print the node */
+  TVM_DLL void Print(const ObjectRef& node);
+  /*! \brief Print indent to the stream  */
+  TVM_DLL void PrintIndent();
+
+  // Allow registration to be printer.
+  using FType = NodeFunctor<void(const ObjectRef&, TePrinter*)>;
+  static FType& vtable();
+
+ private:
+  /*! \brief meta data context */
+  TextMetaDataContext meta_;
+
+  void VisitExpr_(const Variable* op) override;
+  void VisitExpr_(const Add* op) override;
+  void VisitExpr_(const Sub* op) override;
+  void VisitExpr_(const Mul* op) override;
+  void VisitExpr_(const Div* op) override;
+  void VisitExpr_(const Mod* op) override;
+  void VisitExpr_(const FloorDiv* op) override;
+  void VisitExpr_(const FloorMod* op) override;
+  void VisitExpr_(const Min* op) override;
+  void VisitExpr_(const Max* op) override;
+  void VisitExpr_(const EQ* op) override;
+  void VisitExpr_(const NE* op) override;
+  void VisitExpr_(const LT* op) override;
+  void VisitExpr_(const LE* op) override;
+  void VisitExpr_(const GT* op) override;
+  void VisitExpr_(const GE* op) override;
+  void VisitExpr_(const And* op) override;
+  void VisitExpr_(const Or* op) override;
+  void VisitExpr_(const IntImm* op) override;
+  void VisitExpr_(const UIntImm* op) override;
+  void VisitExpr_(const FloatImm* op) override;
+  void VisitExpr_(const StringImm* op) override;
+  void VisitExpr_(const te::BufferLoadNode* op) override;
+  void VisitExprDefault_(const Object* op) override;
+
+  void VisitStmt_(const SeqStmtNode* op) override;
+  void VisitStmt_(const Evaluate* op) override;
+  void VisitStmt_(const te::BlockNode* op) override;
+  void VisitStmt_(const te::LoopNode* op) override;
+  void VisitStmt_(const te::BufferAllocateNode* op) override;
+  void VisitStmt_(const te::BufferStoreNode* op) override;
+  void VisitStmtDefault_(const Object* op) override;
+};
 
 void TePrinter::Print(const ObjectRef& node) {
   if (node.as<StmtNode>()) {
@@ -287,7 +378,7 @@ void TePrinter::VisitStmt_(const te::BlockNode* op) {
       }
       this->stream << ", iter_type=\"" << str << "\"";
     }
-    this->stream << "): ";
+    this->stream << "):";
     this->Print(op->values[i]);
     if (i != op->iter_vars.size() - 1) {
       this->stream << ", ";
@@ -310,7 +401,7 @@ void TePrinter::VisitStmt_(const te::BlockNode* op) {
   }
   this->stream << ", name=\"" << op->tag << "\")";
   // print body
-  this->stream << ": \n";
+  this->stream << ":\n";
   this->indent += 2;
   for (const auto& allocate : op->allocations) {
     this->Print(allocate);
@@ -331,7 +422,7 @@ void TePrinter::VisitStmt_(const te::LoopNode* op) {
   this->stream << ")";
 
   // print body
-  this->stream << ": \n";
+  this->stream << ":\n";
   this->indent += 2;
   this->Print(op->body);
   this->indent -= 2;
@@ -365,7 +456,7 @@ void TePrinter::VisitStmt_(const te::BufferStoreNode* op) {
 
 TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
 .set_dispatch<FunctionNode>([](const ObjectRef& node, TePrinter* p) {
-  auto* op = static_cast<const FunctionNode*>(node.get());
+  auto* op = node.as<FunctionNode>();
   p->PrintIndent();
   p->stream << "def " << op->name << "(";
   for (size_t i = 0; i < op->params.size(); ++i) {
@@ -374,7 +465,7 @@ TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
       p->stream << ", ";
     }
   }
-  p->stream << "): \n";
+  p->stream << "):\n";
   p->indent += 2;
 
   // print buffer_bind
@@ -403,7 +494,7 @@ TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
 
 TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
 .set_dispatch<TensorRegionNode>([](const ObjectRef& node, TePrinter* p) {
-  auto* op = static_cast<const TensorRegionNode*>(node.get());
+  auto* op = node.as<TensorRegionNode>();
   p->Print(op->buffer->data);
   p->stream << "[";
   for (size_t i = 0; i < op->region.size(); ++i) {
@@ -420,14 +511,14 @@ TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
 
 TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
 .set_dispatch<AnnotationNode>([](const ObjectRef& node, TePrinter* p) {
-  auto* op = static_cast<const AnnotationNode*>(node.get());
+  auto* op = node.as<AnnotationNode>();
   p->stream << op->attr_key << ": ";
   p->Print(op->value);
 });
 
 TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
 .set_dispatch<ArrayNode>([](const ObjectRef& node, TePrinter* p) {
-  auto* op = static_cast<const ArrayNode*>(node.get());
+  auto* op = node.as<ArrayNode>();
   p->stream << '[';
   for (size_t i = 0; i < op->data.size(); ++i) {
     if (i != 0) {
@@ -443,5 +534,13 @@ TePrinter::FType& TePrinter::vtable() {
   return inst;
 }
 
-} // namespace te
-} // namespace tvm
+TVM_REGISTER_GLOBAL("hybrid_te.AsText")
+.set_body_typed<std::string(Function)>(
+  [](Function function) {
+      std::ostringstream os;
+      TePrinter(os).Print(function);
+      return os.str();
+  });
+
+}  // namespace te
+}  // namespace tvm
