@@ -15,6 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """Hybrid Script Parser Function Registry """
+# pylint: disable=inconsistent-return-statements
 
 import inspect
 
@@ -104,7 +105,8 @@ def register_func(category, origin_func, need_parser_and_node, need_return):
     Parameters
     ----------
     category: str
-        The category of function to be registered, ought to be "intrin", "with_scope", "for_scope", "special_stmt"
+        The category of function to be registered, ought to be "intrin", "with_scope", "for_scope",
+        "special_stmt"
 
     origin_func: function
         The function to be registered
@@ -126,11 +128,14 @@ def register_func(category, origin_func, need_parser_and_node, need_return):
         args = args[2:]
 
     if full_arg_spec.varargs is not None:
-        raise RuntimeError("TVM Hybrid Script register error : variable argument is not supported now")
+        raise RuntimeError(
+            "TVM Hybrid Script register error : variable argument is not supported now")
     if full_arg_spec.varkw is not None:
-        raise RuntimeError("TVM Hybrid Script register error : variable keyword argument is not supported now")
+        raise RuntimeError(
+            "TVM Hybrid Script register error : variable keyword argument is not supported now")
     if not len(full_arg_spec.kwonlyargs) == 0:
-        raise RuntimeError("TVM Hybrid Script register error : keyword only argument is not supported now")
+        raise RuntimeError(
+            "TVM Hybrid Script register error : keyword only argument is not supported now")
 
     arg_list = list()
     for arg in args[: len(args) - len(defaults)]:
@@ -138,9 +143,11 @@ def register_func(category, origin_func, need_parser_and_node, need_return):
     for default, arg in zip(defaults, args[len(args) - len(defaults):]):
         arg_list.append((arg, default))
 
-    Registry.host_dict[category][origin_func.__name__] = func_wrapper(origin_func.__name__, origin_func, arg_list,
-                                                                      need_parser_and_node=need_parser_and_node,
-                                                                      need_return=need_return)
+    Registry.host_dict[category][origin_func.__name__] = \
+        func_wrapper(origin_func.__name__,
+                     origin_func, arg_list,
+                     need_parser_and_node=need_parser_and_node,
+                     need_return=need_return)
 
 
 def register_intrin(origin_func):

@@ -40,11 +40,9 @@ class ScopeEmitter:
         seq = self.seq_stack.pop()
         if not seq:
             seq.append(_make.Evaluate(0))
-        stmt = seq[-1]
-        for s in reversed(seq[:-1]):
-            assert isinstance(s, _stmt.Stmt)
-            stmt = _make.Block(s, stmt)
-        return stmt
+        if len(seq) == 1:
+            return seq[0]
+        return _stmt.SeqStmt(seq)
 
     def new_scope(self, is_block=False):
         self.seq_stack.append([])
