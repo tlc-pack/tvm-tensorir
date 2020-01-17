@@ -138,6 +138,7 @@ file(GLOB COMPILER_SRCS
     src/te/*.cc
     src/te/pass/*.cc
     src/te/schedule/*.cc
+    src/hybrid_te/*.cc
     )
 
 file(GLOB_RECURSE RELAY_OP_SRCS

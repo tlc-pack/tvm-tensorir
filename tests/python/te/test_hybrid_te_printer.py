@@ -16,16 +16,27 @@
 # under the License.
 
 import tvm
+from tvm.hybrid_te import source_to_op
 
 
-@tvm.hybrid_te.register
-def add(a, b):
-    return a + b
+@tvm.hybrid_te.script
+def matmul(a, b, c):
+    A = buffer_bind(a, (16, 16), "float32", name="A")
+    B = buffer_bind(b, (16, 16), "float32", name="B")
+    C = buffer_bind(c, (16, 16), "float32", name="C")
 
-
-@tvm.hybrid_te.register
-def mul(a, b=1):
-    return a * b
+    with block({}, reads=[A[0: 16, 0: 16], B[0: 16, 0: 16]], writes=C[0: 16, 0: 16], name="root"):
+        for i in range(0, 16):
+            for j in range(0, 16):
+                with block({vi(0, 16): i, vj(0, 16): j}, reads=[], writes=C[vi: vi + 1, vj: vj + 1],
+                           name="init"):
+                    C[vi, vj] = float32(0)
+                for k in range(0, 16):
+                    with block({vi(0, 16): i, vj(0, 16): j, vk(0, 16, iter_type="reduce"): k},
+                               reads=[C[vi: vi + 1, vj: vj + 1], A[vi: vi + 1, vk: vk + 1],
+                                      B[vj: vj + 1, vk: vk + 1]],
+                               writes=[C[vi: vi + 1, vj: vj + 1]], name="update"):
+                        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
 @tvm.hybrid_te.script
@@ -51,10 +62,32 @@ def element_wise(a, c):
                     C[vi, vj] = B[vi, vj] + 1
 
 
+def test_matmul(a, b, c):
+    func = matmul(a, b, c)
+
+    print(func)
+    rt_func = source_to_op(0, tvm.hybrid_te.to_python(func), a, b, c)
+    print(rt_func)
+
+    assert str(func) == str(rt_func)
+
+    assert isinstance(func.body, tvm.stmt.TeBlock)
+    assert isinstance(func.body.body, tvm.stmt.Loop)
+    assert isinstance(func.body.body.body, tvm.stmt.Loop)
+    assert isinstance(func.body.body.body.body, tvm.stmt.SeqStmt)
+    assert isinstance(func.body.body.body.body[0], tvm.stmt.TeBlock)
+    assert isinstance(func.body.body.body.body[1], tvm.stmt.Loop)
+    assert isinstance(func.body.body.body.body[1].body, tvm.stmt.TeBlock)
+
+
 def test_element_wise(a, c):
     func = element_wise(a, c)
 
     print(func)
+    rt_func = source_to_op(0, tvm.hybrid_te.to_python(func), a, c)
+    print(rt_func)
+
+    assert str(func) == str(rt_func)
 
     assert isinstance(func.body, tvm.stmt.TeBlock)
     assert isinstance(func.body.body, tvm.stmt.SeqStmt)
@@ -69,6 +102,8 @@ def test_element_wise(a, c):
 
 if __name__ == '__main__':
     a = tvm.var("a")
+    b = tvm.var("b")
     c = tvm.var("c")
 
+    test_matmul(a, b, c)
     test_element_wise(a, c)

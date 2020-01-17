@@ -68,8 +68,8 @@ namespace ir {
  *  This easily be done incorrectly using plain Visitor. See IRVisitor's
  *  document for possible error cases.
  *
- * \tparam FType function signiture
- *  This type if only defined for FType with function signiture R(const Expr&, Args...)
+ * \tparam FType function signature
+ *  This type if only defined for FType with function signature R(const Expr&, Args...)
  */
 template<typename FType>
 class ExprFunctor;
