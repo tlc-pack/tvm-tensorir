@@ -155,52 +155,43 @@ void TePrinter::VisitExpr_(const Variable* op) {
   this->stream << op->name_hint;
 }
 
-void TePrinter::VisitExpr_(const Add* op) {
-  this->stream << '(';
-  this->Print(op->a);
-  this->stream << " + ";
-  this->Print(op->b);
-  this->stream << ')';
-}
+#define TVM_DECLARE_TEPRINTER_BINOP(OpName, OpString)                                \
+  void TePrinter::VisitExpr_(const OpName* op) {                                     \
+    this->stream << '(';                                                             \
+    this->Print(op->a);                                                              \
+    this->stream << OpString;                                                        \
+    this->Print(op->b);                                                              \
+    this->stream << ')';                                                             \
+  }                                                                                  \
 
-void TePrinter::VisitExpr_(const Sub* op) {
-  this->stream << '(';
-  this->Print(op->a);
-  this->stream << " - ";
-  this->Print(op->b);
-  this->stream << ')';
-}
-
-void TePrinter::VisitExpr_(const Mul* op) {
-  this->stream << '(';
-  this->Print(op->a);
-  this->stream << "*";
-  this->Print(op->b);
-  this->stream << ')';
-}
-
-void TePrinter::VisitExpr_(const Div* op) {
-  this->stream << '(';
-  this->Print(op->a);
-  this->stream << "/";
-  this->Print(op->b);
-  this->stream << ')';
-}
-
-void TePrinter::VisitExpr_(const Mod* op) {
-  this->stream << '(';
-  this->Print(op->a);
-  this->stream << " % ";
-  this->Print(op->b);
-  this->stream << ')';
-}
+TVM_DECLARE_TEPRINTER_BINOP(Add, " + ")
+TVM_DECLARE_TEPRINTER_BINOP(Sub, " - ")
+TVM_DECLARE_TEPRINTER_BINOP(Mul, "*")
+TVM_DECLARE_TEPRINTER_BINOP(Div, " / ")
+TVM_DECLARE_TEPRINTER_BINOP(Mod, " % ")
+TVM_DECLARE_TEPRINTER_BINOP(EQ, " == ")
+TVM_DECLARE_TEPRINTER_BINOP(NE, " != ")
+TVM_DECLARE_TEPRINTER_BINOP(LT, " < ")
+TVM_DECLARE_TEPRINTER_BINOP(LE, " <= ")
+TVM_DECLARE_TEPRINTER_BINOP(GT, " > ")
+TVM_DECLARE_TEPRINTER_BINOP(GE, " >= ")
+TVM_DECLARE_TEPRINTER_BINOP(And, " and ")
+TVM_DECLARE_TEPRINTER_BINOP(Or, " or ")
 
 void TePrinter::VisitExpr_(const FloorDiv* op) {
-  this->stream << "floordiv(" << op->a << ", " << op->b << ")";
+  this->stream << "floordiv(";
+  this->Print(op->a);
+  this->stream<< ", ";
+  this->Print(op->b);
+  this->stream<< ")";
 }
 
 void TePrinter::VisitExpr_(const FloorMod* op) {
-  this->stream << "floordiv(" << op->a << ", " << op->b << ")";
+  this->stream << "floormod(";
+  this->Print(op->a);
+  this->stream<< ", ";
+  this->Print(op->b);
+  this->stream<< ")";
 }
 
 void TePrinter::VisitExpr_(const Min* op) {
@@ -217,70 +208,6 @@ void TePrinter::VisitExpr_(const Max* op) {
   this->stream << ", ";
   this->Print(op->b);
   this->stream << ")";
-}
-
-void TePrinter::VisitExpr_(const EQ* op) {
-  this->stream << '(';
-  this->Print(op->a);
-  this->stream << " == ";
-  this->Print(op->b);
-  this->stream << ')';
-}
-
-void TePrinter::VisitExpr_(const NE* op) {
-  this->stream << '(';
-  this->Print(op->a);
-  this->stream << " != ";
-  this->Print(op->b);
-  this->stream << ')';
-}
-
-void TePrinter::VisitExpr_(const LT* op) {
-  this->stream << '(';
-  this->Print(op->a);
-  this->stream << " < ";
-  this->Print(op->b);
-  this->stream << ')';
-}
-
-void TePrinter::VisitExpr_(const LE* op) {
-  this->stream << '(';
-  this->Print(op->a);
-  this->stream << " <= ";
-  this->Print(op->b);
-  this->stream << ')';
-}
-
-void TePrinter::VisitExpr_(const GT* op) {
-  this->stream << '(';
-  this->Print(op->a);
-  this->stream << " > ";
-  this->Print(op->b);
-  this->stream << ')';
-}
-
-void TePrinter::VisitExpr_(const GE* op) {
-  this->stream << '(';
-  this->Print(op->a);
-  this->stream << " >= ";
-  this->Print(op->b);
-  this->stream << ')';
-}
-
-void TePrinter::VisitExpr_(const And* op) {
-  this->stream << '(';
-  this->Print(op->a);
-  this->stream << " && ";
-  this->Print(op->b);
-  this->stream << ')';
-}
-
-void TePrinter::VisitExpr_(const Or* op) {
-  this->stream << '(';
-  this->Print(op->a);
-  this->stream << " || ";
-  this->Print(op->b);
-  this->stream << ')';
 }
 
 void TePrinter::VisitExpr_(const IntImm* op) {
