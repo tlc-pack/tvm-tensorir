@@ -29,7 +29,7 @@ def range_missing_args(a):
 
     for i in range(16):
         for j in range(0, 16):
-            with block([vi(0, 16), vj(0, 16)], [i, j], reads=[], writes=C[vi: vi + 1, vj: vj + 1], name="init"):
+            with block({vi(0, 16): i, vj(0, 16): j}, reads=[], writes=C[vi: vi + 1, vj: vj + 1], name="init"):
                 A[vi, vj] = 0.0
 
 
@@ -39,7 +39,7 @@ def block_missing_args(a):
 
     for i in range(0, 16):
         for j in range(0, 16):
-            with block([vi(0, 16), vj(0, 16)], [i, j], writes=A[vi: vi + 1, vj: vj + 1], name="init"):
+            with block({vi(0, 16): i, vj(0, 16): j}, writes=A[vi: vi + 1, vj: vj + 1], name="init"):
                 A[vi, vj] = 0.0
 
 
@@ -49,7 +49,7 @@ def undefined_buffer(a):
 
     for i in range(0, 16):
         for j in range(0, 16):
-            with block([vi(0, 16), vj(0, 16)], [i, j], reads=[], writes=C[vi: vi + 1, vj: vj + 1], name="init"):
+            with block({vi(0, 16): i, vj(0, 16): j}, reads=[], writes=C[vi: vi + 1, vj: vj + 1], name="init"):
                 A[vi, vj] = 0.0
 
 
@@ -59,7 +59,7 @@ def undefined_block_var(a):
 
     for i in range(0, 16):
         for j in range(0, 16):
-            with block([vi(0, 16), vj(0, 16)], [i, j], reads=[], writes=A[vi: vi + 1, vj: vj + 1], name="init"):
+            with block({vi(0, 16): i, vj(0, 16): j}, reads=[], writes=A[vi: vi + 1, vj: vj + 1], name="init"):
                 A[vi, vk] = 0.0
 
 
@@ -75,7 +75,7 @@ def unsupported_function_call(a):
 
     for i in const_range(0, 16):
         for j in range(0, 16):
-            with block([vi(0, 16), vj(0, 16)], [i, j], reads=[], writes=A[vi: vi + 1, vj: vj + 1], name="init"):
+            with block({vi(0, 16): i, vj(0, 16): j}, reads=[], writes=A[vi: vi + 1, vj: vj + 1], name="init"):
                 A[vi, vk] = 0.0
 
 
@@ -85,7 +85,7 @@ def type_check(a):
 
     for i in range(0, 16):
         for j in range(0, 16):
-            with block([vi(0, 16), vj(0, 16)], [i, j], reads=[], writes=a[vi: vi + 1, vj: vj + 1], name="init"):
+            with block({vi(0, 16): i, vj(0, 16): j}, reads=[], writes=a[vi: vi + 1, vj: vj + 1], name="init"):
                 A[vi, vj] = 0.0
 
 
