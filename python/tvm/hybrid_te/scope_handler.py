@@ -24,28 +24,35 @@ Scope handler functions are used to handle such scenarios.
     for x in name():
     with name():
 
-Typically, a scope handler function has no return value and accepts parser and node as its first 2 arguments.
+Typically, a scope handler function has no return value and accepts parser and node as its first
+2 arguments.
 """
+# pylint: disable=redefined-builtin
 
 from .. import api as _api
 from .. import ir_pass as _pass
 from .. import make as _make
 
 
-def block(parser, node, block_vars, values, reads, writes, predicate=True, annotations=[], name=""):
-    """ With scope handler function block(block_vars, values, reads, writes, predicate, annotations, name)
+def block(parser, node, block_vars_info, reads, writes, predicate=True, annotations=None, name=""):
+    """ With scope handler function block(block_vars， reads, writes, predicate, annotations, name)
 
     Example
     -------
     .. code-block:: python
 
-        with block([vi(0, 128), vj(0, 128)], [i, j], reads=[], writes=C[vi : vi + 1, vj : vj + 1], name="init"):
+        with block({vi(0, 128): i, vj(0, 128): j}, reads=[], writes=C[vi : vi + 1, vj : vj + 1], \
+        name="init"):
 
     """
+    block_vars = [info[0] for info in block_vars_info]
+    values = [info[1] for info in block_vars_info]
     if not isinstance(reads, list):
         reads = [reads]
     if not isinstance(writes, list):
         writes = [writes]
+    if annotations is None:
+        annotations = []
     parser.scope_emitter.new_scope(is_block=True)
     for stmt in node.body:
         parser.visit(stmt)
@@ -65,5 +72,6 @@ def range(parser, node, begin, end):
     parser.scope_emitter.new_scope()
     for stmt in node.body:
         parser.visit(stmt)
-    parser.scope_emitter.emit(_make.Loop(loop_var, begin, extent, [], parser.scope_emitter.pop_seq()))
+    parser.scope_emitter.emit(
+        _make.Loop(loop_var, begin, extent, [], parser.scope_emitter.pop_seq()))
     parser.remove_symbol(loop_var_name)
