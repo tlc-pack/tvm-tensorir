@@ -31,3 +31,29 @@ Example
         return a * b
 
 """
+
+from .. import api as _api
+
+
+def int16(imm):
+    return _api.const(imm.value, "int16")
+
+
+def int32(imm):
+    return _api.const(imm.value, "int32")
+
+
+def int64(imm):
+    return _api.const(imm.value, "int64")
+
+
+def float16(imm):
+    return _api.const(imm.value, "float16")
+
+
+def float32(imm):
+    return _api.const(imm.value, "float32")
+
+
+def float64(imm):
+    return _api.const(imm.value, "float64")
