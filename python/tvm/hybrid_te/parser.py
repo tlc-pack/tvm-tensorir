@@ -15,7 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 """Hybrid Script Parser For TE IR"""
-# pylint: disable=invalid-name, missing-docstring
+# pylint: disable=invalid-name, missing-docstring, inconsistent-return-statements, no-else-return
+# pylint: disable=unnecessary-comprehension, unused-argument
 
 import numbers
 import operator
@@ -80,9 +81,11 @@ class HybridParser(ast.NodeVisitor):
         IterVar = 2
         LoopVar = 3
         List = 4
+        Dict = 5
 
     _symbol_type = {
         list: Symbol.List,
+        dict: Symbol.Dict,
         _schedule.Buffer: Symbol.Buffer
     }
 
@@ -265,7 +268,8 @@ class HybridParser(ast.NodeVisitor):
             # Target = List, Buffer(buffer_bind, buffer_allocate)
             rhs = self.visit(node.value)
             if not isinstance(rhs, (_schedule.Buffer, list)):
-                self.report_error("The value of assign ought to be list of TensorRegions or Buffer typed")
+                self.report_error(
+                    "The value of assign ought to be list of TensorRegions or Buffer typed")
             self.update_symbol(target.id, HybridParser._symbol_type[type(rhs)], rhs)
             # special judge buffer_bind
             if isinstance(node.value, ast.Call) and node.value.func.id == "buffer_bind":
@@ -277,7 +281,8 @@ class HybridParser(ast.NodeVisitor):
             value = _api.convert(rhs)
             self.scope_emitter.emit(_make.BufferStore(buffer, value, buffer_indexes))
         else:
-            self.report_error("The target of Assign ought to be a name variable or a Buffer element")
+            self.report_error(
+                "The target of Assign ought to be a name variable or a Buffer element")
 
     def visit_For(self, node):
         """ For visitor
@@ -297,14 +302,16 @@ class HybridParser(ast.NodeVisitor):
         # collect arguments
         args = [self.visit(arg) for arg in node.iter.args]
         kw_args = [self.visit(keyword) for keyword in node.iter.keywords]
-        kw_args = {kw_arg[0]:  kw_arg[1] for kw_arg in kw_args}
+        kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
         # All the functions supported in For stmt are registered in scope_handler.ForScope
         if func_name not in Registry.for_scope.keys():
-            self.report_error("Function " + func_name + " used in For stmt is not supported now", self.current_lineno,
+            self.report_error("Function " + func_name + " used in For stmt is not supported now",
+                              self.current_lineno,
                               node.iter.col_offset)
 
         old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
-        self.current_lineno, self.current_col_offset = self.func_lineno + node.iter.lineno - 1, node.iter.col_offset
+        self.current_lineno, self.current_col_offset = \
+            self.func_lineno + node.iter.lineno - 1, node.iter.col_offset
         Registry.for_scope.get(func_name)(self, node, args, kw_args)
         self.current_lineno, self.current_col_offset = old_lineno, old_col_offset
 
@@ -330,17 +337,20 @@ class HybridParser(ast.NodeVisitor):
             bv_j = ib.iter_var(tvm.make.range_by_min_extent(0, 128), name="vj")
             vi = bv_i.var
             vj = bv_j.var
-            with ib.block([bv_i, bv_j], [i, j], reads = A[vi:vi+1, vj:vj+1], write = B[vi:vi+1, vj:vj+1])
+            with ib.block([bv_i, bv_j], [i, j], reads = A[vi:vi+1, vj:vj+1], \
+            write = B[vi:vi+1, vj:vj+1])
 
-        The IterVar variable bv_i and bv_j are only used once, so I planned to give a sugar here and the user can
-        simply write in one line code like
+        The IterVar variable bv_i and bv_j are only used once, so I planned to give a sugar here and
+        the user can simply write in one line code like
 
         .. code-block:: python
 
-            with block([vi(0, 128), vj(0, 128)], [i, j], reads = A[vi:vi+1, vj:vj+1], write = B[vi:vi+1, vj:vj+1])
+            with block({vi(0, 128): i, vj(0, 128): j}, reads = A[vi:vi+1, vj:vj+1], \
+            write = B[vi:vi+1, vj:vj+1])
 
-        The problem it brings is that vi, vj will be parsed as Call here, so when parsing the Call which is
-        actually to defining a block var, we leave it to a intrinsic function block_vars() to handle them.
+        The problem it brings is that vi, vj will be parsed as Call here, so when parsing the Call
+        which is actually to defining a block var, we leave it to a intrinsic function block_vars()
+        to handle them.
         """
 
         if not len(node.items) == 1:
@@ -358,11 +368,12 @@ class HybridParser(ast.NodeVisitor):
                 block_vars_arg = func_call.args[0]
             else:
                 for keyword in func_call.keywords:
-                    if keyword.arg == 'block_vars':
+                    if keyword.arg == 'block_vars_info':
                         block_vars_arg = keyword.value
 
             if block_vars_arg is None:
-                self.report_error("block() misses argument block_vars", lineno=self.current_lineno,
+                self.report_error("block() misses argument block_vars_info",
+                                  lineno=self.current_lineno,
                                   col_offset=block_vars_arg.col_offset)
 
             self._is_block_vars = True
@@ -370,7 +381,8 @@ class HybridParser(ast.NodeVisitor):
             self._is_block_vars = False
             # collect arguments
             args = [block_vars] + [self.visit(arg) for arg in func_call.args[1:]]
-            kw_args = [self.visit(keyword) for keyword in func_call.keywords if not keyword.arg == "block_vars"]
+            kw_args = [self.visit(keyword) for keyword in func_call.keywords if
+                       not keyword.arg == "block_vars_info"]
             kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
         elif func_name in Registry.with_scope.keys():
             # reserved for future use
@@ -383,7 +395,8 @@ class HybridParser(ast.NodeVisitor):
 
         # All the functions supported in With stmt are registered in scope_handler.WithScope
         old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
-        self.current_lineno, self.current_col_offset = self.func_lineno + func_call.lineno - 1, func_call.col_offset
+        self.current_lineno, self.current_col_offset = \
+            self.func_lineno + func_call.lineno - 1, func_call.col_offset
         Registry.with_scope.get(func_name)(self, node, args, kw_args)
         self.current_lineno, self.current_col_offset = old_lineno, old_col_offset
 
@@ -404,7 +417,7 @@ class HybridParser(ast.NodeVisitor):
         # collect arguments
         args = [self.visit(arg) for arg in node.args]
         kw_args = [self.visit(keyword) for keyword in node.keywords]
-        kw_args = {kw_arg[0]:  kw_arg[1] for kw_arg in kw_args}
+        kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
 
         if self._is_block_vars:
             # special judge block_var sugar
@@ -458,7 +471,7 @@ class HybridParser(ast.NodeVisitor):
             self.report_error("Only buffer variable can be subscriptable")
         if node.value.id not in self.symbols:
             self.report_error(node.value.id + " is not defined")
-        symbol_type, symbol = self.symbols[node.value.id]
+        symbol = self.symbols[node.value.id][1]
 
         if isinstance(node.slice, ast.Index):
             # BufferLoad & BufferStore
@@ -505,8 +518,20 @@ class HybridParser(ast.NodeVisitor):
         name = node.id
         if name not in self.symbols:
             self.report_error("Unknown symbol %s" % name)
-        symbol_type, symbol = self.symbols[name]
+        symbol = self.symbols[name][1]
         return symbol
+
+    def visit_Dict(self, node):
+        """ Dict visitor
+        AST abstract grammar:
+            Dict(expr* keys, expr* values)
+        """
+
+        keys = [self.visit(key) for key in node.keys]
+        values = [self.visit(value) for value in node.values]
+        if self._is_block_vars:
+            return list((key, value) for key, value in zip(keys, values))
+        return {key: value for key, value in zip(keys, values)}
 
     def visit_Tuple(self, node):
         """ Tuple visitor
@@ -584,6 +609,7 @@ def source_to_op(func_lineno, src, *args, **kwargs):
         inject_e = str(e).split('\n')
         msg = inject_e[-1].split(':', maxsplit=1)[1].strip()
         inject_e = inject_e[:-1]
-        inject_e.extend(parser.wrap_line_col(msg, parser.current_lineno, parser.current_col_offset).split('\n'))
+        inject_e.extend(
+            parser.wrap_line_col(msg, parser.current_lineno, parser.current_col_offset).split('\n'))
         inject_e[-1] = "TVM" + inject_e[-1][6:]
         raise TVMError('\n'.join(inject_e))

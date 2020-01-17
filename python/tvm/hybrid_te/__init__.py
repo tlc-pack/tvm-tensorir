@@ -22,6 +22,24 @@ from . import utils, registry, intrin, special_stmt, scope_handler
 from .parser import source_to_op
 from .utils import _pruned_source
 from .._ffi.base import decorate
+from ..api import _init_api
+
+
+def to_python(func):
+    """Transform a TeFunction to python syntax script
+
+    Parameters
+    ----------
+    func : TeFunction
+        The TeFunction to be dumped
+
+    Returns
+    -------
+    script : str
+        The Python script
+    """
+
+    return AsText(func)
 
 
 def register(origin_func):
@@ -40,6 +58,12 @@ def register(origin_func):
 
 def _init_scope():
     """Register primitive functions"""
+    registry.register_intrin(intrin.int16)
+    registry.register_intrin(intrin.int32)
+    registry.register_intrin(intrin.int64)
+    registry.register_intrin(intrin.float16)
+    registry.register_intrin(intrin.float32)
+    registry.register_intrin(intrin.float64)
     registry.register_special_stmt(special_stmt.buffer_bind)
     registry.register_special_stmt(special_stmt.buffer_allocate)
     registry.register_special_stmt(special_stmt.block_vars)
@@ -64,3 +88,6 @@ def script(origin_func):
         return source_to_op(func.__code__.co_firstlineno, src, *args, **kwargs)
 
     return decorate(origin_func, wrapped_func)
+
+
+_init_api("tvm.hybrid_te")
