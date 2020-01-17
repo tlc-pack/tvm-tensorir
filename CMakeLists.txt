@@ -134,6 +134,7 @@ file(GLOB_RECURSE COMPILER_SRCS
     src/driver/*.cc
     src/printer/*.cc
     src/api/*.cc
+    src/hybrid_te/*.cc
     )
 
 file(GLOB CODEGEN_SRCS
