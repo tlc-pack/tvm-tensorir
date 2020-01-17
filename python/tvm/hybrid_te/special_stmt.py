@@ -21,6 +21,7 @@ Special Stmt functions are used to provide some primitive functions for specific
 Typically, a special stmt function has return value and accepts parser and
 node as its first 2 arguments.
 """
+# pylint: disable=unused-argument
 
 from .. import api as _api
 from .. import ir_pass as _pass
@@ -43,7 +44,7 @@ def buffer_bind(parser, node, var, shape, dtype="float32", name="buf"):
 
 
 def buffer_allocate(parser, node, shape, dtype="float32", name="buf", scope=""):
-    """ Special function buffer_allocate(var, shape, dtype, name)
+    """ Special function buffer_allocate(var, shape, dtype, name, scope)
 
     Example
     -------
