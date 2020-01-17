@@ -20,6 +20,7 @@
 #include <tvm/te/schedule.h>
 #include <tvm/ir_functor_ext.h>
 #include <tvm/ir_pass.h>
+#include <tvm/attrs.h>
 
 namespace tvm {
 namespace te {
@@ -42,7 +43,7 @@ class ScheduleCreator : public StmtVisitor {
   template <typename T>
   void VisitSRefStmt(const T* op) {
     StmtSRef sref_node(op, parent_scope_);
-    auto tmp = sref_node.operator->();
+    auto tmp = sref_node.get();
 
     std::swap(parent_scope_, tmp);
     StmtVisitor::VisitStmt_(op);
@@ -253,7 +254,7 @@ class SRefCreator : public StmtVisitor {
       // in the AST and reuse those StmtSRef when node is in the AST.
       StmtSRef ref = StmtSRef(stmt_ptr, parent_);
       (*stmt2ref_)[stmt_ptr] = ref;
-      auto current = ref.operator->();
+      auto current = ref.get();
       std::swap(current, parent_);
       VisitStmt(op->body);
       std::swap(current, parent_);
@@ -279,7 +280,7 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
   int curr_step = 0;
   int num_copy_steps = -1;
 
-  for (StmtSRefNode* ptr = ref.operator->(); ptr != nullptr;
+  for (StmtSRefNode* ptr = ref.get(); ptr != nullptr;
        ptr = ptr->parent, ++curr_step) {
     if (!ptr->node->unique()) {
       num_copy_steps = curr_step;
@@ -289,7 +290,7 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
 
   // Update the function body
   curr_step = 0;
-  for (StmtSRefNode* ptr = ref.operator->(); ptr != self->root.get();
+  for (StmtSRefNode* ptr = ref.get(); ptr != self->root.get();
        ptr = ptr->parent, ++curr_step) {
     StmtSRefNode* parent = ptr->parent;
     // parent_step = current_step + 1
@@ -405,7 +406,7 @@ Array<Stmt> Schedule::GetChildren(const Stmt& stmt) {
   }
 }
 
-Array<StmtSRef> Schedule::GetAxes(StmtSRef block) const {
+Array<StmtSRef> Schedule::GetLoopsInScope(const StmtSRef& block) const {
   Array<StmtSRef> ret;
   StmtSRef sref = GetRef<StmtSRef>(block->parent);
   while (!GetRef<Stmt>(sref->node).as<BlockNode>()) {
@@ -417,16 +418,17 @@ Array<StmtSRef> Schedule::GetAxes(StmtSRef block) const {
   return Array<StmtSRef>(ret.rbegin(), ret.rend());
 }
 
-StmtSRef Schedule::fuse(StmtSRef outer, StmtSRef inner) {
-  // Can only fuse neighbor axes without any extra branches.
+StmtSRef Schedule::fuse(const StmtSRef& outer, const StmtSRef& inner) {
+  // Can only fuse neighbor loop without any extra branches.
   // Future enhancement: this condition can be eliminated by lifting all siblings of inner
   // as the children of the father of outer
   const auto* outer_loop = GetRef<Stmt>(outer->node).as<LoopNode>();
   const auto* inner_loop = GetRef<Stmt>(inner->node).as<LoopNode>();
+  CHECK(outer_loop != nullptr && inner_loop != nullptr);
 
-  CHECK(inner->parent == outer.operator->());
+  CHECK(inner->parent == outer.get());
   auto outer_children = GetChildren(GetRef<Stmt>(outer_loop));
-  CHECK(outer_children.size() == 1 && outer_children[0].operator->() == inner_loop);
+  CHECK(outer_children.size() == 1 && outer_children[0].get() == inner_loop);
   // Check both loops are in the same scope
   CHECK_EQ(GetScope(outer), GetScope(inner));
 
@@ -443,17 +445,17 @@ StmtSRef Schedule::fuse(StmtSRef outer, StmtSRef inner) {
 
   auto vmap = [&](const Variable* v) -> Expr {
     if (GetRef<Var>(v).same_as(outer_loop->loop_var)) {
-      return truncdiv(fused_var, inner_loop->extent) + outer_loop->min;
+      return floordiv(fused_var, inner_loop->extent) + outer_loop->min;
     } else if (GetRef<Var>(v).same_as(inner_loop->loop_var)) {
-      return truncmod(fused_var, inner_loop->extent) + inner_loop->min;
+      return floormod(fused_var, inner_loop->extent) + inner_loop->min;
     } else {
-      return Expr(ObjectPtr<Object>(nullptr));
+      return NullValue<Expr>();
     }
   };
 
   Loop fused_node = Loop(
       fused_var, min, extent, outer_loop->annotations,
-      Substitute(inner_loop->body, vmap));
+      SubstituteInScope(inner_loop->body, vmap));
 
   // relink
   Replace(outer, fused_node);
@@ -461,9 +463,9 @@ StmtSRef Schedule::fuse(StmtSRef outer, StmtSRef inner) {
   return operator->()->stmt2ref[fused_node.operator->()];
 }
 
-class PredicateAdder : public StmtMutator {
+class PredicateUpdater : public StmtMutator {
  public:
-  explicit PredicateAdder(const Expr& predicate) : predicate_(predicate) {}
+  explicit PredicateUpdater(Expr predicate) : predicate_(std::move(predicate)) {}
 
   Stmt VisitStmt_(const BlockNode* op) final {
     auto n = CopyOnWrite(op);
@@ -474,13 +476,13 @@ class PredicateAdder : public StmtMutator {
   Expr predicate_;
 };
 
-Array<StmtSRef> Schedule::split(StmtSRef node, Expr factor) {
+Array<StmtSRef> Schedule::split(const StmtSRef& node, const Expr& factor) {
   const auto* loop = GetRef<Stmt>(node->node).as<LoopNode>();
   Var outer_var = loop->loop_var.copy_with_suffix(".outer");
   Var inner_var = loop->loop_var.copy_with_suffix(".inner");
 
   Expr outer_min = loop->min;
-  Expr outer_extent = (loop->extent + factor - 1) / factor;
+  Expr outer_extent = floordiv(loop->extent + factor - 1, factor);
 
   Expr inner_min = 0;
   Expr inner_extent = factor;
@@ -489,7 +491,7 @@ Array<StmtSRef> Schedule::split(StmtSRef node, Expr factor) {
     if (GetRef<Var>(v).same_as(loop->loop_var)) {
       return outer_var * factor + inner_var;
     } else {
-      return Expr(ObjectPtr<Object>(nullptr));
+      return NullValue<Expr>();
     }
   };
 
@@ -497,7 +499,7 @@ Array<StmtSRef> Schedule::split(StmtSRef node, Expr factor) {
   vrange.Set(outer_var, Range::make_by_min_extent(outer_min, outer_extent));
   vrange.Set(inner_var, Range::make_by_min_extent(inner_min, inner_extent));
   Expr predicate = Simplify(outer_var * factor + inner_var < loop->extent, vrange);
-  Stmt new_stmt = PredicateAdder(predicate)(Substitute(loop->body, vmap));
+  Stmt new_stmt = PredicateUpdater(predicate)(SubstituteInScope(loop->body, vmap));
 
   Loop inner_loop(inner_var, inner_min, inner_extent, loop->annotations, new_stmt);
   Loop outer_loop(outer_var, outer_min, outer_extent, loop->annotations, inner_loop);

@@ -66,8 +66,8 @@ TVM_REGISTER_GLOBAL("te.schedule.GetBlocksFromBuffer")
       return schedule.GetBlock(buffer, scope);
     });
 
-TVM_REGISTER_GLOBAL("te.schedule.ScheduleGetAxes")
-.set_body_method(&Schedule::GetAxes);
+TVM_REGISTER_GLOBAL("te.schedule.ScheduleGetLoopsInScope")
+.set_body_method(&Schedule::GetLoopsInScope);
 
 // schedule primitive
 TVM_REGISTER_GLOBAL("te.schedule.ScheduleFuse")
@@ -80,7 +80,7 @@ TVM_REGISTER_GLOBAL("te.schedule.ScheduleSplitByNParts")
 .set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, Expr)>(
     [](Schedule schedule, StmtSRef node, Expr nparts) {
       const auto* loop = GetRef<Stmt>(node->node).as<LoopNode>();
-      return schedule.split(node, truncdiv(loop->extent + nparts - 1, nparts));
+      return schedule.split(node, floordiv(loop->extent + nparts - 1, nparts));
     });
 
 // dependency graph

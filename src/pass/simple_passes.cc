@@ -73,6 +73,28 @@ class IRSubstitue : public StmtExprMutator {
   const std::function<Expr(const Variable*)> fmap_;
 };
 
+class IRSubstitueInScope : public IRSubstitue {
+ public:
+  explicit IRSubstitueInScope(
+      std::function<Expr(const Variable*)> fmap)
+  : IRSubstitue(std::move(fmap)) {}
+
+  Stmt VisitStmt_(const te::BlockNode* op) final {
+    auto fmutate = [this](const Expr& e) { return this->VisitExpr(e); };
+    Array<Expr> v = op->values;
+    v.MutateByApply(fmutate);
+    Expr pred = this->VisitExpr(op->predicate);
+    if (v.same_as(op->values) && pred.same_as(op->predicate)) {
+      return GetRef<Stmt>(op);
+    } else {
+      auto n = CopyOnWrite(op);
+      n->values = std::move(v);
+      n->predicate = std::move(pred);
+      return Stmt(n);
+    }
+  }
+};
+
 Stmt Substitute(const Stmt& stmt, const std::function<Expr(const Variable*)>& value_func) {
   return IRSubstitue(value_func)(stmt);
 }
@@ -123,6 +145,14 @@ Expr Substitute(const Expr& expr, const Map<Var, Expr>& value_map) {
     vmap[kv.first.get()] = kv.second;
   }
   return Substitute(expr, vmap);
+}
+
+Stmt SubstituteInScope(const Stmt& stmt, const std::function<Expr(const Variable*)>& value_func) {
+  return IRSubstitueInScope(value_func)(stmt);
+}
+
+Expr SubstituteInScope(const Expr& expr, const std::function<Expr(const Variable*)>& value_func) {
+  return IRSubstitueInScope(value_func)(expr);
 }
 
 class VarTouchVisitor : public ExprVisitor {

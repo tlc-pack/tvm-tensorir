@@ -92,11 +92,11 @@ class Schedule : public ObjectRef {
   Array<StmtSRef> Blocks(StmtSRef scope) const;
 
   /*!
-   * \brief Get axes of the block
+   * \brief Get loops of the block
    * \param block The query block
-   * \return the axis list
+   * \return the loop sref list
    */
-  Array<StmtSRef> GetAxes(StmtSRef block) const;
+  Array<StmtSRef> GetLoopsInScope(const StmtSRef& block) const;
 
   /*!
    * \brief Get the scope of the schedulable reference
@@ -106,20 +106,20 @@ class Schedule : public ObjectRef {
   StmtSRef GetScope(StmtSRef node) const;
 
   /*!
-   * \brief fuse two consecutive axises of one computation.
+   * \brief fuse two consecutive loops of one computation.
    * \param outer The outer loop
    * \param inner The inner loop
    * \return the fused loop
    * */
-  StmtSRef fuse(StmtSRef outer, StmtSRef inner);
+  StmtSRef fuse(const StmtSRef& outer, const StmtSRef& inner);
 
   /*!
-   * \brief split a specified axis into two axises by factor.
+   * \brief split a specified loop into two loops by factor.
    * \param node The loop to be split
    * \param factor The split factor
    * \return the loops after splitting
    * */
-  Array<StmtSRef> split(StmtSRef node, Expr factor);
+  Array<StmtSRef> split(const StmtSRef& node, const Expr& factor);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
 

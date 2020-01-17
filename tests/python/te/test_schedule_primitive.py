@@ -33,6 +33,12 @@ def test_fuse():
     outer, inner = s.get_axes(C)
     s.fuse(outer, inner)
 
+    assert isinstance(s.func.body, tvm.stmt.TeBlock)
+    assert isinstance(s.func.body.body[0], tvm.stmt.Loop)
+    assert s.func.body.body[0].extent.value == m * n
+    assert isinstance(s.func.body.body[1], tvm.stmt.Loop)
+    assert s.func.body.body[1].extent.value == m * n
+
     util.check_correctness(func, s.func, tensors, tensor_map)
 
 def test_split():
@@ -47,6 +53,22 @@ def test_split():
     s.split(outer, factor=8)
     outer, inner = s.get_axes(C)
     s.split(inner, nparts=10)
+
+    assert isinstance(s.func.body, tvm.stmt.TeBlock)
+    assert isinstance(s.func.body.body[0], tvm.stmt.Loop)
+    assert s.func.body.body[0].extent.value == m // 8
+    assert isinstance(s.func.body.body[0].body, tvm.stmt.Loop)
+    assert s.func.body.body[0].body.extent.value == 8
+    assert isinstance(s.func.body.body[0].body.body.body, tvm.stmt.TeBlock)
+    assert isinstance(s.func.body.body[0].body.body.body.predicate, tvm.expr.UIntImm)
+    assert s.func.body.body[0].body.body.body.predicate.value == 1
+
+    assert isinstance(s.func.body.body[1].body, tvm.stmt.Loop)
+    assert s.func.body.body[1].body.extent.value == 10
+    assert isinstance(s.func.body.body[1].body.body, tvm.stmt.Loop)
+    assert s.func.body.body[1].body.body.extent.value == (n + 9) // 10
+    assert isinstance(s.func.body.body[1].body.body.body, tvm.stmt.TeBlock)
+    assert not isinstance(s.func.body.body[1].body.body.body.predicate, tvm.expr.IntImm)
 
     util.check_correctness(func, s.func, tensors, tensor_map)
 
