@@ -59,6 +59,10 @@ class IRDeepCompare :
     return order_;
   }
 
+  void Bind(const Variable* lhs, const Variable* rhs) {
+    vmap_[lhs] = rhs;
+  }
+
   void VisitExpr(const Expr& n, const Expr& other) override {
     if (order_ != 0) return;
     if (n.same_as(other)) return;
@@ -201,11 +205,15 @@ class IRDeepCompare :
       }
     } else {
       if (CompareArray(op->iter_vars, op->iter_vars,
-                       [this](const ObjectRef& a, const ObjectRef& b) {
-                         return CompareNodeRef(a, b);
+                       [this](const IterVar& a, const IterVar& b) {
+                         return CompareExpr(a->var, b->var) && CompareRange(a->dom, b->dom);
                        }) != 0) return;
     }
     if (CompareExprArray(op->values, rhs->values) != 0) return;
+    if (CompareArray(op->allocations, rhs->allocations,
+                     [this](const Stmt& a, const Stmt& b) {
+                       return CompareStmt(a, b);
+                     }) != 0) return;
     if (CompareArray(op->reads, rhs->reads,
                      [this](const te::TensorRegion& a, const te::TensorRegion& b) {
                        return CompareTensorRegion(a, b);
@@ -214,14 +222,13 @@ class IRDeepCompare :
                      [this](const te::TensorRegion& a, const te::TensorRegion& b) {
                        return CompareTensorRegion(a, b);
                      }) != 0) return;
+    LOG(INFO) << op->predicate;
+    LOG(INFO) << rhs->predicate;
+
     if (CompareExpr(op->predicate, rhs->predicate) != 0) return;
-    if (CompareArray(op->allocations, rhs->allocations,
-                     [this](const Stmt& a, const Stmt& b) {
-                       return CompareStmt(a, b);
-                     }) != 0) return;
     if (CompareArray(op->annotations, rhs->annotations,
-                     [this](const ObjectRef& a, const ObjectRef& b) {
-                       return CompareNodeRef(a, b);
+                     [this](const te::Annotation& a, const te::Annotation& b) {
+                       return CompareAnnotation(a, b);
                      }) != 0) return;
     if (CompareStmt(op->body, rhs->body) != 0) return;
     if (CompareString(op->tag, rhs->tag) != 0) return;
@@ -229,14 +236,18 @@ class IRDeepCompare :
 
   void VisitStmt_(const te::BufferStoreNode* op, const Stmt& other) final {
     const auto* rhs = other.as<te::BufferStoreNode>();
-    if (CompareNodeRef(op->buffer, rhs->buffer) != 0) return;
+    if (CompareExpr(op->buffer->data, rhs->buffer->data) != 0) return;
     if (CompareExprArray(op->indices, rhs->indices) != 0) return;
     if (CompareExpr(op->value, rhs->value) != 0) return;
   }
 
   void VisitStmt_(const te::BufferAllocateNode* op, const Stmt& other) final {
     const auto* rhs = other.as<te::BufferAllocateNode>();
-    if (CompareNodeRef(op->buffer, rhs->buffer) != 0) return;
+    if (tie_def_) {
+      vmap_[op->buffer->data.get()] = rhs->buffer->data.get();
+    } else {
+      if (CompareExpr(op->buffer->data, rhs->buffer->data) != 0) return;
+    }
     if (CompareString(op->scope, rhs->scope) != 0) return;
   }
 
@@ -360,7 +371,7 @@ class IRDeepCompare :
 
   void VisitExpr_(const te::BufferLoadNode* op, const Expr& other) final {
     const auto* rhs = other.as<te::BufferLoadNode>();
-    if (CompareNodeRef(op->buffer, rhs->buffer) != 0) return;
+    if (CompareExpr(op->buffer->data, rhs->buffer->data) != 0) return;
     if (CompareExprArray(op->indices, rhs->indices) != 0) return;
     if (CompareType(op->dtype, rhs->dtype) != 0) return;
   }
@@ -424,12 +435,18 @@ class IRDeepCompare :
     });
   }
 
+  int CompareRange(const Range& lhs, const Range& rhs) {
+    if (order_ != 0) return order_;
+    if (CompareExpr(lhs->min, rhs->min) != 0) return order_;
+    if (CompareExpr(lhs->extent, rhs->extent) != 0) return order_;
+    return order_;
+  }
+
   int CompareRegion(const Region& lhs, const Region& rhs) {
     if (order_ != 0) return order_;
     if (CompareValue(lhs.size(), rhs.size()) != 0) return order_;
     for (size_t i = 0; i < lhs.size(); ++i) {
-      if (CompareExpr(lhs[i]->min, rhs[i]->min) != 0) return order_;
-      if (CompareExpr(lhs[i]->extent, rhs[i]->extent) != 0) return order_;
+      if (CompareRange(lhs[i], rhs[i]) != 0) return order_;
     }
     return order_;
   }
@@ -498,8 +515,15 @@ class IRDeepCompare :
 
   int CompareTensorRegion(const te::TensorRegion& lhs, const te::TensorRegion& rhs) {
     if (order_ != 0) return order_;
-    if (CompareNodeRef(lhs->buffer, rhs->buffer) != 0) return order_;
+    if (CompareExpr(lhs->buffer->data, rhs->buffer->data) != 0) return order_;
     if (CompareRegion(lhs->region, rhs->region) != 0) return order_;
+    return order_;
+  }
+
+  int CompareAnnotation(const te::Annotation& lhs, const te::Annotation& rhs) {
+    if (order_ != 0) return order_;
+    if (CompareString(lhs->attr_key, rhs->attr_key) != 0) return order_;
+    if (CompareExpr(lhs->value, rhs->value) != 0) return order_;
     return order_;
   }
   // The order flag, smaller, -1, bigger: +1, equal: 0
@@ -515,7 +539,16 @@ class IRDeepCompare :
 };
 
 
-
+bool Equal(const te::Function& lhs, const te::Function& rhs) {
+  IRDeepCompare ir_deep_compare;
+  if (lhs->params.size() != rhs->params.size()) return false;
+  for (size_t i = 0; i < lhs->params.size(); ++i) {
+    const auto* lhs_var = lhs->buffer_map[lhs->params[i]]->data.get();
+    const auto* rhs_var = rhs->buffer_map[rhs->params[i]]->data.get();
+    ir_deep_compare.Bind(lhs_var, rhs_var);
+  }
+  return ir_deep_compare.Equal(lhs->body, rhs->body);
+}
 
 bool Equal(const Stmt& lhs, const Stmt& rhs) {
   return IRDeepCompare().Equal(lhs, rhs);

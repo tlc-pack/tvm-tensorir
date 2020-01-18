@@ -18,10 +18,29 @@
 import tvm
 from tvm import te
 import util
+from tvm.ir_pass import Equal
+
+@tvm.hybrid_te.script
+def fused_element_wise(a, c):
+    A = buffer_bind(a, (16, 16), name="A")
+    C = buffer_bind(c, (16, 16), name="C")
+
+    with block({}, A[0: 16, 0: 16], C[0: 16, 0: 16], name="root"):
+        B = buffer_allocate((16, 16), name="B")
+
+        for i in range(0, 256):
+            with block({vi(0, 16) : i // 16, vj(0, 16) : i % 16},
+                    reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1], name="B"):
+                B[vi, vj] = A[vi, vj] * 2
+
+        for j in range(0, 256):
+            with block({vi(0, 16) : j // 16, vj(0, 16) : j % 16},
+                    reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1], name="C"):
+                C[vi, vj] = B[vi, vj] + 1
 
 
 def test_fuse():
-    m, n = 128, 128
+    m, n = 16, 16
     func, tensors, tensor_map, _ = util.element_wise_stmt(m, n)
 
     # schedule
@@ -33,16 +52,39 @@ def test_fuse():
     outer, inner = s.get_axes(C)
     s.fuse(outer, inner)
 
-    assert isinstance(s.func.body, tvm.stmt.TeBlock)
-    assert isinstance(s.func.body.body[0], tvm.stmt.Loop)
-    assert s.func.body.body[0].extent.value == m * n
-    assert isinstance(s.func.body.body[1], tvm.stmt.Loop)
-    assert s.func.body.body[1].extent.value == m * n
+    a = tvm.var("a")
+    c = tvm.var("c")
+    fused_func = fused_element_wise(a, c)
+    assert Equal(fused_func, s.func)
 
-    util.check_correctness(func, s.func, tensors, tensor_map)
+
+@tvm.hybrid_te.script
+def split_element_wise(a, c):
+    A = buffer_bind(a, (16, 16), name="A")
+    C = buffer_bind(c, (16, 16), name="C")
+
+    with block({}, A[0: 16, 0: 16], C[0: 16, 0: 16], name="root"):
+        B = buffer_allocate((16, 16), name="B")
+
+        for io in range(0, 4):
+            for ii in range(0, 4):
+                for j in range(0, 16):
+                    with block({vi(0, 16) : io * 4 + ii, vj(0, 16) : j},
+                            reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1],
+                            name="B"):
+                        B[vi, vj] = A[vi, vj] * 2
+
+        for i in range(0, 16):
+            for jo in range(0, 5):
+                for ji in range(0, 4):
+                    with block({vi(0, 16) : i, vj(0, 16) : jo * 3 + ji},
+                            reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
+                            predicate=jo * 4 + ji < 16, name="C"):
+                        C[vi, vj] = B[vi, vj] + 1
+
 
 def test_split():
-    m, n = 128, 128
+    m, n = 16, 16
     func, tensors, tensor_map, _ = util.element_wise_stmt(m, n)
 
     # schedule
@@ -50,27 +92,16 @@ def test_split():
     B = s.get_block("B")
     C = s.get_block("C")
     outer, inner = s.get_axes(B)
-    s.split(outer, factor=8)
+    s.split(outer, factor=4)
     outer, inner = s.get_axes(C)
-    s.split(inner, nparts=10)
+    s.split(inner, nparts=5)
 
-    assert isinstance(s.func.body, tvm.stmt.TeBlock)
-    assert isinstance(s.func.body.body[0], tvm.stmt.Loop)
-    assert s.func.body.body[0].extent.value == m // 8
-    assert isinstance(s.func.body.body[0].body, tvm.stmt.Loop)
-    assert s.func.body.body[0].body.extent.value == 8
-    assert isinstance(s.func.body.body[0].body.body.body, tvm.stmt.TeBlock)
-    assert isinstance(s.func.body.body[0].body.body.body.predicate, tvm.expr.UIntImm)
-    assert s.func.body.body[0].body.body.body.predicate.value == 1
+    a = tvm.var("a")
+    c = tvm.var("c")
+    # TODO: It will work once Bohan adds support for block predicate
+    # split_func = split_element_wise(a, c)
+    # assert Equal(split_func, s.func)
 
-    assert isinstance(s.func.body.body[1].body, tvm.stmt.Loop)
-    assert s.func.body.body[1].body.extent.value == 10
-    assert isinstance(s.func.body.body[1].body.body, tvm.stmt.Loop)
-    assert s.func.body.body[1].body.body.extent.value == (n + 9) // 10
-    assert isinstance(s.func.body.body[1].body.body.body, tvm.stmt.TeBlock)
-    assert not isinstance(s.func.body.body[1].body.body.body.predicate, tvm.expr.IntImm)
-
-    util.check_correctness(func, s.func, tensors, tensor_map)
 
 if __name__ == "__main__":
     test_fuse()

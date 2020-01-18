@@ -390,6 +390,10 @@ StmtSRef Schedule::GetScope(StmtSRef node) const {
   return StmtSRef();
 }
 
+/*!
+ * \brief Get the direct child Schedulable Stmt (Block and Loop)
+ * \note Nested SeqStmt is not allowed in schedule.
+ */
 Array<Stmt> Schedule::GetChildren(const Stmt& stmt) {
   Stmt body;
   if (const auto* block = stmt.as<BlockNode>()) {
@@ -476,16 +480,17 @@ class PredicateUpdater : public StmtMutator {
   Expr predicate_;
 };
 
-Array<StmtSRef> Schedule::split(const StmtSRef& node, const Expr& factor) {
+Array<StmtSRef> Schedule::split(const StmtSRef& node, const Expr& nparts, const Expr& factor) {
+  LOG(INFO) << factor;
   const auto* loop = GetRef<Stmt>(node->node).as<LoopNode>();
   Var outer_var = loop->loop_var.copy_with_suffix(".outer");
   Var inner_var = loop->loop_var.copy_with_suffix(".inner");
 
-  Expr outer_min = loop->min;
-  Expr outer_extent = floordiv(loop->extent + factor - 1, factor);
+  const Expr& outer_min = loop->min;
+  const Expr& outer_extent = nparts;
 
-  Expr inner_min = 0;
-  Expr inner_extent = factor;
+  const Expr& inner_min = 0;
+  const Expr& inner_extent = factor;
 
   auto vmap = [&](const Variable* v) -> Expr {
     if (GetRef<Var>(v).same_as(loop->loop_var)) {
@@ -495,10 +500,10 @@ Array<StmtSRef> Schedule::split(const StmtSRef& node, const Expr& factor) {
     }
   };
 
-  Map<Var, Range> vrange;
-  vrange.Set(outer_var, Range::make_by_min_extent(outer_min, outer_extent));
-  vrange.Set(inner_var, Range::make_by_min_extent(inner_min, inner_extent));
-  Expr predicate = Simplify(outer_var * factor + inner_var < loop->extent, vrange);
+  arith::Analyzer analyzer;
+  analyzer.Bind(outer_var, Range::make_by_min_extent(outer_min, outer_extent));
+  analyzer.Bind(inner_var, Range::make_by_min_extent(inner_min, inner_extent));
+  Expr predicate = analyzer.Simplify(outer_var * factor + inner_var < loop->extent);
   Stmt new_stmt = PredicateUpdater(predicate)(SubstituteInScope(loop->body, vmap));
 
   Loop inner_loop(inner_var, inner_min, inner_extent, loop->annotations, new_stmt);

@@ -74,13 +74,17 @@ TVM_REGISTER_GLOBAL("te.schedule.ScheduleFuse")
 .set_body_method(&Schedule::fuse);
 
 TVM_REGISTER_GLOBAL("te.schedule.ScheduleSplitByFactor")
-.set_body_method(& Schedule::split);
+.set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, Expr)>(
+    [](Schedule schedule, StmtSRef node, Expr factor) {
+      const auto* loop = GetRef<Stmt>(node->node).as<LoopNode>();
+      return schedule.split(node, floordiv(loop->extent + factor - 1, factor), factor);
+    });
 
 TVM_REGISTER_GLOBAL("te.schedule.ScheduleSplitByNParts")
 .set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, Expr)>(
     [](Schedule schedule, StmtSRef node, Expr nparts) {
       const auto* loop = GetRef<Stmt>(node->node).as<LoopNode>();
-      return schedule.split(node, floordiv(loop->extent + nparts - 1, nparts));
+      return schedule.split(node, nparts, floordiv(loop->extent + nparts - 1, nparts));
     });
 
 // dependency graph

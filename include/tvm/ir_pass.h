@@ -35,6 +35,7 @@
 #include "buffer.h"
 #include "schedule.h"
 #include "lowered_func.h"
+#include "te/ir.h"
 
 namespace tvm {
 namespace ir {
@@ -88,6 +89,14 @@ TVM_DLL bool Equal(const Expr& lhs, const Expr& rhs);
  * \return The comparison result.
  */
 bool Equal(const Stmt& lhs, const Stmt& rhs);
+
+/*!
+ * \brief Deep compare lhs and rhs
+ * \param lhs The left operand
+ * \param rhs The right operand
+ * \return The comparison result.
+ */
+bool Equal(const te::Function& lhs, const te::Function& rhs);
 
 /*!
  * \brief Deep compare lhs and rhs.

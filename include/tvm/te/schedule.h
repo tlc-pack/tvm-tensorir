@@ -119,7 +119,7 @@ class Schedule : public ObjectRef {
    * \param factor The split factor
    * \return the loops after splitting
    * */
-  Array<StmtSRef> split(const StmtSRef& node, const Expr& factor);
+  Array<StmtSRef> split(const StmtSRef& node, const Expr& nparts, const Expr& factor);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
 
