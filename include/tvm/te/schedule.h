@@ -130,7 +130,21 @@ class Schedule : public ObjectRef {
  private:
   void UpdateSRef(StmtSRefNode* sref, const Stmt& stmt);
 
+  /*!
+   * \brief Get the direct child Schedulable Stmt (Block and Loop)
+   * \param stmt the parent stmt.
+   * \return the list of child stmts
+   */
   static Array<Stmt> GetChildren(const Stmt& stmt);
+
+  /*!
+   * \brief Substitute the var in current block scope specified in key->var to be value.
+   * \param expr The source expression to be substituted
+   * \param value_func The function of new values mapping.
+   * \return The converted expression.
+   */
+  static Stmt SubstituteInScope(const Stmt& stmt,
+                                const std::function<Expr(const Variable*)>& value_func);
 };
 
 }  // namespace te

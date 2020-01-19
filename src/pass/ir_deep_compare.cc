@@ -222,8 +222,6 @@ class IRDeepCompare :
                      [this](const te::TensorRegion& a, const te::TensorRegion& b) {
                        return CompareTensorRegion(a, b);
                      }) != 0) return;
-    LOG(INFO) << op->predicate;
-    LOG(INFO) << rhs->predicate;
 
     if (CompareExpr(op->predicate, rhs->predicate) != 0) return;
     if (CompareArray(op->annotations, rhs->annotations,

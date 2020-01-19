@@ -270,6 +270,45 @@ class SRefCreator : public StmtVisitor {
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> used_border_;
 };
 
+class IRSubstitueInScope : public StmtExprMutator {
+ public:
+  explicit IRSubstitueInScope(
+      std::function<Expr(const Variable*)> fmap)
+      : fmap_(std::move(fmap)) {}
+
+  Expr VisitExpr_(const Variable* op) final {
+    auto it = fmap_(op);
+    if (it.defined()) {
+      return it;
+    } else {
+      return GetRef<Expr>(op);
+    }
+  }
+
+  Stmt VisitStmt_(const te::BlockNode* op) final {
+    auto fmutate = [this](const Expr& e) { return this->VisitExpr(e); };
+    Array<Expr> v = op->values;
+    v.MutateByApply(fmutate);
+    Expr pred = this->VisitExpr(op->predicate);
+    if (v.same_as(op->values) && pred.same_as(op->predicate)) {
+      return GetRef<Stmt>(op);
+    } else {
+      auto n = CopyOnWrite(op);
+      n->values = std::move(v);
+      n->predicate = std::move(pred);
+      return Stmt(n);
+    }
+  }
+
+ private:
+  const std::function<Expr(const Variable*)> fmap_;
+};
+
+Stmt Schedule::SubstituteInScope(const Stmt& stmt,
+                                 const std::function<Expr(const Variable*)>& value_func) {
+  return IRSubstitueInScope(value_func)(stmt);
+}
+
 void Schedule::Replace(StmtSRef ref, Stmt target) {
   ScheduleNode* self = operator->();
   SRefCreator creator(&self->stmt2ref, ref->parent);
@@ -390,10 +429,7 @@ StmtSRef Schedule::GetScope(StmtSRef node) const {
   return StmtSRef();
 }
 
-/*!
- * \brief Get the direct child Schedulable Stmt (Block and Loop)
- * \note Nested SeqStmt is not allowed in schedule.
- */
+/*! \note Nested SeqStmt is not allowed in schedule. */
 Array<Stmt> Schedule::GetChildren(const Stmt& stmt) {
   Stmt body;
   if (const auto* block = stmt.as<BlockNode>()) {
@@ -423,6 +459,11 @@ Array<StmtSRef> Schedule::GetLoopsInScope(const StmtSRef& block) const {
 }
 
 StmtSRef Schedule::fuse(const StmtSRef& outer, const StmtSRef& inner) {
+  // Equivalence
+  // - The total repeat number has not changed for each direct child block.
+  // - The execution order has not changed. (The block executes with the same
+  //   args and the same order with before.)
+
   // Can only fuse neighbor loop without any extra branches.
   // Future enhancement: this condition can be eliminated by lifting all siblings of inner
   // as the children of the father of outer
@@ -462,7 +503,7 @@ StmtSRef Schedule::fuse(const StmtSRef& outer, const StmtSRef& inner) {
       SubstituteInScope(inner_loop->body, vmap));
 
   // relink
-  Replace(outer, fused_node);
+  this->Replace(outer, fused_node);
 
   return operator->()->stmt2ref[fused_node.operator->()];
 }
@@ -481,8 +522,18 @@ class PredicateUpdater : public StmtMutator {
 };
 
 Array<StmtSRef> Schedule::split(const StmtSRef& node, const Expr& nparts, const Expr& factor) {
-  LOG(INFO) << factor;
+  // Equivalence
+  // - The total repeat number has not changed for each direct child block with updating predicate.
+  // - The execution order has not changed. (The block executes with the same
+  //   args and the same order with before.)
+
   const auto* loop = GetRef<Stmt>(node->node).as<LoopNode>();
+
+  // Currently, can not split Loops with annotations
+  if (!loop->annotations.empty()) {
+    LOG(FATAL) << "InvalidSchedule: " << "Cannot split loops that already has annotations";
+  }
+
   Var outer_var = loop->loop_var.copy_with_suffix(".outer");
   Var inner_var = loop->loop_var.copy_with_suffix(".inner");
 
@@ -510,7 +561,7 @@ Array<StmtSRef> Schedule::split(const StmtSRef& node, const Expr& nparts, const 
   Loop outer_loop(outer_var, outer_min, outer_extent, loop->annotations, inner_loop);
 
   // relink
-  Replace(node, outer_loop);
+  this->Replace(node, outer_loop);
 
   StmtSRef inner_sref = operator->()->stmt2ref[inner_loop.as<StmtNode>()];
   StmtSRef outer_sref = operator->()->stmt2ref[outer_loop.as<StmtNode>()];
