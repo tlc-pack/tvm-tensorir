@@ -19,6 +19,8 @@
 
 #include <tvm/te/schedule.h>
 #include <tvm/ir_functor_ext.h>
+#include <tvm/ir_pass.h>
+#include <tvm/attrs.h>
 
 namespace tvm {
 namespace te {
@@ -41,7 +43,7 @@ class ScheduleCreator : public StmtVisitor {
   template <typename T>
   void VisitSRefStmt(const T* op) {
     StmtSRef sref_node(op, parent_scope_);
-    auto tmp = sref_node.operator->();
+    auto tmp = sref_node.get();
 
     std::swap(parent_scope_, tmp);
     StmtVisitor::VisitStmt_(op);
@@ -113,8 +115,6 @@ class SubReplacer : protected StmtMutator {
                   bool allow_copy_on_write) {
     std::swap(allow_copy_on_write, allow_copy_on_write_);
     if (allow_copy_on_write_) {
-      // We have just get a reference of n, so if the original
-      // object is unique, the use_count will be 2
       CHECK(weakref->unique()) << GetRef<Stmt>(weakref);
     }
     Stmt stmt = VisitStmt(GetRef<Stmt>(weakref));
@@ -254,7 +254,7 @@ class SRefCreator : public StmtVisitor {
       // in the AST and reuse those StmtSRef when node is in the AST.
       StmtSRef ref = StmtSRef(stmt_ptr, parent_);
       (*stmt2ref_)[stmt_ptr] = ref;
-      auto current = ref.operator->();
+      auto current = ref.get();
       std::swap(current, parent_);
       VisitStmt(op->body);
       std::swap(current, parent_);
@@ -270,6 +270,45 @@ class SRefCreator : public StmtVisitor {
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> used_border_;
 };
 
+class IRSubstitueInScope : public StmtExprMutator {
+ public:
+  explicit IRSubstitueInScope(
+      std::function<Expr(const Variable*)> fmap)
+      : fmap_(std::move(fmap)) {}
+
+  Expr VisitExpr_(const Variable* op) final {
+    auto it = fmap_(op);
+    if (it.defined()) {
+      return it;
+    } else {
+      return GetRef<Expr>(op);
+    }
+  }
+
+  Stmt VisitStmt_(const te::BlockNode* op) final {
+    auto fmutate = [this](const Expr& e) { return this->VisitExpr(e); };
+    Array<Expr> v = op->values;
+    v.MutateByApply(fmutate);
+    Expr pred = this->VisitExpr(op->predicate);
+    if (v.same_as(op->values) && pred.same_as(op->predicate)) {
+      return GetRef<Stmt>(op);
+    } else {
+      auto n = CopyOnWrite(op);
+      n->values = std::move(v);
+      n->predicate = std::move(pred);
+      return Stmt(n);
+    }
+  }
+
+ private:
+  const std::function<Expr(const Variable*)> fmap_;
+};
+
+Stmt Schedule::SubstituteInScope(const Stmt& stmt,
+                                 const std::function<Expr(const Variable*)>& value_func) {
+  return IRSubstitueInScope(value_func)(stmt);
+}
+
 void Schedule::Replace(StmtSRef ref, Stmt target) {
   ScheduleNode* self = operator->();
   SRefCreator creator(&self->stmt2ref, ref->parent);
@@ -280,7 +319,7 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
   int curr_step = 0;
   int num_copy_steps = -1;
 
-  for (StmtSRefNode* ptr = ref.operator->(); ptr != self->root.get();
+  for (StmtSRefNode* ptr = ref.get(); ptr != nullptr;
        ptr = ptr->parent, ++curr_step) {
     if (!ptr->node->unique()) {
       num_copy_steps = curr_step;
@@ -288,14 +327,18 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
   }
   if (!self->func.unique()) num_copy_steps = curr_step;
 
+  // Update the function body
   curr_step = 0;
-  for (StmtSRefNode* ptr = ref.operator->(); ptr != self->root.get();
+  for (StmtSRefNode* ptr = ref.get(); ptr != self->root.get();
        ptr = ptr->parent, ++curr_step) {
     StmtSRefNode* parent = ptr->parent;
-    bool allow_direct_write = curr_step + 1 > num_copy_steps;
-    Stmt new_stmt = SubReplacer(ptr, target)(parent->node, allow_direct_write);
+    // parent_step = current_step + 1
+    // if parent_step <= num_copy_step, then it implies
+    // that parent is not unique and we need to copy
+    bool parent_is_uniquely_referenced = curr_step + 1 > num_copy_steps;
+    Stmt new_stmt = SubReplacer(ptr, target)(parent->node, parent_is_uniquely_referenced);
     UpdateSRef(ptr, target);
-    if (allow_direct_write) {
+    if (parent_is_uniquely_referenced) {
       CHECK(new_stmt.get() == parent->node);
       // if one node has been direct write, there is no need to
       // update its parent and the function
@@ -309,16 +352,15 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
   self->func = UpdateFuncBody(self->func.operator->(), target);
 }
 
-Schedule Schedule::Create(const Function& func) {
+Schedule Schedule::Create(Function func) {
   std::unordered_map<const StmtNode*, StmtSRef> stmt_map;
   std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> block_scopes;
 
   DependencyAnalyzer dependency_analyzer(&stmt_map, &block_scopes);
   dependency_analyzer(func->body);
-  Function new_func = Function(func->params, func->buffer_map, func->name, func->body);
   CHECK(func->body.as<BlockNode>());
   auto n = make_object<ScheduleNode>();
-  n->func = std::move(new_func);
+  n->func = std::move(func);
   n->stmt2ref = std::move(stmt_map);
   n->root = n->stmt2ref[n->func->body.operator->()];
   n->scopes_ = block_scopes;
@@ -374,6 +416,156 @@ Array<StmtSRef> Schedule::Blocks(StmtSRef scope) const {
     }
   }
   return ret;
+}
+
+StmtSRef Schedule::GetScope(StmtSRef node) const {
+  while (node.defined()) {
+    node = GetRef<StmtSRef>(node->parent);
+    if (GetRef<Stmt>(node->node).as<BlockNode>()) {
+      return node;
+    }
+  }
+  LOG(FATAL) << "Cannot find a father block";
+  return StmtSRef();
+}
+
+/*! \note Nested SeqStmt is not allowed in schedule. */
+Array<Stmt> Schedule::GetChildren(const Stmt& stmt) {
+  Stmt body;
+  if (const auto* block = stmt.as<BlockNode>()) {
+    body = block->body;
+  } else if (const auto* loop = stmt.as<LoopNode>()) {
+    body = loop->body;
+  } else {
+    return Array<Stmt>();
+  }
+  if (const auto* seq = body.as<SeqStmtNode>()) {
+    return seq->seq;
+  } else {
+    return Array<Stmt>{body};
+  }
+}
+
+Array<StmtSRef> Schedule::GetLoopsInScope(const StmtSRef& block) const {
+  Array<StmtSRef> ret;
+  StmtSRef sref = GetRef<StmtSRef>(block->parent);
+  while (!GetRef<Stmt>(sref->node).as<BlockNode>()) {
+    if (GetRef<Stmt>(sref->node).as<LoopNode>()) {
+      ret.push_back(sref);
+    }
+    sref = GetRef<StmtSRef>(sref->parent);
+  }
+  return Array<StmtSRef>(ret.rbegin(), ret.rend());
+}
+
+StmtSRef Schedule::fuse(const StmtSRef& outer, const StmtSRef& inner) {
+  // Equivalence
+  // - The total repeat number has not changed for each direct child block.
+  // - The execution order has not changed. (The block executes with the same
+  //   args and the same order with before.)
+
+  // Can only fuse neighbor loop without any extra branches.
+  // Future enhancement: this condition can be eliminated by lifting all siblings of inner
+  // as the children of the father of outer
+  const auto* outer_loop = GetRef<Stmt>(outer->node).as<LoopNode>();
+  const auto* inner_loop = GetRef<Stmt>(inner->node).as<LoopNode>();
+  CHECK(outer_loop != nullptr && inner_loop != nullptr);
+
+  CHECK(inner->parent == outer.get());
+  auto outer_children = GetChildren(GetRef<Stmt>(outer_loop));
+  CHECK(outer_children.size() == 1 && outer_children[0].get() == inner_loop);
+  // Check both loops are in the same scope
+  CHECK_EQ(GetScope(outer), GetScope(inner));
+
+  // Currently, can not fuse Loops with annotations
+  if (!outer_loop->annotations.empty() || !inner_loop->annotations.empty()) {
+    LOG(FATAL) << "InvalidSchedule: " << "Cannot fuse loops that already has annotations";
+  }
+
+  Expr min = 0;
+  Expr extent = outer_loop->extent * inner_loop->extent;
+
+  Var fused_var = outer_loop->loop_var.copy_with_suffix(
+      "." + inner_loop->loop_var.get()->name_hint + ".fused");
+
+  auto vmap = [&](const Variable* v) -> Expr {
+    if (GetRef<Var>(v).same_as(outer_loop->loop_var)) {
+      return floordiv(fused_var, inner_loop->extent) + outer_loop->min;
+    } else if (GetRef<Var>(v).same_as(inner_loop->loop_var)) {
+      return floormod(fused_var, inner_loop->extent) + inner_loop->min;
+    } else {
+      return NullValue<Expr>();
+    }
+  };
+
+  Loop fused_node = Loop(
+      fused_var, min, extent, outer_loop->annotations,
+      SubstituteInScope(inner_loop->body, vmap));
+
+  // relink
+  this->Replace(outer, fused_node);
+
+  return operator->()->stmt2ref[fused_node.operator->()];
+}
+
+class PredicateUpdater : public StmtMutator {
+ public:
+  explicit PredicateUpdater(Expr predicate) : predicate_(std::move(predicate)) {}
+
+  Stmt VisitStmt_(const BlockNode* op) final {
+    auto n = CopyOnWrite(op);
+    n->predicate = n->predicate && predicate_;
+    return Stmt(n);
+  }
+ private:
+  Expr predicate_;
+};
+
+Array<StmtSRef> Schedule::split(const StmtSRef& node, const Expr& nparts, const Expr& factor) {
+  // Equivalence
+  // - The total repeat number has not changed for each direct child block with updating predicate.
+  // - The execution order has not changed. (The block executes with the same
+  //   args and the same order with before.)
+
+  const auto* loop = GetRef<Stmt>(node->node).as<LoopNode>();
+
+  // Currently, can not split Loops with annotations
+  if (!loop->annotations.empty()) {
+    LOG(FATAL) << "InvalidSchedule: " << "Cannot split loops that already has annotations";
+  }
+
+  Var outer_var = loop->loop_var.copy_with_suffix(".outer");
+  Var inner_var = loop->loop_var.copy_with_suffix(".inner");
+
+  const Expr& outer_min = loop->min;
+  const Expr& outer_extent = nparts;
+
+  const Expr& inner_min = 0;
+  const Expr& inner_extent = factor;
+
+  auto vmap = [&](const Variable* v) -> Expr {
+    if (GetRef<Var>(v).same_as(loop->loop_var)) {
+      return outer_var * factor + inner_var;
+    } else {
+      return NullValue<Expr>();
+    }
+  };
+
+  arith::Analyzer analyzer;
+  analyzer.Bind(outer_var, Range::make_by_min_extent(outer_min, outer_extent));
+  analyzer.Bind(inner_var, Range::make_by_min_extent(inner_min, inner_extent));
+  Expr predicate = analyzer.Simplify(outer_var * factor + inner_var < loop->extent);
+  Stmt new_stmt = PredicateUpdater(predicate)(SubstituteInScope(loop->body, vmap));
+
+  Loop inner_loop(inner_var, inner_min, inner_extent, loop->annotations, new_stmt);
+  Loop outer_loop(outer_var, outer_min, outer_extent, loop->annotations, inner_loop);
+
+  // relink
+  this->Replace(node, outer_loop);
+
+  StmtSRef inner_sref = operator->()->stmt2ref[inner_loop.as<StmtNode>()];
+  StmtSRef outer_sref = operator->()->stmt2ref[outer_loop.as<StmtNode>()];
+  return Array<StmtSRef>{outer_sref, inner_sref};
 }
 
 StmtSRef::StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index) {

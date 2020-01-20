@@ -327,6 +327,10 @@ class Stage(Object):
         parent : Stage
             The parent stage
         """
+        axes = ScheduleGetLoopsInScope(self, block)
+        if len(axes) == 1:
+            axes = axes[0]
+        return axes
         _ffi_api.StageComputeRoot(self)
 
     def reorder(self, *args):
