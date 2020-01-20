@@ -50,8 +50,17 @@ class StmtSRef : public ObjectRef {
   StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index = -1);
 
   StmtSRefNode* operator->() {
+    return get();
+  }
+
+  StmtSRefNode* get() {
     return static_cast<StmtSRefNode*>(ObjectRef::get_mutable());
   }
+
+  const StmtSRefNode* get() const {
+    return static_cast<StmtSRefNode*>(ObjectRef::get_mutable());
+  }
+
   TVM_DEFINE_OBJECT_REF_METHODS(StmtSRef, ObjectRef, StmtSRefNode);
 };
 
