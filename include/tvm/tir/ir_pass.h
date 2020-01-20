@@ -92,6 +92,14 @@ TVM_DLL bool Equal(const PrimExpr& lhs, const PrimExpr& rhs);
 bool Equal(const Stmt& lhs, const Stmt& rhs);
 
 /*!
+ * \brief Deep compare lhs and rhs
+ * \param lhs The left operand
+ * \param rhs The right operand
+ * \return The comparison result.
+ */
+bool Equal(const te::Function& lhs, const te::Function& rhs);
+
+/*!
  * \brief Deep compare lhs and rhs.
  *
  *  If you only want equality comparison, use Equal

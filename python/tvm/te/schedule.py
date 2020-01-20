@@ -80,7 +80,7 @@ class Schedule(NodeBase):
         axes: List of StmtSRef or StmtSRef
             The axes of the block
         """
-        axes = ScheduleGetAxes(self, block)
+        axes = ScheduleGetLoopsInScope(self, block)
         if len(axes) == 1:
             axes = axes[0]
         return axes
