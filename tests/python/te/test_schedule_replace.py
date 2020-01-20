@@ -140,7 +140,7 @@ def test_replace_root_write():
     assert Equal(s.func.body, target)
 
 
-def test_replace_root_copy():
+def test_replace_root_copy0():
     s, target = replace_ir_builder()
 
     old_hash = s.func.__hash__()
@@ -155,6 +155,21 @@ def test_replace_root_copy():
     assert not Equal(func_ref.body, target)
 
 
+def test_replace_root_copy1():
+    s, target = replace_ir_builder()
+
+    old_hash = s.func.body.__hash__()
+    func_ref = s.func.body
+    sref = s.get_sref(s.func.body.body[0])
+    s.replace(sref, target)
+    # Check the new body equals to target
+    assert old_hash != s.func.body.__hash__()
+    assert Equal(s.func.body.body[0], target)
+    # Check the original func remains unchanged
+    assert old_hash == func_ref.__hash__()
+    assert not Equal(func_ref.body, target)
+
+
 if __name__ == "__main__":
     test_replace_direct_write0()
     test_replace_direct_write1()
@@ -162,4 +177,5 @@ if __name__ == "__main__":
     test_replace_partial_copy0()
     test_replace_partial_copy1()
     test_replace_root_write()
-    test_replace_root_copy()
+    test_replace_root_copy0()
+    test_replace_root_copy1()
