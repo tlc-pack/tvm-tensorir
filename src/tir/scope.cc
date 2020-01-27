@@ -17,10 +17,10 @@
  * under the License.
  */
 
-#include <tvm/te/scope.h>
+#include <tvm/tir/scope.h>
 
 namespace tvm {
-namespace te {
+namespace tir {
 
 void Scope::AddEdge(const StmtSRef& from, const StmtSRef& to) {
   if (!from.same_as(to)) {
@@ -50,5 +50,5 @@ Array<StmtSRef> Scope::GetPredecessors(const StmtSRef& block) const {
 
 TVM_REGISTER_NODE_TYPE(ScopeNode);
 
-}  // namespace te
+}  // namespace tir
 }  // namespace tvm

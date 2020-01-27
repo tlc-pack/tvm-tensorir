@@ -17,21 +17,19 @@
  * under the License.
  */
 /*!
- * \file hybrid_te/printer.cc
+ * \file hybrid_tir/printer.cc
  * \brief Printer class to print Te IR to python syntax script
  */
 
-#include <tvm/te/ir.h>
+#include <tvm/tir/ir.h>
 #include <tvm/runtime/registry.h>
-#include <tvm/ir.h>
-#include <tvm/ir_pass.h>
-#include <tvm/ir_functor_ext.h>
+#include <tvm/tir/stmt_functor.h>
+#include <tvm/tir/ir_pass.h>
 #include <tvm/node/serialization.h>
 
 
 namespace tvm {
-namespace te {
-using namespace ir;
+namespace tir {
 
 class TextMetaDataContext {
  public:
@@ -88,45 +86,44 @@ class TePrinter :
   /*! \brief meta data context */
   TextMetaDataContext meta_;
 
-  void VisitExpr_(const Variable* op) override;
-  void VisitExpr_(const Add* op) override;
-  void VisitExpr_(const Sub* op) override;
-  void VisitExpr_(const Mul* op) override;
-  void VisitExpr_(const Div* op) override;
-  void VisitExpr_(const Mod* op) override;
-  void VisitExpr_(const FloorDiv* op) override;
-  void VisitExpr_(const FloorMod* op) override;
-  void VisitExpr_(const Min* op) override;
-  void VisitExpr_(const Max* op) override;
-  void VisitExpr_(const EQ* op) override;
-  void VisitExpr_(const NE* op) override;
-  void VisitExpr_(const LT* op) override;
-  void VisitExpr_(const LE* op) override;
-  void VisitExpr_(const GT* op) override;
-  void VisitExpr_(const GE* op) override;
-  void VisitExpr_(const And* op) override;
-  void VisitExpr_(const Or* op) override;
-  void VisitExpr_(const IntImm* op) override;
-  void VisitExpr_(const UIntImm* op) override;
-  void VisitExpr_(const FloatImm* op) override;
-  void VisitExpr_(const StringImm* op) override;
-  void VisitExpr_(const te::BufferLoadNode* op) override;
+  void VisitExpr_(const VarNode* op) override;
+  void VisitExpr_(const AddNode* op) override;
+  void VisitExpr_(const SubNode* op) override;
+  void VisitExpr_(const MulNode* op) override;
+  void VisitExpr_(const DivNode* op) override;
+  void VisitExpr_(const ModNode* op) override;
+  void VisitExpr_(const FloorDivNode* op) override;
+  void VisitExpr_(const FloorModNode* op) override;
+  void VisitExpr_(const MinNode* op) override;
+  void VisitExpr_(const MaxNode* op) override;
+  void VisitExpr_(const EQNode* op) override;
+  void VisitExpr_(const NENode* op) override;
+  void VisitExpr_(const LTNode* op) override;
+  void VisitExpr_(const LENode* op) override;
+  void VisitExpr_(const GTNode* op) override;
+  void VisitExpr_(const GENode* op) override;
+  void VisitExpr_(const AndNode* op) override;
+  void VisitExpr_(const OrNode* op) override;
+  void VisitExpr_(const IntImmNode* op) override;
+  void VisitExpr_(const FloatImmNode* op) override;
+  void VisitExpr_(const StringImmNode* op) override;
+  void VisitExpr_(const BufferLoadNode* op) override;
   void VisitExprDefault_(const Object* op) override;
 
   void VisitStmt_(const SeqStmtNode* op) override;
-  void VisitStmt_(const Evaluate* op) override;
-  void VisitStmt_(const te::BlockNode* op) override;
-  void VisitStmt_(const te::LoopNode* op) override;
-  void VisitStmt_(const te::BufferAllocateNode* op) override;
-  void VisitStmt_(const te::BufferStoreNode* op) override;
+  void VisitStmt_(const EvaluateNode* op) override;
+  void VisitStmt_(const BlockNode* op) override;
+  void VisitStmt_(const LoopNode* op) override;
+  void VisitStmt_(const BufferAllocateNode* op) override;
+  void VisitStmt_(const BufferStoreNode* op) override;
   void VisitStmtDefault_(const Object* op) override;
 };
 
 void TePrinter::Print(const ObjectRef& node) {
   if (node.as<StmtNode>()) {
     VisitStmt(Downcast<Stmt>(node));
-  } else if (node.as<ExprNode>()) {
-    VisitExpr(Downcast<Expr>(node));
+  } else if (node.as<PrimExprNode>()) {
+    VisitExpr(Downcast<PrimExpr>(node));
   } else {
     static const FType& f = vtable();
     if (f.can_dispatch(node)) {
@@ -151,7 +148,7 @@ void TePrinter::VisitStmtDefault_(const Object* op) {
   this->stream << this->meta_.GetMetaNode(GetRef<ObjectRef>(op));
 }
 
-void TePrinter::VisitExpr_(const Variable* op) {
+void TePrinter::VisitExpr_(const VarNode* op) {
   this->stream << op->name_hint;
 }
 
@@ -164,21 +161,21 @@ void TePrinter::VisitExpr_(const Variable* op) {
     this->stream << ')';                                                             \
   }                                                                                  \
 
-TVM_DECLARE_TEPRINTER_BINOP(Add, " + ")
-TVM_DECLARE_TEPRINTER_BINOP(Sub, " - ")
-TVM_DECLARE_TEPRINTER_BINOP(Mul, "*")
-TVM_DECLARE_TEPRINTER_BINOP(Div, " / ")
-TVM_DECLARE_TEPRINTER_BINOP(Mod, " % ")
-TVM_DECLARE_TEPRINTER_BINOP(EQ, " == ")
-TVM_DECLARE_TEPRINTER_BINOP(NE, " != ")
-TVM_DECLARE_TEPRINTER_BINOP(LT, " < ")
-TVM_DECLARE_TEPRINTER_BINOP(LE, " <= ")
-TVM_DECLARE_TEPRINTER_BINOP(GT, " > ")
-TVM_DECLARE_TEPRINTER_BINOP(GE, " >= ")
-TVM_DECLARE_TEPRINTER_BINOP(And, " and ")
-TVM_DECLARE_TEPRINTER_BINOP(Or, " or ")
+TVM_DECLARE_TEPRINTER_BINOP(AddNode, " + ")
+TVM_DECLARE_TEPRINTER_BINOP(SubNode, " - ")
+TVM_DECLARE_TEPRINTER_BINOP(MulNode, "*")
+TVM_DECLARE_TEPRINTER_BINOP(DivNode, " / ")
+TVM_DECLARE_TEPRINTER_BINOP(ModNode, " % ")
+TVM_DECLARE_TEPRINTER_BINOP(EQNode, " == ")
+TVM_DECLARE_TEPRINTER_BINOP(NENode, " != ")
+TVM_DECLARE_TEPRINTER_BINOP(LTNode, " < ")
+TVM_DECLARE_TEPRINTER_BINOP(LENode, " <= ")
+TVM_DECLARE_TEPRINTER_BINOP(GTNode, " > ")
+TVM_DECLARE_TEPRINTER_BINOP(GENode, " >= ")
+TVM_DECLARE_TEPRINTER_BINOP(AndNode, " and ")
+TVM_DECLARE_TEPRINTER_BINOP(OrNode, " or ")
 
-void TePrinter::VisitExpr_(const FloorDiv* op) {
+void TePrinter::VisitExpr_(const FloorDivNode* op) {
   this->stream << "floordiv(";
   this->Print(op->a);
   this->stream<< ", ";
@@ -186,7 +183,7 @@ void TePrinter::VisitExpr_(const FloorDiv* op) {
   this->stream<< ")";
 }
 
-void TePrinter::VisitExpr_(const FloorMod* op) {
+void TePrinter::VisitExpr_(const FloorModNode* op) {
   this->stream << "floormod(";
   this->Print(op->a);
   this->stream<< ", ";
@@ -194,7 +191,7 @@ void TePrinter::VisitExpr_(const FloorMod* op) {
   this->stream<< ")";
 }
 
-void TePrinter::VisitExpr_(const Min* op) {
+void TePrinter::VisitExpr_(const MinNode* op) {
   this->stream << "min(";
   this->Print(op->a);
   this->stream << ", ";
@@ -202,7 +199,7 @@ void TePrinter::VisitExpr_(const Min* op) {
   this->stream << ")";
 }
 
-void TePrinter::VisitExpr_(const Max* op) {
+void TePrinter::VisitExpr_(const MaxNode* op) {
   this->stream << "max(";
   this->Print(op->a);
   this->stream << ", ";
@@ -210,7 +207,7 @@ void TePrinter::VisitExpr_(const Max* op) {
   this->stream << ")";
 }
 
-void TePrinter::VisitExpr_(const IntImm* op) {
+void TePrinter::VisitExpr_(const IntImmNode* op) {
   if (op->dtype.bits() == 32) {
     this->stream << op->value;
   } else {
@@ -218,15 +215,11 @@ void TePrinter::VisitExpr_(const IntImm* op) {
   }
 }
 
-void TePrinter::VisitExpr_(const UIntImm* op) {
+void TePrinter::VisitExpr_(const FloatImmNode* op) {
   this->stream << op->dtype << "(" << op->value << ")";
 }
 
-void TePrinter::VisitExpr_(const FloatImm* op) {
-  this->stream << op->dtype << "(" << op->value << ")";
-}
-
-void TePrinter::VisitExpr_(const StringImm* op) {
+void TePrinter::VisitExpr_(const StringImmNode* op) {
   auto& stream = this->stream;
   stream << '"';
   for (unsigned char c : op->value) {
@@ -259,7 +252,7 @@ void TePrinter::VisitExpr_(const StringImm* op) {
   stream << '"';
 }
 
-void TePrinter::VisitExpr_(const te::BufferLoadNode* op) {
+void TePrinter::VisitExpr_(const BufferLoadNode* op) {
   this->Print(op->buffer->data);
   this->Print(op->indices);
 }
@@ -270,13 +263,13 @@ void TePrinter::VisitStmt_(const SeqStmtNode* op) {
   }
 }
 
-void TePrinter::VisitStmt_(const Evaluate* op) {
+void TePrinter::VisitStmt_(const EvaluateNode* op) {
   this->PrintIndent();
   this->Print(op->value);
   this->stream << "\n";
 }
 
-void TePrinter::VisitStmt_(const te::BlockNode* op) {
+void TePrinter::VisitStmt_(const BlockNode* op) {
   // print block name and block vars
   this->PrintIndent();
   this->stream << "with block({";
@@ -337,7 +330,7 @@ void TePrinter::VisitStmt_(const te::BlockNode* op) {
   this->indent -= 2;
 }
 
-void TePrinter::VisitStmt_(const te::LoopNode* op) {
+void TePrinter::VisitStmt_(const LoopNode* op) {
   // print loop and annotations
   this->PrintIndent();
   this->stream << "for ";
@@ -355,7 +348,7 @@ void TePrinter::VisitStmt_(const te::LoopNode* op) {
   this->indent -= 2;
 }
 
-void TePrinter::VisitStmt_(const te::BufferAllocateNode* op) {
+void TePrinter::VisitStmt_(const BufferAllocateNode* op) {
   this->PrintIndent();
   this->stream << op->buffer->name;
   this->stream << " = buffer_allocate(";
@@ -372,7 +365,7 @@ void TePrinter::VisitStmt_(const te::BufferAllocateNode* op) {
   this->stream << ", \"" << op->scope << "\")\n";
 }
 
-void TePrinter::VisitStmt_(const te::BufferStoreNode* op) {
+void TePrinter::VisitStmt_(const BufferStoreNode* op) {
   this->PrintIndent();
   this->Print(op->buffer->data);
   this->Print(op->indices);
@@ -461,7 +454,7 @@ TePrinter::FType& TePrinter::vtable() {
   return inst;
 }
 
-TVM_REGISTER_GLOBAL("hybrid_te.AsText")
+TVM_REGISTER_GLOBAL("hybrid_tir.AsText")
 .set_body_typed<std::string(Function)>(
   [](Function function) {
       std::ostringstream os;
@@ -469,5 +462,5 @@ TVM_REGISTER_GLOBAL("hybrid_te.AsText")
       return os.str();
   });
 
-}  // namespace te
+}  // namespace tir
 }  // namespace tvm

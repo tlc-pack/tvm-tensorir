@@ -17,13 +17,13 @@
  * under the License.
  */
 
-#include <tvm/te/schedule.h>
-#include <tvm/ir_functor_ext.h>
-#include <tvm/ir_pass.h>
-#include <tvm/attrs.h>
+#include <tvm/tir/schedule.h>
+#include <tvm/tir/stmt_functor.h>
+#include <tvm/ir/attrs.h>
+#include <tvm/arith/analyzer.h>
 
 namespace tvm {
-namespace te {
+namespace tir {
 
 /*! \brief The tool to create schedule */
 class ScheduleCreator : public StmtVisitor {
@@ -31,11 +31,11 @@ class ScheduleCreator : public StmtVisitor {
   explicit ScheduleCreator(std::unordered_map<const StmtNode*, StmtSRef>* stmt_map)
       : stmt_map_(stmt_map) {}
 
-  void VisitStmt_(const te::BlockNode* op) override {
+  void VisitStmt_(const BlockNode* op) override {
     return VisitSRefStmt(op);
   }
 
-  void VisitStmt_(const te::LoopNode* op) override {
+  void VisitStmt_(const LoopNode* op) override {
     return VisitSRefStmt(op);
   }
 
@@ -273,23 +273,23 @@ class SRefCreator : public StmtVisitor {
 class IRSubstitueInScope : public StmtExprMutator {
  public:
   explicit IRSubstitueInScope(
-      std::function<Expr(const Variable*)> fmap)
+      std::function<PrimExpr(const VarNode*)> fmap)
       : fmap_(std::move(fmap)) {}
 
-  Expr VisitExpr_(const Variable* op) final {
+  PrimExpr VisitExpr_(const VarNode* op) final {
     auto it = fmap_(op);
     if (it.defined()) {
       return it;
     } else {
-      return GetRef<Expr>(op);
+      return GetRef<PrimExpr>(op);
     }
   }
 
-  Stmt VisitStmt_(const te::BlockNode* op) final {
-    auto fmutate = [this](const Expr& e) { return this->VisitExpr(e); };
-    Array<Expr> v = op->values;
+  Stmt VisitStmt_(const BlockNode* op) final {
+    auto fmutate = [this](const PrimExpr& e) { return this->VisitExpr(e); };
+    Array<PrimExpr> v = op->values;
     v.MutateByApply(fmutate);
-    Expr pred = this->VisitExpr(op->predicate);
+    PrimExpr pred = this->VisitExpr(op->predicate);
     if (v.same_as(op->values) && pred.same_as(op->predicate)) {
       return GetRef<Stmt>(op);
     } else {
@@ -301,11 +301,11 @@ class IRSubstitueInScope : public StmtExprMutator {
   }
 
  private:
-  const std::function<Expr(const Variable*)> fmap_;
+  const std::function<PrimExpr(const VarNode*)> fmap_;
 };
 
 Stmt Schedule::SubstituteInScope(const Stmt& stmt,
-                                 const std::function<Expr(const Variable*)>& value_func) {
+                                 const std::function<PrimExpr(const VarNode*)>& value_func) {
   return IRSubstitueInScope(value_func)(stmt);
 }
 
@@ -482,19 +482,19 @@ StmtSRef Schedule::fuse(const StmtSRef& outer, const StmtSRef& inner) {
     LOG(FATAL) << "InvalidSchedule: " << "Cannot fuse loops that already has annotations";
   }
 
-  Expr min = 0;
-  Expr extent = outer_loop->extent * inner_loop->extent;
+  PrimExpr min = 0;
+  PrimExpr extent = outer_loop->extent * inner_loop->extent;
 
   Var fused_var = outer_loop->loop_var.copy_with_suffix(
       "." + inner_loop->loop_var.get()->name_hint + ".fused");
 
-  auto vmap = [&](const Variable* v) -> Expr {
+  auto vmap = [&](const VarNode* v) -> PrimExpr {
     if (GetRef<Var>(v).same_as(outer_loop->loop_var)) {
       return floordiv(fused_var, inner_loop->extent) + outer_loop->min;
     } else if (GetRef<Var>(v).same_as(inner_loop->loop_var)) {
       return floormod(fused_var, inner_loop->extent) + inner_loop->min;
     } else {
-      return NullValue<Expr>();
+      return NullValue<PrimExpr>();
     }
   };
 
@@ -510,7 +510,7 @@ StmtSRef Schedule::fuse(const StmtSRef& outer, const StmtSRef& inner) {
 
 class PredicateUpdater : public StmtMutator {
  public:
-  explicit PredicateUpdater(Expr predicate) : predicate_(std::move(predicate)) {}
+  explicit PredicateUpdater(PrimExpr predicate) : predicate_(std::move(predicate)) {}
 
   Stmt VisitStmt_(const BlockNode* op) final {
     auto n = CopyOnWrite(op);
@@ -518,10 +518,12 @@ class PredicateUpdater : public StmtMutator {
     return Stmt(n);
   }
  private:
-  Expr predicate_;
+  PrimExpr predicate_;
 };
 
-Array<StmtSRef> Schedule::split(const StmtSRef& node, const Expr& nparts, const Expr& factor) {
+Array<StmtSRef> Schedule::split(const StmtSRef& node,
+                                const PrimExpr& nparts,
+                                const PrimExpr& factor) {
   // Equivalence
   // - The total repeat number has not changed for each direct child block with updating predicate.
   // - The execution order has not changed. (The block executes with the same
@@ -537,24 +539,24 @@ Array<StmtSRef> Schedule::split(const StmtSRef& node, const Expr& nparts, const 
   Var outer_var = loop->loop_var.copy_with_suffix(".outer");
   Var inner_var = loop->loop_var.copy_with_suffix(".inner");
 
-  const Expr& outer_min = loop->min;
-  const Expr& outer_extent = nparts;
+  const PrimExpr& outer_min = loop->min;
+  const PrimExpr& outer_extent = nparts;
 
-  const Expr& inner_min = 0;
-  const Expr& inner_extent = factor;
+  const PrimExpr& inner_min = 0;
+  const PrimExpr& inner_extent = factor;
 
-  auto vmap = [&](const Variable* v) -> Expr {
+  auto vmap = [&](const VarNode* v) -> PrimExpr {
     if (GetRef<Var>(v).same_as(loop->loop_var)) {
       return outer_var * factor + inner_var;
     } else {
-      return NullValue<Expr>();
+      return NullValue<PrimExpr>();
     }
   };
 
   arith::Analyzer analyzer;
   analyzer.Bind(outer_var, Range::make_by_min_extent(outer_min, outer_extent));
   analyzer.Bind(inner_var, Range::make_by_min_extent(inner_min, inner_extent));
-  Expr predicate = analyzer.Simplify(outer_var * factor + inner_var < loop->extent);
+  PrimExpr predicate = analyzer.Simplify(outer_var * factor + inner_var < loop->extent);
   Stmt new_stmt = PredicateUpdater(predicate)(SubstituteInScope(loop->body, vmap));
 
   Loop inner_loop(inner_var, inner_min, inner_extent, loop->annotations, new_stmt);
@@ -576,8 +578,8 @@ StmtSRef::StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index
   data_ = std::move(n);
 }
 
-TVM_STATIC_IR_FUNCTOR(NodePrinter, vtable)
-.set_dispatch<StmtSRefNode>([](const ObjectRef& node, NodePrinter* p) {
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+.set_dispatch<StmtSRefNode>([](const ObjectRef& node, ReprPrinter* p) {
   const auto* op = static_cast<const StmtSRefNode*>(node.get());
   if (const auto* loop = GetRef<Stmt>(op->node).as<LoopNode>()) {
     p->PrintIndent();
@@ -595,5 +597,5 @@ TVM_STATIC_IR_FUNCTOR(NodePrinter, vtable)
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
 TVM_REGISTER_NODE_TYPE(StmtSRefNode);
 
-}  // namespace te
+}  // namespace tir
 }  // namespace tvm

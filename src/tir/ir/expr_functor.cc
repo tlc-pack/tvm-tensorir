@@ -114,6 +114,10 @@ void ExprVisitor::VisitExpr_(const BroadcastNode* op) {
   this->VisitExpr(op->value);
 }
 
+void ExprVisitor::VisitExpr_(const BufferLoadNode* op) {
+  VisitArray(op->indices, [this](const PrimExpr& e) { this->VisitExpr(e); });
+}
+
 PrimExpr ExprMutator::VisitExpr_(const VarNode* op) {
   return GetRef<PrimExpr>(op);
 }
@@ -297,6 +301,16 @@ PrimExpr ExprMutator::VisitExpr_(const ShuffleNode* op) {
     return GetRef<PrimExpr>(op);
   } else {
     return ShuffleNode::make(vectors, op->indices);
+  }
+}
+
+PrimExpr ExprMutator::VisitExpr_(const BufferLoadNode* op) {
+  auto fmutate = [this](const PrimExpr& e) { return this->VisitExpr(e); };
+  auto indices = MutateArray(op->indices, fmutate);
+  if (op->indices.same_as(indices)) {
+    return GetRef<PrimExpr>(op);
+  } else {
+    return BufferLoad(op->dtype, op->buffer, indices);
   }
 }
 

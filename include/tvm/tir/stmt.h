@@ -1018,7 +1018,7 @@ inline bool IsPragmaKey(const std::string& attr_key) {
 /*!
  * \brief Create a type annotation expression
  * \param dtype The data type
- * \return Expr a expression with dtype.
+ * \return PrimExpr a expression with dtype.
  */
 inline PrimExpr TypeAnnotation(DataType dtype) {
   return tir::CallNode::make(dtype,
