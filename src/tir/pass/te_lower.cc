@@ -20,17 +20,20 @@
 /*!
  * \file te_lower.cc
  */
-#include <tvm/te/ir.h>
-#include <tvm/ir_functor_ext.h>
-#include <tvm/te/transform.h>
+#include <tvm/tir/stmt.h>
+#include <tvm/tir/expr.h>
+#include <tvm/tir/ir.h>
+#include <tvm/te/operation.h>
+#include <tvm/tir/stmt_functor.h>
+#include <tvm/te/tensor.h>
 
 namespace tvm {
-namespace te {
+namespace tir {
 
 // Lower Te expression and statement to current tvm
 class TeLowerMutator : public StmtExprMutator {
  public:
-  explicit TeLowerMutator(Map<Buffer, Tensor> tensor_map) {
+  explicit TeLowerMutator(Map<Buffer, te::Tensor> tensor_map) {
     for (const auto& pair : tensor_map) {
       op_map_[pair.first] = pair.second->op;
     }
@@ -45,9 +48,9 @@ class TeLowerMutator : public StmtExprMutator {
     }
     for (const auto& allocate : op->allocations) {
       const auto& buffer = allocate->buffer;
-      Operation op_ = PlaceholderOpNode::make(buffer->name,
-                                              buffer->shape,
-                                              buffer->dtype);
+      te::Operation op_ = te::PlaceholderOpNode::make(buffer->name,
+                                                      buffer->shape,
+                                                      buffer->dtype);
       op_map_[buffer] = op_;
     }
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
@@ -62,7 +65,7 @@ class TeLowerMutator : public StmtExprMutator {
     if (is_one(op->predicate)) {
       last_stmt = op->body;
     } else {
-      last_stmt = IfThenElse::make(op->predicate, op->body);
+      last_stmt = IfThenElseNode::make(op->predicate, op->body);
     }
     for (const auto& allocate : op->allocations) {
       // TODO(siyuan): enhance realize
@@ -71,12 +74,12 @@ class TeLowerMutator : public StmtExprMutator {
       for (const auto& extent : buffer->shape) {
         region.push_back(Range::make_by_min_extent(0, extent));
       }
-      Stmt realize = Realize::make(op_map_.at(allocate->buffer), 0,
-                                   buffer->dtype, region, const_true(), last_stmt);
-      last_stmt = AttrStmt::make(op_map_.at(allocate->buffer),
-                                 attr::realize_scope,
-                                 allocate->scope,
-                                 realize);
+      Stmt realize = RealizeNode::make(op_map_.at(allocate->buffer), 0,
+                                       buffer->dtype, region, const_true(), last_stmt);
+      last_stmt = AttrStmtNode::make(op_map_.at(allocate->buffer),
+                                     attr::realize_scope,
+                                     allocate->scope,
+                                     realize);
     }
     return last_stmt;
   }
@@ -86,7 +89,7 @@ class TeLowerMutator : public StmtExprMutator {
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     op = stmt.as<LoopNode>();
     CHECK(op != nullptr);
-    return For::make(op->loop_var, op->min, op->extent,
+    return ForNode::make(op->loop_var, op->min, op->extent,
                      ForType::Serial, DeviceAPI::None, op->body);
   }
 
@@ -95,40 +98,40 @@ class TeLowerMutator : public StmtExprMutator {
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     op = stmt.as<BufferStoreNode>();
     CHECK(op != nullptr);
-    Operation operation = op_map_.at(op->buffer);
-    return Provide::make(operation, 0, op->value, op->indices);
+    te::Operation operation = op_map_.at(op->buffer);
+    return te::ProvideNode::make(operation, 0, op->value, op->indices);
   }
 
   // replace black var with expr
-  Expr VisitExpr_(const Variable* op) final {
+  PrimExpr VisitExpr_(const VarNode* op) final {
     auto it = block_var_.find(op);
     if (it != block_var_.end()) {
       return it->second;
     } else {
-      return GetRef<Expr>(op);
+      return GetRef<PrimExpr>(op);
     }
   }
 
   // transform BufferLoad to ir::Call
-  Expr VisitExpr_(const BufferLoadNode* op) final {
-    Expr expr = StmtExprMutator::VisitExpr_(op);
+  PrimExpr VisitExpr_(const BufferLoadNode* op) final {
+    PrimExpr expr = StmtExprMutator::VisitExpr_(op);
     op = expr.as<BufferLoadNode>();
-    Operation operation = op_map_.at(op->buffer);
-    return Call::make(op->dtype, op->buffer->name, op->indices,
-                      Call::CallType::Halide, operation, 0);
+    te::Operation operation = op_map_.at(op->buffer);
+    return CallNode::make(op->dtype, op->buffer->name, op->indices,
+                          CallNode::CallType::Halide, operation, 0);
   }
 
  private:
   // maps the buffer to the corresponding operation
-  std::unordered_map<Buffer, Operation, ObjectHash, ObjectEqual> op_map_;
+  std::unordered_map<Buffer, te::Operation, ObjectHash, ObjectEqual> op_map_;
   // maps the block variable to the binded expression
-  std::unordered_map<const Variable*, Expr> block_var_;
+  std::unordered_map<const VarNode*, PrimExpr> block_var_;
 };
 
-Function TeLower(Function func, Map<Buffer, Tensor> tensor_map) {
+Function TeLower(Function func, Map<Buffer, te::Tensor> tensor_map) {
   Stmt stmt = TeLowerMutator(tensor_map)(func->body);
   return Function(func->params, func->buffer_map, func->name, stmt);
 }
 
-}  // namespace te
+}  // namespace tir
 }  // namespace tvm

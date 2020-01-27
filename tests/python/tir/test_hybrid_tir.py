@@ -18,17 +18,27 @@
 import tvm
 
 
-@tvm.hybrid_te.register
-def add(a, b):
-    return a + b
+@tvm.hybrid_tir.script
+def matmul(a, b, c):
+    A = buffer_bind(a, (16, 16), "float32", name="A")
+    B = buffer_bind(b, (16, 16), "float32", name="B")
+    C = buffer_bind(c, (16, 16), "float32", name="C")
+
+    with block({}, reads=[A[0: 16, 0: 16], B[0: 16, 0: 16]], writes=C[0: 16, 0: 16], name="root"):
+        for i in range(0, 16):
+            for j in range(0, 16):
+                with block({vi(0, 16): i, vj(0, 16): j}, reads=[], writes=C[vi: vi + 1, vj: vj + 1],
+                           name="init"):
+                    C[vi, vj] = float32(0)
+                for k in range(0, 16):
+                    with block({vi(0, 16): i, vj(0, 16): j, vk(0, 16, iter_type="reduce"): k},
+                               reads=[C[vi: vi + 1, vj: vj + 1], A[vi: vi + 1, vk: vk + 1],
+                                      B[vj: vj + 1, vk: vk + 1]],
+                               writes=[C[vi: vi + 1, vj: vj + 1]], name="update"):
+                        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
-@tvm.hybrid_te.register
-def mul(a, b=1):
-    return a * b
-
-
-@tvm.hybrid_te.script
+@tvm.hybrid_tir.script
 def element_wise(a, c):
     A = buffer_bind(a, (16, 16), "float32", name="A")
     C = buffer_bind(c, (16, 16), "float32", name="C")
@@ -51,24 +61,44 @@ def element_wise(a, c):
                     C[vi, vj] = B[vi, vj] + 1
 
 
-def test_element_wise(a, c):
+def test_matmul():
+    a = tvm.var("a")
+    b = tvm.var("b")
+    c = tvm.var("c")
+
+    func = matmul(a, b, c)
+
+    print(func)
+    print(tvm.hybrid_tir.to_python(func))
+
+    assert isinstance(func.body, tvm.stmt.Block)
+    assert isinstance(func.body.body, tvm.stmt.Loop)
+    assert isinstance(func.body.body.body, tvm.stmt.Loop)
+    assert isinstance(func.body.body.body.body, tvm.stmt.SeqStmt)
+    assert isinstance(func.body.body.body.body[0], tvm.stmt.Block)
+    assert isinstance(func.body.body.body.body[1], tvm.stmt.Loop)
+    assert isinstance(func.body.body.body.body[1].body, tvm.stmt.Block)
+
+
+def test_element_wise():
+    a = tvm.var("a")
+    c = tvm.var("c")
     func = element_wise(a, c)
 
     print(func)
+    print(tvm.hybrid_tir.to_python(func))
 
-    assert isinstance(func.body, tvm.stmt.TeBlock)
+    assert isinstance(func.body, tvm.stmt.Block)
     assert isinstance(func.body.body, tvm.stmt.SeqStmt)
     assert isinstance(func.body.body[0], tvm.stmt.Loop)
     assert isinstance(func.body.body[0].body, tvm.stmt.Loop)
-    assert isinstance(func.body.body[0].body.body, tvm.stmt.TeBlock)
+    assert isinstance(func.body.body[0].body.body, tvm.stmt.Block)
 
     assert isinstance(func.body.body[1], tvm.stmt.Loop)
     assert isinstance(func.body.body[1].body, tvm.stmt.Loop)
-    assert isinstance(func.body.body[1].body.body, tvm.stmt.TeBlock)
+    assert isinstance(func.body.body[1].body.body, tvm.stmt.Block)
 
 
 if __name__ == '__main__':
-    a = tvm.var("a")
-    c = tvm.var("c")
-
-    test_element_wise(a, c)
+    test_matmul()
+    test_element_wise()
