@@ -14,7 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Hybrid Programming APIs of TVM Python Package, aimed to support TE IR"""
+"""Hybrid Programming APIs of TVM Python Package, aimed to support TIR"""
 
 from __future__ import absolute_import as _abs
 
@@ -30,8 +30,8 @@ def to_python(func):
 
     Parameters
     ----------
-    func : TeFunction
-        The TeFunction to be dumped
+    func : Function
+        The Function to be dumped
 
     Returns
     -------
@@ -74,7 +74,7 @@ def _init_scope():
 def script(origin_func):
     """Decorate a python function function as hybrid script.
 
-    The hybrid function support parsing to the internal TE IR.
+    The hybrid function support parsing to the internal TIR.
 
     Returns
     -------
@@ -90,4 +90,4 @@ def script(origin_func):
     return decorate(origin_func, wrapped_func)
 
 
-_init_api("tvm.hybrid_te")
+_init_api("tvm.hybrid_tir")

@@ -22,7 +22,7 @@ import util
 
 def test_element_wise():
     m, n = 16, 16
-    func, tensors, tensor_map = util.element_wise_stmt(m, n)
+    func, tensors, tensor_map, _ = util.element_wise_stmt(m, n)
     func = tvm.ir_pass.TeLower(func, tensor_map)
     print(func)
     lower_func = tvm.lower(func, tensors)
@@ -36,7 +36,7 @@ def test_element_wise():
 
 def test_matmul():
     m, n, l = 16, 16, 16
-    func, tensors, tensor_map = util.matmul_stmt(m, n, l)
+    func, tensors, tensor_map, _ = util.matmul_stmt(m, n, l)
     func = tvm.ir_pass.TeLower(func, tensor_map)
     print(func)
     lower_func = tvm.lower(func, tensors)

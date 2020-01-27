@@ -18,12 +18,12 @@
 import tvm
 
 
-@tvm.hybrid_te.script
+@tvm.hybrid_tir.script
 def buffer_bind_missing_args(a):
     A = buffer_bind((16, 16), "float32", name="A")
 
 
-@tvm.hybrid_te.script
+@tvm.hybrid_tir.script
 def range_missing_args(a):
     A = buffer_bind(a, (16, 16), "float32", name="A")
 
@@ -33,7 +33,7 @@ def range_missing_args(a):
                 A[vi, vj] = 0.0
 
 
-@tvm.hybrid_te.script
+@tvm.hybrid_tir.script
 def block_missing_args(a):
     A = buffer_bind(a, (16, 16), "float32", name="A")
 
@@ -43,7 +43,7 @@ def block_missing_args(a):
                 A[vi, vj] = 0.0
 
 
-@tvm.hybrid_te.script
+@tvm.hybrid_tir.script
 def undefined_buffer(a):
     A = buffer_bind(a, (16, 16), "float32", name="A")
 
@@ -53,7 +53,7 @@ def undefined_buffer(a):
                 A[vi, vj] = 0.0
 
 
-@tvm.hybrid_te.script
+@tvm.hybrid_tir.script
 def undefined_block_var(a):
     A = buffer_bind(a, (16, 16), "float32", name="A")
 
@@ -63,13 +63,13 @@ def undefined_block_var(a):
                 A[vi, vk] = 0.0
 
 
-@tvm.hybrid_te.script
+@tvm.hybrid_tir.script
 def unsupported_stmt(a):
     if a > 0:
         print("I love tvm")
 
 
-@tvm.hybrid_te.script
+@tvm.hybrid_tir.script
 def unsupported_function_call(a):
     A = buffer_bind(a, (16, 16), "float32", name="A")
 
@@ -79,7 +79,7 @@ def unsupported_function_call(a):
                 A[vi, vk] = 0.0
 
 
-@tvm.hybrid_te.script
+@tvm.hybrid_tir.script
 def type_check(a):
     A = buffer_bind(a, (16, 16), "float32", name="A")
 

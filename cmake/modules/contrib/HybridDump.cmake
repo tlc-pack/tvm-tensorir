@@ -16,5 +16,7 @@
 # under the License.
 
 message(STATUS "Build with contrib.hybriddump")
-file(GLOB HYBRID_CONTRIB_SRC src/contrib/hybrid/*.cc)
+file(GLOB HYBRID_CONTRIB_SRC
+	src/contrib/hybrid/*.cc
+	src/contrib/hybrid_tir/*.cc)
 list(APPEND COMPILER_SRCS ${HYBRID_CONTRIB_SRC})

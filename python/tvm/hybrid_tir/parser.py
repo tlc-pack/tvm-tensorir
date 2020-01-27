@@ -14,7 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Hybrid Script Parser For TE IR"""
+"""Hybrid Script Parser For TIR"""
 # pylint: disable=invalid-name, missing-docstring, inconsistent-return-statements, no-else-return
 # pylint: disable=unnecessary-comprehension, unused-argument
 
@@ -55,7 +55,7 @@ class HybridParserError(RuntimeError):
 
 
 class HybridParser(ast.NodeVisitor):
-    """Python AST visitor pass which finally lowers it to TE IR
+    """Python AST visitor pass which finally lowers it to TIR
 
     Notes for extension:
     1. To support new types of AST nodes. Add a function visit_xxx().
@@ -248,7 +248,7 @@ class HybridParser(ast.NodeVisitor):
             self.visit(body_element)
         # fetch the body and return a TeFunction
         body = self.scope_emitter.pop_seq()
-        return _make.TeFunction(self.params, self.buffer_map, node.name, body)
+        return _make.Function(self.params, self.buffer_map, node.name, body)
 
     def visit_Assign(self, node):
         """ Assign visitor
@@ -257,7 +257,7 @@ class HybridParser(ast.NodeVisitor):
 
         By now only 2 types of Assign is supported:
             1. Target = List, Buffer(buffer_bind, buffer_allocate)
-            2. Buffer[expr, expr, .. expr] = Expr
+            2. Buffer[expr, expr, .. expr] = PrimExpr
         """
 
         if not len(node.targets) == 1:
@@ -275,7 +275,7 @@ class HybridParser(ast.NodeVisitor):
             if isinstance(node.value, ast.Call) and node.value.func.id == "buffer_bind":
                 self.buffer_map[self.symbols[node.value.args[0].id][1]] = rhs
         elif isinstance(target, ast.Subscript):
-            # Buffer[expr, expr, .. expr] = Expr
+            # Buffer[expr, expr, .. expr] = PrimExpr
             buffer, buffer_indexes = self.visit(target)
             rhs = self.visit(node.value)
             value = _api.convert(rhs)
@@ -503,7 +503,7 @@ class HybridParser(ast.NodeVisitor):
             doms = []
             for dom in slices:
                 extent = dom[1] - dom[0]
-                if isinstance(extent, _expr.Expr):
+                if isinstance(extent, _expr.PrimExpr):
                     extent = _pass.Simplify(dom[1] - dom[0])
                 doms.append(_make.range_by_min_extent(dom[0], extent))
 

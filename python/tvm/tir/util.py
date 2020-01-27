@@ -14,12 +14,12 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Utilities for TE"""
+"""Utilities for TIR"""
 
-from .._ffi.node import register_node
+from .._ffi.object import register_object
 
 
-def register_te_node(type_key=None):
+def register_tir_object(type_key=None):
     """Register a Relay node type.
 
     Parameters
@@ -28,6 +28,6 @@ def register_te_node(type_key=None):
         The type key of the node.
     """
     if not isinstance(type_key, str):
-        return register_node(
-            "te." + type_key.__name__)(type_key)
-    return register_node(type_key)
+        return register_object(
+            "Tir" + type_key.__name__)(type_key)
+    return register_object(type_key)

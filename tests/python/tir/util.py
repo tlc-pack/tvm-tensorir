@@ -98,9 +98,9 @@ def matmul_stmt(m=128, n=128, l=128):
 
 
 def check_correctness(func1, func2, args, tensor_map=None, target='llvm'):
-    if isinstance(func1, tvm.container.TeFunction):
+    if isinstance(func1, tvm.container.Function):
         func1 = tvm.ir_pass.TeLower(func1, tensor_map)
-    if isinstance(func2, tvm.container.TeFunction):
+    if isinstance(func2, tvm.container.Function):
         func2 = tvm.ir_pass.TeLower(func2, tensor_map)
 
     if isinstance(target, tuple) or isinstance(target, list):

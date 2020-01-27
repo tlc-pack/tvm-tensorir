@@ -1200,8 +1200,8 @@ class Any(PrimExpr):
     def __init__(self, span=None):
         self.__init_handle_by_constructor__(_ffi_api.Any, span)
 
-@register_node
-class BufferLoad(Expr):
+@register_object
+class BufferLoad(PrimExpr):
     """BufferLoad node.
 
     Parameters
