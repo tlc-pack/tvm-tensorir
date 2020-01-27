@@ -18,19 +18,20 @@
  */
 
 /*!
- *  \brief Dependency between blocks
+ *  \brief Scope information using in TIR
  */
 
-#ifndef TVM_TE_SCOPE_H_
-#define TVM_TE_SCOPE_H_
+#ifndef TVM_TIR_SCOPE_H_
+#define TVM_TIR_SCOPE_H_
 
-#include <tvm/te/ir.h>
-#include <tvm/te/stmt_sref.h>
+#include <tvm/tir/stmt.h>
+#include <tvm/tir/ir.h>
+#include <tvm/tir/stmt_sref.h>
 #include <vector>
 #include <unordered_map>
 
 namespace tvm {
-namespace te {
+namespace tir {
 
 class StmtSRef;
 
@@ -85,7 +86,7 @@ class Scope : public ObjectRef {
 };
 
 
-}  // namespace te
+}  // namespace tir
 }  // namespace tvm
 
-#endif  // TVM_TE_SCOPE_H_
+#endif  // TVM_TIR_SCOPE_H_

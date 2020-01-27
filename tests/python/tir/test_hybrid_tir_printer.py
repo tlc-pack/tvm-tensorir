@@ -16,10 +16,10 @@
 # under the License.
 
 import tvm
-from tvm.hybrid_te import source_to_op
+from tvm.hybrid_tir import source_to_op
 
 
-@tvm.hybrid_te.script
+@tvm.hybrid_tir.script
 def matmul(a, b, c):
     A = buffer_bind(a, (16, 16), "float32", name="A")
     B = buffer_bind(b, (16, 16), "float32", name="B")
@@ -39,7 +39,7 @@ def matmul(a, b, c):
                         C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
-@tvm.hybrid_te.script
+@tvm.hybrid_tir.script
 def element_wise(a, c):
     A = buffer_bind(a, (16, 16), "float32", name="A")
     C = buffer_bind(c, (16, 16), "float32", name="C")
@@ -62,48 +62,49 @@ def element_wise(a, c):
                     C[vi, vj] = B[vi, vj] + 1
 
 
-def test_matmul(a, b, c):
-    func = matmul(a, b, c)
-
-    print(func)
-    rt_func = source_to_op(0, tvm.hybrid_te.to_python(func), a, b, c)
-    print(rt_func)
-
-    assert str(func) == str(rt_func)
-
-    assert isinstance(func.body, tvm.stmt.TeBlock)
-    assert isinstance(func.body.body, tvm.stmt.Loop)
-    assert isinstance(func.body.body.body, tvm.stmt.Loop)
-    assert isinstance(func.body.body.body.body, tvm.stmt.SeqStmt)
-    assert isinstance(func.body.body.body.body[0], tvm.stmt.TeBlock)
-    assert isinstance(func.body.body.body.body[1], tvm.stmt.Loop)
-    assert isinstance(func.body.body.body.body[1].body, tvm.stmt.TeBlock)
-
-
-def test_element_wise(a, c):
-    func = element_wise(a, c)
-
-    print(func)
-    rt_func = source_to_op(0, tvm.hybrid_te.to_python(func), a, c)
-    print(rt_func)
-
-    assert str(func) == str(rt_func)
-
-    assert isinstance(func.body, tvm.stmt.TeBlock)
-    assert isinstance(func.body.body, tvm.stmt.SeqStmt)
-    assert isinstance(func.body.body[0], tvm.stmt.Loop)
-    assert isinstance(func.body.body[0].body, tvm.stmt.Loop)
-    assert isinstance(func.body.body[0].body.body, tvm.stmt.TeBlock)
-
-    assert isinstance(func.body.body[1], tvm.stmt.Loop)
-    assert isinstance(func.body.body[1].body, tvm.stmt.Loop)
-    assert isinstance(func.body.body[1].body.body, tvm.stmt.TeBlock)
-
-
-if __name__ == '__main__':
+def test_matmul():
     a = tvm.var("a")
     b = tvm.var("b")
     c = tvm.var("c")
+    func = matmul(a, b, c)
 
-    test_matmul(a, b, c)
-    test_element_wise(a, c)
+    print(func)
+    rt_func = source_to_op(0, tvm.hybrid_tir.to_python(func), a, b, c)
+    print(rt_func)
+
+    assert str(func) == str(rt_func)
+
+    assert isinstance(func.body, tvm.stmt.Block)
+    assert isinstance(func.body.body, tvm.stmt.Loop)
+    assert isinstance(func.body.body.body, tvm.stmt.Loop)
+    assert isinstance(func.body.body.body.body, tvm.stmt.SeqStmt)
+    assert isinstance(func.body.body.body.body[0], tvm.stmt.Block)
+    assert isinstance(func.body.body.body.body[1], tvm.stmt.Loop)
+    assert isinstance(func.body.body.body.body[1].body, tvm.stmt.Block)
+
+
+def test_element_wise():
+    a = tvm.var("a")
+    c = tvm.var("c")
+    func = element_wise(a, c)
+
+    print(func)
+    rt_func = source_to_op(0, tvm.hybrid_tir.to_python(func), a, c)
+    print(rt_func)
+
+    assert str(func) == str(rt_func)
+
+    assert isinstance(func.body, tvm.stmt.Block)
+    assert isinstance(func.body.body, tvm.stmt.SeqStmt)
+    assert isinstance(func.body.body[0], tvm.stmt.Loop)
+    assert isinstance(func.body.body[0].body, tvm.stmt.Loop)
+    assert isinstance(func.body.body[0].body.body, tvm.stmt.Block)
+
+    assert isinstance(func.body.body[1], tvm.stmt.Loop)
+    assert isinstance(func.body.body[1].body, tvm.stmt.Loop)
+    assert isinstance(func.body.body[1].body.body, tvm.stmt.Block)
+
+
+if __name__ == '__main__':
+    test_matmul()
+    test_element_wise()

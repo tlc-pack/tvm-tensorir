@@ -16,7 +16,7 @@
 # under the License.
 
 import tvm
-from tvm import te
+from tvm import tir
 from tvm.ir_pass import Equal
 import util
 
@@ -24,10 +24,10 @@ import util
 def replace_ir_builder():
     m, n = 128, 128
     func, tensors, tensor_map, _ = util.element_wise_stmt(m, n)
-    s = te.create_schedule(func)
+    s = tir.create_schedule(func)
 
     # The target stmt
-    target = tvm.make.TeBlock(
+    target = tvm.make.Block(
         [], [], [], [], s.func.body.body[1], 1,
         [], [], 'target')
 
@@ -46,7 +46,7 @@ def test_replace_direct_write0():
     # Check the replaced part is equal to the target
     assert Equal(s.func.body.body[1], target)
     # The target reuse the sref's stmt, so the sref won't be none
-    assert te.get_stmt(sref) is not None
+    assert tir.get_stmt(sref) is not None
 
 
 def test_replace_direct_write1():
@@ -63,7 +63,7 @@ def test_replace_direct_write1():
     # Check the replaced part is equal to the target
     assert Equal(s.func.body.body[1], target)
     # The target reuse the sref's stmt, so the sref won't be none
-    assert te.get_stmt(sref) is not None
+    assert tir.get_stmt(sref) is not None
 
 
 def test_replace_copy():
@@ -82,7 +82,7 @@ def test_replace_copy():
     # Check the replaced part is equal to the target
     assert Equal(s.func.body.body[0], target)
     # The replaced AST node will be deleted, so the ref will be None
-    assert te.get_stmt(sref) is None
+    assert tir.get_stmt(sref) is None
 
 
 def test_replace_partial_copy0():
@@ -104,7 +104,7 @@ def test_replace_partial_copy0():
     # Check the replaced part is equal to the target
     assert Equal(s.func.body.body[0].body, target)
     # The replaced AST node will be deleted, so the ref will be None
-    assert te.get_stmt(sref) is None
+    assert tir.get_stmt(sref) is None
 
 
 def test_replace_partial_copy1():
@@ -126,7 +126,7 @@ def test_replace_partial_copy1():
     # Check the replaced part is equal to the target
     assert Equal(s.func.body.body[0].body.body, target)
     # The replaced AST node will be deleted, so the ref will be None
-    assert te.get_stmt(sref) is None
+    assert tir.get_stmt(sref) is None
 
 
 def test_replace_root_write():
