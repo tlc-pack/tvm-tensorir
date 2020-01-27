@@ -16,13 +16,13 @@
 # under the License.
 
 import tvm
-from tvm import te
+from tvm import tir
 import util
 
 
 def test_element_wise_dependency():
     func, tensors, tensor_map, buffers = util.element_wise_stmt()
-    s = te.create_schedule(func)
+    s = tir.create_schedule(func)
 
     block_B = s.get_block("B")
     block_C = s.get_block("C")
@@ -37,7 +37,7 @@ def test_element_wise_dependency():
 
 def test_matmul_dependency():
     func, tensors, tensor_map, buffers = util.matmul_stmt()
-    s = te.create_schedule(func)
+    s = tir.create_schedule(func)
     buffer_c = buffers[2]
 
     block_C = s.get_block(buffer_c)
