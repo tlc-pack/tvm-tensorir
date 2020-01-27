@@ -16,11 +16,11 @@
 # under the License.
 
 import tvm
-from tvm import te
+from tvm import tir
 import util
 from tvm.ir_pass import Equal
 
-@tvm.hybrid_te.script
+@tvm.hybrid_tir.script
 def fused_element_wise(a, c):
     A = buffer_bind(a, (16, 16), name="A")
     C = buffer_bind(c, (16, 16), name="C")
@@ -44,7 +44,7 @@ def test_fuse():
     func, tensors, tensor_map, _ = util.element_wise_stmt(m, n)
 
     # schedule
-    s = te.create_schedule(func)
+    s = tir.create_schedule(func)
     B = s.get_block("B")
     C = s.get_block("C")
     outer, inner = s.get_axes(B)
@@ -58,7 +58,7 @@ def test_fuse():
     assert Equal(fused_func, s.func)
 
 
-@tvm.hybrid_te.script
+@tvm.hybrid_tir.script
 def split_element_wise(a, c):
     A = buffer_bind(a, (16, 16), name="A")
     C = buffer_bind(c, (16, 16), name="C")
@@ -88,7 +88,7 @@ def test_split():
     func, tensors, tensor_map, _ = util.element_wise_stmt(m, n)
 
     # schedule
-    s = te.create_schedule(func)
+    s = tir.create_schedule(func)
     B = s.get_block("B")
     C = s.get_block("C")
     outer, inner = s.get_axes(B)

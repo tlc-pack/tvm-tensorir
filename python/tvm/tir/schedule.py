@@ -14,15 +14,15 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Schedule nodes and APIs in TE IR"""
-from .. import NodeBase
-from .util import register_te_node
+"""Schedule nodes and APIs in TIR schedule"""
+from .. import Object, register_object
+from .util import register_tir_object
 from ..api import _init_api
 
 
-@register_te_node
-class Schedule(NodeBase):
-    """The schedule node for TE IR"""
+@register_tir_object
+class Schedule(Object):
+    """The schedule node for TIR"""
 
     # Utils
     def blocks(self, scope=None):
@@ -30,13 +30,13 @@ class Schedule(NodeBase):
 
         Returns
         -------
-        blocks : List of TeBlock or TeBlock
+        blocks : List of Block or Block
             The blocks in the schedule
         scope: StmtSRef, optional
             The scope block stmt sref
         """
         blocks = ScheduleBlocks(self, scope)
-        if len(blocks) == 0:
+        if not blocks:
             return None
         elif len(blocks) == 1:
             blocks = blocks[0]
@@ -61,7 +61,7 @@ class Schedule(NodeBase):
             blocks = GetBlocksFromTag(self, arg, scope)
         else:
             blocks = GetBlocksFromBuffer(self, arg, scope)
-        if len(blocks) == 0:
+        if not blocks:
             return None
         elif len(blocks) == 1:
             blocks = blocks[0]
@@ -230,7 +230,7 @@ def create_schedule(func):
 
     Returns
     ------
-    schedule: te.Schedule
+    schedule: tir.Schedule
     """
     return CreateSchedule(func)
 
@@ -248,9 +248,9 @@ def get_stmt(sref):
     return GetStmt(sref)
 
 
-@register_te_node
-class StmtSRef(NodeBase):
-    """The schedulable reference node for TE IR"""
+@register_object
+class StmtSRef(Object):
+    """The schedulable reference node for TIR"""
 
 
-_init_api('tvm.te.schedule')
+_init_api('tvm.tir.schedule')

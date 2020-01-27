@@ -863,8 +863,8 @@ class Let(PrimExpr):
         self.__init_handle_by_constructor__(
             _make.Let, var, value, body)
 
-@register_node
-class BufferLoad(Expr):
+@register_object
+class BufferLoad(PrimExpr):
     """BufferLoad node.
 
     Parameters

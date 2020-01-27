@@ -60,7 +60,7 @@ class IRDeepCompare :
     return order_;
   }
 
-  void Bind(const Variable* lhs, const Variable* rhs) {
+  void Bind(const VarNode* lhs, const VarNode* rhs) {
     vmap_[lhs] = rhs;
   }
 
@@ -197,8 +197,8 @@ class IRDeepCompare :
     CompareExpr(op->value, rhs->value);
   }
 
-  void VisitStmt_(const te::BlockNode* op, const Stmt& other) final {
-    const auto* rhs = other.as<te::BlockNode>();
+  void VisitStmt_(const BlockNode* op, const Stmt& other) final {
+    const auto* rhs = other.as<BlockNode>();
     if (tie_def_) {
       if (CompareValue(op->iter_vars.size(), rhs->iter_vars.size()) != 0) return;
       for (size_t i = 0; i < op->iter_vars.size(); ++i) {
@@ -226,22 +226,22 @@ class IRDeepCompare :
 
     if (CompareExpr(op->predicate, rhs->predicate) != 0) return;
     if (CompareArray(op->annotations, rhs->annotations,
-                     [this](const te::Annotation& a, const te::Annotation& b) {
+                     [this](const Annotation& a, const Annotation& b) {
                        return CompareAnnotation(a, b);
                      }) != 0) return;
     if (CompareStmt(op->body, rhs->body) != 0) return;
     if (CompareString(op->tag, rhs->tag) != 0) return;
   }
 
-  void VisitStmt_(const te::BufferStoreNode* op, const Stmt& other) final {
-    const auto* rhs = other.as<te::BufferStoreNode>();
+  void VisitStmt_(const BufferStoreNode* op, const Stmt& other) final {
+    const auto* rhs = other.as<BufferStoreNode>();
     if (CompareExpr(op->buffer->data, rhs->buffer->data) != 0) return;
     if (CompareExprArray(op->indices, rhs->indices) != 0) return;
     if (CompareExpr(op->value, rhs->value) != 0) return;
   }
 
-  void VisitStmt_(const te::BufferAllocateNode* op, const Stmt& other) final {
-    const auto* rhs = other.as<te::BufferAllocateNode>();
+  void VisitStmt_(const BufferAllocateNode* op, const Stmt& other) final {
+    const auto* rhs = other.as<BufferAllocateNode>();
     if (tie_def_) {
       vmap_[op->buffer->data.get()] = rhs->buffer->data.get();
     } else {
@@ -250,8 +250,8 @@ class IRDeepCompare :
     if (CompareString(op->scope, rhs->scope) != 0) return;
   }
 
-  void VisitStmt_(const te::LoopNode* op, const Stmt& other) final {
-    const auto* rhs = other.as<te::LoopNode>();
+  void VisitStmt_(const LoopNode* op, const Stmt& other) final {
+    const auto* rhs = other.as<LoopNode>();
     if (CompareExpr(op->min, rhs->min) != 0) return;
     if (CompareExpr(op->extent, rhs->extent) != 0) return;
     if (tie_def_) {
@@ -360,12 +360,12 @@ class IRDeepCompare :
 
   void VisitExpr_(const ShuffleNode *op, const PrimExpr& other) final {
     const ShuffleNode* rhs = other.as<ShuffleNode>();
-    if (CompareArray(op->vectors, rhs->vectors) != 0) return;
-    if (CompareArray(op->indices, rhs->indices) != 0) return;
+    if (CompareExprArray(op->vectors, rhs->vectors) != 0) return;
+    if (CompareExprArray(op->indices, rhs->indices) != 0) return;
   }
 
-  void VisitExpr_(const te::BufferLoadNode* op, const Expr& other) final {
-    const auto* rhs = other.as<te::BufferLoadNode>();
+  void VisitExpr_(const BufferLoadNode* op, const PrimExpr& other) final {
+    const auto* rhs = other.as<BufferLoadNode>();
     if (CompareExpr(op->buffer->data, rhs->buffer->data) != 0) return;
     if (CompareExprArray(op->indices, rhs->indices) != 0) return;
     if (CompareType(op->dtype, rhs->dtype) != 0) return;
@@ -424,8 +424,8 @@ class IRDeepCompare :
     return order_;
   }
 
-  int CompareExprArray(const Array<Expr>& lhs, const Array<Expr>& rhs) {
-    return CompareArray(lhs, rhs, [this](const Expr& a, const Expr& b) {
+  int CompareExprArray(const Array<PrimExpr>& lhs, const Array<PrimExpr>& rhs) {
+    return CompareArray(lhs, rhs, [this](const PrimExpr& a, const PrimExpr& b) {
       return CompareExpr(a, b);
     });
   }
@@ -515,7 +515,7 @@ class IRDeepCompare :
     return order_;
   }
 
-  int CompareAnnotation(const te::Annotation& lhs, const te::Annotation& rhs) {
+  int CompareAnnotation(const Annotation& lhs, const Annotation& rhs) {
     if (order_ != 0) return order_;
     if (CompareString(lhs->attr_key, rhs->attr_key) != 0) return order_;
     if (CompareExpr(lhs->value, rhs->value) != 0) return order_;

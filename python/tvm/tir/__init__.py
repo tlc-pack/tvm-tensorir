@@ -14,20 +14,9 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Utilities for TE"""
+# pylint: disable=wildcard-import, redefined-builtin, invalid-name
+"""The TIR namespace containing the IR definition and compiler."""
 
-from .._ffi.node import register_node
+from . import schedule
 
-
-def register_te_node(type_key=None):
-    """Register a Relay node type.
-
-    Parameters
-    ----------
-    type_key : str or cls
-        The type key of the node.
-    """
-    if not isinstance(type_key, str):
-        return register_node(
-            "te." + type_key.__name__)(type_key)
-    return register_node(type_key)
+from .schedule import *

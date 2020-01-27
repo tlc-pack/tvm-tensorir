@@ -55,7 +55,7 @@ bool HasSideEffect(const PrimExpr& e) {
 class IRSubstitue : public StmtExprMutator {
  public:
   explicit IRSubstitue(
-      std::function<PrimExpr(const Variable*)> fmap)
+      std::function<PrimExpr(const VarNode*)> fmap)
       : fmap_(std::move(fmap)) {
   }
 
@@ -69,26 +69,28 @@ class IRSubstitue : public StmtExprMutator {
   }
 
  private:
-  const std::function<Expr(const Variable*)> fmap_;
+  const std::function<PrimExpr(const VarNode*)> fmap_;
 };
 
-Stmt Substitute(const Stmt& stmt, const std::function<Expr(const Variable*)>& value_func) {
+Stmt Substitute(const Stmt& stmt,
+                const std::function<PrimExpr(const VarNode*)>& value_func) {
   return IRSubstitue(value_func)(stmt);
 }
 
-Expr Substitute(const Expr& expr, const std::function<Expr(const Variable*)>& value_func) {
+PrimExpr Substitute(const PrimExpr& expr,
+                    const std::function<PrimExpr(const VarNode*)>& value_func) {
   return IRSubstitue(value_func)(expr);
 }
 
 Stmt Substitute(const Stmt& stmt,
                 const std::unordered_map<const VarNode*, PrimExpr>& value_map) {
   if (value_map.empty()) return stmt;
-  auto fmap = [&](const Variable* v) -> Expr {
+  auto fmap = [&](const VarNode* v) -> PrimExpr {
     auto it = value_map.find(v);
     if (it != value_map.end()) {
       return it->second;
     } else {
-      return Expr();
+      return PrimExpr();
     }
   };
   return IRSubstitue(fmap)(stmt);
@@ -97,12 +99,12 @@ Stmt Substitute(const Stmt& stmt,
 PrimExpr Substitute(PrimExpr expr,
                 const std::unordered_map<const VarNode*, PrimExpr>& value_map) {
   if (value_map.empty()) return expr;
-  auto fmap = [&](const Variable* v) -> Expr {
+  auto fmap = [&](const VarNode* v) -> PrimExpr {
     auto it = value_map.find(v);
     if (it != value_map.end()) {
       return it->second;
     } else {
-      return Expr();
+      return PrimExpr();
     }
   };
   return IRSubstitue(fmap)(expr);

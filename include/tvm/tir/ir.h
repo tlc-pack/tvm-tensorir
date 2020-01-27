@@ -21,25 +21,16 @@
  * \file tvm/include/te/ir.h
  * \brief Additional high level nodes in the TensorIR
  */
-#ifndef TVM_TE_IR_H_
-#define TVM_TE_IR_H_
+#ifndef TVM_TIR_IR_H_
+#define TVM_TIR_IR_H_
 
-#include <tvm/expr.h>
-#include <tvm/ir.h>
-#include <tvm/operation.h>
+#include <tvm/tir/expr.h>
+#include <tvm/tir/stmt.h>
+#include <tvm/tir/buffer.h>
 #include <string>
 
 namespace tvm {
-namespace ir {
-class IRSubstitue;
-}  // namespace ir
-
-namespace te {
-using namespace ir;
-
-// forward declare class.
-class SeqStmt;
-class Schedule;
+namespace tir {
 
 /*!
  * \brief Load value from the high dimension buffer.
@@ -52,12 +43,12 @@ class Schedule;
  * \sa BufferStore
  */
 class BufferLoad;
-class BufferLoadNode : public ExprNode {
+class BufferLoadNode : public PrimExprNode {
  public:
   /*! \brief The buffer variable. */
   Buffer buffer;
   /*! \brief The indices location to be loaded. */
-  Array<Expr> indices;
+  Array<PrimExpr> indices;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("dtype", &(this->dtype));
@@ -66,15 +57,15 @@ class BufferLoadNode : public ExprNode {
   }
 
   static constexpr const char* _type_key = "BufferLoad";
-  TVM_DECLARE_FINAL_OBJECT_INFO(BufferLoadNode, ExprNode);
+  TVM_DECLARE_FINAL_OBJECT_INFO(BufferLoadNode, PrimExprNode);
 };
 
-class BufferLoad : public Expr {
+class BufferLoad : public PrimExpr {
  public:
   explicit BufferLoad(DataType type,
                       Buffer buffer,
-                      Array<Expr> indices);
-  TVM_DEFINE_OBJECT_REF_METHODS(BufferLoad, Expr, BufferLoadNode);
+                      Array<PrimExpr> indices);
+  TVM_DEFINE_OBJECT_REF_METHODS(BufferLoad, PrimExpr, BufferLoadNode);
 };
 
 /*!
@@ -93,9 +84,9 @@ class BufferStoreNode : public StmtNode {
   /*! \brief The buffer variable. */
   Buffer buffer;
   /*! \brief The value to be stored. */
-  Expr value;
+  PrimExpr value;
   /*! \brief The indices location to be stored. */
-  Array<Expr> indices;
+  Array<PrimExpr> indices;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("buffer", &buffer);
@@ -110,8 +101,8 @@ class BufferStoreNode : public StmtNode {
 class BufferStore : public Stmt {
  public:
   explicit BufferStore(Buffer buffer,
-                       Expr value,
-                       Array<Expr> indices);
+                       PrimExpr value,
+                       Array<PrimExpr> indices);
   TVM_DEFINE_OBJECT_REF_METHODS(BufferStore, Stmt, BufferStoreNode);
 };
 
@@ -124,20 +115,20 @@ class AnnotationNode : public Object {
   /*! \brief the type key of the attribute */
   std::string attr_key;
   /*! \brief The attribute value, value is well defined at current scope. */
-  Expr value;
+  PrimExpr value;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("attr_key", &attr_key);
     v->Visit("value", &value);
   }
 
-  static constexpr const char* _type_key = "te.AnnotationNode";
+  static constexpr const char* _type_key = "Annotation";
   TVM_DECLARE_FINAL_OBJECT_INFO(AnnotationNode, Object);
 };
 
 class Annotation : public ObjectRef {
  public:
-  explicit Annotation(std::string attr_key, Expr value);
+  explicit Annotation(std::string attr_key, PrimExpr value);
   TVM_DEFINE_OBJECT_REF_METHODS(Annotation, ObjectRef, AnnotationNode)
 };
 
@@ -159,9 +150,9 @@ class LoopNode : public StmtNode {
   /*! \brief The loop variable. */
   Var loop_var;
   /*! \brief The minimum value of iteration. */
-  Expr min;
+  PrimExpr min;
   /*! \brief The extent of the iteration. */
-  Expr extent;
+  PrimExpr extent;
   /*! \brief Loop annotations. */
   Array<Annotation> annotations;
   /*! \brief The body of the for loop. */
@@ -182,20 +173,12 @@ class LoopNode : public StmtNode {
 class Loop : public Stmt {
  public:
   explicit Loop(Var loop_var,
-                Expr min,
-                Expr extent,
+                PrimExpr min,
+                PrimExpr extent,
                 Array<Annotation> annotations,
                 Stmt body);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Loop, Stmt, LoopNode);
-
- private:
-  friend Schedule;
-  friend ir::IRSubstitue;
-  /*! \brief mutate the node
-   * Node that the mutate can be only used in schedule
-   * and will be replaced later
-   */
 };
 
 /*!
@@ -226,7 +209,7 @@ class TensorRegion : public ObjectRef {
 };
 
 /*!
- * \brief Allocate a new buffer in TE
+ * \brief Allocate a new buffer in TIR
  * \code
  *
  * BufferAllocate(buffer[shape], type)
@@ -277,7 +260,7 @@ class BlockNode : public StmtNode {
   /*! \brief The variables of the block. */
   Array<IterVar> iter_vars;
   /*! \brief The corresponding value of the iter vars. */
-  Array<Expr> values;
+  Array<PrimExpr> values;
   /*! \brief The read tensor region of the block. */
   Array<TensorRegion> reads;
   /*! \brief The write tensor region of the block. */
@@ -285,7 +268,7 @@ class BlockNode : public StmtNode {
   /*! \brief The body of the block. */
   Stmt body;
   /*! \brief The predicates of the block. */
-  Expr predicate;
+  PrimExpr predicate;
   /*! \brief The buffer allocated in the block. */
   Array<BufferAllocate> allocations;
   /*! \brief The annotation of the block. */
@@ -304,35 +287,27 @@ class BlockNode : public StmtNode {
     v->Visit("tag", &tag);
   }
 
-  static constexpr const char* _type_key = "TeBlock";
+  static constexpr const char* _type_key = "Block";
   TVM_DECLARE_FINAL_OBJECT_INFO(BlockNode, StmtNode);
 };
 
 class Block : public Stmt {
  public:
   Block(Array<IterVar> iter_vars,
-        Array<Expr> values,
+        Array<PrimExpr> values,
         Array<TensorRegion> reads,
         Array<TensorRegion> writes,
         Stmt body,
-        Expr predicate,
+        PrimExpr predicate,
         Array<BufferAllocate> allocations,
         Array<Annotation> annotations,
         std::string tag);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Block, Stmt, BlockNode);
-
-  /*! \brief mutate the node
-    * Node that the mutate can be only used in schedule
-    * and will be replaced later
-    */
- private:
-  friend Schedule;
-  friend ir::IRSubstitue;
 };
 
 /*!
- * \brief A function in TE
+ * \brief A function in TIR
  * \code
  *
  *  func func_name(var_0, ..., var_n) {
@@ -361,7 +336,7 @@ class FunctionNode : public Object {
     v->Visit("name", &name);
   }
 
-  static constexpr const char* _type_key = "TeFunction";
+  static constexpr const char* _type_key = "Function";
   TVM_DECLARE_FINAL_OBJECT_INFO(FunctionNode, Object);
 };
 
@@ -377,12 +352,9 @@ class Function : public ObjectRef {
   FunctionNode* operator->() {
     return static_cast<FunctionNode*>(data_.get());
   }
-
- private:
-  friend Schedule;
 };
 
-}  // namespace te
+}  // namespace tir
 }  // namespace tvm
 
-#endif  // TVM_TE_IR_H_
+#endif  // TVM_TIR_IR_H_

@@ -109,9 +109,9 @@ class Range(Object):
     Python lists and tuples will be converted automatically to a Range in API functions.
     """
 
-@register_node
-class TeFunction(NodeBase):
-    """TeFunction node."""
+@register_object
+class Function(Object):
+    """Function node."""
 
 
 @register_object

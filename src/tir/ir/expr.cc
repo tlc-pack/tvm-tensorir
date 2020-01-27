@@ -22,6 +22,7 @@
  */
 #include <tvm/tir/expr.h>
 #include <tvm/tir/stmt.h>
+#include <tvm/tir/ir.h>
 #include <tvm/tir/op.h>
 #include <tvm/tir/ir_pass.h>
 #include <memory>
@@ -339,6 +340,14 @@ PrimExpr AnyNode::make() {
   return PrimExpr(n);
 }
 
+BufferLoad::BufferLoad(DataType type, Buffer buffer, Array<PrimExpr> indices) {
+  ObjectPtr<BufferLoadNode> node = make_object<BufferLoadNode>();
+  node->dtype = type;
+  node->buffer = std::move(buffer);
+  node->indices = std::move(indices);
+  data_ = std::move(node);
+}
+
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 .set_dispatch<StringImmNode>([](const ObjectRef& node, ReprPrinter* p) {
     auto* op = static_cast<const StringImmNode*>(node.get());
@@ -628,6 +637,13 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
               << ")";
   });
 
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+.set_dispatch<BufferLoadNode>([](const ObjectRef& node, ReprPrinter* p) {
+  auto* op = static_cast<const BufferLoadNode*>(node.get());
+  p->Print(op->buffer->data);
+  p->Print(op->indices);
+});
+
 TVM_REGISTER_NODE_TYPE(StringImmNode);
 TVM_REGISTER_NODE_TYPE(CastNode);
 TVM_REGISTER_NODE_TYPE(VarNode);
@@ -658,6 +674,7 @@ TVM_REGISTER_NODE_TYPE(ShuffleNode);
 TVM_REGISTER_NODE_TYPE(CommReducerNode);
 TVM_REGISTER_NODE_TYPE(ReduceNode);
 TVM_REGISTER_NODE_TYPE(AnyNode);
+TVM_REGISTER_NODE_TYPE(BufferLoadNode);
 
 }  // namespace tir
 }  // namespace tvm
