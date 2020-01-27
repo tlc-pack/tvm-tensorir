@@ -22,7 +22,7 @@
  * \brief Collection of IR pass functions
  *
  *  When the pass functions in this file are for Stmt,
- *  we can use PassFunction(Evaluate(expr)) to apply it to Expr
+ *  we can use PassFunction(Evaluate(expr)) to apply it to PrimExpr
  */
 #ifndef TVM_TIR_IR_PASS_H_
 #define TVM_TIR_IR_PASS_H_
@@ -31,6 +31,7 @@
 #include <tvm/tir/expr.h>
 #include <tvm/tir/buffer.h>
 #include <tvm/tir/lowered_func.h>
+#include <tvm/tir/ir.h>
 
 #include <unordered_map>
 #include <unordered_set>
@@ -97,7 +98,7 @@ bool Equal(const Stmt& lhs, const Stmt& rhs);
  * \param rhs The right operand
  * \return The comparison result.
  */
-bool Equal(const te::Function& lhs, const te::Function& rhs);
+bool Equal(const tir::Function& lhs, const tir::Function& rhs);
 
 /*!
  * \brief Deep compare lhs and rhs.
@@ -113,7 +114,7 @@ bool Equal(const te::Function& lhs, const te::Function& rhs);
 int Compare(const PrimExpr& lhs, const PrimExpr& rhs);
 
 /*!
- * \brief verifies whether the IR stmt or Expr is in SSA form.
+ * \brief verifies whether the IR stmt or PrimExpr is in SSA form.
  *  That is: each VarExpr is defined and assigned once(in Let/For)
  *
  * \param ir The root of the IR DAG.
@@ -191,7 +192,8 @@ PrimExpr Substitute(PrimExpr expr, const Map<Var, PrimExpr>& value_map);
  * \param value_func The function of new values mapping.
  * \return The converted expression.
  */
-Expr Substitute(const Expr& expr, const std::function<Expr(const Variable*)>& value_func);
+PrimExpr Substitute(const PrimExpr& expr,
+                    const std::function<PrimExpr(const VarNode*)>& value_func);
 
 /*!
  * \brief Substitute the var specified in key->var to be value.
@@ -199,7 +201,8 @@ Expr Substitute(const Expr& expr, const std::function<Expr(const Variable*)>& va
  * \param value_func The function of new values mapping.
  * \return The converted form.
  */
-Stmt Substitute(const Stmt& stmt, const std::function<Expr(const Variable*)>& value_func);
+Stmt Substitute(const Stmt& stmt,
+                const std::function<PrimExpr(const VarNode*)>& value_func);
 
 /*!
  * \brief inline all calls of f in stmt.
@@ -332,9 +335,9 @@ Stmt InjectDoubleBuffer(Stmt stmt, int split_loop);
  *
  *   Stmt fintrin(Buffer src,
  *                Buffer dst,
- *                Array<Expr> pad_before,
- *                Array<Expr> pad_after,
- *                Expr pad_value)
+ *                Array<PrimExpr> pad_before,
+ *                Array<PrimExpr> pad_after,
+ *                PrimExpr pad_value)
  * \return Transformed stmt.
  */
 Stmt InjectCopyIntrin(Stmt stmt,

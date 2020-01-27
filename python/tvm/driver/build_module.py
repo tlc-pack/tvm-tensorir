@@ -149,7 +149,7 @@ def lower(sch,
     # Phase 0
     if isinstance(sch, schedule.Schedule):
         stmt = form_body(sch)
-    elif isinstance(sch, container.TeFunction):
+    elif isinstance(sch, container.Function):
         stmt = sch.body
 
     for f in lower_phase0:

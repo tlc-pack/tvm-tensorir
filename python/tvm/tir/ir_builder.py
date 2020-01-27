@@ -37,8 +37,8 @@ class WithScope(object):
         self._exit_cb()
 
 
-@register_node
-class TensorRegion(NodeBase):
+@register_object
+class TensorRegion(Object):
     """TensorRegion Node
 
     Parameters
@@ -54,8 +54,8 @@ class TensorRegion(NodeBase):
         self.__init_handle_by_constructor__(_make.TensorRegion(buffer, region))
 
 
-class Buffer(NodeGeneric):
-    """Buffer type used in TE.
+class Buffer(ObjectGeneric):
+    """Buffer type for BufferLoad and BufferStore in TIR.
 
     Do not create it directly, create use IRBuilder.
     """
@@ -65,7 +65,7 @@ class Buffer(NodeGeneric):
         self._buffer = buffer
         self._content_type = content_type
 
-    def asnode(self):
+    def asobject(self):
         return self._buffer
 
     @property
@@ -81,7 +81,7 @@ class Buffer(NodeGeneric):
                 assert isinstance(x, slice)
                 assert x.step == 1 or x.step is None
                 extent = x.stop - x.start
-                if isinstance(extent, _expr.Expr):
+                if isinstance(extent, _expr.PrimExpr):
                     extent = _pass.Simplify(x.stop - x.start)
                 doms.append(_make.range_by_min_extent(
                     x.start, extent))
@@ -94,7 +94,7 @@ class Buffer(NodeGeneric):
             raise ValueError(
                 "data type does not match content type %s vs %s" % (
                     value.dtype, self._content_type))
-        if isinstance(index, _expr.Expr):
+        if isinstance(index, _expr.PrimExpr):
             index = [index]
         self._builder.emit(_make.BufferStore(self._buffer, value, index))
 
@@ -213,7 +213,7 @@ class IRBuilder(object):
         node : Node
             The attribute node to annottate on.
 
-        value : Expr
+        value : PrimExpr
             Attribute value.
 
         Examples
@@ -237,10 +237,10 @@ class IRBuilder(object):
 
         Parameters
         ----------
-        begin : Expr
+        begin : PrimExpr
             The min iteration scope.
 
-        end : Expr
+        end : PrimExpr
             The end iteration scope
 
         name : str, optional
@@ -293,7 +293,7 @@ class IRBuilder(object):
 
         Parameters
         ----------
-        cond : Expr
+        cond : PrimExpr
             The condition.
 
         Returns
@@ -372,7 +372,7 @@ class IRBuilder(object):
         dtype : str
             The content data type.
 
-        shape : tuple of Expr
+        shape : tuple of PrimExpr
             The shape of array to be allocated.
 
         name : str, optional
@@ -433,11 +433,11 @@ class IRBuilder(object):
         """Add likely tag for expression.
         Parameters
         ----------
-        expr : Expr
+        expr : PrimExpr
             The expression. Usually a condition expression.
         Returns
         -------
-        expr : Expr
+        expr : PrimExpr
             The expression will likely tag.
         """
         return _expr.Call(expr.dtype, "likely", [expr],
@@ -461,10 +461,10 @@ class IRBuilder(object):
 
         Parameters
         ----------
-        begin : Expr
+        begin : PrimExpr
             The min iteration scope.
 
-        end : Expr
+        end : PrimExpr
             The end iteration scope
 
         name : str, optional
@@ -497,7 +497,7 @@ class IRBuilder(object):
 
         Parameters
         ----------
-        value : Expr
+        value : PrimExpr
             The value of block var.
 
         dom : Range
@@ -529,7 +529,7 @@ class IRBuilder(object):
         block_vars : list of BlockVar
             The BlockVar list
 
-        values: list of Expr
+        values: list of PrimExpr
             The value of block var.
 
         reads : list of TensorRegion
@@ -538,7 +538,7 @@ class IRBuilder(object):
         writes : list of TensorRegion
             The output tensor regions of the block
 
-        predicate: optional, Expr
+        predicate: optional, PrimExpr
             The block predicate
 
         annotations: optional, list of Annotation
@@ -560,7 +560,7 @@ class IRBuilder(object):
             writes = [writes]
 
         def _exit_cb():
-            self.emit(_make.TeBlock(
+            self.emit(_make.Block(
                 block_vars, values, reads, writes, self._pop_seq(), predicate,
                 self._allocate_stack.pop(), annotations, name))
 
@@ -596,15 +596,15 @@ class IRBuilder(object):
                 tensors.append(_tensor)
                 tensor_map[_buffer] = _tensor
 
-        func = _make.TeFunction(params, buffer_map, name, stmt)
+        func = _make.Function(params, buffer_map, name, stmt)
         return func, tensors, tensor_map
 
     def allocate_buffer(self, shape, dtype="float32", name="buf", scope=""):
-        """Allocate a TE buffer.
+        """Allocate a buffer.
 
         Parameters
         ----------
-        shape : list of Expr
+        shape : list of PrimExpr
             The buffer shape
 
         dtype : str
@@ -622,11 +622,11 @@ class IRBuilder(object):
         return Buffer(self, _buffer, dtype)
 
     def declare_buffer(self, shape, dtype="float32", name="buf"):
-        """create a TE buffer.
+        """create a TIR buffer.
 
         Parameters
         ----------
-        shape : list of Expr
+        shape : list of PrimExpr
             The buffer shape
 
         dtype : str

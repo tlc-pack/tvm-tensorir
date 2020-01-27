@@ -59,7 +59,7 @@ def block(parser, node, block_vars_info, reads, writes, predicate=True, annotati
     for block_var in block_vars:
         parser.remove_symbol(block_var.var.name)
     parser.scope_emitter.emit(
-        _make.TeBlock(block_vars, values, reads, writes, parser.scope_emitter.pop_seq(), predicate,
+        _make.Block(block_vars, values, reads, writes, parser.scope_emitter.pop_seq(), predicate,
                       parser.scope_emitter.allocate_stack.pop(), annotations, name))
 
 

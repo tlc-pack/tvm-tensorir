@@ -17,12 +17,12 @@
  * under the License.
  */
 
-#ifndef TVM_TE_STMT_SREF_H_
-#define TVM_TE_STMT_SREF_H_
-#include <tvm/te/ir.h>
+#ifndef TVM_TIR_STMT_SREF_H_
+#define TVM_TIR_STMT_SREF_H_
+#include <tvm/tir/stmt.h>
 
 namespace tvm {
-namespace te {
+namespace tir {
 
 /*!
  * \brief The container of stmt schedulable ref.
@@ -38,7 +38,7 @@ class StmtSRefNode : public Object {
 
   void VisitAttrs(AttrVisitor* v) {}
 
-  static constexpr const char* _type_key = "te.StmtSRef";
+  static constexpr const char* _type_key = "StmtSRef";
   TVM_DECLARE_FINAL_OBJECT_INFO(StmtSRefNode, Object);
 };
 
@@ -64,7 +64,7 @@ class StmtSRef : public ObjectRef {
   TVM_DEFINE_OBJECT_REF_METHODS(StmtSRef, ObjectRef, StmtSRefNode);
 };
 
-}  // namespace te
+}  // namespace tir
 }  // namespace tvm
 
-#endif  // TVM_TE_STMT_SREF_H_
+#endif  // TVM_TIR_STMT_SREF_H_

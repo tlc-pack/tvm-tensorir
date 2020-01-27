@@ -376,7 +376,7 @@ class LoweredFunc(Object):
     DeviceFunc = 2
 
 
-@register_node
+@register_object
 class Loop(Stmt):
     """Loop node.
 
@@ -415,7 +415,7 @@ class Loop(Stmt):
             _make.Loop, loop_var, min_val, extent,
             iter_type, annotations, body)
 
-@register_node
+@register_object
 class BufferStore(Stmt):
     """BufferStore node.
 
@@ -435,9 +435,9 @@ class BufferStore(Stmt):
         self.__init_handle_by_constructor__(
             _make.BufferStore, buffer, value, indices)
 
-@register_node
-class TeBlock(Stmt):
-    """TeBlock node.
+@register_object
+class Block(Stmt):
+    """Block node.
 
     Parameters
     ----------
@@ -469,10 +469,10 @@ class TeBlock(Stmt):
     def __init__(self, iter_vars, values, reads, writes,
                  body, predicate, annotations, tag):
         self.__init_handle_by_constructor__(
-            _make.TeBlock, iter_vars, values, reads, writes,
+            _make.Block, iter_vars, values, reads, writes,
             body, predicate, annotations, tag)
 
-@register_node
+@register_object
 class BufferAllocate(Stmt):
     """BufferAllocate node.
 

@@ -211,6 +211,24 @@ void StmtVisitor::VisitStmt_(const EvaluateNode* op) {
   this->VisitExpr(op->value);
 }
 
+void StmtVisitor::VisitStmt_(const BlockNode* op) {
+  VisitArray(op->values, [this](const PrimExpr& e) { this->VisitExpr(e); });
+  VisitArray(op->allocations, [this](const Stmt& s) { this->VisitStmt(s); });
+  this->VisitExpr(op->predicate);
+  this->VisitStmt(op->body);
+}
+void StmtVisitor::VisitStmt_(const LoopNode* op) {
+  this->VisitExpr(op->min);
+  this->VisitExpr(op->extent);
+  this->VisitStmt(op->body);
+}
+void StmtVisitor::VisitStmt_(const BufferAllocateNode* op) {}
+
+void StmtVisitor::VisitStmt_(const BufferStoreNode* op) {
+  VisitArray(op->indices, [this](const PrimExpr& e) { this->VisitExpr(e); });
+  this->VisitExpr(op->value);
+}
+
 
 class StmtMutator::Internal {
  public:
@@ -486,7 +504,56 @@ Stmt StmtMutator::VisitStmt_(const FreeNode* op) {
   return GetRef<Stmt>(op);
 }
 
+Stmt StmtMutator::VisitStmt_(const BlockNode* op) {
+  auto fmutate = [this](const PrimExpr& e) { return this->VisitExpr(e); };
+  Array<PrimExpr> v = MutateArray(op->values, fmutate);
+  PrimExpr pred = this->VisitExpr(op->predicate);
+  Stmt body = this->VisitStmt(op->body);
+  if (v.same_as(op->values) && pred.same_as(op->predicate)
+      && body.same_as(op->body)) {
+    return GetRef<Stmt>(op);
+  } else {
+    auto n = CopyOnWrite(op);
+    n->values = std::move(v);
+    n->predicate = std::move(pred);
+    n->body = std::move(body);
+    return Stmt(n);
+  }
+}
 
+Stmt StmtMutator::VisitStmt_(const LoopNode* op) {
+  PrimExpr min = this->VisitExpr(op->min);
+  PrimExpr extent = this->VisitExpr(op->extent);
+  Stmt body = this->VisitStmt(op->body);
+  if (min.same_as(op->min) && extent.same_as(op->extent) &&
+      body.same_as(op->body)) {
+    return GetRef<Stmt>(op);
+  } else {
+    auto n = CopyOnWrite(op);
+    n->min = std::move(min);
+    n->extent = std::move(extent);
+    n->body = std::move(body);
+    return Stmt(n);
+  }
+}
+
+Stmt StmtMutator::VisitStmt_(const BufferAllocateNode* op) {
+  return GetRef<Stmt>(op);
+}
+
+Stmt StmtMutator::VisitStmt_(const BufferStoreNode* op) {
+  auto fmutate = [this](const PrimExpr& e) { return this->VisitExpr(e); };
+  Array<PrimExpr> indices = MutateArray(op->indices, fmutate);
+  PrimExpr v = this->VisitExpr(op->value);
+  if (v.same_as(op->value) && indices.same_as(op->indices)) {
+    return GetRef<Stmt>(op);
+  } else {
+    auto n = CopyOnWrite(op);
+    n->value = std::move(v);
+    n->indices = std::move(indices);
+    return Stmt(n);
+  }
+}
 
 }  // namespace tir
 }  // namespace tvm

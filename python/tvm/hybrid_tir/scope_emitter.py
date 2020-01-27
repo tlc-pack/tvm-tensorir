@@ -14,7 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Hybrid Script Scope Emitter for TE IR"""
+"""Hybrid Script Scope Emitter for TIR"""
 
 from .. import expr as _expr
 from .. import make as _make
