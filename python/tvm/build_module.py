@@ -336,7 +336,7 @@ def form_body(sch):
 
 
 def lower(sch,
-          args,
+          args=None,
           name="default_function",
           binds=None,
           simple_mode=False):
@@ -379,20 +379,23 @@ def lower(sch,
 
     # Phase 0
     if isinstance(sch, schedule.Schedule):
+        assert args is not None
         stmt = form_body(sch)
+        compact = ir_pass.VerifyCompactBuffer(stmt)
+        binds, arg_list = get_binds(args, compact, binds)
     elif isinstance(sch, container.Function):
-        stmt = sch.body
+        func = ir_pass.BufferFlatten(sch)
+        buffer_map = func.buffer_map
+        arg_list = [buffer_map[x] for x in func.params]
+        stmt = func.body
 
     for f in lower_phase0:
         stmt = f(stmt)
 
-    compact = ir_pass.VerifyCompactBuffer(stmt)
-    binds, arg_list = get_binds(args, compact, binds)
-
     # Phase 1
     if isinstance(sch, schedule.Schedule):
         stmt = ir_pass.RewriteForTensorCore(stmt, sch, binds)
-    stmt = ir_pass.StorageFlatten(stmt, binds, 64, cfg.instrument_bound_checkers)
+        stmt = ir_pass.StorageFlatten(stmt, binds, 64, cfg.instrument_bound_checkers)
     stmt = ir_pass.CanonicalSimplify(stmt)
     for f in lower_phase1:
         stmt = f(stmt)
@@ -585,8 +588,8 @@ def build(inputs,
     ----
     See the note on :any:`tvm.target` on target string format.
     """
-    if isinstance(inputs, schedule.Schedule):
-        if args is None:
+    if isinstance(inputs, (schedule.Schedule, container.Function)):
+        if args is None and isinstance(inputs, schedule.Schedule):
             raise ValueError("args must be given for build from schedule")
         flist = lower(inputs, args,
                       name=name,

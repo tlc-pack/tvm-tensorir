@@ -413,6 +413,16 @@ Stmt DecorateDeviceScope(Stmt stmt);
 Stmt HoistIfThenElse(Stmt stmt);
 
 /*!
+ * \brief Flatten the multi-dimensional BufferLoad and BufferStore
+ *         to single dimensional Load/Store. Also remove Block so that
+ *         ensure that the Tir after flatten can not be scheduled again.
+ * \param func The Tir function with multi-dimensional BufferLoad and BufferStore
+ *         with schedulable Block.
+ * \return The function after flatten, which can not schedule anymore.
+ */
+Function BufferFlatten(Function func);
+
+/*!
  * \brief Make an user callable API LoweredFunc.
  *
  *  The main task of this function is to create code to :
