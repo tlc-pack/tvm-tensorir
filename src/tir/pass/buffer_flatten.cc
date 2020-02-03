@@ -30,11 +30,16 @@
 namespace tvm {
 namespace tir {
 
+/*! \brief The AST node information for querying LCA */
 struct ASTInfo {
   ObjectRef parent;
   size_t depth;
 };
 
+/*!
+ * \brief Remove Block in Tir and replace BufferAllocate with Allocate
+ * \note After flattening, the Tir can not be scheduled anymore
+ */
 class BlockFlattener : public StmtExprMutator {
  public:
   Stmt VisitStmt_(const BlockNode* op) final {
@@ -45,15 +50,15 @@ class BlockFlattener : public StmtExprMutator {
     }
     Stmt block = StmtExprMutator::VisitStmt_(op);
     op = block.as<BlockNode>();
-    Array<Stmt> stmts;
     CHECK(op != nullptr);
+    Stmt body = op->body;
 
-    if (is_one(op->predicate)) {
-      stmts.push_back(op->body);
-    } else {
-      stmts.push_back(IfThenElseNode::make(op->predicate, op->body));
+    // Handle block predicate
+    if (!is_one(op->predicate)) {
+      body = IfThenElseNode::make(op->predicate, body);
     }
-    Stmt body = SeqStmt::Flatten(stmts);
+
+    // Handle block allocations
     for (size_t i = op->allocations.size(); i > 0; --i) {
       const auto& n = op->allocations[i - 1];
       buffer_map_[n->buffer->data.get()] = n->buffer;
@@ -63,7 +68,8 @@ class BlockFlattener : public StmtExprMutator {
                                 const_true(),
                                 body);
 
-      std::string scope = n->scope == "" ? "global" : n->scope;
+      // Change empty scope into global
+      std::string scope = n->scope.empty() ? "global" : n->scope;
       body = AttrStmtNode::make(n->buffer->data,
                                 attr::storage_scope,
                                 StringImmNode::make(scope),
@@ -73,6 +79,7 @@ class BlockFlattener : public StmtExprMutator {
   }
 
   PrimExpr VisitExpr_(const VarNode* op) final {
+    // Replace the block var with its value
     auto it = block_var_.find(op);
     if (it != block_var_.end()) {
       return it->second;
@@ -81,12 +88,16 @@ class BlockFlattener : public StmtExprMutator {
     }
   }
 
+  /*! \brief The map from buffer_var to buffer */
   std::unordered_map<const VarNode*, Buffer> buffer_map_;
-
  private:
+  /*! \brief The map from block vars to the expr value */
   std::unordered_map<const VarNode*, PrimExpr> block_var_;
 };
 
+/*!
+ * \brief Detecting the LCA of buffers for calculating the realize region
+ */
 class LCADetector : public StmtExprVisitor {
  public:
   explicit LCADetector(const Map<Var, Buffer>& func_args) {
@@ -95,6 +106,7 @@ class LCADetector : public StmtExprVisitor {
     }
   }
 
+  // Update parent and depth information for each AST node
   void VisitExpr(const PrimExpr& e) final {
     ObjectRef current_node = ObjectRef(e);
     ast_nodes_info_[e] = ASTInfo{parent_, depth_};
@@ -115,9 +127,11 @@ class LCADetector : public StmtExprVisitor {
     --depth_;
   }
 
+  // Update LCA when visiting BufferLoad and BufferStore
   template <typename T>
   void VisitBuffer(T op) {
     Buffer buffer = op->buffer;
+    // No need to update LCA if the buffer is in the func args (function input/output buffer)
     if (arg_buffers_.count(buffer)) return;
     if (buffers_lca_.count(buffer)) {
       buffers_lca_[buffer] = LowestCommonAncestor(GetRef<ObjectRef>(op), buffers_lca_[buffer]);
@@ -134,12 +148,18 @@ class LCADetector : public StmtExprVisitor {
     VisitBuffer(op);
     StmtExprVisitor::VisitStmt_(op);
   }
+
+  /*! \brief The map from Buffer to its LCA Stmt/Expr */
   std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual> buffers_lca_;
 
  private:
+  /*! \brief The current parent node initializing with Null */
   ObjectRef parent_{NullValue<ObjectRef>()};
+  /*! \brief The current DFS depth */
   size_t depth_{0};
+  /*! \brief The parent and depth info of each Stmt/Expr Node */
   std::unordered_map<ObjectRef, ASTInfo, ObjectHash, ObjectEqual> ast_nodes_info_;
+  /*! \brief The Buffer in function args */
   std::unordered_set<Buffer, ObjectHash, ObjectEqual> arg_buffers_;
 
   ObjectRef LowestCommonAncestor(ObjectRef lhs, ObjectRef rhs) {
@@ -159,6 +179,10 @@ class LCADetector : public StmtExprVisitor {
   }
 };
 
+/*!
+ * \brief Transform multi-dimension BufferLoad/BufferStore into one-dimension Load/Store
+ *        and recalculate the allocate size.
+ */
 class BufferFlattener : public StmtExprMutator {
  public:
   BufferFlattener(const std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual>* buffers_lca,
@@ -198,6 +222,7 @@ class BufferFlattener : public StmtExprMutator {
     std::vector<arith::IntSet> empty_region(op->extents.size(), arith::IntSet::nothing());
     CHECK(buffer_map_->count(op->buffer_var.get()));
     const Buffer& buffer = buffer_map_->at(op->buffer_var.get());
+    // Initialize the buffer region with empty region.
     buffers_region_[buffer] = empty_region;
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     op = stmt.as<AllocateNode>();
@@ -240,8 +265,14 @@ class BufferFlattener : public StmtExprMutator {
  private:
   const std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual>* buffers_lca_;
   const std::unordered_map<const VarNode*, Buffer>* buffer_map_;
+  /*! \brief The used region of each Buffer */
   std::unordered_map<Buffer, std::vector<arith::IntSet>, ObjectHash, ObjectEqual> buffers_region_;
+  /*!
+   * \brief The buffer's LCA loop position at the loop stack
+   * \note Only loops are interested since the buffer index will contain loop_vars
+   */
   std::unordered_map<Buffer, size_t, ObjectHash, ObjectEqual> buffers_lca_pos_;
+  /*! \brief The loops from the current node up to the root */
   std::vector<Loop> loop_stack_;
 
   template <typename T>
@@ -250,15 +281,16 @@ class BufferFlattener : public StmtExprMutator {
     std::vector<arith::IntSet> region = GatherRegion(op);
     const std::vector<arith::IntSet>& buffer_region = buffers_region_[op->buffer];
     CHECK_EQ(buffer_region.size(), region.size());
-    std::vector<PrimExpr> begins;
+    std::vector<PrimExpr> indices;
     for (size_t i = 0; i < region.size(); ++i) {
-      begins.push_back(op->indices[i] - region[i].min());
+      indices.push_back(op->indices[i] - region[i].min());
       region[i] = arith::Union({buffer_region[i], region[i]});
     }
     buffers_region_[op->buffer] = region;
-    return begins;
+    return indices;
   }
 
+  /*! \brief Gather used buffer region */
   template <typename T>
   std::vector<arith::IntSet> GatherRegion(T op) {
     std::unordered_map<const VarNode*, arith::IntSet> dom_map;
