@@ -56,7 +56,6 @@ class HybridParserError(RuntimeError):
 
 class HybridParser(ast.NodeVisitor):
     """Python AST visitor pass which finally lowers it to TIR
-
     Notes for extension:
     1. To support new types of AST nodes. Add a function visit_xxx().
     2. To support new functions
@@ -67,7 +66,6 @@ class HybridParser(ast.NodeVisitor):
         2) scope_handler functions have no return value and accepts parser and AST node
         as its arguments, which is used in for scope and with scope.
         3) special_stmt functions have return value and accepts parser and AST node as its arguments
-
         When visiting Call node, we check special_stmt registry at first. If no registered function
         is found, we then check intrin.
         When visiting With node, we check with_scope registry.
@@ -153,20 +151,17 @@ class HybridParser(ast.NodeVisitor):
         leading_space = len(src_line) - len(src_line.lstrip(' '))
         col_offset = col_offset - leading_space
         src_line = src_line[leading_space:]
-        return "  " + src_line + "\n  " + " " * col_offset + "^\n" + "ParserError in line " \
+        return "\n  " + src_line + "\n  " + " " * col_offset + "^\n" + "ParserError in line " \
                + str(lineno) + " : " + message
 
     def report_error(self, message, lineno=None, col_offset=None):
         """ Report an error occur in line lineno and column col_offset
-
         Parameters
         ----------
         message : str
             Error message
-
         lineno : int
             Line number of error line
-
         col_offset : int
             Column offset of error line
         """
@@ -179,7 +174,6 @@ class HybridParser(ast.NodeVisitor):
 
     def generic_visit(self, node):
         """ Override method in ast.NodeVisitor.
-
         To directly filter out invalidate type of stmt.
         """
 
@@ -187,15 +181,12 @@ class HybridParser(ast.NodeVisitor):
 
     def update_symbol(self, name, symbol_type, symbol):
         """ Update value to the symbol table context
-
         Parameters
         ----------
         name : str
             name of symbol
-
         symbol_type : enum, intrin.Symbol
             type of symbol
-
         symbol : Var, IterVar, Buffer or List of TensorRegion
             the symbol
         """
@@ -204,7 +195,6 @@ class HybridParser(ast.NodeVisitor):
 
     def remove_symbol(self, name):
         """ Remove value to the symbol table context
-
         Parameters
         ----------
         name : str
@@ -217,7 +207,6 @@ class HybridParser(ast.NodeVisitor):
         """ Module visitor
         AST abstract grammar:
             Module(stmt* body, type_ignore* type_ignore)
-
         By now we only support Module with a single FunctionDef
         """
 
@@ -254,10 +243,9 @@ class HybridParser(ast.NodeVisitor):
         """ Assign visitor
         AST abstract grammar:
             Assign(expr* targets, expr value, string? type_comment)
-
         By now only 2 types of Assign is supported:
             1. Target = List, Buffer(buffer_bind, buffer_allocate)
-            2. Buffer[expr, expr, .. expr] = PrimExpr
+            2. Buffer[expr, expr, .. expr] = Expr
         """
 
         if not len(node.targets) == 1:
@@ -275,7 +263,7 @@ class HybridParser(ast.NodeVisitor):
             if isinstance(node.value, ast.Call) and node.value.func.id == "buffer_bind":
                 self.buffer_map[self.symbols[node.value.args[0].id][1]] = rhs
         elif isinstance(target, ast.Subscript):
-            # Buffer[expr, expr, .. expr] = PrimExpr
+            # Buffer[expr, expr, .. expr] = Expr
             buffer, buffer_indexes = self.visit(target)
             rhs = self.visit(node.value)
             value = _api.convert(rhs)
@@ -288,7 +276,6 @@ class HybridParser(ast.NodeVisitor):
         """ For visitor
         AST abstract grammar:
             For(expr target, expr iter, stmt* body, stmt* orelse, string? type_comment)
-
         By now only 1 type of For is supported:
             1. for name in range(begin, end)
         """
@@ -320,34 +307,26 @@ class HybridParser(ast.NodeVisitor):
         AST abstract grammar:
             With(withitem* items, stmt* body, string? type_comment)
             withitem = (expr context_expr, expr? optional_vars)
-
         By now only 1 type of With is supported:
             1. with block(block_vars, values, reads, writes, predicate, annotations, name):
                 Note that block_vars is a list of Calls, e.g. vi(0, 128, "reduce")
                 It's a syntax sugar, which is equivalent with defining a IterVar named vi and
                 used in the following block definition
-
         Example
         -------
         If we want to define a block and we use the primitive APIs in IRBuilder, we should write
-
         .. code-block:: python
-
             bv_i = ib.iter_var(tvm.make.range_by_min_extent(0, 128), name="vi")
             bv_j = ib.iter_var(tvm.make.range_by_min_extent(0, 128), name="vj")
             vi = bv_i.var
             vj = bv_j.var
             with ib.block([bv_i, bv_j], [i, j], reads = A[vi:vi+1, vj:vj+1], \
             write = B[vi:vi+1, vj:vj+1])
-
         The IterVar variable bv_i and bv_j are only used once, so I planned to give a sugar here and
         the user can simply write in one line code like
-
         .. code-block:: python
-
             with block({vi(0, 128): i, vj(0, 128): j}, reads = A[vi:vi+1, vj:vj+1], \
             write = B[vi:vi+1, vj:vj+1])
-
         The problem it brings is that vi, vj will be parsed as Call here, so when parsing the Call
         which is actually to defining a block var, we leave it to a intrinsic function block_vars()
         to handle them.
@@ -405,7 +384,6 @@ class HybridParser(ast.NodeVisitor):
         AST abstract grammar:
             Call(expr func, expr* args, keyword* keywords)
             keyword = (identifier? arg, expr value)
-
         All the functions used outside With and For are registered in special_stmt or intrin
         """
 
@@ -442,6 +420,30 @@ class HybridParser(ast.NodeVisitor):
             self.report_error("BinOp " + str(type(node.op)) + " is not supported now")
         return HybridParser._binop_maker[type(node.op)](lhs, rhs)
 
+    def visit_Compare(self, node):
+        """ Compare visitor
+        AST abstract grammar:
+            Compare(expr left, expr right, ops=)
+        """
+
+        ops = [self.visit(node.left)]
+        ops += [self.visit(comparator) for comparator in node.comparators]
+        res = []
+        for i in range(len(node.ops)):
+            lhs = ops[i]
+            rhs = ops[i + 1]
+            res.append(HybridParser._binop_maker[type(node.ops[i])](lhs, rhs))
+        return _all(*res)
+
+    def visit_BoolOp(self, node):
+        """ BoolOp visitor
+        AST abstract grammar:
+            BoolOp(boolop op, expr* values)
+        """
+
+        values = [self.visit(value) for value in node.values]
+        return HybridParser._binop_maker[type(node.op)](*values)
+
     def visit_UnaryOp(self, node):
         """ UnaryOp visitor
         AST abstract grammar:
@@ -460,7 +462,6 @@ class HybridParser(ast.NodeVisitor):
             slice = Slice(expr? lower, expr? upper, expr? step)
                     | ExtSlice(slice* dims)
                     | Index(expr value)
-
         By now only 2 types of Subscript are supported:
             1. Buffer[index, index, ...], Buffer element access(BufferLoad & BufferStore)
             2. Buffer[slice, slice, ...], TensorRegion
@@ -557,6 +558,9 @@ class HybridParser(ast.NodeVisitor):
 
         return node.arg, self.visit(node.value)
 
+    def visit_NameConstant(self, node):
+        return _api.convert(node.value)
+
     def visit_Constant(self, node):
         return _api.convert(node.value)
 
@@ -575,21 +579,16 @@ class HybridParser(ast.NodeVisitor):
 
 def source_to_op(func_lineno, src, *args, **kwargs):
     """ Another level of wrapper
-
     Parameters
     ----------
     func_lineno : int
         The line number of the first line of the function to be parsed
-
     src : str
         Pruned source of original function
-
     args : list of Vars
         input of original function
-
     kwargs : dict
         keyword arguments
-
     Returns
     -------
     function : TeFunction
@@ -601,9 +600,6 @@ def source_to_op(func_lineno, src, *args, **kwargs):
 
     try:
         return parser.visit(root)
-    except HybridParserError as e:
-        # Parser report error, just throw the error
-        raise e
     except TVMError as e:
         # TVM internal c++ error, we have to process the error message and inject line info
         inject_e = str(e).split('\n')
