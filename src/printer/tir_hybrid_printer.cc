@@ -17,7 +17,7 @@
  * under the License.
  */
 /*!
- * \file hybrid_tir/printer.cc
+ * \file printer/tir_hybrid_printer.cc
  * \brief Printer class to print Te IR to python syntax script
  */
 
@@ -30,51 +30,14 @@
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/node/serialization.h>
 #include "doc.h"
-
+#include "meta_data.h"
 
 namespace tvm {
 namespace tir {
 
-class TextMetaDataContext {
- public:
-  /*!
-   * \brief Get text representation of meta node.
-   * \param node The node to be converted to meta node.
-   * \return A string representation of the meta node.
-   */
-  Doc GetMetaNode(const ObjectRef& node) {
-    auto it = meta_repr_.find(node);
-    if (it != meta_repr_.end()) {
-      return it->second;
-    }
-    std::string type_key = node->GetTypeKey();
-    CHECK(!type_key.empty());
-    Array<ObjectRef>& mvector = meta_data_[type_key];
-    auto index = static_cast<int64_t>(mvector.size());
-    mvector.push_back(node);
-    Doc doc;
-    doc << "meta[" << type_key << "][" << index << "]";
-    meta_repr_[node] = doc;
-    return meta_repr_[node];
-  }
-
-  Doc GetMetaSection() const {
-    if (meta_data_.empty()) return Doc();
-    return Doc(SaveJSON(Map<std::string, ObjectRef>(meta_data_.begin(), meta_data_.end())));
-  }
-
-  bool empty() const {
-    return meta_data_.empty();
-  }
-
- private:
-  std::unordered_map<std::string, Array<ObjectRef> > meta_data_;
-  std::unordered_map<ObjectRef, Doc, ObjectHash, ObjectEqual> meta_repr_;
-};
-
 class TePrinter :
-      public StmtFunctor<Doc(const Stmt&)>,
-      public ExprFunctor<Doc(const PrimExpr&)>{
+    public StmtFunctor<Doc(const Stmt&)>,
+    public ExprFunctor<Doc(const PrimExpr&)>{
  public:
   explicit TePrinter(runtime::TypedPackedFunc<std::string(Stmt)> annotate) : annotate_(annotate) {}
   /*! \brief Print the node */
@@ -132,10 +95,52 @@ class TePrinter :
     if (annotate_ != nullptr) {
       std::string annotated_stmt = annotate_(stmt);
       if (!annotated_stmt.empty()) {
-        doc << "# " << annotated_stmt << PrintNewLine();
+        doc << "# " << annotated_stmt << Doc::NewLine();
       }
     }
     return doc;
+  }
+
+  /*!
+  * \brief special method to print out data type
+  * \param dtype The data type
+  */
+  static Doc PrintDType(DataType dtype) {
+    return Doc::Text(runtime::DLDataType2String(dtype));
+  }
+  
+  /*!
+   * \brief special method to print out const scalar
+   * \param dtype The data type
+   * \param data The pointer to hold the data.
+   */
+  template<typename T>
+  static Doc PrintConstScalar(DataType dtype, const T* data) {
+    Doc doc;
+    std::ostringstream os;
+    os << data[0];
+    if (dtype == DataType::Int(32)) {
+      doc << Doc::Text(os.str());
+    } else {
+      doc << PrintDType(dtype) << "(" << Doc::Text(os.str()) << ")";
+    }
+    return doc;
+  }
+
+  /*!
+   * \brief special method to render vectors of docs with a separator
+   * \param vec vector of docs
+   * \param sep separator
+   */
+  static Doc PrintSep(const std::vector<Doc>& vec, const Doc& sep) {
+    Doc seq;
+    if (vec.size() != 0) {
+      seq = vec[0];
+      for (size_t i = 1; i < vec.size(); i++) {
+        seq << sep << vec[i];
+      }
+    }
+    return seq;
   }
 };
 
@@ -163,7 +168,7 @@ Doc TePrinter::VisitStmtDefault_(const Object* op) {
 }
 
 Doc TePrinter::VisitExpr_(const VarNode* op) {
-  return Doc(op->name_hint);
+  return Doc::Text(op->name_hint);
 }
 
 #define TVM_DECLARE_TEPRINTER_BINOP(OpName, OpString)               \
@@ -220,7 +225,7 @@ Doc TePrinter::VisitExpr_(const FloatImmNode* op) {
 }
 
 Doc TePrinter::VisitExpr_(const StringImmNode* op) {
-  return PrintString(op->value);
+  return Doc::StrLiteral(op->value);
 }
 
 Doc TePrinter::VisitExpr_(const BufferLoadNode* op) {
@@ -234,7 +239,7 @@ Doc TePrinter::VisitStmt_(const SeqStmtNode* op) {
   for (Stmt stmt : op->seq) {
     stmts.push_back(Print(stmt));
   }
-  return PrintSep(stmts, PrintNewLine());
+  return PrintSep(stmts, Doc::NewLine());
 }
 
 Doc TePrinter::VisitStmt_(const EvaluateNode* op) {
@@ -287,15 +292,15 @@ Doc TePrinter::VisitStmt_(const BlockNode* op) {
   if (!op->annotations.empty()) {
     doc << ", annotations=" << Print(op->annotations);
   }
-  doc << ", name=" << PrintString(op->tag) <<  "):";
+  doc << ", name=" << Doc::StrLiteral(op->tag) <<  "):";
   // print body
   Doc body;
-  body << PrintNewLine();
+  body << Doc::NewLine();
   for (const auto& allocate : op->allocations) {
-    body << Print(allocate) << PrintNewLine();
+    body << Print(allocate) << Doc::NewLine();
   }
   body << Print(op->body);
-  doc << Indent(2, body);
+  doc << Doc::Indent(2, body);
   return doc;
 }
 
@@ -308,8 +313,8 @@ Doc TePrinter::VisitStmt_(const LoopNode* op) {
 
   // print body
   Doc body;
-  body << PrintNewLine() << Print(op->body);
-  doc << Indent(2, body);
+  body << Doc::NewLine() << Print(op->body);
+  doc << Doc::Indent(2, body);
   return doc;
 }
 
@@ -325,9 +330,9 @@ Doc TePrinter::VisitStmt_(const BufferAllocateNode* op) {
     doc << Print(op->buffer->shape[i]);
   }
   doc << ')';
-  doc << ", " << PrintString(PrintDType(op->buffer->dtype).str());
-  doc << ", " << PrintString(op->buffer->name);
-  doc << ", " << PrintString(op->scope) << ")";
+  doc << ", " << Doc::StrLiteral(PrintDType(op->buffer->dtype).str());
+  doc << ", " << Doc::StrLiteral(op->buffer->name);
+  doc << ", " << Doc::StrLiteral(op->scope) << ")";
   return doc;
 }
 
@@ -352,7 +357,7 @@ TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
   doc << "):";
 
   Doc body;
-  body << PrintNewLine();
+  body << Doc::NewLine();
   // print buffer_bind
   for (auto it = op->buffer_map.begin(); it != op->buffer_map.end(); ++it) {
     body << (*it).second->name << " = buffer_bind(";
@@ -365,14 +370,14 @@ TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
       body << p->Print((*it).second->shape[i]);
     }
     body << ')';
-    body << ", " << PrintString(PrintDType((*it).second->dtype).str());
-    body << ", " << PrintString((*it).second->name);
-    body << ")" << PrintNewLine();
+    body << ", " << Doc::StrLiteral(runtime::DLDataType2String((*it).second->dtype));
+    body << ", " << Doc::StrLiteral((*it).second->name);
+    body << ")" << Doc::NewLine();
   }
 
   // print body
   body << p->Print(op->body);
-  doc << Indent(2, body);
+  doc << Doc::Indent(2, body);
   return doc;
 });
 
@@ -422,9 +427,9 @@ TePrinter::FType& TePrinter::vtable() {
 
 TVM_REGISTER_GLOBAL("hybrid_tir.AsText")
 .set_body_typed<std::string(const Function&)>(
-    [](const Function& function) {
-      return TePrinter(nullptr).Print(function).str() + "\n";
-    });
+[](const Function& function) {
+return TePrinter(nullptr).Print(function).str() + "\n";
+});
 
 }  // namespace te
 }  // namespace tvm
