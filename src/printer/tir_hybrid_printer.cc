@@ -35,16 +35,17 @@
 namespace tvm {
 namespace tir {
 
-class TePrinter :
+class TirHybridPrinter :
     public StmtFunctor<Doc(const Stmt&)>,
     public ExprFunctor<Doc(const PrimExpr&)>{
  public:
-  explicit TePrinter(runtime::TypedPackedFunc<std::string(Stmt)> annotate) : annotate_(annotate) {}
+  explicit TirHybridPrinter(runtime::TypedPackedFunc<std::string(Stmt)> annotate = nullptr)
+    : annotate_(annotate) {}
   /*! \brief Print the node */
   TVM_DLL Doc Print(const ObjectRef& node);
 
   // Allow registration to be printer.
-  using FType = NodeFunctor<Doc(const ObjectRef&, TePrinter*)>;
+  using FType = NodeFunctor<Doc(const ObjectRef&, TirHybridPrinter*)>;
   static FType& vtable();
 
  private:
@@ -108,7 +109,7 @@ class TePrinter :
   static Doc PrintDType(DataType dtype) {
     return Doc::Text(runtime::DLDataType2String(dtype));
   }
-  
+
   /*!
    * \brief special method to print out const scalar
    * \param dtype The data type
@@ -144,7 +145,7 @@ class TePrinter :
   }
 };
 
-Doc TePrinter::Print(const ObjectRef& node) {
+Doc TirHybridPrinter::Print(const ObjectRef& node) {
   if (node.as<StmtNode>()) {
     return PrintOptionalInfo(Downcast<Stmt>(node)) << VisitStmt(Downcast<Stmt>(node));
   } else if (node.as<PrimExprNode>()) {
@@ -159,20 +160,20 @@ Doc TePrinter::Print(const ObjectRef& node) {
   }
 }
 
-Doc TePrinter::VisitExprDefault_(const Object* op) {
+Doc TirHybridPrinter::VisitExprDefault_(const Object* op) {
   return this->meta_.GetMetaNode(GetRef<ObjectRef>(op));
 }
 
-Doc TePrinter::VisitStmtDefault_(const Object* op) {
+Doc TirHybridPrinter::VisitStmtDefault_(const Object* op) {
   return this->meta_.GetMetaNode(GetRef<ObjectRef>(op));
 }
 
-Doc TePrinter::VisitExpr_(const VarNode* op) {
+Doc TirHybridPrinter::VisitExpr_(const VarNode* op) {
   return Doc::Text(op->name_hint);
 }
 
 #define TVM_DECLARE_TEPRINTER_BINOP(OpName, OpString)               \
-  Doc TePrinter::VisitExpr_(const OpName* op) {                     \
+  Doc TirHybridPrinter::VisitExpr_(const OpName* op) {                     \
     Doc doc;                                                        \
     doc << '(' << Print(op->a) << OpString << Print(op->b) << ")";  \
     return doc;                                                     \
@@ -192,49 +193,49 @@ TVM_DECLARE_TEPRINTER_BINOP(GENode, " >= ")
 TVM_DECLARE_TEPRINTER_BINOP(AndNode, " and ")
 TVM_DECLARE_TEPRINTER_BINOP(OrNode, " or ")
 
-Doc TePrinter::VisitExpr_(const FloorDivNode* op) {
+Doc TirHybridPrinter::VisitExpr_(const FloorDivNode* op) {
   Doc doc;
   doc << "floordiv(" << Print(op->a) << ", " << Print(op->b) << ")";
   return doc;
 }
 
-Doc TePrinter::VisitExpr_(const FloorModNode* op) {
+Doc TirHybridPrinter::VisitExpr_(const FloorModNode* op) {
   Doc doc;
   doc << "floormod(" << Print(op->a) << ", " << Print(op->b) << ")";
   return doc;
 }
 
-Doc TePrinter::VisitExpr_(const MinNode* op) {
+Doc TirHybridPrinter::VisitExpr_(const MinNode* op) {
   Doc doc;
   doc << "min(" << Print(op->a) << ", " << Print(op->b) << ")";
   return doc;
 }
 
-Doc TePrinter::VisitExpr_(const MaxNode* op) {
+Doc TirHybridPrinter::VisitExpr_(const MaxNode* op) {
   Doc doc;
   doc << "max(" << Print(op->a) << ", " << Print(op->b) << ")";
   return doc;
 }
 
-Doc TePrinter::VisitExpr_(const IntImmNode* op) {
+Doc TirHybridPrinter::VisitExpr_(const IntImmNode* op) {
   return PrintConstScalar<int64_t>(op->dtype, &(op->value));
 }
 
-Doc TePrinter::VisitExpr_(const FloatImmNode* op) {
+Doc TirHybridPrinter::VisitExpr_(const FloatImmNode* op) {
   return PrintConstScalar<double>(op->dtype, &(op->value));
 }
 
-Doc TePrinter::VisitExpr_(const StringImmNode* op) {
+Doc TirHybridPrinter::VisitExpr_(const StringImmNode* op) {
   return Doc::StrLiteral(op->value);
 }
 
-Doc TePrinter::VisitExpr_(const BufferLoadNode* op) {
+Doc TirHybridPrinter::VisitExpr_(const BufferLoadNode* op) {
   Doc doc;
   doc << Print(op->buffer->data) << Print(op->indices);
   return doc;
 }
 
-Doc TePrinter::VisitStmt_(const SeqStmtNode* op) {
+Doc TirHybridPrinter::VisitStmt_(const SeqStmtNode* op) {
   std::vector<Doc> stmts;
   for (Stmt stmt : op->seq) {
     stmts.push_back(Print(stmt));
@@ -242,11 +243,11 @@ Doc TePrinter::VisitStmt_(const SeqStmtNode* op) {
   return PrintSep(stmts, Doc::NewLine());
 }
 
-Doc TePrinter::VisitStmt_(const EvaluateNode* op) {
+Doc TirHybridPrinter::VisitStmt_(const EvaluateNode* op) {
   return Print(op->value);
 }
 
-Doc TePrinter::VisitStmt_(const BlockNode* op) {
+Doc TirHybridPrinter::VisitStmt_(const BlockNode* op) {
   // print block name and block vars
   Doc doc;
   doc << "with block({";
@@ -304,7 +305,7 @@ Doc TePrinter::VisitStmt_(const BlockNode* op) {
   return doc;
 }
 
-Doc TePrinter::VisitStmt_(const LoopNode* op) {
+Doc TirHybridPrinter::VisitStmt_(const LoopNode* op) {
   Doc doc;
   // print loop and annotations
   doc << "for " << Print(op->loop_var);
@@ -318,7 +319,7 @@ Doc TePrinter::VisitStmt_(const LoopNode* op) {
   return doc;
 }
 
-Doc TePrinter::VisitStmt_(const BufferAllocateNode* op) {
+Doc TirHybridPrinter::VisitStmt_(const BufferAllocateNode* op) {
   Doc doc;
   doc << op->buffer->name;
   doc << " = buffer_allocate(";
@@ -336,7 +337,7 @@ Doc TePrinter::VisitStmt_(const BufferAllocateNode* op) {
   return doc;
 }
 
-Doc TePrinter::VisitStmt_(const BufferStoreNode* op) {
+Doc TirHybridPrinter::VisitStmt_(const BufferStoreNode* op) {
   Doc doc;
   doc << Print(op->buffer->data) << Print(op->indices);
   doc << " = " << Print(op->value);
@@ -344,7 +345,7 @@ Doc TePrinter::VisitStmt_(const BufferStoreNode* op) {
 }
 
 TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
-.set_dispatch<FunctionNode>([](const ObjectRef& node, TePrinter* p) {
+.set_dispatch<FunctionNode>([](const ObjectRef& node, TirHybridPrinter* p) {
   auto* op = node.as<FunctionNode>();
   Doc doc;
   doc << "def " << op->name << "(";
@@ -382,7 +383,7 @@ TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
 });
 
 TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
-.set_dispatch<TensorRegionNode>([](const ObjectRef& node, TePrinter* p) {
+.set_dispatch<TensorRegionNode>([](const ObjectRef& node, TirHybridPrinter* p) {
   auto* op = node.as<TensorRegionNode>();
   Doc doc;
   doc << p->Print(op->buffer->data) << "[";
@@ -398,7 +399,7 @@ TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
 });
 
 TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
-.set_dispatch<AnnotationNode>([](const ObjectRef& node, TePrinter* p) {
+.set_dispatch<AnnotationNode>([](const ObjectRef& node, TirHybridPrinter* p) {
   auto* op = node.as<AnnotationNode>();
   Doc doc;
   doc << op->attr_key << ": " << p->Print(op->value);
@@ -406,7 +407,7 @@ TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
 });
 
 TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
-.set_dispatch<ArrayNode>([](const ObjectRef& node, TePrinter* p) {
+.set_dispatch<ArrayNode>([](const ObjectRef& node, TirHybridPrinter* p) {
   auto* op = node.as<ArrayNode>();
   Doc doc;
   doc << '[';
@@ -420,7 +421,7 @@ TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
   return doc;
 });
 
-TePrinter::FType& TePrinter::vtable() {
+TirHybridPrinter::FType& TirHybridPrinter::vtable() {
   static FType inst;
   return inst;
 }
@@ -428,8 +429,8 @@ TePrinter::FType& TePrinter::vtable() {
 TVM_REGISTER_GLOBAL("hybrid_tir.AsText")
 .set_body_typed<std::string(const Function&)>(
 [](const Function& function) {
-return TePrinter(nullptr).Print(function).str() + "\n";
+  return TirHybridPrinter().Print(function).str() + "\n";
 });
 
-}  // namespace te
+}  // namespace tir
 }  // namespace tvm

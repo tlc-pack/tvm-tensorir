@@ -126,7 +126,7 @@ def test_predicate():
     func = predicate(b, c)
 
     print(func)
-    rt_func = source_to_op(0, tvm.hybrid_te.to_python(func), b, c)
+    rt_func = source_to_op(0, tvm.hybrid_tir.to_python(func), b, c)
     print(rt_func)
 
     assert str(func) == str(rt_func)
@@ -135,3 +135,4 @@ def test_predicate():
 if __name__ == '__main__':
     test_matmul()
     test_element_wise()
+    test_predicate()
