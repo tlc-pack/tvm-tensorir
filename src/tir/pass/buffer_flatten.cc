@@ -32,13 +32,15 @@ namespace tir {
 
 /*! \brief The AST node information for querying LCA */
 struct ASTInfo {
+  // The parent AST node
   ObjectRef parent;
+  // The node depth in the AST
   size_t depth;
 };
 
 /*!
- * \brief Remove Block in Tir and replace BufferAllocate with Allocate
- * \note After flattening, the Tir can not be scheduled anymore
+ * \brief Remove Block in TIR and replace BufferAllocate with Allocate
+ * \note After flattening, the TIR can not be scheduled anymore
  */
 class BlockFlattener : public StmtExprMutator {
  public:
@@ -180,14 +182,13 @@ class LCADetector : public StmtExprVisitor {
 };
 
 /*!
- * \brief Transform multi-dimension BufferLoad/BufferStore into one-dimension Load/Store
- *        and recalculate the allocate size.
+ * \brief Gather the used region of each buffers.
  */
-class BufferFlattener : public StmtExprMutator {
+class RegionGatherer : public StmtExprVisitor {
  public:
-  BufferFlattener(const std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual>* buffers_lca,
-                  const std::unordered_map<const VarNode*, Buffer>* buffer_map,
-                  const Map<Var, Buffer>& func_args)
+  RegionGatherer(const std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual>& buffers_lca,
+                 const std::unordered_map<const VarNode*, Buffer>& buffer_map,
+                 const Map<Var, Buffer>& func_args)
       : buffers_lca_(buffers_lca), buffer_map_(buffer_map) {
     for (const auto& arg : func_args) {
       std::vector<arith::IntSet> region;
@@ -198,75 +199,57 @@ class BufferFlattener : public StmtExprMutator {
       buffers_lca_pos_[arg.second] = 0;
     }
   }
+  void VisitStmt_(const LoopNode* op) final {
+    loop_stack_.push_back(GetRef<Loop>(op));
+    StmtExprVisitor::VisitStmt_(op);
+    loop_stack_.pop_back();
+  }
 
-  Stmt VisitStmt(const Stmt& s) final {
-    for (const auto& buffer_lca : (*buffers_lca_)) {
+  void VisitStmt_(const AllocateNode* op) final {
+    std::vector<arith::IntSet> empty_region(op->extents.size(), arith::IntSet::nothing());
+    CHECK(buffer_map_.count(op->buffer_var.get()));
+    const Buffer& buffer = buffer_map_.at(op->buffer_var.get());
+    // Initialize the buffer region with empty region.
+    buffers_region_[buffer] = empty_region;
+    StmtExprVisitor::VisitStmt_(op);
+  }
+
+  void VisitStmt(const Stmt& s) final {
+    for (const auto& buffer_lca : buffers_lca_) {
       if (buffer_lca.second == s) {
         buffers_lca_pos_[buffer_lca.first] =
             s.as<LoopNode>() != nullptr ? loop_stack_.size() + 1 : loop_stack_.size();
       }
     }
-    return StmtExprMutator::VisitStmt(s);
+    StmtExprVisitor::VisitStmt(s);
   }
 
-  PrimExpr VisitExpr(const PrimExpr& e) final {
-    for (const auto& buffer_lca : (*buffers_lca_)) {
+  void VisitExpr(const PrimExpr& e) final {
+    for (const auto& buffer_lca : buffers_lca_) {
       if (buffer_lca.second == e) {
         buffers_lca_pos_[buffer_lca.first] = loop_stack_.size();
       }
     }
-    return StmtExprMutator::VisitExpr(e);
+    StmtExprVisitor::VisitExpr(e);
   }
 
-  Stmt VisitStmt_(const AllocateNode* op) final {
-    std::vector<arith::IntSet> empty_region(op->extents.size(), arith::IntSet::nothing());
-    CHECK(buffer_map_->count(op->buffer_var.get()));
-    const Buffer& buffer = buffer_map_->at(op->buffer_var.get());
-    // Initialize the buffer region with empty region.
-    buffers_region_[buffer] = empty_region;
-    Stmt stmt = StmtExprMutator::VisitStmt_(op);
-    op = stmt.as<AllocateNode>();
-    CHECK(op != nullptr);
-    PrimExpr extents = 1;
-    for (const auto& extent : buffers_region_[buffer]) {
-      extents *= extent.max() - extent.min() + 1;
-    }
-    auto o = make_object<AllocateNode>(*op);
-    o->extents = {extents};
-    return Stmt(o);
+  void VisitStmt_(const BufferStoreNode* op) final {
+    VisitBuffer(op);
+    StmtExprVisitor::VisitStmt_(op);
   }
 
-  Stmt VisitStmt_(const LoopNode* op) final {
-    loop_stack_.push_back(GetRef<Loop>(op));
-    Stmt stmt = StmtExprMutator::VisitStmt_(op);
-    loop_stack_.pop_back();
-
-    op = stmt.as<LoopNode>();
-    CHECK(op != nullptr);
-    // todo(@siyuan): add support for loops with annotations
-    return ForNode::make(op->loop_var,
-                         op->min,
-                         op->extent,
-                         ForType::Serial,
-                         DeviceAPI::None,
-                         op->body);
+  void VisitExpr_(const BufferLoadNode* op) final {
+    VisitBuffer(op);
+    StmtExprVisitor::VisitExpr_(op);
   }
 
-  Stmt VisitStmt_(const BufferStoreNode* op) final {
-    auto begins = VisitBuffer(op);
-    return op->buffer.vstore(begins, VisitExpr(op->value));
-  }
-
-  PrimExpr VisitExpr_(const BufferLoadNode* op) final {
-    auto begins = VisitBuffer(op);
-    return op->buffer.vload(begins, op->dtype);
-  }
-
- private:
-  const std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual>* buffers_lca_;
-  const std::unordered_map<const VarNode*, Buffer>* buffer_map_;
   /*! \brief The used region of each Buffer */
   std::unordered_map<Buffer, std::vector<arith::IntSet>, ObjectHash, ObjectEqual> buffers_region_;
+
+ private:
+  const std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual>& buffers_lca_;
+  const std::unordered_map<const VarNode*, Buffer>& buffer_map_;
+
   /*!
    * \brief The buffer's LCA loop position at the loop stack
    * \note Only loops are interested since the buffer index will contain loop_vars
@@ -276,18 +259,15 @@ class BufferFlattener : public StmtExprMutator {
   std::vector<Loop> loop_stack_;
 
   template <typename T>
-  std::vector<PrimExpr> VisitBuffer(T op) {
+  void VisitBuffer(T op) {
     CHECK(buffers_region_.count(op->buffer));
     std::vector<arith::IntSet> region = GatherRegion(op);
     const std::vector<arith::IntSet>& buffer_region = buffers_region_[op->buffer];
     CHECK_EQ(buffer_region.size(), region.size());
-    std::vector<PrimExpr> indices;
     for (size_t i = 0; i < region.size(); ++i) {
-      indices.push_back(op->indices[i] - region[i].min());
       region[i] = arith::Union({buffer_region[i], region[i]});
     }
     buffers_region_[op->buffer] = region;
-    return indices;
   }
 
   /*! \brief Gather used buffer region */
@@ -313,13 +293,88 @@ class BufferFlattener : public StmtExprMutator {
   }
 };
 
+/*!
+ * \brief Transform multi-dimension BufferLoad/BufferStore into one-dimension Load/Store
+ */
+class BufferFlattener : public StmtExprMutator {
+ public:
+  BufferFlattener(const std::unordered_map<const VarNode*, Buffer>& buffer_map,
+                  const std::unordered_map<Buffer, std::vector<arith::IntSet>,
+                                     ObjectHash, ObjectEqual>& buffers_region)
+      : buffer_map_(buffer_map), buffers_region_(buffers_region) {}
+
+  Stmt VisitStmt_(const AllocateNode* op) final {
+    const Buffer& buffer = buffer_map_.at(op->buffer_var.get());
+    Stmt stmt = StmtExprMutator::VisitStmt_(op);
+    op = stmt.as<AllocateNode>();
+    CHECK(op != nullptr);
+    PrimExpr extents = 1;
+    for (const auto& extent : buffers_region_.at(buffer)) {
+      extents *= extent.max() - extent.min() + 1;
+    }
+    auto o = make_object<AllocateNode>(*op);
+    o->extents = {extents};
+    return Stmt(o);
+  }
+
+  Stmt VisitStmt_(const LoopNode* op) final {
+    Stmt stmt = StmtExprMutator::VisitStmt_(op);
+    op = stmt.as<LoopNode>();
+    CHECK(op != nullptr);
+    // todo(@siyuan): add support for loops with annotations
+    return ForNode::make(op->loop_var,
+                         op->min,
+                         op->extent,
+                         ForType::Serial,
+                         DeviceAPI::None,
+                         op->body);
+  }
+
+  Stmt VisitStmt_(const BufferStoreNode* op) final {
+    auto begins = GetIndices(op);
+    return op->buffer.vstore(begins, VisitExpr(op->value));
+  }
+
+  PrimExpr VisitExpr_(const BufferLoadNode* op) final {
+    auto begins = GetIndices(op);
+    return op->buffer.vload(begins, op->dtype);
+  }
+
+ private:
+  const std::unordered_map<const VarNode*, Buffer>& buffer_map_;
+  const std::unordered_map<Buffer, std::vector<arith::IntSet>,
+                           ObjectHash, ObjectEqual>& buffers_region_;
+
+  /*! \brief Transform indeces from the absolute indices to relative indices */
+  template <typename T>
+  std::vector<PrimExpr> GetIndices(T op) {
+    CHECK(buffers_region_.count(op->buffer));
+    std::vector<arith::IntSet> region = buffers_region_.at(op->buffer);
+    std::vector<PrimExpr> indices;
+    for (size_t i = 0; i < region.size(); ++i) {
+      indices.push_back(op->indices[i] - region[i].min());
+    }
+    return indices;
+  }
+};
+
 Function BufferFlatten(Function func) {
+  // Remove block and transfer BufferAllocate to Allocate
   BlockFlattener block_flattener;
   Stmt stmt = block_flattener(func->body);
+
+  // Find the LCA of each Buffer access
   LCADetector lca_detector(func->buffer_map);
   lca_detector(stmt);
-  BufferFlattener
-      flattener(&lca_detector.buffers_lca_, &block_flattener.buffer_map_, func->buffer_map);
+
+  // Recalculate the buffer region
+  RegionGatherer region_gatherer(lca_detector.buffers_lca_,
+                                 block_flattener.buffer_map_,
+                                 func->buffer_map);
+  region_gatherer(stmt);
+
+  // Transform BufferLoad/BufferStore into Load/Store
+  BufferFlattener flattener(block_flattener.buffer_map_, region_gatherer.buffers_region_);
   auto new_func = make_object<FunctionNode>(*func.operator->());
   new_func->body = flattener(stmt);
   return Function(new_func);
