@@ -172,26 +172,26 @@ Doc TirHybridPrinter::VisitExpr_(const VarNode* op) {
   return Doc::Text(op->name_hint);
 }
 
-#define TVM_DECLARE_TEPRINTER_BINOP(OpName, OpString)               \
-  Doc TirHybridPrinter::VisitExpr_(const OpName* op) {                     \
+#define TVM_DECLARE_TIR_HYBRID_PRINTER_BINOP(OpName, OpString)      \
+  Doc TirHybridPrinter::VisitExpr_(const OpName* op) {              \
     Doc doc;                                                        \
     doc << '(' << Print(op->a) << OpString << Print(op->b) << ")";  \
     return doc;                                                     \
   }                                                                 \
 
-TVM_DECLARE_TEPRINTER_BINOP(AddNode, " + ")
-TVM_DECLARE_TEPRINTER_BINOP(SubNode, " - ")
-TVM_DECLARE_TEPRINTER_BINOP(MulNode, "*")
-TVM_DECLARE_TEPRINTER_BINOP(DivNode, " / ")
-TVM_DECLARE_TEPRINTER_BINOP(ModNode, " % ")
-TVM_DECLARE_TEPRINTER_BINOP(EQNode, " == ")
-TVM_DECLARE_TEPRINTER_BINOP(NENode, " != ")
-TVM_DECLARE_TEPRINTER_BINOP(LTNode, " < ")
-TVM_DECLARE_TEPRINTER_BINOP(LENode, " <= ")
-TVM_DECLARE_TEPRINTER_BINOP(GTNode, " > ")
-TVM_DECLARE_TEPRINTER_BINOP(GENode, " >= ")
-TVM_DECLARE_TEPRINTER_BINOP(AndNode, " and ")
-TVM_DECLARE_TEPRINTER_BINOP(OrNode, " or ")
+TVM_DECLARE_TIR_HYBRID_PRINTER_BINOP(AddNode, " + ")
+TVM_DECLARE_TIR_HYBRID_PRINTER_BINOP(SubNode, " - ")
+TVM_DECLARE_TIR_HYBRID_PRINTER_BINOP(MulNode, "*")
+TVM_DECLARE_TIR_HYBRID_PRINTER_BINOP(DivNode, " / ")
+TVM_DECLARE_TIR_HYBRID_PRINTER_BINOP(ModNode, " % ")
+TVM_DECLARE_TIR_HYBRID_PRINTER_BINOP(EQNode, " == ")
+TVM_DECLARE_TIR_HYBRID_PRINTER_BINOP(NENode, " != ")
+TVM_DECLARE_TIR_HYBRID_PRINTER_BINOP(LTNode, " < ")
+TVM_DECLARE_TIR_HYBRID_PRINTER_BINOP(LENode, " <= ")
+TVM_DECLARE_TIR_HYBRID_PRINTER_BINOP(GTNode, " > ")
+TVM_DECLARE_TIR_HYBRID_PRINTER_BINOP(GENode, " >= ")
+TVM_DECLARE_TIR_HYBRID_PRINTER_BINOP(AndNode, " and ")
+TVM_DECLARE_TIR_HYBRID_PRINTER_BINOP(OrNode, " or ")
 
 Doc TirHybridPrinter::VisitExpr_(const FloorDivNode* op) {
   Doc doc;
@@ -344,7 +344,7 @@ Doc TirHybridPrinter::VisitStmt_(const BufferStoreNode* op) {
   return doc;
 }
 
-TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
+TVM_STATIC_IR_FUNCTOR(TirHybridPrinter, vtable)
 .set_dispatch<FunctionNode>([](const ObjectRef& node, TirHybridPrinter* p) {
   auto* op = node.as<FunctionNode>();
   Doc doc;
@@ -382,7 +382,7 @@ TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
   return doc;
 });
 
-TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
+TVM_STATIC_IR_FUNCTOR(TirHybridPrinter, vtable)
 .set_dispatch<TensorRegionNode>([](const ObjectRef& node, TirHybridPrinter* p) {
   auto* op = node.as<TensorRegionNode>();
   Doc doc;
@@ -398,7 +398,7 @@ TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
   return doc;
 });
 
-TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
+TVM_STATIC_IR_FUNCTOR(TirHybridPrinter, vtable)
 .set_dispatch<AnnotationNode>([](const ObjectRef& node, TirHybridPrinter* p) {
   auto* op = node.as<AnnotationNode>();
   Doc doc;
@@ -406,7 +406,7 @@ TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
   return doc;
 });
 
-TVM_STATIC_IR_FUNCTOR(TePrinter, vtable)
+TVM_STATIC_IR_FUNCTOR(TirHybridPrinter, vtable)
 .set_dispatch<ArrayNode>([](const ObjectRef& node, TirHybridPrinter* p) {
   auto* op = node.as<ArrayNode>();
   Doc doc;

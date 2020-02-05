@@ -61,6 +61,21 @@ def element_wise(a, c):
                     C[vi, vj] = B[vi, vj] + 1
 
 
+@tvm.hybrid_tir.script
+def predicate(b, c):
+    B = buffer_bind(b, (16, 16), "float32", name="B")
+    C = buffer_bind(c, (16, 16), "float32", name="C")
+
+    with block({}, reads=[], writes=[], name="root"):
+        for i in range(0, 16):
+            for jo in range(0, 4):
+                for ji in range(0, 4):
+                    with block({vi(0, 16): i, vj(0, 16): jo * 3 + ji},
+                               reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
+                               predicate=jo * 4 + ji < 16):
+                        C[vi, vj] = B[vi, vj] + 1
+
+
 def test_matmul():
     a = tvm.var("a")
     b = tvm.var("b")
@@ -99,6 +114,22 @@ def test_element_wise():
     assert isinstance(func.body.body[1].body.body, tvm.stmt.Block)
 
 
+def test_predicate():
+    b = tvm.var("b")
+    c = tvm.var("c")
+    func = predicate(b, c)
+
+    print(func)
+    print(tvm.hybrid_tir.to_python(func))
+
+    assert isinstance(func.body, tvm.stmt.Block)
+    assert isinstance(func.body.body, tvm.stmt.Loop)
+    assert isinstance(func.body.body.body, tvm.stmt.Loop)
+    assert isinstance(func.body.body.body.body, tvm.stmt.Loop)
+    assert isinstance(func.body.body.body.body.body, tvm.stmt.Block)
+
+
 if __name__ == '__main__':
     test_matmul()
     test_element_wise()
+    test_predicate()

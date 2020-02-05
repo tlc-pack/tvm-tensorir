@@ -131,6 +131,12 @@ def test_predicate():
 
     assert str(func) == str(rt_func)
 
+    assert isinstance(func.body, tvm.stmt.Block)
+    assert isinstance(func.body.body, tvm.stmt.Loop)
+    assert isinstance(func.body.body.body, tvm.stmt.Loop)
+    assert isinstance(func.body.body.body.body, tvm.stmt.Loop)
+    assert isinstance(func.body.body.body.body.body, tvm.stmt.Block)
+
 
 if __name__ == '__main__':
     test_matmul()
