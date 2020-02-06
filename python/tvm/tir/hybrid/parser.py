@@ -26,14 +26,14 @@ from typed_ast import ast3 as ast
 
 from . import scope_emitter
 from .registry import Registry
-from .. import api as _api
-from .. import expr as _expr
-from .. import ir_pass as _pass
-from .. import make as _make
-from .. import schedule as _schedule
-from .._ffi.base import TVMError
-from ..api import all as _all
-from ..api import any as _any
+from tvm import api as _api
+from tvm import expr as _expr
+from tvm import ir_pass as _pass
+from tvm import make as _make
+from tvm import schedule as _schedule
+from tvm._ffi.base import TVMError
+from tvm.api import all as _all
+from tvm.api import any as _any
 
 
 def _floordiv(x, y):

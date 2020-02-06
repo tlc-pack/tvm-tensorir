@@ -35,17 +35,17 @@
 namespace tvm {
 namespace tir {
 
-class TirHybridPrinter :
+class TIRHybridPrinter :
     public StmtFunctor<Doc(const Stmt&)>,
     public ExprFunctor<Doc(const PrimExpr&)>{
  public:
-  explicit TirHybridPrinter(runtime::TypedPackedFunc<std::string(Stmt)> annotate = nullptr)
+  explicit TIRHybridPrinter(runtime::TypedPackedFunc<std::string(Stmt)> annotate = nullptr)
     : annotate_(annotate) {}
   /*! \brief Print the node */
   TVM_DLL Doc Print(const ObjectRef& node);
 
   // Allow registration to be printer.
-  using FType = NodeFunctor<Doc(const ObjectRef&, TirHybridPrinter*)>;
+  using FType = NodeFunctor<Doc(const ObjectRef&, TIRHybridPrinter*)>;
   static FType& vtable();
 
  private:
@@ -145,7 +145,7 @@ class TirHybridPrinter :
   }
 };
 
-Doc TirHybridPrinter::Print(const ObjectRef& node) {
+Doc TIRHybridPrinter::Print(const ObjectRef& node) {
   if (node.as<StmtNode>()) {
     return PrintOptionalInfo(Downcast<Stmt>(node)) << VisitStmt(Downcast<Stmt>(node));
   } else if (node.as<PrimExprNode>()) {
@@ -160,20 +160,20 @@ Doc TirHybridPrinter::Print(const ObjectRef& node) {
   }
 }
 
-Doc TirHybridPrinter::VisitExprDefault_(const Object* op) {
+Doc TIRHybridPrinter::VisitExprDefault_(const Object* op) {
   return this->meta_.GetMetaNode(GetRef<ObjectRef>(op));
 }
 
-Doc TirHybridPrinter::VisitStmtDefault_(const Object* op) {
+Doc TIRHybridPrinter::VisitStmtDefault_(const Object* op) {
   return this->meta_.GetMetaNode(GetRef<ObjectRef>(op));
 }
 
-Doc TirHybridPrinter::VisitExpr_(const VarNode* op) {
+Doc TIRHybridPrinter::VisitExpr_(const VarNode* op) {
   return Doc::Text(op->name_hint);
 }
 
 #define TVM_DECLARE_TIR_HYBRID_PRINTER_BINOP(OpName, OpString)      \
-  Doc TirHybridPrinter::VisitExpr_(const OpName* op) {              \
+  Doc TIRHybridPrinter::VisitExpr_(const OpName* op) {              \
     Doc doc;                                                        \
     doc << '(' << Print(op->a) << OpString << Print(op->b) << ")";  \
     return doc;                                                     \
@@ -193,49 +193,49 @@ TVM_DECLARE_TIR_HYBRID_PRINTER_BINOP(GENode, " >= ")
 TVM_DECLARE_TIR_HYBRID_PRINTER_BINOP(AndNode, " and ")
 TVM_DECLARE_TIR_HYBRID_PRINTER_BINOP(OrNode, " or ")
 
-Doc TirHybridPrinter::VisitExpr_(const FloorDivNode* op) {
+Doc TIRHybridPrinter::VisitExpr_(const FloorDivNode* op) {
   Doc doc;
   doc << "floordiv(" << Print(op->a) << ", " << Print(op->b) << ")";
   return doc;
 }
 
-Doc TirHybridPrinter::VisitExpr_(const FloorModNode* op) {
+Doc TIRHybridPrinter::VisitExpr_(const FloorModNode* op) {
   Doc doc;
   doc << "floormod(" << Print(op->a) << ", " << Print(op->b) << ")";
   return doc;
 }
 
-Doc TirHybridPrinter::VisitExpr_(const MinNode* op) {
+Doc TIRHybridPrinter::VisitExpr_(const MinNode* op) {
   Doc doc;
   doc << "min(" << Print(op->a) << ", " << Print(op->b) << ")";
   return doc;
 }
 
-Doc TirHybridPrinter::VisitExpr_(const MaxNode* op) {
+Doc TIRHybridPrinter::VisitExpr_(const MaxNode* op) {
   Doc doc;
   doc << "max(" << Print(op->a) << ", " << Print(op->b) << ")";
   return doc;
 }
 
-Doc TirHybridPrinter::VisitExpr_(const IntImmNode* op) {
+Doc TIRHybridPrinter::VisitExpr_(const IntImmNode* op) {
   return PrintConstScalar<int64_t>(op->dtype, &(op->value));
 }
 
-Doc TirHybridPrinter::VisitExpr_(const FloatImmNode* op) {
+Doc TIRHybridPrinter::VisitExpr_(const FloatImmNode* op) {
   return PrintConstScalar<double>(op->dtype, &(op->value));
 }
 
-Doc TirHybridPrinter::VisitExpr_(const StringImmNode* op) {
+Doc TIRHybridPrinter::VisitExpr_(const StringImmNode* op) {
   return Doc::StrLiteral(op->value);
 }
 
-Doc TirHybridPrinter::VisitExpr_(const BufferLoadNode* op) {
+Doc TIRHybridPrinter::VisitExpr_(const BufferLoadNode* op) {
   Doc doc;
   doc << Print(op->buffer->data) << Print(op->indices);
   return doc;
 }
 
-Doc TirHybridPrinter::VisitStmt_(const SeqStmtNode* op) {
+Doc TIRHybridPrinter::VisitStmt_(const SeqStmtNode* op) {
   std::vector<Doc> stmts;
   for (Stmt stmt : op->seq) {
     stmts.push_back(Print(stmt));
@@ -243,11 +243,11 @@ Doc TirHybridPrinter::VisitStmt_(const SeqStmtNode* op) {
   return PrintSep(stmts, Doc::NewLine());
 }
 
-Doc TirHybridPrinter::VisitStmt_(const EvaluateNode* op) {
+Doc TIRHybridPrinter::VisitStmt_(const EvaluateNode* op) {
   return Print(op->value);
 }
 
-Doc TirHybridPrinter::VisitStmt_(const BlockNode* op) {
+Doc TIRHybridPrinter::VisitStmt_(const BlockNode* op) {
   // print block name and block vars
   Doc doc;
   doc << "with block({";
@@ -305,7 +305,7 @@ Doc TirHybridPrinter::VisitStmt_(const BlockNode* op) {
   return doc;
 }
 
-Doc TirHybridPrinter::VisitStmt_(const LoopNode* op) {
+Doc TIRHybridPrinter::VisitStmt_(const LoopNode* op) {
   Doc doc;
   // print loop and annotations
   doc << "for " << Print(op->loop_var);
@@ -319,7 +319,7 @@ Doc TirHybridPrinter::VisitStmt_(const LoopNode* op) {
   return doc;
 }
 
-Doc TirHybridPrinter::VisitStmt_(const BufferAllocateNode* op) {
+Doc TIRHybridPrinter::VisitStmt_(const BufferAllocateNode* op) {
   Doc doc;
   doc << op->buffer->name;
   doc << " = buffer_allocate(";
@@ -337,15 +337,15 @@ Doc TirHybridPrinter::VisitStmt_(const BufferAllocateNode* op) {
   return doc;
 }
 
-Doc TirHybridPrinter::VisitStmt_(const BufferStoreNode* op) {
+Doc TIRHybridPrinter::VisitStmt_(const BufferStoreNode* op) {
   Doc doc;
   doc << Print(op->buffer->data) << Print(op->indices);
   doc << " = " << Print(op->value);
   return doc;
 }
 
-TVM_STATIC_IR_FUNCTOR(TirHybridPrinter, vtable)
-.set_dispatch<FunctionNode>([](const ObjectRef& node, TirHybridPrinter* p) {
+TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
+.set_dispatch<FunctionNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
   auto* op = node.as<FunctionNode>();
   Doc doc;
   doc << "def " << op->name << "(";
@@ -382,8 +382,8 @@ TVM_STATIC_IR_FUNCTOR(TirHybridPrinter, vtable)
   return doc;
 });
 
-TVM_STATIC_IR_FUNCTOR(TirHybridPrinter, vtable)
-.set_dispatch<TensorRegionNode>([](const ObjectRef& node, TirHybridPrinter* p) {
+TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
+.set_dispatch<TensorRegionNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
   auto* op = node.as<TensorRegionNode>();
   Doc doc;
   doc << p->Print(op->buffer->data) << "[";
@@ -398,38 +398,38 @@ TVM_STATIC_IR_FUNCTOR(TirHybridPrinter, vtable)
   return doc;
 });
 
-TVM_STATIC_IR_FUNCTOR(TirHybridPrinter, vtable)
-.set_dispatch<AnnotationNode>([](const ObjectRef& node, TirHybridPrinter* p) {
+TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
+.set_dispatch<AnnotationNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
   auto* op = node.as<AnnotationNode>();
   Doc doc;
   doc << op->attr_key << ": " << p->Print(op->value);
   return doc;
 });
 
-TVM_STATIC_IR_FUNCTOR(TirHybridPrinter, vtable)
-.set_dispatch<ArrayNode>([](const ObjectRef& node, TirHybridPrinter* p) {
+TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
+.set_dispatch<ArrayNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
   auto* op = node.as<ArrayNode>();
   Doc doc;
   doc << '[';
   for (size_t i = 0; i < op->data.size(); ++i) {
     if (i != 0) {
       doc << ", ";
-    }
+      }
     doc << p->Print(op->data[i]);
   }
   doc << ']';
   return doc;
 });
 
-TirHybridPrinter::FType& TirHybridPrinter::vtable() {
+TIRHybridPrinter::FType& TIRHybridPrinter::vtable() {
   static FType inst;
   return inst;
 }
 
-TVM_REGISTER_GLOBAL("hybrid_tir.AsText")
+TVM_REGISTER_GLOBAL("tir.hybrid.AsHybrid")
 .set_body_typed<std::string(const Function&)>(
 [](const Function& function) {
-  return TirHybridPrinter().Print(function).str() + "\n";
+  return TIRHybridPrinter().Print(function).str() + "\n";
 });
 
 }  // namespace tir

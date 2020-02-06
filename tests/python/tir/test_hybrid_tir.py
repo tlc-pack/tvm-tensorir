@@ -16,9 +16,10 @@
 # under the License.
 
 import tvm
+from tvm import tir
 
 
-@tvm.hybrid_tir.script
+@tvm.tir.hybrid.script
 def matmul(a, b, c):
     A = buffer_bind(a, (16, 16), "float32", name="A")
     B = buffer_bind(b, (16, 16), "float32", name="B")
@@ -38,7 +39,7 @@ def matmul(a, b, c):
                         C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
-@tvm.hybrid_tir.script
+@tvm.tir.hybrid.script
 def element_wise(a, c):
     A = buffer_bind(a, (16, 16), "float32", name="A")
     C = buffer_bind(c, (16, 16), "float32", name="C")
@@ -61,7 +62,7 @@ def element_wise(a, c):
                     C[vi, vj] = B[vi, vj] + 1
 
 
-@tvm.hybrid_tir.script
+@tvm.tir.hybrid.script
 def predicate(b, c):
     B = buffer_bind(b, (16, 16), "float32", name="B")
     C = buffer_bind(c, (16, 16), "float32", name="C")
@@ -80,11 +81,9 @@ def test_matmul():
     a = tvm.var("a")
     b = tvm.var("b")
     c = tvm.var("c")
-
     func = matmul(a, b, c)
 
-    print(func)
-    print(tvm.hybrid_tir.to_python(func))
+    print(tvm.tir.hybrid.to_python(func))
 
     assert isinstance(func.body, tvm.stmt.Block)
     assert isinstance(func.body.body, tvm.stmt.Loop)
@@ -100,8 +99,7 @@ def test_element_wise():
     c = tvm.var("c")
     func = element_wise(a, c)
 
-    print(func)
-    print(tvm.hybrid_tir.to_python(func))
+    print(tvm.tir.hybrid.to_python(func))
 
     assert isinstance(func.body, tvm.stmt.Block)
     assert isinstance(func.body.body, tvm.stmt.SeqStmt)
@@ -119,8 +117,7 @@ def test_predicate():
     c = tvm.var("c")
     func = predicate(b, c)
 
-    print(func)
-    print(tvm.hybrid_tir.to_python(func))
+    print(tvm.tir.hybrid.to_python(func))
 
     assert isinstance(func.body, tvm.stmt.Block)
     assert isinstance(func.body.body, tvm.stmt.Loop)

@@ -18,5 +18,6 @@
 """The TIR namespace containing the IR definition and compiler."""
 
 from . import schedule
+from . import hybrid
 
 from .schedule import *
