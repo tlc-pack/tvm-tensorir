@@ -17,6 +17,7 @@
 
 import tvm
 from tvm import tir
+from tvm import ir_pass
 from tvm.tir.hybrid import source_to_op
 
 
@@ -86,6 +87,8 @@ def test_matmul():
 
     rt_func = source_to_op(0, tvm.tir.hybrid.to_python(func), a, b, c)
 
+    assert tvm.ir_pass.Equal(func, rt_func)
+
     assert isinstance(func.body, tvm.stmt.Block)
     assert isinstance(func.body.body, tvm.stmt.Loop)
     assert isinstance(func.body.body.body, tvm.stmt.Loop)
@@ -101,6 +104,8 @@ def test_element_wise():
     func = element_wise(a, c)
 
     rt_func = source_to_op(0, tvm.tir.hybrid.to_python(func), a, c)
+
+    assert tvm.ir_pass.Equal(func, rt_func)
 
     assert isinstance(func.body, tvm.stmt.Block)
     assert isinstance(func.body.body, tvm.stmt.SeqStmt)
@@ -119,6 +124,8 @@ def test_predicate():
     func = predicate(b, c)
 
     rt_func = source_to_op(0, tvm.tir.hybrid.to_python(func), b, c)
+
+    assert tvm.ir_pass.Equal(func, rt_func)
 
     assert isinstance(func.body, tvm.stmt.Block)
     assert isinstance(func.body.body, tvm.stmt.Loop)
