@@ -30,14 +30,6 @@
 namespace tvm {
 namespace tir {
 
-/*! \brief The AST node information for querying LCA */
-struct ASTInfo {
-  // The parent AST node
-  ObjectRef parent;
-  // The node depth in the AST
-  size_t depth;
-};
-
 /*!
  * \brief Remove Block in TIR and replace BufferAllocate with Allocate
  * \note After flattening, the TIR can not be scheduled anymore
@@ -109,23 +101,14 @@ class LCADetector : public StmtExprVisitor {
   }
 
   // Update parent and depth information for each AST node
-  void VisitExpr(const PrimExpr& e) final {
-    ObjectRef current_node = ObjectRef(e);
-    ast_nodes_info_[e] = ASTInfo{parent_, depth_};
-    ++depth_;
-    std::swap(parent_, current_node);
-    StmtExprVisitor::VisitExpr(e);
-    std::swap(parent_, current_node);
-    --depth_;
-  }
 
-  void VisitStmt(const Stmt& s) final {
-    ObjectRef current_node = ObjectRef(s);
-    ast_nodes_info_[s] = ASTInfo{parent_, depth_};
+  void VisitStmt_(const LoopNode* op) final {
+    Stmt n = GetRef<Stmt>(op);
+    ast_scopes_info_[n] = ScopeInfo{scope_, depth_};
     ++depth_;
-    std::swap(parent_, current_node);
-    StmtExprVisitor::VisitStmt(s);
-    std::swap(parent_, current_node);
+    std::swap(scope_, n);
+    StmtExprVisitor::VisitStmt_(op);
+    std::swap(scope_, n);
     --depth_;
   }
 
@@ -133,6 +116,8 @@ class LCADetector : public StmtExprVisitor {
   template <typename T>
   void VisitBuffer(T op) {
     Buffer buffer = op->buffer;
+    ObjectRef n = GetRef<ObjectRef>(op);
+    ast_scopes_info_[n] = ScopeInfo{scope_, depth_};
     // No need to update LCA if the buffer is in the func args (function input/output buffer)
     if (arg_buffers_.count(buffer)) return;
     if (buffers_lca_.count(buffer)) {
@@ -155,27 +140,35 @@ class LCADetector : public StmtExprVisitor {
   std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual> buffers_lca_;
 
  private:
-  /*! \brief The current parent node initializing with Null */
-  ObjectRef parent_{NullValue<ObjectRef>()};
+  /*! \brief The AST node information for querying LCA */
+  struct ScopeInfo {
+    // The parent loop node
+    Stmt parent_scope;
+    // The scope depth in the AST
+    size_t depth;
+  };
+
+  /*! \brief The current scope initializing with Null */
+  Stmt scope_{NullValue<Stmt>()};
   /*! \brief The current DFS depth */
   size_t depth_{0};
-  /*! \brief The parent and depth info of each Stmt/Expr Node */
-  std::unordered_map<ObjectRef, ASTInfo, ObjectHash, ObjectEqual> ast_nodes_info_;
+  /*! \brief The parent and depth info of each Loop/BufferLoad/BufferStore Node */
+  std::unordered_map<ObjectRef, ScopeInfo, ObjectHash, ObjectEqual> ast_scopes_info_;
   /*! \brief The Buffer in function args */
   std::unordered_set<Buffer, ObjectHash, ObjectEqual> arg_buffers_;
 
   ObjectRef LowestCommonAncestor(ObjectRef lhs, ObjectRef rhs) {
-    CHECK(ast_nodes_info_.count(lhs));
-    CHECK(ast_nodes_info_.count(rhs));
-    while (ast_nodes_info_[lhs].depth > ast_nodes_info_[rhs].depth) {
-      lhs = ast_nodes_info_[lhs].parent;
+    CHECK(ast_scopes_info_.count(lhs));
+    CHECK(ast_scopes_info_.count(rhs));
+    while (ast_scopes_info_[lhs].depth > ast_scopes_info_[rhs].depth) {
+      lhs = ast_scopes_info_[lhs].parent_scope;
     }
-    while (ast_nodes_info_[lhs].depth < ast_nodes_info_[rhs].depth) {
-      rhs = ast_nodes_info_[rhs].parent;
+    while (ast_scopes_info_[lhs].depth < ast_scopes_info_[rhs].depth) {
+      rhs = ast_scopes_info_[rhs].parent_scope;
     }
     while (lhs != rhs) {
-      lhs = ast_nodes_info_[lhs].parent;
-      rhs = ast_nodes_info_[rhs].parent;
+      lhs = ast_scopes_info_[lhs].parent_scope;
+      rhs = ast_scopes_info_[rhs].parent_scope;
     }
     return lhs;
   }
@@ -198,9 +191,22 @@ class RegionGatherer : public StmtExprVisitor {
       buffers_region_[arg.second] = region;
       buffers_lca_pos_[arg.second] = 0;
     }
+    for (const auto& buffer_lca : buffers_lca_) {
+      // The LCA is the root loop
+      if (!buffer_lca.second.defined()) {
+        buffers_lca_pos_[buffer_lca.first] = 0;
+      }
+    }
   }
+
   void VisitStmt_(const LoopNode* op) final {
-    loop_stack_.push_back(GetRef<Loop>(op));
+    Loop loop = GetRef<Loop>(op);
+    loop_stack_.push_back(loop);
+    for (const auto& buffer_lca : buffers_lca_) {
+      if (buffer_lca.second == loop) {
+        buffers_lca_pos_[buffer_lca.first] = loop_stack_.size();
+      }
+    }
     StmtExprVisitor::VisitStmt_(op);
     loop_stack_.pop_back();
   }
@@ -212,25 +218,6 @@ class RegionGatherer : public StmtExprVisitor {
     // Initialize the buffer region with empty region.
     buffers_region_[buffer] = empty_region;
     StmtExprVisitor::VisitStmt_(op);
-  }
-
-  void VisitStmt(const Stmt& s) final {
-    for (const auto& buffer_lca : buffers_lca_) {
-      if (buffer_lca.second == s) {
-        buffers_lca_pos_[buffer_lca.first] =
-            s.as<LoopNode>() != nullptr ? loop_stack_.size() + 1 : loop_stack_.size();
-      }
-    }
-    StmtExprVisitor::VisitStmt(s);
-  }
-
-  void VisitExpr(const PrimExpr& e) final {
-    for (const auto& buffer_lca : buffers_lca_) {
-      if (buffer_lca.second == e) {
-        buffers_lca_pos_[buffer_lca.first] = loop_stack_.size();
-      }
-    }
-    StmtExprVisitor::VisitExpr(e);
   }
 
   void VisitStmt_(const BufferStoreNode* op) final {
@@ -276,14 +263,10 @@ class RegionGatherer : public StmtExprVisitor {
     std::unordered_map<const VarNode*, arith::IntSet> dom_map;
     CHECK(buffers_lca_pos_.count(op->buffer));
     size_t pos = buffers_lca_pos_[op->buffer];
-    for (size_t i = 0; i < loop_stack_.size(); ++i) {
+    for (size_t i = pos; i < loop_stack_.size(); ++i) {
       const Loop& loop = loop_stack_[i];
       const VarNode* var = loop->loop_var.get();
-      if (i < pos) {
-        dom_map[var] = arith::IntSet::single_point(loop->loop_var);
-      } else {
-        dom_map[var] = arith::IntSet::range(Range::make_by_min_extent(loop->min, loop->extent));
-      }
+      dom_map[var] = arith::IntSet::range(Range::make_by_min_extent(loop->min, loop->extent));
     }
     std::vector<arith::IntSet> region;
     for (const auto& e : op->indices) {
