@@ -52,6 +52,8 @@ from . import target
 from . import te
 
 # tvm.testing
+from . import generic
+from . import hybrid
 from . import testing
 
 # tvm.driver
