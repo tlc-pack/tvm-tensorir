@@ -29,9 +29,9 @@ Typically, a scope handler function has no return value and accepts parser and n
 """
 # pylint: disable=redefined-builtin
 
-from .. import api as _api
-from .. import ir_pass as _pass
-from .. import make as _make
+from tvm import api as _api
+from tvm import ir_pass as _pass
+from tvm import make as _make
 
 
 def block(parser, node, block_vars_info, reads, writes, predicate=True, annotations=None, name=""):
