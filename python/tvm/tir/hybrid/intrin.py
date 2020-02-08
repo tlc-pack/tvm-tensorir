@@ -32,7 +32,7 @@ Example
 
 """
 
-from .. import api as _api
+from tvm import api as _api
 
 
 def int16(imm):

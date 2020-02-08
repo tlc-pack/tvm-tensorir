@@ -16,9 +16,9 @@
 # under the License.
 """Hybrid Script Scope Emitter for TIR"""
 
-from .. import expr as _expr
-from .. import make as _make
-from .. import stmt as _stmt
+from tvm import expr as _expr
+from tvm import make as _make
+from tvm import stmt as _stmt
 
 
 class ScopeEmitter:

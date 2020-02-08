@@ -534,7 +534,7 @@ class IRDeepCompare :
 };
 
 
-bool Equal(const te::Function& lhs, const te::Function& rhs) {
+bool Equal(const Function& lhs, const Function& rhs) {
   IRDeepCompare ir_deep_compare;
   if (lhs->params.size() != rhs->params.size()) return false;
   for (size_t i = 0; i < lhs->params.size(); ++i) {
