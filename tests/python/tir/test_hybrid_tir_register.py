@@ -16,19 +16,20 @@
 # under the License.
 
 import tvm
+from tvm import tir
 
 
-@tvm.hybrid_tir.register
+@tvm.tir.hybrid.script
 def add(a, b):
     return a + b
 
 
-@tvm.hybrid_tir.register
+@tvm.tir.hybrid.script
 def mul(a, b=1):
     return a * b
 
 
-@tvm.hybrid_tir.script
+@tvm.tir.hybrid.script
 def element_wise(a, c):
     A = buffer_bind(a, (16, 16), "float32", name="A")
     C = buffer_bind(c, (16, 16), "float32", name="C")
@@ -56,7 +57,7 @@ def test_element_wise():
     c = tvm.var("c")
     func = element_wise(a, c)
 
-    print(func)
+    print(tvm.tir.hybrid.to_python(func))
 
     assert isinstance(func.body, tvm.stmt.Block)
     assert isinstance(func.body.body, tvm.stmt.SeqStmt)
