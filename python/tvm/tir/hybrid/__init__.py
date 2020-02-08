@@ -21,12 +21,12 @@ from __future__ import absolute_import as _abs
 from . import utils, registry, intrin, special_stmt, scope_handler
 from .parser import source_to_op
 from .utils import _pruned_source
-from .._ffi.base import decorate
-from ..api import _init_api
+from tvm._ffi.base import decorate
+from tvm.api import _init_api
 
 
 def to_python(func):
-    """Transform a TeFunction to python syntax script
+    """Transform a Function to python syntax script
 
     Parameters
     ----------
@@ -39,7 +39,7 @@ def to_python(func):
         The Python script
     """
 
-    return AsText(func)
+    return AsHybrid(func)
 
 
 def register(origin_func):
@@ -78,8 +78,8 @@ def script(origin_func):
 
     Returns
     -------
-    function : TeFunction
-        The TeFunction in IR.
+    function : Function
+        The Function in IR.
     """
 
     def wrapped_func(func, *args, **kwargs):
@@ -90,4 +90,4 @@ def script(origin_func):
     return decorate(origin_func, wrapped_func)
 
 
-_init_api("tvm.hybrid_tir")
+_init_api("tvm.tir.hybrid")

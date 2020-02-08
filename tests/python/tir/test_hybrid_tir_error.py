@@ -16,14 +16,15 @@
 # under the License.
 
 import tvm
+from tvm import tir
 
 
-@tvm.hybrid_tir.script
+@tvm.tir.hybrid.script
 def buffer_bind_missing_args(a):
     A = buffer_bind((16, 16), "float32", name="A")
 
 
-@tvm.hybrid_tir.script
+@tvm.tir.hybrid.script
 def range_missing_args(a):
     A = buffer_bind(a, (16, 16), "float32", name="A")
 
@@ -33,7 +34,7 @@ def range_missing_args(a):
                 A[vi, vj] = 0.0
 
 
-@tvm.hybrid_tir.script
+@tvm.tir.hybrid.script
 def block_missing_args(a):
     A = buffer_bind(a, (16, 16), "float32", name="A")
 
@@ -43,7 +44,7 @@ def block_missing_args(a):
                 A[vi, vj] = 0.0
 
 
-@tvm.hybrid_tir.script
+@tvm.tir.hybrid.script
 def undefined_buffer(a):
     A = buffer_bind(a, (16, 16), "float32", name="A")
 
@@ -53,7 +54,7 @@ def undefined_buffer(a):
                 A[vi, vj] = 0.0
 
 
-@tvm.hybrid_tir.script
+@tvm.tir.hybrid.script
 def undefined_block_var(a):
     A = buffer_bind(a, (16, 16), "float32", name="A")
 
@@ -63,13 +64,13 @@ def undefined_block_var(a):
                 A[vi, vk] = 0.0
 
 
-@tvm.hybrid_tir.script
+@tvm.tir.hybrid.script
 def unsupported_stmt(a):
     if a > 0:
         print("I love tvm")
 
 
-@tvm.hybrid_tir.script
+@tvm.tir.hybrid.script
 def unsupported_function_call(a):
     A = buffer_bind(a, (16, 16), "float32", name="A")
 
@@ -79,7 +80,7 @@ def unsupported_function_call(a):
                 A[vi, vk] = 0.0
 
 
-@tvm.hybrid_tir.script
+@tvm.tir.hybrid.script
 def type_check(a):
     A = buffer_bind(a, (16, 16), "float32", name="A")
 
@@ -107,11 +108,11 @@ if __name__ == '__main__':
     b = tvm.var("b")
     c = tvm.var("c")
 
-    wrap_error(buffer_bind_missing_args, 23, a)
-    wrap_error(range_missing_args, 30, a)
-    wrap_error(block_missing_args, 42, a)
-    wrap_error(undefined_buffer, 52, a)
-    wrap_error(undefined_block_var, 63, a)
-    wrap_error(unsupported_stmt, 68, a)
-    wrap_error(unsupported_function_call, 76, a)
-    wrap_error(type_check, 88, a)
+    wrap_error(buffer_bind_missing_args, 24, a)
+    wrap_error(range_missing_args, 31, a)
+    wrap_error(block_missing_args, 43, a)
+    wrap_error(undefined_buffer, 53, a)
+    wrap_error(undefined_block_var, 64, a)
+    wrap_error(unsupported_stmt, 69, a)
+    wrap_error(unsupported_function_call, 77, a)
+    wrap_error(type_check, 89, a)

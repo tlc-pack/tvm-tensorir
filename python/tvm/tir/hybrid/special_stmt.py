@@ -23,9 +23,9 @@ node as its first 2 arguments.
 """
 # pylint: disable=unused-argument
 
-from .. import api as _api
-from .. import ir_pass as _pass
-from .. import make as _make
+from tvm import api as _api
+from tvm import ir_pass as _pass
+from tvm import make as _make
 
 
 def buffer_bind(parser, node, var, shape, dtype="float32", name="buf"):
