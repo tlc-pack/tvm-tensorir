@@ -16,10 +16,12 @@
 # under the License.
 
 import tvm
-from tvm.hybrid_tir import source_to_op
+from tvm import tir
+from tvm import ir_pass
+from tvm.tir.hybrid import source_to_op
 
 
-@tvm.hybrid_tir.script
+@tvm.tir.hybrid.script
 def matmul(a, b, c):
     A = buffer_bind(a, (16, 16), "float32", name="A")
     B = buffer_bind(b, (16, 16), "float32", name="B")
@@ -39,7 +41,7 @@ def matmul(a, b, c):
                         C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
-@tvm.hybrid_tir.script
+@tvm.tir.hybrid.script
 def element_wise(a, c):
     A = buffer_bind(a, (16, 16), "float32", name="A")
     C = buffer_bind(c, (16, 16), "float32", name="C")
@@ -62,17 +64,30 @@ def element_wise(a, c):
                     C[vi, vj] = B[vi, vj] + 1
 
 
+@tvm.tir.hybrid.script
+def predicate(b, c):
+    B = buffer_bind(b, (16, 16), "float32", name="B")
+    C = buffer_bind(c, (16, 16), "float32", name="C")
+
+    with block({}, reads=[], writes=[], name="root"):
+        for i in range(0, 16):
+            for jo in range(0, 4):
+                for ji in range(0, 4):
+                    with block({vi(0, 16): i, vj(0, 16): jo * 3 + ji},
+                               reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
+                               predicate=jo * 4 + ji < 16):
+                        C[vi, vj] = B[vi, vj] + 1
+
+
 def test_matmul():
     a = tvm.var("a")
     b = tvm.var("b")
     c = tvm.var("c")
     func = matmul(a, b, c)
 
-    print(func)
-    rt_func = source_to_op(0, tvm.hybrid_tir.to_python(func), a, b, c)
-    print(rt_func)
+    rt_func = source_to_op(0, tvm.tir.hybrid.to_python(func), a, b, c)
 
-    assert str(func) == str(rt_func)
+    assert tvm.ir_pass.Equal(func, rt_func)
 
     assert isinstance(func.body, tvm.stmt.Block)
     assert isinstance(func.body.body, tvm.stmt.Loop)
@@ -88,11 +103,9 @@ def test_element_wise():
     c = tvm.var("c")
     func = element_wise(a, c)
 
-    print(func)
-    rt_func = source_to_op(0, tvm.hybrid_tir.to_python(func), a, c)
-    print(rt_func)
+    rt_func = source_to_op(0, tvm.tir.hybrid.to_python(func), a, c)
 
-    assert str(func) == str(rt_func)
+    assert tvm.ir_pass.Equal(func, rt_func)
 
     assert isinstance(func.body, tvm.stmt.Block)
     assert isinstance(func.body.body, tvm.stmt.SeqStmt)
@@ -105,6 +118,23 @@ def test_element_wise():
     assert isinstance(func.body.body[1].body.body, tvm.stmt.Block)
 
 
+def test_predicate():
+    b = tvm.var("b")
+    c = tvm.var("c")
+    func = predicate(b, c)
+
+    rt_func = source_to_op(0, tvm.tir.hybrid.to_python(func), b, c)
+
+    assert tvm.ir_pass.Equal(func, rt_func)
+
+    assert isinstance(func.body, tvm.stmt.Block)
+    assert isinstance(func.body.body, tvm.stmt.Loop)
+    assert isinstance(func.body.body.body, tvm.stmt.Loop)
+    assert isinstance(func.body.body.body.body, tvm.stmt.Loop)
+    assert isinstance(func.body.body.body.body.body, tvm.stmt.Block)
+
+
 if __name__ == '__main__':
     test_matmul()
     test_element_wise()
+    test_predicate()

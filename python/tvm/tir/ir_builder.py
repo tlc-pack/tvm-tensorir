@@ -567,7 +567,7 @@ class IRBuilder(object):
         return WithScope(None, _exit_cb)
 
     def function(self, params, buffer_map, stmt, name="func"):
-        """Create a Te block.
+        """Create a TIR function.
 
         Parameters
         ----------
