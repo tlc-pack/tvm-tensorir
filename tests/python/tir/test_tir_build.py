@@ -16,6 +16,7 @@
 # under the License.
 
 import tvm
+from tvm import tir
 import numpy as np
 import util
 
@@ -23,7 +24,7 @@ import util
 def test_element_wise():
     m, n = 128, 128
     func = util.element_wise_stmt()
-    func = tvm.build(func)
+    func = tvm.tir.build(func)
 
     a_np = np.random.uniform(size=(m, n)).astype("float32")
     a = tvm.nd.array(a_np)
@@ -35,7 +36,7 @@ def test_element_wise():
 def test_matmul():
     m, n, l = 128, 128, 128
     func = util.matmul_stmt()
-    func = tvm.build(func)
+    func = tvm.tir.build(func)
 
     a_np = np.random.uniform(size=(m, l)).astype("float32")
     b_np = np.random.uniform(size=(n, l)).astype("float32")

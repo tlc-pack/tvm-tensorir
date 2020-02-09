@@ -21,12 +21,12 @@ from tvm import tir
 
 @tvm.tir.hybrid.script
 def buffer_bind_missing_args(a):
-    A = buffer_bind((16, 16), "float32", name="A")
+    A = buffer_bind((16, 16), "float32")
 
 
 @tvm.tir.hybrid.script
 def range_missing_args(a):
-    A = buffer_bind(a, (16, 16), "float32", name="A")
+    A = buffer_bind(a, (16, 16), "float32")
 
     for i in range(16):
         for j in range(0, 16):
@@ -36,7 +36,7 @@ def range_missing_args(a):
 
 @tvm.tir.hybrid.script
 def block_missing_args(a):
-    A = buffer_bind(a, (16, 16), "float32", name="A")
+    A = buffer_bind(a, (16, 16), "float32")
 
     for i in range(0, 16):
         for j in range(0, 16):
@@ -46,7 +46,7 @@ def block_missing_args(a):
 
 @tvm.tir.hybrid.script
 def undefined_buffer(a):
-    A = buffer_bind(a, (16, 16), "float32", name="A")
+    A = buffer_bind(a, (16, 16), "float32")
 
     for i in range(0, 16):
         for j in range(0, 16):
@@ -56,7 +56,7 @@ def undefined_buffer(a):
 
 @tvm.tir.hybrid.script
 def undefined_block_var(a):
-    A = buffer_bind(a, (16, 16), "float32", name="A")
+    A = buffer_bind(a, (16, 16), "float32")
 
     for i in range(0, 16):
         for j in range(0, 16):
@@ -72,7 +72,7 @@ def unsupported_stmt(a):
 
 @tvm.tir.hybrid.script
 def unsupported_function_call(a):
-    A = buffer_bind(a, (16, 16), "float32", name="A")
+    A = buffer_bind(a, (16, 16), "float32")
 
     for i in const_range(0, 16):
         for j in range(0, 16):
@@ -82,7 +82,7 @@ def unsupported_function_call(a):
 
 @tvm.tir.hybrid.script
 def type_check(a):
-    A = buffer_bind(a, (16, 16), "float32", name="A")
+    A = buffer_bind(a, (16, 16), "float32")
 
     for i in range(0, 16):
         for j in range(0, 16):
@@ -90,10 +90,10 @@ def type_check(a):
                 A[vi, vj] = 0.0
 
 
-def wrap_error(func, lineno, *args):
+def wrap_error(func, lineno):
     try:
-        res = func(*args)
-        print(res)
+        mod = tvm.tir.hybrid.create_module([func])
+        res = mod[func.__name__]
     except BaseException as e:
         print(e)
         msg = str(e).split('\n')[-1].split(':', maxsplit=1)[0].strip().split(' ')[-1].strip()
@@ -104,15 +104,11 @@ def wrap_error(func, lineno, *args):
 
 
 if __name__ == '__main__':
-    a = tvm.var("a")
-    b = tvm.var("b")
-    c = tvm.var("c")
-
-    wrap_error(buffer_bind_missing_args, 24, a)
-    wrap_error(range_missing_args, 31, a)
-    wrap_error(block_missing_args, 43, a)
-    wrap_error(undefined_buffer, 53, a)
-    wrap_error(undefined_block_var, 64, a)
-    wrap_error(unsupported_stmt, 69, a)
-    wrap_error(unsupported_function_call, 77, a)
-    wrap_error(type_check, 89, a)
+    wrap_error(buffer_bind_missing_args, 24)
+    wrap_error(range_missing_args, 31)
+    wrap_error(block_missing_args, 43)
+    wrap_error(undefined_buffer, 53)
+    wrap_error(undefined_block_var, 64)
+    wrap_error(unsupported_stmt, 69)
+    wrap_error(unsupported_function_call, 77)
+    wrap_error(type_check, 89)

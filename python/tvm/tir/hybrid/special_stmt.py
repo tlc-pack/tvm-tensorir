@@ -28,33 +28,34 @@ from tvm import ir_pass as _pass
 from tvm import make as _make
 
 
-def buffer_bind(parser, node, var, shape, dtype="float32", name="buf"):
-    """ Special function buffer_bind(var, shape, dtype, name)
+def buffer_bind(parser, node, var, shape, dtype="float32"):
+    """ Special function buffer_bind(var, shape, dtype)
 
     Example
     -------
     .. code-block:: python
 
-        A = buffer_bind(a, (128, 128), dtype="float32", name="A")
+        A = buffer_bind(a, (128, 128), dtype="float32")
 
     """
+
     if var not in parser.params:
         parser.report_error("Can not bind non-input args to buffer")
-    return _api.decl_buffer(shape, dtype=dtype, name=name)
+    return _api.decl_buffer(shape, dtype=dtype, name=parser._assign_target)
 
 
-def buffer_allocate(parser, node, shape, dtype="float32", name="buf", scope=""):
-    """ Special function buffer_allocate(var, shape, dtype, name, scope)
+def buffer_allocate(parser, node, shape, dtype="float32", scope=""):
+    """ Special function buffer_allocate(var, shape, dtype, scope)
 
     Example
     -------
     .. code-block:: python
 
-        A = buffer_allocate((128, 128), dtype="float32", name="A")
+        A = buffer_allocate((128, 128), dtype="float32")
 
     """
-    _buffer = _api.decl_buffer(shape, dtype=dtype, name=name)
-    parser.scope_emitter.allocate_stack[-1].append(_make.BufferAllocate(_buffer, scope))
+    _buffer = _api.decl_buffer(shape, dtype=dtype, name=parser._assign_target)
+    parser.scope_emitter.alloc(_make.BufferAllocate(_buffer, scope))
     return _buffer
 
 
@@ -83,5 +84,4 @@ def block_vars(parser, node, begin, end, name="bv", iter_type="data_par"):
         raise ValueError("Unknown iter_type")
 
     block_var = _api._IterVar(block_var_dom, name, iter_type_id)
-    parser.update_symbol(block_var.var.name, parser.Symbol.IterVar, block_var.var)
     return block_var

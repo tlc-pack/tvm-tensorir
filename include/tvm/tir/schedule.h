@@ -50,7 +50,7 @@ class ScheduleNode : public Object {
     v->Visit("root", &root);
   }
 
-  static constexpr const char* _type_key = "TirSchedule";
+  static constexpr const char* _type_key = "tir.Schedule";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleNode, Object);
 };
 

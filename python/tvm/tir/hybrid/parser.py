@@ -18,14 +18,11 @@
 # pylint: disable=invalid-name, missing-docstring, inconsistent-return-statements, no-else-return
 # pylint: disable=unnecessary-comprehension, unused-argument
 
+import json
 import numbers
 import operator
-from enum import Enum
-
 from typed_ast import ast3 as ast
 
-from . import scope_emitter
-from .registry import Registry
 from tvm import api as _api
 from tvm import expr as _expr
 from tvm import ir_pass as _pass
@@ -34,6 +31,13 @@ from tvm import schedule as _schedule
 from tvm._ffi.base import TVMError
 from tvm.api import all as _all
 from tvm.api import any as _any
+from tvm.api import _init_api
+
+from .. import module
+from . import scope_emitter
+from .scope_emitter import ScopeEmitter
+from .meta_unparser import MetaUnparser
+from .registry import Registry
 
 
 def _floordiv(x, y):
@@ -72,21 +76,6 @@ class HybridParser(ast.NodeVisitor):
         When visiting For node, we check for_scope registry.
     """
 
-    class Symbol(Enum):
-        """Enumerates types in the symbol table"""
-        Var = 0
-        Buffer = 1
-        IterVar = 2
-        LoopVar = 3
-        List = 4
-        Dict = 5
-
-    _symbol_type = {
-        list: Symbol.List,
-        dict: Symbol.Dict,
-        _schedule.Buffer: Symbol.Buffer
-    }
-
     _binop_maker = {
         ast.Add: operator.add,
         ast.Sub: operator.sub,
@@ -113,27 +102,50 @@ class HybridParser(ast.NodeVisitor):
         ast.Not: operator.not_
     }
 
-    def __init__(self, src, func_lineno, *args):
-        self.args = list(args)
-        self.symbols = {}  # Symbol table
-        self.params = []
-        self.buffer_map = {}
-        self.src = src.split('\n')
-        self.scope_emitter = scope_emitter.ScopeEmitter(self)
+    def __init__(self, src, base_lienno):
+        self.params = None
+        self.buffer_map = None
+        self.scope_emitter = None
 
-        self.func_lineno = func_lineno
+        self.src = src.split('\n')
+        self.base_lineno = base_lienno
         self.current_lineno = 0
         self.current_col_offset = 0
+        self.meta = None
 
         self._is_block_vars = False
         self._in_with_func_arg = False
+        self._assign_target = None
+
+    def init_function_parsing_env(self):
+        """Initialize function parsing environment"""
+        self.params = []  # parameter list
+        self.buffer_map = {}  # buffer map
+        self.scope_emitter = scope_emitter.ScopeEmitter(self)  # scope emitter
+
+    # TODO : if meta related functions grow, consider moving them to a new file
+    @staticmethod
+    def is_meta(node):
+        """Judge whether an AST node is META"""
+        return isinstance(node, ast.Assign) \
+               and len(node.targets) == 1 \
+               and isinstance(node.targets[0], ast.Name) \
+               and node.targets[0].id == "__tvm_meta__"
+
+    def init_meta(self, meta_dict):
+        if meta_dict is not None:
+            self.meta = _api.load_json(json.dumps(meta_dict))
+
+    def mutate_meta(self, meta_node):
+        Mutate_Meta(self.scope_emitter.symbols, meta_node)
+        return meta_node
 
     def visit(self, node):
         """Override method in ast.NodeVisitor"""
         old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
 
         if hasattr(node, "lineno"):
-            self.current_lineno = self.func_lineno + node.lineno - 1
+            self.current_lineno = self.base_lineno + node.lineno - 1
         if hasattr(node, "col_offset"):
             self.current_col_offset = node.col_offset
 
@@ -147,7 +159,7 @@ class HybridParser(ast.NodeVisitor):
 
     def wrap_line_col(self, message, lineno, col_offset):
         """Wrap the message with line number and column offset"""
-        src_line = self.src[lineno - self.func_lineno]
+        src_line = self.src[lineno - self.base_lineno]
         leading_space = len(src_line) - len(src_line.lstrip(' '))
         col_offset = col_offset - leading_space
         src_line = src_line[leading_space:]
@@ -179,40 +191,82 @@ class HybridParser(ast.NodeVisitor):
 
         self.report_error(type(node).__name__ + " stmt is not supported now")
 
-    def update_symbol(self, name, symbol_type, symbol):
-        """ Update value to the symbol table context
-        Parameters
-        ----------
-        name : str
-            name of symbol
-        symbol_type : enum, intrin.Symbol
-            type of symbol
-        symbol : Var, IterVar, Buffer or List of TensorRegion
-            the symbol
-        """
-
-        self.symbols[name] = (symbol_type, symbol)
-
-    def remove_symbol(self, name):
-        """ Remove value to the symbol table context
-        Parameters
-        ----------
-        name : str
-            name of symbol
-        """
-
-        self.symbols.pop(name)
-
     def visit_Module(self, node):
         """ Module visitor
         AST abstract grammar:
             Module(stmt* body, type_ignore* type_ignore)
-        By now we only support Module with a single FunctionDef
+        By now we support two format of hybrid script shown below.
+
+        Example
+        -------
+        1. Generate a Function(If the code is printed, then it may bring meta)
+        .. code-block:: python
+
+            import tvm
+
+            @tvm.tir.hybrid.script
+            def A(...):
+                ...
+
+            # call hybrid parser when call this function, get a Function
+            func = A
+
+        2. Generate a Module
+        .. code-block:: python
+
+            import tvm
+
+            @tvm.tir.hybrid.script
+            class MyMod():
+               def A(...):
+                  ...
+
+               def B(...):
+                   ...
+
+                __tvm_meta__ = ...
+
+            # call hybrid parser during construction, get a Module
+            mod = MyMod
         """
 
-        if not len(node.body) == 1:
-            self.report_error("Only one-function source code is allowed")
-        return self.visit(node.body[0])
+        if len(node.body) == 1 and isinstance(node.body[0], (ast.ClassDef, ast.FunctionDef)):
+            # class or single function
+            return self.visit(node.body[0])
+        elif len(node.body) == 2:
+            if isinstance(node.body[0], ast.Assign):
+                node.body[0], node.body[1] = node.body[1], node.body[0]
+            if isinstance(node.body[0], ast.FunctionDef) and HybridParser.is_meta(node.body[1]):
+                # function with meta
+                self.init_meta(MetaUnparser().visit(node.body[1].value))
+                return self.visit(node.body[0])
+        self.report_error(
+            "Only one-function, one-class or function-with-meta source code is allowed")
+
+    def visit_ClassDef(self, node):
+        """ ClassDef visitor
+        AST abstract grammar:
+            ClassDef(identifier name, expr* bases, keyword* keywords, stmt* body,
+                     expr* decorator_list)
+        """
+
+        # parse meta
+        count = False
+        for body_element in node.body:
+            if isinstance(body_element, ast.FunctionDef):
+                pass
+            elif HybridParser.is_meta(body_element) and not count:
+                count = True
+                self.init_meta(MetaUnparser().visit(body_element.value))
+            else:
+                self.report_error("invalid class member")
+
+        # parse member functions
+        funcs = []
+        for body_element in node.body:
+            if isinstance(body_element, ast.FunctionDef):
+                funcs.append(self.visit(body_element))
+        return module.create_module(funcs)
 
     def visit_FunctionDef(self, node):
         """ FunctionDef visitor
@@ -224,19 +278,17 @@ class HybridParser(ast.NodeVisitor):
             arg = (identifier arg, expr? annotation, string? type_comment)
         """
 
-        if not len(node.args.args) == len(self.args):
-            self.report_error("The number of arguments passed")
-
+        self.init_function_parsing_env()
         # add parameters of function
-        self.params = []
-        for idx, arg in enumerate(node.args.args):
-            self.update_symbol(arg.arg, HybridParser.Symbol.Var, self.args[idx])
-            self.params.append(self.args[idx])
+        for arg in node.args.args:
+            arg_var = _api.var(arg.arg)
+            self.scope_emitter.update_symbol(arg.arg, ScopeEmitter.Symbol.Var, arg_var)
+            self.params.append(arg_var)
         # visit the body of function
         for body_element in node.body:
             self.visit(body_element)
-        # fetch the body and return a TeFunction
-        body = self.scope_emitter.pop_seq()
+        # fetch the body and return a tir.Function
+        body = self.scope_emitter.pop_scope()
         return _make.Function(self.params, self.buffer_map, node.name, body)
 
     def visit_Assign(self, node):
@@ -254,14 +306,15 @@ class HybridParser(ast.NodeVisitor):
         target = node.targets[0]
         if isinstance(target, ast.Name):
             # Target = List, Buffer(buffer_bind, buffer_allocate)
+            self._assign_target = target.id
             rhs = self.visit(node.value)
             if not isinstance(rhs, (_schedule.Buffer, list)):
                 self.report_error(
                     "The value of assign ought to be list of TensorRegions or Buffer typed")
-            self.update_symbol(target.id, HybridParser._symbol_type[type(rhs)], rhs)
+            self.scope_emitter.update_symbol(target.id, ScopeEmitter._symbol_type[type(rhs)], rhs)
             # special judge buffer_bind
             if isinstance(node.value, ast.Call) and node.value.func.id == "buffer_bind":
-                self.buffer_map[self.symbols[node.value.args[0].id][1]] = rhs
+                self.buffer_map[self.scope_emitter.lookup_symbol(node.value.args[0].id)] = rhs
         elif isinstance(target, ast.Subscript):
             # Buffer[expr, expr, .. expr] = Expr
             buffer, buffer_indexes = self.visit(target)
@@ -298,7 +351,7 @@ class HybridParser(ast.NodeVisitor):
 
         old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
         self.current_lineno, self.current_col_offset = \
-            self.func_lineno + node.iter.lineno - 1, node.iter.col_offset
+            self.base_lineno + node.iter.lineno - 1, node.iter.col_offset
         Registry.for_scope.get(func_name)(self, node, args, kw_args)
         self.current_lineno, self.current_col_offset = old_lineno, old_col_offset
 
@@ -358,6 +411,12 @@ class HybridParser(ast.NodeVisitor):
             self._is_block_vars = True
             block_vars = self.visit(block_vars_arg)
             self._is_block_vars = False
+
+            # update block vars into symbol table
+            self.scope_emitter.new_scope(is_block=True)
+            for block_var, _ in block_vars:
+                self.scope_emitter.update_symbol(block_var.var.name, ScopeEmitter.Symbol.IterVar,
+                                                 block_var.var)
             # collect arguments
             args = [block_vars] + [self.visit(arg) for arg in func_call.args[1:]]
             kw_args = [self.visit(keyword) for keyword in func_call.keywords if
@@ -375,7 +434,7 @@ class HybridParser(ast.NodeVisitor):
         # All the functions supported in With stmt are registered in scope_handler.WithScope
         old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
         self.current_lineno, self.current_col_offset = \
-            self.func_lineno + func_call.lineno - 1, func_call.col_offset
+            self.base_lineno + func_call.lineno - 1, func_call.col_offset
         Registry.with_scope.get(func_name)(self, node, args, kw_args)
         self.current_lineno, self.current_col_offset = old_lineno, old_col_offset
 
@@ -462,53 +521,72 @@ class HybridParser(ast.NodeVisitor):
             slice = Slice(expr? lower, expr? upper, expr? step)
                     | ExtSlice(slice* dims)
                     | Index(expr value)
-        By now only 2 types of Subscript are supported:
+        By now only 3 types of Subscript are supported:
             1. Buffer[index, index, ...], Buffer element access(BufferLoad & BufferStore)
             2. Buffer[slice, slice, ...], TensorRegion
+            3. meta[type_key][index], Meta info access
             TODO(long term): TensorRegion can be Buffer[index, index, ...]?
         """
 
-        if not isinstance(node.value, ast.Name):
-            self.report_error("Only buffer variable can be subscriptable")
-        if node.value.id not in self.symbols:
-            self.report_error(node.value.id + " is not defined")
-        symbol = self.symbols[node.value.id][1]
+        if isinstance(node.value, ast.Name):
+            symbol = self.scope_emitter.lookup_symbol(node.value.id)
+            if symbol is None:
+                self.report_error(node.value.id + " is not defined")
 
-        if isinstance(node.slice, ast.Index):
-            # BufferLoad & BufferStore
-            if isinstance(node.slice.value, ast.Tuple):
-                # Buffer[index, index, ...]
-                indexes = [self.visit(element) for element in node.slice.value.elts]
+            if isinstance(node.slice, ast.Index):
+                # BufferLoad & BufferStore
+                if isinstance(node.slice.value, ast.Tuple):
+                    # Buffer[index, index, ...]
+                    indexes = [self.visit(element) for element in node.slice.value.elts]
+                else:
+                    # Buffer[index]
+                    indexes = [self.visit(node.slice.value)]
+
+                if isinstance(node.ctx, ast.Load):
+                    return _make.BufferLoad(symbol.dtype, symbol, indexes)
+                return symbol, indexes
             else:
-                # Buffer[index]
-                indexes = [self.visit(node.slice.value)]
-
-            if isinstance(node.ctx, ast.Load):
-                return _make.BufferLoad(symbol.dtype, symbol, indexes)
-            return symbol, indexes
-        else:
-            # TensorRegion
-            slices = []
-            if isinstance(node.slice, ast.Slice):
-                # Buffer[begin:end]
-                if node.slice.step is not None:
-                    self.report_error("step is not allowed in TensorRegion")
-                slices = [(self.visit(node.slice.lower), self.visit(node.slice.upper))]
-            elif isinstance(node.slice, ast.ExtSlice):
-                # Buffer[begin:end, begin:end]
-                for dim in node.slice.dims:
-                    if dim.step is not None:
+                # TensorRegion
+                slices = []
+                if isinstance(node.slice, ast.Slice):
+                    # Buffer[begin:end]
+                    if node.slice.step is not None:
                         self.report_error("step is not allowed in TensorRegion")
-                    slices.append((self.visit(dim.lower), self.visit(dim.upper)))
+                    slices = [(self.visit(node.slice.lower), self.visit(node.slice.upper))]
+                elif isinstance(node.slice, ast.ExtSlice):
+                    # Buffer[begin:end, begin:end]
+                    for dim in node.slice.dims:
+                        if dim.step is not None:
+                            self.report_error("step is not allowed in TensorRegion")
+                        slices.append((self.visit(dim.lower), self.visit(dim.upper)))
 
-            doms = []
-            for dom in slices:
-                extent = dom[1] - dom[0]
-                if isinstance(extent, _expr.PrimExpr):
-                    extent = _pass.Simplify(dom[1] - dom[0])
-                doms.append(_make.range_by_min_extent(dom[0], extent))
+                doms = []
+                for dom in slices:
+                    extent = dom[1] - dom[0]
+                    if isinstance(extent, _expr.PrimExpr):
+                        extent = _pass.Simplify(dom[1] - dom[0])
+                    doms.append(_make.range_by_min_extent(dom[0], extent))
 
-            return _make.TensorRegion(symbol, doms)
+                return _make.TensorRegion(symbol, doms)
+
+        elif isinstance(node.value, ast.Subscript) and isinstance(node.value.value, ast.Name) \
+                and node.value.value.id == 'meta':
+            # meta[type_key][index]
+            if not (isinstance(node.slice, ast.Index) and isinstance(node.slice.value, ast.Num)) \
+                    or not (isinstance(node.value.slice, ast.Index) \
+                            and isinstance(node.value.slice.value, ast.Name)):
+                self.report_error("The meta access format ought to be meta[type_key][index]")
+
+            type_key = node.value.slice.value.id
+            index = node.slice.value.n
+            node_list = self.meta[type_key]
+            if node_list is None:
+                self.report_error("type_key " + type_key + " in meta not found")
+            if len(node_list) <= index:
+                self.report_error("index " + index + " out of range " + len(node_list))
+            return self.mutate_meta(node_list[index])
+        else:
+            self.report_error("Only buffer variable and meta can be subscriptable")
 
     def visit_Name(self, node):
         """ Name visitor
@@ -517,9 +595,9 @@ class HybridParser(ast.NodeVisitor):
         """
 
         name = node.id
-        if name not in self.symbols:
+        symbol = self.scope_emitter.lookup_symbol(name)
+        if symbol is None:
             self.report_error("Unknown symbol %s" % name)
-        symbol = self.symbols[name][1]
         return symbol
 
     def visit_Dict(self, node):
@@ -577,26 +655,22 @@ class HybridParser(ast.NodeVisitor):
         return node.s
 
 
-def source_to_op(func_lineno, src, *args, **kwargs):
+def source_to_op(src, func_lineno=0):
     """ Another level of wrapper
     Parameters
     ----------
-    func_lineno : int
-        The line number of the first line of the function to be parsed
     src : str
-        Pruned source of original function
-    args : list of Vars
-        input of original function
-    kwargs : dict
-        keyword arguments
+        Pruned source of original script
+    func_lineno : Optional[int]
+        The line number of the first line of the script to be parsed
     Returns
     -------
-    function : TeFunction
-        The TeFunction in IR.
+    functions : Function or Module
+        The Function or Module in IR.
     """
 
     root = ast.parse(src)
-    parser = HybridParser(src, func_lineno, *args)
+    parser = HybridParser(src, func_lineno)
 
     try:
         return parser.visit(root)
@@ -609,3 +683,6 @@ def source_to_op(func_lineno, src, *args, **kwargs):
             parser.wrap_line_col(msg, parser.current_lineno, parser.current_col_offset).split('\n'))
         inject_e[-1] = "TVM" + inject_e[-1][6:]
         raise TVMError('\n'.join(inject_e))
+
+
+_init_api("tvm.tir.hybrid.parser")
