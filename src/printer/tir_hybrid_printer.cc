@@ -28,6 +28,7 @@
 #include <tvm/tir/stmt.h>
 #include <tvm/tir/expr_functor.h>
 #include <tvm/tir/stmt_functor.h>
+#include <tvm/tir/hybrid_module.h>
 #include <tvm/node/serialization.h>
 #include "doc.h"
 #include "meta_data.h"
@@ -47,6 +48,22 @@ class TIRHybridPrinter :
   // Allow registration to be printer.
   using FType = NodeFunctor<Doc(const ObjectRef&, TIRHybridPrinter*)>;
   static FType& vtable();
+
+  /*!
+   * \brief special method to render vectors of docs with a separator
+   * \param vec vector of docs
+   * \param sep separator
+   */
+  static Doc PrintSep(const std::vector<Doc>& vec, const Doc& sep) {
+    Doc seq;
+    if (vec.size() != 0) {
+      seq = vec[0];
+      for (size_t i = 1; i < vec.size(); i++) {
+        seq << sep << vec[i];
+      }
+    }
+    return seq;
+  }
 
  private:
   /*! \brief additional comment function */
@@ -126,22 +143,6 @@ class TIRHybridPrinter :
       doc << PrintDType(dtype) << "(" << Doc::Text(os.str()) << ")";
     }
     return doc;
-  }
-
-  /*!
-   * \brief special method to render vectors of docs with a separator
-   * \param vec vector of docs
-   * \param sep separator
-   */
-  static Doc PrintSep(const std::vector<Doc>& vec, const Doc& sep) {
-    Doc seq;
-    if (vec.size() != 0) {
-      seq = vec[0];
-      for (size_t i = 1; i < vec.size(); i++) {
-        seq << sep << vec[i];
-      }
-    }
-    return seq;
   }
 };
 
@@ -345,6 +346,16 @@ Doc TIRHybridPrinter::VisitStmt_(const BufferStoreNode* op) {
 }
 
 TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
+.set_dispatch<ModuleNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
+  auto* op = node.as<ModuleNode>();
+  std::vector<Doc> functions;
+  for (auto it = op->functions.begin(); it != op->functions.end(); ++it) {
+    functions.push_back(p->Print((*it).second));
+  }
+  return TIRHybridPrinter::PrintSep(functions, Doc::NewLine() << Doc::NewLine());
+});
+
+TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
 .set_dispatch<FunctionNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
   auto* op = node.as<FunctionNode>();
   Doc doc;
@@ -427,9 +438,10 @@ TIRHybridPrinter::FType& TIRHybridPrinter::vtable() {
 }
 
 TVM_REGISTER_GLOBAL("tir.hybrid.AsHybrid")
-.set_body_typed<std::string(const Function&)>(
-[](const Function& function) {
-  return TIRHybridPrinter().Print(function).str() + "\n";
+.set_body_typed<std::string(const ObjectRef&)>(
+[](const ObjectRef& functions) {
+  CHECK(functions.as<FunctionNode>() != nullptr || functions.as<ModuleNode>() != nullptr);
+  return TIRHybridPrinter().Print(functions).str() + "\n";
 });
 
 }  // namespace tir

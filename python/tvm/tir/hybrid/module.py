@@ -62,7 +62,6 @@ class Module(Object):
                     raise TypeError("Expect functions to be Dict[GlobalVar, Function]")
                 mapped_funcs[k] = v
             functions = mapped_funcs
-        print(functions)
         self.__init_handle_by_constructor__(_make.TirModule, functions)
 
 

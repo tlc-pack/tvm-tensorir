@@ -16,6 +16,7 @@
 # under the License.
 
 import tvm
+from tvm import tir
 
 
 @tvm.tir.hybrid.script
@@ -43,7 +44,7 @@ def element_wise(a, c):
     A = buffer_bind(a, (16, 16), "float32", name="A")
     C = buffer_bind(c, (16, 16), "float32", name="C")
 
-    with block({}, A[0: 16, 0: 16], C[0: 16, 0: 16], name="root"):
+    with block({}, A[0: 16, 0: 16], C[0: 16,  0: 16], name="root"):
         B = buffer_allocate((16, 16), "float32", name="B")
 
         for i in range(0, 16):
@@ -91,6 +92,7 @@ def test_module_define():
 
     mod = tvm.tir.hybrid.create_module({func1_var: func1, func2_var: func2, func3_var: func3})
 
+    print(tvm.tir.hybrid.to_python(mod))
 
 if __name__ == '__main__':
     test_module_define()

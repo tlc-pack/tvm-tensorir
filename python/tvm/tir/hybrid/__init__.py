@@ -33,12 +33,12 @@ def create_module(funcs):
     return module.create_module(funcs)
 
 
-def to_python(func):
-    """Transform a Function to python syntax script
+def to_python(funcs):
+    """Transform a Function or Module to python syntax script
 
     Parameters
     ----------
-    func : Function
+    funcs : Function or Module
         The Function to be dumped
 
     Returns
@@ -47,7 +47,7 @@ def to_python(func):
         The Python script
     """
 
-    return AsHybrid(func)
+    return AsHybrid(funcs)
 
 
 def register(origin_func):
