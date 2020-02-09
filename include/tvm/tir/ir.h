@@ -318,7 +318,7 @@ class Block : public Stmt {
  */
 // TODO(siyuan): add matches in the text format.
 class Function;
-class FunctionNode : public Object {
+class FunctionNode : public BaseFuncNode {
  public:
   /*! \brief Function parameters */
   Array<Var> params;
@@ -336,18 +336,18 @@ class FunctionNode : public Object {
     v->Visit("name", &name);
   }
 
-  static constexpr const char* _type_key = "Function";
-  TVM_DECLARE_FINAL_OBJECT_INFO(FunctionNode, Object);
+  static constexpr const char* _type_key = "tir.Function";
+  TVM_DECLARE_FINAL_OBJECT_INFO(FunctionNode, BaseFuncNode);
 };
 
-class Function : public ObjectRef {
+class Function : public BaseFunc {
  public:
   explicit Function(Array<Var> params,
                     Map<Var, Buffer> buffer_map,
                     std::string name,
                     Stmt body);
 
-  TVM_DEFINE_OBJECT_REF_METHODS(Function, ObjectRef, FunctionNode);
+  TVM_DEFINE_OBJECT_REF_METHODS(Function, BaseFunc, FunctionNode);
 
   FunctionNode* operator->() {
     return static_cast<FunctionNode*>(data_.get());
