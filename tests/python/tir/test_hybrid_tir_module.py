@@ -94,5 +94,6 @@ def test_module_define():
 
     print(tvm.tir.hybrid.to_python(mod))
 
+
 if __name__ == '__main__':
     test_module_define()
