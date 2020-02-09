@@ -35,6 +35,36 @@ namespace tir {
 
 class StmtSRef;
 
+enum class DepType : int {
+  kRAW = 0,
+  kWAW = 1,
+  kWAR = 2,
+  kOpaque = 3,
+};
+
+class DepEdgeNode : public Object {
+ public:
+  /*! \brief The destination block */
+  StmtSRef dst;
+  /*! \brief The dependency type */
+  DepType type;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("type", &type);
+    v->Visit("dst", &dst);
+  }
+
+  static constexpr const char* _type_key = "DepEdge";
+  TVM_DECLARE_FINAL_OBJECT_INFO(DepEdgeNode, Object);
+};
+
+class DepEdge : public ObjectRef {
+ public:
+  explicit DepEdge(StmtSRef dst, DepType type);
+
+  TVM_DEFINE_OBJECT_REF_METHODS(DepEdge, ObjectRef, DepEdgeNode);
+};
+
 /*!
  * \brief Dependency Graph that stores read/write dependency between Blocks
  * \note It is not a traditional and complete dependency graph, but only a
@@ -43,19 +73,18 @@ class StmtSRef;
  *       necessary element (but not all the element) before A under the Lowest
  *       Common Ancestor (LCA) Loop of the A and B.
  */
-class Scope;
 class ScopeNode : public Object {
  public:
   /*! \brief The forward dependency edges of the block */
-  std::unordered_map<StmtSRef, Array<StmtSRef>, ObjectHash, ObjectEqual> forward_edges;
+  std::unordered_map<StmtSRef, Array<DepEdge>, ObjectHash, ObjectEqual> forward_edges;
   /*! \brief The backward dependency edges of the block */
-  std::unordered_map<StmtSRef, Array<StmtSRef>, ObjectHash, ObjectEqual> backward_edges;
+  std::unordered_map<StmtSRef, Array<DepEdge>, ObjectHash, ObjectEqual> backward_edges;
   /*! \brief The mapping from the buffer to the blocks who write it */
   std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual> write_map;
 
   void VisitAttrs(AttrVisitor* v) {}
 
-  static constexpr const char* _type_key = "te.Scope";
+  static constexpr const char* _type_key = "Scope";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScopeNode, Object);
 };
 
@@ -66,17 +95,27 @@ class Scope : public ObjectRef {
    * \param from The departure of the edge
    * \param to The destination of the edge
    */
-  void AddEdge(const StmtSRef& from, const StmtSRef& to);
+  void AddEdge(const StmtSRef& from, const StmtSRef& to, DepType type);
   /*!
-  * \brief get all blocks that this block dependent on.
-  * \param stmt The query block
-  */
-  Array<StmtSRef> GetSuccessors(const StmtSRef& block) const;
+   * \brief get all blocks that this block dependent on.
+   * \param stmt The query block
+   * \return The successor blocks
+   */
+  Array<DepEdge> GetSuccessors(const StmtSRef& block) const;
   /*!
    * \brief Get all blocks that are dependent on block.
    * \param stmt The query block
-   * */
-  Array<StmtSRef> GetPredecessors(const StmtSRef& block) const;
+   * \return The predecessors blocks
+   */
+  Array<DepEdge> GetPredecessors(const StmtSRef& block) const;
+  /*!
+   * \brief Check whether the block is a complete block
+   * \note A block is complete iff the block is the only producer
+   *       for each tensor it produces and its args must be data parallel.
+   * \param block The query block
+   * \return Whether is a complete block
+   */
+  bool IsComplete(const StmtSRef& block) const;
 
   TVM_DEFINE_OBJECT_REF_METHODS(Scope, ObjectRef, ScopeNode);
 

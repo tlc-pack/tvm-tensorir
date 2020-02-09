@@ -76,6 +76,7 @@ class DependencyAnalyzer : public ScheduleCreator {
 
   void VisitStmt_(const BlockNode* op) final {
     Scope scope(make_object<ScopeNode>());
+    std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual> read_map_;
 
     std::swap(current_scope_, scope);
     ScheduleCreator::VisitStmt_(op);
@@ -88,19 +89,54 @@ class DependencyAnalyzer : public ScheduleCreator {
     auto& write_map = current_scope_->write_map;
     for (const auto& write : op->writes) {
       Array<StmtSRef> array;
-      if (write_map.count(write->buffer)) {
-        array = write_map.at(write->buffer);
+      auto it = write_map.find(write->buffer);
+      if (it != write_map.end()) {
+        array = it->second;
       }
       array.push_back(block_sref);
       write_map[write->buffer] = array;
     }
+
+    // Update tensor read map
+    for (const auto& read : op->reads) {
+      Array<StmtSRef> array;
+      auto it = current_read_map_.find(read->buffer);
+      if (it != current_read_map_.end()) {
+        array = it->second;
+      }
+      array.push_back(block_sref);
+      current_read_map_[read->buffer] = array;
+    }
+
     // Update dependency graph
     for (const auto& read : op->reads) {
       const auto& read_buffer = read->buffer;
-      if (write_map.count(read_buffer)) {
-        // The block depends on every block who write a input tensor
-        for (const auto& write_block : write_map[read_buffer]) {
-          current_scope_.AddEdge(write_block, block_sref);
+      // RAW dependency: The block depends on every block which writes a input tensor
+      auto it = write_map.find(read_buffer);
+      if (it != write_map.end()) {
+        for (const auto& write_block : it->second) {
+          current_scope_.AddEdge(write_block, block_sref, DepType::kRAW);
+        }
+      }
+    }
+    for (const auto& write : op->writes) {
+      const auto& write_buffer = write->buffer;
+
+      // WAW dependency: The block must execute after every block
+      // which writes the same tensor before
+      auto it = write_map.find(write_buffer);
+      if (it != write_map.end()) {
+        for (const auto& write_block : it->second) {
+          current_scope_.AddEdge(write_block, block_sref, DepType::kWAW);
+        }
+      }
+
+      // WAR dependency: The block must execute after every block
+      // which reads the output tensor before
+      it = current_read_map_.find(write_buffer);
+      if (it != current_read_map_.end()) {
+        for (const auto& read_block : it->second) {
+          current_scope_.AddEdge(read_block, block_sref, DepType::kWAR);
         }
       }
     }
@@ -109,6 +145,8 @@ class DependencyAnalyzer : public ScheduleCreator {
  private:
   std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual>* block_scopes_;
   Scope current_scope_{make_object<ScopeNode>()};
+  // read map is only used for dependency analyse
+  std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual> current_read_map_;
 };
 
 class SubReplacer : protected StmtMutator {
@@ -348,45 +386,6 @@ class SRefCreator : public StmtVisitor {
   std::unordered_map<StmtSRef, StmtSRefNode*, ObjectHash, ObjectEqual> used_border_parent_;
 };
 
-class IRSubstitueInScope : public StmtExprMutator {
- public:
-  explicit IRSubstitueInScope(
-      std::function<PrimExpr(const VarNode*)> fmap)
-      : fmap_(std::move(fmap)) {}
-
-  PrimExpr VisitExpr_(const VarNode* op) final {
-    auto it = fmap_(op);
-    if (it.defined()) {
-      return it;
-    } else {
-      return GetRef<PrimExpr>(op);
-    }
-  }
-
-  Stmt VisitStmt_(const BlockRealizeNode* op) final {
-    auto fmutate = [this](const PrimExpr& e) { return this->VisitExpr(e); };
-    Array<PrimExpr> v = op->binding_values;
-    v.MutateByApply(fmutate);
-    PrimExpr pred = this->VisitExpr(op->predicate);
-    if (v.same_as(op->binding_values) && pred.same_as(op->predicate)) {
-      return GetRef<Stmt>(op);
-    } else {
-      auto n = CopyOnWrite(op);
-      n->binding_values = std::move(v);
-      n->predicate = std::move(pred);
-      return Stmt(n);
-    }
-  }
-
- private:
-  const std::function<PrimExpr(const VarNode*)> fmap_;
-};
-
-Stmt SubstituteInScope(const Stmt& stmt,
-                       const std::function<PrimExpr(const VarNode*)>& value_func) {
-  return IRSubstitueInScope(value_func)(stmt);
-}
-
 class LoopCollector : public StmtVisitor {
  public:
   explicit LoopCollector(std::unordered_map<const StmtNode*, StmtSRef>* stmt2_ref)
@@ -543,30 +542,6 @@ StmtSRef Schedule::GetScope(StmtSRef node) const {
   return StmtSRef();
 }
 
-/*! \note Nested SeqStmt is not allowed in schedule. */
-Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize) {
-  Stmt body;
-  if (const auto* block = stmt.as<BlockNode>()) {
-    body = block->body;
-  } else if (const auto* loop = stmt.as<LoopNode>()) {
-    body = loop->body;
-  } else {
-    return Array<Stmt>();
-  }
-  if (const auto* seq = body.as<SeqStmtNode>()) {
-    Array<Stmt> ret;
-    for (const Stmt& child : seq->seq)
-      if (child->IsInstance<BlockRealizeNode>() && !keep_realize) {
-        ret.push_back(child.as<BlockRealizeNode>()->block);
-      } else {
-        ret.push_back(child);
-      }
-    return ret;
-  } else {
-    return Array<Stmt>{body};
-  }
-}
-
 Array<StmtSRef> Schedule::GetLoopsInScope(const StmtSRef& block) const {
   Array<StmtSRef> ret;
   StmtSRef sref = GetRef<StmtSRef>(block->parent);
@@ -577,6 +552,50 @@ Array<StmtSRef> Schedule::GetLoopsInScope(const StmtSRef& block) const {
     sref = GetRef<StmtSRef>(sref->parent);
   }
   return Array<StmtSRef>(ret.rbegin(), ret.rend());
+}
+
+void Schedule::RemoveLeaf(StmtSRef sref) {
+  CHECK(sref != operator->()->root);
+
+  // go upwards until find a father with more than two children
+  Stmt last = GetRef<Stmt>(sref->node);
+  sref = GetRef<StmtSRef>(sref->parent);
+  Stmt stmt = GetRef<Stmt>(sref->node);
+  while (sref != operator->()->root || stmt.as<BlockNode>() == nullptr) {
+    const auto* loop = stmt.as<LoopNode>();
+    CHECK(loop != nullptr);
+    const auto* seq = loop->body.as<SeqStmtNode>();
+    if (seq != nullptr && seq->size() > 1) break;
+
+    sref = GetRef<StmtSRef>(sref->parent);
+    last = stmt;
+    stmt = GetRef<Stmt>(sref->node);
+  }
+
+  auto get_body = [&last](const SeqStmtNode* seq) {
+    CHECK_GT(seq->size(), 1);
+    std::vector<Stmt> stmts;
+    for (const auto& s : seq->seq) {
+      if (!s.same_as(last)) stmts.push_back(s);
+    }
+    return SeqStmt::Flatten(stmts);
+  };
+
+  if (const auto* block = stmt.as<BlockNode>()) {
+    const auto* seq = block->body.as<SeqStmtNode>();
+    CHECK(seq != nullptr);
+    auto node = make_object<BlockNode>(*block);
+    node->body = get_body(seq);
+    Replace(sref, Stmt(node));
+  } else if (const auto* loop = stmt.as<LoopNode>()) {
+    const auto* seq = loop->body.as<SeqStmtNode>();
+    CHECK(seq != nullptr);
+    auto node = make_object<LoopNode>(*loop);
+    node->body = get_body(seq);
+    Replace(sref, Stmt(node));
+  } else {
+    LOG(FATAL) << "unknown stmt";
+  }
 }
 
 StmtSRef Schedule::fuse(const StmtSRef& outer, const StmtSRef& inner) {
@@ -776,15 +795,18 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSplitByNParts")
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleReorder")
 .set_body_method(&Schedule::reorder);
 
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleComputeAt")
+.set_body_method(&Schedule::compute_at);
+
 // dependency graph
 TVM_REGISTER_GLOBAL("tir.schedule.GetSuccessors")
-.set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, StmtSRef)>(
+.set_body_typed<Array<DepEdge>(Schedule, StmtSRef, StmtSRef)>(
     [](Schedule schedule, StmtSRef scope, StmtSRef block) {
       return schedule->scopes_[scope].GetSuccessors(block);
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.GetPredecessors")
-.set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, StmtSRef)>(
+.set_body_typed<Array<DepEdge>(Schedule, StmtSRef, StmtSRef)>(
     [](Schedule schedule, StmtSRef scope, StmtSRef block) {
       return schedule->scopes_[scope].GetPredecessors(block);
     });

@@ -43,6 +43,16 @@ Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize = false);
 Stmt SubstituteInScope(const Stmt& stmt,
                        const std::function<PrimExpr(const VarNode*)>& value_func);
 
+template <typename T>
+Stmt GetStmtFromSeq(const T* op, const Stmt& target, int64_t seq_index = -1);
+
+/*!
+ * \brief Get BlockRealize with by Block
+ * \param block The queried block
+ * \return BlockRealize.
+ */
+BlockRealize GetBlockRealize(const StmtSRef& block_sref);
+
 }  // namespace tir
 }  // namespace tvm
 #endif  // TVM_TIR_SCHEDULE_SCHEDULE_COMMON_H_

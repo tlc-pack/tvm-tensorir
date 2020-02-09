@@ -22,33 +22,65 @@
 namespace tvm {
 namespace tir {
 
-void Scope::AddEdge(const StmtSRef& from, const StmtSRef& to) {
+DepEdge::DepEdge(StmtSRef dst, DepType type) {
+  ObjectPtr<DepEdgeNode> node = make_object<DepEdgeNode>();
+  node->dst = std::move(dst);
+  node->type = type;
+  data_ = std::move(node);
+}
+
+void Scope::AddEdge(const StmtSRef& from, const StmtSRef& to, DepType type) {
   if (!from.same_as(to)) {
     ScopeNode* node = operator->();
-    node->forward_edges[from].push_back(to);
-    node->backward_edges[to].push_back(from);
+    node->forward_edges[from].push_back(DepEdge(to, type));
+    node->backward_edges[to].push_back(DepEdge(from, type));
   }
 }
 
-Array<StmtSRef> Scope::GetSuccessors(const StmtSRef& block) const {
+Array<DepEdge> Scope::GetSuccessors(const StmtSRef& block) const {
   auto iter = operator->()->forward_edges.find(block);
   if (iter != operator->()->forward_edges.end()) {
     return iter->second;
   } else {
-    return Array<StmtSRef>();
+    return Array<DepEdge>();
   }
 }
 
-Array<StmtSRef> Scope::GetPredecessors(const StmtSRef& block) const {
+Array<DepEdge> Scope::GetPredecessors(const StmtSRef& block) const {
   auto iter = operator->()->backward_edges.find(block);
   if (iter != operator->()->backward_edges.end()) {
     return iter->second;
   } else {
-    return Array<StmtSRef>();
+    return Array<DepEdge>();
   }
 }
 
+bool Scope::IsComplete(const StmtSRef& block) const {
+  const auto* n = GetRef<Stmt>(block->node).as<BlockNode>();
+  CHECK(n != nullptr);
+
+  // Check the block is the only producer for every output tensors
+  for (const auto& write : n->writes) {
+    Buffer buffer = write->buffer;
+    if (operator->()->write_map.at(buffer).size() != 1) {
+      return false;
+    } else {
+      CHECK(operator->()->write_map.at(buffer)[0].same_as(block));
+      return true;
+    }
+  }
+
+  // Check all the block vars are at data_par IterType
+  for (const auto& iter_var : n->iter_vars) {
+    if (iter_var->iter_type != kDataPar) {
+      return false;
+    }
+  }
+  return true;
+}
+
 TVM_REGISTER_NODE_TYPE(ScopeNode);
+TVM_REGISTER_NODE_TYPE(DepEdgeNode);
 
 }  // namespace tir
 }  // namespace tvm

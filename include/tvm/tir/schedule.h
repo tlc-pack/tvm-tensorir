@@ -112,6 +112,7 @@ class Schedule : public ObjectRef {
    */
   StmtSRef GetScope(StmtSRef node) const;
 
+
   /*!
    * \brief fuse two consecutive loops of one computation.
    * \param outer The outer loop
@@ -129,6 +130,15 @@ class Schedule : public ObjectRef {
   Array<StmtSRef> split(const StmtSRef& node, const PrimExpr& nparts, const PrimExpr& factor);
 
   /*!
+   * \brief Move the block under the loop and regenerate the
+   *        loops to cover the producing region.
+   * \param block_sref The block to be moved
+   * \param loop_sref The target loop
+   * \return the regenerated loops
+   * */
+  void compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref);
+
+  /*!
    * \brief reorder a list of loops
    * \param order the order of loops
    */
@@ -142,6 +152,8 @@ class Schedule : public ObjectRef {
 
  private:
   void UpdateSRef(StmtSRefNode* sref, const Stmt& stmt);
+
+  void RemoveLeaf(StmtSRef sref);
 };
 
 }  // namespace tir

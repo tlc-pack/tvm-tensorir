@@ -272,6 +272,15 @@ class Array : public ObjectRef {
     n->data.push_back(item);
   }
   /*!
+   * \brief insert a new item to the specific position
+   * \param pos The index
+   * \param item The item to be pushed.
+   */
+  inline void insert(size_t pos, const T& item) {
+    ArrayNode* n = this->CopyOnWrite();
+    n->data.insert(n->data.begin() + pos, item);
+  }
+  /*!
    * \brief Resize the array.
    * \param size The new size.
    */

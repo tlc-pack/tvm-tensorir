@@ -54,7 +54,7 @@ def test_fuse():
 
     mod = tvm.tir.hybrid.create_module([fused_element_wise])
     fused_func = mod["fused_element_wise"]
-    assert Equal(fused_func, s.func)
+    assert AssertEqual(fused_func, s.func)
 
 
 @tvm.tir.hybrid.script
@@ -118,17 +118,43 @@ def test_split_fuse():
     mod = tvm.tir.hybrid.create_module([split_element_wise])
     split_func = mod["split_element_wise"]
 
-    assert Equal(split_func, s.func)
+    assert AssertEqual(split_func, s.func)
 
-    io, ii, j = s.get_axes(B)
-    s.fuse(io, ii)
-    i, jo, ji = s.get_axes(C)
-    s.fuse(jo, ji)
 
-    mod = tvm.tir.hybrid.create_module([split_fuse_element_wise])
-    split_fuse_func = mod["split_fuse_element_wise"]
+@tvm.tir.hybrid.script
+def compute_at_element_wise(a, c):
+    A = buffer_bind(a, (128, 128))
+    C = buffer_bind(c, (128, 128))
 
-    assert AssertEqual(split_fuse_func, s.func)
+    with block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
+        B = buffer_allocate((128, 128))
+        for i in range(0, 128):
+            for j in range(0, 128):
+                with block({vi(0, 128): i, vj(0, 128): j},
+                           reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1],
+                           name="B"):
+                    B[vi, vj] = A[vi, vj] * 2
+            for j in range(0, 128):
+                with block({vi(0, 128): i, vj(0, 128): j},
+                           reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
+                           name="C"):
+                    C[vi, vj] = B[vi, vj] + 1
+
+
+def test_compute_at():
+    func = util.element_wise_stmt()
+
+    # schedule
+    s = tir.create_schedule(func)
+    B = s.get_block("B")
+    C = s.get_block("C")
+    outer, inner = s.get_axes(C)
+    s.compute_at(B, outer)
+
+    mod = tvm.tir.hybrid.create_module([compute_at_element_wise])
+    split_func = mod["compute_at_element_wise"]
+
+    assert AssertEqual(split_func, s.func)
 
 
 @tvm.tir.hybrid.script
@@ -214,19 +240,45 @@ def matmul_reorder(a, b, c):
                     C[vi, vj] = (C[vi, vj] + (A[vi, vk] * B[vj, vk]))
 
 
-def test_reorder_normal():
-    func = util.matmul_stmt()
-    # schedule
-    s = tir.create_schedule(func)
-    update = s.get_block("update")
-    i, j, k = s.get_axes(update)
-    s.reorder(k, i)
-    s.reorder(i, j)
-    s.fuse(i, j)
-    mod = tvm.tir.hybrid.create_module([matmul_reorder])
-    matmul_reorder_func = mod["matmul_reorder"]
+@tvm.tir.hybrid.script
+def compute_at_case(a, c):
+    A = buffer_bind(a, (128, 128), "float32")
+    C = buffer_bind(c, (128, 128), "float32")
 
-    assert AssertEqual(s.func, matmul_reorder_func)
+    with block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
+        B = buffer_allocate((128, 128))
+        for i in range(0, 128):
+            for j in range(0, 128):
+                with block({vi(0, 128): i, vj(0, 128): j},
+                           reads=B[vi: vi + 1, vj: vj + 1], writes=A[vi: vi + 1, vj: vj + 1], name="B0"):
+                    A[vi, vj] = B[vi, vj] * 2
+                for k in range(0, 128):
+                    with block({vi(0, 128): i, vj(0, 128): j},
+                               reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1], name="B1"):
+                        B[vi, vj] = A[vi, vj] * 2
+                    with block({vi(0, 128): i, vj(0, 128): j},
+                               reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1], name="C"):
+                        C[vi, vj] = B[vi, vj] * 2
+
+
+def test_compute_at_fail():
+    mod = tvm.tir.hybrid.create_module([compute_at_case])
+    func = mod["compute_at_case"]
+    s = tir.create_schedule(func)
+    B1 = s.get_block("B1")
+    C = s.get_block("C")
+    i, j, k = s.get_axes(C)
+    try:
+        s.compute_at(C, j)
+        assert False
+    except tvm._ffi.base.TVMError as e:
+        assert str(e).split(':')[-1].strip() == "Can not compute_at an output block"
+
+    try:
+        s.compute_at(B1, i)
+        assert False
+    except tvm._ffi.base.TVMError as e:
+        assert str(e).split(':')[-1].strip() == "Cannot satisfy dependency"
 
 
 if __name__ == "__main__":
@@ -234,3 +286,5 @@ if __name__ == "__main__":
     test_split_fuse()
     test_fuse_loop_sref()
     test_reorder_normal()
+    test_compute_at()
+    test_compute_at_fail()
