@@ -17,12 +17,20 @@
 """Hybrid Programming APIs of TVM Python Package, aimed to support TIR"""
 
 from __future__ import absolute_import as _abs
-
+from tvm._ffi.base import decorate
+from tvm.api import _init_api
+from . import module
 from . import utils, registry, intrin, special_stmt, scope_handler
 from .parser import source_to_op
 from .utils import _pruned_source
-from tvm._ffi.base import decorate
-from tvm.api import _init_api
+
+
+def global_var(name_hint):
+    return module.GlobalVar(name_hint)
+
+
+def create_module(funcs):
+    return module.create_module(funcs)
 
 
 def to_python(func):
