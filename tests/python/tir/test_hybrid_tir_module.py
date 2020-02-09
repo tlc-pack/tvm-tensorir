@@ -14,21 +14,23 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Helper functions in Hybrid Script Parser"""
 
-from . import registry, intrin, special_stmt, scope_handler
+import tvm
+from tvm import tir
+from tvm import ir_pass
+import util
 
 
-def init_scope():
-    """Register primitive functions"""
-    registry.register_intrin(intrin.int16)
-    registry.register_intrin(intrin.int32)
-    registry.register_intrin(intrin.int64)
-    registry.register_intrin(intrin.float16)
-    registry.register_intrin(intrin.float32)
-    registry.register_intrin(intrin.float64)
-    registry.register_special_stmt(special_stmt.buffer_bind)
-    registry.register_special_stmt(special_stmt.buffer_allocate)
-    registry.register_special_stmt(special_stmt.block_vars)
-    registry.register_scope_handler(scope_handler.block, scope_name="with_scope")
-    registry.register_scope_handler(scope_handler.range, scope_name="for_scope")
+def test_module_define():
+    func1 = util.matmul_stmt()
+    func2 = util.element_wise_stmt()
+    func3 = util.predicate_stmt()
+    mod1 = tvm.tir.hybrid.create_module([func1, func2, func3])
+    mod2 = tvm.tir.hybrid.create_module([util.matmul, util.element_wise, util.predicate])
+    print(tvm.tir.hybrid.ashybrid(mod1))
+    print(tvm.tir.hybrid.ashybrid(mod2))
+    # assert ir_pass.Equal(mod1, mod2)
+
+
+if __name__ == '__main__':
+    test_module_define()

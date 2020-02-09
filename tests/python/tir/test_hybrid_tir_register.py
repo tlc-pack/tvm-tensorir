@@ -19,45 +19,43 @@ import tvm
 from tvm import tir
 
 
-@tvm.tir.hybrid.script
 def add(a, b):
     return a + b
 
 
-@tvm.tir.hybrid.script
 def mul(a, b=1):
     return a * b
 
 
 @tvm.tir.hybrid.script
 def element_wise(a, c):
-    A = buffer_bind(a, (16, 16), "float32", name="A")
-    C = buffer_bind(c, (16, 16), "float32", name="C")
+    A = buffer_bind(a, (16, 16), "float32")
+    C = buffer_bind(c, (16, 16), "float32")
 
     with block({}, A[0: 16, 0: 16], C[0: 16, 0: 16], name="root"):
-        B = buffer_allocate((16, 16), "float32", name="B")
+        B = buffer_allocate((16, 16), "float32")
 
         for i in range(0, 16):
             for j in range(0, 16):
                 with block({vi(0, 16): i, vj(0, 16): j}, A[vi: vi + 1, vj: vj + 1],
                            B[vi: vi + 1, vj: vj + 1],
                            name="B"):
-                    B[vi, vj] = A[vi, vj] * 2
+                    B[vi, vj] = mul(A[vi, vj], 2)
 
         for i in range(0, 16):
             for j in range(0, 16):
                 with block({vi(0, 16): i, vj(0, 16): j}, B[vi: vi + 1, vj: vj + 1],
                            C[vi: vi + 1, vj: vj + 1],
                            name="C"):
-                    C[vi, vj] = B[vi, vj] + 1
+                    C[vi, vj] = add(B[vi, vj], 1)
 
 
 def test_element_wise():
-    a = tvm.var("a")
-    c = tvm.var("c")
-    func = element_wise(a, c)
-
-    print(tvm.tir.hybrid.to_python(func))
+    tvm.tir.hybrid.register(add)
+    tvm.tir.hybrid.register(mul)
+    mod = tvm.tir.hybrid.create_module([element_wise])
+    func = mod["element_wise"]
+    print(tvm.tir.hybrid.ashybrid(func))
 
     assert isinstance(func.body, tvm.stmt.Block)
     assert isinstance(func.body.body, tvm.stmt.SeqStmt)

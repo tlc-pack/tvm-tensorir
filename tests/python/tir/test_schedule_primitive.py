@@ -18,15 +18,15 @@
 import tvm
 from tvm import tir
 import util
-from tvm.ir_pass import Equal
+from tvm.ir_pass import Equal, AssertStructEqual
 
-@tvm.hybrid_tir.script
+@tvm.tir.hybrid.script
 def fused_element_wise(a, c):
-    A = buffer_bind(a, (128, 128), name="A")
-    C = buffer_bind(c, (128, 128), name="C")
+    A = buffer_bind(a, (128, 128))
+    C = buffer_bind(c, (128, 128))
 
     with block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
-        B = buffer_allocate((128, 128), name="B")
+        B = buffer_allocate((128, 128))
 
         for i in range(0, 128 * 128):
             with block({vi(0, 128) : i // 128, vj(0, 128) : i % 128},
@@ -51,24 +51,23 @@ def test_fuse():
     outer, inner = s.get_axes(C)
     s.fuse(outer, inner)
 
-    a = tvm.var("a")
-    c = tvm.var("c")
-    fused_func = fused_element_wise(a, c)
+    mod = tvm.tir.hybrid.create_module([fused_element_wise])
+    fused_func = mod["fused_element_wise"]
     assert Equal(fused_func, s.func)
 
 
-@tvm.hybrid_tir.script
+@tvm.tir.hybrid.script
 def split_element_wise(a, c):
-    A = buffer_bind(a, (128, 128), name="A")
-    C = buffer_bind(c, (128, 128), name="C")
+    A = buffer_bind(a, (128, 128))
+    C = buffer_bind(c, (128, 128))
 
     with block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
-        B = buffer_allocate((128, 128), name="B")
+        B = buffer_allocate((128, 128))
 
-        for io in range(0, 16):
+        for io in range(0, 8):
             for ii in range(0, 16):
                 for j in range(0, 128):
-                    with block({vi(0, 128) : io * 4 + ii, vj(0, 128) : j},
+                    with block({vi(0, 128) : io * 16 + ii, vj(0, 128) : j},
                             reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1],
                             name="B"):
                         B[vi, vj] = A[vi, vj] * 2
@@ -76,9 +75,9 @@ def split_element_wise(a, c):
         for i in range(0, 128):
             for jo in range(0, 10):
                 for ji in range(0, 13):
-                    with block({vi(0, 128) : i, vj(0, 128) : jo * 3 + ji},
+                    with block({vi(0, 128) : i, vj(0, 128) : jo * 13 + ji},
                             reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
-                            predicate=jo * 4 + ji < 128, name="C"):
+                            predicate=jo * 13 + ji < 128, name="C"):
                         C[vi, vj] = B[vi, vj] + 1
 
 
@@ -94,11 +93,12 @@ def test_split():
     outer, inner = s.get_axes(C)
     s.split(inner, nparts=10)
 
-    a = tvm.var("a")
-    c = tvm.var("c")
-    # TODO: It will work once Bohan adds support for block predicate
-    # split_func = split_element_wise(a, c)
-    # assert Equal(split_func, s.func)
+    mod = tvm.tir.hybrid.create_module([split_element_wise])
+    split_func = mod["split_element_wise"]
+
+    print(tvm.tir.hybrid.ashybrid(split_func))
+    print(tvm.tir.hybrid.ashybrid(s.func))
+    assert Equal(split_func, s.func)
 
 
 if __name__ == "__main__":
