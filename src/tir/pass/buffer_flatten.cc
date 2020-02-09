@@ -31,65 +31,6 @@ namespace tvm {
 namespace tir {
 
 /*!
- * \brief Remove Block in TIR and replace BufferAllocate with Allocate
- * \note After flattening, the TIR can not be scheduled anymore
- */
-class BlockFlattener : public StmtExprMutator {
- public:
-  Stmt VisitStmt_(const BlockNode* op) final {
-    for (size_t i = 0; i < op->iter_vars.size(); ++i) {
-      const auto& iter = op->iter_vars[i];
-      const auto& v = op->values[i];
-      block_var_[iter->var.get()] = v;
-    }
-    Stmt block = StmtExprMutator::VisitStmt_(op);
-    op = block.as<BlockNode>();
-    CHECK(op != nullptr);
-    Stmt body = op->body;
-
-    // Handle block predicate
-    if (!is_one(op->predicate)) {
-      body = IfThenElseNode::make(op->predicate, body);
-    }
-
-    // Handle block allocations
-    for (size_t i = op->allocations.size(); i > 0; --i) {
-      const auto& n = op->allocations[i - 1];
-      buffer_map_[n->buffer->data.get()] = n->buffer;
-      body = AllocateNode::make(n->buffer->data,
-                                n->buffer->dtype,
-                                n->buffer->shape,
-                                const_true(),
-                                body);
-
-      // Change empty scope into global
-      std::string scope = n->scope.empty() ? "global" : n->scope;
-      body = AttrStmtNode::make(n->buffer->data,
-                                attr::storage_scope,
-                                StringImmNode::make(scope),
-                                body);
-    }
-    return body;
-  }
-
-  PrimExpr VisitExpr_(const VarNode* op) final {
-    // Replace the block var with its value
-    auto it = block_var_.find(op);
-    if (it != block_var_.end()) {
-      return it->second;
-    } else {
-      return GetRef<PrimExpr>(op);
-    }
-  }
-
-  /*! \brief The map from buffer_var to buffer */
-  std::unordered_map<const VarNode*, Buffer> buffer_map_;
- private:
-  /*! \brief The map from block vars to the expr value */
-  std::unordered_map<const VarNode*, PrimExpr> block_var_;
-};
-
-/*!
  * \brief Detecting the LCA of buffer access points of
  *        buffers for calculating the realize region
  */
@@ -182,9 +123,8 @@ class LCADetector : public StmtExprVisitor {
 class RegionGatherer : public StmtExprVisitor {
  public:
   RegionGatherer(const std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual>& buffers_lca,
-                 const std::unordered_map<const VarNode*, Buffer>& buffer_map,
                  const Map<Var, Buffer>& func_args)
-      : buffers_lca_(buffers_lca), buffer_map_(buffer_map) {
+      : buffers_lca_(buffers_lca) {
     for (const auto& arg : func_args) {
       std::vector<arith::IntSet> region;
       for (const auto& shape : arg.second->shape) {
@@ -201,12 +141,19 @@ class RegionGatherer : public StmtExprVisitor {
     loop_stack_.pop_back();
   }
 
-  void VisitStmt_(const AllocateNode* op) final {
-    std::vector<arith::IntSet> empty_region(op->extents.size(), arith::IntSet::nothing());
-    CHECK(buffer_map_.count(op->buffer_var.get()));
-    const Buffer& buffer = buffer_map_.at(op->buffer_var.get());
+  void VisitStmt_(const BlockNode* op) final {
+    for (size_t i = 0; i < op->iter_vars.size(); ++i) {
+      const auto& iter = op->iter_vars[i];
+      const auto& v = op->values[i];
+      block_var_[iter->var.get()] = v;
+    }
+    StmtExprVisitor::VisitStmt_(op);
+  }
+
+  void VisitStmt_(const BufferAllocateNode* op) final {
+    std::vector<arith::IntSet> empty_region(op->buffer->shape.size(), arith::IntSet::nothing());
     // Initialize the buffer region with empty region.
-    buffers_region_[buffer] = empty_region;
+    buffers_region_[op->buffer] = empty_region;
     StmtExprVisitor::VisitStmt_(op);
   }
 
@@ -222,10 +169,11 @@ class RegionGatherer : public StmtExprVisitor {
 
   /*! \brief The used region of each Buffer */
   std::unordered_map<Buffer, std::vector<arith::IntSet>, ObjectHash, ObjectEqual> buffers_region_;
+  /*! \brief The map from block vars to the expr value */
+  std::unordered_map<const VarNode*, PrimExpr> block_var_;
 
  private:
   const std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual>& buffers_lca_;
-  const std::unordered_map<const VarNode*, Buffer>& buffer_map_;
 
   /*! \brief The loops from the current node up to the root */
   std::vector<Loop> loop_stack_;
@@ -264,7 +212,7 @@ class RegionGatherer : public StmtExprVisitor {
     }
     std::vector<arith::IntSet> region;
     for (const auto& e : op->indices) {
-      region.push_back(arith::EvalSet(e, dom_map));
+      region.push_back(arith::EvalSet(Substitute(e, block_var_), dom_map));
     }
     return region;
   }
@@ -275,23 +223,52 @@ class RegionGatherer : public StmtExprVisitor {
  */
 class BufferFlattener : public StmtExprMutator {
  public:
-  BufferFlattener(const std::unordered_map<const VarNode*, Buffer>& buffer_map,
+  BufferFlattener(const std::unordered_map<const VarNode*, PrimExpr>& block_var,
                   const std::unordered_map<Buffer, std::vector<arith::IntSet>,
-                                     ObjectHash, ObjectEqual>& buffers_region)
-      : buffer_map_(buffer_map), buffers_region_(buffers_region) {}
+                                           ObjectHash, ObjectEqual>& buffers_region)
+      : buffers_region_(buffers_region), block_var_(block_var) {}
 
-  Stmt VisitStmt_(const AllocateNode* op) final {
-    const Buffer& buffer = buffer_map_.at(op->buffer_var.get());
+  Stmt VisitStmt_(const BlockNode* op) final {
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
-    op = stmt.as<AllocateNode>();
+    op = stmt.as<BlockNode>();
     CHECK(op != nullptr);
-    PrimExpr extents = 1;
-    for (const auto& extent : buffers_region_.at(buffer)) {
-      extents *= extent.max() - extent.min() + 1;
+    Stmt body = op->body;
+
+    // Handle block predicate
+    if (!is_one(op->predicate)) {
+      body = IfThenElseNode::make(op->predicate, body);
     }
-    auto o = make_object<AllocateNode>(*op);
-    o->extents = {extents};
-    return Stmt(o);
+
+    for (size_t i = op->allocations.size(); i > 0; --i) {
+      PrimExpr extents = 1;
+      const auto& n = op->allocations[i - 1];
+      for (const auto& extent : buffers_region_.at(n->buffer)) {
+        extents *= extent.max() - extent.min() + 1;
+      }
+      body = AllocateNode::make(n->buffer->data,
+                                n->buffer->dtype,
+                                {extents},
+                                const_true(),
+                                body);
+
+      // Change empty scope into global
+      std::string scope = n->scope.empty() ? "global" : n->scope;
+      body = AttrStmtNode::make(n->buffer->data,
+                                attr::storage_scope,
+                                StringImmNode::make(scope),
+                                body);
+    }
+    return body;
+  }
+
+  PrimExpr VisitExpr_(const VarNode* op) final {
+    // Replace the block var with its value
+    auto it = block_var_.find(op);
+    if (it != block_var_.end()) {
+      return it->second;
+    } else {
+      return GetRef<PrimExpr>(op);
+    }
   }
 
   Stmt VisitStmt_(const LoopNode* op) final {
@@ -308,19 +285,24 @@ class BufferFlattener : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const BufferStoreNode* op) final {
+    Stmt stmt = StmtExprMutator::VisitStmt_(op);
+    op = stmt.as<BufferStoreNode>();
+    CHECK(op != nullptr);
     auto begins = GetIndices(op);
-    return op->buffer.vstore(begins, VisitExpr(op->value));
+    return op->buffer.vstore(begins, op->value);
   }
 
   PrimExpr VisitExpr_(const BufferLoadNode* op) final {
+    PrimExpr expr = StmtExprMutator::VisitExpr_(op);
+    op = expr.as<BufferLoadNode>();
     auto begins = GetIndices(op);
     return op->buffer.vload(begins, op->dtype);
   }
 
  private:
-  const std::unordered_map<const VarNode*, Buffer>& buffer_map_;
   const std::unordered_map<Buffer, std::vector<arith::IntSet>,
                            ObjectHash, ObjectEqual>& buffers_region_;
+  const std::unordered_map<const VarNode*, PrimExpr>& block_var_;
 
   /*!
    * \brief Transform indices from the absolute indices to relative indices
@@ -340,24 +322,18 @@ class BufferFlattener : public StmtExprMutator {
 };
 
 Function BufferFlatten(Function func) {
-  // Remove block and transfer BufferAllocate to Allocate
-  BlockFlattener block_flattener;
-  Stmt stmt = block_flattener(func->body);
-
   // Find the LCA of each Buffer access
   LCADetector lca_detector(func->buffer_map);
-  lca_detector(stmt);
+  lca_detector(func->body);
 
   // Recalculate the buffer region
-  RegionGatherer region_gatherer(lca_detector.buffers_lca_,
-                                 block_flattener.buffer_map_,
-                                 func->buffer_map);
-  region_gatherer(stmt);
+  RegionGatherer region_gatherer(lca_detector.buffers_lca_, func->buffer_map);
+  region_gatherer(func->body);
 
   // Transform BufferLoad/BufferStore into Load/Store
-  BufferFlattener flattener(block_flattener.buffer_map_, region_gatherer.buffers_region_);
+  BufferFlattener flattener(region_gatherer.block_var_, region_gatherer.buffers_region_);
   auto new_func = make_object<FunctionNode>(*func.operator->());
-  new_func->body = flattener(stmt);
+  new_func->body = flattener(func->body);
   return Function(new_func);
 }
 
