@@ -284,6 +284,17 @@ class BufferFlattener : public StmtExprMutator {
                          op->body);
   }
 
+  // TODO(Siyuan): add support for For and AttrStmt
+  Stmt VisitStmt_(const ForNode* op) final {
+    LOG(FATAL) << "For is not allowed in TIR schedule for now.";
+    return Stmt();
+  }
+
+  Stmt VisitStmt_(const AttrStmtNode* op) final {
+    LOG(FATAL) << "AttrStmt is not allowed in TIR schedule for now.";
+    return Stmt();
+  }
+
   Stmt VisitStmt_(const BufferStoreNode* op) final {
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     op = stmt.as<BufferStoreNode>();
