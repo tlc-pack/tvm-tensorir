@@ -25,11 +25,20 @@ from .parser import source_to_op
 from .utils import _pruned_source
 
 
-def global_var(name_hint):
-    return module.GlobalVar(name_hint)
-
-
 def create_module(funcs):
+    """
+    Construct a module from list of functions.
+
+    Parameters
+    -----------
+    funcs : Optional[list]
+        list of functions
+
+    Returns
+    -------
+    mod : Module
+        A module containing the passed definitions
+    """
     return module.create_module(funcs)
 
 
@@ -39,7 +48,7 @@ def to_python(funcs):
     Parameters
     ----------
     funcs : Function or Module
-        The Function to be dumped
+        The Function or Module to be dumped
 
     Returns
     -------

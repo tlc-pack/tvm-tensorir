@@ -20,6 +20,7 @@ from tvm import Object
 
 from tvm import make as _make
 from ..util import register_tir_object
+from tvm import container as _container
 
 
 @register_tir_object
@@ -46,38 +47,36 @@ class Module(Object):
 
     Parameters
     ----------
-    functions : Optional, dict.
-        Map of GlobalVar to Function
+    functions : Optional[list].
+        List of functions
     """
 
     def __init__(self, functions=None):
         if functions is None:
             functions = {}
-        elif isinstance(functions, dict):
+        elif isinstance(functions, list):
             mapped_funcs = {}
-            for k, v in functions.items():
-                if isinstance(k, _base.string_types):
-                    k = GlobalVar(k)
-                if not isinstance(k, GlobalVar):
-                    raise TypeError("Expect functions to be Dict[GlobalVar, Function]")
-                mapped_funcs[k] = v
+            for function in functions:
+                if not isinstance(function, _container.Function):
+                    raise TypeError("Expect functions to be Function")
+                mapped_funcs[GlobalVar(function.name)] = function
             functions = mapped_funcs
         self.__init_handle_by_constructor__(_make.TirModule, functions)
 
 
 def create_module(functions=None):
     """
-    Construct a module from set of functions.
+    Construct a module from list of functions.
 
     Parameters
     -----------
-    functions : Optional[dict]
-        Map of GlobalVars to function definitions
+    functions : Optional[list]
+        List of functions
 
     Returns
     -------
     mod : Module
         A module containing the passed definitions
     """
-    funcs = functions if functions is not None else {}
+    funcs = functions if functions is not None else []
     return Module(funcs)

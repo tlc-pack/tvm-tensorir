@@ -69,9 +69,8 @@ class TIRHybridPrinter :
    * \brief dump meta info
    */
   Doc DumpMeta() {
-   Doc doc;
-   doc << "METADATA:" << Doc::NewLine() << meta_.GetMetaSection();
-   return doc;
+   return Doc::Text("__tvm_meta__ = ")
+            << (meta_.empty() ? Doc::Text("None") : meta_.GetMetaSection());
   }
 
  private:
@@ -311,7 +310,7 @@ Doc TIRHybridPrinter::VisitStmt_(const BlockNode* op) {
     body << Print(allocate) << Doc::NewLine();
   }
   body << Print(op->body);
-  doc << Doc::Indent(2, body);
+  doc << Doc::Indent(4, body);
   return doc;
 }
 
@@ -325,7 +324,7 @@ Doc TIRHybridPrinter::VisitStmt_(const LoopNode* op) {
   // print body
   Doc body;
   body << Doc::NewLine() << Print(op->body);
-  doc << Doc::Indent(2, body);
+  doc << Doc::Indent(4, body);
   return doc;
 }
 
@@ -357,12 +356,11 @@ Doc TIRHybridPrinter::VisitStmt_(const BufferStoreNode* op) {
 TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
 .set_dispatch<ModuleNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
   auto* op = node.as<ModuleNode>();
-  Doc doc;
+  std::vector<Doc> functions;
   for (auto it = op->functions.begin(); it != op->functions.end(); ++it) {
-    doc << Doc::NewLine() << "# " << p->Print((*it).first);
-    doc << Doc::NewLine() << p->Print((*it).second);
+    functions.push_back(p->Print((*it).second));
   }
-  return doc;
+  return TIRHybridPrinter::PrintSep(functions, Doc::NewLine() << Doc::NewLine());
 });
 
 TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
@@ -399,7 +397,7 @@ TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
 
   // print body
   body << p->Print(op->body);
-  doc << Doc::Indent(2, body);
+  doc << Doc::Indent(4, body);
   return doc;
 });
 

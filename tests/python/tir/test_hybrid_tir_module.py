@@ -78,10 +78,6 @@ def predicate(b, c):
 
 
 def test_module_define():
-    func1_var = tvm.tir.hybrid.global_var("matmul")
-    func2_var = tvm.tir.hybrid.global_var("element_wise")
-    func3_var = tvm.tir.hybrid.global_var("predicate")
-
     a = tvm.var("a")
     b = tvm.var("b")
     c = tvm.var("c")
@@ -90,7 +86,7 @@ def test_module_define():
     func2 = element_wise(a, c)
     func3 = predicate(b, c)
 
-    mod = tvm.tir.hybrid.create_module({func1_var: func1, func2_var: func2, func3_var: func3})
+    mod = tvm.tir.hybrid.create_module([func1, func2, func3])
 
     print(tvm.tir.hybrid.to_python(mod))
 
