@@ -71,26 +71,27 @@ class TIRHybridPrinter :
    * \return Doc with meta info
    */
   Doc DumpMeta() {
-   if (show_meta_) {
-     return Doc::Text("__tvm_meta__ = ")
+    if (show_meta_) {
+      return Doc::Text("__tvm_meta__ = ")
          << (meta_.empty() ? Doc::Text("None") : meta_.GetMetaSection());
-   } else {
-     return Doc::Text("");
-   }
+    } else {
+      return Doc::Text("");
+    }
   }
 
   /*!
    * \brief Entry point of printer
    * \return Doc
    */
-   Doc PrintFinal(const ObjectRef& functions) {
+  Doc PrintFinal(const ObjectRef& functions) {
     if (functions.as<ModuleNode>()) {
       return Print(functions);
     } else if (functions.as<FunctionNode>()) {
       return Print(functions) << Doc::NewLine() << DumpMeta();
-    } else
+    } else {
       return Doc::Text("");
-   }
+    }
+  }
 
  private:
   /*! \brief whether show meta data */

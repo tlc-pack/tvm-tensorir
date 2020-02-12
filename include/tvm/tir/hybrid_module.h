@@ -22,16 +22,19 @@
  * \brief Module that stores global functions.
  */
 
-#ifndef TVM_HYBRID_MODULE_H
-#define TVM_HYBRID_MODULE_H
+#ifndef TVM_TIR_HYBRID_MODULE_H_
+#define TVM_TIR_HYBRID_MODULE_H_
 
 #include <tvm/tir/ir.h>
 #include <tvm/node/container.h>
+#include <string>
+
 
 namespace tvm {
 namespace tir {
 
 class GlobalVar;
+
 /*!
  * \brief Global variable that refers to function definitions
  *
@@ -61,6 +64,7 @@ class GlobalVar : public ObjectRef {
 };
 
 class Module;
+
 /*!
  * \brief Module that holds collections of functions.
  */
@@ -84,6 +88,7 @@ class ModuleNode : public Object {
  private:
   /*! \brief A map from string names to global variables. */
   Map<std::string, GlobalVar> global_var_map_;
+
   friend class Module;
 };
 
@@ -111,4 +116,4 @@ class Module : public ObjectRef {
 }  // namespace tir
 }  // namespace tvm
 
-#endif //TVM_HYBRID_MODULE_H
+#endif  // TVM_TIR_HYBRID_MODULE_H_

@@ -15,6 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """Hybrid Programming APIs of TVM Python Package, aimed to support TIR"""
+# pylint: disable=no-else-return, unused-argument
 
 from __future__ import absolute_import as _abs
 

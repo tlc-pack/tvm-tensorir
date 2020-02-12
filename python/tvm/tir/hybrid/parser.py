@@ -22,6 +22,7 @@ import json
 import numbers
 import operator
 from enum import Enum
+from typed_ast import ast3 as ast
 
 from tvm import api as _api
 from tvm import expr as _expr
@@ -31,7 +32,6 @@ from tvm import schedule as _schedule
 from tvm._ffi.base import TVMError
 from tvm.api import all as _all
 from tvm.api import any as _any
-from typed_ast import ast3 as ast
 
 from . import module
 from . import scope_emitter
@@ -307,7 +307,7 @@ class HybridParser(ast.NodeVisitor):
 
         self.init_function_parsing_env()
         # add parameters of function
-        for idx, arg in enumerate(node.args.args):
+        for arg in node.args.args:
             arg_var = _api.var(arg.arg)
             self.update_symbol(arg.arg, HybridParser.Symbol.Var, arg_var)
             self.params.append(arg_var)

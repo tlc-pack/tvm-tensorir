@@ -60,7 +60,7 @@ def block(parser, node, block_vars_info, reads, writes, predicate=True, annotati
         parser.remove_symbol(block_var.var.name)
     parser.scope_emitter.emit(
         _make.Block(block_vars, values, reads, writes, parser.scope_emitter.pop_seq(), predicate,
-                      parser.scope_emitter.allocate_stack.pop(), annotations, name))
+                    parser.scope_emitter.allocate_stack.pop(), annotations, name))
 
 
 def range(parser, node, begin, end):
