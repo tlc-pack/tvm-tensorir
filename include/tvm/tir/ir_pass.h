@@ -80,17 +80,21 @@ TVM_DLL PrimExpr CanonicalSimplify(PrimExpr expr,
  * \brief Deep compare lhs and rhs
  * \param lhs The left operand
  * \param rhs The right operand
+ * \param arg_map Variables remapping
  * \return The comparison result.
  */
-TVM_DLL bool Equal(const PrimExpr& lhs, const PrimExpr& rhs);
+TVM_DLL bool Equal(const PrimExpr& lhs, const PrimExpr& rhs,
+                   const Map<Var, Var>& arg_map = Map<Var, Var>());
 
 /*!
  * \brief Deep compare lhs and rhs
  * \param lhs The left operand
  * \param rhs The right operand
+ * \param arg_map Variables remapping
  * \return The comparison result.
  */
-bool Equal(const Stmt& lhs, const Stmt& rhs);
+bool Equal(const Stmt& lhs, const Stmt& rhs,
+           const Map<Var, Var>& arg_map = Map<Var, Var>());
 
 /*!
  * \brief Deep compare lhs and rhs

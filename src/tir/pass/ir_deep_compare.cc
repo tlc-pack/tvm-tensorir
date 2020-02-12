@@ -93,9 +93,9 @@ class IRDeepCompare :
   void VisitStmt_(const AttrStmtNode* op, const Stmt& other) final {
     const AttrStmtNode* rhs = other.as<AttrStmtNode>();
     if (CompareString(op->attr_key, rhs->attr_key) != 0) return;
+    if (CompareStmt(op->body, rhs->body) != 0) return;
     if (CompareNodeRef(op->node, rhs->node) != 0) return;
     if (CompareExpr(op->value, rhs->value) != 0) return;
-    if (CompareStmt(op->body, rhs->body) != 0) return;
   }
 
   void VisitStmt_(const IfThenElseNode* op, const Stmt& other) final {
@@ -448,6 +448,9 @@ class IRDeepCompare :
 
   int CompareNodeRef(const ObjectRef& lhs, const ObjectRef& rhs) {
     if (order_ != 0) return order_;
+    if (lhs.as<PrimExprNode>() && rhs.as<PrimExprNode>()) {
+      return CompareExpr(Downcast<PrimExpr>(lhs), Downcast<PrimExpr>(rhs));
+    }
     if (lhs.get() < rhs.get()) {
       order_ = -1; return order_;
     }
@@ -529,7 +532,7 @@ class IRDeepCompare :
   // However, the comparison is no longer in total order.
   // Only equality/non-equality information is valid.
   bool tie_def_{false};
-  // varaible remap if any
+  // variable remap if any
   std::unordered_map<const VarNode*, const VarNode*> vmap_;
 };
 
@@ -545,11 +548,15 @@ bool Equal(const Function& lhs, const Function& rhs) {
   return ir_deep_compare.Equal(lhs->body, rhs->body);
 }
 
-bool Equal(const Stmt& lhs, const Stmt& rhs) {
-  return IRDeepCompare().Equal(lhs, rhs);
+bool Equal(const Stmt& lhs, const Stmt& rhs, const Map<Var, Var>& arg_map) {
+  IRDeepCompare ir_deep_compare;
+  for (const auto& x : arg_map) {
+    ir_deep_compare.Bind(x.first.get(), x.second.get());
+  }
+  return ir_deep_compare.Equal(lhs, rhs);
 }
 
-bool Equal(const PrimExpr& lhs, const PrimExpr& rhs) {
+bool Equal(const PrimExpr& lhs, const PrimExpr& rhs, bool remap_free_var) {
   // quick pass for constant expressions.
   if (const int64_t *a = as_const_int(lhs)) {
     if (const int64_t *b = as_const_int(rhs)) {

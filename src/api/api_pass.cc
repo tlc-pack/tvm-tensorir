@@ -78,9 +78,17 @@ TVM_REGISTER_GLOBAL("ir_pass.Substitute")
 TVM_REGISTER_GLOBAL("ir_pass.Equal")
 .set_body([](TVMArgs args, TVMRetValue *ret) {
     if (args[0].IsObjectRef<Stmt>()) {
-      *ret = Equal(args[0].operator Stmt(), args[1].operator Stmt());
+      if (args.size() > 1) {
+        *ret = Equal(args[0].operator Stmt(), args[1].operator Stmt(), args[2]);
+      } else {
+        *ret = Equal(args[0].operator Stmt(), args[1].operator Stmt());
+      }
     } else if (args[0].IsObjectRef<PrimExpr>()) {
-      *ret = Equal(args[0].operator PrimExpr(), args[1].operator PrimExpr());
+      if (args.size() > 1) {
+        *ret = Equal(args[0].operator PrimExpr(), args[1].operator PrimExpr(), args[2]);
+      } else {
+        *ret = Equal(args[0].operator PrimExpr(), args[1].operator PrimExpr());
+      }
     } else {
       *ret = Equal(args[0].operator Function(), args[1].operator Function());
     }

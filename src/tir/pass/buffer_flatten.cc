@@ -127,8 +127,8 @@ class RegionGatherer : public StmtExprVisitor {
       : buffers_lca_(buffers_lca) {
     for (const auto& arg : func_args) {
       std::vector<arith::IntSet> region;
-      for (const auto& shape : arg.second->shape) {
-        region.push_back(arith::IntSet::range(Range::make_by_min_extent(0, shape)));
+      for (const auto& size : arg.second->shape) {
+        region.push_back(arith::IntSet::range(Range::make_by_min_extent(0, size)));
       }
       buffers_region_[arg.second] = region;
     }
@@ -181,14 +181,14 @@ class RegionGatherer : public StmtExprVisitor {
   /*! \note T can be BufferLoad or BufferStore */
   template <typename T>
   void VisitBuffer(const T* op) {
-    CHECK(buffers_region_.count(op->buffer));
-    auto region = GatherRegion(op);
-    const auto& buffer_region = buffers_region_[op->buffer];
+    auto it = buffers_region_.find(op->buffer);
+    CHECK(it != buffers_region_.end());
+    const auto& region = GatherRegion(op);
+    auto& buffer_region = it->second;
     CHECK_EQ(buffer_region.size(), region.size());
     for (size_t i = 0; i < region.size(); ++i) {
-      region[i] = arith::Union({buffer_region[i], region[i]});
+      buffer_region[i] = arith::Union({buffer_region[i], region[i]});
     }
-    buffers_region_[op->buffer] = region;
   }
 
   /*!
@@ -198,17 +198,18 @@ class RegionGatherer : public StmtExprVisitor {
   template <typename T>
   std::vector<arith::IntSet> GatherRegion(const T* op) {
     std::unordered_map<const VarNode*, arith::IntSet> dom_map;
-    CHECK(buffers_lca_.count(op->buffer)) << op->buffer;
-    auto lca = buffers_lca_.at(op->buffer);
+    auto it = buffers_lca_.find(op->buffer);
+    CHECK(it != buffers_lca_.end());
+    const auto& lca = it->second;
     // Every loop will be relaxed if the lca is the root
     bool need_relax = !lca.defined();
     for (size_t i = 0; i < loop_stack_.size(); ++i) {
       const Loop& loop = loop_stack_[i];
-      if (loop == lca) need_relax = true;
       const VarNode* var = loop->loop_var.get();
       if (need_relax) {
         dom_map[var] = arith::IntSet::range(Range::make_by_min_extent(loop->min, loop->extent));
       }
+      if (loop.same_as(lca)) need_relax = true;
     }
     std::vector<arith::IntSet> region;
     for (const auto& e : op->indices) {
@@ -299,14 +300,14 @@ class BufferFlattener : public StmtExprMutator {
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     op = stmt.as<BufferStoreNode>();
     CHECK(op != nullptr);
-    auto begins = GetIndices(op);
+    auto begins = ComputeRelativeIndices(op);
     return op->buffer.vstore(begins, op->value);
   }
 
   PrimExpr VisitExpr_(const BufferLoadNode* op) final {
     PrimExpr expr = StmtExprMutator::VisitExpr_(op);
     op = expr.as<BufferLoadNode>();
-    auto begins = GetIndices(op);
+    auto begins = ComputeRelativeIndices(op);
     return op->buffer.vload(begins, op->dtype);
   }
 
@@ -320,7 +321,7 @@ class BufferFlattener : public StmtExprMutator {
    * \note T can be BufferLoad or BufferStore
    */
   template <typename T>
-  std::vector<PrimExpr> GetIndices(const T* op) {
+  std::vector<PrimExpr> ComputeRelativeIndices(const T* op) {
     auto it = buffers_region_.find(op->buffer);
     CHECK(it != buffers_region_.end());
     const auto& region = it->second;
