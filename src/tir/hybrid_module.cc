@@ -51,8 +51,9 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
   p->stream << "TirGlobalVar(" << node->name_hint << ")";
 });
 
-Module::Module(Map<GlobalVar, Function> functions) {
+Module::Module(std::string name, Map<GlobalVar, Function> functions) {
   auto n = make_object<ModuleNode>();
+  n->name = std::move(name);
   n->functions = std::move(functions);
   n->global_var_map_ = {};
   for (const auto &kv : n->functions) {
@@ -64,11 +65,22 @@ Module::Module(Map<GlobalVar, Function> functions) {
   data_ = std::move(n);
 }
 
+void Module::append(const GlobalVar &globalVar, const Function &function) {
+  auto n = runtime::GetObjectPtr<ModuleNode>(const_cast<ModuleNode*>(this->operator->()));
+  n->functions.Set(globalVar, function);
+  n->global_var_map_.Set(globalVar->name_hint, globalVar);
+}
+
 TVM_REGISTER_NODE_TYPE(ModuleNode);
 
 TVM_REGISTER_GLOBAL("make.TirModule")
-.set_body_typed([](Map<GlobalVar, Function> funcs) {
-  return Module(std::move(funcs));
+.set_body_typed([](std::string name, Map<GlobalVar, Function> funcs) {
+  return Module(std::move(name), std::move(funcs));
+});
+
+TVM_REGISTER_GLOBAL("tir.hybrid.module.Append")
+.set_body_typed([](Module module, GlobalVar globalVar, Function function){
+  module.append(globalVar, function);
 });
 
 }  // namespace tir

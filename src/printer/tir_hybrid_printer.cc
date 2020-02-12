@@ -40,8 +40,9 @@ class TIRHybridPrinter :
     public StmtFunctor<Doc(const Stmt&)>,
     public ExprFunctor<Doc(const PrimExpr&)>{
  public:
-  explicit TIRHybridPrinter(runtime::TypedPackedFunc<std::string(Stmt)> annotate = nullptr)
-    : annotate_(annotate) {}
+  explicit TIRHybridPrinter(bool show_meta,
+                            runtime::TypedPackedFunc<std::string(Stmt)> annotate = nullptr)
+    : show_meta_(show_meta), annotate_(annotate) {}
   /*! \brief Print the node */
   TVM_DLL Doc Print(const ObjectRef& node);
 
@@ -67,13 +68,33 @@ class TIRHybridPrinter :
 
   /*!
    * \brief dump meta info
+   * \return Doc with meta info
    */
   Doc DumpMeta() {
-   return Doc::Text("__tvm_meta__ = ")
-            << (meta_.empty() ? Doc::Text("None") : meta_.GetMetaSection());
+   if (show_meta_) {
+     return Doc::Text("__tvm_meta__ = ")
+         << (meta_.empty() ? Doc::Text("None") : meta_.GetMetaSection());
+   } else {
+     return Doc::Text("");
+   }
   }
 
+  /*!
+   * \brief Entry point of printer
+   * \return Doc
+   */
+   Doc PrintFinal(const ObjectRef& functions) {
+    if (functions.as<ModuleNode>()) {
+      return Print(functions);
+    } else if (functions.as<FunctionNode>()) {
+      return Print(functions) << Doc::NewLine() << DumpMeta();
+    } else
+      return Doc::Text("");
+   }
+
  private:
+  /*! \brief whether show meta data */
+  bool show_meta_;
   /*! \brief additional comment function */
   runtime::TypedPackedFunc<std::string(Stmt)> annotate_;
   /*! \brief meta data context */
@@ -356,11 +377,19 @@ Doc TIRHybridPrinter::VisitStmt_(const BufferStoreNode* op) {
 TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
 .set_dispatch<ModuleNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
   auto* op = node.as<ModuleNode>();
+  Doc doc;
+  doc << "class " << op->name << ":";
+
+  Doc body;
+  body << Doc::NewLine();
   std::vector<Doc> functions;
   for (auto it = op->functions.begin(); it != op->functions.end(); ++it) {
     functions.push_back(p->Print((*it).second));
   }
-  return TIRHybridPrinter::PrintSep(functions, Doc::NewLine() << Doc::NewLine());
+  body << TIRHybridPrinter::PrintSep(functions, Doc::NewLine() << Doc::NewLine());
+  body << Doc::NewLine() << p->DumpMeta();
+  doc << Doc::Indent(4, body);
+  return doc;
 });
 
 TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
@@ -400,7 +429,7 @@ TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
   doc << Doc::Indent(4, body);
   return doc;
 });
-
+/*
 TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
 .set_dispatch<TensorRegionNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
   auto* op = node.as<TensorRegionNode>();
@@ -416,7 +445,7 @@ TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
   doc << "]";
   return doc;
 });
-
+*/
 TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
 .set_dispatch<AnnotationNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
   auto* op = node.as<AnnotationNode>();
@@ -446,14 +475,10 @@ TIRHybridPrinter::FType& TIRHybridPrinter::vtable() {
 }
 
 TVM_REGISTER_GLOBAL("tir.hybrid.AsHybrid")
-.set_body_typed<std::string(const ObjectRef&)>(
-[](const ObjectRef& functions) {
+.set_body_typed<std::string(const ObjectRef&, bool)>(
+[](const ObjectRef& functions, bool show_meta) {
   CHECK(functions.as<FunctionNode>() != nullptr || functions.as<ModuleNode>() != nullptr);
-  TIRHybridPrinter tirHybridPrinter;
-  Doc doc;
-  doc << tirHybridPrinter.Print(functions);
-  doc << Doc::NewLine() << tirHybridPrinter.DumpMeta();
-  return doc.str() + "\n";
+  return TIRHybridPrinter(show_meta).PrintFinal(functions).str() + "\n";
 });
 
 }  // namespace tir

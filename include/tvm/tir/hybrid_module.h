@@ -66,7 +66,9 @@ class Module;
  */
 class ModuleNode : public Object {
  public:
-  /*! \brief A map from GlobalVar to all global functions. */
+  /*! \brief the name of the module. */
+  std::string name;
+  /*! \brief a map from GlobalVar to all global functions. */
   Map<GlobalVar, Function> functions;
 
   /*! \brief default constructor */
@@ -92,19 +94,18 @@ class Module : public ObjectRef {
  public:
   /*!
   * \brief constructor
-  * \param functions Function s in the module.
+  * \param functions Functions in the module.
   */
-  TVM_DLL explicit Module(Map<GlobalVar, Function> functions);
+  TVM_DLL explicit Module(std::string name, Map<GlobalVar, Function> functions);
 
-  /*! \brief default constructor */
-  Module() {}
+  TVM_DEFINE_OBJECT_REF_METHODS(Module, ObjectRef, ModuleNode);
 
-  /*! \return mutable pointers to the node. */
-  ModuleNode* operator->() const {
-    auto* ptr = get_mutable();
-    CHECK(ptr != nullptr);
-    return static_cast<ModuleNode*>(ptr);
-  }
+  /*!
+   * \brief append a new Function into current Module
+   * \param globalVar the corresponding GlobalVar
+   * \param function the Function to be appended
+   */
+  void append(const GlobalVar& globalVar, const Function& function);
 };
 
 }  // namespace tir

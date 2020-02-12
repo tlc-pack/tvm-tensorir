@@ -38,8 +38,6 @@ class ScopeEmitter:
     def pop_seq(self):
         """Pop the inner most scope"""
         seq = self.seq_stack.pop()
-        if not seq:
-            seq.append(_make.Evaluate(0))
         if len(seq) == 1:
             return seq[0]
         return _stmt.SeqStmt(seq)
