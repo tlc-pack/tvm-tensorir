@@ -80,29 +80,35 @@ TVM_DLL PrimExpr CanonicalSimplify(PrimExpr expr,
  * \brief Deep compare lhs and rhs
  * \param lhs The left operand
  * \param rhs The right operand
- * \param arg_map Variables remapping
+ * \param remap_free_var Whether enable free var remapping
+ * \param assert_mode Whether check in assert mode
  * \return The comparison result.
  */
 TVM_DLL bool Equal(const PrimExpr& lhs, const PrimExpr& rhs,
-                   const Map<Var, Var>& arg_map = Map<Var, Var>());
+                   bool remap_free_var = false, bool assert_mode = false);
 
 /*!
  * \brief Deep compare lhs and rhs
  * \param lhs The left operand
  * \param rhs The right operand
- * \param arg_map Variables remapping
+ * \param remap_free_var Whether enable free var remapping
+ * \param assert_mode Whether check in assert mode
  * \return The comparison result.
  */
-bool Equal(const Stmt& lhs, const Stmt& rhs,
-           const Map<Var, Var>& arg_map = Map<Var, Var>());
+bool Equal(const Stmt& lhs, const Stmt& rhs, bool remap_free_var = false, bool assert_mode = false);
 
 /*!
  * \brief Deep compare lhs and rhs
  * \param lhs The left operand
  * \param rhs The right operand
+ * \param remap_free_var Whether enable free var remapping
+ * \param assert_mode Whether check in assert mode
  * \return The comparison result.
  */
-bool Equal(const tir::Function& lhs, const tir::Function& rhs);
+bool Equal(const tir::Function& lhs,
+           const tir::Function& rhs,
+           bool remap_free_var = false,
+           bool assert_mode = false);
 
 /*!
  * \brief Deep compare lhs and rhs.

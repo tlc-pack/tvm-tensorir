@@ -41,6 +41,9 @@ using StmtComparator = StmtFunctor<void(const Stmt& n, const Stmt &other)>;
 class IRDeepCompare :
       public ExprComparator, public StmtComparator {
  public:
+  explicit IRDeepCompare(bool map_free_var, bool assert_mode)
+      : map_free_var_(map_free_var), assert_mode_(assert_mode) {}
+
   // Equality comparison
   bool Equal(const Stmt& lhs, const Stmt& rhs) {
     tie_def_ = true;
@@ -66,10 +69,16 @@ class IRDeepCompare :
 
   void VisitExpr(const PrimExpr& n, const PrimExpr& other) override {
     if (order_ != 0) return;
-    if (n.same_as(other)) return;
+    if (n.same_as(other)) {
+      if (const auto* v = n.as<VarNode>()) visited_vars.insert(v);
+      return;
+    }
     if (CompareValue(n->type_index(), other->type_index()) != 0) return;
     if (CompareType(n.dtype(), other.dtype()) != 0) return;
     ExprComparator::VisitExpr(n, other);
+    if (assert_mode_) {
+      CHECK_EQ(order_, 0) << n << " is not equal to: " << other;
+    }
   }
 
   void VisitStmt(const Stmt& n, const Stmt& other) override {
@@ -77,6 +86,9 @@ class IRDeepCompare :
     if (n.same_as(other)) return;
     if (CompareValue(n->type_index(), other->type_index()) != 0) return;
     StmtComparator::VisitStmt(n, other);
+    if (assert_mode_) {
+      CHECK_EQ(order_, 0) << "\n" << n << "\nis not equal to:\n" << other;
+    }
   }
   // Stmt
   void VisitStmt_(const LetStmtNode* op, const Stmt& other) final {
@@ -265,6 +277,11 @@ class IRDeepCompare :
   // Exprs
   void VisitExpr_(const VarNode* op, const PrimExpr& other) final {
     const VarNode* rhs = other.as<VarNode>();
+    if (map_free_var_ && !visited_vars.count(op) && !visited_vars.count(rhs)) {
+      vmap_[op] = rhs;
+    }
+    visited_vars.insert(op);
+    visited_vars.insert(rhs);
     auto it = vmap_.find(op);
     if (it != vmap_.end()) op = it->second;
     if (op < rhs) {
@@ -491,7 +508,7 @@ class IRDeepCompare :
     if (lhs == rhs) return order_;
     if (CompareValue(lhs->lhs.size(), rhs->lhs.size()) != 0) return order_;
     if (CompareValue(lhs->rhs.size(), rhs->rhs.size()) != 0) return order_;
-    IRDeepCompare cmp;
+    IRDeepCompare cmp(map_free_var_, assert_mode_);
     if (tie_def_) {
       for (size_t i = 0; i < lhs->lhs.size(); ++i) {
         cmp.vmap_[lhs->lhs[i].get()] = rhs->lhs[i].get();
@@ -532,13 +549,21 @@ class IRDeepCompare :
   // However, the comparison is no longer in total order.
   // Only equality/non-equality information is valid.
   bool tie_def_{false};
+  // whether to map open terms.
+  bool map_free_var_;
+  // if in assert mode, must return true, and will throw error otherwise.
+  bool assert_mode_;
   // variable remap if any
   std::unordered_map<const VarNode*, const VarNode*> vmap_;
+  // all vars which have been visited before
+  std::unordered_set<const VarNode*> visited_vars;
 };
 
-
-bool Equal(const Function& lhs, const Function& rhs) {
-  IRDeepCompare ir_deep_compare;
+bool Equal(const Function& lhs,
+           const Function& rhs,
+           bool remap_free_var,
+           bool assert_mode) {
+  IRDeepCompare ir_deep_compare(remap_free_var, assert_mode);
   if (lhs->params.size() != rhs->params.size()) return false;
   for (size_t i = 0; i < lhs->params.size(); ++i) {
     const auto* lhs_var = lhs->buffer_map[lhs->params[i]]->data.get();
@@ -548,15 +573,11 @@ bool Equal(const Function& lhs, const Function& rhs) {
   return ir_deep_compare.Equal(lhs->body, rhs->body);
 }
 
-bool Equal(const Stmt& lhs, const Stmt& rhs, const Map<Var, Var>& arg_map) {
-  IRDeepCompare ir_deep_compare;
-  for (const auto& x : arg_map) {
-    ir_deep_compare.Bind(x.first.get(), x.second.get());
-  }
-  return ir_deep_compare.Equal(lhs, rhs);
+bool Equal(const Stmt& lhs, const Stmt& rhs, bool remap_free_var, bool assert_mode) {
+  return IRDeepCompare(remap_free_var, assert_mode).Equal(lhs, rhs);
 }
 
-bool Equal(const PrimExpr& lhs, const PrimExpr& rhs, bool remap_free_var) {
+bool Equal(const PrimExpr& lhs, const PrimExpr& rhs, bool remap_free_var, bool assert_mode) {
   // quick pass for constant expressions.
   if (const int64_t *a = as_const_int(lhs)) {
     if (const int64_t *b = as_const_int(rhs)) {
@@ -570,11 +591,11 @@ bool Equal(const PrimExpr& lhs, const PrimExpr& rhs, bool remap_free_var) {
     if (!rhs.defined()) return false;
   }
   // deep comparison.
-  return IRDeepCompare().Equal(lhs, rhs);
+  return IRDeepCompare(remap_free_var, assert_mode).Equal(lhs, rhs);
 }
 
 int Compare(const PrimExpr& lhs, const PrimExpr& rhs) {
-  return IRDeepCompare().Compare(lhs, rhs);
+  return IRDeepCompare(false, false).Compare(lhs, rhs);
 }
 
 }  // namespace tir

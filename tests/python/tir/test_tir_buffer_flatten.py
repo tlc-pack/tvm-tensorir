@@ -36,16 +36,10 @@ def test_no_allocate():
                 C[i*128 + j] = 0.
                 with ib.for_range(0, 128, "k") as k:
                     C[i*128 + j] = C[i*128 + j] + A[i*128 + k] * B[j*128 + k]
-        return ib.get(), [A._buffer_var, B._buffer_var, C._buffer_var]
+        return ib.get()
 
-    stmt1, buffer_vars = no_allocate_after_stmt()
-    assert len(buffer_vars) == len(func.params)
-
-    arg_map = {}
-    for i in range(len(buffer_vars)):
-        arg_map[func.buffer_map[func.params[i]].data] = buffer_vars[i]
-
-    assert ir_pass.Equal(stmt0, stmt1, arg_map)
+    stmt1 = no_allocate_after_stmt()
+    assert ir_pass.AssertStructEqual(stmt0, stmt1)
 
 
 def test_global_allocate():
@@ -65,16 +59,10 @@ def test_global_allocate():
         with ib.for_range(0, 128, "i") as i:
             with ib.for_range(0, 128, "j") as j:
                 C[i*128 + j] = B[i*128 + j] + 1.0
-        return ib.get(), [A._buffer_var, C._buffer_var]
+        return ib.get()
 
-    stmt1, buffer_vars = no_allocate_after_stmt()
-    assert len(buffer_vars) == len(func.params)
-
-    arg_map = {}
-    for i in range(len(buffer_vars)):
-        arg_map[func.buffer_map[func.params[i]].data] = buffer_vars[i]
-
-    assert ir_pass.Equal(stmt0, stmt1, arg_map)
+    stmt1 = no_allocate_after_stmt()
+    assert ir_pass.AssertStructEqual(stmt0, stmt1)
 
 
 @tvm.hybrid_tir.script
@@ -116,16 +104,10 @@ def test_local_allocate():
 
             with ib.for_range(0, 128, "j") as j:
                 C[i*128 + j] = B[j] + 1.0
-        return ib.get(), [A._buffer_var, C._buffer_var]
+        return ib.get()
 
-    stmt1, buffer_vars = no_allocate_after_stmt()
-    assert len(buffer_vars) == len(func.params)
-
-    arg_map = {}
-    for i in range(len(buffer_vars)):
-        arg_map[func.buffer_map[func.params[i]].data] = buffer_vars[i]
-
-    assert ir_pass.Equal(stmt0, stmt1, arg_map)
+    stmt1 = no_allocate_after_stmt()
+    assert ir_pass.AssertStructEqual(stmt0, stmt1)
 
 
 def test_shared_allocate():
