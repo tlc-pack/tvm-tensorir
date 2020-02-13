@@ -132,6 +132,7 @@ class HybridParser(ast.NodeVisitor):
         self._in_with_func_arg = False
 
     def init_function_parsing_env(self):
+        """Initialize function parsing environment"""
         self.params = []  # parameter list
         self.symbols = {}  # symbol table
         self.buffer_map = {}  # buffer map
@@ -139,6 +140,7 @@ class HybridParser(ast.NodeVisitor):
 
     @staticmethod
     def is_meta(node):
+        """Judge whether an AST node is META"""
         return isinstance(node, ast.Assign) \
                and len(node.targets) == 1 \
                and isinstance(node.targets[0], ast.Name) \

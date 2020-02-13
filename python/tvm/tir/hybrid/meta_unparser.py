@@ -14,7 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Hybrid Script Parser For TIR"""
+"""Unparse meta AST node into a dict"""
 # pylint: disable=invalid-name, missing-docstring, inconsistent-return-statements, no-else-return
 # pylint: disable=unnecessary-comprehension, unused-argument
 
