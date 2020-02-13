@@ -53,7 +53,7 @@ def create_module(funcs=None):
 
     Parameters
     -----------
-    funcs : Optional[List[Function]]
+    funcs : Optional[List[Union[Function, HybridFunction]]]
         list of functions
 
     Returns
@@ -62,7 +62,7 @@ def create_module(funcs=None):
         A module containing the passed definitions
     """
 
-    funcs = [func() if isinstance(func, HybridScript) else func for func in funcs]
+    funcs = [_parse(func) if isinstance(func, HybridFunction) else func for func in funcs]
     return module.create_module(funcs=funcs)
 
 
@@ -71,7 +71,7 @@ def to_python(ir, show_meta=False):
 
     Parameters
     ----------
-    ir : Union[Function, Module, HybridScript]
+    ir : Union[Function, Module, HybridFunction]
         The Function or Module to be dumped
 
     show_meta : bool
@@ -83,9 +83,9 @@ def to_python(ir, show_meta=False):
         The Python script
     """
 
-    if isinstance(ir, HybridScript):
-        ir = ir()  # transform HybridScript to Function or Module
-    if isinstance(ir, module.Module):
+    if isinstance(ir, HybridFunction):
+        ir = _parse(ir)  # transform HybridFunction to Function
+    elif isinstance(ir, module.Module):
         ir = ir.module  # get the inner IRModule of Module
     return AsHybrid(ir, show_meta)
 
@@ -120,33 +120,45 @@ def _init_scope():
     registry.register_scope_handler(scope_handler.range, scope_name="for_scope")
 
 
-class HybridScript:
-    """Helper class for decoration"""
+class HybridClass:
+    """Helper class for decorating a class"""
     def __init__(self, origin_script):
         self.origin_script = origin_script
 
     def __call__(self, *args, **kwargs):
         # call the parser to transform hybrid script into TIR
-        _init_scope()
-        return from_str(inspect.getsource(self.origin_script),
-                        inspect.getsourcelines(self.origin_script)[1])
+        return _parse(self)
+
+
+class HybridFunction:
+    """Helper class for decorating a function"""
+    def __init__(self, origin_script):
+        self.origin_script = origin_script
 
 
 def script(origin_script):
-    """Decorate a python function or class as HybridScript.
+    """Decorate a python function or class as hybrid script.
 
     The hybrid function or parsing support parsing to the internal TIR.
 
     Returns
     -------
-    function : Union[Function, Module]
+    output : Union[Function, Module]
         The Function or Module in IR.
     """
 
-    if inspect.isfunction(origin_script) or inspect.isclass(origin_script):
-        return HybridScript(origin_script)
+    if inspect.isfunction(origin_script):
+        return HybridFunction(origin_script)
+    elif inspect.isclass(origin_script):
+        return HybridClass(origin_script)
     else:
         raise TypeError("Only function and class are supported")
+
+
+def _parse(hybrid_script):
+    _init_scope()
+    return from_str(inspect.getsource(hybrid_script.origin_script),
+                    inspect.getsourcelines(hybrid_script.origin_script)[1])
 
 
 _init_api("tvm.tir.hybrid")
