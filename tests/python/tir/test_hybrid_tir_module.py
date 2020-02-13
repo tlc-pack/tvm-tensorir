@@ -17,6 +17,7 @@
 
 import tvm
 from tvm import tir
+from tvm import ir_pass
 
 
 @tvm.tir.hybrid.script
@@ -78,17 +79,17 @@ def predicate(b, c):
 
 
 def test_module_define():
-    a = tvm.var("a")
-    b = tvm.var("b")
-    c = tvm.var("c")
-
-    func1 = matmul(a, b, c)
-    func2 = element_wise(a, c)
-    func3 = predicate(b, c)
-
-    mod = tvm.tir.hybrid.create_module([func1, func2, func3])
-
-    print(tvm.tir.hybrid.to_python(mod))
+    func1 = matmul()
+    func2 = element_wise()
+    func3 = predicate()
+    mod1 = tvm.tir.hybrid.create_module([func1, func2, func3])
+    mod2 = tvm.tir.hybrid.create_module([matmul, element_wise, predicate])
+    mod3 = tvm.tir.hybrid.create_module([matmul(), element_wise(), predicate()])
+    print(tvm.tir.hybrid.to_python(mod1))
+    print(tvm.tir.hybrid.to_python(mod2))
+    print(tvm.tir.hybrid.to_python(mod3))
+    # assert ir_pass.Equal(mod1, mod2)
+    # assert ir_pass.Equal(mod2, mod3)
 
 
 if __name__ == '__main__':

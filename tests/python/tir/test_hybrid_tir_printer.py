@@ -80,10 +80,7 @@ def predicate(b, c):
 
 
 def test_matmul():
-    a = tvm.var("a")
-    b = tvm.var("b")
-    c = tvm.var("c")
-    func = matmul(a, b, c)
+    func = matmul()
     rt_func = from_str(tvm.tir.hybrid.to_python(func, True))
     # assert tvm.ir_pass.Equal(func, rt_func)
 
@@ -95,13 +92,9 @@ def test_matmul():
     assert isinstance(rt_func.body.body.body.body[1], tvm.stmt.Loop)
     assert isinstance(rt_func.body.body.body.body[1].body, tvm.stmt.Block)
 
-    return func
-
 
 def test_element_wise():
-    a = tvm.var("a")
-    c = tvm.var("c")
-    func = element_wise(a, c)
+    func = element_wise()
     rt_func = from_str(tvm.tir.hybrid.to_python(func, True))
     # assert tvm.ir_pass.Equal(func, rt_func)
 
@@ -115,13 +108,9 @@ def test_element_wise():
     assert isinstance(rt_func.body.body[1].body, tvm.stmt.Loop)
     assert isinstance(rt_func.body.body[1].body.body, tvm.stmt.Block)
 
-    return func
-
 
 def test_predicate():
-    b = tvm.var("b")
-    c = tvm.var("c")
-    func = predicate(b, c)
+    func = predicate()
     rt_func = from_str(tvm.tir.hybrid.to_python(func, True))
     # assert tvm.ir_pass.Equal(func, rt_func)
 
@@ -131,15 +120,11 @@ def test_predicate():
     assert isinstance(rt_func.body.body.body.body, tvm.stmt.Loop)
     assert isinstance(rt_func.body.body.body.body.body, tvm.stmt.Block)
 
-    return func
 
-
-def test_module():
-    func1 = test_matmul()
-    func2 = test_element_wise()
-    func3 = test_predicate()
-    mod = tvm.tir.hybrid.create_module([func1, func2, func3])
-    print(tvm.tir.hybrid.to_python(mod))
+def test_functions():
+    test_matmul()
+    test_element_wise()
+    test_predicate()
 
 
 @tvm.tir.hybrid.script
@@ -719,11 +704,11 @@ class MyModule:
 
 
 def test_module_class_based():
-    mod = MyModule
+    mod = MyModule()
     rt_mod = from_str(tvm.tir.hybrid.to_python(mod, True))
     # assert tvm.ir_pass.Equal(mod, rt_mod)
 
 
 if __name__ == '__main__':
-    test_module()
+    test_functions()
     test_module_class_based()

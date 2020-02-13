@@ -78,11 +78,7 @@ def predicate(b, c):
 
 
 def test_matmul():
-    a = tvm.var("a")
-    b = tvm.var("b")
-    c = tvm.var("c")
-    func = matmul(a, b, c)
-
+    func = matmul()
     print(tvm.tir.hybrid.to_python(func))
 
     assert isinstance(func.body, tvm.stmt.Block)
@@ -95,10 +91,7 @@ def test_matmul():
 
 
 def test_element_wise():
-    a = tvm.var("a")
-    c = tvm.var("c")
-    func = element_wise(a, c)
-
+    func = element_wise()
     print(tvm.tir.hybrid.to_python(func))
 
     assert isinstance(func.body, tvm.stmt.Block)
@@ -113,10 +106,7 @@ def test_element_wise():
 
 
 def test_predicate():
-    b = tvm.var("b")
-    c = tvm.var("c")
-    func = predicate(b, c)
-
+    func = predicate()
     print(tvm.tir.hybrid.to_python(func))
 
     assert isinstance(func.body, tvm.stmt.Block)

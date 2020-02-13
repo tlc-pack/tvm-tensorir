@@ -53,10 +53,7 @@ def element_wise(a, c):
 
 
 def test_element_wise():
-    a = tvm.var("a")
-    c = tvm.var("c")
-    func = element_wise(a, c)
-
+    func = element_wise()
     print(tvm.tir.hybrid.to_python(func))
 
     assert isinstance(func.body, tvm.stmt.Block)

@@ -21,7 +21,6 @@ from __future__ import absolute_import as _abs
 
 import inspect
 
-from tvm._ffi.base import decorate
 from tvm.api import _init_api
 
 from . import module
@@ -63,6 +62,7 @@ def create_module(funcs=None):
         A module containing the passed definitions
     """
 
+    funcs = [func() if isinstance(func, HybridScript) else func for func in funcs]
     return module.create_module(functions=funcs)
 
 
@@ -83,6 +83,8 @@ def to_python(funcs, show_meta=False):
         The Python script
     """
 
+    if isinstance(funcs, HybridScript):
+        funcs = funcs()
     return AsHybrid(funcs, show_meta)
 
 
@@ -116,29 +118,31 @@ def _init_scope():
     registry.register_scope_handler(scope_handler.range, scope_name="for_scope")
 
 
-def script(origin_script):
-    """Decorate a python function function as hybrid script.
+class HybridScript:
+    """Helper class for decoration"""
+    def __init__(self, origin_script):
+        self.origin_script = origin_script
 
-    The hybrid function support parsing to the internal TIR.
+    def __call__(self, *args, **kwargs):
+        # call the parser to transform hybrid script into TIR
+        _init_scope()
+        return from_str(inspect.getsource(self.origin_script),
+                        inspect.getsourcelines(self.origin_script)[1])
+
+
+def script(origin_script):
+    """Decorate a python function or class as HybridScript.
+
+    The hybrid function or parsing support parsing to the internal TIR.
 
     Returns
     -------
-    function : Function
-        The Function in IR.
+    function : Union[Function, Module]
+        The Function or Module in IR.
     """
 
-    if inspect.isfunction(origin_script):
-        def wrapped_func(func, *args, **kwargs):
-            _init_scope()
-            src = _pruned_source(func)
-            return source_to_op(inspect.getsourcelines(func)[1], src)
-
-        return decorate(origin_script, wrapped_func)
-
-    elif inspect.isclass(origin_script):
-        _init_scope()
-        return from_str(inspect.getsource(origin_script), inspect.getsourcelines(origin_script)[1])
-
+    if inspect.isfunction(origin_script) or inspect.isclass(origin_script):
+        return HybridScript(origin_script)
     else:
         raise TypeError("Only function and class are supported")
 
