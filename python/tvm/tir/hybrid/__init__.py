@@ -23,7 +23,7 @@ import inspect
 
 from tvm.api import _init_api
 
-from . import module
+from .. import module
 from . import utils, registry, intrin, special_stmt, scope_handler
 from .parser import source_to_op
 from .utils import _pruned_source
@@ -63,7 +63,7 @@ def create_module(funcs=None):
     """
 
     funcs = [func() if isinstance(func, HybridScript) else func for func in funcs]
-    return module.create_module(functions=funcs)
+    return module.create_module(funcs=funcs)
 
 
 def to_python(funcs, show_meta=False):
@@ -71,7 +71,7 @@ def to_python(funcs, show_meta=False):
 
     Parameters
     ----------
-    funcs : Union[Function, Module]
+    funcs : Union[Function, Module, HybridScript]
         The Function or Module to be dumped
 
     show_meta : bool
@@ -84,7 +84,9 @@ def to_python(funcs, show_meta=False):
     """
 
     if isinstance(funcs, HybridScript):
-        funcs = funcs()
+        funcs = funcs()  # transform HybridScript to Function or Module
+    if isinstance(funcs, module.Module):
+        funcs = funcs.module  # get the inner IRModule of Module
     return AsHybrid(funcs, show_meta)
 
 

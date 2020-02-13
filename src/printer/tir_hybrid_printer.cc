@@ -28,8 +28,8 @@
 #include <tvm/tir/stmt.h>
 #include <tvm/tir/expr_functor.h>
 #include <tvm/tir/stmt_functor.h>
-#include <tvm/tir/hybrid_module.h>
 #include <tvm/node/serialization.h>
+#include <tvm/ir/module.h>
 #include "doc.h"
 #include "meta_data.h"
 
@@ -84,7 +84,7 @@ class TIRHybridPrinter :
    * \return Doc
    */
   Doc PrintFinal(const ObjectRef& functions) {
-    if (functions.as<ModuleNode>()) {
+    if (functions.as<IRModuleNode>()) {
       return Print(functions);
     } else if (functions.as<FunctionNode>()) {
       return Print(functions) << Doc::NewLine() << DumpMeta();
@@ -376,16 +376,18 @@ Doc TIRHybridPrinter::VisitStmt_(const BufferStoreNode* op) {
 }
 
 TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
-.set_dispatch<ModuleNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
-  auto* op = node.as<ModuleNode>();
+.set_dispatch<IRModuleNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
+  auto* op = node.as<IRModuleNode>();
   Doc doc;
-  doc << "class " << op->name << ":";
+  doc << "class Module :";
 
   Doc body;
   body << Doc::NewLine();
   std::vector<Doc> functions;
   for (auto it = op->functions.begin(); it != op->functions.end(); ++it) {
-    functions.push_back(p->Print((*it).second));
+    if ((*it).second.as<FunctionNode>()) {
+      functions.push_back(p->Print((*it).second));
+    }
   }
   body << TIRHybridPrinter::PrintSep(functions, Doc::NewLine() << Doc::NewLine());
   body << Doc::NewLine() << p->DumpMeta();
@@ -478,7 +480,7 @@ TIRHybridPrinter::FType& TIRHybridPrinter::vtable() {
 TVM_REGISTER_GLOBAL("tir.hybrid.AsHybrid")
 .set_body_typed<std::string(const ObjectRef&, bool)>(
 [](const ObjectRef& functions, bool show_meta) {
-  CHECK(functions.as<FunctionNode>() != nullptr || functions.as<ModuleNode>() != nullptr);
+  CHECK(functions.as<FunctionNode>() != nullptr || functions.as<IRModuleNode>() != nullptr);
   return TIRHybridPrinter(show_meta).PrintFinal(functions).str() + "\n";
 });
 

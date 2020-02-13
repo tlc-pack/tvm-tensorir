@@ -110,11 +110,6 @@ class Range(Object):
     """
 
 @register_object
-class Function(Object):
-    """Function node."""
-
-
-@register_object
 class LoweredFunc(Object):
     """Represent a LoweredFunc in TVM."""
     MixedFunc = 0

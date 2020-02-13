@@ -33,7 +33,7 @@ from tvm._ffi.base import TVMError
 from tvm.api import all as _all
 from tvm.api import any as _any
 
-from . import module
+from .. import module
 from . import scope_emitter
 from .meta_unparser import MetaUnparser
 from .registry import Registry
@@ -291,11 +291,11 @@ class HybridParser(ast.NodeVisitor):
             else:
                 self.report_error("invalid class member")
         # parse member functions
-        mod = module.create_module(node.name)
+        funcs = []
         for body_element in node.body:
             if isinstance(body_element, ast.FunctionDef):
-                mod.append(self.visit(body_element))
-        return mod
+                funcs.append(self.visit(body_element))
+        return module.create_module(funcs)
 
     def visit_FunctionDef(self, node):
         """ FunctionDef visitor
@@ -316,7 +316,7 @@ class HybridParser(ast.NodeVisitor):
         # visit the body of function
         for body_element in node.body:
             self.visit(body_element)
-        # fetch the body and return a TeFunction
+        # fetch the body and return a TirFunction
         body = self.scope_emitter.pop_seq()
         return _make.Function(self.params, self.buffer_map, node.name, body)
 
