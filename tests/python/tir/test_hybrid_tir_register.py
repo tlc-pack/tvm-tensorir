@@ -19,12 +19,10 @@ import tvm
 from tvm import tir
 
 
-@tvm.tir.hybrid.script
 def add(a, b):
     return a + b
 
 
-@tvm.tir.hybrid.script
 def mul(a, b=1):
     return a * b
 
@@ -42,17 +40,19 @@ def element_wise(a, c):
                 with block({vi(0, 16): i, vj(0, 16): j}, A[vi: vi + 1, vj: vj + 1],
                            B[vi: vi + 1, vj: vj + 1],
                            name="B"):
-                    B[vi, vj] = A[vi, vj] * 2
+                    B[vi, vj] = mul(A[vi, vj], 2)
 
         for i in range(0, 16):
             for j in range(0, 16):
                 with block({vi(0, 16): i, vj(0, 16): j}, B[vi: vi + 1, vj: vj + 1],
                            C[vi: vi + 1, vj: vj + 1],
                            name="C"):
-                    C[vi, vj] = B[vi, vj] + 1
+                    C[vi, vj] = add(B[vi, vj], 1)
 
 
 def test_element_wise():
+    tvm.tir.hybrid.register(add)
+    tvm.tir.hybrid.register(mul)
     func = element_wise()
     print(tvm.tir.hybrid.to_python(func))
 

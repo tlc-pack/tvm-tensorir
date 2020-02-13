@@ -71,7 +71,7 @@ def create_module(funcs=None):
 
     Parameters
     -----------
-    funcs : Optional[list]
+    funcs : Optional[List[Function]]
         List of Function
 
     Returns

@@ -53,7 +53,7 @@ def create_module(funcs=None):
 
     Parameters
     -----------
-    funcs : Optional[list]
+    funcs : Optional[List[Function]]
         list of functions
 
     Returns
@@ -66,12 +66,12 @@ def create_module(funcs=None):
     return module.create_module(funcs=funcs)
 
 
-def to_python(funcs, show_meta=False):
+def to_python(ir, show_meta=False):
     """Transform a Function or Module to python syntax script
 
     Parameters
     ----------
-    funcs : Union[Function, Module, HybridScript]
+    ir : Union[Function, Module, HybridScript]
         The Function or Module to be dumped
 
     show_meta : bool
@@ -83,11 +83,11 @@ def to_python(funcs, show_meta=False):
         The Python script
     """
 
-    if isinstance(funcs, HybridScript):
-        funcs = funcs()  # transform HybridScript to Function or Module
-    if isinstance(funcs, module.Module):
-        funcs = funcs.module  # get the inner IRModule of Module
-    return AsHybrid(funcs, show_meta)
+    if isinstance(ir, HybridScript):
+        ir = ir()  # transform HybridScript to Function or Module
+    if isinstance(ir, module.Module):
+        ir = ir.module  # get the inner IRModule of Module
+    return AsHybrid(ir, show_meta)
 
 
 def register(origin_func):

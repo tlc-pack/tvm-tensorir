@@ -379,7 +379,7 @@ TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
 .set_dispatch<IRModuleNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
   auto* op = node.as<IRModuleNode>();
   Doc doc;
-  doc << "class Module :";
+  doc << "class Module:";
 
   Doc body;
   body << Doc::NewLine();
