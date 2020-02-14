@@ -21,12 +21,10 @@ import util
 
 
 def test_element_wise():
-    m, n = 16, 16
-    func, tensors, tensor_map, _ = util.element_wise_stmt(m, n)
-    func = tvm.ir_pass.TeLower(func, tensor_map)
-    print(func)
-    lower_func = tvm.lower(func, tensors)
-    func = tvm.build(lower_func)
+    m, n = 128, 128
+    func = util.element_wise_stmt()
+    func = tvm.build(func)
+
     a_np = np.random.uniform(size=(m, n)).astype("float32")
     a = tvm.nd.array(a_np)
     c = tvm.nd.array(np.zeros((m, n)).astype("float32"))
@@ -35,12 +33,10 @@ def test_element_wise():
 
 
 def test_matmul():
-    m, n, l = 16, 16, 16
-    func, tensors, tensor_map, _ = util.matmul_stmt(m, n, l)
-    func = tvm.ir_pass.TeLower(func, tensor_map)
-    print(func)
-    lower_func = tvm.lower(func, tensors)
-    func = tvm.build(lower_func)
+    m, n, l = 128, 128, 128
+    func = util.matmul_stmt()
+    func = tvm.build(func)
+
     a_np = np.random.uniform(size=(m, l)).astype("float32")
     b_np = np.random.uniform(size=(n, l)).astype("float32")
     a = tvm.nd.array(a_np)
