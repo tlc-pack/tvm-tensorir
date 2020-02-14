@@ -18,13 +18,13 @@
 import tvm
 from tvm import tir
 from tvm import ir_pass
-from tvm.tir.hybrid import from_str
+from tvm.tir.hybrid import from_source
 import util
 
 
 def test_matmul():
     func = util.matmul_stmt()
-    rt_func = from_str(tvm.tir.hybrid.to_python(func, True))
+    rt_func = from_source(tvm.tir.hybrid.to_python(func, True))
     # assert tvm.ir_pass.Equal(func, rt_func)
 
     assert isinstance(rt_func.body, tvm.stmt.Block)
@@ -38,7 +38,7 @@ def test_matmul():
 
 def test_element_wise():
     func = util.element_wise_stmt()
-    rt_func = from_str(tvm.tir.hybrid.to_python(func, True))
+    rt_func = from_source(tvm.tir.hybrid.to_python(func, True))
     # assert tvm.ir_pass.Equal(func, rt_func)
 
     assert isinstance(rt_func.body, tvm.stmt.Block)
@@ -54,7 +54,7 @@ def test_element_wise():
 
 def test_predicate():
     func = util.predicate_stmt()
-    rt_func = from_str(tvm.tir.hybrid.to_python(func, True))
+    rt_func = from_source(tvm.tir.hybrid.to_python(func, True))
     # assert tvm.ir_pass.Equal(func, rt_func)
 
     assert isinstance(rt_func.body, tvm.stmt.Block)
@@ -648,7 +648,7 @@ class MyModule:
 
 def test_module_class_based():
     mod = MyModule()
-    rt_mod = from_str(tvm.tir.hybrid.to_python(mod, True))
+    rt_mod = from_source(tvm.tir.hybrid.to_python(mod, True))
     # assert tvm.ir_pass.Equal(mod, rt_mod)
 
 

@@ -477,7 +477,7 @@ TIRHybridPrinter::FType& TIRHybridPrinter::vtable() {
   return inst;
 }
 
-TVM_REGISTER_GLOBAL("tir.hybrid.AsHybrid")
+TVM_REGISTER_GLOBAL("tir.hybrid.api.AsHybrid")
 .set_body_typed<std::string(const ObjectRef&, bool)>(
 [](const ObjectRef& functions, bool show_meta) {
   CHECK(functions.as<FunctionNode>() != nullptr || functions.as<IRModuleNode>() != nullptr);

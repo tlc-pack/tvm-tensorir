@@ -336,7 +336,7 @@ class FunctionNode : public BaseFuncNode {
     v->Visit("name", &name);
   }
 
-  static constexpr const char* _type_key = "TirFunction";
+  static constexpr const char* _type_key = "tir.Function";
   TVM_DECLARE_FINAL_OBJECT_INFO(FunctionNode, BaseFuncNode);
 };
 

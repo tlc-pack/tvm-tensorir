@@ -15,17 +15,18 @@
 # specific language governing permissions and limitations
 # under the License.
 """Unparse meta AST node into a dict"""
-# pylint: disable=invalid-name, missing-docstring, inconsistent-return-statements, no-else-return
-# pylint: disable=unnecessary-comprehension, unused-argument
+# pylint: disable=invalid-name
 
 from typed_ast import ast3 as ast
 
 
 class MetaUnparser(ast.NodeVisitor):
+    """Python AST Visitor to unparse meta AST node into a dict"""
+
     def visit_Dict(self, node):
         keys = [self.visit(key) for key in node.keys]
         values = [self.visit(value) for value in node.values]
-        return {key: value for key, value in zip(keys, values)}
+        return dict(zip(keys, values))
 
     def visit_Tuple(self, node):
         return tuple(self.visit(element) for element in node.elts)
