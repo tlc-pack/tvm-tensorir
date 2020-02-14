@@ -22,26 +22,25 @@ from tvm.ir_pass import Equal
 
 @tvm.hybrid_tir.script
 def fused_element_wise(a, c):
-    A = buffer_bind(a, (16, 16), name="A")
-    C = buffer_bind(c, (16, 16), name="C")
+    A = buffer_bind(a, (128, 128), name="A")
+    C = buffer_bind(c, (128, 128), name="C")
 
-    with block({}, A[0: 16, 0: 16], C[0: 16, 0: 16], name="root"):
-        B = buffer_allocate((16, 16), name="B")
+    with block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
+        B = buffer_allocate((128, 128), name="B")
 
-        for i in range(0, 256):
-            with block({vi(0, 16) : i // 16, vj(0, 16) : i % 16},
+        for i in range(0, 128 * 128):
+            with block({vi(0, 128) : i // 128, vj(0, 128) : i % 128},
                     reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1], name="B"):
                 B[vi, vj] = A[vi, vj] * 2
 
-        for j in range(0, 256):
-            with block({vi(0, 16) : j // 16, vj(0, 16) : j % 16},
+        for j in range(0, 128 * 128):
+            with block({vi(0, 128) : j // 128, vj(0, 128) : j % 128},
                     reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1], name="C"):
                 C[vi, vj] = B[vi, vj] + 1
 
 
 def test_fuse():
-    m, n = 16, 16
-    func, tensors, tensor_map, _ = util.element_wise_stmt(m, n)
+    func = util.element_wise_stmt()
 
     # schedule
     s = tir.create_schedule(func)
@@ -60,41 +59,40 @@ def test_fuse():
 
 @tvm.hybrid_tir.script
 def split_element_wise(a, c):
-    A = buffer_bind(a, (16, 16), name="A")
-    C = buffer_bind(c, (16, 16), name="C")
+    A = buffer_bind(a, (128, 128), name="A")
+    C = buffer_bind(c, (128, 128), name="C")
 
-    with block({}, A[0: 16, 0: 16], C[0: 16, 0: 16], name="root"):
-        B = buffer_allocate((16, 16), name="B")
+    with block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
+        B = buffer_allocate((128, 128), name="B")
 
-        for io in range(0, 4):
-            for ii in range(0, 4):
-                for j in range(0, 16):
-                    with block({vi(0, 16) : io * 4 + ii, vj(0, 16) : j},
+        for io in range(0, 16):
+            for ii in range(0, 16):
+                for j in range(0, 128):
+                    with block({vi(0, 128) : io * 4 + ii, vj(0, 128) : j},
                             reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1],
                             name="B"):
                         B[vi, vj] = A[vi, vj] * 2
 
-        for i in range(0, 16):
-            for jo in range(0, 5):
-                for ji in range(0, 4):
-                    with block({vi(0, 16) : i, vj(0, 16) : jo * 3 + ji},
+        for i in range(0, 128):
+            for jo in range(0, 10):
+                for ji in range(0, 13):
+                    with block({vi(0, 128) : i, vj(0, 128) : jo * 3 + ji},
                             reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
-                            predicate=jo * 4 + ji < 16, name="C"):
+                            predicate=jo * 4 + ji < 128, name="C"):
                         C[vi, vj] = B[vi, vj] + 1
 
 
 def test_split():
-    m, n = 16, 16
-    func, tensors, tensor_map, _ = util.element_wise_stmt(m, n)
+    func = util.element_wise_stmt()
 
     # schedule
     s = tir.create_schedule(func)
     B = s.get_block("B")
     C = s.get_block("C")
     outer, inner = s.get_axes(B)
-    s.split(outer, factor=4)
+    s.split(outer, factor=16)
     outer, inner = s.get_axes(C)
-    s.split(inner, nparts=5)
+    s.split(inner, nparts=10)
 
     a = tvm.var("a")
     c = tvm.var("c")
