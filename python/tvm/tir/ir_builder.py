@@ -571,7 +571,7 @@ class IRBuilder(object):
 
         Parameters
         ----------
-        params : list of Var
+        params : Var or list of Var
             The parameters of the function
 
         buffer_map : dict of Var to Buffer
@@ -587,17 +587,8 @@ class IRBuilder(object):
         if not isinstance(params, list) and not isinstance(params, tuple):
             params = [params]
 
-        tensors = []
-        tensor_map = {}
-        for param in params:
-            if param in buffer_map.keys():
-                _buffer = buffer_map[param]._buffer
-                _tensor = _api_internal._Placeholder(_buffer.shape, _buffer.dtype, _buffer.name)
-                tensors.append(_tensor)
-                tensor_map[_buffer] = _tensor
-
         func = _make.Function(params, buffer_map, name, stmt)
-        return func, tensors, tensor_map
+        return func
 
     def allocate_buffer(self, shape, dtype="float32", name="buf", scope=""):
         """Allocate a buffer.

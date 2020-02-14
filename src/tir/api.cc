@@ -28,9 +28,6 @@
 namespace tvm {
 namespace tir {
 
-TVM_REGISTER_GLOBAL("ir_pass.TeLower")
-.set_body_typed(TeLower);
-
 // schedule
 TVM_REGISTER_GLOBAL("tir.schedule.CreateSchedule")
 .set_body_typed(Schedule::Create);

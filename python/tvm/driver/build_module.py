@@ -130,7 +130,7 @@ def lower(sch,
 
     Parameters
     ----------
-    sch : tvm.te.schedule.Schedule
+    input : tvm.te.schedule.Schedule or tvm.Function
         The schedule to be built
 
     args : list of Buffer or Tensor or Var
@@ -368,8 +368,8 @@ def build(inputs,
     ----
     See the note on :any:`tvm.target` on target string format.
     """
-    if isinstance(inputs, schedule.Schedule):
-        if args is None:
+    if isinstance(inputs, (schedule.Schedule, container.Function)):
+        if args is None and isinstance(inputs, schedule.Schedule):
             raise ValueError("args must be given for build from schedule")
         input_mod = lower(inputs, args,
                           name=name,
