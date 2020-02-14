@@ -104,8 +104,8 @@ def form_body(sch):
     return stmt
 
 
-def lower(sch,
-          args,
+def lower(input,
+          args=None,
           name="default_function",
           binds=None,
           simple_mode=False):
@@ -113,7 +113,7 @@ def lower(sch,
 
     Parameters
     ----------
-    sch : tvm.te.schedule.Schedule
+    input : tvm.te.schedule.Schedule or tvm.Function
         The schedule to be built
 
     args : list of Buffer or Tensor or Var
@@ -147,21 +147,24 @@ def lower(sch,
     lower_phase3 = [x[1] for x in add_lower_pass if x[0] > 2]
 
     # Phase 0
-    if isinstance(sch, schedule.Schedule):
-        stmt = form_body(sch)
-    elif isinstance(sch, container.Function):
-        stmt = sch.body
+    if isinstance(input, schedule.Schedule):
+        assert args is not None
+        stmt = form_body(input)
+        compact = ir_pass.VerifyCompactBuffer(stmt)
+        binds, arg_list = get_binds(args, compact, binds)
+    elif isinstance(input, container.Function):
+        func = ir_pass.BufferFlatten(input)
+        buffer_map = func.buffer_map
+        arg_list = [buffer_map[x] for x in func.params]
+        stmt = func.body
 
     for f in lower_phase0:
         stmt = f(stmt)
 
-    compact = ir_pass.VerifyCompactBuffer(stmt)
-    binds, arg_list = get_binds(args, compact, binds)
-
     # Phase 1
-    if isinstance(sch, schedule.Schedule):
-        stmt = ir_pass.RewriteForTensorCore(stmt, sch, binds)
-    stmt = ir_pass.StorageFlatten(stmt, binds, 64, cfg.instrument_bound_checkers)
+    if isinstance(input, schedule.Schedule):
+        stmt = ir_pass.RewriteForTensorCore(stmt, input, binds)
+        stmt = ir_pass.StorageFlatten(stmt, binds, 64, cfg.instrument_bound_checkers)
     stmt = ir_pass.CanonicalSimplify(stmt)
     for f in lower_phase1:
         stmt = f(stmt)
@@ -289,7 +292,7 @@ def build(inputs,
 
     Parameters
     ----------
-    inputs : tvm.te.Schedule, LoweredFunc, or dict of target to LoweredFunc list
+    inputs : tvm.te.Schedule, tvm.Function, LoweredFunc, or dict of target to LoweredFunc list
         The schedule to be built
 
     args : list of Buffer or Tensor or Var, optional
@@ -354,8 +357,8 @@ def build(inputs,
     ----
     See the note on :any:`tvm.target` on target string format.
     """
-    if isinstance(inputs, schedule.Schedule):
-        if args is None:
+    if isinstance(inputs, (schedule.Schedule, container.Function)):
+        if args is None and isinstance(inputs, schedule.Schedule):
             raise ValueError("args must be given for build from schedule")
         flist = lower(inputs, args,
                       name=name,

@@ -75,16 +75,29 @@ TVM_REGISTER_GLOBAL("ir_pass.Substitute")
     }
   });
 
-TVM_REGISTER_GLOBAL("ir_pass.Equal")
-.set_body([](TVMArgs args, TVMRetValue *ret) {
-    if (args[0].IsObjectRef<Stmt>()) {
-      *ret = Equal(args[0].operator Stmt(), args[1].operator Stmt());
-    } else if (args[0].IsObjectRef<PrimExpr>()) {
-      *ret = Equal(args[0].operator PrimExpr(), args[1].operator PrimExpr());
-    } else {
-      *ret = Equal(args[0].operator Function(), args[1].operator Function());
-    }
+#define REGISTER_EQUAL_PASS(PassName, remap_free_var, assert_mode)                           \
+  TVM_REGISTER_GLOBAL("ir_pass."#PassName)                                                   \
+  .set_body([](TVMArgs args, TVMRetValue *ret) {                                             \
+    if (args[0].IsObjectRef<Stmt>()) {                                                       \
+      *ret = Equal(args[0].operator Stmt(), args[1].operator Stmt(),                         \
+                   remap_free_var, assert_mode);                                           \
+    } else if (args[0].IsObjectRef<PrimExpr>()) {                                            \
+      *ret = Equal(args[0].operator PrimExpr(), args[1].operator PrimExpr(),                 \
+                   remap_free_var, assert_mode);                                           \
+    } else {                                                                                 \
+      *ret = Equal(args[0].operator Function(), args[1].operator Function(),                 \
+                   remap_free_var, assert_mode);                                           \
+    }                                                                                        \
   });
+
+// Basic equal pass
+REGISTER_EQUAL_PASS(Equal, false, false);
+// Basic equal pass with assert mode
+REGISTER_EQUAL_PASS(AssertEqual, false, true);
+// Struct equal pass, which can remap free vars
+REGISTER_EQUAL_PASS(StructEqual, true, false);
+// Struct equal pass with assert mode
+REGISTER_EQUAL_PASS(AssertStructEqual, true, true);
 
 TVM_REGISTER_GLOBAL("ir_pass.StorageFlatten")
 .set_body([](TVMArgs args, TVMRetValue *ret) {
@@ -178,6 +191,7 @@ REGISTER_PASS(DecorateDeviceScope);
 REGISTER_PASS(InstrumentBoundCheckers);
 REGISTER_PASS(VerifyCompactBuffer);
 REGISTER_PASS(HoistIfThenElse);
-REGISTER_PASS(InferFragment)
+REGISTER_PASS(InferFragment);
+REGISTER_PASS(BufferFlatten);
 }  // namespace tir
 }  // namespace tvm

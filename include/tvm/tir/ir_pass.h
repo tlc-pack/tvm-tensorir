@@ -80,25 +80,35 @@ TVM_DLL PrimExpr CanonicalSimplify(PrimExpr expr,
  * \brief Deep compare lhs and rhs
  * \param lhs The left operand
  * \param rhs The right operand
+ * \param remap_free_var Whether enable free var remapping
+ * \param assert_mode Whether check in assert mode
  * \return The comparison result.
  */
-TVM_DLL bool Equal(const PrimExpr& lhs, const PrimExpr& rhs);
+TVM_DLL bool Equal(const PrimExpr& lhs, const PrimExpr& rhs,
+                   bool remap_free_var = false, bool assert_mode = false);
 
 /*!
  * \brief Deep compare lhs and rhs
  * \param lhs The left operand
  * \param rhs The right operand
+ * \param remap_free_var Whether enable free var remapping
+ * \param assert_mode Whether check in assert mode
  * \return The comparison result.
  */
-bool Equal(const Stmt& lhs, const Stmt& rhs);
+bool Equal(const Stmt& lhs, const Stmt& rhs, bool remap_free_var = false, bool assert_mode = false);
 
 /*!
  * \brief Deep compare lhs and rhs
  * \param lhs The left operand
  * \param rhs The right operand
+ * \param remap_free_var Whether enable free var remapping
+ * \param assert_mode Whether check in assert mode
  * \return The comparison result.
  */
-bool Equal(const tir::Function& lhs, const tir::Function& rhs);
+bool Equal(const tir::Function& lhs,
+           const tir::Function& rhs,
+           bool remap_free_var = false,
+           bool assert_mode = false);
 
 /*!
  * \brief Deep compare lhs and rhs.
@@ -411,6 +421,16 @@ Stmt DecorateDeviceScope(Stmt stmt);
  * \return Transformed stmt.
  */
 Stmt HoistIfThenElse(Stmt stmt);
+
+/*!
+ * \brief Flatten the multi-dimensional BufferLoad and BufferStore
+ *         to single dimensional Load/Store. Also remove Block so that
+ *         ensure that the Tir after flatten can not be scheduled again.
+ * \param func The Tir function with multi-dimensional BufferLoad and BufferStore
+ *         with schedulable Block.
+ * \return The function after flatten, which can not schedule anymore.
+ */
+Function BufferFlatten(Function func);
 
 /*!
  * \brief Make an user callable API LoweredFunc.
