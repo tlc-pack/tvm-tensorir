@@ -16,11 +16,9 @@
 # under the License.
 
 import tvm
-import topi
-import numpy as np
 
 
-@tvm.hybrid_tir.script
+@tvm.tir.hybrid.script
 def matmul(a, b, c):
     A = buffer_bind(a, (128, 128), "float32", name="A")
     B = buffer_bind(b, (128, 128), "float32", name="B")
@@ -42,7 +40,7 @@ def matmul(a, b, c):
                         C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
-@tvm.hybrid_tir.script
+@tvm.tir.hybrid.script
 def element_wise(a, c):
     A = buffer_bind(a, (128, 128), "float32", name="A")
     C = buffer_bind(c, (128, 128), "float32", name="C")
@@ -65,11 +63,31 @@ def element_wise(a, c):
                     C[vi, vj] = B[vi, vj] + 1
 
 
+@tvm.tir.hybrid.script
+def predicate(b, c):
+    B = buffer_bind(b, (16, 16), "float32", name="B")
+    C = buffer_bind(c, (16, 16), "float32", name="C")
+
+    with block({}, reads=[], writes=[], name="root"):
+        for i in range(0, 16):
+            for jo in range(0, 4):
+                for ji in range(0, 4):
+                    with block({vi(0, 16): i, vj(0, 16): jo * 3 + ji},
+                               reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
+                               predicate=jo * 4 + ji < 16):
+                        C[vi, vj] = B[vi, vj] + 1
+
+
 def matmul_stmt():
-    a, b, c = tvm.var('a'), tvm.var('b'), tvm.var('c')
-    return matmul(a, b, c)
+    mod = tvm.tir.hybrid.create_module([matmul])
+    return mod["matmul"]
 
 
 def element_wise_stmt():
-    a, c = tvm.var('a'), tvm.var('c')
-    return element_wise(a, c)
+    mod = tvm.tir.hybrid.create_module([element_wise])
+    return mod["element_wise"]
+
+
+def predicate_stmt():
+    mod = tvm.tir.hybrid.create_module([predicate])
+    return mod["predicate"]
