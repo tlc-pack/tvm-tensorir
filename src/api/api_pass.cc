@@ -90,9 +90,13 @@ TVM_REGISTER_GLOBAL("ir_pass.Substitute")
     }                                                                                        \
   });
 
+// Basic equal pass
 REGISTER_EQUAL_PASS(Equal, false, false);
+// Basic equal pass with assert mode
 REGISTER_EQUAL_PASS(AssertEqual, false, true);
+// Struct equal pass, which can remap free vars
 REGISTER_EQUAL_PASS(StructEqual, true, false);
+// Struct equal pass with assert mode
 REGISTER_EQUAL_PASS(AssertStructEqual, true, true);
 
 TVM_REGISTER_GLOBAL("ir_pass.StorageFlatten")
