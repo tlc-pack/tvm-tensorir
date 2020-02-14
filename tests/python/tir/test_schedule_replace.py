@@ -22,8 +22,7 @@ import util
 
 
 def replace_ir_builder():
-    m, n = 128, 128
-    func, tensors, tensor_map, _ = util.element_wise_stmt(m, n)
+    func = util.element_wise_stmt()
     s = tir.create_schedule(func)
 
     # The target stmt

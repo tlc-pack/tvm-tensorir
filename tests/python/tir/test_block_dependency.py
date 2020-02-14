@@ -21,7 +21,7 @@ import util
 
 
 def test_element_wise_dependency():
-    func, tensors, tensor_map, buffers = util.element_wise_stmt()
+    func = util.element_wise_stmt()
     s = tir.create_schedule(func)
 
     block_B = s.get_block("B")
@@ -36,9 +36,9 @@ def test_element_wise_dependency():
 
 
 def test_matmul_dependency():
-    func, tensors, tensor_map, buffers = util.matmul_stmt()
+    func = util.matmul_stmt()
     s = tir.create_schedule(func)
-    buffer_c = buffers[2]
+    buffer_c = func.buffer_map[func.params[2]]
 
     block_C = s.get_block(buffer_c)
     assert len(block_C) == 2
