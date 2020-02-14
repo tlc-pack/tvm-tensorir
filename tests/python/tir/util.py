@@ -16,6 +16,7 @@
 # under the License.
 
 import tvm
+from tvm import tir
 
 
 @tvm.tir.hybrid.script

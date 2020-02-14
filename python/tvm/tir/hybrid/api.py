@@ -17,8 +17,6 @@
 """Hybrid Script APIs"""
 # pylint: disable=invalid-name
 
-from __future__ import absolute_import as _abs
-
 import inspect
 
 from tvm.api import _init_api
