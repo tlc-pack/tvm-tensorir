@@ -149,8 +149,6 @@ class Schedule : public ObjectRef {
                                 const std::function<PrimExpr(const VarNode*)>& value_func);
 };
 
-Function TeLower(Function func, Map<Buffer, te::Tensor> tensor_map);
-
 }  // namespace tir
 }  // namespace tvm
 
