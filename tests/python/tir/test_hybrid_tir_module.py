@@ -27,8 +27,8 @@ def test_module_define():
     func3 = util.predicate_stmt()
     mod1 = tvm.tir.hybrid.create_module([func1, func2, func3])
     mod2 = tvm.tir.hybrid.create_module([util.matmul, util.element_wise, util.predicate])
-    print(tvm.tir.hybrid.to_python(mod1))
-    print(tvm.tir.hybrid.to_python(mod2))
+    print(tvm.tir.hybrid.ashybrid(mod1))
+    print(tvm.tir.hybrid.ashybrid(mod2))
     # assert ir_pass.Equal(mod1, mod2)
 
 

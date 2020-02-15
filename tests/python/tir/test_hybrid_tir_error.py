@@ -21,12 +21,12 @@ from tvm import tir
 
 @tvm.tir.hybrid.script
 def buffer_bind_missing_args(a):
-    A = buffer_bind((16, 16), "float32", name="A")
+    A = buffer_bind((16, 16), "float32")
 
 
 @tvm.tir.hybrid.script
 def range_missing_args(a):
-    A = buffer_bind(a, (16, 16), "float32", name="A")
+    A = buffer_bind(a, (16, 16), "float32")
 
     for i in range(16):
         for j in range(0, 16):
@@ -36,7 +36,7 @@ def range_missing_args(a):
 
 @tvm.tir.hybrid.script
 def block_missing_args(a):
-    A = buffer_bind(a, (16, 16), "float32", name="A")
+    A = buffer_bind(a, (16, 16), "float32")
 
     for i in range(0, 16):
         for j in range(0, 16):
@@ -46,7 +46,7 @@ def block_missing_args(a):
 
 @tvm.tir.hybrid.script
 def undefined_buffer(a):
-    A = buffer_bind(a, (16, 16), "float32", name="A")
+    A = buffer_bind(a, (16, 16), "float32")
 
     for i in range(0, 16):
         for j in range(0, 16):
@@ -56,7 +56,7 @@ def undefined_buffer(a):
 
 @tvm.tir.hybrid.script
 def undefined_block_var(a):
-    A = buffer_bind(a, (16, 16), "float32", name="A")
+    A = buffer_bind(a, (16, 16), "float32")
 
     for i in range(0, 16):
         for j in range(0, 16):
@@ -72,7 +72,7 @@ def unsupported_stmt(a):
 
 @tvm.tir.hybrid.script
 def unsupported_function_call(a):
-    A = buffer_bind(a, (16, 16), "float32", name="A")
+    A = buffer_bind(a, (16, 16), "float32")
 
     for i in const_range(0, 16):
         for j in range(0, 16):
@@ -82,7 +82,7 @@ def unsupported_function_call(a):
 
 @tvm.tir.hybrid.script
 def type_check(a):
-    A = buffer_bind(a, (16, 16), "float32", name="A")
+    A = buffer_bind(a, (16, 16), "float32")
 
     for i in range(0, 16):
         for j in range(0, 16):

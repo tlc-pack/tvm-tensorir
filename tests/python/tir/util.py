@@ -21,9 +21,9 @@ from tvm import tir
 
 @tvm.tir.hybrid.script
 def matmul(a, b, c):
-    A = buffer_bind(a, (128, 128), "float32", name="A")
-    B = buffer_bind(b, (128, 128), "float32", name="B")
-    C = buffer_bind(c, (128, 128), "float32", name="C")
+    A = buffer_bind(a, (128, 128), "float32")
+    B = buffer_bind(b, (128, 128), "float32")
+    C = buffer_bind(c, (128, 128), "float32")
 
     with block({}, reads=[A[0: 128, 0: 128], B[0: 128, 0: 128]], writes=C[0: 128, 0: 128],
                name="root"):
@@ -43,11 +43,11 @@ def matmul(a, b, c):
 
 @tvm.tir.hybrid.script
 def element_wise(a, c):
-    A = buffer_bind(a, (128, 128), "float32", name="A")
-    C = buffer_bind(c, (128, 128), "float32", name="C")
+    A = buffer_bind(a, (128, 128), "float32")
+    C = buffer_bind(c, (128, 128), "float32")
 
     with block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
-        B = buffer_allocate((128, 128), "float32", name="B")
+        B = buffer_allocate((128, 128), "float32")
 
         for i in range(0, 128):
             for j in range(0, 128):
@@ -66,8 +66,8 @@ def element_wise(a, c):
 
 @tvm.tir.hybrid.script
 def predicate(b, c):
-    B = buffer_bind(b, (16, 16), "float32", name="B")
-    C = buffer_bind(c, (16, 16), "float32", name="C")
+    B = buffer_bind(b, (16, 16), "float32")
+    C = buffer_bind(c, (16, 16), "float32")
 
     with block({}, reads=[], writes=[], name="root"):
         for i in range(0, 16):

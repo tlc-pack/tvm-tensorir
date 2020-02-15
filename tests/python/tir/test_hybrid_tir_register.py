@@ -29,11 +29,11 @@ def mul(a, b=1):
 
 @tvm.tir.hybrid.script
 def element_wise(a, c):
-    A = buffer_bind(a, (16, 16), "float32", name="A")
-    C = buffer_bind(c, (16, 16), "float32", name="C")
+    A = buffer_bind(a, (16, 16), "float32")
+    C = buffer_bind(c, (16, 16), "float32")
 
     with block({}, A[0: 16, 0: 16], C[0: 16, 0: 16], name="root"):
-        B = buffer_allocate((16, 16), "float32", name="B")
+        B = buffer_allocate((16, 16), "float32")
 
         for i in range(0, 16):
             for j in range(0, 16):
@@ -55,7 +55,7 @@ def test_element_wise():
     tvm.tir.hybrid.register(mul)
     mod = tvm.tir.hybrid.create_module([element_wise])
     func = mod["element_wise"]
-    print(tvm.tir.hybrid.to_python(func))
+    print(tvm.tir.hybrid.ashybrid(func))
 
     assert isinstance(func.body, tvm.stmt.Block)
     assert isinstance(func.body.body, tvm.stmt.SeqStmt)

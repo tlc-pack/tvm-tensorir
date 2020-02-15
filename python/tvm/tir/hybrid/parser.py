@@ -21,7 +21,6 @@
 import json
 import numbers
 import operator
-from enum import Enum
 from typed_ast import ast3 as ast
 
 from tvm import api as _api
@@ -32,9 +31,11 @@ from tvm import schedule as _schedule
 from tvm._ffi.base import TVMError
 from tvm.api import all as _all
 from tvm.api import any as _any
+from tvm.api import _init_api
 
 from .. import module
 from . import scope_emitter
+from .scope_emitter import ScopeEmitter
 from .meta_unparser import MetaUnparser
 from .registry import Registry
 
@@ -75,21 +76,6 @@ class HybridParser(ast.NodeVisitor):
         When visiting For node, we check for_scope registry.
     """
 
-    class Symbol(Enum):
-        """Enumerates types in the symbol table"""
-        Var = 0
-        Buffer = 1
-        IterVar = 2
-        LoopVar = 3
-        List = 4
-        Dict = 5
-
-    _symbol_type = {
-        list: Symbol.List,
-        dict: Symbol.Dict,
-        _schedule.Buffer: Symbol.Buffer
-    }
-
     _binop_maker = {
         ast.Add: operator.add,
         ast.Sub: operator.sub,
@@ -118,7 +104,6 @@ class HybridParser(ast.NodeVisitor):
 
     def __init__(self, src, base_lienno):
         self.params = None
-        self.symbols = None
         self.buffer_map = None
         self.scope_emitter = None
 
@@ -130,14 +115,15 @@ class HybridParser(ast.NodeVisitor):
 
         self._is_block_vars = False
         self._in_with_func_arg = False
+        self._assign_target = None
 
     def init_function_parsing_env(self):
         """Initialize function parsing environment"""
         self.params = []  # parameter list
-        self.symbols = {}  # symbol table
         self.buffer_map = {}  # buffer map
         self.scope_emitter = scope_emitter.ScopeEmitter(self)  # scope emitter
 
+    # TODO : if meta related functions grow, consider moving them to a new file
     @staticmethod
     def is_meta(node):
         """Judge whether an AST node is META"""
@@ -145,6 +131,14 @@ class HybridParser(ast.NodeVisitor):
                and len(node.targets) == 1 \
                and isinstance(node.targets[0], ast.Name) \
                and node.targets[0].id == "__tvm_meta__"
+
+    def init_meta(self, meta_dict):
+        if meta_dict is not None:
+            self.meta = _api.load_json(json.dumps(meta_dict))
+
+    def mutate_meta(self, meta_node):
+        Mutate_Meta(self.scope_emitter.symbols, meta_node)
+        return meta_node
 
     def visit(self, node):
         """Override method in ast.NodeVisitor"""
@@ -197,30 +191,6 @@ class HybridParser(ast.NodeVisitor):
 
         self.report_error(type(node).__name__ + " stmt is not supported now")
 
-    def update_symbol(self, name, symbol_type, symbol):
-        """ Update value to the symbol table context
-        Parameters
-        ----------
-        name : str
-            name of symbol
-        symbol_type : intrin.Symbol
-            type of symbol
-        symbol : Var, IterVar, Buffer or List of TensorRegion
-            the symbol
-        """
-
-        self.symbols[name] = (symbol_type, symbol)
-
-    def remove_symbol(self, name):
-        """ Remove value to the symbol table context
-        Parameters
-        ----------
-        name : str
-            name of symbol
-        """
-
-        self.symbols.pop(name)
-
     def visit_Module(self, node):
         """ Module visitor
         AST abstract grammar:
@@ -268,7 +238,7 @@ class HybridParser(ast.NodeVisitor):
                 node.body[0], node.body[1] = node.body[1], node.body[0]
             if isinstance(node.body[0], ast.FunctionDef) and HybridParser.is_meta(node.body[1]):
                 # function with meta
-                self.meta = _api.load_json(json.dumps(MetaUnparser().visit(node.body[1].value)))
+                self.init_meta(MetaUnparser().visit(node.body[1].value))
                 return self.visit(node.body[0])
         self.report_error(
             "Only one-function, one-class or function-with-meta source code is allowed")
@@ -287,9 +257,10 @@ class HybridParser(ast.NodeVisitor):
                 pass
             elif HybridParser.is_meta(body_element) and not count:
                 count = True
-                self.meta = _api.load_json(json.dumps(MetaUnparser().visit(body_element.value)))
+                self.init_meta(MetaUnparser().visit(body_element.value))
             else:
                 self.report_error("invalid class member")
+
         # parse member functions
         funcs = []
         for body_element in node.body:
@@ -311,13 +282,13 @@ class HybridParser(ast.NodeVisitor):
         # add parameters of function
         for arg in node.args.args:
             arg_var = _api.var(arg.arg)
-            self.update_symbol(arg.arg, HybridParser.Symbol.Var, arg_var)
+            self.scope_emitter.update_symbol(arg.arg, ScopeEmitter.Symbol.Var, arg_var)
             self.params.append(arg_var)
         # visit the body of function
         for body_element in node.body:
             self.visit(body_element)
-        # fetch the body and return a TirFunction
-        body = self.scope_emitter.pop_seq()
+        # fetch the body and return a tir.Function
+        body = self.scope_emitter.pop_scope()
         return _make.Function(self.params, self.buffer_map, node.name, body)
 
     def visit_Assign(self, node):
@@ -335,14 +306,15 @@ class HybridParser(ast.NodeVisitor):
         target = node.targets[0]
         if isinstance(target, ast.Name):
             # Target = List, Buffer(buffer_bind, buffer_allocate)
+            self._assign_target = target.id
             rhs = self.visit(node.value)
             if not isinstance(rhs, (_schedule.Buffer, list)):
                 self.report_error(
                     "The value of assign ought to be list of TensorRegions or Buffer typed")
-            self.update_symbol(target.id, HybridParser._symbol_type[type(rhs)], rhs)
+            self.scope_emitter.update_symbol(target.id, ScopeEmitter._symbol_type[type(rhs)], rhs)
             # special judge buffer_bind
             if isinstance(node.value, ast.Call) and node.value.func.id == "buffer_bind":
-                self.buffer_map[self.symbols[node.value.args[0].id][1]] = rhs
+                self.buffer_map[self.scope_emitter.lookup_symbol(node.value.args[0].id)] = rhs
         elif isinstance(target, ast.Subscript):
             # Buffer[expr, expr, .. expr] = Expr
             buffer, buffer_indexes = self.visit(target)
@@ -439,6 +411,12 @@ class HybridParser(ast.NodeVisitor):
             self._is_block_vars = True
             block_vars = self.visit(block_vars_arg)
             self._is_block_vars = False
+
+            # update block vars into symbol table
+            self.scope_emitter.new_scope(is_block=True)
+            for block_var, _ in block_vars:
+                self.scope_emitter.update_symbol(block_var.var.name, ScopeEmitter.Symbol.IterVar,
+                                                 block_var.var)
             # collect arguments
             args = [block_vars] + [self.visit(arg) for arg in func_call.args[1:]]
             kw_args = [self.visit(keyword) for keyword in func_call.keywords if
@@ -551,9 +529,9 @@ class HybridParser(ast.NodeVisitor):
         """
 
         if isinstance(node.value, ast.Name):
-            if node.value.id not in self.symbols:
-                self.report_error(node.value.id + " is not defined")
-            symbol = self.symbols[node.value.id][1]
+            symbol = self.scope_emitter.lookup_symbol(node.value.id)
+            if symbol is None :
+                    self.report_error(node.value.id + " is not defined")
 
             if isinstance(node.slice, ast.Index):
                 # BufferLoad & BufferStore
@@ -606,7 +584,7 @@ class HybridParser(ast.NodeVisitor):
                 self.report_error("type_key " + type_key + " in meta not found")
             if len(node_list) <= index:
                 self.report_error("index " + index + " out of range " + len(node_list))
-            return node_list[index]
+            return self.mutate_meta(node_list[index])
         else:
             self.report_error("Only buffer variable and meta can be subscriptable")
 
@@ -617,9 +595,9 @@ class HybridParser(ast.NodeVisitor):
         """
 
         name = node.id
-        if name not in self.symbols:
+        symbol = self.scope_emitter.lookup_symbol(name)
+        if symbol is None:
             self.report_error("Unknown symbol %s" % name)
-        symbol = self.symbols[name][1]
         return symbol
 
     def visit_Dict(self, node):
@@ -677,14 +655,14 @@ class HybridParser(ast.NodeVisitor):
         return node.s
 
 
-def source_to_op(func_lineno, src):
+def source_to_op(src, func_lineno=0):
     """ Another level of wrapper
     Parameters
     ----------
-    func_lineno : int
-        The line number of the first line of the script to be parsed
     src : str
         Pruned source of original script
+    func_lineno : Optional[int]
+        The line number of the first line of the script to be parsed
     Returns
     -------
     functions : Function or Module
@@ -705,3 +683,6 @@ def source_to_op(func_lineno, src):
             parser.wrap_line_col(msg, parser.current_lineno, parser.current_col_offset).split('\n'))
         inject_e[-1] = "TVM" + inject_e[-1][6:]
         raise TVMError('\n'.join(inject_e))
+
+
+_init_api("tvm.tir.hybrid.parser")

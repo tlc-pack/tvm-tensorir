@@ -15,13 +15,15 @@
 # specific language governing permissions and limitations
 # under the License.
 """A global module storing everything needed to compile a hybrid script TIR program."""
+
+from tvm.relay import module as _ir_module
+from tvm.relay.expr import Expr, GlobalVar
+
 from .util import register_tir_object
-from ..relay import expr as _relay_expr
-from ..relay import module as _ir_module
 
 
 @register_tir_object
-class Function(_relay_expr.Expr):
+class Function(Expr):
     """Function node in TIR."""
 
 
@@ -43,7 +45,7 @@ class Module:
             for function in functions:
                 if not isinstance(function, Function):
                     raise TypeError("Expect functions to be TirFunction")
-                mapped_funcs[_relay_expr.GlobalVar(function.name)] = function
+                mapped_funcs[GlobalVar(function.name)] = function
             functions = mapped_funcs
         self.module = _ir_module.Module(functions=functions)
 

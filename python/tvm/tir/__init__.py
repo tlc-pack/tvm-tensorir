@@ -19,5 +19,5 @@
 
 from . import schedule
 from . import hybrid
-
+from .build_module import build, lower, build_config
 from .schedule import *

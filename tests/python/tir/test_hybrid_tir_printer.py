@@ -23,8 +23,8 @@ from tvm.tir.hybrid import from_source
 
 def test_matmul():
     func = util.matmul_stmt()
-    rt_func = from_source(tvm.tir.hybrid.to_python(func, True))
-    # assert tvm.ir_pass.Equal(func, rt_func)
+    rt_func = from_source(tvm.tir.hybrid.ashybrid(func, True))
+    assert tvm.ir_pass.AssertStructEqual(func, rt_func)
 
     assert isinstance(rt_func.body, tvm.stmt.Block)
     assert isinstance(rt_func.body.body, tvm.stmt.Loop)
@@ -37,8 +37,8 @@ def test_matmul():
 
 def test_element_wise():
     func = util.element_wise_stmt()
-    rt_func = from_source(tvm.tir.hybrid.to_python(func, True))
-    # assert tvm.ir_pass.Equal(func, rt_func)
+    rt_func = from_source(tvm.tir.hybrid.ashybrid(func, True))
+    assert tvm.ir_pass.Equal(func, rt_func)
 
     assert isinstance(rt_func.body, tvm.stmt.Block)
     assert isinstance(rt_func.body.body, tvm.stmt.SeqStmt)
@@ -53,8 +53,8 @@ def test_element_wise():
 
 def test_predicate():
     func = util.predicate_stmt()
-    rt_func = from_source(tvm.tir.hybrid.to_python(func, True))
-    # assert tvm.ir_pass.Equal(func, rt_func)
+    rt_func = from_source(tvm.tir.hybrid.ashybrid(func, True))
+    assert tvm.ir_pass.Equal(func, rt_func)
 
     assert isinstance(rt_func.body, tvm.stmt.Block)
     assert isinstance(rt_func.body.body, tvm.stmt.Loop)
@@ -72,9 +72,9 @@ def test_functions():
 @tvm.tir.hybrid.script
 class MyModule:
     def matmul(a, b, c):
-        A = buffer_bind(a, (128, 128), "float32", name="A")
-        B = buffer_bind(b, (128, 128), "float32", name="B")
-        C = buffer_bind(c, (128, 128), "float32", name="C")
+        A = buffer_bind(a, (128, 128), "float32")
+        B = buffer_bind(b, (128, 128), "float32")
+        C = buffer_bind(c, (128, 128), "float32")
 
         with block({}, reads=[A[0: 128, 0: 128], B[0: 128, 0: 128]], writes=C[0: 128, 0: 128],
                    name="root"):
@@ -93,11 +93,11 @@ class MyModule:
                             C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
     def element_wise(a, c):
-        A = buffer_bind(a, (128, 128), "float32", name="A")
-        C = buffer_bind(c, (128, 128), "float32", name="C")
+        A = buffer_bind(a, (128, 128), "float32")
+        C = buffer_bind(c, (128, 128), "float32")
 
         with block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
-            B = buffer_allocate((128, 128), "float32", name="B")
+            B = buffer_allocate((128, 128), "float32")
 
             for i in range(0, 128):
                 for j in range(0, 128):
@@ -116,7 +116,7 @@ class MyModule:
 
 def test_module_class_based():
     mod = MyModule()
-    rt_mod = from_source(tvm.tir.hybrid.to_python(mod, True))
+    rt_mod = from_source(tvm.tir.hybrid.ashybrid(mod, True))
     # assert tvm.ir_pass.Equal(mod, rt_mod)
 
 

@@ -16,4 +16,6 @@
 # under the License.
 """Hybrid Programming APIs of TVM Python Package, aimed to support TIR"""
 
-from .api import *
+from .api import create_module, ashybrid, script
+from .registry import register_intrin as register
+from .parser import source_to_op as from_source

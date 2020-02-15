@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """Schedule nodes and APIs in TIR schedule"""
-from .. import Object, register_object
+from .._ffi.object import Object, register_object
 from .util import register_tir_object
 from ..api import _init_api
 

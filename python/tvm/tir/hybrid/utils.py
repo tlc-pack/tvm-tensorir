@@ -16,10 +16,7 @@
 # under the License.
 """Helper functions in Hybrid Script Parser"""
 
-import inspect
-
 from . import registry, intrin, special_stmt, scope_handler
-from .parser import source_to_op
 
 
 def init_scope():
@@ -35,9 +32,3 @@ def init_scope():
     registry.register_special_stmt(special_stmt.block_vars)
     registry.register_scope_handler(scope_handler.block, scope_name="with_scope")
     registry.register_scope_handler(scope_handler.range, scope_name="for_scope")
-
-
-def parse(hybrid_script):
-    init_scope()
-    return source_to_op(inspect.getsourcelines(hybrid_script.origin_script)[1],
-                        inspect.getsource(hybrid_script.origin_script))

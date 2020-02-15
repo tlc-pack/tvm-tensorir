@@ -363,7 +363,6 @@ Doc TIRHybridPrinter::VisitStmt_(const BufferAllocateNode* op) {
   }
   doc << ')';
   doc << ", " << Doc::StrLiteral(PrintDType(op->buffer->dtype).str());
-  doc << ", " << Doc::StrLiteral(op->buffer->name);
   doc << ", " << Doc::StrLiteral(op->scope) << ")";
   return doc;
 }
@@ -423,7 +422,6 @@ TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
     }
     body << ')';
     body << ", " << Doc::StrLiteral(runtime::DLDataType2String((*it).second->dtype));
-    body << ", " << Doc::StrLiteral((*it).second->name);
     body << ")" << Doc::NewLine();
   }
 

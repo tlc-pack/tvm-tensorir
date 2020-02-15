@@ -22,21 +22,22 @@ LoweredFunc and compiled Module.
 from __future__ import absolute_import as _abs
 import warnings
 
-from ._ffi.function import Function
-from ._ffi.object import Object, register_object
-from . import api
-from . import _api_internal
-from . import tensor
-from . import schedule
-from . import expr
-from . import ir_pass
-from . import stmt as _stmt
-from . import container
-from . import module
-from . import codegen
-from . import ndarray
-from . import target as _target
-from . import make
+from .._ffi.function import Function
+from .._ffi.object import Object, register_object
+from .. import api
+from .. import _api_internal
+from .. import tensor
+from .. import schedule
+from .. import expr
+from .. import ir_pass
+from .. import stmt as _stmt
+from .. import container
+from .. import module
+from .. import codegen
+from .. import ndarray
+from .. import target as _target
+from .. import make
+from .module import Function as TirFunction
 
 class DumpIR(object):
     """
@@ -383,6 +384,11 @@ def lower(input,
         stmt = form_body(input)
         compact = ir_pass.VerifyCompactBuffer(stmt)
         binds, arg_list = get_binds(args, compact, binds)
+    elif isinstance(input, TirFunction):
+        func = ir_pass.BufferFlatten(input)
+        buffer_map = func.buffer_map
+        arg_list = [buffer_map[x] for x in func.params]
+        stmt = func.body
 
     for f in lower_phase0:
         stmt = f(stmt)
@@ -583,7 +589,7 @@ def build(inputs,
     ----
     See the note on :any:`tvm.target` on target string format.
     """
-    if isinstance(inputs, (schedule.Schedule)):
+    if isinstance(inputs, (schedule.Schedule, TirFunction)):
         if args is None and isinstance(inputs, schedule.Schedule):
             raise ValueError("args must be given for build from schedule")
         flist = lower(inputs, args,

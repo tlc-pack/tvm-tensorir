@@ -21,28 +21,9 @@ import inspect
 
 from tvm.api import _init_api
 
-from . import registry, utils
+from . import utils
 from .parser import source_to_op
 from .. import module
-
-
-def from_source(src, lineno=0):
-    """Parsing the hybrid script source string
-
-    Parameters
-    ----------
-    src : string
-        The source code of hybrid script
-    lineno : int
-        The line number of the first line of src
-
-    Returns
-    -------
-    funcs : Function or Module
-        The built Function or Module
-    """
-
-    return source_to_op(lineno, src)
 
 
 def create_module(funcs=None):
@@ -59,11 +40,11 @@ def create_module(funcs=None):
         A module containing the passed definitions
     """
 
-    funcs = [utils.parse(func) if isinstance(func, HybridFunction) else func for func in funcs]
+    funcs = [_parse(func) if isinstance(func, HybridFunction) else func for func in funcs]
     return module.create_module(funcs=funcs)
 
 
-def to_python(ir, show_meta=False):
+def ashybrid(ir, show_meta=False):
     """Transform a Function or Module to python syntax script
 
     Parameters
@@ -81,43 +62,11 @@ def to_python(ir, show_meta=False):
     """
 
     if isinstance(ir, HybridFunction):
-        ir = utils.parse(ir)  # transform HybridFunction to Function
+        # transform HybridFunction to Function
+        ir = _parse(ir)
     elif isinstance(ir, module.Module):
         ir = ir.module  # get the inner IRModule of Module
     return AsHybrid(ir, show_meta)
-
-
-def register(origin_func):
-    """Register an external function to parser under intrin
-
-    The registered function ought to have return value.
-
-    Parameters
-    ----------
-    origin_func : python function
-        The function to be registered.
-        Default value in parameter list is supported.
-    """
-
-    registry.register_intrin(origin_func)
-
-
-class HybridClass:
-    """Helper class for decorating a class"""
-
-    def __init__(self, origin_script):
-        self.origin_script = origin_script
-
-    def __call__(self, *args, **kwargs):
-        # call the parser to transform hybrid script into TIR
-        return utils.parse(self)
-
-
-class HybridFunction:
-    """Helper class for decorating a function"""
-
-    def __init__(self, origin_script):
-        self.origin_script = origin_script
 
 
 def script(origin_script):
@@ -138,6 +87,31 @@ def script(origin_script):
         return HybridClass(origin_script)
 
     raise TypeError("Only function and class are supported")
+
+
+class HybridClass:
+    """Helper class for decorating a class"""
+
+    def __init__(self, origin_script):
+        self.origin_script = origin_script
+
+    def __call__(self, *args, **kwargs):
+        # call the parser to transform hybrid script into TIR
+        return _parse(self)
+
+
+class HybridFunction:
+    """Helper class for decorating a function"""
+
+    def __init__(self, origin_script):
+        self.origin_script = origin_script
+
+
+def _parse(hybrid_script):
+    """Helper function to parse hybrid_script into TIR"""
+    utils.init_scope()
+    return source_to_op(inspect.getsource(hybrid_script.origin_script),
+                        inspect.getsourcelines(hybrid_script.origin_script)[1])
 
 
 _init_api("tvm.tir.hybrid.api")

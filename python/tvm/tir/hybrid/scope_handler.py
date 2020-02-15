@@ -32,6 +32,7 @@ Typically, a scope handler function has no return value and accepts parser and n
 from tvm import api as _api
 from tvm import ir_pass as _pass
 from tvm import make as _make
+from .scope_emitter import ScopeEmitter
 
 
 def block(parser, node, block_vars_info, reads, writes, predicate=True, annotations=None, name=""):
@@ -45,6 +46,7 @@ def block(parser, node, block_vars_info, reads, writes, predicate=True, annotati
         name="init"):
 
     """
+
     block_vars = [info[0] for info in block_vars_info]
     values = [info[1] for info in block_vars_info]
     if not isinstance(reads, list):
@@ -53,14 +55,15 @@ def block(parser, node, block_vars_info, reads, writes, predicate=True, annotati
         writes = [writes]
     if annotations is None:
         annotations = []
-    parser.scope_emitter.new_scope(is_block=True)
+
     for stmt in node.body:
         parser.visit(stmt)
-    for block_var in block_vars:
-        parser.remove_symbol(block_var.var.name)
+
+    allocations, body = parser.scope_emitter.pop_scope(is_block=True)
+
     parser.scope_emitter.emit(
-        _make.Block(block_vars, values, reads, writes, parser.scope_emitter.pop_seq(), predicate,
-                    parser.scope_emitter.allocate_stack.pop(), annotations, name))
+        _make.Block(block_vars, values, reads, writes, body, predicate,
+                    allocations, annotations, name))
 
 
 def range(parser, node, begin, end):
@@ -68,10 +71,12 @@ def range(parser, node, begin, end):
     extent = end if begin == 0 else _pass.Simplify(end - begin)
     loop_var_name = node.target.id
     loop_var = _api.var(loop_var_name, dtype="int32")
-    parser.update_symbol(loop_var_name, parser.Symbol.LoopVar, loop_var)
+
     parser.scope_emitter.new_scope()
+    parser.scope_emitter.update_symbol(loop_var_name, ScopeEmitter.Symbol.LoopVar, loop_var)
+
     for stmt in node.body:
         parser.visit(stmt)
+
     parser.scope_emitter.emit(
-        _make.Loop(loop_var, begin, extent, [], parser.scope_emitter.pop_seq()))
-    parser.remove_symbol(loop_var_name)
+        _make.Loop(loop_var, begin, extent, [], parser.scope_emitter.pop_scope()))
