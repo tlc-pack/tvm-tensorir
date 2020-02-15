@@ -16,6 +16,7 @@
 # under the License.
 
 import tvm
+from tvm import tir
 from tvm import ir_pass
 from tvm import ir_builder
 import util
@@ -65,8 +66,8 @@ def test_global_allocate():
     assert ir_pass.AssertStructEqual(stmt0, stmt1)
 
 
-@tvm.hybrid_tir.script
-def comput_at_element_wise(a, c):
+@tvm.tir.hybrid.script
+def compute_at_element_wise(a, c):
     A = buffer_bind(a, (128, 128), "float32", name="A")
     C = buffer_bind(c, (128, 128), "float32", name="C")
 
@@ -88,8 +89,8 @@ def comput_at_element_wise(a, c):
 
 
 def test_local_allocate():
-    a, c = tvm.var('a'), tvm.var('c')
-    func = comput_at_element_wise(a, c)
+    mod = tvm.tir.hybrid.create_module([compute_at_element_wise])
+    func = mod["compute_at_element_wise"]
     func = ir_pass.BufferFlatten(func)
     stmt0 = ir_pass.CanonicalSimplify(func.body)
 

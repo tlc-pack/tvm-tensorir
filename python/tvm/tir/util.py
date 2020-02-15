@@ -29,5 +29,5 @@ def register_tir_object(type_key=None):
     """
     if not isinstance(type_key, str):
         return register_object(
-            "Tir" + type_key.__name__)(type_key)
+            "tir." + type_key.__name__)(type_key)
     return register_object(type_key)
