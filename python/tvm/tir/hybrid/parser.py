@@ -530,8 +530,8 @@ class HybridParser(ast.NodeVisitor):
 
         if isinstance(node.value, ast.Name):
             symbol = self.scope_emitter.lookup_symbol(node.value.id)
-            if symbol is None :
-                    self.report_error(node.value.id + " is not defined")
+            if symbol is None:
+                self.report_error(node.value.id + " is not defined")
 
             if isinstance(node.slice, ast.Index):
                 # BufferLoad & BufferStore

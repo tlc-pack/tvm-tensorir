@@ -59,8 +59,7 @@ class ScopeEmitter:
 
         if is_block:
             return self.allocate_stack.pop(), seq
-        else:
-            return seq
+        return seq
 
     def new_scope(self, is_block=False):
         """Creating a new scope"""

@@ -39,7 +39,7 @@ class TIRMetaMutator:
     : symbol_table(symbol_table_) {}
 
   /*! \brief mutate the meta_node */
-  ObjectRef Mutate(const ObjectRef& meta_node){
+  ObjectRef Mutate(const ObjectRef& meta_node) {
     if (meta_node.as<StmtNode>()) {
       return VisitStmt(Downcast<Stmt>(meta_node));
     } else if (meta_node.as<PrimExprNode>()) {
