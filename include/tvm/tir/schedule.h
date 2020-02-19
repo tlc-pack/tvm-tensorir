@@ -104,11 +104,28 @@ class Schedule : public ObjectRef {
   Array<StmtSRef> GetLoopsInScope(const StmtSRef& block) const;
 
   /*!
+   * \brief Get all the loops under the scope block in BFS order
+   * \param block The query block
+   * \return the loop sref list
+   */
+  Array<Loop> GetLoopsUnderScope(const StmtSRef& block) const;
+
+  /*!
    * \brief Get the scope of the schedulable reference
    * \param node The queried node
    * \return the block scope reference
    */
   StmtSRef GetScope(StmtSRef node) const;
+
+  /*!
+   * \brief Decompose the loop tree from now to bottom into equivalent loops
+   * \param now the current loop
+   * \param bottom the end of decomposition
+   * \param successor a map to denote the target loop line we want
+   * \return a list of loops
+   */
+  std::pair<Array<Stmt>, int> DecomposeLoop(const LoopNode* now, const LoopNode* bottom,
+      const std::unordered_map<const StmtSRefNode*, const StmtSRefNode*>* successor);
 
   /*!
    * \brief fuse two consecutive loops of one computation.
@@ -126,6 +143,12 @@ class Schedule : public ObjectRef {
    */
   Array<StmtSRef> split(const StmtSRef& node, const PrimExpr& nparts, const PrimExpr& factor);
 
+  /*!
+   * \brief reorder a list of loops
+   * \param order the order of loops
+   */
+  void reorder(const Array<StmtSRef>& order);
+
   TVM_DEFINE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
 
   ScheduleNode* operator->() {
@@ -134,6 +157,13 @@ class Schedule : public ObjectRef {
 
  private:
   void UpdateSRef(StmtSRefNode* sref, const Stmt& stmt);
+
+  /*!
+   * \brief Detect the iter_type of Loop
+   * \param loop the loop of interest
+   * \return the iter_type of the loop
+   */
+  static IterVarType DetectLoopIterType(const Loop& loop);
 
   /*!
    * \brief Get the direct child Schedulable Stmt (Block and Loop)
