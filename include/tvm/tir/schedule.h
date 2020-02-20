@@ -124,7 +124,7 @@ class Schedule : public ObjectRef {
    * \param successor a map to denote the target loop line we want
    * \return a list of loops
    */
-  std::pair<Array<Stmt>, int> DecomposeLoop(const LoopNode* now, const LoopNode* bottom,
+  std::pair<Array<Stmt>, size_t> DecomposeLoop(const LoopNode* now, const LoopNode* bottom,
       const std::unordered_map<const StmtSRefNode*, const StmtSRefNode*>* successor);
 
   /*!
