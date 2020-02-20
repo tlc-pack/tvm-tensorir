@@ -25,6 +25,7 @@
 #include <tvm/tir/buffer.h>
 #include <tvm/tir/stmt_sref.h>
 #include <tvm/tir/scope.h>
+#include <utility>
 #include <string>
 #include <unordered_map>
 
@@ -104,11 +105,18 @@ class Schedule : public ObjectRef {
   Array<StmtSRef> GetLoopsInScope(const StmtSRef& block) const;
 
   /*!
-   * \brief Get all the loops under the scope block in BFS order
-   * \param block The query block
+   * \brief Get all the loops under the scope top in BFS order
+   * \param top The query top
    * \return the loop sref list
    */
-  Array<Loop> GetLoopsUnderScope(const StmtSRef& block) const;
+  Array<StmtSRef> GetLoopsUnderSRef(const StmtSRef& top) const;
+
+  /*!
+   * \brief Get all the blocks under the loop in BFS order
+   * \param top The query loop
+   * \return the block sref list
+   */
+  Array<StmtSRef> GetBlocksUnderSRef(const StmtSRef& top) const;
 
   /*!
    * \brief Get the scope of the schedulable reference
@@ -159,11 +167,11 @@ class Schedule : public ObjectRef {
   void UpdateSRef(StmtSRefNode* sref, const Stmt& stmt);
 
   /*!
-   * \brief Detect the iter_type of Loop
+   * \brief Detect whether the loop is reorderable
    * \param loop the loop of interest
-   * \return the iter_type of the loop
+   * \return whether the loop is reorderable
    */
-  static IterVarType DetectLoopIterType(const Loop& loop);
+  bool DetectLoopReorderable(const StmtSRef& loop);
 
   /*!
    * \brief Get the direct child Schedulable Stmt (Block and Loop)
