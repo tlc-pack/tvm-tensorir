@@ -26,6 +26,7 @@
 #include <tvm/tir/stmt_sref.h>
 #include <tvm/tir/scope.h>
 #include <utility>
+#include <vector>
 #include <string>
 #include <unordered_map>
 
@@ -105,35 +106,11 @@ class Schedule : public ObjectRef {
   Array<StmtSRef> GetLoopsInScope(const StmtSRef& block) const;
 
   /*!
-   * \brief Get all the loops under the scope top in BFS order
-   * \param top The query top
-   * \return the loop sref list
-   */
-  Array<StmtSRef> GetLoopsUnderSRef(const StmtSRef& top) const;
-
-  /*!
-   * \brief Get all the blocks under the loop in BFS order
-   * \param top The query loop
-   * \return the block sref list
-   */
-  Array<StmtSRef> GetBlocksUnderSRef(const StmtSRef& top) const;
-
-  /*!
    * \brief Get the scope of the schedulable reference
    * \param node The queried node
    * \return the block scope reference
    */
   StmtSRef GetScope(StmtSRef node) const;
-
-  /*!
-   * \brief Decompose the loop tree from now to bottom into equivalent loops
-   * \param now the current loop
-   * \param bottom the end of decomposition
-   * \param successor a map to denote the target loop line we want
-   * \return a list of loops
-   */
-  std::pair<Array<Stmt>, size_t> DecomposeLoop(const LoopNode* now, const LoopNode* bottom,
-      const std::unordered_map<const StmtSRefNode*, const StmtSRefNode*>* successor);
 
   /*!
    * \brief fuse two consecutive loops of one computation.
@@ -188,6 +165,31 @@ class Schedule : public ObjectRef {
    */
   static Stmt SubstituteInScope(const Stmt& stmt,
                                 const std::function<PrimExpr(const VarNode*)>& value_func);
+
+  /*!
+   * \brief Get all the loops under top in BFS order, which are in the same block scope with top
+   * \param top The query top
+   * \return the loop sref list
+   */
+  std::vector<StmtSRef> GetLoopsUnderSRef(const StmtSRef& top) const;
+
+  /*!
+   * \brief Get all the blocks under top in BFS order, which are in the same block scope with top
+   * \param top The query top
+   * \return the block sref list
+   */
+  std::vector<StmtSRef> GetBlocksUnderSRef(const StmtSRef& top) const;
+
+  /*!
+   * \brief Decompose the loop tree from now to bottom into equivalent loops
+   * \param now the current loop
+   * \param bottom the end of decomposition
+   * \param successor a map to denote the target loop line we want
+   * \return a list of loops
+   */
+  static std::pair<std::vector<Stmt>, size_t> DecomposeLoop(
+      const StmtSRefNode* now_sref, const StmtSRefNode* bottom_sref,
+      const std::unordered_map<const StmtSRefNode*, const StmtSRefNode*>* successor);
 };
 
 }  // namespace tir
