@@ -27,11 +27,30 @@
 #include <tvm/ir/type.h>
 #include <tvm/ir/expr.h>
 #include <tvm/ir/adt.h>
+#include <tvm/tir/ir_pass.h>
 
 #include <string>
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
+
+namespace tvm {
+class IRModule;
+namespace tir {
+/*!
+ * \brief Deep compare lhs and rhs
+ * \param lhs The left operand
+ * \param rhs The right operand
+ * \param remap_free_var Whether enable free var remapping
+ * \param assert_mode Whether check in assert mode
+ * \return The comparison result.
+ */
+bool Equal(const IRModule& lhs,
+           const IRModule& rhs,
+           bool remap_free_var = false,
+           bool assert_mode = false);
+}  // namespace tir
+}  // namespace tvm
 
 namespace tvm {
 class IRModule;
@@ -252,6 +271,10 @@ class IRModuleNode : public Object {
    */
   std::unordered_set<std::string> import_set_;
   friend class IRModule;
+  friend bool tir::Equal(const IRModule& lhs,
+                         const IRModule& rhs,
+                         bool remap_free_var,
+                         bool assert_mode);
 };
 
 /*!

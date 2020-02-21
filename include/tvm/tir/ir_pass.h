@@ -32,6 +32,7 @@
 #include <tvm/tir/buffer.h>
 #include <tvm/tir/lowered_func.h>
 #include <tvm/tir/ir.h>
+#include <tvm/ir/module.h>
 
 #include <unordered_map>
 #include <unordered_set>

@@ -23,6 +23,7 @@
 #include <tvm/tir/ir_pass.h>
 #include <tvm/tir/expr_functor.h>
 #include <tvm/tir/stmt_functor.h>
+#include <tvm/ir/module.h>
 
 namespace tvm {
 namespace tir {
@@ -571,6 +572,30 @@ bool Equal(const Function& lhs,
     ir_deep_compare.Bind(lhs_var, rhs_var);
   }
   return ir_deep_compare.Equal(lhs->body, rhs->body);
+}
+
+bool Equal(const IRModule& lhs,
+           const IRModule& rhs,
+           bool remap_free_var,
+           bool assert_mode) {
+  std::unordered_set<std::string> rhs_func_set;
+  for (auto it = rhs->global_var_map_.begin(); it != rhs->global_var_map_.end(); ++it)
+    rhs_func_set.insert((*it).first);
+  for (auto it = lhs->global_var_map_.begin(); it != lhs->global_var_map_.end(); ++it)
+    if (rhs_func_set.find((*it).first) == rhs_func_set.end()) {
+      return false;
+    } else {
+      const BaseFunc& lhsFunc = lhs->Lookup((*it).first);
+      const BaseFunc& rhsFunc = rhs->Lookup((*it).first);
+      bool lhs_is_tirFunction = lhsFunc->IsInstance<tir::FunctionNode>();
+      bool rhs_is_tirFunction = rhsFunc->IsInstance<tir::FunctionNode>();
+      if (lhs_is_tirFunction != rhs_is_tirFunction) return false;
+      if (!lhs_is_tirFunction && !rhs_is_tirFunction) continue;
+      if (!Equal(Downcast<Function>(lhsFunc), Downcast<Function>(rhsFunc),
+                 remap_free_var, assert_mode))
+        return false;
+    }
+  return true;
 }
 
 bool Equal(const Stmt& lhs, const Stmt& rhs, bool remap_free_var, bool assert_mode) {

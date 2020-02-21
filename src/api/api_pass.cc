@@ -80,13 +80,13 @@ TVM_REGISTER_GLOBAL("ir_pass.Substitute")
   .set_body([](TVMArgs args, TVMRetValue *ret) {                                             \
     if (args[0].IsObjectRef<Stmt>()) {                                                       \
       *ret = Equal(args[0].operator Stmt(), args[1].operator Stmt(),                         \
-                   remap_free_var, assert_mode);                                           \
+                   remap_free_var, assert_mode);                                             \
     } else if (args[0].IsObjectRef<PrimExpr>()) {                                            \
       *ret = Equal(args[0].operator PrimExpr(), args[1].operator PrimExpr(),                 \
-                   remap_free_var, assert_mode);                                           \
+                   remap_free_var, assert_mode);                                             \
     } else {                                                                                 \
       *ret = Equal(args[0].operator Function(), args[1].operator Function(),                 \
-                   remap_free_var, assert_mode);                                           \
+                   remap_free_var, assert_mode);                                             \
     }                                                                                        \
   });
 
@@ -98,6 +98,21 @@ REGISTER_EQUAL_PASS(AssertEqual, false, true);
 REGISTER_EQUAL_PASS(StructEqual, true, false);
 // Struct equal pass with assert mode
 REGISTER_EQUAL_PASS(AssertStructEqual, true, true);
+
+#define REGISTER_MODULE_EQUAL_PASS(PassName, remap_free_var, assert_mode)                    \
+  TVM_REGISTER_GLOBAL("ir_pass.Module"#PassName)                                             \
+  .set_body_typed([](const IRModule& lhs, const IRModule& rhs) {                             \
+        return Equal(lhs, rhs, remap_free_var, assert_mode);                                 \
+  });
+
+// Basic equal pass for module
+REGISTER_MODULE_EQUAL_PASS(Equal, false, false);
+// Basic equal pass with assert mode for module
+REGISTER_MODULE_EQUAL_PASS(AssertEqual, false, true);
+// Struct equal pass, which can remap free vars for module
+REGISTER_MODULE_EQUAL_PASS(StructEqual, true, false);
+// Struct equal pass with assert mode for module
+REGISTER_MODULE_EQUAL_PASS(AssertStructEqual, true, true);
 
 TVM_REGISTER_GLOBAL("ir_pass.StorageFlatten")
 .set_body([](TVMArgs args, TVMRetValue *ret) {

@@ -96,8 +96,6 @@ def test_split():
     mod = tvm.tir.hybrid.create_module([split_element_wise])
     split_func = mod["split_element_wise"]
 
-    print(tvm.tir.hybrid.ashybrid(split_func))
-    print(tvm.tir.hybrid.ashybrid(s.func))
     assert Equal(split_func, s.func)
 
 
