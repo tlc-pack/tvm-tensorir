@@ -598,7 +598,7 @@ bool Equal(const IRModule& lhs,
       return false;
     } else {
       if (!Equal(Downcast<Function>(lhs->Lookup(name)),
-                 Downcast<Function>(lhs->Lookup(name)),
+                 Downcast<Function>(rhs->Lookup(name)),
                  remap_free_var, assert_mode))
         return false;
       rhs_func_set.erase(name);

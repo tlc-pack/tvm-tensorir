@@ -117,7 +117,7 @@ class MyModule:
 def test_module_class_based():
     mod = MyModule()
     rt_mod = from_source(tvm.tir.hybrid.ashybrid(mod, True))
-    assert tvm.ir_pass.ModuleEqual(mod.module, rt_mod.module)
+    assert tvm.ir_pass.ModuleAssertEqual(mod.module, rt_mod.module)
 
 
 if __name__ == '__main__':
