@@ -27,7 +27,6 @@
 #include <tvm/ir/type.h>
 #include <tvm/ir/expr.h>
 #include <tvm/ir/adt.h>
-#include <tvm/tir/ir_pass.h>
 
 #include <string>
 #include <vector>
