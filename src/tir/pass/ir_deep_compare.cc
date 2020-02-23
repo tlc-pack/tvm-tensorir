@@ -23,8 +23,6 @@
 #include <tvm/tir/ir_pass.h>
 #include <tvm/tir/expr_functor.h>
 #include <tvm/tir/stmt_functor.h>
-#include <tvm/ir/module.h>
-#include <tvm/runtime/registry.h>
 
 namespace tvm {
 namespace tir {
