@@ -575,52 +575,6 @@ bool Equal(const Function& lhs,
   return ir_deep_compare.Equal(lhs->body, rhs->body);
 }
 
-bool Equal(const IRModule& lhs,
-           const IRModule& rhs,
-           bool remap_free_var,
-           bool assert_mode) {
-  std::unordered_set<std::string> lhs_func_set;
-  std::unordered_set<std::string> rhs_func_set;
-  for (auto it = lhs->functions.begin(); it != lhs->functions.end(); ++it) {
-    const BaseFunc& lhsFunc = (*it).second;
-    if (lhsFunc->IsInstance<tir::FunctionNode>()) {
-      lhs_func_set.insert(Downcast<Function>((*it).second)->name);
-    }
-  }
-  for (auto it = rhs->functions.begin(); it != rhs->functions.end(); ++it) {
-    const BaseFunc& rhsFunc = (*it).second;
-    if (rhsFunc->IsInstance<tir::FunctionNode>()) {
-      rhs_func_set.insert(Downcast<Function>((*it).second)->name);
-    }
-  }
-  for (const auto & name : lhs_func_set)
-    if (rhs_func_set.find(name) == rhs_func_set.end()) {
-      return false;
-    } else {
-      if (!Equal(Downcast<Function>(lhs->Lookup(name)),
-                 Downcast<Function>(rhs->Lookup(name)),
-                 remap_free_var, assert_mode))
-        return false;
-      rhs_func_set.erase(name);
-    }
-  return rhs_func_set.empty();
-}
-
-#define REGISTER_MODULE_EQUAL_PASS(PassName, remap_free_var, assert_mode)                    \
-  TVM_REGISTER_GLOBAL("ir_pass.Module"#PassName)                                             \
-  .set_body_typed([](const IRModule& lhs, const IRModule& rhs) {                             \
-        return Equal(lhs, rhs, remap_free_var, assert_mode);                                 \
-  });
-
-// Basic equal pass for module
-REGISTER_MODULE_EQUAL_PASS(Equal, false, false);
-// Basic equal pass with assert mode for module
-REGISTER_MODULE_EQUAL_PASS(AssertEqual, false, true);
-// Struct equal pass, which can remap free vars for module
-REGISTER_MODULE_EQUAL_PASS(StructEqual, true, false);
-// Struct equal pass with assert mode for module
-REGISTER_MODULE_EQUAL_PASS(AssertStructEqual, true, true);
-
 bool Equal(const Stmt& lhs, const Stmt& rhs, bool remap_free_var, bool assert_mode) {
   return IRDeepCompare(remap_free_var, assert_mode).Equal(lhs, rhs);
 }
