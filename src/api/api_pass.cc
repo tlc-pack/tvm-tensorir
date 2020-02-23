@@ -117,7 +117,7 @@ bool Equal(const IRModule& lhs,
     } else if (args[0].IsObjectRef<PrimExpr>()) {                                            \
       *ret = Equal(args[0].operator PrimExpr(), args[1].operator PrimExpr(),                 \
                    remap_free_var, assert_mode);                                             \
-    } else if (args[0].IsObjectRef<Function>()){                                             \
+    } else if (args[0].IsObjectRef<Function>()) {                                            \
       *ret = Equal(args[0].operator Function(), args[1].operator Function(),                 \
                    remap_free_var, assert_mode);                                             \
     } else {                                                                                 \
