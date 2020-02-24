@@ -486,7 +486,7 @@ TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
   doc << Doc::Indent(4, body);
   return doc;
 });
-/*
+
 TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
 .set_dispatch<TensorRegionNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
   auto* op = node.as<TensorRegionNode>();
@@ -502,7 +502,7 @@ TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
   doc << "]";
   return doc;
 });
-*/
+
 TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
 .set_dispatch<AnnotationNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
   auto* op = node.as<AnnotationNode>();

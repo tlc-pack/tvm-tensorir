@@ -186,14 +186,20 @@ class SubReplacer : protected StmtMutator {
   const Stmt& target_;
 };
 
-Function UpdateFuncBody(FunctionNode* func, Stmt new_body) {
+Function UpdateFuncBody(FunctionNode* func, const Stmt& new_body) {
+  CHECK(func->body.as<BlockRealizeNode>());
+  CHECK(new_body->IsInstance<BlockNode>());
+
   if (func->unique()) {
-    func->body = std::move(new_body);
+    auto root_br = const_cast<BlockRealizeNode*>(func->body.as<BlockRealizeNode>());
+    root_br->block = Downcast<Block>(new_body);
     return GetRef<Function>(func);
   } else {
-    auto n = make_object<FunctionNode>(*func);
-    n->body = std::move(new_body);
-    return Function(n);
+    auto n_br = make_object<BlockRealizeNode>(*(func->body.as<BlockRealizeNode>()));
+    n_br->block = Downcast<Block>(new_body);
+    auto n_func = make_object<FunctionNode>(*func);
+    n_func->body = Stmt(n_br);
+    return Function(n_func);
   }
 }
 
@@ -361,7 +367,6 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
     target = new_stmt;
   }
   remover(GetRef<Stmt>(origin_ref->node));
-  // UpdateSRef(self->root.operator->(), target);
   self->func = UpdateFuncBody(self->func.operator->(), target);
 }
 
@@ -458,7 +463,7 @@ Array<Stmt> Schedule::GetChildren(const Stmt& stmt) {
   if (const auto* seq = body.as<SeqStmtNode>()) {
     Array<Stmt> ret;
     for (Stmt child : seq->seq)
-      if (child->IsInstance<BlockRealize>()) {
+      if (child->IsInstance<BlockRealizeNode>()) {
         ret.push_back(child.as<BlockRealizeNode>()->block);
       } else {
         ret.push_back(child);

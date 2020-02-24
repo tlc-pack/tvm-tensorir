@@ -696,10 +696,6 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
   p->Print(op->writes);
   p->stream << " R: ";
   p->Print(op->reads);
-  if (!is_one(op->predicate)) {
-    p->stream << " pred: ";
-    p->Print(op->predicate);
-  }
   if (!op->annotations.empty()) {
     p->stream << " attr: ";
     p->Print(op->annotations);
@@ -759,9 +755,9 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
   p->Print(op->writes);
   p->stream << " R: ";
   p->Print(op->reads);
-  if (!is_one(op->predicate)) {
+  if (!is_one(op_reailze->predicate)) {
     p->stream << " pred: ";
-    p->Print(op->predicate);
+    p->Print(op_reailze->predicate);
   }
   if (!op->annotations.empty()) {
     p->stream << " attr: ";

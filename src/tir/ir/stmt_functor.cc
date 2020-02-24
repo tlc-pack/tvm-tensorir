@@ -528,13 +528,13 @@ Stmt StmtMutator::VisitStmt_(const BlockRealizeNode* op) {
   PrimExpr pred = this->VisitExpr(op->predicate);
   Stmt block = this->VisitStmt(op->block);
   if (v.same_as(op->values) && pred.same_as(op->predicate)
-      && block.same_as(op->block)) {
+  && block.same_as(op->block)) {
     return GetRef<Stmt>(op);
   } else {
     auto n = CopyOnWrite(op);
     n->values = std::move(v);
     n->predicate = std::move(pred);
-    n->block = std::move(block);
+    n->block = Downcast<Block>(block);
     return Stmt(n);
   }
 }

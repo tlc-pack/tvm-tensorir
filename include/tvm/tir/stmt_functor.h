@@ -128,6 +128,7 @@ class StmtFunctor<R(const Stmt& n, Args... args)> {
     IR_STMT_FUNCTOR_DISPATCH(SeqStmtNode);
     IR_STMT_FUNCTOR_DISPATCH(EvaluateNode);
     IR_STMT_FUNCTOR_DISPATCH(BlockNode);
+    IR_STMT_FUNCTOR_DISPATCH(BlockRealizeNode);
     IR_STMT_FUNCTOR_DISPATCH(LoopNode);
     IR_STMT_FUNCTOR_DISPATCH(BufferAllocateNode);
     IR_STMT_FUNCTOR_DISPATCH(BufferStoreNode);
