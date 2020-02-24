@@ -259,16 +259,12 @@ class BlockNode : public StmtNode {
  public:
   /*! \brief The variables of the block. */
   Array<IterVar> iter_vars;
-  /*! \brief The corresponding value of the iter vars. */
-  Array<PrimExpr> values;
   /*! \brief The read tensor region of the block. */
   Array<TensorRegion> reads;
   /*! \brief The write tensor region of the block. */
   Array<TensorRegion> writes;
   /*! \brief The body of the block. */
   Stmt body;
-  /*! \brief The predicates of the block. */
-  PrimExpr predicate;
   /*! \brief The buffer allocated in the block. */
   Array<BufferAllocate> allocations;
   /*! \brief The annotation of the block. */
@@ -281,7 +277,6 @@ class BlockNode : public StmtNode {
     v->Visit("iter_vars", &iter_vars);
     v->Visit("reads", &reads);
     v->Visit("writes", &writes);
-    v->Visit("predicate", &predicate);
     v->Visit("allocations", &allocations);
     v->Visit("annotations", &annotations);
     v->Visit("tag", &tag);
@@ -294,16 +289,44 @@ class BlockNode : public StmtNode {
 class Block : public Stmt {
  public:
   Block(Array<IterVar> iter_vars,
-        Array<PrimExpr> values,
         Array<TensorRegion> reads,
         Array<TensorRegion> writes,
         Stmt body,
-        PrimExpr predicate,
         Array<BufferAllocate> allocations,
         Array<Annotation> annotations,
         std::string tag);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Block, Stmt, BlockNode);
+};
+
+/*!
+ * \brief A block realization node stores the parameters to realize a block
+ */
+class BlockRealize;
+class BlockRealizeNode : public StmtNode {
+ public:
+  /*! \brief The corresponding value of the iter vars. */
+  Array<PrimExpr> values;
+  /*! \brief The predicates of the block. */
+  PrimExpr predicate;
+  /*! \brief The block to be realized. */
+  Block block;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("values", &values);
+    v->Visit("predicate", &predicate);
+    v->Visit("block", &block);
+  }
+
+  static constexpr const char* _type_key = "BlockRealize";
+  TVM_DECLARE_FINAL_OBJECT_INFO(BlockRealizeNode, StmtNode);
+};
+
+class BlockRealize : public Stmt {
+ public:
+  BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block);
+
+  TVM_DEFINE_OBJECT_REF_METHODS(BlockRealize, Stmt, BlockRealizeNode);
 };
 
 /*!

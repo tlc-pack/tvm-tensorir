@@ -255,25 +255,29 @@ BufferStore::BufferStore(Buffer buffer, PrimExpr value, Array<PrimExpr> indices)
 }
 
 Block::Block(Array<IterVar> iter_vars,
-             Array<PrimExpr> values,
              Array<TensorRegion> reads,
              Array<TensorRegion> writes,
              Stmt body,
-             PrimExpr predicate,
              Array<BufferAllocate> allocations,
              Array<Annotation> annotations,
              std::string tag) {
   ObjectPtr<BlockNode> node = make_object<BlockNode>();
-  CHECK_EQ(iter_vars.size(), values.size());
   node->iter_vars = std::move(iter_vars);
-  node->values = std::move(values);
   node->reads = std::move(reads);
   node->writes = std::move(writes);
   node->body = std::move(body);
-  node->predicate = std::move(predicate);
   node->allocations = std::move(allocations);
   node->annotations = std::move(annotations);
   node->tag = std::move(tag);
+  data_ = std::move(node);
+}
+
+BlockRealize::BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block) {
+  CHECK_EQ(block->iter_vars.size(), values.size());
+  ObjectPtr<BlockRealizeNode> node = make_object<BlockRealizeNode>();
+  node->values = std::move(values);
+  node->predicate = std::move(predicate);
+  node->block = std::move(block);
   data_ = std::move(node);
 }
 
@@ -680,8 +684,70 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     p->Print(iter_var->dom->min);
     p->stream << ":";
     p->Print(iter_var->dom->min + iter_var->dom->extent);
+    p->stream << "]=None";
+    if (i != op->iter_vars.size() - 1) {
+      p->stream << ", ";
+    }
+  }
+  p->stream << ")";
+
+  // print tensor region and annotations
+  p->stream << " W: ";
+  p->Print(op->writes);
+  p->stream << " R: ";
+  p->Print(op->reads);
+  if (!is_one(op->predicate)) {
+    p->stream << " pred: ";
+    p->Print(op->predicate);
+  }
+  if (!op->annotations.empty()) {
+    p->stream << " attr: ";
+    p->Print(op->annotations);
+  }
+
+  // print body
+  p->stream << " {\n";
+  p->indent += 2;
+  for (const auto& allocate : op->allocations) {
+    p->Print(allocate);
+  }
+  p->Print(op->body);
+  p->indent -= 2;
+  p->PrintIndent();
+  p->stream << "}\n";
+});
+
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+.set_dispatch<BlockRealizeNode>([](const ObjectRef& node, ReprPrinter* p) {
+  auto* op_reailze = static_cast<const BlockRealizeNode*>(node.get());
+  auto* op = static_cast<const BlockNode*>(op_reailze->block.get());
+
+  // print block name and block vars
+  p->PrintIndent();
+  p->stream << "block " << op->tag << "(";
+  for (size_t i = 0; i < op->iter_vars.size(); ++i) {
+    const auto& iter_var = op->iter_vars[i];
+    if (iter_var->iter_type != kDataPar) {
+      std::string str;
+      switch (iter_var->iter_type) {
+        case kCommReduce:str = "reduce";
+          break;
+        case kOrdered:str = "ordered";
+          break;
+        case kOpaque:str = "opaque";
+          break;
+        default:str = "unknown";
+          break;
+      }
+      p->stream << str << " ";
+    }
+    p->Print(iter_var->var);
+    p->stream << "[";
+    p->Print(iter_var->dom->min);
+    p->stream << ":";
+    p->Print(iter_var->dom->min + iter_var->dom->extent);
     p->stream << "]=";
-    p->Print(op->values[i]);
+    p->Print(op_reailze->values[i]);
     if (i != op->iter_vars.size() - 1) {
       p->stream << ", ";
     }
@@ -766,6 +832,7 @@ TVM_REGISTER_NODE_TYPE(BufferStoreNode);
 TVM_REGISTER_NODE_TYPE(BufferAllocateNode);
 TVM_REGISTER_NODE_TYPE(LoopNode);
 TVM_REGISTER_NODE_TYPE(BlockNode);
+TVM_REGISTER_NODE_TYPE(BlockRealizeNode);
 TVM_REGISTER_NODE_TYPE(FunctionNode);
 
 }  // namespace tir

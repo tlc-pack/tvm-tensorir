@@ -112,7 +112,7 @@ class Schedule : public ObjectRef {
    * \param outer The outer loop
    * \param inner The inner loop
    * \return the fused loop
-   * */
+   */
   StmtSRef fuse(const StmtSRef& outer, const StmtSRef& inner);
 
   /*!
@@ -120,7 +120,7 @@ class Schedule : public ObjectRef {
    * \param node The loop to be split
    * \param factor The split factor
    * \return the loops after splitting
-   * */
+   */
   Array<StmtSRef> split(const StmtSRef& node, const PrimExpr& nparts, const PrimExpr& factor);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);

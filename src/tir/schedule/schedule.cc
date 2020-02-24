@@ -146,8 +146,7 @@ class SubReplacer : protected StmtMutator {
   Stmt VisitStmt_(const SeqStmtNode* stmt) final {
     int64_t seq_index = sref_->seq_index;
     // fast path
-    if (seq_index >= 0 &&
-        (*stmt)[seq_index].get() == sref_->node) {
+    if (seq_index >= 0 && is_son(stmt->seq[seq_index], sref_->node)) {
       auto n = CopyOnWrite(stmt);
       n->seq.Set(seq_index, target_);
       return Stmt(n);
@@ -164,6 +163,17 @@ class SubReplacer : protected StmtMutator {
     } else {
       ++sref_scope_counter_;
       return StmtMutator::VisitStmt_(op);
+    }
+  }
+
+  // target is Block/Loop, But son of SeqStmt may be the BlockRealize
+  static bool is_son(const Stmt& son, const StmtNode* target) {
+    if (son.as<LoopNode>()) {
+      return son.get() == target;
+    } else {
+      const auto *ptr = son.as<BlockRealizeNode>();
+      CHECK(ptr != nullptr);
+      return ptr->block.get() == target;
     }
   }
 
@@ -285,7 +295,7 @@ class IRSubstitueInScope : public StmtExprMutator {
     }
   }
 
-  Stmt VisitStmt_(const BlockNode* op) final {
+  Stmt VisitStmt_(const BlockRealizeNode* op) final {
     auto fmutate = [this](const PrimExpr& e) { return this->VisitExpr(e); };
     Array<PrimExpr> v = op->values;
     v.MutateByApply(fmutate);
@@ -311,14 +321,16 @@ Stmt Schedule::SubstituteInScope(const Stmt& stmt,
 
 void Schedule::Replace(StmtSRef ref, Stmt target) {
   ScheduleNode* self = operator->();
+  // Create SRef tree for the incoming target Stmt
   SRefCreator creator(&self->stmt2ref, ref->parent);
   creator(target);
+  // Initialize old SRef remover
   SRefRemover remover(&self->stmt2ref, std::move(creator.used_border_));
   StmtSRef origin_ref = ref;
   // num_copy_steps: maximum number of hops until we don't need to copy
   int curr_step = 0;
   int num_copy_steps = -1;
-
+  // Find the highest non-unique Stmt
   for (StmtSRefNode* ptr = ref.get(); ptr != nullptr;
        ptr = ptr->parent, ++curr_step) {
     if (!ptr->node->unique()) {
@@ -336,8 +348,9 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
     // if parent_step <= num_copy_step, then it implies
     // that parent is not unique and we need to copy
     bool parent_is_uniquely_referenced = curr_step + 1 > num_copy_steps;
+    // replace ptr(son of parent->node) with target and return a new parent Stmt)
     Stmt new_stmt = SubReplacer(ptr, target)(parent->node, parent_is_uniquely_referenced);
-    UpdateSRef(ptr, target);
+    UpdateSRef(ptr->parent, new_stmt);
     if (parent_is_uniquely_referenced) {
       CHECK(new_stmt.get() == parent->node);
       // if one node has been direct write, there is no need to
@@ -348,7 +361,7 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
     target = new_stmt;
   }
   remover(GetRef<Stmt>(origin_ref->node));
-  UpdateSRef(self->root.operator->(), target);
+  // UpdateSRef(self->root.operator->(), target);
   self->func = UpdateFuncBody(self->func.operator->(), target);
 }
 
@@ -358,11 +371,11 @@ Schedule Schedule::Create(Function func) {
 
   DependencyAnalyzer dependency_analyzer(&stmt_map, &block_scopes);
   dependency_analyzer(func->body);
-  CHECK(func->body.as<BlockNode>());
+  CHECK(func->body.as<BlockRealizeNode>());
   auto n = make_object<ScheduleNode>();
   n->func = std::move(func);
   n->stmt2ref = std::move(stmt_map);
-  n->root = n->stmt2ref[n->func->body.operator->()];
+  n->root = n->stmt2ref[n->func->body.as<BlockRealizeNode>()->block.as<StmtNode>()];
   n->scopes_ = block_scopes;
   return Schedule(n);
 }
@@ -409,12 +422,15 @@ Array<StmtSRef> Schedule::Blocks(StmtSRef scope) const {
   CHECK(GetRef<Stmt>(scope->node).as<BlockNode>());
   CHECK_GT(operator->()->scopes_.count(scope), 0);
   const auto& write_map = operator->()->scopes_.at(scope)->write_map;
-  Array<StmtSRef> ret;
+  std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> collect;
   for (const auto& x : write_map) {
     for (const auto& block : x.second) {
-      ret.push_back(block);
+      collect.insert(block);
     }
   }
+  Array<StmtSRef> ret;
+  for (const auto & block : collect)
+      ret.push_back(block);
   return ret;
 }
 
@@ -440,7 +456,14 @@ Array<Stmt> Schedule::GetChildren(const Stmt& stmt) {
     return Array<Stmt>();
   }
   if (const auto* seq = body.as<SeqStmtNode>()) {
-    return seq->seq;
+    Array<Stmt> ret;
+    for (Stmt child : seq->seq)
+      if (child->IsInstance<BlockRealize>()) {
+        ret.push_back(child.as<BlockRealizeNode>()->block);
+      } else {
+        ret.push_back(child);
+      }
+    return ret;
   } else {
     return Array<Stmt>{body};
   }
@@ -512,7 +535,7 @@ class PredicateUpdater : public StmtMutator {
  public:
   explicit PredicateUpdater(PrimExpr predicate) : predicate_(std::move(predicate)) {}
 
-  Stmt VisitStmt_(const BlockNode* op) final {
+  Stmt VisitStmt_(const BlockRealizeNode* op) final {
     auto n = CopyOnWrite(op);
     n->predicate = n->predicate && predicate_;
     return Stmt(n);
