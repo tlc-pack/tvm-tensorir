@@ -211,8 +211,9 @@ Function UpdateFuncBody(FunctionNode* func, const Stmt& new_body) {
 class SRefRemover : public StmtVisitor {
  public:
   SRefRemover(std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref,
-              std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>&& used_border)
-      : used_border_(used_border), stmt2ref_(stmt2ref) {}
+              std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>&& used_border,
+              std::unordered_map<StmtSRef, StmtSRefNode*, ObjectHash, ObjectEqual>&& new_sref_parent)
+      : new_sref_parent_(new_sref_parent), used_border_(used_border), stmt2ref_(stmt2ref) {}
 
   void VisitStmt_(const LoopNode* op) final {
     VisitSRefStmt(op);
@@ -234,9 +235,12 @@ class SRefRemover : public StmtVisitor {
       sref->parent = nullptr;
       stmt2ref_->erase(stmt_ptr);
       VisitStmt(op->body);
+    } else {
+      sref->parent = new_sref_parent_.at(sref);
     }
   }
 
+  std::unordered_map<StmtSRef, StmtSRefNode*, ObjectHash, ObjectEqual> new_sref_parent_;
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> used_border_;
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
 };
@@ -276,8 +280,8 @@ class SRefCreator : public StmtVisitor {
       std::swap(current, parent_);
     } else {
       // Mark the border of reused StmtSRef
-      stmt2ref_->at(stmt_ptr)->parent = parent_;
       used_border_.insert(stmt2ref_->at(stmt_ptr));
+      new_sref_parent_[stmt2ref_->at(stmt_ptr)] = parent_;
     }
   }
 
@@ -285,6 +289,7 @@ class SRefCreator : public StmtVisitor {
   StmtSRefNode* parent_;
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> used_border_;
+  std::unordered_map<StmtSRef, StmtSRefNode*, ObjectHash, ObjectEqual> new_sref_parent_;
 };
 
 class IRSubstitueInScope : public StmtExprMutator {
@@ -332,7 +337,8 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
   SRefCreator creator(&self->stmt2ref, ref->parent);
   creator(target);
   // Initialize old SRef remover
-  SRefRemover remover(&self->stmt2ref, std::move(creator.used_border_));
+  SRefRemover remover(
+      &self->stmt2ref, std::move(creator.used_border_), std::move(creator.new_sref_parent_));
   const Stmt& old_stmt = GetRef<Stmt>(ref->node);
   // num_copy_steps: maximum number of hops until we don't need to copy
   int curr_step = 0;
