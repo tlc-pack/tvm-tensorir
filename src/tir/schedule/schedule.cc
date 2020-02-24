@@ -332,7 +332,8 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
   creator(target);
   // Initialize old SRef remover
   SRefRemover remover(&self->stmt2ref, std::move(creator.used_border_));
-  StmtSRef origin_ref = ref;
+  const StmtSRefNode* origin_ref = ref.get();
+  Stmt old_stmt = GetRef<Stmt>(origin_ref->node);
   // num_copy_steps: maximum number of hops until we don't need to copy
   int curr_step = 0;
   int num_copy_steps = -1;
@@ -356,7 +357,7 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
     bool parent_is_uniquely_referenced = curr_step + 1 > num_copy_steps;
     // replace ptr(son of parent->node) with target and return a new parent Stmt)
     Stmt new_stmt = SubReplacer(ptr, target)(parent->node, parent_is_uniquely_referenced);
-    UpdateSRef(ptr->parent, new_stmt);
+    if (curr_step != 0) UpdateSRef(ptr, target);
     if (parent_is_uniquely_referenced) {
       CHECK(new_stmt.get() == parent->node);
       // if one node has been direct write, there is no need to
@@ -367,6 +368,7 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
     target = new_stmt;
   }
   remover(GetRef<Stmt>(origin_ref->node));
+  UpdateSRef(self->root.operator->(), target);
   self->func = UpdateFuncBody(self->func.operator->(), target);
 }
 
