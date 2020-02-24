@@ -606,8 +606,12 @@ class HybridParser(ast.NodeVisitor):
             Dict(expr* keys, expr* values)
         """
 
+        _is_block_vars = self._is_block_vars
         keys = [self.visit(key) for key in node.keys]
+        self._is_block_vars = False
         values = [self.visit(value) for value in node.values]
+        self._is_block_vars = _is_block_vars
+
         if self._is_block_vars:
             return list((key, value) for key, value in zip(keys, values))
         return {key: value for key, value in zip(keys, values)}

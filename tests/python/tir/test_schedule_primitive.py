@@ -81,7 +81,28 @@ def split_element_wise(a, c):
                         C[vi, vj] = B[vi, vj] + 1
 
 
-def test_split():
+@tvm.tir.hybrid.script
+def split_fuse_element_wise(a, c):
+    C = buffer_bind(c, (128, 128), "float32")
+    A = buffer_bind(a, (128, 128), "float32")
+    with block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
+        B = buffer_allocate((128, 128), "float32", "")
+        for i in range(0, 128):
+            for j in range(0, 128):
+                with block({vi(0, 128): ((floordiv(i, 16) * 16) + floormod(i, 16)), vj(0, 128): j},
+                           writes=[B[vi:(vi + 1), vj:(vj + 1)]],
+                           reads=[A[vi:(vi + 1), vj:(vj + 1)]], name="B"):
+                    B[vi, vj] = (A[vi, vj] * float32(2))
+        for i in range(0, 128):
+            for j in range(0, 130):
+                with block({vi(0, 128): i, vj(0, 128): ((floordiv(j, 13) * 13) + floormod(j, 13))},
+                           writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                           reads=[B[vi:(vi + 1), vj:(vj + 1)]],
+                           predicate=(((floordiv(j, 13) * 13) + floormod(j, 13)) < 128), name="C"):
+                    C[vi, vj] = (B[vi, vj] + float32(1))
+
+
+def test_split_fuse():
     func = util.element_wise_stmt()
 
     # schedule
@@ -98,7 +119,17 @@ def test_split():
 
     assert Equal(split_func, s.func)
 
+    io, ii, j = s.get_axes(B)
+    s.fuse(io, ii)
+    i, jo, ji = s.get_axes(C)
+    s.fuse(jo, ji)
+
+    mod = tvm.tir.hybrid.create_module([split_fuse_element_wise])
+    split_fuse_func = mod["split_fuse_element_wise"]
+
+    assert AssertEqual(split_fuse_func, s.func)
+
 
 if __name__ == "__main__":
     test_fuse()
-    test_split()
+    test_split_fuse()
