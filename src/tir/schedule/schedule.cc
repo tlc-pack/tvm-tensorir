@@ -276,6 +276,7 @@ class SRefCreator : public StmtVisitor {
       std::swap(current, parent_);
     } else {
       // Mark the border of reused StmtSRef
+      stmt2ref_->at(stmt_ptr)->parent = parent_;
       used_border_.insert(stmt2ref_->at(stmt_ptr));
     }
   }
@@ -332,8 +333,7 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
   creator(target);
   // Initialize old SRef remover
   SRefRemover remover(&self->stmt2ref, std::move(creator.used_border_));
-  const StmtSRefNode* origin_ref = ref.get();
-  Stmt old_stmt = GetRef<Stmt>(origin_ref->node);
+  const Stmt& old_stmt = GetRef<Stmt>(ref->node);
   // num_copy_steps: maximum number of hops until we don't need to copy
   int curr_step = 0;
   int num_copy_steps = -1;
@@ -362,12 +362,12 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
       CHECK(new_stmt.get() == parent->node);
       // if one node has been direct write, there is no need to
       // update its parent and the function
-      remover(GetRef<Stmt>(origin_ref->node));
+      remover(old_stmt);
       return;
     }
     target = new_stmt;
   }
-  remover(GetRef<Stmt>(origin_ref->node));
+  remover(old_stmt);
   UpdateSRef(self->root.operator->(), target);
   self->func = UpdateFuncBody(self->func.operator->(), target);
 }
