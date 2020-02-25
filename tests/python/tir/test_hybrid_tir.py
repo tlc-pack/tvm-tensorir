@@ -22,7 +22,6 @@ import util
 
 def test_matmul():
     func = util.matmul_stmt()
-    print(tvm.tir.hybrid.ashybrid(func))
 
     assert isinstance(func.body, tvm.stmt.Block)
     assert isinstance(func.body.body, tvm.stmt.Loop)
@@ -35,7 +34,6 @@ def test_matmul():
 
 def test_element_wise():
     func = util.element_wise_stmt()
-    print(tvm.tir.hybrid.ashybrid(func))
 
     assert isinstance(func.body, tvm.stmt.Block)
     assert isinstance(func.body.body, tvm.stmt.SeqStmt)
@@ -50,7 +48,6 @@ def test_element_wise():
 
 def test_predicate():
     func = util.predicate_stmt()
-    print(tvm.tir.hybrid.ashybrid(func))
 
     assert isinstance(func.body, tvm.stmt.Block)
     assert isinstance(func.body.body, tvm.stmt.Loop)
