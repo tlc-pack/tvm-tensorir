@@ -24,6 +24,7 @@
 #include <tvm/tir/expr.h>
 #include <tvm/tir/stmt.h>
 #include <tvm/ir/attrs.h>
+#include <tvm/ir/module.h>
 #include <tvm/tir/ir_pass.h>
 #include <tvm/tir/expr_functor.h>
 #include <tvm/tir/stmt_functor.h>
@@ -75,18 +76,53 @@ TVM_REGISTER_GLOBAL("ir_pass.Substitute")
     }
   });
 
+
+bool Equal(const IRModule& lhs,
+           const IRModule& rhs,
+           bool remap_free_var,
+           bool assert_mode) {
+  std::unordered_set<std::string> lhs_func_set;
+  std::unordered_set<std::string> rhs_func_set;
+  for (auto it = lhs->functions.begin(); it != lhs->functions.end(); ++it) {
+    const BaseFunc& lhsFunc = (*it).second;
+    if (lhsFunc->IsInstance<tir::FunctionNode>()) {
+      lhs_func_set.insert(Downcast<Function>((*it).second)->name);
+    }
+  }
+  for (auto it = rhs->functions.begin(); it != rhs->functions.end(); ++it) {
+    const BaseFunc& rhsFunc = (*it).second;
+    if (rhsFunc->IsInstance<tir::FunctionNode>()) {
+      rhs_func_set.insert(Downcast<Function>((*it).second)->name);
+    }
+  }
+  for (const auto & name : lhs_func_set)
+    if (rhs_func_set.find(name) == rhs_func_set.end()) {
+      return false;
+    } else {
+      if (!Equal(Downcast<Function>(lhs->Lookup(name)),
+                 Downcast<Function>(rhs->Lookup(name)),
+                 remap_free_var, assert_mode))
+        return false;
+      rhs_func_set.erase(name);
+    }
+  return rhs_func_set.empty();
+}
+
 #define REGISTER_EQUAL_PASS(PassName, remap_free_var, assert_mode)                           \
   TVM_REGISTER_GLOBAL("ir_pass."#PassName)                                                   \
   .set_body([](TVMArgs args, TVMRetValue *ret) {                                             \
     if (args[0].IsObjectRef<Stmt>()) {                                                       \
       *ret = Equal(args[0].operator Stmt(), args[1].operator Stmt(),                         \
-                   remap_free_var, assert_mode);                                           \
+                   remap_free_var, assert_mode);                                             \
     } else if (args[0].IsObjectRef<PrimExpr>()) {                                            \
       *ret = Equal(args[0].operator PrimExpr(), args[1].operator PrimExpr(),                 \
-                   remap_free_var, assert_mode);                                           \
-    } else {                                                                                 \
+                   remap_free_var, assert_mode);                                             \
+    } else if (args[0].IsObjectRef<Function>()) {                                            \
       *ret = Equal(args[0].operator Function(), args[1].operator Function(),                 \
-                   remap_free_var, assert_mode);                                           \
+                   remap_free_var, assert_mode);                                             \
+    } else {                                                                                 \
+      *ret = Equal(args[0].operator IRModule(), args[1].operator IRModule(),                 \
+                   remap_free_var, assert_mode);                                             \
     }                                                                                        \
   });
 
