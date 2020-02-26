@@ -511,7 +511,6 @@ Stmt StmtMutator::VisitStmt_(const FreeNode* op) {
 }
 
 Stmt StmtMutator::VisitStmt_(const BlockNode* op) {
-  auto fmutate = [this](const PrimExpr& e) { return this->VisitExpr(e); };
   Stmt body = this->VisitStmt(op->body);
   if (body.same_as(op->body)) {
     return GetRef<Stmt>(op);
@@ -527,8 +526,7 @@ Stmt StmtMutator::VisitStmt_(const BlockRealizeNode* op) {
   Array<PrimExpr> v = MutateArray(op->values, fmutate);
   PrimExpr pred = this->VisitExpr(op->predicate);
   Stmt block = this->VisitStmt(op->block);
-  if (v.same_as(op->values) && pred.same_as(op->predicate)
-  && block.same_as(op->block)) {
+  if (v.same_as(op->values) && pred.same_as(op->predicate) && block.same_as(op->block)) {
     return GetRef<Stmt>(op);
   } else {
     auto n = CopyOnWrite(op);

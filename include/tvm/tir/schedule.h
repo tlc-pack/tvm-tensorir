@@ -42,10 +42,6 @@ class ScheduleNode : public Object {
    * \note This is a hint to improve mutation efficiency
    * */
   std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
-  /*!
-   * \brief The mapping from loop var to ites schedulable reference node
-   */
-  std::unordered_map<const VarNode*, StmtSRef> loop_var2ref;
   /*! \brief The block scopes of each block */
   std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> scopes_;
 

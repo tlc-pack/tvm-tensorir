@@ -28,9 +28,8 @@ namespace tir {
 /*! \brief The tool to create schedule */
 class ScheduleCreator : public StmtVisitor {
  public:
-  explicit ScheduleCreator(std::unordered_map<const StmtNode*, StmtSRef>* stmt_map,
-                           std::unordered_map<const VarNode*, StmtSRef>* loop_var_map)
-      : stmt_map_(stmt_map), loop_var_map_(loop_var_map) {}
+  explicit ScheduleCreator(std::unordered_map<const StmtNode*, StmtSRef>* stmt_map)
+      : stmt_map_(stmt_map) {}
 
   void VisitStmt_(const BlockNode* op) override {
     VisitSRefStmt(op);
@@ -38,8 +37,6 @@ class ScheduleCreator : public StmtVisitor {
 
   void VisitStmt_(const LoopNode* op) override {
     VisitSRefStmt(op);
-    CHECK_EQ(loop_var_map_->count(op->loop_var.get()), 0);
-    (*loop_var_map_)[op->loop_var.get()] = (*stmt_map_)[op];
   }
 
  protected:
@@ -63,9 +60,8 @@ class ScheduleCreator : public StmtVisitor {
 class DependencyAnalyzer : public ScheduleCreator {
  public:
   DependencyAnalyzer(std::unordered_map<const StmtNode*, StmtSRef>* stmt_map,
-                     std::unordered_map<const VarNode*, StmtSRef>* loop_var_map,
                      std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual>* block_scopes)
-      : ScheduleCreator(stmt_map, loop_var_map), block_scopes_(block_scopes) {}
+      : ScheduleCreator(stmt_map), block_scopes_(block_scopes) {}
 
   void VisitStmt_(const BlockNode* op) final {
     Scope scope(make_object<ScopeNode>());
@@ -261,7 +257,7 @@ class SRefRemover : public StmtVisitor {
 class SRefCreator : public StmtVisitor {
  public:
   SRefCreator(std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref,
-              std::unordered_map<const VarNode*, StmtSRef>* loop_var2ref,
+              std::unordered_map<const VarNode*, StmtSRef>&& loop_var2ref,
               StmtSRefNode* parent)
       : parent_(parent), stmt2ref_(stmt2ref), loop_var2ref_(loop_var2ref) {}
 
@@ -273,18 +269,15 @@ class SRefCreator : public StmtVisitor {
     VisitSRefStmt(op);
   }
 
-  std::unordered_map<StmtSRefNode*, const LoopNode*> reuse_sref;
-  std::unordered_map<StmtSRefNode*, StmtSRefNode*> reuse_parent;
-
  private:
   StmtSRefNode* set_reuse_parent(const LoopNode* op) {
-    if (loop_var2ref_->count(op->loop_var.get())) {
+    if (loop_var2ref_.count(op->loop_var.get())) {
       // If the loop_var is duplicated, then we aim to reuse the original sref
-      reuse_sref[loop_var2ref_->at(op->loop_var.get()).get()] = op;
-      return loop_var2ref_->at(op->loop_var.get()).get();
+      reuse_sref[loop_var2ref_.at(op->loop_var.get()).get()] = op;
+      return loop_var2ref_.at(op->loop_var.get()).get();
     } else {
       // If not, we put the new loop_var into loop_var2ref
-      (*loop_var2ref_)[op->loop_var.get()] = (*stmt2ref_)[op];
+      loop_var2ref_[op->loop_var.get()] = (*stmt2ref_)[op];
       return nullptr;
     }
   }
@@ -324,8 +317,10 @@ class SRefCreator : public StmtVisitor {
   friend class Schedule;
   StmtSRefNode* parent_;
   StmtSRefNode* reuse_parent_ = nullptr;
+  std::unordered_map<StmtSRefNode*, const LoopNode*> reuse_sref;
+  std::unordered_map<StmtSRefNode*, StmtSRefNode*> reuse_parent;
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
-  std::unordered_map<const VarNode*, StmtSRef>* loop_var2ref_;
+  std::unordered_map<const VarNode*, StmtSRef> loop_var2ref_;
   std::unordered_map<StmtSRef, StmtSRefNode*, ObjectHash, ObjectEqual> used_border_parent_;
 };
 
@@ -392,14 +387,33 @@ void Schedule::ReuseSRef(
   }
 }
 
+class LoopCollector : public StmtVisitor {
+ public:
+  explicit LoopCollector(std::unordered_map<const StmtNode*, StmtSRef>* stmt2_ref)
+      : stmt2ref_(stmt2_ref) {}
+
+  void VisitStmt_(const LoopNode* op) final {
+    loop_var2sref[op->loop_var.get()] = (*stmt2ref_)[op];
+    StmtVisitor::VisitStmt_(op);
+  }
+
+ private:
+  friend class Schedule;
+  std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
+  std::unordered_map<const VarNode*, StmtSRef> loop_var2sref;
+};
+
 void Schedule::Replace(StmtSRef ref, Stmt target) {
   ScheduleNode* self = operator->();
+  // Collect loop_var to Loop mapping under old stmt
+  const Stmt& old_stmt = GetRef<Stmt>(ref->node);
+  LoopCollector collector(&self->stmt2ref);
+  collector(old_stmt);
   // Create SRef tree for the incoming target Stmt
-  SRefCreator creator(&self->stmt2ref, &self->loop_var2ref, ref->parent);
+  SRefCreator creator(&self->stmt2ref, std::move(collector.loop_var2sref), ref->parent);
   creator(target);
   // Initialize old SRef remover
   SRefRemover remover(&self->stmt2ref, std::move(creator.used_border_parent_), &creator.reuse_sref);
-  const Stmt& old_stmt = GetRef<Stmt>(ref->node);
   // num_copy_steps: maximum number of hops until we don't need to copy
   int curr_step = 0;
   int num_copy_steps = -1;
@@ -414,8 +428,7 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
 
   // Update the function body
   curr_step = 0;
-  for (StmtSRefNode* ptr = ref.get(); ptr != self->root.get();
-       ptr = ptr->parent, ++curr_step) {
+  for (StmtSRefNode* ptr = ref.get(); ptr != self->root.get(); ptr = ptr->parent, ++curr_step) {
     StmtSRefNode* parent = ptr->parent;
     // parent_step = current_step + 1
     // if parent_step <= num_copy_step, then it implies
@@ -442,17 +455,15 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
 
 Schedule Schedule::Create(Function func) {
   std::unordered_map<const StmtNode*, StmtSRef> stmt_map;
-  std::unordered_map<const VarNode*, StmtSRef> loop_var_map;
   std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> block_scopes;
 
-  DependencyAnalyzer dependency_analyzer(&stmt_map, &loop_var_map, &block_scopes);
+  DependencyAnalyzer dependency_analyzer(&stmt_map, &block_scopes);
   dependency_analyzer(func->body);
   const auto* op = func->body.as<BlockRealizeNode>();
   CHECK(op != nullptr);
   auto n = make_object<ScheduleNode>();
   n->func = std::move(func);
   n->stmt2ref = std::move(stmt_map);
-  n->loop_var2ref = std::move(loop_var_map);
   n->root = n->stmt2ref[op->block.as<StmtNode>()];
   n->scopes_ = block_scopes;
   return Schedule(n);
