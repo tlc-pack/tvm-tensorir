@@ -275,7 +275,7 @@ class SRefCreator : public StmtVisitor {
       const auto* op = GetRef<Stmt>(stmt_ptr).as<LoopNode>();
       auto it = loop_var2ref_.find(op->loop_var.get());
       if (it != loop_var2ref_.end()) {
-        StmtSRef reuse_sref = (*it).second;
+        StmtSRef reuse_sref = it->second;
         reuse_sref->node = stmt_ptr;
         reuse_sref->parent = parent_;
         reuse_loop_sref_.insert(reuse_sref);
