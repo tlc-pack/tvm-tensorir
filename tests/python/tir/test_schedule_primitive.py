@@ -131,6 +131,33 @@ def test_split_fuse():
     assert AssertEqual(split_fuse_func, s.func)
 
 
+@tvm.tir.hybrid.script
+def predicate_fuse(b, c):
+    C = buffer_bind(c, (16, 16), "float32")
+    B = buffer_bind(b, (16, 16), "float32")
+    with block({}, writes=[], reads=[], name="root"):
+        for i in range(0, 256):
+            with block({vi(0, 16):floordiv(floordiv(i, 4), 4), vj(0, 16):((floormod(floordiv(i, 4), 4)*3) + floormod(i, 4))}, writes=[C[vi:(vi + 1), vj:(vj + 1)]], reads=[B[vi:(vi + 1), vj:(vj + 1)]], predicate=(((floormod(floordiv(i, 4), 4)*4) + floormod(i, 4)) < 16), name="update"):
+                C[vi, vj] = (B[vi, vj] + float32(1))
+
+
+def test_fuse_loop_sref():
+    func = util.predicate_stmt()
+
+    # schedule
+    s = tir.create_schedule(func)
+    update = s.get_block("update")
+    i, j, k = s.get_axes(update)
+    ij = s.fuse(i, j)
+    s.fuse(ij, k)
+
+    mod = tvm.tir.hybrid.create_module([predicate_fuse])
+    predicate_fuse_func = mod["predicate_fuse"]
+
+    assert AssertEqual(s.func, predicate_fuse_func)
+
+
 if __name__ == "__main__":
     test_fuse()
     test_split_fuse()
+    test_fuse_loop_sref()

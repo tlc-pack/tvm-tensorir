@@ -38,7 +38,7 @@ class ScheduleCreator : public StmtVisitor {
 
   void VisitStmt_(const LoopNode* op) override {
     VisitSRefStmt(op);
-    CHECK(loop_var_map_->count(op->loop_var.get()) == 0);
+    CHECK_EQ(loop_var_map_->count(op->loop_var.get()), 0);
     (*loop_var_map_)[op->loop_var.get()] = (*stmt_map_)[op];
   }
 
@@ -382,7 +382,7 @@ void Schedule::ReuseSRef(
     new_sref->parent = nullptr;
   }
   // Redirect the parent of srefs
-  for (auto& it: reuse_parent) {
+  for (auto& it : reuse_parent) {
     it.first->parent = it.second;
   }
   // Put old srefs into map, we complete this step at last since we want the srefs generated
@@ -447,12 +447,13 @@ Schedule Schedule::Create(Function func) {
 
   DependencyAnalyzer dependency_analyzer(&stmt_map, &loop_var_map, &block_scopes);
   dependency_analyzer(func->body);
-  CHECK(func->body.as<BlockRealizeNode>());
+  const auto* op = func->body.as<BlockRealizeNode>();
+  CHECK(op != nullptr);
   auto n = make_object<ScheduleNode>();
   n->func = std::move(func);
   n->stmt2ref = std::move(stmt_map);
   n->loop_var2ref = std::move(loop_var_map);
-  n->root = n->stmt2ref[n->func->body.as<BlockRealizeNode>()->block.as<StmtNode>()];
+  n->root = n->stmt2ref[op->block.as<StmtNode>()];
   n->scopes_ = block_scopes;
   return Schedule(n);
 }
@@ -534,7 +535,7 @@ Array<Stmt> Schedule::GetChildren(const Stmt& stmt) {
   }
   if (const auto* seq = body.as<SeqStmtNode>()) {
     Array<Stmt> ret;
-    for (Stmt child : seq->seq)
+    for (const Stmt& child : seq->seq)
       if (child->IsInstance<BlockRealizeNode>()) {
         ret.push_back(child.as<BlockRealizeNode>()->block);
       } else {
@@ -586,7 +587,7 @@ StmtSRef Schedule::fuse(const StmtSRef& outer, const StmtSRef& inner) {
   PrimExpr extent = outer_loop->extent * inner_loop->extent;
 
   Var fused_var = outer_loop->loop_var.copy_with_suffix(
-      "." + inner_loop->loop_var.get()->name_hint + ".fused");
+      "_" + inner_loop->loop_var.get()->name_hint + "_fused");
 
   auto vmap = [&](const VarNode* v) -> PrimExpr {
     if (GetRef<Var>(v).same_as(outer_loop->loop_var)) {
@@ -636,8 +637,8 @@ Array<StmtSRef> Schedule::split(const StmtSRef& node,
     LOG(FATAL) << "InvalidSchedule: " << "Cannot split loops that already has annotations";
   }
 
-  Var outer_var = loop->loop_var.copy_with_suffix(".outer");
-  Var inner_var = loop->loop_var.copy_with_suffix(".inner");
+  Var outer_var = loop->loop_var.copy_with_suffix("_outer");
+  Var inner_var = loop->loop_var.copy_with_suffix("_inner");
 
   const PrimExpr& outer_min = loop->min;
   const PrimExpr& outer_extent = nparts;
