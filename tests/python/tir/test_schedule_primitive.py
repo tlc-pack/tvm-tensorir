@@ -16,9 +16,10 @@
 # under the License.
 
 import tvm
-from tvm import tir
 import util
-from tvm.ir_pass import Equal, AssertStructEqual
+from tvm import tir
+from tvm.ir_pass import Equal, AssertEqual
+
 
 @tvm.tir.hybrid.script
 def fused_element_wise(a, c):
@@ -29,13 +30,13 @@ def fused_element_wise(a, c):
         B = buffer_allocate((128, 128))
 
         for i in range(0, 128 * 128):
-            with block({vi(0, 128) : i // 128, vj(0, 128) : i % 128},
-                    reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1], name="B"):
+            with block({vi(0, 128): i // 128, vj(0, 128): i % 128},
+                       reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1], name="B"):
                 B[vi, vj] = A[vi, vj] * 2
 
         for j in range(0, 128 * 128):
-            with block({vi(0, 128) : j // 128, vj(0, 128) : j % 128},
-                    reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1], name="C"):
+            with block({vi(0, 128): j // 128, vj(0, 128): j % 128},
+                       reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1], name="C"):
                 C[vi, vj] = B[vi, vj] + 1
 
 
@@ -67,17 +68,17 @@ def split_element_wise(a, c):
         for io in range(0, 8):
             for ii in range(0, 16):
                 for j in range(0, 128):
-                    with block({vi(0, 128) : io * 16 + ii, vj(0, 128) : j},
-                            reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1],
-                            name="B"):
+                    with block({vi(0, 128): io * 16 + ii, vj(0, 128): j},
+                               reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1],
+                               name="B"):
                         B[vi, vj] = A[vi, vj] * 2
 
         for i in range(0, 128):
             for jo in range(0, 10):
                 for ji in range(0, 13):
-                    with block({vi(0, 128) : i, vj(0, 128) : jo * 13 + ji},
-                            reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
-                            predicate=jo * 13 + ji < 128, name="C"):
+                    with block({vi(0, 128): i, vj(0, 128): jo * 13 + ji},
+                               reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
+                               predicate=jo * 13 + ji < 128, name="C"):
                         C[vi, vj] = B[vi, vj] + 1
 
 

@@ -42,6 +42,10 @@ class ScheduleNode : public Object {
    * \note This is a hint to improve mutation efficiency
    * */
   std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
+  /*!
+   * \brief The mapping from loop var to ites schedulable reference node
+   */
+  std::unordered_map<const VarNode*, StmtSRef> loop_var2ref;
   /*! \brief The block scopes of each block */
   std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> scopes_;
 
@@ -147,6 +151,9 @@ class Schedule : public ObjectRef {
    */
   static Stmt SubstituteInScope(const Stmt& stmt,
                                 const std::function<PrimExpr(const VarNode*)>& value_func);
+
+  void ReuseSRef(std::unordered_map<StmtSRefNode*, const LoopNode*>&& reuse_sref,
+                 std::unordered_map<StmtSRefNode*, StmtSRefNode*>&& reuse_parent);
 };
 
 }  // namespace tir
