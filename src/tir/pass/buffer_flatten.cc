@@ -233,8 +233,9 @@ class BufferFlattener : public StmtExprMutator {
   Stmt VisitStmt_(const BlockRealizeNode* op) final {
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     op = stmt.as<BlockRealizeNode>();
+    CHECK(op != nullptr);
     const auto* block_op = op->block.as<BlockNode>();
-    CHECK(op != nullptr && block_op != nullptr);
+    CHECK(block_op != nullptr);
     Stmt body = block_op->body;
 
     // Handle block predicate

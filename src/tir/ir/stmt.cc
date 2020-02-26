@@ -715,8 +715,8 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 .set_dispatch<BlockRealizeNode>([](const ObjectRef& node, ReprPrinter* p) {
-  auto* op_reailze = static_cast<const BlockRealizeNode*>(node.get());
-  auto* op = static_cast<const BlockNode*>(op_reailze->block.get());
+  const auto* op_reailze = static_cast<const BlockRealizeNode*>(node.get());
+  const auto* op = static_cast<const BlockNode*>(op_reailze->block.get());
 
   // print block name and block vars
   p->PrintIndent();

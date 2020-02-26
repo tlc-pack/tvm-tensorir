@@ -127,7 +127,6 @@ class TIRHybridPrinter :
 
   Doc VisitStmt_(const SeqStmtNode* op) override;
   Doc VisitStmt_(const EvaluateNode* op) override;
-  Doc VisitStmt_(const BlockNode* op) override;
   Doc VisitStmt_(const BlockRealizeNode* op) override;
   Doc VisitStmt_(const LoopNode* op) override;
   Doc VisitStmt_(const BufferAllocateNode* op) override;
@@ -277,60 +276,6 @@ Doc TIRHybridPrinter::VisitStmt_(const SeqStmtNode* op) {
 
 Doc TIRHybridPrinter::VisitStmt_(const EvaluateNode* op) {
   return Print(op->value);
-}
-
-Doc TIRHybridPrinter::VisitStmt_(const BlockNode* op) {
-  // print block name and block vars
-  Doc doc;
-  doc << "with block({";
-  for (size_t i = 0; i < op->iter_vars.size(); ++i) {
-    const auto& iter_var = op->iter_vars[i];
-    doc << Print(iter_var->var);
-    doc << "(";
-    doc << Print(iter_var->dom->min);
-    doc << ", ";
-    doc << Print(iter_var->dom->min + iter_var->dom->extent);
-    if (iter_var->iter_type != kDataPar) {
-      std::string str;
-      switch (iter_var->iter_type) {
-        case kCommReduce:
-          str = "reduce";
-          break;
-        case kOrdered:
-          str = "ordered";
-          break;
-        case kOpaque:
-          str = "opaque";
-          break;
-        default:
-          str = "unknown";
-          break;
-      }
-      doc << ", iter_type=\"" << str << "\"";
-    }
-    doc << "):0";
-    if (i != op->iter_vars.size() - 1) {
-      doc << ", ";
-    }
-  }
-  doc << "}";
-
-  // print tensor region and annotations
-  doc << ", writes=" << Print(op->writes);
-  doc << ", reads=" << Print(op->reads);
-  if (!op->annotations.empty()) {
-    doc << ", annotations=" << Print(op->annotations);
-  }
-  doc << ", name=" << Doc::StrLiteral(op->tag) <<  "):";
-  // print body
-  Doc body;
-  body << Doc::NewLine();
-  for (const auto& allocate : op->allocations) {
-    body << Print(allocate) << Doc::NewLine();
-  }
-  body << Print(op->body);
-  doc << Doc::Indent(4, body);
-  return doc;
 }
 
 Doc TIRHybridPrinter::VisitStmt_(const BlockRealizeNode* op) {
