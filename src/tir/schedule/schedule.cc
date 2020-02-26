@@ -273,8 +273,9 @@ class SRefCreator : public StmtVisitor {
   StmtSRef CreateNewSRef(const StmtNode* stmt_ptr) {
     if (stmt_ptr->IsInstance<LoopNode>()) {
       const auto* op = GetRef<Stmt>(stmt_ptr).as<LoopNode>();
-      if (loop_var2ref_.count(op->loop_var.get())) {
-        StmtSRef reuse_sref = loop_var2ref_.at(op->loop_var.get());
+      auto it = loop_var2ref_.find(op->loop_var.get());
+      if (it != loop_var2ref_.end()) {
+        StmtSRef reuse_sref = (*it).second;
         reuse_sref->node = stmt_ptr;
         reuse_sref->parent = parent_;
         reuse_loop_sref_.insert(reuse_sref);
@@ -368,6 +369,7 @@ class LoopCollector : public StmtVisitor {
 
 void Schedule::Replace(StmtSRef ref, Stmt target) {
   ScheduleNode* self = operator->();
+  // Note that old_ref is only a temporary SRef
   StmtSRef old_ref = StmtSRef(ref->node, ref->parent);
   const Stmt& old_stmt = GetRef<Stmt>(ref->node);
   // Collect loop_var to Loop mapping under old stmt
