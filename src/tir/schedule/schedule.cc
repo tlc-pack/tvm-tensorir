@@ -53,7 +53,6 @@ class ScheduleCreator : public StmtVisitor {
   }
 
   std::unordered_map<const StmtNode*, StmtSRef>* stmt_map_;
-  std::unordered_map<const VarNode*, StmtSRef>* loop_var_map_;
   StmtSRefNode* parent_scope_{nullptr};
 };
 
@@ -213,8 +212,9 @@ class SRefRemover : public StmtVisitor {
  public:
   SRefRemover(std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref,
       std::unordered_map<StmtSRef, StmtSRefNode*, ObjectHash, ObjectEqual>&& used_border_parent,
-      std::unordered_map<StmtSRefNode*, const LoopNode*>* reuse_sref)
-      : reuse_sref_(reuse_sref), used_border_parent_(used_border_parent), stmt2ref_(stmt2ref) {}
+      std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>&& reuse_loop_sref)
+      :  reuse_loop_sref_(reuse_loop_sref), used_border_parent_(used_border_parent),
+         stmt2ref_(stmt2ref) {}
 
   void VisitStmt_(const LoopNode* op) final {
     VisitSRefStmt(op);
@@ -233,18 +233,18 @@ class SRefRemover : public StmtVisitor {
     StmtSRef sref = stmt2ref_->at(stmt_ptr);
     if (used_border_parent_.count(sref) == 0) {
       // If we will reuse the sref later, we don't remove it
-      if (reuse_sref_->count(sref.get()) == 0) {
+      if (reuse_loop_sref_.count(sref) == 0) {
         sref->node = nullptr;
         sref->parent = nullptr;
-        stmt2ref_->erase(stmt_ptr);
       }
+      stmt2ref_->erase(stmt_ptr);
       VisitStmt(op->body);
     } else {
       sref->parent = used_border_parent_.at(sref);
     }
   }
 
-  std::unordered_map<StmtSRefNode*, const LoopNode*>* reuse_sref_;
+  std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> reuse_loop_sref_;
   std::unordered_map<StmtSRef, StmtSRefNode*, ObjectHash, ObjectEqual> used_border_parent_;
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
 };
@@ -270,20 +270,18 @@ class SRefCreator : public StmtVisitor {
   }
 
  private:
-  StmtSRefNode* set_reuse_parent(const LoopNode* op) {
-    if (loop_var2ref_.count(op->loop_var.get())) {
-      // If the loop_var is duplicated, then we aim to reuse the original sref
-      reuse_sref[loop_var2ref_.at(op->loop_var.get()).get()] = op;
-      return loop_var2ref_.at(op->loop_var.get()).get();
-    } else {
-      // If not, we put the new loop_var into loop_var2ref
-      loop_var2ref_[op->loop_var.get()] = (*stmt2ref_)[op];
-      return nullptr;
+  StmtSRef CreateNewSRef(const StmtNode* stmt_ptr) {
+    if (stmt_ptr->IsInstance<LoopNode>()) {
+      const auto* op = GetRef<Stmt>(stmt_ptr).as<LoopNode>();
+      if (loop_var2ref_.count(op->loop_var.get())) {
+        StmtSRef reuse_sref = loop_var2ref_.at(op->loop_var.get());
+        reuse_sref->node = stmt_ptr;
+        reuse_sref->parent = parent_;
+        reuse_loop_sref_.insert(reuse_sref);
+        return reuse_sref;
+      }
     }
-  }
-
-  StmtSRefNode* set_reuse_parent(const BlockNode* op) {
-    return nullptr;
+    return StmtSRef(stmt_ptr, parent_);
   }
 
   template <typename T>
@@ -293,32 +291,21 @@ class SRefCreator : public StmtVisitor {
       // Create corresponding StmtSRef
       // note that we only create the StmtSRef whose node is not
       // in the AST and reuse those StmtSRef when node is in the AST.
-      StmtSRef ref = StmtSRef(stmt_ptr, parent_);
+      StmtSRef ref = CreateNewSRef(stmt_ptr);
       (*stmt2ref_)[stmt_ptr] = ref;
-      if (reuse_parent_ != nullptr) {
-        reuse_parent[ref.get()] = reuse_parent_;
-      }
       auto current = ref.get();
-      auto current_reuse = set_reuse_parent(op);
       std::swap(current, parent_);
-      std::swap(current_reuse, reuse_parent_);
       VisitStmt(op->body);
-      std::swap(current_reuse, reuse_parent_);
       std::swap(current, parent_);
     } else {
       // Mark the border of reused StmtSRef
       used_border_parent_[stmt2ref_->at(stmt_ptr)] = parent_;
-      if (reuse_parent_ != nullptr) {
-        reuse_parent[stmt2ref_->at(stmt_ptr).get()] = reuse_parent_;
-      }
     }
   }
 
   friend class Schedule;
   StmtSRefNode* parent_;
-  StmtSRefNode* reuse_parent_ = nullptr;
-  std::unordered_map<StmtSRefNode*, const LoopNode*> reuse_sref;
-  std::unordered_map<StmtSRefNode*, StmtSRefNode*> reuse_parent;
+  std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> reuse_loop_sref_;
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
   std::unordered_map<const VarNode*, StmtSRef> loop_var2ref_;
   std::unordered_map<StmtSRef, StmtSRefNode*, ObjectHash, ObjectEqual> used_border_parent_;
@@ -363,30 +350,6 @@ Stmt Schedule::SubstituteInScope(const Stmt& stmt,
   return IRSubstitueInScope(value_func)(stmt);
 }
 
-void Schedule::ReuseSRef(
-               std::unordered_map<StmtSRefNode*, const LoopNode*>&& reuse_sref,
-               std::unordered_map<StmtSRefNode*, StmtSRefNode*>&& reuse_parent) {
-  // Replace the sref generated in SRefCreator with old sref
-  for (auto& it : reuse_sref) {
-    StmtSRefNode* new_sref = this->operator->()->stmt2ref.at(it.second).get();
-    StmtSRefNode* reuse_sref = it.first;
-    reuse_sref->node = new_sref->node;
-    reuse_sref->parent = new_sref->parent;
-    reuse_sref->seq_index = new_sref->seq_index;
-    new_sref->node = nullptr;
-    new_sref->parent = nullptr;
-  }
-  // Redirect the parent of srefs
-  for (auto& it : reuse_parent) {
-    it.first->parent = it.second;
-  }
-  // Put old srefs into map, we complete this step at last since we want the srefs generated
-  // in SRefCreator to be valid when redirecting their parent in the last step
-  for (auto& it : reuse_sref) {
-    this->operator->()->stmt2ref[it.second] = GetRef<StmtSRef>(it.first);
-  }
-}
-
 class LoopCollector : public StmtVisitor {
  public:
   explicit LoopCollector(std::unordered_map<const StmtNode*, StmtSRef>* stmt2_ref)
@@ -405,30 +368,31 @@ class LoopCollector : public StmtVisitor {
 
 void Schedule::Replace(StmtSRef ref, Stmt target) {
   ScheduleNode* self = operator->();
-  // Collect loop_var to Loop mapping under old stmt
+  StmtSRef old_ref = StmtSRef(ref->node, ref->parent);
   const Stmt& old_stmt = GetRef<Stmt>(ref->node);
+  // Collect loop_var to Loop mapping under old stmt
   LoopCollector collector(&self->stmt2ref);
   collector(old_stmt);
   // Create SRef tree for the incoming target Stmt
-  SRefCreator creator(&self->stmt2ref, std::move(collector.loop_var2sref), ref->parent);
+  SRefCreator creator(&self->stmt2ref, std::move(collector.loop_var2sref), old_ref->parent);
   creator(target);
   // Initialize old SRef remover
-  SRefRemover remover(&self->stmt2ref, std::move(creator.used_border_parent_), &creator.reuse_sref);
+  SRefRemover remover(&self->stmt2ref,
+      std::move(creator.used_border_parent_), std::move(creator.reuse_loop_sref_));
   // num_copy_steps: maximum number of hops until we don't need to copy
   int curr_step = 0;
   int num_copy_steps = -1;
   // Find the highest non-unique Stmt
-  for (StmtSRefNode* ptr = ref.get(); ptr != nullptr;
-       ptr = ptr->parent, ++curr_step) {
+  for (StmtSRefNode* ptr = old_ref.get(); ptr != nullptr; ptr = ptr->parent, ++curr_step) {
     if (!ptr->node->unique()) {
       num_copy_steps = curr_step;
     }
   }
   if (!self->func.unique()) num_copy_steps = curr_step;
-
   // Update the function body
   curr_step = 0;
-  for (StmtSRefNode* ptr = ref.get(); ptr != self->root.get(); ptr = ptr->parent, ++curr_step) {
+  for (StmtSRefNode* ptr = old_ref.get(); ptr->node != self->root->node;
+      ptr = ptr->parent, ++curr_step) {
     StmtSRefNode* parent = ptr->parent;
     // parent_step = current_step + 1
     // if parent_step <= num_copy_step, then it implies
@@ -442,7 +406,6 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
       // if one node has been direct write, there is no need to
       // update its parent and the function
       remover(old_stmt);
-      ReuseSRef(std::move(creator.reuse_sref), std::move(creator.reuse_parent));
       return;
     }
     target = new_stmt;
@@ -450,7 +413,6 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
   remover(old_stmt);
   UpdateSRef(self->root.operator->(), target);
   self->func = UpdateFuncBody(self->func.operator->(), target);
-  ReuseSRef(std::move(creator.reuse_sref), std::move(creator.reuse_parent));
 }
 
 Schedule Schedule::Create(Function func) {
@@ -518,7 +480,7 @@ Array<StmtSRef> Schedule::Blocks(StmtSRef scope) const {
     }
   }
   Array<StmtSRef> ret;
-  for (const auto & block : collect)
+  for (const auto& block : collect)
       ret.push_back(block);
   return ret;
 }

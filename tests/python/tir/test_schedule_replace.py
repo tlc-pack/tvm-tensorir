@@ -170,11 +170,11 @@ def test_replace_root_copy1():
 
 
 if __name__ == "__main__":
-    test_replace_direct_write0()
-    test_replace_direct_write1()
-    test_replace_copy()
-    test_replace_partial_copy0()
-    test_replace_partial_copy1()
+    # test_replace_direct_write0()
+    # test_replace_direct_write1()
+    # test_replace_copy()
+    # test_replace_partial_copy0()
+    # test_replace_partial_copy1()
     test_replace_root_write()
-    test_replace_root_copy0()
-    test_replace_root_copy1()
+    # test_replace_root_copy0()
+    # test_replace_root_copy1()

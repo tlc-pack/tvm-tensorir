@@ -147,9 +147,6 @@ class Schedule : public ObjectRef {
    */
   static Stmt SubstituteInScope(const Stmt& stmt,
                                 const std::function<PrimExpr(const VarNode*)>& value_func);
-
-  void ReuseSRef(std::unordered_map<StmtSRefNode*, const LoopNode*>&& reuse_sref,
-                 std::unordered_map<StmtSRefNode*, StmtSRefNode*>&& reuse_parent);
 };
 
 }  // namespace tir
