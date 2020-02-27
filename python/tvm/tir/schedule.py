@@ -117,10 +117,7 @@ class Schedule(Object):
             The remap of block_sref
 
         """
-        if block_sref_map is None:
-            return Replace(self, sref, target_stmt)
-        else:
-            return Replace(self, sref, target_stmt, block_sref_map)
+        return Replace(self, sref, target_stmt, block_sref_map)
 
     # Dependency
     def get_successors(self, block, scope=None):

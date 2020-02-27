@@ -281,7 +281,7 @@ class SRefCreator : public StmtVisitor {
         reuse_sref_.insert(reuse_sref);
         return reuse_sref;
       }
-    } else {
+    } else if (!block_sref_map_.same_as(NullValue<Map<Block, Block> >())){
       Block block = Downcast<Block>(GetRef<Stmt>(stmt_ptr));
       auto it = block_sref_map_.find(block);
       if (it != block_sref_map_.end()) {
