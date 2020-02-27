@@ -169,6 +169,20 @@ def test_replace_root_copy1():
     assert not Equal(func_ref.body, target)
 
 
+def test_replace_block_remap():
+    func = util.element_wise_stmt()
+    s = tir.create_schedule(func)
+
+    # The target stmt
+    target = util.matmul_stmt().body.block.body.body.body[0].block
+    sref = s.get_sref(s.func.body.block.body[0].body.body.block)
+    s.replace(sref, target, {target: s.func.body.block.body[0].body.body.block})
+    sref_new = s.get_block("init")
+    # Check the original sref has been remapped
+    assert sref.__hash__() == sref_new.__hash__()
+    assert Equal(tir.get_stmt(sref), target)
+
+
 if __name__ == "__main__":
     test_replace_direct_write0()
     test_replace_direct_write1()
@@ -178,3 +192,4 @@ if __name__ == "__main__":
     test_replace_root_write()
     test_replace_root_copy0()
     test_replace_root_copy1()
+    test_replace_block_remap()

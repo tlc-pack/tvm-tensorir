@@ -20,6 +20,7 @@
 #ifndef TVM_TIR_SCHEDULE_H_
 #define TVM_TIR_SCHEDULE_H_
 #include <tvm/tir/ir.h>
+#include <tvm/ir/attrs.h>
 #include <tvm/te/tensor.h>
 #include <tvm/tir/buffer.h>
 #include <tvm/tir/stmt_sref.h>
@@ -67,8 +68,9 @@ class Schedule : public ObjectRef {
    * \brief replace part of AST with new stmt
    * \param ref The schedulable reference of the old stmt
    * \param target The new stmt
+   * \param block_sref_map The Sref remapping of blocks
    */
-  void Replace(StmtSRef ref, Stmt target);
+  void Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_map = Map<Block, Block>());
 
   /*!
    * \brief Get block from its tag

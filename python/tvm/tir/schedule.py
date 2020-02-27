@@ -101,7 +101,7 @@ class Schedule(Object):
         """
         return GetStmtSRef(self, stmt)
 
-    def replace(self, sref, target_stmt):
+    def replace(self, sref, target_stmt, block_sref_map=None):
         """Replace a subtree of AST with new stmt
         and auto maintain the schedulable reference tree
 
@@ -113,8 +113,14 @@ class Schedule(Object):
         target_stmt: Stmt
             The target stmt
 
+        block_sref_map: Map
+            The remap of block_sref
+
         """
-        return Replace(self, sref, target_stmt)
+        if block_sref_map is None:
+            return Replace(self, sref, target_stmt)
+        else:
+            return Replace(self, sref, target_stmt, block_sref_map)
 
     # Dependency
     def get_successors(self, block, scope=None):

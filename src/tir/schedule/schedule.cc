@@ -19,7 +19,6 @@
 
 #include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
-#include <tvm/ir/attrs.h>
 #include <tvm/arith/analyzer.h>
 
 namespace tvm {
@@ -212,9 +211,8 @@ class SRefRemover : public StmtVisitor {
  public:
   SRefRemover(std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref,
       std::unordered_map<StmtSRef, StmtSRefNode*, ObjectHash, ObjectEqual>&& used_border_parent,
-      std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>&& reuse_loop_sref)
-      :  reuse_loop_sref_(reuse_loop_sref), used_border_parent_(used_border_parent),
-         stmt2ref_(stmt2ref) {}
+      std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>&& reuse_sref)
+      : reuse_sref_(reuse_sref), used_border_parent_(used_border_parent), stmt2ref_(stmt2ref) {}
 
   void VisitStmt_(const LoopNode* op) final {
     VisitSRefStmt(op);
@@ -233,7 +231,7 @@ class SRefRemover : public StmtVisitor {
     StmtSRef sref = stmt2ref_->at(stmt_ptr);
     if (used_border_parent_.count(sref) == 0) {
       // If we will reuse the sref later, we don't remove it
-      if (reuse_loop_sref_.count(sref) == 0) {
+      if (reuse_sref_.count(sref) == 0) {
         sref->node = nullptr;
         sref->parent = nullptr;
       }
@@ -244,7 +242,7 @@ class SRefRemover : public StmtVisitor {
     }
   }
 
-  std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> reuse_loop_sref_;
+  std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> reuse_sref_;
   std::unordered_map<StmtSRef, StmtSRefNode*, ObjectHash, ObjectEqual> used_border_parent_;
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
 };
@@ -258,8 +256,10 @@ class SRefCreator : public StmtVisitor {
  public:
   SRefCreator(std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref,
               std::unordered_map<const VarNode*, StmtSRef>&& loop_var2ref,
+              Map<Block, Block>&& block_sref_map,
               StmtSRefNode* parent)
-      : parent_(parent), stmt2ref_(stmt2ref), loop_var2ref_(loop_var2ref) {}
+      : parent_(parent), stmt2ref_(stmt2ref),
+        loop_var2ref_(loop_var2ref), block_sref_map_(block_sref_map) {}
 
   void VisitStmt_(const LoopNode* op) final {
     VisitSRefStmt(op);
@@ -278,7 +278,17 @@ class SRefCreator : public StmtVisitor {
         StmtSRef reuse_sref = it->second;
         reuse_sref->node = stmt_ptr;
         reuse_sref->parent = parent_;
-        reuse_loop_sref_.insert(reuse_sref);
+        reuse_sref_.insert(reuse_sref);
+        return reuse_sref;
+      }
+    } else {
+      Block block = Downcast<Block>(GetRef<Stmt>(stmt_ptr));
+      auto it = block_sref_map_.find(block);
+      if (it != block_sref_map_.end()) {
+        StmtSRef reuse_sref = stmt2ref_->at((*it).second.as<BlockNode>());
+        reuse_sref->node = stmt_ptr;
+        reuse_sref->parent = parent_;
+        reuse_sref_.insert(reuse_sref);
         return reuse_sref;
       }
     }
@@ -306,9 +316,11 @@ class SRefCreator : public StmtVisitor {
 
   friend class Schedule;
   StmtSRefNode* parent_;
-  std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> reuse_loop_sref_;
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
   std::unordered_map<const VarNode*, StmtSRef> loop_var2ref_;
+  Map<Block, Block> block_sref_map_;
+
+  std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> reuse_sref_;
   std::unordered_map<StmtSRef, StmtSRefNode*, ObjectHash, ObjectEqual> used_border_parent_;
 };
 
@@ -367,7 +379,7 @@ class LoopCollector : public StmtVisitor {
   std::unordered_map<const VarNode*, StmtSRef> loop_var2sref;
 };
 
-void Schedule::Replace(StmtSRef ref, Stmt target) {
+void Schedule::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_map) {
   ScheduleNode* self = operator->();
   // Note that old_ref is only a temporary SRef
   StmtSRef old_ref = StmtSRef(ref->node, ref->parent);
@@ -376,11 +388,12 @@ void Schedule::Replace(StmtSRef ref, Stmt target) {
   LoopCollector collector(&self->stmt2ref);
   collector(old_stmt);
   // Create SRef tree for the incoming target Stmt
-  SRefCreator creator(&self->stmt2ref, std::move(collector.loop_var2sref), old_ref->parent);
+  SRefCreator creator(&self->stmt2ref, std::move(collector.loop_var2sref),
+      std::move(block_sref_map), old_ref->parent);
   creator(target);
   // Initialize old SRef remover
   SRefRemover remover(&self->stmt2ref,
-      std::move(creator.used_border_parent_), std::move(creator.reuse_loop_sref_));
+      std::move(creator.used_border_parent_), std::move(creator.reuse_sref_));
   // num_copy_steps: maximum number of hops until we don't need to copy
   int curr_step = 0;
   int num_copy_steps = -1;

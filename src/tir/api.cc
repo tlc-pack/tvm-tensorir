@@ -33,7 +33,15 @@ TVM_REGISTER_GLOBAL("tir.schedule.CreateSchedule")
 .set_body_typed(Schedule::Create);
 
 TVM_REGISTER_GLOBAL("tir.schedule.Replace")
-.set_body_method(&Schedule::Replace);
+.set_body([](TVMArgs args, TVMRetValue *ret) {
+      Schedule schedule = args[0].operator Schedule();
+      if (args.size() == 4) {
+        schedule.Replace(args[1].operator StmtSRef(), args[2].operator Stmt(),
+            args[3].operator Map<Block, Block>());
+      } else {
+        schedule.Replace(args[1].operator StmtSRef(), args[2].operator Stmt());
+      }
+    });
 
 TVM_REGISTER_GLOBAL("tir.schedule.GetStmtSRef")
 .set_body_typed<StmtSRef(Schedule, Stmt)>(
