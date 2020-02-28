@@ -104,6 +104,7 @@ class StmtFunctor<R(const Stmt& n, Args... args)> {
   virtual R VisitStmt_(const SeqStmtNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
   virtual R VisitStmt_(const EvaluateNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
   virtual R VisitStmt_(const BlockNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
+  virtual R VisitStmt_(const BlockRealizeNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
   virtual R VisitStmt_(const LoopNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
   virtual R VisitStmt_(const BufferAllocateNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
   virtual R VisitStmt_(const BufferStoreNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
@@ -132,6 +133,7 @@ class StmtFunctor<R(const Stmt& n, Args... args)> {
     IR_STMT_FUNCTOR_DISPATCH(BufferStoreNode);
     IR_STMT_FUNCTOR_DISPATCH(BufferRealizeNode);
     IR_STMT_FUNCTOR_DISPATCH(BlockNode);
+    IR_STMT_FUNCTOR_DISPATCH(BlockRealizeNode);
     IR_STMT_FUNCTOR_DISPATCH(LoopNode);
     IR_STMT_FUNCTOR_DISPATCH(BufferAllocateNode);
     return vtable;
@@ -176,6 +178,7 @@ class TVM_DLL StmtVisitor :
   void VisitStmt_(const SeqStmtNode* op) override;
   void VisitStmt_(const EvaluateNode* op) override;
   void VisitStmt_(const BlockNode* op) override;
+  void VisitStmt_(const BlockRealizeNode* op) override;
   void VisitStmt_(const LoopNode* op) override;
   void VisitStmt_(const BufferAllocateNode* op) override;
   void VisitStmt_(const BufferStoreNode* op) override;
@@ -275,6 +278,7 @@ class TVM_DLL StmtMutator :
   Stmt VisitStmt_(const SeqStmtNode* op) override;
   Stmt VisitStmt_(const EvaluateNode* op) override;
   Stmt VisitStmt_(const BlockNode* op) override;
+  Stmt VisitStmt_(const BlockRealizeNode* op) override;
   Stmt VisitStmt_(const LoopNode* op) override;
   Stmt VisitStmt_(const BufferAllocateNode* op) override;
   Stmt VisitStmt_(const BufferStoreNode* op) override;

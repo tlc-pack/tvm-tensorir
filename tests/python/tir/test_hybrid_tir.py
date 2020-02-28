@@ -23,37 +23,37 @@ import util
 def test_matmul():
     func = util.matmul_stmt()
 
-    assert isinstance(func.body, tvm.stmt.Block)
-    assert isinstance(func.body.body, tvm.stmt.Loop)
-    assert isinstance(func.body.body.body, tvm.stmt.Loop)
-    assert isinstance(func.body.body.body.body, tvm.stmt.SeqStmt)
-    assert isinstance(func.body.body.body.body[0], tvm.stmt.Block)
-    assert isinstance(func.body.body.body.body[1], tvm.stmt.Loop)
-    assert isinstance(func.body.body.body.body[1].body, tvm.stmt.Block)
+    assert isinstance(func.body.block, tvm.stmt.Block)
+    assert isinstance(func.body.block.body, tvm.stmt.Loop)
+    assert isinstance(func.body.block.body.body, tvm.stmt.Loop)
+    assert isinstance(func.body.block.body.body.body, tvm.stmt.SeqStmt)
+    assert isinstance(func.body.block.body.body.body[0].block, tvm.stmt.Block)
+    assert isinstance(func.body.block.body.body.body[1], tvm.stmt.Loop)
+    assert isinstance(func.body.block.body.body.body[1].body.block, tvm.stmt.Block)
 
 
 def test_element_wise():
     func = util.element_wise_stmt()
 
-    assert isinstance(func.body, tvm.stmt.Block)
-    assert isinstance(func.body.body, tvm.stmt.SeqStmt)
-    assert isinstance(func.body.body[0], tvm.stmt.Loop)
-    assert isinstance(func.body.body[0].body, tvm.stmt.Loop)
-    assert isinstance(func.body.body[0].body.body, tvm.stmt.Block)
+    assert isinstance(func.body.block, tvm.stmt.Block)
+    assert isinstance(func.body.block.body, tvm.stmt.SeqStmt)
+    assert isinstance(func.body.block.body[0], tvm.stmt.Loop)
+    assert isinstance(func.body.block.body[0].body, tvm.stmt.Loop)
+    assert isinstance(func.body.block.body[0].body.body.block, tvm.stmt.Block)
 
-    assert isinstance(func.body.body[1], tvm.stmt.Loop)
-    assert isinstance(func.body.body[1].body, tvm.stmt.Loop)
-    assert isinstance(func.body.body[1].body.body, tvm.stmt.Block)
+    assert isinstance(func.body.block.body[1], tvm.stmt.Loop)
+    assert isinstance(func.body.block.body[1].body, tvm.stmt.Loop)
+    assert isinstance(func.body.block.body[1].body.body.block, tvm.stmt.Block)
 
 
 def test_predicate():
     func = util.predicate_stmt()
 
-    assert isinstance(func.body, tvm.stmt.Block)
-    assert isinstance(func.body.body, tvm.stmt.Loop)
-    assert isinstance(func.body.body.body, tvm.stmt.Loop)
-    assert isinstance(func.body.body.body.body, tvm.stmt.Loop)
-    assert isinstance(func.body.body.body.body.body, tvm.stmt.Block)
+    assert isinstance(func.body.block, tvm.stmt.Block)
+    assert isinstance(func.body.block.body, tvm.stmt.Loop)
+    assert isinstance(func.body.block.body.body, tvm.stmt.Loop)
+    assert isinstance(func.body.block.body.body.body, tvm.stmt.Loop)
+    assert isinstance(func.body.block.body.body.body.body.block, tvm.stmt.Block)
 
 
 if __name__ == '__main__':

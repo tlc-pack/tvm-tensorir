@@ -27,6 +27,8 @@ def init_scope():
     registry.register_intrin(intrin.float16)
     registry.register_intrin(intrin.float32)
     registry.register_intrin(intrin.float64)
+    registry.register_intrin(intrin.floordiv)
+    registry.register_intrin(intrin.floormod)
     registry.register_special_stmt(special_stmt.buffer_bind)
     registry.register_special_stmt(special_stmt.buffer_allocate)
     registry.register_special_stmt(special_stmt.block_vars)

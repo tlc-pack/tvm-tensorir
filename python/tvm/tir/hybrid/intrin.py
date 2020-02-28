@@ -57,3 +57,11 @@ def float32(imm):
 
 def float64(imm):
     return _api.const(imm.value, "float64")
+
+
+def floordiv(x, y):
+    return _api.floordiv(x, y)
+
+
+def floormod(x, y):
+    return _api.floormod(x, y)
