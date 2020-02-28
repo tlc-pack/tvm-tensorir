@@ -130,29 +130,32 @@ TVM_REGISTER_GLOBAL("make.Loop")
 
 TVM_REGISTER_GLOBAL("make.Block")
 .set_body_typed<Block(Array<IterVar>,
-                      Array<PrimExpr>,
                       Array<TensorRegion>,
                       Array<TensorRegion>,
-                      Stmt, PrimExpr,
+                      Stmt,
                       Array<BufferAllocate>,
                       Array<Annotation>,
                       std::string)>(
     [](Array<IterVar> iter_vars,
-       Array<PrimExpr> values,
        Array<TensorRegion> reads,
        Array<TensorRegion> writes,
        Stmt body,
-       PrimExpr predicate,
        Array<BufferAllocate> allocates,
        Array<Annotation> annotations,
        std::string tag) {
+      return Block(iter_vars, reads, writes,
+                   body, allocates, annotations, tag);
+    });
+
+TVM_REGISTER_GLOBAL("make.BlockRealize")
+.set_body_typed<BlockRealize(Array<PrimExpr>, PrimExpr, Block)>(
+    [](Array<PrimExpr> values, PrimExpr predicate, Block block) {
       if (!predicate.dtype().is_bool()) {
         // To support python ir_builder
         CHECK(is_one(predicate));
         predicate = IntImm(DataType::Bool(), 1);
       }
-      return Block(iter_vars, values, reads, writes,
-                   body, predicate, allocates, annotations, tag);
+      return BlockRealize(std::move(values), std::move(predicate), std::move(block));
     });
 
 TVM_REGISTER_GLOBAL("make.Function")

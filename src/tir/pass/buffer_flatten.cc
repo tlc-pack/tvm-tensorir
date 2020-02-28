@@ -141,10 +141,11 @@ class RegionGatherer : public StmtExprVisitor {
     loop_stack_.pop_back();
   }
 
-  void VisitStmt_(const BlockNode* op) final {
-    for (size_t i = 0; i < op->iter_vars.size(); ++i) {
-      const auto& iter = op->iter_vars[i];
-      const auto& v = op->values[i];
+  void VisitStmt_(const BlockRealizeNode* op) final {
+    const auto* block_op = op->block.as<BlockNode>();
+    for (size_t i = 0; i < block_op->iter_vars.size(); ++i) {
+      const auto& iter = block_op->iter_vars[i];
+      const auto& v = op->binding_values[i];
       block_var_[iter->var.get()] = v;
     }
     StmtExprVisitor::VisitStmt_(op);
@@ -229,20 +230,22 @@ class BufferFlattener : public StmtExprMutator {
                                            ObjectHash, ObjectEqual>& buffers_region)
       : buffers_region_(buffers_region), block_var_(block_var) {}
 
-  Stmt VisitStmt_(const BlockNode* op) final {
+  Stmt VisitStmt_(const BlockRealizeNode* op) final {
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
-    op = stmt.as<BlockNode>();
+    op = stmt.as<BlockRealizeNode>();
     CHECK(op != nullptr);
-    Stmt body = op->body;
+    const auto* block_op = op->block.as<BlockNode>();
+    CHECK(block_op != nullptr);
+    Stmt body = block_op->body;
 
     // Handle block predicate
     if (!is_one(op->predicate)) {
       body = IfThenElseNode::make(op->predicate, body);
     }
 
-    for (size_t i = op->allocations.size(); i > 0; --i) {
+    for (size_t i = block_op->allocations.size(); i > 0; --i) {
       PrimExpr extents = 1;
-      const auto& n = op->allocations[i - 1];
+      const auto& n = block_op->allocations[i - 1];
       for (const auto& extent : buffers_region_.at(n->buffer)) {
         extents *= extent.max() - extent.min() + 1;
       }

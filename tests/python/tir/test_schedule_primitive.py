@@ -16,9 +16,10 @@
 # under the License.
 
 import tvm
-from tvm import tir
 import util
-from tvm.ir_pass import Equal, AssertStructEqual
+from tvm import tir
+from tvm.ir_pass import Equal, AssertEqual
+
 
 @tvm.tir.hybrid.script
 def fused_element_wise(a, c):
@@ -29,13 +30,13 @@ def fused_element_wise(a, c):
         B = buffer_allocate((128, 128))
 
         for i in range(0, 128 * 128):
-            with block({vi(0, 128) : i // 128, vj(0, 128) : i % 128},
-                    reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1], name="B"):
+            with block({vi(0, 128): i // 128, vj(0, 128): i % 128},
+                       reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1], name="B"):
                 B[vi, vj] = A[vi, vj] * 2
 
         for j in range(0, 128 * 128):
-            with block({vi(0, 128) : j // 128, vj(0, 128) : j % 128},
-                    reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1], name="C"):
+            with block({vi(0, 128): j // 128, vj(0, 128): j % 128},
+                       reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1], name="C"):
                 C[vi, vj] = B[vi, vj] + 1
 
 
@@ -67,21 +68,42 @@ def split_element_wise(a, c):
         for io in range(0, 8):
             for ii in range(0, 16):
                 for j in range(0, 128):
-                    with block({vi(0, 128) : io * 16 + ii, vj(0, 128) : j},
-                            reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1],
-                            name="B"):
+                    with block({vi(0, 128): io * 16 + ii, vj(0, 128): j},
+                               reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1],
+                               name="B"):
                         B[vi, vj] = A[vi, vj] * 2
 
         for i in range(0, 128):
             for jo in range(0, 10):
                 for ji in range(0, 13):
-                    with block({vi(0, 128) : i, vj(0, 128) : jo * 13 + ji},
-                            reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
-                            predicate=jo * 13 + ji < 128, name="C"):
+                    with block({vi(0, 128): i, vj(0, 128): jo * 13 + ji},
+                               reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
+                               predicate=jo * 13 + ji < 128, name="C"):
                         C[vi, vj] = B[vi, vj] + 1
 
 
-def test_split():
+@tvm.tir.hybrid.script
+def split_fuse_element_wise(a, c):
+    C = buffer_bind(c, (128, 128), "float32")
+    A = buffer_bind(a, (128, 128), "float32")
+    with block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
+        B = buffer_allocate((128, 128), "float32", "")
+        for i in range(0, 128):
+            for j in range(0, 128):
+                with block({vi(0, 128): ((floordiv(i, 16) * 16) + floormod(i, 16)), vj(0, 128): j},
+                           writes=[B[vi:(vi + 1), vj:(vj + 1)]],
+                           reads=[A[vi:(vi + 1), vj:(vj + 1)]], name="B"):
+                    B[vi, vj] = (A[vi, vj] * float32(2))
+        for i in range(0, 128):
+            for j in range(0, 130):
+                with block({vi(0, 128): i, vj(0, 128): ((floordiv(j, 13) * 13) + floormod(j, 13))},
+                           writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                           reads=[B[vi:(vi + 1), vj:(vj + 1)]],
+                           predicate=(((floordiv(j, 13) * 13) + floormod(j, 13)) < 128), name="C"):
+                    C[vi, vj] = (B[vi, vj] + float32(1))
+
+
+def test_split_fuse():
     func = util.element_wise_stmt()
 
     # schedule
@@ -98,7 +120,44 @@ def test_split():
 
     assert Equal(split_func, s.func)
 
+    io, ii, j = s.get_axes(B)
+    s.fuse(io, ii)
+    i, jo, ji = s.get_axes(C)
+    s.fuse(jo, ji)
+
+    mod = tvm.tir.hybrid.create_module([split_fuse_element_wise])
+    split_fuse_func = mod["split_fuse_element_wise"]
+
+    assert AssertEqual(split_fuse_func, s.func)
+
+
+@tvm.tir.hybrid.script
+def predicate_fuse(b, c):
+    C = buffer_bind(c, (16, 16), "float32")
+    B = buffer_bind(b, (16, 16), "float32")
+    with block({}, writes=[], reads=[], name="root"):
+        for i in range(0, 256):
+            with block({vi(0, 16):floordiv(floordiv(i, 4), 4), vj(0, 16):((floormod(floordiv(i, 4), 4)*3) + floormod(i, 4))}, writes=[C[vi:(vi + 1), vj:(vj + 1)]], reads=[B[vi:(vi + 1), vj:(vj + 1)]], predicate=(((floormod(floordiv(i, 4), 4)*4) + floormod(i, 4)) < 16), name="update"):
+                C[vi, vj] = (B[vi, vj] + float32(1))
+
+
+def test_fuse_loop_sref():
+    func = util.predicate_stmt()
+
+    # schedule
+    s = tir.create_schedule(func)
+    update = s.get_block("update")
+    i, j, k = s.get_axes(update)
+    ij = s.fuse(i, j)
+    s.fuse(ij, k)
+
+    mod = tvm.tir.hybrid.create_module([predicate_fuse])
+    predicate_fuse_func = mod["predicate_fuse"]
+
+    assert AssertEqual(s.func, predicate_fuse_func)
+
 
 if __name__ == "__main__":
     test_fuse()
-    test_split()
+    test_split_fuse()
+    test_fuse_loop_sref()

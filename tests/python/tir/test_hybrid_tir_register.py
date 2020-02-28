@@ -56,15 +56,15 @@ def test_element_wise():
     mod = tvm.tir.hybrid.create_module([element_wise])
     func = mod["element_wise"]
 
-    assert isinstance(func.body, tvm.stmt.Block)
-    assert isinstance(func.body.body, tvm.stmt.SeqStmt)
-    assert isinstance(func.body.body[0], tvm.stmt.Loop)
-    assert isinstance(func.body.body[0].body, tvm.stmt.Loop)
-    assert isinstance(func.body.body[0].body.body, tvm.stmt.Block)
+    assert isinstance(func.body.block, tvm.stmt.Block)
+    assert isinstance(func.body.block.body, tvm.stmt.SeqStmt)
+    assert isinstance(func.body.block.body[0], tvm.stmt.Loop)
+    assert isinstance(func.body.block.body[0].body, tvm.stmt.Loop)
+    assert isinstance(func.body.block.body[0].body.body.block, tvm.stmt.Block)
 
-    assert isinstance(func.body.body[1], tvm.stmt.Loop)
-    assert isinstance(func.body.body[1].body, tvm.stmt.Loop)
-    assert isinstance(func.body.body[1].body.body, tvm.stmt.Block)
+    assert isinstance(func.body.block.body[1], tvm.stmt.Loop)
+    assert isinstance(func.body.block.body[1].body, tvm.stmt.Loop)
+    assert isinstance(func.body.block.body[1].body.body.block, tvm.stmt.Block)
 
 
 if __name__ == '__main__':
