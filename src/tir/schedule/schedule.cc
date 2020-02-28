@@ -341,14 +341,14 @@ class IRSubstitueInScope : public StmtExprMutator {
 
   Stmt VisitStmt_(const BlockRealizeNode* op) final {
     auto fmutate = [this](const PrimExpr& e) { return this->VisitExpr(e); };
-    Array<PrimExpr> v = op->values;
+    Array<PrimExpr> v = op->binding_values;
     v.MutateByApply(fmutate);
     PrimExpr pred = this->VisitExpr(op->predicate);
-    if (v.same_as(op->values) && pred.same_as(op->predicate)) {
+    if (v.same_as(op->binding_values) && pred.same_as(op->predicate)) {
       return GetRef<Stmt>(op);
     } else {
       auto n = CopyOnWrite(op);
-      n->values = std::move(v);
+      n->binding_values = std::move(v);
       n->predicate = std::move(pred);
       return Stmt(n);
     }

@@ -145,7 +145,7 @@ class RegionGatherer : public StmtExprVisitor {
     const auto* block_op = op->block.as<BlockNode>();
     for (size_t i = 0; i < block_op->iter_vars.size(); ++i) {
       const auto& iter = block_op->iter_vars[i];
-      const auto& v = op->values[i];
+      const auto& v = op->binding_values[i];
       block_var_[iter->var.get()] = v;
     }
     StmtExprVisitor::VisitStmt_(op);

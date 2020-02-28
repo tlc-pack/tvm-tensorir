@@ -309,7 +309,7 @@ Doc TIRHybridPrinter::VisitStmt_(const BlockRealizeNode* op) {
       doc << ", iter_type=\"" << str << "\"";
     }
     doc << "):";
-    doc << Print(op->values[i]);
+    doc << Print(op->binding_values[i]);
     if (i != block_op->iter_vars.size() - 1) {
       doc << ", ";
     }

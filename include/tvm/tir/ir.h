@@ -62,9 +62,9 @@ class BufferLoadNode : public PrimExprNode {
 
 class BufferLoad : public PrimExpr {
  public:
-  explicit BufferLoad(DataType type,
-                      Buffer buffer,
-                      Array<PrimExpr> indices);
+  TVM_DLL explicit BufferLoad(DataType type,
+                              Buffer buffer,
+                              Array<PrimExpr> indices);
   TVM_DEFINE_OBJECT_REF_METHODS(BufferLoad, PrimExpr, BufferLoadNode);
 };
 
@@ -100,9 +100,9 @@ class BufferStoreNode : public StmtNode {
 
 class BufferStore : public Stmt {
  public:
-  explicit BufferStore(Buffer buffer,
-                       PrimExpr value,
-                       Array<PrimExpr> indices);
+  TVM_DLL explicit BufferStore(Buffer buffer,
+                               PrimExpr value,
+                               Array<PrimExpr> indices);
   TVM_DEFINE_OBJECT_REF_METHODS(BufferStore, Stmt, BufferStoreNode);
 };
 
@@ -128,7 +128,7 @@ class AnnotationNode : public Object {
 
 class Annotation : public ObjectRef {
  public:
-  explicit Annotation(std::string attr_key, PrimExpr value);
+  TVM_DLL explicit Annotation(std::string attr_key, PrimExpr value);
   TVM_DEFINE_OBJECT_REF_METHODS(Annotation, ObjectRef, AnnotationNode)
 };
 
@@ -172,11 +172,11 @@ class LoopNode : public StmtNode {
 
 class Loop : public Stmt {
  public:
-  explicit Loop(Var loop_var,
-                PrimExpr min,
-                PrimExpr extent,
-                Array<Annotation> annotations,
-                Stmt body);
+  TVM_DLL explicit Loop(Var loop_var,
+                        PrimExpr min,
+                        PrimExpr extent,
+                        Array<Annotation> annotations,
+                        Stmt body);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Loop, Stmt, LoopNode);
 };
@@ -203,7 +203,7 @@ class TensorRegionNode : public Object {
 
 class TensorRegion : public ObjectRef {
  public:
-  explicit TensorRegion(Buffer buffer, Array<Range> region);
+  TVM_DLL explicit TensorRegion(Buffer buffer, Array<Range> region);
 
   TVM_DEFINE_OBJECT_REF_METHODS(TensorRegion, ObjectRef, TensorRegionNode);
 };
@@ -234,7 +234,7 @@ class BufferAllocateNode : public StmtNode {
 
 class BufferAllocate : public Stmt {
  public:
-  explicit BufferAllocate(Buffer buffer, std::string scope);
+  TVM_DLL explicit BufferAllocate(Buffer buffer, std::string scope);
 
   TVM_DEFINE_OBJECT_REF_METHODS(BufferAllocate, Stmt, BufferAllocateNode);
 };
@@ -288,13 +288,13 @@ class BlockNode : public StmtNode {
 
 class Block : public Stmt {
  public:
-  Block(Array<IterVar> iter_vars,
-        Array<TensorRegion> reads,
-        Array<TensorRegion> writes,
-        Stmt body,
-        Array<BufferAllocate> allocations,
-        Array<Annotation> annotations,
-        std::string tag);
+  TVM_DLL explicit Block(Array<IterVar> iter_vars,
+                         Array<TensorRegion> reads,
+                         Array<TensorRegion> writes,
+                         Stmt body,
+                         Array<BufferAllocate> allocations,
+                         Array<Annotation> annotations,
+                         std::string tag);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Block, Stmt, BlockNode);
 };
@@ -302,18 +302,17 @@ class Block : public Stmt {
 /*!
  * \brief A block realization node stores the parameters to realize a block
  */
-class BlockRealize;
 class BlockRealizeNode : public StmtNode {
  public:
   /*! \brief The corresponding value of the iter vars. */
-  Array<PrimExpr> values;
+  Array<PrimExpr> binding_values;
   /*! \brief The predicates of the block. */
   PrimExpr predicate;
   /*! \brief The block to be realized. */
   Block block;
 
   void VisitAttrs(AttrVisitor* v) {
-    v->Visit("values", &values);
+    v->Visit("binding_values", &binding_values);
     v->Visit("predicate", &predicate);
     v->Visit("block", &block);
   }
@@ -322,9 +321,13 @@ class BlockRealizeNode : public StmtNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(BlockRealizeNode, StmtNode);
 };
 
+/*!
+ * \brief Managed reference to BlockRealizeNode
+ * \sa BlockRealizeNode
+ */
 class BlockRealize : public Stmt {
  public:
-  BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block);
+  TVM_DLL explicit BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block);
 
   TVM_DEFINE_OBJECT_REF_METHODS(BlockRealize, Stmt, BlockRealizeNode);
 };
@@ -365,10 +368,10 @@ class FunctionNode : public BaseFuncNode {
 
 class Function : public BaseFunc {
  public:
-  explicit Function(Array<Var> params,
-                    Map<Var, Buffer> buffer_map,
-                    std::string name,
-                    Stmt body);
+  TVM_DLL explicit Function(Array<Var> params,
+                            Map<Var, Buffer> buffer_map,
+                            std::string name,
+                            Stmt body);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Function, BaseFunc, FunctionNode);
 

@@ -217,7 +217,7 @@ void StmtVisitor::VisitStmt_(const BlockNode* op) {
 }
 
 void StmtVisitor::VisitStmt_(const BlockRealizeNode* op) {
-  VisitArray(op->values, [this](const PrimExpr& e) { this->VisitExpr(e); });
+  VisitArray(op->binding_values, [this](const PrimExpr& e) { this->VisitExpr(e); });
   this->VisitExpr(op->predicate);
   this->VisitStmt(op->block);
 }
@@ -523,14 +523,14 @@ Stmt StmtMutator::VisitStmt_(const BlockNode* op) {
 
 Stmt StmtMutator::VisitStmt_(const BlockRealizeNode* op) {
   auto fmutate = [this](const PrimExpr& e) { return this->VisitExpr(e); };
-  Array<PrimExpr> v = MutateArray(op->values, fmutate);
+  Array<PrimExpr> v = MutateArray(op->binding_values, fmutate);
   PrimExpr pred = this->VisitExpr(op->predicate);
   Stmt block = this->VisitStmt(op->block);
-  if (v.same_as(op->values) && pred.same_as(op->predicate) && block.same_as(op->block)) {
+  if (v.same_as(op->binding_values) && pred.same_as(op->predicate) && block.same_as(op->block)) {
     return GetRef<Stmt>(op);
   } else {
     auto n = CopyOnWrite(op);
-    n->values = std::move(v);
+    n->binding_values = std::move(v);
     n->predicate = std::move(pred);
     n->block = Downcast<Block>(block);
     return Stmt(n);

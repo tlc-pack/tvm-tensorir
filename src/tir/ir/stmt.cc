@@ -275,7 +275,7 @@ Block::Block(Array<IterVar> iter_vars,
 BlockRealize::BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block) {
   CHECK_EQ(block->iter_vars.size(), values.size());
   ObjectPtr<BlockRealizeNode> node = make_object<BlockRealizeNode>();
-  node->values = std::move(values);
+  node->binding_values = std::move(values);
   node->predicate = std::move(predicate);
   node->block = std::move(block);
   data_ = std::move(node);
@@ -743,7 +743,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     p->stream << ":";
     p->Print(iter_var->dom->min + iter_var->dom->extent);
     p->stream << "]=";
-    p->Print(op_reailze->values[i]);
+    p->Print(op_reailze->binding_values[i]);
     if (i != op->iter_vars.size() - 1) {
       p->stream << ", ";
     }

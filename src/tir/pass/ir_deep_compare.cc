@@ -245,7 +245,7 @@ class IRDeepCompare :
 
   void VisitStmt_(const BlockRealizeNode* op, const Stmt& other) final {
     const auto* rhs = other.as<BlockRealizeNode>();
-    if (CompareExprArray(op->values, rhs->values) != 0) return;
+    if (CompareExprArray(op->binding_values, rhs->binding_values) != 0) return;
     if (CompareExpr(op->predicate, rhs->predicate) != 0) return;
     if (CompareStmt(op->block, rhs->block) != 0) return;
   }
