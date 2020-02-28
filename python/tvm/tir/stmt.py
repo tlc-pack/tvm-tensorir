@@ -424,9 +424,6 @@ class Block(Stmt):
     iter_vars : list of IterVar
         The block Variable.
 
-    values : list of Expr
-        The binding value of the block var.
-
     reads : list of TensorRegion
         The read tensor region of the block.
 
@@ -436,9 +433,6 @@ class Block(Stmt):
     body: Stmt
         The body of the block.
 
-    predicate: Expr
-        The predicates of the block.
-
     annotations: list of Annotation
         The annotation of the block.
 
@@ -446,11 +440,28 @@ class Block(Stmt):
         the tag of the block.
 
     """
-    def __init__(self, iter_vars, values, reads, writes,
-                 body, predicate, annotations, tag):
+    def __init__(self, iter_vars, reads, writes, body, annotations, tag):
         self.__init_handle_by_constructor__(
-            _make.Block, iter_vars, values, reads, writes,
-            body, predicate, annotations, tag)
+            _make.Block, iter_vars, reads, writes, body, annotations, tag)
+
+@register_object
+class BlockRealize(Stmt):
+    """BlockRealize node.
+
+    Parameters
+    ----------
+    values : list of Expr
+        The binding value of the block var.
+
+    predicate: Expr
+        The predicates of the block.
+
+    block : Block
+        The block to realize
+    """
+    def __init__(self, values, predicate, block):
+        self.__init_handle_by_constructor__(
+            _make.BlockRealize, values, predicate, block)
 
 @register_object
 class BufferAllocate(Stmt):

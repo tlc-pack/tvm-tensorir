@@ -359,7 +359,7 @@ class Stage(Object):
         """
         return GetStmtSRef(self, stmt)
 
-    def replace(self, sref, target_stmt):
+    def replace(self, sref, target_stmt, block_sref_map=None):
         """Replace a subtree of AST with new stmt
         and auto maintain the schedulable reference tree
 
@@ -371,8 +371,11 @@ class Stage(Object):
         target_stmt: Stmt
             The target stmt
 
+        block_sref_map: Map
+            The remap of block_sref
+
         """
-        return Replace(self, sref, target_stmt)
+        return Replace(self, sref, target_stmt, block_sref_map)
 
     def tile(self, x_parent, y_parent, x_factor, y_factor):
         """ Perform tiling on two dimensions

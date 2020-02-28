@@ -61,9 +61,8 @@ def block(parser, node, block_vars_info, reads, writes, predicate=True, annotati
 
     allocations, body = parser.scope_emitter.pop_scope(is_block=True)
 
-    parser.scope_emitter.emit(
-        _make.Block(block_vars, values, reads, writes, body, predicate,
-                    allocations, annotations, name))
+    inner = _make.Block(block_vars, reads, writes, body, allocations, annotations, name)
+    parser.scope_emitter.emit(_make.BlockRealize(values, predicate, inner))
 
 
 def range(parser, node, begin, end):
