@@ -127,7 +127,7 @@ class TIRHybridPrinter :
 
   Doc VisitStmt_(const SeqStmtNode* op) override;
   Doc VisitStmt_(const EvaluateNode* op) override;
-  Doc VisitStmt_(const BlockNode* op) override;
+  Doc VisitStmt_(const BlockRealizeNode* op) override;
   Doc VisitStmt_(const LoopNode* op) override;
   Doc VisitStmt_(const BufferAllocateNode* op) override;
   Doc VisitStmt_(const BufferStoreNode* op) override;
@@ -278,12 +278,13 @@ Doc TIRHybridPrinter::VisitStmt_(const EvaluateNode* op) {
   return Print(op->value);
 }
 
-Doc TIRHybridPrinter::VisitStmt_(const BlockNode* op) {
+Doc TIRHybridPrinter::VisitStmt_(const BlockRealizeNode* op) {
+  const BlockNode* block_op = (op->block).as<BlockNode>();
   // print block name and block vars
   Doc doc;
   doc << "with block({";
-  for (size_t i = 0; i < op->iter_vars.size(); ++i) {
-    const auto& iter_var = op->iter_vars[i];
+  for (size_t i = 0; i < block_op->iter_vars.size(); ++i) {
+    const auto& iter_var = block_op->iter_vars[i];
     doc << Print(iter_var->var);
     doc << "(";
     doc << Print(iter_var->dom->min);
@@ -308,30 +309,30 @@ Doc TIRHybridPrinter::VisitStmt_(const BlockNode* op) {
       doc << ", iter_type=\"" << str << "\"";
     }
     doc << "):";
-    doc << Print(op->values[i]);
-    if (i != op->iter_vars.size() - 1) {
+    doc << Print(op->binding_values[i]);
+    if (i != block_op->iter_vars.size() - 1) {
       doc << ", ";
     }
   }
   doc << "}";
 
   // print tensor region and annotations
-  doc << ", writes=" << Print(op->writes);
-  doc << ", reads=" << Print(op->reads);
+  doc << ", writes=" << Print(block_op->writes);
+  doc << ", reads=" << Print(block_op->reads);
   if (!is_one(op->predicate)) {
     doc << ", predicate=" << Print(op->predicate);
   }
-  if (!op->annotations.empty()) {
-    doc << ", annotations=" << Print(op->annotations);
+  if (!block_op->annotations.empty()) {
+    doc << ", annotations=" << Print(block_op->annotations);
   }
-  doc << ", name=" << Doc::StrLiteral(op->tag) <<  "):";
+  doc << ", name=" << Doc::StrLiteral(block_op->tag) <<  "):";
   // print body
   Doc body;
   body << Doc::NewLine();
-  for (const auto& allocate : op->allocations) {
+  for (const auto& allocate : block_op->allocations) {
     body << Print(allocate) << Doc::NewLine();
   }
-  body << Print(op->body);
+  body << Print(block_op->body);
   doc << Doc::Indent(4, body);
   return doc;
 }
@@ -430,7 +431,7 @@ TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
   doc << Doc::Indent(4, body);
   return doc;
 });
-/*
+
 TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
 .set_dispatch<TensorRegionNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
   auto* op = node.as<TensorRegionNode>();
@@ -446,7 +447,7 @@ TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
   doc << "]";
   return doc;
 });
-*/
+
 TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
 .set_dispatch<AnnotationNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
   auto* op = node.as<AnnotationNode>();
