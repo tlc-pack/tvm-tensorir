@@ -153,9 +153,10 @@ class Schedule : public ObjectRef {
   /*!
    * \brief Get the direct child Schedulable Stmt (Block and Loop)
    * \param stmt the parent stmt.
+   * \param keep_realize if true, get block_realize for blocks
    * \return the list of child stmts
    */
-  static Array<Stmt> GetChildren(const Stmt& stmt);
+  static Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize = false);
 
   /*!
    * \brief Substitute the var in current block scope specified in key->var to be value.
@@ -178,7 +179,7 @@ class Schedule : public ObjectRef {
    * \param top The query top
    * \return the block sref list
    */
-  std::vector<StmtSRef> GetBlocksUnderSRef(const StmtSRef& top) const;
+  std::vector<const BlockRealizeNode*> GetBlockRealizeUnderSRef(const StmtSRef& top) const;
 
   /*!
    * \brief Decompose the loop tree from now to bottom into equivalent loops

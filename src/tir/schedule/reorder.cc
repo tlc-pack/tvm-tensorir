@@ -27,7 +27,7 @@
 namespace tvm {
 namespace tir {
 
-/*! \breif Helper class to generate vmap to be used in SubstituteInScope */
+/*! \breif Helper class to generate vmap lambda to be used in SubstituteInScope */
 std::function<PrimExpr(const VarNode*)> vmap_generator(Var new_var, Var old_var) {
   return [&](const VarNode* v) -> PrimExpr {
     if (GetRef<Var>(v).same_as(old_var)) {
@@ -55,71 +55,23 @@ std::vector<StmtSRef> Schedule::GetLoopsUnderSRef(const StmtSRef& top) const {
   return ret;
 }
 
-std::vector<StmtSRef> Schedule::GetBlocksUnderSRef(const StmtSRef& top) const {
-  std::vector<StmtSRef> ret;
-  std::queue<Stmt> queue;
-  for (Stmt child : Schedule::GetChildren(GetRef<Stmt>(top->node)))
-    queue.push(child);
-  while (!queue.empty()) {
-    Stmt now = queue.front();
-    queue.pop();
-    if (now.as<BlockNode>()) {
-      ret.push_back(this->operator->()->stmt2ref.at(now.as<StmtNode>()));
-    } else if (now.as<LoopNode>()) {
-      for (Stmt child : Schedule::GetChildren(now))
-        queue.push(child);
-    }
-  }
-  return ret;
-}
-
-/*! \brief Helper class to replace the son_index-th son of some Stmt with target */
-class DirectSonReplacer : public StmtMutator {
+class ChildBlockRealizeGather : public StmtVisitor {
  public:
-  explicit DirectSonReplacer(int son_index, const Stmt& target)
-      : son_index_(son_index), target_(target) {}
+  ChildBlockRealizeGather() = default;
 
- private:
-  Stmt VisitStmt_(const BlockNode* op) final {
-    allow_copy_on_write_ = false;
-    auto new_node = CopyOnWrite(op);
-    new_node->body = MutateBody_(op->body);
-    return Block(new_node);
+  void VisitStmt_(const BlockRealizeNode* op) final {
+    ret.push_back(op);
   }
 
-  Stmt VisitStmt_(const LoopNode* op) final {
-    allow_copy_on_write_ = false;
-    auto new_node = CopyOnWrite(op);
-    new_node->body = MutateBody_(op->body);
-    return Loop(new_node);
-  }
-
-  Stmt MutateBody_(const Stmt& body) {
-    Array<Stmt> ret;
-    const auto* ptr = body.as<SeqStmtNode>();
-    if (ptr) {
-      // Before
-      for (size_t i = 0; i < son_index_; i++)
-        ret.push_back(ptr->seq[i]);
-      // Target
-      if (target_.as<SeqStmtNode>()) {
-        for (Stmt stmt : target_.as<SeqStmtNode>()->seq)
-          ret.push_back(stmt);
-      } else {
-        ret.push_back(target_);
-      }
-      // After
-      for (size_t i = son_index_ + 1; i < ptr->size(); i++)
-        ret.push_back(ptr->seq[i]);
-    } else {
-      return target_;
-    }
-    return SeqStmt(ret);
-  }
-
-  size_t son_index_;
-  Stmt target_;
+  std::vector<const BlockRealizeNode*> ret;
 };
+
+std::vector<const BlockRealizeNode*>
+    Schedule::GetBlockRealizeUnderSRef(const StmtSRef& top) const {
+  ChildBlockRealizeGather child_block_realize_gather;
+  child_block_realize_gather(GetRef<Stmt>(top->node));
+  return std::move(child_block_realize_gather.ret);
+}
 
 /*! \brief Helper class to detect whether a PrimExpr is related with var */
 class VarRelatedDetector : public ExprVisitor {
@@ -130,19 +82,17 @@ class VarRelatedDetector : public ExprVisitor {
     related_ |= GetRef<Var>(op).same_as(var_);
   }
 
-  bool is_related() {
-    return related_;
-  }
+  bool related_{false};
 
  private:
   const Var& var_;
-  bool related_{false};
 };
 
+/*! \brief Wrapper function for VarRelatedDetector */
 bool RelatedWithVar(const Var& var, const PrimExpr& expr) {
   VarRelatedDetector detector(var);
   detector(expr);
-  return detector.is_related();
+  return detector.related_;
 }
 
 std::pair<std::vector<Stmt>, size_t> Schedule::DecomposeLoop(
@@ -158,12 +108,12 @@ std::pair<std::vector<Stmt>, size_t> Schedule::DecomposeLoop(
   ret.second = 0;
   if (now == bottom) {
     // Reach bottom
-    ret.first.push_back(GetRef<Loop>(bottom));
+    ret.first.push_back(Loop(make_object<LoopNode>(*bottom)));
     return ret;
   }
 
   int rename_counter = 0;
-  Array<Stmt> children = GetChildren(GetRef<Stmt>(now));
+  Array<Stmt> children = GetChildren(GetRef<Stmt>(now), true);
 
   // Initialize target
   Loop target = Downcast<Loop>(GetRef<Stmt>(successor->at(now_sref)->node));
@@ -175,7 +125,7 @@ std::pair<std::vector<Stmt>, size_t> Schedule::DecomposeLoop(
     before.push_back(stmt);
   }
   if (!before.empty()) {
-    Var before_var = now->loop_var.copy_with_suffix(std::to_string(rename_counter++));
+    Var before_var = Var(now->loop_var->name_hint + std::to_string(rename_counter++));
     auto vmap = vmap_generator(before_var, now->loop_var);
     Stmt before_body = before.size() == 1 ? before[0] : SeqStmt(before);
     ret.first.push_back(Loop(before_var, now->min, now->extent, now->annotations,
@@ -187,7 +137,7 @@ std::pair<std::vector<Stmt>, size_t> Schedule::DecomposeLoop(
   auto decomposed_target = DecomposeLoop(successor->at(now_sref), bottom_sref, successor);
   for (size_t i = 0; i < decomposed_target.first.size(); i++) {
     Stmt loop = decomposed_target.first[i];
-    Var new_var = now->loop_var.copy_with_suffix(std::to_string(rename_counter++));
+    Var new_var = Var(now->loop_var->name_hint + std::to_string(rename_counter++));
     if (i == decomposed_target.second) rename_counter--;
     auto vmap = vmap_generator(new_var, now->loop_var);
     ret.first.push_back(Loop(new_var, now->min, now->extent, now->annotations,
@@ -202,7 +152,7 @@ std::pair<std::vector<Stmt>, size_t> Schedule::DecomposeLoop(
     after.push_back(*it);
   }
   if (!after.empty()) {
-    Var after_var = now->loop_var.copy_with_suffix(std::to_string(rename_counter++));
+    Var after_var = Var(now->loop_var->name_hint + std::to_string(rename_counter));
     Stmt after_body = after.size() == 1 ? after[0] : SeqStmt(after);
     auto vmap = vmap_generator(after_var, now->loop_var);
     ret.first.push_back(Loop(after_var, now->min, now->extent, now->annotations,
@@ -214,14 +164,14 @@ std::pair<std::vector<Stmt>, size_t> Schedule::DecomposeLoop(
 bool Schedule::DetectLoopReorderable(const StmtSRef& loop) {
   const auto* loop_ptr = GetRef<Stmt>(loop->node).as<LoopNode>();
   CHECK(loop_ptr);
-  std::vector<StmtSRef> blocks = GetBlocksUnderSRef(loop);
-  for (StmtSRef block_ref : blocks) {
-    const auto* block_ptr = GetRef<Stmt>(block_ref->node).as<BlockNode>();
-    CHECK(block_ptr != nullptr);
+  std::vector<const BlockRealizeNode*> blocks = GetBlockRealizeUnderSRef(loop);
+  for (const auto* block_realize_ptr : blocks) {
+    const auto* block_ptr = block_realize_ptr->block.as<BlockNode>();
+    CHECK_EQ(block_realize_ptr->binding_values.size(), block_ptr->iter_vars.size());
     for (size_t i = 0; i < block_ptr->iter_vars.size(); i++) {
       IterVarType var_type = block_ptr->iter_vars[i]->iter_type;
       if (var_type != kDataPar && var_type != kThreadIndex && var_type != kCommReduce
-          && RelatedWithVar(loop_ptr->loop_var, block_ptr->values[i]))
+          && RelatedWithVar(loop_ptr->loop_var, block_realize_ptr->binding_values[i]))
         return false;
     }
   }
@@ -230,13 +180,12 @@ bool Schedule::DetectLoopReorderable(const StmtSRef& loop) {
 
 void Schedule::reorder(const Array<StmtSRef>& order) {
   // Equivalence
-  // The equivalence is based on the fact that if a loop is kDataPar/kCommReduce/kThreadIndex
-  // then for (i) { S[i]->T[i]->U[i]; }
-  // is equivalent with
+  // - The equivalence is based on the fact that if a loop is kDataPar/kCommReduce/kThreadIndex
+  // then for (i) { S[i]->T[i]->U[i]; } is equivalent with
   // for (i) {S[i]} -> for (i) {T[i]} -> for (i) {U[i]}
-  // We recursively transform the original loop into a collection
+  // - We recursively transform the original loop into a collection
   // of equivalent simple loops(single branch), and we reorder the target one.
-  // (TODO: bohan) If loops are single-branch at the beginning,
+  // (TODO: bohan) - If loops are single-branch at the beginning,
   // (TODO: bohan) then iter_type of blocks below can be kOrdered
 
   // Check iter_type and loops are mutually different
@@ -273,9 +222,9 @@ void Schedule::reorder(const Array<StmtSRef>& order) {
     }
   }
   CHECK(seen_loop.empty()) << "Loops have to be under the same scope";
-  // Reorder
   for (StmtSRef loop_sref : order)
     seen_loop.insert(loop_sref);
+  // Reorder
   // top and bottom denote the range of loops need reordering
   const StmtSRefNode* top = nullptr, * bottom = nullptr;
   for (StmtSRef loop_sref : all_loops) {
@@ -305,23 +254,19 @@ void Schedule::reorder(const Array<StmtSRef>& order) {
     }
     // mutate the generated loop
     auto n = runtime::GetObjectPtr<LoopNode>(const_cast<LoopNode*>(new_loop));
-    n->loop_var = copy->loop_var.copy_with_suffix("_re");
+    // The loop sref in target loop ought to be reused, so we copy the loop var
+    n->loop_var = copy->loop_var;
     n->min = copy->min;
     n->extent = copy->extent;
     n->annotations = copy->annotations;
-    n->body = SubstituteInScope(n->body, vmap_generator(n->loop_var, copy->loop_var));
     // next level
     if (old_loop == bottom)
       break;
     old_loop = successor.at(old_loop);
     new_loop = (new_loop->body).as<LoopNode>();
   }
-  // In principle we ought to replace these newly generated loops into original AST by Replace
-  // But Replace only accepts Block and Loop, so we first replace the father of top and
-  // replace the father of top into the AST
-  Stmt new_parent = DirectSonReplacer(top->seq_index, SeqStmt(res.first))
-      (GetRef<Stmt>(top->parent->node));
-  this->Replace(GetRef<StmtSRef>(top->parent), std::move(new_parent));
+
+  this->Replace(GetRef<StmtSRef>(top), res.first.size() == 1 ? res.first[0] : SeqStmt(res.first));
 }
 
 }  // namespace tir

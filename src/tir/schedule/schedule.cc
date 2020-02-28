@@ -39,6 +39,17 @@ class ScheduleCreator : public StmtVisitor {
     VisitSRefStmt(op);
   }
 
+  void VisitStmt_(const SeqStmtNode* op) override {
+    StmtVisitor::VisitStmt_(op);
+    for (size_t index = 0; index < op->seq.size(); index++) {
+      if (op->seq[index]->IsInstance<BlockRealizeNode>()) {
+        (*stmt_map_)[op->seq[index].as<BlockRealizeNode>()->block.operator->()]->seq_index = index;
+      } else {
+        (*stmt_map_)[op->seq[index].operator->()]->seq_index = index;
+      }
+    }
+  }
+
  protected:
   template <typename T>
   void VisitSRefStmt(const T* op) {
@@ -101,8 +112,9 @@ class DependencyAnalyzer : public ScheduleCreator {
 
 class SubReplacer : protected StmtMutator {
  public:
-  SubReplacer(StmtSRefNode* sref, const Stmt& target)
-      : sref_(sref), target_(target) {}
+  SubReplacer(StmtSRefNode* sref, const Stmt& target,
+              std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref)
+      : sref_(sref), target_(target), stmt2ref_(stmt2ref) {}
   /*!
    * \brief mutate weakref
    * \param weakref The statement to be mutated.
@@ -148,7 +160,16 @@ class SubReplacer : protected StmtMutator {
     // fast path
     if (seq_index >= 0 && is_son(stmt->seq[seq_index], sref_->node)) {
       auto n = CopyOnWrite(stmt);
-      n->seq.Set(seq_index, target_);
+      if (target_->IsInstance<SeqStmtNode>()) {
+        // note that nested SeqStmt is not allowed, so we flatten target here
+       const Array<Stmt>& target_seq = target_.as<SeqStmtNode>()->seq;
+        n->seq.Erase(seq_index);
+        n->seq.Insert(seq_index, target_seq);
+        for (size_t i = 0; i < target_seq.size(); i++)
+          (*stmt2ref_)[target_seq[i].operator->()]->seq_index = i + seq_index;
+      } else {
+        n->seq.Set(seq_index, target_);
+      }
       return Stmt(n);
     } else {
       return StmtMutator::VisitStmt_(stmt);
@@ -184,6 +205,7 @@ class SubReplacer : protected StmtMutator {
   int sref_scope_counter_{0};
   StmtSRefNode* sref_;
   const Stmt& target_;
+  std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
 };
 
 Function UpdateFuncBody(FunctionNode* func, const Stmt& new_body) {
@@ -415,7 +437,8 @@ void Schedule::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_m
     // that parent is not unique and we need to copy
     bool parent_is_uniquely_referenced = curr_step + 1 > num_copy_steps;
     // replace ptr(son of parent->node) with target and return a new parent Stmt)
-    Stmt new_stmt = SubReplacer(ptr, target)(parent->node, parent_is_uniquely_referenced);
+    Stmt new_stmt = SubReplacer(ptr, target, &self->stmt2ref)
+        (parent->node, parent_is_uniquely_referenced);
     if (curr_step != 0) UpdateSRef(ptr, target);
     if (parent_is_uniquely_referenced) {
       CHECK(new_stmt.get() == parent->node);
@@ -427,7 +450,13 @@ void Schedule::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_m
     target = new_stmt;
   }
   remover(old_stmt);
-  UpdateSRef(self->root.operator->(), target);
+  if (old_ref->node == self->root->node) {
+    // The replace point is root, we directly use the sref tree created by SRefCreator
+    self->root = self->stmt2ref[target.operator->()];
+  } else {
+    // Otherwise we reuse root sref
+    UpdateSRef(self->root.operator->(), target);
+  }
   self->func = UpdateFuncBody(self->func.operator->(), target);
 }
 
@@ -448,6 +477,7 @@ Schedule Schedule::Create(Function func) {
 }
 
 void Schedule::UpdateSRef(StmtSRefNode* sref, const Stmt& stmt) {
+  CHECK(stmt->IsInstance<BlockNode>() || stmt->IsInstance<LoopNode>());
   ScheduleNode* self = operator->();
   self->stmt2ref[stmt.operator->()] = GetRef<StmtSRef>(sref);
   self->stmt2ref.erase(sref->node);
@@ -513,7 +543,7 @@ StmtSRef Schedule::GetScope(StmtSRef node) const {
 }
 
 /*! \note Nested SeqStmt is not allowed in schedule. */
-Array<Stmt> Schedule::GetChildren(const Stmt& stmt) {
+Array<Stmt> Schedule::GetChildren(const Stmt& stmt, bool keep_realize) {
   Stmt body;
   if (const auto* block = stmt.as<BlockNode>()) {
     body = block->body;
@@ -525,8 +555,8 @@ Array<Stmt> Schedule::GetChildren(const Stmt& stmt) {
   if (const auto* seq = body.as<SeqStmtNode>()) {
     Array<Stmt> ret;
     for (const Stmt& child : seq->seq)
-      if (child->IsInstance<BlockRealizeNode>()) {
-        ret.push_back(child.as<BlockRealizeNode>()->block);
+      if (child->IsInstance<BlockRealizeNode>() && !keep_realize) {
+          ret.push_back(child.as<BlockRealizeNode>()->block);
       } else {
         ret.push_back(child);
       }

@@ -288,6 +288,24 @@ class Array : public ObjectRef {
     ArrayNode* n = this->CopyOnWrite();
     n->data[i] = value;
   }
+  /*!
+   * \brief insert array of elements into position i
+   * \param i The index
+   * \param value the array to be inserted
+   */
+  inline void Insert(size_t i, const Array<T>& value) {
+    ArrayNode* n = this->CopyOnWrite();
+    for (auto it = value.rbegin(); it != value.rend(); ++it)
+      n->data.insert(n->data.begin() + i, (*it));
+  }
+  /*!
+   * \brief erase i-th element of the array/
+   * \param i The index
+   */
+  inline void Erase(size_t i) {
+    ArrayNode* n = this->CopyOnWrite();
+    n->data.erase(n->data.begin() + i);
+  }
   /*! \return whether array is empty */
   inline bool empty() const {
     return size() == 0;
