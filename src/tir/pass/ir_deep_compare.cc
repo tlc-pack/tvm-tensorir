@@ -222,7 +222,6 @@ class IRDeepCompare :
                          return CompareExpr(a->var, b->var) && CompareRange(a->dom, b->dom);
                        }) != 0) return;
     }
-    if (CompareExprArray(op->values, rhs->values) != 0) return;
     if (CompareArray(op->allocations, rhs->allocations,
                      [this](const Stmt& a, const Stmt& b) {
                        return CompareStmt(a, b);
@@ -236,13 +235,19 @@ class IRDeepCompare :
                        return CompareTensorRegion(a, b);
                      }) != 0) return;
 
-    if (CompareExpr(op->predicate, rhs->predicate) != 0) return;
     if (CompareArray(op->annotations, rhs->annotations,
                      [this](const Annotation& a, const Annotation& b) {
                        return CompareAnnotation(a, b);
                      }) != 0) return;
     if (CompareStmt(op->body, rhs->body) != 0) return;
     if (CompareString(op->tag, rhs->tag) != 0) return;
+  }
+
+  void VisitStmt_(const BlockRealizeNode* op, const Stmt& other) final {
+    const auto* rhs = other.as<BlockRealizeNode>();
+    if (CompareExprArray(op->binding_values, rhs->binding_values) != 0) return;
+    if (CompareExpr(op->predicate, rhs->predicate) != 0) return;
+    if (CompareStmt(op->block, rhs->block) != 0) return;
   }
 
   void VisitStmt_(const BufferStoreNode* op, const Stmt& other) final {

@@ -75,7 +75,7 @@ def predicate(b, c):
                 for ji in range(0, 4):
                     with block({vi(0, 16): i, vj(0, 16): jo * 3 + ji},
                                reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
-                               predicate=jo * 4 + ji < 16):
+                               predicate=jo * 4 + ji < 16, name="update"):
                         C[vi, vj] = B[vi, vj] + 1
 
 
