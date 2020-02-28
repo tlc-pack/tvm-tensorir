@@ -26,13 +26,13 @@ def test_matmul():
     rt_func = from_source(tvm.tir.hybrid.ashybrid(func, True))
     assert tvm.ir_pass.AssertEqual(func, rt_func)
 
-    assert isinstance(rt_func.body, tvm.stmt.Block)
-    assert isinstance(rt_func.body.body, tvm.stmt.Loop)
-    assert isinstance(rt_func.body.body.body, tvm.stmt.Loop)
-    assert isinstance(rt_func.body.body.body.body, tvm.stmt.SeqStmt)
-    assert isinstance(rt_func.body.body.body.body[0], tvm.stmt.Block)
-    assert isinstance(rt_func.body.body.body.body[1], tvm.stmt.Loop)
-    assert isinstance(rt_func.body.body.body.body[1].body, tvm.stmt.Block)
+    assert isinstance(rt_func.body.block, tvm.stmt.Block)
+    assert isinstance(rt_func.body.block.body, tvm.stmt.Loop)
+    assert isinstance(rt_func.body.block.body.body, tvm.stmt.Loop)
+    assert isinstance(rt_func.body.block.body.body.body, tvm.stmt.SeqStmt)
+    assert isinstance(rt_func.body.block.body.body.body[0].block, tvm.stmt.Block)
+    assert isinstance(rt_func.body.block.body.body.body[1], tvm.stmt.Loop)
+    assert isinstance(rt_func.body.block.body.body.body[1].body.block, tvm.stmt.Block)
 
 
 def test_element_wise():
@@ -40,15 +40,15 @@ def test_element_wise():
     rt_func = from_source(tvm.tir.hybrid.ashybrid(func, True))
     assert tvm.ir_pass.AssertEqual(func, rt_func)
 
-    assert isinstance(rt_func.body, tvm.stmt.Block)
-    assert isinstance(rt_func.body.body, tvm.stmt.SeqStmt)
-    assert isinstance(rt_func.body.body[0], tvm.stmt.Loop)
-    assert isinstance(rt_func.body.body[0].body, tvm.stmt.Loop)
-    assert isinstance(rt_func.body.body[0].body.body, tvm.stmt.Block)
+    assert isinstance(rt_func.body.block, tvm.stmt.Block)
+    assert isinstance(rt_func.body.block.body, tvm.stmt.SeqStmt)
+    assert isinstance(rt_func.body.block.body[0], tvm.stmt.Loop)
+    assert isinstance(rt_func.body.block.body[0].body, tvm.stmt.Loop)
+    assert isinstance(rt_func.body.block.body[0].body.body.block, tvm.stmt.Block)
 
-    assert isinstance(rt_func.body.body[1], tvm.stmt.Loop)
-    assert isinstance(rt_func.body.body[1].body, tvm.stmt.Loop)
-    assert isinstance(rt_func.body.body[1].body.body, tvm.stmt.Block)
+    assert isinstance(rt_func.body.block.body[1], tvm.stmt.Loop)
+    assert isinstance(rt_func.body.block.body[1].body, tvm.stmt.Loop)
+    assert isinstance(rt_func.body.block.body[1].body.body.block, tvm.stmt.Block)
 
 
 def test_predicate():
@@ -56,11 +56,11 @@ def test_predicate():
     rt_func = from_source(tvm.tir.hybrid.ashybrid(func, True))
     assert tvm.ir_pass.AssertEqual(func, rt_func)
 
-    assert isinstance(rt_func.body, tvm.stmt.Block)
-    assert isinstance(rt_func.body.body, tvm.stmt.Loop)
-    assert isinstance(rt_func.body.body.body, tvm.stmt.Loop)
-    assert isinstance(rt_func.body.body.body.body, tvm.stmt.Loop)
-    assert isinstance(rt_func.body.body.body.body.body, tvm.stmt.Block)
+    assert isinstance(rt_func.body.block, tvm.stmt.Block)
+    assert isinstance(rt_func.body.block.body, tvm.stmt.Loop)
+    assert isinstance(rt_func.body.block.body.body, tvm.stmt.Loop)
+    assert isinstance(rt_func.body.block.body.body.body, tvm.stmt.Loop)
+    assert isinstance(rt_func.body.block.body.body.body.body.block, tvm.stmt.Block)
 
 
 def test_functions():
