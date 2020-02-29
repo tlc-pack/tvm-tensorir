@@ -168,18 +168,12 @@ class Schedule : public ObjectRef {
                                 const std::function<PrimExpr(const VarNode*)>& value_func);
 
   /*!
-   * \brief Get all the loops under top in BFS order, which are in the same block scope with top
-   * \param top The query top
-   * \return the loop sref list
-   */
-  std::vector<StmtSRef> GetLoopsUnderSRef(const StmtSRef& top) const;
-
-  /*!
-   * \brief Get all the blocks under top in BFS order, which are in the same block scope with top
+   * \brief Get all the Type T nodes under top which are in the same block scope with top
    * \param top The query top
    * \return the block sref list
    */
-  std::vector<const BlockRealizeNode*> GetBlockRealizeUnderSRef(const StmtSRef& top) const;
+  template <typename T>
+  std::vector<const T*> GetUnderSRef(const StmtSRef& top) const;
 
   /*!
    * \brief Decompose the loop tree from now to bottom into equivalent loops

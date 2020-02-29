@@ -27,7 +27,7 @@
 namespace tvm {
 namespace tir {
 
-/*! \breif Helper class to generate vmap lambda to be used in SubstituteInScope */
+/*! \brief Helper class to generate vmap lambda to be used in SubstituteInScope */
 std::function<PrimExpr(const VarNode*)> vmap_generator(Var new_var, Var old_var) {
   return [&](const VarNode* v) -> PrimExpr {
     if (GetRef<Var>(v).same_as(old_var)) {
@@ -38,39 +38,32 @@ std::function<PrimExpr(const VarNode*)> vmap_generator(Var new_var, Var old_var)
   };
 }
 
-std::vector<StmtSRef> Schedule::GetLoopsUnderSRef(const StmtSRef& top) const {
-  std::vector<StmtSRef> ret;
-  std::queue<Stmt> queue;
-  for (Stmt child : Schedule::GetChildren(GetRef<Stmt>(top->node)))
-    queue.push(child);
-  while (!queue.empty()) {
-    Stmt now = queue.front();
-    queue.pop();
-    if (now.as<LoopNode>()) {
-      ret.push_back(this->operator->()->stmt2ref.at(now.as<StmtNode>()));
-      for (Stmt child : Schedule::GetChildren(now))
-        queue.push(child);
-    }
-  }
-  return ret;
-}
-
-class ChildBlockRealizeGather : public StmtVisitor {
+template <typename T>
+class ChildGather : public StmtVisitor {
  public:
-  ChildBlockRealizeGather() = default;
+  ChildGather() = default;
 
-  void VisitStmt_(const BlockRealizeNode* op) final {
-    ret.push_back(op);
+  void VisitStmt(const Stmt& n) final {
+    if (n->IsInstance<BlockNode>() && counter++ > 0) return;
+    StmtVisitor::VisitStmt(n);
   }
 
-  std::vector<const BlockRealizeNode*> ret;
+  void VisitStmt_(const T* op) final {
+    ret.push_back(op);
+    StmtVisitor::VisitStmt_(op);
+  }
+
+  std::vector<const T*> ret;
+
+ private:
+  int counter = 0;
 };
 
-std::vector<const BlockRealizeNode*>
-    Schedule::GetBlockRealizeUnderSRef(const StmtSRef& top) const {
-  ChildBlockRealizeGather child_block_realize_gather;
-  child_block_realize_gather(GetRef<Stmt>(top->node));
-  return std::move(child_block_realize_gather.ret);
+template <typename T>
+std::vector<const T*> Schedule::GetUnderSRef(const StmtSRef& top) const {
+  ChildGather<T> child_gather;
+  child_gather(GetRef<Stmt>(top->node));
+  return std::move(child_gather.ret);
 }
 
 /*! \brief Helper class to detect whether a PrimExpr is related with var */
@@ -164,7 +157,7 @@ std::pair<std::vector<Stmt>, size_t> Schedule::DecomposeLoop(
 bool Schedule::DetectLoopReorderable(const StmtSRef& loop) {
   const auto* loop_ptr = GetRef<Stmt>(loop->node).as<LoopNode>();
   CHECK(loop_ptr);
-  std::vector<const BlockRealizeNode*> blocks = GetBlockRealizeUnderSRef(loop);
+  std::vector<const BlockRealizeNode*> blocks = GetUnderSRef<BlockRealizeNode>(loop);
   for (const auto* block_realize_ptr : blocks) {
     const auto* block_ptr = block_realize_ptr->block.as<BlockNode>();
     CHECK_EQ(block_realize_ptr->binding_values.size(), block_ptr->iter_vars.size());
@@ -191,7 +184,8 @@ void Schedule::reorder(const Array<StmtSRef>& order) {
   // Check iter_type and loops are mutually different
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> seen_loop;
   for (StmtSRef loop_sref : order) {
-    CHECK(GetRef<Stmt>(loop_sref->node).as<LoopNode>()) << "Order has to be a list a Loops";
+    CHECK(GetRef<Stmt>(loop_sref->node).as<LoopNode>())
+      << "Order has to be a list a Loops";
     CHECK(Schedule::DetectLoopReorderable(loop_sref))
       << "Cannot reorder Loop("
       << GetRef<Stmt>(loop_sref->node).as<LoopNode>()->loop_var << ")";
@@ -201,14 +195,14 @@ void Schedule::reorder(const Array<StmtSRef>& order) {
     seen_loop.insert(loop_sref);
   }
   // Check these loops are in the same line
-  std::vector<StmtSRef> all_loops = GetLoopsUnderSRef(GetScope(order[0]));
+  std::vector<const LoopNode*> all_loops = GetUnderSRef<LoopNode>(GetScope(order[0]));
   // successor[LoopA] = LoopB
   // means the loops need reordering under LoopA are all under LoopB
   // where LoopB is a direct son of LoopA
   std::unordered_map<const StmtSRefNode*, const StmtSRefNode*> successor;
   for (auto it = all_loops.rbegin(); it != all_loops.rend(); ++it) {
-    StmtSRef now = this->operator->()->stmt2ref.at((*it)->node);
-    if (seen_loop.count(*it) || successor.count(now.get())) {
+    StmtSRef now = this->operator->()->stmt2ref.at(*it);
+    if (seen_loop.count(now) || successor.count(now.get())) {
       const StmtSRefNode* parent = now->parent;
       CHECK(successor.count(parent) == 0 || successor.at(parent) == now.get())
         << "The loops have to be in the same line";
@@ -216,26 +210,30 @@ void Schedule::reorder(const Array<StmtSRef>& order) {
     }
   }
   // Check these loops are in the same scope(Block)
-  for (StmtSRef loop : all_loops) {
-    if (seen_loop.count(loop)) {
-      seen_loop.erase(loop);
+  for (const LoopNode* loop : all_loops) {
+    StmtSRef sref = this->operator->()->stmt2ref.at(loop);
+    if (seen_loop.count(sref)) {
+      seen_loop.erase(sref);
     }
   }
   CHECK(seen_loop.empty()) << "Loops have to be under the same scope";
   for (StmtSRef loop_sref : order)
     seen_loop.insert(loop_sref);
+
   // Reorder
   // top and bottom denote the range of loops need reordering
   const StmtSRefNode* top = nullptr, * bottom = nullptr;
-  for (StmtSRef loop_sref : all_loops) {
-    if (seen_loop.count(loop_sref)) {
-      top = loop_sref.get();
+  for (const LoopNode* loop : all_loops) {
+    StmtSRef sref = this->operator->()->stmt2ref.at(loop);
+    if (seen_loop.count(sref)) {
+      top = sref.get();
       break;
     }
   }
   for (auto it = all_loops.rbegin(); it != all_loops.rend(); ++it) {
-    if (seen_loop.count(*it)) {
-      bottom = (*it).get();
+    StmtSRef sref = this->operator->()->stmt2ref.at(*it);
+    if (seen_loop.count(sref)) {
+      bottom = sref.get();
       break;
     }
   }

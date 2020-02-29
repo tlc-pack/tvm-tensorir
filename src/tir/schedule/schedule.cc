@@ -162,9 +162,9 @@ class SubReplacer : protected StmtMutator {
       auto n = CopyOnWrite(stmt);
       if (target_->IsInstance<SeqStmtNode>()) {
         // note that nested SeqStmt is not allowed, so we flatten target here
-       const Array<Stmt>& target_seq = target_.as<SeqStmtNode>()->seq;
-        n->seq.Erase(seq_index);
-        n->seq.Insert(seq_index, target_seq);
+        const Array<Stmt>& target_seq = target_.as<SeqStmtNode>()->seq;
+        n->seq.Erase(n->seq.begin() + seq_index);
+        n->seq.Insert(n->seq.begin() + seq_index, target_seq.begin(), target_seq.end());
         for (size_t i = 0; i < target_seq.size(); i++)
           (*stmt2ref_)[target_seq[i].operator->()]->seq_index = i + seq_index;
       } else {

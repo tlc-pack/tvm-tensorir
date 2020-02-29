@@ -288,24 +288,6 @@ class Array : public ObjectRef {
     ArrayNode* n = this->CopyOnWrite();
     n->data[i] = value;
   }
-  /*!
-   * \brief insert array of elements into position i
-   * \param i The index
-   * \param value the array to be inserted
-   */
-  inline void Insert(size_t i, const Array<T>& value) {
-    ArrayNode* n = this->CopyOnWrite();
-    for (auto it = value.rbegin(); it != value.rend(); ++it)
-      n->data.insert(n->data.begin() + i, (*it));
-  }
-  /*!
-   * \brief erase i-th element of the array/
-   * \param i The index
-   */
-  inline void Erase(size_t i) {
-    ArrayNode* n = this->CopyOnWrite();
-    n->data.erase(n->data.begin() + i);
-  }
   /*! \return whether array is empty */
   inline bool empty() const {
     return size() == 0;
@@ -383,6 +365,30 @@ class Array : public ObjectRef {
   /*! \return rend iterator */
   inline reverse_iterator rend() const {
     return reverse_iterator(static_cast<const ArrayNode*>(data_.get())->data.rend());
+  }
+
+  /*!
+   * \brief Inserts elements from range [first, last) before pos.
+   * \param pos iterator before which the content will be inserted. pos may be the end() iterator
+   * \param first, last the range of elements to insert, can't be iterators into container
+   * for which insert is called
+   */
+  template <typename InputIt>
+  void Insert(iterator pos, InputIt first, InputIt last) {
+    ArrayNode* n = this->CopyOnWrite();
+    auto inner_begin = static_cast<const ArrayNode*>(data_.get())->data.begin();
+    int counter = pos - begin();
+    for (auto it = first; it != last; ++it)
+      n->data.insert(inner_begin + (counter++), T(*it));
+  }
+  /*!
+   * \brief Erases the specified elements from the container.
+   * \param i iterator to the element to remove
+   */
+  inline void Erase(iterator pos) {
+    ArrayNode* n = this->CopyOnWrite();
+    auto inner_begin = static_cast<const ArrayNode*>(data_.get())->data.begin();
+    n->data.erase(inner_begin + (pos - begin()));
   }
 };
 
