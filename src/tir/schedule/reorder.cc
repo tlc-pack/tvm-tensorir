@@ -178,8 +178,6 @@ void Schedule::reorder(const Array<StmtSRef>& order) {
   // for (i) {S[i]} -> for (i) {T[i]} -> for (i) {U[i]}
   // - We recursively transform the original loop into a collection
   // of equivalent simple loops(single branch), and we reorder the target one.
-  // (TODO: bohan) - If loops are single-branch at the beginning,
-  // (TODO: bohan) then iter_type of blocks below can be kOrdered
 
   // Check iter_type and loops are mutually different
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> seen_loop;
