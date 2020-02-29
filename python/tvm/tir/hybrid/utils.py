@@ -16,7 +16,27 @@
 # under the License.
 """Helper functions in Hybrid Script Parser"""
 
+import inspect
 from . import registry, intrin, special_stmt, scope_handler
+from .parser import source_to_op
+
+
+class HybridClass:
+    """Helper class for decorating a class"""
+
+    def __init__(self, origin_script):
+        self.origin_script = origin_script
+
+    def __call__(self, *args, **kwargs):
+        # call the parser to transform hybrid script into TIR
+        return _parse(self)
+
+
+class HybridFunction:
+    """Helper class for decorating a function"""
+
+    def __init__(self, origin_script):
+        self.origin_script = origin_script
 
 
 import inspect
@@ -130,3 +150,10 @@ def init_scope():
     registry.register_special_stmt(special_stmt.block_vars)
     registry.register_scope_handler(scope_handler.block, scope_name="with_scope")
     registry.register_scope_handler(scope_handler.range, scope_name="for_scope")
+
+
+def _parse(hybrid_script):
+    """Helper function to parse hybrid_script into TIR"""
+    init_scope()
+    return source_to_op(inspect.getsource(hybrid_script.origin_script),
+                        inspect.getsourcelines(hybrid_script.origin_script)[1])
