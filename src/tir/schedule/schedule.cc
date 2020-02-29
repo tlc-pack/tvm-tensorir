@@ -556,7 +556,7 @@ Array<Stmt> Schedule::GetChildren(const Stmt& stmt, bool keep_realize) {
     Array<Stmt> ret;
     for (const Stmt& child : seq->seq)
       if (child->IsInstance<BlockRealizeNode>() && !keep_realize) {
-          ret.push_back(child.as<BlockRealizeNode>()->block);
+        ret.push_back(child.as<BlockRealizeNode>()->block);
       } else {
         ret.push_back(child);
       }
