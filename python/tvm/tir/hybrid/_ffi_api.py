@@ -14,8 +14,8 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Hybrid Programming APIs of TVM Python Package, aimed to support TIR"""
+"""FFI APIs for tvm.tir.hybrid"""
+import tvm._ffi
 
-from .utils import create_module, ashybrid, script
-from .registry import register_intrin as register
-from .parser import source_to_op as from_source
+
+tvm._ffi._init_api("tir.hybrid", __name__)

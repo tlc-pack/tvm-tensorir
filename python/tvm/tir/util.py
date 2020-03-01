@@ -16,7 +16,7 @@
 # under the License.
 """Utilities for TIR"""
 
-from .._ffi.object import register_object
+from tvm._ffi import register_object
 
 
 def register_tir_object(type_key=None):

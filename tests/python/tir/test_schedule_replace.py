@@ -17,7 +17,7 @@
 
 import tvm
 from tvm import tir
-from tvm.ir_pass import Equal
+from tvm.tir.ir_pass import Equal
 import util
 
 
@@ -26,7 +26,7 @@ def replace_ir_builder():
     s = tir.create_schedule(func)
 
     # The target stmt
-    target = tvm.make.Block(
+    target = tvm.tir.Block(
         [], [], [], s.func.body.block.body[1],
         [], [], 'target')
 
@@ -45,7 +45,7 @@ def test_replace_direct_write0():
     # Check the replaced part is equal to the target
     assert Equal(s.func.body.block.body[1], target)
     # The target reuse the sref's stmt, so the sref won't be none
-    assert tir.get_stmt(sref) is not None
+    assert tir.schedule.get_stmt(sref) is not None
 
 
 def test_replace_direct_write1():
@@ -62,7 +62,7 @@ def test_replace_direct_write1():
     # Check the replaced part is equal to the target
     assert Equal(s.func.body.block.body[1], target)
     # The target reuse the sref's stmt, so the sref won't be none
-    assert tir.get_stmt(sref) is not None
+    assert tir.schedule.get_stmt(sref) is not None
 
 
 def test_replace_copy():
@@ -81,7 +81,7 @@ def test_replace_copy():
     # Check the replaced part is equal to the target
     assert Equal(s.func.body.block.body[0], target)
     # The replaced AST node will be deleted, so the ref will be None
-    assert tir.get_stmt(sref) is None
+    assert tir.schedule.get_stmt(sref) is None
 
 
 def test_replace_partial_copy0():
@@ -103,7 +103,7 @@ def test_replace_partial_copy0():
     # Check the replaced part is equal to the target
     assert Equal(s.func.body.block.body[0].body, target)
     # The replaced AST node will be deleted, so the ref will be None
-    assert tir.get_stmt(sref) is None
+    assert tir.schedule.get_stmt(sref) is None
 
 
 def test_replace_partial_copy1():
@@ -125,7 +125,7 @@ def test_replace_partial_copy1():
     # Check the replaced part is equal to the target
     assert Equal(s.func.body.block.body[0].body.body.block, target)
     # The replaced AST node will be deleted, so the ref will be None
-    assert tir.get_stmt(sref) is None
+    assert tir.schedule.get_stmt(sref) is None
 
 
 def test_replace_root_write():
@@ -180,7 +180,7 @@ def test_replace_block_remap():
     sref_new = s.get_block("init")
     # Check the original sref has been remapped
     assert sref.__hash__() == sref_new.__hash__()
-    assert Equal(tir.get_stmt(sref), target)
+    assert Equal(tir.schedule.get_stmt(sref), target)
 
 
 if __name__ == "__main__":

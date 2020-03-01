@@ -56,15 +56,15 @@ def test_element_wise():
     mod = tvm.tir.hybrid.create_module([element_wise])
     func = mod["element_wise"]
 
-    assert isinstance(func.body.block, tvm.stmt.Block)
-    assert isinstance(func.body.block.body, tvm.stmt.SeqStmt)
-    assert isinstance(func.body.block.body[0], tvm.stmt.Loop)
-    assert isinstance(func.body.block.body[0].body, tvm.stmt.Loop)
-    assert isinstance(func.body.block.body[0].body.body.block, tvm.stmt.Block)
+    assert isinstance(func.body.block, tir.stmt.Block)
+    assert isinstance(func.body.block.body, tir.stmt.SeqStmt)
+    assert isinstance(func.body.block.body[0], tir.stmt.Loop)
+    assert isinstance(func.body.block.body[0].body, tir.stmt.Loop)
+    assert isinstance(func.body.block.body[0].body.body.block, tir.stmt.Block)
 
-    assert isinstance(func.body.block.body[1], tvm.stmt.Loop)
-    assert isinstance(func.body.block.body[1].body, tvm.stmt.Loop)
-    assert isinstance(func.body.block.body[1].body.body.block, tvm.stmt.Block)
+    assert isinstance(func.body.block.body[1], tir.stmt.Loop)
+    assert isinstance(func.body.block.body[1].body, tir.stmt.Loop)
+    assert isinstance(func.body.block.body[1].body.body.block, tir.stmt.Block)
 
 
 if __name__ == '__main__':
