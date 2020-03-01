@@ -16,8 +16,7 @@
 # under the License.
 
 import tvm
-from tvm import tir
-from tvm import ir_pass
+from tvm.tir import ir_pass
 import util
 
 
