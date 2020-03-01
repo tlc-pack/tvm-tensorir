@@ -152,6 +152,11 @@ def lower(input,
         stmt = form_body(input)
         compact = ir_pass.VerifyCompactBuffer(stmt)
         binds, arg_list = get_binds(args, compact, binds)
+    elif isinstance(input, tvm.tir.Function):
+        func = ir_pass.BufferFlatten(input)
+        buffer_map = func.buffer_map
+        arg_list = [buffer_map[x] for x in func.params]
+        stmt = func.body
 
     for f in lower_phase0:
         stmt = f(stmt)
@@ -352,7 +357,7 @@ def build(inputs,
     ----
     See the note on :any:`tvm.target` on target string format.
     """
-    if isinstance(inputs, (schedule.Schedule)):
+    if isinstance(inputs, (schedule.Schedule, tvm.tir.Function)):
         if args is None and isinstance(inputs, schedule.Schedule):
             raise ValueError("args must be given for build from schedule")
         flist = lower(inputs, args,

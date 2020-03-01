@@ -15,8 +15,9 @@
 # specific language governing permissions and limitations
 # under the License.
 """Developer API of IR node builder make function."""
+import tvm._ffi
 from tvm._ffi.base import string_types
-from tvm.runtime import ObjectGeneric, DataType, convert, const
+from tvm.runtime import ObjectGeneric, DataType, convert, const, Object
 from tvm.ir import container as _container
 
 from . import stmt as _stmt
@@ -35,23 +36,6 @@ class WithScope(object):
 
     def __exit__(self, ptype, value, trace):
         self._exit_cb()
-
-
-@register_object
-class TensorRegion(Object):
-    """TensorRegion Node
-
-    Parameters
-    ----------
-    buffer : Buffer
-        The tensor of the tensor region
-
-    region : list of Range
-        The region array of the tensor region
-    """
-
-    def __init__(self, buffer, region):
-        self.__init_handle_by_constructor__(_make.TensorRegion(buffer, region))
 
 
 class Buffer(ObjectGeneric):

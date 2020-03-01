@@ -32,36 +32,36 @@ Example
 
 """
 
-from tvm import api as _api
+import tvm.tir
 
 
 def int16(imm):
-    return _api.const(imm.value, "int16")
+    return tvm.tir.const(imm.value, "int16")
 
 
 def int32(imm):
-    return _api.const(imm.value, "int32")
+    return tvm.tir.const(imm.value, "int32")
 
 
 def int64(imm):
-    return _api.const(imm.value, "int64")
+    return tvm.tir.const(imm.value, "int64")
 
 
 def float16(imm):
-    return _api.const(imm.value, "float16")
+    return tvm.tir.const(imm.value, "float16")
 
 
 def float32(imm):
-    return _api.const(imm.value, "float32")
+    return tvm.tir.const(imm.value, "float32")
 
 
 def float64(imm):
-    return _api.const(imm.value, "float64")
+    return tvm.tir.const(imm.value, "float64")
 
 
 def floordiv(x, y):
-    return _api.floordiv(x, y)
+    return tvm.tir.floordiv(x, y)
 
 
 def floormod(x, y):
-    return _api.floormod(x, y)
+    return tvm.tir.floormod(x, y)

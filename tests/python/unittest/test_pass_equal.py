@@ -62,21 +62,21 @@ def test_equal_compute():
 
 
 def test_struct_equal():
-    n = tvm.var("n")
+    n = te.var("n")
 
     def func1():
-        ib = tvm.ir_builder.create()
+        ib = tvm.tir.ir_builder.create()
         A = ib.pointer("float32", "A")
         B = ib.pointer("float32", "B")
         with ib.for_range(0, n, name="i") as i:
             B[i] = A[i] + 1
         return ib.get()
 
-    Ab = tvm.decl_buffer((n,), name='A')
-    Bb = tvm.decl_buffer((n,), name='B')
+    Ab = tvm.tir.decl_buffer((n,), name='A')
+    Bb = tvm.tir.decl_buffer((n,), name='B')
 
     def func2():
-        ib = tvm.ir_builder.create()
+        ib = tvm.tir.ir_builder.create()
         A = ib.buffer_ptr(Ab)
         B = ib.buffer_ptr(Bb)
         with ib.for_range(0, n, name="i") as i:
@@ -84,20 +84,20 @@ def test_struct_equal():
         return ib.get()
 
     def func3():
-        ib = tvm.ir_builder.create()
+        ib = tvm.tir.ir_builder.create()
         A = ib.buffer_ptr(Ab)
         B = ib.buffer_ptr(Bb)
         with ib.for_range(0, n, name="i") as i:
             B[i] = B[i] + 1
         return ib.get()
 
-    assert tvm.ir_pass.AssertStructEqual(func1(), func2())
-    assert tvm.ir_pass.StructEqual(func2(), func1())
-    assert not tvm.ir_pass.Equal(func1(), func2())
-    assert not tvm.ir_pass.StructEqual(func2(), func3())
-    assert not tvm.ir_pass.StructEqual(func3(), func2())
-    assert not tvm.ir_pass.StructEqual(func1(), func3())
-    assert not tvm.ir_pass.StructEqual(func3(), func1())
+    assert tvm.tir.ir_pass.AssertStructEqual(func1(), func2())
+    assert tvm.tir.ir_pass.StructEqual(func2(), func1())
+    assert not tvm.tir.ir_pass.Equal(func1(), func2())
+    assert not tvm.tir.ir_pass.StructEqual(func2(), func3())
+    assert not tvm.tir.ir_pass.StructEqual(func3(), func2())
+    assert not tvm.tir.ir_pass.StructEqual(func1(), func3())
+    assert not tvm.tir.ir_pass.StructEqual(func3(), func1())
 
 
 if __name__ == "__main__":

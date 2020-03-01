@@ -22,10 +22,8 @@ Typically, a special stmt function has return value and accepts parser and
 node as its first 2 arguments.
 """
 # pylint: disable=unused-argument
-
-from tvm import api as _api
-from tvm import ir_pass as _pass
-from tvm import make as _make
+import tvm.tir
+from tvm.tir import ir_pass as _pass
 
 
 def buffer_bind(parser, node, var, shape, dtype="float32"):
@@ -41,7 +39,7 @@ def buffer_bind(parser, node, var, shape, dtype="float32"):
 
     if var not in parser.params:
         parser.report_error("Can not bind non-input args to buffer")
-    return _api.decl_buffer(shape, dtype=dtype, name=parser._assign_target)
+    return tvm.tir.decl_buffer(shape, dtype=dtype, name=parser._assign_target)
 
 
 def buffer_allocate(parser, node, shape, dtype="float32", scope=""):
@@ -54,8 +52,8 @@ def buffer_allocate(parser, node, shape, dtype="float32", scope=""):
         A = buffer_allocate((128, 128), dtype="float32")
 
     """
-    _buffer = _api.decl_buffer(shape, dtype=dtype, name=parser._assign_target)
-    parser.scope_emitter.alloc(_make.BufferAllocate(_buffer, scope))
+    _buffer = tvm.tir.decl_buffer(shape, dtype=dtype, name=parser._assign_target)
+    parser.scope_emitter.alloc(tvm.tir.BufferAllocate(_buffer, scope))
     return _buffer
 
 
@@ -70,7 +68,7 @@ def block_vars(parser, node, begin, end, name="bv", iter_type="data_par"):
 
     """
     extent = end if begin == 0 else _pass.Simplify(end - begin)
-    block_var_dom = _make.range_by_min_extent(begin, extent)
+    block_var_dom = tvm.ir.Range.make_by_min_extent(begin, extent)
 
     if iter_type == "data_par":
         iter_type_id = 0
@@ -82,6 +80,5 @@ def block_vars(parser, node, begin, end, name="bv", iter_type="data_par"):
         iter_type_id = 4
     else:
         raise ValueError("Unknown iter_type")
-
-    block_var = _api._IterVar(block_var_dom, name, iter_type_id)
+    block_var = tvm.tir.IterVar(block_var_dom, name, iter_type_id)
     return block_var

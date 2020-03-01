@@ -384,6 +384,12 @@ BufferLoad::BufferLoad(DataType type, Buffer buffer, Array<PrimExpr> indices) {
   data_ = std::move(node);
 }
 
+TVM_REGISTER_GLOBAL("tir.BufferLoad")
+.set_body_typed<BufferLoad(DataType, Buffer, Array<PrimExpr>)>(
+    [](DataType type, Buffer buffer, Array<PrimExpr> indices) {
+      return BufferLoad(type, buffer, indices);
+    });
+
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 .set_dispatch<StringImmNode>([](const ObjectRef& node, ReprPrinter* p) {
     auto* op = static_cast<const StringImmNode*>(node.get());
