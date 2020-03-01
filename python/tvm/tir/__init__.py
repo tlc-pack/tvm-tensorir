@@ -31,7 +31,7 @@ from .stmt import Stmt, LetStmt, AssertStmt, For
 from .stmt import BufferStore, BufferRealize, Store, ProducerStore, Allocate, AttrStmt
 from .stmt import ProducerRealize, SeqStmt
 from .stmt import IfThenElse, Evaluate, Prefetch, stmt_seq, stmt_list
-
+from .stmt import Block, BlockRealize, Loop, BufferAllocate, TensorRegion
 from .function import PrimFunc
 
 from .op import call_packed, call_intrin, call_pure_extern, call_extern
@@ -47,7 +47,12 @@ from .op import div, indexdiv, indexmod, truncdiv, truncmod, floordiv, floormod
 from .op import comm_reducer, min, max, sum
 from .op import q_multiply_shift
 
+from .schedule import create_schedule, Schedule
+
+from .module import Function
+
 from . import ir_builder
 from . import transform
 from . import analysis
 from . import stmt_functor
+from . import hybrid
