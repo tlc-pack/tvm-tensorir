@@ -19,6 +19,102 @@
 from . import registry, intrin, special_stmt, scope_handler
 
 
+import inspect
+
+
+from .parser import source_to_op
+from .. import module
+from . import _ffi_api
+
+
+def create_module(funcs=None):
+    """Construct a module from list of functions.
+
+    Parameters
+    -----------
+    funcs : Optional[List[Union[Function, HybridFunction]]]
+        list of functions
+
+    Returns
+    -------
+    mod : Module
+        A module containing the passed definitions
+    """
+
+    funcs = [_parse(func) if isinstance(func, HybridFunction) else func for func in funcs]
+    return module.create_module(funcs=funcs)
+
+
+def ashybrid(ir, show_meta=False):
+    """Transform a Function or Module to python syntax script
+
+    Parameters
+    ----------
+    ir : Union[Function, Module, HybridFunction]
+        The Function or Module to be dumped
+
+    show_meta : bool
+        Whether show meta
+
+    Returns
+    -------
+    script : str
+        The Python script
+    """
+
+    if isinstance(ir, HybridFunction):
+        # transform HybridFunction to Function
+        ir = _parse(ir)
+    elif isinstance(ir, module.Module):
+        ir = ir.module  # get the inner IRModule of Module
+    return _ffi_api.AsHybrid(ir, show_meta)
+
+
+def script(origin_script):
+    """Decorate a python function or class as hybrid script.
+
+    The hybrid function or parsing support parsing to the internal TIR.
+
+    Returns
+    -------
+    output : Union[Function, Module]
+        The Function or Module in IR.
+    """
+
+    if inspect.isfunction(origin_script):
+        return HybridFunction(origin_script)
+
+    if inspect.isclass(origin_script):
+        return HybridClass(origin_script)
+
+    raise TypeError("Only function and class are supported")
+
+
+class HybridClass:
+    """Helper class for decorating a class"""
+
+    def __init__(self, origin_script):
+        self.origin_script = origin_script
+
+    def __call__(self, *args, **kwargs):
+        # call the parser to transform hybrid script into TIR
+        return _parse(self)
+
+
+class HybridFunction:
+    """Helper class for decorating a function"""
+
+    def __init__(self, origin_script):
+        self.origin_script = origin_script
+
+
+def _parse(hybrid_script):
+    """Helper function to parse hybrid_script into TIR"""
+    init_scope()
+    return source_to_op(inspect.getsource(hybrid_script.origin_script),
+                        inspect.getsourcelines(hybrid_script.origin_script)[1])
+
+
 def init_scope():
     """Register primitive functions"""
     registry.register_intrin(intrin.int16)

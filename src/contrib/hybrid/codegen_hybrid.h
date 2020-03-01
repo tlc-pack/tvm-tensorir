@@ -43,7 +43,7 @@ using namespace tir;
  * \brief A base class to generate Hybrid Script.
  *
  * **NOTE** CodeGenHybrid does not aim at generating Python scripts consumed by Python2/3.
- * For runtime support, please refer the decorator in ``tvm/python/hybrid/api.py``.
+ * For runtime support, please refer the decorator in ``tvm/python/hybrid/_ffi_api.py``.
  */
 class CodeGenHybrid :
       public ExprFunctor<void(const PrimExpr&, std::ostream&)>,

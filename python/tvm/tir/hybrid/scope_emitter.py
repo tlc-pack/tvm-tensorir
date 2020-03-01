@@ -18,10 +18,10 @@
 
 from enum import Enum
 
-from tvm import schedule as _schedule
-from tvm import expr as _expr
-from tvm import make as _make
-from tvm import stmt as _stmt
+from tvm.te import schedule
+import tvm.tir
+from tvm.tir import expr as _expr
+from tvm.tir import stmt as _stmt
 
 
 class ScopeEmitter:
@@ -39,7 +39,7 @@ class ScopeEmitter:
     _symbol_type = {
         list: Symbol.List,
         dict: Symbol.Dict,
-        _schedule.Buffer: Symbol.Buffer
+        schedule.Buffer: Symbol.Buffer
     }
 
     def __init__(self, parser):
@@ -58,7 +58,8 @@ class ScopeEmitter:
             seq = _stmt.SeqStmt(seq)
 
         if is_block:
-            return self.allocate_stack.pop(), seq
+            ans = self.allocate_stack.pop(), seq
+            return ans
         return seq
 
     def new_scope(self, is_block=False):
@@ -71,7 +72,7 @@ class ScopeEmitter:
     def emit(self, stmt):
         """Emit a stmt into current scope"""
         if isinstance(stmt, _expr.Call):
-            stmt = _make.Evaluate(stmt)
+            stmt = tvm.tir.Evaluate(stmt)
         self.seq_stack[-1].append(stmt)
 
     def alloc(self, allocation):

@@ -1004,8 +1004,9 @@ class Any(PrimExpr):
     def __init__(self):
         self.__init_handle_by_constructor__(_ffi_api.Any)
 
-@register_object
-class BufferLoad(PrimExpr):
+
+@tvm._ffi.register_object
+class BufferLoad(PrimExprWithOp):
     """BufferLoad node.
 
     Parameters
@@ -1021,4 +1022,4 @@ class BufferLoad(PrimExpr):
     """
     def __init__(self, dtype, buffer, indices):
         self.__init_handle_by_constructor__(
-            _make.BufferLoad, dtype, buffer, indices)
+            _ffi_api.BufferLoad, dtype, buffer, indices)

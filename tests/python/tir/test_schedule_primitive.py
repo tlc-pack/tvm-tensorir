@@ -18,7 +18,7 @@
 import tvm
 import util
 from tvm import tir
-from tvm.ir_pass import Equal, AssertEqual
+from tvm.tir.ir_pass import Equal, AssertEqual
 
 
 @tvm.tir.hybrid.script
@@ -159,5 +159,5 @@ def test_fuse_loop_sref():
 
 if __name__ == "__main__":
     test_fuse()
-    test_split_fuse()
-    test_fuse_loop_sref()
+    # test_split_fuse()
+    # test_fuse_loop_sref()

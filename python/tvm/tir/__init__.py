@@ -26,12 +26,13 @@ from .expr import Add, Sub, Mul, Div, Mod, FloorDiv, FloorMod
 from .expr import Min, Max, EQ, NE, LT, LE, GT, GE, And, Or, Not
 from .expr import Select, BufferLoad, Load, Ramp, Broadcast, Shuffle, Call, Let
 from .expr import IterVar, Any
+from .expr import BufferLoad
 
 from .stmt import Stmt, LetStmt, AssertStmt, For
 from .stmt import BufferStore, BufferRealize, Store, Provide, Allocate, AttrStmt
 from .stmt import Free, Realize, SeqStmt
 from .stmt import IfThenElse, Evaluate, Prefetch, stmt_seq, stmt_list
-
+from .stmt import Block, BlockRealize, Loop, BufferAllocate, TensorRegion
 from .function import PrimFunc
 
 from .op import call_packed, call_pure_intrin, call_intrin, call_pure_extern, call_extern
@@ -44,7 +45,12 @@ from .op import isnan, isfinite, isinf, copysign
 from .op import div, indexdiv, indexmod, truncdiv, truncmod, floordiv, floormod
 from .op import comm_reducer, min, max, sum
 
+from .schedule import create_schedule, Schedule
+
+from .module import Function
+
 from . import ir_builder
 from . import transform
 from . import analysis
 from . import stmt_functor
+from . import hybrid

@@ -382,7 +382,7 @@ class Prefetch(Stmt):
             _ffi_api.Prefetch, buffer, bounds)
 
 
-@register_object
+@tvm._ffi.register_object
 class Loop(Stmt):
     """Loop node.
 
@@ -414,14 +414,14 @@ class Loop(Stmt):
                  loop_var,
                  min_val,
                  extent,
-                 iter_type,
                  annotations,
                  body):
         self.__init_handle_by_constructor__(
-            _make.Loop, loop_var, min_val, extent,
-            iter_type, annotations, body)
+            _ffi_api.Loop, loop_var, min_val, extent,
+            annotations, body)
 
-@register_object
+
+@tvm._ffi.register_object
 class BufferStore(Stmt):
     """BufferStore node.
 
@@ -439,9 +439,10 @@ class BufferStore(Stmt):
     """
     def __init__(self, buffer, value, indices):
         self.__init_handle_by_constructor__(
-            _make.BufferStore, buffer, value, indices)
+            _ffi_api.BufferStore, buffer, value, indices)
 
-@register_object
+
+@tvm._ffi.register_object
 class Block(Stmt):
     """Block node.
 
@@ -459,6 +460,9 @@ class Block(Stmt):
     body: Stmt
         The body of the block.
 
+    allocations: list of BufferAllocation
+        The buffer allocations
+
     annotations: list of Annotation
         The annotation of the block.
 
@@ -466,11 +470,12 @@ class Block(Stmt):
         the tag of the block.
 
     """
-    def __init__(self, iter_vars, reads, writes, body, annotations, tag):
+    def __init__(self, iter_vars, reads, writes, body, allocations, annotations, tag):
         self.__init_handle_by_constructor__(
-            _make.Block, iter_vars, reads, writes, body, annotations, tag)
+            _ffi_api.Block, iter_vars, reads, writes, body, allocations, annotations, tag)
 
-@register_object
+
+@tvm._ffi.register_object
 class BlockRealize(Stmt):
     """BlockRealize node.
 
@@ -487,9 +492,10 @@ class BlockRealize(Stmt):
     """
     def __init__(self, values, predicate, block):
         self.__init_handle_by_constructor__(
-            _make.BlockRealize, values, predicate, block)
+            _ffi_api.BlockRealize, values, predicate, block)
 
-@register_object
+
+@tvm._ffi.register_object
 class BufferAllocate(Stmt):
     """BufferAllocate node.
 
@@ -498,10 +504,30 @@ class BufferAllocate(Stmt):
     buffer : Buffer
         The buffer to be allocated
 
+    scope : Str
+        The buffer scope
+
     """
-    def __init__(self, buffer):
+    def __init__(self, buffer, scope):
         self.__init_handle_by_constructor__(
-            _make.BufferAllocate, buffer)
+            _ffi_api.BufferAllocate, buffer, scope)
+
+
+@tvm._ffi.register_object
+class TensorRegion(Object):
+    """TensorRegion Node
+
+    Parameters
+    ----------
+    buffer : Buffer
+        The tensor of the tensor region
+
+    region : list of Range
+        The region array of the tensor region
+    """
+
+    def __init__(self, buffer, region):
+        self.__init_handle_by_constructor__(_ffi_api.TensorRegion, buffer, region)
 
 
 def stmt_seq(*args):

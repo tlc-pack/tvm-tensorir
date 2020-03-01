@@ -18,49 +18,50 @@
 import tvm
 import util
 from tvm import tir
+from tvm.tir.ir_pass import AssertEqual
 from tvm.tir.hybrid import from_source
 
 
 def test_matmul():
     func = util.matmul_stmt()
     rt_func = from_source(tvm.tir.hybrid.ashybrid(func, True))
-    assert tvm.ir_pass.AssertEqual(func, rt_func)
+    assert AssertEqual(func, rt_func)
 
-    assert isinstance(rt_func.body.block, tvm.stmt.Block)
-    assert isinstance(rt_func.body.block.body, tvm.stmt.Loop)
-    assert isinstance(rt_func.body.block.body.body, tvm.stmt.Loop)
-    assert isinstance(rt_func.body.block.body.body.body, tvm.stmt.SeqStmt)
-    assert isinstance(rt_func.body.block.body.body.body[0].block, tvm.stmt.Block)
-    assert isinstance(rt_func.body.block.body.body.body[1], tvm.stmt.Loop)
-    assert isinstance(rt_func.body.block.body.body.body[1].body.block, tvm.stmt.Block)
+    assert isinstance(rt_func.body.block, tir.stmt.Block)
+    assert isinstance(rt_func.body.block.body, tir.stmt.Loop)
+    assert isinstance(rt_func.body.block.body.body, tir.stmt.Loop)
+    assert isinstance(rt_func.body.block.body.body.body, tir.stmt.SeqStmt)
+    assert isinstance(rt_func.body.block.body.body.body[0].block, tir.stmt.Block)
+    assert isinstance(rt_func.body.block.body.body.body[1], tir.stmt.Loop)
+    assert isinstance(rt_func.body.block.body.body.body[1].body.block, tir.stmt.Block)
 
 
 def test_element_wise():
     func = util.element_wise_stmt()
     rt_func = from_source(tvm.tir.hybrid.ashybrid(func, True))
-    assert tvm.ir_pass.AssertEqual(func, rt_func)
+    assert AssertEqual(func, rt_func)
 
-    assert isinstance(rt_func.body.block, tvm.stmt.Block)
-    assert isinstance(rt_func.body.block.body, tvm.stmt.SeqStmt)
-    assert isinstance(rt_func.body.block.body[0], tvm.stmt.Loop)
-    assert isinstance(rt_func.body.block.body[0].body, tvm.stmt.Loop)
-    assert isinstance(rt_func.body.block.body[0].body.body.block, tvm.stmt.Block)
+    assert isinstance(rt_func.body.block, tir.stmt.Block)
+    assert isinstance(rt_func.body.block.body, tir.stmt.SeqStmt)
+    assert isinstance(rt_func.body.block.body[0], tir.stmt.Loop)
+    assert isinstance(rt_func.body.block.body[0].body, tir.stmt.Loop)
+    assert isinstance(rt_func.body.block.body[0].body.body.block, tir.stmt.Block)
 
-    assert isinstance(rt_func.body.block.body[1], tvm.stmt.Loop)
-    assert isinstance(rt_func.body.block.body[1].body, tvm.stmt.Loop)
-    assert isinstance(rt_func.body.block.body[1].body.body.block, tvm.stmt.Block)
+    assert isinstance(rt_func.body.block.body[1], tir.stmt.Loop)
+    assert isinstance(rt_func.body.block.body[1].body, tir.stmt.Loop)
+    assert isinstance(rt_func.body.block.body[1].body.body.block, tir.stmt.Block)
 
 
 def test_predicate():
     func = util.predicate_stmt()
     rt_func = from_source(tvm.tir.hybrid.ashybrid(func, True))
-    assert tvm.ir_pass.AssertEqual(func, rt_func)
+    assert AssertEqual(func, rt_func)
 
-    assert isinstance(rt_func.body.block, tvm.stmt.Block)
-    assert isinstance(rt_func.body.block.body, tvm.stmt.Loop)
-    assert isinstance(rt_func.body.block.body.body, tvm.stmt.Loop)
-    assert isinstance(rt_func.body.block.body.body.body, tvm.stmt.Loop)
-    assert isinstance(rt_func.body.block.body.body.body.body.block, tvm.stmt.Block)
+    assert isinstance(rt_func.body.block, tir.stmt.Block)
+    assert isinstance(rt_func.body.block.body, tir.stmt.Loop)
+    assert isinstance(rt_func.body.block.body.body, tir.stmt.Loop)
+    assert isinstance(rt_func.body.block.body.body.body, tir.stmt.Loop)
+    assert isinstance(rt_func.body.block.body.body.body.body.block, tir.stmt.Block)
 
 
 def test_functions():
@@ -117,7 +118,7 @@ class MyModule:
 def test_module_class_based():
     mod = MyModule()
     rt_mod = from_source(tvm.tir.hybrid.ashybrid(mod, True))
-    assert tvm.ir_pass.AssertEqual(mod.module, rt_mod.module)
+    assert AssertEqual(mod.module, rt_mod.module)
 
 
 if __name__ == '__main__':
