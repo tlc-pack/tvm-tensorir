@@ -369,7 +369,7 @@ def build(inputs, args=None, target=None, target_host=None, name="default_functi
     ----
     See the note on :any:`tvm.target` on target string format.
     """
-    if isinstance(inputs, (schedule.Schedule)):
+    if isinstance(inputs, (schedule.Schedule, tvm.tir.Function)):
         if args is None and isinstance(inputs, schedule.Schedule):
             raise ValueError("args must be given for build from schedule")
         input_mod = lower(inputs, args, name=name, binds=binds)

@@ -15,10 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import tvm
-from tvm import tir
-from tvm import ir_pass
-from tvm import ir_builder
+import tvm.tir
+from tvm.tir import ir_pass
 import util
 
 
@@ -28,7 +26,7 @@ def test_no_allocate():
     stmt0 = ir_pass.CanonicalSimplify(func.body)
 
     def no_allocate_after_stmt():
-        ib = tvm.ir_builder.create()
+        ib = tvm.tir.ir_builder.create()
         A = ib.pointer("float32", 'A')
         B = ib.pointer("float32", 'B')
         C = ib.pointer("float32", 'C')
@@ -49,7 +47,7 @@ def test_global_allocate():
     stmt0 = ir_pass.CanonicalSimplify(func.body)
 
     def no_allocate_after_stmt():
-        ib = tvm.ir_builder.create()
+        ib = tvm.tir.ir_builder.create()
         A = ib.pointer("float32", 'A')
         C = ib.pointer("float32", 'C')
         B = ib.allocate("float32", 128*128, name='B', scope="global")
@@ -95,7 +93,7 @@ def test_local_allocate():
     stmt0 = ir_pass.CanonicalSimplify(func.body)
 
     def no_allocate_after_stmt():
-        ib = tvm.ir_builder.create()
+        ib = tvm.tir.ir_builder.create()
         A = ib.pointer("float32", 'A')
         C = ib.pointer("float32", 'C')
         B = ib.allocate("float32", 128, name='B', scope="global")

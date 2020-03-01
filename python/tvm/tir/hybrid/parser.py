@@ -23,15 +23,13 @@ import numbers
 import operator
 from typed_ast import ast3 as ast
 
-from tvm import api as _api
-from tvm import expr as _expr
-from tvm import ir_pass as _pass
-from tvm import make as _make
-from tvm import schedule as _schedule
+from tvm.tir import expr as _expr
+from tvm.tir import ir_pass as _pass
+from tvm.te import schedule as _schedule
 from tvm._ffi.base import TVMError
-from tvm.api import all as _all
-from tvm.api import any as _any
-from tvm.api import _init_api
+from tvm.tir import all as _all
+from tvm.tir import any as _any
+import tvm._ffi
 
 from .. import module
 from . import scope_emitter
@@ -43,14 +41,14 @@ from .registry import Registry
 def _floordiv(x, y):
     """Helper function to make operator floordiv"""
     if isinstance(x, _expr.ExprOp) or isinstance(y, _expr.ExprOp):
-        return _api.floordiv(x, y)
+        return tvm.tir.floordiv(x, y)
     return operator.floordiv(x, y)
 
 
 def _floormod(x, y):
     """Helper function to make operator floormod"""
     if isinstance(x, _expr.ExprOp) or isinstance(y, _expr.ExprOp):
-        return _api.floormod(x, y)
+        return tvm.tir.floormod(x, y)
     return operator.mod(x, y)
 
 
@@ -134,7 +132,7 @@ class HybridParser(ast.NodeVisitor):
 
     def init_meta(self, meta_dict):
         if meta_dict is not None:
-            self.meta = _api.load_json(json.dumps(meta_dict))
+            self.meta = tvm.ir.load_json(json.dumps(meta_dict))
 
     def mutate_meta(self, meta_node):
         Mutate_Meta(self.scope_emitter.symbols, meta_node)
@@ -281,7 +279,7 @@ class HybridParser(ast.NodeVisitor):
         self.init_function_parsing_env()
         # add parameters of function
         for arg in node.args.args:
-            arg_var = _api.var(arg.arg)
+            arg_var = tvm.te.var(arg.arg)
             self.scope_emitter.update_symbol(arg.arg, ScopeEmitter.Symbol.Var, arg_var)
             self.params.append(arg_var)
         # visit the body of function
@@ -289,7 +287,7 @@ class HybridParser(ast.NodeVisitor):
             self.visit(body_element)
         # fetch the body and return a tir.Function
         body = self.scope_emitter.pop_scope()
-        return _make.Function(self.params, self.buffer_map, node.name, body)
+        return tvm.tir.Function(self.params, self.buffer_map, node.name, body)
 
     def visit_Assign(self, node):
         """ Assign visitor
@@ -319,8 +317,8 @@ class HybridParser(ast.NodeVisitor):
             # Buffer[expr, expr, .. expr] = Expr
             buffer, buffer_indexes = self.visit(target)
             rhs = self.visit(node.value)
-            value = _api.convert(rhs)
-            self.scope_emitter.emit(_make.BufferStore(buffer, value, buffer_indexes))
+            value = tvm.runtime.convert(rhs)
+            self.scope_emitter.emit(tvm.tir.BufferStore(buffer, value, buffer_indexes))
         else:
             self.report_error(
                 "The target of Assign ought to be a name variable or a Buffer element")
@@ -543,7 +541,7 @@ class HybridParser(ast.NodeVisitor):
                     indexes = [self.visit(node.slice.value)]
 
                 if isinstance(node.ctx, ast.Load):
-                    return _make.BufferLoad(symbol.dtype, symbol, indexes)
+                    return tvm.tir.BufferLoad(symbol.dtype, symbol, indexes)
                 return symbol, indexes
             else:
                 # TensorRegion
@@ -565,9 +563,9 @@ class HybridParser(ast.NodeVisitor):
                     extent = dom[1] - dom[0]
                     if isinstance(extent, _expr.PrimExpr):
                         extent = _pass.Simplify(dom[1] - dom[0])
-                    doms.append(_make.range_by_min_extent(dom[0], extent))
+                    doms.append(tvm.ir.Range.make_by_min_extent(dom[0], extent))
 
-                return _make.TensorRegion(symbol, doms)
+                return tvm.tir.TensorRegion(symbol, doms)
 
         elif isinstance(node.value, ast.Subscript) and isinstance(node.value.value, ast.Name) \
                 and node.value.value.id == 'meta':
@@ -641,10 +639,10 @@ class HybridParser(ast.NodeVisitor):
         return node.arg, self.visit(node.value)
 
     def visit_NameConstant(self, node):
-        return _api.convert(node.value)
+        return tvm.runtime.convert(node.value)
 
     def visit_Constant(self, node):
-        return _api.convert(node.value)
+        return tvm.runtime.convert(node.value)
 
     def visit_Num(self, node):
         if isinstance(node.n, numbers.Integral):
@@ -653,7 +651,7 @@ class HybridParser(ast.NodeVisitor):
             dtype = "float32"
         else:
             self.report_error("The data type should be one of (int, float)")
-        return _api.const(node.n, dtype)
+        return tvm.tir.const(node.n, dtype)
 
     def visit_Str(self, node):
         return node.s
@@ -689,4 +687,4 @@ def source_to_op(src, func_lineno=0):
         raise TVMError('\n'.join(inject_e))
 
 
-_init_api("tvm.tir.hybrid.parser")
+tvm._ffi._init_api("tvm.tir.hybrid.parser")

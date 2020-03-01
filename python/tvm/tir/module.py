@@ -16,15 +16,35 @@
 # under the License.
 """A global module storing everything needed to compile a hybrid script TIR program."""
 
-from tvm.relay import module as _ir_module
-from tvm.relay.expr import Expr, GlobalVar
+from tvm.ir import module as _ir_module
+from tvm.ir import BaseExpr, GlobalVar
 
 from .util import register_tir_object
+from . import _ffi_api
 
 
 @register_tir_object
-class Function(Expr):
-    """Function node in TIR."""
+class Function(BaseExpr):
+    """Function node in TIR.
+
+    Parameters
+    ----------
+    params : List[te.Var]
+        The function params.
+
+    buffer_map : Map[te.Var, te.Buffer]
+        Buffer binding information.
+
+    name : Str
+        The function name.
+
+    body : Stmt
+        The function body.
+
+    """
+    def __init__(self, params, buffer_map, name, body):
+        self.__init_handle_by_constructor__(
+            _ffi_api.Function, params, buffer_map, name, body)
 
 
 class Module:
@@ -47,7 +67,7 @@ class Module:
                     raise TypeError("Expect functions to be TirFunction")
                 mapped_funcs[GlobalVar(function.name)] = function
             functions = mapped_funcs
-        self.module = _ir_module.Module(functions=functions)
+        self.module = _ir_module.IRModule(functions=functions)
 
     def __getitem__(self, name):
         """Look up a Function by name
