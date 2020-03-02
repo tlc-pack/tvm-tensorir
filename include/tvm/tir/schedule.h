@@ -142,49 +142,6 @@ class Schedule : public ObjectRef {
 
  private:
   void UpdateSRef(StmtSRefNode* sref, const Stmt& stmt);
-
-  /*!
-   * \brief Detect whether the loop is reorderable
-   * \param loop the loop of interest
-   * \return whether the loop is reorderable
-   */
-  bool DetectLoopReorderable(const StmtSRef& loop);
-
-  /*!
-   * \brief Get the direct child Schedulable Stmt (Block and Loop)
-   * \param stmt the parent stmt.
-   * \param keep_realize if true, get block_realize for blocks
-   * \return the list of child stmts
-   */
-  static Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize = false);
-
-  /*!
-   * \brief Substitute the var in current block scope specified in key->var to be value.
-   * \param expr The source expression to be substituted
-   * \param value_func The function of new values mapping.
-   * \return The converted expression.
-   */
-  static Stmt SubstituteInScope(const Stmt& stmt,
-                                const std::function<PrimExpr(const VarNode*)>& value_func);
-
-  /*!
-   * \brief Get all the Type T nodes under top which are in the same block scope with top
-   * \param top The query top
-   * \return the block sref list
-   */
-  template <typename T>
-  std::vector<const T*> GetUnderSRef(const StmtSRef& top) const;
-
-  /*!
-   * \brief Decompose the loop tree from now to bottom into equivalent loops
-   * \param now the current loop
-   * \param bottom the end of decomposition
-   * \param successor a map to denote the target loop line we want
-   * \return a list of loops
-   */
-  static std::pair<std::vector<Stmt>, size_t> DecomposeLoop(
-      const StmtSRefNode* now_sref, const StmtSRefNode* bottom_sref,
-      const std::unordered_map<const StmtSRefNode*, const StmtSRefNode*>* successor);
 };
 
 }  // namespace tir

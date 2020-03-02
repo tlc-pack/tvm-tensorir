@@ -374,18 +374,19 @@ class Array : public ObjectRef {
    * for which insert is called
    */
   template <typename InputIt>
-  void Insert(iterator pos, InputIt first, InputIt last) {
+  void insert(iterator pos, InputIt first, InputIt last) {
     ArrayNode* n = this->CopyOnWrite();
     auto inner_begin = static_cast<const ArrayNode*>(data_.get())->data.begin();
-    int counter = pos - begin();
+    std::vector<ObjectRef> temp;
     for (auto it = first; it != last; ++it)
-      n->data.insert(inner_begin + (counter++), T(*it));
+      temp.push_back(T(*it));
+    n->data.insert(inner_begin + (pos - begin()), temp.begin(), temp.end());
   }
   /*!
    * \brief Erases the specified elements from the container.
    * \param i iterator to the element to remove
    */
-  inline void Erase(iterator pos) {
+  inline void erase(iterator pos) {
     ArrayNode* n = this->CopyOnWrite();
     auto inner_begin = static_cast<const ArrayNode*>(data_.get())->data.begin();
     n->data.erase(inner_begin + (pos - begin()));

@@ -20,7 +20,7 @@
 #include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/arith/analyzer.h>
-#include <tvm/runtime/registry.h>
+#include "schedule_common.h"
 
 namespace tvm {
 namespace tir {
@@ -163,8 +163,8 @@ class SubReplacer : protected StmtMutator {
       if (target_->IsInstance<SeqStmtNode>()) {
         // note that nested SeqStmt is not allowed, so we flatten target here
         const Array<Stmt>& target_seq = target_.as<SeqStmtNode>()->seq;
-        n->seq.Erase(n->seq.begin() + seq_index);
-        n->seq.Insert(n->seq.begin() + seq_index, target_seq.begin(), target_seq.end());
+        n->seq.erase(n->seq.begin() + seq_index);
+        n->seq.insert(n->seq.begin() + seq_index, target_seq.begin(), target_seq.end());
         for (size_t i = 0; i < target_seq.size(); i++)
           (*stmt2ref_)[target_seq[i].operator->()]->seq_index = i + seq_index;
       } else {
@@ -381,7 +381,7 @@ class IRSubstitueInScope : public StmtExprMutator {
   const std::function<PrimExpr(const VarNode*)> fmap_;
 };
 
-Stmt Schedule::SubstituteInScope(const Stmt& stmt,
+Stmt SubstituteInScope(const Stmt& stmt,
                                  const std::function<PrimExpr(const VarNode*)>& value_func) {
   return IRSubstitueInScope(value_func)(stmt);
 }
@@ -543,7 +543,7 @@ StmtSRef Schedule::GetScope(StmtSRef node) const {
 }
 
 /*! \note Nested SeqStmt is not allowed in schedule. */
-Array<Stmt> Schedule::GetChildren(const Stmt& stmt, bool keep_realize) {
+Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize) {
   Stmt body;
   if (const auto* block = stmt.as<BlockNode>()) {
     body = block->body;
@@ -716,74 +716,6 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
 TVM_REGISTER_NODE_TYPE(StmtSRefNode);
-
-// schedule
-TVM_REGISTER_GLOBAL("tir.schedule.CreateSchedule")
-.set_body_typed(Schedule::Create);
-
-TVM_REGISTER_GLOBAL("tir.schedule.Replace")
-.set_body_method(&Schedule::Replace);
-
-TVM_REGISTER_GLOBAL("tir.schedule.GetStmtSRef")
-.set_body_typed<StmtSRef(Schedule, Stmt)>(
-[](Schedule schedule, Stmt stmt) {
-return schedule->stmt2ref.at(stmt.operator->());
-});
-
-TVM_REGISTER_GLOBAL("tir.schedule.GetStmt")
-.set_body_typed<Stmt(StmtSRef)>(
-[](StmtSRef sref) {
-return GetRef<Stmt>(sref->node);
-});
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBlocks")
-.set_body_method(&Schedule::Blocks);
-
-TVM_REGISTER_GLOBAL("tir.schedule.GetBlocksFromTag")
-.set_body_typed<Array<StmtSRef>(Schedule, std::string, StmtSRef)>(
-[](Schedule schedule, std::string tag, StmtSRef scope) {
-return schedule.GetBlock(tag, scope);
-});
-
-TVM_REGISTER_GLOBAL("tir.schedule.GetBlocksFromBuffer")
-.set_body_typed<Array<StmtSRef>(Schedule, Buffer, StmtSRef)>(
-[](Schedule schedule, Buffer buffer, StmtSRef scope) {
-return schedule.GetBlock(buffer, scope);
-});
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetLoopsInScope")
-.set_body_method(&Schedule::GetLoopsInScope);
-
-// schedule primitive
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleFuse")
-.set_body_method(&Schedule::fuse);
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSplitByFactor")
-.set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, PrimExpr)>(
-[](Schedule schedule, StmtSRef node, PrimExpr factor) {
-const auto* loop = GetRef<Stmt>(node->node).as<LoopNode>();
-return schedule.split(node, floordiv(loop->extent + factor - 1, factor), factor);
-});
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSplitByNParts")
-.set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, PrimExpr)>(
-[](Schedule schedule, StmtSRef node, PrimExpr nparts) {
-const auto* loop = GetRef<Stmt>(node->node).as<LoopNode>();
-return schedule.split(node, nparts, floordiv(loop->extent + nparts - 1, nparts));
-});
-
-// dependency graph
-TVM_REGISTER_GLOBAL("tir.schedule.GetSuccessors")
-.set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, StmtSRef)>(
-[](Schedule schedule, StmtSRef scope, StmtSRef block) {
-return schedule->scopes_[scope].GetSuccessors(block);
-});
-
-TVM_REGISTER_GLOBAL("tir.schedule.GetPredecessors")
-.set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, StmtSRef)>(
-[](Schedule schedule, StmtSRef scope, StmtSRef block) {
-return schedule->scopes_[scope].GetPredecessors(block);
-});
 
 }  // namespace tir
 }  // namespace tvm
