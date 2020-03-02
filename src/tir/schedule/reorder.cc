@@ -90,13 +90,13 @@ bool RelatedWithVar(const Var& var, const PrimExpr& expr) {
   return detector.related_;
 }
 
-Stmt SeqWrapper(Array<Stmt> stmts) {
+Stmt SeqWrapper(const Array<Stmt>& stmts) {
   CHECK_GT(stmts.size(), 0);
   return stmts.size() == 1 ? stmts[0] : SeqStmt(stmts);
 }
 
 /*! \brief Wrap a new Loop outside body, substitute the loop var at the same time */
-Loop NewLoopWrapper(const Stmt& body, const LoopNode* loop, std::string suffix) {
+Loop NewLoopWrapper(const Stmt& body, const LoopNode* loop, const std::string& suffix) {
   auto node = make_object<LoopNode>(*loop);
   node->loop_var = std::move(Var(loop->loop_var->name_hint + suffix));
   node->body = SubstituteInScope(body, vmap_generator(node->loop_var, loop->loop_var));
@@ -173,8 +173,8 @@ Stmt ReorderTarget(const StmtSRefNode* old_loop, const StmtSRefNode* bottom,
                    const std::unordered_map<const StmtSRefNode*, const StmtSRefNode*>& successor) {
   int new_index = index;
   // The order list maybe incomplete
-  const LoopNode* copy = seen_loop.count(GetRef<StmtSRef>(old_loop))
-      ? DowncastPtr<LoopNode>(order[new_index++]->node) : DowncastPtr<LoopNode>(old_loop->node);
+  const LoopNode* copy = seen_loop.count(GetRef<StmtSRef>(old_loop)) ?
+      DowncastPtr<LoopNode>(order[new_index++]->node) : DowncastPtr<LoopNode>(old_loop->node);
   auto n = make_object<LoopNode>(*copy);
   if (old_loop == bottom) {
     n->body = target_body;
@@ -197,9 +197,9 @@ void Schedule::reorder(const Array<StmtSRef>& order) {
   // 1. check iter_type are valid and loops are mutually different
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> seen_loop;
   for (StmtSRef loop_sref : order) {
-    CHECK(GetRef<Stmt>(loop_sref->node).as<LoopNode>()) << "Order has to be a list a Loops";
-    CHECK(DetectLoopReorderable(DowncastPtr<LoopNode>(loop_sref->node)))
-      << "Cannot reorder Loop(" << DowncastPtr<LoopNode>(loop_sref->node)->loop_var << ")";
+    const auto* loop = DowncastPtr<LoopNode>(loop_sref->node);
+    CHECK(loop) << "Order has to be a list a Loops";
+    CHECK(DetectLoopReorderable(loop)) << "Cannot reorder Loop(" << loop->loop_var << ")";
     CHECK_EQ(seen_loop.count(loop_sref), 0) << "Same Loop can not appear more than once ";
     seen_loop.insert(loop_sref);
   }
