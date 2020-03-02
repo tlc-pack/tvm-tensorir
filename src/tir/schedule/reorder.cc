@@ -90,6 +90,21 @@ bool RelatedWithVar(const Var& var, const PrimExpr& expr) {
   return detector.related_;
 }
 
+bool DetectLoopReorderable(const LoopNode* loop_ptr) {
+  std::vector<const BlockRealizeNode*> blocks = GatherChild<BlockRealizeNode>(loop_ptr);
+  for (const auto* block_realize_ptr : blocks) {
+    const auto* block_ptr = block_realize_ptr->block.as<BlockNode>();
+    CHECK_EQ(block_realize_ptr->binding_values.size(), block_ptr->iter_vars.size());
+    for (size_t i = 0; i < block_ptr->iter_vars.size(); i++) {
+      IterVarType var_type = block_ptr->iter_vars[i]->iter_type;
+      if (var_type != kDataPar && var_type != kThreadIndex && var_type != kCommReduce
+          && RelatedWithVar(loop_ptr->loop_var, block_realize_ptr->binding_values[i]))
+        return false;
+    }
+  }
+  return true;
+}
+
 Stmt SeqWrapper(const Array<Stmt>& stmts) {
   CHECK_GT(stmts.size(), 0);
   return stmts.size() == 1 ? stmts[0] : SeqStmt(stmts);
@@ -103,6 +118,10 @@ Loop NewLoopWrapper(const Stmt& body, const LoopNode* loop, const std::string& s
   return Loop(node);
 }
 
+/*!
+ * \brief Decompose loop into a collection of equivalent loops,
+ *   Decompose(Loop(Before->Target->After)) = Loop(Before)->Loop(Decompose(Target))->Loop(After)
+ */
 std::pair<std::vector<Stmt>, size_t> DecomposeLoop(
     const StmtSRefNode* now_sref, const StmtSRefNode* bottom_sref,
     const std::unordered_map<const StmtSRefNode*, const StmtSRefNode*>* successor) {
@@ -151,34 +170,32 @@ std::pair<std::vector<Stmt>, size_t> DecomposeLoop(
   return ret;
 }
 
-bool DetectLoopReorderable(const LoopNode* loop_ptr) {
-  std::vector<const BlockRealizeNode*> blocks = GatherChild<BlockRealizeNode>(loop_ptr);
-  for (const auto* block_realize_ptr : blocks) {
-    const auto* block_ptr = block_realize_ptr->block.as<BlockNode>();
-    CHECK_EQ(block_realize_ptr->binding_values.size(), block_ptr->iter_vars.size());
-    for (size_t i = 0; i < block_ptr->iter_vars.size(); i++) {
-      IterVarType var_type = block_ptr->iter_vars[i]->iter_type;
-      if (var_type != kDataPar && var_type != kThreadIndex && var_type != kCommReduce
-          && RelatedWithVar(loop_ptr->loop_var, block_realize_ptr->binding_values[i]))
-        return false;
-    }
-  }
-  return true;
-}
-
+/*!
+ * \brief generate reordered loops recursively from top to bottom according to order
+ * \param old_loop the original loop
+ * \param bottom the bottom loop to be reordered
+ * \param target_body the body of the generated bottom loop
+ * \param order the order of reordered loops
+ * \param index the index of order
+ * \param seen_loop used to judge whether old_loop is in order
+ * \param successor used to climb down the original loop tree
+ * \return the generated reordered loops
+ */
 Stmt ReorderTarget(const StmtSRefNode* old_loop, const StmtSRefNode* bottom,
                    const Stmt& target_body,
                    const Array<StmtSRef>& order, size_t index,
                    const std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>& seen_loop,
                    const std::unordered_map<const StmtSRefNode*, const StmtSRefNode*>& successor) {
   int new_index = index;
-  // The order list maybe incomplete
+  // The order list maybe incomplete, so we may copy the old_loop rather than order
   const LoopNode* copy = seen_loop.count(GetRef<StmtSRef>(old_loop)) ?
       DowncastPtr<LoopNode>(order[new_index++]->node) : DowncastPtr<LoopNode>(old_loop->node);
   auto n = make_object<LoopNode>(*copy);
   if (old_loop == bottom) {
+    // bottom loop
     n->body = target_body;
   } else {
+    // reorder recursively
     n->body = ReorderTarget(successor.at(old_loop), bottom,
                             target_body, order, new_index, seen_loop, successor);
   }
@@ -231,8 +248,8 @@ void Schedule::reorder(const Array<StmtSRef>& order) {
   // 1. at first we decompose the loop into multiple loops to enable reorder with branches
   std::pair<std::vector<Stmt>, size_t> res = DecomposeLoop(top, bottom, &successor);
   // 2. reorder the res.second-th loop, which is the target loop
-  res.first[res.second] = ReorderTarget(top, bottom, res.first[res.second],
-                                        order, 0, seen_loop, successor);
+  res.first[res.second] =
+      ReorderTarget(top, bottom, res.first[res.second], order, 0, seen_loop, successor);
   this->Replace(GetRef<StmtSRef>(top), SeqWrapper(res.first));
 }
 
