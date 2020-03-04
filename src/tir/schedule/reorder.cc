@@ -105,11 +105,6 @@ bool DetectLoopReorderable(const LoopNode* loop_ptr) {
   return true;
 }
 
-Stmt SeqWrapper(const Array<Stmt>& stmts) {
-  CHECK_GT(stmts.size(), 0);
-  return stmts.size() == 1 ? stmts[0] : SeqStmt(stmts);
-}
-
 /*! \brief Wrap a new Loop outside body, substitute the loop var at the same time */
 Loop NewLoopWrapper(const Stmt& body, const LoopNode* loop, const std::string& suffix) {
   auto node = make_object<LoopNode>(*loop);
@@ -121,11 +116,12 @@ Loop NewLoopWrapper(const Stmt& body, const LoopNode* loop, const std::string& s
 /*!
  * \brief Decompose loop into a collection of equivalent loops,
  *   Decompose(Loop(Before->Target->After)) = Loop(Before)->Loop(Decompose(Target))->Loop(After)
+ *   e.g. Decompose(A-(C,D,Target,E,F)) = (A-(C,D)) - (A-Target) - (A-(E,F))
  */
 std::pair<std::vector<Stmt>, size_t> DecomposeLoop(
     const StmtSRefNode* now_sref, const StmtSRefNode* bottom_sref,
     const std::unordered_map<const StmtSRefNode*, const StmtSRefNode*>* successor) {
-  std::pair<std::vector<Stmt>, int> ret;
+  std::pair<std::vector<Stmt>, size_t> ret;
   const auto* now = DowncastPtr<LoopNode>(now_sref->node);
   const auto* bottom = DowncastPtr<LoopNode>(bottom_sref->node);
   ret.second = 0;
@@ -137,7 +133,7 @@ std::pair<std::vector<Stmt>, size_t> DecomposeLoop(
   // collect before and after
   const Loop& target = Downcast<Loop>(GetRef<Stmt>(successor->at(now_sref)->node));
   bool meet_target = false;
-  Array<Stmt> before, after;
+  std::vector<Stmt> before, after;
   for (const Stmt& stmt : GetChildren(GetRef<Stmt>(now), true)) {
     if (stmt.same_as(target)) {
       meet_target = true;
@@ -150,7 +146,8 @@ std::pair<std::vector<Stmt>, size_t> DecomposeLoop(
   // Loop(before)
   size_t rename_counter = 0;
   if (!before.empty()) {
-    ret.first.push_back(NewLoopWrapper(SeqWrapper(before), now, std::to_string(rename_counter++)));
+    ret.first.push_back(
+        NewLoopWrapper(SeqStmt::Flatten(before), now, std::to_string(rename_counter++)));
     ret.second += 1;
   }
   // Loop(target) note that we don't wrap the target body
@@ -166,12 +163,15 @@ std::pair<std::vector<Stmt>, size_t> DecomposeLoop(
   ret.second += decomposed_target.second;
   // Loop(after)
   if (!after.empty())
-    ret.first.push_back(NewLoopWrapper(SeqWrapper(after), now, std::to_string(rename_counter)));
+    ret.first.push_back(
+        NewLoopWrapper(SeqStmt::Flatten(after), now, std::to_string(rename_counter)));
   return ret;
 }
 
 /*!
  * \brief generate reordered loops recursively from top to bottom according to order
+ *        Generate :: Int -> Loop
+ *        Generate k = k < n ? Loop_i_k(Generate k+1) : Loop_i_n(body_target)
  * \param old_loop the original loop
  * \param bottom the bottom loop to be reordered
  * \param target_body the body of the generated bottom loop
@@ -213,7 +213,7 @@ void Schedule::reorder(const Array<StmtSRef>& order) {
   // Check
   // 1. check iter_type are valid and loops are mutually different
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> seen_loop;
-  for (StmtSRef loop_sref : order) {
+  for (const StmtSRef& loop_sref : order) {
     const auto* loop = DowncastPtr<LoopNode>(loop_sref->node);
     CHECK(loop) << "Order has to be a list a Loops";
     CHECK(DetectLoopReorderable(loop)) << "Cannot reorder Loop(" << loop->loop_var << ")";
@@ -221,9 +221,14 @@ void Schedule::reorder(const Array<StmtSRef>& order) {
     seen_loop.insert(loop_sref);
   }
   // 2. check these loops are in the same line
+  // The algorithm now is to scan the inverse DFS order of the whole loop tree in the scope.
+  // For some Loop x, it is potentially in the reorder range if
+  //   - x is in the reorder list
+  //   - exactly 1 son y of x is potentially in the reorder range
+  //     (If there are more, then the loops are not in the same line).
+  //     Put (x,y) in the map.
+  // After the inverse DFS, we can know how to catch the loop line by the map.
   std::vector<const LoopNode*> all_loops = GatherChild<LoopNode>(GetScope(order[0])->node);
-  // successor[LoopA] = LoopB means the loops need reordering under LoopA are all under LoopB
-  // where LoopB is a direct son of LoopA
   std::unordered_map<const StmtSRefNode*, const StmtSRefNode*> successor;
   // top and bottom denotes the range of loops need reordering
   const StmtSRefNode* top = nullptr, * bottom = nullptr;
@@ -241,7 +246,7 @@ void Schedule::reorder(const Array<StmtSRef>& order) {
   }
   // 3. check these loops are in the same scope(Block)
   CHECK(seen_loop.empty()) << "Loops have to be under the same scope";
-  for (StmtSRef loop_sref : order)
+  for (const StmtSRef& loop_sref : order)
     seen_loop.insert(loop_sref);
 
   // Reorder
@@ -250,7 +255,7 @@ void Schedule::reorder(const Array<StmtSRef>& order) {
   // 2. reorder the res.second-th loop, which is the target loop
   res.first[res.second] =
       ReorderTarget(top, bottom, res.first[res.second], order, 0, seen_loop, successor);
-  this->Replace(GetRef<StmtSRef>(top), SeqWrapper(res.first));
+  this->Replace(GetRef<StmtSRef>(top), SeqStmt::Flatten(res.first));
 }
 
 }  // namespace tir
