@@ -186,7 +186,7 @@ Stmt ReorderTarget(const StmtSRefNode* old_loop, const StmtSRefNode* bottom,
                    const Array<StmtSRef>& order, size_t index,
                    const std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>& seen_loop,
                    const std::unordered_map<const StmtSRefNode*, const StmtSRefNode*>& successor) {
-  int new_index = index;
+  size_t new_index = index;
   // The order list maybe incomplete, so we may copy the old_loop rather than order
   const LoopNode* copy = seen_loop.count(GetRef<StmtSRef>(old_loop)) ?
       DowncastPtr<LoopNode>(order[new_index++]->node) : DowncastPtr<LoopNode>(old_loop->node);
