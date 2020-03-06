@@ -57,14 +57,14 @@ def buffer_allocate(parser, node, shape, dtype="float32", scope=""):
     return _buffer
 
 
-def block_vars(parser, node, begin, end, name="bv", iter_type="data_par"):
-    """ Special function buffer_bind(var, shape, dtype, name)
+def block_vars(parser, node, begin, end, iter_type="data_par"):
+    """ Special function for defining a block var
 
     Example
     -------
     .. code-block:: python
 
-        vi(0, 128, iter_type="reduce")
+        vi(0, 128, iter_type="reduce"): i
 
     """
     extent = end if begin == 0 else _pass.Simplify(end - begin)
@@ -80,5 +80,6 @@ def block_vars(parser, node, begin, end, name="bv", iter_type="data_par"):
         iter_type_id = 4
     else:
         raise ValueError("Unknown iter_type")
-    block_var = tvm.tir.IterVar(block_var_dom, name, iter_type_id)
+
+    block_var = tvm.tir.IterVar(block_var_dom, parser._block_var_name, iter_type_id)
     return block_var

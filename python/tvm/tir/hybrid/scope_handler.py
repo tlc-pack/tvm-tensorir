@@ -76,4 +76,3 @@ def range(parser, node, begin, end):
 
     parser.scope_emitter.emit(
         tvm.tir.Loop(loop_var, begin, extent, [], parser.scope_emitter.pop_scope()))
-

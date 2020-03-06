@@ -17,34 +17,11 @@
 """Helper functions in Hybrid Script Parser"""
 
 import inspect
+
+from . import _ffi_api
 from . import registry, intrin, special_stmt, scope_handler
 from .parser import source_to_op
-
-
-class HybridClass:
-    """Helper class for decorating a class"""
-
-    def __init__(self, origin_script):
-        self.origin_script = origin_script
-
-    def __call__(self, *args, **kwargs):
-        # call the parser to transform hybrid script into TIR
-        return _parse(self)
-
-
-class HybridFunction:
-    """Helper class for decorating a function"""
-
-    def __init__(self, origin_script):
-        self.origin_script = origin_script
-
-
-import inspect
-
-
-from .parser import source_to_op
 from .. import module
-from . import _ffi_api
 
 
 def create_module(funcs=None):
@@ -65,12 +42,12 @@ def create_module(funcs=None):
     return module.create_module(funcs=funcs)
 
 
-def ashybrid(ir, show_meta=False):
+def ashybrid(input_ir, show_meta=False):
     """Transform a Function or Module to python syntax script
 
     Parameters
     ----------
-    ir : Union[Function, Module, HybridFunction]
+    input_ir : Union[Function, Module, HybridFunction]
         The Function or Module to be dumped
 
     show_meta : bool
@@ -82,12 +59,12 @@ def ashybrid(ir, show_meta=False):
         The Python script
     """
 
-    if isinstance(ir, HybridFunction):
+    if isinstance(input_ir, HybridFunction):
         # transform HybridFunction to Function
-        ir = _parse(ir)
-    elif isinstance(ir, module.Module):
-        ir = ir.module  # get the inner IRModule of Module
-    return _ffi_api.AsHybrid(ir, show_meta)
+        input_ir = _parse(input_ir)
+    elif isinstance(input_ir, module.Module):
+        input_ir = input_ir.module  # get the inner IRModule of Module
+    return _ffi_api.AsHybrid(input_ir, show_meta)
 
 
 def script(origin_script):
