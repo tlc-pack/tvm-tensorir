@@ -25,6 +25,8 @@
 #include <tvm/tir/buffer.h>
 #include <tvm/tir/stmt_sref.h>
 #include <tvm/tir/scope.h>
+#include <utility>
+#include <vector>
 #include <string>
 #include <unordered_map>
 
@@ -126,6 +128,12 @@ class Schedule : public ObjectRef {
    */
   Array<StmtSRef> split(const StmtSRef& node, const PrimExpr& nparts, const PrimExpr& factor);
 
+  /*!
+   * \brief reorder a list of loops
+   * \param order the order of loops
+   */
+  void reorder(const Array<StmtSRef>& order);
+
   TVM_DEFINE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
 
   ScheduleNode* operator->() {
@@ -134,22 +142,6 @@ class Schedule : public ObjectRef {
 
  private:
   void UpdateSRef(StmtSRefNode* sref, const Stmt& stmt);
-
-  /*!
-   * \brief Get the direct child Schedulable Stmt (Block and Loop)
-   * \param stmt the parent stmt.
-   * \return the list of child stmts
-   */
-  static Array<Stmt> GetChildren(const Stmt& stmt);
-
-  /*!
-   * \brief Substitute the var in current block scope specified in key->var to be value.
-   * \param expr The source expression to be substituted
-   * \param value_func The function of new values mapping.
-   * \return The converted expression.
-   */
-  static Stmt SubstituteInScope(const Stmt& stmt,
-                                const std::function<PrimExpr(const VarNode*)>& value_func);
 };
 
 }  // namespace tir

@@ -16,15 +16,12 @@
 # under the License.
 """Helper functions in Hybrid Script Parser"""
 
-from . import registry, intrin, special_stmt, scope_handler
-
-
 import inspect
 
-
+from . import _ffi_api
+from . import registry, intrin, special_stmt, scope_handler
 from .parser import source_to_op
 from .. import module
-from . import _ffi_api
 
 
 def create_module(funcs=None):
@@ -45,12 +42,12 @@ def create_module(funcs=None):
     return module.create_module(funcs=funcs)
 
 
-def ashybrid(ir, show_meta=False):
+def ashybrid(input_ir, show_meta=False):
     """Transform a Function or Module to python syntax script
 
     Parameters
     ----------
-    ir : Union[Function, Module, HybridFunction]
+    input_ir : Union[Function, Module, HybridFunction]
         The Function or Module to be dumped
 
     show_meta : bool
@@ -62,12 +59,12 @@ def ashybrid(ir, show_meta=False):
         The Python script
     """
 
-    if isinstance(ir, HybridFunction):
+    if isinstance(input_ir, HybridFunction):
         # transform HybridFunction to Function
-        ir = _parse(ir)
-    elif isinstance(ir, module.Module):
-        ir = ir.module  # get the inner IRModule of Module
-    return _ffi_api.AsHybrid(ir, show_meta)
+        input_ir = _parse(input_ir)
+    elif isinstance(input_ir, module.Module):
+        input_ir = input_ir.module  # get the inner IRModule of Module
+    return _ffi_api.AsHybrid(input_ir, show_meta)
 
 
 def script(origin_script):
@@ -130,3 +127,10 @@ def init_scope():
     registry.register_special_stmt(special_stmt.block_vars)
     registry.register_scope_handler(scope_handler.block, scope_name="with_scope")
     registry.register_scope_handler(scope_handler.range, scope_name="for_scope")
+
+
+def _parse(hybrid_script):
+    """Helper function to parse hybrid_script into TIR"""
+    init_scope()
+    return source_to_op(inspect.getsource(hybrid_script.origin_script),
+                        inspect.getsourcelines(hybrid_script.origin_script)[1])

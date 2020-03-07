@@ -36,7 +36,7 @@ class Schedule(Object):
         blocks = ScheduleBlocks(self, scope)
         if not blocks:
             return None
-        elif len(blocks) == 1:
+        if len(blocks) == 1:
             blocks = blocks[0]
         return blocks
 
@@ -59,7 +59,7 @@ class Schedule(Object):
             blocks = GetBlocksFromBuffer(self, arg, scope)
         if not blocks:
             return None
-        elif len(blocks) == 1:
+        if len(blocks) == 1:
             blocks = blocks[0]
         return blocks
 
@@ -142,6 +142,16 @@ class Schedule(Object):
         if scope is None:
             scope = self.root
         return GetPredecessors(self, scope, block)
+
+    def reorder(self, *args):
+        """reorder the arguments in the specified order
+        Parameters
+        ----------
+        args: list of Loop
+            The order to be ordered
+        """
+
+        ScheduleReorder(self, args)
 
     def fuse(self, outer_axis, inner_axis):
         """Return all axes of the specific block
