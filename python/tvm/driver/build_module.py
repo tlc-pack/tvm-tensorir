@@ -124,7 +124,7 @@ def lower(sch, args, name="main", binds=None, simple_mode=False):
 
     Parameters
     ----------
-    input : tvm.te.schedule.Schedule or tvm.Function
+    inputs : tvm.te.schedule.Schedule or tvm.Function
         The schedule to be built
 
     args : list of Buffer or Tensor or Var

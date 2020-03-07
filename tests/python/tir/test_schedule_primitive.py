@@ -157,7 +157,80 @@ def test_fuse_loop_sref():
     assert AssertEqual(s.func, predicate_fuse_func)
 
 
+@tvm.tir.hybrid.script
+def matmul_reorder(a, b, c):
+    C = buffer_bind(c, (128, 128), "float32")
+    A = buffer_bind(a, (128, 128), "float32")
+    B = buffer_bind(b, (128, 128), "float32")
+    with block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128], B[0:128, 0:128]], name="root"):
+        for i0 in range(0, 128):
+            for j0 in range(0, 128):
+                with block({vi(0, 128): i0, vj(0, 128): j0}, writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                           reads=[], name="init"):
+                    C[vi, vj] = float32(0)
+        for k in range(0, 128):
+            for i in range(0, 16384):
+                with block({vi(0, 128): floordiv(i, 128), vj(0, 128): floormod(i, 128),
+                            vk(0, 128, iter_type="reduce"): k},
+                           writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                           reads=[C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)],
+                                  B[vj:(vj + 1), vk:(vk + 1)]], name="update"):
+                    C[vi, vj] = (C[vi, vj] + (A[vi, vk] * B[vj, vk]))
+
+
+def test_reorder_normal():
+    func = util.matmul_stmt()
+    # schedule
+    s = tir.create_schedule(func)
+    update = s.get_block("update")
+    i, j, k = s.get_axes(update)
+    s.reorder(k, i)
+    s.reorder(i, j)
+    s.fuse(i, j)
+    mod = tvm.tir.hybrid.create_module([matmul_reorder])
+    matmul_reorder_func = mod["matmul_reorder"]
+
+    assert AssertEqual(s.func, matmul_reorder_func)
+
+
+@tvm.tir.hybrid.script
+def matmul_reorder(a, b, c):
+    C = buffer_bind(c, (128, 128), "float32")
+    A = buffer_bind(a, (128, 128), "float32")
+    B = buffer_bind(b, (128, 128), "float32")
+    with block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128], B[0:128, 0:128]], name="root"):
+        for i0 in range(0, 128):
+            for j0 in range(0, 128):
+                with block({vi(0, 128): i0, vj(0, 128): j0}, writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                           reads=[], name="init"):
+                    C[vi, vj] = float32(0)
+        for k in range(0, 128):
+            for i in range(0, 16384):
+                with block({vi(0, 128): floordiv(i, 128), vj(0, 128): floormod(i, 128),
+                            vk(0, 128, iter_type="reduce"): k},
+                           writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                           reads=[C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)],
+                                  B[vj:(vj + 1), vk:(vk + 1)]], name="update"):
+                    C[vi, vj] = (C[vi, vj] + (A[vi, vk] * B[vj, vk]))
+
+
+def test_reorder_normal():
+    func = util.matmul_stmt()
+    # schedule
+    s = tir.create_schedule(func)
+    update = s.get_block("update")
+    i, j, k = s.get_axes(update)
+    s.reorder(k, i)
+    s.reorder(i, j)
+    s.fuse(i, j)
+    mod = tvm.tir.hybrid.create_module([matmul_reorder])
+    matmul_reorder_func = mod["matmul_reorder"]
+
+    assert AssertEqual(s.func, matmul_reorder_func)
+
+
 if __name__ == "__main__":
     test_fuse()
-    # test_split_fuse()
-    # test_fuse_loop_sref()
+    test_split_fuse()
+    test_fuse_loop_sref()
+    test_reorder_normal()

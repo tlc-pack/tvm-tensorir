@@ -881,6 +881,12 @@ inline SubRef Downcast(BaseRef ref) {
   return SubRef(std::move(ref.data_));
 }
 
+template<typename SubType, typename BaseType>
+const SubType* DowncastPtr(BaseType* node) {
+  if (node->template IsInstance<SubType>()) return static_cast<const SubType*>(node);
+  return nullptr;
+}
+
 }  // namespace runtime
 }  // namespace tvm
 

@@ -15,7 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 """Developer API of IR node builder make function."""
-import tvm._ffi
 from tvm._ffi.base import string_types
 from tvm.runtime import ObjectGeneric, DataType, convert, const, Object
 from tvm.ir import container as _container, PointerType, PrimType
