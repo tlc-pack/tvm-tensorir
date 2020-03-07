@@ -383,7 +383,7 @@ class IRSubstitueInScope : public StmtExprMutator {
 };
 
 Stmt SubstituteInScope(const Stmt& stmt,
-                                 const std::function<PrimExpr(const VarNode*)>& value_func) {
+                       const std::function<PrimExpr(const VarNode*)>& value_func) {
   return IRSubstitueInScope(value_func)(stmt);
 }
 

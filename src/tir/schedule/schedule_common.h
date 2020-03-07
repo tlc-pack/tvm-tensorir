@@ -41,7 +41,7 @@ Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize = false);
  * \return The converted expression.
  */
 Stmt SubstituteInScope(const Stmt& stmt,
-                              const std::function<PrimExpr(const VarNode*)>& value_func);
+                       const std::function<PrimExpr(const VarNode*)>& value_func);
 
 }  // namespace tir
 }  // namespace tvm
