@@ -59,9 +59,6 @@ from . import testing
 # tvm.driver
 from .driver import build, lower
 
-# tvm.hybrid
-from . import hybrid
-
 # others
 from . import arith
 

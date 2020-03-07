@@ -366,6 +366,31 @@ class Array : public ObjectRef {
   inline reverse_iterator rend() const {
     return reverse_iterator(static_cast<const ArrayNode*>(data_.get())->data.rend());
   }
+
+  /*!
+   * \brief Inserts elements from range [first, last) before pos.
+   * \param pos iterator before which the content will be inserted. pos may be the end() iterator
+   * \param first, last the range of elements to insert, can't be iterators into container
+   * for which insert is called
+   */
+  template <typename InputIt>
+  void insert(iterator pos, InputIt first, InputIt last) {
+    ArrayNode* n = this->CopyOnWrite();
+    auto inner_begin = static_cast<const ArrayNode*>(data_.get())->data.begin();
+    std::vector<ObjectRef> temp;
+    for (auto it = first; it != last; ++it)
+      temp.push_back(T(*it));
+    n->data.insert(inner_begin + (pos - begin()), temp.begin(), temp.end());
+  }
+  /*!
+   * \brief Erases the specified elements from the container.
+   * \param i iterator to the element to remove
+   */
+  inline void erase(iterator pos) {
+    ArrayNode* n = this->CopyOnWrite();
+    auto inner_begin = static_cast<const ArrayNode*>(data_.get())->data.begin();
+    n->data.erase(inner_begin + (pos - begin()));
+  }
 };
 
 /*!
