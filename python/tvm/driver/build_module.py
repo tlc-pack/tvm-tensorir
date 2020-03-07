@@ -130,7 +130,7 @@ def lower(sch,
 
     Parameters
     ----------
-    input : tvm.te.schedule.Schedule or tvm.Function
+    inputs : tvm.te.schedule.Schedule or tvm.Function
         The schedule to be built
 
     args : list of Buffer or Tensor or Var

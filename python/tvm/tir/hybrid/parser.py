@@ -114,6 +114,7 @@ class HybridParser(ast.NodeVisitor):
         self._is_block_vars = False
         self._in_with_func_arg = False
         self._assign_target = None
+        self._block_var_name = None
 
     def init_function_parsing_env(self):
         """Initialize function parsing environment"""
@@ -456,7 +457,7 @@ class HybridParser(ast.NodeVisitor):
 
         if self._is_block_vars:
             # special judge block_var sugar
-            kw_args["name"] = func_name
+            self._block_var_name = func_name
             func_name = "block_vars"
 
         if func_name in Registry.special_stmt.keys():
@@ -548,12 +549,16 @@ class HybridParser(ast.NodeVisitor):
                 slices = []
                 if isinstance(node.slice, ast.Slice):
                     # Buffer[begin:end]
+                    if not hasattr(node.slice, "step"):
+                        self.report_error("slice of TensorRegion ought to be begin:end")
                     if node.slice.step is not None:
                         self.report_error("step is not allowed in TensorRegion")
                     slices = [(self.visit(node.slice.lower), self.visit(node.slice.upper))]
                 elif isinstance(node.slice, ast.ExtSlice):
                     # Buffer[begin:end, begin:end]
                     for dim in node.slice.dims:
+                        if not hasattr(dim, "step"):
+                            self.report_error("slice of TensorRegion ought to be begin:end")
                         if dim.step is not None:
                             self.report_error("step is not allowed in TensorRegion")
                         slices.append((self.visit(dim.lower), self.visit(dim.upper)))
@@ -676,6 +681,8 @@ def source_to_op(src, func_lineno=0):
 
     try:
         return parser.visit(root)
+    except HybridParserError as e:
+        raise e
     except TVMError as e:
         # TVM internal c++ error, we have to process the error message and inject line info
         inject_e = str(e).split('\n')
@@ -685,6 +692,9 @@ def source_to_op(src, func_lineno=0):
             parser.wrap_line_col(msg, parser.current_lineno, parser.current_col_offset).split('\n'))
         inject_e[-1] = "TVM" + inject_e[-1][6:]
         raise TVMError('\n'.join(inject_e))
+    except Exception as e:
+        inject_e = parser.wrap_line_col(str(e), parser.current_lineno, parser.current_col_offset)
+        raise HybridParserError(inject_e)
 
 
 tvm._ffi._init_api("tvm.tir.hybrid.parser")
