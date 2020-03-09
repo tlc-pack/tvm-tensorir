@@ -272,15 +272,6 @@ class Array : public ObjectRef {
     n->data.push_back(item);
   }
   /*!
-   * \brief insert a new item to the specific position
-   * \param pos The index
-   * \param item The item to be pushed.
-   */
-  inline void insert(size_t pos, const T& item) {
-    ArrayNode* n = this->CopyOnWrite();
-    n->data.insert(n->data.begin() + pos, item);
-  }
-  /*!
    * \brief Resize the array.
    * \param size The new size.
    */
@@ -376,6 +367,16 @@ class Array : public ObjectRef {
     return reverse_iterator(static_cast<const ArrayNode*>(data_.get())->data.rend());
   }
 
+  /*!
+   * \brief insert a new item to the specific position
+   * \param pos iterator before which the content will be inserted. pos may be the end() iterator
+   * \param item The item to be pushed.
+   */
+  inline void insert(iterator pos, const T& item) {
+    ArrayNode* n = this->CopyOnWrite();
+    auto inner_begin = static_cast<const ArrayNode*>(data_.get())->data.begin();
+    n->data.insert(inner_begin + (pos - begin()), item);
+  }
   /*!
    * \brief Inserts elements from range [first, last) before pos.
    * \param pos iterator before which the content will be inserted. pos may be the end() iterator

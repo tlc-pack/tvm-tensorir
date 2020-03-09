@@ -76,6 +76,13 @@ class CoverIterDom {
   PrimExpr stride_;
 };
 
+/*!
+ * \brief Find the minimum region to cover the requirement
+ * \param vars The vars whose iter range to be detected
+ * \param produces The produce region
+ * \param requirements The required region
+ * \return The iteration information for each var
+ */
 std::vector<CoverIterDom> SolveCover(const Array<IterVar>& vars,
                                      const std::vector<Range>& produces,
                                      const std::vector<Range>& requirements) {
@@ -111,9 +118,17 @@ std::vector<CoverIterDom> SolveCover(const Array<IterVar>& vars,
   return cover_iters;
 }
 
-Stmt RegenerateLoopAxis(const StmtSRef& block_sref, const StmtSRef& loop_sref,
-                        const std::vector<CoverIterDom>& iter_domain, size_t insert_pos) {
-  // generate for AxisNodes
+/*!
+ * \brief Regenerate loop and the block realize outside the specific block with iter information
+ * \param block_sref The sref of the block
+ * \param parent_loop_sref The parent loop where the new loop nesting will be inserted
+ * \param iter_domain The iteration information
+ * \param insert_pos The insert postion
+ * \return The Updated parent loop
+ */
+Stmt RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& parent_loop_sref,
+                     const std::vector<CoverIterDom>& iter_domain, size_t insert_pos) {
+  // generate for loops
   std::vector<Var> iter_vars(iter_domain.size());
   const auto* block_realize = GetBlockRealize(block_sref).operator->();
   auto node = make_object<BlockRealizeNode>(*block_realize);
@@ -144,32 +159,39 @@ Stmt RegenerateLoopAxis(const StmtSRef& block_sref, const StmtSRef& loop_sref,
       body = loop;
     }
   }
-  Loop loop = Downcast<Loop>(GetRef<Stmt>(loop_sref->node));
+  Loop loop = Downcast<Loop>(GetRef<Stmt>(parent_loop_sref->node));
   Array<Stmt> stmts = GetChildren(loop);
-  stmts.insert(insert_pos, body);
+  stmts.insert(stmts.begin() + insert_pos, body);
 
   auto n = make_object<LoopNode>(*loop.operator->());
   n->body = SeqStmt(stmts);
   return Loop(n);
 }
 
-std::vector<Range> GatherRequirements(const Array<TensorRegion>& tensor_regions,
-                                      const StmtSRef& loop_sref,
-                                      const std::vector<StmtSRef>& blocks) {
-  std::vector<std::vector<arith::IntSet>> require_region(tensor_regions.size());
-  for (size_t i = 0; i < tensor_regions.size(); ++i) {
-    const auto& tensor_region = tensor_regions[i];
+/*!
+ * \brief Gather the required tensor region for consumer consumer_blocks
+ * \param produce_regions The output tensor region of producer consumer_blocks
+ * \param lca_loop_sref The lca of producer and consumer
+ * \param consumer_blocks The consumer consumer_blocks
+ * \return Required with the same order as produce_regions
+ */
+std::vector<Range> GatherRequirements(const Array<TensorRegion>& produce_regions,
+                                      const StmtSRef& lca_loop_sref,
+                                      const std::vector<StmtSRef>& consumer_blocks) {
+  std::vector<std::vector<arith::IntSet>> require_region(produce_regions.size());
+  for (size_t i = 0; i < produce_regions.size(); ++i) {
+    const auto& tensor_region = produce_regions[i];
     require_region[i] =
         std::vector<arith::IntSet>(tensor_region->region.size(), arith::IntSet::nothing());
   }
 
   std::unordered_map<Buffer, size_t, ObjectHash, ObjectEqual> buffer_index;
-  for (size_t i = 0; i < tensor_regions.size(); ++i) {
-    buffer_index[tensor_regions[i]->buffer] = i;
+  for (size_t i = 0; i < produce_regions.size(); ++i) {
+    buffer_index[produce_regions[i]->buffer] = i;
   }
 
-  for (const auto& block_sref : blocks) {
-    const auto* block = GetRef<Stmt>(block_sref->node).as<BlockNode>();
+  for (const auto& block_sref : consumer_blocks) {
+    const auto* block = DowncastPtr<BlockNode>(block_sref->node);
     const auto* block_realize = GetBlockRealize(block_sref).operator->();
     CHECK(block != nullptr);
 
@@ -182,8 +204,8 @@ std::vector<Range> GatherRequirements(const Array<TensorRegion>& tensor_regions,
     // Gather iteration domain
     std::unordered_map<const VarNode*, arith::IntSet> dom_map;
     auto sref = GetRef<StmtSRef>(block_sref->parent);
-    while (sref.defined() && sref != loop_sref) {
-      const auto* loop = GetRef<Stmt>(sref->node).as<LoopNode>();
+    while (sref.defined() && sref != lca_loop_sref) {
+      const auto* loop = DowncastPtr<LoopNode>(sref->node);
       CHECK(loop != nullptr);
       Range range = Range::make_by_min_extent(loop->min, loop->extent);
       dom_map[loop->loop_var.get()] = arith::IntSet::range(range);
@@ -222,8 +244,8 @@ void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref)
   // - Same input: Based on dependency analyse
   // - Output region coverage: Easy to fill the loops because of data-parallel args
 
-  const auto* block = GetRef<Stmt>(block_sref->node).as<BlockNode>();
-  const auto* loop = GetRef<Stmt>(loop_sref->node).as<LoopNode>();
+  const auto* block = DowncastPtr<BlockNode>(block_sref->node);
+  const auto* loop = DowncastPtr<LoopNode>(loop_sref->node);
   CHECK(block != nullptr) << block_sref << "is not a block sref";
   CHECK(loop != nullptr) << loop_sref << "is not a loop sref";
 
@@ -251,7 +273,7 @@ void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref)
   for (const auto& x : successors) {
     if (!child_blocks.count(x->dst)) {
       LOG(FATAL) << "This block cannot compute at this point because some other " <<
-                    "blocks outside the scope of this point are also dependent on this block.";
+                 "blocks outside the scope of this point are also dependent on this block.";
     }
   }
 
@@ -289,7 +311,7 @@ void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref)
 
   const auto& iter_domain = SolveCover(block->iter_vars, produces, requirements);
 
-  Stmt new_stmt = RegenerateLoopAxis(block_sref, loop_sref, iter_domain, after_pos);
+  Stmt new_stmt = RegenerateLoops(block_sref, loop_sref, iter_domain, after_pos);
   this->Replace(loop_sref, new_stmt);
   this->RemoveLeaf(block_sref);
 }
