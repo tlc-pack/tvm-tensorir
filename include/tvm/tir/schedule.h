@@ -151,8 +151,16 @@ class Schedule : public ObjectRef {
   }
 
  private:
+  /*!
+   * \brief Update the sref to make it point to new Block/Loop
+   * \param sref The outdated sref
+   * \param stmt The new stmt
+   */
   void UpdateSRef(StmtSRefNode* sref, const Stmt& stmt);
-
+  /*!
+   * \brief remove the AST leaf and its parent subtree which has only one leaf
+   * \param sref The sref of Block/Loop to be removed
+   */
   void RemoveLeaf(StmtSRef sref);
 };
 

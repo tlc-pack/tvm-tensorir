@@ -44,6 +44,8 @@ class ChildBlockGatherer : public StmtExprVisitor {
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>* child_blocks_;
 };
 
+
+/*! To find if there is any dependent block under in the specific subtree */
 bool FindAny(const Schedule& sch, const Stmt& stmt, const Array<DepEdge>& edges) {
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> child_blocks;
   ChildBlockGatherer(sch, &child_blocks)(stmt);
@@ -244,15 +246,18 @@ void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref)
   // - Same input: Based on dependency analyse
   // - Output region coverage: Easy to fill the loops because of data-parallel args
 
+  // Check
   const auto* block = DowncastPtr<BlockNode>(block_sref->node);
   const auto* loop = DowncastPtr<LoopNode>(loop_sref->node);
   CHECK(block != nullptr) << block_sref << "is not a block sref";
   CHECK(loop != nullptr) << loop_sref << "is not a loop sref";
 
+  // Check the block and the loop are at the same scope
   CHECK_EQ(GetScope(block_sref), GetScope(loop_sref))
     << "Cannot compute_at between different scope";
   const Scope& scope = operator->()->scopes_.at(GetScope(block_sref));
 
+  // Check complete block
   CHECK(scope.IsComplete(block_sref)) << "Can only compute_at a complete block";
 
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> child_blocks;
@@ -260,7 +265,7 @@ void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref)
   const auto& predecessors = scope.GetPredecessors(block_sref);
   const auto& successors = scope.GetSuccessors(block_sref);
 
-  // The block to be compute_at can not be an output block
+  // Check the block is not a output block
   std::unordered_set<Buffer, ObjectHash, ObjectEqual> seen_buffer;
   const auto& func = operator->()->func;
   for (const auto& x : block->writes) {
@@ -269,13 +274,15 @@ void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref)
   }
 
 
-  // All successors are in the subtree rooted by loop_sref
+  // Check all successors are in the subtree rooted by loop_sref
   for (const auto& x : successors) {
     if (!child_blocks.count(x->dst)) {
       LOG(FATAL) << "This block cannot compute at this point because some other " <<
                  "blocks outside the scope of this point are also dependent on this block.";
     }
   }
+
+  // Mutation
 
   // Find insert position
   // After all predecessors in dependency graph and before all successors in dep graph.
@@ -286,7 +293,6 @@ void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref)
       break;
     }
   }
-
   for (before_pos = 0; before_pos < children.size(); before_pos++) {
     if (FindAny(*this, children[before_pos], successors)) {
       break;
@@ -296,22 +302,25 @@ void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref)
     LOG(FATAL) << "Cannot satisfy dependency";
   }
 
+  // Gather required region
   std::vector<Range> produces;
   for (const auto& tensor_region : block->writes)
     for (const auto& range : tensor_region->region) {
       produces.push_back(range);
     }
-
   std::vector<StmtSRef> successor_blocks(successors.size());
   for (size_t i = 0; i < successors.size(); ++i) {
     successor_blocks[i] = successors[i]->dst;
   }
-
   std::vector<Range> requirements = GatherRequirements(block->writes, loop_sref, successor_blocks);
 
+  // Solve the coverage
   const auto& iter_domain = SolveCover(block->iter_vars, produces, requirements);
 
+  // Regenerate the loop nesting
   Stmt new_stmt = RegenerateLoops(block_sref, loop_sref, iter_domain, after_pos);
+
+  // Mutate the AST with Relace and RemoveLeaf API
   this->Replace(loop_sref, new_stmt);
   this->RemoveLeaf(block_sref);
 }
