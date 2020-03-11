@@ -55,13 +55,16 @@ bool FindAny(const Schedule& sch, const Stmt& stmt, const Array<DepEdge>& edges)
   return false;
 }
 
-class CoverIterDom {
+/*! \note It is incomplete IntSet with limited function.
+ *        Perhaps we will public it when it is enhanced
+ */
+class StrideIntSet {
  public:
-  CoverIterDom() = default;
-  CoverIterDom(Range iter_range, PrimExpr stride) :
+  StrideIntSet() = default;
+  StrideIntSet(Range iter_range, PrimExpr stride) :
       iter_range_(std::move(iter_range)), stride_(std::move(stride)) {}
 
-  void Union(const CoverIterDom& other) {
+  void Union(const StrideIntSet& other) {
     if (stride_.defined()) {
       CHECK(Equal(stride_, other.stride_));
       const Range& rhs_range = other.iter_range_;
@@ -85,10 +88,10 @@ class CoverIterDom {
  * \param requirements The required region
  * \return The iteration information for each var
  */
-std::vector<CoverIterDom> SolveCover(const Array<IterVar>& vars,
+std::vector<StrideIntSet> SolveCover(const Array<IterVar>& vars,
                                      const std::vector<Range>& produces,
                                      const std::vector<Range>& requirements) {
-  std::vector<CoverIterDom> cover_iters(vars.size());
+  std::vector<StrideIntSet> cover_iters(vars.size());
   std::unordered_map<Var, size_t, ObjectHash, ObjectEqual> var_index;
   arith::Analyzer analyzer;
 
@@ -114,7 +117,7 @@ std::vector<CoverIterDom> SolveCover(const Array<IterVar>& vars,
     const PrimExpr& extent = analyzer.Simplify((require->extent + produces_len - 1) / produces_len);
     const PrimExpr& strides = produces_len;
 
-    cover_iters[id].Union(CoverIterDom(Range::make_by_min_extent(base, extent), strides));
+    cover_iters[id].Union(StrideIntSet(Range::make_by_min_extent(base, extent), strides));
   }
 
   return cover_iters;
@@ -129,7 +132,7 @@ std::vector<CoverIterDom> SolveCover(const Array<IterVar>& vars,
  * \return The Updated parent loop
  */
 Stmt RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& parent_loop_sref,
-                     const std::vector<CoverIterDom>& iter_domain, size_t insert_pos) {
+                     const std::vector<StrideIntSet>& iter_domain, size_t insert_pos) {
   // generate for loops
   std::vector<Var> iter_vars(iter_domain.size());
   const auto* block_realize = GetBlockRealize(block_sref).operator->();
@@ -276,7 +279,7 @@ void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref)
 
   // Check all successors are in the subtree rooted by loop_sref
   for (const auto& x : successors) {
-    if (!child_blocks.count(x->dst)) {
+    if (x->type == DepType::kRAW && !child_blocks.count(x->dst)) {
       LOG(FATAL) << "This block cannot compute at this point because some other " <<
                  "blocks outside the scope of this point are also dependent on this block.";
     }
