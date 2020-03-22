@@ -112,7 +112,6 @@ class Schedule : public ObjectRef {
    */
   StmtSRef GetScope(StmtSRef node) const;
 
-
   /*!
    * \brief fuse two consecutive loops of one computation.
    * \param outer The outer loop
@@ -162,6 +161,10 @@ class Schedule : public ObjectRef {
    * \param sref The sref of Block/Loop to be removed
    */
   void RemoveLeaf(StmtSRef sref);
+  /*!
+   * \brief Check the region cover for the single consumer block
+   */
+  bool CheckRegion(const StmtSRef& consumer);
 };
 
 }  // namespace tir

@@ -44,7 +44,6 @@ class ChildBlockGatherer : public StmtExprVisitor {
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>* child_blocks_;
 };
 
-
 /*! To find if there is any dependent block under in the specific subtree */
 bool FindAny(const Schedule& sch, const Stmt& stmt, const Array<DepEdge>& edges) {
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> child_blocks;
@@ -196,39 +195,19 @@ std::vector<Range> GatherRequirements(const Array<TensorRegion>& produce_regions
   }
 
   for (const auto& block_sref : consumer_blocks) {
-    const auto* block = DowncastPtr<BlockNode>(block_sref->node);
-    const auto* block_realize = GetBlockRealize(block_sref).operator->();
-    CHECK(block != nullptr);
+    std::vector<TensorRegion> reads;
+    RelaxRegion(block_sref, lca_loop_sref, &reads, nullptr);
 
-    // Update block_var map
-    std::unordered_map<const VarNode*, PrimExpr> vmap;
-    for (size_t i = 0; i < block->iter_vars.size(); ++i) {
-      vmap[block->iter_vars[i]->var.get()] = block_realize->binding_values[i];
-    }
-
-    // Gather iteration domain
-    std::unordered_map<const VarNode*, arith::IntSet> dom_map;
-    auto sref = GetRef<StmtSRef>(block_sref->parent);
-    while (sref.defined() && sref != lca_loop_sref) {
-      const auto* loop = DowncastPtr<LoopNode>(sref->node);
-      CHECK(loop != nullptr);
-      Range range = Range::make_by_min_extent(loop->min, loop->extent);
-      dom_map[loop->loop_var.get()] = arith::IntSet::range(range);
-      sref = GetRef<StmtSRef>(sref->parent);
-    }
-
-    for (const auto& tensor_region : block->reads) {
+    for (const auto& tensor_region : reads) {
       auto it = buffer_index.find(tensor_region->buffer);
       // Only consider the tensor regions which are relative with the block to be `compute_at`
       if (it == buffer_index.end()) continue;
       size_t index = it->second;
 
       for (size_t i = 0; i < tensor_region->region.size(); ++i) {
-        auto range = tensor_region->region[i];
-        range = Range::make_by_min_extent(Substitute(range->min, vmap),
-                                          Substitute(range->extent, vmap));
+        const auto& range = tensor_region->region[i];
         require_region[index][i] =
-            arith::Union({require_region[index][i], arith::EvalSet(range, dom_map)});
+            arith::Union({require_region[index][i], arith::IntSet::range(range)});
       }
     }
   }
@@ -276,6 +255,14 @@ void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref)
       CHECK(!x->buffer.same_as(func_buffer.second)) << "Can not compute_at an output block";
   }
 
+  for (const auto& predecessor : predecessors) {
+    if (predecessor->type == DepType::kRAW) {
+      CHECK(scope.IsComplete(predecessor->dst)) << "The producer must a complete block";
+    }
+  }
+
+  // Check Region Cover
+  CHECK(CheckRegion(block_sref)) << "The producer cannot produce necessary tensor region";
 
   // Check all successors are in the subtree rooted by loop_sref
   for (const auto& x : successors) {

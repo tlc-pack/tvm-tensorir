@@ -83,18 +83,11 @@ def test_WAR(a, b, c):
 def test_WAR_dependency():
     mod = tvm.tir.hybrid.create_module([test_WAR])
     func = mod["test_WAR"]
-    s = tir.create_schedule(func)
-    block_B = s.get_block("B")
-    block_C = s.get_block("C")
-    successor_c = s.get_successors(block_C)
-    assert len(successor_c) == 1
-    assert successor_c[0].dst == block_B
-    assert successor_c[0].type == 2  # RAW
-
-    predecessor_b = s.get_predecessors(block_B)
-    assert len(predecessor_b) == 1
-    assert predecessor_b[0].dst == block_C
-    assert predecessor_b[0].type == 2  # RAW
+    try:
+        s = tir.create_schedule(func)
+        assert False
+    except tvm._ffi.base.TVMError as e:
+        assert str(e).split(':')[-1].strip() == "WAR dependency is not allowed for now."
 
 
 if __name__ == "__main__":

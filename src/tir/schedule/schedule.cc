@@ -79,8 +79,10 @@ class DependencyAnalyzer : public ScheduleCreator {
     std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual> read_map_;
 
     std::swap(current_scope_, scope);
+    std::swap(current_read_map_, read_map_);
     ScheduleCreator::VisitStmt_(op);
     std::swap(current_scope_, scope);
+    std::swap(current_read_map_, read_map_);
 
     StmtSRef block_sref = stmt_map_->at(op);
     (*block_scopes_)[block_sref] = scope;
@@ -136,6 +138,11 @@ class DependencyAnalyzer : public ScheduleCreator {
       it = current_read_map_.find(write_buffer);
       if (it != current_read_map_.end()) {
         for (const auto& read_block : it->second) {
+          if (!read_block.same_as(block_sref)) {
+            LOG(INFO) << read_block;
+            LOG(INFO) << block_sref;
+            LOG(FATAL) << "WAR dependency is not allowed for now.";
+          }
           current_scope_.AddEdge(read_block, block_sref, DepType::kWAR);
         }
       }
@@ -231,7 +238,7 @@ class SubReplacer : protected StmtMutator {
     if (son.as<LoopNode>()) {
       return son.get() == target;
     } else {
-      const auto *ptr = son.as<BlockRealizeNode>();
+      const auto* ptr = son.as<BlockRealizeNode>();
       CHECK(ptr != nullptr);
       return ptr->block.get() == target;
     }
@@ -272,8 +279,11 @@ Function UpdateFuncBody(FunctionNode* func, const Stmt& new_body) {
 class SRefRemover : public StmtVisitor {
  public:
   SRefRemover(std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref,
-      std::unordered_map<StmtSRef, StmtSRefNode*, ObjectHash, ObjectEqual>&& used_border_parent,
-      std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>&& reuse_sref)
+              std::unordered_map<StmtSRef,
+                                 StmtSRefNode*,
+                                 ObjectHash,
+                                 ObjectEqual>&& used_border_parent,
+              std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>&& reuse_sref)
       : reuse_sref_(reuse_sref), used_border_parent_(used_border_parent), stmt2ref_(stmt2ref) {}
 
   void VisitStmt_(const LoopNode* op) final {
@@ -412,11 +422,11 @@ void Schedule::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_m
   collector(old_stmt);
   // Create SRef tree for the incoming target Stmt
   SRefCreator creator(&self->stmt2ref, std::move(collector.loop_var2sref),
-      std::move(block_sref_map), old_ref->parent);
+                      std::move(block_sref_map), old_ref->parent);
   creator(target);
   // Initialize old SRef remover
   SRefRemover remover(&self->stmt2ref,
-      std::move(creator.used_border_parent_), std::move(creator.reuse_sref_));
+                      std::move(creator.used_border_parent_), std::move(creator.reuse_sref_));
   // num_copy_steps: maximum number of hops until we don't need to copy
   int curr_step = 0;
   int num_copy_steps = -1;
@@ -430,7 +440,7 @@ void Schedule::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_m
   // Update the function body
   curr_step = 0;
   for (StmtSRefNode* ptr = old_ref.get(); ptr->node != self->root->node;
-      ptr = ptr->parent, ++curr_step) {
+       ptr = ptr->parent, ++curr_step) {
     StmtSRefNode* parent = ptr->parent;
     // parent_step = current_step + 1
     // if parent_step <= num_copy_step, then it implies
@@ -527,7 +537,7 @@ Array<StmtSRef> Schedule::Blocks(StmtSRef scope) const {
   }
   Array<StmtSRef> ret;
   for (const auto& block : collect)
-      ret.push_back(block);
+    ret.push_back(block);
   return ret;
 }
 
@@ -596,6 +606,56 @@ void Schedule::RemoveLeaf(StmtSRef sref) {
   } else {
     LOG(FATAL) << "unknown stmt";
   }
+}
+
+bool Schedule::CheckRegion(const StmtSRef& consumer) {
+  StmtSRef scope_sref = GetScope(consumer);
+  Scope scope = operator->()->scopes_[scope_sref];
+
+  // Gather producers
+  std::vector<StmtSRef> producers;
+  const auto& successors = scope.GetSuccessors(consumer);
+  for (const auto& edge : successors) {
+    if (edge->type == DepType::kRAW) {
+      producers.push_back(edge->dst);
+    }
+  }
+
+  std::vector<StmtSRef> nodes = producers;
+  nodes.push_back(consumer);
+
+  const StmtSRef& lca = LowestCommonAncestor(nodes, scope_sref);
+
+  auto check_cover = [](const TensorRegion& read, const TensorRegion& write) -> bool {
+    CHECK_EQ(read->region.size(), write->region.size());
+    for (size_t i = 0; i < read->region.size(); ++i) {
+      auto read_min = read->region[i]->min;
+      auto write_min = write->region[i]->min;
+      auto read_max = read_min + read->region[i]->extent;
+      auto write_max = write_min + write->region[i]->extent;
+      arith::Analyzer analyzer;
+      if (!analyzer.CanProve(read_min >= write_min) || !analyzer.CanProve(read_max <= write_max)) {
+        LOG(WARNING) << "Cannot prove the region cover: producer " << read << " consumer " << write;
+        return false;
+      }
+    }
+    return true;
+  };
+
+  std::vector<TensorRegion> reads;
+  RelaxRegion(consumer, lca, &reads, nullptr);
+  for (const auto& producer : producers) {
+    std::vector<TensorRegion> writes;
+    RelaxRegion(producer, lca, nullptr, &writes);
+    for (const auto& write : writes) {
+      for (const auto& read : reads) {
+        if (read->buffer.same_as(write->buffer)) {
+          if (!check_cover) return false;
+        }
+      }
+    }
+  }
+  return true;
 }
 
 StmtSRef Schedule::fuse(const StmtSRef& outer, const StmtSRef& inner) {

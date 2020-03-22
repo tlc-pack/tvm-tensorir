@@ -56,12 +56,12 @@ Array<DepEdge> Scope::GetPredecessors(const StmtSRef& block) const {
 }
 
 bool Scope::IsComplete(const StmtSRef& block) const {
-  const auto* n = GetRef<Stmt>(block->node).as<BlockNode>();
+  const auto* n = DowncastPtr<BlockNode>(block->node);
   CHECK(n != nullptr);
 
   // Check the block is the only producer for every output tensors
   for (const auto& write : n->writes) {
-    Buffer buffer = write->buffer;
+    const Buffer& buffer = write->buffer;
     if (operator->()->write_map.at(buffer).size() != 1) {
       return false;
     } else {
@@ -76,6 +76,17 @@ bool Scope::IsComplete(const StmtSRef& block) const {
       return false;
     }
   }
+
+  // The Complete block can not read the writing tensors
+  for (const auto& write : n->writes) {
+    const Buffer& buffer = write->buffer;
+    for (const auto& read : n->reads) {
+      if (buffer.same_as(read->buffer)) {
+        return false;
+      }
+    }
+  }
+
   return true;
 }
 

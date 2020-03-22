@@ -23,6 +23,8 @@
 #ifndef TVM_TIR_SCHEDULE_SCHEDULE_COMMON_H_
 #define TVM_TIR_SCHEDULE_SCHEDULE_COMMON_H_
 
+#include <vector>
+
 namespace tvm {
 namespace tir {
 
@@ -43,15 +45,27 @@ Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize = false);
 Stmt SubstituteInScope(const Stmt& stmt,
                        const std::function<PrimExpr(const VarNode*)>& value_func);
 
-template <typename T>
-Stmt GetStmtFromSeq(const T* op, const Stmt& target, int64_t seq_index = -1);
-
 /*!
  * \brief Get BlockRealize with by Block
  * \param block The queried block
  * \return BlockRealize.
  */
 BlockRealize GetBlockRealize(const StmtSRef& block_sref);
+
+/*! \brief Get lowest common ancestor of all nodes */
+StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef& root);
+
+/*!
+ * \brief Relax the TensorRegion with the loops under root
+ * \param block_sref The block sref
+ * \param root The root node
+ * \param reads The vector to store the reads result
+ * \param writes The vector to store the writes result
+ * \note reads and writes can be nullptr. In that case, we will ignore relax reads or writes region.
+ */
+void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
+                 std::vector<TensorRegion>* reads,
+                 std::vector<TensorRegion>* writes);
 
 }  // namespace tir
 }  // namespace tvm

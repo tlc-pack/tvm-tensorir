@@ -250,8 +250,8 @@ def compute_at_case(a, c):
         for i in range(0, 128):
             for j in range(0, 128):
                 with block({vi(0, 128): i, vj(0, 128): j},
-                           reads=B[vi: vi + 1, vj: vj + 1], writes=A[vi: vi + 1, vj: vj + 1], name="B0"):
-                    A[vi, vj] = B[vi, vj] * 2
+                           reads=[], writes=A[vi: vi + 1, vj: vj + 1], name="B0"):
+                    A[vi, vj] = 2
                 for k in range(0, 128):
                     with block({vi(0, 128): i, vj(0, 128): j},
                                reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1], name="B1"):
