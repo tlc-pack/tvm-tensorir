@@ -122,7 +122,6 @@ def test_split_fuse():
     assert AssertEqual(split_func, s.func)
     assert s.validate_sref()
 
-
 @tvm.tir.hybrid.script
 def compute_at_element_wise(a, c):
     A = buffer_bind(a, (128, 128))
@@ -166,7 +165,7 @@ def predicate_fuse(b, c):
     B = buffer_bind(b, (16, 16), "float32")
     with block({}, writes=[], reads=[], name="root"):
         for i in range(0, 256):
-            with block({vi(0, 16):floordiv(floordiv(i, 4), 4), vj(0, 16):((floormod(floordiv(i, 4), 4)*3) + floormod(i, 4))}, writes=[C[vi:(vi + 1), vj:(vj + 1)]], reads=[B[vi:(vi + 1), vj:(vj + 1)]], predicate=(((floormod(floordiv(i, 4), 4)*4) + floormod(i, 4)) < 16), name="update"):
+            with block({vi(0, 16):floordiv(floordiv(i, 4), 4), vj(0, 16):((floormod(floordiv(i, 4), 4)*4) + floormod(i, 4))}, writes=[C[vi:(vi + 1), vj:(vj + 1)]], reads=[B[vi:(vi + 1), vj:(vj + 1)]], predicate=(((floormod(floordiv(i, 4), 4)*4) + floormod(i, 4)) < 16), name="update"):
                 C[vi, vj] = (B[vi, vj] + float32(1))
 
 

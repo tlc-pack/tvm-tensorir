@@ -53,7 +53,7 @@ class ScheduleNode : public Object {
     v->Visit("root", &root);
   }
 
-  /*!
+ /*!
  * \brief Create a new schedule
  * \param function The function to be scheduled
  * \return The schedule
@@ -130,6 +130,12 @@ class ScheduleNode : public Object {
    * \return the regenerated loops
    * */
   void compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref);
+
+  /*!
+   * \brief vectorize a node
+   * \param node the node to be vectorized
+   */
+  void vectorize(const StmtSRef& node);
 
   /*!
    * \brief reorder a list of loops

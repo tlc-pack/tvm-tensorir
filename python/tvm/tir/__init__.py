@@ -28,7 +28,7 @@ from .expr import Select, Load, Ramp, Broadcast, Shuffle, Call, Let
 from .expr import IterVar, Any
 from .expr import BufferLoad
 
-from .stmt import Stmt, LetStmt, AssertStmt, ProducerConsumer, For
+from .stmt import Stmt, LetStmt, AssertStmt, ProducerConsumer, For, Annotation
 from .stmt import Store, Provide, Allocate, AttrStmt, Free, Realize, SeqStmt
 from .stmt import IfThenElse, Evaluate, Prefetch, LoweredFunc, stmt_seq, stmt_list
 from .stmt import Block, BlockRealize, Loop, BufferAllocate, BufferStore, TensorRegion

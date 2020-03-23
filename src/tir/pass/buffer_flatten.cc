@@ -280,10 +280,20 @@ class BufferFlattener : public StmtExprMutator {
     op = stmt.as<LoopNode>();
     CHECK(op != nullptr);
     // todo(@siyuan): add support for loops with annotations
+
+    ForType for_type = ForType::Serial;
+    for (const auto & annotation : op->annotations)
+      if (annotation->attr_key == tir::attr::loop_type) {
+        std::string type = Downcast<StringImm>(annotation->value)->value;
+        if (type == "unroll") for_type = ForType::Unrolled;
+        else if (type == "vectorize") for_type = ForType::Vectorized;
+        else if (type == "parallel")  for_type = ForType::Parallel;
+      }
+
     return ForNode::make(op->loop_var,
                          op->min,
                          op->extent,
-                         ForType::Serial,
+                         for_type,
                          DeviceAPI::None,
                          op->body);
   }

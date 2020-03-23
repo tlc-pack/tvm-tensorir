@@ -342,7 +342,14 @@ Doc TIRHybridPrinter::VisitStmt_(const LoopNode* op) {
   // print loop and annotations
   doc << "for " << Print(op->loop_var);
   doc << " in range(" << Print(op->min) << ", " << Print(Simplify(op->min + op->extent));
-  doc << "):";
+  doc << ", annotation = {";
+  for (size_t i = 0; i < op->annotations.size(); ++i) {
+    if (i != 0) {
+      doc << ", ";
+    }
+    doc << "\"" << op->annotations[i]->attr_key << "\":" << Print(op->annotations[i]->value);
+  }
+  doc << "}):";
 
   // print body
   Doc body;

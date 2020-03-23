@@ -96,6 +96,13 @@ void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
                  std::vector<TensorRegion>* reads,
                  std::vector<TensorRegion>* writes);
 
+/*!
+ * \brief Whether expr is related with var
+ * \param var the expected var
+ * \param expr the expected expr
+ * \return Whether expr is related with var
+ */
+bool RelatedWithVar(const Var& var, const PrimExpr& expr);
 
 class SRefValidator : public StmtVisitor {
  public:

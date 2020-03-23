@@ -363,24 +363,28 @@ TVM_REGISTER_GLOBAL("tir.Block")
                    body, allocates, annotations, tag);
     });
 
-BlockRealize::BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block) {
+BlockRealize::BlockRealize(Array<PrimExpr> values,
+                           PrimExpr predicate,
+                           Block block,
+                           bool binding_valid) {
   CHECK_EQ(block->iter_vars.size(), values.size());
   ObjectPtr<BlockRealizeNode> node = make_object<BlockRealizeNode>();
   node->binding_values = std::move(values);
   node->predicate = std::move(predicate);
   node->block = std::move(block);
+  node->binding_valid = std::move(binding_valid);
   data_ = std::move(node);
 }
 
 TVM_REGISTER_GLOBAL("tir.BlockRealize")
-.set_body_typed<BlockRealize(Array<PrimExpr>, PrimExpr, Block)>(
-    [](Array<PrimExpr> values, PrimExpr predicate, Block block) {
+.set_body_typed<BlockRealize(Array<PrimExpr>, PrimExpr, Block, bool)>(
+    [](Array<PrimExpr> values, PrimExpr predicate, Block block, bool binding_valid) {
       if (!predicate.dtype().is_bool()) {
         // To support python ir_builder
         CHECK(is_one(predicate));
         predicate = IntImm(DataType::Bool(), 1);
       }
-      return BlockRealize(values, predicate, block);
+      return BlockRealize(values, predicate, block, binding_valid);
     });
 
 TensorRegion::TensorRegion(Buffer buffer, Array<Range> region) {

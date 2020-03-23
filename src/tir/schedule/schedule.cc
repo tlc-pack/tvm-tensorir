@@ -21,6 +21,7 @@
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/arith/analyzer.h>
 #include <tvm/runtime/registry.h>
+#include <tvm/tir/ir_pass.h>
 #include "schedule_common.h"
 
 namespace tvm {
@@ -751,8 +752,10 @@ Array<StmtSRef> ScheduleNode::split(const StmtSRef& node,
   arith::Analyzer analyzer;
   analyzer.Bind(outer_var, Range::make_by_min_extent(outer_min, outer_extent));
   analyzer.Bind(inner_var, Range::make_by_min_extent(inner_min, inner_extent));
-  PrimExpr predicate = analyzer.Simplify(outer_var * factor + inner_var < loop->extent);
-  Stmt new_stmt = PredicateUpdater(predicate)(SubstituteInScope(loop->body, vmap));
+  PrimExpr predicate = outer_var * factor + inner_var < loop->extent;
+  Stmt new_stmt = SubstituteInScope(loop->body, vmap);
+  if (!analyzer.CanProve(predicate))
+    new_stmt = PredicateUpdater(predicate)(new_stmt);
 
   Loop inner_loop(inner_var, inner_min, inner_extent, loop->annotations, new_stmt);
   Loop outer_loop(outer_var, outer_min, outer_extent, loop->annotations, inner_loop);
@@ -763,6 +766,45 @@ Array<StmtSRef> ScheduleNode::split(const StmtSRef& node,
   StmtSRef inner_sref = stmt2ref[inner_loop.as<StmtNode>()];
   StmtSRef outer_sref = stmt2ref[outer_loop.as<StmtNode>()];
   return Array<StmtSRef>{outer_sref, inner_sref};
+}
+
+class AnnotationUpdater : public StmtMutator {
+ public:
+  explicit AnnotationUpdater(Annotation annotation) : annotation_(std::move(annotation)) {}
+
+ private:
+  Stmt VisitStmt_(const LoopNode* op) override {
+    auto n = CopyOnWrite(op);
+    n->annotations.push_back(std::move(annotation_));
+    return Stmt(n);
+  }
+
+  Annotation annotation_;
+};
+
+void ScheduleNode::vectorize(const StmtSRef& node) {
+  const auto* loop = DowncastPtr<LoopNode>(node->node);
+  CHECK(loop != nullptr) << "Vectorize expect a loop";
+  // Currently, can not split Loops with annotations
+  if (!loop->annotations.empty()) {
+    LOG(FATAL) << "InvalidSchedule: " << "Cannot vectorize loop that already has annotations";
+  }
+  auto children = GetChildren(GetRef<Stmt>(loop), true);
+  // Now we only vectorize a single branch loop outside a block
+  CHECK(children.size() == 1 && children[0]->IsInstance<BlockRealizeNode>());
+  const BlockRealize& br = Downcast<BlockRealize>(children[0]);
+  // TODO(bohan): Check the block is complete, after merging compute_at
+  // TODO(bohan): support reduction later
+  CHECK(br->binding_valid) << "Vectorize expect valid bindings";
+  for (size_t i = 0; i < br->binding_values.size(); ++i) {
+    if (br->block->iter_vars[i]->iter_type != IterVarType::kDataPar
+        && RelatedWithVar(loop->loop_var, br->binding_values[i])) {
+      LOG(FATAL) << "The loop is related with non-datapar block vars";
+    }
+  }
+  Annotation annotation = Annotation(tir::attr::loop_type, StringImmNode::make("vectorize"));
+  Stmt new_stmt = AnnotationUpdater(annotation)(GetRef<Stmt>(loop));
+  this->Replace(node, new_stmt);
 }
 
 StmtSRef::StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index) {
@@ -869,6 +911,12 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleComputeAt")
 .set_body_typed<void(Schedule, StmtSRef, StmtSRef)>(
     [](Schedule schedule, StmtSRef block_sref, StmtSRef loop_sref) {
       return schedule->compute_at(block_sref, loop_sref);
+    });
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleVectorize")
+.set_body_typed<void(Schedule, StmtSRef)>(
+    [](Schedule schedule, StmtSRef node) {
+      return schedule->vectorize(node);
     });
 
 // dependency graph

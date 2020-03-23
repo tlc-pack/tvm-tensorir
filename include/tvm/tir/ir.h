@@ -310,11 +310,14 @@ class BlockRealizeNode : public StmtNode {
   PrimExpr predicate;
   /*! \brief The block to be realized. */
   Block block;
+  /*! \brief Whether the binding_values and predicates are validate */
+  bool binding_valid;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("binding_values", &binding_values);
     v->Visit("predicate", &predicate);
     v->Visit("block", &block);
+    v->Visit("binding_valid", &binding_valid);
   }
 
   static constexpr const char* _type_key = "BlockRealize";
@@ -327,7 +330,10 @@ class BlockRealizeNode : public StmtNode {
  */
 class BlockRealize : public Stmt {
  public:
-  TVM_DLL explicit BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block);
+  TVM_DLL explicit BlockRealize(Array<PrimExpr> values,
+                                PrimExpr predicate,
+                                Block block,
+                                bool binding_valid);
 
   TVM_DEFINE_OBJECT_REF_METHODS(BlockRealize, Stmt, BlockRealizeNode);
 };
@@ -379,6 +385,7 @@ class Function : public BaseFunc {
     return static_cast<FunctionNode*>(data_.get());
   }
 };
+
 
 }  // namespace tir
 }  // namespace tvm

@@ -641,6 +641,12 @@ bool VerifyMemory(LoweredFunc func, int device_type);
 bool VerifyGPUCode(Stmt stmt,
                    Map<std::string, PrimExpr> constraints);
 
+/*!
+ * \brief
+ * \param func
+ */
+void IRValidate(Function func);
+
 }  // namespace tir
 }  // namespace tvm
 #endif  // TVM_TIR_IR_PASS_H_
