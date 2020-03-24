@@ -608,9 +608,9 @@ void Schedule::RemoveLeaf(StmtSRef sref) {
   }
 }
 
-bool Schedule::CheckRegion(const StmtSRef& consumer) {
+bool Schedule::CheckRegionCover(const StmtSRef& consumer) const {
   StmtSRef scope_sref = GetScope(consumer);
-  Scope scope = operator->()->scopes_[scope_sref];
+  const Scope& scope = operator->()->scopes_.at(scope_sref);
 
   // Gather producers
   std::vector<StmtSRef> producers;
@@ -654,6 +654,17 @@ bool Schedule::CheckRegion(const StmtSRef& consumer) {
         }
       }
     }
+  }
+  return true;
+}
+
+bool Schedule::IsCompactDataFlow(const StmtSRef& sub_tree) const {
+  StmtSRef scope_sref = GetScope(sub_tree);
+  const Scope& scope = operator->()->scopes_.at(scope_sref);
+  std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> child_blocks;
+  ChildBlockGatherer(*this, &child_blocks)(GetRef<Stmt>(sub_tree->node));
+  for (const auto& block : child_blocks) {
+    if (!scope.IsComplete(block)) return false;
   }
   return true;
 }

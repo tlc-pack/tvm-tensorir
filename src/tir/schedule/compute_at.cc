@@ -27,23 +27,6 @@
 namespace tvm {
 namespace tir {
 
-/*! Gather all direct blocks in ast subtree. */
-class ChildBlockGatherer : public StmtExprVisitor {
- public:
-  ChildBlockGatherer(const Schedule& sch,
-                     std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>* child_blocks)
-      : sch_(sch), child_blocks_(child_blocks) {}
-
-  void VisitStmt_(const BlockNode* op) final {
-    const auto* node = static_cast<const StmtNode*>(op);
-    child_blocks_->insert(sch_->stmt2ref.at(node));
-  }
-
- private:
-  const Schedule& sch_;
-  std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>* child_blocks_;
-};
-
 /*! To find if there is any dependent block under in the specific subtree */
 bool FindAny(const Schedule& sch, const Stmt& stmt, const Array<DepEdge>& edges) {
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> child_blocks;
@@ -54,8 +37,9 @@ bool FindAny(const Schedule& sch, const Stmt& stmt, const Array<DepEdge>& edges)
   return false;
 }
 
-/*! \note It is incomplete IntSet with limited function.
- *        Perhaps we will public it when it is enhanced
+/*! \note We need the stride factor in order to solve the problem of set patterns in a
+ *        tensorized block, but only needed the union function. So this class is kept
+ *        private to the file instead of being generic in the IntSet
  */
 class StrideIntSet {
  public:
@@ -63,18 +47,23 @@ class StrideIntSet {
   StrideIntSet(Range iter_range, PrimExpr stride) :
       iter_range_(std::move(iter_range)), stride_(std::move(stride)) {}
 
-  void Union(const StrideIntSet& other) {
-    if (stride_.defined()) {
-      CHECK(Equal(stride_, other.stride_));
-      const Range& rhs_range = other.iter_range_;
-      PrimExpr begin = min(iter_range_->min, rhs_range->min);
+  static StrideIntSet Union(const StrideIntSet& lhs, const StrideIntSet& rhs) {
+    StrideIntSet ret;
+    if (lhs.stride_.defined()) {
+      CHECK(rhs.stride_.defined());
+      CHECK(Equal(lhs.stride_, rhs.stride_));
+      const Range& rhs_range = rhs.iter_range_;
+      PrimExpr begin = min(lhs.iter_range_->min, rhs_range->min);
       PrimExpr extents =
-          max(iter_range_->extent + iter_range_->min, rhs_range->extent + rhs_range->min) - begin;
-      iter_range_ = Range::make_by_min_extent(begin, extents);
+          max(lhs.iter_range_->extent + lhs.iter_range_->min, rhs_range->extent + rhs_range->min)
+              - begin;
+      ret.iter_range_ = Range::make_by_min_extent(begin, extents);
+      ret.stride_ = lhs.stride_;
     } else {
-      stride_ = other.stride_;
-      iter_range_ = other.iter_range_;
+      ret.stride_ = rhs.stride_;
+      ret.iter_range_ = rhs.iter_range_;
     }
+    return ret;
   }
   Range iter_range_;
   PrimExpr stride_;
@@ -116,7 +105,8 @@ std::vector<StrideIntSet> SolveCover(const Array<IterVar>& vars,
     const PrimExpr& extent = analyzer.Simplify((require->extent + produces_len - 1) / produces_len);
     const PrimExpr& strides = produces_len;
 
-    cover_iters[id].Union(StrideIntSet(Range::make_by_min_extent(base, extent), strides));
+    cover_iters[id] = StrideIntSet::Union(cover_iters[id],
+        StrideIntSet(Range::make_by_min_extent(base, extent), strides));
   }
 
   return cover_iters;
@@ -222,11 +212,26 @@ std::vector<Range> GatherRequirements(const Array<TensorRegion>& produce_regions
 }
 
 void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref) {
-  // Equivalence
-  // The equivalence is based on three conditions:
-  // - Complete block: The only producer for each output tensor and all args are data parallel
-  // - Same input: Based on dependency analyse
-  // - Output region coverage: Easy to fill the loops because of data-parallel args
+  /*!
+   * Check:
+   *   - check input_block is complete/is a dominant reduction block
+   *   - check input_block's RAW predecessors are complete
+   *   - check input_block, its predecessors, RAW successors are not in the same loop tree
+   *   - check dependency: all input_block's RAW successors are under input_loop
+   *   - check one-way fine-grained data flow: all blocks in the same sub tree are complete
+   *
+   * Mutate:
+   *   - generate loops that iterate the whole instance space under
+   *     input_loop before all the successors
+   *
+   * Proof:
+   *   - i + ii => input_block only has RAW successors
+   *   - i => No other block will write the output of input_block
+   *   - ii => No other block will write the input of input_block
+   *   - ii + iii + v + dominance property => input_block will read the same input as before.
+   *   - i + iii + vi + v + dominance property => consumers of input_block will
+   *     read the same input as before.
+   */
 
   // Check
   const auto* block = DowncastPtr<BlockNode>(block_sref->node);
@@ -237,10 +242,24 @@ void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref)
   // Check the block and the loop are at the same scope
   CHECK_EQ(GetScope(block_sref), GetScope(loop_sref))
     << "Cannot compute_at between different scope";
-  const Scope& scope = operator->()->scopes_.at(GetScope(block_sref));
+  const StmtSRef& scope_sref = GetScope(block_sref);
+  const Scope& scope = operator->()->scopes_.at(scope_sref);
+  const auto* scope_block = DowncastPtr<BlockNode>(scope_sref->node);
 
   // Check complete block
   CHECK(scope.IsComplete(block_sref)) << "Can only compute_at a complete block";
+
+  // Check compact data flow
+  StmtSRef sub_tree_root = block_sref;
+  while (sub_tree_root.defined()) {
+    auto node = GetRef<StmtSRef>(sub_tree_root->parent);
+    if (GetRef<Stmt>(node->node).as<BlockNode>()) {
+      break;
+    } else {
+      sub_tree_root = node;
+    }
+  }
+  CHECK(IsCompactDataFlow(sub_tree_root)) << "Can only compute_at a complete block";
 
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> child_blocks;
   ChildBlockGatherer(*this, &child_blocks)(GetRef<Stmt>(loop));
@@ -249,10 +268,9 @@ void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref)
 
   // Check the block is not a output block
   std::unordered_set<Buffer, ObjectHash, ObjectEqual> seen_buffer;
-  const auto& func = operator->()->func;
   for (const auto& x : block->writes) {
-    for (const auto& func_buffer : func->buffer_map)
-      CHECK(!x->buffer.same_as(func_buffer.second)) << "Can not compute_at an output block";
+    for (const auto& output_buffer : scope_block->writes)
+      CHECK(!x->buffer.same_as(output_buffer->buffer)) << "Can not compute_at an output block";
   }
 
   for (const auto& predecessor : predecessors) {
@@ -262,7 +280,7 @@ void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref)
   }
 
   // Check Region Cover
-  CHECK(CheckRegion(block_sref)) << "The producer cannot produce necessary tensor region";
+  CHECK(CheckRegionCover(block_sref)) << "The producer cannot produce necessary tensor region";
 
   // Check all successors are in the subtree rooted by loop_sref
   for (const auto& x : successors) {
