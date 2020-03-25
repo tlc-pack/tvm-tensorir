@@ -805,20 +805,18 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
   // print loop and annotations
   p->PrintIndent();
-  p->stream << "for ";
-  p->Print(op->loop_var);
-  p->stream << " = ";
+  p->stream << "for (" << op->loop_var << ", ";
   p->Print(op->min);
-  p->stream << " to ";
+  p->stream << ", ";
   p->Print(op->extent);
-  if (op->annotations.size() > 0) {
-    p->stream << " (attr: ";
+  if (!op->annotations.empty()) {
+    p->stream << ", attr: ";
     p->Print(op->annotations);
     p->stream << ")";
   }
+  p->stream << ") {\n";
 
   // print body
-  p->stream << " {\n";
   p->indent += 2;
   p->Print(op->body);
   p->indent -= 2;
