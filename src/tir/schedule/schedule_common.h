@@ -32,7 +32,7 @@ namespace tir {
 /*! Gather all direct blocks in ast subtree. */
 class ChildBlockGatherer : public StmtExprVisitor {
  public:
-  ChildBlockGatherer(const Schedule& sch,
+  ChildBlockGatherer(const ScheduleNode* sch,
                      std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>* child_blocks)
       : sch_(sch), child_blocks_(child_blocks) {}
 
@@ -42,7 +42,7 @@ class ChildBlockGatherer : public StmtExprVisitor {
   }
 
  private:
-  const Schedule& sch_;
+  const ScheduleNode* sch_;
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>* child_blocks_;
 };
 

@@ -33,7 +33,7 @@
 namespace tvm {
 namespace tir {
 
-
+class Schedule;
 class ScheduleNode : public Object {
  public:
   /*! \brief The function to be scheduled */
@@ -53,18 +53,12 @@ class ScheduleNode : public Object {
     v->Visit("root", &root);
   }
 
-  static constexpr const char* _type_key = "tir.Schedule";
-  TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleNode, Object);
-};
-
-class Schedule : public ObjectRef {
- public:
   /*!
-   * \brief Create a new schedule
-   * \param func The function to be scheduled
-   * \return The schedule
-   */
-  static Schedule Create(Function func);
+ * \brief Create a new schedule
+ * \param function The function to be scheduled
+ * \return The schedule
+ */
+  static Schedule Create(Function function);
 
   /*!
    * \brief replace part of AST with new stmt
@@ -143,18 +137,15 @@ class Schedule : public ObjectRef {
    */
   void reorder(const Array<StmtSRef>& order);
 
-  TVM_DEFINE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
-
-  ScheduleNode* operator->() {
-    return static_cast<ScheduleNode*>(ObjectRef::get_mutable());
-  }
+  static constexpr const char* _type_key = "tir.Schedule";
+  TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleNode, Object);
 
  private:
   /*!
-   * \brief Update the sref to make it point to new Block/Loop
-   * \param sref The outdated sref
-   * \param stmt The new stmt
-   */
+ * \brief Update the sref to make it point to new Block/Loop
+ * \param sref The outdated sref
+ * \param stmt The new stmt
+ */
   void UpdateSRef(StmtSRefNode* sref, const Stmt& stmt);
   /*!
    * \brief remove the AST leaf and its parent subtree which has only one leaf
@@ -178,6 +169,15 @@ class Schedule : public ObjectRef {
    *       so it is omitted in the check.
    */
   bool IsCompactDataFlow(const StmtSRef& sub_tree) const;
+};
+
+class Schedule : public ObjectRef {
+ public:
+  TVM_DEFINE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
+
+  ScheduleNode* operator->() {
+    return static_cast<ScheduleNode*>(ObjectRef::get_mutable());
+  }
 };
 
 }  // namespace tir

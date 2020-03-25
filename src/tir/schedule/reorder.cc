@@ -202,7 +202,7 @@ Stmt ReorderTarget(const StmtSRefNode* old_loop, const StmtSRefNode* bottom,
   return Stmt(n);
 }
 
-void Schedule::reorder(const Array<StmtSRef>& order) {
+void ScheduleNode::reorder(const Array<StmtSRef>& order) {
   // Equivalence
   // - The equivalence is based on the fact that if a loop is kDataPar/kCommReduce/kThreadIndex
   // then for (i) { S[i]->T[i]->U[i]; } is equivalent with
@@ -233,7 +233,7 @@ void Schedule::reorder(const Array<StmtSRef>& order) {
   // top and bottom denotes the range of loops need reordering
   const StmtSRefNode* top = nullptr, * bottom = nullptr;
   for (auto it = all_loops.rbegin(); it != all_loops.rend(); ++it) {
-    StmtSRef now = this->operator->()->stmt2ref.at(*it);
+    StmtSRef now = stmt2ref.at(*it);
     if (seen_loop.count(now) || successor.count(now.get())) {
       const StmtSRefNode* parent = now->parent;
       CHECK(successor.count(parent) == 0 || successor.at(parent) == now.get())
