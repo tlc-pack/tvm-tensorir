@@ -108,7 +108,7 @@ bool DetectLoopReorderable(const LoopNode* loop_ptr) {
 /*! \brief Wrap a new Loop outside body, substitute the loop var at the same time */
 Loop NewLoopWrapper(const Stmt& body, const LoopNode* loop, const std::string& suffix) {
   auto node = make_object<LoopNode>(*loop);
-  node->loop_var = std::move(Var(loop->loop_var->name_hint + suffix));
+  node->loop_var = Var(loop->loop_var->name_hint + suffix);
   node->body = SubstituteInScope(body, vmap_generator(node->loop_var, loop->loop_var));
   return Loop(node);
 }
