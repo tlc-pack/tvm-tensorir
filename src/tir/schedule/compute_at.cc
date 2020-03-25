@@ -28,7 +28,7 @@ namespace tvm {
 namespace tir {
 
 /*! To find if there is any dependent block under in the specific subtree */
-bool FindAny(const Schedule& sch, const Stmt& stmt, const Array<DepEdge>& edges) {
+bool FindAny(const ScheduleNode* sch, const Stmt& stmt, const Array<DepEdge>& edges) {
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> child_blocks;
   ChildBlockGatherer(sch, &child_blocks)(stmt);
   for (const auto& edge : edges) {
@@ -211,7 +211,7 @@ std::vector<Range> GatherRequirements(const Array<TensorRegion>& produce_regions
   return ret;
 }
 
-void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref) {
+void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref) {
   /*!
    * Check:
    *   - check input_block is complete/is a dominant reduction block
@@ -243,7 +243,7 @@ void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref)
   CHECK_EQ(GetScope(block_sref), GetScope(loop_sref))
     << "Cannot compute_at between different scope";
   const StmtSRef& scope_sref = GetScope(block_sref);
-  const Scope& scope = operator->()->scopes_.at(scope_sref);
+  const Scope& scope = scopes_.at(scope_sref);
   const auto* scope_block = DowncastPtr<BlockNode>(scope_sref->node);
 
   // Check complete block
@@ -263,7 +263,7 @@ void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref)
     << "Can only compute_at a block from the subtree which is compact data flow";
 
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> child_blocks;
-  ChildBlockGatherer(*this, &child_blocks)(GetRef<Stmt>(loop));
+  ChildBlockGatherer(this, &child_blocks)(GetRef<Stmt>(loop));
   const auto& predecessors = scope.GetPredecessors(block_sref);
   const auto& successors = scope.GetSuccessors(block_sref);
 
@@ -298,12 +298,12 @@ void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref)
   auto children = GetChildren(GetRef<Stmt>(loop));
   size_t after_pos, before_pos;
   for (after_pos = children.size(); after_pos > 0; --after_pos) {
-    if (FindAny(*this, children[after_pos - 1], predecessors)) {
+    if (FindAny(this, children[after_pos - 1], predecessors)) {
       break;
     }
   }
   for (before_pos = 0; before_pos < children.size(); before_pos++) {
-    if (FindAny(*this, children[before_pos], successors)) {
+    if (FindAny(this, children[before_pos], successors)) {
       break;
     }
   }
