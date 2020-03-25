@@ -38,7 +38,6 @@
 #include <vector>
 #include <string>
 
-
 namespace tvm {
 namespace tir {
 
@@ -178,7 +177,7 @@ Stmt Substitute(const Stmt& stmt,
  * \return The converted expression.
  */
 PrimExpr Substitute(PrimExpr expr,
-                const std::unordered_map<const VarNode*, PrimExpr>& value_map);
+                    const std::unordered_map<const VarNode*, PrimExpr>& value_map);
 
 /*!
  * \brief Substitute the var specified in key->var to be value.
@@ -618,7 +617,6 @@ LoweredFunc SkipAssert(LoweredFunc f);
  */
 bool VerifyMemory(LoweredFunc func, int device_type);
 
-
 /*!
  * \brief Verify the correctness of a GPU code
  *        It will check the whether the amount of memory usage or the number of threads
@@ -642,8 +640,14 @@ bool VerifyGPUCode(Stmt stmt,
                    Map<std::string, PrimExpr> constraints);
 
 /*!
- * \brief
- * \param func
+ * \brief Validate Tir, now the IRValidate pass contains the following checks
+ *        1) loop binding validation : a set of binding expressions is valid if and only if
+ *          1.  vi=i, vj=j, vk=k ... (one loop_var binds exactly one block_var)
+ *          2.  if f is a legal binding and g is the binding after we applying `split` on f,
+ *          then g is legal
+ *          3.  if f is a legal binding and g is the binding after we applying `fuse` on f,
+ *          then g is legal
+ * \param func the TirFunction to be validated
  */
 void IRValidate(Function func);
 

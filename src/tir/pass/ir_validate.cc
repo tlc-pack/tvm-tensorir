@@ -49,6 +49,7 @@ class Detector : public ExprVisitor {
     if (changed_) return;
 
     if ((i1_p * c_p + i2_p).Match(n)) {
+      // split pattern detected
       i1 = i1_p.Eval();
       i2 = i2_p.Eval();
       c = Simplify(c_p.Eval());
@@ -67,6 +68,7 @@ class Detector : public ExprVisitor {
       if (floordiv(k_p, c_p).Match(n)) div = true;
       else mod = floormod(k_p, c_p).Match(n);
       if (div || mod) {
+        // fuse pattern detected
         k = k_p.Eval();
         c = Simplify(c_p.Eval());
         const auto& it_k = loop_vars_.find(k.get());
@@ -138,6 +140,18 @@ class Replacer : public ExprMutator {
   ReplacerType& replace_map_;
 };
 
+/*!
+ * \brief loop binding validation : a set of binding expressions is valid if and only if
+ *          1.  vi=i, vj=j, vk=k ... (one loop_var binds exactly one block_var)
+ *          2.  if f is a legal binding and g is the binding after we applying `split` on f,
+ *          then g is legal
+ *          3.  if f is a legal binding and g is the binding after we applying `fuse` on f,
+ *          then g is legal
+ *        algorithm:
+ *          1. detector : pattern match binding expressions
+ *              patterns : i1*c + i2, k/c, k%c
+ *          2. replacer : substitute pattern detected above with new loop vars
+ */
 class LoopBindingValidator : public StmtMutator {
  public:
   explicit LoopBindingValidator() = default;
@@ -172,6 +186,7 @@ class LoopBindingValidator : public StmtMutator {
     bool changed = true;
     while (changed) {
       changed = false;
+      // Detect pattern
       for (auto& binding : bindings) {
         detector.ResetChange();
         detector(binding);
@@ -179,6 +194,7 @@ class LoopBindingValidator : public StmtMutator {
         if (changed) break;
       }
       if (changed) {
+        // Substitute pattern
         Replacer replacer(detector.ReplaceMap());
         for (auto& binding : bindings) {
           binding = replacer(binding);

@@ -807,6 +807,18 @@ void ScheduleNode::vectorize(const StmtSRef& node) {
   this->Replace(node, new_stmt);
 }
 
+void Schedule::unroll(const StmtSRef& node) {
+  const auto* loop = DowncastPtr<LoopNode>(node->node);
+  CHECK(loop != nullptr) << "Unroll expect a loop";
+  // Currently, can not unroll Loops with annotations
+  if (!loop->annotations.empty()) {
+    LOG(FATAL) << "InvalidSchedule: " << "Cannot unroll loop that already has annotations";
+  }
+  Annotation annotation = Annotation(tir::attr::loop_type, StringImmNode::make("unroll"));
+  Stmt new_stmt = AnnotationUpdater(annotation)(GetRef<Stmt>(loop));
+  this->Replace(node, new_stmt);
+}
+
 StmtSRef::StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index) {
   auto n = make_object<StmtSRefNode>();
   n->node = node;
@@ -918,6 +930,9 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleVectorize")
     [](Schedule schedule, StmtSRef node) {
       return schedule->vectorize(node);
     });
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnroll")
+.set_body_method(&Schedule::unroll);
 
 // dependency graph
 TVM_REGISTER_GLOBAL("tir.schedule.GetSuccessors")

@@ -36,6 +36,21 @@ def predicate_vectorize(b, c):
                         C[vi, vj] = (B[vi, vj] + float32(1))
 
 
+@tvm.tir.hybrid.script
+def predicate_unroll(b, c):
+    C = buffer_bind(c, (16, 16), "float32")
+    B = buffer_bind(b, (16, 16), "float32")
+    with block({}, writes=[], reads=[], name="root"):
+        for i in range(0, 16, annotation={}):
+            for jo in range(0, 4, annotation={}):
+                for ji in range(0, 4, annotation={"loop_type": "unroll"}):
+                    with block({vi(0, 16): i, vj(0, 16): ((jo * 4) + ji)},
+                               writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                               reads=[B[vi:(vi + 1), vj:(vj + 1)]],
+                               predicate=(((jo * 4) + ji) < 16), name="update"):
+                        C[vi, vj] = (B[vi, vj] + float32(1))
+
+
 def test_vectorize_normal():
     func = util.predicate_stmt()
 
@@ -45,8 +60,23 @@ def test_vectorize_normal():
     s.vectorize(ji)
 
     mod = tir.hybrid.create_module([predicate_vectorize])
+    print(tvm.lower(s.func, simple_mode=True))
     AssertEqual(s.func, mod["predicate_vectorize"])
+
+
+def test_unroll_normal():
+    func = util.predicate_stmt()
+
+    s = tir.create_schedule(func)
+    B = s.get_block("update")
+    i, jo, ji = s.get_axes(B)
+    s.unroll(ji)
+
+    mod = tir.hybrid.create_module([predicate_unroll])
+    print(tvm.lower(s.func, simple_mode=True))
+    AssertEqual(s.func, mod["predicate_unroll"])
 
 
 if __name__ == "__main__":
     test_vectorize_normal()
+    test_unroll_normal()

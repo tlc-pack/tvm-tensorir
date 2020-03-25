@@ -132,10 +132,16 @@ class ScheduleNode : public Object {
   void compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref);
 
   /*!
-   * \brief vectorize a node
-   * \param node the node to be vectorized
+   * \brief vectorize a loop
+   * \param node the loop to be vectorized
    */
   void vectorize(const StmtSRef& node);
+
+  /*!
+   * \brief unroll a loop
+   * \param node the loop to be unrolled
+   */
+  void unroll(const StmtSRef& node);
 
   /*!
    * \brief reorder a list of loops
