@@ -129,6 +129,15 @@ class Schedule : public ObjectRef {
   Array<StmtSRef> split(const StmtSRef& node, const PrimExpr& nparts, const PrimExpr& factor);
 
   /*!
+   * \brief Move the block under the loop and regenerate the
+   *        loops to cover the producing region.
+   * \param block_sref The block to be moved
+   * \param loop_sref The target loop
+   * \return the regenerated loops
+   * */
+  void compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref);
+
+  /*!
    * \brief reorder a list of loops
    * \param order the order of loops
    */
@@ -141,7 +150,34 @@ class Schedule : public ObjectRef {
   }
 
  private:
+  /*!
+   * \brief Update the sref to make it point to new Block/Loop
+   * \param sref The outdated sref
+   * \param stmt The new stmt
+   */
   void UpdateSRef(StmtSRefNode* sref, const Stmt& stmt);
+  /*!
+   * \brief remove the AST leaf and its parent subtree which has only one leaf
+   * \param sref The sref of Block/Loop to be removed
+   */
+  void RemoveLeaf(StmtSRef sref);
+  /*!
+   * \brief Check the region cover for the single consumer block
+   */
+  bool CheckRegionCover(const StmtSRef& consumer) const;
+  /*!
+   * \brief Check whether a sub_tree satisfies the one-way fine-grained data flow check
+   * \details Suppose a loop tree has several blocks on the leaves.
+   *          We can sort them by DFS order as B1, B2, ...., Bn.
+   *          The subtree satisfies compact data flow if
+   *          - All the blocks are complete
+   *          - Bi doesn't read the buffers that Bi+1, Bi+2, ... Bn will write
+   *          - Suppose Bi reads Bj's output buffer(j < i) and Loop k is the LCA of Bi and
+   *            Bj, Bj's output region covers Bi's input under Loop k
+   * \note Condition 2 and 3 are global condition of a schedulable IR,
+   *       so it is omitted in the check.
+   */
+  bool IsCompactDataFlow(const StmtSRef& sub_tree) const;
 };
 
 }  // namespace tir
