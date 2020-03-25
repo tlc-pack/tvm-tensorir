@@ -386,7 +386,7 @@ class SRefCreator : public StmtVisitor {
     }
   }
 
-  friend class Schedule;
+  friend class ScheduleNode;
   StmtSRefNode* parent_;
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
   std::unordered_map<const VarNode*, StmtSRef> loop_var2ref_;
@@ -407,25 +407,24 @@ class LoopCollector : public StmtVisitor {
   }
 
  private:
-  friend class Schedule;
+  friend class ScheduleNode;
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
   std::unordered_map<const VarNode*, StmtSRef> loop_var2sref;
 };
 
-void Schedule::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_map) {
-  ScheduleNode* self = operator->();
+void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_map) {
   // Note that old_ref is only a temporary SRef
   StmtSRef old_ref = StmtSRef(ref->node, ref->parent);
   const Stmt& old_stmt = GetRef<Stmt>(ref->node);
   // Collect loop_var to Loop mapping under old stmt
-  LoopCollector collector(&self->stmt2ref);
+  LoopCollector collector(&stmt2ref);
   collector(old_stmt);
   // Create SRef tree for the incoming target Stmt
-  SRefCreator creator(&self->stmt2ref, std::move(collector.loop_var2sref),
+  SRefCreator creator(&stmt2ref, std::move(collector.loop_var2sref),
                       std::move(block_sref_map), old_ref->parent);
   creator(target);
   // Initialize old SRef remover
-  SRefRemover remover(&self->stmt2ref,
+  SRefRemover remover(&stmt2ref,
                       std::move(creator.used_border_parent_), std::move(creator.reuse_sref_));
   // num_copy_steps: maximum number of hops until we don't need to copy
   int curr_step = 0;
@@ -436,10 +435,10 @@ void Schedule::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_m
       num_copy_steps = curr_step;
     }
   }
-  if (!self->func.unique()) num_copy_steps = curr_step;
+  if (!func.unique()) num_copy_steps = curr_step;
   // Update the function body
   curr_step = 0;
-  for (StmtSRefNode* ptr = old_ref.get(); ptr->node != self->root->node;
+  for (StmtSRefNode* ptr = old_ref.get(); ptr->node != root->node;
        ptr = ptr->parent, ++curr_step) {
     StmtSRefNode* parent = ptr->parent;
     // parent_step = current_step + 1
@@ -447,7 +446,7 @@ void Schedule::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_m
     // that parent is not unique and we need to copy
     bool parent_is_uniquely_referenced = curr_step + 1 > num_copy_steps;
     // replace ptr(son of parent->node) with target and return a new parent Stmt)
-    Stmt new_stmt = SubReplacer(ptr, target, &self->stmt2ref)
+    Stmt new_stmt = SubReplacer(ptr, target, &stmt2ref)
         (parent->node, parent_is_uniquely_referenced);
     if (curr_step != 0) UpdateSRef(ptr, target);
     if (parent_is_uniquely_referenced) {
@@ -460,43 +459,42 @@ void Schedule::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_m
     target = new_stmt;
   }
   remover(old_stmt);
-  if (old_ref->node == self->root->node) {
+  if (old_ref->node == root->node) {
     // The replace point is root, we directly use the sref tree created by SRefCreator
-    self->root = self->stmt2ref[target.operator->()];
+    root = stmt2ref[target.operator->()];
   } else {
     // Otherwise we reuse root sref
-    UpdateSRef(self->root.operator->(), target);
+    UpdateSRef(root.operator->(), target);
   }
-  self->func = UpdateFuncBody(self->func.operator->(), target);
+  func = UpdateFuncBody(func.operator->(), target);
 }
 
-Schedule Schedule::Create(Function func) {
+Schedule ScheduleNode::Create(Function function) {
   std::unordered_map<const StmtNode*, StmtSRef> stmt_map;
   std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> block_scopes;
 
   DependencyAnalyzer dependency_analyzer(&stmt_map, &block_scopes);
-  dependency_analyzer(func->body);
-  const auto* op = func->body.as<BlockRealizeNode>();
+  dependency_analyzer(function->body);
+  const auto* op = function->body.as<BlockRealizeNode>();
   CHECK(op != nullptr);
   auto n = make_object<ScheduleNode>();
-  n->func = std::move(func);
+  n->func = std::move(function);
   n->stmt2ref = std::move(stmt_map);
   n->root = n->stmt2ref[op->block.as<StmtNode>()];
   n->scopes_ = block_scopes;
   return Schedule(n);
 }
 
-void Schedule::UpdateSRef(StmtSRefNode* sref, const Stmt& stmt) {
+void ScheduleNode::UpdateSRef(StmtSRefNode* sref, const Stmt& stmt) {
   CHECK(stmt->IsInstance<BlockNode>() || stmt->IsInstance<LoopNode>());
-  ScheduleNode* self = operator->();
-  self->stmt2ref[stmt.operator->()] = GetRef<StmtSRef>(sref);
-  self->stmt2ref.erase(sref->node);
+  stmt2ref[stmt.operator->()] = GetRef<StmtSRef>(sref);
+  stmt2ref.erase(sref->node);
   sref->node = stmt.operator->();
 }
 
-Array<StmtSRef> Schedule::GetBlock(const std::string& tag, StmtSRef scope) const {
+Array<StmtSRef> ScheduleNode::GetBlock(const std::string& tag, StmtSRef scope) const {
   if (!scope.defined()) {
-    scope = operator->()->root;
+    scope = root;
   }
   CHECK(GetRef<Stmt>(scope->node).as<BlockNode>());
   Array<StmtSRef> ret;
@@ -508,13 +506,13 @@ Array<StmtSRef> Schedule::GetBlock(const std::string& tag, StmtSRef scope) const
   return ret;
 }
 
-Array<StmtSRef> Schedule::GetBlock(const Buffer& buffer, StmtSRef scope) const {
+Array<StmtSRef> ScheduleNode::GetBlock(const Buffer& buffer, StmtSRef scope) const {
   if (!scope.defined()) {
-    scope = operator->()->root;
+    scope = root;
   }
   CHECK(GetRef<Stmt>(scope->node).as<BlockNode>());
-  CHECK_GT(operator->()->scopes_.count(scope), 0);
-  const auto& write_map = operator->()->scopes_.at(scope)->write_map;
+  CHECK_GT(scopes_.count(scope), 0);
+  const auto& write_map = scopes_.at(scope)->write_map;
   if (write_map.count(buffer)) {
     return write_map.at(buffer);
   } else {
@@ -522,13 +520,13 @@ Array<StmtSRef> Schedule::GetBlock(const Buffer& buffer, StmtSRef scope) const {
   }
 }
 
-Array<StmtSRef> Schedule::Blocks(StmtSRef scope) const {
+Array<StmtSRef> ScheduleNode::Blocks(StmtSRef scope) const {
   if (!scope.defined()) {
-    scope = operator->()->root;
+    scope = root;
   }
   CHECK(GetRef<Stmt>(scope->node).as<BlockNode>());
-  CHECK_GT(operator->()->scopes_.count(scope), 0);
-  const auto& write_map = operator->()->scopes_.at(scope)->write_map;
+  CHECK_GT(scopes_.count(scope), 0);
+  const auto& write_map = scopes_.at(scope)->write_map;
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> collect;
   for (const auto& x : write_map) {
     for (const auto& block : x.second) {
@@ -541,7 +539,7 @@ Array<StmtSRef> Schedule::Blocks(StmtSRef scope) const {
   return ret;
 }
 
-StmtSRef Schedule::GetScope(StmtSRef node) const {
+StmtSRef ScheduleNode::GetScope(StmtSRef node) const {
   while (node.defined()) {
     node = GetRef<StmtSRef>(node->parent);
     if (GetRef<Stmt>(node->node).as<BlockNode>()) {
@@ -552,7 +550,7 @@ StmtSRef Schedule::GetScope(StmtSRef node) const {
   return StmtSRef();
 }
 
-Array<StmtSRef> Schedule::GetLoopsInScope(const StmtSRef& block) const {
+Array<StmtSRef> ScheduleNode::GetLoopsInScope(const StmtSRef& block) const {
   Array<StmtSRef> ret;
   StmtSRef sref = GetRef<StmtSRef>(block->parent);
   while (!GetRef<Stmt>(sref->node).as<BlockNode>()) {
@@ -564,14 +562,14 @@ Array<StmtSRef> Schedule::GetLoopsInScope(const StmtSRef& block) const {
   return Array<StmtSRef>(ret.rbegin(), ret.rend());
 }
 
-void Schedule::RemoveLeaf(StmtSRef sref) {
-  CHECK(sref != operator->()->root);
+void ScheduleNode::RemoveLeaf(StmtSRef sref) {
+  CHECK(sref != root);
 
   // go upwards until find a father with more than two children
   Stmt last = GetRef<Stmt>(sref->node);
   sref = GetRef<StmtSRef>(sref->parent);
   Stmt stmt = GetRef<Stmt>(sref->node);
-  while (sref != operator->()->root || stmt.as<BlockNode>() == nullptr) {
+  while (!sref.same_as(root) || stmt.as<BlockNode>() == nullptr) {
     const auto* loop = stmt.as<LoopNode>();
     CHECK(loop != nullptr);
     const auto* seq = loop->body.as<SeqStmtNode>();
@@ -608,9 +606,9 @@ void Schedule::RemoveLeaf(StmtSRef sref) {
   }
 }
 
-bool Schedule::CheckRegionCover(const StmtSRef& consumer) const {
+bool ScheduleNode::CheckRegionCover(const StmtSRef& consumer) const {
   StmtSRef scope_sref = GetScope(consumer);
-  const Scope& scope = operator->()->scopes_.at(scope_sref);
+  const Scope& scope = scopes_.at(scope_sref);
 
   // Gather producers
   std::vector<StmtSRef> producers;
@@ -658,18 +656,18 @@ bool Schedule::CheckRegionCover(const StmtSRef& consumer) const {
   return true;
 }
 
-bool Schedule::IsCompactDataFlow(const StmtSRef& sub_tree) const {
+bool ScheduleNode::IsCompactDataFlow(const StmtSRef& sub_tree) const {
   StmtSRef scope_sref = GetScope(sub_tree);
-  const Scope& scope = operator->()->scopes_.at(scope_sref);
+  const Scope& scope = scopes_.at(scope_sref);
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> child_blocks;
-  ChildBlockGatherer(*this, &child_blocks)(GetRef<Stmt>(sub_tree->node));
+  ChildBlockGatherer(this, &child_blocks)(GetRef<Stmt>(sub_tree->node));
   for (const auto& block : child_blocks) {
     if (!scope.IsComplete(block)) return false;
   }
   return true;
 }
 
-StmtSRef Schedule::fuse(const StmtSRef& outer, const StmtSRef& inner) {
+StmtSRef ScheduleNode::fuse(const StmtSRef& outer, const StmtSRef& inner) {
   // Equivalence
   // - The total repeat number has not changed for each direct child block.
   // - The execution order has not changed. (The block executes with the same
@@ -716,7 +714,7 @@ StmtSRef Schedule::fuse(const StmtSRef& outer, const StmtSRef& inner) {
   // relink
   this->Replace(outer, fused_node);
 
-  return operator->()->stmt2ref[fused_node.operator->()];
+  return stmt2ref[fused_node.operator->()];
 }
 
 class PredicateUpdater : public StmtMutator {
@@ -732,7 +730,7 @@ class PredicateUpdater : public StmtMutator {
   PrimExpr predicate_;
 };
 
-Array<StmtSRef> Schedule::split(const StmtSRef& node,
+Array<StmtSRef> ScheduleNode::split(const StmtSRef& node,
                                 const PrimExpr& nparts,
                                 const PrimExpr& factor) {
   // Equivalence
@@ -776,8 +774,8 @@ Array<StmtSRef> Schedule::split(const StmtSRef& node,
   // relink
   this->Replace(node, outer_loop);
 
-  StmtSRef inner_sref = operator->()->stmt2ref[inner_loop.as<StmtNode>()];
-  StmtSRef outer_sref = operator->()->stmt2ref[outer_loop.as<StmtNode>()];
+  StmtSRef inner_sref = stmt2ref[inner_loop.as<StmtNode>()];
+  StmtSRef outer_sref = stmt2ref[outer_loop.as<StmtNode>()];
   return Array<StmtSRef>{outer_sref, inner_sref};
 }
 
@@ -810,10 +808,13 @@ TVM_REGISTER_NODE_TYPE(StmtSRefNode);
 
 // schedule
 TVM_REGISTER_GLOBAL("tir.schedule.CreateSchedule")
-.set_body_typed(Schedule::Create);
+.set_body_typed(ScheduleNode::Create);
 
 TVM_REGISTER_GLOBAL("tir.schedule.Replace")
-.set_body_method(&Schedule::Replace);
+.set_body_typed<void(Schedule, StmtSRef, Stmt, Map<Block, Block>)>(
+    [](Schedule schedule, StmtSRef ref, Stmt target, Map<Block, Block> block_sref_map) {
+      return schedule->Replace(ref, target, block_sref_map);
+    });
 
 TVM_REGISTER_GLOBAL("tir.schedule.GetStmtSRef")
 .set_body_typed<StmtSRef(Schedule, Stmt)>(
@@ -828,46 +829,61 @@ TVM_REGISTER_GLOBAL("tir.schedule.GetStmt")
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBlocks")
-.set_body_method(&Schedule::Blocks);
+.set_body_typed<Array<StmtSRef>(Schedule, StmtSRef)>(
+    [](Schedule schedule, StmtSRef scope) {
+      return schedule->Blocks(scope);
+    });
 
 TVM_REGISTER_GLOBAL("tir.schedule.GetBlocksFromTag")
 .set_body_typed<Array<StmtSRef>(Schedule, std::string, StmtSRef)>(
     [](Schedule schedule, std::string tag, StmtSRef scope) {
-      return schedule.GetBlock(tag, scope);
+      return schedule->GetBlock(tag, scope);
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.GetBlocksFromBuffer")
 .set_body_typed<Array<StmtSRef>(Schedule, Buffer, StmtSRef)>(
     [](Schedule schedule, Buffer buffer, StmtSRef scope) {
-      return schedule.GetBlock(buffer, scope);
+      return schedule->GetBlock(buffer, scope);
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetLoopsInScope")
-.set_body_method(&Schedule::GetLoopsInScope);
+.set_body_typed<Array<StmtSRef>(Schedule, StmtSRef)>(
+    [](Schedule schedule, StmtSRef scope) {
+      return schedule->GetLoopsInScope(scope);
+    });
 
 // schedule primitive
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleFuse")
-.set_body_method(&Schedule::fuse);
+.set_body_typed<StmtSRef(Schedule, StmtSRef, StmtSRef)>(
+    [](Schedule schedule, StmtSRef outer, StmtSRef inner) {
+      return schedule->fuse(outer, inner);
+    });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSplitByFactor")
 .set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, PrimExpr)>(
     [](Schedule schedule, StmtSRef node, PrimExpr factor) {
       const auto* loop = GetRef<Stmt>(node->node).as<LoopNode>();
-      return schedule.split(node, floordiv(loop->extent + factor - 1, factor), factor);
+      return schedule->split(node, floordiv(loop->extent + factor - 1, factor), factor);
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSplitByNParts")
 .set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, PrimExpr)>(
     [](Schedule schedule, StmtSRef node, PrimExpr nparts) {
       const auto* loop = GetRef<Stmt>(node->node).as<LoopNode>();
-      return schedule.split(node, nparts, floordiv(loop->extent + nparts - 1, nparts));
+      return schedule->split(node, nparts, floordiv(loop->extent + nparts - 1, nparts));
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleReorder")
-.set_body_method(&Schedule::reorder);
+.set_body_typed<void(Schedule, Array<StmtSRef>)>(
+    [](Schedule schedule, Array<StmtSRef> order) {
+      return schedule->reorder(order);
+    });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleComputeAt")
-.set_body_method(&Schedule::compute_at);
+.set_body_typed<void(Schedule, StmtSRef, StmtSRef)>(
+    [](Schedule schedule, StmtSRef block_sref, StmtSRef loop_sref) {
+      return schedule->compute_at(block_sref, loop_sref);
+    });
 
 // dependency graph
 TVM_REGISTER_GLOBAL("tir.schedule.GetSuccessors")
