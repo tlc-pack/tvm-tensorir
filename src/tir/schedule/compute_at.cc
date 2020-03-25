@@ -216,9 +216,9 @@ void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref)
    * Check:
    *   - check input_block is complete/is a dominant reduction block
    *   - check input_block's RAW predecessors are complete
-   *   - check input_block, its predecessors, RAW successors are not in the same loop tree
    *   - check dependency: all input_block's RAW successors are under input_loop
    *   - check one-way fine-grained data flow: all blocks in the same sub tree are complete
+   *   - check block is not a output block
    *
    * Mutate:
    *   - generate loops that iterate the whole instance space under
@@ -228,8 +228,8 @@ void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref)
    *   - i + ii => input_block only has RAW successors
    *   - i => No other block will write the output of input_block
    *   - ii => No other block will write the input of input_block
-   *   - ii + iii + v + dominance property => input_block will read the same input as before.
-   *   - i + iii + vi + v + dominance property => consumers of input_block will
+   *   - ii + iii + iv + dominance property => input_block will read the same input as before.
+   *   - i + iii + iv + v + dominance property => consumers of input_block will
    *     read the same input as before.
    */
 
@@ -259,7 +259,8 @@ void Schedule::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref)
       sub_tree_root = node;
     }
   }
-  CHECK(IsCompactDataFlow(sub_tree_root)) << "Can only compute_at a complete block";
+  CHECK(IsCompactDataFlow(sub_tree_root))
+    << "Can only compute_at a block from the subtree which is compact data flow";
 
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> child_blocks;
   ChildBlockGatherer(*this, &child_blocks)(GetRef<Stmt>(loop));
