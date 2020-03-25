@@ -368,6 +368,16 @@ class Array : public ObjectRef {
   }
 
   /*!
+   * \brief insert a new item to the specific position
+   * \param pos iterator before which the content will be inserted. pos may be the end() iterator
+   * \param item The item to be pushed.
+   */
+  inline void insert(iterator pos, const T& item) {
+    ArrayNode* n = this->CopyOnWrite();
+    auto inner_begin = static_cast<const ArrayNode*>(data_.get())->data.begin();
+    n->data.insert(inner_begin + (pos - begin()), item);
+  }
+  /*!
    * \brief Inserts elements from range [first, last) before pos.
    * \param pos iterator before which the content will be inserted. pos may be the end() iterator
    * \param first, last the range of elements to insert, can't be iterators into container
