@@ -153,27 +153,31 @@ class Schedule(Object):
 
         ScheduleReorder(self, args)
 
-    def fuse(self, outer_axis, inner_axis):
+    def fuse(self, outer_loop, inner_loop):
         """Return all axes of the specific block
         Parameters
         ----------
-        outer_axis: Loop
-            The outer axis
-        inner_axis: Loop
-            The inner axis
+        outer_loop: Loop
+            The outer loop
+
+        inner_loop: Loop
+            The inner loop
+
         Returns
         -------
-        axis: Loop
-            The fused axis
+        loop: Loop
+            The fused loop
         """
-        return ScheduleFuse(self, outer_axis, inner_axis)
+        return ScheduleFuse(self, outer_loop, inner_loop)
 
-    def split(self, axis, factor=None, nparts=None):
-        """split a specified axis into two axises by factor or nparts
+    def split(self, loop, factor=None, nparts=None):
+        """split a specified loop into two loops by factor or nparts
+
         Parameters
         ----------
-        axis: Loop
-            The axis to be split
+        loop: Loop
+            The loop to be split
+
         factor : Expr, optional
              The splitting factor
         nparts : Expr, optional
@@ -188,11 +192,11 @@ class Schedule(Object):
         if nparts is not None:
             if factor is not None:
                 raise ValueError("Do not need to provide both outer and nparts")
-            outer, inner = ScheduleSplitByNParts(self, axis, nparts)
+            outer, inner = ScheduleSplitByNParts(self, loop, nparts)
         else:
             if factor is None:
                 raise ValueError("Either nparts or factor need to be provided")
-            outer, inner = ScheduleSplitByFactor(self, axis, factor)
+            outer, inner = ScheduleSplitByFactor(self, loop, factor)
         return outer, inner
 
     def compute_inline(self, block):
@@ -204,6 +208,21 @@ class Schedule(Object):
             The Block to be inlined
         """
         return ScheduleComputeInline(self, block)
+
+    def compute_at(self, block, loop):
+        """Attach one block under specific loop and cover the required region.
+        Node that only complete block can do compute_at
+
+        Parameters
+        ----------
+        block: Block
+            The Block to be compute_at
+
+        loop: Loop
+            The target loop
+
+        """
+        ScheduleComputeAt(self, block, loop)
 
 def create_schedule(func):
     """Create a schedule for a function
