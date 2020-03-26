@@ -34,17 +34,16 @@ class Detector : public ExprVisitor {
  public:
   using ReplaceType = std::function<PrimExpr(PrimExpr)>;
 
-  explicit Detector(std::unordered_map<const VarNode*, PrimExpr>& loop_vars)
+  explicit Detector(std::unordered_map<const VarNode*, PrimExpr>* loop_vars)
       : loop_vars_(loop_vars) {}
 
   bool IsChanged() { return changed_; }
 
   void ResetChange() { changed_ = false; }
 
-  ReplaceType& ReplaceMap() { return substitute_; };
+  ReplaceType& ReplaceMap() { return substitute_; }
 
  private:
-
   void VisitExpr(const PrimExpr& n) override {
     if (changed_) return;
 
@@ -53,33 +52,34 @@ class Detector : public ExprVisitor {
       i1 = i1_p.Eval();
       i2 = i2_p.Eval();
       c = Simplify(c_p.Eval());
-      const auto& it_i1 = loop_vars_.find(i1.get());
-      const auto& it_i2 = loop_vars_.find(i2.get());
-      if (it_i1 != loop_vars_.end() && it_i2 != loop_vars_.end() && Equal(c, it_i2->second)) {
+      const auto& it_i1 = loop_vars_->find(i1.get());
+      const auto& it_i2 = loop_vars_->find(i2.get());
+      if (it_i1 != loop_vars_->end() && it_i2 != loop_vars_->end() && Equal(c, it_i2->second)) {
         changed_ = true;
         k = Var(i1->name_hint + "_" + i2->name_hint + "_fuse");
-        loop_vars_[k.get()] = Simplify(it_i1->second * it_i2->second);
+        (*loop_vars_)[k.get()] = Simplify(it_i1->second * it_i2->second);
         substitute_ = split_substitute_gen_();
-        loop_vars_.erase(it_i1);
-        loop_vars_.erase(it_i2);
+        loop_vars_->erase(it_i1);
+        loop_vars_->erase(it_i2);
       }
     } else {
       bool div = false, mod = false;
       if (floordiv(k_p, c_p).Match(n)) div = true;
-      else mod = floormod(k_p, c_p).Match(n);
+      else
+        mod = floormod(k_p, c_p).Match(n);
       if (div || mod) {
         // fuse pattern detected
         k = k_p.Eval();
         c = Simplify(c_p.Eval());
-        const auto& it_k = loop_vars_.find(k.get());
-        if (it_k != loop_vars_.end()) {
+        const auto& it_k = loop_vars_->find(k.get());
+        if (it_k != loop_vars_->end()) {
           changed_ = true;
           i1 = Var(k->name_hint + "_o");
           i2 = Var(k->name_hint + "_i");
-          loop_vars_[i1.get()] = Simplify(floordiv(it_k->second, c));
-          loop_vars_[i2.get()] = Simplify(c);
+          (*loop_vars_)[i1.get()] = Simplify(floordiv(it_k->second, c));
+          (*loop_vars_)[i2.get()] = Simplify(c);
           substitute_ = fuse_substitute_gen_();
-          loop_vars_.erase(it_k);
+          loop_vars_->erase(it_k);
         }
       }
     }
@@ -118,7 +118,7 @@ class Detector : public ExprVisitor {
   }
 
   bool changed_{false};
-  std::unordered_map<const VarNode*, PrimExpr>& loop_vars_;
+  std::unordered_map<const VarNode*, PrimExpr>* loop_vars_;
   ReplaceType substitute_;
 
   arith::PVar<Var> i1_p, i2_p, k_p;
@@ -154,7 +154,7 @@ class Replacer : public ExprMutator {
  */
 class LoopBindingValidator : public StmtMutator {
  public:
-  explicit LoopBindingValidator() = default;
+  LoopBindingValidator() = default;
 
   Stmt VisitStmt_(const BlockRealizeNode* op) override {
     auto n = CopyOnWrite(op);
@@ -180,9 +180,9 @@ class LoopBindingValidator : public StmtMutator {
       bindings.emplace_back(binding);
     for (const auto& loop : surrounding_loops_)
       loop_vars[loop.first] = Simplify(loop.second);
-    ProcessPredicate_(predicates, predicate);
+    ProcessPredicate_(&predicates, predicate);
 
-    Detector detector(loop_vars);
+    Detector detector(&loop_vars);
     bool changed = true;
     while (changed) {
       changed = false;
@@ -211,34 +211,40 @@ class LoopBindingValidator : public StmtMutator {
       }
     }
     if (!predicates.empty()) return false;
-    if (!CheckOneToOneMapping_(bindings)) return false;
+    if (!CheckOneToOneMapping_(&bindings)) return false;
     return true;
   }
 
-  static bool CheckOneToOneMapping_(std::vector<PrimExpr>& bindings) {
+  static bool CheckOneToOneMapping_(std::vector<PrimExpr>* bindings) {
     std::unordered_set<const VarNode*> count;
-    for (const auto& binding : bindings)
-      if (!binding->IsInstance<VarNode>()) return false;
-      else {
+    for (const auto& binding : *bindings)
+      if (!binding->IsInstance<VarNode>()) {
+        return false;
+      } else {
         const auto* ptr = DowncastPtr<VarNode>(binding.get());
-        if (count.count(ptr)) return false;
-        else count.insert(ptr);
+        if (count.count(ptr)) {
+          return false;
+        } else {
+          count.insert(ptr);
+        }
       }
     return true;
   }
 
-  static void ProcessPredicate_(std::vector<std::pair<PrimExpr, PrimExpr>>& res,
+  static void ProcessPredicate_(std::vector<std::pair<PrimExpr, PrimExpr>>* res,
                                 const PrimExpr& predicate) {
     arith::PVar<PrimExpr> sub1, extent, sub2;
     PrimExpr rest = predicate;
     for (;;) {
       if (((sub1 < extent) && sub2).Match(rest)) {
-        res.emplace_back(sub1.Eval(), extent.Eval());
+        res->emplace_back(sub1.Eval(), extent.Eval());
         rest = sub2.Eval();
       } else if ((sub1 < extent).Match(rest)) {
-        res.emplace_back(sub1.Eval(), extent.Eval());
+        res->emplace_back(sub1.Eval(), extent.Eval());
         break;
-      } else break;
+      } else {
+        break;
+      }
     }
   }
 

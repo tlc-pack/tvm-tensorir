@@ -497,6 +497,7 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
 Schedule ScheduleNode::Create(Function function) {
   std::unordered_map<const StmtNode*, StmtSRef> stmt_map;
   std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> block_scopes;
+  IRValidate(function);
   ScheduleCreator schedule_creator(&stmt_map);
   schedule_creator(function->body);
   DependencyAnalyzer dependency_analyzer(stmt_map, &block_scopes);
@@ -718,8 +719,8 @@ class PredicateUpdater : public StmtMutator {
 };
 
 Array<StmtSRef> ScheduleNode::split(const StmtSRef& node,
-                                const PrimExpr& nparts,
-                                const PrimExpr& factor) {
+                                    const PrimExpr& nparts,
+                                    const PrimExpr& factor) {
   // Equivalence
   // - The total repeat number has not changed for each direct child block with updating predicate.
   // - The execution order has not changed. (The block executes with the same
@@ -807,7 +808,7 @@ void ScheduleNode::vectorize(const StmtSRef& node) {
   this->Replace(node, new_stmt);
 }
 
-void Schedule::unroll(const StmtSRef& node) {
+void ScheduleNode::unroll(const StmtSRef& node) {
   const auto* loop = DowncastPtr<LoopNode>(node->node);
   CHECK(loop != nullptr) << "Unroll expect a loop";
   // Currently, can not unroll Loops with annotations
@@ -932,7 +933,10 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleVectorize")
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnroll")
-.set_body_method(&Schedule::unroll);
+.set_body_typed<void(Schedule, StmtSRef)>(
+    [](Schedule schedule, StmtSRef node) {
+      return schedule->unroll(node);
+    });
 
 // dependency graph
 TVM_REGISTER_GLOBAL("tir.schedule.GetSuccessors")
