@@ -229,6 +229,5 @@ REGISTER_PASS(VerifyCompactBuffer);
 REGISTER_PASS(HoistIfThenElse);
 REGISTER_PASS(InferFragment);
 REGISTER_PASS(BufferFlatten);
-REGISTER_PASS(IRValidate);
 }  // namespace tir
 }  // namespace tvm

@@ -22,10 +22,10 @@
  */
 
 #include <tvm/tir/stmt_functor.h>
-#include <tvm/tir/ir_pass.h>
+#include <tvm/tir/schedule.h>
 #include <tvm/ir/attrs.h>
 #include <tvm/tir/expr_functor.h>
-#include "../src/arith/pattern_match.h"
+#include "../../arith/pattern_match.h"
 
 namespace tvm {
 namespace tir {
@@ -58,7 +58,7 @@ class Detector : public ExprVisitor {
         changed_ = true;
         k = Var(i1->name_hint + "_" + i2->name_hint + "_fuse");
         (*loop_vars_)[k.get()] = Simplify(it_i1->second * it_i2->second);
-        substitute_ = split_substitute_gen_();
+        substitute_ = split_substitute_gen();
         loop_vars_->erase(it_i1);
         loop_vars_->erase(it_i2);
       }
@@ -78,7 +78,7 @@ class Detector : public ExprVisitor {
           i2 = Var(k->name_hint + "_i");
           (*loop_vars_)[i1.get()] = Simplify(floordiv(it_k->second, c));
           (*loop_vars_)[i2.get()] = Simplify(c);
-          substitute_ = fuse_substitute_gen_();
+          substitute_ = fuse_substitute_gen();
           loop_vars_->erase(it_k);
         }
       }
@@ -87,7 +87,7 @@ class Detector : public ExprVisitor {
     if (!changed_) ExprVisitor::VisitExpr(n);
   }
 
-  ReplaceType split_substitute_gen_() {
+  ReplaceType split_substitute_gen() {
     return [&](PrimExpr expr) -> PrimExpr {
       arith::PVar<Var> i1_p, i2_p;
       arith::PVar<PrimExpr> c_p;
@@ -100,7 +100,7 @@ class Detector : public ExprVisitor {
     };
   }
 
-  ReplaceType fuse_substitute_gen_() {
+  ReplaceType fuse_substitute_gen() {
     return [&](PrimExpr expr) -> PrimExpr {
       arith::PVar<Var> k_p;
       arith::PVar<PrimExpr> c_p;
@@ -141,7 +141,8 @@ class Replacer : public ExprMutator {
 };
 
 /*!
- * \brief loop binding validation : a set of binding expressions is valid if and only if
+ * \brief Validate Tir, now the LoopValidate pass contains the following checks
+ *        1) loop binding validation : a set of binding expressions is valid if and only if
  *          1.  vi=i, vj=j, vk=k ... (one loop_var binds exactly one block_var)
  *          2.  if f is a legal binding and g is the binding after we applying `split` on f,
  *          then g is legal
@@ -151,15 +152,17 @@ class Replacer : public ExprMutator {
  *          1. detector : pattern match binding expressions
  *              patterns : i1*c + i2, k/c, k%c
  *          2. replacer : substitute pattern detected above with new loop vars
+ *        2) region cover check : Suppose B is a RAW predecessor of C, Loop k is the LCA of B and
+ *          C, then B's output region covers C's input region under Loop k
  */
-class LoopBindingValidator : public StmtMutator {
+class LoopValidator : public StmtMutator {
  public:
-  LoopBindingValidator() = default;
+  LoopValidator() = default;
 
   Stmt VisitStmt_(const BlockRealizeNode* op) override {
     auto n = CopyOnWrite(op);
     Stmt block = this->VisitStmt(op->block);
-    n->binding_valid = CheckBinding_(op->binding_values, op->predicate);
+    n->binding_valid = CheckBinding(op->binding_values, op->predicate);
     n->block = Downcast<Block>(block);
     return Stmt(n);
   }
@@ -172,7 +175,8 @@ class LoopBindingValidator : public StmtMutator {
   }
 
  private:
-  bool CheckBinding_(const Array<PrimExpr>& bindings_input, const PrimExpr& predicate) {
+  // loop binding validation
+  bool CheckBinding(const Array<PrimExpr>& bindings_input, const PrimExpr& predicate) {
     std::vector<PrimExpr> bindings;
     std::vector<std::pair<PrimExpr, PrimExpr>> predicates;
     std::unordered_map<const VarNode*, PrimExpr> loop_vars;
@@ -180,7 +184,7 @@ class LoopBindingValidator : public StmtMutator {
       bindings.emplace_back(binding);
     for (const auto& loop : surrounding_loops_)
       loop_vars[loop.first] = Simplify(loop.second);
-    ProcessPredicate_(&predicates, predicate);
+    ProcessPredicate(&predicates, predicate);
 
     Detector detector(&loop_vars);
     bool changed = true;
@@ -211,11 +215,11 @@ class LoopBindingValidator : public StmtMutator {
       }
     }
     if (!predicates.empty()) return false;
-    if (!CheckOneToOneMapping_(&bindings)) return false;
+    if (!CheckOneToOneMapping(&bindings)) return false;
     return true;
   }
 
-  static bool CheckOneToOneMapping_(std::vector<PrimExpr>* bindings) {
+  static bool CheckOneToOneMapping(std::vector<PrimExpr>* bindings) {
     std::unordered_set<const VarNode*> count;
     for (const auto& binding : *bindings)
       if (!binding->IsInstance<VarNode>()) {
@@ -231,8 +235,8 @@ class LoopBindingValidator : public StmtMutator {
     return true;
   }
 
-  static void ProcessPredicate_(std::vector<std::pair<PrimExpr, PrimExpr>>* res,
-                                const PrimExpr& predicate) {
+  static void ProcessPredicate(std::vector<std::pair<PrimExpr, PrimExpr>>* res,
+                               const PrimExpr& predicate) {
     arith::PVar<PrimExpr> sub1, extent, sub2;
     PrimExpr rest = predicate;
     for (;;) {
@@ -251,9 +255,9 @@ class LoopBindingValidator : public StmtMutator {
   std::unordered_map<const VarNode*, PrimExpr> surrounding_loops_;
 };
 
-void IRValidate(Function func) {
-  LoopBindingValidator loop_binding_validator;
-  func->body = loop_binding_validator(func->body);
+void ScheduleNode::LoopValidate(Function function) {
+  LoopValidator loopValidator;
+  function->body = loopValidator(function->body);
 }
 
 }  // namespace tir

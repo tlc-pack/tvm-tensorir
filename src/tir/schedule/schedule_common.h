@@ -97,6 +97,17 @@ void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
                  std::vector<TensorRegion>* writes);
 
 /*!
+ * \brief Relax the TensorRegion with the loops under root
+ * \param block_sref The block sref
+ * \param root The root node
+ * \param region The region to be relaxed
+ * \return The relaxed region
+ */
+TensorRegion RelaxRegion(const StmtSRef& block_sref,
+                         const StmtSRef& root,
+                         const TensorRegion& region);
+
+/*!
  * \brief Whether expr is related with var
  * \param var the expected var
  * \param expr the expected expr

@@ -497,7 +497,7 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
 Schedule ScheduleNode::Create(Function function) {
   std::unordered_map<const StmtNode*, StmtSRef> stmt_map;
   std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> block_scopes;
-  IRValidate(function);
+  ScheduleNode::LoopValidate(function);
   ScheduleCreator schedule_creator(&stmt_map);
   schedule_creator(function->body);
   DependencyAnalyzer dependency_analyzer(stmt_map, &block_scopes);
@@ -509,6 +509,10 @@ Schedule ScheduleNode::Create(Function function) {
   n->stmt2ref = std::move(stmt_map);
   n->root = n->stmt2ref[op->block.as<StmtNode>()];
   n->scopes_ = block_scopes;
+  for (const auto& it : block_scopes) {
+    CHECK(it.first->node->IsInstance<BlockNode>());
+    n->CheckRegionCover(it.first);
+  }
   return Schedule(n);
 }
 
@@ -786,21 +790,24 @@ class AnnotationUpdater : public StmtMutator {
 void ScheduleNode::vectorize(const StmtSRef& node) {
   const auto* loop = DowncastPtr<LoopNode>(node->node);
   CHECK(loop != nullptr) << "Vectorize expect a loop";
-  // Currently, can not split Loops with annotations
+  // Currently, can not vectorize Loops with annotations
   if (!loop->annotations.empty()) {
     LOG(FATAL) << "InvalidSchedule: " << "Cannot vectorize loop that already has annotations";
   }
-  auto children = GetChildren(GetRef<Stmt>(loop), true);
-  // Now we only vectorize a single branch loop outside a block
-  CHECK(children.size() == 1 && children[0]->IsInstance<BlockRealizeNode>());
-  const BlockRealize& br = Downcast<BlockRealize>(children[0]);
-  // TODO(bohan): Check the block is complete, after merging compute_at
+  // Now vectorize only support:
+  //   1. All the blocks are complete below
+  //   2. A single block below the loop
   // TODO(bohan): support reduction later
-  CHECK(br->binding_valid) << "Vectorize expect valid bindings";
-  for (size_t i = 0; i < br->binding_values.size(); ++i) {
-    if (br->block->iter_vars[i]->iter_type != IterVarType::kDataPar
-        && RelatedWithVar(loop->loop_var, br->binding_values[i])) {
-      LOG(FATAL) << "The loop is related with non-datapar block vars";
+  if (!IsCompactDataFlow(node)) {
+    auto children = GetChildren(GetRef<Stmt>(loop), true);
+    CHECK(children.size() == 1 && children[0]->IsInstance<BlockRealizeNode>());
+    const BlockRealize& br = Downcast<BlockRealize>(children[0]);
+    CHECK(br->binding_valid) << "Vectorize expect valid bindings";
+    for (size_t i = 0; i < br->binding_values.size(); ++i) {
+      if (br->block->iter_vars[i]->iter_type != IterVarType::kDataPar
+          && RelatedWithVar(loop->loop_var, br->binding_values[i])) {
+        LOG(FATAL) << "The loop is related with non-datapar block vars";
+      }
     }
   }
   Annotation annotation = Annotation(tir::attr::loop_type, StringImmNode::make("vectorize"));

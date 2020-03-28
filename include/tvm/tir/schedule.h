@@ -53,11 +53,11 @@ class ScheduleNode : public Object {
     v->Visit("root", &root);
   }
 
- /*!
- * \brief Create a new schedule
- * \param function The function to be scheduled
- * \return The schedule
- */
+  /*!
+   * \brief Create a new schedule
+   * \param function The function to be scheduled
+   * \return The schedule
+   */
   static Schedule Create(Function function);
 
   /*!
@@ -181,6 +181,19 @@ class ScheduleNode : public Object {
    *       so it is omitted in the check.
    */
   bool IsCompactDataFlow(const StmtSRef& sub_tree) const;
+  /*!
+   * \brief Validate Tir, now the LoopValidate pass contains the following checks
+   *        1) loop binding validation: a set of binding expressions is valid if and only if
+   *          1.  vi=i, vj=j, vk=k ... (one loop_var binds exactly one block_var)
+   *          2.  if f is a legal binding and g is the binding after we applying `split` on f,
+   *          then g is legal
+   *          3.  if f is a legal binding and g is the binding after we applying `fuse` on f,
+   *          then g is legal
+   *        2) region cover check: Suppose B is a RAW predecessor of C, Loop k is the LCA of B and
+   *          C, then B's output region covers C's input region under Loop k
+   * \param func the TirFunction to be validated
+   */
+  static void LoopValidate(Function function);
 };
 
 class Schedule : public ObjectRef {

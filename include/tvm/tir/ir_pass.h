@@ -639,18 +639,6 @@ bool VerifyMemory(LoweredFunc func, int device_type);
 bool VerifyGPUCode(Stmt stmt,
                    Map<std::string, PrimExpr> constraints);
 
-/*!
- * \brief Validate Tir, now the IRValidate pass contains the following checks
- *        1) loop binding validation : a set of binding expressions is valid if and only if
- *          1.  vi=i, vj=j, vk=k ... (one loop_var binds exactly one block_var)
- *          2.  if f is a legal binding and g is the binding after we applying `split` on f,
- *          then g is legal
- *          3.  if f is a legal binding and g is the binding after we applying `fuse` on f,
- *          then g is legal
- * \param func the TirFunction to be validated
- */
-void IRValidate(Function func);
-
 }  // namespace tir
 }  // namespace tvm
 #endif  // TVM_TIR_IR_PASS_H_
