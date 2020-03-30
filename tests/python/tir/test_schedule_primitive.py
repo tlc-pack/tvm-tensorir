@@ -215,9 +215,7 @@ def test_reorder_normal():
     update = s.get_block("update")
     i, j, k = s.get_axes(update)
     s.reorder(k, i)
-    print(1)
     s.reorder(i, j)
-    print(2)
     s.fuse(i, j)
     mod = tvm.tir.hybrid.create_module([matmul_reorder])
     matmul_reorder_func = mod["matmul_reorder"]
