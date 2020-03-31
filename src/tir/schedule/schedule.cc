@@ -593,56 +593,6 @@ Array<StmtSRef> ScheduleNode::GetLoopsInScope(const StmtSRef& block) const {
   return Array<StmtSRef>(ret.rbegin(), ret.rend());
 }
 
-bool ScheduleNode::CheckRegionCover(const StmtSRef& consumer) const {
-  StmtSRef scope_sref = GetScope(consumer);
-  const Scope& scope = scopes_.at(scope_sref);
-
-  // Gather producers
-  std::vector<StmtSRef> producers;
-  const auto& successors = scope.GetSuccessors(consumer);
-  for (const auto& edge : successors) {
-    if (edge->type == DepType::kRAW) {
-      producers.push_back(edge->dst);
-    }
-  }
-
-  std::vector<StmtSRef> nodes = producers;
-  nodes.push_back(consumer);
-
-  const StmtSRef& lca = LowestCommonAncestor(nodes, scope_sref);
-
-  auto check_cover = [](const TensorRegion& read, const TensorRegion& write) -> bool {
-    CHECK_EQ(read->region.size(), write->region.size());
-    for (size_t i = 0; i < read->region.size(); ++i) {
-      auto read_min = read->region[i]->min;
-      auto write_min = write->region[i]->min;
-      auto read_max = read_min + read->region[i]->extent;
-      auto write_max = write_min + write->region[i]->extent;
-      arith::Analyzer analyzer;
-      if (!analyzer.CanProve(read_min >= write_min) || !analyzer.CanProve(read_max <= write_max)) {
-        LOG(WARNING) << "Cannot prove the region cover: producer " << read << " consumer " << write;
-        return false;
-      }
-    }
-    return true;
-  };
-
-  std::vector<TensorRegion> reads;
-  RelaxRegion(consumer, lca, &reads, nullptr);
-  for (const auto& producer : producers) {
-    std::vector<TensorRegion> writes;
-    RelaxRegion(producer, lca, nullptr, &writes);
-    for (const auto& write : writes) {
-      for (const auto& read : reads) {
-        if (read->buffer.same_as(write->buffer)) {
-          if (!check_cover) return false;
-        }
-      }
-    }
-  }
-  return true;
-}
-
 bool ScheduleNode::IsCompactDataFlow(const StmtSRef& sub_tree) const {
   StmtSRef scope_sref = GetScope(sub_tree);
   const Scope& scope = scopes_.at(scope_sref);
