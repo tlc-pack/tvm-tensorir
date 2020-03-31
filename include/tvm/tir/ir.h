@@ -317,7 +317,6 @@ class BlockRealizeNode : public StmtNode {
     v->Visit("binding_values", &binding_values);
     v->Visit("predicate", &predicate);
     v->Visit("block", &block);
-    v->Visit("binding_valid", &binding_valid);
   }
 
   static constexpr const char* _type_key = "BlockRealize";

@@ -25,6 +25,7 @@
 #include <tvm/tir/schedule.h>
 #include <tvm/ir/attrs.h>
 #include <tvm/tir/expr_functor.h>
+#include <tvm/arith/analyzer.h>
 #include "../../arith/pattern_match.h"
 
 namespace tvm {
@@ -37,48 +38,51 @@ class Detector : public ExprVisitor {
   explicit Detector(std::unordered_map<const VarNode*, PrimExpr>* loop_vars)
       : loop_vars_(loop_vars) {}
 
-  bool IsChanged() { return changed_; }
+  bool IsChanged() const { return changed_; }
 
   void ResetChange() { changed_ = false; }
 
-  ReplaceType& ReplaceMap() { return substitute_; }
+  const ReplaceType& ReplaceMap() const { return substitute_; }
 
  private:
   void VisitExpr(const PrimExpr& n) override {
     if (changed_) return;
 
+    arith::Analyzer analyzer;
     if ((i1_p * c_p + i2_p).Match(n)) {
       // split pattern detected
       i1 = i1_p.Eval();
       i2 = i2_p.Eval();
-      c = Simplify(c_p.Eval());
+      c = analyzer.Simplify(c_p.Eval());
       const auto& it_i1 = loop_vars_->find(i1.get());
       const auto& it_i2 = loop_vars_->find(i2.get());
       if (it_i1 != loop_vars_->end() && it_i2 != loop_vars_->end() && Equal(c, it_i2->second)) {
         changed_ = true;
         k = Var(i1->name_hint + "_" + i2->name_hint + "_fuse");
-        (*loop_vars_)[k.get()] = Simplify(it_i1->second * it_i2->second);
-        substitute_ = split_substitute_gen();
+        (*loop_vars_)[k.get()] = analyzer.Simplify(it_i1->second * it_i2->second);
+        substitute_ = split_substitute();
         loop_vars_->erase(it_i1);
         loop_vars_->erase(it_i2);
       }
     } else {
       bool div = false, mod = false;
-      if (floordiv(k_p, c_p).Match(n)) div = true;
-      else
+      if (floordiv(k_p, c_p).Match(n)) {
+        div = true;
+      } else {
         mod = floormod(k_p, c_p).Match(n);
+      }
       if (div || mod) {
         // fuse pattern detected
         k = k_p.Eval();
-        c = Simplify(c_p.Eval());
+        c = analyzer.Simplify(c_p.Eval());
         const auto& it_k = loop_vars_->find(k.get());
         if (it_k != loop_vars_->end()) {
           changed_ = true;
           i1 = Var(k->name_hint + "_o");
           i2 = Var(k->name_hint + "_i");
-          (*loop_vars_)[i1.get()] = Simplify(floordiv(it_k->second, c));
-          (*loop_vars_)[i2.get()] = Simplify(c);
-          substitute_ = fuse_substitute_gen();
+          (*loop_vars_)[i1.get()] = analyzer.Simplify(floordiv(it_k->second, c));
+          (*loop_vars_)[i2.get()] = analyzer.Simplify(c);
+          substitute_ = fuse_substitute();
           loop_vars_->erase(it_k);
         }
       }
@@ -87,7 +91,7 @@ class Detector : public ExprVisitor {
     if (!changed_) ExprVisitor::VisitExpr(n);
   }
 
-  ReplaceType split_substitute_gen() {
+  ReplaceType split_substitute() {
     return [&](PrimExpr expr) -> PrimExpr {
       arith::PVar<Var> i1_p, i2_p;
       arith::PVar<PrimExpr> c_p;
@@ -100,7 +104,7 @@ class Detector : public ExprVisitor {
     };
   }
 
-  ReplaceType fuse_substitute_gen() {
+  ReplaceType fuse_substitute() {
     return [&](PrimExpr expr) -> PrimExpr {
       arith::PVar<Var> k_p;
       arith::PVar<PrimExpr> c_p;
@@ -120,9 +124,10 @@ class Detector : public ExprVisitor {
   bool changed_{false};
   std::unordered_map<const VarNode*, PrimExpr>* loop_vars_;
   ReplaceType substitute_;
-
+  // pattern variables for patter matching use
   arith::PVar<Var> i1_p, i2_p, k_p;
   arith::PVar<PrimExpr> c_p;
+  // variables store the matched value of pattern variables
   Var i1, i2, k;
   PrimExpr c;
 };
@@ -130,18 +135,18 @@ class Detector : public ExprVisitor {
 class Replacer : public ExprMutator {
  public:
   using ReplacerType = Detector::ReplaceType;
-  explicit Replacer(ReplacerType& replace_map) : replace_map_(replace_map) {}
+  explicit Replacer(const ReplacerType& replace_map) : replace_map_(replace_map) {}
 
  private:
   PrimExpr VisitExpr(const PrimExpr& n) override {
     return replace_map_(ExprMutator::VisitExpr(n));
   }
 
-  ReplacerType& replace_map_;
+  const ReplacerType& replace_map_;
 };
 
 /*!
- * \brief Validate Tir, now the LoopValidate pass contains the following checks
+ * \brief Validate Tir, now the ValidateLoops pass contains the following checks
  *        1) loop binding validation : a set of binding expressions is valid if and only if
  *          1.  vi=i, vj=j, vk=k ... (one loop_var binds exactly one block_var)
  *          2.  if f is a legal binding and g is the binding after we applying `split` on f,
@@ -159,7 +164,7 @@ class LoopValidator : public StmtMutator {
  public:
   LoopValidator() = default;
 
-  Stmt VisitStmt_(const BlockRealizeNode* op) override {
+  Stmt VisitStmt_(const BlockRealizeNode* op) final {
     auto n = CopyOnWrite(op);
     Stmt block = this->VisitStmt(op->block);
     n->binding_valid = CheckBinding(op->binding_values, op->predicate);
@@ -167,7 +172,7 @@ class LoopValidator : public StmtMutator {
     return Stmt(n);
   }
 
-  Stmt VisitStmt_(const LoopNode* op) override {
+  Stmt VisitStmt_(const LoopNode* op) final {
     surrounding_loops_[op->loop_var.get()] = op->extent;
     Stmt res = StmtMutator::VisitStmt_(op);
     surrounding_loops_.erase(op->loop_var.get());
@@ -180,10 +185,11 @@ class LoopValidator : public StmtMutator {
     std::vector<PrimExpr> bindings;
     std::vector<std::pair<PrimExpr, PrimExpr>> predicates;
     std::unordered_map<const VarNode*, PrimExpr> loop_vars;
+    arith::Analyzer analyzer;
     for (const auto& binding : bindings_input)
       bindings.emplace_back(binding);
     for (const auto& loop : surrounding_loops_)
-      loop_vars[loop.first] = Simplify(loop.second);
+      loop_vars[loop.first] = analyzer.Simplify(loop.second);
     ProcessPredicate(&predicates, predicate);
 
     Detector detector(&loop_vars);
@@ -206,7 +212,7 @@ class LoopValidator : public StmtMutator {
         for (auto it = predicates.begin(); it != predicates.end();) {
           *it = std::make_pair(replacer(it->first), it->second);
           if (it->first->IsInstance<VarNode>()) {
-            loop_vars[DowncastPtr<VarNode>(it->first.get())] = Simplify(it->second);
+            loop_vars[DowncastPtr<VarNode>(it->first.get())] = analyzer.Simplify(it->second);
             it = predicates.erase(it);
           } else {
             it++;
@@ -255,7 +261,7 @@ class LoopValidator : public StmtMutator {
   std::unordered_map<const VarNode*, PrimExpr> surrounding_loops_;
 };
 
-void ScheduleNode::LoopValidate(Function function) {
+void ScheduleNode::ValidateLoops(Function function) {
   LoopValidator loopValidator;
   function->body = loopValidator(function->body);
 }

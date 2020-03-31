@@ -170,7 +170,7 @@ StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef
   return root;
 }
 
-std::function<TensorRegion(const TensorRegion)> RelaxerGen(const StmtSRef& block_sref,
+std::function<TensorRegion(const TensorRegion)> RelaxGenerator(const StmtSRef& block_sref,
     const StmtSRef& root,
     std::unordered_map<const VarNode*, PrimExpr>* vmap,
     std::unordered_map<const VarNode*, arith::IntSet>* dom_map) {
@@ -214,7 +214,7 @@ void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
                  std::vector<TensorRegion>* writes) {
   std::unordered_map<const VarNode*, PrimExpr> vmap;
   std::unordered_map<const VarNode*, arith::IntSet> dom_map;
-  auto relax = RelaxerGen(block_sref, root, &vmap, &dom_map);
+  auto relax = RelaxGenerator(block_sref, root, &vmap, &dom_map);
   const auto* block = DowncastPtr<BlockNode>(block_sref->node);
   if (reads != nullptr) {
     for (const auto& tensor_region : block->reads) {
@@ -233,7 +233,7 @@ TensorRegion RelaxRegion(const StmtSRef& block_sref,
                          const TensorRegion& region) {
   std::unordered_map<const VarNode*, PrimExpr> vmap;
   std::unordered_map<const VarNode*, arith::IntSet> dom_map;
-  auto relax = RelaxerGen(block_sref, root, &vmap, &dom_map);
+  auto relax = RelaxGenerator(block_sref, root, &vmap, &dom_map);
   return relax(region);
 }
 

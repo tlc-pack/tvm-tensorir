@@ -497,7 +497,7 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
 Schedule ScheduleNode::Create(Function function) {
   std::unordered_map<const StmtNode*, StmtSRef> stmt_map;
   std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> block_scopes;
-  ScheduleNode::LoopValidate(function);
+  ScheduleNode::ValidateLoops(function);
   ScheduleCreator schedule_creator(&stmt_map);
   schedule_creator(function->body);
   DependencyAnalyzer dependency_analyzer(stmt_map, &block_scopes);
@@ -788,6 +788,31 @@ class AnnotationUpdater : public StmtMutator {
 };
 
 void ScheduleNode::vectorize(const StmtSRef& node) {
+  /*!
+   * Check:
+   * - 1. check the block under is complete block or reduction block
+   * - 2. check `input_loop` is bound and only bound to `data_par` block_vars
+   * - 3. check the loops of reduction blocks are validatable
+   * Mutate:
+   * - 4. set Annotation on the loop
+   * Proof:
+   * We prove by showing that there are no data flows between `input_loop=i` and`input_loop=j`,
+   * and we show this by induction on the number of blocks.
+   *
+   * If there is only one block below
+   * - The block is complete. All the instances are independent of each other.
+   * - The block is reduction. `input_loop` bound and only bound to `data_par` blocks + loops of
+   * reduction blocks are validatable => instances of `input_loop=i` will write different positions
+   * with instances of `input_loop=j`, hence they are independent.
+   *
+   * If there's a new block coming in. Consider its instances under `input_loop=i`.
+   * - If the producer is complete. Producer instances under `input_loop=j` may write the positions
+   * that new instances under `input_loop=i`  may read, but it will read the same value produced by
+   * the producer under `input_loop=i` since it's complete.
+   * - If the producer is reduction. Producer instances under `input_loop=j` will never write the
+   * positions that new instances under `input_loop=j` may read. Hence no data flow.
+   */
+
   const auto* loop = DowncastPtr<LoopNode>(node->node);
   CHECK(loop != nullptr) << "Vectorize expect a loop";
   // Currently, can not vectorize Loops with annotations
@@ -810,12 +835,13 @@ void ScheduleNode::vectorize(const StmtSRef& node) {
       }
     }
   }
-  Annotation annotation = Annotation(tir::attr::loop_type, StringImmNode::make("vectorize"));
+  Annotation annotation = Annotation(attr::loop_type, StringImmNode::make("vectorize"));
   Stmt new_stmt = AnnotationUpdater(annotation)(GetRef<Stmt>(loop));
   this->Replace(node, new_stmt);
 }
 
 void ScheduleNode::unroll(const StmtSRef& node) {
+  // Equivalence : Unroll is trivial
   const auto* loop = DowncastPtr<LoopNode>(node->node);
   CHECK(loop != nullptr) << "Unroll expect a loop";
   // Currently, can not unroll Loops with annotations

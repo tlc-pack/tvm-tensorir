@@ -241,7 +241,7 @@ class BufferFlattener : public StmtExprMutator {
     const auto* block_op = op->block.as<BlockNode>();
     CHECK(block_op != nullptr);
     for (size_t i = block_op->allocations.size(); i > 0; --i) {
-      pending_allocate[block_op->allocations[i - 1]->buffer] = block_op->allocations[i - 1];
+      pending_allocate_[block_op->allocations[i - 1]->buffer] = block_op->allocations[i - 1];
     }
     // visit body
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
@@ -308,7 +308,7 @@ class BufferFlattener : public StmtExprMutator {
       }
 
     Stmt body = op->body;
-    for (const auto& it : pending_allocate)
+    for (const auto& it : pending_allocate_)
       if (old_stmt.same_as(buffers_lca_.at(it.first))) {
         PrimExpr extents = 1;
         const auto& n = it.second;
@@ -368,7 +368,7 @@ class BufferFlattener : public StmtExprMutator {
                            ObjectHash, ObjectEqual>& buffers_region_;
   const std::unordered_map<const VarNode*, PrimExpr>& block_var_;
   const std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual>& buffers_lca_;
-  std::unordered_map<Buffer, BufferAllocate, ObjectHash, ObjectEqual> pending_allocate;
+  std::unordered_map<Buffer, BufferAllocate, ObjectHash, ObjectEqual> pending_allocate_;
 
   /*!
    * \brief Transform indices from the absolute indices to relative indices

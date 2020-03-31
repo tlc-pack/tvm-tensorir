@@ -182,7 +182,7 @@ class ScheduleNode : public Object {
    */
   bool IsCompactDataFlow(const StmtSRef& sub_tree) const;
   /*!
-   * \brief Validate Tir, now the LoopValidate pass contains the following checks
+   * \brief Validate Tir, now the ValidateLoops pass contains the following checks
    *        1) loop binding validation: a set of binding expressions is valid if and only if
    *          1.  vi=i, vj=j, vk=k ... (one loop_var binds exactly one block_var)
    *          2.  if f is a legal binding and g is the binding after we applying `split` on f,
@@ -193,7 +193,7 @@ class ScheduleNode : public Object {
    *          C, then B's output region covers C's input region under Loop k
    * \param func the TirFunction to be validated
    */
-  static void LoopValidate(Function function);
+  static void ValidateLoops(Function function);
 };
 
 class Schedule : public ObjectRef {
