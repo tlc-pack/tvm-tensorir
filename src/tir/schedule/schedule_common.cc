@@ -187,14 +187,13 @@ void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
   // Gather iteration domain
   std::unordered_map<const VarNode*, arith::IntSet> dom_map;
   auto sref = GetRef<StmtSRef>(block_sref->parent);
-  while (sref.defined()) {
+  while (sref.defined() && !sref.same_as(root)) {
     const auto* loop = DowncastPtr<LoopNode>(sref->node);
     // The root may not be a loop
     if (loop == nullptr) break;
     Range range = Range::make_by_min_extent(loop->min, loop->extent);
     dom_map[loop->loop_var.get()] = arith::IntSet::range(range);
     sref = GetRef<StmtSRef>(sref->parent);
-    if (sref.same_as(root)) break;
   }
 
   auto relax = [&vmap, &dom_map](const TensorRegion& tensor_region) {

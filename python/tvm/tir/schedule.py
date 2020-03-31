@@ -106,6 +106,9 @@ class Schedule(Object):
         """
         return Replace(self, sref, target_stmt, block_sref_map)
 
+    def validate_sref(self):
+        return ValidateSRef(self)
+
     # Dependency
     def get_successors(self, block, scope=None):
         """Get the dependency successors of the block
