@@ -137,6 +137,11 @@ class ScheduleNode : public Object {
    */
   void reorder(const Array<StmtSRef>& order);
 
+  /*!
+   * \brief validate sref tree and scope information
+   */
+  bool ValidateSRef() const;
+
   static constexpr const char* _type_key = "tir.Schedule";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleNode, Object);
 
@@ -147,11 +152,6 @@ class ScheduleNode : public Object {
  * \param stmt The new stmt
  */
   void UpdateSRef(StmtSRefNode* sref, const Stmt& stmt);
-  /*!
-   * \brief remove the AST leaf and its parent subtree which has only one leaf
-   * \param sref The sref of Block/Loop to be removed
-   */
-  void RemoveLeaf(StmtSRef sref);
   /*!
    * \brief Check the region cover for the single consumer block
    */

@@ -55,6 +55,7 @@ def test_fuse():
     mod = tvm.tir.hybrid.create_module([fused_element_wise])
     fused_func = mod["fused_element_wise"]
     assert AssertEqual(fused_func, s.func)
+    assert s.validate_sref()
 
 
 @tvm.tir.hybrid.script
@@ -119,6 +120,7 @@ def test_split_fuse():
     split_func = mod["split_element_wise"]
 
     assert AssertEqual(split_func, s.func)
+    assert s.validate_sref()
 
 
 @tvm.tir.hybrid.script
@@ -155,6 +157,7 @@ def test_compute_at():
     split_func = mod["compute_at_element_wise"]
 
     assert AssertEqual(split_func, s.func)
+    assert s.validate_sref()
 
 
 @tvm.tir.hybrid.script
@@ -181,6 +184,7 @@ def test_fuse_loop_sref():
     predicate_fuse_func = mod["predicate_fuse"]
 
     assert AssertEqual(s.func, predicate_fuse_func)
+    assert s.validate_sref()
 
 
 @tvm.tir.hybrid.script
@@ -217,6 +221,7 @@ def test_reorder_normal():
     matmul_reorder_func = mod["matmul_reorder"]
 
     assert AssertEqual(s.func, matmul_reorder_func)
+    assert s.validate_sref()
 
 
 @tvm.tir.hybrid.script
