@@ -211,6 +211,75 @@ std::vector<Range> GatherRequirements(const Array<TensorRegion>& produce_regions
   return ret;
 }
 
+/*!
+ * \brief remove the AST leaf and its parent subtree which has only one leaf
+ * \param sref The sref of Block/Loop to be removed
+ * \param root The AST root
+ * \return The orginal stmt and the removed stmt of the subtree rooted by the parent node
+ */
+std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root) {
+  CHECK(sref != root);
+
+  // go upwards until find a father with more than two children
+  Stmt last = GetRef<Stmt>(sref->node);
+  sref = GetRef<StmtSRef>(sref->parent);
+  Stmt stmt = GetRef<Stmt>(sref->node);
+  while (!sref.same_as(root) || stmt.as<BlockNode>() == nullptr) {
+    const auto* loop = stmt.as<LoopNode>();
+    CHECK(loop != nullptr);
+    const auto* seq = loop->body.as<SeqStmtNode>();
+    if (seq != nullptr && seq->size() > 1) break;
+
+    sref = GetRef<StmtSRef>(sref->parent);
+    last = stmt;
+    stmt = GetRef<Stmt>(sref->node);
+  }
+
+  auto get_body = [&last](const SeqStmtNode* seq) {
+    CHECK_GT(seq->size(), 1);
+    std::vector<Stmt> stmts;
+    for (const auto& s : seq->seq) {
+      if (!s.same_as(last)) stmts.push_back(s);
+    }
+    return SeqStmt::Flatten(stmts);
+  };
+
+  if (const auto* block = stmt.as<BlockNode>()) {
+    const auto* seq = block->body.as<SeqStmtNode>();
+    CHECK(seq != nullptr);
+    auto node = make_object<BlockNode>(*block);
+    node->body = get_body(seq);
+    return std::make_pair(stmt, Stmt(node));
+  } else if (const auto* loop = stmt.as<LoopNode>()) {
+    const auto* seq = loop->body.as<SeqStmtNode>();
+    CHECK(seq != nullptr);
+    auto node = make_object<LoopNode>(*loop);
+    node->body = get_body(seq);
+    return std::make_pair(stmt, Stmt(node));
+  } else {
+    LOG(FATAL) << "unknown stmt";
+    return std::make_pair(Stmt(), Stmt());
+  }
+}
+
+class StmtReplacer : public StmtMutator {
+ public:
+  explicit StmtReplacer(const std::unordered_map<Stmt, Stmt, ObjectHash, ObjectEqual>& repalce_map)
+      : repalce_map_(repalce_map) {}
+
+  Stmt VisitStmt(const Stmt& stmt) override {
+    auto it = repalce_map_.find(stmt);
+    if (it == repalce_map_.end()) {
+      return StmtMutator::VisitStmt(stmt);
+    } else {
+      return StmtMutator::VisitStmt(it->second);
+    }
+  }
+
+ private:
+  const std::unordered_map<Stmt, Stmt, ObjectHash, ObjectEqual>& repalce_map_;
+};
+
 void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref) {
   /*!
    * Check:
@@ -328,10 +397,24 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
 
   // Regenerate the loop nesting
   Stmt new_stmt = RegenerateLoops(block_sref, loop_sref, iter_domain, after_pos);
+  // Remove leaf
+  auto removed = RemoveLeaf(block_sref, root);
 
-  // Mutate the AST with Relace and RemoveLeaf API
-  this->Replace(loop_sref, new_stmt);
-  this->RemoveLeaf(block_sref);
+  StmtSRef lca = LowestCommonAncestor({block_sref, loop_sref}, root);
+  std::unordered_map<Stmt, Stmt, ObjectHash, ObjectEqual> replace_map;
+  replace_map[GetRef<Stmt>(loop_sref->node)] = new_stmt;
+  replace_map[removed.first] = removed.second;
+
+  // Mutate the AST with Replace
+  Stmt replaced_stmt = StmtReplacer(replace_map)(GetRef<Stmt>(lca->node));
+  if (replaced_stmt.as<BlockNode>()) {
+    Map<Block, Block> block_map;
+    auto block_scope = Downcast<Block>(GetRef<Stmt>(scope_sref->node));
+    block_map.Set(Downcast<Block>(replaced_stmt), block_scope);
+    this->Replace(lca, replaced_stmt, block_map);
+  } else {
+    this->Replace(lca, replaced_stmt);
+  }
 }
 
 }  // namespace tir
