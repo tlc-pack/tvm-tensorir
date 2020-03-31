@@ -57,7 +57,7 @@ class StmtSRef : public ObjectRef {
     return static_cast<StmtSRefNode*>(ObjectRef::get_mutable());
   }
 
-  const StmtSRefNode* get() const {
+  StmtSRefNode* const get() const {
     return static_cast<StmtSRefNode*>(ObjectRef::get_mutable());
   }
 

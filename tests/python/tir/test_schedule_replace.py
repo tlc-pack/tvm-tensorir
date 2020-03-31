@@ -46,6 +46,8 @@ def test_replace_direct_write0():
     assert Equal(s.func.body.block.body[1], target)
     # The target reuse the sref's stmt, so the sref won't be none
     assert tir.schedule.get_stmt(sref) is not None
+    # Validate sref and scope information
+    assert s.validate_sref()
 
 
 def test_replace_direct_write1():
@@ -63,6 +65,8 @@ def test_replace_direct_write1():
     assert Equal(s.func.body.block.body[1], target)
     # The target reuse the sref's stmt, so the sref won't be none
     assert tir.schedule.get_stmt(sref) is not None
+    # Validate sref and scope information
+    assert s.validate_sref()
 
 
 def test_replace_copy():
@@ -82,6 +86,8 @@ def test_replace_copy():
     assert Equal(s.func.body.block.body[0], target)
     # The replaced AST node will be deleted, so the ref will be None
     assert tir.schedule.get_stmt(sref) is None
+    # Validate sref and scope information
+    assert s.validate_sref()
 
 
 def test_replace_partial_copy0():
@@ -104,6 +110,8 @@ def test_replace_partial_copy0():
     assert Equal(s.func.body.block.body[0].body, target)
     # The replaced AST node will be deleted, so the ref will be None
     assert tir.schedule.get_stmt(sref) is None
+    # Validate sref and scope information
+    assert s.validate_sref()
 
 
 def test_replace_partial_copy1():
@@ -126,6 +134,8 @@ def test_replace_partial_copy1():
     assert Equal(s.func.body.block.body[0].body.body.block, target)
     # The replaced AST node will be deleted, so the ref will be None
     assert tir.schedule.get_stmt(sref) is None
+    # Validate sref and scope information
+    assert s.validate_sref()
 
 
 def test_replace_root_write():
@@ -137,6 +147,8 @@ def test_replace_root_write():
     # Check no copy and the new body equals to target
     assert old_hash == s.func.__hash__()
     assert Equal(s.func.body.block, target)
+    # Validate sref and scope information
+    assert s.validate_sref()
 
 
 def test_replace_root_copy0():
@@ -152,6 +164,8 @@ def test_replace_root_copy0():
     # Check the original func remains unchanged
     assert old_hash == func_ref.__hash__()
     assert not Equal(func_ref.body, target)
+    # Validate sref and scope information
+    assert s.validate_sref()
 
 
 def test_replace_root_copy1():
@@ -167,6 +181,8 @@ def test_replace_root_copy1():
     # Check the original func remains unchanged
     assert old_hash == func_ref.__hash__()
     assert not Equal(func_ref.body, target)
+    # Validate sref and scope information
+    assert s.validate_sref()
 
 
 def test_replace_block_remap():
@@ -181,6 +197,8 @@ def test_replace_block_remap():
     # Check the original sref has been remapped
     assert sref.__hash__() == sref_new.__hash__()
     assert Equal(tir.schedule.get_stmt(sref), target)
+    # Validate sref and scope information
+    assert s.validate_sref()
 
 
 if __name__ == "__main__":
