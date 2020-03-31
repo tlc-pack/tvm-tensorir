@@ -97,6 +97,35 @@ void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
                  std::vector<TensorRegion>* writes);
 
 
+class SRefValidator : public StmtVisitor {
+ public:
+  explicit SRefValidator(const ScheduleNode* sch) : sch_(sch) {}
+
+  void VisitStmt_(const BlockNode* op) final {
+    CheckParent(op);
+    auto sref = sch_->stmt2ref.at(op);
+    CHECK(sch_->scopes_.count(sref))
+      << "Cannot find scope information of the block:\n" << GetRef<Stmt>(op);
+  }
+
+  void VisitStmt_(const LoopNode* op) final {
+    CheckParent(op);
+  }
+
+ private:
+  const ScheduleNode* sch_;
+  const StmtSRefNode* parent_{nullptr};
+
+  template <typename T>
+  void CheckParent(const T* op) {
+    auto it = sch_->stmt2ref.find(op);
+    Stmt s = GetRef<Stmt>(op);
+    CHECK(it != sch_->stmt2ref.end()) << "Cannot find Stmt in stmt2ref map:\n" << s;
+    StmtSRef sref = it->second;
+    CHECK(sref->parent == parent_) << "The parent of the node is mismatch:\n" << s;
+    parent_ = sref.get();
+  }
+};
 
 }  // namespace tir
 }  // namespace tvm

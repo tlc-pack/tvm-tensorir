@@ -68,24 +68,29 @@ class ScheduleCreator : public StmtVisitor {
   StmtSRefNode* parent_scope_{nullptr};
 };
 
-class DependencyAnalyzer : public ScheduleCreator {
+class DependencyAnalyzer : public StmtVisitor {
  public:
-  DependencyAnalyzer(std::unordered_map<const StmtNode*, StmtSRef>* stmt_map,
-                     std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual>* block_scopes)
-      : ScheduleCreator(stmt_map), block_scopes_(block_scopes) {}
+  DependencyAnalyzer(const std::unordered_map<const StmtNode*, StmtSRef>& stmt_map,
+                     std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual>* block_scopes,
+                     bool recursive = true)
+      : stmt_map_(stmt_map), block_scopes_(block_scopes), recursive_(recursive) {}
 
   void VisitStmt_(const BlockNode* op) final {
-    Scope scope(make_object<ScopeNode>());
-    std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual> read_map_;
+    StmtSRef block_sref = stmt_map_.at(op);
 
-    std::swap(current_scope_, scope);
-    std::swap(current_read_map_, read_map_);
-    ScheduleCreator::VisitStmt_(op);
-    std::swap(current_scope_, scope);
-    std::swap(current_read_map_, read_map_);
+    if (recursive_ || first_visit_) {
+      first_visit_ = false;
+      Scope scope(make_object<ScopeNode>());
+      std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual> read_map_;
+      std::swap(current_scope_, scope);
+      std::swap(current_read_map_, read_map_);
 
-    StmtSRef block_sref = stmt_map_->at(op);
-    (*block_scopes_)[block_sref] = scope;
+      StmtVisitor::VisitStmt_(op);
+
+      std::swap(current_scope_, scope);
+      std::swap(current_read_map_, read_map_);
+      (*block_scopes_)[block_sref] = scope;
+    }
 
     // Update tensor write map
     auto& write_map = current_scope_->write_map;
@@ -139,8 +144,6 @@ class DependencyAnalyzer : public ScheduleCreator {
       if (it != current_read_map_.end()) {
         for (const auto& read_block : it->second) {
           if (!read_block.same_as(block_sref)) {
-            LOG(INFO) << read_block;
-            LOG(INFO) << block_sref;
             LOG(FATAL) << "WAR dependency is not allowed for now.";
           }
           current_scope_.AddEdge(read_block, block_sref, DepType::kWAR);
@@ -150,10 +153,15 @@ class DependencyAnalyzer : public ScheduleCreator {
   }
 
  private:
+  const std::unordered_map<const StmtNode*, StmtSRef>& stmt_map_;
   std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual>* block_scopes_;
   Scope current_scope_{make_object<ScopeNode>()};
   // read map is only used for dependency analyse
   std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual> current_read_map_;
+
+  // analysis current scope or the whole subtree
+  const bool recursive_;
+  bool first_visit_{true};
 };
 
 class SubReplacer : protected StmtMutator {
@@ -283,8 +291,10 @@ class SRefRemover : public StmtVisitor {
                                  StmtSRefNode*,
                                  ObjectHash,
                                  ObjectEqual>&& used_border_parent,
+              std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual>* block_scopes,
               std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>&& reuse_sref)
-      : reuse_sref_(reuse_sref), used_border_parent_(used_border_parent), stmt2ref_(stmt2ref) {}
+      : reuse_sref_(reuse_sref), used_border_parent_(used_border_parent),
+        stmt2ref_(stmt2ref), block_scopes_(block_scopes) {}
 
   void VisitStmt_(const LoopNode* op) final {
     VisitSRefStmt(op);
@@ -306,6 +316,9 @@ class SRefRemover : public StmtVisitor {
       if (reuse_sref_.count(sref) == 0) {
         sref->node = nullptr;
         sref->parent = nullptr;
+        if (stmt_ptr->template IsInstance<BlockNode>()) {
+          block_scopes_->erase(sref);
+        }
       }
       stmt2ref_->erase(stmt_ptr);
       VisitStmt(op->body);
@@ -317,6 +330,7 @@ class SRefRemover : public StmtVisitor {
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> reuse_sref_;
   std::unordered_map<StmtSRef, StmtSRefNode*, ObjectHash, ObjectEqual> used_border_parent_;
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
+  std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual>* block_scopes_;
 };
 
 /*!
@@ -328,10 +342,14 @@ class SRefCreator : public StmtVisitor {
  public:
   SRefCreator(std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref,
               std::unordered_map<const VarNode*, StmtSRef>&& loop_var2ref,
+              std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual>* block_scopes,
               Map<Block, Block>&& block_sref_map,
               StmtSRefNode* parent)
-      : parent_(parent), stmt2ref_(stmt2ref),
-        loop_var2ref_(loop_var2ref), block_sref_map_(block_sref_map) {}
+      : parent_(parent),
+        stmt2ref_(stmt2ref),
+        loop_var2ref_(loop_var2ref),
+        block_scopes_(block_scopes),
+        block_sref_map_(block_sref_map) {}
 
   void VisitStmt_(const LoopNode* op) final {
     VisitSRefStmt(op);
@@ -376,6 +394,9 @@ class SRefCreator : public StmtVisitor {
       // in the AST and reuse those StmtSRef when node is in the AST.
       StmtSRef ref = CreateNewSRef(stmt_ptr);
       (*stmt2ref_)[stmt_ptr] = ref;
+      if (stmt_ptr->template IsInstance<BlockNode>()) {
+        DependencyAnalyzer(*stmt2ref_, block_scopes_, false)(GetRef<Stmt>(stmt_ptr));
+      }
       auto current = ref.get();
       std::swap(current, parent_);
       VisitStmt(op->body);
@@ -390,6 +411,7 @@ class SRefCreator : public StmtVisitor {
   StmtSRefNode* parent_;
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
   std::unordered_map<const VarNode*, StmtSRef> loop_var2ref_;
+  std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual>* block_scopes_;
   Map<Block, Block> block_sref_map_;
 
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> reuse_sref_;
@@ -415,17 +437,18 @@ class LoopCollector : public StmtVisitor {
 void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_map) {
   // Note that old_ref is only a temporary SRef
   StmtSRef old_ref = StmtSRef(ref->node, ref->parent);
+  auto root_node = root->node;
   const Stmt& old_stmt = GetRef<Stmt>(ref->node);
   // Collect loop_var to Loop mapping under old stmt
   LoopCollector collector(&stmt2ref);
   collector(old_stmt);
   // Create SRef tree for the incoming target Stmt
-  SRefCreator creator(&stmt2ref, std::move(collector.loop_var2sref),
+  SRefCreator creator(&stmt2ref, std::move(collector.loop_var2sref), &scopes_,
                       std::move(block_sref_map), old_ref->parent);
   creator(target);
   // Initialize old SRef remover
-  SRefRemover remover(&stmt2ref,
-                      std::move(creator.used_border_parent_), std::move(creator.reuse_sref_));
+  SRefRemover remover(&stmt2ref, std::move(creator.used_border_parent_),
+                      &scopes_, std::move(creator.reuse_sref_));
   // num_copy_steps: maximum number of hops until we don't need to copy
   int curr_step = 0;
   int num_copy_steps = -1;
@@ -438,7 +461,8 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
   if (!func.unique()) num_copy_steps = curr_step;
   // Update the function body
   curr_step = 0;
-  for (StmtSRefNode* ptr = old_ref.get(); ptr->node != root->node;
+//  for (StmtSRefNode* ptr = ref.get(); ptr != root.get();
+  for (StmtSRefNode* ptr = old_ref.get(); ptr->node != root_node;
        ptr = ptr->parent, ++curr_step) {
     StmtSRefNode* parent = ptr->parent;
     // parent_step = current_step + 1
@@ -459,7 +483,7 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
     target = new_stmt;
   }
   remover(old_stmt);
-  if (old_ref->node == root->node) {
+  if (old_ref->node == root_node) {
     // The replace point is root, we directly use the sref tree created by SRefCreator
     root = stmt2ref[target.operator->()];
   } else {
@@ -472,8 +496,9 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
 Schedule ScheduleNode::Create(Function function) {
   std::unordered_map<const StmtNode*, StmtSRef> stmt_map;
   std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> block_scopes;
-
-  DependencyAnalyzer dependency_analyzer(&stmt_map, &block_scopes);
+  ScheduleCreator schedule_creator(&stmt_map);
+  schedule_creator(function->body);
+  DependencyAnalyzer dependency_analyzer(stmt_map, &block_scopes);
   dependency_analyzer(function->body);
   const auto* op = function->body.as<BlockRealizeNode>();
   CHECK(op != nullptr);
@@ -562,50 +587,6 @@ Array<StmtSRef> ScheduleNode::GetLoopsInScope(const StmtSRef& block) const {
   return Array<StmtSRef>(ret.rbegin(), ret.rend());
 }
 
-void ScheduleNode::RemoveLeaf(StmtSRef sref) {
-  CHECK(sref != root);
-
-  // go upwards until find a father with more than two children
-  Stmt last = GetRef<Stmt>(sref->node);
-  sref = GetRef<StmtSRef>(sref->parent);
-  Stmt stmt = GetRef<Stmt>(sref->node);
-  while (!sref.same_as(root) || stmt.as<BlockNode>() == nullptr) {
-    const auto* loop = stmt.as<LoopNode>();
-    CHECK(loop != nullptr);
-    const auto* seq = loop->body.as<SeqStmtNode>();
-    if (seq != nullptr && seq->size() > 1) break;
-
-    sref = GetRef<StmtSRef>(sref->parent);
-    last = stmt;
-    stmt = GetRef<Stmt>(sref->node);
-  }
-
-  auto get_body = [&last](const SeqStmtNode* seq) {
-    CHECK_GT(seq->size(), 1);
-    std::vector<Stmt> stmts;
-    for (const auto& s : seq->seq) {
-      if (!s.same_as(last)) stmts.push_back(s);
-    }
-    return SeqStmt::Flatten(stmts);
-  };
-
-  if (const auto* block = stmt.as<BlockNode>()) {
-    const auto* seq = block->body.as<SeqStmtNode>();
-    CHECK(seq != nullptr);
-    auto node = make_object<BlockNode>(*block);
-    node->body = get_body(seq);
-    Replace(sref, Stmt(node));
-  } else if (const auto* loop = stmt.as<LoopNode>()) {
-    const auto* seq = loop->body.as<SeqStmtNode>();
-    CHECK(seq != nullptr);
-    auto node = make_object<LoopNode>(*loop);
-    node->body = get_body(seq);
-    Replace(sref, Stmt(node));
-  } else {
-    LOG(FATAL) << "unknown stmt";
-  }
-}
-
 bool ScheduleNode::CheckRegionCover(const StmtSRef& consumer) const {
   StmtSRef scope_sref = GetScope(consumer);
   const Scope& scope = scopes_.at(scope_sref);
@@ -664,6 +645,11 @@ bool ScheduleNode::IsCompactDataFlow(const StmtSRef& sub_tree) const {
   for (const auto& block : child_blocks) {
     if (!scope.IsComplete(block)) return false;
   }
+  return true;
+}
+
+bool ScheduleNode::ValidateSRef() const {
+  SRefValidator(this)(func->body);
   return true;
 }
 
@@ -896,6 +882,12 @@ TVM_REGISTER_GLOBAL("tir.schedule.GetPredecessors")
 .set_body_typed<Array<DepEdge>(Schedule, StmtSRef, StmtSRef)>(
     [](Schedule schedule, StmtSRef scope, StmtSRef block) {
       return schedule->scopes_[scope].GetPredecessors(block);
+    });
+
+TVM_REGISTER_GLOBAL("tir.schedule.ValidateSRef")
+.set_body_typed<bool(Schedule)>(
+    [](Schedule schedule) {
+      return schedule->ValidateSRef();
     });
 
 }  // namespace tir
