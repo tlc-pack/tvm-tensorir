@@ -38,7 +38,6 @@
 #include <vector>
 #include <string>
 
-
 namespace tvm {
 namespace tir {
 
@@ -178,7 +177,7 @@ Stmt Substitute(const Stmt& stmt,
  * \return The converted expression.
  */
 PrimExpr Substitute(PrimExpr expr,
-                const std::unordered_map<const VarNode*, PrimExpr>& value_map);
+                    const std::unordered_map<const VarNode*, PrimExpr>& value_map);
 
 /*!
  * \brief Substitute the var specified in key->var to be value.
@@ -617,7 +616,6 @@ LoweredFunc SkipAssert(LoweredFunc f);
  * \return Success of memory verification.
  */
 bool VerifyMemory(LoweredFunc func, int device_type);
-
 
 /*!
  * \brief Verify the correctness of a GPU code

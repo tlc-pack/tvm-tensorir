@@ -18,7 +18,7 @@
 import tvm
 import util
 from tvm import tir
-from tvm.tir.ir_pass import Equal, AssertEqual
+from tvm.tir.ir_pass import AssertEqual
 
 
 @tvm.tir.hybrid.script
@@ -166,7 +166,11 @@ def predicate_fuse(b, c):
     B = buffer_bind(b, (16, 16), "float32")
     with block({}, writes=[], reads=[], name="root"):
         for i in range(0, 256):
-            with block({vi(0, 16):floordiv(floordiv(i, 4), 4), vj(0, 16):((floormod(floordiv(i, 4), 4)*3) + floormod(i, 4))}, writes=[C[vi:(vi + 1), vj:(vj + 1)]], reads=[B[vi:(vi + 1), vj:(vj + 1)]], predicate=(((floormod(floordiv(i, 4), 4)*4) + floormod(i, 4)) < 16), name="update"):
+            with block({vi(0, 16): floordiv(floordiv(i, 4), 4),
+                        vj(0, 16): ((floormod(floordiv(i, 4), 4) * 4) + floormod(i, 4))},
+                       writes=[C[vi:(vi + 1), vj:(vj + 1)]], reads=[B[vi:(vi + 1), vj:(vj + 1)]],
+                       predicate=(((floormod(floordiv(i, 4), 4) * 4) + floormod(i, 4)) < 16),
+                       name="update"):
                 C[vi, vj] = (B[vi, vj] + float32(1))
 
 
@@ -259,10 +263,12 @@ def compute_at_case(a, c):
                     A[vi, vj] = 2
                 for k in range(0, 128):
                     with block({vi(0, 128): i, vj(0, 128): j},
-                               reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1], name="B1"):
+                               reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1],
+                               name="B1"):
                         B[vi, vj] = A[vi, vj] * 2
                     with block({vi(0, 128): i, vj(0, 128): j},
-                               reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1], name="C"):
+                               reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
+                               name="C"):
                         C[vi, vj] = B[vi, vj] * 2
 
 

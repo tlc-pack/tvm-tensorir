@@ -30,6 +30,7 @@ Typically, a scope handler function has no return value and accepts parser and n
 # pylint: disable=redefined-builtin
 
 import tvm.tir
+
 from .scope_emitter import ScopeEmitter
 
 
@@ -59,11 +60,11 @@ def block(parser, node, block_vars_info, reads, writes, predicate=True, annotati
 
     allocations, body = parser.scope_emitter.pop_scope(is_block=True)
     inner = tvm.tir.Block(block_vars, reads, writes, body, allocations, annotations, name)
-    parser.scope_emitter.emit(tvm.tir.BlockRealize(values, predicate, inner))
+    parser.scope_emitter.emit(tvm.tir.BlockRealize(values, predicate, inner, False))
 
 
-def range(parser, node, begin, end):
-    """ For scope handler function range(begin, end)"""
+def range(parser, node, begin, end, annotation=None):
+    """ For scope handler function range(begin, end, annotation)"""
     extent = end if begin == 0 else tvm.tir.ir_pass.Simplify(end - begin)
     loop_var_name = node.target.id
     loop_var = tvm.te.var(loop_var_name, dtype="int32")
@@ -74,5 +75,12 @@ def range(parser, node, begin, end):
     for stmt in node.body:
         parser.visit(stmt)
 
+    if annotation is None:
+        annotation = []
+    else:
+        annotation = [tvm.tir.Annotation(arg[0],
+                                         tvm.runtime.convert(arg[1]) if isinstance(arg[1], str) else
+                                         arg[1]) for arg in annotation]
+
     parser.scope_emitter.emit(
-        tvm.tir.Loop(loop_var, begin, extent, [], parser.scope_emitter.pop_scope()))
+        tvm.tir.Loop(loop_var, begin, extent, annotation, parser.scope_emitter.pop_scope()))

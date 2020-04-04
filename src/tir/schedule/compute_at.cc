@@ -211,6 +211,66 @@ std::vector<Range> GatherRequirements(const Array<TensorRegion>& produce_regions
   return ret;
 }
 
+// region cover check
+bool ScheduleNode::CheckRegionCover(const StmtSRef& consumer) const {
+  if (consumer->parent == nullptr) return true;
+  const auto* block = DowncastPtr<BlockNode>(consumer->node);
+  StmtSRef scope_sref = GetScope(consumer);
+  const Scope& scope = scopes_.at(scope_sref);
+
+  // Gather all the producers
+  std::unordered_map<const VarNode*, std::vector<StmtSRef>> producers;
+  std::unordered_map<const VarNode*, std::vector<const TensorRegionNode*>> produce_regions;
+  const auto& successors = scope.GetSuccessors(consumer);
+
+  for (const auto& edge : successors) {
+    if (edge->type == DepType::kRAW) {
+      const auto* producer_block = DowncastPtr<BlockNode>(edge->dst->node);
+      for (const auto& output_region : producer_block->writes) {
+        const auto* bufferVar = output_region->buffer->data.operator->();
+        producers[bufferVar].push_back(edge->dst);
+        produce_regions[bufferVar].push_back(output_region.operator->());
+      }
+    }
+  }
+
+  for (const auto& input_region : block->reads) {
+    const auto* bufferVar = input_region->buffer->data.operator->();
+    std::vector<StmtSRef>& nodes = producers[bufferVar];
+    if (nodes.empty()) continue;
+    std::vector<const TensorRegionNode*> regions = produce_regions[bufferVar];
+    // calculate the LCA
+    nodes.push_back(consumer);
+    const StmtSRef& lca = LowestCommonAncestor(nodes, scope_sref);
+    nodes.pop_back();
+    // prepare check function
+    auto check_cover = [](const TensorRegion& read, const TensorRegion& write) -> bool {
+      CHECK_EQ(read->region.size(), write->region.size());
+      for (size_t i = 0; i < read->region.size(); ++i) {
+        auto read_min = read->region[i]->min;
+        auto write_min = write->region[i]->min;
+        auto read_max = read_min + read->region[i]->extent;
+        auto write_max = write_min + write->region[i]->extent;
+        arith::Analyzer analyzer;
+        if (!analyzer.CanProve(read_min >= write_min)
+            || !analyzer.CanProve(read_max <= write_max)) {
+          LOG(WARNING) << "Cannot prove the region cover: producer " << read << " consumer "
+                       << write;
+          return false;
+        }
+      }
+      return true;
+    };
+    TensorRegion read = RelaxRegion(consumer, lca, input_region);
+    for (size_t i = 0; i < nodes.size(); ++i) {
+      TensorRegion write = RelaxRegion(nodes[i], lca, GetRef<TensorRegion>(regions[i]));
+      if (!check_cover) return false;
+    }
+  }
+
+  return true;
+}
+
 /*!
  * \brief remove the AST leaf and its parent subtree which has only one leaf
  * \param sref The sref of Block/Loop to be removed
@@ -342,15 +402,6 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
     for (const auto& output_buffer : scope_block->writes)
       CHECK(!x->buffer.same_as(output_buffer->buffer)) << "Can not compute_at an output block";
   }
-
-  for (const auto& predecessor : predecessors) {
-    if (predecessor->type == DepType::kRAW) {
-      CHECK(scope.IsComplete(predecessor->dst)) << "The producer must a complete block";
-    }
-  }
-
-  // Check Region Cover
-  CHECK(CheckRegionCover(block_sref)) << "The producer cannot produce necessary tensor region";
 
   // Check all successors are in the subtree rooted by loop_sref
   for (const auto& x : successors) {
