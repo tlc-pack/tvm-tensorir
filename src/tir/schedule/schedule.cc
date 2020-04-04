@@ -894,10 +894,6 @@ StmtSRef ScheduleNode::split_reduction(const StmtSRef& block_sref,
   return stmt2ref.at(init_block.get());
 }
 
-StmtSRef ScheduleNode::fuse_reduction(const StmtSRef& block) {
-  // Equivalence
-}
-
 StmtSRef::StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index) {
   auto n = make_object<StmtSRefNode>();
   n->node = node;
