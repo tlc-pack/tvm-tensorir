@@ -21,6 +21,7 @@
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/arith/analyzer.h>
 #include <tvm/runtime/registry.h>
+#include <tvm/tir/ir_pass.h>
 #include "schedule_common.h"
 
 namespace tvm {
@@ -503,10 +504,15 @@ Schedule ScheduleNode::Create(Function function) {
   const auto* op = function->body.as<BlockRealizeNode>();
   CHECK(op != nullptr);
   auto n = make_object<ScheduleNode>();
-  n->func = std::move(function);
+  n->func = function;
   n->stmt2ref = std::move(stmt_map);
   n->root = n->stmt2ref[op->block.as<StmtNode>()];
   n->scopes_ = block_scopes;
+  n->ValidateLoops(function);
+  for (const auto& it : block_scopes) {
+    CHECK(it.first->node->IsInstance<BlockNode>());
+    n->CheckRegionCover(it.first);
+  }
   return Schedule(n);
 }
 
@@ -585,56 +591,6 @@ Array<StmtSRef> ScheduleNode::GetLoopsInScope(const StmtSRef& block) const {
     sref = GetRef<StmtSRef>(sref->parent);
   }
   return Array<StmtSRef>(ret.rbegin(), ret.rend());
-}
-
-bool ScheduleNode::CheckRegionCover(const StmtSRef& consumer) const {
-  StmtSRef scope_sref = GetScope(consumer);
-  const Scope& scope = scopes_.at(scope_sref);
-
-  // Gather producers
-  std::vector<StmtSRef> producers;
-  const auto& successors = scope.GetSuccessors(consumer);
-  for (const auto& edge : successors) {
-    if (edge->type == DepType::kRAW) {
-      producers.push_back(edge->dst);
-    }
-  }
-
-  std::vector<StmtSRef> nodes = producers;
-  nodes.push_back(consumer);
-
-  const StmtSRef& lca = LowestCommonAncestor(nodes, scope_sref);
-
-  auto check_cover = [](const TensorRegion& read, const TensorRegion& write) -> bool {
-    CHECK_EQ(read->region.size(), write->region.size());
-    for (size_t i = 0; i < read->region.size(); ++i) {
-      auto read_min = read->region[i]->min;
-      auto write_min = write->region[i]->min;
-      auto read_max = read_min + read->region[i]->extent;
-      auto write_max = write_min + write->region[i]->extent;
-      arith::Analyzer analyzer;
-      if (!analyzer.CanProve(read_min >= write_min) || !analyzer.CanProve(read_max <= write_max)) {
-        LOG(WARNING) << "Cannot prove the region cover: producer " << read << " consumer " << write;
-        return false;
-      }
-    }
-    return true;
-  };
-
-  std::vector<TensorRegion> reads;
-  RelaxRegion(consumer, lca, &reads, nullptr);
-  for (const auto& producer : producers) {
-    std::vector<TensorRegion> writes;
-    RelaxRegion(producer, lca, nullptr, &writes);
-    for (const auto& write : writes) {
-      for (const auto& read : reads) {
-        if (read->buffer.same_as(write->buffer)) {
-          if (!check_cover) return false;
-        }
-      }
-    }
-  }
-  return true;
 }
 
 bool ScheduleNode::IsCompactDataFlow(const StmtSRef& sub_tree) const {
@@ -717,8 +673,8 @@ class PredicateUpdater : public StmtMutator {
 };
 
 Array<StmtSRef> ScheduleNode::split(const StmtSRef& node,
-                                const PrimExpr& nparts,
-                                const PrimExpr& factor) {
+                                    const PrimExpr& nparts,
+                                    const PrimExpr& factor) {
   // Equivalence
   // - The total repeat number has not changed for each direct child block with updating predicate.
   // - The execution order has not changed. (The block executes with the same
@@ -751,8 +707,10 @@ Array<StmtSRef> ScheduleNode::split(const StmtSRef& node,
   arith::Analyzer analyzer;
   analyzer.Bind(outer_var, Range::make_by_min_extent(outer_min, outer_extent));
   analyzer.Bind(inner_var, Range::make_by_min_extent(inner_min, inner_extent));
-  PrimExpr predicate = analyzer.Simplify(outer_var * factor + inner_var < loop->extent);
-  Stmt new_stmt = PredicateUpdater(predicate)(SubstituteInScope(loop->body, vmap));
+  PrimExpr predicate = outer_var * factor + inner_var < loop->extent;
+  Stmt new_stmt = SubstituteInScope(loop->body, vmap);
+  if (!analyzer.CanProve(predicate))
+    new_stmt = PredicateUpdater(predicate)(new_stmt);
 
   Loop inner_loop(inner_var, inner_min, inner_extent, loop->annotations, new_stmt);
   Loop outer_loop(outer_var, outer_min, outer_extent, loop->annotations, inner_loop);
@@ -765,11 +723,92 @@ Array<StmtSRef> ScheduleNode::split(const StmtSRef& node,
   return Array<StmtSRef>{outer_sref, inner_sref};
 }
 
+class AnnotationUpdater : public StmtMutator {
+ public:
+  explicit AnnotationUpdater(Annotation annotation) : annotation_(std::move(annotation)) {}
+
+ private:
+  Stmt VisitStmt_(const LoopNode* op) override {
+    auto n = CopyOnWrite(op);
+    n->annotations.push_back(std::move(annotation_));
+    return Stmt(n);
+  }
+
+  Annotation annotation_;
+};
+
+void ScheduleNode::vectorize(const StmtSRef& node) {
+  /*!
+   * Check:
+   * - 1. check the block under is complete block or reduction block
+   * - 2. check `input_loop` is bound and only bound to `data_par` block_vars
+   * - 3. check the loops of reduction blocks are validatable
+   * Mutate:
+   * - 4. set Annotation on the loop
+   * Proof:
+   * We prove by showing that there are no data flows between `input_loop=i` and`input_loop=j`,
+   * and we show this by induction on the number of blocks.
+   *
+   * If there is only one block below
+   * - The block is complete. All the instances are independent of each other.
+   * - The block is reduction. `input_loop` bound and only bound to `data_par` blocks + loops of
+   * reduction blocks are validatable => instances of `input_loop=i` will write different positions
+   * with instances of `input_loop=j`, hence they are independent.
+   *
+   * If there's a new block coming in. Consider its instances under `input_loop=i`.
+   * - If the producer is complete. Producer instances under `input_loop=j` may write the positions
+   * that new instances under `input_loop=i`  may read, but it will read the same value produced by
+   * the producer under `input_loop=i` since it's complete.
+   * - If the producer is reduction. Producer instances under `input_loop=j` will never write the
+   * positions that new instances under `input_loop=j` may read. Hence no data flow.
+   */
+
+  const auto* loop = DowncastPtr<LoopNode>(node->node);
+  CHECK(loop != nullptr) << "Vectorize expect a loop";
+  // Currently, can not vectorize Loops with annotations
+  if (!loop->annotations.empty()) {
+    LOG(FATAL) << "InvalidSchedule: " << "Cannot vectorize loop that already has annotations";
+  }
+  // Now vectorize only support:
+  //   1. All the blocks are complete below
+  //   2. A single block below the loop
+  // TODO(bohan): support reduction later
+  if (!IsCompactDataFlow(node)) {
+    auto children = GetChildren(GetRef<Stmt>(loop), true);
+    CHECK(children.size() == 1 && children[0]->IsInstance<BlockRealizeNode>());
+    const BlockRealize& br = Downcast<BlockRealize>(children[0]);
+    CHECK(stmt2ref[br->block.operator->()]->binding_valid) << "Vectorize expect valid bindings";
+    for (size_t i = 0; i < br->binding_values.size(); ++i) {
+      if (br->block->iter_vars[i]->iter_type != IterVarType::kDataPar
+          && RelatedWithVar(loop->loop_var, br->binding_values[i])) {
+        LOG(FATAL) << "The loop is related with non-datapar block vars";
+      }
+    }
+  }
+  Annotation annotation = Annotation(attr::loop_type, StringImmNode::make("vectorize"));
+  Stmt new_stmt = AnnotationUpdater(annotation)(GetRef<Stmt>(loop));
+  this->Replace(node, new_stmt);
+}
+
+void ScheduleNode::unroll(const StmtSRef& node) {
+  // Equivalence : Unroll is trivial
+  const auto* loop = DowncastPtr<LoopNode>(node->node);
+  CHECK(loop != nullptr) << "Unroll expect a loop";
+  // Currently, can not unroll Loops with annotations
+  if (!loop->annotations.empty()) {
+    LOG(FATAL) << "InvalidSchedule: " << "Cannot unroll loop that already has annotations";
+  }
+  Annotation annotation = Annotation(tir::attr::loop_type, StringImmNode::make("unroll"));
+  Stmt new_stmt = AnnotationUpdater(annotation)(GetRef<Stmt>(loop));
+  this->Replace(node, new_stmt);
+}
+
 StmtSRef::StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index) {
   auto n = make_object<StmtSRefNode>();
   n->node = node;
   n->parent = parent;
   n->seq_index = seq_index;
+  n->binding_valid = false;
   data_ = std::move(n);
 }
 
@@ -869,6 +908,18 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleComputeAt")
 .set_body_typed<void(Schedule, StmtSRef, StmtSRef)>(
     [](Schedule schedule, StmtSRef block_sref, StmtSRef loop_sref) {
       return schedule->compute_at(block_sref, loop_sref);
+    });
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleVectorize")
+.set_body_typed<void(Schedule, StmtSRef)>(
+    [](Schedule schedule, StmtSRef node) {
+      return schedule->vectorize(node);
+    });
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnroll")
+.set_body_typed<void(Schedule, StmtSRef)>(
+    [](Schedule schedule, StmtSRef node) {
+      return schedule->unroll(node);
     });
 
 // dependency graph
