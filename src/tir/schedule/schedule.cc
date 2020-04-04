@@ -497,7 +497,6 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
 Schedule ScheduleNode::Create(Function function) {
   std::unordered_map<const StmtNode*, StmtSRef> stmt_map;
   std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> block_scopes;
-  ScheduleNode::ValidateLoops(function);
   ScheduleCreator schedule_creator(&stmt_map);
   schedule_creator(function->body);
   DependencyAnalyzer dependency_analyzer(stmt_map, &block_scopes);
@@ -505,10 +504,11 @@ Schedule ScheduleNode::Create(Function function) {
   const auto* op = function->body.as<BlockRealizeNode>();
   CHECK(op != nullptr);
   auto n = make_object<ScheduleNode>();
-  n->func = std::move(function);
+  n->func = function;
   n->stmt2ref = std::move(stmt_map);
   n->root = n->stmt2ref[op->block.as<StmtNode>()];
   n->scopes_ = block_scopes;
+  n->ValidateLoops(function);
   for (const auto& it : block_scopes) {
     CHECK(it.first->node->IsInstance<BlockNode>());
     n->CheckRegionCover(it.first);
@@ -777,7 +777,7 @@ void ScheduleNode::vectorize(const StmtSRef& node) {
     auto children = GetChildren(GetRef<Stmt>(loop), true);
     CHECK(children.size() == 1 && children[0]->IsInstance<BlockRealizeNode>());
     const BlockRealize& br = Downcast<BlockRealize>(children[0]);
-    CHECK(br->binding_valid) << "Vectorize expect valid bindings";
+    CHECK(stmt2ref[br->block.operator->()]->binding_valid) << "Vectorize expect valid bindings";
     for (size_t i = 0; i < br->binding_values.size(); ++i) {
       if (br->block->iter_vars[i]->iter_type != IterVarType::kDataPar
           && RelatedWithVar(loop->loop_var, br->binding_values[i])) {
@@ -808,6 +808,7 @@ StmtSRef::StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index
   n->node = node;
   n->parent = parent;
   n->seq_index = seq_index;
+  n->binding_valid = false;
   data_ = std::move(n);
 }
 

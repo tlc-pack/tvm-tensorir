@@ -193,7 +193,7 @@ class ScheduleNode : public Object {
    *          C, then B's output region covers C's input region under Loop k
    * \param func the TirFunction to be validated
    */
-  static void ValidateLoops(Function function);
+  void ValidateLoops(Function function);
 };
 
 class Schedule : public ObjectRef {

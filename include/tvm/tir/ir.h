@@ -310,8 +310,6 @@ class BlockRealizeNode : public StmtNode {
   PrimExpr predicate;
   /*! \brief The block to be realized. */
   Block block;
-  /*! \brief Whether the binding_values and predicates are validate */
-  bool binding_valid;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("binding_values", &binding_values);
@@ -331,8 +329,7 @@ class BlockRealize : public Stmt {
  public:
   TVM_DLL explicit BlockRealize(Array<PrimExpr> values,
                                 PrimExpr predicate,
-                                Block block,
-                                bool binding_valid);
+                                Block block);
 
   TVM_DEFINE_OBJECT_REF_METHODS(BlockRealize, Stmt, BlockRealizeNode);
 };

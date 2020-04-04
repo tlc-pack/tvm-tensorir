@@ -160,23 +160,21 @@ class Replacer : public ExprMutator {
  *        2) region cover check : Suppose B is a RAW predecessor of C, Loop k is the LCA of B and
  *          C, then B's output region covers C's input region under Loop k
  */
-class LoopValidator : public StmtMutator {
+class LoopValidator : public StmtVisitor {
  public:
-  LoopValidator() = default;
+  explicit LoopValidator(std::unordered_map<const StmtNode*, StmtSRef>* stmt_2_ref)
+      : stmt2ref_(stmt_2_ref) {}
 
-  Stmt VisitStmt_(const BlockRealizeNode* op) final {
-    auto n = CopyOnWrite(op);
-    Stmt block = this->VisitStmt(op->block);
-    n->binding_valid = CheckBinding(op->binding_values, op->predicate);
-    n->block = Downcast<Block>(block);
-    return Stmt(n);
+  void VisitStmt_(const BlockRealizeNode* op) final {
+    StmtSRef sref = (*stmt2ref_)[op->block.operator->()];
+    sref->binding_valid = CheckBinding(op->binding_values, op->predicate);
+    StmtVisitor::VisitStmt_(op);
   }
 
-  Stmt VisitStmt_(const LoopNode* op) final {
+  void VisitStmt_(const LoopNode* op) final {
     surrounding_loops_[op->loop_var.get()] = op->extent;
-    Stmt res = StmtMutator::VisitStmt_(op);
+    StmtVisitor::VisitStmt_(op);
     surrounding_loops_.erase(op->loop_var.get());
-    return res;
   }
 
  private:
@@ -259,11 +257,12 @@ class LoopValidator : public StmtMutator {
   }
 
   std::unordered_map<const VarNode*, PrimExpr> surrounding_loops_;
+  std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
 };
 
 void ScheduleNode::ValidateLoops(Function function) {
-  LoopValidator loopValidator;
-  function->body = loopValidator(function->body);
+  LoopValidator loopValidator(&this->stmt2ref);
+  loopValidator(function->body);
 }
 
 }  // namespace tir
