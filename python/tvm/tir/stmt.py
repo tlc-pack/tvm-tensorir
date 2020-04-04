@@ -383,6 +383,21 @@ class Prefetch(Stmt):
 
 
 @tvm._ffi.register_object
+class Annotation(Stmt):
+    """Annotation node.
+
+    Parameters
+    ----------
+    key : str
+        attr key
+    value : PrimExpr
+        the value of annotation
+    """
+    def __init__(self, key, value):
+        self.__init_handle_by_constructor__(_ffi_api.Annotation, key, value)
+
+
+@tvm._ffi.register_object
 class Loop(Stmt):
     """Loop node.
 
@@ -489,10 +504,13 @@ class BlockRealize(Stmt):
 
     block : Block
         The block to realize
+
+    binding_valid : bool
+        Whether the bindings are valid
     """
-    def __init__(self, values, predicate, block):
+    def __init__(self, values, predicate, block, binding_valid):
         self.__init_handle_by_constructor__(
-            _ffi_api.BlockRealize, values, predicate, block)
+            _ffi_api.BlockRealize, values, predicate, block, binding_valid)
 
 
 @tvm._ffi.register_object

@@ -54,10 +54,10 @@ class ScheduleNode : public Object {
   }
 
   /*!
- * \brief Create a new schedule
- * \param function The function to be scheduled
- * \return The schedule
- */
+   * \brief Create a new schedule
+   * \param function The function to be scheduled
+   * \return The schedule
+   */
   static Schedule Create(Function function);
 
   /*!
@@ -132,6 +132,18 @@ class ScheduleNode : public Object {
   void compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref);
 
   /*!
+   * \brief vectorize a loop
+   * \param node the loop to be vectorized
+   */
+  void vectorize(const StmtSRef& node);
+
+  /*!
+   * \brief unroll a loop
+   * \param node the loop to be unrolled
+   */
+  void unroll(const StmtSRef& node);
+
+  /*!
    * \brief reorder a list of loops
    * \param order the order of loops
    */
@@ -169,6 +181,19 @@ class ScheduleNode : public Object {
    *       so it is omitted in the check.
    */
   bool IsCompactDataFlow(const StmtSRef& sub_tree) const;
+  /*!
+   * \brief Validate Tir, now the ValidateLoops pass contains the following checks
+   *        1) loop binding validation: a set of binding expressions is valid if and only if
+   *          1.  vi=i, vj=j, vk=k ... (one loop_var binds exactly one block_var)
+   *          2.  if f is a legal binding and g is the binding after we applying `split` on f,
+   *          then g is legal
+   *          3.  if f is a legal binding and g is the binding after we applying `fuse` on f,
+   *          then g is legal
+   *        2) region cover check: Suppose B is a RAW predecessor of C, Loop k is the LCA of B and
+   *          C, then B's output region covers C's input region under Loop k
+   * \param func the TirFunction to be validated
+   */
+  void ValidateLoops(Function function);
 };
 
 class Schedule : public ObjectRef {

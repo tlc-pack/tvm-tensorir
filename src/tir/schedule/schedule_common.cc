@@ -26,7 +26,6 @@
 #include <utility>
 #include "schedule_common.h"
 
-
 namespace tvm {
 namespace tir {
 
@@ -171,45 +170,52 @@ StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef
   return root;
 }
 
-void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
-                 std::vector<TensorRegion>* reads,
-                 std::vector<TensorRegion>* writes) {
+std::function<TensorRegion(const TensorRegion)> RelaxGenerator(const StmtSRef& block_sref,
+    const StmtSRef& root,
+    std::unordered_map<const VarNode*, PrimExpr>* vmap,
+    std::unordered_map<const VarNode*, arith::IntSet>* dom_map) {
   const auto* block = DowncastPtr<BlockNode>(block_sref->node);
   const auto* block_realize = GetBlockRealize(block_sref).operator->();
   CHECK(block != nullptr);
 
   // Update block_var map
-  std::unordered_map<const VarNode*, PrimExpr> vmap;
   for (size_t i = 0; i < block->iter_vars.size(); ++i) {
-    vmap[block->iter_vars[i]->var.get()] = block_realize->binding_values[i];
+    (*vmap)[block->iter_vars[i]->var.get()] = block_realize->binding_values[i];
   }
 
   // Gather iteration domain
-  std::unordered_map<const VarNode*, arith::IntSet> dom_map;
   auto sref = GetRef<StmtSRef>(block_sref->parent);
   while (sref.defined() && !sref.same_as(root)) {
     const auto* loop = DowncastPtr<LoopNode>(sref->node);
     // The root may not be a loop
     if (loop == nullptr) break;
     Range range = Range::make_by_min_extent(loop->min, loop->extent);
-    dom_map[loop->loop_var.get()] = arith::IntSet::range(range);
+    (*dom_map)[loop->loop_var.get()] = arith::IntSet::range(range);
     sref = GetRef<StmtSRef>(sref->parent);
   }
 
-  auto relax = [&vmap, &dom_map](const TensorRegion& tensor_region) {
+  return [vmap, dom_map](const TensorRegion& tensor_region) {
     auto n = make_object<TensorRegionNode>();
     Array<Range> region;
     n->buffer = tensor_region->buffer;
     for (auto range : tensor_region->region) {
-      range = Range::make_by_min_extent(Substitute(range->min, vmap),
-                                        Substitute(range->extent, vmap));
-      auto int_set = arith::EvalSet(range, dom_map);
+      range = Range::make_by_min_extent(Substitute(range->min, *vmap),
+                                        Substitute(range->extent, *vmap));
+      auto int_set = arith::EvalSet(range, *dom_map);
       region.push_back(Range::make_by_min_extent(int_set.min(), int_set.max() - int_set.min() + 1));
     }
     n->region = std::move(region);
     return TensorRegion(n);
   };
+}
 
+void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
+                 std::vector<TensorRegion>* reads,
+                 std::vector<TensorRegion>* writes) {
+  std::unordered_map<const VarNode*, PrimExpr> vmap;
+  std::unordered_map<const VarNode*, arith::IntSet> dom_map;
+  auto relax = RelaxGenerator(block_sref, root, &vmap, &dom_map);
+  const auto* block = DowncastPtr<BlockNode>(block_sref->node);
   if (reads != nullptr) {
     for (const auto& tensor_region : block->reads) {
       reads->push_back(relax(tensor_region));
@@ -220,6 +226,15 @@ void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
       writes->push_back(relax(tensor_region));
     }
   }
+}
+
+TensorRegion RelaxRegion(const StmtSRef& block_sref,
+                         const StmtSRef& root,
+                         const TensorRegion& region) {
+  std::unordered_map<const VarNode*, PrimExpr> vmap;
+  std::unordered_map<const VarNode*, arith::IntSet> dom_map;
+  auto relax = RelaxGenerator(block_sref, root, &vmap, &dom_map);
+  return relax(region);
 }
 
 }  // namespace tir

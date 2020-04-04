@@ -344,7 +344,9 @@ TVM_REGISTER_GLOBAL("tir.Block")
                    body, allocates, annotations, tag);
     });
 
-BlockRealize::BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block) {
+BlockRealize::BlockRealize(Array<PrimExpr> values,
+                           PrimExpr predicate,
+                           Block block) {
   CHECK_EQ(block->iter_vars.size(), values.size());
   ObjectPtr<BlockRealizeNode> node = make_object<BlockRealizeNode>();
   node->binding_values = std::move(values);
