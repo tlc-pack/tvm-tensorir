@@ -96,8 +96,8 @@ def test_local_allocate():
         ib = tvm.tir.ir_builder.create()
         A = ib.pointer("float32", 'A')
         C = ib.pointer("float32", 'C')
-        B = ib.allocate("float32", 128, name='B', scope="global")
         with ib.for_range(0, 128, "i") as i:
+            B = ib.allocate("float32", 128, name='B', scope="global")
             with ib.for_range(0, 128, "j") as j:
                 B[j] = A[i*128 + j] * 2.0
 

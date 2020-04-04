@@ -227,41 +227,56 @@ class BufferFlattener : public StmtExprMutator {
  public:
   BufferFlattener(const std::unordered_map<const VarNode*, PrimExpr>& block_var,
                   const std::unordered_map<Buffer, std::vector<arith::IntSet>,
-                                           ObjectHash, ObjectEqual>& buffers_region)
-      : buffers_region_(buffers_region), block_var_(block_var) {}
+                                           ObjectHash, ObjectEqual>& buffers_region,
+                  const std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual>& buffers_lca)
+      : buffers_region_(buffers_region), block_var_(block_var), buffers_lca_(buffers_lca) {}
+
+  Stmt VisitStmt(const Stmt& stmt) override {
+    Stmt body = StmtMutator::VisitStmt(stmt);
+    return body;
+  }
 
   Stmt VisitStmt_(const BlockRealizeNode* op) final {
+    // Handle allocations
+    const auto* block_op = op->block.as<BlockNode>();
+    CHECK(block_op != nullptr);
+    for (size_t i = block_op->allocations.size(); i > 0; --i) {
+      pending_allocate_[block_op->allocations[i - 1]->buffer] = block_op->allocations[i - 1];
+    }
+    // visit body
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     op = stmt.as<BlockRealizeNode>();
     CHECK(op != nullptr);
-    const auto* block_op = op->block.as<BlockNode>();
+    block_op = op->block.as<BlockNode>();
     CHECK(block_op != nullptr);
     Stmt body = block_op->body;
-
     // Handle block predicate
     if (!is_one(op->predicate)) {
       body = IfThenElseNode::make(op->predicate, body);
     }
 
     for (size_t i = block_op->allocations.size(); i > 0; --i) {
-      PrimExpr extents = 1;
       const auto& n = block_op->allocations[i - 1];
-      for (const auto& extent : buffers_region_.at(n->buffer)) {
-        extents *= extent.max() - extent.min() + 1;
-      }
-      body = AllocateNode::make(n->buffer->data,
-                                n->buffer->dtype,
-                                {extents},
-                                const_true(),
-                                body);
+      if (!buffers_lca_.at(n->buffer).defined()) {
+        PrimExpr extents = 1;
+        for (const auto& extent : buffers_region_.at(n->buffer)) {
+          extents *= extent.max() - extent.min() + 1;
+        }
+        body = AllocateNode::make(n->buffer->data,
+                                  n->buffer->dtype,
+                                  {extents},
+                                  const_true(),
+                                  body);
 
-      // Change empty scope into global
-      std::string scope = n->scope.empty() ? "global" : n->scope;
-      body = AttrStmtNode::make(n->buffer->data,
-                                attr::storage_scope,
-                                StringImmNode::make(scope),
-                                body);
+        // Change empty scope into global
+        std::string scope = n->scope.empty() ? "global" : n->scope;
+        body = AttrStmtNode::make(n->buffer->data,
+                                  attr::storage_scope,
+                                  StringImmNode::make(scope),
+                                  body);
+      }
     }
+
     return body;
   }
 
@@ -276,16 +291,50 @@ class BufferFlattener : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const LoopNode* op) final {
+    Stmt old_stmt = GetRef<Stmt>(op);
+
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     op = stmt.as<LoopNode>();
     CHECK(op != nullptr);
     // todo(@siyuan): add support for loops with annotations
+
+    ForType for_type = ForType::Serial;
+    for (const auto& annotation : op->annotations)
+      if (annotation->attr_key == tir::attr::loop_type) {
+        std::string type = Downcast<StringImm>(annotation->value)->value;
+        if (type == "unroll") for_type = ForType::Unrolled;
+        else if (type == "vectorize") for_type = ForType::Vectorized;
+        else if (type == "parallel") for_type = ForType::Parallel;
+      }
+
+    Stmt body = op->body;
+    for (const auto& it : pending_allocate_)
+      if (old_stmt.same_as(buffers_lca_.at(it.first))) {
+        PrimExpr extents = 1;
+        const auto& n = it.second;
+        for (const auto& extent : buffers_region_.at(n->buffer)) {
+          extents *= extent.max() - extent.min() + 1;
+        }
+        body = AllocateNode::make(n->buffer->data,
+                                  n->buffer->dtype,
+                                  {extents},
+                                  const_true(),
+                                  body);
+
+        // Change empty scope into global
+        std::string scope = n->scope.empty() ? "global" : n->scope;
+        body = AttrStmtNode::make(n->buffer->data,
+                                  attr::storage_scope,
+                                  StringImmNode::make(scope),
+                                  body);
+      }
+
     return ForNode::make(op->loop_var,
                          op->min,
                          op->extent,
-                         ForType::Serial,
+                         for_type,
                          DeviceAPI::None,
-                         op->body);
+                         body);
   }
 
   // TODO(Siyuan): add support for For and AttrStmt
@@ -318,6 +367,8 @@ class BufferFlattener : public StmtExprMutator {
   const std::unordered_map<Buffer, std::vector<arith::IntSet>,
                            ObjectHash, ObjectEqual>& buffers_region_;
   const std::unordered_map<const VarNode*, PrimExpr>& block_var_;
+  const std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual>& buffers_lca_;
+  std::unordered_map<Buffer, BufferAllocate, ObjectHash, ObjectEqual> pending_allocate_;
 
   /*!
    * \brief Transform indices from the absolute indices to relative indices
@@ -346,7 +397,8 @@ Function BufferFlatten(Function func) {
   region_gatherer(func->body);
 
   // Transform BufferLoad/BufferStore into Load/Store
-  BufferFlattener flattener(region_gatherer.block_var_, region_gatherer.buffers_region_);
+  BufferFlattener flattener
+      (region_gatherer.block_var_, region_gatherer.buffers_region_, lca_detector.buffers_lca_);
   auto new_func = make_object<FunctionNode>(*func.operator->());
   new_func->body = flattener(func->body);
   return Function(new_func);

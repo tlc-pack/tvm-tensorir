@@ -327,7 +327,9 @@ class BlockRealizeNode : public StmtNode {
  */
 class BlockRealize : public Stmt {
  public:
-  TVM_DLL explicit BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block);
+  TVM_DLL explicit BlockRealize(Array<PrimExpr> values,
+                                PrimExpr predicate,
+                                Block block);
 
   TVM_DEFINE_OBJECT_REF_METHODS(BlockRealize, Stmt, BlockRealizeNode);
 };
@@ -379,6 +381,7 @@ class Function : public BaseFunc {
     return static_cast<FunctionNode*>(data_.get());
   }
 };
+
 
 }  // namespace tir
 }  // namespace tvm
