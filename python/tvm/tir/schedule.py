@@ -202,6 +202,24 @@ class Schedule(Object):
             outer, inner = ScheduleSplitByFactor(self, loop, factor)
         return outer, inner
 
+    def vectorize(self, loop):
+        """vectorize a loop
+        Parameters
+        ----------
+        loop : Loop
+            The loop to be vectorized
+        """
+        ScheduleVectorize(self, loop)
+
+    def unroll(self, loop):
+        """unroll a loop
+        Parameters
+        ----------
+        loop : Loop
+            The loop to be unrolled
+        """
+        ScheduleUnroll(self, loop)
+
     def compute_inline(self, block):
         """Mark one stage as inline, then the body of computation will be expanded and
         inserted at the address where the tensor is required.

@@ -960,6 +960,9 @@ constexpr const char* fragment_shape = "fragment_shape";
  */
 constexpr const char* fragment_layout = "fragment_layout";
 
+/*! \brief Mark the iter type of loop. */
+constexpr const char* loop_type = "loop_type";
+
 /*!
  * \brief Check if attr_key is a pragma key extension
  * \param attr_key The attr key to be compared
