@@ -31,6 +31,22 @@ namespace tvm {
 namespace tir {
 
 /*!
+ * \brief Transform reduction call into actual computation
+ */
+class ReductionCallTransformer : public StmtExprMutator {
+ public:
+  ReductionCallTransformer() = default;
+
+  PrimExpr VisitExpr_(const CallNode* op) override {
+    if (op->is_intrinsic(op->reduction)) {
+      return op->args[2];
+    } else {
+      return GetRef<PrimExpr>(op);
+    }
+  }
+};
+
+/*!
  * \brief Detecting the LCA of buffer access points of
  *        buffers for calculating the realize region
  */
@@ -388,6 +404,9 @@ class BufferFlattener : public StmtExprMutator {
 };
 
 Function BufferFlatten(Function func) {
+  ReductionCallTransformer reduction_call_transformer;
+  func->body = reduction_call_transformer(func->body);
+
   // Find the LCA of each Buffer access
   LCADetector lca_detector(func->buffer_map);
   lca_detector(func->body);

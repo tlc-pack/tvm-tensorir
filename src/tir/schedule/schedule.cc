@@ -802,6 +802,102 @@ void ScheduleNode::unroll(const StmtSRef& node) {
   this->Replace(node, new_stmt);
 }
 
+StmtSRef ScheduleNode::split_reduction(const StmtSRef& block_sref,
+                                       const StmtSRef& loop_sref) {
+  // Equivalence
+  // Check
+  //  - block is reduction
+  //  - LCA of producers and the block is higher than loop
+  //  - loop is higher than all the loops related to reduce block var
+  // Mutate
+  //  - generate loops related to data par block vars
+
+  // Check
+  const auto* block = DowncastPtr<BlockNode>(block_sref->node);
+  const auto* loop = DowncastPtr<LoopNode>(loop_sref->node);
+  CHECK(block != nullptr) << "split_reduction expect a block as first argument";
+  CHECK(loop != nullptr) << "split_reduction expect a loop as second argument";
+  const StmtSRef& scope_root = GetScope(block_sref);
+  const Scope& scope = scopes_.at(scope_root);
+  Array<StmtSRef> loops = GetLoopsInScope(block_sref);
+  const auto* br = GetBlockRealize(block_sref).operator->();
+  // Check loop_sref is block_sref's ancestor
+  bool find = false;
+  for (const auto& loop : loops)
+    find |= loop.same_as(loop_sref);
+  CHECK(find) << "split_reduction expect the loop to be an ancestor of block";
+  // Check block is reduction
+  CHECK(scope.IsReduction(block_sref)) << "split_reduction expet the block to be a reduction block";
+  // Check LCA of producers and the block is higher than loop
+  const auto& predecessors = scope.GetPredecessors(block_sref);
+  std::vector<StmtSRef> producers;
+  for (const auto& edge : predecessors) {
+    if (edge->type == DepType::kRAW) {
+      producers.push_back(edge->dst);
+    }
+  }
+  producers.push_back(block_sref);
+  if (producers.size() > 1) {
+    const StmtSRef& lca = LowestCommonAncestor(producers, scope_root);
+    if (!scope_root.same_as(lca)) {
+      for (const auto& loop : loops) {
+        if (loop.same_as(lca)) break;
+        CHECK(!loop.same_as(loop_sref))
+          << "split_reduction expect the loop to be lower than the LCA of producers and block";
+      }
+    }
+  }
+  // Check loop is higher than all the loops related to reduce block var
+  for (const auto& loop : loops) {
+    for (size_t i = 0; i < block->iter_vars.size(); ++i) {
+      if (block->iter_vars[i]->iter_type == IterVarType::kCommReduce) {
+        CHECK(!RelatedWithVar(block->iter_vars[i]->var, br->binding_values[i]))
+          << "split_reduction expect the loop to be higher than all the loops related to block var";
+      }
+    }
+  }
+
+  // Mutate
+  auto init_br = make_object<BlockRealizeNode>(*br);
+  auto init_block = make_object<BlockNode>(*block);
+  const auto* stmt_ptr = DowncastPtr<BufferStoreNode>(init_block->body.operator->());
+  const auto* call_ptr = DowncastPtr<CallNode>(stmt_ptr->value.operator->());
+  auto init_stmt = make_object<BufferStoreNode>(*stmt_ptr);
+  init_stmt->value = call_ptr->args[3];
+  init_block->body = Stmt(init_stmt);
+  init_br->binding_values = Array<PrimExpr>(make_object<ArrayNode>());
+  init_block->iter_vars = Array<IterVar>(make_object<ArrayNode>());
+  for (size_t i = 0; i < block->iter_vars.size(); ++i) {
+    if (block->iter_vars[i]->iter_type == IterVarType::kDataPar) {
+      init_br->binding_values.push_back(br->binding_values[i]);
+      init_block->iter_vars.push_back(block->iter_vars[i]);
+    }
+  }
+  init_br->block = Block(init_block);
+  Stmt body = BlockRealize(init_br);
+  for (size_t i = loops.size() - 1; i >= 0; --i) {
+    if (loops[i].same_as(loop_sref)) break;
+    else {
+      const auto* ptr = DowncastPtr<LoopNode>(loops[i]->node);
+      CHECK(ptr != nullptr);
+      for (const auto& expr : init_br->binding_values)
+        if (RelatedWithVar(ptr->loop_var, expr)) {
+          auto new_loop = make_object<LoopNode>(*ptr);
+          new_loop->body = body;
+          body = Loop(new_loop);
+        }
+    }
+  }
+  auto new_loop = make_object<LoopNode>(*loop);
+  new_loop->body = SeqStmt::Flatten(Array<Stmt>{body, new_loop->body});
+  this->Replace(loop_sref, Loop(new_loop));
+  return stmt2ref.at(init_block.get());
+}
+
+StmtSRef ScheduleNode::fuse_reduction(const StmtSRef& block) {
+  // Equivalence
+}
+
 StmtSRef::StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index) {
   auto n = make_object<StmtSRefNode>();
   n->node = node;
@@ -829,6 +925,15 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
 TVM_REGISTER_NODE_TYPE(StmtSRefNode);
+
+TVM_REGISTER_GLOBAL("tir.hybrid.reduction")
+.set_body_typed<PrimExpr(PrimExpr, PrimExpr, PrimExpr, PrimExpr)>(
+    [](PrimExpr left, PrimExpr right, PrimExpr result, PrimExpr identity) -> PrimExpr {
+      return CallNode::make(left.dtype(),
+                            CallNode::reduction,
+                            {left, right, result, identity},
+                            tir::CallNode::PureIntrinsic);
+    });
 
 // schedule
 TVM_REGISTER_GLOBAL("tir.schedule.CreateSchedule")

@@ -25,6 +25,8 @@
 
 #include <vector>
 #include <unordered_set>
+#include <tvm/tir/schedule.h>
+#include <tvm/tir/stmt_functor.h>
 
 namespace tvm {
 namespace tir {

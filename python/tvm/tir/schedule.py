@@ -267,6 +267,39 @@ class Schedule(Object):
         """
         ScheduleComputeAt(self, block, loop)
 
+    def split_reduction(self, block, loop):
+        """ Split reduction block into init&update blocks
+
+        Parameters
+        ----------
+        block: Block
+            The reduction block
+        loop: Loop
+            The position where init block will be
+        Returns
+        -------
+        init: Block
+            The init block
+        """
+        return ScheduleSplitReduction(self, block, loop)
+
+    def fuse_reduction(self, init, update):
+        """ Fuse init&update block into reduction block
+
+        Parameters
+        ----------
+        init: Block
+            THe init Block
+        update: Block
+            The update Block
+        Returns
+        -------
+        block: Block
+            The reduction block
+        """
+        ScheduleFuseReduction(self, init, update)
+
+
 def create_schedule(func):
     """Create a schedule for a function
     Parameters

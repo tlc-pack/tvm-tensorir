@@ -125,6 +125,7 @@ def init_scope():
     registry.register_special_stmt(special_stmt.buffer_bind)
     registry.register_special_stmt(special_stmt.buffer_allocate)
     registry.register_special_stmt(special_stmt.block_vars)
+    registry.register_special_stmt(special_stmt.comm_reduce)
     registry.register_scope_handler(scope_handler.block, scope_name="with_scope")
     registry.register_scope_handler(scope_handler.range, scope_name="for_scope")
 

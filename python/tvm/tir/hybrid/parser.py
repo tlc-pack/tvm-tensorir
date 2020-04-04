@@ -317,6 +317,7 @@ class HybridParser(ast.NodeVisitor):
         elif isinstance(target, ast.Subscript):
             # Buffer[expr, expr, .. expr] = Expr
             buffer, buffer_indexes = self.visit(target)
+            self._assign_target = (buffer, buffer_indexes)
             rhs = self.visit(node.value)
             value = tvm.runtime.convert(rhs)
             self.scope_emitter.emit(tvm.tir.BufferStore(buffer, value, buffer_indexes))

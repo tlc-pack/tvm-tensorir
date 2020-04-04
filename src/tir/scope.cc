@@ -18,6 +18,7 @@
  */
 
 #include <tvm/tir/scope.h>
+#include "schedule/schedule_common.h"
 
 namespace tvm {
 namespace tir {
@@ -91,6 +92,47 @@ bool Scope::IsComplete(const StmtSRef& block) const {
       }
     }
   }
+
+  return true;
+}
+
+bool Scope::IsReduction(const StmtSRef& block) const {
+  const auto* n = DowncastPtr<BlockNode>(block->node);
+  CHECK(n != nullptr);
+
+  // Check the block is the only producer for every output tensors
+  for (const auto& write : n->writes) {
+    const Buffer& buffer = write->buffer;
+    if (operator->()->write_map.at(buffer).size() != 1) {
+      return false;
+    } else {
+      CHECK(operator->()->write_map.at(buffer)[0].same_as(block));
+      return true;
+    }
+  }
+
+  // Check all the block vars are at data_par/reduce IterType
+  for (const auto& iter_var : n->iter_vars) {
+    if (iter_var->iter_type != kDataPar && iter_var->iter_type != kCommReduce) {
+      return false;
+    }
+  }
+
+  // Check all writes to the output positions are incremental
+  const auto* body = DowncastPtr<BufferStoreNode>(n->body.operator->());
+  CHECK(body != nullptr);
+  const auto* reduction_call = DowncastPtr<CallNode>(body->value.operator->());
+  CHECK(reduction_call != nullptr);
+  CHECK(reduction_call->is_intrinsic(CallNode::reduction));
+
+  // Check all the writing block vars are data_par
+  const auto* write_position = DowncastPtr<BufferLoadNode>(reduction_call->args[0].operator->());
+  CHECK(write_position != nullptr);
+
+  for (const auto& iter_var : n->iter_vars)
+    if (iter_var->iter_type != kDataPar)
+      for (const auto index : write_position->indices)
+        CHECK(!RelatedWithVar(iter_var->var, index));
 
   return true;
 }

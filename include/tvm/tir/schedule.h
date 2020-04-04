@@ -150,6 +150,14 @@ class ScheduleNode : public Object {
   void reorder(const Array<StmtSRef>& order);
 
   /*!
+   * \brief Split reduction block_sref into init&update blocks
+   * \param block_sref the reduction block_sref
+   * \param loop_sref the position where init block_sref will be
+   * \return the sref of init block
+   */
+  StmtSRef split_reduction(const StmtSRef& block_sref, const StmtSRef& loop_sref);
+
+  /*!
    * \brief Create a cache read of original tensor for readers.
    * \param buffer The buffer
    * \param storage_scope The storage scope
