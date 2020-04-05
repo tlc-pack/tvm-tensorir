@@ -859,51 +859,51 @@ StmtSRef ScheduleNode::split_reduction(const StmtSRef& block_sref,
     }
   }
   // Mutate
-  auto init_br = make_object<BlockRealizeNode>(*br);
+  // create init block
   auto init_block = make_object<BlockNode>();
   init_block->body = block->body;
   const auto* stmt_ptr = DowncastPtr<BufferStoreNode>(init_block->body.operator->());
   const auto* call_ptr = DowncastPtr<CallNode>(stmt_ptr->value.operator->());
   auto init_stmt = make_object<BufferStoreNode>(*stmt_ptr);
+  // rewrite body of init block
   init_stmt->value = call_ptr->args[3];
   init_block->tag = block->tag + "_init";
+  // add init annotation
   init_block->annotations.push_back(Annotation(attr::init_block, init_stmt->value));
+  // create init block realize
+  auto init_br = make_object<BlockRealizeNode>(*br);
   init_br->binding_values = Array<PrimExpr>(make_object<ArrayNode>());
   std::unordered_map<const VarNode*, const VarNode*> block_var_map;
   for (size_t i = 0; i < block->iter_vars.size(); ++i) {
     if (block->iter_vars[i]->iter_type == IterVarType::kDataPar) {
       init_br->binding_values.push_back(br->binding_values[i]);
+      // copy block vars for init block, otherwise BufferFlatten will calculate wrong relax regions
       auto new_iter_var = make_object<IterVarNode>(*block->iter_vars[i].operator->());
       new_iter_var->var = block->iter_vars[i]->var.copy_with_suffix("_init");
       init_block->iter_vars.push_back(IterVar(new_iter_var));
       block_var_map[block->iter_vars[i]->var.get()] = new_iter_var->var.get();
     }
   }
+  // after copying block vars, substitute them in init block
   init_block->body = SubstituteInScope(Stmt(init_stmt), block_var_map);
   for (const auto& write : block->writes)
     init_block->writes.push_back(SubstituteTensorRegion(write, block_var_map));
   init_br->block = Block(init_block);
   Stmt body = BlockRealize(init_br);
+  // create loops of init block
   for (size_t i = loops.size() - 1; i >= 0; --i) {
     if (loops[i].same_as(loop_sref)) break;
-    else {
-      const auto* ptr = DowncastPtr<LoopNode>(loops[i]->node);
-      CHECK(ptr != nullptr);
-      for (const auto& expr : init_br->binding_values)
-        if (RelatedWithVar(ptr->loop_var, expr)) {
-          auto new_loop = make_object<LoopNode>(*ptr);
-          new_loop->loop_var = ptr->loop_var.copy_with_suffix("_init");
-          auto vmap = [&](const VarNode* v) -> PrimExpr {
-            if (GetRef<Var>(v).same_as(ptr->loop_var)) {
-              return new_loop->loop_var;
-            } else {
-              return NullValue<PrimExpr>();
-            }
-          };
-          new_loop->body = SubstituteInScope(body, vmap);
-          body = Loop(new_loop);
-        }
-    }
+    const auto* ptr = DowncastPtr<LoopNode>(loops[i]->node);
+    CHECK(ptr != nullptr);
+    for (const auto& expr : init_br->binding_values)
+      if (RelatedWithVar(ptr->loop_var, expr)) {
+        auto new_loop = make_object<LoopNode>(*ptr);
+        // copy loop var, otherwise Replace will reuse sref for it
+        new_loop->loop_var = ptr->loop_var.copy_with_suffix("_init");
+        new_loop->body =
+            SubstituteInScope(body, {{ptr->loop_var.get(), new_loop->loop_var.get()}});
+        body = Loop(new_loop);
+      }
   }
   auto new_loop = make_object<LoopNode>(*loop);
   new_loop->body = SeqStmt::Flatten(Array<Stmt>{body, new_loop->body});
@@ -912,6 +912,13 @@ StmtSRef ScheduleNode::split_reduction(const StmtSRef& block_sref,
 }
 
 void ScheduleNode::fuse_reduction(const StmtSRef& init_sref, const StmtSRef& update_sref) {
+  // Equivalence
+  // Check
+  //  - init_block has annotation init
+  //  - init_block writes the same buffer as update block
+  // Mutate
+  //  - delete init_block
+
   const auto* init = DowncastPtr<BlockNode>(init_sref->node);
   const auto* update = DowncastPtr<BlockNode>(update_sref->node);
   CHECK(init != nullptr);

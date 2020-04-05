@@ -35,7 +35,7 @@ class StmtSRefNode : public Object {
   StmtSRefNode* parent{nullptr};
   /*! \brief The location in an array if parent contains SeqStmt. */
   int64_t seq_index{-1};
-  /*! \breif Whether the */
+  /*! \brief Whether the loop bindings are validatable */
   bool binding_valid;
 
   void VisitAttrs(AttrVisitor* v) {}

@@ -100,6 +100,9 @@ bool Scope::IsReduction(const StmtSRef& block) const {
   const auto* n = DowncastPtr<BlockNode>(block->node);
   CHECK(n != nullptr);
 
+  // Check the binding of block is valid
+  CHECK(block->binding_valid);
+
   // Check the block is the only producer for every output tensors
   for (const auto& write : n->writes) {
     const Buffer& buffer = write->buffer;

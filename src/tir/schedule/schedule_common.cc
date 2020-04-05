@@ -55,8 +55,7 @@ Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize) {
 
 class IRSubstitueInScope : public StmtExprMutator {
  public:
-  explicit IRSubstitueInScope(
-      std::function<PrimExpr(const VarNode*)> fmap)
+  explicit IRSubstitueInScope(std::function<PrimExpr(const VarNode*)> fmap)
       : fmap_(std::move(fmap)) {}
 
   PrimExpr VisitExpr_(const VarNode* op) final {
@@ -208,11 +207,9 @@ StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef
 }
 
 std::function<TensorRegion(const TensorRegion)> RelaxGenerator(const StmtSRef& block_sref,
-                                                               const StmtSRef& root,
-                                                               std::unordered_map<const VarNode*,
-                                                                                  PrimExpr>* vmap,
-                                                               std::unordered_map<const VarNode*,
-                                                                                  arith::IntSet>* dom_map) {
+    const StmtSRef& root,
+    std::unordered_map<const VarNode*, PrimExpr>* vmap,
+    std::unordered_map<const VarNode*, arith::IntSet>* dom_map) {
   const auto* block = DowncastPtr<BlockNode>(block_sref->node);
   const auto* block_realize = GetBlockRealize(block_sref).operator->();
   CHECK(block != nullptr);

@@ -121,7 +121,6 @@ class Scope : public ObjectRef {
    * \brief Check whether the block is a reduction block
    * \note A block is reduction iff the block is the only producer
    *       for each tensor it produces, its args must be data parallel/reduce
-   *       and only
    * \param block The query block
    * \return Whether is a complete block
    */

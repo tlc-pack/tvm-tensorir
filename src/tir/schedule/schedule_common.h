@@ -23,10 +23,11 @@
 #ifndef TVM_TIR_SCHEDULE_SCHEDULE_COMMON_H_
 #define TVM_TIR_SCHEDULE_SCHEDULE_COMMON_H_
 
-#include <vector>
-#include <unordered_set>
 #include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
+#include <vector>
+#include <unordered_set>
+#include <unordered_map>
 
 namespace tvm {
 namespace tir {
@@ -75,10 +76,10 @@ Stmt SubstituteInScope(const Stmt& stmt,
                        const std::unordered_map<const VarNode*, const VarNode*>& var_map);
 
 /*!
- *
- * \param tensor_region
- * \param var_map
- * \return
+ * \brief Substitute the var in TensorRegion
+ * \param tensor_region The source TensorRegion to be substituted
+ * \param var_map the mapping of var
+ * \return The converted tensor region
  */
 TensorRegion SubstituteTensorRegion(const TensorRegion& tensor_region,
                                     const std::unordered_map<const VarNode*,
