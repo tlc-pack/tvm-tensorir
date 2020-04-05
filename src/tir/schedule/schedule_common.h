@@ -58,13 +58,31 @@ Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize = false);
 
 /*!
  * \brief Substitute the var in current block scope specified in key->var to be value.
- * \param expr The source expression to be substituted
+ * \param stmt The source stmt to be substituted
  * \param value_func The function of new values mapping.
- * \return The converted expression.
+ * \return The converted stmt.
  */
 Stmt SubstituteInScope(const Stmt& stmt,
                        const std::function<PrimExpr(const VarNode*)>& value_func);
 
+/*!
+ * \brief Substitute the var in current block scope specified in var map
+ * \param stmt The source stmt to be substituted
+ * \param var_map The mapping of var
+ * \return The converted stmt
+ */
+Stmt SubstituteInScope(const Stmt& stmt,
+                       const std::unordered_map<const VarNode*, const VarNode*>& var_map);
+
+/*!
+ *
+ * \param tensor_region
+ * \param var_map
+ * \return
+ */
+TensorRegion SubstituteTensorRegion(const TensorRegion& tensor_region,
+                                    const std::unordered_map<const VarNode*,
+                                                             const VarNode*>& var_map);
 /*!
  * \brief Get BlockRealize with by Block
  * \param block The queried block

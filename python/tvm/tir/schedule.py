@@ -292,10 +292,6 @@ class Schedule(Object):
             THe init Block
         update: Block
             The update Block
-        Returns
-        -------
-        block: Block
-            The reduction block
         """
         ScheduleFuseReduction(self, init, update)
 

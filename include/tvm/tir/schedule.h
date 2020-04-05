@@ -158,6 +158,13 @@ class ScheduleNode : public Object {
   StmtSRef split_reduction(const StmtSRef& block_sref, const StmtSRef& loop_sref);
 
   /*!
+   * \brief Fuse init and reduction block into reduction block
+   * \param init_sref the init block
+   * \param update_sref the update block
+   */
+  void fuse_reduction(const StmtSRef& init_sref, const StmtSRef& update_sref);
+
+  /*!
    * \brief Create a cache read of original tensor for readers.
    * \param buffer The buffer
    * \param storage_scope The storage scope

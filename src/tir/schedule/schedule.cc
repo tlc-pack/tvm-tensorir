@@ -811,6 +811,7 @@ StmtSRef ScheduleNode::split_reduction(const StmtSRef& block_sref,
   //  - loop is higher than all the loops related to reduce block var
   // Mutate
   //  - generate loops related to data par block vars
+  //  - annotate the new block as init
 
   // Check
   const auto* block = DowncastPtr<BlockNode>(block_sref->node);
@@ -827,7 +828,8 @@ StmtSRef ScheduleNode::split_reduction(const StmtSRef& block_sref,
     find |= loop.same_as(loop_sref);
   CHECK(find) << "split_reduction expect the loop to be an ancestor of block";
   // Check block is reduction
-  CHECK(scope.IsReduction(block_sref)) << "split_reduction expet the block to be a reduction block";
+  CHECK(scope.IsReduction(block_sref))
+    << "split_reduction expect the block to be a reduction block";
   // Check LCA of producers and the block is higher than loop
   const auto& predecessors = scope.GetPredecessors(block_sref);
   std::vector<StmtSRef> producers;
@@ -859,22 +861,31 @@ StmtSRef ScheduleNode::split_reduction(const StmtSRef& block_sref,
 
   // Mutate
   auto init_br = make_object<BlockRealizeNode>(*br);
-  auto init_block = make_object<BlockNode>(*block);
+  auto init_block = make_object<BlockNode>();
+  init_block->body = block->body;
   const auto* stmt_ptr = DowncastPtr<BufferStoreNode>(init_block->body.operator->());
   const auto* call_ptr = DowncastPtr<CallNode>(stmt_ptr->value.operator->());
   auto init_stmt = make_object<BufferStoreNode>(*stmt_ptr);
   init_stmt->value = call_ptr->args[3];
-  init_block->body = Stmt(init_stmt);
+  init_block->tag = block->tag + "_init";
+  init_block->annotations.push_back(Annotation(attr::init_block, init_stmt->value));
   init_br->binding_values = Array<PrimExpr>(make_object<ArrayNode>());
-  init_block->iter_vars = Array<IterVar>(make_object<ArrayNode>());
+  std::unordered_map<const VarNode*, const VarNode*> block_var_map;
   for (size_t i = 0; i < block->iter_vars.size(); ++i) {
     if (block->iter_vars[i]->iter_type == IterVarType::kDataPar) {
       init_br->binding_values.push_back(br->binding_values[i]);
-      init_block->iter_vars.push_back(block->iter_vars[i]);
+      auto new_iter_var = make_object<IterVarNode>(*block->iter_vars[i].operator->());
+      new_iter_var->var = block->iter_vars[i]->var.copy_with_suffix("_init");
+      init_block->iter_vars.push_back(IterVar(new_iter_var));
+      block_var_map[block->iter_vars[i]->var.get()] = new_iter_var->var.get();
     }
   }
+  init_block->body = SubstituteInScope(Stmt(init_stmt), block_var_map);
+  for (const auto& write : block->writes)
+    init_block->writes.push_back(SubstituteTensorRegion(write, block_var_map));
   init_br->block = Block(init_block);
   Stmt body = BlockRealize(init_br);
+
   for (size_t i = loops.size() - 1; i >= 0; --i) {
     if (loops[i].same_as(loop_sref)) break;
     else {
@@ -883,7 +894,15 @@ StmtSRef ScheduleNode::split_reduction(const StmtSRef& block_sref,
       for (const auto& expr : init_br->binding_values)
         if (RelatedWithVar(ptr->loop_var, expr)) {
           auto new_loop = make_object<LoopNode>(*ptr);
-          new_loop->body = body;
+          new_loop->loop_var = ptr->loop_var.copy_with_suffix("_init");
+          auto vmap = [&](const VarNode* v) -> PrimExpr {
+            if (GetRef<Var>(v).same_as(ptr->loop_var)) {
+              return new_loop->loop_var;
+            } else {
+              return NullValue<PrimExpr>();
+            }
+          };
+          new_loop->body = SubstituteInScope(body, vmap);
           body = Loop(new_loop);
         }
     }
@@ -892,6 +911,34 @@ StmtSRef ScheduleNode::split_reduction(const StmtSRef& block_sref,
   new_loop->body = SeqStmt::Flatten(Array<Stmt>{body, new_loop->body});
   this->Replace(loop_sref, Loop(new_loop));
   return stmt2ref.at(init_block.get());
+}
+
+void ScheduleNode::fuse_reduction(const StmtSRef& init_sref, const StmtSRef& update_sref) {
+  const auto* init = DowncastPtr<BlockNode>(init_sref->node);
+  const auto* update = DowncastPtr<BlockNode>(update_sref->node);
+  CHECK(init != nullptr);
+  CHECK(update != nullptr);
+  CHECK_EQ(init->annotations.size(), 1);
+  CHECK_EQ(init->annotations[0]->attr_key, attr::init_block);
+  CHECK(init->writes[0]->buffer.same_as(update->writes[0]->buffer));
+
+  const auto& scope_root = this->GetScope(update_sref);
+  const auto& lca = LowestCommonAncestor({init_sref, update_sref}, scope_root);
+  auto new_loop = make_object<LoopNode>(*DowncastPtr<LoopNode>(lca->node));
+  for (const StmtSRefNode* sref = init_sref.get();;) {
+    if (sref->parent == lca.get()) {
+      SeqStmt body = Downcast<SeqStmt>(new_loop->body);
+      std::vector<Stmt> new_body;
+      for (const Stmt& stmt : body->seq) {
+        if (sref->node != stmt.get()) new_body.push_back(stmt);
+      }
+      new_loop->body = SeqStmt::Flatten(new_body);
+      break;
+    } else {
+      sref = sref->parent;
+    }
+  }
+  this->Replace(lca, Loop(new_loop));
 }
 
 StmtSRef::StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index) {
@@ -1013,13 +1060,13 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleComputeAt")
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleVectorize")
 .set_body_typed<void(Schedule, StmtSRef)>(
     [](Schedule schedule, StmtSRef node) {
-      return schedule->vectorize(node);
+      schedule->vectorize(node);
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnroll")
 .set_body_typed<void(Schedule, StmtSRef)>(
     [](Schedule schedule, StmtSRef node) {
-      return schedule->unroll(node);
+      schedule->unroll(node);
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheWrite")
@@ -1032,6 +1079,12 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheRead")
 .set_body_typed<StmtSRef(Schedule, Buffer, std::string)>(
     [](Schedule schedule, Buffer buffer, std::string scope) {
       return schedule->cache_read(buffer, scope);
+    });
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleFuseReduction")
+.set_body_typed<void(Schedule, StmtSRef, StmtSRef)>(
+    [](Schedule schedule, StmtSRef init, StmtSRef update) {
+      schedule->fuse_reduction(init, update);
     });
 
 // dependency graph

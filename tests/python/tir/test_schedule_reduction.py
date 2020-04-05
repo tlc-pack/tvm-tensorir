@@ -38,7 +38,7 @@ def matmul(a, b, c):
                     with block({vi(0, 1024): i, vj(0, 1024): j, vk(0, 1024, iter_type="reduce"): k},
                                reads=[C[vi: vi + 1, vj: vj + 1], A[vi: vi + 1, vk: vk + 1],
                                       B[vj: vj + 1, vk: vk + 1]],
-                               writes=[C[vi: vi + 1, vj: vj + 1]], name="update"):
+                               writes=[C[vi: vi + 1, vj: vj + 1]], name="C"):
                         C[vi, vj] = comm_reduce("add", A[vi, vk] * B[vk, vj], float32(0))
 
 
@@ -82,14 +82,14 @@ print(tvm.lower(original_func, simple_mode=True))
 
 bn = 32
 s = tir.create_schedule(original_func)
-update = s.get_block("update")
+update = s.get_block("C")
 i, j, k = s.get_axes(update)
 i_o, i_i = s.split(i, bn)
 j_o, j_i = s.split(j, bn)
 k_o, k_i = s.split(k, 4)
 s.reorder(i_o, j_o, k_o, k_i, i_i, j_i)
 init = s.split_reduction(update, j_o)
-
+print(tir.hybrid.ashybrid(s.func))
 func = tvm.build(s.func, target=target)
 func(a, b, c)
 tvm.testing.assert_allclose(c.asnumpy(), np.dot(a.asnumpy(), b.asnumpy()), rtol=1e-5)

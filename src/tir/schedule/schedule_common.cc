@@ -92,6 +92,43 @@ Stmt SubstituteInScope(const Stmt& stmt,
   return IRSubstitueInScope(value_func)(stmt);
 }
 
+Stmt SubstituteInScope(const Stmt& stmt,
+                       const std::unordered_map<const VarNode*, const VarNode*>& var_map) {
+  auto vmap = [&](const VarNode* v) -> PrimExpr {
+    const auto& it = var_map.find(v);
+    if (it != var_map.end()) {
+      return GetRef<Var>(it->second);
+    } else {
+      return NullValue<PrimExpr>();
+    }
+  };
+  return IRSubstitueInScope(vmap)(stmt);
+}
+
+PrimExpr SubstituteInScope(const PrimExpr& expr,
+                           const std::unordered_map<const VarNode*, const VarNode*>& var_map) {
+  auto vmap = [&](const VarNode* v) -> PrimExpr {
+    const auto& it = var_map.find(v);
+    if (it != var_map.end()) {
+      return GetRef<Var>(it->second);
+    } else {
+      return NullValue<PrimExpr>();
+    }
+  };
+  return IRSubstitueInScope(vmap)(expr);
+}
+
+TensorRegion SubstituteTensorRegion(const TensorRegion& tensor_region,
+                                    const std::unordered_map<const VarNode*,
+                                                             const VarNode*>& var_map) {
+  auto new_tensor_region = make_object<TensorRegionNode>(*tensor_region.operator->());
+  new_tensor_region->region = Array<Range>(make_object<ArrayNode>());
+  for (const auto& range : tensor_region->region)
+    new_tensor_region->region.push_back(Range(SubstituteInScope(range->min, var_map),
+                                              SubstituteInScope(range->extent, var_map)));
+  return TensorRegion(new_tensor_region);
+}
+
 // Only Block and Loop are allowed here.
 template <typename T>
 Stmt GetStmtFromSeq(const T* op,
@@ -171,9 +208,11 @@ StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef
 }
 
 std::function<TensorRegion(const TensorRegion)> RelaxGenerator(const StmtSRef& block_sref,
-    const StmtSRef& root,
-    std::unordered_map<const VarNode*, PrimExpr>* vmap,
-    std::unordered_map<const VarNode*, arith::IntSet>* dom_map) {
+                                                               const StmtSRef& root,
+                                                               std::unordered_map<const VarNode*,
+                                                                                  PrimExpr>* vmap,
+                                                               std::unordered_map<const VarNode*,
+                                                                                  arith::IntSet>* dom_map) {
   const auto* block = DowncastPtr<BlockNode>(block_sref->node);
   const auto* block_realize = GetBlockRealize(block_sref).operator->();
   CHECK(block != nullptr);
