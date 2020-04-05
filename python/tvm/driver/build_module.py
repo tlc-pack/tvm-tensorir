@@ -154,7 +154,6 @@ def lower(inputs,
         binds, arg_list = get_binds(args, compact, binds)
     elif isinstance(inputs, tvm.tir.Function):
         func = ir_pass.BufferFlatten(inputs)
-        print(func.body)
         buffer_map = func.buffer_map
         arg_list = [buffer_map[x] for x in func.params]
         stmt = func.body

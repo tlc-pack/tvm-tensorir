@@ -404,22 +404,25 @@ class BufferFlattener : public StmtExprMutator {
 };
 
 Function BufferFlatten(Function func) {
+  auto new_func = make_object<FunctionNode>(*func.operator->());
+
+  // Transform the reduction calls to BufferStore
   ReductionCallTransformer reduction_call_transformer;
-  func->body = reduction_call_transformer(func->body);
+  new_func->body = reduction_call_transformer(func->body);
 
   // Find the LCA of each Buffer access
-  LCADetector lca_detector(func->buffer_map);
-  lca_detector(func->body);
+  LCADetector lca_detector(new_func->buffer_map);
+  lca_detector(new_func->body);
 
   // Recalculate the buffer region
-  RegionGatherer region_gatherer(lca_detector.buffers_lca_, func->buffer_map);
-  region_gatherer(func->body);
+  RegionGatherer region_gatherer(lca_detector.buffers_lca_, new_func->buffer_map);
+  region_gatherer(new_func->body);
 
   // Transform BufferLoad/BufferStore into Load/Store
   BufferFlattener flattener
       (region_gatherer.block_var_, region_gatherer.buffers_region_, lca_detector.buffers_lca_);
-  auto new_func = make_object<FunctionNode>(*func.operator->());
-  new_func->body = flattener(func->body);
+  new_func->body = flattener(new_func->body);
+
   return Function(new_func);
 }
 

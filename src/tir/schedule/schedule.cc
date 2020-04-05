@@ -858,7 +858,6 @@ StmtSRef ScheduleNode::split_reduction(const StmtSRef& block_sref,
       }
     }
   }
-
   // Mutate
   auto init_br = make_object<BlockRealizeNode>(*br);
   auto init_block = make_object<BlockNode>();
@@ -885,7 +884,6 @@ StmtSRef ScheduleNode::split_reduction(const StmtSRef& block_sref,
     init_block->writes.push_back(SubstituteTensorRegion(write, block_var_map));
   init_br->block = Block(init_block);
   Stmt body = BlockRealize(init_br);
-
   for (size_t i = loops.size() - 1; i >= 0; --i) {
     if (loops[i].same_as(loop_sref)) break;
     else {
