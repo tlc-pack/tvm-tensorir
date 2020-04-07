@@ -291,6 +291,90 @@ def test_compute_at_fail():
     except tvm._ffi.base.TVMError as e:
         assert str(e).split(':')[-1].strip() == "Cannot satisfy dependency"
 
+@tvm.tir.hybrid.script
+def cache_read(a, c):
+    C = buffer_bind(c, (128, 128), "float32")
+    A = buffer_bind(a, (128, 128), "float32")
+    with block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
+        B = buffer_allocate((128, 128), "float32", "")
+        AA = buffer_allocate((128, 128), "float32", "local")
+        for i in range(0, 128):
+            for j in range(0, 128):
+                with block({vi(0, 128): i, vj(0, 128): j},
+                           writes=[AA[vi:(vi + 1), vj:(vj + 1)]],
+                           reads=[A[vi:(vi + 1), vj:(vj + 1)]]):
+                    AA[vi, vj] = A[vi, vj]
+        for i in range(0, 128):
+            for j in range(0, 128):
+                with block({vi(0, 128): i, vj(0, 128): j},
+                           writes=[B[vi:(vi + 1), vj:(vj + 1)]],
+                           reads=[AA[vi:(vi + 1), vj:(vj + 1)]], name="B"):
+                    B[vi, vj] = (AA[vi, vj] * float32(2))
+        for i in range(0, 128):
+            for j in range(0, 128):
+                with block({vi(0, 128): i, vj(0, 128): j},
+                           writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                           reads=[B[vi:(vi + 1), vj:(vj + 1)]], name="C"):
+                    C[vi, vj] = (B[vi, vj] + float32(1))
+
+
+def test_cache_read():
+    func = util.element_wise_stmt()
+    buffer_a = func.buffer_map[func.params[0]]
+
+    # schedule
+    s = tir.create_schedule(func)
+    A = s.get_block(buffer_a)
+    AA = s.cache_read(buffer_a, 'local')
+
+    mod = tvm.tir.hybrid.create_module([cache_read])
+    cached_func = mod["cache_read"]
+
+    assert AssertEqual(cached_func, s.func)
+    assert s.validate_sref()
+
+
+@tvm.tir.hybrid.script
+def cache_write(a, c):
+    C = buffer_bind(c, (128, 128), "float32")
+    A = buffer_bind(a, (128, 128), "float32")
+    with block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
+        B = buffer_allocate((128, 128), "float32", "")
+        CC = buffer_allocate((128, 128), "float32", "local")
+        for i in range(0, 128):
+            for j in range(0, 128):
+                with block({vi(0, 128): i, vj(0, 128): j},
+                           writes=[B[vi:(vi + 1), vj:(vj + 1)]],
+                           reads=[A[vi:(vi + 1), vj:(vj + 1)]], name="B"):
+                    B[vi, vj] = (A[vi, vj] * float32(2))
+        for i in range(0, 128):
+            for j in range(0, 128):
+                with block({vi(0, 128): i, vj(0, 128): j},
+                           writes=[CC[vi:(vi + 1), vj:(vj + 1)]],
+                           reads=[B[vi:(vi + 1), vj:(vj + 1)]], name="C"):
+                    CC[vi, vj] = (B[vi, vj] + float32(1))
+        for i in range(0, 128):
+            for j in range(0, 128):
+                with block({vi(0, 128): i, vj(0, 128): j},
+                           writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                           reads=[CC[vi:(vi + 1), vj:(vj + 1)]]):
+                    C[vi, vj] = CC[vi, vj]
+
+def test_cache_write():
+    func = util.element_wise_stmt()
+    buffer_c = func.buffer_map[func.params[1]]
+
+    # schedule
+    s = tir.create_schedule(func)
+    C = s.get_block(buffer_c)
+    CC = s.cache_write(buffer_c, 'local')
+
+    mod = tvm.tir.hybrid.create_module([cache_write])
+    cached_func = mod["cache_write"]
+
+    assert AssertEqual(cached_func, s.func)
+    assert s.validate_sref()
+
 
 if __name__ == "__main__":
     test_fuse()
@@ -299,3 +383,5 @@ if __name__ == "__main__":
     test_reorder_normal()
     test_compute_at()
     test_compute_at_fail()
+    test_cache_read()
+    test_cache_write()

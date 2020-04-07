@@ -55,7 +55,7 @@ Array<DepEdge> Scope::GetPredecessors(const StmtSRef& block) const {
   }
 }
 
-bool Scope::IsComplete(const StmtSRef& block) const {
+bool Scope::IsDominate(const StmtSRef &block) const {
   const auto* n = DowncastPtr<BlockNode>(block->node);
   CHECK(n != nullptr);
 
@@ -64,12 +64,17 @@ bool Scope::IsComplete(const StmtSRef& block) const {
     const Buffer& buffer = write->buffer;
     if (operator->()->write_map.at(buffer).size() != 1) {
       return false;
-    } else {
-      CHECK(operator->()->write_map.at(buffer)[0].same_as(block));
-      return true;
     }
   }
+  return true;
+}
 
+bool Scope::IsComplete(const StmtSRef& block) const {
+  // A complete block must be dominate
+  if (!IsDominate(block)) return false;
+
+  const auto* n = DowncastPtr<BlockNode>(block->node);
+  CHECK(n != nullptr);
   // Check all the block vars are at data_par IterType
   for (const auto& iter_var : n->iter_vars) {
     if (iter_var->iter_type != kDataPar) {
