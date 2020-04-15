@@ -324,7 +324,6 @@ def test_cache_read():
 
     # schedule
     s = tir.create_schedule(func)
-    A = s.get_block(buffer_a)
     AA = s.cache_read(buffer_a, 'local')
 
     mod = tvm.tir.hybrid.create_module([cache_read])
@@ -359,6 +358,7 @@ def cache_write(a, c):
                            writes=[C[vi:(vi + 1), vj:(vj + 1)]],
                            reads=[CC[vi:(vi + 1), vj:(vj + 1)]]):
                     C[vi, vj] = CC[vi, vj]
+
 
 def test_cache_write():
     func = util.element_wise_stmt()

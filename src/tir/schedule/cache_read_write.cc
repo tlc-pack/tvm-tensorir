@@ -19,8 +19,9 @@
 
 #include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
-#include "schedule_common.h"
+
 #include "../ir/functor_common.h"
+#include "schedule_common.h"
 
 namespace tvm {
 namespace tir {
@@ -36,8 +37,7 @@ namespace tir {
 template <size_t offset>
 class PositionDetector : public StmtVisitor {
  public:
-  explicit PositionDetector(const ScheduleNode* sch,
-                            const StmtSRef& block_sref,
+  explicit PositionDetector(const ScheduleNode* sch, const StmtSRef& block_sref,
                             const std::vector<StmtSRef>& related_blocks)
       : sch_(sch), block_sref_(block_sref), related_blocks_(related_blocks) {}
 
@@ -76,8 +76,8 @@ class PositionDetector : public StmtVisitor {
       // Update visiting info
       if (sref.same_as(block_sref_)) {
         visited_block_ = true;
-      } else if (std::find(related_blocks_.begin(), related_blocks_.end(), sref)
-          != related_blocks_.end()) {
+      } else if (std::find(related_blocks_.begin(), related_blocks_.end(), sref) !=
+                 related_blocks_.end()) {
         visited_related_ = true;
       }
     }
@@ -94,40 +94,46 @@ class PositionDetector : public StmtVisitor {
   }
 
  public:
+  // The index where the cache copy stmt should be inserted
   int pos_index_{-1};
+  // The StmtSRef where the cache copy stmt should be inserted
   StmtSRef pos_sref_{NullValue<StmtSRef>()};
 
  private:
   const ScheduleNode* sch_;
+  // The dominate block which write the buffer
   const StmtSRef& block_sref_;
+  // Producer blocks for cache_write and consumer blocks for cache_read
   const std::vector<StmtSRef>& related_blocks_;
+  // The flag whether we have visited the dominate block
   bool visited_block_{false};
+  // The flag whether we have visited at least one related blocks
   bool visited_related_{false};
+  // The block visiting time
   size_t block_cnt_{0};
 };
 
 using CacheReadDetector = PositionDetector<0>;
 using CacheWriteDetector = PositionDetector<1>;
 
+/*!
+ * \brief base class for CacheReadRewriter and CacheWriteRewrite
+ * \note This Mutator will update buffer allocate and insert the
+ *       cache copy stmt into the correct position
+ */
 class CacheRewriter : public StmtExprMutator {
  public:
-  explicit CacheRewriter(const std::unordered_map<Buffer,
-                                                  Buffer,
-                                                  ObjectHash,
-                                                  ObjectEqual>& buffer_map,
-                         const StmtSRef& insert_sref,
-                         const size_t insert_pos,
-                         const BufferAllocate& cache_allocate,
-                         const Stmt& stmt)
+  explicit CacheRewriter(
+      const std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual>& buffer_map,
+      const StmtSRef& insert_sref, const size_t insert_pos, const BufferAllocate& cache_allocate,
+      const Stmt& stmt)
       : buffer_map_(buffer_map),
         insert_sref_(insert_sref),
         insert_pos_(insert_pos),
         cache_allocate_(cache_allocate),
         stmt_(stmt) {}
 
-  Stmt VisitStmt_(const LoopNode* op) final {
-    return VisitSRefStmt(op);
-  }
+  Stmt VisitStmt_(const LoopNode* op) final { return VisitSRefStmt(op); }
 
   Stmt VisitStmt_(const BlockNode* op) override {
     bool is_scope_block = block_visited_cnt_++ == 0;
@@ -162,7 +168,6 @@ class CacheRewriter : public StmtExprMutator {
   size_t block_visited_cnt_{0};
 
  private:
-
   template <typename T>
   Stmt VisitSRefStmt(const T* op) {
     bool is_insert_pos = op == insert_sref_->node;
@@ -184,23 +189,23 @@ class CacheRewriter : public StmtExprMutator {
       return GetRef<Stmt>(op);
     }
   }
-
+  // The StmtSRef where the cache copy stmt should be inserted
   const StmtSRef& insert_sref_;
+  // The index where the cache copy stmt should be inserted
   const size_t insert_pos_;
+  // The BufferAllocate for cache buffer
   const BufferAllocate& cache_allocate_;
+  // The Stmt for copying between the buffer and the cache
   const Stmt& stmt_;
 };
 
+/*! \brief Mutater for CacheRead */
 class CacheReadRewriter : public CacheRewriter {
  public:
-  explicit CacheReadRewriter(const std::unordered_map<Buffer,
-                                                      Buffer,
-                                                      ObjectHash,
-                                                      ObjectEqual>& buffer_map,
-                             const StmtSRef& insert_sref,
-                             const size_t insert_pos,
-                             const BufferAllocate& cache_allocate,
-                             const Stmt& stmt)
+  explicit CacheReadRewriter(
+      const std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual>& buffer_map,
+      const StmtSRef& insert_sref, const size_t insert_pos, const BufferAllocate& cache_allocate,
+      const Stmt& stmt)
       : CacheRewriter(buffer_map, insert_sref, insert_pos, cache_allocate, stmt) {}
 
   Stmt VisitStmt_(const BlockNode* op) final {
@@ -243,16 +248,13 @@ class CacheReadRewriter : public CacheRewriter {
   Map<Block, Block> block_sref_map_;
 };
 
+/*! \brief Mutater for CacheWrite */
 class CacheWriteRewriter : public CacheRewriter {
  public:
-  explicit CacheWriteRewriter(const std::unordered_map<Buffer,
-                                                       Buffer,
-                                                       ObjectHash,
-                                                       ObjectEqual>& buffer_map,
-                              const StmtSRef& insert_sref,
-                              const size_t insert_pos,
-                              const BufferAllocate& cache_allocate,
-                              const Stmt& stmt)
+  explicit CacheWriteRewriter(
+      const std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual>& buffer_map,
+      const StmtSRef& insert_sref, const size_t insert_pos, const BufferAllocate& cache_allocate,
+      const Stmt& stmt)
       : CacheRewriter(buffer_map, insert_sref, insert_pos, cache_allocate, stmt) {}
 
   Stmt VisitStmt_(const BlockNode* op) final {
@@ -295,6 +297,7 @@ class CacheWriteRewriter : public CacheRewriter {
   Map<Block, Block> block_sref_map_;
 };
 
+/*! \brief Create cache buffer */
 Buffer CreateCacheBuffer(const Buffer& buffer, const std::string& scope) {
   auto n = make_object<BufferNode>(*(buffer.operator->()));
   n->data = buffer->data.copy_with_suffix("_" + scope);
@@ -303,6 +306,12 @@ Buffer CreateCacheBuffer(const Buffer& buffer, const std::string& scope) {
   return Buffer(n);
 }
 
+/*!
+ * \brief Create Stmt for copying from read buffer to write buffer
+ * \param read_buffer The read buffer
+ * \param write_buffer The write buffer
+ * \param relaxed_region The copy region
+ * */
 std::pair<Stmt, Block> GenerateCopyStmt(const Buffer& read_buffer, const Buffer& write_buffer,
                                         const TensorRegion& relaxed_region) {
   // Generate copy nested loops and block
@@ -321,21 +330,16 @@ std::pair<Stmt, Block> GenerateCopyStmt(const Buffer& read_buffer, const Buffer&
   const auto& shape = relaxed_region->buffer->shape;
   for (size_t i = 0; i < shape.size(); ++i) {
     IterVar var = IterVarNode::make(Range::make_by_min_extent(0, shape[i]),
-                                    Var("v" + std::to_string(i)),
-                                    kDataPar);
+                                    Var("v" + std::to_string(i)), kDataPar);
     block_vars.push_back(var);
     indices.push_back(var);
     access_region.push_back(Range::make_by_min_extent(var, 1));
   }
   Stmt body =
       BufferStore(write_buffer, BufferLoad(read_buffer->dtype, read_buffer, indices), indices);
-  Block block(block_vars,
-              {TensorRegion(read_buffer, access_region)},
-              {TensorRegion(write_buffer, access_region)},
-              body,
-              Array<BufferAllocate>(),
-              Array<Annotation>(),
-              "");
+  Block block(block_vars, {TensorRegion(read_buffer, access_region)},
+              {TensorRegion(write_buffer, access_region)}, body, Array<BufferAllocate>(),
+              Array<Annotation>(), "");
   BlockRealize block_realize(binding_value, IntImm(DataType::Bool(), 1), block);
   body = block_realize;
   for (size_t i = loop_vars.size(); i > 0; --i) {
@@ -346,7 +350,11 @@ std::pair<Stmt, Block> GenerateCopyStmt(const Buffer& read_buffer, const Buffer&
   return std::make_pair(body, block);
 }
 
-StmtSRef GetBasicBlock(const ScheduleNode* sch, const Buffer& buffer) {
+/*!
+ * \brief Get the innermost block who write the buffer
+ * \note  This function will check whether the block is dominate
+ */
+StmtSRef GetInnermostBlock(const ScheduleNode* sch, const Buffer& buffer) {
   StmtSRef sref = sch->root;
   Scope scope = sch->scopes_.at(sref);
   // return nullptr when the buffer is an input buffer
@@ -357,7 +365,7 @@ StmtSRef GetBasicBlock(const ScheduleNode* sch, const Buffer& buffer) {
   do {
     const auto& write_blocks = it->second;
     CHECK_EQ(write_blocks.size(), 1)
-      << "Can only cache_read or cache_write a dominate block (only producer)";
+        << "Can only cache_read or cache_write a dominate block (only producer)";
     sref = write_blocks[0];
     scope = sch->scopes_.at(sref);
     it = scope->write_map.find((buffer));
@@ -366,7 +374,7 @@ StmtSRef GetBasicBlock(const ScheduleNode* sch, const Buffer& buffer) {
 }
 
 StmtSRef ScheduleNode::cache_read(const Buffer& buffer, const std::string& storage_scope) {
-  StmtSRef block_sref = GetBasicBlock(this, buffer);
+  StmtSRef block_sref = GetInnermostBlock(this, buffer);
   StmtSRef scope_sref;
   const BlockNode* scope_block = nullptr;
   StmtSRef insert_sref;
@@ -379,6 +387,13 @@ StmtSRef ScheduleNode::cache_read(const Buffer& buffer, const std::string& stora
 
     const Scope& scope = scopes_.at(scope_sref);
     scope_block = DowncastPtr<BlockNode>(scope_sref->node);
+
+    // Check the block is not a output block
+    std::unordered_set<Buffer, ObjectHash, ObjectEqual> seen_buffer;
+    for (const auto& x : block->writes) {
+      for (const auto& output_buffer : scope_block->writes)
+        CHECK(!x->buffer.same_as(output_buffer->buffer)) << "Can not cache_read an output block";
+    }
 
     // Check there is only one output buffer
     CHECK_EQ(block->writes.size(), 1);
@@ -426,7 +441,7 @@ StmtSRef ScheduleNode::cache_read(const Buffer& buffer, const std::string& stora
 }
 
 StmtSRef ScheduleNode::cache_write(const Buffer& buffer, const std::string& storage_scope) {
-  StmtSRef block_sref = GetBasicBlock(this, buffer);
+  StmtSRef block_sref = GetInnermostBlock(this, buffer);
   CHECK(block_sref.defined()) << "Cannot cache_write an input buffer";
 
   const auto* block = DowncastPtr<BlockNode>(block_sref->node);
@@ -462,9 +477,11 @@ StmtSRef ScheduleNode::cache_write(const Buffer& buffer, const std::string& stor
   std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual> buffer_map{};
   buffer_map[buffer] = cache_buffer;
 
-  CacheWriteRewriter
-      rewriter(buffer_map, detector.pos_sref_, detector.pos_index_, cache_allocate, stmt);
+  CacheWriteRewriter rewriter(buffer_map, detector.pos_sref_, detector.pos_index_, cache_allocate,
+                              stmt);
   Stmt s = rewriter(GetRef<Stmt>(scope_block));
+
+  // Handling block remapping
   Map<Block, Block> block_map = rewriter.block_sref_map_;
 
   Block replaced_block;
