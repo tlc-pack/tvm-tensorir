@@ -267,8 +267,8 @@ class Schedule(Object):
         """
         ScheduleComputeAt(self, block, loop)
 
-    def split_reduction(self, block, loop):
-        """ Split reduction block into init&update blocks
+    def decompose_reduction(self, block, loop):
+        """ Decompose reduction block into init&update blocks
 
         Parameters
         ----------
@@ -281,19 +281,22 @@ class Schedule(Object):
         init: Block
             The init block
         """
-        return ScheduleSplitReduction(self, block, loop)
+        return ScheduleDecomposeReduction(self, block, loop)
 
-    def fuse_reduction(self, init, update):
-        """ Fuse init&update block into reduction block
+    def merge_reduction(self, init, update):
+        """ Merge init&update block into reduction block
 
         Parameters
         ----------
         init: Block
-            THe init Block
+            The init Block
         update: Block
             The update Block
         """
-        ScheduleFuseReduction(self, init, update)
+        ScheduleMergeReduction(self, init, update)
+
+    def register_reducer(self):
+        pass
 
 
 def create_schedule(func):

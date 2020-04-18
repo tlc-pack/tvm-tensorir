@@ -33,17 +33,29 @@ namespace tir {
 /*!
  * \brief Transform reduction call into actual computation
  */
-class ReductionCallTransformer : public StmtExprMutator {
+class ReductionTransformer : public StmtExprMutator {
  public:
-  ReductionCallTransformer() = default;
+  ReductionTransformer() = default;
 
-  PrimExpr VisitExpr_(const CallNode* op) override {
-    if (op->is_intrinsic(op->reduction)) {
-      return op->args[2];
-    } else {
-      return GetRef<PrimExpr>(op);
-    }
+  Stmt VisitStmt_(const BlockNode* op) override {
+    const BlockNode* block = op;
+    std::swap(current_block_, block);
+    Stmt res = StmtMutator::VisitStmt_(op);
+    std::swap(current_block_, block);
+    return res;
   }
+
+  PrimExpr VisitExpr_(const ReductionNode* op) override {
+    PrimExpr cond = make_const(DataType::Bool(1), true);
+    for (const auto& iter_var : current_block_->iter_vars)
+      if (iter_var->iter_type == IterVarType::kCommReduce) {
+        cond = cond && (iter_var == 0);
+      }
+    return if_then_else(cond, op->init, op->update);
+  }
+
+ private:
+  const BlockNode* current_block_{nullptr};
 };
 
 /*!
@@ -407,8 +419,8 @@ Function BufferFlatten(Function func) {
   auto new_func = make_object<FunctionNode>(*func.operator->());
 
   // Transform the reduction calls to BufferStore
-  ReductionCallTransformer reduction_call_transformer;
-  new_func->body = reduction_call_transformer(func->body);
+  ReductionTransformer reduction_transformer;
+  new_func->body = reduction_transformer(func->body);
 
   // Find the LCA of each Buffer access
   LCADetector lca_detector(new_func->buffer_map);

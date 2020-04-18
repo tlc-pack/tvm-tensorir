@@ -493,7 +493,7 @@ class BlockRealize(Stmt):
     values : list of Expr
         The binding value of the block var.
 
-    predicate: Expr
+    predicate : Expr
         The predicates of the block.
 
     block : Block

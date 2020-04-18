@@ -129,6 +129,14 @@ TensorRegion RelaxRegion(const StmtSRef& block_sref,
                          const TensorRegion& region);
 
 /*!
+ * \brief remove the AST leaf and its parent subtree which has only one leaf
+ * \param sref The sref of Block/Loop to be removed
+ * \param root The AST root
+ * \return The orginal stmt and the removed stmt of the subtree rooted by the parent node
+ */
+std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root);
+
+/*!
  * \brief Whether expr is related with var
  * \param var the expected var
  * \param expr the expected expr

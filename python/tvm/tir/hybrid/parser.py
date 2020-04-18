@@ -32,10 +32,10 @@ from tvm.tir import any as _any
 import tvm._ffi
 
 from .. import module
-from . import scope_emitter
+from . import scope_emitter, intrin, special_stmt, scope_handler
 from .scope_emitter import ScopeEmitter
 from .meta_unparser import MetaUnparser
-from .registry import Registry
+from .registry import Registry, register_intrin, register_special_stmt, register_scope_handler
 
 
 def _floordiv(x, y):
@@ -663,6 +663,24 @@ class HybridParser(ast.NodeVisitor):
         return node.s
 
 
+def init_registry():
+    """Register primitive functions"""
+    register_intrin(intrin.int16)
+    register_intrin(intrin.int32)
+    register_intrin(intrin.int64)
+    register_intrin(intrin.float16)
+    register_intrin(intrin.float32)
+    register_intrin(intrin.float64)
+    register_intrin(intrin.floordiv)
+    register_intrin(intrin.floormod)
+    register_special_stmt(special_stmt.buffer_bind)
+    register_special_stmt(special_stmt.buffer_allocate)
+    register_special_stmt(special_stmt.block_vars)
+    register_special_stmt(special_stmt.reduction)
+    register_scope_handler(scope_handler.block, scope_name="with_scope")
+    register_scope_handler(scope_handler.range, scope_name="for_scope")
+
+
 def source_to_op(src, func_lineno=0):
     """ Another level of wrapper
     Parameters
@@ -677,6 +695,7 @@ def source_to_op(src, func_lineno=0):
         The Function or Module in IR.
     """
 
+    init_registry()
     root = ast.parse(src)
     parser = HybridParser(src, func_lineno)
 

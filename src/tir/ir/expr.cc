@@ -390,6 +390,19 @@ TVM_REGISTER_GLOBAL("tir.BufferLoad")
       return BufferLoad(type, buffer, indices);
     });
 
+Reduction::Reduction(PrimExpr init, PrimExpr update) {
+  ObjectPtr<ReductionNode> node = make_object<ReductionNode>();
+  node->init = std::move(init);
+  node->update = std::move(update);
+  data_ = std::move(node);
+}
+
+TVM_REGISTER_GLOBAL("tir.Reduction")
+.set_body_typed<Reduction(PrimExpr, PrimExpr)>(
+    [](PrimExpr init, PrimExpr update) {
+      return Reduction(init, update);
+    });
+
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 .set_dispatch<StringImmNode>([](const ObjectRef& node, ReprPrinter* p) {
     auto* op = static_cast<const StringImmNode*>(node.get());
@@ -717,6 +730,7 @@ TVM_REGISTER_NODE_TYPE(CommReducerNode);
 TVM_REGISTER_NODE_TYPE(ReduceNode);
 TVM_REGISTER_NODE_TYPE(AnyNode);
 TVM_REGISTER_NODE_TYPE(BufferLoadNode);
+TVM_REGISTER_NODE_TYPE(ReductionNode);
 
 
 TVM_REGISTER_GLOBAL("tir.Add")

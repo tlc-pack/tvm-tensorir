@@ -506,6 +506,7 @@ Schedule ScheduleNode::Create(Function function) {
   n->func = function;
   n->stmt2ref = std::move(stmt_map);
   n->root = n->stmt2ref[op->block.as<StmtNode>()];
+  n->reducers_ = Array<CommReducer>();
   n->scopes_ = block_scopes;
   n->ValidateLoops(function);
   for (const auto& it : block_scopes) {
@@ -802,75 +803,56 @@ void ScheduleNode::unroll(const StmtSRef& node) {
   this->Replace(node, new_stmt);
 }
 
-StmtSRef ScheduleNode::split_reduction(const StmtSRef& block_sref,
-                                       const StmtSRef& loop_sref) {
-  // Equivalence
-  // Check
-  //  - block is reduction
-  //  - LCA of producers and the block is higher than loop
-  //  - loop is higher than all the loops related to reduce block var
-  // Mutate
-  //  - generate loops related to data par block vars
-  //  - annotate the new block as init
+StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
+                                           const StmtSRef& loop_sref) {
+  /*!
+   *  Check
+   *    - block is reduction
+   *    - loop is higher than all the loops related to reduce block var
+   *  Mutate
+   *    - generate loops related to data par block vars
+   *    - generate corresponding init block and update block
+   */
 
   // Check
   const auto* block = DowncastPtr<BlockNode>(block_sref->node);
   const auto* loop = DowncastPtr<LoopNode>(loop_sref->node);
-  CHECK(block != nullptr) << "split_reduction expect a block as first argument";
-  CHECK(loop != nullptr) << "split_reduction expect a loop as second argument";
+  CHECK(block != nullptr) << "decompose_reduction expect a block as first argument";
+  CHECK(loop != nullptr) << "decompose_reduction expect a loop as second argument";
   const StmtSRef& scope_root = GetScope(block_sref);
   const Scope& scope = scopes_.at(scope_root);
-  Array<StmtSRef> loops = GetLoopsInScope(block_sref);
-  const auto* br = GetBlockRealize(block_sref).operator->();
+
   // Check loop_sref is block_sref's ancestor
+  Array<StmtSRef> loops = GetLoopsInScope(block_sref);
   bool find = false;
   for (const auto& loop : loops)
     find |= loop.same_as(loop_sref);
-  CHECK(find) << "split_reduction expect the loop to be an ancestor of block";
+  CHECK(find) << "decompose_reduction expect the loop to be an ancestor of block";
+
   // Check block is reduction
   CHECK(scope.IsReduction(block_sref))
-    << "split_reduction expect the block to be a reduction block";
-  // Check LCA of producers and the block is higher than loop
-  const auto& predecessors = scope.GetPredecessors(block_sref);
-  std::vector<StmtSRef> producers;
-  for (const auto& edge : predecessors) {
-    if (edge->type == DepType::kRAW) {
-      producers.push_back(edge->dst);
-    }
-  }
-  producers.push_back(block_sref);
-  if (producers.size() > 1) {
-    const StmtSRef& lca = LowestCommonAncestor(producers, scope_root);
-    if (!scope_root.same_as(lca)) {
-      for (const auto& loop : loops) {
-        if (loop.same_as(lca)) break;
-        CHECK(!loop.same_as(loop_sref))
-          << "split_reduction expect the loop to be lower than the LCA of producers and block";
-      }
-    }
-  }
+    << "decompose_reduction expect the block to be a reduction block";
+
   // Check loop is higher than all the loops related to reduce block var
+  const auto* br = GetBlockRealize(block_sref).operator->();
   for (const auto& loop : loops) {
     for (size_t i = 0; i < block->iter_vars.size(); ++i) {
       if (block->iter_vars[i]->iter_type == IterVarType::kCommReduce) {
         CHECK(!RelatedWithVar(block->iter_vars[i]->var, br->binding_values[i]))
-          << "split_reduction expect the loop to be higher than all the loops related to block var";
+          << "decompose_reduction expect the loop to be higher than all the loops related to reduce block var";
       }
     }
   }
+
   // Mutate
-  // create init block
+  // Create init stmt, init block
+  const auto* ptr = DowncastPtr<BufferStoreNode>(block->body.operator->());
+  const auto* reduction = DowncastPtr<ReductionNode>(ptr->value.operator->());
+  const auto& init_stmt = BufferStore(ptr->buffer, reduction->init, ptr->indices);
   auto init_block = make_object<BlockNode>();
-  init_block->body = block->body;
-  const auto* stmt_ptr = DowncastPtr<BufferStoreNode>(init_block->body.operator->());
-  const auto* call_ptr = DowncastPtr<CallNode>(stmt_ptr->value.operator->());
-  auto init_stmt = make_object<BufferStoreNode>(*stmt_ptr);
-  // rewrite body of init block
-  init_stmt->value = call_ptr->args[3];
   init_block->tag = block->tag + "_init";
-  // add init annotation
-  init_block->annotations.push_back(Annotation(attr::init_block, init_stmt->value));
-  // create init block realize
+
+  // Create init block realize
   auto init_br = make_object<BlockRealizeNode>(*br);
   init_br->binding_values = Array<PrimExpr>(make_object<ArrayNode>());
   std::unordered_map<const VarNode*, const VarNode*> block_var_map;
@@ -884,13 +866,15 @@ StmtSRef ScheduleNode::split_reduction(const StmtSRef& block_sref,
       block_var_map[block->iter_vars[i]->var.get()] = new_iter_var->var.get();
     }
   }
-  // after copying block vars, substitute them in init block
+
+  // After copying block vars, substitute them in init block
   init_block->body = SubstituteInScope(Stmt(init_stmt), block_var_map);
   for (const auto& write : block->writes)
     init_block->writes.push_back(SubstituteTensorRegion(write, block_var_map));
   init_br->block = Block(init_block);
   Stmt body = BlockRealize(init_br);
-  // create loops of init block
+
+  // Create loops of init block
   for (size_t i = loops.size() - 1; i >= 0; --i) {
     if (loops[i].same_as(loop_sref)) break;
     const auto* ptr = DowncastPtr<LoopNode>(loops[i]->node);
@@ -907,43 +891,95 @@ StmtSRef ScheduleNode::split_reduction(const StmtSRef& block_sref,
   }
   auto new_loop = make_object<LoopNode>(*loop);
   new_loop->body = SeqStmt::Flatten(Array<Stmt>{body, new_loop->body});
+
+  // Put init block into AST
   this->Replace(loop_sref, Loop(new_loop));
+
+  // Change the Reduction block to update block
+  auto update_block = make_object<BlockNode>(*block);
+  update_block->body = BufferStore(ptr->buffer, reduction->update, ptr->indices);
+  update_block->tag = block->tag + "_update";
+  Map<Block, Block> block_map;
+  block_map.Set(Block(update_block), GetRef<Block>(block));
+  this->Replace(block_sref, Block(update_block), block_map);
+
+  // Update scope information
+  DependencyAnalyzer(this->stmt2ref, &this->scopes_, false)(GetRef<Stmt>(scope_root->node));
   return stmt2ref.at(init_block.get());
 }
 
-void ScheduleNode::fuse_reduction(const StmtSRef& init_sref, const StmtSRef& update_sref) {
-  // Equivalence
-  // Check
-  //  - init_block has annotation init
-  //  - init_block writes the same buffer as update block
-  // Mutate
-  //  - delete init_block
+void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& update_sref) {
+  /*!
+   * Check
+   *   - init_block is under the same scope with update_sref
+   *   - LCA is higher than all the loops related to update_block's reduce block var
+   *   - init_block's write region is the same as update_block's write region under LCA
+   *   - the merged block is decomposable (i.e satisfying the check's of decompose_reduction)
+   * Mutate
+   *   - delete init_block
+   *   - generate reduction block
+   */
 
+  // Check
   const auto* init = DowncastPtr<BlockNode>(init_sref->node);
   const auto* update = DowncastPtr<BlockNode>(update_sref->node);
-  CHECK(init != nullptr);
-  CHECK(update != nullptr);
-  CHECK_EQ(init->annotations.size(), 1);
-  CHECK_EQ(init->annotations[0]->attr_key, attr::init_block);
-  CHECK(init->writes[0]->buffer.same_as(update->writes[0]->buffer));
+  CHECK(init != nullptr) << "merge_reduction expect a block as first argument";
+  CHECK(update != nullptr) << "merge_reduction expect a block as second argument";
 
-  const auto& scope_root = this->GetScope(update_sref);
+  // Check init_block is under the same scope with update_sref
+  CHECK_EQ(GetScope(init_sref), GetScope(update_sref))
+    << "merge_reduction expect the init_block and update_block to be under the same scope";
+  const auto& scope_root = GetScope(init_sref);
+
+  // Check init_block's write region is the same as update_block's write region under LCA
+  CHECK_EQ(init->writes.size(), 1);
+  CHECK_EQ(update->writes.size(), 1);
   const auto& lca = LowestCommonAncestor({init_sref, update_sref}, scope_root);
-  auto new_loop = make_object<LoopNode>(*DowncastPtr<LoopNode>(lca->node));
-  for (const StmtSRefNode* sref = init_sref.get();;) {
-    if (sref->parent == lca.get()) {
-      SeqStmt body = Downcast<SeqStmt>(new_loop->body);
-      std::vector<Stmt> new_body;
-      for (const Stmt& stmt : body->seq) {
-        if (sref->node != stmt.get()) new_body.push_back(stmt);
+  const auto& init_region = RelaxRegion(init_sref, lca, init->writes[0]);
+  const auto& update_region = RelaxRegion(update_sref, lca, update->writes[0]);
+  CHECK_EQ(init_region->region.size(), update_region->region.size());
+  for (size_t i = 0; i < init_region->region.size(); ++i) {
+    CHECK(Equal(init_region->region[i]->min, update_region->region[i]->min));
+    CHECK(Equal(init_region->region[i]->extent, update_region->region[i]->extent));
+  }
+
+  // Check the merged block is decomposable
+  CHECK(this->scopes_.at(scope_root).CanMergeReduction(init_sref, update_sref));
+  const auto *init_body = DowncastPtr<BufferStoreNode>(init->body.operator->());
+  const auto *update_body = DowncastPtr<BufferStoreNode>(update->body.operator->());
+  CHECK()
+
+  // Check LCA is higher than all the loops related to update_block's reduce block var
+  Array<StmtSRef> loops = GetLoopsInScope(update_sref);
+  const auto* br = GetBlockRealize(update_sref).operator->();
+  for (const auto& loop : loops) {
+    for (size_t i = 0; i < update->iter_vars.size(); ++i) {
+      if (update->iter_vars[i]->iter_type == IterVarType::kCommReduce) {
+        CHECK(!RelatedWithVar(update->iter_vars[i]->var, br->binding_values[i]))
+          << "merge_reduction expect lca to be higher than all the loops related to "
+               "update_block's reduce block var";
       }
-      new_loop->body = SeqStmt::Flatten(new_body);
-      break;
-    } else {
-      sref = sref->parent;
     }
   }
-  this->Replace(lca, Loop(new_loop));
+
+  // Mutate
+  // Delete init block and its single-branched ancestors
+  const auto& removed = RemoveLeaf(init_sref, scope_root);
+  std::cout << removed.first << " " << removed.second << std::endl;
+  this->Replace(lca, removed.second);
+
+  // Change the update block to reduction block
+  auto merged_block = make_object<BlockNode>(*update);
+  merged_block->body = BufferStore(update_body->buffer,
+                                   Reduction(init_body->value, update_body->value),
+                                   update_body->indices);
+  Map<Block, Block> block_map;
+  block_map.Set(Block(merged_block), GetRef<Block>(update));
+  this->Replace(update_sref, Block(merged_block), block_map);
+}
+
+void ScheduleNode::register_reducer(const CommReducer &comm_reducer) {
+  this->reducers_.push_back(comm_reducer);
 }
 
 StmtSRef::StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index) {
@@ -1074,6 +1110,11 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnroll")
       schedule->unroll(node);
     });
 
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDecomposeReduction")
+.set_body_typed<StmtSRef(Schedule, StmtSRef, StmtSRef)>(
+    [](Schedule schedule, StmtSRef block, StmtSRef loop) {
+      return schedule->decompose_reduction(block, loop);
+
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheWrite")
 .set_body_typed<StmtSRef(Schedule, Buffer, std::string)>(
     [](Schedule schedule, Buffer buffer, std::string scope) {
@@ -1086,10 +1127,16 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheRead")
       return schedule->cache_read(buffer, scope);
     });
 
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleFuseReduction")
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleMergeReduction")
 .set_body_typed<void(Schedule, StmtSRef, StmtSRef)>(
     [](Schedule schedule, StmtSRef init, StmtSRef update) {
-      schedule->fuse_reduction(init, update);
+      schedule->merge_reduction(init, update);
+    });
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleRegisterReducer")
+.set_body_typed<void(Schedule, CommReducer)>(
+    [](Schedule schedule, CommReducer comm_reducer) {
+      schedule->register_reducer(comm_reducer);
     });
 
 // dependency graph

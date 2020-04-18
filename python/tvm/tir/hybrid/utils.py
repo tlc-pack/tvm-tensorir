@@ -19,7 +19,6 @@
 import inspect
 
 from . import _ffi_api
-from . import registry, intrin, special_stmt, scope_handler
 from .parser import source_to_op
 from .. import module
 
@@ -107,31 +106,5 @@ class HybridFunction:
 
 def _parse(hybrid_script):
     """Helper function to parse hybrid_script into TIR"""
-    init_scope()
-    return source_to_op(inspect.getsource(hybrid_script.origin_script),
-                        inspect.getsourcelines(hybrid_script.origin_script)[1])
-
-
-def init_scope():
-    """Register primitive functions"""
-    registry.register_intrin(intrin.int16)
-    registry.register_intrin(intrin.int32)
-    registry.register_intrin(intrin.int64)
-    registry.register_intrin(intrin.float16)
-    registry.register_intrin(intrin.float32)
-    registry.register_intrin(intrin.float64)
-    registry.register_intrin(intrin.floordiv)
-    registry.register_intrin(intrin.floormod)
-    registry.register_special_stmt(special_stmt.buffer_bind)
-    registry.register_special_stmt(special_stmt.buffer_allocate)
-    registry.register_special_stmt(special_stmt.block_vars)
-    registry.register_special_stmt(special_stmt.comm_reduce)
-    registry.register_scope_handler(scope_handler.block, scope_name="with_scope")
-    registry.register_scope_handler(scope_handler.range, scope_name="for_scope")
-
-
-def _parse(hybrid_script):
-    """Helper function to parse hybrid_script into TIR"""
-    init_scope()
     return source_to_op(inspect.getsource(hybrid_script.origin_script),
                         inspect.getsourcelines(hybrid_script.origin_script)[1])

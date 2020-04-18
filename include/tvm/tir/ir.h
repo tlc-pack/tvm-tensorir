@@ -335,6 +335,36 @@ class BlockRealize : public Stmt {
 };
 
 /*!
+ * \brief A reduction expression stores both the init expression and update expression
+ */
+class ReductionNode : public PrimExprNode {
+ public:
+  /*! \brief init expression */
+  PrimExpr init;
+  /*! \brief update expression */
+  PrimExpr update;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("init", &init);
+    v->Visit("update", &update);
+  }
+
+  static constexpr const char* _type_key = "Reduction";
+  TVM_DECLARE_FINAL_OBJECT_INFO(ReductionNode, PrimExprNode);
+};
+
+/*!
+ * \brief Managed reference to ReductionNode
+ * \sa ReductionNode
+ */
+class Reduction : public PrimExpr {
+ public:
+  TVM_DLL explicit Reduction(PrimExpr init, PrimExpr update);
+
+  TVM_DEFINE_OBJECT_REF_METHODS(Reduction, PrimExpr, ReductionNode);
+};
+
+/*!
  * \brief A function in TIR
  * \code
  *

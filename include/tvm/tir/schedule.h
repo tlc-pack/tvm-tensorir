@@ -150,19 +150,25 @@ class ScheduleNode : public Object {
   void reorder(const Array<StmtSRef>& order);
 
   /*!
-   * \brief Split reduction block_sref into init&update blocks
+   * \brief Decompose reduction block_sref into init&update blocks
    * \param block_sref the reduction block_sref
    * \param loop_sref the position where init block_sref will be
    * \return the sref of init block
    */
-  StmtSRef split_reduction(const StmtSRef& block_sref, const StmtSRef& loop_sref);
+  StmtSRef decompose_reduction(const StmtSRef& block_sref, const StmtSRef& loop_sref);
 
   /*!
-   * \brief Fuse init and reduction block into reduction block
+   * \brief Merge init and reduction block into reduction block
    * \param init_sref the init block
    * \param update_sref the update block
    */
-  void fuse_reduction(const StmtSRef& init_sref, const StmtSRef& update_sref);
+  void merge_reduction(const StmtSRef& init_sref, const StmtSRef& update_sref);
+
+  /*!
+   * \brief Register a reducer into schedule knowledge
+   * \param comm_reducer the reducer to be registered
+   */
+  void register_reducer(const CommReducer& comm_reducer);
 
   /*!
    * \brief Create a cache read of original tensor for readers.
@@ -187,6 +193,9 @@ class ScheduleNode : public Object {
   TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleNode, Object);
 
  private:
+  /*! \brief The reducer list for reduction pattern matching */
+  Array<CommReducer> reducers_;
+
   /*!
  * \brief Update the sref to make it point to new Block/Loop
  * \param sref The outdated sref
@@ -223,6 +232,14 @@ class ScheduleNode : public Object {
    * \param func the TirFunction to be validated
    */
   void ValidateLoops(Function function);
+
+  /*!
+   * \brief Detect reducer pattern in init and update expressions
+   * \param init the init expression
+   * \param update the update expression
+   * \return whether the detect is successful
+   */
+  bool ReducerPatternDetect(PrimExpr init, PrimExpr update);
 };
 
 class Schedule : public ObjectRef {

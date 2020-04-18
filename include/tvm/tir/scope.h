@@ -134,6 +134,14 @@ class Scope : public ObjectRef {
    */
   bool IsDominate(const StmtSRef& block) const;
 
+  /*!
+   * \brief Check the merged block of init_block and update_block is a reduction block
+   * \param init_block the query init block
+   * \param update_block the query update block
+   * \return Whether the merged block of init_block and update_block is a reduction block
+   */
+  bool CanMergeReduction(const StmtSRef& init_block, const StmtSRef& update_block) const;
+
   TVM_DEFINE_OBJECT_REF_METHODS(Scope, ObjectRef, ScopeNode);
 
   ScopeNode* operator->() {

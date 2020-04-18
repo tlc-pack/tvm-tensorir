@@ -88,6 +88,14 @@ class ScopeEmitter:
         else:
             self.symbols[-1][name] = symbol
 
+    def remove_symbol(self, name):
+        """Remove a symbol"""
+        for symbols in reversed(self.symbols):
+            if name in symbols:
+                symbols.pop(name)
+                return
+        raise RuntimeError("Internal error of hybrid parser: no symbol named" + name)
+
     def lookup_symbol(self, name):
         """Look up symbol by name"""
         for symbols in reversed(self.symbols):

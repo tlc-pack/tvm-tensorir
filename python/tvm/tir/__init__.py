@@ -24,9 +24,9 @@ from .data_layout import Layout, BijectiveLayout, bijective_layout, layout
 from .expr import Var, SizeVar, Reduce, FloatImm, IntImm, StringImm, Cast
 from .expr import Add, Sub, Mul, Div, Mod, FloorDiv, FloorMod
 from .expr import Min, Max, EQ, NE, LT, LE, GT, GE, And, Or, Not
-from .expr import Select, Load, Ramp, Broadcast, Shuffle, Call, Let
+from .expr import Select, Load, Ramp, Broadcast, Shuffle, Call, Let, CommReducer
 from .expr import IterVar, Any
-from .expr import BufferLoad
+from .expr import BufferLoad, Reduction
 
 from .stmt import Stmt, LetStmt, AssertStmt, ProducerConsumer, For, Annotation
 from .stmt import Store, Provide, Allocate, AttrStmt, Free, Realize, SeqStmt

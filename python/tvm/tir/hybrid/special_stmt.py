@@ -24,8 +24,6 @@ node as its first 2 arguments.
 # pylint: disable=unused-argument
 import tvm.tir
 from tvm.tir import ir_pass as _pass
-from .registry import Registry
-from . import _ffi_api
 
 
 def buffer_bind(parser, node, var, shape, dtype="float32"):
@@ -87,7 +85,7 @@ def block_vars(parser, node, begin, end, iter_type="data_par"):
     return block_var
 
 
-def comm_reduce(parser, node, combiner_name, delta, identity):
+def reduction(parser, node, update, init):
     """ Special function for defining a reduction
 
     Example
@@ -95,14 +93,7 @@ def comm_reduce(parser, node, combiner_name, delta, identity):
     .. code-block:: python
 
 
-        def add(x, y):
-            return x + y
-
-        tvm.tir.hybrid.register(add)
-        C[vi, vj] = comm_reduce("add", A[vi, vk] * B[vk, vj], 0) # in hybrid script
+        C[vi, vj] = reduction(C[vi, vj] + A[vi, vk]*B[vk, vj], 0)
 
     """
-    buffer, indices = parser._assign_target
-    x = tvm.tir.BufferLoad(buffer.dtype, buffer, indices)
-    x_delta = Registry.intrin.get(combiner_name)(None, None, [x, delta], None)
-    return _ffi_api.reduction(x, delta, x_delta, identity)
+    return tvm.tir.Reduction(init, update)
