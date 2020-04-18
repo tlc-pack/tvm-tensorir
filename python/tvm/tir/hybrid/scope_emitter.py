@@ -23,6 +23,7 @@ import tvm.tir
 from tvm.tir import expr as _expr
 from tvm.tir import stmt as _stmt
 
+from .special_stmt import HybridReducer
 
 class ScopeEmitter:
     """Maintain the stmts, allocations, and symbols of scopes"""
@@ -35,11 +36,13 @@ class ScopeEmitter:
         LoopVar = 3  # loop_var
         List = 4     # list
         Dict = 5     # dict
+        Reducer = 6  # reducer
 
     _symbol_type = {
         list: Symbol.List,
         dict: Symbol.Dict,
-        schedule.Buffer: Symbol.Buffer
+        schedule.Buffer: Symbol.Buffer,
+        HybridReducer: Symbol.Reducer
     }
 
     def __init__(self, parser):

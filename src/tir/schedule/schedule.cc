@@ -846,9 +846,10 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
 
   // Mutate
   // Create init stmt, init block
-  const auto* ptr = DowncastPtr<BufferStoreNode>(block->body.operator->());
-  const auto* reduction = DowncastPtr<ReductionNode>(ptr->value.operator->());
-  const auto& init_stmt = BufferStore(ptr->buffer, reduction->init, ptr->indices);
+  const auto* reduction = DowncastPtr<ReductionNode>(block->body.operator->());
+  const auto* lhs = DowncastPtr<BufferLoadNode>(reduction->lhs.operator->());
+  const auto& init_stmt =
+      BufferStore(lhs->buffer, reduction->comm_reducer->identity_element[0], lhs->indices);
   auto init_block = make_object<BlockNode>();
   init_block->tag = block->tag + "_init";
 
@@ -897,7 +898,8 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
 
   // Change the Reduction block to update block
   auto update_block = make_object<BlockNode>(*block);
-  update_block->body = BufferStore(ptr->buffer, reduction->update, ptr->indices);
+  update_block->body =
+      BufferStore(lhs->buffer, reduction->apply_combiner(), lhs->indices);
   update_block->tag = block->tag + "_update";
   Map<Block, Block> block_map;
   block_map.Set(Block(update_block), GetRef<Block>(block));
@@ -947,7 +949,6 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   CHECK(this->scopes_.at(scope_root).CanMergeReduction(init_sref, update_sref));
   const auto *init_body = DowncastPtr<BufferStoreNode>(init->body.operator->());
   const auto *update_body = DowncastPtr<BufferStoreNode>(update->body.operator->());
-  CHECK()
 
   // Check LCA is higher than all the loops related to update_block's reduce block var
   Array<StmtSRef> loops = GetLoopsInScope(update_sref);
@@ -970,16 +971,12 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
 
   // Change the update block to reduction block
   auto merged_block = make_object<BlockNode>(*update);
-  merged_block->body = BufferStore(update_body->buffer,
-                                   Reduction(init_body->value, update_body->value),
-                                   update_body->indices);
+  merged_block->body = ReductionNode::make_from_init_update(this->func->reducers,
+                                                            init_body->value,
+                                                            GetRef<BufferStore>(update_body));
   Map<Block, Block> block_map;
   block_map.Set(Block(merged_block), GetRef<Block>(update));
   this->Replace(update_sref, Block(merged_block), block_map);
-}
-
-void ScheduleNode::register_reducer(const CommReducer &comm_reducer) {
-  this->reducers_.push_back(comm_reducer);
 }
 
 StmtSRef::StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index) {
@@ -1009,15 +1006,6 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
 TVM_REGISTER_NODE_TYPE(StmtSRefNode);
-
-TVM_REGISTER_GLOBAL("tir.hybrid.reduction")
-.set_body_typed<PrimExpr(PrimExpr, PrimExpr, PrimExpr, PrimExpr)>(
-    [](PrimExpr left, PrimExpr right, PrimExpr result, PrimExpr identity) -> PrimExpr {
-      return CallNode::make(left.dtype(),
-                            CallNode::reduction,
-                            {left, right, result, identity},
-                            tir::CallNode::PureIntrinsic);
-    });
 
 // schedule
 TVM_REGISTER_GLOBAL("tir.schedule.CreateSchedule")
@@ -1131,12 +1119,6 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleMergeReduction")
 .set_body_typed<void(Schedule, StmtSRef, StmtSRef)>(
     [](Schedule schedule, StmtSRef init, StmtSRef update) {
       schedule->merge_reduction(init, update);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleRegisterReducer")
-.set_body_typed<void(Schedule, CommReducer)>(
-    [](Schedule schedule, CommReducer comm_reducer) {
-      schedule->register_reducer(comm_reducer);
     });
 
 // dependency graph

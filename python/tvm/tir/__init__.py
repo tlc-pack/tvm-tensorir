@@ -26,12 +26,13 @@ from .expr import Add, Sub, Mul, Div, Mod, FloorDiv, FloorMod
 from .expr import Min, Max, EQ, NE, LT, LE, GT, GE, And, Or, Not
 from .expr import Select, Load, Ramp, Broadcast, Shuffle, Call, Let, CommReducer
 from .expr import IterVar, Any
-from .expr import BufferLoad, Reduction
+from .expr import BufferLoad
 
 from .stmt import Stmt, LetStmt, AssertStmt, ProducerConsumer, For, Annotation
 from .stmt import Store, Provide, Allocate, AttrStmt, Free, Realize, SeqStmt
 from .stmt import IfThenElse, Evaluate, Prefetch, LoweredFunc, stmt_seq, stmt_list
 from .stmt import Block, BlockRealize, Loop, BufferAllocate, BufferStore, TensorRegion
+from .stmt import Reduction
 
 from .op import call_packed, call_pure_intrin, call_intrin, call_pure_extern, call_extern
 from .op import call_llvm_intrin, all, any, min_value, max_value, trace

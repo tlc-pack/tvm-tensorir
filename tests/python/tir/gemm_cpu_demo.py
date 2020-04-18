@@ -25,6 +25,7 @@ def matmul(a, b, c):
     C = buffer_bind(c, (1024, 1024), "float32")
     A = buffer_bind(a, (1024, 1024), "float32")
     B = buffer_bind(b, (1024, 1024), "float32")
+    reducer = comm_reducer(lambda x, y: x + y, float32(0))
 
     with block({}, writes=[C[0:1024, 0:1024]], reads=[A[0:1024, 0:1024], B[0:1024, 0:1024]],
                name="root"):
@@ -35,7 +36,7 @@ def matmul(a, b, c):
                                writes=[C[vi:(vi + 1), vj:(vj + 1)]],
                                reads=[C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)],
                                       B[vj:(vj + 1), vk:(vk + 1)]], name="C"):
-                        C[vi, vj] = reduction(C[vi, vj] + A[vi, vk] * B[vk, vj], float32(0))
+                        reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
 
 ################################################################################################
@@ -61,7 +62,7 @@ b = tvm.nd.array(b_np)
 c = tvm.nd.array(np.zeros((M, N)).astype("float32"))
 
 func(a, b, c)
-tvm.testing.assert_allclose(c.asnumpy(), np.matmul(a.asnumpy(), b.asnumpy()), rtol=1e-2)
+tvm.testing.assert_allclose(c.asnumpy(), np.matmul(a.asnumpy(), b.asnumpy()), rtol=1e-5)
 
 evaluator = func.time_evaluator(func.entry_name, ctx, number=1)
 print('Baseline: %f' % evaluator(a, b, c).mean)
@@ -85,7 +86,7 @@ i_o, i_i = s.split(i, bn)
 j_o, j_i = s.split(j, bn)
 k_o, k_i = s.split(k, 4)
 s.reorder(i_o, j_o, k_o, k_i, i_i, j_i)
-init = s.decompose_reduction(update, j_o)
+s.decompose_reduction(update, j_o)
 
 func = tvm.build(s.func, target=target)
 func(a, b, c)
@@ -180,6 +181,7 @@ def matmul_packed(a, b, c):
     A = buffer_bind(a, (1024, 1024), "float32")
     B = buffer_bind(b, (1024, 1024), "float32")
     C = buffer_bind(c, (1024, 1024), "float32")
+    reducer = comm_reducer(lambda x, y: x + y, float32(0))
 
     with block({}, reads=[A[0: 1024, 0: 1024], B[0: 1024, 0: 1024]], writes=C[0: 1024, 0: 1024],
                name="root"):
@@ -199,7 +201,7 @@ def matmul_packed(a, b, c):
                                reads=[C[vi: vi + 1, vj: vj + 1], A[vi: vi + 1, vk: vk + 1],
                                       packedB[vj // 32: vj // 32 + 1, vk: vk + 1, vj % 32: vj % 32 + 1]],
                                writes=[C[vi: vi + 1, vj: vj + 1]], name="C"):
-                        C[vi, vj] = reduction(C[vi, vj] + A[vi, vk] * packedB[vj // 32, vk, vj % 32], float32(0))
+                        reducer.step(C[vi, vj], A[vi, vk] * packedB[vj // 32, vk, vj % 32])
 
 
 mod = tir.hybrid.create_module([matmul_packed])
@@ -217,7 +219,7 @@ j_o, j_i = s.split(j, bn)
 k_o, k_i = s.split(k, 4)
 s.reorder(i_o, j_o, k_o, i_i, k_i, j_i)
 s.vectorize(j_i)
-init = s.decompose_reduction(update, j_o)
+s.decompose_reduction(update, j_o)
 
 func = tvm.build(s.func, target=target)
 func(a, b, c)

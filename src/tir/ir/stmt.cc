@@ -445,25 +445,79 @@ TVM_REGISTER_GLOBAL("tir.BufferAllocate")
       return BufferAllocate(buffer, scope);
     });
 
+Reduction::Reduction(CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs) {
+  ObjectPtr<ReductionNode> node = make_object<ReductionNode>();
+  node->comm_reducer = std::move(comm_reducer);
+  node->lhs = std::move(lhs);
+  node->rhs = std::move(rhs);
+  data_ = std::move(node);
+}
+
+PrimExpr ReductionNode::apply_combiner() const {
+  return apply_combiner(this->lhs, this->rhs);
+}
+
+PrimExpr ReductionNode::apply_combiner(PrimExpr lhs, PrimExpr rhs) const {
+  CHECK_EQ(comm_reducer->lhs.size(), 1);
+  CHECK_EQ(comm_reducer->rhs.size(), 1);
+  CHECK_EQ(comm_reducer->result.size(), 1);
+  auto vmap = [&](const VarNode* v) -> PrimExpr {
+    if (v == comm_reducer->lhs[0].get()) {
+      return lhs;
+    } else if (v == comm_reducer->rhs[0].get()) {
+      return rhs;
+    } else {
+      return GetRef<Var>(v);
+    }
+  };
+  return Substitute(comm_reducer->result[0], vmap);
+}
+
+bool ReducerMatched(const CommReducer& reducer, const PrimExpr& lhs,
+                    const PrimExpr& init, const PrimExpr update) {
+  if (!Equal(reducer->identity_element[0], init)) return false;
+
+}
+
+Stmt ReductionNode::make_from_init_update(const Array<CommReducer>& patterns,
+                                          PrimExpr init, BufferStore update) {
+  const auto& lhs = BufferLoad(update->buffer->dtype, update->buffer, update->indices);
+  // Check user defined patterns
+  for (const auto& reducer : patterns)
+    if (ReducerMatched(reducer, lhs, init, update->value)) {
+
+    }
+  // Check default patterns
+
+}
+
+TVM_REGISTER_GLOBAL("tir.Reduction")
+.set_body_typed<Reduction(CommReducer, PrimExpr, PrimExpr)>(
+    [](CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs) {
+      return Reduction(comm_reducer, lhs, rhs);
+    });
+
 Function::Function(Array<Var> params,
                    Map<Var, Buffer> buffer_map,
+                   Array<CommReducer> reducers,
                    std::string name,
                    Stmt body) {
   ObjectPtr<FunctionNode> node = make_object<FunctionNode>();
   CHECK_EQ(params.size(), buffer_map.size());
   node->params = std::move(params);
   node->buffer_map = std::move(buffer_map);
+  node->reducers = std::move(reducers);
   node->name = std::move(name);
   node->body = std::move(body);
   data_ = std::move(node);
 }
 
 TVM_REGISTER_GLOBAL("tir.Function")
-.set_body_typed<Function(Array<Var>, Map<Var, Buffer>,
+.set_body_typed<Function(Array<Var>, Map<Var, Buffer>, Array<CommReducer>,
                          std::string, Stmt)>(
-    [](Array<Var> params, Map<Var, Buffer> buffer_map,
+    [](Array<Var> params, Map<Var, Buffer> buffer_map, Array<CommReducer> reducers,
        std::string name, Stmt body) {
-      return Function(params, buffer_map, name, body);
+      return Function(params, buffer_map, reducers, name, body);
     });
 
 // Printers
@@ -960,6 +1014,7 @@ TVM_REGISTER_NODE_TYPE(BufferAllocateNode);
 TVM_REGISTER_NODE_TYPE(LoopNode);
 TVM_REGISTER_NODE_TYPE(BlockNode);
 TVM_REGISTER_NODE_TYPE(BlockRealizeNode);
+TVM_REGISTER_NODE_TYPE(ReductionNode);
 TVM_REGISTER_NODE_TYPE(FunctionNode);
 
 }  // namespace tir

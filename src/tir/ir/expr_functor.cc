@@ -114,11 +114,6 @@ void ExprVisitor::VisitExpr_(const BufferLoadNode* op) {
   VisitArray(op->indices, [this](const PrimExpr& e) { this->VisitExpr(e); });
 }
 
-void ExprVisitor::VisitExpr_(const ReductionNode* op) {
-  this->VisitExpr(op->init);
-  this->VisitExpr(op->update);
-}
-
 PrimExpr ExprMutator::VisitExpr_(const VarNode* op) {
   return GetRef<PrimExpr>(op);
 }
@@ -305,15 +300,6 @@ PrimExpr ExprMutator::VisitExpr_(const BufferLoadNode* op) {
   }
 }
 
-PrimExpr ExprMutator::VisitExpr_(const ReductionNode* op) {
-  PrimExpr init = this->VisitExpr(op->init);
-  PrimExpr update = this->VisitExpr(op->update);
-  if (op->init.same_as(init) && op->update.same_as(update)) {
-    return GetRef<PrimExpr>(op);
-  } else {
-    return Reduction(init, update);
-  }
-}
 
 }  // namespace tir
 }  // namespace tvm

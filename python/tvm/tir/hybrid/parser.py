@@ -24,6 +24,7 @@ import operator
 from typed_ast import ast3 as ast
 
 from tvm.tir import expr as _expr
+from tvm.tir import stmt as _stmt
 from tvm.tir import ir_pass as _pass
 from tvm.te import schedule as _schedule
 from tvm._ffi.base import TVMError
@@ -36,6 +37,7 @@ from . import scope_emitter, intrin, special_stmt, scope_handler
 from .scope_emitter import ScopeEmitter
 from .meta_unparser import MetaUnparser
 from .registry import Registry, register_intrin, register_special_stmt, register_scope_handler
+from .special_stmt import HybridLambda, HybridReducer
 
 
 def _floordiv(x, y):
@@ -103,6 +105,7 @@ class HybridParser(ast.NodeVisitor):
     def __init__(self, src, base_lienno):
         self.params = None
         self.buffer_map = None
+        self.reducers = None
         self.scope_emitter = None
 
         self.src = src.split('\n')
@@ -120,6 +123,7 @@ class HybridParser(ast.NodeVisitor):
         """Initialize function parsing environment"""
         self.params = []  # parameter list
         self.buffer_map = {}  # buffer map
+        self.reducers = []  # reducers
         self.scope_emitter = scope_emitter.ScopeEmitter(self)  # scope emitter
 
     # TODO : if meta related functions grow, consider moving them to a new file
@@ -288,15 +292,16 @@ class HybridParser(ast.NodeVisitor):
             self.visit(body_element)
         # fetch the body and return a tir.Function
         body = self.scope_emitter.pop_scope()
-        return tvm.tir.Function(self.params, self.buffer_map, node.name, body)
+        return tvm.tir.Function(self.params, self.buffer_map, self.reducers, node.name, body)
 
     def visit_Assign(self, node):
         """ Assign visitor
         AST abstract grammar:
             Assign(expr* targets, expr value, string? type_comment)
-        By now only 2 types of Assign is supported:
+        By now only 3 types of Assign is supported:
             1. Target = List, Buffer(buffer_bind, buffer_allocate)
             2. Buffer[expr, expr, .. expr] = Expr
+            3. Target = comm_reducer(...)
         """
 
         if not len(node.targets) == 1:
@@ -304,10 +309,10 @@ class HybridParser(ast.NodeVisitor):
 
         target = node.targets[0]
         if isinstance(target, ast.Name):
-            # Target = List, Buffer(buffer_bind, buffer_allocate)
+            # Target = List, Buffer(buffer_bind, buffer_allocate), comm_reducer
             self._assign_target = target.id
             rhs = self.visit(node.value)
-            if not isinstance(rhs, (_schedule.Buffer, list)):
+            if not isinstance(rhs, (_schedule.Buffer, list, HybridReducer)):
                 self.report_error(
                     "The value of assign ought to be list of TensorRegions or Buffer typed")
             self.scope_emitter.update_symbol(target.id, ScopeEmitter._symbol_type[type(rhs)], rhs)
@@ -315,7 +320,6 @@ class HybridParser(ast.NodeVisitor):
             if isinstance(node.value, ast.Call) and node.value.func.id == "buffer_bind":
                 self.buffer_map[self.scope_emitter.lookup_symbol(node.value.args[0].id)] = rhs
         elif isinstance(target, ast.Subscript):
-            # Buffer[expr, expr, .. expr] = Expr
             buffer, buffer_indexes = self.visit(target)
             self._assign_target = (buffer, buffer_indexes)
             rhs = self.visit(node.value)
@@ -446,15 +450,24 @@ class HybridParser(ast.NodeVisitor):
         All the functions used outside With and For are registered in special_stmt or intrin
         """
 
-        if not isinstance(node.func, ast.Name):
-            self.report_error("Only id function call is supported now")
-
-        func_name = node.func.id
-
-        # collect arguments
-        args = [self.visit(arg) for arg in node.args]
-        kw_args = [self.visit(keyword) for keyword in node.keywords]
-        kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
+        if isinstance(node.func, ast.Name):
+            func_name = node.func.id
+            # collect arguments
+            args = [self.visit(arg) for arg in node.args]
+            kw_args = [self.visit(keyword) for keyword in node.keywords]
+            kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
+        elif isinstance(node.func, ast.Attribute):
+            obj = self.scope_emitter.lookup_symbol(node.func.value.id)
+            if isinstance(obj, HybridReducer):
+                func_name = "HybridReducer." + node.func.attr
+                # collect arguments
+                args = [obj] + [self.visit(arg) for arg in node.args]
+                kw_args = [self.visit(keyword) for keyword in node.keywords]
+                kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
+            else:
+                self.report_error("Unsupported Attribute typed function call")
+        else:
+            self.report_error("Unsupported function call")
 
         if self._is_block_vars:
             # special judge block_var sugar
@@ -466,6 +479,40 @@ class HybridParser(ast.NodeVisitor):
         if func_name in Registry.intrin.keys():
             return Registry.intrin.get(func_name)(self, node, args, kw_args)
         self.report_error("Function " + func_name + " is not supported now")
+
+    def visit_Expr(self, node):
+        """ Expr visitor
+        AST abstract grammar:
+            Expr(expr value)
+
+        Now only 1 type of Expr stmt is allowed:
+            1. xxx.step()
+        """
+
+        if not isinstance(node.value, ast.Call):
+            self.report_error("Unsupported Expr stmt")
+        res = self.visit(node.value)
+        if isinstance(res, _stmt.Reduction):
+            self.scope_emitter.emit(res)
+        else:
+            self.report_error("Unsupported Expr stmt")
+
+    def visit_Lambda(self, node):
+        """ Lambda visitor
+        AST abstract grammar:
+            Lambda(arguments args, expr body)
+
+        Now lambda can be only used in comm_reducer
+        """
+
+        args = list()
+        for arg in node.args.args:
+            args.append(tvm.te.var(arg.arg))
+            self.scope_emitter.update_symbol(arg.arg, ScopeEmitter.Symbol.Var, args[-1])
+        res = HybridLambda(args, self.visit(node.body))
+        for arg in node.args.args:
+            self.scope_emitter.remove_symbol(arg.arg)
+        return res
 
     def visit_BinOp(self, node):
         """ BinOp visitor
@@ -676,7 +723,8 @@ def init_registry():
     register_special_stmt(special_stmt.buffer_bind)
     register_special_stmt(special_stmt.buffer_allocate)
     register_special_stmt(special_stmt.block_vars)
-    register_special_stmt(special_stmt.reduction)
+    register_special_stmt(special_stmt.comm_reducer)
+    register_special_stmt(special_stmt.HybridReducer.step)
     register_scope_handler(scope_handler.block, scope_name="with_scope")
     register_scope_handler(scope_handler.range, scope_name="for_scope")
 

@@ -36,6 +36,23 @@
 namespace tvm {
 namespace tir {
 
+class ReducerCollector : public StmtExprVisitor {
+ public:
+  explicit ReducerCollector(std::unordered_map<const CommReducerNode*, int>* reducer_map)
+      : reducer_map(reducer_map) {}
+
+ protected:
+  void VisitStmt_(const ReductionNode* op) override {
+    auto it = reducer_map->find(op->comm_reducer.get());
+    if (it == reducer_map->end()) {
+      (*reducer_map)[op->comm_reducer.get()] = reducer_map->size();
+    }
+  }
+
+ private:
+  std::unordered_map<const CommReducerNode*, int>* reducer_map;
+};
+
 class TIRHybridPrinter :
     public StmtFunctor<Doc(const Stmt&)>,
     public ExprFunctor<Doc(const PrimExpr&)> {
@@ -127,7 +144,6 @@ class TIRHybridPrinter :
   Doc VisitExpr_(const FloatImmNode* op) override;
   Doc VisitExpr_(const StringImmNode* op) override;
   Doc VisitExpr_(const BufferLoadNode* op) override;
-  Doc VisitExpr_(const ReductionNode* op) override;
   Doc VisitExprDefault_(const Object* op) override;
 
   Doc VisitStmt_(const SeqStmtNode* op) override;
@@ -136,6 +152,7 @@ class TIRHybridPrinter :
   Doc VisitStmt_(const LoopNode* op) override;
   Doc VisitStmt_(const BufferAllocateNode* op) override;
   Doc VisitStmt_(const BufferStoreNode* op) override;
+  Doc VisitStmt_(const ReductionNode* op) override;
   Doc VisitStmtDefault_(const Object* op) override;
 
   /*!
@@ -271,9 +288,10 @@ Doc TIRHybridPrinter::VisitExpr_(const BufferLoadNode* op) {
   return doc;
 }
 
-Doc TIRHybridPrinter::VisitExpr_(const ReductionNode* op) {
+Doc TIRHybridPrinter::VisitStmt_(const ReductionNode* op) {
   Doc doc;
-  doc << "reduction(" << Print(op->update) << ", " << Print(op->init) << ")";
+  doc << "reducer" + std::to_string(reducer_map[op->comm_reducer.get()]) << ".step(";
+  doc << Print(op->lhs) << ", " << Print(op->rhs) << ")";
   return doc;
 }
 
@@ -419,6 +437,12 @@ TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
 TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
 .set_dispatch<FunctionNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
   auto* op = node.as<FunctionNode>();
+  // collect reducers
+  p->reducer_map.clear();
+  for (const auto& reducer : op->reducers)
+    p->reducer_map[reducer.get()] = p->reducer_map.size();
+  ReducerCollector(&p->reducer_map)(op->body);
+  // print signature
   Doc doc;
   doc << "def " << op->name << "(";
   for (size_t i = 0; i < op->params.size(); ++i) {
@@ -446,7 +470,14 @@ TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
     body << ", " << Doc::StrLiteral(runtime::DLDataType2String((*it).second->dtype));
     body << ")" << Doc::NewLine();
   }
-
+  // print comm_reducer
+  for (const auto& it : p->reducer_map) {
+    body << "reducer" + std::to_string(it.second) << " = comm_reducer(";
+    body << "lambda " << p->Print(it.first->lhs[0]) << ", " << p->Print(it.first->rhs[0])
+         << ": " << p->Print(it.first->result[0])
+         << ", " << p->Print(it.first->identity_element[0]);
+    body << ")" << Doc::NewLine();
+  }
   // print body
   body << p->Print(op->body);
   doc << Doc::Indent(4, body);

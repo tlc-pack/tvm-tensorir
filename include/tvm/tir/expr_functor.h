@@ -153,7 +153,6 @@ class ExprFunctor<R(const PrimExpr& n, Args...)> {
   virtual R VisitExpr_(const FloatImmNode* op, Args... args) EXPR_FUNCTOR_DEFAULT;
   virtual R VisitExpr_(const StringImmNode* op, Args... args) EXPR_FUNCTOR_DEFAULT;
   virtual R VisitExpr_(const BufferLoadNode* op, Args... args) EXPR_FUNCTOR_DEFAULT;
-  virtual R VisitExpr_(const ReductionNode* op, Args... args) EXPR_FUNCTOR_DEFAULT;
   virtual R VisitExprDefault_(const Object* op, Args ...) {
     LOG(FATAL) << "Do not have a default for " << op->GetTypeKey();
     return R();
@@ -197,7 +196,6 @@ class ExprFunctor<R(const PrimExpr& n, Args...)> {
     IR_EXPR_FUNCTOR_DISPATCH(FloatImmNode);
     IR_EXPR_FUNCTOR_DISPATCH(StringImmNode);
     IR_EXPR_FUNCTOR_DISPATCH(BufferLoadNode);
-    IR_EXPR_FUNCTOR_DISPATCH(ReductionNode);
     return vtable;
   }
 };
@@ -249,7 +247,6 @@ class TVM_DLL ExprVisitor :
   void VisitExpr_(const FloatImmNode* op) override;
   void VisitExpr_(const StringImmNode* op) override;
   void VisitExpr_(const BufferLoadNode* op) override;
-  void VisitExpr_(const ReductionNode* op) override;
 };
 
 /*!
@@ -296,7 +293,6 @@ class TVM_DLL ExprMutator :
   PrimExpr VisitExpr_(const FloatImmNode* op) override;
   PrimExpr VisitExpr_(const StringImmNode* op) override;
   PrimExpr VisitExpr_(const BufferLoadNode* op) override;
-  PrimExpr VisitExpr_(const ReductionNode* op) override;
 };
 
 }  // namespace tir

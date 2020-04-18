@@ -165,12 +165,6 @@ class ScheduleNode : public Object {
   void merge_reduction(const StmtSRef& init_sref, const StmtSRef& update_sref);
 
   /*!
-   * \brief Register a reducer into schedule knowledge
-   * \param comm_reducer the reducer to be registered
-   */
-  void register_reducer(const CommReducer& comm_reducer);
-
-  /*!
    * \brief Create a cache read of original tensor for readers.
    * \param buffer The buffer
    * \param storage_scope The storage scope
@@ -232,14 +226,6 @@ class ScheduleNode : public Object {
    * \param func the TirFunction to be validated
    */
   void ValidateLoops(Function function);
-
-  /*!
-   * \brief Detect reducer pattern in init and update expressions
-   * \param init the init expression
-   * \param update the update expression
-   * \return whether the detect is successful
-   */
-  bool ReducerPatternDetect(PrimExpr init, PrimExpr update);
 };
 
 class Schedule : public ObjectRef {

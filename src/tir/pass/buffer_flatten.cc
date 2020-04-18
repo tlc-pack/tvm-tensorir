@@ -45,13 +45,17 @@ class ReductionTransformer : public StmtExprMutator {
     return res;
   }
 
-  PrimExpr VisitExpr_(const ReductionNode* op) override {
+  Stmt VisitStmt_(const ReductionNode* op) override {
+    const auto& init = op->comm_reducer->identity_element[0];
+    const auto* lhs = DowncastPtr<BufferLoadNode>(op->lhs.operator->());
     PrimExpr cond = make_const(DataType::Bool(1), true);
     for (const auto& iter_var : current_block_->iter_vars)
       if (iter_var->iter_type == IterVarType::kCommReduce) {
         cond = cond && (iter_var == 0);
       }
-    return if_then_else(cond, op->init, op->update);
+    return BufferStore(lhs->buffer,
+                       if_then_else(cond, op->apply_combiner(init, op->rhs), op->apply_combiner()),
+                       lhs->indices);
   }
 
  private:

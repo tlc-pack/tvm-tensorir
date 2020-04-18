@@ -336,32 +336,44 @@ class BlockRealize : public Stmt {
 
 /*!
  * \brief A reduction expression stores both the init expression and update expression
+ *        When creating a reduction node, the constructor will try to do reducer
+ *        pattern matching for init and update expressions. If successful, we can
+ *        get left and right expressions.
  */
-class ReductionNode : public PrimExprNode {
+class ReductionNode : public StmtNode {
  public:
-  /*! \brief init expression */
-  PrimExpr init;
-  /*! \brief update expression */
-  PrimExpr update;
+  /*! \brief comm reducer used in reduction */
+  CommReducer comm_reducer;
+  /*! \brief lhs expression */
+  PrimExpr lhs;
+  /*! \brief rhs expression */
+  PrimExpr rhs;
 
   void VisitAttrs(AttrVisitor* v) {
-    v->Visit("init", &init);
-    v->Visit("update", &update);
+    v->Visit("lhs", &lhs);
+    v->Visit("rhs", &rhs);
   }
 
+  /*! \brief apply combiner in comm_reducer on lhs and rhs */
+  PrimExpr apply_combiner() const;
+  PrimExpr apply_combiner(PrimExpr lhs, PrimExpr rhs) const;
+
+  static Stmt make_from_init_update(const Array<CommReducer>& patterns,
+                                    PrimExpr init, BufferStore update);
+
   static constexpr const char* _type_key = "Reduction";
-  TVM_DECLARE_FINAL_OBJECT_INFO(ReductionNode, PrimExprNode);
+  TVM_DECLARE_FINAL_OBJECT_INFO(ReductionNode, StmtNode);
 };
 
 /*!
  * \brief Managed reference to ReductionNode
  * \sa ReductionNode
  */
-class Reduction : public PrimExpr {
+class Reduction : public Stmt {
  public:
-  TVM_DLL explicit Reduction(PrimExpr init, PrimExpr update);
+  TVM_DLL explicit Reduction(CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs);
 
-  TVM_DEFINE_OBJECT_REF_METHODS(Reduction, PrimExpr, ReductionNode);
+  TVM_DEFINE_OBJECT_REF_METHODS(Reduction, Stmt, ReductionNode);
 };
 
 /*!
@@ -382,6 +394,8 @@ class FunctionNode : public BaseFuncNode {
   Array<Var> params;
   /*! \brief Parameter shape and type constraints */
   Map<Var, Buffer> buffer_map;
+  /*! \brief User defined reducer patterns */
+  Array<CommReducer> reducers;
   /*! \brief Function body */
   Stmt body;
   /*! \brief Function name */
@@ -390,6 +404,7 @@ class FunctionNode : public BaseFuncNode {
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("params", &params);
     v->Visit("buffer_map", &buffer_map);
+    v->Visit("reducers", &reducers);
     v->Visit("body", &body);
     v->Visit("name", &name);
   }
@@ -402,6 +417,7 @@ class Function : public BaseFunc {
  public:
   TVM_DLL explicit Function(Array<Var> params,
                             Map<Var, Buffer> buffer_map,
+                            Array<CommReducer> reducers,
                             std::string name,
                             Stmt body);
 

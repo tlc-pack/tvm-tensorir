@@ -992,19 +992,3 @@ class BufferLoad(PrimExprWithOp):
     def __init__(self, dtype, buffer, indices):
         self.__init_handle_by_constructor__(
             _ffi_api.BufferLoad, dtype, buffer, indices)
-
-
-@tvm._ffi.register_object
-class Reduction(PrimExprWithOp):
-    """Reduction node
-
-    Parameters
-    ----------
-    init : PrimExpr
-        init expression
-
-    update : PrimExpr
-        update expression
-    """
-    def __init__(self, init, update):
-        self.__init_handle_by_constructor__(_ffi_api.Reduction, init, update)

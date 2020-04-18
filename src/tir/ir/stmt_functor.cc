@@ -235,6 +235,10 @@ void StmtVisitor::VisitStmt_(const BufferStoreNode* op) {
   this->VisitExpr(op->value);
 }
 
+void StmtVisitor::VisitStmt_(const ReductionNode* op) {
+  this->VisitExpr(op->lhs);
+  this->VisitExpr(op->rhs);
+}
 
 class StmtMutator::Internal {
  public:
@@ -567,6 +571,19 @@ Stmt StmtMutator::VisitStmt_(const BufferStoreNode* op) {
     auto n = CopyOnWrite(op);
     n->value = std::move(v);
     n->indices = std::move(indices);
+    return Stmt(n);
+  }
+}
+
+Stmt StmtMutator::VisitStmt_(const ReductionNode* op) {
+  PrimExpr lhs = this->VisitExpr(op->lhs);
+  PrimExpr rhs = this->VisitExpr(op->rhs);
+  if (lhs.same_as(op->lhs) && rhs.same_as(op->rhs)) {
+    return GetRef<Stmt>(op);
+  } else {
+    auto n = CopyOnWrite(op);
+    n->lhs = std::move(lhs);
+    n->rhs = std::move(rhs);
     return Stmt(n);
   }
 }

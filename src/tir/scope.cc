@@ -120,15 +120,14 @@ bool Scope::IsReduction(const StmtSRef& block) const {
   }
 
   // Check the block body is reduction
-  const auto* body = DowncastPtr<BufferStoreNode>(n->body.operator->());
-  CHECK(body != nullptr);
-  const auto* reduction = DowncastPtr<ReductionNode>(body->value.operator->());
+  const auto* reduction = DowncastPtr<ReductionNode>(n->body.operator->());
+  const auto* lhs = DowncastPtr<BufferLoadNode>(reduction->lhs.operator->());
   CHECK(reduction != nullptr);
 
   // Check all the writing block vars are data_par
   for (const auto& iter_var : n->iter_vars)
     if (iter_var->iter_type != kDataPar)
-      for (const auto index : body->indices)
+      for (const auto index : lhs->indices)
         CHECK(!RelatedWithVar(iter_var->var, index));
 
   return true;
