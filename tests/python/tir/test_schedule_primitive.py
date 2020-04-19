@@ -291,6 +291,7 @@ def test_compute_at_fail():
     except tvm._ffi.base.TVMError as e:
         assert str(e).split(':')[-1].strip() == "Cannot satisfy dependency"
 
+
 @tvm.tir.hybrid.script
 def cache_read(a, c):
     C = buffer_bind(c, (128, 128), "float32")
@@ -310,7 +311,6 @@ def cache_read(a, c):
                            writes=[B[vi:(vi + 1), vj:(vj + 1)]],
                            reads=[AA[vi:(vi + 1), vj:(vj + 1)]], name="B"):
                     B[vi, vj] = (AA[vi, vj] * float32(2))
-        for i in range(0, 128):
             for j in range(0, 128):
                 with block({vi(0, 128): i, vj(0, 128): j},
                            writes=[C[vi:(vi + 1), vj:(vj + 1)]],
@@ -324,6 +324,10 @@ def test_cache_read():
 
     # schedule
     s = tir.create_schedule(func)
+    B = s.get_block("B")
+    C = s.get_block("C")
+    outer, inner = s.get_axes(C)
+    s.compute_at(B, outer)
     AA = s.cache_read(buffer_a, 'local')
 
     mod = tvm.tir.hybrid.create_module([cache_read])

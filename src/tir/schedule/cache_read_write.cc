@@ -27,11 +27,14 @@ namespace tvm {
 namespace tir {
 
 /*!
- * \brief Detect the insert position of  buffer copy
+ * \brief Detect the insert position of buffer copy
  * \note See comments in function cache_read and cache_write
  *       for detail rules and information
  * \param offset The offset of insert position from the block
  *        offset 0 for cache_read and 1 for cache_write
+ *        e.g the block itself locates at the n-th element of the SeqStmt,
+ *        so, the buffer copy stmt should be inserted at n+offset position
+ *        (2rd when cache_read or at 3rd when cache_write)
  */
 
 template <size_t offset>
@@ -42,6 +45,9 @@ class PositionDetector : public StmtVisitor {
       : sch_(sch), block_sref_(block_sref), related_blocks_(related_blocks) {}
 
   void VisitStmt_(const SeqStmtNode* op) final {
+    bool visited_block = false, visited_related = false;
+    std::swap(visited_block, visited_block_);
+    std::swap(visited_related, visited_related_);
     int pos = -1;
     for (size_t i = 0; i < op->size(); ++i) {
       if (pos_index_ != -1) break;
@@ -51,13 +57,18 @@ class PositionDetector : public StmtVisitor {
       if (visited_block_ && pos == -1) {
         pos = static_cast<int>(i) + offset;
       }
+    }
 
-      // Only we visited the writing block and any one of the related blocks
-      // That means that we have found the lowest ancestor
-      // of the block and any one of the related ones
-      if (visited_block_ && visited_related_) {
-        pos_index_ = pos;
-      }
+    std::swap(visited_block, visited_block_);
+    std::swap(visited_related, visited_related_);
+    visited_block_ |= visited_block;
+    visited_related_ |= visited_related;
+
+    // Only we visited the writing block and any one of the related blocks
+    // That means that we have found the lowest ancestor
+    // of the block and any one of the related ones
+    if (visited_block && visited_related) {
+      pos_index_ = pos;
     }
   }
 
@@ -68,6 +79,7 @@ class PositionDetector : public StmtVisitor {
     // Only visit current scope
     if (block_cnt_++ == 0) {
       StmtVisitor::VisitStmt_(op);
+      // handling cache_read for input buffer
       if (visited_block_ && visited_related_ && !pos_sref_.defined()) {
         pos_sref_ = sref;
         if (pos_index_ == -1) pos_index_ = 1;
@@ -181,8 +193,12 @@ class CacheRewriter : public StmtExprMutator {
         seq_node->seq.insert(seq_node->seq.begin() + insert_pos_, stmt_);
         n->body = SeqStmt(seq_node);
       } else {
-        Array<Stmt> stmts{n->body, stmt_};
-        n->body = SeqStmt(stmts);
+        if (insert_pos_ == 0) {
+          n->body = SeqStmt({stmt_, n->body});
+        } else {
+          CHECK_EQ(insert_pos_, 1);
+          n->body = SeqStmt({n->body, stmt_});
+        }
       }
       return Stmt(n);
     } else {
@@ -374,6 +390,16 @@ StmtSRef GetInnermostBlock(const ScheduleNode* sch, const Buffer& buffer) {
 }
 
 StmtSRef ScheduleNode::cache_read(const Buffer& buffer, const std::string& storage_scope) {
+/*!
+ * Check:
+ *   - check the buffer has only one writing block
+ *   - check the buffer is not a output buffer
+ *
+ * Mutate:
+ *   - allocate new cache buffer under the current scope.
+ *   - find the lowest ancestor of the block and ANY ONE of the consumers blocks.
+ *   - Copy the buffer with the necessary region.
+ */
   StmtSRef block_sref = GetInnermostBlock(this, buffer);
   StmtSRef scope_sref;
   const BlockNode* scope_block = nullptr;
@@ -441,6 +467,16 @@ StmtSRef ScheduleNode::cache_read(const Buffer& buffer, const std::string& stora
 }
 
 StmtSRef ScheduleNode::cache_write(const Buffer& buffer, const std::string& storage_scope) {
+/*!
+ * Check:
+ *   - check the buffer has only one writing block
+ *   - check the buffer is not a input buffer
+ *
+ * Mutate:
+ *   - allocate new cache buffer under the current scope.
+ *   - find the lowest ancestor of the block and ANY ONE of the producer blocks.
+ *   - Copy the buffer with the necessary region.
+ */
   StmtSRef block_sref = GetInnermostBlock(this, buffer);
   CHECK(block_sref.defined()) << "Cannot cache_write an input buffer";
 
