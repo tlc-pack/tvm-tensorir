@@ -45,7 +45,7 @@ class ReductionTransformer : public StmtExprMutator {
     return res;
   }
 
-  Stmt VisitStmt_(const ReductionNode* op) override {
+  Stmt VisitStmt_(const ReduceStepNode* op) override {
     const auto& init = op->comm_reducer->identity_element[0];
     const auto* lhs = DowncastPtr<BufferLoadNode>(op->lhs.operator->());
     PrimExpr cond = make_const(DataType::Bool(1), true);

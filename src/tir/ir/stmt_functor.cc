@@ -235,7 +235,7 @@ void StmtVisitor::VisitStmt_(const BufferStoreNode* op) {
   this->VisitExpr(op->value);
 }
 
-void StmtVisitor::VisitStmt_(const ReductionNode* op) {
+void StmtVisitor::VisitStmt_(const ReduceStepNode* op) {
   this->VisitExpr(op->lhs);
   this->VisitExpr(op->rhs);
 }
@@ -575,7 +575,7 @@ Stmt StmtMutator::VisitStmt_(const BufferStoreNode* op) {
   }
 }
 
-Stmt StmtMutator::VisitStmt_(const ReductionNode* op) {
+Stmt StmtMutator::VisitStmt_(const ReduceStepNode* op) {
   PrimExpr lhs = this->VisitExpr(op->lhs);
   PrimExpr rhs = this->VisitExpr(op->rhs);
   if (lhs.same_as(op->lhs) && rhs.same_as(op->rhs)) {

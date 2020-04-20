@@ -335,12 +335,12 @@ class BlockRealize : public Stmt {
 };
 
 /*!
- * \brief A reduction expression stores both the init expression and update expression
+ * \brief A reduction stmt stores both the init expression and update expression
  *        When creating a reduction node, the constructor will try to do reducer
  *        pattern matching for init and update expressions. If successful, we can
  *        get left and right expressions.
  */
-class ReductionNode : public StmtNode {
+class ReduceStepNode : public StmtNode {
  public:
   /*! \brief comm reducer used in reduction */
   CommReducer comm_reducer;
@@ -354,26 +354,30 @@ class ReductionNode : public StmtNode {
     v->Visit("rhs", &rhs);
   }
 
-  /*! \brief apply combiner in comm_reducer on lhs and rhs */
+  /*! \brief Apply combiner in comm_reducer on lhs and rhs.
+   *         comm_reducer contains two vars(lhs[0] and rhs[0]) and a combiner expr(result[0]).
+   *         We substitute lhs[0] with lhs and substitute rhs[0] with rhs.
+   *         If lhs and rhs is not passed, apply combiner on internal lhs and rhs.
+   */
   PrimExpr ApplyCombiner() const;
-  PrimExpr ApplyCombiner(PrimExpr lhs, PrimExpr rhs) const;
+  PrimExpr ApplyCombiner(const PrimExpr& lhs, const PrimExpr& rhs) const;
 
   static Stmt make_from_init_update(const Array<CommReducer>& patterns,
-                                    PrimExpr init, BufferStore update);
+                                    const PrimExpr& init, const BufferStore& update);
 
-  static constexpr const char* _type_key = "Reduction";
-  TVM_DECLARE_FINAL_OBJECT_INFO(ReductionNode, StmtNode);
+  static constexpr const char* _type_key = "ReduceStep";
+  TVM_DECLARE_FINAL_OBJECT_INFO(ReduceStepNode, StmtNode);
 };
 
 /*!
- * \brief Managed reference to ReductionNode
- * \sa ReductionNode
+ * \brief Managed reference to ReduceStepNode
+ * \sa ReduceStepNode
  */
-class Reduction : public Stmt {
+class ReduceStep : public Stmt {
  public:
-  TVM_DLL explicit Reduction(CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs);
+  TVM_DLL explicit ReduceStep(CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs);
 
-  TVM_DEFINE_OBJECT_REF_METHODS(Reduction, Stmt, ReductionNode);
+  TVM_DEFINE_OBJECT_REF_METHODS(ReduceStep, Stmt, ReduceStepNode);
 };
 
 /*!

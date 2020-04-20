@@ -120,7 +120,7 @@ bool Scope::IsReduction(const StmtSRef& block) const {
   }
 
   // Check the block body is reduction
-  const auto* reduction = DowncastPtr<ReductionNode>(n->body.operator->());
+  const auto* reduction = DowncastPtr<ReduceStepNode>(n->body.operator->());
   const auto* lhs = DowncastPtr<BufferLoadNode>(reduction->lhs.operator->());
   CHECK(reduction != nullptr);
 

@@ -100,7 +100,7 @@ class HybridReducer:
 
     @staticmethod
     def step(parser, node, reducer, lhs, rhs):
-        return tvm.tir.Reduction(reducer.reducer, lhs, rhs)
+        return tvm.tir.ReduceStep(reducer.reducer, lhs, rhs)
 
 
 def comm_reducer(parser, node, combiner, identity):

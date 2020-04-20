@@ -303,7 +303,12 @@ std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root) {
     CHECK_GT(seq->size(), 1);
     std::vector<Stmt> stmts;
     for (const auto& s : seq->seq) {
-      if (!s.same_as(last)) stmts.push_back(s);
+      const auto* ptr = DowncastPtr<BlockRealizeNode>(s.operator->());
+      if (ptr != nullptr) {
+        if (!ptr->block.same_as(last)) stmts.push_back(s);
+      } else {
+        if (!s.same_as(last)) stmts.push_back(s);
+      }
     }
     return SeqStmt::Flatten(stmts);
   };

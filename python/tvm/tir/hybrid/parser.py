@@ -492,7 +492,7 @@ class HybridParser(ast.NodeVisitor):
         if not isinstance(node.value, ast.Call):
             self.report_error("Unsupported Expr stmt")
         res = self.visit(node.value)
-        if isinstance(res, _stmt.Reduction):
+        if isinstance(res, _stmt.ReduceStep):
             self.scope_emitter.emit(res)
         else:
             self.report_error("Unsupported Expr stmt")

@@ -446,19 +446,19 @@ TVM_REGISTER_GLOBAL("tir.BufferAllocate")
       return BufferAllocate(buffer, scope);
     });
 
-Reduction::Reduction(CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs) {
-  ObjectPtr<ReductionNode> node = make_object<ReductionNode>();
+ReduceStep::ReduceStep(CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs) {
+  ObjectPtr<ReduceStepNode> node = make_object<ReduceStepNode>();
   node->comm_reducer = std::move(comm_reducer);
   node->lhs = std::move(lhs);
   node->rhs = std::move(rhs);
   data_ = std::move(node);
 }
 
-PrimExpr ReductionNode::ApplyCombiner() const {
+PrimExpr ReduceStepNode::ApplyCombiner() const {
   return ApplyCombiner(this->lhs, this->rhs);
 }
 
-PrimExpr ReductionNode::ApplyCombiner(PrimExpr lhs, PrimExpr rhs) const {
+PrimExpr ReduceStepNode::ApplyCombiner(const PrimExpr& lhs, const PrimExpr& rhs) const {
   CHECK_EQ(comm_reducer->lhs.size(), 1);
   CHECK_EQ(comm_reducer->rhs.size(), 1);
   CHECK_EQ(comm_reducer->result.size(), 1);
@@ -485,31 +485,31 @@ std::tuple<bool, PrimExpr, PrimExpr> ReducerMatched(const CommReducer& reducer,
                          pattern_matcher.Eval(reducer->rhs[0]));
 }
 
-Stmt ReductionNode::make_from_init_update(const Array<CommReducer>& patterns,
-                                          PrimExpr init, BufferStore update) {
+Stmt ReduceStepNode::make_from_init_update(const Array<CommReducer>& patterns,
+                                           const PrimExpr& init, const BufferStore& update) {
   const auto& lhs = BufferLoad(update->buffer->dtype, update->buffer, update->indices);
   // Check user defined patterns
   for (const auto& reducer : patterns) {
     const auto& res = ReducerMatched(reducer, init, update->value);
     if (std::get<0>(res) && Equal(lhs, std::get<1>(res))) {
-      return Reduction(reducer, std::get<1>(res), std::get<2>(res));
+      return ReduceStep(reducer, std::get<1>(res), std::get<2>(res));
     }
   }
   // Check default patterns
   for (const auto& reducer : default_reducer::default_reducers) {
     const auto& res = ReducerMatched(reducer.GetReducer(init.dtype()), init, update->value);
     if (std::get<0>(res) && Equal(lhs, std::get<1>(res))) {
-      return Reduction(reducer.GetReducer(init.dtype()), std::get<1>(res), std::get<2>(res));
+      return ReduceStep(reducer.GetReducer(init.dtype()), std::get<1>(res), std::get<2>(res));
     }
   }
   LOG(FATAL) << "No reducer pattern matched for " << init << " " << update;
-  return NullValue<Reduction>();
+  return NullValue<ReduceStep>();
 }
 
-TVM_REGISTER_GLOBAL("tir.Reduction")
-.set_body_typed<Reduction(CommReducer, PrimExpr, PrimExpr)>(
+TVM_REGISTER_GLOBAL("tir.ReduceStep")
+.set_body_typed<ReduceStep(CommReducer, PrimExpr, PrimExpr)>(
     [](CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs) {
-      return Reduction(comm_reducer, lhs, rhs);
+      return ReduceStep(comm_reducer, lhs, rhs);
     });
 
 Function::Function(Array<Var> params,
@@ -1029,7 +1029,7 @@ TVM_REGISTER_NODE_TYPE(BufferAllocateNode);
 TVM_REGISTER_NODE_TYPE(LoopNode);
 TVM_REGISTER_NODE_TYPE(BlockNode);
 TVM_REGISTER_NODE_TYPE(BlockRealizeNode);
-TVM_REGISTER_NODE_TYPE(ReductionNode);
+TVM_REGISTER_NODE_TYPE(ReduceStepNode);
 TVM_REGISTER_NODE_TYPE(FunctionNode);
 
 }  // namespace tir

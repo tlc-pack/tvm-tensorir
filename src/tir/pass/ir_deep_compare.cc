@@ -240,7 +240,6 @@ class IRDeepCompare :
                        return CompareAnnotation(a, b);
                      }) != 0) return;
     if (CompareStmt(op->body, rhs->body) != 0) return;
-    if (CompareString(op->tag, rhs->tag) != 0) return;
   }
 
   void VisitStmt_(const BlockRealizeNode* op, const Stmt& other) final {

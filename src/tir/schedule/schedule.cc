@@ -847,7 +847,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
 
   // Mutate
   // Create init stmt, init block
-  const auto* reduction = DowncastPtr<ReductionNode>(block->body.operator->());
+  const auto* reduction = DowncastPtr<ReduceStepNode>(block->body.operator->());
   const auto* lhs = DowncastPtr<BufferLoadNode>(reduction->lhs.operator->());
   const auto& init_stmt =
       BufferStore(lhs->buffer, reduction->comm_reducer->identity_element[0], lhs->indices);
@@ -967,17 +967,19 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   // Mutate
   // Delete init block and its single-branched ancestors
   const auto& removed = RemoveLeaf(init_sref, scope_root);
-  std::cout << removed.first << " " << removed.second << std::endl;
   this->Replace(lca, removed.second);
 
   // Change the update block to reduction block
   auto merged_block = make_object<BlockNode>(*update);
-  merged_block->body = ReductionNode::make_from_init_update(this->func->reducers,
-                                                            init_body->value,
-                                                            GetRef<BufferStore>(update_body));
+  merged_block->body = ReduceStepNode::make_from_init_update(this->func->reducers,
+                                                             init_body->value,
+                                                             GetRef<BufferStore>(update_body));
   Map<Block, Block> block_map;
   block_map.Set(Block(merged_block), GetRef<Block>(update));
   this->Replace(update_sref, Block(merged_block), block_map);
+
+  // update scope information
+  DependencyAnalyzer(this->stmt2ref, &this->scopes_, false)(GetRef<Stmt>(scope_root->node));
 }
 
 StmtSRef::StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index) {

@@ -42,7 +42,7 @@ class ReducerCollector : public StmtExprVisitor {
       : reducer_map(reducer_map) {}
 
  protected:
-  void VisitStmt_(const ReductionNode* op) override {
+  void VisitStmt_(const ReduceStepNode* op) override {
     auto it = reducer_map->find(op->comm_reducer.get());
     if (it == reducer_map->end()) {
       (*reducer_map)[op->comm_reducer.get()] = reducer_map->size();
@@ -152,7 +152,7 @@ class TIRHybridPrinter :
   Doc VisitStmt_(const LoopNode* op) override;
   Doc VisitStmt_(const BufferAllocateNode* op) override;
   Doc VisitStmt_(const BufferStoreNode* op) override;
-  Doc VisitStmt_(const ReductionNode* op) override;
+  Doc VisitStmt_(const ReduceStepNode* op) override;
   Doc VisitStmtDefault_(const Object* op) override;
 
   /*!
@@ -288,7 +288,7 @@ Doc TIRHybridPrinter::VisitExpr_(const BufferLoadNode* op) {
   return doc;
 }
 
-Doc TIRHybridPrinter::VisitStmt_(const ReductionNode* op) {
+Doc TIRHybridPrinter::VisitStmt_(const ReduceStepNode* op) {
   Doc doc;
   doc << "reducer" + std::to_string(reducer_map[op->comm_reducer.get()]) << ".step(";
   doc << Print(op->lhs) << ", " << Print(op->rhs) << ")";

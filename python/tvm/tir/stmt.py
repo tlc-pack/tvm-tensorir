@@ -526,7 +526,7 @@ class BufferAllocate(Stmt):
 
 
 @tvm._ffi.register_object
-class Reduction(Stmt):
+class ReduceStep(Stmt):
     """Reduction node
 
     Parameters
@@ -541,7 +541,7 @@ class Reduction(Stmt):
         rhs expression
     """
     def __init__(self, comm_reducer, lhs, rhs):
-        self.__init_handle_by_constructor__(_ffi_api.Reduction, comm_reducer, lhs, rhs)
+        self.__init_handle_by_constructor__(_ffi_api.ReduceStep, comm_reducer, lhs, rhs)
 
 
 @tvm._ffi.register_object

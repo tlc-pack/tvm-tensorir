@@ -176,6 +176,32 @@ class SRefValidator : public StmtVisitor {
   }
 };
 
+/*!
+ * \brief PrimExpr pattern matcher.
+ *
+ * It is different from the pattern matcher in arith/pattern_match.h, which is dedicated
+ * for compile-time constant patterns. This pattern matcher can work on dynamic user-specic
+ * patterns.
+ *
+ * The code below shows how to use the pattern matcher.
+ *
+ * \code
+ *
+ * Var x("x"), y("y");
+ * const auto& pattern = x + y; // use PrimExpr to declare patterns
+ *
+ * // expr = C[i,j] + A[i,k]*B[k,j], which is the expr we want to match
+ * // x, y are holes that can be filled with
+ * PatternMatcher pattern_matcher(expr, {x, y});
+ * pattern_matcher(pattern);
+ *
+ * if (pattern_matcher.Success()) {
+ *   pattern_matcher.Eval(x) // C[i,j]
+ *   pattern_matcher.Eval(y) // A[i,k]*B[k,j]
+ * }
+ *
+ * \endcode
+ */
 class PatternMatcher : public ExprVisitor {
  public:
   explicit PatternMatcher(const PrimExpr& expr_to_match, const std::vector<Var>& holes)
@@ -232,6 +258,7 @@ class PatternMatcher : public ExprVisitor {
   std::unordered_map<const VarNode*, PrimExpr> filled_map_;
 };
 
+/*! \brief namespace for default reducer patterns */
 namespace default_reducer {
 
 class DefaultReducer {
@@ -254,9 +281,9 @@ class DefaultReducer {
 
 static DefaultReducer default_reducers[4] = {
     DefaultReducer([](const Var& x, const Var& y) { return x + y; },
-                   [](DataType dtype) { return IntImm(dtype, 0); }),
+                   [](DataType dtype) { return make_const(dtype, 0); }),
     DefaultReducer([](const Var& x, const Var& y) { return x * y; },
-                   [](DataType dtype) { return IntImm(dtype, 1); }),
+                   [](DataType dtype) { return make_const(dtype, 1); }),
     DefaultReducer([](const Var& x, const Var& y) { return min(x, y); }, max_value),
     DefaultReducer([](const Var& x, const Var& y) { return max(x, y); }, min_value)
 };
