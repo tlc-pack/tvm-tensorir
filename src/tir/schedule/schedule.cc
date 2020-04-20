@@ -839,7 +839,8 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
     for (size_t i = 0; i < block->iter_vars.size(); ++i) {
       if (block->iter_vars[i]->iter_type == IterVarType::kCommReduce) {
         CHECK(!RelatedWithVar(block->iter_vars[i]->var, br->binding_values[i]))
-          << "decompose_reduction expect the loop to be higher than all the loops related to reduce block var";
+          << "decompose_reduction expect the loop to be higher "
+             "than all the loops related to reduce block var";
       }
     }
   }

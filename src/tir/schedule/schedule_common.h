@@ -28,6 +28,8 @@
 #include <vector>
 #include <unordered_set>
 #include <unordered_map>
+#include <utility>
+#include <algorithm>
 
 namespace tvm {
 namespace tir {

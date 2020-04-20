@@ -98,6 +98,7 @@ class HybridReducer:
         self.reducer = tvm.tir.CommReducer([self.combiner.args[0]], [self.combiner.args[1]],
                                            [self.combiner.body], [self.identity])
 
+    @staticmethod
     def step(parser, node, reducer, lhs, rhs):
         return tvm.tir.Reduction(reducer.reducer, lhs, rhs)
 
@@ -120,4 +121,4 @@ def comm_reducer(parser, node, combiner, identity):
             parser.reducers.append(res.reducer)
             return res
     parser.report_error("comm_reducer expect a 2-argument lambda function as first argument")
-
+    return None
