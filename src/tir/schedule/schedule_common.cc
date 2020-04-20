@@ -326,5 +326,235 @@ std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root) {
   }
 }
 
+void PatternMatcher::VisitExpr_(const VarNode* op) {
+  auto it = filled_map_.find(op);
+  CHECK(it != filled_map_.end()) << "Unknown pattern variable";
+  if (it->second.defined()) {
+    if (it->second.same_as(expr_to_match_) || Equal(it->second, expr_to_match_)) return;
+    match_success_ = false;
+  } else {
+    it->second = expr_to_match_;
+  }
+}
+
+void PatternMatcher::VisitExpr_(const LoadNode *op) {
+  const auto* ptr = DowncastPtr<LoadNode>(expr_to_match_.operator->());
+  if (ptr == nullptr) {
+    match_success_ = false;
+  } else {
+    if (!op->buffer_var.same_as(ptr->buffer_var)) {
+      match_success_ = false;
+    } else {
+      PrimExpr tmp = expr_to_match_;
+      expr_to_match_ = ptr->predicate;
+      VisitExpr(op->predicate);
+      expr_to_match_ = ptr->index;
+      VisitExpr(op->index);
+      std::swap(expr_to_match_, tmp);
+    }
+  }
+}
+
+void PatternMatcher::VisitExpr_(const LetNode *op) {
+  const auto* ptr = DowncastPtr<LetNode>(expr_to_match_.operator->());
+  if (ptr == nullptr) {
+    match_success_ = false;
+  } else {
+    PrimExpr tmp = expr_to_match_;
+    expr_to_match_ = ptr->var;
+    VisitExpr(op->var);
+    expr_to_match_ = ptr->value;
+    VisitExpr(op->value);
+    expr_to_match_ = ptr->body;
+    VisitExpr(op->body);
+    std::swap(expr_to_match_, tmp);
+  }
+}
+
+#define TVM_DECLARE_PATTERN_MATCHER_BIN_OP(OpName)                       \
+  void PatternMatcher::VisitExpr_(const OpName* op) {                    \
+    const auto* ptr = DowncastPtr<OpName>(expr_to_match_.operator->());  \
+    if (ptr == nullptr) {                                                \
+      match_success_ = false;                                            \
+    } else {                                                             \
+      PrimExpr current = expr_to_match_;                                 \
+      expr_to_match_ = ptr->a;                                           \
+      VisitExpr(op->a);                                                  \
+      expr_to_match_ = ptr->b;                                           \
+      VisitExpr(op->b);                                                  \
+      std::swap(expr_to_match_, current);                                \
+    }                                                                    \
+  }
+
+TVM_DECLARE_PATTERN_MATCHER_BIN_OP(AddNode);
+TVM_DECLARE_PATTERN_MATCHER_BIN_OP(SubNode);
+TVM_DECLARE_PATTERN_MATCHER_BIN_OP(MulNode);
+TVM_DECLARE_PATTERN_MATCHER_BIN_OP(DivNode);
+TVM_DECLARE_PATTERN_MATCHER_BIN_OP(ModNode);
+TVM_DECLARE_PATTERN_MATCHER_BIN_OP(EQNode);
+TVM_DECLARE_PATTERN_MATCHER_BIN_OP(NENode);
+TVM_DECLARE_PATTERN_MATCHER_BIN_OP(LTNode);
+TVM_DECLARE_PATTERN_MATCHER_BIN_OP(LENode);
+TVM_DECLARE_PATTERN_MATCHER_BIN_OP(GTNode);
+TVM_DECLARE_PATTERN_MATCHER_BIN_OP(GENode);
+TVM_DECLARE_PATTERN_MATCHER_BIN_OP(AndNode);
+TVM_DECLARE_PATTERN_MATCHER_BIN_OP(OrNode);
+TVM_DECLARE_PATTERN_MATCHER_BIN_OP(FloorDivNode);
+TVM_DECLARE_PATTERN_MATCHER_BIN_OP(FloorModNode);
+TVM_DECLARE_PATTERN_MATCHER_BIN_OP(MinNode);
+TVM_DECLARE_PATTERN_MATCHER_BIN_OP(MaxNode);
+
+void PatternMatcher::VisitExpr_(const CallNode* op) {
+  const auto* ptr = DowncastPtr<CallNode>(expr_to_match_.operator->());
+  if (ptr == nullptr) {
+    match_success_ = false;
+  } else {
+    if (op->name != ptr->name || op->call_type != ptr->call_type || !op->func.same_as(ptr->func)
+        || op->value_index != ptr->value_index || op->args.size() != ptr->args.size()) {
+      match_success_ = false;
+    } else {
+      PrimExpr tmp = expr_to_match_;
+      for (size_t i = 0; i < op->args.size(); ++i) {
+        expr_to_match_ = ptr->args[i];
+        VisitExpr(op->args[i]);
+      }
+      std::swap(expr_to_match_, tmp);
+    }
+  }
+}
+
+void PatternMatcher::VisitExpr_(const CastNode* op) {
+  const auto* ptr = DowncastPtr<CastNode>(expr_to_match_.operator->());
+  if (ptr == nullptr) {
+    match_success_ = false;
+  } else {
+    if (!runtime::TypeEqual(op->dtype, ptr->dtype)) {
+      match_success_ = false;
+    } else {
+      PrimExpr tmp = expr_to_match_;
+      expr_to_match_ = ptr->value;
+      VisitExpr(op->value);
+      std::swap(expr_to_match_, tmp);
+    }
+  }
+}
+
+void PatternMatcher::VisitExpr_(const NotNode* op) {
+  const auto* ptr = DowncastPtr<NotNode>(expr_to_match_.operator->());
+  if (ptr == nullptr) {
+    match_success_ = false;
+  } else {
+    PrimExpr tmp = expr_to_match_;
+    expr_to_match_ = ptr->a;
+    VisitExpr(op->a);
+    std::swap(expr_to_match_, tmp);
+  }
+}
+
+void PatternMatcher::VisitExpr_(const SelectNode* op) {
+  const auto* ptr = DowncastPtr<SelectNode>(expr_to_match_.operator->());
+  if (ptr == nullptr) {
+    match_success_ = false;
+  } else {
+    PrimExpr tmp = expr_to_match_;
+    expr_to_match_ = ptr->condition;
+    VisitExpr(op->condition);
+    expr_to_match_ = ptr->true_value;
+    VisitExpr(op->true_value);
+    expr_to_match_ = ptr->false_value;
+    VisitExpr(op->false_value);
+    std::swap(expr_to_match_, tmp);
+  }
+}
+
+void PatternMatcher::VisitExpr_(const RampNode* op) {
+  const auto* ptr = DowncastPtr<RampNode>(expr_to_match_.operator->());
+  if (ptr == nullptr) {
+    match_success_ = false;
+  } else {
+    if (op->lanes != ptr->lanes) {
+      match_success_ = false;
+    } else {
+      PrimExpr tmp = expr_to_match_;
+      expr_to_match_ = ptr->base;
+      VisitExpr(op->base);
+      expr_to_match_ = ptr->stride;
+      VisitExpr(op->stride);
+      std::swap(expr_to_match_, tmp);
+    }
+  }
+}
+
+void PatternMatcher::VisitExpr_(const BroadcastNode* op) {
+  const auto* ptr = DowncastPtr<RampNode>(expr_to_match_.operator->());
+  if (ptr == nullptr) {
+    match_success_ = false;
+  } else {
+    if (op->lanes != ptr->lanes) {
+      match_success_ = false;
+    } else {
+      PrimExpr tmp = expr_to_match_;
+      expr_to_match_ = ptr->base;
+      VisitExpr(op->value);
+      std::swap(expr_to_match_, tmp);
+    }
+  }
+}
+
+void PatternMatcher::VisitExpr_(const ShuffleNode *op) {
+  const auto* ptr = DowncastPtr<ShuffleNode>(expr_to_match_.operator->());
+  if (ptr == nullptr) {
+    match_success_ = false;
+  } else {
+    if (op->vectors.size() != ptr->vectors.size() || op->indices.size() != ptr->indices.size()) {
+      match_success_ = false;
+    } else {
+      PrimExpr tmp = expr_to_match_;
+      for (size_t i = 0; i < op->indices.size(); ++i) {
+        expr_to_match_ = ptr->indices[i];
+        VisitExpr(op->indices[i]);
+      }
+      for (size_t i = 0; i < op->vectors.size(); ++i) {
+        expr_to_match_ = ptr->vectors[i];
+        VisitExpr(op->vectors[i]);
+      }
+      std::swap(expr_to_match_, tmp);
+    }
+  }
+}
+
+void PatternMatcher::VisitExpr_(const IntImmNode* op) {
+  const auto* ptr = DowncastPtr<IntImmNode>(expr_to_match_.operator->());
+  match_success_ = ptr != nullptr && op->value == ptr->value;
+}
+
+void PatternMatcher::VisitExpr_(const FloatImmNode* op) {
+  const auto* ptr = DowncastPtr<FloatImmNode>(expr_to_match_.operator->());
+  match_success_ = ptr != nullptr && op->value == ptr->value;
+}
+
+void PatternMatcher::VisitExpr_(const StringImmNode* op) {
+  const auto* ptr = DowncastPtr<StringImmNode>(expr_to_match_.operator->());
+  match_success_ = ptr != nullptr && op->value == ptr->value;
+}
+
+void PatternMatcher::VisitExpr_(const BufferLoadNode *op) {
+  const auto* ptr = DowncastPtr<BufferLoadNode>(expr_to_match_.operator->());
+  if (ptr == nullptr) {
+    match_success_ = false;
+  } else {
+    if (!op->buffer.same_as(ptr->buffer) || op->indices.size() != ptr->indices.size()) {
+      match_success_ = false;
+    } else {
+      PrimExpr tmp = expr_to_match_;
+      for (size_t i = 0; i < op->indices.size(); ++i) {
+        expr_to_match_ = ptr->indices[i];
+        VisitExpr(op->indices[i]);
+      }
+      std::swap(expr_to_match_, tmp);
+    }
+  }
+}
+
 }  // namespace tir
 }  // namespace tvm

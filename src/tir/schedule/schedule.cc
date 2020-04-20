@@ -899,7 +899,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
   // Change the Reduction block to update block
   auto update_block = make_object<BlockNode>(*block);
   update_block->body =
-      BufferStore(lhs->buffer, reduction->apply_combiner(), lhs->indices);
+      BufferStore(lhs->buffer, reduction->ApplyCombiner(), lhs->indices);
   update_block->tag = block->tag + "_update";
   Map<Block, Block> block_map;
   block_map.Set(Block(update_block), GetRef<Block>(block));

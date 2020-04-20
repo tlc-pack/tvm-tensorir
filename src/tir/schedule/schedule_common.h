@@ -174,6 +174,93 @@ class SRefValidator : public StmtVisitor {
   }
 };
 
+class PatternMatcher : public ExprVisitor {
+ public:
+  explicit PatternMatcher(const PrimExpr& expr_to_match, const std::vector<Var>& holes)
+      : expr_to_match_(expr_to_match) {
+    for (const auto& hole : holes)
+      filled_map_[hole.operator->()] = NullValue<PrimExpr>();
+  }
+
+  void VisitExpr_(const VarNode* op) final;
+  void VisitExpr_(const LoadNode* op) final;
+  void VisitExpr_(const LetNode* op) final;
+  void VisitExpr_(const CallNode* op) final;
+  void VisitExpr_(const AddNode* op) final;
+  void VisitExpr_(const SubNode* op) final;
+  void VisitExpr_(const MulNode* op) final;
+  void VisitExpr_(const DivNode* op) final;
+  void VisitExpr_(const ModNode* op) final;
+  void VisitExpr_(const FloorDivNode* op) final;
+  void VisitExpr_(const FloorModNode* op) final;
+  void VisitExpr_(const MinNode* op) final;
+  void VisitExpr_(const MaxNode* op) final;
+  void VisitExpr_(const EQNode* op) final;
+  void VisitExpr_(const NENode* op) final;
+  void VisitExpr_(const LTNode* op) final;
+  void VisitExpr_(const LENode* op) final;
+  void VisitExpr_(const GTNode* op) final;
+  void VisitExpr_(const GENode* op) final;
+  void VisitExpr_(const AndNode* op) final;
+  void VisitExpr_(const OrNode* op) final;
+  void VisitExpr_(const CastNode* op) final;
+  void VisitExpr_(const NotNode* op) final;
+  void VisitExpr_(const SelectNode* op) final;
+  void VisitExpr_(const RampNode* op) final;
+  void VisitExpr_(const BroadcastNode* op) final;
+  void VisitExpr_(const ShuffleNode* op) final;
+  void VisitExpr_(const IntImmNode* op) final;
+  void VisitExpr_(const FloatImmNode* op) final;
+  void VisitExpr_(const StringImmNode* op) final;
+  void VisitExpr_(const BufferLoadNode* op) final;
+
+  PrimExpr Eval(const Var& var) {
+    auto it = filled_map_.find(var.operator->());
+    CHECK(it != filled_map_.end()) << "Unknown pattern variable";
+    return it->second;
+  }
+
+  bool Success() {
+    return match_success_;
+  }
+
+ private:
+  bool match_success_{true};
+  PrimExpr expr_to_match_;
+  std::unordered_map<const VarNode*, PrimExpr> filled_map_;
+};
+
+namespace default_reducer {
+
+class DefaultReducer {
+ public:
+  explicit DefaultReducer(const std::function<PrimExpr(Var, Var)>& combiner,
+                          std::function<PrimExpr(DataType)> identity)
+      : lhs_("x"), rhs_("y"), identity_(std::move(identity)) {
+    result_  = combiner(lhs_, rhs_);
+  }
+
+  CommReducer GetReducer(DataType dtype) const {
+    return CommReducerNode::make({lhs_}, {rhs_}, {result_}, {identity_(dtype)});
+  }
+
+ private:
+  Var lhs_, rhs_;
+  PrimExpr result_;
+  const std::function<PrimExpr(DataType)> identity_;
+};
+
+static DefaultReducer default_reducers[4] = {
+    DefaultReducer([](const Var& x, const Var& y) { return x + y; },
+                   [](DataType dtype) { return IntImm(dtype, 0); }),
+    DefaultReducer([](const Var& x, const Var& y) { return x * y; },
+                   [](DataType dtype) { return IntImm(dtype, 1); }),
+    DefaultReducer([](const Var& x, const Var& y) { return min(x, y); }, max_value),
+    DefaultReducer([](const Var& x, const Var& y) { return max(x, y); }, min_value)
+};
+
+}  // namespace default_reducer
+
 }  // namespace tir
 }  // namespace tvm
 #endif  // TVM_TIR_SCHEDULE_SCHEDULE_COMMON_H_

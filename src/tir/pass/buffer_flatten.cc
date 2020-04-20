@@ -54,7 +54,7 @@ class ReductionTransformer : public StmtExprMutator {
         cond = cond && (iter_var == 0);
       }
     return BufferStore(lhs->buffer,
-                       if_then_else(cond, op->apply_combiner(init, op->rhs), op->apply_combiner()),
+                       if_then_else(cond, op->ApplyCombiner(init, op->rhs), op->ApplyCombiner()),
                        lhs->indices);
   }
 

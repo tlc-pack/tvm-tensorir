@@ -24,6 +24,7 @@
 #include <tvm/tir/stmt.h>
 #include <tvm/tir/ir_pass.h>
 #include "../pass/ir_util.h"
+#include "../schedule/schedule_common.h"
 
 namespace tvm {
 namespace tir {
@@ -453,11 +454,11 @@ Reduction::Reduction(CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs) {
   data_ = std::move(node);
 }
 
-PrimExpr ReductionNode::apply_combiner() const {
-  return apply_combiner(this->lhs, this->rhs);
+PrimExpr ReductionNode::ApplyCombiner() const {
+  return ApplyCombiner(this->lhs, this->rhs);
 }
 
-PrimExpr ReductionNode::apply_combiner(PrimExpr lhs, PrimExpr rhs) const {
+PrimExpr ReductionNode::ApplyCombiner(PrimExpr lhs, PrimExpr rhs) const {
   CHECK_EQ(comm_reducer->lhs.size(), 1);
   CHECK_EQ(comm_reducer->rhs.size(), 1);
   CHECK_EQ(comm_reducer->result.size(), 1);
@@ -473,22 +474,36 @@ PrimExpr ReductionNode::apply_combiner(PrimExpr lhs, PrimExpr rhs) const {
   return Substitute(comm_reducer->result[0], vmap);
 }
 
-bool ReducerMatched(const CommReducer& reducer, const PrimExpr& lhs,
-                    const PrimExpr& init, const PrimExpr update) {
-  if (!Equal(reducer->identity_element[0], init)) return false;
-
+std::tuple<bool, PrimExpr, PrimExpr> ReducerMatched(const CommReducer& reducer,
+                                                    const PrimExpr& init, const PrimExpr update) {
+  if (!Equal(reducer->identity_element[0], init))
+    return std::make_tuple(false, NullValue<PrimExpr>(), NullValue<PrimExpr>());
+  PatternMatcher pattern_matcher(update, {reducer->lhs[0], reducer->rhs[0]});
+  pattern_matcher(reducer->result[0]);
+  return std::make_tuple(pattern_matcher.Success(),
+                         pattern_matcher.Eval(reducer->lhs[0]),
+                         pattern_matcher.Eval(reducer->rhs[0]));
 }
 
 Stmt ReductionNode::make_from_init_update(const Array<CommReducer>& patterns,
                                           PrimExpr init, BufferStore update) {
   const auto& lhs = BufferLoad(update->buffer->dtype, update->buffer, update->indices);
   // Check user defined patterns
-  for (const auto& reducer : patterns)
-    if (ReducerMatched(reducer, lhs, init, update->value)) {
-
+  for (const auto& reducer : patterns) {
+    const auto& res = ReducerMatched(reducer, init, update->value);
+    if (std::get<0>(res) && Equal(lhs, std::get<1>(res))) {
+      return Reduction(reducer, std::get<1>(res), std::get<2>(res));
     }
+  }
   // Check default patterns
-
+  for (const auto& reducer : default_reducer::default_reducers) {
+    const auto& res = ReducerMatched(reducer.GetReducer(init.dtype()), init, update->value);
+    if (std::get<0>(res) && Equal(lhs, std::get<1>(res))) {
+      return Reduction(reducer.GetReducer(init.dtype()), std::get<1>(res), std::get<2>(res));
+    }
+  }
+  LOG(FATAL) << "No reducer pattern matched for " << init << " " << update;
+  return NullValue<Reduction>();
 }
 
 TVM_REGISTER_GLOBAL("tir.Reduction")

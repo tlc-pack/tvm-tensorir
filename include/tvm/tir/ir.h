@@ -355,8 +355,8 @@ class ReductionNode : public StmtNode {
   }
 
   /*! \brief apply combiner in comm_reducer on lhs and rhs */
-  PrimExpr apply_combiner() const;
-  PrimExpr apply_combiner(PrimExpr lhs, PrimExpr rhs) const;
+  PrimExpr ApplyCombiner() const;
+  PrimExpr ApplyCombiner(PrimExpr lhs, PrimExpr rhs) const;
 
   static Stmt make_from_init_update(const Array<CommReducer>& patterns,
                                     PrimExpr init, BufferStore update);
