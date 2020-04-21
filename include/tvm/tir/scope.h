@@ -118,7 +118,7 @@ class Scope : public ObjectRef {
    */
   bool IsComplete(const StmtSRef& block) const;
   /*!
-   * \brief Check whether the block is a complete block
+   * \brief Check whether the block is a dominate block
    * \note A block is complete iff the block is the only producer
    *       for each tensor it produces.
    * \param block The query block

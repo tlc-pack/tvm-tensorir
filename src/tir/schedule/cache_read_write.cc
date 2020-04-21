@@ -37,12 +37,11 @@ namespace tir {
  *        (2rd when cache_read or at 3rd when cache_write)
  */
 
-template <size_t offset>
-class PositionDetector : public StmtVisitor {
+class CachePositionDetector : public StmtVisitor {
  public:
-  explicit PositionDetector(const ScheduleNode* sch, const StmtSRef& block_sref,
-                            const std::vector<StmtSRef>& related_blocks)
-      : sch_(sch), block_sref_(block_sref), related_blocks_(related_blocks) {}
+  explicit CachePositionDetector(const ScheduleNode* sch, const StmtSRef& block_sref,
+                                 const std::vector<StmtSRef>& related_blocks, const size_t offset)
+      : sch_(sch), block_sref_(block_sref), related_blocks_(related_blocks), offset_(offset) {}
 
   void VisitStmt_(const SeqStmtNode* op) final {
     bool visited_block = false, visited_related = false;
@@ -55,7 +54,7 @@ class PositionDetector : public StmtVisitor {
 
       // pos can only be assigned once when we visited the block_sref
       if (visited_block_ && pos == -1) {
-        pos = static_cast<int>(i) + offset;
+        pos = static_cast<int>(i) + offset_;
       }
     }
 
@@ -123,10 +122,8 @@ class PositionDetector : public StmtVisitor {
   bool visited_related_{false};
   // The block visiting time
   size_t block_cnt_{0};
+  size_t offset_;
 };
-
-using CacheReadDetector = PositionDetector<0>;
-using CacheWriteDetector = PositionDetector<1>;
 
 /*!
  * \brief base class for CacheReadRewriter and CacheWriteRewrite
@@ -143,7 +140,7 @@ class CacheRewriter : public StmtExprMutator {
         insert_sref_(insert_sref),
         insert_pos_(insert_pos),
         cache_allocate_(cache_allocate),
-        stmt_(stmt) {}
+        stmt_to_be_inserted_(stmt) {}
 
   Stmt VisitStmt_(const LoopNode* op) final { return VisitSRefStmt(op); }
 
@@ -163,7 +160,7 @@ class CacheRewriter : public StmtExprMutator {
 
  protected:
   const std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual>& buffer_map_;
-  Array<TensorRegion> Mutate(const Array<TensorRegion>& tensor_regions) {
+  Array<TensorRegion> UpdateBufferViaMap(const Array<TensorRegion>& tensor_regions) {
     auto fmutate = [this](const TensorRegion& tensor_region) {
       auto it = buffer_map_.find(tensor_region->buffer);
       if (it != buffer_map_.end()) {
@@ -180,6 +177,7 @@ class CacheRewriter : public StmtExprMutator {
   size_t block_visited_cnt_{0};
 
  private:
+  /*! \brief insert the copy stmt into the correct position into the seq stmt under the sref*/
   template <typename T>
   Stmt VisitSRefStmt(const T* op) {
     bool is_insert_pos = op == insert_sref_->node;
@@ -190,14 +188,14 @@ class CacheRewriter : public StmtExprMutator {
       auto n = CopyOnWrite(op);
       if (const auto* seq = n->body.template as<SeqStmtNode>()) {
         auto seq_node = CopyOnWrite(seq);
-        seq_node->seq.insert(seq_node->seq.begin() + insert_pos_, stmt_);
+        seq_node->seq.insert(seq_node->seq.begin() + insert_pos_, stmt_to_be_inserted_);
         n->body = SeqStmt(seq_node);
       } else {
         if (insert_pos_ == 0) {
-          n->body = SeqStmt({stmt_, n->body});
+          n->body = SeqStmt({stmt_to_be_inserted_, n->body});
         } else {
           CHECK_EQ(insert_pos_, 1);
-          n->body = SeqStmt({n->body, stmt_});
+          n->body = SeqStmt({n->body, stmt_to_be_inserted_});
         }
       }
       return Stmt(n);
@@ -212,7 +210,7 @@ class CacheRewriter : public StmtExprMutator {
   // The BufferAllocate for cache buffer
   const BufferAllocate& cache_allocate_;
   // The Stmt for copying between the buffer and the cache
-  const Stmt& stmt_;
+  const Stmt& stmt_to_be_inserted_;
 };
 
 /*! \brief Mutater for CacheRead */
@@ -234,7 +232,7 @@ class CacheReadRewriter : public CacheRewriter {
     if (is_scope_block) {
       ret = GetRef<Block>(op);
     } else {
-      auto reads = Mutate(op->reads);
+      auto reads = UpdateBufferViaMap(op->reads);
       if (reads.same_as(op->reads)) {
         ret = GetRef<Block>(op);
       } else {
@@ -283,7 +281,8 @@ class CacheWriteRewriter : public CacheRewriter {
     if (is_scope_block) {
       ret = GetRef<Block>(op);
     } else {
-      auto writes = Mutate(op->writes);
+      // Since cache_write changes the block, we need to update the buffer it writes
+      auto writes = UpdateBufferViaMap(op->writes);
       if (writes.same_as(op->writes)) {
         ret = GetRef<Block>(op);
       } else {
@@ -327,6 +326,8 @@ Buffer CreateCacheBuffer(const Buffer& buffer, const std::string& scope) {
  * \param read_buffer The read buffer
  * \param write_buffer The write buffer
  * \param relaxed_region The copy region
+ * \returns Stmt The Whole Stmt for buffer copying with loop nesting
+ *          Block The Copy block without loop nesting
  * */
 std::pair<Stmt, Block> GenerateCopyStmt(const Buffer& read_buffer, const Buffer& write_buffer,
                                         const TensorRegion& relaxed_region) {
@@ -390,22 +391,22 @@ StmtSRef GetInnermostBlock(const ScheduleNode* sch, const Buffer& buffer) {
 }
 
 StmtSRef ScheduleNode::cache_read(const Buffer& buffer, const std::string& storage_scope) {
-/*!
- * Check:
- *   - check the buffer has only one writing block
- *   - check the buffer is not a output buffer
- *
- * Mutate:
- *   - allocate new cache buffer under the current scope.
- *   - find the lowest ancestor of the block and ANY ONE of the consumers blocks.
- *   - Copy the buffer with the necessary region.
- */
+  /*!
+   * Check:
+   *   - check the buffer has only one writing block
+   *   - check the buffer is not a output buffer
+   *
+   * Mutate:
+   *   - allocate new cache buffer under the current scope.
+   *   - find the lowest ancestor of the block and ANY ONE of the consumers blocks.
+   *   - Copy the buffer with the necessary region.
+   */
   StmtSRef block_sref = GetInnermostBlock(this, buffer);
   StmtSRef scope_sref;
   const BlockNode* scope_block = nullptr;
   StmtSRef insert_sref;
   size_t insert_pos;
-  TensorRegion relaxed_region;
+  TensorRegion cache_region;
   if (block_sref.defined()) {
     const auto* block = DowncastPtr<BlockNode>(block_sref->node);
     CHECK(block != nullptr) << buffer << "is not a block sref";
@@ -431,12 +432,12 @@ StmtSRef ScheduleNode::cache_read(const Buffer& buffer, const std::string& stora
     CHECK(!consumers.empty());
 
     // Detector insert position
-    CacheReadDetector detector(this, block_sref, consumers);
+    CachePositionDetector detector(this, block_sref, consumers, 0);
     detector(GetRef<Stmt>(scope_block));
 
     insert_sref = detector.pos_sref_;
     insert_pos = detector.pos_index_;
-    relaxed_region = RelaxRegion(block_sref, scope_sref, block->writes[0]);
+    cache_region = RelaxRegion(block_sref, scope_sref, block->writes[0]);
   } else {
     scope_sref = root;
     scope_block = DowncastPtr<BlockNode>(scope_sref->node);
@@ -446,13 +447,13 @@ StmtSRef ScheduleNode::cache_read(const Buffer& buffer, const std::string& stora
     for (const auto& shape : buffer->shape) {
       region.push_back(Range::make_by_min_extent(0, shape));
     }
-    relaxed_region = TensorRegion(buffer, region);
+    cache_region = TensorRegion(buffer, region);
   }
 
   // Generate cache buffer
   Buffer cache_buffer = CreateCacheBuffer(buffer, storage_scope);
 
-  auto x = GenerateCopyStmt(buffer, cache_buffer, relaxed_region);
+  auto x = GenerateCopyStmt(buffer, cache_buffer, cache_region);
   Stmt stmt = x.first;
   Block cache_block = x.second;
 
@@ -467,16 +468,16 @@ StmtSRef ScheduleNode::cache_read(const Buffer& buffer, const std::string& stora
 }
 
 StmtSRef ScheduleNode::cache_write(const Buffer& buffer, const std::string& storage_scope) {
-/*!
- * Check:
- *   - check the buffer has only one writing block
- *   - check the buffer is not a input buffer
- *
- * Mutate:
- *   - allocate new cache buffer under the current scope.
- *   - find the lowest ancestor of the block and ANY ONE of the producer blocks.
- *   - Copy the buffer with the necessary region.
- */
+  /*!
+   * Check:
+   *   - check the buffer has only one writing block
+   *   - check the buffer is not a input buffer
+   *
+   * Mutate:
+   *   - allocate new cache buffer under the current scope.
+   *   - find the lowest ancestor of the block and ANY ONE of the producer blocks.
+   *   - Copy the buffer with the necessary region.
+   */
   StmtSRef block_sref = GetInnermostBlock(this, buffer);
   CHECK(block_sref.defined()) << "Cannot cache_write an input buffer";
 
@@ -497,15 +498,15 @@ StmtSRef ScheduleNode::cache_write(const Buffer& buffer, const std::string& stor
   CHECK(!producers.empty());
 
   // Detector insert position
-  CacheWriteDetector detector(this, block_sref, producers);
+  CachePositionDetector detector(this, block_sref, producers, 1);
   detector(GetRef<Stmt>(scope_block));
 
   // Generate cache buffer
   Buffer cache_buffer = CreateCacheBuffer(buffer, storage_scope);
 
-  TensorRegion relaxed_region = RelaxRegion(block_sref, scope_sref, block->writes[0]);
+  TensorRegion cache_region = RelaxRegion(block_sref, scope_sref, block->writes[0]);
 
-  auto x = GenerateCopyStmt(cache_buffer, buffer, relaxed_region);
+  auto x = GenerateCopyStmt(cache_buffer, buffer, cache_region);
   Stmt stmt = x.first;
   Block cache_block = x.second;
 
