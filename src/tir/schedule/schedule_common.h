@@ -188,12 +188,10 @@ class SRefValidator : public StmtVisitor {
  * \code
  *
  * Var x("x"), y("y");
- * const auto& pattern = x + y; // use PrimExpr to declare patterns
- *
+ * // use PrimExpr to declare patterns, x, y are holes that can be filled with
+ * PatternMatcher pattern_matcher(x + y);
  * // expr = C[i,j] + A[i,k]*B[k,j], which is the expr we want to match
- * // x, y are holes that can be filled with
- * PatternMatcher pattern_matcher(expr, {x, y});
- * pattern_matcher(pattern);
+ * pattern_matcher.Match(expr);
  *
  * if (pattern_matcher.Success()) {
  *   pattern_matcher.Eval(x) // C[i,j]
@@ -204,11 +202,7 @@ class SRefValidator : public StmtVisitor {
  */
 class PatternMatcher : public ExprVisitor {
  public:
-  explicit PatternMatcher(const PrimExpr& expr_to_match, const std::vector<Var>& holes)
-      : expr_to_match_(expr_to_match) {
-    for (const auto& hole : holes)
-      filled_map_[hole.operator->()] = NullValue<PrimExpr>();
-  }
+  explicit PatternMatcher(const PrimExpr& pattern) : pattern_(pattern) {}
 
   void VisitExpr_(const VarNode* op) final;
   void VisitExpr_(const LoadNode* op) final;
@@ -242,19 +236,27 @@ class PatternMatcher : public ExprVisitor {
   void VisitExpr_(const StringImmNode* op) final;
   void VisitExpr_(const BufferLoadNode* op) final;
 
+  void Match(const PrimExpr& expr_to_match) {
+    this->match_success_ = true;
+    this->filled_map_.clear();
+    this->expr_to_match_ = expr_to_match;
+    this->operator()(pattern_);
+  }
+
   PrimExpr Eval(const Var& var) {
     auto it = filled_map_.find(var.operator->());
     CHECK(it != filled_map_.end()) << "Unknown pattern variable";
+    CHECK(match_success_) << "Match failed";
     return it->second;
   }
 
-  bool Success() {
+  bool Success() const {
     return match_success_;
   }
 
  private:
   bool match_success_{true};
-  PrimExpr expr_to_match_;
+  PrimExpr pattern_, expr_to_match_;
   std::unordered_map<const VarNode*, PrimExpr> filled_map_;
 };
 

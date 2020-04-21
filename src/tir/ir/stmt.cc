@@ -478,8 +478,8 @@ std::tuple<bool, PrimExpr, PrimExpr> ReducerMatched(const CommReducer& reducer,
                                                     const PrimExpr& init, const PrimExpr update) {
   if (!Equal(reducer->identity_element[0], init))
     return std::make_tuple(false, NullValue<PrimExpr>(), NullValue<PrimExpr>());
-  PatternMatcher pattern_matcher(update, {reducer->lhs[0], reducer->rhs[0]});
-  pattern_matcher(reducer->result[0]);
+  PatternMatcher pattern_matcher(reducer->result[0]);
+  pattern_matcher.Match(update);
   return std::make_tuple(pattern_matcher.Success(),
                          pattern_matcher.Eval(reducer->lhs[0]),
                          pattern_matcher.Eval(reducer->rhs[0]));

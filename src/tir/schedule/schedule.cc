@@ -825,8 +825,9 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
   // Check loop_sref is block_sref's ancestor
   Array<StmtSRef> loops = GetLoopsInScope(block_sref);
   bool find = false;
-  for (const auto& loop : loops)
+  for (const auto& loop : loops) {
     find |= loop.same_as(loop_sref);
+  }
   CHECK(find) << "decompose_reduction expect the loop to be an ancestor of block";
 
   // Check block is reduction

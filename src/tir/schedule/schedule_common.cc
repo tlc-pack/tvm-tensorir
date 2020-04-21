@@ -333,12 +333,11 @@ std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root) {
 
 void PatternMatcher::VisitExpr_(const VarNode* op) {
   auto it = filled_map_.find(op);
-  CHECK(it != filled_map_.end()) << "Unknown pattern variable";
-  if (it->second.defined()) {
+  if (it == filled_map_.end()) {
+    filled_map_[op] = expr_to_match_;
+  } else {
     if (it->second.same_as(expr_to_match_) || Equal(it->second, expr_to_match_)) return;
     match_success_ = false;
-  } else {
-    it->second = expr_to_match_;
   }
 }
 
@@ -382,9 +381,9 @@ void PatternMatcher::VisitExpr_(const LetNode *op) {
     if (ptr == nullptr) {                                                \
       match_success_ = false;                                            \
     } else {                                                             \
-      PrimExpr current = expr_to_match_;                                 \
+      PrimExpr current = expr_to_match_;                                \
       expr_to_match_ = ptr->a;                                           \
-      VisitExpr(op->a);                                                  \
+      VisitExpr(op->a);                                                 \
       expr_to_match_ = ptr->b;                                           \
       VisitExpr(op->b);                                                  \
       std::swap(expr_to_match_, current);                                \
