@@ -837,9 +837,11 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
   // Check loop is higher than all the loops related to reduce block var
   const auto* br = GetBlockRealize(block_sref).operator->();
   for (const auto& loop : loops) {
+    if (loop.same_as(loop_sref)) break;
+    const auto* loop_ptr = DowncastPtr<LoopNode>(loop->node);
     for (size_t i = 0; i < block->iter_vars.size(); ++i) {
       if (block->iter_vars[i]->iter_type == IterVarType::kCommReduce) {
-        CHECK(!RelatedWithVar(block->iter_vars[i]->var, br->binding_values[i]))
+        CHECK(!RelatedWithVar(loop_ptr->loop_var, br->binding_values[i]))
           << "decompose_reduction expect the loop to be higher "
              "than all the loops related to reduce block var";
       }
@@ -956,9 +958,11 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   Array<StmtSRef> loops = GetLoopsInScope(update_sref);
   const auto* br = GetBlockRealize(update_sref).operator->();
   for (const auto& loop : loops) {
+    if (loop.same_as(lca)) break;
+    const auto* loop_ptr = DowncastPtr<LoopNode>(loop->node);
     for (size_t i = 0; i < update->iter_vars.size(); ++i) {
       if (update->iter_vars[i]->iter_type == IterVarType::kCommReduce) {
-        CHECK(!RelatedWithVar(update->iter_vars[i]->var, br->binding_values[i]))
+        CHECK(!RelatedWithVar(loop_ptr->loop_var, br->binding_values[i]))
           << "merge_reduction expect lca to be higher than all the loops related to "
                "update_block's reduce block var";
       }
