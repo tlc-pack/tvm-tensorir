@@ -220,6 +220,28 @@ class Schedule(Object):
         """
         ScheduleUnroll(self, loop)
 
+    def cache_read(self, buffer, scope):
+        """Create a cache read of original tensor for readers.
+        Parameters
+        ----------
+        buffer : Buffer
+            The buffer to be cache_read
+        scope : str
+            The storage scope
+        """
+        return ScheduleCacheRead(self, buffer, scope)
+
+    def cache_write(self, buffer, scope):
+        """Create a cache write of original tensor, before storing into tensor.
+        Parameters
+        ----------
+        buffer : Buffer
+            The buffer to be cache_written
+        scope : str
+            The storage scope
+        """
+        return ScheduleCacheWrite(self, buffer, scope)
+
     def compute_inline(self, block):
         """Mark one stage as inline, then the body of computation will be expanded and
         inserted at the address where the tensor is required.

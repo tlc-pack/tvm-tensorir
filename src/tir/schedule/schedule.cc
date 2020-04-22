@@ -395,13 +395,13 @@ class SRefCreator : public StmtVisitor {
       // in the AST and reuse those StmtSRef when node is in the AST.
       StmtSRef ref = CreateNewSRef(stmt_ptr);
       (*stmt2ref_)[stmt_ptr] = ref;
-      if (stmt_ptr->template IsInstance<BlockNode>()) {
-        DependencyAnalyzer(*stmt2ref_, block_scopes_, false)(GetRef<Stmt>(stmt_ptr));
-      }
       auto current = ref.get();
       std::swap(current, parent_);
       VisitStmt(op->body);
       std::swap(current, parent_);
+      if (stmt_ptr->template IsInstance<BlockNode>()) {
+        DependencyAnalyzer(*stmt2ref_, block_scopes_, false)(GetRef<Stmt>(stmt_ptr));
+      }
     } else {
       // Mark the border of reused StmtSRef
       used_border_parent_[stmt2ref_->at(stmt_ptr)] = parent_;
@@ -462,7 +462,6 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
   if (!func.unique()) num_copy_steps = curr_step;
   // Update the function body
   curr_step = 0;
-//  for (StmtSRefNode* ptr = ref.get(); ptr != root.get();
   for (StmtSRefNode* ptr = old_ref.get(); ptr->node != root_node;
        ptr = ptr->parent, ++curr_step) {
     StmtSRefNode* parent = ptr->parent;
@@ -920,6 +919,18 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnroll")
 .set_body_typed<void(Schedule, StmtSRef)>(
     [](Schedule schedule, StmtSRef node) {
       return schedule->unroll(node);
+    });
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheWrite")
+.set_body_typed<StmtSRef(Schedule, Buffer, std::string)>(
+    [](Schedule schedule, Buffer buffer, std::string scope) {
+      return schedule->cache_write(buffer, scope);
+    });
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheRead")
+.set_body_typed<StmtSRef(Schedule, Buffer, std::string)>(
+    [](Schedule schedule, Buffer buffer, std::string scope) {
+      return schedule->cache_read(buffer, scope);
     });
 
 // dependency graph

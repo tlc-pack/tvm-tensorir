@@ -52,7 +52,7 @@ class TIRMetaMutator:
   }
 
   /*! \brief Look up node by name_hint in symbol table */
-  ObjectRef Lookup(std::string name) {
+  ObjectRef Lookup(const std::string& name) {
     auto *array = symbol_table.as<ArrayNode>();
     CHECK(array != nullptr);
     for (size_t i = array->data.size() - 1; i >= 0; i--) {
@@ -61,7 +61,8 @@ class TIRMetaMutator:
         return map->data.at(name);
       }
     }
-    CHECK(false) << name << " not found in symbol table";
+    LOG(FATAL) << name << " not found in symbol table";
+    return ObjectRef();
   }
 
   // Allow registration to mutator.
