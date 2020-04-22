@@ -143,8 +143,8 @@ def register_func(category, origin_func, need_parser_and_node, need_return):
     for default, arg in zip(defaults, args[len(args) - len(defaults):]):
         arg_list.append((arg, default))
 
-    Registry.host_dict[category][origin_func.__name__] = \
-        func_wrapper(origin_func.__name__,
+    Registry.host_dict[category][origin_func.__qualname__] = \
+        func_wrapper(origin_func.__qualname__,
                      origin_func, arg_list,
                      need_parser_and_node=need_parser_and_node,
                      need_return=need_return)

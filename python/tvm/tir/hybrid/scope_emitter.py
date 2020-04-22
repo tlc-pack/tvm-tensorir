@@ -23,6 +23,7 @@ import tvm.tir
 from tvm.tir import expr as _expr
 from tvm.tir import stmt as _stmt
 
+from .special_stmt import HybridReducer
 
 class ScopeEmitter:
     """Maintain the stmts, allocations, and symbols of scopes"""
@@ -35,11 +36,13 @@ class ScopeEmitter:
         LoopVar = 3  # loop_var
         List = 4     # list
         Dict = 5     # dict
+        Reducer = 6  # reducer
 
     _symbol_type = {
         list: Symbol.List,
         dict: Symbol.Dict,
-        schedule.Buffer: Symbol.Buffer
+        schedule.Buffer: Symbol.Buffer,
+        HybridReducer: Symbol.Reducer
     }
 
     def __init__(self, parser):
@@ -87,6 +90,14 @@ class ScopeEmitter:
             self.symbols[0][name] = symbol
         else:
             self.symbols[-1][name] = symbol
+
+    def remove_symbol(self, name):
+        """Remove a symbol"""
+        for symbols in reversed(self.symbols):
+            if name in symbols:
+                symbols.pop(name)
+                return
+        raise RuntimeError("Internal error of hybrid parser: no symbol named" + name)
 
     def lookup_symbol(self, name):
         """Look up symbol by name"""
