@@ -376,9 +376,10 @@ class Array : public ObjectRef {
    * \param item The item to be pushed.
    */
   inline void insert(iterator pos, const T& item) {
+    size_t offset = pos - begin();
     ArrayNode* n = this->CopyOnWrite();
-    auto inner_begin = static_cast<const ArrayNode*>(data_.get())->data.begin();
-    n->data.insert(inner_begin + (pos - begin()), item);
+    auto inner_begin = n->data.begin();
+    n->data.insert(inner_begin + offset, item);
   }
   /*!
    * \brief Inserts elements from range [first, last) before pos.
@@ -388,12 +389,13 @@ class Array : public ObjectRef {
    */
   template <typename InputIt>
   void insert(iterator pos, InputIt first, InputIt last) {
+    size_t offset = pos - begin();
     ArrayNode* n = this->CopyOnWrite();
-    auto inner_begin = static_cast<const ArrayNode*>(data_.get())->data.begin();
+    auto inner_begin = n->data.begin();
     std::vector<ObjectRef> temp;
     for (auto it = first; it != last; ++it)
       temp.push_back(T(*it));
-    n->data.insert(inner_begin + (pos - begin()), temp.begin(), temp.end());
+    n->data.insert(inner_begin + offset, temp.begin(), temp.end());
   }
   /*!
    * \brief Erases the specified elements from the container.
@@ -538,7 +540,7 @@ class Map : public ObjectRef {
    *  Otherwise make a new copy of the array to ensure the current handle
    *  hold a unique copy.
    *
-   * \return Handle to the internal node container(which ganrantees to be unique)
+   * \return Handle to the internal node container(which guarantees to be unique)
    */
   inline MapNode* CopyOnWrite() {
     if (data_.get() == nullptr || !data_.unique())  {
@@ -551,11 +553,20 @@ class Map : public ObjectRef {
   /*!
    * \brief set the Map.
    * \param key The index key.
-   * \param value The value to be setted.
+   * \param value The value to be set.
    */
   inline void Set(const K& key, const V& value) {
     MapNode* n = this->CopyOnWrite();
     n->data[key] = value;
+  }
+
+  /*!
+   * \brief erase the element in the Map.
+   * \param key The index key to be erased.
+   */
+  inline void erase(const K& key) {
+    MapNode* n = this->CopyOnWrite();
+    n->data.erase(key);
   }
 
   /*! \return whether array is empty */
@@ -662,6 +673,10 @@ class Map<std::string, V, T1, T2> : public ObjectRef {
   inline void Set(const std::string& key, const V& value) {
     StrMapNode* n = this->CopyOnWrite();
     n->data[key] = value;
+  }
+  inline void erase(const std::string& key) {
+    StrMapNode* n = this->CopyOnWrite();
+    n->data.erase(key);
   }
   inline bool empty() const {
     return size() == 0;
