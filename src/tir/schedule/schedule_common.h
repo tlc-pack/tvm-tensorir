@@ -23,8 +23,13 @@
 #ifndef TVM_TIR_SCHEDULE_SCHEDULE_COMMON_H_
 #define TVM_TIR_SCHEDULE_SCHEDULE_COMMON_H_
 
+#include <tvm/tir/schedule.h>
+#include <tvm/tir/stmt_functor.h>
 #include <vector>
 #include <unordered_set>
+#include <unordered_map>
+#include <utility>
+#include <algorithm>
 
 namespace tvm {
 namespace tir {
@@ -56,13 +61,31 @@ Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize = false);
 
 /*!
  * \brief Substitute the var in current block scope specified in key->var to be value.
- * \param expr The source expression to be substituted
+ * \param stmt The source stmt to be substituted
  * \param value_func The function of new values mapping.
- * \return The converted expression.
+ * \return The converted stmt.
  */
 Stmt SubstituteInScope(const Stmt& stmt,
                        const std::function<PrimExpr(const VarNode*)>& value_func);
 
+/*!
+ * \brief Substitute the var in current block scope specified in var map
+ * \param stmt The source stmt to be substituted
+ * \param var_map The mapping of var
+ * \return The converted stmt
+ */
+Stmt SubstituteInScope(const Stmt& stmt,
+                       const std::unordered_map<const VarNode*, const VarNode*>& var_map);
+
+/*!
+ * \brief Substitute the var in TensorRegion
+ * \param tensor_region The source TensorRegion to be substituted
+ * \param var_map the mapping of var
+ * \return The converted tensor region
+ */
+TensorRegion SubstituteTensorRegion(const TensorRegion& tensor_region,
+                                    const std::unordered_map<const VarNode*,
+                                                             const VarNode*>& var_map);
 /*!
  * \brief Get BlockRealize with by Block
  * \param block The queried block
@@ -108,6 +131,14 @@ TensorRegion RelaxRegion(const StmtSRef& block_sref,
                          const TensorRegion& region);
 
 /*!
+ * \brief remove the AST leaf and its parent subtree which has only one leaf
+ * \param sref The sref of Block/Loop to be removed
+ * \param root The AST root
+ * \return The orginal stmt and the removed stmt of the subtree rooted by the parent node
+ */
+std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root);
+
+/*!
  * \brief Whether expr is related with var
  * \param var the expected var
  * \param expr the expected expr
@@ -144,6 +175,122 @@ class SRefValidator : public StmtVisitor {
     parent_ = sref.get();
   }
 };
+
+/*!
+ * \brief PrimExpr pattern matcher.
+ *
+ * It is different from the pattern matcher in arith/pattern_match.h, which is dedicated
+ * for compile-time constant patterns. This pattern matcher can work on dynamic user-specic
+ * patterns.
+ *
+ * The code below shows how to use the pattern matcher.
+ *
+ * \code
+ *
+ * Var x("x"), y("y");
+ * // use PrimExpr to declare patterns, x, y are holes that can be filled with
+ * PatternMatcher pattern_matcher(x + y);
+ * // expr = C[i,j] + A[i,k]*B[k,j], which is the expr we want to match
+ * pattern_matcher.Match(expr);
+ *
+ * if (pattern_matcher.Success()) {
+ *   pattern_matcher.Eval(x) // C[i,j]
+ *   pattern_matcher.Eval(y) // A[i,k]*B[k,j]
+ * }
+ *
+ * \endcode
+ */
+class PatternMatcher : public ExprVisitor {
+ public:
+  explicit PatternMatcher(const PrimExpr& pattern) : pattern_(pattern) {}
+
+  void VisitExpr_(const VarNode* op) final;
+  void VisitExpr_(const LoadNode* op) final;
+  void VisitExpr_(const LetNode* op) final;
+  void VisitExpr_(const CallNode* op) final;
+  void VisitExpr_(const AddNode* op) final;
+  void VisitExpr_(const SubNode* op) final;
+  void VisitExpr_(const MulNode* op) final;
+  void VisitExpr_(const DivNode* op) final;
+  void VisitExpr_(const ModNode* op) final;
+  void VisitExpr_(const FloorDivNode* op) final;
+  void VisitExpr_(const FloorModNode* op) final;
+  void VisitExpr_(const MinNode* op) final;
+  void VisitExpr_(const MaxNode* op) final;
+  void VisitExpr_(const EQNode* op) final;
+  void VisitExpr_(const NENode* op) final;
+  void VisitExpr_(const LTNode* op) final;
+  void VisitExpr_(const LENode* op) final;
+  void VisitExpr_(const GTNode* op) final;
+  void VisitExpr_(const GENode* op) final;
+  void VisitExpr_(const AndNode* op) final;
+  void VisitExpr_(const OrNode* op) final;
+  void VisitExpr_(const CastNode* op) final;
+  void VisitExpr_(const NotNode* op) final;
+  void VisitExpr_(const SelectNode* op) final;
+  void VisitExpr_(const RampNode* op) final;
+  void VisitExpr_(const BroadcastNode* op) final;
+  void VisitExpr_(const ShuffleNode* op) final;
+  void VisitExpr_(const IntImmNode* op) final;
+  void VisitExpr_(const FloatImmNode* op) final;
+  void VisitExpr_(const StringImmNode* op) final;
+  void VisitExpr_(const BufferLoadNode* op) final;
+
+  void Match(const PrimExpr& expr_to_match) {
+    this->match_success_ = true;
+    this->filled_map_.clear();
+    this->expr_to_match_ = expr_to_match;
+    this->operator()(pattern_);
+  }
+
+  PrimExpr Eval(const Var& var) {
+    auto it = filled_map_.find(var.operator->());
+    CHECK(it != filled_map_.end()) << "Unknown pattern variable";
+    CHECK(match_success_) << "Match failed";
+    return it->second;
+  }
+
+  bool Success() const {
+    return match_success_;
+  }
+
+ private:
+  bool match_success_{true};
+  PrimExpr pattern_, expr_to_match_;
+  std::unordered_map<const VarNode*, PrimExpr> filled_map_;
+};
+
+/*! \brief namespace for default reducer patterns */
+namespace default_reducer {
+
+class DefaultReducer {
+ public:
+  explicit DefaultReducer(const std::function<PrimExpr(Var, Var)>& combiner,
+                          std::function<PrimExpr(DataType)> identity)
+      : lhs_("x"), rhs_("y"), identity_(std::move(identity)) {
+    result_  = combiner(lhs_, rhs_);
+  }
+
+  CommReducer GetReducer(DataType dtype) const {
+    return CommReducerNode::make({lhs_}, {rhs_}, {result_}, {identity_(dtype)});
+  }
+
+ private:
+  Var lhs_, rhs_;
+  PrimExpr result_;
+  const std::function<PrimExpr(DataType)> identity_;
+};
+
+static DefaultReducer default_reducers[4] = {
+    DefaultReducer([](const Var& x, const Var& y) { return x + y; },
+                   [](DataType dtype) { return make_const(dtype, 0); }),
+    DefaultReducer([](const Var& x, const Var& y) { return x * y; },
+                   [](DataType dtype) { return make_const(dtype, 1); }),
+    DefaultReducer([](const Var& x, const Var& y) { return min(x, y); }, max_value),
+    DefaultReducer([](const Var& x, const Var& y) { return max(x, y); }, min_value)
+};
+
+}  // namespace default_reducer
 
 }  // namespace tir
 }  // namespace tvm

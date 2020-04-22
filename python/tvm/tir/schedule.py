@@ -267,16 +267,66 @@ class Schedule(Object):
         """
         ScheduleComputeAt(self, block, loop)
 
+    def decompose_reduction(self, block, loop):
+        """ Decompose reduction block into init&update blocks
+
+        Parameters
+        ----------
+        block: Block
+            The reduction block
+        loop: Loop
+            The position where init block will be
+        Returns
+        -------
+        init: Block
+            The init block
+        """
+        return ScheduleDecomposeReduction(self, block, loop)
+
+    def merge_reduction(self, init, update):
+        """ Merge init&update block into reduction block
+
+        Parameters
+        ----------
+        init: Block
+            The init Block
+        update: Block
+            The update Block
+        """
+        ScheduleMergeReduction(self, init, update)
+
+    def register_reducer(self, fcombine, identity):
+        """ Register a reducer into schedule
+
+        Parameters
+        ----------
+        fcombine : lambda expression
+            the combiner function of reducer
+        identity : PrimExpr
+            the identity of reducer
+        """
+        code = fcombine.__code__
+        lvar = tvm.te.var(code.co_varnames[0])
+        rvar = tvm.te.var(code.co_varnames[1])
+        lhs = tvm.runtime.convert([lvar])
+        rhs = tvm.runtime.convert([rvar])
+        result = tvm.runtime.convert([fcombine(lvar, rvar)])
+        id_elem = tvm.runtime.convert([identity])
+        combiner = tvm.tir.CommReducer(lhs, rhs, result, id_elem)
+        ScheduleRegisterReducer(self, combiner)
+
+
 def create_schedule(func):
     """Create a schedule for a function
     Parameters
     ----------
-    func: TeFunction
+    func: TIRFunction
     Returns
     ------
     schedule: tir.Schedule
     """
     return CreateSchedule(func)
+
 
 def get_stmt(sref):
     """Get Stmt from sref

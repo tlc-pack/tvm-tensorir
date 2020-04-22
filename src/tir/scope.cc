@@ -18,6 +18,7 @@
  */
 
 #include <tvm/tir/scope.h>
+#include "schedule/schedule_common.h"
 
 namespace tvm {
 namespace tir {
@@ -91,6 +92,81 @@ bool Scope::IsComplete(const StmtSRef& block) const {
       }
     }
   }
+
+  return true;
+}
+
+bool Scope::IsReduction(const StmtSRef& block) const {
+  const auto* n = DowncastPtr<BlockNode>(block->node);
+  CHECK(n != nullptr);
+
+  // Check the binding of block is valid
+  CHECK(block->binding_valid);
+
+  // A complete block must be dominate
+  CHECK(IsDominate(block));
+
+  // Check all the block vars are at data_par/reduce IterType
+  for (const auto& iter_var : n->iter_vars) {
+    if (iter_var->iter_type != kDataPar && iter_var->iter_type != kCommReduce) {
+      return false;
+    }
+  }
+
+  // Check the block body is reduction
+  const auto* reduction = DowncastPtr<ReduceStepNode>(n->body.operator->());
+  const auto* lhs = DowncastPtr<BufferLoadNode>(reduction->lhs.operator->());
+  CHECK(reduction != nullptr);
+
+  // Check all the writing block vars are data_par
+  for (const auto& iter_var : n->iter_vars)
+    if (iter_var->iter_type != kDataPar)
+      for (const auto index : lhs->indices)
+        CHECK(!RelatedWithVar(iter_var->var, index));
+
+  return true;
+}
+
+bool Scope::CanMergeReduction(const StmtSRef &init_block, const StmtSRef &update_block) const {
+  const auto* init = DowncastPtr<BlockNode>(init_block->node);
+  const auto* update = DowncastPtr<BlockNode>(update_block->node);
+
+  // Check init_block and update_block both contains a single BufferStore
+  const auto* init_body = DowncastPtr<BufferStoreNode>(init->body.operator->());
+  const auto* update_body = DowncastPtr<BufferStoreNode>(update->body.operator->());
+  CHECK(init_body != nullptr) << "init block should contain only a BufferStore";
+  CHECK(update_body != nullptr) << "update block should contain only a BufferStore";
+  CHECK_EQ(init_body->buffer, update_body->buffer);
+  CHECK_EQ(init_body->indices.size(), update_body->indices.size());
+
+  // Check init_block and update_block are the only producers for its output tensor
+  for (const auto& write : update->writes) {
+    const Buffer& buffer = write->buffer;
+    if (operator->()->write_map.at(buffer).size() != 2) {
+      return false;
+    } else {
+      CHECK(operator->()->write_map.at(buffer)[0].same_as(init_block)
+            || operator->()->write_map.at(buffer)[0].same_as(update_block));
+      CHECK(operator->()->write_map.at(buffer)[1].same_as(init_block)
+            || operator->()->write_map.at(buffer)[1].same_as(update_block));
+    }
+  }
+
+  // Check the binding of update_block is valid
+  CHECK(update_block->binding_valid);
+
+  // Check all the block vars of update_block are at data_par/reduce IterType
+  for (const auto& iter_var : update->iter_vars) {
+    if (iter_var->iter_type != kDataPar && iter_var->iter_type != kCommReduce) {
+      return false;
+    }
+  }
+
+  // Check all the writing block vars of update_block are data_par
+  for (const auto& iter_var : update->iter_vars)
+    if (iter_var->iter_type != kDataPar)
+      for (const auto index : update_body->indices)
+        CHECK(!RelatedWithVar(iter_var->var, index));
 
   return true;
 }

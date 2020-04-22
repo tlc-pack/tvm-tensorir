@@ -335,6 +335,52 @@ class BlockRealize : public Stmt {
 };
 
 /*!
+ * \brief A reduction stmt stores both the init expression and update expression
+ *        When creating a reduction node, the constructor will try to do reducer
+ *        pattern matching for init and update expressions. If successful, we can
+ *        get left and right expressions.
+ */
+class ReduceStepNode : public StmtNode {
+ public:
+  /*! \brief comm reducer used in reduction */
+  CommReducer comm_reducer;
+  /*! \brief lhs expression */
+  PrimExpr lhs;
+  /*! \brief rhs expression */
+  PrimExpr rhs;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("lhs", &lhs);
+    v->Visit("rhs", &rhs);
+  }
+
+  /*! \brief Apply combiner in comm_reducer on lhs and rhs.
+   *         comm_reducer contains two vars(lhs[0] and rhs[0]) and a combiner expr(result[0]).
+   *         We substitute lhs[0] with lhs and substitute rhs[0] with rhs.
+   *         If lhs and rhs is not passed, apply combiner on internal lhs and rhs.
+   */
+  PrimExpr ApplyCombiner() const;
+  PrimExpr ApplyCombiner(const PrimExpr& lhs, const PrimExpr& rhs) const;
+
+  static constexpr const char* _type_key = "ReduceStep";
+  TVM_DECLARE_FINAL_OBJECT_INFO(ReduceStepNode, StmtNode);
+};
+
+/*!
+ * \brief Managed reference to ReduceStepNode
+ * \sa ReduceStepNode
+ */
+class ReduceStep : public Stmt {
+ public:
+  TVM_DLL explicit ReduceStep(CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs);
+
+  static Stmt FromInitUpdate(const Array<CommReducer>& patterns,
+                             const PrimExpr& init, const BufferStore& update);
+
+  TVM_DEFINE_OBJECT_REF_METHODS(ReduceStep, Stmt, ReduceStepNode);
+};
+
+/*!
  * \brief A function in TIR
  * \code
  *
