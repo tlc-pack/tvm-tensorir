@@ -36,13 +36,34 @@
 namespace tvm {
 namespace tir {
 
+class ReducerCollector : public StmtExprVisitor {
+ public:
+  explicit ReducerCollector(std::unordered_map<const CommReducerNode*, int>* reducer_map)
+      : reducer_map(reducer_map) {}
+
+ protected:
+  void VisitStmt_(const ReduceStepNode* op) override {
+    auto it = reducer_map->find(op->comm_reducer.get());
+    if (it == reducer_map->end()) {
+      (*reducer_map)[op->comm_reducer.get()] = reducer_map->size();
+    }
+  }
+
+ private:
+  std::unordered_map<const CommReducerNode*, int>* reducer_map;
+};
+
 class TIRHybridPrinter :
     public StmtFunctor<Doc(const Stmt&)>,
-    public ExprFunctor<Doc(const PrimExpr&)>{
+    public ExprFunctor<Doc(const PrimExpr&)> {
  public:
   explicit TIRHybridPrinter(bool show_meta,
                             runtime::TypedPackedFunc<std::string(Stmt)> annotate = nullptr)
-    : show_meta_(show_meta), annotate_(annotate) {}
+      : show_meta_(show_meta), annotate_(annotate) {}
+
+  /*! \brief comm_reducer map */
+  std::unordered_map<const CommReducerNode*, int> reducer_map;
+
   /*! \brief Print the node */
   TVM_DLL Doc Print(const ObjectRef& node);
 
@@ -73,7 +94,7 @@ class TIRHybridPrinter :
   Doc DumpMeta() {
     if (show_meta_) {
       return Doc::Text("__tvm_meta__ = ")
-         << (meta_.empty() ? Doc::Text("None") : meta_.GetMetaSection());
+          << (meta_.empty() ? Doc::Text("None") : meta_.GetMetaSection());
     } else {
       return Doc::Text("");
     }
@@ -131,6 +152,7 @@ class TIRHybridPrinter :
   Doc VisitStmt_(const LoopNode* op) override;
   Doc VisitStmt_(const BufferAllocateNode* op) override;
   Doc VisitStmt_(const BufferStoreNode* op) override;
+  Doc VisitStmt_(const ReduceStepNode* op) override;
   Doc VisitStmtDefault_(const Object* op) override;
 
   /*!
@@ -162,7 +184,7 @@ class TIRHybridPrinter :
    * \param dtype The data type
    * \param data The pointer to hold the data.
    */
-  template<typename T>
+  template <typename T>
   static Doc PrintConstScalar(DataType dtype, const T* data) {
     Doc doc;
     std::ostringstream os;
@@ -266,6 +288,13 @@ Doc TIRHybridPrinter::VisitExpr_(const BufferLoadNode* op) {
   return doc;
 }
 
+Doc TIRHybridPrinter::VisitStmt_(const ReduceStepNode* op) {
+  Doc doc;
+  doc << "reducer" + std::to_string(reducer_map[op->comm_reducer.get()]) << ".step(";
+  doc << Print(op->lhs) << ", " << Print(op->rhs) << ")";
+  return doc;
+}
+
 Doc TIRHybridPrinter::VisitStmt_(const SeqStmtNode* op) {
   std::vector<Doc> stmts;
   for (Stmt stmt : op->seq) {
@@ -325,7 +354,7 @@ Doc TIRHybridPrinter::VisitStmt_(const BlockRealizeNode* op) {
   if (!block_op->annotations.empty()) {
     doc << ", annotations=" << Print(block_op->annotations);
   }
-  doc << ", name=" << Doc::StrLiteral(block_op->tag) <<  "):";
+  doc << ", name=" << Doc::StrLiteral(block_op->tag) << "):";
   // print body
   Doc body;
   body << Doc::NewLine();
@@ -408,6 +437,10 @@ TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
 TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
 .set_dispatch<FunctionNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
   auto* op = node.as<FunctionNode>();
+  // collect reducers
+  p->reducer_map.clear();
+  ReducerCollector(&p->reducer_map)(op->body);
+  // print signature
   Doc doc;
   doc << "def " << op->name << "(";
   for (size_t i = 0; i < op->params.size(); ++i) {
@@ -435,7 +468,14 @@ TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
     body << ", " << Doc::StrLiteral(runtime::DLDataType2String((*it).second->dtype));
     body << ")" << Doc::NewLine();
   }
-
+  // print comm_reducer
+  for (const auto& it : p->reducer_map) {
+    body << "reducer" + std::to_string(it.second) << " = comm_reducer(";
+    body << "lambda " << p->Print(it.first->lhs[0]) << ", " << p->Print(it.first->rhs[0])
+         << ": " << p->Print(it.first->result[0])
+         << ", " << p->Print(it.first->identity_element[0]);
+    body << ")" << Doc::NewLine();
+  }
   // print body
   body << p->Print(op->body);
   doc << Doc::Indent(4, body);
@@ -474,7 +514,7 @@ TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
   for (size_t i = 0; i < op->data.size(); ++i) {
     if (i != 0) {
       doc << ", ";
-      }
+    }
     doc << p->Print(op->data[i]);
   }
   doc << ']';
