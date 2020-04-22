@@ -439,8 +439,6 @@ TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
   auto* op = node.as<FunctionNode>();
   // collect reducers
   p->reducer_map.clear();
-  for (const auto& reducer : op->reducers)
-    p->reducer_map[reducer.get()] = p->reducer_map.size();
   ReducerCollector(&p->reducer_map)(op->body);
   // print signature
   Doc doc;

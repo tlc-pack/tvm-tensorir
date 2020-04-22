@@ -398,8 +398,6 @@ class FunctionNode : public BaseFuncNode {
   Array<Var> params;
   /*! \brief Parameter shape and type constraints */
   Map<Var, Buffer> buffer_map;
-  /*! \brief User defined reducer patterns */
-  Array<CommReducer> reducers;
   /*! \brief Function body */
   Stmt body;
   /*! \brief Function name */
@@ -408,7 +406,6 @@ class FunctionNode : public BaseFuncNode {
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("params", &params);
     v->Visit("buffer_map", &buffer_map);
-    v->Visit("reducers", &reducers);
     v->Visit("body", &body);
     v->Visit("name", &name);
   }
@@ -421,7 +418,6 @@ class Function : public BaseFunc {
  public:
   TVM_DLL explicit Function(Array<Var> params,
                             Map<Var, Buffer> buffer_map,
-                            Array<CommReducer> reducers,
                             std::string name,
                             Stmt body);
 

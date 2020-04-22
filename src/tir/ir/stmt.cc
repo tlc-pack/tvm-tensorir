@@ -514,25 +514,21 @@ TVM_REGISTER_GLOBAL("tir.ReduceStep")
 
 Function::Function(Array<Var> params,
                    Map<Var, Buffer> buffer_map,
-                   Array<CommReducer> reducers,
                    std::string name,
                    Stmt body) {
   ObjectPtr<FunctionNode> node = make_object<FunctionNode>();
   CHECK_EQ(params.size(), buffer_map.size());
   node->params = std::move(params);
   node->buffer_map = std::move(buffer_map);
-  node->reducers = std::move(reducers);
   node->name = std::move(name);
   node->body = std::move(body);
   data_ = std::move(node);
 }
 
 TVM_REGISTER_GLOBAL("tir.Function")
-.set_body_typed<Function(Array<Var>, Map<Var, Buffer>, Array<CommReducer>,
-                         std::string, Stmt)>(
-    [](Array<Var> params, Map<Var, Buffer> buffer_map, Array<CommReducer> reducers,
-       std::string name, Stmt body) {
-      return Function(params, buffer_map, reducers, name, body);
+.set_body_typed<Function(Array<Var>, Map<Var, Buffer>, std::string, Stmt)>(
+    [](Array<Var> params, Map<Var, Buffer> buffer_map, std::string name, Stmt body) {
+      return Function(params, buffer_map, name, body);
     });
 
 // Printers

@@ -99,18 +99,12 @@ bool Scope::IsComplete(const StmtSRef& block) const {
 bool Scope::IsReduction(const StmtSRef& block) const {
   const auto* n = DowncastPtr<BlockNode>(block->node);
   CHECK(n != nullptr);
+
   // Check the binding of block is valid
   CHECK(block->binding_valid);
 
-  // Check the block is the only producer for every output tensors
-  for (const auto& write : n->writes) {
-    const Buffer& buffer = write->buffer;
-    if (operator->()->write_map.at(buffer).size() != 1) {
-      return false;
-    } else {
-      CHECK(operator->()->write_map.at(buffer)[0].same_as(block));
-    }
-  }
+  // A complete block must be dominate
+  CHECK(IsDominate(block));
 
   // Check all the block vars are at data_par/reduce IterType
   for (const auto& iter_var : n->iter_vars) {

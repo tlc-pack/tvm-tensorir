@@ -35,9 +35,6 @@ class Function(BaseExpr):
     buffer_map : Map[te.Var, te.Buffer]
         Buffer binding information.
 
-    reducers : List[tir.CommReducer]
-        User defined reducers
-
     name : Str
         The function name.
 
@@ -45,9 +42,9 @@ class Function(BaseExpr):
         The function body.
 
     """
-    def __init__(self, params, buffer_map, reducers, name, body):
+    def __init__(self, params, buffer_map, name, body):
         self.__init_handle_by_constructor__(
-            _ffi_api.Function, params, buffer_map, reducers, name, body)
+            _ffi_api.Function, params, buffer_map, name, body)
 
 
 class Module:

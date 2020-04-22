@@ -109,6 +109,14 @@ class Scope : public ObjectRef {
    */
   Array<DepEdge> GetPredecessors(const StmtSRef& block) const;
   /*!
+   * \brief Check whether the block is a dominate block
+   * \note A block is complete iff the block is the only producer
+   *       for each tensor it produces.
+   * \param block The query block
+   * \return Whether is a dominate block
+   */
+  bool IsDominate(const StmtSRef& block) const;
+  /*!
    * \brief Check whether the block is a complete block
    * \note A block is complete iff the block is the only producer
    *       for each tensor it produces and its args must be data parallel.
@@ -125,15 +133,6 @@ class Scope : public ObjectRef {
    * \return Whether is a complete block
    */
   bool IsReduction(const StmtSRef& block) const;
-  /*!
-   * \brief Check whether the block is a dominate block
-   * \note A block is complete iff the block is the only producer
-   *       for each tensor it produces.
-   * \param block The query block
-   * \return Whether is a dominate block
-   */
-  bool IsDominate(const StmtSRef& block) const;
-
   /*!
    * \brief Check the merged block of init_block and update_block is a reduction block
    * \param init_block the query init block

@@ -105,7 +105,6 @@ class HybridParser(ast.NodeVisitor):
     def __init__(self, src, base_lienno):
         self.params = None
         self.buffer_map = None
-        self.reducers = None
         self.scope_emitter = None
 
         self.src = src.split('\n')
@@ -123,7 +122,6 @@ class HybridParser(ast.NodeVisitor):
         """Initialize function parsing environment"""
         self.params = []  # parameter list
         self.buffer_map = {}  # buffer map
-        self.reducers = []  # reducers
         self.scope_emitter = scope_emitter.ScopeEmitter(self)  # scope emitter
 
     # TODO : if meta related functions grow, consider moving them to a new file
@@ -292,7 +290,7 @@ class HybridParser(ast.NodeVisitor):
             self.visit(body_element)
         # fetch the body and return a tir.Function
         body = self.scope_emitter.pop_scope()
-        return tvm.tir.Function(self.params, self.buffer_map, self.reducers, node.name, body)
+        return tvm.tir.Function(self.params, self.buffer_map, node.name, body)
 
     def visit_Assign(self, node):
         """ Assign visitor

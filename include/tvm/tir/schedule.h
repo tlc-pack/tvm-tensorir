@@ -179,6 +179,12 @@ class ScheduleNode : public Object {
   StmtSRef cache_write(const Buffer& buffer, const std::string& storage_scope);
 
   /*!
+   * \brief Register a reducer pattern
+   * \param comm_reducer the reducer pattern to be registered
+   */
+  void register_reducer(const CommReducer& comm_reducer);
+
+  /*!
    * \brief validate sref tree and scope information
    */
   bool ValidateSRef() const;
@@ -188,7 +194,7 @@ class ScheduleNode : public Object {
 
  private:
   /*! \brief The reducer list for reduction pattern matching */
-  Array<CommReducer> reducers_;
+  std::vector<CommReducer> reducers_;
 
   /*!
  * \brief Update the sref to make it point to new Block/Loop

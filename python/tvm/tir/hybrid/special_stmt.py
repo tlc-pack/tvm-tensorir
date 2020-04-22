@@ -117,8 +117,6 @@ def comm_reducer(parser, node, combiner, identity):
 
     if isinstance(combiner, HybridLambda):
         if len(combiner.args) == 2:
-            res = HybridReducer(combiner, identity)
-            parser.reducers.append(res.reducer)
-            return res
+            return HybridReducer(combiner, identity)
     parser.report_error("comm_reducer expect a 2-argument lambda function as first argument")
     return None

@@ -506,7 +506,7 @@ Schedule ScheduleNode::Create(Function function) {
   n->func = function;
   n->stmt2ref = std::move(stmt_map);
   n->root = n->stmt2ref[op->block.as<StmtNode>()];
-  n->reducers_ = Array<CommReducer>();
+  n->reducers_.clear();
   n->scopes_ = block_scopes;
   n->ValidateLoops(function);
   for (const auto& it : block_scopes) {
@@ -976,7 +976,7 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
 
   // Change the update block to reduction block
   auto merged_block = make_object<BlockNode>(*update);
-  merged_block->body = ReduceStep::FromInitUpdate(this->func->reducers,
+  merged_block->body = ReduceStep::FromInitUpdate(this->reducers_,
                                                   init_body->value,
                                                   GetRef<BufferStore>(update_body));
   Map<Block, Block> block_map;
@@ -985,6 +985,10 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
 
   // update scope information
   DependencyAnalyzer(this->stmt2ref, &this->scopes_, false)(GetRef<Stmt>(scope_root->node));
+}
+
+void ScheduleNode::register_reducer(const CommReducer &comm_reducer) {
+  this->reducers_.push_back(comm_reducer);
 }
 
 StmtSRef::StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index) {
@@ -1059,6 +1063,12 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetLoopsInScope")
 .set_body_typed<Array<StmtSRef>(Schedule, StmtSRef)>(
     [](Schedule schedule, StmtSRef scope) {
       return schedule->GetLoopsInScope(scope);
+    });
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleRegisterReducer")
+.set_body_typed<void(Schedule, CommReducer)>(
+    [](Schedule schedule, CommReducer comm_reducer) {
+      schedule->register_reducer(comm_reducer);
     });
 
 // schedule primitive
