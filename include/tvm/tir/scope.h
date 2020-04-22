@@ -109,6 +109,14 @@ class Scope : public ObjectRef {
    */
   Array<DepEdge> GetPredecessors(const StmtSRef& block) const;
   /*!
+   * \brief Check whether the block is a dominate block
+   * \note A block is complete iff the block is the only producer
+   *       for each tensor it produces.
+   * \param block The query block
+   * \return Whether is a dominate block
+   */
+  bool IsDominate(const StmtSRef& block) const;
+  /*!
    * \brief Check whether the block is a complete block
    * \note A block is complete iff the block is the only producer
    *       for each tensor it produces and its args must be data parallel.
@@ -118,13 +126,20 @@ class Scope : public ObjectRef {
    */
   bool IsComplete(const StmtSRef& block) const;
   /*!
-   * \brief Check whether the block is a dominate block
-   * \note A block is complete iff the block is the only producer
-   *       for each tensor it produces.
+   * \brief Check whether the block is a reduction block
+   * \note A block is reduction iff the block is the only producer
+   *       for each tensor it produces, its args must be data parallel/reduce
    * \param block The query block
-   * \return Whether is a dominate block
+   * \return Whether is a complete block
    */
-  bool IsDominate(const StmtSRef& block) const;
+  bool IsReduction(const StmtSRef& block) const;
+  /*!
+   * \brief Check the merged block of init_block and update_block is a reduction block
+   * \param init_block the query init block
+   * \param update_block the query update block
+   * \return Whether the merged block of init_block and update_block is a reduction block
+   */
+  bool CanMergeReduction(const StmtSRef& init_block, const StmtSRef& update_block) const;
 
   TVM_DEFINE_OBJECT_REF_METHODS(Scope, ObjectRef, ScopeNode);
 

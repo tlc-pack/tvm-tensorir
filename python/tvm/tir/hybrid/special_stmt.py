@@ -83,3 +83,40 @@ def block_vars(parser, node, begin, end, iter_type="data_par"):
 
     block_var = tvm.tir.IterVar(block_var_dom, parser._block_var_name, iter_type_id)
     return block_var
+
+
+class HybridLambda:
+    def __init__(self, args, body):
+        self.args = args
+        self.body = body
+
+
+class HybridReducer:
+    def __init__(self, combiner, identity):
+        self.combiner = combiner
+        self.identity = identity
+        self.reducer = tvm.tir.CommReducer([self.combiner.args[0]], [self.combiner.args[1]],
+                                           [self.combiner.body], [self.identity])
+
+    @staticmethod
+    def step(parser, node, reducer, lhs, rhs):
+        return tvm.tir.ReduceStep(reducer.reducer, lhs, rhs)
+
+
+def comm_reducer(parser, node, combiner, identity):
+    """ Special function for defining a comm_reducer
+
+    Example
+    -------
+    .. code-block:: python
+
+
+        reducer = comm_reducer(lambda x, y: x + y, float32(0))
+
+    """
+
+    if isinstance(combiner, HybridLambda):
+        if len(combiner.args) == 2:
+            return HybridReducer(combiner, identity)
+    parser.report_error("comm_reducer expect a 2-argument lambda function as first argument")
+    return None

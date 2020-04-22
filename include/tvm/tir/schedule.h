@@ -150,6 +150,21 @@ class ScheduleNode : public Object {
   void reorder(const Array<StmtSRef>& order);
 
   /*!
+   * \brief Decompose reduction block_sref into init&update blocks
+   * \param block_sref the reduction block_sref
+   * \param loop_sref the position where init block_sref will be
+   * \return the sref of init block
+   */
+  StmtSRef decompose_reduction(const StmtSRef& block_sref, const StmtSRef& loop_sref);
+
+  /*!
+   * \brief Merge init and reduction block into reduction block
+   * \param init_sref the init block
+   * \param update_sref the update block
+   */
+  void merge_reduction(const StmtSRef& init_sref, const StmtSRef& update_sref);
+
+  /*!
    * \brief Create a cache read of original tensor for readers.
    * \param buffer The buffer
    * \param storage_scope The storage scope
@@ -164,6 +179,12 @@ class ScheduleNode : public Object {
   StmtSRef cache_write(const Buffer& buffer, const std::string& storage_scope);
 
   /*!
+   * \brief Register a reducer pattern
+   * \param comm_reducer the reducer pattern to be registered
+   */
+  void register_reducer(const CommReducer& comm_reducer);
+
+  /*!
    * \brief validate sref tree and scope information
    */
   bool ValidateSRef() const;
@@ -172,6 +193,9 @@ class ScheduleNode : public Object {
   TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleNode, Object);
 
  private:
+  /*! \brief The reducer list for reduction pattern matching */
+  std::vector<CommReducer> reducers_;
+
   /*!
  * \brief Update the sref to make it point to new Block/Loop
  * \param sref The outdated sref

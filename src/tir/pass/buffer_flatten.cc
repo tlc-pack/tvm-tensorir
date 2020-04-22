@@ -31,6 +31,38 @@ namespace tvm {
 namespace tir {
 
 /*!
+ * \brief Transform reduction call into actual computation
+ */
+class ReductionTransformer : public StmtExprMutator {
+ public:
+  ReductionTransformer() = default;
+
+  Stmt VisitStmt_(const BlockNode* op) override {
+    const BlockNode* block = op;
+    std::swap(current_block_, block);
+    Stmt res = StmtMutator::VisitStmt_(op);
+    std::swap(current_block_, block);
+    return res;
+  }
+
+  Stmt VisitStmt_(const ReduceStepNode* op) override {
+    const auto& init = op->comm_reducer->identity_element[0];
+    const auto* lhs = DowncastPtr<BufferLoadNode>(op->lhs.operator->());
+    PrimExpr cond = make_const(DataType::Bool(1), true);
+    for (const auto& iter_var : current_block_->iter_vars)
+      if (iter_var->iter_type == IterVarType::kCommReduce) {
+        cond = cond && (iter_var == 0);
+      }
+    return BufferStore(lhs->buffer,
+                       if_then_else(cond, op->ApplyCombiner(init, op->rhs), op->ApplyCombiner()),
+                       lhs->indices);
+  }
+
+ private:
+  const BlockNode* current_block_{nullptr};
+};
+
+/*!
  * \brief Detecting the LCA of buffer access points of
  *        buffers for calculating the realize region
  */
@@ -388,19 +420,25 @@ class BufferFlattener : public StmtExprMutator {
 };
 
 Function BufferFlatten(Function func) {
+  auto new_func = make_object<FunctionNode>(*func.operator->());
+
+  // Transform the reduction calls to BufferStore
+  ReductionTransformer reduction_transformer;
+  new_func->body = reduction_transformer(func->body);
+
   // Find the LCA of each Buffer access
-  LCADetector lca_detector(func->buffer_map);
-  lca_detector(func->body);
+  LCADetector lca_detector(new_func->buffer_map);
+  lca_detector(new_func->body);
 
   // Recalculate the buffer region
-  RegionGatherer region_gatherer(lca_detector.buffers_lca_, func->buffer_map);
-  region_gatherer(func->body);
+  RegionGatherer region_gatherer(lca_detector.buffers_lca_, new_func->buffer_map);
+  region_gatherer(new_func->body);
 
   // Transform BufferLoad/BufferStore into Load/Store
   BufferFlattener flattener
       (region_gatherer.block_var_, region_gatherer.buffers_region_, lca_detector.buffers_lca_);
-  auto new_func = make_object<FunctionNode>(*func.operator->());
-  new_func->body = flattener(func->body);
+  new_func->body = flattener(new_func->body);
+
   return Function(new_func);
 }
 
