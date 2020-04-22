@@ -362,9 +362,6 @@ class ReduceStepNode : public StmtNode {
   PrimExpr ApplyCombiner() const;
   PrimExpr ApplyCombiner(const PrimExpr& lhs, const PrimExpr& rhs) const;
 
-  static Stmt make_from_init_update(const Array<CommReducer>& patterns,
-                                    const PrimExpr& init, const BufferStore& update);
-
   static constexpr const char* _type_key = "ReduceStep";
   TVM_DECLARE_FINAL_OBJECT_INFO(ReduceStepNode, StmtNode);
 };
@@ -376,6 +373,9 @@ class ReduceStepNode : public StmtNode {
 class ReduceStep : public Stmt {
  public:
   TVM_DLL explicit ReduceStep(CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs);
+
+  static Stmt FromInitUpdate(const Array<CommReducer>& patterns,
+                             const PrimExpr& init, const BufferStore& update);
 
   TVM_DEFINE_OBJECT_REF_METHODS(ReduceStep, Stmt, ReduceStepNode);
 };

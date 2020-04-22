@@ -976,9 +976,9 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
 
   // Change the update block to reduction block
   auto merged_block = make_object<BlockNode>(*update);
-  merged_block->body = ReduceStepNode::make_from_init_update(this->func->reducers,
-                                                             init_body->value,
-                                                             GetRef<BufferStore>(update_body));
+  merged_block->body = ReduceStep::FromInitUpdate(this->func->reducers,
+                                                  init_body->value,
+                                                  GetRef<BufferStore>(update_body));
   Map<Block, Block> block_map;
   block_map.Set(Block(merged_block), GetRef<Block>(update));
   this->Replace(update_sref, Block(merged_block), block_map);
@@ -1110,6 +1110,7 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDecomposeReduction")
 .set_body_typed<StmtSRef(Schedule, StmtSRef, StmtSRef)>(
     [](Schedule schedule, StmtSRef block, StmtSRef loop) {
       return schedule->decompose_reduction(block, loop);
+    });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheWrite")
 .set_body_typed<StmtSRef(Schedule, Buffer, std::string)>(

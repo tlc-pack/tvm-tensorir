@@ -485,8 +485,8 @@ std::tuple<bool, PrimExpr, PrimExpr> ReducerMatched(const CommReducer& reducer,
                          pattern_matcher.Eval(reducer->rhs[0]));
 }
 
-Stmt ReduceStepNode::make_from_init_update(const Array<CommReducer>& patterns,
-                                           const PrimExpr& init, const BufferStore& update) {
+Stmt ReduceStep::FromInitUpdate(const Array<CommReducer>& patterns,
+                                const PrimExpr& init, const BufferStore& update) {
   const auto& lhs = BufferLoad(update->buffer->dtype, update->buffer, update->indices);
   // Check user defined patterns
   for (const auto& reducer : patterns) {
