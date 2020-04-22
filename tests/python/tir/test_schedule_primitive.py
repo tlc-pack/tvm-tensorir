@@ -229,27 +229,6 @@ def test_reorder_normal():
 
 
 @tvm.tir.hybrid.script
-def matmul_reorder(a, b, c):
-    C = buffer_bind(c, (128, 128), "float32")
-    A = buffer_bind(a, (128, 128), "float32")
-    B = buffer_bind(b, (128, 128), "float32")
-    with block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128], B[0:128, 0:128]], name="root"):
-        for i0 in range(0, 128):
-            for j0 in range(0, 128):
-                with block({vi(0, 128): i0, vj(0, 128): j0}, writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                           reads=[], name="init"):
-                    C[vi, vj] = float32(0)
-        for k in range(0, 128):
-            for i in range(0, 16384):
-                with block({vi(0, 128): floordiv(i, 128), vj(0, 128): floormod(i, 128),
-                            vk(0, 128, iter_type="reduce"): k},
-                           writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                           reads=[C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)],
-                                  B[vj:(vj + 1), vk:(vk + 1)]], name="update"):
-                    C[vi, vj] = (C[vi, vj] + (A[vi, vk] * B[vj, vk]))
-
-
-@tvm.tir.hybrid.script
 def compute_at_case(a, c):
     A = buffer_bind(a, (128, 128), "float32")
     C = buffer_bind(c, (128, 128), "float32")
@@ -290,6 +269,46 @@ def test_compute_at_fail():
         assert False
     except tvm._ffi.base.TVMError as e:
         assert str(e).split(':')[-1].strip() == "Cannot satisfy dependency"
+
+
+@tvm.tir.hybrid.script
+def matmul_reduction(a, b, c):
+    C = buffer_bind(c, (128, 128), "float32")
+    A = buffer_bind(a, (128, 128), "float32")
+    B = buffer_bind(b, (128, 128), "float32")
+    with block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128], B[0:128, 0:128]], name="root"):
+        for i in range(0, 128):
+            for j in range(0, 128):
+                with block({vi(0, 128): i, vj(0, 128): j}, writes=[C[vi:(vi + 1), vj:(vj + 1)]], reads=[], name="init"):
+                    C[vi, vj] = float32(0)
+                for k in range(0, 128):
+                    with block({vi(0, 128): i, vj(0, 128): j, vk(0, 128, iter_type="reduce"): k},
+                               writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                               reads=[C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vj:(vj + 1), vk:(vk + 1)]],
+                               name="update"):
+                        C[vi, vj] = (C[vi, vj] + (A[vi, vk] * B[vj, vk]))
+
+
+def test_reduction():
+    func = util.matmul_stmt()
+
+    # schedule
+    s = tir.create_schedule(func)
+    init = s.get_block("init")
+    update = s.get_block("update")
+    s.merge_reduction(init, update)
+    i, j, k = s.get_axes(update)
+    init = s.decompose_reduction(update, i)
+    i, j_i = s.get_axes(init)
+    s.split(j_i, 4)
+    s.merge_reduction(init, update)
+    s.decompose_reduction(update, j)
+
+    mod = tvm.tir.hybrid.create_module([matmul_reduction])
+    matmul_reduction_func = mod["matmul_reduction"]
+
+    assert AssertEqual(s.func, matmul_reduction_func)
+    assert s.validate_sref()
 
 
 @tvm.tir.hybrid.script
@@ -387,5 +406,6 @@ if __name__ == "__main__":
     test_reorder_normal()
     test_compute_at()
     test_compute_at_fail()
+    test_reduction()
     test_cache_read()
     test_cache_write()

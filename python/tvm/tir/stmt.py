@@ -473,7 +473,7 @@ class BlockRealize(Stmt):
     values : list of Expr
         The binding value of the block var.
 
-    predicate: Expr
+    predicate : Expr
         The predicates of the block.
 
     block : Block
@@ -503,6 +503,25 @@ class BufferAllocate(Stmt):
     def __init__(self, buffer, scope):
         self.__init_handle_by_constructor__(
             _ffi_api.BufferAllocate, buffer, scope)
+
+
+@tvm._ffi.register_object
+class ReduceStep(Stmt):
+    """Reduction node
+
+    Parameters
+    ----------
+    comm_reducer : CommReducer
+        the reducer used in Reduction
+
+    lhs : PrimExpr
+        lhs expression
+
+    rhs : PrimExpr
+        rhs expression
+    """
+    def __init__(self, comm_reducer, lhs, rhs):
+        self.__init_handle_by_constructor__(_ffi_api.ReduceStep, comm_reducer, lhs, rhs)
 
 
 @tvm._ffi.register_object
