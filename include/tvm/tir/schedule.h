@@ -150,6 +150,20 @@ class ScheduleNode : public Object {
   void reorder(const Array<StmtSRef>& order);
 
   /*!
+   * \brief Create a cache read of original tensor for readers.
+   * \param buffer The buffer
+   * \param storage_scope The storage scope
+   */
+  StmtSRef cache_read(const Buffer& buffer, const std::string& storage_scope);
+
+  /*!
+   * \brief Create a cache write of original tensor, before storing into tensor.
+   * \param buffer The buffer
+   * \param storage_scope The storage scope
+   */
+  StmtSRef cache_write(const Buffer& buffer, const std::string& storage_scope);
+
+  /*!
    * \brief validate sref tree and scope information
    */
   bool ValidateSRef() const;
