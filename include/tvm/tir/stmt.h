@@ -886,6 +886,365 @@ struct TensorKey {
   }
 };
 
+/*!
+ * \brief A loop annotation node to show attribute to the loop
+ */
+class AnnotationNode : public Object {
+ public:
+  /*! \brief the type key of the attribute */
+  std::string attr_key;
+  /*! \brief The attribute value, value is well defined at current scope. */
+  PrimExpr value;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("attr_key", &attr_key);
+    v->Visit("value", &value);
+  }
+
+  bool SEqualReduce(const AnnotationNode* other, SEqualReducer equal) const {
+    return equal(attr_key, other->attr_key) && equal(value, other->value);
+  }
+
+  void SHashReduce(SHashReducer hash_reduce) const {
+    hash_reduce(attr_key);
+    hash_reduce(value);
+  }
+
+  static constexpr const bool _type_has_method_sequal_reduce = true;
+  static constexpr const bool _type_has_method_shash_reduce = true;
+  static constexpr const char* _type_key = "Annotation";
+  TVM_DECLARE_FINAL_OBJECT_INFO(AnnotationNode, Object);
+};
+
+class Annotation : public ObjectRef {
+ public:
+  TVM_DLL explicit Annotation(std::string attr_key, PrimExpr value);
+  TVM_DEFINE_OBJECT_REF_METHODS(Annotation, ObjectRef, AnnotationNode)
+};
+
+/*!
+ * \brief A for loop, with annotations and loop type.
+ *
+ * \code
+ *
+ *  for loop_var = min to min+extent (loop_type,
+ *    attr: [attr_key0: attr_value0, ..., attr_key_m: attr_value_m]) {
+ *    // body
+ *  }
+ *
+ * \endcode
+ */
+class LoopNode : public StmtNode {
+ public:
+  /*! \brief The loop variable. */
+  Var loop_var;
+  /*! \brief The minimum value of iteration. */
+  PrimExpr min;
+  /*! \brief The extent of the iteration. */
+  PrimExpr extent;
+  /*! \brief Loop annotations. */
+  Array<Annotation> annotations;
+  /*! \brief The body of the for loop. */
+  Stmt body;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("loop_var", &loop_var);
+    v->Visit("min", &min);
+    v->Visit("extent", &extent);
+    v->Visit("annotations", &annotations);
+    v->Visit("body", &body);
+  }
+
+  bool SEqualReduce(const LoopNode* other, SEqualReducer equal) const {
+    return equal.DefEqual(loop_var, other->loop_var) &&
+           equal(min, other->min) &&
+           equal(extent, other->extent) &&
+           equal(annotations, other->annotations) &&
+           equal(body, other->body);
+  }
+
+  void SHashReduce(SHashReducer hash_reduce) const {
+    hash_reduce.DefHash(loop_var);
+    hash_reduce(min);
+    hash_reduce(extent);
+    hash_reduce(annotations);
+    hash_reduce(body);
+  }
+
+  static constexpr const char* _type_key = "Loop";
+  TVM_DECLARE_FINAL_OBJECT_INFO(LoopNode, StmtNode);
+};
+
+class Loop : public Stmt {
+ public:
+  TVM_DLL explicit Loop(Var loop_var,
+                        PrimExpr min,
+                        PrimExpr extent,
+                        Array<Annotation> annotations,
+                        Stmt body);
+
+  TVM_DEFINE_OBJECT_REF_METHODS(Loop, Stmt, LoopNode);
+};
+
+/*!
+ * \brief A sub-region of a specific tensor.
+ */
+class TensorRegionNode : public Object {
+ public:
+  /*! \brief The tensor of the tensor region. */
+  Buffer buffer;
+  /*! \brief The region array of the tensor region. */
+  Array<Range> region;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("buffer", &buffer);
+    v->Visit("region", &region);
+  }
+
+  bool SEqualReduce(const TensorRegionNode* other, SEqualReducer equal) const {
+    return equal(buffer, other->buffer) && equal(region, other->region);
+  }
+
+  void SHashReduce(SHashReducer hash_reduce) const {
+    hash_reduce(buffer);
+    hash_reduce(region);
+  }
+
+  static constexpr const bool _type_has_method_sequal_reduce = true;
+  static constexpr const bool _type_has_method_shash_reduce = true;
+  static constexpr const char* _type_key = "TensorRegion";
+  TVM_DECLARE_FINAL_OBJECT_INFO(TensorRegionNode, Object);
+};
+
+class TensorRegion : public ObjectRef {
+ public:
+  TVM_DLL explicit TensorRegion(Buffer buffer, Array<Range> region);
+
+  TVM_DEFINE_OBJECT_REF_METHODS(TensorRegion, ObjectRef, TensorRegionNode);
+};
+
+/*!
+ * \brief Allocate a new buffer in TIR
+ * \code
+ *
+ * BufferAllocate(buffer[shape], type)
+ *
+ * \endcode
+ */
+class BufferAllocateNode : public StmtNode {
+ public:
+  /*! \brief The buffer to be allocated. */
+  Buffer buffer;
+  std::string scope;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("buffer", &buffer);
+    v->Visit("scope", &scope);
+  }
+
+  bool SEqualReduce(const BufferAllocateNode* other, SEqualReducer equal) const {
+    return equal(buffer, other->buffer) && equal(scope, other->scope);
+  }
+
+  void SHashReduce(SHashReducer hash_reduce) const {
+    hash_reduce(buffer);
+    hash_reduce(scope);
+  }
+
+  static constexpr const char* _type_key = "BufferAllocate";
+  TVM_DECLARE_FINAL_OBJECT_INFO(BufferAllocateNode, StmtNode);
+};
+
+class BufferAllocate : public Stmt {
+ public:
+  TVM_DLL explicit BufferAllocate(Buffer buffer, std::string scope);
+
+  TVM_DEFINE_OBJECT_REF_METHODS(BufferAllocate, Stmt, BufferAllocateNode);
+};
+
+/*!
+ * \brief A block is the basic schedule unit in tensor expression
+ * \code
+ *
+ *  block name(iter_type %v0[start:end] = expr0, ...,
+ *  iter_type %v_n[start:end] = expr_n)
+ *  W: [tensor_0[start:end]], ..., tensor_p[start:end]]
+ *  R: [tensor_0[start:end]], ..., tensor_q[start:end]]
+ *  pred: predicate expr
+ *  attr: [attr_key0: attr_value0, ..., attr_key_m: attr_value_m] {
+ *   // body
+ *  }
+ *
+ * \endcode
+ */
+class BlockNode : public StmtNode {
+ public:
+  /*! \brief The variables of the block. */
+  Array<IterVar> iter_vars;
+  /*! \brief The read tensor region of the block. */
+  Array<TensorRegion> reads;
+  /*! \brief The write tensor region of the block. */
+  Array<TensorRegion> writes;
+  /*! \brief The buffer allocated in the block. */
+  Array<BufferAllocate> allocations;
+  /*! \brief The annotation of the block. */
+  Array<Annotation> annotations;
+  /*! \brief The body of the block. */
+  Stmt body;
+  /*! \brief The tag of the block. */
+  std::string tag;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("body", &body);
+    v->Visit("iter_vars", &iter_vars);
+    v->Visit("reads", &reads);
+    v->Visit("writes", &writes);
+    v->Visit("allocations", &allocations);
+    v->Visit("annotations", &annotations);
+    v->Visit("tag", &tag);
+  }
+
+  bool SEqualReduce(const BlockNode* other, SEqualReducer equal) const {
+    return equal.DefEqual(iter_vars, other->iter_vars) &&
+           equal(reads, other->reads) &&
+           equal(writes, other->writes) &&
+           equal(allocations, other->allocations) &&
+           equal(annotations, other->annotations) &&
+           equal(body, other->body);
+  }
+
+  void SHashReduce(SHashReducer hash_reduce) const {
+    hash_reduce.DefHash(iter_vars);
+    hash_reduce(reads);
+    hash_reduce(writes);
+    hash_reduce(allocations);
+    hash_reduce(annotations);
+    hash_reduce(body);
+  }
+
+  static constexpr const char* _type_key = "Block";
+  TVM_DECLARE_FINAL_OBJECT_INFO(BlockNode, StmtNode);
+};
+
+class Block : public Stmt {
+ public:
+  TVM_DLL explicit Block(Array<IterVar> iter_vars,
+                         Array<TensorRegion> reads,
+                         Array<TensorRegion> writes,
+                         Stmt body,
+                         Array<BufferAllocate> allocations,
+                         Array<Annotation> annotations,
+                         std::string tag);
+
+  TVM_DEFINE_OBJECT_REF_METHODS(Block, Stmt, BlockNode);
+};
+
+/*!
+ * \brief A block realization node stores the parameters to realize a block
+ */
+class BlockRealizeNode : public StmtNode {
+ public:
+  /*! \brief The corresponding value of the iter vars. */
+  Array<PrimExpr> binding_values;
+  /*! \brief The predicates of the block. */
+  PrimExpr predicate;
+  /*! \brief The block to be realized. */
+  Block block;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("binding_values", &binding_values);
+    v->Visit("predicate", &predicate);
+    v->Visit("block", &block);
+  }
+
+  bool SEqualReduce(const BlockRealizeNode* other, SEqualReducer equal) const {
+    return equal(binding_values, other->binding_values) &&
+           equal(predicate, other->predicate) &&
+           equal(block, other->block);
+  }
+
+  void SHashReduce(SHashReducer hash_reduce) const {
+    hash_reduce(binding_values);
+    hash_reduce(predicate);
+    hash_reduce(block);
+  }
+
+  static constexpr const char* _type_key = "BlockRealize";
+  TVM_DECLARE_FINAL_OBJECT_INFO(BlockRealizeNode, StmtNode);
+};
+
+/*!
+ * \brief Managed reference to BlockRealizeNode
+ * \sa BlockRealizeNode
+ */
+class BlockRealize : public Stmt {
+ public:
+  TVM_DLL explicit BlockRealize(Array<PrimExpr> values,
+                                PrimExpr predicate,
+                                Block block);
+
+  TVM_DEFINE_OBJECT_REF_METHODS(BlockRealize, Stmt, BlockRealizeNode);
+};
+
+/*!
+ * \brief A reduction stmt stores both the init expression and update expression
+ *        When creating a reduction node, the constructor will try to do reducer
+ *        pattern matching for init and update expressions. If successful, we can
+ *        get left and right expressions.
+ */
+class ReduceStepNode : public StmtNode {
+ public:
+  /*! \brief comm reducer used in reduction */
+  CommReducer comm_reducer;
+  /*! \brief lhs expression */
+  PrimExpr lhs;
+  /*! \brief rhs expression */
+  PrimExpr rhs;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("lhs", &lhs);
+    v->Visit("rhs", &rhs);
+  }
+
+  bool SEqualReduce(const ReduceStepNode* other, SEqualReducer equal) const {
+    return equal(comm_reducer, other->comm_reducer) &&
+           equal(lhs, other->lhs) &&
+           equal(rhs, other->rhs);
+  }
+
+  void SHashReduce(SHashReducer hash_reduce) const {
+    hash_reduce(comm_reducer);
+    hash_reduce(lhs);
+    hash_reduce(rhs);
+  }
+
+  /*! \brief Apply combiner in comm_reducer on lhs and rhs.
+   *         comm_reducer contains two vars(lhs[0] and rhs[0]) and a combiner expr(result[0]).
+   *         We substitute lhs[0] with lhs and substitute rhs[0] with rhs.
+   *         If lhs and rhs is not passed, apply combiner on internal lhs and rhs.
+   */
+  PrimExpr ApplyCombiner() const;
+  PrimExpr ApplyCombiner(const PrimExpr& lhs, const PrimExpr& rhs) const;
+
+  static constexpr const char* _type_key = "ReduceStep";
+  TVM_DECLARE_FINAL_OBJECT_INFO(ReduceStepNode, StmtNode);
+};
+
+/*!
+ * \brief Managed reference to ReduceStepNode
+ * \sa ReduceStepNode
+ */
+class ReduceStep : public Stmt {
+ public:
+  TVM_DLL explicit ReduceStep(CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs);
+
+  static Stmt FromInitUpdate(const Array<CommReducer>& patterns,
+                             const PrimExpr& init, const BufferStore& update);
+
+  TVM_DEFINE_OBJECT_REF_METHODS(ReduceStep, Stmt, ReduceStepNode);
+};
+
+
 /*! \brief namespace of possible attribute sin AttrStmt.attr_key */
 namespace attr {
 // The above attr does not pass to ir stage.

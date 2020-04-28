@@ -19,9 +19,9 @@
 
 #include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
+#include <tvm/tir/analysis.h>
 #include <tvm/arith/int_set.h>
 #include <tvm/arith/analyzer.h>
-#include <tvm/tir/ir_pass.h>
 #include "schedule_common.h"
 
 namespace tvm {
@@ -51,7 +51,7 @@ class StrideIntSet {
     StrideIntSet ret;
     if (lhs.stride_.defined()) {
       CHECK(rhs.stride_.defined());
-      CHECK(Equal(lhs.stride_, rhs.stride_));
+      CHECK(ExprDeepEqual()(lhs.stride_, rhs.stride_));
       const Range& rhs_range = rhs.iter_range_;
       PrimExpr begin = min(lhs.iter_range_->min, rhs_range->min);
       PrimExpr extents =

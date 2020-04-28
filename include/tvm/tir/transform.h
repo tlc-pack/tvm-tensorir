@@ -349,6 +349,14 @@ TVM_DLL Pass NarrowDataType(int target_bits);
  */
 TVM_DLL Pass PointerValueTypeRewrite();
 
+/*!
+ * \brief Flatten the multi-dimensional BufferLoad and BufferStore
+ *        to single dimensional Load/Store. Also remove Block so that
+ *        ensure that the Tir after flatten can not be scheduled again.
+ * \return The pass.
+ */
+TVM_DLL Pass BufferFlatten();
+
 }  // namespace transform
 }  // namespace tir
 }  // namespace tvm

@@ -135,11 +135,6 @@ void StmtVisitor::VisitStmt_(const LoopNode* op) {
 
 void StmtVisitor::VisitStmt_(const BufferAllocateNode* op) {}
 
-void StmtVisitor::VisitStmt_(const BufferStoreNode* op) {
-  VisitArray(op->indices, [this](const PrimExpr& e) { this->VisitExpr(e); });
-  this->VisitExpr(op->value);
-}
-
 void StmtVisitor::VisitStmt_(const ReduceStepNode* op) {
   this->VisitExpr(op->lhs);
   this->VisitExpr(op->rhs);
@@ -481,20 +476,6 @@ Stmt StmtMutator::VisitStmt_(const LoopNode* op) {
 
 Stmt StmtMutator::VisitStmt_(const BufferAllocateNode* op) {
   return GetRef<Stmt>(op);
-}
-
-Stmt StmtMutator::VisitStmt_(const BufferStoreNode* op) {
-  auto fmutate = [this](const PrimExpr& e) { return this->VisitExpr(e); };
-  Array<PrimExpr> indices = MutateArray(op->indices, fmutate);
-  PrimExpr v = this->VisitExpr(op->value);
-  if (v.same_as(op->value) && indices.same_as(op->indices)) {
-    return GetRef<Stmt>(op);
-  } else {
-    auto n = CopyOnWrite(op);
-    n->value = std::move(v);
-    n->indices = std::move(indices);
-    return Stmt(n);
-  }
 }
 
 Stmt StmtMutator::VisitStmt_(const ReduceStepNode* op) {

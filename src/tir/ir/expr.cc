@@ -23,7 +23,6 @@
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/stmt.h>
-#include <tvm/tir/ir.h>
 #include <tvm/tir/op.h>
 #include <tvm/tir/stmt_functor.h>
 #include <memory>
@@ -423,9 +422,6 @@ TVM_REGISTER_GLOBAL("tir.BufferLoad")
   return BufferLoad(buffer, indices);
 });
 
-TVM_REGISTER_NODE_TYPE(BufferLoadNode);
-
-
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 .set_dispatch<StringImmNode>([](const ObjectRef& node, ReprPrinter* p) {
     auto* op = static_cast<const StringImmNode*>(node.get());
@@ -697,13 +693,6 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
               << ", identity_element=" << op->identity_element
               << ")";
   });
-
-TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-.set_dispatch<BufferLoadNode>([](const ObjectRef& node, ReprPrinter* p) {
-  auto* op = static_cast<const BufferLoadNode*>(node.get());
-  p->Print(op->buffer->data);
-  p->Print(op->indices);
-});
 
 TVM_REGISTER_NODE_TYPE(StringImmNode);
 TVM_REGISTER_NODE_TYPE(CastNode);

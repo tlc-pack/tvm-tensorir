@@ -17,11 +17,12 @@
  * under the License.
  */
 
-#include <tvm/tir/schedule.h>
-#include <tvm/tir/stmt_functor.h>
 #include <tvm/arith/analyzer.h>
 #include <tvm/runtime/registry.h>
-#include <tvm/tir/ir_pass.h>
+#include <tvm/tir/analysis.h>
+#include <tvm/tir/schedule.h>
+#include <tvm/tir/stmt_functor.h>
+
 #include "schedule_common.h"
 
 namespace tvm {
@@ -263,20 +264,20 @@ class SubReplacer : protected StmtMutator {
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
 };
 
-Function UpdateFuncBody(FunctionNode* func, const Stmt& new_body) {
+PrimFunc UpdateFuncBody(const PrimFuncNode* func, const Stmt& new_body) {
   CHECK(func->body.as<BlockRealizeNode>());
   CHECK(new_body->IsInstance<BlockNode>());
 
   if (func->unique()) {
     auto root_br = const_cast<BlockRealizeNode*>(func->body.as<BlockRealizeNode>());
     root_br->block = Downcast<Block>(new_body);
-    return GetRef<Function>(func);
+    return GetRef<PrimFunc>(func);
   } else {
     auto n_br = make_object<BlockRealizeNode>(*(func->body.as<BlockRealizeNode>()));
     n_br->block = Downcast<Block>(new_body);
-    auto n_func = make_object<FunctionNode>(*func);
+    auto n_func = make_object<PrimFuncNode>(*func);
     n_func->body = Stmt(n_br);
-    return Function(n_func);
+    return PrimFunc(n_func);
   }
 }
 
@@ -493,7 +494,7 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
   func = UpdateFuncBody(func.operator->(), target);
 }
 
-Schedule ScheduleNode::Create(Function function) {
+Schedule ScheduleNode::Create(PrimFunc function) {
   std::unordered_map<const StmtNode*, StmtSRef> stmt_map;
   std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> block_scopes;
   ScheduleCreator schedule_creator(&stmt_map);
@@ -944,9 +945,10 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   const auto& init_region = RelaxRegion(init_sref, lca, init->writes[0]);
   const auto& update_region = RelaxRegion(update_sref, lca, update->writes[0]);
   CHECK_EQ(init_region->region.size(), update_region->region.size());
+  ExprDeepEqual equal;
   for (size_t i = 0; i < init_region->region.size(); ++i) {
-    CHECK(Equal(init_region->region[i]->min, update_region->region[i]->min));
-    CHECK(Equal(init_region->region[i]->extent, update_region->region[i]->extent));
+    CHECK(equal(init_region->region[i]->min, update_region->region[i]->min));
+    CHECK(equal(init_region->region[i]->extent, update_region->region[i]->extent));
   }
 
   // Check the merged block is decomposable

@@ -25,6 +25,7 @@
 #include <tvm/tir/schedule.h>
 #include <tvm/ir/attrs.h>
 #include <tvm/tir/expr_functor.h>
+#include <tvm/tir/analysis.h>
 #include <tvm/arith/analyzer.h>
 #include "../../arith/pattern_match.h"
 
@@ -56,7 +57,8 @@ class Detector : public ExprVisitor {
       c = analyzer.Simplify(c_p.Eval());
       const auto& it_i1 = loop_vars_->find(i1.get());
       const auto& it_i2 = loop_vars_->find(i2.get());
-      if (it_i1 != loop_vars_->end() && it_i2 != loop_vars_->end() && Equal(c, it_i2->second)) {
+      if (it_i1 != loop_vars_->end() && it_i2 != loop_vars_->end() &&
+          equal_(c, it_i2->second)) {
         changed_ = true;
         k = Var(i1->name_hint + "_" + i2->name_hint + "_fuse");
         (*loop_vars_)[k.get()] = analyzer.Simplify(it_i1->second * it_i2->second);
@@ -96,7 +98,7 @@ class Detector : public ExprVisitor {
       arith::PVar<Var> i1_p, i2_p;
       arith::PVar<PrimExpr> c_p;
       if ((i1_p * c_p + i2_p).Match(expr)) {
-        if (i1_p.Eval().same_as(i1) && i2_p.Eval().same_as(i2) && Equal(c, c_p.Eval())) {
+        if (i1_p.Eval().same_as(i1) && i2_p.Eval().same_as(i2) && equal_(c, c_p.Eval())) {
           return k;
         }
       }
@@ -109,11 +111,11 @@ class Detector : public ExprVisitor {
       arith::PVar<Var> k_p;
       arith::PVar<PrimExpr> c_p;
       if (floordiv(k_p, c_p).Match(expr)) {
-        if (k_p.Eval().same_as(k) && Equal(c, c_p.Eval())) {
+        if (k_p.Eval().same_as(k) && equal_(c, c_p.Eval())) {
           return i1;
         }
       } else if (floormod(k_p, c_p).Match(expr)) {
-        if (k_p.Eval().same_as(k) && Equal(c, c_p.Eval())) {
+        if (k_p.Eval().same_as(k) && equal_(c, c_p.Eval())) {
           return i2;
         }
       }
@@ -130,6 +132,7 @@ class Detector : public ExprVisitor {
   // variables store the matched value of pattern variables
   Var i1, i2, k;
   PrimExpr c;
+  ExprDeepEqual equal_;
 };
 
 class Replacer : public ExprMutator {
@@ -260,7 +263,7 @@ class LoopValidator : public StmtVisitor {
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
 };
 
-void ScheduleNode::ValidateLoops(Function function) {
+void ScheduleNode::ValidateLoops(PrimFunc function) {
   LoopValidator loopValidator(&this->stmt2ref);
   loopValidator(function->body);
 }

@@ -17,8 +17,8 @@
 
 import tvm
 from tvm import tir
-from tvm.tir.ir_pass import Equal
 import util
+import gc
 
 
 def replace_ir_builder():
@@ -30,6 +30,9 @@ def replace_ir_builder():
         [], [], [], s.func.body.block.body[1],
         [], [], 'target')
 
+    # It's important to collect garbage explicitly to make
+    # sure that there is only one reference of the function
+    gc.collect()
     return s, target
 
 
@@ -43,7 +46,7 @@ def test_replace_direct_write0():
     # There is no other reference so the AST node can be write directly
     assert old_hash == s.func.__hash__()
     # Check the replaced part is equal to the target
-    assert Equal(s.func.body.block.body[1], target)
+    tvm.ir.assert_structural_equal(s.func.body.block.body[1], target)
     # The target reuse the sref's stmt, so the sref won't be none
     assert tir.schedule.get_stmt(sref) is not None
     # Validate sref and scope information
@@ -60,9 +63,9 @@ def test_replace_direct_write1():
 
     # There is no other reference so the AST node can be write directly
     assert old_hash == s.func.body.block.body.__hash__()
-    assert not Equal(hold_ref.body, target)
+    assert not tvm.ir.structural_equal(hold_ref.body, target)
     # Check the replaced part is equal to the target
-    assert Equal(s.func.body.block.body[1], target)
+    tvm.ir.assert_structural_equal(s.func.body.block.body[1], target)
     # The target reuse the sref's stmt, so the sref won't be none
     assert tir.schedule.get_stmt(sref) is not None
     # Validate sref and scope information
@@ -80,10 +83,10 @@ def test_replace_copy():
 
     # We need to copy the whole func to remain the old_func unchanged
     assert old_hash != s.func.__hash__()
-    assert not Equal(old_func.body, s.func.body)
+    assert not tvm.ir.structural_equal(old_func.body, s.func.body)
     assert old_hash == old_func.__hash__()
     # Check the replaced part is equal to the target
-    assert Equal(s.func.body.block.body[0], target)
+    tvm.ir.assert_structural_equal(s.func.body.block.body[0], target)
     # The replaced AST node will be deleted, so the ref will be None
     assert tir.schedule.get_stmt(sref) is None
     # Validate sref and scope information
@@ -102,12 +105,12 @@ def test_replace_partial_copy0():
 
     # The hold stmt will not change but copy a new one
     assert ref_old_hash != s.func.body.block.body[0].__hash__()
-    assert not Equal(hold_ref.body, target)
+    assert not tvm.ir.structural_equal(hold_ref.body, target)
     # The function and the other part stmt can be directly write
     assert func_old_hash == s.func.__hash__()
     assert other_part_hash == s.func.body.block.body[1].__hash__()
     # Check the replaced part is equal to the target
-    assert Equal(s.func.body.block.body[0].body, target)
+    tvm.ir.assert_structural_equal(s.func.body.block.body[0].body, target)
     # The replaced AST node will be deleted, so the ref will be None
     assert tir.schedule.get_stmt(sref) is None
     # Validate sref and scope information
@@ -126,12 +129,12 @@ def test_replace_partial_copy1():
 
     # The father stmt will change since there is only one reference
     assert stmt_old_hash == s.func.body.block.body[0].__hash__()
-    assert not Equal(hold_ref.body, target)
+    assert not tvm.ir.structural_equal(hold_ref.body, target)
     # The function and the other part stmt can be directly write
     assert func_old_hash == s.func.__hash__()
     assert other_part_hash == s.func.body.block.body[1].__hash__()
     # Check the replaced part is equal to the target
-    assert Equal(s.func.body.block.body[0].body.body.block, target)
+    tvm.ir.assert_structural_equal(s.func.body.block.body[0].body.body.block, target)
     # The replaced AST node will be deleted, so the ref will be None
     assert tir.schedule.get_stmt(sref) is None
     # Validate sref and scope information
@@ -146,7 +149,7 @@ def test_replace_root_write():
     s.replace(sref, target)
     # Check no copy and the new body equals to target
     assert old_hash == s.func.__hash__()
-    assert Equal(s.func.body.block, target)
+    tvm.ir.assert_structural_equal(s.func.body.block, target)
     # Validate sref and scope information
     assert s.validate_sref()
 
@@ -160,10 +163,10 @@ def test_replace_root_copy0():
     s.replace(sref, target)
     # Check the new body equals to target
     assert old_hash != s.func.__hash__()
-    assert Equal(s.func.body.block, target)
+    tvm.ir.assert_structural_equal(s.func.body.block, target)
     # Check the original func remains unchanged
     assert old_hash == func_ref.__hash__()
-    assert not Equal(func_ref.body, target)
+    assert not tvm.ir.structural_equal(func_ref.body, target)
     # Validate sref and scope information
     assert s.validate_sref()
 
@@ -177,10 +180,10 @@ def test_replace_root_copy1():
     s.replace(sref, target)
     # Check the new body equals to target
     assert old_hash != s.func.body.block.__hash__()
-    assert Equal(s.func.body.block.body[0], target)
+    tvm.ir.assert_structural_equal(s.func.body.block.body[0], target)
     # Check the original func remains unchanged
     assert old_hash == func_ref.__hash__()
-    assert not Equal(func_ref.body, target)
+    assert not tvm.ir.structural_equal(func_ref.body, target)
     # Validate sref and scope information
     assert s.validate_sref()
 
@@ -196,7 +199,7 @@ def test_replace_block_remap():
     sref_new = s.get_block("init")
     # Check the original sref has been remapped
     assert sref.__hash__() == sref_new.__hash__()
-    assert Equal(tir.schedule.get_stmt(sref), target)
+    tvm.ir.assert_structural_equal(tir.schedule.get_stmt(sref), target)
     # Validate sref and scope information
     assert s.validate_sref()
 

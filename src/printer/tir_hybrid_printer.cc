@@ -21,15 +21,17 @@
  * \brief Printer class to print Te IR to python syntax script
  */
 
-#include <tvm/runtime/registry.h>
-#include <tvm/tir/ir.h>
-#include <tvm/tir/ir_pass.h>
-#include <tvm/tir/expr.h>
-#include <tvm/tir/stmt.h>
-#include <tvm/tir/expr_functor.h>
-#include <tvm/tir/stmt_functor.h>
-#include <tvm/node/serialization.h>
+#include <tvm/arith/analyzer.h>
 #include <tvm/ir/module.h>
+#include <tvm/node/serialization.h>
+#include <tvm/runtime/registry.h>
+#include <tvm/tir/expr.h>
+#include <tvm/tir/expr_functor.h>
+#include <tvm/tir/function.h>
+#include <tvm/tir/op.h>
+#include <tvm/tir/stmt.h>
+#include <tvm/tir/stmt_functor.h>
+
 #include "doc.h"
 #include "meta_data.h"
 
@@ -62,7 +64,8 @@ class TIRHybridPrinter :
       : show_meta_(show_meta), annotate_(annotate) {}
 
   /*! \brief comm_reducer map */
-  std::unordered_map<const CommReducerNode*, int> reducer_map;
+  std::unordered_map<const CommReducerNode*, int> reducer_map_;
+  std::unordered_map<const BaseFuncNode*, GlobalVar> func2var_;
 
   /*! \brief Print the node */
   TVM_DLL Doc Print(const ObjectRef& node);
@@ -107,7 +110,7 @@ class TIRHybridPrinter :
   Doc PrintFinal(const ObjectRef& functions) {
     if (functions.as<IRModuleNode>()) {
       return Print(functions);
-    } else if (functions.as<FunctionNode>()) {
+    } else if (functions.as<PrimFuncNode>()) {
       return Print(functions) << Doc::NewLine() << DumpMeta();
     } else {
       return Doc::Text("");
@@ -290,7 +293,7 @@ Doc TIRHybridPrinter::VisitExpr_(const BufferLoadNode* op) {
 
 Doc TIRHybridPrinter::VisitStmt_(const ReduceStepNode* op) {
   Doc doc;
-  doc << "reducer" + std::to_string(reducer_map[op->comm_reducer.get()]) << ".step(";
+  doc << "reducer" + std::to_string(reducer_map_[op->comm_reducer.get()]) << ".step(";
   doc << Print(op->lhs) << ", " << Print(op->rhs) << ")";
   return doc;
 }
@@ -370,7 +373,8 @@ Doc TIRHybridPrinter::VisitStmt_(const LoopNode* op) {
   Doc doc;
   // print loop and annotations
   doc << "for " << Print(op->loop_var);
-  doc << " in range(" << Print(op->min) << ", " << Print(Simplify(op->min + op->extent));
+  doc << " in range(" << Print(op->min) << ", "
+      << Print(arith::Analyzer().Simplify(op->min + op->extent));
   if (!op->annotations.empty()) {
     doc << ", annotation = {";
     for (size_t i = 0; i < op->annotations.size(); ++i) {
@@ -420,11 +424,15 @@ TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
   Doc doc;
   doc << "class Module:";
 
+  for (const auto& x : op->functions) {
+    p->func2var_[x.second.operator->()] = x.first;
+  }
+
   Doc body;
   body << Doc::NewLine();
   std::vector<Doc> functions;
   for (auto it = op->functions.begin(); it != op->functions.end(); ++it) {
-    if ((*it).second.as<FunctionNode>()) {
+    if ((*it).second.as<PrimFuncNode>()) {
       functions.push_back(p->Print((*it).second));
     }
   }
@@ -435,14 +443,17 @@ TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
 });
 
 TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
-.set_dispatch<FunctionNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
-  auto* op = node.as<FunctionNode>();
+.set_dispatch<PrimFuncNode>([](const ObjectRef& node, TIRHybridPrinter* p) {
+  auto* op = node.as<PrimFuncNode>();
   // collect reducers
-  p->reducer_map.clear();
-  ReducerCollector(&p->reducer_map)(op->body);
-  // print signature
+  p->reducer_map_.clear();
+  ReducerCollector(&p->reducer_map_)(op->body);
   Doc doc;
-  doc << "def " << op->name << "(";
+
+  // print signature
+  auto it = p->func2var_.find(op);
+  std::string name = it == p->func2var_.end() ? "func" : it->second->name_hint;
+  doc << "def " << name << "(";
   for (size_t i = 0; i < op->params.size(); ++i) {
     doc << p->Print(op->params[i]);
     if (i != op->params.size() - 1) {
@@ -469,7 +480,7 @@ TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
     body << ")" << Doc::NewLine();
   }
   // print comm_reducer
-  for (const auto& it : p->reducer_map) {
+  for (const auto& it : p->reducer_map_) {
     body << "reducer" + std::to_string(it.second) << " = comm_reducer(";
     body << "lambda " << p->Print(it.first->lhs[0]) << ", " << p->Print(it.first->rhs[0])
          << ": " << p->Print(it.first->result[0])
@@ -529,7 +540,7 @@ TIRHybridPrinter::FType& TIRHybridPrinter::vtable() {
 TVM_REGISTER_GLOBAL("tir.hybrid.AsHybrid")
 .set_body_typed<std::string(const ObjectRef&, bool)>(
 [](const ObjectRef& functions, bool show_meta) {
-  CHECK(functions.as<FunctionNode>() != nullptr || functions.as<IRModuleNode>() != nullptr);
+  CHECK(functions.as<PrimFuncNode>() != nullptr || functions.as<IRModuleNode>() != nullptr);
   return TIRHybridPrinter(show_meta).PrintFinal(functions).str() + "\n";
 });
 

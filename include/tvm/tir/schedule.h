@@ -19,16 +19,18 @@
 
 #ifndef TVM_TIR_SCHEDULE_H_
 #define TVM_TIR_SCHEDULE_H_
-#include <tvm/tir/ir.h>
 #include <tvm/ir/attrs.h>
 #include <tvm/te/tensor.h>
 #include <tvm/tir/buffer.h>
-#include <tvm/tir/stmt_sref.h>
 #include <tvm/tir/scope.h>
-#include <utility>
-#include <vector>
+#include <tvm/tir/stmt_sref.h>
+#include <tvm/tir/function.h>
+
 #include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
+
 
 namespace tvm {
 namespace tir {
@@ -37,7 +39,7 @@ class Schedule;
 class ScheduleNode : public Object {
  public:
   /*! \brief The function to be scheduled */
-  Function func;
+  PrimFunc func;
   /*! \brief The root of schedulable reference tree */
   StmtSRef root;
   /*!
@@ -58,7 +60,7 @@ class ScheduleNode : public Object {
    * \param function The function to be scheduled
    * \return The schedule
    */
-  static Schedule Create(Function function);
+  static Schedule Create(PrimFunc function);
 
   /*!
    * \brief replace part of AST with new stmt
@@ -231,7 +233,7 @@ class ScheduleNode : public Object {
    *          C, then B's output region covers C's input region under Loop k
    * \param func the TirFunction to be validated
    */
-  void ValidateLoops(Function function);
+  void ValidateLoops(PrimFunc function);
 };
 
 class Schedule : public ObjectRef {

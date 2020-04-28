@@ -80,15 +80,15 @@ def predicate(b, c):
 
 
 def matmul_stmt():
-    mod = tvm.tir.hybrid.create_module([matmul])
+    mod = tvm.tir.hybrid.create_module({"matmul": matmul})
     return mod["matmul"]
 
 
 def element_wise_stmt():
-    mod = tvm.tir.hybrid.create_module([element_wise])
+    mod = tvm.tir.hybrid.create_module({"element_wise": element_wise})
     return mod["element_wise"]
 
 
 def predicate_stmt():
-    mod = tvm.tir.hybrid.create_module([predicate])
+    mod = tvm.tir.hybrid.create_module({"predicate" : predicate})
     return mod["predicate"]

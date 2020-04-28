@@ -478,3 +478,16 @@ def VerifyMemory():
         The result pass
     """
     return _ffi_api.VerifyMemory()
+
+
+def BufferFlatten():
+    """Flatten the multi-dimensional BufferLoad and BufferStore
+    to single dimensional Load/Store. Also remove Block so that
+    ensure that the Tir after flatten can not be scheduled again.
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.BufferFlatten()

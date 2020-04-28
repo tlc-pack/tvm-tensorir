@@ -21,11 +21,12 @@
  * \file tvm/tir/stmt.cc
  */
 #include <tvm/runtime/registry.h>
-#include <tvm/tir/stmt.h>
-#include <tvm/tir/ir_pass.h>
-#include "../schedule/schedule_common.h"
+#include <tvm/tir/analysis.h>
 #include <tvm/tir/op.h>
+#include <tvm/tir/stmt.h>
+#include <tvm/tir/stmt_functor.h>
 
+#include "../schedule/schedule_common.h"
 
 namespace tvm {
 namespace tir {
@@ -444,13 +445,13 @@ PrimExpr ReduceStepNode::ApplyCombiner(const PrimExpr& lhs, const PrimExpr& rhs)
   CHECK_EQ(comm_reducer->lhs.size(), 1);
   CHECK_EQ(comm_reducer->rhs.size(), 1);
   CHECK_EQ(comm_reducer->result.size(), 1);
-  auto vmap = [&](const VarNode* v) -> PrimExpr {
-    if (v == comm_reducer->lhs[0].get()) {
+  auto vmap = [&](const Var& v) -> Optional<PrimExpr> {
+    if (v.same_as(comm_reducer->lhs[0])) {
       return lhs;
-    } else if (v == comm_reducer->rhs[0].get()) {
+    } else if (v.same_as(comm_reducer->rhs[0])) {
       return rhs;
     } else {
-      return GetRef<Var>(v);
+      return v;
     }
   };
   return Substitute(comm_reducer->result[0], vmap);
@@ -458,7 +459,8 @@ PrimExpr ReduceStepNode::ApplyCombiner(const PrimExpr& lhs, const PrimExpr& rhs)
 
 std::tuple<bool, PrimExpr, PrimExpr> ReducerMatched(const CommReducer& reducer,
                                                     const PrimExpr& init, const PrimExpr update) {
-  if (!Equal(reducer->identity_element[0], init))
+  ExprDeepEqual equal;
+  if (!equal(reducer->identity_element[0], init))
     return std::make_tuple(false, NullValue<PrimExpr>(), NullValue<PrimExpr>());
   PatternMatcher pattern_matcher(reducer->result[0]);
   pattern_matcher.Match(update);
@@ -469,18 +471,19 @@ std::tuple<bool, PrimExpr, PrimExpr> ReducerMatched(const CommReducer& reducer,
 
 Stmt ReduceStep::FromInitUpdate(const Array<CommReducer>& patterns,
                                 const PrimExpr& init, const BufferStore& update) {
-  const auto& lhs = BufferLoad(update->buffer->dtype, update->buffer, update->indices);
+  ExprDeepEqual equal;
+  const auto& lhs = BufferLoad(update->buffer, update->indices);
   // Check user defined patterns
   for (const auto& reducer : patterns) {
     const auto& res = ReducerMatched(reducer, init, update->value);
-    if (std::get<0>(res) && Equal(lhs, std::get<1>(res))) {
+    if (std::get<0>(res) && equal(lhs, std::get<1>(res))) {
       return ReduceStep(reducer, std::get<1>(res), std::get<2>(res));
     }
   }
   // Check default patterns
   for (const auto& reducer : default_reducer::default_reducers) {
     const auto& res = ReducerMatched(reducer.GetReducer(init.dtype()), init, update->value);
-    if (std::get<0>(res) && Equal(lhs, std::get<1>(res))) {
+    if (std::get<0>(res) && equal(lhs, std::get<1>(res))) {
       return ReduceStep(reducer.GetReducer(init.dtype()), std::get<1>(res), std::get<2>(res));
     }
   }
@@ -493,41 +496,6 @@ TVM_REGISTER_GLOBAL("tir.ReduceStep")
     [](CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs) {
       return ReduceStep(comm_reducer, lhs, rhs);
     });
-
-Function::Function(Array<Var> params,
-                   Map<Var, Buffer> buffer_map,
-                   std::string name,
-                   Stmt body) {
-  ObjectPtr<FunctionNode> node = make_object<FunctionNode>();
-  CHECK_EQ(params.size(), buffer_map.size());
-  node->params = std::move(params);
-  node->buffer_map = std::move(buffer_map);
-  node->name = std::move(name);
-  node->body = std::move(body);
-  data_ = std::move(node);
-}
-
-TVM_REGISTER_GLOBAL("tir.Function")
-.set_body_typed<Function(Array<Var>, Map<Var, Buffer>, std::string, Stmt)>(
-    [](Array<Var> params, Map<Var, Buffer> buffer_map, std::string name, Stmt body) {
-      return Function(params, buffer_map, name, body);
-    });
-
-BufferStore::BufferStore(Buffer buffer, PrimExpr value, Array<PrimExpr> indices) {
-  ObjectPtr<BufferStoreNode> node = make_object<BufferStoreNode>();
-  node->buffer = std::move(buffer);
-  node->value = std::move(value);
-  node->indices = std::move(indices);
-  data_ = std::move(node);
-}
-
-TVM_REGISTER_GLOBAL("tir.BufferStore")
-.set_body_typed([](Buffer buffer, PrimExpr value, Array<PrimExpr> indices) {
-  return BufferStore(buffer, value, indices);
-});
-
-TVM_REGISTER_NODE_TYPE(BufferStoreNode);
-
 
 BufferRealize::BufferRealize(Buffer buffer,
                              Array<Range> bounds,
@@ -833,17 +801,6 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 });
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-.set_dispatch<BufferStoreNode>([](const ObjectRef& node, ReprPrinter* p) {
-  auto* op = static_cast<const BufferStoreNode*>(node.get());
-  p->PrintIndent();
-  p->Print(op->buffer->data);
-  p->Print(op->indices);
-  p->stream << " = ";
-  p->Print(op->value);
-  p->stream << '\n';
-});
-
-TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 .set_dispatch<AnnotationNode>([](const ObjectRef& node, ReprPrinter* p) {
   auto* op = static_cast<const AnnotationNode*>(node.get());
   p->stream << op->attr_key << ": ";
@@ -1023,25 +980,6 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
   p->stream << ", \"" << op->scope << "\")\n";
 });
 
-TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-.set_dispatch<FunctionNode>([](const ObjectRef& node, ReprPrinter* p) {
-  auto* op = static_cast<const FunctionNode*>(node.get());
-  p->PrintIndent();
-  p->stream << "func " << op->name << "(";
-  for (size_t i = 0; i < op->params.size(); ++i) {
-    p->Print(op->params[i]);
-    if (i != op->params.size() - 1) {
-      p->stream << ", ";
-    }
-  }
-  p->stream << ") {\n";
-  p->indent += 2;
-  p->Print(op->body);
-  p->indent -= 2;
-  p->PrintIndent();
-  p->stream << "}\n";
-});
-
 TVM_REGISTER_NODE_TYPE(AttrStmtNode);
 TVM_REGISTER_NODE_TYPE(PrefetchNode);
 TVM_REGISTER_NODE_TYPE(CallNode);
@@ -1058,14 +996,13 @@ TVM_REGISTER_NODE_TYPE(SeqStmtNode);
 TVM_REGISTER_NODE_TYPE(IfThenElseNode);
 TVM_REGISTER_NODE_TYPE(EvaluateNode);
 TVM_REGISTER_NODE_TYPE(TensorRegionNode);
-TVM_REGISTER_NODE_TYPE(BufferLoadNode);
 TVM_REGISTER_NODE_TYPE(BufferStoreNode);
 TVM_REGISTER_NODE_TYPE(BufferAllocateNode);
 TVM_REGISTER_NODE_TYPE(LoopNode);
 TVM_REGISTER_NODE_TYPE(BlockNode);
 TVM_REGISTER_NODE_TYPE(BlockRealizeNode);
 TVM_REGISTER_NODE_TYPE(ReduceStepNode);
-TVM_REGISTER_NODE_TYPE(FunctionNode);
+TVM_REGISTER_NODE_TYPE(AnnotationNode);
 
 }  // namespace tir
 }  // namespace tvm

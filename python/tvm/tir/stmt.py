@@ -437,27 +437,6 @@ class Loop(Stmt):
 
 
 @tvm._ffi.register_object
-class BufferStore(Stmt):
-    """BufferStore node.
-
-    Parameters
-    ----------
-    buffer : Buffer
-        The store buffer.
-
-    value : Expr
-        The value we want to store.
-
-    indices : list of Expr
-        The index in the store expression.
-
-    """
-    def __init__(self, buffer, value, indices):
-        self.__init_handle_by_constructor__(
-            _ffi_api.BufferStore, buffer, value, indices)
-
-
-@tvm._ffi.register_object
 class Block(Stmt):
     """Block node.
 

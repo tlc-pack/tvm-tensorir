@@ -26,7 +26,6 @@ from .expr import Add, Sub, Mul, Div, Mod, FloorDiv, FloorMod
 from .expr import Min, Max, EQ, NE, LT, LE, GT, GE, And, Or, Not
 from .expr import Select, BufferLoad, Load, Ramp, Broadcast, Shuffle, Call, Let, CommReducer
 from .expr import IterVar, Any
-from .expr import BufferLoad
 
 from .stmt import Stmt, LetStmt, AssertStmt, For, Annotation
 from .stmt import BufferStore, BufferRealize, Store, Provide, Allocate, AttrStmt
@@ -46,8 +45,6 @@ from .op import div, indexdiv, indexmod, truncdiv, truncmod, floordiv, floormod
 from .op import comm_reducer, min, max, sum
 
 from .schedule import create_schedule, Schedule
-
-from .module import Function
 
 from . import ir_builder
 from . import transform
