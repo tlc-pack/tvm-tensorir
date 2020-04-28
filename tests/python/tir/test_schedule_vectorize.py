@@ -18,7 +18,6 @@
 import tvm
 import util
 from tvm import tir
-from tvm.tir.ir_pass import AssertEqual
 
 
 @tvm.tir.hybrid.script
@@ -59,9 +58,8 @@ def test_vectorize_normal():
     i, jo, ji = s.get_axes(B)
     s.vectorize(ji)
 
-    mod = tir.hybrid.create_module([predicate_vectorize])
-    print(tvm.lower(s.func, simple_mode=True))
-    AssertEqual(s.func, mod["predicate_vectorize"])
+    mod = tir.hybrid.create_module({"predicate_vectorize": predicate_vectorize})
+    tvm.ir.assert_structural_equal(s.func, mod["predicate_vectorize"])
 
 
 @tvm.tir.hybrid.script
@@ -100,7 +98,7 @@ def element_wise_compute_at_vectorize(a, c):
 
 
 def test_vectorize_complete():
-    mod = tvm.tir.hybrid.create_module([element_wise_compute_at])
+    mod = tvm.tir.hybrid.create_module({"element_wise_compute_at": element_wise_compute_at})
     func = mod["element_wise_compute_at"]
 
     # schedule
@@ -110,8 +108,9 @@ def test_vectorize_complete():
     i_o, i_i = s.split(inner, 4)
     s.vectorize(i_i)
 
-    mod = tir.hybrid.create_module([element_wise_compute_at_vectorize])
-    AssertEqual(s.func, mod["element_wise_compute_at_vectorize"])
+    mod = tir.hybrid.create_module(
+        {"element_wise_compute_at_vectorize": element_wise_compute_at_vectorize})
+    tvm.ir.assert_structural_equal(s.func, mod["element_wise_compute_at_vectorize"])
 
 
 def test_unroll_normal():
@@ -122,8 +121,8 @@ def test_unroll_normal():
     i, jo, ji = s.get_axes(B)
     s.unroll(ji)
 
-    mod = tir.hybrid.create_module([predicate_unroll])
-    AssertEqual(s.func, mod["predicate_unroll"])
+    mod = tir.hybrid.create_module({"predicate_unroll": predicate_unroll})
+    tvm.ir.assert_structural_equal(s.func, mod["predicate_unroll"])
 
 
 if __name__ == "__main__":

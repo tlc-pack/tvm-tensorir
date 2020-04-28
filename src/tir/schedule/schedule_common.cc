@@ -17,14 +17,15 @@
  * under the License.
  */
 
-#include <tvm/tir/ir.h>
-#include <tvm/tir/stmt_functor.h>
-#include <tvm/tir/schedule.h>
-#include <tvm/tir/ir_pass.h>
-#include <unordered_map>
-#include <vector>
-#include <utility>
 #include "schedule_common.h"
+
+#include <tvm/tir/analysis.h>
+#include <tvm/tir/schedule.h>
+#include <tvm/tir/stmt_functor.h>
+
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace tvm {
 namespace tir {
@@ -336,7 +337,8 @@ void PatternMatcher::VisitExpr_(const VarNode* op) {
   if (it == filled_map_.end()) {
     filled_map_[op] = expr_to_match_;
   } else {
-    if (it->second.same_as(expr_to_match_) || Equal(it->second, expr_to_match_)) return;
+    ExprDeepEqual equal;
+    if (it->second.same_as(expr_to_match_) || equal(it->second, expr_to_match_)) return;
     match_success_ = false;
   }
 }

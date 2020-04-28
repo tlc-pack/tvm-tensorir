@@ -23,7 +23,6 @@ node as its first 2 arguments.
 """
 # pylint: disable=unused-argument
 import tvm.tir
-from tvm.tir import ir_pass as _pass
 
 
 def buffer_bind(parser, node, var, shape, dtype="float32"):
@@ -52,7 +51,7 @@ def buffer_allocate(parser, node, shape, dtype="float32", scope=""):
         A = buffer_allocate((128, 128), dtype="float32")
 
     """
-    _buffer = tvm.tir.decl_buffer(shape, dtype=dtype, name=parser._assign_target)
+    _buffer = tvm.tir.decl_buffer(shape, dtype=dtype, name=parser._assign_target, scope=scope)
     parser.scope_emitter.alloc(tvm.tir.BufferAllocate(_buffer, scope))
     return _buffer
 
@@ -67,7 +66,8 @@ def block_vars(parser, node, begin, end, iter_type="data_par"):
         vi(0, 128, iter_type="reduce"): i
 
     """
-    extent = end if begin == 0 else _pass.Simplify(end - begin)
+    ana = tvm.arith.Analyzer()
+    extent = end if begin == 0 else ana.simplify(end - begin)
     block_var_dom = tvm.ir.Range.make_by_min_extent(begin, extent)
 
     if iter_type == "data_par":

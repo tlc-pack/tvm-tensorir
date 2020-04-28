@@ -18,7 +18,6 @@
 import tvm
 import util
 from tvm import tir
-from tvm.tir.ir_pass import AssertEqual
 
 
 @tvm.tir.hybrid.script
@@ -52,9 +51,9 @@ def test_fuse():
     outer, inner = s.get_axes(C)
     s.fuse(outer, inner)
 
-    mod = tvm.tir.hybrid.create_module([fused_element_wise])
+    mod = tvm.tir.hybrid.create_module({"fused_element_wise": fused_element_wise})
     fused_func = mod["fused_element_wise"]
-    assert AssertEqual(fused_func, s.func)
+    tvm.ir.assert_structural_equal(fused_func, s.func)
     assert s.validate_sref()
 
 
@@ -116,10 +115,10 @@ def test_split_fuse():
     outer, inner = s.get_axes(C)
     s.split(inner, nparts=10)
 
-    mod = tvm.tir.hybrid.create_module([split_element_wise])
+    mod = tvm.tir.hybrid.create_module({"split_element_wise": split_element_wise})
     split_func = mod["split_element_wise"]
 
-    assert AssertEqual(split_func, s.func)
+    tvm.ir.assert_structural_equal(split_func, s.func)
     assert s.validate_sref()
 
 
@@ -153,10 +152,10 @@ def test_compute_at():
     outer, inner = s.get_axes(C)
     s.compute_at(B, outer)
 
-    mod = tvm.tir.hybrid.create_module([compute_at_element_wise])
+    mod = tvm.tir.hybrid.create_module({"compute_at_element_wise": compute_at_element_wise})
     split_func = mod["compute_at_element_wise"]
 
-    assert AssertEqual(split_func, s.func)
+    tvm.ir.assert_structural_equal(split_func, s.func)
     assert s.validate_sref()
 
 
@@ -184,10 +183,10 @@ def test_fuse_loop_sref():
     ij = s.fuse(i, j)
     s.fuse(ij, k)
 
-    mod = tvm.tir.hybrid.create_module([predicate_fuse])
+    mod = tvm.tir.hybrid.create_module({"predicate_fuse": predicate_fuse})
     predicate_fuse_func = mod["predicate_fuse"]
 
-    assert AssertEqual(s.func, predicate_fuse_func)
+    tvm.ir.assert_structural_equal(s.func, predicate_fuse_func)
     assert s.validate_sref()
 
 
@@ -221,10 +220,10 @@ def test_reorder_normal():
     s.reorder(k, i)
     s.reorder(i, j)
     s.fuse(i, j)
-    mod = tvm.tir.hybrid.create_module([matmul_reorder])
+    mod = tvm.tir.hybrid.create_module({"matmul_reorder": matmul_reorder})
     matmul_reorder_func = mod["matmul_reorder"]
 
-    assert AssertEqual(s.func, matmul_reorder_func)
+    tvm.ir.assert_structural_equal(s.func, matmul_reorder_func)
     assert s.validate_sref()
 
 
@@ -252,7 +251,7 @@ def compute_at_case(a, c):
 
 
 def test_compute_at_fail():
-    mod = tvm.tir.hybrid.create_module([compute_at_case])
+    mod = tvm.tir.hybrid.create_module({"compute_at_case": compute_at_case})
     func = mod["compute_at_case"]
     s = tir.create_schedule(func)
     B1 = s.get_block("B1")
@@ -304,10 +303,10 @@ def test_reduction():
     s.merge_reduction(init, update)
     s.decompose_reduction(update, j)
 
-    mod = tvm.tir.hybrid.create_module([matmul_reduction])
+    mod = tvm.tir.hybrid.create_module({"matmul_reduction": matmul_reduction})
     matmul_reduction_func = mod["matmul_reduction"]
 
-    assert AssertEqual(s.func, matmul_reduction_func)
+    tvm.ir.assert_structural_equal(s.func, matmul_reduction_func)
     assert s.validate_sref()
 
 
@@ -349,10 +348,10 @@ def test_cache_read():
     s.compute_at(B, outer)
     AA = s.cache_read(buffer_a, 'local')
 
-    mod = tvm.tir.hybrid.create_module([cache_read])
+    mod = tvm.tir.hybrid.create_module({"cache_read": cache_read})
     cached_func = mod["cache_read"]
 
-    assert AssertEqual(cached_func, s.func)
+    tvm.ir.assert_structural_equal(cached_func, s.func)
     assert s.validate_sref()
 
 
@@ -392,10 +391,10 @@ def test_cache_write():
     C = s.get_block(buffer_c)
     CC = s.cache_write(buffer_c, 'local')
 
-    mod = tvm.tir.hybrid.create_module([cache_write])
+    mod = tvm.tir.hybrid.create_module({"cache_write": cache_write})
     cached_func = mod["cache_write"]
 
-    assert AssertEqual(cached_func, s.func)
+    tvm.ir.assert_structural_equal(cached_func, s.func)
     assert s.validate_sref()
 
 

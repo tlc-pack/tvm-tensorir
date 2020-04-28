@@ -16,7 +16,7 @@
 # under the License.
 """Hybrid Script Parser For TIR"""
 # pylint: disable=invalid-name, missing-docstring, inconsistent-return-statements, no-else-return
-# pylint: disable=unnecessary-comprehension, unused-argument
+# pylint: disable=unnecessary-comprehension, unused-argument, import-outside-toplevel
 
 import json
 import numbers
@@ -25,19 +25,18 @@ from typed_ast import ast3 as ast
 
 from tvm.tir import expr as _expr
 from tvm.tir import stmt as _stmt
-from tvm.tir import ir_pass as _pass
 from tvm.te import schedule as _schedule
 from tvm._ffi.base import TVMError
 from tvm.tir import all as _all
 from tvm.tir import any as _any
 import tvm._ffi
 
-from .. import module
 from . import scope_emitter, intrin, special_stmt, scope_handler
 from .scope_emitter import ScopeEmitter
 from .meta_unparser import MetaUnparser
 from .registry import Registry, register_intrin, register_special_stmt, register_scope_handler
 from .special_stmt import HybridLambda, HybridReducer
+from ...ir import GlobalVar
 
 
 def _floordiv(x, y):
@@ -112,6 +111,8 @@ class HybridParser(ast.NodeVisitor):
         self.current_lineno = 0
         self.current_col_offset = 0
         self.meta = None
+
+        self.functions = {}
 
         self._is_block_vars = False
         self._in_with_func_arg = False
@@ -263,11 +264,11 @@ class HybridParser(ast.NodeVisitor):
                 self.report_error("invalid class member")
 
         # parse member functions
-        funcs = []
         for body_element in node.body:
             if isinstance(body_element, ast.FunctionDef):
-                funcs.append(self.visit(body_element))
-        return module.create_module(funcs)
+                self.visit(body_element)
+        from .utils import create_module
+        return create_module(self.functions)
 
     def visit_FunctionDef(self, node):
         """ FunctionDef visitor
@@ -282,15 +283,17 @@ class HybridParser(ast.NodeVisitor):
         self.init_function_parsing_env()
         # add parameters of function
         for arg in node.args.args:
-            arg_var = tvm.te.var(arg.arg)
+            arg_var = tvm.te.var(arg.arg, "handle")
             self.scope_emitter.update_symbol(arg.arg, ScopeEmitter.Symbol.Var, arg_var)
             self.params.append(arg_var)
         # visit the body of function
         for body_element in node.body:
             self.visit(body_element)
-        # fetch the body and return a tir.Function
+        # fetch the body and return a tir.PrimFunc
         body = self.scope_emitter.pop_scope()
-        return tvm.tir.Function(self.params, self.buffer_map, node.name, body)
+        func = tvm.tir.PrimFunc(self.params, body, buffer_map=self.buffer_map)
+        self.functions[GlobalVar(node.name)] = func
+        return func
 
     def visit_Assign(self, node):
         """ Assign visitor
@@ -588,7 +591,7 @@ class HybridParser(ast.NodeVisitor):
                     indexes = [self.visit(node.slice.value)]
 
                 if isinstance(node.ctx, ast.Load):
-                    return tvm.tir.BufferLoad(symbol.dtype, symbol, indexes)
+                    return tvm.tir.BufferLoad(symbol, indexes)
                 return symbol, indexes
             else:
                 # TensorRegion
@@ -613,7 +616,8 @@ class HybridParser(ast.NodeVisitor):
                 for dom in slices:
                     extent = dom[1] - dom[0]
                     if isinstance(extent, _expr.PrimExpr):
-                        extent = _pass.Simplify(dom[1] - dom[0])
+                        ana = tvm.arith.Analyzer()
+                        extent = ana.simplify(dom[1] - dom[0])
                     doms.append(tvm.ir.Range.make_by_min_extent(dom[0], extent))
 
                 return tvm.tir.TensorRegion(symbol, doms)
@@ -737,8 +741,8 @@ def source_to_op(src, func_lineno=0):
         The line number of the first line of the script to be parsed
     Returns
     -------
-    functions : Function or Module
-        The Function or Module in IR.
+    functions : PrimFunc or Module
+        The PrimFunc or Module in IR.
     """
 
     init_registry()
