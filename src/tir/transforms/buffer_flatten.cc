@@ -21,11 +21,13 @@
  * \file buffer_flatten.cc
  */
 
-#include <tvm/tir/ir.h>
-#include <tvm/tir/stmt_functor.h>
-#include <tvm/tir/ir_pass.h>
-#include <tvm/ir/attrs.h>
+#include <tvm/runtime/registry.h>
 #include <tvm/arith/int_set.h>
+#include <tvm/tir/transform.h>
+#include <tvm/ir/attrs.h>
+#include <tvm/tir/function.h>
+#include <tvm/tir/op.h>
+#include <tvm/tir/stmt_functor.h>
 
 namespace tvm {
 namespace tir {
@@ -261,7 +263,9 @@ class BufferFlattener : public StmtExprMutator {
                   const std::unordered_map<Buffer, std::vector<arith::IntSet>,
                                            ObjectHash, ObjectEqual>& buffers_region,
                   const std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual>& buffers_lca)
-      : buffers_region_(buffers_region), block_var_(block_var), buffers_lca_(buffers_lca) {}
+      : buffers_region_(buffers_region),
+        block_var_(block_var),
+        buffers_lca_(buffers_lca) {}
 
   Stmt VisitStmt(const Stmt& stmt) override {
     Stmt body = StmtMutator::VisitStmt(stmt);
@@ -419,28 +423,43 @@ class BufferFlattener : public StmtExprMutator {
   }
 };
 
-Function BufferFlatten(Function func) {
-  auto new_func = make_object<FunctionNode>(*func.operator->());
+
+PrimFunc BufferFlatten(PrimFunc f) {
+  auto fptr = f.CopyOnWrite();
 
   // Transform the reduction calls to BufferStore
   ReductionTransformer reduction_transformer;
-  new_func->body = reduction_transformer(func->body);
+  fptr->body = reduction_transformer(fptr->body);
 
   // Find the LCA of each Buffer access
-  LCADetector lca_detector(new_func->buffer_map);
-  lca_detector(new_func->body);
+  LCADetector lca_detector(fptr->buffer_map);
+  lca_detector(fptr->body);
 
   // Recalculate the buffer region
-  RegionGatherer region_gatherer(lca_detector.buffers_lca_, new_func->buffer_map);
-  region_gatherer(new_func->body);
+  RegionGatherer region_gatherer(lca_detector.buffers_lca_, fptr->buffer_map);
+  region_gatherer(fptr->body);
 
   // Transform BufferLoad/BufferStore into Load/Store
   BufferFlattener flattener
       (region_gatherer.block_var_, region_gatherer.buffers_region_, lca_detector.buffers_lca_);
-  new_func->body = flattener(new_func->body);
+  fptr->body = flattener(fptr->body);
 
-  return Function(new_func);
+  return f;
 }
+
+namespace transform {
+
+Pass BufferFlatten() {
+  auto pass_func = [=](PrimFunc f, IRModule m, PassContext ctx) {
+    return BufferFlatten(std::move(f));
+  };
+  return CreatePrimFuncPass(pass_func, 0, "tir.BufferFlatten", {});
+}
+
+TVM_REGISTER_GLOBAL("tir.transform.BufferFlatten")
+.set_body_typed(BufferFlatten);
+
+}  // namespace transform
 
 }  // namespace tir
 }  // namespace tvm

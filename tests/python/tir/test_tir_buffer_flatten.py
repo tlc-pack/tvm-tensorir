@@ -16,14 +16,14 @@
 # under the License.
 
 import tvm.tir
-from tvm.tir import ir_pass
 import util
 
 
 def test_no_allocate():
-    func = util.matmul_stmt()
-    func = ir_pass.BufferFlatten(func)
-    stmt0 = ir_pass.CanonicalSimplify(func.body)
+    mod = tvm.tir.hybrid.create_module({"func": util.matmul_stmt()})
+    trans = tvm.transform.Sequential([tvm.tir.transform.BufferFlatten(),
+                                      tvm.tir.transform.Simplify()])
+    mod = trans(mod)
 
     def no_allocate_after_stmt():
         ib = tvm.tir.ir_builder.create()
@@ -37,14 +37,15 @@ def test_no_allocate():
                     C[i*128 + j] = C[i*128 + j] + A[i*128 + k] * B[j*128 + k]
         return ib.get()
 
-    stmt1 = no_allocate_after_stmt()
-    assert ir_pass.AssertStructEqual(stmt0, stmt1)
+    stmt = no_allocate_after_stmt()
+    tvm.ir.assert_structural_equal(mod["func"].body, stmt, map_free_vars=True)
 
 
 def test_global_allocate():
-    func = util.element_wise_stmt()
-    func = ir_pass.BufferFlatten(func)
-    stmt0 = ir_pass.CanonicalSimplify(func.body)
+    mod = tvm.tir.hybrid.create_module({"func": util.element_wise_stmt()})
+    trans = tvm.transform.Sequential([tvm.tir.transform.BufferFlatten(),
+                                      tvm.tir.transform.Simplify()])
+    mod = trans(mod)
 
     def no_allocate_after_stmt():
         ib = tvm.tir.ir_builder.create()
@@ -60,8 +61,8 @@ def test_global_allocate():
                 C[i*128 + j] = B[i*128 + j] + 1.0
         return ib.get()
 
-    stmt1 = no_allocate_after_stmt()
-    assert ir_pass.AssertStructEqual(stmt0, stmt1)
+    stmt = no_allocate_after_stmt()
+    tvm.ir.assert_structural_equal(mod["func"].body, stmt, map_free_vars=True)
 
 
 @tvm.tir.hybrid.script
@@ -87,10 +88,10 @@ def compute_at_element_wise(a, c):
 
 
 def test_local_allocate():
-    mod = tvm.tir.hybrid.create_module([compute_at_element_wise])
-    func = mod["compute_at_element_wise"]
-    func = ir_pass.BufferFlatten(func)
-    stmt0 = ir_pass.CanonicalSimplify(func.body)
+    mod = tvm.tir.hybrid.create_module({"func": compute_at_element_wise})
+    trans = tvm.transform.Sequential([tvm.tir.transform.BufferFlatten(),
+                                      tvm.tir.transform.Simplify()])
+    mod = trans(mod)
 
     def no_allocate_after_stmt():
         ib = tvm.tir.ir_builder.create()
@@ -105,8 +106,8 @@ def test_local_allocate():
                 C[i*128 + j] = B[j] + 1.0
         return ib.get()
 
-    stmt1 = no_allocate_after_stmt()
-    assert ir_pass.AssertStructEqual(stmt0, stmt1)
+    stmt = no_allocate_after_stmt()
+    tvm.ir.assert_structural_equal(mod["func"].body, stmt, map_free_vars=True)
 
 
 def test_shared_allocate():
