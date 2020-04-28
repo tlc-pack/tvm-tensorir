@@ -20,25 +20,26 @@ import inspect
 
 from . import _ffi_api
 from .parser import source_to_op
-from .. import module
+from ... import IRModule
 
 
-def create_module(funcs=None):
+def create_module(functions=None):
     """Construct a module from list of functions.
 
     Parameters
     -----------
-    funcs : Optional[List[Union[Function, HybridFunction]]]
-        list of functions
+    functions: Optional[dict].
+        Map of global var or str to PrimFunc or HybridFunction
 
     Returns
     -------
-    mod : Module
-        A module containing the passed definitions
+    mod : IRModule
+        A IRModule containing the passed definitions
     """
 
-    funcs = [_parse(func) if isinstance(func, HybridFunction) else func for func in funcs]
-    return module.create_module(funcs=funcs)
+    functions = {key: _parse(func) if isinstance(func, HybridFunction) else func for key, func in
+                 functions.items()}
+    return IRModule(functions=functions)
 
 
 def ashybrid(input_ir, show_meta=False):
@@ -61,8 +62,6 @@ def ashybrid(input_ir, show_meta=False):
     if isinstance(input_ir, HybridFunction):
         # transform HybridFunction to Function
         input_ir = _parse(input_ir)
-    elif isinstance(input_ir, module.Module):
-        input_ir = input_ir.module  # get the inner IRModule of Module
     return _ffi_api.AsHybrid(input_ir, show_meta)
 
 

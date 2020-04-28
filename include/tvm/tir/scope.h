@@ -25,7 +25,6 @@
 #define TVM_TIR_SCOPE_H_
 
 #include <tvm/tir/stmt.h>
-#include <tvm/tir/ir.h>
 #include <tvm/tir/stmt_sref.h>
 #include <vector>
 #include <unordered_map>
