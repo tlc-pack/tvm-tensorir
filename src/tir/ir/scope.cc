@@ -18,7 +18,8 @@
  */
 
 #include <tvm/tir/scope.h>
-#include "schedule/schedule_common.h"
+
+#include "../schedule/schedule_common.h"
 
 namespace tvm {
 namespace tir {

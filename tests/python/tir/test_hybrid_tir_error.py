@@ -92,7 +92,7 @@ def type_check(a):
 
 def wrap_error(func, lineno):
     try:
-        mod = tvm.tir.hybrid.create_module([func])
+        mod = tvm.tir.hybrid.create_module({"func": func})
         res = mod[func.__name__]
     except BaseException as e:
         print(e)

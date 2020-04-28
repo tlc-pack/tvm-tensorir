@@ -549,30 +549,6 @@ class IRBuilder(object):
 
         return WithScope(None, _exit_cb)
 
-    def function(self, params, buffer_map, stmt, name="func"):
-        """Create a TIR function.
-
-        Parameters
-        ----------
-        params : Var or list of Var
-            The parameters of the function
-
-        buffer_map : dict of Var to Buffer
-            The parameters requirement of the function
-
-        stmt : Stmt
-            The body of the function
-
-        name : optional, str
-            The name of the function
-
-        """
-        if not isinstance(params, list) and not isinstance(params, tuple):
-            params = [params]
-
-        func = _make.Function(params, buffer_map, name, stmt)
-        return func
-
     def allocate_buffer(self, shape, dtype="float32", name="buf", scope=""):
         """Allocate a buffer.
 
@@ -591,7 +567,7 @@ class IRBuilder(object):
             The buffer scope
 
         """
-        _buffer = _api.decl_buffer(shape, dtype=dtype, name=name)
+        _buffer = _api.decl_buffer(shape, dtype=dtype, name=name, scope=scope)
         self._allocate_stack[-1].append(_make.BufferAllocate(_buffer, scope))
         return Buffer(self, _buffer, dtype)
 

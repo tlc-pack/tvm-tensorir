@@ -65,7 +65,8 @@ def block(parser, node, block_vars_info, reads, writes, predicate=True, annotati
 
 def range(parser, node, begin, end, annotation=None):
     """ For scope handler function range(begin, end, annotation)"""
-    extent = end if begin == 0 else tvm.tir.ir_pass.Simplify(end - begin)
+    ana = tvm.arith.Analyzer()
+    extent = end if begin == 0 else ana.simplify(end - begin)
     loop_var_name = node.target.id
     loop_var = tvm.te.var(loop_var_name, dtype="int32")
 
@@ -78,9 +79,9 @@ def range(parser, node, begin, end, annotation=None):
     if annotation is None:
         annotation = []
     else:
-        annotation = [tvm.tir.Annotation(arg[0],
-                                         tvm.runtime.convert(arg[1]) if isinstance(arg[1], str) else
-                                         arg[1]) for arg in annotation]
+        annotation = [tvm.tir.Annotation(key,
+                                         tvm.runtime.convert(val) if isinstance(val, str) else
+                                         val) for key, val in annotation.items()]
 
     parser.scope_emitter.emit(
         tvm.tir.Loop(loop_var, begin, extent, annotation, parser.scope_emitter.pop_scope()))

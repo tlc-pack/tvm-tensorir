@@ -353,7 +353,7 @@ std::pair<Stmt, Block> GenerateCopyStmt(const Buffer& read_buffer, const Buffer&
     access_region.push_back(Range::make_by_min_extent(var, 1));
   }
   Stmt body =
-      BufferStore(write_buffer, BufferLoad(read_buffer->dtype, read_buffer, indices), indices);
+      BufferStore(write_buffer, BufferLoad(read_buffer, indices), indices);
   Block block(block_vars, {TensorRegion(read_buffer, access_region)},
               {TensorRegion(write_buffer, access_region)}, body, Array<BufferAllocate>(),
               Array<Annotation>(), "");

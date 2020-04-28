@@ -53,7 +53,7 @@ def element_wise(a, c):
 def test_element_wise():
     tvm.tir.hybrid.register(add)
     tvm.tir.hybrid.register(mul)
-    mod = tvm.tir.hybrid.create_module([element_wise])
+    mod = tvm.tir.hybrid.create_module({"element_wise": element_wise})
     func = mod["element_wise"]
 
     assert isinstance(func.body.block, tir.stmt.Block)

@@ -81,7 +81,7 @@ def test_WAR(a, b, c):
 
 
 def test_WAR_dependency():
-    mod = tvm.tir.hybrid.create_module([test_WAR])
+    mod = tvm.tir.hybrid.create_module({"test_WAR": test_WAR})
     func = mod["test_WAR"]
     try:
         s = tir.create_schedule(func)

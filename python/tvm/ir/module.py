@@ -32,8 +32,8 @@ class IRModule(Node):
 
     Parameters
     ----------
-    functions: Optional[dict].
-        Map of global var to BaseFunc
+        functions: Optional[dict].
+            Map of global var to BaseFunc
     """
     def __init__(self, functions=None, type_definitions=None):
         if functions is None:
@@ -59,6 +59,7 @@ class IRModule(Node):
                 mapped_type_defs[k] = v
             type_definitions = mapped_type_defs
         self.__init_handle_by_constructor__(_ffi_api.IRModule, functions, type_definitions)
+
 
     def __setitem__(self, var, val):
         """Add a mapping to the module.
