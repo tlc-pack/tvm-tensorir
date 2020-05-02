@@ -384,7 +384,9 @@ class SRefCreator : public StmtVisitor {
         return reuse_sref;
       }
     }
-    return StmtSRef(stmt_ptr, parent_);
+    StmtSRef sref = StmtSRef(stmt_ptr, parent_);
+    sref->binding_valid = true;
+    return sref;
   }
 
   template <typename T>
@@ -600,7 +602,7 @@ bool ScheduleNode::IsCompactDataFlow(const StmtSRef& sub_tree) const {
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> child_blocks;
   ChildBlockGatherer(this, &child_blocks)(GetRef<Stmt>(sub_tree->node));
   for (const auto& block : child_blocks) {
-    if (!scope.IsComplete(block)) return false;
+    if (!scope.IsComplete(block) && !scope.IsReduction(block)) return false;
   }
   return true;
 }
@@ -738,7 +740,7 @@ class AnnotationUpdater : public StmtMutator {
   Annotation annotation_;
 };
 
-void ScheduleNode::vectorize(const StmtSRef& node) {
+void ScheduleNode::ParallelCompute(const StmtSRef& node, const Annotation& annotation) {
   /*!
    * Check:
    * - 1. check the block under is complete block or reduction block
@@ -765,12 +767,13 @@ void ScheduleNode::vectorize(const StmtSRef& node) {
    */
 
   const auto* loop = DowncastPtr<LoopNode>(node->node);
-  CHECK(loop != nullptr) << "Vectorize expect a loop";
+  CHECK(loop != nullptr) << "Parallel-like compute expect a loop";
   // Currently, can not vectorize Loops with annotations
   if (!loop->annotations.empty()) {
-    LOG(FATAL) << "InvalidSchedule: " << "Cannot vectorize loop that already has annotations";
+    LOG(FATAL) << "InvalidSchedule: "
+               << "Cannot make the loop which already has annotations do parallel-like computation ";
   }
-  // Now vectorize only support:
+  // Now only support:
   //   1. All the blocks are complete below
   //   2. A single block below the loop
   // TODO(bohan): support reduction later
@@ -778,17 +781,27 @@ void ScheduleNode::vectorize(const StmtSRef& node) {
     auto children = GetChildren(GetRef<Stmt>(loop), true);
     CHECK(children.size() == 1 && children[0]->IsInstance<BlockRealizeNode>());
     const BlockRealize& br = Downcast<BlockRealize>(children[0]);
-    CHECK(stmt2ref[br->block.operator->()]->binding_valid) << "Vectorize expect valid bindings";
+    CHECK(stmt2ref[br->block.operator->()]->binding_valid)
+        << "Parallel-like compute  expect valid bindings";
     for (size_t i = 0; i < br->binding_values.size(); ++i) {
       if (br->block->iter_vars[i]->iter_type != IterVarType::kDataPar
           && RelatedWithVar(loop->loop_var, br->binding_values[i])) {
-        LOG(FATAL) << "The loop is related with non-datapar block vars";
+        LOG(FATAL) << "The loop is related with non-data_par block vars";
       }
     }
   }
-  Annotation annotation = Annotation(attr::loop_type, StringImmNode::make("vectorize"));
   Stmt new_stmt = AnnotationUpdater(annotation)(GetRef<Stmt>(loop));
   this->Replace(node, new_stmt);
+}
+
+void ScheduleNode::vectorize(const StmtSRef &node) {
+  Annotation annotation(attr::loop_type, StringImmNode::make("vectorize"));
+  ParallelCompute(node, annotation);
+}
+
+void ScheduleNode::parallel(const StmtSRef &node) {
+  Annotation annotation(attr::loop_type, StringImmNode::make("parallel"));
+  ParallelCompute(node, annotation);
 }
 
 void ScheduleNode::unroll(const StmtSRef& node) {
@@ -1110,6 +1123,12 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleVectorize")
 .set_body_typed<void(Schedule, StmtSRef)>(
     [](Schedule schedule, StmtSRef node) {
       schedule->vectorize(node);
+    });
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleParallel")
+.set_body_typed<void(Schedule, StmtSRef)>(
+    [](Schedule schedule, StmtSRef node) {
+      schedule->parallel(node);
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnroll")

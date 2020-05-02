@@ -31,7 +31,7 @@ from .stmt import Stmt, LetStmt, AssertStmt, For, Annotation
 from .stmt import BufferStore, BufferRealize, Store, Provide, Allocate, AttrStmt
 from .stmt import Free, Realize, SeqStmt
 from .stmt import IfThenElse, Evaluate, Prefetch, stmt_seq, stmt_list
-from .stmt import Block, BlockRealize, Loop, BufferAllocate, TensorRegion
+from .stmt import Block, BlockRealize, Loop, BufferAllocate, TensorRegion, ReduceStep
 from .function import PrimFunc
 
 from .op import call_packed, call_pure_intrin, call_intrin, call_pure_extern, call_extern

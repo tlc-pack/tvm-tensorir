@@ -123,7 +123,7 @@ def form_irmodule(sch, args, name, binds):
 
 
 def lower(sch,
-          args,
+          args=None,
           name="main",
           binds=None,
           simple_mode=False):
@@ -134,7 +134,7 @@ def lower(sch,
     sch : tvm.te.schedule.Schedule or tvm.PrimFunc or tvm.IRModule
         The schedule to be built
 
-    args : list of Buffer or Tensor or Var
+    args : list of Buffer or Tensor or Var, optional
         The argument lists to the function.
 
     name : str, optional
@@ -168,6 +168,7 @@ def lower(sch,
 
     # Phase 0
     if isinstance(sch, schedule.Schedule):
+        assert args is not None
         mod = form_irmodule(sch, args, name, binds)
     elif isinstance(sch, tvm.tir.PrimFunc):
         func = sch.with_attr("global_symbol", name)

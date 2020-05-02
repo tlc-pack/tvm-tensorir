@@ -157,7 +157,7 @@ std::pair<std::vector<Stmt>, size_t> DecomposeLoop(
       ret.first.push_back(
           NewLoopWrapper(decomposed_target.first[i], now, std::to_string(rename_counter++)));
     } else {
-      rename_counter--;
+//      rename_counter--;
       ret.first.push_back(decomposed_target.first[i]);
     }
   ret.second += decomposed_target.second;

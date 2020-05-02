@@ -72,6 +72,9 @@ bool Scope::IsDominate(const StmtSRef &block) const {
 }
 
 bool Scope::IsComplete(const StmtSRef& block) const {
+  // Check the binding of block is valid
+  CHECK(block->binding_valid);
+
   // A complete block must be dominate
   if (!IsDominate(block)) return false;
 
