@@ -771,7 +771,7 @@ void ScheduleNode::ParallelCompute(const StmtSRef& node, const Annotation& annot
   // Currently, can not vectorize Loops with annotations
   if (!loop->annotations.empty()) {
     LOG(FATAL) << "InvalidSchedule: "
-               << "Cannot make the loop which already has annotations do parallel-like computation ";
+               << "Cannot make the loop which already has annotations do parallel-like computation";
   }
   // Now only support:
   //   1. All the blocks are complete below
