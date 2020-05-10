@@ -140,6 +140,12 @@ class ScheduleNode : public Object {
   void vectorize(const StmtSRef& node);
 
   /*!
+   * \brief parallel a loop
+   * \param node the loop to be paralleled
+   */
+  void parallel(const StmtSRef& node);
+
+  /*!
    * \brief unroll a loop
    * \param node the loop to be unrolled
    */
@@ -234,6 +240,14 @@ class ScheduleNode : public Object {
    * \param func the TirFunction to be validated
    */
   void ValidateLoops(PrimFunc function);
+
+  /*!
+   * \brief Help function for checking and mutating loops to do parallel computation
+   *        For now it is only used for vectorize, bind and parallel
+   * \param node the loop to be annotated
+   * \param annotation the annotation
+   */
+  void ParallelCompute(const StmtSRef& node, const Annotation& annotation);
 };
 
 class Schedule : public ObjectRef {

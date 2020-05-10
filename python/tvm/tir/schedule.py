@@ -211,6 +211,15 @@ class Schedule(Object):
         """
         ScheduleVectorize(self, loop)
 
+    def parallel(self, loop):
+        """parallel a loop
+        Parameters
+        ----------
+        loop : Loop
+            The loop to be paralleled
+        """
+        ScheduleParallel(self, loop)
+
     def unroll(self, loop):
         """unroll a loop
         Parameters

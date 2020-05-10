@@ -283,11 +283,13 @@ class CacheWriteRewriter : public CacheRewriter {
     } else {
       // Since cache_write changes the block, we need to update the buffer it writes
       auto writes = UpdateBufferViaMap(op->writes);
-      if (writes.same_as(op->writes)) {
+      auto reads = UpdateBufferViaMap(op->reads);
+      if (writes.same_as(op->writes) && reads.same_as(op->reads)) {
         ret = GetRef<Block>(op);
       } else {
         auto n = CopyOnWrite(op);
         n->writes = std::move(writes);
+        n->reads = std::move(reads);
         ret = Block(n);
       }
     }
@@ -303,6 +305,17 @@ class CacheWriteRewriter : public CacheRewriter {
       return Stmt(n);
     } else {
       return GetRef<Stmt>(op);
+    }
+  }
+
+  PrimExpr VisitExpr_(const BufferLoadNode* op) final {
+    auto it = buffer_map_.find(op->buffer);
+    if (it != buffer_map_.end()) {
+      auto n = CopyOnWrite(op);
+      n->buffer = it->second;
+      return PrimExpr(n);
+    } else {
+      return GetRef<PrimExpr>(op);
     }
   }
 

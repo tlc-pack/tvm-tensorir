@@ -122,7 +122,7 @@ def form_irmodule(sch, args, name, binds):
 
 
 def lower(sch,
-          args,
+          args=None,
           name="main",
           binds=None,
           simple_mode=False):
@@ -133,7 +133,7 @@ def lower(sch,
     inputs : tvm.te.schedule.Schedule or tvm.Function
         The schedule to be built
 
-    args : list of Buffer or Tensor or Var
+    args : list of Buffer or Tensor or Var, optional
         The argument lists to the function.
 
     name : str, optional
@@ -167,6 +167,7 @@ def lower(sch,
 
     # Phase 0
     if isinstance(sch, schedule.Schedule):
+        assert args is not None
         mod = form_irmodule(sch, args, name, binds)
     else:
         mod = sch
