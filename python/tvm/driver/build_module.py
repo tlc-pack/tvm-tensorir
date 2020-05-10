@@ -161,6 +161,7 @@ def lower(sch, args, name="main", binds=None, simple_mode=False):
 
     # Phase 0
     if isinstance(sch, schedule.Schedule):
+        assert args is not None
         mod = form_irmodule(sch, args, name, binds)
     else:
         mod = sch
