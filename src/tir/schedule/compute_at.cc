@@ -109,6 +109,15 @@ std::vector<StrideIntSet> SolveCover(const Array<IterVar>& vars,
         StrideIntSet(Range::make_by_min_extent(base, extent), strides));
   }
 
+  for (const auto& var : vars) {
+    size_t id = var_index[var->var];
+    auto& domain = cover_iters[id];
+    if (!domain.iter_range_.defined() || !domain.stride_.defined()) {
+      domain.iter_range_ = var->dom;
+      domain.stride_ = 1;
+    }
+  }
+
   return cover_iters;
 }
 
@@ -325,7 +334,8 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
   const auto* scope_block = DowncastPtr<BlockNode>(scope_sref->node);
 
   // Check complete block
-  CHECK(scope.IsComplete(block_sref)) << "Can only compute_at a complete block";
+  CHECK(scope.IsComplete(block_sref) || scope.IsReduction(block_sref))
+      << "Can only compute_at a complete or reduction block";
 
   // Check compact data flow
   StmtSRef sub_tree_root = block_sref;
