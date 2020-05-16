@@ -50,7 +50,11 @@ Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize) {
       }
     return ret;
   } else {
-    return Array<Stmt>{body};
+    if (body->IsInstance<BlockRealizeNode>() && !keep_realize) {
+      return Array<Stmt>{body.as<BlockRealizeNode>()->block};
+    } else {
+      return Array<Stmt>{body};
+    }
   }
 }
 
@@ -330,6 +334,28 @@ std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root) {
     LOG(FATAL) << "unknown stmt";
     return std::make_pair(Stmt(), Stmt());
   }
+}
+
+/*! \brief Helper class to detect whether a PrimExpr is related with var */
+class VarRelatedDetector : public ExprVisitor {
+ public:
+  explicit VarRelatedDetector(const Var& var) : var_(var) {}
+
+  void VisitExpr_(const VarNode* op) final {
+    related_ |= GetRef<Var>(op).same_as(var_);
+  }
+
+  bool related_{false};
+
+ private:
+  const Var& var_;
+};
+
+/*! \brief Wrapper function for VarRelatedDetector */
+bool RelatedWithVar(const Var& var, const PrimExpr& expr) {
+  VarRelatedDetector detector(var);
+  detector(expr);
+  return detector.related_;
 }
 
 void PatternMatcher::VisitExpr_(const VarNode* op) {

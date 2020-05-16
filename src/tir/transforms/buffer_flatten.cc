@@ -275,9 +275,13 @@ class BufferFlattener : public StmtExprMutator {
   Stmt VisitStmt_(const BlockRealizeNode* op) final {
     // Handle allocations
     const auto* block_op = op->block.as<BlockNode>();
+    Stmt old_stmt = GetRef<Stmt>(block_op);
     CHECK(block_op != nullptr);
     for (size_t i = block_op->allocations.size(); i > 0; --i) {
-      pending_allocate_[block_op->allocations[i - 1]->buffer] = block_op->allocations[i - 1];
+      const auto& buffer = block_op->allocations[i - 1]->buffer;
+      if (buffers_lca_.at(buffer).defined()) {
+        pending_allocate_[buffer] = block_op->allocations[i - 1];
+      }
     }
     // visit body
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
@@ -293,7 +297,7 @@ class BufferFlattener : public StmtExprMutator {
 
     for (size_t i = block_op->allocations.size(); i > 0; --i) {
       const auto& n = block_op->allocations[i - 1];
-      if (!buffers_lca_.at(n->buffer).defined()) {
+      if (!buffers_lca_.at(n->buffer).defined() || buffers_lca_.at(n->buffer).same_as(old_stmt)) {
         PrimExpr extents = 1;
         for (const auto& extent : buffers_region_.at(n->buffer)) {
           extents *= extent.max() - extent.min() + 1;
@@ -389,14 +393,16 @@ class BufferFlattener : public StmtExprMutator {
     op = stmt.as<BufferStoreNode>();
     CHECK(op != nullptr);
     auto begins = ComputeRelativeIndices(op);
-    return op->buffer.vstore(begins, op->value);
+    Buffer new_buffer = ReshapeBuffer(op->buffer, this->buffers_region_.at(op->buffer));
+    return new_buffer.vstore(begins, op->value);
   }
 
   PrimExpr VisitExpr_(const BufferLoadNode* op) final {
     PrimExpr expr = StmtExprMutator::VisitExpr_(op);
     op = expr.as<BufferLoadNode>();
     auto begins = ComputeRelativeIndices(op);
-    return op->buffer.vload(begins, op->dtype);
+    Buffer new_buffer = ReshapeBuffer(op->buffer, this->buffers_region_.at(op->buffer));
+    return new_buffer.vload(begins, op->dtype);
   }
 
  private:
@@ -405,6 +411,19 @@ class BufferFlattener : public StmtExprMutator {
   const std::unordered_map<const VarNode*, PrimExpr>& block_var_;
   const std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual>& buffers_lca_;
   std::unordered_map<Buffer, BufferAllocate, ObjectHash, ObjectEqual> pending_allocate_;
+
+  /*!
+   * \brief Create a buffer with alternative shape
+   */
+  static Buffer ReshapeBuffer(const Buffer& buffer, const std::vector<arith::IntSet>& region) {
+    auto n = runtime::make_object<BufferNode>(*(buffer.operator->()));
+    std::vector<PrimExpr> shape;
+    for (const auto & i : region) {
+      shape.push_back(i.max() - i.min() + 1);
+    }
+    n->shape = shape;
+    return Buffer(n);
+  }
 
   /*!
    * \brief Transform indices from the absolute indices to relative indices
