@@ -242,14 +242,15 @@ print('Opt5: %f' % build_and_test(s.func))
 # --------
 # Futhermore, we can also utilize multi-core processors to do the thread-level parallelization.
 
-'''
+
 s = tir.create_schedule(func_opt5)
+cached_update = s.get_block("C")
 i_o, j_o, k_o, k_i, i_i, j_i = s.get_axes(cached_update)
 s.parallel(i_o)
 
 s.decompose_reduction(cached_update, j_o)
 print('Opt6: %f' % build_and_test(s.func))
-'''
+
 ###################################################################################################
 
 ##################################################################################################
