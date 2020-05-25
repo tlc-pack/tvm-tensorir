@@ -35,13 +35,11 @@ class StmtSRefNode : public Object {
   StmtSRefNode* parent{nullptr};
   /*! \brief The location in an array if parent contains SeqStmt. */
   int64_t seq_index{-1};
-  /*! \brief Whether the loop bindings are validatable */
-  bool binding_valid;
 
   void VisitAttrs(AttrVisitor* v) {}
 
   static constexpr const char* _type_key = "StmtSRef";
-  TVM_DECLARE_FINAL_OBJECT_INFO(StmtSRefNode, Object);
+  TVM_DECLARE_BASE_OBJECT_INFO(StmtSRefNode, Object);
 };
 
 /*!
@@ -64,6 +62,72 @@ class StmtSRef : public ObjectRef {
   }
 
   TVM_DEFINE_OBJECT_REF_METHODS(StmtSRef, ObjectRef, StmtSRefNode);
+};
+
+class BlockSRefNode : public StmtSRefNode {
+ public:
+  /*! \brief Whether the loop bindings are validatable */
+  bool binding_valid;
+
+  void VisitAttrs(AttrVisitor* v) {
+    BlockNode* block = const_cast<BlockNode*>(DowncastPtr<BlockNode>(node));
+    v->Visit("body", &block->body);
+    v->Visit("iter_vars", &block->iter_vars);
+    v->Visit("reads", &block->reads);
+    v->Visit("writes", &block->writes);
+    v->Visit("allocations", &block->allocations);
+    v->Visit("annotations", &block->annotations);
+    v->Visit("tag", &block->tag);
+  }
+
+  static constexpr const char* _type_key = "BlockSRef";
+  TVM_DECLARE_FINAL_OBJECT_INFO(BlockSRefNode, StmtSRefNode);
+};
+
+class BlockSRef : public StmtSRef {
+ public:
+  BlockSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index = -1);
+
+  BlockSRefNode* operator->() {
+    return get();
+  }
+
+  BlockSRefNode* get() {
+    return static_cast<BlockSRefNode*>(ObjectRef::get_mutable());
+  }
+
+  BlockSRefNode* const get() const {
+    return static_cast<BlockSRefNode*>(ObjectRef::get_mutable());
+  }
+
+  TVM_DEFINE_OBJECT_REF_METHODS(BlockSRef, StmtSRef, BlockSRefNode);
+};
+
+class LoopSRefNode : public StmtSRefNode {
+ public:
+  void VisitAttrs(AttrVisitor* v) {}
+
+  static constexpr const char* _type_key = "LoopSRef";
+  TVM_DECLARE_FINAL_OBJECT_INFO(LoopSRefNode, StmtSRefNode);
+};
+
+class LoopSRef : public StmtSRef {
+ public:
+  LoopSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index = -1);
+
+  LoopSRefNode* operator->() {
+    return get();
+  }
+
+  LoopSRefNode* get() {
+    return static_cast<LoopSRefNode*>(ObjectRef::get_mutable());
+  }
+
+  LoopSRefNode* const get() const {
+    return static_cast<LoopSRefNode*>(ObjectRef::get_mutable());
+  }
+
+  TVM_DEFINE_OBJECT_REF_METHODS(LoopSRef, StmtSRef, LoopSRefNode);
 };
 
 }  // namespace tir

@@ -102,7 +102,9 @@ bool Scope::IsReduction(const StmtSRef& block) const {
   CHECK(n != nullptr);
 
   // Check the binding of block is valid
-  CHECK(block->binding_valid);
+  const BlockSRef& sref = Downcast<BlockSRef>(block);
+  CHECK(sref.defined());
+  CHECK(sref->binding_valid);
 
   // A complete block must be dominate
   CHECK(IsDominate(block));
@@ -154,7 +156,8 @@ bool Scope::CanMergeReduction(const StmtSRef &init_block, const StmtSRef &update
   }
 
   // Check the binding of update_block is valid
-  CHECK(update_block->binding_valid);
+  const BlockSRef& update_sref = Downcast<BlockSRef>(update_block);
+  CHECK(update_sref->binding_valid);
 
   // Check all the block vars of update_block are at data_par/reduce IterType
   for (const auto& iter_var : update->iter_vars) {

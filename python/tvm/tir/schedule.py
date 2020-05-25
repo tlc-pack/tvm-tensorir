@@ -202,6 +202,19 @@ class Schedule(Object):
             outer, inner = ScheduleSplitByFactor(self, loop, factor)
         return outer, inner
 
+    def bind(self, loop, thread_ivar):
+        """Bind ivar to thread index thread_ivar
+
+        Parameters
+        ----------
+        loop : Loop
+            The loop to be binded to thread.
+
+        thread_ivar : IterVar
+            The thread to be binded.
+        """
+        ScheduleBind(self, loop, thread_ivar)
+
     def vectorize(self, loop):
         """vectorize a loop
         Parameters
@@ -352,6 +365,16 @@ def get_stmt(sref):
 @tvm._ffi.register_object
 class StmtSRef(Object):
     """The schedulable reference node for TIR"""
+
+
+@tvm._ffi.register_object
+class BlockSRef(Object):
+    """The schedulable reference node for TIR blocks"""
+
+
+@tvm._ffi.register_object
+class LoopSRef(Object):
+    """The schedulable reference node for TIR loops"""
 
 
 tvm._ffi._init_api("tir.schedule", __name__)

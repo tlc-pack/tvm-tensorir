@@ -35,11 +35,11 @@ class ScheduleCreator : public StmtVisitor {
       : stmt_map_(stmt_map) {}
 
   void VisitStmt_(const BlockNode* op) override {
-    VisitSRefStmt(op);
+    VisitSRefStmt(op, true);
   }
 
   void VisitStmt_(const LoopNode* op) override {
-    VisitSRefStmt(op);
+    VisitSRefStmt(op, false);
   }
 
   void VisitStmt_(const SeqStmtNode* op) override {
@@ -55,8 +55,9 @@ class ScheduleCreator : public StmtVisitor {
 
  protected:
   template <typename T>
-  void VisitSRefStmt(const T* op) {
-    StmtSRef sref_node(op, parent_scope_);
+  void VisitSRefStmt(const T* op, bool block) {
+    StmtSRef sref_node = block ? StmtSRef(BlockSRef(op, parent_scope_))
+                               : StmtSRef(LoopSRef(op, parent_scope_));
     auto tmp = sref_node.get();
 
     std::swap(parent_scope_, tmp);
@@ -367,26 +368,31 @@ class SRefCreator : public StmtVisitor {
       const auto* op = GetRef<Stmt>(stmt_ptr).as<LoopNode>();
       auto it = loop_var2ref_.find(op->loop_var.get());
       if (it != loop_var2ref_.end()) {
+        // check whether to reuse LoopSRef
         StmtSRef reuse_sref = it->second;
         reuse_sref->node = stmt_ptr;
         reuse_sref->parent = parent_;
         reuse_sref_.insert(reuse_sref);
         return reuse_sref;
       }
-    } else if (block_sref_map_.defined()) {
+      return LoopSRef(stmt_ptr, parent_);
+    } else {
       Block block = Downcast<Block>(GetRef<Stmt>(stmt_ptr));
-      auto it = block_sref_map_.find(block);
-      if (it != block_sref_map_.end()) {
-        StmtSRef reuse_sref = stmt2ref_->at((*it).second.as<BlockNode>());
-        reuse_sref->node = stmt_ptr;
-        reuse_sref->parent = parent_;
-        reuse_sref_.insert(reuse_sref);
-        return reuse_sref;
+      if (block_sref_map_.defined()) {
+        auto it = block_sref_map_.find(block);
+        if (it != block_sref_map_.end()) {
+          // check whether to reuse BlockSRef
+          StmtSRef reuse_sref = stmt2ref_->at((*it).second.as<BlockNode>());
+          reuse_sref->node = stmt_ptr;
+          reuse_sref->parent = parent_;
+          reuse_sref_.insert(reuse_sref);
+          return reuse_sref;
+        }
       }
+      BlockSRef sref = BlockSRef(stmt_ptr, parent_);
+      sref->binding_valid = true;
+      return sref;
     }
-    StmtSRef sref = StmtSRef(stmt_ptr, parent_);
-    sref->binding_valid = true;
-    return sref;
   }
 
   template <typename T>
@@ -781,7 +787,7 @@ void ScheduleNode::ParallelCompute(const StmtSRef& node, const Annotation& annot
     auto children = GetChildren(GetRef<Stmt>(loop), true);
     CHECK(children.size() == 1 && children[0]->IsInstance<BlockRealizeNode>());
     const BlockRealize& br = Downcast<BlockRealize>(children[0]);
-    CHECK(stmt2ref[br->block.operator->()]->binding_valid)
+    CHECK(Downcast<BlockSRef>(stmt2ref[br->block.operator->()])->binding_valid)
         << "Parallel-like compute  expect valid bindings";
     for (size_t i = 0; i < br->binding_values.size(); ++i) {
       if (br->block->iter_vars[i]->iter_type != IterVarType::kDataPar
@@ -801,6 +807,17 @@ void ScheduleNode::vectorize(const StmtSRef &node) {
 
 void ScheduleNode::parallel(const StmtSRef &node) {
   Annotation annotation(attr::loop_type, StringImmNode::make("parallel"));
+  ParallelCompute(node, annotation);
+}
+
+void ScheduleNode::bind(const StmtSRef &node, const IterVar& thread) {
+  const auto* loop = DowncastPtr<LoopNode>(node->node);
+  CHECK(loop != nullptr) << "Parallel-like compute expect a loop";
+  if (thread->dom.defined()) {
+    CHECK(ExprDeepEqual()(loop->extent, thread->dom->extent))
+        << "Thread axis extent and loop extent mismatch";
+  }
+  Annotation annotation(attr::loop_type, StringImmNode::make(thread->thread_tag));
   ParallelCompute(node, annotation);
 }
 
@@ -1011,7 +1028,23 @@ StmtSRef::StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index
   n->node = node;
   n->parent = parent;
   n->seq_index = seq_index;
+  data_ = std::move(n);
+}
+
+BlockSRef::BlockSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index) {
+  auto n = make_object<BlockSRefNode>();
+  n->node = node;
+  n->parent = parent;
+  n->seq_index = seq_index;
   n->binding_valid = false;
+  data_ = std::move(n);
+}
+
+LoopSRef::LoopSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index) {
+  auto n = make_object<LoopSRefNode>();
+  n->node = node;
+  n->parent = parent;
+  n->seq_index = seq_index;
   data_ = std::move(n);
 }
 
@@ -1031,8 +1064,30 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
   }
 });
 
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+.set_dispatch<LoopSRefNode>([](const ObjectRef& node, ReprPrinter* p) {
+  const auto* op = static_cast<const StmtSRefNode*>(node.get());
+  if (const auto* loop = GetRef<Stmt>(op->node).as<LoopNode>()) {
+    p->PrintIndent();
+    p->stream << "for ";
+    p->Print(loop->loop_var);
+    p->stream << " = ";
+    p->Print(loop->min);
+    p->stream << " to ";
+    p->Print(loop->extent);
+  }
+});
+
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+.set_dispatch<BlockSRefNode>([](const ObjectRef& node, ReprPrinter* p) {
+  const auto* op = static_cast<const StmtSRefNode*>(node.get());
+  p->Print(Downcast<Block>(GetRef<Stmt>(op->node)));
+});
+
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
 TVM_REGISTER_NODE_TYPE(StmtSRefNode);
+TVM_REGISTER_NODE_TYPE(BlockSRefNode);
+TVM_REGISTER_NODE_TYPE(LoopSRefNode);
 
 // schedule
 TVM_REGISTER_GLOBAL("tir.schedule.CreateSchedule")
@@ -1129,6 +1184,12 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleParallel")
 .set_body_typed<void(Schedule, StmtSRef)>(
     [](Schedule schedule, StmtSRef node) {
       schedule->parallel(node);
+    });
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBind")
+.set_body_typed<void(Schedule, StmtSRef, IterVar)>(
+    [](Schedule schedule, StmtSRef node, IterVar thread) {
+      schedule->bind(node, thread);
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnroll")

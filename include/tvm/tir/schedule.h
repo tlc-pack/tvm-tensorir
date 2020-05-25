@@ -146,6 +146,12 @@ class ScheduleNode : public Object {
   void parallel(const StmtSRef& node);
 
   /*!
+   * \brief parallel a loop
+   * \param node the loop to be paralleled
+   */
+  void bind(const StmtSRef& node, const IterVar& thread);
+
+  /*!
    * \brief unroll a loop
    * \param node the loop to be unrolled
    */

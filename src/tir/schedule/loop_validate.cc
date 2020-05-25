@@ -169,7 +169,7 @@ class LoopValidator : public StmtVisitor {
       : stmt2ref_(stmt_2_ref) {}
 
   void VisitStmt_(const BlockRealizeNode* op) final {
-    StmtSRef sref = (*stmt2ref_)[op->block.operator->()];
+    BlockSRef sref = Downcast<BlockSRef>((*stmt2ref_)[op->block.operator->()]);
     sref->binding_valid = CheckBinding(op->binding_values, op->predicate);
     StmtVisitor::VisitStmt_(op);
   }

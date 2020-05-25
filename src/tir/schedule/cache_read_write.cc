@@ -445,7 +445,7 @@ StmtSRef ScheduleNode::cache_read(const Buffer& buffer, const std::string& stora
     CHECK(!consumers.empty());
 
     // Detector insert position
-    CachePositionDetector detector(this, block_sref, consumers, 0);
+    CachePositionDetector detector(this, block_sref, consumers, 1);
     detector(GetRef<Stmt>(scope_block));
 
     insert_sref = detector.pos_sref_;
