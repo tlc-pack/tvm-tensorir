@@ -129,8 +129,8 @@ TensorRegion SubstituteTensorRegion(const TensorRegion& tensor_region,
   new_tensor_region->region = Array<Range>(make_object<ArrayNode>());
   for (const auto& range : tensor_region->region) {
     new_tensor_region->region.push_back(
-        Range::make_by_min_extent(SubstituteInScope(range->min, var_map),
-                                  SubstituteInScope(range->extent, var_map)));
+        Range::FromMinExtent(SubstituteInScope(range->min, var_map),
+                             SubstituteInScope(range->extent, var_map)));
   }
   return TensorRegion(new_tensor_region);
 }
@@ -232,8 +232,8 @@ std::function<TensorRegion(const TensorRegion)> RelaxGenerator(const StmtSRef& b
     const auto* loop = DowncastPtr<LoopNode>(sref->node);
     // The root may not be a loop
     if (loop == nullptr) break;
-    Range range = Range::make_by_min_extent(loop->min, loop->extent);
-    (*dom_map)[loop->loop_var.get()] = arith::IntSet::range(range);
+    Range range = Range::FromMinExtent(loop->min, loop->extent);
+    (*dom_map)[loop->loop_var.get()] = arith::IntSet::FromRange(range);
     sref = GetRef<StmtSRef>(sref->parent);
   }
 
@@ -242,10 +242,10 @@ std::function<TensorRegion(const TensorRegion)> RelaxGenerator(const StmtSRef& b
     Array<Range> region;
     n->buffer = tensor_region->buffer;
     for (auto range : tensor_region->region) {
-      range = Range::make_by_min_extent(Substitute(range->min, *vmap),
+      range = Range::FromMinExtent(Substitute(range->min, *vmap),
                                         Substitute(range->extent, *vmap));
       auto int_set = arith::EvalSet(range, *dom_map);
-      region.push_back(Range::make_by_min_extent(int_set.min(), int_set.max() - int_set.min() + 1));
+      region.push_back(Range::FromMinExtent(int_set.min(), int_set.max() - int_set.min() + 1));
     }
     n->region = std::move(region);
     return TensorRegion(n);
@@ -441,8 +441,7 @@ void PatternMatcher::VisitExpr_(const CallNode* op) {
   if (ptr == nullptr) {
     match_success_ = false;
   } else {
-    if (op->name != ptr->name || op->call_type != ptr->call_type || !op->func.same_as(ptr->func)
-        || op->value_index != ptr->value_index || op->args.size() != ptr->args.size()) {
+    if (!op->op.same_as(ptr->op)) {
       match_success_ = false;
     } else {
       PrimExpr tmp = expr_to_match_;

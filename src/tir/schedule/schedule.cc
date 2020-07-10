@@ -708,8 +708,8 @@ Array<StmtSRef> ScheduleNode::split(const StmtSRef& node,
   };
 
   arith::Analyzer analyzer;
-  analyzer.Bind(outer_var, Range::make_by_min_extent(outer_min, outer_extent));
-  analyzer.Bind(inner_var, Range::make_by_min_extent(inner_min, inner_extent));
+  analyzer.Bind(outer_var, Range::FromMinExtent(outer_min, outer_extent));
+  analyzer.Bind(inner_var, Range::FromMinExtent(inner_min, inner_extent));
   PrimExpr predicate = outer_var * factor + inner_var < loop->extent;
   Stmt new_stmt = SubstituteInScope(loop->body, vmap);
   if (!analyzer.CanProve(predicate))
@@ -795,12 +795,12 @@ void ScheduleNode::ParallelCompute(const StmtSRef& node, const Annotation& annot
 }
 
 void ScheduleNode::vectorize(const StmtSRef &node) {
-  Annotation annotation(attr::loop_type, StringImmNode::make("vectorize"));
+  Annotation annotation(attr::loop_type, StringImm("vectorize"));
   ParallelCompute(node, annotation);
 }
 
 void ScheduleNode::parallel(const StmtSRef &node) {
-  Annotation annotation(attr::loop_type, StringImmNode::make("parallel"));
+  Annotation annotation(attr::loop_type, StringImm("parallel"));
   ParallelCompute(node, annotation);
 }
 
@@ -812,7 +812,7 @@ void ScheduleNode::unroll(const StmtSRef& node) {
   if (!loop->annotations.empty()) {
     LOG(FATAL) << "InvalidSchedule: " << "Cannot unroll loop that already has annotations";
   }
-  Annotation annotation = Annotation(tir::attr::loop_type, StringImmNode::make("unroll"));
+  Annotation annotation = Annotation(tir::attr::loop_type, StringImm("unroll"));
   Stmt new_stmt = AnnotationUpdater(annotation)(GetRef<Stmt>(loop));
   this->Replace(node, new_stmt);
 }
@@ -895,7 +895,6 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
 
   // Create loops of init block
   for (size_t i = loops.size() - 1; i >= 0; --i) {
-    if (loops[i].same_as(loop_sref)) break;
     const auto* ptr = DowncastPtr<LoopNode>(loops[i]->node);
     CHECK(ptr != nullptr);
     for (const auto& expr : init_br->binding_values)
@@ -907,13 +906,20 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
             SubstituteInScope(body, {{ptr->loop_var.get(), new_loop->loop_var.get()}});
         body = Loop(new_loop);
       }
+    if (loops[i].same_as(loop_sref)) break;
   }
-  auto new_loop = make_object<LoopNode>(*loop);
-  new_loop->body = SeqStmt::Flatten(Array<Stmt>{body, new_loop->body});
 
   // Put init block into AST
-  this->Replace(loop_sref, Loop(new_loop));
-
+  const auto* father_ptr = DowncastPtr<LoopNode>(loop_sref->parent->node);
+  if (father_ptr != nullptr) {
+    auto new_loop = make_object<LoopNode>(*father_ptr);
+    new_loop->body = SeqStmt::Flatten(Array<Stmt>{body, new_loop->body});
+    this->Replace(GetRef<StmtSRef>(loop_sref->parent), Loop(new_loop));
+  } else {
+    auto new_block = make_object<BlockNode>(*(DowncastPtr<BlockNode>(loop_sref->parent->node)));
+    new_block->body = SeqStmt::Flatten(Array<Stmt>{body, new_block->body});
+    this->Replace(GetRef<StmtSRef>(loop_sref->parent), Block(new_block));
+  }
   // Change the Reduction block to update block
   auto update_block = make_object<BlockNode>(*block);
   update_block->body =
@@ -922,9 +928,8 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
   Map<Block, Block> block_map;
   block_map.Set(Block(update_block), GetRef<Block>(block));
   this->Replace(block_sref, Block(update_block), block_map);
-
   // Update scope information
-  DependencyAnalyzer(this->stmt2ref, &this->scopes_, false)(GetRef<Stmt>(scope_root->node));
+  DependencyAnalyzer(this->stmt2ref, &this->scopes_, false)(GetRef<Stmt>(GetScope(block_sref)->node));
   return stmt2ref.at(init_block.get());
 }
 
@@ -972,14 +977,16 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   // Check LCA is higher than all the loops related to update_block's reduce block var
   Array<StmtSRef> loops = GetLoopsInScope(update_sref);
   const auto* br = GetBlockRealize(update_sref).operator->();
-  for (const auto& loop : loops) {
-    if (loop.same_as(lca)) break;
-    const auto* loop_ptr = DowncastPtr<LoopNode>(loop->node);
-    for (size_t i = 0; i < update->iter_vars.size(); ++i) {
-      if (update->iter_vars[i]->iter_type == IterVarType::kCommReduce) {
-        CHECK(!RelatedWithVar(loop_ptr->loop_var, br->binding_values[i]))
-          << "merge_reduction expect lca to be higher than all the loops related to "
-               "update_block's reduce block var";
+  if (!scope_root.same_as(lca)) {
+    for (const auto& loop : loops) {
+      if (loop.same_as(lca)) break;
+      const auto* loop_ptr = DowncastPtr<LoopNode>(loop->node);
+      for (size_t i = 0; i < update->iter_vars.size(); ++i) {
+        if (update->iter_vars[i]->iter_type == IterVarType::kCommReduce) {
+          CHECK(!RelatedWithVar(loop_ptr->loop_var, br->binding_values[i]))
+              << "merge_reduction expect lca to be higher than all the loops related to "
+                 "update_block's reduce block var";
+        }
       }
     }
   }
@@ -999,7 +1006,7 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   this->Replace(update_sref, Block(merged_block), block_map);
 
   // update scope information
-  DependencyAnalyzer(this->stmt2ref, &this->scopes_, false)(GetRef<Stmt>(scope_root->node));
+  DependencyAnalyzer(this->stmt2ref, &this->scopes_, false)(GetRef<Stmt>(GetScope(update_sref)->node));
 }
 
 void ScheduleNode::register_reducer(const CommReducer &comm_reducer) {

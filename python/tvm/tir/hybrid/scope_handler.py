@@ -60,7 +60,7 @@ def block(parser, node, block_vars_info, reads, writes, predicate=True, annotati
 
     allocations, body = parser.scope_emitter.pop_scope(is_block=True)
     inner = tvm.tir.Block(block_vars, reads, writes, body, allocations, annotations, name)
-    parser.scope_emitter.emit(tvm.tir.BlockRealize(values, predicate, inner, False))
+    parser.scope_emitter.emit(tvm.tir.BlockRealize(values, predicate, inner))
 
 
 def range(parser, node, begin, end, annotation=None):

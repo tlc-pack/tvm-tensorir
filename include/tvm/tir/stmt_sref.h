@@ -59,10 +59,6 @@ class StmtSRef : public ObjectRef {
     return static_cast<StmtSRefNode*>(ObjectRef::get_mutable());
   }
 
-  StmtSRefNode* const get() const {
-    return static_cast<StmtSRefNode*>(ObjectRef::get_mutable());
-  }
-
   TVM_DEFINE_OBJECT_REF_METHODS(StmtSRef, ObjectRef, StmtSRefNode);
 };
 

@@ -68,7 +68,7 @@ def block_vars(parser, node, begin, end, iter_type="data_par"):
     """
     ana = tvm.arith.Analyzer()
     extent = end if begin == 0 else ana.simplify(end - begin)
-    block_var_dom = tvm.ir.Range.make_by_min_extent(begin, extent)
+    block_var_dom = tvm.ir.Range.from_min_extent(begin, extent)
 
     if iter_type == "data_par":
         iter_type_id = 0

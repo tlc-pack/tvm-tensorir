@@ -21,7 +21,7 @@ import util
 
 
 def test_matmul():
-    func = util.matmul_stmt()
+    func = util.matmul_stmt_original()
 
     assert isinstance(func.body.block, tir.stmt.Block)
     assert isinstance(func.body.block.body, tir.stmt.Loop)
