@@ -359,11 +359,10 @@ std::pair<Stmt, Block> GenerateCopyStmt(const Buffer& read_buffer, const Buffer&
   Array<PrimExpr> indices;
   const auto& shape = relaxed_region->buffer->shape;
   for (size_t i = 0; i < shape.size(); ++i) {
-    IterVar var = IterVarNode::make(Range::make_by_min_extent(0, shape[i]),
-                                    Var("v" + std::to_string(i)), kDataPar);
+    IterVar var(Range::FromMinExtent(0, shape[i]), Var("v" + std::to_string(i)), kDataPar);
     block_vars.push_back(var);
     indices.push_back(var);
-    access_region.push_back(Range::make_by_min_extent(var, 1));
+    access_region.push_back(Range::FromMinExtent(var, 1));
   }
   Stmt body =
       BufferStore(write_buffer, BufferLoad(read_buffer, indices), indices);
@@ -458,7 +457,7 @@ StmtSRef ScheduleNode::cache_read(const Buffer& buffer, const std::string& stora
     insert_pos = 0;
     Region region;
     for (const auto& shape : buffer->shape) {
-      region.push_back(Range::make_by_min_extent(0, shape));
+      region.push_back(Range::FromMinExtent(0, shape));
     }
     cache_region = TensorRegion(buffer, region);
   }

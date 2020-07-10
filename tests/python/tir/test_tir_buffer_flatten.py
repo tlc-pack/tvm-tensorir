@@ -20,7 +20,7 @@ import util
 
 
 def test_no_allocate():
-    mod = tvm.tir.hybrid.create_module({"func": util.matmul_stmt()})
+    mod = tvm.tir.hybrid.create_module({"func": util.matmul_stmt_original()})
     trans = tvm.transform.Sequential([tvm.tir.transform.BufferFlatten(),
                                       tvm.tir.transform.Simplify()])
     mod = trans(mod)

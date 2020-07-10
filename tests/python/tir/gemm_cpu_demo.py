@@ -225,7 +225,7 @@ s.compute_at(cached_update, j_o)
 
 i, j, k = s.get_axes(cached_update)[-3:]
 k_o, k_i = s.split(k, 4)
-s.reorder(i_o, j_o, k_o, i, k_i, j)
+s.reorder(k_o, i, k_i, j)
 s.unroll(k_i)
 s.vectorize(j)
 
