@@ -618,7 +618,7 @@ class HybridParser(ast.NodeVisitor):
                     if isinstance(extent, _expr.PrimExpr):
                         ana = tvm.arith.Analyzer()
                         extent = ana.simplify(dom[1] - dom[0])
-                    doms.append(tvm.ir.Range.make_by_min_extent(dom[0], extent))
+                    doms.append(tvm.ir.Range.from_min_extent(dom[0], extent))
 
                 return tvm.tir.TensorRegion(symbol, doms)
 

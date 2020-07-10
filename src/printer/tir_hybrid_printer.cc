@@ -522,11 +522,11 @@ TVM_STATIC_IR_FUNCTOR(TIRHybridPrinter, vtable)
   auto* op = node.as<ArrayNode>();
   Doc doc;
   doc << '[';
-  for (size_t i = 0; i < op->data.size(); ++i) {
+  for (size_t i = 0; i < op->size(); ++i) {
     if (i != 0) {
       doc << ", ";
     }
-    doc << p->Print(op->data[i]);
+    doc << p->Print(op->at(i));
   }
   doc << ']';
   return doc;

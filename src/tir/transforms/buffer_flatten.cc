@@ -162,7 +162,7 @@ class RegionGatherer : public StmtExprVisitor {
     for (const auto& arg : func_args) {
       std::vector<arith::IntSet> region;
       for (const auto& size : arg.second->shape) {
-        region.push_back(arith::IntSet::range(Range::make_by_min_extent(0, size)));
+        region.push_back(arith::IntSet::FromRange(Range::FromMinExtent(0, size)));
       }
       buffers_region_[arg.second] = region;
     }
@@ -186,7 +186,7 @@ class RegionGatherer : public StmtExprVisitor {
   }
 
   void VisitStmt_(const BufferAllocateNode* op) final {
-    std::vector<arith::IntSet> empty_region(op->buffer->shape.size(), arith::IntSet::nothing());
+    std::vector<arith::IntSet> empty_region(op->buffer->shape.size(), arith::IntSet::Nothing());
     // Initialize the buffer region with empty region.
     buffers_region_[op->buffer] = empty_region;
     StmtExprVisitor::VisitStmt_(op);
@@ -242,7 +242,7 @@ class RegionGatherer : public StmtExprVisitor {
       const Loop& loop = loop_stack_[i];
       const VarNode* var = loop->loop_var.get();
       if (need_relax) {
-        dom_map[var] = arith::IntSet::range(Range::make_by_min_extent(loop->min, loop->extent));
+        dom_map[var] = arith::IntSet::FromRange(Range::FromMinExtent(loop->min, loop->extent));
       }
       if (loop.same_as(lca)) need_relax = true;
     }
@@ -292,7 +292,7 @@ class BufferFlattener : public StmtExprMutator {
     Stmt body = block_op->body;
     // Handle block predicate
     if (!is_one(op->predicate)) {
-      body = IfThenElseNode::make(op->predicate, body);
+      body = IfThenElse(op->predicate, body);
     }
 
     for (size_t i = block_op->allocations.size(); i > 0; --i) {
@@ -302,18 +302,11 @@ class BufferFlattener : public StmtExprMutator {
         for (const auto& extent : buffers_region_.at(n->buffer)) {
           extents *= extent.max() - extent.min() + 1;
         }
-        body = AllocateNode::make(n->buffer->data,
-                                  n->buffer->dtype,
-                                  {extents},
-                                  const_true(),
-                                  body);
+        body = Allocate(n->buffer->data, n->buffer->dtype,{extents},const_true(), body);
 
         // Change empty scope into global
         std::string scope = n->scope.empty() ? "global" : n->scope;
-        body = AttrStmtNode::make(n->buffer->data,
-                                  attr::storage_scope,
-                                  StringImmNode::make(scope),
-                                  body);
+        body = AttrStmt(n->buffer->data, attr::storage_scope, StringImm(scope), body);
       }
     }
 
@@ -355,26 +348,14 @@ class BufferFlattener : public StmtExprMutator {
         for (const auto& extent : buffers_region_.at(n->buffer)) {
           extents *= extent.max() - extent.min() + 1;
         }
-        body = AllocateNode::make(n->buffer->data,
-                                  n->buffer->dtype,
-                                  {extents},
-                                  const_true(),
-                                  body);
+        body = Allocate(n->buffer->data, n->buffer->dtype, {extents}, const_true(), body);
 
         // Change empty scope into global
         std::string scope = n->scope.empty() ? "global" : n->scope;
-        body = AttrStmtNode::make(n->buffer->data,
-                                  attr::storage_scope,
-                                  StringImmNode::make(scope),
-                                  body);
+        body = AttrStmt(n->buffer->data, attr::storage_scope, StringImm(scope), body);
       }
 
-    return ForNode::make(op->loop_var,
-                         op->min,
-                         op->extent,
-                         for_type,
-                         DeviceAPI::None,
-                         body);
+    return For(op->loop_var, op->min, op->extent, for_type, DeviceAPI::None, body);
   }
 
   // TODO(Siyuan): add support for For and AttrStmt

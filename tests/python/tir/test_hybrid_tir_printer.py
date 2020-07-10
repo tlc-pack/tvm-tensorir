@@ -22,7 +22,7 @@ from tvm.tir.hybrid import from_source
 
 
 def test_matmul():
-    func = util.matmul_stmt()
+    func = util.matmul_stmt_original()
     rt_func = from_source(tvm.tir.hybrid.ashybrid(func, True))
     tvm.ir.assert_structural_equal(func, rt_func)
 

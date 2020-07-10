@@ -24,6 +24,25 @@ def matmul(a, b, c):
     A = buffer_bind(a, (128, 128), "float32")
     B = buffer_bind(b, (128, 128), "float32")
     C = buffer_bind(c, (128, 128), "float32")
+    reducer = comm_reducer(lambda x, y: x + y, float32(0))
+
+    with block({}, reads=[A[0: 128, 0: 128], B[0: 128, 0: 128]], writes=C[0: 128, 0: 128],
+               name="root"):
+        for i in range(0, 128):
+            for j in range(0, 128):
+                for k in range(0, 128):
+                    with block({vi(0, 128): i, vj(0, 128): j, vk(0, 128, iter_type="reduce"): k},
+                               reads=[C[vi: vi + 1, vj: vj + 1], A[vi: vi + 1, vk: vk + 1],
+                                      B[vj: vj + 1, vk: vk + 1]],
+                               writes=[C[vi: vi + 1, vj: vj + 1]], name="update"):
+                        reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
+
+
+@tvm.tir.hybrid.script
+def matmul_original(a, b, c):
+    A = buffer_bind(a, (128, 128), "float32")
+    B = buffer_bind(b, (128, 128), "float32")
+    C = buffer_bind(c, (128, 128), "float32")
 
     with block({}, reads=[A[0: 128, 0: 128], B[0: 128, 0: 128]], writes=C[0: 128, 0: 128],
                name="root"):
@@ -82,6 +101,11 @@ def predicate(b, c):
 def matmul_stmt():
     mod = tvm.tir.hybrid.create_module({"matmul": matmul})
     return mod["matmul"]
+
+
+def matmul_stmt_original():
+    mod = tvm.tir.hybrid.create_module({"matmul_original": matmul_original})
+    return mod["matmul_original"]
 
 
 def element_wise_stmt():

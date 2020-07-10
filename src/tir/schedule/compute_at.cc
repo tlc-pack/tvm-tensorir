@@ -57,7 +57,7 @@ class StrideIntSet {
       PrimExpr extents =
           max(lhs.iter_range_->extent + lhs.iter_range_->min, rhs_range->extent + rhs_range->min)
               - begin;
-      ret.iter_range_ = Range::make_by_min_extent(begin, extents);
+      ret.iter_range_ = Range::FromMinExtent(begin, extents);
       ret.stride_ = lhs.stride_;
     } else {
       ret.stride_ = rhs.stride_;
@@ -106,7 +106,7 @@ std::vector<StrideIntSet> SolveCover(const Array<IterVar>& vars,
     const PrimExpr& strides = produces_len;
 
     cover_iters[id] = StrideIntSet::Union(cover_iters[id],
-        StrideIntSet(Range::make_by_min_extent(base, extent), strides));
+        StrideIntSet(Range::FromMinExtent(base, extent), strides));
   }
 
   for (const auto& var : vars) {
@@ -185,7 +185,7 @@ std::vector<Range> GatherRequirements(const Array<TensorRegion>& produce_regions
   for (size_t i = 0; i < produce_regions.size(); ++i) {
     const auto& tensor_region = produce_regions[i];
     require_region[i] =
-        std::vector<arith::IntSet>(tensor_region->region.size(), arith::IntSet::nothing());
+        std::vector<arith::IntSet>(tensor_region->region.size(), arith::IntSet::Nothing());
   }
 
   std::unordered_map<Buffer, size_t, ObjectHash, ObjectEqual> buffer_index;
@@ -206,7 +206,7 @@ std::vector<Range> GatherRequirements(const Array<TensorRegion>& produce_regions
       for (size_t i = 0; i < tensor_region->region.size(); ++i) {
         const auto& range = tensor_region->region[i];
         require_region[index][i] =
-            arith::Union({require_region[index][i], arith::IntSet::range(range)});
+            arith::Union({require_region[index][i], arith::IntSet::FromRange(range)});
       }
     }
   }
@@ -214,7 +214,7 @@ std::vector<Range> GatherRequirements(const Array<TensorRegion>& produce_regions
   std::vector<Range> ret;
   for (const auto& region : require_region)
     for (const auto& iset : region) {
-      ret.push_back(Range::make_by_min_extent(iset.min(), iset.max() - iset.min() + 1));
+      ret.push_back(Range::FromMinExtent(iset.min(), iset.max() - iset.min() + 1));
     }
 
   return ret;

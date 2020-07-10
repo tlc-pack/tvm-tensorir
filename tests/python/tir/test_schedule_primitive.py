@@ -219,6 +219,7 @@ def test_reorder_normal():
     i, j, k = s.get_axes(update)
     s.reorder(k, i)
     s.reorder(i, j)
+    s.decompose_reduction(update, k)
     s.fuse(i, j)
     mod = tvm.tir.hybrid.create_module({"matmul_reorder": matmul_reorder})
     matmul_reorder_func = mod["matmul_reorder"]
@@ -293,15 +294,13 @@ def test_reduction():
 
     # schedule
     s = tir.create_schedule(func)
-    init = s.get_block("init")
     update = s.get_block("update")
-    s.merge_reduction(init, update)
     i, j, k = s.get_axes(update)
     init = s.decompose_reduction(update, i)
     i, j_i = s.get_axes(init)
     s.split(j_i, 4)
     s.merge_reduction(init, update)
-    s.decompose_reduction(update, j)
+    s.decompose_reduction(update, k)
 
     mod = tvm.tir.hybrid.create_module({"matmul_reduction": matmul_reduction})
     matmul_reduction_func = mod["matmul_reduction"]

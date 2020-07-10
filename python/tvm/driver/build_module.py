@@ -122,7 +122,7 @@ def form_irmodule(sch, args, name, binds):
 
 
 def lower(sch,
-          args=None,
+          args,
           name="main",
           binds=None,
           simple_mode=False):
@@ -130,7 +130,7 @@ def lower(sch,
 
     Parameters
     ----------
-    inputs : tvm.te.schedule.Schedule or tvm.Function
+    sch : tvm.te.schedule.Schedule
         The schedule to be built
 
     args : list of Buffer or Tensor or Var, optional
@@ -165,18 +165,30 @@ def lower(sch,
     lower_phase2 = [x[1] for x in add_lower_pass if x[0] == 2]
     lower_phase3 = [x[1] for x in add_lower_pass if x[0] > 2]
 
+    is_tir_schedule = False
+
     # Phase 0
     if isinstance(sch, schedule.Schedule):
         assert args is not None
         mod = form_irmodule(sch, args, name, binds)
+    elif isinstance(sch, tvm.tir.PrimFunc):
+        func = sch.with_attr("global_symbol", name)
+        if pass_ctx.config.get("tir.restricted_func"):
+            func = func.with_attr("tir.noalias", True)
+        mod = tvm.IRModule({name: func})
+        is_tir_schedule = True
     else:
         mod = sch
 
     pass_list = lower_phase0
     # Phase 1
+    pass_list += [tvm.tir.transform.InjectPrefetch()]
+
+    if is_tir_schedule:
+        pass_list += [tvm.tir.transform.BufferFlatten()]
+    else:
+        pass_list += [tvm.tir.transform.StorageFlatten(64, instrument_bound_checkers)]
     pass_list += [
-        tvm.tir.transform.InjectPrefetch(),
-        tvm.tir.transform.StorageFlatten(64, instrument_bound_checkers),
         tvm.tir.transform.BF16Legalize(),
         tvm.tir.transform.NarrowDataType(32),
         tvm.tir.transform.Simplify(),
@@ -263,23 +275,23 @@ def _build_for_device(input_mod, target, target_host):
     opt_device = tvm.transform.Sequential(
         [tvm.tir.transform.Filter(
             lambda f: "calling_conv" in f.attrs and
-            f.attrs["calling_conv"].value == CallingConv.DEVICE_KERNEL_LAUNCH),
-         tvm.tir.transform.LowerWarpMemory(),
-         tvm.tir.transform.Simplify(),
-         tvm.tir.transform.LowerDeviceStorageAccessInfo(),
-         tvm.tir.transform.LowerIntrin()])
+                      f.attrs["calling_conv"].value == CallingConv.DEVICE_KERNEL_LAUNCH),
+            tvm.tir.transform.LowerWarpMemory(),
+            tvm.tir.transform.Simplify(),
+            tvm.tir.transform.LowerDeviceStorageAccessInfo(),
+            tvm.tir.transform.LowerIntrin()])
     mod_dev = opt_device(mod_mixed)
 
     # host optimizations
     opt_host = tvm.transform.Sequential(
         [tvm.tir.transform.Filter(
             lambda f: "calling_conv" not in f.attrs or
-            f.attrs["calling_conv"].value != CallingConv.DEVICE_KERNEL_LAUNCH),
-         tvm.tir.transform.Apply(lambda f: f.with_attr("target", target)),
-         tvm.tir.transform.LowerTVMBuiltin(),
-         tvm.tir.transform.LowerDeviceStorageAccessInfo(),
-         tvm.tir.transform.LowerIntrin(),
-         tvm.tir.transform.CombineContextCall()])
+                      f.attrs["calling_conv"].value != CallingConv.DEVICE_KERNEL_LAUNCH),
+            tvm.tir.transform.Apply(lambda f: f.with_attr("target", target)),
+            tvm.tir.transform.LowerTVMBuiltin(),
+            tvm.tir.transform.LowerDeviceStorageAccessInfo(),
+            tvm.tir.transform.LowerIntrin(),
+            tvm.tir.transform.CombineContextCall()])
     mod_host = opt_host(mod_mixed)
 
     if device_type == ndarray.cpu(0).device_type and target_host == target:
@@ -369,7 +381,7 @@ def build(inputs,
     ----
     See the note on :any:`tvm.target` on target string format.
     """
-    if isinstance(inputs, (schedule.Schedule, tvm.tir.Function)):
+    if isinstance(inputs, (schedule.Schedule, tvm.tir.PrimFunc)):
         if args is None and isinstance(inputs, schedule.Schedule):
             raise ValueError("args must be given for build from schedule")
         input_mod = lower(inputs, args,

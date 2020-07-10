@@ -272,7 +272,7 @@ class DefaultReducer {
   }
 
   CommReducer GetReducer(DataType dtype) const {
-    return CommReducerNode::make({lhs_}, {rhs_}, {result_}, {identity_(dtype)});
+    return CommReducer({lhs_}, {rhs_}, {result_}, {identity_(dtype)});
   }
 
  private:

@@ -38,7 +38,7 @@ def test_element_wise_dependency():
 
 
 def test_matmul_dependency():
-    func = util.matmul_stmt()
+    func = util.matmul_stmt_original()
     s = tir.create_schedule(func)
     buffer_c = func.buffer_map[func.params[2]]
 

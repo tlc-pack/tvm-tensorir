@@ -457,13 +457,10 @@ class BlockRealize(Stmt):
 
     block : Block
         The block to realize
-
-    binding_valid : bool
-        Whether the bindings are valid
     """
-    def __init__(self, values, predicate, block, binding_valid):
+    def __init__(self, values, predicate, block):
         self.__init_handle_by_constructor__(
-            _ffi_api.BlockRealize, values, predicate, block, binding_valid)
+            _ffi_api.BlockRealize, values, predicate, block)
 
 
 @tvm._ffi.register_object

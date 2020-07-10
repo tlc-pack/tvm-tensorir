@@ -112,6 +112,30 @@ void StmtVisitor::VisitStmt_(const SeqStmtNode* op) {
 
 void StmtVisitor::VisitStmt_(const EvaluateNode* op) { this->VisitExpr(op->value); }
 
+void StmtVisitor::VisitStmt_(const BlockNode* op) {
+  VisitArray(op->allocations, [this](const Stmt& s) { this->VisitStmt(s); });
+  this->VisitStmt(op->body);
+}
+
+void StmtVisitor::VisitStmt_(const BlockRealizeNode* op) {
+  VisitArray(op->binding_values, [this](const PrimExpr& e) { this->VisitExpr(e); });
+  this->VisitExpr(op->predicate);
+  this->VisitStmt(op->block);
+}
+
+void StmtVisitor::VisitStmt_(const LoopNode* op) {
+  this->VisitExpr(op->min);
+  this->VisitExpr(op->extent);
+  this->VisitStmt(op->body);
+}
+
+void StmtVisitor::VisitStmt_(const BufferAllocateNode* op) {}
+
+void StmtVisitor::VisitStmt_(const ReduceStepNode* op) {
+  this->VisitExpr(op->lhs);
+  this->VisitExpr(op->rhs);
+}
+
 class StmtMutator::Internal {
  public:
   static Array<PrimExpr> Mutate(StmtMutator* self, const Array<PrimExpr>& arr) {
@@ -375,6 +399,66 @@ Stmt StmtMutator::VisitStmt_(const EvaluateNode* op) {
   } else {
     auto n = CopyOnWrite(op);
     n->value = std::move(value);
+    return Stmt(n);
+  }
+}
+
+Stmt StmtMutator::VisitStmt_(const BlockNode* op) {
+  Stmt body = this->VisitStmt(op->body);
+  if (body.same_as(op->body)) {
+    return GetRef<Stmt>(op);
+  } else {
+    auto n = CopyOnWrite(op);
+    n->body = std::move(body);
+    return Stmt(n);
+  }
+}
+
+Stmt StmtMutator::VisitStmt_(const BlockRealizeNode* op) {
+  auto fmutate = [this](const PrimExpr& e) { return this->VisitExpr(e); };
+  Array<PrimExpr> v = MutateArray(op->binding_values, fmutate);
+  PrimExpr pred = this->VisitExpr(op->predicate);
+  Stmt block = this->VisitStmt(op->block);
+  if (v.same_as(op->binding_values) && pred.same_as(op->predicate) && block.same_as(op->block)) {
+    return GetRef<Stmt>(op);
+  } else {
+    auto n = CopyOnWrite(op);
+    n->binding_values = std::move(v);
+    n->predicate = std::move(pred);
+    n->block = Downcast<Block>(block);
+    return Stmt(n);
+  }
+}
+
+Stmt StmtMutator::VisitStmt_(const LoopNode* op) {
+  PrimExpr min = this->VisitExpr(op->min);
+  PrimExpr extent = this->VisitExpr(op->extent);
+  Stmt body = this->VisitStmt(op->body);
+  if (min.same_as(op->min) && extent.same_as(op->extent) &&
+      body.same_as(op->body)) {
+    return GetRef<Stmt>(op);
+  } else {
+    auto n = CopyOnWrite(op);
+    n->min = std::move(min);
+    n->extent = std::move(extent);
+    n->body = std::move(body);
+    return Stmt(n);
+  }
+}
+
+Stmt StmtMutator::VisitStmt_(const BufferAllocateNode* op) {
+  return GetRef<Stmt>(op);
+}
+
+Stmt StmtMutator::VisitStmt_(const ReduceStepNode* op) {
+  PrimExpr lhs = this->VisitExpr(op->lhs);
+  PrimExpr rhs = this->VisitExpr(op->rhs);
+  if (lhs.same_as(op->lhs) && rhs.same_as(op->rhs)) {
+    return GetRef<Stmt>(op);
+  } else {
+    auto n = CopyOnWrite(op);
+    n->lhs = std::move(lhs);
+    n->rhs = std::move(rhs);
     return Stmt(n);
   }
 }
