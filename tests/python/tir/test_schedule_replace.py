@@ -193,7 +193,7 @@ def test_replace_block_remap():
     s = tir.create_schedule(func)
 
     # The target stmt
-    target = util.matmul_stmt().body.block.body.body.body[0].block
+    target = util.matmul_stmt_original().body.block.body.body.body[0].block
     sref = s.get_sref(s.func.body.block.body[0].body.body.block)
     s.replace(sref, target, {target: s.func.body.block.body[0].body.body.block})
     sref_new = s.get_block("init")
