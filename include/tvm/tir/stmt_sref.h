@@ -29,6 +29,7 @@ namespace tir {
  */
 class StmtSRefNode : public Object {
  public:
+  // TODO(@junrushao1994): rename `node` to `stmt`
   /*! \brief The corresponding stmt node */
   const StmtNode* node;
   /*! \brief The parent sref */
@@ -51,13 +52,9 @@ class StmtSRef : public ObjectRef {
  public:
   StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index = -1);
 
-  StmtSRefNode* operator->() {
-    return get();
-  }
+  StmtSRefNode* operator->() { return get(); }
 
-  StmtSRefNode* get() {
-    return static_cast<StmtSRefNode*>(ObjectRef::get_mutable());
-  }
+  StmtSRefNode* get() { return static_cast<StmtSRefNode*>(ObjectRef::get_mutable()); }
 
   TVM_DEFINE_OBJECT_REF_METHODS(StmtSRef, ObjectRef, StmtSRefNode);
 };

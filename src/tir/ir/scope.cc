@@ -31,6 +31,11 @@ DepEdge::DepEdge(StmtSRef dst, DepType type) {
   data_ = std::move(node);
 }
 
+Scope::Scope() {
+  ObjectPtr<ScopeNode> node = make_object<ScopeNode>();
+  data_ = std::move(node);
+}
+
 void Scope::AddEdge(const StmtSRef& from, const StmtSRef& to, DepType type) {
   if (!from.same_as(to)) {
     ScopeNode* node = operator->();
@@ -170,6 +175,46 @@ bool Scope::CanMergeReduction(const StmtSRef &init_block, const StmtSRef &update
         CHECK(!RelatedWithVar(iter_var->var, index));
 
   return true;
+}
+
+void Scope::AddChildBlock(const StmtSRef& child_sref, BufferMap* read_map) {
+  CHECK(child_sref->node->IsInstance<BlockNode>());
+  const BlockNode* block = static_cast<const BlockNode*>(child_sref->node);
+  BufferMap& buffer_reader = *read_map;
+  BufferMap& buffer_writer = (*this)->write_map;
+  // Update `buffer_reader` and `buffer_writer` for each buffer
+  for (const TensorRegion& region: block->writes) {
+    buffer_writer[region->buffer].push_back(child_sref);
+  }
+  for (const TensorRegion& region: block->reads) {
+    buffer_reader[region->buffer].push_back(child_sref);
+  }
+  // Check and update block dependencies: RAW, WAW, WAR.
+  // Note: AddEdge is effectively NOP on self-loops
+  // Update RAW dependency
+  for (const TensorRegion& region: block->reads) {
+    if (buffer_writer.count(region->buffer)) {
+      for (const StmtSRef& from: buffer_writer[region->buffer]) {
+        this->AddEdge(from, child_sref, DepType::kRAW);
+      }
+    }
+  }
+  // Update WAW dependency
+  for (const TensorRegion& region: block->writes) {
+    if (buffer_writer.count(region->buffer)) {
+      for (const StmtSRef& from: buffer_writer[region->buffer]) {
+        this->AddEdge(from, child_sref, DepType::kWAW);
+      }
+    }
+  }
+  // Check WAR dependency: not allowed in the IR
+  for (const TensorRegion& region: block->writes) {
+    if (buffer_reader.count(region->buffer)) {
+      for (const StmtSRef& from: buffer_reader[region->buffer]) {
+        CHECK(from.same_as(child_sref)) << "TypeError: WAR dependency is not allowed";
+      }
+    }
+  }
 }
 
 TVM_REGISTER_NODE_TYPE(ScopeNode);

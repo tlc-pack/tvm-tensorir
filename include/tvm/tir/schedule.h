@@ -22,22 +22,26 @@
 #include <tvm/ir/attrs.h>
 #include <tvm/te/tensor.h>
 #include <tvm/tir/buffer.h>
+#include <tvm/tir/function.h>
 #include <tvm/tir/scope.h>
 #include <tvm/tir/stmt_sref.h>
-#include <tvm/tir/function.h>
 
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-
 namespace tvm {
 namespace tir {
+
+// TODO(@junrushao1994): better names and types
+using SRefMap = std::unordered_map<const StmtNode*, StmtSRef>;
+using ScopeMap = std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual>;
 
 class Schedule;
 class ScheduleNode : public Object {
  public:
+  // TODO(@junrushao1994): better name for `scopes_`
   /*! \brief The function to be scheduled */
   PrimFunc func;
   /*! \brief The root of schedulable reference tree */
@@ -45,10 +49,10 @@ class ScheduleNode : public Object {
   /*!
    * \brief The mapping from stmt to its schedulable reference node
    * \note This is a hint to improve mutation efficiency
-   * */
-  std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
+   */
+  SRefMap stmt2ref;
   /*! \brief The block scopes of each block */
-  std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> scopes_;
+  ScopeMap scopes_;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("func", &func);
@@ -102,11 +106,12 @@ class ScheduleNode : public Object {
   Array<StmtSRef> GetLoopsInScope(const StmtSRef& block) const;
 
   /*!
+   * TODO(@junrushao1994): revisit the impl
    * \brief Get the scope of the schedulable reference
-   * \param node The queried node
+   * \param sref The queried node
    * \return the block scope reference
    */
-  StmtSRef GetScope(StmtSRef node) const;
+  StmtSRef GetScope(const StmtSRef& sref) const;
 
   /*!
    * \brief fuse two consecutive loops of one computation.
@@ -201,19 +206,13 @@ class ScheduleNode : public Object {
   TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleNode, Object);
 
  private:
-  /*! \brief The reducer list for reduction pattern matching */
-  std::vector<CommReducer> reducers_;
-
   /*!
- * \brief Update the sref to make it point to new Block/Loop
- * \param sref The outdated sref
- * \param stmt The new stmt
- */
-  void UpdateSRef(StmtSRefNode* sref, const Stmt& stmt);
-  /*!
-   * \brief Check the region cover for the single consumer block
+   * \brief Update the sref to make it point to new Block/Loop
+   * \param sref The outdated sref
+   * \param stmt The new stmt
    */
-  bool CheckRegionCover(const StmtSRef& consumer) const;
+  void UpdateSRef(StmtSRefNode* sref, const Stmt& stmt);
+
   /*!
    * \brief Check whether a sub_tree satisfies the one-way fine-grained data flow check
    * \details Suppose a loop tree has several blocks on the leaves.
@@ -227,6 +226,15 @@ class ScheduleNode : public Object {
    *       so it is omitted in the check.
    */
   bool IsCompactDataFlow(const StmtSRef& sub_tree) const;
+
+  /*!
+   * \brief Help function for checking and mutating loops to do parallel computation
+   *        For now it is only used for vectorize, bind and parallel
+   * \param node the loop to be annotated
+   * \param annotation the annotation
+   */
+  void ParallelCompute(const StmtSRef& node, const Annotation& annotation);
+
   /*!
    * \brief Validate Tir, now the ValidateLoops pass contains the following checks
    *        1) loop binding validation: a set of binding expressions is valid if and only if
@@ -237,26 +245,23 @@ class ScheduleNode : public Object {
    *          then g is legal
    *        2) region cover check: Suppose B is a RAW predecessor of C, Loop k is the LCA of B and
    *          C, then B's output region covers C's input region under Loop k
-   * \param func the TirFunction to be validated
    */
-  void ValidateLoops(PrimFunc function);
+  void ValidateLoops();
 
   /*!
-   * \brief Help function for checking and mutating loops to do parallel computation
-   *        For now it is only used for vectorize, bind and parallel
-   * \param node the loop to be annotated
-   * \param annotation the annotation
+   * \brief Check the region cover for the single consumer block
    */
-  void ParallelCompute(const StmtSRef& node, const Annotation& annotation);
+  bool ValidateRegionCover(const StmtSRef& consumer) const;
+
+  /*! \brief The reducer list for reduction pattern matching */
+  std::vector<CommReducer> reducers_;
 };
 
 class Schedule : public ObjectRef {
  public:
   TVM_DEFINE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
 
-  ScheduleNode* operator->() {
-    return static_cast<ScheduleNode*>(ObjectRef::get_mutable());
-  }
+  ScheduleNode* operator->() { return static_cast<ScheduleNode*>(ObjectRef::get_mutable()); }
 };
 
 }  // namespace tir

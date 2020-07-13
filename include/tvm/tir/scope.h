@@ -26,8 +26,9 @@
 
 #include <tvm/tir/stmt.h>
 #include <tvm/tir/stmt_sref.h>
-#include <vector>
+
 #include <unordered_map>
+#include <vector>
 
 namespace tvm {
 namespace tir {
@@ -64,6 +65,9 @@ class DepEdge : public ObjectRef {
   TVM_DEFINE_OBJECT_REF_METHODS(DepEdge, ObjectRef, DepEdgeNode);
 };
 
+// TODO(@junrushao1994): better naming and better type
+using BufferMap = std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual>;
+
 /*!
  * \brief Dependency Graph that stores read/write dependency between Blocks
  * \note It is not a traditional and complete dependency graph, but only a
@@ -74,12 +78,16 @@ class DepEdge : public ObjectRef {
  */
 class ScopeNode : public Object {
  public:
+  /*
+   * TODO(@junrushao1994): rename to `write_map` to `buffer_writer`
+   * TODO(@junrushao1994): do we really want DepEdge to be an object?
+   */
   /*! \brief The forward dependency edges of the block */
   std::unordered_map<StmtSRef, Array<DepEdge>, ObjectHash, ObjectEqual> forward_edges;
   /*! \brief The backward dependency edges of the block */
   std::unordered_map<StmtSRef, Array<DepEdge>, ObjectHash, ObjectEqual> backward_edges;
   /*! \brief The mapping from the buffer to the blocks who write it */
-  std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual> write_map;
+  BufferMap write_map;
 
   void VisitAttrs(AttrVisitor* v) {}
 
@@ -89,6 +97,8 @@ class ScopeNode : public Object {
 
 class Scope : public ObjectRef {
  public:
+  /*! \brief Constructor */
+  Scope();
   /*!
    * \brief Add a dependency edge.
    * \param from The departure of the edge
@@ -139,14 +149,17 @@ class Scope : public ObjectRef {
    * \return Whether the merged block of init_block and update_block is a reduction block
    */
   bool CanMergeReduction(const StmtSRef& init_block, const StmtSRef& update_block) const;
+  /*!
+   * \brief Declare a new child block, update the write_map, read_map and the dependency graph
+   * \param child_sref The child block to be added
+   * \param read_map Maps a buffer to a list of blocks that reads it
+   */
+  void AddChildBlock(const StmtSRef& child_sref, BufferMap* read_map);
 
-  TVM_DEFINE_OBJECT_REF_METHODS(Scope, ObjectRef, ScopeNode);
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Scope, ObjectRef, ScopeNode);
 
-  ScopeNode* operator->() {
-    return static_cast<ScopeNode*>(data_.get());
-  }
+  ScopeNode* operator->() { return static_cast<ScopeNode*>(data_.get()); }
 };
-
 
 }  // namespace tir
 }  // namespace tvm
