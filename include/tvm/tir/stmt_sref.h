@@ -30,13 +30,28 @@ namespace tir {
 class StmtSRefNode : public Object {
  public:
   /*! \brief The corresponding stmt node */
-  const StmtNode* node;
+  const StmtNode* stmt;
   /*! \brief The parent sref */
   StmtSRefNode* parent{nullptr};
   /*! \brief The location in an array if parent contains SeqStmt. */
   int64_t seq_index{-1};
   /*! \brief Whether the loop bindings are validatable */
   bool binding_valid;
+
+  /*!
+   * \brief Get the referenced statement with type checking. It serves the same purpose as
+   * ObjectRef::as, but does not require strong reference to `stmt`
+   * \tparam StmtType The type that `this->stmt` is assumed to be
+   * \return nullptr if type check fails, otherwise the type casted from `this->stmt`
+   */
+  template <typename StmtType>
+  const StmtType* GetStmt() const {
+    if (stmt != nullptr && stmt->IsInstance<StmtType>()) {
+      return static_cast<const StmtType*>(stmt);
+    } else {
+      return nullptr;
+    }
+  }
 
   void VisitAttrs(AttrVisitor* v) {}
 
@@ -49,15 +64,11 @@ class StmtSRefNode : public Object {
  */
 class StmtSRef : public ObjectRef {
  public:
-  StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index = -1);
+  StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index = -1);
 
-  StmtSRefNode* operator->() {
-    return get();
-  }
+  StmtSRefNode* operator->() { return get(); }
 
-  StmtSRefNode* get() {
-    return static_cast<StmtSRefNode*>(ObjectRef::get_mutable());
-  }
+  StmtSRefNode* get() { return static_cast<StmtSRefNode*>(ObjectRef::get_mutable()); }
 
   TVM_DEFINE_OBJECT_REF_METHODS(StmtSRef, ObjectRef, StmtSRefNode);
 };

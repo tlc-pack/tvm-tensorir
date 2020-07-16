@@ -180,7 +180,7 @@ class CacheRewriter : public StmtExprMutator {
   /*! \brief insert the copy stmt into the correct position into the seq stmt under the sref*/
   template <typename T>
   Stmt VisitSRefStmt(const T* op) {
-    bool is_insert_pos = op == insert_sref_->node;
+    bool is_insert_pos = op == insert_sref_->stmt;
     Stmt s = StmtMutator::VisitStmt_(op);
     op = s.as<T>();
     CHECK(op != nullptr);
@@ -385,10 +385,10 @@ std::pair<Stmt, Block> GenerateCopyStmt(const Buffer& read_buffer, const Buffer&
  */
 StmtSRef GetInnermostBlock(const ScheduleNode* sch, const Buffer& buffer) {
   StmtSRef sref = sch->root;
-  Scope scope = sch->scopes_.at(sref);
+  Scope scope = sch->scopes.at(sref);
   // return nullptr when the buffer is an input buffer
-  auto it = scope->write_map.find((buffer));
-  if (it == scope->write_map.end()) {
+  auto it = scope->buffer_writers.find((buffer));
+  if (it == scope->buffer_writers.end()) {
     return NullValue<StmtSRef>();
   }
   do {
@@ -396,9 +396,9 @@ StmtSRef GetInnermostBlock(const ScheduleNode* sch, const Buffer& buffer) {
     CHECK_EQ(write_blocks.size(), 1)
         << "Can only cache_read or cache_write a dominate block (only producer)";
     sref = write_blocks[0];
-    scope = sch->scopes_.at(sref);
-    it = scope->write_map.find((buffer));
-  } while (it != scope->write_map.end());
+    scope = sch->scopes.at(sref);
+    it = scope->buffer_writers.find((buffer));
+  } while (it != scope->buffer_writers.end());
   return sref;
 }
 
@@ -420,12 +420,12 @@ StmtSRef ScheduleNode::cache_read(const Buffer& buffer, const std::string& stora
   size_t insert_pos;
   TensorRegion cache_region;
   if (block_sref.defined()) {
-    const auto* block = DowncastPtr<BlockNode>(block_sref->node);
+    const auto* block = DowncastPtr<BlockNode>(block_sref->stmt);
     CHECK(block != nullptr) << buffer << "is not a block sref";
-    scope_sref = GetScope(block_sref);
+    scope_sref = GetParentScope(block_sref);
 
-    const Scope& scope = scopes_.at(scope_sref);
-    scope_block = DowncastPtr<BlockNode>(scope_sref->node);
+    const Scope& scope = scopes.at(scope_sref);
+    scope_block = DowncastPtr<BlockNode>(scope_sref->stmt);
 
     // Check the block is not a output block
     std::unordered_set<Buffer, ObjectHash, ObjectEqual> seen_buffer;
@@ -452,7 +452,7 @@ StmtSRef ScheduleNode::cache_read(const Buffer& buffer, const std::string& stora
     cache_region = RelaxRegion(block_sref, scope_sref, block->writes[0]);
   } else {
     scope_sref = root;
-    scope_block = DowncastPtr<BlockNode>(scope_sref->node);
+    scope_block = DowncastPtr<BlockNode>(scope_sref->stmt);
     insert_sref = root;
     insert_pos = 0;
     Region region;
@@ -493,12 +493,12 @@ StmtSRef ScheduleNode::cache_write(const Buffer& buffer, const std::string& stor
   StmtSRef block_sref = GetInnermostBlock(this, buffer);
   CHECK(block_sref.defined()) << "Cannot cache_write an input buffer";
 
-  const auto* block = DowncastPtr<BlockNode>(block_sref->node);
+  const auto* block = DowncastPtr<BlockNode>(block_sref->stmt);
   CHECK(block != nullptr) << buffer << "is not a block sref";
 
-  const StmtSRef& scope_sref = GetScope(block_sref);
-  const Scope& scope = scopes_.at(scope_sref);
-  const auto* scope_block = DowncastPtr<BlockNode>(scope_sref->node);
+  const StmtSRef& scope_sref = GetParentScope(block_sref);
+  const Scope& scope = scopes.at(scope_sref);
+  const auto* scope_block = DowncastPtr<BlockNode>(scope_sref->stmt);
 
   // Check there is only one output buffer
   CHECK_EQ(block->writes.size(), 1);
