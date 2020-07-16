@@ -26,8 +26,9 @@
 
 #include <tvm/tir/stmt.h>
 #include <tvm/tir/stmt_sref.h>
-#include <vector>
+
 #include <unordered_map>
+#include <vector>
 
 namespace tvm {
 namespace tir {
@@ -79,7 +80,7 @@ class ScopeNode : public Object {
   /*! \brief The backward dependency edges of the block */
   std::unordered_map<StmtSRef, Array<DepEdge>, ObjectHash, ObjectEqual> backward_edges;
   /*! \brief The mapping from the buffer to the blocks who write it */
-  std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual> write_map;
+  std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual> buffer_writers;
 
   void VisitAttrs(AttrVisitor* v) {}
 
@@ -89,6 +90,8 @@ class ScopeNode : public Object {
 
 class Scope : public ObjectRef {
  public:
+  /*! \brief Constructor */
+  Scope();
   /*!
    * \brief Add a dependency edge.
    * \param from The departure of the edge
@@ -139,14 +142,19 @@ class Scope : public ObjectRef {
    * \return Whether the merged block of init_block and update_block is a reduction block
    */
   bool CanMergeReduction(const StmtSRef& init_block, const StmtSRef& update_block) const;
+  /*!
+   * \brief Declare a new child block, update the `buffer_writes`, `buffer_readers` and the
+   * dependency graph \param child_sref The child block to be added \param buffer_readers Maps a
+   * buffer to a list of blocks that reads it
+   */
+  void AddChildBlock(
+      const StmtSRef& child_sref,
+      std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual>* buffer_readers);
 
-  TVM_DEFINE_OBJECT_REF_METHODS(Scope, ObjectRef, ScopeNode);
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Scope, ObjectRef, ScopeNode);
 
-  ScopeNode* operator->() {
-    return static_cast<ScopeNode*>(data_.get());
-  }
+  ScopeNode* operator->() { return static_cast<ScopeNode*>(data_.get()); }
 };
-
 
 }  // namespace tir
 }  // namespace tvm

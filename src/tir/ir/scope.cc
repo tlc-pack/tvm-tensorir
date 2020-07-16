@@ -31,6 +31,11 @@ DepEdge::DepEdge(StmtSRef dst, DepType type) {
   data_ = std::move(node);
 }
 
+Scope::Scope() {
+  ObjectPtr<ScopeNode> node = make_object<ScopeNode>();
+  data_ = std::move(node);
+}
+
 void Scope::AddEdge(const StmtSRef& from, const StmtSRef& to, DepType type) {
   if (!from.same_as(to)) {
     ScopeNode* node = operator->();
@@ -58,13 +63,13 @@ Array<DepEdge> Scope::GetPredecessors(const StmtSRef& block) const {
 }
 
 bool Scope::IsDominate(const StmtSRef &block) const {
-  const auto* n = DowncastPtr<BlockNode>(block->node);
+  const auto* n = DowncastPtr<BlockNode>(block->stmt);
   CHECK(n != nullptr);
 
   // Check the block is the only producer for every output tensors
   for (const auto& write : n->writes) {
     const Buffer& buffer = write->buffer;
-    if (operator->()->write_map.at(buffer).size() != 1) {
+    if (operator->()->buffer_writers.at(buffer).size() != 1) {
       return false;
     }
   }
@@ -75,7 +80,7 @@ bool Scope::IsComplete(const StmtSRef& block) const {
   // A complete block must be dominate
   if (!IsDominate(block)) return false;
 
-  const auto* n = DowncastPtr<BlockNode>(block->node);
+  const auto* n = DowncastPtr<BlockNode>(block->stmt);
   CHECK(n != nullptr);
   // Check all the block vars are at data_par IterType
   for (const auto& iter_var : n->iter_vars) {
@@ -98,7 +103,7 @@ bool Scope::IsComplete(const StmtSRef& block) const {
 }
 
 bool Scope::IsReduction(const StmtSRef& block) const {
-  const auto* n = DowncastPtr<BlockNode>(block->node);
+  const auto* n = DowncastPtr<BlockNode>(block->stmt);
   CHECK(n != nullptr);
 
   // Check the binding of block is valid
@@ -129,8 +134,8 @@ bool Scope::IsReduction(const StmtSRef& block) const {
 }
 
 bool Scope::CanMergeReduction(const StmtSRef &init_block, const StmtSRef &update_block) const {
-  const auto* init = DowncastPtr<BlockNode>(init_block->node);
-  const auto* update = DowncastPtr<BlockNode>(update_block->node);
+  const auto* init = DowncastPtr<BlockNode>(init_block->stmt);
+  const auto* update = DowncastPtr<BlockNode>(update_block->stmt);
 
   // Check init_block and update_block both contains a single BufferStore
   const auto* init_body = DowncastPtr<BufferStoreNode>(init->body.operator->());
@@ -143,13 +148,13 @@ bool Scope::CanMergeReduction(const StmtSRef &init_block, const StmtSRef &update
   // Check init_block and update_block are the only producers for its output tensor
   for (const auto& write : update->writes) {
     const Buffer& buffer = write->buffer;
-    if (operator->()->write_map.at(buffer).size() != 2) {
+    if (operator->()->buffer_writers.at(buffer).size() != 2) {
       return false;
     } else {
-      CHECK(operator->()->write_map.at(buffer)[0].same_as(init_block)
-            || operator->()->write_map.at(buffer)[0].same_as(update_block));
-      CHECK(operator->()->write_map.at(buffer)[1].same_as(init_block)
-            || operator->()->write_map.at(buffer)[1].same_as(update_block));
+      CHECK(operator->()->buffer_writers.at(buffer)[0].same_as(init_block)
+            || operator->()->buffer_writers.at(buffer)[0].same_as(update_block));
+      CHECK(operator->()->buffer_writers.at(buffer)[1].same_as(init_block)
+            || operator->()->buffer_writers.at(buffer)[1].same_as(update_block));
     }
   }
 
@@ -170,6 +175,46 @@ bool Scope::CanMergeReduction(const StmtSRef &init_block, const StmtSRef &update
         CHECK(!RelatedWithVar(iter_var->var, index));
 
   return true;
+}
+
+void Scope::AddChildBlock(const StmtSRef& child_sref, std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual>* _buffer_readers) {
+  const BlockNode* block = child_sref->GetStmt<BlockNode>();
+  CHECK(block) << "InternalError: Scope::AddChildBlock only accepts a Block as child_sref";
+  std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual>& buffer_readers = *_buffer_readers;
+  std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual>& buffer_writers = (*this)->buffer_writers;
+  // Update `buffer_readers` and `buffer_writer` for each buffer
+  for (const TensorRegion& region: block->writes) {
+    buffer_writers[region->buffer].push_back(child_sref);
+  }
+  for (const TensorRegion& region: block->reads) {
+    buffer_readers[region->buffer].push_back(child_sref);
+  }
+  // Check and update block dependencies: RAW, WAW, WAR.
+  // Note: AddEdge is effectively NOP on self-loops
+  // Update RAW dependency
+  for (const TensorRegion& region: block->reads) {
+    if (buffer_writers.count(region->buffer)) {
+      for (const StmtSRef& from: buffer_writers[region->buffer]) {
+        this->AddEdge(from, child_sref, DepType::kRAW);
+      }
+    }
+  }
+  // Update WAW dependency
+  for (const TensorRegion& region: block->writes) {
+    if (buffer_writers.count(region->buffer)) {
+      for (const StmtSRef& from: buffer_writers[region->buffer]) {
+        this->AddEdge(from, child_sref, DepType::kWAW);
+      }
+    }
+  }
+  // Check WAR dependency: not allowed in the IR
+  for (const TensorRegion& region: block->writes) {
+    if (buffer_readers.count(region->buffer)) {
+      for (const StmtSRef& from: buffer_readers[region->buffer]) {
+        CHECK(from.same_as(child_sref)) << "TypeError: WAR dependency is not allowed";
+      }
+    }
+  }
 }
 
 TVM_REGISTER_NODE_TYPE(ScopeNode);
