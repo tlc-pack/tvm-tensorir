@@ -29,9 +29,8 @@ namespace tir {
  */
 class StmtSRefNode : public Object {
  public:
-  // TODO(@junrushao1994): rename `node` to `stmt`
   /*! \brief The corresponding stmt node */
-  const StmtNode* node;
+  const StmtNode* stmt;
   /*! \brief The parent sref */
   StmtSRefNode* parent{nullptr};
   /*! \brief The location in an array if parent contains SeqStmt. */
@@ -50,7 +49,7 @@ class StmtSRefNode : public Object {
  */
 class StmtSRef : public ObjectRef {
  public:
-  StmtSRef(const StmtNode* node, StmtSRefNode* parent, int64_t seq_index = -1);
+  StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index = -1);
 
   StmtSRefNode* operator->() { return get(); }
 

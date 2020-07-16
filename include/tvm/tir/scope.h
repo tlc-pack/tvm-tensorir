@@ -65,9 +65,6 @@ class DepEdge : public ObjectRef {
   TVM_DEFINE_OBJECT_REF_METHODS(DepEdge, ObjectRef, DepEdgeNode);
 };
 
-// TODO(@junrushao1994): better naming and better type
-using BufferMap = std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual>;
-
 /*!
  * \brief Dependency Graph that stores read/write dependency between Blocks
  * \note It is not a traditional and complete dependency graph, but only a
@@ -78,16 +75,12 @@ using BufferMap = std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, Object
  */
 class ScopeNode : public Object {
  public:
-  /*
-   * TODO(@junrushao1994): rename to `write_map` to `buffer_writer`
-   * TODO(@junrushao1994): do we really want DepEdge to be an object?
-   */
   /*! \brief The forward dependency edges of the block */
   std::unordered_map<StmtSRef, Array<DepEdge>, ObjectHash, ObjectEqual> forward_edges;
   /*! \brief The backward dependency edges of the block */
   std::unordered_map<StmtSRef, Array<DepEdge>, ObjectHash, ObjectEqual> backward_edges;
   /*! \brief The mapping from the buffer to the blocks who write it */
-  BufferMap write_map;
+  std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual> buffer_writers;
 
   void VisitAttrs(AttrVisitor* v) {}
 
@@ -150,11 +143,13 @@ class Scope : public ObjectRef {
    */
   bool CanMergeReduction(const StmtSRef& init_block, const StmtSRef& update_block) const;
   /*!
-   * \brief Declare a new child block, update the write_map, read_map and the dependency graph
-   * \param child_sref The child block to be added
-   * \param read_map Maps a buffer to a list of blocks that reads it
+   * \brief Declare a new child block, update the `buffer_writes`, `buffer_readers` and the
+   * dependency graph \param child_sref The child block to be added \param buffer_readers Maps a
+   * buffer to a list of blocks that reads it
    */
-  void AddChildBlock(const StmtSRef& child_sref, BufferMap* read_map);
+  void AddChildBlock(
+      const StmtSRef& child_sref,
+      std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual>* buffer_readers);
 
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Scope, ObjectRef, ScopeNode);
 

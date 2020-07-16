@@ -315,9 +315,9 @@ void ScheduleNode::ValidateLoops() {
 
 bool ScheduleNode::ValidateRegionCover(const StmtSRef& consumer) const {
   if (consumer->parent == nullptr) return true;
-  const auto* block = DowncastPtr<BlockNode>(consumer->node);
-  StmtSRef scope_sref = GetScope(consumer);
-  const Scope& scope = scopes_.at(scope_sref);
+  const auto* block = DowncastPtr<BlockNode>(consumer->stmt);
+  StmtSRef scope_sref = GetParentScope(consumer);
+  const Scope& scope = scopes.at(scope_sref);
 
   // Gather all the producers
   std::unordered_map<const VarNode*, std::vector<StmtSRef>> producers;
@@ -326,7 +326,7 @@ bool ScheduleNode::ValidateRegionCover(const StmtSRef& consumer) const {
 
   for (const auto& edge : successors) {
     if (edge->type == DepType::kRAW) {
-      const auto* producer_block = DowncastPtr<BlockNode>(edge->dst->node);
+      const auto* producer_block = DowncastPtr<BlockNode>(edge->dst->stmt);
       for (const auto& output_region : producer_block->writes) {
         const auto* bufferVar = output_region->buffer->data.operator->();
         producers[bufferVar].push_back(edge->dst);
@@ -378,7 +378,7 @@ class SRefValidator : public StmtVisitor {
   void VisitStmt_(const BlockNode* op) override {
     CheckParent(op);
     auto sref = sch_->stmt2ref.at(op);
-    CHECK(sch_->scopes_.count(sref)) << "Cannot find scope information of the block:\n"
+    CHECK(sch_->scopes.count(sref)) << "Cannot find scope information of the block:\n"
                                      << GetRef<Stmt>(op);
   }
 

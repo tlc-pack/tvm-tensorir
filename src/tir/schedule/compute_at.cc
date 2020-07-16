@@ -162,7 +162,7 @@ Stmt RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& parent_loop_sre
       body = loop;
     }
   }
-  Loop loop = Downcast<Loop>(GetRef<Stmt>(parent_loop_sref->node));
+  Loop loop = Downcast<Loop>(GetRef<Stmt>(parent_loop_sref->stmt));
   Array<Stmt> stmts = GetChildren(loop);
   stmts.insert(stmts.begin() + insert_pos, body);
 
@@ -261,17 +261,17 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
    */
 
   // Check
-  const auto* block = DowncastPtr<BlockNode>(block_sref->node);
-  const auto* loop = DowncastPtr<LoopNode>(loop_sref->node);
+  const auto* block = DowncastPtr<BlockNode>(block_sref->stmt);
+  const auto* loop = DowncastPtr<LoopNode>(loop_sref->stmt);
   CHECK(block != nullptr) << block_sref << "is not a block sref";
   CHECK(loop != nullptr) << loop_sref << "is not a loop sref";
 
   // Check the block and the loop are at the same scope
-  CHECK_EQ(GetScope(block_sref), GetScope(loop_sref))
+  CHECK_EQ(GetParentScope(block_sref), GetParentScope(loop_sref))
     << "Cannot compute_at between different scope";
-  const StmtSRef& scope_sref = GetScope(block_sref);
-  const Scope& scope = scopes_.at(scope_sref);
-  const auto* scope_block = DowncastPtr<BlockNode>(scope_sref->node);
+  const StmtSRef& scope_sref = GetParentScope(block_sref);
+  const Scope& scope = scopes.at(scope_sref);
+  const auto* scope_block = DowncastPtr<BlockNode>(scope_sref->stmt);
 
   // Check complete block
   CHECK(scope.IsComplete(block_sref) || scope.IsReduction(block_sref))
@@ -281,7 +281,7 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
   StmtSRef sub_tree_root = block_sref;
   while (sub_tree_root.defined()) {
     auto node = GetRef<StmtSRef>(sub_tree_root->parent);
-    if (GetRef<Stmt>(node->node).as<BlockNode>()) {
+    if (GetRef<Stmt>(node->stmt).as<BlockNode>()) {
       break;
     } else {
       sub_tree_root = node;
@@ -352,14 +352,14 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
 
   StmtSRef lca = LowestCommonAncestor({block_sref, loop_sref}, root);
   std::unordered_map<Stmt, Stmt, ObjectHash, ObjectEqual> replace_map;
-  replace_map[GetRef<Stmt>(loop_sref->node)] = new_stmt;
+  replace_map[GetRef<Stmt>(loop_sref->stmt)] = new_stmt;
   replace_map[removed.first] = removed.second;
 
   // Mutate the AST with Replace
-  Stmt replaced_stmt = StmtReplacer(replace_map)(GetRef<Stmt>(lca->node));
+  Stmt replaced_stmt = StmtReplacer(replace_map)(GetRef<Stmt>(lca->stmt));
   if (replaced_stmt.as<BlockNode>()) {
     Map<Block, Block> block_map;
-    auto block_scope = Downcast<Block>(GetRef<Stmt>(scope_sref->node));
+    auto block_scope = Downcast<Block>(GetRef<Stmt>(scope_sref->stmt));
     block_map.Set(Downcast<Block>(replaced_stmt), block_scope);
     this->Replace(lca, replaced_stmt, block_map);
   } else {

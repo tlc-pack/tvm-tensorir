@@ -34,14 +34,9 @@
 namespace tvm {
 namespace tir {
 
-// TODO(@junrushao1994): better names and types
-using SRefMap = std::unordered_map<const StmtNode*, StmtSRef>;
-using ScopeMap = std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual>;
-
 class Schedule;
 class ScheduleNode : public Object {
  public:
-  // TODO(@junrushao1994): better name for `scopes_`
   /*! \brief The function to be scheduled */
   PrimFunc func;
   /*! \brief The root of schedulable reference tree */
@@ -50,9 +45,9 @@ class ScheduleNode : public Object {
    * \brief The mapping from stmt to its schedulable reference node
    * \note This is a hint to improve mutation efficiency
    */
-  SRefMap stmt2ref;
+  std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
   /*! \brief The block scopes of each block */
-  ScopeMap scopes_;
+  std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> scopes;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("func", &func);
@@ -106,12 +101,11 @@ class ScheduleNode : public Object {
   Array<StmtSRef> GetLoopsInScope(const StmtSRef& block) const;
 
   /*!
-   * TODO(@junrushao1994): revisit the impl
    * \brief Get the scope of the schedulable reference
    * \param sref The queried node
    * \return the block scope reference
    */
-  StmtSRef GetScope(const StmtSRef& sref) const;
+  StmtSRef GetParentScope(const StmtSRef& sref) const;
 
   /*!
    * \brief fuse two consecutive loops of one computation.

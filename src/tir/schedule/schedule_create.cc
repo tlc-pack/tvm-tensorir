@@ -25,10 +25,10 @@ namespace tir {
 
 class SRefMapCreator : public StmtVisitor {
  public:
-  static SRefMap Create(const PrimFunc& func) {
+  static std::unordered_map<const StmtNode*, StmtSRef> Create(const PrimFunc& func) {
     SRefMapCreator visitor;
     visitor(func->body);
-    SRefMap ret = std::move(visitor.stmt2ref);
+    std::unordered_map<const StmtNode*, StmtSRef> ret = std::move(visitor.stmt2ref);
     return ret;
   }
 
@@ -39,7 +39,7 @@ class SRefMapCreator : public StmtVisitor {
 
   void PopSRef() {
     const StmtSRef& sref = frames.back();
-    stmt2ref[sref->node] = sref;
+    stmt2ref[sref->stmt] = sref;
     frames.pop_back();
   }
 
@@ -70,12 +70,13 @@ class SRefMapCreator : public StmtVisitor {
   }
 
   std::vector<StmtSRef> frames;
-  SRefMap stmt2ref;
+  std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
 };
 
 class ScopeMapCreator : public StmtVisitor {
  public:
-  ScopeMapCreator(const SRefMap& stmt2ref) : stmt2ref(stmt2ref) {}
+  ScopeMapCreator(const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref)
+      : stmt2ref(stmt2ref) {}
 
   void VisitStmt_(const BlockNode* block) override {
     // Create a new scope
@@ -90,24 +91,26 @@ class ScopeMapCreator : public StmtVisitor {
     // Update parent scope if exists
     if (!frames.empty()) {
       auto& top = frames.back();
-      top.scope.AddChildBlock(sref, &top.buffer_reader);
+      top.scope.AddChildBlock(sref, &top.buffer_readers);
     }
   }
 
-  static ScopeMap Create(const SRefMap& stmt2ref, const BlockRealizeNode* realize) {
+  static std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> Create(
+      const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref,
+      const BlockRealizeNode* realize) {
     ScopeMapCreator creator(stmt2ref);
     creator(realize->block);
-    ScopeMap ret = std::move(creator.scopes);
+    std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> ret = std::move(creator.scopes);
     return ret;
   }
 
   struct Frame {
     Scope scope;
-    BufferMap buffer_reader;
+    std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual> buffer_readers;
   };
 
-  const SRefMap& stmt2ref;
-  ScopeMap scopes;
+  const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref;
+  std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> scopes;
   std::vector<Frame> frames;
 };
 
@@ -116,11 +119,11 @@ Schedule ScheduleNode::Create(PrimFunc func) {
   CHECK(realize != nullptr) << "TypeError: body of PrimFunc is expected to be BlockRealize";
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
   n->stmt2ref = SRefMapCreator::Create(func);
-  n->scopes_ = ScopeMapCreator::Create(n->stmt2ref, realize);
+  n->scopes = ScopeMapCreator::Create(n->stmt2ref, realize);
   n->func = std::move(func);
   n->root = n->stmt2ref.at(realize->block.get());
   n->ValidateLoops();
-  for (const auto& it : n->scopes_) {
+  for (const auto& it : n->scopes) {
     n->ValidateRegionCover(it.first);
   }
   return Schedule(n);

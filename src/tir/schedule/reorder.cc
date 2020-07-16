@@ -75,11 +75,11 @@ Stmt ReorderTarget(const StmtSRefNode* old_loop, const StmtSRefNode* bottom,
   size_t new_index = index;
   // The order list maybe incomplete, so we may copy the old_loop rather than order
   const LoopNode* copy = seen_loop.count(GetRef<StmtSRef>(old_loop)) ?
-      DowncastPtr<LoopNode>(order[new_index++]->node) : DowncastPtr<LoopNode>(old_loop->node);
+      DowncastPtr<LoopNode>(order[new_index++]->stmt) : DowncastPtr<LoopNode>(old_loop->stmt);
   auto n = make_object<LoopNode>(*copy);
   if (old_loop == bottom) {
     // bottom loop
-    n->body = DowncastPtr<LoopNode>(old_loop->node)->body;
+    n->body = DowncastPtr<LoopNode>(old_loop->stmt)->body;
   } else {
     // reorder recursively
     n->body = ReorderTarget(successor.at(old_loop), bottom, order, new_index, seen_loop, successor);
@@ -101,7 +101,7 @@ void ScheduleNode::reorder(const Array<StmtSRef>& order) {
   // 1. check loops are mutually different
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> seen_loop;
   for (const StmtSRef& loop_sref : order) {
-    const auto* loop = DowncastPtr<LoopNode>(loop_sref->node);
+    const auto* loop = DowncastPtr<LoopNode>(loop_sref->stmt);
     CHECK(loop) << "Order has to be a list a Loops";
     CHECK_EQ(seen_loop.count(loop_sref), 0) << "Same Loop can not appear more than once ";
     seen_loop.insert(loop_sref);
@@ -115,7 +115,7 @@ void ScheduleNode::reorder(const Array<StmtSRef>& order) {
   //     Put (x,y) in the map.
   // If x is potentially in the reorder range, check x is single branch
   // After the inverse DFS, we can know how to catch the loop line by the map.
-  std::vector<const LoopNode*> all_loops = GatherChild<LoopNode>(GetScope(order[0])->node);
+  std::vector<const LoopNode*> all_loops = GatherChild<LoopNode>(GetParentScope(order[0])->stmt);
   std::unordered_map<const StmtSRefNode*, const StmtSRefNode*> successor;
   // top and bottom denotes the range of loops need reordering
   const StmtSRefNode* top = nullptr, * bottom = nullptr;
@@ -139,13 +139,13 @@ void ScheduleNode::reorder(const Array<StmtSRef>& order) {
   // 4. check these loops are single-branch
   const StmtSRefNode* now = top;
   for (; ;) {
-    const auto& children = GetChildren(GetRef<Stmt>(now->node));
+    const auto& children = GetChildren(GetRef<Stmt>(now->stmt));
     CHECK_EQ(children.size(), 1) << "reorder expects the loops to be single-branch";
     now = stmt2ref[children[0].operator->()].operator->();
-    if (now->node->IsInstance<BlockNode>()) break;
+    if (now->stmt->IsInstance<BlockNode>()) break;
   }
   // 5. the block below has all its block_var to be data_par or reduce
-  const auto* block = DowncastPtr<BlockNode>(now->node);
+  const auto* block = DowncastPtr<BlockNode>(now->stmt);
   CHECK(block);
   for (const auto & iter_var : block->iter_vars) {
     IterVarType var_type = iter_var->iter_type;

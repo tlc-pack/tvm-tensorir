@@ -161,10 +161,10 @@ Stmt GetStmtFromSeq(const T* op,
 }
 
 BlockRealize GetBlockRealize(const StmtSRef& block_sref) {
-  Stmt s = GetRef<Stmt>(block_sref->node);
-  CHECK(GetRef<Stmt>(block_sref->node).as<BlockNode>());
+  Stmt s = GetRef<Stmt>(block_sref->stmt);
+  CHECK(GetRef<Stmt>(block_sref->stmt).as<BlockNode>());
   const auto* parent = block_sref->parent;
-  Stmt parent_stmt = GetRef<Stmt>(parent->node);
+  Stmt parent_stmt = GetRef<Stmt>(parent->stmt);
 
   auto f_equal = [](const Stmt& s, const Stmt& target) {
     CHECK(target.as<BlockNode>());
@@ -217,7 +217,7 @@ std::function<TensorRegion(const TensorRegion)> RelaxGenerator(const StmtSRef& b
     const StmtSRef& root,
     std::unordered_map<const VarNode*, PrimExpr>* vmap,
     std::unordered_map<const VarNode*, arith::IntSet>* dom_map) {
-  const auto* block = DowncastPtr<BlockNode>(block_sref->node);
+  const auto* block = DowncastPtr<BlockNode>(block_sref->stmt);
   const auto* block_realize = GetBlockRealize(block_sref).operator->();
   CHECK(block != nullptr);
 
@@ -229,7 +229,7 @@ std::function<TensorRegion(const TensorRegion)> RelaxGenerator(const StmtSRef& b
   // Gather iteration domain
   auto sref = GetRef<StmtSRef>(block_sref->parent);
   while (sref.defined() && !sref.same_as(root)) {
-    const auto* loop = DowncastPtr<LoopNode>(sref->node);
+    const auto* loop = DowncastPtr<LoopNode>(sref->stmt);
     // The root may not be a loop
     if (loop == nullptr) break;
     Range range = Range::FromMinExtent(loop->min, loop->extent);
@@ -258,7 +258,7 @@ void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
   std::unordered_map<const VarNode*, PrimExpr> vmap;
   std::unordered_map<const VarNode*, arith::IntSet> dom_map;
   auto relax = RelaxGenerator(block_sref, root, &vmap, &dom_map);
-  const auto* block = DowncastPtr<BlockNode>(block_sref->node);
+  const auto* block = DowncastPtr<BlockNode>(block_sref->stmt);
   if (reads != nullptr) {
     for (const auto& tensor_region : block->reads) {
       reads->push_back(relax(tensor_region));
@@ -290,9 +290,9 @@ std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root) {
   CHECK(sref != root);
 
   // go upwards until find a father with more than two children
-  Stmt last = GetRef<Stmt>(sref->node);
+  Stmt last = GetRef<Stmt>(sref->stmt);
   sref = GetRef<StmtSRef>(sref->parent);
-  Stmt stmt = GetRef<Stmt>(sref->node);
+  Stmt stmt = GetRef<Stmt>(sref->stmt);
   while (!sref.same_as(root) || stmt.as<BlockNode>() == nullptr) {
     const auto* loop = stmt.as<LoopNode>();
     CHECK(loop != nullptr);
@@ -301,7 +301,7 @@ std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root) {
 
     sref = GetRef<StmtSRef>(sref->parent);
     last = stmt;
-    stmt = GetRef<Stmt>(sref->node);
+    stmt = GetRef<Stmt>(sref->stmt);
   }
 
   auto get_body = [&last](const SeqStmtNode* seq) {
