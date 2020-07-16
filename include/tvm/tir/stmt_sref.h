@@ -38,6 +38,21 @@ class StmtSRefNode : public Object {
   /*! \brief Whether the loop bindings are validatable */
   bool binding_valid;
 
+  /*!
+   * \brief Get the referenced statement with type checking. It serves the same purpose as
+   * ObjectRef::as, but does not require strong reference to `stmt`
+   * \tparam StmtType The type that `this->stmt` is assumed to be
+   * \return nullptr if type check fails, otherwise the type casted from `this->stmt`
+   */
+  template <typename StmtType>
+  const StmtType* GetStmt() const {
+    if (stmt != nullptr && stmt->IsInstance<StmtType>()) {
+      return static_cast<const StmtType*>(stmt);
+    } else {
+      return nullptr;
+    }
+  }
+
   void VisitAttrs(AttrVisitor* v) {}
 
   static constexpr const char* _type_key = "StmtSRef";
