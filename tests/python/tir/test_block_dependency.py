@@ -15,6 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import pytest
 import tvm
 from tvm import tir
 import util
@@ -83,12 +84,9 @@ def test_WAR(a, b, c):
 def test_WAR_dependency():
     mod = tvm.tir.hybrid.create_module({"test_WAR": test_WAR})
     func = mod["test_WAR"]
-    try:
-        s = tir.create_schedule(func)
-        assert False
-    except tvm._ffi.base.TVMError as e:
-        assert str(e).split(':')[-1].strip() == "WAR dependency is not allowed for now."
-
+    with pytest.raises(TypeError) as excinfo:
+        tir.create_schedule(func)
+    assert "WAR dependency is not allowed" in str(excinfo.value)
 
 if __name__ == "__main__":
     test_element_wise_dependency()

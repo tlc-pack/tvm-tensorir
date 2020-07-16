@@ -975,11 +975,9 @@ class LoopNode : public StmtNode {
   }
 
   bool SEqualReduce(const LoopNode* other, SEqualReducer equal) const {
-    return equal.DefEqual(loop_var, other->loop_var) &&
-        equal(min, other->min) &&
-        equal(extent, other->extent) &&
-        equal(annotations, other->annotations) &&
-        equal(body, other->body);
+    return equal.DefEqual(loop_var, other->loop_var) && equal(min, other->min) &&
+           equal(extent, other->extent) && equal(annotations, other->annotations) &&
+           equal(body, other->body);
   }
 
   void SHashReduce(SHashReducer hash_reduce) const {
@@ -996,10 +994,7 @@ class LoopNode : public StmtNode {
 
 class Loop : public Stmt {
  public:
-  TVM_DLL explicit Loop(Var loop_var,
-                        PrimExpr min,
-                        PrimExpr extent,
-                        Array<Annotation> annotations,
+  TVM_DLL explicit Loop(Var loop_var, PrimExpr min, PrimExpr extent, Array<Annotation> annotations,
                         Stmt body);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Loop, Stmt, LoopNode);
@@ -1124,12 +1119,9 @@ class BlockNode : public StmtNode {
   }
 
   bool SEqualReduce(const BlockNode* other, SEqualReducer equal) const {
-    return equal.DefEqual(iter_vars, other->iter_vars) &&
-        equal(reads, other->reads) &&
-        equal(writes, other->writes) &&
-        equal(allocations, other->allocations) &&
-        equal(annotations, other->annotations) &&
-        equal(body, other->body);
+    return equal.DefEqual(iter_vars, other->iter_vars) && equal(reads, other->reads) &&
+           equal(writes, other->writes) && equal(allocations, other->allocations) &&
+           equal(annotations, other->annotations) && equal(body, other->body);
   }
 
   void SHashReduce(SHashReducer hash_reduce) const {
@@ -1147,13 +1139,9 @@ class BlockNode : public StmtNode {
 
 class Block : public Stmt {
  public:
-  TVM_DLL explicit Block(Array<IterVar> iter_vars,
-                         Array<TensorRegion> reads,
-                         Array<TensorRegion> writes,
-                         Stmt body,
-                         Array<BufferAllocate> allocations,
-                         Array<Annotation> annotations,
-                         std::string tag);
+  TVM_DLL explicit Block(Array<IterVar> iter_vars, Array<TensorRegion> reads,
+                         Array<TensorRegion> writes, Stmt body, Array<BufferAllocate> allocations,
+                         Array<Annotation> annotations, std::string tag);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Block, Stmt, BlockNode);
 };
@@ -1177,9 +1165,8 @@ class BlockRealizeNode : public StmtNode {
   }
 
   bool SEqualReduce(const BlockRealizeNode* other, SEqualReducer equal) const {
-    return equal(binding_values, other->binding_values) &&
-        equal(predicate, other->predicate) &&
-        equal(block, other->block);
+    return equal(binding_values, other->binding_values) && equal(predicate, other->predicate) &&
+           equal(block, other->block);
   }
 
   void SHashReduce(SHashReducer hash_reduce) const {
@@ -1198,9 +1185,7 @@ class BlockRealizeNode : public StmtNode {
  */
 class BlockRealize : public Stmt {
  public:
-  TVM_DLL explicit BlockRealize(Array<PrimExpr> values,
-                                PrimExpr predicate,
-                                Block block);
+  TVM_DLL explicit BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block);
 
   TVM_DEFINE_OBJECT_REF_METHODS(BlockRealize, Stmt, BlockRealizeNode);
 };
@@ -1226,9 +1211,8 @@ class ReduceStepNode : public StmtNode {
   }
 
   bool SEqualReduce(const ReduceStepNode* other, SEqualReducer equal) const {
-    return equal(comm_reducer, other->comm_reducer) &&
-        equal(lhs, other->lhs) &&
-        equal(rhs, other->rhs);
+    return equal(comm_reducer, other->comm_reducer) && equal(lhs, other->lhs) &&
+           equal(rhs, other->rhs);
   }
 
   void SHashReduce(SHashReducer hash_reduce) const {
@@ -1257,8 +1241,8 @@ class ReduceStep : public Stmt {
  public:
   TVM_DLL explicit ReduceStep(CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs);
 
-  static Stmt FromInitUpdate(const Array<CommReducer>& patterns,
-                             const PrimExpr& init, const BufferStore& update);
+  static Stmt FromInitUpdate(const Array<CommReducer>& patterns, const PrimExpr& init,
+                             const BufferStore& update);
 
   TVM_DEFINE_OBJECT_REF_METHODS(ReduceStep, Stmt, ReduceStepNode);
 };
