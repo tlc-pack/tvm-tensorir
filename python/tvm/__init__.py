@@ -61,8 +61,11 @@ from .driver import build, lower
 # tvm.parser
 from . import parser
 
-# others
+# tvm.arith
 from . import arith
+
+# tvm.auto_scheduler
+from . import auto_scheduler
 
 # Contrib initializers
 from .contrib import rocm as _rocm, nvcc as _nvcc, sdaccel as _sdaccel
@@ -79,5 +82,6 @@ def tvm_wrap_excepthook(exception_hook):
                 p.terminate()
 
     return wrapper
+
 
 sys.excepthook = tvm_wrap_excepthook(sys.excepthook)
