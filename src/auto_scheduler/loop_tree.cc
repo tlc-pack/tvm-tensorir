@@ -149,21 +149,7 @@ class LoopTreeNode::Stringifier : public tir::StmtFunctor<void(const tir::Stmt&)
     int indent_delta = 0;
     // Step 1. Print loops with proper indentation
     for (const auto& iter : root->iters) {
-      PrimExpr left_inclusive = analyzer.Simplify(iter->min);
-      PrimExpr right_exclusive = analyzer.Simplify(iter->min + iter->extent);
-      Cout()  // Print name of the iter_var
-          << "for " << iter->name
-          << ' '
-          // Print kind
-          << IterKind2String(iter->kind)
-          // Print loop domain
-          << '[' << left_inclusive << ", " << right_exclusive
-          << ')'
-          // Print loop annotation
-          << (iter->annotation == IterAnnotation::kNone
-                  ? ""
-                  : " # " + IterAnnotation2String(iter->annotation))
-          << std::endl;
+      Cout() << "for " << iter << std::endl;
       // add one level of indentation
       indent_delta += kIndentWidth;
       this->indent += kIndentWidth;
@@ -213,8 +199,6 @@ class LoopTreeNode::Stringifier : public tir::StmtFunctor<void(const tir::Stmt&)
   int indent = 0;
   /*! \brief The ostream used to store the stringfying result temporarily */
   std::ostringstream os;
-  /*! \brief Analyzer to simplify loop domain */
-  arith::Analyzer analyzer;
 };
 
 String LoopTreeNode::ToString() const { return LoopTreeNode::Stringifier().Run(this); }
@@ -224,6 +208,27 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       const auto* node = ref.as<LoopTreeNode>();
       CHECK(node);
       p->stream << node->ToString();
+    });
+
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<IteratorNode>([](const ObjectRef& ref, ReprPrinter* p) {
+      const auto* node = ref.as<IteratorNode>();
+      CHECK(node);
+      arith::Analyzer analyzer;
+      PrimExpr left_inclusive = analyzer.Simplify(node->min);
+      PrimExpr right_exclusive = analyzer.Simplify(node->min + node->extent);
+      p->stream  // Print name
+          << node->name
+          << ' '
+          // Print kind
+          << IterKind2String(node->kind)
+          // Print loop domain
+          << '[' << left_inclusive << ", " << right_exclusive
+          << ')'
+          // Print loop annotation
+          << (node->annotation == IterAnnotation::kNone
+                  ? ""
+                  : " # " + IterAnnotation2String(node->annotation));
     });
 
 TVM_REGISTER_GLOBAL("auto_scheduler.loop_tree.FromPrimFunc").set_body_typed(LoopTree::FromPrimFunc);
