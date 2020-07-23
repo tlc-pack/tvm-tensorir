@@ -25,11 +25,12 @@
 
 #include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
-#include <vector>
-#include <unordered_set>
-#include <unordered_map>
-#include <utility>
+
 #include <algorithm>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 namespace tvm {
 namespace tir {
@@ -65,8 +66,7 @@ Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize = false);
  * \param value_func The function of new values mapping.
  * \return The converted stmt.
  */
-Stmt SubstituteInScope(const Stmt& stmt,
-                       const std::function<PrimExpr(const VarNode*)>& value_func);
+Stmt SubstituteInScope(const Stmt& stmt, const std::function<PrimExpr(const VarNode*)>& value_func);
 
 /*!
  * \brief Substitute the var in current block scope specified in var map
@@ -83,9 +83,9 @@ Stmt SubstituteInScope(const Stmt& stmt,
  * \param var_map the mapping of var
  * \return The converted tensor region
  */
-TensorRegion SubstituteTensorRegion(const TensorRegion& tensor_region,
-                                    const std::unordered_map<const VarNode*,
-                                                             const VarNode*>& var_map);
+TensorRegion SubstituteTensorRegion(
+    const TensorRegion& tensor_region,
+    const std::unordered_map<const VarNode*, const VarNode*>& var_map);
 /*!
  * \brief Get BlockRealize with by Block
  * \param block The queried block
@@ -115,8 +115,7 @@ StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef
  *       Block(reads=A[i: i+1]
  *   After relax, the relaxed region would be A[0: 10]
  */
-void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
-                 std::vector<TensorRegion>* reads,
+void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root, std::vector<TensorRegion>* reads,
                  std::vector<TensorRegion>* writes);
 
 /*!
@@ -126,8 +125,7 @@ void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
  * \param region The region to be relaxed
  * \return The relaxed region
  */
-TensorRegion RelaxRegion(const StmtSRef& block_sref,
-                         const StmtSRef& root,
+TensorRegion RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
                          const TensorRegion& region);
 
 /*!
@@ -139,12 +137,12 @@ TensorRegion RelaxRegion(const StmtSRef& block_sref,
 std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root);
 
 /*!
- * \brief Whether expr is related with var
- * \param var the expected var
+ * \brief Whether the expr contains var
  * \param expr the expected expr
- * \return Whether expr is related with var
+ * \param var the expected var
+ * \return Whether var appears in expr
  */
-bool RelatedWithVar(const Var& var, const PrimExpr& expr);
+bool ExprContainsVar(const PrimExpr& expr, const Var& var);
 
 /*!
  * \brief PrimExpr pattern matcher.
@@ -220,9 +218,7 @@ class PatternMatcher : public ExprVisitor {
     return it->second;
   }
 
-  bool Success() const {
-    return match_success_;
-  }
+  bool Success() const { return match_success_; }
 
  private:
   bool match_success_{true};
@@ -238,7 +234,7 @@ class DefaultReducer {
   explicit DefaultReducer(const std::function<PrimExpr(Var, Var)>& combiner,
                           std::function<PrimExpr(DataType)> identity)
       : lhs_("x"), rhs_("y"), identity_(std::move(identity)) {
-    result_  = combiner(lhs_, rhs_);
+    result_ = combiner(lhs_, rhs_);
   }
 
   CommReducer GetReducer(DataType dtype) const {
@@ -257,8 +253,7 @@ static DefaultReducer default_reducers[4] = {
     DefaultReducer([](const Var& x, const Var& y) { return x * y; },
                    [](DataType dtype) { return make_const(dtype, 1); }),
     DefaultReducer([](const Var& x, const Var& y) { return min(x, y); }, max_value),
-    DefaultReducer([](const Var& x, const Var& y) { return max(x, y); }, min_value)
-};
+    DefaultReducer([](const Var& x, const Var& y) { return max(x, y); }, min_value)};
 
 }  // namespace default_reducer
 
