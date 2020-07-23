@@ -243,6 +243,7 @@ file(GLOB_RECURSE COMPILER_SRCS
     src/arith/*.cc
     src/te/*.cc
     src/autotvm/*.cc
+    src/auto_scheduler/*.cc
     src/tir/*.cc
     src/topi/*.cc
     src/driver/*.cc
