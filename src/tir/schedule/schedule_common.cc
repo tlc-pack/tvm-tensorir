@@ -122,23 +122,21 @@ PrimExpr SubstituteInScope(const PrimExpr& expr,
   return IRSubstitueInScope(vmap)(expr);
 }
 
-TensorRegion SubstituteTensorRegion(const TensorRegion& tensor_region,
-                                    const std::unordered_map<const VarNode*,
-                                                             const VarNode*>& var_map) {
+TensorRegion SubstituteTensorRegion(
+    const TensorRegion& tensor_region,
+    const std::unordered_map<const VarNode*, const VarNode*>& var_map) {
   auto new_tensor_region = make_object<TensorRegionNode>(*tensor_region.operator->());
   new_tensor_region->region = Array<Range>(make_object<ArrayNode>());
   for (const auto& range : tensor_region->region) {
-    new_tensor_region->region.push_back(
-        Range::FromMinExtent(SubstituteInScope(range->min, var_map),
-                             SubstituteInScope(range->extent, var_map)));
+    new_tensor_region->region.push_back(Range::FromMinExtent(
+        SubstituteInScope(range->min, var_map), SubstituteInScope(range->extent, var_map)));
   }
   return TensorRegion(new_tensor_region);
 }
 
 // Only Block and Loop are allowed here.
 template <typename T>
-Stmt GetStmtFromSeq(const T* op,
-                    const Stmt& target,
+Stmt GetStmtFromSeq(const T* op, const Stmt& target,
                     const std::function<bool(const Stmt&, const Stmt&)>& f_equal,
                     int64_t seq_index) {
   if (const auto* seq = op->body.template as<SeqStmtNode>()) {
@@ -213,8 +211,8 @@ StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef
   return root;
 }
 
-std::function<TensorRegion(const TensorRegion)> RelaxGenerator(const StmtSRef& block_sref,
-    const StmtSRef& root,
+std::function<TensorRegion(const TensorRegion)> RelaxGenerator(
+    const StmtSRef& block_sref, const StmtSRef& root,
     std::unordered_map<const VarNode*, PrimExpr>* vmap,
     std::unordered_map<const VarNode*, arith::IntSet>* dom_map) {
   const auto* block = DowncastPtr<BlockNode>(block_sref->stmt);
@@ -242,8 +240,7 @@ std::function<TensorRegion(const TensorRegion)> RelaxGenerator(const StmtSRef& b
     Array<Range> region;
     n->buffer = tensor_region->buffer;
     for (auto range : tensor_region->region) {
-      range = Range::FromMinExtent(Substitute(range->min, *vmap),
-                                        Substitute(range->extent, *vmap));
+      range = Range::FromMinExtent(Substitute(range->min, *vmap), Substitute(range->extent, *vmap));
       auto int_set = arith::EvalSet(range, *dom_map);
       region.push_back(Range::FromMinExtent(int_set.min(), int_set.max() - int_set.min() + 1));
     }
@@ -252,8 +249,7 @@ std::function<TensorRegion(const TensorRegion)> RelaxGenerator(const StmtSRef& b
   };
 }
 
-void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
-                 std::vector<TensorRegion>* reads,
+void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root, std::vector<TensorRegion>* reads,
                  std::vector<TensorRegion>* writes) {
   std::unordered_map<const VarNode*, PrimExpr> vmap;
   std::unordered_map<const VarNode*, arith::IntSet> dom_map;
@@ -271,8 +267,7 @@ void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
   }
 }
 
-TensorRegion RelaxRegion(const StmtSRef& block_sref,
-                         const StmtSRef& root,
+TensorRegion RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
                          const TensorRegion& region) {
   std::unordered_map<const VarNode*, PrimExpr> vmap;
   std::unordered_map<const VarNode*, arith::IntSet> dom_map;
@@ -336,26 +331,16 @@ std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root) {
   }
 }
 
-/*! \brief Helper class to detect whether a PrimExpr is related with var */
-class VarRelatedDetector : public ExprVisitor {
- public:
-  explicit VarRelatedDetector(const Var& var) : var_(var) {}
-
-  void VisitExpr_(const VarNode* op) final {
-    related_ |= GetRef<Var>(op).same_as(var_);
-  }
-
-  bool related_{false};
-
- private:
-  const Var& var_;
-};
-
 /*! \brief Wrapper function for VarRelatedDetector */
-bool RelatedWithVar(const Var& var, const PrimExpr& expr) {
-  VarRelatedDetector detector(var);
-  detector(expr);
-  return detector.related_;
+bool ExprContainsVar(const PrimExpr& expr, const Var& var) {
+  bool result = false;
+  const auto* expected = var.get();
+  PostOrderVisit(expr, [&result, expected](const ObjectRef& obj) {
+    if (obj.as<VarNode>() == expected) {
+      result = true;
+    }
+  });
+  return result;
 }
 
 void PatternMatcher::VisitExpr_(const VarNode* op) {
@@ -369,7 +354,7 @@ void PatternMatcher::VisitExpr_(const VarNode* op) {
   }
 }
 
-void PatternMatcher::VisitExpr_(const LoadNode *op) {
+void PatternMatcher::VisitExpr_(const LoadNode* op) {
   const auto* ptr = DowncastPtr<LoadNode>(expr_to_match_.operator->());
   if (ptr == nullptr) {
     match_success_ = false;
@@ -387,7 +372,7 @@ void PatternMatcher::VisitExpr_(const LoadNode *op) {
   }
 }
 
-void PatternMatcher::VisitExpr_(const LetNode *op) {
+void PatternMatcher::VisitExpr_(const LetNode* op) {
   const auto* ptr = DowncastPtr<LetNode>(expr_to_match_.operator->());
   if (ptr == nullptr) {
     match_success_ = false;
@@ -403,19 +388,19 @@ void PatternMatcher::VisitExpr_(const LetNode *op) {
   }
 }
 
-#define TVM_DECLARE_PATTERN_MATCHER_BIN_OP(OpName)                       \
-  void PatternMatcher::VisitExpr_(const OpName* op) {                    \
-    const auto* ptr = DowncastPtr<OpName>(expr_to_match_.operator->());  \
-    if (ptr == nullptr) {                                                \
-      match_success_ = false;                                            \
-    } else {                                                             \
+#define TVM_DECLARE_PATTERN_MATCHER_BIN_OP(OpName)                      \
+  void PatternMatcher::VisitExpr_(const OpName* op) {                   \
+    const auto* ptr = DowncastPtr<OpName>(expr_to_match_.operator->()); \
+    if (ptr == nullptr) {                                               \
+      match_success_ = false;                                           \
+    } else {                                                            \
       PrimExpr current = expr_to_match_;                                \
-      expr_to_match_ = ptr->a;                                           \
+      expr_to_match_ = ptr->a;                                          \
       VisitExpr(op->a);                                                 \
-      expr_to_match_ = ptr->b;                                           \
-      VisitExpr(op->b);                                                  \
-      std::swap(expr_to_match_, current);                                \
-    }                                                                    \
+      expr_to_match_ = ptr->b;                                          \
+      VisitExpr(op->b);                                                 \
+      std::swap(expr_to_match_, current);                               \
+    }                                                                   \
   }
 
 TVM_DECLARE_PATTERN_MATCHER_BIN_OP(AddNode);
@@ -532,7 +517,7 @@ void PatternMatcher::VisitExpr_(const BroadcastNode* op) {
   }
 }
 
-void PatternMatcher::VisitExpr_(const ShuffleNode *op) {
+void PatternMatcher::VisitExpr_(const ShuffleNode* op) {
   const auto* ptr = DowncastPtr<ShuffleNode>(expr_to_match_.operator->());
   if (ptr == nullptr) {
     match_success_ = false;
@@ -569,7 +554,7 @@ void PatternMatcher::VisitExpr_(const StringImmNode* op) {
   match_success_ = ptr != nullptr && op->value == ptr->value;
 }
 
-void PatternMatcher::VisitExpr_(const BufferLoadNode *op) {
+void PatternMatcher::VisitExpr_(const BufferLoadNode* op) {
   const auto* ptr = DowncastPtr<BufferLoadNode>(expr_to_match_.operator->());
   if (ptr == nullptr) {
     match_success_ = false;

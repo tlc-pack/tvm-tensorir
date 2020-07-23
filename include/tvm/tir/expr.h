@@ -601,7 +601,7 @@ class BufferLoadNode : public PrimExprNode {
   Array<PrimExpr> indices;
 
   void VisitAttrs(AttrVisitor* v) {
-    v->Visit("dtype", &(this->dtype));
+    v->Visit("dtype", &dtype);
     v->Visit("buffer", &buffer);
     v->Visit("indices", &indices);
   }
