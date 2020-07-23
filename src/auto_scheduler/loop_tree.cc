@@ -40,12 +40,12 @@ Iterator::Iterator(String name, PrimExpr min, PrimExpr extent, IterKind kind,
   data_ = std::move(n);
 }
 
-LoopTree::LoopTree(Array<ObjectRef> children, Array<Iterator> iters,
-                   const tir::BlockRealizeNode* block_realize) {
+LoopTree::LoopTree(Array<Iterator> iters, Optional<tir::BlockRealize> block_realize,
+                   Array<ObjectRef> children) {
   ObjectPtr<LoopTreeNode> n = make_object<LoopTreeNode>();
-  n->children = std::move(children);
   n->iters = std::move(iters);
   n->block_realize = std::move(block_realize);
+  n->children = std::move(children);
   data_ = std::move(n);
 }
 
@@ -67,65 +67,70 @@ inline IterKind IterKindFromTir(tir::IterVarType iter_var_type) {
 
 /*!
  * \brief Create the loop tree recursively from the BlockRealizeNode
+ * TODO(@junrushao1994): redo the doc
  * \param realize The BlockRealizeNode used to create the loop tree
  * \return The corresponding loop tree created
  */
-LoopTree LoopTreeFromBlockRealize(const tir::BlockRealizeNode* realize) {
-  CHECK(realize->block->annotations.empty())
-      << "InternalError: block with pre-defined annotations are not supported";
-  // Step 1. Collect all children of the block
+LoopTree LoopTreeFromTIR(const tir::StmtNode* root) {
+  CHECK(root->IsInstance<tir::LoopNode>() || root->IsInstance<tir::BlockRealizeNode>())
+      << "InternalError: Cannot create LoopTree because the TIR root provided starts with neither "
+         "Loop nor BlockRealize";
+  // Step 1. Collect all loops
+  std::vector<Iterator> iters;
+  while (root->IsInstance<tir::LoopNode>()) {
+    const auto* loop = static_cast<const tir::LoopNode*>(root);
+    iters.emplace_back(
+        /*name=*/loop->loop_var->name_hint,
+        /*min=*/loop->min,
+        /*extent=*/loop->extent,
+        /*kind=*/IterKind::kSpatial,  // TODO(@junrushao1994): check if it is spatial or reduction
+        /*annotation=*/IterAnnotation::kNone);
+    root = loop->body.get();
+  }
+  // Step 2. Check if there is a BlockRealize under the nested loop
+  // It is possible that BlockRealize is not the direct child
+  Optional<tir::BlockRealize> block_realize = NullOpt;
+  if (root->IsInstance<tir::BlockRealizeNode>()) {
+    const auto* block_realize_ptr = static_cast<const tir::BlockRealizeNode*>(root);
+    block_realize = GetRef<tir::BlockRealize>(block_realize_ptr);
+    CHECK(block_realize_ptr->block->annotations.empty())
+        << "InternalError: block with pre-defined annotations are not supported";
+    root = block_realize_ptr->block->body.get();
+  }
+  // Step 3. Collect all children of the block
   std::vector<ObjectRef> children;
-  if (const auto* seq = realize->block->body.as<tir::SeqStmtNode>()) {
+  if (root->IsInstance<tir::SeqStmtNode>()) {
     // The node has many children
-    for (const auto& stmt : seq->seq) {
-      children.emplace_back(stmt);
-    }
+    const Array<tir::Stmt>& seq = static_cast<const tir::SeqStmtNode*>(root)->seq;
+    children = {seq.begin(), seq.end()};
   } else {
     // The node has only one child
-    children.emplace_back(realize->block->body);
+    children = {GetRef<ObjectRef>(root)};
   }
-  // Create children subtree first
+  // Step 4. Create children subtree
+  // TODO(@junrushao1994): do we need to check if children are all blocks or all non-blocks?
   for (auto& child : children) {
-    if (const auto* sub_block = child.as<tir::BlockRealizeNode>()) {
-      // Case 1. There is no additional loops between two `BlockRealizeNode`
-      child = LoopTreeFromBlockRealize(sub_block);
-    } else if (const auto* loop = child.as<tir::LoopNode>()) {
-      // Case 2. Nested loops
-      // loop until `loop->body` is not a LoopNode
-      while (const tir::StmtNode* body = loop->body.as<tir::LoopNode>()) {
-        loop = static_cast<const tir::LoopNode*>(body);
-      }
-      const auto* sub_block = loop->body.as<tir::BlockRealizeNode>();
-      CHECK(sub_block) << "InternalError: the IR is invalid because nested loop does not contain a "
-                          "BlockRealizeNode as its direct body statement";
-      child = LoopTreeFromBlockRealize(sub_block);
+    if (child->IsInstance<tir::LoopNode>() || child->IsInstance<tir::BlockRealizeNode>()) {
+      child = LoopTreeFromTIR(static_cast<const tir::StmtNode*>(child.get()));
     } else {
-      // Case 3. Leaf statement
+      // `child` is a leaf statement
       // Check: Any BlockNode should be contained inside `BlockRealizeNode`
       CHECK(!child->IsInstance<tir::BlockNode>())
           << "InternalError: the IR is invalid because a BlockNode is not contained in "
              "BlockRealizeNode";
+      // Check: no nested SeqStmt
+      CHECK(!child->IsInstance<tir::SeqStmtNode>())
+          << "InternalError: the IR is invalid because there are nested SeqStmt";
     }
   }
-  // TODO(@junrushao1994): do we need to check if the node's children are of the same type?
-  // Step 2. Create iter vars using the info in block
-  std::vector<Iterator> iters;
-  for (const auto& iter : realize->block->iter_vars) {
-    iters.emplace_back(
-        /*name=*/iter->var->name_hint,
-        /*min=*/iter->dom->min,
-        /*extent=*/iter->dom->extent,
-        /*kind=*/IterKindFromTir(iter->iter_type),
-        /*annotation=*/IterAnnotation::kNone);
-  }
-  return LoopTree(children, iters, realize);
+  return LoopTree(iters, block_realize, children);
 }
 
 LoopTree LoopTree::FromPrimFunc(const tir::PrimFunc& func) {
   const auto* realize = func->body.as<tir::BlockRealizeNode>();
   CHECK(realize != nullptr)
       << "InternalError: the PrimFunc is invalid because its body is not BlockRealizeNode";
-  return LoopTreeFromBlockRealize(realize);
+  return LoopTreeFromTIR(realize);
 }
 
 class LoopTreeNode::Stringifier : public tir::StmtFunctor<void(const tir::Stmt&)> {

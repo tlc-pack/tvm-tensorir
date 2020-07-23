@@ -147,12 +147,12 @@ class Iterator : public ObjectRef {
 /*! \brief A node in loop tree */
 class LoopTreeNode : public Object {
  public:
-  /*! \brief Children of the node, can be LoopTree or tir::Stmt */
-  Array<ObjectRef> children;
   /*! \brief Iterators in the block */
   Array<Iterator> iters;
   /*! \brief The corresponding BlockRealize node in TIR */
-  const tir::BlockRealizeNode* block_realize;
+  Optional<tir::BlockRealize> block_realize;
+  /*! \brief Children of the node, can be LoopTree or tir::Stmt */
+  Array<ObjectRef> children;
   /*!
    * \brief Converts the LoopTreeNode to human readable string format\
    * \return The human readable string format
@@ -160,9 +160,9 @@ class LoopTreeNode : public Object {
   String ToString() const;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("children", &children);
     v->Visit("iters", &iters);
-    // We didn't visit block_realize
+    v->Visit("children", &children);
+    // block_realize is not visited
   }
 
   static constexpr const char* _type_key = "auto_scheduler.LoopTree";
@@ -182,8 +182,8 @@ class LoopTree : public ObjectRef {
    * \param iters Iterators of the root of the node
    * \param block_realize The corresponding BlockRealize node in TIR
    */
-  LoopTree(Array<ObjectRef> children, Array<Iterator> iters,
-           const tir::BlockRealizeNode* block_realize);
+  LoopTree(Array<Iterator> iters, Optional<tir::BlockRealize> block_realize,
+           Array<ObjectRef> children);
   /*!
    * \brief Construct a LoopTree from PrimFunc
    * \param func The PrimFunc
