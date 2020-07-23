@@ -626,7 +626,7 @@ void ScheduleNode::ParallelCompute(const StmtSRef& node, const Annotation& annot
         << "Parallel-like compute  expect valid bindings";
     for (size_t i = 0; i < br->binding_values.size(); ++i) {
       if (br->block->iter_vars[i]->iter_type != IterVarType::kDataPar &&
-          RelatedWithVar(loop->loop_var, br->binding_values[i])) {
+          ExprContainsVar(br->binding_values[i], loop->loop_var)) {
         LOG(FATAL) << "The loop is related with non-data_par block vars";
       }
     }
@@ -696,7 +696,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
     const auto* loop_ptr = DowncastPtr<LoopNode>(loop->stmt);
     for (size_t i = 0; i < block->iter_vars.size(); ++i) {
       if (block->iter_vars[i]->iter_type == IterVarType::kCommReduce) {
-        CHECK(!RelatedWithVar(loop_ptr->loop_var, br->binding_values[i]))
+        CHECK(!ExprContainsVar(br->binding_values[i], loop_ptr->loop_var))
             << "decompose_reduction expect the loop to be higher "
                "than all the loops related to reduce block var";
       }
@@ -739,7 +739,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
     const auto* ptr = DowncastPtr<LoopNode>(loops[i]->stmt);
     CHECK(ptr != nullptr);
     for (const auto& expr : init_br->binding_values)
-      if (RelatedWithVar(ptr->loop_var, expr)) {
+      if (ExprContainsVar(expr, ptr->loop_var)) {
         auto new_loop = make_object<LoopNode>(*ptr);
         // copy loop var, otherwise Replace will reuse sref for it
         new_loop->loop_var = ptr->loop_var.copy_with_suffix("_init");
@@ -822,7 +822,7 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
       const auto* loop_ptr = DowncastPtr<LoopNode>(loop->stmt);
       for (size_t i = 0; i < update->iter_vars.size(); ++i) {
         if (update->iter_vars[i]->iter_type == IterVarType::kCommReduce) {
-          CHECK(!RelatedWithVar(loop_ptr->loop_var, br->binding_values[i]))
+          CHECK(!ExprContainsVar(br->binding_values[i], loop_ptr->loop_var))
               << "merge_reduction expect lca to be higher than all the loops related to "
                  "update_block's reduce block var";
         }

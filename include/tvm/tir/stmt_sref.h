@@ -65,11 +65,9 @@ class StmtSRefNode : public Object {
 class StmtSRef : public ObjectRef {
  public:
   StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index = -1);
-
-  StmtSRefNode* operator->() { return get(); }
-
-  StmtSRefNode* get() { return static_cast<StmtSRefNode*>(ObjectRef::get_mutable()); }
-
+  StmtSRefNode* operator->() { return static_cast<StmtSRefNode*>(data_.get()); }
+  StmtSRefNode* get() { return static_cast<StmtSRefNode*>(data_.get()); }
+  // TODO(@junrushao1994): make it not nullable and use Optional
   TVM_DEFINE_OBJECT_REF_METHODS(StmtSRef, ObjectRef, StmtSRefNode);
 };
 
