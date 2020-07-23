@@ -66,9 +66,8 @@ inline IterKind IterKindFromTir(tir::IterVarType iter_var_type) {
 }
 
 /*!
- * \brief Create the loop tree recursively from the BlockRealizeNode
- * TODO(@junrushao1994): redo the doc
- * \param realize The BlockRealizeNode used to create the loop tree
+ * \brief Create the loop tree recursively from a TIR AST
+ * \param root The root of the AST. Should be tir::BlockRealize or tir::Loop
  * \return The corresponding loop tree created
  */
 LoopTree LoopTreeFromTIR(const tir::StmtNode* root) {
