@@ -253,9 +253,8 @@ class ScheduleNode : public Object {
 
 class Schedule : public ObjectRef {
  public:
-  TVM_DEFINE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
-
-  ScheduleNode* operator->() { return static_cast<ScheduleNode*>(ObjectRef::get_mutable()); }
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
+  ScheduleNode* operator->() { return static_cast<ScheduleNode*>(data_.get()); }
 };
 
 }  // namespace tir

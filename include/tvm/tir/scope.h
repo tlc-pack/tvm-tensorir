@@ -33,8 +33,6 @@
 namespace tvm {
 namespace tir {
 
-class StmtSRef;
-
 enum class DepType : int {
   kRAW = 0,
   kWAW = 1,
@@ -62,7 +60,7 @@ class DepEdge : public ObjectRef {
  public:
   explicit DepEdge(StmtSRef dst, DepType type);
 
-  TVM_DEFINE_OBJECT_REF_METHODS(DepEdge, ObjectRef, DepEdgeNode);
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(DepEdge, ObjectRef, DepEdgeNode);
 };
 
 /*!
@@ -100,52 +98,53 @@ class Scope : public ObjectRef {
   void AddEdge(const StmtSRef& from, const StmtSRef& to, DepType type);
   /*!
    * \brief get all blocks that this block dependent on.
-   * \param stmt The query block
+   * \param block_sref The query block
    * \return The successor blocks
    */
-  Array<DepEdge> GetSuccessors(const StmtSRef& block) const;
+  Array<DepEdge> GetSuccessors(const StmtSRef& block_sref) const;
   /*!
    * \brief Get all blocks that are dependent on block.
-   * \param stmt The query block
+   * \param block_sref The query block
    * \return The predecessors blocks
    */
-  Array<DepEdge> GetPredecessors(const StmtSRef& block) const;
+  Array<DepEdge> GetPredecessors(const StmtSRef& block_sref) const;
   /*!
-   * \brief Check whether the block is a dominate block
+   * \brief Check whether the block is a dominate block under the scope
    * \note A block is complete iff the block is the only producer
    *       for each tensor it produces.
-   * \param block The query block
+   * \param block_sref The query block
    * \return Whether is a dominate block
    */
-  bool IsDominate(const StmtSRef& block) const;
+  bool IsDominate(const StmtSRef& block_sref) const;
   /*!
-   * \brief Check whether the block is a complete block
+   * \brief Check whether the block is a complete block under the scope
    * \note A block is complete iff the block is the only producer
    *       for each tensor it produces and its args must be data parallel.
    *       Also, the block can not read its output buffer.
    * \param block The query block
    * \return Whether is a complete block
    */
-  bool IsComplete(const StmtSRef& block) const;
+  bool IsComplete(const StmtSRef& block_sref) const;
   /*!
-   * \brief Check whether the block is a reduction block
+   * \brief Check whether the block is a reduction block under the scope
    * \note A block is reduction iff the block is the only producer
    *       for each tensor it produces, its args must be data parallel/reduce
    * \param block The query block
    * \return Whether is a complete block
    */
-  bool IsReduction(const StmtSRef& block) const;
+  bool IsReduction(const StmtSRef& block_sref) const;
   /*!
    * \brief Check the merged block of init_block and update_block is a reduction block
-   * \param init_block the query init block
-   * \param update_block the query update block
+   * \param init_sref the query init block
+   * \param update_sref the query update block
    * \return Whether the merged block of init_block and update_block is a reduction block
    */
-  bool CanMergeReduction(const StmtSRef& init_block, const StmtSRef& update_block) const;
+  bool CanMergeReduction(const StmtSRef& init_sref, const StmtSRef& update_sref) const;
   /*!
    * \brief Declare a new child block, update the `buffer_writes`, `buffer_readers` and the
-   * dependency graph \param child_sref The child block to be added \param buffer_readers Maps a
-   * buffer to a list of blocks that reads it
+   * dependency graph
+   * \param child_sref The child block to be added
+   * \param buffer_readers Maps a buffer to a list of blocks that reads it
    */
   void AddChildBlock(
       const StmtSRef& child_sref,
