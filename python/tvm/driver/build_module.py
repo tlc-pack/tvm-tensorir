@@ -171,6 +171,7 @@ def lower(sch,
     if isinstance(sch, schedule.Schedule):
         assert args is not None
         mod = form_irmodule(sch, args, name, binds)
+        print(mod)
     elif isinstance(sch, tvm.tir.PrimFunc):
         func = sch.with_attr("global_symbol", name)
         if pass_ctx.config.get("tir.restricted_func"):

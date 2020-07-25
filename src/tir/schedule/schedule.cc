@@ -584,6 +584,17 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleMergeReduction")
       schedule->merge_reduction(init, update);
     });
 
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleTensorize")
+    .set_body_typed<void(Schedule, StmtSRef, Intrinsic)>([](Schedule schedule, StmtSRef sref,
+                                                        Intrinsic intrinsic) {
+      return schedule->tensorize(sref, intrinsic);
+    });
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBlockize")
+.set_body_typed<StmtSRef(Schedule, StmtSRef)>([](Schedule schedule, StmtSRef sref) {
+  return schedule->blockize(sref);
+});
+
 // dependency graph
 TVM_REGISTER_GLOBAL("tir.schedule.GetSuccessors")
     .set_body_typed<Array<DepEdge>(Schedule, StmtSRef, StmtSRef)>([](Schedule schedule,

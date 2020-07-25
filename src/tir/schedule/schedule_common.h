@@ -221,6 +221,18 @@ class PatternMatcher : public ExprVisitor {
   std::unordered_map<const VarNode*, PrimExpr> filled_map_;
 };
 
+class MatchingSimplifier : public ExprMutator {
+ public:
+  MatchingSimplifier(const std::unordered_map<Var, PrimExpr, ObjectHash, ObjectEqual> &var_map,
+                     arith::Analyzer* parent);
+
+  PrimExpr VisitExpr(const PrimExpr& expr) override;
+
+ private:
+  const std::unordered_map<Var, PrimExpr,ObjectHash, ObjectEqual> &var_map_;
+  arith::Analyzer* analyzer_;
+};
+
 /*! \brief namespace for default reducer patterns */
 namespace default_reducer {
 

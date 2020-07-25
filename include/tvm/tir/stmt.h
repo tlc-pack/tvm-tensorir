@@ -1060,9 +1060,10 @@ class BlockNode : public StmtNode {
   }
 
   bool SEqualReduce(const BlockNode* other, SEqualReducer equal) const {
-    return equal.DefEqual(iter_vars, other->iter_vars) && equal(reads, other->reads) &&
-           equal(writes, other->writes) && equal(allocations, other->allocations) &&
-           equal(annotations, other->annotations) && equal(body, other->body);
+    return equal.DefEqual(iter_vars, other->iter_vars) &&
+           equal(allocations, other->allocations) &&
+           equal(body, other->body) && equal(annotations, other->annotations) &&
+           equal(reads, other->reads) && equal(writes, other->writes);
   }
 
   void SHashReduce(SHashReducer hash_reduce) const {

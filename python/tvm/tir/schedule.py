@@ -276,6 +276,19 @@ class Schedule(Object):
         """
         ScheduleComputeAt(self, block, loop)
 
+    def blockize(self, loop):
+        """make subtree rooted by sref into a block
+        Parameters
+        ----------
+        loop: Loop
+            the subtree root
+            Returns
+        -------
+        block: Block
+            The new block
+        """
+        return ScheduleBlockize(self, loop)
+
     def decompose_reduction(self, block, loop):
         """ Decompose reduction block into init&update blocks
 

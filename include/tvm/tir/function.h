@@ -150,6 +150,31 @@ class PrimFunc : public BaseFunc {
 };
 
 /*!
+ * \brief Tensor Intrinsic for Tensorzation
+ */
+class IntrinsicNode : public Object {
+ public:
+  /*! \brief The function to describe the computation. */
+  PrimFunc desc_func;
+  /*! \brief The intrinsic function for lower-level implement. */
+  PrimFunc intrin_func;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("desc_func", &desc_func);
+    v->Visit("intrin_func", &intrin_func);
+  }
+
+  static constexpr const char* _type_key = "Intrinsic";
+  TVM_DECLARE_FINAL_OBJECT_INFO(IntrinsicNode, Object);
+};
+
+class Intrinsic : public ObjectRef {
+ public:
+  TVM_DLL explicit Intrinsic(PrimFunc desc_func, PrimFunc intrin_func);
+  TVM_DEFINE_OBJECT_REF_METHODS(Intrinsic, ObjectRef, IntrinsicNode)
+};
+
+/*!
  * \brief PrimFunc specific attribute names.
  *
  * \sa tvm::attr

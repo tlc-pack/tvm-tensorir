@@ -54,6 +54,17 @@ FuncType PrimFuncNode::func_type_annotation() const {
   return FuncType(param_types, ret_type, {}, {});
 }
 
+Intrinsic::Intrinsic(PrimFunc desc_func, PrimFunc intrin_func) {
+  // check both functions' bodies are directly block
+  CHECK(desc_func->body.as<BlockRealizeNode>());
+  CHECK(intrin_func->body.as<BlockRealizeNode>());
+
+  auto n = make_object<IntrinsicNode>();
+  n->desc_func = std::move(desc_func);
+  n->intrin_func = std::move(intrin_func);
+  data_ = std::move(n);
+}
+
 TVM_REGISTER_NODE_TYPE(PrimFuncNode);
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)

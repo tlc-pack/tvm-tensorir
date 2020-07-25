@@ -83,7 +83,7 @@ class StructuralEqual : public BaseValueEqual {
   // inheritate operator()
   using BaseValueEqual::operator();
   /*!
-   * \brief Compare objects via strutural equal.
+   * \brief Compare objects via structural equal.
    * \param lhs The left operand.
    * \param rhs The right operand.
    * \return The comparison result.
