@@ -30,31 +30,6 @@
 namespace tvm {
 namespace tir {
 
-bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
-                             const ScheduleNode* schedule) {
-  const BlockRealizeNode* realize = block_realize.as<BlockRealizeNode>();
-  CHECK(realize != nullptr)
-      << "InternalError: in IsLoopVarParallelizable, expect BlockRealize, but get type: "
-      << block_realize->GetTypeKey();
-  const BlockNode* block = realize->block.get();
-  // Cond 1. Binding is validated
-  if (!schedule->stmt2ref.at(block)->binding_valid) {
-    return false;
-  }
-  CHECK_EQ(realize->binding_values.size(), block->iter_vars.size())
-      << "InternalError: BlockRealize is inconsistent with its Block";
-  int n = realize->binding_values.size();
-  // Cond 2. For each iter var that is not data parallel, the binding does not involve loop_var
-  for (int i = 0; i < n; ++i) {
-    const IterVar& iter_var = block->iter_vars[i];
-    const PrimExpr& binding = realize->binding_values[i];
-    if (iter_var->iter_type != kDataPar && ExprContainsVar(binding, loop_var)) {
-      return false;
-    }
-  }
-  return true;
-}
-
 /*! \note Nested SeqStmt is not allowed in schedule. */
 Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize) {
   Stmt body;

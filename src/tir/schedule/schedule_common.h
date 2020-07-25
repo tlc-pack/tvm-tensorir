@@ -36,18 +36,6 @@ namespace tvm {
 namespace tir {
 
 /*!
- * \brief Checks if a loop variable is parallelizable.
- * If fvisit returns false, it stops visit the children on that node.
- * \param loop_var The loop variable
- * \param block_realize The block realize node under the loop. It is possible that there are
- * multiple blocks, and in this case, we should invoke this function multiple times.
- * \param schedule The schedule object
- * \return A boolean indicating if the loop var is parallelizable
- */
-bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
-                             const ScheduleNode* schedule);
-
-/*!
  * \brief Get the direct child Schedulable Stmt (Block and Loop)
  * \param stmt the parent stmt.
  * \param keep_realize if true, get block_realize for blocks
