@@ -35,23 +35,6 @@
 namespace tvm {
 namespace tir {
 
-/*! Gather all direct blocks in ast subtree. */
-class ChildBlockGatherer : public StmtExprVisitor {
- public:
-  ChildBlockGatherer(const ScheduleNode* sch,
-                     std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>* child_blocks)
-      : sch_(sch), child_blocks_(child_blocks) {}
-
-  void VisitStmt_(const BlockNode* op) final {
-    const auto* node = static_cast<const StmtNode*>(op);
-    child_blocks_->insert(sch_->stmt2ref.at(node));
-  }
-
- private:
-  const ScheduleNode* sch_;
-  std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>* child_blocks_;
-};
-
 /*!
  * \brief Get the direct child Schedulable Stmt (Block and Loop)
  * \param stmt the parent stmt.

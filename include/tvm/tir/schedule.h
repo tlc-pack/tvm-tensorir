@@ -94,6 +94,13 @@ class ScheduleNode : public Object {
   Array<StmtSRef> Blocks(StmtSRef scope) const;
 
   /*!
+   * \brief Get direct child blocks of the given block
+   * \param parent_sref The block scope
+   * \return An array of StmtSRef that are children of the parent
+   */
+  Array<StmtSRef> GetChildBlocks(const StmtSRef& parent_sref) const;
+
+  /*!
    * \brief Get loops of the block
    * \param block The query block
    * \return the loop sref list
@@ -101,11 +108,18 @@ class ScheduleNode : public Object {
   Array<StmtSRef> GetLoopsInScope(const StmtSRef& block) const;
 
   /*!
-   * \brief Get the scope of the schedulable reference
+   * \brief Get the parent block sref of the given sref
    * \param sref The queried node
-   * \return the block scope reference
+   * \return The sref to the parent block
    */
-  StmtSRef GetParentScope(const StmtSRef& sref) const;
+  StmtSRef GetParentBlockSRef(const StmtSRef& sref) const;
+
+  /*!
+   * \brief Get the scope of the parent block
+   * \param sref The queried node
+   * \return The scope of the parent block
+   */
+  Scope GetParentScope(const StmtSRef& sref) const;
 
   /*!
    * \brief fuse two consecutive loops of one computation.
@@ -134,21 +148,21 @@ class ScheduleNode : public Object {
 
   /*!
    * \brief vectorize a loop
-   * \param node the loop to be vectorized
+   * \param loop_sref the loop to be vectorized
    */
-  void vectorize(const StmtSRef& node);
+  void vectorize(const StmtSRef& loop_sref);
 
   /*!
-   * \brief parallel a loop
-   * \param node the loop to be paralleled
+   * \brief parallelize a loop
+   * \param loop_sref the loop to be paralleled
    */
-  void parallel(const StmtSRef& node);
+  void parallel(const StmtSRef& loop_sref);
 
   /*!
    * \brief unroll a loop
-   * \param node the loop to be unrolled
+   * \param loop_sref the loop to be unrolled
    */
-  void unroll(const StmtSRef& node);
+  void unroll(const StmtSRef& loop_sref);
 
   /*!
    * \brief reorder a list of loops
@@ -208,26 +222,12 @@ class ScheduleNode : public Object {
   void UpdateSRef(StmtSRefNode* sref, const Stmt& stmt);
 
   /*!
-   * \brief Check whether a sub_tree satisfies the one-way fine-grained data flow check
-   * \details Suppose a loop tree has several blocks on the leaves.
-   *          We can sort them by DFS order as B1, B2, ...., Bn.
-   *          The subtree satisfies compact data flow if
-   *          - All the blocks are complete
-   *          - Bi doesn't read the buffers that Bi+1, Bi+2, ... Bn will write
-   *          - Suppose Bi reads Bj's output buffer(j < i) and Loop k is the LCA of Bi and
-   *            Bj, Bj's output region covers Bi's input under Loop k
-   * \note Condition 2 and 3 are global condition of a schedulable IR,
-   *       so it is omitted in the check.
-   */
-  bool IsCompactDataFlow(const StmtSRef& sub_tree) const;
-
-  /*!
    * \brief Help function for checking and mutating loops to do parallel computation
    *        For now it is only used for vectorize, bind and parallel
-   * \param node the loop to be annotated
+   * \param loop_sref the loop to be annotated
    * \param annotation the annotation
    */
-  void ParallelCompute(const StmtSRef& node, const Annotation& annotation);
+  void ParallelCompute(const StmtSRef& loop_sref, const Annotation& annotation);
 
   /*!
    * \brief Validate Tir, now the ValidateLoops pass contains the following checks

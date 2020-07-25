@@ -21,13 +21,13 @@
  * \file buffer_flatten.cc
  */
 
-#include <tvm/runtime/registry.h>
 #include <tvm/arith/int_set.h>
-#include <tvm/tir/transform.h>
 #include <tvm/ir/attrs.h>
+#include <tvm/runtime/registry.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
 #include <tvm/tir/stmt_functor.h>
+#include <tvm/tir/transform.h>
 
 namespace tvm {
 namespace tir {
@@ -49,7 +49,7 @@ class ReductionTransformer : public StmtExprMutator {
 
   Stmt VisitStmt_(const ReduceStepNode* op) override {
     const auto& init = op->comm_reducer->identity_element[0];
-    const auto* lhs = DowncastPtr<BufferLoadNode>(op->lhs.operator->());
+    const auto* lhs = op->lhs.as<BufferLoadNode>();
     PrimExpr cond = make_const(DataType::Bool(1), true);
     for (const auto& iter_var : current_block_->iter_vars)
       if (iter_var->iter_type == IterVarType::kCommReduce) {
@@ -260,12 +260,10 @@ class RegionGatherer : public StmtExprVisitor {
 class BufferFlattener : public StmtExprMutator {
  public:
   BufferFlattener(const std::unordered_map<const VarNode*, PrimExpr>& block_var,
-                  const std::unordered_map<Buffer, std::vector<arith::IntSet>,
-                                           ObjectHash, ObjectEqual>& buffers_region,
+                  const std::unordered_map<Buffer, std::vector<arith::IntSet>, ObjectHash,
+                                           ObjectEqual>& buffers_region,
                   const std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual>& buffers_lca)
-      : buffers_region_(buffers_region),
-        block_var_(block_var),
-        buffers_lca_(buffers_lca) {}
+      : buffers_region_(buffers_region), block_var_(block_var), buffers_lca_(buffers_lca) {}
 
   Stmt VisitStmt(const Stmt& stmt) override {
     Stmt body = StmtMutator::VisitStmt(stmt);
@@ -302,7 +300,7 @@ class BufferFlattener : public StmtExprMutator {
         for (const auto& extent : buffers_region_.at(n->buffer)) {
           extents *= extent.max() - extent.min() + 1;
         }
-        body = Allocate(n->buffer->data, n->buffer->dtype,{extents},const_true(), body);
+        body = Allocate(n->buffer->data, n->buffer->dtype, {extents}, const_true(), body);
 
         // Change empty scope into global
         std::string scope = n->scope.empty() ? "global" : n->scope;
@@ -335,9 +333,12 @@ class BufferFlattener : public StmtExprMutator {
     for (const auto& annotation : op->annotations)
       if (annotation->attr_key == tir::attr::loop_type) {
         std::string type = Downcast<StringImm>(annotation->value)->value;
-        if (type == "unroll") for_type = ForType::Unrolled;
-        else if (type == "vectorize") for_type = ForType::Vectorized;
-        else if (type == "parallel") for_type = ForType::Parallel;
+        if (type == "unroll")
+          for_type = ForType::Unrolled;
+        else if (type == "vectorize")
+          for_type = ForType::Vectorized;
+        else if (type == "parallel")
+          for_type = ForType::Parallel;
       }
 
     Stmt body = op->body;
@@ -387,8 +388,8 @@ class BufferFlattener : public StmtExprMutator {
   }
 
  private:
-  const std::unordered_map<Buffer, std::vector<arith::IntSet>,
-                           ObjectHash, ObjectEqual>& buffers_region_;
+  const std::unordered_map<Buffer, std::vector<arith::IntSet>, ObjectHash, ObjectEqual>&
+      buffers_region_;
   const std::unordered_map<const VarNode*, PrimExpr>& block_var_;
   const std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual>& buffers_lca_;
   std::unordered_map<Buffer, BufferAllocate, ObjectHash, ObjectEqual> pending_allocate_;
@@ -399,7 +400,7 @@ class BufferFlattener : public StmtExprMutator {
   static Buffer ReshapeBuffer(const Buffer& buffer, const std::vector<arith::IntSet>& region) {
     auto n = runtime::make_object<BufferNode>(*(buffer.operator->()));
     std::vector<PrimExpr> shape;
-    for (const auto & i : region) {
+    for (const auto& i : region) {
       shape.push_back(i.max() - i.min() + 1);
     }
     n->shape = shape;
@@ -423,7 +424,6 @@ class BufferFlattener : public StmtExprMutator {
   }
 };
 
-
 PrimFunc BufferFlatten(PrimFunc f) {
   auto fptr = f.CopyOnWrite();
 
@@ -440,8 +440,8 @@ PrimFunc BufferFlatten(PrimFunc f) {
   region_gatherer(fptr->body);
 
   // Transform BufferLoad/BufferStore into Load/Store
-  BufferFlattener flattener
-      (region_gatherer.block_var_, region_gatherer.buffers_region_, lca_detector.buffers_lca_);
+  BufferFlattener flattener(region_gatherer.block_var_, region_gatherer.buffers_region_,
+                            lca_detector.buffers_lca_);
   fptr->body = flattener(fptr->body);
 
   return f;
@@ -456,8 +456,7 @@ Pass BufferFlatten() {
   return CreatePrimFuncPass(pass_func, 0, "tir.BufferFlatten", {});
 }
 
-TVM_REGISTER_GLOBAL("tir.transform.BufferFlatten")
-.set_body_typed(BufferFlatten);
+TVM_REGISTER_GLOBAL("tir.transform.BufferFlatten").set_body_typed(BufferFlatten);
 
 }  // namespace transform
 
