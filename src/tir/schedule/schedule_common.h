@@ -35,22 +35,24 @@
 namespace tvm {
 namespace tir {
 
-/*! Gather all direct blocks in ast subtree. */
-class ChildBlockGatherer : public StmtExprVisitor {
- public:
-  ChildBlockGatherer(const ScheduleNode* sch,
-                     std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>* child_blocks)
-      : sch_(sch), child_blocks_(child_blocks) {}
+/*!
+ * \brief Checks if a loop variable is parallelizable.
+ * If fvisit returns false, it stops visit the children on that node.
+ * \param stmt The ir to be visited.
+ * \param fvisit The visitor function to be applied. If fvisit returns false, it stops visit the
+ * children on that node.
+ */
+bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
+                             const ScheduleNode* schedule);
 
-  void VisitStmt_(const BlockNode* op) final {
-    const auto* node = static_cast<const StmtNode*>(op);
-    child_blocks_->insert(sch_->stmt2ref.at(node));
-  }
-
- private:
-  const ScheduleNode* sch_;
-  std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>* child_blocks_;
-};
+/*!
+ * \brief Recursively visit the IR in pre DFS order node, apply fvisit.
+ * If fvisit returns false, it stops visit the children on that node.
+ * \param stmt The ir to be visited.
+ * \param fvisit The visitor function to be applied. If fvisit returns false, it stops visit the
+ * children on that node.
+ */
+void PreOrderVisit(const ObjectRef& node, const std::function<bool(const ObjectRef&)>& fvisit);
 
 /*!
  * \brief Get the direct child Schedulable Stmt (Block and Loop)

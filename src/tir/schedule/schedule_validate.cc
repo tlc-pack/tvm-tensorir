@@ -193,7 +193,7 @@ class FuseSplitDetecter : public ExprVisitor {
     return true;
   }
 
-  FuseSplitDetecter(std::unordered_map<const VarNode*, PrimExpr>* loop_var_extents)
+  explicit FuseSplitDetecter(std::unordered_map<const VarNode*, PrimExpr>* loop_var_extents)
       : loop_var_extents(loop_var_extents), replace(nullptr), postproc(nullptr) {}
 
   void VisitExpr(const PrimExpr& n) override {
@@ -216,7 +216,8 @@ class FuseSplitDetecter : public ExprVisitor {
 
 class FuseSplitNormalizer : public ExprMutator {
  public:
-  FuseSplitNormalizer(const FuseSplitDetecter& detector) : detector(detector), replaced(false) {}
+  explicit FuseSplitNormalizer(const FuseSplitDetecter& detector)
+      : detector(detector), replaced(false) {}
 
   ~FuseSplitNormalizer() {
     if (replaced) {
@@ -315,8 +316,8 @@ void ScheduleNode::ValidateLoops() {
 
 bool ScheduleNode::ValidateRegionCover(const StmtSRef& consumer) const {
   if (consumer->parent == nullptr) return true;
-  const auto* block = DowncastPtr<BlockNode>(consumer->stmt);
-  StmtSRef scope_sref = GetParentScope(consumer);
+  const auto* block = consumer->GetStmt<BlockNode>();
+  const StmtSRef& scope_sref = GetParentBlockSRef(consumer);
   const Scope& scope = scopes.at(scope_sref);
 
   // Gather all the producers
@@ -326,7 +327,7 @@ bool ScheduleNode::ValidateRegionCover(const StmtSRef& consumer) const {
 
   for (const auto& edge : successors) {
     if (edge->type == DepType::kRAW) {
-      const auto* producer_block = DowncastPtr<BlockNode>(edge->dst->stmt);
+      const auto* producer_block = edge->dst->GetStmt<BlockNode>();
       for (const auto& output_region : producer_block->writes) {
         const auto* bufferVar = output_region->buffer->data.operator->();
         producers[bufferVar].push_back(edge->dst);
@@ -379,7 +380,7 @@ class SRefValidator : public StmtVisitor {
     CheckParent(op);
     auto sref = sch_->stmt2ref.at(op);
     CHECK(sch_->scopes.count(sref)) << "Cannot find scope information of the block:\n"
-                                     << GetRef<Stmt>(op);
+                                    << GetRef<Stmt>(op);
   }
 
   void VisitStmt_(const LoopNode* op) override { CheckParent(op); }

@@ -33,6 +33,8 @@
 namespace tvm {
 namespace tir {
 
+class ScheduleNode;
+
 enum class DepType : int {
   kRAW = 0,
   kWAW = 1,
@@ -133,6 +135,22 @@ class Scope : public ObjectRef {
    * \return Whether is a complete block
    */
   bool IsReduction(const StmtSRef& block_sref) const;
+  /*!
+   * \brief Check whether a subtree satisfies the one-way fine-grained data flow check
+   * \details Suppose a loop tree has several blocks on the leaves.
+   *          We can sort them by DFS order as B1, B2, ...., Bn.
+   *          The subtree satisfies compact data flow if
+   *          - All the blocks are complete/reduction
+   *          - Bi doesn't read the buffers that Bi+1, Bi+2, ... Bn will write
+   *          - Suppose Bi reads Bj's output buffer(j < i) and Loop k is the LCA of Bi and
+   *            Bj, Bj's output region covers Bi's input under Loop k
+   * \param subtree_sref The subtree to be checked
+   * \param schedule The schedule that the scope is in
+   * \return A boolean indicating if the subtree satisfies the one-way fine-grained data flow check
+   * \note Condition 2 and 3 are global condition of a schedulable IR,
+   *       so it is omitted in the check.
+   */
+  bool IsCompactDataFlow(const StmtSRef& subtree_sref, const ScheduleNode* schedule) const;
   /*!
    * \brief Check the merged block of init_block and update_block is a reduction block
    * \param init_sref the query init block

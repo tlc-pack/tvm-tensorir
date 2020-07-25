@@ -789,9 +789,7 @@ inline void Object::DecRef() {
 
 inline int Object::use_count() const { return ref_counter_.load(std::memory_order_relaxed); }
 
-inline bool Object::unique() const {
-  return use_count() == 1;
-}
+inline bool Object::unique() const { return use_count() == 1; }
 
 #else
 
@@ -880,12 +878,6 @@ inline SubRef Downcast(BaseRef ref) {
                                      << SubRef::ContainerType::_type_key;
   }
   return SubRef(std::move(ref.data_));
-}
-
-template<typename SubType, typename BaseType>
-const SubType* DowncastPtr(BaseType* node) {
-  if (node->template IsInstance<SubType>()) return static_cast<const SubType*>(node);
-  return nullptr;
 }
 
 }  // namespace runtime

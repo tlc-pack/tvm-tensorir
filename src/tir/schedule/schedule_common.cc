@@ -17,7 +17,7 @@
  * under the License.
  */
 
-#include "schedule_common.h"
+#include "./schedule_common.h"
 
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/schedule.h>
@@ -29,6 +29,69 @@
 
 namespace tvm {
 namespace tir {
+
+class PreOrderVisitor : public StmtExprVisitor {
+ public:
+  explicit PreOrderVisitor(const std::function<bool(const ObjectRef&)>& f) : f(f) {}
+
+  void VisitExpr(const PrimExpr& expr) final {
+    if (visited.count(expr.get()) == 0) {
+      visited.insert(expr.get());
+      if (f(expr)) {
+        ExprVisitor::VisitExpr(expr);
+      }
+    }
+  }
+
+  void VisitStmt(const Stmt& stmt) final {
+    if (visited.count(stmt.get()) == 0) {
+      visited.insert(stmt.get());
+      if (f(stmt)) {
+        StmtVisitor::VisitStmt(stmt);
+      }
+    }
+  }
+
+  const std::function<bool(const ObjectRef&)>& f;
+  std::unordered_set<const Object*> visited;
+};
+
+void PreOrderVisit(const ObjectRef& node, const std::function<bool(const ObjectRef&)>& fvisit) {
+  PreOrderVisitor visitor(fvisit);
+  if (const auto* stmt = node.as<StmtNode>()) {
+    visitor(GetRef<Stmt>(stmt));
+  } else if (const auto* expr = node.as<PrimExprNode>()) {
+    visitor(GetRef<PrimExpr>(expr));
+  } else {
+    LOG(FATAL) << "InternalError: PreOrderVisit does not accept object with type: "
+               << node->GetTypeKey();
+  }
+}
+
+bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
+                             const ScheduleNode* schedule) {
+  const BlockRealizeNode* realize = block_realize.as<BlockRealizeNode>();
+  CHECK(realize != nullptr)
+      << "InternalError: in IsLoopVarParallelizable, expect BlockRealize, but get type: "
+      << block_realize->GetTypeKey();
+  const BlockNode* block = realize->block.get();
+  // Cond 1. Binding is validated
+  if (!schedule->stmt2ref.at(block)->binding_valid) {
+    return false;
+  }
+  CHECK_EQ(realize->binding_values.size(), block->iter_vars.size())
+      << "InternalError: BlockRealize is inconsistent with its Block";
+  int n = realize->binding_values.size();
+  // Cond 2. For each iter var that is not data parallel, the binding does not involve loop_var
+  for (int i = 0; i < n; ++i) {
+    const IterVar& iter_var = block->iter_vars[i];
+    const PrimExpr& binding = realize->binding_values[i];
+    if (iter_var->iter_type != kDataPar && ExprContainsVar(binding, loop_var)) {
+      return false;
+    }
+  }
+  return true;
+}
 
 /*! \note Nested SeqStmt is not allowed in schedule. */
 Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize) {
@@ -215,7 +278,7 @@ std::function<TensorRegion(const TensorRegion)> RelaxGenerator(
     const StmtSRef& block_sref, const StmtSRef& root,
     std::unordered_map<const VarNode*, PrimExpr>* vmap,
     std::unordered_map<const VarNode*, arith::IntSet>* dom_map) {
-  const auto* block = DowncastPtr<BlockNode>(block_sref->stmt);
+  const auto* block = block_sref->GetStmt<BlockNode>();
   const auto* block_realize = GetBlockRealize(block_sref).operator->();
   CHECK(block != nullptr);
 
@@ -227,7 +290,7 @@ std::function<TensorRegion(const TensorRegion)> RelaxGenerator(
   // Gather iteration domain
   auto sref = GetRef<StmtSRef>(block_sref->parent);
   while (sref.defined() && !sref.same_as(root)) {
-    const auto* loop = DowncastPtr<LoopNode>(sref->stmt);
+    const auto* loop = sref->GetStmt<LoopNode>();
     // The root may not be a loop
     if (loop == nullptr) break;
     Range range = Range::FromMinExtent(loop->min, loop->extent);
@@ -254,7 +317,7 @@ void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root, std::vector<T
   std::unordered_map<const VarNode*, PrimExpr> vmap;
   std::unordered_map<const VarNode*, arith::IntSet> dom_map;
   auto relax = RelaxGenerator(block_sref, root, &vmap, &dom_map);
-  const auto* block = DowncastPtr<BlockNode>(block_sref->stmt);
+  const auto* block = block_sref->GetStmt<BlockNode>();
   if (reads != nullptr) {
     for (const auto& tensor_region : block->reads) {
       reads->push_back(relax(tensor_region));
@@ -303,7 +366,7 @@ std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root) {
     CHECK_GT(seq->size(), 1);
     std::vector<Stmt> stmts;
     for (const auto& s : seq->seq) {
-      const auto* ptr = DowncastPtr<BlockRealizeNode>(s.operator->());
+      const auto* ptr = s.as<BlockRealizeNode>();
       if (ptr != nullptr) {
         if (!ptr->block.same_as(last)) stmts.push_back(s);
       } else {
@@ -355,7 +418,7 @@ void PatternMatcher::VisitExpr_(const VarNode* op) {
 }
 
 void PatternMatcher::VisitExpr_(const LoadNode* op) {
-  const auto* ptr = DowncastPtr<LoadNode>(expr_to_match_.operator->());
+  const auto* ptr = expr_to_match_.as<LoadNode>();
   if (ptr == nullptr) {
     match_success_ = false;
   } else {
@@ -373,7 +436,7 @@ void PatternMatcher::VisitExpr_(const LoadNode* op) {
 }
 
 void PatternMatcher::VisitExpr_(const LetNode* op) {
-  const auto* ptr = DowncastPtr<LetNode>(expr_to_match_.operator->());
+  const auto* ptr = expr_to_match_.as<LetNode>();
   if (ptr == nullptr) {
     match_success_ = false;
   } else {
@@ -388,19 +451,19 @@ void PatternMatcher::VisitExpr_(const LetNode* op) {
   }
 }
 
-#define TVM_DECLARE_PATTERN_MATCHER_BIN_OP(OpName)                      \
-  void PatternMatcher::VisitExpr_(const OpName* op) {                   \
-    const auto* ptr = DowncastPtr<OpName>(expr_to_match_.operator->()); \
-    if (ptr == nullptr) {                                               \
-      match_success_ = false;                                           \
-    } else {                                                            \
-      PrimExpr current = expr_to_match_;                                \
-      expr_to_match_ = ptr->a;                                          \
-      VisitExpr(op->a);                                                 \
-      expr_to_match_ = ptr->b;                                          \
-      VisitExpr(op->b);                                                 \
-      std::swap(expr_to_match_, current);                               \
-    }                                                                   \
+#define TVM_DECLARE_PATTERN_MATCHER_BIN_OP(OpName)    \
+  void PatternMatcher::VisitExpr_(const OpName* op) { \
+    const auto* ptr = expr_to_match_.as<OpName>();    \
+    if (ptr == nullptr) {                             \
+      match_success_ = false;                         \
+    } else {                                          \
+      PrimExpr current = expr_to_match_;              \
+      expr_to_match_ = ptr->a;                        \
+      VisitExpr(op->a);                               \
+      expr_to_match_ = ptr->b;                        \
+      VisitExpr(op->b);                               \
+      std::swap(expr_to_match_, current);             \
+    }                                                 \
   }
 
 TVM_DECLARE_PATTERN_MATCHER_BIN_OP(AddNode);
@@ -422,7 +485,7 @@ TVM_DECLARE_PATTERN_MATCHER_BIN_OP(MinNode);
 TVM_DECLARE_PATTERN_MATCHER_BIN_OP(MaxNode);
 
 void PatternMatcher::VisitExpr_(const CallNode* op) {
-  const auto* ptr = DowncastPtr<CallNode>(expr_to_match_.operator->());
+  const auto* ptr = expr_to_match_.as<CallNode>();
   if (ptr == nullptr) {
     match_success_ = false;
   } else {
@@ -440,7 +503,7 @@ void PatternMatcher::VisitExpr_(const CallNode* op) {
 }
 
 void PatternMatcher::VisitExpr_(const CastNode* op) {
-  const auto* ptr = DowncastPtr<CastNode>(expr_to_match_.operator->());
+  const auto* ptr = expr_to_match_.as<CastNode>();
   if (ptr == nullptr) {
     match_success_ = false;
   } else {
@@ -456,7 +519,7 @@ void PatternMatcher::VisitExpr_(const CastNode* op) {
 }
 
 void PatternMatcher::VisitExpr_(const NotNode* op) {
-  const auto* ptr = DowncastPtr<NotNode>(expr_to_match_.operator->());
+  const auto* ptr = expr_to_match_.as<NotNode>();
   if (ptr == nullptr) {
     match_success_ = false;
   } else {
@@ -468,7 +531,7 @@ void PatternMatcher::VisitExpr_(const NotNode* op) {
 }
 
 void PatternMatcher::VisitExpr_(const SelectNode* op) {
-  const auto* ptr = DowncastPtr<SelectNode>(expr_to_match_.operator->());
+  const auto* ptr = expr_to_match_.as<SelectNode>();
   if (ptr == nullptr) {
     match_success_ = false;
   } else {
@@ -484,7 +547,7 @@ void PatternMatcher::VisitExpr_(const SelectNode* op) {
 }
 
 void PatternMatcher::VisitExpr_(const RampNode* op) {
-  const auto* ptr = DowncastPtr<RampNode>(expr_to_match_.operator->());
+  const auto* ptr = expr_to_match_.as<RampNode>();
   if (ptr == nullptr) {
     match_success_ = false;
   } else {
@@ -502,7 +565,7 @@ void PatternMatcher::VisitExpr_(const RampNode* op) {
 }
 
 void PatternMatcher::VisitExpr_(const BroadcastNode* op) {
-  const auto* ptr = DowncastPtr<RampNode>(expr_to_match_.operator->());
+  const auto* ptr = expr_to_match_.as<RampNode>();  // TODO(@junrushao1994): i dont understand
   if (ptr == nullptr) {
     match_success_ = false;
   } else {
@@ -518,7 +581,7 @@ void PatternMatcher::VisitExpr_(const BroadcastNode* op) {
 }
 
 void PatternMatcher::VisitExpr_(const ShuffleNode* op) {
-  const auto* ptr = DowncastPtr<ShuffleNode>(expr_to_match_.operator->());
+  const auto* ptr = expr_to_match_.as<ShuffleNode>();
   if (ptr == nullptr) {
     match_success_ = false;
   } else {
@@ -540,22 +603,22 @@ void PatternMatcher::VisitExpr_(const ShuffleNode* op) {
 }
 
 void PatternMatcher::VisitExpr_(const IntImmNode* op) {
-  const auto* ptr = DowncastPtr<IntImmNode>(expr_to_match_.operator->());
+  const auto* ptr = expr_to_match_.as<IntImmNode>();
   match_success_ = ptr != nullptr && op->value == ptr->value;
 }
 
 void PatternMatcher::VisitExpr_(const FloatImmNode* op) {
-  const auto* ptr = DowncastPtr<FloatImmNode>(expr_to_match_.operator->());
+  const auto* ptr = expr_to_match_.as<FloatImmNode>();
   match_success_ = ptr != nullptr && op->value == ptr->value;
 }
 
 void PatternMatcher::VisitExpr_(const StringImmNode* op) {
-  const auto* ptr = DowncastPtr<StringImmNode>(expr_to_match_.operator->());
+  const auto* ptr = expr_to_match_.as<StringImmNode>();
   match_success_ = ptr != nullptr && op->value == ptr->value;
 }
 
 void PatternMatcher::VisitExpr_(const BufferLoadNode* op) {
-  const auto* ptr = DowncastPtr<BufferLoadNode>(expr_to_match_.operator->());
+  const auto* ptr = expr_to_match_.as<BufferLoadNode>();
   if (ptr == nullptr) {
     match_success_ = false;
   } else {
