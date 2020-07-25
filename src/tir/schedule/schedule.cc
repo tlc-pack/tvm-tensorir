@@ -16,21 +16,32 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 #include <tvm/arith/analyzer.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
 
-#include "schedule_common.h"
+#include "./schedule_common.h"
 
 namespace tvm {
 namespace tir {
 
+TVM_REGISTER_NODE_TYPE(ScheduleNode);
+TVM_REGISTER_NODE_TYPE(StmtSRefNode);
+
+StmtSRef::StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index) {
+  ObjectPtr<StmtSRefNode> n = make_object<StmtSRefNode>();
+  n->stmt = stmt;
+  n->parent = parent;
+  n->seq_index = seq_index;
+  n->binding_valid = false;
+  data_ = std::move(n);
+}
+
 class ScopeUpdater : public StmtVisitor {
  public:
-  ScopeUpdater(const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref)
+  explicit ScopeUpdater(const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref)
       : stmt2ref(stmt2ref) {}
 
   void VisitStmt_(const BlockNode* block) override {
@@ -420,7 +431,19 @@ Array<StmtSRef> ScheduleNode::Blocks(StmtSRef scope) const {
   return ret;
 }
 
-StmtSRef ScheduleNode::GetParentScope(const StmtSRef& sref) const {
+Array<StmtSRef> ScheduleNode::GetChildBlocks(const StmtSRef& parent_sref) const {
+  std::vector<StmtSRef> result;
+  PreOrderVisit(GetRef<Stmt>(parent_sref->stmt), [&result, this](const ObjectRef& node) {
+    if (const auto* block = node.as<BlockNode>()) {
+      result.push_back(stmt2ref.at(block));
+      return false;
+    }
+    return true;
+  });
+  return result;
+}
+
+StmtSRef ScheduleNode::GetParentBlockSRef(const StmtSRef& sref) const {
   for (const StmtSRefNode* ptr = sref.get()->parent; ptr != nullptr; ptr = ptr->parent) {
     if (ptr->stmt->IsInstance<BlockNode>()) {
       return GetRef<StmtSRef>(ptr);
@@ -428,6 +451,10 @@ StmtSRef ScheduleNode::GetParentScope(const StmtSRef& sref) const {
   }
   LOG(FATAL) << "ValueError: Cannot find a father block";
   throw;
+}
+
+Scope ScheduleNode::GetParentScope(const StmtSRef& sref) const {
+  return scopes.at(GetParentBlockSRef(sref));
 }
 
 Array<StmtSRef> ScheduleNode::GetLoopsInScope(const StmtSRef& block) const {
@@ -440,17 +467,6 @@ Array<StmtSRef> ScheduleNode::GetLoopsInScope(const StmtSRef& block) const {
     sref = GetRef<StmtSRef>(sref->parent);
   }
   return Array<StmtSRef>(ret.rbegin(), ret.rend());
-}
-
-bool ScheduleNode::IsCompactDataFlow(const StmtSRef& sub_tree) const {
-  StmtSRef scope_sref = GetParentScope(sub_tree);
-  const Scope& scope = scopes.at(scope_sref);
-  std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> child_blocks;
-  ChildBlockGatherer(this, &child_blocks)(GetRef<Stmt>(sub_tree->stmt));
-  for (const auto& block : child_blocks) {
-    if (!scope.IsComplete(block) && !scope.IsReduction(block)) return false;
-  }
-  return true;
 }
 
 StmtSRef ScheduleNode::fuse(const StmtSRef& outer, const StmtSRef& inner) {
@@ -470,7 +486,7 @@ StmtSRef ScheduleNode::fuse(const StmtSRef& outer, const StmtSRef& inner) {
   auto outer_children = GetChildren(GetRef<Stmt>(outer_loop));
   CHECK(outer_children.size() == 1 && outer_children[0].get() == inner_loop);
   // Check both loops are in the same scope
-  CHECK_EQ(GetParentScope(outer), GetParentScope(inner));
+  CHECK_EQ(GetParentBlockSRef(outer), GetParentBlockSRef(inner));
 
   // Currently, can not fuse Loops with annotations
   if (!outer_loop->annotations.empty() || !inner_loop->annotations.empty()) {
@@ -567,98 +583,6 @@ Array<StmtSRef> ScheduleNode::split(const StmtSRef& node, const PrimExpr& nparts
   return Array<StmtSRef>{outer_sref, inner_sref};
 }
 
-class AnnotationUpdater : public StmtMutator {
- public:
-  explicit AnnotationUpdater(Annotation annotation) : annotation_(std::move(annotation)) {}
-
- private:
-  Stmt VisitStmt_(const LoopNode* op) override {
-    auto n = CopyOnWrite(op);
-    n->annotations.push_back(std::move(annotation_));
-    return Stmt(n);
-  }
-
-  Annotation annotation_;
-};
-
-void ScheduleNode::ParallelCompute(const StmtSRef& node, const Annotation& annotation) {
-  /*!
-   * Check:
-   * - 1. check the block under is complete block or reduction block
-   * - 2. check `input_loop` is bound and only bound to `data_par` block_vars
-   * - 3. check the loops of reduction blocks are validatable
-   * Mutate:
-   * - 4. set Annotation on the loop
-   * Proof:
-   * We prove by showing that there are no data flows between `input_loop=i` and`input_loop=j`,
-   * and we show this by induction on the number of blocks.
-   *
-   * If there is only one block below
-   * - The block is complete. All the instances are independent of each other.
-   * - The block is reduction. `input_loop` bound and only bound to `data_par` blocks + loops of
-   * reduction blocks are validatable => instances of `input_loop=i` will write different positions
-   * with instances of `input_loop=j`, hence they are independent.
-   *
-   * If there's a new block coming in. Consider its instances under `input_loop=i`.
-   * - If the producer is complete. Producer instances under `input_loop=j` may write the positions
-   * that new instances under `input_loop=i`  may read, but it will read the same value produced by
-   * the producer under `input_loop=i` since it's complete.
-   * - If the producer is reduction. Producer instances under `input_loop=j` will never write the
-   * positions that new instances under `input_loop=j` may read. Hence no data flow.
-   */
-
-  const auto* loop = DowncastPtr<LoopNode>(node->stmt);
-  CHECK(loop != nullptr) << "Parallel-like compute expect a loop";
-  // Currently, can not vectorize Loops with annotations
-  if (!loop->annotations.empty()) {
-    LOG(FATAL) << "InvalidSchedule: "
-               << "Cannot make the loop which already has annotations do parallel-like computation";
-  }
-  // Now only support:
-  //   1. All the blocks are complete below
-  //   2. A single block below the loop
-  // TODO(bohan): support reduction later
-  if (!IsCompactDataFlow(node)) {
-    auto children = GetChildren(GetRef<Stmt>(loop), true);
-    CHECK(children.size() == 1 && children[0]->IsInstance<BlockRealizeNode>());
-    const BlockRealize& br = Downcast<BlockRealize>(children[0]);
-    CHECK(stmt2ref[br->block.operator->()]->binding_valid)
-        << "Parallel-like compute  expect valid bindings";
-    for (size_t i = 0; i < br->binding_values.size(); ++i) {
-      if (br->block->iter_vars[i]->iter_type != IterVarType::kDataPar &&
-          ExprContainsVar(br->binding_values[i], loop->loop_var)) {
-        LOG(FATAL) << "The loop is related with non-data_par block vars";
-      }
-    }
-  }
-  Stmt new_stmt = AnnotationUpdater(annotation)(GetRef<Stmt>(loop));
-  this->Replace(node, new_stmt);
-}
-
-void ScheduleNode::vectorize(const StmtSRef& node) {
-  Annotation annotation(attr::loop_type, StringImm("vectorize"));
-  ParallelCompute(node, annotation);
-}
-
-void ScheduleNode::parallel(const StmtSRef& node) {
-  Annotation annotation(attr::loop_type, StringImm("parallel"));
-  ParallelCompute(node, annotation);
-}
-
-void ScheduleNode::unroll(const StmtSRef& node) {
-  // Equivalence : Unroll is trivial
-  const auto* loop = DowncastPtr<LoopNode>(node->stmt);
-  CHECK(loop != nullptr) << "Unroll expect a loop";
-  // Currently, can not unroll Loops with annotations
-  if (!loop->annotations.empty()) {
-    LOG(FATAL) << "InvalidSchedule: "
-               << "Cannot unroll loop that already has annotations";
-  }
-  Annotation annotation = Annotation(tir::attr::loop_type, StringImm("unroll"));
-  Stmt new_stmt = AnnotationUpdater(annotation)(GetRef<Stmt>(loop));
-  this->Replace(node, new_stmt);
-}
-
 StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const StmtSRef& loop_sref) {
   /*!
    *  Check
@@ -670,12 +594,11 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
    */
 
   // Check
-  const auto* block = DowncastPtr<BlockNode>(block_sref->stmt);
-  const auto* loop = DowncastPtr<LoopNode>(loop_sref->stmt);
+  const auto* block = block_sref->GetStmt<BlockNode>();
+  const auto* loop = loop_sref->GetStmt<LoopNode>();
   CHECK(block != nullptr) << "decompose_reduction expect a block as first argument";
   CHECK(loop != nullptr) << "decompose_reduction expect a loop as second argument";
-  const StmtSRef& scope_root = GetParentScope(block_sref);
-  const Scope& scope = scopes.at(scope_root);
+  const Scope& scope = GetParentScope(block_sref);
 
   // Check loop_sref is block_sref's ancestor
   Array<StmtSRef> loops = GetLoopsInScope(block_sref);
@@ -693,7 +616,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
   const auto* br = GetBlockRealize(block_sref).operator->();
   for (const auto& loop : loops) {
     if (loop.same_as(loop_sref)) break;
-    const auto* loop_ptr = DowncastPtr<LoopNode>(loop->stmt);
+    const auto* loop_ptr = loop->GetStmt<LoopNode>();
     for (size_t i = 0; i < block->iter_vars.size(); ++i) {
       if (block->iter_vars[i]->iter_type == IterVarType::kCommReduce) {
         CHECK(!ExprContainsVar(br->binding_values[i], loop_ptr->loop_var))
@@ -705,8 +628,8 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
 
   // Mutate
   // Create init stmt, init block
-  const auto* reduction = DowncastPtr<ReduceStepNode>(block->body.operator->());
-  const auto* lhs = DowncastPtr<BufferLoadNode>(reduction->lhs.operator->());
+  const auto* reduction = block->body.as<ReduceStepNode>();
+  const auto* lhs = reduction->lhs.as<BufferLoadNode>();
   const auto& init_stmt =
       BufferStore(lhs->buffer, reduction->comm_reducer->identity_element[0], lhs->indices);
   auto init_block = make_object<BlockNode>();
@@ -736,7 +659,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
 
   // Create loops of init block
   for (size_t i = loops.size() - 1; i >= 0; --i) {
-    const auto* ptr = DowncastPtr<LoopNode>(loops[i]->stmt);
+    const auto* ptr = loops[i]->GetStmt<LoopNode>();
     CHECK(ptr != nullptr);
     for (const auto& expr : init_br->binding_values)
       if (ExprContainsVar(expr, ptr->loop_var)) {
@@ -750,13 +673,13 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
   }
 
   // Put init block into AST
-  const auto* father_ptr = DowncastPtr<LoopNode>(loop_sref->parent->stmt);
+  const auto* father_ptr = loop_sref->parent->GetStmt<LoopNode>();
   if (father_ptr != nullptr) {
     auto new_loop = make_object<LoopNode>(*father_ptr);
     new_loop->body = SeqStmt::Flatten(Array<Stmt>{body, new_loop->body});
     this->Replace(GetRef<StmtSRef>(loop_sref->parent), Loop(new_loop));
   } else {
-    auto new_block = make_object<BlockNode>(*(DowncastPtr<BlockNode>(loop_sref->parent->stmt)));
+    auto new_block = make_object<BlockNode>(*(loop_sref->parent->GetStmt<BlockNode>()));
     new_block->body = SeqStmt::Flatten(Array<Stmt>{body, new_block->body});
     this->Replace(GetRef<StmtSRef>(loop_sref->parent), Block(new_block));
   }
@@ -768,7 +691,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
   block_map.Set(Block(update_block), GetRef<Block>(block));
   this->Replace(block_sref, Block(update_block), block_map);
   // Update scope information
-  ScopeUpdater::Update(this->stmt2ref, GetParentScope(block_sref)->stmt, &this->scopes);
+  ScopeUpdater::Update(this->stmt2ref, GetParentBlockSRef(block_sref)->stmt, &this->scopes);
   return stmt2ref.at(init_block.get());
 }
 
@@ -785,15 +708,15 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
    */
 
   // Check
-  const auto* init = DowncastPtr<BlockNode>(init_sref->stmt);
-  const auto* update = DowncastPtr<BlockNode>(update_sref->stmt);
+  const auto* init = init_sref->GetStmt<BlockNode>();
+  const auto* update = update_sref->GetStmt<BlockNode>();
   CHECK(init != nullptr) << "merge_reduction expect a block as first argument";
   CHECK(update != nullptr) << "merge_reduction expect a block as second argument";
 
   // Check init_block is under the same scope with update_sref
-  CHECK_EQ(GetParentScope(init_sref), GetParentScope(update_sref))
+  CHECK_EQ(GetParentBlockSRef(init_sref), GetParentBlockSRef(update_sref))
       << "merge_reduction expect the init_block and update_block to be under the same scope";
-  const auto& scope_root = GetParentScope(init_sref);
+  const auto& scope_root = GetParentBlockSRef(init_sref);
 
   // Check init_block's write region is the same as update_block's write region under LCA
   CHECK_EQ(init->writes.size(), 1);
@@ -810,8 +733,8 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
 
   // Check the merged block is decomposable
   CHECK(this->scopes.at(scope_root).CanMergeReduction(init_sref, update_sref));
-  const auto* init_body = DowncastPtr<BufferStoreNode>(init->body.operator->());
-  const auto* update_body = DowncastPtr<BufferStoreNode>(update->body.operator->());
+  const auto* init_body = init->body.as<BufferStoreNode>();
+  const auto* update_body = update->body.as<BufferStoreNode>();
 
   // Check LCA is higher than all the loops related to update_block's reduce block var
   Array<StmtSRef> loops = GetLoopsInScope(update_sref);
@@ -819,7 +742,7 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   if (!scope_root.same_as(lca)) {
     for (const auto& loop : loops) {
       if (loop.same_as(lca)) break;
-      const auto* loop_ptr = DowncastPtr<LoopNode>(loop->stmt);
+      const auto* loop_ptr = loop->GetStmt<LoopNode>();
       for (size_t i = 0; i < update->iter_vars.size(); ++i) {
         if (update->iter_vars[i]->iter_type == IterVarType::kCommReduce) {
           CHECK(!ExprContainsVar(br->binding_values[i], loop_ptr->loop_var))
@@ -844,22 +767,12 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   this->Replace(update_sref, Block(merged_block), block_map);
 
   // update scope information
-  ScopeUpdater::Update(this->stmt2ref, GetParentScope(update_sref)->stmt, &this->scopes);
+  ScopeUpdater::Update(this->stmt2ref, GetParentBlockSRef(update_sref)->stmt, &this->scopes);
 }
 
 void ScheduleNode::register_reducer(const CommReducer& comm_reducer) {
   this->reducers_.push_back(comm_reducer);
 }
-
-StmtSRef::StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index) {
-  auto n = make_object<StmtSRefNode>();
-  n->stmt = stmt;
-  n->parent = parent;
-  n->seq_index = seq_index;
-  n->binding_valid = false;
-  data_ = std::move(n);
-}
-
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<StmtSRefNode>([](const ObjectRef& node, ReprPrinter* p) {
       const auto* op = static_cast<const StmtSRefNode*>(node.get());
@@ -875,9 +788,6 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
         p->Print(Downcast<Block>(GetRef<Stmt>(op->stmt)));
       }
     });
-
-TVM_REGISTER_NODE_TYPE(ScheduleNode);
-TVM_REGISTER_NODE_TYPE(StmtSRefNode);
 
 TVM_REGISTER_GLOBAL("tir.schedule.Replace")
     .set_body_typed<void(Schedule, StmtSRef, Stmt, Map<Block, Block>)>(
