@@ -38,21 +38,14 @@ namespace tir {
 /*!
  * \brief Checks if a loop variable is parallelizable.
  * If fvisit returns false, it stops visit the children on that node.
- * \param stmt The ir to be visited.
- * \param fvisit The visitor function to be applied. If fvisit returns false, it stops visit the
- * children on that node.
+ * \param loop_var The loop variable
+ * \param block_realize The block realize node under the loop. It is possible that there are
+ * multiple blocks, and in this case, we should invoke this function multiple times.
+ * \param schedule The schedule object
+ * \return A boolean indicating if the loop var is parallelizable
  */
 bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
                              const ScheduleNode* schedule);
-
-/*!
- * \brief Recursively visit the IR in pre DFS order node, apply fvisit.
- * If fvisit returns false, it stops visit the children on that node.
- * \param stmt The ir to be visited.
- * \param fvisit The visitor function to be applied. If fvisit returns false, it stops visit the
- * children on that node.
- */
-void PreOrderVisit(const ObjectRef& node, const std::function<bool(const ObjectRef&)>& fvisit);
 
 /*!
  * \brief Get the direct child Schedulable Stmt (Block and Loop)
