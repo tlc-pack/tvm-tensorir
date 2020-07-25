@@ -19,9 +19,11 @@
 
 #include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
+
 #include <queue>
 #include <utility>
-#include "schedule_common.h"
+
+#include "./schedule_common.h"
 
 namespace tvm {
 namespace tir {
@@ -74,12 +76,13 @@ Stmt ReorderTarget(const StmtSRefNode* old_loop, const StmtSRefNode* bottom,
                    const std::unordered_map<const StmtSRefNode*, const StmtSRefNode*>& successor) {
   size_t new_index = index;
   // The order list maybe incomplete, so we may copy the old_loop rather than order
-  const LoopNode* copy = seen_loop.count(GetRef<StmtSRef>(old_loop)) ?
-      DowncastPtr<LoopNode>(order[new_index++]->stmt) : DowncastPtr<LoopNode>(old_loop->stmt);
+  const LoopNode* copy = seen_loop.count(GetRef<StmtSRef>(old_loop))
+                             ? order[new_index++]->GetStmt<LoopNode>()
+                             : old_loop->GetStmt<LoopNode>();
   auto n = make_object<LoopNode>(*copy);
   if (old_loop == bottom) {
     // bottom loop
-    n->body = DowncastPtr<LoopNode>(old_loop->stmt)->body;
+    n->body = old_loop->GetStmt<LoopNode>()->body;
   } else {
     // reorder recursively
     n->body = ReorderTarget(successor.at(old_loop), bottom, order, new_index, seen_loop, successor);
@@ -101,7 +104,7 @@ void ScheduleNode::reorder(const Array<StmtSRef>& order) {
   // 1. check loops are mutually different
   std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> seen_loop;
   for (const StmtSRef& loop_sref : order) {
-    const auto* loop = DowncastPtr<LoopNode>(loop_sref->stmt);
+    const auto* loop = loop_sref->GetStmt<LoopNode>();
     CHECK(loop) << "Order has to be a list a Loops";
     CHECK_EQ(seen_loop.count(loop_sref), 0) << "Same Loop can not appear more than once ";
     seen_loop.insert(loop_sref);
@@ -115,16 +118,17 @@ void ScheduleNode::reorder(const Array<StmtSRef>& order) {
   //     Put (x,y) in the map.
   // If x is potentially in the reorder range, check x is single branch
   // After the inverse DFS, we can know how to catch the loop line by the map.
-  std::vector<const LoopNode*> all_loops = GatherChild<LoopNode>(GetParentScope(order[0])->stmt);
+  std::vector<const LoopNode*> all_loops =
+      GatherChild<LoopNode>(GetParentBlockSRef(order[0])->stmt);
   std::unordered_map<const StmtSRefNode*, const StmtSRefNode*> successor;
   // top and bottom denotes the range of loops need reordering
-  const StmtSRefNode* top = nullptr, * bottom = nullptr;
+  const StmtSRefNode *top = nullptr, *bottom = nullptr;
   for (auto it = all_loops.rbegin(); it != all_loops.rend(); ++it) {
     StmtSRef now = stmt2ref.at(*it);
     if (seen_loop.count(now) || successor.count(now.get())) {
       const StmtSRefNode* parent = now->parent;
       CHECK(successor.count(parent) == 0 || successor.at(parent) == now.get())
-        << "reorder expects the loops have to be in the same line";
+          << "reorder expects the loops have to be in the same line";
       successor[parent] = now.get();
       if (bottom == nullptr) bottom = now.get();
       if (seen_loop.count(now)) top = now.get();
@@ -138,19 +142,19 @@ void ScheduleNode::reorder(const Array<StmtSRef>& order) {
   }
   // 4. check these loops are single-branch
   const StmtSRefNode* now = top;
-  for (; ;) {
+  for (;;) {
     const auto& children = GetChildren(GetRef<Stmt>(now->stmt));
     CHECK_EQ(children.size(), 1) << "reorder expects the loops to be single-branch";
     now = stmt2ref[children[0].operator->()].operator->();
     if (now->stmt->IsInstance<BlockNode>()) break;
   }
   // 5. the block below has all its block_var to be data_par or reduce
-  const auto* block = DowncastPtr<BlockNode>(now->stmt);
+  const auto* block = now->GetStmt<BlockNode>();
   CHECK(block);
-  for (const auto & iter_var : block->iter_vars) {
+  for (const auto& iter_var : block->iter_vars) {
     IterVarType var_type = iter_var->iter_type;
     CHECK(var_type == kDataPar || var_type == kThreadIndex || var_type == kCommReduce)
-      << "reorder expects block var to be data_par or reduce";
+        << "reorder expects block var to be data_par or reduce";
   }
   // Reorder
   const auto& res = ReorderTarget(top, bottom, order, 0, seen_loop, successor);

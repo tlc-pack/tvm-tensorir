@@ -364,8 +364,7 @@ std::pair<Stmt, Block> GenerateCopyStmt(const Buffer& read_buffer, const Buffer&
     indices.push_back(var);
     access_region.push_back(Range::FromMinExtent(var, 1));
   }
-  Stmt body =
-      BufferStore(write_buffer, BufferLoad(read_buffer, indices), indices);
+  Stmt body = BufferStore(write_buffer, BufferLoad(read_buffer, indices), indices);
   Block block(block_vars, {TensorRegion(read_buffer, access_region)},
               {TensorRegion(write_buffer, access_region)}, body, Array<BufferAllocate>(),
               Array<Annotation>(), "");
@@ -420,12 +419,12 @@ StmtSRef ScheduleNode::cache_read(const Buffer& buffer, const std::string& stora
   size_t insert_pos;
   TensorRegion cache_region;
   if (block_sref.defined()) {
-    const auto* block = DowncastPtr<BlockNode>(block_sref->stmt);
+    const auto* block = block_sref->GetStmt<BlockNode>();
     CHECK(block != nullptr) << buffer << "is not a block sref";
-    scope_sref = GetParentScope(block_sref);
+    scope_sref = GetParentBlockSRef(block_sref);
 
     const Scope& scope = scopes.at(scope_sref);
-    scope_block = DowncastPtr<BlockNode>(scope_sref->stmt);
+    scope_block = scope_sref->GetStmt<BlockNode>();
 
     // Check the block is not a output block
     std::unordered_set<Buffer, ObjectHash, ObjectEqual> seen_buffer;
@@ -452,7 +451,7 @@ StmtSRef ScheduleNode::cache_read(const Buffer& buffer, const std::string& stora
     cache_region = RelaxRegion(block_sref, scope_sref, block->writes[0]);
   } else {
     scope_sref = root;
-    scope_block = DowncastPtr<BlockNode>(scope_sref->stmt);
+    scope_block = scope_sref->GetStmt<BlockNode>();
     insert_sref = root;
     insert_pos = 0;
     Region region;
@@ -493,12 +492,12 @@ StmtSRef ScheduleNode::cache_write(const Buffer& buffer, const std::string& stor
   StmtSRef block_sref = GetInnermostBlock(this, buffer);
   CHECK(block_sref.defined()) << "Cannot cache_write an input buffer";
 
-  const auto* block = DowncastPtr<BlockNode>(block_sref->stmt);
+  const auto* block = block_sref->GetStmt<BlockNode>();
   CHECK(block != nullptr) << buffer << "is not a block sref";
 
-  const StmtSRef& scope_sref = GetParentScope(block_sref);
+  const StmtSRef& scope_sref = GetParentBlockSRef(block_sref);
   const Scope& scope = scopes.at(scope_sref);
-  const auto* scope_block = DowncastPtr<BlockNode>(scope_sref->stmt);
+  const auto* scope_block = scope_sref->GetStmt<BlockNode>();
 
   // Check there is only one output buffer
   CHECK_EQ(block->writes.size(), 1);
