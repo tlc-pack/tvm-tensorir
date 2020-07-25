@@ -434,8 +434,7 @@ Stmt StmtMutator::VisitStmt_(const LoopNode* op) {
   PrimExpr min = this->VisitExpr(op->min);
   PrimExpr extent = this->VisitExpr(op->extent);
   Stmt body = this->VisitStmt(op->body);
-  if (min.same_as(op->min) && extent.same_as(op->extent) &&
-      body.same_as(op->body)) {
+  if (min.same_as(op->min) && extent.same_as(op->extent) && body.same_as(op->body)) {
     return GetRef<Stmt>(op);
   } else {
     auto n = CopyOnWrite(op);
@@ -446,9 +445,7 @@ Stmt StmtMutator::VisitStmt_(const LoopNode* op) {
   }
 }
 
-Stmt StmtMutator::VisitStmt_(const BufferAllocateNode* op) {
-  return GetRef<Stmt>(op);
-}
+Stmt StmtMutator::VisitStmt_(const BufferAllocateNode* op) { return GetRef<Stmt>(op); }
 
 Stmt StmtMutator::VisitStmt_(const ReduceStepNode* op) {
   PrimExpr lhs = this->VisitExpr(op->lhs);
@@ -494,6 +491,44 @@ void PostOrderVisit(const ObjectRef& node, std::function<void(const ObjectRef&)>
   } else {
     IRApplyVisit visitor(fvisit);
     visitor(Downcast<PrimExpr>(node));
+  }
+}
+
+class PreOrderVisitor : public StmtExprVisitor {
+ public:
+  explicit PreOrderVisitor(const std::function<bool(const ObjectRef&)>& f) : f(f) {}
+
+  void VisitExpr(const PrimExpr& expr) final {
+    if (visited.count(expr.get()) == 0) {
+      visited.insert(expr.get());
+      if (f(expr)) {
+        ExprVisitor::VisitExpr(expr);
+      }
+    }
+  }
+
+  void VisitStmt(const Stmt& stmt) final {
+    if (visited.count(stmt.get()) == 0) {
+      visited.insert(stmt.get());
+      if (f(stmt)) {
+        StmtVisitor::VisitStmt(stmt);
+      }
+    }
+  }
+
+  const std::function<bool(const ObjectRef&)>& f;
+  std::unordered_set<const Object*> visited;
+};
+
+void PreOrderVisit(const ObjectRef& node, const std::function<bool(const ObjectRef&)>& fvisit) {
+  PreOrderVisitor visitor(fvisit);
+  if (const auto* stmt = node.as<StmtNode>()) {
+    visitor(GetRef<Stmt>(stmt));
+  } else if (const auto* expr = node.as<PrimExprNode>()) {
+    visitor(GetRef<PrimExpr>(expr));
+  } else {
+    LOG(FATAL) << "InternalError: PreOrderVisit does not accept object with type: "
+               << node->GetTypeKey();
   }
 }
 

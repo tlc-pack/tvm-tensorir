@@ -163,6 +163,15 @@ bool Scope::IsReduction(const StmtSRef& block_sref) const {
   return CheckReductionInstance(block->iter_vars, buffer_load->indices);
 }
 
+bool Scope::IsCompactDataFlow(const StmtSRef& subtree_sref, const ScheduleNode* schedule) const {
+  for (const auto& block : schedule->GetChildBlocks(subtree_sref)) {
+    if (!IsComplete(block) && !IsReduction(block)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool Scope::CanMergeReduction(const StmtSRef& init_sref, const StmtSRef& update_sref) const {
   const auto* init = init_sref->GetStmt<BlockNode>();
   const auto* update = update_sref->GetStmt<BlockNode>();
