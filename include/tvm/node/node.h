@@ -50,7 +50,6 @@
 namespace tvm {
 
 using runtime::Downcast;
-using runtime::DowncastPtr;
 using runtime::GetRef;
 using runtime::make_object;
 using runtime::Object;

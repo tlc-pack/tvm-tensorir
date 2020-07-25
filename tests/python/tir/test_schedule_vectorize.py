@@ -15,6 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import pytest
+
 import tvm
 import util
 from tvm import tir
@@ -58,7 +60,8 @@ def test_vectorize_normal():
     i, jo, ji = s.get_axes(B)
     s.vectorize(ji)
 
-    mod = tir.hybrid.create_module({"predicate_vectorize": predicate_vectorize})
+    mod = tir.hybrid.create_module(
+        {"predicate_vectorize": predicate_vectorize})
     tvm.ir.assert_structural_equal(s.func, mod["predicate_vectorize"])
 
 
@@ -98,7 +101,8 @@ def element_wise_compute_at_vectorize(a, c):
 
 
 def test_vectorize_complete():
-    mod = tvm.tir.hybrid.create_module({"element_wise_compute_at": element_wise_compute_at})
+    mod = tvm.tir.hybrid.create_module(
+        {"element_wise_compute_at": element_wise_compute_at})
     func = mod["element_wise_compute_at"]
 
     # schedule
@@ -110,7 +114,17 @@ def test_vectorize_complete():
 
     mod = tir.hybrid.create_module(
         {"element_wise_compute_at_vectorize": element_wise_compute_at_vectorize})
-    tvm.ir.assert_structural_equal(s.func, mod["element_wise_compute_at_vectorize"])
+    tvm.ir.assert_structural_equal(
+        s.func, mod["element_wise_compute_at_vectorize"])
+
+
+def test_vectorize_fail_on_reduce_var():
+    func = util.matmul_stmt()
+    s = tir.create_schedule(func)
+    update = s.get_block("update")
+    _, _, k = s.get_axes(update)
+    with pytest.raises(ValueError):
+        s.vectorize(k)
 
 
 def test_unroll_normal():
@@ -128,4 +142,5 @@ def test_unroll_normal():
 if __name__ == "__main__":
     test_vectorize_normal()
     test_vectorize_complete()
+    test_vectorize_fail_on_reduce_var()
     test_unroll_normal()

@@ -17,22 +17,26 @@
  * under the License.
  */
 
+#include <tvm/arith/analyzer.h>
+#include <tvm/arith/int_set.h>
+#include <tvm/tir/analysis.h>
 #include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
-#include <tvm/tir/analysis.h>
-#include <tvm/arith/int_set.h>
-#include <tvm/arith/analyzer.h>
-#include "schedule_common.h"
+
+#include "./schedule_common.h"
 
 namespace tvm {
 namespace tir {
 
 /*! To find if there is any dependent block under in the specific subtree */
 bool FindAny(const ScheduleNode* sch, const Stmt& stmt, const Array<DepEdge>& edges) {
-  std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> child_blocks;
-  ChildBlockGatherer(sch, &child_blocks)(stmt);
+  Array<StmtSRef> child_blocks = sch->GetChildBlocks(sch->stmt2ref.at(stmt.get()));
   for (const auto& edge : edges) {
-    if (child_blocks.count(edge->dst)) return true;
+    for (const auto& child : child_blocks) {
+      if (edge->dst.same_as(child)) {
+        return true;
+      }
+    }
   }
   return false;
 }
@@ -44,8 +48,8 @@ bool FindAny(const ScheduleNode* sch, const Stmt& stmt, const Array<DepEdge>& ed
 class StrideIntSet {
  public:
   StrideIntSet() = default;
-  StrideIntSet(Range iter_range, PrimExpr stride) :
-      iter_range_(std::move(iter_range)), stride_(std::move(stride)) {}
+  StrideIntSet(Range iter_range, PrimExpr stride)
+      : iter_range_(std::move(iter_range)), stride_(std::move(stride)) {}
 
   static StrideIntSet Union(const StrideIntSet& lhs, const StrideIntSet& rhs) {
     StrideIntSet ret;
@@ -55,8 +59,8 @@ class StrideIntSet {
       const Range& rhs_range = rhs.iter_range_;
       PrimExpr begin = min(lhs.iter_range_->min, rhs_range->min);
       PrimExpr extents =
-          max(lhs.iter_range_->extent + lhs.iter_range_->min, rhs_range->extent + rhs_range->min)
-              - begin;
+          max(lhs.iter_range_->extent + lhs.iter_range_->min, rhs_range->extent + rhs_range->min) -
+          begin;
       ret.iter_range_ = Range::FromMinExtent(begin, extents);
       ret.stride_ = lhs.stride_;
     } else {
@@ -76,8 +80,7 @@ class StrideIntSet {
  * \param requirements The required region
  * \return The iteration information for each var
  */
-std::vector<StrideIntSet> SolveCover(const Array<IterVar>& vars,
-                                     const std::vector<Range>& produces,
+std::vector<StrideIntSet> SolveCover(const Array<IterVar>& vars, const std::vector<Range>& produces,
                                      const std::vector<Range>& requirements) {
   std::vector<StrideIntSet> cover_iters(vars.size());
   std::unordered_map<Var, size_t, ObjectHash, ObjectEqual> var_index;
@@ -94,7 +97,7 @@ std::vector<StrideIntSet> SolveCover(const Array<IterVar>& vars,
     const auto& require = requirements[i];
 
     CHECK(produce->min.as<VarNode>() != nullptr)
-      << "The min of produces range must be a single variable";
+        << "The min of produces range must be a single variable";
     Var var = Downcast<Var>(produce->min);
 
     CHECK_GT(var_index.count(var), 0) << "Find irrelevant variable in produces";
@@ -105,8 +108,8 @@ std::vector<StrideIntSet> SolveCover(const Array<IterVar>& vars,
     const PrimExpr& extent = analyzer.Simplify((require->extent + produces_len - 1) / produces_len);
     const PrimExpr& strides = produces_len;
 
-    cover_iters[id] = StrideIntSet::Union(cover_iters[id],
-        StrideIntSet(Range::FromMinExtent(base, extent), strides));
+    cover_iters[id] = StrideIntSet::Union(
+        cover_iters[id], StrideIntSet(Range::FromMinExtent(base, extent), strides));
   }
 
   for (const auto& var : vars) {
@@ -154,11 +157,7 @@ Stmt RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& parent_loop_sre
     if (!is_one(domain.iter_range_->extent)) {
       // TODO(Siyuan): support for loop with annotations
       const Var& iter_var = iter_vars[i - 1];
-      Loop loop = Loop(iter_var,
-                       0,
-                       domain.iter_range_->extent,
-                       Array<Annotation>(),
-                       body);
+      Loop loop = Loop(iter_var, 0, domain.iter_range_->extent, Array<Annotation>(), body);
       body = loop;
     }
   }
@@ -261,37 +260,37 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
    */
 
   // Check
-  const auto* block = DowncastPtr<BlockNode>(block_sref->stmt);
-  const auto* loop = DowncastPtr<LoopNode>(loop_sref->stmt);
+  const auto* block = block_sref->GetStmt<BlockNode>();
+  const auto* loop = loop_sref->GetStmt<LoopNode>();
   CHECK(block != nullptr) << block_sref << "is not a block sref";
   CHECK(loop != nullptr) << loop_sref << "is not a loop sref";
 
   // Check the block and the loop are at the same scope
-  CHECK_EQ(GetParentScope(block_sref), GetParentScope(loop_sref))
-    << "Cannot compute_at between different scope";
-  const StmtSRef& scope_sref = GetParentScope(block_sref);
+  CHECK_EQ(GetParentBlockSRef(block_sref), GetParentBlockSRef(loop_sref))
+      << "Cannot compute_at between different scope";
+  const StmtSRef& scope_sref = GetParentBlockSRef(block_sref);
   const Scope& scope = scopes.at(scope_sref);
-  const auto* scope_block = DowncastPtr<BlockNode>(scope_sref->stmt);
+  const auto* scope_block = scope_sref->GetStmt<BlockNode>();
 
   // Check complete block
   CHECK(scope.IsComplete(block_sref) || scope.IsReduction(block_sref))
       << "Can only compute_at a complete or reduction block";
 
   // Check compact data flow
+  // sub_tree_root: the direct child of block_sref's parent scope that contains block_sref
   StmtSRef sub_tree_root = block_sref;
   while (sub_tree_root.defined()) {
-    auto node = GetRef<StmtSRef>(sub_tree_root->parent);
-    if (GetRef<Stmt>(node->stmt).as<BlockNode>()) {
+    const StmtSRefNode* node = sub_tree_root->parent;
+    if (node->GetStmt<BlockNode>()) {
       break;
     } else {
-      sub_tree_root = node;
+      sub_tree_root = GetRef<StmtSRef>(node);
     }
   }
-  CHECK(IsCompactDataFlow(sub_tree_root))
-    << "Can only compute_at a block from the subtree which is compact data flow";
+  CHECK(scope.IsCompactDataFlow(sub_tree_root, this))
+      << "Can only compute_at a block from the subtree which is compact data flow";
 
-  std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> child_blocks;
-  ChildBlockGatherer(this, &child_blocks)(GetRef<Stmt>(loop));
+  Array<StmtSRef> child_blocks = this->GetChildBlocks(loop_sref);
   const auto& predecessors = scope.GetPredecessors(block_sref);
   const auto& successors = scope.GetSuccessors(block_sref);
 
@@ -303,10 +302,17 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
   }
 
   // Check all successors are in the subtree rooted by loop_sref
-  for (const auto& x : successors) {
-    if (x->type == DepType::kRAW && !child_blocks.count(x->dst)) {
-      LOG(FATAL) << "This block cannot compute at this point because some other " <<
-                 "blocks outside the scope of this point are also dependent on this block.";
+  for (const DepEdge& x : successors) {
+    if (x->type == DepType::kRAW) {
+      bool found = false;
+      for (const StmtSRef& child : child_blocks) {
+        if (child.same_as(x->dst)) {
+          found = true;
+          break;
+        }
+      }
+      CHECK(found) << "This block cannot compute at this point because some other "
+                   << "blocks outside the scope of this point are also dependent on this block.";
     }
   }
 
