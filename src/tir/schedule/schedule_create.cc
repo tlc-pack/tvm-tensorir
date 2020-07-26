@@ -75,7 +75,7 @@ class SRefMapCreator : public StmtVisitor {
 
 class ScopeMapCreator : public StmtVisitor {
  public:
-  ScopeMapCreator(const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref)
+  explicit ScopeMapCreator(const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref)
       : stmt2ref(stmt2ref) {}
 
   void VisitStmt_(const BlockNode* block) override {

@@ -16,12 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 #include "./loop_tree.h"
 
-#include <tvm/arith/analyzer.h>
-#include <tvm/ir/error.h>
-#include <tvm/tir/op.h>
-#include <tvm/tir/stmt_functor.h>
+#include "./auto_scheduler_utils.h"
 
 namespace tvm {
 namespace auto_scheduler {
@@ -50,19 +48,70 @@ LoopTree::LoopTree(Array<Iterator> iters, Optional<tir::BlockRealize> block_real
 }
 
 /*!
- * \brief Convert the tir::IterVarType to auto_scheduler::IterKind
- * \param iter_var_type The input iter variable type in TIR
- * \return The corresponding loop tree created
+ * \brief Figure out IterKind of a loop variable using the information provided in TIR
+ * \param loop The TIR loop that contains the loop variable
+ * \param sch The TIR schedule
+ * \return IterKind indicating the kind of iteration variable
  */
-inline IterKind IterKindFromTir(tir::IterVarType iter_var_type) {
-  if (iter_var_type == tir::kDataPar) {
-    return IterKind::kSpatial;
-  } else if (iter_var_type == tir::kCommReduce) {
+IterKind IterKindFromTIRLoop(const tir::Loop& loop, const tir::Schedule& sch) {
+  // TODO(@junrushao1994): introduce kOpaque?
+  // Step 0. Check if the subtree under loop satisfies one-way fine-grained dataflow condition
+  const tir::StmtSRef& loop_sref = sch->stmt2ref.at(loop.get());
+  bool is_compact_dataflow = sch->GetParentScope(loop_sref).IsCompactDataFlow(loop_sref, sch.get());
+  // Step 1. Collect direct child blocks under the loop
+  std::vector<const tir::BlockRealizeNode*> child_block_realizes;
+  tir::PreOrderVisit(loop, [&child_block_realizes](const ObjectRef& node) -> bool {
+    if (const auto* realize = node.as<tir::BlockRealizeNode>()) {
+      child_block_realizes.push_back(realize);
+      return false;
+    }
+    return true;
+  });
+  // For non-compact dataflow, right now we only support a single child block
+  if (!is_compact_dataflow && child_block_realizes.size() > 1) {
+    return IterKind::kSpecial;
+  }
+  // Step 2. Check if bindings of all child blocks are validated
+  for (const tir::BlockRealizeNode* realize : child_block_realizes) {
+    if (!sch->stmt2ref.at(realize->block.get())->binding_valid) {
+      return IterKind::kSpecial;
+    }
+  }
+  // Step 3. Check the loop variable is bound to what kind of block variables
+  bool bind_data_par = false;
+  bool bind_reduction = false;
+  bool bind_other = false;
+  for (const tir::BlockRealizeNode* realize : child_block_realizes) {
+    // Enumerate child blocks
+    const tir::BlockNode* block = realize->block.get();
+    CHECK_EQ(realize->binding_values.size(), block->iter_vars.size())
+        << "InternalError: BlockRealize is inconsistent with its Block";
+    int n = realize->binding_values.size();
+    for (int i = 0; i < n; ++i) {
+      const tir::IterVar& iter_var = block->iter_vars[i];
+      const PrimExpr& binding = realize->binding_values[i];
+      // If loop variable is bound in the current binding
+      if (ExprContainsVar(binding, loop->loop_var)) {
+        if (iter_var->iter_type == tir::kDataPar) {
+          bind_data_par = true;
+        } else if (iter_var->iter_type == tir::kCommReduce) {
+          bind_reduction = true;
+        } else {
+          bind_other = true;
+        }
+      }
+    }
+  }
+  // Step 4. Check if the loop variable can be data parallel or reduction
+  if (!bind_reduction && !bind_other) {
+    // TODO(@junrushao1994): if it is not bound to anything, do we really consider it as data
+    // parallel?
+    return IterKind::kDataPar;
+  }
+  if (bind_reduction && !bind_other) {
     return IterKind::kReduction;
   }
-  LOG(FATAL) << "TypeError: iter_var type is not supported: "
-             << tir::IterVarType2String(iter_var_type);
-  throw;
+  return IterKind::kSpecial;
 }
 
 /*!
@@ -70,7 +119,7 @@ inline IterKind IterKindFromTir(tir::IterVarType iter_var_type) {
  * \param root The root of the AST. Should be tir::BlockRealize or tir::Loop
  * \return The corresponding loop tree created
  */
-LoopTree LoopTreeFromTIR(const tir::StmtNode* root) {
+LoopTree LoopTreeFromTIR(const tir::StmtNode* root, const tir::Schedule& sch) {
   CHECK(root->IsInstance<tir::LoopNode>() || root->IsInstance<tir::BlockRealizeNode>())
       << "InternalError: Cannot create LoopTree because the TIR root provided starts with neither "
          "Loop nor BlockRealize";
@@ -82,7 +131,7 @@ LoopTree LoopTreeFromTIR(const tir::StmtNode* root) {
         /*name=*/loop->loop_var->name_hint,
         /*min=*/loop->min,
         /*extent=*/loop->extent,
-        /*kind=*/IterKind::kSpatial,  // TODO(@junrushao1994): check if it is spatial or reduction
+        /*kind=*/IterKindFromTIRLoop(GetRef<tir::Loop>(loop), sch),
         /*annotation=*/IterAnnotation::kNone);
     root = loop->body.get();
   }
@@ -108,9 +157,9 @@ LoopTree LoopTreeFromTIR(const tir::StmtNode* root) {
   }
   // Step 4. Create children subtree
   // TODO(@junrushao1994): do we need to check if children are all blocks or all non-blocks?
-  for (auto& child : children) {
+  for (ObjectRef& child : children) {
     if (child->IsInstance<tir::LoopNode>() || child->IsInstance<tir::BlockRealizeNode>()) {
-      child = LoopTreeFromTIR(static_cast<const tir::StmtNode*>(child.get()));
+      child = LoopTreeFromTIR(child.as<tir::StmtNode>(), sch);
     } else {
       // `child` is a leaf statement
       // Check: Any BlockNode should be contained inside `BlockRealizeNode`
@@ -129,7 +178,7 @@ LoopTree LoopTree::FromPrimFunc(const tir::PrimFunc& func) {
   const auto* realize = func->body.as<tir::BlockRealizeNode>();
   CHECK(realize != nullptr)
       << "InternalError: the PrimFunc is invalid because its body is not BlockRealizeNode";
-  return LoopTreeFromTIR(realize);
+  return LoopTreeFromTIR(realize, tir::ScheduleNode::Create(func));
 }
 
 class LoopTreeNode::Stringifier : public tir::StmtFunctor<void(const tir::Stmt&)> {
@@ -152,14 +201,14 @@ class LoopTreeNode::Stringifier : public tir::StmtFunctor<void(const tir::Stmt&)
     constexpr int kIndentWidth = 2;
     int indent_delta = 0;
     // Step 1. Print loops with proper indentation
-    for (const auto& iter : root->iters) {
+    for (const Iterator& iter : root->iters) {
       Cout() << "for " << iter << std::endl;
       // add one level of indentation
       indent_delta += kIndentWidth;
       this->indent += kIndentWidth;
     }
     // Step 2. Print its children
-    for (const auto& child : root->children) {
+    for (const ObjectRef& child : root->children) {
       // Case 1. the child is another node in the loop tree
       if (const auto* node = child.as<LoopTreeNode>()) {
         RecursivePrint(node);
