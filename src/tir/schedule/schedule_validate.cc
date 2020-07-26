@@ -314,59 +314,78 @@ void ScheduleNode::ValidateLoops() {
   validator(func->body);
 }
 
-bool ScheduleNode::ValidateRegionCover(const StmtSRef& consumer) const {
-  if (consumer->parent == nullptr) return true;
-  const auto* block = consumer->GetStmt<BlockNode>();
-  const StmtSRef& scope_sref = GetParentBlockSRef(consumer);
-  const Scope& scope = scopes.at(scope_sref);
-
+bool ScheduleNode::ValidateRegionCover(const StmtSRef& consumer_block_sref) const {
+  if (consumer_block_sref->parent == nullptr) {
+    return true;
+  }
+  const auto* consumer_block = consumer_block_sref->GetStmt<BlockNode>();
+  const StmtSRef& parent_block_sref = GetParentBlockSRef(consumer_block_sref);
   // Gather all the producers
-  std::unordered_map<const VarNode*, std::vector<StmtSRef>> producers;
-  std::unordered_map<const VarNode*, std::vector<const TensorRegionNode*>> produce_regions;
-  const auto& successors = scope.GetSuccessors(consumer);
-
-  for (const auto& edge : successors) {
-    if (edge->type == DepType::kRAW) {
-      const auto* producer_block = edge->dst->GetStmt<BlockNode>();
-      for (const auto& output_region : producer_block->writes) {
-        const auto* bufferVar = output_region->buffer->data.operator->();
-        producers[bufferVar].push_back(edge->dst);
-        produce_regions[bufferVar].push_back(output_region.operator->());
-      }
+  struct Producer {
+    /*! \brief The block that writes the buffer */
+    StmtSRef block_sref;
+    /*! \brief The region the buffer is written */
+    TensorRegion region;
+    /*! \brief Constructor */
+    Producer(const StmtSRef& block_sref, const TensorRegion& region)
+        : block_sref(block_sref), region(region) {}
+  };
+  // Maps a buffer var to its producers
+  std::unordered_map<const VarNode*, std::vector<Producer>> buffer_producers;
+  // Collect all producers to a buffer by enumerating all RAW predecessors of the consumer
+  for (const DepEdge& edge : scopes.at(parent_block_sref).GetPredecessors(consumer_block_sref)) {
+    if (edge->type != DepType::kRAW) {
+      continue;
+    }
+    // i.e. the RAW predecessor is producer
+    const StmtSRef& producer_block_sref = edge->dst;
+    for (const TensorRegion& output_region : producer_block_sref->GetStmt<BlockNode>()->writes) {
+      const VarNode* buffer_var = output_region->buffer->data.get();
+      buffer_producers[buffer_var].emplace_back(producer_block_sref, output_region);
     }
   }
-
-  for (const auto& input_region : block->reads) {
-    const auto* bufferVar = input_region->buffer->data.operator->();
-    std::vector<StmtSRef>& nodes = producers[bufferVar];
-    if (nodes.empty()) continue;
-    std::vector<const TensorRegionNode*> regions = produce_regions[bufferVar];
-    // calculate the LCA
-    nodes.push_back(consumer);
-    const StmtSRef& lca = LowestCommonAncestor(nodes, scope_sref);
-    nodes.pop_back();
-    // prepare check function
-    auto check_cover = [](const TensorRegion& read, const TensorRegion& write) -> bool {
-      CHECK_EQ(read->region.size(), write->region.size());
-      for (size_t i = 0; i < read->region.size(); ++i) {
-        auto read_min = read->region[i]->min;
-        auto write_min = write->region[i]->min;
-        auto read_max = read_min + read->region[i]->extent;
-        auto write_max = write_min + write->region[i]->extent;
-        arith::Analyzer analyzer;
-        if (!analyzer.CanProve(read_min >= write_min) ||
+  // Check the region cover property for each buffer that the consumer reads
+  for (const TensorRegion& consumer_region : consumer_block->reads) {
+    const VarNode* buffer_var = consumer_region->buffer->data.get();
+    if (!buffer_producers.count(buffer_var)) {
+      continue;
+    }
+    // Producers of the current buffer
+    const std::vector<Producer>& producers = buffer_producers.at(buffer_var);
+    // Figure out LCA of consumer and all producers
+    StmtSRef lca = [&producers, &consumer_block_sref, &parent_block_sref]() {
+      // inputs include consumer and all producers
+      std::vector<StmtSRef> inputs = {consumer_block_sref};
+      for (const Producer& producer : producers) {
+        inputs.push_back(producer.block_sref);
+      }
+      return LowestCommonAncestor(inputs, parent_block_sref);
+    }();
+    arith::Analyzer analyzer;
+    // Relax the read region with the loops under LCA
+    TensorRegion read = RelaxRegion(consumer_block_sref, lca, consumer_region);
+    int ndim = read->region.size();
+    for (const Producer& producer : producers) {
+      // Relax the write region with the loops under LCA
+      TensorRegion write = RelaxRegion(producer.block_sref, lca, producer.region);
+      CHECK_EQ(read->region.size(), write->region.size())
+          << "InternalError: Inconsistent rank of the same buffer between reads and writes";
+      // Check if the write domain covers the read domain
+      for (int i = 0; i < ndim; ++i) {
+        PrimExpr read_min = read->region[i]->min;
+        PrimExpr read_max = read_min + read->region[i]->extent;
+        PrimExpr write_min = write->region[i]->min;
+        PrimExpr write_max = write_min + write->region[i]->extent;
+        if (!analyzer.CanProve(write_min <= read_min) ||
             !analyzer.CanProve(read_max <= write_max)) {
-          LOG(WARNING) << "Cannot prove the region cover: producer " << read << " consumer "
+          LOG(WARNING) << "InternalError: Cannot prove the region cover property on dimension " << i
+                       << ". The read range is [" << read_min << ", " << read_max
+                       << "), and the write range is [" << write_min << ", " << write_max
+                       << "). The producer is :\n " << read << "\nThe consumer is:\n"
                        << write;
           return false;
         }
       }
-      return true;
-    };
-    TensorRegion read = RelaxRegion(consumer, lca, input_region);
-    for (size_t i = 0; i < nodes.size(); ++i) {
-      TensorRegion write = RelaxRegion(nodes[i], lca, GetRef<TensorRegion>(regions[i]));
-      if (!check_cover) return false;
     }
   }
   return true;
@@ -399,7 +418,59 @@ class SRefValidator : public StmtVisitor {
   }
 };
 
+// TODO(@spectrometerHBH): The bugfix to validator triggers the following issues in unittests:
+// [FAILED] tests/python/tir/test_schedule_replace.py::test_replace_copy
+// [FAILED] tests/python/tir/test_schedule_replace.py::test_replace_partial_copy0
+// [FAILED] tests/python/tir/test_schedule_replace.py::test_replace_partial_copy1
+// [FAILED] tests/python/tir/test_schedule_replace.py::test_replace_root_copy1
+#if (false)
+class SRefValidator : public StmtVisitor {
+ public:
+  explicit SRefValidator(const ScheduleNode* sch) : sch(sch), ancestors({nullptr}) {}
+
+  void VisitStmt_(const BlockNode* block) override {
+    CHECK(sch->stmt2ref.count(block))
+        << "InternalError: A BlockNode should appear in sref map, but it didn't\n"
+        << GetRef<Stmt>(block);
+    const StmtSRef& sref = sch->stmt2ref.at(block);
+    CHECK(sch->scopes.count(sref))
+        << "InternalError: Cannot find scope information of the BlockNode:\n"
+        << GetRef<Stmt>(block);
+    CHECK(sref->parent == ancestors.back())
+        << "InternalError: Parent information mismatch for BlockNode:\n"
+        << GetRef<Stmt>(block) << "\nIts parent is supposed to be:\n"
+        << GetRef<Stmt>(ancestors.back()->stmt) << "\nHowever, its parent is incorrect and is:\n"
+        << (sref->parent ? Optional<Stmt>(GetRef<Stmt>(sref->parent->stmt))
+                         : Optional<Stmt>(NullOpt));
+    ancestors.push_back(sref.get());
+    StmtVisitor::VisitStmt_(block);
+    ancestors.pop_back();
+  }
+
+  void VisitStmt_(const LoopNode* loop) override {
+    CHECK(sch->stmt2ref.count(loop))
+        << "InternalError: A LoopNode should appear in sref map, but it didn't\n"
+        << GetRef<Stmt>(loop);
+    const StmtSRef& sref = sch->stmt2ref.at(loop);
+    Optional<Stmt> stmt = NullOpt;
+    CHECK(sref->parent == ancestors.back())
+        << "InternalError: Parent information mismatch for LoopNode:\n"
+        << GetRef<Stmt>(loop) << "\nIts parent is supposed to be:\n"
+        << GetRef<Stmt>(ancestors.back()->stmt) << "\nHowever, its parent is incorrect and is:\n"
+        << (sref->parent ? Optional<Stmt>(GetRef<Stmt>(sref->parent->stmt))
+                         : Optional<Stmt>(NullOpt));
+    ancestors.push_back(sref.get());
+    StmtVisitor::VisitStmt_(loop);
+    ancestors.pop_back();
+  }
+
+  const ScheduleNode* sch;
+  std::vector<const StmtSRefNode*> ancestors;
+};
+#endif
+
 bool ScheduleNode::ValidateSRef() const {
+  // TODO(@junrushao1994): idk if we need to return
   SRefValidator(this)(func->body);
   return true;
 }
