@@ -188,19 +188,9 @@ StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef
   // alg: count the visit times for each node from the bottom to the root
   CHECK_GE(nodes.size(), 2);
   std::unordered_map<StmtSRef, size_t, ObjectHash, ObjectEqual> visit_cnt;
-
-  auto f_visit = [&visit_cnt](const StmtSRef& node) {
-    auto it = visit_cnt.find(node);
-    if (it == visit_cnt.end()) {
-      visit_cnt[node] = 1;
-    } else {
-      it->second++;
-    }
-  };
-
   for (auto node : nodes) {
     while (!node.same_as(root)) {
-      f_visit(node);
+      ++visit_cnt[node];
       if (visit_cnt[node] == nodes.size()) {
         return node;
       }
