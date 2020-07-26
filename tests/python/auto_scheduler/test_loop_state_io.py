@@ -159,9 +159,9 @@ def test_matmul():
     loop_tree = tvm.auto_scheduler.LoopTree.from_prim_func(func)
     str_repr = _check_and_remove_first_line(str(loop_tree))
     assert str_repr == """
-for i space[0, 1024)
-  for j space[0, 1024)
-    for k space[0, 1024)
+for i data_par[0, 1024)
+  for j data_par[0, 1024)
+    for k reduce[0, 1024)
       C = ...
 """.strip()
     # schedule: blocking
@@ -177,12 +177,12 @@ for i space[0, 1024)
     loop_tree = tvm.auto_scheduler.LoopTree.from_prim_func(sch.func)
     str_repr = _check_and_remove_first_line(str(loop_tree))
     assert str_repr == """
-for i_outer space[0, 32)
-  for j_outer space[0, 32)
-    for k_outer space[0, 256)
-      for k_inner space[0, 4)
-        for i_inner space[0, 32)
-          for j_inner space[0, 32)
+for i_outer data_par[0, 32)
+  for j_outer data_par[0, 32)
+    for k_outer reduce[0, 256)
+      for k_inner reduce[0, 4)
+        for i_inner data_par[0, 32)
+          for j_inner data_par[0, 32)
             C = ...
 """.strip()
     # decompose reduction
@@ -190,16 +190,16 @@ for i_outer space[0, 32)
     loop_tree = tvm.auto_scheduler.LoopTree.from_prim_func(sch.func)
     str_repr = _check_and_remove_first_line(str(loop_tree))
     assert str_repr == """
-for i_outer space[0, 32)
-  for j_outer_init space[0, 32)
-    for i_inner_init space[0, 32)
-      for j_inner_init space[0, 32)
+for i_outer special[0, 32)
+  for j_outer_init data_par[0, 32)
+    for i_inner_init data_par[0, 32)
+      for j_inner_init data_par[0, 32)
         C = ...
-  for j_outer space[0, 32)
-    for k_outer space[0, 256)
-      for k_inner space[0, 4)
-        for i_inner space[0, 32)
-          for j_inner space[0, 32)
+  for j_outer data_par[0, 32)
+    for k_outer reduce[0, 256)
+      for k_inner reduce[0, 4)
+        for i_inner data_par[0, 32)
+          for j_inner data_par[0, 32)
             C = ...
 """.strip()
     # reorder
@@ -210,12 +210,12 @@ for i_outer space[0, 32)
     loop_tree = tvm.auto_scheduler.LoopTree.from_prim_func(sch.func)
     str_repr = _check_and_remove_first_line(str(loop_tree))
     assert str_repr == """
-for i_outer space[0, 32)
-  for j_outer space[0, 32)
-    for k_outer space[0, 256)
-      for i_inner space[0, 32)
-        for k_inner space[0, 4)
-          for j_inner space[0, 32)
+for i_outer data_par[0, 32)
+  for j_outer data_par[0, 32)
+    for k_outer reduce[0, 256)
+      for i_inner data_par[0, 32)
+        for k_inner reduce[0, 4)
+          for j_inner data_par[0, 32)
             C = ...
 """.strip()
     # decompose reduction
@@ -223,16 +223,16 @@ for i_outer space[0, 32)
     loop_tree = tvm.auto_scheduler.LoopTree.from_prim_func(sch.func)
     str_repr = _check_and_remove_first_line(str(loop_tree))
     assert str_repr == """
-for i_outer space[0, 32)
-  for j_outer_init space[0, 32)
-    for i_inner_init space[0, 32)
-      for j_inner_init space[0, 32)
+for i_outer special[0, 32)
+  for j_outer_init data_par[0, 32)
+    for i_inner_init data_par[0, 32)
+      for j_inner_init data_par[0, 32)
         C = ...
-  for j_outer space[0, 32)
-    for k_outer space[0, 256)
-      for i_inner space[0, 32)
-        for k_inner space[0, 4)
-          for j_inner space[0, 32)
+  for j_outer data_par[0, 32)
+    for k_outer reduce[0, 256)
+      for i_inner data_par[0, 32)
+        for k_inner reduce[0, 4)
+          for j_inner data_par[0, 32)
             C = ...
 """.strip()
 
@@ -242,13 +242,13 @@ def test_matmul_packed():
     loop_tree = tvm.auto_scheduler.LoopTree.from_prim_func(func)
     str_repr = _check_and_remove_first_line(str(loop_tree))
     assert str_repr == """
-for i space[0, 32)
-  for j space[0, 1024)
-    for k space[0, 32)
+for i data_par[0, 32)
+  for j data_par[0, 1024)
+    for k data_par[0, 32)
       packedB = ...
-for i space[0, 1024)
-  for j space[0, 1024)
-    for k space[0, 1024)
+for i data_par[0, 1024)
+  for j data_par[0, 1024)
+    for k reduce[0, 1024)
       C = ...
 """.strip()
 
@@ -262,16 +262,16 @@ for i space[0, 1024)
     loop_tree = tvm.auto_scheduler.LoopTree.from_prim_func(sch.func)
     str_repr = _check_and_remove_first_line(str(loop_tree))
     assert str_repr == """
-for i space[0, 32)
-  for j space[0, 1024)
-    for k space[0, 32)
+for i data_par[0, 32)
+  for j data_par[0, 1024)
+    for k data_par[0, 32)
       packedB = ...
-for i_outer space[0, 32)
-  for j_outer space[0, 32)
-    for k_outer space[0, 256)
-      for i_inner space[0, 32)
-        for k_inner space[0, 4)
-          for j_inner space[0, 32)
+for i_outer data_par[0, 32)
+  for j_outer data_par[0, 32)
+    for k_outer reduce[0, 256)
+      for i_inner data_par[0, 32)
+        for k_inner reduce[0, 4)
+          for j_inner data_par[0, 32)
             C = ...
 """.strip()
 
@@ -281,9 +281,9 @@ def test_fuse_ewise():
     loop_tree = tvm.auto_scheduler.LoopTree.from_prim_func(func)
     str_repr = _check_and_remove_first_line(str(loop_tree))
     assert str_repr == """
-for i space[0, 16384)
+for i data_par[0, 16384)
   B = ...
-for j space[0, 16384)
+for j data_par[0, 16384)
   C = ...
 """.strip()
 
@@ -293,13 +293,13 @@ def test_split_ewise():
     loop_tree = tvm.auto_scheduler.LoopTree.from_prim_func(func)
     str_repr = _check_and_remove_first_line(str(loop_tree))
     assert str_repr == """
-for io space[0, 8)
-  for ii space[0, 16)
-    for j space[0, 128)
+for io data_par[0, 8)
+  for ii data_par[0, 16)
+    for j data_par[0, 128)
       B = ...
-for i space[0, 128)
-  for jo space[0, 10)
-    for ji space[0, 13)
+for i data_par[0, 128)
+  for jo data_par[0, 10)
+    for ji data_par[0, 13)
       C = ...
 """.strip()
 
@@ -309,11 +309,11 @@ def test_split_fuse_ewise():
     loop_tree = tvm.auto_scheduler.LoopTree.from_prim_func(func)
     str_repr = _check_and_remove_first_line(str(loop_tree))
     assert str_repr == """
-for i space[0, 128)
-  for j space[0, 128)
+for i data_par[0, 128)
+  for j data_par[0, 128)
     B = ...
-for i space[0, 128)
-  for j space[0, 130)
+for i data_par[0, 128)
+  for j data_par[0, 130)
     C = ...
 """.strip()
 

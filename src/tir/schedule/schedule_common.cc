@@ -331,7 +331,6 @@ std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root) {
   }
 }
 
-/*! \brief Wrapper function for VarRelatedDetector */
 bool ExprContainsVar(const PrimExpr& expr, const Var& var) {
   bool result = false;
   const auto* expected = var.get();
