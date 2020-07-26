@@ -32,14 +32,14 @@ namespace auto_scheduler {
 
 /*! \brief The type of an iterator. */
 enum class IterKind : int {
-  /*! \brief Spatial iterator. */
-  kSpatial = 0,
+  /*! \brief Data parallel iterator. */
+  kDataPar = 0,
   /*! \brief Reduction iterator. */
   kReduction = 1,
   /*! \brief Fused spatial and reduction iterator. */
   kMixed = 2,
   /*! \brief Special iterator. (e.g. virtual root iterator) */
-  kSpecial = 3
+  kSpecial = 3,
 };
 
 /*!
@@ -48,11 +48,7 @@ enum class IterKind : int {
  * \return The corresponding string
  */
 inline std::string IterKind2String(IterKind kind) {
-  static std::string results[] = {
-      "space",
-      "reduce",
-      "mixed",
-  };
+  static std::string results[] = {"data_par", "reduce", "mixed", "special"};
   return results[static_cast<int>(kind)];
 }
 
