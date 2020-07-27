@@ -31,7 +31,8 @@ Typically, a scope handler function has no return value and accepts parser and n
 
 import tvm.tir
 
-from .scope_emitter import ScopeEmitter
+
+# With scope handler
 
 
 def block(parser, node, block_vars_info, reads, writes, predicate=True, annotations=None, name=""):
@@ -55,15 +56,43 @@ def block(parser, node, block_vars_info, reads, writes, predicate=True, annotati
     if annotations is None:
         annotations = []
 
-    for stmt in node.body:
-        parser.visit(stmt)
+    body = get_body(parser, node)
+    allocations = parser.scope_emitter.pop_scope(is_block=True)
 
-    allocations, body = parser.scope_emitter.pop_scope(is_block=True)
     inner = tvm.tir.Block(block_vars, reads, writes, body, allocations, annotations, name)
-    parser.scope_emitter.emit(tvm.tir.BlockRealize(values, predicate, inner))
+    return tvm.tir.BlockRealize(values, predicate, inner)
 
 
-def range(parser, node, begin, end, annotation=None):
+def Assert(parser, node, condition, message, body):
+    """ With scope handler function assert(condition, message, body) """
+
+    return tvm.tir.AssertStmt(condition, tvm.runtime.convert(message), body)
+
+
+def realize(parser, node, buffer_bounds, condition, body):
+    """ With scope handler function realize(buffer_bounds, condition, body) """
+
+    buffer = buffer_bounds.buffer
+    bounds = buffer_bounds.region
+    return tvm.tir.BufferRealize(buffer, bounds, condition, body)
+
+
+def attr(parser, node, attr_node, attr_key, value, body):
+    """ With scope handler function attr(attr_node, attr_key, value, bdoy) """
+
+    return tvm.tir.AttrStmt(attr_node, attr_key, tvm.runtime.convert(value), body)
+
+
+def allocate(parser, node, buffer_var, dtype, extents, condition, body):
+    """ With scope handler function allocate(buffer_var, dtype, extents, condition, body) """
+
+    return tvm.tir.Allocate(buffer_var, dtype, extents, condition, body)
+
+
+# For scope handler
+
+
+def range(parser, node, begin, end, for_type="serial"):
     """ For scope handler function range(begin, end, annotation)"""
     ana = tvm.arith.Analyzer()
     extent = end if begin == 0 else ana.simplify(end - begin)
@@ -71,17 +100,43 @@ def range(parser, node, begin, end, annotation=None):
     loop_var = tvm.te.var(loop_var_name, dtype="int32")
 
     parser.scope_emitter.new_scope()
-    parser.scope_emitter.update_symbol(loop_var_name, ScopeEmitter.Symbol.LoopVar, loop_var)
+    parser.scope_emitter.update_symbol(loop_var_name, loop_var)
+    body = get_body(parser, node)
+    parser.scope_emitter.pop_scope()
 
-    for stmt in node.body:
-        parser.visit(stmt)
+    for_type_dict = {"serial": 0, "parallel": 1, "vectorized": 2, "Unrolled": 3, }
+    return tvm.tir.For(loop_var, begin, extent, for_type_dict[for_type], 0, body)
+
+
+def grid(parser, node, begin, end, annotation=None):
+    """ For scope handler function grid(begin, end, annotation)"""
+    ana = tvm.arith.Analyzer()
+    extent = end if begin == 0 else ana.simplify(end - begin)
+    loop_var_name = node.target.id
+    loop_var = tvm.te.var(loop_var_name, dtype="int32")
+
+    parser.scope_emitter.new_scope()
+    parser.scope_emitter.update_symbol(loop_var_name, loop_var)
+    body = get_body(parser, node)
+    parser.scope_emitter.pop_scope()
 
     if annotation is None:
         annotation = []
     else:
-        annotation = [tvm.tir.Annotation(key,
-                                         tvm.runtime.convert(val) if isinstance(val, str) else
-                                         val) for key, val in annotation.items()]
+        annotation = [
+            tvm.tir.Annotation(key, tvm.runtime.convert(val) if isinstance(val, str) else val)
+            for key, val in annotation.items()
+        ]
 
-    parser.scope_emitter.emit(
-        tvm.tir.Loop(loop_var, begin, extent, annotation, parser.scope_emitter.pop_scope()))
+    return tvm.tir.Loop(loop_var, begin, extent, annotation, body)
+
+
+def get_body(parser, node):
+    parser.scope_emitter.node_stack[-1].extend(reversed(node.body))
+    body = []
+    while len(parser.scope_emitter.node_stack[-1]):
+        res = parser.visit(parser.scope_emitter.node_stack[-1].pop())
+        if res is not None:
+            body.append(res)
+    body = tvm.tir.SeqStmt(body) if len(body) > 1 else body[0]
+    return body

@@ -35,6 +35,10 @@ Example
 import tvm.tir
 
 
+def bool(imm):
+    return tvm.tir.const(imm.value, "bool")
+
+
 def int16(imm):
     return tvm.tir.const(imm.value, "int16")
 
@@ -45,6 +49,22 @@ def int32(imm):
 
 def int64(imm):
     return tvm.tir.const(imm.value, "int64")
+
+
+def uint8(imm):
+    return tvm.tir.const(imm.value, "uint8")
+
+
+def uint16(imm):
+    return tvm.tir.const(imm.value, "uint16")
+
+
+def uint32(imm):
+    return tvm.tir.const(imm.value, "uint32")
+
+
+def uint64(imm):
+    return tvm.tir.const(imm.value, "uint64")
 
 
 def float16(imm):
@@ -65,3 +85,24 @@ def floordiv(x, y):
 
 def floormod(x, y):
     return tvm.tir.floormod(x, y)
+
+
+def load(dtype, var, index, predicate):
+    return tvm.tir.Load(dtype, var, index, predicate)
+
+
+def cast(dtype, value):
+    return tvm.tir.Cast(dtype, value)
+
+
+def evaluate(value):
+    return tvm.tir.Evaluate(value)
+
+
+def store(var, index, value, predicate):
+    return tvm.tir.Store(var, value, index, predicate)
+
+
+def iter_var(var, dom, iter_type, thread_tag):
+    iter_type = getattr(tvm.tir.IterVar, iter_type)
+    return tvm.tir.IterVar(dom, var, iter_type, thread_tag)

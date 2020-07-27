@@ -23,25 +23,31 @@ node as its first 2 arguments.
 """
 # pylint: disable=unused-argument
 import tvm.tir
+from tvm import te
 
 
-def buffer_bind(parser, node, var, shape, dtype="float32"):
+def buffer_bind(parser, node, param, data, shape, dtype="float32", strides=[], elem_offset=0,
+                scope="global", align=128, offset_factor=1, buffer_type="default"):
     """ Special function buffer_bind(var, shape, dtype)
 
     Example
     -------
     .. code-block:: python
 
-        A = buffer_bind(a, (128, 128), dtype="float32")
+        A = buffer_bind(a, A_1, (128, 128), dtype="float32")
 
     """
 
-    if var not in parser.params:
-        parser.report_error("Can not bind non-input args to buffer")
-    return tvm.tir.decl_buffer(shape, dtype=dtype, name=parser._assign_target)
+    if param not in parser.params:
+        parser.report_error("Can not bind non-input param to buffer")
+    buffer = tvm.tir.decl_buffer(shape, dtype, parser._assign_target, data, strides, elem_offset,
+                                 scope, align, offset_factor, buffer_type)
+    parser.buffer_map[param] = buffer
+    return buffer
 
 
-def buffer_allocate(parser, node, shape, dtype="float32", scope=""):
+def buffer_allocate(parser, node, data, shape, dtype="float32", strides=[], elem_offset=0,
+                    scope="global", align=128, offset_factor=1, buffer_type="default"):
     """ Special function buffer_allocate(var, shape, dtype, scope)
 
     Example
@@ -51,9 +57,23 @@ def buffer_allocate(parser, node, shape, dtype="float32", scope=""):
         A = buffer_allocate((128, 128), dtype="float32")
 
     """
-    _buffer = tvm.tir.decl_buffer(shape, dtype=dtype, name=parser._assign_target, scope=scope)
-    parser.scope_emitter.alloc(tvm.tir.BufferAllocate(_buffer, scope))
-    return _buffer
+    buffer = tvm.tir.decl_buffer(shape, dtype, parser._assign_target, data, strides, elem_offset,
+                                 scope, align, offset_factor, buffer_type)
+    parser.scope_emitter.alloc(tvm.tir.BufferAllocate(buffer, scope))
+    return buffer
+
+
+def buffer_decl(parser, node, data, shape, dtype="float32", strides=[], elem_offset=0,
+                scope="global", align=128, offset_factor=1, buffer_type="default"):
+    align = align.value if not isinstance(align, int) else align
+    offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
+    buffer = tvm.tir.decl_buffer(shape, dtype, parser._assign_target, data, strides, elem_offset,
+                                 scope, align, offset_factor, buffer_type)
+    return buffer
+
+
+def var(parser, node, dtype):
+    return te.var(parser._assign_target, dtype)
 
 
 def block_vars(parser, node, begin, end, iter_type="data_par"):
@@ -70,19 +90,11 @@ def block_vars(parser, node, begin, end, iter_type="data_par"):
     extent = end if begin == 0 else ana.simplify(end - begin)
     block_var_dom = tvm.ir.Range.from_min_extent(begin, extent)
 
-    if iter_type == "data_par":
-        iter_type_id = 0
-    elif iter_type == "reduce":
-        iter_type_id = 2
-    elif iter_type == "scan":
-        iter_type_id = 3
-    elif iter_type == "opaque":
-        iter_type_id = 4
-    else:
-        raise ValueError("Unknown iter_type")
+    iter_type_dict = {"data_par": 0, "reduce": 2, "scan": 3, "opaque": 4}
+    if iter_type not in iter_type_dict:
+        parser.report_error("Unknown iter_type")
 
-    block_var = tvm.tir.IterVar(block_var_dom, parser._block_var_name, iter_type_id)
-    return block_var
+    return tvm.tir.IterVar(block_var_dom, parser._block_var_name, iter_type_dict[iter_type])
 
 
 class HybridLambda:
@@ -115,8 +127,11 @@ def comm_reducer(parser, node, combiner, identity):
 
     """
 
-    if isinstance(combiner, HybridLambda):
-        if len(combiner.args) == 2:
-            return HybridReducer(combiner, identity)
-    parser.report_error("comm_reducer expect a 2-argument lambda function as first argument")
-    return None
+    if isinstance(combiner, HybridLambda) and len(combiner.args) == 2:
+        return HybridReducer(combiner, identity)
+    else:
+        parser.report_error("comm_reducer expect a 2-argument lambda function as first argument")
+
+
+def set_func_attr(parser, node, attr_key, value):
+    parser.dict_attr[attr_key] = value

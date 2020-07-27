@@ -18,6 +18,8 @@
 # pylint: disable=inconsistent-return-statements
 
 import inspect
+import tvm
+from typed_ast import ast3 as ast
 
 
 class Registry(object):
@@ -73,12 +75,27 @@ class CallArgumentReader(object):
         return arg
 
 
-def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, need_return):
+def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, concise):
     """Helper function to wrap a function to be registered """
 
     def wrap_func(parser, node, args, kwargs):
         reader = CallArgumentReader(func_name, args, kwargs, parser)
         internal_args = list()
+
+        if concise:
+            if isinstance(node, ast.With):
+                parser.scope_emitter.new_scope()
+                parser.scope_emitter.node_stack[-1].extend(reversed(node.body))
+
+                body = []
+                while len(parser.scope_emitter.node_stack[-1]):
+                    res = parser.visit(parser.scope_emitter.node_stack[-1].pop())
+                    if res is not None:
+                        body.append(res)
+                body = tvm.tir.SeqStmt(body) if len(body) > 1 else body[0]
+                parser.scope_emitter.pop_scope()
+            else:
+                body = parser.visit(parser.scope_emitter.node_stack[-1].pop())
 
         if need_parser_and_node:
             internal_args.append(parser)
@@ -87,19 +104,20 @@ def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, ne
         for i, arg_info in enumerate(arg_list):
             if len(arg_info) == 1:
                 arg_name, = arg_info
-                internal_args.append(reader.get_func_compulsory_arg(i + 1, arg_name))
+                if concise and arg_name == "body":
+                    internal_args.append(body)
+                else:
+                    internal_args.append(reader.get_func_compulsory_arg(i + 1, arg_name))
             else:
                 arg_name, default = arg_info
                 internal_args.append(reader.get_func_optional_arg(i + 1, arg_name, default=default))
 
-        if need_return:
-            return func_to_register(*internal_args)
-        func_to_register(*internal_args)
+        return func_to_register(*internal_args)
 
     return wrap_func
 
 
-def register_func(category, origin_func, need_parser_and_node, need_return):
+def register_func(category, origin_func, need_parser_and_node, concise):
     """Helper function to register a function under category
 
     Parameters
@@ -113,9 +131,6 @@ def register_func(category, origin_func, need_parser_and_node, need_return):
 
     need_parser_and_node: bool
         Whether the function need parser and node in its arguments
-
-    need_return: bool
-        Whether the function has return value
     """
 
     full_arg_spec = inspect.getfullargspec(origin_func)
@@ -146,20 +161,19 @@ def register_func(category, origin_func, need_parser_and_node, need_return):
     Registry.host_dict[category][origin_func.__qualname__] = \
         func_wrapper(origin_func.__qualname__,
                      origin_func, arg_list,
-                     need_parser_and_node=need_parser_and_node,
-                     need_return=need_return)
+                     need_parser_and_node=need_parser_and_node, concise=concise)
 
 
 def register_intrin(origin_func):
     """Register function under category intrin"""
-    register_func("intrin", origin_func, need_parser_and_node=False, need_return=True)
+    register_func("intrin", origin_func, need_parser_and_node=False, concise=False)
 
 
-def register_scope_handler(origin_func, scope_name):
+def register_scope_handler(origin_func, scope_name, concise=False):
     """Register function under category with_scope or for_scope"""
-    register_func(scope_name, origin_func, need_parser_and_node=True, need_return=False)
+    register_func(scope_name, origin_func, need_parser_and_node=True, concise=concise)
 
 
 def register_special_stmt(origin_func):
     """Register function under category special_stmt"""
-    register_func("special_stmt", origin_func, need_parser_and_node=True, need_return=True)
+    register_func("special_stmt", origin_func, need_parser_and_node=True, concise=False)
