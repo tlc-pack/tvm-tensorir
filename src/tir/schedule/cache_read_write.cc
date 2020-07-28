@@ -133,7 +133,7 @@ class CachePositionDetector : public StmtVisitor {
 class CacheRewriter : public StmtExprMutator {
  public:
   explicit CacheRewriter(
-      const std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual>& buffer_map,
+      const std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual>& buffer_map,
       const StmtSRef& insert_sref, const size_t insert_pos, const BufferAllocate& cache_allocate,
       const Stmt& stmt)
       : buffer_map_(buffer_map),
@@ -159,7 +159,7 @@ class CacheRewriter : public StmtExprMutator {
   }
 
  protected:
-  const std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual>& buffer_map_;
+  const std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual>& buffer_map_;
   Array<TensorRegion> UpdateBufferViaMap(const Array<TensorRegion>& tensor_regions) {
     auto fmutate = [this](const TensorRegion& tensor_region) {
       auto it = buffer_map_.find(tensor_region->buffer);
@@ -217,7 +217,7 @@ class CacheRewriter : public StmtExprMutator {
 class CacheReadRewriter : public CacheRewriter {
  public:
   explicit CacheReadRewriter(
-      const std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual>& buffer_map,
+      const std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual>& buffer_map,
       const StmtSRef& insert_sref, const size_t insert_pos, const BufferAllocate& cache_allocate,
       const Stmt& stmt)
       : CacheRewriter(buffer_map, insert_sref, insert_pos, cache_allocate, stmt) {}
@@ -266,7 +266,7 @@ class CacheReadRewriter : public CacheRewriter {
 class CacheWriteRewriter : public CacheRewriter {
  public:
   explicit CacheWriteRewriter(
-      const std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual>& buffer_map,
+      const std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual>& buffer_map,
       const StmtSRef& insert_sref, const size_t insert_pos, const BufferAllocate& cache_allocate,
       const Stmt& stmt)
       : CacheRewriter(buffer_map, insert_sref, insert_pos, cache_allocate, stmt) {}
@@ -427,7 +427,7 @@ StmtSRef ScheduleNode::cache_read(const Buffer& buffer, const std::string& stora
     scope_block = scope_sref->GetStmt<BlockNode>();
 
     // Check the block is not a output block
-    std::unordered_set<Buffer, ObjectHash, ObjectEqual> seen_buffer;
+    std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual> seen_buffer;
     for (const auto& x : block->writes) {
       for (const auto& output_buffer : scope_block->writes)
         CHECK(!x->buffer.same_as(output_buffer->buffer)) << "Can not cache_read an output block";
@@ -469,7 +469,7 @@ StmtSRef ScheduleNode::cache_read(const Buffer& buffer, const std::string& stora
   Block cache_block = x.second;
 
   BufferAllocate cache_allocate(cache_buffer, storage_scope);
-  std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual> buffer_map;
+  std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> buffer_map;
   buffer_map[buffer] = cache_buffer;
 
   CacheReadRewriter rewriter(buffer_map, insert_sref, insert_pos, cache_allocate, stmt);
@@ -522,7 +522,7 @@ StmtSRef ScheduleNode::cache_write(const Buffer& buffer, const std::string& stor
   Block cache_block = x.second;
 
   BufferAllocate cache_allocate(cache_buffer, storage_scope);
-  std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual> buffer_map{};
+  std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> buffer_map{};
   buffer_map[buffer] = cache_buffer;
 
   CacheWriteRewriter rewriter(buffer_map, detector.pos_sref_, detector.pos_index_, cache_allocate,

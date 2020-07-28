@@ -187,7 +187,7 @@ BlockRealize GetBlockRealize(const StmtSRef& block_sref) {
 StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef& root) {
   // alg: count the visit times for each node from the bottom to the root
   CHECK_GE(nodes.size(), 2);
-  std::unordered_map<StmtSRef, size_t, ObjectHash, ObjectEqual> visit_cnt;
+  std::unordered_map<StmtSRef, size_t, ObjectPtrHash, ObjectPtrEqual> visit_cnt;
   for (auto node : nodes) {
     while (!node.same_as(root)) {
       ++visit_cnt[node];

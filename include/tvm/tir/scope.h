@@ -76,11 +76,11 @@ class DepEdge : public ObjectRef {
 class ScopeNode : public Object {
  public:
   /*! \brief The forward dependency edges of the block */
-  std::unordered_map<StmtSRef, Array<DepEdge>, ObjectHash, ObjectEqual> forward_edges;
+  std::unordered_map<StmtSRef, Array<DepEdge>, ObjectPtrHash, ObjectPtrEqual> forward_edges;
   /*! \brief The backward dependency edges of the block */
-  std::unordered_map<StmtSRef, Array<DepEdge>, ObjectHash, ObjectEqual> backward_edges;
+  std::unordered_map<StmtSRef, Array<DepEdge>, ObjectPtrHash, ObjectPtrEqual> backward_edges;
   /*! \brief The mapping from the buffer to the blocks who write it */
-  std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual> buffer_writers;
+  std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual> buffer_writers;
 
   void VisitAttrs(AttrVisitor* v) {}
 
@@ -166,7 +166,7 @@ class Scope : public ObjectRef {
    */
   void AddChildBlock(
       const StmtSRef& child_sref,
-      std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual>* buffer_readers);
+      std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual>* buffer_readers);
 
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Scope, ObjectRef, ScopeNode);
 
