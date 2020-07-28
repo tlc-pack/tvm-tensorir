@@ -27,6 +27,8 @@
 
 #include <string>
 
+#include "./access_analysis.h"
+
 namespace tvm {
 namespace auto_scheduler {
 
@@ -150,15 +152,15 @@ class LoopTreeNode : public Object {
   /*! \brief Children of the node, can be LoopTree or tir::Stmt */
   Array<ObjectRef> children;
   /*!
-   * \brief Converts the LoopTreeNode to human readable string format\
+   * \brief Converts the LoopTreeNode to human readable string format
    * \return The human readable string format
    */
   String ToString() const;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("iters", &iters);
+    v->Visit("block_realize", &block_realize);
     v->Visit("children", &children);
-    // block_realize is not visited
   }
 
   static constexpr const char* _type_key = "auto_scheduler.LoopTree";
@@ -189,6 +191,8 @@ class LoopTree : public ObjectRef {
 
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LoopTree, ObjectRef, LoopTreeNode);
 };
+
+Map<LoopTree, ScopeAccess> AccessAnalysis(const LoopTree& root);
 
 }  // namespace auto_scheduler
 }  // namespace tvm

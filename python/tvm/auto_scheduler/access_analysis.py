@@ -14,19 +14,18 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Tree representation of nested loops used in auto scheduler"""
-
+"""Access analysis for loop trees"""
 import tvm._ffi
 from tvm.runtime import Object
 
 
-@tvm._ffi.register_object("auto_scheduler.LoopTree")
-class LoopTree(Object):
-    """LoopTree created from TIR"""
-
-    @staticmethod
-    def from_prim_func(prim_func):
-        return FromPrimFunc(prim_func)
+@tvm._ffi.register_object("auto_scheduler.ScopeAccess")
+class ScopeAccess(Object):
+    """Resulf of access analysis of a scope"""
 
 
-tvm._ffi._init_api("auto_scheduler.loop_tree", __name__)
+def analyze(loop_tree):
+    return AccessAnalysis(loop_tree)
+
+
+tvm._ffi._init_api("auto_scheduler.access_analysis", __name__)
