@@ -50,7 +50,7 @@ class ScopeUpdater : public StmtVisitor {
 
   static void Update(const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref,
                      const StmtNode* stmt,
-                     std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual>* scopes) {
+                     std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual>* scopes) {
     CHECK(stmt->IsInstance<BlockNode>()) << "InternalError: scope is only defined on a block";
     const BlockNode* block = static_cast<const BlockNode*>(stmt);
     ScopeUpdater visitor(stmt2ref);
@@ -60,7 +60,7 @@ class ScopeUpdater : public StmtVisitor {
 
   const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref;
   Scope scope;
-  std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual> buffer_readers;
+  std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual> buffer_readers;
 };
 
 class SubReplacer : protected StmtMutator {
@@ -180,11 +180,11 @@ PrimFunc UpdateFuncBody(const PrimFuncNode* func, const Stmt& new_body) {
  */
 class SRefRemover : public StmtVisitor {
  public:
-  SRefRemover(
-      std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref,
-      std::unordered_map<StmtSRef, StmtSRefNode*, ObjectHash, ObjectEqual>&& used_border_parent,
-      std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual>* block_scopes,
-      std::unordered_set<StmtSRef, ObjectHash, ObjectEqual>&& reuse_sref)
+  SRefRemover(std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref,
+              std::unordered_map<StmtSRef, StmtSRefNode*, ObjectPtrHash, ObjectPtrEqual>&&
+                  used_border_parent,
+              std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual>* block_scopes,
+              std::unordered_set<StmtSRef, ObjectPtrHash, ObjectPtrEqual>&& reuse_sref)
       : reuse_sref_(reuse_sref),
         used_border_parent_(used_border_parent),
         stmt2ref_(stmt2ref),
@@ -217,10 +217,10 @@ class SRefRemover : public StmtVisitor {
     }
   }
 
-  std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> reuse_sref_;
-  std::unordered_map<StmtSRef, StmtSRefNode*, ObjectHash, ObjectEqual> used_border_parent_;
+  std::unordered_set<StmtSRef, ObjectPtrHash, ObjectPtrEqual> reuse_sref_;
+  std::unordered_map<StmtSRef, StmtSRefNode*, ObjectPtrHash, ObjectPtrEqual> used_border_parent_;
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
-  std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual>* block_scopes_;
+  std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual>* block_scopes_;
 };
 
 /*!
@@ -232,7 +232,7 @@ class SRefCreator : public StmtVisitor {
  public:
   SRefCreator(std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref,
               std::unordered_map<const VarNode*, StmtSRef>&& loop_var2ref,
-              std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual>* block_scopes,
+              std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual>* block_scopes,
               Map<Block, Block>&& block_sref_map, StmtSRefNode* parent)
       : parent_(parent),
         stmt2ref_(stmt2ref),
@@ -298,11 +298,11 @@ class SRefCreator : public StmtVisitor {
   StmtSRefNode* parent_;
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
   std::unordered_map<const VarNode*, StmtSRef> loop_var2ref_;
-  std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual>* block_scopes_;
+  std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual>* block_scopes_;
   Map<Block, Block> block_sref_map_;
 
-  std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> reuse_sref_;
-  std::unordered_map<StmtSRef, StmtSRefNode*, ObjectHash, ObjectEqual> used_border_parent_;
+  std::unordered_set<StmtSRef, ObjectPtrHash, ObjectPtrEqual> reuse_sref_;
+  std::unordered_map<StmtSRef, StmtSRefNode*, ObjectPtrHash, ObjectPtrEqual> used_border_parent_;
 };
 
 class LoopCollector : public StmtVisitor {
@@ -420,7 +420,7 @@ Array<StmtSRef> ScheduleNode::Blocks(StmtSRef scope) const {
   CHECK(GetRef<Stmt>(scope->stmt).as<BlockNode>());
   CHECK_GT(scopes.count(scope), 0);
   const auto& buffer_writers = scopes.at(scope)->buffer_writers;
-  std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> collect;
+  std::unordered_set<StmtSRef, ObjectPtrHash, ObjectPtrEqual> collect;
   for (const auto& x : buffer_writers) {
     for (const auto& block : x.second) {
       collect.insert(block);
@@ -467,120 +467,6 @@ Array<StmtSRef> ScheduleNode::GetLoopsInScope(const StmtSRef& block) const {
     sref = GetRef<StmtSRef>(sref->parent);
   }
   return Array<StmtSRef>(ret.rbegin(), ret.rend());
-}
-
-StmtSRef ScheduleNode::fuse(const StmtSRef& outer, const StmtSRef& inner) {
-  // Equivalence
-  // - The total repeat number has not changed for each direct child block.
-  // - The execution order has not changed. (The block executes with the same
-  //   args and the same order with before.)
-
-  // Can only fuse neighbor loop without any extra branches.
-  // Future enhancement: this condition can be eliminated by lifting all siblings of inner
-  // as the children of the father of outer
-  const auto* outer_loop = GetRef<Stmt>(outer->stmt).as<LoopNode>();
-  const auto* inner_loop = GetRef<Stmt>(inner->stmt).as<LoopNode>();
-  CHECK(outer_loop != nullptr && inner_loop != nullptr);
-
-  CHECK(inner->parent == outer.get());
-  auto outer_children = GetChildren(GetRef<Stmt>(outer_loop));
-  CHECK(outer_children.size() == 1 && outer_children[0].get() == inner_loop);
-  // Check both loops are in the same scope
-  CHECK_EQ(GetParentBlockSRef(outer), GetParentBlockSRef(inner));
-
-  // Currently, can not fuse Loops with annotations
-  if (!outer_loop->annotations.empty() || !inner_loop->annotations.empty()) {
-    LOG(FATAL) << "InvalidSchedule: "
-               << "Cannot fuse loops that already has annotations";
-  }
-
-  PrimExpr min = 0;
-  PrimExpr extent = outer_loop->extent * inner_loop->extent;
-
-  Var fused_var =
-      outer_loop->loop_var.copy_with_suffix("_" + inner_loop->loop_var.get()->name_hint + "_fused");
-
-  auto vmap = [&](const VarNode* v) -> PrimExpr {
-    if (GetRef<Var>(v).same_as(outer_loop->loop_var)) {
-      return floordiv(fused_var, inner_loop->extent) + outer_loop->min;
-    } else if (GetRef<Var>(v).same_as(inner_loop->loop_var)) {
-      return floormod(fused_var, inner_loop->extent) + inner_loop->min;
-    } else {
-      return NullValue<PrimExpr>();
-    }
-  };
-
-  Loop fused_node = Loop(fused_var, min, extent, outer_loop->annotations,
-                         SubstituteInScope(inner_loop->body, vmap));
-
-  // relink
-  this->Replace(outer, fused_node);
-
-  return stmt2ref[fused_node.operator->()];
-}
-
-class PredicateUpdater : public StmtMutator {
- public:
-  explicit PredicateUpdater(PrimExpr predicate) : predicate_(std::move(predicate)) {}
-
-  Stmt VisitStmt_(const BlockRealizeNode* op) final {
-    auto n = CopyOnWrite(op);
-    n->predicate = n->predicate && predicate_;
-    return Stmt(n);
-  }
-
- private:
-  PrimExpr predicate_;
-};
-
-Array<StmtSRef> ScheduleNode::split(const StmtSRef& node, const PrimExpr& nparts,
-                                    const PrimExpr& factor) {
-  // Equivalence
-  // - The total repeat number has not changed for each direct child block with updating predicate.
-  // - The execution order has not changed. (The block executes with the same
-  //   args and the same order with before.)
-
-  const auto* loop = GetRef<Stmt>(node->stmt).as<LoopNode>();
-
-  // Currently, can not split Loops with annotations
-  if (!loop->annotations.empty()) {
-    LOG(FATAL) << "InvalidSchedule: "
-               << "Cannot split loops that already has annotations";
-  }
-
-  Var outer_var = loop->loop_var.copy_with_suffix("_outer");
-  Var inner_var = loop->loop_var.copy_with_suffix("_inner");
-
-  const PrimExpr& outer_min = loop->min;
-  const PrimExpr& outer_extent = nparts;
-
-  const PrimExpr& inner_min = 0;
-  const PrimExpr& inner_extent = factor;
-
-  auto vmap = [&](const VarNode* v) -> PrimExpr {
-    if (GetRef<Var>(v).same_as(loop->loop_var)) {
-      return outer_var * factor + inner_var;
-    } else {
-      return NullValue<PrimExpr>();
-    }
-  };
-
-  arith::Analyzer analyzer;
-  analyzer.Bind(outer_var, Range::FromMinExtent(outer_min, outer_extent));
-  analyzer.Bind(inner_var, Range::FromMinExtent(inner_min, inner_extent));
-  PrimExpr predicate = outer_var * factor + inner_var < loop->extent;
-  Stmt new_stmt = SubstituteInScope(loop->body, vmap);
-  if (!analyzer.CanProve(predicate)) new_stmt = PredicateUpdater(predicate)(new_stmt);
-
-  Loop inner_loop(inner_var, inner_min, inner_extent, loop->annotations, new_stmt);
-  Loop outer_loop(outer_var, outer_min, outer_extent, loop->annotations, inner_loop);
-
-  // relink
-  this->Replace(node, outer_loop);
-
-  StmtSRef inner_sref = stmt2ref[inner_loop.as<StmtNode>()];
-  StmtSRef outer_sref = stmt2ref[outer_loop.as<StmtNode>()];
-  return Array<StmtSRef>{outer_sref, inner_sref};
 }
 
 StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const StmtSRef& loop_sref) {

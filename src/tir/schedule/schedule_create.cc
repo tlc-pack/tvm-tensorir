@@ -23,26 +23,47 @@
 namespace tvm {
 namespace tir {
 
+/*! \brief A helper class to create ScheduleNode::stmt2ref */
 class SRefMapCreator : public StmtVisitor {
  public:
+  /*!
+   * \brief The entry function of SRefMapCreator
+   * \param func The function to be analyzed
+   * \return The stmt2ref map
+   */
   static std::unordered_map<const StmtNode*, StmtSRef> Create(const PrimFunc& func) {
     SRefMapCreator visitor;
     visitor(func->body);
     std::unordered_map<const StmtNode*, StmtSRef> ret = std::move(visitor.stmt2ref);
     return ret;
   }
-
+  /*!
+   * \brief Add a new statement to the stack, which becomes the current scope
+   * \param stmt A loop statement or a block statement
+   */
   void PushSRef(const StmtNode* stmt) {
     StmtSRefNode* parent = frames.empty() ? nullptr : frames.back().get();
     frames.push_back(StmtSRef(stmt, parent));
   }
-
+  /*! \brief Pop the top of the scope and record it in stmt2ref map */
   void PopSRef() {
     const StmtSRef& sref = frames.back();
     stmt2ref[sref->stmt] = sref;
     frames.pop_back();
   }
-
+  // Create a StmtSRef for BlockNode
+  void VisitStmt_(const BlockNode* stmt) override {
+    PushSRef(stmt);
+    StmtVisitor::VisitStmt_(stmt);
+    PopSRef();
+  }
+  // Create a StmtSRef for LoopNode
+  void VisitStmt_(const LoopNode* stmt) override {
+    PushSRef(stmt);
+    StmtVisitor::VisitStmt_(stmt);
+    PopSRef();
+  }
+  // Set `seq_index` information for SeqStmtNode
   void VisitStmt_(const SeqStmtNode* seq_stmt) override {
     StmtVisitor::VisitStmt_(seq_stmt);
     int index = 0;
@@ -51,33 +72,40 @@ class SRefMapCreator : public StmtVisitor {
       if (const auto* realize = stmt.as<BlockRealizeNode>()) {
         node = realize->block.get();
       } else {
+        // TODO(@junrushao1994): seems that we should assert it as LoopNode?
         node = stmt.get();
       }
-      stmt2ref[node]->seq_index = index++;
+      stmt2ref.at(node)->seq_index = index++;
     }
   }
-
-  void VisitStmt_(const BlockNode* stmt) override {
-    PushSRef(stmt);
-    StmtVisitor::VisitStmt_(stmt);
-    PopSRef();
-  }
-
-  void VisitStmt_(const LoopNode* stmt) override {
-    PushSRef(stmt);
-    StmtVisitor::VisitStmt_(stmt);
-    PopSRef();
-  }
-
+  /*! \brief The stack frame used to indicate the current scope */
   std::vector<StmtSRef> frames;
+  /*! \brief The result stmt2ref */
   std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
 };
 
+/*! \brief A helper class to create ScheduleNode::scopes */
 class ScopeMapCreator : public StmtVisitor {
  public:
+  /*!
+   * \brief Entry function, use stmt2ref and the TIR PrimFunc's body for analysis
+   * \param stmt2ref The ScopeNode::stmt2ref that is just constructed by SRefMapCreator
+   * \param realize The body of the TIR PrimFunc
+   * \return The ScheduleNode::scopes created
+   */
+  static std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual> Create(
+      const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref,
+      const BlockRealizeNode* realize) {
+    ScopeMapCreator creator(stmt2ref);
+    creator(realize->block);
+    std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual> ret =
+        std::move(creator.scopes);
+    return ret;
+  }
+  /*! \brief Constructor. Requires ScheduleNode::stmt2ref to create ScheduleNode::scopes. */
   explicit ScopeMapCreator(const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref)
       : stmt2ref(stmt2ref) {}
-
+  // For each BlockNode Create its corresponding ScopeNode
   void VisitStmt_(const BlockNode* block) override {
     // Create a new scope
     frames.push_back(Frame());
@@ -94,24 +122,19 @@ class ScopeMapCreator : public StmtVisitor {
       top.scope.AddChildBlock(sref, &top.buffer_readers);
     }
   }
-
-  static std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> Create(
-      const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref,
-      const BlockRealizeNode* realize) {
-    ScopeMapCreator creator(stmt2ref);
-    creator(realize->block);
-    std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> ret = std::move(creator.scopes);
-    return ret;
-  }
-
+  /*! \brief A stack frame indicating the information being gathered but not completed */
   struct Frame {
+    /*! \brief The scope to be created. */
     Scope scope;
-    std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual> buffer_readers;
+    /*! \brief ScopeNode::buffer_writers exists, but ScopeNode::buffer_readers does not. */
+    std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual> buffer_readers;
   };
-
+  /*! \brief The ScheduleNode::stmt2ref provided. */
   const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref;
-  std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> scopes;
+  /*! \brief Stack frame of the DFS visit. */
   std::vector<Frame> frames;
+  /*! \brief The result ScheduleNode::scopes being created. */
+  std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual> scopes;
 };
 
 Schedule ScheduleNode::Create(PrimFunc func) {
