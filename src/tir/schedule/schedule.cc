@@ -42,14 +42,6 @@ StmtSRef ScheduleNode::GetSRef(const StmtNode* stmt) const {
 
 TVM_REGISTER_NODE_TYPE(BlockRVNode);
 TVM_REGISTER_NODE_TYPE(LoopRVNode);
-TVM_REGISTER_OBJECT_TYPE(ScheduleNode);
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleModule")  //
-    .set_body_method<Schedule>(&ScheduleNode::mod);
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetState")  //
-    .set_body_method<Schedule>(&ScheduleNode::state);
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSeed")  //
-    .set_body_method<Schedule>(&ScheduleNode::Seed);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCopy")  //
     .set_body_method<Schedule>(&ScheduleNode::Copy);
 

@@ -47,7 +47,7 @@ class ScheduleNode : public Object {
    */
   std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
   /*! \brief The block scopes of each block */
-  std::unordered_map<StmtSRef, Scope, ObjectHash, ObjectEqual> scopes;
+  std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual> scopes;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("func", &func);
@@ -122,20 +122,21 @@ class ScheduleNode : public Object {
   Scope GetParentScope(const StmtSRef& sref) const;
 
   /*!
-   * \brief fuse two consecutive loops of one computation.
-   * \param outer The outer loop
-   * \param inner The inner loop
-   * \return the fused loop
+   * \brief Fuse two consecutive loops of one computation.
+   * \param outer_sref The outer loop
+   * \param inner_sref The inner loop
+   * \return The fused loop
    */
-  StmtSRef fuse(const StmtSRef& outer, const StmtSRef& inner);
+  StmtSRef fuse(const StmtSRef& outer_sref, const StmtSRef& inner_sref);
 
   /*!
-   * \brief split a specified loop into two loops by factor.
-   * \param node The loop to be split
-   * \param factor The split factor
-   * \return the loops after splitting
+   * \brief Split a specified loop into two loops by factor.
+   * \param loop_sref The loop to be split
+   * \param nparts The extent of the new outer loop
+   * \param factor The extent of the new inner loop
+   * \return The loops after splitting
    */
-  Array<StmtSRef> split(const StmtSRef& node, const PrimExpr& nparts, const PrimExpr& factor);
+  Array<StmtSRef> split(const StmtSRef& loop_sref, const PrimExpr& nparts, const PrimExpr& factor);
 
   /*!
    * \brief Move the block under the loop and regenerate the
