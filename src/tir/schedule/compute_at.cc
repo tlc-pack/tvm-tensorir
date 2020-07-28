@@ -83,7 +83,7 @@ class StrideIntSet {
 std::vector<StrideIntSet> SolveCover(const Array<IterVar>& vars, const std::vector<Range>& produces,
                                      const std::vector<Range>& requirements) {
   std::vector<StrideIntSet> cover_iters(vars.size());
-  std::unordered_map<Var, size_t, ObjectHash, ObjectEqual> var_index;
+  std::unordered_map<Var, size_t, ObjectPtrHash, ObjectPtrEqual> var_index;
   arith::Analyzer analyzer;
 
   for (size_t i = 0; i < vars.size(); ++i) {
@@ -187,7 +187,7 @@ std::vector<Range> GatherRequirements(const Array<TensorRegion>& produce_regions
         std::vector<arith::IntSet>(tensor_region->region.size(), arith::IntSet::Nothing());
   }
 
-  std::unordered_map<Buffer, size_t, ObjectHash, ObjectEqual> buffer_index;
+  std::unordered_map<Buffer, size_t, ObjectPtrHash, ObjectPtrEqual> buffer_index;
   for (size_t i = 0; i < produce_regions.size(); ++i) {
     buffer_index[produce_regions[i]->buffer] = i;
   }
@@ -221,7 +221,8 @@ std::vector<Range> GatherRequirements(const Array<TensorRegion>& produce_regions
 
 class StmtReplacer : public StmtMutator {
  public:
-  explicit StmtReplacer(const std::unordered_map<Stmt, Stmt, ObjectHash, ObjectEqual>& repalce_map)
+  explicit StmtReplacer(
+      const std::unordered_map<Stmt, Stmt, ObjectPtrHash, ObjectPtrEqual>& repalce_map)
       : repalce_map_(repalce_map) {}
 
   Stmt VisitStmt(const Stmt& stmt) override {
@@ -234,7 +235,7 @@ class StmtReplacer : public StmtMutator {
   }
 
  private:
-  const std::unordered_map<Stmt, Stmt, ObjectHash, ObjectEqual>& repalce_map_;
+  const std::unordered_map<Stmt, Stmt, ObjectPtrHash, ObjectPtrEqual>& repalce_map_;
 };
 
 void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref) {
@@ -295,7 +296,7 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
   const auto& successors = scope.GetSuccessors(block_sref);
 
   // Check the block is not a output block
-  std::unordered_set<Buffer, ObjectHash, ObjectEqual> seen_buffer;
+  std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual> seen_buffer;
   for (const auto& x : block->writes) {
     for (const auto& output_buffer : scope_block->writes)
       CHECK(!x->buffer.same_as(output_buffer->buffer)) << "Can not compute_at an output block";
@@ -357,7 +358,7 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
   auto removed = RemoveLeaf(block_sref, root);
 
   StmtSRef lca = LowestCommonAncestor({block_sref, loop_sref}, root);
-  std::unordered_map<Stmt, Stmt, ObjectHash, ObjectEqual> replace_map;
+  std::unordered_map<Stmt, Stmt, ObjectPtrHash, ObjectPtrEqual> replace_map;
   replace_map[GetRef<Stmt>(loop_sref->stmt)] = new_stmt;
   replace_map[removed.first] = removed.second;
 

@@ -220,7 +220,7 @@ bool Scope::CanMergeReduction(const StmtSRef& init_sref, const StmtSRef& update_
 
 void Scope::AddChildBlock(
     const StmtSRef& child_sref,
-    std::unordered_map<Buffer, Array<StmtSRef>, ObjectHash, ObjectEqual>* _buffer_readers) {
+    std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual>* _buffer_readers) {
   const BlockNode* block = child_sref->GetStmt<BlockNode>();
   CHECK(block) << "InternalError: Scope::AddChildBlock only accepts a Block as child_sref";
   auto& buffer_readers = *_buffer_readers;

@@ -114,7 +114,7 @@ class LCADetector : public StmtExprVisitor {
   }
 
   /*! \brief The map from Buffer to its LCA Stmt/Expr */
-  std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual> buffers_lca_;
+  std::unordered_map<Buffer, ObjectRef, ObjectPtrHash, ObjectPtrEqual> buffers_lca_;
 
  private:
   /*! \brief The AST node information for querying LCA */
@@ -130,9 +130,9 @@ class LCADetector : public StmtExprVisitor {
   /*! \brief The current DFS depth */
   size_t depth_{0};
   /*! \brief The parent and depth info of each Loop/BufferLoad/BufferStore Node */
-  std::unordered_map<ObjectRef, ScopeInfo, ObjectHash, ObjectEqual> ast_scopes_info_;
+  std::unordered_map<ObjectRef, ScopeInfo, ObjectPtrHash, ObjectPtrEqual> ast_scopes_info_;
   /*! \brief The Buffer in function args */
-  std::unordered_set<Buffer, ObjectHash, ObjectEqual> arg_buffers_;
+  std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual> arg_buffers_;
 
   ObjectRef LowestCommonAncestor(ObjectRef lhs, ObjectRef rhs) {
     CHECK(ast_scopes_info_.count(lhs));
@@ -156,8 +156,9 @@ class LCADetector : public StmtExprVisitor {
  */
 class RegionGatherer : public StmtExprVisitor {
  public:
-  RegionGatherer(const std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual>& buffers_lca,
-                 const Map<Var, Buffer>& func_args)
+  RegionGatherer(
+      const std::unordered_map<Buffer, ObjectRef, ObjectPtrHash, ObjectPtrEqual>& buffers_lca,
+      const Map<Var, Buffer>& func_args)
       : buffers_lca_(buffers_lca) {
     for (const auto& arg : func_args) {
       std::vector<arith::IntSet> region;
@@ -203,12 +204,13 @@ class RegionGatherer : public StmtExprVisitor {
   }
 
   /*! \brief The used region of each Buffer */
-  std::unordered_map<Buffer, std::vector<arith::IntSet>, ObjectHash, ObjectEqual> buffers_region_;
+  std::unordered_map<Buffer, std::vector<arith::IntSet>, ObjectPtrHash, ObjectPtrEqual>
+      buffers_region_;
   /*! \brief The map from block vars to the expr value */
   std::unordered_map<const VarNode*, PrimExpr> block_var_;
 
  private:
-  const std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual>& buffers_lca_;
+  const std::unordered_map<Buffer, ObjectRef, ObjectPtrHash, ObjectPtrEqual>& buffers_lca_;
 
   /*! \brief The loops from the current node up to the root */
   std::vector<Loop> loop_stack_;
@@ -259,10 +261,11 @@ class RegionGatherer : public StmtExprVisitor {
  */
 class BufferFlattener : public StmtExprMutator {
  public:
-  BufferFlattener(const std::unordered_map<const VarNode*, PrimExpr>& block_var,
-                  const std::unordered_map<Buffer, std::vector<arith::IntSet>, ObjectHash,
-                                           ObjectEqual>& buffers_region,
-                  const std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual>& buffers_lca)
+  BufferFlattener(
+      const std::unordered_map<const VarNode*, PrimExpr>& block_var,
+      const std::unordered_map<Buffer, std::vector<arith::IntSet>, ObjectPtrHash, ObjectPtrEqual>&
+          buffers_region,
+      const std::unordered_map<Buffer, ObjectRef, ObjectPtrHash, ObjectPtrEqual>& buffers_lca)
       : buffers_region_(buffers_region), block_var_(block_var), buffers_lca_(buffers_lca) {}
 
   Stmt VisitStmt(const Stmt& stmt) override {
@@ -388,11 +391,11 @@ class BufferFlattener : public StmtExprMutator {
   }
 
  private:
-  const std::unordered_map<Buffer, std::vector<arith::IntSet>, ObjectHash, ObjectEqual>&
+  const std::unordered_map<Buffer, std::vector<arith::IntSet>, ObjectPtrHash, ObjectPtrEqual>&
       buffers_region_;
   const std::unordered_map<const VarNode*, PrimExpr>& block_var_;
-  const std::unordered_map<Buffer, ObjectRef, ObjectHash, ObjectEqual>& buffers_lca_;
-  std::unordered_map<Buffer, BufferAllocate, ObjectHash, ObjectEqual> pending_allocate_;
+  const std::unordered_map<Buffer, ObjectRef, ObjectPtrHash, ObjectPtrEqual>& buffers_lca_;
+  std::unordered_map<Buffer, BufferAllocate, ObjectPtrHash, ObjectPtrEqual> pending_allocate_;
 
   /*!
    * \brief Create a buffer with alternative shape

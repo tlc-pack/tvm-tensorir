@@ -23,6 +23,7 @@
 #ifndef TVM_TIR_SCHEDULE_SCHEDULE_COMMON_H_
 #define TVM_TIR_SCHEDULE_SCHEDULE_COMMON_H_
 
+#include <tvm/arith/analyzer.h>
 #include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
 
