@@ -89,6 +89,10 @@ class StructuralEqual : public BaseValueEqual {
    * \return The comparison result.
    */
   TVM_DLL bool operator()(const ObjectRef& lhs, const ObjectRef& rhs) const;
+
+  TVM_DLL bool EqualWithMap(const ObjectRef& lhs, const ObjectRef& rhs,
+                            const std::unordered_map<ObjectRef, ObjectRef, ObjectPtrHash,
+                                                     ObjectPtrEqual>& equal_map) const;
 };
 
 /*!

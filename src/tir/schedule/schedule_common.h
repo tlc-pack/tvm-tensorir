@@ -124,10 +124,10 @@ std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root);
 /*!
  * \brief Whether the expr contains var
  * \param expr the expected expr
- * \param var the expected var
- * \return Whether var appears in expr
+ * \param vars the expected expr with vars
+ * \return Whether any var appears in expr
  */
-bool ExprContainsVar(const PrimExpr& expr, const Var& var);
+bool ExprContainsVar(const PrimExpr& expr, const PrimExpr& vars);
 
 /*!
  * \brief Update the scope (dependency) information of a given block statement

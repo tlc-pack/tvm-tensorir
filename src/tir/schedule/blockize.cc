@@ -33,14 +33,13 @@ class CheckOneLine : public StmtVisitor {
 };
 
 StmtSRef ScheduleNode::blockize(const StmtSRef& sref) {
-  const auto* l = DowncastPtr<LoopNode>(sref->stmt);
+  const auto* l = sref->GetStmt<LoopNode>();
   CHECK(l) << "Only support blockize a loop for now";
   CheckOneLine checker;
   checker(GetRef<Stmt>(sref->stmt));
   CHECK(checker.legal) << "Only one line subtree can be blockize";
 
-  std::unordered_set<StmtSRef, ObjectHash, ObjectEqual> child_blocks;
-  ChildBlockGatherer(this, &child_blocks)(GetRef<Stmt>(sref->stmt));
+  Array<StmtSRef> child_blocks = GetChildBlocks(sref);
   CHECK_EQ(child_blocks.size(), 1);
   const auto& block_sref = *(child_blocks.begin());
   const auto& block_realize = GetBlockRealize(block_sref);
@@ -51,7 +50,7 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& sref) {
   auto now = block_sref;
   while (now != sref) {
     now = GetRef<StmtSRef>(now->parent);
-    const auto* loop = DowncastPtr<LoopNode>(now->stmt);
+    const auto* loop = now->GetStmt<LoopNode>();
     CHECK(loop);
     loops.push_back(loop);
     vmap[loop->loop_var.get()] = arith::IntSet::FromRange(Range(loop->min, loop->extent));

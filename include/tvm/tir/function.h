@@ -164,7 +164,7 @@ class IntrinsicNode : public Object {
     v->Visit("intrin_func", &intrin_func);
   }
 
-  static constexpr const char* _type_key = "Intrinsic";
+  static constexpr const char* _type_key = "tir.Intrinsic";
   TVM_DECLARE_FINAL_OBJECT_INFO(IntrinsicNode, Object);
 };
 

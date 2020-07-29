@@ -58,6 +58,9 @@ Intrinsic::Intrinsic(PrimFunc desc_func, PrimFunc intrin_func) {
   // check both functions' bodies are directly block
   CHECK(desc_func->body.as<BlockRealizeNode>());
   CHECK(intrin_func->body.as<BlockRealizeNode>());
+  // check the number of func var is equal
+  CHECK_EQ(desc_func->params.size(), intrin_func->params.size());
+  CHECK_EQ(desc_func->buffer_map.size(), intrin_func->buffer_map.size());
 
   auto n = make_object<IntrinsicNode>();
   n->desc_func = std::move(desc_func);
@@ -66,6 +69,7 @@ Intrinsic::Intrinsic(PrimFunc desc_func, PrimFunc intrin_func) {
 }
 
 TVM_REGISTER_NODE_TYPE(PrimFuncNode);
+TVM_REGISTER_NODE_TYPE(IntrinsicNode);
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<PrimFuncNode>([](const ObjectRef& ref, ReprPrinter* p) {
@@ -87,6 +91,11 @@ TVM_REGISTER_GLOBAL("tir.PrimFunc")
                        Map<tir::Var, Buffer> buffer_map, DictAttrs attrs) {
       return PrimFunc(params, body, ret_type, buffer_map, attrs);
     });
+
+TVM_REGISTER_GLOBAL("tir.Intrinsic")
+.set_body_typed([](PrimFunc desc_func, PrimFunc intrin_func) {
+  return Intrinsic(desc_func, intrin_func);
+});
 
 }  // namespace tir
 }  // namespace tvm
