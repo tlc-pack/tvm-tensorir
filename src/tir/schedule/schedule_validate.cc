@@ -16,15 +16,20 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
-#include <tvm/arith/analyzer.h>
-
 #include "../../arith/pattern_match.h"
 #include "./schedule_common.h"
 
 namespace tvm {
 namespace tir {
-
+/*!
+ * \brief Checks if an expression is of pattern `(outer * inner_extent + inner)`, where `outer` and
+ * `inner` are variables and `inner_extent` is an expression
+ * \param n The expression to be checked
+ * \param outer The `outer` in the pattern if it matches
+ * \param inner The `inner` in the pattern if it matches
+ * \param inner_extent The `inner_extent` in the pattern if it matches
+ * \return A boolean indicating if `n` matches this pattern
+ */
 bool IsFusePattern(const PrimExpr& n, Var* outer, Var* inner, PrimExpr* inner_extent) {
   arith::Analyzer analyzer;
   arith::PVar<Var> outer_p;
@@ -40,7 +45,14 @@ bool IsFusePattern(const PrimExpr& n, Var* outer, Var* inner, PrimExpr* inner_ex
   }
   return false;
 }
-
+/*!
+ * \brief Checks if an expression is of pattern `floordiv(lhs, rhs)`, where `lhs` is a variable
+ * and `rhs` is an expression
+ * \param n The expression to be checked
+ * \param lhs The `lhs` in the pattern if it matches
+ * \param rhs The `rhs` in the pattern if it matches
+ * \return A boolean indicating if `n` matches this pattern
+ */
 bool IsFloorDivPattern(const PrimExpr& n, Var* lhs, PrimExpr* rhs) {
   arith::Analyzer analyzer;
   arith::PVar<Var> lhs_p;
@@ -54,7 +66,14 @@ bool IsFloorDivPattern(const PrimExpr& n, Var* lhs, PrimExpr* rhs) {
   }
   return false;
 }
-
+/*!
+ * \brief Checks if an expression is of pattern `floordiv(lhs, rhs)`, where `lhs` is a variable
+ * and `rhs` is an expression
+ * \param n The expression to be checked
+ * \param lhs The `lhs` in the pattern if it matches
+ * \param rhs The `rhs` in the pattern if it matches
+ * \return A boolean indicating if `n` matches this pattern
+ */
 bool IsFloorModPattern(const PrimExpr& n, Var* lhs, PrimExpr* rhs) {
   arith::Analyzer analyzer;
   arith::PVar<Var> lhs_p;
@@ -68,9 +87,12 @@ bool IsFloorModPattern(const PrimExpr& n, Var* lhs, PrimExpr* rhs) {
   }
   return false;
 }
-
+/*!
+ * \brief Split the predicate into `(a < b) && (c < d) && ...`
+ * \param pred The predicate to be splitted
+ * \return A list of pairs, each element of which are lhs and rhs of the '<' sign
+ */
 std::vector<std::pair<PrimExpr, PrimExpr>> SplitPredicate(PrimExpr pred) {
-  // Split the predicate into `(a < b) && (c < d) && ...`
   std::vector<std::pair<PrimExpr, PrimExpr>> result;
   arith::PVar<PrimExpr> lhs, rhs, rest;
   for (;;) {
@@ -87,9 +109,12 @@ std::vector<std::pair<PrimExpr, PrimExpr>> SplitPredicate(PrimExpr pred) {
   }
   return result;
 }
-
+/*!
+ * \brief Check if all elements of the list are of type Var and are unique
+ * \param list The list to be checked
+ * \return A boolean indicating the check result
+ */
 bool IsAllUniqueVars(const std::vector<PrimExpr>& list) {
-  // Check if all elements in the given list are `Var` and unique
   std::unordered_set<const PrimExprNode*> exists;
   for (const PrimExpr& item : list) {
     if (!item->IsInstance<VarNode>()) {
@@ -104,8 +129,14 @@ bool IsAllUniqueVars(const std::vector<PrimExpr>& list) {
   return true;
 }
 
+/*!
+ * \brief A helper class that detects if there is any split/fuse patterns in an Expr
+ * If so, it provides two functions, replace and postproc, for replacing this pattern
+ * and removing them
+ */
 class FuseSplitDetecter : public ExprVisitor {
  public:
+  /*! \brief Check if the PrimExpr is in fuse pattern. If so, set replace and postproc for it */
   bool SetFuseFunctor(const PrimExpr& n) {
     Var outer, inner;
     PrimExpr inner_extent;
@@ -149,7 +180,7 @@ class FuseSplitDetecter : public ExprVisitor {
     };
     return true;
   }
-
+  /*! \brief Check if the PrimExpr is in split pattern. If so, set replace and postproc for it */
   bool SetSplitFunctor(const PrimExpr& n) {
     Var lhs;
     PrimExpr rhs;
@@ -192,39 +223,47 @@ class FuseSplitDetecter : public ExprVisitor {
     };
     return true;
   }
-
+  /*! \brief Constructor */
   explicit FuseSplitDetecter(std::unordered_map<const VarNode*, PrimExpr>* loop_var_extents)
       : loop_var_extents(loop_var_extents), replace(nullptr), postproc(nullptr) {}
-
+  // Detech this pattern for all sub-expressions
   void VisitExpr(const PrimExpr& n) override {
+    // If the functors have been set, exist
     if (replace != nullptr) {
       return;
     }
+    // Detech if there is fuse pattern
     if (SetFuseFunctor(n)) {
       return;
     }
+    // Detech if there is split pattern
     if (SetSplitFunctor(n)) {
       return;
     }
+    // If not, detech recursively
     ExprVisitor::VisitExpr(n);
   }
-
+  /*! \brief Extents to be manipulated by the functors */
   std::unordered_map<const VarNode*, PrimExpr>* loop_var_extents;
+  /*! \brief The replace functor to be used by FuseSplitNormalizer */
   std::function<Optional<PrimExpr>(PrimExpr)> replace;
+  /*! \brief The postproc functor to be used by FuseSplitNormalizer */
   std::function<void()> postproc;
 };
 
+/*! \brief A class helps to replace patterns once they are detected */
 class FuseSplitNormalizer : public ExprMutator {
  public:
+  /*! \brief Constructor */
   explicit FuseSplitNormalizer(const FuseSplitDetecter& detector)
       : detector(detector), replaced(false) {}
-
+  /*! \brief Destructor. Invoke postproc only if replacement happens at least once. */
   ~FuseSplitNormalizer() {
     if (replaced) {
       detector.postproc();
     }
   }
-
+  // Do replacement recursively for all sub-expressions
   PrimExpr VisitExpr(const PrimExpr& n) override {
     PrimExpr expr = ExprMutator::VisitExpr(n);
     Optional<PrimExpr> mutated = detector.replace(expr);
@@ -234,16 +273,19 @@ class FuseSplitNormalizer : public ExprMutator {
     this->replaced = true;
     return mutated.value();
   }
-
+  /*! \brief The detector that has detected some pattern */
   const FuseSplitDetecter& detector;
+  /*! \brief Indicating if replacement happens at least once */
   bool replaced;
 };
 
+/*! \brief A helper class to validate loops and store them into StmtSRefNode::binding_valid */
 class LoopValidator : public StmtVisitor {
  public:
+  /*! \brief Constructor */
   explicit LoopValidator(std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref)
       : stmt2ref(stmt2ref) {}
-
+  // Collect the extent for each loop variable
   void VisitStmt_(const LoopNode* loop) final {
     // Update `loop_var_extents` with the current loop
     const VarNode* loop_var = loop->loop_var.get();
@@ -254,20 +296,18 @@ class LoopValidator : public StmtVisitor {
     StmtVisitor::VisitStmt_(loop);
     loop_var_extents.erase(loop_var);
   }
-
+  // Validate loop binding for each block
   void VisitStmt_(const BlockRealizeNode* realize) final {
     // Check StmtSRef's binding validity on all blocks
     stmt2ref->at(realize->block.get())->binding_valid = ValidateBlockBinding(realize);
     StmtVisitor::VisitStmt_(realize);
   }
-
- private:
+  /*! \brief Validate the binding of a given block */
   bool ValidateBlockBinding(const BlockRealizeNode* realize) {
     // validate the bindings to loop variables
     std::vector<PrimExpr> bindings{realize->binding_values.begin(), realize->binding_values.end()};
     std::unordered_map<const VarNode*, PrimExpr> loop_vars{loop_var_extents};
     std::vector<std::pair<PrimExpr, PrimExpr>> predicates = SplitPredicate(realize->predicate);
-
     for (;;) {
       // Detect fuse/split pattern
       FuseSplitDetecter detector(&loop_vars);
@@ -303,9 +343,11 @@ class LoopValidator : public StmtVisitor {
     }
     return predicates.empty() && IsAllUniqueVars(bindings);
   }
-
+  /*! \brief Extents for loop variables */
   std::unordered_map<const VarNode*, PrimExpr> loop_var_extents;
+  /*! \brief ScheduleNode::stmt2ref whose StmtSRef::binding_valid needs updating */
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref;
+  /*! \brief An analyzer used to simplify expressions */
   arith::Analyzer analyzer;
 };
 
@@ -424,10 +466,12 @@ class SRefValidator : public StmtVisitor {
 // [FAILED] tests/python/tir/test_schedule_replace.py::test_replace_partial_copy1
 // [FAILED] tests/python/tir/test_schedule_replace.py::test_replace_root_copy1
 #if (false)
+/*! \brief A helper class to validate correctness of StmtSRef */
 class SRefValidator : public StmtVisitor {
  public:
+  /*! \brief Constructor */
   explicit SRefValidator(const ScheduleNode* sch) : sch(sch), ancestors({nullptr}) {}
-
+  // Valida each block
   void VisitStmt_(const BlockNode* block) override {
     CHECK(sch->stmt2ref.count(block))
         << "InternalError: A BlockNode should appear in sref map, but it didn't\n"
@@ -446,7 +490,7 @@ class SRefValidator : public StmtVisitor {
     StmtVisitor::VisitStmt_(block);
     ancestors.pop_back();
   }
-
+  // Validate each loop
   void VisitStmt_(const LoopNode* loop) override {
     CHECK(sch->stmt2ref.count(loop))
         << "InternalError: A LoopNode should appear in sref map, but it didn't\n"
@@ -463,8 +507,9 @@ class SRefValidator : public StmtVisitor {
     StmtVisitor::VisitStmt_(loop);
     ancestors.pop_back();
   }
-
+  /*! \brief The schedule it belings to */
   const ScheduleNode* sch;
+  /*! \brief Parent information during the visit */
   std::vector<const StmtSRefNode*> ancestors;
 };
 #endif
