@@ -19,10 +19,6 @@
 
 #include "./schedule_common.h"
 
-#include <tvm/tir/analysis.h>
-#include <tvm/tir/schedule.h>
-#include <tvm/tir/stmt_functor.h>
-
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -319,6 +315,30 @@ std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root) {
     LOG(FATAL) << "unknown stmt";
     return std::make_pair(Stmt(), Stmt());
   }
+}
+
+class ScopeUpdater : public StmtVisitor {
+ public:
+  explicit ScopeUpdater(const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref)
+      : stmt2ref(stmt2ref) {}
+
+  void VisitStmt_(const BlockNode* block) override {
+    scope.AddChildBlock(stmt2ref.at(block), &buffer_readers);
+  }
+
+  Scope scope;
+  std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual> buffer_readers;
+  const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref;
+};
+
+void UpdateScope(const StmtNode* stmt,
+                 const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref,
+                 std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual>* scopes) {
+  CHECK(stmt->IsInstance<BlockNode>()) << "InternalError: scope is only defined on a block";
+  const BlockNode* block = static_cast<const BlockNode*>(stmt);
+  ScopeUpdater visitor(stmt2ref);
+  visitor(block->body);
+  (*scopes)[stmt2ref.at(stmt)] = std::move(visitor.scope);
 }
 
 bool ExprContainsVar(const PrimExpr& expr, const Var& var) {
