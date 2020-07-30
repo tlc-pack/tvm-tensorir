@@ -16,13 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
-#include <tvm/arith/analyzer.h>
-#include <tvm/arith/int_set.h>
-#include <tvm/tir/analysis.h>
-#include <tvm/tir/schedule.h>
-#include <tvm/tir/stmt_functor.h>
-
 #include "./schedule_common.h"
 
 namespace tvm {

@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 #include "./schedule_common.h"
 
 namespace tvm {

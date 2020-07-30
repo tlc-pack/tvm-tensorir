@@ -16,9 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
-#include <tvm/arith/analyzer.h>
-
 #include "../../arith/pattern_match.h"
 #include "./schedule_common.h"
 

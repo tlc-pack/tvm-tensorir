@@ -24,6 +24,7 @@
 #define TVM_TIR_SCHEDULE_SCHEDULE_COMMON_H_
 
 #include <tvm/arith/analyzer.h>
+#include <tvm/tir/analysis.h>
 #include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
 
@@ -127,6 +128,16 @@ std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root);
  * \return Whether var appears in expr
  */
 bool ExprContainsVar(const PrimExpr& expr, const Var& var);
+
+/*!
+ * \brief Update the scope (dependency) information of a given block statement
+ * \param stmt The block statement to be updated
+ * \param stmt2ref The ScheduleNode::stmt2ref from ScheduleNode
+ * \param scopes The ScheduleNode::stmt2ref from ScheduleNode that is to be updated
+ */
+void UpdateScope(const StmtNode* stmt,
+                 const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref,
+                 std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual>* scopes);
 
 /*!
  * \brief PrimExpr pattern matcher.
