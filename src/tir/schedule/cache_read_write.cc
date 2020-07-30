@@ -16,12 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
-#include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
 
 #include "../ir/functor_common.h"
-#include "schedule_common.h"
+#include "./schedule_common.h"
 
 namespace tvm {
 namespace tir {
@@ -36,7 +34,6 @@ namespace tir {
  *        so, the buffer copy stmt should be inserted at n+offset position
  *        (2rd when cache_read or at 3rd when cache_write)
  */
-
 class CachePositionDetector : public StmtVisitor {
  public:
   explicit CachePositionDetector(const ScheduleNode* sch, const StmtSRef& block_sref,
