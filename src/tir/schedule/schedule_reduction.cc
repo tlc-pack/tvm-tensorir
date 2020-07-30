@@ -125,7 +125,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
   Stmt body = BlockRealize(init_realize);
   for (int i = static_cast<int>(loops.size()) - 1; i >= 0; --i) {
     const auto* higher_loop = loops[i]->GetStmt<LoopNode>();
-    for (const auto& expr : init_realize->binding_values) {
+    for (const PrimExpr& expr : init_realize->binding_values) {
       // Skip irrelavent loops
       if (!ExprContainsVar(expr, higher_loop->loop_var)) {
         continue;
@@ -194,67 +194,78 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
    *   - delete init_block
    *   - generate reduction block
    */
-
-  // Check
+  // Type checks
   const auto* init = init_sref->GetStmt<BlockNode>();
   const auto* update = update_sref->GetStmt<BlockNode>();
-  CHECK(init != nullptr) << "merge_reduction expect a block as first argument";
-  CHECK(update != nullptr) << "merge_reduction expect a block as second argument";
-
-  // Check init_block is under the same scope with update_sref
-  CHECK_EQ(GetParentBlockSRef(init_sref), GetParentBlockSRef(update_sref))
-      << "merge_reduction expect the init_block and update_block to be under the same scope";
-  const auto& scope_root = GetParentBlockSRef(init_sref);
-
-  // Check init_block's write region is the same as update_block's write region under LCA
-  CHECK_EQ(init->writes.size(), 1);
-  CHECK_EQ(update->writes.size(), 1);
-  const auto& lca = LowestCommonAncestor({init_sref, update_sref}, scope_root);
-  const auto& init_region = RelaxRegion(init_sref, lca, init->writes[0]);
-  const auto& update_region = RelaxRegion(update_sref, lca, update->writes[0]);
-  CHECK_EQ(init_region->region.size(), update_region->region.size());
-  ExprDeepEqual equal;
-  for (size_t i = 0; i < init_region->region.size(); ++i) {
-    CHECK(equal(init_region->region[i]->min, update_region->region[i]->min));
-    CHECK(equal(init_region->region[i]->extent, update_region->region[i]->extent));
-  }
-
-  // Check the merged block is decomposable
-  CHECK(this->scopes.at(scope_root).CanMergeReduction(init_sref, update_sref));
+  CHECK(init != nullptr) << "TypeError: 'merge_reduction' expects 'init' of type Block, but get: "
+                         << init_sref->stmt->GetTypeKey();
+  CHECK(update != nullptr)
+      << "TypeError: 'merge_reduction' expects 'update' of type Block, but get: "
+      << update_sref->stmt->GetTypeKey();
   const auto* init_body = init->body.as<BufferStoreNode>();
   const auto* update_body = update->body.as<BufferStoreNode>();
-
-  // Check LCA is higher than all the loops related to update_block's reduce block var
-  Array<StmtSRef> loops = GetLoopsInScope(update_sref);
-  const auto* br = GetBlockRealize(update_sref).operator->();
-  if (!scope_root.same_as(lca)) {
-    for (const auto& loop : loops) {
-      if (loop.same_as(lca)) break;
-      const auto* loop_ptr = loop->GetStmt<LoopNode>();
-      for (size_t i = 0; i < update->iter_vars.size(); ++i) {
-        if (update->iter_vars[i]->iter_type == IterVarType::kCommReduce) {
-          CHECK(!ExprContainsVar(br->binding_values[i], loop_ptr->loop_var))
-              << "merge_reduction expect lca to be higher than all the loops related to "
-                 "update_block's reduce block var";
+  const StmtSRef& scope = GetParentBlockSRef(init_sref);
+  StmtSRef lca = LowestCommonAncestor({init_sref, update_sref}, scope);
+  // Cond 1. Check init_block is under the same scope with update_sref
+  CHECK_EQ(scope.get(), GetParentBlockSRef(update_sref).get())
+      << "TypeError: 'merge_reduction' expects the 'init' and 'update' to be under the same scope";
+  // Cond 3. Write region of 'init' is the same as that of 'update' under LCA
+  {
+    CHECK_EQ(init->writes.size(), 1)
+        << "ValueError: 'merge_reduction' expects 'init' with only one write region";
+    CHECK_EQ(update->writes.size(), 1)
+        << "ValueError: 'merge_reduction' expects 'update' with only one write region";
+    TensorRegion init_region = RelaxRegion(init_sref, lca, init->writes[0]);
+    TensorRegion update_region = RelaxRegion(update_sref, lca, update->writes[0]);
+    CHECK_EQ(init_region->region.size(), update_region->region.size())
+        << "ValueError: 'merge_reduction' has inconsistent ranks between the write region of "
+           "'init' and that of 'update'";
+    for (size_t i = 0; i < init_region->region.size(); ++i) {
+      ExprDeepEqual equal;
+      CHECK(equal(init_region->region[i]->min, update_region->region[i]->min) &&
+            equal(init_region->region[i]->extent, update_region->region[i]->extent))
+          << "ValueError: 'merge_reduction' has inconsistent write domain on axis " << i;
+    }
+  }
+  // Cond 4. Check the merged block is decomposable
+  CHECK(this->scopes.at(scope).CanMergeReduction(init_sref, update_sref));
+  // Cond 2. Check LCA is higher than all the loops related to update_block's reduce block var
+  if (!scope.same_as(lca)) {
+    const BlockRealizeNode* update_realize = GetBlockRealize(update_sref).get();
+    for (const StmtSRef& higher_loop : GetLoopsInScope(update_sref)) {
+      if (higher_loop.same_as(lca)) {
+        break;
+      }
+      const Var& loop_var = higher_loop->GetStmt<LoopNode>()->loop_var;
+      for (int i = 0, n = update->iter_vars.size(); i < n; ++i) {
+        const IterVar& iter_var = update->iter_vars[i];
+        const PrimExpr& binding = update_realize->binding_values[i];
+        if (iter_var->iter_type != IterVarType::kCommReduce) {
+          continue;
         }
+        CHECK(!ExprContainsVar(binding, loop_var)) << "ValueError: 'merge_reduction' expects LCA "
+                                                      "to be higher than all the loops related to "
+                                                      "update_block's reduce block var";
       }
     }
   }
-
   // Mutate
-  // Delete init block and its single-branched ancestors
-  const auto& removed = RemoveLeaf(init_sref, scope_root);
+  // Step 1. Delete init block and its single-branched ancestors
+  std::pair<Stmt, Stmt> removed = RemoveLeaf(init_sref, scope);
   this->Replace(lca, removed.second);
-
-  // Change the update block to reduction block
-  auto merged_block = make_object<BlockNode>(*update);
-  merged_block->body = ReduceStep::FromInitUpdate(this->reducers_, init_body->value,
-                                                  GetRef<BufferStore>(update_body));
-  Map<Block, Block> block_map;
-  block_map.Set(Block(merged_block), GetRef<Block>(update));
-  this->Replace(update_sref, Block(merged_block), block_map);
-
-  // update scope information
+  // Step 2. Change the update block to reduction block
+  Block merged(
+      /*iter_vars=*/update->iter_vars,
+      /*reads=*/update->reads,
+      /*writes=*/update->writes,
+      /*body=*/
+      ReduceStep::FromInitUpdate(this->reducers_, init_body->value,
+                                 GetRef<BufferStore>(update_body)),
+      /*allocations=*/update->allocations,
+      /*annotations=*/update->annotations,
+      /*tag=*/update->tag);
+  this->Replace(update_sref, merged, {{merged, GetRef<Block>(update)}});
+  // Update scope information
   UpdateScope(GetParentBlockSRef(update_sref)->stmt, this->stmt2ref, &this->scopes);
 }
 
