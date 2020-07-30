@@ -28,17 +28,62 @@
 namespace tvm {
 namespace tir {
 
-/*! To find if there is any dependent block under in the specific subtree */
-bool FindAny(const ScheduleNode* sch, const Stmt& stmt, const Array<DepEdge>& edges) {
-  Array<StmtSRef> child_blocks = sch->GetChildBlocks(sch->stmt2ref.at(stmt.get()));
-  for (const auto& edge : edges) {
-    for (const auto& child : child_blocks) {
-      if (edge->dst.same_as(child)) {
+/*!
+ * \brief Helper function to check if there is any edge points to the given set of blocks
+ * \param edges A list of edges to be check
+ * \param blocks A list of candidate blocks
+ * \return True if there is at least one edge that points to a block in the list
+ */
+bool AnyEdgePointsToABlock(const Array<DepEdge>& edges, const Array<StmtSRef>& blocks) {
+  for (const DepEdge& edge : edges) {
+    for (const StmtSRef& block : blocks) {
+      if (edge->dst.same_as(block)) {
         return true;
       }
     }
   }
   return false;
+}
+
+/*!
+ * \brief Helper function to check if every edge points to a block in the given set of blocks
+ * \param edges A list of edges to be check
+ * \param blocks A list of candidate blocks
+ * \param raw_edge_only Only consider RAW-dependency edges
+ * \return True if all edges that have a corresponding block
+ */
+bool EachEdgePointsToABlock(const Array<DepEdge>& edges, const Array<StmtSRef>& blocks,
+                            bool raw_edge_only) {
+  for (const DepEdge& edge : edges) {
+    if (raw_edge_only && edge->type != DepType::kRAW) {
+      continue;
+    }
+    bool found = false;
+    for (const StmtSRef& block : blocks) {
+      if (edge->dst.same_as(block)) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/*!
+ * \brief Extract StmtSRef from DepEdgeNode::dst
+ * \param edges List of edges to be extracted
+ * \return A list of StmtSRef as the result
+ */
+std::vector<StmtSRef> EdgesToSRefs(const Array<DepEdge>& edges) {
+  std::vector<StmtSRef> result;
+  result.reserve(edges.size());
+  for (const DepEdge& edge : edges) {
+    result.push_back(edge->dst);
+  }
+  return result;
 }
 
 /*! \note We need the stride factor in order to solve the problem of set patterns in a
@@ -48,195 +93,218 @@ bool FindAny(const ScheduleNode* sch, const Stmt& stmt, const Array<DepEdge>& ed
 class StrideIntSet {
  public:
   StrideIntSet() = default;
-  StrideIntSet(Range iter_range, PrimExpr stride)
-      : iter_range_(std::move(iter_range)), stride_(std::move(stride)) {}
+  StrideIntSet(PrimExpr min, PrimExpr extent, PrimExpr stride)
+      : min_(std::move(min)), extent_(std::move(extent)), stride_(std::move(stride)) {}
 
   static StrideIntSet Union(const StrideIntSet& lhs, const StrideIntSet& rhs) {
     StrideIntSet ret;
     if (lhs.stride_.defined()) {
       CHECK(rhs.stride_.defined());
       CHECK(ExprDeepEqual()(lhs.stride_, rhs.stride_));
-      const Range& rhs_range = rhs.iter_range_;
-      PrimExpr begin = min(lhs.iter_range_->min, rhs_range->min);
-      PrimExpr extents =
-          max(lhs.iter_range_->extent + lhs.iter_range_->min, rhs_range->extent + rhs_range->min) -
-          begin;
-      ret.iter_range_ = Range::FromMinExtent(begin, extents);
+      ret.min_ = min(lhs.min_, rhs.min_);
+      ret.extent_ = max(lhs.extent_ + lhs.min_, rhs.extent_ + rhs.min_) - ret.min_;
       ret.stride_ = lhs.stride_;
     } else {
+      ret.min_ = rhs.min_;
+      ret.extent_ = rhs.extent_;
       ret.stride_ = rhs.stride_;
-      ret.iter_range_ = rhs.iter_range_;
     }
     return ret;
   }
-  Range iter_range_;
+
+  PrimExpr min_;
+  PrimExpr extent_;
   PrimExpr stride_;
 };
 
 /*!
  * \brief Find the minimum region to cover the requirement
- * \param vars The vars whose iter range to be detected
- * \param produces The produce region
- * \param requirements The required region
+ * \param block The producer block to be solved
+ * \param consumes The required region
  * \return The iteration information for each var
  */
-std::vector<StrideIntSet> SolveCover(const Array<IterVar>& vars, const std::vector<Range>& produces,
-                                     const std::vector<Range>& requirements) {
-  std::vector<StrideIntSet> cover_iters(vars.size());
-  std::unordered_map<Var, size_t, ObjectPtrHash, ObjectPtrEqual> var_index;
+std::vector<StrideIntSet> SolveCover(const BlockNode* block, const std::vector<Range>& consumes) {
+  const Array<IterVar>& iter_vars = block->iter_vars;
+  std::vector<StrideIntSet> iter_domain(iter_vars.size());
+  std::unordered_map<const VarNode*, int> iter_var_indexer;
+  // Maps IterVar::var back to its index in `iter_vars`
+  {
+    int iter_var_index = 0;
+    for (const IterVar& iter_var : iter_vars) {
+      iter_var_indexer[iter_var->var.get()] = iter_var_index++;
+    }
+  }
+  // Collect the ranges written in the producer block
+  std::vector<Range> produces;
+  for (const TensorRegion& write_region : block->writes) {
+    for (const Range& range : write_region->region) {
+      produces.push_back(range);
+    }
+  }
+  // Fit requirements one by one
+  // i.e. range that the producer writes vs. range that the consumer reads
+  CHECK_EQ(produces.size(), consumes.size());
   arith::Analyzer analyzer;
-
-  for (size_t i = 0; i < vars.size(); ++i) {
-    var_index[vars[i]->var] = i;
+  for (int i = 0; i < static_cast<int>(produces.size()); ++i) {
+    const Range& produce = produces[i];
+    const Range& consume = consumes[i];
+    const VarNode* var = produce->min.as<VarNode>();
+    CHECK(var != nullptr)
+        << "TypeError: The left bound of the range of the producer block must be Var";
+    CHECK_GT(iter_var_indexer.count(var), 0) << "Find irrelevant variable in produces";
+    StrideIntSet& iset = iter_domain[iter_var_indexer[var]];
+    // It changes the consumers range's stride to `produce->extent`
+    PrimExpr strides = produce->extent;
+    PrimExpr min = consume->min;
+    PrimExpr extent = analyzer.Simplify((consume->extent + strides - 1) / strides);
+    iset = StrideIntSet::Union(iset, StrideIntSet(min, extent, strides));
   }
-
-  // fit requirements one by one
-  CHECK_EQ(produces.size(), requirements.size());
-  for (size_t i = 0; i < produces.size(); ++i) {
-    const auto& produce = produces[i];
-    const auto& require = requirements[i];
-
-    CHECK(produce->min.as<VarNode>() != nullptr)
-        << "The min of produces range must be a single variable";
-    Var var = Downcast<Var>(produce->min);
-
-    CHECK_GT(var_index.count(var), 0) << "Find irrelevant variable in produces";
-    size_t id = var_index[var];
-
-    const PrimExpr& base = require->min;
-    const PrimExpr& produces_len = produce->extent;
-    const PrimExpr& extent = analyzer.Simplify((require->extent + produces_len - 1) / produces_len);
-    const PrimExpr& strides = produces_len;
-
-    cover_iters[id] = StrideIntSet::Union(
-        cover_iters[id], StrideIntSet(Range::FromMinExtent(base, extent), strides));
-  }
-
-  for (const auto& var : vars) {
-    size_t id = var_index[var->var];
-    auto& domain = cover_iters[id];
-    if (!domain.iter_range_.defined() || !domain.stride_.defined()) {
-      domain.iter_range_ = var->dom;
+  // Rewrite the un-touched iteration domain to the default value
+  for (const IterVar& iter_var : iter_vars) {
+    StrideIntSet& domain = iter_domain[iter_var_indexer[iter_var->var.get()]];
+    if (!domain.min_.defined() || !domain.extent_.defined() || !domain.stride_.defined()) {
+      domain.min_ = iter_var->dom->min;
+      domain.extent_ = iter_var->dom->extent;
       domain.stride_ = 1;
     }
   }
-
-  return cover_iters;
+  return iter_domain;
 }
 
 /*!
  * \brief Regenerate loop and the block realize outside the specific block with iter information
  * \param block_sref The sref of the block
- * \param parent_loop_sref The parent loop where the new loop nesting will be inserted
+ * \param loop_sref The parent loop where the new loop nesting will be inserted
  * \param iter_domain The iteration information
  * \param insert_pos The insert postion
  * \return The Updated parent loop
  */
-Stmt RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& parent_loop_sref,
-                     const std::vector<StrideIntSet>& iter_domain, size_t insert_pos) {
-  // generate for loops
-  std::vector<Var> iter_vars(iter_domain.size());
-  const auto* block_realize = GetBlockRealize(block_sref).operator->();
-  auto node = make_object<BlockRealizeNode>(*block_realize);
-  for (size_t i = iter_domain.size(); i > 0; --i) {
-    Var iter_var("ax" + std::to_string(i - 1));
-    iter_vars[i - 1] = iter_var;
+Loop RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& loop_sref, int insert_pos,
+                     const std::vector<StrideIntSet>& iter_domain) {
+  const LoopNode* loop = loop_sref->GetStmt<LoopNode>();
+  int n_iter_domain = iter_domain.size();
+  // Step 1. Construct loop variables
+  std::vector<Var> loop_vars;
+  for (int i = 0; i < n_iter_domain; ++i) {
+    loop_vars.emplace_back("ax" + std::to_string(i));
   }
-  for (size_t i = iter_domain.size(); i > 0; --i) {
-    const auto& domain = iter_domain[i - 1];
-    if (!is_one(domain.iter_range_->extent)) {
-      node->binding_values.Set(i - 1, domain.iter_range_->min + iter_vars[i - 1] * domain.stride_);
+  // Step 2. Create a new BlockRealizeNode
+  ObjectPtr<BlockRealizeNode> realize =
+      make_object<BlockRealizeNode>(*GetBlockRealize(block_sref).get());
+  for (int i = 0; i < n_iter_domain; ++i) {
+    const StrideIntSet& domain = iter_domain[i];
+    // Add binding for each block var
+    if (!is_one(domain.extent_)) {
+      realize->binding_values.Set(i, domain.min_ + loop_vars[i] * domain.stride_);
     } else {
-      node->binding_values.Set(i - 1, domain.iter_range_->min);
+      realize->binding_values.Set(i, domain.min_);
     }
   }
-
-  Stmt body = Stmt(node);
-  for (size_t i = iter_domain.size(); i > 0; --i) {
-    const auto& domain = iter_domain[i - 1];
-    if (!is_one(domain.iter_range_->extent)) {
+  // Step 3. Create loops above the BlockRealizeNode
+  Stmt body = Stmt(realize);
+  for (int i = iter_domain.size(); i > 0; --i) {
+    const StrideIntSet& domain = iter_domain[i - 1];
+    if (!is_one(domain.extent_)) {
       // TODO(Siyuan): support for loop with annotations
-      const Var& iter_var = iter_vars[i - 1];
-      Loop loop = Loop(iter_var, 0, domain.iter_range_->extent, Array<Annotation>(), body);
-      body = loop;
+      body = Loop(loop_vars[i - 1], 0, domain.extent_, {}, body);
     }
   }
-  Loop loop = Downcast<Loop>(GetRef<Stmt>(parent_loop_sref->stmt));
-  Array<Stmt> stmts = GetChildren(loop);
+  // Step 3. Insert the new statement into the children of the loop
+  Array<Stmt> stmts = GetChildren(GetRef<Stmt>(loop));
   stmts.insert(stmts.begin() + insert_pos, body);
-
-  auto n = make_object<LoopNode>(*loop.operator->());
+  // Step 4. Create a new loop with those statements as new children to substitute loop_sref->stmt
+  ObjectPtr<LoopNode> n = make_object<LoopNode>(*loop);
   n->body = SeqStmt(stmts);
   return Loop(n);
 }
 
 /*!
- * \brief Gather the required tensor region for consumer consumer_blocks
- * \param produce_regions The output tensor region of producer consumer_blocks
+ * \brief For each buffer written by the producer block, accumulate the rnages on it that are read
+ * by the consumer block
+ * \param produced_regions The output tensor region of producer consumer_blocks
  * \param lca_loop_sref The lca of producer and consumer
  * \param consumer_blocks The consumer consumer_blocks
- * \return Required with the same order as produce_regions
+ * \return Required with the same order as produce_regions TODO
  */
-std::vector<Range> GatherRequirements(const Array<TensorRegion>& produce_regions,
+std::vector<Range> GatherRequirements(const Array<TensorRegion>& produced_regions,
                                       const StmtSRef& lca_loop_sref,
                                       const std::vector<StmtSRef>& consumer_blocks) {
-  std::vector<std::vector<arith::IntSet>> require_region(produce_regions.size());
-  for (size_t i = 0; i < produce_regions.size(); ++i) {
-    const auto& tensor_region = produce_regions[i];
-    require_region[i] =
-        std::vector<arith::IntSet>(tensor_region->region.size(), arith::IntSet::Nothing());
+  // For write domain in produce_regions, initiate an empty IntSet for it
+  std::vector<std::vector<arith::IntSet>> produced_region_reads;
+  for (const TensorRegion& region : produced_regions) {
+    produced_region_reads.emplace_back(region->region.size(), arith::IntSet::Nothing());
   }
-
-  std::unordered_map<Buffer, size_t, ObjectPtrHash, ObjectPtrEqual> buffer_index;
-  for (size_t i = 0; i < produce_regions.size(); ++i) {
-    buffer_index[produce_regions[i]->buffer] = i;
+  // Maps a tensor region's buffer into its index
+  std::unordered_map<const BufferNode*, int> buffer_indexer;
+  {
+    int buffer_index = 0;
+    for (const TensorRegion& region : produced_regions) {
+      buffer_indexer[region->buffer.get()] = buffer_index++;
+    }
   }
-
-  for (const auto& block_sref : consumer_blocks) {
+  // For each consumer's reading region
+  for (const StmtSRef& block_sref : consumer_blocks) {
     std::vector<TensorRegion> reads;
     RelaxRegion(block_sref, lca_loop_sref, &reads, nullptr);
-
-    for (const auto& tensor_region : reads) {
-      auto it = buffer_index.find(tensor_region->buffer);
-      // Only consider the tensor regions which are relative with the block to be `compute_at`
-      if (it == buffer_index.end()) continue;
-      size_t index = it->second;
-
-      for (size_t i = 0; i < tensor_region->region.size(); ++i) {
-        const auto& range = tensor_region->region[i];
-        require_region[index][i] =
-            arith::Union({require_region[index][i], arith::IntSet::FromRange(range)});
+    for (const TensorRegion& region : reads) {
+      const BufferNode* buffer = region->buffer.get();
+      if (!buffer_indexer.count(buffer)) {
+        continue;
+      }
+      // Find the corresponding buffer
+      int buffer_index = buffer_indexer[buffer];
+      int range_index = 0;
+      // Accumuate the read range into its corresponding buffer
+      for (const Range& range : region->region) {
+        arith::IntSet& iset = produced_region_reads[buffer_index][range_index];
+        iset = arith::Union({iset, arith::IntSet::FromRange(range)});
+        ++range_index;
       }
     }
   }
-
+  // Flatten the regions into a list and return
+  arith::Analyzer analyzer;
   std::vector<Range> ret;
-  for (const auto& region : require_region)
-    for (const auto& iset : region) {
-      ret.push_back(Range::FromMinExtent(iset.min(), iset.max() - iset.min() + 1));
+  for (const std::vector<arith::IntSet>& region_reads : produced_region_reads) {
+    for (const arith::IntSet& iset : region_reads) {
+      PrimExpr min = iset.min();
+      PrimExpr extent = analyzer.Simplify(iset.max() - iset.min() + 1);
+      ret.push_back(Range::FromMinExtent(min, extent));
     }
-
+  }
   return ret;
 }
 
 class StmtReplacer : public StmtMutator {
  public:
-  explicit StmtReplacer(
-      const std::unordered_map<Stmt, Stmt, ObjectPtrHash, ObjectPtrEqual>& repalce_map)
-      : repalce_map_(repalce_map) {}
+  explicit StmtReplacer(const std::unordered_map<const StmtNode*, const StmtNode*>& repalce_map)
+      : replace_map(repalce_map) {}
 
   Stmt VisitStmt(const Stmt& stmt) override {
-    auto it = repalce_map_.find(stmt);
-    if (it == repalce_map_.end()) {
+    auto it = replace_map.find(stmt.get());
+    if (it == replace_map.end()) {
       return StmtMutator::VisitStmt(stmt);
     } else {
-      return StmtMutator::VisitStmt(it->second);
+      return StmtMutator::VisitStmt(GetRef<Stmt>(it->second));
     }
   }
 
- private:
-  const std::unordered_map<Stmt, Stmt, ObjectPtrHash, ObjectPtrEqual>& repalce_map_;
+  const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map;
 };
+
+/*!
+ * \brief Get the subtree the node is in in its parent's scope
+ * \param node The node to query
+ * \return StmtSRef indicating the subtree the node is in in its parent's scope
+ */
+StmtSRef GetSubTreeOfParent(const StmtSRef& node) {
+  const StmtSRefNode* child = node.get();
+  const StmtSRefNode* parent;
+  while (!(parent = child->parent)->stmt->IsInstance<BlockNode>()) {
+    child = parent;
+  }
+  return GetRef<StmtSRef>(child);
+}
 
 void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref) {
   /*!
@@ -259,118 +327,80 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
    *   - i + iii + iv + v + dominance property => consumers of input_block will
    *     read the same input as before.
    */
-
-  // Check
   const auto* block = block_sref->GetStmt<BlockNode>();
   const auto* loop = loop_sref->GetStmt<LoopNode>();
-  CHECK(block != nullptr) << block_sref << "is not a block sref";
-  CHECK(loop != nullptr) << loop_sref << "is not a loop sref";
-
-  // Check the block and the loop are at the same scope
-  CHECK_EQ(GetParentBlockSRef(block_sref), GetParentBlockSRef(loop_sref))
-      << "Cannot compute_at between different scope";
-  const StmtSRef& scope_sref = GetParentBlockSRef(block_sref);
-  const Scope& scope = scopes.at(scope_sref);
-  const auto* scope_block = scope_sref->GetStmt<BlockNode>();
-
-  // Check complete block
+  CHECK(block != nullptr) << "TypeError: 'compute_at' expects 'block' to be a block, but get type: "
+                          << block_sref->stmt->GetTypeKey();
+  CHECK(loop != nullptr) << "TypeError: 'compute_at' expects 'loop' to be a loop, but get type: "
+                         << loop_sref->stmt->GetTypeKey();
+  const StmtSRef& parent_block_sref = GetParentBlockSRef(block_sref);
+  const BlockNode* parent_block = parent_block_sref->GetStmt<BlockNode>();
+  const Scope& scope = scopes.at(parent_block_sref);
+  Array<DepEdge> edges_to_pred = scope.GetPredecessors(block_sref);
+  Array<DepEdge> edges_to_succ = scope.GetSuccessors(block_sref);
+  // Cond 0. `block` and `loop` are in the same scope
+  CHECK_EQ(parent_block_sref.get(), GetParentBlockSRef(loop_sref).get())
+      << "ValueError: 'compute_at' expects 'block' and 'loop' be in the same block";
+  // Cond 1. 'block' is complete/reduction block
   CHECK(scope.IsComplete(block_sref) || scope.IsReduction(block_sref))
-      << "Can only compute_at a complete or reduction block";
-
-  // Check compact data flow
-  // sub_tree_root: the direct child of block_sref's parent scope that contains block_sref
-  StmtSRef sub_tree_root = block_sref;
-  while (sub_tree_root.defined()) {
-    const StmtSRefNode* node = sub_tree_root->parent;
-    if (node->GetStmt<BlockNode>()) {
-      break;
-    } else {
-      sub_tree_root = GetRef<StmtSRef>(node);
+      << "ValueError: 'compute_at' expects 'block' to be a complete or reduction block";
+  // Cond 3. Check all RAW successors are in the subtree rooted by loop_sref
+  CHECK(EachEdgePointsToABlock(edges_to_succ, GetChildBlocks(loop_sref), /*raw_edge_only=*/true))
+      << "ValueError: 'compute_at' does not apply to a block that some other "
+      << "blocks outside the scope depends on";
+  // Cond 4. The subtree has compact data flow
+  CHECK(scope.IsCompactDataFlow(GetSubTreeOfParent(block_sref), this))
+      << "ValueError: 'compute_at' expects the subtree of 'block' to have compact dataflow";
+  // Cond 5. Check the block is not a output block
+  for (const TensorRegion& parent_write : parent_block->writes) {
+    for (const TensorRegion& write : block->writes) {
+      CHECK_NE(write->buffer.get(), parent_write->buffer.get())
+          << "ValueError: 'compute_at' does not work on an output block";
     }
   }
-  CHECK(scope.IsCompactDataFlow(sub_tree_root, this))
-      << "Can only compute_at a block from the subtree which is compact data flow";
-
-  Array<StmtSRef> child_blocks = this->GetChildBlocks(loop_sref);
-  const auto& predecessors = scope.GetPredecessors(block_sref);
-  const auto& successors = scope.GetSuccessors(block_sref);
-
-  // Check the block is not a output block
-  std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual> seen_buffer;
-  for (const auto& x : block->writes) {
-    for (const auto& output_buffer : scope_block->writes)
-      CHECK(!x->buffer.same_as(output_buffer->buffer)) << "Can not compute_at an output block";
-  }
-
-  // Check all successors are in the subtree rooted by loop_sref
-  for (const DepEdge& x : successors) {
-    if (x->type == DepType::kRAW) {
-      bool found = false;
-      for (const StmtSRef& child : child_blocks) {
-        if (child.same_as(x->dst)) {
-          found = true;
-          break;
-        }
-      }
-      CHECK(found) << "This block cannot compute at this point because some other "
-                   << "blocks outside the scope of this point are also dependent on this block.";
-    }
-  }
-
   // Mutation
-
-  // Find insert position
-  // After all predecessors in dependency graph and before all successors in dep graph.
-  auto children = GetChildren(GetRef<Stmt>(loop));
-  size_t after_pos, before_pos;
-  for (after_pos = children.size(); after_pos > 0; --after_pos) {
-    if (FindAny(this, children[after_pos - 1], predecessors)) {
-      break;
+  // Step 1. Find insertion position
+  int insert_pos;
+  {
+    // After all predecessors in dependency graph
+    Array<Stmt> loop_body = GetChildren(GetRef<Stmt>(loop));
+    int n_stmts = loop_body.size();
+    for (insert_pos = n_stmts; insert_pos > 0; --insert_pos) {
+      const StmtNode* stmt = loop_body[insert_pos - 1].get();
+      if (AnyEdgePointsToABlock(edges_to_pred, GetChildBlocks(stmt2ref.at(stmt)))) {
+        break;
+      }
     }
-  }
-  for (before_pos = 0; before_pos < children.size(); before_pos++) {
-    if (FindAny(this, children[before_pos], successors)) {
-      break;
+    // Before all successors in dep graph.
+    int before_pos;
+    for (before_pos = 0; before_pos < n_stmts; before_pos++) {
+      const StmtNode* stmt = loop_body[before_pos].get();
+      if (AnyEdgePointsToABlock(edges_to_pred, GetChildBlocks(stmt2ref.at(stmt)))) {
+        break;
+      }
     }
+    CHECK(insert_pos <= before_pos)
+        << "ValueError: 'compute_at' cannot find an insertion point that satisfies dependency";
   }
-  if (after_pos > before_pos) {
-    LOG(FATAL) << "Cannot satisfy dependency";
-  }
-
-  // Gather required region
-  std::vector<Range> produces;
-  for (const auto& tensor_region : block->writes)
-    for (const auto& range : tensor_region->region) {
-      produces.push_back(range);
-    }
-  std::vector<StmtSRef> successor_blocks(successors.size());
-  for (size_t i = 0; i < successors.size(); ++i) {
-    successor_blocks[i] = successors[i]->dst;
-  }
-  std::vector<Range> requirements = GatherRequirements(block->writes, loop_sref, successor_blocks);
-
-  // Solve the coverage
-  const auto& iter_domain = SolveCover(block->iter_vars, produces, requirements);
-
-  // Regenerate the loop nesting
-  Stmt new_stmt = RegenerateLoops(block_sref, loop_sref, iter_domain, after_pos);
+  // Generate new LoopNode to substitte loop_sref->stmt
+  Loop new_loop = RegenerateLoops(
+      block_sref, loop_sref, insert_pos,
+      SolveCover(block, GatherRequirements(/*produced_regions=*/block->writes,
+                                           /*lca_loop_sref=*/loop_sref,
+                                           /*consumer_blocks=*/EdgesToSRefs(edges_to_succ))));
   // Remove leaf
-  auto removed = RemoveLeaf(block_sref, root);
-
-  StmtSRef lca = LowestCommonAncestor({block_sref, loop_sref}, root);
-  std::unordered_map<Stmt, Stmt, ObjectPtrHash, ObjectPtrEqual> replace_map;
-  replace_map[GetRef<Stmt>(loop_sref->stmt)] = new_stmt;
-  replace_map[removed.first] = removed.second;
-
+  std::pair<Stmt, Stmt> removed = RemoveLeaf(block_sref, this->root);
+  std::unordered_map<const StmtNode*, const StmtNode*> replace_map = {
+      {removed.first.get(), removed.second.get()},
+      {loop_sref->stmt, new_loop.get()},
+  };
   // Mutate the AST with Replace
-  Stmt replaced_stmt = StmtReplacer(replace_map)(GetRef<Stmt>(lca->stmt));
-  if (replaced_stmt.as<BlockNode>()) {
-    Map<Block, Block> block_map;
-    auto block_scope = Downcast<Block>(GetRef<Stmt>(scope_sref->stmt));
-    block_map.Set(Downcast<Block>(replaced_stmt), block_scope);
-    this->Replace(lca, replaced_stmt, block_map);
+  StmtSRef lca = LowestCommonAncestor({block_sref, loop_sref}, this->root);
+  Stmt replaced = StmtReplacer(replace_map)(GetRef<Stmt>(lca->stmt));
+  if (const auto* replaced_block = replaced.as<BlockNode>()) {
+    this->Replace(lca, replaced, {{GetRef<Block>(replaced_block), GetRef<Block>(parent_block)}});
   } else {
-    this->Replace(lca, replaced_stmt);
+    this->Replace(lca, replaced);
   }
 }
 
