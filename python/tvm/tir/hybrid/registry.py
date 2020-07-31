@@ -18,6 +18,7 @@
 # pylint: disable=inconsistent-return-statements
 
 import inspect
+
 import tvm
 from typed_ast import ast3 as ast
 
@@ -95,7 +96,12 @@ def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, co
                 body = tvm.tir.SeqStmt(body) if len(body) > 1 else body[0]
                 parser.scope_emitter.pop_scope()
             else:
-                body = parser.visit(parser.scope_emitter.node_stack[-1].pop())
+                body = []
+                while len(parser.scope_emitter.node_stack[-1]):
+                    res = parser.visit(parser.scope_emitter.node_stack[-1].pop())
+                    if res is not None:
+                        body.append(res)
+                body = tvm.tir.SeqStmt(body) if len(body) > 1 else body[0]
 
         if need_parser_and_node:
             internal_args.append(parser)
@@ -158,22 +164,28 @@ def register_func(category, origin_func, need_parser_and_node, concise):
     for default, arg in zip(defaults, args[len(args) - len(defaults):]):
         arg_list.append((arg, default))
 
-    Registry.host_dict[category][origin_func.__qualname__] = \
-        func_wrapper(origin_func.__qualname__,
-                     origin_func, arg_list,
+    func_name = origin_func.__qualname__
+    Registry.host_dict[category][func_name] = \
+        func_wrapper(func_name, origin_func, arg_list,
                      need_parser_and_node=need_parser_and_node, concise=concise)
 
 
 def register_intrin(origin_func):
     """Register function under category intrin"""
     register_func("intrin", origin_func, need_parser_and_node=False, concise=False)
+    return origin_func
 
 
-def register_scope_handler(origin_func, scope_name, concise=False):
-    """Register function under category with_scope or for_scope"""
-    register_func(scope_name, origin_func, need_parser_and_node=True, concise=concise)
+def register_scope_handler(scope_name, concise=False):
+    def decorate(origin_func):
+        """Register function under category with_scope or for_scope"""
+        register_func(scope_name, origin_func, need_parser_and_node=True, concise=concise)
+        return origin_func
+
+    return decorate
 
 
 def register_special_stmt(origin_func):
     """Register function under category special_stmt"""
     register_func("special_stmt", origin_func, need_parser_and_node=True, concise=False)
+    return origin_func

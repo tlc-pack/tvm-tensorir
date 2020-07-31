@@ -18,21 +18,22 @@
 import numpy as np
 import tvm
 from tvm import tir
+from tvm.tir.hybrid import ty
 
 
 @tvm.tir.hybrid.script
-def matmul(a, b, c):
-    C = buffer_bind(c, (1024, 1024), "float32")
-    A = buffer_bind(a, (1024, 1024), "float32")
-    B = buffer_bind(b, (1024, 1024), "float32")
-    reducer = comm_reducer(lambda x, y: x + y, float32(0))
+def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    C = tir.buffer_bind(c, (1024, 1024), "float32")
+    A = tir.buffer_bind(a, (1024, 1024), "float32")
+    B = tir.buffer_bind(b, (1024, 1024), "float32")
+    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
-    with block({}, writes=[C[0:1024, 0:1024]], reads=[A[0:1024, 0:1024], B[0:1024, 0:1024]],
+    with tir.block({}, writes=[C[0:1024, 0:1024]], reads=[A[0:1024, 0:1024], B[0:1024, 0:1024]],
                name="root"):
-        for i in range(0, 1024):
-            for j in range(0, 1024):
-                for k in range(0, 1024):
-                    with block({vi(0, 1024): i, vj(0, 1024): j, vk(0, 1024, iter_type="reduce"): k},
+        for i in tir.grid(0, 1024):
+            for j in tir.grid(0, 1024):
+                for k in tir.grid(0, 1024):
+                    with tir.block({vi(0, 1024): i, vj(0, 1024): j, vk(0, 1024, iter_type="reduce"): k},
                                writes=[C[vi:(vi + 1), vj:(vj + 1)]],
                                reads=[C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)],
                                       B[vj:(vj + 1), vk:(vk + 1)]], name="C"):
@@ -92,7 +93,7 @@ func_opt1 = s.func
 
 s.decompose_reduction(update, j_o)
 print('Opt1: %f' % build_and_test(s.func))
-
+'''
 ################################################################################################
 # Vectorization
 # -------------
@@ -261,3 +262,4 @@ print('Opt6: %f' % build_and_test(s.func))
 # Note that the outputs on the web page reflect the running times on a non-exclusive
 # Docker container, thereby they are *unreliable*. It is highly encouraged to run the
 # tutorial by yourself to observe the performance gain acheived by TVM.
+'''

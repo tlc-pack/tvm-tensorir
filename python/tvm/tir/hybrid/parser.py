@@ -21,18 +21,17 @@
 import json
 import numbers
 import operator
-from typed_ast import ast3 as ast
 
+import tvm._ffi
 from tvm import tir
-from tvm.tir import expr as _expr
-from tvm.tir import stmt as _stmt
 from tvm._ffi.base import TVMError
 from tvm.tir import all as _all
-import tvm._ffi
+from tvm.tir import expr as _expr
+from typed_ast import ast3 as ast
 
 from . import scope_emitter, intrin, special_stmt, scope_handler
 from .meta_unparser import MetaUnparser
-from .registry import Registry, register_intrin, register_special_stmt, register_scope_handler
+from .registry import Registry
 from .special_stmt import HybridLambda, HybridReducer
 from ...ir import GlobalVar
 
@@ -568,7 +567,7 @@ class HybridParser(ast.NodeVisitor):
         if func_name in Registry.with_scope.keys():
             return Registry.with_scope.get(func_name)(self, node, args, kw_args)
         if maybe_intrin:
-            return tvm.tir.Call(kw_args["dtype"],  tvm.ir.op.Op.get("tir." + func_name), args)
+            return tvm.tir.Call(kw_args["dtype"], tvm.ir.op.Op.get("tir." + func_name), args)
 
         self.report_error("Function " + func_name + " is not supported now")
 
@@ -660,6 +659,7 @@ class HybridParser(ast.NodeVisitor):
                     | Index(expr value)
         By now only 3 types of Subscript are supported:
             1. Buffer[index, index, ...], Buffer element access(BufferLoad & BufferStore)
+               Var[index, index, ...] Buffer element access()
             2. Buffer[slice, slice, ...], TensorRegion
             3. meta[type_key][index], Meta info access
             TODO(long term): TensorRegion can be Buffer[index, index, ...]?
@@ -673,15 +673,22 @@ class HybridParser(ast.NodeVisitor):
             if isinstance(node.slice, ast.Index):
                 # BufferLoad & BufferStore
                 if isinstance(node.slice.value, ast.Tuple):
-                    # Buffer[index, index, ...]
+                    # Buffer/Var[index, index, ...]
                     indexes = [self.visit(element) for element in node.slice.value.elts]
                 else:
-                    # Buffer[index]
+                    # Buffer/Var[index]
                     indexes = [self.visit(node.slice.value)]
 
                 if isinstance(node.ctx, ast.Load):
-                    return tvm.tir.BufferLoad(symbol, indexes)
-                return symbol, indexes
+                    if isinstance(symbol, tir.expr.Var):
+                        return tvm.tir.Load("float32", symbol, indexes, True)
+                    else:
+                        return tvm.tir.BufferLoad(symbol, indexes)
+                else:
+                    if isinstance(symbol, tir.expr.Var):
+                        self.report_error("Invalid Subscript expression")
+                    else:
+                        return symbol, indexes
             else:
                 # TensorRegion
                 slices = []
@@ -742,6 +749,22 @@ class HybridParser(ast.NodeVisitor):
             self.report_error("Unknown symbol %s" % name)
         return symbol
 
+    def visit_Attribute(self, node):
+        """ Attribute visitor
+        AST abstract grammar:
+            Attribute(expr value, identifier attr, expr_context ctx)
+        """
+
+        if not isinstance(node.value, ast.Name):
+            self.report_error("The value of Attribute ought to a Name")
+        name = node.value.id
+        symbol = self.scope_emitter.lookup_symbol(name)
+        if symbol is None or not isinstance(symbol, tvm.tir.Buffer):
+            self.report_error("Unsupported Attribute expression")
+        if not hasattr(symbol, node.attr):
+            self.report_error("Type " + type(symbol) + " has not attr " + node.attr)
+        return getattr(symbol, node.attr)
+
     def visit_Dict(self, node):
         """ Dict visitor
         AST abstract grammar:
@@ -801,45 +824,6 @@ class HybridParser(ast.NodeVisitor):
         return node.s
 
 
-def init_registry():
-    """Register primitive functions"""
-    register_intrin(intrin.bool)
-    register_intrin(intrin.int16)
-    register_intrin(intrin.int32)
-    register_intrin(intrin.int64)
-    register_intrin(intrin.uint8)
-    register_intrin(intrin.uint16)
-    register_intrin(intrin.uint32)
-    register_intrin(intrin.uint64)
-    register_intrin(intrin.float16)
-    register_intrin(intrin.float32)
-    register_intrin(intrin.float64)
-    register_intrin(intrin.floordiv)
-    register_intrin(intrin.floormod)
-    register_intrin(intrin.load)
-    register_intrin(intrin.cast)
-    register_intrin(intrin.evaluate)
-    register_intrin(intrin.store)
-    register_intrin(intrin.iter_var)
-
-    register_special_stmt(special_stmt.buffer_bind)
-    register_special_stmt(special_stmt.buffer_allocate)
-    register_special_stmt(special_stmt.var)
-    register_special_stmt(special_stmt.block_vars)
-    register_special_stmt(special_stmt.comm_reducer)
-    register_special_stmt(special_stmt.HybridReducer.step)
-    register_special_stmt(special_stmt.set_func_attr)
-    register_special_stmt(special_stmt.buffer_decl)
-
-    register_scope_handler(scope_handler.block, scope_name="with_scope")
-    register_scope_handler(scope_handler.Assert, scope_name="with_scope", concise=True)
-    register_scope_handler(scope_handler.allocate, scope_name="with_scope", concise=True)
-    register_scope_handler(scope_handler.realize, scope_name="with_scope", concise=True)
-    register_scope_handler(scope_handler.attr, scope_name="with_scope", concise=True)
-    register_scope_handler(scope_handler.range, scope_name="for_scope")
-    register_scope_handler(scope_handler.grid, scope_name="for_scope")
-
-
 def source_to_op(src, func_lineno=0):
     """ Another level of wrapper
     Parameters
@@ -854,7 +838,7 @@ def source_to_op(src, func_lineno=0):
         The PrimFunc or Module in IR.
     """
 
-    init_registry()
+
     root = ast.parse(src)
     parser = HybridParser(src, func_lineno)
 

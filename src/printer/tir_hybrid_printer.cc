@@ -50,6 +50,7 @@ class TIRHybridPrinter : public StmtFunctor<Doc(const Stmt&)>,
                             runtime::TypedPackedFunc<std::string(Stmt)> annotate = nullptr)
       : show_meta_(show_meta), annotate_(annotate), meta_collector_(&meta_) {}
 
+
   /*! \brief Print the node */
   TVM_DLL Doc Print(const ObjectRef& node);
 
@@ -72,10 +73,16 @@ class TIRHybridPrinter : public StmtFunctor<Doc(const Stmt&)>,
   std::unordered_map<Var, Doc, ObjectPtrHash, ObjectPtrEqual> memo_var_;
   /*! \brief Map from Buffer to Doc */
   std::unordered_map<Buffer, Doc, ObjectPtrHash, ObjectPtrEqual> memo_buf_;
+  /*! \brief Map from Buffer to Declaration Doc */
+  std::unordered_map<Buffer, Doc, ObjectPtrHash, ObjectPtrEqual> memo_buf_decl_;
   /*! \brief Map from CommReducer to Doc */
   std::unordered_map<const CommReducerNode*, Doc> memo_reducer_;
   /*! \brief name allocation map */
   std::unordered_map<std::string, int> name_alloc_map_;
+  /*! \brief number of children of current node's parent */
+  int num_child_;
+  /*! \brief the number of current node */
+  int current_num_;
 
   Doc VisitExpr_(const CastNode* op) override;
   Doc VisitExpr_(const VarNode* op) override;
@@ -133,6 +140,7 @@ class TIRHybridPrinter : public StmtFunctor<Doc(const Stmt&)>,
   Doc VisitType_(const PointerTypeNode* node) override;
   Doc VisitType_(const TupleTypeNode* node) override;
 
+  Doc PrintBody(const Stmt& body);
   Doc PrintIRModule(const IRModule& module);
   Doc PrintPrimFunc(const PrimFunc& primFunc);
   Doc PrintTensorRegion(const TensorRegionNode* op);
@@ -141,8 +149,8 @@ class TIRHybridPrinter : public StmtFunctor<Doc(const Stmt&)>,
   Doc PrintRange(const RangeNode* op);
   Doc PrintArray(const ArrayNode* op);
   Doc PrintBuffer(const BufferNode* op);
-  Doc PrintBufferDeclaration(const Buffer& buf, bool print_name);
-  Doc PrintString(const StringObj* op) { return Doc::StrLiteral(op->data); }
+  Doc AllocBufferDeclaration(const Buffer& buf);
+  static Doc PrintString(const StringObj* op) { return Doc::StrLiteral(op->data); }
 
   Doc GetUniqueName(std::string prefix);
   Doc AllocVar(const Var& var);
@@ -213,6 +221,8 @@ class TIRHybridPrinter : public StmtFunctor<Doc(const Stmt&)>,
     os << data[0];
     if (dtype == DataType::Int(32)) {
       doc << Doc::Text(os.str());
+    } else if (dtype == DataType::Bool()) {
+      doc << Doc::Text(data[0] ? "True" : "False");
     } else {
       doc << "tir." << runtime::DLDataType2String(dtype) << "(" << Doc::Text(os.str()) << ")";
     }
@@ -246,6 +256,48 @@ Doc TIRHybridPrinter::AllocVar(const Var& var) {
   return val;
 }
 
+Doc TIRHybridPrinter::AllocBufferDeclaration(const Buffer& buf) {
+  Doc doc = Print(buf->shape);
+  if (!runtime::TypeEqual(buf->dtype, DataType::Float(32))) {
+    doc << ", dtype=" << PrintDType(buf->dtype);
+  }
+  if (memo_var_.find(buf->data) != memo_var_.end()) {
+    doc << ", data=" << Print(buf->data);
+  } else {
+    // implicitly define data
+    memo_var_[buf->data] = Doc::Text(memo_buf_[buf].str() + ".data");
+    var_not_in_headers.insert(buf->data.get());
+  }
+  if (!buf->strides.empty()) {
+    doc << ", strides=" << Print(buf->strides);
+  }
+  if (buf->offset_factor != 0 && buf->elem_offset->IsInstance<VarNode>()) {
+    Var elem_offset = Downcast<Var>(buf->elem_offset);
+    if (memo_var_.find(elem_offset) != memo_var_.end()) {
+      doc << ", elem_offset=" << Print(buf->elem_offset);
+    } else {
+      // implicitly define elem_offset
+      memo_var_[elem_offset] = Doc::Text(memo_buf_[buf].str() + ".elem_offset");
+      var_not_in_headers.insert(elem_offset.get());
+    }
+  } else {
+    doc << ", elem_offset=" << Print(buf->elem_offset);
+  }
+  if (buf->scope != "global") {
+    doc << ", scope=" << Doc::StrLiteral(buf->scope);
+  }
+  if (buf->data_alignment != -1) {
+    doc << ", align=" << buf->data_alignment;
+  }
+  if (buf->offset_factor != 0) {
+    doc << ", offset_factor=" << buf->offset_factor;
+  }
+  if (buf->buffer_type != 1) {
+    doc << ", type=" << Doc::StrLiteral("auto");
+  }
+  return doc;
+}
+
 Doc TIRHybridPrinter::AllocBuf(const Buffer& buffer) {
   const auto& it = memo_buf_.find(buffer);
   if (it != memo_buf_.end()) {
@@ -257,6 +309,7 @@ Doc TIRHybridPrinter::AllocBuf(const Buffer& buffer) {
   }
   Doc val = GetUniqueName(name);
   memo_buf_[buffer] = val;
+  memo_buf_decl_[buffer] = AllocBufferDeclaration(buffer);
   return val;
 }
 
@@ -392,8 +445,17 @@ Doc TIRHybridPrinter::VisitExpr_(const BufferLoadNode* op) {
 
 Doc TIRHybridPrinter::VisitExpr_(const LoadNode* op) {
   Doc doc;
-  doc << "tir.load(" << PrintDType(op->dtype) << ", "
-      << Print(op->buffer_var) << ", " << Print(op->index) << ", " << Print(op->predicate) << ")";
+  if (op->dtype == DataType::Float(32) && is_one(op->predicate)
+      && op->buffer_var->dtype == DataType::Float(32)) {
+    doc << Print(op->buffer_var) << "[" << Print(op->index) << "]";
+  } else {
+    doc << "tir.load(" << PrintDType(op->dtype) << ", " << Print(op->buffer_var) << ", "
+        << Print(op->index);
+    if (!is_one(op->predicate)) {
+      doc << ", " << Print(op->predicate);
+    }
+    doc << ")";
+  }
   return doc;
 }
 
@@ -449,40 +511,39 @@ Doc TIRHybridPrinter::VisitExpr_(const ReduceNode* op) {
 Doc TIRHybridPrinter::VisitStmt_(const LetStmtNode* op) {
   Doc doc;
   var_not_in_headers.insert(op->var.get());
-  if (op->body->IsInstance<SeqStmtNode>()) {
+  if (current_num_ != num_child_ - 1) {
     doc << "with " << Print(op->value) << "as " << Print(op->var)
         << ": # type: " << Print(GetType(op->var));
-    doc << Doc::Indent(4, Doc::NewLine() << Print(op->body));
+    doc << Doc::Indent(4, Doc::NewLine() << PrintBody(op->body));
   } else {
     doc << Print(op->var)  << ": " << Print(GetType(op->var))
-        << " = " << Print(op->value) << Doc::NewLine() << Print(op->body);
+        << " = " << Print(op->value) << Doc::NewLine() << PrintBody(op->body);
   }
   return doc;
 }
 
 Doc TIRHybridPrinter::VisitStmt_(const AttrStmtNode* op) {
   Doc doc;
-  meta_collector_.Collect(op->node);
-  if (op->body->IsInstance<SeqStmtNode>()) {
+  if (current_num_ != num_child_ - 1) {
     doc << "with tir.attr(" << Print(op->node) << ", " << Doc::StrLiteral(op->attr_key) << ", "
         << Print(op->value) << "):";
-    doc << Doc::Indent(4, Doc::NewLine() << Print(op->body));
+    doc << Doc::Indent(4, Doc::NewLine() << PrintBody(op->body));
   } else {
     doc << "tir.attr(" << Print(op->node) << ", " << Doc::StrLiteral(op->attr_key) << ", "
         << Print(op->value) << ")";
-    doc << Doc::NewLine() << Print(op->body);
+    doc << Doc::NewLine() << PrintBody(op->body);
   }
   return doc;
 }
 
 Doc TIRHybridPrinter::VisitStmt_(const AssertStmtNode* op) {
   Doc doc;
-  if (op->body->IsInstance<SeqStmtNode>()) {
+  if (current_num_ != num_child_ - 1) {
     doc << "with tir.Assert(" << Print(op->condition) << ", " << Print(op->message) << "):";
-    doc << Doc::Indent(4, Doc::NewLine() << Print(op->body));
+    doc << Doc::Indent(4, Doc::NewLine() << PrintBody(op->body));
   } else {
     doc << "tir.Assert(" << Print(op->condition) << ", " << Print(op->message) << ")";
-    doc << Doc::NewLine() << Print(op->body);
+    doc << Doc::NewLine() << PrintBody(op->body);
   }
   return doc;
 }
@@ -490,34 +551,41 @@ Doc TIRHybridPrinter::VisitStmt_(const AssertStmtNode* op) {
 Doc TIRHybridPrinter::VisitStmt_(const StoreNode* op) {
   Doc doc;
   doc << "tir.store(" << Print(op->buffer_var) << ", " << Print(op->index) << ", "
-      << Print(op->value) << ", " << Print(op->predicate) << ")";
-  return doc;
+      << Print(op->value);
+  if (!is_one(op->predicate)) {
+    doc << ", " << Print(op->predicate);
+  }
+  return doc << ")";
 }
 
 Doc TIRHybridPrinter::VisitStmt_(const BufferRealizeNode* op) {
   Doc doc;
-  if (op->body->IsInstance<SeqStmtNode>()) {
-    doc << "with tir.realize(" << Print(op->buffer)
-        << Print(op->bounds) << ", " << Print(op->condition) << "):";
-    doc << Doc::Indent(4, Doc::NewLine() << Print(op->body));
+  if (current_num_ != num_child_ - 1) {
+    doc << "with tir.realize(" << Print(op->buffer) << Print(op->bounds);
+    if (!is_one(op->condition)) {
+      doc << ", " << Print(op->condition);
+    }
+    doc << "):" << Doc::Indent(4, Doc::NewLine() << PrintBody(op->body));
   } else {
-    doc << "tir.realize(" << Print(op->buffer)
-        << Print(op->bounds) << ", " << Print(op->condition) << ")";
-    doc << Doc::NewLine() << Print(op->body);
+    doc << "tir.realize(" << Print(op->buffer) << Print(op->bounds);
+    if (!is_one(op->condition)) {
+      doc << ", " << Print(op->condition);
+    }
+    doc << ")" << Doc::NewLine() << PrintBody(op->body);
   }
   return doc;
 }
 
 Doc TIRHybridPrinter::VisitStmt_(const AllocateNode* op) {
   Doc doc;
-  if (op->body->IsInstance<SeqStmtNode>()) {
+  if (current_num_ != num_child_ - 1) {
     doc << "with tir.allocate(" << Print(op->buffer_var) << ", "
         << PrintDType(op->dtype) << ", " << Print(op->extents) << "):";
-    doc << Doc::Indent(4, Print(op->body));
+    doc << Doc::Indent(4, PrintBody(op->body));
   } else {
     doc << "tir.allocate(" << Print(op->buffer_var) << ", "
         << PrintDType(op->dtype) << ", " << Print(op->extents) << ")";
-    doc << Doc::NewLine() << Print(op->body);
+    doc << Doc::NewLine() << PrintBody(op->body);
   }
   return doc;
 }
@@ -525,9 +593,9 @@ Doc TIRHybridPrinter::VisitStmt_(const AllocateNode* op) {
 Doc TIRHybridPrinter::VisitStmt_(const IfThenElseNode* op) {
   Doc doc;
   doc << "if " << Print(op->condition) << ":";
-  doc << Doc::Indent(4, Doc::NewLine() << Print(op->then_case));
+  doc << Doc::Indent(4, Doc::NewLine() << PrintBody(op->then_case));
   if (!is_one(op->condition) && op->else_case.defined()) {
-    doc << "else:" << Doc::Indent(4, Doc::NewLine() << Print(op->else_case));
+    doc << "else:" << Doc::Indent(4, Doc::NewLine() << PrintBody(op->else_case));
   }
   return doc;
 }
@@ -580,7 +648,7 @@ Doc TIRHybridPrinter::VisitStmt_(const ForNode* op) {
   if (op->for_type != ForType::Serial) {
     doc << ", " << Doc::StrLiteral(ForType2String(op->for_type));
   }
-  doc << "):" << Doc::Indent(4, Doc::NewLine() << Print(op->body));
+  doc << "):" << Doc::Indent(4, Doc::NewLine() << PrintBody(op->body));
   return doc;
 }
 
@@ -668,7 +736,7 @@ Doc TIRHybridPrinter::VisitStmt_(const BlockRealizeNode* op) {
   for (const auto& allocate : block_op->allocations) {
     body << Print(allocate) << Doc::NewLine();
   }
-  body << Print(block_op->body);
+  body << PrintBody(block_op->body);
   doc << Doc::Indent(4, body);
   return doc;
 }
@@ -694,7 +762,7 @@ Doc TIRHybridPrinter::VisitStmt_(const LoopNode* op) {
 
   // print body
   Doc body;
-  body << Doc::NewLine() << Print(op->body);
+  body << Doc::NewLine() << PrintBody(op->body);
   doc << Doc::Indent(4, body);
   return doc;
 }
@@ -702,14 +770,40 @@ Doc TIRHybridPrinter::VisitStmt_(const LoopNode* op) {
 Doc TIRHybridPrinter::VisitStmt_(const BufferAllocateNode* op) {
   Doc doc;
   buf_not_in_headers.insert(op->buffer.get());
-  doc << AllocBuf(op->buffer) << " = tir.buffer_allocate(";
-  doc << PrintBufferDeclaration(op->buffer, false) << ")";
+  doc << Print(op->buffer) << " = tir.buffer_allocate(" << memo_buf_decl_[op->buffer] << ")";
   return doc;
 }
 
 Doc TIRHybridPrinter::VisitStmt_(const BufferStoreNode* op) {
   Doc doc;
   doc << Print(op->buffer) << Print(op->indices) << " = " << Print(op->value);
+  return doc;
+}
+
+Doc TIRHybridPrinter::PrintBody(const Stmt& body) {
+  int memo_num_child, memo_current_num;
+  std::swap(memo_num_child, num_child_);
+  std::swap(memo_current_num, current_num_);
+
+  Doc doc;
+  if (body->IsInstance<SeqStmtNode>()) {
+    const auto& op = Downcast<SeqStmt>(body);
+    num_child_ = op->seq.size();
+    current_num_ = 0;
+    std::vector<Doc> stmts;
+    for (Stmt stmt : op->seq) {
+      stmts.push_back(Print(stmt));
+      current_num_++;
+    }
+    doc = PrintSep(stmts, Doc::NewLine());
+  } else {
+    num_child_ = 1;
+    current_num_ = 0;
+    doc = Print(body);
+  }
+
+  std::swap(memo_num_child, num_child_);
+  std::swap(memo_current_num, current_num_);
   return doc;
 }
 
@@ -733,46 +827,12 @@ Doc TIRHybridPrinter::PrintIRModule(const IRModule &module) {
   return doc;
 }
 
-Doc TIRHybridPrinter::PrintBufferDeclaration(const Buffer& buf, bool print_name) {
-  Doc doc = Print(buf->data) << ", " << Print(buf->shape);
-  if (!runtime::TypeEqual(buf->dtype, DataType::Float(32))) {
-    doc << ", " << PrintDType(buf->dtype);
-  }
-  if (!buf->strides.empty()) {
-    doc << ", strides=" << Print(buf->strides);
-  }
-  if (!is_zero(buf->elem_offset)) {
-    doc << ", elem_offset=" << Print(buf->elem_offset);
-  }
-  if (buf->scope != "global") {
-    doc << ", scope=" << Doc::StrLiteral(buf->scope);
-  }
-  if (buf->data_alignment != 128) {
-    doc << ", align=" << buf->data_alignment;
-  }
-  if (buf->offset_factor != 1) {
-    doc << ", offset_factor=" << buf->offset_factor;
-  }
-  if (buf->buffer_type != 1) {
-    doc << ", type=" << Doc::StrLiteral("auto");
-  }
-  if (print_name) {
-    doc << ", name=" << Print(buf);
-  }
-  return doc;
-}
-
 Doc TIRHybridPrinter::PrintPrimFunc(const PrimFunc &primFunc) {
   auto* op = primFunc.operator->();
-  // collect Meta in DictAttr
-  if (primFunc->attrs.defined()) {
-    for (const auto& it : primFunc->attrs->dict) {
-      meta_collector_.Collect(it.second);
-    }
-  }
   // clear renaming map
   memo_var_.clear();
   memo_buf_.clear();
+  memo_buf_decl_.clear();
   memo_reducer_.clear();
   var_not_in_headers.clear();
   buf_not_in_headers.clear();
@@ -790,8 +850,8 @@ Doc TIRHybridPrinter::PrintPrimFunc(const PrimFunc &primFunc) {
   // print buffer_bind
   for (const auto& it : op->buffer_map) {
     buf_not_in_headers.insert(it.second.get());
-    body << AllocBuf(it.second) << " = tir.buffer_bind(";
-    body << Print(it.first) << ", " << PrintBufferDeclaration(it.second, false);
+    body << Print(it.second) << " = tir.buffer_bind(";
+    body << Print(it.first) << ", " << memo_buf_decl_[it.second];
     body << ")" << Doc::NewLine();
   }
   // print comm_reducer
@@ -804,16 +864,18 @@ Doc TIRHybridPrinter::PrintPrimFunc(const PrimFunc &primFunc) {
     body << ")" << Doc::NewLine();
   }
   // print body
-  body << "# body" <<  Doc::NewLine() << Print(op->body);
-  // print header
-  Doc header;
+  body << "# body" <<  Doc::NewLine() << PrintBody(op->body);
+  // print func attrs
+  Doc header_attr;
   if (primFunc->attrs.defined()) {
-    header << Doc::NewLine() << "# function attr dict";
+    header_attr << Doc::NewLine() << "# function attr dict" << Doc::NewLine() << "tir.func_attr({";
+    std::vector<Doc> attrs;
     for (const auto& it : op->attrs->dict) {
-      header << Doc::NewLine() << "tir.set_func_attr("
-             << Doc::StrLiteral(it.first) << ", " << Print(it.second) << ")";
+      attrs.push_back(Doc::StrLiteral(it.first) << ":" << Print(it.second));
     }
+    header_attr << PrintSep(attrs, Doc::Text(", ")) << "})";
   }
+  // print buffer declarations(buffers not defined by buffer_bind or buffer_allocate)
   Doc header_buf;
   std::vector<const BufferNode*> bufs;
   for (const auto& it : memo_buf_) {
@@ -828,9 +890,10 @@ Doc TIRHybridPrinter::PrintPrimFunc(const PrimFunc &primFunc) {
     });
     for (const auto& buf : bufs) {
       header_buf << Doc::NewLine() << Print(GetRef<Buffer>(buf)) << " = tir.buffer_decl(";
-      header_buf << PrintBufferDeclaration(GetRef<Buffer>(buf), false) << ")";
+      header_buf << memo_buf_decl_[GetRef<Buffer>(buf)] << ")";
     }
   }
+  // print var declaration
   Doc header_var;
   std::vector<const VarNode*> vars;
   for (const auto& it : memo_var_) {
@@ -848,7 +911,7 @@ Doc TIRHybridPrinter::PrintPrimFunc(const PrimFunc &primFunc) {
       header_var << PrintDType(var->dtype) << ")";
     }
   }
-  doc << Doc::Indent(4, header << header_var << header_buf << body);
+  doc << Doc::Indent(4, header_attr << header_var << header_buf << body);
   return doc;
 }
 

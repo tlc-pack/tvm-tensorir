@@ -24,30 +24,35 @@ node as its first 2 arguments.
 # pylint: disable=unused-argument
 import tvm.tir
 from tvm import te
+from .registry import register_special_stmt
 
 
-def buffer_bind(parser, node, param, data, shape, dtype="float32", strides=[], elem_offset=0,
-                scope="global", align=128, offset_factor=1, buffer_type="default"):
+@register_special_stmt
+def buffer_bind(parser, node, param, shape, dtype="float32", data=None, strides=[], elem_offset=None,
+                scope="global", align=-1, offset_factor=0, buffer_type="default"):
     """ Special function buffer_bind(var, shape, dtype)
 
     Example
     -------
     .. code-block:: python
 
-        A = buffer_bind(a, A_1, (128, 128), dtype="float32")
+        A = buffer_bind(a, (128, 128), dtype="float32")
 
     """
 
     if param not in parser.params:
         parser.report_error("Can not bind non-input param to buffer")
+    align = align.value if not isinstance(align, int) else align
+    offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
     buffer = tvm.tir.decl_buffer(shape, dtype, parser._assign_target, data, strides, elem_offset,
                                  scope, align, offset_factor, buffer_type)
     parser.buffer_map[param] = buffer
     return buffer
 
 
-def buffer_allocate(parser, node, data, shape, dtype="float32", strides=[], elem_offset=0,
-                    scope="global", align=128, offset_factor=1, buffer_type="default"):
+@register_special_stmt
+def buffer_allocate(parser, node, shape, dtype="float32", data=None, strides=[], elem_offset=None,
+                    scope="global", align=-1, offset_factor=0, buffer_type="default"):
     """ Special function buffer_allocate(var, shape, dtype, scope)
 
     Example
@@ -57,14 +62,17 @@ def buffer_allocate(parser, node, data, shape, dtype="float32", strides=[], elem
         A = buffer_allocate((128, 128), dtype="float32")
 
     """
+    align = align.value if not isinstance(align, int) else align
+    offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
     buffer = tvm.tir.decl_buffer(shape, dtype, parser._assign_target, data, strides, elem_offset,
                                  scope, align, offset_factor, buffer_type)
     parser.scope_emitter.alloc(tvm.tir.BufferAllocate(buffer, scope))
     return buffer
 
 
-def buffer_decl(parser, node, data, shape, dtype="float32", strides=[], elem_offset=0,
-                scope="global", align=128, offset_factor=1, buffer_type="default"):
+@register_special_stmt
+def buffer_decl(parser, node, shape, dtype="float32", data=None, strides=[], elem_offset=None,
+                scope="global", align=-1, offset_factor=0, buffer_type="default"):
     align = align.value if not isinstance(align, int) else align
     offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
     buffer = tvm.tir.decl_buffer(shape, dtype, parser._assign_target, data, strides, elem_offset,
@@ -72,10 +80,12 @@ def buffer_decl(parser, node, data, shape, dtype="float32", strides=[], elem_off
     return buffer
 
 
+@register_special_stmt
 def var(parser, node, dtype):
     return te.var(parser._assign_target, dtype)
 
 
+@register_special_stmt
 def block_vars(parser, node, begin, end, iter_type="data_par"):
     """ Special function for defining a block var
 
@@ -110,11 +120,12 @@ class HybridReducer:
         self.reducer = tvm.tir.CommReducer([self.combiner.args[0]], [self.combiner.args[1]],
                                            [self.combiner.body], [self.identity])
 
-    @staticmethod
+    @register_special_stmt
     def step(parser, node, reducer, lhs, rhs):
         return tvm.tir.ReduceStep(reducer.reducer, lhs, rhs)
 
 
+@register_special_stmt
 def comm_reducer(parser, node, combiner, identity):
     """ Special function for defining a comm_reducer
 
@@ -133,5 +144,6 @@ def comm_reducer(parser, node, combiner, identity):
         parser.report_error("comm_reducer expect a 2-argument lambda function as first argument")
 
 
-def set_func_attr(parser, node, attr_key, value):
-    parser.dict_attr[attr_key] = value
+@register_special_stmt
+def func_attr(parser, node, dict_attr):
+    parser.dict_attr = dict_attr

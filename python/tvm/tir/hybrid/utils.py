@@ -37,8 +37,8 @@ def create_module(functions=None):
         A IRModule containing the passed definitions
     """
 
-    functions = {key: _parse(func) if isinstance(func, HybridFunction) else func for key, func in
-                 functions.items()}
+    functions = {key: _parse(func) if isinstance(func, HybridFunction) else func
+                 for key, func in functions.items()}
     return IRModule(functions=functions)
 
 
