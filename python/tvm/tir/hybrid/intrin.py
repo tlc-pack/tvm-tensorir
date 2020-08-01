@@ -112,6 +112,18 @@ def cast(dtype, value):
 
 
 @register_intrin
+def ramp(base, stride, lanes):
+    lanes = lanes.value if not isinstance(lanes, int) else lanes
+    return tvm.tir.Ramp(base, stride, lanes)
+
+
+@register_intrin
+def broadcast(value, lanes):
+    lanes = lanes.value if not isinstance(lanes, int) else lanes
+    return tvm.tir.Broadcast(value, lanes)
+
+
+@register_intrin
 def evaluate(value):
     return tvm.tir.Evaluate(value)
 

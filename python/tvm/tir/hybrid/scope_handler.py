@@ -64,11 +64,18 @@ def block(parser, node, block_vars_info, reads, writes, predicate=True, annotati
     return tvm.tir.BlockRealize(values, predicate, inner)
 
 
-@register_scope_handler("with_scope", concise=True)
+@register_scope_handler("with_scope", concise=False)
 def Assert(parser, node, condition, message, body):
     """ With scope handler function assert(condition, message, body) """
 
     return tvm.tir.AssertStmt(condition, tvm.runtime.convert(message), body)
+
+
+@register_scope_handler("with_scope", concise=False)
+def let(parser, node, var, value, body):
+    """ With scope handler function let(var, value, body) """
+
+    return tvm.tir.LetStmt(var, value, body)
 
 
 @register_scope_handler("with_scope", concise=True)

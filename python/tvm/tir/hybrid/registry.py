@@ -76,14 +76,14 @@ class CallArgumentReader(object):
         return arg
 
 
-def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, concise):
+def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, need_body, concise):
     """Helper function to wrap a function to be registered """
 
     def wrap_func(parser, node, args, kwargs):
         reader = CallArgumentReader(func_name, args, kwargs, parser)
         internal_args = list()
 
-        if concise:
+        if need_body:
             if isinstance(node, ast.With):
                 parser.scope_emitter.new_scope()
                 parser.scope_emitter.node_stack[-1].extend(reversed(node.body))
@@ -95,7 +95,7 @@ def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, co
                         body.append(res)
                 body = tvm.tir.SeqStmt(body) if len(body) > 1 else body[0]
                 parser.scope_emitter.pop_scope()
-            else:
+            elif concise:
                 body = []
                 while len(parser.scope_emitter.node_stack[-1]):
                     res = parser.visit(parser.scope_emitter.node_stack[-1].pop())
@@ -110,7 +110,7 @@ def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, co
         for i, arg_info in enumerate(arg_list):
             if len(arg_info) == 1:
                 arg_name, = arg_info
-                if concise and arg_name == "body":
+                if need_body and arg_name == "body":
                     internal_args.append(body)
                 else:
                     internal_args.append(reader.get_func_compulsory_arg(i + 1, arg_name))
@@ -123,7 +123,7 @@ def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, co
     return wrap_func
 
 
-def register_func(category, origin_func, need_parser_and_node, concise):
+def register_func(category, origin_func, need_parser_and_node, need_body, concise):
     """Helper function to register a function under category
 
     Parameters
@@ -167,19 +167,19 @@ def register_func(category, origin_func, need_parser_and_node, concise):
     func_name = origin_func.__qualname__
     Registry.host_dict[category][func_name] = \
         func_wrapper(func_name, origin_func, arg_list,
-                     need_parser_and_node=need_parser_and_node, concise=concise)
+                     need_parser_and_node, need_body, concise)
 
 
 def register_intrin(origin_func):
     """Register function under category intrin"""
-    register_func("intrin", origin_func, need_parser_and_node=False, concise=False)
+    register_func("intrin", origin_func, need_parser_and_node=False, need_body=False, concise=False)
     return origin_func
 
 
 def register_scope_handler(scope_name, concise=False):
     def decorate(origin_func):
         """Register function under category with_scope or for_scope"""
-        register_func(scope_name, origin_func, need_parser_and_node=True, concise=concise)
+        register_func(scope_name, origin_func, need_parser_and_node=True, need_body=True, concise=concise)
         return origin_func
 
     return decorate
@@ -187,5 +187,5 @@ def register_scope_handler(scope_name, concise=False):
 
 def register_special_stmt(origin_func):
     """Register function under category special_stmt"""
-    register_func("special_stmt", origin_func, need_parser_and_node=True, concise=False)
+    register_func("special_stmt", origin_func, need_parser_and_node=True, need_body=False, concise=False)
     return origin_func

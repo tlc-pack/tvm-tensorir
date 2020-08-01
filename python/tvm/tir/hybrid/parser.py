@@ -375,6 +375,24 @@ class HybridParser(ast.NodeVisitor):
         else:
             self.report_error("Unsupported AnnAssign stmt")
 
+    def visit_Assert(self, node):
+        """ Assert visitor
+        AST abstract grammar:
+            Assert(expr test, expr? msg)
+        """
+
+        condition = self.visit(node.test)
+        if node.msg is None:
+            self.report_error("Message of AssertStmt can't be None")
+        message = self.visit(node.msg)
+        body = []
+        while len(self.scope_emitter.node_stack[-1]):
+            res = self.visit(self.scope_emitter.node_stack[-1].pop())
+            if res is not None:
+                body.append(res)
+        body = tvm.tir.SeqStmt(body) if len(body) > 1 else body[0]
+        return tvm.tir.AssertStmt(condition, tvm.runtime.convert(message), body)
+
     def visit_For(self, node):
         """ For visitor
         AST abstract grammar:

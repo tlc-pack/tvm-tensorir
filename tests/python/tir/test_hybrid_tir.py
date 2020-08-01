@@ -59,11 +59,14 @@ def test_predicate():
 
 @tvm.tir.hybrid.script
 class Module:
-    def default_function(args: ty.handle, arg_type_ids: ty.handle, num_args: ty.int32, out_ret_value: ty.handle, out_ret_tcode: ty.handle) -> ty.int32:
+    def mmult(args: ty.handle, arg_type_ids: ty.handle, num_args: ty.int32, out_ret_value: ty.handle, out_ret_tcode: ty.handle) -> ty.int32:
         # function attr dict
-        tir.func_attr({"tir.is_entry_func":True, "global_symbol":"default_function", "calling_conv":1})
+        tir.func_attr({"tir.noalias": True, "global_symbol": "mmult", "tir.is_entry_func": True, "calling_conv": 1})
+        # var definition
+        C_global = tir.var("handle")
+        packedB = tir.var("handle")
         # body
-        tir.Assert((num_args == 3), "default_function: num_args should be 3")
+        assert (num_args == 3), "mmult: num_args should be 3"
         arg0: ty.handle = tir.tvm_struct_get(args, 0, 12, dtype="handle")
         arg0_code: ty.int32 = tir.load("int32", arg_type_ids, 0)
         arg1: ty.handle = tir.tvm_struct_get(args, 1, 12, dtype="handle")
@@ -83,119 +86,78 @@ class Module:
         tir.attr(C, "storage_alignment", 128)
         arg2_shape: ty.handle = tir.tvm_struct_get(arg2, 0, 2, dtype="handle")
         arg2_strides: ty.handle = tir.tvm_struct_get(arg2, 0, 3, dtype="handle")
-        tir.Assert(((((arg0_code == 3) or (arg0_code == 13)) or (arg0_code == 7)) or (arg0_code == 4)), "default_function: Expect arg[0] to be pointer")
-        tir.Assert(((((arg1_code == 3) or (arg1_code == 13)) or (arg1_code == 7)) or (arg1_code == 4)), "default_function: Expect arg[1] to be pointer")
-        tir.Assert(((((arg2_code == 3) or (arg2_code == 13)) or (arg2_code == 7)) or (arg2_code == 4)), "default_function: Expect arg[2] to be pointer")
-        tir.Assert((2 == tir.tvm_struct_get(arg0, 0, 4, dtype="int32")), "arg0.ndim is expected to equal 2")
-        tir.Assert((2 == tir.tvm_struct_get(arg0, 0, 4, dtype="int32")), "arg0.ndim is expected to equal 2")
-        tir.Assert((((tir.tvm_struct_get(arg0, 0, 5, dtype="uint8") == tir.uint8(2)) and (tir.tvm_struct_get(arg0, 0, 6, dtype="uint8") == tir.uint8(32))) and (tir.tvm_struct_get(arg0, 0, 7, dtype="uint16") == tir.uint16(1))), "arg0.dtype is expected to be float32")
-        tir.Assert((1024 == tir.cast("int32", tir.load("int64", arg0_shape, 0))), "Argument arg0.shape[0] has an unsatisfied constraint")
-        tir.Assert((1024 == tir.cast("int32", tir.load("int64", arg0_shape, 1))), "Argument arg0.shape[1] has an unsatisfied constraint")
+        assert ((((arg0_code == 3) or (arg0_code == 13)) or (arg0_code == 7)) or (arg0_code == 4)), "mmult: Expect arg[0] to be pointer"
+        assert ((((arg1_code == 3) or (arg1_code == 13)) or (arg1_code == 7)) or (arg1_code == 4)), "mmult: Expect arg[1] to be pointer"
+        assert ((((arg2_code == 3) or (arg2_code == 13)) or (arg2_code == 7)) or (arg2_code == 4)), "mmult: Expect arg[2] to be pointer"
+        assert (2 == tir.tvm_struct_get(arg0, 0, 4, dtype="int32")), "arg0.ndim is expected to equal 2"
+        assert (2 == tir.tvm_struct_get(arg0, 0, 4, dtype="int32")), "arg0.ndim is expected to equal 2"
+        assert (((tir.tvm_struct_get(arg0, 0, 5, dtype="uint8") == tir.uint8(2)) and (tir.tvm_struct_get(arg0, 0, 6, dtype="uint8") == tir.uint8(32))) and (tir.tvm_struct_get(arg0, 0, 7, dtype="uint16") == tir.uint16(1))), "arg0.dtype is expected to be float32"
+        assert (1024 == tir.cast("int32", tir.load("int64", arg0_shape, 0))), "Argument arg0.shape[0] has an unsatisfied constraint"
+        assert (1024 == tir.cast("int32", tir.load("int64", arg0_shape, 1))), "Argument arg0.shape[1] has an unsatisfied constraint"
         if not (tir.isnullptr(arg0_strides, dtype="bool")):
-            tir.Assert(((1 == tir.cast("int32", tir.load("int64", arg0_strides, 1))) and (1024 == tir.cast("int32", tir.load("int64", arg0_strides, 0)))), "arg0.strides: expected to be compact array")
+            assert ((1 == tir.cast("int32", tir.load("int64", arg0_strides, 1))) and (1024 == tir.cast("int32", tir.load("int64", arg0_strides, 0)))), "arg0.strides: expected to be compact array"
             tir.evaluate(0)
-        tir.Assert((tir.uint64(0) == tir.tvm_struct_get(arg0, 0, 8, dtype="uint64")), "Argument arg0.byte_offset has an unsatisfied constraint")
-        tir.Assert((1 == tir.tvm_struct_get(arg0, 0, 10, dtype="int32")), "Argument arg0.device_type has an unsatisfied constraint")
-        tir.Assert((2 == tir.tvm_struct_get(arg1, 0, 4, dtype="int32")), "arg1.ndim is expected to equal 2")
-        tir.Assert((2 == tir.tvm_struct_get(arg1, 0, 4, dtype="int32")), "arg1.ndim is expected to equal 2")
-        tir.Assert((((tir.tvm_struct_get(arg1, 0, 5, dtype="uint8") == tir.uint8(2)) and (tir.tvm_struct_get(arg1, 0, 6, dtype="uint8") == tir.uint8(32))) and (tir.tvm_struct_get(arg1, 0, 7, dtype="uint16") == tir.uint16(1))), "arg1.dtype is expected to be float32")
-        tir.Assert((1024 == tir.cast("int32", tir.load("int64", arg1_shape, 0))), "Argument arg1.shape[0] has an unsatisfied constraint")
-        tir.Assert((1024 == tir.cast("int32", tir.load("int64", arg1_shape, 1))), "Argument arg1.shape[1] has an unsatisfied constraint")
+        assert (tir.uint64(0) == tir.tvm_struct_get(arg0, 0, 8, dtype="uint64")), "Argument arg0.byte_offset has an unsatisfied constraint"
+        assert (1 == tir.tvm_struct_get(arg0, 0, 10, dtype="int32")), "Argument arg0.device_type has an unsatisfied constraint"
+        assert (2 == tir.tvm_struct_get(arg1, 0, 4, dtype="int32")), "arg1.ndim is expected to equal 2"
+        assert (2 == tir.tvm_struct_get(arg1, 0, 4, dtype="int32")), "arg1.ndim is expected to equal 2"
+        assert (((tir.tvm_struct_get(arg1, 0, 5, dtype="uint8") == tir.uint8(2)) and (tir.tvm_struct_get(arg1, 0, 6, dtype="uint8") == tir.uint8(32))) and (tir.tvm_struct_get(arg1, 0, 7, dtype="uint16") == tir.uint16(1))), "arg1.dtype is expected to be float32"
+        assert (1024 == tir.cast("int32", tir.load("int64", arg1_shape, 0))), "Argument arg1.shape[0] has an unsatisfied constraint"
+        assert (1024 == tir.cast("int32", tir.load("int64", arg1_shape, 1))), "Argument arg1.shape[1] has an unsatisfied constraint"
         if not (tir.isnullptr(arg1_strides, dtype="bool")):
-            tir.Assert(((1 == tir.cast("int32", tir.load("int64", arg1_strides, 1))) and (1024 == tir.cast("int32", tir.load("int64", arg1_strides, 0)))), "arg1.strides: expected to be compact array")
+            assert ((1 == tir.cast("int32", tir.load("int64", arg1_strides, 1))) and (1024 == tir.cast("int32", tir.load("int64", arg1_strides, 0)))), "arg1.strides: expected to be compact array"
             tir.evaluate(0)
-        tir.Assert((tir.uint64(0) == tir.tvm_struct_get(arg1, 0, 8, dtype="uint64")), "Argument arg1.byte_offset has an unsatisfied constraint")
-        tir.Assert((1 == tir.tvm_struct_get(arg1, 0, 10, dtype="int32")), "Argument arg1.device_type has an unsatisfied constraint")
-        tir.Assert((dev_id == tir.tvm_struct_get(arg1, 0, 9, dtype="int32")), "Argument arg1.device_id has an unsatisfied constraint")
-        tir.Assert((2 == tir.tvm_struct_get(arg2, 0, 4, dtype="int32")), "arg2.ndim is expected to equal 2")
-        tir.Assert((2 == tir.tvm_struct_get(arg2, 0, 4, dtype="int32")), "arg2.ndim is expected to equal 2")
-        tir.Assert((((tir.tvm_struct_get(arg2, 0, 5, dtype="uint8") == tir.uint8(2)) and (tir.tvm_struct_get(arg2, 0, 6, dtype="uint8") == tir.uint8(32))) and (tir.tvm_struct_get(arg2, 0, 7, dtype="uint16") == tir.uint16(1))), "arg2.dtype is expected to be float32")
-        tir.Assert((1024 == tir.cast("int32", tir.load("int64", arg2_shape, 0))), "Argument arg2.shape[0] has an unsatisfied constraint")
-        tir.Assert((1024 == tir.cast("int32", tir.load("int64", arg2_shape, 1))), "Argument arg2.shape[1] has an unsatisfied constraint")
+        assert (tir.uint64(0) == tir.tvm_struct_get(arg1, 0, 8, dtype="uint64")), "Argument arg1.byte_offset has an unsatisfied constraint"
+        assert (1 == tir.tvm_struct_get(arg1, 0, 10, dtype="int32")), "Argument arg1.device_type has an unsatisfied constraint"
+        assert (dev_id == tir.tvm_struct_get(arg1, 0, 9, dtype="int32")), "Argument arg1.device_id has an unsatisfied constraint"
+        assert (2 == tir.tvm_struct_get(arg2, 0, 4, dtype="int32")), "arg2.ndim is expected to equal 2"
+        assert (2 == tir.tvm_struct_get(arg2, 0, 4, dtype="int32")), "arg2.ndim is expected to equal 2"
+        assert (((tir.tvm_struct_get(arg2, 0, 5, dtype="uint8") == tir.uint8(2)) and (tir.tvm_struct_get(arg2, 0, 6, dtype="uint8") == tir.uint8(32))) and (tir.tvm_struct_get(arg2, 0, 7, dtype="uint16") == tir.uint16(1))), "arg2.dtype is expected to be float32"
+        assert (1024 == tir.cast("int32", tir.load("int64", arg2_shape, 0))), "Argument arg2.shape[0] has an unsatisfied constraint"
+        assert (1024 == tir.cast("int32", tir.load("int64", arg2_shape, 1))), "Argument arg2.shape[1] has an unsatisfied constraint"
         if not (tir.isnullptr(arg2_strides, dtype="bool")):
-            tir.Assert(((1 == tir.cast("int32", tir.load("int64", arg2_strides, 1))) and (1024 == tir.cast("int32", tir.load("int64", arg2_strides, 0)))), "arg2.strides: expected to be compact array")
+            assert ((1 == tir.cast("int32", tir.load("int64", arg2_strides, 1))) and (1024 == tir.cast("int32", tir.load("int64", arg2_strides, 0)))), "arg2.strides: expected to be compact array"
             tir.evaluate(0)
-        tir.Assert((tir.uint64(0) == tir.tvm_struct_get(arg2, 0, 8, dtype="uint64")), "Argument arg2.byte_offset has an unsatisfied constraint")
-        tir.Assert((1 == tir.tvm_struct_get(arg2, 0, 10, dtype="int32")), "Argument arg2.device_type has an unsatisfied constraint")
-        tir.Assert((dev_id == tir.tvm_struct_get(arg2, 0, 9, dtype="int32")), "Argument arg2.device_id has an unsatisfied constraint")
-        tir.attr(0, "compute_scope", "default_function_compute_")
-        for i_outer in tir.range(0, 32):
-            for j_outer_init in tir.range(0, 32):
-                for i_inner_init in tir.range(0, 32):
-                    for j_inner_init in tir.range(0, 32):
-                        tir.store(C, ((((i_outer*32768) + (i_inner_init*1024)) + (j_outer_init*32)) + j_inner_init), tir.float32(0))
-            for j_outer in tir.range(0, 32):
-                for k_outer in tir.range(0, 256):
-                    for k_inner in tir.range(0, 4):
-                        for i_inner in tir.range(0, 32):
-                            for j_inner in tir.range(0, 32):
-                                tir.store(C, ((((i_outer*32768) + (i_inner*1024)) + (j_outer*32)) + j_inner), tir.call_llvm_pure_intrin(tir.uint32(97), tir.uint32(3), tir.load("float32", A, ((((i_outer*32768) + (i_inner*1024)) + (k_outer*4)) + k_inner)), tir.load("float32", B, ((((k_outer*4096) + (k_inner*1024)) + (j_outer*32)) + j_inner)), tir.load("float32", C, ((((i_outer*32768) + (i_inner*1024)) + (j_outer*32)) + j_inner)), dtype="float32"))
-    __tvm_meta__ = {
-        "root": 1,
-        "nodes": [
-            {
-                "type_key": ""
-            },
-            {
-                "type_key": "Map",
-                "keys": [
-                    "Target"
-                ],
-                "data": [2]
-            },
-            {
-                "type_key": "Array",
-                "data": [3]
-            },
-            {
-                "type_key": "Target",
-                "attrs": {
-                    "attrs": "10",
-                    "id": "4",
-                    "keys": "9",
-                    "tag": "8"
-                }
-            },
-            {
-                "type_key": "TargetId",
-                "attrs": {
-                    "default_keys": "6",
-                    "device_type": "1",
-                    "name": "5"
-                }
-            },
-            {
-                "type_key": "runtime.String",
-                "repr_str": "llvm"
-            },
-            {
-                "type_key": "Array",
-                "data": [7]
-            },
-            {
-                "type_key": "runtime.String",
-                "repr_str": "cpu"
-            },
-            {
-                "type_key": "runtime.String"
-            },
-            {
-                "type_key": "Array",
-                "data": [7]
-            },
-            {
-                "type_key": "Map"
-            }
-        ],
-        "b64ndarrays": [],
-        "attrs": {"tvm_version": "0.7.dev1"}
-    }
+        assert (tir.uint64(0) == tir.tvm_struct_get(arg2, 0, 8, dtype="uint64")), "Argument arg2.byte_offset has an unsatisfied constraint"
+        assert (1 == tir.tvm_struct_get(arg2, 0, 10, dtype="int32")), "Argument arg2.device_type has an unsatisfied constraint"
+        assert (dev_id == tir.tvm_struct_get(arg2, 0, 9, dtype="int32")), "Argument arg2.device_id has an unsatisfied constraint"
+        tir.attr(0, "compute_scope", "mmult_compute_")
+        tir.attr(packedB, "storage_scope", "global")
+        tir.attr(packedB, "storage_alignment", 128)
+        with tir.let(packedB, tir.TVMBackendAllocWorkspace(1, dev_id, tir.uint64(4194304), 2, 32, dtype="handle")):
+            if tir.isnullptr(packedB, dtype="bool"):
+                tir.evaluate(tir.tvm_throw_last_error(dtype="int32"))
+            for x in tir.range(0, 32, "parallel"):
+                for y in tir.range(0, 1024):
+                    tir.store(packedB, tir.ramp(((x*32768) + (y*32)), 1, 32), tir.load("float32x32", B, tir.ramp(((y*1024) + (x*32)), 1, 32), tir.broadcast(True, 32)), tir.broadcast(True, 32))
+            for x_outer in tir.range(0, 32, "parallel"):
+                tir.attr(C_global, "storage_scope", "global")
+                tir.attr(C_global, "storage_alignment", 128)
+                with tir.let(C_global, tir.TVMBackendAllocWorkspace(1, dev_id, tir.uint64(4096), 2, 32, dtype="handle")):
+                    if tir.isnullptr(C_global, dtype="bool"):
+                        tir.evaluate(tir.tvm_throw_last_error(dtype="int32"))
+                    for y_outer in tir.range(0, 32):
+                        for x_c_init in tir.range(0, 32):
+                            tir.store(C_global, tir.ramp((x_c_init*32), 1, 32), tir.broadcast(tir.float32(0), 32), tir.broadcast(True, 32))
+                        for k_outer in tir.range(0, 256):
+                            for x_c in tir.range(0, 32):
+                                tir.store(C_global, tir.ramp((x_c*32), 1, 32), tir.call_llvm_pure_intrin(tir.uint32(97), tir.uint32(3), tir.broadcast(tir.load("float32", A, (((x_outer*32768) + (x_c*1024)) + (k_outer*4))), 32), tir.load("float32x32", packedB, tir.ramp(((y_outer*32768) + (k_outer*128)), 1, 32), tir.broadcast(True, 32)), tir.load("float32x32", C_global, tir.ramp((x_c*32), 1, 32), tir.broadcast(True, 32)), dtype="float32x32"), tir.broadcast(True, 32))
+                                tir.store(C_global, tir.ramp((x_c*32), 1, 32), tir.call_llvm_pure_intrin(tir.uint32(97), tir.uint32(3), tir.broadcast(tir.load("float32", A, ((((x_outer*32768) + (x_c*1024)) + (k_outer*4)) + 1)), 32), tir.load("float32x32", packedB, tir.ramp((((y_outer*32768) + (k_outer*128)) + 32), 1, 32), tir.broadcast(True, 32)), tir.load("float32x32", C_global, tir.ramp((x_c*32), 1, 32), tir.broadcast(True, 32)), dtype="float32x32"), tir.broadcast(True, 32))
+                                tir.store(C_global, tir.ramp((x_c*32), 1, 32), tir.call_llvm_pure_intrin(tir.uint32(97), tir.uint32(3), tir.broadcast(tir.load("float32", A, ((((x_outer*32768) + (x_c*1024)) + (k_outer*4)) + 2)), 32), tir.load("float32x32", packedB, tir.ramp((((y_outer*32768) + (k_outer*128)) + 64), 1, 32), tir.broadcast(True, 32)), tir.load("float32x32", C_global, tir.ramp((x_c*32), 1, 32), tir.broadcast(True, 32)), dtype="float32x32"), tir.broadcast(True, 32))
+                                tir.store(C_global, tir.ramp((x_c*32), 1, 32), tir.call_llvm_pure_intrin(tir.uint32(97), tir.uint32(3), tir.broadcast(tir.load("float32", A, ((((x_outer*32768) + (x_c*1024)) + (k_outer*4)) + 3)), 32), tir.load("float32x32", packedB, tir.ramp((((y_outer*32768) + (k_outer*128)) + 96), 1, 32), tir.broadcast(True, 32)), tir.load("float32x32", C_global, tir.ramp((x_c*32), 1, 32), tir.broadcast(True, 32)), dtype="float32x32"), tir.broadcast(True, 32))
+                        for x_inner in tir.range(0, 32):
+                            for y_inner in tir.range(0, 32):
+                                tir.store(C, ((((x_outer*32768) + (x_inner*1024)) + (y_outer*32)) + y_inner), tir.load("float32", C_global, ((x_inner*32) + y_inner)))
+                if (tir.TVMBackendFreeWorkspace(1, dev_id, C_global, dtype="int32") != 0):
+                    tir.evaluate(tir.tvm_throw_last_error(dtype="int32"))
+        if (tir.TVMBackendFreeWorkspace(1, dev_id, packedB, dtype="int32") != 0):
+            tir.evaluate(tir.tvm_throw_last_error(dtype="int32"))
 
 
-def test_matmul_lower():
+def test_opt_gemm_lower():
     mod = Module()
     rt_mod = tir.hybrid.from_source(tvm.tir.hybrid.ashybrid(mod, True))
-    tvm.ir.assert_structural_equal(mod, rt_mod)
+    tvm.ir.assert_structural_equal(mod, rt_mod, True)
 
 
 @tvm.tir.hybrid.script
@@ -288,12 +250,12 @@ class Module2:
 def test_opt_conv_tensorcore_lower():
     mod = Module2()
     rt_mod = tir.hybrid.from_source(tvm.tir.hybrid.ashybrid(mod, True))
-    tvm.ir.assert_structural_equal(mod, rt_mod)
+    tvm.ir.assert_structural_equal(mod, rt_mod, True)
 
 
 if __name__ == '__main__':
     # test_matmul()
     # test_element_wise()
     # test_predicate()
-    test_matmul_lower()
+    test_opt_gemm_lower()
     test_opt_conv_tensorcore_lower()

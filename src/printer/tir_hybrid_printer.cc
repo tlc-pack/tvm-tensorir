@@ -451,7 +451,7 @@ Doc TIRHybridPrinter::VisitExpr_(const LoadNode* op) {
   } else {
     doc << "tir.load(" << PrintDType(op->dtype) << ", " << Print(op->buffer_var) << ", "
         << Print(op->index);
-    if (!is_one(op->predicate)) {
+    if (!is_one(op->predicate) || op->dtype.lanes() != 1) {
       doc << ", " << Print(op->predicate);
     }
     doc << ")";
@@ -510,12 +510,11 @@ Doc TIRHybridPrinter::VisitExpr_(const ReduceNode* op) {
 
 Doc TIRHybridPrinter::VisitStmt_(const LetStmtNode* op) {
   Doc doc;
-  var_not_in_headers.insert(op->var.get());
   if (current_num_ != num_child_ - 1) {
-    doc << "with " << Print(op->value) << "as " << Print(op->var)
-        << ": # type: " << Print(GetType(op->var));
+    doc << "with tir.let(" << Print(op->var) << ", " << Print(op->value) << "):";
     doc << Doc::Indent(4, Doc::NewLine() << PrintBody(op->body));
   } else {
+    if (memo_var_.find(op->var) == memo_var_.end()) var_not_in_headers.insert(op->var.get());
     doc << Print(op->var)  << ": " << Print(GetType(op->var))
         << " = " << Print(op->value) << Doc::NewLine() << PrintBody(op->body);
   }
@@ -542,7 +541,7 @@ Doc TIRHybridPrinter::VisitStmt_(const AssertStmtNode* op) {
     doc << "with tir.Assert(" << Print(op->condition) << ", " << Print(op->message) << "):";
     doc << Doc::Indent(4, Doc::NewLine() << PrintBody(op->body));
   } else {
-    doc << "tir.Assert(" << Print(op->condition) << ", " << Print(op->message) << ")";
+    doc << "assert " << Print(op->condition) << ", " << Print(op->message);
     doc << Doc::NewLine() << PrintBody(op->body);
   }
   return doc;
@@ -552,7 +551,7 @@ Doc TIRHybridPrinter::VisitStmt_(const StoreNode* op) {
   Doc doc;
   doc << "tir.store(" << Print(op->buffer_var) << ", " << Print(op->index) << ", "
       << Print(op->value);
-  if (!is_one(op->predicate)) {
+  if (!is_one(op->predicate) || op->value.dtype().lanes() != 1) {
     doc << ", " << Print(op->predicate);
   }
   return doc << ")";
@@ -871,7 +870,7 @@ Doc TIRHybridPrinter::PrintPrimFunc(const PrimFunc &primFunc) {
     header_attr << Doc::NewLine() << "# function attr dict" << Doc::NewLine() << "tir.func_attr({";
     std::vector<Doc> attrs;
     for (const auto& it : op->attrs->dict) {
-      attrs.push_back(Doc::StrLiteral(it.first) << ":" << Print(it.second));
+      attrs.push_back(Doc::StrLiteral(it.first) << ": " << Print(it.second));
     }
     header_attr << PrintSep(attrs, Doc::Text(", ")) << "})";
   }
