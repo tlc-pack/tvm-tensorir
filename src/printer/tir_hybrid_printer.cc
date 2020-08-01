@@ -549,12 +549,13 @@ Doc TIRHybridPrinter::VisitStmt_(const AssertStmtNode* op) {
 
 Doc TIRHybridPrinter::VisitStmt_(const StoreNode* op) {
   Doc doc;
-  doc << "tir.store(" << Print(op->buffer_var) << ", " << Print(op->index) << ", "
-      << Print(op->value);
   if (!is_one(op->predicate) || op->value.dtype().lanes() != 1) {
-    doc << ", " << Print(op->predicate);
+    doc << "tir.store(" << Print(op->buffer_var) << ", " << Print(op->index) << ", "
+        << Print(op->value) << ", " << Print(op->predicate) << ")";
+  } else {
+    doc << Print(op->buffer_var) << "[" << Print(op->index) << "] = " << Print(op->value);
   }
-  return doc << ")";
+  return doc;
 }
 
 Doc TIRHybridPrinter::VisitStmt_(const BufferRealizeNode* op) {

@@ -147,7 +147,7 @@ class Module:
                                 tir.store(C_global, tir.ramp((x_c*32), 1, 32), tir.call_llvm_pure_intrin(tir.uint32(97), tir.uint32(3), tir.broadcast(tir.load("float32", A, ((((x_outer*32768) + (x_c*1024)) + (k_outer*4)) + 3)), 32), tir.load("float32x32", packedB, tir.ramp((((y_outer*32768) + (k_outer*128)) + 96), 1, 32), tir.broadcast(True, 32)), tir.load("float32x32", C_global, tir.ramp((x_c*32), 1, 32), tir.broadcast(True, 32)), dtype="float32x32"), tir.broadcast(True, 32))
                         for x_inner in tir.range(0, 32):
                             for y_inner in tir.range(0, 32):
-                                tir.store(C, ((((x_outer*32768) + (x_inner*1024)) + (y_outer*32)) + y_inner), tir.load("float32", C_global, ((x_inner*32) + y_inner)))
+                                C[((((x_outer*32768) + (x_inner*1024)) + (y_outer*32)) + y_inner)] = tir.load("float32", C_global, ((x_inner*32) + y_inner))
                 if (tir.TVMBackendFreeWorkspace(1, dev_id, C_global, dtype="int32") != 0):
                     tir.evaluate(tir.tvm_throw_last_error(dtype="int32"))
         if (tir.TVMBackendFreeWorkspace(1, dev_id, packedB, dtype="int32") != 0):
@@ -164,7 +164,7 @@ def test_opt_gemm_lower():
 class Module2:
     def default_function(A: ty.handle, W: ty.handle, Conv: ty.handle) -> None:
         # function attr dict
-        tir.func_attr({"global_symbol":"default_function", "tir.noalias":True})
+        tir.func_attr({"global_symbol": "default_function", "tir.noalias": True})
         # var definition
         blockIdx_x = tir.var("int32")
         blockIdx_y = tir.var("int32")

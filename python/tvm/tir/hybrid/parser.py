@@ -335,6 +335,7 @@ class HybridParser(ast.NodeVisitor):
             1. special stmts with return value
                 1.1 Buffer = tir.buffer_bind()/tir.buffer_allocate()
                 1.2 Buffer[expr, expr, .. expr] = Expr
+                    Var[expr] = Expr
                 1.3 HybridReducer = tir.comm_reducer()
                 1.4 Var = tir.var()
         """
@@ -355,7 +356,13 @@ class HybridParser(ast.NodeVisitor):
             buffer, buffer_indexes = self.visit(target)
             self._assign_target = (buffer, buffer_indexes)
             rhs = self.visit(node.value)
-            return tvm.tir.BufferStore(buffer, tvm.runtime.convert(rhs), buffer_indexes)
+            if isinstance(buffer, tvm.tir.Buffer):
+                return tvm.tir.BufferStore(buffer, tvm.runtime.convert(rhs), buffer_indexes)
+            else:
+                if len(buffer_indexes) != 1:
+                    self.report_error("Invalid Store Stmt")
+                return tvm.tir.Store(buffer, tvm.runtime.convert(rhs), buffer_indexes[0],
+                                     tvm.runtime.convert(True))
         else:
             self.report_error("Unsupported Assign stmt")
 
@@ -677,7 +684,7 @@ class HybridParser(ast.NodeVisitor):
                     | Index(expr value)
         By now only 3 types of Subscript are supported:
             1. Buffer[index, index, ...], Buffer element access(BufferLoad & BufferStore)
-               Var[index, index, ...] Buffer element access()
+               Var[index] Buffer element access()
             2. Buffer[slice, slice, ...], TensorRegion
             3. meta[type_key][index], Meta info access
             TODO(long term): TensorRegion can be Buffer[index, index, ...]?
@@ -703,10 +710,7 @@ class HybridParser(ast.NodeVisitor):
                     else:
                         return tvm.tir.BufferLoad(symbol, indexes)
                 else:
-                    if isinstance(symbol, tir.expr.Var):
-                        self.report_error("Invalid Subscript expression")
-                    else:
-                        return symbol, indexes
+                    return symbol, indexes
             else:
                 # TensorRegion
                 slices = []
