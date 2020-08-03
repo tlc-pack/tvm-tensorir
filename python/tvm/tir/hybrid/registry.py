@@ -171,12 +171,45 @@ def register_func(category, origin_func, need_parser_and_node, need_body, concis
 
 
 def register_intrin(origin_func):
-    """Register function under category intrin"""
+    """ Decorator to register function under category intrin
+
+    Example
+    ------
+    .. code-block:: python
+
+    @register_intrin
+    def broadcast(value, lanes):
+        lanes = lanes.value if not isinstance(lanes, int) else lanes
+        return tvm.tir.Broadcast(value, lanes)
+    """
     register_func("intrin", origin_func, need_parser_and_node=False, need_body=False, concise=False)
     return origin_func
 
 
 def register_scope_handler(scope_name, concise=False):
+    """Decorator to register function under scope handler
+
+    Parameters
+    ----------
+    scope_name: str
+        scope handler are first classified into 2 categories:
+            with scope handler(scope_name = "with_scope")
+            and for scope handler(scope_name = "for_scope")
+
+    concise: bool
+        whether this scope handler is allowed in concise scoping (note that this only works for
+        with scope handlers)
+
+    Example
+    ------
+    .. code-block:: python
+
+    @register_scope_handler("with_scope", concise=True)
+    def attr(parser, node, attr_node, attr_key, value, body):
+
+        return tvm.tir.AttrStmt(attr_node, attr_key, tvm.runtime.convert(value), body)
+    """
+
     def decorate(origin_func):
         """Register function under category with_scope or for_scope"""
         register_func(scope_name, origin_func, need_parser_and_node=True, need_body=True, concise=concise)
@@ -186,6 +219,19 @@ def register_scope_handler(scope_name, concise=False):
 
 
 def register_special_stmt(origin_func):
-    """Register function under category special_stmt"""
+    """ Decorator to register function under category special_stmt
+
+    Example
+    -------
+    @register_special_stmt
+    def buffer_decl(parser, node, shape, dtype="float32", data=None, strides=[], elem_offset=None,
+                    scope="global", align=-1, offset_factor=0, buffer_type="default"):
+        align = align.value if not isinstance(align, int) else align
+        offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
+        buffer = tvm.tir.decl_buffer(shape, dtype, parser._assign_target, data, strides,
+                                    elem_offset, scope, align, offset_factor, buffer_type)
+        return buffer
+
+    """
     register_func("special_stmt", origin_func, need_parser_and_node=True, need_body=False, concise=False)
     return origin_func
