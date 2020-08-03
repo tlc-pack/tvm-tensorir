@@ -16,26 +16,33 @@
 # under the License.
 """Hybrid Script Parser Typing Class"""
 
-
-class type_int32:
-    pass
+import tvm
 
 
-class type_handle:
-    pass
+class TypeGeneric:
+    def evaluate(self):
+        raise TypeError("Cannot get tvm.Type from a generic type")
 
 
-class type_Ptr:
-    def __getitem__(self, item):
-        pass
+class ConcreteType(TypeGeneric):
+    def __init__(self, type):
+        self.type = type
+
+    def evaluate(self):
+        return self.type
 
 
-class type_Tuple:
-    def __getitem__(self, item):
-        pass
+class GenericPtrType(TypeGeneric):
+    def __getitem__(self, vtype):
+        return ConcreteType(tvm.ir.PointerType(vtype.evaluate()))
 
 
-int32 = type_int32()
-handle = type_handle()
-Ptr = type_Ptr()
-Tuple = type_Tuple()
+class GenericTupleType(TypeGeneric):
+    def __getitem__(self, vtypes):
+        return ConcreteType(tvm.ir.TupleType([vtype.evaluate() for vtype in vtypes]))
+
+
+int32 = ConcreteType(tvm.ir.PrimType("int32"))
+handle = ConcreteType(tvm.ir.PrimType("handle"))
+Ptr = GenericPtrType()
+Tuple = GenericTupleType()

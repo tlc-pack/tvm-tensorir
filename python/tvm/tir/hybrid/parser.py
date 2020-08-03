@@ -334,34 +334,35 @@ class HybridParser(ast.NodeVisitor):
         By now only 3 types of Assign is supported:
             1. special stmts with return value
                 1.1 Buffer = tir.buffer_bind()/tir.buffer_allocate()
-                1.2 Buffer[expr, expr, .. expr] = Expr
-                    Var[expr] = Expr
-                1.3 HybridReducer = tir.comm_reducer()
-                1.4 Var = tir.var()
+                1.2 HybridReducer = tir.comm_reducer()
+                1.3 Var = tir.var()
+
+            2. (BufferStore) Buffer[PrimExpr, PrimExpr, ..., PrimExpr] = PrimExpr
+            3. (Store)       Var[PrimExpr] = PrimExpr
         """
 
         if not len(node.targets) == 1:
             self.report_error("Only one-valued assignment is supported now")
-
         target = node.targets[0]
+
         if isinstance(target, ast.Name):
-            # 1.1, 1.3, 1.4
+            # scenario 1
             self._assign_target = target.id
             rhs = self.visit(node.value)
             if not isinstance(node.value, ast.Call):
                 self.report_error("Unsupported assign stmt")
             self.scope_emitter.update_symbol(target.id, rhs)
         elif isinstance(target, ast.Subscript):
-            # 1.2
-            buffer, buffer_indexes = self.visit(target)
-            self._assign_target = (buffer, buffer_indexes)
+            # scenario 2&3
+            symbol, indexes = self.visit(target)
+            self._assign_target = (symbol, indexes)
             rhs = self.visit(node.value)
-            if isinstance(buffer, tvm.tir.Buffer):
-                return tvm.tir.BufferStore(buffer, tvm.runtime.convert(rhs), buffer_indexes)
+            if isinstance(symbol, tvm.tir.Buffer):
+                return tvm.tir.BufferStore(symbol, tvm.runtime.convert(rhs), indexes)
             else:
-                if len(buffer_indexes) != 1:
-                    self.report_error("Invalid Store Stmt")
-                return tvm.tir.Store(buffer, tvm.runtime.convert(rhs), buffer_indexes[0],
+                if len(indexes) != 1:
+                    self.report_error("Invalid Store stmt")
+                return tvm.tir.Store(symbol, tvm.runtime.convert(rhs), indexes[0],
                                      tvm.runtime.convert(True))
         else:
             self.report_error("Unsupported Assign stmt")
@@ -459,9 +460,6 @@ class HybridParser(ast.NodeVisitor):
         The problem it brings is that vi, vj will be parsed as Call here, so when parsing the Call
         which is actually to defining a block var, we leave it to a intrinsic function block_vars()
         to handle them.
-
-            2. with tir.assert()/tir.allocate()/tir.attr()/tir.realize()
-            3. with Expr as Var # type:
         """
 
         if not len(node.items) == 1:
