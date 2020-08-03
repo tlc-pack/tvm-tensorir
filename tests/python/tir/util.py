@@ -17,85 +17,85 @@
 
 import tvm
 from tvm import tir
+from tvm.tir.hybrid import ty
 
 
 @tvm.tir.hybrid.script
-def matmul(a, b, c):
-    A = buffer_bind(a, (128, 128), "float32")
-    B = buffer_bind(b, (128, 128), "float32")
-    C = buffer_bind(c, (128, 128), "float32")
-    reducer = comm_reducer(lambda x, y: x + y, float32(0))
+def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.buffer_bind(a, (128, 128), "float32")
+    B = tir.buffer_bind(b, (128, 128), "float32")
+    C = tir.buffer_bind(c, (128, 128), "float32")
+    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
-    with block({}, reads=[A[0: 128, 0: 128], B[0: 128, 0: 128]], writes=C[0: 128, 0: 128],
+    with tir.block({}, reads=[A[0: 128, 0: 128], B[0: 128, 0: 128]], writes=C[0: 128, 0: 128],
                name="root"):
-        for i in range(0, 128):
-            for j in range(0, 128):
-                for k in range(0, 128):
-                    with block({vi(0, 128): i, vj(0, 128): j, vk(0, 128, iter_type="reduce"): k},
-                               reads=[C[vi: vi + 1, vj: vj + 1], A[vi: vi + 1, vk: vk + 1],
-                                      B[vj: vj + 1, vk: vk + 1]],
-                               writes=[C[vi: vi + 1, vj: vj + 1]], name="update"):
+        for i in tir.grid(0, 128):
+            for j in tir.grid(0, 128):
+                for k in tir.grid(0, 128):
+                    with tir.block({vi(0, 128): i, vj(0, 128): j, vk(0, 128, iter_type="reduce"): k},
+                                   reads=[C[vi: vi + 1, vj: vj + 1], A[vi: vi + 1, vk: vk + 1],
+                                          B[vj: vj + 1, vk: vk + 1]],
+                                   writes=[C[vi: vi + 1, vj: vj + 1]], name="update"):
                         reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
 
 
 @tvm.tir.hybrid.script
-def matmul_original(a, b, c):
-    A = buffer_bind(a, (128, 128), "float32")
-    B = buffer_bind(b, (128, 128), "float32")
-    C = buffer_bind(c, (128, 128), "float32")
+def matmul_original(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.buffer_bind(a, (128, 128), "float32")
+    B = tir.buffer_bind(b, (128, 128), "float32")
+    C = tir.buffer_bind(c, (128, 128), "float32")
 
-    with block({}, reads=[A[0: 128, 0: 128], B[0: 128, 0: 128]], writes=C[0: 128, 0: 128],
+    with tir.block({}, reads=[A[0: 128, 0: 128], B[0: 128, 0: 128]], writes=C[0: 128, 0: 128],
                name="root"):
-        for i in range(0, 128):
-            for j in range(0, 128):
-                with block({vi(0, 128): i, vj(0, 128): j}, reads=[],
-                           writes=C[vi: vi + 1, vj: vj + 1],
-                           name="init"):
-                    C[vi, vj] = float32(0)
-                for k in range(0, 128):
-                    with block({vi(0, 128): i, vj(0, 128): j, vk(0, 128, iter_type="reduce"): k},
-                               reads=[C[vi: vi + 1, vj: vj + 1], A[vi: vi + 1, vk: vk + 1],
-                                      B[vj: vj + 1, vk: vk + 1]],
-                               writes=[C[vi: vi + 1, vj: vj + 1]], name="update"):
+        for i in tir.grid(0, 128):
+            for j in tir.grid(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j},
+                               reads=[], writes=C[vi: vi + 1, vj: vj + 1], name="init"):
+                    C[vi, vj] = tir.float32(0)
+                for k in tir.grid(0, 128):
+                    with tir.block({vi(0, 128): i, vj(0, 128): j, vk(0, 128, iter_type="reduce"): k},
+                                   reads=[C[vi: vi + 1, vj: vj + 1], A[vi: vi + 1, vk: vk + 1],
+                                          B[vj: vj + 1, vk: vk + 1]],
+                                   writes=[C[vi: vi + 1, vj: vj + 1]], name="update"):
                         C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
 @tvm.tir.hybrid.script
-def element_wise(a, c):
-    A = buffer_bind(a, (128, 128), "float32")
-    C = buffer_bind(c, (128, 128), "float32")
+def element_wise(a: ty.handle, c: ty.handle) -> None:
+    A = tir.buffer_bind(a, (128, 128), "float32")
+    C = tir.buffer_bind(c, (128, 128), "float32")
 
-    with block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
-        B = buffer_allocate((128, 128), "float32")
+    with tir.block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
+        B = tir.buffer_allocate((128, 128), "float32")
 
-        for i in range(0, 128):
-            for j in range(0, 128):
-                with block({vi(0, 128): i, vj(0, 128): j}, A[vi: vi + 1, vj: vj + 1],
-                           B[vi: vi + 1, vj: vj + 1],
-                           name="B"):
-                    B[vi, vj] = A[vi, vj] * 2
+        for i in tir.grid(0, 128):
+            for j in tir.grid(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j}, A[vi: vi + 1, vj: vj + 1],
+                               B[vi: vi + 1, vj: vj + 1],
+                               name="B"):
+                    B[vi, vj] = A[vi, vj] * 2.0
 
-        for i in range(0, 128):
-            for j in range(0, 128):
-                with block({vi(0, 128): i, vj(0, 128): j}, B[vi: vi + 1, vj: vj + 1],
-                           C[vi: vi + 1, vj: vj + 1],
-                           name="C"):
-                    C[vi, vj] = B[vi, vj] + 1
+        for i in tir.grid(0, 128):
+            for j in tir.grid(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j}, B[vi: vi + 1, vj: vj + 1],
+                               C[vi: vi + 1, vj: vj + 1],
+                               name="C"):
+                    C[vi, vj] = B[vi, vj] + 1.0
 
 
 @tvm.tir.hybrid.script
-def predicate(b, c):
-    B = buffer_bind(b, (16, 16), "float32")
-    C = buffer_bind(c, (16, 16), "float32")
+def predicate(b: ty.handle, c: ty.handle) -> None:
+    B = tir.buffer_bind(b, (16, 16), "float32")
+    C = tir.buffer_bind(c, (16, 16), "float32")
 
-    with block({}, reads=[], writes=[], name="root"):
-        for i in range(0, 16):
-            for jo in range(0, 4):
-                for ji in range(0, 4):
-                    with block({vi(0, 16): i, vj(0, 16): jo * 4 + ji},
-                               reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
-                               predicate=jo * 4 + ji < 16, name="update"):
-                        C[vi, vj] = B[vi, vj] + 1
+    with tir.block({}, reads=[], writes=[], name="root"):
+        for i in tir.grid(0, 16):
+            for jo in tir.grid(0, 4):
+                for ji in tir.grid(0, 4):
+                    with tir.block({vi(0, 16): i, vj(0, 16): jo * 4 + ji},
+                                   reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
+                                   predicate=jo * 4 + ji < 16, name="update"):
+                        C[vi, vj] = B[vi, vj] + 1.0
 
 
 def matmul_stmt():
@@ -114,5 +114,5 @@ def element_wise_stmt():
 
 
 def predicate_stmt():
-    mod = tvm.tir.hybrid.create_module({"predicate" : predicate})
+    mod = tvm.tir.hybrid.create_module({"predicate": predicate})
     return mod["predicate"]

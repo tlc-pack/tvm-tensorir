@@ -83,7 +83,7 @@ def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, ne
         reader = CallArgumentReader(func_name, args, kwargs, parser)
         internal_args = list()
 
-        if need_body:
+        if need_body and not isinstance(node, ast.For):
             if isinstance(node, ast.With):
                 parser.scope_emitter.new_scope()
                 parser.scope_emitter.node_stack[-1].extend(reversed(node.body))
@@ -95,7 +95,9 @@ def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, ne
                         body.append(res)
                 body = tvm.tir.SeqStmt(body) if len(body) > 1 else body[0]
                 parser.scope_emitter.pop_scope()
-            elif concise:
+            else:
+                if not concise:
+                    parser.report_error("Concise scoping is not allowed here")
                 body = []
                 while len(parser.scope_emitter.node_stack[-1]):
                     res = parser.visit(parser.scope_emitter.node_stack[-1].pop())

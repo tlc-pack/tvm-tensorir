@@ -36,8 +36,10 @@ from .registry import register_scope_handler
 
 
 @register_scope_handler("with_scope", concise=False)
-def block(parser, node, block_vars_info, reads, writes, predicate=True, annotations=None, name=""):
-    """ With scope handler function block(block_vars， reads, writes, predicate, annotations, name)
+def block(parser, node, block_vars_info, reads, writes, body,
+          predicate=True, annotations=None, name=""):
+    """ With scope handler function block(block_vars， reads, writes,
+                                          body predicate, annotations, name)
 
     Example
     -------
@@ -57,9 +59,7 @@ def block(parser, node, block_vars_info, reads, writes, predicate=True, annotati
     if annotations is None:
         annotations = []
 
-    body = get_body(parser, node)
     allocations = parser.scope_emitter.pop_scope(is_block=True)
-
     inner = tvm.tir.Block(block_vars, reads, writes, body, allocations, annotations, name)
     return tvm.tir.BlockRealize(values, predicate, inner)
 

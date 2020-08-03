@@ -17,76 +17,77 @@
 
 import tvm
 from tvm import tir
+from tvm.tir.hybrid import ty
 
 
 @tvm.tir.hybrid.script
-def buffer_bind_missing_args(a):
-    A = buffer_bind((16, 16), "float32")
+def buffer_bind_missing_args(a: ty.handle) -> None:
+    A = tir.buffer_bind((16, 16), "float32")
 
 
 @tvm.tir.hybrid.script
-def range_missing_args(a):
-    A = buffer_bind(a, (16, 16), "float32")
+def range_missing_args(a: ty.handle) -> None:
+    A = tir.buffer_bind(a, (16, 16), "float32")
 
     for i in range(16):
         for j in range(0, 16):
-            with block({vi(0, 16): i, vj(0, 16): j}, reads=[], writes=C[vi: vi + 1, vj: vj + 1], name="init"):
+            with tir.block({vi(0, 16): i, vj(0, 16): j}, reads=[], writes=C[vi: vi + 1, vj: vj + 1], name="init"):
                 A[vi, vj] = 0.0
 
 
 @tvm.tir.hybrid.script
-def block_missing_args(a):
-    A = buffer_bind(a, (16, 16), "float32")
+def block_missing_args(a: ty.handle) -> None:
+    A = tir.buffer_bind(a, (16, 16), "float32")
 
-    for i in range(0, 16):
-        for j in range(0, 16):
-            with block({vi(0, 16): i, vj(0, 16): j}, writes=A[vi: vi + 1, vj: vj + 1], name="init"):
+    for i in tir.grid(0, 16):
+        for j in tir.grid(0, 16):
+            with tir.block({vi(0, 16): i, vj(0, 16): j}, writes=A[vi: vi + 1, vj: vj + 1], name="init"):
                 A[vi, vj] = 0.0
 
 
 @tvm.tir.hybrid.script
-def undefined_buffer(a):
-    A = buffer_bind(a, (16, 16), "float32")
+def undefined_buffer(a: ty.handle) -> None:
+    A = tir.buffer_bind(a, (16, 16), "float32")
 
-    for i in range(0, 16):
-        for j in range(0, 16):
-            with block({vi(0, 16): i, vj(0, 16): j}, reads=[], writes=C[vi: vi + 1, vj: vj + 1], name="init"):
+    for i in tir.grid(0, 16):
+        for j in tir.grid(0, 16):
+            with tir.block({vi(0, 16): i, vj(0, 16): j}, reads=[], writes=C[vi: vi + 1, vj: vj + 1], name="init"):
                 A[vi, vj] = 0.0
 
 
 @tvm.tir.hybrid.script
-def undefined_block_var(a):
-    A = buffer_bind(a, (16, 16), "float32")
+def undefined_block_var(a: ty.handle) -> None:
+    A = tir.buffer_bind(a, (16, 16), "float32")
 
-    for i in range(0, 16):
-        for j in range(0, 16):
-            with block({vi(0, 16): i, vj(0, 16): j}, reads=[], writes=A[vi: vi + 1, vj: vj + 1], name="init"):
+    for i in tir.grid(0, 16):
+        for j in tir.grid(0, 16):
+            with tir.block({vi(0, 16): i, vj(0, 16): j}, reads=[], writes=A[vi: vi + 1, vj: vj + 1], name="init"):
                 A[vi, vk] = 0.0
 
 
 @tvm.tir.hybrid.script
-def unsupported_stmt(a):
+def unsupported_stmt(a: ty.int32) -> None:
     if a > 0:
         print("I love tvm")
 
 
 @tvm.tir.hybrid.script
-def unsupported_function_call(a):
-    A = buffer_bind(a, (16, 16), "float32")
+def unsupported_function_call(a: ty.handle) -> None:
+    A = tir.buffer_bind(a, (16, 16), "float32")
 
-    for i in const_range(0, 16):
-        for j in range(0, 16):
-            with block({vi(0, 16): i, vj(0, 16): j}, reads=[], writes=A[vi: vi + 1, vj: vj + 1], name="init"):
+    for i in tir.const_range(0, 16):
+        for j in tir.grid(0, 16):
+            with tir.block({vi(0, 16): i, vj(0, 16): j}, reads=[], writes=A[vi: vi + 1, vj: vj + 1], name="init"):
                 A[vi, vk] = 0.0
 
 
 @tvm.tir.hybrid.script
-def type_check(a):
-    A = buffer_bind(a, (16, 16), "float32")
+def type_check(a: ty.handle) -> None:
+    A = tir.buffer_bind(a, (16, 16), "float32")
 
-    for i in range(0, 16):
-        for j in range(0, 16):
-            with block({vi(0, 16): i, vj(0, 16): j}, reads=[], writes=a[vi: vi + 1, vj: vj + 1], name="init"):
+    for i in tir.range(0, 16):
+        for j in tir.range(0, 16):
+            with tir.block({vi(0, 16): i, vj(0, 16): j}, reads=[], writes=a[vi: vi + 1, vj: vj + 1], name="init"):
                 A[vi, vj] = 0.0
 
 
@@ -104,11 +105,11 @@ def wrap_error(func, lineno):
 
 
 if __name__ == '__main__':
-    wrap_error(buffer_bind_missing_args, 24)
-    wrap_error(range_missing_args, 31)
-    wrap_error(block_missing_args, 43)
-    wrap_error(undefined_buffer, 53)
-    wrap_error(undefined_block_var, 64)
-    wrap_error(unsupported_stmt, 69)
-    wrap_error(unsupported_function_call, 77)
-    wrap_error(type_check, 89)
+    wrap_error(buffer_bind_missing_args, 25)
+    wrap_error(range_missing_args, 32)
+    wrap_error(block_missing_args, 44)
+    wrap_error(undefined_buffer, 54)
+    wrap_error(undefined_block_var, 65)
+    wrap_error(unsupported_stmt, 71)
+    wrap_error(unsupported_function_call, 78)
+    wrap_error(type_check, 90)

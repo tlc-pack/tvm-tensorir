@@ -93,7 +93,7 @@ func_opt1 = s.func
 
 s.decompose_reduction(update, j_o)
 print('Opt1: %f' % build_and_test(s.func))
-'''
+
 ################################################################################################
 # Vectorization
 # -------------
@@ -158,30 +158,32 @@ print('Opt3: %f' % build_and_test(s.func))
 # We have to re-write the algorithm slightly.
 
 @tvm.tir.hybrid.script
-def matmul_packed(a, b, c):
-    A = buffer_bind(a, (1024, 1024), "float32")
-    B = buffer_bind(b, (1024, 1024), "float32")
-    C = buffer_bind(c, (1024, 1024), "float32")
-    reducer = comm_reducer(lambda x, y: x + y, float32(0))
+def matmul_packed(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.buffer_bind(a, (1024, 1024), "float32")
+    B = tir.buffer_bind(b, (1024, 1024), "float32")
+    C = tir.buffer_bind(c, (1024, 1024), "float32")
+    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
-    with block({}, reads=[A[0: 1024, 0: 1024], B[0: 1024, 0: 1024]], writes=C[0: 1024, 0: 1024],
-               name="root"):
-        packedB = buffer_allocate((1024 // 32, 1024, 32))
-        for i in range(0, 1024 // 32):
-            for j in range(0, 1024):
-                for k in range(0, 32):
-                    with block({vi(0, 1024 // 32): i, vj(0, 1024): j, vk(0, 32): k},
-                               reads=B[vj: vj + 1, vi * 32 + vk: vi * 32 + vk + 1],
-                               writes=packedB[vi: vi + 1, vj: vj + 1, vk: vk + 1], name="packed"):
+    with tir.block({}, reads=[A[0: 1024, 0: 1024], B[0: 1024, 0: 1024]], writes=C[0: 1024, 0: 1024],
+                   name="root"):
+        packedB = tir.buffer_allocate((1024 // 32, 1024, 32))
+        for i in tir.grid(0, 1024 // 32):
+            for j in tir.grid(0, 1024):
+                for k in tir.grid(0, 32):
+                    with tir.block({vi(0, 1024 // 32): i, vj(0, 1024): j, vk(0, 32): k},
+                                   reads=B[vj: vj + 1, vi * 32 + vk: vi * 32 + vk + 1],
+                                   writes=packedB[vi: vi + 1, vj: vj + 1, vk: vk + 1],
+                                   name="packed"):
                         packedB[vi, vj, vk] = B[vj, vi * 32 + vk]
 
-        for i in range(0, 1024):
-            for j in range(0, 1024):
-                for k in range(0, 1024):
-                    with block({vi(0, 1024): i, vj(0, 1024): j, vk(0, 1024, iter_type="reduce"): k},
-                               reads=[C[vi: vi + 1, vj: vj + 1], A[vi: vi + 1, vk: vk + 1],
-                                      packedB[vj // 32: vj // 32 + 1, vk: vk + 1, vj % 32: vj % 32 + 1]],
-                               writes=[C[vi: vi + 1, vj: vj + 1]], name="C"):
+        for i in tir.grid(0, 1024):
+            for j in tir.grid(0, 1024):
+                for k in tir.grid(0, 1024):
+                    with tir.block({vi(0, 1024): i, vj(0, 1024): j, vk(0, 1024, iter_type="reduce"): k},
+                                   reads=[C[vi: vi + 1, vj: vj + 1], A[vi: vi + 1, vk: vk + 1],
+                                          packedB[vj // 32: vj // 32 + 1, vk: vk + 1, vj % 32: vj % 32 + 1]],
+                                   writes=[C[vi: vi + 1, vj: vj + 1]],
+                                   name="C"):
                         reducer.step(C[vi, vj], A[vi, vk] * packedB[vj // 32, vk, vj % 32])
 
 
@@ -262,4 +264,3 @@ print('Opt6: %f' % build_and_test(s.func))
 # Note that the outputs on the web page reflect the running times on a non-exclusive
 # Docker container, thereby they are *unreliable*. It is highly encouraged to run the
 # tutorial by yourself to observe the performance gain acheived by TVM.
-'''
