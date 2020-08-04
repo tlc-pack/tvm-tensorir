@@ -16,47 +16,48 @@
 # under the License.
 """ Testing tvm.auto_scnheduler.AccessAnalysis. """
 import tvm
+from tvm.hybrid import ty
 
 
-@tvm.tir.hybrid.script
-def _matmul_with_relu(a, b, c, d):
-    A = buffer_bind(a, (1024, 1024), "float32")
-    B = buffer_bind(b, (1024, 1024), "float32")
-    C = buffer_bind(d, (1024, 1024), "float32")
-    D = buffer_bind(d, (1024, 1024), "float32")
-    reducer = comm_reducer(lambda x, y: x + y, float32(0))
+@tvm.hybrid.script
+def _matmul_with_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
+    A = tir.buffer_bind(a, (1024, 1024), "float32")
+    B = tir.buffer_bind(b, (1024, 1024), "float32")
+    D = tir.buffer_bind(d, (1024, 1024), "float32")
+    reducer = tir.comm_reducer(lambda x, y: x + y, float32(0))
 
-    with block({},
-               writes=[C[0:1024, 0:1024], D[0:1024, 0:1024]],
-               reads=[A[0:1024, 0:1024], B[0:1024, 0:1024]],
-               name="root"):
+    with tir.block({},
+                   writes=[D[0:1024, 0:1024]],
+                   reads=[A[0:1024, 0:1024], B[0:1024, 0:1024]],
+                   name="root"):
+        C = tir.buffer_allocate((128, 128), "float32")
 
-        for i in range(0, 1024):
-            for j in range(0, 1024):
-                for k in range(0, 1024):
-                    with block({vi(0, 1024): i, vj(0, 1024): j, vk(0, 1024, iter_type="reduce"): k},
-                               writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                               reads=[C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)],
-                                      B[vj:(vj + 1), vk:(vk + 1)]], name="C"):
+        for i in tir.grid(0, 1024):
+            for j in tir.grid(0, 1024):
+                for k in tir.grid(0, 1024):
+                    with tir.block({vi(0, 1024): i, vj(0, 1024): j, vk(0, 1024, iter_type="reduce"): k},
+                                   writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                                   reads=[C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)],
+                                          B[vj:(vj + 1), vk:(vk + 1)]], name="C"):
                         reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
-        for i in range(0, 1024):
-            for j in range(0, 1024):
-                with block({vi(0, 1024): i, vj(0, 1024): j},
-                           writes=[D[vi:(vi + 1), vj:(vj + 1)]],
-                           reads=[C[vi:(vi + 1), vj:(vj + 1)]], name="D"):
+        for i in tir.grid(0, 1024):
+            for j in tir.grid(0, 1024):
+                with tir.block({vi(0, 1024): i, vj(0, 1024): j},
+                               writes=[D[vi:(vi + 1), vj:(vj + 1)]],
+                               reads=[C[vi:(vi + 1), vj:(vj + 1)]], name="D"):
                     # TODO(@junrushao1994): change it to `max` once supported
-                    D[vi, vj] = C[vi, vj] + 1
+                    D[vi, vj] = C[vi, vj] + float32(1)
 
 
 def test_matmul_with_relu():
-    module = tvm.tir.hybrid.create_module({"hybrid_func": _matmul_with_relu})
+    module = tvm.hybrid.create_module({"hybrid_func": _matmul_with_relu})
     func = module["hybrid_func"]
     assert isinstance(func, tvm.tir.PrimFunc)
-    loop_tree = tvm.auto_scheduler.LoopTree.from_prim_func(func)
-    analysis_result = tvm.auto_scheduler.access_analysis.analyze(loop_tree)
-    analysis_mm = analysis_result[loop_tree.children[0]]
-    analysis_relu = analysis_result[loop_tree.children[1]]
+    # loop_tree = tvm.auto_scheduler.LoopTree.from_prim_func(func)
+    # analysis_result = tvm.auto_scheduler.access_analysis.analyze(loop_tree)
+    # analysis_mm = analysis_result[loop_tree.children[0]]
+    # analysis_relu = analysis_result[loop_tree.children[1]]
 
 
 if __name__ == "__main__":
