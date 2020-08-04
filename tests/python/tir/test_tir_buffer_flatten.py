@@ -17,10 +17,10 @@
 
 import tvm.tir
 import util
-
+from tvm.hybrid import ty
 
 def test_no_allocate():
-    mod = tvm.tir.hybrid.create_module({"func": util.matmul_stmt_original()})
+    mod = tvm.hybrid.create_module({"func": util.matmul_stmt_original()})
     trans = tvm.transform.Sequential([tvm.tir.transform.BufferFlatten(),
                                       tvm.tir.transform.Simplify()])
     mod = trans(mod)
@@ -42,7 +42,7 @@ def test_no_allocate():
 
 
 def test_global_allocate():
-    mod = tvm.tir.hybrid.create_module({"func": util.element_wise_stmt()})
+    mod = tvm.hybrid.create_module({"func": util.element_wise_stmt()})
     trans = tvm.transform.Sequential([tvm.tir.transform.BufferFlatten(),
                                       tvm.tir.transform.Simplify()])
     mod = trans(mod)
@@ -65,30 +65,30 @@ def test_global_allocate():
     tvm.ir.assert_structural_equal(mod["func"].body, stmt, map_free_vars=True)
 
 
-@tvm.tir.hybrid.script
-def compute_at_element_wise(a, c):
-    A = buffer_bind(a, (128, 128), "float32", name="A")
-    C = buffer_bind(c, (128, 128), "float32", name="C")
+@tvm.hybrid.script
+def compute_at_element_wise(a: ty.handle, c: ty.handle) -> None:
+    A = tir.buffer_bind(a, (128, 128), "float32", name="A")
+    C = tir.buffer_bind(c, (128, 128), "float32", name="C")
 
-    with block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
-        B = buffer_allocate((128, 128), "float32", name="B")
+    with tir.block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
+        B = tir.buffer_allocate((128, 128), "float32", name="B")
 
-        for i in range(0, 128):
-            for j in range(0, 128):
-                with block({vi(0, 128): i, vj(0, 128): j}, A[vi: vi + 1, vj: vj + 1],
+        for i in tir.grid(0, 128):
+            for j in tir.grid(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j}, A[vi: vi + 1, vj: vj + 1],
                            B[vi: vi + 1, vj: vj + 1],
                            name="B"):
-                    B[vi, vj] = A[vi, vj] * 2
+                    B[vi, vj] = A[vi, vj] * 2.0
 
-            for j in range(0, 128):
-                with block({vi(0, 128): i, vj(0, 128): j}, B[vi: vi + 1, vj: vj + 1],
+            for j in tir.grid(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j}, B[vi: vi + 1, vj: vj + 1],
                            C[vi: vi + 1, vj: vj + 1],
                            name="C"):
-                    C[vi, vj] = B[vi, vj] + 1
+                    C[vi, vj] = B[vi, vj] + 1.0
 
 
 def test_local_allocate():
-    mod = tvm.tir.hybrid.create_module({"func": compute_at_element_wise})
+    mod = tvm.hybrid.create_module({"func": compute_at_element_wise})
     trans = tvm.transform.Sequential([tvm.tir.transform.BufferFlatten(),
                                       tvm.tir.transform.Simplify()])
     mod = trans(mod)
