@@ -26,10 +26,10 @@ from typed_ast import ast3 as ast
 
 class Category(IntEnum):
     """Categories of registered functions"""
-    intrin = 0
-    with_scope = 1
-    for_scope = 2
-    special_stmt = 3
+    INTRIN = 0
+    WITH_SCOPE = 1
+    FOR_SCOPE = 2
+    SPECIAL_STMT = 3
 
 
 class Registry(object):
@@ -42,10 +42,10 @@ class Registry(object):
     special_stmt = dict()
 
     host_dict = {
-        Category.intrin: intrin,
-        Category.with_scope: with_scope,
-        Category.for_scope: for_scope,
-        Category.special_stmt: special_stmt
+        Category.INTRIN: intrin,
+        Category.WITH_SCOPE: with_scope,
+        Category.FOR_SCOPE: for_scope,
+        Category.SPECIAL_STMT: special_stmt
     }
 
 
@@ -196,7 +196,7 @@ def register_intrin(origin_func):
         lanes = lanes.value if not isinstance(lanes, int) else lanes
         return tvm.tir.Broadcast(value, lanes)
     """
-    register_func(Category.intrin, origin_func,
+    register_func(Category.INTRIN, origin_func,
                   need_parser_and_node=False, need_body=False, concise=False)
     return origin_func
 
@@ -249,6 +249,6 @@ def register_special_stmt(origin_func):
         return buffer
 
     """
-    register_func(Category.special_stmt, origin_func,
+    register_func(Category.SPECIAL_STMT, origin_func,
                   need_parser_and_node=True, need_body=False, concise=False)
     return origin_func

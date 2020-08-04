@@ -35,7 +35,7 @@ from .registry import Category
 # With scope handler
 
 
-@register_scope_handler(Category.with_scope, concise=False)
+@register_scope_handler(Category.WITH_SCOPE, concise=False)
 def block(parser, node, block_vars_info, reads, writes, body,
           predicate=True, annotations=None, name=""):
     """ With scope handler function block(block_vars， reads, writes,
@@ -82,21 +82,21 @@ def block(parser, node, block_vars_info, reads, writes, body,
     return tvm.tir.BlockRealize(values, predicate, inner)
 
 
-@register_scope_handler(Category.with_scope, concise=False)
+@register_scope_handler(Category.WITH_SCOPE, concise=False)
 def Assert(parser, node, condition, message, body):
     """ With scope handler function assert(condition, message, body) """
 
     return tvm.tir.AssertStmt(condition, tvm.runtime.convert(message), body)
 
 
-@register_scope_handler(Category.with_scope, concise=False)
+@register_scope_handler(Category.WITH_SCOPE, concise=False)
 def let(parser, node, var, value, body):
     """ With scope handler function let(var, value, body) """
 
     return tvm.tir.LetStmt(var, value, body)
 
 
-@register_scope_handler(Category.with_scope, concise=True)
+@register_scope_handler(Category.WITH_SCOPE, concise=True)
 def realize(parser, node, buffer_bounds, body, condition=True):
     """ With scope handler function realize(buffer_bounds, condition, body) """
 
@@ -105,14 +105,14 @@ def realize(parser, node, buffer_bounds, body, condition=True):
     return tvm.tir.BufferRealize(buffer, bounds, condition, body)
 
 
-@register_scope_handler(Category.with_scope, concise=True)
+@register_scope_handler(Category.WITH_SCOPE, concise=True)
 def attr(parser, node, attr_node, attr_key, value, body):
     """ With scope handler function attr(attr_node, attr_key, value, bdoy) """
 
     return tvm.tir.AttrStmt(attr_node, attr_key, tvm.runtime.convert(value), body)
 
 
-@register_scope_handler(Category.with_scope, concise=True)
+@register_scope_handler(Category.WITH_SCOPE, concise=True)
 def allocate(parser, node, buffer_var, dtype, extents, condition, body):
     """ With scope handler function allocate(buffer_var, dtype, extents, condition, body) """
 
@@ -122,7 +122,7 @@ def allocate(parser, node, buffer_var, dtype, extents, condition, body):
 # For scope handler
 
 
-@register_scope_handler(Category.for_scope)
+@register_scope_handler(Category.FOR_SCOPE)
 def range(parser, node, begin, end, for_type="serial"):
     """ For scope handler function range(begin, end, annotation)"""
     ana = tvm.arith.Analyzer()
@@ -139,7 +139,7 @@ def range(parser, node, begin, end, for_type="serial"):
     return tvm.tir.For(loop_var, begin, extent, for_type_dict[for_type], 0, body)
 
 
-@register_scope_handler(Category.for_scope)
+@register_scope_handler(Category.FOR_SCOPE)
 def grid(parser, node, begin, end, annotation=None):
     """ For scope handler function grid(begin, end, annotation)"""
     ana = tvm.arith.Analyzer()
