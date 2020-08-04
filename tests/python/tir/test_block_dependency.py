@@ -18,6 +18,7 @@
 import pytest
 import tvm
 from tvm import tir
+from tvm.hybrid import ty
 import util
 
 
@@ -62,31 +63,30 @@ def test_matmul_dependency():
     assert successor_init[0].type + successor_init[1].type == 1
 
 
-@tvm.tir.hybrid.script
-def test_WAR(a, b, c):
-    A = buffer_bind(a, (128, 128))
-    B = buffer_bind(b, (128, 128))
-    C = buffer_bind(c, (128, 128))
+@tvm.hybrid.script
+def test_WAR(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.buffer_bind(a, (128, 128))
+    B = tir.buffer_bind(b, (128, 128))
+    C = tir.buffer_bind(c, (128, 128))
 
-    with block({}, A[0: 128, 0: 128], [B[0: 128, 0: 128], C[0: 128, 0: 128]], name="root"):
-        for i in range(0, 128):
-            for j in range(0, 128):
-                with block({vi(0, 128): i, vj(0, 128): j},
-                           reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
-                           name="C"):
-                    C[vi, vj] = B[vi, vj] + 1
-                with block({vi(0, 128): i, vj(0, 128): j},
-                           reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1],
-                           name="B"):
-                    B[vi, vj] = A[vi, vj] * 2
+    with tir.block({}, A[0: 128, 0: 128], [B[0: 128, 0: 128], C[0: 128, 0: 128]], name="root"):
+        for i in tir.grid(0, 128):
+            for j in tir.grid(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j}, reads=B[vi, vj], writes=C[vi, vj],
+                               name="C"):
+                    C[vi, vj] = B[vi, vj] + 1.0
+                with tir.block({vi(0, 128): i, vj(0, 128): j}, reads=A[vi, vj], writes=B[vi, vj],
+                               name="B"):
+                    B[vi, vj] = A[vi, vj] * 2.0
 
 
 def test_WAR_dependency():
-    mod = tvm.tir.hybrid.create_module({"test_WAR": test_WAR})
+    mod = tvm.hybrid.create_module({"test_WAR": test_WAR})
     func = mod["test_WAR"]
     with pytest.raises(TypeError) as excinfo:
         tir.create_schedule(func)
     assert "WAR dependency is not allowed" in str(excinfo.value)
+
 
 if __name__ == "__main__":
     test_element_wise_dependency()

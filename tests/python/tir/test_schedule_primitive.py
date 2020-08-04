@@ -18,25 +18,28 @@
 import tvm
 import util
 from tvm import tir
+from tvm.hybrid import ty
 
 
-@tvm.tir.hybrid.script
-def fused_element_wise(a, c):
-    A = buffer_bind(a, (128, 128))
-    C = buffer_bind(c, (128, 128))
+@tvm.hybrid.script
+def fused_element_wise(a: ty.handle, c: ty.handle) -> None:
+    A = tir.buffer_bind(a, (128, 128))
+    C = tir.buffer_bind(c, (128, 128))
 
-    with block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
-        B = buffer_allocate((128, 128))
+    with tir.block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
+        B = tir.buffer_allocate((128, 128))
 
-        for i in range(0, 128 * 128):
-            with block({vi(0, 128): i // 128, vj(0, 128): i % 128},
-                       reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1], name="B"):
-                B[vi, vj] = A[vi, vj] * 2
+        for i in tir.grid(0, 16384):
+            with tir.block({vi(0, 128): i // 128, vj(0, 128): i % 128},
+                           reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1],
+                           name="B"):
+                B[vi, vj] = A[vi, vj] * 2.0
 
-        for j in range(0, 128 * 128):
-            with block({vi(0, 128): j // 128, vj(0, 128): j % 128},
-                       reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1], name="C"):
-                C[vi, vj] = B[vi, vj] + 1
+        for j in tir.grid(0, 16384):
+            with tir.block({vi(0, 128): j // 128, vj(0, 128): j % 128},
+                           reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
+                           name="C"):
+                C[vi, vj] = B[vi, vj] + 1.0
 
 
 def test_fuse():
@@ -51,56 +54,61 @@ def test_fuse():
     outer, inner = s.get_axes(C)
     s.fuse(outer, inner)
 
-    mod = tvm.tir.hybrid.create_module({"fused_element_wise": fused_element_wise})
+    mod = tvm.hybrid.create_module({"fused_element_wise": fused_element_wise})
     fused_func = mod["fused_element_wise"]
     tvm.ir.assert_structural_equal(fused_func, s.func)
     assert s.validate_sref()
 
 
-@tvm.tir.hybrid.script
-def split_element_wise(a, c):
-    A = buffer_bind(a, (128, 128))
-    C = buffer_bind(c, (128, 128))
+@tvm.hybrid.script
+def split_element_wise(a: ty.handle, c: ty.handle) -> None:
+    A = tir.buffer_bind(a, (128, 128))
+    C = tir.buffer_bind(c, (128, 128))
 
-    with block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
-        B = buffer_allocate((128, 128))
+    with tir.block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
+        B = tir.buffer_allocate((128, 128))
 
-        for io in range(0, 8):
-            for ii in range(0, 16):
-                for j in range(0, 128):
-                    with block({vi(0, 128): io * 16 + ii, vj(0, 128): j},
-                               reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1],
-                               name="B"):
-                        B[vi, vj] = A[vi, vj] * 2
+        for io in tir.grid(0, 8):
+            for ii in tir.grid(0, 16):
+                for j in tir.grid(0, 128):
+                    with tir.block({vi(0, 128): io * 16 + ii, vj(0, 128): j},
+                                   reads=A[vi: vi + 1, vj: vj + 1],
+                                   writes=B[vi: vi + 1, vj: vj + 1],
+                                   name="B"):
+                        B[vi, vj] = A[vi, vj] * 2.0
 
-        for i in range(0, 128):
-            for jo in range(0, 10):
-                for ji in range(0, 13):
-                    with block({vi(0, 128): i, vj(0, 128): jo * 13 + ji},
-                               reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
-                               predicate=jo * 13 + ji < 128, name="C"):
-                        C[vi, vj] = B[vi, vj] + 1
+        for i in tir.grid(0, 128):
+            for jo in tir.grid(0, 10):
+                for ji in tir.grid(0, 13):
+                    with tir.block({vi(0, 128): i, vj(0, 128): jo * 13 + ji},
+                                   reads=B[vi: vi + 1, vj: vj + 1],
+                                   writes=C[vi: vi + 1, vj: vj + 1],
+                                   predicate=jo * 13 + ji < 128, name="C"):
+                        C[vi, vj] = B[vi, vj] + 1.0
 
 
-@tvm.tir.hybrid.script
-def split_fuse_element_wise(a, c):
-    C = buffer_bind(c, (128, 128), "float32")
-    A = buffer_bind(a, (128, 128), "float32")
-    with block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
-        B = buffer_allocate((128, 128), "float32", "")
-        for i in range(0, 128):
-            for j in range(0, 128):
-                with block({vi(0, 128): ((floordiv(i, 16) * 16) + floormod(i, 16)), vj(0, 128): j},
-                           writes=[B[vi:(vi + 1), vj:(vj + 1)]],
-                           reads=[A[vi:(vi + 1), vj:(vj + 1)]], name="B"):
-                    B[vi, vj] = (A[vi, vj] * float32(2))
-        for i in range(0, 128):
-            for j in range(0, 130):
-                with block({vi(0, 128): i, vj(0, 128): ((floordiv(j, 13) * 13) + floormod(j, 13))},
-                           writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                           reads=[B[vi:(vi + 1), vj:(vj + 1)]],
-                           predicate=(((floordiv(j, 13) * 13) + floormod(j, 13)) < 128), name="C"):
-                    C[vi, vj] = (B[vi, vj] + float32(1))
+@tvm.hybrid.script
+def split_fuse_element_wise(a: ty.handle, c: ty.handle) -> None:
+    C = tir.buffer_bind(c, (128, 128), "float32")
+    A = tir.buffer_bind(a, (128, 128), "float32")
+    with tir.block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
+        B = tir.buffer_allocate((128, 128), "float32", "")
+        for i in tir.grid(0, 128):
+            for j in tir.grid(0, 128):
+                with tir.block({vi(0, 128): ((tir.floordiv(i, 16) * 16) + tir.floormod(i, 16)),
+                                vj(0, 128): j},
+                               writes=[B[vi:(vi + 1), vj:(vj + 1)]],
+                               reads=[A[vi:(vi + 1), vj:(vj + 1)]], name="B"):
+                    B[vi, vj] = (A[vi, vj] * tir.float32(2))
+        for i in tir.grid(0, 128):
+            for j in tir.grid(0, 130):
+                with tir.block({vi(0, 128): i,
+                                vj(0, 128): ((tir.floordiv(j, 13) * 13) + tir.floormod(j, 13))},
+                               writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                               reads=[B[vi:(vi + 1), vj:(vj + 1)]],
+                               predicate=(((tir.floordiv(j, 13) * 13) + tir.floormod(j, 13)) < 128),
+                               name="C"):
+                    C[vi, vj] = (B[vi, vj] + tir.float32(1))
 
 
 def test_split_fuse():
@@ -115,31 +123,31 @@ def test_split_fuse():
     outer, inner = s.get_axes(C)
     s.split(inner, nparts=10)
 
-    mod = tvm.tir.hybrid.create_module({"split_element_wise": split_element_wise})
+    mod = tvm.hybrid.create_module({"split_element_wise": split_element_wise})
     split_func = mod["split_element_wise"]
 
     tvm.ir.assert_structural_equal(split_func, s.func)
     assert s.validate_sref()
 
 
-@tvm.tir.hybrid.script
-def compute_at_element_wise(a, c):
-    A = buffer_bind(a, (128, 128))
-    C = buffer_bind(c, (128, 128))
+@tvm.hybrid.script
+def compute_at_element_wise(a: ty.handle, c: ty.handle) -> None:
+    A = tir.buffer_bind(a, (128, 128))
+    C = tir.buffer_bind(c, (128, 128))
 
-    with block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
-        B = buffer_allocate((128, 128))
-        for i in range(0, 128):
-            for j in range(0, 128):
-                with block({vi(0, 128): i, vj(0, 128): j},
-                           reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1],
-                           name="B"):
-                    B[vi, vj] = A[vi, vj] * 2
-            for j in range(0, 128):
-                with block({vi(0, 128): i, vj(0, 128): j},
-                           reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
-                           name="C"):
-                    C[vi, vj] = B[vi, vj] + 1
+    with tir.block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
+        B = tir.buffer_allocate((128, 128))
+        for i in tir.grid(0, 128):
+            for j in tir.grid(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j},
+                               reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1],
+                               name="B"):
+                    B[vi, vj] = A[vi, vj] * 2.0
+            for j in tir.grid(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j},
+                               reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
+                               name="C"):
+                    C[vi, vj] = B[vi, vj] + 1.0
 
 
 def test_compute_at():
@@ -152,25 +160,26 @@ def test_compute_at():
     outer, inner = s.get_axes(C)
     s.compute_at(B, outer)
 
-    mod = tvm.tir.hybrid.create_module({"compute_at_element_wise": compute_at_element_wise})
+    mod = tvm.hybrid.create_module({"compute_at_element_wise": compute_at_element_wise})
     split_func = mod["compute_at_element_wise"]
 
     tvm.ir.assert_structural_equal(split_func, s.func)
     assert s.validate_sref()
 
 
-@tvm.tir.hybrid.script
-def predicate_fuse(b, c):
-    C = buffer_bind(c, (16, 16), "float32")
-    B = buffer_bind(b, (16, 16), "float32")
-    with block({}, writes=[], reads=[], name="root"):
-        for i in range(0, 256):
-            with block({vi(0, 16): floordiv(floordiv(i, 4), 4),
-                        vj(0, 16): ((floormod(floordiv(i, 4), 4) * 4) + floormod(i, 4))},
-                       writes=[C[vi:(vi + 1), vj:(vj + 1)]], reads=[B[vi:(vi + 1), vj:(vj + 1)]],
-                       predicate=(((floormod(floordiv(i, 4), 4) * 4) + floormod(i, 4)) < 16),
-                       name="update"):
-                C[vi, vj] = (B[vi, vj] + float32(1))
+@tvm.hybrid.script
+def predicate_fuse(b: ty.handle, c: ty.handle) -> None:
+    C = tir.buffer_bind(c, (16, 16), "float32")
+    B = tir.buffer_bind(b, (16, 16), "float32")
+    with tir.block({}, writes=[], reads=[], name="root"):
+        for i in tir.grid(0, 256):
+            with tir.block({vi(0, 16): tir.floordiv(tir.floordiv(i, 4), 4),
+                            vj(0, 16): ((tir.floormod(tir.floordiv(i, 4), 4) * 4) + tir.floormod(i, 4))},
+                           writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                           reads=[B[vi:(vi + 1), vj:(vj + 1)]],
+                           predicate=(((tir.floormod(tir.floordiv(i, 4), 4) * 4) + tir.floormod(i, 4)) < 16),
+                           name="update"):
+                C[vi, vj] = (B[vi, vj] + tir.float32(1))
 
 
 def test_fuse_loop_sref():
@@ -183,31 +192,33 @@ def test_fuse_loop_sref():
     ij = s.fuse(i, j)
     s.fuse(ij, k)
 
-    mod = tvm.tir.hybrid.create_module({"predicate_fuse": predicate_fuse})
+    mod = tvm.hybrid.create_module({"predicate_fuse": predicate_fuse})
     predicate_fuse_func = mod["predicate_fuse"]
 
     tvm.ir.assert_structural_equal(s.func, predicate_fuse_func)
     assert s.validate_sref()
 
 
-@tvm.tir.hybrid.script
-def matmul_reorder(a, b, c):
-    C = buffer_bind(c, (128, 128), "float32")
-    A = buffer_bind(a, (128, 128), "float32")
-    B = buffer_bind(b, (128, 128), "float32")
-    with block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128], B[0:128, 0:128]], name="root"):
-        for i0 in range(0, 128):
-            for j0 in range(0, 128):
-                with block({vi(0, 128): i0, vj(0, 128): j0}, writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                           reads=[], name="init"):
-                    C[vi, vj] = float32(0)
-        for k in range(0, 128):
-            for i in range(0, 16384):
-                with block({vi(0, 128): floordiv(i, 128), vj(0, 128): floormod(i, 128),
-                            vk(0, 128, iter_type="reduce"): k},
-                           writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                           reads=[C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)],
-                                  B[vj:(vj + 1), vk:(vk + 1)]], name="update"):
+@tvm.hybrid.script
+def matmul_reorder(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    C = tir.buffer_bind(c, (128, 128), "float32")
+    A = tir.buffer_bind(a, (128, 128), "float32")
+    B = tir.buffer_bind(b, (128, 128), "float32")
+    with tir.block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128], B[0:128, 0:128]],
+                   name="root"):
+        for i0 in tir.grid(0, 128):
+            for j0 in tir.grid(0, 128):
+                with tir.block({vi(0, 128): i0, vj(0, 128): j0},
+                               writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                               reads=[], name="init"):
+                    C[vi, vj] = tir.float32(0)
+        for k in tir.grid(0, 128):
+            for i in tir.grid(0, 16384):
+                with tir.block({vi(0, 128): tir.floordiv(i, 128), vj(0, 128): tir.floormod(i, 128),
+                                vk(0, 128, iter_type="reduce"): k},
+                               writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                               reads=[C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)],
+                                      B[vj:(vj + 1), vk:(vk + 1)]], name="update"):
                     C[vi, vj] = (C[vi, vj] + (A[vi, vk] * B[vj, vk]))
 
 
@@ -221,38 +232,40 @@ def test_reorder_normal():
     s.reorder(i, j)
     s.decompose_reduction(update, k)
     s.fuse(i, j)
-    mod = tvm.tir.hybrid.create_module({"matmul_reorder": matmul_reorder})
+    mod = tvm.hybrid.create_module({"matmul_reorder": matmul_reorder})
     matmul_reorder_func = mod["matmul_reorder"]
 
     tvm.ir.assert_structural_equal(s.func, matmul_reorder_func)
     assert s.validate_sref()
 
 
-@tvm.tir.hybrid.script
-def compute_at_case(a, c):
-    A = buffer_bind(a, (128, 128), "float32")
-    C = buffer_bind(c, (128, 128), "float32")
+@tvm.hybrid.script
+def compute_at_case(a: ty.handle, c: ty.handle) -> None:
+    A = tir.buffer_bind(a, (128, 128), "float32")
+    C = tir.buffer_bind(c, (128, 128), "float32")
 
-    with block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
-        B = buffer_allocate((128, 128))
-        for i in range(0, 128):
-            for j in range(0, 128):
-                with block({vi(0, 128): i, vj(0, 128): j},
-                           reads=[], writes=A[vi: vi + 1, vj: vj + 1], name="B0"):
-                    A[vi, vj] = 2
-                for k in range(0, 128):
-                    with block({vi(0, 128): i, vj(0, 128): j},
-                               reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1],
-                               name="B1"):
-                        B[vi, vj] = A[vi, vj] * 2
-                    with block({vi(0, 128): i, vj(0, 128): j},
-                               reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
-                               name="C"):
-                        C[vi, vj] = B[vi, vj] * 2
+    with tir.block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
+        B = tir.buffer_allocate((128, 128))
+        for i in tir.grid(0, 128):
+            for j in tir.grid(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j},
+                               reads=[], writes=A[vi: vi + 1, vj: vj + 1], name="B0"):
+                    A[vi, vj] = 2.0
+                for k in tir.grid(0, 128):
+                    with tir.block({vi(0, 128): i, vj(0, 128): j},
+                                   reads=A[vi: vi + 1, vj: vj + 1],
+                                   writes=B[vi: vi + 1, vj: vj + 1],
+                                   name="B1"):
+                        B[vi, vj] = A[vi, vj] * 2.0
+                    with tir.block({vi(0, 128): i, vj(0, 128): j},
+                                   reads=B[vi: vi + 1, vj: vj + 1],
+                                   writes=C[vi: vi + 1, vj: vj + 1],
+                                   name="C"):
+                        C[vi, vj] = B[vi, vj] * 2.0
 
 
 def test_compute_at_fail():
-    mod = tvm.tir.hybrid.create_module({"compute_at_case": compute_at_case})
+    mod = tvm.hybrid.create_module({"compute_at_case": compute_at_case})
     func = mod["compute_at_case"]
     s = tir.create_schedule(func)
     B1 = s.get_block("B1")
@@ -271,21 +284,25 @@ def test_compute_at_fail():
         pass
 
 
-@tvm.tir.hybrid.script
-def matmul_reduction(a, b, c):
-    C = buffer_bind(c, (128, 128), "float32")
-    A = buffer_bind(a, (128, 128), "float32")
-    B = buffer_bind(b, (128, 128), "float32")
-    with block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128], B[0:128, 0:128]], name="root"):
-        for i in range(0, 128):
-            for j in range(0, 128):
-                with block({vi(0, 128): i, vj(0, 128): j}, writes=[C[vi:(vi + 1), vj:(vj + 1)]], reads=[], name="init"):
-                    C[vi, vj] = float32(0)
-                for k in range(0, 128):
-                    with block({vi(0, 128): i, vj(0, 128): j, vk(0, 128, iter_type="reduce"): k},
-                               writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                               reads=[C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vj:(vj + 1), vk:(vk + 1)]],
-                               name="update"):
+@tvm.hybrid.script
+def matmul_reduction(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    C = tir.buffer_bind(c, (128, 128), "float32")
+    A = tir.buffer_bind(a, (128, 128), "float32")
+    B = tir.buffer_bind(b, (128, 128), "float32")
+    with tir.block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128], B[0:128, 0:128]],
+                   name="root"):
+        for i in tir.grid(0, 128):
+            for j in tir.grid(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j}, writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                               reads=[], name="init"):
+                    C[vi, vj] = tir.float32(0)
+                for k in tir.grid(0, 128):
+                    with tir.block(
+                            {vi(0, 128): i, vj(0, 128): j, vk(0, 128, iter_type="reduce"): k},
+                            writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                            reads=[C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)],
+                                   B[vj:(vj + 1), vk:(vk + 1)]],
+                            name="update"):
                         C[vi, vj] = (C[vi, vj] + (A[vi, vk] * B[vj, vk]))
 
 
@@ -302,37 +319,37 @@ def test_reduction():
     s.merge_reduction(init, update)
     s.decompose_reduction(update, k)
 
-    mod = tvm.tir.hybrid.create_module({"matmul_reduction": matmul_reduction})
+    mod = tvm.hybrid.create_module({"matmul_reduction": matmul_reduction})
     matmul_reduction_func = mod["matmul_reduction"]
 
     tvm.ir.assert_structural_equal(s.func, matmul_reduction_func)
     assert s.validate_sref()
 
 
-@tvm.tir.hybrid.script
-def cache_read(a, c):
-    C = buffer_bind(c, (128, 128), "float32")
-    A = buffer_bind(a, (128, 128), "float32")
-    with block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
-        B = buffer_allocate((128, 128), "float32", "")
-        AA = buffer_allocate((128, 128), "float32", "local")
-        for i in range(0, 128):
-            for j in range(0, 128):
-                with block({vi(0, 128): i, vj(0, 128): j},
-                           writes=[AA[vi:(vi + 1), vj:(vj + 1)]],
-                           reads=[A[vi:(vi + 1), vj:(vj + 1)]]):
+@tvm.hybrid.script
+def cache_read(a: ty.handle, c: ty.handle) -> None:
+    C = tir.buffer_bind(c, (128, 128), "float32")
+    A = tir.buffer_bind(a, (128, 128), "float32")
+    with tir.block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
+        B = tir.buffer_allocate((128, 128), "float32")
+        AA = tir.buffer_allocate((128, 128), "float32", scope="local")
+        for i in tir.grid(0, 128):
+            for j in tir.grid(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j},
+                               writes=[AA[vi:(vi + 1), vj:(vj + 1)]],
+                               reads=[A[vi:(vi + 1), vj:(vj + 1)]]):
                     AA[vi, vj] = A[vi, vj]
-        for i in range(0, 128):
-            for j in range(0, 128):
-                with block({vi(0, 128): i, vj(0, 128): j},
-                           writes=[B[vi:(vi + 1), vj:(vj + 1)]],
-                           reads=[AA[vi:(vi + 1), vj:(vj + 1)]], name="B"):
-                    B[vi, vj] = (AA[vi, vj] * float32(2))
-            for j in range(0, 128):
-                with block({vi(0, 128): i, vj(0, 128): j},
-                           writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                           reads=[B[vi:(vi + 1), vj:(vj + 1)]], name="C"):
-                    C[vi, vj] = (B[vi, vj] + float32(1))
+        for i in tir.grid(0, 128):
+            for j in tir.grid(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j},
+                               writes=[B[vi:(vi + 1), vj:(vj + 1)]],
+                               reads=[AA[vi:(vi + 1), vj:(vj + 1)]], name="B"):
+                    B[vi, vj] = (AA[vi, vj] * tir.float32(2))
+            for j in tir.grid(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j},
+                               writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                               reads=[B[vi:(vi + 1), vj:(vj + 1)]], name="C"):
+                    C[vi, vj] = (B[vi, vj] + tir.float32(1))
 
 
 def test_cache_read():
@@ -347,37 +364,37 @@ def test_cache_read():
     s.compute_at(B, outer)
     AA = s.cache_read(buffer_a, 'local')
 
-    mod = tvm.tir.hybrid.create_module({"cache_read": cache_read})
+    mod = tvm.hybrid.create_module({"cache_read": cache_read})
     cached_func = mod["cache_read"]
 
     tvm.ir.assert_structural_equal(cached_func, s.func)
     assert s.validate_sref()
 
 
-@tvm.tir.hybrid.script
-def cache_write(a, c):
-    C = buffer_bind(c, (128, 128), "float32")
-    A = buffer_bind(a, (128, 128), "float32")
-    with block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
-        B = buffer_allocate((128, 128), "float32", "")
-        CC = buffer_allocate((128, 128), "float32", "local")
-        for i in range(0, 128):
-            for j in range(0, 128):
-                with block({vi(0, 128): i, vj(0, 128): j},
-                           writes=[B[vi:(vi + 1), vj:(vj + 1)]],
-                           reads=[A[vi:(vi + 1), vj:(vj + 1)]], name="B"):
-                    B[vi, vj] = (A[vi, vj] * float32(2))
-        for i in range(0, 128):
-            for j in range(0, 128):
-                with block({vi(0, 128): i, vj(0, 128): j},
-                           writes=[CC[vi:(vi + 1), vj:(vj + 1)]],
-                           reads=[B[vi:(vi + 1), vj:(vj + 1)]], name="C"):
-                    CC[vi, vj] = (B[vi, vj] + float32(1))
-        for i in range(0, 128):
-            for j in range(0, 128):
-                with block({vi(0, 128): i, vj(0, 128): j},
-                           writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                           reads=[CC[vi:(vi + 1), vj:(vj + 1)]]):
+@tvm.hybrid.script
+def cache_write(a: ty.handle, c: ty.handle) -> None:
+    C = tir.buffer_bind(c, (128, 128), "float32")
+    A = tir.buffer_bind(a, (128, 128), "float32")
+    with tir.block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
+        B = tir.buffer_allocate((128, 128), "float32")
+        CC = tir.buffer_allocate((128, 128), "float32", scope="local")
+        for i in tir.grid(0, 128):
+            for j in tir.grid(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j},
+                               writes=[B[vi:(vi + 1), vj:(vj + 1)]],
+                               reads=[A[vi:(vi + 1), vj:(vj + 1)]], name="B"):
+                    B[vi, vj] = (A[vi, vj] * tir.float32(2))
+        for i in tir.grid(0, 128):
+            for j in tir.grid(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j},
+                               writes=[CC[vi:(vi + 1), vj:(vj + 1)]],
+                               reads=[B[vi:(vi + 1), vj:(vj + 1)]], name="C"):
+                    CC[vi, vj] = (B[vi, vj] + tir.float32(1))
+        for i in tir.grid(0, 128):
+            for j in tir.grid(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j},
+                               writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                               reads=[CC[vi:(vi + 1), vj:(vj + 1)]]):
                     C[vi, vj] = CC[vi, vj]
 
 
@@ -390,7 +407,7 @@ def test_cache_write():
     C = s.get_block(buffer_c)
     CC = s.cache_write(buffer_c, 'local')
 
-    mod = tvm.tir.hybrid.create_module({"cache_write": cache_write})
+    mod = tvm.hybrid.create_module({"cache_write": cache_write})
     cached_func = mod["cache_write"]
 
     tvm.ir.assert_structural_equal(cached_func, s.func)
