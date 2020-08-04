@@ -72,13 +72,10 @@ def test_WAR(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     with tir.block({}, A[0: 128, 0: 128], [B[0: 128, 0: 128], C[0: 128, 0: 128]], name="root"):
         for i in tir.grid(0, 128):
             for j in tir.grid(0, 128):
-                with tir.block({vi(0, 128): i, vj(0, 128): j},
-                               reads=B[vi: vi + 1, vj: vj + 1],
-                               writes=C[vi: vi + 1, vj: vj + 1],
+                with tir.block({vi(0, 128): i, vj(0, 128): j}, reads=B[vi, vj], writes=C[vi, vj],
                                name="C"):
                     C[vi, vj] = B[vi, vj] + 1.0
-                with tir.block({vi(0, 128): i, vj(0, 128): j},
-                               reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1],
+                with tir.block({vi(0, 128): i, vj(0, 128): j}, reads=A[vi, vj], writes=B[vi, vj],
                                name="B"):
                     B[vi, vj] = A[vi, vj] * 2.0
 

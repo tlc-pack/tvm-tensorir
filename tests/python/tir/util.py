@@ -33,9 +33,8 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             for j in tir.grid(0, 128):
                 for k in tir.grid(0, 128):
                     with tir.block({vi(0, 128): i, vj(0, 128): j, vk(0, 128, iter_type="reduce"): k},
-                                   reads=[C[vi: vi + 1, vj: vj + 1], A[vi: vi + 1, vk: vk + 1],
-                                          B[vj: vj + 1, vk: vk + 1]],
-                                   writes=[C[vi: vi + 1, vj: vj + 1]], name="update"):
+                                   reads=[C[vi, vj], A[vi, vk], B[vj, vk]], writes=[C[vi, vj]],
+                                   name="update"):
                         reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
 
 
@@ -49,14 +48,13 @@ def matmul_original(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                name="root"):
         for i in tir.grid(0, 128):
             for j in tir.grid(0, 128):
-                with tir.block({vi(0, 128): i, vj(0, 128): j},
-                               reads=[], writes=C[vi: vi + 1, vj: vj + 1], name="init"):
+                with tir.block({vi(0, 128): i, vj(0, 128): j}, reads=[], writes=C[vi, vj],
+                               name="init"):
                     C[vi, vj] = tir.float32(0)
                 for k in tir.grid(0, 128):
                     with tir.block({vi(0, 128): i, vj(0, 128): j, vk(0, 128, iter_type="reduce"): k},
-                                   reads=[C[vi: vi + 1, vj: vj + 1], A[vi: vi + 1, vk: vk + 1],
-                                          B[vj: vj + 1, vk: vk + 1]],
-                                   writes=[C[vi: vi + 1, vj: vj + 1]], name="update"):
+                                   reads=[C[vi, vj], A[vi, vk], B[vj, vk]], writes=[C[vi, vj]],
+                                   name="update"):
                         C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
@@ -70,16 +68,12 @@ def element_wise(a: ty.handle, c: ty.handle) -> None:
 
         for i in tir.grid(0, 128):
             for j in tir.grid(0, 128):
-                with tir.block({vi(0, 128): i, vj(0, 128): j}, A[vi: vi + 1, vj: vj + 1],
-                               B[vi: vi + 1, vj: vj + 1],
-                               name="B"):
+                with tir.block({vi(0, 128): i, vj(0, 128): j}, A[vi, vj], B[vi, vj], name="B"):
                     B[vi, vj] = A[vi, vj] * 2.0
 
         for i in tir.grid(0, 128):
             for j in tir.grid(0, 128):
-                with tir.block({vi(0, 128): i, vj(0, 128): j}, B[vi: vi + 1, vj: vj + 1],
-                               C[vi: vi + 1, vj: vj + 1],
-                               name="C"):
+                with tir.block({vi(0, 128): i, vj(0, 128): j}, B[vi, vj], C[vi, vj], name="C"):
                     C[vi, vj] = B[vi, vj] + 1.0
 
 
@@ -93,8 +87,8 @@ def predicate(b: ty.handle, c: ty.handle) -> None:
             for jo in tir.grid(0, 4):
                 for ji in tir.grid(0, 4):
                     with tir.block({vi(0, 16): i, vj(0, 16): jo * 4 + ji},
-                                   reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
-                                   predicate=jo * 4 + ji < 16, name="update"):
+                                   reads=B[vi, vj], writes=C[vi, vj], predicate=jo * 4 + ji < 16,
+                                   name="update"):
                         C[vi, vj] = B[vi, vj] + 1.0
 
 

@@ -34,9 +34,8 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             for j in tir.grid(0, 1024):
                 for k in tir.grid(0, 1024):
                     with tir.block({vi(0, 1024): i, vj(0, 1024): j, vk(0, 1024, iter_type="reduce"): k},
-                                   writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                                   reads=[C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)],
-                                          B[vj:(vj + 1), vk:(vk + 1)]], name="C"):
+                                   writes=C[vi, vj], reads=[C[vi, vj], A[vi, vk], B[vj, vk]],
+                                   name="C"):
                         reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
 
@@ -172,8 +171,7 @@ def matmul_packed(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             for j in tir.grid(0, 1024):
                 for k in tir.grid(0, 32):
                     with tir.block({vi(0, 1024 // 32): i, vj(0, 1024): j, vk(0, 32): k},
-                                   reads=B[vj: vj + 1, vi * 32 + vk: vi * 32 + vk + 1],
-                                   writes=packedB[vi: vi + 1, vj: vj + 1, vk: vk + 1],
+                                   reads=B[vj, vi * 32 + vk], writes=packedB[vi, vj, vk],
                                    name="packed"):
                         packedB[vi, vj, vk] = B[vj, vi * 32 + vk]
 
@@ -181,10 +179,8 @@ def matmul_packed(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             for j in tir.grid(0, 1024):
                 for k in tir.grid(0, 1024):
                     with tir.block({vi(0, 1024): i, vj(0, 1024): j, vk(0, 1024, iter_type="reduce"): k},
-                                   reads=[C[vi: vi + 1, vj: vj + 1], A[vi: vi + 1, vk: vk + 1],
-                                          packedB[vj // 32: vj // 32 + 1, vk: vk + 1, vj % 32: vj % 32 + 1]],
-                                   writes=[C[vi: vi + 1, vj: vj + 1]],
-                                   name="C"):
+                                   reads=[C[vi, vj], A[vi, vk], packedB[vj // 32, vk, vj % 32]],
+                                   writes=[C[vi, vj]], name="C"):
                         reducer.step(C[vi, vj], A[vi, vk] * packedB[vj // 32, vk, vj % 32])
 
 

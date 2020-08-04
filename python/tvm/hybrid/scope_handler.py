@@ -52,12 +52,30 @@ def block(parser, node, block_vars_info, reads, writes, body,
 
     block_vars = [info[0] for info in block_vars_info]
     values = [info[1] for info in block_vars_info]
-    if not isinstance(reads, list):
-        reads = [reads]
-    if not isinstance(writes, list):
-        writes = [writes]
+    reads_in = [reads] if not isinstance(reads, list) else reads
+    writes_in = [writes] if not isinstance(writes, list) else writes
     if annotations is None:
         annotations = []
+
+    reads = []
+    for read in reads_in:
+        if isinstance(read, tvm.tir.BufferLoad):
+            doms = []
+            for index in read.indices:
+                doms.append(tvm.ir.Range.from_min_extent(index, 1))
+            reads.append(tvm.tir.TensorRegion(read.buffer, doms))
+        else:
+            reads.append(read)
+
+    writes = []
+    for write in writes_in:
+        if isinstance(write, tvm.tir.BufferLoad):
+            doms = []
+            for index in write.indices:
+                doms.append(tvm.ir.Range.from_min_extent(index, 1))
+            writes.append(tvm.tir.TensorRegion(write.buffer, doms))
+        else:
+            writes.append(write)
 
     allocations = parser.scope_emitter.pop_scope(is_block=True)
     inner = tvm.tir.Block(block_vars, reads, writes, body, allocations, annotations, name)
