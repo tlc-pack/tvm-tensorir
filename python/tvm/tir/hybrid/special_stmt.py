@@ -30,13 +30,14 @@ from .registry import register_special_stmt
 @register_special_stmt
 def buffer_bind(parser, node, param, shape, dtype="float32", data=None, strides=[], elem_offset=None,
                 scope="global", align=-1, offset_factor=0, buffer_type="default"):
-    """ Special function buffer_bind(var, shape, dtype)
+    """ Special function buffer_bind(var, shape, dtype, data, strides, elem_offset, scope, align,
+                                     offset_factor, buffer_type)
 
     Example
     -------
     .. code-block:: python
 
-        A = buffer_bind(a, (128, 128), dtype="float32")
+        A = tir.buffer_bind(a, (128, 128), dtype="float32")
 
     """
 
@@ -53,13 +54,14 @@ def buffer_bind(parser, node, param, shape, dtype="float32", data=None, strides=
 @register_special_stmt
 def buffer_allocate(parser, node, shape, dtype="float32", data=None, strides=[], elem_offset=None,
                     scope="global", align=-1, offset_factor=0, buffer_type="default"):
-    """ Special function buffer_allocate(var, shape, dtype, scope)
+    """ Special function buffer_allocate(shape, dtype, data, strides, elem_offset, scope, align,
+                                         offset_factor, buffer_type)
 
     Example
     -------
     .. code-block:: python
 
-        A = buffer_allocate((128, 128), dtype="float32")
+        A = tir.buffer_allocate((128, 128), dtype="float32")
 
     """
     align = align.value if not isinstance(align, int) else align
@@ -73,6 +75,16 @@ def buffer_allocate(parser, node, shape, dtype="float32", data=None, strides=[],
 @register_special_stmt
 def buffer_decl(parser, node, shape, dtype="float32", data=None, strides=[], elem_offset=None,
                 scope="global", align=-1, offset_factor=0, buffer_type="default"):
+    """ Special function buffer_decl(shape, dtype, data, strides, elem_offset, scope, align,
+                                         offset_factor, buffer_type)
+
+    Example
+    -------
+    .. code-block:: python
+
+        A = tir.buffer_decl((128, 128), dtype="float32")
+
+    """
     align = align.value if not isinstance(align, int) else align
     offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
     buffer = tvm.tir.decl_buffer(shape, dtype, parser._assign_target, data, strides, elem_offset,
@@ -82,6 +94,7 @@ def buffer_decl(parser, node, shape, dtype="float32", data=None, strides=[], ele
 
 @register_special_stmt
 def var(parser, node, dtype):
+    """ Special function for defining a Var"""
     return te.var(parser._assign_target, dtype)
 
 
@@ -133,8 +146,7 @@ def comm_reducer(parser, node, combiner, identity):
     -------
     .. code-block:: python
 
-
-        reducer = comm_reducer(lambda x, y: x + y, float32(0))
+        reducer = tir.comm_reducer(lambda x, y: x + y, float32(0))
 
     """
 
@@ -146,4 +158,13 @@ def comm_reducer(parser, node, combiner, identity):
 
 @register_special_stmt
 def func_attr(parser, node, dict_attr):
+    """ Special function for declaring the DictAttr of PrimFunc
+
+    Example
+    -------
+    .. code-block:: python
+
+         tir.func_attr({"tir.noalias": True, "global_symbol"})
+    """
+
     parser.dict_attr = dict_attr

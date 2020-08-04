@@ -45,8 +45,8 @@ def block(parser, node, block_vars_info, reads, writes, body,
     -------
     .. code-block:: python
 
-        with block({vi(0, 128): i, vj(0, 128): j}, reads=[], writes=C[vi : vi + 1, vj : vj + 1], \
-        name="init"):
+        with tir.block({vi(0, 128): i, vj(0, 128): j}, \
+                       reads=[], writes=C[vi : vi + 1, vj : vj + 1], name="init"):
 
     """
 
