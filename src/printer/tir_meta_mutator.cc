@@ -46,8 +46,10 @@ class TIRMetaMutator:
       return VisitExpr(Downcast<PrimExpr>(meta_node));
     } else {
       static const FType& f = vtable();
-      CHECK(f.can_dispatch(meta_node));
-      return f(meta_node, this);
+      if (f.can_dispatch(meta_node))
+        return f(meta_node, this);
+      else
+        return meta_node;
     }
   }
 
