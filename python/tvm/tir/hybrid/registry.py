@@ -84,7 +84,9 @@ def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, ne
         internal_args = list()
 
         if need_body and not isinstance(node, ast.For):
+            # automatically parse body for with scope handlers
             if isinstance(node, ast.With):
+                # the with scope handler is used inside with context
                 parser.scope_emitter.new_scope()
                 parser.scope_emitter.node_stack[-1].extend(reversed(node.body))
 
@@ -96,6 +98,7 @@ def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, ne
                 body = tvm.tir.SeqStmt(body) if len(body) > 1 else body[0]
                 parser.scope_emitter.pop_scope()
             else:
+                # the with scope handler is used in concise scoping
                 if not concise:
                     parser.report_error("Concise scoping is not allowed here")
                 body = []
