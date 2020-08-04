@@ -18,124 +18,250 @@
  */
 #include "./access_analysis.h"
 
+#include "../arith/pattern_match.h"
 #include "./auto_scheduler_utils.h"
 #include "./loop_tree.h"
 
 namespace tvm {
 namespace auto_scheduler {
 
-TVM_REGISTER_NODE_TYPE(RangeNode);
-TVM_REGISTER_NODE_TYPE(ScopeAccessNode);
+TVM_REGISTER_NODE_TYPE(BaseAccessPatternNode);
+TVM_REGISTER_NODE_TYPE(DummyAccessPatternNode);
+TVM_REGISTER_NODE_TYPE(LeafAccessPatternNode);
 
-Range::Range(PrimExpr min, Optional<PrimExpr> extent) {
-  ObjectPtr<RangeNode> n = make_object<RangeNode>();
-  n->min = std::move(min);
-  n->extent = std::move(extent);
-  data_ = std::move(n);
-}
-
-ScopeAccess::ScopeAccess(
-    Map<tir::Var, Array<Domain>> read_doms, Map<tir::Var, Array<Domain>> write_doms,
-    std::unordered_map<const tir::VarNode*, std::vector<const LoopTreeNode*>> producer_siblings,
-    std::unordered_map<const tir::VarNode*, std::vector<const LoopTreeNode*>> consumer_siblings) {
-  ObjectPtr<ScopeAccessNode> n = make_object<ScopeAccessNode>();
-  n->read_doms = std::move(read_doms);
-  n->write_doms = std::move(write_doms);
-  n->producer_siblings = std::move(producer_siblings);
-  n->consumer_siblings = std::move(consumer_siblings);
-  data_ = std::move(n);
-}
-
-ScopeAccess ScopeAccess::FromLoopTreeLeaf(const LoopTree& leaf) {
-  std::unordered_map<tir::Var, Array<Domain>, ObjectPtrHash, ObjectPtrEqual> read_doms;
-  std::unordered_map<tir::Var, Array<Domain>, ObjectPtrHash, ObjectPtrEqual> write_doms;
-
-  auto add_read = [&read_doms](const tir::Buffer& buffer, const Array<PrimExpr>& indices) {
-    Domain domain;
-    for (const PrimExpr& expr : indices) {
-      domain.push_back(Range(expr, NullOpt));
+std::vector<tir::Var> CheckAllTrivialStore(const LoopTreeNode* node, bool* all_trivial_store) {
+  // A block contains only statement
+  if (node->children.size() != 1) {
+    *all_trivial_store = false;
+    return {};
+  }
+  // Collect block variables to a lookup table
+  CHECK(node->block_realize.defined())
+      << "InternalError: Cannot collect block vars on a null block";
+  std::unordered_set<const tir::VarNode*> block_vars;
+  for (const tir::IterVar& iter_var : node->block_realize.value()->block->iter_vars) {
+    block_vars.insert(iter_var->var.get());
+  }
+  // Collect the store indices
+  const ObjectRef& child = node->children[0];
+  std::vector<PrimExpr> indices;
+  if (const auto* store = child.as<tir::BufferStoreNode>()) {
+    indices = {store->indices.begin(), store->indices.end()};
+  } else if (const auto* reduce_step = child.as<tir::ReduceStepNode>()) {
+    const auto* load = reduce_step->lhs.as<tir::BufferLoadNode>();
+    CHECK(load != nullptr)
+        << "TypeError: ReduceNode::lhs is expected to have type BufferLoad, but get: "
+        << reduce_step->lhs->GetTypeKey();
+    indices = {load->indices.begin(), load->indices.end()};
+  } else {
+    LOG(FATAL) << "TypeError: Cannot recoginize the type: " << child->GetTypeKey();
+  }
+  // For each index in the store indices, check if they are
+  // 1) constant
+  // 2) trivially derived from a block var
+  std::vector<tir::Var> result;
+  for (const PrimExpr& idx : indices) {
+    if (IsConstInt(idx)) {
+      continue;
     }
-    read_doms[buffer->data].push_back(domain);
-  };
-
-  auto add_write = [&write_doms](const tir::Buffer& buffer, const Array<PrimExpr>& indices) {
-    Domain domain;
-    for (const PrimExpr& expr : indices) {
-      domain.push_back(Range(expr, NullOpt));
-    }
-    write_doms[buffer->data].push_back(domain);
-  };
-
-  auto gather_buffer_load = [&add_read](const PrimExpr& expr) {
-    tir::PostOrderVisit(expr, [&add_read](const ObjectRef& obj) {
-      if (const auto* buffer_load = obj.as<tir::BufferLoadNode>()) {
-        add_read(buffer_load->buffer, buffer_load->indices);
-      }
-    });
-  };
-
-  for (const ObjectRef& obj : leaf->children) {
-    if (const auto* buffer_store = obj.as<tir::BufferStoreNode>()) {
-      add_write(buffer_store->buffer, buffer_store->indices);
-      gather_buffer_load(buffer_store->value);
-    } else if (const auto* reduce_step = obj.as<tir::ReduceStepNode>()) {
-      // lhs should be buffer write instead
-      if (const auto* buffer_load = reduce_step->lhs.as<tir::BufferLoadNode>()) {
-        add_write(buffer_load->buffer, buffer_load->indices);
+    arith::PVar<tir::Var> var;
+    arith::PVar<IntImm> shift;
+    // match: "var +/- shift"
+    if ((var + shift).Match(idx) || (var - shift).Match(idx) || (shift + var).Match(idx)) {
+      const tir::VarNode* v = var.Eval().get();
+      if (!block_vars.count(v)) {
+        *all_trivial_store = false;
+        return {};
       } else {
-        LOG(FATAL) << "InternalError: lhs of reduce step should be BufferLoadNode, but get type: "
-                   << reduce_step->lhs->GetTypeKey();
+        result.push_back(GetRef<tir::Var>(v));
       }
-      gather_buffer_load(reduce_step->rhs);
     } else {
-      LOG(FATAL) << "TypeError: Cannot recognize the type of a statement in the leaf node of the "
-                    "loop tree: "
-                 << obj->GetTypeKey();
+      *all_trivial_store = false;
+      return {};
     }
   }
-  return ScopeAccess(read_doms, write_doms, {}, {});
-}
-
-Map<LoopTree, ScopeAccess> AccessAnalysis(const LoopTree& root) {
-  Map<LoopTree, ScopeAccess> result;
-  std::function<void(const LoopTreeNode* root)> f_analysis =
-      [&f_analysis, &result](const LoopTreeNode* root) -> void {
-    const LoopTree& root_ref = GetRef<LoopTree>(root);
-    int n_children = 0;
-    for (const ObjectRef& obj : root->children) {
-      if (const auto* loop = obj.as<LoopTreeNode>()) {
-        f_analysis(loop);
-        ++n_children;
-      }
-      // TODO(@junrushao1994): handle the case for both loop and stmt as children
-    }
-    if (n_children == 0) {
-      result.Set(root_ref, ScopeAccess::FromLoopTreeLeaf(root_ref));
-    } else {
-      // TODO(@junrushao1994): access analysis for internal non-leaf nodes
-      result.Set(root_ref, ScopeAccess({}, {}, {}, {}));
-    }
-  };
-  f_analysis(root.get());
+  *all_trivial_store = true;
   return result;
 }
 
-TVM_REGISTER_GLOBAL("auto_scheduler.access_analysis.AccessAnalysis").set_body_typed(AccessAnalysis);
-
-TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-    .set_dispatch<RangeNode>([](const ObjectRef& ref, ReprPrinter* p) {
-      const auto* node = ref.as<RangeNode>();
-      CHECK(node);
-      arith::Analyzer analyzer;
-      if (node->extent.defined()) {
-        PrimExpr left_inclusive = analyzer.Simplify(node->min);
-        PrimExpr right_exclusive = analyzer.Simplify(node->min + node->extent.value());
-        p->stream << '[' << left_inclusive << ", " << right_exclusive << ')';
-      } else {
-        PrimExpr point = analyzer.Simplify(node->min);
-        p->stream << '[' << point << ']';
+bool CheckHasBranch(const LoopTreeNode* node) {
+  if (node->block_realize.defined()) {
+    arith::Analyzer analyzer;
+    const tir::BlockRealizeNode* realize = node->block_realize.value().get();
+    // if the predicate is not always 1, then there is a branch
+    if (!analyzer.CanProve(realize->predicate == 1)) {
+      return true;
+    }
+  }
+  for (const ObjectRef& child : node->children) {
+    if (const auto* stmt = child.as<tir::StmtNode>()) {
+      bool has_branch = false;
+      tir::PostOrderVisit(child, [&has_branch](const ObjectRef& obj) {
+        if (obj->IsInstance<tir::IfThenElseNode>()) {
+          has_branch = true;
+        } else if (obj->IsInstance<tir::SelectNode>()) {
+          has_branch = true;
+        } else if (const auto* call = obj.as<tir::CallNode>()) {
+          if (call->op.same_as(tir::builtin::if_then_else())) {
+            has_branch = true;
+          }
+        }
+      });
+      if (has_branch) {
+        return true;
       }
-    });
+    }
+  }
+  return false;
+}
+
+bool CheckHasExpensiveOp(const LoopTreeNode* node) {
+  const tvm::Op& exp = tvm::Op::Get("tir.exp");
+  for (const ObjectRef& child : node->children) {
+    if (const auto* stmt = child.as<tir::StmtNode>()) {
+      bool has_expensive_op = false;
+      tir::PostOrderVisit(child, [&has_expensive_op, &exp](const ObjectRef& obj) {
+        if (const auto* call = obj.as<tir::CallNode>()) {
+          if (call->op.same_as(exp)) {
+            has_expensive_op = true;
+          }
+        }
+      });
+      if (has_expensive_op) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+void AnalyzeLoadStoreMapping(const LoopTreeNode* node, const Array<tir::Var>& stores, bool* exists,
+                             bool* surjective, bool* injective, bool* ordered) {
+  // Only consider block with one statement
+  if (node->children.size() != 1 || !node->block_realize.defined()) {
+    *exists = false;
+    *surjective = false;
+    *injective = false;
+    *ordered = false;
+    return;
+  }
+  // Collect indices of the block vars
+  std::unordered_map<const tir::VarNode*, int> store_vars;
+  {
+    int index = 0;
+    for (const tir::Var& var : stores) {
+      store_vars[var.get()] = index++;
+    }
+  }
+  // Those flags can be changed from true to false, but not false to true
+  *exists = true;
+  *surjective = true;
+  *injective = true;
+  *ordered = true;
+  // Visit each buffer loads
+  tir::PostOrderVisit(node->children[0], [&](const ObjectRef& obj) {
+    // 1) If we have determined the mapping does not exist, return
+    // 2) If the current object is not BufferLoad that we are interested in, skip
+    if (*exists == false || !obj->IsInstance<tir::BufferLoadNode>()) {
+      return;
+    }
+    const auto* buffer_load = static_cast<const tir::BufferLoadNode*>(obj.get());
+    std::vector<int> store_be_mapped_times(store_vars.size(), 0);
+    std::vector<int> load_mapped_to_store_index;
+    // For each non-constant index
+    for (const PrimExpr& idx : buffer_load->indices) {
+      if (IsConstInt(idx)) {
+        continue;
+      }
+      // Check if it matches a block var
+      arith::PVar<tir::Var> var;
+      arith::PVar<IntImm> shift;
+      if ((var + shift).Match(idx) || (var - shift).Match(idx) || (shift + var).Match(idx)) {
+        const tir::VarNode* v = var.Eval().get();
+        if (store_vars.count(v)) {
+          int index = store_vars.at(v);
+          load_mapped_to_store_index.push_back(index);
+          store_be_mapped_times[index] += 1;
+          continue;
+        }
+      }
+      // If not, the load-store mapping does not exist
+      *exists = false;
+      *surjective = false;
+      *injective = false;
+      *ordered = false;
+      return;
+    }
+    // Check `store_be_mapped_times` to determine if the mapping is injective and surjective
+    for (int times : store_be_mapped_times) {
+      // If there is a store axis that doesn't have corresponding any load axis
+      if (times == 0) {
+        *surjective = false;
+      }
+      // If there is a store axis that has more than 2 corresponding load axes
+      if (times >= 2) {
+        *injective = false;
+      }
+    }
+    // Check `load_mapped_to_store_index` to determine if the mapping is in order
+    int last = -1;
+    for (int store_axis : load_mapped_to_store_index) {
+      if (last > store_axis) {
+        *ordered = false;
+        break;
+      }
+      last = store_axis;
+    }
+  });
+}
+
+int AnalyzeAxesReuse(const LoopTreeNode* node, const Array<tir::Var>& stores) {
+  if (!node->block_realize.defined() || node->children.size() != 1) {
+    return false;
+  }
+  int n_missing = 0;
+  tir::PostOrderVisit(node->children[0], [&n_missing, &stores](const ObjectRef& obj) {
+    if (const auto* load = obj.as<tir::BufferLoadNode>()) {
+      std::unordered_set<const tir::VarNode*> vars_in_load;
+      for (const PrimExpr& idx : load->indices) {
+        tir::PostOrderVisit(idx, [&vars_in_load](const ObjectRef& obj) {
+          if (const auto* var = obj.as<tir::VarNode>()) {
+            vars_in_load.insert(var);
+          }
+        });
+      }
+      for (const tir::Var& store_axes : stores) {
+        if (!vars_in_load.count(store_axes.get())) {
+          ++n_missing;
+        }
+      }
+    }
+  });
+  return n_missing;
+}
+
+LeafAccessPattern::LeafAccessPattern(const LoopTreeNode* node) {
+  ObjectPtr<LeafAccessPatternNode> n = make_object<LeafAccessPatternNode>();
+  n->num_stmts = node->children.size();
+  n->has_branch = CheckHasBranch(node);
+  n->has_expensive_op = CheckHasExpensiveOp(node);
+  n->block_vars_in_trivial_store = CheckAllTrivialStore(node, &n->all_trivial_store);
+  if (n->all_trivial_store) {
+    AnalyzeLoadStoreMapping(node, n->block_vars_in_trivial_store, &n->lsmap_exists,
+                            &n->lsmap_surjective, &n->lsmap_injective, &n->lsmap_ordered);
+  } else {
+    n->lsmap_exists = false;
+    n->lsmap_surjective = false;
+    n->lsmap_injective = false;
+    n->lsmap_ordered = false;
+  }
+  if (n->all_trivial_store) {
+    n->num_axes_reuse = AnalyzeAxesReuse(node, n->block_vars_in_trivial_store);
+  } else {
+    n->num_axes_reuse = 0;
+  }
+  data_ = std::move(n);
+}
 
 }  // namespace auto_scheduler
 }  // namespace tvm

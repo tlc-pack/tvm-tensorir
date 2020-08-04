@@ -27,8 +27,6 @@
 
 #include <string>
 
-#include "./access_analysis.h"
-
 namespace tvm {
 namespace auto_scheduler {
 
@@ -191,8 +189,6 @@ class LoopTree : public ObjectRef {
 
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LoopTree, ObjectRef, LoopTreeNode);
 };
-
-Map<LoopTree, ScopeAccess> AccessAnalysis(const LoopTree& root);
 
 }  // namespace auto_scheduler
 }  // namespace tvm

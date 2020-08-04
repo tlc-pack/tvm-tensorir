@@ -19,9 +19,19 @@ import tvm._ffi
 from tvm.runtime import Object
 
 
-@tvm._ffi.register_object("auto_scheduler.ScopeAccess")
-class ScopeAccess(Object):
-    """Resulf of access analysis of a scope"""
+@tvm._ffi.register_object("auto_scheduler.BaseAccessPattern")
+class BaseAccessPattern(Object):
+    """Base class of the access analysis. """
+
+
+@tvm._ffi.register_object("auto_scheduler.DummyAccessPattern")
+class DummyAccessPattern(Object):
+    """Empty class. """
+
+
+@tvm._ffi.register_object("auto_scheduler.LeafAccessPattern")
+class LeafAccessPattern(BaseAccessPattern):
+    """Resulf of access analysis of a leaf node in the loop tree. """
 
 
 def analyze(loop_tree):

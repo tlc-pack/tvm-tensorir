@@ -22,83 +22,103 @@
 #include <tvm/ir/expr.h>
 #include <tvm/runtime/container.h>
 #include <tvm/runtime/object.h>
-#include <tvm/tir/function.h>
 #include <tvm/tir/stmt.h>
-
-#include <algorithm>
-#include <unordered_map>
-#include <utility>
-#include <vector>
 
 namespace tvm {
 namespace auto_scheduler {
 
-// Forward declaration
 class LoopTreeNode;
 class LoopTree;
 
-/*!
- * \brief Data structure representing an interval [min, min + extent).
- * Different from tir::Range, we allow extent to be NullOpt, and in this case,
- * it means a single point.
- */
-class RangeNode : public Object {
+class BaseAccessPatternNode : public Object {
  public:
-  /*! \brief Beginning of the node */
-  PrimExpr min;
-  /*! \brief The extend of range, NullOpt if it is a point */
-  Optional<PrimExpr> extent;
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
+  static constexpr const char* _type_key = "auto_scheduler.BaseAccessPattern";
+  TVM_DECLARE_BASE_OBJECT_INFO(BaseAccessPatternNode, Object);
+};
+
+class BaseAccessPattern : public ObjectRef {
+ public:
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BaseAccessPattern, ObjectRef, BaseAccessPatternNode);
+
+ protected:
+  BaseAccessPattern() = default;
+};
+
+class DummyAccessPatternNode : public BaseAccessPatternNode {
+ public:
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
+  static constexpr const char* _type_key = "auto_scheduler.DummyAccessPattern";
+  TVM_DECLARE_FINAL_OBJECT_INFO(DummyAccessPatternNode, BaseAccessPatternNode);
+};
+
+class DummyAccessPattern : public BaseAccessPattern {
+ public:
+  DummyAccessPattern() = delete;
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(DummyAccessPattern, BaseAccessPattern,
+                                            DummyAccessPatternNode);
+};
+
+class LeafAccessPatternNode : public BaseAccessPatternNode {
+ public:
+  /*! \brief Number of statements in the block */
+  int num_stmts;
+  /*! \brief If there is branching statement/intrinsic */
+  bool has_branch;
+  /*!
+   * \brief If there is an expensive operator, for now, it covers:
+   * 1) exp
+   */
+  bool has_expensive_op;
+  /*!
+   * \brief Indicating all the axes in the output buffer are one of those
+   * 1) constants;
+   * 2) block vars.
+   */
+  bool all_trivial_store;
+  /*! \brief Block vars used in trivial store */
+  Array<tir::Var> block_vars_in_trivial_store;
+  /*! \brief If every non-constant load axis can be mapped to a store axis */
+  bool lsmap_exists;
+  /*!
+   * \brief True if every store axis has >= 1 corresponding load axes;
+   * False if an axis has 0 corresponding load axes.
+   */
+  bool lsmap_surjective;
+  /*!
+   * \brief True if every store axis has <= 1 corresponding load axes;
+   * False if an axis has >= 2 corresponding load axes
+   */
+  bool lsmap_injective;
+  /*! \brief All store axes are mapped in the same order of load axes */
+  bool lsmap_ordered;
+  /*! \brief Accumulate the number of store axes that don't appear in buffer load */
+  int num_axes_reuse;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("min", &min);
-    v->Visit("extent", &extent);
+    v->Visit("num_stmts", &num_stmts);
+    v->Visit("has_branch", &has_branch);
+    v->Visit("has_expensive_op", &has_expensive_op);
+    v->Visit("all_trivial_store", &all_trivial_store);
+    v->Visit("block_vars_in_trivial_store", &block_vars_in_trivial_store);
+    v->Visit("lsmap_exists", &lsmap_exists);
+    v->Visit("lsmap_surjective", &lsmap_surjective);
+    v->Visit("lsmap_injective", &lsmap_injective);
+    v->Visit("lsmap_ordered", &lsmap_ordered);
+    v->Visit("num_axes_reuse", &num_axes_reuse);
   }
 
-  static constexpr const char* _type_key = "auto_scheduler.RangeNode";
-  TVM_DECLARE_FINAL_OBJECT_INFO(RangeNode, Object);
+  static constexpr const char* _type_key = "auto_scheduler.LeafAccessPattern";
+  TVM_DECLARE_FINAL_OBJECT_INFO(LeafAccessPatternNode, BaseAccessPatternNode);
 };
 
-/*! \brief Managed reference to RangeNode. */
-class Range : public ObjectRef {
+class LeafAccessPattern : public BaseAccessPattern {
  public:
-  explicit Range(PrimExpr min, Optional<PrimExpr> extent);
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Range, ObjectRef, RangeNode);
-};
-
-/*! \brief Cartesian product of ranges that represents a high-dimensional region of a buffer */
-using Domain = Array<Range>;
-
-/*! \brief Records buffer accesses in a certain loop scope */
-class ScopeAccessNode : public Object {
- public:
-  Map<tir::Var, Array<Domain>> read_doms;
-  Map<tir::Var, Array<Domain>> write_doms;
-  std::unordered_map<const tir::VarNode*, std::vector<const LoopTreeNode*>> producer_siblings;
-  std::unordered_map<const tir::VarNode*, std::vector<const LoopTreeNode*>> consumer_siblings;
-
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("read_doms", &read_doms);
-    v->Visit("write_doms", &write_doms);
-    // `producer_siblings` is not visited
-    // `consumer_siblings` is not visited
-  }
-
-  bool IsInjective(bool* axis_missing, bool* axis_duplicated, bool* axes_in_order) const;
-
-  static constexpr const char* _type_key = "auto_scheduler.ScopeAccess";
-  TVM_DECLARE_FINAL_OBJECT_INFO(ScopeAccessNode, Object);
-};
-
-/*! \brief Managed reference to ScopeAccessNode */
-class ScopeAccess : public ObjectRef {
- public:
-  ScopeAccess(
-      Map<tir::Var, Array<Domain>> read_doms, Map<tir::Var, Array<Domain>> write_doms,
-      std::unordered_map<const tir::VarNode*, std::vector<const LoopTreeNode*>> producer_siblings,
-      std::unordered_map<const tir::VarNode*, std::vector<const LoopTreeNode*>> consumer_siblings);
-
-  static ScopeAccess FromLoopTreeLeaf(const LoopTree& leaf);
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(ScopeAccess, ObjectRef, ScopeAccessNode);
+  explicit LeafAccessPattern(const LoopTreeNode* node);
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LeafAccessPattern, BaseAccessPattern,
+                                            LeafAccessPatternNode);
 };
 
 }  // namespace auto_scheduler
