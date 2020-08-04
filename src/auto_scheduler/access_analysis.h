@@ -27,9 +27,11 @@
 namespace tvm {
 namespace auto_scheduler {
 
+// Forward declaration
 class LoopTreeNode;
 class LoopTree;
 
+/*! \brief Base class for storing access patterns */
 class BaseAccessPatternNode : public Object {
  public:
   void VisitAttrs(tvm::AttrVisitor* v) {}
@@ -38,14 +40,17 @@ class BaseAccessPatternNode : public Object {
   TVM_DECLARE_BASE_OBJECT_INFO(BaseAccessPatternNode, Object);
 };
 
+/*! \brief Managed reference to BaseAccessPatternNode */
 class BaseAccessPattern : public ObjectRef {
  public:
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BaseAccessPattern, ObjectRef, BaseAccessPatternNode);
 
  protected:
+  /*! \brief Protected constructor - we do not allow the base class to be constructed directly */
   BaseAccessPattern() = default;
 };
 
+/*! \brief A dummy class storing no information */
 class DummyAccessPatternNode : public BaseAccessPatternNode {
  public:
   void VisitAttrs(tvm::AttrVisitor* v) {}
@@ -54,6 +59,7 @@ class DummyAccessPatternNode : public BaseAccessPatternNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(DummyAccessPatternNode, BaseAccessPatternNode);
 };
 
+/*! \brief Managed reference to DummyAccessPatternNode */
 class DummyAccessPattern : public BaseAccessPattern {
  public:
   DummyAccessPattern() = delete;
@@ -61,6 +67,7 @@ class DummyAccessPattern : public BaseAccessPattern {
                                             DummyAccessPatternNode);
 };
 
+/*! \brief Access pattern analysis on a leaf block, i.e. a block does not have any child block */
 class LeafAccessPatternNode : public BaseAccessPatternNode {
  public:
   /*! \brief Number of statements in the block */
@@ -114,6 +121,7 @@ class LeafAccessPatternNode : public BaseAccessPatternNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(LeafAccessPatternNode, BaseAccessPatternNode);
 };
 
+/*! \brief Managed reference to LeafAccessPatternNode */
 class LeafAccessPattern : public BaseAccessPattern {
  public:
   explicit LeafAccessPattern(const LoopTreeNode* node);

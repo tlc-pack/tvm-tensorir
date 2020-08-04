@@ -29,6 +29,20 @@ TVM_REGISTER_NODE_TYPE(BaseAccessPatternNode);
 TVM_REGISTER_NODE_TYPE(DummyAccessPatternNode);
 TVM_REGISTER_NODE_TYPE(LeafAccessPatternNode);
 
+/*!
+ * \brief On a leaf block, checks if all buffer store and reduction update are in form of
+ *     A[v_0 +/- const][v_i +/- const]
+ * in which v_i are block variables, and const are constant integers.
+ * This means the indices trivally correlates with block variables,
+ * and it directly corresponds to TE-style buffer store.
+ * TODO(@junrushao1994): we might need to check each block var is correlated at most once.
+ * For now, it checks the following condition:
+ * 1) The block has only one statement, either ReduceStep and BufferStore
+ * 2) The buffer store/update trivially correlates to block variables
+ * \param node The node in the loop tree to be checked
+ * \param all_trivial_store Output, a flag indicating if it satisfies the condition
+ * \returns The block vars in the order they are used
+ */
 std::vector<tir::Var> CheckAllTrivialStore(const LoopTreeNode* node, bool* all_trivial_store) {
   // A block contains only statement
   if (node->children.size() != 1) {
@@ -84,6 +98,11 @@ std::vector<tir::Var> CheckAllTrivialStore(const LoopTreeNode* node, bool* all_t
   return result;
 }
 
+/*!
+ * \brief Checks if the leaf block has branching statement/intrinsic inside
+ * \param node The block to be checked
+ * \return A boolean flag indicating the check result
+ */
 bool CheckHasBranch(const LoopTreeNode* node) {
   if (node->block_realize.defined()) {
     arith::Analyzer analyzer;
@@ -115,13 +134,21 @@ bool CheckHasBranch(const LoopTreeNode* node) {
   return false;
 }
 
+/*!
+ * \brief Checks if the leaf block has branching statement/intrinsic inside
+ * \param node The block to be checked
+ * \return A boolean flag indicating the check result
+ */
 bool CheckHasExpensiveOp(const LoopTreeNode* node) {
   const tvm::Op& exp = tvm::Op::Get("tir.exp");
   for (const ObjectRef& child : node->children) {
+    // For each child Stmt
     if (const auto* stmt = child.as<tir::StmtNode>()) {
       bool has_expensive_op = false;
       tir::PostOrderVisit(child, [&has_expensive_op, &exp](const ObjectRef& obj) {
+        // Checks a TIR function call
         if (const auto* call = obj.as<tir::CallNode>()) {
+          // If it is tir.exp
           if (call->op.same_as(exp)) {
             has_expensive_op = true;
           }
@@ -135,6 +162,15 @@ bool CheckHasExpensiveOp(const LoopTreeNode* node) {
   return false;
 }
 
+/*!
+ * \brief Checks the axes on each buffer load can be mapped to block vars used in the buffer store
+ * \param node The block to be checked
+ * \param stores The block vars used in order in buffer store
+ * \param exists If the mapping exists
+ * \param surjective If each block var is used at least once
+ * \param injective If each block var is used at most once
+ * \param ordered If the mapping maintains order
+ */
 void AnalyzeLoadStoreMapping(const LoopTreeNode* node, const Array<tir::Var>& stores, bool* exists,
                              bool* surjective, bool* injective, bool* ordered) {
   // Only consider block with one statement
@@ -215,6 +251,13 @@ void AnalyzeLoadStoreMapping(const LoopTreeNode* node, const Array<tir::Var>& st
   });
 }
 
+/*!
+ * \brief Anaylze data reuse pattern. For each buffer load, we check how many store axes that do not
+ * appear in load axes, in which we could see re-use opportunities
+ * \param node The leaf block
+ * \param stores The block vars used in buffer store
+ * \return The number of axes missing
+ */
 int AnalyzeAxesReuse(const LoopTreeNode* node, const Array<tir::Var>& stores) {
   if (!node->block_realize.defined() || node->children.size() != 1) {
     return false;
@@ -222,6 +265,7 @@ int AnalyzeAxesReuse(const LoopTreeNode* node, const Array<tir::Var>& stores) {
   int n_missing = 0;
   tir::PostOrderVisit(node->children[0], [&n_missing, &stores](const ObjectRef& obj) {
     if (const auto* load = obj.as<tir::BufferLoadNode>()) {
+      // Collect all variables used in the buffer loaed
       std::unordered_set<const tir::VarNode*> vars_in_load;
       for (const PrimExpr& idx : load->indices) {
         tir::PostOrderVisit(idx, [&vars_in_load](const ObjectRef& obj) {
@@ -230,6 +274,7 @@ int AnalyzeAxesReuse(const LoopTreeNode* node, const Array<tir::Var>& stores) {
           }
         });
       }
+      // Count the number of axes that do not appear
       for (const tir::Var& store_axes : stores) {
         if (!vars_in_load.count(store_axes.get())) {
           ++n_missing;
