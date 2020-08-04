@@ -18,12 +18,12 @@
 import tvm
 import util
 from tvm import tir
-from tvm.tir.hybrid import from_source, ty
+from tvm.hybrid import from_source, ty
 
 
 def test_matmul():
     func = util.matmul_stmt_original()
-    rt_func = from_source(tvm.tir.hybrid.ashybrid(func, True))
+    rt_func = from_source(tvm.hybrid.ashybrid(func, True))
     tvm.ir.assert_structural_equal(func, rt_func)
 
     assert isinstance(rt_func.body.block, tir.stmt.Block)
@@ -37,7 +37,7 @@ def test_matmul():
 
 def test_element_wise():
     func = util.element_wise_stmt()
-    rt_func = from_source(tvm.tir.hybrid.ashybrid(func, True))
+    rt_func = from_source(tvm.hybrid.ashybrid(func, True))
     tvm.ir.assert_structural_equal(func, rt_func)
 
     assert isinstance(rt_func.body.block, tir.stmt.Block)
@@ -53,7 +53,7 @@ def test_element_wise():
 
 def test_predicate():
     func = util.predicate_stmt()
-    rt_func = from_source(tvm.tir.hybrid.ashybrid(func, True))
+    rt_func = from_source(tvm.hybrid.ashybrid(func, True))
     tvm.ir.assert_structural_equal(func, rt_func)
 
     assert isinstance(rt_func.body.block, tir.stmt.Block)
@@ -116,7 +116,7 @@ class MyModule:
 
 def test_module_class_based():
     mod = MyModule()
-    rt_mod = from_source(tvm.tir.hybrid.ashybrid(mod, True))
+    rt_mod = from_source(tvm.hybrid.ashybrid(mod, True))
     tvm.ir.assert_structural_equal(mod, rt_mod)
 
 

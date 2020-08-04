@@ -17,15 +17,15 @@
 
 import tvm
 from tvm import tir
-from tvm.tir.hybrid import ty
+from tvm.hybrid import ty
 
 
-@tvm.tir.hybrid.script
+@tvm.hybrid.script
 def buffer_bind_missing_args(a: ty.handle) -> None:
     A = tir.buffer_bind((16, 16), "float32")
 
 
-@tvm.tir.hybrid.script
+@tvm.hybrid.script
 def range_missing_args(a: ty.handle) -> None:
     A = tir.buffer_bind(a, (16, 16), "float32")
 
@@ -35,7 +35,7 @@ def range_missing_args(a: ty.handle) -> None:
                 A[vi, vj] = 0.0
 
 
-@tvm.tir.hybrid.script
+@tvm.hybrid.script
 def block_missing_args(a: ty.handle) -> None:
     A = tir.buffer_bind(a, (16, 16), "float32")
 
@@ -45,7 +45,7 @@ def block_missing_args(a: ty.handle) -> None:
                 A[vi, vj] = 0.0
 
 
-@tvm.tir.hybrid.script
+@tvm.hybrid.script
 def undefined_buffer(a: ty.handle) -> None:
     A = tir.buffer_bind(a, (16, 16), "float32")
 
@@ -55,7 +55,7 @@ def undefined_buffer(a: ty.handle) -> None:
                 A[vi, vj] = 0.0
 
 
-@tvm.tir.hybrid.script
+@tvm.hybrid.script
 def undefined_block_var(a: ty.handle) -> None:
     A = tir.buffer_bind(a, (16, 16), "float32")
 
@@ -65,13 +65,13 @@ def undefined_block_var(a: ty.handle) -> None:
                 A[vi, vk] = 0.0
 
 
-@tvm.tir.hybrid.script
+@tvm.hybrid.script
 def unsupported_stmt(a: ty.int32) -> None:
     if a > 0:
         print("I love tvm")
 
 
-@tvm.tir.hybrid.script
+@tvm.hybrid.script
 def unsupported_function_call(a: ty.handle) -> None:
     A = tir.buffer_bind(a, (16, 16), "float32")
 
@@ -81,7 +81,7 @@ def unsupported_function_call(a: ty.handle) -> None:
                 A[vi, vk] = 0.0
 
 
-@tvm.tir.hybrid.script
+@tvm.hybrid.script
 def type_check(a: ty.handle) -> None:
     A = tir.buffer_bind(a, (16, 16), "float32")
 
@@ -93,7 +93,7 @@ def type_check(a: ty.handle) -> None:
 
 def wrap_error(func, lineno):
     try:
-        mod = tvm.tir.hybrid.create_module({"func": func})
+        mod = tvm.hybrid.create_module({"func": func})
         res = mod[func.__name__]
     except BaseException as e:
         print(e)

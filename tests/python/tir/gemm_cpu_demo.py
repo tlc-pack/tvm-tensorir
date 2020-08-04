@@ -18,10 +18,10 @@
 import numpy as np
 import tvm
 from tvm import tir
-from tvm.tir.hybrid import ty
+from tvm.hybrid import ty
 
 
-@tvm.tir.hybrid.script
+@tvm.hybrid.script
 def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.buffer_bind(c, (1024, 1024), "float32")
     A = tir.buffer_bind(a, (1024, 1024), "float32")
@@ -34,9 +34,9 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             for j in tir.grid(0, 1024):
                 for k in tir.grid(0, 1024):
                     with tir.block({vi(0, 1024): i, vj(0, 1024): j, vk(0, 1024, iter_type="reduce"): k},
-                               writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                               reads=[C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)],
-                                      B[vj:(vj + 1), vk:(vk + 1)]], name="C"):
+                                   writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                                   reads=[C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)],
+                                          B[vj:(vj + 1), vk:(vk + 1)]], name="C"):
                         reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
 
@@ -52,7 +52,7 @@ M, N, K = 1024, 1024, 1024
 target = 'llvm'
 ctx = tvm.context(target, 0)
 
-mod = tir.hybrid.create_module({"matmul":matmul})
+mod = tvm.hybrid.create_module({"matmul":matmul})
 original_func = mod["matmul"]
 
 a_np = np.random.uniform(size=(M, K)).astype("float32")
@@ -61,12 +61,13 @@ a = tvm.nd.array(a_np)
 b = tvm.nd.array(b_np)
 c = tvm.nd.array(np.zeros((M, N)).astype("float32"))
 
+
 def build_and_test(func):
     build_func = tvm.build(func, target=target)
     build_func(a, b, c)
     tvm.testing.assert_allclose(c.asnumpy(), np.matmul(a.asnumpy(), b.asnumpy()), rtol=1e-5)
     evaluator = build_func.time_evaluator(build_func.entry_name, ctx, number=1)
-    print(tir.hybrid.ashybrid(func))
+    print(tvm.hybrid.ashybrid(func))
     return evaluator(a, b, c).mean
 
 # print('Baseline: %f' % build_and_test(original_func))
@@ -157,7 +158,7 @@ print('Opt3: %f' % build_and_test(s.func))
 
 # We have to re-write the algorithm slightly.
 
-@tvm.tir.hybrid.script
+@tvm.hybrid.script
 def matmul_packed(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.buffer_bind(a, (1024, 1024), "float32")
     B = tir.buffer_bind(b, (1024, 1024), "float32")
@@ -187,7 +188,7 @@ def matmul_packed(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                         reducer.step(C[vi, vj], A[vi, vk] * packedB[vj // 32, vk, vj % 32])
 
 
-mod = tir.hybrid.create_module({"matmul_packed": matmul_packed})
+mod = tvm.hybrid.create_module({"matmul_packed": matmul_packed})
 packed_func = mod["matmul_packed"]
 
 s = tir.create_schedule(packed_func)

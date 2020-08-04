@@ -17,10 +17,10 @@
 """Helper functions in Hybrid Script Parser"""
 
 import inspect
+from tvm import IRModule
 
 from . import _ffi_api
 from .parser import source_to_op
-from ... import IRModule
 
 
 def create_module(functions=None):

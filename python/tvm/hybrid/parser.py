@@ -25,15 +25,15 @@ import operator
 import tvm._ffi
 from tvm import tir
 from tvm._ffi.base import TVMError
+from tvm.ir import GlobalVar
 from tvm.tir import all as _all
 from tvm.tir import expr as _expr
 from typed_ast import ast3 as ast
 
-from . import scope_emitter, intrin, special_stmt, scope_handler
+from . import scope_emitter, special_stmt, scope_handler, intrin
 from .meta_unparser import MetaUnparser
 from .registry import Registry
 from .special_stmt import HybridLambda, HybridReducer
-from ...ir import GlobalVar
 
 
 def _floordiv(x, y):
@@ -880,4 +880,4 @@ def source_to_op(src, func_lineno=0):
         raise HybridParserError(inject_e)
 
 
-tvm._ffi._init_api("tvm.tir.hybrid.parser")
+tvm._ffi._init_api("tvm.hybrid.parser")

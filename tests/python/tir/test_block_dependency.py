@@ -18,7 +18,7 @@
 import pytest
 import tvm
 from tvm import tir
-from tvm.tir.hybrid import ty
+from tvm.hybrid import ty
 import util
 
 
@@ -63,7 +63,7 @@ def test_matmul_dependency():
     assert successor_init[0].type + successor_init[1].type == 1
 
 
-@tvm.tir.hybrid.script
+@tvm.hybrid.script
 def test_WAR(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.buffer_bind(a, (128, 128))
     B = tir.buffer_bind(b, (128, 128))
@@ -84,7 +84,7 @@ def test_WAR(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 def test_WAR_dependency():
-    mod = tvm.tir.hybrid.create_module({"test_WAR": test_WAR})
+    mod = tvm.hybrid.create_module({"test_WAR": test_WAR})
     func = mod["test_WAR"]
     with pytest.raises(TypeError) as excinfo:
         tir.create_schedule(func)

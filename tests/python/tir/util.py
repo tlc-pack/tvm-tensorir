@@ -17,10 +17,10 @@
 
 import tvm
 from tvm import tir
-from tvm.tir.hybrid import ty
+from tvm.hybrid import ty
 
 
-@tvm.tir.hybrid.script
+@tvm.hybrid.script
 def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.buffer_bind(a, (128, 128), "float32")
     B = tir.buffer_bind(b, (128, 128), "float32")
@@ -39,7 +39,7 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                         reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
 
 
-@tvm.tir.hybrid.script
+@tvm.hybrid.script
 def matmul_original(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.buffer_bind(a, (128, 128), "float32")
     B = tir.buffer_bind(b, (128, 128), "float32")
@@ -60,7 +60,7 @@ def matmul_original(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                         C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
-@tvm.tir.hybrid.script
+@tvm.hybrid.script
 def element_wise(a: ty.handle, c: ty.handle) -> None:
     A = tir.buffer_bind(a, (128, 128), "float32")
     C = tir.buffer_bind(c, (128, 128), "float32")
@@ -83,7 +83,7 @@ def element_wise(a: ty.handle, c: ty.handle) -> None:
                     C[vi, vj] = B[vi, vj] + 1.0
 
 
-@tvm.tir.hybrid.script
+@tvm.hybrid.script
 def predicate(b: ty.handle, c: ty.handle) -> None:
     B = tir.buffer_bind(b, (16, 16), "float32")
     C = tir.buffer_bind(c, (16, 16), "float32")
@@ -99,20 +99,20 @@ def predicate(b: ty.handle, c: ty.handle) -> None:
 
 
 def matmul_stmt():
-    mod = tvm.tir.hybrid.create_module({"matmul": matmul})
+    mod = tvm.hybrid.create_module({"matmul": matmul})
     return mod["matmul"]
 
 
 def matmul_stmt_original():
-    mod = tvm.tir.hybrid.create_module({"matmul_original": matmul_original})
+    mod = tvm.hybrid.create_module({"matmul_original": matmul_original})
     return mod["matmul_original"]
 
 
 def element_wise_stmt():
-    mod = tvm.tir.hybrid.create_module({"element_wise": element_wise})
+    mod = tvm.hybrid.create_module({"element_wise": element_wise})
     return mod["element_wise"]
 
 
 def predicate_stmt():
-    mod = tvm.tir.hybrid.create_module({"predicate": predicate})
+    mod = tvm.hybrid.create_module({"predicate": predicate})
     return mod["predicate"]

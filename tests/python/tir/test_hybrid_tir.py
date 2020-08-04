@@ -17,7 +17,7 @@
 
 import tvm
 from tvm import tir
-from tvm.tir.hybrid import ty
+from tvm.hybrid import ty
 import util
 
 
@@ -57,7 +57,7 @@ def test_predicate():
     assert isinstance(func.body.block.body.body.body.body.block, tir.stmt.Block)
 
 
-@tvm.tir.hybrid.script
+@tvm.hybrid.script
 class Module:
     def mmult(args: ty.handle, arg_type_ids: ty.handle, num_args: ty.int32, out_ret_value: ty.handle, out_ret_tcode: ty.handle) -> ty.int32:
         # function attr dict
@@ -156,11 +156,11 @@ class Module:
 
 def test_opt_gemm_lower():
     mod = Module()
-    rt_mod = tir.hybrid.from_source(tvm.tir.hybrid.ashybrid(mod, True))
+    rt_mod = tvm.hybrid.from_source(tvm.hybrid.ashybrid(mod, True))
     tvm.ir.assert_structural_equal(mod, rt_mod, True)
 
 
-@tvm.tir.hybrid.script
+@tvm.hybrid.script
 class Module2:
     def default_function(A: ty.handle, W: ty.handle, Conv: ty.handle) -> None:
         # function attr dict
@@ -249,13 +249,13 @@ class Module2:
 
 def test_opt_conv_tensorcore_lower():
     mod = Module2()
-    rt_mod = tir.hybrid.from_source(tvm.tir.hybrid.ashybrid(mod, True))
+    rt_mod = tvm.hybrid.from_source(tvm.hybrid.ashybrid(mod, True))
     tvm.ir.assert_structural_equal(mod, rt_mod, True)
 
 
 if __name__ == '__main__':
-    # test_matmul()
-    # test_element_wise()
-    # test_predicate()
+    test_matmul()
+    test_element_wise()
+    test_predicate()
     test_opt_gemm_lower()
     test_opt_conv_tensorcore_lower()

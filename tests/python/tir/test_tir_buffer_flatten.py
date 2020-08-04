@@ -17,10 +17,10 @@
 
 import tvm.tir
 import util
-from tvm.tir.hybrid import ty
+from tvm.hybrid import ty
 
 def test_no_allocate():
-    mod = tvm.tir.hybrid.create_module({"func": util.matmul_stmt_original()})
+    mod = tvm.hybrid.create_module({"func": util.matmul_stmt_original()})
     trans = tvm.transform.Sequential([tvm.tir.transform.BufferFlatten(),
                                       tvm.tir.transform.Simplify()])
     mod = trans(mod)
@@ -42,7 +42,7 @@ def test_no_allocate():
 
 
 def test_global_allocate():
-    mod = tvm.tir.hybrid.create_module({"func": util.element_wise_stmt()})
+    mod = tvm.hybrid.create_module({"func": util.element_wise_stmt()})
     trans = tvm.transform.Sequential([tvm.tir.transform.BufferFlatten(),
                                       tvm.tir.transform.Simplify()])
     mod = trans(mod)
@@ -65,7 +65,7 @@ def test_global_allocate():
     tvm.ir.assert_structural_equal(mod["func"].body, stmt, map_free_vars=True)
 
 
-@tvm.tir.hybrid.script
+@tvm.hybrid.script
 def compute_at_element_wise(a: ty.handle, c: ty.handle) -> None:
     A = tir.buffer_bind(a, (128, 128), "float32", name="A")
     C = tir.buffer_bind(c, (128, 128), "float32", name="C")
@@ -88,7 +88,7 @@ def compute_at_element_wise(a: ty.handle, c: ty.handle) -> None:
 
 
 def test_local_allocate():
-    mod = tvm.tir.hybrid.create_module({"func": compute_at_element_wise})
+    mod = tvm.hybrid.create_module({"func": compute_at_element_wise})
     trans = tvm.transform.Sequential([tvm.tir.transform.BufferFlatten(),
                                       tvm.tir.transform.Simplify()])
     mod = trans(mod)
