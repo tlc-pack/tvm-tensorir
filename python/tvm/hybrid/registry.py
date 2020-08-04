@@ -18,9 +18,18 @@
 # pylint: disable=inconsistent-return-statements
 
 import inspect
+from enum import IntEnum
 
 import tvm
 from typed_ast import ast3 as ast
+
+
+class Category(IntEnum):
+    """Categories of registered functions"""
+    intrin = 0
+    with_scope = 1
+    for_scope = 2
+    special_stmt = 3
 
 
 class Registry(object):
@@ -33,10 +42,10 @@ class Registry(object):
     special_stmt = dict()
 
     host_dict = {
-        "intrin": intrin,
-        "with_scope": with_scope,
-        "for_scope": for_scope,
-        "special_stmt": special_stmt
+        Category.intrin: intrin,
+        Category.with_scope: with_scope,
+        Category.for_scope: for_scope,
+        Category.special_stmt: special_stmt
     }
 
 
@@ -133,7 +142,7 @@ def register_func(category, origin_func, need_parser_and_node, need_body, concis
 
     Parameters
     ----------
-    category: str
+    category: Category
         The category of function to be registered, ought to be "intrin", "with_scope", "for_scope",
         "special_stmt"
 
@@ -187,19 +196,20 @@ def register_intrin(origin_func):
         lanes = lanes.value if not isinstance(lanes, int) else lanes
         return tvm.tir.Broadcast(value, lanes)
     """
-    register_func("intrin", origin_func, need_parser_and_node=False, need_body=False, concise=False)
+    register_func(Category.intrin, origin_func,
+                  need_parser_and_node=False, need_body=False, concise=False)
     return origin_func
 
 
-def register_scope_handler(scope_name, concise=False):
+def register_scope_handler(scope, concise=False):
     """Decorator to register function under scope handler
 
     Parameters
     ----------
-    scope_name: str
+    scope: Category
         scope handler are first classified into 2 categories:
-            with scope handler(scope_name = "with_scope")
-            and for scope handler(scope_name = "for_scope")
+            with scope handler(scope = Category.with_scope)
+            and for scope handler(scope = Category.for_scope)
 
     concise: bool
         whether this scope handler is allowed in concise scoping (note that this only works for
@@ -209,7 +219,7 @@ def register_scope_handler(scope_name, concise=False):
     ------
     .. code-block:: python
 
-    @register_scope_handler("with_scope", concise=True)
+    @register_scope_handler(Scope.with_scope, concise=True)
     def attr(parser, node, attr_node, attr_key, value, body):
 
         return tvm.tir.AttrStmt(attr_node, attr_key, tvm.runtime.convert(value), body)
@@ -217,7 +227,8 @@ def register_scope_handler(scope_name, concise=False):
 
     def decorate(origin_func):
         """Register function under category with_scope or for_scope"""
-        register_func(scope_name, origin_func, need_parser_and_node=True, need_body=True, concise=concise)
+        register_func(scope, origin_func,
+                      need_parser_and_node=True, need_body=True, concise=concise)
         return origin_func
 
     return decorate
@@ -238,5 +249,6 @@ def register_special_stmt(origin_func):
         return buffer
 
     """
-    register_func("special_stmt", origin_func, need_parser_and_node=True, need_body=False, concise=False)
+    register_func(Category.special_stmt, origin_func,
+                  need_parser_and_node=True, need_body=False, concise=False)
     return origin_func
