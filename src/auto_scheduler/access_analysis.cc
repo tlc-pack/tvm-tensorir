@@ -31,6 +31,21 @@ TVM_REGISTER_NODE_TYPE(LeafAccessPatternNode);
 
 DummyAccessPattern::DummyAccessPattern() { data_ = make_object<DummyAccessPatternNode>(); }
 
+bool IsVarPlusMinusConst(const PrimExpr& expr, tir::Var* result) {
+  if (const auto* var = expr.as<tir::VarNode>()) {
+    *result = GetRef<tir::Var>(var);
+    return true;
+  }
+  arith::PVar<tir::Var> var;
+  arith::PVar<IntImm> shift;
+  // match: "var +/- shift"
+  if ((var + shift).Match(expr) || (var - shift).Match(expr) || (shift + var).Match(expr)) {
+    *result = var.Eval();
+    return true;
+  }
+  return false;
+}
+
 /*!
  * \brief On a leaf block, checks if all buffer store and reduction update are in form of
  *     A[v_0 +/- const][v_i +/- const]
@@ -80,21 +95,15 @@ std::vector<tir::Var> CheckAllTrivialStore(const LoopTree& node, bool* all_trivi
     if (IsConstInt(idx)) {
       continue;
     }
-    arith::PVar<tir::Var> var;
-    arith::PVar<IntImm> shift;
-    // match: "var +/- shift"
-    if ((var + shift).Match(idx) || (var - shift).Match(idx) || (shift + var).Match(idx)) {
-      const tir::VarNode* v = var.Eval().get();
-      if (!block_vars.count(v)) {
-        *all_trivial_store = false;
-        return {};
-      } else {
-        result.push_back(GetRef<tir::Var>(v));
+    tir::Var var;
+    if (IsVarPlusMinusConst(idx, &var)) {
+      if (block_vars.count(var.get())) {
+        result.push_back(var);
+        continue;
       }
-    } else {
-      *all_trivial_store = false;
-      return {};
     }
+    *all_trivial_store = false;
+    return {};
   }
   *all_trivial_store = true;
   return result;
@@ -211,13 +220,11 @@ void AnalyzeLoadStoreMapping(const LoopTree& node, const Array<tir::Var>& stores
       if (IsConstInt(idx)) {
         continue;
       }
+      tir::Var var;
       // Check if it matches a block var
-      arith::PVar<tir::Var> var;
-      arith::PVar<IntImm> shift;
-      if ((var + shift).Match(idx) || (var - shift).Match(idx) || (shift + var).Match(idx)) {
-        const tir::VarNode* v = var.Eval().get();
-        if (store_vars.count(v)) {
-          int index = store_vars.at(v);
+      if (IsVarPlusMinusConst(idx, &var)) {
+        if (store_vars.count(var.get())) {
+          int index = store_vars.at(var.get());
           load_mapped_to_store_index.push_back(index);
           store_be_mapped_times[index] += 1;
           continue;

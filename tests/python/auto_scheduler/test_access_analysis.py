@@ -46,7 +46,6 @@ def _matmul_with_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
                 with tir.block({vi(0, 1024): i, vj(0, 1024): j},
                                writes=[D[vi:(vi + 1), vj:(vj + 1)]],
                                reads=[C[vi:(vi + 1), vj:(vj + 1)]], name="D"):
-                    # TODO(@junrushao1994): change it to `max` once supported
                     D[vi, vj] = tir.max(C[vi, vj], 1.0)
 
 
@@ -55,13 +54,43 @@ def test_matmul_with_relu():
     func = module["hybrid_func"]
     assert isinstance(func, tvm.tir.PrimFunc)
     loop_tree = tvm.auto_scheduler.LoopTree.from_prim_func(func)
-    print(tvm.hybrid.ashybrid(func))
-    print(loop_tree)
-    analysis_result = tvm.auto_scheduler.access_analysis.analyze(loop_tree)
-    for k, v in analysis_result.items():
-        print(v)
-    # analysis_mm = analysis_result[loop_tree.children[0]]
-    # analysis_relu = analysis_result[loop_tree.children[1]]
+    analysis = tvm.auto_scheduler.access_analysis.analyze(loop_tree)
+    # Check root
+    root_pattern = analysis[loop_tree]
+    assert isinstance(
+        root_pattern, tvm.auto_scheduler.access_analysis.DummyAccessPattern)
+    # Check C (matmul)
+    c_pattern = analysis[loop_tree.children[0]]
+    assert isinstance(
+        c_pattern, tvm.auto_scheduler.access_analysis.LeafAccessPattern)
+    assert c_pattern.num_stmts == 1
+    assert c_pattern.has_branch == 0
+    assert c_pattern.has_expensive_op == 0
+    assert c_pattern.all_trivial_store == 1
+    assert len(c_pattern.block_vars_in_trivial_store) == 2
+    assert c_pattern.block_vars_in_trivial_store[0].name == "vi"
+    assert c_pattern.block_vars_in_trivial_store[1].name == "vj"
+    assert c_pattern.lsmap_exists == 0
+    assert c_pattern.lsmap_surjective == 0
+    assert c_pattern.lsmap_injective == 0
+    assert c_pattern.lsmap_ordered == 0
+    assert c_pattern.num_axes_reuse == 2
+    # Check D (relu)
+    d_pattern = analysis[loop_tree.children[1]]
+    assert isinstance(
+        d_pattern, tvm.auto_scheduler.access_analysis.LeafAccessPattern)
+    assert d_pattern.num_stmts == 1
+    assert d_pattern.has_branch == 0
+    assert d_pattern.has_expensive_op == 0
+    assert d_pattern.all_trivial_store == 1
+    assert len(d_pattern.block_vars_in_trivial_store) == 2
+    assert d_pattern.block_vars_in_trivial_store[0].name == "vi"
+    assert d_pattern.block_vars_in_trivial_store[1].name == "vj"
+    assert d_pattern.lsmap_exists == 1
+    assert d_pattern.lsmap_surjective == 1
+    assert d_pattern.lsmap_injective == 1
+    assert d_pattern.lsmap_ordered == 1
+    assert d_pattern.num_axes_reuse == 0
 
 
 if __name__ == "__main__":
