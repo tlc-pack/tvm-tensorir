@@ -31,7 +31,14 @@ TVM_REGISTER_NODE_TYPE(LeafAccessPatternNode);
 
 DummyAccessPattern::DummyAccessPattern() { data_ = make_object<DummyAccessPatternNode>(); }
 
+/*!
+ * \brief Check if an expression consists of a single variable, or a variable +/i an constant
+ * \param expr The expression to be checked
+ * \param result Output, the var inside if it satisfies the condition
+ * \return A boolean indicating if it satisfies the condition
+ */
 bool IsVarPlusMinusConst(const PrimExpr& expr, tir::Var* result) {
+  // match: "var"
   if (const auto* var = expr.as<tir::VarNode>()) {
     *result = GetRef<tir::Var>(var);
     return true;
