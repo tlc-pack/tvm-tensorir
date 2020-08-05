@@ -47,15 +47,19 @@ def _matmul_with_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
                                writes=[D[vi:(vi + 1), vj:(vj + 1)]],
                                reads=[C[vi:(vi + 1), vj:(vj + 1)]], name="D"):
                     # TODO(@junrushao1994): change it to `max` once supported
-                    D[vi, vj] = C[vi, vj] + float32(1)
+                    D[vi, vj] = tir.max(C[vi, vj], 1.0)
 
 
 def test_matmul_with_relu():
     module = tvm.hybrid.create_module({"hybrid_func": _matmul_with_relu})
     func = module["hybrid_func"]
     assert isinstance(func, tvm.tir.PrimFunc)
-    # loop_tree = tvm.auto_scheduler.LoopTree.from_prim_func(func)
-    # analysis_result = tvm.auto_scheduler.access_analysis.analyze(loop_tree)
+    loop_tree = tvm.auto_scheduler.LoopTree.from_prim_func(func)
+    print(tvm.hybrid.ashybrid(func))
+    print(loop_tree)
+    analysis_result = tvm.auto_scheduler.access_analysis.analyze(loop_tree)
+    for k, v in analysis_result.items():
+        print(v)
     # analysis_mm = analysis_result[loop_tree.children[0]]
     # analysis_relu = analysis_result[loop_tree.children[1]]
 

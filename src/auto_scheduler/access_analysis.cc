@@ -29,6 +29,8 @@ TVM_REGISTER_NODE_TYPE(BaseAccessPatternNode);
 TVM_REGISTER_NODE_TYPE(DummyAccessPatternNode);
 TVM_REGISTER_NODE_TYPE(LeafAccessPatternNode);
 
+DummyAccessPattern::DummyAccessPattern() { data_ = make_object<DummyAccessPatternNode>(); }
+
 /*!
  * \brief On a leaf block, checks if all buffer store and reduction update are in form of
  *     A[v_0 +/- const][v_i +/- const]
@@ -43,7 +45,7 @@ TVM_REGISTER_NODE_TYPE(LeafAccessPatternNode);
  * \param all_trivial_store Output, a flag indicating if it satisfies the condition
  * \returns The block vars in the order they are used
  */
-std::vector<tir::Var> CheckAllTrivialStore(const LoopTreeNode* node, bool* all_trivial_store) {
+std::vector<tir::Var> CheckAllTrivialStore(const LoopTree& node, bool* all_trivial_store) {
   // A block contains only statement
   if (node->children.size() != 1) {
     *all_trivial_store = false;
@@ -103,7 +105,7 @@ std::vector<tir::Var> CheckAllTrivialStore(const LoopTreeNode* node, bool* all_t
  * \param node The block to be checked
  * \return A boolean flag indicating the check result
  */
-bool CheckHasBranch(const LoopTreeNode* node) {
+bool CheckHasBranch(const LoopTree& node) {
   if (node->block_realize.defined()) {
     arith::Analyzer analyzer;
     const tir::BlockRealizeNode* realize = node->block_realize.value().get();
@@ -139,7 +141,7 @@ bool CheckHasBranch(const LoopTreeNode* node) {
  * \param node The block to be checked
  * \return A boolean flag indicating the check result
  */
-bool CheckHasExpensiveOp(const LoopTreeNode* node) {
+bool CheckHasExpensiveOp(const LoopTree& node) {
   const tvm::Op& exp = tvm::Op::Get("tir.exp");
   for (const ObjectRef& child : node->children) {
     // For each child Stmt
@@ -171,7 +173,7 @@ bool CheckHasExpensiveOp(const LoopTreeNode* node) {
  * \param injective If each block var is used at most once
  * \param ordered If the mapping maintains order
  */
-void AnalyzeLoadStoreMapping(const LoopTreeNode* node, const Array<tir::Var>& stores, bool* exists,
+void AnalyzeLoadStoreMapping(const LoopTree& node, const Array<tir::Var>& stores, bool* exists,
                              bool* surjective, bool* injective, bool* ordered) {
   // Only consider block with one statement
   if (node->children.size() != 1 || !node->block_realize.defined()) {
@@ -258,7 +260,7 @@ void AnalyzeLoadStoreMapping(const LoopTreeNode* node, const Array<tir::Var>& st
  * \param stores The block vars used in buffer store
  * \return The number of axes missing
  */
-int AnalyzeAxesReuse(const LoopTreeNode* node, const Array<tir::Var>& stores) {
+int AnalyzeAxesReuse(const LoopTree& node, const Array<tir::Var>& stores) {
   if (!node->block_realize.defined() || node->children.size() != 1) {
     return false;
   }
@@ -285,7 +287,7 @@ int AnalyzeAxesReuse(const LoopTreeNode* node, const Array<tir::Var>& stores) {
   return n_missing;
 }
 
-LeafAccessPattern::LeafAccessPattern(const LoopTreeNode* node) {
+LeafAccessPattern::LeafAccessPattern(const LoopTree& node) {
   ObjectPtr<LeafAccessPatternNode> n = make_object<LeafAccessPatternNode>();
   n->num_stmts = node->children.size();
   n->has_branch = CheckHasBranch(node);
@@ -307,6 +309,28 @@ LeafAccessPattern::LeafAccessPattern(const LoopTreeNode* node) {
   }
   data_ = std::move(n);
 }
+
+Map<LoopTree, BaseAccessPattern> AnalyzeAccess(const LoopTree& root) {
+  std::unordered_map<LoopTree, BaseAccessPattern, ObjectPtrHash, ObjectPtrEqual> result;
+  std::function<void(const LoopTree&)> fvisit = [&result, &fvisit](const LoopTree& node) -> void {
+    int num_children = 0;
+    for (const ObjectRef& obj : node->children) {
+      if (const auto* child = obj.as<LoopTreeNode>()) {
+        fvisit(GetRef<LoopTree>(child));
+        ++num_children;
+      }
+    }
+    if (num_children == 0) {
+      result[node] = LeafAccessPattern(node);
+    } else {
+      result[node] = DummyAccessPattern();
+    }
+  };
+  fvisit(root);
+  return result;
+}
+
+TVM_REGISTER_GLOBAL("auto_scheduler.access_analysis.AnalyzeAccess").set_body_typed(AnalyzeAccess);
 
 }  // namespace auto_scheduler
 }  // namespace tvm

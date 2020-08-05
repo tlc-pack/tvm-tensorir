@@ -164,7 +164,7 @@ for i data_par[0, 1024)
     for k reduce[0, 1024)
       C = ...
 """.strip()
-    # schedule: tir.blocking
+    # schedule: blocking
     sch = tvm.tir.create_schedule(func)
     update = sch.get_block("C")
     i, j, k = sch.get_axes(update)

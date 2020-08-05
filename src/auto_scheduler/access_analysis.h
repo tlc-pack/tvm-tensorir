@@ -43,11 +43,9 @@ class BaseAccessPatternNode : public Object {
 /*! \brief Managed reference to BaseAccessPatternNode */
 class BaseAccessPattern : public ObjectRef {
  public:
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BaseAccessPattern, ObjectRef, BaseAccessPatternNode);
-
- protected:
-  /*! \brief Protected constructor - we do not allow the base class to be constructed directly */
+  /*! \brief Constructor - do not use this to construct BaseAccessPattern directly */
   BaseAccessPattern() = default;
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BaseAccessPattern, ObjectRef, BaseAccessPatternNode);
 };
 
 /*! \brief A dummy class storing no information */
@@ -62,7 +60,8 @@ class DummyAccessPatternNode : public BaseAccessPatternNode {
 /*! \brief Managed reference to DummyAccessPatternNode */
 class DummyAccessPattern : public BaseAccessPattern {
  public:
-  DummyAccessPattern() = delete;
+  /*! \brief Constructor */
+  DummyAccessPattern();
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(DummyAccessPattern, BaseAccessPattern,
                                             DummyAccessPatternNode);
 };
@@ -124,7 +123,8 @@ class LeafAccessPatternNode : public BaseAccessPatternNode {
 /*! \brief Managed reference to LeafAccessPatternNode */
 class LeafAccessPattern : public BaseAccessPattern {
  public:
-  explicit LeafAccessPattern(const LoopTreeNode* node);
+  /*! \brief Constructor */
+  explicit LeafAccessPattern(const LoopTree& node);
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LeafAccessPattern, BaseAccessPattern,
                                             LeafAccessPatternNode);
 };
