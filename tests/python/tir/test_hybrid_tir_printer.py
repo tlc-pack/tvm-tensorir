@@ -69,7 +69,7 @@ def test_functions():
     test_predicate()
 
 
-@tvm.tir.hybrid.script
+@tvm.hybrid.script
 class MyModule:
     def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         A = tir.buffer_bind(a, (128, 128), "float32")

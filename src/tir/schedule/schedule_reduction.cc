@@ -30,6 +30,10 @@ bool ListContains(const Array<StmtSRef>& list, const StmtSRef& element) {
   return false;
 }
 
+void ScheduleNode::register_reducer(const CommReducer& comm_reducer) {
+  this->reducers_.push_back(comm_reducer);
+}
+
 StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const StmtSRef& loop_sref) {
   /*!
    *  Check
