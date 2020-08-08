@@ -37,6 +37,16 @@ namespace auto_scheduler {
  */
 bool ExprContainsVar(const PrimExpr& expr, const tir::Var& var);
 
+inline bool IsConstInt(const PrimExpr& x) {
+  if (x->IsInstance<tir::IntImmNode>()) {
+    return true;
+  }
+  if (const auto* op = x.as<tir::BroadcastNode>()) {
+    return op->value->IsInstance<tir::IntImmNode>();
+  }
+  return false;
+}
+
 }  // namespace auto_scheduler
 }  // namespace tvm
 
