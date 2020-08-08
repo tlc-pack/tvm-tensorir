@@ -368,7 +368,7 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
     int before_pos;
     for (before_pos = 0; before_pos < n_stmts; before_pos++) {
       const StmtNode* stmt = loop_body[before_pos].get();
-      if (AnyEdgePointsToABlock(edges_to_pred, GetChildBlocks(stmt2ref.at(stmt)))) {
+      if (AnyEdgePointsToABlock(edges_to_succ, GetChildBlocks(stmt2ref.at(stmt)))) {
         break;
       }
     }
