@@ -445,10 +445,6 @@ Array<StmtSRef> ScheduleNode::GetLoopsInScope(const StmtSRef& block) const {
   return Array<StmtSRef>(ret.rbegin(), ret.rend());
 }
 
-void ScheduleNode::register_reducer(const CommReducer& comm_reducer) {
-  this->reducers_.push_back(comm_reducer);
-}
-
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<StmtSRefNode>([](const ObjectRef& node, ReprPrinter* p) {
       const auto* op = static_cast<const StmtSRefNode*>(node.get());

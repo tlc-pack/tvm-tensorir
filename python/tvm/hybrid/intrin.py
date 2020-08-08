@@ -137,3 +137,8 @@ def store(var, index, value, predicate=True):
 def iter_var(var, dom, iter_type, thread_tag):
     iter_type = getattr(tvm.tir.IterVar, iter_type)
     return tvm.tir.IterVar(dom, var, iter_type, thread_tag)
+
+
+@register_intrin
+def max(a, b):  # pylint: disable=redefined-builtin
+    return tvm.tir.Max(a, b)
