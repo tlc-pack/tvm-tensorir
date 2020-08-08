@@ -22,7 +22,7 @@ from tvm.runtime import Object
 
 @tvm._ffi.register_object("auto_scheduler.LoopTree")
 class LoopTree(Object):
-    """The schedule node for TIR"""
+    """LoopTree created from TIR"""
 
     @staticmethod
     def from_prim_func(prim_func):
