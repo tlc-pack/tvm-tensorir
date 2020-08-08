@@ -150,15 +150,15 @@ class LoopTreeNode : public Object {
   /*! \brief Children of the node, can be LoopTree or tir::Stmt */
   Array<ObjectRef> children;
   /*!
-   * \brief Converts the LoopTreeNode to human readable string format\
+   * \brief Converts the LoopTreeNode to human readable string format
    * \return The human readable string format
    */
   String ToString() const;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("iters", &iters);
+    v->Visit("block_realize", &block_realize);
     v->Visit("children", &children);
-    // block_realize is not visited
   }
 
   static constexpr const char* _type_key = "auto_scheduler.LoopTree";

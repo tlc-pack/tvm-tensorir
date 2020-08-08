@@ -421,10 +421,10 @@ bool ScheduleNode::ValidateRegionCover(const StmtSRef& consumer_block_sref) cons
         if (!analyzer.CanProve(write_min <= read_min) ||
             !analyzer.CanProve(read_max <= write_max)) {
           LOG(WARNING) << "InternalError: Cannot prove the region cover property on dimension " << i
-                       << ". The read range is [" << read_min << ", " << read_max
-                       << "), and the write range is [" << write_min << ", " << write_max
-                       << "). The producer is :\n " << read << "\nThe consumer is:\n"
-                       << write;
+                       << "\nThe producer is:\n  " << write << ", write range: [" << write_min
+                       << ", " << write_max << ")"
+                       << "\nThe consumer is:\n  " << read << ", read range: [" << read_min << ", "
+                       << read_max << ")";
           return false;
         }
       }
