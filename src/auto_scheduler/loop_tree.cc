@@ -47,6 +47,42 @@ LoopTree::LoopTree(Array<Iterator> iters, Optional<tir::BlockRealize> block_real
   data_ = std::move(n);
 }
 
+LeafStmt::LeafStmt(const tir::Stmt& stmt) {
+  ObjectPtr<LeafStmtNode> n = make_object<LeafStmtNode>();
+  if (const auto* reduce_step = stmt.as<tir::ReduceStepNode>()) {
+    const auto* buffer_update = reduce_step->lhs.as<tir::BufferLoadNode>();
+    CHECK(buffer_update != nullptr)
+        << "InternalError: unknown type in ReduceStep: " << reduce_step->lhs->GetTypeKey();
+    std::vector<tir::BufferLoad> reads;
+    tir::PostOrderVisit(reduce_step->rhs, [&reads](const ObjectRef& obj) {
+      if (const auto* load = obj.as<tir::BufferLoadNode>()) {
+        reads.push_back(GetRef<tir::BufferLoad>(load));
+      }
+    });
+    n->kind = LeafStmtKind::kReduceStep;
+    n->write = GetRef<tir::BufferLoad>(buffer_update);
+    n->reads = reads;
+    n->stmt = stmt;
+  } else if (const auto* buffer_store = stmt.as<tir::BufferStoreNode>()) {
+    std::vector<tir::BufferLoad> reads;
+    tir::PostOrderVisit(buffer_store->value, [&reads](const ObjectRef& obj) {
+      if (const auto* load = obj.as<tir::BufferLoadNode>()) {
+        reads.push_back(GetRef<tir::BufferLoad>(load));
+      }
+    });
+    n->kind = LeafStmtKind::kBufferStore;
+    n->write = tir::BufferLoad(buffer_store->buffer, buffer_store->indices);
+    n->reads = reads;
+    n->stmt = stmt;
+  } else {
+    LOG(FATAL) << "TypeError: A leaf statement is supposed to be ReduceStep, or BufferStore, but "
+                  "get type: "
+               << stmt->GetTypeKey();
+    throw;
+  }
+  data_ = std::move(n);
+}
+
 /*!
  * \brief Figure out IterKind of a loop variable using the information provided in TIR
  * \param loop The TIR loop that contains the loop variable
@@ -147,28 +183,20 @@ LoopTree LoopTreeFromTIR(const tir::StmtNode* root, const tir::Schedule& sch) {
   }
   // Step 3. Collect all children of the block
   std::vector<ObjectRef> children;
-  if (root->IsInstance<tir::SeqStmtNode>()) {
-    // The node has many children
-    const Array<tir::Stmt>& seq = static_cast<const tir::SeqStmtNode*>(root)->seq;
-    children = {seq.begin(), seq.end()};
-  } else {
-    // The node has only one child
-    children = {GetRef<ObjectRef>(root)};
-  }
-  // Step 4. Create children subtree
-  // TODO(@junrushao1994): do we need to check if children are all blocks or all non-blocks?
-  for (ObjectRef& child : children) {
-    if (child->IsInstance<tir::LoopNode>() || child->IsInstance<tir::BlockRealizeNode>()) {
-      child = LoopTreeFromTIR(child.as<tir::StmtNode>(), sch);
+  for (const tir::Stmt& stmt : root->IsInstance<tir::SeqStmtNode>()
+                                   ? static_cast<const tir::SeqStmtNode*>(root)->seq
+                                   : Array<tir::Stmt>{GetRef<tir::Stmt>(root)}) {
+    // BlockRealizeNode should be contained in a BlockRealizeNode
+    CHECK(!stmt->IsInstance<tir::BlockNode>())
+        << "InternalError: the IR is invalid because a BlockNode is not contained in "
+           "BlockRealizeNode";
+    // Check: no nested SeqStmt
+    CHECK(!stmt->IsInstance<tir::SeqStmtNode>())
+        << "InternalError: the IR is invalid because there are nested SeqStmt";
+    if (stmt->IsInstance<tir::LoopNode>() || stmt->IsInstance<tir::BlockRealizeNode>()) {
+      children.push_back(LoopTreeFromTIR(stmt.get(), sch));
     } else {
-      // `child` is a leaf statement
-      // Check: Any BlockNode should be contained inside `BlockRealizeNode`
-      CHECK(!child->IsInstance<tir::BlockNode>())
-          << "InternalError: the IR is invalid because a BlockNode is not contained in "
-             "BlockRealizeNode";
-      // Check: no nested SeqStmt
-      CHECK(!child->IsInstance<tir::SeqStmtNode>())
-          << "InternalError: the IR is invalid because there are nested SeqStmt";
+      children.push_back(LeafStmt(stmt));
     }
   }
   return LoopTree(iters, block_realize, children);
@@ -181,7 +209,7 @@ LoopTree LoopTree::FromPrimFunc(const tir::PrimFunc& func) {
   return LoopTreeFromTIR(realize, tir::ScheduleNode::Create(func));
 }
 
-class LoopTreeNode::Stringifier : public tir::StmtFunctor<void(const tir::Stmt&)> {
+class LoopTreeNode::Stringifier {
  public:
   /*!
    * \brief Entry function to stringify LoopTreeNode
@@ -212,36 +240,15 @@ class LoopTreeNode::Stringifier : public tir::StmtFunctor<void(const tir::Stmt&)
       // Case 1. the child is another node in the loop tree
       if (const auto* node = child.as<LoopTreeNode>()) {
         RecursivePrint(node);
-        continue;
-      }
-      // Case 2: the child is a leaf, and contains a certain computation
-      const auto* stmt = child.as<tir::StmtNode>();
-      CHECK(stmt) << "InternalError: Expect type tir::Stmt, get: " << child->GetTypeKey();
-      try {
-        VisitStmt(GetRef<tir::Stmt>(stmt));
-      } catch (const dmlc::Error& e) {
-        // If the printing function is not defined, then printing is not supported and the developer
-        // need to fix this
-        LOG(FATAL) << "InternalError: printing is not well supported for type: "
-                   << child->GetTypeKey() << "\n"
-                   << e.what();
-        throw;
+      } else {
+        // Case 2: the child is a leaf statement
+        CHECK(child->IsInstance<LeafStmtNode>())
+            << "InternalError: Expect type LeafStmtNode, get: " << child->GetTypeKey();
+        Cout() << child << std::endl;
       }
     }
     // Cancel the indentation
     this->indent -= indent_delta;
-  }
-  /*! \brief Print ReduceStep */
-  void VisitStmt_(const tir::ReduceStepNode* reduce) override {
-    if (const auto* buffer_load = reduce->lhs.as<tir::BufferLoadNode>()) {
-      Cout() << buffer_load->buffer->name << " = ..." << std::endl;
-    } else {
-      LOG(FATAL) << "InternalError: unknown type in ReduceStep: " << reduce->lhs->GetTypeKey();
-    }
-  }
-  /*! \brief Print BufferStore */
-  void VisitStmt_(const tir::BufferStoreNode* buffer_store) override {
-    Cout() << buffer_store->buffer->name << " = ..." << std::endl;
   }
   /*!
    * \brief Prefixed function to print indented line
@@ -282,6 +289,29 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
           << (node->annotation == IterAnnotation::kNone
                   ? ""
                   : " # " + IterAnnotation2String(node->annotation));
+    });
+
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<LeafStmtNode>([](const ObjectRef& ref, ReprPrinter* p) {
+      const auto* leaf = ref.as<LeafStmtNode>();
+      CHECK(leaf);
+      p->stream << LeafStmtKind2String(leaf->kind) << '(' << leaf->write->buffer->name << ") from ";
+      std::vector<std::string> read_names;
+      for (const tir::BufferLoad& buffer_load : leaf->reads) {
+        read_names.push_back(buffer_load->buffer->name);
+      }
+      std::sort(read_names.begin(), read_names.end());
+      p->stream << "(";
+      bool is_first = true;
+      for (const std::string& str : read_names) {
+        if (is_first) {
+          is_first = false;
+        } else {
+          p->stream << ", ";
+        }
+        p->stream << str;
+      }
+      p->stream << ")";
     });
 
 TVM_REGISTER_GLOBAL("auto_scheduler.loop_tree.FromPrimFunc").set_body_typed(LoopTree::FromPrimFunc);
