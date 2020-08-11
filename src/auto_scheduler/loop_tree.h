@@ -140,6 +140,60 @@ class Iterator : public ObjectRef {
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Iterator, ObjectRef, IteratorNode);
 };
 
+/*!
+ * \brief The category that the leaf statement falls into
+ */
+enum class LeafStmtKind : int {
+  /*! \brief The leaf statement is BufferStore */
+  kBufferStore,
+  /*! \brief The leaf statement is ReduceStep */
+  kReduceStep,
+};
+
+/*!
+ * \brief Converts LeafStmtKind to string
+ * \param kind The LeafStmtKind to be converted
+ * \return A string, the conversion result
+ */
+inline std::string LeafStmtKind2String(LeafStmtKind kind) {
+  static std::string results[] = {"BufferStore", "ReduceStep"};
+  return results[static_cast<int>(kind)];
+}
+
+/*! \brief The leaf statement in the loop tree */
+class LeafStmtNode : public Object {
+ public:
+  /*! \brief The category the statement is in */
+  LeafStmtKind kind;
+  /*! \brief The buffer and index the statement writes */
+  tir::BufferLoad write;
+  /*! \brief The buffers and indices the statement reads */
+  Array<tir::BufferLoad> reads;
+  /*! \brief The original to the TIR statement it corresponds to */
+  tir::Stmt stmt;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("kind", &kind);
+    v->Visit("write", &write);
+    v->Visit("reads", &reads);
+    v->Visit("stmt", &stmt);
+  }
+
+  static constexpr const char* _type_key = "auto_scheduler.LeafStmt";
+  TVM_DECLARE_FINAL_OBJECT_INFO(LeafStmtNode, Object);
+};
+
+/*! \brief Managed reference to LeafStmtNode */
+class LeafStmt : public ObjectRef {
+ public:
+  /*!
+   * \brief Constructor from TIR statement
+   * \param stmt The TIR statement
+   */
+  explicit LeafStmt(const tir::Stmt& stmt);
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LeafStmt, ObjectRef, LeafStmtNode);
+};
+
 /*! \brief A node in loop tree */
 class LoopTreeNode : public Object {
  public:

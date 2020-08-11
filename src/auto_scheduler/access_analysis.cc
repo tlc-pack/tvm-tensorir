@@ -32,6 +32,17 @@ TVM_REGISTER_NODE_TYPE(LeafAccessPatternNode);
 DummyAccessPattern::DummyAccessPattern() { data_ = make_object<DummyAccessPatternNode>(); }
 
 /*!
+ * \brief Get TIR statement from LeafStmt
+ * \param obj The leaf statement
+ * \return The TIR statement
+ */
+tir::Stmt StmtFromLeaf(const ObjectRef& obj) {
+  const auto* leaf = obj.as<LeafStmtNode>();
+  CHECK(leaf) << "TypeError: Expect LeafStmtNode, but gets: " << obj->GetTypeKey();
+  return leaf->stmt;
+}
+
+/*!
  * \brief Check if an expression consists of a single variable, or a variable +/i an constant
  * \param expr The expression to be checked
  * \param result Output, the var inside if it satisfies the condition
@@ -81,24 +92,14 @@ std::vector<tir::Var> CheckAllTrivialStore(const LoopTree& node, bool* all_trivi
     block_vars.insert(iter_var->var.get());
   }
   // Collect the store indices
-  const ObjectRef& child = node->children[0];
-  std::vector<PrimExpr> indices;
-  if (const auto* store = child.as<tir::BufferStoreNode>()) {
-    indices = {store->indices.begin(), store->indices.end()};
-  } else if (const auto* reduce_step = child.as<tir::ReduceStepNode>()) {
-    const auto* load = reduce_step->lhs.as<tir::BufferLoadNode>();
-    CHECK(load != nullptr)
-        << "TypeError: ReduceNode::lhs is expected to have type BufferLoad, but get: "
-        << reduce_step->lhs->GetTypeKey();
-    indices = {load->indices.begin(), load->indices.end()};
-  } else {
-    LOG(FATAL) << "TypeError: Cannot recoginize the type: " << child->GetTypeKey();
-  }
+  const auto* leaf = node->children[0].as<LeafStmtNode>();
+  CHECK(leaf != nullptr) << "TypeError: Expect LeafStmtNode, but gets: "
+                         << node->children[0]->GetTypeKey();
   // For each index in the store indices, check if they are
   // 1) constant
   // 2) trivially derived from a block var
   std::vector<tir::Var> result;
-  for (const PrimExpr& idx : indices) {
+  for (const PrimExpr& idx : leaf->write->indices) {
     if (IsConstInt(idx)) {
       continue;
     }
@@ -131,9 +132,9 @@ bool CheckHasBranch(const LoopTree& node) {
     }
   }
   for (const ObjectRef& child : node->children) {
-    if (const auto* stmt = child.as<tir::StmtNode>()) {
+    if (const auto* leaf = child.as<LeafStmtNode>()) {
       bool has_branch = false;
-      tir::PostOrderVisit(child, [&has_branch](const ObjectRef& obj) {
+      tir::PostOrderVisit(leaf->stmt, [&has_branch](const ObjectRef& obj) {
         if (obj->IsInstance<tir::IfThenElseNode>()) {
           has_branch = true;
         } else if (obj->IsInstance<tir::SelectNode>()) {
@@ -161,9 +162,9 @@ bool CheckHasExpensiveOp(const LoopTree& node) {
   const tvm::Op& exp = tvm::Op::Get("tir.exp");
   for (const ObjectRef& child : node->children) {
     // For each child Stmt
-    if (const auto* stmt = child.as<tir::StmtNode>()) {
+    if (const auto* leaf = child.as<LeafStmtNode>()) {
       bool has_expensive_op = false;
-      tir::PostOrderVisit(child, [&has_expensive_op, &exp](const ObjectRef& obj) {
+      tir::PostOrderVisit(leaf->stmt, [&has_expensive_op, &exp](const ObjectRef& obj) {
         // Checks a TIR function call
         if (const auto* call = obj.as<tir::CallNode>()) {
           // If it is tir.exp
@@ -213,7 +214,7 @@ void AnalyzeLoadStoreMapping(const LoopTree& node, const Array<tir::Var>& stores
   *injective = true;
   *ordered = true;
   // Visit each buffer loads
-  tir::PostOrderVisit(node->children[0], [&](const ObjectRef& obj) {
+  tir::PostOrderVisit(StmtFromLeaf(node->children[0]), [&](const ObjectRef& obj) {
     // 1) If we have determined the mapping does not exist, return
     // 2) If the current object is not BufferLoad that we are interested in, skip
     if (*exists == false || !obj->IsInstance<tir::BufferLoadNode>()) {
@@ -279,7 +280,7 @@ int AnalyzeAxesReuse(const LoopTree& node, const Array<tir::Var>& stores) {
     return false;
   }
   int n_missing = 0;
-  tir::PostOrderVisit(node->children[0], [&n_missing, &stores](const ObjectRef& obj) {
+  tir::PostOrderVisit(StmtFromLeaf(node->children[0]), [&n_missing, &stores](const ObjectRef& obj) {
     if (const auto* load = obj.as<tir::BufferLoadNode>()) {
       // Collect all variables used in the buffer loaed
       std::unordered_set<const tir::VarNode*> vars_in_load;
