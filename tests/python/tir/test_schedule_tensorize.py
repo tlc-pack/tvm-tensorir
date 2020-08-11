@@ -82,7 +82,6 @@ def test_tensorize_gemm():
     intrinsic = tvm.tir.Intrinsic(mod["desc_func"], mod["intrin_func"])
     s.tensorize(ii, intrinsic)
 
-    print(tvm.hybrid.ashybrid(s.func))
     func = tvm.build(s.func)
 
     a_np = np.random.uniform(size=(128, 128)).astype("float32")
@@ -104,19 +103,43 @@ def lower_intrin_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                    [C[vi:vi + 16, vj:vj + 16], A[vi:vi + 16, vk:vk + 16],
                     B[vj:vj + 16, vk:vk + 16]],
                    C[vi:vi + 16, vj:vj + 16], name="root"):
-        for i in tir.grid(0, 16):
-            for j in tir.grid(0, 16):
-                for k in tir.grid(0, 16):
-                    with tir.block({vii(0, 16): vi + i, vjj(0, 16): vj + j,
-                                    vkk(0, 16, iter_type="reduce"): vk + k},
-                                   reads=[C[vii, vjj], A[vii, vkk], B[vjj, vkk]],
-                                   writes=[C[vii, vjj]],
-                                   name="update"):
-                        tir.evaluate(tir.tvm_mma_sync(C.data, C.elem_offset // 256,
-                                                      A.data, A.elem_offset // 256,
-                                                      B.data, B.elem_offset // 256,
-                                                      C.data, C.elem_offset // 256,
-                                                      dtype="handle"))
+        tir.evaluate(tir.tvm_mma_sync(C.data, C.elem_offset // 256,
+                                      A.data, A.elem_offset // 256,
+                                      B.data, B.elem_offset // 256,
+                                      C.data, C.elem_offset // 256,
+                                      dtype="handle"))
+
+
+@tvm.hybrid.script
+def tensorized_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    # function attr dict
+    C = tir.buffer_bind(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    B = tir.buffer_bind(b, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    A = tir.buffer_bind(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    # body
+    with tir.block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128], B[0:128, 0:128]],
+                   name="root"):
+        for i_outer in tir.grid(0, 8):
+            for j_outer in tir.grid(0, 8):
+                for i_inner_init in tir.grid(0, 16):
+                    for j_inner_init in tir.grid(0, 16):
+                        with tir.block({vi_init(0, 128): ((i_outer * 16) + i_inner_init),
+                                        vj_init(0, 128): ((j_outer * 16) + j_inner_init)},
+                                       writes=[C[vi_init:(vi_init + 1), vj_init:(vj_init + 1)]],
+                                       reads=[], name="update_init"):
+                            C[vi_init, vj_init] = tir.float32(0)
+                for k_outer in tir.grid(0, 8):
+                    with tir.block({vi(0, 16): (i_outer * 16), vj(0, 16): (j_outer * 16),
+                                    vk(0, 16, iter_type="reduce"): (k_outer * 16)},
+                                   writes=[C[vi:(vi + 16), vj:(vj + 16)]],
+                                   reads=[C[vi:(vi + 16), vj:(vj + 16)],
+                                          A[vi:(vi + 16), vk:(vk + 16)],
+                                          B[vj:(vj + 16), vk:(vk + 16)]], name="root"):
+                        tir.evaluate(
+                            tir.tvm_mma_sync(C.data, tir.floordiv(((vi * 128) + vj), 256), A.data,
+                                             tir.floordiv(((vi * 128) + vk), 256), B.data,
+                                             tir.floordiv(((vj * 128) + vk), 256), C.data,
+                                             tir.floordiv(((vi * 128) + vj), 256), dtype="handle"))
 
 
 def test_tensorize_buffer_bind():
@@ -137,7 +160,10 @@ def test_tensorize_buffer_bind():
     intrinsic = tvm.tir.Intrinsic(mod["desc_func"], mod["intrin_func"])
     s.tensorize(ii, intrinsic)
 
-    print(tvm.hybrid.ashybrid(s.func))
+    mod = tvm.hybrid.create_module({"tensorized_func": tensorized_func})
+    new_func = mod["tensorized_func"]
+
+    tvm.ir.assert_structural_equal(new_func, s.func)
 
 
 if __name__ == "__main__":

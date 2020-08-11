@@ -187,7 +187,7 @@ class BufferReplacer : public StmtExprMutator {
  public:
   explicit BufferReplacer(
       const std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual>& buffer_map,
-      const std::unordered_map<const VarNode*, const PrimExprNode*> var_map)
+      const std::unordered_map<const VarNode*, const PrimExprNode*>& var_map)
       : buffer_map_(buffer_map), var_map_(var_map) {}
 
   Stmt VisitStmt_(const BufferStoreNode* op) final {
@@ -245,7 +245,7 @@ class BufferReplacer : public StmtExprMutator {
 
  private:
   const std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual>& buffer_map_;
-  std::unordered_map<const VarNode*, const PrimExprNode*> var_map_;
+  const std::unordered_map<const VarNode*, const PrimExprNode*>& var_map_;
 
   Array<TensorRegion> UpdateBufferViaMap(const Array<TensorRegion>& tensor_regions) {
     auto fmutate = [this](const TensorRegion& tensor_region) {
@@ -270,7 +270,8 @@ void ScheduleNode::tensorize(const StmtSRef& sref, const Intrinsic& intrinsic) {
   const auto& block_sref = blockize(sref);
   const auto& block_realize = GetBlockRealize(block_sref);
   const auto& block = block_realize->block;
-  for (const auto& x : block->iter_vars) LOG(INFO) << x->var << " " << x->var.get();
+  const auto* intrin_block_realize = intrinsic->intrin_func->body.as<BlockRealizeNode>();
+  const auto& intrin_block = intrin_block_realize->block;
   TensorizeComparator comparator;
 
   bool equal = comparator(block_realize, intrinsic->desc_func->body);
@@ -289,14 +290,17 @@ void ScheduleNode::tensorize(const StmtSRef& sref, const Intrinsic& intrinsic) {
   }
 
   std::unordered_map<Buffer, PrimExpr, ObjectHash, ObjectEqual> element_offset;
-  auto get_element_offset = [&element_offset](const Array<TensorRegion>& regions) {
-    for (const auto tensor_region : regions) {
+  auto get_element_offset = [&element_offset](const Array<TensorRegion>& old_regions,
+                                              const Array<TensorRegion>& new_regions) {
+    CHECK_EQ(old_regions.size(), new_regions.size());
+    for (size_t i = 0; i < old_regions.size(); ++i) {
+      const auto& old_region = old_regions[i];
+      const auto& new_region = new_regions[i];
       PrimExpr offset = 0, stride = 1;
-      const auto& buffer = tensor_region->buffer;
-      const auto& region = tensor_region->region;
+      const auto& buffer = old_region->buffer;
+      const auto& region = new_region->region;
       for (size_t i = region.size(); i > 0; --i) {
-        LOG(INFO) << region[i - 1]->min << " " << region[i - 1]->min.get();
-        offset += region[i - 1]->min * stride;
+        offset = region[i - 1]->min * stride + offset;
         stride *= buffer->shape[i - 1];
       }
       auto it = element_offset.find(buffer);
@@ -307,8 +311,8 @@ void ScheduleNode::tensorize(const StmtSRef& sref, const Intrinsic& intrinsic) {
       }
     }
   };
-  get_element_offset(block->reads);
-  get_element_offset(block->writes);
+  get_element_offset(block->reads, intrin_block->reads);
+  get_element_offset(block->writes, intrin_block->writes);
 
   std::unordered_map<const VarNode*, const PrimExprNode*> var_map;
   auto update_var_map = [&var_map](const PrimExpr& lhs, const PrimExpr& rhs) {
@@ -332,13 +336,17 @@ void ScheduleNode::tensorize(const StmtSRef& sref, const Intrinsic& intrinsic) {
     }
   }
 
-  const auto* intrin_block_realize = intrinsic->intrin_func->body.as<BlockRealizeNode>();
+  // Update block var remapping
+  for (size_t i = 0; i < block->iter_vars.size(); ++i) {
+    var_map[block->iter_vars[i]->var.get()] = intrin_block->iter_vars[i]->var.get();
+  }
+
   CHECK(intrin_block_realize);
-  Block intrin_block =
+  Block new_block =
       Downcast<Block>(BufferReplacer(buffer_map, var_map)(intrin_block_realize->block));
   Map<Block, Block> block_map;
-  block_map.Set(intrin_block, block_realize->block);
-  this->Replace(block_sref, intrin_block, block_map);
+  block_map.Set(new_block, block_realize->block);
+  this->Replace(block_sref, new_block, block_map);
 }
 
 }  // namespace tir
