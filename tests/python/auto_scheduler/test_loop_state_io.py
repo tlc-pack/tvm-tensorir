@@ -162,7 +162,7 @@ def test_matmul():
 for i data_par[0, 1024)
   for j data_par[0, 1024)
     for k reduce[0, 1024)
-      C = ...
+      ReduceStep(C) from (A, B)
 """.strip()
     # schedule: blocking
     sch = tvm.tir.create_schedule(func)
@@ -183,10 +183,11 @@ for i_outer data_par[0, 32)
       for k_inner reduce[0, 4)
         for i_inner data_par[0, 32)
           for j_inner data_par[0, 32)
-            C = ...
+            ReduceStep(C) from (A, B)
 """.strip()
     # decompose reduction
     sch.decompose_reduction(update, j_o)
+    # print(tvm.hybrid.ashybrid(sch.func))
     loop_tree = tvm.auto_scheduler.LoopTree.from_prim_func(sch.func)
     str_repr = _check_and_remove_first_line(str(loop_tree))
     assert str_repr == """
@@ -194,13 +195,13 @@ for i_outer special[0, 32)
   for j_outer_init data_par[0, 32)
     for i_inner_init data_par[0, 32)
       for j_inner_init data_par[0, 32)
-        C = ...
+        BufferStore(C) from ()
   for j_outer data_par[0, 32)
     for k_outer reduce[0, 256)
       for k_inner reduce[0, 4)
         for i_inner data_par[0, 32)
           for j_inner data_par[0, 32)
-            C = ...
+            BufferStore(C) from (A, B, C)
 """.strip()
     # reorder
     sch = tvm.tir.create_schedule(func)
@@ -216,7 +217,7 @@ for i_outer data_par[0, 32)
       for i_inner data_par[0, 32)
         for k_inner reduce[0, 4)
           for j_inner data_par[0, 32)
-            C = ...
+            ReduceStep(C) from (A, B)
 """.strip()
     # decompose reduction
     sch.decompose_reduction(update, j_o)
@@ -227,13 +228,13 @@ for i_outer special[0, 32)
   for j_outer_init data_par[0, 32)
     for i_inner_init data_par[0, 32)
       for j_inner_init data_par[0, 32)
-        C = ...
+        BufferStore(C) from ()
   for j_outer data_par[0, 32)
     for k_outer reduce[0, 256)
       for i_inner data_par[0, 32)
         for k_inner reduce[0, 4)
           for j_inner data_par[0, 32)
-            C = ...
+            BufferStore(C) from (A, B, C)
 """.strip()
 
 
@@ -245,11 +246,11 @@ def test_matmul_packed():
 for i data_par[0, 32)
   for j data_par[0, 1024)
     for k data_par[0, 32)
-      packedB = ...
+      BufferStore(packedB) from (B)
 for i data_par[0, 1024)
   for j data_par[0, 1024)
     for k reduce[0, 1024)
-      C = ...
+      ReduceStep(C) from (A, packedB)
 """.strip()
 
     sch = tvm.tir.create_schedule(func)
@@ -265,14 +266,14 @@ for i data_par[0, 1024)
 for i data_par[0, 32)
   for j data_par[0, 1024)
     for k data_par[0, 32)
-      packedB = ...
+      BufferStore(packedB) from (B)
 for i_outer data_par[0, 32)
   for j_outer data_par[0, 32)
     for k_outer reduce[0, 256)
       for i_inner data_par[0, 32)
         for k_inner reduce[0, 4)
           for j_inner data_par[0, 32)
-            C = ...
+            ReduceStep(C) from (A, packedB)
 """.strip()
 
 
@@ -282,9 +283,9 @@ def test_fuse_ewise():
     str_repr = _check_and_remove_first_line(str(loop_tree))
     assert str_repr == """
 for i data_par[0, 16384)
-  B = ...
+  BufferStore(B) from (A)
 for j data_par[0, 16384)
-  C = ...
+  BufferStore(C) from (B)
 """.strip()
 
 
@@ -296,11 +297,11 @@ def test_split_ewise():
 for io data_par[0, 8)
   for ii data_par[0, 16)
     for j data_par[0, 128)
-      B = ...
+      BufferStore(B) from (A)
 for i data_par[0, 128)
   for jo data_par[0, 10)
     for ji data_par[0, 13)
-      C = ...
+      BufferStore(C) from (B)
 """.strip()
 
 
@@ -311,10 +312,10 @@ def test_split_fuse_ewise():
     assert str_repr == """
 for i data_par[0, 128)
   for j data_par[0, 128)
-    B = ...
+    BufferStore(B) from (A)
 for i data_par[0, 128)
   for j data_par[0, 130)
-    C = ...
+    BufferStore(C) from (B)
 """.strip()
 
 
