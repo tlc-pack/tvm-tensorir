@@ -33,6 +33,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <set>
 
 namespace tvm {
 namespace tir {
@@ -221,15 +222,26 @@ class PatternMatcher : public ExprVisitor {
   std::unordered_map<const VarNode*, PrimExpr> filled_map_;
 };
 
+/*!
+ * \brief Match block var expr and simplify it to the block var
+ * \example
+ *   block var v0 = i * 4 + j
+ *
+ *   expr before simplify
+ *      k * 16 + i * 4 + j
+ *   expr after simplify
+ *      k * 16 + v0
+ */
+
 class MatchingSimplifier : public ExprMutator {
  public:
-  MatchingSimplifier(const std::unordered_map<Var, PrimExpr, ObjectHash, ObjectEqual> &var_map,
+  MatchingSimplifier(const std::unordered_map<Var, PrimExpr, ObjectHash, ObjectEqual>& var_map,
                      arith::Analyzer* parent);
 
   PrimExpr VisitExpr(const PrimExpr& expr) override;
 
  private:
-  const std::unordered_map<Var, PrimExpr,ObjectHash, ObjectEqual> &var_map_;
+  const std::unordered_map<Var, PrimExpr, ObjectHash, ObjectEqual>& var_map_;
   arith::Analyzer* analyzer_;
 };
 

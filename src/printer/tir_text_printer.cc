@@ -203,7 +203,8 @@ Doc TIRTextPrinter::PrintRange(const RangeNode* op) {
 
 Doc TIRTextPrinter::PrintBuffer(const BufferNode* op) {
   const Buffer& buffer = GetRef<Buffer>(op);
-//  CHECK_GT(memo_buf_.count(buffer), 0);
+  // TODO(Bohan): fix bug
+  // CHECK_GT(memo_buf_.count(buffer), 0);
   return meta_->InMeta(buffer) ? meta_->GetMetaNode(buffer) : memo_buf_[buffer];
 }
 

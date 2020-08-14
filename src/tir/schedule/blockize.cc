@@ -33,6 +33,14 @@ class CheckOneLine : public StmtVisitor {
 };
 
 StmtSRef ScheduleNode::blockize(const StmtSRef& sref) {
+  /*!
+   * Check:
+   *   - The sub AST is one-line with only one block
+   *
+   * Mutate:
+   *   - extra block var from the only block
+   *   - Update block binding
+   */
   const auto* l = sref->GetStmt<LoopNode>();
   CHECK(l) << "Only support blockize a loop for now";
   CheckOneLine checker;
@@ -57,7 +65,6 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& sref) {
   }
 
   // Update AST
-
   Array<IterVar> iter_vars;
   for (const auto& iter_var : inner_block->iter_vars) {
     iter_vars.push_back(
@@ -114,7 +121,7 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& sref) {
   auto outer_block = Block(iter_vars, reads, writes, s, Array<BufferAllocate>(),
                            Array<Annotation>(), "blockized_" + inner_block->tag);
 
-  auto outer_realize = BlockRealize(values,IntImm(DataType::Bool(), 1), outer_block);
+  auto outer_realize = BlockRealize(values, IntImm(DataType::Bool(), 1), outer_block);
   this->Replace(sref, outer_realize);
   // Check loop binding
   // TODO(Siyuan): enhance validation

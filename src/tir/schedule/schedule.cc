@@ -585,15 +585,15 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleMergeReduction")
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleTensorize")
-    .set_body_typed<void(Schedule, StmtSRef, Intrinsic)>([](Schedule schedule, StmtSRef sref,
-                                                        Intrinsic intrinsic) {
+    .set_body_typed<void(Schedule, StmtSRef, TensorIntrin)>([](Schedule schedule, StmtSRef sref,
+                                                              TensorIntrin intrinsic) {
       return schedule->tensorize(sref, intrinsic);
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBlockize")
-.set_body_typed<StmtSRef(Schedule, StmtSRef)>([](Schedule schedule, StmtSRef sref) {
-  return schedule->blockize(sref);
-});
+    .set_body_typed<StmtSRef(Schedule, StmtSRef)>([](Schedule schedule, StmtSRef sref) {
+      return schedule->blockize(sref);
+    });
 
 // dependency graph
 TVM_REGISTER_GLOBAL("tir.schedule.GetSuccessors")

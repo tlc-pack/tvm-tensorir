@@ -171,18 +171,19 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
   bool assert_mode_;
 };
 
-void BufferRemap(const Intrinsic& intrinsic,
+void BufferRemap(const TensorIntrin& intrinsic,
                  std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual>* buffer_map) {
-  CHECK_EQ(intrinsic->desc_func->params.size(), intrinsic->intrin_func->params.size());
-  for (size_t i = 0; i < intrinsic->desc_func->params.size(); ++i) {
-    const auto& lhs_var = intrinsic->desc_func->params[i];
-    const auto& lhs_buffer = intrinsic->desc_func->buffer_map[lhs_var];
-    const auto& rhs_var = intrinsic->intrin_func->params[i];
-    const auto& rhs_buffer = intrinsic->intrin_func->buffer_map[rhs_var];
+  CHECK_EQ(intrinsic->description->params.size(), intrinsic->implementation->params.size());
+  for (size_t i = 0; i < intrinsic->description->params.size(); ++i) {
+    const auto& lhs_var = intrinsic->description->params[i];
+    const auto& lhs_buffer = intrinsic->description->buffer_map[lhs_var];
+    const auto& rhs_var = intrinsic->implementation->params[i];
+    const auto& rhs_buffer = intrinsic->implementation->buffer_map[rhs_var];
     (*buffer_map)[rhs_buffer] = lhs_buffer;
   }
 }
 
+// Replace buffer with its data, element_offset
 class BufferReplacer : public StmtExprMutator {
  public:
   explicit BufferReplacer(
@@ -262,7 +263,18 @@ class BufferReplacer : public StmtExprMutator {
   }
 };
 
-void ScheduleNode::tensorize(const StmtSRef& sref, const Intrinsic& intrinsic) {
+void ScheduleNode::tensorize(const StmtSRef& sref, const TensorIntrin& intrinsic) {
+  /*!
+   * Check:
+   *   - Check buffer binding, including type, alignment, shape and etc.
+   *   - Check the sub AST is equal to the description function.
+   *
+   * Mutate:
+   *   - Blockize the sub AST (please refer blockize for details)
+   *   - Bind buffers
+   *   - Mutate implement function with buffer binding
+   *   - Replace the sub tree with the mutated function.
+   */
   // TODO(Siyuan): fix range
   const auto* n = sref->GetStmt<LoopNode>();
   CHECK(n) << "Only support tensorize a loop for now";
@@ -270,11 +282,11 @@ void ScheduleNode::tensorize(const StmtSRef& sref, const Intrinsic& intrinsic) {
   const auto& block_sref = blockize(sref);
   const auto& block_realize = GetBlockRealize(block_sref);
   const auto& block = block_realize->block;
-  const auto* intrin_block_realize = intrinsic->intrin_func->body.as<BlockRealizeNode>();
+  const auto* intrin_block_realize = intrinsic->implementation->body.as<BlockRealizeNode>();
   const auto& intrin_block = intrin_block_realize->block;
   TensorizeComparator comparator;
 
-  bool equal = comparator(block_realize, intrinsic->desc_func->body);
+  bool equal = comparator(block_realize, intrinsic->description->body);
   CHECK(equal) << "The AST subtree does not match intrinsic description";
 
   // Map from intrinsic func buffer to description func buffer
@@ -342,8 +354,11 @@ void ScheduleNode::tensorize(const StmtSRef& sref, const Intrinsic& intrinsic) {
   }
 
   CHECK(intrin_block_realize);
+  // Mutate description function
   Block new_block =
       Downcast<Block>(BufferReplacer(buffer_map, var_map)(intrin_block_realize->block));
+
+  // Replace
   Map<Block, Block> block_map;
   block_map.Set(new_block, block_realize->block);
   this->Replace(block_sref, new_block, block_map);

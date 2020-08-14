@@ -56,10 +56,6 @@ from tvm import te
 import numpy as np
 from tvm.contrib import nvcc
 
-def print_stmt(stmt):
-    print(stmt)
-    return stmt
-
 # The sizes of inputs and filters
 batch_size = 256
 height = 14
@@ -312,7 +308,7 @@ s[WS].bind(tx, thread_y)
 s[WS].bind(ty, thread_z)
 s[WS].bind(to, thread_x)
 s[WS].vectorize(ti)
-# print(tvm.lower(s, [A, W, Conv], simple_mode=True))
+print(tvm.lower(s, [A, W, Conv], simple_mode=True))
 
 ###############################################################################
 # Lowering Computation to Intrinsics
@@ -324,8 +320,7 @@ s[AF].tensorize(AF.op.axis[-2], intrin_wmma_load_matrix('wmma.matrix_a'))
 s[WF].tensorize(WF.op.axis[-2], intrin_wmma_load_matrix('wmma.matrix_b'))
 s[Conv].tensorize(nnc, intrin_wmma_store_matrix())
 s[ConvF].tensorize(nnf, intrin_wmma_gemm())
-# print(tvm.lower(s, [A, W, Conv], simple_mode=True))
-tvm.lower(s, [A, W, Conv], simple_mode=True)
+print(tvm.lower(s, [A, W, Conv], simple_mode=True))
 
 ###############################################################################
 # Generate CUDA Kernel
