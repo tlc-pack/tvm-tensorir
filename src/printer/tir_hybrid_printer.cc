@@ -644,7 +644,7 @@ Doc TIRHybridPrinter::VisitStmt_(const ForNode* op) {
   Doc doc;
   var_not_in_headers.insert(op->loop_var.get());
   doc << "for " << Print(op->loop_var)
-      << " in tir.range(" << Print(op->min) << ", " << Print(op->min + op->extent);
+      << " in range(" << Print(op->min) << ", " << Print(op->min + op->extent);
   if (op->for_type != ForType::Serial) {
     doc << ", " << Doc::StrLiteral(ForType2String(op->for_type));
   }

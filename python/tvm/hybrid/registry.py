@@ -16,20 +16,8 @@
 # under the License.
 """Hybrid Script Parser Function Registry """
 # pylint: disable=inconsistent-return-statements
-
 import inspect
-from enum import IntEnum
-
-import tvm
 from typed_ast import ast3 as ast
-
-
-class Category(IntEnum):
-    """Categories of registered functions"""
-    INTRIN = 0
-    WITH_SCOPE = 1
-    FOR_SCOPE = 2
-    SPECIAL_STMT = 3
 
 
 class Registry(object):
@@ -41,12 +29,38 @@ class Registry(object):
     for_scope = dict()
     special_stmt = dict()
 
-    host_dict = {
-        Category.INTRIN: intrin,
-        Category.WITH_SCOPE: with_scope,
-        Category.FOR_SCOPE: for_scope,
-        Category.SPECIAL_STMT: special_stmt
-    }
+    @staticmethod
+    def look_up_function(func_name):
+        """look up a registered function by name"""
+        if func_name in Registry.intrin:
+            return Registry.intrin[func_name]
+        if func_name in Registry.with_scope:
+            return Registry.with_scope[func_name]
+        if func_name in Registry.for_scope:
+            return Registry.for_scope[func_name]
+        if func_name in Registry.special_stmt:
+            return Registry.special_stmt[func_name]
+        return None
+
+    @staticmethod
+    def is_intrin(func):
+        """check whether a function belongs to intrin"""
+        return func in Registry.intrin.values()
+
+    @staticmethod
+    def is_with_scope(func):
+        """check whether a function belongs to with scope handlers"""
+        return func in Registry.with_scope.values()
+
+    @staticmethod
+    def is_for_scope(func):
+        """check whether a function belongs to for scope handlers"""
+        return func in Registry.for_scope.values()
+
+    @staticmethod
+    def is_special_stmt(func):
+        """check whether a function belongs to special stmts"""
+        return func in Registry.special_stmt.values()
 
 
 class CallArgumentReader(object):
@@ -98,24 +112,13 @@ def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, ne
                 # the with scope handler is used inside with context
                 parser.scope_emitter.new_scope()
                 parser.scope_emitter.node_stack[-1].extend(reversed(node.body))
-
-                body = []
-                while len(parser.scope_emitter.node_stack[-1]):
-                    res = parser.visit(parser.scope_emitter.node_stack[-1].pop())
-                    if res is not None:
-                        body.append(res)
-                body = tvm.tir.SeqStmt(body) if len(body) > 1 else body[0]
+                body = parser.get_body()
                 parser.scope_emitter.pop_scope()
             else:
                 # the with scope handler is used in concise scoping
                 if not concise:
                     parser.report_error("Concise scoping is not allowed here")
-                body = []
-                while len(parser.scope_emitter.node_stack[-1]):
-                    res = parser.visit(parser.scope_emitter.node_stack[-1].pop())
-                    if res is not None:
-                        body.append(res)
-                body = tvm.tir.SeqStmt(body) if len(body) > 1 else body[0]
+                body = parser.get_body()
 
         if need_parser_and_node:
             internal_args.append(parser)
@@ -137,18 +140,13 @@ def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, ne
     return wrap_func
 
 
-def register_func(category, origin_func, need_parser_and_node, need_body, concise):
-    """Helper function to register a function under category
+def get_arg_list(origin_func, need_parser_and_node):
+    """Helper function to get the argument list of Function
 
     Parameters
     ----------
-    category: Category
-        The category of function to be registered, ought to be "intrin", "with_scope", "for_scope",
-        "special_stmt"
-
     origin_func: function
-        The function to be registered
-
+        The function to get the argument list
     need_parser_and_node: bool
         Whether the function need parser and node in its arguments
     """
@@ -178,15 +176,16 @@ def register_func(category, origin_func, need_parser_and_node, need_body, concis
     for default, arg in zip(defaults, args[len(args) - len(defaults):]):
         arg_list.append((arg, default))
 
-    func_name = origin_func.__qualname__
-    Registry.host_dict[category][func_name] = \
-        func_wrapper(func_name, origin_func, arg_list,
-                     need_parser_and_node, need_body, concise)
+    return arg_list
 
 
-def register_intrin(origin_func):
+def register_intrin(name=None):
     """ Decorator to register function under category intrin
 
+    Parameters
+    ----------
+    name: str, optional
+        registered name for the function
     Example
     ------
     .. code-block:: python
@@ -196,47 +195,73 @@ def register_intrin(origin_func):
         lanes = lanes.value if not isinstance(lanes, int) else lanes
         return tvm.tir.Broadcast(value, lanes)
     """
-    register_func(Category.INTRIN, origin_func,
-                  need_parser_and_node=False, need_body=False, concise=False)
-    return origin_func
-
-
-def register_scope_handler(scope, concise=False):
-    """Decorator to register function under scope handler
-
-    Parameters
-    ----------
-    scope: Category
-        scope handler are first classified into 2 categories:
-            with scope handler(scope = Category.with_scope)
-            and for scope handler(scope = Category.for_scope)
-
-    concise: bool
-        whether this scope handler is allowed in concise scoping (note that this only works for
-        with scope handlers)
-
-    Example
-    ------
-    .. code-block:: python
-
-    @register_scope_handler(Scope.with_scope, concise=True)
-    def attr(parser, node, attr_node, attr_key, value, body):
-
-        return tvm.tir.AttrStmt(attr_node, attr_key, tvm.runtime.convert(value), body)
-    """
 
     def decorate(origin_func):
-        """Register function under category with_scope or for_scope"""
-        register_func(scope, origin_func,
-                      need_parser_and_node=True, need_body=True, concise=concise)
+        func_name = "tir." + origin_func.__qualname__ if name is None else name
+        Registry.intrin[func_name] = \
+            func_wrapper(func_name, origin_func, get_arg_list(origin_func, False),
+                         need_parser_and_node=False, need_body=False, concise=False)
         return origin_func
 
     return decorate
 
 
-def register_special_stmt(origin_func):
+def register_with_scope(concise=False, name=None):
+    """Decorator to register function under with scope handler
+
+    Parameters
+    ----------
+    concise: bool, optional
+        whether this scope handler is allowed in concise scoping
+    name: str, optional
+        registered name for the function
+
+    Example
+    ------
+    .. code-block:: python
+
+    @register_scope_handler(concise=True)
+    def attr(parser, node, attr_node, attr_key, value, body):
+        return tvm.tir.AttrStmt(attr_node, attr_key, tvm.runtime.convert(value), body)
+    """
+
+    def decorate(origin_func):
+        """Register function under category with_scope"""
+        func_name = "tir." + origin_func.__qualname__ if name is None else name
+        Registry.with_scope[func_name] = \
+            func_wrapper(func_name, origin_func, get_arg_list(origin_func, True),
+                         need_parser_and_node=True, need_body=True, concise=concise)
+        return origin_func
+
+    return decorate
+
+
+def register_for_scope(name=None):
+    """Decorator to register function under for scope handler
+
+    Parameters
+    ----------
+    name: str, optional
+        registered name for the function
+    """
+
+    def decorate(origin_func):
+        func_name = "tir." + origin_func.__qualname__ if name is None else name
+        Registry.for_scope[func_name] = \
+            func_wrapper(func_name, origin_func, get_arg_list(origin_func, True),
+                         need_parser_and_node=True, need_body=True, concise=False)
+        return origin_func
+
+    return decorate
+
+
+def register_special_stmt(name=None):
     """ Decorator to register function under category special_stmt
 
+    Parameters
+    ----------
+    name: str, optional
+        registered name for the function
     Example
     -------
     @register_special_stmt
@@ -247,8 +272,13 @@ def register_special_stmt(origin_func):
         buffer = tvm.tir.decl_buffer(shape, dtype, parser._assign_target, data, strides,
                                     elem_offset, scope, align, offset_factor, buffer_type)
         return buffer
-
     """
-    register_func(Category.SPECIAL_STMT, origin_func,
-                  need_parser_and_node=True, need_body=False, concise=False)
-    return origin_func
+
+    def decorate(origin_func):
+        func_name = "tir." + origin_func.__qualname__ if name is None else name
+        Registry.special_stmt[func_name] = \
+            func_wrapper(func_name, origin_func, get_arg_list(origin_func, True),
+                         need_parser_and_node=True, need_body=False, concise=False)
+        return origin_func
+
+    return decorate
