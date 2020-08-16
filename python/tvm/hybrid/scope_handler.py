@@ -23,13 +23,13 @@ Scope handler nodes are StmtNodes with body, which are used to handle such scena
     tir.name() # with scope handlers + concise scoping
 """
 # pylint: disable=redefined-builtin, unused-argument, invalid-name
+from typed_ast import ast3 as ast
+
 import tvm.tir
 from .registry import register_with_scope, register_for_scope
 
 
 # With scope handler
-
-
 @register_with_scope(concise=False)
 def block(parser, node, block_vars_info, reads, writes, body,
           predicate=True, annotations=None, name=""):
@@ -77,7 +77,6 @@ def block(parser, node, block_vars_info, reads, writes, body,
     return tvm.tir.BlockRealize(values, predicate, inner)
 
 
-# With scope handler
 @register_with_scope(concise=False)
 def Assert(parser, node, condition, message, body):
     """ With scope handler function assert(condition, message, body) """
@@ -115,14 +114,13 @@ def allocate(parser, node, buffer_var, dtype, extents, body, condition=True):
 
     return tvm.tir.Allocate(buffer_var, dtype, extents, tvm.runtime.convert(condition), body)
 
+
 # For scope handler
-
-
 @register_for_scope(name="range")
-def range(parser, node, begin, end, for_type="serial"):
+def range_for(parser, node, begin, end, for_type="serial"):
     """ For scope handler function range(begin, end, annotation)"""
-    ana = tvm.arith.Analyzer()
-    extent = end if begin == 0 else ana.simplify(end - begin)
+    if not isinstance(node.target, ast.Name):
+        parser.report_error("Expect only 1 loop var")
     loop_var_name = node.target.id
     loop_var = tvm.te.var(loop_var_name, dtype="int32")
 
@@ -131,15 +129,17 @@ def range(parser, node, begin, end, for_type="serial"):
     body = get_body(parser, node)
     parser.scope_emitter.pop_scope()
 
-    for_type_dict = {"serial": 0, "parallel": 1, "vectorized": 2, "unroll": 3, }
+    ana = tvm.arith.Analyzer()
+    extent = end if begin == 0 else ana.simplify(end - begin)
+    for_type_dict = {"serial": 0, "parallel": 1, "vectorized": 2, "unroll": 3}
     return tvm.tir.For(loop_var, begin, extent, for_type_dict[for_type], 0, body)
 
 
-@register_for_scope()
-def grid(parser, node, begin, end, annotation=None):
-    """ For scope handler function grid(begin, end, annotation)"""
-    ana = tvm.arith.Analyzer()
-    extent = end if begin == 0 else ana.simplify(end - begin)
+@register_for_scope(name="tir.grid")
+def range_loop(parser, node, begin, end, annotation=None):
+    """ For scope handler function tir.grid(begin, end, annotation)"""
+    if not isinstance(node.target, ast.Name):
+        parser.report_error("Expect only 1 loop var")
     loop_var_name = node.target.id
     loop_var = tvm.te.var(loop_var_name, dtype="int32")
 
@@ -148,6 +148,8 @@ def grid(parser, node, begin, end, annotation=None):
     body = get_body(parser, node)
     parser.scope_emitter.pop_scope()
 
+    ana = tvm.arith.Analyzer()
+    extent = end if begin == 0 else ana.simplify(end - begin)
     if annotation is None:
         annotation = []
     else:
@@ -157,6 +159,35 @@ def grid(parser, node, begin, end, annotation=None):
         ]
 
     return tvm.tir.Loop(loop_var, begin, extent, annotation, body)
+
+
+@register_for_scope(name="Grid")
+def grid(parser, node, *extents):
+    """ For scope handler fucntion tir.Grid(*ranges) """
+    loop_var_names = list()
+    if isinstance(node.target, ast.Name):
+        loop_var_names.append(node.target.id)
+    elif isinstance(node.target, ast.Tuple):
+        for elt in node.target.elts:
+            if not isinstance(elt, ast.Name):
+                parser.report_error("Invalid loop var")
+            loop_var_names.append(elt.id)
+    else:
+        parser.report_error("Invalid loop var")
+    if len(loop_var_names) != len(extents):
+        parser.report_error("Inconsistent number of loop vars and extents")
+    loop_vars = [tvm.te.var(name, dtype="int32") for name in loop_var_names]
+
+    parser.scope_emitter.new_scope()
+    for loop_var in loop_vars:
+        parser.scope_emitter.update_symbol(loop_var.name, loop_var)
+    body = get_body(parser, node)
+    parser.scope_emitter.pop_scope()
+
+    for loop_var, extent in zip(reversed(loop_vars), reversed(extents)):
+        body = tvm.tir.Loop(loop_var, 0, extent, [], body)
+
+    return body
 
 
 def get_body(parser, node):

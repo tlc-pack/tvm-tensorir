@@ -358,8 +358,6 @@ class HybridParser(ast.NodeVisitor):
             2. for name in tir.grid(begin, end, annotation)
         """
 
-        if not isinstance(node.target, ast.Name):
-            self.report_error("The loop variable should be a name variable")
         # check node.iter, which is a Call
         if not isinstance(node.iter, ast.Call):
             self.report_error("The loop iter should be a Call")

@@ -72,39 +72,52 @@ class CallArgumentReader(object):
         self.kwargs = kwargs
         self.parser = parser
 
-    def get_func_compulsory_arg(self, pos, name):
-        """Get corresponding function argument from argument list which is compulsory"""
+    def get_pos_only_arg(self, pos, name):
+        """Get corresponding position only function argument from argument list"""
 
         if len(self.args) >= pos:
             arg = self.args[pos - 1]
-        elif name not in self.kwargs.keys():
+        elif name not in self.kwargs:
             self.parser.report_error(self.func_name + " misses argument " + name)
         else:
             arg = self.kwargs[name]
 
         return arg
 
-    def get_func_optional_arg(self, pos, name, default):
-        """Get corresponding function argument from argument list which is optional.
+    def get_kwarg(self, pos, name, default):
+        """Get corresponding keyword function argument from argument list
         If user doesn't provide the argument, set it to default value
         """
 
         if len(self.args) >= pos:
             arg = self.args[pos - 1]
-        elif name in self.kwargs.keys():
+        elif name in self.kwargs:
             arg = self.kwargs[name]
         else:
             return default
 
         return arg
 
+    def get_varargs(self, pos):
+        """Get corresponding variable argument from argument list"""
+
+        if len(self.args) >= pos and len(self.kwargs) == 0:
+            return self.args[pos - 1:]
+        return []
+
+    def auto_insert_body(self, pos, body):
+        """Automatically provide body as function call argument"""
+
+        if len(self.args) >= pos:
+            self.args.insert(pos - 1, body)
+        else:
+            self.kwargs["body"] = body
+
 
 def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, need_body, concise):
     """Helper function to wrap a function to be registered """
 
     def wrap_func(parser, node, args, kwargs):
-        reader = CallArgumentReader(func_name, args, kwargs, parser)
-        internal_args = list()
 
         if need_body and not isinstance(node, ast.For):
             # automatically parse body for with scope handlers
@@ -120,20 +133,27 @@ def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, ne
                     parser.report_error("Concise scoping is not allowed here")
                 body = parser.get_body()
 
+        reader = CallArgumentReader(func_name, args, kwargs, parser)
+        pos_only, kwargs, varargs = arg_list
+        if need_body:
+            for i, arg_name in enumerate(pos_only):
+                if arg_name == "body":
+                    reader.auto_insert_body(i + 1, body)
+
+        internal_args = list()
         if need_parser_and_node:
             internal_args.append(parser)
             internal_args.append(node)
 
-        for i, arg_info in enumerate(arg_list):
-            if len(arg_info) == 1:
-                arg_name, = arg_info
-                if need_body and arg_name == "body":
-                    internal_args.append(body)
-                else:
-                    internal_args.append(reader.get_func_compulsory_arg(i + 1, arg_name))
-            else:
-                arg_name, default = arg_info
-                internal_args.append(reader.get_func_optional_arg(i + 1, arg_name, default=default))
+        for i, arg_name in enumerate(pos_only):
+            internal_args.append(reader.get_pos_only_arg(i + 1, arg_name))
+
+        for i, arg_info in enumerate(kwargs):
+            arg_name, default = arg_info
+            internal_args.append(reader.get_kwarg(i + 1 + len(pos_only), arg_name, default=default))
+
+        if varargs is not None:
+            internal_args.extend(reader.get_varargs(len(pos_only) + len(kwargs) + 1))
 
         return func_to_register(*internal_args)
 
@@ -160,9 +180,6 @@ def get_arg_list(origin_func, need_parser_and_node):
     if need_parser_and_node:
         args = args[2:]
 
-    if full_arg_spec.varargs is not None:
-        raise RuntimeError(
-            "TVM Hybrid Script register error : variable argument is not supported now")
     if full_arg_spec.varkw is not None:
         raise RuntimeError(
             "TVM Hybrid Script register error : variable keyword argument is not supported now")
@@ -170,13 +187,14 @@ def get_arg_list(origin_func, need_parser_and_node):
         raise RuntimeError(
             "TVM Hybrid Script register error : keyword only argument is not supported now")
 
-    arg_list = list()
+    pos_only = list()
     for arg in args[: len(args) - len(defaults)]:
-        arg_list.append((arg,))
+        pos_only.append(arg)
+    kwargs = list()
     for default, arg in zip(defaults, args[len(args) - len(defaults):]):
-        arg_list.append((arg, default))
+        kwargs.append((arg, default))
 
-    return arg_list
+    return pos_only, kwargs, full_arg_spec.varargs
 
 
 def register_intrin(name=None):
