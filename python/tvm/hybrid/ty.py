@@ -30,8 +30,8 @@ class TypeGeneric:
 
 class ConcreteType(TypeGeneric):
     """Hybrid script typing class for uniform Type objects"""
-    def __init__(self, type):
-        self.type = type
+    def __init__(self, vtype):
+        self.type = vtype
 
     def evaluate(self):
         return self.type
