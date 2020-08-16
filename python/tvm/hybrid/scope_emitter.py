@@ -33,8 +33,7 @@ class ScopeEmitter:
         self.symbols.pop()
         self.node_stack.pop()
 
-        if is_block:
-            return self.allocate_stack.pop() if is_block else None
+        return self.allocate_stack.pop() if is_block else None
 
     def new_scope(self, is_block=False):
         """ Creating a new scope """
