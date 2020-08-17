@@ -17,50 +17,51 @@
 """Hybrid Script Parser Function Registry """
 # pylint: disable=inconsistent-return-statements
 import inspect
+from enum import Enum
 from typed_ast import ast3 as ast
+
+import tvm
+
+
+class Category(Enum):
+    INTRIN = 0
+    WITH_SCOPE = 1
+    FOR_SCOPE = 2
+    SPECIAL_STMT = 3
 
 
 class Registry(object):
     """Registration map
     All these maps are static
     """
-    intrin = dict()
-    with_scope = dict()
-    for_scope = dict()
-    special_stmt = dict()
+    functions = dict()
 
     @staticmethod
     def look_up_function(func_name):
         """look up a registered function by name"""
-        if func_name in Registry.intrin:
-            return Registry.intrin[func_name]
-        if func_name in Registry.with_scope:
-            return Registry.with_scope[func_name]
-        if func_name in Registry.for_scope:
-            return Registry.for_scope[func_name]
-        if func_name in Registry.special_stmt:
-            return Registry.special_stmt[func_name]
+        if func_name in Registry.functions:
+            return Registry.functions[func_name][0]
         return None
 
     @staticmethod
     def is_intrin(func):
         """check whether a function belongs to intrin"""
-        return func in Registry.intrin.values()
+        return (func, Category.INTRIN) in Registry.functions.values()
 
     @staticmethod
     def is_with_scope(func):
         """check whether a function belongs to with scope handlers"""
-        return func in Registry.with_scope.values()
+        return (func, Category.WITH_SCOPE) in Registry.functions.values()
 
     @staticmethod
     def is_for_scope(func):
         """check whether a function belongs to for scope handlers"""
-        return func in Registry.for_scope.values()
+        return (func, Category.FOR_SCOPE) in Registry.functions.values()
 
     @staticmethod
     def is_special_stmt(func):
         """check whether a function belongs to special stmts"""
-        return func in Registry.special_stmt.values()
+        return (func, Category.SPECIAL_STMT) in Registry.functions.values()
 
 
 class CallArgumentReader(object):
@@ -74,7 +75,6 @@ class CallArgumentReader(object):
 
     def get_pos_only_arg(self, pos, name):
         """Get corresponding position only function argument from argument list"""
-
         if len(self.args) >= pos:
             arg = self.args[pos - 1]
         elif name not in self.kwargs:
@@ -88,7 +88,6 @@ class CallArgumentReader(object):
         """Get corresponding keyword function argument from argument list
         If user doesn't provide the argument, set it to default value
         """
-
         if len(self.args) >= pos:
             arg = self.args[pos - 1]
         elif name in self.kwargs:
@@ -100,29 +99,46 @@ class CallArgumentReader(object):
 
     def get_varargs(self, pos):
         """Get corresponding variable argument from argument list"""
-
         if len(self.args) >= pos and len(self.kwargs) == 0:
             return self.args[pos - 1:]
         return []
 
     def auto_insert_body(self, pos, body):
         """Automatically provide body as function call argument"""
-
         if len(self.args) >= pos:
             self.args.insert(pos - 1, body)
         else:
             self.kwargs["body"] = body
 
 
-def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, need_body, concise):
+def func_wrapper(func_name, func_to_register, arg_list, category, concise):
     """Helper function to wrap a function to be registered """
 
     def wrap_func(parser, node, args, kwargs):
+        if category == Category.FOR_SCOPE:
+            # automatically parse loop vars and body for for_scope handlers
+            loop_var_names = list()
+            if isinstance(node.target, ast.Name):
+                loop_var_names.append(node.target.id)
+            elif isinstance(node.target, ast.Tuple):
+                for elt in node.target.elts:
+                    if not isinstance(elt, ast.Name):
+                        parser.report_error("Invalid loop var")
+                    loop_var_names.append(elt.id)
+            else:
+                parser.report_error("Invalid loop var")
+            loop_vars = [tvm.te.var(name, dtype="int32") for name in loop_var_names]
 
-        if need_body and not isinstance(node, ast.For):
-            # automatically parse body for with scope handlers
+            parser.scope_emitter.new_scope()
+            parser.scope_emitter.node_stack[-1].extend(reversed(node.body))
+            for loop_var in loop_vars:
+                parser.scope_emitter.update_symbol(loop_var.name, loop_var)
+            body = parser.get_body()
+            parser.scope_emitter.pop_scope()
+        elif category == Category.WITH_SCOPE:
+            # automatically parse body for with_scope handlers
             if isinstance(node, ast.With):
-                # the with scope handler is used inside with context
+                # the scope handler is used inside with context/for context
                 parser.scope_emitter.new_scope()
                 parser.scope_emitter.node_stack[-1].extend(reversed(node.body))
                 body = parser.get_body()
@@ -135,15 +151,14 @@ def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, ne
 
         reader = CallArgumentReader(func_name, args, kwargs, parser)
         pos_only, kwargs, varargs = arg_list
-        if need_body:
-            for i, arg_name in enumerate(pos_only):
-                if arg_name == "body":
-                    reader.auto_insert_body(i + 1, body)
 
         internal_args = list()
-        if need_parser_and_node:
-            internal_args.append(parser)
-            internal_args.append(node)
+        if category == Category.WITH_SCOPE:
+            internal_args.extend([parser, node, body])
+        elif category == Category.FOR_SCOPE:
+            internal_args.extend([parser, node, body, loop_vars])
+        elif category == Category.SPECIAL_STMT:
+            internal_args.extend([parser, node])
 
         for i, arg_name in enumerate(pos_only):
             internal_args.append(reader.get_pos_only_arg(i + 1, arg_name))
@@ -160,24 +175,41 @@ def func_wrapper(func_name, func_to_register, arg_list, need_parser_and_node, ne
     return wrap_func
 
 
-def get_arg_list(origin_func, need_parser_and_node):
+def get_arg_list(origin_func, category):
     """Helper function to get the argument list of Function
 
     Parameters
     ----------
     origin_func: function
         The function to get the argument list
-    need_parser_and_node: bool
-        Whether the function need parser and node in its arguments
+    category: Category
+        The category of registerde function
     """
-
     full_arg_spec = inspect.getfullargspec(origin_func)
 
     args, defaults = full_arg_spec.args, full_arg_spec.defaults
 
     if defaults is None:
         defaults = tuple()
-    if need_parser_and_node:
+
+    if category == Category.WITH_SCOPE:
+        if len(args) < 3 or args[0] != "parser" or args[1] != "node" or args[2] != "body":
+            raise RuntimeError(
+                "TVM Hybrid Script register error : the first three arguments of with scope handler"
+                "must be parser, node, body")
+        args = args[3:]
+    elif category == Category.FOR_SCOPE:
+        if len(args) < 4 or args[0] != "parser" or \
+                args[1] != "node" or args[2] != "body" or args[3] != "loop_vars":
+            raise RuntimeError(
+                "TVM Hybrid Script register error : the first three arguments of for scope handler"
+                "must be parser, node, body, loop_vars")
+        args = args[4:]
+    elif category == Category.SPECIAL_STMT:
+        if len(args) < 2 or args[0] != "parser" or args[1] != "node":
+            raise RuntimeError(
+                "TVM Hybrid Script register error : the first three arguments of special stmt"
+                "must be parser, node")
         args = args[2:]
 
     if full_arg_spec.varkw is not None:
@@ -216,9 +248,9 @@ def register_intrin(name=None):
 
     def decorate(origin_func):
         func_name = "tir." + origin_func.__qualname__ if name is None else name
-        Registry.intrin[func_name] = \
-            func_wrapper(func_name, origin_func, get_arg_list(origin_func, False),
-                         need_parser_and_node=False, need_body=False, concise=False)
+        Registry.functions[func_name] = \
+            func_wrapper(func_name, origin_func, get_arg_list(origin_func, Category.INTRIN),
+                         Category.INTRIN, concise=False), Category.INTRIN
         return origin_func
 
     return decorate
@@ -246,9 +278,9 @@ def register_with_scope(concise=False, name=None):
     def decorate(origin_func):
         """Register function under category with_scope"""
         func_name = "tir." + origin_func.__qualname__ if name is None else name
-        Registry.with_scope[func_name] = \
-            func_wrapper(func_name, origin_func, get_arg_list(origin_func, True),
-                         need_parser_and_node=True, need_body=True, concise=concise)
+        Registry.functions[func_name] = \
+            func_wrapper(func_name, origin_func, get_arg_list(origin_func, Category.WITH_SCOPE),
+                         Category.WITH_SCOPE, concise=concise), Category.WITH_SCOPE
         return origin_func
 
     return decorate
@@ -265,9 +297,9 @@ def register_for_scope(name=None):
 
     def decorate(origin_func):
         func_name = "tir." + origin_func.__qualname__ if name is None else name
-        Registry.for_scope[func_name] = \
-            func_wrapper(func_name, origin_func, get_arg_list(origin_func, True),
-                         need_parser_and_node=True, need_body=True, concise=False)
+        Registry.functions[func_name] = \
+            func_wrapper(func_name, origin_func, get_arg_list(origin_func, Category.FOR_SCOPE),
+                         Category.FOR_SCOPE, concise=False), Category.FOR_SCOPE
         return origin_func
 
     return decorate
@@ -294,9 +326,9 @@ def register_special_stmt(name=None):
 
     def decorate(origin_func):
         func_name = "tir." + origin_func.__qualname__ if name is None else name
-        Registry.special_stmt[func_name] = \
-            func_wrapper(func_name, origin_func, get_arg_list(origin_func, True),
-                         need_parser_and_node=True, need_body=False, concise=False)
+        Registry.functions[func_name] = \
+            func_wrapper(func_name, origin_func, get_arg_list(origin_func, Category.SPECIAL_STMT),
+                         Category.SPECIAL_STMT, concise=False), Category.SPECIAL_STMT
         return origin_func
 
     return decorate

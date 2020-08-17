@@ -494,7 +494,7 @@ class HybridParser(ast.NodeVisitor):
 
         if self._is_block_vars:
             # special judge block_var syntax
-            func = Registry.special_stmt.get("tir.block_vars")
+            func = Registry.functions.get("tir.block_vars")[0]
         else:
             func = self.visit(node.func)
 

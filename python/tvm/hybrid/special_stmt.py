@@ -20,8 +20,11 @@ special_stmt functions don't correspond to an IRNode in the AST directly. It is 
 used for some information that is not suitable to be printed directly.
 special_stmt can appear as 2 formats
 .. code-block:: python
+
     target = tir.name():
     tir.name()
+
+When registering a special stmt, the first two arguments must be parser, node
 """
 # pylint: disable=unused-argument, no-self-argument, inconsistent-return-statements
 from typed_ast import ast3 as ast

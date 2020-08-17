@@ -36,8 +36,8 @@ class Module2:
 
         tir.attr(A, "realize_scope", "")
         tir.realize(A[0:16, 0:16])
-        for i in tir.range(16):
-            for j in tir.range(0, 16):
+        for i in range(16):
+            for j in range(0, 16):
                 A[i, j] = 0.0
 
 
@@ -48,8 +48,8 @@ class Module3:
 
         tir.attr(A, "realize_scope", "")
         tir.realize(C[0:16, 0:16])
-        for i in tir.range(16):
-            for j in tir.range(0, 16):
+        for i in range(16):
+            for j in range(0, 16):
                 A[i, j] = 0.0
 
 
@@ -68,7 +68,7 @@ class Module5:
         tir.attr(A, "realize_scope", "")
         tir.realize(A[0:16, 0:16])
         for i in tir.const_range(16):
-            for j in tir.range(0, 16):
+            for j in range(0, 16):
                 A[i, j] = 0.0
 
 
@@ -97,7 +97,7 @@ class Module9:
         A = tir.buffer_bind(a, (16, 16), "float32")
 
         for i in tir.evaluate(0.0):
-            for j in tir.range(0, 16):
+            for j in range(0, 16):
                 A[i, j] = 0.0
 
 
