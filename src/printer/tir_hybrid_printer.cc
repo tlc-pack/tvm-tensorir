@@ -644,11 +644,9 @@ Doc TIRHybridPrinter::VisitStmt_(const ForNode* op) {
   Doc doc;
   var_not_in_headers.insert(op->loop_var.get());
   doc << "for " << Print(op->loop_var)
-      << " in range(" << Print(op->min) << ", " << Print(op->min + op->extent);
-  if (op->for_type != ForType::Serial) {
-    doc << ", " << Doc::StrLiteral(ForType2String(op->for_type));
-  }
-  doc << "):" << Doc::Indent(4, Doc::NewLine() << PrintBody(op->body));
+      << " in tir." + std::string(ForType2String(op->for_type)) + "("
+      << Print(op->min) << ", " << Print(op->min + op->extent)
+      << "):" << Doc::Indent(4, Doc::NewLine() << PrintBody(op->body));
   return doc;
 }
 
@@ -746,7 +744,7 @@ Doc TIRHybridPrinter::VisitStmt_(const LoopNode* op) {
   // print loop and annotations
   var_not_in_headers.insert(op->loop_var.get());
   doc << "for " << Print(op->loop_var);
-  doc << " in tir.grid(" << Print(op->min) << ", "
+  doc << " in range(" << Print(op->min) << ", "
       << Print(arith::Analyzer().Simplify(op->min + op->extent));
   if (!op->annotations.empty()) {
     doc << ", annotation = {";
