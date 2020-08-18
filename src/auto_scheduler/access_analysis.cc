@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "./access_analysis.h"
+#include "./access_analysis.h"  // NOLINT(build/include)
 
 #include "../arith/pattern_match.h"
 #include "./auto_scheduler_utils.h"
@@ -68,7 +68,7 @@ bool IsVarPlusMinusConst(const PrimExpr& expr, tir::Var* result) {
  * \brief On a leaf block, checks if all buffer store and reduction update are in form of
  *     A[v_0 +/- const][v_i +/- const]
  * in which v_i are block variables, and const are constant integers.
- * This means the indices trivally correlates with block variables,
+ * This means the indices trivially correlates with block variables,
  * and it directly corresponds to TE-style buffer store.
  * TODO(@junrushao1994): we might need to check each block var is correlated at most once.
  * For now, it checks the following condition:
@@ -269,7 +269,7 @@ void AnalyzeLoadStoreMapping(const LoopTree& node, const Array<tir::Var>& stores
 }
 
 /*!
- * \brief Anaylze data reuse pattern. For each buffer load, we check how many store axes that do not
+ * \brief Analyze data reuse pattern. For each buffer load, we check how many store axes that do not
  * appear in load axes, in which we could see re-use opportunities
  * \param node The leaf block
  * \param stores The block vars used in buffer store
@@ -282,7 +282,7 @@ int AnalyzeAxesReuse(const LoopTree& node, const Array<tir::Var>& stores) {
   int n_missing = 0;
   tir::PostOrderVisit(StmtFromLeaf(node->children[0]), [&n_missing, &stores](const ObjectRef& obj) {
     if (const auto* load = obj.as<tir::BufferLoadNode>()) {
-      // Collect all variables used in the buffer loaed
+      // Collect all variables used in the buffer loaded
       std::unordered_set<const tir::VarNode*> vars_in_load;
       for (const PrimExpr& idx : load->indices) {
         tir::PostOrderVisit(idx, [&vars_in_load](const ObjectRef& obj) {
@@ -327,11 +327,11 @@ LeafAccessPattern::LeafAccessPattern(const LoopTree& node) {
 
 Map<LoopTree, BaseAccessPattern> AnalyzeAccess(const LoopTree& root) {
   std::unordered_map<LoopTree, BaseAccessPattern, ObjectPtrHash, ObjectPtrEqual> result;
-  std::function<void(const LoopTree&)> fvisit = [&result, &fvisit](const LoopTree& node) -> void {
+  std::function<void(const LoopTree&)> visit = [&result, &visit](const LoopTree& node) -> void {
     int num_children = 0;
     for (const ObjectRef& obj : node->children) {
       if (const auto* child = obj.as<LoopTreeNode>()) {
-        fvisit(GetRef<LoopTree>(child));
+        visit(GetRef<LoopTree>(child));
         ++num_children;
       }
     }
@@ -341,9 +341,27 @@ Map<LoopTree, BaseAccessPattern> AnalyzeAccess(const LoopTree& root) {
       result[node] = DummyAccessPattern();
     }
   };
-  fvisit(root);
+  visit(root);
   return result;
 }
+
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<LeafAccessPatternNode>([](const ObjectRef& obj, ReprPrinter* p) {
+      const auto* node = obj.as<LeafAccessPatternNode>();
+      CHECK(node);
+      p->stream << "LeafAccessPattern(" << node << "):" << std::endl
+                << "  num_stmts: " << node->num_stmts << std::endl
+                << "  has_branch: " << node->has_branch << std::endl
+                << "  has_expensive_op: " << node->has_expensive_op << std::endl
+                << "  all_trivial_store: " << node->all_trivial_store << std::endl
+                << "  block_vars_in_trivial_store: " << node->block_vars_in_trivial_store
+                << std::endl
+                << "  lsmap_exists: " << node->lsmap_exists << std::endl
+                << "  lsmap_surjective: " << node->lsmap_surjective << std::endl
+                << "  lsmap_injective: " << node->lsmap_injective << std::endl
+                << "  lsmap_ordered: " << node->lsmap_ordered << std::endl
+                << "  num_axes_reuse: " << node->num_axes_reuse;
+    });
 
 TVM_REGISTER_GLOBAL("auto_scheduler.access_analysis.AnalyzeAccess").set_body_typed(AnalyzeAccess);
 

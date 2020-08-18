@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#ifndef SRC_AUTO_SCHEDULER_LOOP_TREE_H_ /* TODO(@junrushao1994): guard name convention */
+#ifndef SRC_AUTO_SCHEDULER_LOOP_TREE_H_
 #define SRC_AUTO_SCHEDULER_LOOP_TREE_H_
 
 #include <tvm/ir/expr.h>
@@ -29,6 +29,8 @@
 
 namespace tvm {
 namespace auto_scheduler {
+
+/**************** Define Iterator ****************/
 
 /*! \brief The type of an iterator. */
 enum class IterKind : int {
@@ -52,7 +54,7 @@ inline std::string IterKind2String(IterKind kind) {
   return results[static_cast<int>(kind)];
 }
 
-/*! \brief The type of an iterator's annotation. */
+/*! \brief The type of the annotation of an iterator. */
 enum class IterAnnotation : int {
   /*! \brief This iterator has no annotation. */
   kNone = 0,
@@ -62,7 +64,7 @@ enum class IterAnnotation : int {
   kVectorize = 2,
   /*! \brief This iterator has been paralleld. */
   kParallel = 3,
-  /*! \brief This iterator has been bind to vthread. */
+  /*! \brief This iterator has been bind to virtual thread. */
   kVThread = 4,
   /*! \brief This iterator has been bind to blockIdx.x. */
   kBlockX = 5,
@@ -101,8 +103,6 @@ class IteratorNode : public Object {
  public:
   /*! \brief The name of this iterator. */
   String name;
-  /*! \brief The min value of this iterator. */
-  PrimExpr min;
   /*! \brief The extent of this iterator. */
   PrimExpr extent;
   /*! \brief The iterator type of this iterator. */
@@ -112,7 +112,6 @@ class IteratorNode : public Object {
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("name", &name);
-    v->Visit("min", &min);
     v->Visit("extent", &extent);
     v->Visit("kind", &kind);
     v->Visit("annotation", &annotation);
@@ -130,15 +129,47 @@ class Iterator : public ObjectRef {
   /*!
    * \brief The constructor.
    * \param name The name of this iterator.
-   * \param min The min value of this iterator.
-   * \param extent The exntent of this iterator.
+   * \param extent The extent of this iterator.
    * \param kind The iterator type of this iterator.
    * \param annotation The annotation type of this iterator.
    */
-  Iterator(String name, PrimExpr min, PrimExpr extent, IterKind kind, IterAnnotation annotation);
+  Iterator(String name, PrimExpr extent, IterKind kind, IterAnnotation annotation);
 
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Iterator, ObjectRef, IteratorNode);
 };
+
+/**************** Define MetaIR ****************/
+
+/*!
+ * \brief The base node of the loop tree,
+ * recording the parent and siblings of a node in the tree
+ */
+class MetaIRNode : public Object {
+ public:
+  /*! \brief Parent of the node */
+  mutable const MetaIRNode* parent;
+  /*! \brief Left sibling of the node */
+  mutable const MetaIRNode* left_sibling;
+  /*! \brief Right sibling of the node */
+  mutable const MetaIRNode* right_sibling;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
+  static constexpr const char* _type_key = "auto_scheduler.MetaIR";
+  TVM_DECLARE_BASE_OBJECT_INFO(MetaIRNode, Object);
+};
+
+/*! \brief Managed reference to MetaIRNode */
+class MetaIR : public ObjectRef {
+ public:
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(MetaIR, ObjectRef, MetaIRNode);
+
+ protected:
+  /*! \brief Constructor. The node should never be constructed directly. */
+  MetaIR() = default;
+};
+
+/**************** Define LeafStmt ****************/
 
 /*!
  * \brief The category that the leaf statement falls into
@@ -161,7 +192,7 @@ inline std::string LeafStmtKind2String(LeafStmtKind kind) {
 }
 
 /*! \brief The leaf statement in the loop tree */
-class LeafStmtNode : public Object {
+class LeafStmtNode : public MetaIRNode {
  public:
   /*! \brief The category the statement is in */
   LeafStmtKind kind;
@@ -180,29 +211,31 @@ class LeafStmtNode : public Object {
   }
 
   static constexpr const char* _type_key = "auto_scheduler.LeafStmt";
-  TVM_DECLARE_FINAL_OBJECT_INFO(LeafStmtNode, Object);
+  TVM_DECLARE_FINAL_OBJECT_INFO(LeafStmtNode, MetaIRNode);
 };
 
 /*! \brief Managed reference to LeafStmtNode */
-class LeafStmt : public ObjectRef {
+class LeafStmt : public MetaIR {
  public:
   /*!
    * \brief Constructor from TIR statement
    * \param stmt The TIR statement
    */
   explicit LeafStmt(const tir::Stmt& stmt);
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LeafStmt, ObjectRef, LeafStmtNode);
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LeafStmt, MetaIR, LeafStmtNode);
 };
 
+/**************** Define LoopTree ****************/
+
 /*! \brief A node in loop tree */
-class LoopTreeNode : public Object {
+class LoopTreeNode : public MetaIRNode {
  public:
   /*! \brief Iterators in the block */
-  Array<Iterator> iters;
+  mutable Array<Iterator> iters;
   /*! \brief The corresponding BlockRealize node in TIR */
-  Optional<tir::BlockRealize> block_realize;
+  mutable Optional<tir::BlockRealize> block_realize;
   /*! \brief Children of the node, can be LoopTree or tir::Stmt */
-  Array<ObjectRef> children;
+  mutable Array<MetaIR> children;
   /*!
    * \brief Converts the LoopTreeNode to human readable string format
    * \return The human readable string format
@@ -216,15 +249,11 @@ class LoopTreeNode : public Object {
   }
 
   static constexpr const char* _type_key = "auto_scheduler.LoopTree";
-  TVM_DECLARE_FINAL_OBJECT_INFO(LoopTreeNode, Object);
-
- private:
-  /*! \brief Helper class to convert LoopTree to string */
-  class Stringifier;
+  TVM_DECLARE_FINAL_OBJECT_INFO(LoopTreeNode, MetaIRNode);
 };
 
 /*! \brief Managed reference to LoopTreeNode */
-class LoopTree : public ObjectRef {
+class LoopTree : public MetaIR {
  public:
   /*!
    * \brief Constructor of LoopTree
@@ -233,7 +262,7 @@ class LoopTree : public ObjectRef {
    * \param block_realize The corresponding BlockRealize node in TIR
    */
   LoopTree(Array<Iterator> iters, Optional<tir::BlockRealize> block_realize,
-           Array<ObjectRef> children);
+           Array<MetaIR> children);
   /*!
    * \brief Construct a LoopTree from PrimFunc
    * \param func The PrimFunc
@@ -241,7 +270,7 @@ class LoopTree : public ObjectRef {
    */
   static LoopTree FromPrimFunc(const tir::PrimFunc& func);
 
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LoopTree, ObjectRef, LoopTreeNode);
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LoopTree, MetaIR, LoopTreeNode);
 };
 
 }  // namespace auto_scheduler
