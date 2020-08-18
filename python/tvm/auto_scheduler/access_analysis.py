@@ -31,22 +31,7 @@ class DummyAccessPattern(Object):
 
 @tvm._ffi.register_object("auto_scheduler.LeafAccessPattern")
 class LeafAccessPattern(BaseAccessPattern):
-    """Resulf of access analysis of a leaf node in the loop tree. """
-
-    def __str__(self):
-        attrs = {
-            "num_stmts": self.num_stmts,
-            "has_branch": self.has_branch,
-            "has_expensive_op": self.has_expensive_op,
-            "all_trivial_store": self.all_trivial_store,
-            "block_vars_in_trivial_store": self.block_vars_in_trivial_store,
-            "lsmap_exists": self.lsmap_exists,
-            "lsmap_surjective": self.lsmap_surjective,
-            "lsmap_injective": self.lsmap_injective,
-            "lsmap_ordered": self.lsmap_ordered,
-            "num_axes_reuse": self.num_axes_reuse,
-        }
-        return str(attrs)
+    """Result of access analysis of a leaf node in the loop tree. """
 
 
 def analyze(loop_tree):

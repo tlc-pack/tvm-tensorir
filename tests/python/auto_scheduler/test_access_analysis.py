@@ -14,7 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-""" Testing tvm.auto_scnheduler.AccessAnalysis. """
+""" Testing tvm.auto_scheduler.AccessAnalysis. """
 import tvm
 from tvm.hybrid import ty
 from tvm import tir
