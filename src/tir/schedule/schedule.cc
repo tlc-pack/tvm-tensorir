@@ -57,7 +57,14 @@ class SubReplacer : protected StmtMutator {
     if (allow_copy_on_write_) {
       CHECK(weakref->unique()) << GetRef<Stmt>(weakref);
     }
-    Stmt stmt = VisitStmt(GetRef<Stmt>(weakref));
+    Stmt stmt;
+    if (weakref->IsInstance<LoopNode>()) {
+      stmt = StmtMutator::VisitStmt_(Downcast<Loop>(GetRef<Stmt>(weakref)).get());
+    } else if (weakref->IsInstance<BlockNode>()) {
+      stmt = StmtMutator::VisitStmt_(Downcast<Block>(GetRef<Stmt>(weakref)).get());
+    } else {
+      LOG(FATAL) << "StmtSRef only points to Block or Loop";
+    }
     std::swap(allow_copy_on_write, allow_copy_on_write_);
     if (allow_copy_on_write) {
       CHECK(stmt.operator->() == weakref);
@@ -71,7 +78,7 @@ class SubReplacer : protected StmtMutator {
       // just return the target stmt
       return target_;
     } else {
-      return StmtFunctor::VisitStmt(stmt);
+      return StmtMutator::VisitStmt(stmt);
     }
   }
 
@@ -271,7 +278,7 @@ class SRefCreator : public StmtVisitor {
   }
 
   friend class ScheduleNode;
-  StmtSRefNode* parent_;
+  StmtSRefNode* parent_{nullptr};
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
   std::unordered_map<const VarNode*, StmtSRef> loop_var2ref_;
   std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual>* block_scopes_;
