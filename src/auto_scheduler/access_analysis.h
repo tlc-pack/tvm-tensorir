@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#ifndef SRC_AUTO_SCHEDULER_ACCESS_ANALYSIS_H_ /* TODO(@junrushao1994): guard name convention */
+#ifndef SRC_AUTO_SCHEDULER_ACCESS_ANALYSIS_H_
 #define SRC_AUTO_SCHEDULER_ACCESS_ANALYSIS_H_
 
 #include <tvm/ir/expr.h>
