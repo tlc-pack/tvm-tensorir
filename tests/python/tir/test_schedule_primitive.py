@@ -29,16 +29,12 @@ def fused_element_wise(a: ty.handle, c: ty.handle) -> None:
     with tir.block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
         B = tir.buffer_allocate((128, 128))
 
-        for i in tir.grid(0, 16384):
-            with tir.block({vi(0, 128): i // 128, vj(0, 128): i % 128},
-                           reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1],
-                           name="B"):
+        for i in range(0, 16384):
+            with tir.block({vi(0, 128): i // 128, vj(0, 128): i % 128}, reads=A[vi, vj], writes=B[vi, vj], name="B"):
                 B[vi, vj] = A[vi, vj] * 2.0
 
-        for j in tir.grid(0, 16384):
-            with tir.block({vi(0, 128): j // 128, vj(0, 128): j % 128},
-                           reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
-                           name="C"):
+        for j in range(0, 16384):
+            with tir.block({vi(0, 128): j // 128, vj(0, 128): j % 128}, reads=B[vi, vj], writes=C[vi, vj], name="C"):
                 C[vi, vj] = B[vi, vj] + 1.0
 
 
@@ -68,23 +64,14 @@ def split_element_wise(a: ty.handle, c: ty.handle) -> None:
     with tir.block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
         B = tir.buffer_allocate((128, 128))
 
-        for io in tir.grid(0, 8):
-            for ii in tir.grid(0, 16):
-                for j in tir.grid(0, 128):
-                    with tir.block({vi(0, 128): io * 16 + ii, vj(0, 128): j},
-                                   reads=A[vi: vi + 1, vj: vj + 1],
-                                   writes=B[vi: vi + 1, vj: vj + 1],
-                                   name="B"):
-                        B[vi, vj] = A[vi, vj] * 2.0
+        for io, ii, j in tir.grid(8, 16, 128):
+            with tir.block({vi(0, 128): io * 16 + ii, vj(0, 128): j}, reads=A[vi, vj], writes=B[vi, vj], name="B"):
+                B[vi, vj] = A[vi, vj] * 2.0
 
-        for i in tir.grid(0, 128):
-            for jo in tir.grid(0, 10):
-                for ji in tir.grid(0, 13):
-                    with tir.block({vi(0, 128): i, vj(0, 128): jo * 13 + ji},
-                                   reads=B[vi: vi + 1, vj: vj + 1],
-                                   writes=C[vi: vi + 1, vj: vj + 1],
-                                   predicate=jo * 13 + ji < 128, name="C"):
-                        C[vi, vj] = B[vi, vj] + 1.0
+        for i, jo, ji in tir.grid(128, 10, 13):
+            with tir.block({vi(0, 128): i, vj(0, 128): jo * 13 + ji}, reads=B[vi, vj], writes=C[vi, vj],
+                           predicate=jo * 13 + ji < 128, name="C"):
+                C[vi, vj] = B[vi, vj] + 1.0
 
 
 @tvm.hybrid.script
@@ -92,23 +79,18 @@ def split_fuse_element_wise(a: ty.handle, c: ty.handle) -> None:
     C = tir.buffer_bind(c, (128, 128), "float32")
     A = tir.buffer_bind(a, (128, 128), "float32")
     with tir.block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
-        B = tir.buffer_allocate((128, 128), "float32", "")
-        for i in tir.grid(0, 128):
-            for j in tir.grid(0, 128):
-                with tir.block({vi(0, 128): ((tir.floordiv(i, 16) * 16) + tir.floormod(i, 16)),
-                                vj(0, 128): j},
-                               writes=[B[vi:(vi + 1), vj:(vj + 1)]],
-                               reads=[A[vi:(vi + 1), vj:(vj + 1)]], name="B"):
-                    B[vi, vj] = (A[vi, vj] * tir.float32(2))
-        for i in tir.grid(0, 128):
-            for j in tir.grid(0, 130):
-                with tir.block({vi(0, 128): i,
-                                vj(0, 128): ((tir.floordiv(j, 13) * 13) + tir.floormod(j, 13))},
-                               writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                               reads=[B[vi:(vi + 1), vj:(vj + 1)]],
-                               predicate=(((tir.floordiv(j, 13) * 13) + tir.floormod(j, 13)) < 128),
-                               name="C"):
-                    C[vi, vj] = (B[vi, vj] + tir.float32(1))
+        B = tir.buffer_allocate((128, 128), "float32")
+        for i, j in tir.grid(128, 128):
+            with tir.block({vi(0, 128): ((tir.floordiv(i, 16) * 16) + tir.floormod(i, 16)), vj(0, 128): j},
+                           writes=B[vi, vj], reads=A[vi, vj], name="B"):
+                B[vi, vj] = (A[vi, vj] * tir.float32(2))
+        for i, j in tir.grid(128, 130):
+            with tir.block({vi(0, 128): i,
+                            vj(0, 128): ((tir.floordiv(j, 13) * 13) + tir.floormod(j, 13))},
+                           writes=C[vi, vj], reads=B[vi, vj],
+                           predicate=(((tir.floordiv(j, 13) * 13) + tir.floormod(j, 13)) < 128),
+                           name="C"):
+                C[vi, vj] = (B[vi, vj] + tir.float32(1))
 
 
 def test_split_fuse():
@@ -137,16 +119,12 @@ def compute_at_element_wise(a: ty.handle, c: ty.handle) -> None:
 
     with tir.block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
         B = tir.buffer_allocate((128, 128))
-        for i in tir.grid(0, 128):
-            for j in tir.grid(0, 128):
-                with tir.block({vi(0, 128): i, vj(0, 128): j},
-                               reads=A[vi: vi + 1, vj: vj + 1], writes=B[vi: vi + 1, vj: vj + 1],
-                               name="B"):
+        for i in range(0, 128):
+            for j in range(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j}, reads=A[vi, vj], writes=B[vi, vj], name="B"):
                     B[vi, vj] = A[vi, vj] * 2.0
-            for j in tir.grid(0, 128):
-                with tir.block({vi(0, 128): i, vj(0, 128): j},
-                               reads=B[vi: vi + 1, vj: vj + 1], writes=C[vi: vi + 1, vj: vj + 1],
-                               name="C"):
+            for j in range(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j}, reads=B[vi, vj], writes=C[vi, vj], name="C"):
                     C[vi, vj] = B[vi, vj] + 1.0
 
 
@@ -172,11 +150,10 @@ def predicate_fuse(b: ty.handle, c: ty.handle) -> None:
     C = tir.buffer_bind(c, (16, 16), "float32")
     B = tir.buffer_bind(b, (16, 16), "float32")
     with tir.block({}, writes=[], reads=[], name="root"):
-        for i in tir.grid(0, 256):
+        for i in range(0, 256):
             with tir.block({vi(0, 16): tir.floordiv(tir.floordiv(i, 4), 4),
                             vj(0, 16): ((tir.floormod(tir.floordiv(i, 4), 4) * 4) + tir.floormod(i, 4))},
-                           writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                           reads=[B[vi:(vi + 1), vj:(vj + 1)]],
+                           writes=C[vi, vj], reads=B[vi, vj],
                            predicate=(((tir.floormod(tir.floordiv(i, 4), 4) * 4) + tir.floormod(i, 4)) < 16),
                            name="update"):
                 C[vi, vj] = (B[vi, vj] + tir.float32(1))
@@ -206,20 +183,17 @@ def matmul_reorder(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     B = tir.buffer_bind(b, (128, 128), "float32")
     with tir.block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128], B[0:128, 0:128]],
                    name="root"):
-        for i0 in tir.grid(0, 128):
-            for j0 in tir.grid(0, 128):
-                with tir.block({vi(0, 128): i0, vj(0, 128): j0},
-                               writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                               reads=[], name="init"):
-                    C[vi, vj] = tir.float32(0)
-        for k in tir.grid(0, 128):
-            for i in tir.grid(0, 16384):
-                with tir.block({vi(0, 128): tir.floordiv(i, 128), vj(0, 128): tir.floormod(i, 128),
-                                vk(0, 128, iter_type="reduce"): k},
-                               writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                               reads=[C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)],
-                                      B[vj:(vj + 1), vk:(vk + 1)]], name="update"):
-                    C[vi, vj] = (C[vi, vj] + (A[vi, vk] * B[vj, vk]))
+        for i0, j0 in tir.grid(128, 128):
+            with tir.block({vi(0, 128): i0, vj(0, 128): j0},
+                           writes=C[vi, vj], reads=[], name="init"):
+                C[vi, vj] = tir.float32(0)
+        for k, i in tir.grid(128, 16384):
+            with tir.block({vi(0, 128): tir.floordiv(i, 128),
+                            vj(0, 128): tir.floormod(i, 128),
+                            vk(0, 128, iter_type="reduce"): k},
+                           writes=C[vi, vj], reads=[C[vi, vj], A[vi, vk], B[vj, vk]],
+                           name="update"):
+                C[vi, vj] = (C[vi, vj] + (A[vi, vk] * B[vj, vk]))
 
 
 def test_reorder_normal():
@@ -234,7 +208,6 @@ def test_reorder_normal():
     s.fuse(i, j)
     mod = tvm.hybrid.create_module({"matmul_reorder": matmul_reorder})
     matmul_reorder_func = mod["matmul_reorder"]
-
     tvm.ir.assert_structural_equal(s.func, matmul_reorder_func)
     assert s.validate_sref()
 
@@ -246,22 +219,14 @@ def compute_at_case(a: ty.handle, c: ty.handle) -> None:
 
     with tir.block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
         B = tir.buffer_allocate((128, 128))
-        for i in tir.grid(0, 128):
-            for j in tir.grid(0, 128):
-                with tir.block({vi(0, 128): i, vj(0, 128): j},
-                               reads=[], writes=A[vi: vi + 1, vj: vj + 1], name="B0"):
-                    A[vi, vj] = 2.0
-                for k in tir.grid(0, 128):
-                    with tir.block({vi(0, 128): i, vj(0, 128): j},
-                                   reads=A[vi: vi + 1, vj: vj + 1],
-                                   writes=B[vi: vi + 1, vj: vj + 1],
-                                   name="B1"):
-                        B[vi, vj] = A[vi, vj] * 2.0
-                    with tir.block({vi(0, 128): i, vj(0, 128): j},
-                                   reads=B[vi: vi + 1, vj: vj + 1],
-                                   writes=C[vi: vi + 1, vj: vj + 1],
-                                   name="C"):
-                        C[vi, vj] = B[vi, vj] * 2.0
+        for i, j in tir.grid(128, 128):
+            with tir.block({vi(0, 128): i, vj(0, 128): j}, reads=[], writes=A[vi, vj], name="B0"):
+                A[vi, vj] = 2.0
+            for k in range(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j}, reads=A[vi, vj], writes=B[vi, vj], name="B1"):
+                    B[vi, vj] = A[vi, vj] * 2.0
+                with tir.block({vi(0, 128): i, vj(0, 128): j}, reads=B[vi, vj], writes=C[vi, vj], name="C"):
+                    C[vi, vj] = B[vi, vj] * 2.0
 
 
 def test_compute_at_fail():
@@ -291,19 +256,14 @@ def matmul_reduction(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     B = tir.buffer_bind(b, (128, 128), "float32")
     with tir.block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128], B[0:128, 0:128]],
                    name="root"):
-        for i in tir.grid(0, 128):
-            for j in tir.grid(0, 128):
-                with tir.block({vi(0, 128): i, vj(0, 128): j}, writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                               reads=[], name="init"):
-                    C[vi, vj] = tir.float32(0)
-                for k in tir.grid(0, 128):
-                    with tir.block(
-                            {vi(0, 128): i, vj(0, 128): j, vk(0, 128, iter_type="reduce"): k},
-                            writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                            reads=[C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)],
-                                   B[vj:(vj + 1), vk:(vk + 1)]],
-                            name="update"):
-                        C[vi, vj] = (C[vi, vj] + (A[vi, vk] * B[vj, vk]))
+        for i, j in tir.grid(128, 128):
+            with tir.block({vi(0, 128): i, vj(0, 128): j}, writes=C[vi, vj], reads=[], name="init"):
+                C[vi, vj] = tir.float32(0)
+            for k in range(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j, vk(0, 128, iter_type="reduce"): k},
+                               writes=C[vi, vj], reads=[C[vi, vj], A[vi, vk], B[vj, vk]],
+                               name="update"):
+                    C[vi, vj] = (C[vi, vj] + (A[vi, vk] * B[vj, vk]))
 
 
 def test_reduction():
@@ -333,22 +293,15 @@ def cache_read(a: ty.handle, c: ty.handle) -> None:
     with tir.block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
         B = tir.buffer_allocate((128, 128), "float32")
         AA = tir.buffer_allocate((128, 128), "float32", scope="local")
-        for i in tir.grid(0, 128):
-            for j in tir.grid(0, 128):
-                with tir.block({vi(0, 128): i, vj(0, 128): j},
-                               writes=[AA[vi:(vi + 1), vj:(vj + 1)]],
-                               reads=[A[vi:(vi + 1), vj:(vj + 1)]]):
-                    AA[vi, vj] = A[vi, vj]
-        for i in tir.grid(0, 128):
-            for j in tir.grid(0, 128):
-                with tir.block({vi(0, 128): i, vj(0, 128): j},
-                               writes=[B[vi:(vi + 1), vj:(vj + 1)]],
-                               reads=[AA[vi:(vi + 1), vj:(vj + 1)]], name="B"):
+        for i, j in tir.grid(128, 128):
+            with tir.block({vi(0, 128): i, vj(0, 128): j}, writes=AA[vi, vj], reads=A[vi, vj]):
+                AA[vi, vj] = A[vi, vj]
+        for i in range(0, 128):
+            for j in range(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j}, writes=B[vi, vj], reads=AA[vi, vj], name="B"):
                     B[vi, vj] = (AA[vi, vj] * tir.float32(2))
-            for j in tir.grid(0, 128):
-                with tir.block({vi(0, 128): i, vj(0, 128): j},
-                               writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                               reads=[B[vi:(vi + 1), vj:(vj + 1)]], name="C"):
+            for j in range(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j}, writes=C[vi, vj], reads=B[vi, vj], name="C"):
                     C[vi, vj] = (B[vi, vj] + tir.float32(1))
 
 
@@ -378,24 +331,15 @@ def cache_write(a: ty.handle, c: ty.handle) -> None:
     with tir.block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
         B = tir.buffer_allocate((128, 128), "float32")
         CC = tir.buffer_allocate((128, 128), "float32", scope="local")
-        for i in tir.grid(0, 128):
-            for j in tir.grid(0, 128):
-                with tir.block({vi(0, 128): i, vj(0, 128): j},
-                               writes=[B[vi:(vi + 1), vj:(vj + 1)]],
-                               reads=[A[vi:(vi + 1), vj:(vj + 1)]], name="B"):
-                    B[vi, vj] = (A[vi, vj] * tir.float32(2))
-        for i in tir.grid(0, 128):
-            for j in tir.grid(0, 128):
-                with tir.block({vi(0, 128): i, vj(0, 128): j},
-                               writes=[CC[vi:(vi + 1), vj:(vj + 1)]],
-                               reads=[B[vi:(vi + 1), vj:(vj + 1)]], name="C"):
+        for i, j in tir.grid(128, 128):
+            with tir.block({vi(0, 128): i, vj(0, 128): j}, writes=B[vi, vj], reads=A[vi, vj], name="B"):
+                B[vi, vj] = (A[vi, vj] * tir.float32(2))
+        for i, j in tir.grid(128, 128):
+            with tir.block({vi(0, 128): i, vj(0, 128): j}, writes=CC[vi, vj], reads=B[vi, vj], name="C"):
                     CC[vi, vj] = (B[vi, vj] + tir.float32(1))
-        for i in tir.grid(0, 128):
-            for j in tir.grid(0, 128):
-                with tir.block({vi(0, 128): i, vj(0, 128): j},
-                               writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                               reads=[CC[vi:(vi + 1), vj:(vj + 1)]]):
-                    C[vi, vj] = CC[vi, vj]
+        for i, j in tir.grid(128, 128):
+            with tir.block({vi(0, 128): i, vj(0, 128): j}, writes=C[vi, vj], reads=CC[vi, vj]):
+                C[vi, vj] = CC[vi, vj]
 
 
 def test_cache_write():

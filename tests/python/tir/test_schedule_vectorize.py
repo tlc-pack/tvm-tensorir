@@ -28,14 +28,12 @@ def predicate_vectorize(b: ty.handle, c: ty.handle) -> None:
     C = tir.buffer_bind(c, (16, 16), "float32")
     B = tir.buffer_bind(b, (16, 16), "float32")
     with tir.block({}, writes=[], reads=[], name="root"):
-        for i in tir.grid(0, 16, annotation={}):
-            for jo in tir.grid(0, 4, annotation={}):
-                for ji in tir.grid(0, 4, annotation={"loop_type": "vectorize"}):
-                    with tir.block({vi(0, 16): i, vj(0, 16): ((jo * 4) + ji)},
-                                   writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                                   reads=[B[vi:(vi + 1), vj:(vj + 1)]],
-                                   predicate=(((jo * 4) + ji) < 16), name="update"):
-                        C[vi, vj] = (B[vi, vj] + tir.float32(1))
+        for i, jo in tir.grid(16, 4):
+            for ji in range(0, 4, annotation={"loop_type": "vectorize"}):
+                with tir.block({vi(0, 16): i, vj(0, 16): ((jo * 4) + ji)},
+                               writes=C[vi, vj], reads=B[vi, vj],
+                               predicate=(((jo * 4) + ji) < 16), name="update"):
+                    C[vi, vj] = (B[vi, vj] + tir.float32(1))
 
 
 @tvm.hybrid.script
@@ -43,9 +41,9 @@ def predicate_unroll(b: ty.handle, c: ty.handle) -> None:
     C = tir.buffer_bind(c, (16, 16), "float32")
     B = tir.buffer_bind(b, (16, 16), "float32")
     with tir.block({}, writes=[], reads=[], name="root"):
-        for i in tir.grid(0, 16, annotation={}):
-            for jo in tir.grid(0, 4, annotation={}):
-                for ji in tir.grid(0, 4, annotation={"loop_type": "unroll"}):
+        for i in range(0, 16, annotation={}):
+            for jo in range(0, 4, annotation={}):
+                for ji in range(0, 4, annotation={"loop_type": "unroll"}):
                     with tir.block({vi(0, 16): i, vj(0, 16): ((jo * 4) + ji)},
                                    writes=[C[vi:(vi + 1), vj:(vj + 1)]],
                                    reads=[B[vi:(vi + 1), vj:(vj + 1)]],
@@ -72,14 +70,11 @@ def element_wise_compute_at(a: ty.handle, c: ty.handle) -> None:
     A = tir.buffer_bind(a, (128, 128), "float32")
     with tir.block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
         B = tir.buffer_allocate((128, 128), "float32")
-        for i in tir.grid(0, 128, annotation={}):
-            for j in tir.grid(0, 128, annotation={}):
-                with tir.block({vi(0, 128): i, vj(0, 128): j}, writes=[B[vi:(vi + 1), vj:(vj + 1)]],
-                               reads=[A[vi:(vi + 1), vj:(vj + 1)]], name="B"):
-                    B[vi, vj] = (A[vi, vj] * tir.float32(2))
-                with tir.block({vi(0, 128): i, vj(0, 128): j}, writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                               reads=[B[vi:(vi + 1), vj:(vj + 1)]], name="C"):
-                    C[vi, vj] = (B[vi, vj] + tir.float32(1))
+        for i, j in tir.grid(128, 128):
+            with tir.block({vi(0, 128): i, vj(0, 128): j}, writes=B[vi, vj],reads=A[vi, vj], name="B"):
+                B[vi, vj] = (A[vi, vj] * tir.float32(2))
+            with tir.block({vi(0, 128): i, vj(0, 128): j}, writes=C[vi, vj],reads=B[vi, vj], name="C"):
+                C[vi, vj] = (B[vi, vj] + tir.float32(1))
 
 
 @tvm.hybrid.script
@@ -88,16 +83,12 @@ def element_wise_compute_at_vectorize(a: ty.handle, c: ty.handle) -> None:
     C = tir.buffer_bind(c, (128, 128), "float32")
     with tir.block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
         B = tir.buffer_allocate((128, 128), "float32")
-        for i in tir.grid(0, 128, annotation={}):
-            for j_outer in tir.grid(0, 32, annotation={}):
-                for j_inner in tir.grid(0, 4, annotation={"loop_type": "vectorize"}):
-                    with tir.block({vi(0, 128): i, vj(0, 128): ((j_outer * 4) + j_inner)},
-                                   writes=[B[vi:(vi + 1), vj:(vj + 1)]],
-                                   reads=[A[vi:(vi + 1), vj:(vj + 1)]], name="B"):
+        for i in range(0, 128, annotation={}):
+            for j_outer in range(0, 32, annotation={}):
+                for j_inner in range(0, 4, annotation={"loop_type": "vectorize"}):
+                    with tir.block({vi(0, 128): i, vj(0, 128): ((j_outer * 4) + j_inner)}, writes=B[vi, vj], reads=A[vi, vj], name="B"):
                         B[vi, vj] = (A[vi, vj] * tir.float32(2))
-                    with tir.block({vi(0, 128): i, vj(0, 128): ((j_outer * 4) + j_inner)},
-                                   writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                                   reads=[B[vi:(vi + 1), vj:(vj + 1)]], name="C"):
+                    with tir.block({vi(0, 128): i, vj(0, 128): ((j_outer * 4) + j_inner)}, writes=C[vi, vj], reads=B[vi, vj], name="C"):
                         C[vi, vj] = (B[vi, vj] + tir.float32(1))
 
 
