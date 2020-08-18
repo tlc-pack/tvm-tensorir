@@ -23,7 +23,7 @@
 #include <tvm/tir/stmt.h>
 #include <tvm/tir/stmt_functor.h>
 
-#ifndef SRC_AUTO_SCHEDULER_AUTO_SCHEDULER_UTILS_H_ /* TODO(@junrushao1994): name convention */
+#ifndef SRC_AUTO_SCHEDULER_AUTO_SCHEDULER_UTILS_H_
 #define SRC_AUTO_SCHEDULER_AUTO_SCHEDULER_UTILS_H_
 
 namespace tvm {
