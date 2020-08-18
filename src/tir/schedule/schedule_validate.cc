@@ -433,6 +433,7 @@ bool ScheduleNode::ValidateRegionCover(const StmtSRef& consumer_block_sref) cons
   return true;
 }
 
+#if (false)
 class SRefValidator : public StmtVisitor {
  public:
   explicit SRefValidator(const ScheduleNode* sch) : sch_(sch) {}
@@ -459,13 +460,14 @@ class SRefValidator : public StmtVisitor {
     parent_ = sref.get();
   }
 };
+#endif
 
 // TODO(@spectrometerHBH): The bugfix to validator triggers the following issues in unittests:
 // [FAILED] tests/python/tir/test_schedule_replace.py::test_replace_copy
 // [FAILED] tests/python/tir/test_schedule_replace.py::test_replace_partial_copy0
 // [FAILED] tests/python/tir/test_schedule_replace.py::test_replace_partial_copy1
 // [FAILED] tests/python/tir/test_schedule_replace.py::test_replace_root_copy1
-#if (false)
+// #if (false)
 /*! \brief A helper class to validate correctness of StmtSRef */
 class SRefValidator : public StmtVisitor {
  public:
@@ -512,7 +514,7 @@ class SRefValidator : public StmtVisitor {
   /*! \brief Parent information during the visit */
   std::vector<const StmtSRefNode*> ancestors;
 };
-#endif
+// #endif
 
 bool ScheduleNode::ValidateSRef() const {
   // TODO(@junrushao1994): idk if we need to return
