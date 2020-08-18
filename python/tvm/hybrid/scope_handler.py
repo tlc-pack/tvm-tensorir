@@ -17,24 +17,28 @@
 """Hybrid Script Parser Scope Handler Functions
 This module provides the functions registered into parser under with_scope or for_scope category.
 Scope handler nodes are StmtNodes with body, which are used to handle such scenarios.
+
 .. code-block:: python
+
     for x in tir.name():
     with tir.name():
     tir.name() # with scope handlers + concise scoping
+
+When registering a with scope handler, the first three arguments must be parser, node, body
+When registering a for scope handler, the first four arguments must be parser, node, body, loop_vars
+These parameters will handled by Hybrid Script parser automatically
 """
 # pylint: disable=redefined-builtin, unused-argument, invalid-name
+
 import tvm.tir
 from .registry import register_with_scope, register_for_scope
 
 
 # With scope handler
-
-
 @register_with_scope(concise=False)
-def block(parser, node, block_vars_info, reads, writes, body,
+def block(parser, node, body, block_vars_info, reads, writes,
           predicate=True, annotations=None, name=""):
-    """ With scope handler function block(block_vars， reads, writes,
-                                          body predicate, annotations, name)
+    """ With scope handler function block(block_vars， reads, writes, predicate, annotations, name)
 
     Example
     -------
@@ -44,7 +48,6 @@ def block(parser, node, block_vars_info, reads, writes, body,
                        reads=[], writes=C[vi : vi + 1, vj : vj + 1], name="init"):
 
     """
-
     block_vars = [info[0] for info in block_vars_info]
     values = [info[1] for info in block_vars_info]
     reads_in = [reads] if not isinstance(reads, list) else reads
@@ -77,77 +80,87 @@ def block(parser, node, block_vars_info, reads, writes, body,
     return tvm.tir.BlockRealize(values, predicate, inner)
 
 
-# With scope handler
 @register_with_scope(concise=False)
-def Assert(parser, node, condition, message, body):
-    """ With scope handler function assert(condition, message, body) """
-
+def Assert(parser, node, body, condition, message):
+    """ With scope handler function tir.Assert(condition, message) """
     return tvm.tir.AssertStmt(condition, tvm.runtime.convert(message), body)
 
 
 @register_with_scope(concise=False)
-def let(parser, node, var, value, body):
-    """ With scope handler function let(var, value, body) """
-
+def let(parser, node, body, var, value):
+    """ With scope handler function tir.let(var, value) """
     return tvm.tir.LetStmt(var, value, body)
 
 
 @register_with_scope(concise=True)
-def realize(parser, node, buffer_bounds, body, condition=True):
-    """ With scope handler function realize(buffer_bounds, condition, body) """
-
+def realize(parser, node, body, buffer_bounds, condition=True):
+    """ With scope handler function tir.realize(buffer_bounds, condition) """
     buffer, bounds = buffer_bounds.buffer, buffer_bounds.region
     return tvm.tir.BufferRealize(buffer, bounds, condition, body)
 
 
 @register_with_scope(concise=True)
-def attr(parser, node, attr_node, attr_key, value, body):
-    """ With scope handler function attr(attr_node, attr_key, value, body) """
-
+def attr(parser, node, body, attr_node, attr_key, value):
+    """ With scope handler function tir.attr(attr_node, attr_key, value) """
     attr_node = tvm.runtime.convert(attr_node)
     value = tvm.runtime.convert(value)
     return tvm.tir.AttrStmt(attr_node, attr_key, value, body)
 
 
 @register_with_scope(concise=True)
-def allocate(parser, node, buffer_var, dtype, extents, body, condition=True):
-    """ With scope handler function allocate(buffer_var, dtype, extents, condition, body) """
-
+def allocate(parser, node, body, buffer_var, dtype, extents, condition=True):
+    """ With scope handler function tir.allocate(buffer_var, dtype, extents, condition) """
     return tvm.tir.Allocate(buffer_var, dtype, extents, tvm.runtime.convert(condition), body)
 
+
 # For scope handler
-
-
-@register_for_scope(name="range")
-def range(parser, node, begin, end, for_type="serial"):
-    """ For scope handler function range(begin, end, annotation)"""
+@register_for_scope()
+def serial(parser, node, body, loop_vars, begin, end):
+    """ For scope handler function tir.serial(begin, end)"""
+    if len(loop_vars) != 1:
+        parser.report_error("Expect exact 1 loop var")
     ana = tvm.arith.Analyzer()
     extent = end if begin == 0 else ana.simplify(end - begin)
-    loop_var_name = node.target.id
-    loop_var = tvm.te.var(loop_var_name, dtype="int32")
-
-    parser.scope_emitter.new_scope()
-    parser.scope_emitter.update_symbol(loop_var_name, loop_var)
-    body = get_body(parser, node)
-    parser.scope_emitter.pop_scope()
-
-    for_type_dict = {"serial": 0, "parallel": 1, "vectorized": 2, "unroll": 3, }
-    return tvm.tir.For(loop_var, begin, extent, for_type_dict[for_type], 0, body)
+    return tvm.tir.For(loop_vars[0], begin, extent, 0, 0, body)
 
 
 @register_for_scope()
-def grid(parser, node, begin, end, annotation=None):
-    """ For scope handler function grid(begin, end, annotation)"""
+def parallel(parser, node, body, loop_vars, begin, end):
+    """ For scope handler function tir.parallel(begin, end)"""
+    if len(loop_vars) != 1:
+        parser.report_error("Expect exact 1 loop var")
     ana = tvm.arith.Analyzer()
     extent = end if begin == 0 else ana.simplify(end - begin)
-    loop_var_name = node.target.id
-    loop_var = tvm.te.var(loop_var_name, dtype="int32")
+    return tvm.tir.For(loop_vars[0], begin, extent, 1, 0, body)
 
-    parser.scope_emitter.new_scope()
-    parser.scope_emitter.update_symbol(loop_var_name, loop_var)
-    body = get_body(parser, node)
-    parser.scope_emitter.pop_scope()
 
+@register_for_scope()
+def vectorized(parser, node, body, loop_vars, begin, end):
+    """ For scope handler function tir.vectorized(begin, end)"""
+    if len(loop_vars) != 1:
+        parser.report_error("Expect exact 1 loop var")
+    ana = tvm.arith.Analyzer()
+    extent = end if begin == 0 else ana.simplify(end - begin)
+    return tvm.tir.For(loop_vars[0], begin, extent, 2, 0, body)
+
+
+@register_for_scope()
+def unroll(parser, node, body, loop_vars, begin, end):
+    """ For scope handler function tir.unroll(begin, end)"""
+    if len(loop_vars) != 1:
+        parser.report_error("Expect exact 1 loop var")
+    ana = tvm.arith.Analyzer()
+    extent = end if begin == 0 else ana.simplify(end - begin)
+    return tvm.tir.For(loop_vars[0], begin, extent, 3, 0, body)
+
+
+@register_for_scope(name="range")
+def range(parser, node, body, loop_vars, begin, end, annotation=None):
+    """ For scope handler function range(begin, end, annotation)"""
+    if len(loop_vars) != 1:
+        parser.report_error("Expect exact 1 loop var")
+    ana = tvm.arith.Analyzer()
+    extent = end if begin == 0 else ana.simplify(end - begin)
     if annotation is None:
         annotation = []
     else:
@@ -155,16 +168,14 @@ def grid(parser, node, begin, end, annotation=None):
             tvm.tir.Annotation(key, tvm.runtime.convert(val) if isinstance(val, str) else val)
             for key, val in annotation.items()
         ]
+    return tvm.tir.Loop(loop_vars[0], begin, extent, annotation, body)
 
-    return tvm.tir.Loop(loop_var, begin, extent, annotation, body)
 
-
-def get_body(parser, node):
-    parser.scope_emitter.node_stack[-1].extend(reversed(node.body))
-    body = []
-    while len(parser.scope_emitter.node_stack[-1]) > 0:
-        res = parser.visit(parser.scope_emitter.node_stack[-1].pop())
-        if res is not None:
-            body.append(res)
-    body = tvm.tir.SeqStmt(body) if len(body) > 1 else body[0]
+@register_for_scope()
+def grid(parser, node, body, loop_vars, *extents):
+    """ For scope handler function tir.grid(*extents) """
+    if len(loop_vars) != len(extents):
+        parser.report_error("Inconsitent number of loop vars and extents")
+    for loop_var, extent in zip(reversed(loop_vars), reversed(extents)):
+        body = tvm.tir.Loop(loop_var, 0, extent, [], body)
     return body

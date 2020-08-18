@@ -20,8 +20,11 @@ special_stmt functions don't correspond to an IRNode in the AST directly. It is 
 used for some information that is not suitable to be printed directly.
 special_stmt can appear as 2 formats
 .. code-block:: python
+
     target = tir.name():
     tir.name()
+
+When registering a special stmt, the first two arguments must be parser, node
 """
 # pylint: disable=unused-argument, no-self-argument, inconsistent-return-statements
 from typed_ast import ast3 as ast
@@ -39,6 +42,7 @@ def buffer_bind(parser, node, param, shape, dtype="float32", data=None, strides=
     Example
     -------
     .. code-block:: python
+
         A = tir.buffer_bind(a, (128, 128), dtype="float32")
     """
 
@@ -86,6 +90,7 @@ def buffer_decl(parser, node, shape, dtype="float32", data=None, strides=None, e
     Example
     -------
     .. code-block:: python
+
         A = tir.buffer_decl((128, 128), dtype="float32")
     """
 
