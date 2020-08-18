@@ -20,6 +20,16 @@ import tvm._ffi
 from tvm.runtime import Object
 
 
+@tvm._ffi.register_object("auto_scheduler.MetaIR")
+class MetaIR(Object):
+    """Base node for the loop tree generated from TIR"""
+
+
+@tvm._ffi.register_object("auto_scheduler.LeafStmt")
+class LeafStmt(MetaIR):
+    """LeafStmt in the meta IR"""
+
+
 @tvm._ffi.register_object("auto_scheduler.LoopTree")
 class LoopTree(Object):
     """LoopTree created from TIR"""
