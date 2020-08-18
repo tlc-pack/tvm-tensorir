@@ -18,3 +18,4 @@
 from . import loop_tree
 from .loop_tree import LoopTree
 from . import access_analysis
+from . import instruction
