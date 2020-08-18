@@ -31,7 +31,7 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                name="root"):
         for i, j, k in tir.grid(128, 128, 128):
             with tir.block({vi(0, 128): i, vj(0, 128): j, vk(0, 128, iter_type="reduce"): k},
-                           reads=[C[vi, vj], A[vi, vk], B[vj, vk]], writes=[C[vi, vj]],
+                           reads=[C[vi, vj], A[vi, vk], B[vj, vk]], writes=C[vi, vj],
                            name="update"):
                 reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
 
@@ -81,8 +81,7 @@ def predicate(b: ty.handle, c: ty.handle) -> None:
         for i, jo, ji in tir.grid(16, 4, 4):
             with tir.block({vi(0, 16): i, vj(0, 16): jo * 4 + ji},
                            reads=B[vi, vj], writes=C[vi, vj],
-                           predicate=jo * 4 + ji < 16,
-                           name="update"):
+                           predicate=jo * 4 + ji < 16, name="update"):
                 C[vi, vj] = B[vi, vj] + 1.0
 
 

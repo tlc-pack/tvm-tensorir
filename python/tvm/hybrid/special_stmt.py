@@ -42,6 +42,7 @@ def buffer_bind(parser, node, param, shape, dtype="float32", data=None, strides=
     Example
     -------
     .. code-block:: python
+
         A = tir.buffer_bind(a, (128, 128), dtype="float32")
     """
 
@@ -89,6 +90,7 @@ def buffer_decl(parser, node, shape, dtype="float32", data=None, strides=None, e
     Example
     -------
     .. code-block:: python
+
         A = tir.buffer_decl((128, 128), dtype="float32")
     """
 

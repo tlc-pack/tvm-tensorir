@@ -30,13 +30,11 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
     with tir.block({}, writes=[C[0:1024, 0:1024]], reads=[A[0:1024, 0:1024], B[0:1024, 0:1024]],
                name="root"):
-        for i in tir.grid(0, 1024):
-            for j in tir.grid(0, 1024):
-                for k in tir.grid(0, 1024):
-                    with tir.block({vi(0, 1024): i, vj(0, 1024): j, vk(0, 1024, iter_type="reduce"): k},
-                                   writes=C[vi, vj], reads=[C[vi, vj], A[vi, vk], B[vj, vk]],
-                                   name="C"):
-                        reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
+        for i, j, k in tir.grid(1024, 1024, 1024):
+            with tir.block({vi(0, 1024): i, vj(0, 1024): j, vk(0, 1024, iter_type="reduce"): k},
+                           writes=C[vi, vj], reads=[C[vi, vj], A[vi, vk], B[vj, vk]],
+                           name="C"):
+                reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
 
 ################################################################################################
@@ -167,21 +165,17 @@ def matmul_packed(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     with tir.block({}, reads=[A[0: 1024, 0: 1024], B[0: 1024, 0: 1024]], writes=C[0: 1024, 0: 1024],
                    name="root"):
         packedB = tir.buffer_allocate((1024 // 32, 1024, 32))
-        for i in tir.grid(0, 1024 // 32):
-            for j in tir.grid(0, 1024):
-                for k in tir.grid(0, 32):
-                    with tir.block({vi(0, 1024 // 32): i, vj(0, 1024): j, vk(0, 32): k},
-                                   reads=B[vj, vi * 32 + vk], writes=packedB[vi, vj, vk],
-                                   name="packed"):
-                        packedB[vi, vj, vk] = B[vj, vi * 32 + vk]
+        for i, j, k in tir.grid(1024 // 32, 1024, 32):
+            with tir.block({vi(0, 1024 // 32): i, vj(0, 1024): j, vk(0, 32): k},
+                           reads=B[vj, vi * 32 + vk], writes=packedB[vi, vj, vk],
+                           name="packed"):
+                packedB[vi, vj, vk] = B[vj, vi * 32 + vk]
 
-        for i in tir.grid(0, 1024):
-            for j in tir.grid(0, 1024):
-                for k in tir.grid(0, 1024):
-                    with tir.block({vi(0, 1024): i, vj(0, 1024): j, vk(0, 1024, iter_type="reduce"): k},
-                                   reads=[C[vi, vj], A[vi, vk], packedB[vj // 32, vk, vj % 32]],
-                                   writes=[C[vi, vj]], name="C"):
-                        reducer.step(C[vi, vj], A[vi, vk] * packedB[vj // 32, vk, vj % 32])
+        for i, j, k in tir.grid(1024, 1024, 1024):
+            with tir.block({vi(0, 1024): i, vj(0, 1024): j, vk(0, 1024, iter_type="reduce"): k},
+                           reads=[C[vi, vj], A[vi, vk], packedB[vj // 32, vk, vj % 32]],
+                           writes=[C[vi, vj]], name="C"):
+                reducer.step(C[vi, vj], A[vi, vk] * packedB[vj // 32, vk, vj % 32])
 
 
 mod = tvm.hybrid.create_module({"matmul_packed": matmul_packed})
