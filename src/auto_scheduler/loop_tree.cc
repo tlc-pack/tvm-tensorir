@@ -17,7 +17,7 @@
  * under the License.
  */
 
-#include "./loop_tree.h"
+#include "./loop_tree.h"  // NOLINT(build/include)
 
 #include "./auto_scheduler_utils.h"
 
@@ -25,13 +25,13 @@ namespace tvm {
 namespace auto_scheduler {
 
 TVM_REGISTER_NODE_TYPE(IteratorNode);
+TVM_REGISTER_NODE_TYPE(MetaIRNode);
 TVM_REGISTER_NODE_TYPE(LoopTreeNode);
+TVM_REGISTER_NODE_TYPE(LeafStmtNode);
 
-Iterator::Iterator(String name, PrimExpr min, PrimExpr extent, IterKind kind,
-                   IterAnnotation annotation) {
+Iterator::Iterator(String name, PrimExpr extent, IterKind kind, IterAnnotation annotation) {
   ObjectPtr<IteratorNode> n = make_object<IteratorNode>();
   n->name = std::move(name);
-  n->min = std::move(min);
   n->extent = std::move(extent);
   n->kind = std::move(kind);
   n->annotation = std::move(annotation);
@@ -39,16 +39,34 @@ Iterator::Iterator(String name, PrimExpr min, PrimExpr extent, IterKind kind,
 }
 
 LoopTree::LoopTree(Array<Iterator> iters, Optional<tir::BlockRealize> block_realize,
-                   Array<ObjectRef> children) {
+                   Array<MetaIR> children) {
   ObjectPtr<LoopTreeNode> n = make_object<LoopTreeNode>();
+  n->parent = nullptr;
+  n->left_sibling = nullptr;
+  n->right_sibling = nullptr;
   n->iters = std::move(iters);
   n->block_realize = std::move(block_realize);
   n->children = std::move(children);
+  const MetaIRNode* left_sibling = nullptr;
+  for (const MetaIR& child : n->children) {
+    CHECK(child->parent == nullptr);
+    CHECK(child->left_sibling == nullptr);
+    CHECK(child->right_sibling == nullptr);
+    child->parent = n.get();
+    if (left_sibling != nullptr) {
+      child->left_sibling = left_sibling;
+      left_sibling->right_sibling = child.get();
+    }
+    left_sibling = child.get();
+  }
   data_ = std::move(n);
 }
 
 LeafStmt::LeafStmt(const tir::Stmt& stmt) {
   ObjectPtr<LeafStmtNode> n = make_object<LeafStmtNode>();
+  n->parent = nullptr;
+  n->left_sibling = nullptr;
+  n->right_sibling = nullptr;
   if (const auto* reduce_step = stmt.as<tir::ReduceStepNode>()) {
     const auto* buffer_update = reduce_step->lhs.as<tir::BufferLoadNode>();
     CHECK(buffer_update != nullptr)
@@ -161,12 +179,15 @@ LoopTree LoopTreeFromTIR(const tir::StmtNode* root, const tir::Schedule& sch) {
          "Loop nor BlockRealize";
   // Step 1. Collect all loops
   std::vector<Iterator> iters;
+  arith::Analyzer analyzer;
   while (root->IsInstance<tir::LoopNode>()) {
     const auto* loop = static_cast<const tir::LoopNode*>(root);
+    CHECK(analyzer.CanProve(loop->min == 0))
+        << "ValueError: Auto scheduler requires normalized loop range (starting from 0), but get: "
+        << GetRef<tir::Loop>(loop);
     iters.emplace_back(
         /*name=*/loop->loop_var->name_hint,
-        /*min=*/loop->min,
-        /*extent=*/loop->extent,
+        /*extent=*/analyzer.Simplify(loop->extent),
         /*kind=*/IterKindFromTIRLoop(GetRef<tir::Loop>(loop), sch),
         /*annotation=*/IterAnnotation::kNone);
     root = loop->body.get();
@@ -182,7 +203,7 @@ LoopTree LoopTreeFromTIR(const tir::StmtNode* root, const tir::Schedule& sch) {
     root = block_realize_ptr->block->body.get();
   }
   // Step 3. Collect all children of the block
-  std::vector<ObjectRef> children;
+  std::vector<MetaIR> children;
   for (const tir::Stmt& stmt : root->IsInstance<tir::SeqStmtNode>()
                                    ? static_cast<const tir::SeqStmtNode*>(root)->seq
                                    : Array<tir::Stmt>{GetRef<tir::Stmt>(root)}) {
@@ -209,7 +230,7 @@ LoopTree LoopTree::FromPrimFunc(const tir::PrimFunc& func) {
   return LoopTreeFromTIR(realize, tir::ScheduleNode::Create(func));
 }
 
-class LoopTreeNode::Stringifier {
+class LoopTreePrinter {
  public:
   /*!
    * \brief Entry function to stringify LoopTreeNode
@@ -257,34 +278,31 @@ class LoopTreeNode::Stringifier {
   std::ostream& Cout() { return os << std::string(indent, ' '); }
   /*! \brief The current indentation */
   int indent = 0;
-  /*! \brief The ostream used to store the stringfying result temporarily */
+  /*! \brief The ostream used to store the printed result temporarily */
   std::ostringstream os;
 };
 
-String LoopTreeNode::ToString() const { return LoopTreeNode::Stringifier().Run(this); }
+String LoopTreeNode::ToString() const { return LoopTreePrinter().Run(this); }
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-    .set_dispatch<LoopTreeNode>([](const ObjectRef& ref, ReprPrinter* p) {
-      const auto* node = ref.as<LoopTreeNode>();
+    .set_dispatch<LoopTreeNode>([](const ObjectRef& obj, ReprPrinter* p) {
+      const auto* node = obj.as<LoopTreeNode>();
       CHECK(node);
       p->stream << node->ToString();
     });
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-    .set_dispatch<IteratorNode>([](const ObjectRef& ref, ReprPrinter* p) {
-      const auto* node = ref.as<IteratorNode>();
+    .set_dispatch<IteratorNode>([](const ObjectRef& obj, ReprPrinter* p) {
+      const auto* node = obj.as<IteratorNode>();
       CHECK(node);
-      arith::Analyzer analyzer;
-      PrimExpr left_inclusive = analyzer.Simplify(node->min);
-      PrimExpr right_exclusive = analyzer.Simplify(node->min + node->extent);
       p->stream  // Print name
           << node->name
           << ' '
           // Print kind
           << IterKind2String(node->kind)
           // Print loop domain
-          << '[' << left_inclusive << ", " << right_exclusive
-          << ')'
+          << "(" << node->extent
+          << ")"
           // Print loop annotation
           << (node->annotation == IterAnnotation::kNone
                   ? ""
@@ -292,8 +310,8 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     });
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-    .set_dispatch<LeafStmtNode>([](const ObjectRef& ref, ReprPrinter* p) {
-      const auto* leaf = ref.as<LeafStmtNode>();
+    .set_dispatch<LeafStmtNode>([](const ObjectRef& obj, ReprPrinter* p) {
+      const auto* leaf = obj.as<LeafStmtNode>();
       CHECK(leaf);
       p->stream << LeafStmtKind2String(leaf->kind) << '(' << leaf->write->buffer->name << ") from ";
       std::vector<std::string> read_names;

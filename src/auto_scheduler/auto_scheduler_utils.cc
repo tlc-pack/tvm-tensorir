@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "./auto_scheduler_utils.h"
+#include "./auto_scheduler_utils.h"  // NOLINT(build/include)
 
 namespace tvm {
 namespace auto_scheduler {
