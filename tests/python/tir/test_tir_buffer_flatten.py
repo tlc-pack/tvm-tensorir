@@ -14,10 +14,11 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
-import tvm.tir
 import util
+import tvm
 from tvm.hybrid import ty
+from tvm import tir
+
 
 def test_no_allocate():
     mod = tvm.hybrid.create_module({"func": util.matmul_stmt_original()})
@@ -73,17 +74,13 @@ def compute_at_element_wise(a: ty.handle, c: ty.handle) -> None:
     with tir.block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
         B = tir.buffer_allocate((128, 128), "float32", name="B")
 
-        for i in tir.grid(0, 128):
-            for j in tir.grid(0, 128):
-                with tir.block({vi(0, 128): i, vj(0, 128): j}, A[vi: vi + 1, vj: vj + 1],
-                           B[vi: vi + 1, vj: vj + 1],
-                           name="B"):
+        for i in range(0, 128):
+            for j in range(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j}, A[vi, vj], B[vi, vj], name="B"):
                     B[vi, vj] = A[vi, vj] * 2.0
 
-            for j in tir.grid(0, 128):
-                with tir.block({vi(0, 128): i, vj(0, 128): j}, B[vi: vi + 1, vj: vj + 1],
-                           C[vi: vi + 1, vj: vj + 1],
-                           name="C"):
+            for j in range(0, 128):
+                with tir.block({vi(0, 128): i, vj(0, 128): j}, B[vi, vj], C[vi, vj], name="C"):
                     C[vi, vj] = B[vi, vj] + 1.0
 
 
