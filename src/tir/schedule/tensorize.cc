@@ -172,7 +172,7 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
 };
 
 void BufferRemap(const TensorIntrin& intrinsic,
-                 std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual>* buffer_map) {
+                 std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual>* buffer_map) {
   CHECK_EQ(intrinsic->description->params.size(), intrinsic->implementation->params.size());
   for (size_t i = 0; i < intrinsic->description->params.size(); ++i) {
     const auto& lhs_var = intrinsic->description->params[i];
@@ -187,7 +187,7 @@ void BufferRemap(const TensorIntrin& intrinsic,
 class BufferReplacer : public StmtExprMutator {
  public:
   explicit BufferReplacer(
-      const std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual>& buffer_map,
+      const std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual>& buffer_map,
       const std::unordered_map<const VarNode*, const PrimExprNode*>& var_map)
       : buffer_map_(buffer_map), var_map_(var_map) {}
 
@@ -245,7 +245,7 @@ class BufferReplacer : public StmtExprMutator {
   }
 
  private:
-  const std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual>& buffer_map_;
+  const std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual>& buffer_map_;
   const std::unordered_map<const VarNode*, const PrimExprNode*>& var_map_;
 
   Array<TensorRegion> UpdateBufferViaMap(const Array<TensorRegion>& tensor_regions) {
@@ -276,25 +276,25 @@ void ScheduleNode::tensorize(const StmtSRef& sref, const TensorIntrin& intrinsic
    *   - Replace the sub tree with the mutated function.
    */
   // TODO(Siyuan): fix range
-  const auto* n = sref->GetStmt<LoopNode>();
-  CHECK(n) << "Only support tensorize a loop for now";
+  const auto* loop = sref->GetStmt<LoopNode>();
+  CHECK(loop) << "Only support tensorize a loop for now";
 
-  const auto& block_sref = blockize(sref);
-  const auto& block_realize = GetBlockRealize(block_sref);
-  const auto& block = block_realize->block;
+  const StmtSRef& block_sref = blockize(sref);
+  const BlockRealize& block_realize = GetBlockRealize(block_sref);
+  const Block& block = block_realize->block;
   const auto* intrin_block_realize = intrinsic->implementation->body.as<BlockRealizeNode>();
-  const auto& intrin_block = intrin_block_realize->block;
+  const Block& intrin_block = intrin_block_realize->block;
   TensorizeComparator comparator;
 
   bool equal = comparator(block_realize, intrinsic->description->body);
   CHECK(equal) << "The AST subtree does not match intrinsic description";
 
   // Map from intrinsic func buffer to description func buffer
-  std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual> intrin_buffer_map;
+  std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> intrin_buffer_map;
   BufferRemap(intrinsic, &intrin_buffer_map);
 
   // Map form intrinsic func buffer to current AST buffer
-  std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual> buffer_map;
+  std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> buffer_map;
   for (const auto& pair : intrin_buffer_map) {
     auto it = comparator.rhs_buffer_map_.find(pair.second);
     CHECK(it != comparator.rhs_buffer_map_.end());

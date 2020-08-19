@@ -26,11 +26,15 @@
 namespace tvm {
 namespace tir {
 
-class CheckOneLine : public StmtVisitor {
- public:
-  void VisitStmt_(const SeqStmtNode* op) final { legal = false; }
+bool CheckOneLine(const Stmt& s) {
   bool legal = true;
-};
+  PostOrderVisit(s, [&legal](const ObjectRef& obj) {
+    if (obj->IsInstance<SeqStmtNode>()) {
+      legal = false;
+    }
+  });
+  return legal;
+}
 
 StmtSRef ScheduleNode::blockize(const StmtSRef& sref) {
   /*!
@@ -42,23 +46,23 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& sref) {
    *   - Update block binding
    */
   const auto* l = sref->GetStmt<LoopNode>();
-  CHECK(l) << "Only support blockize a loop for now";
-  CheckOneLine checker;
-  checker(GetRef<Stmt>(sref->stmt));
-  CHECK(checker.legal) << "Only one line subtree can be blockize";
+  CHECK(l) << "TypeError: Only support blockize a loop for now, but get type: "
+           << sref->stmt->GetTypeKey();
+  CHECK(CheckOneLine(GetRef<Stmt>(sref->stmt)))
+      << "InternalError: Only one line subtree can be blockize";
 
   Array<StmtSRef> child_blocks = GetChildBlocks(sref);
   CHECK_EQ(child_blocks.size(), 1);
-  const auto& block_sref = *(child_blocks.begin());
-  const auto& block_realize = GetBlockRealize(block_sref);
-  const auto& inner_block = block_realize->block;
+  const StmtSRef& block_sref = child_blocks[0];
+  const BlockRealize& block_realize = GetBlockRealize(block_sref);
+  const Block& inner_block = block_realize->block;
 
   std::vector<const LoopNode*> loops;
   std::unordered_map<const VarNode*, arith::IntSet> vmap;
-  auto now = block_sref;
-  while (now != sref) {
-    now = GetRef<StmtSRef>(now->parent);
-    const auto* loop = now->GetStmt<LoopNode>();
+  StmtSRef current_sref = block_sref;
+  while (current_sref != sref) {
+    current_sref = GetRef<StmtSRef>(current_sref->parent);
+    const auto* loop = current_sref->GetStmt<LoopNode>();
     CHECK(loop);
     loops.push_back(loop);
     vmap[loop->loop_var.get()] = arith::IntSet::FromRange(Range(loop->min, loop->extent));
