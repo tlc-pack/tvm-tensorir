@@ -102,7 +102,8 @@ def test_gemm():
     s[CC].unroll(kt)
     s[AL].compute_at(s[CC], kt)
     s[BL].compute_at(s[CC], kt)
-    # Schedule for A's shared memory load
+    # print(lowe)
+    # Schedule for A' s shared memory load
     ty, xi = s[AA].split(s[AA].op.axis[0], nparts=num_thread)
     _, xi = s[AA].split(s[AA].op.axis[1], factor=num_thread * 4)
     tx, xi = s[AA].split(xi, nparts=num_thread)

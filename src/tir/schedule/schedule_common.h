@@ -33,6 +33,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <set>
 
 namespace tvm {
 namespace tir {
@@ -124,10 +125,10 @@ std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root);
 /*!
  * \brief Whether the expr contains var
  * \param expr the expected expr
- * \param var the expected var
- * \return Whether var appears in expr
+ * \param vars the expected expr with vars
+ * \return Whether any var appears in expr
  */
-bool ExprContainsVar(const PrimExpr& expr, const Var& var);
+bool ExprContainsVar(const PrimExpr& expr, const PrimExpr& vars);
 
 /*!
  * \brief Update the scope (dependency) information of a given block statement
@@ -219,6 +220,29 @@ class PatternMatcher : public ExprVisitor {
   bool match_success_{true};
   PrimExpr pattern_, expr_to_match_;
   std::unordered_map<const VarNode*, PrimExpr> filled_map_;
+};
+
+/*!
+ * \brief Match block var expr and simplify it to the block var
+ * \example
+ *   block var v0 = i * 4 + j
+ *
+ *   expr before simplify
+ *      k * 16 + i * 4 + j
+ *   expr after simplify
+ *      k * 16 + v0
+ */
+
+class MatchingSimplifier : public ExprMutator {
+ public:
+  MatchingSimplifier(const std::unordered_map<Var, PrimExpr, ObjectHash, ObjectEqual>& var_map,
+                     arith::Analyzer* parent);
+
+  PrimExpr VisitExpr(const PrimExpr& expr) override;
+
+ private:
+  const std::unordered_map<Var, PrimExpr, ObjectHash, ObjectEqual>& var_map_;
+  arith::Analyzer* analyzer_;
 };
 
 /*! \brief namespace for default reducer patterns */

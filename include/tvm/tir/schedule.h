@@ -201,6 +201,20 @@ class ScheduleNode : public Object {
   StmtSRef cache_write(const Buffer& buffer, const std::string& storage_scope);
 
   /*!
+   * \brief make subtree rooted by sref into a block
+   * \param sref the subtree root
+   * \return the sref of new block
+   */
+  StmtSRef blockize(const StmtSRef& sref);
+
+  /*!
+   * \brief Tensorize the computation enclosed by loop with tensor_intrin
+   * \param sref the loop/block to be tensorized
+   * \param intrinsic the tensor intrinsic
+   */
+  void tensorize(const StmtSRef& sref, const TensorIntrin& intrinsic);
+
+  /*!
    * \brief Register a reducer pattern
    * \param comm_reducer the reducer pattern to be registered
    */
