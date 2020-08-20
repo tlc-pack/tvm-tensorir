@@ -160,13 +160,21 @@ class Scope : public ObjectRef {
   bool CanMergeReduction(const StmtSRef& init_sref, const StmtSRef& update_sref) const;
   /*!
    * \brief Declare a new child block, update the `buffer_writes`, `buffer_readers` and the
-   * dependency graph
+   *        dependency graph
    * \param child_sref The child block to be added
    * \param buffer_readers Maps a buffer to a list of blocks that reads it
    */
   void AddChildBlock(
       const StmtSRef& child_sref,
       std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual>* buffer_readers);
+
+  /*!
+   * \brief Declare a new child block, update the `buffer_writes`, `buffer_readers` and the
+   *        dependency graph
+   * \param child_sref The child block to be added
+   * \param buffer_readers Maps a buffer to a list of blocks that reads it
+   */
+  void ReplaceChildBlock(const StmtSRef& old_sref, const StmtSRef& new_sref);
 
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Scope, ObjectRef, ScopeNode);
 

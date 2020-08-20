@@ -115,6 +115,27 @@ class RemapVarSEqualHandler : public SEqualReducer::Handler {
     return RunTasks();
   }
 
+  bool EqualWithMap(
+      const ObjectRef& lhs, const ObjectRef& rhs,
+      const std::unordered_map<ObjectRef, ObjectRef, ObjectPtrHash, ObjectPtrEqual>& equal_map) {
+    if (!lhs.defined() && !rhs.defined()) return true;
+    task_stack_.clear();
+    pending_tasks_.clear();
+    equal_map_lhs_.clear();
+    equal_map_rhs_.clear();
+    for (const auto& pair : equal_map) {
+      equal_map_lhs_[pair.first] = pair.second;
+      equal_map_rhs_[pair.second] = pair.first;
+    }
+    if (!SEqualReduce(lhs, rhs, false)) return false;
+    if (pending_tasks_.size() == 0) return true;
+    CHECK_EQ(pending_tasks_.size(), 1U);
+    CHECK(allow_push_to_stack_);
+    task_stack_.emplace_back(std::move(pending_tasks_.back()));
+    pending_tasks_.clear();
+    return RunTasks();
+  }
+
  protected:
   // Check the result.
   bool CheckResult(bool result, const ObjectRef& lhs, const ObjectRef& rhs) {
@@ -229,6 +250,12 @@ TVM_REGISTER_GLOBAL("node.StructuralEqual")
 
 bool StructuralEqual::operator()(const ObjectRef& lhs, const ObjectRef& rhs) const {
   return RemapVarSEqualHandler(false).Equal(lhs, rhs, false);
+}
+
+bool StructuralEqual::EqualWithMap(const ObjectRef& lhs, const ObjectRef& rhs,
+                                   const std::unordered_map<ObjectRef, ObjectRef, ObjectPtrHash,
+                                                            ObjectPtrEqual>& equal_map) const {
+  return RemapVarSEqualHandler(true).EqualWithMap(lhs, rhs, equal_map);
 }
 
 }  // namespace tvm
