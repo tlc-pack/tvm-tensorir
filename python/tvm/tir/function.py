@@ -79,3 +79,19 @@ class PrimFunc(BaseFunc):
             The created new function.
         """
         return PrimFunc(self.params, new_body, self.ret_type, self.buffer_map, self.attrs)
+
+
+@tvm._ffi.register_object("tir.TensorIntrin")
+class TensorIntrin(Object):
+    """A function declaration expression.
+
+    Parameters
+    ----------
+    desc_func: PrimFunc
+        The function to describe the computation
+
+    intrin_func: PrimFunc
+        The function for execution
+    """
+    def __init__(self, desc_func, intrin_func):
+        self.__init_handle_by_constructor__(_ffi_api.TensorIntrin, desc_func, intrin_func)

@@ -17,7 +17,12 @@
  * under the License.
  */
 
-#include "./schedule_common.h"
+#include "schedule_common.h"
+
+#include <tvm/arith/analyzer.h>
+#include <tvm/tir/analysis.h>
+#include <tvm/tir/schedule.h>
+#include <tvm/tir/stmt_functor.h>
 
 #include <unordered_map>
 #include <utility>
@@ -118,21 +123,23 @@ PrimExpr SubstituteInScope(const PrimExpr& expr,
   return IRSubstitueInScope(vmap)(expr);
 }
 
-TensorRegion SubstituteTensorRegion(
-    const TensorRegion& tensor_region,
-    const std::unordered_map<const VarNode*, const VarNode*>& var_map) {
+TensorRegion SubstituteTensorRegion(const TensorRegion& tensor_region,
+                                    const std::unordered_map<const VarNode*,
+                                                             const VarNode*>& var_map) {
   auto new_tensor_region = make_object<TensorRegionNode>(*tensor_region.operator->());
   new_tensor_region->region = Array<Range>(make_object<ArrayNode>());
   for (const auto& range : tensor_region->region) {
-    new_tensor_region->region.push_back(Range::FromMinExtent(
-        SubstituteInScope(range->min, var_map), SubstituteInScope(range->extent, var_map)));
+    new_tensor_region->region.push_back(
+        Range::FromMinExtent(SubstituteInScope(range->min, var_map),
+                             SubstituteInScope(range->extent, var_map)));
   }
   return TensorRegion(new_tensor_region);
 }
 
 // Only Block and Loop are allowed here.
 template <typename T>
-Stmt GetStmtFromSeq(const T* op, const Stmt& target,
+Stmt GetStmtFromSeq(const T* op,
+                    const Stmt& target,
                     const std::function<bool(const Stmt&, const Stmt&)>& f_equal,
                     int64_t seq_index) {
   if (const auto* seq = op->body.template as<SeqStmtNode>()) {
@@ -183,10 +190,20 @@ BlockRealize GetBlockRealize(const StmtSRef& block_sref) {
 StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef& root) {
   // alg: count the visit times for each node from the bottom to the root
   CHECK_GE(nodes.size(), 2);
-  std::unordered_map<StmtSRef, size_t, ObjectPtrHash, ObjectPtrEqual> visit_cnt;
+  std::unordered_map<StmtSRef, size_t, ObjectHash, ObjectEqual> visit_cnt;
+
+  auto f_visit = [&visit_cnt](const StmtSRef& node) {
+    auto it = visit_cnt.find(node);
+    if (it == visit_cnt.end()) {
+      visit_cnt[node] = 1;
+    } else {
+      it->second++;
+    }
+  };
+
   for (auto node : nodes) {
     while (!node.same_as(root)) {
-      ++visit_cnt[node];
+      f_visit(node);
       if (visit_cnt[node] == nodes.size()) {
         return node;
       }
@@ -197,8 +214,8 @@ StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef
   return root;
 }
 
-std::function<TensorRegion(const TensorRegion)> RelaxGenerator(
-    const StmtSRef& block_sref, const StmtSRef& root,
+std::function<TensorRegion(const TensorRegion)> RelaxGenerator(const StmtSRef& block_sref,
+    const StmtSRef& root,
     std::unordered_map<const VarNode*, PrimExpr>* vmap,
     std::unordered_map<const VarNode*, arith::IntSet>* dom_map) {
   const auto* block = block_sref->GetStmt<BlockNode>();
@@ -222,20 +239,24 @@ std::function<TensorRegion(const TensorRegion)> RelaxGenerator(
   }
 
   return [vmap, dom_map](const TensorRegion& tensor_region) {
+    arith::Analyzer analyzer;
     auto n = make_object<TensorRegionNode>();
     Array<Range> region;
     n->buffer = tensor_region->buffer;
     for (auto range : tensor_region->region) {
-      range = Range::FromMinExtent(Substitute(range->min, *vmap), Substitute(range->extent, *vmap));
+      range = Range::FromMinExtent(Substitute(range->min, *vmap),
+                                        Substitute(range->extent, *vmap));
       auto int_set = arith::EvalSet(range, *dom_map);
-      region.push_back(Range::FromMinExtent(int_set.min(), int_set.max() - int_set.min() + 1));
+      region.push_back(Range::FromMinExtent(analyzer.Simplify(int_set.min()),
+                                            analyzer.Simplify(int_set.max() - int_set.min() + 1)));
     }
     n->region = std::move(region);
     return TensorRegion(n);
   };
 }
 
-void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root, std::vector<TensorRegion>* reads,
+void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
+                 std::vector<TensorRegion>* reads,
                  std::vector<TensorRegion>* writes) {
   std::unordered_map<const VarNode*, PrimExpr> vmap;
   std::unordered_map<const VarNode*, arith::IntSet> dom_map;
@@ -253,7 +274,8 @@ void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root, std::vector<T
   }
 }
 
-TensorRegion RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
+TensorRegion RelaxRegion(const StmtSRef& block_sref,
+                         const StmtSRef& root,
                          const TensorRegion& region) {
   std::unordered_map<const VarNode*, PrimExpr> vmap;
   std::unordered_map<const VarNode*, arith::IntSet> dom_map;
@@ -341,15 +363,78 @@ void UpdateScope(const StmtNode* stmt,
   (*scopes)[stmt2ref.at(stmt)] = std::move(visitor.scope);
 }
 
-bool ExprContainsVar(const PrimExpr& expr, const Var& var) {
-  bool result = false;
-  const auto* expected = var.get();
-  PostOrderVisit(expr, [&result, expected](const ObjectRef& obj) {
-    if (obj.as<VarNode>() == expected) {
-      result = true;
+// Return whether `expr` contains any variable used in `vars`
+// Return true if `vars` contains no variable
+bool ExprContainsVar(const PrimExpr& expr, const PrimExpr& vars) {
+  std::set<const VarNode*> var_set;
+
+  // gather vars
+  PostOrderVisit(vars, [&var_set](const ObjectRef &node) {
+    if (const VarNode *op = node.as<VarNode>())
+      var_set.insert(op);
+  });
+
+  if (var_set.empty()) {
+    return true;
+  }
+
+  // check
+  bool ret = false;
+  PostOrderVisit(expr, [&var_set, &ret](const ObjectRef &node) {
+    if (const VarNode *op = node.as<VarNode>()) {
+      if (var_set.count(op) != 0) {
+        ret = true;
+      }
     }
   });
-  return result;
+
+  return ret;
+}
+
+MatchingSimplifier::MatchingSimplifier(
+    const std::unordered_map<Var, PrimExpr, ObjectHash, ObjectEqual>& var_map,
+    arith::Analyzer* parent)
+    : var_map_(var_map), analyzer_(parent) {}
+
+PrimExpr MatchingSimplifier::VisitExpr(const PrimExpr& expr) {
+  if (is_const_int(expr)) {
+    return expr;
+  }
+
+  for (const auto& x : var_map_) {
+    if (x.first.dtype() == expr.dtype()) {
+      PrimExpr diff = analyzer_->Simplify(expr - x.second);
+
+      // direct replace
+      if (is_const_int(diff)) {
+        return x.first + diff;
+      }
+
+      PrimExpr quet;
+      PrimExpr inv_quet;
+      if (!is_zero(x.second)) {
+        quet = analyzer_->Simplify(expr / x.second);
+      }
+      if (!is_zero(expr)) {
+        inv_quet = analyzer_->Simplify(x.second / expr);
+      }
+
+      // multiplier
+      if (quet.defined() && is_const_int(quet)) {
+        return x.first * quet;
+      }
+
+      if (inv_quet.defined() && is_const_int(inv_quet) && !is_zero(inv_quet)) {
+        return x.first / inv_quet;
+      }
+
+      // sub
+      if (!ExprContainsVar(diff, x.second)) {
+        return VisitExpr(x.first + diff);
+      }
+    }
+  }
+  return ExprMutator::VisitExpr(expr);
 }
 
 void PatternMatcher::VisitExpr_(const VarNode* op) {
@@ -363,7 +448,7 @@ void PatternMatcher::VisitExpr_(const VarNode* op) {
   }
 }
 
-void PatternMatcher::VisitExpr_(const LoadNode* op) {
+void PatternMatcher::VisitExpr_(const LoadNode *op) {
   const auto* ptr = expr_to_match_.as<LoadNode>();
   if (ptr == nullptr) {
     match_success_ = false;
@@ -381,7 +466,7 @@ void PatternMatcher::VisitExpr_(const LoadNode* op) {
   }
 }
 
-void PatternMatcher::VisitExpr_(const LetNode* op) {
+void PatternMatcher::VisitExpr_(const LetNode *op) {
   const auto* ptr = expr_to_match_.as<LetNode>();
   if (ptr == nullptr) {
     match_success_ = false;
