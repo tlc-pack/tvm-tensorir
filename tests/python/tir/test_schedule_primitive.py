@@ -358,6 +358,51 @@ def test_cache_write():
     assert s.validate_sref()
 
 
+@tvm.tir.hybrid.script
+def blockize(a, c):
+    C = buffer_bind(c, (128, 128), "float32")
+    A = buffer_bind(a, (128, 128), "float32")
+    with block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
+        B = buffer_allocate((128, 128), "float32", "")
+        for i in range(0, 8):
+            for j in range(0, 8):
+                with block({vi(0, 128): i*16, vj(0, 128): j*16},
+                           writes=[B[vi:(vi + 16), vj:(vj + 16)]],
+                           reads=[A[vi:(vi + 16), vj:(vj + 16)]], name="blockized_B"):
+                    for ii in range(0, 16):
+                        for jj in range(0, 16):
+                            with block({vi(0, 128): vi+ii, vj(0, 128): vj+jj},
+                                       writes=[B[vi:(vi + 1), vj:(vj + 1)]],
+                                       reads=[A[vi:(vi + 1), vj:(vj + 1)]], name="B"):
+                                B[vi, vj] = (A[vi, vj] * float32(2))
+        for i in range(0, 128):
+            for j in range(0, 128):
+                with block({vi(0, 128): i, vj(0, 128): j},
+                           writes=[C[vi:(vi + 1), vj:(vj + 1)]],
+                           reads=[B[vi:(vi + 1), vj:(vj + 1)]], name="C"):
+                    C[vi, vj] = (B[vi, vj] + float32(1))
+
+
+def test_blockize():
+    func = util.element_wise_stmt()
+
+    # schedule
+    s = tir.create_schedule(func)
+    B = s.get_block("B")
+    C = s.get_block("C")
+    x, y = s.get_axes(B)
+    xo, xi = s.split(x, 16)
+    yo, yi = s.split(y, 16)
+    s.reorder(xo, yo, xi, yi)
+    s.blockize(xi)
+
+    mod = tvm.tir.hybrid.create_module({"blockize": blockize})
+    blockized_func = mod["blockize"]
+
+    tvm.ir.assert_structural_equal(blockized_func, s.func)
+    assert s.validate_sref()
+
+
 if __name__ == "__main__":
     test_fuse()
     test_split_fuse()
@@ -368,3 +413,4 @@ if __name__ == "__main__":
     test_reduction()
     test_cache_read()
     test_cache_write()
+    test_blockize()

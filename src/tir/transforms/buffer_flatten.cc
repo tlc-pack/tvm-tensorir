@@ -181,7 +181,7 @@ class RegionGatherer : public StmtExprVisitor {
     for (size_t i = 0; i < block_op->iter_vars.size(); ++i) {
       const auto& iter = block_op->iter_vars[i];
       const auto& v = op->binding_values[i];
-      block_var_[iter->var.get()] = v;
+      block_var_[iter->var.get()] = Substitute(v, block_var_);
     }
     StmtExprVisitor::VisitStmt_(op);
   }
@@ -446,7 +446,6 @@ PrimFunc BufferFlatten(PrimFunc f) {
   BufferFlattener flattener(region_gatherer.block_var_, region_gatherer.buffers_region_,
                             lca_detector.buffers_lca_);
   fptr->body = flattener(fptr->body);
-
   return f;
 }
 
