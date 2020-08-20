@@ -62,7 +62,22 @@ FuncType PrimFuncNode::func_type_annotation() const {
   return FuncType(param_types, ret_type, {}, {});
 }
 
+TensorIntrin::TensorIntrin(PrimFunc desc_func, PrimFunc intrin_func) {
+  // check both functions' bodies are directly block
+  CHECK(desc_func->body.as<BlockRealizeNode>());
+  CHECK(intrin_func->body.as<BlockRealizeNode>());
+  // check the number of func var is equal
+  CHECK_EQ(desc_func->params.size(), intrin_func->params.size());
+  CHECK_EQ(desc_func->buffer_map.size(), intrin_func->buffer_map.size());
+
+  auto n = make_object<TensorIntrinNode>();
+  n->description = std::move(desc_func);
+  n->implementation = std::move(intrin_func);
+  data_ = std::move(n);
+}
+
 TVM_REGISTER_NODE_TYPE(PrimFuncNode);
+TVM_REGISTER_NODE_TYPE(TensorIntrinNode);
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<PrimFuncNode>([](const ObjectRef& ref, ReprPrinter* p) {
@@ -83,6 +98,11 @@ TVM_REGISTER_GLOBAL("tir.PrimFunc")
     .set_body_typed([](Array<tir::Var> params, Stmt body, Type ret_type,
                        Map<tir::Var, Buffer> buffer_map, DictAttrs attrs, Span span) {
       return PrimFunc(params, body, ret_type, buffer_map, attrs, span);
+    });
+
+TVM_REGISTER_GLOBAL("tir.TensorIntrin")
+    .set_body_typed([](PrimFunc desc_func, PrimFunc intrin_func) {
+      return TensorIntrin(desc_func, intrin_func);
     });
 
 }  // namespace tir

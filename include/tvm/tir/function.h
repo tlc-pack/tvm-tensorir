@@ -152,6 +152,31 @@ class PrimFunc : public BaseFunc {
 };
 
 /*!
+ * \brief Tensor TensorIntrin for Tensorization
+ */
+class TensorIntrinNode : public Object {
+ public:
+  /*! \brief The function to describe the computation. */
+  PrimFunc description;
+  /*! \brief The intrinsic function for lower-level implement. */
+  PrimFunc implementation;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("description", &description);
+    v->Visit("implementation", &implementation);
+  }
+
+  static constexpr const char* _type_key = "tir.TensorIntrin";
+  TVM_DECLARE_FINAL_OBJECT_INFO(TensorIntrinNode, Object);
+};
+
+class TensorIntrin : public ObjectRef {
+ public:
+  TVM_DLL explicit TensorIntrin(PrimFunc desc_func, PrimFunc intrin_func);
+  TVM_DEFINE_OBJECT_REF_METHODS(TensorIntrin, ObjectRef, TensorIntrinNode)
+};
+
+/*!
  * \brief Describes one parameter that should be linked into the generated module.
  *
  * When parameters are to be linked in with generated code (i.e. on target_host-compatible
