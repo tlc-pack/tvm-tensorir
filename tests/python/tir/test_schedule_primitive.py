@@ -358,29 +358,24 @@ def test_cache_write():
     assert s.validate_sref()
 
 
-@tvm.tir.hybrid.script
-def blockize(a, c):
-    C = buffer_bind(c, (128, 128), "float32")
-    A = buffer_bind(a, (128, 128), "float32")
-    with block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
-        B = buffer_allocate((128, 128), "float32", "")
-        for i in range(0, 8):
-            for j in range(0, 8):
-                with block({vi(0, 128): i*16, vj(0, 128): j*16},
+@tvm.hybrid.script
+def blockize(a: ty.handle, c: ty.handle) -> None:
+    C = tir.buffer_bind(c, (128, 128), "float32")
+    A = tir.buffer_bind(a, (128, 128), "float32")
+    with tir.block({}, writes=[C[0:128, 0:128]], reads=[A[0:128, 0:128]], name="root"):
+        B = tir.buffer_allocate((128, 128), "float32")
+        for i, j in tir.grid(8, 8):
+            with tir.block({vi(0, 128): i * 16, vj(0, 128): j * 16},
                            writes=[B[vi:(vi + 16), vj:(vj + 16)]],
                            reads=[A[vi:(vi + 16), vj:(vj + 16)]], name="blockized_B"):
-                    for ii in range(0, 16):
-                        for jj in range(0, 16):
-                            with block({vi(0, 128): vi+ii, vj(0, 128): vj+jj},
-                                       writes=[B[vi:(vi + 1), vj:(vj + 1)]],
-                                       reads=[A[vi:(vi + 1), vj:(vj + 1)]], name="B"):
-                                B[vi, vj] = (A[vi, vj] * float32(2))
-        for i in range(0, 128):
-            for j in range(0, 128):
-                with block({vi(0, 128): i, vj(0, 128): j},
-                           writes=[C[vi:(vi + 1), vj:(vj + 1)]],
-                           reads=[B[vi:(vi + 1), vj:(vj + 1)]], name="C"):
-                    C[vi, vj] = (B[vi, vj] + float32(1))
+                for ii, jj in tir.grid(16, 16):
+                    with tir.block({vi(0, 128): vi + ii, vj(0, 128): vj + jj},
+                                   writes=[B[vi, vj]], reads=[A[vi, vj]], name="B"):
+                        B[vi, vj] = (A[vi, vj] * tir.float32(2))
+        for i, j in tir.grid(128, 128):
+            with tir.block({vi(0, 128): i, vj(0, 128): j},
+                           writes=[C[vi, vj]], reads=[B[vi, vj]], name="C"):
+                C[vi, vj] = (B[vi, vj] + tir.float32(1))
 
 
 def test_blockize():
@@ -396,7 +391,7 @@ def test_blockize():
     s.reorder(xo, yo, xi, yi)
     s.blockize(xi)
 
-    mod = tvm.tir.hybrid.create_module({"blockize": blockize})
+    mod = tvm.hybrid.create_module({"blockize": blockize})
     blockized_func = mod["blockize"]
 
     tvm.ir.assert_structural_equal(blockized_func, s.func)
