@@ -14,32 +14,35 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Tree representation of nested loops used in auto scheduler"""
+"""Namespace for meta schedule"""
 
 import tvm._ffi
 from tvm.runtime import Object
 
-
-@tvm._ffi.register_object("auto_scheduler.MetaIR")
-class MetaIR(Object):
-    """Base node for the loop tree generated from TIR"""
+from . import _ffi_api
 
 
-@tvm._ffi.register_object("auto_scheduler.LeafStmt")
-class LeafStmt(MetaIR):
-    """LeafStmt in the meta IR"""
+@tvm._ffi.register_object("auto_scheduler.MetaSchedule")
+class MetaSchedule(Object):
+    """Class for meta schedule"""
+
+    def __init__(self, meta_ir):
+        self.__init_handle_by_constructor__(FromMetaIR, meta_ir)
+
+    def decl_int_var(self, choices, name_hint=""):
+        return DeclIntVarNode(self, choices, name_hint)
+
+    def split_inner_to_outer(self, loop_id, factors, name_hint=""):
+        return SplitInnerToOuter(self, loop_id, factors, name_hint)
+
+    def reorder(self, after_ids):
+        Reorder(self, after_ids)
+
+    def compute_at_offset(self, offset, loop_id):
+        ComputeAtOffset(self, offset, loop_id)
+
+    def cursor_move_offset(self, offset):
+        return CursorMoveOffset(self, offset)
 
 
-@tvm._ffi.register_object("auto_scheduler.LoopTree")
-class LoopTree(Object):
-    """LoopTree created from TIR"""
-
-    @staticmethod
-    def from_prim_func(prim_func):
-        return FromPrimFunc(prim_func)
-
-    def validate(self):
-        return Validate(self)
-
-
-tvm._ffi._init_api("auto_scheduler.loop_tree", __name__)
+tvm._ffi._init_api("auto_scheduler.meta_schedule", __name__)

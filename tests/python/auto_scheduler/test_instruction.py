@@ -26,11 +26,21 @@ def test_decl_int_var():
     assert inst == "i_1 = DeclIntVarNode(choices=[1, 2, 4, 8])"
 
 
-def test_split_inner_to_outer():
+def test_split_inner_to_outer_with_none():
     factors = [tvm.tir.Var("j_" + str(i), "int32") for i in range(4)]
-    inst = SplitInnerToOuter(2, 0, factors)
+    inferred = factors[0]
+    factors[0] = None
+    inst = SplitInnerToOuter(2, factors, inferred)
     inst = str(inst)
     assert inst == "j_0 = SplitInnerToOuter(loop_id=2, factors=[None, j_1, j_2, j_3])"
+
+
+def test_split_inner_to_outer_without_none():
+    factors = [tvm.tir.Var("j_" + str(i), "int32") for i in range(4)]
+    inferred = None
+    inst = SplitInnerToOuter(2, factors, inferred)
+    inst = str(inst)
+    assert inst == "SplitInnerToOuter(loop_id=2, factors=[j_0, j_1, j_2, j_3])"
 
 
 def test_reorder():
@@ -53,7 +63,8 @@ def test_cursor_move_offset():
 
 if __name__ == "__main__":
     test_decl_int_var()
-    test_split_inner_to_outer()
+    test_split_inner_to_outer_without_none()
+    test_split_inner_to_outer_with_none()
     test_reorder()
     test_compute_at_offset()
     test_cursor_move_offset()

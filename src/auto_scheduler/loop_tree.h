@@ -135,7 +135,7 @@ class Iterator : public ObjectRef {
    */
   Iterator(String name, PrimExpr extent, IterKind kind, IterAnnotation annotation);
 
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Iterator, ObjectRef, IteratorNode);
+  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(Iterator, ObjectRef, IteratorNode);
 };
 
 /**************** Define MetaIR ****************/
@@ -155,6 +155,9 @@ class MetaIRNode : public Object {
 
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
+  /*! \brief Validate the correctness of parent/left_sibling/right_sibling info */
+  void Validate(bool is_root) const;
+
   static constexpr const char* _type_key = "auto_scheduler.MetaIR";
   TVM_DECLARE_BASE_OBJECT_INFO(MetaIRNode, Object);
 };
@@ -162,12 +165,29 @@ class MetaIRNode : public Object {
 /*! \brief Managed reference to MetaIRNode */
 class MetaIR : public ObjectRef {
  public:
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(MetaIR, ObjectRef, MetaIRNode);
+  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(MetaIR, ObjectRef, MetaIRNode);
 
  protected:
   /*! \brief Constructor. The node should never be constructed directly. */
   MetaIR() = default;
 };
+
+template <class IterType>
+void SetAsChildrenOf(IterType begin, IterType end, const MetaIRNode* parent) {
+  const MetaIRNode* left_sibling = nullptr;
+  for (; begin != end; ++begin) {
+    const MetaIR& child = *begin;
+    CHECK(child->parent == nullptr);
+    CHECK(child->left_sibling == nullptr);
+    CHECK(child->right_sibling == nullptr);
+    child->parent = parent;
+    if (left_sibling != nullptr) {
+      child->left_sibling = left_sibling;
+      left_sibling->right_sibling = child.get();
+    }
+    left_sibling = child.get();
+  }
+}
 
 /**************** Define LeafStmt ****************/
 
@@ -222,7 +242,7 @@ class LeafStmt : public MetaIR {
    * \param stmt The TIR statement
    */
   explicit LeafStmt(const tir::Stmt& stmt);
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LeafStmt, MetaIR, LeafStmtNode);
+  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(LeafStmt, MetaIR, LeafStmtNode);
 };
 
 /**************** Define LoopTree ****************/
@@ -270,7 +290,7 @@ class LoopTree : public MetaIR {
    */
   static LoopTree FromPrimFunc(const tir::PrimFunc& func);
 
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LoopTree, MetaIR, LoopTreeNode);
+  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(LoopTree, MetaIR, LoopTreeNode);
 };
 
 }  // namespace auto_scheduler

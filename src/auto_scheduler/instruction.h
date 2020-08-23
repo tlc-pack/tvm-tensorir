@@ -78,13 +78,13 @@ class DeclIntVar : public Instruction {
 class SplitInnerToOuterNode : public InstructionNode {
  public:
   int loop_id;
-  int inferred_factor_id;
-  Array<tir::Var> factors;
+  Array<Optional<tir::Var>> factors;
+  Optional<tir::Var> inferred;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("loop_id", &loop_id);
-    v->Visit("inferred_factor_id", &inferred_factor_id);
     v->Visit("factors", &factors);
+    v->Visit("inferred", &inferred);
   }
 
   static constexpr const char* _type_key = "auto_scheduler.SplitInnerToOuter";
@@ -93,7 +93,7 @@ class SplitInnerToOuterNode : public InstructionNode {
 
 class SplitInnerToOuter : public Instruction {
  public:
-  SplitInnerToOuter(int loop_id, int inferred_factor_id, Array<tir::Var> factors);
+  SplitInnerToOuter(int loop_id, Array<Optional<tir::Var>> factors, Optional<tir::Var> inferred);
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(SplitInnerToOuter, Instruction, SplitInnerToOuterNode);
 };
 
