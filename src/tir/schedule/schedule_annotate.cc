@@ -138,6 +138,24 @@ void ScheduleNode::parallel(const StmtSRef& loop_sref) {
   ParallelCompute(loop_sref, Annotation(attr::loop_type, StringImm("parallel")));
 }
 
+void ScheduleNode::bind(const StmtSRef& loop_sref, const IterVar& thread) {
+  const auto* loop = loop_sref->GetStmt<LoopNode>();
+  CHECK(loop != nullptr) << "Parallel-like compute expect a loop";
+  if (thread->dom.defined()) {
+    CHECK(ExprDeepEqual()(loop->extent, thread->dom->extent))
+      << "Thread axis extent and loop extent mismatch";
+  }
+  std::string thread_tag = thread->thread_tag;
+  auto it = thread_binding_.find(thread_tag);
+  if (it != thread_binding_.end()) {
+    CHECK(ExprDeepEqual()(loop->extent, it->second))
+      << "All loops with the same thread binding must have the same extent";
+  }
+  thread_binding_[thread_tag] = loop->extent;
+  Annotation annotation(attr::loop_type, StringImm(thread->thread_tag));
+  ParallelCompute(loop_sref, annotation);
+}
+
 void ScheduleNode::unroll(const StmtSRef& loop_sref) {
   const auto* loop = loop_sref->GetStmt<LoopNode>();
   CHECK(loop != nullptr) << "TypeError: Unroll expects a loop, but get type: "

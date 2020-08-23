@@ -48,6 +48,8 @@ class ScheduleNode : public Object {
   std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
   /*! \brief The block scopes of each block */
   std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual> scopes;
+  /*! \brief The thread bindings and their extents */
+  std::unordered_map<std::string, PrimExpr> thread_binding_;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("func", &func);
@@ -160,6 +162,12 @@ class ScheduleNode : public Object {
   void parallel(const StmtSRef& loop_sref);
 
   /*!
+   * \brief parallel a loop
+   * \param loop_sref the loop to be paralleled
+   */
+  void bind(const StmtSRef& loop_sref, const IterVar& thread);
+
+  /*!
    * \brief unroll a loop
    * \param loop_sref the loop to be unrolled
    */
@@ -205,7 +213,7 @@ class ScheduleNode : public Object {
    * \param sref the subtree root
    * \return the sref of new block
    */
-  StmtSRef blockize(const StmtSRef& sref);
+  StmtSRef blockize(const StmtSRef& sref, const String& exe_scope = "");
 
   /*!
    * \brief Tensorize the computation enclosed by loop with tensor_intrin

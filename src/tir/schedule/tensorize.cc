@@ -279,7 +279,7 @@ void ScheduleNode::tensorize(const StmtSRef& sref, const TensorIntrin& intrinsic
   const auto* loop = sref->GetStmt<LoopNode>();
   CHECK(loop) << "Only support tensorize a loop for now";
 
-  const StmtSRef& block_sref = blockize(sref);
+  const StmtSRef& block_sref = blockize(sref, "");
   const BlockRealize& block_realize = GetBlockRealize(block_sref);
   const Block& block = block_realize->block;
   const auto* intrin_block_realize = intrinsic->implementation->body.as<BlockRealizeNode>();

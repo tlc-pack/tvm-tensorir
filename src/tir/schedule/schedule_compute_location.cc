@@ -212,16 +212,18 @@ Loop RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& loop_sref, int 
 }
 
 /*!
- * \brief For each buffer written by the producer block, accumulate the rnages on it that are read
+ * \brief For each buffer written by the producer block, accumulate the ranges on it that are read
  * by the consumer block
  * \param produced_regions The output tensor region of producer consumer_blocks
  * \param lca_loop_sref The lca of producer and consumer
  * \param consumer_blocks The consumer consumer_blocks
+ * \param relax_vars The additional vars should be relaxed according to execution scope
  * \return Required with the same order as produce_regions TODO
  */
 std::vector<Range> GatherRequirements(const Array<TensorRegion>& produced_regions,
                                       const StmtSRef& lca_loop_sref,
-                                      const std::vector<StmtSRef>& consumer_blocks) {
+                                      const std::vector<StmtSRef>& consumer_blocks,
+                                      const std::unordered_map<const VarNode*, Range>& relax_vars) {
   // For write domain in produce_regions, initiate an empty IntSet for it
   std::vector<std::vector<arith::IntSet>> produced_region_reads;
   for (const TensorRegion& region : produced_regions) {
@@ -238,7 +240,7 @@ std::vector<Range> GatherRequirements(const Array<TensorRegion>& produced_region
   // For each consumer's reading region
   for (const StmtSRef& block_sref : consumer_blocks) {
     std::vector<TensorRegion> reads;
-    RelaxRegion(block_sref, lca_loop_sref, &reads, nullptr);
+    RelaxRegion(block_sref, lca_loop_sref, &reads, nullptr, relax_vars);
     for (const TensorRegion& region : reads) {
       const BufferNode* buffer = region->buffer.get();
       if (!buffer_indexer.count(buffer)) {
@@ -247,7 +249,7 @@ std::vector<Range> GatherRequirements(const Array<TensorRegion>& produced_region
       // Find the corresponding buffer
       int buffer_index = buffer_indexer[buffer];
       int range_index = 0;
-      // Accumuate the read range into its corresponding buffer
+      // Accumulate the read range into its corresponding buffer
       for (const Range& range : region->region) {
         arith::IntSet& iset = produced_region_reads[buffer_index][range_index];
         iset = arith::Union({iset, arith::IntSet::FromRange(range)});
@@ -297,6 +299,49 @@ StmtSRef GetSubTreeOfParent(const StmtSRef& node) {
     child = parent;
   }
   return GetRef<StmtSRef>(child);
+}
+
+std::unordered_map<const VarNode*, Range> RelaxForExeScope(const StmtSRef& loop_sref,
+                                                           const StmtSRef& block_sref) {
+  std::unordered_map<const VarNode*, Range> relax_var;
+  const auto* block = block_sref->GetStmt<BlockNode>();
+  const BlockRealize& realize = GetBlockRealize(block_sref);
+  const String& exe_scope = realize->exe_scope;
+  StmtSRef sref = loop_sref;
+
+  auto update_for_gpu = [&block, &exe_scope](const LoopNode* loop) -> bool{
+    CHECK_EQ(block->writes.size(), 1)
+        << "InternalError: Only block with one write buffer can be compute_at";
+    std::string write_scope = block->writes[0]->buffer->scope;
+
+    std::string thread_tag;
+    for (const auto& annotation : loop->annotations)
+      if (annotation->attr_key == attr::loop_type) {
+        thread_tag = Downcast<StringImm>(annotation->value)->value;
+      }
+    if (exe_scope == "gpu_thread" || exe_scope == "") {
+      if (write_scope == "shared" &&
+          (thread_tag.substr(0, 9) == "threadIdx" || thread_tag == "vthread")) {
+        return true;
+      } else if ((write_scope == "global" || write_scope == "") &&
+                 (thread_tag.substr(0, 9) == "threadIdx" ||
+                  thread_tag.substr(0, 9) == "blockIdx")) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  while (sref.defined()) {
+    if (const auto* loop = sref->GetStmt<LoopNode>()) {
+      if (update_for_gpu(loop)) {
+          relax_var[loop->loop_var.get()] = Range::FromMinExtent(loop->min, loop->extent);
+      }
+    }
+    sref = GetRef<StmtSRef>(sref->parent);
+  }
+
+  return relax_var;
 }
 
 void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref) {
@@ -378,9 +423,11 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
   // Generate new LoopNode to substitte loop_sref->stmt
   Loop new_loop = RegenerateLoops(
       block_sref, loop_sref, insert_pos,
-      SolveCover(block, GatherRequirements(/*produced_regions=*/block->writes,
-                                           /*lca_loop_sref=*/loop_sref,
-                                           /*consumer_blocks=*/EdgesToSRefs(edges_to_succ))));
+      SolveCover(block,
+                 GatherRequirements(/*produced_regions=*/block->writes,
+                                    /*lca_loop_sref=*/loop_sref,
+                                    /*consumer_blocks=*/EdgesToSRefs(edges_to_succ),
+                                    /*relax_vars=*/RelaxForExeScope(loop_sref, block_sref))));
   // Remove leaf
   std::pair<Stmt, Stmt> removed = RemoveLeaf(block_sref, this->root);
   std::unordered_map<const StmtNode*, const StmtNode*> replace_map = {
