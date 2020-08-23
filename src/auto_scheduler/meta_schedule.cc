@@ -26,18 +26,11 @@ namespace auto_scheduler {
 
 TVM_REGISTER_NODE_TYPE(MetaScheduleNode);
 
-MetaSchedule::MetaSchedule(MetaIR meta_ir, MetaIR cursor, Array<Instruction> instructions,
-                           std::vector<MetaScheduleNode::RevokeFunc> revokes,
-                           Array<tir::Var> declared_vars) {
-  ObjectPtr<MetaScheduleNode> n = make_object<MetaScheduleNode>();
-  n->meta_ir = std::move(meta_ir);
-  n->cursor = std::move(cursor);
-  n->instructions = std::move(instructions);
-  n->revokes = std::move(revokes);
-  n->declared_vars = std::move(declared_vars);
-  data_ = std::move(n);
-}
-
+/*!
+ * \brief Find the leftist children in the loop tree
+ * \param meta_ir The loop tree to be searched
+ * \return The leftist children found
+ */
 inline MetaIR FindLeftistChildren(const MetaIR& meta_ir) {
   const auto* cursor = meta_ir.as<LoopTreeNode>();
   CHECK(cursor != nullptr) << "TypeError: meta_ir expects to be a loop tree, but gets type: "
@@ -54,9 +47,11 @@ inline MetaIR FindLeftistChildren(const MetaIR& meta_ir) {
   return GetRef<MetaIR>(cursor);
 }
 
-MetaSchedule::MetaSchedule(MetaIR meta_ir)
-    : MetaSchedule(meta_ir, FindLeftistChildren(meta_ir), {}, {}, Array<tir::Var>()) {}
-
+/*!
+ * \brief Find the first unused name in format of "v.number"
+ * \param declared_vars The variables that have been used
+ * \return The unused name
+ */
 inline String FindValidName(const Array<tir::Var>& declared_vars) {
   for (int i = 0;; ++i) {
     String result = "v." + std::to_string(i);
@@ -75,6 +70,12 @@ inline String FindValidName(const Array<tir::Var>& declared_vars) {
   throw;
 }
 
+/*!
+ * \brief Check if the variable has been declared
+ * \param declared_vars The variables that have been used
+ * \param var The variable to be checked
+ * \return A boolean indicating if the variable has been declared
+ */
 inline bool IsVarDeclared(const Array<tir::Var>& declared_vars, const tir::Var& var) {
   for (const tir::Var declared_var : declared_vars) {
     if (declared_var.same_as(var)) {
@@ -84,6 +85,12 @@ inline bool IsVarDeclared(const Array<tir::Var>& declared_vars, const tir::Var& 
   return false;
 }
 
+/*!
+ * \brief Move the cursor with the specific offset
+ * \param p The cursor
+ * \param offset The moving offset. Positive means moving right, and negative means moving left.
+ * \return The cursor after the move
+ */
 inline const MetaIRNode* MoveWithOffset(const MetaIRNode* p, int offset) {
   if (offset == 0) {
     return p;
@@ -101,6 +108,12 @@ inline const MetaIRNode* MoveWithOffset(const MetaIRNode* p, int offset) {
   return p;
 }
 
+/*!
+ * \brief The the block under the given loop_id
+ * \param p The cursor
+ * \param loop_id The index of the last loop to be removed
+ * \return Array of fresh blocks, whose parent/left_sibling/right_sibling have been set to nullptr
+ */
 inline Array<MetaIR> GetBlockUnderLoop(const LoopTreeNode* p, int loop_id) {
   int n = p->iters.size();
   std::vector<MetaIR> children;
@@ -121,6 +134,21 @@ inline Array<MetaIR> GetBlockUnderLoop(const LoopTreeNode* p, int loop_id) {
   return {LoopTree(/*iters=*/{p->iters.begin() + loop_id, p->iters.end()},
                    /*block_realize=*/p->block_realize, /*children=*/children)};
 }
+
+MetaSchedule::MetaSchedule(MetaIR meta_ir, MetaIR cursor, Array<Instruction> instructions,
+                           std::vector<MetaScheduleNode::RevokeFunc> revokes,
+                           Array<tir::Var> declared_vars) {
+  ObjectPtr<MetaScheduleNode> n = make_object<MetaScheduleNode>();
+  n->meta_ir = std::move(meta_ir);
+  n->cursor = std::move(cursor);
+  n->instructions = std::move(instructions);
+  n->revokes = std::move(revokes);
+  n->declared_vars = std::move(declared_vars);
+  data_ = std::move(n);
+}
+
+MetaSchedule::MetaSchedule(MetaIR meta_ir)
+    : MetaSchedule(meta_ir, FindLeftistChildren(meta_ir), {}, {}, Array<tir::Var>()) {}
 
 tir::Var MetaScheduleNode::DeclIntVarNode(Array<Integer> choices, String name_hint) {
   if (name_hint == "") {

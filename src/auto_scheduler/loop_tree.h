@@ -172,6 +172,14 @@ class MetaIR : public ObjectRef {
   MetaIR() = default;
 };
 
+/*!
+ * \brief Set the MetaIR ranged with [begin, end) to be children of a specific parent node, and link
+ * them with left_sibling/right_sibling
+ * \tparam IterType Type of the iterator for the range [begin, end)
+ * \param begin The starting point of the range, inclusive
+ * \param end The ending point of the range, exclusive
+ * \param parent Their parent node
+ */
 template <class IterType>
 void SetAsChildrenOf(IterType begin, IterType end, const MetaIRNode* parent) {
   const MetaIRNode* left_sibling = nullptr;
