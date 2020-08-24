@@ -37,11 +37,12 @@ DeclIntVar::DeclIntVar(tir::Var var, Array<Integer> choices) {
   data_ = std::move(n);
 }
 
-SplitInnerToOuter::SplitInnerToOuter(int loop_id, int inferred_factor_id, Array<tir::Var> factors) {
+SplitInnerToOuter::SplitInnerToOuter(int loop_id, Array<Optional<tir::Var>> factors,
+                                     Optional<tir::Var> inferred) {
   ObjectPtr<SplitInnerToOuterNode> n = make_object<SplitInnerToOuterNode>();
   n->loop_id = loop_id;
-  n->inferred_factor_id = inferred_factor_id;
   n->factors = std::move(factors);
+  n->inferred = std::move(inferred);
   data_ = std::move(n);
 }
 
@@ -68,8 +69,8 @@ TVM_REGISTER_GLOBAL("auto_scheduler.DeclIntVar")
     .set_body_typed([](tir::Var var, Array<Integer> choices) { return DeclIntVar(var, choices); });
 
 TVM_REGISTER_GLOBAL("auto_scheduler.SplitInnerToOuter")
-    .set_body_typed([](int loop_id, int inferred_factor_id, Array<tir::Var> factors) {
-      return SplitInnerToOuter(loop_id, inferred_factor_id, factors);
+    .set_body_typed([](int loop_id, Array<Optional<tir::Var>> factors, tir::Var inferred) {
+      return SplitInnerToOuter(loop_id, factors, inferred);
     });
 
 TVM_REGISTER_GLOBAL("auto_scheduler.Reorder").set_body_typed([](Array<Integer> after_ids) {
@@ -86,12 +87,12 @@ TVM_REGISTER_GLOBAL("auto_scheduler.CursorMoveOffset").set_body_typed([](int off
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<DeclIntVarNode>([](const ObjectRef& obj, ReprPrinter* p) {
-      const auto* node = obj.as<DeclIntVarNode>();
-      CHECK(node);
-      p->stream << node->var->name_hint << " = "
+      const auto* n = obj.as<DeclIntVarNode>();
+      CHECK(n);
+      p->stream << n->var->name_hint << " = "
                 << "DeclIntVarNode(choices=[";
       bool is_first = true;
-      for (const Integer& choice : node->choices) {
+      for (const Integer& choice : n->choices) {
         if (is_first) {
           is_first = false;
           p->stream << choice;
@@ -104,17 +105,21 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<SplitInnerToOuterNode>([](const ObjectRef& obj, ReprPrinter* p) {
-      const auto* node = obj.as<SplitInnerToOuterNode>();
-      CHECK(node);
-      p->stream << node->factors[node->inferred_factor_id]->name_hint << " = "
-                << "SplitInnerToOuter(loop_id=" << node->loop_id << ", factors=[";
-      int n = node->factors.size();
-      for (int i = 0; i < n; ++i) {
-        if (i > 0) {
+      const auto* n = obj.as<SplitInnerToOuterNode>();
+      CHECK(n);
+      if (n->inferred.defined()) {
+        p->stream << n->inferred.value()->name_hint << " = ";
+      }
+      p->stream << "SplitInnerToOuter(loop_id=" << n->loop_id << ", factors=[";
+      bool is_first = true;
+      for (const Optional<tir::Var> factor : n->factors) {
+        if (is_first) {
+          is_first = false;
+        } else {
           p->stream << ", ";
         }
-        if (i != node->inferred_factor_id) {
-          p->stream << node->factors[i]->name_hint;
+        if (factor.defined()) {
+          p->stream << factor.value();
         } else {
           p->stream << "None";
         }
@@ -124,11 +129,11 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<ReorderNode>([](const ObjectRef& obj, ReprPrinter* p) {
-      const auto* node = obj.as<ReorderNode>();
-      CHECK(node);
+      const auto* n = obj.as<ReorderNode>();
+      CHECK(n);
       p->stream << "Reorder(after_ids=[";
       bool is_first = true;
-      for (const Integer& after_id : node->after_ids) {
+      for (const Integer& after_id : n->after_ids) {
         if (is_first) {
           is_first = false;
           p->stream << after_id;
@@ -141,16 +146,16 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<ComputeAtOffsetNode>([](const ObjectRef& obj, ReprPrinter* p) {
-      const auto* node = obj.as<ComputeAtOffsetNode>();
-      CHECK(node);
-      p->stream << "ComputeAt(offset=" << node->offset << ", loop_id=" << node->loop_id << ")";
+      const auto* n = obj.as<ComputeAtOffsetNode>();
+      CHECK(n);
+      p->stream << "ComputeAt(offset=" << n->offset << ", loop_id=" << n->loop_id << ")";
     });
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<CursorMoveOffsetNode>([](const ObjectRef& obj, ReprPrinter* p) {
-      const auto* node = obj.as<CursorMoveOffsetNode>();
-      CHECK(node);
-      p->stream << "CursorMove(offset=" << node->offset << ")";
+      const auto* n = obj.as<CursorMoveOffsetNode>();
+      CHECK(n);
+      p->stream << "CursorMove(offset=" << n->offset << ")";
     });
 
 }  // namespace auto_scheduler
