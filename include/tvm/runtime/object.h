@@ -689,7 +689,7 @@ struct ObjectPtrEqual {
   TVM_STR_CONCAT(TVM_OBJECT_REG_VAR_DEF, __COUNTER__) = TypeName::_GetOrAllocRuntimeTypeIndex()
 
 /*
- * \brief Define the default copy/move constructor and assign opeator
+ * \brief Define the default copy/move constructor and assign operator
  * \param TypeName The class typename.
  */
 #define TVM_DEFINE_DEFAULT_COPY_MOVE_AND_ASSIGN(TypeName) \
@@ -714,7 +714,6 @@ struct ObjectPtrEqual {
 
 /*
  * \brief Define object reference methods that is not nullable.
- *
  * \param TypeName The object type name
  * \param ParentType The parent type of the objectref
  * \param ObjectName The type name of the object.
@@ -725,6 +724,20 @@ struct ObjectPtrEqual {
   const ObjectName* operator->() const { return static_cast<const ObjectName*>(data_.get()); } \
   const ObjectName* get() const { return operator->(); }                                       \
   static constexpr bool _type_is_nullable = false;                                             \
+  using ContainerType = ObjectName;
+
+/*
+ * \brief Define object reference methods that is not nullable whose content is mutable.
+ * \param TypeName The object type name
+ * \param ParentType The parent type of the objectref
+ * \param ObjectName The type name of the object.
+ */
+#define TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(TypeName, ParentType, ObjectName) \
+  explicit TypeName(::tvm::runtime::ObjectPtr<::tvm::runtime::Object> n) : ParentType(n) {} \
+  TVM_DEFINE_DEFAULT_COPY_MOVE_AND_ASSIGN(TypeName);                                        \
+  ObjectName* operator->() const { return static_cast<ObjectName*>(data_.get()); }          \
+  ObjectName* get() const { return operator->(); }                                          \
+  static constexpr bool _type_is_nullable = false;                                          \
   using ContainerType = ObjectName;
 
 /*
