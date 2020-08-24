@@ -47,18 +47,7 @@ LoopTree::LoopTree(Array<Iterator> iters, Optional<tir::BlockRealize> block_real
   n->iters = std::move(iters);
   n->block_realize = std::move(block_realize);
   n->children = std::move(children);
-  const MetaIRNode* left_sibling = nullptr;
-  for (const MetaIR& child : n->children) {
-    CHECK(child->parent == nullptr);
-    CHECK(child->left_sibling == nullptr);
-    CHECK(child->right_sibling == nullptr);
-    child->parent = n.get();
-    if (left_sibling != nullptr) {
-      child->left_sibling = left_sibling;
-      left_sibling->right_sibling = child.get();
-    }
-    left_sibling = child.get();
-  }
+  SetAsChildrenOf(n->children.begin(), n->children.end(), n.get());
   data_ = std::move(n);
 }
 
@@ -284,6 +273,32 @@ class LoopTreePrinter {
 
 String LoopTreeNode::ToString() const { return LoopTreePrinter().Run(this); }
 
+void MetaIRNode::Validate(bool is_root) const {
+  if (is_root) {
+    CHECK(parent == nullptr);
+    CHECK(left_sibling == nullptr);
+    CHECK(right_sibling == nullptr);
+  }
+  if (this->IsInstance<LoopTreeNode>()) {
+    const auto* loop_tree = static_cast<const LoopTreeNode*>(this);
+    const MetaIRNode* left_child = nullptr;
+    for (const MetaIR& child : loop_tree->children) {
+      CHECK(child->parent == this);
+      CHECK(child->left_sibling == left_child);
+      if (left_child != nullptr) {
+        CHECK(left_child->right_sibling == child.get());
+      }
+      left_child = child.get();
+    }
+    if (left_child != nullptr) {
+      CHECK(left_child->right_sibling == nullptr);
+    }
+    for (const MetaIR& child : loop_tree->children) {
+      child->Validate(false);
+    }
+  }
+}
+
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<LoopTreeNode>([](const ObjectRef& obj, ReprPrinter* p) {
       const auto* node = obj.as<LoopTreeNode>();
@@ -333,6 +348,10 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     });
 
 TVM_REGISTER_GLOBAL("auto_scheduler.loop_tree.FromPrimFunc").set_body_typed(LoopTree::FromPrimFunc);
+
+TVM_REGISTER_GLOBAL("auto_scheduler.loop_tree.Validate").set_body_typed([](MetaIR meta_ir) {
+  meta_ir->Validate(true);
+});
 
 }  // namespace auto_scheduler
 }  // namespace tvm
