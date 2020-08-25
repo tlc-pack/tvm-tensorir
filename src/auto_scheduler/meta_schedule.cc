@@ -359,18 +359,26 @@ void MetaScheduleNode::ApplyToSchedule(tir::ScheduleNode* schedule,
                                        Map<tir::Var, PrimExpr> sampled_vars) const {
   ScheduleStatus status;
   status.schedule = schedule;
-  // TODO: set cursor
+  tir::StmtSRef& cursor = status.cursor =
+      schedule->stmt2ref.at(Downcast<tir::BlockRealize>(schedule->func->body)->block.get());
+  for (;;) {
+    Array<tir::StmtSRef> children = schedule->GetChildBlocks(cursor);
+    if (children.empty()) {
+      break;
+    }
+    cursor = children[0];
+  }
   for (const Instruction& instruction : this->instructions) {
-    if (const auto* decl_int_var = instruction.as<auto_scheduler::DeclIntVarNode>()) {
-      decl_int_var->ApplyToSchedule(sampled_vars, &status);
-    } else if (const auto* split = instruction.as<auto_scheduler::SplitInnerToOuterNode>()) {
-      split->ApplyToSchedule(&status);
-    } else if (const auto* reorder = instruction.as<auto_scheduler::ReorderNode>()) {
-      reorder->ApplyToSchedule(&status);
-    } else if (const auto* compute_at = instruction.as<auto_scheduler::ComputeAtOffsetNode>()) {
-      compute_at->ApplyToSchedule(&status);
-    } else if (const auto* cursor_move = instruction.as<auto_scheduler::CursorMoveOffsetNode>()) {
-      cursor_move->ApplyToSchedule(&status);
+    if (const auto* inst = instruction.as<auto_scheduler::DeclIntVarNode>()) {
+      inst->ApplyToSchedule(sampled_vars, &status);
+    } else if (const auto* inst = instruction.as<auto_scheduler::SplitInnerToOuterNode>()) {
+      inst->ApplyToSchedule(&status);
+    } else if (const auto* inst = instruction.as<auto_scheduler::ReorderNode>()) {
+      inst->ApplyToSchedule(&status);
+    } else if (const auto* inst = instruction.as<auto_scheduler::ComputeAtOffsetNode>()) {
+      inst->ApplyToSchedule(&status);
+    } else if (const auto* inst = instruction.as<auto_scheduler::CursorMoveOffsetNode>()) {
+      inst->ApplyToSchedule(&status);
     } else {
       LOG(FATAL) << "TypeError: Cannot recognize instruction type: " << instruction->GetTypeKey();
       throw;
@@ -406,6 +414,12 @@ TVM_REGISTER_GLOBAL("auto_scheduler.meta_schedule.ComputeAtOffset")
 TVM_REGISTER_GLOBAL("auto_scheduler.meta_schedule.CursorMoveOffset")
     .set_body_typed([](MetaSchedule schedule, int offset) {
       return schedule->CursorMoveOffset(offset);
+    });
+
+TVM_REGISTER_GLOBAL("auto_scheduler.meta_schedule.ApplyToSchedule")
+    .set_body_typed([](MetaSchedule meta_schedule, tir::Schedule schedule,
+                       Map<tir::Var, PrimExpr> sampled_vars) {
+      return meta_schedule->ApplyToSchedule(schedule.operator->(), sampled_vars);
     });
 
 }  // namespace auto_scheduler
