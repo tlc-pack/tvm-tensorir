@@ -66,6 +66,17 @@ CursorMoveOffset::CursorMoveOffset(int offset) {
   data_ = std::move(n);
 }
 
+inline int FindIndex(const Array<tir::StmtSRef>& siblings, const tir::StmtSRef& element) {
+  int n = siblings.size();
+  for (int i = 0; i < n; ++i) {
+    if (element.same_as(siblings[i])) {
+      return i;
+    }
+  }
+  LOG(FATAL) << "ValueError: Cannot find cursor in its parent's children.\nCursor is:\n" << element;
+  throw;
+}
+
 void DeclIntVarNode::ApplyToSchedule(const Map<tir::Var, PrimExpr>& sampled_vars,
                                      ScheduleStatus* status) const {
   CHECK(sampled_vars.count(var)) << "ValueError: Variable with name hint \"" << var->name_hint
@@ -150,11 +161,31 @@ void ReorderNode::ApplyToSchedule(ScheduleStatus* status) const {
 }
 
 void ComputeAtOffsetNode::ApplyToSchedule(ScheduleStatus* status) const {
-  // TODO
+  tir::StmtSRef parent = status->schedule->GetParentBlockSRef(status->cursor);
+  Array<tir::StmtSRef> siblings = status->schedule->GetChildBlocks(parent);
+  int index = FindIndex(siblings, status->cursor);
+  int target_index = index + offset;
+  CHECK(0 <= target_index && target_index < static_cast<int>(siblings.size()))
+      << "IndexError: offset out-of-bound, index = " << index << ", offset = " << offset
+      << ", number of siblings in the subtree = " << siblings.size();
+  tir::StmtSRef target = siblings[target_index];
+  Array<tir::StmtSRef> axes = status->schedule->GetLoopsInScope(target);
+  CHECK(0 <= loop_id && loop_id < static_cast<int>(axes.size()))
+      << "IndexError: indexing axes out of bound, index = " << loop_id
+      << ", but number of axes are " << axes.size();
+  status->schedule->compute_at(status->cursor, axes[loop_id]);
+  status->cursor = siblings[target_index - 1];
 }
 
 void CursorMoveOffsetNode::ApplyToSchedule(ScheduleStatus* status) const {
-  // TODO
+  tir::StmtSRef parent = status->schedule->GetParentBlockSRef(status->cursor);
+  Array<tir::StmtSRef> siblings = status->schedule->GetChildBlocks(parent);
+  int index = FindIndex(siblings, status->cursor);
+  int target_index = index + offset;
+  CHECK(0 <= target_index && target_index < static_cast<int>(siblings.size()))
+      << "IndexError: offset out-of-bound, index = " << index << ", offset = " << offset
+      << ", number of siblings in the subtree = " << siblings.size();
+  status->cursor = siblings[target_index];
 }
 
 TVM_REGISTER_GLOBAL("auto_scheduler.DeclIntVar")
