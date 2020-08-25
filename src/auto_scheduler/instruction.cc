@@ -39,6 +39,7 @@ DeclIntVar::DeclIntVar(tir::Var var, Array<Integer> choices) {
 
 SplitInnerToOuter::SplitInnerToOuter(int loop_id, Array<Optional<tir::Var>> factors,
                                      Optional<tir::Var> inferred) {
+  CHECK(!factors.empty()) << "ValueError: SplitInnerToOuter requires non-empty factors";
   ObjectPtr<SplitInnerToOuterNode> n = make_object<SplitInnerToOuterNode>();
   n->loop_id = loop_id;
   n->factors = std::move(factors);
@@ -63,6 +64,97 @@ CursorMoveOffset::CursorMoveOffset(int offset) {
   ObjectPtr<CursorMoveOffsetNode> n = make_object<CursorMoveOffsetNode>();
   n->offset = offset;
   data_ = std::move(n);
+}
+
+void DeclIntVarNode::ApplyToSchedule(const Map<tir::Var, PrimExpr>& sampled_vars,
+                                     ScheduleStatus* status) const {
+  CHECK(sampled_vars.count(var)) << "ValueError: Variable with name hint \"" << var->name_hint
+                                 << "\" is not defined";
+  PrimExpr value = sampled_vars.at(var);
+  // Type check for sampled_vars[var]
+  const auto* integer = value.as<IntImmNode>();
+  CHECK(integer != nullptr) << "TypeError: A sample of the integer variable \"" << var
+                            << "\" is expected to be an integer, but gets type \""
+                            << value->GetTypeKey() << "\" of value: " << value;
+  // Check if it is in-distribution
+  bool found = false;
+  for (const Integer& candidate : choices) {
+    if (candidate->value == integer->value) {
+      found = true;
+    }
+  }
+  CHECK(found) << "TypeError: The integer variable \"" << var
+               << "\" is expected to be sampled within " << choices
+               << ", but gets out-of-distribution value: " << integer->value;
+  // Set the symbol table
+  status->symbol_table.Set(var, value);
+}
+
+void SplitInnerToOuterNode::ApplyToSchedule(ScheduleStatus* status) const {
+  Array<tir::StmtSRef> axes = status->schedule->GetLoopsInScope(status->cursor);
+  CHECK(0 <= loop_id && loop_id < static_cast<int>(axes.size()))
+      << "IndexError: indexing axes out of bound, index = " << loop_id
+      << ", but number of axes are " << axes.size();
+  tir::StmtSRef target = axes[loop_id];
+  int n_factors = static_cast<int>(factors.size());
+  for (int i = n_factors - 1; i >= 0 && factors[i].defined(); --i) {
+    tir::Var var = factors[i].value();
+    CHECK(status->symbol_table.count(var))
+        << "ValueError: The " << i << "-th factor of SplitInnerToOuter, " << var->name_hint
+        << ", is not found in the symbol table";
+    const auto* loop = target->GetStmt<tir::LoopNode>();
+    CHECK(loop != nullptr) << "TypeError: Expects LoopNode, but gets: " << target->GetTypeKey();
+    PrimExpr factor = status->symbol_table.at(var);
+    PrimExpr nparts = floordiv(loop->extent + factor - 1, factor);
+    Array<tir::StmtSRef> split_result = status->schedule->split(target, nparts, factor);
+    CHECK_EQ(split_result.size(), 2);
+    target = split_result[0];
+  }
+  if (inferred.defined()) {
+    for (int i = 0; i < n_factors && factors[i].defined(); ++i) {
+      tir::Var var = factors[i].value();
+      CHECK(status->symbol_table.count(var))
+          << "ValueError: The " << i << "-th factor of SplitInnerToOuter, " << var->name_hint
+          << ", is not found in the symbol table";
+      const auto* loop = target->GetStmt<tir::LoopNode>();
+      CHECK(loop != nullptr) << "TypeError: Expects LoopNode, but gets: " << target->GetTypeKey();
+      PrimExpr nparts = status->symbol_table.at(var);
+      PrimExpr factor = floordiv(loop->extent + nparts - 1, nparts);
+      Array<tir::StmtSRef> split_result = status->schedule->split(target, nparts, factor);
+      CHECK_EQ(split_result.size(), 2);
+      target = split_result[1];
+    }
+    // Set the symbol table
+    const auto* loop = target->GetStmt<tir::LoopNode>();
+    CHECK(loop != nullptr) << "TypeError: Expects LoopNode, but gets: " << target->GetTypeKey();
+    status->symbol_table.Set(inferred.value(), loop->extent);
+  }
+}
+
+void ReorderNode::ApplyToSchedule(ScheduleStatus* status) const {
+  Array<tir::StmtSRef> before_axes = status->schedule->GetLoopsInScope(status->cursor);
+  CHECK_EQ(before_axes.size(), after_ids.size())
+      << "ValueError: Unequal number of axes, gets before_axes = " << before_axes
+      << ", but after_ids = " << after_ids;
+  int n = before_axes.size();
+  std::vector<int> from(n, -1);
+  for (int i = 0; i < n; ++i) {
+    int j = after_ids[i];
+    from[j] = i;
+  }
+  std::vector<tir::StmtSRef> after_axes;
+  for (int j : from) {
+    after_axes.push_back(before_axes[j]);
+  }
+  status->schedule->reorder(after_axes);
+}
+
+void ComputeAtOffsetNode::ApplyToSchedule(ScheduleStatus* status) const {
+  // TODO
+}
+
+void CursorMoveOffsetNode::ApplyToSchedule(ScheduleStatus* status) const {
+  // TODO
 }
 
 TVM_REGISTER_GLOBAL("auto_scheduler.DeclIntVar")

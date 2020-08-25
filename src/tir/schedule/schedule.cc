@@ -441,13 +441,12 @@ Scope ScheduleNode::GetParentScope(const StmtSRef& sref) const {
 }
 
 Array<StmtSRef> ScheduleNode::GetLoopsInScope(const StmtSRef& block) const {
-  Array<StmtSRef> ret;
-  StmtSRef sref = GetRef<StmtSRef>(block->parent);
-  while (!GetRef<Stmt>(sref->stmt).as<BlockNode>()) {
-    if (GetRef<Stmt>(sref->stmt).as<LoopNode>()) {
-      ret.push_back(sref);
+  std::vector<StmtSRef> ret;
+  for (StmtSRefNode* sref = block->parent; !sref->stmt->IsInstance<BlockNode>();
+       sref = sref->parent) {
+    if (sref->stmt->IsInstance<LoopNode>()) {
+      ret.push_back(GetRef<StmtSRef>(sref));
     }
-    sref = GetRef<StmtSRef>(sref->parent);
   }
   return Array<StmtSRef>(ret.rbegin(), ret.rend());
 }
@@ -522,7 +521,7 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSplitByFactor")
     .set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, PrimExpr)>([](Schedule schedule,
                                                                       StmtSRef node,
                                                                       PrimExpr factor) {
-      const auto* loop = GetRef<Stmt>(node->stmt).as<LoopNode>();
+      const auto* loop = node->GetStmt<LoopNode>();
       return schedule->split(node, floordiv(loop->extent + factor - 1, factor), factor);
     });
 
@@ -530,7 +529,7 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSplitByNParts")
     .set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, PrimExpr)>([](Schedule schedule,
                                                                       StmtSRef node,
                                                                       PrimExpr nparts) {
-      const auto* loop = GetRef<Stmt>(node->stmt).as<LoopNode>();
+      const auto* loop = node->GetStmt<LoopNode>();
       return schedule->split(node, nparts, floordiv(loop->extent + nparts - 1, nparts));
     });
 
@@ -586,7 +585,7 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleMergeReduction")
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleTensorize")
     .set_body_typed<void(Schedule, StmtSRef, TensorIntrin)>([](Schedule schedule, StmtSRef sref,
-                                                              TensorIntrin intrinsic) {
+                                                               TensorIntrin intrinsic) {
       return schedule->tensorize(sref, intrinsic);
     });
 

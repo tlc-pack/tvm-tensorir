@@ -19,13 +19,18 @@
 #ifndef SRC_AUTO_SCHEDULER_INSTRUCTION_H_
 #define SRC_AUTO_SCHEDULER_INSTRUCTION_H_
 
-#include <tvm/runtime/container.h>
-#include <tvm/runtime/object.h>
 #include <tvm/tir/function.h>
+#include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt.h>
 
 namespace tvm {
 namespace auto_scheduler {
+
+struct ScheduleStatus {
+  tir::ScheduleNode* schedule;
+  tir::StmtSRef cursor;
+  Map<tir::Var, PrimExpr> symbol_table;
+};
 
 /**************** Define Instruction ****************/
 
@@ -58,6 +63,13 @@ class DeclIntVarNode : public InstructionNode {
     v->Visit("choices", &choices);
   }
 
+  /*!
+   * \brief Apply the instruction to a TIR schedule
+   * \param sampled_vars The variables sampled
+   * \param status The schedule to be applied
+   */
+  void ApplyToSchedule(const Map<tir::Var, PrimExpr>& sampled_vars, ScheduleStatus* status) const;
+
   static constexpr const char* _type_key = "auto_scheduler.DeclIntVar";
   TVM_DECLARE_FINAL_OBJECT_INFO(DeclIntVarNode, InstructionNode);
 };
@@ -87,6 +99,12 @@ class SplitInnerToOuterNode : public InstructionNode {
     v->Visit("inferred", &inferred);
   }
 
+  /*!
+   * \brief Apply the instruction to a TIR schedule
+   * \param status The schedule to be applied
+   */
+  void ApplyToSchedule(ScheduleStatus* status) const;
+
   static constexpr const char* _type_key = "auto_scheduler.SplitInnerToOuter";
   TVM_DECLARE_FINAL_OBJECT_INFO(SplitInnerToOuterNode, InstructionNode);
 };
@@ -104,6 +122,12 @@ class ReorderNode : public InstructionNode {
   Array<Integer> after_ids;
 
   void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("after_ids", &after_ids); }
+
+  /*!
+   * \brief Apply the instruction to a TIR schedule
+   * \param status The schedule to be applied
+   */
+  void ApplyToSchedule(ScheduleStatus* status) const;
 
   static constexpr const char* _type_key = "auto_scheduler.Reorder";
   TVM_DECLARE_FINAL_OBJECT_INFO(ReorderNode, InstructionNode);
@@ -127,6 +151,12 @@ class ComputeAtOffsetNode : public InstructionNode {
     v->Visit("loop_id", &loop_id);
   }
 
+  /*!
+   * \brief Apply the instruction to a TIR schedule
+   * \param status The schedule to be applied
+   */
+  void ApplyToSchedule(ScheduleStatus* status) const;
+
   static constexpr const char* _type_key = "auto_scheduler.ComputeAtOffset";
   TVM_DECLARE_FINAL_OBJECT_INFO(ComputeAtOffsetNode, InstructionNode);
 };
@@ -144,6 +174,12 @@ class CursorMoveOffsetNode : public InstructionNode {
   int offset;
 
   void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("offset", &offset); }
+
+  /*!
+   * \brief Apply the instruction to a TIR schedule
+   * \param status The schedule to be applied
+   */
+  void ApplyToSchedule(ScheduleStatus* status) const;
 
   static constexpr const char* _type_key = "auto_scheduler.CursorMoveOffset";
   TVM_DECLARE_FINAL_OBJECT_INFO(CursorMoveOffsetNode, InstructionNode);

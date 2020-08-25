@@ -19,6 +19,8 @@
 #ifndef SRC_AUTO_SCHEDULER_META_SCHEDULE_H_
 #define SRC_AUTO_SCHEDULER_META_SCHEDULE_H_
 
+#include <tvm/tir/schedule.h>
+
 #include <vector>
 
 #include "./instruction.h"
@@ -78,6 +80,12 @@ class MetaScheduleNode : public Object {
    * \return The new cursor
    */
   MetaIR CursorMoveOffset(int offset);
+  /*!
+   * \brief Apply meta schedule instructions to TIR schedule with a set of sampled variables
+   * \param schedule The schedule to be applied
+   * \param sampled_vars The set of sampled variables
+   */
+  void ApplyToSchedule(tir::ScheduleNode* schedule, Map<tir::Var, PrimExpr> sampled_vars) const;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("meta_ir", &meta_ir);

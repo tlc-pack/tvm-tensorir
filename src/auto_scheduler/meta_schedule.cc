@@ -355,6 +355,29 @@ MetaIR MetaScheduleNode::CursorMoveOffset(int offset) {
   return this->cursor;
 }
 
+void MetaScheduleNode::ApplyToSchedule(tir::ScheduleNode* schedule,
+                                       Map<tir::Var, PrimExpr> sampled_vars) const {
+  ScheduleStatus status;
+  status.schedule = schedule;
+  // TODO: set cursor
+  for (const Instruction& instruction : this->instructions) {
+    if (const auto* decl_int_var = instruction.as<auto_scheduler::DeclIntVarNode>()) {
+      decl_int_var->ApplyToSchedule(sampled_vars, &status);
+    } else if (const auto* split = instruction.as<auto_scheduler::SplitInnerToOuterNode>()) {
+      split->ApplyToSchedule(&status);
+    } else if (const auto* reorder = instruction.as<auto_scheduler::ReorderNode>()) {
+      reorder->ApplyToSchedule(&status);
+    } else if (const auto* compute_at = instruction.as<auto_scheduler::ComputeAtOffsetNode>()) {
+      compute_at->ApplyToSchedule(&status);
+    } else if (const auto* cursor_move = instruction.as<auto_scheduler::CursorMoveOffsetNode>()) {
+      cursor_move->ApplyToSchedule(&status);
+    } else {
+      LOG(FATAL) << "TypeError: Cannot recognize instruction type: " << instruction->GetTypeKey();
+      throw;
+    }
+  }
+}
+
 TVM_REGISTER_GLOBAL("auto_scheduler.meta_schedule.FromMetaIR").set_body_typed([](MetaIR meta_ir) {
   return MetaSchedule(meta_ir);
 });
