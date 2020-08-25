@@ -799,7 +799,7 @@ BlockRealize::BlockRealize(Array<PrimExpr> values,
   node->binding_values = std::move(values);
   node->predicate = std::move(predicate);
   node->block = std::move(block);
-  node->exe_scope = std::move(exe_scope);
+  node->exec_scope = std::move(exe_scope);
   data_ = std::move(node);
 }
 

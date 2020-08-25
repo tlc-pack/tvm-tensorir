@@ -306,7 +306,7 @@ std::unordered_map<const VarNode*, Range> RelaxForExeScope(const StmtSRef& loop_
   std::unordered_map<const VarNode*, Range> relax_var;
   const auto* block = block_sref->GetStmt<BlockNode>();
   const BlockRealize& realize = GetBlockRealize(block_sref);
-  const String& exe_scope = realize->exe_scope;
+  const String& exe_scope = realize->exec_scope;
   StmtSRef sref = loop_sref;
 
   auto update_for_gpu = [&block, &exe_scope](const LoopNode* loop) -> bool{

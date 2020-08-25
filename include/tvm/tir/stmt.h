@@ -1100,25 +1100,25 @@ class BlockRealizeNode : public StmtNode {
   /*! \brief The block to be realized. */
   Block block;
   /*! \brief The block execution scope. */
-  String exe_scope;
+  String exec_scope;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("binding_values", &binding_values);
     v->Visit("predicate", &predicate);
     v->Visit("block", &block);
-    v->Visit("exe_scope", &exe_scope);
+    v->Visit("exec_scope", &exec_scope);
   }
 
   bool SEqualReduce(const BlockRealizeNode* other, SEqualReducer equal) const {
     return equal(binding_values, other->binding_values) && equal(predicate, other->predicate) &&
-           equal(block, other->block) && equal(exe_scope, other->exe_scope);
+           equal(block, other->block) && equal(exec_scope, other->exec_scope);
   }
 
   void SHashReduce(SHashReducer hash_reduce) const {
     hash_reduce(binding_values);
     hash_reduce(predicate);
     hash_reduce(block);
-    hash_reduce(exe_scope);
+    hash_reduce(exec_scope);
   }
 
   static constexpr const char* _type_key = "BlockRealize";

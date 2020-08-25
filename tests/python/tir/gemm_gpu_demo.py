@@ -1,7 +1,6 @@
 import numpy as np
 import tvm
 from tvm import tir
-from tvm import te
 from tvm.hybrid import ty
 
 
@@ -55,12 +54,12 @@ scale = 8
 num_thread = 8
 block_factor = scale * num_thread
 
-block_x = te.thread_axis("blockIdx.x")
-thread_x = te.thread_axis((0, num_thread), "threadIdx.x")
-block_y = te.thread_axis("blockIdx.y")
-thread_y = te.thread_axis((0, num_thread), "threadIdx.y")
-thread_xz = te.thread_axis((0, 2), "vthread", name="vx")
-thread_yz = te.thread_axis((0, 2), "vthread", name="vy")
+block_x = tir.thread_axis("blockIdx.x")
+thread_x = tir.thread_axis((0, num_thread), "threadIdx.x")
+block_y = tir.thread_axis("blockIdx.y")
+thread_y = tir.thread_axis((0, num_thread), "threadIdx.y")
+thread_xz = tir.thread_axis((0, 2), "vthread", name="vx")
+thread_yz = tir.thread_axis((0, 2), "vthread", name="vy")
 
 s = tir.create_schedule(original_func)
 A = original_func.buffer_map[original_func.params[0]]
