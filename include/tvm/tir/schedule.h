@@ -94,11 +94,19 @@ class ScheduleNode : public Object {
   Array<StmtSRef> Blocks(StmtSRef scope) const;
 
   /*!
-   * \brief Get direct child blocks of the given block
+   * \brief Get direct child blocks of the given block. Return the given block itself if it is a
+   * BlockNode.
    * \param parent_sref The block scope
    * \return An array of StmtSRef that are children of the parent
    */
   Array<StmtSRef> GetChildBlocks(const StmtSRef& parent_sref) const;
+
+  /*!
+   * \brief Get direct child blocks of the given block.
+   * \param parent_sref The block scope. Required to be a block sref.
+   * \return An array of StmtSRef that are children of the parent
+   */
+  Array<StmtSRef> GetStrictChildBlocks(const StmtSRef& parent_sref) const;
 
   /*!
    * \brief Get loops of the block

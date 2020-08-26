@@ -35,12 +35,12 @@ def _matmul_with_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
 
         for i, j, k in tir.grid(1024, 1024, 1024):
             with tir.block({vi(0, 1024): i, vj(0, 1024): j, vk(0, 1024, iter_type="reduce"): k},
-                           writes=C[vi, vj], reads=[C[vi, vj], A[vi, vk],B[vj, vk]], name="C"):
+                           writes=C[vi, vj], reads=[C[vi, vj], A[vi, vk], B[vj, vk]], name="C"):
                 reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
         for i, j in tir.grid(1024, 1024):
             with tir.block({vi(0, 1024): i, vj(0, 1024): j}, writes=D[vi, vj], reads=C[vi, vj], name="D"):
-                D[vi, vj] = tir.max(C[vi, vj], 1.0)
+                D[vi, vj] = tir.max(C[vi, vj], 0.0)
 
 
 def test_matmul_with_relu():

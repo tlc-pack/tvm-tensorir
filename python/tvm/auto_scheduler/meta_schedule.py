@@ -44,5 +44,8 @@ class MetaSchedule(Object):
     def cursor_move_offset(self, offset):
         return CursorMoveOffset(self, offset)
 
+    def apply_to_schedule(self, schedule, sampled_vars):
+        return ApplyToSchedule(self, schedule, sampled_vars)
+
 
 tvm._ffi._init_api("auto_scheduler.meta_schedule", __name__)

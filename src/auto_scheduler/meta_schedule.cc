@@ -20,6 +20,7 @@
 
 #include <tvm/arith/analyzer.h>
 #include <tvm/runtime/registry.h>
+#include <tvm/tir/stmt_functor.h>
 
 namespace tvm {
 namespace auto_scheduler {
@@ -362,13 +363,17 @@ void MetaScheduleNode::ApplyToSchedule(tir::ScheduleNode* schedule,
   tir::StmtSRef& cursor = status.cursor =
       schedule->stmt2ref.at(Downcast<tir::BlockRealize>(schedule->func->body)->block.get());
   for (;;) {
-    Array<tir::StmtSRef> children = schedule->GetChildBlocks(cursor);
+    Array<tir::StmtSRef> children = schedule->GetStrictChildBlocks(cursor);
     if (children.empty()) {
       break;
     }
     cursor = children[0];
   }
+  int i = 0;
   for (const Instruction& instruction : this->instructions) {
+    ++i;
+    LOG(INFO) << "######## i = " << i;
+    LOG(INFO) << "instruction = " << instruction;
     if (const auto* inst = instruction.as<auto_scheduler::DeclIntVarNode>()) {
       inst->ApplyToSchedule(sampled_vars, &status);
     } else if (const auto* inst = instruction.as<auto_scheduler::SplitInnerToOuterNode>()) {
@@ -383,6 +388,9 @@ void MetaScheduleNode::ApplyToSchedule(tir::ScheduleNode* schedule,
       LOG(FATAL) << "TypeError: Cannot recognize instruction type: " << instruction->GetTypeKey();
       throw;
     }
+    const PackedFunc* print_func = runtime::Registry::Get("tir.hybrid.AsHybrid");
+    String result = (*print_func)(schedule->func, false);
+    LOG(INFO) << "result =\n" << result;
   }
 }
 

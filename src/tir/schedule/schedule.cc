@@ -426,6 +426,21 @@ Array<StmtSRef> ScheduleNode::GetChildBlocks(const StmtSRef& parent_sref) const 
   return result;
 }
 
+Array<StmtSRef> ScheduleNode::GetStrictChildBlocks(const StmtSRef& parent_sref) const {
+  std::vector<tir::StmtSRef> result;
+  const auto* parent = parent_sref->GetStmt<tir::BlockNode>();
+  CHECK(parent != nullptr) << "TypeError: Expects BlockNode, but gets type: "
+                           << parent_sref->stmt->GetTypeKey();
+  tir::PreOrderVisit(parent->body, [&result, this](const ObjectRef& node) {
+    if (const auto* block = node.as<tir::BlockNode>()) {
+      result.push_back(stmt2ref.at(block));
+      return false;
+    }
+    return true;
+  });
+  return result;
+}
+
 StmtSRef ScheduleNode::GetParentBlockSRef(const StmtSRef& sref) const {
   for (const StmtSRefNode* ptr = sref.get()->parent; ptr != nullptr; ptr = ptr->parent) {
     if (ptr->stmt->IsInstance<BlockNode>()) {

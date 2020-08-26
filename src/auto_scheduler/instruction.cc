@@ -147,39 +147,47 @@ void ReorderNode::ApplyToSchedule(ScheduleStatus* status) const {
   CHECK_EQ(before_axes.size(), after_ids.size())
       << "ValueError: Unequal number of axes, gets before_axes = " << before_axes
       << ", but after_ids = " << after_ids;
-  int n = before_axes.size();
-  std::vector<int> from(n, -1);
-  for (int i = 0; i < n; ++i) {
-    int j = after_ids[i];
-    from[j] = i;
-  }
   std::vector<tir::StmtSRef> after_axes;
-  for (int j : from) {
-    after_axes.push_back(before_axes[j]);
+  for (int i : after_ids) {
+    after_axes.push_back(before_axes[i]);
   }
   status->schedule->reorder(after_axes);
 }
 
+inline String Print(const tir::StmtSRef& sref) {
+  std::ostringstream os;
+  os << GetRef<tir::Stmt>(sref->stmt);
+  return os.str();
+}
+
 void ComputeAtOffsetNode::ApplyToSchedule(ScheduleStatus* status) const {
   tir::StmtSRef parent = status->schedule->GetParentBlockSRef(status->cursor);
-  Array<tir::StmtSRef> siblings = status->schedule->GetChildBlocks(parent);
+  Array<tir::StmtSRef> siblings = status->schedule->GetStrictChildBlocks(parent);
   int index = FindIndex(siblings, status->cursor);
   int target_index = index + offset;
   CHECK(0 <= target_index && target_index < static_cast<int>(siblings.size()))
       << "IndexError: offset out-of-bound, index = " << index << ", offset = " << offset
       << ", number of siblings in the subtree = " << siblings.size();
   tir::StmtSRef target = siblings[target_index];
+  const PackedFunc* print_func = runtime::Registry::Get("tir.hybrid.AsHybrid");
+  String src = Print(status->cursor);
+  String tgt = Print(target);
+  Array<tir::StmtSRef> axes_src = status->schedule->GetLoopsInScope(status->cursor);
   Array<tir::StmtSRef> axes = status->schedule->GetLoopsInScope(target);
   CHECK(0 <= loop_id && loop_id < static_cast<int>(axes.size()))
       << "IndexError: indexing axes out of bound, index = " << loop_id
       << ", but number of axes are " << axes.size();
-  status->schedule->compute_at(status->cursor, axes[loop_id]);
+  LOG(INFO) << "!!! In ComputeAt, axes = " << axes << "\naxes_src = " << axes_src
+            << "\nloop_id = " << loop_id << "\nCursor =\n"
+            << src << "\n\nTarget =\n"
+            << tgt;
+  status->schedule->compute_at(status->cursor, axes[loop_id + 1]);
   status->cursor = siblings[target_index - 1];
 }
 
 void CursorMoveOffsetNode::ApplyToSchedule(ScheduleStatus* status) const {
   tir::StmtSRef parent = status->schedule->GetParentBlockSRef(status->cursor);
-  Array<tir::StmtSRef> siblings = status->schedule->GetChildBlocks(parent);
+  Array<tir::StmtSRef> siblings = status->schedule->GetStrictChildBlocks(parent);
   int index = FindIndex(siblings, status->cursor);
   int target_index = index + offset;
   CHECK(0 <= target_index && target_index < static_cast<int>(siblings.size()))

@@ -212,7 +212,7 @@ Loop RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& loop_sref, int 
 }
 
 /*!
- * \brief For each buffer written by the producer block, accumulate the rnages on it that are read
+ * \brief For each buffer written by the producer block, accumulate the ranges on it that are read
  * by the consumer block
  * \param produced_regions The output tensor region of producer consumer_blocks
  * \param lca_loop_sref The lca of producer and consumer
@@ -270,8 +270,8 @@ std::vector<Range> GatherRequirements(const Array<TensorRegion>& produced_region
 
 class StmtReplacer : public StmtMutator {
  public:
-  explicit StmtReplacer(const std::unordered_map<const StmtNode*, const StmtNode*>& repalce_map)
-      : replace_map(repalce_map) {}
+  explicit StmtReplacer(const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map)
+      : replace_map(replace_map) {}
 
   Stmt VisitStmt(const Stmt& stmt) override {
     auto it = replace_map.find(stmt.get());
@@ -375,7 +375,7 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
     CHECK(insert_pos <= before_pos)
         << "ValueError: 'compute_at' cannot find an insertion point that satisfies dependency";
   }
-  // Generate new LoopNode to substitte loop_sref->stmt
+  // Generate new LoopNode to substitute loop_sref->stmt
   Loop new_loop = RegenerateLoops(
       block_sref, loop_sref, insert_pos,
       SolveCover(block, GatherRequirements(/*produced_regions=*/block->writes,

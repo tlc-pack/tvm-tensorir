@@ -40,7 +40,7 @@ def _matmul_with_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
 
         for i, j in tir.grid(1024, 1024):
             with tir.block({vi(0, 1024): i, vj(0, 1024): j}, writes=D[vi, vj], reads=C[vi, vj], name="D"):
-                D[vi, vj] = tir.max(C[vi, vj], 1.0)
+                D[vi, vj] = tir.max(C[vi, vj], 0.0)
 
 
 def _get_meta_schedule_from_hybrid(hybrid_func):
@@ -49,6 +49,13 @@ def _get_meta_schedule_from_hybrid(hybrid_func):
     assert isinstance(func, tvm.tir.PrimFunc)
     meta_ir = tvm.auto_scheduler.LoopTree.from_prim_func(func)
     return tvm.auto_scheduler.MetaSchedule(meta_ir)
+
+
+def _get_schedule_from_hybrid(hybrid_func):
+    module = tvm.hybrid.create_module({"hybrid_func": hybrid_func})
+    func = module["hybrid_func"]
+    assert isinstance(func, tvm.tir.PrimFunc)
+    return tvm.tir.create_schedule(func)
 
 
 def _check_and_remove_first_line(result):
@@ -257,9 +264,45 @@ for i.0 data_par(i.0.extent)
     sch.meta_ir.validate()
 
 
+def test_application_to_tir_schedule():
+    sch = _get_meta_schedule_from_hybrid(_matmul_with_relu)
+    i_1_extent = sch.decl_int_var(choices=[1, 2, 4], name_hint="i.1.extent")
+    i_2_extent = sch.decl_int_var(choices=[1, 2, 4], name_hint="i.2.extent")
+    i_3_extent = sch.decl_int_var(choices=[1, 2, 4], name_hint="i.3.extent")
+    j_1_extent = sch.decl_int_var(choices=[1, 2, 4], name_hint="j.1.extent")
+    j_2_extent = sch.decl_int_var(choices=[1, 2, 4], name_hint="j.2.extent")
+    j_3_extent = sch.decl_int_var(choices=[1, 2, 4], name_hint="j.3.extent")
+    k_1_extent = sch.decl_int_var(choices=[1, 2, 4], name_hint="k.1.extent")
+    sch.split_inner_to_outer(
+        loop_id=2, factors=[None, k_1_extent], name_hint="k.0.extent")
+    j_0_extent = sch.split_inner_to_outer(
+        loop_id=1, factors=[None, j_1_extent, j_2_extent, j_3_extent], name_hint="j.0.extent")
+    i_0_extent = sch.split_inner_to_outer(
+        loop_id=0, factors=[None, i_1_extent, i_2_extent, i_3_extent], name_hint="i.0.extent")
+    sch.reorder(after_ids=[0, 4, 1, 5, 8, 2, 6, 9, 3, 7])
+    sch.cursor_move_offset(1)
+    sch.split_inner_to_outer(loop_id=1, factors=[j_0_extent, None])
+    sch.split_inner_to_outer(loop_id=0, factors=[i_0_extent, None])
+    sch.reorder(after_ids=[0, 2, 1, 3])
+    sch.cursor_move_offset(-1)
+    sch.compute_at_offset(offset=1, loop_id=1)
+    tir_sch = _get_schedule_from_hybrid(_matmul_with_relu)
+    sch.apply_to_schedule(tir_sch, {
+        i_1_extent: 2,
+        i_2_extent: 2,
+        i_3_extent: 2,
+        j_1_extent: 2,
+        j_2_extent: 2,
+        j_3_extent: 2,
+        k_1_extent: 2,
+    })
+    # print(tvm.hybrid.ashybrid(tir_sch.func))
+
+
 if __name__ == "__main__":
-    test_creation()
-    test_decl_int_var()
-    test_multi_level_tiling_without_reorder()
-    test_multi_level_tiling_with_reorder()
-    test_multi_level_tiling_with_fusion()
+    # test_creation()
+    # test_decl_int_var()
+    # test_multi_level_tiling_without_reorder()
+    # test_multi_level_tiling_with_reorder()
+    # test_multi_level_tiling_with_fusion()
+    test_application_to_tir_schedule()
