@@ -286,7 +286,7 @@ void ScheduleNode::tensorize(const StmtSRef& sref, const TensorIntrin& intrinsic
   const Block& intrin_block = intrin_block_realize->block;
   TensorizeComparator comparator;
 
-  bool equal = comparator(block_realize, intrinsic->description->body);
+  bool equal = comparator.VisitStmt(block_realize, intrinsic->description->body);
   CHECK(equal) << "The AST subtree does not match intrinsic description";
 
   // Map from intrinsic func buffer to description func buffer

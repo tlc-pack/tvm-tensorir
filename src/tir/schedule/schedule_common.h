@@ -72,6 +72,7 @@ Stmt SubstituteInScope(const Stmt& stmt,
 TensorRegion SubstituteTensorRegion(
     const TensorRegion& tensor_region,
     const std::unordered_map<const VarNode*, const VarNode*>& var_map);
+
 /*!
  * \brief Get BlockRealize with by Block
  * \param block The queried block
@@ -98,7 +99,7 @@ StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef
  *   Before relax
  *   \code
  *     for i = 0 to 10
- *       Block(reads=A[i: i+1]
+ *       Block(reads=A[i: i+1])
  *   After relax, the relaxed region would be A[0: 10]
  */
 void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root, std::vector<TensorRegion>* reads,

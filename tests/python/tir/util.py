@@ -22,36 +22,34 @@ from tvm.hybrid import ty
 
 @tvm.hybrid.script
 def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (128, 128), "float32")
-    B = tir.buffer_bind(b, (128, 128), "float32")
-    C = tir.buffer_bind(c, (128, 128), "float32")
+    A = tir.buffer_bind(a, [128, 128])
+    B = tir.buffer_bind(b, [128, 128])
+    C = tir.buffer_bind(c, [128, 128])
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
-    with tir.block({}, reads=[A[0: 128, 0: 128], B[0: 128, 0: 128]], writes=C[0: 128, 0: 128],
-               name="root"):
+    with tir.block():
+        tir.block_name("root")
         for i, j, k in tir.grid(128, 128, 128):
-            with tir.block({vi(0, 128): i, vj(0, 128): j, vk(0, 128, iter_type="reduce"): k},
-                           reads=[C[vi, vj], A[vi, vk], B[vj, vk]], writes=C[vi, vj],
-                           name="update"):
+            with tir.block(128, 128, tir.reduce_axis(0, 128)) as [vi, vj, vk]:
+                tir.block_name("update")
                 reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
 
 
 @tvm.hybrid.script
 def matmul_original(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (128, 128), "float32")
-    B = tir.buffer_bind(b, (128, 128), "float32")
-    C = tir.buffer_bind(c, (128, 128), "float32")
+    A = tir.buffer_bind(a, [128, 128])
+    B = tir.buffer_bind(b, [128, 128])
+    C = tir.buffer_bind(c, [128, 128])
 
-    with tir.block({}, reads=[A[0: 128, 0: 128], B[0: 128, 0: 128]], writes=C[0: 128, 0: 128],
-               name="root"):
+    with tir.block():
+        tir.block_name("root")
         for i, j in tir.grid(128, 128):
-            with tir.block({vi(0, 128): i, vj(0, 128): j}, reads=[], writes=C[vi, vj],
-                           name="init"):
+            with tir.block(128, 128) as [vi, vj]:
+                tir.block_name("init")
                 C[vi, vj] = tir.float32(0)
             for k in range(0, 128):
-                with tir.block({vi(0, 128): i, vj(0, 128): j, vk(0, 128, iter_type="reduce"): k},
-                               reads=[C[vi, vj], A[vi, vk], B[vj, vk]], writes=[C[vi, vj]],
-                               name="update"):
+                with tir.block(128, 128, tir.reduce_axis(0, 128)) as [vi, vj, vk]:
+                    tir.block_name("update")
                     C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
@@ -60,15 +58,18 @@ def element_wise(a: ty.handle, c: ty.handle) -> None:
     A = tir.buffer_bind(a, (128, 128), "float32")
     C = tir.buffer_bind(c, (128, 128), "float32")
 
-    with tir.block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
+    with tir.block():
+        tir.block_name("root")
         B = tir.buffer_allocate((128, 128), "float32")
 
         for i, j in tir.grid(128, 128):
-            with tir.block({vi(0, 128): i, vj(0, 128): j}, A[vi, vj], B[vi, vj], name="B"):
+            with tir.block(128, 128) as [vi, vj]:
+                tir.block_name("B")
                 B[vi, vj] = A[vi, vj] * 2.0
 
         for i, j in tir.grid(128, 128):
-            with tir.block({vi(0, 128): i, vj(0, 128): j}, B[vi, vj], C[vi, vj], name="C"):
+            with tir.block(128, 128) as [vi, vj]:
+                tir.block_name("C")
                 C[vi, vj] = B[vi, vj] + 1.0
 
 
@@ -77,11 +78,14 @@ def predicate(b: ty.handle, c: ty.handle) -> None:
     B = tir.buffer_bind(b, (16, 16), "float32")
     C = tir.buffer_bind(c, (16, 16), "float32")
 
-    with tir.block({}, reads=[], writes=[], name="root"):
+    with tir.block():
+        tir.block_name("root")
         for i, jo, ji in tir.grid(16, 4, 4):
-            with tir.block({vi(0, 16): i, vj(0, 16): jo * 4 + ji},
-                           reads=B[vi, vj], writes=C[vi, vj],
-                           predicate=jo * 4 + ji < 16, name="update"):
+            with tir.block(16, 16) as [vi, vj]:
+                tir.block_name("update")
+                tir.block_bind(vi, i)
+                tir.block_bind(vj, jo * 4 + ji)
+                tir.block_if(jo * 4 + ji < 16)
                 C[vi, vj] = B[vi, vj] + 1.0
 
 
