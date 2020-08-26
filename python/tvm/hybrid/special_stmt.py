@@ -78,8 +78,38 @@ def buffer_allocate(parser, node, shape, dtype="float32", data=None, strides=Non
     offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
     buffer = tvm.tir.decl_buffer(shape, dtype, parser._assign_target, data, strides, elem_offset,
                                  scope, align, offset_factor, buffer_type)
-    parser.scope_emitter.alloc(tvm.tir.BufferAllocate(buffer, scope))
+    parser.scope_emitter.block_scope().allocates.append(tvm.tir.BufferAllocate(buffer, scope))
     return buffer
+
+
+@register_special_stmt()
+def block_name(parser, node, name):
+    parser.scope_emitter.block_scope().name = name
+
+
+@register_special_stmt()
+def block_bind(parser, node, block_var, binding):
+    parser.scope_emitter.block_scope().binding[block_var] = binding
+
+
+@register_special_stmt()
+def block_reads(parser, node, reads):
+    parser.scope_emitter.block_scope().reads = [reads] if not isinstance(reads, list) else reads
+
+
+@register_special_stmt()
+def block_writes(parser, node, writes):
+    parser.scope_emitter.block_scope().writes = [writes] if not isinstance(writes, list) else writes
+
+
+@register_special_stmt()
+def block_attr(parser, node, attrs):
+    parser.scope_emitter.block_scope().annotations = attrs
+
+
+@register_special_stmt()
+def block_if(parser, node, predicate):
+    parser.scope_emitter.block_scope().predicate = predicate
 
 
 @register_special_stmt()
@@ -103,36 +133,10 @@ def buffer_decl(parser, node, shape, dtype="float32", data=None, strides=None, e
     return buffer
 
 
-
 @register_special_stmt()
 def var(parser, node, dtype):
     """ Special function for defining a Var"""
     return te.var(parser._assign_target, dtype)
-
-
-@register_special_stmt()
-def block_vars(parser, node, begin, end, iter_type="data_par"):
-    """ Special function for defining a block var
-
-    Example
-    -------
-    .. code-block:: python
-
-        vi(0, 128, iter_type="reduce")
-
-    """
-
-    ana = tvm.arith.Analyzer()
-    extent = end if begin == 0 else ana.simplify(end - begin)
-    block_var_dom = tvm.ir.Range.from_min_extent(begin, extent)
-
-    iter_type_dict = {"data_par": 0, "reduce": 2, "scan": 3, "opaque": 4}
-    if iter_type not in iter_type_dict:
-        parser.report_error("Unknown iter_type")
-
-    if not isinstance(node.func, ast.Name):
-        parser.report_errot("Invalid block var name")
-    return tvm.tir.IterVar(block_var_dom, node.func.id, iter_type_dict[iter_type])
 
 
 class HybridLambda:

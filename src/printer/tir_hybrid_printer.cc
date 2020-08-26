@@ -683,50 +683,59 @@ Doc TIRHybridPrinter::VisitStmt_(const BlockRealizeNode* op) {
   const BlockNode* block_op = (op->block).as<BlockNode>();
   // print block name and block vars
   Doc doc;
-  doc << "with tir.block({";
-  for (size_t i = 0; i < block_op->iter_vars.size(); ++i) {
-    const auto& iter_var = block_op->iter_vars[i];
-    var_not_in_headers.insert(iter_var->var.get());
-    doc << Print(iter_var->var);
-    doc << "(";
-    doc << Print(iter_var->dom->min);
-    doc << ", ";
-    doc << Print(iter_var->dom->min + iter_var->dom->extent);
-    if (iter_var->iter_type != kDataPar) {
-      std::string str;
+  doc << "with tir.block(";
+  std::vector<Doc> block_var_docs;
+  for (const auto& iter_var : block_op->iter_vars) {
+    Doc block_var_doc;
+    if (is_zero(iter_var->dom->min) && iter_var->iter_type == kDataPar) {
+      block_var_doc << Print(iter_var->dom->extent);
+    } else {
+      block_var_doc << "tir.";
       switch (iter_var->iter_type) {
+        case kDataPar:
+          block_var_doc << "range";
+          break;
         case kCommReduce:
-          str = "reduce";
+          block_var_doc << "reduce_axis";
           break;
         case kOrdered:
-          str = "ordered";
+          block_var_doc << "serial_axis";
           break;
         case kOpaque:
-          str = "opaque";
+          block_var_doc << "opaque";
           break;
         default:
-          str = "unknown";
+          LOG(FATAL) << "Unknown block var iter type";
           break;
       }
-      doc << ", iter_type=\"" << str << "\"";
+      block_var_doc << "(" << Print(iter_var->dom->min) << ", "
+                    << Print(iter_var->dom->min + iter_var->dom->extent) << ")";
     }
-    doc << "):";
-    doc << Print(op->binding_values[i]);
-    if (i != block_op->iter_vars.size() - 1) {
-      doc << ", ";
-    }
+    block_var_docs.push_back(block_var_doc);
   }
-  doc << "}";
-  // print tensor region and annotations
-  doc << ", writes=" << Print(block_op->writes);
-  doc << ", reads=" << Print(block_op->reads);
+  doc << PrintSep(block_var_docs, Doc::Text(", ")) << ")";
+  if (!block_op->iter_vars.empty()) {
+    std::vector<Doc> block_var_names;
+    for (const auto& iter_var : block_op->iter_vars) {
+      var_not_in_headers.insert(iter_var->var.get());
+      block_var_names.push_back(Print(iter_var->var));
+    }
+    doc << " as [" << PrintSep(block_var_names, Doc::Text(", ")) << "]";
+  }
+  doc << ":";
+  Doc block_attr_doc;
+  // print name, binding, read/write tensor region, annotations
+  block_attr_doc << Doc::NewLine() << "tir.block_name(" << Doc::StrLiteral(block_op->tag) << ")";
+  for (size_t i = 0; i < block_op->iter_vars.size(); ++i)
+    block_attr_doc << Doc::NewLine() << "tir.block_bind(" << Print(block_op->iter_vars[i]->var) << ", " << Print(op->binding_values[i]) << ")";
+  block_attr_doc << Doc::NewLine() << "tir.block_writes(" << Print(block_op->writes) << ")";
+  block_attr_doc << Doc::NewLine() << "tir.block_reads(" << Print(block_op->reads) << ")";
   if (!is_one(op->predicate)) {
-    doc << ", predicate=" << Print(op->predicate);
+    block_attr_doc << Doc::NewLine() << "tir.block_if(" << Print(op->predicate) << ")";
   }
   if (!block_op->annotations.empty()) {
-    doc << ", annotations=" << Print(block_op->annotations);
+    block_attr_doc << Doc::NewLine() << "tir.block_attr(" << Print(block_op->annotations) << ")";
   }
-  doc << ", name=" << Doc::StrLiteral(block_op->tag) << "):";
   // print body
   Doc body;
   body << Doc::NewLine();
@@ -734,7 +743,7 @@ Doc TIRHybridPrinter::VisitStmt_(const BlockRealizeNode* op) {
     body << Print(allocate) << Doc::NewLine();
   }
   body << PrintBody(block_op->body);
-  doc << Doc::Indent(4, body);
+  doc << Doc::Indent(4, block_attr_doc << body);
   return doc;
 }
 

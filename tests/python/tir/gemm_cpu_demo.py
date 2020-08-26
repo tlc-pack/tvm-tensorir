@@ -28,12 +28,11 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     B = tir.buffer_bind(b, (1024, 1024), "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
-    with tir.block({}, writes=[C[0:1024, 0:1024]], reads=[A[0:1024, 0:1024], B[0:1024, 0:1024]],
-               name="root"):
+    with tir.block():
+        tir.block_name("root")
         for i, j, k in tir.grid(1024, 1024, 1024):
-            with tir.block({vi(0, 1024): i, vj(0, 1024): j, vk(0, 1024, iter_type="reduce"): k},
-                           writes=C[vi, vj], reads=[C[vi, vj], A[vi, vk], B[vj, vk]],
-                           name="C"):
+            with tir.block(1024, 1024, tir.reduce_axis(0, 1024)) as [vi, vj, vk]:
+                tir.block_name("C")
                 reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
 
@@ -49,8 +48,7 @@ M, N, K = 1024, 1024, 1024
 target = 'llvm'
 ctx = tvm.context(target, 0)
 
-mod = tvm.hybrid.create_module({"matmul":matmul})
-original_func = mod["matmul"]
+original_func = matmul
 
 a_np = np.random.uniform(size=(M, K)).astype("float32")
 b_np = np.random.uniform(size=(K, N)).astype("float32")
@@ -67,6 +65,8 @@ def build_and_test(func):
     print(tvm.hybrid.ashybrid(func))
     return evaluator(a, b, c).mean
 
+
+print(tvm.hybrid.ashybrid(original_func))
 # print('Baseline: %f' % build_and_test(original_func))
 
 ################################################################################################
@@ -162,24 +162,21 @@ def matmul_packed(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.buffer_bind(c, (1024, 1024), "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
-    with tir.block({}, reads=[A[0: 1024, 0: 1024], B[0: 1024, 0: 1024]], writes=C[0: 1024, 0: 1024],
-                   name="root"):
+    with tir.block():
+        tir.block_name("root")
         packedB = tir.buffer_allocate((1024 // 32, 1024, 32))
         for i, j, k in tir.grid(1024 // 32, 1024, 32):
-            with tir.block({vi(0, 1024 // 32): i, vj(0, 1024): j, vk(0, 32): k},
-                           reads=B[vj, vi * 32 + vk], writes=packedB[vi, vj, vk],
-                           name="packed"):
+            with tir.block(1024 // 32, 1024, 32) as [vi, vj, vk]:
+                tir.block_name("packed")
                 packedB[vi, vj, vk] = B[vj, vi * 32 + vk]
 
         for i, j, k in tir.grid(1024, 1024, 1024):
-            with tir.block({vi(0, 1024): i, vj(0, 1024): j, vk(0, 1024, iter_type="reduce"): k},
-                           reads=[C[vi, vj], A[vi, vk], packedB[vj // 32, vk, vj % 32]],
-                           writes=[C[vi, vj]], name="C"):
+            with tir.block(1024, 1024, tir.reduce_axis(0, 1024)) as [vi, vj, vk]:
+                tir.block_name("C")
                 reducer.step(C[vi, vj], A[vi, vk] * packedB[vj // 32, vk, vj % 32])
 
 
-mod = tvm.hybrid.create_module({"matmul_packed": matmul_packed})
-packed_func = mod["matmul_packed"]
+packed_func = matmul_packed
 
 s = tir.create_schedule(packed_func)
 packedB = s.get_block("packed")
