@@ -140,7 +140,7 @@ def max(a, b):  # pylint: disable=redefined-builtin
 
 def get_axis(begin, end, iter_type):
     ana = tvm.arith.Analyzer()
-    extent = end if begin == 0 else ana.simplify(end - begin)
+    extent = ana.simplify(end - begin)
     block_var_dom = tvm.ir.Range.from_min_extent(begin, extent)
 
     iter_type_dict = {"data_par": 0, "reduce": 2, "scan": 3, "opaque": 4}
