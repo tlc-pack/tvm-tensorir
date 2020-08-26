@@ -71,16 +71,29 @@ def compute_at_element_wise(a: ty.handle, c: ty.handle) -> None:
     A = tir.buffer_bind(a, (128, 128), "float32", name="A")
     C = tir.buffer_bind(c, (128, 128), "float32", name="C")
 
-    with tir.block({}, A[0: 128, 0: 128], C[0: 128, 0: 128], name="root"):
+    with tir.block():
+        tir.block_name("root")
+        tir.block_reads(A[0: 128, 0: 128])
+        tir.block_writes(C[0: 128, 0: 128])
         B = tir.buffer_allocate((128, 128), "float32", name="B")
 
         for i in range(0, 128):
             for j in range(0, 128):
-                with tir.block({vi(0, 128): i, vj(0, 128): j}, A[vi, vj], B[vi, vj], name="B"):
+                with tir.block(128, 128) as [vi, vj]:
+                    tir.block_name("B")
+                    tir.block_bind(vi, i)
+                    tir.block_bind(vj, j)
+                    tir.block_reads(A[vi, vj])
+                    tir.block_writes(B[vi, vj])
                     B[vi, vj] = A[vi, vj] * 2.0
 
             for j in range(0, 128):
-                with tir.block({vi(0, 128): i, vj(0, 128): j}, B[vi, vj], C[vi, vj], name="C"):
+                with tir.block(128, 128) as [vi, vj]:
+                    tir.block_name("C")
+                    tir.block_bind(vi, i)
+                    tir.block_bind(vj, j)
+                    tir.block_reads(B[vi, vj])
+                    tir.block_writes(C[vi, vj])
                     C[vi, vj] = B[vi, vj] + 1.0
 
 
