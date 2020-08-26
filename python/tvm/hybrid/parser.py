@@ -96,8 +96,6 @@ class HybridParser(ast.NodeVisitor):
         self.meta = None
 
         self.functions = {}
-
-        self._is_block_vars = False
         self._assign_target = None
 
     def init_function_parsing_env(self):
@@ -111,10 +109,10 @@ class HybridParser(ast.NodeVisitor):
     @staticmethod
     def is_meta(node):
         """Judge whether an AST node is META"""
-        return isinstance(node, ast.Assign) \
-               and len(node.targets) == 1 \
-               and isinstance(node.targets[0], ast.Name) \
-               and node.targets[0].id == "__tvm_meta__"
+        return (isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == "__tvm_meta__")
 
     def init_meta(self, meta_dict):
         if meta_dict is not None:
@@ -382,31 +380,10 @@ class HybridParser(ast.NodeVisitor):
             With(withitem* items, stmt* body, string? type_comment)
             withitem = (expr context_expr, expr? optional_vars)
         By now 2 types of With is supported:
-            1. with tir.block(block_vars, values, reads, writes, predicate, annotations, name):
-                Note that block_vars is a list of Calls, e.g. vi(0, 128, "reduce")
-                It's a syntax sugar, which is equivalent with defining a IterVar named vi and
-                used in the following block definition
-        Example
-        -------
-        If we want to define a block and we use the primitive APIs in IRBuilder, we should write
-        .. code-block:: python
-            bv_i = ib.iter_var(tvm.make.range_by_min_extent(0, 128), name="vi")
-            bv_j = ib.iter_var(tvm.make.range_by_min_extent(0, 128), name="vj")
-            vi = bv_i.var
-            vj = bv_j.var
-            with ib.block([bv_i, bv_j], [i, j], reads = A[vi:vi+1, vj:vj+1], \
-            write = B[vi:vi+1, vj:vj+1])
-        The IterVar variable bv_i and bv_j are only used once, so I planned to give a sugar here and
-        the user can simply write in one line code like
-        .. code-block:: python
-            with block({vi(0, 128): i, vj(0, 128): j}, reads = A[vi:vi+1, vj:vj+1], \
-            write = B[vi:vi+1, vj:vj+1])
-        The problem it brings is that vi, vj will be parsed as Call here, so when parsing the Call
-        which is actually to defining a block var, we leave it to a intrinsic function block_vars()
-        to handle them.
+            1. with tir.block(*axes) as block_vars:
+            2. with tir.allocate() as
             2. with tir.let/tir.Assert()/tir.attr()/tir.allocate()/tir.realize()
         """
-
         if not len(node.items) == 1:
             self.report_error("Only one with element is supported now")
         if not isinstance(node.items[0].context_expr, ast.Call):
@@ -415,44 +392,41 @@ class HybridParser(ast.NodeVisitor):
         func_call = node.items[0].context_expr
         func_node = func_call.func
         func = self.visit(func_node)
+        is_tir_block = (isinstance(func_node, ast.Attribute)
+                        and isinstance(func_node.value, ast.Name)
+                        and func_node.value.id == "tir"
+                        and func_node.attr == "block")
 
+        if not is_tir_block and node.items[0].optional_vars is not None:
+            self.report_error("Now only tir.block allows optional var")
         if not Registry.is_with_scope(func):
             self.report_error("Function not allowed in with scope")
 
-        if isinstance(func_node, ast.Attribute) and isinstance(func_node.value, ast.Name) \
-                and func_node.value.id == "tir" and func_node.attr == "block":
+        if is_tir_block:
             # preprocess block_var definitions
-            block_vars_arg = None
-            if len(func_call.args) >= 1:
-                block_vars_arg = func_call.args[0]
+            if isinstance(node.items[0].optional_vars, ast.Name):
+                block_vars = [node.items[0].optional_vars.id]
+            elif isinstance(node.items[0].optional_vars, (ast.List, ast.Tuple)):
+                for var in node.items[0].optional_vars.elts:
+                    if not isinstance(var, ast.Name):
+                        self.report_error("Invalid block var definition")
+                block_vars = [var.id for var in node.items[0].optional_vars.elts]
+            elif node.items[0].optional_vars is None:
+                block_vars = []
             else:
-                for keyword in func_call.keywords:
-                    if keyword.arg == 'block_vars_info':
-                        block_vars_arg = keyword.value
-
-            if block_vars_arg is None:
-                self.report_error("block() misses argument block_vars_info",
-                                  lineno=self.current_lineno,
-                                  col_offset=block_vars_arg.col_offset)
-
-            self._is_block_vars = True
-            block_vars = self.visit(block_vars_arg)
-            self._is_block_vars = False
-
+                self.report_error("Invalid block var definition")
             # update block vars into symbol table
+            block_vars = [tvm.te.var(name) for name in block_vars]
             self.scope_emitter.new_scope(is_block=True)
-            for block_var, _ in block_vars:
-                self.scope_emitter.update_symbol(block_var.var.name, block_var.var)
-            # collect arguments
-            args = [block_vars] + [self.visit(arg) for arg in func_call.args[1:]]
-            kw_args = [self.visit(keyword) for keyword in func_call.keywords if
-                       not keyword.arg == "block_vars_info"]
-            kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
-        else:
-            # collect arguments
-            args = [self.visit(arg) for arg in func_call.args]
-            kw_args = [self.visit(keyword) for keyword in func_call.keywords]
-            kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
+            for block_var in block_vars:
+                self.scope_emitter.update_symbol(block_var.name, block_var)
+
+        args = [self.visit(arg) for arg in func_call.args]
+        kw_args = [self.visit(keyword) for keyword in func_call.keywords]
+        kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
+
+        if is_tir_block:
+            args = [block_vars] + args
 
         old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
         self.current_lineno, self.current_col_offset = \
@@ -492,12 +466,7 @@ class HybridParser(ast.NodeVisitor):
         All the functions used outside With and For are registered in special_stmt or intrin
         """
 
-        if self._is_block_vars:
-            # special judge block_var syntax
-            func = Registry.functions.get("tir.block_vars")[0]
-        else:
-            func = self.visit(node.func)
-
+        func = self.visit(node.func)
         # collect arguments
         args = [self.visit(arg) for arg in node.args]
         kw_args = [self.visit(keyword) for keyword in node.keywords]
@@ -688,14 +657,9 @@ class HybridParser(ast.NodeVisitor):
             Dict(expr* keys, expr* values)
         """
 
-        _is_block_vars = self._is_block_vars
         keys = [self.visit(key) for key in node.keys]
-        self._is_block_vars = False
         values = [self.visit(value) for value in node.values]
-        self._is_block_vars = _is_block_vars
 
-        if self._is_block_vars:
-            return list((key, value) for key, value in zip(keys, values))
         return {key: value for key, value in zip(keys, values)}
 
     def visit_Tuple(self, node):
