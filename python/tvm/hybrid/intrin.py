@@ -136,3 +136,32 @@ def iter_var(var, dom, iter_type, thread_tag):
 @register_intrin()
 def max(a, b):  # pylint: disable=redefined-builtin
     return tvm.tir.Max(a, b)
+
+
+def get_axis(begin, end, iter_type):
+    ana = tvm.arith.Analyzer()
+    extent = ana.simplify(end - begin)
+    block_var_dom = tvm.ir.Range.from_min_extent(begin, extent)
+
+    iter_type_dict = {"data_par": 0, "reduce": 2, "scan": 3, "opaque": 4}
+    return tvm.tir.IterVar(block_var_dom, "bv", iter_type_dict[iter_type])
+
+
+@register_intrin()
+def range(begin, end):
+    return get_axis(begin, end, "data_par")
+
+
+@register_intrin()
+def reduce_axis(begin, end):
+    return get_axis(begin, end, "reduce")
+
+
+@register_intrin()
+def scan_axis(begin, end):
+    return get_axis(begin, end, "scan")
+
+
+@register_intrin()
+def opaque_axis(begin, end):
+    return get_axis(begin, end, "opaque")
