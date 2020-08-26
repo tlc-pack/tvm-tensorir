@@ -16,15 +16,27 @@
 # under the License.
 """Hybrid Script Scope Emitter for TIR"""
 
+import tvm
 from tvm.te import schedule
 
 
 class ScopeEmitter:
-    """Maintain the nodes, allocations, and symbols of scopes"""
+    """Maintain the nodes, symbols of scopes and information of blocks"""
+
+    class BlockInfo:
+        def __init__(self):
+            self.allocates = []
+            self.name = "block"
+            self.binding = dict()
+            self.reads = None
+            self.writes = None
+            self.annotations = []
+            self.predicate = tvm.runtime.convert(True)
 
     def __init__(self, parser):
         self.node_stack = [[]]  # AST nodes of scopes
-        self.allocate_stack = [[]]  # Buffer allocations of scopes
+        self.block_info_stack = []  # Block info of scopes
+        self.loop_stack = []  # stack of loop vars
         self.symbols = [dict()]  # Symbols of scopes
         self.parser = parser
 
@@ -32,19 +44,14 @@ class ScopeEmitter:
         """Pop the inner most scope"""
         self.symbols.pop()
         self.node_stack.pop()
-
-        return self.allocate_stack.pop() if is_block else None
+        return self.block_info_stack.pop() if is_block else None
 
     def new_scope(self, is_block=False):
         """ Creating a new scope """
         self.node_stack.append([])
         self.symbols.append(dict())
         if is_block:
-            self.allocate_stack.append([])
-
-    def alloc(self, allocation):
-        """Append an allocation into current scope"""
-        self.allocate_stack[-1].append(allocation)
+            self.block_info_stack.append(ScopeEmitter.BlockInfo())
 
     def update_symbol(self, name, symbol):
         """Append a symbol into current scope"""
@@ -69,3 +76,6 @@ class ScopeEmitter:
             if name in symbols:
                 return symbols[name]
         return None
+
+    def block_scope(self):
+        return self.block_info_stack[-1]

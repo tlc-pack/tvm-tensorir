@@ -725,6 +725,129 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->stream << ", \"" << op->scope << "\")\n";
     });
 
+class BlockReadWriteCollector : public StmtExprVisitor {
+ public:
+  explicit BlockReadWriteCollector(const Array<BufferAllocate>& allocations) {
+    for (const auto& allocate : allocations) inner_buffers_.insert(allocate->buffer.get());
+  }
+
+  Array<TensorRegion> reads() {
+    std::vector<TensorRegion> res;
+    for (size_t i = 0; i < read_regions_.size(); ++i) {
+      std::vector<Range> region;
+      for (const auto& range : read_regions_[i])
+        region.push_back(range.CoverRange(Range::FromMinExtent(0, 0)));
+      res.emplace_back(read_buffers_[i], region);
+    }
+    return res;
+  }
+
+  Array<TensorRegion> writes() {
+    std::vector<TensorRegion> res;
+    for (size_t i = 0; i < write_regions_.size(); ++i) {
+      std::vector<Range> region;
+      for (const auto& range : write_regions_[i])
+        region.push_back(range.CoverRange(Range::FromMinExtent(0, 0)));
+      res.emplace_back(writes_buffers_[i], region);
+    }
+    return res;
+  }
+
+ private:
+  std::unordered_map<const VarNode*, arith::IntSet> dom_map_;
+  std::vector<Buffer> read_buffers_, writes_buffers_;
+  std::vector<std::vector<arith::IntSet>> read_regions_, write_regions_;
+  std::unordered_set<const BufferNode*> inner_buffers_;
+
+  void VisitStmt_(const LoopNode* op) override {
+    Range range = Range::FromMinExtent(op->min, op->extent);
+    dom_map_[op->loop_var.get()] = arith::IntSet::FromRange(range);
+    StmtVisitor::VisitStmt_(op);
+    dom_map_.erase(op->loop_var.get());
+  }
+
+  void Update(std::vector<Buffer>* buffers,
+                     std::vector<std::vector<arith::IntSet>>* regions,
+                     const Buffer& buffer,
+                     const std::vector<arith::IntSet>& region) {
+    if (inner_buffers_.find(buffer.get()) != inner_buffers_.end()) return;
+    bool find = false;
+    for (size_t i = 0; i < regions->size(); ++i)
+      if ((*buffers)[i].same_as(buffer)) {
+        find = true;
+        CHECK_EQ((*regions)[i].size(), region.size()) << "Inconsistent buffer dimension";
+        for (size_t j = 0; j < region.size(); ++j) {
+          (*regions)[i][j] = arith::Union({(*regions)[i][j], region[j]});
+        }
+      }
+    if (!find) {
+      buffers->push_back(buffer);
+      regions->push_back(region);
+    }
+  }
+
+  void VisitExpr_(const BufferLoadNode* op) override {
+    std::vector<arith::IntSet> relaxed_region;
+    for (size_t j = 0; j < op->indices.size(); ++j) {
+      relaxed_region.push_back(arith::EvalSet(op->indices[j], dom_map_));
+    }
+    Update(&read_buffers_, &read_regions_, op->buffer, relaxed_region);
+    ExprVisitor::VisitExpr_(op);
+  }
+
+  void VisitStmt_(const BufferStoreNode* op) override {
+    std::vector<arith::IntSet> relaxed_region;
+    for (size_t j = 0; j < op->indices.size(); ++j) {
+      relaxed_region.push_back(arith::EvalSet(op->indices[j], dom_map_));
+    }
+    Update(&writes_buffers_, &write_regions_, op->buffer, relaxed_region);
+    StmtVisitor::VisitStmt_(op);
+  }
+
+  void VisitStmt_(const ReduceStepNode* op) override {
+    const auto* buffer_load = op->lhs.as<BufferLoadNode>();
+    CHECK(buffer_load != nullptr)
+      << "TypeError: 'decompose_reduction' expects the body of the reduce step "
+         "is BufferLoad, but get type: " << op->lhs->GetTypeKey();
+    std::vector<arith::IntSet> relaxed_region;
+    for (size_t j = 0; j < buffer_load->indices.size(); ++j) {
+      relaxed_region.push_back(arith::EvalSet(buffer_load->indices[j], dom_map_));
+    }
+    Update(&writes_buffers_, &write_regions_, buffer_load->buffer, relaxed_region);
+    StmtVisitor::VisitStmt_(op);
+  }
+
+  void VisitStmt_(const BlockRealizeNode* op) override {
+    std::unordered_map<const VarNode*, PrimExpr> vmap;
+    for (size_t i = 0; i < op->block->iter_vars.size(); ++i) {
+      vmap[op->block->iter_vars[i]->var.get()] = op->binding_values[i];
+    }
+    for (const auto& read : op->block->reads) {
+      std::vector<arith::IntSet> relaxed_region;
+      for (const auto& range : read->region) {
+        relaxed_region.push_back(
+            arith::EvalSet(
+                arith::IntSet::FromRange(
+                    Range::FromMinExtent(Substitute(range->min, vmap),
+                                         Substitute(range->extent, vmap))),
+                           dom_map_));
+      }
+      Update(&read_buffers_, &read_regions_, read->buffer, relaxed_region);
+    }
+    for (const auto& write : op->block->writes) {
+      std::vector<arith::IntSet> relaxed_region;
+      for (const auto& range : write->region) {
+        relaxed_region.push_back(
+            arith::EvalSet(arith::IntSet::FromRange(
+                Range::FromMinExtent(Substitute(range->min, vmap),
+                                     Substitute(range->extent, vmap))),
+                           dom_map_));
+      }
+      Update(&writes_buffers_, &write_regions_, write->buffer, relaxed_region);
+    }
+  }
+};
+
 // Block
 Block::Block(Array<IterVar> iter_vars,
              Array<TensorRegion> reads,
@@ -735,8 +858,18 @@ Block::Block(Array<IterVar> iter_vars,
              std::string tag) {
   ObjectPtr<BlockNode> node = make_object<BlockNode>();
   node->iter_vars = std::move(iter_vars);
-  node->reads = std::move(reads);
-  node->writes = std::move(writes);
+  BlockReadWriteCollector block_read_write_collector(allocations);
+  if (!reads.defined() || !writes.defined()) block_read_write_collector(body);
+  if (reads.defined()) {
+    node->reads = std::move(reads);
+  } else {
+    node->reads = block_read_write_collector.reads();
+  }
+  if (writes.defined()) {
+    node->writes = std::move(writes);
+  } else {
+    node->writes = block_read_write_collector.writes();
+  }
   node->body = std::move(body);
   node->allocations = std::move(allocations);
   node->annotations = std::move(annotations);
