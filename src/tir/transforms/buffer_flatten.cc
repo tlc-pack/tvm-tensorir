@@ -27,6 +27,7 @@
 #include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
 #include <tvm/tir/stmt_functor.h>
+#include <tvm/tir/schedule.h>
 #include <tvm/tir/transform.h>
 
 namespace tvm {
@@ -455,6 +456,9 @@ class BufferFlattener : public StmtExprMutator {
 
 PrimFunc BufferFlatten(PrimFunc f) {
   auto fptr = f.CopyOnWrite();
+
+  // Check memory and execution hierarchy
+  ScheduleNode::ValidateHierarchy(f);
 
   // Transform the reduction calls to BufferStore
   ReductionTransformer reduction_transformer;

@@ -48,12 +48,6 @@ class ScheduleNode : public Object {
   std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
   /*! \brief The block scopes of each block */
   std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual> scopes;
-  /*! \brief The thread bindings and their extents
-   *  \note Since the thread name(e.g., threadIdx.x) is the fundamental key for cuda code,
-   *        here we use std::string as key to check the loop binding extents are the same
-   *        for the same thread.
-   */
-  std::unordered_map<std::string, PrimExpr> thread_binding_;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("func", &func);
@@ -236,6 +230,11 @@ class ScheduleNode : public Object {
    * \brief validate sref tree and scope information
    */
   bool ValidateSRef() const;
+
+  /*!
+   * \brief Check the region cover for the single consumer block
+   */
+  static void ValidateHierarchy(const PrimFunc& f);
 
   static constexpr const char* _type_key = "tir.Schedule";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleNode, Object);
