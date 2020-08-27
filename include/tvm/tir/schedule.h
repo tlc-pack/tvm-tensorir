@@ -160,6 +160,12 @@ class ScheduleNode : public Object {
   void parallel(const StmtSRef& loop_sref);
 
   /*!
+   * \brief parallel a loop
+   * \param loop_sref the loop to be paralleled
+   */
+  void bind(const StmtSRef& loop_sref, const IterVar& thread);
+
+  /*!
    * \brief unroll a loop
    * \param loop_sref the loop to be unrolled
    */
@@ -205,7 +211,7 @@ class ScheduleNode : public Object {
    * \param sref the subtree root
    * \return the sref of new block
    */
-  StmtSRef blockize(const StmtSRef& sref);
+  StmtSRef blockize(const StmtSRef& sref, const String& exe_scope = "");
 
   /*!
    * \brief Tensorize the computation enclosed by loop with tensor_intrin
@@ -224,6 +230,11 @@ class ScheduleNode : public Object {
    * \brief validate sref tree and scope information
    */
   bool ValidateSRef() const;
+
+  /*!
+   * \brief Check the region cover for the single consumer block
+   */
+  static void ValidateHierarchy(const PrimFunc& f);
 
   static constexpr const char* _type_key = "tir.Schedule";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleNode, Object);
