@@ -36,16 +36,19 @@ from .registry import register_with_scope, register_for_scope
 
 # With scope handler
 @register_with_scope(concise=False)
-def block(parser, node, body, block_vars, *axes):
+def block(parser, node, body, block_vars, name, axes=None):
     """ With scope handler function block(block_vars， reads, writes, predicate, annotations, name)
 
     Example
     -------
     .. code-block:: python
 
-        with tir.block(128, 128, tir.reduce_axis(128)) as (i, j ,k):
+        with tir.block("update", [128, 128, tir.reduce_axis(128)]) as [i, j ,k]:
 
     """
+    parser.contains_block = True
+    if axes is None:
+        axes = []
     if len(axes) != len(block_vars):
         parser.report_error("Inconsistent number of block vars")
 
@@ -63,19 +66,6 @@ def block(parser, node, body, block_vars, *axes):
             parser.report_error("Invalid argument of tir.block()")
 
     block_info = parser.scope_emitter.pop_scope(is_block=True)
-    if not block_info.binding:
-        values = parser.scope_emitter.loop_stack.copy()
-        if len(values) == 0:
-            values = [0] * len(block_iters)
-        elif len(values) >= len(block_iters):
-            values = values[:len(block_iters)]
-        else:
-            parser.report_error("Autocomplete block var binding expect larger number of loops")
-    else:
-        for block_var in block_vars:
-            if block_var not in block_info.binding:
-                parser.report_error("Missing block var binding for " + block_var.name)
-        values = [block_info.binding[block_var] for block_var in block_vars]
 
     if block_info.reads is None:
         reads = None
@@ -104,8 +94,38 @@ def block(parser, node, body, block_vars, *axes):
                 writes.append(write)
 
     inner = tvm.tir.Block(block_iters, reads, writes, body,
-                          block_info.allocates, block_info.annotations, block_info.name)
-    return tvm.tir.BlockRealize(values, block_info.predicate, inner)
+                          block_info.allocates, block_info.annotations, name)
+
+    auto_gen_loops = False
+    if not block_info.binding:
+        values = parser.scope_emitter.loop_stack[-1].copy()
+        if len(values) == 0:
+            # generate loops automatically
+            suffix = 0
+            names = []
+            auto_gen_loops = True
+            for i in range(len(block_iters)):
+                while parser.scope_emitter.lookup_symbol("i" + str(suffix)) is not None:
+                    suffix = suffix + 1
+                names.append("i" + str(suffix))
+                suffix = suffix + 1
+            values = [tvm.te.var(name) for name in names]
+        elif len(values) >= len(block_iters):
+            values = values[:len(block_iters)]
+        else:
+            parser.report_error("Autocomplete block var binding expect larger number of loops")
+    else:
+        for block_var in block_vars:
+            if block_var not in block_info.binding:
+                parser.report_error("Missing block var binding for " + block_var.name)
+        values = [block_info.binding[block_var] for block_var in block_vars]
+
+    body = tvm.tir.BlockRealize(values, block_info.predicate, inner)
+    if auto_gen_loops:
+        for i in reversed(range(len(values))):
+            body = tvm.tir.Loop(values[i], block_iters[i].dom.min,
+                                block_iters[i].dom.extent, [], body)
+    return body
 
 
 @register_with_scope(concise=True)

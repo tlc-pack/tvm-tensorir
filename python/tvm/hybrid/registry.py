@@ -133,10 +133,10 @@ def func_wrapper(func_name, func_to_register, arg_list, category, concise):
             parser.scope_emitter.node_stack[-1].extend(reversed(node.body))
             for loop_var in loop_vars:
                 parser.scope_emitter.update_symbol(loop_var.name, loop_var)
-                parser.scope_emitter.loop_stack.append(loop_var)
+                parser.scope_emitter.loop_stack[-1].append(loop_var)
             body = parser.get_body()
             for loop_var in loop_vars:
-                parser.scope_emitter.loop_stack.pop()
+                parser.scope_emitter.loop_stack[-1].pop()
             parser.scope_emitter.pop_scope()
         elif category == Category.WITH_SCOPE:
             # automatically parse body for with_scope handlers
@@ -322,7 +322,7 @@ def register_special_stmt(name=None):
                     scope="global", align=-1, offset_factor=0, buffer_type="default"):
         align = align.value if not isinstance(align, int) else align
         offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
-        buffer = tvm.tir.decl_buffer(shape, dtype, parser._assign_target, data, strides,
+        buffer = tvm.tir.decl_buffer(shape, dtype, parser.assign_target, data, strides,
                                     elem_offset, scope, align, offset_factor, buffer_type)
         return buffer
     """
