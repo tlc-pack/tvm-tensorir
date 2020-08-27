@@ -36,7 +36,7 @@ bool CheckOneLine(const Stmt& s) {
   return legal;
 }
 
-StmtSRef ScheduleNode::blockize(const StmtSRef& sref) {
+StmtSRef ScheduleNode::blockize(const StmtSRef& sref, const String& exe_scope) {
   /*!
    * Check:
    *   - The sub AST is one-line with only one block
@@ -125,7 +125,7 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& sref) {
   auto outer_block = Block(iter_vars, reads, writes, s, Array<BufferAllocate>(),
                            Array<Annotation>(), "blockized_" + inner_block->tag);
 
-  auto outer_realize = BlockRealize(values, IntImm(DataType::Bool(), 1), outer_block);
+  auto outer_realize = BlockRealize(values, IntImm(DataType::Bool(), 1), outer_block, exe_scope);
   this->Replace(sref, outer_realize);
   // Check loop binding
   // TODO(Siyuan): enhance validation

@@ -433,6 +433,111 @@ bool ScheduleNode::ValidateRegionCover(const StmtSRef& consumer_block_sref) cons
   return true;
 }
 
+class GPUValidator : public StmtVisitor {
+ public:
+  void VisitStmt_(const LoopNode* loop) final {
+    std::string thread_tag;
+    for (const auto& annotation : loop->annotations) {
+      if (annotation->attr_key == attr::loop_type) {
+        thread_tag = Downcast<StringImm>(annotation->value)->value;
+      }
+    }
+
+    bool new_kernel = false;
+    if ((IsBlockIdx(thread_tag) || IsThreadIdx(thread_tag)) && thread_tag != "vthread") {
+      // Check thread binding extents are same in one single kernel
+
+      // If there is no binding, we can regard it as a new kernel
+      new_kernel = thread_extents_.empty();
+
+      auto it = thread_extents_.find(thread_tag);
+      if (it != thread_extents_.end()) {
+        CHECK(ExprDeepEqual()(loop->extent, it->second))
+            << "All loops with the same thread binding must have the same extent, but get "
+            << loop->extent << " vs " << it->second;
+      } else {
+        thread_extents_[thread_tag] = loop->extent;
+      }
+    }
+
+    // Check execution scope and
+    if ((current_scope_ == "gpu_thread") &&
+        (IsBlockIdx(thread_tag) || IsThreadIdx(thread_tag))) {
+      // If the current scope is gpu_thread, any inside threadIdx or blockIdx is illegal.
+      LOG(FATAL) << "threadIdx or blockIdx can not be binded under the exec_scope gpu_thread";
+    } else if (current_scope_ == "gpu_warp" &&
+               ((IsBlockIdx(thread_tag) || IsThreadIdx(thread_tag)) &&
+                (thread_tag != "threadIdx.x" || !ExprDeepEqual()(loop->extent, 32)))) {
+      LOG(FATAL) << "threadIdx or blockIdx can not be binded under the exec_scope "
+                    "gpu_thread except threadIdx.x with extents 32";
+    } else if (current_scope_ == "gpu_block" && IsBlockIdx(thread_tag)) {
+      // If the current scope is gpu_block, any inside blockIdx is illegal.
+      LOG(FATAL) << "blockIdx can not be binded under the exec_scope gpu_block";
+    }
+
+    StmtVisitor::VisitStmt_(loop);
+
+    if (new_kernel) {
+      if (check_thread_x_) {
+        auto it = thread_extents_.find("threadIdx.x");
+        CHECK(it != thread_extents_.end())
+            << "can not find threadIdx.x but find warp level execution scope";
+        CHECK(ExprDeepEqual()(it->second, 32))
+            << "threadIdx.x extent is expected to be 32 with warp level block but get "
+            << it->second;
+      }
+      check_thread_x_ = false;
+      thread_extents_.clear();
+    }
+
+  }
+
+  void VisitStmt_(const BlockRealizeNode* realize) final {
+    std::string exec_scope = realize->exec_scope;
+    std::string current_scope;
+    std::swap(current_scope, current_scope_);
+
+    if (exec_scope != "") {
+      if (exec_scope == "gpu_block") {
+        CHECK(current_scope == "gpu_block" || current_scope == "gpu_global");
+      } else if (exec_scope == "gpu_warp") {
+        CHECK(current_scope == "gpu_warp" || current_scope == "gpu_block" ||
+            current_scope == "gpu_global");
+      } else if (exec_scope == "gpu_warp") {
+        CHECK(exec_scope == "gpu_thread" || current_scope == "gpu_warp" ||
+            current_scope == "gpu_block" || current_scope == "gpu_global");
+      }
+    }
+
+    current_scope_ = exec_scope;
+    StmtVisitor::VisitStmt_(realize);
+    std::swap(current_scope, current_scope_);
+  }
+
+  /*! \brief The final result */
+
+ private:
+  inline bool IsThreadIdx(std::string thread_tag) {
+    return thread_tag.substr(0, 9) == "threadIdx" || thread_tag.substr(0, 7) == "vthread";
+  }
+
+  inline bool IsBlockIdx(std::string thread_tag) {
+    return thread_tag.substr(0, 9) == "BlockIdx";
+  }
+
+  /*! \brief The current execution scope (gpu_global, gpu_block, gpu_warp or gpu_thread) */
+  std::string current_scope_ = "gpu_glboal";
+  /*! \brief The extents of each threadIdx or blockIdx */
+  std::unordered_map<std::string, PrimExpr> thread_extents_;
+  /*! \brief Whether need to check threadIdx.x extents = 32 */
+  bool check_thread_x_ = false;
+};
+
+void ScheduleNode::ValidateHierarchy(const PrimFunc& f) {
+  GPUValidator gpu_validator;
+  gpu_validator(f->body);
+}
+
 #if (false)
 class SRefValidator : public StmtVisitor {
  public:

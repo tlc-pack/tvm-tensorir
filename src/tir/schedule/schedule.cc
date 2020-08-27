@@ -35,7 +35,6 @@ StmtSRef::StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index
   n->stmt = stmt;
   n->parent = parent;
   n->seq_index = seq_index;
-  n->binding_valid = false;
   data_ = std::move(n);
 }
 
@@ -555,6 +554,12 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleParallel")
       schedule->parallel(node);
     });
 
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBind")
+    .set_body_typed<void(Schedule, StmtSRef, IterVar)>([](Schedule schedule, StmtSRef loop,
+                                                          IterVar thread) {
+      schedule->bind(loop, thread);
+    });
+
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnroll")
     .set_body_typed<void(Schedule, StmtSRef)>([](Schedule schedule, StmtSRef node) {
       schedule->unroll(node);
@@ -592,7 +597,7 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleTensorize")
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBlockize")
     .set_body_typed<StmtSRef(Schedule, StmtSRef)>([](Schedule schedule, StmtSRef sref) {
-      return schedule->blockize(sref);
+      return schedule->blockize(sref, "");
     });
 
 // dependency graph
