@@ -276,6 +276,17 @@ class Schedule(Object):
         """
         ScheduleComputeAt(self, block, loop)
 
+    def bind(self, loop, thread_ivar):
+        """Bind ivar to thread index thread_ivar
+        Parameters
+        ----------
+        loop : Loop
+            The loop to be binded to thread.
+        thread_ivar : IterVar
+            The thread to be binded.
+        """
+        ScheduleBind(self, loop, thread_ivar)
+
     def blockize(self, loop):
         """make subtree rooted by sref into a block
         Parameters

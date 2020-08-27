@@ -25,7 +25,7 @@ from tvm.tir import asin, asinh, acos, acosh, atan, atanh
 from tvm.tir import trunc, abs, round, nearbyint, power, popcount, fmod, if_then_else
 from tvm.tir import isnan, isfinite, isinf
 from tvm.tir import div, indexdiv, indexmod, truncdiv, truncmod, floordiv, floormod
-from tvm.tir import comm_reducer, min, max, sum
+from tvm.tir import comm_reducer, min, max, sum, thread_axis
 
 from .schedule import Schedule, Stage, create_schedule, SpecializedCondition
 from .tensor import TensorSlice, Tensor
