@@ -25,14 +25,14 @@ from tvm.tir import asin, asinh, acos, acosh, atan, atanh
 from tvm.tir import trunc, abs, round, nearbyint, power, popcount, fmod, if_then_else
 from tvm.tir import isnan, isfinite, isinf
 from tvm.tir import div, indexdiv, indexmod, truncdiv, truncmod, floordiv, floormod
-from tvm.tir import comm_reducer, min, max, sum
+from tvm.tir import comm_reducer, min, max, sum, thread_axis
 
 from .schedule import Schedule, Stage, create_schedule, SpecializedCondition
 from .tensor import TensorSlice, Tensor
 from .tensor_intrin import decl_tensor_intrin
 from .tag import tag_scope
 from .operation import placeholder, compute, scan, extern, var, size_var
-from .operation import thread_axis, reduce_axis
+from .operation import reduce_axis
 
 from .tensor import PlaceholderOp, ComputeOp, TensorComputeOp, ScanOp, ExternOp, HybridOp
 from .autodiff import gradient

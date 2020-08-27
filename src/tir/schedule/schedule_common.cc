@@ -257,10 +257,14 @@ std::function<TensorRegion(const TensorRegion)> RelaxGenerator(const StmtSRef& b
 
 void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
                  std::vector<TensorRegion>* reads,
-                 std::vector<TensorRegion>* writes) {
+                 std::vector<TensorRegion>* writes,
+                 const std::unordered_map<const VarNode*, Range>& relax_vars) {
   std::unordered_map<const VarNode*, PrimExpr> vmap;
   std::unordered_map<const VarNode*, arith::IntSet> dom_map;
   auto relax = RelaxGenerator(block_sref, root, &vmap, &dom_map);
+  for (const auto& pair : relax_vars) {
+    dom_map[pair.first] = arith::IntSet::FromRange(pair.second);
+  }
   const auto* block = block_sref->GetStmt<BlockNode>();
   if (reads != nullptr) {
     for (const auto& tensor_region : block->reads) {
