@@ -26,7 +26,6 @@ class ScopeEmitter:
     class BlockInfo:
         def __init__(self):
             self.allocates = []
-            self.name = "block"
             self.binding = dict()
             self.reads = None
             self.writes = None
@@ -34,23 +33,26 @@ class ScopeEmitter:
             self.predicate = tvm.runtime.convert(True)
 
     def __init__(self, parser):
-        self.node_stack = [[]]  # AST nodes of scopes
+        self.node_stack = []  # AST nodes of scopes
         self.block_info_stack = []  # Block info of scopes
         self.loop_stack = []  # stack of loop vars
-        self.symbols = [dict()]  # Symbols of scopes
+        self.symbols = []  # Symbols of scopes
         self.parser = parser
 
     def pop_scope(self, is_block=False):
         """Pop the inner most scope"""
         self.symbols.pop()
         self.node_stack.pop()
-        return self.block_info_stack.pop() if is_block else None
+        if is_block:
+            self.loop_stack.pop()
+            return self.block_info_stack.pop()
 
     def new_scope(self, is_block=False):
         """ Creating a new scope """
         self.node_stack.append([])
         self.symbols.append(dict())
         if is_block:
+            self.loop_stack.append([])
             self.block_info_stack.append(ScopeEmitter.BlockInfo())
 
     def update_symbol(self, name, symbol):

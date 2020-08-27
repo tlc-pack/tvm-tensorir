@@ -683,7 +683,7 @@ Doc TIRHybridPrinter::VisitStmt_(const BlockRealizeNode* op) {
   const BlockNode* block_op = (op->block).as<BlockNode>();
   // print block name and block vars
   Doc doc;
-  doc << "with tir.block(";
+  doc << "with tir.block(" << Doc::StrLiteral(block_op->tag) << ", [";
   std::vector<Doc> block_var_docs;
   for (const auto& iter_var : block_op->iter_vars) {
     Doc block_var_doc;
@@ -713,7 +713,7 @@ Doc TIRHybridPrinter::VisitStmt_(const BlockRealizeNode* op) {
     }
     block_var_docs.push_back(block_var_doc);
   }
-  doc << PrintSep(block_var_docs, Doc::Text(", ")) << ")";
+  doc << PrintSep(block_var_docs, Doc::Text(", ")) << "])";
   if (!block_op->iter_vars.empty()) {
     std::vector<Doc> block_var_names;
     for (const auto& iter_var : block_op->iter_vars) {
@@ -724,15 +724,14 @@ Doc TIRHybridPrinter::VisitStmt_(const BlockRealizeNode* op) {
   }
   doc << ":";
   Doc block_attr_doc;
-  // print name, binding, read/write tensor region, annotations
-  block_attr_doc << Doc::NewLine() << "tir.block_name(" << Doc::StrLiteral(block_op->tag) << ")";
-  for (size_t i = 0; i < block_op->iter_vars.size(); ++i)
-    block_attr_doc << Doc::NewLine() << "tir.block_bind(" << Print(block_op->iter_vars[i]->var) << ", " << Print(op->binding_values[i]) << ")";
-  block_attr_doc << Doc::NewLine() << "tir.block_writes(" << Print(block_op->writes) << ")";
-  block_attr_doc << Doc::NewLine() << "tir.block_reads(" << Print(block_op->reads) << ")";
+  // print predicate, binding, read/write tensor region, annotations
   if (!is_one(op->predicate)) {
-    block_attr_doc << Doc::NewLine() << "tir.block_if(" << Print(op->predicate) << ")";
+    block_attr_doc << Doc::NewLine() << "tir.where(" << Print(op->predicate) << ")";
   }
+  for (size_t i = 0; i < block_op->iter_vars.size(); ++i)
+    block_attr_doc << Doc::NewLine() << "tir.bind(" << Print(block_op->iter_vars[i]->var) << ", " << Print(op->binding_values[i]) << ")";
+  block_attr_doc << Doc::NewLine() << "tir.reads(" << Print(block_op->reads) << ")";
+  block_attr_doc << Doc::NewLine() << "tir.writes(" << Print(block_op->writes) << ")";
   if (!block_op->annotations.empty()) {
     block_attr_doc << Doc::NewLine() << "tir.block_attr(" << Print(block_op->annotations) << ")";
   }
