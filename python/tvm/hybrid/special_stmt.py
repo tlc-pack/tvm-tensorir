@@ -52,7 +52,7 @@ def buffer_bind(parser, node, param, shape, dtype="float32", data=None, strides=
         strides = []
     align = align.value if not isinstance(align, int) else align
     offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
-    buffer = tvm.tir.decl_buffer(shape, dtype, parser._assign_target, data, strides, elem_offset,
+    buffer = tvm.tir.decl_buffer(shape, dtype, parser.assign_target, data, strides, elem_offset,
                                  scope, align, offset_factor, buffer_type)
     parser.buffer_map[param] = buffer
     return buffer
@@ -76,29 +76,24 @@ def buffer_allocate(parser, node, shape, dtype="float32", data=None, strides=Non
         strides = []
     align = align.value if not isinstance(align, int) else align
     offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
-    buffer = tvm.tir.decl_buffer(shape, dtype, parser._assign_target, data, strides, elem_offset,
+    buffer = tvm.tir.decl_buffer(shape, dtype, parser.assign_target, data, strides, elem_offset,
                                  scope, align, offset_factor, buffer_type)
     parser.scope_emitter.block_scope().allocates.append(tvm.tir.BufferAllocate(buffer, scope))
     return buffer
 
 
 @register_special_stmt()
-def block_name(parser, node, name):
-    parser.scope_emitter.block_scope().name = name
-
-
-@register_special_stmt()
-def block_bind(parser, node, block_var, binding):
+def bind(parser, node, block_var, binding):
     parser.scope_emitter.block_scope().binding[block_var] = binding
 
 
 @register_special_stmt()
-def block_reads(parser, node, reads):
+def reads(parser, node, reads):
     parser.scope_emitter.block_scope().reads = [reads] if not isinstance(reads, list) else reads
 
 
 @register_special_stmt()
-def block_writes(parser, node, writes):
+def writes(parser, node, writes):
     parser.scope_emitter.block_scope().writes = [writes] if not isinstance(writes, list) else writes
 
 
@@ -108,7 +103,7 @@ def block_attr(parser, node, attrs):
 
 
 @register_special_stmt()
-def block_if(parser, node, predicate):
+def where(parser, node, predicate):
     parser.scope_emitter.block_scope().predicate = predicate
 
 
@@ -128,7 +123,7 @@ def buffer_decl(parser, node, shape, dtype="float32", data=None, strides=None, e
         strides = []
     align = align.value if not isinstance(align, int) else align
     offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
-    buffer = tvm.tir.decl_buffer(shape, dtype, parser._assign_target, data, strides, elem_offset,
+    buffer = tvm.tir.decl_buffer(shape, dtype, parser.assign_target, data, strides, elem_offset,
                                  scope, align, offset_factor, buffer_type)
     return buffer
 
@@ -136,7 +131,7 @@ def buffer_decl(parser, node, shape, dtype="float32", data=None, strides=None, e
 @register_special_stmt()
 def var(parser, node, dtype):
     """ Special function for defining a Var"""
-    return te.var(parser._assign_target, dtype)
+    return te.var(parser.assign_target, dtype)
 
 
 class HybridLambda:
