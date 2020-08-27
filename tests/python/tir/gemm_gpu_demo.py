@@ -11,12 +11,8 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     B = tir.buffer_bind(b, (2048, 2048), "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
-    with tir.block({}, writes=[C[0:2048, 0:2048]], reads=[A[0:2048, 0:2048], B[0:2048, 0:2048]],
-                   name="root"):
-        for i, j, k in tir.grid(2048, 2048, 2048):
-            with tir.block({vi(0, 2048): i, vj(0, 2048): j, vk(0, 2048, iter_type="reduce"): k},
-                           writes=C[vi, vj], reads=[C[vi, vj], A[vk, vi], B[vk, vj]], name="C"):
-                reducer.step(C[vi, vj], A[vk, vi] * B[vk, vj])
+    with tir.block("C", [2048, 2048, tir.reduce_axis(0, 2048)]) as [vi, vj, vk]:
+        reducer.step(C[vi, vj], A[vk, vi] * B[vk, vj])
 
 
 n = 2048
