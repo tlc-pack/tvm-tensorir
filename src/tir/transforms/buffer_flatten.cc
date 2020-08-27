@@ -27,6 +27,7 @@
 #include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
 #include <tvm/tir/stmt_functor.h>
+#include <tvm/tir/schedule.h>
 #include <tvm/tir/transform.h>
 
 namespace tvm {
@@ -243,7 +244,7 @@ class RegionGatherer : public StmtExprVisitor {
     for (size_t i = 0; i < loop_stack_.size(); ++i) {
       const Loop& loop = loop_stack_[i];
       const VarNode* var = loop->loop_var.get();
-      if (need_relax) {
+      if (need_relax || (op->buffer->scope == "shared" && IsThreadBinded(loop))) {
         dom_map[var] = arith::IntSet::FromRange(Range::FromMinExtent(loop->min, loop->extent));
       }
       if (loop.same_as(lca)) need_relax = true;
@@ -253,6 +254,16 @@ class RegionGatherer : public StmtExprVisitor {
       region.push_back(arith::EvalSet(Substitute(e, block_var_), dom_map));
     }
     return region;
+  }
+
+  bool IsThreadBinded(const Loop& loop) {
+    for (const auto& annotation : loop->annotations)
+      if (annotation->attr_key == attr::loop_type) {
+        std::string thread_tag = Downcast<StringImm>(annotation->value)->value;
+        if (thread_tag.substr(0, 9) == "threadIdx" ||
+            thread_tag.substr(0, 7) == "vthread") return true;
+      }
+    return false;
   }
 };
 
@@ -330,25 +341,31 @@ class BufferFlattener : public StmtExprMutator {
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     op = stmt.as<LoopNode>();
     CHECK(op != nullptr);
-    // todo(@siyuan): add support for loops with annotations
+
+    std::string thread_tag = "";
+    bool thread_binded = false;
 
     ForType for_type = ForType::Serial;
     for (const auto& annotation : op->annotations)
       if (annotation->attr_key == tir::attr::loop_type) {
         std::string type = Downcast<StringImm>(annotation->value)->value;
-        if (type == "unroll")
+        if (type == "unroll") {
           for_type = ForType::Unrolled;
-        else if (type == "vectorize")
+        } else if (type == "vectorize") {
           for_type = ForType::Vectorized;
-        else if (type == "parallel")
+        } else if (type == "parallel") {
           for_type = ForType::Parallel;
+        } else {
+          thread_binded = true;
+          thread_tag = Downcast<StringImm>(annotation->value)->value;
+        }
       }
 
     Stmt body = op->body;
-    for (const auto& it : pending_allocate_)
-      if (old_stmt.same_as(buffers_lca_.at(it.first))) {
+    for (auto it = pending_allocate_.begin(); it != pending_allocate_.end();) {
+      if (old_stmt.same_as(buffers_lca_.at(it->first))) {
         PrimExpr extents = 1;
-        const auto& n = it.second;
+        const auto& n = it->second;
         for (const auto& extent : buffers_region_.at(n->buffer)) {
           extents *= extent.max() - extent.min() + 1;
         }
@@ -357,9 +374,19 @@ class BufferFlattener : public StmtExprMutator {
         // Change empty scope into global
         std::string scope = n->scope.empty() ? "global" : n->scope;
         body = AttrStmt(n->buffer->data, attr::storage_scope, StringImm(scope), body);
+        pending_allocate_.erase(it++);
+      } else {
+        it++;
       }
+    }
 
-    return For(op->loop_var, op->min, op->extent, for_type, DeviceAPI::None, body);
+    if (thread_binded) {
+      return AttrStmt(
+          IterVar(Range(op->min, op->extent), op->loop_var, IterVarType::kThreadIndex, thread_tag),
+          thread_tag == "vthread" ? attr::virtual_thread : attr::thread_extent, op->extent, body);
+    } else {
+      return For(op->loop_var, op->min, op->extent, for_type, DeviceAPI::None, body);
+    }
   }
 
   // TODO(Siyuan): add support for For and AttrStmt
@@ -429,6 +456,9 @@ class BufferFlattener : public StmtExprMutator {
 
 PrimFunc BufferFlatten(PrimFunc f) {
   auto fptr = f.CopyOnWrite();
+
+  // Check memory and execution hierarchy
+  ScheduleNode::ValidateHierarchy(f);
 
   // Transform the reduction calls to BufferStore
   ReductionTransformer reduction_transformer;
