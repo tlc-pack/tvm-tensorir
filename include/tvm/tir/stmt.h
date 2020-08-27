@@ -1099,22 +1099,26 @@ class BlockRealizeNode : public StmtNode {
   PrimExpr predicate;
   /*! \brief The block to be realized. */
   Block block;
+  /*! \brief The block execution scope. */
+  String exec_scope;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("binding_values", &binding_values);
     v->Visit("predicate", &predicate);
     v->Visit("block", &block);
+    v->Visit("exec_scope", &exec_scope);
   }
 
   bool SEqualReduce(const BlockRealizeNode* other, SEqualReducer equal) const {
     return equal(binding_values, other->binding_values) && equal(predicate, other->predicate) &&
-           equal(block, other->block);
+           equal(block, other->block) && equal(exec_scope, other->exec_scope);
   }
 
   void SHashReduce(SHashReducer hash_reduce) const {
     hash_reduce(binding_values);
     hash_reduce(predicate);
     hash_reduce(block);
+    hash_reduce(exec_scope);
   }
 
   static constexpr const char* _type_key = "BlockRealize";
@@ -1127,7 +1131,8 @@ class BlockRealizeNode : public StmtNode {
  */
 class BlockRealize : public Stmt {
  public:
-  TVM_DLL explicit BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block);
+  TVM_DLL explicit BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block,
+                                String exe_scope);
 
   TVM_DEFINE_OBJECT_REF_METHODS(BlockRealize, Stmt, BlockRealizeNode);
 };

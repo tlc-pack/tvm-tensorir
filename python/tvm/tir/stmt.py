@@ -447,10 +447,13 @@ class BlockRealize(Stmt):
 
     block : Block
         The block to realize
+
+    exe_scope: str
+        Execution scope of the block
     """
-    def __init__(self, values, predicate, block):
+    def __init__(self, values, predicate, block, exe_scope=""):
         self.__init_handle_by_constructor__(
-            _ffi_api.BlockRealize, values, predicate, block)
+            _ffi_api.BlockRealize, values, predicate, block, exe_scope)
 
 
 @tvm._ffi.register_object

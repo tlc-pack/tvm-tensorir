@@ -362,34 +362,6 @@ def size_var(name="size", dtype="int32"):
     return tvm.tir.SizeVar(name, dtype)
 
 
-def thread_axis(dom=None, tag="", name=""):
-    """Create a new IterVar to represent thread index.
-
-    Parameters
-    ----------
-    dom : Range or str
-        The domain of iteration
-        When str is passed, dom is set to None and str is used as tag
-
-    tag : str, optional
-        The thread tag
-
-    name : str, optional
-        The name of the var.
-
-    Returns
-    -------
-    axis : IterVar
-        The thread itervar.
-    """
-    if isinstance(dom, string_types):
-        tag, dom = dom, None
-    if not tag:
-        raise ValueError("tag must be given as Positional or keyword argument")
-    name = name if name else tag
-    return tvm.tir.IterVar(dom, name, 1, tag)
-
-
 def reduce_axis(dom, name="rv"):
     """Create a new IterVar for reduction.
 
