@@ -958,24 +958,26 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 // BlockRealize
 BlockRealize::BlockRealize(Array<PrimExpr> values,
                            PrimExpr predicate,
-                           Block block) {
+                           Block block,
+                           String exe_scope) {
   CHECK_EQ(block->iter_vars.size(), values.size());
   ObjectPtr<BlockRealizeNode> node = make_object<BlockRealizeNode>();
   node->binding_values = std::move(values);
   node->predicate = std::move(predicate);
   node->block = std::move(block);
+  node->exec_scope = std::move(exe_scope);
   data_ = std::move(node);
 }
 
 TVM_REGISTER_GLOBAL("tir.BlockRealize")
-.set_body_typed<BlockRealize(Array<PrimExpr>, PrimExpr, Block)>(
-    [](Array<PrimExpr> values, PrimExpr predicate, Block block) {
+.set_body_typed<BlockRealize(Array<PrimExpr>, PrimExpr, Block, String)>(
+    [](Array<PrimExpr> values, PrimExpr predicate, Block block, String exe_scope) {
       if (!predicate.dtype().is_bool()) {
         // To support python ir_builder
         CHECK(is_one(predicate));
         predicate = IntImm(DataType::Bool(), 1);
       }
-      return BlockRealize(values, predicate, block);
+      return BlockRealize(values, predicate, block, exe_scope);
     });
 
 TVM_REGISTER_NODE_TYPE(BlockRealizeNode);

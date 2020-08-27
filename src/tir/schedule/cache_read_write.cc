@@ -50,7 +50,7 @@ class CachePositionDetector : public StmtVisitor {
       VisitStmt((*op)[i]);
 
       // pos can only be assigned once when we visited the block_sref
-      if (visited_block_ && pos == -1) {
+      if (visited_block_ && visited_related_ && pos == -1) {
         pos = static_cast<int>(i) + offset_;
       }
     }
@@ -63,7 +63,7 @@ class CachePositionDetector : public StmtVisitor {
     // Only we visited the writing block and any one of the related blocks
     // That means that we have found the lowest ancestor
     // of the block and any one of the related ones
-    if (visited_block && visited_related) {
+    if (visited_block_ && visited_related_) {
       pos_index_ = pos;
     }
   }
@@ -365,7 +365,7 @@ std::pair<Stmt, Block> GenerateCopyStmt(const Buffer& read_buffer, const Buffer&
   Block block(block_vars, {TensorRegion(read_buffer, access_region)},
               {TensorRegion(write_buffer, access_region)}, body, Array<BufferAllocate>(),
               Array<Annotation>(), "");
-  BlockRealize block_realize(binding_value, IntImm(DataType::Bool(), 1), block);
+  BlockRealize block_realize(binding_value, IntImm(DataType::Bool(), 1), block, "");
   body = block_realize;
   for (size_t i = loop_vars.size(); i > 0; --i) {
     const Range& range = relaxed_region->region[i - 1];

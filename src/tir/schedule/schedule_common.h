@@ -94,6 +94,7 @@ StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef
  * \param root The root node
  * \param reads The vector to store the reads result
  * \param writes The vector to store the writes result
+ * \param relax_vars The additional vars should be relaxed
  * \note reads and writes can be nullptr. In that case, we will ignore relax reads or writes region.
  * \example
  *   Before relax
@@ -103,7 +104,9 @@ StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef
  *   After relax, the relaxed region would be A[0: 10]
  */
 void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root, std::vector<TensorRegion>* reads,
-                 std::vector<TensorRegion>* writes);
+                 std::vector<TensorRegion>* writes,
+                 const std::unordered_map<const VarNode*, Range>& relax_vars =
+                     std::unordered_map<const VarNode*, Range>());
 
 /*!
  * \brief Relax the TensorRegion with the loops under root
