@@ -28,7 +28,7 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     B = tir.buffer_bind(b, (1024, 1024), "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
-    with tir.block("C", [1024, 1024, tir.reduce_axis(0, 1024)]) as [vi, vj, vk]:
+    with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "C") as [vi, vj, vk]:
         reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
 
@@ -159,10 +159,10 @@ def matmul_packed(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
     packedB = tir.buffer_allocate((1024 // 32, 1024, 32))
-    with tir.block("packed", [1024 // 32, 1024, 32]) as [vi, vj, vk]:
+    with tir.block([1024 // 32, 1024, 32], "packed") as [vi, vj, vk]:
         packedB[vi, vj, vk] = B[vj, vi * 32 + vk]
 
-    with tir.block("C", [1024, 1024, tir.reduce_axis(0, 1024)]) as [vi, vj, vk]:
+    with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "C") as [vi, vj, vk]:
         reducer.step(C[vi, vj], A[vi, vk] * packedB[vj // 32, vk, vj % 32])
 
 
