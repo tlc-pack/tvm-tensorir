@@ -25,16 +25,16 @@ from tvm.hybrid import ty
 
 @tvm.hybrid.script
 def desc_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (16, 16), align=128, offset_factor=1)
-    B = tir.buffer_bind(b, (16, 16), align=128, offset_factor=1)
-    C = tir.buffer_bind(c, (16, 16), align=128, offset_factor=1)
+    A = tir.match_buffer(a, (16, 16), align=128, offset_factor=1)
+    B = tir.match_buffer(b, (16, 16), align=128, offset_factor=1)
+    C = tir.match_buffer(c, (16, 16), align=128, offset_factor=1)
 
-    with tir.block("root", [16, 16, tir.reduce_axis(0, 16)]) as [vi, vj, vk]:
+    with tir.block([16, 16, tir.reduce_axis(0, 16)], "root") as [vi, vj, vk]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.bind(vk, 0)
         for i, j, k in tir.grid(16, 16, 16):
-            with tir.block("update", [16, 16, tir.reduce_axis(0, 16)]) as [vii, vjj, vkk]:
+            with tir.block([16, 16, tir.reduce_axis(0, 16)], "update") as [vii, vjj, vkk]:
                 tir.bind(vii, vi + i)
                 tir.bind(vjj, vj + j)
                 tir.bind(vkk, vk + k)
@@ -43,16 +43,16 @@ def desc_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 @tvm.hybrid.script
 def intrin_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (16, 16), align=128, offset_factor=1)
-    B = tir.buffer_bind(b, (16, 16), align=128, offset_factor=1)
-    C = tir.buffer_bind(c, (16, 16), align=128, offset_factor=1)
+    A = tir.match_buffer(a, (16, 16), align=128, offset_factor=1)
+    B = tir.match_buffer(b, (16, 16), align=128, offset_factor=1)
+    C = tir.match_buffer(c, (16, 16), align=128, offset_factor=1)
 
-    with tir.block("root", [16, 16, tir.reduce_axis(0, 16)]) as [vi, vj, vk]:
+    with tir.block([16, 16, tir.reduce_axis(0, 16)], "root") as [vi, vj, vk]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.bind(vk, 0)
         for i, j, k in tir.grid(16, 16, 16):
-            with tir.block("update", [16, 16, tir.reduce_axis(0, 16)]) as [vii, vjj, vkk]:
+            with tir.block([16, 16, tir.reduce_axis(0, 16)], "update") as [vii, vjj, vkk]:
                 tir.bind(vii, vi + i)
                 tir.bind(vjj, vj + j)
                 tir.bind(vkk, vk + k)
@@ -89,11 +89,11 @@ def test_tensorize_gemm():
 
 @tvm.hybrid.script
 def lower_intrin_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (16, 16), align=128, offset_factor=1)
-    B = tir.buffer_bind(b, (16, 16), align=128, offset_factor=1)
-    C = tir.buffer_bind(c, (16, 16), align=128, offset_factor=1)
+    A = tir.match_buffer(a, (16, 16), align=128, offset_factor=1)
+    B = tir.match_buffer(b, (16, 16), align=128, offset_factor=1)
+    C = tir.match_buffer(c, (16, 16), align=128, offset_factor=1)
 
-    with tir.block("root", [16, 16, tir.reduce_axis(0, 16)]) as [vi, vj, vk]:
+    with tir.block([16, 16, tir.reduce_axis(0, 16)], "root") as [vi, vj, vk]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.bind(vk, 0)
@@ -109,18 +109,18 @@ def lower_intrin_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 @tvm.hybrid.script
 def tensorized_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     # function attr dict
-    C = tir.buffer_bind(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
-    B = tir.buffer_bind(b, [128, 128], elem_offset=0, align=128, offset_factor=1)
-    A = tir.buffer_bind(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    C = tir.match_buffer(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    B = tir.match_buffer(b, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
     # body
     for i_outer, j_outer in tir.grid(8, 8):
         for i_inner_init, j_inner_init in tir.grid(16, 16):
-            with tir.block("init", [128, 128]) as [vi_init, vj_init]:
+            with tir.block([128, 128], "init") as [vi_init, vj_init]:
                 tir.bind(vi_init, ((i_outer * 16) + i_inner_init))
                 tir.bind(vj_init, ((j_outer * 16) + j_inner_init))
                 C[vi_init, vj_init] = tir.float32(0)
         for k_outer in tir.grid(8):
-            with tir.block("update", [16, 16, tir.reduce_axis(0, 16)]) as [vi, vj, vk]:
+            with tir.block([16, 16, tir.reduce_axis(0, 16)], "update") as [vi, vj, vk]:
                 tir.bind(vi, i_outer * 16)
                 tir.bind(vj, j_outer * 16)
                 tir.bind(vk, k_outer * 16)
