@@ -48,10 +48,10 @@ class HybridParser(ast.NodeVisitor):
         We divide allowed function calls in hybrid script into 3 categories,
         which is intrin, scope_handler and special_stmt.
         1) intrin functions ought to have return value.
-        User can also register intrin category function into hybrid.
-        2) scope_handler functions have no return value and accepts hybrid and AST node
+        User can also register intrin category function into parser.
+        2) scope_handler functions have no return value and accepts parser and AST node
         as its arguments, which is used in for scope and with scope.
-        3) special_stmt functions have return value and accepts hybrid and AST node as its arguments
+        3) special_stmt functions have return value and accepts parser and AST node as its arguments
         When visiting Call node, we check special_stmt registry at first. If no registered function
         is found, we then check intrin.
         When visiting With node, we check with_scope registry.
@@ -198,7 +198,7 @@ class HybridParser(ast.NodeVisitor):
             @tvm.hybrid.script
             def A(...):
                 ...
-            # call hybrid hybrid when call this function, get a Function
+            # call hybrid parser when call this function, get a Function
             func = A
         2. Generate an IRModule
         .. code-block:: python
@@ -210,7 +210,7 @@ class HybridParser(ast.NodeVisitor):
                def B(...):
                    ...
                 __tvm_meta__ = ...
-            # call hybrid hybrid during construction, get an IRModule
+            # call hybrid parser during construction, get an IRModule
             mod = MyMod()
         """
 

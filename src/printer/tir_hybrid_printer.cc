@@ -683,7 +683,7 @@ Doc TIRHybridPrinter::VisitStmt_(const BlockRealizeNode* op) {
   const BlockNode* block_op = (op->block).as<BlockNode>();
   // print block name and block vars
   Doc doc;
-  doc << "with tir.block(" << Doc::StrLiteral(block_op->tag) << ", [";
+  doc << "with tir.block([";
   std::vector<Doc> block_var_docs;
   for (const auto& iter_var : block_op->iter_vars) {
     Doc block_var_doc;
@@ -713,7 +713,8 @@ Doc TIRHybridPrinter::VisitStmt_(const BlockRealizeNode* op) {
     }
     block_var_docs.push_back(block_var_doc);
   }
-  doc << PrintSep(block_var_docs, Doc::Text(", ")) << "])";
+  doc << PrintSep(block_var_docs, Doc::Text(", ")) << "], ";
+  doc << Doc::StrLiteral(block_op->tag) << ")";
   if (!block_op->iter_vars.empty()) {
     std::vector<Doc> block_var_names;
     for (const auto& iter_var : block_op->iter_vars) {

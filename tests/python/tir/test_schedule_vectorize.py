@@ -29,7 +29,7 @@ def predicate_vectorize(b: ty.handle, c: ty.handle) -> None:
     B = tir.buffer_bind(b, (16, 16), "float32")
     for i, jo in tir.grid(16, 4):
         for ji in range(0, 4, annotation={"loop_type": "vectorize"}):
-            with tir.block("update", [16, 16]) as [vi, vj]:
+            with tir.block([16, 16], "update") as [vi, vj]:
                 tir.where(((jo * 4) + ji) < 16)
                 tir.bind(vi, i)
                 tir.bind(vj, (jo * 4) + ji)
@@ -42,7 +42,7 @@ def predicate_unroll(b: ty.handle, c: ty.handle) -> None:
     B = tir.buffer_bind(b, (16, 16), "float32")
     for i, jo in tir.grid(16, 4):
         for ji in range(0, 4, annotation={"loop_type": "unroll"}):
-            with tir.block("update", [16, 16]) as [vi, vj]:
+            with tir.block([16, 16], "update") as [vi, vj]:
                 tir.where(((jo * 4) + ji) < 16)
                 tir.bind(vi, i)
                 tir.bind(vj, (jo * 4) + ji)
@@ -68,9 +68,9 @@ def element_wise_compute_at(a: ty.handle, c: ty.handle) -> None:
     A = tir.buffer_bind(a, (128, 128), "float32")
     B = tir.buffer_allocate((128, 128), "float32")
     for i, j in tir.grid(128, 128):
-        with tir.block("B", [128, 128]) as [vi, vj]:
+        with tir.block([128, 128], "B") as [vi, vj]:
             B[vi, vj] = (A[vi, vj] * tir.float32(2))
-        with tir.block("C", [128, 128]) as [vi, vj]:
+        with tir.block([128, 128], "C") as [vi, vj]:
             C[vi, vj] = (B[vi, vj] + tir.float32(1))
 
 
@@ -82,11 +82,11 @@ def element_wise_compute_at_vectorize(a: ty.handle, c: ty.handle) -> None:
     for i in range(0, 128, annotation={}):
         for j_outer in range(0, 32, annotation={}):
             for j_inner in range(0, 4, annotation={"loop_type": "vectorize"}):
-                with tir.block("B", [128, 128]) as [vi, vj]:
+                with tir.block([128, 128], "B") as [vi, vj]:
                     tir.bind(vi, i)
                     tir.bind(vj, ((j_outer * 4) + j_inner))
                     B[vi, vj] = (A[vi, vj] * tir.float32(2))
-                with tir.block("C", [128, 128]) as [vi, vj]:
+                with tir.block([128, 128], "C") as [vi, vj]:
                     tir.bind(vi, i)
                     tir.bind(vj, (j_outer * 4) + j_inner)
                     C[vi, vj] = (B[vi, vj] + tir.float32(1))
