@@ -976,7 +976,7 @@ Doc TIRHybridPrinter::PrintBuffer(const BufferNode* op) {
   return meta_.InMeta(buffer) ? meta_.GetMetaNode(buffer) : AllocBuf(buffer);
 }
 
-TVM_REGISTER_GLOBAL("tir.hybrid.AsHybrid")
+TVM_REGISTER_GLOBAL("hybrid.AsHybrid")
     .set_body_typed<std::string(const ObjectRef&, bool)>(
         [](const ObjectRef& functions, bool show_meta) {
       CHECK(functions.as<PrimFuncNode>() != nullptr || functions.as<IRModuleNode>() != nullptr);
