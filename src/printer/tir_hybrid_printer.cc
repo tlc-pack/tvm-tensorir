@@ -730,7 +730,8 @@ Doc TIRHybridPrinter::VisitStmt_(const BlockRealizeNode* op) {
     block_attr_doc << Doc::NewLine() << "tir.where(" << Print(op->predicate) << ")";
   }
   for (size_t i = 0; i < block_op->iter_vars.size(); ++i)
-    block_attr_doc << Doc::NewLine() << "tir.bind(" << Print(block_op->iter_vars[i]->var) << ", " << Print(op->binding_values[i]) << ")";
+    block_attr_doc << Doc::NewLine() << "tir.bind(" << Print(block_op->iter_vars[i]->var)
+                   << ", " << Print(op->binding_values[i]) << ")";
   block_attr_doc << Doc::NewLine() << "tir.reads(" << Print(block_op->reads) << ")";
   block_attr_doc << Doc::NewLine() << "tir.writes(" << Print(block_op->writes) << ")";
   if (!block_op->annotations.empty()) {

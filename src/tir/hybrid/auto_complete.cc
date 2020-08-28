@@ -22,9 +22,9 @@
  * \brief Used by Hybrid Script parser to expand incomplete TIR input
  */
 
-#include <utility>
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/runtime/registry.h>
+#include <utility>
 
 namespace tvm {
 namespace tir {
