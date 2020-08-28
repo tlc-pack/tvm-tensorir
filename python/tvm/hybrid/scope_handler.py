@@ -46,7 +46,7 @@ def block(parser, node, body, block_vars, name, axes=None):
         with tir.block("update", [128, 128, tir.reduce_axis(128)]) as [i, j ,k]:
 
     """
-    parser.contains_block = True
+
     if axes is None:
         axes = []
     if len(axes) != len(block_vars):
@@ -96,23 +96,11 @@ def block(parser, node, body, block_vars, name, axes=None):
     inner = tvm.tir.Block(block_iters, reads, writes, body,
                           block_info.allocates, block_info.annotations, name)
 
-    auto_gen_loops = False
     if not block_info.binding:
         values = parser.scope_emitter.loop_stack[-1].copy()
         if len(values) == 0:
-            # generate loops automatically
-            suffix = 0
-            names = []
-            auto_gen_loops = True
-            for i in range(len(block_iters)):
-                while parser.scope_emitter.lookup_symbol("i" + str(suffix)) is not None:
-                    suffix = suffix + 1
-                names.append("i" + str(suffix))
-                suffix = suffix + 1
-            values = [tvm.te.var(name) for name in names]
-        elif len(values) >= len(block_iters):
-            values = values[:len(block_iters)]
-        else:
+            values = [None] * len(block_iters)
+        elif len(values) != len(block_iters):
             parser.report_error("Autocomplete block var binding expect larger number of loops")
     else:
         for block_var in block_vars:
@@ -121,10 +109,6 @@ def block(parser, node, body, block_vars, name, axes=None):
         values = [block_info.binding[block_var] for block_var in block_vars]
 
     body = tvm.tir.BlockRealize(values, block_info.predicate, inner)
-    if auto_gen_loops:
-        for i in reversed(range(len(values))):
-            body = tvm.tir.Loop(values[i], block_iters[i].dom.min,
-                                block_iters[i].dom.extent, [], body)
     return body
 
 

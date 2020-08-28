@@ -33,6 +33,7 @@ from . import scope_emitter, special_stmt, scope_handler, intrin, ty
 from .meta_unparser import MetaUnparser
 from .registry import Registry
 from .special_stmt import HybridLambda, HybridReducer
+from . import _ffi_api
 
 
 class HybridParserError(RuntimeError):
@@ -47,10 +48,10 @@ class HybridParser(ast.NodeVisitor):
         We divide allowed function calls in hybrid script into 3 categories,
         which is intrin, scope_handler and special_stmt.
         1) intrin functions ought to have return value.
-        User can also register intrin category function into parser.
-        2) scope_handler functions have no return value and accepts parser and AST node
+        User can also register intrin category function into hybrid.
+        2) scope_handler functions have no return value and accepts hybrid and AST node
         as its arguments, which is used in for scope and with scope.
-        3) special_stmt functions have return value and accepts parser and AST node as its arguments
+        3) special_stmt functions have return value and accepts hybrid and AST node as its arguments
         When visiting Call node, we check special_stmt registry at first. If no registered function
         is found, we then check intrin.
         When visiting With node, we check with_scope registry.
@@ -97,7 +98,6 @@ class HybridParser(ast.NodeVisitor):
 
         self.functions = {}
         self.assign_target = None
-        self.contains_block = False
 
     def init_function_parsing_env(self):
         """Initialize function parsing environment"""
@@ -105,7 +105,6 @@ class HybridParser(ast.NodeVisitor):
         self.buffer_map = {}  # buffer map
         self.dict_attr = {}  # dict attr
         self.scope_emitter = scope_emitter.ScopeEmitter(self)  # scope emitter
-        self.contains_block = False
 
     # TODO : if meta related functions grow, consider moving them to a new file
     @staticmethod
@@ -199,7 +198,7 @@ class HybridParser(ast.NodeVisitor):
             @tvm.hybrid.script
             def A(...):
                 ...
-            # call hybrid parser when call this function, get a Function
+            # call hybrid hybrid when call this function, get a Function
             func = A
         2. Generate an IRModule
         .. code-block:: python
@@ -211,7 +210,7 @@ class HybridParser(ast.NodeVisitor):
                def B(...):
                    ...
                 __tvm_meta__ = ...
-            # call hybrid parser during construction, get an IRModule
+            # call hybrid hybrid during construction, get an IRModule
             mod = MyMod()
         """
 
@@ -278,11 +277,10 @@ class HybridParser(ast.NodeVisitor):
         body = self.get_body()
         # Emit Scope : Implicit root block
         root_info = self.scope_emitter.pop_scope(is_block=True)
-        # generate root block automatically if needed
-        if (self.contains_block
-                and not (isinstance(body, tvm.tir.BlockRealize) and len(root_info.allocates) == 0)):
-            body = tvm.tir.Block([], [], [], body, root_info.allocates, [], "root")
-            body = tvm.tir.BlockRealize([], tvm.runtime.convert(True), body)
+        # Fix the body
+        # 1. generate root block if necessary
+        # 2. generate surrounding loops for blocks if necessary
+        body = AutoComplete(body, root_info.allocates)
         # return a tir.PrimFunc
         ret_type = self.get_type(node.returns)
         func = tvm.tir.PrimFunc(self.params, body,
@@ -769,4 +767,4 @@ def from_source(src, func_lineno=0):
         raise HybridParserError(inject_e)
 
 
-tvm._ffi._init_api("tvm.hybrid.parser")
+tvm._ffi._init_api("hybrid", __name__)

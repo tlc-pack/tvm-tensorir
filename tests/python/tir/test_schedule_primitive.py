@@ -220,8 +220,12 @@ def compute_at_case(a: ty.handle, c: ty.handle) -> None:
             A[vi, vj] = 2.0
         for k in range(0, 128):
             with tir.block("B1", [128, 128]) as [vi, vj]:
+                tir.bind(vi, i)
+                tir.bind(vj, j)
                 B[vi, vj] = A[vi, vj] * 2.0
             with tir.block("C", [128, 128]) as [vi, vj]:
+                tir.bind(vi, i)
+                tir.bind(vj, j)
                 C[vi, vj] = B[vi, vj] * 2.0
 
 
