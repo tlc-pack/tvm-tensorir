@@ -103,7 +103,7 @@ def load(dtype, var, index, predicate=True):
 
 
 @register_intrin()
-def cast(dtype, value):
+def cast(value, dtype):
     return tvm.tir.Cast(dtype, value)
 
 

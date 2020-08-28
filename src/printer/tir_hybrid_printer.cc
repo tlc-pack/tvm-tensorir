@@ -369,7 +369,11 @@ Doc TIRHybridPrinter::VisitExpr_(const StringImmNode* op) {
 
 Doc TIRHybridPrinter::VisitExpr_(const CastNode* op) {
   Doc doc;
-  doc << "tir.cast(" << PrintDType(op->dtype) << ", " << Print(op->value) << ")";
+  if (cast(op->dtype, op->value)->IsInstance<CastNode>()) {
+    doc << Print(op->value) << ".astype(" << PrintDType(op->dtype) << ")";
+  } else {
+    doc << "tir.cast(" << Print(op->value) << ", " << PrintDType(op->dtype) << ")";
+  }
   return doc;
 }
 
@@ -683,7 +687,7 @@ Doc TIRHybridPrinter::VisitStmt_(const BlockRealizeNode* op) {
   const BlockNode* block_op = (op->block).as<BlockNode>();
   // print block name and block vars
   Doc doc;
-  doc << "with tir.block(" << Doc::StrLiteral(block_op->tag) << ", [";
+  doc << "with tir.block([";
   std::vector<Doc> block_var_docs;
   for (const auto& iter_var : block_op->iter_vars) {
     Doc block_var_doc;
@@ -713,7 +717,8 @@ Doc TIRHybridPrinter::VisitStmt_(const BlockRealizeNode* op) {
     }
     block_var_docs.push_back(block_var_doc);
   }
-  doc << PrintSep(block_var_docs, Doc::Text(", ")) << "])";
+  doc << PrintSep(block_var_docs, Doc::Text(", ")) << "], ";
+  doc << Doc::StrLiteral(block_op->tag) << ")";
   if (!block_op->iter_vars.empty()) {
     std::vector<Doc> block_var_names;
     for (const auto& iter_var : block_op->iter_vars) {
@@ -729,7 +734,8 @@ Doc TIRHybridPrinter::VisitStmt_(const BlockRealizeNode* op) {
     block_attr_doc << Doc::NewLine() << "tir.where(" << Print(op->predicate) << ")";
   }
   for (size_t i = 0; i < block_op->iter_vars.size(); ++i)
-    block_attr_doc << Doc::NewLine() << "tir.bind(" << Print(block_op->iter_vars[i]->var) << ", " << Print(op->binding_values[i]) << ")";
+    block_attr_doc << Doc::NewLine() << "tir.bind(" << Print(block_op->iter_vars[i]->var)
+                   << ", " << Print(op->binding_values[i]) << ")";
   block_attr_doc << Doc::NewLine() << "tir.reads(" << Print(block_op->reads) << ")";
   block_attr_doc << Doc::NewLine() << "tir.writes(" << Print(block_op->writes) << ")";
   if (!block_op->annotations.empty()) {
@@ -856,7 +862,7 @@ Doc TIRHybridPrinter::PrintPrimFunc(const PrimFunc &primFunc) {
   // print buffer_bind
   for (const auto& it : op->buffer_map) {
     buf_not_in_headers.insert(it.second.get());
-    body << Print(it.second) << " = tir.buffer_bind(";
+    body << Print(it.second) << " = tir.match_buffer(";
     body << Print(it.first) << ", " << memo_buf_decl_[it.second];
     body << ")" << Doc::NewLine();
   }
@@ -976,7 +982,7 @@ Doc TIRHybridPrinter::PrintBuffer(const BufferNode* op) {
   return meta_.InMeta(buffer) ? meta_.GetMetaNode(buffer) : AllocBuf(buffer);
 }
 
-TVM_REGISTER_GLOBAL("tir.hybrid.AsHybrid")
+TVM_REGISTER_GLOBAL("hybrid.AsHybrid")
     .set_body_typed<std::string(const ObjectRef&, bool)>(
         [](const ObjectRef& functions, bool show_meta) {
       CHECK(functions.as<PrimFuncNode>() != nullptr || functions.as<IRModuleNode>() != nullptr);

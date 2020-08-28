@@ -35,15 +35,16 @@ from .registry import register_special_stmt
 
 
 @register_special_stmt()
-def buffer_bind(parser, node, param, shape, dtype="float32", data=None, strides=None,
-                elem_offset=None, scope="global", align=-1, offset_factor=0, buffer_type="default"):
-    """ Special function buffer_bind(var, shape, dtype, data, strides, elem_offset, scope, align,
-                                     offset_factor, buffer_type)
+def match_buffer(parser, node, param, shape, dtype="float32", data=None, strides=None,
+                 elem_offset=None, scope="global", align=-1,
+                 offset_factor=0, buffer_type="default"):
+    """ Special function match_buffer(var, shape, dtype, data, strides, elem_offset, scope, align,
+                                      offset_factor, buffer_type)
     Example
     -------
     .. code-block:: python
 
-        A = tir.buffer_bind(a, (128, 128), dtype="float32")
+        A = tir.match_buffer(a, (128, 128), dtype="float32")
     """
 
     if param not in parser.params:
@@ -149,10 +150,8 @@ class HybridReducer:
         self.reducer = tvm.tir.CommReducer([self.combiner.args[0]], [self.combiner.args[1]],
                                            [self.combiner.body], [self.identity])
 
-    @register_special_stmt()
-    def step(parser, node, lhs, rhs):
-        obj = parser.visit(node.func.value)
-        return tvm.tir.ReduceStep(obj.reducer, lhs, rhs)
+    def step(self, lhs, rhs):
+        return tvm.tir.ReduceStep(self.reducer, lhs, rhs)
 
 
 @register_special_stmt()

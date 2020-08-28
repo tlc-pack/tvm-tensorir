@@ -63,6 +63,12 @@ class Registry(object):
         """check whether a function belongs to special stmts"""
         return (func, Category.SPECIAL_STMT) in Registry.functions.values()
 
+    @staticmethod
+    def is_registered(func):
+        """check whether a function is registered"""
+        return (Registry.is_intrin(func) or Registry.is_with_scope(func)
+                or Registry.is_for_scope(func) or Registry.is_special_stmt(func))
+
 
 class CallArgumentReader(object):
     """A helper class which read required argument from passed arguments"""
