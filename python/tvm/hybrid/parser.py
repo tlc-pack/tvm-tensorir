@@ -33,6 +33,7 @@ from . import scope_emitter, special_stmt, scope_handler, intrin, ty
 from .meta_unparser import MetaUnparser
 from .registry import Registry
 from .special_stmt import HybridLambda, HybridReducer
+from . import _ffi_api
 
 
 class HybridParserError(RuntimeError):
@@ -97,7 +98,6 @@ class HybridParser(ast.NodeVisitor):
 
         self.functions = {}
         self.assign_target = None
-        self.contains_block = False
 
     def init_function_parsing_env(self):
         """Initialize function parsing environment"""
@@ -105,7 +105,6 @@ class HybridParser(ast.NodeVisitor):
         self.buffer_map = {}  # buffer map
         self.dict_attr = {}  # dict attr
         self.scope_emitter = scope_emitter.ScopeEmitter(self)  # scope emitter
-        self.contains_block = False
 
     # TODO : if meta related functions grow, consider moving them to a new file
     @staticmethod
@@ -278,11 +277,10 @@ class HybridParser(ast.NodeVisitor):
         body = self.get_body()
         # Emit Scope : Implicit root block
         root_info = self.scope_emitter.pop_scope(is_block=True)
-        # generate root block automatically if needed
-        if (self.contains_block
-                and not (isinstance(body, tvm.tir.BlockRealize) and len(root_info.allocates) == 0)):
-            body = tvm.tir.Block([], [], [], body, root_info.allocates, [], "root")
-            body = tvm.tir.BlockRealize([], tvm.runtime.convert(True), body)
+        # Fix the body
+        # 1. generate root block if necessary
+        # 2. generate surrounding loops for blocks if necessary
+        body = AutoComplete(body, root_info.allocates)
         # return a tir.PrimFunc
         ret_type = self.get_type(node.returns)
         func = tvm.tir.PrimFunc(self.params, body,
@@ -488,7 +486,10 @@ class HybridParser(ast.NodeVisitor):
         kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
 
         if callable(func):
-            return func(self, node, args, kw_args)
+            if Registry.is_registered(func):
+                return func(self, node, args, kw_args)
+            else:
+                return func(*args, **kw_args)
         elif isinstance(func, tvm.tir.op.Op):
             return tvm.tir.Call(kw_args["dtype"], func, args)
 
@@ -662,8 +663,6 @@ class HybridParser(ast.NodeVisitor):
         if not hasattr(symbol, node.attr):
             self.report_error("Type " + type(symbol) + " has not attr " + node.attr)
         res = getattr(symbol, node.attr)
-        if callable(res):
-            return Registry.look_up_function("tir." + res.__qualname__)
         return res
 
     def visit_Dict(self, node):
@@ -769,4 +768,4 @@ def from_source(src, func_lineno=0):
         raise HybridParserError(inject_e)
 
 
-tvm._ffi._init_api("tvm.hybrid.parser")
+tvm._ffi._init_api("hybrid", __name__)
