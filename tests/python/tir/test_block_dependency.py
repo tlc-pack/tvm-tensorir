@@ -70,9 +70,9 @@ def test_WAR(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.buffer_bind(c, (128, 128))
 
     for i, j in tir.grid(128, 128):
-        with tir.block("C", [128, 128]) as [vi, vj]:
+        with tir.block([128, 128], "C") as [vi, vj]:
             C[vi, vj] = B[vi, vj] + 1.0
-        with tir.block("B", [128, 128]) as [vi, vj]:
+        with tir.block([128, 128], "B") as [vi, vj]:
             B[vi, vj] = A[vi, vj] * 2.0
 
 

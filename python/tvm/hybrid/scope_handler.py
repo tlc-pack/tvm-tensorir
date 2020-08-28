@@ -36,14 +36,14 @@ from .registry import register_with_scope, register_for_scope
 
 # With scope handler
 @register_with_scope(concise=False)
-def block(parser, node, body, block_vars, name, axes=None):
-    """ With scope handler function block(block_vars， reads, writes, predicate, annotations, name)
+def block(parser, node, body, block_vars, axes=None, name=""):
+    """ With scope handler function block(axes, name)
 
     Example
     -------
     .. code-block:: python
 
-        with tir.block("update", [128, 128, tir.reduce_axis(128)]) as [i, j ,k]:
+        with tir.block([128, 128, tir.reduce_axis(128)], "update") as [i, j ,k]:
 
     """
 

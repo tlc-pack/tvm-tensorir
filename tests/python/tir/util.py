@@ -27,7 +27,7 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.buffer_bind(c, [128, 128])
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
-    with tir.block("update", [128, 128, tir.reduce_axis(0, 128)]) as [vi, vj, vk]:
+    with tir.block([128, 128, tir.reduce_axis(0, 128)], "update") as [vi, vj, vk]:
         reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
 
 
@@ -38,11 +38,11 @@ def matmul_original(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.buffer_bind(c, [128, 128])
 
     for i, j in tir.grid(128, 128):
-        with tir.block("init", [128, 128]) as [vi, vj]:
+        with tir.block([128, 128], "init") as [vi, vj]:
             C[vi, vj] = tir.float32(0)
 
         for k in range(0, 128):
-            with tir.block("update", [128, 128, tir.reduce_axis(0, 128)]) as [vi, vj, vk]:
+            with tir.block([128, 128, tir.reduce_axis(0, 128)], "update") as [vi, vj, vk]:
                 C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
@@ -52,10 +52,10 @@ def element_wise(a: ty.handle, c: ty.handle) -> None:
     C = tir.buffer_bind(c, (128, 128), "float32")
     B = tir.buffer_allocate((128, 128), "float32")
 
-    with tir.block("B", [128, 128]) as [vi, vj]:
+    with tir.block([128, 128], "B") as [vi, vj]:
         B[vi, vj] = A[vi, vj] * 2.0
 
-    with tir.block("C", [128, 128]) as [vi, vj]:
+    with tir.block([128, 128], "C") as [vi, vj]:
         C[vi, vj] = B[vi, vj] + 1.0
 
 
@@ -65,7 +65,7 @@ def predicate(b: ty.handle, c: ty.handle) -> None:
     C = tir.buffer_bind(c, (16, 16), "float32")
 
     for i, jo, ji in tir.grid(16, 4, 4):
-        with tir.block("update", [16, 16]) as [vi, vj]:
+        with tir.block([16, 16], "update") as [vi, vj]:
             tir.where(jo * 4 + ji < 16)
             tir.bind(vi, i)
             tir.bind(vj, jo * 4 + ji)

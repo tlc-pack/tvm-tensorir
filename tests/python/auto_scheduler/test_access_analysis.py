@@ -30,11 +30,11 @@ def _matmul_with_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     C = tir.buffer_allocate((128, 128), "float32")
 
     for i, j, k in tir.grid(1024, 1024, 1024):
-        with tir.block("C", [1024, 1024, tir.reduce_axis(0, 1024)]) as [vi, vj, vk]:
+        with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "C") as [vi, vj, vk]:
             reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
     for i, j in tir.grid(1024, 1024):
-        with tir.block("D", [1024, 1024]) as [vi, vj]:
+        with tir.block([1024, 1024], "D") as [vi, vj]:
             D[vi, vj] = tir.max(C[vi, vj], 1.0)
 
 

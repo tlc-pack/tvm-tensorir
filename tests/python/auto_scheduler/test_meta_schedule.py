@@ -27,16 +27,15 @@ def _matmul_with_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     D = tir.buffer_bind(d, (1024, 1024), "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
-    with tir.block("root"):
-        C = tir.buffer_allocate((128, 128), "float32")
+    C = tir.buffer_allocate((128, 128), "float32")
 
-        for i, j, k in tir.grid(1024, 1024, 1024):
-            with tir.block("C", [1024, 1024, tir.reduce_axis(0, 1024)]) as [vi, vj, vk]:
-                reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
+    for i, j, k in tir.grid(1024, 1024, 1024):
+        with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "C") as [vi, vj, vk]:
+            reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
-        for i, j in tir.grid(1024, 1024):
-            with tir.block("D", [1024, 1024]) as [vi, vj]:
-                D[vi, vj] = tir.max(C[vi, vj], 1.0)
+    for i, j in tir.grid(1024, 1024):
+        with tir.block([1024, 1024], "D") as [vi, vj]:
+            D[vi, vj] = tir.max(C[vi, vj], 1.0)
 
 
 def _get_meta_schedule_from_hybrid(hybrid_func):
