@@ -69,14 +69,11 @@ def test_WAR(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     B = tir.buffer_bind(b, (128, 128))
     C = tir.buffer_bind(c, (128, 128))
 
-    with tir.block({}, A[0: 128, 0: 128], [B[0: 128, 0: 128], C[0: 128, 0: 128]], name="root"):
-        for i, j in tir.grid(128, 128):
-            with tir.block(128, 128) as [vi, vj]:
-                tir.block_name("C")
-                C[vi, vj] = B[vi, vj] + 1.0
-            with tir.block(128, 128) as [vi, vj]:
-                tir.block_name("B")
-                B[vi, vj] = A[vi, vj] * 2.0
+    for i, j in tir.grid(128, 128):
+        with tir.block([128, 128], "C") as [vi, vj]:
+            C[vi, vj] = B[vi, vj] + 1.0
+        with tir.block([128, 128], "B") as [vi, vj]:
+            B[vi, vj] = A[vi, vj] * 2.0
 
 
 def test_WAR_dependency():

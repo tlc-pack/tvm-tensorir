@@ -33,6 +33,7 @@ from . import scope_emitter, special_stmt, scope_handler, intrin, ty
 from .meta_unparser import MetaUnparser
 from .registry import Registry
 from .special_stmt import HybridLambda, HybridReducer
+from . import _ffi_api
 
 
 class HybridParserError(RuntimeError):
@@ -96,7 +97,7 @@ class HybridParser(ast.NodeVisitor):
         self.meta = None
 
         self.functions = {}
-        self._assign_target = None
+        self.assign_target = None
 
     def init_function_parsing_env(self):
         """Initialize function parsing environment"""
@@ -262,22 +263,34 @@ class HybridParser(ast.NodeVisitor):
         """
 
         self.init_function_parsing_env()
+        # New Scope : PrimFunc
+        self.scope_emitter.new_scope()
         # add parameters of function
         for arg in node.args.args:
             arg_var = tvm.te.var(arg.arg, self.get_type(arg.annotation))
             self.scope_emitter.update_symbol(arg.arg, arg_var)
             self.params.append(arg_var)
-
-        # visit the body of function
+        # New Scope : Implicit root block
+        self.scope_emitter.new_scope(is_block=True)
+        # fetch the body of root block
         self.scope_emitter.node_stack[-1].extend(reversed(node.body))
-
-        # fetch the body and return a tir.PrimFunc
+        body = self.get_body()
+        # Emit Scope : Implicit root block
+        root_info = self.scope_emitter.pop_scope(is_block=True)
+        # Fix the body
+        # 1. generate root block if necessary
+        # 2. generate surrounding loops for blocks if necessary
+        body = AutoComplete(body, root_info.allocates)
+        # return a tir.PrimFunc
         ret_type = self.get_type(node.returns)
-        func = tvm.tir.PrimFunc(self.params, self.get_body(),
+        func = tvm.tir.PrimFunc(self.params, body,
                                 ret_type=ret_type,
                                 buffer_map=self.buffer_map,
                                 attrs=tvm.ir.make_node("DictAttrs", **self.dict_attr))
         self.functions[GlobalVar(node.name)] = func
+
+        # Emit Scope : PrimFunc
+        self.scope_emitter.pop_scope()
         return func
 
     def visit_Assign(self, node):
@@ -299,7 +312,7 @@ class HybridParser(ast.NodeVisitor):
 
         if isinstance(target, ast.Name):
             # scenario 1
-            self._assign_target = target.id
+            self.assign_target = target.id
             rhs = self.visit(node.value)
             if not isinstance(node.value, ast.Call):
                 self.report_error("Unsupported assign stmt")
@@ -307,7 +320,7 @@ class HybridParser(ast.NodeVisitor):
         elif isinstance(target, ast.Subscript):
             # scenario 2&3
             symbol, indexes = self.visit(target)
-            self._assign_target = (symbol, indexes)
+            self.assign_target = (symbol, indexes)
             rhs = self.visit(node.value)
             if isinstance(symbol, tvm.tir.Buffer):
                 return tvm.tir.BufferStore(symbol, tvm.runtime.convert(rhs), indexes)
@@ -754,4 +767,4 @@ def from_source(src, func_lineno=0):
         raise HybridParserError(inject_e)
 
 
-tvm._ffi._init_api("tvm.hybrid.parser")
+tvm._ffi._init_api("hybrid", __name__)

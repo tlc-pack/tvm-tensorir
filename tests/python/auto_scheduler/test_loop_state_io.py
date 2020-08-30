@@ -29,12 +29,9 @@ def _matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.buffer_bind(c, [1024, 1024])
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
-    with tir.block():
-        tir.block_name("root")
-        for i, j, k in tir.grid(1024, 1024, 1024):
-            with tir.block(1024, 1024, tir.reduce_axis(0, 1024)) as [vi, vj, vk]:
-                tir.block_name("C")
-                reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
+    for i, j, k in tir.grid(1024, 1024, 1024):
+        with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "C") as [vi, vj, vk]:
+            reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
 
 
 @tvm.hybrid.script
@@ -44,18 +41,14 @@ def _matmul_packed(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.buffer_bind(c, (1024, 1024), "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
-    with tir.block():
-        tir.block_name("root")
-        packedB = tir.buffer_allocate((1024 // 32, 1024, 32), "float32")
-        for i, j, k in tir.grid(1024 // 32, 1024, 32):
-            with tir.block(1024 // 32, 1024, 32) as [vi, vj, vk]:
-                tir.block_name("packed")
-                packedB[vi, vj, vk] = B[vj, vi * 32 + vk]
+    packedB = tir.buffer_allocate((1024 // 32, 1024, 32), "float32")
+    for i, j, k in tir.grid(1024 // 32, 1024, 32):
+        with tir.block([1024 // 32, 1024, 32], "packed") as [vi, vj, vk]:
+            packedB[vi, vj, vk] = B[vj, vi * 32 + vk]
 
-        for i, j, k in tir.grid(1024, 1024, 1024):
-            with tir.block(1024, 1024, tir.reduce_axis(0, 1024)) as [vi, vj, vk]:
-                tir.block_name("C")
-                reducer.step(C[vi, vj], A[vi, vk] * packedB[vj // 32, vk, vj % 32])
+    for i, j, k in tir.grid(1024, 1024, 1024):
+        with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "C") as [vi, vj, vk]:
+            reducer.step(C[vi, vj], A[vi, vk] * packedB[vj // 32, vk, vj % 32])
 
 
 @tvm.hybrid.script
@@ -63,74 +56,58 @@ def _fused_ewise(a: ty.handle, c: ty.handle) -> None:
     A = tir.buffer_bind(a, (128, 128), "float32")
     C = tir.buffer_bind(c, (128, 128), "float32")
 
-    with tir.block():
-        tir.block_name("root")
-        B = tir.buffer_allocate((128, 128), "float32")
+    B = tir.buffer_allocate((128, 128), "float32")
 
-        for i in range(0, 128 * 128):
-            with tir.block(128, 128) as [vi, vj]:
-                tir.block_name("B")
-                tir.block_bind(vi, i // 128)
-                tir.block_bind(vj, i % 128)
-                B[vi, vj] = A[vi, vj] * tir.float32(2.0)
+    for i in range(0, 128 * 128):
+        with tir.block([128, 128], "B") as [vi, vj]:
+            tir.bind(vi, i // 128)
+            tir.bind(vj, i % 128)
+            B[vi, vj] = A[vi, vj] * tir.float32(2.0)
 
-        for j in range(0, 128 * 128):
-            with tir.block(128, 128) as [vi, vj]:
-                tir.block_name("C")
-                tir.block_bind(vi, j // 128)
-                tir.block_bind(vj, j % 128)
-                C[vi, vj] = B[vi, vj] + tir.float32(1.0)
+    for j in range(0, 128 * 128):
+        with tir.block([128, 128], "C") as [vi, vj]:
+            tir.bind(vi, j // 128)
+            tir.bind(vj, j % 128)
+            C[vi, vj] = B[vi, vj] + tir.float32(1.0)
 
 
 @tvm.hybrid.script
 def _split_ewise(a: ty.handle, c: ty.handle) -> None:
     A = tir.buffer_bind(a, (128, 128), "float32")
     C = tir.buffer_bind(c, (128, 128), "float32")
+    B = tir.buffer_allocate((128, 128), "float32")
 
-    with tir.block():
-        tir.block_name("root")
-        tir.block_reads(A[0: 128, 0: 128])
-        tir.block_writes(C[0: 128, 0: 128])
-        B = tir.buffer_allocate((128, 128), "float32")
+    for io, ii, j in tir.grid(8, 16, 128):
+        with tir.block([128, 128], "B") as [vi, vj]:
+            tir.bind(vi, io * 16 + ii)
+            tir.bind(vj, j)
+            B[vi, vj] = A[vi, vj] * tir.float32(2.0)
 
-        for io, ii, j in tir.grid(8, 16, 128):
-            with tir.block(128, 128) as [vi, vj]:
-                tir.block_name("B")
-                tir.block_bind(vi, io * 16 + ii)
-                tir.block_bind(vj, j)
-                B[vi, vj] = A[vi, vj] * tir.float32(2.0)
-
-        for i, jo, ji in tir.grid(128, 10, 13):
-            with tir.block(128, 128) as [vi, vj]:
-                tir.block_name("C")
-                tir.block_if(jo * 13 + ji < 128)
-                tir.block_bind(vi, i)
-                tir.block_bind(vj, jo * 13 + ji)
-                C[vi, vj] = B[vi, vj] + tir.float32(1.0)
+    for i, jo, ji in tir.grid(128, 10, 13):
+        with tir.block([128, 128], "C") as [vi, vj]:
+            tir.where(jo * 13 + ji < 128)
+            tir.bind(vi, i)
+            tir.bind(vj, jo * 13 + ji)
+            C[vi, vj] = B[vi, vj] + tir.float32(1.0)
 
 
 @tvm.hybrid.script
 def _split_fuse_ewise(a: ty.handle, c: ty.handle) -> None:
     C = tir.buffer_bind(c, (128, 128), "float32")
     A = tir.buffer_bind(a, (128, 128), "float32")
-    with tir.block():
-        tir.block_name("root")
-        tir.block_reads(A[0:128, 0:128])
-        tir.block_writes(C[0:128, 0:128])
-        B = tir.buffer_allocate((128, 128), "float32")
-        for i, j in tir.grid(128, 128):
-            with tir.block(128, 128) as [vi, vj]:
-                tir.block_name("B")
-                tir.block_bind(vi, ((tir.floordiv(i, 16) * 16) + tir.floormod(i, 16)))
-                tir.block_bind(vj, j)
-                B[vi, vj] = A[vi, vj] * 2.0
-        for i, j in tir.grid(128, 130):
-            with tir.block(128, 128) as [vi, vj]:
-                tir.block_name("C")
-                tir.block_if((((tir.floordiv(j, 13) * 13) + tir.floormod(j, 13)) < 128))
-                tir.block_bind(vi, i)
-                tir.block_bind(vj, ((tir.floordiv(j, 13) * 13) + tir.floormod(j, 13)))
-                C[vi, vj] = B[vi, vj] + 1.0
+
+    B = tir.buffer_allocate((128, 128), "float32")
+    for i, j in tir.grid(128, 128):
+        with tir.block([128, 128], "B") as [vi, vj]:
+            tir.bind(vi, ((tir.floordiv(i, 16) * 16) + tir.floormod(i, 16)))
+            tir.bind(vj, j)
+            B[vi, vj] = A[vi, vj] * 2.0
+    for i, j in tir.grid(128, 130):
+        with tir.block([128, 128], "C") as [vi, vj]:
+            tir.where((((tir.floordiv(j, 13) * 13) + tir.floormod(j, 13)) < 128))
+            tir.bind(vi, i)
+            tir.bind(vj, ((tir.floordiv(j, 13) * 13) + tir.floormod(j, 13)))
+            C[vi, vj] = B[vi, vj] + 1.0
 
 
 # pylint: enable=invalid-name,line-too-long,undefined-variable
