@@ -22,9 +22,9 @@ from tvm import tir
 
 @tvm.hybrid.script
 def _matmul_with_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
-    A = tir.buffer_bind(a, (1024, 1024), "float32")
-    B = tir.buffer_bind(b, (1024, 1024), "float32")
-    D = tir.buffer_bind(d, (1024, 1024), "float32")
+    A = tir.match_buffer(a, (1024, 1024), "float32")
+    B = tir.match_buffer(b, (1024, 1024), "float32")
+    D = tir.match_buffer(d, (1024, 1024), "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
     C = tir.buffer_allocate((128, 128), "float32")

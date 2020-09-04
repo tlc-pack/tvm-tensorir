@@ -369,7 +369,7 @@ Doc TIRHybridPrinter::VisitExpr_(const StringImmNode* op) {
 
 Doc TIRHybridPrinter::VisitExpr_(const CastNode* op) {
   Doc doc;
-  doc << "tir.cast(" << PrintDType(op->dtype) << ", " << Print(op->value) << ")";
+  doc << "tir.cast(" << Print(op->value) << ", " << PrintDType(op->dtype) << ")";
   return doc;
 }
 
@@ -858,7 +858,7 @@ Doc TIRHybridPrinter::PrintPrimFunc(const PrimFunc &primFunc) {
   // print buffer_bind
   for (const auto& it : op->buffer_map) {
     buf_not_in_headers.insert(it.second.get());
-    body << Print(it.second) << " = tir.buffer_bind(";
+    body << Print(it.second) << " = tir.match_buffer(";
     body << Print(it.first) << ", " << memo_buf_decl_[it.second];
     body << ")" << Doc::NewLine();
   }

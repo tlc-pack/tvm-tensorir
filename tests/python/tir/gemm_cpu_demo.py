@@ -23,9 +23,9 @@ from tvm.hybrid import ty
 
 @tvm.hybrid.script
 def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    C = tir.buffer_bind(c, (1024, 1024), "float32")
-    A = tir.buffer_bind(a, (1024, 1024), "float32")
-    B = tir.buffer_bind(b, (1024, 1024), "float32")
+    C = tir.match_buffer(c, (1024, 1024), "float32")
+    A = tir.match_buffer(a, (1024, 1024), "float32")
+    B = tir.match_buffer(b, (1024, 1024), "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
     with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "C") as [vi, vj, vk]:
@@ -153,9 +153,9 @@ print('Opt3: %f' % build_and_test(s.func))
 
 @tvm.hybrid.script
 def matmul_packed(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (1024, 1024), "float32")
-    B = tir.buffer_bind(b, (1024, 1024), "float32")
-    C = tir.buffer_bind(c, (1024, 1024), "float32")
+    A = tir.match_buffer(a, (1024, 1024), "float32")
+    B = tir.match_buffer(b, (1024, 1024), "float32")
+    C = tir.match_buffer(c, (1024, 1024), "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
     packedB = tir.buffer_allocate((1024 // 32, 1024, 32))

@@ -24,9 +24,9 @@ from tvm import tir
 
 @tvm.hybrid.script
 def _matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, [1024, 1024])
-    B = tir.buffer_bind(b, [1024, 1024])
-    C = tir.buffer_bind(c, [1024, 1024])
+    A = tir.match_buffer(a, [1024, 1024])
+    B = tir.match_buffer(b, [1024, 1024])
+    C = tir.match_buffer(c, [1024, 1024])
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
     for i, j, k in tir.grid(1024, 1024, 1024):
@@ -36,9 +36,9 @@ def _matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 @tvm.hybrid.script
 def _matmul_packed(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (1024, 1024), "float32")
-    B = tir.buffer_bind(b, (1024, 1024), "float32")
-    C = tir.buffer_bind(c, (1024, 1024), "float32")
+    A = tir.match_buffer(a, (1024, 1024), "float32")
+    B = tir.match_buffer(b, (1024, 1024), "float32")
+    C = tir.match_buffer(c, (1024, 1024), "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
     packedB = tir.buffer_allocate((1024 // 32, 1024, 32), "float32")
@@ -53,8 +53,8 @@ def _matmul_packed(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 @tvm.hybrid.script
 def _fused_ewise(a: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (128, 128), "float32")
-    C = tir.buffer_bind(c, (128, 128), "float32")
+    A = tir.match_buffer(a, (128, 128), "float32")
+    C = tir.match_buffer(c, (128, 128), "float32")
 
     B = tir.buffer_allocate((128, 128), "float32")
 
@@ -73,8 +73,8 @@ def _fused_ewise(a: ty.handle, c: ty.handle) -> None:
 
 @tvm.hybrid.script
 def _split_ewise(a: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (128, 128), "float32")
-    C = tir.buffer_bind(c, (128, 128), "float32")
+    A = tir.match_buffer(a, (128, 128), "float32")
+    C = tir.match_buffer(c, (128, 128), "float32")
     B = tir.buffer_allocate((128, 128), "float32")
 
     for io, ii, j in tir.grid(8, 16, 128):
@@ -93,8 +93,8 @@ def _split_ewise(a: ty.handle, c: ty.handle) -> None:
 
 @tvm.hybrid.script
 def _split_fuse_ewise(a: ty.handle, c: ty.handle) -> None:
-    C = tir.buffer_bind(c, (128, 128), "float32")
-    A = tir.buffer_bind(a, (128, 128), "float32")
+    C = tir.match_buffer(c, (128, 128), "float32")
+    A = tir.match_buffer(a, (128, 128), "float32")
 
     B = tir.buffer_allocate((128, 128), "float32")
     for i, j in tir.grid(128, 128):
