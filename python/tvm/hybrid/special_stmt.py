@@ -150,10 +150,8 @@ class HybridReducer:
         self.reducer = tvm.tir.CommReducer([self.combiner.args[0]], [self.combiner.args[1]],
                                            [self.combiner.body], [self.identity])
 
-    @register_special_stmt()
-    def step(parser, node, lhs, rhs):
-        obj = parser.visit(node.func.value)
-        return tvm.tir.ReduceStep(obj.reducer, lhs, rhs)
+    def step(self, lhs, rhs):
+        return tvm.tir.ReduceStep(self.reducer, lhs, rhs)
 
 
 @register_special_stmt()

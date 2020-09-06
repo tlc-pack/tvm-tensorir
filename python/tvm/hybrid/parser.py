@@ -486,7 +486,10 @@ class HybridParser(ast.NodeVisitor):
         kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
 
         if callable(func):
-            return func(self, node, args, kw_args)
+            if Registry.is_registered(func):
+                return func(self, node, args, kw_args)
+            else:
+                return func(*args, **kw_args)
         elif isinstance(func, tvm.tir.op.Op):
             return tvm.tir.Call(kw_args["dtype"], func, args)
 
@@ -660,8 +663,6 @@ class HybridParser(ast.NodeVisitor):
         if not hasattr(symbol, node.attr):
             self.report_error("Type " + type(symbol) + " has not attr " + node.attr)
         res = getattr(symbol, node.attr)
-        if callable(res):
-            return Registry.look_up_function("tir." + res.__qualname__)
         return res
 
     def visit_Dict(self, node):

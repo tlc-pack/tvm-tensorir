@@ -369,7 +369,11 @@ Doc TIRHybridPrinter::VisitExpr_(const StringImmNode* op) {
 
 Doc TIRHybridPrinter::VisitExpr_(const CastNode* op) {
   Doc doc;
-  doc << "tir.cast(" << Print(op->value) << ", " << PrintDType(op->dtype) << ")";
+  if (cast(op->dtype, op->value)->IsInstance<CastNode>()) {
+    doc << Print(op->value) << ".astype(" << PrintDType(op->dtype) << ")";
+  } else {
+    doc << "tir.cast(" << Print(op->value) << ", " << PrintDType(op->dtype) << ")";
+  }
   return doc;
 }
 
