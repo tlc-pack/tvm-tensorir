@@ -115,7 +115,7 @@ void ScheduleNode::reorder(const Array<StmtSRef>& order) {
     IterVarType kind = iter_var->iter_type;
     // TODO(@junrushao1994): remove kThreadIndex
     CHECK(kind == kDataPar || kind == kCommReduce || kind == kThreadIndex)
-        << "ValueError: 'reorder' expects block var to be data paralell or reduction";
+        << "ValueError: 'reorder' expects block var to be data parallel or reduction";
   }
   std::function<Stmt(const StmtSRefNode*, int index)> f_reorder =
       [&bottom, &loops, &successor, &order, &f_reorder](const StmtSRefNode* loop,

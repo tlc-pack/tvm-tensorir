@@ -210,7 +210,7 @@ class CacheRewriter : public StmtExprMutator {
   const Stmt& stmt_to_be_inserted_;
 };
 
-/*! \brief Mutater for CacheRead */
+/*! \brief Mutator for CacheRead */
 class CacheReadRewriter : public CacheRewriter {
  public:
   explicit CacheReadRewriter(
@@ -259,7 +259,7 @@ class CacheReadRewriter : public CacheRewriter {
   Map<Block, Block> block_sref_map_;
 };
 
-/*! \brief Mutater for CacheWrite */
+/*! \brief Mutator for CacheWrite */
 class CacheWriteRewriter : public CacheRewriter {
  public:
   explicit CacheWriteRewriter(
