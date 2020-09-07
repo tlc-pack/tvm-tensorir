@@ -71,7 +71,7 @@ def compute_at_element_wise(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128), "float32", name="A")
     C = tir.match_buffer(c, (128, 128), "float32", name="C")
 
-    with tir.block(name="root"):
+    with tir.block(name="root") as []:
         B = tir.buffer_allocate((128, 128), "float32", name="B")
 
         for i in range(0, 128):

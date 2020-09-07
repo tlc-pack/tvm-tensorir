@@ -70,21 +70,16 @@ class Module2:
     def mmult(A: ty.handle, B: ty.handle, C: ty.handle) -> None:
         # function attr dict
         tir.func_attr({"global_symbol": "mmult", "tir.noalias": True})
-        # var definition
-        C_global = tir.var("handle")
-        packedB = tir.var("handle")
         A_1 = tir.match_buffer(A, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
         B_1 = tir.match_buffer(B, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
         C_1 = tir.match_buffer(C, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
         # body
-        tir.attr(packedB, "storage_scope", "global")
-        tir.allocate(packedB, "float32x32", [32768])
+        packedB = tir.alloc_with_scope("float32x32", [32768], "global")
         for x in tir.parallel(0, 32):
             for y in tir.serial(0, 1024):
                 tir.store(packedB, tir.ramp(((x*32768) + (y*32)), 1, 32), tir.load("float32x32", B_1.data, tir.ramp(((y*1024) + (x*32)), 1, 32), tir.broadcast(True, 32)), tir.broadcast(True, 32))
         for x_outer in tir.parallel(0, 32):
-            tir.attr(C_global, "storage_scope", "global")
-            tir.allocate(C_global, "float32", [1024])
+            C_global = tir.alloc_with_scope("float32", [1024], "global")
             for y_outer in tir.serial(0, 32):
                 for x_c_init in tir.serial(0, 32):
                     tir.store(C_global, tir.ramp((x_c_init*32), 1, 32), tir.broadcast(tir.float32(0), 32), tir.broadcast(True, 32))
@@ -304,11 +299,6 @@ def opt_conv_tensorcore_lower(A: ty.handle, W: ty.handle, Conv: ty.handle) -> No
     # function attr dict
     tir.func_attr({"global_symbol": "default_function", "tir.noalias": True})
     # var definition
-    Apad_shared = tir.var("handle")
-    Apad_shared_wmma_matrix_a = tir.var("handle")
-    Conv_wmma_accumulator = tir.var("handle")
-    W_shared = tir.var("handle")
-    W_shared_wmma_matrix_b = tir.var("handle")
     blockIdx_x = tir.var("int32")
     blockIdx_y = tir.var("int32")
     blockIdx_z = tir.var("int32")
@@ -320,16 +310,11 @@ def opt_conv_tensorcore_lower(A: ty.handle, W: ty.handle, Conv: ty.handle) -> No
     Conv_1 = tir.match_buffer(Conv, [16, 14, 14, 32, 16, 16], elem_offset=0, align=128, offset_factor=1)
     # body
     tir.attr(tir.iter_var(blockIdx_z, None, "ThreadIndex", "blockIdx.z"), "thread_extent", 196)
-    tir.attr(Conv_wmma_accumulator, "storage_scope", "wmma.accumulator")
-    tir.allocate(Conv_wmma_accumulator, "float32", [2048])
-    tir.attr(Apad_shared, "storage_scope", "shared")
-    tir.allocate(Apad_shared, "float16", [12288])
-    tir.attr(W_shared, "storage_scope", "shared")
-    tir.allocate(W_shared, "float16", [12288])
-    tir.attr(Apad_shared_wmma_matrix_a, "storage_scope", "wmma.matrix_a")
-    tir.allocate(Apad_shared_wmma_matrix_a, "float16", [512])
-    tir.attr(W_shared_wmma_matrix_b, "storage_scope", "wmma.matrix_b")
-    tir.allocate(W_shared_wmma_matrix_b, "float16", [1024])
+    Conv_wmma_accumulator = tir.alloc_with_scope("float32", [2048], "wmma.accumulator")
+    Apad_shared = tir.alloc_with_scope("float16", [12288], "shared")
+    W_shared = tir.alloc_with_scope("float16", [12288], "shared")
+    Apad_shared_wmma_matrix_a = tir.alloc_with_scope("float16", [512], "wmma.matrix_a")
+    W_shared_wmma_matrix_b = tir.alloc_with_scope("float16", [1024], "wmma.matrix_b")
     tir.attr(tir.iter_var(blockIdx_x, None, "ThreadIndex", "blockIdx.x"), "thread_extent", 2)
     tir.attr(tir.iter_var(blockIdx_y, None, "ThreadIndex", "blockIdx.y"), "thread_extent", 4)
     tir.attr(tir.iter_var(threadIdx_y, None, "ThreadIndex", "threadIdx.y"), "thread_extent", 4)

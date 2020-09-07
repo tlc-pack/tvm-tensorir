@@ -53,7 +53,7 @@ def match_buffer(parser, node, param, shape, dtype="float32", data=None, strides
         strides = []
     align = align.value if not isinstance(align, int) else align
     offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
-    buffer = tvm.tir.decl_buffer(shape, dtype, parser.assign_target, data, strides, elem_offset,
+    buffer = tvm.tir.decl_buffer(shape, dtype, parser.target[0], data, strides, elem_offset,
                                  scope, align, offset_factor, buffer_type)
     parser.buffer_map[param] = buffer
     return buffer
@@ -77,7 +77,7 @@ def buffer_allocate(parser, node, shape, dtype="float32", data=None, strides=Non
         strides = []
     align = align.value if not isinstance(align, int) else align
     offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
-    buffer = tvm.tir.decl_buffer(shape, dtype, parser.assign_target, data, strides, elem_offset,
+    buffer = tvm.tir.decl_buffer(shape, dtype, parser.target[0], data, strides, elem_offset,
                                  scope, align, offset_factor, buffer_type)
     parser.scope_emitter.block_scope().allocates.append(tvm.tir.BufferAllocate(buffer, scope))
     return buffer
@@ -124,7 +124,7 @@ def buffer_decl(parser, node, shape, dtype="float32", data=None, strides=None, e
         strides = []
     align = align.value if not isinstance(align, int) else align
     offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
-    buffer = tvm.tir.decl_buffer(shape, dtype, parser.assign_target, data, strides, elem_offset,
+    buffer = tvm.tir.decl_buffer(shape, dtype, parser.target[0], data, strides, elem_offset,
                                  scope, align, offset_factor, buffer_type)
     return buffer
 
@@ -132,7 +132,7 @@ def buffer_decl(parser, node, shape, dtype="float32", data=None, strides=None, e
 @register_special_stmt()
 def var(parser, node, dtype):
     """ Special function for defining a Var"""
-    return te.var(parser.assign_target, dtype)
+    return te.var(parser.target[0], dtype)
 
 
 class HybridLambda:
