@@ -89,6 +89,7 @@ class HybridParser(ast.NodeVisitor):
         self.buffer_map = None
         self.dict_attr = None
         self.scope_emitter = None
+        self.var_env_dict = None
 
         self.src = src.split('\n')
         self.base_lineno = base_lienno
@@ -97,7 +98,7 @@ class HybridParser(ast.NodeVisitor):
         self.meta = None
 
         self.functions = {}
-        self.assign_target = None
+        self.target = None
 
     def init_function_parsing_env(self):
         """Initialize function parsing environment"""
@@ -105,6 +106,7 @@ class HybridParser(ast.NodeVisitor):
         self.buffer_map = {}  # buffer map
         self.dict_attr = {}  # dict attr
         self.scope_emitter = scope_emitter.ScopeEmitter(self)  # scope emitter
+        self.var_env_dict = {}  # map from var to thread env name
 
     # TODO : if meta related functions grow, consider moving them to a new file
     @staticmethod
@@ -302,8 +304,11 @@ class HybridParser(ast.NodeVisitor):
                 1.1 Buffer = tir.buffer_bind()/tir.buffer_allocate()
                 1.2 HybridReducer = tir.comm_reducer()
                 1.3 Var = tir.var()
+                1.4 Var = tir.env_thread()
             2. (BufferStore) Buffer[PrimExpr, PrimExpr, ..., PrimExpr] = PrimExpr
             3. (Store)       Var[PrimExpr] = PrimExpr
+            4. with scope handlers with concise scoping and var def
+                4.1 var = tir.alloc_with_scope()
         """
 
         if not len(node.targets) == 1:
@@ -311,22 +316,29 @@ class HybridParser(ast.NodeVisitor):
         target = node.targets[0]
 
         if isinstance(target, ast.Name):
-            # scenario 1
-            self.assign_target = target.id
-            rhs = self.visit(node.value)
+            # scenario 1&4
+            self.target = [target.id]
             if not isinstance(node.value, ast.Call):
                 self.report_error("Unsupported assign stmt")
-            self.scope_emitter.update_symbol(target.id, rhs)
+            func = self.visit(node.value.func)
+            if Registry.is_with_scope(func):
+                # scenario 4
+                return self.visit(node.value)
+            else:
+                # scenario 1
+                rhs = self.visit(node.value)
+                self.scope_emitter.update_symbol(target.id, rhs)
         elif isinstance(target, ast.Subscript):
             # scenario 2&3
             symbol, indexes = self.visit(target)
-            self.assign_target = (symbol, indexes)
             rhs = self.visit(node.value)
             if isinstance(symbol, tvm.tir.Buffer):
+                # BufferStore
                 return tvm.tir.BufferStore(symbol, tvm.runtime.convert(rhs), indexes)
             else:
                 if len(indexes) != 1:
                     self.report_error("Invalid Store stmt")
+                # Store
                 return tvm.tir.Store(symbol, tvm.runtime.convert(rhs), indexes[0],
                                      tvm.runtime.convert(True))
         else:
@@ -393,9 +405,8 @@ class HybridParser(ast.NodeVisitor):
             With(withitem* items, stmt* body, string? type_comment)
             withitem = (expr context_expr, expr? optional_vars)
         By now 2 types of With is supported:
-            1. with tir.block(*axes) as block_vars:
-            2. with tir.allocate() as
-            2. with tir.let/tir.Assert()/tir.attr()/tir.allocate()/tir.realize()
+            1. with tir.block(*axes)/tir.allocate() as targets:
+            2. with tir.let()/tir.Assert()/tir.attr()//tir.realize()
         """
         if not len(node.items) == 1:
             self.report_error("Only one with element is supported now")
@@ -405,41 +416,26 @@ class HybridParser(ast.NodeVisitor):
         func_call = node.items[0].context_expr
         func_node = func_call.func
         func = self.visit(func_node)
-        is_tir_block = (isinstance(func_node, ast.Attribute)
-                        and isinstance(func_node.value, ast.Name)
-                        and func_node.value.id == "tir"
-                        and func_node.attr == "block")
 
-        if not is_tir_block and node.items[0].optional_vars is not None:
-            self.report_error("Now only tir.block allows optional var")
         if not Registry.is_with_scope(func):
             self.report_error("Function not allowed in with scope")
 
-        if is_tir_block:
-            # preprocess block_var definitions
+        self.target = []
+        if node.items[0].optional_vars is not None:
+            # preprocess optional var names
             if isinstance(node.items[0].optional_vars, ast.Name):
-                block_vars = [node.items[0].optional_vars.id]
+                self.target = [node.items[0].optional_vars.id]
             elif isinstance(node.items[0].optional_vars, (ast.List, ast.Tuple)):
                 for var in node.items[0].optional_vars.elts:
                     if not isinstance(var, ast.Name):
-                        self.report_error("Invalid block var definition")
-                block_vars = [var.id for var in node.items[0].optional_vars.elts]
-            elif node.items[0].optional_vars is None:
-                block_vars = []
+                        self.report_error("Invalid optional var definition")
+                self.target = [var.id for var in node.items[0].optional_vars.elts]
             else:
-                self.report_error("Invalid block var definition")
-            # update block vars into symbol table
-            block_vars = [tvm.te.var(name) for name in block_vars]
-            self.scope_emitter.new_scope(is_block=True)
-            for block_var in block_vars:
-                self.scope_emitter.update_symbol(block_var.name, block_var)
-
+                self.report_error("Invalid optional var definition")
+        # parse other arguments
         args = [self.visit(arg) for arg in func_call.args]
         kw_args = [self.visit(keyword) for keyword in func_call.keywords]
         kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
-
-        if is_tir_block:
-            args = [block_vars] + args
 
         old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
         self.current_lineno, self.current_col_offset = \

@@ -117,7 +117,7 @@ class CallArgumentReader(object):
             self.kwargs["body"] = body
 
 
-def func_wrapper(func_name, func_to_register, arg_list, category, concise):
+def func_wrapper(func_name, func_to_register, arg_list, category, concise=False, with_var=False):
     """Helper function to wrap a function to be registered """
 
     def wrap_func(parser, node, args, kwargs):
@@ -145,25 +145,34 @@ def func_wrapper(func_name, func_to_register, arg_list, category, concise):
                 parser.scope_emitter.loop_stack[-1].pop()
             parser.scope_emitter.pop_scope()
         elif category == Category.WITH_SCOPE:
-            # automatically parse body for with_scope handlers
-            if isinstance(node, ast.With):
-                # the scope handler is used inside with context/for context
-                parser.scope_emitter.new_scope()
-                parser.scope_emitter.node_stack[-1].extend(reversed(node.body))
-                body = parser.get_body()
-                parser.scope_emitter.pop_scope()
+            if not with_var:
+                if isinstance(node, ast.With) and node.items[0].optional_vars is not None:
+                    parser.report_error("Function " + func_name + " expects no optional vars")
+                # automatically parse body for with_scope handlers without optional vars
+                if isinstance(node, ast.With):
+                    parser.scope_emitter.new_scope()
+                    parser.scope_emitter.node_stack[-1].extend(reversed(node.body))
+                    body = parser.get_body()
+                    parser.scope_emitter.pop_scope()
+                else:
+                    body = parser.get_body()
             else:
-                # the with scope handler is used in concise scoping
-                if not concise:
-                    parser.report_error("Concise scoping is not allowed here")
-                body = parser.get_body()
+                if isinstance(node, ast.With) and node.items[0].optional_vars is None:
+                    parser.report_error("Function " + func_name + " expects optional vars")
+                body = None
+
+            if not isinstance(node, ast.With) and not concise:
+                parser.report_error("Concise scoping is not allowed here")
 
         reader = CallArgumentReader(func_name, args, kwargs, parser)
         pos_only, kwargs, varargs = arg_list
 
         internal_args = list()
         if category == Category.WITH_SCOPE:
-            internal_args.extend([parser, node, body])
+            if not with_var:
+                internal_args.extend([parser, node, body])
+            else:
+                internal_args.extend([parser, node])
         elif category == Category.FOR_SCOPE:
             internal_args.extend([parser, node, body, loop_vars])
         elif category == Category.SPECIAL_STMT:
@@ -184,7 +193,7 @@ def func_wrapper(func_name, func_to_register, arg_list, category, concise):
     return wrap_func
 
 
-def get_arg_list(origin_func, category):
+def get_arg_list(origin_func, category, with_var=False):
     """Helper function to get the argument list of Function
 
     Parameters
@@ -192,7 +201,9 @@ def get_arg_list(origin_func, category):
     origin_func: function
         The function to get the argument list
     category: Category
-        The category of registerde function
+        The category of registered function
+    with_var: bool, optional
+        Whether the with scope handler neeeds optional vars
     """
     full_arg_spec = inspect.getfullargspec(origin_func)
 
@@ -202,11 +213,18 @@ def get_arg_list(origin_func, category):
         defaults = tuple()
 
     if category == Category.WITH_SCOPE:
-        if len(args) < 3 or args[0] != "parser" or args[1] != "node" or args[2] != "body":
-            raise RuntimeError(
-                "TVM Hybrid Script register error : the first three arguments of with scope handler"
-                "must be parser, node, body")
-        args = args[3:]
+        if not with_var:
+            if len(args) < 3 or args[0] != "parser" or args[1] != "node" or args[2] != "body":
+                raise RuntimeError(
+                    "TVM Hybrid Script register error : the first three arguments of "
+                    "this with scope handler must be parser, node, body")
+            args = args[3:]
+        else:
+            if len(args) < 2 or args[0] != "parser" or args[1] != "node":
+                raise RuntimeError(
+                    "TVM Hybrid Script register error : the first two arguments of "
+                    "this with scope handler must be parser, node")
+            args = args[2:]
     elif category == Category.FOR_SCOPE:
         if len(args) < 4 or args[0] != "parser" or \
                 args[1] != "node" or args[2] != "body" or args[3] != "loop_vars":
@@ -259,19 +277,21 @@ def register_intrin(name=None):
         func_name = "tir." + origin_func.__qualname__ if name is None else name
         Registry.functions[func_name] = \
             func_wrapper(func_name, origin_func, get_arg_list(origin_func, Category.INTRIN),
-                         Category.INTRIN, concise=False), Category.INTRIN
+                         Category.INTRIN), Category.INTRIN
         return origin_func
 
     return decorate
 
 
-def register_with_scope(concise=False, name=None):
+def register_with_scope(concise=False, with_var=False, name=None):
     """Decorator to register function under with scope handler
 
     Parameters
     ----------
     concise: bool, optional
-        whether this scope handler is allowed in concise scoping
+        whether this with scope handler is allowed in concise scoping
+    with_var: bool, optional
+        whether this with scope handler neeeds optional vars
     name: str, optional
         registered name for the function
 
@@ -288,8 +308,10 @@ def register_with_scope(concise=False, name=None):
         """Register function under category with_scope"""
         func_name = "tir." + origin_func.__qualname__ if name is None else name
         Registry.functions[func_name] = \
-            func_wrapper(func_name, origin_func, get_arg_list(origin_func, Category.WITH_SCOPE),
-                         Category.WITH_SCOPE, concise=concise), Category.WITH_SCOPE
+            func_wrapper(func_name, origin_func,
+                         get_arg_list(origin_func, Category.WITH_SCOPE, with_var),
+                         Category.WITH_SCOPE, concise=concise, with_var=with_var), \
+            Category.WITH_SCOPE
         return origin_func
 
     return decorate
@@ -308,7 +330,7 @@ def register_for_scope(name=None):
         func_name = "tir." + origin_func.__qualname__ if name is None else name
         Registry.functions[func_name] = \
             func_wrapper(func_name, origin_func, get_arg_list(origin_func, Category.FOR_SCOPE),
-                         Category.FOR_SCOPE, concise=False), Category.FOR_SCOPE
+                         Category.FOR_SCOPE), Category.FOR_SCOPE
         return origin_func
 
     return decorate
@@ -337,7 +359,7 @@ def register_special_stmt(name=None):
         func_name = "tir." + origin_func.__qualname__ if name is None else name
         Registry.functions[func_name] = \
             func_wrapper(func_name, origin_func, get_arg_list(origin_func, Category.SPECIAL_STMT),
-                         Category.SPECIAL_STMT, concise=False), Category.SPECIAL_STMT
+                         Category.SPECIAL_STMT), Category.SPECIAL_STMT
         return origin_func
 
     return decorate
