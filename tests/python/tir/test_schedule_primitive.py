@@ -23,8 +23,8 @@ from tvm.hybrid import ty
 
 @tvm.hybrid.script
 def fused_element_wise(a: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (128, 128))
-    C = tir.buffer_bind(c, (128, 128))
+    A = tir.match_buffer(a, (128, 128))
+    C = tir.match_buffer(c, (128, 128))
     B = tir.buffer_allocate((128, 128))
 
     for i in range(0, 16384):
@@ -60,8 +60,8 @@ def test_fuse():
 
 @tvm.hybrid.script
 def split_element_wise(a: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (128, 128))
-    C = tir.buffer_bind(c, (128, 128))
+    A = tir.match_buffer(a, (128, 128))
+    C = tir.match_buffer(c, (128, 128))
     B = tir.buffer_allocate((128, 128))
 
     for io, ii, j in tir.grid(8, 16, 128):
@@ -80,8 +80,8 @@ def split_element_wise(a: ty.handle, c: ty.handle) -> None:
 
 @tvm.hybrid.script
 def split_fuse_element_wise(a: ty.handle, c: ty.handle) -> None:
-    C = tir.buffer_bind(c, (128, 128), "float32")
-    A = tir.buffer_bind(a, (128, 128), "float32")
+    C = tir.match_buffer(c, (128, 128), "float32")
+    A = tir.match_buffer(a, (128, 128), "float32")
     B = tir.buffer_allocate((128, 128), "float32")
     for i, j in tir.grid(128, 128):
         with tir.block([128, 128], "B") as [vi, vj]:
@@ -117,8 +117,8 @@ def test_split_fuse():
 
 @tvm.hybrid.script
 def compute_at_element_wise(a: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (128, 128))
-    C = tir.buffer_bind(c, (128, 128))
+    A = tir.match_buffer(a, (128, 128))
+    C = tir.match_buffer(c, (128, 128))
 
     B = tir.buffer_allocate((128, 128))
     for i in range(0, 128):
@@ -149,8 +149,8 @@ def test_compute_at():
 
 @tvm.hybrid.script
 def predicate_fuse(b: ty.handle, c: ty.handle) -> None:
-    C = tir.buffer_bind(c, (16, 16), "float32")
-    B = tir.buffer_bind(b, (16, 16), "float32")
+    C = tir.match_buffer(c, (16, 16), "float32")
+    B = tir.match_buffer(b, (16, 16), "float32")
     for i in range(0, 256):
         with tir.block([16, 16], "update") as [vi, vj]:
             tir.where((((tir.floormod(tir.floordiv(i, 4), 4) * 4) + tir.floormod(i, 4)) < 16))
@@ -178,9 +178,9 @@ def test_fuse_loop_sref():
 
 @tvm.hybrid.script
 def matmul_reorder(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    C = tir.buffer_bind(c, (128, 128), "float32")
-    A = tir.buffer_bind(a, (128, 128), "float32")
-    B = tir.buffer_bind(b, (128, 128), "float32")
+    C = tir.match_buffer(c, (128, 128), "float32")
+    A = tir.match_buffer(a, (128, 128), "float32")
+    B = tir.match_buffer(b, (128, 128), "float32")
 
     for i0, j0 in tir.grid(128, 128):
         with tir.block([128, 128], "init") as [vi, vj]:
@@ -211,8 +211,8 @@ def test_reorder_normal():
 
 @tvm.hybrid.script
 def compute_at_case(a: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (128, 128), "float32")
-    C = tir.buffer_bind(c, (128, 128), "float32")
+    A = tir.match_buffer(a, (128, 128), "float32")
+    C = tir.match_buffer(c, (128, 128), "float32")
 
     B = tir.buffer_allocate((128, 128))
     for i, j in tir.grid(128, 128):
@@ -251,9 +251,9 @@ def test_compute_at_fail():
 
 @tvm.hybrid.script
 def matmul_reduction(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    C = tir.buffer_bind(c, (128, 128), "float32")
-    A = tir.buffer_bind(a, (128, 128), "float32")
-    B = tir.buffer_bind(b, (128, 128), "float32")
+    C = tir.match_buffer(c, (128, 128), "float32")
+    A = tir.match_buffer(a, (128, 128), "float32")
+    B = tir.match_buffer(b, (128, 128), "float32")
 
     for i, j in tir.grid(128, 128):
         with tir.block([128, 128], "init") as [vi, vj]:
@@ -285,8 +285,8 @@ def test_reduction():
 
 @tvm.hybrid.script
 def cache_read(a: ty.handle, c: ty.handle) -> None:
-    C = tir.buffer_bind(c, (128, 128), "float32")
-    A = tir.buffer_bind(a, (128, 128), "float32")
+    C = tir.match_buffer(c, (128, 128), "float32")
+    A = tir.match_buffer(a, (128, 128), "float32")
     B = tir.buffer_allocate((128, 128), "float32")
     AA = tir.buffer_allocate((128, 128), "float32", scope="local")
     for i, j in tir.grid(128, 128):
@@ -322,8 +322,8 @@ def test_cache_read():
 
 @tvm.hybrid.script
 def cache_write(a: ty.handle, c: ty.handle) -> None:
-    C = tir.buffer_bind(c, (128, 128), "float32")
-    A = tir.buffer_bind(a, (128, 128), "float32")
+    C = tir.match_buffer(c, (128, 128), "float32")
+    A = tir.match_buffer(a, (128, 128), "float32")
     B = tir.buffer_allocate((128, 128), "float32")
     CC = tir.buffer_allocate((128, 128), "float32", scope="local")
     for i, j in tir.grid(128, 128):
@@ -355,8 +355,8 @@ def test_cache_write():
 
 @tvm.hybrid.script
 def blockize(a: ty.handle, c: ty.handle) -> None:
-    C = tir.buffer_bind(c, (128, 128), "float32")
-    A = tir.buffer_bind(a, (128, 128), "float32")
+    C = tir.match_buffer(c, (128, 128), "float32")
+    A = tir.match_buffer(a, (128, 128), "float32")
     B = tir.buffer_allocate((128, 128), "float32")
     for i, j in tir.grid(8, 8):
         with tir.block([128, 128], "blockized_B") as [vi, vj]:

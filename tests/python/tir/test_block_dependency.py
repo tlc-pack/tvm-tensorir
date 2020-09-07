@@ -65,9 +65,9 @@ def test_matmul_dependency():
 
 @tvm.hybrid.script
 def test_WAR(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (128, 128))
-    B = tir.buffer_bind(b, (128, 128))
-    C = tir.buffer_bind(c, (128, 128))
+    A = tir.match_buffer(a, (128, 128))
+    B = tir.match_buffer(b, (128, 128))
+    C = tir.match_buffer(c, (128, 128))
 
     for i, j in tir.grid(128, 128):
         with tir.block([128, 128], "C") as [vi, vj]:

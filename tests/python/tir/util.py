@@ -22,9 +22,9 @@ from tvm.hybrid import ty
 
 @tvm.hybrid.script
 def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, [128, 128])
-    B = tir.buffer_bind(b, [128, 128])
-    C = tir.buffer_bind(c, [128, 128])
+    A = tir.match_buffer(a, [128, 128])
+    B = tir.match_buffer(b, [128, 128])
+    C = tir.match_buffer(c, [128, 128])
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
     with tir.block([128, 128, tir.reduce_axis(0, 128)], "update") as [vi, vj, vk]:
@@ -33,9 +33,9 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 @tvm.hybrid.script
 def matmul_original(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, [128, 128])
-    B = tir.buffer_bind(b, [128, 128])
-    C = tir.buffer_bind(c, [128, 128])
+    A = tir.match_buffer(a, [128, 128])
+    B = tir.match_buffer(b, [128, 128])
+    C = tir.match_buffer(c, [128, 128])
 
     for i, j in tir.grid(128, 128):
         with tir.block([128, 128], "init") as [vi, vj]:
@@ -48,8 +48,8 @@ def matmul_original(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 @tvm.hybrid.script
 def element_wise(a: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (128, 128), "float32")
-    C = tir.buffer_bind(c, (128, 128), "float32")
+    A = tir.match_buffer(a, (128, 128), "float32")
+    C = tir.match_buffer(c, (128, 128), "float32")
     B = tir.buffer_allocate((128, 128), "float32")
 
     with tir.block([128, 128], "B") as [vi, vj]:
@@ -61,8 +61,8 @@ def element_wise(a: ty.handle, c: ty.handle) -> None:
 
 @tvm.hybrid.script
 def predicate(b: ty.handle, c: ty.handle) -> None:
-    B = tir.buffer_bind(b, (16, 16), "float32")
-    C = tir.buffer_bind(c, (16, 16), "float32")
+    B = tir.match_buffer(b, (16, 16), "float32")
+    C = tir.match_buffer(c, (16, 16), "float32")
 
     for i, jo, ji in tir.grid(16, 4, 4):
         with tir.block([16, 16], "update") as [vi, vj]:

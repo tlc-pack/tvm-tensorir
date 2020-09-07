@@ -68,8 +68,8 @@ def test_global_allocate():
 
 @tvm.hybrid.script
 def compute_at_element_wise(a: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (128, 128), "float32", name="A")
-    C = tir.buffer_bind(c, (128, 128), "float32", name="C")
+    A = tir.match_buffer(a, (128, 128), "float32", name="A")
+    C = tir.match_buffer(c, (128, 128), "float32", name="C")
 
     with tir.block(name="root"):
         B = tir.buffer_allocate((128, 128), "float32", name="B")

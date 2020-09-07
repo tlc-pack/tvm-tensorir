@@ -25,9 +25,9 @@ from tvm.hybrid import ty
 
 @tvm.hybrid.script
 def desc_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (16, 16), align=128, offset_factor=1)
-    B = tir.buffer_bind(b, (16, 16), align=128, offset_factor=1)
-    C = tir.buffer_bind(c, (16, 16), align=128, offset_factor=1)
+    A = tir.match_buffer(a, (16, 16), align=128, offset_factor=1)
+    B = tir.match_buffer(b, (16, 16), align=128, offset_factor=1)
+    C = tir.match_buffer(c, (16, 16), align=128, offset_factor=1)
 
     with tir.block([16, 16, tir.reduce_axis(0, 16)], "root") as [vi, vj, vk]:
         tir.bind(vi, 0)
@@ -43,9 +43,9 @@ def desc_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 @tvm.hybrid.script
 def intrin_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (16, 16), align=128, offset_factor=1)
-    B = tir.buffer_bind(b, (16, 16), align=128, offset_factor=1)
-    C = tir.buffer_bind(c, (16, 16), align=128, offset_factor=1)
+    A = tir.match_buffer(a, (16, 16), align=128, offset_factor=1)
+    B = tir.match_buffer(b, (16, 16), align=128, offset_factor=1)
+    C = tir.match_buffer(c, (16, 16), align=128, offset_factor=1)
 
     with tir.block([16, 16, tir.reduce_axis(0, 16)], "root") as [vi, vj, vk]:
         tir.bind(vi, 0)
@@ -89,9 +89,9 @@ def test_tensorize_gemm():
 
 @tvm.hybrid.script
 def lower_intrin_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (16, 16), align=128, offset_factor=1)
-    B = tir.buffer_bind(b, (16, 16), align=128, offset_factor=1)
-    C = tir.buffer_bind(c, (16, 16), align=128, offset_factor=1)
+    A = tir.match_buffer(a, (16, 16), align=128, offset_factor=1)
+    B = tir.match_buffer(b, (16, 16), align=128, offset_factor=1)
+    C = tir.match_buffer(c, (16, 16), align=128, offset_factor=1)
 
     with tir.block([16, 16, tir.reduce_axis(0, 16)], "root") as [vi, vj, vk]:
         tir.bind(vi, 0)
@@ -109,9 +109,9 @@ def lower_intrin_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 @tvm.hybrid.script
 def tensorized_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     # function attr dict
-    C = tir.buffer_bind(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
-    B = tir.buffer_bind(b, [128, 128], elem_offset=0, align=128, offset_factor=1)
-    A = tir.buffer_bind(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    C = tir.match_buffer(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    B = tir.match_buffer(b, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
     # body
     for i_outer, j_outer in tir.grid(8, 8):
         for i_inner_init, j_inner_init in tir.grid(16, 16):
