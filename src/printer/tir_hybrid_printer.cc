@@ -526,6 +526,32 @@ Doc TIRHybridPrinter::VisitStmt_(const LetStmtNode* op) {
 
 Doc TIRHybridPrinter::VisitStmt_(const AttrStmtNode* op) {
   Doc doc;
+  // merge attr with allocate when possible
+  if (op->node->IsInstance<VarNode>() && op->attr_key == "storage_scope"
+      && op->body->IsInstance<AllocateNode>()) {
+    const auto* alloc = Downcast<Allocate>(op->body).get();
+    if (alloc->buffer_var.same_as(op->node)) {
+      var_not_in_headers.insert(alloc->buffer_var.get());
+      if (current_num_ != num_child_ - 1) {
+        doc << "with tir.alloc_with_scope(" << PrintDType(alloc->dtype) << ", "
+            << Print(alloc->extents) << ", " << Print(op->value);
+        if (!is_one(alloc->condition)) {
+          doc << ", " << Print(alloc->condition);
+        }
+        doc << ") as " << Print(op->node) << ":";
+        doc << Doc::Indent(4, Doc::NewLine() << PrintBody(alloc->body));
+      } else {
+        doc << Print(op->node) << " = tir.alloc_with_scope(" << PrintDType(alloc->dtype) << ", "
+            << Print(alloc->extents) << ", " << Print(op->value);
+        if (!is_one(alloc->condition)) {
+          doc << ", " << Print(alloc->condition);
+        }
+        doc << ")" << Doc::NewLine() << PrintBody(alloc->body);
+      }
+      return doc;
+    }
+  }
+
   if (current_num_ != num_child_ - 1) {
     doc << "with tir.attr(" << Print(op->node) << ", " << Doc::StrLiteral(op->attr_key) << ", "
         << Print(op->value) << "):";
@@ -583,12 +609,18 @@ Doc TIRHybridPrinter::VisitStmt_(const AllocateNode* op) {
   Doc doc;
   if (current_num_ != num_child_ - 1) {
     doc << "with tir.allocate(" << Print(op->buffer_var) << ", "
-        << PrintDType(op->dtype) << ", " << Print(op->extents) << "):";
-    doc << Doc::Indent(4, PrintBody(op->body));
+        << PrintDType(op->dtype) << ", " << Print(op->extents);
+    if (!is_one(op->condition)) {
+      doc << ", " << Print(op->condition);
+    }
+    doc << "):" << Doc::Indent(4, PrintBody(op->body));
   } else {
     doc << "tir.allocate(" << Print(op->buffer_var) << ", "
-        << PrintDType(op->dtype) << ", " << Print(op->extents) << ")";
-    doc << Doc::NewLine() << PrintBody(op->body);
+        << PrintDType(op->dtype) << ", " << Print(op->extents);
+    if (!is_one(op->condition)) {
+      doc << ", " << Print(op->condition);
+    }
+    doc << ")" << Doc::NewLine() << PrintBody(op->body);
   }
   return doc;
 }
@@ -719,15 +751,12 @@ Doc TIRHybridPrinter::VisitStmt_(const BlockRealizeNode* op) {
   }
   doc << PrintSep(block_var_docs, Doc::Text(", ")) << "], ";
   doc << Doc::StrLiteral(block_op->tag) << ")";
-  if (!block_op->iter_vars.empty()) {
-    std::vector<Doc> block_var_names;
-    for (const auto& iter_var : block_op->iter_vars) {
-      var_not_in_headers.insert(iter_var->var.get());
-      block_var_names.push_back(Print(iter_var->var));
-    }
-    doc << " as [" << PrintSep(block_var_names, Doc::Text(", ")) << "]";
+  std::vector<Doc> block_var_names;
+  for (const auto& iter_var : block_op->iter_vars) {
+    var_not_in_headers.insert(iter_var->var.get());
+    block_var_names.push_back(Print(iter_var->var));
   }
-  doc << ":";
+  doc << " as [" << PrintSep(block_var_names, Doc::Text(", ")) << "]:";
   Doc block_attr_doc;
   // print predicate, binding, read/write tensor region, annotations
   if (!is_one(op->predicate)) {
