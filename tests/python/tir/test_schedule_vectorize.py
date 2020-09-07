@@ -25,8 +25,8 @@ from tvm.hybrid import ty
 
 @tvm.hybrid.script
 def predicate_vectorize(b: ty.handle, c: ty.handle) -> None:
-    C = tir.buffer_bind(c, (16, 16), "float32")
-    B = tir.buffer_bind(b, (16, 16), "float32")
+    C = tir.match_buffer(c, (16, 16), "float32")
+    B = tir.match_buffer(b, (16, 16), "float32")
     for i, jo in tir.grid(16, 4):
         for ji in range(0, 4, annotation={"loop_type": "vectorize"}):
             with tir.block([16, 16], "update") as [vi, vj]:
@@ -38,8 +38,8 @@ def predicate_vectorize(b: ty.handle, c: ty.handle) -> None:
 
 @tvm.hybrid.script
 def predicate_unroll(b: ty.handle, c: ty.handle) -> None:
-    C = tir.buffer_bind(c, (16, 16), "float32")
-    B = tir.buffer_bind(b, (16, 16), "float32")
+    C = tir.match_buffer(c, (16, 16), "float32")
+    B = tir.match_buffer(b, (16, 16), "float32")
     for i, jo in tir.grid(16, 4):
         for ji in range(0, 4, annotation={"loop_type": "unroll"}):
             with tir.block([16, 16], "update") as [vi, vj]:
@@ -64,8 +64,8 @@ def test_vectorize_normal():
 
 @tvm.hybrid.script
 def element_wise_compute_at(a: ty.handle, c: ty.handle) -> None:
-    C = tir.buffer_bind(c, (128, 128), "float32")
-    A = tir.buffer_bind(a, (128, 128), "float32")
+    C = tir.match_buffer(c, (128, 128), "float32")
+    A = tir.match_buffer(a, (128, 128), "float32")
     B = tir.buffer_allocate((128, 128), "float32")
     for i, j in tir.grid(128, 128):
         with tir.block([128, 128], "B") as [vi, vj]:
@@ -76,8 +76,8 @@ def element_wise_compute_at(a: ty.handle, c: ty.handle) -> None:
 
 @tvm.hybrid.script
 def element_wise_compute_at_vectorize(a: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (128, 128), "float32")
-    C = tir.buffer_bind(c, (128, 128), "float32")
+    A = tir.match_buffer(a, (128, 128), "float32")
+    C = tir.match_buffer(c, (128, 128), "float32")
     B = tir.buffer_allocate((128, 128), "float32")
     for i in range(0, 128, annotation={}):
         for j_outer in range(0, 32, annotation={}):
