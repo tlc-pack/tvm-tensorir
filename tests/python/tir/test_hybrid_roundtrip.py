@@ -34,18 +34,15 @@ class Module1:
         B_1 = tir.match_buffer(B, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
         C_1 = tir.match_buffer(C, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
         # body
-        tir.attr(packedB, "realize_scope", "")
-        tir.realize(packedB[0:32, 0:1024, 0:32])
+        tir.realize(packedB[0:32, 0:1024, 0:32], "")
         for x in tir.parallel(0, 32):
             for y in tir.serial(0, 1024):
                 for z in tir.vectorized(0, 32):
                     packedB[x, y, z] = B_1[y, ((x*32) + z)]
-        tir.attr(C_1, "realize_scope", "")
-        tir.realize(C_1[0:1024, 0:1024])
+        tir.realize(C_1[0:1024, 0:1024], "")
         for x_outer in tir.parallel(0, 32):
             for y_outer in tir.serial(0, 32):
-                tir.attr(C_global, "realize_scope", "global")
-                tir.realize(C_global[(x_outer*32):((x_outer*32) + 32), (y_outer*32):((y_outer*32) + 32)])
+                tir.realize(C_global[(x_outer*32):((x_outer*32) + 32), (y_outer*32):((y_outer*32) + 32)], "global")
                 for x_c_init in tir.serial(0, 32):
                     for y_c_init in tir.vectorized(0, 32):
                         C_global[(x_c_init + (x_outer*32)), (y_c_init + (y_outer*32))] = tir.float32(0)
@@ -70,21 +67,16 @@ class Module2:
     def mmult(A: ty.handle, B: ty.handle, C: ty.handle) -> None:
         # function attr dict
         tir.func_attr({"global_symbol": "mmult", "tir.noalias": True})
-        # var definition
-        C_global = tir.var("handle")
-        packedB = tir.var("handle")
         A_1 = tir.match_buffer(A, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
         B_1 = tir.match_buffer(B, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
         C_1 = tir.match_buffer(C, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
         # body
-        tir.attr(packedB, "storage_scope", "global")
-        tir.allocate(packedB, "float32x32", [32768])
+        packedB = tir.allocate([32768], "float32x32", "global")
         for x in tir.parallel(0, 32):
             for y in tir.serial(0, 1024):
                 tir.store(packedB, tir.ramp(((x*32768) + (y*32)), 1, 32), tir.load("float32x32", B_1.data, tir.ramp(((y*1024) + (x*32)), 1, 32), tir.broadcast(True, 32)), tir.broadcast(True, 32))
         for x_outer in tir.parallel(0, 32):
-            tir.attr(C_global, "storage_scope", "global")
-            tir.allocate(C_global, "float32", [1024])
+            C_global = tir.allocate([1024], "float32", "global")
             for y_outer in tir.serial(0, 32):
                 for x_c_init in tir.serial(0, 32):
                     tir.store(C_global, tir.ramp((x_c_init*32), 1, 32), tir.broadcast(tir.float32(0), 32), tir.broadcast(True, 32))
@@ -213,12 +205,12 @@ def opt_conv_tensorcore_normalize(A: ty.handle, W: ty.handle, Conv: ty.handle) -
     # function attr dict
     tir.func_attr({"global_symbol": "default_function", "tir.noalias": True})
     # var definition
-    blockIdx_x = tir.var("int32")
-    blockIdx_y = tir.var("int32")
-    blockIdx_z = tir.var("int32")
-    threadIdx_x = tir.var("int32")
-    threadIdx_y = tir.var("int32")
-    threadIdx_z = tir.var("int32")
+    bx = tir.env_thread("blockIdx.x")
+    by = tir.env_thread("blockIdx.y")
+    bz = tir.env_thread("blockIdx.z")
+    tx = tir.env_thread("threadIdx.x")
+    ty = tir.env_thread("threadIdx.y")
+    tz = tir.env_thread("threadIdx.z")
     # buffer definition
     Apad_shared = tir.buffer_decl([16, 16, 16, 16, 16, 16], dtype="float16", elem_offset=0, align=128, offset_factor=1)
     Apad_shared_wmma_matrix_a = tir.buffer_decl([16, 16, 16, 16, 16, 16], dtype="float16", elem_offset=0, align=128, offset_factor=1)
@@ -238,63 +230,59 @@ def opt_conv_tensorcore_normalize(A: ty.handle, W: ty.handle, Conv: ty.handle) -
     W_1 = tir.match_buffer(W, [3, 3, 16, 32, 16, 16], dtype="float16", elem_offset=0, align=128, offset_factor=1)
     Conv_1 = tir.match_buffer(Conv, [16, 14, 14, 32, 16, 16], elem_offset=0, align=128, offset_factor=1)
     # body
-    tir.attr(Conv_1, "realize_scope", "")
-    tir.realize(Conv_1[0:16, 0:14, 0:14, 0:32, 0:16, 0:16])
-    tir.attr(tir.iter_var(blockIdx_z, None, "ThreadIndex", "blockIdx.z"), "thread_extent", 196)
-    tir.attr(tir.iter_var(blockIdx_x, None, "ThreadIndex", "blockIdx.x"), "thread_extent", 2)
-    tir.attr(tir.iter_var(blockIdx_y, None, "ThreadIndex", "blockIdx.y"), "thread_extent", 4)
-    tir.attr(tir.iter_var(threadIdx_y, None, "ThreadIndex", "threadIdx.y"), "thread_extent", 4)
-    tir.attr(tir.iter_var(threadIdx_z, None, "ThreadIndex", "threadIdx.z"), "thread_extent", 2)
-    tir.attr(Conv_wmma_accumulator, "realize_scope", "wmma.accumulator")
-    tir.realize(Conv_wmma_accumulator[((blockIdx_x*8) + (threadIdx_y*2)):(((blockIdx_x*8) + (threadIdx_y*2)) + 2), tir.floordiv(blockIdx_z, 14):(tir.floordiv(blockIdx_z, 14) + 1), tir.floormod(blockIdx_z, 14):(tir.floormod(blockIdx_z, 14) + 1), ((blockIdx_y*8) + (threadIdx_z*4)):(((blockIdx_y*8) + (threadIdx_z*4)) + 4), 0:16, 0:16])
+    tir.realize(Conv_1[0:16, 0:14, 0:14, 0:32, 0:16, 0:16], "")
+    tir.launch_thread(bz, 196)
+    tir.launch_thread(bx, 2)
+    tir.launch_thread(by, 4)
+    tir.launch_thread(ty, 4)
+    tir.launch_thread(tz, 2)
+    tir.realize(Conv_wmma_accumulator[((bx*8) + (ty*2)):(((bx*8) + (ty*2)) + 2), tir.floordiv(bz, 14):(tir.floordiv(bz, 14) + 1), tir.floormod(bz, 14):(tir.floormod(bz, 14) + 1), ((by*8) + (tz*4)):(((by*8) + (tz*4)) + 4), 0:16, 0:16], "wmma.accumulator")
     for n_c_init in tir.serial(0, 2):
         for o_c_init in tir.serial(0, 4):
-            tir.attr([BC, Conv_wmma_accumulator], "buffer_bind_scope", tir.tvm_tuple((n_c_init + ((blockIdx_x*8) + (threadIdx_y*2))), 1, tir.floordiv(blockIdx_z, 14), 1, tir.floormod(blockIdx_z, 14), 1, (o_c_init + ((blockIdx_y*8) + (threadIdx_z*4))), 1, 0, 16, 0, 16, dtype="handle"))
+            tir.attr([BC, Conv_wmma_accumulator], "buffer_bind_scope", tir.tvm_tuple((n_c_init + ((bx*8) + (ty*2))), 1, tir.floordiv(bz, 14), 1, tir.floormod(bz, 14), 1, (o_c_init + ((by*8) + (tz*4))), 1, 0, 16, 0, 16, dtype="handle"))
             tir.evaluate(tir.tvm_fill_fragment(BC.data, 16, 16, 16, tir.floordiv(BC.elem_offset, 256), tir.float32(0), dtype="handle"))
     for ic_outer in tir.serial(0, 8):
         for kh in tir.serial(0, 3):
-            tir.attr(Apad_shared, "realize_scope", "shared")
-            tir.realize(Apad_shared[(blockIdx_x*8):((blockIdx_x*8) + 8), (tir.floordiv(blockIdx_z, 14) + kh):((tir.floordiv(blockIdx_z, 14) + kh) + 1), tir.floormod(blockIdx_z, 14):(tir.floormod(blockIdx_z, 14) + 3), (ic_outer*2):((ic_outer*2) + 2), 0:16, 0:16])
+            tir.realize(Apad_shared[(bx*8):((bx*8) + 8), (tir.floordiv(bz, 14) + kh):((tir.floordiv(bz, 14) + kh) + 1), tir.floormod(bz, 14):(tir.floormod(bz, 14) + 3), (ic_outer*2):((ic_outer*2) + 2), 0:16, 0:16], "shared")
             for ax2 in tir.serial(0, 3):
                 for ax3 in tir.serial(0, 2):
                     for ax4_ax5_fused_outer in tir.serial(0, 8):
-                        tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32)
-                        Apad_shared[((threadIdx_z + (threadIdx_y*2)) + (blockIdx_x*8)), (tir.floordiv(blockIdx_z, 14) + kh), (ax2 + tir.floormod(blockIdx_z, 14)), (ax3 + (ic_outer*2)), tir.floordiv((threadIdx_x + (ax4_ax5_fused_outer*32)), 16), tir.floormod((threadIdx_x + (ax4_ax5_fused_outer*32)), 16)] = tir.if_then_else((((((tir.floordiv(blockIdx_z, 14) + kh) >= 1) and (((tir.floordiv(blockIdx_z, 14) + kh) - 1) < 14)) and ((ax2 + tir.floormod(blockIdx_z, 14)) >= 1)) and (((ax2 + tir.floormod(blockIdx_z, 14)) - 1) < 14)), A_1[((threadIdx_z + (threadIdx_y*2)) + (blockIdx_x*8)), ((tir.floordiv(blockIdx_z, 14) + kh) - 1), ((ax2 + tir.floormod(blockIdx_z, 14)) - 1), (ax3 + (ic_outer*2)), tir.floordiv((threadIdx_x + (ax4_ax5_fused_outer*32)), 16), tir.floormod((threadIdx_x + (ax4_ax5_fused_outer*32)), 16)], tir.float16(0), dtype="float16")
-            tir.attr(W_shared, "realize_scope", "shared")
-            tir.realize(W_shared[kh:(kh + 1), 0:3, (ic_outer*2):((ic_outer*2) + 2), (blockIdx_y*8):((blockIdx_y*8) + 8), 0:16, 0:16])
+                        tir.launch_thread(tx, 32)
+                        Apad_shared[((tz + (ty*2)) + (bx*8)), (tir.floordiv(bz, 14) + kh), (ax2 + tir.floormod(bz, 14)), (ax3 + (ic_outer*2)), tir.floordiv((tx + (ax4_ax5_fused_outer*32)), 16), tir.floormod((tx + (ax4_ax5_fused_outer*32)), 16)] = tir.if_then_else((((((tir.floordiv(bz, 14) + kh) >= 1) and (((tir.floordiv(bz, 14) + kh) - 1) < 14)) and ((ax2 + tir.floormod(bz, 14)) >= 1)) and (((ax2 + tir.floormod(bz, 14)) - 1) < 14)), A_1[((tz + (ty*2)) + (bx*8)), ((tir.floordiv(bz, 14) + kh) - 1), ((ax2 + tir.floormod(bz, 14)) - 1), (ax3 + (ic_outer*2)), tir.floordiv((tx + (ax4_ax5_fused_outer*32)), 16), tir.floormod((tx + (ax4_ax5_fused_outer*32)), 16)], tir.float16(0), dtype="float16")
+            tir.realize(W_shared[kh:(kh + 1), 0:3, (ic_outer*2):((ic_outer*2) + 2), (by*8):((by*8) + 8), 0:16, 0:16], "shared")
             for ax1 in tir.serial(0, 3):
                 for ax2_1 in tir.serial(0, 2):
-                    tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32)
+                    tir.launch_thread(tx, 32)
                     for ax4_ax5_fused_inner in tir.vectorized(0, 8):
-                        W_shared[kh, ax1, (ax2_1 + (ic_outer*2)), ((threadIdx_z + (threadIdx_y*2)) + (blockIdx_y*8)), tir.floordiv((ax4_ax5_fused_inner + (threadIdx_x*8)), 16), tir.floormod((ax4_ax5_fused_inner + (threadIdx_x*8)), 16)] = W_1[kh, ax1, (ax2_1 + (ic_outer*2)), ((threadIdx_z + (threadIdx_y*2)) + (blockIdx_y*8)), tir.floordiv((ax4_ax5_fused_inner + (threadIdx_x*8)), 16), tir.floormod((ax4_ax5_fused_inner + (threadIdx_x*8)), 16)]
+                        W_shared[kh, ax1, (ax2_1 + (ic_outer*2)), ((tz + (ty*2)) + (by*8)), tir.floordiv((ax4_ax5_fused_inner + (tx*8)), 16), tir.floormod((ax4_ax5_fused_inner + (tx*8)), 16)] = W_1[kh, ax1, (ax2_1 + (ic_outer*2)), ((tz + (ty*2)) + (by*8)), tir.floordiv((ax4_ax5_fused_inner + (tx*8)), 16), tir.floormod((ax4_ax5_fused_inner + (tx*8)), 16)]
             for ic_inner in tir.serial(0, 2):
                 for kw in tir.serial(0, 3):
-                    tir.attr(Apad_shared_wmma_matrix_a, "realize_scope", "wmma.matrix_a")
-                    tir.realize(Apad_shared_wmma_matrix_a[((blockIdx_x*8) + (threadIdx_y*2)):(((blockIdx_x*8) + (threadIdx_y*2)) + 2), (tir.floordiv(blockIdx_z, 14) + kh):((tir.floordiv(blockIdx_z, 14) + kh) + 1), (kw + tir.floormod(blockIdx_z, 14)):((kw + tir.floormod(blockIdx_z, 14)) + 1), ((ic_outer*2) + ic_inner):(((ic_outer*2) + ic_inner) + 1), 0:16, 0:16])
+                    tir.realize(Apad_shared_wmma_matrix_a[((bx*8) + (ty*2)):(((bx*8) + (ty*2)) + 2), (tir.floordiv(bz, 14) + kh):((tir.floordiv(bz, 14) + kh) + 1), (kw + tir.floormod(bz, 14)):((kw + tir.floormod(bz, 14)) + 1), ((ic_outer*2) + ic_inner):(((ic_outer*2) + ic_inner) + 1), 0:16, 0:16], "wmma.matrix_a")
                     for ax0 in tir.serial(0, 2):
-                        tir.attr([buffer, Apad_shared], "buffer_bind_scope", tir.tvm_tuple((ax0 + ((blockIdx_x*8) + (threadIdx_y*2))), 1, (tir.floordiv(blockIdx_z, 14) + kh), 1, (kw + tir.floormod(blockIdx_z, 14)), 1, ((ic_outer*2) + ic_inner), 1, 0, 16, 0, 16, dtype="handle"))
-                        tir.attr([buffer_1, Apad_shared_wmma_matrix_a], "buffer_bind_scope", tir.tvm_tuple((ax0 + ((blockIdx_x*8) + (threadIdx_y*2))), 1, (tir.floordiv(blockIdx_z, 14) + kh), 1, (kw + tir.floormod(blockIdx_z, 14)), 1, ((ic_outer*2) + ic_inner), 1, 0, 16, 0, 16, dtype="handle"))
+                        tir.attr([buffer, Apad_shared], "buffer_bind_scope", tir.tvm_tuple((ax0 + ((bx*8) + (ty*2))), 1, (tir.floordiv(bz, 14) + kh), 1, (kw + tir.floormod(bz, 14)), 1, ((ic_outer*2) + ic_inner), 1, 0, 16, 0, 16, dtype="handle"))
+                        tir.attr([buffer_1, Apad_shared_wmma_matrix_a], "buffer_bind_scope", tir.tvm_tuple((ax0 + ((bx*8) + (ty*2))), 1, (tir.floordiv(bz, 14) + kh), 1, (kw + tir.floormod(bz, 14)), 1, ((ic_outer*2) + ic_inner), 1, 0, 16, 0, 16, dtype="handle"))
                         tir.evaluate(tir.tvm_load_matrix_sync(buffer_1.data, 16, 16, 16, tir.floordiv(buffer_1.elem_offset, 256), tir.tvm_access_ptr(tir.type_annotation(dtype="float16"), buffer.data, buffer.elem_offset, 256, 1, dtype="handle"), 16, "row_major", dtype="handle"))
-                    tir.attr(W_shared_wmma_matrix_b, "realize_scope", "wmma.matrix_b")
-                    tir.realize(W_shared_wmma_matrix_b[kh:(kh + 1), kw:(kw + 1), ((ic_outer*2) + ic_inner):(((ic_outer*2) + ic_inner) + 1), ((blockIdx_y*8) + (threadIdx_z*4)):(((blockIdx_y*8) + (threadIdx_z*4)) + 4), 0:16, 0:16])
+                    tir.realize(W_shared_wmma_matrix_b[kh:(kh + 1), kw:(kw + 1), ((ic_outer*2) + ic_inner):(((ic_outer*2) + ic_inner) + 1), ((by*8) + (tz*4)):(((by*8) + (tz*4)) + 4), 0:16, 0:16], "wmma.matrix_b")
                     for ax3_1 in tir.serial(0, 4):
-                        tir.attr([buffer_2, W_shared], "buffer_bind_scope", tir.tvm_tuple(kh, 1, kw, 1, ((ic_outer*2) + ic_inner), 1, (ax3_1 + ((blockIdx_y*8) + (threadIdx_z*4))), 1, 0, 16, 0, 16, dtype="handle"))
-                        tir.attr([buffer_3, W_shared_wmma_matrix_b], "buffer_bind_scope", tir.tvm_tuple(kh, 1, kw, 1, ((ic_outer*2) + ic_inner), 1, (ax3_1 + ((blockIdx_y*8) + (threadIdx_z*4))), 1, 0, 16, 0, 16, dtype="handle"))
+                        tir.attr([buffer_2, W_shared], "buffer_bind_scope", tir.tvm_tuple(kh, 1, kw, 1, ((ic_outer*2) + ic_inner), 1, (ax3_1 + ((by*8) + (tz*4))), 1, 0, 16, 0, 16, dtype="handle"))
+                        tir.attr([buffer_3, W_shared_wmma_matrix_b], "buffer_bind_scope", tir.tvm_tuple(kh, 1, kw, 1, ((ic_outer*2) + ic_inner), 1, (ax3_1 + ((by*8) + (tz*4))), 1, 0, 16, 0, 16, dtype="handle"))
                         tir.evaluate(tir.tvm_load_matrix_sync(buffer_3.data, 16, 16, 16, tir.floordiv(buffer_3.elem_offset, 256), tir.tvm_access_ptr(tir.type_annotation(dtype="float16"), buffer_2.data, buffer_2.elem_offset, 256, 1, dtype="handle"), 16, "row_major", dtype="handle"))
                     for n_c in tir.serial(0, 2):
                         for o_c in tir.serial(0, 4):
-                            tir.attr([BA, Apad_shared_wmma_matrix_a], "buffer_bind_scope", tir.tvm_tuple((n_c + ((blockIdx_x*8) + (threadIdx_y*2))), 1, (tir.floordiv(blockIdx_z, 14) + kh), 1, (tir.floormod(blockIdx_z, 14) + kw), 1, ((ic_outer*2) + ic_inner), 1, 0, 16, 0, 16, dtype="handle"))
-                            tir.attr([BB, W_shared_wmma_matrix_b], "buffer_bind_scope", tir.tvm_tuple(kh, 1, kw, 1, ((ic_outer*2) + ic_inner), 1, (o_c + ((blockIdx_y*8) + (threadIdx_z*4))), 1, 0, 16, 0, 16, dtype="handle"))
-                            tir.attr([BC, Conv_wmma_accumulator], "buffer_bind_scope", tir.tvm_tuple((n_c + ((blockIdx_x*8) + (threadIdx_y*2))), 1, tir.floordiv(blockIdx_z, 14), 1, tir.floormod(blockIdx_z, 14), 1, (o_c + ((blockIdx_y*8) + (threadIdx_z*4))), 1, 0, 16, 0, 16, dtype="handle"))
+                            tir.attr([BA, Apad_shared_wmma_matrix_a], "buffer_bind_scope", tir.tvm_tuple((n_c + ((bx*8) + (ty*2))), 1, (tir.floordiv(bz, 14) + kh), 1, (tir.floormod(bz, 14) + kw), 1, ((ic_outer*2) + ic_inner), 1, 0, 16, 0, 16, dtype="handle"))
+                            tir.attr([BB, W_shared_wmma_matrix_b], "buffer_bind_scope", tir.tvm_tuple(kh, 1, kw, 1, ((ic_outer*2) + ic_inner), 1, (o_c + ((by*8) + (tz*4))), 1, 0, 16, 0, 16, dtype="handle"))
+                            tir.attr([BC, Conv_wmma_accumulator], "buffer_bind_scope", tir.tvm_tuple((n_c + ((bx*8) + (ty*2))), 1, tir.floordiv(bz, 14), 1, tir.floormod(bz, 14), 1, (o_c + ((by*8) + (tz*4))), 1, 0, 16, 0, 16, dtype="handle"))
                             tir.evaluate(tir.tvm_mma_sync(BC.data, tir.floordiv(BC.elem_offset, 256), BA.data, tir.floordiv(BA.elem_offset, 256), BB.data, tir.floordiv(BB.elem_offset, 256), BC.data, tir.floordiv(BC.elem_offset, 256), dtype="handle"))
     for n_inner in tir.serial(0, 2):
         for o_inner in tir.serial(0, 4):
-            tir.attr([buffer_4, Conv_wmma_accumulator], "buffer_bind_scope", tir.tvm_tuple(((((blockIdx_x*4) + threadIdx_y)*2) + n_inner), 1, tir.floordiv(blockIdx_z, 14), 1, tir.floormod(blockIdx_z, 14), 1, ((((blockIdx_y*2) + threadIdx_z)*4) + o_inner), 1, 0, 16, 0, 16, dtype="handle"))
-            tir.attr([buffer_5, Conv_1], "buffer_bind_scope", tir.tvm_tuple(((((blockIdx_x*4) + threadIdx_y)*2) + n_inner), 1, tir.floordiv(blockIdx_z, 14), 1, tir.floormod(blockIdx_z, 14), 1, ((((blockIdx_y*2) + threadIdx_z)*4) + o_inner), 1, 0, 16, 0, 16, dtype="handle"))
+            tir.attr([buffer_4, Conv_wmma_accumulator], "buffer_bind_scope", tir.tvm_tuple(((((bx*4) + ty)*2) + n_inner), 1, tir.floordiv(bz, 14), 1, tir.floormod(bz, 14), 1, ((((by*2) + tz)*4) + o_inner), 1, 0, 16, 0, 16, dtype="handle"))
+            tir.attr([buffer_5, Conv_1], "buffer_bind_scope", tir.tvm_tuple(((((bx*4) + ty)*2) + n_inner), 1, tir.floordiv(bz, 14), 1, tir.floormod(bz, 14), 1, ((((by*2) + tz)*4) + o_inner), 1, 0, 16, 0, 16, dtype="handle"))
             tir.evaluate(tir.tvm_store_matrix_sync(buffer_4.data, 16, 16, 16, tir.floordiv(buffer_4.elem_offset, 256), tir.tvm_access_ptr(tir.type_annotation(dtype="float32"), buffer_5.data, buffer_5.elem_offset, 256, 2, dtype="handle"), 16, "row_major", dtype="handle"))
+
 
 def test_opt_conv_tensorcore_normalize():
     mod = opt_conv_tensorcore_normalize
+    print(tvm.hybrid.ashybrid(mod, True))
     rt_mod = tvm.hybrid.from_source(tvm.hybrid.ashybrid(mod, True))
     tvm.ir.assert_structural_equal(mod, rt_mod, True)
 
@@ -303,37 +291,26 @@ def test_opt_conv_tensorcore_normalize():
 def opt_conv_tensorcore_lower(A: ty.handle, W: ty.handle, Conv: ty.handle) -> None:
     # function attr dict
     tir.func_attr({"global_symbol": "default_function", "tir.noalias": True})
-    # var definition
-    Apad_shared = tir.var("handle")
-    Apad_shared_wmma_matrix_a = tir.var("handle")
-    Conv_wmma_accumulator = tir.var("handle")
-    W_shared = tir.var("handle")
-    W_shared_wmma_matrix_b = tir.var("handle")
-    blockIdx_x = tir.var("int32")
-    blockIdx_y = tir.var("int32")
-    blockIdx_z = tir.var("int32")
-    threadIdx_x = tir.var("int32")
-    threadIdx_y = tir.var("int32")
-    threadIdx_z = tir.var("int32")
+    # body
     A_1 = tir.match_buffer(A, [16, 14, 14, 16, 16, 16], dtype="float16", elem_offset=0, align=128, offset_factor=1)
     W_1 = tir.match_buffer(W, [3, 3, 16, 32, 16, 16], dtype="float16", elem_offset=0, align=128, offset_factor=1)
     Conv_1 = tir.match_buffer(Conv, [16, 14, 14, 32, 16, 16], elem_offset=0, align=128, offset_factor=1)
-    # body
-    tir.attr(tir.iter_var(blockIdx_z, None, "ThreadIndex", "blockIdx.z"), "thread_extent", 196)
-    tir.attr(Conv_wmma_accumulator, "storage_scope", "wmma.accumulator")
-    tir.allocate(Conv_wmma_accumulator, "float32", [2048])
-    tir.attr(Apad_shared, "storage_scope", "shared")
-    tir.allocate(Apad_shared, "float16", [12288])
-    tir.attr(W_shared, "storage_scope", "shared")
-    tir.allocate(W_shared, "float16", [12288])
-    tir.attr(Apad_shared_wmma_matrix_a, "storage_scope", "wmma.matrix_a")
-    tir.allocate(Apad_shared_wmma_matrix_a, "float16", [512])
-    tir.attr(W_shared_wmma_matrix_b, "storage_scope", "wmma.matrix_b")
-    tir.allocate(W_shared_wmma_matrix_b, "float16", [1024])
-    tir.attr(tir.iter_var(blockIdx_x, None, "ThreadIndex", "blockIdx.x"), "thread_extent", 2)
-    tir.attr(tir.iter_var(blockIdx_y, None, "ThreadIndex", "blockIdx.y"), "thread_extent", 4)
-    tir.attr(tir.iter_var(threadIdx_y, None, "ThreadIndex", "threadIdx.y"), "thread_extent", 4)
-    tir.attr(tir.iter_var(threadIdx_z, None, "ThreadIndex", "threadIdx.z"), "thread_extent", 2)
+    bx = tir.env_thread("blockIdx.x")
+    by = tir.env_thread("blockIdx.y")
+    bz = tir.env_thread("blockIdx.z")
+    tx = tir.env_thread("threadIdx.x")
+    ty = tir.env_thread("threadIdx.y")
+    tz = tir.env_thread("threadIdx.z")
+    tir.launch_thread(bz, 196)
+    Conv_wmma_accumulator = tir.allocate([2048], "float32", "wmma.accumulator")
+    Apad_shared = tir.allocate([12288], "float16", "shared")
+    W_shared = tir.allocate([12288], "float16", "shared")
+    Apad_shared_wmma_matrix_a = tir.allocate([512], "float16", "wmma.matrix_a")
+    W_shared_wmma_matrix_b = tir.allocate([1024], "float16", "wmma.matrix_b")
+    tir.launch_thread(bx, 2)
+    tir.launch_thread(by, 4)
+    tir.launch_thread(ty, 4)
+    tir.launch_thread(tz, 2)
     tir.evaluate(tir.tvm_fill_fragment(Conv_wmma_accumulator, 16, 16, 16, 0, tir.float32(0), dtype="handle"))
     tir.evaluate(tir.tvm_fill_fragment(Conv_wmma_accumulator, 16, 16, 16, 1, tir.float32(0), dtype="handle"))
     tir.evaluate(tir.tvm_fill_fragment(Conv_wmma_accumulator, 16, 16, 16, 2, tir.float32(0), dtype="handle"))
@@ -345,58 +322,58 @@ def opt_conv_tensorcore_lower(A: ty.handle, W: ty.handle, Conv: ty.handle) -> No
     for ic_outer in tir.serial(0, 8):
         for kh in tir.serial(0, 3):
             for ax2 in tir.serial(0, 3):
-                with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                    Apad_shared[((((threadIdx_y*3072) + (threadIdx_z*1536)) + (ax2*512)) + threadIdx_x)] = tir.if_then_else(((((1 <= (tir.floordiv(blockIdx_z, 14) + kh)) and ((tir.floordiv(blockIdx_z, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(blockIdx_z, 14)))) and ((ax2 + tir.floormod(blockIdx_z, 14)) < 15)), tir.load("float16", A_1.data, (((((((((blockIdx_x*6422528) + (threadIdx_y*1605632)) + (threadIdx_z*802816)) + (kh*57344)) + (blockIdx_z*4096)) + (ax2*4096)) + (ic_outer*512)) + threadIdx_x) - 61440)), tir.float16(0), dtype="float16")
-                with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                    Apad_shared[(((((threadIdx_y*3072) + (threadIdx_z*1536)) + (ax2*512)) + threadIdx_x) + 32)] = tir.if_then_else(((((1 <= (tir.floordiv(blockIdx_z, 14) + kh)) and ((tir.floordiv(blockIdx_z, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(blockIdx_z, 14)))) and ((ax2 + tir.floormod(blockIdx_z, 14)) < 15)), tir.load("float16", A_1.data, (((((((((blockIdx_x*6422528) + (threadIdx_y*1605632)) + (threadIdx_z*802816)) + (kh*57344)) + (blockIdx_z*4096)) + (ax2*4096)) + (ic_outer*512)) + threadIdx_x) - 61408)), tir.float16(0), dtype="float16")
-                with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                    Apad_shared[(((((threadIdx_y*3072) + (threadIdx_z*1536)) + (ax2*512)) + threadIdx_x) + 64)] = tir.if_then_else(((((1 <= (tir.floordiv(blockIdx_z, 14) + kh)) and ((tir.floordiv(blockIdx_z, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(blockIdx_z, 14)))) and ((ax2 + tir.floormod(blockIdx_z, 14)) < 15)), tir.load("float16", A_1.data, (((((((((blockIdx_x*6422528) + (threadIdx_y*1605632)) + (threadIdx_z*802816)) + (kh*57344)) + (blockIdx_z*4096)) + (ax2*4096)) + (ic_outer*512)) + threadIdx_x) - 61376)), tir.float16(0), dtype="float16")
-                with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                    Apad_shared[(((((threadIdx_y*3072) + (threadIdx_z*1536)) + (ax2*512)) + threadIdx_x) + 96)] = tir.if_then_else(((((1 <= (tir.floordiv(blockIdx_z, 14) + kh)) and ((tir.floordiv(blockIdx_z, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(blockIdx_z, 14)))) and ((ax2 + tir.floormod(blockIdx_z, 14)) < 15)), tir.load("float16", A_1.data, (((((((((blockIdx_x*6422528) + (threadIdx_y*1605632)) + (threadIdx_z*802816)) + (kh*57344)) + (blockIdx_z*4096)) + (ax2*4096)) + (ic_outer*512)) + threadIdx_x) - 61344)), tir.float16(0), dtype="float16")
-                with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                    Apad_shared[(((((threadIdx_y*3072) + (threadIdx_z*1536)) + (ax2*512)) + threadIdx_x) + 128)] = tir.if_then_else(((((1 <= (tir.floordiv(blockIdx_z, 14) + kh)) and ((tir.floordiv(blockIdx_z, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(blockIdx_z, 14)))) and ((ax2 + tir.floormod(blockIdx_z, 14)) < 15)), tir.load("float16", A_1.data, (((((((((blockIdx_x*6422528) + (threadIdx_y*1605632)) + (threadIdx_z*802816)) + (kh*57344)) + (blockIdx_z*4096)) + (ax2*4096)) + (ic_outer*512)) + threadIdx_x) - 61312)), tir.float16(0), dtype="float16")
-                with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                    Apad_shared[(((((threadIdx_y*3072) + (threadIdx_z*1536)) + (ax2*512)) + threadIdx_x) + 160)] = tir.if_then_else(((((1 <= (tir.floordiv(blockIdx_z, 14) + kh)) and ((tir.floordiv(blockIdx_z, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(blockIdx_z, 14)))) and ((ax2 + tir.floormod(blockIdx_z, 14)) < 15)), tir.load("float16", A_1.data, (((((((((blockIdx_x*6422528) + (threadIdx_y*1605632)) + (threadIdx_z*802816)) + (kh*57344)) + (blockIdx_z*4096)) + (ax2*4096)) + (ic_outer*512)) + threadIdx_x) - 61280)), tir.float16(0), dtype="float16")
-                with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                    Apad_shared[(((((threadIdx_y*3072) + (threadIdx_z*1536)) + (ax2*512)) + threadIdx_x) + 192)] = tir.if_then_else(((((1 <= (tir.floordiv(blockIdx_z, 14) + kh)) and ((tir.floordiv(blockIdx_z, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(blockIdx_z, 14)))) and ((ax2 + tir.floormod(blockIdx_z, 14)) < 15)), tir.load("float16", A_1.data, (((((((((blockIdx_x*6422528) + (threadIdx_y*1605632)) + (threadIdx_z*802816)) + (kh*57344)) + (blockIdx_z*4096)) + (ax2*4096)) + (ic_outer*512)) + threadIdx_x) - 61248)), tir.float16(0), dtype="float16")
-                with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                    Apad_shared[(((((threadIdx_y*3072) + (threadIdx_z*1536)) + (ax2*512)) + threadIdx_x) + 224)] = tir.if_then_else(((((1 <= (tir.floordiv(blockIdx_z, 14) + kh)) and ((tir.floordiv(blockIdx_z, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(blockIdx_z, 14)))) and ((ax2 + tir.floormod(blockIdx_z, 14)) < 15)), tir.load("float16", A_1.data, (((((((((blockIdx_x*6422528) + (threadIdx_y*1605632)) + (threadIdx_z*802816)) + (kh*57344)) + (blockIdx_z*4096)) + (ax2*4096)) + (ic_outer*512)) + threadIdx_x) - 61216)), tir.float16(0), dtype="float16")
-                with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                    Apad_shared[(((((threadIdx_y*3072) + (threadIdx_z*1536)) + (ax2*512)) + threadIdx_x) + 256)] = tir.if_then_else(((((1 <= (tir.floordiv(blockIdx_z, 14) + kh)) and ((tir.floordiv(blockIdx_z, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(blockIdx_z, 14)))) and ((ax2 + tir.floormod(blockIdx_z, 14)) < 15)), tir.load("float16", A_1.data, (((((((((blockIdx_x*6422528) + (threadIdx_y*1605632)) + (threadIdx_z*802816)) + (kh*57344)) + (blockIdx_z*4096)) + (ax2*4096)) + (ic_outer*512)) + threadIdx_x) - 61184)), tir.float16(0), dtype="float16")
-                with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                    Apad_shared[(((((threadIdx_y*3072) + (threadIdx_z*1536)) + (ax2*512)) + threadIdx_x) + 288)] = tir.if_then_else(((((1 <= (tir.floordiv(blockIdx_z, 14) + kh)) and ((tir.floordiv(blockIdx_z, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(blockIdx_z, 14)))) and ((ax2 + tir.floormod(blockIdx_z, 14)) < 15)), tir.load("float16", A_1.data, (((((((((blockIdx_x*6422528) + (threadIdx_y*1605632)) + (threadIdx_z*802816)) + (kh*57344)) + (blockIdx_z*4096)) + (ax2*4096)) + (ic_outer*512)) + threadIdx_x) - 61152)), tir.float16(0), dtype="float16")
-                with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                    Apad_shared[(((((threadIdx_y*3072) + (threadIdx_z*1536)) + (ax2*512)) + threadIdx_x) + 320)] = tir.if_then_else(((((1 <= (tir.floordiv(blockIdx_z, 14) + kh)) and ((tir.floordiv(blockIdx_z, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(blockIdx_z, 14)))) and ((ax2 + tir.floormod(blockIdx_z, 14)) < 15)), tir.load("float16", A_1.data, (((((((((blockIdx_x*6422528) + (threadIdx_y*1605632)) + (threadIdx_z*802816)) + (kh*57344)) + (blockIdx_z*4096)) + (ax2*4096)) + (ic_outer*512)) + threadIdx_x) - 61120)), tir.float16(0), dtype="float16")
-                with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                    Apad_shared[(((((threadIdx_y*3072) + (threadIdx_z*1536)) + (ax2*512)) + threadIdx_x) + 352)] = tir.if_then_else(((((1 <= (tir.floordiv(blockIdx_z, 14) + kh)) and ((tir.floordiv(blockIdx_z, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(blockIdx_z, 14)))) and ((ax2 + tir.floormod(blockIdx_z, 14)) < 15)), tir.load("float16", A_1.data, (((((((((blockIdx_x*6422528) + (threadIdx_y*1605632)) + (threadIdx_z*802816)) + (kh*57344)) + (blockIdx_z*4096)) + (ax2*4096)) + (ic_outer*512)) + threadIdx_x) - 61088)), tir.float16(0), dtype="float16")
-                with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                    Apad_shared[(((((threadIdx_y*3072) + (threadIdx_z*1536)) + (ax2*512)) + threadIdx_x) + 384)] = tir.if_then_else(((((1 <= (tir.floordiv(blockIdx_z, 14) + kh)) and ((tir.floordiv(blockIdx_z, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(blockIdx_z, 14)))) and ((ax2 + tir.floormod(blockIdx_z, 14)) < 15)), tir.load("float16", A_1.data, (((((((((blockIdx_x*6422528) + (threadIdx_y*1605632)) + (threadIdx_z*802816)) + (kh*57344)) + (blockIdx_z*4096)) + (ax2*4096)) + (ic_outer*512)) + threadIdx_x) - 61056)), tir.float16(0), dtype="float16")
-                with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                    Apad_shared[(((((threadIdx_y*3072) + (threadIdx_z*1536)) + (ax2*512)) + threadIdx_x) + 416)] = tir.if_then_else(((((1 <= (tir.floordiv(blockIdx_z, 14) + kh)) and ((tir.floordiv(blockIdx_z, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(blockIdx_z, 14)))) and ((ax2 + tir.floormod(blockIdx_z, 14)) < 15)), tir.load("float16", A_1.data, (((((((((blockIdx_x*6422528) + (threadIdx_y*1605632)) + (threadIdx_z*802816)) + (kh*57344)) + (blockIdx_z*4096)) + (ax2*4096)) + (ic_outer*512)) + threadIdx_x) - 61024)), tir.float16(0), dtype="float16")
-                with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                    Apad_shared[(((((threadIdx_y*3072) + (threadIdx_z*1536)) + (ax2*512)) + threadIdx_x) + 448)] = tir.if_then_else(((((1 <= (tir.floordiv(blockIdx_z, 14) + kh)) and ((tir.floordiv(blockIdx_z, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(blockIdx_z, 14)))) and ((ax2 + tir.floormod(blockIdx_z, 14)) < 15)), tir.load("float16", A_1.data, (((((((((blockIdx_x*6422528) + (threadIdx_y*1605632)) + (threadIdx_z*802816)) + (kh*57344)) + (blockIdx_z*4096)) + (ax2*4096)) + (ic_outer*512)) + threadIdx_x) - 60992)), tir.float16(0), dtype="float16")
-                tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32)
-                Apad_shared[(((((threadIdx_y*3072) + (threadIdx_z*1536)) + (ax2*512)) + threadIdx_x) + 480)] = tir.if_then_else(((((1 <= (tir.floordiv(blockIdx_z, 14) + kh)) and ((tir.floordiv(blockIdx_z, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(blockIdx_z, 14)))) and ((ax2 + tir.floormod(blockIdx_z, 14)) < 15)), tir.load("float16", A_1.data, (((((((((blockIdx_x*6422528) + (threadIdx_y*1605632)) + (threadIdx_z*802816)) + (kh*57344)) + (blockIdx_z*4096)) + (ax2*4096)) + (ic_outer*512)) + threadIdx_x) - 60960)), tir.float16(0), dtype="float16")
-            with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                tir.store(W_shared, tir.ramp((((threadIdx_y*512) + (threadIdx_z*256)) + (threadIdx_x*8)), 1, 8), tir.load("float16x8", W_1.data, tir.ramp(((((((kh*393216) + (ic_outer*16384)) + (blockIdx_y*2048)) + (threadIdx_y*512)) + (threadIdx_z*256)) + (threadIdx_x*8)), 1, 8), tir.broadcast(True, 8)), tir.broadcast(True, 8))
-            with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                tir.store(W_shared, tir.ramp(((((threadIdx_y*512) + (threadIdx_z*256)) + (threadIdx_x*8)) + 2048), 1, 8), tir.load("float16x8", W_1.data, tir.ramp((((((((kh*393216) + (ic_outer*16384)) + (blockIdx_y*2048)) + (threadIdx_y*512)) + (threadIdx_z*256)) + (threadIdx_x*8)) + 8192), 1, 8), tir.broadcast(True, 8)), tir.broadcast(True, 8))
-            with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                tir.store(W_shared, tir.ramp(((((threadIdx_y*512) + (threadIdx_z*256)) + (threadIdx_x*8)) + 4096), 1, 8), tir.load("float16x8", W_1.data, tir.ramp((((((((kh*393216) + (ic_outer*16384)) + (blockIdx_y*2048)) + (threadIdx_y*512)) + (threadIdx_z*256)) + (threadIdx_x*8)) + 131072), 1, 8), tir.broadcast(True, 8)), tir.broadcast(True, 8))
-            with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                tir.store(W_shared, tir.ramp(((((threadIdx_y*512) + (threadIdx_z*256)) + (threadIdx_x*8)) + 6144), 1, 8), tir.load("float16x8", W_1.data, tir.ramp((((((((kh*393216) + (ic_outer*16384)) + (blockIdx_y*2048)) + (threadIdx_y*512)) + (threadIdx_z*256)) + (threadIdx_x*8)) + 139264), 1, 8), tir.broadcast(True, 8)), tir.broadcast(True, 8))
-            with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                tir.store(W_shared, tir.ramp(((((threadIdx_y*512) + (threadIdx_z*256)) + (threadIdx_x*8)) + 8192), 1, 8), tir.load("float16x8", W_1.data, tir.ramp((((((((kh*393216) + (ic_outer*16384)) + (blockIdx_y*2048)) + (threadIdx_y*512)) + (threadIdx_z*256)) + (threadIdx_x*8)) + 262144), 1, 8), tir.broadcast(True, 8)), tir.broadcast(True, 8))
-            with tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32):
-                tir.store(W_shared, tir.ramp(((((threadIdx_y*512) + (threadIdx_z*256)) + (threadIdx_x*8)) + 10240), 1, 8), tir.load("float16x8", W_1.data, tir.ramp((((((((kh*393216) + (ic_outer*16384)) + (blockIdx_y*2048)) + (threadIdx_y*512)) + (threadIdx_z*256)) + (threadIdx_x*8)) + 270336), 1, 8), tir.broadcast(True, 8)), tir.broadcast(True, 8))
+                with tir.launch_thread(tx, 32):
+                    Apad_shared[((((ty*3072) + (tz*1536)) + (ax2*512)) + tx)] = tir.if_then_else(((((1 <= (tir.floordiv(bz, 14) + kh)) and ((tir.floordiv(bz, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(bz, 14)))) and ((ax2 + tir.floormod(bz, 14)) < 15)), tir.load("float16", A_1.data, (((((((((bx*6422528) + (ty*1605632)) + (tz*802816)) + (kh*57344)) + (bz*4096)) + (ax2*4096)) + (ic_outer*512)) + tx) - 61440)), tir.float16(0), dtype="float16")
+                with tir.launch_thread(tx, 32):
+                    Apad_shared[(((((ty*3072) + (tz*1536)) + (ax2*512)) + tx) + 32)] = tir.if_then_else(((((1 <= (tir.floordiv(bz, 14) + kh)) and ((tir.floordiv(bz, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(bz, 14)))) and ((ax2 + tir.floormod(bz, 14)) < 15)), tir.load("float16", A_1.data, (((((((((bx*6422528) + (ty*1605632)) + (tz*802816)) + (kh*57344)) + (bz*4096)) + (ax2*4096)) + (ic_outer*512)) + tx) - 61408)), tir.float16(0), dtype="float16")
+                with tir.launch_thread(tx, 32):
+                    Apad_shared[(((((ty*3072) + (tz*1536)) + (ax2*512)) + tx) + 64)] = tir.if_then_else(((((1 <= (tir.floordiv(bz, 14) + kh)) and ((tir.floordiv(bz, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(bz, 14)))) and ((ax2 + tir.floormod(bz, 14)) < 15)), tir.load("float16", A_1.data, (((((((((bx*6422528) + (ty*1605632)) + (tz*802816)) + (kh*57344)) + (bz*4096)) + (ax2*4096)) + (ic_outer*512)) + tx) - 61376)), tir.float16(0), dtype="float16")
+                with tir.launch_thread(tx, 32):
+                    Apad_shared[(((((ty*3072) + (tz*1536)) + (ax2*512)) + tx) + 96)] = tir.if_then_else(((((1 <= (tir.floordiv(bz, 14) + kh)) and ((tir.floordiv(bz, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(bz, 14)))) and ((ax2 + tir.floormod(bz, 14)) < 15)), tir.load("float16", A_1.data, (((((((((bx*6422528) + (ty*1605632)) + (tz*802816)) + (kh*57344)) + (bz*4096)) + (ax2*4096)) + (ic_outer*512)) + tx) - 61344)), tir.float16(0), dtype="float16")
+                with tir.launch_thread(tx, 32):
+                    Apad_shared[(((((ty*3072) + (tz*1536)) + (ax2*512)) + tx) + 128)] = tir.if_then_else(((((1 <= (tir.floordiv(bz, 14) + kh)) and ((tir.floordiv(bz, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(bz, 14)))) and ((ax2 + tir.floormod(bz, 14)) < 15)), tir.load("float16", A_1.data, (((((((((bx*6422528) + (ty*1605632)) + (tz*802816)) + (kh*57344)) + (bz*4096)) + (ax2*4096)) + (ic_outer*512)) + tx) - 61312)), tir.float16(0), dtype="float16")
+                with tir.launch_thread(tx, 32):
+                    Apad_shared[(((((ty*3072) + (tz*1536)) + (ax2*512)) + tx) + 160)] = tir.if_then_else(((((1 <= (tir.floordiv(bz, 14) + kh)) and ((tir.floordiv(bz, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(bz, 14)))) and ((ax2 + tir.floormod(bz, 14)) < 15)), tir.load("float16", A_1.data, (((((((((bx*6422528) + (ty*1605632)) + (tz*802816)) + (kh*57344)) + (bz*4096)) + (ax2*4096)) + (ic_outer*512)) + tx) - 61280)), tir.float16(0), dtype="float16")
+                with tir.launch_thread(tx, 32):
+                    Apad_shared[(((((ty*3072) + (tz*1536)) + (ax2*512)) + tx) + 192)] = tir.if_then_else(((((1 <= (tir.floordiv(bz, 14) + kh)) and ((tir.floordiv(bz, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(bz, 14)))) and ((ax2 + tir.floormod(bz, 14)) < 15)), tir.load("float16", A_1.data, (((((((((bx*6422528) + (ty*1605632)) + (tz*802816)) + (kh*57344)) + (bz*4096)) + (ax2*4096)) + (ic_outer*512)) + tx) - 61248)), tir.float16(0), dtype="float16")
+                with tir.launch_thread(tx, 32):
+                    Apad_shared[(((((ty*3072) + (tz*1536)) + (ax2*512)) + tx) + 224)] = tir.if_then_else(((((1 <= (tir.floordiv(bz, 14) + kh)) and ((tir.floordiv(bz, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(bz, 14)))) and ((ax2 + tir.floormod(bz, 14)) < 15)), tir.load("float16", A_1.data, (((((((((bx*6422528) + (ty*1605632)) + (tz*802816)) + (kh*57344)) + (bz*4096)) + (ax2*4096)) + (ic_outer*512)) + tx) - 61216)), tir.float16(0), dtype="float16")
+                with tir.launch_thread(tx, 32):
+                    Apad_shared[(((((ty*3072) + (tz*1536)) + (ax2*512)) + tx) + 256)] = tir.if_then_else(((((1 <= (tir.floordiv(bz, 14) + kh)) and ((tir.floordiv(bz, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(bz, 14)))) and ((ax2 + tir.floormod(bz, 14)) < 15)), tir.load("float16", A_1.data, (((((((((bx*6422528) + (ty*1605632)) + (tz*802816)) + (kh*57344)) + (bz*4096)) + (ax2*4096)) + (ic_outer*512)) + tx) - 61184)), tir.float16(0), dtype="float16")
+                with tir.launch_thread(tx, 32):
+                    Apad_shared[(((((ty*3072) + (tz*1536)) + (ax2*512)) + tx) + 288)] = tir.if_then_else(((((1 <= (tir.floordiv(bz, 14) + kh)) and ((tir.floordiv(bz, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(bz, 14)))) and ((ax2 + tir.floormod(bz, 14)) < 15)), tir.load("float16", A_1.data, (((((((((bx*6422528) + (ty*1605632)) + (tz*802816)) + (kh*57344)) + (bz*4096)) + (ax2*4096)) + (ic_outer*512)) + tx) - 61152)), tir.float16(0), dtype="float16")
+                with tir.launch_thread(tx, 32):
+                    Apad_shared[(((((ty*3072) + (tz*1536)) + (ax2*512)) + tx) + 320)] = tir.if_then_else(((((1 <= (tir.floordiv(bz, 14) + kh)) and ((tir.floordiv(bz, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(bz, 14)))) and ((ax2 + tir.floormod(bz, 14)) < 15)), tir.load("float16", A_1.data, (((((((((bx*6422528) + (ty*1605632)) + (tz*802816)) + (kh*57344)) + (bz*4096)) + (ax2*4096)) + (ic_outer*512)) + tx) - 61120)), tir.float16(0), dtype="float16")
+                with tir.launch_thread(tx, 32):
+                    Apad_shared[(((((ty*3072) + (tz*1536)) + (ax2*512)) + tx) + 352)] = tir.if_then_else(((((1 <= (tir.floordiv(bz, 14) + kh)) and ((tir.floordiv(bz, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(bz, 14)))) and ((ax2 + tir.floormod(bz, 14)) < 15)), tir.load("float16", A_1.data, (((((((((bx*6422528) + (ty*1605632)) + (tz*802816)) + (kh*57344)) + (bz*4096)) + (ax2*4096)) + (ic_outer*512)) + tx) - 61088)), tir.float16(0), dtype="float16")
+                with tir.launch_thread(tx, 32):
+                    Apad_shared[(((((ty*3072) + (tz*1536)) + (ax2*512)) + tx) + 384)] = tir.if_then_else(((((1 <= (tir.floordiv(bz, 14) + kh)) and ((tir.floordiv(bz, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(bz, 14)))) and ((ax2 + tir.floormod(bz, 14)) < 15)), tir.load("float16", A_1.data, (((((((((bx*6422528) + (ty*1605632)) + (tz*802816)) + (kh*57344)) + (bz*4096)) + (ax2*4096)) + (ic_outer*512)) + tx) - 61056)), tir.float16(0), dtype="float16")
+                with tir.launch_thread(tx, 32):
+                    Apad_shared[(((((ty*3072) + (tz*1536)) + (ax2*512)) + tx) + 416)] = tir.if_then_else(((((1 <= (tir.floordiv(bz, 14) + kh)) and ((tir.floordiv(bz, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(bz, 14)))) and ((ax2 + tir.floormod(bz, 14)) < 15)), tir.load("float16", A_1.data, (((((((((bx*6422528) + (ty*1605632)) + (tz*802816)) + (kh*57344)) + (bz*4096)) + (ax2*4096)) + (ic_outer*512)) + tx) - 61024)), tir.float16(0), dtype="float16")
+                with tir.launch_thread(tx, 32):
+                    Apad_shared[(((((ty*3072) + (tz*1536)) + (ax2*512)) + tx) + 448)] = tir.if_then_else(((((1 <= (tir.floordiv(bz, 14) + kh)) and ((tir.floordiv(bz, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(bz, 14)))) and ((ax2 + tir.floormod(bz, 14)) < 15)), tir.load("float16", A_1.data, (((((((((bx*6422528) + (ty*1605632)) + (tz*802816)) + (kh*57344)) + (bz*4096)) + (ax2*4096)) + (ic_outer*512)) + tx) - 60992)), tir.float16(0), dtype="float16")
+                tir.launch_thread(tx, 32)
+                Apad_shared[(((((ty*3072) + (tz*1536)) + (ax2*512)) + tx) + 480)] = tir.if_then_else(((((1 <= (tir.floordiv(bz, 14) + kh)) and ((tir.floordiv(bz, 14) + kh) < 15)) and (1 <= (ax2 + tir.floormod(bz, 14)))) and ((ax2 + tir.floormod(bz, 14)) < 15)), tir.load("float16", A_1.data, (((((((((bx*6422528) + (ty*1605632)) + (tz*802816)) + (kh*57344)) + (bz*4096)) + (ax2*4096)) + (ic_outer*512)) + tx) - 60960)), tir.float16(0), dtype="float16")
+            with tir.launch_thread(tx, 32):
+                tir.store(W_shared, tir.ramp((((ty*512) + (tz*256)) + (tx*8)), 1, 8), tir.load("float16x8", W_1.data, tir.ramp(((((((kh*393216) + (ic_outer*16384)) + (by*2048)) + (ty*512)) + (tz*256)) + (tx*8)), 1, 8), tir.broadcast(True, 8)), tir.broadcast(True, 8))
+            with tir.launch_thread(tx, 32):
+                tir.store(W_shared, tir.ramp(((((ty*512) + (tz*256)) + (tx*8)) + 2048), 1, 8), tir.load("float16x8", W_1.data, tir.ramp((((((((kh*393216) + (ic_outer*16384)) + (by*2048)) + (ty*512)) + (tz*256)) + (tx*8)) + 8192), 1, 8), tir.broadcast(True, 8)), tir.broadcast(True, 8))
+            with tir.launch_thread(tx, 32):
+                tir.store(W_shared, tir.ramp(((((ty*512) + (tz*256)) + (tx*8)) + 4096), 1, 8), tir.load("float16x8", W_1.data, tir.ramp((((((((kh*393216) + (ic_outer*16384)) + (by*2048)) + (ty*512)) + (tz*256)) + (tx*8)) + 131072), 1, 8), tir.broadcast(True, 8)), tir.broadcast(True, 8))
+            with tir.launch_thread(tx, 32):
+                tir.store(W_shared, tir.ramp(((((ty*512) + (tz*256)) + (tx*8)) + 6144), 1, 8), tir.load("float16x8", W_1.data, tir.ramp((((((((kh*393216) + (ic_outer*16384)) + (by*2048)) + (ty*512)) + (tz*256)) + (tx*8)) + 139264), 1, 8), tir.broadcast(True, 8)), tir.broadcast(True, 8))
+            with tir.launch_thread(tx, 32):
+                tir.store(W_shared, tir.ramp(((((ty*512) + (tz*256)) + (tx*8)) + 8192), 1, 8), tir.load("float16x8", W_1.data, tir.ramp((((((((kh*393216) + (ic_outer*16384)) + (by*2048)) + (ty*512)) + (tz*256)) + (tx*8)) + 262144), 1, 8), tir.broadcast(True, 8)), tir.broadcast(True, 8))
+            with tir.launch_thread(tx, 32):
+                tir.store(W_shared, tir.ramp(((((ty*512) + (tz*256)) + (tx*8)) + 10240), 1, 8), tir.load("float16x8", W_1.data, tir.ramp((((((((kh*393216) + (ic_outer*16384)) + (by*2048)) + (ty*512)) + (tz*256)) + (tx*8)) + 270336), 1, 8), tir.broadcast(True, 8)), tir.broadcast(True, 8))
             for ic_inner in tir.serial(0, 2):
                 for kw in tir.serial(0, 3):
-                    tir.evaluate(tir.tvm_load_matrix_sync(Apad_shared_wmma_matrix_a, 16, 16, 16, 0, tir.tvm_access_ptr(tir.type_annotation(dtype="float16"), Apad_shared, (((threadIdx_y*3072) + (kw*512)) + (ic_inner*256)), 256, 1, dtype="handle"), 16, "row_major", dtype="handle"))
-                    tir.evaluate(tir.tvm_load_matrix_sync(Apad_shared_wmma_matrix_a, 16, 16, 16, 1, tir.tvm_access_ptr(tir.type_annotation(dtype="float16"), Apad_shared, ((((threadIdx_y*3072) + (kw*512)) + (ic_inner*256)) + 1536), 256, 1, dtype="handle"), 16, "row_major", dtype="handle"))
-                    tir.evaluate(tir.tvm_load_matrix_sync(W_shared_wmma_matrix_b, 16, 16, 16, 0, tir.tvm_access_ptr(tir.type_annotation(dtype="float16"), W_shared, (((kw*4096) + (ic_inner*2048)) + (threadIdx_z*1024)), 256, 1, dtype="handle"), 16, "row_major", dtype="handle"))
-                    tir.evaluate(tir.tvm_load_matrix_sync(W_shared_wmma_matrix_b, 16, 16, 16, 1, tir.tvm_access_ptr(tir.type_annotation(dtype="float16"), W_shared, ((((kw*4096) + (ic_inner*2048)) + (threadIdx_z*1024)) + 256), 256, 1, dtype="handle"), 16, "row_major", dtype="handle"))
-                    tir.evaluate(tir.tvm_load_matrix_sync(W_shared_wmma_matrix_b, 16, 16, 16, 2, tir.tvm_access_ptr(tir.type_annotation(dtype="float16"), W_shared, ((((kw*4096) + (ic_inner*2048)) + (threadIdx_z*1024)) + 512), 256, 1, dtype="handle"), 16, "row_major", dtype="handle"))
-                    tir.evaluate(tir.tvm_load_matrix_sync(W_shared_wmma_matrix_b, 16, 16, 16, 3, tir.tvm_access_ptr(tir.type_annotation(dtype="float16"), W_shared, ((((kw*4096) + (ic_inner*2048)) + (threadIdx_z*1024)) + 768), 256, 1, dtype="handle"), 16, "row_major", dtype="handle"))
+                    tir.evaluate(tir.tvm_load_matrix_sync(Apad_shared_wmma_matrix_a, 16, 16, 16, 0, tir.tvm_access_ptr(tir.type_annotation(dtype="float16"), Apad_shared, (((ty*3072) + (kw*512)) + (ic_inner*256)), 256, 1, dtype="handle"), 16, "row_major", dtype="handle"))
+                    tir.evaluate(tir.tvm_load_matrix_sync(Apad_shared_wmma_matrix_a, 16, 16, 16, 1, tir.tvm_access_ptr(tir.type_annotation(dtype="float16"), Apad_shared, ((((ty*3072) + (kw*512)) + (ic_inner*256)) + 1536), 256, 1, dtype="handle"), 16, "row_major", dtype="handle"))
+                    tir.evaluate(tir.tvm_load_matrix_sync(W_shared_wmma_matrix_b, 16, 16, 16, 0, tir.tvm_access_ptr(tir.type_annotation(dtype="float16"), W_shared, (((kw*4096) + (ic_inner*2048)) + (tz*1024)), 256, 1, dtype="handle"), 16, "row_major", dtype="handle"))
+                    tir.evaluate(tir.tvm_load_matrix_sync(W_shared_wmma_matrix_b, 16, 16, 16, 1, tir.tvm_access_ptr(tir.type_annotation(dtype="float16"), W_shared, ((((kw*4096) + (ic_inner*2048)) + (tz*1024)) + 256), 256, 1, dtype="handle"), 16, "row_major", dtype="handle"))
+                    tir.evaluate(tir.tvm_load_matrix_sync(W_shared_wmma_matrix_b, 16, 16, 16, 2, tir.tvm_access_ptr(tir.type_annotation(dtype="float16"), W_shared, ((((kw*4096) + (ic_inner*2048)) + (tz*1024)) + 512), 256, 1, dtype="handle"), 16, "row_major", dtype="handle"))
+                    tir.evaluate(tir.tvm_load_matrix_sync(W_shared_wmma_matrix_b, 16, 16, 16, 3, tir.tvm_access_ptr(tir.type_annotation(dtype="float16"), W_shared, ((((kw*4096) + (ic_inner*2048)) + (tz*1024)) + 768), 256, 1, dtype="handle"), 16, "row_major", dtype="handle"))
                     tir.evaluate(tir.tvm_mma_sync(Conv_wmma_accumulator, 0, Apad_shared_wmma_matrix_a, 0, W_shared_wmma_matrix_b, 0, Conv_wmma_accumulator, 0, dtype="handle"))
                     tir.evaluate(tir.tvm_mma_sync(Conv_wmma_accumulator, 1, Apad_shared_wmma_matrix_a, 0, W_shared_wmma_matrix_b, 1, Conv_wmma_accumulator, 1, dtype="handle"))
                     tir.evaluate(tir.tvm_mma_sync(Conv_wmma_accumulator, 2, Apad_shared_wmma_matrix_a, 0, W_shared_wmma_matrix_b, 2, Conv_wmma_accumulator, 2, dtype="handle"))
@@ -405,14 +382,14 @@ def opt_conv_tensorcore_lower(A: ty.handle, W: ty.handle, Conv: ty.handle) -> No
                     tir.evaluate(tir.tvm_mma_sync(Conv_wmma_accumulator, 5, Apad_shared_wmma_matrix_a, 1, W_shared_wmma_matrix_b, 1, Conv_wmma_accumulator, 5, dtype="handle"))
                     tir.evaluate(tir.tvm_mma_sync(Conv_wmma_accumulator, 6, Apad_shared_wmma_matrix_a, 1, W_shared_wmma_matrix_b, 2, Conv_wmma_accumulator, 6, dtype="handle"))
                     tir.evaluate(tir.tvm_mma_sync(Conv_wmma_accumulator, 7, Apad_shared_wmma_matrix_a, 1, W_shared_wmma_matrix_b, 3, Conv_wmma_accumulator, 7, dtype="handle"))
-    tir.evaluate(tir.tvm_store_matrix_sync(Conv_wmma_accumulator, 16, 16, 16, 0, tir.tvm_access_ptr(tir.type_annotation(dtype="float32"), Conv_1.data, (((((blockIdx_x*12845056) + (threadIdx_y*3211264)) + (blockIdx_z*8192)) + (blockIdx_y*2048)) + (threadIdx_z*1024)), 256, 2, dtype="handle"), 16, "row_major", dtype="handle"))
-    tir.evaluate(tir.tvm_store_matrix_sync(Conv_wmma_accumulator, 16, 16, 16, 1, tir.tvm_access_ptr(tir.type_annotation(dtype="float32"), Conv_1.data, ((((((blockIdx_x*12845056) + (threadIdx_y*3211264)) + (blockIdx_z*8192)) + (blockIdx_y*2048)) + (threadIdx_z*1024)) + 256), 256, 2, dtype="handle"), 16, "row_major", dtype="handle"))
-    tir.evaluate(tir.tvm_store_matrix_sync(Conv_wmma_accumulator, 16, 16, 16, 2, tir.tvm_access_ptr(tir.type_annotation(dtype="float32"), Conv_1.data, ((((((blockIdx_x*12845056) + (threadIdx_y*3211264)) + (blockIdx_z*8192)) + (blockIdx_y*2048)) + (threadIdx_z*1024)) + 512), 256, 2, dtype="handle"), 16, "row_major", dtype="handle"))
-    tir.evaluate(tir.tvm_store_matrix_sync(Conv_wmma_accumulator, 16, 16, 16, 3, tir.tvm_access_ptr(tir.type_annotation(dtype="float32"), Conv_1.data, ((((((blockIdx_x*12845056) + (threadIdx_y*3211264)) + (blockIdx_z*8192)) + (blockIdx_y*2048)) + (threadIdx_z*1024)) + 768), 256, 2, dtype="handle"), 16, "row_major", dtype="handle"))
-    tir.evaluate(tir.tvm_store_matrix_sync(Conv_wmma_accumulator, 16, 16, 16, 4, tir.tvm_access_ptr(tir.type_annotation(dtype="float32"), Conv_1.data, ((((((blockIdx_x*12845056) + (threadIdx_y*3211264)) + (blockIdx_z*8192)) + (blockIdx_y*2048)) + (threadIdx_z*1024)) + 1605632), 256, 2, dtype="handle"), 16, "row_major", dtype="handle"))
-    tir.evaluate(tir.tvm_store_matrix_sync(Conv_wmma_accumulator, 16, 16, 16, 5, tir.tvm_access_ptr(tir.type_annotation(dtype="float32"), Conv_1.data, ((((((blockIdx_x*12845056) + (threadIdx_y*3211264)) + (blockIdx_z*8192)) + (blockIdx_y*2048)) + (threadIdx_z*1024)) + 1605888), 256, 2, dtype="handle"), 16, "row_major", dtype="handle"))
-    tir.evaluate(tir.tvm_store_matrix_sync(Conv_wmma_accumulator, 16, 16, 16, 6, tir.tvm_access_ptr(tir.type_annotation(dtype="float32"), Conv_1.data, ((((((blockIdx_x*12845056) + (threadIdx_y*3211264)) + (blockIdx_z*8192)) + (blockIdx_y*2048)) + (threadIdx_z*1024)) + 1606144), 256, 2, dtype="handle"), 16, "row_major", dtype="handle"))
-    tir.evaluate(tir.tvm_store_matrix_sync(Conv_wmma_accumulator, 16, 16, 16, 7, tir.tvm_access_ptr(tir.type_annotation(dtype="float32"), Conv_1.data, ((((((blockIdx_x*12845056) + (threadIdx_y*3211264)) + (blockIdx_z*8192)) + (blockIdx_y*2048)) + (threadIdx_z*1024)) + 1606400), 256, 2, dtype="handle"), 16, "row_major", dtype="handle"))
+    tir.evaluate(tir.tvm_store_matrix_sync(Conv_wmma_accumulator, 16, 16, 16, 0, tir.tvm_access_ptr(tir.type_annotation(dtype="float32"), Conv_1.data, (((((bx*12845056) + (ty*3211264)) + (bz*8192)) + (by*2048)) + (tz*1024)), 256, 2, dtype="handle"), 16, "row_major", dtype="handle"))
+    tir.evaluate(tir.tvm_store_matrix_sync(Conv_wmma_accumulator, 16, 16, 16, 1, tir.tvm_access_ptr(tir.type_annotation(dtype="float32"), Conv_1.data, ((((((bx*12845056) + (ty*3211264)) + (bz*8192)) + (by*2048)) + (tz*1024)) + 256), 256, 2, dtype="handle"), 16, "row_major", dtype="handle"))
+    tir.evaluate(tir.tvm_store_matrix_sync(Conv_wmma_accumulator, 16, 16, 16, 2, tir.tvm_access_ptr(tir.type_annotation(dtype="float32"), Conv_1.data, ((((((bx*12845056) + (ty*3211264)) + (bz*8192)) + (by*2048)) + (tz*1024)) + 512), 256, 2, dtype="handle"), 16, "row_major", dtype="handle"))
+    tir.evaluate(tir.tvm_store_matrix_sync(Conv_wmma_accumulator, 16, 16, 16, 3, tir.tvm_access_ptr(tir.type_annotation(dtype="float32"), Conv_1.data, ((((((bx*12845056) + (ty*3211264)) + (bz*8192)) + (by*2048)) + (tz*1024)) + 768), 256, 2, dtype="handle"), 16, "row_major", dtype="handle"))
+    tir.evaluate(tir.tvm_store_matrix_sync(Conv_wmma_accumulator, 16, 16, 16, 4, tir.tvm_access_ptr(tir.type_annotation(dtype="float32"), Conv_1.data, ((((((bx*12845056) + (ty*3211264)) + (bz*8192)) + (by*2048)) + (tz*1024)) + 1605632), 256, 2, dtype="handle"), 16, "row_major", dtype="handle"))
+    tir.evaluate(tir.tvm_store_matrix_sync(Conv_wmma_accumulator, 16, 16, 16, 5, tir.tvm_access_ptr(tir.type_annotation(dtype="float32"), Conv_1.data, ((((((bx*12845056) + (ty*3211264)) + (bz*8192)) + (by*2048)) + (tz*1024)) + 1605888), 256, 2, dtype="handle"), 16, "row_major", dtype="handle"))
+    tir.evaluate(tir.tvm_store_matrix_sync(Conv_wmma_accumulator, 16, 16, 16, 6, tir.tvm_access_ptr(tir.type_annotation(dtype="float32"), Conv_1.data, ((((((bx*12845056) + (ty*3211264)) + (bz*8192)) + (by*2048)) + (tz*1024)) + 1606144), 256, 2, dtype="handle"), 16, "row_major", dtype="handle"))
+    tir.evaluate(tir.tvm_store_matrix_sync(Conv_wmma_accumulator, 16, 16, 16, 7, tir.tvm_access_ptr(tir.type_annotation(dtype="float32"), Conv_1.data, ((((((bx*12845056) + (ty*3211264)) + (bz*8192)) + (by*2048)) + (tz*1024)) + 1606400), 256, 2, dtype="handle"), 16, "row_major", dtype="handle"))
 
 
 def test_opt_conv_tensorcore_lower():
