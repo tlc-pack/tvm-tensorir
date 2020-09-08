@@ -24,7 +24,7 @@
 #include <tvm/tir/stmt_functor.h>
 
 #include "../ir/functor_common.h"
-#include "schedule_common.h"
+#include "./schedule_common.h"
 
 namespace tvm {
 namespace tir {
@@ -166,7 +166,7 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
     return lhs.code() == rhs.code() && lhs.bits() == rhs.bits() && lhs.lanes() == rhs.lanes();
   }
 
-  // varaible remap if any
+  // variable remap if any
   std::unordered_map<ObjectRef, ObjectRef, ObjectPtrHash, ObjectPtrEqual> equal_map_;
   bool assert_mode_;
 };
