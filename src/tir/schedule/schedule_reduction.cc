@@ -43,7 +43,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
    *    - generate loops related to data par block vars
    *    - generate corresponding init block and update block
    */
-  // A bunch of type checkings
+  // A bunch of type checking
   const auto* block = block_sref->GetStmt<BlockNode>();
   const auto* loop = loop_sref->GetStmt<LoopNode>();
   CHECK(block != nullptr)
@@ -63,7 +63,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
       << reduce_step->lhs->GetTypeKey();
   Array<StmtSRef> loops = GetLoopsInScope(block_sref);
   const BlockRealizeNode* realize = GetBlockRealize(block_sref).get();
-  // Cond 0. Check loop_sref is block_sref's ancestor
+  // Cond 0. Check loop_sref is an ancestor of block_sref
   CHECK(ListContains(loops, loop_sref))
       << "ValueError: 'decompose_reduction' expect the loop to be an ancestor of block";
   // Cond 1. Check block is reduction
@@ -130,7 +130,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
   for (int i = static_cast<int>(loops.size()) - 1; i >= 0; --i) {
     const auto* higher_loop = loops[i]->GetStmt<LoopNode>();
     for (const PrimExpr& expr : init_realize->binding_values) {
-      // Skip irrelavent loops
+      // Skip irrelevant loops
       if (!ExprContainsVar(expr, higher_loop->loop_var)) {
         continue;
       }
@@ -168,7 +168,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
                         /*annotations=*/parent->annotations,
                         /*tag=*/parent->tag));
   } else {
-    LOG(FATAL) << "TyepError: 'decompose_reduction' is applied to loop whose parent's type is not "
+    LOG(FATAL) << "TypeError: 'decompose_reduction' is applied to loop whose parent's type is not "
                   "unsupported: "
                << loop_sref->parent->stmt->GetTypeKey();
   }
