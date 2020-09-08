@@ -21,12 +21,23 @@
 namespace tvm {
 namespace tir {
 
+/*! \brief Kind of the cache stage */
+enum class CacheKind : int {
+  /*! \brief Indicating that the cache stage is cache_read */
+  kCacheRead = 0,
+  /*! \brief Indicating that the cache stage is cache_write */
+  kCacheWrite = 1,
+};
+
+/*! \brief The auxilary info used for the insertion point and content of the cache stage */
 struct CacheStageInfo {
+  /*! \brief Kind of the cache stage */
+  CacheKind kind;
   /*! \brief The buffer to be read */
   Buffer read_buffer;
   /*! \brief The buffer to be written */
   Buffer write_buffer;
-  /*! \brief The buffer allocation statement */
+  /*! \brief The buffer allocation statement to be inserted */
   BufferAllocate alloc;
   /*! \brief The AST node whose body is where the cache stage should be inserted */
   StmtSRef loc_sref;
@@ -38,14 +49,6 @@ struct CacheStageInfo {
   std::unordered_map<Block, Block, ObjectPtrHash, ObjectPtrEqual> block_map;
 };
 
-/*! \brief Helper class to indicate if the insertion is for cache_read or cache_write */
-enum class CacheKind : int {
-  /*! \brief Insertion for cache_read */
-  kCacheRead = 0,
-  /*! \brief Insertion for cache_write */
-  kCacheWrite = 1,
-};
-
 /*!
  * \brief Create a loop nest that represents cache copy (cache_read / cache_write) from read buffer
  * to write buffer
@@ -55,35 +58,29 @@ enum class CacheKind : int {
  * */
 Block MakeCacheStage(const TensorRegion& cache_region, CacheStageInfo* info) {
   // loop variables
-  Array<Var> loop_vars;
+  std::vector<Var> loop_vars;
   // bindings in block realize
-  Array<PrimExpr> binding_values;
+  std::vector<PrimExpr> binding_values;
   // Create loop vars and block vars' binding_value
-  {
-    int i = 0;
-    for (const Range& axis : cache_region->region) {
-      Var loop_var("ax" + std::to_string(i++));
-      loop_vars.push_back(loop_var);
-      binding_values.push_back(loop_var + axis->min);
-    }
+  for (const Range& axis : cache_region->region) {
+    Var loop_var("ax" + std::to_string(loop_vars.size()));
+    loop_vars.push_back(loop_var);
+    binding_values.push_back(loop_var + axis->min);
   }
   // block variables
   std::vector<IterVar> block_vars;
   // block access region for read/write buffers
-  Array<Range> access_region;
+  std::vector<Range> access_region;
   // indices used in function body
-  Array<PrimExpr> copy_indices;
+  std::vector<PrimExpr> copy_indices;
   // Create block vars, block's accessed region and accessing indices
-  {
-    int i = 0;
-    for (const PrimExpr& dim : cache_region->buffer->shape) {
-      Var var("v" + std::to_string(i));
-      block_vars.emplace_back(/*dom=*/Range::FromMinExtent(0, dim), /*var=*/var,
-                              /*IterVarType=*/kDataPar);
-      copy_indices.push_back(var);
-      access_region.push_back(Range::FromMinExtent(var, 1));
-      ++i;
-    }
+  for (const PrimExpr& dim : cache_region->buffer->shape) {
+    Var var("v" + std::to_string(copy_indices.size()));
+    block_vars.emplace_back(/*dom=*/Range::FromMinExtent(0, dim),
+                            /*var=*/var,
+                            /*IterVarType=*/kDataPar);
+    copy_indices.push_back(var);
+    access_region.push_back(Range::FromMinExtent(var, 1));
   }
   // Create the body block:
   //   reads = [read_buffer[access_region]]
@@ -155,6 +152,7 @@ bool IsOutputBlock(const StmtSRef& block_sref, const StmtSRef& scope_sref) {
  * \brief Insert the cache_read/cache_write stage into the specific position into to get the SeqStmt
  * \param stmts A sequence of statements, or a single statement, to be inserted into
  * \param pos The position the cache stage to be put
+ * \param stage The stage to be inserted
  * \return A SeqStmt, the result after insertion
  */
 SeqStmt InsertCacheStage(const Stmt& stmts, int pos, const Stmt& stage) {
@@ -307,25 +305,6 @@ class CacheLocDetector : public StmtVisitor {
     }
   }
 
-  // The schedule class
-  const ScheduleNode* sch;
-  // The dominate block which write the buffer
-  const StmtSRef& block_sref;
-  // The parent scope of the dominate block
-  const StmtSRef& scope_sref;
-  // Producer blocks for cache_write and consumer blocks for cache_read
-  const std::vector<StmtSRef>& related_blocks;
-  // Kind of insertion: for cache_read or cache_write
-  CacheKind kind;
-  // The flag whether we have visited the dominate block
-  bool visited_block;
-  // The flag whether we have visited at least one related blocks
-  bool visited_related;
-  /*! \brief The AST node whose body is where the cache stage should be inserted */
-  StmtSRef loc_sref;
-  /*! \brief The index to insert the cache_read/cache_write stage */
-  int loc_pos;
-
   /*!
    * \brief Detect the position for adding the cache stage
    * \param sch The schedule class
@@ -335,11 +314,11 @@ class CacheLocDetector : public StmtVisitor {
    * \return The location to insert the cache stage
    */
   static void Detect(const ScheduleNode* sch, const StmtSRef& block_sref,
-                     const StmtSRef& scope_sref, CacheKind kind, CacheStageInfo* info) {
+                     const StmtSRef& scope_sref, CacheStageInfo* info) {
     std::vector<StmtSRef> related_blocks;
     // cache_read => consumer
     // cache_write => producer
-    for (const DepEdge& x : (kind == CacheKind::kCacheRead)
+    for (const DepEdge& x : (info->kind == CacheKind::kCacheRead)
                                 ? sch->scopes.at(scope_sref).GetSuccessors(block_sref)
                                 : sch->scopes.at(scope_sref).GetPredecessors(block_sref)) {
       if (x->type == DepType::kRAW) {
@@ -347,11 +326,30 @@ class CacheLocDetector : public StmtVisitor {
       }
     }
     CHECK(!related_blocks.empty());
-    CacheLocDetector detector(sch, block_sref, scope_sref, related_blocks, kind);
+    CacheLocDetector detector(sch, block_sref, scope_sref, related_blocks, info->kind);
     detector(GetRef<Stmt>(scope_sref->stmt));
     info->loc_sref = detector.loc_sref;
     info->loc_pos = detector.loc_pos;
   }
+
+  /*! \brief The schedule class */
+  const ScheduleNode* sch;
+  /*! \brief The dominate block which write the buffer */
+  const StmtSRef& block_sref;
+  /*! \brief The parent scope of the dominate block */
+  const StmtSRef& scope_sref;
+  /*! \brief Producer blocks for cache_write and consumer blocks for cache_read */
+  const std::vector<StmtSRef>& related_blocks;
+  /*! \brief Kind of insertion: for cache_read or cache_write */
+  CacheKind kind;
+  /*! \brief The flag whether we have visited the dominate block */
+  bool visited_block;
+  /*! \brief The flag whether we have visited at least one related blocks */
+  bool visited_related;
+  /*! \brief The AST node whose body is where the cache stage should be inserted */
+  StmtSRef loc_sref;
+  /*! \brief The index to insert the cache_read/cache_write stage */
+  int loc_pos;
 };
 
 /*! \brief Mutator for CacheRead */
@@ -417,11 +415,6 @@ class CacheReadRewriter : public StmtExprMutator {
     return ExprMutator::VisitExpr_(load);
   }
 
-  /*! \brief The parent scope of the insertion */
-  const StmtSRef& scope_sref;
-  /*! \brief The info for inserting cache stage */
-  CacheStageInfo* info;
-
   /*!
    * \brief Rewrite the AST and add a cache_read stage with the information provided
    * \param scope_sref The parent scope of this mutation
@@ -432,17 +425,29 @@ class CacheReadRewriter : public StmtExprMutator {
     CacheReadRewriter rewriter(scope_sref, info);
     return rewriter(GetRef<Stmt>(scope_sref->stmt));
   }
+
+  /*! \brief The parent scope of the insertion */
+  const StmtSRef& scope_sref;
+  /*! \brief The info for inserting cache stage */
+  CacheStageInfo* info;
 };
 
 /*! \brief Mutator for CacheWrite */
 class CacheWriteRewriter : public StmtExprMutator {
  public:
+  /*!
+   * \brief Constructor
+   * \param scope_sref The parent scope where the mutator is working on
+   * \param info The necessary info for inserting cache stage
+   */
   explicit CacheWriteRewriter(const StmtSRef& scope_sref, CacheStageInfo* info)
       : scope_sref(scope_sref), info(info) {}
 
   Stmt VisitStmt_(const LoopNode* loop) override {
     Stmt stmt = StmtMutator::VisitStmt_(loop);
+    // Check the insertion point
     if (loop == info->loc_sref->stmt) {
+      // Insert cache stage into the loop if it is the right place
       ObjectPtr<LoopNode> n = make_object<LoopNode>(*stmt.as<LoopNode>());
       n->body = InsertCacheStage(n->body, info->loc_pos, info->cache_stage);
       stmt = Stmt(n);
@@ -526,6 +531,7 @@ StmtSRef ScheduleNode::cache_read(const Buffer& read_buffer, const std::string& 
    *   - Copy the buffer with the necessary region.
    */
   CacheStageInfo info;
+  info.kind = CacheKind::kCacheRead;
   info.read_buffer = read_buffer;
   // Create corresponding the buffer to be written, i.e. result of cache_read
   info.write_buffer = read_buffer->WithScope(storage_scope);
@@ -544,7 +550,7 @@ StmtSRef ScheduleNode::cache_read(const Buffer& read_buffer, const std::string& 
     // Find the region to be cache_read
     cache_region = RelaxRegion(block_sref, scope_sref, GetOnlyWriteRegion(block_sref));
     // Detector insert position
-    CacheLocDetector::Detect(this, block_sref, scope_sref, CacheKind::kCacheRead, &info);
+    CacheLocDetector::Detect(this, block_sref, scope_sref, &info);
   } else {
     info.loc_sref = this->root;
     info.loc_pos = 0;
@@ -569,6 +575,7 @@ StmtSRef ScheduleNode::cache_write(const Buffer& write_buffer, const std::string
    *   - Copy the buffer with the necessary region.
    */
   CacheStageInfo info;
+  info.kind = CacheKind::kCacheWrite;
   info.write_buffer = write_buffer;
   // Create corresponding the buffer to be read, i.e. result of cache_write
   info.read_buffer = write_buffer->WithScope(storage_scope);
@@ -580,7 +587,7 @@ StmtSRef ScheduleNode::cache_write(const Buffer& write_buffer, const std::string
       << "ValueError: `cache_write` cannot be applied to an input buffer";
   // Find the parent scope
   StmtSRef scope_sref = GetParentBlockSRef(block_sref);
-  CacheLocDetector::Detect(this, block_sref, scope_sref, CacheKind::kCacheWrite, &info);
+  CacheLocDetector::Detect(this, block_sref, scope_sref, &info);
   // Generate cache buffer
   Block cache_write_stage = MakeCacheStage(
       /*cache_region=*/RelaxRegion(block_sref, scope_sref, GetOnlyWriteRegion(block_sref)),
