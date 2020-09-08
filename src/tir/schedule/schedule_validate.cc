@@ -226,21 +226,21 @@ class FuseSplitDetecter : public ExprVisitor {
   /*! \brief Constructor */
   explicit FuseSplitDetecter(std::unordered_map<const VarNode*, PrimExpr>* loop_var_extents)
       : loop_var_extents(loop_var_extents), replace(nullptr), postproc(nullptr) {}
-  // Detech this pattern for all sub-expressions
+  // Detect this pattern for all sub-expressions
   void VisitExpr(const PrimExpr& n) override {
     // If the functors have been set, exist
     if (replace != nullptr) {
       return;
     }
-    // Detech if there is fuse pattern
+    // Detect if there is fuse pattern
     if (SetFuseFunctor(n)) {
       return;
     }
-    // Detech if there is split pattern
+    // Detect if there is split pattern
     if (SetSplitFunctor(n)) {
       return;
     }
-    // If not, detech recursively
+    // If not, then detect recursively
     ExprVisitor::VisitExpr(n);
   }
   /*! \brief Extents to be manipulated by the functors */
@@ -461,8 +461,7 @@ class GPUValidator : public StmtVisitor {
     }
 
     // Check execution scope and
-    if ((current_scope_ == "gpu_thread") &&
-        (IsBlockIdx(thread_tag) || IsThreadIdx(thread_tag))) {
+    if ((current_scope_ == "gpu_thread") && (IsBlockIdx(thread_tag) || IsThreadIdx(thread_tag))) {
       // If the current scope is gpu_thread, any inside threadIdx or blockIdx is illegal.
       LOG(FATAL) << "threadIdx or blockIdx can not be binded under the exec_scope gpu_thread";
     } else if (current_scope_ == "gpu_warp" &&
@@ -489,7 +488,6 @@ class GPUValidator : public StmtVisitor {
       check_thread_x_ = false;
       thread_extents_.clear();
     }
-
   }
 
   void VisitStmt_(const BlockRealizeNode* realize) final {
@@ -502,10 +500,10 @@ class GPUValidator : public StmtVisitor {
         CHECK(current_scope == "gpu_block" || current_scope == "gpu_global");
       } else if (exec_scope == "gpu_warp") {
         CHECK(current_scope == "gpu_warp" || current_scope == "gpu_block" ||
-            current_scope == "gpu_global");
+              current_scope == "gpu_global");
       } else if (exec_scope == "gpu_warp") {
         CHECK(exec_scope == "gpu_thread" || current_scope == "gpu_warp" ||
-            current_scope == "gpu_block" || current_scope == "gpu_global");
+              current_scope == "gpu_block" || current_scope == "gpu_global");
       }
     }
 
@@ -521,12 +519,10 @@ class GPUValidator : public StmtVisitor {
     return thread_tag.substr(0, 9) == "threadIdx" || thread_tag.substr(0, 7) == "vthread";
   }
 
-  inline bool IsBlockIdx(std::string thread_tag) {
-    return thread_tag.substr(0, 9) == "BlockIdx";
-  }
+  inline bool IsBlockIdx(std::string thread_tag) { return thread_tag.substr(0, 9) == "BlockIdx"; }
 
   /*! \brief The current execution scope (gpu_global, gpu_block, gpu_warp or gpu_thread) */
-  std::string current_scope_ = "gpu_glboal";
+  std::string current_scope_ = "gpu_global";
   /*! \brief The extents of each threadIdx or blockIdx */
   std::unordered_map<std::string, PrimExpr> thread_extents_;
   /*! \brief Whether need to check threadIdx.x extents = 32 */
@@ -538,41 +534,6 @@ void ScheduleNode::ValidateHierarchy(const PrimFunc& f) {
   gpu_validator(f->body);
 }
 
-#if (false)
-class SRefValidator : public StmtVisitor {
- public:
-  explicit SRefValidator(const ScheduleNode* sch) : sch_(sch) {}
-
-  void VisitStmt_(const BlockNode* op) override {
-    CheckParent(op);
-    auto sref = sch_->stmt2ref.at(op);
-    CHECK(sch_->scopes.count(sref)) << "Cannot find scope information of the block:\n"
-                                    << GetRef<Stmt>(op);
-  }
-
-  void VisitStmt_(const LoopNode* op) override { CheckParent(op); }
-
- private:
-  const ScheduleNode* sch_;
-  const StmtSRefNode* parent_{nullptr};
-
-  void CheckParent(const StmtNode* op) {
-    auto it = sch_->stmt2ref.find(op);
-    Stmt s = GetRef<Stmt>(op);
-    CHECK(it != sch_->stmt2ref.end()) << "Cannot find Stmt in stmt2ref map:\n" << s;
-    StmtSRef sref = it->second;
-    CHECK(sref->parent == parent_) << "The parent of the node is mismatch:\n" << s;
-    parent_ = sref.get();
-  }
-};
-#endif
-
-// TODO(@spectrometerHBH): The bugfix to validator triggers the following issues in unittests:
-// [FAILED] tests/python/tir/test_schedule_replace.py::test_replace_copy
-// [FAILED] tests/python/tir/test_schedule_replace.py::test_replace_partial_copy0
-// [FAILED] tests/python/tir/test_schedule_replace.py::test_replace_partial_copy1
-// [FAILED] tests/python/tir/test_schedule_replace.py::test_replace_root_copy1
-// #if (false)
 /*! \brief A helper class to validate correctness of StmtSRef */
 class SRefValidator : public StmtVisitor {
  public:
@@ -614,15 +575,13 @@ class SRefValidator : public StmtVisitor {
     StmtVisitor::VisitStmt_(loop);
     ancestors.pop_back();
   }
-  /*! \brief The schedule it belings to */
+  /*! \brief The schedule it belongs to */
   const ScheduleNode* sch;
   /*! \brief Parent information during the visit */
   std::vector<const StmtSRefNode*> ancestors;
 };
-// #endif
 
 bool ScheduleNode::ValidateSRef() const {
-  // TODO(@junrushao1994): idk if we need to return
   SRefValidator(this)(func->body);
   return true;
 }
