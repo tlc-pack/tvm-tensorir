@@ -604,8 +604,8 @@ Loop::Loop(Var loop_var, PrimExpr min, PrimExpr extent, Array<Annotation> annota
 TVM_REGISTER_GLOBAL("tir.Loop")
     .set_body_typed<Loop(Var, PrimExpr, PrimExpr, Array<Annotation>, Stmt)>(
         [](Var loop_var, PrimExpr min, PrimExpr extent, Array<Annotation> annotations, Stmt body) {
-      return Loop(loop_var, min, extent, annotations, body);
-    });
+          return Loop(loop_var, min, extent, annotations, body);
+        });
 
 TVM_REGISTER_NODE_TYPE(LoopNode);
 
@@ -642,6 +642,17 @@ TensorRegion::TensorRegion(Buffer buffer, Array<Range> region) {
   data_ = std::move(node);
 }
 
+TensorRegion::TensorRegion(Buffer buffer) {
+  Array<Range> region;
+  for (const PrimExpr& extent : buffer->shape) {
+    region.push_back(Range::FromMinExtent(0, extent));
+  }
+  ObjectPtr<TensorRegionNode> node = make_object<TensorRegionNode>();
+  node->buffer = std::move(buffer);
+  node->region = std::move(region);
+  data_ = std::move(node);
+}
+
 TVM_REGISTER_GLOBAL("tir.TensorRegion")
     .set_body_typed<TensorRegion(Buffer, Array<Range>)>([](Buffer buffer, Array<Range> region) {
       return TensorRegion(buffer, region);
@@ -650,21 +661,21 @@ TVM_REGISTER_GLOBAL("tir.TensorRegion")
 TVM_REGISTER_NODE_TYPE(TensorRegionNode);
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-.set_dispatch<TensorRegionNode>([](const ObjectRef& node, ReprPrinter* p) {
-  auto* op = static_cast<const TensorRegionNode*>(node.get());
-  p->Print(op->buffer->data);
-  p->stream << "[";
-  for (size_t i = 0; i < op->region.size(); ++i) {
-    const auto& range = op->region[i];
-    p->Print(range->min);
-    p->stream << ":";
-    p->Print(range->min + range->extent);
-    if (i != op->region.size() - 1) {
-      p->stream << ", ";
-    }
-  }
-  p->stream << "]";
-});
+    .set_dispatch<TensorRegionNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const TensorRegionNode*>(node.get());
+      p->Print(op->buffer->data);
+      p->stream << "[";
+      for (size_t i = 0; i < op->region.size(); ++i) {
+        const auto& range = op->region[i];
+        p->Print(range->min);
+        p->stream << ":";
+        p->Print(range->min + range->extent);
+        if (i != op->region.size() - 1) {
+          p->stream << ", ";
+        }
+      }
+      p->stream << "]";
+    });
 
 // BufferAllocate
 BufferAllocate::BufferAllocate(Buffer buffer, std::string scope) {
@@ -733,10 +744,8 @@ class BlockReadWriteCollector : public StmtExprVisitor {
     dom_map_.erase(op->loop_var.get());
   }
 
-  void Update(std::vector<Buffer>* buffers,
-                     std::vector<std::vector<arith::IntSet>>* regions,
-                     const Buffer& buffer,
-                     const std::vector<arith::IntSet>& region) {
+  void Update(std::vector<Buffer>* buffers, std::vector<std::vector<arith::IntSet>>* regions,
+              const Buffer& buffer, const std::vector<arith::IntSet>& region) {
     if (inner_buffers_.find(buffer.get()) != inner_buffers_.end()) return;
     bool find = false;
     for (size_t i = 0; i < regions->size(); ++i)
@@ -774,8 +783,9 @@ class BlockReadWriteCollector : public StmtExprVisitor {
   void VisitStmt_(const ReduceStepNode* op) override {
     const auto* buffer_load = op->lhs.as<BufferLoadNode>();
     CHECK(buffer_load != nullptr)
-      << "TypeError: 'decompose_reduction' expects the body of the reduce step "
-         "is BufferLoad, but get type: " << op->lhs->GetTypeKey();
+        << "TypeError: 'decompose_reduction' expects the body of the reduce step "
+           "is BufferLoad, but get type: "
+        << op->lhs->GetTypeKey();
     std::vector<arith::IntSet> relaxed_region;
     for (size_t j = 0; j < buffer_load->indices.size(); ++j) {
       relaxed_region.push_back(arith::EvalSet(buffer_load->indices[j], dom_map_));
@@ -793,10 +803,8 @@ class BlockReadWriteCollector : public StmtExprVisitor {
       std::vector<arith::IntSet> relaxed_region;
       for (const auto& range : read->region) {
         relaxed_region.push_back(
-            arith::EvalSet(
-                arith::IntSet::FromRange(
-                    Range::FromMinExtent(Substitute(range->min, vmap),
-                                         Substitute(range->extent, vmap))),
+            arith::EvalSet(arith::IntSet::FromRange(Range::FromMinExtent(
+                               Substitute(range->min, vmap), Substitute(range->extent, vmap))),
                            dom_map_));
       }
       Update(&read_buffers_, &read_regions_, read->buffer, relaxed_region);
@@ -805,9 +813,8 @@ class BlockReadWriteCollector : public StmtExprVisitor {
       std::vector<arith::IntSet> relaxed_region;
       for (const auto& range : write->region) {
         relaxed_region.push_back(
-            arith::EvalSet(arith::IntSet::FromRange(
-                Range::FromMinExtent(Substitute(range->min, vmap),
-                                     Substitute(range->extent, vmap))),
+            arith::EvalSet(arith::IntSet::FromRange(Range::FromMinExtent(
+                               Substitute(range->min, vmap), Substitute(range->extent, vmap))),
                            dom_map_));
       }
       Update(&writes_buffers_, &write_regions_, write->buffer, relaxed_region);
@@ -816,12 +823,8 @@ class BlockReadWriteCollector : public StmtExprVisitor {
 };
 
 // Block
-Block::Block(Array<IterVar> iter_vars,
-             Array<TensorRegion> reads,
-             Array<TensorRegion> writes,
-             Stmt body,
-             Array<BufferAllocate> allocations,
-             Array<Annotation> annotations,
+Block::Block(Array<IterVar> iter_vars, Array<TensorRegion> reads, Array<TensorRegion> writes,
+             Stmt body, Array<BufferAllocate> allocations, Array<Annotation> annotations,
              std::string tag) {
   ObjectPtr<BlockNode> node = make_object<BlockNode>();
   node->iter_vars = std::move(iter_vars);
@@ -845,87 +848,79 @@ Block::Block(Array<IterVar> iter_vars,
 }
 
 TVM_REGISTER_GLOBAL("tir.Block")
-.set_body_typed<Block(Array<IterVar>,
-                      Array<TensorRegion>,
-                      Array<TensorRegion>,
-                      Stmt,
-                      Array<BufferAllocate>,
-                      Array<Annotation>,
-                      std::string)>(
-    [](Array<IterVar> iter_vars,
-       Array<TensorRegion> reads,
-       Array<TensorRegion> writes,
-       Stmt body,
-       Array<BufferAllocate> allocates,
-       Array<Annotation> annotations,
-       std::string tag) {
-      return Block(iter_vars, reads, writes,
-                   body, allocates, annotations, tag);
-    });
+    .set_body_typed<Block(Array<IterVar>, Array<TensorRegion>, Array<TensorRegion>, Stmt,
+                          Array<BufferAllocate>, Array<Annotation>, std::string)>(
+        [](Array<IterVar> iter_vars, Array<TensorRegion> reads, Array<TensorRegion> writes,
+           Stmt body, Array<BufferAllocate> allocates, Array<Annotation> annotations,
+           std::string tag) {
+          return Block(iter_vars, reads, writes, body, allocates, annotations, tag);
+        });
 
 TVM_REGISTER_NODE_TYPE(BlockNode);
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-.set_dispatch<BlockNode>([](const ObjectRef& node, ReprPrinter* p) {
-  auto* op = static_cast<const BlockNode*>(node.get());
+    .set_dispatch<BlockNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const BlockNode*>(node.get());
 
-  // print block name and block vars
-  p->PrintIndent();
-  p->stream << "block " << op->tag << "(";
-  for (size_t i = 0; i < op->iter_vars.size(); ++i) {
-    const auto& iter_var = op->iter_vars[i];
-    if (iter_var->iter_type != kDataPar) {
-      std::string str;
-      switch (iter_var->iter_type) {
-        case kCommReduce:str = "reduce";
-          break;
-        case kOrdered:str = "ordered";
-          break;
-        case kOpaque:str = "opaque";
-          break;
-        default:str = "unknown";
-          break;
+      // print block name and block vars
+      p->PrintIndent();
+      p->stream << "block " << op->tag << "(";
+      for (size_t i = 0; i < op->iter_vars.size(); ++i) {
+        const auto& iter_var = op->iter_vars[i];
+        if (iter_var->iter_type != kDataPar) {
+          std::string str;
+          switch (iter_var->iter_type) {
+            case kCommReduce:
+              str = "reduce";
+              break;
+            case kOrdered:
+              str = "ordered";
+              break;
+            case kOpaque:
+              str = "opaque";
+              break;
+            default:
+              str = "unknown";
+              break;
+          }
+          p->stream << str << " ";
+        }
+        p->Print(iter_var->var);
+        p->stream << "[";
+        p->Print(iter_var->dom->min);
+        p->stream << ":";
+        p->Print(iter_var->dom->min + iter_var->dom->extent);
+        p->stream << "]=None";
+        if (i != op->iter_vars.size() - 1) {
+          p->stream << ", ";
+        }
       }
-      p->stream << str << " ";
-    }
-    p->Print(iter_var->var);
-    p->stream << "[";
-    p->Print(iter_var->dom->min);
-    p->stream << ":";
-    p->Print(iter_var->dom->min + iter_var->dom->extent);
-    p->stream << "]=None";
-    if (i != op->iter_vars.size() - 1) {
-      p->stream << ", ";
-    }
-  }
-  p->stream << ")";
+      p->stream << ")";
 
-  // print tensor region and annotations
-  p->stream << " W: ";
-  p->Print(op->writes);
-  p->stream << " R: ";
-  p->Print(op->reads);
-  if (!op->annotations.empty()) {
-    p->stream << " attr: ";
-    p->Print(op->annotations);
-  }
+      // print tensor region and annotations
+      p->stream << " W: ";
+      p->Print(op->writes);
+      p->stream << " R: ";
+      p->Print(op->reads);
+      if (!op->annotations.empty()) {
+        p->stream << " attr: ";
+        p->Print(op->annotations);
+      }
 
-  // print body
-  p->stream << " {\n";
-  p->indent += 2;
-  for (const auto& allocate : op->allocations) {
-    p->Print(allocate);
-  }
-  p->Print(op->body);
-  p->indent -= 2;
-  p->PrintIndent();
-  p->stream << "}\n";
-});
+      // print body
+      p->stream << " {\n";
+      p->indent += 2;
+      for (const auto& allocate : op->allocations) {
+        p->Print(allocate);
+      }
+      p->Print(op->body);
+      p->indent -= 2;
+      p->PrintIndent();
+      p->stream << "}\n";
+    });
 
 // BlockRealize
-BlockRealize::BlockRealize(Array<PrimExpr> values,
-                           PrimExpr predicate,
-                           Block block,
+BlockRealize::BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block,
                            String exe_scope) {
   CHECK_EQ(block->iter_vars.size(), values.size());
   ObjectPtr<BlockRealizeNode> node = make_object<BlockRealizeNode>();
@@ -937,80 +932,84 @@ BlockRealize::BlockRealize(Array<PrimExpr> values,
 }
 
 TVM_REGISTER_GLOBAL("tir.BlockRealize")
-.set_body_typed<BlockRealize(Array<PrimExpr>, PrimExpr, Block, String)>(
-    [](Array<PrimExpr> values, PrimExpr predicate, Block block, String exe_scope) {
-      if (!predicate.dtype().is_bool()) {
-        // To support python ir_builder
-        CHECK(is_one(predicate));
-        predicate = IntImm(DataType::Bool(), 1);
-      }
-      return BlockRealize(values, predicate, block, exe_scope);
-    });
+    .set_body_typed<BlockRealize(Array<PrimExpr>, PrimExpr, Block, String)>(
+        [](Array<PrimExpr> values, PrimExpr predicate, Block block, String exe_scope) {
+          if (!predicate.dtype().is_bool()) {
+            // To support python ir_builder
+            CHECK(is_one(predicate));
+            predicate = IntImm(DataType::Bool(), 1);
+          }
+          return BlockRealize(values, predicate, block, exe_scope);
+        });
 
 TVM_REGISTER_NODE_TYPE(BlockRealizeNode);
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-.set_dispatch<BlockRealizeNode>([](const ObjectRef& node, ReprPrinter* p) {
-  const auto* op_reailze = static_cast<const BlockRealizeNode*>(node.get());
-  const auto* op = static_cast<const BlockNode*>(op_reailze->block.get());
+    .set_dispatch<BlockRealizeNode>([](const ObjectRef& node, ReprPrinter* p) {
+      const auto* op_reailze = static_cast<const BlockRealizeNode*>(node.get());
+      const auto* op = static_cast<const BlockNode*>(op_reailze->block.get());
 
-  // print block name and block vars
-  p->PrintIndent();
-  p->stream << "block " << op->tag << "(";
-  for (size_t i = 0; i < op->iter_vars.size(); ++i) {
-    const auto& iter_var = op->iter_vars[i];
-    if (iter_var->iter_type != kDataPar) {
-      std::string str;
-      switch (iter_var->iter_type) {
-        case kCommReduce:str = "reduce";
-          break;
-        case kOrdered:str = "ordered";
-          break;
-        case kOpaque:str = "opaque";
-          break;
-        default:str = "unknown";
-          break;
+      // print block name and block vars
+      p->PrintIndent();
+      p->stream << "block " << op->tag << "(";
+      for (size_t i = 0; i < op->iter_vars.size(); ++i) {
+        const auto& iter_var = op->iter_vars[i];
+        if (iter_var->iter_type != kDataPar) {
+          std::string str;
+          switch (iter_var->iter_type) {
+            case kCommReduce:
+              str = "reduce";
+              break;
+            case kOrdered:
+              str = "ordered";
+              break;
+            case kOpaque:
+              str = "opaque";
+              break;
+            default:
+              str = "unknown";
+              break;
+          }
+          p->stream << str << " ";
+        }
+        p->Print(iter_var->var);
+        p->stream << "[";
+        p->Print(iter_var->dom->min);
+        p->stream << ":";
+        p->Print(iter_var->dom->min + iter_var->dom->extent);
+        p->stream << "]=";
+        p->Print(op_reailze->binding_values[i]);
+        if (i != op->iter_vars.size() - 1) {
+          p->stream << ", ";
+        }
       }
-      p->stream << str << " ";
-    }
-    p->Print(iter_var->var);
-    p->stream << "[";
-    p->Print(iter_var->dom->min);
-    p->stream << ":";
-    p->Print(iter_var->dom->min + iter_var->dom->extent);
-    p->stream << "]=";
-    p->Print(op_reailze->binding_values[i]);
-    if (i != op->iter_vars.size() - 1) {
-      p->stream << ", ";
-    }
-  }
-  p->stream << ")";
+      p->stream << ")";
 
-  // print tensor region and annotations
-  p->stream << " W: ";
-  p->Print(op->writes);
-  p->stream << " R: ";
-  p->Print(op->reads);
-  if (!is_one(op_reailze->predicate)) {
-    p->stream << " pred: ";
-    p->Print(op_reailze->predicate);
-  }
-  if (!op->annotations.empty()) {
-    p->stream << " attr: ";
-    p->Print(op->annotations);
-  }
+      // print tensor region and annotations
+      p->stream << " W: ";
+      p->Print(op->writes);
+      p->stream << " R: ";
+      p->Print(op->reads);
+      if (!is_one(op_reailze->predicate)) {
+        p->stream << " pred: ";
+        p->Print(op_reailze->predicate);
+      }
+      if (!op->annotations.empty()) {
+        p->stream << " attr: ";
+        p->Print(op->annotations);
+      }
 
-  // print body
-  p->stream << " {\n";
-  p->indent += 2;
-  for (const auto& allocate : op->allocations) {
-    p->Print(allocate);
-  }
-  p->Print(op->body);
-  p->indent -= 2;
-  p->PrintIndent();
-  p->stream << "}\n";
-});
+      // print body
+      p->stream << " {\n";
+      p->indent += 2;
+      for (const auto& allocate : op->allocations) {
+        p->Print(allocate);
+      }
+      p->Print(op->body);
+      p->indent -= 2;
+      p->PrintIndent();
+      p->stream << "}\n";
+    });
 
 // ReduceStep
 ReduceStep::ReduceStep(CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs) {
@@ -1021,9 +1020,7 @@ ReduceStep::ReduceStep(CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs) {
   data_ = std::move(node);
 }
 
-PrimExpr ReduceStepNode::ApplyCombiner() const {
-  return ApplyCombiner(this->lhs, this->rhs);
-}
+PrimExpr ReduceStepNode::ApplyCombiner() const { return ApplyCombiner(this->lhs, this->rhs); }
 
 PrimExpr ReduceStepNode::ApplyCombiner(const PrimExpr& lhs, const PrimExpr& rhs) const {
   CHECK_EQ(comm_reducer->lhs.size(), 1);
@@ -1048,13 +1045,12 @@ std::tuple<bool, PrimExpr, PrimExpr> ReducerMatched(const CommReducer& reducer,
     return std::make_tuple(false, NullValue<PrimExpr>(), NullValue<PrimExpr>());
   PatternMatcher pattern_matcher(reducer->result[0]);
   pattern_matcher.Match(update);
-  return std::make_tuple(pattern_matcher.Success(),
-                         pattern_matcher.Eval(reducer->lhs[0]),
+  return std::make_tuple(pattern_matcher.Success(), pattern_matcher.Eval(reducer->lhs[0]),
                          pattern_matcher.Eval(reducer->rhs[0]));
 }
 
-Stmt ReduceStep::FromInitUpdate(const Array<CommReducer>& patterns,
-                                const PrimExpr& init, const BufferStore& update) {
+Stmt ReduceStep::FromInitUpdate(const Array<CommReducer>& patterns, const PrimExpr& init,
+                                const BufferStore& update) {
   ExprDeepEqual equal;
   const auto& lhs = BufferLoad(update->buffer, update->indices);
   // Check user defined patterns
@@ -1076,8 +1072,8 @@ Stmt ReduceStep::FromInitUpdate(const Array<CommReducer>& patterns,
 }
 
 TVM_REGISTER_GLOBAL("tir.ReduceStep")
-.set_body_typed<ReduceStep(CommReducer, PrimExpr, PrimExpr)>(
-    [](CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs) {
+    .set_body_typed<ReduceStep(CommReducer, PrimExpr, PrimExpr)>([](CommReducer comm_reducer,
+                                                                    PrimExpr lhs, PrimExpr rhs) {
       return ReduceStep(comm_reducer, lhs, rhs);
     });
 
