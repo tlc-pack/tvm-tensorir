@@ -36,6 +36,7 @@ namespace tir {
 
 // forward declare Stmt
 class Stmt;
+class Buffer;
 
 /*! \brief buffer type */
 enum BufferType : int {
@@ -120,6 +121,13 @@ class BufferNode : public Object {
   DataType DefaultIndexType() const {
     return shape.size() != 0 ? shape[0].dtype() : DataType::Int(32);
   }
+
+  /*!
+   * \brief Create a new buffer with the given scope info
+   * \param scope The scope info
+   * \return The buffer created
+   */
+  TVM_DLL Buffer WithScope(const String& scope) const;
 
   static constexpr const char* _type_key = "tir.Buffer";
   static constexpr const bool _type_has_method_sequal_reduce = true;

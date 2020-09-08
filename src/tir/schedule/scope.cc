@@ -65,14 +65,14 @@ bool Scope::IsDominate(const StmtSRef& block_sref) const {
   const BlockNode* block = block_sref->GetStmt<BlockNode>();
   CHECK(block != nullptr) << "InternalError: Scope::IsDominate only works on tir::Block";
   // Condition: Block is the only writer to its outputs
-  const auto& buffer_writters = (*this)->buffer_writers;
+  const auto& buffer_writers = (*this)->buffer_writers;
   for (const TensorRegion& write_region : block->writes) {
-    CHECK(buffer_writters.count(write_region->buffer))
+    CHECK(buffer_writers.count(write_region->buffer))
         << "InternalError: buffer \"" << write_region->buffer->name
         << "\" does not exist in the current scope, when querying block:\n"
         << GetRef<Block>(block);
     // Check if the buffer is only written once (by the given block)
-    if (buffer_writters.at(write_region->buffer).size() != 1) {
+    if (buffer_writers.at(write_region->buffer).size() != 1) {
       return false;
     }
   }
@@ -119,7 +119,7 @@ bool CheckReductionInstance(const Array<IterVar>& iter_vars,
                             const Array<PrimExpr>& output_buffer_indices) {
   for (const auto& iter_var : iter_vars) {
     IterVarType kind = iter_var->iter_type;
-    // Check 1. Ecah iter_var can only be data parallel or reduction
+    // Check 1. Each iter_var can only be data parallel or reduction
     if (kind != kDataPar && kind != kCommReduce) {
       return false;
     }

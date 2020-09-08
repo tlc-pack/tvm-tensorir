@@ -21,7 +21,7 @@
 #include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
 
-#include "schedule_common.h"
+#include "./schedule_common.h"
 
 namespace tvm {
 namespace tir {
@@ -108,7 +108,7 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& sref, const String& exe_scope) {
   std::vector<TensorRegion> reads, writes;
   RelaxRegion(block_sref, GetRef<StmtSRef>(sref->parent), &reads, &writes);
 
-  auto rewrite_region = [&matching_simplifier](std::vector<TensorRegion> *regions) {
+  auto rewrite_region = [&matching_simplifier](std::vector<TensorRegion>* regions) {
     for (size_t i = 0; i < regions->size(); ++i) {
       auto tensor_region = (*regions)[i];
       Region region;
