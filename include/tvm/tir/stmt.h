@@ -1032,8 +1032,8 @@ class TensorRegionNode : public Object {
 
 class TensorRegion : public ObjectRef {
  public:
+  TVM_DLL explicit TensorRegion(Buffer buffer);
   TVM_DLL explicit TensorRegion(Buffer buffer, Array<Range> region);
-
   TVM_DEFINE_OBJECT_REF_METHODS(TensorRegion, ObjectRef, TensorRegionNode);
 };
 
@@ -1119,8 +1119,7 @@ class BlockNode : public StmtNode {
   }
 
   bool SEqualReduce(const BlockNode* other, SEqualReducer equal) const {
-    return equal.DefEqual(iter_vars, other->iter_vars) &&
-           equal(allocations, other->allocations) &&
+    return equal.DefEqual(iter_vars, other->iter_vars) && equal(allocations, other->allocations) &&
            equal(body, other->body) && equal(annotations, other->annotations) &&
            equal(reads, other->reads) && equal(writes, other->writes);
   }
