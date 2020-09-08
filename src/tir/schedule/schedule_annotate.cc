@@ -23,7 +23,6 @@ namespace tir {
 
 /*!
  * \brief Checks if a loop variable is parallelizable.
- * If fvisit returns false, it stops visit the children on that node.
  * \param loop_var The loop variable
  * \param block_realize The block realize node under the loop. It is possible that there are
  * multiple blocks, and in this case, we should invoke this function multiple times.
@@ -96,7 +95,7 @@ void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const Annotation& 
   CHECK(loop != nullptr) << "TypeError: Parallel compute applies only to a loop, but get: "
                          << loop_sref->stmt->GetTypeKey();
   CHECK(loop->annotations.empty())
-      << "ValueError: Cannot apply parallelization to a loop that already has annotations: "
+      << "ValueError: Cannot apply parallelism to a loop that already has annotations: "
       << loop->annotations;
   // Now only support:
   //   1. All the blocks are complete below
@@ -143,7 +142,7 @@ void ScheduleNode::bind(const StmtSRef& loop_sref, const IterVar& thread) {
   CHECK(loop != nullptr) << "Parallel-like compute expect a loop";
   if (thread->dom.defined()) {
     CHECK(ExprDeepEqual()(loop->extent, thread->dom->extent))
-      << "Thread axis extent and loop extent mismatch";
+        << "Thread axis extent and loop extent mismatch";
   }
   Annotation annotation(attr::loop_type, StringImm(thread->thread_tag));
   ParallelCompute(loop_sref, annotation);
