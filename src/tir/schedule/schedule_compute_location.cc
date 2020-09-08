@@ -272,8 +272,8 @@ std::vector<Range> GatherRequirements(const Array<TensorRegion>& produced_region
 
 class StmtReplacer : public StmtMutator {
  public:
-  explicit StmtReplacer(const std::unordered_map<const StmtNode*, const StmtNode*>& repalce_map)
-      : replace_map(repalce_map) {}
+  explicit StmtReplacer(const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map)
+      : replace_map(replace_map) {}
 
   Stmt VisitStmt(const Stmt& stmt) override {
     auto it = replace_map.find(stmt.get());
@@ -309,7 +309,7 @@ std::unordered_map<const VarNode*, Range> RelaxForExeScope(const StmtSRef& loop_
   const String& exe_scope = realize->exec_scope;
   StmtSRef sref = loop_sref;
 
-  auto update_for_gpu = [&block, &exe_scope](const LoopNode* loop) -> bool{
+  auto update_for_gpu = [&block, &exe_scope](const LoopNode* loop) -> bool {
     CHECK_EQ(block->writes.size(), 1)
         << "InternalError: Only block with one write buffer can be compute_at";
     std::string write_scope = block->writes[0]->buffer->scope;
@@ -335,7 +335,7 @@ std::unordered_map<const VarNode*, Range> RelaxForExeScope(const StmtSRef& loop_
   while (sref.defined()) {
     if (const auto* loop = sref->GetStmt<LoopNode>()) {
       if (update_for_gpu(loop)) {
-          relax_var[loop->loop_var.get()] = Range::FromMinExtent(loop->min, loop->extent);
+        relax_var[loop->loop_var.get()] = Range::FromMinExtent(loop->min, loop->extent);
       }
     }
     sref = GetRef<StmtSRef>(sref->parent);
@@ -420,7 +420,7 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
     CHECK(insert_pos <= before_pos)
         << "ValueError: 'compute_at' cannot find an insertion point that satisfies dependency";
   }
-  // Generate new LoopNode to substitte loop_sref->stmt
+  // Generate new LoopNode to substitute loop_sref->stmt
   Loop new_loop = RegenerateLoops(
       block_sref, loop_sref, insert_pos,
       SolveCover(block,
