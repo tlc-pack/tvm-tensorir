@@ -57,7 +57,11 @@ std::vector<int> Sampler::SampleTileFactor(int n, int extent, const std::vector<
       return sample;
     }
   }
-  return {};
+  sample[0] = extent;
+  for (int i = 1; i < n; ++i) {
+    sample[i] = 1;
+  }
+  return sample;
 }
 
 }  // namespace meta_schedule

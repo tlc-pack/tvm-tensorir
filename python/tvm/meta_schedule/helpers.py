@@ -14,8 +14,14 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from ..ir import PrimExpr as ExprRV
-from . import helpers
-from .random_variable import BlockRV, LoopRV
-from . import instruction
-from .schedule import Schedule
+"""Helper APIs for tvm.meta_schedule"""
+
+from . import _ffi_api
+
+
+def block_from_sref(block_sref):
+    return _ffi_api.BlockFromStmtSRef(block_sref)
+
+
+def loop_from_sref(loop_sref):
+    return _ffi_api.LoopFromStmtSRef(loop_sref)
