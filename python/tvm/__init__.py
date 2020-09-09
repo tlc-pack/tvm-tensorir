@@ -70,8 +70,12 @@ from . import arith
 # tvm.auto_scheduler
 from . import auto_scheduler
 
+# tvm.meta_schedule
+from . import meta_schedule
+
 # Contrib initializers
 from .contrib import rocm as _rocm, nvcc as _nvcc, sdaccel as _sdaccel
+
 
 def tvm_wrap_excepthook(exception_hook):
     """Wrap given excepthook with TVM additional work."""
