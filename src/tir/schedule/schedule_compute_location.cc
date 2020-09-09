@@ -218,7 +218,7 @@ Loop RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& loop_sref, int 
  * \param lca_loop_sref The lca of producer and consumer
  * \param consumer_blocks The consumer consumer_blocks
  * \param relax_vars The additional vars should be relaxed according to execution scope
- * \return Required with the same order as produce_regions TODO
+ * \return Required with the same order as produce_regions
  */
 std::vector<Range> GatherRequirements(const Array<TensorRegion>& produced_regions,
                                       const StmtSRef& lca_loop_sref,
