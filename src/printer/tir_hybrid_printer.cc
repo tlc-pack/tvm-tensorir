@@ -533,16 +533,16 @@ Doc TIRHybridPrinter::VisitStmt_(const AttrStmtNode* op) {
     if (alloc->buffer_var.same_as(op->node)) {
       var_not_in_headers.insert(alloc->buffer_var.get());
       if (current_num_ != num_child_ - 1) {
-        doc << "with tir.alloc_with_scope(" << PrintDType(alloc->dtype) << ", "
-            << Print(alloc->extents) << ", " << Print(op->value);
+        doc << "with tir.allocate(" << Print(alloc->extents) << ", "
+            << PrintDType(alloc->dtype) << ", "<< Print(op->value);
         if (!is_one(alloc->condition)) {
           doc << ", " << Print(alloc->condition);
         }
         doc << ") as " << Print(op->node) << ":";
         doc << Doc::Indent(4, Doc::NewLine() << PrintBody(alloc->body));
       } else {
-        doc << Print(op->node) << " = tir.alloc_with_scope(" << PrintDType(alloc->dtype) << ", "
-            << Print(alloc->extents) << ", " << Print(op->value);
+        doc << Print(op->node) << " = tir.allocate(" << Print(alloc->extents) << ", "
+            << PrintDType(alloc->dtype) << ", " << Print(op->value);
         if (!is_one(alloc->condition)) {
           doc << ", " << Print(alloc->condition);
         }
@@ -606,23 +606,8 @@ Doc TIRHybridPrinter::VisitStmt_(const BufferRealizeNode* op) {
 }
 
 Doc TIRHybridPrinter::VisitStmt_(const AllocateNode* op) {
-  Doc doc;
-  if (current_num_ != num_child_ - 1) {
-    doc << "with tir.allocate(" << Print(op->buffer_var) << ", "
-        << PrintDType(op->dtype) << ", " << Print(op->extents);
-    if (!is_one(op->condition)) {
-      doc << ", " << Print(op->condition);
-    }
-    doc << "):" << Doc::Indent(4, PrintBody(op->body));
-  } else {
-    doc << "tir.allocate(" << Print(op->buffer_var) << ", "
-        << PrintDType(op->dtype) << ", " << Print(op->extents);
-    if (!is_one(op->condition)) {
-      doc << ", " << Print(op->condition);
-    }
-    doc << ")" << Doc::NewLine() << PrintBody(op->body);
-  }
-  return doc;
+  LOG(FATAL) << "Hybrid Printer Internal Error: All the Allocate should be folded with Attr";
+  return Doc();
 }
 
 Doc TIRHybridPrinter::VisitStmt_(const IfThenElseNode* op) {

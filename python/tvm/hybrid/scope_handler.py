@@ -162,8 +162,8 @@ def block(parser, node, axes=None, name=""):
 
 
 @register_with_scope(concise=True, with_var=True)
-def alloc_with_scope(parser, node, dtype, extents, scope, condition=True):
-    """ With scope handler function tir.alloc_with_scope(var, dtype, extents, scope, condition) """
+def allocate(parser, node, extents, dtype, scope, condition=True):
+    """ With scope handler function tir.alloc_with_scope(var, extents, dtype, scope, condition) """
     # defining buffer var and parse the body manually
 
     buffer_var = tvm.te.var(parser.target[0], "handle")
@@ -180,12 +180,6 @@ def alloc_with_scope(parser, node, dtype, extents, scope, condition=True):
         body = parser.get_body()
     body = tvm.tir.Allocate(buffer_var, dtype, extents, tvm.runtime.convert(condition), body)
     return tvm.tir.AttrStmt(buffer_var, "storage_scope", tvm.runtime.convert(scope), body)
-
-
-@register_with_scope(concise=True)
-def allocate(parser, node, body, buffer_var, dtype, extents, condition=True):
-    """ With scope handler function tir.allocate(buffer_var, dtype, extents, condition) """
-    return tvm.tir.Allocate(buffer_var, dtype, extents, tvm.runtime.convert(condition), body)
 
 
 @register_with_scope(concise=True)
