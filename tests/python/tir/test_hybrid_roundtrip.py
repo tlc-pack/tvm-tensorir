@@ -74,12 +74,12 @@ class Module2:
         B_1 = tir.match_buffer(B, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
         C_1 = tir.match_buffer(C, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
         # body
-        packedB = tir.alloc_with_scope("float32x32", [32768], "global")
+        packedB = tir.allocate([32768], "float32x32", "global")
         for x in tir.parallel(0, 32):
             for y in tir.serial(0, 1024):
                 tir.store(packedB, tir.ramp(((x*32768) + (y*32)), 1, 32), tir.load("float32x32", B_1.data, tir.ramp(((y*1024) + (x*32)), 1, 32), tir.broadcast(True, 32)), tir.broadcast(True, 32))
         for x_outer in tir.parallel(0, 32):
-            C_global = tir.alloc_with_scope("float32", [1024], "global")
+            C_global = tir.allocate([1024], "float32", "global")
             for y_outer in tir.serial(0, 32):
                 for x_c_init in tir.serial(0, 32):
                     tir.store(C_global, tir.ramp((x_c_init*32), 1, 32), tir.broadcast(tir.float32(0), 32), tir.broadcast(True, 32))
@@ -288,6 +288,7 @@ def opt_conv_tensorcore_normalize(A: ty.handle, W: ty.handle, Conv: ty.handle) -
             tir.attr([buffer_5, Conv_1], "buffer_bind_scope", tir.tvm_tuple(((((blockIdx_x*4) + threadIdx_y)*2) + n_inner), 1, tir.floordiv(blockIdx_z, 14), 1, tir.floormod(blockIdx_z, 14), 1, ((((blockIdx_y*2) + threadIdx_z)*4) + o_inner), 1, 0, 16, 0, 16, dtype="handle"))
             tir.evaluate(tir.tvm_store_matrix_sync(buffer_4.data, 16, 16, 16, tir.floordiv(buffer_4.elem_offset, 256), tir.tvm_access_ptr(tir.type_annotation(dtype="float32"), buffer_5.data, buffer_5.elem_offset, 256, 2, dtype="handle"), 16, "row_major", dtype="handle"))
 
+
 def test_opt_conv_tensorcore_normalize():
     mod = opt_conv_tensorcore_normalize
     rt_mod = tvm.hybrid.from_source(tvm.hybrid.ashybrid(mod, True))
@@ -310,11 +311,11 @@ def opt_conv_tensorcore_lower(A: ty.handle, W: ty.handle, Conv: ty.handle) -> No
     Conv_1 = tir.match_buffer(Conv, [16, 14, 14, 32, 16, 16], elem_offset=0, align=128, offset_factor=1)
     # body
     tir.attr(tir.iter_var(blockIdx_z, None, "ThreadIndex", "blockIdx.z"), "thread_extent", 196)
-    Conv_wmma_accumulator = tir.alloc_with_scope("float32", [2048], "wmma.accumulator")
-    Apad_shared = tir.alloc_with_scope("float16", [12288], "shared")
-    W_shared = tir.alloc_with_scope("float16", [12288], "shared")
-    Apad_shared_wmma_matrix_a = tir.alloc_with_scope("float16", [512], "wmma.matrix_a")
-    W_shared_wmma_matrix_b = tir.alloc_with_scope("float16", [1024], "wmma.matrix_b")
+    Conv_wmma_accumulator = tir.allocate([2048], "float32", "wmma.accumulator")
+    Apad_shared = tir.allocate([12288], "float16", "shared")
+    W_shared = tir.allocate([12288], "float16", "shared")
+    Apad_shared_wmma_matrix_a = tir.allocate([512], "float16", "wmma.matrix_a")
+    W_shared_wmma_matrix_b = tir.allocate([1024], "float16", "wmma.matrix_b")
     tir.attr(tir.iter_var(blockIdx_x, None, "ThreadIndex", "blockIdx.x"), "thread_extent", 2)
     tir.attr(tir.iter_var(blockIdx_y, None, "ThreadIndex", "blockIdx.y"), "thread_extent", 4)
     tir.attr(tir.iter_var(threadIdx_y, None, "ThreadIndex", "threadIdx.y"), "thread_extent", 4)

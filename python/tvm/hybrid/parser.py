@@ -402,9 +402,8 @@ class HybridParser(ast.NodeVisitor):
             With(withitem* items, stmt* body, string? type_comment)
             withitem = (expr context_expr, expr? optional_vars)
         By now 2 types of With is supported:
-            1. with tir.block(*axes) as targets:
-            2. with tir.allocate_with_scope()/tir.let()/tir.Assert()/tir.attr()/
-                    tir.allocate()/tir.realize()
+            1. with tir.block(*axes)/tir.allocate() as targets:
+            2. with tir.let()/tir.Assert()/tir.attr()//tir.realize()
         """
         if not len(node.items) == 1:
             self.report_error("Only one with element is supported now")
