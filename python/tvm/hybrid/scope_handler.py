@@ -178,15 +178,19 @@ def allocate(parser, node, extents, dtype, scope, condition=True):
     else:
         parser.scope_emitter.update_symbol(buffer_var.name, buffer_var)
         body = parser.get_body()
-    body = tvm.tir.Allocate(buffer_var, dtype, extents, tvm.runtime.convert(condition), body)
-    return tvm.tir.AttrStmt(buffer_var, "storage_scope", tvm.runtime.convert(scope), body)
+    condition = tvm.runtime.convert(condition)
+    scope = tvm.runtime.convert(scope)
+    body = tvm.tir.Allocate(buffer_var, dtype, extents, condition, body)
+    return tvm.tir.AttrStmt(buffer_var, "storage_scope", scope, body)
 
 
 @register_with_scope(concise=True)
-def realize(parser, node, body, buffer_bounds, condition=True):
-    """ With scope handler function tir.realize(buffer_bounds, condition) """
+def realize(parser, node, body, buffer_bounds, scope, condition=True):
+    """ With scope handler function tir.realize(buffer_bounds, scope, condition) """
     buffer, bounds = buffer_bounds.buffer, buffer_bounds.region
-    return tvm.tir.BufferRealize(buffer, bounds, condition, body)
+    scope = tvm.runtime.convert(scope)
+    return tvm.tir.AttrStmt(buffer, "realize_scope", scope,
+                            tvm.tir.BufferRealize(buffer, bounds, condition, body))
 
 
 @register_with_scope(concise=True)

@@ -552,6 +552,29 @@ Doc TIRHybridPrinter::VisitStmt_(const AttrStmtNode* op) {
     }
   }
 
+  if (op->node->IsInstance<BufferNode>() && op->attr_key == "realize_scope"
+      && op->body->IsInstance<BufferRealizeNode>()) {
+    const auto* realize = Downcast<BufferRealize>(op->body).get();
+    if (realize->buffer.same_as(op->node)) {
+      if (current_num_ != num_child_ - 1) {
+        doc << "with tir.realize(" << Print(realize->buffer) << Print(realize->bounds)
+            << ", " << Print(op->value);
+        if (!is_one(realize->condition)) {
+          doc << ", " << Print(realize->condition);
+        }
+        doc << "):" << Doc::Indent(4, Doc::NewLine() << PrintBody(realize->body));
+      } else {
+        doc << "tir.realize(" << Print(realize->buffer) << Print(realize->bounds)
+            << ", " << Print(op->value);
+        if (!is_one(realize->condition)) {
+          doc << ", " << Print(realize->condition);
+        }
+        doc << ")" << Doc::NewLine() << PrintBody(realize->body);
+      }
+      return doc;
+    }
+  }
+
   if (current_num_ != num_child_ - 1) {
     doc << "with tir.attr(" << Print(op->node) << ", " << Doc::StrLiteral(op->attr_key) << ", "
         << Print(op->value) << "):";
@@ -588,21 +611,8 @@ Doc TIRHybridPrinter::VisitStmt_(const StoreNode* op) {
 }
 
 Doc TIRHybridPrinter::VisitStmt_(const BufferRealizeNode* op) {
-  Doc doc;
-  if (current_num_ != num_child_ - 1) {
-    doc << "with tir.realize(" << Print(op->buffer) << Print(op->bounds);
-    if (!is_one(op->condition)) {
-      doc << ", " << Print(op->condition);
-    }
-    doc << "):" << Doc::Indent(4, Doc::NewLine() << PrintBody(op->body));
-  } else {
-    doc << "tir.realize(" << Print(op->buffer) << Print(op->bounds);
-    if (!is_one(op->condition)) {
-      doc << ", " << Print(op->condition);
-    }
-    doc << ")" << Doc::NewLine() << PrintBody(op->body);
-  }
-  return doc;
+  LOG(FATAL) << "Hybrid Printer Internal Error: All the BufferRealize should be folded with Attr";
+  return Doc();
 }
 
 Doc TIRHybridPrinter::VisitStmt_(const AllocateNode* op) {
