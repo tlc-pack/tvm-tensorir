@@ -89,6 +89,7 @@ class HybridParser(ast.NodeVisitor):
         self.buffer_map = None
         self.dict_attr = None
         self.scope_emitter = None
+        self.var_env_dict = None
 
         self.src = src.split('\n')
         self.base_lineno = base_lienno
@@ -105,6 +106,7 @@ class HybridParser(ast.NodeVisitor):
         self.buffer_map = {}  # buffer map
         self.dict_attr = {}  # dict attr
         self.scope_emitter = scope_emitter.ScopeEmitter(self)  # scope emitter
+        self.var_env_dict = {}  # map from var to thread env name
 
     # TODO : if meta related functions grow, consider moving them to a new file
     @staticmethod
@@ -302,6 +304,7 @@ class HybridParser(ast.NodeVisitor):
                 1.1 Buffer = tir.buffer_bind()/tir.buffer_allocate()
                 1.2 HybridReducer = tir.comm_reducer()
                 1.3 Var = tir.var()
+                1.4 Var = tir.env_thread()
             2. (BufferStore) Buffer[PrimExpr, PrimExpr, ..., PrimExpr] = PrimExpr
             3. (Store)       Var[PrimExpr] = PrimExpr
             4. with scope handlers with concise scoping and var def
