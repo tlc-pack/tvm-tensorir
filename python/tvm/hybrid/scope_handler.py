@@ -18,25 +18,67 @@
 This module provides the functions registered into parser under with_scope or for_scope category.
 Scope handler nodes are StmtNodes with body, which are used to handle such scenarios.
 
+1. For scope handler
+When registering a for scope handler, the first 4 arguments must be parser, node, body, loop_vars
+and these arguments will provided by Hybrid Script parser automatically
+
 .. code-block:: python
 
-    for x in tir.name():
-    with tir.name():
-    tir.name() # with scope handlers + concise scoping
+    for loop_vars in tir.xxx():
 
-When registering a with scope handler, the first three arguments must be parser, node, body
-When registering a for scope handler, the first four arguments must be parser, node, body, loop_vars
-These parameters will handled by Hybrid Script parser automatically
+2. With scope handler
+There are 4 subtypes of with scope handlers, classified by
+    1) with or without as
+    2) allow concise scoping or not
+1) with as    & concise
+the first 2 arguments must be parser, node
+Need to parse the body manually
+Example : tir.alloc_with_scope
+
+.. code-block:: python
+
+    target = tir.xxx()
+    with tir.xxx() as target:
+
+2) with as    & not concise
+the first 2 arguments must be parser, node
+Need to parse the body manually
+Example : tir.block
+
+.. code-block:: python
+
+    with tir.xxx() as target:
+
+3) without as & concise
+the first 3 arguments must be parser, node, body
+Hybrid Script parser will parse the body automatically
+Example : tir.allocate()/tir.reailze()/tir.attr()
+
+.. code-block:: python
+
+    tir.xxx()
+    with tir.xxx():
+
+4) without as & not concise
+the first 3 arguments must be parser, node, body
+Hybrid Script parser will parse the body automatically
+Example : tir.assert()/tir.let()
+
+.. code-block:: python
+
+    with tir.xxx():
+
 """
 # pylint: disable=redefined-builtin, unused-argument, invalid-name
 
+from typed_ast import ast3 as ast
 import tvm.tir
 from .registry import register_with_scope, register_for_scope
 
 
 # With scope handler
-@register_with_scope(concise=False)
-def block(parser, node, body, block_vars, axes=None, name=""):
+@register_with_scope(concise=False, with_var=True)
+def block(parser, node, axes=None, name=""):
     """ With scope handler function block(axes, name)
 
     Example
@@ -47,6 +89,15 @@ def block(parser, node, body, block_vars, axes=None, name=""):
 
     """
 
+    # defining block vars and parse the body manually
+    block_vars = [tvm.te.var(name) for name in parser.target]
+    parser.scope_emitter.new_scope(is_block=True)
+    for block_var in block_vars:
+        parser.scope_emitter.update_symbol(block_var.name, block_var)
+    parser.scope_emitter.node_stack[-1].extend(reversed(node.body))
+    body = parser.get_body()
+    block_info = parser.scope_emitter.pop_scope(is_block=True)
+    # create block iter vars
     if axes is None:
         axes = []
     if len(axes) != len(block_vars):
@@ -64,9 +115,7 @@ def block(parser, node, body, block_vars, axes=None, name=""):
             block_iters.append(tvm.tir.IterVar(axis.dom, block_vars[i], axis.iter_type))
         else:
             parser.report_error("Invalid argument of tir.block()")
-
-    block_info = parser.scope_emitter.pop_scope(is_block=True)
-
+    # create block IO info
     if block_info.reads is None:
         reads = None
     else:
@@ -95,7 +144,7 @@ def block(parser, node, body, block_vars, axes=None, name=""):
 
     inner = tvm.tir.Block(block_iters, reads, writes, body,
                           block_info.allocates, block_info.annotations, name)
-
+    # create block var binding
     if not block_info.binding:
         values = parser.scope_emitter.loop_stack[-1].copy()
         if len(values) == 0:
@@ -112,10 +161,44 @@ def block(parser, node, body, block_vars, axes=None, name=""):
     return body
 
 
+@register_with_scope(concise=True, with_var=True)
+def allocate(parser, node, extents, dtype, scope, condition=True):
+    """ With scope handler function tir.alloc_with_scope(var, extents, dtype, scope, condition) """
+    # defining buffer var and parse the body manually
+
+    buffer_var = tvm.te.var(parser.target[0], "handle")
+    # (TODO) Uncomment this line if we have richer type info for buffer var
+    # buffer_var = tvm.te.var(parser.target[0], tvm.ir.PointerType(tvm.ir.PrimType(dtype)))
+    if isinstance(node, ast.With):
+        parser.scope_emitter.new_scope()
+        parser.scope_emitter.update_symbol(buffer_var.name, buffer_var)
+        parser.scope_emitter.node_stack[-1].extend(reversed(node.body))
+        body = parser.get_body()
+        parser.scope_emitter.pop_scope()
+    else:
+        parser.scope_emitter.update_symbol(buffer_var.name, buffer_var)
+        body = parser.get_body()
+    condition = tvm.runtime.convert(condition)
+    scope = tvm.runtime.convert(scope)
+    body = tvm.tir.Allocate(buffer_var, dtype, extents, condition, body)
+    return tvm.tir.AttrStmt(buffer_var, "storage_scope", scope, body)
+
+
 @register_with_scope(concise=True)
-def allocate(parser, node, body, buffer_var, dtype, extents, condition=True):
-    """ With scope handler function tir.allocate(buffer_var, dtype, extents, condition) """
-    return tvm.tir.Allocate(buffer_var, dtype, extents, tvm.runtime.convert(condition), body)
+def realize(parser, node, body, buffer_bounds, scope, condition=True):
+    """ With scope handler function tir.realize(buffer_bounds, scope, condition) """
+    buffer, bounds = buffer_bounds.buffer, buffer_bounds.region
+    scope = tvm.runtime.convert(scope)
+    return tvm.tir.AttrStmt(buffer, "realize_scope", scope,
+                            tvm.tir.BufferRealize(buffer, bounds, condition, body))
+
+
+@register_with_scope(concise=True)
+def attr(parser, node, body, attr_node, attr_key, value):
+    """ With scope handler function tir.attr(attr_node, attr_key, value) """
+    attr_node = tvm.runtime.convert(attr_node)
+    value = tvm.runtime.convert(value)
+    return tvm.tir.AttrStmt(attr_node, attr_key, value, body)
 
 
 @register_with_scope(concise=False)
@@ -128,21 +211,6 @@ def Assert(parser, node, body, condition, message):
 def let(parser, node, body, var, value):
     """ With scope handler function tir.let(var, value) """
     return tvm.tir.LetStmt(var, value, body)
-
-
-@register_with_scope(concise=True)
-def realize(parser, node, body, buffer_bounds, condition=True):
-    """ With scope handler function tir.realize(buffer_bounds, condition) """
-    buffer, bounds = buffer_bounds.buffer, buffer_bounds.region
-    return tvm.tir.BufferRealize(buffer, bounds, condition, body)
-
-
-@register_with_scope(concise=True)
-def attr(parser, node, body, attr_node, attr_key, value):
-    """ With scope handler function tir.attr(attr_node, attr_key, value) """
-    attr_node = tvm.runtime.convert(attr_node)
-    value = tvm.runtime.convert(value)
-    return tvm.tir.AttrStmt(attr_node, attr_key, value, body)
 
 
 # For scope handler

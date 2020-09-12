@@ -34,18 +34,15 @@ class Module1:
         B_1 = tir.match_buffer(B, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
         C_1 = tir.match_buffer(C, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
         # body
-        tir.attr(packedB, "realize_scope", "")
-        tir.realize(packedB[0:32, 0:1024, 0:32])
+        tir.realize(packedB[0:32, 0:1024, 0:32], "")
         for x in tir.parallel(0, 32):
             for y in tir.serial(0, 1024):
                 for z in tir.vectorized(0, 32):
                     packedB[x, y, z] = B_1[y, ((x*32) + z)]
-        tir.attr(C_1, "realize_scope", "")
-        tir.realize(C_1[0:1024, 0:1024])
+        tir.realize(C_1[0:1024, 0:1024], "")
         for x_outer in tir.parallel(0, 32):
             for y_outer in tir.serial(0, 32):
-                tir.attr(C_global, "realize_scope", "global")
-                tir.realize(C_global[(x_outer*32):((x_outer*32) + 32), (y_outer*32):((y_outer*32) + 32)])
+                tir.realize(C_global[(x_outer*32):((x_outer*32) + 32), (y_outer*32):((y_outer*32) + 32)], "global")
                 for x_c_init in tir.serial(0, 32):
                     for y_c_init in tir.vectorized(0, 32):
                         C_global[(x_c_init + (x_outer*32)), (y_c_init + (y_outer*32))] = tir.float32(0)
@@ -70,21 +67,16 @@ class Module2:
     def mmult(A: ty.handle, B: ty.handle, C: ty.handle) -> None:
         # function attr dict
         tir.func_attr({"global_symbol": "mmult", "tir.noalias": True})
-        # var definition
-        C_global = tir.var("handle")
-        packedB = tir.var("handle")
         A_1 = tir.match_buffer(A, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
         B_1 = tir.match_buffer(B, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
         C_1 = tir.match_buffer(C, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
         # body
-        tir.attr(packedB, "storage_scope", "global")
-        tir.allocate(packedB, "float32x32", [32768])
+        packedB = tir.allocate([32768], "float32x32", "global")
         for x in tir.parallel(0, 32):
             for y in tir.serial(0, 1024):
                 tir.store(packedB, tir.ramp(((x*32768) + (y*32)), 1, 32), tir.load("float32x32", B_1.data, tir.ramp(((y*1024) + (x*32)), 1, 32), tir.broadcast(True, 32)), tir.broadcast(True, 32))
         for x_outer in tir.parallel(0, 32):
-            tir.attr(C_global, "storage_scope", "global")
-            tir.allocate(C_global, "float32", [1024])
+            C_global = tir.allocate([1024], "float32", "global")
             for y_outer in tir.serial(0, 32):
                 for x_c_init in tir.serial(0, 32):
                     tir.store(C_global, tir.ramp((x_c_init*32), 1, 32), tir.broadcast(tir.float32(0), 32), tir.broadcast(True, 32))
@@ -238,30 +230,26 @@ def opt_conv_tensorcore_normalize(A: ty.handle, W: ty.handle, Conv: ty.handle) -
     W_1 = tir.match_buffer(W, [3, 3, 16, 32, 16, 16], dtype="float16", elem_offset=0, align=128, offset_factor=1)
     Conv_1 = tir.match_buffer(Conv, [16, 14, 14, 32, 16, 16], elem_offset=0, align=128, offset_factor=1)
     # body
-    tir.attr(Conv_1, "realize_scope", "")
-    tir.realize(Conv_1[0:16, 0:14, 0:14, 0:32, 0:16, 0:16])
+    tir.realize(Conv_1[0:16, 0:14, 0:14, 0:32, 0:16, 0:16], "")
     tir.attr(tir.iter_var(blockIdx_z, None, "ThreadIndex", "blockIdx.z"), "thread_extent", 196)
     tir.attr(tir.iter_var(blockIdx_x, None, "ThreadIndex", "blockIdx.x"), "thread_extent", 2)
     tir.attr(tir.iter_var(blockIdx_y, None, "ThreadIndex", "blockIdx.y"), "thread_extent", 4)
     tir.attr(tir.iter_var(threadIdx_y, None, "ThreadIndex", "threadIdx.y"), "thread_extent", 4)
     tir.attr(tir.iter_var(threadIdx_z, None, "ThreadIndex", "threadIdx.z"), "thread_extent", 2)
-    tir.attr(Conv_wmma_accumulator, "realize_scope", "wmma.accumulator")
-    tir.realize(Conv_wmma_accumulator[((blockIdx_x*8) + (threadIdx_y*2)):(((blockIdx_x*8) + (threadIdx_y*2)) + 2), tir.floordiv(blockIdx_z, 14):(tir.floordiv(blockIdx_z, 14) + 1), tir.floormod(blockIdx_z, 14):(tir.floormod(blockIdx_z, 14) + 1), ((blockIdx_y*8) + (threadIdx_z*4)):(((blockIdx_y*8) + (threadIdx_z*4)) + 4), 0:16, 0:16])
+    tir.realize(Conv_wmma_accumulator[((blockIdx_x*8) + (threadIdx_y*2)):(((blockIdx_x*8) + (threadIdx_y*2)) + 2), tir.floordiv(blockIdx_z, 14):(tir.floordiv(blockIdx_z, 14) + 1), tir.floormod(blockIdx_z, 14):(tir.floormod(blockIdx_z, 14) + 1), ((blockIdx_y*8) + (threadIdx_z*4)):(((blockIdx_y*8) + (threadIdx_z*4)) + 4), 0:16, 0:16], "wmma.accumulator")
     for n_c_init in tir.serial(0, 2):
         for o_c_init in tir.serial(0, 4):
             tir.attr([BC, Conv_wmma_accumulator], "buffer_bind_scope", tir.tvm_tuple((n_c_init + ((blockIdx_x*8) + (threadIdx_y*2))), 1, tir.floordiv(blockIdx_z, 14), 1, tir.floormod(blockIdx_z, 14), 1, (o_c_init + ((blockIdx_y*8) + (threadIdx_z*4))), 1, 0, 16, 0, 16, dtype="handle"))
             tir.evaluate(tir.tvm_fill_fragment(BC.data, 16, 16, 16, tir.floordiv(BC.elem_offset, 256), tir.float32(0), dtype="handle"))
     for ic_outer in tir.serial(0, 8):
         for kh in tir.serial(0, 3):
-            tir.attr(Apad_shared, "realize_scope", "shared")
-            tir.realize(Apad_shared[(blockIdx_x*8):((blockIdx_x*8) + 8), (tir.floordiv(blockIdx_z, 14) + kh):((tir.floordiv(blockIdx_z, 14) + kh) + 1), tir.floormod(blockIdx_z, 14):(tir.floormod(blockIdx_z, 14) + 3), (ic_outer*2):((ic_outer*2) + 2), 0:16, 0:16])
+            tir.realize(Apad_shared[(blockIdx_x*8):((blockIdx_x*8) + 8), (tir.floordiv(blockIdx_z, 14) + kh):((tir.floordiv(blockIdx_z, 14) + kh) + 1), tir.floormod(blockIdx_z, 14):(tir.floormod(blockIdx_z, 14) + 3), (ic_outer*2):((ic_outer*2) + 2), 0:16, 0:16], "shared")
             for ax2 in tir.serial(0, 3):
                 for ax3 in tir.serial(0, 2):
                     for ax4_ax5_fused_outer in tir.serial(0, 8):
                         tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32)
                         Apad_shared[((threadIdx_z + (threadIdx_y*2)) + (blockIdx_x*8)), (tir.floordiv(blockIdx_z, 14) + kh), (ax2 + tir.floormod(blockIdx_z, 14)), (ax3 + (ic_outer*2)), tir.floordiv((threadIdx_x + (ax4_ax5_fused_outer*32)), 16), tir.floormod((threadIdx_x + (ax4_ax5_fused_outer*32)), 16)] = tir.if_then_else((((((tir.floordiv(blockIdx_z, 14) + kh) >= 1) and (((tir.floordiv(blockIdx_z, 14) + kh) - 1) < 14)) and ((ax2 + tir.floormod(blockIdx_z, 14)) >= 1)) and (((ax2 + tir.floormod(blockIdx_z, 14)) - 1) < 14)), A_1[((threadIdx_z + (threadIdx_y*2)) + (blockIdx_x*8)), ((tir.floordiv(blockIdx_z, 14) + kh) - 1), ((ax2 + tir.floormod(blockIdx_z, 14)) - 1), (ax3 + (ic_outer*2)), tir.floordiv((threadIdx_x + (ax4_ax5_fused_outer*32)), 16), tir.floormod((threadIdx_x + (ax4_ax5_fused_outer*32)), 16)], tir.float16(0), dtype="float16")
-            tir.attr(W_shared, "realize_scope", "shared")
-            tir.realize(W_shared[kh:(kh + 1), 0:3, (ic_outer*2):((ic_outer*2) + 2), (blockIdx_y*8):((blockIdx_y*8) + 8), 0:16, 0:16])
+            tir.realize(W_shared[kh:(kh + 1), 0:3, (ic_outer*2):((ic_outer*2) + 2), (blockIdx_y*8):((blockIdx_y*8) + 8), 0:16, 0:16], "shared")
             for ax1 in tir.serial(0, 3):
                 for ax2_1 in tir.serial(0, 2):
                     tir.attr(tir.iter_var(threadIdx_x, None, "ThreadIndex", "threadIdx.x"), "thread_extent", 32)
@@ -269,14 +257,12 @@ def opt_conv_tensorcore_normalize(A: ty.handle, W: ty.handle, Conv: ty.handle) -
                         W_shared[kh, ax1, (ax2_1 + (ic_outer*2)), ((threadIdx_z + (threadIdx_y*2)) + (blockIdx_y*8)), tir.floordiv((ax4_ax5_fused_inner + (threadIdx_x*8)), 16), tir.floormod((ax4_ax5_fused_inner + (threadIdx_x*8)), 16)] = W_1[kh, ax1, (ax2_1 + (ic_outer*2)), ((threadIdx_z + (threadIdx_y*2)) + (blockIdx_y*8)), tir.floordiv((ax4_ax5_fused_inner + (threadIdx_x*8)), 16), tir.floormod((ax4_ax5_fused_inner + (threadIdx_x*8)), 16)]
             for ic_inner in tir.serial(0, 2):
                 for kw in tir.serial(0, 3):
-                    tir.attr(Apad_shared_wmma_matrix_a, "realize_scope", "wmma.matrix_a")
-                    tir.realize(Apad_shared_wmma_matrix_a[((blockIdx_x*8) + (threadIdx_y*2)):(((blockIdx_x*8) + (threadIdx_y*2)) + 2), (tir.floordiv(blockIdx_z, 14) + kh):((tir.floordiv(blockIdx_z, 14) + kh) + 1), (kw + tir.floormod(blockIdx_z, 14)):((kw + tir.floormod(blockIdx_z, 14)) + 1), ((ic_outer*2) + ic_inner):(((ic_outer*2) + ic_inner) + 1), 0:16, 0:16])
+                    tir.realize(Apad_shared_wmma_matrix_a[((blockIdx_x*8) + (threadIdx_y*2)):(((blockIdx_x*8) + (threadIdx_y*2)) + 2), (tir.floordiv(blockIdx_z, 14) + kh):((tir.floordiv(blockIdx_z, 14) + kh) + 1), (kw + tir.floormod(blockIdx_z, 14)):((kw + tir.floormod(blockIdx_z, 14)) + 1), ((ic_outer*2) + ic_inner):(((ic_outer*2) + ic_inner) + 1), 0:16, 0:16], "wmma.matrix_a")
                     for ax0 in tir.serial(0, 2):
                         tir.attr([buffer, Apad_shared], "buffer_bind_scope", tir.tvm_tuple((ax0 + ((blockIdx_x*8) + (threadIdx_y*2))), 1, (tir.floordiv(blockIdx_z, 14) + kh), 1, (kw + tir.floormod(blockIdx_z, 14)), 1, ((ic_outer*2) + ic_inner), 1, 0, 16, 0, 16, dtype="handle"))
                         tir.attr([buffer_1, Apad_shared_wmma_matrix_a], "buffer_bind_scope", tir.tvm_tuple((ax0 + ((blockIdx_x*8) + (threadIdx_y*2))), 1, (tir.floordiv(blockIdx_z, 14) + kh), 1, (kw + tir.floormod(blockIdx_z, 14)), 1, ((ic_outer*2) + ic_inner), 1, 0, 16, 0, 16, dtype="handle"))
                         tir.evaluate(tir.tvm_load_matrix_sync(buffer_1.data, 16, 16, 16, tir.floordiv(buffer_1.elem_offset, 256), tir.tvm_access_ptr(tir.type_annotation(dtype="float16"), buffer.data, buffer.elem_offset, 256, 1, dtype="handle"), 16, "row_major", dtype="handle"))
-                    tir.attr(W_shared_wmma_matrix_b, "realize_scope", "wmma.matrix_b")
-                    tir.realize(W_shared_wmma_matrix_b[kh:(kh + 1), kw:(kw + 1), ((ic_outer*2) + ic_inner):(((ic_outer*2) + ic_inner) + 1), ((blockIdx_y*8) + (threadIdx_z*4)):(((blockIdx_y*8) + (threadIdx_z*4)) + 4), 0:16, 0:16])
+                    tir.realize(W_shared_wmma_matrix_b[kh:(kh + 1), kw:(kw + 1), ((ic_outer*2) + ic_inner):(((ic_outer*2) + ic_inner) + 1), ((blockIdx_y*8) + (threadIdx_z*4)):(((blockIdx_y*8) + (threadIdx_z*4)) + 4), 0:16, 0:16], "wmma.matrix_b")
                     for ax3_1 in tir.serial(0, 4):
                         tir.attr([buffer_2, W_shared], "buffer_bind_scope", tir.tvm_tuple(kh, 1, kw, 1, ((ic_outer*2) + ic_inner), 1, (ax3_1 + ((blockIdx_y*8) + (threadIdx_z*4))), 1, 0, 16, 0, 16, dtype="handle"))
                         tir.attr([buffer_3, W_shared_wmma_matrix_b], "buffer_bind_scope", tir.tvm_tuple(kh, 1, kw, 1, ((ic_outer*2) + ic_inner), 1, (ax3_1 + ((blockIdx_y*8) + (threadIdx_z*4))), 1, 0, 16, 0, 16, dtype="handle"))
@@ -293,6 +279,7 @@ def opt_conv_tensorcore_normalize(A: ty.handle, W: ty.handle, Conv: ty.handle) -
             tir.attr([buffer_5, Conv_1], "buffer_bind_scope", tir.tvm_tuple(((((blockIdx_x*4) + threadIdx_y)*2) + n_inner), 1, tir.floordiv(blockIdx_z, 14), 1, tir.floormod(blockIdx_z, 14), 1, ((((blockIdx_y*2) + threadIdx_z)*4) + o_inner), 1, 0, 16, 0, 16, dtype="handle"))
             tir.evaluate(tir.tvm_store_matrix_sync(buffer_4.data, 16, 16, 16, tir.floordiv(buffer_4.elem_offset, 256), tir.tvm_access_ptr(tir.type_annotation(dtype="float32"), buffer_5.data, buffer_5.elem_offset, 256, 2, dtype="handle"), 16, "row_major", dtype="handle"))
 
+
 def test_opt_conv_tensorcore_normalize():
     mod = opt_conv_tensorcore_normalize
     rt_mod = tvm.hybrid.from_source(tvm.hybrid.ashybrid(mod, True))
@@ -304,11 +291,6 @@ def opt_conv_tensorcore_lower(A: ty.handle, W: ty.handle, Conv: ty.handle) -> No
     # function attr dict
     tir.func_attr({"global_symbol": "default_function", "tir.noalias": True})
     # var definition
-    Apad_shared = tir.var("handle")
-    Apad_shared_wmma_matrix_a = tir.var("handle")
-    Conv_wmma_accumulator = tir.var("handle")
-    W_shared = tir.var("handle")
-    W_shared_wmma_matrix_b = tir.var("handle")
     blockIdx_x = tir.var("int32")
     blockIdx_y = tir.var("int32")
     blockIdx_z = tir.var("int32")
@@ -320,16 +302,11 @@ def opt_conv_tensorcore_lower(A: ty.handle, W: ty.handle, Conv: ty.handle) -> No
     Conv_1 = tir.match_buffer(Conv, [16, 14, 14, 32, 16, 16], elem_offset=0, align=128, offset_factor=1)
     # body
     tir.attr(tir.iter_var(blockIdx_z, None, "ThreadIndex", "blockIdx.z"), "thread_extent", 196)
-    tir.attr(Conv_wmma_accumulator, "storage_scope", "wmma.accumulator")
-    tir.allocate(Conv_wmma_accumulator, "float32", [2048])
-    tir.attr(Apad_shared, "storage_scope", "shared")
-    tir.allocate(Apad_shared, "float16", [12288])
-    tir.attr(W_shared, "storage_scope", "shared")
-    tir.allocate(W_shared, "float16", [12288])
-    tir.attr(Apad_shared_wmma_matrix_a, "storage_scope", "wmma.matrix_a")
-    tir.allocate(Apad_shared_wmma_matrix_a, "float16", [512])
-    tir.attr(W_shared_wmma_matrix_b, "storage_scope", "wmma.matrix_b")
-    tir.allocate(W_shared_wmma_matrix_b, "float16", [1024])
+    Conv_wmma_accumulator = tir.allocate([2048], "float32", "wmma.accumulator")
+    Apad_shared = tir.allocate([12288], "float16", "shared")
+    W_shared = tir.allocate([12288], "float16", "shared")
+    Apad_shared_wmma_matrix_a = tir.allocate([512], "float16", "wmma.matrix_a")
+    W_shared_wmma_matrix_b = tir.allocate([1024], "float16", "wmma.matrix_b")
     tir.attr(tir.iter_var(blockIdx_x, None, "ThreadIndex", "blockIdx.x"), "thread_extent", 2)
     tir.attr(tir.iter_var(blockIdx_y, None, "ThreadIndex", "blockIdx.y"), "thread_extent", 4)
     tir.attr(tir.iter_var(threadIdx_y, None, "ThreadIndex", "threadIdx.y"), "thread_extent", 4)
