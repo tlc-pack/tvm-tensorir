@@ -252,7 +252,7 @@ class Schedule(Object):
         return ScheduleCacheWrite(self, buffer, scope)
 
     def compute_inline(self, block):
-        """Mark one stage as inline, then the body of computation will be expanded and
+        """Mark one block as inline, then the body of computation will be expanded and
         inserted at the address where the tensor is required.
         Parameters
         ----------
