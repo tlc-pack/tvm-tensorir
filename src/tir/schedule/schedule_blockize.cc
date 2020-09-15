@@ -74,8 +74,7 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& sref, const String& exe_scope) {
   std::unordered_map<Var, PrimExpr, ObjectHash, ObjectEqual> var_map;
   for (size_t i = 0; i < inner_block->iter_vars.size(); ++i) {
     const IterVar iter_var = inner_block->iter_vars[i];
-    const IterVar new_iter_var(iter_var->dom, iter_var->var.copy_with_suffix(""),
-                               iter_var->iter_type);
+    const IterVar new_iter_var(iter_var->dom, iter_var->var.copy_with_suffix(""), iter_var->iter_type);
     const auto& var = new_iter_var->var;
     const auto& value = block_realize->binding_values[i];
     auto expr = arith::EvalSet(value, vmap).min();
