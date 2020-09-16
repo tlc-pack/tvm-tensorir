@@ -14,9 +14,16 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from ..ir import PrimExpr as ExprRV
-from . import helpers
-from .random_variable import BlockRV, LoopRV
-from . import instruction
-from .schedule import Schedule
-from .search import search
+""" Search API """
+
+from typing import List, Union
+from tvm.tir import PrimFunc
+from . import _ffi_api
+
+Rule = str
+
+
+def search(func: PrimFunc, rules: Union[Rule, List[Rule]], policy: str) -> None:
+    if not isinstance(rules, list):
+        rules = [rules]
+    _ffi_api.SearchRules(func, rules, policy)

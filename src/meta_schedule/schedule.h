@@ -106,6 +106,12 @@ class ScheduleNode : public Object {
   Array<tir::Var> SampleTileFactor(int n, LoopRV loop, Array<Integer> where);
   /**************** Scheduling Primitives ****************/
   /*!
+   * \brief An instruction to create a deterministic BlockRV
+   * \param block The value of the deterministic BlockRV
+   * \return A block random variable, the return value of the instruction
+   */
+  BlockRV CreateBlockRV(const tir::StmtSRef& block);
+  /*!
    * \brief Apply the instruction GetBlock
    * \param name The name of the block to get retrieved
    * \return A block random variable, the return value of the instruction

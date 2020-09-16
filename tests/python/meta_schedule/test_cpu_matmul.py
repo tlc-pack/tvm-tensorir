@@ -48,26 +48,35 @@ def conv2d(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
 
     Pad = tir.buffer_allocate((1, 512, 9, 9), "float32")
     with tir.block([1, 512, 9, 9], "conv2d_pad_x") as [i_n, i_ci, i_h, i_w]:
-        Pad[i_n, i_ci, i_h, i_w] = tir.if_then_else(  # pylint: disable=unexpected-keyword-arg
+        Pad[
+            i_n, i_ci, i_h, i_w
+        ] = tir.if_then_else(  # pylint: disable=unexpected-keyword-arg
             # guard
             ((1 <= i_h < 8) and (1 <= i_w < 8)),
             # the value from input
             X[i_n, i_ci, i_h - 1, i_w - 1],
             # the value padded
             tir.float32(0),
-            dtype="float32")
+            dtype="float32",
+        )
 
-    with tir.block([1,                          # i_n
-                    512,                        # i_co
-                    7,                          # i_h
-                    7,                          # i_w
-                    tir.reduce_axis(0, 512),    # i_ci
-                    tir.reduce_axis(0, 3),      # i_kh
-                    tir.reduce_axis(0, 3)],     # i_kw
-                   "conv2d_nchw") as [i_n, i_co, i_h, i_w, i_ci, i_kh, i_kw]:
-        reducer.step(Y[i_n, i_co, i_h, i_w],
-                     Pad[i_n, i_ci, i_h + i_kh, i_w + i_kw] *
-                     W[i_co, i_ci, i_kh, i_kw])
+    with tir.block(
+        [
+            1,  # i_n
+            512,  # i_co
+            7,  # i_h
+            7,  # i_w
+            tir.reduce_axis(0, 512),  # i_ci
+            tir.reduce_axis(0, 3),  # i_kh
+            tir.reduce_axis(0, 3),
+        ],  # i_kw
+        "conv2d_nchw",
+    ) as [i_n, i_co, i_h, i_w, i_ci, i_kh, i_kw]:
+        reducer.step(
+            Y[i_n, i_co, i_h, i_w],
+            Pad[i_n, i_ci, i_h + i_kh, i_w + i_kw] * W[i_co, i_ci, i_kh, i_kw],
+        )
+
 
 # pylint: enable=invalid-name
 
@@ -83,48 +92,59 @@ def _print_prim_func(prim_func):
     print(tvm.hybrid.ashybrid(prim_func))
 
 
-def do_multi_level_tiling(sch: ms.Schedule, block: ms.BlockRV, tiling_format: str):
-    spatial_indices = [i for i, c in enumerate(tiling_format) if c == 'S']
-    reduce_indices = [i for i, c in enumerate(tiling_format) if c == 'R']
-    order = [list() for _ in tiling_format]
-    print(spatial_indices)
-    print(reduce_indices)
+@tvm.register_func("test_multi_level_tiling.meets")
+def meets_multi_level_tiling(_sch: ms.Schedule, _block: ms.BlockRV):
+    return True
+
+
+@tvm.register_func("test_multi_level_tiling.apply")
+def do_multi_level_tiling(sch: ms.Schedule, block: ms.BlockRV):
+    spatial_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "S"]
+    reduce_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "R"]
+    order = [list() for _ in TILING_FORMAT]
     axes = sch.get_axes(block=block)
     iter_vars = ms.helpers.block_from_sref(sch.evaluate(block)).iter_vars
     assert len(axes) == len(iter_vars)
     for axis, iter_var in zip(axes, iter_vars):
-        for iter_type, indices in [(SPATIAL, spatial_indices), (REDUCTION, reduce_indices)]:
-            if iter_var.iter_type != iter_type:
-                continue
-            tiles = sch.sample_tile_factor(
-                n=len(indices), loop=axis, where=[1, 2, 4])
-            splits = sch.split(loop=axis, factors=tiles)
-            for i, split in zip(indices, splits):
-                order[i].append(split)
+        for iter_type, indices in [
+            (SPATIAL, spatial_indices),
+            (REDUCTION, reduce_indices),
+        ]:
+            if iter_var.iter_type == iter_type:
+                tiles = sch.sample_tile_factor(
+                    n=len(indices), loop=axis, where=[1, 2, 4]
+                )
+                splits = sch.split(loop=axis, factors=tiles)
+                for i, split in zip(indices, splits):
+                    order[i].append(split)
     sch.reorder(after_axes=sum(order, []))
+    _print_prim_func(sch.sch.func)
+    return "Apply"
 
 
-def test_matmul_tiling():
+def test_matmul_tiling_rule():
     sch = ms.Schedule(_get_prim_func_from_hybrid(matmul))
     block = sch.get_block(name="C")
-    do_multi_level_tiling(sch, block, TILING_FORMAT)
+    do_multi_level_tiling(sch, block)
     _print_prim_func(sch.sch.func)
-    # for _ in range(1000):
-    #     sch.replay_once()
-    #     _print_prim_func(sch.sch.func)
 
 
-def test_conv2d_tiling():
+def test_conv2d_tiling_rule():
     sch = ms.Schedule(_get_prim_func_from_hybrid(conv2d))
     block = sch.get_block("conv2d_nchw")
-    # _print_prim_func(sch.sch.func)
-    do_multi_level_tiling(sch, block, TILING_FORMAT)
+    do_multi_level_tiling(sch, block)
     _print_prim_func(sch.sch.func)
-    for _ in range(1000):
-        sch.replay_once()
-        _print_prim_func(sch.sch.func)
+
+
+def test_matmul_tiling_search():
+    ms.search(
+        func=_get_prim_func_from_hybrid(conv2d),
+        rules=["test_multi_level_tiling"],
+        policy="random",
+    )
 
 
 if __name__ == "__main__":
-    test_matmul_tiling()
-    test_conv2d_tiling()
+    # test_matmul_tiling_rule()
+    # test_conv2d_tiling_rule()
+    test_matmul_tiling_search()

@@ -93,6 +93,18 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n, LoopRV loop, Array<Integer
 
 /**************** Schedule Primitives ****************/
 
+BlockRV ScheduleNode::CreateBlockRV(const tir::StmtSRef& block) {
+  int inst_id = this->trace.size();
+  String name = block->GetStmt<tir::BlockNode>()->tag;
+  // Create the output random variable
+  BlockRV output(name, block);
+  // Update the symbol table
+  this->sym_tab.emplace(output, SymbolTableEntry(inst_id, block));
+  // Put the instruction in the trace
+  this->trace.push_back(CreateBlockRVInst(block, output));
+  return output;
+}
+
 BlockRV ScheduleNode::GetBlock(const String& name) {
   int inst_id = this->trace.size();
   // Find the output from TIR
