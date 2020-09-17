@@ -19,4 +19,5 @@ from . import helpers
 from .random_variable import BlockRV, LoopRV
 from . import instruction
 from .schedule import Schedule
+from . import measure
 from .search import search

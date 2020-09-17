@@ -114,8 +114,6 @@ class BuildResultNode : public Object {
  public:
   /*! \brief The filename of built binary file. */
   String filename;
-  /*! \brief The arguments. */
-  Array<te::Tensor> args;
   /*! \brief The error code. (0 means no error, see MeasureErrorNO) */
   int error_no;
   /*! \brief The error message if there is any error. */
@@ -125,7 +123,6 @@ class BuildResultNode : public Object {
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("filename", &filename);
-    v->Visit("args", &args);
     v->Visit("error_no", &error_no);
     v->Visit("error_msg", &error_msg);
     v->Visit("time_cost", &time_cost);
@@ -144,13 +141,11 @@ class BuildResult : public ObjectRef {
   /*!
    * \brief The constructor.
    * \param filename The filename of built binary file.
-   * \param args The arguments.
    * \param error_no The error code.
    * \param error_msg The error message if there is any error.
    * \param time_cost The time cost of build.
    */
-  BuildResult(String filename, Array<te::Tensor> args, int error_no, String error_msg,
-              double time_cost);
+  BuildResult(String filename, int error_no, String error_msg, double time_cost);
   TVM_DEFINE_OBJECT_REF_METHODS(BuildResult, ObjectRef, BuildResultNode);
 };
 
@@ -217,6 +212,8 @@ class ProgramBuilderNode : public Object {
   /*! \brief Timeout of a build */
   int timeout;
 
+  virtual ~ProgramBuilderNode() = default;
+
   /*!
    * \brief Build programs and return results.
    * \param inputs An Array of MeasureInput.
@@ -257,6 +254,8 @@ class ProgramRunnerNode : public Object {
   /*! \brief Whether to flush cache on CPU between repeated measurements. */
   bool enable_cpu_cache_flush;
 
+  virtual ~ProgramRunnerNode() = default;
+
   /*!
    * \brief Run measurement and return results.
    * \param inputs An Array of MeasureInput.
@@ -289,7 +288,9 @@ class LocalBuilderNode : public ProgramBuilderNode {
   /*! \brief Build function. */
   String build_func;
 
-  Array<BuildResult> Build(const Array<MeasureInput>& inputs, int verbose) final;
+  ~LocalBuilderNode() = default;
+
+  Array<BuildResult> Build(const Array<MeasureInput>& inputs, int verbose) override;
 
   static constexpr const char* _type_key = "meta_schedule.LocalBuilder";
   TVM_DECLARE_FINAL_OBJECT_INFO(LocalBuilderNode, ProgramBuilderNode);
@@ -333,8 +334,10 @@ class RPCRunnerNode : public ProgramRunnerNode {
   /*! \brief The number of tasks run in parallel. */
   int n_parallel;
 
+  ~RPCRunnerNode() = default;
+
   Array<MeasureResult> Run(const Array<MeasureInput>& inputs,
-                           const Array<BuildResult>& build_results, int verbose) final;
+                           const Array<BuildResult>& build_results, int verbose) override;
 
   static constexpr const char* _type_key = "meta_schedule.RPCRunner";
   TVM_DECLARE_FINAL_OBJECT_INFO(RPCRunnerNode, ProgramRunnerNode);

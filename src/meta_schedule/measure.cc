@@ -53,11 +53,9 @@ MeasureInput::MeasureInput(Schedule sch) {
   data_ = std::move(n);
 }
 
-BuildResult::BuildResult(String filename, Array<te::Tensor> args, int error_no, String error_msg,
-                         double time_cost) {
+BuildResult::BuildResult(String filename, int error_no, String error_msg, double time_cost) {
   ObjectPtr<BuildResultNode> n = make_object<BuildResultNode>();
   n->filename = std::move(filename);
-  n->args = std::move(args);
   n->error_no = error_no;
   n->error_msg = std::move(error_msg);
   n->time_cost = time_cost;
@@ -141,12 +139,11 @@ Array<MeasureResult> RPCRunnerNode::Run(const Array<MeasureInput>& inputs,
         (*f)(inputs, build_results, key, host, port, priority, n_parallel, timeout, number, repeat,
              min_repeat_ms, cooldown_interval, enable_cpu_cache_flush, verbose);
     return results;
-  } else {
-    LOG(FATAL) << "meta_schedule.rpc_runner.run is not registered. "
-               << "This is a function registered in Python, "
-               << "make sure the TVM Python runtime has been loaded successfully.";
   }
-  return Array<MeasureResult>();
+  LOG(FATAL) << "meta_schedule.rpc_runner.run is not registered. "
+             << "This is a function registered in Python, "
+             << "make sure the TVM Python runtime has been loaded successfully.";
+  throw;
 }
 
 /********** Printing functions **********/
@@ -191,9 +188,9 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 struct Internal {
   /********** Constructors **********/
   static MeasureInput CreateMeasureInput(Schedule sch) { return MeasureInput(sch); }
-  static BuildResult CreateBuildResult(String filename, Array<te::Tensor> args, int error_no,
-                                       String error_msg, double time_cost) {
-    return BuildResult(filename, args, error_no, error_msg, time_cost);
+  static BuildResult CreateBuildResult(String filename, int error_no, String error_msg,
+                                       double time_cost) {
+    return BuildResult(filename, error_no, error_msg, time_cost);
   }
   static MeasureResult CreateMeasureResult(Array<PrimExpr> costs, int error_no, String error_msg,
                                            double all_cost, double timestamp) {
