@@ -34,13 +34,19 @@ We implement these in python to utilize python's multiprocessing and error handl
 from typing import Optional, List, Tuple, Callable
 from tvm._ffi import register_object, register_func
 from tvm.driver import build
-from tvm.runtime import Object
+from tvm.runtime import Object, ndarray
 from .schedule import Schedule
 from tvm.contrib import tar as build_func_tar, ndk as build_func_ndk
-from time import time
+import time
 import tempfile
-from .measure_util import make_error_msg, NoDaemonPool, call_func_with_timeout
+from .measure_util import (
+    make_error_msg,
+    NoDaemonPool,
+    call_func_with_timeout,
+    request_remote,
+)
 import os.path as osp
+import shutil
 
 
 class MeasureErrorNo:
@@ -291,7 +297,7 @@ def local_builder_worker(
         raise ValueError("Invalid build_func" + build_func)
 
     def timed_func():
-        tic = time()
+        tic = time.time()
         measure_input = measure_inputs[index]
 
         error_no = MeasureErrorNo.NO_ERROR
@@ -315,7 +321,7 @@ def local_builder_worker(
                 print(".", end="")
             else:
                 print(".E", end="")  # Build error
-        tok = time()
+        tok = time.time()
         return filename, error_no, error_msg, tok - tic
 
     res = call_func_with_timeout(timeout, timed_func)
@@ -324,4 +330,264 @@ def local_builder_worker(
             print(".T", end="")  # Build timeout
         res = None, [], MeasureErrorNo.BUILD_TIMEOUT, None, timeout
 
+    return res
+
+
+########## RPCRunner ##########
+
+# We use fork and a global variable to copy arguments between processes.
+# This can avoid expensive serialization of TVM IR when using multiprocessing.Pool
+RPC_RUNNER_WORKER_ARGS = None
+
+
+@register_func("auto_scheduler.rpc_runner.run")
+def rpc_runner_run(
+    measure_inputs: List[MeasureInput],
+    build_results: List[BuildResult],
+    key: str,
+    host: str,
+    port: int,
+    priority: int = 1,
+    n_parallel: int = 1,
+    timeout: int = 10,
+    number: int = 3,
+    repeat: int = 1,
+    min_repeat_ms: int = 0,
+    cooldown_interval: float = 0.0,
+    enable_cpu_cache_flush: bool = False,
+    verbose: int = 1,
+):
+    """Run function of RPCRunner to test the performance of the input BuildResults.
+
+    Parameters
+    ----------
+    inputs : List[MeasureInput]
+        The MeasureInputs to be measured.
+    build_results : List[BuildResult]
+        The BuildResults to be measured.
+    key : str
+        The key of the device registered in the RPC tracker.
+    host : str
+        The host address of the RPC Tracker.
+    port : int
+        The port of RPC Tracker.
+    priority : int = 1
+        The priority of this run request, larger is more prior.
+    n_parallel : int = 1
+        The number of tasks run in parallel.
+    timeout : int = 10
+        The timeout limit (in second) for each run.
+        This is used in a wrapper of the multiprocessing.Process.join().
+    number : int = 3
+        The number of times to run the generated code for taking average.
+        We call these runs as one `repeat` of measurement.
+    repeat : int = 1
+        The number of times to repeat the measurement.
+        In total, the generated code will be run (1 + number x repeat) times,
+        where the first "1" is warm up and will be discarded.
+        The returned result contains `repeat` costs,
+        each of which is an average of `number` costs.
+    min_repeat_ms : int = 0
+        The minimum duration of one `repeat` in milliseconds.
+        By default, one `repeat` contains `number` runs. If this parameter is set,
+        the parameters `number` will be dynamically adjusted to meet the
+        minimum duration requirement of one `repeat`.
+        i.e., When the run time of one `repeat` falls below this time, the `number` parameter
+        will be automatically increased.
+    cooldown_interval : float = 0.0
+        The cool down interval between two measurements.
+    enable_cpu_cache_flush: bool = False
+        Whether to flush cache on CPU between repeated measurements.
+        Flushing cache can make the measured latency of one operator closer to
+        its actual latency during end-to-end inference.
+        To make this option effective, the argument `number` should also be set to 1.
+        This is only has effect on CPU task.
+    verbose: int = 1
+        Verbosity level. 0 for silent, 1 to output information during program measuring.
+
+    Returns
+    -------
+    res : List[MeasureResult]
+        The measure results of these MeasureInputs.
+    """
+    global RPC_RUNNER_WORKER_ARGS
+    RPC_RUNNER_WORKER_ARGS = (
+        measure_inputs,
+        build_results,
+        key,
+        host,
+        port,
+        priority,
+        timeout,
+        number,
+        repeat,
+        min_repeat_ms,
+        cooldown_interval,
+        enable_cpu_cache_flush,
+        verbose,
+    )
+
+    assert len(measure_inputs) == len(
+        build_results
+    ), "Measure input size should be equal to build results"
+    pool = NoDaemonPool(n_parallel)
+    indices = [i for i, _ in enumerate(measure_inputs)]
+    results = pool.map(rpc_runner_worker, indices)
+    pool.terminate()
+    pool.join()
+    del pool
+    results = [MeasureResult(*item) for item in results]
+    if verbose >= 1:
+        print("")
+    return results
+
+
+def rpc_runner_worker(
+    index: int,
+) -> Tuple[
+    List[float],  # costs
+    int,  # error_no
+    Optional[str],  # error_msg
+    float,  # all_cost
+    float,  # timestamp
+]:
+    """Function to be ran in the RPCRunner thread pool.
+
+    Parameters
+    ----------
+    index : int
+        The MeasureInput and BuildResult index to be processed by the current Runner thread.
+
+    Returns
+    -------
+    res : MeasureResult
+        The measure result of this Runner thread.
+    """
+    global RPC_RUNNER_WORKER_ARGS
+    measure_inputs: List[MeasureInput]
+    build_results: List[BuildResult]
+    key: str
+    host: str
+    port: int
+    priority: int
+    timeout: int
+    number: int
+    repeat: int
+    min_repeat_ms: int
+    cooldown_interval: float
+    enable_cpu_cache_flush: bool
+    verbose: int
+    (
+        measure_inputs,
+        build_results,
+        key,
+        host,
+        port,
+        priority,
+        timeout,
+        number,
+        repeat,
+        min_repeat_ms,
+        cooldown_interval,
+        enable_cpu_cache_flush,
+        verbose,
+    ) = RPC_RUNNER_WORKER_ARGS
+
+    max_float = (
+        1e10  # We use 1e10 instead of sys.float_info.max for better readability in log
+    )
+    measure_input = measure_inputs[index]
+    build_result = build_results[index]
+
+    if build_result.error_no != MeasureErrorNo.NO_ERROR:
+        return (
+            (max_float,),
+            build_result.error_no,
+            build_result.error_msg,
+            build_result.time_cost,
+            time.time(),
+        )
+
+    def timed_func():
+        tic = time.time()
+        error_no = 0
+        error_msg = None
+        try:
+            # upload built module
+            remote = request_remote(key, host, port, priority, timeout)
+            remote.upload(build_result.filename)
+            func = remote.load_module(osp.split(build_result.filename)[1])
+            ctx = remote.context(str(measure_input.task.target), 0)
+            # Limitation:
+            # We can not get PackFunction directly in the remote mode as it is wrapped
+            # under the std::function. We could lift the restriction later once we fold
+            # the PackedFunc as an object. Currently, we pass function name to work
+            # around it.
+            f_prepare = (
+                "cache_flush_cpu_non_first_arg" if enable_cpu_cache_flush else ""
+            )
+            time_f = func.time_evaluator(
+                func.entry_name,
+                ctx,
+                number=number,
+                repeat=repeat,
+                min_repeat_ms=min_repeat_ms,
+                f_preproc=f_prepare,
+            )
+        # pylint: disable=broad-except
+        except Exception:
+            costs = (max_float,)
+            error_no = MeasureErrorNo.COMPILE_DEVICE
+            error_msg = make_error_msg()
+
+        if error_no == 0:
+            try:
+                # TODO(@junrushao1994): rework this
+                args = [ndarray.empty(x.shape, x.dtype, ctx) for x in build_result.args]
+                try:
+                    random_fill = remote.get_function("tvm.contrib.random.random_fill")
+                except AttributeError:
+                    raise AttributeError(
+                        "Please make sure USE_RANDOM is ON in the config.cmake "
+                        "on the remote devices"
+                    )
+                for arg in args:
+                    random_fill(arg)
+                ctx.sync()
+
+                costs = time_f(*args).results
+                # clean up remote files
+                remote.remove(build_result.filename)
+                remote.remove(osp.splitext(build_result.filename)[0] + ".so")
+                remote.remove("")
+            # pylint: disable=broad-except
+            except Exception:
+                costs = (max_float,)
+                error_no = MeasureErrorNo.RUNTIME_DEVICE
+                error_msg = make_error_msg()
+
+        shutil.rmtree(osp.dirname(build_result.filename))
+        toc = time.time()
+
+        time.sleep(cooldown_interval)
+        if verbose >= 1:
+            if error_no == MeasureErrorNo.NO_ERROR:
+                print("*", end="")
+            else:
+                print("*E", end="")  # Run error
+
+        return costs, error_no, error_msg, toc - tic + build_result.time_cost, toc
+
+    res = call_func_with_timeout(timeout, timed_func)
+
+    if isinstance(res, TimeoutError):
+        if verbose >= 1:
+            print("*T", end="")  # Run timeout
+        res = (
+            (max_float,),
+            MeasureErrorNo.RUN_TIMEOUT,
+            None,
+            build_result.time_cost + timeout,
+            time.time(),
+        )
     return res

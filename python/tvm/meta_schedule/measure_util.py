@@ -105,3 +105,35 @@ def call_func_with_timeout(timeout, func, args=(), kwargs=None):
     del que
 
     return res
+
+
+def request_remote(device_key, host=None, port=None, priority=1, timeout=60):
+    """Request a remote session.
+
+    Parameters
+    ----------
+    device_key : str
+        The device key of registered device in tracker.
+    host : Optional[str]
+        The host address of rpc tracker.
+        If is none, will use environment variable "TVM_TRACKER_HOST".
+    port : Optional[int]
+        The port of rpc tracker.
+        If is none, will use environment variable "TVM_TRACKER_PORT".
+    priority : int = 1
+        The priority of this request, larger is more prior.
+    timeout : int = 60
+        The timeout of this session in second.
+
+    Returns
+    -------
+    remote : RPCSession
+        The connected remote RPCSession.
+    """
+    # connect to the tracker
+    host = host or os.environ["TVM_TRACKER_HOST"]
+    port = port or int(os.environ["TVM_TRACKER_PORT"])
+
+    tracker = rpc.connect_tracker(host, port)
+    remote = tracker.request(device_key, priority=priority, session_timeout=timeout)
+    return remote
