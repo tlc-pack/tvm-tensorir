@@ -135,6 +135,14 @@ def var(parser, node, dtype):
     return te.var(parser.target[0], dtype)
 
 
+@register_special_stmt()
+def env_thread(parser, node, env_name):
+    """ Bind a var to thread env """
+    v = te.var(parser.target[0])
+    parser.var_env_dict[v] = env_name
+    return v
+
+
 class HybridLambda:
     """Hybrid Lambda, used in lambda expression"""
     def __init__(self, args, body):

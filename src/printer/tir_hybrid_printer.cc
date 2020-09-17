@@ -34,6 +34,7 @@
 #include <tvm/tir/stmt_functor.h>
 
 #include <algorithm>
+#include <utility>
 
 #include "doc.h"
 #include "meta_data.h"
@@ -48,7 +49,7 @@ class TIRHybridPrinter : public StmtFunctor<Doc(const Stmt&)>,
  public:
   explicit TIRHybridPrinter(bool show_meta,
                             runtime::TypedPackedFunc<std::string(Stmt)> annotate = nullptr)
-      : show_meta_(show_meta), annotate_(annotate), meta_collector_(&meta_) {}
+      : show_meta_(show_meta), annotate_(std::move(annotate)), meta_collector_(&meta_) {}
 
 
   /*! \brief Print the node */
@@ -69,6 +70,8 @@ class TIRHybridPrinter : public StmtFunctor<Doc(const Stmt&)>,
   std::unordered_set<const VarNode*> var_not_in_headers;
   /*! \brief buffer collector (buffer defined in BufferMap and BufferAllocation)*/
   std::unordered_set<const BufferNode*> buf_not_in_headers;
+  /*! \breif Map from Var to thread env name */
+  std::unordered_map<Var, String, ObjectPtrHash, ObjectPtrEqual> var_env_map_;
   /*! \brief Map from Var to Doc */
   std::unordered_map<Var, Doc, ObjectPtrHash, ObjectPtrEqual> memo_var_;
   /*! \brief Map from Buffer to Doc */
@@ -551,7 +554,7 @@ Doc TIRHybridPrinter::VisitStmt_(const AttrStmtNode* op) {
       return doc;
     }
   }
-
+  // merge attr with realize when possible
   if (op->node->IsInstance<BufferNode>() && op->attr_key == "realize_scope"
       && op->body->IsInstance<BufferRealizeNode>()) {
     const auto* realize = Downcast<BufferRealize>(op->body).get();
@@ -574,7 +577,22 @@ Doc TIRHybridPrinter::VisitStmt_(const AttrStmtNode* op) {
       return doc;
     }
   }
-
+  // concise thread env
+  if (op->node->IsInstance<IterVarNode>() && op->attr_key == "thread_extent") {
+    const auto* iter_var = Downcast<IterVar>(op->node).get();
+    CHECK(!iter_var->dom.defined());
+    var_not_in_headers.insert(iter_var->var.get());
+    var_env_map_[iter_var->var] = iter_var->thread_tag;
+    if (current_num_ != num_child_ - 1) {
+      doc << "with tir.launch_thread(" << Print(iter_var->var) << ", " << Print(op->value) << "):";
+      doc << Doc::Indent(4, Doc::NewLine() << PrintBody(op->body));
+    } else {
+      doc << "tir.launch_thread(" << Print(iter_var->var) << ", " << Print(op->value) << ")";
+      doc << Doc::NewLine() << PrintBody(op->body);
+    }
+    return doc;
+  }
+  // default
   if (current_num_ != num_child_ - 1) {
     doc << "with tir.attr(" << Print(op->node) << ", " << Doc::StrLiteral(op->attr_key) << ", "
         << Print(op->value) << "):";
@@ -937,8 +955,14 @@ Doc TIRHybridPrinter::PrintPrimFunc(const PrimFunc &primFunc) {
       vars.push_back(it.first.get());
     }
   }
-  if (!vars.empty()) {
+  if (!var_env_map_.empty()) {
     header_var << Doc::NewLine() << "# var definition";
+    for (const auto& it : var_env_map_) {
+      header_var << Doc::NewLine()
+                 << Print(it.first) << " = tir.env_thread(" << Doc::StrLiteral(it.second) << ")";
+    }
+  }
+  if (!vars.empty()) {
     std::sort(vars.begin(), vars.end(), [&](const VarNode* a, const VarNode* b) {
       return memo_var_[GetRef<Var>(a)].str() < memo_var_[GetRef<Var>(b)].str();
     });
