@@ -14,12 +14,15 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from typing import Optional
 
 import traceback
 import multiprocessing
 import signal
 import psutil
+import os
 
+from tvm import rpc
 
 MAX_ERROR_MSG_LEN = 512
 
@@ -107,7 +110,13 @@ def call_func_with_timeout(timeout, func, args=(), kwargs=None):
     return res
 
 
-def request_remote(device_key, host=None, port=None, priority=1, timeout=60):
+def request_remote(
+    device_key: str,
+    host: Optional[str] = None,
+    port: Optional[int] = None,
+    priority: int = 1,
+    timeout: int = 60,
+) -> rpc.RPCSession:
     """Request a remote session.
 
     Parameters
@@ -133,7 +142,6 @@ def request_remote(device_key, host=None, port=None, priority=1, timeout=60):
     # connect to the tracker
     host = host or os.environ["TVM_TRACKER_HOST"]
     port = port or int(os.environ["TVM_TRACKER_PORT"])
-
     tracker = rpc.connect_tracker(host, port)
     remote = tracker.request(device_key, priority=priority, session_timeout=timeout)
     return remote
