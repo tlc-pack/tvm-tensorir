@@ -28,13 +28,12 @@ namespace tvm {
 namespace meta_schedule {
 
 using runtime::PackedFunc;
-using runtime::TypedPackedFunc;
 
 class Rule {
  public:
   String name;
-  TypedPackedFunc<bool(Schedule, BlockRV)> meets;
-  TypedPackedFunc<std::string(Schedule, BlockRV)> apply;
+  runtime::TypedPackedFunc<bool(Schedule, BlockRV)> meets;
+  runtime::TypedPackedFunc<std::string(Schedule, BlockRV)> apply;
 
   explicit Rule(String name, const PackedFunc* meets, const PackedFunc* apply)
       : name(name), meets(*meets), apply(*apply) {}

@@ -72,8 +72,6 @@ enum class MeasureErrorNO : int {
 
 /********** MeasureInput **********/
 
-// Inputs and results of one measurement
-
 class MeasureInput;
 
 /*! \brief Store the input of a measurement */
@@ -145,7 +143,7 @@ class BuildResult : public ObjectRef {
    * \param error_msg The error message if there is any error.
    * \param time_cost The time cost of build.
    */
-  BuildResult(String filename, int error_no, String error_msg, double time_cost);
+  explicit BuildResult(String filename, int error_no, String error_msg, double time_cost);
   TVM_DEFINE_OBJECT_REF_METHODS(BuildResult, ObjectRef, BuildResultNode);
 };
 
@@ -196,8 +194,8 @@ class MeasureResult : public ObjectRef {
    * \param all_cost The time cost of build and run.
    * \param timestamp The time stamps of this measurement.
    */
-  MeasureResult(Array<PrimExpr> costs, int error_no, String error_msg, double all_cost,
-                double timestamp);
+  explicit MeasureResult(Array<PrimExpr> costs, int error_no, String error_msg, double all_cost,
+                         double timestamp);
 
   TVM_DEFINE_OBJECT_REF_METHODS(MeasureResult, ObjectRef, MeasureResultNode);
 };
@@ -221,7 +219,7 @@ class ProgramBuilderNode : public Object {
    * building.
    * \return An Array of MeasureResult.
    */
-  virtual Array<BuildResult> Build(const Array<MeasureInput>& inputs, int verbose) = 0;
+  virtual Array<BuildResult> Build(const Array<MeasureInput>& inputs, int verbose) const = 0;
 
   static constexpr const char* _type_key = "meta_schedule.ProgramBuilder";
   TVM_DECLARE_BASE_OBJECT_INFO(ProgramBuilderNode, Object);
@@ -265,7 +263,7 @@ class ProgramRunnerNode : public Object {
    * \return An Array of MeasureResult.
    */
   virtual Array<MeasureResult> Run(const Array<MeasureInput>& inputs,
-                                   const Array<BuildResult>& build_results, int verbose) = 0;
+                                   const Array<BuildResult>& build_results, int verbose) const = 0;
 
   static constexpr const char* _type_key = "meta_schedule.ProgramRunner";
   TVM_DECLARE_BASE_OBJECT_INFO(ProgramRunnerNode, Object);
@@ -290,7 +288,7 @@ class LocalBuilderNode : public ProgramBuilderNode {
 
   ~LocalBuilderNode() = default;
 
-  Array<BuildResult> Build(const Array<MeasureInput>& inputs, int verbose) override;
+  Array<BuildResult> Build(const Array<MeasureInput>& inputs, int verbose) const override;
 
   static constexpr const char* _type_key = "meta_schedule.LocalBuilder";
   TVM_DECLARE_FINAL_OBJECT_INFO(LocalBuilderNode, ProgramBuilderNode);
@@ -309,7 +307,7 @@ class LocalBuilder : public ProgramBuilder {
    * \param n_parallel The number of threads used to build in parallel.
    * \param build_func The name of the registered build function.
    */
-  LocalBuilder(int timeout, int n_parallel, const String& build_func);
+  explicit LocalBuilder(int timeout, int n_parallel, const String& build_func);
 
   TVM_DEFINE_OBJECT_REF_METHODS(LocalBuilder, ProgramBuilder, LocalBuilderNode);
 };
@@ -337,7 +335,7 @@ class RPCRunnerNode : public ProgramRunnerNode {
   ~RPCRunnerNode() = default;
 
   Array<MeasureResult> Run(const Array<MeasureInput>& inputs,
-                           const Array<BuildResult>& build_results, int verbose) override;
+                           const Array<BuildResult>& build_results, int verbose) const override;
 
   static constexpr const char* _type_key = "meta_schedule.RPCRunner";
   TVM_DECLARE_FINAL_OBJECT_INFO(RPCRunnerNode, ProgramRunnerNode);
@@ -364,11 +362,45 @@ class RPCRunner : public ProgramRunner {
    * \param cooldown_interval The cool down interval between two measurements.
    * \param enable_cpu_cache_flush Whether to flush cache on CPU between repeated measurements.
    */
-  RPCRunner(const String& key, const String& host, int port, int priority, int n_parallel,
-            int timeout, int number, int repeat, int min_repeat_ms, double cooldown_interval,
-            bool enable_cpu_cache_flush);
+  explicit RPCRunner(const String& key, const String& host, int port, int priority, int n_parallel,
+                     int timeout, int number, int repeat, int min_repeat_ms,
+                     double cooldown_interval, bool enable_cpu_cache_flush);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(RPCRunner, ProgramRunner, RPCRunnerNode);
+};
+
+/********** ProgramMeasurer **********/
+
+/*!
+ * \brief Measurer that measures the time costs of tvm programs
+ * This class combines ProgramBuilder and ProgramRunner and provides a simpler API */
+class ProgramMeasurerNode : public Object {
+ public:
+  /*! \brief The ProgramBuilder to build each program. */
+  ProgramBuilder builder;
+  /*! \brief The ProgramRunner to measure each program. */
+  ProgramRunner runner;
+  /*! \brief Verbosity level. 0 for silent, 1 to output information during program measuring. */
+  int verbose;
+
+  /*! \brief Reset book keeping variables */
+  void Reset();
+
+  Array<MeasureResult> Measure(const Array<MeasureInput>& measure_inputs) const;
+
+  static constexpr const char* _type_key = "meta_schedule.ProgramMeasurer";
+  TVM_DECLARE_FINAL_OBJECT_INFO(ProgramMeasurerNode, Object);
+};
+
+/*!
+ * \brief Managed reference to ProgramMeasurerNode.
+ * \sa ProgramMeasurerNode
+ */
+class ProgramMeasurer : public ObjectRef {
+ public:
+  explicit ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner, int verbose);
+
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(ProgramMeasurer, ObjectRef, ProgramMeasurerNode);
 };
 
 }  // namespace meta_schedule

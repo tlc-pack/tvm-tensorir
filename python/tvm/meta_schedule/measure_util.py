@@ -18,6 +18,7 @@ from typing import Optional
 
 import traceback
 import multiprocessing
+import multiprocessing.pool
 import signal
 import psutil
 import os

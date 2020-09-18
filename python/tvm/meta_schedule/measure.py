@@ -69,6 +69,9 @@ class MeasureErrorNo:
 
 @register_object("meta_schedule.MeasureInput")
 class MeasureInput(Object):
+
+    # TODO
+
     """Store the input of a measurement.
 
     Parameters
@@ -98,6 +101,11 @@ class BuildResult(Object):
     time_cost : float
         The time cost of build.
     """
+
+    filename: str
+    error_no: int
+    error_msg: str
+    time_cost: float
 
     def __init__(
         self,
@@ -135,6 +143,12 @@ class MeasureResult(Object):
     timestamp : float
         The time stamps of this measurement.
     """
+
+    costs: List[float]
+    error_no: int
+    error_msg: Optional[str]
+    all_cost: float
+    timestamp: float
 
     def __init__(
         self,

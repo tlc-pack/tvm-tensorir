@@ -32,6 +32,7 @@ TVM_REGISTER_OBJECT_TYPE(ProgramRunnerNode);
 TVM_REGISTER_OBJECT_TYPE(ProgramBuilderNode);
 TVM_REGISTER_OBJECT_TYPE(LocalBuilderNode);
 TVM_REGISTER_OBJECT_TYPE(RPCRunnerNode);
+TVM_REGISTER_OBJECT_TYPE(ProgramMeasurerNode);
 
 static const char* ErrorNoToStr[] = {
     "NoError",
@@ -99,6 +100,14 @@ RPCRunner::RPCRunner(const String& key, const String& host, int port, int priori
   data_ = std::move(n);
 }
 
+ProgramMeasurer::ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner, int verbose) {
+  ObjectPtr<ProgramMeasurerNode> n = make_object<ProgramMeasurerNode>();
+  n->builder = std::move(builder);
+  n->runner = std::move(runner);
+  n->verbose = verbose;
+  data_ = std::move(n);
+}
+
 /********** Shallow copy functions **********/
 
 MeasureInput MeasureInputNode::copy() const {
@@ -119,7 +128,7 @@ MeasureResult MeasureResultNode::copy() const {
 
 /********** LocalBuilder **********/
 
-Array<BuildResult> LocalBuilderNode::Build(const Array<MeasureInput>& inputs, int verbose) {
+Array<BuildResult> LocalBuilderNode::Build(const Array<MeasureInput>& inputs, int verbose) const {
   if (const auto* f = runtime::Registry::Get("meta_schedule.local_builder.build")) {
     Array<BuildResult> results = (*f)(inputs, timeout, n_parallel, build_func, verbose);
     return results;
@@ -133,7 +142,8 @@ Array<BuildResult> LocalBuilderNode::Build(const Array<MeasureInput>& inputs, in
 /********** RPCRunner **********/
 
 Array<MeasureResult> RPCRunnerNode::Run(const Array<MeasureInput>& inputs,
-                                        const Array<BuildResult>& build_results, int verbose) {
+                                        const Array<BuildResult>& build_results,
+                                        int verbose) const {
   if (const auto* f = runtime::Registry::Get("meta_schedule.rpc_runner.run")) {
     Array<MeasureResult> results =
         (*f)(inputs, build_results, key, host, port, priority, n_parallel, timeout, number, repeat,
@@ -144,6 +154,14 @@ Array<MeasureResult> RPCRunnerNode::Run(const Array<MeasureInput>& inputs,
              << "This is a function registered in Python, "
              << "make sure the TVM Python runtime has been loaded successfully.";
   throw;
+}
+
+/********** ProgramMeasurer **********/
+
+Array<MeasureResult> ProgramMeasurerNode::Measure(const Array<MeasureInput>& measure_inputs) const {
+  Array<BuildResult> build_results = builder->Build(measure_inputs, verbose);
+  Array<MeasureResult> measure_results = runner->Run(measure_inputs, build_results, verbose);
+  return measure_results;
 }
 
 /********** Printing functions **********/
