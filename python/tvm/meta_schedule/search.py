@@ -16,16 +16,23 @@
 # under the License.
 """ Search API """
 
-from typing import List, Union
+from typing import List, Optional
 
 from tvm.tir import PrimFunc
 
 from . import _ffi_api
+from .measure import MeasureCallback, ProgramBuilder, ProgramRunner
+from .search_policy import SearchPolicy
+from .search_task import SearchTask
 
-Rule = str
 
-
-def search(func: PrimFunc, rules: Union[Rule, List[Rule]], policy: str) -> None:
-    if not isinstance(rules, list):
-        rules = [rules]
-    _ffi_api.SearchRules(func, rules, policy)
+def search(
+    task: SearchTask,
+    policy: SearchPolicy,
+    builder: ProgramBuilder,
+    runner: ProgramRunner,
+    measure_callbacks: Optional[List[MeasureCallback]] = None,
+) -> PrimFunc:
+    if measure_callbacks is None:
+        measure_callbacks = []
+    pass

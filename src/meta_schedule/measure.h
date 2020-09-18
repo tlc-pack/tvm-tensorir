@@ -410,7 +410,7 @@ class MeasureCallbackNode : public Object {
    */
   virtual void Callback(const SearchPolicy& policy, const Array<MeasureInput>& inputs,
                         const Array<MeasureResult>& results) = 0;
-  static constexpr const char* _type_key = "meta_scheduler.MeasureCallback";
+  static constexpr const char* _type_key = "meta_schedule.MeasureCallback";
   TVM_DECLARE_BASE_OBJECT_INFO(MeasureCallbackNode, Object);
 };
 

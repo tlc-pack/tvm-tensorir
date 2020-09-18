@@ -379,17 +379,17 @@ struct Internal {
   static void ReplayOnce(Schedule sch) { return sch->ReplayOnce(); }
 };
 
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.Create").set_body_typed(Internal::Create);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.Eval").set_body_typed(Internal::Eval);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.SampleTileFactor")
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCreate").set_body_typed(Internal::Create);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleEval").set_body_typed(Internal::Eval);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleTileFactor")
     .set_body_typed(Internal::SampleTileFactor);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.GetBlock").set_body_typed(Internal::GetBlock);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.GetAxes").set_body_typed(Internal::GetAxes);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.Split").set_body_typed(Internal::Split);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.Reorder").set_body_typed(Internal::Reorder);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.DecomposeReduction")
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetBlock").set_body_typed(Internal::GetBlock);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetAxes").set_body_typed(Internal::GetAxes);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSplit").set_body_typed(Internal::Split);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReorder").set_body_typed(Internal::Reorder);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleDecomposeReduction")
     .set_body_typed(Internal::DecomposeReduction);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.ReplayOnce").set_body_typed(Internal::ReplayOnce);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReplayOnce").set_body_typed(Internal::ReplayOnce);
 
 }  // namespace meta_schedule
 }  // namespace tvm

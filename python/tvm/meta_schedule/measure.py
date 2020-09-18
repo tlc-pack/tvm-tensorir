@@ -45,13 +45,8 @@ from tvm.driver import build
 from tvm.runtime import Object, ndarray
 
 from . import _ffi_api
-from .measure_util import (
-    NoDaemonPool,
-    call_func_with_timeout,
-    check_remote,
-    make_error_msg,
-    request_remote,
-)
+from .measure_util import (NoDaemonPool, call_func_with_timeout, check_remote,
+                           make_error_msg, request_remote)
 from .schedule import Schedule
 from .search_task import SearchTask
 
@@ -121,8 +116,10 @@ class BuildResult(Object):
         error_msg: Optional[str],
         time_cost: float,
     ):
-        filename = filename if filename is not None else ""
-        error_msg = error_msg if error_msg is not None else ""
+        if filename is None:
+            filename = ""
+        if error_msg is None:
+            error_msg = ""
 
         self.__init_handle_by_constructor__(
             _ffi_api.BuildResult,  # pylint: disable=no-member
@@ -165,7 +162,8 @@ class MeasureResult(Object):
         all_cost: float,
         timestamp: float,
     ):
-        error_msg = error_msg if error_msg is None else ""
+        if error_msg is None:
+            error_msg = ""
         self.__init_handle_by_constructor__(
             _ffi_api.MeasureResult,  # pylint: disable=no-member
             costs,
@@ -262,9 +260,8 @@ class LocalBuilder(ProgramBuilder):
         n_parallel: Optional[int] = None,
         build_func: str = "tar",
     ):
-        n_parallel = (
-            n_parallel if n_parallel is not None else multiprocessing.cpu_count()
-        )
+        if n_parallel is None:
+            n_parallel = multiprocessing.cpu_count()
         self.__init_handle_by_constructor__(
             _ffi_api.LocalBuilder,  #  pylint: disable=no-member
             timeout,
@@ -326,6 +323,14 @@ class RPCRunner(ProgramRunner):
                 "'python -m tvm.exec.query_rpc_tracker --port [THE PORT YOU USE]' "
                 "and make sure you have free devices on the queue status."
             )
+
+
+########## MeasureCallback ##########
+
+
+@register_object("meta_schedule.MeasureCallback")
+class MeasureCallback(Object):
+    """ The base class of measurement callback functions. """
 
 
 ########## Worker of LocalBuilder ##########

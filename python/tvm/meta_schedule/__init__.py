@@ -15,22 +15,22 @@
 # specific language governing permissions and limitations
 # under the License.
 from ..ir import PrimExpr as ExprRV
-from . import helpers, instruction, measure
+from . import helpers  # TODO(@junrushao1994)
+from .measure import LocalBuilder, RPCRunner
 from .random_variable import BlockRV, LoopRV
 from .schedule import Schedule
 from .search import search
 from .search_policy import ScheduleFn
 from .search_task import SearchTask
-from .measure import LocalBuilder, RPCRunner
 
 __all__ = [
     "ExprRV",
+    "LocalBuilder",
+    "RPCRunner",
     "BlockRV",
     "LoopRV",
     "Schedule",
     "search",
     "ScheduleFn",
     "SearchTask",
-    "LocalBuilder",
-    "RPCRunner"
 ]
