@@ -71,6 +71,21 @@ enum class MeasureErrorNO : int {
   kUnknownError = 8,
 };
 
+inline const char* MeasureErrorNOToStr(MeasureErrorNO error_no) {
+  static const char* names[] = {
+      "NoError",
+      "InstantiationError",
+      "CompileHostError",
+      "CompileDeviceError",
+      "RuntimeDeviceError",
+      "WrongAnswerError",
+      "BuildTimeoutError",
+      "RunTimeoutError",
+      "UnknownError",
+  };
+  return names[static_cast<int>(error_no)];
+}
+
 /********** MeasureInput **********/
 
 class MeasureInput;

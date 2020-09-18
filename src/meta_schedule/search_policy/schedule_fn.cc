@@ -72,7 +72,9 @@ Schedule ScheduleFnNode::Search(SearchTask task, ProgramMeasurer measurer, int v
     CHECK_EQ(measure_results.size(), 1);
     MeasureResult measure_result = measure_results[0];
     if (measure_result->error_no != 0) {
-      LOG(INFO) << "[Failed] error_msg = " << measure_result->error_msg;
+      LOG(INFO) << "[Failed] error_no = "
+                << MeasureErrorNOToStr(static_cast<MeasureErrorNO>(measure_result->error_no))
+                << ", error_msg = " << measure_result->error_msg;
     } else {
       LOG(INFO) << "[Success] measure_result = " << measure_result;
     }

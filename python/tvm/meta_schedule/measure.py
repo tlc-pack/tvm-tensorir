@@ -42,11 +42,17 @@ from tvm._ffi import register_func, register_object
 from tvm.contrib import ndk as build_func_ndk
 from tvm.contrib import tar as build_func_tar
 from tvm.driver import build
-from tvm.runtime import Object, ndarray
+from tvm.runtime import Object
 
 from . import _ffi_api
-from .measure_util import (NoDaemonPool, call_func_with_timeout, check_remote,
-                           make_error_msg, request_remote)
+from .measure_util import (
+    NoDaemonPool,
+    call_func_with_timeout,
+    check_remote,
+    make_error_msg,
+    request_remote,
+    realize_arguments,
+)
 from .schedule import Schedule
 from .search_task import SearchTask
 
@@ -431,7 +437,11 @@ def local_builder_worker(
             filename = osp.join(dirname, "tmp_func." + build_func.output_format)
 
             try:
-                func = build(measure_input.sch, target="llvm")
+                func = build(
+                    measure_input.sch.sch.func,
+                    target=measure_input.task.target,
+                    target_host=measure_input.task.target_host,
+                )
                 func.export_library(filename, build_func)
             except Exception:  # pylint: disable=broad-except
                 error_no = MeasureErrorNo.COMPILE_HOST
@@ -598,7 +608,7 @@ def rpc_runner_worker(
     repeat: int
     min_repeat_ms: int
     cooldown_interval: float
-    enable_cpu_cache_flush: bool
+    enable_cpu_cache_flush: bool  # pylint: disable=unused-variable
     verbose: int
     (
         measure_inputs,
@@ -640,54 +650,43 @@ def rpc_runner_worker(
             remote = request_remote(key, host, port, priority, timeout)
             remote.upload(build_result.filename)
             func = remote.load_module(osp.split(build_result.filename)[1])
+            # TODO(@junrushao1994): rebase and fix this
             ctx = remote.context(str(measure_input.task.target), 0)
             # Limitation:
             # We can not get PackFunction directly in the remote mode as it is wrapped
             # under the std::function. We could lift the restriction later once we fold
             # the PackedFunc as an object. Currently, we pass function name to work
             # around it.
-            f_prepare = (
-                "cache_flush_cpu_non_first_arg" if enable_cpu_cache_flush else ""
-            )
+            # f_prepare = (
+            #     "cache_flush_cpu_non_first_arg" if enable_cpu_cache_flush else ""
+            # )
             time_f = func.time_evaluator(
-                func.entry_name,
-                ctx,
+                func_name=func.entry_name,
+                ctx=ctx,
                 number=number,
                 repeat=repeat,
                 min_repeat_ms=min_repeat_ms,
-                f_preproc=f_prepare,
+                # f_preproc=f_prepare,  # TODO(@junrushao1994): rebase and enable this
             )
-        # pylint: disable=broad-except
-        except Exception:
+        except Exception:  # pylint: disable=broad-except
             costs = (max_float,)
             error_no = MeasureErrorNo.COMPILE_DEVICE
             error_msg = make_error_msg()
 
         if error_no == 0:
             try:
-                # TODO(@junrushao1994): rework this
-                args = [ndarray.empty(x.shape, x.dtype, ctx) for x in build_result.args]
-                try:
-                    random_fill = remote.get_function("tvm.contrib.random.random_fill")
-                except AttributeError:
-                    raise AttributeError(
-                        "Please make sure USE_RANDOM is ON in the config.cmake "
-                        "on the remote devices"
-                    )
-                for arg in args:
-                    random_fill(arg)
+                args = realize_arguments(remote, ctx, measure_input.task.build_args)
                 ctx.sync()
-
                 costs = time_f(*args).results
+            except Exception:  # pylint: disable=broad-except
+                costs = (max_float,)
+                error_no = MeasureErrorNo.RUNTIME_DEVICE
+                error_msg = make_error_msg()
+            finally:
                 # clean up remote files
                 remote.remove(build_result.filename)
                 remote.remove(osp.splitext(build_result.filename)[0] + ".so")
                 remote.remove("")
-            # pylint: disable=broad-except
-            except Exception:
-                costs = (max_float,)
-                error_no = MeasureErrorNo.RUNTIME_DEVICE
-                error_msg = make_error_msg()
 
         shutil.rmtree(osp.dirname(build_result.filename))
         toc = time.time()

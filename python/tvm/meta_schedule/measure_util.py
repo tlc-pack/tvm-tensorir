@@ -26,6 +26,7 @@ from typing import Optional
 import psutil
 
 from tvm import rpc
+from tvm.runtime import ndarray
 
 MAX_ERROR_MSG_LEN = int(1e9)
 
@@ -182,3 +183,22 @@ def check_remote(device_key, host=None, port=None, priority=100, timeout=10):
     t.start()
     t.join(timeout)
     return not t.is_alive()
+
+
+def realize_arguments(_remote, ctx, build_args):
+    args = []
+    for arg in build_args:
+        assert arg[0] == "TENSOR"
+        shape, dtype = arg[1], arg[2]
+        args.append(ndarray.empty(shape=shape, dtype=dtype, ctx=ctx))
+    # TODO(@junrushao1994): rebase and enable this
+    # try:
+    #     f_random_fill = remote.get_function("tvm.contrib.random.random_fill")
+    # except AttributeError:
+    #     raise AttributeError(
+    #         "Please make sure USE_RANDOM is ON in the config.cmake "
+    #         "on the remote devices"
+    #     )
+    # for array in ndarrays:
+    #     f_random_fill(array)
+    return args

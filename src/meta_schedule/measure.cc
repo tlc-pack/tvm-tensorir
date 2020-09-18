@@ -25,18 +25,6 @@
 namespace tvm {
 namespace meta_schedule {
 
-static const char* ErrorNoToStr[] = {
-    "NoError",
-    "InstantiationError",
-    "CompileHostError",
-    "CompileDeviceError",
-    "RuntimeDeviceError",
-    "WrongAnswerError",
-    "BuildTimeoutError",
-    "RunTimeoutError",
-    "UnknownError",
-};
-
 /********** Constructors **********/
 
 MeasureInput::MeasureInput(SearchTask task, Schedule sch) {
@@ -183,7 +171,8 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
                   << "Tstamp:" << node->timestamp << ")";
       } else {
         p->stream << "MeasureResult("
-                  << "error_type:" << ErrorNoToStr[node->error_no] << ", "
+                  << "error_type:"
+                  << MeasureErrorNOToStr(static_cast<MeasureErrorNO>(node->error_no)) << ", "
                   << "error_msg:" << node->error_msg << ", "
                   << "all_cost:" << node->all_cost << ", "
                   << "Tstamp:" << node->timestamp << ")";
