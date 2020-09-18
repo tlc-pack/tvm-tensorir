@@ -27,7 +27,7 @@ import psutil
 
 from tvm import rpc
 
-MAX_ERROR_MSG_LEN = 512
+MAX_ERROR_MSG_LEN = int(1e9)
 
 
 def make_error_msg() -> str:

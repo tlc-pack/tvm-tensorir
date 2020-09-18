@@ -37,6 +37,9 @@ Schedule::Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction
   data_ = std::move(n);
 }
 
+Schedule::Schedule(tir::PrimFunc orig_func)
+    : Schedule(orig_func, tir::ScheduleNode::Create(orig_func), {}, {}, Sampler(DeviceRand)) {}
+
 /**************** Evaluation ****************/
 
 tir::StmtSRef ScheduleNode::Eval(const BlockRV& block) { return block->block.value(); }

@@ -412,12 +412,12 @@ def local_builder_worker(
     verbose: int
     measure_inputs, build_func, timeout, verbose = LOCAL_BUILDER_WORKER_ARGS
 
-    if build_func == "default":
+    if build_func == "tar":
         build_func = build_func_tar.tar
     elif build_func == "ndk":
         build_func = build_func_ndk.create_shared
     else:
-        raise ValueError("Invalid build_func" + build_func)
+        raise ValueError("Invalid build_func: " + build_func)
 
     def timed_func():
         tic = time.time()
@@ -463,7 +463,7 @@ def local_builder_worker(
 RPC_RUNNER_WORKER_ARGS = None
 
 
-@register_func("auto_scheduler.rpc_runner.run")
+@register_func("meta_schedule.rpc_runner.run")
 def rpc_runner_run(
     measure_inputs: List[MeasureInput],
     build_results: List[BuildResult],

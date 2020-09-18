@@ -161,6 +161,11 @@ class Schedule : public ObjectRef {
    */
   explicit Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
                     SymbolTable sym_tab, Sampler sampler);
+  /*!
+   * \brief Constructor: other fields are created with default value
+   * \param orig_func The original TIR PrimFunc to be scheduled
+   */
+  explicit Schedule(tir::PrimFunc orig_func);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
 };

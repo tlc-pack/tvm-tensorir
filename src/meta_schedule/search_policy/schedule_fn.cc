@@ -63,7 +63,20 @@ ScheduleFn::ScheduleFn(String sch_fn) {
 /********** Searching **********/
 
 Schedule ScheduleFnNode::Search(SearchTask task, ProgramMeasurer measurer, int verbose) {
-  // TODO(@junrushao19994)
+  measurer->Reset();
+  for (int iteration = 0; iteration < 1; ++iteration) {
+    Schedule sch(task->func);
+    this->sch_fn_(sch);
+    MeasureInput measure_input(task, sch);
+    Array<MeasureResult> measure_results = measurer->Measure({measure_input}, verbose);
+    CHECK_EQ(measure_results.size(), 1);
+    MeasureResult measure_result = measure_results[0];
+    if (measure_result->error_no != 0) {
+      LOG(INFO) << "[Failed] error_msg = " << measure_result->error_msg;
+    } else {
+      LOG(INFO) << "[Success] measure_result = " << measure_result;
+    }
+  }
   return Schedule(nullptr);
 }
 

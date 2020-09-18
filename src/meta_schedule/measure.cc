@@ -151,6 +151,8 @@ Array<MeasureResult> RPCRunnerNode::Run(const Array<MeasureInput>& inputs,
 
 /********** ProgramMeasurer **********/
 
+void ProgramMeasurerNode::Reset() {}
+
 Array<MeasureResult> ProgramMeasurerNode::Measure(const Array<MeasureInput>& measure_inputs,
                                                   int verbose) const {
   Array<BuildResult> build_results = builder->Build(measure_inputs, verbose);

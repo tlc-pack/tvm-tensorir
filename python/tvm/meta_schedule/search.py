@@ -19,7 +19,8 @@
 from typing import List, Optional, Union
 
 from . import _ffi_api
-from .measure import LocalBuilder, MeasureCallback, ProgramBuilder, ProgramRunner
+from .measure import (LocalBuilder, MeasureCallback, ProgramBuilder,
+                      ProgramRunner)
 from .schedule import Schedule
 from .search_policy import SearchPolicy
 from .search_task import SearchTask
