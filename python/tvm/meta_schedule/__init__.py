@@ -19,5 +19,18 @@ from . import helpers, instruction, measure
 from .random_variable import BlockRV, LoopRV
 from .schedule import Schedule
 from .search import search
-from .search_policy import SearchPolicy, ScheduleFn
+from .search_policy import ScheduleFn
 from .search_task import SearchTask
+from .measure import LocalBuilder, RPCRunner
+
+__all__ = [
+    "ExprRV",
+    "BlockRV",
+    "LoopRV",
+    "Schedule",
+    "search",
+    "ScheduleFn",
+    "SearchTask",
+    "LocalBuilder",
+    "RPCRunner"
+]

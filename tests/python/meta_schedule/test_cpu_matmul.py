@@ -160,6 +160,8 @@ def test_matmul_tiling_search():
         num_measures_per_round=1,
         early_stopping=-1,
     )
+    builder = ms.LocalBuilder()
+    runner = ms.RPCRunner(key="local9090", host="0.0.0.0", port=9089)
     # ms.search(
     #     func=_get_prim_func_from_hybrid(conv2d),
     #     rules=["test_multi_level_tiling"],

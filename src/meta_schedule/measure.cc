@@ -32,7 +32,8 @@ TVM_REGISTER_OBJECT_TYPE(ProgramRunnerNode);
 TVM_REGISTER_OBJECT_TYPE(ProgramBuilderNode);
 TVM_REGISTER_NODE_TYPE(LocalBuilderNode);
 TVM_REGISTER_NODE_TYPE(RPCRunnerNode);
-TVM_REGISTER_OBJECT_TYPE(ProgramMeasurerNode);
+TVM_REGISTER_OBJECT_TYPE(MeasureCallbackNode);
+TVM_REGISTER_NODE_TYPE(ProgramMeasurerNode);
 
 static const char* ErrorNoToStr[] = {
     "NoError",

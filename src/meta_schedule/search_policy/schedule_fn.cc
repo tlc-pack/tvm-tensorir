@@ -68,7 +68,9 @@ ScheduleFn::ScheduleFn(String sch_fn, int num_measure_trials, int num_measures_p
 
 /********** Searching **********/
 
-Schedule ScheduleFnNode::Search(SearchTask task, ProgramMeasurer measurer, int verbose) {}
+Schedule ScheduleFnNode::Search(SearchTask task, ProgramMeasurer measurer, int verbose) {
+  // TODO(@junrushao19994)
+}
 
 /********** Searching **********/
 

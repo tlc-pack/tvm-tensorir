@@ -393,6 +393,36 @@ class RPCRunner : public ProgramRunner {
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(RPCRunner, ProgramRunner, RPCRunnerNode);
 };
 
+/********** MeasureCallback **********/
+
+class SearchPolicy;
+
+/*! \brief Bass class of measurement callbacks */
+class MeasureCallbackNode : public Object {
+ public:
+  virtual ~MeasureCallbackNode() = default;
+  /*!
+   * \brief Callback function that will be called on measurement input/result pairs
+   * after each measurement batch.
+   * \param policy The current search policy.
+   * \param inputs An Array of MeasureInput.
+   * \param results An Array of MeasureResult.
+   */
+  virtual void Callback(const SearchPolicy& policy, const Array<MeasureInput>& inputs,
+                        const Array<MeasureResult>& results) = 0;
+  static constexpr const char* _type_key = "meta_scheduler.MeasureCallback";
+  TVM_DECLARE_BASE_OBJECT_INFO(MeasureCallbackNode, Object);
+};
+
+/*!
+ * \brief Managed reference to MeasureCallbackNode.
+ * \sa MeasureCallbackNode
+ */
+class MeasureCallback : public ObjectRef {
+ public:
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(MeasureCallback, ObjectRef, MeasureCallbackNode);
+};
+
 /********** ProgramMeasurer **********/
 
 /*!
@@ -404,6 +434,14 @@ class ProgramMeasurerNode : public Object {
   ProgramBuilder builder;
   /*! \brief The ProgramRunner to measure each program. */
   ProgramRunner runner;
+  /*! \brief MeasureCallback to be called after each measure batch. */
+  Array<MeasureCallback> callbacks;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("builder", &builder);
+    v->Visit("runner", &runner);
+    v->Visit("callbacks", &callbacks);
+  }
 
   /*! \brief Reset book keeping variables */
   void Reset();
