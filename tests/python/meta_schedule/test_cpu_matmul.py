@@ -147,6 +147,7 @@ def test_matmul_tiling_search():
     sch = ms.search(
         task=ms.SearchTask(
             matmul,
+            task_name="matmul",
             build_args=[
                 ("TENSOR", (1024, 1024), "float32"),
                 ("TENSOR", (1024, 1024), "float32"),

@@ -30,16 +30,23 @@ class SearchTask(Object):
     """ defined in src/meta_schedule/search_task.h """
 
     func: PrimFunc
+    task_name: str
     build_args: List[Any]
     target: Target
     target_host: Target
 
     def __init__(
-        self, func: PrimFunc, build_args: List[Any], target: Target, target_host: Target
+        self,
+        func: PrimFunc,
+        task_name: str,
+        build_args: List[Any],
+        target: Target,
+        target_host: Target,
     ):
         self.__init_handle_by_constructor__(
             _ffi_api.SearchTask,  # pylint: disable=no-member
             func,
+            task_name,
             build_args,
             target,
             target_host,

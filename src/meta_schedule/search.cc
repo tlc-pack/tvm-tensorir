@@ -17,7 +17,7 @@
  * under the License.
  */
 
-#include "./search.h"
+#include "./search.h"  // NOLINT(build/include)
 
 namespace tvm {
 namespace meta_schedule {
