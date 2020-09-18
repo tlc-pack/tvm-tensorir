@@ -14,8 +14,9 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from tvm._ffi import register_object as register_object
-from tvm.runtime import Object as Object
+""" Meta Schedule Instructions """
+from tvm._ffi import register_object
+from tvm.runtime import Object
 
 
 @register_object("meta_schedule.Instruction")

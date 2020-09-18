@@ -14,6 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+""" Description of a search task """
 from typing import Any, List
 
 from tvm._ffi import register_object

@@ -102,10 +102,12 @@ RPCRunner::RPCRunner(String key, String host, int port, int priority, int n_para
   data_ = std::move(n);
 }
 
-ProgramMeasurer::ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner) {
+ProgramMeasurer::ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner,
+                                 Array<MeasureCallback> callbacks) {
   ObjectPtr<ProgramMeasurerNode> n = make_object<ProgramMeasurerNode>();
   n->builder = std::move(builder);
   n->runner = std::move(runner);
+  n->callbacks = std::move(callbacks);
   data_ = std::move(n);
 }
 

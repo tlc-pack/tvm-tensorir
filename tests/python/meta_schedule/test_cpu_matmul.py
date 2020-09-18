@@ -144,29 +144,29 @@ def test_conv2d_tiling_rule():
 
 
 def test_matmul_tiling_search():
-    task = ms.SearchTask(
-        matmul,
-        build_args=[
-            ("TENSOR", (1024, 1024), "float32"),
-            ("TENSOR", (1024, 1024), "float32"),
-            ("TENSOR", (1024, 1024), "float32"),
-        ],
-        target=create_target("llvm"),
-        target_host=create_target("llvm"),
+    sch = ms.search(
+        task=ms.SearchTask(
+            matmul,
+            build_args=[
+                ("TENSOR", (1024, 1024), "float32"),
+                ("TENSOR", (1024, 1024), "float32"),
+                ("TENSOR", (1024, 1024), "float32"),
+            ],
+            target=create_target("llvm"),
+            target_host=create_target("llvm"),
+        ),
+        policy=ms.ScheduleFn(
+            sch_fn="test_schedule_matmul",
+            num_measure_trials=10,
+            num_measures_per_round=1,
+            early_stopping=-1,
+        ),
+        builder="local",
+        runner=ms.RPCRunner(key="local", host="0.0.0.0", port=9089),
+        measure_callbacks=None,
+        verbose=1,
     )
-    policy = ms.ScheduleFn(
-        sch_fn="test_schedule_matmul",
-        num_measure_trials=10,
-        num_measures_per_round=1,
-        early_stopping=-1,
-    )
-    builder = ms.LocalBuilder()
-    runner = ms.RPCRunner(key="local9090", host="0.0.0.0", port=9089)
-    # ms.search(
-    #     func=_get_prim_func_from_hybrid(conv2d),
-    #     rules=["test_multi_level_tiling"],
-    #     policy="random",
-    # )
+    print(sch)
 
 
 if __name__ == "__main__":

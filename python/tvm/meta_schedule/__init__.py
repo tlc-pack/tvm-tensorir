@@ -14,6 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+""" Meta Schedule """
 from ..ir import PrimExpr as ExprRV
 from . import helpers  # TODO(@junrushao1994)
 from .measure import LocalBuilder, RPCRunner

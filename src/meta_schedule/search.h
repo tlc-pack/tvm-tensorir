@@ -19,16 +19,17 @@
 #ifndef SRC_META_SCHEDULE_SEARCH_H_
 #define SRC_META_SCHEDULE_SEARCH_H_
 
+#include "./measure.h"
+#include "./schedule.h"
+#include "./search_policy.h"
+#include "./search_task.h"
+
 namespace tvm {
 namespace meta_schedule {
 
-class ProgramBuilder;
-class ProgramRunner;
-class SearchTask;
-class SearchPolicy;
-
-void Search(const SearchTask& task, const SearchPolicy& policy, const ProgramBuilder& builder,
-            const ProgramRunner& runner);
+TVM_DLL Schedule Search(const SearchTask& task, const SearchPolicy& policy,
+                        const ProgramBuilder& builder, const ProgramRunner& runner,
+                        const Array<MeasureCallback>& measure_callbacks, int verbose);
 
 }  // namespace meta_schedule
 }  // namespace tvm

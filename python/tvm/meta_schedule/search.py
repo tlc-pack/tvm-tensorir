@@ -16,12 +16,11 @@
 # under the License.
 """ Search API """
 
-from typing import List, Optional
-
-from tvm.tir import PrimFunc
+from typing import List, Optional, Union
 
 from . import _ffi_api
-from .measure import MeasureCallback, ProgramBuilder, ProgramRunner
+from .measure import LocalBuilder, MeasureCallback, ProgramBuilder, ProgramRunner
+from .schedule import Schedule
 from .search_policy import SearchPolicy
 from .search_task import SearchTask
 
@@ -29,10 +28,19 @@ from .search_task import SearchTask
 def search(
     task: SearchTask,
     policy: SearchPolicy,
-    builder: ProgramBuilder,
+    builder: Union[str, ProgramBuilder],
     runner: ProgramRunner,
     measure_callbacks: Optional[List[MeasureCallback]] = None,
-) -> PrimFunc:
+    verbose: int = 1,
+) -> Schedule:
+    """ Search API """
+    if isinstance(builder, str):
+        if builder == "local":
+            builder = LocalBuilder()
+        else:
+            raise ValueError("Unknown name of program builder: " + builder)
     if measure_callbacks is None:
         measure_callbacks = []
-    pass
+    return _ffi_api.Search(  # pylint: disable=no-member
+        task, policy, builder, runner, measure_callbacks, verbose
+    )

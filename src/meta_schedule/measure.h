@@ -458,7 +458,8 @@ class ProgramMeasurerNode : public Object {
  */
 class ProgramMeasurer : public ObjectRef {
  public:
-  explicit ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner);
+  explicit ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner,
+                           Array<MeasureCallback> callbacks);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(ProgramMeasurer, ObjectRef, ProgramMeasurerNode);
 };
