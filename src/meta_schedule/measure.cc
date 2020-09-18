@@ -30,8 +30,8 @@ TVM_REGISTER_NODE_TYPE(BuildResultNode);
 TVM_REGISTER_NODE_TYPE(MeasureResultNode);
 TVM_REGISTER_OBJECT_TYPE(ProgramRunnerNode);
 TVM_REGISTER_OBJECT_TYPE(ProgramBuilderNode);
-TVM_REGISTER_OBJECT_TYPE(LocalBuilderNode);
-TVM_REGISTER_OBJECT_TYPE(RPCRunnerNode);
+TVM_REGISTER_NODE_TYPE(LocalBuilderNode);
+TVM_REGISTER_NODE_TYPE(RPCRunnerNode);
 TVM_REGISTER_OBJECT_TYPE(ProgramMeasurerNode);
 
 static const char* ErrorNoToStr[] = {
@@ -48,8 +48,9 @@ static const char* ErrorNoToStr[] = {
 
 /********** Constructors **********/
 
-MeasureInput::MeasureInput(Schedule sch) {
+MeasureInput::MeasureInput(SearchTask task, Schedule sch) {
   ObjectPtr<MeasureInputNode> n = make_object<MeasureInputNode>();
+  n->task = std::move(task);
   n->sch = std::move(sch);
   data_ = std::move(n);
 }
@@ -74,17 +75,17 @@ MeasureResult::MeasureResult(Array<PrimExpr> costs, int error_no, String error_m
   data_ = std::move(n);
 }
 
-LocalBuilder::LocalBuilder(int timeout, int n_parallel, const String& build_func) {
+LocalBuilder::LocalBuilder(int timeout, int n_parallel, String build_func) {
   ObjectPtr<LocalBuilderNode> n = make_object<LocalBuilderNode>();
   n->timeout = timeout;
   n->n_parallel = n_parallel;
-  n->build_func = build_func;
+  n->build_func = std::move(build_func);
   data_ = std::move(n);
 }
 
-RPCRunner::RPCRunner(const String& key, const String& host, int port, int priority, int n_parallel,
-                     int timeout, int number, int repeat, int min_repeat_ms,
-                     double cooldown_interval, bool enable_cpu_cache_flush) {
+RPCRunner::RPCRunner(String key, String host, int port, int priority, int n_parallel, int timeout,
+                     int number, int repeat, int min_repeat_ms, double cooldown_interval,
+                     bool enable_cpu_cache_flush) {
   ObjectPtr<RPCRunnerNode> n = make_object<RPCRunnerNode>();
   n->key = key;
   n->host = host;
@@ -205,7 +206,9 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
 struct Internal {
   /********** Constructors **********/
-  static MeasureInput CreateMeasureInput(Schedule sch) { return MeasureInput(sch); }
+  static MeasureInput CreateMeasureInput(SearchTask task, Schedule sch) {
+    return MeasureInput(task, sch);
+  }
   static BuildResult CreateBuildResult(String filename, int error_no, String error_msg,
                                        double time_cost) {
     return BuildResult(filename, error_no, error_msg, time_cost);

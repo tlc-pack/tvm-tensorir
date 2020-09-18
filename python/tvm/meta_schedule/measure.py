@@ -31,22 +31,29 @@ get the measurement results. The flow of data structures is
 
 We implement these in python to utilize python's multiprocessing and error handling.
 """
-from typing import Optional, List, Tuple, Callable
-from tvm._ffi import register_object, register_func
-from tvm.driver import build
-from tvm.runtime import Object, ndarray
-from .schedule import Schedule
-from tvm.contrib import tar as build_func_tar, ndk as build_func_ndk
-import time
-import tempfile
-from .measure_util import (
-    make_error_msg,
-    NoDaemonPool,
-    call_func_with_timeout,
-    request_remote,
-)
 import os.path as osp
 import shutil
+import tempfile
+import time
+import multiprocessing
+from typing import List, Optional, Tuple
+
+from tvm._ffi import register_func, register_object
+from tvm.contrib import ndk as build_func_ndk
+from tvm.contrib import tar as build_func_tar
+from tvm.driver import build
+from tvm.runtime import Object, ndarray
+
+from . import _ffi_api
+from .search_task import SearchTask
+from .schedule import Schedule
+from .measure_util import (
+    NoDaemonPool,
+    call_func_with_timeout,
+    make_error_msg,
+    request_remote,
+    check_remote,
+)
 
 
 class MeasureErrorNo:
@@ -64,14 +71,11 @@ class MeasureErrorNo:
     UNKNOWN_ERROR = 8  # Unknown error
 
 
-########## Five basic classes ##########
+########## Three basic classes ##########
 
 
 @register_object("meta_schedule.MeasureInput")
 class MeasureInput(Object):
-
-    # TODO
-
     """Store the input of a measurement.
 
     Parameters
@@ -80,9 +84,12 @@ class MeasureInput(Object):
         The meta schedule object
     """
 
-    def __init__(self, sch: Schedule):
+    task: SearchTask
+    sch: Schedule
+
+    def __init__(self, task: SearchTask, sch: Schedule):
         self.__init_handle_by_constructor__(
-            _ffi_api.MeasureInput, sch  # pylint: disable=undefined-variable
+            _ffi_api.MeasureInput, task, sch  # pylint: disable=no-member
         )
 
 
@@ -118,7 +125,7 @@ class BuildResult(Object):
         error_msg = error_msg if error_msg is not None else ""
 
         self.__init_handle_by_constructor__(
-            _ffi_api.BuildResult,  # pylint: disable=undefined-variable
+            _ffi_api.BuildResult,  # pylint: disable=no-member
             filename,
             error_no,
             error_msg,
@@ -160,7 +167,7 @@ class MeasureResult(Object):
     ):
         error_msg = error_msg if error_msg is None else ""
         self.__init_handle_by_constructor__(
-            _ffi_api.MeasureResult,  # pylint: disable=undefined-variable
+            _ffi_api.MeasureResult,  # pylint: disable=no-member
             costs,
             error_no,
             error_msg,
@@ -169,9 +176,15 @@ class MeasureResult(Object):
         )
 
 
+########## ProgramBuilder ##########
+
+
 @register_object("meta_schedule.ProgramBuilder")
 class ProgramBuilder(Object):
     """ The base class of ProgramBuilders. """
+
+    n_parallel: int
+    timeout: int
 
     def build(
         self, measure_inputs: List[MeasureInput], verbose: int = 1
@@ -189,14 +202,24 @@ class ProgramBuilder(Object):
         -------
         res : List[BuildResult]
         """
-        return _ffi_api.ProgramBuilderBuild(  # pylint: disable=undefined-variable
+        return _ffi_api.ProgramBuilderBuild(  # pylint: disable=no-member
             self, measure_inputs, verbose
         )
+
+
+########## ProgramRunner ##########
 
 
 @register_object("meta_schedule.ProgramRunner")
 class ProgramRunner(Object):
     """ The base class of ProgramRunners. """
+
+    timeout: int
+    number: int
+    repeat: int
+    min_repeat_ms: int
+    cooldown_interval: float
+    enable_cpu_cache_flush: bool
 
     def run(
         self,
@@ -219,12 +242,93 @@ class ProgramRunner(Object):
         -------
         res : List[MeasureResult]
         """
-        return _ffi_api.ProgramRunnerRun(  # pylint: disable=undefined-variable
+        return _ffi_api.ProgramRunnerRun(  # pylint: disable=no-member
             self, measure_inputs, build_results, verbose
         )
 
 
 ########## LocalBuilder ##########
+
+
+@register_object("meta_schedule.LocalBuilder")
+class LocalBuilder(ProgramBuilder):
+    """LocalBuilder use local CPU cores to build programs in parallel."""
+
+    build_func: str
+
+    def __init__(
+        self,
+        timeout: int = 15,
+        n_parallel: Optional[int] = None,
+        build_func: str = "tar",
+    ):
+        n_parallel = (
+            n_parallel if n_parallel is not None else multiprocessing.cpu_count()
+        )
+        self.__init_handle_by_constructor__(
+            _ffi_api.LocalBuilder,  #  pylint: disable=no-member
+            timeout,
+            n_parallel,
+            build_func,
+        )
+
+
+########## RPCRunner ##########
+
+
+@register_object("meta_schedule.RPCRunner")
+class RPCRunner(ProgramRunner):
+    """RPCRunner that uses RPC call to measures the time cost of programs on remote devices.
+    Or sometime we may need to use RPC even in local running to insulate the thread environment.
+    (e.g. running CUDA programs)"""
+
+    key: str
+    host: str
+    port: int
+    priority: int
+    n_parallel: int
+
+    def __init__(
+        self,
+        key: str,
+        host: str,
+        port: int,
+        priority: int = 1,
+        n_parallel: int = 1,
+        timeout: int = 10,
+        number: int = 3,
+        repeat: int = 1,
+        min_repeat_ms: int = 0,
+        cooldown_interval: float = 0.0,
+        enable_cpu_cache_flush: bool = False,
+    ):
+        self.__init_handle_by_constructor__(
+            _ffi_api.RPCRunner,  #  pylint: disable=no-member
+            key,
+            host,
+            port,
+            priority,
+            n_parallel,
+            timeout,
+            number,
+            repeat,
+            min_repeat_ms,
+            cooldown_interval,
+            enable_cpu_cache_flush,
+        )
+
+        if check_remote(key, host, port, priority, timeout):
+            print("Get devices for measurement successfully!")
+        else:
+            raise RuntimeError(
+                "Cannot get remote devices from the tracker. "
+                "Please check the status of tracker by "
+                "'python -m tvm.exec.query_rpc_tracker --port [THE PORT YOU USE]' "
+                "and make sure you have free devices on the queue status."
+            )
+
+
+########## Worker of LocalBuilder ##########
 
 
 # We use fork and a global variable to copy arguments between processes.
@@ -347,7 +451,7 @@ def local_builder_worker(
     return res
 
 
-########## RPCRunner ##########
+########## Worker of RPCRunner ##########
 
 # We use fork and a global variable to copy arguments between processes.
 # This can avoid expensive serialization of TVM IR when using multiprocessing.Pool
@@ -370,7 +474,7 @@ def rpc_runner_run(
     cooldown_interval: float = 0.0,
     enable_cpu_cache_flush: bool = False,
     verbose: int = 1,
-):
+) -> List[MeasureResult]:
     """Run function of RPCRunner to test the performance of the input BuildResults.
 
     Parameters

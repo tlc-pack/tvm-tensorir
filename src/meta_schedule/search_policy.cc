@@ -16,21 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#ifndef SRC_META_SCHEDULE_SEARCH_H_
-#define SRC_META_SCHEDULE_SEARCH_H_
+
+#include "./search_policy.h"  // NOLINT(build/include)
 
 namespace tvm {
 namespace meta_schedule {
 
-class ProgramBuilder;
-class ProgramRunner;
-class SearchTask;
-class SearchPolicy;
-
-void Search(const SearchTask& task, const SearchPolicy& policy, const ProgramBuilder& builder,
-            const ProgramRunner& runner);
+TVM_REGISTER_OBJECT_TYPE(SearchPolicyNode);
 
 }  // namespace meta_schedule
 }  // namespace tvm
-
-#endif  // SRC_META_SCHEDULE_SEARCH_H_

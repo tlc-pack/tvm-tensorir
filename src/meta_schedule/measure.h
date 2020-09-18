@@ -44,6 +44,7 @@
 #include <utility>
 
 #include "./schedule.h"
+#include "./search_task.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -77,10 +78,13 @@ class MeasureInput;
 /*! \brief Store the input of a measurement */
 class MeasureInputNode : public Object {
  public:
-  /*! \brief The search task. */
-  Schedule sch{nullptr};
+  SearchTask task;
+  Schedule sch;
 
-  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("sch", &sch); }
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("task", &task);
+    v->Visit("sch", &sch);
+  }
 
   /*! \brief Do shallow copy. */
   MeasureInput copy() const;
@@ -100,7 +104,7 @@ class MeasureInput : public ObjectRef {
    * \param task The SearchTask of this measure.
    * \param state The State to be measured.
    */
-  explicit MeasureInput(Schedule sch);
+  explicit MeasureInput(SearchTask task, Schedule sch);
 
   TVM_DEFINE_OBJECT_REF_METHODS(MeasureInput, ObjectRef, MeasureInputNode);
 };
@@ -283,8 +287,14 @@ class ProgramRunner : public ObjectRef {
 /*! \brief LocalBuilder use local CPU cores to build programs in parallel */
 class LocalBuilderNode : public ProgramBuilderNode {
  public:
-  /*! \brief Build function. */
+  /*! \brief Build function, can be `tar` or `ndk`. */
   String build_func;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("n_parallel", &n_parallel);
+    v->Visit("timeout", &timeout);
+    v->Visit("build_func", &build_func);
+  }
 
   ~LocalBuilderNode() = default;
 
@@ -307,7 +317,7 @@ class LocalBuilder : public ProgramBuilder {
    * \param n_parallel The number of threads used to build in parallel.
    * \param build_func The name of the registered build function.
    */
-  explicit LocalBuilder(int timeout, int n_parallel, const String& build_func);
+  explicit LocalBuilder(int timeout, int n_parallel, String build_func);
 
   TVM_DEFINE_OBJECT_REF_METHODS(LocalBuilder, ProgramBuilder, LocalBuilderNode);
 };
@@ -333,6 +343,20 @@ class RPCRunnerNode : public ProgramRunnerNode {
   int n_parallel;
 
   ~RPCRunnerNode() = default;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("timeout", &timeout);
+    v->Visit("number", &number);
+    v->Visit("repeat", &repeat);
+    v->Visit("min_repeat_ms", &min_repeat_ms);
+    v->Visit("cooldown_interval", &cooldown_interval);
+    v->Visit("enable_cpu_cache_flush", &enable_cpu_cache_flush);
+    v->Visit("key", &key);
+    v->Visit("host", &host);
+    v->Visit("port", &port);
+    v->Visit("priority", &priority);
+    v->Visit("n_parallel", &n_parallel);
+  }
 
   Array<MeasureResult> Run(const Array<MeasureInput>& inputs,
                            const Array<BuildResult>& build_results, int verbose) const override;
@@ -362,9 +386,9 @@ class RPCRunner : public ProgramRunner {
    * \param cooldown_interval The cool down interval between two measurements.
    * \param enable_cpu_cache_flush Whether to flush cache on CPU between repeated measurements.
    */
-  explicit RPCRunner(const String& key, const String& host, int port, int priority, int n_parallel,
-                     int timeout, int number, int repeat, int min_repeat_ms,
-                     double cooldown_interval, bool enable_cpu_cache_flush);
+  explicit RPCRunner(String key, String host, int port, int priority, int n_parallel, int timeout,
+                     int number, int repeat, int min_repeat_ms, double cooldown_interval,
+                     bool enable_cpu_cache_flush);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(RPCRunner, ProgramRunner, RPCRunnerNode);
 };

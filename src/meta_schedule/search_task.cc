@@ -16,21 +16,23 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#ifndef SRC_META_SCHEDULE_SEARCH_H_
-#define SRC_META_SCHEDULE_SEARCH_H_
+
+#include "./search_task.h"  // NOLINT(build/include)
 
 namespace tvm {
 namespace meta_schedule {
 
-class ProgramBuilder;
-class ProgramRunner;
-class SearchTask;
-class SearchPolicy;
+TVM_REGISTER_NODE_TYPE(SearchTaskNode);
 
-void Search(const SearchTask& task, const SearchPolicy& policy, const ProgramBuilder& builder,
-            const ProgramRunner& runner);
+SearchTask::SearchTask(tir::PrimFunc func, Array<ObjectRef> build_args, Target target,
+                       Target target_host) {
+  ObjectPtr<SearchTaskNode> n = make_object<SearchTaskNode>();
+  n->func = std::move(func);
+  n->build_args = std::move(build_args);
+  n->target = std::move(target);
+  n->target_host = std::move(target_host);
+  data_ = std::move(n);
+}
 
 }  // namespace meta_schedule
 }  // namespace tvm
-
-#endif  // SRC_META_SCHEDULE_SEARCH_H_

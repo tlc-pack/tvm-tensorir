@@ -162,11 +162,7 @@ class Schedule : public ObjectRef {
   explicit Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
                     SymbolTable sym_tab, Sampler sampler);
 
-  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
-
- protected:
-  /*! \brief Constructor. The node should never be constructed directly. */
-  Schedule() = default;
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
 };
 
 }  // namespace meta_schedule

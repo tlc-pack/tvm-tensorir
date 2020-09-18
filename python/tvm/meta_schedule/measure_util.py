@@ -146,3 +146,39 @@ def request_remote(
     tracker = rpc.connect_tracker(host, port)
     remote = tracker.request(device_key, priority=priority, session_timeout=timeout)
     return remote
+
+
+def check_remote(device_key, host=None, port=None, priority=100, timeout=10):
+    """
+    Check the availability of a remote device.
+
+    Parameters
+    ----------
+    device_key: str
+        device key of registered device in tracker.
+    host: Optional[str]
+        The host address of rpc tracker.
+        If is none, will use environment variable "TVM_TRACKER_HOST".
+    port: Optional[int]
+        The port address of rpc tracker.
+        If is none, will use environment variable "TVM_TRACKER_PORT".
+    priority: int = 100
+        The priority of this request, larger is more prior.
+    timeout: int = 10
+        The timeout of this check in seconds.
+
+    Returns
+    -------
+    available: bool
+        True if can find available device.
+    """
+
+    def _check():
+        request_remote(device_key, host, port, priority)
+
+    t = threading.Thread(
+        target=_check,
+    )
+    t.start()
+    t.join(timeout)
+    return not t.is_alive()

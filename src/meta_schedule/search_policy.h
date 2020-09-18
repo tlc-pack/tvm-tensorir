@@ -16,21 +16,37 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#ifndef SRC_META_SCHEDULE_SEARCH_H_
-#define SRC_META_SCHEDULE_SEARCH_H_
+#ifndef SRC_META_SCHEDULE_SEARCH_POLICY_H_
+#define SRC_META_SCHEDULE_SEARCH_POLICY_H_
+
+#include "./schedule.h"
 
 namespace tvm {
 namespace meta_schedule {
 
-class ProgramBuilder;
-class ProgramRunner;
 class SearchTask;
-class SearchPolicy;
+class ProgramMeasurer;
 
-void Search(const SearchTask& task, const SearchPolicy& policy, const ProgramBuilder& builder,
-            const ProgramRunner& runner);
+class SearchPolicyNode : public Object {
+ public:
+  int num_measure_trials;
+  int num_measures_per_round;
+  int early_stopping;
+  int verbose;
+
+  virtual ~SearchPolicyNode() = default;
+  virtual Schedule Search(SearchTask task, ProgramMeasurer measurer) = 0;
+
+  static constexpr const char* _type_key = "meta_schedule.SearchPolicy";
+  TVM_DECLARE_FINAL_OBJECT_INFO(SearchPolicyNode, Object);
+};
+
+class SearchPolicy : public ObjectRef {
+ public:
+  TVM_DEFINE_OBJECT_REF_METHODS(SearchPolicy, ObjectRef, SearchPolicyNode);
+};
 
 }  // namespace meta_schedule
 }  // namespace tvm
 
-#endif  // SRC_META_SCHEDULE_SEARCH_H_
+#endif  // SRC_META_SCHEDULE_SEARCH_POLICY_H_
