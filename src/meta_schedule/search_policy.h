@@ -30,10 +30,6 @@ class Schedule;
 
 class SearchPolicyNode : public runtime::Object {
  public:
-  int num_measure_trials;
-  int num_measures_per_round;
-  int early_stopping;
-
   virtual ~SearchPolicyNode() = default;
   virtual Schedule Search(SearchTask task, ProgramMeasurer measurer, int verbose) = 0;
 

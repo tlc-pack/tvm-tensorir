@@ -25,16 +25,6 @@
 namespace tvm {
 namespace meta_schedule {
 
-TVM_REGISTER_NODE_TYPE(MeasureInputNode);
-TVM_REGISTER_NODE_TYPE(BuildResultNode);
-TVM_REGISTER_NODE_TYPE(MeasureResultNode);
-TVM_REGISTER_OBJECT_TYPE(ProgramRunnerNode);
-TVM_REGISTER_OBJECT_TYPE(ProgramBuilderNode);
-TVM_REGISTER_NODE_TYPE(LocalBuilderNode);
-TVM_REGISTER_NODE_TYPE(RPCRunnerNode);
-TVM_REGISTER_OBJECT_TYPE(MeasureCallbackNode);
-TVM_REGISTER_NODE_TYPE(ProgramMeasurerNode);
-
 static const char* ErrorNoToStr[] = {
     "NoError",
     "InstantiationError",
@@ -239,6 +229,16 @@ struct Internal {
     return runner->Run(inputs, build_results, verbose);
   }
 };
+
+TVM_REGISTER_NODE_TYPE(MeasureInputNode);
+TVM_REGISTER_NODE_TYPE(BuildResultNode);
+TVM_REGISTER_NODE_TYPE(MeasureResultNode);
+TVM_REGISTER_OBJECT_TYPE(ProgramRunnerNode);
+TVM_REGISTER_OBJECT_TYPE(ProgramBuilderNode);
+TVM_REGISTER_NODE_TYPE(LocalBuilderNode);
+TVM_REGISTER_NODE_TYPE(RPCRunnerNode);
+TVM_REGISTER_OBJECT_TYPE(MeasureCallbackNode);
+TVM_REGISTER_NODE_TYPE(ProgramMeasurerNode);
 
 TVM_REGISTER_GLOBAL("meta_schedule.MeasureInput").set_body_typed(Internal::CreateMeasureInput);
 TVM_REGISTER_GLOBAL("meta_schedule.BuildResult").set_body_typed(Internal::CreateBuildResult);

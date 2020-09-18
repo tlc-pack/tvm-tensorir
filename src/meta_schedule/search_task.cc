@@ -24,8 +24,6 @@
 namespace tvm {
 namespace meta_schedule {
 
-TVM_REGISTER_NODE_TYPE(SearchTaskNode);
-
 SearchTask::SearchTask(tir::PrimFunc func, String task_name, Array<ObjectRef> build_args,
                        Target target, Target target_host) {
   ObjectPtr<SearchTaskNode> n = make_object<SearchTaskNode>();
@@ -45,6 +43,7 @@ struct Internal {
   }
 };
 
+TVM_REGISTER_NODE_TYPE(SearchTaskNode);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchTask").set_body_typed(Internal::CreateSearchTask);
 
 }  // namespace meta_schedule

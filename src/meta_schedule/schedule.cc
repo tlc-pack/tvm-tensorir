@@ -26,8 +26,6 @@
 namespace tvm {
 namespace meta_schedule {
 
-TVM_REGISTER_NODE_TYPE(ScheduleNode);
-
 Schedule::Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
                    SymbolTable sym_tab, Sampler sampler) {
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
@@ -379,6 +377,7 @@ struct Internal {
   static void ReplayOnce(Schedule sch) { return sch->ReplayOnce(); }
 };
 
+TVM_REGISTER_NODE_TYPE(ScheduleNode);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCreate").set_body_typed(Internal::Create);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleEval").set_body_typed(Internal::Eval);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleTileFactor")

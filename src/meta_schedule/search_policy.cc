@@ -26,8 +26,6 @@
 namespace tvm {
 namespace meta_schedule {
 
-TVM_REGISTER_OBJECT_TYPE(SearchPolicyNode);
-
 struct Internal {
   static Schedule SearchPolicySearch(SearchPolicy policy, SearchTask task, ProgramMeasurer measurer,
                                      int verbose) {
@@ -36,6 +34,7 @@ struct Internal {
   }
 };
 
+TVM_REGISTER_OBJECT_TYPE(SearchPolicyNode);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchPolicySearch")
     .set_body_typed(Internal::SearchPolicySearch);
 

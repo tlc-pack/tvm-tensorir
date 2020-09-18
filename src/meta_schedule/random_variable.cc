@@ -21,9 +21,6 @@
 namespace tvm {
 namespace meta_schedule {
 
-TVM_REGISTER_NODE_TYPE(BlockRVNode);
-TVM_REGISTER_NODE_TYPE(LoopRVNode);
-
 BlockRV::BlockRV(String name, Optional<tir::StmtSRef> block) {
   ObjectPtr<BlockRVNode> n = make_object<BlockRVNode>();
   n->name = std::move(name);
@@ -37,6 +34,9 @@ LoopRV::LoopRV(String name, Optional<tir::StmtSRef> loop) {
   n->loop = std::move(loop);
   data_ = std::move(n);
 }
+
+TVM_REGISTER_NODE_TYPE(BlockRVNode);
+TVM_REGISTER_NODE_TYPE(LoopRVNode);
 
 }  // namespace meta_schedule
 }  // namespace tvm
