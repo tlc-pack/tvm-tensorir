@@ -31,11 +31,11 @@ get the measurement results. The flow of data structures is
 
 We implement these in python to utilize python's multiprocessing and error handling.
 """
+import multiprocessing
 import os.path as osp
 import shutil
 import tempfile
 import time
-import multiprocessing
 from typing import List, Optional, Tuple
 
 from tvm._ffi import register_func, register_object
@@ -45,15 +45,15 @@ from tvm.driver import build
 from tvm.runtime import Object, ndarray
 
 from . import _ffi_api
-from .search_task import SearchTask
-from .schedule import Schedule
 from .measure_util import (
     NoDaemonPool,
     call_func_with_timeout,
+    check_remote,
     make_error_msg,
     request_remote,
-    check_remote,
 )
+from .schedule import Schedule
+from .search_task import SearchTask
 
 
 class MeasureErrorNo:

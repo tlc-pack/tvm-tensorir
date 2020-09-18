@@ -404,13 +404,11 @@ class ProgramMeasurerNode : public Object {
   ProgramBuilder builder;
   /*! \brief The ProgramRunner to measure each program. */
   ProgramRunner runner;
-  /*! \brief Verbosity level. 0 for silent, 1 to output information during program measuring. */
-  int verbose;
 
   /*! \brief Reset book keeping variables */
   void Reset();
 
-  Array<MeasureResult> Measure(const Array<MeasureInput>& measure_inputs) const;
+  Array<MeasureResult> Measure(const Array<MeasureInput>& measure_inputs, int verbose) const;
 
   static constexpr const char* _type_key = "meta_schedule.ProgramMeasurer";
   TVM_DECLARE_FINAL_OBJECT_INFO(ProgramMeasurerNode, Object);
@@ -422,7 +420,7 @@ class ProgramMeasurerNode : public Object {
  */
 class ProgramMeasurer : public ObjectRef {
  public:
-  explicit ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner, int verbose);
+  explicit ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(ProgramMeasurer, ObjectRef, ProgramMeasurerNode);
 };

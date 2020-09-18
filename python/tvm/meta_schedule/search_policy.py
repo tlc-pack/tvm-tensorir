@@ -14,8 +14,9 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from tvm.runtime import Object
 from tvm._ffi import register_object
+from tvm.runtime import Object
+from . import _ffi_api
 
 
 @register_object("meta_schedule.SearchPolicy")
@@ -25,4 +26,25 @@ class SearchPolicy(Object):
     num_measure_trials: int
     num_measures_per_round: int
     early_stopping: int
-    verbose: int
+
+
+@register_object("meta_schedule.ScheduleFn")
+class ScheduleFn(Object):
+    """ defined in src/meta_schedule/search_policy/schedule_fn.h """
+
+    sch_fn: str
+
+    def __init__(
+        self,
+        sch_fn: str,
+        num_measure_trials: int,
+        num_measures_per_round: int,
+        early_stopping: int,
+    ):
+        self.__init_handle_by_constructor__(
+            _ffi_api.ScheduleFn,  # pylint: disable=no-member
+            sch_fn,
+            num_measure_trials,
+            num_measures_per_round,
+            early_stopping,
+        )

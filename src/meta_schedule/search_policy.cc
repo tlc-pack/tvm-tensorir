@@ -19,10 +19,25 @@
 
 #include "./search_policy.h"  // NOLINT(build/include)
 
+#include "./measure.h"
+#include "./schedule.h"
+#include "./search_task.h"
+
 namespace tvm {
 namespace meta_schedule {
 
 TVM_REGISTER_OBJECT_TYPE(SearchPolicyNode);
+
+struct Internal {
+  static Schedule SearchPolicySearch(SearchPolicy policy, SearchTask task, ProgramMeasurer measurer,
+                                     int verbose) {
+    // TODO(@junrushao1994): it is not exposed to python because ProgramMeasurer is not exposed yet
+    return policy->Search(task, measurer, verbose);
+  }
+};
+
+TVM_REGISTER_GLOBAL("meta_schedule.SearchPolicySearch")
+    .set_body_typed(Internal::SearchPolicySearch);
 
 }  // namespace meta_schedule
 }  // namespace tvm

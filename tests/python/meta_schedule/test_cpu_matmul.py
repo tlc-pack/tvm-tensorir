@@ -20,12 +20,14 @@ import tvm
 from tvm.hybrid import ty
 from tvm import tir
 from tvm import meta_schedule as ms
+from tvm.target import create as create_target
+
 
 TILING_FORMAT = "SSRSRS"
 SPATIAL = 0
 REDUCTION = 2
 
-# pylint: disable=invalid-name
+# pylint: disable=invalid-name,no-member
 
 
 @tvm.hybrid.script
@@ -78,14 +80,7 @@ def conv2d(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
         )
 
 
-# pylint: enable=invalid-name
-
-
-def _get_prim_func_from_hybrid(hybrid_func):
-    module = tvm.hybrid.create_module({"hybrid_func": hybrid_func})
-    prim_func = module["hybrid_func"]
-    assert isinstance(prim_func, tvm.tir.PrimFunc)
-    return prim_func
+# pylint: enable=invalid-name,no-member
 
 
 def _print_prim_func(prim_func):
@@ -99,6 +94,7 @@ def meets_multi_level_tiling(_sch: ms.Schedule, _block: ms.BlockRV):
 
 @tvm.register_func("test_multi_level_tiling.apply")
 def do_multi_level_tiling(sch: ms.Schedule, block: ms.BlockRV):
+    _print_prim_func(sch.sch.func)
     spatial_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "S"]
     reduce_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "R"]
     order = [list() for _ in TILING_FORMAT]
@@ -122,26 +118,53 @@ def do_multi_level_tiling(sch: ms.Schedule, block: ms.BlockRV):
     return "Apply"
 
 
+@tvm.register_func("test_schedule_matmul")
+def schedule_matmul(sch):
+    block = sch.get_block(name="C")
+    i, j, k = sch.get_axes(block=block)
+    i_tiles = sch.sample_tile_factor(n=4, loop=i, where=[1, 2, 4])
+    j_tiles = sch.sample_tile_factor(n=4, loop=j, where=[1, 2, 4])
+    k_tiles = sch.sample_tile_factor(n=2, loop=k, where=[1, 2, 4])
+    i_0, i_1, i_2, i_3 = sch.split(loop=i, factors=i_tiles)
+    j_0, j_1, j_2, j_3 = sch.split(loop=j, factors=j_tiles)
+    k_0, k_1 = sch.split(loop=k, factors=k_tiles)
+    sch.reorder(after_axes=[i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3])
+
+
 def test_matmul_tiling_rule():
-    sch = ms.Schedule(_get_prim_func_from_hybrid(matmul))
+    sch = ms.Schedule(matmul)
     block = sch.get_block(name="C")
     do_multi_level_tiling(sch, block)
-    _print_prim_func(sch.sch.func)
 
 
 def test_conv2d_tiling_rule():
-    sch = ms.Schedule(_get_prim_func_from_hybrid(conv2d))
+    sch = ms.Schedule(conv2d)
     block = sch.get_block("conv2d_nchw")
     do_multi_level_tiling(sch, block)
-    _print_prim_func(sch.sch.func)
 
 
 def test_matmul_tiling_search():
-    ms.search(
-        func=_get_prim_func_from_hybrid(conv2d),
-        rules=["test_multi_level_tiling"],
-        policy="random",
+    task = ms.SearchTask(
+        matmul,
+        build_args=[
+            ("TENSOR", (1024, 1024), "float32"),
+            ("TENSOR", (1024, 1024), "float32"),
+            ("TENSOR", (1024, 1024), "float32"),
+        ],
+        target=create_target("llvm"),
+        target_host=create_target("llvm"),
     )
+    policy = ms.ScheduleFn(
+        sch_fn="test_schedule_matmul",
+        num_measure_trials=10,
+        num_measures_per_round=1,
+        early_stopping=-1,
+    )
+    # ms.search(
+    #     func=_get_prim_func_from_hybrid(conv2d),
+    #     rules=["test_multi_level_tiling"],
+    #     policy="random",
+    # )
 
 
 if __name__ == "__main__":

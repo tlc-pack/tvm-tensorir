@@ -19,6 +19,8 @@
 
 #include "./search_task.h"  // NOLINT(build/include)
 
+#include <tvm/runtime/registry.h>
+
 namespace tvm {
 namespace meta_schedule {
 
@@ -33,6 +35,15 @@ SearchTask::SearchTask(tir::PrimFunc func, Array<ObjectRef> build_args, Target t
   n->target_host = std::move(target_host);
   data_ = std::move(n);
 }
+
+struct Internal {
+  static SearchTask CreateSearchTask(tir::PrimFunc func, Array<ObjectRef> build_args, Target target,
+                                     Target target_host) {
+    return SearchTask(func, build_args, target, target_host);
+  }
+};
+
+TVM_REGISTER_GLOBAL("meta_schedule.SearchTask").set_body_typed(Internal::CreateSearchTask);
 
 }  // namespace meta_schedule
 }  // namespace tvm

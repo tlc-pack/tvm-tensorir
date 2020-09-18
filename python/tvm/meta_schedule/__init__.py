@@ -15,9 +15,9 @@
 # specific language governing permissions and limitations
 # under the License.
 from ..ir import PrimExpr as ExprRV
-from . import helpers
+from . import helpers, instruction, measure
 from .random_variable import BlockRV, LoopRV
-from . import instruction
 from .schedule import Schedule
-from . import measure
 from .search import search
+from .search_policy import SearchPolicy, ScheduleFn
+from .search_task import SearchTask

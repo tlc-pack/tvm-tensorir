@@ -313,7 +313,7 @@ void ScheduleNode::ReplayOnce() {
 
 /**************** FFI ****************/
 
-struct ScheduleInternal {
+struct Internal {
   /*!
    * \brief FFI function, corresponds to Schedule::Schedule
    * \sa Schedule::Schedule
@@ -379,18 +379,17 @@ struct ScheduleInternal {
   static void ReplayOnce(Schedule sch) { return sch->ReplayOnce(); }
 };
 
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.Create").set_body_typed(ScheduleInternal::Create);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.Eval").set_body_typed(ScheduleInternal::Eval);
+TVM_REGISTER_GLOBAL("meta_schedule.schedule.Create").set_body_typed(Internal::Create);
+TVM_REGISTER_GLOBAL("meta_schedule.schedule.Eval").set_body_typed(Internal::Eval);
 TVM_REGISTER_GLOBAL("meta_schedule.schedule.SampleTileFactor")
-    .set_body_typed(ScheduleInternal::SampleTileFactor);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.GetBlock").set_body_typed(ScheduleInternal::GetBlock);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.GetAxes").set_body_typed(ScheduleInternal::GetAxes);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.Split").set_body_typed(ScheduleInternal::Split);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.Reorder").set_body_typed(ScheduleInternal::Reorder);
+    .set_body_typed(Internal::SampleTileFactor);
+TVM_REGISTER_GLOBAL("meta_schedule.schedule.GetBlock").set_body_typed(Internal::GetBlock);
+TVM_REGISTER_GLOBAL("meta_schedule.schedule.GetAxes").set_body_typed(Internal::GetAxes);
+TVM_REGISTER_GLOBAL("meta_schedule.schedule.Split").set_body_typed(Internal::Split);
+TVM_REGISTER_GLOBAL("meta_schedule.schedule.Reorder").set_body_typed(Internal::Reorder);
 TVM_REGISTER_GLOBAL("meta_schedule.schedule.DecomposeReduction")
-    .set_body_typed(ScheduleInternal::DecomposeReduction);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.ReplayOnce")
-    .set_body_typed(ScheduleInternal::ReplayOnce);
+    .set_body_typed(Internal::DecomposeReduction);
+TVM_REGISTER_GLOBAL("meta_schedule.schedule.ReplayOnce").set_body_typed(Internal::ReplayOnce);
 
 }  // namespace meta_schedule
 }  // namespace tvm

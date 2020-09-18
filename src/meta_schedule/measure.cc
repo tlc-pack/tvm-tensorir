@@ -101,11 +101,10 @@ RPCRunner::RPCRunner(String key, String host, int port, int priority, int n_para
   data_ = std::move(n);
 }
 
-ProgramMeasurer::ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner, int verbose) {
+ProgramMeasurer::ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner) {
   ObjectPtr<ProgramMeasurerNode> n = make_object<ProgramMeasurerNode>();
   n->builder = std::move(builder);
   n->runner = std::move(runner);
-  n->verbose = verbose;
   data_ = std::move(n);
 }
 
@@ -159,7 +158,8 @@ Array<MeasureResult> RPCRunnerNode::Run(const Array<MeasureInput>& inputs,
 
 /********** ProgramMeasurer **********/
 
-Array<MeasureResult> ProgramMeasurerNode::Measure(const Array<MeasureInput>& measure_inputs) const {
+Array<MeasureResult> ProgramMeasurerNode::Measure(const Array<MeasureInput>& measure_inputs,
+                                                  int verbose) const {
   Array<BuildResult> build_results = builder->Build(measure_inputs, verbose);
   Array<MeasureResult> measure_results = runner->Run(measure_inputs, build_results, verbose);
   return measure_results;

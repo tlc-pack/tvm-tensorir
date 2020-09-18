@@ -17,7 +17,9 @@
 """ Search API """
 
 from typing import List, Union
+
 from tvm.tir import PrimFunc
+
 from . import _ffi_api
 
 Rule = str

@@ -19,31 +19,31 @@
 #ifndef SRC_META_SCHEDULE_SEARCH_POLICY_H_
 #define SRC_META_SCHEDULE_SEARCH_POLICY_H_
 
-#include "./schedule.h"
+#include <tvm/runtime/object.h>
 
 namespace tvm {
 namespace meta_schedule {
 
 class SearchTask;
 class ProgramMeasurer;
+class Schedule;
 
-class SearchPolicyNode : public Object {
+class SearchPolicyNode : public runtime::Object {
  public:
   int num_measure_trials;
   int num_measures_per_round;
   int early_stopping;
-  int verbose;
 
   virtual ~SearchPolicyNode() = default;
-  virtual Schedule Search(SearchTask task, ProgramMeasurer measurer) = 0;
+  virtual Schedule Search(SearchTask task, ProgramMeasurer measurer, int verbose) = 0;
 
   static constexpr const char* _type_key = "meta_schedule.SearchPolicy";
-  TVM_DECLARE_FINAL_OBJECT_INFO(SearchPolicyNode, Object);
+  TVM_DECLARE_BASE_OBJECT_INFO(SearchPolicyNode, Object);
 };
 
-class SearchPolicy : public ObjectRef {
+class SearchPolicy : public runtime::ObjectRef {
  public:
-  TVM_DEFINE_OBJECT_REF_METHODS(SearchPolicy, ObjectRef, SearchPolicyNode);
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchPolicy, ObjectRef, SearchPolicyNode);
 };
 
 }  // namespace meta_schedule
