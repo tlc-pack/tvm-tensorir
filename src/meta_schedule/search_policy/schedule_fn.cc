@@ -30,8 +30,8 @@ using runtime::TypedPackedFunc;
 class ScheduleFnNode : public SearchPolicyNode {
  public:
   String sch_fn;
-  int batch_size;
   int num_iterations;
+  int batch_size;
 
   runtime::TypedPackedFunc<void(Schedule)> sch_fn_;
 
@@ -54,13 +54,13 @@ class ScheduleFn : public SearchPolicy {
 
 /********** Registration and Constructor **********/
 
-ScheduleFn::ScheduleFn(String sch_fn, int batch_size, int num_iterations) {
+ScheduleFn::ScheduleFn(String sch_fn, int num_iterations, int batch_size) {
   const auto* fn = runtime::Registry::Get(sch_fn);
   CHECK(fn != nullptr) << "AttributeError: Cannot find packed function: " << sch_fn;
   ObjectPtr<ScheduleFnNode> n = make_object<ScheduleFnNode>();
   n->sch_fn = std::move(sch_fn);
-  n->batch_size = batch_size;
   n->num_iterations = num_iterations;
+  n->batch_size = batch_size;
   n->sch_fn_ = *fn;
   data_ = std::move(n);
 }
@@ -78,23 +78,9 @@ Schedule ScheduleFnNode::Search(SearchTask task, ProgramMeasurer measurer, int v
       this->sch_fn_(sch);
       measure_inputs.push_back(MeasureInput(task, sch));
     }
-    Array<MeasureResult> measure_results = measurer->Measure(measure_inputs, verbose);
-    {
-      int i = 0;
-      for (const MeasureResult& measure_result : measure_results) {
-        if (measure_result->error_no != 0) {
-          LOG(INFO) << "[Failed] i = " << i << ", error_no = "
-                    << MeasureErrorNOToStr(static_cast<MeasureErrorNO>(measure_result->error_no))
-                    << ", error_msg =\n"
-                    << measure_result->error_msg;
-        } else {
-          LOG(INFO) << "[Success] i = " << i << ", measure_result = " << measure_result;
-        }
-        ++i;
-      }
-    }
+    measurer->BatchMeasure(measure_inputs, this->batch_size, verbose);
   }
-  return Schedule(nullptr);
+  return measurer->best_sch.defined() ? measurer->best_sch.value() : Schedule(nullptr);
 }
 
 /********** Searching **********/

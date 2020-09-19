@@ -22,6 +22,8 @@
 
 #include <algorithm>
 
+#include "./utils.h"
+
 namespace tvm {
 namespace meta_schedule {
 
@@ -84,13 +86,24 @@ RPCRunner::RPCRunner(String key, String host, int port, int priority, int n_para
 }
 
 ProgramMeasurer::ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner,
-                                 Array<MeasureCallback> callbacks) {
+                                 Array<MeasureCallback> callbacks, int num_measured,
+                                 double best_time_cost, int best_index,
+                                 Optional<Schedule> best_sch) {
   ObjectPtr<ProgramMeasurerNode> n = make_object<ProgramMeasurerNode>();
   n->builder = std::move(builder);
   n->runner = std::move(runner);
   n->callbacks = std::move(callbacks);
+  n->num_measured = num_measured;
+  n->best_time_cost = best_time_cost;
+  n->best_index = best_index;
+  n->best_sch = std::move(best_sch);
   data_ = std::move(n);
 }
+
+ProgramMeasurer::ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner,
+                                 Array<MeasureCallback> callbacks)
+    : ProgramMeasurer(builder, runner, callbacks, /*num_measured=*/0,
+                      /*best_time_cost=*/MAX_TIME_COST, /*best_index=*/-1, /*best_sch=*/NullOpt) {}
 
 /********** Shallow copy functions **********/
 
@@ -142,12 +155,53 @@ Array<MeasureResult> RPCRunnerNode::Run(const Array<MeasureInput>& inputs,
 
 /********** ProgramMeasurer **********/
 
-void ProgramMeasurerNode::Reset() {}
+void ProgramMeasurerNode::Reset() {
+  num_measured = 0;
+  best_time_cost = ProgramMeasurer::MAX_TIME_COST;
+  best_index = -1;
+  best_sch = NullOpt;
+}
 
-Array<MeasureResult> ProgramMeasurerNode::Measure(const Array<MeasureInput>& measure_inputs,
-                                                  int verbose) const {
+Array<MeasureResult> ProgramMeasurerNode::PureMeasure(const Array<MeasureInput>& measure_inputs,
+                                                      int verbose) const {
   Array<BuildResult> build_results = builder->Build(measure_inputs, verbose);
   Array<MeasureResult> measure_results = runner->Run(measure_inputs, build_results, verbose);
+  return measure_results;
+}
+
+Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>& measure_inputs,
+                                                       int batch_size, int verbose) {
+  Array<MeasureResult> measure_results;
+  int n_samples = measure_inputs.size();
+  for (int st = 0; st < n_samples; st += batch_size) {
+    int ed = std::min(st + batch_size, n_samples);
+    Array<MeasureInput> batch_measure_inputs(measure_inputs.begin() + st,
+                                             measure_inputs.begin() + ed);
+    Array<MeasureResult> batch_measure_results = this->PureMeasure(batch_measure_inputs, verbose);
+    for (int i = 0; i < ed - st; ++i) {
+      ++num_measured;
+      const MeasureInput& measure_input = batch_measure_inputs[i];
+      const MeasureResult& measure_result = batch_measure_results[i];
+      MeasureErrorNO error_no = static_cast<MeasureErrorNO>(measure_result->error_no);
+      if (error_no == MeasureErrorNO::kNoError) {
+        double avg_time_cost = FloatArrayMean(measure_result->costs);
+        if (avg_time_cost < best_time_cost) {
+          best_time_cost = avg_time_cost;
+          best_index = num_measured;
+          best_sch = measure_input->sch;
+        }
+        StdCout(verbose) << std::fixed << std::setprecision(2) << "#" << num_measured
+                         << "\tTime: " << avg_time_cost << "\tBest time: " << best_time_cost
+                         << std::endl;
+      } else {
+        StdCout(verbose) << std::fixed << std::setprecision(2) << "#" << num_measured
+                         << "\tError: " << MeasureErrorNOToStr(error_no)
+                         << "\tBest time: " << best_time_cost << std::endl;
+      }
+    }
+    measure_results.insert(measure_results.end(), batch_measure_results.begin(),
+                           batch_measure_results.end());
+  }
   return measure_results;
 }
 

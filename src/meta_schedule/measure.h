@@ -173,6 +173,7 @@ class MeasureResult;
 /*! \brief Store the results of a measurement. */
 class MeasureResultNode : public Object {
  public:
+  /* TODO(@junrushao1994): use avg_cost instead */
   /*! \brief The time costs of execution. */
   Array<PrimExpr> costs;
   /*! \brief The error code. (0 means no error, see MeasureErrorNO) */
@@ -419,12 +420,10 @@ class MeasureCallbackNode : public Object {
   /*!
    * \brief Callback function that will be called on measurement input/result pairs
    * after each measurement batch.
-   * \param policy The current search policy.
    * \param inputs An Array of MeasureInput.
    * \param results An Array of MeasureResult.
    */
-  virtual void Callback(const SearchPolicy& policy, const Array<MeasureInput>& inputs,
-                        const Array<MeasureResult>& results) = 0;
+  virtual void Callback(const Array<MeasureInput>& inputs, const Array<MeasureResult>& results) = 0;
   static constexpr const char* _type_key = "meta_schedule.MeasureCallback";
   TVM_DECLARE_BASE_OBJECT_INFO(MeasureCallbackNode, Object);
 };
@@ -451,20 +450,36 @@ class ProgramMeasurerNode : public Object {
   ProgramRunner runner;
   /*! \brief MeasureCallback to be called after each measure batch. */
   Array<MeasureCallback> callbacks;
+  /*! \brief Number of samples that have been measured. */
+  int num_measured;
+  /*! \brief The best running time (the smaller the better). */
+  double best_time_cost;
+  /*! \brief The index of the samples that the best schedule is in. */
+  int best_index;
+  /*! \brief The best schedule.  */
+  Optional<Schedule> best_sch;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("builder", &builder);
     v->Visit("runner", &runner);
     v->Visit("callbacks", &callbacks);
+    v->Visit("num_measured", &num_measured);
+    v->Visit("best_time_cost", &best_time_cost);
+    v->Visit("best_index", &best_index);
+    v->Visit("best_sch", &best_sch);
   }
 
   /*! \brief Reset book keeping variables */
   void Reset();
 
-  Array<MeasureResult> Measure(const Array<MeasureInput>& measure_inputs, int verbose) const;
+  Array<MeasureResult> BatchMeasure(const Array<MeasureInput>& measure_inputs, int batch_size,
+                                    int verbose);
 
   static constexpr const char* _type_key = "meta_schedule.ProgramMeasurer";
   TVM_DECLARE_FINAL_OBJECT_INFO(ProgramMeasurerNode, Object);
+
+ private:
+  Array<MeasureResult> PureMeasure(const Array<MeasureInput>& measure_inputs, int verbose) const;
 };
 
 /*!
@@ -474,7 +489,13 @@ class ProgramMeasurerNode : public Object {
 class ProgramMeasurer : public ObjectRef {
  public:
   explicit ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner,
+                           Array<MeasureCallback> callbacks, int num_measured, double best_time,
+                           int best_index, Optional<Schedule> best_sch);
+
+  explicit ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner,
                            Array<MeasureCallback> callbacks);
+
+  static const constexpr double MAX_TIME_COST = 1e10;
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(ProgramMeasurer, ObjectRef, ProgramMeasurerNode);
 };

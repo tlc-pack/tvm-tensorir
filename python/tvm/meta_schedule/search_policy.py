@@ -41,10 +41,8 @@ class ScheduleFn(Object):
         self,
         sch_fn: str,
         num_iterations: int,
-        batch_size: Optional[int] = None,
+        batch_size: int,
     ):
-        if batch_size is None:
-            batch_size = cpu_count()
         self.__init_handle_by_constructor__(
             _ffi_api.ScheduleFn,  # pylint: disable=no-member
             sch_fn,

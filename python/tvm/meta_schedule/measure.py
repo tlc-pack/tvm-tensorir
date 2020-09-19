@@ -48,15 +48,14 @@ from .measure_util import (
     NoDaemonPool,
     call_func_with_timeout,
     check_remote,
-    make_error_msg,
-    request_remote,
-    realize_arguments,
     cpu_count,
+    make_error_msg,
+    realize_arguments,
+    request_remote,
     vprint,
 )
 from .schedule import Schedule
 from .search_task import SearchTask
-
 
 # The maximum possible cost used to indicate the cost for timeout
 # We use 1e10 instead of sys.float_info.max for better readability in log
@@ -150,7 +149,7 @@ class MeasureResult(Object):
         The time costs of execution.
     error_no : int
         The error code.
-    error_msg : Optional[str]
+    error_msg : str
         The error message if there is any error.
     all_cost : float
         The time cost of build and run.
