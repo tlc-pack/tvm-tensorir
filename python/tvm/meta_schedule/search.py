@@ -31,7 +31,7 @@ def search(
     task: Union[PrimFunc, SearchTask],
     policy: SearchPolicy,
     builder: Union[str, ProgramBuilder],
-    runner: ProgramRunner,
+    runner: Union[str, ProgramRunner],
     measure_callbacks: Optional[List[MeasureCallback]] = None,
     verbose: int = 1,
 ) -> Schedule:
@@ -40,6 +40,8 @@ def search(
         task = SearchTask(task)
     if isinstance(builder, str):
         builder = ProgramBuilder.create(builder)
+    if isinstance(runner, str):
+        runner = ProgramRunner.create(runner)
     if measure_callbacks is None:
         measure_callbacks = []
     return _ffi_api.Search(  # pylint: disable=no-member

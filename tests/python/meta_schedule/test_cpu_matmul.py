@@ -20,7 +20,6 @@ import tvm
 from tvm.hybrid import ty
 from tvm import tir
 from tvm import meta_schedule as ms
-from tvm.target import create as create_target
 
 
 TILING_FORMAT = "SSRSRS"
@@ -118,8 +117,6 @@ def do_multi_level_tiling(sch: ms.Schedule, block: ms.BlockRV):
     return "Apply"
 
 
-
-
 def test_matmul_tiling_rule():
     sch = ms.Schedule(matmul)
     block = sch.get_block(name="C")
@@ -153,7 +150,7 @@ def test_matmul_tiling_search():
             batch_size=16,
         ),
         builder="local",
-        runner=ms.RPCRunner(tracker="0.0.0.0:9089:local", n_parallel=16),
+        runner="rpc 0.0.0.0:9089:local * 16",
         measure_callbacks=None,
         verbose=1,
     )

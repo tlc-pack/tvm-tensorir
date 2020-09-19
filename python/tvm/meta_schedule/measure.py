@@ -236,6 +236,14 @@ class ProgramRunner(Object):
     cooldown_interval: float
     enable_cpu_cache_flush: bool
 
+    @staticmethod
+    def create(name: str) -> ProgramRunner:
+        if name == "rpc":
+            return RPCRunner()
+        if name.startswith("rpc "):
+            return RPCRunner.create(name[4:])
+        raise ValueError("Unknown name of program builder: " + name)
+
     def run(
         self,
         measure_inputs: List[MeasureInput],
@@ -338,6 +346,17 @@ class RPCRunner(ProgramRunner):
             cooldown_interval,
             enable_cpu_cache_flush,
         )
+
+    @staticmethod
+    def create(name: str) -> RPCRunner:
+        if "*" not in name:
+            return RPCRunner(tracker=name)
+        split_result = name.split("*")
+        if len(split_result) != 2:
+            raise ValueError(f"Cannot create RPCRunner from string: {name}")
+        tracker, n_parallel = map(str.strip, split_result)
+        n_parallel = int(n_parallel)
+        return RPCRunner(tracker=tracker, n_parallel=n_parallel)
 
 
 ########## MeasureCallback ##########
