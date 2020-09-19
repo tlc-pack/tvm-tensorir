@@ -59,7 +59,7 @@ from .search_task import SearchTask
 
 # The maximum possible cost used to indicate the cost for timeout
 # We use 1e10 instead of sys.float_info.max for better readability in log
-MAX_COST = 1e10
+MAX_TIME_COST = 1e10
 
 
 class MeasureErrorNo:
@@ -592,7 +592,7 @@ def rpc_runner_worker(
 
     if build_result.error_no != MeasureErrorNo.NO_ERROR:
         return (
-            (MAX_COST,),
+            (MAX_TIME_COST,),
             build_result.error_no,
             build_result.error_msg,
             build_result.time_cost,
@@ -602,10 +602,10 @@ def rpc_runner_worker(
     def timed_func():
         tic = time.time()
 
-        costs = (MAX_COST,)
+        costs = (MAX_TIME_COST,)
         error_no = 0
         error_msg = ""
-        all_cost = MAX_COST
+        all_cost = MAX_TIME_COST
         timestamp = -1.0
 
         try:
@@ -658,7 +658,7 @@ def rpc_runner_worker(
     except TimeoutError:
         vprint(verbose, "*T", end="")  # Run timeout
         return (
-            (MAX_COST,),
+            (MAX_TIME_COST,),
             MeasureErrorNo.RUN_TIMEOUT,
             "",
             build_result.time_cost + timeout,
