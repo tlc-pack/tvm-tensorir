@@ -29,13 +29,15 @@ using runtime::TypedPackedFunc;
 
 class ScheduleFnNode : public SearchPolicyNode {
  public:
-  String sch_fn;
+  runtime::TypedPackedFunc<void(Schedule)> sch_fn;
   int num_iterations;
   int batch_size;
 
-  runtime::TypedPackedFunc<void(Schedule)> sch_fn_;
-
-  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("sch_fn", &sch_fn); }
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    // sch_fn is not visited
+    v->Visit("num_iterations", &num_iterations);
+    v->Visit("batch_size", &batch_size);
+  }
 
   ~ScheduleFnNode() = default;
 
@@ -47,21 +49,18 @@ class ScheduleFnNode : public SearchPolicyNode {
 
 class ScheduleFn : public SearchPolicy {
  public:
-  explicit ScheduleFn(String sch_fn, int batch_size, int num_iterations);
+  explicit ScheduleFn(PackedFunc sch_fn, int batch_size, int num_iterations);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(ScheduleFn, SearchPolicy, ScheduleFnNode);
 };
 
 /********** Registration and Constructor **********/
 
-ScheduleFn::ScheduleFn(String sch_fn, int num_iterations, int batch_size) {
-  const auto* fn = runtime::Registry::Get(sch_fn);
-  CHECK(fn != nullptr) << "AttributeError: Cannot find packed function: " << sch_fn;
+ScheduleFn::ScheduleFn(PackedFunc sch_fn, int num_iterations, int batch_size) {
   ObjectPtr<ScheduleFnNode> n = make_object<ScheduleFnNode>();
-  n->sch_fn = std::move(sch_fn);
+  n->sch_fn = sch_fn;
   n->num_iterations = num_iterations;
   n->batch_size = batch_size;
-  n->sch_fn_ = *fn;
   data_ = std::move(n);
 }
 
@@ -75,7 +74,7 @@ Schedule ScheduleFnNode::Search(SearchTask task, ProgramMeasurer measurer, int v
     for (int batch_id = 0; batch_id < batch_size && iter_id < num_iterations;
          ++batch_id, ++iter_id) {
       Schedule sch(task->func);
-      this->sch_fn_(sch);
+      this->sch_fn(sch);
       measure_inputs.push_back(MeasureInput(task, sch));
     }
     measurer->BatchMeasure(measure_inputs, this->batch_size, verbose);
@@ -86,7 +85,7 @@ Schedule ScheduleFnNode::Search(SearchTask task, ProgramMeasurer measurer, int v
 /********** Searching **********/
 
 struct Internal {
-  static ScheduleFn CreateScheduleFn(String sch_fn, int batch_size, int num_iterations) {
+  static ScheduleFn CreateScheduleFn(PackedFunc sch_fn, int batch_size, int num_iterations) {
     return ScheduleFn(sch_fn, batch_size, num_iterations);
   }
 };

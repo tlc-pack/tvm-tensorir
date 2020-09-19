@@ -118,17 +118,6 @@ def do_multi_level_tiling(sch: ms.Schedule, block: ms.BlockRV):
     return "Apply"
 
 
-@tvm.register_func("test_schedule_matmul")
-def schedule_matmul(sch):
-    block = sch.get_block(name="C")
-    i, j, k = sch.get_axes(block=block)
-    i_tiles = sch.sample_tile_factor(n=4, loop=i, where=[1, 2, 4])
-    j_tiles = sch.sample_tile_factor(n=4, loop=j, where=[1, 2, 4])
-    k_tiles = sch.sample_tile_factor(n=2, loop=k, where=[1, 2, 4])
-    i_0, i_1, i_2, i_3 = sch.split(loop=i, factors=i_tiles)
-    j_0, j_1, j_2, j_3 = sch.split(loop=j, factors=j_tiles)
-    k_0, k_1 = sch.split(loop=k, factors=k_tiles)
-    sch.reorder(after_axes=[i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3])
 
 
 def test_matmul_tiling_rule():
@@ -144,10 +133,22 @@ def test_conv2d_tiling_rule():
 
 
 def test_matmul_tiling_search():
+
+    def schedule_matmul(sch):
+        block = sch.get_block(name="C")
+        i, j, k = sch.get_axes(block=block)
+        i_tiles = sch.sample_tile_factor(n=4, loop=i, where=[1, 2, 4])
+        j_tiles = sch.sample_tile_factor(n=4, loop=j, where=[1, 2, 4])
+        k_tiles = sch.sample_tile_factor(n=2, loop=k, where=[1, 2, 4])
+        i_0, i_1, i_2, i_3 = sch.split(loop=i, factors=i_tiles)
+        j_0, j_1, j_2, j_3 = sch.split(loop=j, factors=j_tiles)
+        k_0, k_1 = sch.split(loop=k, factors=k_tiles)
+        sch.reorder(after_axes=[i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3])
+
     sch = ms.search(
         task=matmul,
         policy=ms.ScheduleFn(
-            sch_fn="test_schedule_matmul",
+            sch_fn=schedule_matmul,
             num_iterations=128,
             batch_size=16,
         ),

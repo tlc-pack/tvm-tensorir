@@ -15,13 +15,13 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Search Policy """
-from typing import Optional
+from typing import Callable
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
 
 from . import _ffi_api
-from .measure_util import cpu_count
+from .schedule import Schedule
 
 
 @register_object("meta_schedule.SearchPolicy")
@@ -33,13 +33,13 @@ class SearchPolicy(Object):
 class ScheduleFn(Object):
     """ defined in src/meta_schedule/search_policy/schedule_fn.h """
 
-    sch_fn: str
+    sch_fn: Callable[[Schedule], None]
     batch_size: int
     num_iterations: int
 
     def __init__(
         self,
-        sch_fn: str,
+        sch_fn: Callable[[Schedule], None],
         num_iterations: int,
         batch_size: int,
     ):
