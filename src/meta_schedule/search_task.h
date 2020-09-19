@@ -31,14 +31,12 @@ class SearchTaskNode : public Object {
  public:
   tir::PrimFunc func;
   String task_name;
-  Array<ObjectRef> build_args;
   Target target;
   Target target_host;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("func", &func);
     v->Visit("task_name", &task_name);
-    v->Visit("build_args", &build_args);
     v->Visit("target", &target);
     v->Visit("target_host", &target_host);
   }
@@ -49,8 +47,7 @@ class SearchTaskNode : public Object {
 
 class SearchTask : public ObjectRef {
  public:
-  explicit SearchTask(tir::PrimFunc func, String task_name, Array<ObjectRef> build_args,
-                      Target target, Target target_host);
+  explicit SearchTask(tir::PrimFunc func, String task_name, Target target, Target target_host);
   TVM_DEFINE_OBJECT_REF_METHODS(SearchTask, ObjectRef, SearchTaskNode);
 };
 

@@ -27,6 +27,7 @@ import psutil
 
 from tvm import rpc
 from tvm.runtime import ndarray
+from tvm.tir import PrimFunc
 
 MAX_ERROR_MSG_LEN = int(1e9)
 
@@ -188,12 +189,16 @@ def check_remote(device_key, host=None, port=None, priority=100, timeout=10):
     return not t.is_alive()
 
 
-def realize_arguments(_remote, ctx, build_args):
+def realize_arguments(_remote, ctx, func: PrimFunc):
     args = []
-    for arg in build_args:
-        assert arg[0] == "TENSOR"
-        shape, dtype = arg[1], arg[2]
-        args.append(ndarray.empty(shape=shape, dtype=dtype, ctx=ctx))
+    for arg in func.params:
+        if arg.dtype == "handle":
+            buffer = func.buffer_map[arg]
+            args.append(ndarray.empty(shape=buffer.shape, dtype=buffer.dtype, ctx=ctx))
+        else:
+            raise NotImplementedError(
+                "Unsupported type in realize_arguments: " + str(arg.dtype)
+            )
     # TODO(@junrushao1994): rebase and enable this
     # try:
     #     f_random_fill = remote.get_function("tvm.contrib.random.random_fill")

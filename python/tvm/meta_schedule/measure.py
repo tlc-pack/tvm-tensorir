@@ -31,6 +31,8 @@ get the measurement results. The flow of data structures is
 
 We implement these in python to utilize python's multiprocessing and error handling.
 """
+from __future__ import annotations
+
 import os.path as osp
 import shutil
 import tempfile
@@ -192,6 +194,12 @@ class ProgramBuilder(Object):
 
     n_parallel: int
     timeout: int
+
+    @staticmethod
+    def create(name: str) -> ProgramBuilder:
+        if name == "local":
+            return LocalBuilder()
+        raise ValueError("Unknown name of program builder: " + name)
 
     def build(
         self, measure_inputs: List[MeasureInput], verbose: int = 1
@@ -631,7 +639,7 @@ def rpc_runner_worker(
                 error_msg = make_error_msg()
                 raise
             try:
-                args = realize_arguments(remote, ctx, measure_input.task.build_args)
+                args = realize_arguments(remote, ctx, measure_input.task.func)
                 ctx.sync()
                 costs = time_f(*args).results
                 # clean up remote files

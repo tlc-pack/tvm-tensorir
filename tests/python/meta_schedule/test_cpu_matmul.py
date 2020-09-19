@@ -145,17 +145,7 @@ def test_conv2d_tiling_rule():
 
 def test_matmul_tiling_search():
     sch = ms.search(
-        task=ms.SearchTask(
-            matmul,
-            task_name="matmul",
-            build_args=[
-                ("TENSOR", (1024, 1024), "float32"),
-                ("TENSOR", (1024, 1024), "float32"),
-                ("TENSOR", (1024, 1024), "float32"),
-            ],
-            target=create_target("llvm"),
-            target_host=create_target("llvm"),
-        ),
+        task=matmul,
         policy=ms.ScheduleFn(
             sch_fn="test_schedule_matmul",
             num_iterations=128,
