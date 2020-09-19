@@ -15,13 +15,13 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Utility functions used for measuring """
+# pylint: disable=missing-function-docstring
 import multiprocessing
 import multiprocessing.pool
-import os
 import signal
 import traceback
 from threading import Thread
-from typing import Optional
+from typing import Tuple
 
 import psutil
 
@@ -118,10 +118,26 @@ def call_func_with_timeout(timeout, func, args=(), kwargs=None):
     return res
 
 
+def parse_tracker_key(tracker: str) -> Tuple[str, int, str]:
+    result = tracker.split(":")
+    if len(result) != 3:
+        raise ValueError(
+            f"Unable to parse tracker: {tracker}. Please use the correct format "
+            "'host:port:device_key', e.g. '0.0.0.0:9089:local'"
+        )
+    host, port, device_key = map(str.strip, result)
+    try:
+        port = int(port)
+    except ValueError:
+        raise ValueError(
+            f"Unable to parse tracker: {tracker}. The port should be an integer. "
+            "Please use the correct format 'host:port:device_key', e.g. '0.0.0.0:9089:local'"
+        )
+    return host, port, device_key
+
+
 def request_remote(
-    device_key: str,
-    host: Optional[str] = None,
-    port: Optional[int] = None,
+    tracker: str,
     priority: int = 1,
     timeout: int = 60,
 ) -> rpc.RPCSession:
@@ -148,14 +164,13 @@ def request_remote(
         The connected remote RPCSession.
     """
     # connect to the tracker
-    host = host or os.environ["TVM_TRACKER_HOST"]
-    port = port or int(os.environ["TVM_TRACKER_PORT"])
+    host, port, device_key = parse_tracker_key(tracker)
     tracker = rpc.connect_tracker(host, port)
     remote = tracker.request(device_key, priority=priority, session_timeout=timeout)
     return remote
 
 
-def check_remote(device_key, host=None, port=None, priority=100, timeout=10):
+def check_remote(tracker, priority=100, timeout=10):
     """
     Check the availability of a remote device.
 
@@ -181,7 +196,7 @@ def check_remote(device_key, host=None, port=None, priority=100, timeout=10):
     """
 
     def _check():
-        request_remote(device_key, host, port, priority)
+        request_remote(tracker, priority)
 
     t = Thread(target=_check)
     t.start()

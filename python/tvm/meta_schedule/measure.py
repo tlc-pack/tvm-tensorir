@@ -33,7 +33,7 @@ We implement these in python to utilize python's multiprocessing and error handl
 """
 from __future__ import annotations
 
-import os.path as osp
+import os
 import shutil
 import tempfile
 import time
@@ -296,17 +296,13 @@ class RPCRunner(ProgramRunner):
     Or sometime we may need to use RPC even in local running to insulate the thread environment.
     (e.g. running CUDA programs)"""
 
-    key: str
-    host: str
-    port: int
+    tracker: str
     priority: int
     n_parallel: int
 
     def __init__(
         self,
-        key: str,
-        host: str,
-        port: int,
+        tracker: Optional[str] = None,
         priority: int = 1,
         n_parallel: int = 1,
         timeout: int = 10,
@@ -316,11 +312,23 @@ class RPCRunner(ProgramRunner):
         cooldown_interval: float = 0.0,
         enable_cpu_cache_flush: bool = False,
     ):
+        if tracker is None:
+            tracker = os.environ.get("TVM_RPC_TRACKER", None)
+        if check_remote(tracker, priority, timeout):
+            print("Get devices for measurement successfully!")
+        else:
+            raise RuntimeError(
+                "Cannot get remote devices from the tracker. "
+                "Please check the status of tracker via "
+                "'python -m tvm.exec.query_rpc_tracker --port [THE PORT YOU USE]' "
+                "and make sure you have free devices on the queue status. "
+                "You may also specify the RPC tracker info by setting "
+                "environment variable 'TVM_RPC_TRACKER', "
+                "e.g. 'TVM_RPC_TRACKER=0.0.0.0:9089:local'"
+            )
         self.__init_handle_by_constructor__(
             _ffi_api.RPCRunner,  #  pylint: disable=no-member
-            key,
-            host,
-            port,
+            tracker,
             priority,
             n_parallel,
             timeout,
@@ -330,16 +338,6 @@ class RPCRunner(ProgramRunner):
             cooldown_interval,
             enable_cpu_cache_flush,
         )
-
-        if check_remote(key, host, port, priority, timeout):
-            print("Get devices for measurement successfully!")
-        else:
-            raise RuntimeError(
-                "Cannot get remote devices from the tracker. "
-                "Please check the status of tracker by "
-                "'python -m tvm.exec.query_rpc_tracker --port [THE PORT YOU USE]' "
-                "and make sure you have free devices on the queue status."
-            )
 
 
 ########## MeasureCallback ##########
@@ -426,7 +424,9 @@ def local_builder_worker(
         error_msg = ""
         time_cost = 1e9
         # create temporary path
-        filename = osp.join(tempfile.mkdtemp(), "tmp_func." + build_func.output_format)
+        filename = os.path.join(
+            tempfile.mkdtemp(), "tmp_func." + build_func.output_format
+        )
         try:
             func = build(
                 measure_input.sch.sch.func,
@@ -481,9 +481,7 @@ RPC_RUNNER_WORKER_ARGS = None
 def rpc_runner_run(
     measure_inputs: List[MeasureInput],
     build_results: List[BuildResult],
-    key: str,
-    host: str,
-    port: int,
+    tracker: str,
     priority: int = 1,
     n_parallel: int = 1,
     timeout: int = 10,
@@ -551,9 +549,7 @@ def rpc_runner_run(
     RPC_RUNNER_WORKER_ARGS = (
         measure_inputs,
         build_results,
-        key,
-        host,
-        port,
+        tracker,
         priority,
         timeout,
         number,
@@ -582,9 +578,7 @@ def rpc_runner_worker(
     index: int,
     measure_inputs: List[MeasureInput],
     build_results: List[BuildResult],
-    key: str,
-    host: str,
-    port: int,
+    tracker: str,
     priority: int,
     timeout: int,
     number: int,
@@ -619,9 +613,9 @@ def rpc_runner_worker(
         try:
             try:
                 # upload built module
-                remote = request_remote(key, host, port, priority, timeout)
+                remote = request_remote(tracker, priority, timeout)
                 remote.upload(build_result.filename)
-                func = remote.load_module(osp.split(build_result.filename)[1])
+                func = remote.load_module(os.path.split(build_result.filename)[1])
                 # TODO(@junrushao1994): rebase and fix this
                 ctx = remote.context(str(measure_input.task.target), 0)
                 time_f = func.time_evaluator(
@@ -644,7 +638,7 @@ def rpc_runner_worker(
                 costs = time_f(*args).results
                 # clean up remote files
                 remote.remove(build_result.filename)
-                remote.remove(osp.splitext(build_result.filename)[0] + ".so")
+                remote.remove(os.path.splitext(build_result.filename)[0] + ".so")
                 remote.remove("")
             except Exception:  # pylint: disable=broad-except
                 vprint(verbose, "*E", end="")  # Runtime Error
@@ -655,7 +649,7 @@ def rpc_runner_worker(
             pass
         else:
             vprint(verbose, "*", end="")
-        shutil.rmtree(osp.dirname(build_result.filename))
+        shutil.rmtree(os.path.dirname(build_result.filename))
         timestamp = time.time()
         all_cost = timestamp - tic + build_result.time_cost
         time.sleep(cooldown_interval)

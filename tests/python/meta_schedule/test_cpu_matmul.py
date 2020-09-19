@@ -153,7 +153,7 @@ def test_matmul_tiling_search():
             batch_size=16,
         ),
         builder="local",
-        runner=ms.RPCRunner(key="local", host="0.0.0.0", port=9089, n_parallel=16),
+        runner=ms.RPCRunner(tracker="0.0.0.0:9089:local", n_parallel=16),
         measure_callbacks=None,
         verbose=1,
     )
