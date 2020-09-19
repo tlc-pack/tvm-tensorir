@@ -130,7 +130,6 @@ def test_conv2d_tiling_rule():
 
 
 def test_matmul_tiling_search():
-
     def schedule_matmul(sch):
         block = sch.get_block(name="C")
         i, j, k = sch.get_axes(block=block)
@@ -149,10 +148,6 @@ def test_matmul_tiling_search():
             num_iterations=128,
             batch_size=16,
         ),
-        builder="local",
-        runner="rpc 0.0.0.0:9089:local * 16",
-        measure_callbacks=None,
-        verbose=1,
     )
     print(sch)
 

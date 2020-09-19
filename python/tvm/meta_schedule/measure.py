@@ -502,7 +502,7 @@ def rpc_runner_run(
     build_results: List[BuildResult],
     tracker: str,
     priority: int = 1,
-    n_parallel: int = 1,
+    n_parallel: int = 1,  # TODO(@junrushao1994): perhaps auto detect?
     timeout: int = 10,
     number: int = 3,
     repeat: int = 1,

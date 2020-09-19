@@ -30,8 +30,8 @@ from .search_task import SearchTask
 def search(
     task: Union[PrimFunc, SearchTask],
     policy: SearchPolicy,
-    builder: Union[str, ProgramBuilder],
-    runner: Union[str, ProgramRunner],
+    builder: Union[str, ProgramBuilder] = "local",
+    runner: Union[str, ProgramRunner] = "rpc",
     measure_callbacks: Optional[List[MeasureCallback]] = None,
     verbose: int = 1,
 ) -> Schedule:
