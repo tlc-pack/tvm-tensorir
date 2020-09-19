@@ -31,7 +31,6 @@ get the measurement results. The flow of data structures is
 
 We implement these in python to utilize python's multiprocessing and error handling.
 """
-import multiprocessing
 import os.path as osp
 import shutil
 import tempfile
@@ -52,9 +51,16 @@ from .measure_util import (
     make_error_msg,
     request_remote,
     realize_arguments,
+    cpu_count,
+    vprint,
 )
 from .schedule import Schedule
 from .search_task import SearchTask
+
+
+# The maximum possible cost used to indicate the cost for timeout
+# We use 1e10 instead of sys.float_info.max for better readability in log
+MAX_COST = 1e10
 
 
 class MeasureErrorNo:
@@ -100,11 +106,11 @@ class BuildResult(Object):
 
     Parameters
     ----------
-    filename : Optional[str]
+    filename : str
         The filename of built binary file.
     error_no : int
         The error code.
-    error_msg : Optional[str]
+    error_msg : str
         The error message if there is any error.
     time_cost : float
         The time cost of build.
@@ -117,16 +123,11 @@ class BuildResult(Object):
 
     def __init__(
         self,
-        filename: Optional[str],
+        filename: str,
         error_no: int,
-        error_msg: Optional[str],
+        error_msg: str,
         time_cost: float,
     ):
-        if filename is None:
-            filename = ""
-        if error_msg is None:
-            error_msg = ""
-
         self.__init_handle_by_constructor__(
             _ffi_api.BuildResult,  # pylint: disable=no-member
             filename,
@@ -134,6 +135,9 @@ class BuildResult(Object):
             error_msg,
             time_cost,
         )
+
+
+BuildResultType = Tuple[str, int, str, float]
 
 
 @register_object("meta_schedule.MeasureResult")
@@ -156,7 +160,7 @@ class MeasureResult(Object):
 
     costs: List[float]
     error_no: int
-    error_msg: Optional[str]
+    error_msg: str
     all_cost: float
     timestamp: float
 
@@ -164,12 +168,10 @@ class MeasureResult(Object):
         self,
         costs: List[float],
         error_no: int,
-        error_msg: Optional[str],
+        error_msg: str,
         all_cost: float,
         timestamp: float,
     ):
-        if error_msg is None:
-            error_msg = ""
         self.__init_handle_by_constructor__(
             _ffi_api.MeasureResult,  # pylint: disable=no-member
             costs,
@@ -179,6 +181,8 @@ class MeasureResult(Object):
             timestamp,
         )
 
+
+MeasureResultType = Tuple[List[float], int, str, float, float]
 
 ########## ProgramBuilder ##########
 
@@ -267,7 +271,7 @@ class LocalBuilder(ProgramBuilder):
         build_func: str = "tar",
     ):
         if n_parallel is None:
-            n_parallel = multiprocessing.cpu_count()
+            n_parallel = cpu_count()
         self.__init_handle_by_constructor__(
             _ffi_api.LocalBuilder,  #  pylint: disable=no-member
             timeout,
@@ -352,7 +356,7 @@ def local_builder_build(
     measure_inputs: List[MeasureInput],
     timeout: int,
     n_parallel: int,
-    build_func: str = "default",
+    build_func: str = "tar",
     verbose: int = 1,
 ) -> List[BuildResult]:
     """
@@ -367,7 +371,7 @@ def local_builder_build(
         This is used in a wrapper of the multiprocessing.Process.join().
     n_parallel : int
         Number of processes used to build in parallel.
-    build_func : str = 'default'
+    build_func : str = 'tar'
         The name of build function to process the built module.
     verbose: int = 1
         Verbosity level. 0 for silent, 1 to output information during program building.
@@ -381,7 +385,7 @@ def local_builder_build(
     LOCAL_BUILDER_WORKER_ARGS = (measure_inputs, build_func, timeout, verbose)
     pool = NoDaemonPool(n_parallel)
     indices = [i for i, _ in enumerate(measure_inputs)]
-    results = pool.map(local_builder_worker, indices)
+    results = pool.map(local_builder_wrapped_worker, indices)
     pool.terminate()
     pool.join()
     del pool
@@ -391,12 +395,57 @@ def local_builder_build(
 
 def local_builder_worker(
     index: int,
-) -> Tuple[
-    Optional[str],  # filename
-    int,  # error_no
-    Optional[str],  # error_msg
-    float,  # time_cost
-]:
+    measure_inputs: List[MeasureInput],
+    build_func: str,
+    timeout: int,
+    verbose: int,
+) -> BuildResultType:
+    """ Local worker for ProgramBuilder """
+    # deal with build_func
+    build_func = {
+        "tar": build_func_tar.tar,  # export to tar
+        "ndk": build_func_ndk.create_shared,  # export to ndk
+    }.get(build_func, build_func)
+    if isinstance(build_func, str):
+        raise ValueError("Invalid build_func: " + build_func)
+    # deal with measure_input
+    measure_input = measure_inputs[index]
+
+    def timed_func() -> BuildResultType:
+        tic = time.time()
+        # return values
+        filename = ""
+        error_no = MeasureErrorNo.NO_ERROR
+        error_msg = ""
+        time_cost = 1e9
+        # create temporary path
+        filename = osp.join(tempfile.mkdtemp(), "tmp_func." + build_func.output_format)
+        try:
+            func = build(
+                measure_input.sch.sch.func,
+                target=measure_input.task.target,
+                target_host=measure_input.task.target_host,
+            )
+            func.export_library(filename, build_func)
+        except Exception:  # pylint: disable=broad-except
+            vprint(verbose, ".E", end="")  # Build error
+            error_no = MeasureErrorNo.COMPILE_HOST
+            error_msg = make_error_msg()
+        else:
+            vprint(verbose, ".", end="")  # Build success
+        time_cost = time.time() - tic
+        return filename, error_no, error_msg, time_cost
+
+    try:
+        return call_func_with_timeout(timeout, timed_func)
+    except TimeoutError:
+        vprint(verbose, ".T", end="")  # Build timeout
+        return "", MeasureErrorNo.BUILD_TIMEOUT, "", timeout
+
+
+def local_builder_wrapped_worker(
+    index: int,
+) -> BuildResultType:
     """
     Build function of LocalBuilder to be ran in the Builder thread pool.
 
@@ -411,59 +460,7 @@ def local_builder_worker(
         The build result of this Builder thread.
     """
     global LOCAL_BUILDER_WORKER_ARGS
-
-    measure_inputs: List[MeasureInput]
-    build_func: str
-    timeout: int
-    verbose: int
-    measure_inputs, build_func, timeout, verbose = LOCAL_BUILDER_WORKER_ARGS
-
-    if build_func == "tar":
-        build_func = build_func_tar.tar
-    elif build_func == "ndk":
-        build_func = build_func_ndk.create_shared
-    else:
-        raise ValueError("Invalid build_func: " + build_func)
-
-    def timed_func():
-        tic = time.time()
-        measure_input = measure_inputs[index]
-
-        error_no = MeasureErrorNo.NO_ERROR
-        error_msg = None
-
-        if error_no == 0:
-            dirname = tempfile.mkdtemp()
-            filename = osp.join(dirname, "tmp_func." + build_func.output_format)
-
-            try:
-                func = build(
-                    measure_input.sch.sch.func,
-                    target=measure_input.task.target,
-                    target_host=measure_input.task.target_host,
-                )
-                func.export_library(filename, build_func)
-            except Exception:  # pylint: disable=broad-except
-                error_no = MeasureErrorNo.COMPILE_HOST
-                error_msg = make_error_msg()
-        else:
-            filename = ""
-
-        if verbose >= 1:
-            if error_no == MeasureErrorNo.NO_ERROR:
-                print(".", end="")
-            else:
-                print(".E", end="")  # Build error
-        tok = time.time()
-        return filename, error_no, error_msg, tok - tic
-
-    res = call_func_with_timeout(timeout, timed_func)
-    if isinstance(res, TimeoutError):
-        if verbose >= 1:
-            print(".T", end="")  # Build timeout
-        res = None, [], MeasureErrorNo.BUILD_TIMEOUT, None, timeout
-
-    return res
+    return local_builder_worker(index, *LOCAL_BUILDER_WORKER_ARGS)
 
 
 ########## Worker of RPCRunner ##########
@@ -565,25 +562,114 @@ def rpc_runner_run(
     ), "Measure input size should be equal to build results"
     pool = NoDaemonPool(n_parallel)
     indices = [i for i, _ in enumerate(measure_inputs)]
-    results = pool.map(rpc_runner_worker, indices)
+    results = pool.map(rpc_runner_wrapped_worker, indices)
     pool.terminate()
     pool.join()
     del pool
     results = [MeasureResult(*item) for item in results]
-    if verbose >= 1:
-        print("")
+    vprint(verbose, "", end="\n")
     return results
 
 
 def rpc_runner_worker(
     index: int,
-) -> Tuple[
-    List[float],  # costs
-    int,  # error_no
-    Optional[str],  # error_msg
-    float,  # all_cost
-    float,  # timestamp
-]:
+    measure_inputs: List[MeasureInput],
+    build_results: List[BuildResult],
+    key: str,
+    host: str,
+    port: int,
+    priority: int,
+    timeout: int,
+    number: int,
+    repeat: int,
+    min_repeat_ms: int,
+    cooldown_interval: float,
+    _enable_cpu_cache_flush: bool,
+    verbose: int,
+) -> MeasureResultType:
+    """ RPC worker for ProgramRunner """
+    measure_input = measure_inputs[index]
+    build_result = build_results[index]
+
+    if build_result.error_no != MeasureErrorNo.NO_ERROR:
+        return (
+            (MAX_COST,),
+            build_result.error_no,
+            build_result.error_msg,
+            build_result.time_cost,
+            time.time(),
+        )
+
+    def timed_func():
+        tic = time.time()
+
+        costs = (MAX_COST,)
+        error_no = 0
+        error_msg = ""
+        all_cost = MAX_COST
+        timestamp = -1.0
+
+        try:
+            try:
+                # upload built module
+                remote = request_remote(key, host, port, priority, timeout)
+                remote.upload(build_result.filename)
+                func = remote.load_module(osp.split(build_result.filename)[1])
+                # TODO(@junrushao1994): rebase and fix this
+                ctx = remote.context(str(measure_input.task.target), 0)
+                time_f = func.time_evaluator(
+                    func_name=func.entry_name,
+                    ctx=ctx,
+                    number=number,
+                    repeat=repeat,
+                    min_repeat_ms=min_repeat_ms,
+                    # TODO(@junrushao1994): rebase and enable this
+                    # f_preproc="cache_flush_cpu_non_first_arg" if enable_cpu_cache_flush else "",
+                )
+            except Exception:  # pylint: disable=broad-except
+                vprint(verbose, "*E", end="")  # Device compilation error
+                error_no = MeasureErrorNo.COMPILE_DEVICE
+                error_msg = make_error_msg()
+                raise
+            try:
+                args = realize_arguments(remote, ctx, measure_input.task.build_args)
+                ctx.sync()
+                costs = time_f(*args).results
+                # clean up remote files
+                remote.remove(build_result.filename)
+                remote.remove(osp.splitext(build_result.filename)[0] + ".so")
+                remote.remove("")
+            except Exception:  # pylint: disable=broad-except
+                vprint(verbose, "*E", end="")  # Runtime Error
+                error_no = MeasureErrorNo.RUNTIME_DEVICE
+                error_msg = make_error_msg()
+                raise
+        except Exception:  # pylint: disable=broad-except
+            pass
+        else:
+            vprint(verbose, "*", end="")
+        shutil.rmtree(osp.dirname(build_result.filename))
+        timestamp = time.time()
+        all_cost = timestamp - tic + build_result.time_cost
+        time.sleep(cooldown_interval)
+        return costs, error_no, error_msg, all_cost, timestamp
+
+    try:
+        return call_func_with_timeout(timeout, timed_func)
+    except TimeoutError:
+        vprint(verbose, "*T", end="")  # Run timeout
+        return (
+            (MAX_COST,),
+            MeasureErrorNo.RUN_TIMEOUT,
+            "",
+            build_result.time_cost + timeout,
+            time.time(),
+        )
+
+
+def rpc_runner_wrapped_worker(
+    index: int,
+) -> MeasureResultType:
     """Function to be ran in the RPCRunner thread pool.
 
     Parameters
@@ -597,119 +683,4 @@ def rpc_runner_worker(
         The measure result of this Runner thread.
     """
     global RPC_RUNNER_WORKER_ARGS
-    measure_inputs: List[MeasureInput]
-    build_results: List[BuildResult]
-    key: str
-    host: str
-    port: int
-    priority: int
-    timeout: int
-    number: int
-    repeat: int
-    min_repeat_ms: int
-    cooldown_interval: float
-    enable_cpu_cache_flush: bool  # pylint: disable=unused-variable
-    verbose: int
-    (
-        measure_inputs,
-        build_results,
-        key,
-        host,
-        port,
-        priority,
-        timeout,
-        number,
-        repeat,
-        min_repeat_ms,
-        cooldown_interval,
-        enable_cpu_cache_flush,
-        verbose,
-    ) = RPC_RUNNER_WORKER_ARGS
-
-    max_float = (
-        1e10  # We use 1e10 instead of sys.float_info.max for better readability in log
-    )
-    measure_input = measure_inputs[index]
-    build_result = build_results[index]
-
-    if build_result.error_no != MeasureErrorNo.NO_ERROR:
-        return (
-            (max_float,),
-            build_result.error_no,
-            build_result.error_msg,
-            build_result.time_cost,
-            time.time(),
-        )
-
-    def timed_func():
-        tic = time.time()
-        error_no = 0
-        error_msg = None
-        try:
-            # upload built module
-            remote = request_remote(key, host, port, priority, timeout)
-            remote.upload(build_result.filename)
-            func = remote.load_module(osp.split(build_result.filename)[1])
-            # TODO(@junrushao1994): rebase and fix this
-            ctx = remote.context(str(measure_input.task.target), 0)
-            # Limitation:
-            # We can not get PackFunction directly in the remote mode as it is wrapped
-            # under the std::function. We could lift the restriction later once we fold
-            # the PackedFunc as an object. Currently, we pass function name to work
-            # around it.
-            # f_prepare = (
-            #     "cache_flush_cpu_non_first_arg" if enable_cpu_cache_flush else ""
-            # )
-            time_f = func.time_evaluator(
-                func_name=func.entry_name,
-                ctx=ctx,
-                number=number,
-                repeat=repeat,
-                min_repeat_ms=min_repeat_ms,
-                # f_preproc=f_prepare,  # TODO(@junrushao1994): rebase and enable this
-            )
-        except Exception:  # pylint: disable=broad-except
-            costs = (max_float,)
-            error_no = MeasureErrorNo.COMPILE_DEVICE
-            error_msg = make_error_msg()
-
-        if error_no == 0:
-            try:
-                args = realize_arguments(remote, ctx, measure_input.task.build_args)
-                ctx.sync()
-                costs = time_f(*args).results
-            except Exception:  # pylint: disable=broad-except
-                costs = (max_float,)
-                error_no = MeasureErrorNo.RUNTIME_DEVICE
-                error_msg = make_error_msg()
-            finally:
-                # clean up remote files
-                remote.remove(build_result.filename)
-                remote.remove(osp.splitext(build_result.filename)[0] + ".so")
-                remote.remove("")
-
-        shutil.rmtree(osp.dirname(build_result.filename))
-        toc = time.time()
-
-        time.sleep(cooldown_interval)
-        if verbose >= 1:
-            if error_no == MeasureErrorNo.NO_ERROR:
-                print("*", end="")
-            else:
-                print("*E", end="")  # Run error
-
-        return costs, error_no, error_msg, toc - tic + build_result.time_cost, toc
-
-    res = call_func_with_timeout(timeout, timed_func)
-
-    if isinstance(res, TimeoutError):
-        if verbose >= 1:
-            print("*T", end="")  # Run timeout
-        res = (
-            (max_float,),
-            MeasureErrorNo.RUN_TIMEOUT,
-            None,
-            build_result.time_cost + timeout,
-            time.time(),
-        )
-    return res
+    return rpc_runner_worker(index, *RPC_RUNNER_WORKER_ARGS)

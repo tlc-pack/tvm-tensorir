@@ -15,10 +15,13 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Search Policy """
+from typing import Optional
+
 from tvm._ffi import register_object
 from tvm.runtime import Object
 
 from . import _ffi_api
+from .measure_util import cpu_count
 
 
 @register_object("meta_schedule.SearchPolicy")
@@ -31,12 +34,20 @@ class ScheduleFn(Object):
     """ defined in src/meta_schedule/search_policy/schedule_fn.h """
 
     sch_fn: str
+    batch_size: int
+    num_iterations: int
 
     def __init__(
         self,
         sch_fn: str,
+        num_iterations: int,
+        batch_size: Optional[int] = None,
     ):
+        if batch_size is None:
+            batch_size = cpu_count()
         self.__init_handle_by_constructor__(
             _ffi_api.ScheduleFn,  # pylint: disable=no-member
             sch_fn,
+            num_iterations,
+            batch_size,
         )

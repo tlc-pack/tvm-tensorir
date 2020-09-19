@@ -111,6 +111,9 @@ def call_func_with_timeout(timeout, func, args=(), kwargs=None):
     del process
     del que
 
+    if isinstance(res, TimeoutError):
+        raise TimeoutError
+
     return res
 
 
@@ -202,3 +205,12 @@ def realize_arguments(_remote, ctx, build_args):
     # for array in ndarrays:
     #     f_random_fill(array)
     return args
+
+
+def cpu_count():
+    return multiprocessing.cpu_count()
+
+
+def vprint(verbose, content, end):
+    if verbose >= 1:
+        print(content, end=end)

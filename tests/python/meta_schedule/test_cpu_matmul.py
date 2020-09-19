@@ -156,7 +156,7 @@ def test_matmul_tiling_search():
             target=create_target("llvm"),
             target_host=create_target("llvm"),
         ),
-        policy=ms.ScheduleFn(sch_fn="test_schedule_matmul"),
+        policy=ms.ScheduleFn(sch_fn="test_schedule_matmul", num_iterations=128),
         builder="local",
         runner=ms.RPCRunner(key="local", host="0.0.0.0", port=9089),
         measure_callbacks=None,

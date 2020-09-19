@@ -55,6 +55,9 @@ MeasureResult::MeasureResult(Array<PrimExpr> costs, int error_no, String error_m
 }
 
 LocalBuilder::LocalBuilder(int timeout, int n_parallel, String build_func) {
+  if (build_func != "tar" && build_func != "ndk") {
+    LOG(FATAL) << "ValueError: Unknown build_func in LocalBuilder: " << build_func;
+  }
   ObjectPtr<LocalBuilderNode> n = make_object<LocalBuilderNode>();
   n->timeout = timeout;
   n->n_parallel = n_parallel;
