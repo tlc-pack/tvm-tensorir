@@ -14,40 +14,46 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from tvm._ffi import register_object as _register_object, _init_api
-from tvm.runtime import Object as _Object
+""" Main class of meta schedule """
+from tvm._ffi import register_object
+from tvm.runtime import Object
+
+from . import _ffi_api
 
 
-@_register_object("meta_schedule.Schedule")
-class Schedule(_Object):
+@register_object("meta_schedule.Schedule")
+class Schedule(Object):
     """ defined in src/meta_schedule/schedule.h """
 
     def __init__(self, prim_func):
-        self.__init_handle_by_constructor__(Create, prim_func)
+        self.__init_handle_by_constructor__(
+            _ffi_api.Schedule, prim_func  # pylint: disable=no-member
+        )
 
     def evaluate(self, random_variable):
-        return Eval(self, random_variable)
+        return _ffi_api.ScheduleEval(self, random_variable)  # pylint: disable=no-member
 
     def sample_tile_factor(self, n, loop, where):
-        return SampleTileFactor(self, n, loop, where)
+        return _ffi_api.ScheduleSampleTileFactor(  # pylint: disable=no-member
+            self, n, loop, where
+        )
 
     def get_block(self, name):
-        return GetBlock(self, name)
+        return _ffi_api.ScheduleGetBlock(self, name)  # pylint: disable=no-member
 
     def get_axes(self, block):
-        return GetAxes(self, block)
+        return _ffi_api.ScheduleGetAxes(self, block)  # pylint: disable=no-member
 
     def split(self, loop, factors):
-        return Split(self, loop, factors)
+        return _ffi_api.ScheduleSplit(self, loop, factors)  # pylint: disable=no-member
 
     def reorder(self, after_axes):
-        return Reorder(self, after_axes)
+        return _ffi_api.ScheduleReorder(self, after_axes)  # pylint: disable=no-member
 
     def decompose_reduction(self, block, loop):
-        return DecomposeReduction(self, block, loop)
+        return _ffi_api.ScheduleDecomposeReduction(  # pylint: disable=no-member
+            self, block, loop
+        )
 
     def replay_once(self):
-        return ReplayOnce(self)
-
-
-_init_api("meta_schedule.schedule", __name__)
+        return _ffi_api.ScheduleReplayOnce(self)  # pylint: disable=no-member

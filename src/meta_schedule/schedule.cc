@@ -26,8 +26,6 @@
 namespace tvm {
 namespace meta_schedule {
 
-TVM_REGISTER_NODE_TYPE(ScheduleNode);
-
 Schedule::Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
                    SymbolTable sym_tab, Sampler sampler) {
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
@@ -38,6 +36,9 @@ Schedule::Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction
   n->sampler = std::move(sampler);
   data_ = std::move(n);
 }
+
+Schedule::Schedule(tir::PrimFunc orig_func)
+    : Schedule(orig_func, tir::ScheduleNode::Create(orig_func), {}, {}, Sampler(DeviceRand)) {}
 
 /**************** Evaluation ****************/
 
@@ -92,6 +93,18 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n, LoopRV loop, Array<Integer
 }
 
 /**************** Schedule Primitives ****************/
+
+BlockRV ScheduleNode::CreateBlockRV(const tir::StmtSRef& block) {
+  int inst_id = this->trace.size();
+  String name = block->GetStmt<tir::BlockNode>()->tag;
+  // Create the output random variable
+  BlockRV output(name, block);
+  // Update the symbol table
+  this->sym_tab.emplace(output, SymbolTableEntry(inst_id, block));
+  // Put the instruction in the trace
+  this->trace.push_back(CreateBlockRVInst(block, output));
+  return output;
+}
 
 BlockRV ScheduleNode::GetBlock(const String& name) {
   int inst_id = this->trace.size();
@@ -246,8 +259,7 @@ Array<TObjectRef> LookupArray(const std::unordered_map<const Object*, const Obje
 
 void ScheduleNode::ReplayOnce() {
   // Step 1. Create a new schedule to temporarily hold the replay result
-  Schedule sch(this->orig_func, tir::ScheduleNode::Create(this->orig_func), {}, {},
-               Sampler(DeviceRand));
+  Schedule sch(this->orig_func);
   // Maps an old random variable to its corresponding new random variable in the replay
   std::unordered_map<const Object*, const Object*> var_map;
   // Step 2. Replay all the instructions in the trace
@@ -301,14 +313,12 @@ void ScheduleNode::ReplayOnce() {
 
 /**************** FFI ****************/
 
-struct ScheduleInternal {
+struct Internal {
   /*!
    * \brief FFI function, corresponds to Schedule::Schedule
    * \sa Schedule::Schedule
    */
-  static Schedule Create(tir::PrimFunc func) {
-    return Schedule(func, tir::ScheduleNode::Create(func), {}, {}, Sampler(DeviceRand));
-  }
+  static Schedule New(tir::PrimFunc func) { return Schedule(func); }
   /*!
    * \brief FFI function, corresponds to Schedule::Eval
    * \sa Schedule::Eval
@@ -367,18 +377,18 @@ struct ScheduleInternal {
   static void ReplayOnce(Schedule sch) { return sch->ReplayOnce(); }
 };
 
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.Create").set_body_typed(ScheduleInternal::Create);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.Eval").set_body_typed(ScheduleInternal::Eval);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.SampleTileFactor")
-    .set_body_typed(ScheduleInternal::SampleTileFactor);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.GetBlock").set_body_typed(ScheduleInternal::GetBlock);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.GetAxes").set_body_typed(ScheduleInternal::GetAxes);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.Split").set_body_typed(ScheduleInternal::Split);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.Reorder").set_body_typed(ScheduleInternal::Reorder);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.DecomposeReduction")
-    .set_body_typed(ScheduleInternal::DecomposeReduction);
-TVM_REGISTER_GLOBAL("meta_schedule.schedule.ReplayOnce")
-    .set_body_typed(ScheduleInternal::ReplayOnce);
+TVM_REGISTER_NODE_TYPE(ScheduleNode);
+TVM_REGISTER_GLOBAL("meta_schedule.Schedule").set_body_typed(Internal::New);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleEval").set_body_typed(Internal::Eval);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleTileFactor")
+    .set_body_typed(Internal::SampleTileFactor);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetBlock").set_body_typed(Internal::GetBlock);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetAxes").set_body_typed(Internal::GetAxes);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSplit").set_body_typed(Internal::Split);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReorder").set_body_typed(Internal::Reorder);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleDecomposeReduction")
+    .set_body_typed(Internal::DecomposeReduction);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReplayOnce").set_body_typed(Internal::ReplayOnce);
 
 }  // namespace meta_schedule
 }  // namespace tvm
