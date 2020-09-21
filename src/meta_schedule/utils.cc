@@ -16,27 +16,15 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "./random_variable.h"  // NOLINT(build/include)
+#include "./utils.h"  // NOLINT(build/include)
 
 namespace tvm {
 namespace meta_schedule {
 
-BlockRV::BlockRV(String name, Optional<tir::StmtSRef> block) {
-  ObjectPtr<BlockRVNode> n = make_object<BlockRVNode>();
-  n->name = std::move(name);
-  n->block = std::move(block);
-  data_ = std::move(n);
+NullStream& NullStream::Global() {
+  static NullStream stream;
+  return stream;
 }
-
-LoopRV::LoopRV(String name, Optional<tir::StmtSRef> loop) {
-  ObjectPtr<LoopRVNode> n = make_object<LoopRVNode>();
-  n->name = std::move(name);
-  n->loop = std::move(loop);
-  data_ = std::move(n);
-}
-
-TVM_REGISTER_NODE_TYPE(BlockRVNode);
-TVM_REGISTER_NODE_TYPE(LoopRVNode);
 
 }  // namespace meta_schedule
 }  // namespace tvm
