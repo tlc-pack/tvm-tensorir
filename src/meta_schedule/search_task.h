@@ -16,27 +16,42 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "./random_variable.h"  // NOLINT(build/include)
+#ifndef SRC_META_SCHEDULE_SEARCH_TASK_H_
+#define SRC_META_SCHEDULE_SEARCH_TASK_H_
+
+#include <tvm/target/target.h>
+#include <tvm/tir/function.h>
 
 namespace tvm {
 namespace meta_schedule {
 
-BlockRV::BlockRV(String name, Optional<tir::StmtSRef> block) {
-  ObjectPtr<BlockRVNode> n = make_object<BlockRVNode>();
-  n->name = std::move(name);
-  n->block = std::move(block);
-  data_ = std::move(n);
-}
+/********** SearchTask **********/
 
-LoopRV::LoopRV(String name, Optional<tir::StmtSRef> loop) {
-  ObjectPtr<LoopRVNode> n = make_object<LoopRVNode>();
-  n->name = std::move(name);
-  n->loop = std::move(loop);
-  data_ = std::move(n);
-}
+class SearchTaskNode : public Object {
+ public:
+  tir::PrimFunc func;
+  String task_name;
+  Target target;
+  Target target_host;
 
-TVM_REGISTER_NODE_TYPE(BlockRVNode);
-TVM_REGISTER_NODE_TYPE(LoopRVNode);
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("func", &func);
+    v->Visit("task_name", &task_name);
+    v->Visit("target", &target);
+    v->Visit("target_host", &target_host);
+  }
+
+  static constexpr const char* _type_key = "meta_schedule.SearchTask";
+  TVM_DECLARE_FINAL_OBJECT_INFO(SearchTaskNode, Object);
+};
+
+class SearchTask : public ObjectRef {
+ public:
+  explicit SearchTask(tir::PrimFunc func, String task_name, Target target, Target target_host);
+  TVM_DEFINE_OBJECT_REF_METHODS(SearchTask, ObjectRef, SearchTaskNode);
+};
 
 }  // namespace meta_schedule
 }  // namespace tvm
+
+#endif  // SRC_META_SCHEDULE_SEARCH_TASK_H_
