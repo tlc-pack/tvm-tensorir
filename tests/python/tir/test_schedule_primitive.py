@@ -392,6 +392,78 @@ def test_blockize():
     assert s.validate_sref()
 
 
+@tvm.hybrid.script
+def test_func_cache_rw(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128), "float32")
+    C = tir.match_buffer(c, (128, 128), "float32")
+    B = tir.buffer_allocate((128, 128), "float32")
+    D = tir.buffer_allocate((128, 128), "float32")
+
+    with tir.block([128, 128, tir.reduce_axis(0, 128)], "A") as [vi, vj, vk]:
+        A[vi, vj] = A[vi, vj] + B[vi, vk] * C[vj, vk]
+
+    with tir.block([128, 128], "D") as [vi, vj]:
+        D[vi, vj] = A[vi, vj]
+
+
+@tvm.hybrid.script
+def test_func_cache_read(a: ty.handle, c: ty.handle) -> None:
+    # function attr dict
+    tir.func_attr({})
+    C = tir.match_buffer(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    # body
+    B = tir.buffer_allocate([128, 128], elem_offset=0, align=128, offset_factor=1)
+    D = tir.buffer_allocate([128, 128], elem_offset=0, align=128, offset_factor=1)
+    A_local = tir.buffer_allocate([128, 128], elem_offset=0, scope="local", align=128, offset_factor=1)
+    with tir.block([128, 128, tir.reduce_axis(0, 128)], "A") as [vi, vj, vk]:
+        A[vi, vj] = (A[vi, vj] + (B[vi, vk]*C[vj, vk]))
+    with tir.block([128, 128], "") as [v0, v1]:
+        A_local[v0, v1] = A[v0, v1]
+    with tir.block([128, 128], "D") as [vi_1, vj_1]:
+        D[vi_1, vj_1] = A_local[vi_1, vj_1]
+
+
+@tvm.hybrid.script
+def test_func_cache_write(a: ty.handle, c: ty.handle) -> None:
+    # function attr dict
+    tir.func_attr({})
+    C = tir.match_buffer(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    # body
+    B = tir.buffer_allocate([128, 128], elem_offset=0, align=128, offset_factor=1)
+    D = tir.buffer_allocate([128, 128], elem_offset=0, align=128, offset_factor=1)
+    A_local = tir.buffer_allocate([128, 128], elem_offset=0, scope="local", align=128, offset_factor=1)
+    with tir.block([128, 128, tir.reduce_axis(0, 128)], "A") as [vi, vj, vk]:
+        A_local[vi, vj] = (A_local[vi, vj] + (B[vi, vk]*C[vj, vk]))
+    with tir.block([128, 128], "") as [v0, v1]:
+        A[v0, v1] = A_local[v0, v1]
+    with tir.block([128, 128], "D") as [vi_1, vj_1]:
+        D[vi_1, vj_1] = A[vi_1, vj_1]
+
+
+def test_cache_read_write():
+    func = test_func_cache_rw
+
+    # schedule cache read
+    s = tir.create_schedule(func)
+    blockA = tir.schedule.get_stmt(s.get_block("A"))
+    A = blockA.writes[0].buffer
+    s.cache_read(A, "local")
+
+    tvm.ir.assert_structural_equal(test_func_cache_read, s.func)
+    assert s.validate_sref()
+
+    # schedule cache write
+    s = tir.create_schedule(func)
+    blockA = tir.schedule.get_stmt(s.get_block("A"))
+    A = blockA.writes[0].buffer
+    s.cache_write(A, "local")
+
+    tvm.ir.assert_structural_equal(test_func_cache_write, s.func)
+    assert s.validate_sref()
+
+
 if __name__ == "__main__":
     test_fuse()
     test_split_fuse()
@@ -402,4 +474,5 @@ if __name__ == "__main__":
     test_reduction()
     test_cache_read()
     test_cache_write()
+    test_cache_read_write()
     test_blockize()
