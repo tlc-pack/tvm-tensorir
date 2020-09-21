@@ -106,6 +106,12 @@ class ScheduleNode : public Object {
   Array<tir::Var> SampleTileFactor(int n, LoopRV loop, Array<Integer> where);
   /**************** Scheduling Primitives ****************/
   /*!
+   * \brief An instruction to create a deterministic BlockRV
+   * \param block The value of the deterministic BlockRV
+   * \return A block random variable, the return value of the instruction
+   */
+  BlockRV CreateBlockRV(const tir::StmtSRef& block);
+  /*!
    * \brief Apply the instruction GetBlock
    * \param name The name of the block to get retrieved
    * \return A block random variable, the return value of the instruction
@@ -155,12 +161,13 @@ class Schedule : public ObjectRef {
    */
   explicit Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
                     SymbolTable sym_tab, Sampler sampler);
+  /*!
+   * \brief Constructor: other fields are created with default value
+   * \param orig_func The original TIR PrimFunc to be scheduled
+   */
+  explicit Schedule(tir::PrimFunc orig_func);
 
-  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
-
- protected:
-  /*! \brief Constructor. The node should never be constructed directly. */
-  Schedule() = default;
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
 };
 
 }  // namespace meta_schedule
