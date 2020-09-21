@@ -14,40 +14,41 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-from tvm._ffi import register_object as _register_object
-from tvm.runtime import Object as _Object
+""" Meta Schedule Instructions """
+from tvm._ffi import register_object
+from tvm.runtime import Object
 
 
-@_register_object("meta_schedule.Instruction")
-class Instruction(_Object):
+@register_object("meta_schedule.Instruction")
+class Instruction(Object):
     """ defined in src/meta_schedule/instruction.h """
 
 
-@_register_object("meta_schedule.SampleTileFactorInst")
+@register_object("meta_schedule.SampleTileFactorInst")
 class SampleTileFactorInst(Instruction):
     """ defined in src/meta_schedule/instruction.h """
 
 
-@_register_object("meta_schedule.GetBlockInst")
+@register_object("meta_schedule.GetBlockInst")
 class GetBlockInst(Instruction):
     """ defined in src/meta_schedule/instruction.h """
 
 
-@_register_object("meta_schedule.GetAxesInst")
+@register_object("meta_schedule.GetAxesInst")
 class GetAxesInst(Instruction):
     """ defined in src/meta_schedule/instruction.h """
 
 
-@_register_object("meta_schedule.SplitInst")
+@register_object("meta_schedule.SplitInst")
 class SplitInst(Instruction):
     """ defined in src/meta_schedule/instruction.h """
 
 
-@_register_object("meta_schedule.ReorderInst")
+@register_object("meta_schedule.ReorderInst")
 class ReorderInst(Instruction):
     """ defined in src/meta_schedule/instruction.h """
 
 
-@_register_object("meta_schedule.DecomposeReductionInst")
+@register_object("meta_schedule.DecomposeReductionInst")
 class DecomposeReductionInst(Instruction):
     """ defined in src/meta_schedule/instruction.h """

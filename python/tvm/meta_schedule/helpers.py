@@ -20,8 +20,8 @@ from . import _ffi_api
 
 
 def block_from_sref(block_sref):
-    return _ffi_api.BlockFromStmtSRef(block_sref)
+    return _ffi_api.BlockFromStmtSRef(block_sref)  # pylint: disable=no-member
 
 
 def loop_from_sref(loop_sref):
-    return _ffi_api.LoopFromStmtSRef(loop_sref)
+    return _ffi_api.LoopFromStmtSRef(loop_sref)  # pylint: disable=no-member

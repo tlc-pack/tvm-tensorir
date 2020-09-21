@@ -16,27 +16,31 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "./random_variable.h"  // NOLINT(build/include)
+
+#include "./search_task.h"  // NOLINT(build/include)
+
+#include <tvm/runtime/registry.h>
 
 namespace tvm {
 namespace meta_schedule {
 
-BlockRV::BlockRV(String name, Optional<tir::StmtSRef> block) {
-  ObjectPtr<BlockRVNode> n = make_object<BlockRVNode>();
-  n->name = std::move(name);
-  n->block = std::move(block);
+SearchTask::SearchTask(tir::PrimFunc func, String task_name, Target target, Target target_host) {
+  ObjectPtr<SearchTaskNode> n = make_object<SearchTaskNode>();
+  n->func = std::move(func);
+  n->task_name = std::move(task_name);
+  n->target = std::move(target);
+  n->target_host = std::move(target_host);
   data_ = std::move(n);
 }
 
-LoopRV::LoopRV(String name, Optional<tir::StmtSRef> loop) {
-  ObjectPtr<LoopRVNode> n = make_object<LoopRVNode>();
-  n->name = std::move(name);
-  n->loop = std::move(loop);
-  data_ = std::move(n);
-}
+struct Internal {
+  static SearchTask New(tir::PrimFunc func, String task_name, Target target, Target target_host) {
+    return SearchTask(func, task_name, target, target_host);
+  }
+};
 
-TVM_REGISTER_NODE_TYPE(BlockRVNode);
-TVM_REGISTER_NODE_TYPE(LoopRVNode);
+TVM_REGISTER_NODE_TYPE(SearchTaskNode);
+TVM_REGISTER_GLOBAL("meta_schedule.SearchTask").set_body_typed(Internal::New);
 
 }  // namespace meta_schedule
 }  // namespace tvm
