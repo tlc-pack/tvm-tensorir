@@ -245,23 +245,23 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
 struct Internal {
   /********** Constructors **********/
-  static MeasureInput CreateMeasureInput(SearchTask task, Schedule sch) {
+  static MeasureInput MeasureInputNew(SearchTask task, Schedule sch) {
     return MeasureInput(task, sch);
   }
-  static BuildResult CreateBuildResult(String filename, int error_no, String error_msg,
-                                       double time_cost) {
+  static BuildResult BuildResultNew(String filename, int error_no, String error_msg,
+                                    double time_cost) {
     return BuildResult(filename, error_no, error_msg, time_cost);
   }
-  static MeasureResult CreateMeasureResult(Array<PrimExpr> costs, int error_no, String error_msg,
-                                           double all_cost, double timestamp) {
+  static MeasureResult MeasureResultNew(Array<PrimExpr> costs, int error_no, String error_msg,
+                                        double all_cost, double timestamp) {
     return MeasureResult(costs, error_no, error_msg, all_cost, timestamp);
   }
-  static LocalBuilder CreateLocalBuilder(int timeout, int n_parallel, String build_func) {
+  static LocalBuilder LocalBuilderNew(int timeout, int n_parallel, String build_func) {
     return LocalBuilder(timeout, n_parallel, build_func);
   }
-  static RPCRunner CreateRPCRunner(String tracker, int priority, int n_parallel, int timeout,
-                                   int number, int repeat, int min_repeat_ms,
-                                   double cooldown_interval, bool enable_cpu_cache_flush) {
+  static RPCRunner RPCRunnerNew(String tracker, int priority, int n_parallel, int timeout,
+                                int number, int repeat, int min_repeat_ms, double cooldown_interval,
+                                bool enable_cpu_cache_flush) {
     return RPCRunner(tracker, priority, n_parallel, timeout, number, repeat, min_repeat_ms,
                      cooldown_interval, enable_cpu_cache_flush);
   }
@@ -286,11 +286,11 @@ TVM_REGISTER_NODE_TYPE(RPCRunnerNode);
 TVM_REGISTER_OBJECT_TYPE(MeasureCallbackNode);
 TVM_REGISTER_NODE_TYPE(ProgramMeasurerNode);
 
-TVM_REGISTER_GLOBAL("meta_schedule.MeasureInput").set_body_typed(Internal::CreateMeasureInput);
-TVM_REGISTER_GLOBAL("meta_schedule.BuildResult").set_body_typed(Internal::CreateBuildResult);
-TVM_REGISTER_GLOBAL("meta_schedule.MeasureResult").set_body_typed(Internal::CreateMeasureResult);
-TVM_REGISTER_GLOBAL("meta_schedule.LocalBuilder").set_body_typed(Internal::CreateLocalBuilder);
-TVM_REGISTER_GLOBAL("meta_schedule.RPCRunner").set_body_typed(Internal::CreateRPCRunner);
+TVM_REGISTER_GLOBAL("meta_schedule.MeasureInput").set_body_typed(Internal::MeasureInputNew);
+TVM_REGISTER_GLOBAL("meta_schedule.BuildResult").set_body_typed(Internal::BuildResultNew);
+TVM_REGISTER_GLOBAL("meta_schedule.MeasureResult").set_body_typed(Internal::MeasureResultNew);
+TVM_REGISTER_GLOBAL("meta_schedule.LocalBuilder").set_body_typed(Internal::LocalBuilderNew);
+TVM_REGISTER_GLOBAL("meta_schedule.RPCRunner").set_body_typed(Internal::RPCRunnerNew);
 TVM_REGISTER_GLOBAL("meta_schedule.ProgramBuilderBuild")
     .set_body_typed(Internal::ProgramBuilderBuild);
 TVM_REGISTER_GLOBAL("meta_schedule.ProgramRunnerRun").set_body_typed(Internal::ProgramRunnerRun);

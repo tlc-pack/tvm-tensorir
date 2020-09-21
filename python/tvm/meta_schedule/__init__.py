@@ -20,6 +20,5 @@ from . import helpers  # TODO(@junrushao1994)
 from .measure import LocalBuilder, RPCRunner
 from .random_variable import BlockRV, LoopRV
 from .schedule import Schedule
-from .search import search
-from .search_policy import ScheduleFn
+from .search import Replay, ScheduleFn, autotune
 from .search_task import SearchTask

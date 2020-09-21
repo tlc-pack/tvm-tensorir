@@ -259,8 +259,7 @@ Array<TObjectRef> LookupArray(const std::unordered_map<const Object*, const Obje
 
 void ScheduleNode::ReplayOnce() {
   // Step 1. Create a new schedule to temporarily hold the replay result
-  Schedule sch(this->orig_func, tir::ScheduleNode::Create(this->orig_func), {}, {},
-               Sampler(DeviceRand));
+  Schedule sch(this->orig_func);
   // Maps an old random variable to its corresponding new random variable in the replay
   std::unordered_map<const Object*, const Object*> var_map;
   // Step 2. Replay all the instructions in the trace
@@ -319,9 +318,7 @@ struct Internal {
    * \brief FFI function, corresponds to Schedule::Schedule
    * \sa Schedule::Schedule
    */
-  static Schedule Create(tir::PrimFunc func) {
-    return Schedule(func, tir::ScheduleNode::Create(func), {}, {}, Sampler(DeviceRand));
-  }
+  static Schedule New(tir::PrimFunc func) { return Schedule(func); }
   /*!
    * \brief FFI function, corresponds to Schedule::Eval
    * \sa Schedule::Eval
@@ -381,7 +378,7 @@ struct Internal {
 };
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCreate").set_body_typed(Internal::Create);
+TVM_REGISTER_GLOBAL("meta_schedule.Schedule").set_body_typed(Internal::New);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleEval").set_body_typed(Internal::Eval);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleTileFactor")
     .set_body_typed(Internal::SampleTileFactor);

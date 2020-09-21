@@ -21,15 +21,49 @@
 
 #include "./measure.h"
 #include "./schedule.h"
-#include "./search_policy.h"
-#include "./search_task.h"
 
 namespace tvm {
 namespace meta_schedule {
 
-TVM_DLL Schedule Search(const SearchTask& task, const SearchPolicy& policy,
-                        const ProgramBuilder& builder, const ProgramRunner& runner,
-                        const Array<MeasureCallback>& measure_callbacks, int verbose);
+/********** SearchSpace **********/
+
+class SearchSpaceNode : public runtime::Object {
+ public:
+  virtual ~SearchSpaceNode() = default;
+  virtual Schedule SampleByReplay(const SearchTask& task) = 0;
+  virtual Array<Schedule> GetSupport(const SearchTask& task) = 0;
+
+  static constexpr const char* _type_key = "meta_schedule.SearchSpace";
+  TVM_DECLARE_BASE_OBJECT_INFO(SearchSpaceNode, Object);
+};
+
+class SearchSpace : public runtime::ObjectRef {
+ public:
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchSpace, ObjectRef, SearchSpaceNode);
+};
+
+/********** SearchStrategy **********/
+
+class SearchStrategyNode : public Object {
+ public:
+  virtual ~SearchStrategyNode() = default;
+  virtual Schedule Search(const SearchTask& task, const SearchSpace& space,
+                          const ProgramMeasurer& measurer, int verbose) = 0;
+
+  static constexpr const char* _type_key = "meta_schedule.SearchStrategy";
+  TVM_DECLARE_BASE_OBJECT_INFO(SearchStrategyNode, Object);
+};
+
+class SearchStrategy : public ObjectRef {
+ public:
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchStrategy, ObjectRef, SearchStrategyNode);
+};
+
+/********** Search **********/
+
+TVM_DLL Schedule AutoTune(SearchTask task, SearchSpace space, SearchStrategy strategy,
+                          ProgramBuilder builder, ProgramRunner runner,
+                          Array<MeasureCallback> measure_callbacks, int verbose);
 
 }  // namespace meta_schedule
 }  // namespace tvm

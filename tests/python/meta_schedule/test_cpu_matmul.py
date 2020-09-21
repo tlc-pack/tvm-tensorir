@@ -141,13 +141,11 @@ def test_matmul_tiling_search():
         k_0, k_1 = sch.split(loop=k, factors=k_tiles)
         sch.reorder(after_axes=[i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3])
 
-    sch = ms.search(
+    sch = ms.autotune(
         task=matmul,
-        policy=ms.ScheduleFn(
-            sch_fn=schedule_matmul,
-            num_iterations=128,
-            batch_size=16,
-        ),
+        space=schedule_matmul,
+        strategy="replay",
+        runner="rpc 0.0.0.0:3012:local * 16",
     )
     print(sch)
 

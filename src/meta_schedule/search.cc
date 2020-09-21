@@ -19,8 +19,29 @@
 
 #include "./search.h"  // NOLINT(build/include)
 
+#include "./measure.h"
+
 namespace tvm {
 namespace meta_schedule {
+
+/********** Search **********/
+
+Schedule AutoTune(SearchTask task, SearchSpace space, SearchStrategy strategy,
+                  ProgramBuilder builder, ProgramRunner runner,
+                  Array<MeasureCallback> measure_callbacks, int verbose) {
+  return strategy->Search(task, space, ProgramMeasurer(builder, runner, measure_callbacks),
+                          verbose);
+}
+
+/********** FFI **********/
+
+TVM_REGISTER_NODE_TYPE(SearchTaskNode);
+TVM_REGISTER_OBJECT_TYPE(SearchSpaceNode);
+TVM_REGISTER_OBJECT_TYPE(SearchStrategyNode);
+TVM_REGISTER_GLOBAL("meta_schedule.AutoTune").set_body_typed(AutoTune);
+
+}  // namespace meta_schedule
+}  // namespace tvm
 
 // using runtime::PackedFunc;
 
@@ -62,15 +83,3 @@ namespace meta_schedule {
 //   }
 //   Search(func, rules, policy);
 // }
-
-Schedule Search(const SearchTask& task, const SearchPolicy& policy, const ProgramBuilder& builder,
-                const ProgramRunner& runner, const Array<MeasureCallback>& measure_callbacks,
-                int verbose) {
-  ProgramMeasurer measurer(builder, runner, measure_callbacks);
-  return policy->Search(task, measurer, verbose);
-}
-
-TVM_REGISTER_GLOBAL("meta_schedule.Search").set_body_typed(Search);
-
-}  // namespace meta_schedule
-}  // namespace tvm

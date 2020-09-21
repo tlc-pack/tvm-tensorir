@@ -27,7 +27,7 @@ class Schedule(Object):
 
     def __init__(self, prim_func):
         self.__init_handle_by_constructor__(
-            _ffi_api.ScheduleCreate, prim_func  # pylint: disable=no-member
+            _ffi_api.Schedule, prim_func  # pylint: disable=no-member
         )
 
     def evaluate(self, random_variable):

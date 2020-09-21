@@ -34,14 +34,13 @@ SearchTask::SearchTask(tir::PrimFunc func, String task_name, Target target, Targ
 }
 
 struct Internal {
-  static SearchTask CreateSearchTask(tir::PrimFunc func, String task_name, Target target,
-                                     Target target_host) {
+  static SearchTask New(tir::PrimFunc func, String task_name, Target target, Target target_host) {
     return SearchTask(func, task_name, target, target_host);
   }
 };
 
 TVM_REGISTER_NODE_TYPE(SearchTaskNode);
-TVM_REGISTER_GLOBAL("meta_schedule.SearchTask").set_body_typed(Internal::CreateSearchTask);
+TVM_REGISTER_GLOBAL("meta_schedule.SearchTask").set_body_typed(Internal::New);
 
 }  // namespace meta_schedule
 }  // namespace tvm
