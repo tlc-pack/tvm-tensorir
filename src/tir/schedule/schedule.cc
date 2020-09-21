@@ -399,7 +399,7 @@ Array<StmtSRef> ScheduleNode::Blocks(StmtSRef scope) const {
   if (!scope.defined()) {
     scope = root;
   }
-  CHECK(GetRef<Stmt>(scope->stmt).as<BlockNode>());
+  CHECK(scope->stmt->IsInstance<BlockNode>());
   CHECK_GT(scopes.count(scope), 0);
   const auto& buffer_writers = scopes.at(scope)->buffer_writers;
   std::unordered_set<StmtSRef, ObjectPtrHash, ObjectPtrEqual> collect;
@@ -440,6 +440,7 @@ Scope ScheduleNode::GetParentScope(const StmtSRef& sref) const {
 }
 
 Array<StmtSRef> ScheduleNode::GetLoopsInScope(const StmtSRef& block) const {
+  CHECK(block->parent);
   Array<StmtSRef> ret;
   StmtSRef sref = GetRef<StmtSRef>(block->parent);
   while (!GetRef<Stmt>(sref->stmt).as<BlockNode>()) {
@@ -591,7 +592,7 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleMergeReduction")
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleTensorize")
     .set_body_typed<void(Schedule, StmtSRef, TensorIntrin)>([](Schedule schedule, StmtSRef sref,
-                                                              TensorIntrin intrinsic) {
+                                                               TensorIntrin intrinsic) {
       return schedule->tensorize(sref, intrinsic);
     });
 

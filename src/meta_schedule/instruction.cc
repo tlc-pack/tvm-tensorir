@@ -21,20 +21,19 @@
 namespace tvm {
 namespace meta_schedule {
 
-TVM_REGISTER_NODE_TYPE(InstructionNode);
-TVM_REGISTER_NODE_TYPE(SampleTileFactorInstNode);
-TVM_REGISTER_NODE_TYPE(GetBlockInstNode);
-TVM_REGISTER_NODE_TYPE(GetAxesInstNode);
-TVM_REGISTER_NODE_TYPE(SplitInstNode);
-TVM_REGISTER_NODE_TYPE(ReorderInstNode);
-TVM_REGISTER_NODE_TYPE(DecomposeReductionInstNode);
-
 SampleTileFactorInst::SampleTileFactorInst(LoopRV loop, Array<Integer> where,
                                            Array<tir::Var> outputs) {
   ObjectPtr<SampleTileFactorInstNode> n = make_object<SampleTileFactorInstNode>();
   n->loop = std::move(loop);
   n->where = std::move(where);
   n->outputs = std::move(outputs);
+  data_ = std::move(n);
+}
+
+CreateBlockRVInst::CreateBlockRVInst(tir::StmtSRef block, BlockRV output) {
+  ObjectPtr<CreateBlockRVInstNode> n = make_object<CreateBlockRVInstNode>();
+  n->block = std::move(block);
+  n->output = std::move(output);
   data_ = std::move(n);
 }
 
@@ -73,6 +72,14 @@ DecomposeReductionInst::DecomposeReductionInst(BlockRV block, LoopRV loop, Block
   n->output = std::move(output);
   data_ = std::move(n);
 }
+
+TVM_REGISTER_NODE_TYPE(InstructionNode);
+TVM_REGISTER_NODE_TYPE(SampleTileFactorInstNode);
+TVM_REGISTER_NODE_TYPE(GetBlockInstNode);
+TVM_REGISTER_NODE_TYPE(GetAxesInstNode);
+TVM_REGISTER_NODE_TYPE(SplitInstNode);
+TVM_REGISTER_NODE_TYPE(ReorderInstNode);
+TVM_REGISTER_NODE_TYPE(DecomposeReductionInstNode);
 
 }  // namespace meta_schedule
 }  // namespace tvm
