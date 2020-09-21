@@ -65,12 +65,14 @@ def script(script_in):
     """
 
     if inspect.isfunction(script_in):
-        return _parse(script_in)
-
-    if inspect.isclass(script_in):
-        return HybridClass(script_in)
-
-    raise TypeError("Only function and class are supported")
+        result = _parse(script_in)
+    elif inspect.isclass(script_in):
+        result = HybridClass(script_in)
+    else:
+        raise TypeError("Only function and class are supported")
+    result.__name__ = script_in.__name__
+    result.__qualname__ = script_in.__qualname__
+    return result
 
 
 class HybridClass:
@@ -86,4 +88,6 @@ class HybridClass:
 
 def _parse(script_in):
     """Helper function to parse hybrid_script into TIR"""
-    return from_source(inspect.getsource(script_in), inspect.getsourcelines(script_in)[1])
+    return from_source(
+        inspect.getsource(script_in), inspect.getsourcelines(script_in)[1]
+    )
