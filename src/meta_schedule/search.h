@@ -59,6 +59,64 @@ class SearchStrategy : public ObjectRef {
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchStrategy, ObjectRef, SearchStrategyNode);
 };
 
+/********** RulePackedArgs **********/
+
+class RulePackedArgsNode : public Object {
+ public:
+  Array<Schedule> proceed;
+  Array<Schedule> skipped;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("proceed", &proceed);
+    v->Visit("skipped", &skipped);
+  }
+
+  static constexpr const char* _type_key = "meta_schedule.RulePackedArgs";
+  TVM_DECLARE_FINAL_OBJECT_INFO(RulePackedArgsNode, Object);
+};
+
+class RulePackedArgs : public ObjectRef {
+ public:
+  explicit RulePackedArgs(Schedule schedule);
+
+  explicit RulePackedArgs(Array<Schedule> proceed, Array<Schedule> skipped);
+
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(RulePackedArgs, ObjectRef, RulePackedArgsNode);
+};
+
+/********** SearchRule **********/
+
+class SearchRuleNode : public Object {
+ public:
+  using FApply = runtime::TypedPackedFunc<RulePackedArgs(Schedule, BlockRV)>;
+
+  String name;
+
+  FApply apply_;
+
+  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("name", &name); }
+
+  RulePackedArgs Apply(Schedule schedule, BlockRV block) const;
+
+  RulePackedArgs Apply(RulePackedArgs schedules, BlockRV block) const;
+
+  static constexpr const char* _type_key = "meta_schedule.SearchRule";
+  TVM_DECLARE_FINAL_OBJECT_INFO(SearchRuleNode, Object);
+};
+
+class SearchRule : public ObjectRef {
+ public:
+  explicit SearchRule(String name);
+
+  explicit SearchRule(String name, runtime::PackedFunc apply);
+
+  explicit SearchRule(String name, SearchRuleNode::FApply apply);
+
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchRule, ObjectRef, SearchRuleNode);
+};
+
+TVM_DLL SearchRule ComposeSequential(String name, Array<SearchRule> rules);
+
 /********** Search **********/
 
 TVM_DLL Schedule AutoTune(SearchTask task, SearchSpace space, SearchStrategy strategy,

@@ -24,6 +24,71 @@
 namespace tvm {
 namespace meta_schedule {
 
+using runtime::PackedFunc;
+
+/********** Constructors **********/
+
+RulePackedArgs::RulePackedArgs(Schedule schedule) : RulePackedArgs({schedule}, {}) {}
+
+RulePackedArgs::RulePackedArgs(Array<Schedule> proceed, Array<Schedule> skipped) {
+  ObjectPtr<RulePackedArgsNode> n = make_object<RulePackedArgsNode>();
+  n->proceed = std::move(proceed);
+  n->skipped = std::move(skipped);
+  data_ = std::move(n);
+}
+
+SearchRule::SearchRule(String name) {
+  const PackedFunc* apply = runtime::Registry::Get(name);
+  CHECK(apply != nullptr) << "ValueError: Rule not registered: " << name;
+  ObjectPtr<SearchRuleNode> n = make_object<SearchRuleNode>();
+  n->name = std::move(name);
+  n->apply_ = *apply;
+  data_ = std::move(n);
+}
+
+SearchRule::SearchRule(String name, PackedFunc apply) {
+  ObjectPtr<SearchRuleNode> n = make_object<SearchRuleNode>();
+  n->name = std::move(name);
+  n->apply_ = apply;
+  data_ = std::move(n);
+}
+
+SearchRule::SearchRule(String name, SearchRuleNode::FApply apply) {
+  ObjectPtr<SearchRuleNode> n = make_object<SearchRuleNode>();
+  n->name = std::move(name);
+  n->apply_ = std::move(apply);
+  data_ = std::move(n);
+}
+
+/********** SearchRule **********/
+
+RulePackedArgs SearchRuleNode::Apply(Schedule schedule, BlockRV block) const {
+  return Apply(RulePackedArgs(schedule), block);
+}
+
+RulePackedArgs SearchRuleNode::Apply(RulePackedArgs schedules, BlockRV block) const {
+  Array<Schedule> skipped = schedules->skipped;
+  Array<Schedule> proceed;
+  Array<Schedule> new_schedules;
+  for (const Schedule& sch : schedules->proceed) {
+    RulePackedArgs results = this->Apply(sch, block);
+    proceed.insert(proceed.end(), results->proceed.begin(), results->proceed.end());
+    skipped.insert(skipped.end(), results->skipped.begin(), results->skipped.end());
+  }
+  return RulePackedArgs(proceed, skipped);
+}
+
+SearchRule ComposeSequential(String name, Array<SearchRule> rules) {
+  auto apply = [rules](Schedule schedule, BlockRV block) -> RulePackedArgs {
+    RulePackedArgs results(schedule);
+    for (const SearchRule& rule : rules) {
+      results = rule->Apply(results, block);
+    }
+    return results;
+  };
+  return SearchRule(name, SearchRuleNode::FApply(apply));
+}
+
 /********** Search **********/
 
 Schedule AutoTune(SearchTask task, SearchSpace space, SearchStrategy strategy,
@@ -35,6 +100,8 @@ Schedule AutoTune(SearchTask task, SearchSpace space, SearchStrategy strategy,
 
 /********** FFI **********/
 
+TVM_REGISTER_NODE_TYPE(RulePackedArgsNode);
+TVM_REGISTER_NODE_TYPE(SearchRuleNode);
 TVM_REGISTER_NODE_TYPE(SearchTaskNode);
 TVM_REGISTER_OBJECT_TYPE(SearchSpaceNode);
 TVM_REGISTER_OBJECT_TYPE(SearchStrategyNode);
@@ -42,44 +109,3 @@ TVM_REGISTER_GLOBAL("meta_schedule.AutoTune").set_body_typed(AutoTune);
 
 }  // namespace meta_schedule
 }  // namespace tvm
-
-// using runtime::PackedFunc;
-
-// class Rule {
-//  public:
-//   String name;
-//   runtime::TypedPackedFunc<bool(Schedule, BlockRV)> meets;
-//   runtime::TypedPackedFunc<std::string(Schedule, BlockRV)> apply;
-
-//   explicit Rule(String name, const PackedFunc* meets, const PackedFunc* apply)
-//       : name(name), meets(*meets), apply(*apply) {}
-// };
-
-// void Search(const tir::PrimFunc& func, const std::vector<Rule>& rules, const String& policy) {
-//   Schedule sch = Schedule(/*orig_func=*/func, /*sch=*/tir::ScheduleNode::Create(func),
-//   /*trace=*/{},
-//                           /*sym_tab=*/{}, /*sampler=*/Sampler(DeviceRand));
-//   // TODO(@junrushao1994): deal with the nested case
-//   Array<tir::StmtSRef> blocks = sch->sch->Blocks(sch->sch->root);
-//   for (const tir::StmtSRef& tir_block : blocks) {
-//     BlockRV block = sch->CreateBlockRV(tir_block);
-//     for (const Rule& rule : rules) {
-//       if (rule.meets(sch, block)) {
-//         // TODO(@junrushao1994): deal with the return value
-//         rule.apply(sch, block);
-//       }
-//     }
-//   }
-// }
-
-// TVM_DLL void SearchRules(tir::PrimFunc func, Array<String> rule_names, String policy) {
-//   std::vector<Rule> rules;
-//   for (const String& rule_name : rule_names) {
-//     const PackedFunc* meets = runtime::Registry::Get(rule_name + ".meets");
-//     const PackedFunc* apply = runtime::Registry::Get(rule_name + ".apply");
-//     CHECK(meets != nullptr) << "ValueError: Rule not registered: " << (rule_name + ".meets");
-//     CHECK(apply != nullptr) << "ValueError: Rule not registered: " << (rule_name + ".apply");
-//     rules.emplace_back(rule_name, meets, apply);
-//   }
-//   Search(func, rules, policy);
-// }
