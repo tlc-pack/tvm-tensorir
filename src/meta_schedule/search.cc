@@ -69,9 +69,8 @@ RulePackedArgs SearchRuleNode::Apply(Schedule schedule, BlockRV block) const {
 RulePackedArgs SearchRuleNode::Apply(RulePackedArgs schedules, BlockRV block) const {
   Array<Schedule> skipped = schedules->skipped;
   Array<Schedule> proceed;
-  Array<Schedule> new_schedules;
   for (const Schedule& sch : schedules->proceed) {
-    RulePackedArgs results = this->Apply(sch, block);
+    RulePackedArgs results = apply_(sch, block);
     proceed.insert(proceed.end(), results->proceed.begin(), results->proceed.end());
     skipped.insert(skipped.end(), results->skipped.begin(), results->skipped.end());
   }
@@ -91,9 +90,9 @@ SearchRule ComposeSequential(String name, Array<SearchRule> rules) {
 
 /********** Search **********/
 
-Schedule AutoTune(SearchTask task, SearchSpace space, SearchStrategy strategy,
-                  ProgramBuilder builder, ProgramRunner runner,
-                  Array<MeasureCallback> measure_callbacks, int verbose) {
+Optional<Schedule> AutoTune(SearchTask task, SearchSpace space, SearchStrategy strategy,
+                            ProgramBuilder builder, ProgramRunner runner,
+                            Array<MeasureCallback> measure_callbacks, int verbose) {
   return strategy->Search(task, space, ProgramMeasurer(builder, runner, measure_callbacks),
                           verbose);
 }

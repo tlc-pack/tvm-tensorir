@@ -47,8 +47,8 @@ class SearchSpace : public runtime::ObjectRef {
 class SearchStrategyNode : public Object {
  public:
   virtual ~SearchStrategyNode() = default;
-  virtual Schedule Search(const SearchTask& task, const SearchSpace& space,
-                          const ProgramMeasurer& measurer, int verbose) = 0;
+  virtual Optional<Schedule> Search(const SearchTask& task, const SearchSpace& space,
+                                    const ProgramMeasurer& measurer, int verbose) = 0;
 
   static constexpr const char* _type_key = "meta_schedule.SearchStrategy";
   TVM_DECLARE_BASE_OBJECT_INFO(SearchStrategyNode, Object);
@@ -119,9 +119,9 @@ TVM_DLL SearchRule ComposeSequential(String name, Array<SearchRule> rules);
 
 /********** Search **********/
 
-TVM_DLL Schedule AutoTune(SearchTask task, SearchSpace space, SearchStrategy strategy,
-                          ProgramBuilder builder, ProgramRunner runner,
-                          Array<MeasureCallback> measure_callbacks, int verbose);
+TVM_DLL Optional<Schedule> AutoTune(SearchTask task, SearchSpace space, SearchStrategy strategy,
+                                    ProgramBuilder builder, ProgramRunner runner,
+                                    Array<MeasureCallback> measure_callbacks, int verbose);
 
 }  // namespace meta_schedule
 }  // namespace tvm

@@ -44,7 +44,7 @@ class PostOrderApplyNode : public SearchSpaceNode {
 
   Array<Schedule> GetSupport(const SearchTask& task) override;
 
-  Array<Schedule> VisitBlock(const tir::Block& block, const Schedule& sch);
+  Array<Schedule> VisitBlock(const tir::Block& block, const Schedule& sch, bool is_root);
 
   static constexpr const char* _type_key = "meta_schedule.PostOrderApply";
   TVM_DECLARE_FINAL_OBJECT_INFO(PostOrderApplyNode, SearchSpaceNode);
@@ -77,17 +77,19 @@ Schedule PostOrderApplyNode::SampleByReplay(const SearchTask& task) {
 
 Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task) {
   if (!support_.defined()) {
-    const auto* block_realize = task->func.as<tir::BlockRealizeNode>();
+    const auto* block_realize = task->func->body.as<tir::BlockRealizeNode>();
     CHECK(block_realize != nullptr) << "TypeError: PrimFunc should root at BlockRealize, but gets: "
-                                    << task->func->GetTypeKey();
+                                    << task->func->body->GetTypeKey();
     support_ = VisitBlock(
         /*block=*/block_realize->block,
-        /*args=*/Schedule(task->func));
+        /*sch=*/Schedule(task->func),
+        /*is_root=*/true);
   }
   return support_.value();
 }
 
-Array<Schedule> PostOrderApplyNode::VisitBlock(const tir::Block& block, const Schedule& sch) {
+Array<Schedule> PostOrderApplyNode::VisitBlock(const tir::Block& block, const Schedule& sch,
+                                               bool is_root) {
   Array<tir::Block> children;
   // Collect children
   tir::PreOrderVisit(block, [&children](const ObjectRef& node) {
@@ -104,14 +106,14 @@ Array<Schedule> PostOrderApplyNode::VisitBlock(const tir::Block& block, const Sc
     for (const Schedule& sch : schedules) {
       // if this child still exists
       if (sch->sch->stmt2ref.count(child.get())) {
-        Array<Schedule> result = VisitBlock(child, sch);
+        Array<Schedule> result = VisitBlock(child, sch, false);
         new_schedules.insert(new_schedules.end(), result.begin(), result.end());
       }
     }
     schedules = new_schedules;
   }
   // Visit itself
-  {
+  if (!is_root) {
     Array<Schedule> new_schedules;
     for (const Schedule& sch : schedules) {
       RulePackedArgs result = rule->Apply(sch, sch->GetBlock(block->tag));

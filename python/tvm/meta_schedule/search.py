@@ -23,10 +23,9 @@ from tvm.tir import PrimFunc
 
 from . import _ffi_api
 from .measure import MeasureCallback, ProgramBuilder, ProgramRunner
+from .random_variable import BlockRV
 from .schedule import Schedule
 from .search_task import SearchTask
-from .random_variable import BlockRV
-
 
 ########## RulePackedArgs ##########
 
@@ -110,12 +109,23 @@ ScheduleFnType = Callable[[Schedule], None]
 
 @register_object("meta_schedule.ScheduleFn")
 class ScheduleFn(SearchSpace):
-    """ defined in src/meta_schedule/search.h """
+    """ defined in src/meta_schedule/search_space/schedule_fn.cc """
 
     def __init__(self, func: ScheduleFnType):
         self.__init_handle_by_constructor__(
             _ffi_api.ScheduleFn,  # pylint: disable=no-member
             func,
+        )
+
+
+@register_object("meta_schedule.PostOrderApply")
+class PostOrderApply(SearchSpace):
+    """ defined in src/meta_schedule/search_space/post_order_apply.cc """
+
+    def __init__(self, rule: SearchRule):
+        self.__init_handle_by_constructor__(
+            _ffi_api.PostOrderApply,  # pylint: disable=no-member
+            rule,
         )
 
 
@@ -160,7 +170,7 @@ def autotune(
     runner: Union[str, ProgramRunner] = "rpc",
     measure_callbacks: Optional[List[MeasureCallback]] = None,
     verbose: int = 1,
-) -> Schedule:
+) -> Optional[Schedule]:
     """ Search API """
     if isinstance(task, PrimFunc):
         task = SearchTask(task)

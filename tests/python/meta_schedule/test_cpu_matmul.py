@@ -134,7 +134,7 @@ def test_conv2d_tiling_rule():
     do_multi_level_tiling(sch, block)
 
 
-def test_matmul_tiling_search():
+def test_matmul_schedule_fn():
     def schedule_matmul(sch):
         block = sch.get_block(name="C")
         i, j, k = sch.get_axes(block=block)
@@ -155,7 +155,18 @@ def test_matmul_tiling_search():
     print(sch)
 
 
+def test_matmul_post_order_apply():
+    sch = ms.autotune(
+        task=matmul,
+        space=ms.PostOrderApply(rule=do_nothing),
+        strategy="replay",
+        runner="rpc 0.0.0.0:3012:local * 16",
+    )
+    print(sch.sch.func)
+
+
 if __name__ == "__main__":
     # test_matmul_tiling_rule()
     # test_conv2d_tiling_rule()
-    test_matmul_tiling_search()
+    # test_matmul_schedule_fn()
+    test_matmul_post_order_apply()
