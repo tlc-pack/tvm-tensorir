@@ -31,8 +31,6 @@ get the measurement results. The flow of data structures is
 
 We implement these in python to utilize python's multiprocessing and error handling.
 """
-from __future__ import annotations
-
 import os
 import shutil
 import tempfile
@@ -196,7 +194,7 @@ class ProgramBuilder(Object):
     timeout: int
 
     @staticmethod
-    def create(name: str) -> ProgramBuilder:
+    def create(name: str) -> "ProgramBuilder":
         if name == "local":
             return LocalBuilder()
         raise ValueError("Unknown name of program builder: " + name)
@@ -237,7 +235,7 @@ class ProgramRunner(Object):
     enable_cpu_cache_flush: bool
 
     @staticmethod
-    def create(name: str) -> ProgramRunner:
+    def create(name: str) -> "ProgramRunner":
         if name == "rpc":
             return RPCRunner()
         if name.startswith("rpc "):
@@ -348,7 +346,7 @@ class RPCRunner(ProgramRunner):
         )
 
     @staticmethod
-    def create(name: str) -> RPCRunner:
+    def create(name: str) -> "RPCRunner":
         if "*" not in name:
             return RPCRunner(tracker=name)
         split_result = name.split("*")
