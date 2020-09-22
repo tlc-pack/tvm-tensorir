@@ -15,8 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Search API """
-from __future__ import annotations
-
 from typing import Callable, List, Optional, Union
 
 from tvm._ffi import register_object
@@ -58,7 +56,7 @@ class SearchStrategy(Object):
     """ defined in src/meta_schedule/search.h """
 
     @staticmethod
-    def create(strategy: str) -> SearchStrategy:
+    def create(strategy: str) -> "SearchStrategy":
         if strategy == "replay":
             return Replay()
         raise ValueError("Cannot create search strategy from: " + strategy)
