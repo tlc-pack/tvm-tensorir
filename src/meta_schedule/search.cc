@@ -100,11 +100,24 @@ Schedule AutoTune(SearchTask task, SearchSpace space, SearchStrategy strategy,
 
 /********** FFI **********/
 
+struct Internal {
+  static RulePackedArgs RulePackedArgsNew(Array<Schedule> proceed, Array<Schedule> skipped) {
+    return RulePackedArgs(proceed, skipped);
+  }
+  static SearchRule SearchRuleNew(String name, PackedFunc apply) { return SearchRule(name, apply); }
+  static RulePackedArgs SearchRuleCall(SearchRule rule, Schedule sch, BlockRV block) {
+    return rule->Apply(sch, block);
+  }
+};
+
 TVM_REGISTER_NODE_TYPE(RulePackedArgsNode);
 TVM_REGISTER_NODE_TYPE(SearchRuleNode);
 TVM_REGISTER_NODE_TYPE(SearchTaskNode);
 TVM_REGISTER_OBJECT_TYPE(SearchSpaceNode);
 TVM_REGISTER_OBJECT_TYPE(SearchStrategyNode);
+TVM_REGISTER_GLOBAL("meta_schedule.RulePackedArgs").set_body_typed(Internal::RulePackedArgsNew);
+TVM_REGISTER_GLOBAL("meta_schedule.SearchRule").set_body_typed(Internal::SearchRuleNew);
+TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleCall").set_body_typed(Internal::SearchRuleCall);
 TVM_REGISTER_GLOBAL("meta_schedule.AutoTune").set_body_typed(AutoTune);
 
 }  // namespace meta_schedule

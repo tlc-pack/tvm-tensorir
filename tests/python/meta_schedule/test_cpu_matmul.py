@@ -86,6 +86,11 @@ def _print_prim_func(prim_func):
     print(tvm.hybrid.ashybrid(prim_func))
 
 
+@ms.register_rule("do_nothing")
+def do_nothing(sch: ms.Schedule, _block: ms.BlockRV):
+    return sch
+
+
 @tvm.register_func("test_multi_level_tiling.meets")
 def meets_multi_level_tiling(_sch: ms.Schedule, _block: ms.BlockRV):
     return True

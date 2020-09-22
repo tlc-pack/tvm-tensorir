@@ -25,6 +25,77 @@ from . import _ffi_api
 from .measure import MeasureCallback, ProgramBuilder, ProgramRunner
 from .schedule import Schedule
 from .search_task import SearchTask
+from .random_variable import BlockRV
+
+
+########## RulePackedArgs ##########
+
+
+@register_object("meta_schedule.RulePackedArgs")
+class RulePackedArgs(Object):
+    """ defined in src/meta_schedule/search.h """
+
+    proceed: List[Schedule]
+    skipped: List[Schedule]
+
+    def __init__(
+        self,
+        proceed: List[Schedule],
+        skipped: List[Schedule],
+    ):
+        self.__init_handle_by_constructor__(
+            _ffi_api.RulePackedArgs,  # pylint: disable=no-member
+            proceed,
+            skipped,
+        )
+
+
+########## SearchRule ##########
+
+
+@register_object("meta_schedule.SearchRule")
+class SearchRule(Object):
+    """ defined in src/meta_schedule/search.h """
+
+    def __init__(self, name: str, apply: Callable[[Schedule, BlockRV], RulePackedArgs]):
+        self.__init_handle_by_constructor__(
+            _ffi_api.SearchRule,  # pylint: disable=no-member
+            name,
+            apply,
+        )
+
+    def __call__(self, sch: Schedule, block: BlockRV) -> RulePackedArgs:
+        return _ffi_api.SearchRuleCall(  # pylint: disable=no-member
+            self,
+            sch,
+            block,
+        )
+
+
+def register_rule(name) -> SearchRule:
+    """ Register a search rule """
+
+    def wrap(func):
+        def apply(sch: Schedule, block: BlockRV) -> RulePackedArgs:
+            result = func(sch, block)
+            if isinstance(result, Schedule):
+                return RulePackedArgs(proceed=[result], skipped=[])
+            if isinstance(result, list):
+                return RulePackedArgs(proceed=result, skipped=[])
+            assert isinstance(
+                result, dict
+            ), "SearchRule does not support return type: " + str(type(result))
+            assert {"proceed", "skipped"}.issuperset(
+                set(result.keys())
+            ), "Only the following keys are allowed: 'proceed', 'skipped'"
+            proceed = result.get("proceed", [])
+            skipped = result.get("skipped", [])
+            return RulePackedArgs(proceed=proceed, skipped=skipped)
+
+        return SearchRule(name, apply)
+
+    return wrap
+
 
 ########## SearchSpace ##########
 

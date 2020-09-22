@@ -63,6 +63,7 @@ PostOrderApply::PostOrderApply(SearchRule rule) {
   ObjectPtr<PostOrderApplyNode> n = make_object<PostOrderApplyNode>();
   n->rule = std::move(rule);
   n->sampler_ = Sampler();
+  n->support_ = NullOpt;
   data_ = std::move(n);
 }
 
