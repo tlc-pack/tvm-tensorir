@@ -169,9 +169,12 @@ def test_matmul_schedule_fn():
         task=matmul,
         space=schedule_matmul,
         strategy="replay",
-        runner="rpc 0.0.0.0:3012:local * 16",
+        runner="rpc://0.0.0.0:3012:local * 16",
     )
-    print(sch)
+    if sch is None:
+        print("No valid schedule found")
+    else:
+        _print_prim_func(sch.sch.func)
 
 
 def test_matmul_post_order_apply():
@@ -179,9 +182,12 @@ def test_matmul_post_order_apply():
         task=matmul,
         space=ms.PostOrderApply(rule=multi_level_tiling),
         strategy="replay",
-        runner="rpc 0.0.0.0:3012:local * 16",
+        runner="rpc://0.0.0.0:3012:local * 16",
     )
-    _print_prim_func(sch.sch.func)
+    if sch is None:
+        print("No valid schedule found")
+    else:
+        _print_prim_func(sch.sch.func)
 
 
 if __name__ == "__main__":
