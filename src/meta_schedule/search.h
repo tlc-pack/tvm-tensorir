@@ -19,6 +19,8 @@
 #ifndef SRC_META_SCHEDULE_SEARCH_H_
 #define SRC_META_SCHEDULE_SEARCH_H_
 
+#include <vector>
+
 #include "./measure.h"
 #include "./schedule.h"
 
@@ -112,10 +114,10 @@ class SearchRule : public ObjectRef {
 
   explicit SearchRule(String name, SearchRuleNode::FApply apply);
 
+  TVM_DLL static SearchRule Compose(const String& name, const std::vector<SearchRule>& rules);
+
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchRule, ObjectRef, SearchRuleNode);
 };
-
-TVM_DLL SearchRule ComposeSequential(String name, Array<SearchRule> rules);
 
 /********** Search **********/
 

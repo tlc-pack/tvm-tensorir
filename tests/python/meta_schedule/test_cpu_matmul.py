@@ -178,9 +178,16 @@ def test_matmul_schedule_fn():
 
 
 def test_matmul_post_order_apply():
+    rule = ms.SearchRule.compose(
+        name="composed",
+        rules=[
+            do_nothing,
+            multi_level_tiling,
+        ],
+    )
     sch = ms.autotune(
         task=matmul,
-        space=ms.PostOrderApply(rule=multi_level_tiling),
+        space=ms.PostOrderApply(rule=rule),
         strategy="replay",
         runner="rpc://0.0.0.0:3012:local * 16",
     )

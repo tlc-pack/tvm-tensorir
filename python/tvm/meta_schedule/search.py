@@ -70,6 +70,13 @@ class SearchRule(Object):
             block,
         )
 
+    @staticmethod
+    def compose(name: str, rules: List["SearchRule"]) -> "SearchRule":
+        return _ffi_api.SearchRuleCompose(  # pylint: disable=no-member
+            name,
+            rules,
+        )
+
 
 def register_rule(name) -> SearchRule:
     """ Register a search rule """

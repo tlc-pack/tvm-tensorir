@@ -77,7 +77,7 @@ RulePackedArgs SearchRuleNode::Apply(RulePackedArgs schedules, BlockRV block) co
   return RulePackedArgs(proceed, skipped);
 }
 
-SearchRule ComposeSequential(String name, Array<SearchRule> rules) {
+SearchRule SearchRule::Compose(const String& name, const std::vector<SearchRule>& rules) {
   auto apply = [rules](Schedule schedule, BlockRV block) -> RulePackedArgs {
     RulePackedArgs results(schedule);
     for (const SearchRule& rule : rules) {
@@ -107,6 +107,9 @@ struct Internal {
   static RulePackedArgs SearchRuleCall(SearchRule rule, Schedule sch, BlockRV block) {
     return rule->Apply(sch, block);
   }
+  static SearchRule Compose(String name, Array<SearchRule> rules) {
+    return SearchRule::Compose(name, {rules.begin(), rules.end()});
+  }
 };
 
 TVM_REGISTER_NODE_TYPE(RulePackedArgsNode);
@@ -117,6 +120,7 @@ TVM_REGISTER_OBJECT_TYPE(SearchStrategyNode);
 TVM_REGISTER_GLOBAL("meta_schedule.RulePackedArgs").set_body_typed(Internal::RulePackedArgsNew);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRule").set_body_typed(Internal::SearchRuleNew);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleCall").set_body_typed(Internal::SearchRuleCall);
+TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleCompose").set_body_typed(Internal::Compose);
 TVM_REGISTER_GLOBAL("meta_schedule.AutoTune").set_body_typed(AutoTune);
 
 }  // namespace meta_schedule
