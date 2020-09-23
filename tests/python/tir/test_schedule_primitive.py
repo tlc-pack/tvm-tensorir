@@ -211,8 +211,8 @@ def test_reorder_normal():
 
 @tvm.hybrid.script
 def inline_element_wise(a: ty.handle, c: ty.handle) -> None:
-    A = tir.buffer_bind(a, (128, 128))
-    C = tir.buffer_bind(c, (128, 128))
+    A = tir.match_buffer(a, (128, 128))
+    C = tir.match_buffer(c, (128, 128))
 
     with tir.block([128, 128], "C") as [vi, vj]:
         C[vi, vj] = A[vi, vj] * 2.0 + 1.0
