@@ -86,9 +86,33 @@ def _print_prim_func(prim_func):
     print(tvm.hybrid.ashybrid(prim_func))
 
 
-@tvm.register_func("test_multi_level_tiling.meets")
-def meets_multi_level_tiling(_sch: ms.Schedule, _block: ms.BlockRV):
-    return True
+@ms.register_rule("do_nothing")
+def do_nothing(sch: ms.Schedule, _block: ms.BlockRV):
+    return sch
+
+
+@ms.register_rule("multi_level_tiling")
+def multi_level_tiling(sch: ms.Schedule, block: ms.BlockRV):
+    spatial_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "S"]
+    reduce_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "R"]
+    order = [list() for _ in TILING_FORMAT]
+    axes = sch.get_axes(block=block)
+    iter_vars = ms.helpers.block_from_sref(sch.evaluate(block)).iter_vars
+    assert len(axes) == len(iter_vars)
+    for axis, iter_var in zip(axes, iter_vars):
+        for iter_type, indices in [
+            (SPATIAL, spatial_indices),
+            (REDUCTION, reduce_indices),
+        ]:
+            if iter_var.iter_type == iter_type:
+                tiles = sch.sample_tile_factor(
+                    n=len(indices), loop=axis, where=[1, 2, 4]
+                )
+                splits = sch.split(loop=axis, factors=tiles)
+                for i, split in zip(indices, splits):
+                    order[i].append(split)
+    sch.reorder(after_axes=sum(order, []))
+    return sch
 
 
 @tvm.register_func("test_multi_level_tiling.apply")
@@ -129,7 +153,7 @@ def test_conv2d_tiling_rule():
     do_multi_level_tiling(sch, block)
 
 
-def test_matmul_tiling_search():
+def test_matmul_schedule_fn():
     def schedule_matmul(sch):
         block = sch.get_block(name="C")
         i, j, k = sch.get_axes(block=block)
@@ -145,12 +169,36 @@ def test_matmul_tiling_search():
         task=matmul,
         space=schedule_matmul,
         strategy="replay",
-        runner="rpc 0.0.0.0:3012:local * 16",
+        runner="rpc://0.0.0.0:3012:local * 16",
     )
-    print(sch)
+    if sch is None:
+        print("No valid schedule found")
+    else:
+        _print_prim_func(sch.sch.func)
+
+
+def test_matmul_post_order_apply():
+    rule = ms.SearchRule.compose(
+        name="composed",
+        rules=[
+            do_nothing,
+            multi_level_tiling,
+        ],
+    )
+    sch = ms.autotune(
+        task=matmul,
+        space=ms.PostOrderApply(rule=rule),
+        strategy="replay",
+        runner="rpc://0.0.0.0:3012:local * 16",
+    )
+    if sch is None:
+        print("No valid schedule found")
+    else:
+        _print_prim_func(sch.sch.func)
 
 
 if __name__ == "__main__":
     # test_matmul_tiling_rule()
     # test_conv2d_tiling_rule()
-    test_matmul_tiling_search()
+    # test_matmul_schedule_fn()
+    test_matmul_post_order_apply()

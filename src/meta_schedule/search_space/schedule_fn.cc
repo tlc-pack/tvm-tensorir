@@ -28,10 +28,10 @@ using runtime::TypedPackedFunc;
 
 class ScheduleFnNode : public SearchSpaceNode {
  public:
-  runtime::TypedPackedFunc<void(Schedule)> sch_fn;
+  TypedPackedFunc<void(Schedule)> sch_fn_;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
-    // sch_fn is not visited
+    // sch_fn_ is not visited
   }
 
   ~ScheduleFnNode() = default;
@@ -54,7 +54,7 @@ class ScheduleFn : public SearchSpace {
 
 ScheduleFn::ScheduleFn(PackedFunc sch_fn) {
   ObjectPtr<ScheduleFnNode> n = make_object<ScheduleFnNode>();
-  n->sch_fn = sch_fn;
+  n->sch_fn_ = sch_fn;
   data_ = std::move(n);
 }
 
@@ -62,7 +62,7 @@ ScheduleFn::ScheduleFn(PackedFunc sch_fn) {
 
 Schedule ScheduleFnNode::SampleByReplay(const SearchTask& task) {
   Schedule sch(task->func);
-  this->sch_fn(sch);
+  this->sch_fn_(sch);
   return sch;
 }
 
