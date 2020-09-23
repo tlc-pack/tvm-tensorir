@@ -34,6 +34,15 @@ SearchTask::SearchTask(tir::PrimFunc func, String task_name, Target target, Targ
 }
 
 struct Internal {
+  /*!
+   * \brief Wrap for SearchTask::SearchTask
+   * \param func The function to be optimized
+   * \param task_name Name of this search task
+   * \param target The target to be built at
+   * \param target_host The target host to be built at
+   * \return SearchTask, the new object constructed
+   * \sa SearchTask::SearchTask
+   */
   static SearchTask New(tir::PrimFunc func, String task_name, Target target, Target target_host) {
     return SearchTask(func, task_name, target, target_host);
   }

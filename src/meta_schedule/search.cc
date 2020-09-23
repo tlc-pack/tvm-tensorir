@@ -37,15 +37,6 @@ RulePackedArgs::RulePackedArgs(Array<Schedule> proceed, Array<Schedule> skipped)
   data_ = std::move(n);
 }
 
-SearchRule::SearchRule(String name) {
-  const PackedFunc* apply = runtime::Registry::Get(name);
-  CHECK(apply != nullptr) << "ValueError: Rule not registered: " << name;
-  ObjectPtr<SearchRuleNode> n = make_object<SearchRuleNode>();
-  n->name = std::move(name);
-  n->apply_ = *apply;
-  data_ = std::move(n);
-}
-
 SearchRule::SearchRule(String name, PackedFunc apply) {
   ObjectPtr<SearchRuleNode> n = make_object<SearchRuleNode>();
   n->name = std::move(name);
