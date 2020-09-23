@@ -30,12 +30,10 @@ class PostOrderApplyNode : public SearchSpaceNode {
  public:
   SearchRule rule;
   Sampler sampler_;
-  Optional<Array<Schedule>> support_;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("rule", &rule);
     // sampler_ is not visited
-    // support_ is not visited
   }
 
   ~PostOrderApplyNode() = default;
@@ -63,7 +61,6 @@ PostOrderApply::PostOrderApply(SearchRule rule) {
   ObjectPtr<PostOrderApplyNode> n = make_object<PostOrderApplyNode>();
   n->rule = std::move(rule);
   n->sampler_ = Sampler();
-  n->support_ = NullOpt;
   data_ = std::move(n);
 }
 
@@ -76,16 +73,13 @@ Schedule PostOrderApplyNode::SampleByReplay(const SearchTask& task) {
 }
 
 Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task) {
-  if (!support_.defined()) {
-    const auto* block_realize = task->func->body.as<tir::BlockRealizeNode>();
-    CHECK(block_realize != nullptr) << "TypeError: PrimFunc should root at BlockRealize, but gets: "
-                                    << task->func->body->GetTypeKey();
-    support_ = VisitBlock(
-        /*block=*/block_realize->block,
-        /*sch=*/Schedule(task->func),
-        /*is_root=*/true);
-  }
-  return support_.value();
+  const auto* block_realize = task->func->body.as<tir::BlockRealizeNode>();
+  CHECK(block_realize != nullptr) << "TypeError: PrimFunc should root at BlockRealize, but gets: "
+                                  << task->func->body->GetTypeKey();
+  return VisitBlock(
+      /*block=*/block_realize->block,
+      /*sch=*/Schedule(task->func),
+      /*is_root=*/true);
 }
 
 Array<Schedule> PostOrderApplyNode::VisitBlock(const tir::Block& block, const Schedule& sch,

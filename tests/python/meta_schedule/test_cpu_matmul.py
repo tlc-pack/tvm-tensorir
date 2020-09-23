@@ -91,9 +91,28 @@ def do_nothing(sch: ms.Schedule, _block: ms.BlockRV):
     return sch
 
 
-@tvm.register_func("test_multi_level_tiling.meets")
-def meets_multi_level_tiling(_sch: ms.Schedule, _block: ms.BlockRV):
-    return True
+@ms.register_rule("multi_level_tiling")
+def multi_level_tiling(sch: ms.Schedule, block: ms.BlockRV):
+    spatial_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "S"]
+    reduce_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "R"]
+    order = [list() for _ in TILING_FORMAT]
+    axes = sch.get_axes(block=block)
+    iter_vars = ms.helpers.block_from_sref(sch.evaluate(block)).iter_vars
+    assert len(axes) == len(iter_vars)
+    for axis, iter_var in zip(axes, iter_vars):
+        for iter_type, indices in [
+            (SPATIAL, spatial_indices),
+            (REDUCTION, reduce_indices),
+        ]:
+            if iter_var.iter_type == iter_type:
+                tiles = sch.sample_tile_factor(
+                    n=len(indices), loop=axis, where=[1, 2, 4]
+                )
+                splits = sch.split(loop=axis, factors=tiles)
+                for i, split in zip(indices, splits):
+                    order[i].append(split)
+    sch.reorder(after_axes=sum(order, []))
+    return sch
 
 
 @tvm.register_func("test_multi_level_tiling.apply")
@@ -158,11 +177,11 @@ def test_matmul_schedule_fn():
 def test_matmul_post_order_apply():
     sch = ms.autotune(
         task=matmul,
-        space=ms.PostOrderApply(rule=do_nothing),
+        space=ms.PostOrderApply(rule=multi_level_tiling),
         strategy="replay",
         runner="rpc 0.0.0.0:3012:local * 16",
     )
-    print(sch.sch.func)
+    _print_prim_func(sch.sch.func)
 
 
 if __name__ == "__main__":
