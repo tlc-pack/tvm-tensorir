@@ -236,10 +236,8 @@ class ProgramRunner(Object):
 
     @staticmethod
     def create(name: str) -> "ProgramRunner":
-        if name == "rpc":
-            return RPCRunner()
-        if name.startswith("rpc "):
-            return RPCRunner.create(name[4:])
+        if name == "rpc" or name.startswith("rpc://"):
+            return RPCRunner.create(name)
         raise ValueError("Unknown name of program builder: " + name)
 
     def run(
@@ -347,6 +345,12 @@ class RPCRunner(ProgramRunner):
 
     @staticmethod
     def create(name: str) -> "RPCRunner":
+        RPC_PREFIX = "rpc://"  # pylint: disable=invalid-name
+        if name == "rpc":
+            return RPCRunner()
+        if not name.startswith(RPC_PREFIX):
+            raise ValueError("Invalid RPC config: " + name)
+        name = name[len(RPC_PREFIX): ].strip()
         if "*" not in name:
             return RPCRunner(tracker=name)
         split_result = name.split("*")
