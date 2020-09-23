@@ -377,7 +377,9 @@ class CacheReadRewriter : public StmtExprMutator {
   Stmt VisitStmt_(const BlockNode* block) override {
     Block old_stmt = GetRef<Block>(block);
     // We don't mutate the block which generates info->read_buffer
-    if (RelatedWithBuffer(block->writes, info->read_buffer)) return old_stmt;
+    if (RelatedWithBuffer(block->writes, info->read_buffer)) {
+      return std::move(old_stmt);
+    }
     // Mutate the body
     Block stmt = Downcast<Block>(StmtMutator::VisitStmt_(block));
     // Check the insertion point
@@ -459,7 +461,7 @@ class CacheWriteRewriter : public StmtExprMutator {
     Block old_stmt = GetRef<Block>(block);
     // We only mutate the block which generates info->write_buffer
     if (!RelatedWithBuffer(block->writes, info->write_buffer) && block != scope_sref->stmt) {
-      return old_stmt;
+      return std::move(old_stmt);
     }
     // Mutate the body
     Block stmt = Downcast<Block>(StmtMutator::VisitStmt_(block));
@@ -496,7 +498,7 @@ class CacheWriteRewriter : public StmtExprMutator {
       n->buffer = info->read_buffer;
       return Stmt(n);
     } else {
-      return stmt;
+      return std::move(stmt);
     }
   }
 
