@@ -34,8 +34,8 @@ class ReplayNode : public SearchStrategyNode {
     v->Visit("num_iterations", &num_iterations);
   }
 
-  Schedule Search(const SearchTask& task, const SearchSpace& space, const ProgramMeasurer& measurer,
-                  int verbose) override;
+  Optional<Schedule> Search(const SearchTask& task, const SearchSpace& space,
+                            const ProgramMeasurer& measurer, int verbose) override;
 
   static constexpr const char* _type_key = "meta_schedule.Replay";
   TVM_DECLARE_FINAL_OBJECT_INFO(ReplayNode, SearchStrategyNode);
@@ -59,8 +59,8 @@ Replay::Replay(int batch_size, int num_iterations) {
 
 /********** Search **********/
 
-Schedule ReplayNode::Search(const SearchTask& task, const SearchSpace& space,
-                            const ProgramMeasurer& measurer, int verbose) {
+Optional<Schedule> ReplayNode::Search(const SearchTask& task, const SearchSpace& space,
+                                      const ProgramMeasurer& measurer, int verbose) {
   measurer->Reset();
   for (int iter_id = 0; iter_id < num_iterations;) {
     Array<MeasureInput> measure_inputs;
@@ -71,7 +71,7 @@ Schedule ReplayNode::Search(const SearchTask& task, const SearchSpace& space,
     }
     measurer->BatchMeasure(measure_inputs, this->batch_size, verbose);
   }
-  return measurer->best_sch.defined() ? measurer->best_sch.value() : Schedule(nullptr);
+  return measurer->best_sch;
 }
 
 /********** FFI **********/
