@@ -23,8 +23,85 @@ from tvm.tir import PrimFunc
 
 from . import _ffi_api
 from .measure import MeasureCallback, ProgramBuilder, ProgramRunner
+from .random_variable import BlockRV
 from .schedule import Schedule
 from .search_task import SearchTask
+
+########## RulePackedArgs ##########
+
+
+@register_object("meta_schedule.RulePackedArgs")
+class RulePackedArgs(Object):
+    """ defined in src/meta_schedule/search.h """
+
+    proceed: List[Schedule]
+    skipped: List[Schedule]
+
+    def __init__(
+        self,
+        proceed: List[Schedule],
+        skipped: List[Schedule],
+    ):
+        self.__init_handle_by_constructor__(
+            _ffi_api.RulePackedArgs,  # pylint: disable=no-member
+            proceed,
+            skipped,
+        )
+
+
+########## SearchRule ##########
+
+
+@register_object("meta_schedule.SearchRule")
+class SearchRule(Object):
+    """ defined in src/meta_schedule/search.h """
+
+    def __init__(self, name: str, apply: Callable[[Schedule, BlockRV], RulePackedArgs]):
+        self.__init_handle_by_constructor__(
+            _ffi_api.SearchRule,  # pylint: disable=no-member
+            name,
+            apply,
+        )
+
+    def __call__(self, sch: Schedule, block: BlockRV) -> RulePackedArgs:
+        return _ffi_api.SearchRuleCall(  # pylint: disable=no-member
+            self,
+            sch,
+            block,
+        )
+
+    @staticmethod
+    def compose(name: str, rules: List["SearchRule"]) -> "SearchRule":
+        return _ffi_api.SearchRuleCompose(  # pylint: disable=no-member
+            name,
+            rules,
+        )
+
+
+def register_rule(name) -> SearchRule:
+    """ Register a search rule """
+
+    def wrap(func):
+        def apply(sch: Schedule, block: BlockRV) -> RulePackedArgs:
+            result = func(sch, block)
+            if isinstance(result, Schedule):
+                return RulePackedArgs(proceed=[result], skipped=[])
+            if isinstance(result, list):
+                return RulePackedArgs(proceed=result, skipped=[])
+            assert isinstance(
+                result, dict
+            ), "SearchRule does not support return type: " + str(type(result))
+            assert {"proceed", "skipped"}.issuperset(
+                set(result.keys())
+            ), "Only the following keys are allowed: 'proceed', 'skipped'"
+            proceed = result.get("proceed", [])
+            skipped = result.get("skipped", [])
+            return RulePackedArgs(proceed=proceed, skipped=skipped)
+
+        return SearchRule(name, apply)
+
+    return wrap
+
 
 ########## SearchSpace ##########
 
@@ -39,12 +116,23 @@ ScheduleFnType = Callable[[Schedule], None]
 
 @register_object("meta_schedule.ScheduleFn")
 class ScheduleFn(SearchSpace):
-    """ defined in src/meta_schedule/search.h """
+    """ defined in src/meta_schedule/search_space/schedule_fn.cc """
 
     def __init__(self, func: ScheduleFnType):
         self.__init_handle_by_constructor__(
             _ffi_api.ScheduleFn,  # pylint: disable=no-member
             func,
+        )
+
+
+@register_object("meta_schedule.PostOrderApply")
+class PostOrderApply(SearchSpace):
+    """ defined in src/meta_schedule/search_space/post_order_apply.cc """
+
+    def __init__(self, rule: SearchRule):
+        self.__init_handle_by_constructor__(
+            _ffi_api.PostOrderApply,  # pylint: disable=no-member
+            rule,
         )
 
 
@@ -89,7 +177,7 @@ def autotune(
     runner: Union[str, ProgramRunner] = "rpc",
     measure_callbacks: Optional[List[MeasureCallback]] = None,
     verbose: int = 1,
-) -> Schedule:
+) -> Optional[Schedule]:
     """ Search API """
     if isinstance(task, PrimFunc):
         task = SearchTask(task)
