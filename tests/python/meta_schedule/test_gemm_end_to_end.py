@@ -16,11 +16,12 @@
 # under the License.
 """ Test multi-level tiling """
 # pylint: disable=missing-function-docstring
-import tvm
-from tvm.hybrid import ty
-from tvm import tir
-from tvm import meta_schedule as ms
+import pytest
 
+import tvm
+from tvm import meta_schedule as ms
+from tvm import tir
+from tvm.hybrid import ty
 
 TILING_FORMAT = "SSRSRS"
 SPATIAL = 0
@@ -35,7 +36,6 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     B = tir.match_buffer(b, (1024, 1024), "float32")
     C = tir.match_buffer(c, (1024, 1024), "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
-
     with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "C") as [vi, vj, vk]:
         reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
@@ -46,7 +46,6 @@ def conv2d(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     W = tir.match_buffer(w, (512, 512, 3, 3), "float32")
     Y = tir.match_buffer(y, [1, 512, 7, 7], "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
-
     Pad = tir.buffer_allocate((1, 512, 9, 9), "float32")
     with tir.block([1, 512, 9, 9], "conv2d_pad_x") as [i_n, i_ci, i_h, i_w]:
         Pad[
@@ -115,7 +114,6 @@ def multi_level_tiling(sch: ms.Schedule, block: ms.BlockRV):
     return sch
 
 
-@tvm.register_func("test_multi_level_tiling.apply")
 def do_multi_level_tiling(sch: ms.Schedule, block: ms.BlockRV):
     _print_prim_func(sch.sch.func)
     spatial_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "S"]
@@ -153,6 +151,7 @@ def test_conv2d_tiling_rule():
     do_multi_level_tiling(sch, block)
 
 
+@pytest.mark.skip(reason="needs RPC")
 def test_matmul_schedule_fn():
     def schedule_matmul(sch):
         block = sch.get_block(name="C")
@@ -177,6 +176,7 @@ def test_matmul_schedule_fn():
         _print_prim_func(sch.sch.func)
 
 
+@pytest.mark.skip(reason="needs RPC")
 def test_matmul_post_order_apply():
     rule = ms.SearchRule.compose(
         name="composed",
@@ -198,7 +198,7 @@ def test_matmul_post_order_apply():
 
 
 if __name__ == "__main__":
-    # test_matmul_tiling_rule()
-    # test_conv2d_tiling_rule()
-    # test_matmul_schedule_fn()
+    test_matmul_tiling_rule()
+    test_conv2d_tiling_rule()
+    test_matmul_schedule_fn()
     test_matmul_post_order_apply()

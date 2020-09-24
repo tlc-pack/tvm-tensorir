@@ -26,25 +26,44 @@ using runtime::TypedPackedFunc;
 
 /********** Definition for ScheduleFn **********/
 
+/*! \brief Search space that is specified by a schedule function */
 class ScheduleFnNode : public SearchSpaceNode {
  public:
+  /*! \brief The schedule function used */
   TypedPackedFunc<void(Schedule)> sch_fn_;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     // sch_fn_ is not visited
   }
-
+  /*! \brief Default destructor */
   ~ScheduleFnNode() = default;
-
-  Schedule SampleByReplay(const SearchTask& task) override;
+  /*!
+   * \brief Sample a schedule out of the search space
+   * \param task The search task to be sampled from
+   * \return The schedule sampled
+   */
+  Schedule SampleSchedule(const SearchTask& task) override;
+  /*!
+   * \brief Get support of the search space
+   * \param task The search task to be sampled from
+   * \return An array with a single element returned from SampleSchedule
+   * \sa ScheduleFnNode::SampleSchedule
+   */
   Array<Schedule> GetSupport(const SearchTask& task) override;
 
   static constexpr const char* _type_key = "meta_schedule.ScheduleFn";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleFnNode, SearchSpaceNode);
 };
 
+/*!
+ * \brief Managed reference to ScheduleFnNode
+ */
 class ScheduleFn : public SearchSpace {
  public:
+  /*!
+   * Constructor
+   * \param sch_fn The schedule function
+   */
   explicit ScheduleFn(PackedFunc sch_fn);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(ScheduleFn, SearchSpace, ScheduleFnNode);
@@ -60,19 +79,25 @@ ScheduleFn::ScheduleFn(PackedFunc sch_fn) {
 
 /********** Sampling **********/
 
-Schedule ScheduleFnNode::SampleByReplay(const SearchTask& task) {
+Schedule ScheduleFnNode::SampleSchedule(const SearchTask& task) {
   Schedule sch(task->func);
   this->sch_fn_(sch);
   return sch;
 }
 
 Array<Schedule> ScheduleFnNode::GetSupport(const SearchTask& task) {
-  return {SampleByReplay(task)};
+  return {SampleSchedule(task)};
 }
 
 /********** FFI **********/
 
 struct Internal {
+  /*!
+   * \brief Constructor of ScheduleFn
+   * \param sch_fn The schedule function
+   * \return The ScheduleFn constructed
+   * \sa ScheduleFn::ScheduleFn
+   */
   static ScheduleFn New(PackedFunc sch_fn) { return ScheduleFn(sch_fn); }
 };
 
