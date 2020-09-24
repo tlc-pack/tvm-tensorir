@@ -23,7 +23,7 @@ from tvm.runtime import Object
 
 from . import _ffi_api
 from .instruction import Instruction
-from .random_variable import BlockRV, ExprRV, LoopRV
+from .random_variable import RAND_VAR_TYPE, BlockRV, ExprRV, LoopRV
 
 
 @register_object("meta_schedule.Schedule")
@@ -52,7 +52,7 @@ class Schedule(Object):
 
     def evaluate(
         self,
-        random_variable: Union[BlockRV, LoopRV, ExprRV],
+        random_variable: RAND_VAR_TYPE,
     ) -> Union[tir.schedule.StmtSRef, int]:
         """Evaluates a random variable
 

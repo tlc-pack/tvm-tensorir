@@ -160,14 +160,13 @@ class SearchSpace(Object):
     generated via loop analysis, ansor-like rules that apply to each block, etc."""
 
 
-ScheduleFnType = Callable[[Schedule], None]
-
-
 @register_object("meta_schedule.ScheduleFn")
 class ScheduleFn(SearchSpace):
     """Search space that is specified by a schedule function"""
 
-    def __init__(self, func: ScheduleFnType):
+    TYPE = Callable[[Schedule], None]
+
+    def __init__(self, func: TYPE):
         self.__init_handle_by_constructor__(
             _ffi_api.ScheduleFn,  # pylint: disable=no-member
             func,
@@ -226,7 +225,7 @@ class Replay(SearchStrategy):
 
 def autotune(
     task: Union[PrimFunc, SearchTask],
-    space: Union[ScheduleFnType, SearchSpace],
+    space: Union[ScheduleFn.TYPE, SearchSpace],
     strategy: Union[str, SearchStrategy],
     builder: Union[str, ProgramBuilder] = "local",
     runner: Union[str, ProgramRunner] = "rpc",
@@ -239,7 +238,7 @@ def autotune(
     ----------
     task: Union[PrimFunc, SearchTask]
         The search task
-    space: Union[ScheduleFnType, SearchSpace]
+    space: Union[ScheduleFn.TYPE, SearchSpace]
         The search space
     strategy: Union[str, SearchStrategy]
         The search strategy
