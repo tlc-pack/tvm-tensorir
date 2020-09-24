@@ -89,15 +89,15 @@ bool Scope::IsComplete(const StmtSRef& block_sref) const {
     return false;
   }
   // Cond 2. Check if all the block vars are data parallel
-  for (const auto& iter_var : block->iter_vars) {
+  for (const IterVar& iter_var : block->iter_vars) {
     if (iter_var->iter_type != kDataPar) {
       return false;
     }
   }
   // Cond 3. Check if there is no overlap between buffers read and buffers written
-  for (const auto& write : block->writes) {
+  for (const TensorRegion& write : block->writes) {
     const Buffer& buffer = write->buffer;
-    for (const auto& read : block->reads) {
+    for (const TensorRegion& read : block->reads) {
       if (buffer.same_as(read->buffer)) {
         return false;
       }
@@ -117,7 +117,7 @@ bool Scope::IsComplete(const StmtSRef& block_sref) const {
  */
 bool CheckReductionInstance(const Array<IterVar>& iter_vars,
                             const Array<PrimExpr>& output_buffer_indices) {
-  for (const auto& iter_var : iter_vars) {
+  for (const IterVar& iter_var : iter_vars) {
     IterVarType kind = iter_var->iter_type;
     // Check 1. Each iter_var can only be data parallel or reduction
     if (kind != kDataPar && kind != kCommReduce) {
@@ -161,7 +161,7 @@ bool Scope::IsReduction(const StmtSRef& block_sref) const {
 }
 
 bool Scope::IsCompactDataFlow(const StmtSRef& subtree_sref, const ScheduleNode* schedule) const {
-  for (const auto& block : schedule->GetChildBlocks(subtree_sref)) {
+  for (const StmtSRef& block : schedule->GetChildBlocks(subtree_sref)) {
     if (!IsComplete(block) && !IsReduction(block)) {
       return false;
     }
@@ -183,7 +183,7 @@ bool Scope::CanMergeReduction(const StmtSRef& init_sref, const StmtSRef& update_
     return false;
   }
   // Cond 2. Check init_block and update_block are the only two producers for their output buffer
-  for (const auto& write_region : update->writes) {
+  for (const TensorRegion& write_region : update->writes) {
     const Array<StmtSRef>& writers = (*this)->buffer_writers.at(write_region->buffer);
     if (writers.size() != 2) {
       return false;
