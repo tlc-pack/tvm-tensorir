@@ -312,7 +312,7 @@ class Schedule(Object):
         ScheduleTensorize(self, loop, intrinsic)
 
     def decompose_reduction(self, block, loop):
-        """ Decompose reduction block into init&update blocks
+        """Decompose reduction block into init&update blocks
 
         Parameters
         ----------
@@ -328,7 +328,7 @@ class Schedule(Object):
         return ScheduleDecomposeReduction(self, block, loop)
 
     def merge_reduction(self, init, update):
-        """ Merge init&update block into reduction block
+        """Merge init&update block into reduction block
 
         Parameters
         ----------
@@ -340,7 +340,7 @@ class Schedule(Object):
         ScheduleMergeReduction(self, init, update)
 
     def register_reducer(self, fcombine, identity):
-        """ Register a reducer into schedule
+        """Register a reducer into schedule
 
         Parameters
         ----------
@@ -387,6 +387,10 @@ def get_stmt(sref):
 @tvm._ffi.register_object
 class StmtSRef(Object):
     """The schedulable reference node for TIR"""
+
+    @property
+    def stmt(self):
+        return GetStmt(self)
 
 
 tvm._ffi._init_api("tir.schedule", __name__)

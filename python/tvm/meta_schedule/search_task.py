@@ -30,13 +30,21 @@ from . import _ffi_api
 TargetType = Union[Target, str, Dict[str, Any]]
 
 
-def normalize_target(target: TargetType) -> Target:
-    return create_target(target)
-
-
 @register_object("meta_schedule.SearchTask")
 class SearchTask(Object):
-    """ defined in src/meta_schedule/search_task.h """
+    """Descrption of a search task
+
+    Parameters
+    ----------
+    func: PrimFunc
+        The function to be optimized
+    task_name: str
+        Name of this search task
+    target: Target
+        The target to be built at
+    target_host: Target
+        The target host to be built at
+    """
 
     func: PrimFunc
     task_name: str
@@ -52,10 +60,14 @@ class SearchTask(Object):
     ):
         if task_name is None:
             task_name = func.__qualname__
+        if not isinstance(target, Target):
+            target = create_target(target)
+        if not isinstance(target_host, Target):
+            target_host = create_target(target_host)
         self.__init_handle_by_constructor__(
             _ffi_api.SearchTask,  # pylint: disable=no-member
             func,
             task_name,
-            normalize_target(target),
-            normalize_target(target_host),
+            target,
+            target_host,
         )

@@ -24,6 +24,12 @@
 namespace tvm {
 namespace meta_schedule {
 
+/*!
+ * \brief Compute mean of a FloatImm array.
+ * Taken from Ansor
+ * \param float_array The array of floating point numbers to be averaged
+ * \return The mean of the given array
+ */
 inline double FloatArrayMean(const Array<PrimExpr>& float_array) {
   double sum = 0;
   if (float_array.empty()) {
@@ -37,7 +43,10 @@ inline double FloatArrayMean(const Array<PrimExpr>& float_array) {
   return sum / float_array.size();
 }
 
-/*! \brief An empty output stream */
+/*!
+ * \brief An empty output stream
+ * Taken from Ansor
+ */
 class NullStream : public std::ostream {
  public:
   NullStream() : std::ostream(nullptr) {}
@@ -50,7 +59,10 @@ NullStream& operator<<(NullStream& os, const T& value) {
   return os;
 }
 
-/*! \brief Get std cout with verbose control */
+/*!
+ * \brief Get std cout with verbose control
+ * Taken from Ansor
+ */
 inline std::ostream& StdCout(int verbose, int setting = 1) {
   return verbose >= setting ? std::cout : NullStream::Global();
 }
