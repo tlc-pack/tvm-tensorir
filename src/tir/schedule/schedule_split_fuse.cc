@@ -28,16 +28,18 @@ class PredicateUpdater : public StmtMutator {
    * \brief Constructor
    * \param predicate The predicate to be apppend to BlockRealizeNode
    */
-  explicit PredicateUpdater(const PrimExpr& predicate) : predicate(predicate) {}
+  explicit PredicateUpdater(const PrimExpr& predicate) : predicate_(predicate) {}
   // For each direct child of type BlockRealizeNode, append the predicate
   Stmt VisitStmt_(const BlockRealizeNode* realize) final {
     // We do not recursively do this
     ObjectPtr<BlockRealizeNode> n = make_object<BlockRealizeNode>(*realize);
-    n->predicate = n->predicate && predicate;
+    n->predicate = n->predicate && predicate_;
     return BlockRealize(n);
   }
+
+ private:
   /*! \brief The predicate to be added */
-  const PrimExpr& predicate;
+  const PrimExpr& predicate_;
 };
 
 Array<StmtSRef> ScheduleNode::split(const StmtSRef& loop_sref, const PrimExpr& nparts,
