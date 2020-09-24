@@ -143,9 +143,14 @@ class ScheduleNode : public Object {
    *        loops to cover the producing region.
    * \param block_sref The block to be moved
    * \param loop_sref The target loop
-   * \return the regenerated loops
-   * */
+   */
   void compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref);
+
+  /*!
+   * \brief Make the block inline
+   * \param block_sref The sref of the block
+   */
+  void compute_inline(const StmtSRef& block_sref);
 
   /*!
    * \brief vectorize a loop

@@ -71,9 +71,8 @@ def test_tensorize_gemm():
     s.reorder(io, jo, ko, ii, ji, ki)
     s.decompose_reduction(update, ko)
 
-    mod = tvm.hybrid.create_module({"desc_func": desc_func, "intrin_func": intrin_func})
+    tensor_intrin = tvm.tir.TensorIntrin(desc_func, intrin_func)
 
-    tensor_intrin = tvm.tir.TensorIntrin(mod["desc_func"], mod["intrin_func"])
     s.tensorize(ii, tensor_intrin)
 
     func = tvm.build(s.func)
@@ -145,18 +144,68 @@ def test_tensorize_buffer_bind():
     s.reorder(io, jo, ko, ii, ji, ki)
     s.decompose_reduction(update, ko)
 
-    mod = tvm.hybrid.create_module(
-        {"desc_func": desc_func, "intrin_func": lower_intrin_func})
-
-    tensor_intrin = tvm.tir.TensorIntrin(mod["desc_func"], mod["intrin_func"])
+    tensor_intrin = tvm.tir.TensorIntrin(desc_func, lower_intrin_func)
     s.tensorize(ii, tensor_intrin)
 
-    mod = tvm.hybrid.create_module({"tensorized_func": tensorized_func})
-    new_func = mod["tensorized_func"]
+    tvm.ir.assert_structural_equal(tensorized_func, s.func)
 
-    tvm.ir.assert_structural_equal(new_func, s.func)
+
+@tvm.hybrid.script
+def batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, [16, 128, 128])
+    B = tir.match_buffer(b, [16, 128, 128])
+    C = tir.match_buffer(c, [16, 128, 128])
+
+    with tir.block([16, 128, 128]) as [vn, vi, vj]:
+        C[vn, vi, vj] = tir.float32(0)
+
+    with tir.block([16, 128, 128, tir.reduce_axis(0, 128)], "update") as [vn, vi, vj, vk]:
+        C[vn, vi, vj] = C[vn, vi, vj] + A[vn, vi, vk] * B[vn, vj, vk]
+
+
+@tvm.hybrid.script
+def tensorized_batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    # function attr dict
+    C = tir.match_buffer(c, [16, 128, 128])
+    B = tir.match_buffer(b, [16, 128, 128])
+    A = tir.match_buffer(a, [16, 128, 128])
+
+    with tir.block([16, 128, 128]) as [vn, vi, vj]:
+        C[vn, vi, vj] = tir.float32(0)
+    # body
+    for n in range(0, 16):
+        for i, j, k in tir.grid(8, 8, 8):
+            with tir.block([16, 16, 16, tir.reduce_axis(0, 16)], "update") as [vn, vi, vj, vk]:
+                tir.bind(vn, n)
+                tir.bind(vi, i * 16)
+                tir.bind(vj, j * 16)
+                tir.bind(vk, k * 16)
+                tir.reads([C[vn:vn + 1, vi:vi + 16, vj:vj + 16], A[vn:vn + 1, vi:vi + 16, vk:vk + 16],
+                           B[vn:vn + 1, vj:vj + 16, vk:vk + 16]])
+                tir.writes(C[vn:vn + 1, vi:vi + 16, vj:vj + 16])
+                tir.evaluate(
+                    tir.tvm_mma_sync(C.data, tir.floordiv((vn * 16384 + (vi * 128 + vj)), 256), A.data,
+                                     tir.floordiv((vn * 16384 + (vi * 128 + vk)), 256), B.data,
+                                     tir.floordiv((vn * 16384 + (vj * 128 + vk)), 256), C.data,
+                                     tir.floordiv((vn * 16384 + (vi * 128 + vj)), 256), dtype="handle"))
+
+
+def test_high_dim_tensorize():
+    s = tir.create_schedule(batch_matmul)
+    update = s.get_block("update")
+    n, i, j, k = s.get_axes(update)
+    io, ii = s.split(i, 16)
+    jo, ji = s.split(j, 16)
+    ko, ki = s.split(k, 16)
+    s.reorder(io, jo, ko, ii, ji, ki)
+
+    tensor_intrin = tvm.tir.TensorIntrin(desc_func, lower_intrin_func)
+    s.tensorize(ii, tensor_intrin)
+
+    tvm.ir.assert_structural_equal(tensorized_batch_matmul, s.func)
 
 
 if __name__ == "__main__":
     test_tensorize_gemm()
     test_tensorize_buffer_bind()
+    test_high_dim_tensorize()

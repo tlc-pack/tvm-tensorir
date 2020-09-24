@@ -144,6 +144,16 @@ void UpdateScope(const StmtNode* stmt,
                  const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref,
                  std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual>* scopes);
 
+class StmtReplacer : public StmtMutator {
+ public:
+  explicit StmtReplacer(const std::unordered_map<const StmtNode*, const StmtNode*>& repalce_map)
+      : replace_map(repalce_map) {}
+
+  Stmt VisitStmt(const Stmt& stmt) override;
+
+  const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map;
+};
+
 /*!
  * \brief PrimExpr pattern matcher.
  *
