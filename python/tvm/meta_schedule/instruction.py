@@ -21,34 +21,34 @@ from tvm.runtime import Object
 
 @register_object("meta_schedule.Instruction")
 class Instruction(Object):
-    """ defined in src/meta_schedule/instruction.h """
+    """ Base class for all meta scheduling instrructions """
 
 
 @register_object("meta_schedule.SampleTileFactorInst")
 class SampleTileFactorInst(Instruction):
-    """ defined in src/meta_schedule/instruction.h """
+    """ An instruction to sample possible tiling factors """
 
 
 @register_object("meta_schedule.GetBlockInst")
 class GetBlockInst(Instruction):
-    """ defined in src/meta_schedule/instruction.h """
+    """ An instruction to retrieve a block using its name """
 
 
 @register_object("meta_schedule.GetAxesInst")
 class GetAxesInst(Instruction):
-    """ defined in src/meta_schedule/instruction.h """
+    """ An instruction to retrieve nested loop axes on top of a block """
 
 
 @register_object("meta_schedule.SplitInst")
 class SplitInst(Instruction):
-    """ defined in src/meta_schedule/instruction.h """
+    """ An instruction to split a loop by a set of factors """
 
 
 @register_object("meta_schedule.ReorderInst")
 class ReorderInst(Instruction):
-    """ defined in src/meta_schedule/instruction.h """
+    """ An instruction to reorder the given axes """
 
 
 @register_object("meta_schedule.DecomposeReductionInst")
 class DecomposeReductionInst(Instruction):
-    """ defined in src/meta_schedule/instruction.h """
+    """ An instruction for decompose_reduction in TIR """

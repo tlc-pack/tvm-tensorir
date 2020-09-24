@@ -37,15 +37,6 @@ RulePackedArgs::RulePackedArgs(Array<Schedule> proceed, Array<Schedule> skipped)
   data_ = std::move(n);
 }
 
-SearchRule::SearchRule(String name) {
-  const PackedFunc* apply = runtime::Registry::Get(name);
-  CHECK(apply != nullptr) << "ValueError: Rule not registered: " << name;
-  ObjectPtr<SearchRuleNode> n = make_object<SearchRuleNode>();
-  n->name = std::move(name);
-  n->apply_ = *apply;
-  data_ = std::move(n);
-}
-
 SearchRule::SearchRule(String name, PackedFunc apply) {
   ObjectPtr<SearchRuleNode> n = make_object<SearchRuleNode>();
   n->name = std::move(name);
@@ -100,13 +91,60 @@ Optional<Schedule> AutoTune(SearchTask task, SearchSpace space, SearchStrategy s
 /********** FFI **********/
 
 struct Internal {
+  /*!
+   * \brief Sample a schedule out of the search space, calls SearchSpaceNode::SampleSchedule
+   * \param space The specific space
+   * \param task The search task to be sampled from
+   * \return The schedule sampled
+   * \sa SearchSpaceNode::SampleSchedule
+   */
+  static Schedule SearchSpaceSampleSchedule(SearchSpace space, SearchTask task) {
+    return space->SampleSchedule(task);
+  }
+  /*!
+   * \brief Get support of the search space, calls SearchSpaceNode::GetSupport
+   * \param space The specific space
+   * \param task The search task to be sampled from
+   * \return The support of the search space. Any point from the search space should along to one of
+   * the traces returned
+   * \sa SearchSpaceNode::GetSupport
+   */
+  static Array<Schedule> SearchSpaceGetSupport(SearchSpace space, SearchTask task) {
+    return space->GetSupport(task);
+  }
+  /*!
+   * \brief Constructor of RulePackedArgs
+   * \param proceed The arguments the rule should apply to
+   * \param skipped The arguments the rule should skip
+   * \sa RulePackedArgs::RulePackedArgs
+   */
   static RulePackedArgs RulePackedArgsNew(Array<Schedule> proceed, Array<Schedule> skipped) {
     return RulePackedArgs(proceed, skipped);
   }
+  /*!
+   * \brief Constructor of SearchRule
+   * \param name Name of the search rule
+   * \param apply The application function
+   * \sa SearchRule::SearchRule
+   */
   static SearchRule SearchRuleNew(String name, PackedFunc apply) { return SearchRule(name, apply); }
+  /*!
+   * \brief Apply the rule with a single schedule
+   * \param rule The search rule to be called
+   * \param schedule Where the schedule snippets should be generated
+   * \param block The block the rule applies on
+   * \sa SearchRuleNode::Apply
+   */
   static RulePackedArgs SearchRuleCall(SearchRule rule, Schedule sch, BlockRV block) {
     return rule->Apply(sch, block);
   }
+  /*!
+   * \brief Composing search rules sequentially into a single rule
+   * \param name Name of the new composite search rule
+   * \param rules The rules provided sequentially
+   * \return The composite rule
+   * \sa SearchRule::Compose
+   */
   static SearchRule Compose(String name, Array<SearchRule> rules) {
     return SearchRule::Compose(name, {rules.begin(), rules.end()});
   }
@@ -117,6 +155,11 @@ TVM_REGISTER_NODE_TYPE(SearchRuleNode);
 TVM_REGISTER_NODE_TYPE(SearchTaskNode);
 TVM_REGISTER_OBJECT_TYPE(SearchSpaceNode);
 TVM_REGISTER_OBJECT_TYPE(SearchStrategyNode);
+
+TVM_REGISTER_GLOBAL("meta_schedule.SearchSpaceSampleSchedule")
+    .set_body_typed(Internal::SearchSpaceSampleSchedule);
+TVM_REGISTER_GLOBAL("meta_schedule.SearchSpaceGetSupport")
+    .set_body_typed(Internal::SearchSpaceGetSupport);
 TVM_REGISTER_GLOBAL("meta_schedule.RulePackedArgs").set_body_typed(Internal::RulePackedArgsNew);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRule").set_body_typed(Internal::SearchRuleNew);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleCall").set_body_typed(Internal::SearchRuleCall);

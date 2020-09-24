@@ -24,16 +24,29 @@ namespace meta_schedule {
 
 /********** Definition for Replay **********/
 
+/*!
+ * \brief A search strategy that just repeatedly replay the sampling process, do random sampling,
+ * and picks the best from the results
+ */
 class ReplayNode : public SearchStrategyNode {
  public:
+  /*! \brief Size of a batch for measurement */
   int batch_size;
+  /*! \brief Number of iterations of replaying */
   int num_iterations;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("batch_size", &batch_size);
     v->Visit("num_iterations", &num_iterations);
   }
-
+  /*!
+   * \brief Explore the search space and find the best schedule
+   * \param task The search task
+   * \param space The search space
+   * \param measurer The measurer that builds, runs and profiles sampled programs
+   * \param verbose Whether or not in verbose mode
+   * \return The best schedule found, NullOpt if no valid schedule is found
+   */
   Optional<Schedule> Search(const SearchTask& task, const SearchSpace& space,
                             const ProgramMeasurer& measurer, int verbose) override;
 
@@ -41,8 +54,17 @@ class ReplayNode : public SearchStrategyNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(ReplayNode, SearchStrategyNode);
 };
 
+/*!
+ * \brief Managed refernce to ReplayNode
+ * \sa ReplayNode
+ */
 class Replay : public SearchStrategy {
  public:
+  /*!
+   * \brief Constructor
+   * \param batch_size Size of a batch for measurement
+   * \param num_iterations Number of iterations of replaying
+   */
   explicit Replay(int batch_size, int num_iterations);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Replay, SearchStrategy, ReplayNode);
@@ -67,7 +89,7 @@ Optional<Schedule> ReplayNode::Search(const SearchTask& task, const SearchSpace&
     measure_inputs.reserve(batch_size);
     for (int batch_id = 0; batch_id < batch_size && iter_id < num_iterations;
          ++batch_id, ++iter_id) {
-      measure_inputs.push_back(MeasureInput(task, space->SampleByReplay(task)));
+      measure_inputs.push_back(MeasureInput(task, space->SampleSchedule(task)));
     }
     measurer->BatchMeasure(measure_inputs, this->batch_size, verbose);
   }
@@ -77,6 +99,13 @@ Optional<Schedule> ReplayNode::Search(const SearchTask& task, const SearchSpace&
 /********** FFI **********/
 
 struct Internal {
+  /*!
+   * \brief Constructor of Replay
+   * \param batch_size Size of a batch for measurement
+   * \param num_iterations Number of iterations of replaying
+   * \return The Replay constructed
+   * \sa Replay::Replay
+   */
   static Replay New(int batch_size, int num_iterations) {
     return Replay(batch_size, num_iterations);
   }

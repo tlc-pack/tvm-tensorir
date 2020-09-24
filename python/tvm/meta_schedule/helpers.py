@@ -14,7 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Helper APIs for tvm.meta_schedule"""
+"""Temporary helper functions that are going to be removed once analyzer is ready."""
 
 from . import _ffi_api
 
