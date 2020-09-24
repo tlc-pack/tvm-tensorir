@@ -136,6 +136,10 @@ bool IsAllUniqueVars(const std::vector<PrimExpr>& list) {
  */
 class FuseSplitDetecter : public ExprVisitor {
  public:
+  /*! \brief Constructor */
+  explicit FuseSplitDetecter(std::unordered_map<const VarNode*, PrimExpr>* loop_var_extents)
+      : loop_var_extents(loop_var_extents) {}
+
   /*! \brief Check if the PrimExpr is in fuse pattern. If so, set replace and postproc for it */
   bool SetFuseFunctor(const PrimExpr& n) {
     Var outer, inner;
@@ -223,9 +227,6 @@ class FuseSplitDetecter : public ExprVisitor {
     };
     return true;
   }
-  /*! \brief Constructor */
-  explicit FuseSplitDetecter(std::unordered_map<const VarNode*, PrimExpr>* loop_var_extents)
-      : loop_var_extents(loop_var_extents), replace(nullptr), postproc(nullptr) {}
   // Detect this pattern for all sub-expressions
   void VisitExpr(const PrimExpr& n) override {
     // If the functors have been set, exist
@@ -243,40 +244,45 @@ class FuseSplitDetecter : public ExprVisitor {
     // If not, then detect recursively
     ExprVisitor::VisitExpr(n);
   }
+
+ public:
+  /*! \brief The replace functor to be used by FuseSplitNormalizer */
+  std::function<Optional<PrimExpr>(PrimExpr)> replace = nullptr;
+  /*! \brief The postproc functor to be used by FuseSplitNormalizer */
+  std::function<void()> postproc = nullptr;
+
+ private:
   /*! \brief Extents to be manipulated by the functors */
   std::unordered_map<const VarNode*, PrimExpr>* loop_var_extents;
-  /*! \brief The replace functor to be used by FuseSplitNormalizer */
-  std::function<Optional<PrimExpr>(PrimExpr)> replace;
-  /*! \brief The postproc functor to be used by FuseSplitNormalizer */
-  std::function<void()> postproc;
 };
 
 /*! \brief A class helps to replace patterns once they are detected */
 class FuseSplitNormalizer : public ExprMutator {
  public:
   /*! \brief Constructor */
-  explicit FuseSplitNormalizer(const FuseSplitDetecter& detector)
-      : detector(detector), replaced(false) {}
+  explicit FuseSplitNormalizer(const FuseSplitDetecter& detector) : detector_(detector) {}
   /*! \brief Destructor. Invoke postproc only if replacement happens at least once. */
   ~FuseSplitNormalizer() {
-    if (replaced) {
-      detector.postproc();
+    if (replaced_) {
+      detector_.postproc();
     }
   }
   // Do replacement recursively for all sub-expressions
   PrimExpr VisitExpr(const PrimExpr& n) override {
     PrimExpr expr = ExprMutator::VisitExpr(n);
-    Optional<PrimExpr> mutated = detector.replace(expr);
+    Optional<PrimExpr> mutated = detector_.replace(expr);
     if (!mutated.defined()) {
       return expr;
     }
-    this->replaced = true;
+    this->replaced_ = true;
     return mutated.value();
   }
+
+ private:
   /*! \brief The detector that has detected some pattern */
-  const FuseSplitDetecter& detector;
+  const FuseSplitDetecter& detector_;
   /*! \brief Indicating if replacement happens at least once */
-  bool replaced;
+  bool replaced_ = false;
 };
 
 /*! \brief A helper class to validate loops and store them into StmtSRefNode::binding_valid */
@@ -284,29 +290,29 @@ class LoopValidator : public StmtVisitor {
  public:
   /*! \brief Constructor */
   explicit LoopValidator(std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref)
-      : stmt2ref(stmt2ref) {}
+      : stmt2ref_(stmt2ref) {}
   // Collect the extent for each loop variable
   void VisitStmt_(const LoopNode* loop) final {
     // Update `loop_var_extents` with the current loop
     const VarNode* loop_var = loop->loop_var.get();
-    CHECK(!loop_var_extents.count(loop_var))
+    CHECK(!loop_var_extents_.count(loop_var))
         << "ValueError: duplicate loop variable \"" << loop_var->name_hint << "\"";
     // TODO(@junrushao1994): loop->min is always 0?
-    loop_var_extents.emplace(loop_var, analyzer.Simplify(loop->extent));
+    loop_var_extents_.emplace(loop_var, analyzer_.Simplify(loop->extent));
     StmtVisitor::VisitStmt_(loop);
-    loop_var_extents.erase(loop_var);
+    loop_var_extents_.erase(loop_var);
   }
   // Validate loop binding for each block
   void VisitStmt_(const BlockRealizeNode* realize) final {
     // Check StmtSRef's binding validity on all blocks
-    stmt2ref->at(realize->block.get())->binding_valid = ValidateBlockBinding(realize);
+    stmt2ref_->at(realize->block.get())->binding_valid = ValidateBlockBinding(realize);
     StmtVisitor::VisitStmt_(realize);
   }
   /*! \brief Validate the binding of a given block */
   bool ValidateBlockBinding(const BlockRealizeNode* realize) {
     // validate the bindings to loop variables
     std::vector<PrimExpr> bindings{realize->binding_values.begin(), realize->binding_values.end()};
-    std::unordered_map<const VarNode*, PrimExpr> loop_vars{loop_var_extents};
+    std::unordered_map<const VarNode*, PrimExpr> loop_vars{loop_var_extents_};
     std::vector<std::pair<PrimExpr, PrimExpr>> predicates = SplitPredicate(realize->predicate);
     for (;;) {
       // Detect fuse/split pattern
@@ -343,12 +349,14 @@ class LoopValidator : public StmtVisitor {
     }
     return predicates.empty() && IsAllUniqueVars(bindings);
   }
+
+ private:
   /*! \brief Extents for loop variables */
-  std::unordered_map<const VarNode*, PrimExpr> loop_var_extents;
+  std::unordered_map<const VarNode*, PrimExpr> loop_var_extents_;
   /*! \brief ScheduleNode::stmt2ref whose StmtSRef::binding_valid needs updating */
-  std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref;
+  std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
   /*! \brief An analyzer used to simplify expressions */
-  arith::Analyzer analyzer;
+  arith::Analyzer analyzer_;
 };
 
 void ScheduleNode::ValidateLoops() {
