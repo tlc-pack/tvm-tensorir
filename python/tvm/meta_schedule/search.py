@@ -159,6 +159,14 @@ class SearchSpace(Object):
     The search space could be specified by manually written schedule function,
     generated via loop analysis, ansor-like rules that apply to each block, etc."""
 
+    def sample_schedule(self, task: SearchTask) -> Schedule:
+        return _ffi_api.SearchSpaceSampleSchedule(  # pylint: disable=no-member
+            self, task
+        )
+
+    def get_support(self, task: SearchTask) -> List[Schedule]:
+        return _ffi_api.SearchSpaceGetSupport(self, task)  # pylint: disable=no-member
+
 
 @register_object("meta_schedule.ScheduleFn")
 class ScheduleFn(SearchSpace):

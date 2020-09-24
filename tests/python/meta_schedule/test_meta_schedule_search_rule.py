@@ -39,10 +39,6 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 # pylint: enable=invalid-name,no-member
 
 
-def _print_prim_func(prim_func):
-    print(tvm.hybrid.ashybrid(prim_func))
-
-
 @ms.register_rule("do_nothing")
 def do_nothing(sch: ms.Schedule, _block: ms.BlockRV):
     return sch
