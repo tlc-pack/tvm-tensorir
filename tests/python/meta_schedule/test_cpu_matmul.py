@@ -115,7 +115,6 @@ def multi_level_tiling(sch: ms.Schedule, block: ms.BlockRV):
     return sch
 
 
-@tvm.register_func("test_multi_level_tiling.apply")
 def do_multi_level_tiling(sch: ms.Schedule, block: ms.BlockRV):
     _print_prim_func(sch.sch.func)
     spatial_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "S"]
@@ -198,7 +197,7 @@ def test_matmul_post_order_apply():
 
 
 if __name__ == "__main__":
-    # test_matmul_tiling_rule()
-    # test_conv2d_tiling_rule()
-    # test_matmul_schedule_fn()
+    test_matmul_tiling_rule()
+    test_conv2d_tiling_rule()
+    test_matmul_schedule_fn()
     test_matmul_post_order_apply()

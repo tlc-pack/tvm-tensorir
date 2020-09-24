@@ -53,7 +53,7 @@ class Schedule(Object):
     def evaluate(
         self,
         random_variable: Union[BlockRV, LoopRV, ExprRV],
-    ) -> Union[tir.Block, tir.Loop, int]:
+    ) -> Union[tir.schedule.StmtSRef, int]:
         """Evaluates a random variable
 
         Parameters
@@ -63,7 +63,7 @@ class Schedule(Object):
 
         Returns
         -------
-        concrete_value : Union[tir.Block, tir.Loop, int]
+        concrete_value : Union[tir.schedule.StmtSRef, int]
             The concrete value that is evaluated to
         """
         return _ffi_api.ScheduleEval(self, random_variable)  # pylint: disable=no-member
