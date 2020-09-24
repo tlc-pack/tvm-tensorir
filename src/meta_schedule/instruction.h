@@ -92,42 +92,6 @@ class SampleTileFactorInst : public Instruction {
   SampleTileFactorInst() = default;
 };
 
-/**************** CreateBlockRVInst ****************/
-
-/*! \brief An instruction to retrieve a block using its name */
-class CreateBlockRVInstNode : public InstructionNode {
- public:
-  /*! \brief The block to be indexed */
-  tir::StmtSRef block{nullptr};
-  /*! \brief Output of the instruction */
-  BlockRV output{nullptr};
-
-  void VisitAttrs(tvm::AttrVisitor* v) {}
-
-  static constexpr const char* _type_key = "meta_schedule.CreateBlockRVInst";
-  TVM_DECLARE_FINAL_OBJECT_INFO(CreateBlockRVInstNode, InstructionNode);
-};
-
-/*!
- * \brief Managed reference to GetBlockInstNode
- * \sa GetBlockInstNode
- */
-class CreateBlockRVInst : public Instruction {
- public:
-  /*!
-   * \brief Constructor
-   * \param name The name used for retrieval
-   * \param output The output of the instruction
-   */
-  explicit CreateBlockRVInst(tir::StmtSRef block, BlockRV output);
-
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(CreateBlockRVInst, Instruction, CreateBlockRVInstNode);
-
- protected:
-  /*! \brief Constructor. The node should never be constructed directly. */
-  CreateBlockRVInst() = default;
-};
-
 /**************** GetBlockInst ****************/
 
 /*! \brief An instruction to retrieve a block using its name */
