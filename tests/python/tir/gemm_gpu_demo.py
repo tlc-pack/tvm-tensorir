@@ -34,6 +34,7 @@ def build_and_test(func):
         print("Skip because %s is not enabled" % device)
         return
     f = tvm.build(func, target=device)
+    print(tvm.hybrid.ashybrid(func))
     f(a, b, c)
     tvm.testing.assert_allclose(c.asnumpy(), np.dot(a_np.T, b_np), rtol=1e-5)
 

@@ -210,6 +210,29 @@ def test_reorder_normal():
 
 
 @tvm.hybrid.script
+def inline_element_wise(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128))
+    C = tir.match_buffer(c, (128, 128))
+
+    with tir.block([128, 128], "C") as [vi, vj]:
+        C[vi, vj] = A[vi, vj] * 2.0 + 1.0
+
+
+def test_compute_inline():
+    func = util.element_wise_stmt()
+
+    # schedule
+    s = tir.create_schedule(func)
+    B = s.get_block("B")
+    s.compute_inline(B)
+
+    inlined_func = inline_element_wise
+
+    tvm.ir.assert_structural_equal(inlined_func, s.func)
+    assert s.validate_sref()
+
+
+@tvm.hybrid.script
 def compute_at_case(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128), "float32")
     C = tir.match_buffer(c, (128, 128), "float32")
@@ -470,6 +493,7 @@ if __name__ == "__main__":
     test_fuse_loop_sref()
     test_reorder_normal()
     test_compute_at()
+    test_compute_inline()
     test_compute_at_fail()
     test_reduction()
     test_cache_read()
