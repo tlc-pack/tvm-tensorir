@@ -21,18 +21,8 @@
 namespace tvm {
 namespace tir {
 
-/*! \brief Kind of the cache stage */
-enum class CacheKind : int {
-  /*! \brief Indicating that the cache stage is cache_read */
-  kCacheRead = 0,
-  /*! \brief Indicating that the cache stage is cache_write */
-  kCacheWrite = 1,
-};
-
 /*! \brief The auxilary info used for the insertion point and content of the cache stage */
 struct CacheStageInfo {
-  /*! \brief Kind of the cache stage */
-  CacheKind kind;
   /*! \brief The buffer to be read */
   Buffer read_buffer;
   /*! \brief The buffer to be written */
@@ -329,8 +319,6 @@ class CacheLocDetector : public StmtVisitor {
   const StmtSRef& scope_sref_;
   /*! \brief Producer blocks for cache_write and consumer blocks for cache_read */
   const std::vector<StmtSRef>& related_blocks_;
-  /*! \brief Kind of insertion: for cache_read or cache_write */
-  CacheKind kind_;
   /*! \brief The flag whether we have visited the dominate block */
   bool visited_block_{false};
   /*! \brief The flag whether we have visited at least one related blocks */
@@ -539,7 +527,6 @@ StmtSRef ScheduleNode::cache_read(const Buffer& read_buffer, const std::string& 
    *   - Copy the buffer with the necessary region.
    */
   CacheStageInfo info;
-  info.kind = CacheKind::kCacheRead;
   info.read_buffer = read_buffer;
   // Create corresponding the buffer to be written, i.e. result of cache_read
   info.write_buffer = read_buffer->WithScope(storage_scope);
@@ -582,7 +569,6 @@ StmtSRef ScheduleNode::cache_write(const Buffer& write_buffer, const std::string
    *   - Copy the buffer with the necessary region.
    */
   CacheStageInfo info;
-  info.kind = CacheKind::kCacheWrite;
   info.write_buffer = write_buffer;
   // Create corresponding the buffer to be read, i.e. result of cache_write
   info.read_buffer = write_buffer->WithScope(storage_scope);
