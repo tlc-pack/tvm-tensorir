@@ -225,65 +225,61 @@ class CacheLocDetector : public StmtVisitor {
    */
   CacheLocDetector(const ScheduleNode* sch, const StmtSRef& block_sref, const StmtSRef& scope_sref,
                    const std::vector<StmtSRef>& related_blocks)
-      : sch(sch),
-        block_sref(block_sref),
-        scope_sref(scope_sref),
-        related_blocks(related_blocks),
-        visited_block(false),
-        visited_related(false),
-        loc_sref(nullptr),
-        loc_pos(-1) {}
+      : sch_(sch),
+        block_sref_(block_sref),
+        scope_sref_(scope_sref),
+        related_blocks_(related_blocks) {}
 
   void VisitStmt_(const SeqStmtNode* seq_stmt) final {
-    bool previous_visited_block = visited_block;
-    bool previous_visited_related = visited_related;
-    visited_block = visited_related = false;
+    bool previous_visited_block = visited_block_;
+    bool previous_visited_related = visited_related_;
+    visited_block_ = visited_related_ = false;
     // TODO(@junrushao1994): I don't understand the logic here. Revisit later.
     int pos = -1;
     for (size_t i = 0; i < seq_stmt->size(); ++i) {
-      if (loc_pos != -1) {
+      if (loc_pos_ != -1) {
         break;
       }
       VisitStmt(seq_stmt->seq[i]);
       // pos can only be assigned once when we visited the block_sref
-      if (visited_block && visited_related && pos == -1) {
+      if (visited_block_ && visited_related_ && pos == -1) {
         // The offset of insert position from the block
         pos = i;
       }
     }
-    visited_block = visited_block || previous_visited_block;
-    visited_related = visited_related || previous_visited_related;
+    visited_block_ = visited_block_ || previous_visited_block;
+    visited_related_ = visited_related_ || previous_visited_related;
     // Only we visited the writing block and any one of the related blocks
     // That means that we have found the lowest ancestor
     // of the block and any one of the related ones
-    if (visited_block && visited_related) {
-      loc_pos = pos;
+    if (visited_block_ && visited_related_) {
+      loc_pos_ = pos;
     }
   }
 
   void VisitStmt_(const BlockNode* block) final {
     // Only visit the current scope under buffer writer's parent block
-    if (block == scope_sref->stmt) {
+    if (block == scope_sref_->stmt) {
       // The block vistied is the current parent scope
       StmtVisitor::VisitStmt_(block);
       // Handling cache_read for input buffer
-      if (visited_block && visited_related && !loc_sref.defined()) {
-        loc_sref = sch->stmt2ref.at(block);
-        if (loc_pos == -1) {
-          loc_pos = 1;
+      if (visited_block_ && visited_related_ && !loc_sref_.defined()) {
+        loc_sref_ = sch_->stmt2ref.at(block);
+        if (loc_pos_ == -1) {
+          loc_pos_ = 1;
         }
       }
       return;
     }
     // Update `visited_block`
-    if (block_sref->stmt == block) {
-      visited_block = true;
+    if (block_sref_->stmt == block) {
+      visited_block_ = true;
       return;
     }
     // Update `visited_related`
-    for (const StmtSRef& related_block : related_blocks) {
+    for (const StmtSRef& related_block : related_blocks_) {
       if (related_block->stmt == block) {
-        visited_related = true;
+        visited_related_ = true;
         return;
       }
     }
@@ -291,8 +287,8 @@ class CacheLocDetector : public StmtVisitor {
 
   void VisitStmt_(const LoopNode* loop) final {
     StmtVisitor::VisitStmt_(loop);
-    if (visited_block && visited_related && !loc_sref.defined() && loc_pos != -1) {
-      loc_sref = sch->stmt2ref.at(loop);
+    if (visited_block_ && visited_related_ && !loc_sref_.defined() && loc_pos_ != -1) {
+      loc_sref_ = sch_->stmt2ref.at(loop);
     }
   }
 
@@ -315,8 +311,8 @@ class CacheLocDetector : public StmtVisitor {
     if (!related_blocks.empty()) {
       CacheLocDetector detector(sch, block_sref, scope_sref, related_blocks);
       detector(GetRef<Stmt>(scope_sref->stmt));
-      info->loc_sref = detector.loc_sref;
-      info->loc_pos = detector.loc_pos;
+      info->loc_sref = detector.loc_sref_;
+      info->loc_pos = detector.loc_pos_;
     } else {
       info->loc_sref = scope_sref;
       const auto* body = Downcast<SeqStmt>(scope_sref->GetStmt<BlockNode>()->body).get();
@@ -324,24 +320,25 @@ class CacheLocDetector : public StmtVisitor {
     }
   }
 
+ private:
   /*! \brief The schedule class */
-  const ScheduleNode* sch;
+  const ScheduleNode* sch_;
   /*! \brief The dominate block which write the buffer */
-  const StmtSRef& block_sref;
+  const StmtSRef& block_sref_;
   /*! \brief The parent scope of the dominate block */
-  const StmtSRef& scope_sref;
+  const StmtSRef& scope_sref_;
   /*! \brief Producer blocks for cache_write and consumer blocks for cache_read */
-  const std::vector<StmtSRef>& related_blocks;
+  const std::vector<StmtSRef>& related_blocks_;
   /*! \brief Kind of insertion: for cache_read or cache_write */
-  CacheKind kind;
+  CacheKind kind_;
   /*! \brief The flag whether we have visited the dominate block */
-  bool visited_block;
+  bool visited_block_{false};
   /*! \brief The flag whether we have visited at least one related blocks */
-  bool visited_related;
+  bool visited_related_{false};
   /*! \brief The AST node whose body is where the cache stage should be inserted */
-  StmtSRef loc_sref;
+  StmtSRef loc_sref_{nullptr};
   /*! \brief The index to insert the cache_read/cache_write stage */
-  int loc_pos;
+  int loc_pos_{-1};
 };
 
 bool RelatedWithBuffer(const Array<TensorRegion>& buffer_regions, const Buffer& buffer) {
@@ -360,15 +357,15 @@ class CacheReadRewriter : public StmtExprMutator {
    * \param info The necessary info for inserting cache stage
    */
   explicit CacheReadRewriter(const StmtSRef& scope_sref, CacheStageInfo* info)
-      : scope_sref(scope_sref), info(info) {}
+      : scope_sref_(scope_sref), info_(info) {}
 
   Stmt VisitStmt_(const LoopNode* loop) override {
     Stmt stmt = StmtMutator::VisitStmt_(loop);
     // Check the insertion point
-    if (loop == info->loc_sref->stmt) {
+    if (loop == info_->loc_sref->stmt) {
       // Insert cache stage into the loop if it is the right place
       ObjectPtr<LoopNode> n = make_object<LoopNode>(*stmt.as<LoopNode>());
-      n->body = InsertCacheStage(n->body, info->loc_pos, info->cache_stage);
+      n->body = InsertCacheStage(n->body, info_->loc_pos, info_->cache_stage);
       stmt = Stmt(n);
     }
     return stmt;
@@ -377,41 +374,41 @@ class CacheReadRewriter : public StmtExprMutator {
   Stmt VisitStmt_(const BlockNode* block) override {
     Block old_stmt = GetRef<Block>(block);
     // We don't mutate the block which generates info->read_buffer
-    if (RelatedWithBuffer(block->writes, info->read_buffer)) {
+    if (RelatedWithBuffer(block->writes, info_->read_buffer)) {
       return std::move(old_stmt);
     }
     // Mutate the body
     Block stmt = Downcast<Block>(StmtMutator::VisitStmt_(block));
     // Check the insertion point
-    if (block == info->loc_sref->stmt) {
+    if (block == info_->loc_sref->stmt) {
       // Insert cache stage into the block if it is the right place
       ObjectPtr<BlockNode> n = make_object<BlockNode>(*stmt.as<BlockNode>());
-      n->body = InsertCacheStage(n->body, info->loc_pos, info->cache_stage);
+      n->body = InsertCacheStage(n->body, info_->loc_pos, info_->cache_stage);
       stmt = Block(n);
     }
     // Check if it is the block corresponding to the parent scope
-    if (block == scope_sref->stmt) {
+    if (block == scope_sref_->stmt) {
       // If so, put buffer allocation on the parent scope
       ObjectPtr<BlockNode> n = make_object<BlockNode>(*stmt.as<BlockNode>());
-      n->allocations.push_back(info->alloc);
+      n->allocations.push_back(info_->alloc);
       stmt = Block(n);
     } else {
       // Otherwise, update read/write regions
-      auto reads = ReplaceBuffer(block->reads, info->read_buffer, info->write_buffer);
+      auto reads = ReplaceBuffer(block->reads, info_->read_buffer, info_->write_buffer);
       if (!reads.same_as(block->reads)) {
         ObjectPtr<BlockNode> n = make_object<BlockNode>(*stmt.as<BlockNode>());
         n->reads = std::move(reads);
         stmt = Block(n);
       }
     }
-    info->block_map[stmt] = old_stmt;
+    info_->block_map[stmt] = old_stmt;
     return std::move(stmt);
   }
 
   PrimExpr VisitExpr_(const BufferLoadNode* load) override {
-    if (load->buffer.same_as(info->read_buffer)) {
+    if (load->buffer.same_as(info_->read_buffer)) {
       ObjectPtr<BufferLoadNode> n = CopyOnWrite(load);
-      n->buffer = info->write_buffer;
+      n->buffer = info_->write_buffer;
       return PrimExpr(n);
     }
     return ExprMutator::VisitExpr_(load);
@@ -428,10 +425,11 @@ class CacheReadRewriter : public StmtExprMutator {
     return rewriter(GetRef<Stmt>(scope_sref->stmt));
   }
 
+ private:
   /*! \brief The parent scope of the insertion */
-  const StmtSRef& scope_sref;
+  const StmtSRef& scope_sref_;
   /*! \brief The info for inserting cache stage */
-  CacheStageInfo* info;
+  CacheStageInfo* info_;
 };
 
 /*! \brief Mutator for CacheWrite */
@@ -443,15 +441,15 @@ class CacheWriteRewriter : public StmtExprMutator {
    * \param info The necessary info for inserting cache stage
    */
   explicit CacheWriteRewriter(const StmtSRef& scope_sref, CacheStageInfo* info)
-      : scope_sref(scope_sref), info(info) {}
+      : scope_sref_(scope_sref), info_(info) {}
 
   Stmt VisitStmt_(const LoopNode* loop) override {
     Stmt stmt = StmtMutator::VisitStmt_(loop);
     // Check the insertion point
-    if (loop == info->loc_sref->stmt) {
+    if (loop == info_->loc_sref->stmt) {
       // Insert cache stage into the loop if it is the right place
       ObjectPtr<LoopNode> n = make_object<LoopNode>(*stmt.as<LoopNode>());
-      n->body = InsertCacheStage(n->body, info->loc_pos, info->cache_stage);
+      n->body = InsertCacheStage(n->body, info_->loc_pos, info_->cache_stage);
       stmt = Stmt(n);
     }
     return stmt;
@@ -460,26 +458,26 @@ class CacheWriteRewriter : public StmtExprMutator {
   Stmt VisitStmt_(const BlockNode* block) override {
     Block old_stmt = GetRef<Block>(block);
     // We only mutate the block which generates info->write_buffer
-    if (!RelatedWithBuffer(block->writes, info->write_buffer) && block != scope_sref->stmt) {
+    if (!RelatedWithBuffer(block->writes, info_->write_buffer) && block != scope_sref_->stmt) {
       return std::move(old_stmt);
     }
     // Mutate the body
     Block stmt = Downcast<Block>(StmtMutator::VisitStmt_(block));
     // Find the insertion point
-    if (block == info->loc_sref->stmt) {
+    if (block == info_->loc_sref->stmt) {
       ObjectPtr<BlockNode> n = make_object<BlockNode>(*stmt.as<BlockNode>());
-      n->body = InsertCacheStage(n->body, info->loc_pos, info->cache_stage);
+      n->body = InsertCacheStage(n->body, info_->loc_pos, info_->cache_stage);
       stmt = Block(n);
     }
     // Put buffer allocation on the parent scope
-    if (block == scope_sref->stmt) {
+    if (block == scope_sref_->stmt) {
       ObjectPtr<BlockNode> n = make_object<BlockNode>(*stmt.as<BlockNode>());
-      n->allocations.push_back(info->alloc);
+      n->allocations.push_back(info_->alloc);
       stmt = Block(n);
     } else {
       // Since cache_write changes the block, we need to update the buffer it writes
-      auto writes = ReplaceBuffer(block->writes, info->write_buffer, info->read_buffer);
-      auto reads = ReplaceBuffer(block->reads, info->write_buffer, info->read_buffer);
+      auto writes = ReplaceBuffer(block->writes, info_->write_buffer, info_->read_buffer);
+      auto reads = ReplaceBuffer(block->reads, info_->write_buffer, info_->read_buffer);
       if (!writes.same_as(block->writes) || !reads.same_as(block->reads)) {
         ObjectPtr<BlockNode> n = make_object<BlockNode>(*stmt.as<BlockNode>());
         n->writes = std::move(writes);
@@ -487,15 +485,15 @@ class CacheWriteRewriter : public StmtExprMutator {
         stmt = Block(n);
       }
     }
-    info->block_map[stmt] = old_stmt;
+    info_->block_map[stmt] = old_stmt;
     return std::move(stmt);
   }
 
   Stmt VisitStmt_(const BufferStoreNode* store) final {
     BufferStore stmt = Downcast<BufferStore>(StmtMutator::VisitStmt_(store));
-    if (stmt->buffer.same_as(info->write_buffer)) {
+    if (stmt->buffer.same_as(info_->write_buffer)) {
       auto n = CopyOnWrite(stmt.get());
-      n->buffer = info->read_buffer;
+      n->buffer = info_->read_buffer;
       return Stmt(n);
     } else {
       return std::move(stmt);
@@ -503,18 +501,13 @@ class CacheWriteRewriter : public StmtExprMutator {
   }
 
   PrimExpr VisitExpr_(const BufferLoadNode* load) final {
-    if (load->buffer.same_as(info->write_buffer)) {
+    if (load->buffer.same_as(info_->write_buffer)) {
       auto n = CopyOnWrite(load);
-      n->buffer = info->read_buffer;
+      n->buffer = info_->read_buffer;
       return PrimExpr(n);
     }
     return ExprMutator::VisitExpr_(load);
   }
-
-  /*! \brief The parent scope of the insertion */
-  const StmtSRef& scope_sref;
-  /*! \brief The info for inserting cache stage */
-  CacheStageInfo* info;
 
   /*!
    * \brief Rewrite the AST and add a cache_write stage with the information provided
@@ -526,6 +519,12 @@ class CacheWriteRewriter : public StmtExprMutator {
     CacheWriteRewriter rewriter(scope_sref, info);
     return rewriter(GetRef<Stmt>(scope_sref->stmt));
   }
+
+ private:
+  /*! \brief The parent scope of the insertion */
+  const StmtSRef& scope_sref_;
+  /*! \brief The info for inserting cache stage */
+  CacheStageInfo* info_;
 };
 
 StmtSRef ScheduleNode::cache_read(const Buffer& read_buffer, const std::string& storage_scope) {
