@@ -85,7 +85,7 @@ k_o, k_i = s.split(k, 4)
 s.reorder(i_o, j_o, k_o, k_i, i_i, j_i)
 func_opt1 = s.func
 
-s.decompose_reduction(update, j_o)
+# s.decompose_reduction(update, j_o)
 print('Opt1: %f' % build_and_test(s.func))
 
 ################################################################################################

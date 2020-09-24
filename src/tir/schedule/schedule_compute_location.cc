@@ -270,23 +270,6 @@ std::vector<Range> GatherRequirements(const Array<TensorRegion>& produced_region
   return ret;
 }
 
-class StmtReplacer : public StmtMutator {
- public:
-  explicit StmtReplacer(const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map)
-      : replace_map(replace_map) {}
-
-  Stmt VisitStmt(const Stmt& stmt) override {
-    auto it = replace_map.find(stmt.get());
-    if (it == replace_map.end()) {
-      return StmtMutator::VisitStmt(stmt);
-    } else {
-      return StmtMutator::VisitStmt(GetRef<Stmt>(it->second));
-    }
-  }
-
-  const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map;
-};
-
 /*!
  * \brief Get the subtree the node is in in its parent's scope
  * \param node The node to query
