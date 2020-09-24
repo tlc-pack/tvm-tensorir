@@ -36,7 +36,6 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     B = tir.match_buffer(b, (1024, 1024), "float32")
     C = tir.match_buffer(c, (1024, 1024), "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
-
     with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "C") as [vi, vj, vk]:
         reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
@@ -47,7 +46,6 @@ def conv2d(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     W = tir.match_buffer(w, (512, 512, 3, 3), "float32")
     Y = tir.match_buffer(y, [1, 512, 7, 7], "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
-
     Pad = tir.buffer_allocate((1, 512, 9, 9), "float32")
     with tir.block([1, 512, 9, 9], "conv2d_pad_x") as [i_n, i_ci, i_h, i_w]:
         Pad[

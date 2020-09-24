@@ -32,4 +32,4 @@ class LoopRV(Object):
     """ A random variable that evaluates to a TIR loop axis """
 
 
-RAND_VAR_TYPE = Union[ExprRV, BlockRV, LoopRV]
+RAND_VAR_TYPE = Union[ExprRV, BlockRV, LoopRV]  # pylint: disable=invalid-name
