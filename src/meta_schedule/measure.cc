@@ -245,20 +245,70 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
 struct Internal {
   /********** Constructors **********/
+  /*!
+   * \brief Constructor of MeasureInput
+   * \param task The task to be measured
+   * \param state Concrete schedule of the task
+   * \return The MeasureInput constructed
+   * \sa MeasureInput::MeasureInput
+   */
   static MeasureInput MeasureInputNew(SearchTask task, Schedule sch) {
     return MeasureInput(task, sch);
   }
+  /*!
+   * \brief Constructor of BuildResult
+   * \param filename The filename of built binary file.
+   * \param error_no The error code.
+   * \param error_msg The error message if there is any error.
+   * \param time_cost The time cost of build.
+   * \return The BuildResult constructed
+   * \sa BuildResult::BuildResult
+   */
   static BuildResult BuildResultNew(String filename, int error_no, String error_msg,
                                     double time_cost) {
     return BuildResult(filename, error_no, error_msg, time_cost);
   }
+  /*!
+   * \brief Constructor of MeasureResult
+   * \param costs The time costs of execution.
+   * \param error_no The error code.
+   * \param error_msg The error message if there is any error.
+   * \param all_cost The time cost of build and run.
+   * \param timestamp The time stamps of this measurement.
+   * \return The MeasureResult constructed
+   * \sa MeasureResult::MeasureResult
+   */
   static MeasureResult MeasureResultNew(Array<PrimExpr> costs, int error_no, String error_msg,
                                         double all_cost, double timestamp) {
     return MeasureResult(costs, error_no, error_msg, all_cost, timestamp);
   }
+  /*!
+   * \brief The constructor.
+   * \param timeout The timeout limit (in second) for each build process.
+   * \param n_parallel The number of threads used to build in parallel.
+   * \param build_func The name of the registered build function.
+   * \return The LocalBuilder constructed
+   * \sa LocalBuilder::LocalBuilder
+   */
   static LocalBuilder LocalBuilderNew(int timeout, int n_parallel, String build_func) {
     return LocalBuilder(timeout, n_parallel, build_func);
   }
+  /*!
+   * \brief Constructor of RPCRunner
+   * \param key The key of the device registered in the RPC tracker.
+   * \param host The host address of the RPC Tracker.
+   * \param port The port of RPC Tracker.
+   * \param priority The priority of this run request, larger is more prior.
+   * \param n_parallel The number of tasks run in parallel.
+   * \param timeout Timeout of a run.
+   * \param number The number of times to run the generated code for taking average.
+   * \param repeat The number of times to repeat the measurement.
+   * \param min_repeat_ms The minimum duration of one repeat in milliseconds.
+   * \param cooldown_interval The cool down interval between two measurements.
+   * \param enable_cpu_cache_flush Whether to flush cache on CPU between repeated measurements.
+   * \return The RPCRunner constructed
+   * \sa RPCRunnerNew::RPCRunnerNew
+   */
   static RPCRunner RPCRunnerNew(String tracker, int priority, int n_parallel, int timeout,
                                 int number, int repeat, int min_repeat_ms, double cooldown_interval,
                                 bool enable_cpu_cache_flush) {
@@ -266,10 +316,27 @@ struct Internal {
                      cooldown_interval, enable_cpu_cache_flush);
   }
   /********** Member methods **********/
+  /*!
+   * \brief Invoke ProgramBuilder::Build
+   * \param builder The program builder
+   * \param inputs An Array of MeasureInput
+   * \param verbose Verbosity level. 0 for silent, 1 to output information during program building
+   * \return An Array of MeasureResult
+   * \sa ProgramBuilder::Build
+   */
   static Array<BuildResult> ProgramBuilderBuild(ProgramBuilder builder, Array<MeasureInput> inputs,
                                                 int verbose) {
     return builder->Build(inputs, verbose);
   }
+  /*!
+   * \brief Invoke ProgramRunner::Run
+   * \param runner The program runner
+   * \param inputs An Array of MeasureInput
+   * \param build_results An Array of BuildResult
+   * \param verbose Verbosity level. 0 for silent, 1 to output information during program running
+   * \return An Array of MeasureResult
+   * \sa ProgramRunner::Run
+   */
   static Array<MeasureResult> ProgramRunnerRun(ProgramRunner runner, Array<MeasureInput> inputs,
                                                Array<BuildResult> build_results, int verbose) {
     return runner->Run(inputs, build_results, verbose);

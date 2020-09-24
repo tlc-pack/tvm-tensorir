@@ -200,7 +200,9 @@ class ProgramBuilder(Object):
         raise ValueError("Unknown name of program builder: " + name)
 
     def build(
-        self, measure_inputs: List[MeasureInput], verbose: int = 1
+        self,
+        measure_inputs: List[MeasureInput],
+        verbose: int = 1,
     ) -> List[BuildResult]:
         """Build programs and return results.
 
@@ -216,7 +218,9 @@ class ProgramBuilder(Object):
         res : List[BuildResult]
         """
         return _ffi_api.ProgramBuilderBuild(  # pylint: disable=no-member
-            self, measure_inputs, verbose
+            self,
+            measure_inputs,
+            verbose,
         )
 
 
@@ -262,7 +266,10 @@ class ProgramRunner(Object):
         res : List[MeasureResult]
         """
         return _ffi_api.ProgramRunnerRun(  # pylint: disable=no-member
-            self, measure_inputs, build_results, verbose
+            self,
+            measure_inputs,
+            build_results,
+            verbose,
         )
 
 
@@ -350,7 +357,7 @@ class RPCRunner(ProgramRunner):
             return RPCRunner()
         if not name.startswith(RPC_PREFIX):
             raise ValueError("Invalid RPC config: " + name)
-        name = name[len(RPC_PREFIX): ].strip()
+        name = name[len(RPC_PREFIX) :].strip()
         if "*" not in name:
             return RPCRunner(tracker=name)
         split_result = name.split("*")
@@ -521,12 +528,8 @@ def rpc_runner_run(
         The MeasureInputs to be measured.
     build_results : List[BuildResult]
         The BuildResults to be measured.
-    key : str
-        The key of the device registered in the RPC tracker.
-    host : str
-        The host address of the RPC Tracker.
-    port : int
-        The port of RPC Tracker.
+    tracker: str
+        The host address, port and device key of the RPC tracker
     priority : int = 1
         The priority of this run request, larger is more prior.
     n_parallel : int = 1
@@ -701,7 +704,7 @@ def rpc_runner_wrapped_worker(
 
     Returns
     -------
-    res : MeasureResult
+    result : MeasureResultType
         The measure result of this Runner thread.
     """
     global RPC_RUNNER_WORKER_ARGS

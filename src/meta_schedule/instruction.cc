@@ -30,13 +30,6 @@ SampleTileFactorInst::SampleTileFactorInst(LoopRV loop, Array<Integer> where,
   data_ = std::move(n);
 }
 
-CreateBlockRVInst::CreateBlockRVInst(tir::StmtSRef block, BlockRV output) {
-  ObjectPtr<CreateBlockRVInstNode> n = make_object<CreateBlockRVInstNode>();
-  n->block = std::move(block);
-  n->output = std::move(output);
-  data_ = std::move(n);
-}
-
 GetBlockInst::GetBlockInst(String name, BlockRV output) {
   ObjectPtr<GetBlockInstNode> n = make_object<GetBlockInstNode>();
   n->name = std::move(name);
