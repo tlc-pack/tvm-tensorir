@@ -195,6 +195,7 @@ class SearchRule : public ObjectRef {
    * \brief Composing search rules sequentially into a single rule
    * \param name Name of the new composite search rule
    * \param rules The rules provided sequentially
+   * \return The composite rule
    */
   TVM_DLL static SearchRule Compose(const String& name, const std::vector<SearchRule>& rules);
 

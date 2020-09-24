@@ -15,16 +15,16 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Random variables in meta schedule """
-from tvm._ffi import register_object as _register_object
-from tvm.runtime import Object as _Object
-from tvm.tir import Var  # pylint: disable=unused-import
+from tvm._ffi import register_object
+from tvm.ir import PrimExpr as ExprRV  # pylint: disable=unused-import
+from tvm.runtime import Object
 
 
-@_register_object("meta_schedule.BlockRV")
-class BlockRV(_Object):
-    """ defined in src/meta_schedule/random_variable.h """
+@register_object("meta_schedule.BlockRV")
+class BlockRV(Object):
+    """ A random variable that evaluates to a TIR block """
 
 
-@_register_object("meta_schedule.LoopRV")
-class LoopRV(_Object):
-    """ defined in src/meta_schedule/random_variable.h """
+@register_object("meta_schedule.LoopRV")
+class LoopRV(Object):
+    """ A random variable that evaluates to a TIR loop axis """

@@ -15,45 +15,169 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Main class of meta schedule """
+from typing import List, Union
+
+from tvm import tir
 from tvm._ffi import register_object
 from tvm.runtime import Object
 
 from . import _ffi_api
+from .instruction import Instruction
+from .random_variable import BlockRV, ExprRV, LoopRV
 
 
 @register_object("meta_schedule.Schedule")
 class Schedule(Object):
-    """ defined in src/meta_schedule/schedule.h """
+    """The meta schedule class.
 
-    def __init__(self, prim_func):
+    Parameters
+    ----------
+    orig_func : PrimFunc
+        The original TIR PrimFunc to be scheduled
+    sch: tir.Schedule
+        The TIR schedule in the current stage
+    trace: List[Instruction]
+        The trace of instructions used
+    """
+
+    orig_func: tir.PrimFunc
+    sch: tir.Schedule
+    trace: List[Instruction]
+
+    def __init__(self, func: tir.PrimFunc):
         self.__init_handle_by_constructor__(
-            _ffi_api.Schedule, prim_func  # pylint: disable=no-member
+            _ffi_api.Schedule,  # pylint: disable=no-member
+            func,
         )
 
-    def evaluate(self, random_variable):
+    def evaluate(
+        self,
+        random_variable: Union[BlockRV, LoopRV, ExprRV],
+    ) -> Union[tir.Block, tir.Loop, int]:
+        """Evaluates a random variable
+
+        Parameters
+        ----------
+        random_variable : Union[BlockRV, LoopRV, ExprRV]
+            The random variable to be evaluated
+
+        Returns
+        -------
+        concrete_value : Union[tir.Block, tir.Loop, int]
+            The concrete value that is evaluated to
+        """
         return _ffi_api.ScheduleEval(self, random_variable)  # pylint: disable=no-member
 
-    def sample_tile_factor(self, n, loop, where):
+    def sample_tile_factor(
+        self,
+        n: int,
+        loop: LoopRV,
+        where: List[int],
+    ) -> List[ExprRV]:
+        """Split a loop by the given tiling factors
+
+        Parameters
+        ----------
+        n: int
+            The number of loops after tiling
+        loop: LoopRV
+            The loop to be tiled
+        where: List[int]
+            The distribution of tile size to be sampled
+
+        Returns
+        -------
+        factors : List[ExprRV]
+            The result of sampling
+        """
         return _ffi_api.ScheduleSampleTileFactor(  # pylint: disable=no-member
             self, n, loop, where
         )
 
-    def get_block(self, name):
+    def get_block(self, name: str) -> BlockRV:
+        """Apply the instruction GetBlock, get a block by its name
+
+        Parameters
+        ----------
+        name: str
+            Name of the block
+
+        Returns
+        -------
+        BlockRV : BlockRV
+            The block retrieved
+        """
         return _ffi_api.ScheduleGetBlock(self, name)  # pylint: disable=no-member
 
-    def get_axes(self, block):
+    def get_axes(self, block: BlockRV) -> List[LoopRV]:
+        """Get loop nests above a block
+
+        Parameters
+        ----------
+        block: BlockRV
+            The block to be queried
+
+        Returns
+        -------
+        axes : List[LoopRV]
+            The loop nests above the block
+        """
         return _ffi_api.ScheduleGetAxes(self, block)  # pylint: disable=no-member
 
-    def split(self, loop, factors):
+    def split(
+        self,
+        loop: LoopRV,
+        factors: List[ExprRV],
+    ) -> List[LoopRV]:
+        """Split the given loop with the specific factors
+
+        Parameters
+        ----------
+        loop: LoopRV
+            The loop to be split
+        factors: List[ExprRV]
+            The factors used for split
+
+        Returns
+        -------
+        axes : List[LoopRV]
+            The loop axes after split
+        """
         return _ffi_api.ScheduleSplit(self, loop, factors)  # pylint: disable=no-member
 
-    def reorder(self, after_axes):
-        return _ffi_api.ScheduleReorder(self, after_axes)  # pylint: disable=no-member
+    def reorder(self, after_axes: List[LoopRV]) -> None:
+        """Reorder the loops into the order given
 
-    def decompose_reduction(self, block, loop):
+        Parameters
+        ----------
+        after_axes: List[LoopRV]
+            The order of the loop after reordering
+        """
+        _ffi_api.ScheduleReorder(self, after_axes)  # pylint: disable=no-member
+
+    def decompose_reduction(
+        self,
+        block: BlockRV,
+        loop: LoopRV,
+    ) -> BlockRV:
+        """Decompose the reduction in the specific block under the specific loop
+
+        Parameters
+        ----------
+        block: BlockRV
+            The block that contains the reduction
+        loop: LoopRV
+            The loop that the initialization should be under
+
+        Returns
+        -------
+        block : BlockRV
+            The result of the decomposition
+        """
         return _ffi_api.ScheduleDecomposeReduction(  # pylint: disable=no-member
             self, block, loop
         )
 
-    def replay_once(self):
+    def replay_once(self) -> None:
+        """ Replay the trace to generate a new state of scheduling """
         return _ffi_api.ScheduleReplayOnce(self)  # pylint: disable=no-member
