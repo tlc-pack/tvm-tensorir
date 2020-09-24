@@ -16,11 +16,12 @@
 # under the License.
 """ Test multi-level tiling """
 # pylint: disable=missing-function-docstring
-import tvm
-from tvm.hybrid import ty
-from tvm import tir
-from tvm import meta_schedule as ms
+import pytest
 
+import tvm
+from tvm import meta_schedule as ms
+from tvm import tir
+from tvm.hybrid import ty
 
 TILING_FORMAT = "SSRSRS"
 SPATIAL = 0
@@ -152,6 +153,7 @@ def test_conv2d_tiling_rule():
     do_multi_level_tiling(sch, block)
 
 
+@pytest.mark.skip(reason="needs RPC")
 def test_matmul_schedule_fn():
     def schedule_matmul(sch):
         block = sch.get_block(name="C")
@@ -176,6 +178,7 @@ def test_matmul_schedule_fn():
         _print_prim_func(sch.sch.func)
 
 
+@pytest.mark.skip(reason="needs RPC")
 def test_matmul_post_order_apply():
     rule = ms.SearchRule.compose(
         name="composed",

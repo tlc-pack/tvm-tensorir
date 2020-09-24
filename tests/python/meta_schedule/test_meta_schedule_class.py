@@ -17,10 +17,9 @@
 """ Test for meta schedule class """
 # pylint: disable=missing-function-docstring
 import tvm
-from tvm.hybrid import ty
-from tvm import tir
 from tvm import meta_schedule as ms
-
+from tvm import tir
+from tvm.hybrid import ty
 
 # pylint: disable=invalid-name,no-member
 
@@ -37,10 +36,6 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 # pylint: enable=invalid-name,no-member
-
-
-def _print_prim_func(prim_func):
-    print(tvm.hybrid.ashybrid(prim_func))
 
 
 def test_meta_schedule_creation():
