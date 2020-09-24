@@ -15,18 +15,17 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Utility functions used for measuring """
-# pylint: disable=missing-function-docstring
 import multiprocessing
 import multiprocessing.pool
 import signal
 import traceback
 from threading import Thread
-from typing import Tuple
+from typing import List, Tuple
 
 import psutil
 
 from tvm import rpc
-from tvm.runtime import ndarray
+from tvm.runtime import NDArray, TVMContext, ndarray
 from tvm.tir import PrimFunc
 
 MAX_ERROR_MSG_LEN = int(1e9)
@@ -118,7 +117,9 @@ def call_func_with_timeout(timeout, func, args=(), kwargs=None):
     return res
 
 
-def parse_tracker_key(tracker: str) -> Tuple[str, int, str]:
+def parse_tracker_key(  # pylint: disable=missing-function-docstring
+    tracker: str,
+) -> Tuple[str, int, str]:
     result = tracker.split(":")
     if len(result) != 3:
         raise ValueError(
@@ -145,14 +146,8 @@ def request_remote(
 
     Parameters
     ----------
-    device_key : str
-        The device key of registered device in tracker.
-    host : Optional[str]
-        The host address of rpc tracker.
-        If is none, will use environment variable "TVM_TRACKER_HOST".
-    port : Optional[int]
-        The port of rpc tracker.
-        If is none, will use environment variable "TVM_TRACKER_PORT".
+    tracker: str
+        The host address, port and device key of the RPC tracker
     priority : int = 1
         The priority of this request, larger is more prior.
     timeout : int = 60
@@ -170,20 +165,14 @@ def request_remote(
     return remote
 
 
-def check_remote(tracker, priority=100, timeout=10):
+def check_remote(tracker: str, priority: int = 100, timeout: int = 10) -> bool:
     """
     Check the availability of a remote device.
 
     Parameters
     ----------
-    device_key: str
-        device key of registered device in tracker.
-    host: Optional[str]
-        The host address of rpc tracker.
-        If is none, will use environment variable "TVM_TRACKER_HOST".
-    port: Optional[int]
-        The port address of rpc tracker.
-        If is none, will use environment variable "TVM_TRACKER_PORT".
+    tracker: str
+        The host address, port and device key of the RPC tracker
     priority: int = 100
         The priority of this request, larger is more prior.
     timeout: int = 10
@@ -204,7 +193,28 @@ def check_remote(tracker, priority=100, timeout=10):
     return not t.is_alive()
 
 
-def realize_arguments(_remote, ctx, func: PrimFunc):
+def realize_arguments(
+    _remote: rpc.RPCSession,
+    ctx: TVMContext,
+    func: PrimFunc,
+) -> List[NDArray]:
+    """
+    Check the availability of a remote device.
+
+    Parameters
+    ----------
+    _remote: RPCSession
+        The connected remote RPCSession
+    ctx: TVMContext
+        The context that ndarrays to be creaetd on the remote
+    func: PrimFunc
+        The PrimFunc to be run on the remote
+
+    Returns
+    -------
+    args: List[NDArray]
+        A list of arguments fed to the TVM runtime module built
+    """
     args = []
     for arg in func.params:
         if arg.dtype == "handle":
@@ -227,10 +237,30 @@ def realize_arguments(_remote, ctx, func: PrimFunc):
     return args
 
 
-def cpu_count():
+def cpu_count() -> int:
+    """
+    Check the number of cpus available on the local device
+
+    Returns
+    -------
+    cpu_count: int
+        The number of cpus available on the local device
+    """
     return multiprocessing.cpu_count()
 
 
-def vprint(verbose, content, end):
+def vprint(verbose: int, content: str, end: str) -> None:
+    """
+    Print the content if verbose level >= 1
+
+    Parameters
+    ----------
+    verbose: int
+        The verbosity level
+    content: str
+        The content to be printed
+    end: str
+        The end of the print function used in python print
+    """
     if verbose >= 1:
         print(content, end=end)

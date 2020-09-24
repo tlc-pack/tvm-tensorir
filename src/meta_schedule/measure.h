@@ -18,6 +18,7 @@
  */
 
 /*!
+ * Taken and modified from Ansor
  * \brief Distributed measurement infrastructure to measure the runtime costs of tensor programs.
  * These functions are responsible for building the tvm module, uploading it to remote devices,
  * recording the running time costs, and checking the correctness of the output.
@@ -30,7 +31,6 @@
  * `MeasureInput` -----------------> `BuildResult` ----------------> `MeasureResult`
  *
  *
- * Taken and modified from Ansor
  * The core functions is implemented in python to utilize python's multiprocessing
  * and error handling (see also `python/tvm/meta_schedule/measure.py`).
  * This c++ file is just a wrapper for the python functions.
@@ -71,6 +71,11 @@ enum class MeasureErrorNO : int {
   kUnknownError = 8,
 };
 
+/*!
+ * \brief Convert MeasureErrorNO to string
+ * \param error_no The MeasureErrorNO to be converted
+ * \return The string correpsonding to the given MeasureErrorNO
+ */
 inline const char* MeasureErrorNOToStr(MeasureErrorNO error_no) {
   static const char* names[] = {
       "NoError",
@@ -88,12 +93,15 @@ inline const char* MeasureErrorNOToStr(MeasureErrorNO error_no) {
 
 /********** MeasureInput **********/
 
+// Forward declaration
 class MeasureInput;
 
 /*! \brief Store the input of a measurement */
 class MeasureInputNode : public Object {
  public:
+  /*! \brief The task to be measured */
   SearchTask task;
+  /*! \brief Concrete schedule of the task */
   Schedule sch;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
@@ -115,9 +123,9 @@ class MeasureInputNode : public Object {
 class MeasureInput : public ObjectRef {
  public:
   /*!
-   * \brief The constructor.
-   * \param task The SearchTask of this measure.
-   * \param state The State to be measured.
+   * \brief Constructor
+   * \param task The task to be measured
+   * \param state Concrete schedule of the task
    */
   explicit MeasureInput(SearchTask task, Schedule sch);
 
@@ -229,9 +237,8 @@ class ProgramBuilderNode : public Object {
   int n_parallel;
   /*! \brief Timeout of a build */
   int timeout;
-
+  /*! \brief Virtual destructor */
   virtual ~ProgramBuilderNode() = default;
-
   /*!
    * \brief Build programs and return results.
    * \param inputs An Array of MeasureInput.
@@ -271,9 +278,8 @@ class ProgramRunnerNode : public Object {
   double cooldown_interval;
   /*! \brief Whether to flush cache on CPU between repeated measurements. */
   bool enable_cpu_cache_flush;
-
+  /*! \brief Virtual destructor */
   virtual ~ProgramRunnerNode() = default;
-
   /*!
    * \brief Run measurement and return results.
    * \param inputs An Array of MeasureInput.
@@ -312,6 +318,7 @@ class LocalBuilderNode : public ProgramBuilderNode {
     v->Visit("build_func", &build_func);
   }
 
+  /*! \brief Default destructor */
   ~LocalBuilderNode() = default;
 
   Array<BuildResult> Build(const Array<MeasureInput>& inputs, int verbose) const override;
@@ -328,7 +335,7 @@ class LocalBuilder : public ProgramBuilder {
  public:
   /*!
    * \brief The constructor.
-   * \param timeout The timeout limit (in second) for each build thread.
+   * \param timeout The timeout limit (in second) for each build process.
    * This will be used in a wrapper of the multiprocessing.Process.join().
    * \param n_parallel The number of threads used to build in parallel.
    * \param build_func The name of the registered build function.
@@ -354,8 +361,6 @@ class RPCRunnerNode : public ProgramRunnerNode {
   /*! \brief The number of tasks run in parallel. */
   int n_parallel;
 
-  ~RPCRunnerNode() = default;
-
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("timeout", &timeout);
     v->Visit("number", &number);
@@ -367,6 +372,9 @@ class RPCRunnerNode : public ProgramRunnerNode {
     v->Visit("priority", &priority);
     v->Visit("n_parallel", &n_parallel);
   }
+
+  /*! \brief Default destructor */
+  ~RPCRunnerNode() = default;
 
   Array<MeasureResult> Run(const Array<MeasureInput>& inputs,
                            const Array<BuildResult>& build_results, int verbose) const override;
@@ -404,8 +412,6 @@ class RPCRunner : public ProgramRunner {
 };
 
 /********** MeasureCallback **********/
-
-class SearchPolicy;
 
 /*! \brief Bass class of measurement callbacks */
 class MeasureCallbackNode : public Object {
@@ -450,7 +456,7 @@ class ProgramMeasurerNode : public Object {
   double best_time_cost;
   /*! \brief The index of the samples that the best schedule is in. */
   int best_index;
-  /*! \brief The best schedule.  */
+  /*! \brief The best schedule found so far. */
   Optional<Schedule> best_sch;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
@@ -463,16 +469,28 @@ class ProgramMeasurerNode : public Object {
     v->Visit("best_sch", &best_sch);
   }
 
-  /*! \brief Reset book keeping variables */
-  void Reset();
-
+  /*!
+   * \brief Do measurement and update the records maintained internally
+   * \param measure_inputs The programs to be measured
+   * \param batch_size Number of programs to be measured in one batch
+   * \param verbose Flag for verbose mode
+   * \return The measured result
+   */
   Array<MeasureResult> BatchMeasure(const Array<MeasureInput>& measure_inputs, int batch_size,
                                     int verbose);
+  /*! \brief Reset book keeping variables */
+  void Reset();
 
   static constexpr const char* _type_key = "meta_schedule.ProgramMeasurer";
   TVM_DECLARE_FINAL_OBJECT_INFO(ProgramMeasurerNode, Object);
 
  private:
+  /*!
+   * \brief Measure the inputs without modifying the internal states
+   * \param measure_inputs The inputs to be measured
+   * \param verbose Flag for verbose mode
+   * \return The measured result
+   */
   Array<MeasureResult> PureMeasure(const Array<MeasureInput>& measure_inputs, int verbose) const;
 };
 
@@ -482,13 +500,29 @@ class ProgramMeasurerNode : public Object {
  */
 class ProgramMeasurer : public ObjectRef {
  public:
+  /*!
+   * \brief Constructor
+   * \param builder The program builder
+   * \param runner The program runner
+   * \param callbacks The callbacks invoked after measurement
+   * \param num_measure The default number of measurement that have been conducted
+   * \param best_time_cost The current best time for a single measurement
+   * \param best_index The index of the samples that the best schedule is in.
+   * \param best_sch The best schedule found so far
+   */
   explicit ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner,
-                           Array<MeasureCallback> callbacks, int num_measured, double best_time,
-                           int best_index, Optional<Schedule> best_sch);
-
+                           Array<MeasureCallback> callbacks, int num_measured,
+                           double best_time_cost, int best_index, Optional<Schedule> best_sch);
+  /*!
+   * \brief Simplified constructor
+   * \param builder The program builder
+   * \param runner The program runner
+   * \param callbacks The callbacks invoked after measurement
+   */
   explicit ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner,
                            Array<MeasureCallback> callbacks);
 
+  /*! \brief The maximum time cost*/
   static const constexpr double MAX_TIME_COST = 1e10;
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(ProgramMeasurer, ObjectRef, ProgramMeasurerNode);

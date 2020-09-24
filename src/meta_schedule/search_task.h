@@ -27,11 +27,16 @@ namespace meta_schedule {
 
 /********** SearchTask **********/
 
+/*! \brief Descrption of a search task */
 class SearchTaskNode : public Object {
  public:
+  /*! \brief The function to be optimized */
   tir::PrimFunc func;
+  /*! \brief Name of this search task */
   String task_name;
+  /*! \brief The target to be built at */
   Target target;
+  /*! \brief The target host to be built at */
   Target target_host;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
@@ -45,8 +50,19 @@ class SearchTaskNode : public Object {
   TVM_DECLARE_FINAL_OBJECT_INFO(SearchTaskNode, Object);
 };
 
+/*!
+ * \brief Managed reference to SearchTaskNode
+ * \sa SearchTaskNode
+ */
 class SearchTask : public ObjectRef {
  public:
+  /*!
+   * \brief Constructor
+   * \param func The function to be optimized
+   * \param task_name Name of this search task
+   * \param target The target to be built at
+   * \param target_host The target host to be built at
+   */
   explicit SearchTask(tir::PrimFunc func, String task_name, Target target, Target target_host);
   TVM_DEFINE_OBJECT_REF_METHODS(SearchTask, ObjectRef, SearchTaskNode);
 };
