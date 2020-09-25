@@ -76,3 +76,9 @@ def block_vars_as_store_axes(sch: Schedule, block: BlockRV) -> Optional[List[Var
     return _ffi_api_analysis.BlockVarsAsStoreAxes(  # pylint: disable=no-member
         sch, block
     )
+
+
+def count_missing(load: BufferLoad, list_of_vars: List[Var]) -> int:
+    return _ffi_api_analysis.CountMissing(  # pylint: disable=no-member
+        load, list_of_vars
+    )

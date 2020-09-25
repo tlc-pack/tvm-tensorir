@@ -180,6 +180,17 @@ def test_meta_schedule_analysis_block_vars_as_store_axes():  # pylint: disable=i
     assert v_j.name == "vj"
 
 
+def test_meta_schedule_analysis_count_missing():
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("C")
+    load_a, load_b = ms.analysis.get_buffer_load(sch, block)
+    store_c = ms.analysis.get_buffer_store(sch, block)
+    list_of_vars = ms.analysis.block_vars_as_store_axes(sch, block)
+    assert ms.analysis.count_missing(load_a, list_of_vars) == 1
+    assert ms.analysis.count_missing(load_b, list_of_vars) == 1
+    assert ms.analysis.count_missing(store_c, list_of_vars) == 0
+
+
 if __name__ == "__main__":
     test_meta_schedule_analysis_is_trivial_binding()
     test_meta_schedule_analysis_get_iter_type()
@@ -190,3 +201,4 @@ if __name__ == "__main__":
     test_meta_schedule_analysis_count_op()
     test_meta_schedule_analysis_has_branch()
     test_meta_schedule_analysis_block_vars_as_store_axes()
+    test_meta_schedule_analysis_count_missing()

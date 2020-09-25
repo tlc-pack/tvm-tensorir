@@ -44,6 +44,8 @@ TVM_DLL bool HasBranch(Schedule sch, BlockRV block);
 
 TVM_DLL Optional<Array<tir::Var>> BlockVarsAsStoreAxes(Schedule sch, BlockRV block);
 
+TVM_DLL int CountMissing(tir::BufferLoad load, Array<tir::Var> vars);
+
 }  // namespace meta_schedule
 }  // namespace tvm
 

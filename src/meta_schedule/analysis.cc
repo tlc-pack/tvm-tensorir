@@ -250,6 +250,26 @@ Optional<Array<tir::Var>> BlockVarsAsStoreAxes(Schedule sch, BlockRV block_rv) {
   return result;
 }
 
+int CountMissing(tir::BufferLoad load, Array<tir::Var> vars) {
+  int n_missing = 0;
+  // Collect vars that are used in indices of BufferLoad
+  std::unordered_set<const tir::VarNode*> vars_in_load;
+  for (const PrimExpr& idx : load->indices) {
+    tir::PostOrderVisit(idx, [&vars_in_load](const ObjectRef& obj) {
+      if (const auto* var = obj.as<tir::VarNode>()) {
+        vars_in_load.insert(var);
+      }
+    });
+  }
+  // Enumerate
+  for (const tir::Var& var : vars) {
+    if (!vars_in_load.count(var.get())) {
+      ++n_missing;
+    }
+  }
+  return n_missing;
+}
+
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetIterType").set_body_typed(GetIterType);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeaf").set_body_typed(IsLeaf);
@@ -260,6 +280,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.analysis.CountOp").set_body_typed(CountOp);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.HasBranch").set_body_typed(HasBranch);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.BlockVarsAsStoreAxes")
     .set_body_typed(BlockVarsAsStoreAxes);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.CountMissing").set_body_typed(CountMissing);
 
 }  // namespace meta_schedule
 }  // namespace tvm
