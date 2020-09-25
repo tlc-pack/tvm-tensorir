@@ -19,6 +19,7 @@
 import tvm
 from tvm import meta_schedule as ms
 from tvm import tir
+from tvm.ir import Op
 from tvm.hybrid import ty
 
 # pylint: disable=invalid-name,no-member
@@ -58,6 +59,20 @@ def split_ewise_multiple(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             tir.bind(vj, i % 128)
             B[vi, vj] = A[vi, vj] * 2.0
             C[vi, vj] = A[vi, vj] * 3.0
+
+
+@tvm.hybrid.script
+def apply_exp(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128))
+    B = tir.match_buffer(b, (128, 128))
+    C = tir.match_buffer(c, (128, 128))
+
+    for i in range(0, 16384):
+        with tir.block([128, 128], "B") as [vi, vj]:
+            tir.bind(vi, i // 128)
+            tir.bind(vj, i % 128)
+            B[vi, vj] = tir.exp(A[vi, vj], dtype="float32")
+            C[vi, vj] = tir.exp(A[vi, vj] * 2.0, dtype="float32")
 
 
 # pylint: enable=invalid-name,no-member
@@ -109,13 +124,18 @@ def test_meta_schedule_analysis_get_buffer_store():
 
 def test_meta_schedule_analysis_get_buffer_load():
     sch = ms.Schedule(func=matmul)
-    loads = ms.analysis.get_buffer_load(sch, sch.get_block("C"))
-    assert len(loads) == 2
-    assert {loads[0].buffer.name, loads[1].buffer.name} == {"A", "B"}
+    load_a, load_b = ms.analysis.get_buffer_load(sch, sch.get_block("C"))
+    assert {load_a.buffer.name, load_b.buffer.name} == {"A", "B"}
     sch = ms.Schedule(func=split_ewise)
-    loads = ms.analysis.get_buffer_load(sch, sch.get_block("B"))
-    assert len(loads) == 1
-    assert {loads[0].buffer.name} == {"A"}
+    (load_a,) = ms.analysis.get_buffer_load(sch, sch.get_block("B"))
+    assert load_a.buffer.name == "A"
+
+
+def test_meta_schedule_analysis_count_op():
+    sch = ms.Schedule(func=apply_exp)
+    block = sch.get_block("B")
+    exp = Op.get("tir.exp")
+    assert ms.analysis.count_op(sch, block, exp) == 2
 
 
 if __name__ == "__main__":
@@ -125,3 +145,4 @@ if __name__ == "__main__":
     test_meta_schedule_analysis_is_body_single_stmt()
     test_meta_schedule_analysis_get_buffer_store()
     test_meta_schedule_analysis_get_buffer_load()
+    test_meta_schedule_analysis_count_op()

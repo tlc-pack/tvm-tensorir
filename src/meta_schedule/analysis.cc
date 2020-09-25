@@ -136,12 +136,28 @@ Array<tir::BufferLoad> GetBufferLoad(Schedule sch, BlockRV block_rv) {
   throw;
 }
 
+int CountOp(Schedule sch, BlockRV block_rv, Op op) {
+  tir::StmtSRef block_sref = sch->Eval(block_rv);
+  const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
+  int count = 0;
+  tir::PostOrderVisit(block->body, [&count, &op](const ObjectRef& obj) {
+    if (const auto* call = obj.as<tir::CallNode>()) {
+      if (call->op.same_as(op)) {
+        ++count;
+      }
+    }
+  });
+  return count;
+}
+
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetIterType").set_body_typed(GetIterType);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeaf").set_body_typed(IsLeaf);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsBodySingleStmt").set_body_typed(IsBodySingleStmt);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBufferStore").set_body_typed(GetBufferStore);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBufferLoad").set_body_typed(GetBufferLoad);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.CountOp").set_body_typed(CountOp);
 
 }  // namespace meta_schedule
 }  // namespace tvm

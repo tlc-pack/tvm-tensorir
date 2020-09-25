@@ -17,6 +17,7 @@
 """Meta schedule analysis API """
 from typing import List
 
+from tvm.ir import Op
 from tvm.tir import IterVar, BufferLoad
 
 from . import _ffi_api_analysis
@@ -51,3 +52,7 @@ def get_buffer_store(sch: Schedule, block: BlockRV) -> BufferLoad:
 
 def get_buffer_load(sch: Schedule, block: BlockRV) -> List[BufferLoad]:
     return _ffi_api_analysis.GetBufferLoad(sch, block)  # pylint: disable=no-member
+
+
+def count_op(sch: Schedule, block: BlockRV, op: Op) -> int:
+    return _ffi_api_analysis.CountOp(sch, block, op)  # pylint: disable=no-member
