@@ -169,6 +169,17 @@ def test_meta_schedule_analysis_has_branch():
     assert ms.analysis.has_branch(sch, block)
 
 
+def test_meta_schedule_analysis_block_vars_as_store_axes():  # pylint: disable=invalid-name
+    sch = ms.Schedule(func=matmul)
+    v_i, v_j = ms.analysis.block_vars_as_store_axes(sch, sch.get_block("C"))
+    assert v_i.name == "vi"
+    assert v_j.name == "vj"
+    sch = ms.Schedule(func=split_ewise)
+    v_i, v_j = ms.analysis.block_vars_as_store_axes(sch, sch.get_block("B"))
+    assert v_i.name == "vi"
+    assert v_j.name == "vj"
+
+
 if __name__ == "__main__":
     test_meta_schedule_analysis_is_trivial_binding()
     test_meta_schedule_analysis_get_iter_type()
@@ -178,3 +189,4 @@ if __name__ == "__main__":
     test_meta_schedule_analysis_get_buffer_load()
     test_meta_schedule_analysis_count_op()
     test_meta_schedule_analysis_has_branch()
+    test_meta_schedule_analysis_block_vars_as_store_axes()

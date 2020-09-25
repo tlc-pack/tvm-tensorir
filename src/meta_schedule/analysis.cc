@@ -21,6 +21,7 @@
 #include <tvm/arith/analyzer.h>
 #include <tvm/tir/stmt_functor.h>
 
+#include "../arith/pattern_match.h"
 #include "../tir/schedule/schedule_common.h"  // TODO(@junrushao1994): replace it
 
 namespace tvm {
@@ -151,7 +152,7 @@ int CountOp(Schedule sch, BlockRV block_rv, Op op) {
   return count;
 }
 
-int HasBranch(Schedule sch, BlockRV block_rv) {
+bool HasBranch(Schedule sch, BlockRV block_rv) {
   tir::StmtSRef block_sref = sch->Eval(block_rv);
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
@@ -187,6 +188,68 @@ int HasBranch(Schedule sch, BlockRV block_rv) {
   return has_branch;
 }
 
+static bool IsConstInt(const PrimExpr& x) {
+  if (x->IsInstance<tir::IntImmNode>()) {
+    return true;
+  }
+  if (const auto* op = x.as<tir::BroadcastNode>()) {
+    return op->value->IsInstance<tir::IntImmNode>();
+  }
+  return false;
+}
+
+/*!
+ * \brief Check if an expression consists of a single variable, or a variable +/i an constant
+ * \param expr The expression to be checked
+ * \param result Output, the var inside if it satisfies the condition
+ * \return A boolean indicating if it satisfies the condition
+ */
+static bool IsVarPlusMinusConst(const PrimExpr& expr, tir::Var* result) {
+  // match: "var"
+  if (const auto* var = expr.as<tir::VarNode>()) {
+    *result = GetRef<tir::Var>(var);
+    return true;
+  }
+  arith::PVar<tir::Var> var;
+  arith::PVar<IntImm> shift;
+  // match: "var +/- shift"
+  if ((var + shift).Match(expr) || (var - shift).Match(expr) || (shift + var).Match(expr)) {
+    *result = var.Eval();
+    return true;
+  }
+  return false;
+}
+
+Optional<Array<tir::Var>> BlockVarsAsStoreAxes(Schedule sch, BlockRV block_rv) {
+  tir::StmtSRef block_sref = sch->Eval(block_rv);
+  const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
+  if (!IsBodySingleStmt(sch, block_rv)) {
+    return NullOpt;
+  }
+  // Collect block vars
+  std::unordered_set<const tir::VarNode*> block_vars;
+  for (const tir::IterVar& iter_var : block->iter_vars) {
+    block_vars.insert(iter_var->var.get());
+  }
+  Array<tir::Var> result;
+  tir::BufferLoad store = GetBufferStore(sch, block_rv);
+  for (const PrimExpr& idx : store->indices) {
+    if (IsConstInt(idx)) {
+      continue;
+    }
+    tir::Var var;
+    if (IsVarPlusMinusConst(idx, &var)) {
+      if (block_vars.count(var.get())) {
+        result.push_back(var);
+        continue;
+      }
+    }
+    return NullOpt;
+  }
+  return result;
+}
+
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetIterType").set_body_typed(GetIterType);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeaf").set_body_typed(IsLeaf);
@@ -195,6 +258,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBufferStore").set_body_typed(GetB
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBufferLoad").set_body_typed(GetBufferLoad);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.CountOp").set_body_typed(CountOp);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.HasBranch").set_body_typed(HasBranch);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.BlockVarsAsStoreAxes")
+    .set_body_typed(BlockVarsAsStoreAxes);
 
 }  // namespace meta_schedule
 }  // namespace tvm

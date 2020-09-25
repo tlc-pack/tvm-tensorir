@@ -19,6 +19,8 @@
 #ifndef SRC_META_SCHEDULE_ANALYSIS_H_
 #define SRC_META_SCHEDULE_ANALYSIS_H_
 
+#include <utility>
+
 #include "./schedule.h"
 
 namespace tvm {
@@ -38,7 +40,9 @@ TVM_DLL Array<tir::BufferLoad> GetBufferLoad(Schedule sch, BlockRV block);
 
 TVM_DLL int CountOp(Schedule sch, BlockRV block, Op op);
 
-TVM_DLL int HasBranch(Schedule sch, BlockRV block);
+TVM_DLL bool HasBranch(Schedule sch, BlockRV block);
+
+TVM_DLL Optional<Array<tir::Var>> BlockVarsAsStoreAxes(Schedule sch, BlockRV block);
 
 }  // namespace meta_schedule
 }  // namespace tvm

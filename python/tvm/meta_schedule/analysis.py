@@ -15,10 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 """Meta schedule analysis API """
-from typing import List
+from typing import List, Optional
 
 from tvm.ir import Op
-from tvm.tir import IterVar, BufferLoad
+from tvm.tir import IterVar, BufferLoad, Var
 
 from . import _ffi_api_analysis
 from .random_variable import BlockRV
@@ -70,3 +70,9 @@ def count_op(sch: Schedule, block: BlockRV, op: Op) -> int:
 
 def has_branch(sch: Schedule, block: BlockRV) -> bool:
     return bool(_ffi_api_analysis.HasBranch(sch, block))  # pylint: disable=no-member
+
+
+def block_vars_as_store_axes(sch: Schedule, block: BlockRV) -> Optional[List[Var]]:
+    return _ffi_api_analysis.BlockVarsAsStoreAxes(  # pylint: disable=no-member
+        sch, block
+    )
