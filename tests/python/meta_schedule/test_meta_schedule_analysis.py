@@ -71,8 +71,27 @@ def apply_exp(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         with tir.block([128, 128], "B") as [vi, vj]:
             tir.bind(vi, i // 128)
             tir.bind(vj, i % 128)
-            B[vi, vj] = tir.exp(A[vi, vj], dtype="float32")
-            C[vi, vj] = tir.exp(A[vi, vj] * 2.0, dtype="float32")
+            B[vi, vj] = tir.exp(  # pylint: disable=unexpected-keyword-arg
+                A[vi, vj],
+                dtype="float32",
+            )
+            C[vi, vj] = tir.exp(  # pylint: disable=unexpected-keyword-arg
+                A[vi, vj] * 2.0,
+                dtype="float32",
+            )
+
+
+@tvm.hybrid.script
+def with_predicate(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128))
+    C = tir.match_buffer(c, (128, 128))
+
+    for i, jo, ji in tir.grid(128, 10, 13):
+        with tir.block([128, 128], "C") as [vi, vj]:
+            tir.where(jo * 13 + ji < 128)
+            tir.bind(vi, i)
+            tir.bind(vj, jo * 13 + ji)
+            C[vi, vj] = A[vi, vj] + 1.0
 
 
 # pylint: enable=invalid-name,no-member
@@ -132,10 +151,22 @@ def test_meta_schedule_analysis_get_buffer_load():
 
 
 def test_meta_schedule_analysis_count_op():
+    exp = Op.get("tir.exp")
     sch = ms.Schedule(func=apply_exp)
     block = sch.get_block("B")
-    exp = Op.get("tir.exp")
     assert ms.analysis.count_op(sch, block, exp) == 2
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("C")
+    assert ms.analysis.count_op(sch, block, exp) == 0
+
+
+def test_meta_schedule_analysis_has_branch():
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("C")
+    assert not ms.analysis.has_branch(sch, block)
+    sch = ms.Schedule(func=with_predicate)
+    block = sch.get_block("C")
+    assert ms.analysis.has_branch(sch, block)
 
 
 if __name__ == "__main__":
@@ -146,3 +177,4 @@ if __name__ == "__main__":
     test_meta_schedule_analysis_get_buffer_store()
     test_meta_schedule_analysis_get_buffer_load()
     test_meta_schedule_analysis_count_op()
+    test_meta_schedule_analysis_has_branch()

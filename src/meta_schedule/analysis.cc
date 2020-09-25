@@ -151,6 +151,42 @@ int CountOp(Schedule sch, BlockRV block_rv, Op op) {
   return count;
 }
 
+int HasBranch(Schedule sch, BlockRV block_rv) {
+  tir::StmtSRef block_sref = sch->Eval(block_rv);
+  const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
+  bool has_branch = false;
+  arith::Analyzer analyzer;
+  const Op& op_if_then_else = Op::Get("tir.if_then_else");
+  auto f_visit = [&has_branch, &analyzer, &op_if_then_else](const ObjectRef& obj) -> bool {
+    if (has_branch) {
+      // stop visiting
+      return false;
+    }
+    if (const auto* realize = obj.as<tir::BlockRealizeNode>()) {
+      // Case 1: BlockRealize
+      if (!analyzer.CanProve(realize->predicate == 1)) {
+        has_branch = true;
+        return false;
+      }
+    } else if (obj->IsInstance<tir::IfThenElseNode>() || obj->IsInstance<tir::SelectNode>()) {
+      // Case 2: IfThenElse / Select
+      has_branch = true;
+      return false;
+    } else if (const auto* call = obj.as<tir::CallNode>()) {
+      // Case 3: Call
+      if (call->op.same_as(op_if_then_else)) {
+        has_branch = true;
+        return false;
+      }
+    }
+    // continue visiting
+    return true;
+  };
+  tir::PreOrderVisit(tir::GetBlockRealize(block_sref), f_visit);
+  return has_branch;
+}
+
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetIterType").set_body_typed(GetIterType);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeaf").set_body_typed(IsLeaf);
@@ -158,6 +194,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsBodySingleStmt").set_body_typed(Is
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBufferStore").set_body_typed(GetBufferStore);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBufferLoad").set_body_typed(GetBufferLoad);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.CountOp").set_body_typed(CountOp);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.HasBranch").set_body_typed(HasBranch);
 
 }  // namespace meta_schedule
 }  // namespace tvm

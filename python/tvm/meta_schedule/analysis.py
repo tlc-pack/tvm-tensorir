@@ -26,7 +26,12 @@ from .schedule import Schedule
 
 
 def is_trivial_binding(sch: Schedule, block: BlockRV) -> bool:
-    return _ffi_api_analysis.IsTrivialBinding(sch, block)  # pylint: disable=no-member
+    return bool(
+        _ffi_api_analysis.IsTrivialBinding(  # pylint: disable=no-member
+            sch,
+            block,
+        )
+    )
 
 
 def get_iter_type(sch: Schedule, block: BlockRV) -> List[str]:
@@ -39,11 +44,16 @@ def get_iter_type(sch: Schedule, block: BlockRV) -> List[str]:
 
 
 def is_leaf(sch: Schedule, block: BlockRV) -> bool:
-    return _ffi_api_analysis.IsLeaf(sch, block)  # pylint: disable=no-member
+    return bool(_ffi_api_analysis.IsLeaf(sch, block))  # pylint: disable=no-member
 
 
 def is_body_single_stmt(sch: Schedule, block: BlockRV) -> bool:
-    return _ffi_api_analysis.IsBodySingleStmt(sch, block)  # pylint: disable=no-member
+    return bool(
+        _ffi_api_analysis.IsBodySingleStmt(  # pylint: disable=no-member
+            sch,
+            block,
+        )
+    )
 
 
 def get_buffer_store(sch: Schedule, block: BlockRV) -> BufferLoad:
@@ -56,3 +66,7 @@ def get_buffer_load(sch: Schedule, block: BlockRV) -> List[BufferLoad]:
 
 def count_op(sch: Schedule, block: BlockRV, op: Op) -> int:
     return _ffi_api_analysis.CountOp(sch, block, op)  # pylint: disable=no-member
+
+
+def has_branch(sch: Schedule, block: BlockRV) -> bool:
+    return bool(_ffi_api_analysis.HasBranch(sch, block))  # pylint: disable=no-member
