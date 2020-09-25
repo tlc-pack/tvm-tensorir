@@ -66,14 +66,15 @@ class SRefMapCreator : public StmtVisitor {
     StmtVisitor::VisitStmt_(seq_stmt);
     int index = 0;
     for (const Stmt& stmt : seq_stmt->seq) {
-      const StmtNode* node;
       if (const auto* realize = stmt.as<BlockRealizeNode>()) {
-        node = realize->block.get();
+        const StmtNode* node = realize->block.get();
+        stmt2ref_.at(node)->seq_index = index++;
+      } else if (const auto* loop = stmt.as<LoopNode>()) {
+        const StmtNode* node = loop;
+        stmt2ref_.at(node)->seq_index = index++;
       } else {
-        // TODO(@junrushao1994): seems that we should assert it as LoopNode?
-        node = stmt.get();
+        ++index;
       }
-      stmt2ref_.at(node)->seq_index = index++;
     }
   }
 
