@@ -56,5 +56,20 @@ def test_meta_schedule_analysis_is_trivial_binding():
     assert not ms.analysis.is_trivial_binding(sch, sch.get_block("B"))
 
 
+def test_meta_schedule_analysis_get_iter_type():
+    sch = ms.Schedule(func=matmul)
+    assert ms.analysis.get_iter_type(sch, sch.get_block("C")) == [
+        "spatial",
+        "spatial",
+        "reduce",
+    ]
+    sch = ms.Schedule(func=split_ewise)
+    assert ms.analysis.get_iter_type(sch, sch.get_block("B")) == [
+        "spatial",
+        "spatial",
+    ]
+
+
 if __name__ == "__main__":
     test_meta_schedule_analysis_is_trivial_binding()
+    test_meta_schedule_analysis_get_iter_type()

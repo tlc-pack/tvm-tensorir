@@ -15,6 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 """Meta schedule analysis API """
+from typing import List
+
+from tvm.tir import IterVar
+
 from . import _ffi_api_analysis
 from .random_variable import BlockRV
 from .schedule import Schedule
@@ -22,3 +26,13 @@ from .schedule import Schedule
 
 def is_trivial_binding(sch: Schedule, block: BlockRV) -> bool:
     return _ffi_api_analysis.IsTrivialBinding(sch, block)  # pylint: disable=no-member
+
+
+def get_iter_type(sch: Schedule, block: BlockRV) -> List[str]:
+    table = {
+        IterVar.DataPar: "spatial",
+        IterVar.CommReduce: "reduce",
+    }
+    iter_types = _ffi_api_analysis.GetIterType(sch, block)  # pylint: disable=no-member
+    result = [table.get(iter_type, "opaque") for iter_type in iter_types]
+    return result

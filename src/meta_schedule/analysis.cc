@@ -29,8 +29,7 @@ bool IsTrivialBinding(Schedule sch, BlockRV block_rv) {
   tir::StmtSRef block_sref = sch->Eval(block_rv);
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
-  const auto* realize = tir::GetBlockRealize(block_sref).as<tir::BlockRealizeNode>();
-  CHECK(realize);
+  tir::BlockRealize realize = tir::GetBlockRealize(block_sref);
   Array<tir::StmtSRef> loops = sch->sch->GetLoopsInScope(block_sref);
   const Array<PrimExpr>& bindings = realize->binding_values;
   if (loops.size() != bindings.size()) {
@@ -49,7 +48,20 @@ bool IsTrivialBinding(Schedule sch, BlockRV block_rv) {
   return true;
 }
 
+Array<Integer> GetIterType(Schedule sch, BlockRV block_rv) {
+  tir::StmtSRef block_sref = sch->Eval(block_rv);
+  const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
+  Array<Integer> result;
+  for (const tir::IterVar& iter_var : block->iter_vars) {
+    int iter_type = iter_var->iter_type;
+    result.push_back(iter_type);
+  }
+  return result;
+}
+
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetIterType").set_body_typed(GetIterType);
 
 }  // namespace meta_schedule
 }  // namespace tvm
