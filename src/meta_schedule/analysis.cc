@@ -79,9 +79,24 @@ bool IsLeaf(Schedule sch, BlockRV block_rv) {
   return is_leaf;
 }
 
+bool IsBodySingleStmt(Schedule sch, BlockRV block_rv) {
+  tir::StmtSRef block_sref = sch->Eval(block_rv);
+  const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
+  const tir::Stmt& body = block->body;
+  if (body->IsInstance<tir::BufferStoreNode>()) {
+    return true;
+  }
+  if (body->IsInstance<tir::ReduceStepNode>()) {
+    return true;
+  }
+  return false;
+}
+
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetIterType").set_body_typed(GetIterType);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeaf").set_body_typed(IsLeaf);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsBodySingleStmt").set_body_typed(IsBodySingleStmt);
 
 }  // namespace meta_schedule
 }  // namespace tvm

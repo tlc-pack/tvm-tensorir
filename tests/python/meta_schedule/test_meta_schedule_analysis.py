@@ -46,6 +46,20 @@ def split_ewise(a: ty.handle, b: ty.handle) -> None:
             B[vi, vj] = A[vi, vj] * 2.0
 
 
+@tvm.hybrid.script
+def split_ewise_multiple(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128))
+    B = tir.match_buffer(b, (128, 128))
+    C = tir.match_buffer(c, (128, 128))
+
+    for i in range(0, 16384):
+        with tir.block([128, 128], "B") as [vi, vj]:
+            tir.bind(vi, i // 128)
+            tir.bind(vj, i % 128)
+            B[vi, vj] = A[vi, vj] * 2.0
+            C[vi, vj] = A[vi, vj] * 3.0
+
+
 # pylint: enable=invalid-name,no-member
 
 
@@ -75,7 +89,17 @@ def test_meta_schedule_analysis_is_leaf():
     assert ms.analysis.is_leaf(sch, sch.get_block("C"))
 
 
+def test_meta_schedule_analysis_is_body_single_stmt():
+    sch = ms.Schedule(func=matmul)
+    assert ms.analysis.is_body_single_stmt(sch, sch.get_block("C"))
+    sch = ms.Schedule(func=split_ewise)
+    assert ms.analysis.is_body_single_stmt(sch, sch.get_block("B"))
+    sch = ms.Schedule(func=split_ewise_multiple)
+    assert not ms.analysis.is_body_single_stmt(sch, sch.get_block("B"))
+
+
 if __name__ == "__main__":
     test_meta_schedule_analysis_is_trivial_binding()
     test_meta_schedule_analysis_get_iter_type()
     test_meta_schedule_analysis_is_leaf()
+    test_meta_schedule_analysis_is_body_single_stmt()

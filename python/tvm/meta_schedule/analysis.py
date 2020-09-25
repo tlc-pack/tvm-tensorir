@@ -40,3 +40,7 @@ def get_iter_type(sch: Schedule, block: BlockRV) -> List[str]:
 
 def is_leaf(sch: Schedule, block: BlockRV) -> bool:
     return _ffi_api_analysis.IsLeaf(sch, block)  # pylint: disable=no-member
+
+
+def is_body_single_stmt(sch: Schedule, block: BlockRV) -> bool:
+    return _ffi_api_analysis.IsBodySingleStmt(sch, block)  # pylint: disable=no-member

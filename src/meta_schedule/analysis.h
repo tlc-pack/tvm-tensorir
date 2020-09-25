@@ -30,6 +30,8 @@ TVM_DLL Array<Integer> GetIterType(Schedule sch, BlockRV block);
 
 TVM_DLL bool IsLeaf(Schedule sch, BlockRV block);
 
+TVM_DLL bool IsBodySingleStmt(Schedule sch, BlockRV block);
+
 TVM_DLL tir::BufferLoad GetBufferStore(Schedule sch, BlockRV block);
 
 TVM_DLL Array<tir::BufferLoad> GetBufferLoad(Schedule sch, BlockRV block);
