@@ -14,12 +14,11 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-""" Meta Schedule """
-from ..ir import PrimExpr as ExprRV
-from . import helpers  # TODO(@junrushao1994)
-from . import analysis
-from .measure import LocalBuilder, RPCRunner
-from .random_variable import BlockRV, ExprRV, LoopRV
+"""Meta schedule analysis API """
+from . import _ffi_api_analysis
+from .random_variable import BlockRV
 from .schedule import Schedule
-from .search import PostOrderApply, Replay, SearchRule, autotune, register_rule
-from .search_task import SearchTask
+
+
+def is_trivial_binding(sch: Schedule, block: BlockRV) -> bool:
+    return _ffi_api_analysis.IsTrivialBinding(sch, block)  # pylint: disable=no-member

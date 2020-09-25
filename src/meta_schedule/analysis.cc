@@ -20,16 +20,17 @@
 
 #include <tvm/arith/analyzer.h>
 
+#include "../tir/schedule/schedule_common.h"  // TODO(@junrushao1994): replace it
+
 namespace tvm {
 namespace meta_schedule {
 
 bool IsTrivialBinding(Schedule sch, BlockRV block_rv) {
   tir::StmtSRef block_sref = sch->Eval(block_rv);
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
-  const auto* realize = block_sref->parent->GetStmt<tir::BlockRealizeNode>();
   CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
-  CHECK(realize) << "TypeError: Expects BlockRealize, but gets: "
-                 << block_sref->parent->stmt->GetTypeKey();
+  const auto* realize = tir::GetBlockRealize(block_sref).as<tir::BlockRealizeNode>();
+  CHECK(realize);
   Array<tir::StmtSRef> loops = sch->sch->GetLoopsInScope(block_sref);
   const Array<PrimExpr>& bindings = realize->binding_values;
   if (loops.size() != bindings.size()) {

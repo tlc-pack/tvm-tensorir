@@ -14,7 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-""" Test for search task class """
+""" Test for meta schedule analysis """
 # pylint: disable=missing-function-docstring
 import tvm
 from tvm import meta_schedule as ms
@@ -34,15 +34,27 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
 
+@tvm.hybrid.script
+def split_ewise(a: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128))
+    B = tir.match_buffer(b, (128, 128))
+
+    for i in range(0, 16384):
+        with tir.block([128, 128], "B") as [vi, vj]:
+            tir.bind(vi, i // 128)
+            tir.bind(vj, i % 128)
+            B[vi, vj] = A[vi, vj] * 2.0
+
+
 # pylint: enable=invalid-name,no-member
 
 
-def test_meta_schedule_search_task_creation():
-    task = ms.SearchTask(func=matmul, target="cuda", target_host="llvm")
-    assert tvm.ir.structural_equal(task.func, matmul)
-    assert str(task.target).startswith("cuda ")
-    assert str(task.target_host).startswith("llvm ")
+def test_meta_schedule_analysis_is_trivial_binding():
+    sch = ms.Schedule(func=matmul)
+    assert ms.analysis.is_trivial_binding(sch, sch.get_block("C"))
+    sch = ms.Schedule(func=split_ewise)
+    assert not ms.analysis.is_trivial_binding(sch, sch.get_block("B"))
 
 
 if __name__ == "__main__":
-    test_meta_schedule_search_task_creation()
+    test_meta_schedule_analysis_is_trivial_binding()
