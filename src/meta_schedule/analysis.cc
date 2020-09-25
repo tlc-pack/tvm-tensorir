@@ -93,10 +93,55 @@ bool IsBodySingleStmt(Schedule sch, BlockRV block_rv) {
   return false;
 }
 
+tir::BufferLoad GetBufferStore(Schedule sch, BlockRV block_rv) {
+  tir::StmtSRef block_sref = sch->Eval(block_rv);
+  const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
+  if (const auto* body = block->body.as<tir::BufferStoreNode>()) {
+    return tir::BufferLoad(body->buffer, body->indices);
+  }
+  if (const auto* body = block->body.as<tir::ReduceStepNode>()) {
+    const auto* buffer_update = body->lhs.as<tir::BufferLoadNode>();
+    CHECK(buffer_update) << "TypeError: LHS of ReduceStep is expected to be BufferLoad, but gets: "
+                         << body->lhs->GetTypeKey();
+    return GetRef<tir::BufferLoad>(buffer_update);
+  }
+  LOG(FATAL) << "ValueError: `GetBufferStore` only applies to a leaf block whose body is single "
+                "statement, but get: "
+             << GetRef<tir::Block>(block);
+  throw;
+}
+
+Array<tir::BufferLoad> GetBufferLoad(Schedule sch, BlockRV block_rv) {
+  tir::StmtSRef block_sref = sch->Eval(block_rv);
+  const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
+  Array<tir::BufferLoad> reads;
+  auto f_visit = [&reads](const ObjectRef& obj) {
+    if (const auto* load = obj.as<tir::BufferLoadNode>()) {
+      reads.push_back(GetRef<tir::BufferLoad>(load));
+    }
+  };
+  if (const auto* body = block->body.as<tir::BufferStoreNode>()) {
+    tir::PostOrderVisit(body->value, f_visit);
+    return reads;
+  }
+  if (const auto* body = block->body.as<tir::ReduceStepNode>()) {
+    tir::PostOrderVisit(body->rhs, f_visit);
+    return reads;
+  }
+  LOG(FATAL) << "ValueError: `GetBufferLoad` only applies to a leaf block whose body is single "
+                "statement, but get: "
+             << GetRef<tir::Block>(block);
+  throw;
+}
+
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetIterType").set_body_typed(GetIterType);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeaf").set_body_typed(IsLeaf);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsBodySingleStmt").set_body_typed(IsBodySingleStmt);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBufferStore").set_body_typed(GetBufferStore);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBufferLoad").set_body_typed(GetBufferLoad);
 
 }  // namespace meta_schedule
 }  // namespace tvm

@@ -17,7 +17,7 @@
 """Meta schedule analysis API """
 from typing import List
 
-from tvm.tir import IterVar
+from tvm.tir import IterVar, BufferLoad
 
 from . import _ffi_api_analysis
 from .random_variable import BlockRV
@@ -34,8 +34,7 @@ def get_iter_type(sch: Schedule, block: BlockRV) -> List[str]:
         IterVar.CommReduce: "reduce",
     }
     iter_types = _ffi_api_analysis.GetIterType(sch, block)  # pylint: disable=no-member
-    result = [table.get(iter_type, "opaque") for iter_type in iter_types]
-    return result
+    return [table.get(iter_type, "opaque") for iter_type in iter_types]
 
 
 def is_leaf(sch: Schedule, block: BlockRV) -> bool:
@@ -44,3 +43,11 @@ def is_leaf(sch: Schedule, block: BlockRV) -> bool:
 
 def is_body_single_stmt(sch: Schedule, block: BlockRV) -> bool:
     return _ffi_api_analysis.IsBodySingleStmt(sch, block)  # pylint: disable=no-member
+
+
+def get_buffer_store(sch: Schedule, block: BlockRV) -> BufferLoad:
+    return _ffi_api_analysis.GetBufferStore(sch, block)  # pylint: disable=no-member
+
+
+def get_buffer_load(sch: Schedule, block: BlockRV) -> List[BufferLoad]:
+    return _ffi_api_analysis.GetBufferLoad(sch, block)  # pylint: disable=no-member

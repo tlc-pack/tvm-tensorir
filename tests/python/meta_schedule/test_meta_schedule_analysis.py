@@ -98,8 +98,30 @@ def test_meta_schedule_analysis_is_body_single_stmt():
     assert not ms.analysis.is_body_single_stmt(sch, sch.get_block("B"))
 
 
+def test_meta_schedule_analysis_get_buffer_store():
+    sch = ms.Schedule(func=matmul)
+    store = ms.analysis.get_buffer_store(sch, sch.get_block("C"))
+    assert store.buffer.name == "C"
+    sch = ms.Schedule(func=split_ewise)
+    store = ms.analysis.get_buffer_store(sch, sch.get_block("B"))
+    assert store.buffer.name == "B"
+
+
+def test_meta_schedule_analysis_get_buffer_load():
+    sch = ms.Schedule(func=matmul)
+    loads = ms.analysis.get_buffer_load(sch, sch.get_block("C"))
+    assert len(loads) == 2
+    assert {loads[0].buffer.name, loads[1].buffer.name} == {"A", "B"}
+    sch = ms.Schedule(func=split_ewise)
+    loads = ms.analysis.get_buffer_load(sch, sch.get_block("B"))
+    assert len(loads) == 1
+    assert {loads[0].buffer.name} == {"A"}
+
+
 if __name__ == "__main__":
     test_meta_schedule_analysis_is_trivial_binding()
     test_meta_schedule_analysis_get_iter_type()
     test_meta_schedule_analysis_is_leaf()
     test_meta_schedule_analysis_is_body_single_stmt()
+    test_meta_schedule_analysis_get_buffer_store()
+    test_meta_schedule_analysis_get_buffer_load()
