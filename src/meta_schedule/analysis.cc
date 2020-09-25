@@ -19,6 +19,7 @@
 #include "./analysis.h"  // NOLINT(build/include)
 
 #include <tvm/arith/analyzer.h>
+#include <tvm/tir/stmt_functor.h>
 
 #include "../tir/schedule/schedule_common.h"  // TODO(@junrushao1994): replace it
 
@@ -60,8 +61,27 @@ Array<Integer> GetIterType(Schedule sch, BlockRV block_rv) {
   return result;
 }
 
+bool IsLeaf(Schedule sch, BlockRV block_rv) {
+  tir::StmtSRef block_sref = sch->Eval(block_rv);
+  const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
+  bool is_leaf = true;
+  tir::PreOrderVisit(block->body, [&is_leaf](const ObjectRef& obj) -> bool {
+    if (is_leaf == false) {
+      return false;
+    }
+    if (obj->IsInstance<tir::BlockNode>()) {
+      is_leaf = false;
+      return false;
+    }
+    return true;
+  });
+  return is_leaf;
+}
+
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetIterType").set_body_typed(GetIterType);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeaf").set_body_typed(IsLeaf);
 
 }  // namespace meta_schedule
 }  // namespace tvm

@@ -36,3 +36,7 @@ def get_iter_type(sch: Schedule, block: BlockRV) -> List[str]:
     iter_types = _ffi_api_analysis.GetIterType(sch, block)  # pylint: disable=no-member
     result = [table.get(iter_type, "opaque") for iter_type in iter_types]
     return result
+
+
+def is_leaf(sch: Schedule, block: BlockRV) -> bool:
+    return _ffi_api_analysis.IsLeaf(sch, block)  # pylint: disable=no-member

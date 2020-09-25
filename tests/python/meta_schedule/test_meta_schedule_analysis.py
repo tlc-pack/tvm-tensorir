@@ -70,6 +70,12 @@ def test_meta_schedule_analysis_get_iter_type():
     ]
 
 
+def test_meta_schedule_analysis_is_leaf():
+    sch = ms.Schedule(func=matmul)
+    assert ms.analysis.is_leaf(sch, sch.get_block("C"))
+
+
 if __name__ == "__main__":
     test_meta_schedule_analysis_is_trivial_binding()
     test_meta_schedule_analysis_get_iter_type()
+    test_meta_schedule_analysis_is_leaf()
