@@ -191,6 +191,15 @@ def test_meta_schedule_analysis_count_missing():
     assert ms.analysis.count_missing(store_c, list_of_vars) == 0
 
 
+def test_meta_schedule_analysis_get_load_store_index_mapping_property():  # pylint: disable=invalid-name
+    sch = ms.Schedule(func=matmul)
+    result = ms.analysis.get_load_store_index_mapping_property(sch, sch.get_block("C"))
+    assert result is None
+    sch = ms.Schedule(func=split_ewise)
+    result = ms.analysis.get_load_store_index_mapping_property(sch, sch.get_block("B"))
+    assert result == (True, True, True)
+
+
 if __name__ == "__main__":
     test_meta_schedule_analysis_is_trivial_binding()
     test_meta_schedule_analysis_get_iter_type()
@@ -202,3 +211,4 @@ if __name__ == "__main__":
     test_meta_schedule_analysis_has_branch()
     test_meta_schedule_analysis_block_vars_as_store_axes()
     test_meta_schedule_analysis_count_missing()
+    test_meta_schedule_analysis_get_load_store_index_mapping_property()

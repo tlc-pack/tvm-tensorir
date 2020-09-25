@@ -46,6 +46,8 @@ TVM_DLL Optional<Array<tir::Var>> BlockVarsAsStoreAxes(Schedule sch, BlockRV blo
 
 TVM_DLL int CountMissing(tir::BufferLoad load, Array<tir::Var> vars);
 
+TVM_DLL Optional<Array<Bool>> GetLoadStoreIndexMappingProperty(Schedule sch, BlockRV block);
+
 }  // namespace meta_schedule
 }  // namespace tvm
 

@@ -261,13 +261,76 @@ int CountMissing(tir::BufferLoad load, Array<tir::Var> vars) {
       }
     });
   }
-  // Enumerate
+  // Enumerate and count missing ones
   for (const tir::Var& var : vars) {
     if (!vars_in_load.count(var.get())) {
       ++n_missing;
     }
   }
   return n_missing;
+}
+
+Optional<Array<Bool>> GetLoadStoreIndexMappingProperty(Schedule sch, BlockRV block_rv) {
+  // Filter out block vars that corresponding to indices in BufferStore
+  Optional<Array<tir::Var>> store = BlockVarsAsStoreAxes(sch, block_rv);
+  if (!store.defined()) {
+    return NullOpt;
+  }
+  // Index those BufferStore indices
+  std::unordered_map<const tir::VarNode*, int> store_indices;
+  {
+    int index = 0;
+    for (const tir::Var& var : store.value()) {
+      store_indices[var.get()] = index++;
+    }
+  }
+  bool surjective = true;
+  bool injective = true;
+  bool ordered = true;
+  Array<tir::BufferLoad> loads = GetBufferLoad(sch, block_rv);
+  for (const tir::BufferLoad& load : loads) {
+    // load -> store mapping result
+    std::vector<int> load_mapped_to_store_index;
+    // Number of times that a store axis is mapped to
+    std::vector<int> store_be_mapped_times(store_indices.size(), 0);
+    // Enumerate each index, collect the load -> store mapping info
+    for (const PrimExpr& idx : load->indices) {
+      if (IsConstInt(idx)) {
+        continue;
+      }
+      tir::Var var;
+      // Check if it matches a block var
+      if (IsVarPlusMinusConst(idx, &var)) {
+        if (store_indices.count(var.get())) {
+          int index = store_indices.at(var.get());
+          load_mapped_to_store_index.push_back(index);
+          store_be_mapped_times[index] += 1;
+          continue;
+        }
+      }
+      // If not, the load-store mapping does not exist
+      return NullOpt;
+    }
+    // Check `store_be_mapped_times` to determine if the mapping is injective and surjective
+    for (int times : store_be_mapped_times) {
+      // If there is a store axis that doesn't have corresponding any load axis
+      if (times == 0) {
+        surjective = false;
+      }
+      // If there is a store axis that has more than 2 corresponding load axes
+      if (times >= 2) {
+        injective = false;
+      }
+    }
+    // Check `load_mapped_to_store_index` to determine if the mapping is in order
+    for (size_t i = 1; i < load_mapped_to_store_index.size(); ++i) {
+      if (load_mapped_to_store_index[i - 1] > load_mapped_to_store_index[i]) {
+        ordered = false;
+        break;
+      }
+    }
+  }
+  return Array<Bool>{Bool(surjective), Bool(injective), Bool(ordered)};
 }
 
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
@@ -281,6 +344,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.analysis.HasBranch").set_body_typed(HasBranch
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.BlockVarsAsStoreAxes")
     .set_body_typed(BlockVarsAsStoreAxes);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.CountMissing").set_body_typed(CountMissing);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetLoadStoreIndexMappingProperty")
+    .set_body_typed(GetLoadStoreIndexMappingProperty);
 
 }  // namespace meta_schedule
 }  // namespace tvm

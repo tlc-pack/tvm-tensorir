@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """Meta schedule analysis API """
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from tvm.ir import Op
 from tvm.tir import IterVar, BufferLoad, Var
@@ -82,3 +82,17 @@ def count_missing(load: BufferLoad, list_of_vars: List[Var]) -> int:
     return _ffi_api_analysis.CountMissing(  # pylint: disable=no-member
         load, list_of_vars
     )
+
+
+def get_load_store_index_mapping_property(
+    sch: Schedule, block: BlockRV
+) -> Optional[Tuple[bool, bool, bool]]:
+    result = (
+        _ffi_api_analysis.GetLoadStoreIndexMappingProperty(  # pylint: disable=no-member
+            sch, block
+        )
+    )
+    if result is None:
+        return result
+    surjective, injective, ordered = result
+    return bool(surjective), bool(injective), bool(ordered)
