@@ -104,32 +104,32 @@ def test_meta_schedule_analysis_is_trivial_binding():
     assert not ms.analysis.is_trivial_binding(sch, sch.get_block("B"))
 
 
-def test_meta_schedule_analysis_get_iter_type():
+def test_meta_schedule_analysis_get_block_var_types():
     sch = ms.Schedule(func=matmul)
-    assert ms.analysis.get_iter_type(sch, sch.get_block("C")) == [
+    assert ms.analysis.get_block_var_types(sch, sch.get_block("C")) == [
         "spatial",
         "spatial",
         "reduce",
     ]
     sch = ms.Schedule(func=split_ewise)
-    assert ms.analysis.get_iter_type(sch, sch.get_block("B")) == [
+    assert ms.analysis.get_block_var_types(sch, sch.get_block("B")) == [
         "spatial",
         "spatial",
     ]
 
 
-def test_meta_schedule_analysis_is_leaf():
+def test_meta_schedule_analysis_is_leaf_block():
     sch = ms.Schedule(func=matmul)
-    assert ms.analysis.is_leaf(sch, sch.get_block("C"))
+    assert ms.analysis.is_leaf_block(sch, sch.get_block("C"))
 
 
-def test_meta_schedule_analysis_is_body_single_stmt():
+def test_meta_schedule_analysis_is_leaf_block_with_single_stmt():  # pylint: disable=invalid-name
     sch = ms.Schedule(func=matmul)
-    assert ms.analysis.is_body_single_stmt(sch, sch.get_block("C"))
+    assert ms.analysis.is_leaf_block_with_single_stmt(sch, sch.get_block("C"))
     sch = ms.Schedule(func=split_ewise)
-    assert ms.analysis.is_body_single_stmt(sch, sch.get_block("B"))
+    assert ms.analysis.is_leaf_block_with_single_stmt(sch, sch.get_block("B"))
     sch = ms.Schedule(func=split_ewise_multiple)
-    assert not ms.analysis.is_body_single_stmt(sch, sch.get_block("B"))
+    assert not ms.analysis.is_leaf_block_with_single_stmt(sch, sch.get_block("B"))
 
 
 def test_meta_schedule_analysis_get_buffer_store():
@@ -169,46 +169,46 @@ def test_meta_schedule_analysis_has_branch():
     assert ms.analysis.has_branch(sch, block)
 
 
-def test_meta_schedule_analysis_block_vars_as_store_axes():  # pylint: disable=invalid-name
+def test_meta_schedule_analysis_block_vars_used_in_store():  # pylint: disable=invalid-name
     sch = ms.Schedule(func=matmul)
-    v_i, v_j = ms.analysis.block_vars_as_store_axes(sch, sch.get_block("C"))
+    v_i, v_j = ms.analysis.block_vars_used_in_store(sch, sch.get_block("C"))
     assert v_i.name == "vi"
     assert v_j.name == "vj"
     sch = ms.Schedule(func=split_ewise)
-    v_i, v_j = ms.analysis.block_vars_as_store_axes(sch, sch.get_block("B"))
+    v_i, v_j = ms.analysis.block_vars_used_in_store(sch, sch.get_block("B"))
     assert v_i.name == "vi"
     assert v_j.name == "vj"
 
 
-def test_meta_schedule_analysis_count_missing():
+def test_meta_schedule_analysis_count_missing_block_vars():  # pylint: disable=invalid-name
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("C")
     load_a, load_b = ms.analysis.get_buffer_load(sch, block)
     store_c = ms.analysis.get_buffer_store(sch, block)
-    list_of_vars = ms.analysis.block_vars_as_store_axes(sch, block)
-    assert ms.analysis.count_missing(load_a, list_of_vars) == 1
-    assert ms.analysis.count_missing(load_b, list_of_vars) == 1
-    assert ms.analysis.count_missing(store_c, list_of_vars) == 0
+    block_vars = ms.analysis.block_vars_used_in_store(sch, block)
+    assert ms.analysis.count_missing_block_vars(load_a, block_vars) == 1
+    assert ms.analysis.count_missing_block_vars(load_b, block_vars) == 1
+    assert ms.analysis.count_missing_block_vars(store_c, block_vars) == 0
 
 
-def test_meta_schedule_analysis_get_load_store_index_mapping_property():  # pylint: disable=invalid-name
+def test_meta_schedule_analysis_inspect_load_indices():  # pylint: disable=invalid-name
     sch = ms.Schedule(func=matmul)
-    result = ms.analysis.get_load_store_index_mapping_property(sch, sch.get_block("C"))
+    result = ms.analysis.inspect_load_indices(sch, sch.get_block("C"))
     assert result is None
     sch = ms.Schedule(func=split_ewise)
-    result = ms.analysis.get_load_store_index_mapping_property(sch, sch.get_block("B"))
+    result = ms.analysis.inspect_load_indices(sch, sch.get_block("B"))
     assert result == (True, True, True)
 
 
 if __name__ == "__main__":
     test_meta_schedule_analysis_is_trivial_binding()
-    test_meta_schedule_analysis_get_iter_type()
-    test_meta_schedule_analysis_is_leaf()
-    test_meta_schedule_analysis_is_body_single_stmt()
+    test_meta_schedule_analysis_get_block_var_types()
+    test_meta_schedule_analysis_is_leaf_block()
+    test_meta_schedule_analysis_is_leaf_block_with_single_stmt()
     test_meta_schedule_analysis_get_buffer_store()
     test_meta_schedule_analysis_get_buffer_load()
     test_meta_schedule_analysis_count_op()
     test_meta_schedule_analysis_has_branch()
-    test_meta_schedule_analysis_block_vars_as_store_axes()
-    test_meta_schedule_analysis_count_missing()
-    test_meta_schedule_analysis_get_load_store_index_mapping_property()
+    test_meta_schedule_analysis_block_vars_used_in_store()
+    test_meta_schedule_analysis_count_missing_block_vars()
+    test_meta_schedule_analysis_inspect_load_indices()

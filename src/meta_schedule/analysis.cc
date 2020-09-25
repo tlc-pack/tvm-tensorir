@@ -27,6 +27,43 @@
 namespace tvm {
 namespace meta_schedule {
 
+/*!
+ * \brief Checks if the specific expr is an integer constant
+ * \param x The expr to be checked
+ * \return A boolean flag indicating if it is a constant integer, or broadcast of constant integer
+ */
+static bool IsConstInt(const PrimExpr& x) {
+  if (x->IsInstance<tir::IntImmNode>()) {
+    return true;
+  }
+  if (const auto* op = x.as<tir::BroadcastNode>()) {
+    return op->value->IsInstance<tir::IntImmNode>();
+  }
+  return false;
+}
+
+/*!
+ * \brief Check if an expression consists of a single variable, or a variable +/i an constant
+ * \param expr The expression to be checked
+ * \param result Output, the var inside if it satisfies the condition
+ * \return A boolean indicating if it satisfies the condition
+ */
+static bool IsVarPlusMinusConst(const PrimExpr& expr, tir::Var* result) {
+  // match: "var"
+  if (const auto* var = expr.as<tir::VarNode>()) {
+    *result = GetRef<tir::Var>(var);
+    return true;
+  }
+  arith::PVar<tir::Var> var;
+  arith::PVar<IntImm> shift;
+  // match: "var +/- shift"
+  if ((var + shift).Match(expr) || (var - shift).Match(expr) || (shift + var).Match(expr)) {
+    *result = var.Eval();
+    return true;
+  }
+  return false;
+}
+
 bool IsTrivialBinding(Schedule sch, BlockRV block_rv) {
   tir::StmtSRef block_sref = sch->Eval(block_rv);
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
@@ -50,7 +87,7 @@ bool IsTrivialBinding(Schedule sch, BlockRV block_rv) {
   return true;
 }
 
-Array<Integer> GetIterType(Schedule sch, BlockRV block_rv) {
+Array<Integer> GetBlockVarTypes(Schedule sch, BlockRV block_rv) {
   tir::StmtSRef block_sref = sch->Eval(block_rv);
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
@@ -62,7 +99,7 @@ Array<Integer> GetIterType(Schedule sch, BlockRV block_rv) {
   return result;
 }
 
-bool IsLeaf(Schedule sch, BlockRV block_rv) {
+bool IsLeafBlock(Schedule sch, BlockRV block_rv) {
   tir::StmtSRef block_sref = sch->Eval(block_rv);
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
@@ -80,7 +117,7 @@ bool IsLeaf(Schedule sch, BlockRV block_rv) {
   return is_leaf;
 }
 
-bool IsBodySingleStmt(Schedule sch, BlockRV block_rv) {
+bool IsLeafBlockWithSingleStmt(Schedule sch, BlockRV block_rv) {
   tir::StmtSRef block_sref = sch->Eval(block_rv);
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
@@ -188,43 +225,11 @@ bool HasBranch(Schedule sch, BlockRV block_rv) {
   return has_branch;
 }
 
-static bool IsConstInt(const PrimExpr& x) {
-  if (x->IsInstance<tir::IntImmNode>()) {
-    return true;
-  }
-  if (const auto* op = x.as<tir::BroadcastNode>()) {
-    return op->value->IsInstance<tir::IntImmNode>();
-  }
-  return false;
-}
-
-/*!
- * \brief Check if an expression consists of a single variable, or a variable +/i an constant
- * \param expr The expression to be checked
- * \param result Output, the var inside if it satisfies the condition
- * \return A boolean indicating if it satisfies the condition
- */
-static bool IsVarPlusMinusConst(const PrimExpr& expr, tir::Var* result) {
-  // match: "var"
-  if (const auto* var = expr.as<tir::VarNode>()) {
-    *result = GetRef<tir::Var>(var);
-    return true;
-  }
-  arith::PVar<tir::Var> var;
-  arith::PVar<IntImm> shift;
-  // match: "var +/- shift"
-  if ((var + shift).Match(expr) || (var - shift).Match(expr) || (shift + var).Match(expr)) {
-    *result = var.Eval();
-    return true;
-  }
-  return false;
-}
-
-Optional<Array<tir::Var>> BlockVarsAsStoreAxes(Schedule sch, BlockRV block_rv) {
+Optional<Array<tir::Var>> BlockVarsUsedInStore(Schedule sch, BlockRV block_rv) {
   tir::StmtSRef block_sref = sch->Eval(block_rv);
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
-  if (!IsBodySingleStmt(sch, block_rv)) {
+  if (!IsLeafBlockWithSingleStmt(sch, block_rv)) {
     return NullOpt;
   }
   // Collect block vars
@@ -250,7 +255,7 @@ Optional<Array<tir::Var>> BlockVarsAsStoreAxes(Schedule sch, BlockRV block_rv) {
   return result;
 }
 
-int CountMissing(tir::BufferLoad load, Array<tir::Var> vars) {
+int CountMissingBlockVars(tir::BufferLoad load, Array<tir::Var> block_vars) {
   int n_missing = 0;
   // Collect vars that are used in indices of BufferLoad
   std::unordered_set<const tir::VarNode*> vars_in_load;
@@ -262,7 +267,7 @@ int CountMissing(tir::BufferLoad load, Array<tir::Var> vars) {
     });
   }
   // Enumerate and count missing ones
-  for (const tir::Var& var : vars) {
+  for (const tir::Var& var : block_vars) {
     if (!vars_in_load.count(var.get())) {
       ++n_missing;
     }
@@ -270,9 +275,9 @@ int CountMissing(tir::BufferLoad load, Array<tir::Var> vars) {
   return n_missing;
 }
 
-Optional<Array<Bool>> GetLoadStoreIndexMappingProperty(Schedule sch, BlockRV block_rv) {
+Optional<Array<Bool>> InspectLoadIndices(Schedule sch, BlockRV block_rv) {
   // Filter out block vars that corresponding to indices in BufferStore
-  Optional<Array<tir::Var>> store = BlockVarsAsStoreAxes(sch, block_rv);
+  Optional<Array<tir::Var>> store = BlockVarsUsedInStore(sch, block_rv);
   if (!store.defined()) {
     return NullOpt;
   }
@@ -334,18 +339,19 @@ Optional<Array<Bool>> GetLoadStoreIndexMappingProperty(Schedule sch, BlockRV blo
 }
 
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetIterType").set_body_typed(GetIterType);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeaf").set_body_typed(IsLeaf);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsBodySingleStmt").set_body_typed(IsBodySingleStmt);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBlockVarTypes").set_body_typed(GetBlockVarTypes);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeafBlock").set_body_typed(IsLeafBlock);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeafBlockWithSingleStmt")
+    .set_body_typed(IsLeafBlockWithSingleStmt);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBufferStore").set_body_typed(GetBufferStore);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBufferLoad").set_body_typed(GetBufferLoad);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.CountOp").set_body_typed(CountOp);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.HasBranch").set_body_typed(HasBranch);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.BlockVarsAsStoreAxes")
-    .set_body_typed(BlockVarsAsStoreAxes);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.CountMissing").set_body_typed(CountMissing);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetLoadStoreIndexMappingProperty")
-    .set_body_typed(GetLoadStoreIndexMappingProperty);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.BlockVarsUsedInStore")
+    .set_body_typed(BlockVarsUsedInStore);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.CountMissingBlockVars")
+    .set_body_typed(CountMissingBlockVars);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.InspectLoadIndices").set_body_typed(InspectLoadIndices);
 
 }  // namespace meta_schedule
 }  // namespace tvm
