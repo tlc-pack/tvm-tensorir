@@ -32,9 +32,9 @@ class StmtSRefNode : public Object {
   /*! \brief The corresponding stmt node */
   const StmtNode* stmt;
   /*! \brief The parent sref */
-  StmtSRefNode* parent{nullptr};
+  StmtSRefNode* parent;
   /*! \brief The location in an array if parent contains SeqStmt. */
-  int64_t seq_index{-1};
+  int64_t seq_index;
   /*! \brief Whether the loop bindings are validatable */
   bool binding_valid;
 
@@ -64,11 +64,9 @@ class StmtSRefNode : public Object {
  */
 class StmtSRef : public ObjectRef {
  public:
-  StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index = -1);
-  StmtSRefNode* operator->() { return static_cast<StmtSRefNode*>(data_.get()); }
-  StmtSRefNode* get() { return static_cast<StmtSRefNode*>(data_.get()); }
-  // TODO(@junrushao1994): make it not nullable and use Optional
-  TVM_DEFINE_OBJECT_REF_METHODS(StmtSRef, ObjectRef, StmtSRefNode);
+  explicit StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index = -1,
+                    bool binding_valid = false);
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(StmtSRef, ObjectRef, StmtSRefNode);
 };
 
 }  // namespace tir

@@ -15,6 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Test for meta schedule class """
+import pytest
+
 # pylint: disable=missing-function-docstring
 import tvm
 from tvm import meta_schedule as ms
@@ -102,6 +104,34 @@ def test_meta_schedule_sample_tile_factor():
     assert prod == 1024
 
 
+def test_meta_schedule_copy():
+    sch = ms.Schedule(func=matmul)
+    i, j, k = sch.get_axes(sch.get_block("C"))
+    sch_copy = sch.copy()
+    assert not sch.evaluate(i).same_as(sch_copy.evaluate(i))
+    assert not sch.evaluate(j).same_as(sch_copy.evaluate(j))
+    assert not sch.evaluate(k).same_as(sch_copy.evaluate(k))
+    assert sch.evaluate(i).stmt.same_as(sch_copy.evaluate(i).stmt)
+    assert sch.evaluate(j).stmt.same_as(sch_copy.evaluate(j).stmt)
+    assert sch.evaluate(k).stmt.same_as(sch_copy.evaluate(k).stmt)
+    i_0, i_1 = sch.split(i, [2, 512])
+    j_0, j_1 = sch_copy.split(j, [4, 256])
+
+    assert sch.evaluate(i_0).stmt.extent == 2
+    assert sch.evaluate(i_1).stmt.extent == 512
+    with pytest.raises(IndexError):
+        sch_copy.evaluate(i_0)
+    with pytest.raises(IndexError):
+        sch_copy.evaluate(i_1)
+
+    with pytest.raises(IndexError):
+        sch.evaluate(j_0)
+    with pytest.raises(IndexError):
+        sch.evaluate(j_1)
+    assert sch_copy.evaluate(j_0).stmt.extent == 4
+    assert sch_copy.evaluate(j_1).stmt.extent == 256
+
+
 if __name__ == "__main__":
     test_meta_schedule_creation()
     test_meta_schedule_get_block()
@@ -109,3 +139,4 @@ if __name__ == "__main__":
     test_meta_schedule_split()
     test_meta_schedule_reorder()
     test_meta_schedule_sample_tile_factor()
+    test_meta_schedule_copy()

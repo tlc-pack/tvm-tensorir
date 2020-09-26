@@ -18,7 +18,7 @@
 from typing import List, Optional, Tuple
 
 from tvm.ir import Op
-from tvm.tir import IterVar, BufferLoad, Var
+from tvm.tir import BufferLoad, IterVar, Var
 
 from . import _ffi_api_analysis
 from .random_variable import BlockRV

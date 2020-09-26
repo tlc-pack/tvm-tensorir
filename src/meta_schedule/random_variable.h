@@ -27,16 +27,7 @@ namespace meta_schedule {
 /*! \brief A random variable that evaluates to a TIR block */
 class BlockRVNode : public Object {
  public:
-  /*! \brief Name of the loop variable */
-  String name;
-  /*! \brief Value of the loop variable */
-  mutable Optional<tir::StmtSRef> block;
-
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("name", &name);
-    v->Visit("block", &block);
-  }
-
+  void VisitAttrs(tvm::AttrVisitor* v) {}
   static constexpr const char* _type_key = "meta_schedule.BlockRV";
   TVM_DECLARE_FINAL_OBJECT_INFO(BlockRVNode, Object);
 };
@@ -47,28 +38,15 @@ class BlockRVNode : public Object {
  */
 class BlockRV : public ObjectRef {
  public:
-  /*!
-   * \brief Constructor
-   * \param name Name of the loop variable
-   * \param block Value of the loop variable
-   */
-  explicit BlockRV(String name, Optional<tir::StmtSRef> block);
-  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(BlockRV, ObjectRef, BlockRVNode);
+  /*! \brief Constructor */
+  BlockRV();
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BlockRV, ObjectRef, BlockRVNode);
 };
 
 /*! \brief A random variable that evaluates to a TIR loop axis */
 class LoopRVNode : public Object {
  public:
-  /*! \brief Name of the loop variable */
-  String name;
-  /*! \brief Value of the loop variable */
-  mutable Optional<tir::StmtSRef> loop;
-
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("name", &name);
-    v->Visit("loop", &loop);
-  }
-
+  void VisitAttrs(tvm::AttrVisitor* v) {}
   static constexpr const char* _type_key = "meta_schedule.LoopRV";
   TVM_DECLARE_FINAL_OBJECT_INFO(LoopRVNode, Object);
 };
@@ -79,13 +57,9 @@ class LoopRVNode : public Object {
  */
 class LoopRV : public ObjectRef {
  public:
-  /*!
-   * \brief Constructor
-   * \param name Name of the loop variable
-   * \param loop Value of the loop variable
-   */
-  explicit LoopRV(String name, Optional<tir::StmtSRef> loop);
-  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(LoopRV, ObjectRef, LoopRVNode);
+  /*! \brief Constructor */
+  LoopRV();
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LoopRV, ObjectRef, LoopRVNode);
 };
 
 }  // namespace meta_schedule
