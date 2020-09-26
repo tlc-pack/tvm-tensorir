@@ -37,7 +37,7 @@ def batched_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 @tvm.hybrid.script
-def desc_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+def desc_tensorcore(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), align=128, offset_factor=1)
     B = tir.match_buffer(b, (16, 16), align=128, offset_factor=1)
     C = tir.match_buffer(c, (16, 16), align=128, offset_factor=1)
@@ -55,7 +55,7 @@ def desc_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 @tvm.hybrid.script
-def lower_intrin_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+def impl_tensorcore(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), align=128, offset_factor=1)
     B = tir.match_buffer(b, (16, 16), align=128, offset_factor=1)
     C = tir.match_buffer(c, (16, 16), align=128, offset_factor=1)
@@ -103,16 +103,74 @@ def tensorized_batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                      dtype="handle"))
 
 
-def test_auto_tensorize():
+def test_auto_tensorize_tensorcore():
     sch = ms.Schedule(batched_matmul)
     block = sch.get_block(name="update")
-    sch.detect_tensorize(block, desc_func)
+    sch.detect_tensorize(block, desc_tensorcore)
     i, j, k = sch.sch.get_axes(sch.evaluate(block))[-3:]
-    tensor_intrin = tvm.tir.TensorIntrin(desc_func, lower_intrin_func)
+    tensor_intrin = tvm.tir.TensorIntrin(desc_tensorcore, impl_tensorcore)
     sch.sch.tensorize(i, tensor_intrin)
 
     tvm.ir.assert_structural_equal(tensorized_batch_matmul, sch.sch.func)
 
 
+@tvm.hybrid.script
+def desc_dot_product(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (4,))
+    B = tir.match_buffer(b, (4,))
+    C = tir.match_buffer(c, (1,))
+
+    with tir.block([tir.reduce_axis(0, 4)], "root") as [v0]:
+        tir.bind(v0, 0)
+        for i in range(0, 4):
+            with tir.block([tir.reduce_axis(0, 4)], "update") as [vi]:
+                tir.bind(vi, v0 + i)
+                C[0] = C[0] + A[vi]*B[vi]
+
+
+@tvm.hybrid.script
+def impl_dot_product(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (4,))
+    B = tir.match_buffer(b, (4,))
+    C = tir.match_buffer(c, (1,))
+
+    with tir.block([tir.reduce_axis(0, 4)], "root") as [v0]:
+        tir.bind(v0, 0)
+        tir.evaluate(C.data + A.data + B.data)
+
+
+@tvm.hybrid.script
+def dot_product_batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, [16, 128, 128])
+    B = tir.match_buffer(b, [16, 128, 128])
+    C = tir.match_buffer(c, [16, 128, 128])
+    with tir.block([16, 128, 128]) as [vn, vi, vj]:
+        C[vn, vi, vj] = tir.float32(0)
+    for i0_1 in range(0, 16):
+        for i1_1 in range(0, 128):
+            for i2_1 in range(0, 128):
+                for i3_outer in range(0, 32):
+                    with tir.block([16, 128, 128, tir.reduce_axis(0, 4)], "root") as [vn_1, vi_1, vj_1, v0]:
+                        tir.bind(vn_1, i0_1)
+                        tir.bind(vi_1, i1_1)
+                        tir.bind(vj_1, i2_1)
+                        tir.bind(v0, (i3_outer*4))
+                        tir.reads([])
+                        tir.writes([])
+                        tir.evaluate(((C.data + A.data) + B.data))
+
+
+def test_auto_tensorize_dot_product():
+    sch = ms.Schedule(batched_matmul)
+    block = sch.get_block(name="update")
+    sch.detect_tensorize(block, desc_dot_product)
+    k = sch.sch.get_axes(sch.evaluate(block))[-1]
+    tensor_intrin = tvm.tir.TensorIntrin(desc_dot_product, impl_dot_product)
+    sch.sch.tensorize(k, tensor_intrin)
+
+    tvm.ir.assert_structural_equal(dot_product_batch_matmul, sch.sch.func)
+
+
 if __name__ == "__main__":
-    test_auto_tensorize()
+    test_auto_tensorize_tensorcore()
+    test_auto_tensorize_dot_product()

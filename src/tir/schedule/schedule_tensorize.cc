@@ -231,7 +231,17 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
     if (!CompareBuffer(lhs->buffer, rhs->buffer)) return false;
     // Number of indices in desc_block must be smaller than it in AST
     if (rhs->region.size() > lhs->region.size()) return false;
-    size_t offset = lhs->region.size() - rhs->region.size();
+
+    std::vector<Range> lhs_region;
+    for (const auto& range : lhs->region) {
+      lhs_region.push_back(Range::FromMinExtent(range->min, range->extent));
+    }
+    // special judge size 1 buffer
+    if (rhs->region.size() == 1 && is_zero(rhs->region[0]->min) && is_one(rhs->region[0]->extent)) {
+      lhs_region.push_back(Range::FromMinExtent(0, 1));
+    }
+    size_t offset = lhs_region.size() - rhs->region.size();
+    // initialize buffer indices
     bool need_update = false;
     if (auto it = buffer_indices_.find(lhs->buffer) == buffer_indices_.end()) {
       need_update = true;
@@ -241,7 +251,7 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
     }
     std::vector<PrimExpr>& indices = buffer_indices_[lhs->buffer];
     for (size_t i = 0; i < offset; ++i) {
-      const Range& range = lhs->region[i];
+      const Range& range = lhs_region[i];
       // High-dim region must be element-wise
       if (!is_one(range->extent)) return false;
       if (need_update) {
@@ -251,11 +261,9 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
         if (!VisitExpr(range->min, indices[i])) return false;
       }
     }
-
     for (size_t i = 0; i < rhs->region.size(); ++i) {
-      if (!CompareRange(lhs->region[i + offset], rhs->region[i])) return false;
+      if (!CompareRange(lhs_region[i + offset], rhs->region[i])) return false;
     }
-
     return true;
   }
 
@@ -265,8 +273,10 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
     if (!CompareBuffer(lhs->buffer, rhs->buffer)) return false;
 
     if (rhs->indices.size() > lhs->indices.size()) return false;
+    // special judge size 1 buffer
+    if (rhs->indices.size() == 1 && is_zero(rhs->indices[0])) return true;
+    // otherwise
     size_t offset = lhs->indices.size() - rhs->indices.size();
-
     for (size_t i = 0; i < rhs->indices.size(); ++i) {
       if (!VisitExpr(lhs->indices[i + offset], rhs->indices[i])) return false;
     }
@@ -332,6 +342,9 @@ class BufferReplacer : public StmtExprMutator {
     if (it != buffer_map_.end()) {
       auto n = CopyOnWrite(op);
       n->buffer = it->second;
+      auto it2 = buffer_indices_.find(n->buffer);
+      CHECK(it2 != buffer_indices_.end());
+      n->indices.insert(n->indices.begin(), it2->second.begin(), it2->second.end());
       return Stmt(n);
     } else {
       return GetRef<Stmt>(op);
@@ -346,6 +359,9 @@ class BufferReplacer : public StmtExprMutator {
     if (it != buffer_map_.end()) {
       auto n = CopyOnWrite(op);
       n->buffer = it->second;
+      auto it2 = buffer_indices_.find(n->buffer);
+      CHECK(it2 != buffer_indices_.end());
+      n->indices.insert(n->indices.begin(), it2->second.begin(), it2->second.end());
       return PrimExpr(n);
     } else {
       return GetRef<PrimExpr>(op);
@@ -453,14 +469,11 @@ void ScheduleNode::tensorize(const StmtSRef& sref, const TensorIntrin& intrinsic
   const BlockRealize& block_realize = GetBlockRealize(block_sref);
 
   TensorizeComparator comparator;
-
   bool equal = comparator.VisitStmt(block_realize, intrinsic->description->body);
   CHECK(equal) << "The AST subtree does not match intrinsic description";
-
   // Map from intrinsic func buffer to description func buffer
   std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> intrin_buffer_map;
   BufferRemap(intrinsic, &intrin_buffer_map);
-
   // Map form intrinsic func buffer to current AST buffer
   std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> buffer_map;
   for (const auto& pair : intrin_buffer_map) {
@@ -468,25 +481,21 @@ void ScheduleNode::tensorize(const StmtSRef& sref, const TensorIntrin& intrinsic
     CHECK(it != comparator.rhs_buffer_map_.end());
     buffer_map[pair.first] = it->second;
   }
-
+  // Build Var map, which is the map from intrin buffer data to AST buffer data
   std::unordered_map<const VarNode*, const PrimExprNode*> var_map;
   auto update_var_map = [&var_map](const PrimExpr& lhs, const PrimExpr& rhs) {
     if (const auto* var = lhs.as<VarNode>()) {
       var_map[var] = rhs.get();
     }
   };
-
   for (const auto& pair : buffer_map) {
     update_var_map(pair.first->data, pair.second->data);
   }
-
   CHECK(intrin_block_realize);
-  // Mutate description function
+  // Mutate implementation function
   Stmt new_stmt = BufferReplacer(buffer_map, var_map, std::move(comparator.extra_block_vars_),
                                  comparator.buffer_indices_)(intrin_block_realize->block);
-
   const auto* block_node = new_stmt.as<BlockNode>();
-
   std::unordered_map<const VarNode*, PrimExpr> element_offset;
   auto get_element_offset = [&element_offset](const Array<TensorRegion>& old_regions,
                                               const Array<TensorRegion>& new_regions) {
@@ -512,9 +521,7 @@ void ScheduleNode::tensorize(const StmtSRef& sref, const TensorIntrin& intrinsic
   };
   get_element_offset(block_node->reads, intrin_block->reads);
   get_element_offset(block_node->writes, intrin_block->writes);
-
   Block new_block = Downcast<Block>(Substitute(new_stmt, element_offset));
-
   // Replace
   Map<Block, Block> block_map;
   block_map.Set(new_block, block_realize->block);
