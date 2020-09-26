@@ -40,7 +40,7 @@ class SRefMapCreator : public StmtVisitor {
    * \param stmt A loop statement or a block statement
    */
   void PushSRef(const StmtNode* stmt) {
-    StmtSRefNode* parent = frames_.empty() ? nullptr : frames_.back().get();
+    StmtSRefNode* parent = frames_.empty() ? nullptr : frames_.back().operator->();
     frames_.push_back(StmtSRef(stmt, parent));
   }
   /*! \brief Pop the top of the scope and record it in stmt2ref map */

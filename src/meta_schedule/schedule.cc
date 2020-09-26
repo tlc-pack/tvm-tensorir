@@ -40,14 +40,103 @@ Schedule::Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction
 Schedule::Schedule(tir::PrimFunc orig_func)
     : Schedule(orig_func, tir::ScheduleNode::Create(orig_func), {}, {}, Sampler(DeviceRand)) {}
 
+/**************** Utility ****************/
+
+Schedule ScheduleNode::copy() const {
+  using tir::Scope;
+  using tir::StmtSRef;
+  using tir::StmtSRefNode;
+  // Create the translation table and tir::ScheduleNode::stmt2ref
+  std::unordered_map<const StmtSRefNode*, StmtSRef> old_to_new;
+  std::unordered_map<const tir::StmtNode*, StmtSRef> stmt2ref;
+  for (const auto& kv : this->sch->stmt2ref) {
+    const StmtSRefNode* old_sref = kv.second.operator->();
+    stmt2ref[old_sref->stmt] = old_to_new[old_sref] =
+        StmtSRef(/*stmt=*/old_sref->stmt, /*parent=*/nullptr, /*seq_index=*/old_sref->seq_index,
+                 /*binding_valid=*/old_sref->binding_valid);
+  }
+  // Link parents, find tir::ScheduleNode::root
+  Optional<StmtSRef> root = NullOpt;
+  for (auto& kv : old_to_new) {
+    const StmtSRefNode* old_parent = kv.first->parent;
+    StmtSRef& new_sref = kv.second;
+    if (old_parent == nullptr) {
+      new_sref->parent = nullptr;
+      CHECK(!root.defined()) << "InternalError: Two roots are found";
+      root = new_sref;
+    } else {
+      new_sref->parent = old_to_new.at(old_parent).operator->();
+    }
+  }
+  CHECK(root.defined()) << "InternalError: No root is found";
+  // Create tir::ScheduleNode::scopes
+  std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual> scopes;
+  using TGraph = std::unordered_map<StmtSRef, Array<tir::DepEdge>, ObjectPtrHash, ObjectPtrEqual>;
+  auto f_translate_edges = [&old_to_new](const TGraph& old_graph, TGraph* new_graph) {
+    for (const auto& kv : old_graph) {
+      const StmtSRef& src = old_to_new.at(kv.first.operator->());
+      Array<tir::DepEdge> news;
+      for (const tir::DepEdge& old_edge : kv.second) {
+        const StmtSRef& dst = old_to_new.at(old_edge->dst.operator->());
+        news.push_back(tir::DepEdge(dst, old_edge->type));
+      }
+      (*new_graph)[src] = std::move(news);
+    }
+  };
+  using TBuffer = std::unordered_map<tir::Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual>;
+  auto f_translate_buffers = [&old_to_new](const TBuffer& old_buffers, TBuffer* new_buffers) {
+    for (const auto& kv : old_buffers) {
+      const tir::Buffer& buffer = kv.first;
+      Array<StmtSRef> new_accessors;
+      for (const StmtSRef& old_sref : kv.second) {
+        const StmtSRef& new_sref = old_to_new.at(old_sref.operator->());
+        new_accessors.push_back(new_sref);
+      }
+      (*new_buffers)[buffer] = std::move(new_accessors);
+    }
+  };
+  for (const auto& kv : this->sch->scopes) {
+    const StmtSRefNode* old_sref = kv.first.operator->();
+    const Scope& old_scope = kv.second;
+    Scope new_scope;
+    f_translate_edges(old_scope->forward_edges, &new_scope->forward_edges);
+    f_translate_edges(old_scope->backward_edges, &new_scope->backward_edges);
+    f_translate_buffers(old_scope->buffer_writers, &new_scope->buffer_writers);
+    scopes[old_to_new.at(old_sref)] = std::move(new_scope);
+  }
+  // All elements used to copy TIR schedule is complete
+  // Copy the SymbolTable
+  SymbolTable sym_tab = this->sym_tab;
+  for (auto& kv : sym_tab) {
+    SymbolTableEntry& entry = kv.second;
+    if (!entry.value.defined()) {
+      continue;
+    }
+    ObjectRef obj = entry.value.value();
+    if (const auto* old_sref = obj.as<StmtSRefNode>()) {
+      entry.value = old_to_new.at(old_sref);
+    }
+  }
+  return Schedule(/*orig_func=*/this->orig_func,
+                  /*sch=*/
+                  tir::Schedule(
+                      /*func=*/this->sch->func,
+                      /*root=*/root.value(),
+                      /*stmt2ref=*/std::move(stmt2ref),
+                      /*scopes=*/std::move(scopes)),
+                  /*trace=*/this->trace,
+                  /*sym_tab=*/std::move(sym_tab),
+                  /*sampler=*/this->sampler);
+}
+
 /**************** Evaluation ****************/
 
 tir::StmtSRef ScheduleNode::Eval(const BlockRV& block) {
-  return Downcast<tir::StmtSRef>(this->sym_tab.at(block).value);
+  return Downcast<tir::StmtSRef>(this->sym_tab.at(block).value.value());
 }
 
 tir::StmtSRef ScheduleNode::Eval(const LoopRV& loop) {
-  return Downcast<tir::StmtSRef>(this->sym_tab.at(loop).value);
+  return Downcast<tir::StmtSRef>(this->sym_tab.at(loop).value.value());
 }
 
 int ScheduleNode::Eval(const PrimExpr& expr) {
