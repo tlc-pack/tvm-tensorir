@@ -50,6 +50,17 @@ class Schedule(Object):
             func,
         )
 
+    def copy(self) -> "Schedule":
+        """Copy the schedule into a new one.
+        Operation on the new schedule won't affect the original schedule, and vice versa.
+
+        Returns
+        -------
+        new_schedule : Schedule
+            A new schedule
+        """
+        return _ffi_api.ScheduleCopy(self)  # pylint: disable=no-member
+
     def evaluate(
         self,
         random_variable: RAND_VAR_TYPE,

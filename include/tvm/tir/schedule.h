@@ -284,8 +284,18 @@ class ScheduleNode : public Object {
 
 class Schedule : public ObjectRef {
  public:
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
-  ScheduleNode* operator->() { return static_cast<ScheduleNode*>(data_.get()); }
+  /*!
+   * \brief Constructor
+   * \param func The function to be scheduled
+   * \param root brief The root of schedulable reference tree
+   * \param stmt2ref The block scopes of each block
+   * \param scopes The mapping from stmt to its schedulable reference node
+   */
+  explicit Schedule(PrimFunc func, StmtSRef root,
+                    std::unordered_map<const StmtNode*, StmtSRef> stmt2ref,
+                    std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual> scopes);
+
+  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
 };
 
 }  // namespace tir

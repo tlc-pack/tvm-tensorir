@@ -562,7 +562,7 @@ class SRefValidator : public StmtVisitor {
         << GetRef<Stmt>(ancestors.back()->stmt) << "\nHowever, its parent is incorrect and is:\n"
         << (sref->parent ? Optional<Stmt>(GetRef<Stmt>(sref->parent->stmt))
                          : Optional<Stmt>(NullOpt));
-    ancestors.push_back(sref.get());
+    ancestors.push_back(sref.operator->());
     StmtVisitor::VisitStmt_(block);
     ancestors.pop_back();
   }
@@ -579,7 +579,7 @@ class SRefValidator : public StmtVisitor {
         << GetRef<Stmt>(ancestors.back()->stmt) << "\nHowever, its parent is incorrect and is:\n"
         << (sref->parent ? Optional<Stmt>(GetRef<Stmt>(sref->parent->stmt))
                          : Optional<Stmt>(NullOpt));
-    ancestors.push_back(sref.get());
+    ancestors.push_back(sref.operator->());
     StmtVisitor::VisitStmt_(loop);
     ancestors.pop_back();
   }
