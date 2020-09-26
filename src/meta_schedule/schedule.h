@@ -31,6 +31,8 @@
 namespace tvm {
 namespace meta_schedule {
 
+class Schedule;
+
 /*! \brief An entry in the symbol table in meta schedule */
 class SymbolTableEntry {
  public:
@@ -76,6 +78,13 @@ class ScheduleNode : public Object {
   }
   static constexpr const char* _type_key = "meta_schedule.Schedule";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleNode, Object);
+  /**************** Utility ****************/
+  /*!
+   * \brief Copy the schedule into a new one. Operation on the new schedule won't affect the
+   * original schedule, and vice versa.
+   * \return A new schedule.
+   */
+  Schedule copy() const;
   /**************** Evaluation of random variables ****************/
   /*!
    * \brief Evaluate the value of a random variable of type Block
