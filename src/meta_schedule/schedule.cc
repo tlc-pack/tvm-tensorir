@@ -42,9 +42,13 @@ Schedule::Schedule(tir::PrimFunc orig_func)
 
 /**************** Evaluation ****************/
 
-tir::StmtSRef ScheduleNode::Eval(const BlockRV& block) { return block->block.value(); }
+tir::StmtSRef ScheduleNode::Eval(const BlockRV& block) {
+  return Downcast<tir::StmtSRef>(this->sym_tab.at(block).value);
+}
 
-tir::StmtSRef ScheduleNode::Eval(const LoopRV& loop) { return loop->loop.value(); }
+tir::StmtSRef ScheduleNode::Eval(const LoopRV& loop) {
+  return Downcast<tir::StmtSRef>(this->sym_tab.at(loop).value);
+}
 
 int ScheduleNode::Eval(const PrimExpr& expr) {
   arith::Analyzer analyzer;
@@ -101,7 +105,7 @@ BlockRV ScheduleNode::GetBlock(const String& name) {
   CHECK(!tir_result.empty()) << "ValueError: Cannot get a block with name: " << name;
   CHECK_EQ(tir_result.size(), 1) << "ValueError: Multiple blocks with the same name: " << name;
   // Create the output random variable
-  BlockRV output(name, tir_result[0]);
+  BlockRV output;
   // Update the symbol table
   this->sym_tab.emplace(output, SymbolTableEntry(inst_id, tir_result[0]));
   // Put the instruction in the trace
@@ -116,7 +120,7 @@ Array<LoopRV> ScheduleNode::GetAxes(const BlockRV& block) {
   // Create the output random variable
   Array<LoopRV> outputs;
   for (const tir::StmtSRef& axis : tir_result) {
-    LoopRV output(axis->GetStmt<tir::LoopNode>()->loop_var->name_hint, axis);
+    LoopRV output;
     outputs.push_back(output);
     // Update the symbol table
     this->sym_tab.emplace(output, SymbolTableEntry(inst_id, axis));
@@ -148,7 +152,7 @@ Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<PrimExpr>& fac
   // Create the output random variable
   Array<LoopRV> outputs;
   for (const tir::StmtSRef& axis : tir_result) {
-    LoopRV output(axis->GetStmt<tir::LoopNode>()->loop_var->name_hint, axis);
+    LoopRV output;
     outputs.push_back(output);
     // Update the symbol table
     this->sym_tab.emplace(output, SymbolTableEntry(inst_id, axis));
@@ -174,7 +178,7 @@ BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const LoopRV& loo
   // Find the output from TIR
   tir::StmtSRef tir_result = this->sch->decompose_reduction(Eval(block), Eval(loop));
   // Create the output random variable
-  BlockRV output(tir_result->GetStmt<tir::BlockNode>()->tag, tir_result);
+  BlockRV output;
   // Update the symbol table
   this->sym_tab.emplace(output, SymbolTableEntry(inst_id, tir_result));
   // Put the instruction in the trace
@@ -281,20 +285,8 @@ void ScheduleNode::ReplayOnce() {
   for (auto& kv_entry : this->sym_tab) {
     const ObjectRef& old_var = kv_entry.first;
     const ObjectRef& new_var = LookupVar(var_map, old_var);
-    // Optional<ObjectRef>& old_val = kv_entry.second.value;
-    const Optional<ObjectRef>& opt_new_value = sch->sym_tab.at(new_var).value;
-    if (!opt_new_value.defined()) {
-      continue;
-    }
-    ObjectRef new_value = opt_new_value.value();
-    kv_entry.second.value = new_value;
-    if (const auto* v = old_var.as<BlockRVNode>()) {
-      v->block = Downcast<tir::StmtSRef>(new_value);
-    } else if (const auto* v = old_var.as<LoopRVNode>()) {
-      v->loop = Downcast<tir::StmtSRef>(new_value);
-    } else {
-      CHECK(old_var->IsInstance<tir::VarNode>())
-          << "TypeError: type(old_var) is: " << old_var->GetTypeKey();
+    if (const Optional<ObjectRef>& new_value = sch->sym_tab.at(new_var).value) {
+      kv_entry.second.value = new_value.value();
     }
   }
 }
