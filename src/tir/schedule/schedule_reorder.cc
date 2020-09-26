@@ -32,7 +32,7 @@ std::vector<const StmtSRefNode*> GetLoopsPostOrder(const StmtSRef& root_sref,
     }
     // Collects every LoopNode
     if (const auto* loop = node.as<LoopNode>()) {
-      loops.push_back(sch->stmt2ref.at(loop).get());
+      loops.push_back(sch->stmt2ref.at(loop).operator->());
     }
     return true;
   });
@@ -58,7 +58,7 @@ void ScheduleNode::reorder(const Array<StmtSRef>& order) {
     CHECK(loop) << "TypeError: 'reorder' expects an array of loops, but get type: "
                 << loop_sref->stmt->GetTypeKey();
     // uniqueness check
-    const StmtSRefNode* loop_sref_ptr = loop_sref.get();
+    const StmtSRefNode* loop_sref_ptr = loop_sref.operator->();
     CHECK_EQ(loops.count(loop_sref_ptr), 0U)
         << "ValueError: 'reorder' expects an array of unique array, but get duplicate: "
         << GetRef<Stmt>(loop_sref->stmt);
@@ -108,7 +108,7 @@ void ScheduleNode::reorder(const Array<StmtSRef>& order) {
   for (const StmtSRefNode* loop = top; !(block = loop->GetStmt<BlockNode>());) {
     Array<Stmt> children = GetChildren(GetRef<Stmt>(loop->stmt));
     CHECK_EQ(children.size(), 1) << "ValueError: 'reorder' expects the loops to be single-branch";
-    loop = stmt2ref[children[0].get()].get();
+    loop = stmt2ref[children[0].get()].operator->();
   }
   // Check 5. the block below has all its block_var to be data_par or reduce
   for (const IterVar& iter_var : block->iter_vars) {

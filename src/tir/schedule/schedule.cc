@@ -30,11 +30,24 @@ namespace tir {
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
 TVM_REGISTER_NODE_TYPE(StmtSRefNode);
 
-StmtSRef::StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index) {
+Schedule::Schedule(PrimFunc func, StmtSRef root,
+                   std::unordered_map<const StmtNode*, StmtSRef> stmt2ref,
+                   std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual> scopes) {
+  ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
+  n->func = std::move(func);
+  n->root = std::move(root);
+  n->stmt2ref = std::move(stmt2ref);
+  n->scopes = std::move(scopes);
+  data_ = std::move(n);
+}
+
+StmtSRef::StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index,
+                   bool binding_valid) {
   ObjectPtr<StmtSRefNode> n = make_object<StmtSRefNode>();
   n->stmt = stmt;
   n->parent = parent;
   n->seq_index = seq_index;
+  n->binding_valid = binding_valid;
   data_ = std::move(n);
 }
 
@@ -263,7 +276,7 @@ class SRefCreator : public StmtVisitor {
       // in the AST and reuse those StmtSRef when node is in the AST.
       StmtSRef ref = CreateNewSRef(stmt_ptr);
       (*stmt2ref_)[stmt_ptr] = ref;
-      auto current = ref.get();
+      StmtSRefNode* current = ref.operator->();
       std::swap(current, parent_);
       VisitStmt(op->body);
       std::swap(current, parent_);
@@ -322,7 +335,8 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
   int curr_step = 0;
   int num_copy_steps = -1;
   // Find the highest non-unique Stmt
-  for (StmtSRefNode* ptr = old_ref.get(); ptr != nullptr; ptr = ptr->parent, ++curr_step) {
+  for (const StmtSRefNode* ptr = old_ref.operator->(); ptr != nullptr;
+       ptr = ptr->parent, ++curr_step) {
     if (!ptr->stmt->unique()) {
       num_copy_steps = curr_step;
     }
@@ -330,7 +344,8 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
   if (!func.unique()) num_copy_steps = curr_step;
   // Update the function body
   curr_step = 0;
-  for (StmtSRefNode* ptr = old_ref.get(); ptr->stmt != root_node; ptr = ptr->parent, ++curr_step) {
+  for (StmtSRefNode* ptr = old_ref.operator->(); ptr->stmt != root_node;
+       ptr = ptr->parent, ++curr_step) {
     StmtSRefNode* parent = ptr->parent;
     // parent_step = current_step + 1
     // if parent_step <= num_copy_step, then it implies
@@ -426,7 +441,7 @@ Array<StmtSRef> ScheduleNode::GetChildBlocks(const StmtSRef& parent_sref) const 
 }
 
 StmtSRef ScheduleNode::GetParentBlockSRef(const StmtSRef& sref) const {
-  for (const StmtSRefNode* ptr = sref.get()->parent; ptr != nullptr; ptr = ptr->parent) {
+  for (const StmtSRefNode* ptr = sref->parent; ptr != nullptr; ptr = ptr->parent) {
     if (ptr->stmt->IsInstance<BlockNode>()) {
       return GetRef<StmtSRef>(ptr);
     }
