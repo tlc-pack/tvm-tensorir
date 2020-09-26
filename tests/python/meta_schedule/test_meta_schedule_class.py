@@ -15,13 +15,13 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Test for meta schedule class """
+import pytest
+
 # pylint: disable=missing-function-docstring
 import tvm
 from tvm import meta_schedule as ms
 from tvm import tir
 from tvm.hybrid import ty
-
-import pytest
 
 # pylint: disable=invalid-name,no-member
 
