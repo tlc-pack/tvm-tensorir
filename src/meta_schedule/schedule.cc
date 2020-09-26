@@ -42,7 +42,7 @@ Schedule::Schedule(tir::PrimFunc orig_func)
 
 /**************** Utility ****************/
 
-struct ScheduleCopier {
+struct SRefTranslator {
   using StmtSRef = tir::StmtSRef;
   using StmtSRefNode = tir::StmtSRefNode;
   using DepEdge = tir::DepEdge;
@@ -52,31 +52,9 @@ struct ScheduleCopier {
   template <class K, class V>
   using SMap = std::unordered_map<K, V, ObjectPtrHash, ObjectPtrEqual>;
 
-  void Init(const tir::Schedule& sch, tir::ScheduleNode* new_sch) {
-    // Create the translation table and tir::ScheduleNode::stmt2ref
-    for (const auto& kv : sch->stmt2ref) {
-      const StmtSRefNode* old_sref = kv.second.operator->();
-      new_sch->stmt2ref[old_sref->stmt] = old_to_new[old_sref] =
-          StmtSRef(/*stmt=*/old_sref->stmt, /*parent=*/nullptr, /*seq_index=*/old_sref->seq_index,
-                   /*binding_valid=*/old_sref->binding_valid);
-    }
-    // Link parents, find tir::ScheduleNode::root
-    StmtSRef& root = new_sch->root = StmtSRef(nullptr);
-    for (auto& kv : old_to_new) {
-      const StmtSRefNode* old_parent = kv.first->parent;
-      StmtSRef& new_sref = kv.second;
-      if (old_parent == nullptr) {
-        new_sref->parent = nullptr;
-        CHECK(!root.defined()) << "InternalError: Two roots are found";
-        root = new_sref;
-      } else {
-        new_sref->parent = old_to_new.at(old_parent).operator->();
-      }
-    }
-    CHECK(root.defined()) << "InternalError: No root is found";
-  }
+  StmtSRef Trans(const StmtSRef& sref) { return trans_.at(sref.operator->()); }
 
-  StmtSRef Trans(const StmtSRef& sref) { return old_to_new.at(sref.operator->()); }
+  StmtSRef Trans(const StmtSRefNode* sref) { return trans_.at(sref); }
 
   Array<StmtSRef> Trans(const Array<StmtSRef>& list) {
     Array<StmtSRef> result;
@@ -127,28 +105,54 @@ struct ScheduleCopier {
     SymbolTable result = tab;
     for (auto& kv : result) {
       SymbolTableEntry& entry = kv.second;
-      if (entry.value.defined()) {
-        if (const auto* old_sref = entry.value.value().as<StmtSRefNode>()) {
-          entry.value = old_to_new.at(old_sref);
-        }
+      if (const auto* sref = entry.value.as<StmtSRefNode>()) {
+        entry.value = Trans(sref);
       }
     }
     return result;
   }
 
-  std::unordered_map<const StmtSRefNode*, StmtSRef> old_to_new;
+  tir::Schedule Trans(const tir::Schedule& sch) {
+    ObjectPtr<tir::ScheduleNode> result = make_object<tir::ScheduleNode>();
+    // Create the translation table
+    // Fill in result->stmt2ref
+    for (const auto& kv : sch->stmt2ref) {
+      const StmtSRefNode* sref = kv.second.operator->();
+      result->stmt2ref[sref->stmt] = trans_[sref] =
+          StmtSRef(/*stmt=*/sref->stmt, /*parent=*/nullptr, /*seq_index=*/sref->seq_index,
+                   /*binding_valid=*/sref->binding_valid);
+    }
+    // Link parents
+    // Fill in result->root
+    StmtSRef& root = result->root = StmtSRef(nullptr);
+    for (auto& kv : trans_) {
+      const StmtSRefNode* parent = kv.first->parent;
+      StmtSRef& sref = kv.second;
+      if (parent == nullptr) {
+        sref->parent = nullptr;
+        CHECK(!root.defined()) << "InternalError: Two roots are found";
+        root = sref;
+      } else {
+        sref->parent = Trans(parent).operator->();
+      }
+    }
+    CHECK(root.defined()) << "InternalError: No root is found";
+    result->func = sch->func;
+    result->scopes = Trans(sch->scopes);
+    return tir::Schedule(result);
+  }
+
+ private:
+  std::unordered_map<const StmtSRefNode*, StmtSRef> trans_;
 };
 
 Schedule ScheduleNode::copy() const {
-  ScheduleCopier copier;
-  ObjectPtr<tir::ScheduleNode> tir_sch = make_object<tir::ScheduleNode>();
-  tir_sch->func = this->sch->func;
-  copier.Init(this->sch, tir_sch.get());
-  tir_sch->scopes = copier.Trans(this->sch->scopes);
+  SRefTranslator translator;
+  tir::Schedule tir_sch = translator.Trans(this->sch);
   return Schedule(/*orig_func=*/this->orig_func,
-                  /*sch=*/tir::Schedule(tir_sch),
+                  /*sch=*/tir_sch,
                   /*trace=*/this->trace,
-                  /*sym_tab=*/copier.Trans(this->sym_tab),
+                  /*sym_tab=*/translator.Trans(this->sym_tab),
                   /*sampler=*/this->sampler);
 }
 
