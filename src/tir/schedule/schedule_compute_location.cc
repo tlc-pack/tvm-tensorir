@@ -276,7 +276,7 @@ std::vector<Range> GatherRequirements(const Array<TensorRegion>& produced_region
  * \return StmtSRef indicating the subtree the node is in in its parent's scope
  */
 StmtSRef GetSubTreeOfParent(const StmtSRef& node) {
-  const StmtSRefNode* child = node.get();
+  const StmtSRefNode* child = node.operator->();
   const StmtSRefNode* parent;
   while (!(parent = child->parent)->stmt->IsInstance<BlockNode>()) {
     child = parent;

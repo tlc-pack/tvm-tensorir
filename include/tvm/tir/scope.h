@@ -176,9 +176,7 @@ class Scope : public ObjectRef {
    */
   void ReplaceChildBlock(const StmtSRef& old_sref, const StmtSRef& new_sref);
 
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Scope, ObjectRef, ScopeNode);
-
-  ScopeNode* operator->() { return static_cast<ScopeNode*>(data_.get()); }
+  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(Scope, ObjectRef, ScopeNode);
 };
 
 }  // namespace tir
