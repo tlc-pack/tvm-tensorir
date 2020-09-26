@@ -54,7 +54,7 @@ class Instruction : public ObjectRef {
 class SampleTileFactorInstNode : public InstructionNode {
  public:
   /*! \brief The loop to be tiled */
-  LoopRV loop{nullptr};
+  LoopRV loop;
   /*! \brief The uniform distribution to be sampled from */
   Array<Integer> where;
   /*! \brief The output variables it creates */
@@ -100,7 +100,7 @@ class GetBlockInstNode : public InstructionNode {
   /*! \brief The name used for retrieval */
   String name;
   /*! \brief The output of the instruction */
-  BlockRV output{nullptr};
+  BlockRV output;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("name", &name);
@@ -137,7 +137,7 @@ class GetBlockInst : public Instruction {
 class GetAxesInstNode : public InstructionNode {
  public:
   /*! \brief The block used for retriving the axes */
-  BlockRV block{nullptr};
+  BlockRV block;
   /*! \brief The nested loop axes on top of the block, from outer to inner */
   Array<LoopRV> outputs;
 
@@ -176,7 +176,7 @@ class GetAxesInst : public Instruction {
 class SplitInstNode : public InstructionNode {
  public:
   /*! \brief The loop to be split */
-  LoopRV loop{nullptr};
+  LoopRV loop;
   /*! \brief The factors used to do tiling */
   Array<PrimExpr> factors;
   /*! \brief The output variables */
@@ -252,11 +252,11 @@ class ReorderInst : public Instruction {
 class DecomposeReductionInstNode : public InstructionNode {
  public:
   /*! \brief The block to be decomposed */
-  BlockRV block{nullptr};
+  BlockRV block;
   /*! \brief The loop to be decomposed at */
-  LoopRV loop{nullptr};
+  LoopRV loop;
   /*! \brief The output variable */
-  BlockRV output{nullptr};
+  BlockRV output;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("block", &block);
