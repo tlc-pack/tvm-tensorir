@@ -42,6 +42,7 @@ Schedule::Schedule(tir::PrimFunc orig_func)
 
 /**************** Utility ****************/
 
+/*! \brief Helper class to do tir::StmtSRef translation */
 struct SRefTranslator {
   using StmtSRef = tir::StmtSRef;
   using StmtSRefNode = tir::StmtSRefNode;
@@ -52,10 +53,13 @@ struct SRefTranslator {
   template <class K, class V>
   using SMap = std::unordered_map<K, V, ObjectPtrHash, ObjectPtrEqual>;
 
+  /*! \brief Translate StmtSRef */
   StmtSRef Trans(const StmtSRef& sref) { return trans_.at(sref.operator->()); }
 
+  /*! \brief Translate StmtSRefNode */
   StmtSRef Trans(const StmtSRefNode* sref) { return trans_.at(sref); }
 
+  /*! \brief Translate Array<StmtSRef> */
   Array<StmtSRef> Trans(const Array<StmtSRef>& list) {
     Array<StmtSRef> result;
     result.reserve(list.size());
@@ -65,6 +69,7 @@ struct SRefTranslator {
     return result;
   }
 
+  /*! \brief Translate Array<DepEdge> */
   Array<DepEdge> Trans(const Array<DepEdge>& list) {
     Array<DepEdge> result;
     result.reserve(list.size());
@@ -74,6 +79,7 @@ struct SRefTranslator {
     return result;
   }
 
+  /*! \brief Translate SMap<StmtSRef, Array<DepEdge>> */
   SMap<StmtSRef, Array<DepEdge>> Trans(const SMap<StmtSRef, Array<DepEdge>>& map) {
     SMap<StmtSRef, Array<DepEdge>> result;
     for (const auto& kv : map) {
@@ -82,6 +88,7 @@ struct SRefTranslator {
     return result;
   }
 
+  /*! \brief Translate SMap<Buffer, Array<StmtSRef>> */
   SMap<Buffer, Array<StmtSRef>> Trans(const SMap<Buffer, Array<StmtSRef>>& map) {
     SMap<Buffer, Array<StmtSRef>> result;
     for (const auto& kv : map) {
@@ -90,6 +97,7 @@ struct SRefTranslator {
     return result;
   }
 
+  /*! \brief Translate SMap<StmtSRef, Scope> */
   SMap<StmtSRef, Scope> Trans(const SMap<StmtSRef, Scope>& scopes) {
     SMap<StmtSRef, Scope> result;
     for (const auto& kv : scopes) {
@@ -101,6 +109,7 @@ struct SRefTranslator {
     return result;
   }
 
+  /*! \brief Translate SymbolTable */
   SymbolTable Trans(const SymbolTable& tab) {
     SymbolTable result = tab;
     for (auto& kv : result) {
@@ -112,6 +121,10 @@ struct SRefTranslator {
     return result;
   }
 
+  /*!
+   * \brief Translate tir::Schedule
+   * \note This method must be called to initialize translation table before other translation
+   */
   tir::Schedule Trans(const tir::Schedule& sch) {
     ObjectPtr<tir::ScheduleNode> result = make_object<tir::ScheduleNode>();
     // Create the translation table
@@ -159,21 +172,43 @@ Schedule ScheduleNode::copy() const {
 /**************** Evaluation ****************/
 
 tir::StmtSRef ScheduleNode::Eval(const BlockRV& block) {
-  return Downcast<tir::StmtSRef>(this->sym_tab.at(block).value.value());
+  auto iter = this->sym_tab.find(block);
+  CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding BlockRV: " << block;
+  const Optional<ObjectRef> obj = iter->second.value;
+  CHECK(obj.defined()) << "ValueError: Corresponding BlockRV's value is not defined: " << block;
+  if (const auto* sref = obj.as<tir::StmtSRefNode>()) {
+    return GetRef<tir::StmtSRef>(sref);
+  }
+  LOG(FATAL) << "TypeError: BlockRV's corresponding type is invalid: " << obj->GetTypeKey();
+  throw;
 }
 
 tir::StmtSRef ScheduleNode::Eval(const LoopRV& loop) {
-  return Downcast<tir::StmtSRef>(this->sym_tab.at(loop).value.value());
+  auto iter = this->sym_tab.find(loop);
+  CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding LoopRV: " << loop;
+  const Optional<ObjectRef> obj = iter->second.value;
+  CHECK(obj.defined()) << "ValueError: Corresponding LoopRV's value is not defined: " << loop;
+  if (const auto* sref = obj.as<tir::StmtSRefNode>()) {
+    return GetRef<tir::StmtSRef>(sref);
+  }
+  LOG(FATAL) << "TypeError: LoopRV's corresponding type is invalid: " << obj->GetTypeKey();
+  throw;
 }
 
 int ScheduleNode::Eval(const PrimExpr& expr) {
   arith::Analyzer analyzer;
   // Replace all the tir::Var with their corresponding value in the symbol table
   PrimExpr transformed = tir::Substitute(expr, [this](const tir::Var& var) -> Optional<PrimExpr> {
-    const Optional<ObjectRef>& value = this->sym_tab.at(var).value;
-    CHECK(value.defined()) << "ValueError: Variable \"" << var->name_hint
-                           << "\" is not defined in the meta scheduling";
-    return Downcast<PrimExpr>(value.value());
+    auto iter = this->sym_tab.find(var);
+    CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding ExprRV: " << var;
+    const Optional<ObjectRef> obj = iter->second.value;
+    CHECK(obj.defined()) << "ValueError: Variable \"" << var->name_hint
+                         << "\" is not defined in the meta scheduling";
+    if (const auto* expr = obj.as<PrimExprNode>()) {
+      return GetRef<PrimExpr>(expr);
+    }
+    LOG(FATAL) << "TypeError: ExprRV's corresponding type is invalid: " << obj->GetTypeKey();
+    throw;
   });
   PrimExpr simplified = analyzer.Simplify(transformed);
   const auto* result = simplified.as<IntImmNode>();
@@ -416,8 +451,13 @@ struct Internal {
    */
   static Schedule New(tir::PrimFunc func) { return Schedule(func); }
   /*!
+   * \brief FFI function, corresponds to ScheduleNode::copy
+   * \sa ScheduleNode::Copy
+   */
+  static Schedule Copy(Schedule sch) { return sch->copy(); }
+  /*!
    * \brief FFI function, corresponds to Schedule::Eval
-   * \sa Schedule::Eval
+   * \sa ScheduleNode::Eval
    */
   static ObjectRef Eval(Schedule sch, ObjectRef obj) {
     if (const auto* v = obj.as<BlockRVNode>()) {
@@ -432,49 +472,50 @@ struct Internal {
   }
   /*!
    * \brief FFI function, corresponds to Schedule::SampleTileFactor
-   * \sa Schedule::SampleTileFactor
+   * \sa ScheduleNode::SampleTileFactor
    */
   static Array<tir::Var> SampleTileFactor(Schedule sch, int n, LoopRV loop, Array<Integer> where) {
     return sch->SampleTileFactor(n, loop, where);
   }
   /*!
    * \brief FFI function, corresponds to Schedule::GetBlock
-   * \sa Schedule::GetBlock
+   * \sa ScheduleNode::GetBlock
    */
   static BlockRV GetBlock(Schedule sch, String name) { return sch->GetBlock(name); }
   /*!
    * \brief FFI function, corresponds to Schedule::GetAxes
-   * \sa Schedule::GetAxes
+   * \sa ScheduleNode::GetAxes
    */
   static Array<LoopRV> GetAxes(Schedule sch, BlockRV block) { return sch->GetAxes(block); }
   /*!
    * \brief FFI function, corresponds to Schedule::Split
-   * \sa Schedule::Split
+   * \sa ScheduleNode::Split
    */
   static Array<LoopRV> Split(Schedule sch, LoopRV loop, Array<PrimExpr> factors) {
     return sch->Split(loop, factors);
   }
   /*!
    * \brief FFI function, corresponds to Schedule::Reorder
-   * \sa Schedule::Reorder
+   * \sa ScheduleNode::Reorder
    */
   static void Reorder(Schedule sch, Array<LoopRV> after_axes) { return sch->Reorder(after_axes); }
   /*!
    * \brief FFI function, corresponds to Schedule::DecomposeReduction
-   * \sa Schedule::DecomposeReduction
+   * \sa ScheduleNode::DecomposeReduction
    */
   static BlockRV DecomposeReduction(Schedule sch, BlockRV block, LoopRV loop) {
     return sch->DecomposeReduction(block, loop);
   }
   /*!
    * \brief FFI function, corresponds to Schedule::ReplayOnce
-   * \sa Schedule::ReplayOnce
+   * \sa ScheduleNode::ReplayOnce
    */
   static void ReplayOnce(Schedule sch) { return sch->ReplayOnce(); }
 };
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
 TVM_REGISTER_GLOBAL("meta_schedule.Schedule").set_body_typed(Internal::New);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCopy").set_body_typed(Internal::Copy);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleEval").set_body_typed(Internal::Eval);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleTileFactor")
     .set_body_typed(Internal::SampleTileFactor);
