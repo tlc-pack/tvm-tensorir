@@ -135,6 +135,14 @@ std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root);
 bool ExprContainsVar(const PrimExpr& expr, const PrimExpr& vars);
 
 /*!
+ * \brief Inspect whether the expr contains any var of vars
+ * \param expr the expected expr
+ * \param vars the vars to be inspected
+ * \return Whether the expr contains any var of vars
+ */
+bool ExprContainsVar(const PrimExpr& expr, const std::set<const VarNode*> vars);
+
+/*!
  * \brief Update the scope (dependency) information of a given block statement
  * \param stmt The block statement to be updated
  * \param stmt2ref The ScheduleNode::stmt2ref from ScheduleNode

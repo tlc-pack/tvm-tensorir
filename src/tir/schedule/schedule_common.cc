@@ -373,29 +373,29 @@ void UpdateScope(const StmtNode* stmt,
 
 // Return whether `expr` contains any variable used in `vars`
 // Return true if `vars` contains no variable
-bool ExprContainsVar(const PrimExpr& expr, const PrimExpr& vars) {
-  std::set<const VarNode*> var_set;
-
-  // gather vars
-  PostOrderVisit(vars, [&var_set](const ObjectRef& node) {
-    if (const VarNode* op = node.as<VarNode>()) var_set.insert(op);
-  });
-
-  if (var_set.empty()) {
-    return true;
-  }
-
-  // check
+bool ExprContainsVar(const PrimExpr& expr, const std::set<const VarNode*> vars) {
   bool ret = false;
-  PostOrderVisit(expr, [&var_set, &ret](const ObjectRef& node) {
-    if (const VarNode* op = node.as<VarNode>()) {
-      if (var_set.count(op) != 0) {
+  PostOrderVisit(expr, [&vars, &ret](const ObjectRef &node) {
+    if (const auto *op = node.as<VarNode>()) {
+      if (vars.count(op) != 0) {
         ret = true;
       }
     }
   });
-
   return ret;
+}
+
+bool ExprContainsVar(const PrimExpr& expr, const PrimExpr& vars) {
+  std::set<const VarNode*> var_set;
+  // gather vars
+  PostOrderVisit(vars, [&var_set](const ObjectRef &node) {
+    if (const auto *op = node.as<VarNode>())
+      var_set.insert(op);
+  });
+  if (var_set.empty()) {
+    return true;
+  }
+  return ExprContainsVar(expr, var_set);
 }
 
 MatchingSimplifier::MatchingSimplifier(
