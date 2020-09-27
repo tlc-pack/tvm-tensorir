@@ -68,8 +68,8 @@ def conv2d(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
             7,  # i_w
             tir.reduce_axis(0, 512),  # i_ci
             tir.reduce_axis(0, 3),  # i_kh
-            tir.reduce_axis(0, 3),
-        ],  # i_kw
+            tir.reduce_axis(0, 3),  # i_kw
+        ],
         "conv2d_nchw",
     ) as [i_n, i_co, i_h, i_w, i_ci, i_kh, i_kw]:
         reducer.step(
@@ -88,67 +88,6 @@ def _print_prim_func(prim_func):
 @ms.register_rule("do_nothing")
 def do_nothing(sch: ms.Schedule, _block: ms.BlockRV):
     return sch
-
-
-@ms.register_rule("multi_level_tiling")
-def multi_level_tiling(sch: ms.Schedule, block: ms.BlockRV):
-    spatial_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "S"]
-    reduce_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "R"]
-    order = [list() for _ in TILING_FORMAT]
-    axes = sch.get_axes(block=block)
-    iter_vars = ms.helpers.block_from_sref(sch.evaluate(block)).iter_vars
-    assert len(axes) == len(iter_vars)
-    for axis, iter_var in zip(axes, iter_vars):
-        for iter_type, indices in [
-            (SPATIAL, spatial_indices),
-            (REDUCTION, reduce_indices),
-        ]:
-            if iter_var.iter_type == iter_type:
-                tiles = sch.sample_tile_factor(
-                    n=len(indices), loop=axis, where=[1, 2, 4]
-                )
-                splits = sch.split(loop=axis, factors=tiles)
-                for i, split in zip(indices, splits):
-                    order[i].append(split)
-    sch.reorder(after_axes=sum(order, []))
-    return sch
-
-
-def do_multi_level_tiling(sch: ms.Schedule, block: ms.BlockRV):
-    _print_prim_func(sch.sch.func)
-    spatial_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "S"]
-    reduce_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "R"]
-    order = [list() for _ in TILING_FORMAT]
-    axes = sch.get_axes(block=block)
-    iter_vars = ms.helpers.block_from_sref(sch.evaluate(block)).iter_vars
-    assert len(axes) == len(iter_vars)
-    for axis, iter_var in zip(axes, iter_vars):
-        for iter_type, indices in [
-            (SPATIAL, spatial_indices),
-            (REDUCTION, reduce_indices),
-        ]:
-            if iter_var.iter_type == iter_type:
-                tiles = sch.sample_tile_factor(
-                    n=len(indices), loop=axis, where=[1, 2, 4]
-                )
-                splits = sch.split(loop=axis, factors=tiles)
-                for i, split in zip(indices, splits):
-                    order[i].append(split)
-    sch.reorder(after_axes=sum(order, []))
-    _print_prim_func(sch.sch.func)
-    return "Apply"
-
-
-def test_matmul_tiling_rule():
-    sch = ms.Schedule(matmul)
-    block = sch.get_block(name="C")
-    do_multi_level_tiling(sch, block)
-
-
-def test_conv2d_tiling_rule():
-    sch = ms.Schedule(conv2d)
-    block = sch.get_block("conv2d_nchw")
-    do_multi_level_tiling(sch, block)
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -182,7 +121,7 @@ def test_matmul_post_order_apply():
         name="composed",
         rules=[
             do_nothing,
-            multi_level_tiling,
+            ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS"),
         ],
     )
     sch = ms.autotune(
@@ -197,8 +136,87 @@ def test_matmul_post_order_apply():
         _print_prim_func(sch.sch.func)
 
 
+@pytest.mark.skip(reason="needs RPC")
+def test_conv2d_schedule_fn():
+    def schedule_conv2d(sch):
+        # print(tvm.hybrid.ashybrid(sch.sch.func))
+        # block = sch.get_block(name="conv2d_nchw")
+        # i_n, i_co, i_h, i_w, i_ci, i_kh, i_kw = sch.get_axes(block=block)
+
+        # factors = sch.sample_tile_factor(n=4, loop=i_n, where=[1, 2, 4])
+        factors = [1, 1, 1, 1]
+        # i_n_0, i_n_1, i_n_2, i_n_3 = sch.split(loop=i_n, factors=factors)
+
+        # factors = sch.sample_tile_factor(n=4, loop=i_co, where=[1, 2, 4])
+        factors = [512, 1, 1, 1]
+        # i_co_0, i_co_1, i_co_2, i_co_3 = sch.split(loop=i_co, factors=factors)
+
+        # factors = sch.sample_tile_factor(n=4, loop=i_h, where=[1, 2, 4])
+        factors = [7, 1, 1, 1]
+        # i_h_0, i_h_1, i_h_2, i_h_3 = sch.split(loop=i_h, factors=factors)
+
+        # factors = sch.sample_tile_factor(n=4, loop=i_w, where=[1, 2, 4])
+        factors = [7, 1, 1, 1]
+        # i_w_0, i_w_1, i_w_2, i_w_3 = sch.split(loop=i_w, factors=factors)
+
+        # factors = sch.sample_tile_factor(n=2, loop=i_ci, where=[1, 2, 4])
+        factors = [512, 1]
+        # i_ci_0, i_ci_1 = sch.split(loop=i_ci, factors=factors)
+
+        # factors = sch.sample_tile_factor(n=2, loop=i_kh, where=[1, 2, 4])
+        factors = [3, 1]
+        # i_kh_0, i_kh_1 = sch.split(loop=i_kh, factors=factors)
+
+        # factors = sch.sample_tile_factor(n=2, loop=i_kw, where=[1, 2, 4])
+        factors = [3, 1]
+        # i_kw_0, i_kw_1 = sch.split(loop=i_kw, factors=factors)
+        # sch.reorder(
+        #     [i_n_0, i_co_0, i_h_0, i_w_0]  # S
+        #     + [i_n_1, i_co_1, i_h_1, i_w_1]  # S
+        #     + [i_ci_0, i_kh_0, i_kw_0]  # R
+        #     + [i_n_2, i_co_2, i_h_2, i_w_2]  # S
+        #     + [i_ci_1, i_kh_1, i_kw_1]  # R
+        #     + [i_n_3, i_co_3, i_h_3, i_w_3],  # S
+        # )
+        print(tvm.hybrid.ashybrid(sch.sch.func))
+
+    sch = ms.autotune(
+        task=conv2d,
+        space=schedule_conv2d,
+        strategy=ms.Replay(batch_size=1, num_iterations=1),
+        builder=ms.LocalBuilder(n_parallel=1),
+        runner="rpc://0.0.0.0:3012:local * 16",
+    )
+    if sch is None:
+        print("No valid schedule found")
+    else:
+        _print_prim_func(sch.sch.func)
+
+
+@pytest.mark.skip(reason="needs RPC")
+def test_conv2d_post_order_apply():
+    rule = ms.SearchRule.compose(
+        name="composed",
+        rules=[
+            do_nothing,
+            ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS"),
+        ],
+    )
+    sch = ms.autotune(
+        task=conv2d,
+        space=ms.PostOrderApply(rule=rule),
+        strategy=ms.Replay(batch_size=1, num_iterations=1),
+        builder=ms.LocalBuilder(n_parallel=1),
+        runner="rpc://0.0.0.0:3012:local * 16",
+    )
+    if sch is None:
+        print("No valid schedule found")
+    else:
+        _print_prim_func(sch.sch.func)
+
+
 if __name__ == "__main__":
-    test_matmul_tiling_rule()
-    test_conv2d_tiling_rule()
     test_matmul_schedule_fn()
     test_matmul_post_order_apply()
+    test_conv2d_schedule_fn()
+    test_conv2d_post_order_apply()

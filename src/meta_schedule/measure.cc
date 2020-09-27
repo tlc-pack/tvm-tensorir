@@ -194,7 +194,8 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
       } else {
         StdCout(verbose) << std::fixed << std::setprecision(2) << "#" << num_measured
                          << "\tError: " << MeasureErrorNOToStr(error_no)
-                         << "\tBest time: " << best_time_cost << std::endl;
+                         << "\tBest time: " << best_time_cost << std::endl
+                         << "\t\t" << measure_result->error_msg << "\n";
       }
     }
     measure_results.insert(measure_results.end(), batch_measure_results.begin(),

@@ -21,6 +21,8 @@
 
 #include <tvm/tir/expr.h>
 
+#include <vector>
+
 namespace tvm {
 namespace meta_schedule {
 
@@ -65,6 +67,33 @@ NullStream& operator<<(NullStream& os, const T& value) {
  */
 inline std::ostream& StdCout(int verbose, int setting = 1) {
   return verbose >= setting ? std::cout : NullStream::Global();
+}
+
+/*!
+ * \brief Find all positions that the specific char occurs in the string
+ * \param str The string to be examined
+ * \param c The specific char
+ * \return A list of integers indicating the occurrence position
+ */
+inline std::vector<int> FindCharPos(const String& str, char c) {
+  std::vector<int> result;
+  const char* data = str.data();
+  int n = str.length();
+  for (int i = 0; i < n; ++i) {
+    if (data[i] == c) {
+      result.push_back(i);
+    }
+  }
+  return result;
+}
+
+template <class T>
+std::vector<T> ConcatArray(const std::vector<std::vector<T> >& source) {
+  std::vector<T> result;
+  for (const std::vector<T>& item : source) {
+    result.insert(result.end(), item.begin(), item.end());
+  }
+  return result;
 }
 
 }  // namespace meta_schedule

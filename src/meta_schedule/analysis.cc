@@ -205,21 +205,17 @@ bool HasBranch(Schedule sch, BlockRV block_rv) {
       // Case 1: BlockRealize
       if (!analyzer.CanProve(realize->predicate == 1)) {
         has_branch = true;
-        return false;
       }
     } else if (obj->IsInstance<tir::IfThenElseNode>() || obj->IsInstance<tir::SelectNode>()) {
       // Case 2: IfThenElse / Select
       has_branch = true;
-      return false;
     } else if (const auto* call = obj.as<tir::CallNode>()) {
       // Case 3: Call
       if (call->op.same_as(op_if_then_else)) {
         has_branch = true;
-        return false;
       }
     }
-    // continue visiting
-    return true;
+    return !has_branch;
   };
   tir::PreOrderVisit(tir::GetBlockRealize(block_sref), f_visit);
   return has_branch;

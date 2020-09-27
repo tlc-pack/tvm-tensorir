@@ -14,7 +14,25 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""FFI APIs for analysis in meta schedule"""
-import tvm._ffi
+"""Search rules in meta schedule"""
 
-tvm._ffi._init_api("meta_schedule.analysis", __name__)
+from . import _ffi_api_rule
+from .search import SearchRule
+
+
+def multi_level_tiling(tiling_structure: str) -> SearchRule:
+    """Create a rule that does multi-level tiling if there is sufficient amout of data reuse
+
+    Parameters
+    ----------
+    tiling_structure: str
+        Structure of tiling. On CPU, recommended to use 'SSRSRS';
+        On GPU, recommended to use 'SSSRRSRS'
+
+    Returns
+    ----------
+    rule: SearchRule
+        A search rule that does multi-level tiling
+    """
+
+    return _ffi_api_rule.MultiLevelTiling(tiling_structure)  # pylint: disable=no-member
