@@ -375,8 +375,8 @@ void UpdateScope(const StmtNode* stmt,
 // Return true if `vars` contains no variable
 bool ExprContainsVar(const PrimExpr& expr, const std::set<const VarNode*> vars) {
   bool ret = false;
-  PostOrderVisit(expr, [&vars, &ret](const ObjectRef &node) {
-    if (const auto *op = node.as<VarNode>()) {
+  PostOrderVisit(expr, [&vars, &ret](const ObjectRef& node) {
+    if (const auto* op = node.as<VarNode>()) {
       if (vars.count(op) != 0) {
         ret = true;
       }
@@ -388,9 +388,8 @@ bool ExprContainsVar(const PrimExpr& expr, const std::set<const VarNode*> vars) 
 bool ExprContainsVar(const PrimExpr& expr, const PrimExpr& vars) {
   std::set<const VarNode*> var_set;
   // gather vars
-  PostOrderVisit(vars, [&var_set](const ObjectRef &node) {
-    if (const auto *op = node.as<VarNode>())
-      var_set.insert(op);
+  PostOrderVisit(vars, [&var_set](const ObjectRef& node) {
+    if (const auto* op = node.as<VarNode>()) var_set.insert(op);
   });
   if (var_set.empty()) {
     return true;

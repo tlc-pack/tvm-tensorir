@@ -32,86 +32,79 @@
 namespace tvm {
 namespace tir {
 
-using ExprComparator = ExprFunctor<bool(const PrimExpr& n, const PrimExpr& other)>;
-using StmtComparator = StmtFunctor<bool(const Stmt& n, const Stmt& other)>;
-
 // Deep comparison to check if two IR graph are equivalent
-class TensorizeComparator : public ExprComparator, public StmtComparator {
- public:
-  explicit TensorizeComparator(bool assert_mode = true) : assert_mode_(assert_mode) {}
+bool TensorizeComparator::VisitExpr(const PrimExpr& n, const PrimExpr& other) {
+  bool equal = (n->type_index() == other->type_index()) && ExprComparator::VisitExpr(n, other);
+  if (!equal && assert_mode_)
+    LOG(FATAL) << "Exprs are not matching between:" << n << " and " << other;
+  return equal;
+}
 
-  bool VisitExpr(const PrimExpr& n, const PrimExpr& other) override {
-    bool equal = (n->type_index() == other->type_index()) && ExprComparator::VisitExpr(n, other);
-    if (!equal && assert_mode_)
-      LOG(INFO) << "Exprs are not matching between:" << n << " and " << other;
-    return equal;
-  }
+// Stmts
+bool TensorizeComparator::VisitStmt(const Stmt& n, const Stmt& other) {
+  if (n.same_as(other)) return true;
+  if (n->type_index() != other->type_index()) return false;
+  bool equal = StmtComparator::VisitStmt(n, other);
+  if (!equal && assert_mode_)
+    LOG(FATAL) << "Stmts are not matching between:\n" << n << "\nand\n" << other;
+  return equal;
+}
 
-  // Stmts
-  bool VisitStmt(const Stmt& n, const Stmt& other) override {
-    if (n.same_as(other)) return true;
-    if (n->type_index() != other->type_index()) return false;
-    bool equal = StmtComparator::VisitStmt(n, other);
-    if (!equal && assert_mode_)
-      LOG(FATAL) << "Stmts are not matching between:\n" << n << "\nand\n" << other;
-    return equal;
-  }
+bool TensorizeComparator::VisitStmt_(const LoopNode* op, const Stmt& other) {
+  const auto* rhs = other.as<LoopNode>();
+  if (!DefEqual(op->loop_var, rhs->loop_var)) return false;
+  if (!VisitExpr(op->min, rhs->min)) return false;
+  if (!VisitExpr(op->extent, rhs->extent)) return false;
+  if (!VisitStmt(op->body, rhs->body)) return false;
+  return CompareArray(op->annotations, rhs->annotations, &TensorizeComparator::CompareAnnotation);
+}
 
-  bool VisitStmt_(const LoopNode* op, const Stmt& other) final {
-    const auto* rhs = other.as<LoopNode>();
-    if (!DefEqual(op->loop_var, rhs->loop_var)) return false;
-    if (!VisitExpr(op->min, rhs->min)) return false;
-    if (!VisitExpr(op->extent, rhs->extent)) return false;
-    if (!VisitStmt(op->body, rhs->body)) return false;
-    return CompareArray(op->annotations, rhs->annotations, &TensorizeComparator::CompareAnnotation);
-  }
+bool TensorizeComparator::VisitStmt_(const SeqStmtNode* op, const Stmt& other) {
+  const auto* rhs = other.as<SeqStmtNode>();
+  return CompareArray(op->seq, rhs->seq, &TensorizeComparator::VisitStmt);
+}
 
-  bool VisitStmt_(const SeqStmtNode* op, const Stmt& other) final {
-    const auto* rhs = other.as<SeqStmtNode>();
-    return CompareArray(op->seq, rhs->seq, &TensorizeComparator::VisitStmt);
-  }
+bool TensorizeComparator::VisitStmt_(const BufferAllocateNode* op, const Stmt& other) {
+  const auto* rhs = other.as<BufferAllocateNode>();
+  return CompareBuffer(op->buffer, rhs->buffer) && op->scope == rhs->scope;
+}
 
-  bool VisitStmt_(const BufferAllocateNode* op, const Stmt& other) final {
-    const auto* rhs = other.as<BufferAllocateNode>();
-    return CompareBuffer(op->buffer, rhs->buffer) && op->scope == rhs->scope;
-  }
+bool TensorizeComparator::VisitStmt_(const BufferStoreNode* op, const Stmt& other) {
+  const auto* rhs = other.as<BufferStoreNode>();
+  return CompareBufferAccess(op, rhs) && VisitExpr(op->value, rhs->value);
+}
 
-  bool VisitStmt_(const BufferStoreNode* op, const Stmt& other) final {
-    const auto* rhs = other.as<BufferStoreNode>();
-    return CompareBufferAccess(op, rhs) && VisitExpr(op->value, rhs->value);
-  }
-
-  bool VisitStmt_(const BlockRealizeNode* op, const Stmt& other) final {
-    const auto* rhs = other.as<BlockRealizeNode>();
-    // Skip Compare binding values if the block is scope block (the outermost one).
-    if (!is_scope_block) {
-      size_t offset = op->binding_values.size() - rhs->binding_values.size();
-      if (rhs->binding_values.size() > op->binding_values.size()) return false;
-      for (size_t i = 0; i < rhs->binding_values.size(); i++) {
-        if (!VisitExpr(op->binding_values[i + offset], rhs->binding_values[i])) return false;
-      }
-      const Block& block = op->block;
-      for (size_t i = 0; i < offset; i++) {
-        Var block_var = Downcast<Var>(op->binding_values[i]);
-        auto it = equal_map_.find(block_var);
-        equal_map_[block->iter_vars[i]->var] = (it == equal_map_.end() ? block_var : it->second);
-      }
+bool TensorizeComparator::VisitStmt_(const BlockRealizeNode* op, const Stmt& other) {
+  const auto* rhs = other.as<BlockRealizeNode>();
+  // Skip Compare binding values if the block is scope block (the outermost one).
+  if (!is_scope_block) {
+    size_t offset = op->binding_values.size() - rhs->binding_values.size();
+    if (rhs->binding_values.size() > op->binding_values.size()) return false;
+    for (size_t i = 0; i < rhs->binding_values.size(); i++) {
+      if (!VisitExpr(op->binding_values[i + offset], rhs->binding_values[i])) return false;
     }
+    const Block& block = op->block;
+    for (size_t i = 0; i < offset; i++) {
+      Var block_var = Downcast<Var>(op->binding_values[i]);
+      auto it = equal_map_.find(block_var);
+      equal_map_[block->iter_vars[i]->var] = (it == equal_map_.end() ? block_var : it->second);
+    }
+  }
 
     return VisitExpr(op->predicate, rhs->predicate) && op->exec_scope == rhs->exec_scope &&
            VisitStmt(op->block, rhs->block);
   }
 
-  bool VisitStmt_(const BlockNode* op, const Stmt& other) final {
-    const auto* rhs = other.as<BlockNode>();
-    // Check block equal
-    // All iter var and buffer region should matches including the order
+bool TensorizeComparator::VisitStmt_(const BlockNode* op, const Stmt& other) {
+  const auto* rhs = other.as<BlockNode>();
+  // Check block equal
+  // All iter var and buffer region should matches including the order
 
-    // Check iterVar
-    // need to use DefEqual to remap vars
-    // Note:
-    //    We only compare the inner most several axis
-    if (op->iter_vars.size() < rhs->iter_vars.size()) return false;
+  // Check iterVar
+  // need to use DefEqual to remap vars
+  // Note:
+  //    We only compare the inner most several axis
+  if (op->iter_vars.size() < rhs->iter_vars.size()) return false;
 
     size_t offset = op->iter_vars.size() - rhs->iter_vars.size();
     for (size_t i = 0; i < rhs->iter_vars.size(); ++i) {
@@ -121,20 +114,19 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
       if (lhs_var->iter_type != rhs_var->iter_type) return false;
     }
 
-    for (size_t i = 0; i < offset; i++) {
-      if (is_scope_block) {
-        extra_block_vars_.push_back(op->iter_vars[i]);
-      }
+  for (size_t i = 0; i < offset; i++) {
+    if (is_scope_block) {
+      extra_block_vars_.push_back(op->iter_vars[i]);
     }
-    is_scope_block = false;
-    if (!CompareArray(op->writes, rhs->writes, &TensorizeComparator::CompareTensorRegion))
-      return false;
-    if (!CompareArray(op->reads, rhs->reads, &TensorizeComparator::CompareTensorRegion))
-      return false;
-    if (!CompareArray(op->annotations, rhs->annotations, &TensorizeComparator::CompareAnnotation))
-      return false;
-    return VisitStmt(op->body, rhs->body);
   }
+  is_scope_block = false;
+  if (!CompareArray(op->writes, rhs->writes, &TensorizeComparator::CompareTensorRegion))
+    return false;
+  if (!CompareArray(op->reads, rhs->reads, &TensorizeComparator::CompareTensorRegion)) return false;
+  if (!CompareArray(op->annotations, rhs->annotations, &TensorizeComparator::CompareAnnotation))
+    return false;
+  return VisitStmt(op->body, rhs->body);
+}
 
   // Map from rhs buffer to lhs buffer
   std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> rhs_buffer_map_;
@@ -143,94 +135,93 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
   std::vector<IterVar> extra_block_vars_;
 
 // Exprs
-#define TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(OpName)             \
-  bool VisitExpr_(const OpName* op, const PrimExpr& other) final { \
-    const auto* rhs = other.as<OpName>();                          \
-    return VisitExpr(op->a, rhs->a) && VisitExpr(op->b, rhs->b);   \
+#define TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(OpName)                            \
+  bool TensorizeComparator::VisitExpr_(const OpName* op, const PrimExpr& other) { \
+    const auto* rhs = other.as<OpName>();                                         \
+    return VisitExpr(op->a, rhs->a) && VisitExpr(op->b, rhs->b);                  \
   }
 
-  TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(AddNode);
-  TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(SubNode);
-  TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(MulNode);
-  TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(DivNode);
-  TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(ModNode);
-  TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(EQNode);
-  TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(NENode);
-  TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(LTNode);
-  TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(LENode);
-  TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(GTNode);
-  TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(GENode);
-  TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(AndNode);
-  TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(OrNode);
-  TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(MinNode);
-  TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(MaxNode);
-  TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(FloorDivNode);
-  TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(FloorModNode);
+TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(AddNode);
+TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(SubNode);
+TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(MulNode);
+TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(DivNode);
+TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(ModNode);
+TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(EQNode);
+TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(NENode);
+TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(LTNode);
+TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(LENode);
+TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(GTNode);
+TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(GENode);
+TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(AndNode);
+TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(OrNode);
+TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(MinNode);
+TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(MaxNode);
+TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(FloorDivNode);
+TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(FloorModNode);
 
-  bool VisitExpr_(const IntImmNode* op, const PrimExpr& other) final {
-    const auto* rhs = other.as<IntImmNode>();
-    return CompareType(op->dtype, rhs->dtype) && op->value == rhs->value;
+bool TensorizeComparator::VisitExpr_(const IntImmNode* op, const PrimExpr& other) {
+  const auto* rhs = other.as<IntImmNode>();
+  return CompareType(op->dtype, rhs->dtype) && op->value == rhs->value;
+}
+
+bool TensorizeComparator::VisitExpr_(const FloatImmNode* op, const PrimExpr& other) {
+  const auto* rhs = other.as<FloatImmNode>();
+  return CompareType(op->dtype, rhs->dtype) && op->value == rhs->value;
+}
+
+bool TensorizeComparator::VisitExpr_(const CastNode* op, const PrimExpr& other) {
+  const auto* rhs = other.as<CastNode>();
+  return CompareType(op->dtype, rhs->dtype) && VisitExpr(op->value, rhs->value);
+}
+
+bool TensorizeComparator::VisitExpr_(const VarNode* op, const PrimExpr& other) {
+  const auto* rhs = other.as<VarNode>();
+  auto lhs = GetRef<Var>(op);
+  if (lhs.same_as(other)) return true;
+  if (!CompareType(op->dtype, rhs->dtype)) return false;
+  auto it = equal_map_.find(lhs);
+  return it != equal_map_.end() && it->second.same_as(other);
+}
+
+bool TensorizeComparator::VisitExpr_(const BufferLoadNode* op, const PrimExpr& other) {
+  const auto* rhs = other.as<BufferLoadNode>();
+  return CompareBufferAccess(op, rhs);
+}
+
+bool TensorizeComparator::DefEqual(const ObjectRef& lhs, const ObjectRef& rhs) {
+  if (lhs.same_as(rhs)) return true;
+  if (lhs->type_index() != rhs->type_index()) return false;
+  auto it = equal_map_.find(lhs);
+  // If there is already a mapping
+  if (it != equal_map_.end()) return it->second.same_as(rhs);
+  equal_map_[lhs] = rhs;
+  return true;
+}
+
+bool TensorizeComparator::CompareAnnotation(const Annotation& lhs, const Annotation& rhs) {
+  if (lhs.same_as(rhs)) return true;
+  return VisitExpr(lhs->value, rhs->value) && lhs->attr_key == rhs->attr_key;
+}
+
+bool TensorizeComparator:: CompareBuffer(const Buffer& lhs, const Buffer& rhs) {
+  if (lhs.same_as(rhs)) return true;
+  // Remap both buffer itself and buffer data
+  // Skip buffer shape
+  bool equal = DefEqual(lhs, rhs) && DefEqual(lhs->data, rhs->data) &&
+               CompareType(lhs->dtype, rhs->dtype) && lhs->scope == rhs->scope;
+  if (equal)
+    rhs_buffer_map_[rhs] = lhs;
+  else if (assert_mode_) {
+    LOG(FATAL) << "Buffers are not matching between:" << lhs << " and " << rhs;
   }
+  return equal;
+}
 
-  bool VisitExpr_(const FloatImmNode* op, const PrimExpr& other) final {
-    const auto* rhs = other.as<FloatImmNode>();
-    return CompareType(op->dtype, rhs->dtype) && op->value == rhs->value;
-  }
-
-  bool VisitExpr_(const CastNode* op, const PrimExpr& other) final {
-    const auto* rhs = other.as<CastNode>();
-    return CompareType(op->dtype, rhs->dtype) && VisitExpr(op->value, rhs->value);
-  }
-
-  bool VisitExpr_(const VarNode* op, const PrimExpr& other) final {
-    const auto* rhs = other.as<VarNode>();
-    auto lhs = GetRef<Var>(op);
-    if (lhs.same_as(other)) return true;
-    if (!CompareType(op->dtype, rhs->dtype)) return false;
-    auto it = equal_map_.find(lhs);
-    return it != equal_map_.end() && it->second.same_as(other);
-  }
-
-  bool VisitExpr_(const BufferLoadNode* op, const PrimExpr& other) final {
-    const auto* rhs = other.as<BufferLoadNode>();
-    return CompareBufferAccess(op, rhs);
-  }
-
- private:
-  bool DefEqual(const ObjectRef& lhs, const ObjectRef& rhs) {
-    if (lhs.same_as(rhs)) return true;
-    if (lhs->type_index() != rhs->type_index()) return false;
-    auto it = equal_map_.find(lhs);
-    // If there is already a mapping
-    if (it != equal_map_.end()) return it->second.same_as(rhs);
-    equal_map_[lhs] = rhs;
-    return true;
-  }
-
-  bool CompareAnnotation(const Annotation& lhs, const Annotation& rhs) {
-    if (lhs.same_as(rhs)) return true;
-    return VisitExpr(lhs->value, rhs->value) && lhs->attr_key == rhs->attr_key;
-  }
-
-  bool CompareBuffer(const Buffer& lhs, const Buffer& rhs) {
-    if (lhs.same_as(rhs)) return true;
-    // Remap both buffer itself and buffer data
-    // Skip buffer shape
-    bool equal = DefEqual(lhs, rhs) && DefEqual(lhs->data, rhs->data) &&
-                 CompareType(lhs->dtype, rhs->dtype) && lhs->scope == rhs->scope;
-    if (equal)
-      rhs_buffer_map_[rhs] = lhs;
-    else if (assert_mode_) {
-      LOG(FATAL) << "Buffers are not matching between:" << lhs << " and " << rhs;
-    }
-    return equal;
-  }
-
-  bool CompareTensorRegion(const TensorRegion& lhs, const TensorRegion& rhs) {
-    // Only for block region declaration
-    if (!CompareBuffer(lhs->buffer, rhs->buffer)) return false;
-    // Number of indices in desc_block must be smaller than it in AST
-    if (rhs->region.size() > lhs->region.size()) return false;
+bool TensorizeComparator::CompareTensorRegion(const TensorRegion& lhs, const TensorRegion& rhs) {
+  // Only for block region declaration
+  if (!CompareBuffer(lhs->buffer, rhs->buffer)) return false;
+  // Number of indices in desc_block must be smaller than it in AST
+  if (rhs->region.size() > lhs->region.size()) return false;
 
     std::vector<Range> lhs_region;
     for (const auto& range : lhs->region) {
@@ -267,46 +258,40 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
     return true;
   }
 
-  // Only for BufferStoreNode and BufferLoadNode
-  template <typename T>
-  bool CompareBufferAccess(const T* lhs, const T* rhs) {
-    if (!CompareBuffer(lhs->buffer, rhs->buffer)) return false;
+// Only for BufferStoreNode and BufferLoadNode
+template <typename T>
+bool TensorizeComparator::CompareBufferAccess(const T* lhs, const T* rhs) {
+  if (!CompareBuffer(lhs->buffer, rhs->buffer)) return false;
 
-    if (rhs->indices.size() > lhs->indices.size()) return false;
-    // special judge size 1 buffer
-    if (rhs->indices.size() == 1 && is_zero(rhs->indices[0])) return true;
-    // otherwise
-    size_t offset = lhs->indices.size() - rhs->indices.size();
-    for (size_t i = 0; i < rhs->indices.size(); ++i) {
-      if (!VisitExpr(lhs->indices[i + offset], rhs->indices[i])) return false;
-    }
-    return true;
+  if (rhs->indices.size() > lhs->indices.size()) return false;
+  // special judge size 1 buffer
+  if (rhs->indices.size() == 1 && is_zero(rhs->indices[0])) return true;
+  // otherwise
+  size_t offset = lhs->indices.size() - rhs->indices.size();
+  for (size_t i = 0; i < rhs->indices.size(); ++i) {
+    if (!VisitExpr(lhs->indices[i + offset], rhs->indices[i])) return false;
   }
+  return true;
+}
 
-  template <typename T, typename F>
-  bool CompareArray(const Array<T>& lhs, const Array<T>& rhs, F cmp) {
-    if (lhs.same_as(rhs)) return true;
-    if (lhs.size() != rhs.size()) return false;
-    for (size_t i = 0; i < lhs.size(); ++i) {
-      if (!(this->*cmp)(lhs[i], rhs[i])) return false;
-    }
-    return true;
+template <typename T, typename F>
+bool TensorizeComparator::CompareArray(const Array<T>& lhs, const Array<T>& rhs, F cmp) {
+  if (lhs.same_as(rhs)) return true;
+  if (lhs.size() != rhs.size()) return false;
+  for (size_t i = 0; i < lhs.size(); ++i) {
+    if (!(this->*cmp)(lhs[i], rhs[i])) return false;
   }
+  return true;
+}
 
-  bool CompareRange(const Range& lhs, const Range& rhs) {
-    return VisitExpr(lhs->min, rhs->min) && VisitExpr(lhs->extent, rhs->extent);
-  }
+bool TensorizeComparator::CompareRange(const Range& lhs, const Range& rhs) {
+  return VisitExpr(lhs->min, rhs->min) && VisitExpr(lhs->extent, rhs->extent);
+}
 
-  bool CompareType(const DataType& lhs, const DataType& rhs) {
-    if (lhs == rhs) return true;
-    return lhs.code() == rhs.code() && lhs.bits() == rhs.bits() && lhs.lanes() == rhs.lanes();
-  }
-
-  // variable remap if any
-  std::unordered_map<ObjectRef, ObjectRef, ObjectPtrHash, ObjectPtrEqual> equal_map_;
-  bool assert_mode_;
-  bool is_scope_block = true;
-};
+bool TensorizeComparator::CompareType(const DataType& lhs, const DataType& rhs) {
+  if (lhs == rhs) return true;
+  return lhs.code() == rhs.code() && lhs.bits() == rhs.bits() && lhs.lanes() == rhs.lanes();
+}
 
 void BufferRemap(const TensorIntrin& intrinsic,
                  std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual>* buffer_map) {
