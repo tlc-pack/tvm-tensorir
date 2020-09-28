@@ -282,7 +282,6 @@ def opt_conv_tensorcore_normalize(A: ty.handle, W: ty.handle, Conv: ty.handle) -
 
 def test_opt_conv_tensorcore_normalize():
     mod = opt_conv_tensorcore_normalize
-    print(tvm.hybrid.ashybrid(mod, True))
     rt_mod = tvm.hybrid.from_source(tvm.hybrid.ashybrid(mod, True))
     tvm.ir.assert_structural_equal(mod, rt_mod, True)
 
