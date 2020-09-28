@@ -349,6 +349,14 @@ void ScheduleNode::Reorder(const Array<LoopRV>& after_axes) {
   this->trace.push_back(ReorderInst(after_axes));
 }
 
+void ScheduleNode::ComputeInline(const BlockRV& block) {
+  // Find the inputs to TIR
+  tir::StmtSRef block_sref = this->Eval(block);
+  this->sch->compute_inline(block_sref);
+  // Put the instruction in the trace
+  this->trace.push_back(ComputeInlineInst(block));
+}
+
 BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const LoopRV& loop) {
   int inst_id = this->trace.size();
   // Find the output from TIR

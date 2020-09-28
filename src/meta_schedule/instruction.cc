@@ -58,6 +58,12 @@ ReorderInst::ReorderInst(Array<LoopRV> after_axes) {
   data_ = std::move(n);
 }
 
+ComputeInlineInst::ComputeInlineInst(BlockRV block) {
+  ObjectPtr<ComputeInlineInstNode> n = make_object<ComputeInlineInstNode>();
+  n->block = std::move(block);
+  data_ = std::move(n);
+}
+
 DecomposeReductionInst::DecomposeReductionInst(BlockRV block, LoopRV loop, BlockRV output) {
   ObjectPtr<DecomposeReductionInstNode> n = make_object<DecomposeReductionInstNode>();
   n->block = std::move(block);
@@ -79,6 +85,7 @@ TVM_REGISTER_NODE_TYPE(GetBlockInstNode);
 TVM_REGISTER_NODE_TYPE(GetAxesInstNode);
 TVM_REGISTER_NODE_TYPE(SplitInstNode);
 TVM_REGISTER_NODE_TYPE(ReorderInstNode);
+TVM_REGISTER_NODE_TYPE(ComputeInlineInstNode);
 TVM_REGISTER_NODE_TYPE(DecomposeReductionInstNode);
 TVM_REGISTER_NODE_TYPE(GetOnlyConsumerInstNode);
 

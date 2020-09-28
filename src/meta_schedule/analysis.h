@@ -146,6 +146,8 @@ TVM_DLL void DoMultiLevelTiling(Schedule sch, BlockRV block, String tiling_struc
 
 TVM_DLL bool IsElementWiseMatch(Schedule sch, BlockRV producer, BlockRV consumer);
 
+TVM_DLL bool IsOutputBlock(Schedule sch, BlockRV block);
+
 }  // namespace meta_schedule
 }  // namespace tvm
 

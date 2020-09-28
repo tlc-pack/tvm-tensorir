@@ -147,6 +147,11 @@ class ScheduleNode : public Object {
    */
   void Reorder(const Array<LoopRV>& after_axes);
   /*!
+   * \brief Apply the instruction compute_inline
+   * \param block The block to be computed inline
+   */
+  void ComputeInline(const BlockRV& block);
+  /*!
    * \brief Apply the instruction DecomposeReduction
    * \param block The block to be decomposed
    * \param loop The loop to be decomposed at

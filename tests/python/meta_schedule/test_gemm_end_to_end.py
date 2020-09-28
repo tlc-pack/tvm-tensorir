@@ -133,6 +133,52 @@ def conv2d_relu(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
         Y[i_n, i_co, i_h, i_w] = tir.max(Y_i[i_n, i_co, i_h, i_w], 0.0)
 
 
+@tvm.hybrid.script
+def conv2d_relu_plus_one(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
+    X = tir.match_buffer(x, (1, 512, 7, 7), "float32")
+    W = tir.match_buffer(w, (512, 512, 3, 3), "float32")
+    X_padded = tir.buffer_allocate((1, 512, 9, 9), "float32")
+    Y_i = tir.buffer_allocate((1, 512, 7, 7), "float32")
+    Y_j = tir.buffer_allocate((1, 512, 7, 7), "float32")
+    Y = tir.match_buffer(y, [1, 512, 7, 7], "float32")
+    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
+    with tir.block([1, 512, 9, 9], "conv2d_pad_x") as [i_n, i_ci, i_h, i_w]:
+        X_padded[
+            i_n, i_ci, i_h, i_w
+        ] = tir.if_then_else(  # pylint: disable=unexpected-keyword-arg
+            # guard
+            ((1 <= i_h < 8) and (1 <= i_w < 8)),
+            # the value from input
+            X[i_n, i_ci, i_h - 1, i_w - 1],
+            # the value padded
+            tir.float32(0),
+            dtype="float32",
+        )
+
+    with tir.block(
+        [
+            1,  # i_n
+            512,  # i_co
+            7,  # i_h
+            7,  # i_w
+            tir.reduce_axis(0, 512),  # i_ci
+            tir.reduce_axis(0, 3),  # i_kh
+            tir.reduce_axis(0, 3),  # i_kw
+        ],
+        "conv2d_nchw",
+    ) as [i_n, i_co, i_h, i_w, i_ci, i_kh, i_kw]:
+        reducer.step(
+            Y_i[i_n, i_co, i_h, i_w],
+            X_padded[i_n, i_ci, i_h + i_kh, i_w + i_kw] * W[i_co, i_ci, i_kh, i_kw],
+        )
+
+    with tir.block([1, 512, 7, 7], "relu") as [i_n, i_co, i_h, i_w]:
+        Y_j[i_n, i_co, i_h, i_w] = tir.max(Y_i[i_n, i_co, i_h, i_w], 0.0)
+
+    with tir.block([1, 512, 7, 7], "plus_one") as [i_n, i_co, i_h, i_w]:
+        Y[i_n, i_co, i_h, i_w] = Y_j[i_n, i_co, i_h, i_w] + 1.0
+
+
 # pylint: enable=invalid-name,no-member
 
 
@@ -303,16 +349,17 @@ def test_conv2d_post_order_apply():
 
 
 @pytest.mark.skip(reason="needs RPC")
-def test_conv2d_relu_post_order_apply():
+def test_conv2d_relu_plus_one_post_order_apply():
     rule = ms.SearchRule.compose(
         name="composed",
         rules=[
             do_nothing,
+            ms.search_rule.always_inline(),
             ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS"),
         ],
     )
     sch = ms.autotune(
-        task=conv2d_relu,
+        task=conv2d_relu_plus_one,
         space=ms.PostOrderApply(rule=rule),
         strategy="replay",
         runner="rpc://0.0.0.0:3012:local * 16",
@@ -330,4 +377,4 @@ if __name__ == "__main__":
     test_matmul_relu_post_order_apply()
     test_conv2d_schedule_fn()
     test_conv2d_post_order_apply()
-    test_conv2d_relu_post_order_apply()
+    test_conv2d_relu_plus_one_post_order_apply()

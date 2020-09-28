@@ -57,3 +57,15 @@ def multi_level_tiling_with_fusion(tiling_structure: str) -> SearchRule:
     return _ffi_api_rule.MultiLevelTilingWithFusion(  # pylint: disable=no-member
         tiling_structure
     )
+
+
+def always_inline() -> SearchRule:
+    """Create a rule that inlines all possible blocks
+
+    Returns
+    ----------
+    rule: SearchRule
+        A search rule that does inlining
+    """
+
+    return _ffi_api_rule.AlwaysInline()  # pylint: disable=no-member

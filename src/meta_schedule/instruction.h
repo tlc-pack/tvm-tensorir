@@ -246,6 +246,39 @@ class ReorderInst : public Instruction {
   ReorderInst() = default;
 };
 
+/**************** ComputeInlineInst ****************/
+
+/*! \brief An instruction to make a block computed inline */
+class ComputeInlineInstNode : public InstructionNode {
+ public:
+  /*! \brief The block to be computed inline */
+  BlockRV block;
+
+  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("block", &block); }
+
+  static constexpr const char* _type_key = "meta_schedule.ComputeInlineInst";
+  TVM_DECLARE_FINAL_OBJECT_INFO(ComputeInlineInstNode, InstructionNode);
+};
+
+/*!
+ * \brief Managed reference to ComputeInlineInstNode
+ * \sa ComputeInlineInstNode
+ */
+class ComputeInlineInst : public Instruction {
+ public:
+  /*!
+   * \brief Constructor
+   * \param block The block to be computed inline
+   */
+  explicit ComputeInlineInst(BlockRV block);
+
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(ComputeInlineInst, Instruction, ComputeInlineInstNode);
+
+ protected:
+  /*! \brief Constructor. The node should never be constructed directly. */
+  ComputeInlineInst() = default;
+};
+
 /**************** DecomposeReductionInst ****************/
 
 /*! \brief An instruction for decompose_reduction in TIR */

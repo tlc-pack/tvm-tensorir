@@ -29,6 +29,41 @@ String AsHybrid(const Schedule& sch) {
   return s;
 }
 
+class AlwaysInline {
+ public:
+  AlwaysInline() = default;
+
+  RulePackedArgs operator()(Schedule sch, BlockRV block_rv) {
+    static const Op& op_exp = Op::Get("tir.exp");
+    if (HasReduceBlockVar(sch, block_rv) || IsOutputBlock(sch, block_rv)) {
+      return RulePackedArgs(sch);
+    }
+    if (HasBranch(sch, block_rv) || CountOp(sch, block_rv, op_exp)) {
+      return RulePackedArgs(sch);
+    }
+    if (Optional<Array<Bool>> access = InspectLoadIndices(sch, block_rv)) {
+      CHECK_EQ(access.value().size(), 3);
+      bool injective = access.value()[1];
+      bool order = access.value()[2];
+      if (!order || !injective) {
+        return RulePackedArgs(sch);
+      }
+    } else {
+      return RulePackedArgs(sch);
+    }
+    sch->ComputeInline(block_rv);
+    return RulePackedArgs(/*proceed=*/{}, /*ignored=*/{sch});
+  }
+
+  static SearchRule MakeRule() {
+    auto invoke = [](Schedule sch, BlockRV block) -> RulePackedArgs {
+      AlwaysInline rule;
+      return rule(sch, block);
+    };
+    return SearchRule("always_inline", invoke);
+  }
+};
+
 class MultiLevelTiling {
  public:
   String tiling_structure;
@@ -94,6 +129,7 @@ class MultiLevelTilingWithFusion {
   }
 };
 
+TVM_REGISTER_GLOBAL("meta_schedule.rule.AlwaysInline").set_body_typed(AlwaysInline::MakeRule);
 TVM_REGISTER_GLOBAL("meta_schedule.rule.MultiLevelTiling")
     .set_body_typed(MultiLevelTiling::MakeRule);
 TVM_REGISTER_GLOBAL("meta_schedule.rule.MultiLevelTilingWithFusion")

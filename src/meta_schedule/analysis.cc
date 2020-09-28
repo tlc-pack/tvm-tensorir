@@ -440,6 +440,23 @@ TVM_DLL bool IsElementWiseMatch(Schedule sch, BlockRV producer_rv, BlockRV consu
   return false;
 }
 
+bool IsOutputBlock(Schedule sch, BlockRV block_rv) {
+  tir::StmtSRef block_sref = sch->Eval(block_rv);
+  const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  CHECK(block);
+  tir::StmtSRef parent_sref = sch->sch->GetParentBlockSRef(block_sref);
+  const auto* parent = parent_sref->GetStmt<tir::BlockNode>();
+  CHECK(parent);
+  for (const tir::TensorRegion& write : block->writes) {
+    for (const tir::TensorRegion& parent_write : parent->writes) {
+      if (write->buffer.same_as(parent_write->buffer)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBlockVarTypes").set_body_typed(GetBlockVarTypes);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeafBlock").set_body_typed(IsLeafBlock);
