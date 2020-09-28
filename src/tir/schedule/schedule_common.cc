@@ -405,7 +405,7 @@ bool ExprContainsVar(const PrimExpr& expr, const PrimExpr& vars) {
 }
 
 MatchingSimplifier::MatchingSimplifier(
-    const std::unordered_map<Var, PrimExpr, ObjectHash, ObjectEqual>& var_map,
+    const std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual>& var_map,
     arith::Analyzer* parent)
     : var_map_(var_map), analyzer_(parent) {}
 

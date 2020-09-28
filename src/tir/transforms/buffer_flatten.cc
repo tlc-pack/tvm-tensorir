@@ -24,6 +24,7 @@
 #include <tvm/arith/int_set.h>
 #include <tvm/ir/attrs.h>
 #include <tvm/runtime/registry.h>
+#include <tvm/tir/builtin.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
 #include <tvm/tir/schedule.h>
@@ -188,6 +189,16 @@ class RegionGatherer : public StmtExprVisitor {
     StmtExprVisitor::VisitStmt_(op);
   }
 
+  void VisitStmt_(const BlockNode* op) final {
+    for (const auto& tensor_region: op->reads) {
+      VisitBufferRegion(tensor_region);
+    }
+    for (const auto& tensor_region: op->writes) {
+      VisitBufferRegion(tensor_region);
+    }
+    StmtExprVisitor::VisitStmt_(op);
+  }
+
   void VisitStmt_(const BufferAllocateNode* op) final {
     std::vector<arith::IntSet> empty_region(op->buffer->shape.size(), arith::IntSet::Nothing());
     // Initialize the buffer region with empty region.
@@ -195,15 +206,15 @@ class RegionGatherer : public StmtExprVisitor {
     StmtExprVisitor::VisitStmt_(op);
   }
 
-  void VisitStmt_(const BufferStoreNode* op) final {
-    VisitBuffer(op);
-    StmtExprVisitor::VisitStmt_(op);
-  }
-
-  void VisitExpr_(const BufferLoadNode* op) final {
-    VisitBuffer(op);
-    StmtExprVisitor::VisitExpr_(op);
-  }
+//  void VisitStmt_(const BufferStoreNode* op) final {
+//    VisitBuffer(op);
+//    StmtExprVisitor::VisitStmt_(op);
+//  }
+//
+//  void VisitExpr_(const BufferLoadNode* op) final {
+//    VisitBuffer(op);
+//    StmtExprVisitor::VisitExpr_(op);
+//  }
 
   /*! \brief The used region of each Buffer */
   std::unordered_map<Buffer, std::vector<arith::IntSet>, ObjectPtrHash, ObjectPtrEqual>
@@ -217,12 +228,10 @@ class RegionGatherer : public StmtExprVisitor {
   /*! \brief The loops from the current node up to the root */
   std::vector<Loop> loop_stack_;
 
-  /*! \note T can be BufferLoad or BufferStore */
-  template <typename T>
-  void VisitBuffer(const T* op) {
-    auto it = buffers_region_.find(op->buffer);
+  void VisitBufferRegion(const TensorRegion& tensor_region) {
+    auto it = buffers_region_.find(tensor_region->buffer);
     CHECK(it != buffers_region_.end());
-    const auto& region = GatherRegion(op);
+    const auto& region = GatherRegion(tensor_region);
     auto& buffer_region = it->second;
     CHECK_EQ(buffer_region.size(), region.size());
     for (size_t i = 0; i < region.size(); ++i) {
@@ -232,12 +241,10 @@ class RegionGatherer : public StmtExprVisitor {
 
   /*!
    * \brief Gather used buffer region
-   * \note T can be BufferLoad or BufferStore
    */
-  template <typename T>
-  std::vector<arith::IntSet> GatherRegion(const T* op) {
+  std::vector<arith::IntSet> GatherRegion(const TensorRegion& tensor_region) {
     std::unordered_map<const VarNode*, arith::IntSet> dom_map;
-    auto it = buffers_lca_.find(op->buffer);
+    auto it = buffers_lca_.find(tensor_region->buffer);
     CHECK(it != buffers_lca_.end());
     const auto& lca = it->second;
     // Every loop will be relaxed if the lca is the root
@@ -245,14 +252,16 @@ class RegionGatherer : public StmtExprVisitor {
     for (size_t i = 0; i < loop_stack_.size(); ++i) {
       const Loop& loop = loop_stack_[i];
       const VarNode* var = loop->loop_var.get();
-      if (need_relax || (op->buffer->scope == "shared" && IsThreadBinded(loop))) {
+      if (need_relax || (tensor_region->buffer->scope == "shared" && IsThreadBinded(loop))) {
         dom_map[var] = arith::IntSet::FromRange(Range::FromMinExtent(loop->min, loop->extent));
       }
       if (loop.same_as(lca)) need_relax = true;
     }
     std::vector<arith::IntSet> region;
-    for (const auto& e : op->indices) {
-      region.push_back(arith::EvalSet(Substitute(e, block_var_), dom_map));
+    for (const auto& range : tensor_region->region) {
+      Range r = Range::FromMinExtent(Substitute(range->min, block_var_),
+                                     Substitute(range->extent, block_var_));
+      region.push_back(arith::EvalSet(r, dom_map));
     }
     return region;
   }
@@ -409,7 +418,7 @@ class BufferFlattener : public StmtExprMutator {
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     op = stmt.as<BufferStoreNode>();
     CHECK(op != nullptr);
-    auto begins = ComputeRelativeIndices(op);
+    auto begins = ComputeRelativeIndices(op->buffer, op->indices);
     Buffer new_buffer = ReshapeBuffer(op->buffer, this->buffers_region_.at(op->buffer));
     return new_buffer.vstore(begins, op->value);
   }
@@ -417,9 +426,21 @@ class BufferFlattener : public StmtExprMutator {
   PrimExpr VisitExpr_(const BufferLoadNode* op) final {
     PrimExpr expr = StmtExprMutator::VisitExpr_(op);
     op = expr.as<BufferLoadNode>();
-    auto begins = ComputeRelativeIndices(op);
+    auto begins = ComputeRelativeIndices(op->buffer, op->indices);
     Buffer new_buffer = ReshapeBuffer(op->buffer, this->buffers_region_.at(op->buffer));
     return new_buffer.vload(begins, op->dtype);
+  }
+
+  PrimExpr VisitExpr_(const CallNode* op) final {
+    if (op->op.same_as(builtin::get_elem_offset())) {
+      CHECK_EQ(op->args.size(), 1);
+      const auto* buffer_load = op->args[0].as<BufferLoadNode>();
+      CHECK(buffer_load != nullptr);
+      Load load = Downcast<Load>(VisitExpr(op->args[0]));
+      return load->index;
+    } else {
+      return StmtExprMutator::VisitExpr_(op);
+    }
   }
 
  private:
@@ -437,11 +458,11 @@ class BufferFlattener : public StmtExprMutator {
   Buffer ReshapeBuffer(const Buffer& buffer, const std::vector<arith::IntSet>& region) {
     if (arg_buffers_.count(buffer)) return buffer;
     auto n = runtime::make_object<BufferNode>(*(buffer.operator->()));
-    std::vector<PrimExpr> shape;
+    Array<PrimExpr> shape;
     for (const auto& i : region) {
       shape.push_back(i.max() - i.min() + 1);
     }
-    n->shape = shape;
+    n->shape = std::move(shape);
     return Buffer(n);
   }
 
@@ -449,16 +470,16 @@ class BufferFlattener : public StmtExprMutator {
    * \brief Transform indices from the absolute indices to relative indices
    * \note T can be BufferLoad or BufferStore
    */
-  template <typename T>
-  std::vector<PrimExpr> ComputeRelativeIndices(const T* op) {
-    auto it = buffers_region_.find(op->buffer);
+  std::vector<PrimExpr> ComputeRelativeIndices(const Buffer& buffer,
+                                               const Array<PrimExpr>& indices) {
+    auto it = buffers_region_.find(buffer);
     CHECK(it != buffers_region_.end());
     const auto& region = it->second;
-    std::vector<PrimExpr> indices;
+    std::vector<PrimExpr> new_indices;
     for (size_t i = 0; i < region.size(); ++i) {
-      indices.push_back(op->indices[i] - region[i].min());
+      new_indices.push_back(indices[i] - region[i].min());
     }
-    return indices;
+    return new_indices;
   }
 };
 

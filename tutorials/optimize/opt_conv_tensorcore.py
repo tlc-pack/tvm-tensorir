@@ -335,6 +335,7 @@ if nvcc.have_tensorcore(ctx.compute_version):
         "auto_max_step": 16
     }}):
         func = tvm.build(s, [A, W, Conv], 'cuda')
+    print(func.imported_modules[0].get_source())
     a_np = np.random.uniform(size=data_shape).astype(A.dtype)
     w_np = np.random.uniform(size=kernel_shape).astype(W.dtype)
     a = tvm.nd.array(a_np, ctx)

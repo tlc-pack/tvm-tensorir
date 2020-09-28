@@ -22,6 +22,7 @@
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
+#include <tvm/tir/builtin.h>
 
 #include <utility>
 
@@ -42,7 +43,7 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
   bool VisitExpr(const PrimExpr& n, const PrimExpr& other) override {
     bool equal = (n->type_index() == other->type_index()) && ExprComparator::VisitExpr(n, other);
     if (!equal && assert_mode_)
-      LOG(FATAL) << "Exprs are not matching between:" << n << " and " << other;
+      LOG(INFO) << "Exprs are not matching between:" << n << " and " << other;
     return equal;
   }
 
@@ -112,7 +113,6 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
     if (op->iter_vars.size() < rhs->iter_vars.size()) return false;
 
     size_t offset = op->iter_vars.size() - rhs->iter_vars.size();
-
     for (size_t i = 0; i < rhs->iter_vars.size(); ++i) {
       auto lhs_var = op->iter_vars[i + offset], rhs_var = rhs->iter_vars[i];
       // Skip iter dom
@@ -136,9 +136,9 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
   }
 
   // Map from rhs buffer to lhs buffer
-  std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual> rhs_buffer_map_;
+  std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> rhs_buffer_map_;
   // Buffer indices mapping
-  std::unordered_map<Buffer, std::vector<Var>, ObjectPtrHash, ObjectPtrEqual> buffer_indices_;
+  std::unordered_map<Buffer, std::vector<PrimExpr>, ObjectPtrHash, ObjectPtrEqual> buffer_indices_;
   std::vector<IterVar> extra_block_vars_;
 
 // Exprs
@@ -216,9 +216,12 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
     // Remap both buffer itself and buffer data
     // Skip buffer shape
     bool equal = DefEqual(lhs, rhs) && DefEqual(lhs->data, rhs->data) &&
-                 lhs->buffer_type == rhs->buffer_type && CompareType(lhs->dtype, rhs->dtype) &&
+                 CompareType(lhs->dtype, rhs->dtype) &&
                  lhs->scope == rhs->scope;
     if (equal) rhs_buffer_map_[rhs] = lhs;
+    else if (assert_mode_) {
+      LOG(FATAL) << "Buffers are not matching between:" << lhs << " and " << rhs;
+    }
     return equal;
   }
 
@@ -228,21 +231,20 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
     // Number of indices in desc_block must be smaller than it in AST
     if (rhs->region.size() > lhs->region.size()) return false;
     size_t offset = lhs->region.size() - rhs->region.size();
-
     bool need_update = false;
     if (auto it = buffer_indices_.find(lhs->buffer) == buffer_indices_.end()) {
       need_update = true;
-      buffer_indices_[lhs->buffer] = std::vector<Var>();
+      buffer_indices_[lhs->buffer] = std::vector<PrimExpr>();
     } else {
       if (offset != buffer_indices_[lhs->buffer].size()) return false;
     }
-    std::vector<Var>& indices = buffer_indices_[lhs->buffer];
+    std::vector<PrimExpr>& indices = buffer_indices_[lhs->buffer];
     for (size_t i = 0; i < offset; ++i) {
       const Range& range = lhs->region[i];
       // High-dim region must be element-wise
       if (!is_one(range->extent)) return false;
       if (need_update) {
-        indices.push_back(Downcast<Var>(range->min));
+        indices.push_back(range->min);
       } else {
         // The order matters since we only map inner block_var to outside block_var
         if (!VisitExpr(range->min, indices[i])) return false;
@@ -314,7 +316,7 @@ class BufferReplacer : public StmtExprMutator {
       const std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual>& buffer_map,
       const std::unordered_map<const VarNode*, const PrimExprNode*>& var_map,
       std::vector<IterVar>&& extra_block_vars,
-      const std::unordered_map<Buffer, std::vector<Var>, ObjectPtrHash, ObjectPtrEqual>&
+      const std::unordered_map<Buffer, std::vector<PrimExpr>, ObjectPtrHash, ObjectPtrEqual>&
           buffer_indices)
       : buffer_map_(buffer_map),
         var_map_(var_map),
@@ -353,17 +355,26 @@ class BufferReplacer : public StmtExprMutator {
     auto it = var_map_.find(op);
     if (it != var_map_.end()) {
       return GetRef<PrimExpr>(it->second);
-    } else {
-      return GetRef<PrimExpr>(op);
+    } else{
+      auto it2 = block_var_map_.find(op);
+      if (it2 != block_var_map_.find(op)) {
+        return GetRef<PrimExpr>(it2->second);
+      } else {
+        return GetRef<PrimExpr>(op);
+      }
     }
   }
 
   Stmt VisitStmt_(const BlockNode* op) final {
     std::vector<IterVar> extra_block_var;
+    std::unordered_map<const VarNode*, const PrimExprNode*> block_var_map;
     for (const auto& iter_var : extra_block_vars_) {
       auto n = runtime::make_object<IterVarNode>(*(iter_var.get()));
-      extra_block_var.emplace_back(n);
+      IterVar block_var(n);
+      extra_block_var.push_back(block_var);
+      block_var_map[iter_var->var.get()] = block_var->var.get();
     }
+    std::swap(block_var_map, block_var_map_);
     std::swap(extra_block_var, current_extra_vars_);
     auto s = StmtExprMutator::VisitStmt_(op);
     op = s.as<BlockNode>();
@@ -373,6 +384,8 @@ class BufferReplacer : public StmtExprMutator {
     iter_vars.insert(iter_vars.begin(), current_extra_vars_.begin(), current_extra_vars_.end());
     auto reads = UpdateBufferViaMap(op->reads);
     auto writes = UpdateBufferViaMap(op->writes);
+
+    std::swap(block_var_map, block_var_map_);
     std::swap(extra_block_var, current_extra_vars_);
 
     if (reads.same_as(op->reads) && writes.same_as(op->writes) &&
@@ -387,31 +400,14 @@ class BufferReplacer : public StmtExprMutator {
     }
   }
 
-//  Stmt VisitStmt_(const BlockRealizeNode* op) final {
-//    return GetRef<BlockRealize>(op);
-//  }
-
  private:
   const std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual>& buffer_map_;
   const std::unordered_map<const VarNode*, const PrimExprNode*>& var_map_;
+  std::unordered_map<const VarNode*, const PrimExprNode*> block_var_map_;
   std::vector<IterVar> current_extra_vars_;
   const std::vector<IterVar>& extra_block_vars_;
-  const std::unordered_map<Buffer, std::vector<Var>, ObjectPtrHash, ObjectPtrEqual>&
+  const std::unordered_map<Buffer, std::vector<PrimExpr>, ObjectPtrHash, ObjectPtrEqual>&
       buffer_indices_;
-
-  std::vector<Var> BlockVarIndices(const std::vector<Var>& indices) {
-    std::vector<Var> ret;
-    for (const auto& index : indices) {
-      for (size_t i = 0; i < extra_block_vars_.size(); i++) {
-        if (index.same_as(extra_block_vars_[i]->var)) {
-          ret.push_back(current_extra_vars_[i]->var);
-          break;
-        }
-        LOG(FATAL) << "Cannot find correct block var";
-      }
-    }
-    return ret;
-  }
 
   Array<TensorRegion> UpdateBufferViaMap(const Array<TensorRegion>& tensor_regions) {
     auto fmutate = [this](const TensorRegion& tensor_region) {
@@ -422,9 +418,8 @@ class BufferReplacer : public StmtExprMutator {
         auto it2 = buffer_indices_.find(n->buffer);
         if (it2 != buffer_indices_.end()) {
           Region region;
-          std::vector<Var> vars = BlockVarIndices(it2->second);
-          for (const auto& var : vars) {
-            region.push_back(Range::FromMinExtent(var, 1));
+          for (const auto& min : it2->second) {
+            region.push_back(Range::FromMinExtent(VisitExpr(min), 1));
           }
           n->region.insert(n->region.begin(), region.begin(), region.end());
         }
@@ -497,21 +492,20 @@ void ScheduleNode::tensorize(const StmtSRef& sref, const TensorIntrin& intrinsic
                                               const Array<TensorRegion>& new_regions) {
     CHECK_EQ(old_regions.size(), new_regions.size());
     for (size_t i = 0; i < old_regions.size(); ++i) {
+      Array<PrimExpr> indices;
       const auto& old_region = old_regions[i];
       const auto& new_region = new_regions[i];
-      PrimExpr offset = 0, stride = 1;
-      const auto& buffer = old_region->buffer;
-      const auto& region = old_region->region;
-      for (size_t j = region.size(); j > 0; --j) {
-        offset = region[j - 1]->min * stride + offset;
-        stride *= buffer->shape[j - 1];
+      for (const auto range : old_region->region) {
+        indices.push_back(range->min);
       }
       if (const auto* var = new_region->buffer->elem_offset.as<VarNode>()) {
+        PrimExpr call = Call(DataType::Int(32), builtin::get_elem_offset(),
+                             {BufferLoad(old_region->buffer, indices)});
         auto it = element_offset.find(var);
         if (it != element_offset.end()) {
-          CHECK(ExprDeepEqual()(it->second, offset));
+          CHECK(ExprDeepEqual()(it->second, call));
         } else {
-          element_offset[var] = offset;
+          element_offset[var] = call;
         }
       }
     }
