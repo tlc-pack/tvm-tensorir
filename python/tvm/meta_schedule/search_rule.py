@@ -69,3 +69,15 @@ def always_inline() -> SearchRule:
     """
 
     return _ffi_api_rule.AlwaysInline()  # pylint: disable=no-member
+
+
+def add_cache_write() -> SearchRule:
+    """Create a rule that adds a cache write stage after multi-level tiling
+
+    Returns
+    ----------
+    rule: SearchRule
+        A search rule that does cache write
+    """
+
+    return _ffi_api_rule.AddCacheWrite()  # pylint: disable=no-member

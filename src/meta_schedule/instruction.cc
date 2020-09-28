@@ -79,6 +79,13 @@ GetOnlyConsumerInst::GetOnlyConsumerInst(BlockRV block, BlockRV output) {
   data_ = std::move(n);
 }
 
+CacheWriteInst::CacheWriteInst(BlockRV block, String storage_scope) {
+  ObjectPtr<CacheWriteInstNode> n = make_object<CacheWriteInstNode>();
+  n->block = std::move(block);
+  n->storage_scope = std::move(storage_scope);
+  data_ = std::move(n);
+}
+
 TVM_REGISTER_NODE_TYPE(InstructionNode);
 TVM_REGISTER_NODE_TYPE(SampleTileFactorInstNode);
 TVM_REGISTER_NODE_TYPE(GetBlockInstNode);
@@ -86,6 +93,7 @@ TVM_REGISTER_NODE_TYPE(GetAxesInstNode);
 TVM_REGISTER_NODE_TYPE(SplitInstNode);
 TVM_REGISTER_NODE_TYPE(ReorderInstNode);
 TVM_REGISTER_NODE_TYPE(ComputeInlineInstNode);
+TVM_REGISTER_NODE_TYPE(CacheWriteInstNode);
 TVM_REGISTER_NODE_TYPE(DecomposeReductionInstNode);
 TVM_REGISTER_NODE_TYPE(GetOnlyConsumerInstNode);
 

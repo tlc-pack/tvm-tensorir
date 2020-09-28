@@ -129,11 +129,43 @@ class MultiLevelTilingWithFusion {
   }
 };
 
+class AddCacheWrite {
+ public:
+  AddCacheWrite() = default;
+
+  RulePackedArgs operator()(Schedule sch, BlockRV block_rv) {
+    if (!NeedsMultiLevelTiling(sch, block_rv)) {
+      return RulePackedArgs(sch);
+    }
+    // The only consumer will not be fused
+    if (Optional<BlockRV> opt_consumer_rv = sch->GetOnlyConsumer(block_rv)) {
+      BlockRV consumer_rv = opt_consumer_rv.value();
+      if (!HasReduceBlockVar(sch, block_rv) || !HasReduceBlockVar(sch, consumer_rv)) {
+        if (IsElementWiseMatch(sch, block_rv, consumer_rv)) {
+          return RulePackedArgs(sch);
+        }
+      }
+    }
+    // Add a cache write
+    sch->CacheWrite(block_rv, "local");
+    return RulePackedArgs(/*proceed=*/{}, /*ignored=*/{sch});
+  }
+
+  static SearchRule MakeRule() {
+    auto invoke = [](Schedule sch, BlockRV block) -> RulePackedArgs {
+      AddCacheWrite rule;
+      return rule(sch, block);
+    };
+    return SearchRule("multi_level_tiling", invoke);
+  }
+};
+
 TVM_REGISTER_GLOBAL("meta_schedule.rule.AlwaysInline").set_body_typed(AlwaysInline::MakeRule);
-TVM_REGISTER_GLOBAL("meta_schedule.rule.MultiLevelTiling")
-    .set_body_typed(MultiLevelTiling::MakeRule);
+TVM_REGISTER_GLOBAL("meta_schedule.rule.AddCacheWrite").set_body_typed(AddCacheWrite::MakeRule);
 TVM_REGISTER_GLOBAL("meta_schedule.rule.MultiLevelTilingWithFusion")
     .set_body_typed(MultiLevelTilingWithFusion::MakeRule);
+TVM_REGISTER_GLOBAL("meta_schedule.rule.MultiLevelTiling")
+    .set_body_typed(MultiLevelTiling::MakeRule);
 
 }  // namespace meta_schedule
 }  // namespace tvm

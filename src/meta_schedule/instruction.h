@@ -279,6 +279,45 @@ class ComputeInlineInst : public Instruction {
   ComputeInlineInst() = default;
 };
 
+/**************** CacheWriteInst ****************/
+
+/*! \brief An instruction to buffer the write */
+class CacheWriteInstNode : public InstructionNode {
+ public:
+  /*! \brief The block to be buffered */
+  BlockRV block;
+  /*! \brief The storage scope */
+  String storage_scope;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("block", &block);
+    v->Visit("storage_scope", &storage_scope);
+  }
+
+  static constexpr const char* _type_key = "meta_schedule.CacheWriteInst";
+  TVM_DECLARE_FINAL_OBJECT_INFO(CacheWriteInstNode, InstructionNode);
+};
+
+/*!
+ * \brief Managed reference to CacheWriteInstNode
+ * \sa CacheWriteInstNode
+ */
+class CacheWriteInst : public Instruction {
+ public:
+  /*!
+   * \brief Constructor
+   * \param block The block to be buffered
+   * \param storage_scope The storage scope
+   */
+  explicit CacheWriteInst(BlockRV block, String storage_scope);
+
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(CacheWriteInst, Instruction, CacheWriteInstNode);
+
+ protected:
+  /*! \brief Constructor. The node should never be constructed directly. */
+  CacheWriteInst() = default;
+};
+
 /**************** DecomposeReductionInst ****************/
 
 /*! \brief An instruction for decompose_reduction in TIR */

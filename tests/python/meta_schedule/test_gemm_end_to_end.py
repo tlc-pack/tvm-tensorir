@@ -355,6 +355,8 @@ def test_conv2d_relu_plus_one_post_order_apply():
         rules=[
             do_nothing,
             ms.search_rule.always_inline(),
+            ms.search_rule.add_cache_write(),
+            ms.search_rule.multi_level_tiling_with_fusion(tiling_structure="SSRSRS"),
             ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS"),
         ],
     )

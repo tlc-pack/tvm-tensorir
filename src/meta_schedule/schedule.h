@@ -152,6 +152,13 @@ class ScheduleNode : public Object {
    */
   void ComputeInline(const BlockRV& block);
   /*!
+   * \brief Apply the instruction cache_write
+   * \param block The block to be buffered
+   * \param storage_scope The storage scope
+   * \return The cache write stage
+   */
+  BlockRV CacheWrite(const BlockRV& block, const String& storage_scope);
+  /*!
    * \brief Apply the instruction DecomposeReduction
    * \param block The block to be decomposed
    * \param loop The loop to be decomposed at
