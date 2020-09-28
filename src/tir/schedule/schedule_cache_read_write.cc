@@ -515,19 +515,6 @@ class CacheWriteRewriter : public StmtExprMutator {
   CacheStageInfo* info_;
 };
 
-//Buffer CreateCahceBuffer(const Buffer& buffer, const std::string& storage_scope) {
-//  auto n = make_object<BufferNode>(*(buffer.get()));
-//  n->data = buffer->data.copy_with_suffix("_" + storage_scope);
-//  n->name = buffer->name + "_" + storage_scope;
-//  Array<PrimExpr> shape;
-//  for (size_t i = 0; i < buffer->shape.size(); i++) {
-//    shape.push_back(Var(n->name + "_shape_" + std::to_string(i)));
-//  }
-//  n->shape = std::move(shape);
-//  n->scope = storage_scope;
-//  return Buffer(n);
-//}
-
 StmtSRef ScheduleNode::cache_read(const Buffer& read_buffer, const std::string& storage_scope) {
   /*!
    * Check:

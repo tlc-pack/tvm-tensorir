@@ -176,7 +176,7 @@ def load_a_intrin(a: ty.handle, c: ty.handle) -> None:
         tir.reads(A[0: 16, 0: 16])
         tir.writes(C[0: 16, 0: 16])
         tir.evaluate(tir.tvm_load_matrix_sync(
-            C.data, 16, 16, 16, C.elem_offset // 256, A.access_ptr("w"), 16, "row_major",
+            C.data, 16, 16, 16, C.elem_offset // 256, A.access_ptr("r"), 16, "row_major",
             dtype="handle"))
 
 
@@ -210,11 +210,11 @@ def load_b_intrin(a: ty.handle, c: ty.handle) -> None:
         tir.reads(A[0: 16, 0: 16])
         tir.writes(C[0: 16, 0: 16])
         tir.evaluate(tir.tvm_load_matrix_sync(
-            C.data, 16, 16, 16, C.elem_offset // 256, A.access_ptr("w"), 16, "row_major",
+            C.data, 16, 16, 16, C.elem_offset // 256, A.access_ptr("r"), 16, "row_major",
             dtype="handle"))
 
 
-def build_and_test(func, device='cuda', num_runs=1000):
+def build_and_test(func, device='cuda', num_runs=10):
     ctx = tvm.context(device, 0)
     if not ctx.exist:
         print("Skip because %s is not enabled" % device)
@@ -224,7 +224,6 @@ def build_and_test(func, device='cuda', num_runs=1000):
     if nvcc.have_tensorcore(ctx.compute_version):
         with tvm.transform.PassContext(config={"tir.UnrollLoop": {"auto_max_step": 16}}):
             func = tvm.build(func, target=device)
-    print(func.imported_modules[0].get_source())
     a_np = np.random.uniform(size=(16, 14, 14, 16, 16, 16)).astype("float16")
     w_np = np.random.uniform(size=(14, 14, 16, 32, 16, 16)).astype("float16")
     a = tvm.nd.array(a_np, ctx)
@@ -232,26 +231,6 @@ def build_and_test(func, device='cuda', num_runs=1000):
     c = tvm.nd.array(np.zeros((16, 14, 14, 32, 16, 16), dtype="float32"), ctx)
     evaluator = func.time_evaluator(func.entry_name, ctx, number=num_runs)
     print("conv2d with tensor core: %f ms" % (evaluator(a, w, c).mean * 1e3))
-
-    # a_np = np.random.uniform(size=(256, 256, 16, 16)).astype(np.float16)
-    # b_np = np.random.uniform(size=(256, 256, 16, 16)).astype(np.float16)
-    # a = tvm.nd.array(a_np, ctx)
-    # b = tvm.nd.array(b_np, ctx)
-    # c = tvm.nd.array(np.zeros((256, 256, 16, 16), dtype=np.float16), ctx)
-    #
-    # f(a, b, c)
-    # a_np = a_np.transpose((0, 1, 3, 2, 4)).reshape(4096, 4096)
-    # b_np = b_np.transpose((0, 1, 3, 2, 4)).reshape(4096, 4096)
-    # c_np = c.asnumpy().transpose((0, 1, 3, 2, 4)).reshape(4096, 4096)
-    # np.testing.assert_allclose(c_np, np.matmul(a_np.astype(np.float16), b_np.astype(np.float16)),
-    #                            rtol=1e-4, atol=1e-4)
-    #
-    # timer_f = f.time_evaluator(f.entry_name, ctx, number=num_runs)
-    # t = timer_f(a, b, c).mean
-    # num_flops = 2 * 4096 * 4096 * 4096
-    # GFLOPS = num_flops / (t * 1e3) / 1e6
-    # print("Device %s" % device)
-    # print("average time cost of %d runs = %g ms, %g GFLOPS." % (num_runs, t * 1e3, GFLOPS))
 
 
 def test_tensorcore():
@@ -345,7 +324,6 @@ def test_tensorcore():
     s.tensorize(s.get_axes(WF)[-2], tir.TensorIntrin(load_b_desc, load_b_intrin))
 
     print(tvm.hybrid.ashybrid(s.func))
-    print(tvm.lower(s.func, None, simple_mode=True))
     build_and_test(s.func)
 
 
