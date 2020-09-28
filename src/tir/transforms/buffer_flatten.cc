@@ -26,8 +26,8 @@
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
-#include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/schedule.h>
+#include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
 
 namespace tvm {
@@ -116,6 +116,8 @@ class LCADetector : public StmtExprVisitor {
 
   /*! \brief The map from Buffer to its LCA Stmt/Expr */
   std::unordered_map<Buffer, ObjectRef, ObjectPtrHash, ObjectPtrEqual> buffers_lca_;
+  /*! \brief The Buffer in function args */
+  std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual> arg_buffers_;
 
  private:
   /*! \brief The AST node information for querying LCA */
@@ -132,10 +134,9 @@ class LCADetector : public StmtExprVisitor {
   size_t depth_{0};
   /*! \brief The parent and depth info of each Loop/BufferLoad/BufferStore Node */
   std::unordered_map<ObjectRef, ScopeInfo, ObjectPtrHash, ObjectPtrEqual> ast_scopes_info_;
-  /*! \brief The Buffer in function args */
-  std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual> arg_buffers_;
 
   ObjectRef LowestCommonAncestor(ObjectRef lhs, ObjectRef rhs) {
+    if (!lhs.defined() || !rhs.defined()) return NullValue<ObjectRef>();
     CHECK(ast_scopes_info_.count(lhs));
     CHECK(ast_scopes_info_.count(rhs));
     while (ast_scopes_info_[lhs].depth > ast_scopes_info_[rhs].depth) {
@@ -260,8 +261,8 @@ class RegionGatherer : public StmtExprVisitor {
     for (const auto& annotation : loop->annotations)
       if (annotation->attr_key == attr::loop_type) {
         std::string thread_tag = Downcast<StringImm>(annotation->value)->value;
-        if (thread_tag.substr(0, 9) == "threadIdx" ||
-            thread_tag.substr(0, 7) == "vthread") return true;
+        if (thread_tag.substr(0, 9) == "threadIdx" || thread_tag.substr(0, 7) == "vthread")
+          return true;
       }
     return false;
   }
@@ -275,9 +276,13 @@ class BufferFlattener : public StmtExprMutator {
   BufferFlattener(
       const std::unordered_map<const VarNode*, PrimExpr>& block_var,
       const std::unordered_map<Buffer, std::vector<arith::IntSet>, ObjectPtrHash, ObjectPtrEqual>&
-          buffers_region,
-      const std::unordered_map<Buffer, ObjectRef, ObjectPtrHash, ObjectPtrEqual>& buffers_lca)
-      : buffers_region_(buffers_region), block_var_(block_var), buffers_lca_(buffers_lca) {}
+      buffers_region,
+      const std::unordered_map<Buffer, ObjectRef, ObjectPtrHash, ObjectPtrEqual>& buffers_lca,
+      const std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual>& arg_buffers)
+      : buffers_region_(buffers_region),
+        block_var_(block_var),
+        buffers_lca_(buffers_lca),
+        arg_buffers_(arg_buffers) {}
 
   Stmt VisitStmt(const Stmt& stmt) override {
     Stmt body = StmtMutator::VisitStmt(stmt);
@@ -422,12 +427,15 @@ class BufferFlattener : public StmtExprMutator {
       buffers_region_;
   const std::unordered_map<const VarNode*, PrimExpr>& block_var_;
   const std::unordered_map<Buffer, ObjectRef, ObjectPtrHash, ObjectPtrEqual>& buffers_lca_;
+  const std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual>& arg_buffers_;
+
   std::unordered_map<Buffer, BufferAllocate, ObjectPtrHash, ObjectPtrEqual> pending_allocate_;
 
   /*!
    * \brief Create a buffer with alternative shape
    */
-  static Buffer ReshapeBuffer(const Buffer& buffer, const std::vector<arith::IntSet>& region) {
+  Buffer ReshapeBuffer(const Buffer& buffer, const std::vector<arith::IntSet>& region) {
+    if (arg_buffers_.count(buffer)) return buffer;
     auto n = runtime::make_object<BufferNode>(*(buffer.operator->()));
     std::vector<PrimExpr> shape;
     for (const auto& i : region) {
@@ -474,8 +482,9 @@ PrimFunc BufferFlatten(PrimFunc f) {
 
   // Transform BufferLoad/BufferStore into Load/Store
   BufferFlattener flattener(region_gatherer.block_var_, region_gatherer.buffers_region_,
-                            lca_detector.buffers_lca_);
+                            lca_detector.buffers_lca_, lca_detector.arg_buffers_);
   fptr->body = flattener(fptr->body);
+
   return f;
 }
 
