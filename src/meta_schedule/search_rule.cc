@@ -33,7 +33,8 @@ class MultiLevelTiling {
  public:
   String tiling_structure;
 
-  explicit MultiLevelTiling(String tiling_structure) : tiling_structure(tiling_structure) {}
+  explicit MultiLevelTiling(String tiling_structure)
+      : tiling_structure(std::move(tiling_structure)) {}
 
   RulePackedArgs operator()(Schedule sch, BlockRV block_rv) {
     // Right now it only works with a leaf block with a single statement
@@ -50,6 +51,31 @@ class MultiLevelTiling {
       return rule(sch, block);
     };
     return SearchRule("multi_level_tiling", invoke);
+  }
+};
+
+class MultiLevelTilingWithFusion {
+ public:
+  String tiling_structure;
+
+  explicit MultiLevelTilingWithFusion(String tiling_structure)
+      : tiling_structure(std::move(tiling_structure)) {}
+
+  RulePackedArgs operator()(Schedule sch, BlockRV block_rv) {
+    if (!NeedsMultiLevelTiling(sch, block_rv)) {
+      return RulePackedArgs(sch);
+    }
+    // Array<DepEdge> successors = sch->sch->scopes.at()
+    DoMultiLevelTiling(sch, block_rv, tiling_structure);
+    return RulePackedArgs(/*proceed=*/{}, /*ignored=*/{sch});
+  }
+
+  static SearchRule MakeRule(String tiling_structure) {
+    auto invoke = [tiling_structure](Schedule sch, BlockRV block) -> RulePackedArgs {
+      MultiLevelTilingWithFusion rule(tiling_structure);
+      return rule(sch, block);
+    };
+    return SearchRule("multi_level_tiling_with_fusion", invoke);
   }
 };
 

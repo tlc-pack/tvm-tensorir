@@ -66,6 +66,13 @@ DecomposeReductionInst::DecomposeReductionInst(BlockRV block, LoopRV loop, Block
   data_ = std::move(n);
 }
 
+GetOnlyConsumerInst::GetOnlyConsumerInst(BlockRV block, BlockRV output) {
+  ObjectPtr<GetOnlyConsumerInstNode> n = make_object<GetOnlyConsumerInstNode>();
+  n->block = std::move(block);
+  n->output = std::move(output);
+  data_ = std::move(n);
+}
+
 TVM_REGISTER_NODE_TYPE(InstructionNode);
 TVM_REGISTER_NODE_TYPE(SampleTileFactorInstNode);
 TVM_REGISTER_NODE_TYPE(GetBlockInstNode);
@@ -73,6 +80,7 @@ TVM_REGISTER_NODE_TYPE(GetAxesInstNode);
 TVM_REGISTER_NODE_TYPE(SplitInstNode);
 TVM_REGISTER_NODE_TYPE(ReorderInstNode);
 TVM_REGISTER_NODE_TYPE(DecomposeReductionInstNode);
+TVM_REGISTER_NODE_TYPE(GetOnlyConsumerInstNode);
 
 }  // namespace meta_schedule
 }  // namespace tvm

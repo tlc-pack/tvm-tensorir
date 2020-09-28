@@ -247,6 +247,31 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n, LoopRV loop, Array<Integer
   return outputs;
 }
 
+/**************** Block Relationship ****************/
+
+Optional<BlockRV> ScheduleNode::GetOnlyConsumer(const BlockRV& block) {
+  int inst_id = this->trace.size();
+  // Find the output from TIR
+  tir::StmtSRef block_sref = Eval(block);
+  Array<tir::DepEdge> succ_edges = this->sch->GetParentScope(block_sref).GetSuccessors(block_sref);
+  std::vector<tir::StmtSRef> result_sref;
+  for (const tir::DepEdge edge : succ_edges) {
+    if (edge->type == tir::DepType::kWAR || edge->type == tir::DepType::kWAW) {
+      result_sref.push_back(edge->dst);
+    }
+  }
+  if (result_sref.size() != 1) {
+    return NullOpt;
+  }
+  // Create the output random variable
+  BlockRV output;
+  // Update the symbol table
+  this->sym_tab.emplace(output, SymbolTableEntry(inst_id, result_sref[0]));
+  // Put the instruction in the trace
+  this->trace.push_back(GetOnlyConsumerInst(block, output));
+  return output;
+}
+
 /**************** Schedule Primitives ****************/
 
 BlockRV ScheduleNode::GetBlock(const String& name) {

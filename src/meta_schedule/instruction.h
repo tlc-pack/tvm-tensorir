@@ -290,6 +290,46 @@ class DecomposeReductionInst : public Instruction {
   DecomposeReductionInst() = default;
 };
 
+/**************** GetOnlyConsumerInst ****************/
+
+/*! \brief An instruction for decompose_reduction in TIR */
+class GetOnlyConsumerInstNode : public InstructionNode {
+ public:
+  /*! \brief The producer block */
+  BlockRV block;
+  /*! \brief The only consumer block of the producer block */
+  BlockRV output;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("block", &block);
+    v->Visit("output", &output);
+  }
+
+  static constexpr const char* _type_key = "meta_schedule.GetOnlyConsumerInst";
+  TVM_DECLARE_FINAL_OBJECT_INFO(GetOnlyConsumerInstNode, InstructionNode);
+};
+
+/*!
+ * \brief Managed reference to GetOnlyConsumerInstNode
+ * \sa GetOnlyConsumerInstNode
+ */
+class GetOnlyConsumerInst : public Instruction {
+ public:
+  /*!
+   * \brief Constructor
+   * \param block The producer block
+   * \param output The only consumer block of the producer block
+   */
+  explicit GetOnlyConsumerInst(BlockRV block, BlockRV output);
+
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(GetOnlyConsumerInst, Instruction,
+                                            GetOnlyConsumerInstNode);
+
+ protected:
+  /*! \brief Constructor. The node should never be constructed directly. */
+  GetOnlyConsumerInst() = default;
+};
+
 }  // namespace meta_schedule
 }  // namespace tvm
 

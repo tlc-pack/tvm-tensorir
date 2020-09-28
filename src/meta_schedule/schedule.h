@@ -113,6 +113,13 @@ class ScheduleNode : public Object {
    * \return An array of random variables, the result of sampling
    */
   Array<tir::Var> SampleTileFactor(int n, LoopRV loop, Array<Integer> where);
+  /**************** Block Relationship ****************/
+  /*!
+   * \brief Get the only consumer of a specific block
+   * \param block The block to be queried
+   * \return A block, its only consumer; or NullOpt if it does not exist
+   */
+  Optional<BlockRV> GetOnlyConsumer(const BlockRV& block);
   /**************** Scheduling Primitives ****************/
   /*!
    * \brief Apply the instruction GetBlock
