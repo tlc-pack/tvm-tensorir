@@ -29,11 +29,11 @@
 #include <tvm/tir/stmt_functor.h>
 
 #include <algorithm>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <set>
 
 namespace tvm {
 namespace tir {
@@ -127,7 +127,7 @@ TensorRegion RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
 std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root);
 
 /*!
- * \brief Whether the expr contains var
+ * \brief Inspect whether the expr contains any var of vars
  * \param expr the expected expr
  * \param vars the expected expr with vars
  * \return Whether any var appears in expr
@@ -246,7 +246,6 @@ class PatternMatcher : public ExprVisitor {
  *   expr after simplify
  *      k * 16 + v0
  */
-
 class MatchingSimplifier : public ExprMutator {
  public:
   MatchingSimplifier(const std::unordered_map<Var, PrimExpr, ObjectHash, ObjectEqual>& var_map,
@@ -257,6 +256,31 @@ class MatchingSimplifier : public ExprMutator {
  private:
   const std::unordered_map<Var, PrimExpr, ObjectHash, ObjectEqual>& var_map_;
   arith::Analyzer* analyzer_;
+};
+
+/* \brief Auto calculate the block read write region */
+class BlockReadWriteCollector : public StmtExprVisitor {
+ public:
+  explicit BlockReadWriteCollector(const Array<BufferAllocate>& allocations) {
+    for (const auto& allocate : allocations) inner_buffers_.insert(allocate->buffer.get());
+  }
+
+  Array<TensorRegion> reads();
+  Array<TensorRegion> writes();
+
+ private:
+  std::unordered_map<const VarNode*, arith::IntSet> dom_map_;
+  std::vector<Buffer> read_buffers_, writes_buffers_;
+  std::vector<std::vector<tvm::arith::IntSet>> read_regions_, write_regions_;
+  std::unordered_set<const BufferNode*> inner_buffers_;
+
+  void VisitStmt_(const LoopNode* op) override;
+  void Update(std::vector<Buffer>* buffers, std::vector<std::vector<arith::IntSet>>* regions,
+              const Buffer& buffer, const std::vector<arith::IntSet>& region);
+  void VisitExpr_(const BufferLoadNode* op) override;
+  void VisitStmt_(const BufferStoreNode* op) override;
+  void VisitStmt_(const ReduceStepNode* op) override;
+  void VisitStmt_(const BlockRealizeNode* op) override;
 };
 
 /*! \brief namespace for default reducer patterns */
