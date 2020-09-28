@@ -41,6 +41,19 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 @tvm.hybrid.script
+def matmul_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
+    A = tir.match_buffer(a, (1024, 1024), "float32")
+    B = tir.match_buffer(b, (1024, 1024), "float32")
+    D = tir.match_buffer(d, (1024, 1024), "float32")
+    C = tir.buffer_allocate((1024, 1024), "float32")
+    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
+    with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "C") as [vi, vj, vk]:
+        reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
+    with tir.block([1024, 1024], "D") as [vi, vj]:
+        D[vi, vj] = tir.max(C[vi, vj], 0.0)
+
+
+@tvm.hybrid.script
 def conv2d(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     X = tir.match_buffer(x, (1, 512, 7, 7), "float32")
     W = tir.match_buffer(w, (512, 512, 3, 3), "float32")
@@ -137,6 +150,52 @@ def test_matmul_post_order_apply():
 
 
 @pytest.mark.skip(reason="needs RPC")
+def test_matmul_relu_schedule_fn():
+    def schedule_matmul(sch):
+        block = sch.get_block(name="C")
+        i, j, k = sch.get_axes(block=block)
+        i_tiles = sch.sample_tile_factor(n=4, loop=i, where=[1, 2, 4])
+        j_tiles = sch.sample_tile_factor(n=4, loop=j, where=[1, 2, 4])
+        k_tiles = sch.sample_tile_factor(n=2, loop=k, where=[1, 2, 4])
+        i_0, i_1, i_2, i_3 = sch.split(loop=i, factors=i_tiles)
+        j_0, j_1, j_2, j_3 = sch.split(loop=j, factors=j_tiles)
+        k_0, k_1 = sch.split(loop=k, factors=k_tiles)
+        sch.reorder(after_axes=[i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3])
+
+    sch = ms.autotune(
+        task=matmul_relu,
+        space=schedule_matmul,
+        strategy="replay",
+        runner="rpc://0.0.0.0:3012:local * 16",
+    )
+    if sch is None:
+        print("No valid schedule found")
+    else:
+        _print_prim_func(sch.sch.func)
+
+
+@pytest.mark.skip(reason="needs RPC")
+def test_matmul_relu_post_order_apply():
+    rule = ms.SearchRule.compose(
+        name="composed",
+        rules=[
+            do_nothing,
+            ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS"),
+        ],
+    )
+    sch = ms.autotune(
+        task=matmul_relu,
+        space=ms.PostOrderApply(rule=rule),
+        strategy="replay",
+        runner="rpc://0.0.0.0:3012:local * 16",
+    )
+    if sch is None:
+        print("No valid schedule found")
+    else:
+        _print_prim_func(sch.sch.func)
+
+
+@pytest.mark.skip(reason="needs RPC")
 def test_conv2d_schedule_fn():
     def schedule_conv2d(sch):
         block = sch.get_block(name="conv2d_nchw")
@@ -206,7 +265,9 @@ def test_conv2d_post_order_apply():
 
 
 if __name__ == "__main__":
-    # test_matmul_schedule_fn()
-    # test_matmul_post_order_apply()
-    test_conv2d_schedule_fn()
+    test_matmul_schedule_fn()
+    test_matmul_post_order_apply()
+    test_matmul_relu_schedule_fn()
+    test_matmul_relu_post_order_apply()
+    # test_conv2d_schedule_fn()
     # test_conv2d_post_order_apply()

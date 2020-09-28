@@ -23,6 +23,7 @@
 
 #include "../arith/pattern_match.h"
 #include "../tir/schedule/schedule_common.h"  // TODO(@junrushao1994): replace it
+#include "./utils.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -332,6 +333,69 @@ Optional<Array<Bool>> InspectLoadIndices(Schedule sch, BlockRV block_rv) {
     }
   }
   return Array<Bool>{Bool(surjective), Bool(injective), Bool(ordered)};
+}
+
+bool NeedsMultiLevelTiling(Schedule sch, BlockRV block_rv) {
+  // Right now it only works with a leaf block with a single statement
+  if (!IsTrivialBinding(sch, block_rv)) {
+    return false;
+  }
+  // Get block vars used in BufferStore
+  Optional<Array<tir::Var>> block_vars = BlockVarsUsedInStore(sch, block_rv);
+  if (!block_vars.defined()) {
+    return false;
+  }
+  // Check reuse
+  Array<tir::BufferLoad> loads = GetBufferLoad(sch, block_rv);
+  int n_missing = 0;
+  for (const tir::BufferLoad& load : loads) {
+    n_missing += CountMissingBlockVars(load, block_vars.value());
+  }
+  if (n_missing >= 2) {
+    return true;
+  }
+  if (n_missing == 0) {
+    return false;
+  }
+  // n_missing == 1, check reduction axes
+  Array<Integer> iter_types = GetBlockVarTypes(sch, block_rv);
+  for (const Integer& iter_type : iter_types) {
+    int iter_var_type = iter_type;
+    if (iter_type == tir::IterVarType::kCommReduce) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void DoMultiLevelTiling(Schedule sch, BlockRV block_rv, String tiling_structure) {
+  // Do the multi-level tiling
+  std::vector<int> s_idx = FindCharPos(tiling_structure, 'S');
+  std::vector<int> r_idx = FindCharPos(tiling_structure, 'R');
+  std::vector<std::vector<LoopRV>> order(tiling_structure.size());
+  Array<LoopRV> axes = sch->GetAxes(block_rv);
+  Array<Integer> iter_types = GetBlockVarTypes(sch, block_rv);
+  CHECK_EQ(axes.size(), iter_types.size());
+  int n = axes.size();
+  for (int i = 0; i < n; ++i) {
+    std::vector<int>* idx = nullptr;
+    if (iter_types[i] == tir::IterVarType::kDataPar) {
+      idx = &s_idx;
+    } else if (iter_types[i] == tir::IterVarType::kCommReduce) {
+      idx = &r_idx;
+    } else {
+      continue;
+    }
+    int n_tiles = idx->size();
+    Array<tir::Var> factors =
+        sch->SampleTileFactor(/*n=*/n_tiles, /*loop=*/axes[i], /*where=*/{1, 2, 4});
+    Array<LoopRV> splits =
+        sch->Split(/*loop=*/axes[i], /*factors=*/{factors.begin(), factors.end()});
+    for (int j = 0; j < n_tiles; ++j) {
+      order[idx->at(j)].push_back(splits[j]);
+    }
+  }
+  sch->Reorder(ConcatArray(order));
 }
 
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
