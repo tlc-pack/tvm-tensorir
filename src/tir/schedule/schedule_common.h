@@ -29,11 +29,11 @@
 #include <tvm/tir/stmt_functor.h>
 
 #include <algorithm>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <set>
 
 namespace tvm {
 namespace tir {
@@ -127,7 +127,7 @@ TensorRegion RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
 std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root);
 
 /*!
- * \brief Whether the expr contains var
+ * \brief Inspect whether the expr contains any var of vars
  * \param expr the expected expr
  * \param vars the expected expr with vars
  * \return Whether any var appears in expr
@@ -246,7 +246,6 @@ class PatternMatcher : public ExprVisitor {
  *   expr after simplify
  *      k * 16 + v0
  */
-
 class MatchingSimplifier : public ExprMutator {
  public:
   MatchingSimplifier(const std::unordered_map<Var, PrimExpr, ObjectHash, ObjectEqual>& var_map,
@@ -257,6 +256,96 @@ class MatchingSimplifier : public ExprMutator {
  private:
   const std::unordered_map<Var, PrimExpr, ObjectHash, ObjectEqual>& var_map_;
   arith::Analyzer* analyzer_;
+};
+
+/* \brief Auto calculate the block read write region */
+class BlockReadWriteCollector : public StmtExprVisitor {
+ public:
+  explicit BlockReadWriteCollector(const Array<BufferAllocate>& allocations) {
+    for (const auto& allocate : allocations) inner_buffers_.insert(allocate->buffer.get());
+  }
+
+  Array<TensorRegion> reads();
+  Array<TensorRegion> writes();
+
+ private:
+  std::unordered_map<const VarNode*, arith::IntSet> dom_map_;
+  std::vector<Buffer> read_buffers_, writes_buffers_;
+  std::vector<std::vector<tvm::arith::IntSet>> read_regions_, write_regions_;
+  std::unordered_set<const BufferNode*> inner_buffers_;
+
+  void VisitStmt_(const LoopNode* op) override;
+  void Update(std::vector<Buffer>* buffers, std::vector<std::vector<arith::IntSet>>* regions,
+              const Buffer& buffer, const std::vector<arith::IntSet>& region);
+  void VisitExpr_(const BufferLoadNode* op) override;
+  void VisitStmt_(const BufferStoreNode* op) override;
+  void VisitStmt_(const ReduceStepNode* op) override;
+  void VisitStmt_(const BlockRealizeNode* op) override;
+};
+
+/* \brief Deep comparison to check if two IR graph are equivalent */
+using ExprComparator = ExprFunctor<bool(const PrimExpr& n, const PrimExpr& other)>;
+using StmtComparator = StmtFunctor<bool(const Stmt& n, const Stmt& other)>;
+
+class TensorizeComparator : public ExprComparator, public StmtComparator {
+ public:
+  explicit TensorizeComparator(bool assert_mode = true) : assert_mode_(assert_mode) {}
+
+  // Map from rhs buffer to lhs buffer
+  std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual> rhs_buffer_map_;
+  // Buffer indices mapping
+  std::unordered_map<Buffer, std::vector<Var>, ObjectPtrHash, ObjectPtrEqual> buffer_indices_;
+  std::vector<IterVar> extra_block_vars_;
+
+  bool VisitExpr(const PrimExpr& n, const PrimExpr& other) override;
+  bool VisitStmt(const Stmt& n, const Stmt& other) override;
+
+  bool VisitStmt_(const LoopNode* op, const Stmt& other) override;
+  bool VisitStmt_(const SeqStmtNode* op, const Stmt& other) override;
+  bool VisitStmt_(const BufferAllocateNode* op, const Stmt& other) override;
+  bool VisitStmt_(const BufferStoreNode* op, const Stmt& other) override;
+  bool VisitStmt_(const BlockRealizeNode* op, const Stmt& other) override;
+  bool VisitStmt_(const BlockNode* op, const Stmt& other) override;
+
+  bool VisitExpr_(const AddNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const SubNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const MulNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const DivNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const ModNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const EQNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const NENode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const LTNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const LENode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const GTNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const GENode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const AndNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const OrNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const MinNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const MaxNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const FloorDivNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const FloorModNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const IntImmNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const FloatImmNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const CastNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const VarNode* op, const PrimExpr& other) override;
+  bool VisitExpr_(const BufferLoadNode* op, const PrimExpr& other) override;
+
+  bool DefEqual(const ObjectRef& lhs, const ObjectRef& rhs);
+  bool CompareAnnotation(const Annotation& lhs, const Annotation& rhs);
+  virtual bool CompareBuffer(const Buffer& lhs, const Buffer& rhs);
+  bool CompareTensorRegion(const TensorRegion& lhs, const TensorRegion& rhs);
+  template <typename T>
+  bool CompareBufferAccess(const T* lhs, const T* rhs);
+  template <typename T, typename F>
+  bool CompareArray(const Array<T>& lhs, const Array<T>& rhs, F cmp);
+  bool CompareRange(const Range& lhs, const Range& rhs);
+  bool CompareType(const DataType& lhs, const DataType& rhs);
+
+ protected:
+  // variable remap if any
+  std::unordered_map<ObjectRef, ObjectRef, ObjectPtrHash, ObjectPtrEqual> equal_map_;
+  bool assert_mode_;
+  bool is_scope_block = true;
 };
 
 /*! \brief namespace for default reducer patterns */
