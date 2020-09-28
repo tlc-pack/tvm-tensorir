@@ -22,10 +22,12 @@
  * \brief Used by Hybrid Script parser to expand incomplete TIR input
  */
 
-#include <tvm/tir/stmt_functor.h>
-#include <tvm/runtime/registry.h>
 #include <tvm/arith/int_set.h>
+#include <tvm/runtime/registry.h>
+#include <tvm/tir/stmt_functor.h>
+
 #include <utility>
+
 #include "../schedule/schedule_common.h"
 
 namespace tvm {
@@ -60,9 +62,10 @@ void BlockReadWriteCollector::VisitStmt_(const LoopNode* op) {
   dom_map_.erase(op->loop_var.get());
 }
 
-void BlockReadWriteCollector::Update(
-            std::vector<Buffer>* buffers, std::vector<std::vector<arith::IntSet>>* regions,
-            const Buffer& buffer, const std::vector<arith::IntSet>& region) {
+void BlockReadWriteCollector::Update(std::vector<Buffer>* buffers,
+                                     std::vector<std::vector<arith::IntSet>>* regions,
+                                     const Buffer& buffer,
+                                     const std::vector<arith::IntSet>& region) {
   if (inner_buffers_.find(buffer.get()) != inner_buffers_.end()) return;
   bool find = false;
   for (size_t i = 0; i < regions->size(); ++i)
@@ -190,10 +193,10 @@ TVM_REGISTER_GLOBAL("hybrid.AutoComplete")
       // generate surrounding loops automatically
       Stmt res = auto_completer(std::move(body));
       // generate root block automatically
-      if (auto_completer.contains_block
-          && (!res->IsInstance<BlockRealizeNode>() || !root_allocates.empty())) {
-          res = Block({}, {}, {}, res, root_allocates, {}, "root");
-          res = BlockRealize({}, Bool(true), Downcast<Block>(res), String(""));
+      if (auto_completer.contains_block &&
+          (!res->IsInstance<BlockRealizeNode>() || !root_allocates.empty())) {
+        res = Block({}, {}, {}, res, root_allocates, {}, "root");
+        res = BlockRealize({}, Bool(true), Downcast<Block>(res), String(""));
       }
       return res;
     });
