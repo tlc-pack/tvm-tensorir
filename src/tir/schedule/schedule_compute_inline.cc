@@ -55,7 +55,7 @@ class StatementInliner : public StmtExprMutator {
     for (const auto& x : value_vars) {
       CHECK(std::find_if(vars_.begin(), vars_.end(),
                          [=](const Var& var) -> bool { return var.same_as(x); }) != vars_.end())
-        << "Not All variable in value can be replaced by index vars";
+          << "Not All variable in value can be replaced by index vars";
     }
   }
 
@@ -82,12 +82,19 @@ class StatementInliner : public StmtExprMutator {
       if (allocate->buffer != buffer) allocations.push_back(allocate);
     }
 
-    // Update read region only for none-scope block
     Array<TensorRegion> reads(nullptr);
-    if (is_scope_block) reads = op->reads;
+    if (is_scope_block) {
+      reads = op->reads;
+    } else {
+      // Update read region only for none-scope block
+      BlockReadWriteCollector block_read_write_collector(allocations);
+      block_read_write_collector(op->body);
+      reads = block_read_write_collector.reads();
+    }
 
-    auto block = Block(op->iter_vars, reads, op->writes, op->body, allocations,
-                       op->annotations, op->tag);
+    auto block =
+        Block(op->iter_vars, reads, op->writes, op->body, allocations, op->annotations, op->tag);
+
     block_sref_map_->Set(block, origin_block);
     return std::move(block);
   }
@@ -129,18 +136,14 @@ void ScheduleNode::compute_inline(const StmtSRef& block_sref) {
   const StmtSRef& parent_block_sref = GetParentBlockSRef(block_sref);
   const auto* scope_block = parent_block_sref->GetStmt<BlockNode>();
   const Scope& scope = scopes.at(parent_block_sref);
-  CHECK(block->body.as<BufferStoreNode>())
-    << "Can only inline single assignment statement";
-  CHECK_EQ(block->writes.size(), 1)
-    << "Can only inline statement with one output";
-  CHECK(scope.IsComplete(block_sref))
-    << "Can only inline a complete block";
+  CHECK(block->body.as<BufferStoreNode>()) << "Can only inline single assignment statement";
+  CHECK_EQ(block->writes.size(), 1) << "Can only inline statement with one output";
+  CHECK(scope.IsComplete(block_sref)) << "Can only inline a complete block";
 
   // Remove leaf
   std::pair<Stmt, Stmt> removed = RemoveLeaf(block_sref, parent_block_sref);
   std::unordered_map<const StmtNode*, const StmtNode*> replace_map = {
-      {removed.first.get(), removed.second.get()}
-  };
+      {removed.first.get(), removed.second.get()}};
   Stmt replaced = StmtReplacer(replace_map)(GetRef<Stmt>(scope_block));
 
   // Inline
