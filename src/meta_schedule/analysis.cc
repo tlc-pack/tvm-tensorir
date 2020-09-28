@@ -335,6 +335,16 @@ Optional<Array<Bool>> InspectLoadIndices(Schedule sch, BlockRV block_rv) {
   return Array<Bool>{Bool(surjective), Bool(injective), Bool(ordered)};
 }
 
+bool HasReduceBlockVar(Schedule sch, BlockRV block_rv) {
+  Array<Integer> iter_types = GetBlockVarTypes(sch, block_rv);
+  for (const Integer& iter_type : iter_types) {
+    if (iter_type == tir::IterVarType::kCommReduce) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool NeedsMultiLevelTiling(Schedule sch, BlockRV block_rv) {
   // Right now it only works with a leaf block with a single statement
   if (!IsTrivialBinding(sch, block_rv)) {
@@ -358,13 +368,7 @@ bool NeedsMultiLevelTiling(Schedule sch, BlockRV block_rv) {
     return false;
   }
   // n_missing == 1, check reduction axes
-  Array<Integer> iter_types = GetBlockVarTypes(sch, block_rv);
-  for (const Integer& iter_type : iter_types) {
-    if (iter_type == tir::IterVarType::kCommReduce) {
-      return true;
-    }
-  }
-  return false;
+  return HasReduceBlockVar(sch, block_rv);
 }
 
 void DoMultiLevelTiling(Schedule sch, BlockRV block_rv, String tiling_structure) {
@@ -395,6 +399,45 @@ void DoMultiLevelTiling(Schedule sch, BlockRV block_rv, String tiling_structure)
     }
   }
   sch->Reorder(ConcatArray(order));
+}
+
+TVM_DLL bool IsElementWiseMatch(Schedule sch, BlockRV producer_rv, BlockRV consumer_rv) {
+  const auto* producer_block = sch->Eval(producer_rv)->GetStmt<tir::BlockNode>();
+  const auto* consumer_block = sch->Eval(consumer_rv)->GetStmt<tir::BlockNode>();
+  CHECK(producer_block);
+  CHECK(consumer_block);
+  CHECK_GE(producer_block->writes.size(), 1U);
+  // Check condition 1: They have the same output size
+  const tir::TensorRegion& write_region = producer_block->writes[0];
+  for (const tir::TensorRegion& region : producer_block->writes) {
+    if (!write_region->buffer.same_as(region->buffer)) {
+      continue;
+    }
+    if (!RegionEqual(write_region->region, region->region)) {
+      return false;
+    }
+  }
+  for (const tir::TensorRegion& region : consumer_block->writes) {
+    if (!write_region->buffer.same_as(region->buffer)) {
+      continue;
+    }
+    if (!RegionEqual(write_region->region, region->region)) {
+      return false;
+    }
+  }
+  // Check condition 2: The read is elementwise
+  Optional<Array<tir::Var>> block_vars = BlockVarsUsedInStore(sch, consumer_rv);
+  if (!block_vars.defined()) {
+    return false;
+  }
+  if (Optional<Array<Bool>> access = InspectLoadIndices(sch, consumer_rv)) {
+    CHECK_EQ(access.value().size(), 3);
+    bool surjective = access.value()[0];
+    bool injective = access.value()[1];
+    bool order = access.value()[2];
+    return surjective && injective && order;
+  }
+  return false;
 }
 
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);

@@ -256,7 +256,7 @@ Optional<BlockRV> ScheduleNode::GetOnlyConsumer(const BlockRV& block) {
   Array<tir::DepEdge> succ_edges = this->sch->GetParentScope(block_sref).GetSuccessors(block_sref);
   std::vector<tir::StmtSRef> result_sref;
   for (const tir::DepEdge edge : succ_edges) {
-    if (edge->type == tir::DepType::kWAR || edge->type == tir::DepType::kWAW) {
+    if (edge->type == tir::DepType::kRAW || edge->type == tir::DepType::kWAW) {
       result_sref.push_back(edge->dst);
     }
   }

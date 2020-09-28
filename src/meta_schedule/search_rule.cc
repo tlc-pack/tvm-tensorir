@@ -62,11 +62,26 @@ class MultiLevelTilingWithFusion {
       : tiling_structure(std::move(tiling_structure)) {}
 
   RulePackedArgs operator()(Schedule sch, BlockRV block_rv) {
+    // Rule out the possibility that it does not need multi-level tiling
     if (!NeedsMultiLevelTiling(sch, block_rv)) {
       return RulePackedArgs(sch);
     }
-    // Array<DepEdge> successors = sch->sch->scopes.at()
+    // Get the only consumer
+    Optional<BlockRV> opt_consumer_rv = sch->GetOnlyConsumer(block_rv);
+    if (!opt_consumer_rv.defined()) {
+      return RulePackedArgs(sch);
+    }
+    // Check elementwise-match
+    BlockRV consumer_rv = opt_consumer_rv.value();
+    if (HasReduceBlockVar(sch, block_rv) && HasReduceBlockVar(sch, consumer_rv)) {
+      return RulePackedArgs(sch);
+    }
+    if (!IsElementWiseMatch(sch, block_rv, consumer_rv)) {
+      return RulePackedArgs(sch);
+    }
     DoMultiLevelTiling(sch, block_rv, tiling_structure);
+    LOG(INFO) << "We can do multi-level-tiling with fusion!";
+    // TODO(@junrushao1994): add fusion
     return RulePackedArgs(/*proceed=*/{}, /*ignored=*/{sch});
   }
 
@@ -81,6 +96,8 @@ class MultiLevelTilingWithFusion {
 
 TVM_REGISTER_GLOBAL("meta_schedule.rule.MultiLevelTiling")
     .set_body_typed(MultiLevelTiling::MakeRule);
+TVM_REGISTER_GLOBAL("meta_schedule.rule.MultiLevelTilingWithFusion")
+    .set_body_typed(MultiLevelTilingWithFusion::MakeRule);
 
 }  // namespace meta_schedule
 }  // namespace tvm

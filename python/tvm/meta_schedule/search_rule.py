@@ -36,3 +36,24 @@ def multi_level_tiling(tiling_structure: str) -> SearchRule:
     """
 
     return _ffi_api_rule.MultiLevelTiling(tiling_structure)  # pylint: disable=no-member
+
+
+def multi_level_tiling_with_fusion(tiling_structure: str) -> SearchRule:
+    """Create a rule that does multi-level tiling and fusion together
+    if there is sufficient amout of data reuse
+
+    Parameters
+    ----------
+    tiling_structure: str
+        Structure of tiling. On CPU, recommended to use 'SSRSRS';
+        On GPU, recommended to use 'SSSRRSRS'
+
+    Returns
+    ----------
+    rule: SearchRule
+        A search rule that does multi-level tiling with fusion
+    """
+
+    return _ffi_api_rule.MultiLevelTilingWithFusion(  # pylint: disable=no-member
+        tiling_structure
+    )

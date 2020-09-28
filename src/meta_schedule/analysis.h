@@ -138,9 +138,13 @@ TVM_DLL int CountMissingBlockVars(tir::BufferLoad load, Array<tir::Var> block_va
  */
 TVM_DLL Optional<Array<Bool>> InspectLoadIndices(Schedule sch, BlockRV block);
 
+TVM_DLL bool HasReduceBlockVar(Schedule sch, BlockRV block);
+
 TVM_DLL bool NeedsMultiLevelTiling(Schedule sch, BlockRV block);
 
 TVM_DLL void DoMultiLevelTiling(Schedule sch, BlockRV block, String tiling_structure);
+
+TVM_DLL bool IsElementWiseMatch(Schedule sch, BlockRV producer, BlockRV consumer);
 
 }  // namespace meta_schedule
 }  // namespace tvm

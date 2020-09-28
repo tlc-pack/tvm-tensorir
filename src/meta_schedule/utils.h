@@ -19,6 +19,7 @@
 #ifndef SRC_META_SCHEDULE_UTILS_H_
 #define SRC_META_SCHEDULE_UTILS_H_
 
+#include <tvm/arith/analyzer.h>
 #include <tvm/tir/expr.h>
 
 #include <vector>
@@ -88,12 +89,31 @@ inline std::vector<int> FindCharPos(const String& str, char c) {
 }
 
 template <class T>
-std::vector<T> ConcatArray(const std::vector<std::vector<T> >& source) {
+inline std::vector<T> ConcatArray(const std::vector<std::vector<T> >& source) {
   std::vector<T> result;
   for (const std::vector<T>& item : source) {
     result.insert(result.end(), item.begin(), item.end());
   }
   return result;
+}
+
+inline bool RegionEqual(const Array<Range>& lhs, const Array<Range>& rhs) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+  arith::Analyzer analyzer;
+  int n = lhs.size();
+  for (int i = 0; i < n; ++i) {
+    const Range& l = lhs[i];
+    const Range& r = rhs[i];
+    if (!analyzer.CanProve(l->min == r->min)) {
+      return false;
+    }
+    if (!analyzer.CanProve(l->extent == r->extent)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace meta_schedule

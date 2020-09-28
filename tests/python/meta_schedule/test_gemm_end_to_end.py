@@ -218,6 +218,7 @@ def test_matmul_relu_post_order_apply():
         name="composed",
         rules=[
             do_nothing,
+            ms.search_rule.multi_level_tiling_with_fusion(tiling_structure="SSRSRS"),
             ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS"),
         ],
     )
