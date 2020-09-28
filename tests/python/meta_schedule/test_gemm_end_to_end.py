@@ -139,52 +139,42 @@ def test_matmul_post_order_apply():
 @pytest.mark.skip(reason="needs RPC")
 def test_conv2d_schedule_fn():
     def schedule_conv2d(sch):
-        # print(tvm.hybrid.ashybrid(sch.sch.func))
-        # block = sch.get_block(name="conv2d_nchw")
-        # i_n, i_co, i_h, i_w, i_ci, i_kh, i_kw = sch.get_axes(block=block)
+        block = sch.get_block(name="conv2d_nchw")
+        i_n, i_co, i_h, i_w, i_ci, i_kh, i_kw = sch.get_axes(block=block)
 
-        # factors = sch.sample_tile_factor(n=4, loop=i_n, where=[1, 2, 4])
-        factors = [1, 1, 1, 1]
-        # i_n_0, i_n_1, i_n_2, i_n_3 = sch.split(loop=i_n, factors=factors)
+        factors = sch.sample_tile_factor(n=4, loop=i_n, where=[1, 2, 4])
+        i_n_0, i_n_1, i_n_2, i_n_3 = sch.split(loop=i_n, factors=factors)
 
-        # factors = sch.sample_tile_factor(n=4, loop=i_co, where=[1, 2, 4])
-        factors = [512, 1, 1, 1]
-        # i_co_0, i_co_1, i_co_2, i_co_3 = sch.split(loop=i_co, factors=factors)
+        factors = sch.sample_tile_factor(n=4, loop=i_co, where=[1, 2, 4])
+        i_co_0, i_co_1, i_co_2, i_co_3 = sch.split(loop=i_co, factors=factors)
 
-        # factors = sch.sample_tile_factor(n=4, loop=i_h, where=[1, 2, 4])
-        factors = [7, 1, 1, 1]
-        # i_h_0, i_h_1, i_h_2, i_h_3 = sch.split(loop=i_h, factors=factors)
+        factors = sch.sample_tile_factor(n=4, loop=i_h, where=[1, 2, 4])
+        i_h_0, i_h_1, i_h_2, i_h_3 = sch.split(loop=i_h, factors=factors)
 
-        # factors = sch.sample_tile_factor(n=4, loop=i_w, where=[1, 2, 4])
-        factors = [7, 1, 1, 1]
-        # i_w_0, i_w_1, i_w_2, i_w_3 = sch.split(loop=i_w, factors=factors)
+        factors = sch.sample_tile_factor(n=4, loop=i_w, where=[1, 2, 4])
+        i_w_0, i_w_1, i_w_2, i_w_3 = sch.split(loop=i_w, factors=factors)
 
-        # factors = sch.sample_tile_factor(n=2, loop=i_ci, where=[1, 2, 4])
-        factors = [512, 1]
-        # i_ci_0, i_ci_1 = sch.split(loop=i_ci, factors=factors)
+        factors = sch.sample_tile_factor(n=2, loop=i_ci, where=[1, 2, 4])
+        i_ci_0, i_ci_1 = sch.split(loop=i_ci, factors=factors)
 
-        # factors = sch.sample_tile_factor(n=2, loop=i_kh, where=[1, 2, 4])
-        factors = [3, 1]
-        # i_kh_0, i_kh_1 = sch.split(loop=i_kh, factors=factors)
+        factors = sch.sample_tile_factor(n=2, loop=i_kh, where=[1, 2, 4])
+        i_kh_0, i_kh_1 = sch.split(loop=i_kh, factors=factors)
 
-        # factors = sch.sample_tile_factor(n=2, loop=i_kw, where=[1, 2, 4])
-        factors = [3, 1]
-        # i_kw_0, i_kw_1 = sch.split(loop=i_kw, factors=factors)
-        # sch.reorder(
-        #     [i_n_0, i_co_0, i_h_0, i_w_0]  # S
-        #     + [i_n_1, i_co_1, i_h_1, i_w_1]  # S
-        #     + [i_ci_0, i_kh_0, i_kw_0]  # R
-        #     + [i_n_2, i_co_2, i_h_2, i_w_2]  # S
-        #     + [i_ci_1, i_kh_1, i_kw_1]  # R
-        #     + [i_n_3, i_co_3, i_h_3, i_w_3],  # S
-        # )
-        print(tvm.hybrid.ashybrid(sch.sch.func))
+        factors = sch.sample_tile_factor(n=2, loop=i_kw, where=[1, 2, 4])
+        i_kw_0, i_kw_1 = sch.split(loop=i_kw, factors=factors)
+        sch.reorder(
+            [i_n_0, i_co_0, i_h_0, i_w_0]  # S
+            + [i_n_1, i_co_1, i_h_1, i_w_1]  # S
+            + [i_ci_0, i_kh_0, i_kw_0]  # R
+            + [i_n_2, i_co_2, i_h_2, i_w_2]  # S
+            + [i_ci_1, i_kh_1, i_kw_1]  # R
+            + [i_n_3, i_co_3, i_h_3, i_w_3],  # S
+        )
 
     sch = ms.autotune(
         task=conv2d,
         space=schedule_conv2d,
-        strategy=ms.Replay(batch_size=1, num_iterations=1),
-        builder=ms.LocalBuilder(n_parallel=1),
+        strategy="replay",
         runner="rpc://0.0.0.0:3012:local * 16",
     )
     if sch is None:
@@ -216,7 +206,7 @@ def test_conv2d_post_order_apply():
 
 
 if __name__ == "__main__":
-    test_matmul_schedule_fn()
-    test_matmul_post_order_apply()
+    # test_matmul_schedule_fn()
+    # test_matmul_post_order_apply()
     test_conv2d_schedule_fn()
-    test_conv2d_post_order_apply()
+    # test_conv2d_post_order_apply()
