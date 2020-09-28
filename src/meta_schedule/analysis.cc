@@ -360,7 +360,6 @@ bool NeedsMultiLevelTiling(Schedule sch, BlockRV block_rv) {
   // n_missing == 1, check reduction axes
   Array<Integer> iter_types = GetBlockVarTypes(sch, block_rv);
   for (const Integer& iter_type : iter_types) {
-    int iter_var_type = iter_type;
     if (iter_type == tir::IterVarType::kCommReduce) {
       return true;
     }

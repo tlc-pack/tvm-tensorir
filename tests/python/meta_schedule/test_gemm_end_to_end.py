@@ -36,7 +36,7 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     B = tir.match_buffer(b, (1024, 1024), "float32")
     C = tir.match_buffer(c, (1024, 1024), "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
-    with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "C") as [vi, vj, vk]:
+    with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
         reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
 
@@ -47,9 +47,9 @@ def matmul_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     D = tir.match_buffer(d, (1024, 1024), "float32")
     C = tir.buffer_allocate((1024, 1024), "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
-    with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "C") as [vi, vj, vk]:
+    with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
         reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
-    with tir.block([1024, 1024], "D") as [vi, vj]:
+    with tir.block([1024, 1024], "relu") as [vi, vj]:
         D[vi, vj] = tir.max(C[vi, vj], 0.0)
 
 
@@ -57,11 +57,11 @@ def matmul_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
 def conv2d(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     X = tir.match_buffer(x, (1, 512, 7, 7), "float32")
     W = tir.match_buffer(w, (512, 512, 3, 3), "float32")
+    X_padded = tir.buffer_allocate((1, 512, 9, 9), "float32")
     Y = tir.match_buffer(y, [1, 512, 7, 7], "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
-    Pad = tir.buffer_allocate((1, 512, 9, 9), "float32")
     with tir.block([1, 512, 9, 9], "conv2d_pad_x") as [i_n, i_ci, i_h, i_w]:
-        Pad[
+        X_padded[
             i_n, i_ci, i_h, i_w
         ] = tir.if_then_else(  # pylint: disable=unexpected-keyword-arg
             # guard
@@ -87,15 +87,53 @@ def conv2d(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     ) as [i_n, i_co, i_h, i_w, i_ci, i_kh, i_kw]:
         reducer.step(
             Y[i_n, i_co, i_h, i_w],
-            Pad[i_n, i_ci, i_h + i_kh, i_w + i_kw] * W[i_co, i_ci, i_kh, i_kw],
+            X_padded[i_n, i_ci, i_h + i_kh, i_w + i_kw] * W[i_co, i_ci, i_kh, i_kw],
         )
 
 
+@tvm.hybrid.script
+def conv2d_relu(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
+    X = tir.match_buffer(x, (1, 512, 7, 7), "float32")
+    W = tir.match_buffer(w, (512, 512, 3, 3), "float32")
+    X_padded = tir.buffer_allocate((1, 512, 9, 9), "float32")
+    Y_i = tir.buffer_allocate((1, 512, 7, 7), "float32")
+    Y = tir.match_buffer(y, [1, 512, 7, 7], "float32")
+    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
+    with tir.block([1, 512, 9, 9], "conv2d_pad_x") as [i_n, i_ci, i_h, i_w]:
+        X_padded[
+            i_n, i_ci, i_h, i_w
+        ] = tir.if_then_else(  # pylint: disable=unexpected-keyword-arg
+            # guard
+            ((1 <= i_h < 8) and (1 <= i_w < 8)),
+            # the value from input
+            X[i_n, i_ci, i_h - 1, i_w - 1],
+            # the value padded
+            tir.float32(0),
+            dtype="float32",
+        )
+
+    with tir.block(
+        [
+            1,  # i_n
+            512,  # i_co
+            7,  # i_h
+            7,  # i_w
+            tir.reduce_axis(0, 512),  # i_ci
+            tir.reduce_axis(0, 3),  # i_kh
+            tir.reduce_axis(0, 3),  # i_kw
+        ],
+        "conv2d_nchw",
+    ) as [i_n, i_co, i_h, i_w, i_ci, i_kh, i_kw]:
+        reducer.step(
+            Y_i[i_n, i_co, i_h, i_w],
+            X_padded[i_n, i_ci, i_h + i_kh, i_w + i_kw] * W[i_co, i_ci, i_kh, i_kw],
+        )
+
+    with tir.block([1, 512, 7, 7], "relu") as [i_n, i_co, i_h, i_w]:
+        Y[i_n, i_co, i_h, i_w] = tir.max(Y_i[i_n, i_co, i_h, i_w], 0.0)
+
+
 # pylint: enable=invalid-name,no-member
-
-
-def _print_prim_func(prim_func):
-    print(tvm.hybrid.ashybrid(prim_func))
 
 
 @ms.register_rule("do_nothing")
@@ -106,7 +144,7 @@ def do_nothing(sch: ms.Schedule, _block: ms.BlockRV):
 @pytest.mark.skip(reason="needs RPC")
 def test_matmul_schedule_fn():
     def schedule_matmul(sch):
-        block = sch.get_block(name="C")
+        block = sch.get_block(name="matmul")
         i, j, k = sch.get_axes(block=block)
         i_tiles = sch.sample_tile_factor(n=4, loop=i, where=[1, 2, 4])
         j_tiles = sch.sample_tile_factor(n=4, loop=j, where=[1, 2, 4])
@@ -125,7 +163,7 @@ def test_matmul_schedule_fn():
     if sch is None:
         print("No valid schedule found")
     else:
-        _print_prim_func(sch.sch.func)
+        print(tvm.hybrid.ashybrid(sch.sch.func))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -146,13 +184,13 @@ def test_matmul_post_order_apply():
     if sch is None:
         print("No valid schedule found")
     else:
-        _print_prim_func(sch.sch.func)
+        print(tvm.hybrid.ashybrid(sch.sch.func))
 
 
 @pytest.mark.skip(reason="needs RPC")
 def test_matmul_relu_schedule_fn():
     def schedule_matmul(sch):
-        block = sch.get_block(name="C")
+        block = sch.get_block(name="matmul")
         i, j, k = sch.get_axes(block=block)
         i_tiles = sch.sample_tile_factor(n=4, loop=i, where=[1, 2, 4])
         j_tiles = sch.sample_tile_factor(n=4, loop=j, where=[1, 2, 4])
@@ -171,7 +209,7 @@ def test_matmul_relu_schedule_fn():
     if sch is None:
         print("No valid schedule found")
     else:
-        _print_prim_func(sch.sch.func)
+        print(tvm.hybrid.ashybrid(sch.sch.func))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -192,7 +230,7 @@ def test_matmul_relu_post_order_apply():
     if sch is None:
         print("No valid schedule found")
     else:
-        _print_prim_func(sch.sch.func)
+        print(tvm.hybrid.ashybrid(sch.sch.func))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -239,7 +277,7 @@ def test_conv2d_schedule_fn():
     if sch is None:
         print("No valid schedule found")
     else:
-        _print_prim_func(sch.sch.func)
+        print(tvm.hybrid.ashybrid(sch.sch.func))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -254,14 +292,34 @@ def test_conv2d_post_order_apply():
     sch = ms.autotune(
         task=conv2d,
         space=ms.PostOrderApply(rule=rule),
-        strategy=ms.Replay(batch_size=1, num_iterations=1),
-        builder=ms.LocalBuilder(n_parallel=1),
+        strategy="replay",
         runner="rpc://0.0.0.0:3012:local * 16",
     )
     if sch is None:
         print("No valid schedule found")
     else:
-        _print_prim_func(sch.sch.func)
+        print(tvm.hybrid.ashybrid(sch.sch.func))
+
+
+@pytest.mark.skip(reason="needs RPC")
+def test_conv2d_relu_post_order_apply():
+    rule = ms.SearchRule.compose(
+        name="composed",
+        rules=[
+            do_nothing,
+            ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS"),
+        ],
+    )
+    sch = ms.autotune(
+        task=conv2d_relu,
+        space=ms.PostOrderApply(rule=rule),
+        strategy="replay",
+        runner="rpc://0.0.0.0:3012:local * 16",
+    )
+    if sch is None:
+        print("No valid schedule found")
+    else:
+        print(tvm.hybrid.ashybrid(sch.sch.func))
 
 
 if __name__ == "__main__":
@@ -269,5 +327,6 @@ if __name__ == "__main__":
     test_matmul_post_order_apply()
     test_matmul_relu_schedule_fn()
     test_matmul_relu_post_order_apply()
-    # test_conv2d_schedule_fn()
-    # test_conv2d_post_order_apply()
+    test_conv2d_schedule_fn()
+    test_conv2d_post_order_apply()
+    test_conv2d_relu_post_order_apply()
