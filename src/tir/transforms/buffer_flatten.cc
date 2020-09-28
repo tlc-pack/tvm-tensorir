@@ -26,8 +26,8 @@
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
-#include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/schedule.h>
+#include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
 
 namespace tvm {
@@ -136,6 +136,7 @@ class LCADetector : public StmtExprVisitor {
   std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual> arg_buffers_;
 
   ObjectRef LowestCommonAncestor(ObjectRef lhs, ObjectRef rhs) {
+    if (!lhs.defined() || !rhs.defined()) return NullValue<ObjectRef>();
     CHECK(ast_scopes_info_.count(lhs));
     CHECK(ast_scopes_info_.count(rhs));
     while (ast_scopes_info_[lhs].depth > ast_scopes_info_[rhs].depth) {
@@ -260,8 +261,8 @@ class RegionGatherer : public StmtExprVisitor {
     for (const auto& annotation : loop->annotations)
       if (annotation->attr_key == attr::loop_type) {
         std::string thread_tag = Downcast<StringImm>(annotation->value)->value;
-        if (thread_tag.substr(0, 9) == "threadIdx" ||
-            thread_tag.substr(0, 7) == "vthread") return true;
+        if (thread_tag.substr(0, 9) == "threadIdx" || thread_tag.substr(0, 7) == "vthread")
+          return true;
       }
     return false;
   }
