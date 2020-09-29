@@ -28,7 +28,6 @@ def always_inline() -> SearchRule:
     rule: SearchRule
         A search rule that does inlining
     """
-
     return _ffi_api_rule.AlwaysInline()  # pylint: disable=no-member
 
 
@@ -40,7 +39,6 @@ def add_cache_write() -> SearchRule:
     rule: SearchRule
         A search rule that does cache write
     """
-
     return _ffi_api_rule.AddCacheWrite()  # pylint: disable=no-member
 
 
@@ -59,7 +57,6 @@ def multi_level_tiling_with_fusion(tiling_structure: str) -> SearchRule:
     rule: SearchRule
         A search rule that does multi-level tiling with fusion
     """
-
     return _ffi_api_rule.MultiLevelTilingWithFusion(  # pylint: disable=no-member
         tiling_structure
     )
@@ -79,5 +76,4 @@ def multi_level_tiling(tiling_structure: str) -> SearchRule:
     rule: SearchRule
         A search rule that does multi-level tiling
     """
-
     return _ffi_api_rule.MultiLevelTiling(tiling_structure)  # pylint: disable=no-member
