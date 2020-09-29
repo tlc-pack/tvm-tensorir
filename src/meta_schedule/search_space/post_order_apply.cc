@@ -94,6 +94,7 @@ PostOrderApply::PostOrderApply(SearchRule rule) {
 
 Schedule PostOrderApplyNode::SampleSchedule(const SearchTask& task) {
   Array<Schedule> support = GetSupport(task);
+  CHECK(!support.empty()) << "ValueError: Found null support";
   int i = sampler_.SampleInt(0, support.size());
   return support[i];
 }
@@ -128,6 +129,8 @@ Array<Schedule> PostOrderApplyNode::VisitBlock(const tir::Block& block, const Sc
       if (sch->sch->stmt2ref.count(child.get())) {
         Array<Schedule> result = VisitBlock(child, sch, false);
         new_schedules.insert(new_schedules.end(), result.begin(), result.end());
+      } else {
+        new_schedules.push_back(sch);
       }
     }
     schedules = new_schedules;
