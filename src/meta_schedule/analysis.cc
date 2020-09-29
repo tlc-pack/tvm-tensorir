@@ -23,6 +23,7 @@
 
 #include "../arith/pattern_match.h"
 #include "../tir/schedule/schedule_common.h"  // TODO(@junrushao1994): replace it
+#include "./utils.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -205,21 +206,17 @@ bool HasBranch(Schedule sch, BlockRV block_rv) {
       // Case 1: BlockRealize
       if (!analyzer.CanProve(realize->predicate == 1)) {
         has_branch = true;
-        return false;
       }
     } else if (obj->IsInstance<tir::IfThenElseNode>() || obj->IsInstance<tir::SelectNode>()) {
       // Case 2: IfThenElse / Select
       has_branch = true;
-      return false;
     } else if (const auto* call = obj.as<tir::CallNode>()) {
       // Case 3: Call
       if (call->op.same_as(op_if_then_else)) {
         has_branch = true;
-        return false;
       }
     }
-    // continue visiting
-    return true;
+    return !has_branch;
   };
   tir::PreOrderVisit(tir::GetBlockRealize(block_sref), f_visit);
   return has_branch;
@@ -338,6 +335,128 @@ Optional<Array<Bool>> InspectLoadIndices(Schedule sch, BlockRV block_rv) {
   return Array<Bool>{Bool(surjective), Bool(injective), Bool(ordered)};
 }
 
+bool HasReduceBlockVar(Schedule sch, BlockRV block_rv) {
+  Array<Integer> iter_types = GetBlockVarTypes(sch, block_rv);
+  for (const Integer& iter_type : iter_types) {
+    if (iter_type == tir::IterVarType::kCommReduce) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool NeedsMultiLevelTiling(Schedule sch, BlockRV block_rv) {
+  // Right now it only works with a leaf block with a single statement
+  if (!IsTrivialBinding(sch, block_rv)) {
+    return false;
+  }
+  // Get block vars used in BufferStore
+  Optional<Array<tir::Var>> block_vars = BlockVarsUsedInStore(sch, block_rv);
+  if (!block_vars.defined()) {
+    return false;
+  }
+  // Check reuse
+  Array<tir::BufferLoad> loads = GetBufferLoad(sch, block_rv);
+  int n_missing = 0;
+  for (const tir::BufferLoad& load : loads) {
+    n_missing += CountMissingBlockVars(load, block_vars.value());
+  }
+  if (n_missing >= 2) {
+    return true;
+  }
+  if (n_missing == 0) {
+    return false;
+  }
+  // n_missing == 1, check reduction axes
+  return HasReduceBlockVar(sch, block_rv);
+}
+
+void DoMultiLevelTiling(Schedule sch, BlockRV block_rv, String tiling_structure) {
+  // Do the multi-level tiling
+  std::vector<int> s_idx = FindCharPos(tiling_structure, 'S');
+  std::vector<int> r_idx = FindCharPos(tiling_structure, 'R');
+  std::vector<std::vector<LoopRV>> order(tiling_structure.size());
+  Array<LoopRV> axes = sch->GetAxes(block_rv);
+  Array<Integer> iter_types = GetBlockVarTypes(sch, block_rv);
+  CHECK_EQ(axes.size(), iter_types.size());
+  int n = axes.size();
+  for (int i = 0; i < n; ++i) {
+    std::vector<int>* idx = nullptr;
+    if (iter_types[i] == tir::IterVarType::kDataPar) {
+      idx = &s_idx;
+    } else if (iter_types[i] == tir::IterVarType::kCommReduce) {
+      idx = &r_idx;
+    } else {
+      continue;
+    }
+    int n_tiles = idx->size();
+    Array<tir::Var> factors =
+        sch->SampleTileFactor(/*n=*/n_tiles, /*loop=*/axes[i], /*where=*/{1, 2, 4});
+    Array<LoopRV> splits =
+        sch->Split(/*loop=*/axes[i], /*factors=*/{factors.begin(), factors.end()});
+    for (int j = 0; j < n_tiles; ++j) {
+      order[idx->at(j)].push_back(splits[j]);
+    }
+  }
+  sch->Reorder(ConcatArray(order));
+}
+
+TVM_DLL bool IsElementWiseMatch(Schedule sch, BlockRV producer_rv, BlockRV consumer_rv) {
+  const auto* producer_block = sch->Eval(producer_rv)->GetStmt<tir::BlockNode>();
+  const auto* consumer_block = sch->Eval(consumer_rv)->GetStmt<tir::BlockNode>();
+  CHECK(producer_block);
+  CHECK(consumer_block);
+  CHECK_GE(producer_block->writes.size(), 1U);
+  // Check condition 1: They have the same output size
+  const tir::TensorRegion& write_region = producer_block->writes[0];
+  for (const tir::TensorRegion& region : producer_block->writes) {
+    if (!write_region->buffer.same_as(region->buffer)) {
+      continue;
+    }
+    if (!DomainEqual(write_region->region, region->region)) {
+      return false;
+    }
+  }
+  for (const tir::TensorRegion& region : consumer_block->writes) {
+    if (!write_region->buffer.same_as(region->buffer)) {
+      continue;
+    }
+    if (!DomainEqual(write_region->region, region->region)) {
+      return false;
+    }
+  }
+  // Check condition 2: The read is elementwise
+  Optional<Array<tir::Var>> block_vars = BlockVarsUsedInStore(sch, consumer_rv);
+  if (!block_vars.defined()) {
+    return false;
+  }
+  if (Optional<Array<Bool>> access = InspectLoadIndices(sch, consumer_rv)) {
+    CHECK_EQ(access.value().size(), 3);
+    bool surjective = access.value()[0];
+    bool injective = access.value()[1];
+    bool order = access.value()[2];
+    return surjective && injective && order;
+  }
+  return false;
+}
+
+bool IsOutputBlock(Schedule sch, BlockRV block_rv) {
+  tir::StmtSRef block_sref = sch->Eval(block_rv);
+  const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  CHECK(block);
+  tir::StmtSRef parent_sref = sch->sch->GetParentBlockSRef(block_sref);
+  const auto* parent = parent_sref->GetStmt<tir::BlockNode>();
+  CHECK(parent);
+  for (const tir::TensorRegion& write : block->writes) {
+    for (const tir::TensorRegion& parent_write : parent->writes) {
+      if (write->buffer.same_as(parent_write->buffer)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBlockVarTypes").set_body_typed(GetBlockVarTypes);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeafBlock").set_body_typed(IsLeafBlock);
@@ -352,6 +471,12 @@ TVM_REGISTER_GLOBAL("meta_schedule.analysis.BlockVarsUsedInStore")
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.CountMissingBlockVars")
     .set_body_typed(CountMissingBlockVars);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.InspectLoadIndices").set_body_typed(InspectLoadIndices);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.HasReduceBlockVar").set_body_typed(HasReduceBlockVar);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.NeedsMultiLevelTiling")
+    .set_body_typed(NeedsMultiLevelTiling);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.DoMultiLevelTiling").set_body_typed(DoMultiLevelTiling);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsElementWiseMatch").set_body_typed(IsElementWiseMatch);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsOutputBlock").set_body_typed(IsOutputBlock);
 
 }  // namespace meta_schedule
 }  // namespace tvm

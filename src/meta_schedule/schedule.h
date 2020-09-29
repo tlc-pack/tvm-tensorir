@@ -113,6 +113,13 @@ class ScheduleNode : public Object {
    * \return An array of random variables, the result of sampling
    */
   Array<tir::Var> SampleTileFactor(int n, LoopRV loop, Array<Integer> where);
+  /**************** Block Relationship ****************/
+  /*!
+   * \brief Get the only consumer of a specific block
+   * \param block The block to be queried
+   * \return A block, its only consumer; or NullOpt if it does not exist
+   */
+  Optional<BlockRV> GetOnlyConsumer(const BlockRV& block);
   /**************** Scheduling Primitives ****************/
   /*!
    * \brief Apply the instruction GetBlock
@@ -139,6 +146,18 @@ class ScheduleNode : public Object {
    * \param after_axes The axes to be reordered
    */
   void Reorder(const Array<LoopRV>& after_axes);
+  /*!
+   * \brief Apply the instruction compute_inline
+   * \param block The block to be computed inline
+   */
+  void ComputeInline(const BlockRV& block);
+  /*!
+   * \brief Apply the instruction cache_write
+   * \param block The block to be buffered
+   * \param storage_scope The storage scope
+   * \return The cache write stage
+   */
+  BlockRV CacheWrite(const BlockRV& block, const String& storage_scope);
   /*!
    * \brief Apply the instruction DecomposeReduction
    * \param block The block to be decomposed
