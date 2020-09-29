@@ -288,7 +288,9 @@ def has_reduce_block_var(sch: Schedule, block: BlockRV) -> bool:
     result : bool
         A boolean flag indicating if there is at least one reduction block var
     """
-    return _ffi_api_analysis.HasReduceBlockVar(sch, block)  # pylint: disable=no-member
+    return bool(
+        _ffi_api_analysis.HasReduceBlockVar(sch, block)  # pylint: disable=no-member
+    )
 
 
 def needs_multi_level_tiling(sch: Schedule, block: BlockRV) -> bool:
@@ -306,8 +308,8 @@ def needs_multi_level_tiling(sch: Schedule, block: BlockRV) -> bool:
     result : bool
         A boolean flag indicating if the block needs multi-level tiling
     """
-    return _ffi_api_analysis.NeedsMultiLevelTiling(  # pylint: disable=no-member
-        sch, block
+    return bool(
+        _ffi_api_analysis.NeedsMultiLevelTiling(sch, block)  # pylint: disable=no-member
     )
 
 
@@ -345,8 +347,10 @@ def is_elementwise_match(sch: Schedule, producer: BlockRV, consumer: BlockRV) ->
     result : bool
         A boolean flag indicating if they match
     """
-    return _ffi_api_analysis.IsElementWiseMatch(  # pylint: disable=no-member
-        sch, producer, consumer
+    return bool(
+        _ffi_api_analysis.IsElementWiseMatch(  # pylint: disable=no-member
+            sch, producer, consumer
+        )
     )
 
 
@@ -365,4 +369,6 @@ def is_output_block(sch: Schedule, block: BlockRV) -> bool:
     result : bool
         A boolean flag indicating if it is an output block
     """
-    return _ffi_api_analysis.IsOutputBlock(sch, block)  # pylint: disable=no-member
+    return bool(
+        _ffi_api_analysis.IsOutputBlock(sch, block)  # pylint: disable=no-member
+    )
