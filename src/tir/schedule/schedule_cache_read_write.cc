@@ -305,7 +305,7 @@ class CacheLocDetector : public StmtVisitor {
       info->loc_pos = detector.loc_pos_;
     } else {
       info->loc_sref = scope_sref;
-      const auto* body = Downcast<SeqStmt>(scope_sref->GetStmt<BlockNode>()->body).get();
+      const auto* body = scope_sref->GetStmt<BlockNode>()->body.as<SeqStmtNode>();
       info->loc_pos = body == nullptr ? 1 : body->size();
     }
   }
