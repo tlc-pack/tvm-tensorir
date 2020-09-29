@@ -14,7 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""FFI APIs for analysis in meta schedule"""
+"""FFI APIs for search rules in meta schedule"""
 import tvm._ffi
 
-tvm._ffi._init_api("meta_schedule.analysis", __name__)
+tvm._ffi._init_api("meta_schedule.rule", __name__)

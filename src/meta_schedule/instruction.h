@@ -246,6 +246,78 @@ class ReorderInst : public Instruction {
   ReorderInst() = default;
 };
 
+/**************** ComputeInlineInst ****************/
+
+/*! \brief An instruction to make a block computed inline */
+class ComputeInlineInstNode : public InstructionNode {
+ public:
+  /*! \brief The block to be computed inline */
+  BlockRV block;
+
+  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("block", &block); }
+
+  static constexpr const char* _type_key = "meta_schedule.ComputeInlineInst";
+  TVM_DECLARE_FINAL_OBJECT_INFO(ComputeInlineInstNode, InstructionNode);
+};
+
+/*!
+ * \brief Managed reference to ComputeInlineInstNode
+ * \sa ComputeInlineInstNode
+ */
+class ComputeInlineInst : public Instruction {
+ public:
+  /*!
+   * \brief Constructor
+   * \param block The block to be computed inline
+   */
+  explicit ComputeInlineInst(BlockRV block);
+
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(ComputeInlineInst, Instruction, ComputeInlineInstNode);
+
+ protected:
+  /*! \brief Constructor. The node should never be constructed directly. */
+  ComputeInlineInst() = default;
+};
+
+/**************** CacheWriteInst ****************/
+
+/*! \brief An instruction to buffer the write */
+class CacheWriteInstNode : public InstructionNode {
+ public:
+  /*! \brief The block to be buffered */
+  BlockRV block;
+  /*! \brief The storage scope */
+  String storage_scope;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("block", &block);
+    v->Visit("storage_scope", &storage_scope);
+  }
+
+  static constexpr const char* _type_key = "meta_schedule.CacheWriteInst";
+  TVM_DECLARE_FINAL_OBJECT_INFO(CacheWriteInstNode, InstructionNode);
+};
+
+/*!
+ * \brief Managed reference to CacheWriteInstNode
+ * \sa CacheWriteInstNode
+ */
+class CacheWriteInst : public Instruction {
+ public:
+  /*!
+   * \brief Constructor
+   * \param block The block to be buffered
+   * \param storage_scope The storage scope
+   */
+  explicit CacheWriteInst(BlockRV block, String storage_scope);
+
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(CacheWriteInst, Instruction, CacheWriteInstNode);
+
+ protected:
+  /*! \brief Constructor. The node should never be constructed directly. */
+  CacheWriteInst() = default;
+};
+
 /**************** DecomposeReductionInst ****************/
 
 /*! \brief An instruction for decompose_reduction in TIR */
@@ -288,6 +360,46 @@ class DecomposeReductionInst : public Instruction {
  protected:
   /*! \brief Constructor. The node should never be constructed directly. */
   DecomposeReductionInst() = default;
+};
+
+/**************** GetOnlyConsumerInst ****************/
+
+/*! \brief An instruction for decompose_reduction in TIR */
+class GetOnlyConsumerInstNode : public InstructionNode {
+ public:
+  /*! \brief The producer block */
+  BlockRV block;
+  /*! \brief The only consumer block of the producer block */
+  BlockRV output;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("block", &block);
+    v->Visit("output", &output);
+  }
+
+  static constexpr const char* _type_key = "meta_schedule.GetOnlyConsumerInst";
+  TVM_DECLARE_FINAL_OBJECT_INFO(GetOnlyConsumerInstNode, InstructionNode);
+};
+
+/*!
+ * \brief Managed reference to GetOnlyConsumerInstNode
+ * \sa GetOnlyConsumerInstNode
+ */
+class GetOnlyConsumerInst : public Instruction {
+ public:
+  /*!
+   * \brief Constructor
+   * \param block The producer block
+   * \param output The only consumer block of the producer block
+   */
+  explicit GetOnlyConsumerInst(BlockRV block, BlockRV output);
+
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(GetOnlyConsumerInst, Instruction,
+                                            GetOnlyConsumerInstNode);
+
+ protected:
+  /*! \brief Constructor. The node should never be constructed directly. */
+  GetOnlyConsumerInst() = default;
 };
 
 }  // namespace meta_schedule

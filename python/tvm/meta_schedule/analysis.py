@@ -271,3 +271,104 @@ def inspect_load_indices(
         return result
     surjective, injective, ordered = result
     return bool(surjective), bool(injective), bool(ordered)
+
+
+def has_reduce_block_var(sch: Schedule, block: BlockRV) -> bool:
+    """Check if a block has at least one block var that is reduction
+
+    Parameters
+    ----------
+    sch: Schedule
+        The meta schedule class
+    block: BlockRV
+        The block random variable to be analyzed
+
+    Returns
+    -------
+    result : bool
+        A boolean flag indicating if there is at least one reduction block var
+    """
+    return bool(
+        _ffi_api_analysis.HasReduceBlockVar(sch, block)  # pylint: disable=no-member
+    )
+
+
+def needs_multi_level_tiling(sch: Schedule, block: BlockRV) -> bool:
+    """Checks if a block needs multi-level tiling
+
+    Parameters
+    ----------
+    sch: Schedule
+        The meta schedule class
+    block: BlockRV
+        The block random variable to be analyzed
+
+    Returns
+    -------
+    result : bool
+        A boolean flag indicating if the block needs multi-level tiling
+    """
+    return bool(
+        _ffi_api_analysis.NeedsMultiLevelTiling(sch, block)  # pylint: disable=no-member
+    )
+
+
+def do_multi_level_tiling(sch: Schedule, block: BlockRV, tiling_structure: str) -> None:
+    """Do the multi-level tiling according to the structure
+
+    Parameters
+    ----------
+    sch: Schedule
+        The meta schedule class
+    block: BlockRV
+        The block random variable to be analyzed
+    format: str
+        The tiling structure
+    """
+    _ffi_api_analysis.DoMultiLevelTiling(  # pylint: disable=no-member
+        sch, block, tiling_structure
+    )
+
+
+def is_elementwise_match(sch: Schedule, producer: BlockRV, consumer: BlockRV) -> bool:
+    """Checks if a block needs multi-level tiling
+
+    Parameters
+    ----------
+    sch: Schedule
+        The meta schedule class
+    producer: BlockRV
+        The producer block
+    consumer: BlockRV
+        The consumer block
+
+    Returns
+    -------
+    result : bool
+        A boolean flag indicating if they match
+    """
+    return bool(
+        _ffi_api_analysis.IsElementWiseMatch(  # pylint: disable=no-member
+            sch, producer, consumer
+        )
+    )
+
+
+def is_output_block(sch: Schedule, block: BlockRV) -> bool:
+    """Checks if a block is output block
+
+    Parameters
+    ----------
+    sch: Schedule
+        The meta schedule class
+    block: BlockRV
+        The block random variable to be analyzed
+
+    Returns
+    -------
+    result : bool
+        A boolean flag indicating if it is an output block
+    """
+    return bool(
+        _ffi_api_analysis.IsOutputBlock(sch, block)  # pylint: disable=no-member
+    )
