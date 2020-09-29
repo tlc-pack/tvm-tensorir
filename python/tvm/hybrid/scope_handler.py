@@ -78,8 +78,8 @@ from .registry import register_with_scope, register_for_scope
 
 # With scope handler
 @register_with_scope(concise=False, with_var=True)
-def block(parser, node, axes=None, name=""):
-    """ With scope handler function block(axes, name)
+def block(parser, node, axes=None, name="", exec_scope=""):
+    """ With scope handler function block(axes, name, exec_scope)
 
     Example
     -------
@@ -157,7 +157,7 @@ def block(parser, node, axes=None, name=""):
                 parser.report_error("Missing block var binding for " + block_var.name)
         values = [block_info.binding[block_var] for block_var in block_vars]
 
-    body = tvm.tir.BlockRealize(values, block_info.predicate, inner)
+    body = tvm.tir.BlockRealize(values, block_info.predicate, inner, exec_scope)
     return body
 
 
