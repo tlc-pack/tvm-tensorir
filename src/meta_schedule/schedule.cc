@@ -247,6 +247,31 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n, LoopRV loop, Array<Integer
   return outputs;
 }
 
+/**************** Block Relationship ****************/
+
+Optional<BlockRV> ScheduleNode::GetOnlyConsumer(const BlockRV& block) {
+  int inst_id = this->trace.size();
+  // Find the output from TIR
+  tir::StmtSRef block_sref = Eval(block);
+  Array<tir::DepEdge> succ_edges = this->sch->GetParentScope(block_sref).GetSuccessors(block_sref);
+  std::vector<tir::StmtSRef> result_sref;
+  for (const tir::DepEdge edge : succ_edges) {
+    if (edge->type == tir::DepType::kRAW || edge->type == tir::DepType::kWAW) {
+      result_sref.push_back(edge->dst);
+    }
+  }
+  if (result_sref.size() != 1) {
+    return NullOpt;
+  }
+  // Create the output random variable
+  BlockRV output;
+  // Update the symbol table
+  this->sym_tab.emplace(output, SymbolTableEntry(inst_id, result_sref[0]));
+  // Put the instruction in the trace
+  this->trace.push_back(GetOnlyConsumerInst(block, output));
+  return output;
+}
+
 /**************** Schedule Primitives ****************/
 
 BlockRV ScheduleNode::GetBlock(const String& name) {
@@ -322,6 +347,31 @@ void ScheduleNode::Reorder(const Array<LoopRV>& after_axes) {
   this->sch->reorder(tir_inputs);
   // Put the instruction in the trace
   this->trace.push_back(ReorderInst(after_axes));
+}
+
+void ScheduleNode::ComputeInline(const BlockRV& block) {
+  // Find the inputs to TIR
+  tir::StmtSRef block_sref = this->Eval(block);
+  this->sch->compute_inline(block_sref);
+  // Put the instruction in the trace
+  this->trace.push_back(ComputeInlineInst(block));
+}
+
+BlockRV ScheduleNode::CacheWrite(const BlockRV& block_rv, const String& storage_scope) {
+  int inst_id = this->trace.size();
+  // Find the output from TIR
+  tir::StmtSRef block_sref = this->Eval(block_rv);
+  const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  CHECK(block) << "TypeError: Expects block, but gets type: " << block_sref->stmt->GetTypeKey();
+  CHECK_EQ(block->writes.size(), 1) << "ValueError: only blocks with a single written is supported";
+  tir::StmtSRef tir_result = this->sch->cache_write(block->writes[0]->buffer, storage_scope);
+  // Create the output random variable
+  BlockRV output;
+  // Update the symbol table
+  this->sym_tab.emplace(output, SymbolTableEntry(inst_id, tir_result));
+  // Put the instruction in the trace
+  this->trace.push_back(CacheWriteInst(block_rv, storage_scope));
+  return output;
 }
 
 BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const LoopRV& loop) {
