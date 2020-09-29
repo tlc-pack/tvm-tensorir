@@ -16,6 +16,8 @@
 # under the License.
 """ Test for meta schedule analysis """
 # pylint: disable=missing-function-docstring
+import pytest
+
 import tvm
 from tvm import meta_schedule as ms
 from tvm import tir
@@ -45,6 +47,17 @@ def split_ewise(a: ty.handle, b: ty.handle) -> None:
             tir.bind(vi, i // 128)
             tir.bind(vj, i % 128)
             B[vi, vj] = A[vi, vj] * 2.0
+
+
+@tvm.hybrid.script
+def many_ewise(x: ty.handle, y: ty.handle) -> None:
+    X = tir.match_buffer(x, (128, 128))
+    Y = tir.match_buffer(y, (128, 128))
+    A = tir.buffer_allocate((128, 128))
+    with tir.block([128, 128], "A") as [vi, vj]:
+        A[vi, vj] = X[vi, vj] * 2.0
+    with tir.block([128, 128], "Y") as [vi, vj]:
+        Y[vi, vj] = A[vi, vj] * 2.0
 
 
 @tvm.hybrid.script
@@ -200,6 +213,46 @@ def test_meta_schedule_analysis_inspect_load_indices():  # pylint: disable=inval
     assert result == (True, True, True)
 
 
+def test_meta_schedule_analysis_has_reduce_block_var():
+    sch = ms.Schedule(func=matmul)
+    result = ms.analysis.has_reduce_block_var(sch, sch.get_block("C"))
+    assert result
+    sch = ms.Schedule(func=split_ewise)
+    result = ms.analysis.has_reduce_block_var(sch, sch.get_block("B"))
+    assert not result
+
+
+def test_meta_schedule_needs_multi_level_tiling():
+    sch = ms.Schedule(func=matmul)
+    result = ms.analysis.needs_multi_level_tiling(sch, sch.get_block("C"))
+    assert result
+    sch = ms.Schedule(func=split_ewise)
+    result = ms.analysis.needs_multi_level_tiling(sch, sch.get_block("B"))
+    assert not result
+
+
+def test_meta_schedule_do_multi_level_tiling():
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("C")
+    ms.analysis.do_multi_level_tiling(sch, block, "SSRSRS")
+    assert len(sch.get_axes(block)) == 10
+
+
+def test_meta_schedule_is_elementwise_match():
+    sch = ms.Schedule(func=many_ewise)
+    block_a = sch.get_block("A")
+    block_y = sch.get_block("Y")
+    assert ms.analysis.is_elementwise_match(sch, block_a, block_y)
+
+
+@pytest.mark.xfail()
+def test_meta_schedule_is_output_block():
+    # TODO(@junrushao1994): need fix
+    sch = ms.Schedule(func=matmul)
+    print(tvm.hybrid.ashybrid(sch.sch.func))
+    assert ms.analysis.is_output_block(sch, sch.get_block("C"))
+
+
 if __name__ == "__main__":
     test_meta_schedule_analysis_is_trivial_binding()
     test_meta_schedule_analysis_get_block_var_types()
@@ -212,3 +265,8 @@ if __name__ == "__main__":
     test_meta_schedule_analysis_block_vars_used_in_store()
     test_meta_schedule_analysis_count_missing_block_vars()
     test_meta_schedule_analysis_inspect_load_indices()
+    test_meta_schedule_analysis_has_reduce_block_var()
+    test_meta_schedule_needs_multi_level_tiling()
+    test_meta_schedule_do_multi_level_tiling()
+    test_meta_schedule_is_elementwise_match()
+    test_meta_schedule_is_output_block()

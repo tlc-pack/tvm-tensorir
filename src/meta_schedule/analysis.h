@@ -138,6 +138,47 @@ TVM_DLL int CountMissingBlockVars(tir::BufferLoad load, Array<tir::Var> block_va
  */
 TVM_DLL Optional<Array<Bool>> InspectLoadIndices(Schedule sch, BlockRV block);
 
+/*!
+ * \brief Check if a block has at least one block var that is reduction
+ * \param sch The meta schedule class
+ * \param block The block random variable to be analyzed
+ * \return A boolean flag indicating if there is at least one reduction block var
+ */
+TVM_DLL bool HasReduceBlockVar(Schedule sch, BlockRV block);
+
+/*!
+ * \brief Checks if a block needs multi-level tiling
+ * \param sch The meta schedule class
+ * \param block The block random variable to be analyzed
+ * \return A boolean flag indicating if the block needs multi-level tiling
+ */
+TVM_DLL bool NeedsMultiLevelTiling(Schedule sch, BlockRV block);
+
+/*!
+ * \brief Do the multi-level tiling according to the structure
+ * \param sch The meta schedule class
+ * \param block The block random variable to be analyzed
+ * \param format The tiling structure
+ */
+TVM_DLL void DoMultiLevelTiling(Schedule sch, BlockRV block, String tiling_structure);
+
+/*!
+ * \brief Checks whether the producer and consumer matches in elementwise way
+ * \param sch The meta schedule class
+ * \param producer The producer block
+ * \param consumer The consumer block
+ * \return A boolean flag indicating if they match
+ */
+TVM_DLL bool IsElementWiseMatch(Schedule sch, BlockRV producer, BlockRV consumer);
+
+/*!
+ * \brief Checks if a block is output block
+ * \param sch The meta schedule class
+ * \param block The block random variable to be analyzed
+ * \return A boolean flag indicating if it is an output block
+ */
+TVM_DLL bool IsOutputBlock(Schedule sch, BlockRV block);
+
 }  // namespace meta_schedule
 }  // namespace tvm
 

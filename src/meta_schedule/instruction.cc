@@ -58,11 +58,31 @@ ReorderInst::ReorderInst(Array<LoopRV> after_axes) {
   data_ = std::move(n);
 }
 
+ComputeInlineInst::ComputeInlineInst(BlockRV block) {
+  ObjectPtr<ComputeInlineInstNode> n = make_object<ComputeInlineInstNode>();
+  n->block = std::move(block);
+  data_ = std::move(n);
+}
+
 DecomposeReductionInst::DecomposeReductionInst(BlockRV block, LoopRV loop, BlockRV output) {
   ObjectPtr<DecomposeReductionInstNode> n = make_object<DecomposeReductionInstNode>();
   n->block = std::move(block);
   n->loop = std::move(loop);
   n->output = std::move(output);
+  data_ = std::move(n);
+}
+
+GetOnlyConsumerInst::GetOnlyConsumerInst(BlockRV block, BlockRV output) {
+  ObjectPtr<GetOnlyConsumerInstNode> n = make_object<GetOnlyConsumerInstNode>();
+  n->block = std::move(block);
+  n->output = std::move(output);
+  data_ = std::move(n);
+}
+
+CacheWriteInst::CacheWriteInst(BlockRV block, String storage_scope) {
+  ObjectPtr<CacheWriteInstNode> n = make_object<CacheWriteInstNode>();
+  n->block = std::move(block);
+  n->storage_scope = std::move(storage_scope);
   data_ = std::move(n);
 }
 
@@ -72,7 +92,10 @@ TVM_REGISTER_NODE_TYPE(GetBlockInstNode);
 TVM_REGISTER_NODE_TYPE(GetAxesInstNode);
 TVM_REGISTER_NODE_TYPE(SplitInstNode);
 TVM_REGISTER_NODE_TYPE(ReorderInstNode);
+TVM_REGISTER_NODE_TYPE(ComputeInlineInstNode);
+TVM_REGISTER_NODE_TYPE(CacheWriteInstNode);
 TVM_REGISTER_NODE_TYPE(DecomposeReductionInstNode);
+TVM_REGISTER_NODE_TYPE(GetOnlyConsumerInstNode);
 
 }  // namespace meta_schedule
 }  // namespace tvm
