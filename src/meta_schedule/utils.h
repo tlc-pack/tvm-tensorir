@@ -20,9 +20,12 @@
 #define SRC_META_SCHEDULE_UTILS_H_
 
 #include <tvm/arith/analyzer.h>
+#include <tvm/runtime/registry.h>
 #include <tvm/tir/expr.h>
 
 #include <vector>
+
+#include "./schedule.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -88,6 +91,12 @@ inline std::vector<int> FindCharPos(const String& str, char c) {
   return result;
 }
 
+/*!
+ * \brief Concatenate the nested vector into a flattened vector
+ * \tparam T The element type of the nested vector
+ * \param source The nested vector
+ * \return The flattened vector
+ */
 template <class T>
 inline std::vector<T> ConcatArray(const std::vector<std::vector<T> >& source) {
   std::vector<T> result;
@@ -97,7 +106,13 @@ inline std::vector<T> ConcatArray(const std::vector<std::vector<T> >& source) {
   return result;
 }
 
-inline bool RegionEqual(const Array<Range>& lhs, const Array<Range>& rhs) {
+/*!
+ * \brief Compare two domains and check if they are equal
+ * \param lhs One domain
+ * \param rhs The other domain
+ * \return A boolean indicating if the two domains are proved to be equal
+ */
+inline bool DomainEqual(const Array<Range>& lhs, const Array<Range>& rhs) {
   if (lhs.size() != rhs.size()) {
     return false;
   }
@@ -114,6 +129,17 @@ inline bool RegionEqual(const Array<Range>& lhs, const Array<Range>& rhs) {
     }
   }
   return true;
+}
+
+/*!
+ * \brief Convert the meta schedule's current conditional TIR to string
+ * \param sch The meta schedule class
+ * \return A string, the hybrid function
+ */
+inline String AsHybrid(const Schedule& sch) {
+  const auto* f = runtime::Registry::Get("hybrid.AsHybrid");
+  String s = (*f)(sch->sch->func, false);
+  return s;
 }
 
 }  // namespace meta_schedule

@@ -361,11 +361,9 @@ BlockRV ScheduleNode::CacheWrite(const BlockRV& block_rv, const String& storage_
   int inst_id = this->trace.size();
   // Find the output from TIR
   tir::StmtSRef block_sref = this->Eval(block_rv);
-  LOG(INFO) << "block_sref = " << block_sref;
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   CHECK(block) << "TypeError: Expects block, but gets type: " << block_sref->stmt->GetTypeKey();
   CHECK_EQ(block->writes.size(), 1) << "ValueError: only blocks with a single written is supported";
-  LOG(INFO) << "buffer = " << block->writes[0];
   tir::StmtSRef tir_result = this->sch->cache_write(block->writes[0]->buffer, storage_scope);
   // Create the output random variable
   BlockRV output;

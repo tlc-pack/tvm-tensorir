@@ -23,16 +23,13 @@
 namespace tvm {
 namespace meta_schedule {
 
-String AsHybrid(const Schedule& sch) {
-  const auto* f = runtime::Registry::Get("hybrid.AsHybrid");
-  String s = (*f)(sch->sch->func, false);
-  return s;
-}
-
+/*! \brief Create a rule that inlines all possible blocks */
 class AlwaysInline {
  public:
+  /*! \brief Default constructor */
   AlwaysInline() = default;
 
+  /*! \brief Rule application */
   RulePackedArgs operator()(Schedule sch, BlockRV block_rv) {
     static const Op& op_exp = Op::Get("tir.exp");
     if (HasReduceBlockVar(sch, block_rv) || IsOutputBlock(sch, block_rv)) {
@@ -55,6 +52,7 @@ class AlwaysInline {
     return RulePackedArgs(/*proceed=*/{}, /*ignored=*/{sch});
   }
 
+  /*! \brief Rule creator */
   static SearchRule MakeRule() {
     auto invoke = [](Schedule sch, BlockRV block) -> RulePackedArgs {
       AlwaysInline rule;
@@ -64,38 +62,58 @@ class AlwaysInline {
   }
 };
 
-class MultiLevelTiling {
+/*! \brief Create a rule that adds a cache write stage after multi-level tiling */
+class AddCacheWrite {
  public:
-  String tiling_structure;
+  /*! \brief Default constructor */
+  AddCacheWrite() = default;
 
-  explicit MultiLevelTiling(String tiling_structure)
-      : tiling_structure(std::move(tiling_structure)) {}
-
+  /*! \brief Rule application */
   RulePackedArgs operator()(Schedule sch, BlockRV block_rv) {
-    // Right now it only works with a leaf block with a single statement
-    if (NeedsMultiLevelTiling(sch, block_rv)) {
-      DoMultiLevelTiling(sch, block_rv, tiling_structure);
-      return RulePackedArgs(/*proceed=*/{}, /*ignored=*/{sch});
+    if (!NeedsMultiLevelTiling(sch, block_rv)) {
+      return RulePackedArgs(sch);
     }
-    return RulePackedArgs(sch);
+    // The only consumer will not be fused
+    if (Optional<BlockRV> opt_consumer_rv = sch->GetOnlyConsumer(block_rv)) {
+      BlockRV consumer_rv = opt_consumer_rv.value();
+      if (!HasReduceBlockVar(sch, block_rv) || !HasReduceBlockVar(sch, consumer_rv)) {
+        if (IsElementWiseMatch(sch, block_rv, consumer_rv)) {
+          return RulePackedArgs(sch);
+        }
+      }
+    }
+    // Add a cache write
+    sch->CacheWrite(block_rv, "local");
+    return RulePackedArgs(/*proceed=*/{}, /*ignored=*/{sch});
   }
 
-  static SearchRule MakeRule(String tiling_structure) {
-    auto invoke = [tiling_structure](Schedule sch, BlockRV block) -> RulePackedArgs {
-      MultiLevelTiling rule(tiling_structure);
+  /*! \brief Rule creator */
+  static SearchRule MakeRule() {
+    auto invoke = [](Schedule sch, BlockRV block) -> RulePackedArgs {
+      AddCacheWrite rule;
       return rule(sch, block);
     };
     return SearchRule("multi_level_tiling", invoke);
   }
 };
 
+/*!
+ * \brief Create a rule that does multi-level tiling and fusion together if there is sufficient
+ * amount of data reuse
+ */
 class MultiLevelTilingWithFusion {
  public:
+  /*! \brief The structure of tiling, e.g. "SSRSRS" on CPU */
   String tiling_structure;
 
+  /*!
+   * \brief Constructor
+   * \param tiling_structure The structure of tiling
+   */
   explicit MultiLevelTilingWithFusion(String tiling_structure)
       : tiling_structure(std::move(tiling_structure)) {}
 
+  /*! \brief Rule application */
   RulePackedArgs operator()(Schedule sch, BlockRV block_rv) {
     // Rule out the possibility that it does not need multi-level tiling
     if (!NeedsMultiLevelTiling(sch, block_rv)) {
@@ -120,6 +138,7 @@ class MultiLevelTilingWithFusion {
     return RulePackedArgs(/*proceed=*/{}, /*ignored=*/{sch});
   }
 
+  /*! \brief Rule creator */
   static SearchRule MakeRule(String tiling_structure) {
     auto invoke = [tiling_structure](Schedule sch, BlockRV block) -> RulePackedArgs {
       MultiLevelTilingWithFusion rule(tiling_structure);
@@ -129,31 +148,33 @@ class MultiLevelTilingWithFusion {
   }
 };
 
-class AddCacheWrite {
+/*! \brief Create a rule that does multi-level tiling if there is sufficient amount of data reuse */
+class MultiLevelTiling {
  public:
-  AddCacheWrite() = default;
+  /*! \brief The structure of tiling, e.g. "SSRSRS" on CPU */
+  String tiling_structure;
 
+  /*!
+   * \brief Constructor
+   * \param tiling_structure The structure of tiling
+   */
+  explicit MultiLevelTiling(String tiling_structure)
+      : tiling_structure(std::move(tiling_structure)) {}
+
+  /*! \brief Rule application */
   RulePackedArgs operator()(Schedule sch, BlockRV block_rv) {
-    if (!NeedsMultiLevelTiling(sch, block_rv)) {
-      return RulePackedArgs(sch);
+    // Right now it only works with a leaf block with a single statement
+    if (NeedsMultiLevelTiling(sch, block_rv)) {
+      DoMultiLevelTiling(sch, block_rv, tiling_structure);
+      return RulePackedArgs(/*proceed=*/{}, /*ignored=*/{sch});
     }
-    // The only consumer will not be fused
-    if (Optional<BlockRV> opt_consumer_rv = sch->GetOnlyConsumer(block_rv)) {
-      BlockRV consumer_rv = opt_consumer_rv.value();
-      if (!HasReduceBlockVar(sch, block_rv) || !HasReduceBlockVar(sch, consumer_rv)) {
-        if (IsElementWiseMatch(sch, block_rv, consumer_rv)) {
-          return RulePackedArgs(sch);
-        }
-      }
-    }
-    // Add a cache write
-    sch->CacheWrite(block_rv, "local");
-    return RulePackedArgs(/*proceed=*/{}, /*ignored=*/{sch});
+    return RulePackedArgs(sch);
   }
 
-  static SearchRule MakeRule() {
-    auto invoke = [](Schedule sch, BlockRV block) -> RulePackedArgs {
-      AddCacheWrite rule;
+  /*! \brief Rule creator */
+  static SearchRule MakeRule(String tiling_structure) {
+    auto invoke = [tiling_structure](Schedule sch, BlockRV block) -> RulePackedArgs {
+      MultiLevelTiling rule(tiling_structure);
       return rule(sch, block);
     };
     return SearchRule("multi_level_tiling", invoke);

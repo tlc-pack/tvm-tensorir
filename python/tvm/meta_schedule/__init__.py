@@ -17,10 +17,9 @@
 """ Meta Schedule """
 from ..ir import PrimExpr as ExprRV
 from . import helpers  # TODO(@junrushao1994)
-from . import analysis
+from . import analysis, search_rule
 from .measure import LocalBuilder, RPCRunner
 from .random_variable import BlockRV, ExprRV, LoopRV
 from .schedule import Schedule
 from .search import PostOrderApply, Replay, SearchRule, autotune, register_rule
 from .search_task import SearchTask
-from . import search_rule

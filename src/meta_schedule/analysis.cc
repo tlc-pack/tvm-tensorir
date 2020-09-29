@@ -413,7 +413,7 @@ TVM_DLL bool IsElementWiseMatch(Schedule sch, BlockRV producer_rv, BlockRV consu
     if (!write_region->buffer.same_as(region->buffer)) {
       continue;
     }
-    if (!RegionEqual(write_region->region, region->region)) {
+    if (!DomainEqual(write_region->region, region->region)) {
       return false;
     }
   }
@@ -421,7 +421,7 @@ TVM_DLL bool IsElementWiseMatch(Schedule sch, BlockRV producer_rv, BlockRV consu
     if (!write_region->buffer.same_as(region->buffer)) {
       continue;
     }
-    if (!RegionEqual(write_region->region, region->region)) {
+    if (!DomainEqual(write_region->region, region->region)) {
       return false;
     }
   }
@@ -471,6 +471,12 @@ TVM_REGISTER_GLOBAL("meta_schedule.analysis.BlockVarsUsedInStore")
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.CountMissingBlockVars")
     .set_body_typed(CountMissingBlockVars);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.InspectLoadIndices").set_body_typed(InspectLoadIndices);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.HasReduceBlockVar").set_body_typed(HasReduceBlockVar);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.NeedsMultiLevelTiling")
+    .set_body_typed(NeedsMultiLevelTiling);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.DoMultiLevelTiling").set_body_typed(DoMultiLevelTiling);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsElementWiseMatch").set_body_typed(IsElementWiseMatch);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsOutputBlock").set_body_typed(IsOutputBlock);
 
 }  // namespace meta_schedule
 }  // namespace tvm
