@@ -20,9 +20,9 @@
 #include <tvm/node/structural_equal.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/analysis.h>
+#include <tvm/tir/builtin.h>
 #include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
-#include <tvm/tir/builtin.h>
 
 #include <utility>
 
@@ -217,9 +217,9 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
     // Remap both buffer itself and buffer data
     // Skip buffer shape
     bool equal = DefEqual(lhs, rhs) && DefEqual(lhs->data, rhs->data) &&
-                 CompareType(lhs->dtype, rhs->dtype) &&
-                 lhs->scope == rhs->scope;
-    if (equal) rhs_buffer_map_[rhs] = lhs;
+                 CompareType(lhs->dtype, rhs->dtype) && lhs->scope == rhs->scope;
+    if (equal)
+      rhs_buffer_map_[rhs] = lhs;
     else if (assert_mode_) {
       LOG(FATAL) << "Buffers are not matching between:" << lhs << " and " << rhs;
     }
@@ -356,7 +356,7 @@ class BufferReplacer : public StmtExprMutator {
     auto it = var_map_.find(op);
     if (it != var_map_.end()) {
       return GetRef<PrimExpr>(it->second);
-    } else{
+    } else {
       auto it2 = block_var_map_.find(op);
       if (it2 != block_var_map_.find(op)) {
         return GetRef<PrimExpr>(it2->second);

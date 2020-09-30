@@ -123,23 +123,21 @@ PrimExpr SubstituteInScope(const PrimExpr& expr,
   return IRSubstitueInScope(vmap)(expr);
 }
 
-TensorRegion SubstituteTensorRegion(const TensorRegion& tensor_region,
-                                    const std::unordered_map<const VarNode*,
-                                                             const VarNode*>& var_map) {
+TensorRegion SubstituteTensorRegion(
+    const TensorRegion& tensor_region,
+    const std::unordered_map<const VarNode*, const VarNode*>& var_map) {
   auto new_tensor_region = make_object<TensorRegionNode>(*tensor_region.operator->());
   new_tensor_region->region = Array<Range>(make_object<ArrayNode>());
   for (const auto& range : tensor_region->region) {
-    new_tensor_region->region.push_back(
-        Range::FromMinExtent(SubstituteInScope(range->min, var_map),
-                             SubstituteInScope(range->extent, var_map)));
+    new_tensor_region->region.push_back(Range::FromMinExtent(
+        SubstituteInScope(range->min, var_map), SubstituteInScope(range->extent, var_map)));
   }
   return TensorRegion(new_tensor_region);
 }
 
 // Only Block and Loop are allowed here.
 template <typename T>
-Stmt GetStmtFromSeq(const T* op,
-                    const Stmt& target,
+Stmt GetStmtFromSeq(const T* op, const Stmt& target,
                     const std::function<bool(const Stmt&, const Stmt&)>& f_equal,
                     int64_t seq_index) {
   if (const auto* seq = op->body.template as<SeqStmtNode>()) {
@@ -214,8 +212,8 @@ StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef
   return root;
 }
 
-std::function<TensorRegion(const TensorRegion)> RelaxGenerator(const StmtSRef& block_sref,
-    const StmtSRef& root,
+std::function<TensorRegion(const TensorRegion)> RelaxGenerator(
+    const StmtSRef& block_sref, const StmtSRef& root,
     std::unordered_map<const VarNode*, PrimExpr>* vmap,
     std::unordered_map<const VarNode*, arith::IntSet>* dom_map) {
   const auto* block = block_sref->GetStmt<BlockNode>();
@@ -244,8 +242,7 @@ std::function<TensorRegion(const TensorRegion)> RelaxGenerator(const StmtSRef& b
     Array<Range> region;
     n->buffer = tensor_region->buffer;
     for (auto range : tensor_region->region) {
-      range = Range::FromMinExtent(Substitute(range->min, *vmap),
-                                        Substitute(range->extent, *vmap));
+      range = Range::FromMinExtent(Substitute(range->min, *vmap), Substitute(range->extent, *vmap));
       auto int_set = arith::EvalSet(range, *dom_map);
       region.push_back(Range::FromMinExtent(analyzer.Simplify(int_set.min()),
                                             analyzer.Simplify(int_set.max() - int_set.min() + 1)));
@@ -255,8 +252,7 @@ std::function<TensorRegion(const TensorRegion)> RelaxGenerator(const StmtSRef& b
   };
 }
 
-void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
-                 std::vector<TensorRegion>* reads,
+void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root, std::vector<TensorRegion>* reads,
                  std::vector<TensorRegion>* writes,
                  const std::unordered_map<const VarNode*, Range>& relax_vars) {
   std::unordered_map<const VarNode*, PrimExpr> vmap;
@@ -278,8 +274,7 @@ void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
   }
 }
 
-TensorRegion RelaxRegion(const StmtSRef& block_sref,
-                         const StmtSRef& root,
+TensorRegion RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
                          const TensorRegion& region) {
   std::unordered_map<const VarNode*, PrimExpr> vmap;
   std::unordered_map<const VarNode*, arith::IntSet> dom_map;
@@ -382,9 +377,8 @@ bool ExprContainsVar(const PrimExpr& expr, const PrimExpr& vars) {
   std::set<const VarNode*> var_set;
 
   // gather vars
-  PostOrderVisit(vars, [&var_set](const ObjectRef &node) {
-    if (const VarNode *op = node.as<VarNode>())
-      var_set.insert(op);
+  PostOrderVisit(vars, [&var_set](const ObjectRef& node) {
+    if (const VarNode* op = node.as<VarNode>()) var_set.insert(op);
   });
 
   if (var_set.empty()) {
@@ -393,8 +387,8 @@ bool ExprContainsVar(const PrimExpr& expr, const PrimExpr& vars) {
 
   // check
   bool ret = false;
-  PostOrderVisit(expr, [&var_set, &ret](const ObjectRef &node) {
-    if (const VarNode *op = node.as<VarNode>()) {
+  PostOrderVisit(expr, [&var_set, &ret](const ObjectRef& node) {
+    if (const VarNode* op = node.as<VarNode>()) {
       if (var_set.count(op) != 0) {
         ret = true;
       }
@@ -461,7 +455,7 @@ void PatternMatcher::VisitExpr_(const VarNode* op) {
   }
 }
 
-void PatternMatcher::VisitExpr_(const LoadNode *op) {
+void PatternMatcher::VisitExpr_(const LoadNode* op) {
   const auto* ptr = expr_to_match_.as<LoadNode>();
   if (ptr == nullptr) {
     match_success_ = false;
@@ -479,7 +473,7 @@ void PatternMatcher::VisitExpr_(const LoadNode *op) {
   }
 }
 
-void PatternMatcher::VisitExpr_(const LetNode *op) {
+void PatternMatcher::VisitExpr_(const LetNode* op) {
   const auto* ptr = expr_to_match_.as<LetNode>();
   if (ptr == nullptr) {
     match_success_ = false;

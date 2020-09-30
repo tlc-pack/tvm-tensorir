@@ -519,7 +519,7 @@ class GPUValidator : public StmtVisitor {
     }
     if (exec_scope == "gpu_warp") {
       check_thread_x_ = true;
-      CHECK(contain_thread_x_ == false);
+      CHECK(!contain_thread_x_);
     }
     current_scope_ = exec_scope;
     StmtVisitor::VisitStmt_(realize);
@@ -608,8 +608,7 @@ TVM_REGISTER_GLOBAL("tir.schedule.ValidateSRef")
     .set_body_typed<bool(Schedule)>([](Schedule schedule) { return schedule->ValidateSRef(); });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ValidateHierarchy")
-  .set_body_typed<void(PrimFunc)>([](PrimFunc f) { return ScheduleNode::ValidateHierarchy(f); });
-
+    .set_body_typed<void(PrimFunc)>([](PrimFunc f) { return ScheduleNode::ValidateHierarchy(f); });
 
 }  // namespace tir
 }  // namespace tvm
