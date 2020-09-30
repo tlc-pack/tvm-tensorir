@@ -150,7 +150,7 @@ Stmt GetStmtFromSeq(const T* op,
     } else {
       // apply slow path when seq_index == -1
       for (const auto& s : seq->seq) {
-        if (f_equal(s, target)) return (*seq)[seq_index];
+        if (f_equal(s, target)) return s;
       }
       LOG(FATAL) << "Can not find target stmt";
     }

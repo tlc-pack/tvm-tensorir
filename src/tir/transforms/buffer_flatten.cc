@@ -477,7 +477,11 @@ class BufferFlattener : public StmtExprMutator {
     const auto& region = it->second;
     std::vector<PrimExpr> new_indices;
     for (size_t i = 0; i < region.size(); ++i) {
-      new_indices.push_back(indices[i] - region[i].min());
+      if (arg_buffers_.count(buffer)) {
+        new_indices.push_back(indices[i]);
+      } else {
+        new_indices.push_back(indices[i] - region[i].min());
+      }
     }
     return new_indices;
   }

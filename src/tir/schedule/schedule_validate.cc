@@ -482,7 +482,10 @@ class GPUValidator : public StmtVisitor {
       LOG(FATAL) << "blockIdx can not be binded under the exec_scope gpu_block";
     }
 
+    bool contain_thread_x = contain_thread_x_ || thread_tag == "threadIdx.x";
+    std::swap(contain_thread_x, contain_thread_x_);
     StmtVisitor::VisitStmt_(loop);
+    std::swap(contain_thread_x, contain_thread_x_);
 
     if (new_kernel) {
       if (check_thread_x_) {
@@ -503,7 +506,7 @@ class GPUValidator : public StmtVisitor {
     std::string current_scope;
     std::swap(current_scope, current_scope_);
 
-    if (exec_scope != "") {
+    if (!exec_scope.empty() && !current_scope.empty()) {
       if (exec_scope == "gpu_block") {
         CHECK(current_scope == "gpu_block" || current_scope == "gpu_global");
       } else if (exec_scope == "gpu_warp") {
@@ -514,7 +517,10 @@ class GPUValidator : public StmtVisitor {
               current_scope == "gpu_block" || current_scope == "gpu_global");
       }
     }
-
+    if (exec_scope == "gpu_warp") {
+      check_thread_x_ = true;
+      CHECK(contain_thread_x_ == false);
+    }
     current_scope_ = exec_scope;
     StmtVisitor::VisitStmt_(realize);
     std::swap(current_scope, current_scope_);
@@ -523,11 +529,13 @@ class GPUValidator : public StmtVisitor {
   /*! \brief The final result */
 
  private:
-  inline bool IsThreadIdx(std::string thread_tag) {
+  static inline bool IsThreadIdx(const std::string& thread_tag) {
     return thread_tag.substr(0, 9) == "threadIdx" || thread_tag.substr(0, 7) == "vthread";
   }
 
-  inline bool IsBlockIdx(std::string thread_tag) { return thread_tag.substr(0, 9) == "BlockIdx"; }
+  static inline bool IsBlockIdx(const std::string& thread_tag) {
+    return thread_tag.substr(0, 9) == "BlockIdx";
+  }
 
   /*! \brief The current execution scope (gpu_global, gpu_block, gpu_warp or gpu_thread) */
   std::string current_scope_ = "gpu_global";
@@ -535,6 +543,8 @@ class GPUValidator : public StmtVisitor {
   std::unordered_map<std::string, PrimExpr> thread_extents_;
   /*! \brief Whether need to check threadIdx.x extents = 32 */
   bool check_thread_x_ = false;
+  /*! \brief The loop stack from current node up to root contain thread_x */
+  bool contain_thread_x_ = false;
 };
 
 void ScheduleNode::ValidateHierarchy(const PrimFunc& f) {
@@ -596,6 +606,10 @@ bool ScheduleNode::ValidateSRef() const {
 
 TVM_REGISTER_GLOBAL("tir.schedule.ValidateSRef")
     .set_body_typed<bool(Schedule)>([](Schedule schedule) { return schedule->ValidateSRef(); });
+
+TVM_REGISTER_GLOBAL("tir.schedule.ValidateHierarchy")
+  .set_body_typed<void(PrimFunc)>([](PrimFunc f) { return ScheduleNode::ValidateHierarchy(f); });
+
 
 }  // namespace tir
 }  // namespace tvm

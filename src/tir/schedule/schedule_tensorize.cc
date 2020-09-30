@@ -98,7 +98,8 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
       }
     }
 
-    return VisitExpr(op->predicate, rhs->predicate) && VisitStmt(op->block, rhs->block);
+    return VisitExpr(op->predicate, rhs->predicate) && op->exec_scope == rhs->exec_scope &&
+           VisitStmt(op->block, rhs->block);
   }
 
   bool VisitStmt_(const BlockNode* op, const Stmt& other) final {
@@ -375,18 +376,16 @@ class BufferReplacer : public StmtExprMutator {
       block_var_map[iter_var->var.get()] = block_var->var.get();
     }
     std::swap(block_var_map, block_var_map_);
-    std::swap(extra_block_var, current_extra_vars_);
     auto s = StmtExprMutator::VisitStmt_(op);
     op = s.as<BlockNode>();
     CHECK(op);
 
     auto iter_vars = op->iter_vars;
-    iter_vars.insert(iter_vars.begin(), current_extra_vars_.begin(), current_extra_vars_.end());
+    iter_vars.insert(iter_vars.begin(), extra_block_var.begin(), extra_block_var.end());
     auto reads = UpdateBufferViaMap(op->reads);
     auto writes = UpdateBufferViaMap(op->writes);
 
     std::swap(block_var_map, block_var_map_);
-    std::swap(extra_block_var, current_extra_vars_);
 
     if (reads.same_as(op->reads) && writes.same_as(op->writes) &&
         iter_vars.same_as(op->iter_vars)) {
@@ -404,7 +403,6 @@ class BufferReplacer : public StmtExprMutator {
   const std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual>& buffer_map_;
   const std::unordered_map<const VarNode*, const PrimExprNode*>& var_map_;
   std::unordered_map<const VarNode*, const PrimExprNode*> block_var_map_;
-  std::vector<IterVar> current_extra_vars_;
   const std::vector<IterVar>& extra_block_vars_;
   const std::unordered_map<Buffer, std::vector<PrimExpr>, ObjectPtrHash, ObjectPtrEqual>&
       buffer_indices_;
@@ -448,10 +446,12 @@ void ScheduleNode::tensorize(const StmtSRef& sref, const TensorIntrin& intrinsic
   const auto* loop = sref->GetStmt<LoopNode>();
   CHECK(loop) << "Only support tensorize a loop for now";
 
-  const StmtSRef& block_sref = blockize(sref, "");
-  const BlockRealize& block_realize = GetBlockRealize(block_sref);
   const auto* intrin_block_realize = intrinsic->implementation->body.as<BlockRealizeNode>();
   const Block& intrin_block = intrin_block_realize->block;
+
+  const StmtSRef& block_sref = blockize(sref, intrin_block_realize->exec_scope);
+  const BlockRealize& block_realize = GetBlockRealize(block_sref);
+
   TensorizeComparator comparator;
 
   bool equal = comparator.VisitStmt(block_realize, intrinsic->description->body);

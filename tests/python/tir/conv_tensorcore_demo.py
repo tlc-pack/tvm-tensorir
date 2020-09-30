@@ -21,21 +21,24 @@ from tvm.contrib import nvcc
 
 import numpy as np
 from tvm.hybrid import ty
+from topi.testing import conv2d_nhwc_python
+
+VERIFY = True
 
 
 @tvm.hybrid.script
 def conv(a: ty.handle, w: ty.handle, c: ty.handle) -> None:
-    C = tir.match_buffer(c, (16, 14, 14, 32, 16, 16), "float32")
-    A = tir.match_buffer(a, (16, 14, 14, 16, 16, 16), "float16")
-    W = tir.match_buffer(w, (14, 14, 16, 32, 16, 16), "float16")
+    C = tir.match_buffer(c, (2, 14, 14, 4, 16, 16), "float32")
+    A = tir.match_buffer(a, (2, 14, 14, 2, 16, 16), "float16")
+    W = tir.match_buffer(w, (3, 3, 2, 4, 16, 16), "float16")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
-    Apad = tir.buffer_allocate([16, 16, 16, 16, 16, 16], "float16")
-    with tir.block([16, 16, 16, 16, 16, 16], "A_pad") as [n, h, w, i, nn, ii]:
+    Apad = tir.buffer_allocate([2, 16, 16, 2, 16, 16], "float16")
+    with tir.block([2, 16, 16, 2, 16, 16], "A_pad") as [n, h, w, i, nn, ii]:
         Apad[n, h, w, i, nn, ii] = tir.if_then_else(1 <= h < 15 and 1 <= w < 15,
                                                     A[n, h - 1, w - 1, i, nn, ii], tir.float16(0),
                                                     dtype="float16")
-    with tir.block([16, 14, 14, 32, tir.reduce_axis(0, 16), tir.reduce_axis(0, 3),
+    with tir.block([2, 14, 14, 4, tir.reduce_axis(0, 2), tir.reduce_axis(0, 3),
                     tir.reduce_axis(0, 3), 16, 16, tir.reduce_axis(0, 16)], "Conv") as \
             [n, h, w, o, ic, kh, kw, nn, oo, ii]:
         reducer.step(C[n, h, w, o, nn, oo],
@@ -50,7 +53,7 @@ def gemm_desc(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=1,
                          scope="wmma.accumulator")
 
-    with tir.block([16, 16, tir.reduce_axis(0, 16)], "root") as [vi, vj, vk]:
+    with tir.block([16, 16, tir.reduce_axis(0, 16)], "root", exec_scope="gpu_warp") as [vi, vj, vk]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.bind(vk, 0)
@@ -70,7 +73,7 @@ def gemm_intrin(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256,
                          scope="wmma.accumulator")
 
-    with tir.block([16, 16, tir.reduce_axis(0, 16)], "root") as [vi, vj, vk]:
+    with tir.block([16, 16, tir.reduce_axis(0, 16)], "root", exec_scope="gpu_warp") as [vi, vj, vk]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.bind(vk, 0)
@@ -88,7 +91,7 @@ def fill_desc(c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256,
                          scope="wmma.accumulator")
 
-    with tir.block([16, 16], "root") as [vi, vj]:
+    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         for i, j in tir.grid(16, 16):
@@ -103,7 +106,7 @@ def fill_intrin(c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256,
                          scope="wmma.accumulator")
 
-    with tir.block([16, 16], "root") as [vi, vj]:
+    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.reads([])
@@ -119,7 +122,7 @@ def store_desc(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256,
                          scope="global")
 
-    with tir.block([16, 16], "root") as [vi, vj]:
+    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         for i, j in tir.grid(16, 16):
@@ -136,7 +139,7 @@ def store_intrin(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256,
                          scope="global")
 
-    with tir.block([16, 16], "root") as [vi, vj]:
+    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.reads(A[0: 16, 0: 16])
@@ -153,7 +156,7 @@ def load_a_desc(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float16", align=128, offset_factor=256,
                          scope="wmma.matrix_a")
 
-    with tir.block([16, 16], "root") as [vi, vj]:
+    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         for i, j in tir.grid(16, 16):
@@ -170,7 +173,7 @@ def load_a_intrin(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float16", align=128, offset_factor=256,
                          scope="wmma.matrix_a")
 
-    with tir.block([16, 16], "root") as [vi, vj]:
+    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.reads(A[0: 16, 0: 16])
@@ -187,7 +190,7 @@ def load_b_desc(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float16", align=128, offset_factor=256,
                          scope="wmma.matrix_b")
 
-    with tir.block([16, 16], "root") as [vi, vj]:
+    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         for i, j in tir.grid(16, 16):
@@ -204,7 +207,7 @@ def load_b_intrin(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float16", align=128, offset_factor=256,
                          scope="wmma.matrix_b")
 
-    with tir.block([16, 16], "root") as [vi, vj]:
+    with tir.block([16, 16], "root", exec_scope="gpu_warp") as [vi, vj]:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.reads(A[0: 16, 0: 16])
@@ -224,13 +227,24 @@ def build_and_test(func, device='cuda', num_runs=10):
     if nvcc.have_tensorcore(ctx.compute_version):
         with tvm.transform.PassContext(config={"tir.UnrollLoop": {"auto_max_step": 16}}):
             func = tvm.build(func, target=device)
-    a_np = np.random.uniform(size=(16, 14, 14, 16, 16, 16)).astype("float16")
-    w_np = np.random.uniform(size=(14, 14, 16, 32, 16, 16)).astype("float16")
+    a_np = np.random.uniform(size=(2, 14, 14, 2, 16, 16)).astype("float16")
+    w_np = np.random.uniform(size=(3, 3, 2, 4, 16, 16)).astype("float16")
     a = tvm.nd.array(a_np, ctx)
     w = tvm.nd.array(w_np, ctx)
-    c = tvm.nd.array(np.zeros((16, 14, 14, 32, 16, 16), dtype="float32"), ctx)
+    c = tvm.nd.array(np.zeros((2, 14, 14, 4, 16, 16), dtype="float32"), ctx)
     evaluator = func.time_evaluator(func.entry_name, ctx, number=num_runs)
     print("conv2d with tensor core: %f ms" % (evaluator(a, w, c).mean * 1e3))
+
+    if VERIFY:
+        func(a, w, c)
+        a_np = a_np.transpose((0, 4, 1, 2, 3, 5)).reshape((32, 14, 14, 32))
+        w_np = w_np.transpose((0, 1, 2, 4, 3, 5)).reshape((3, 3, 32, 64))
+        c_np = c.asnumpy().transpose((0, 4, 1, 2, 3, 5)).reshape((32, 14, 14, 64))
+        c_std = conv2d_nhwc_python(a_np.astype("float16"),
+                                   w_np.astype("float16"),
+                                   (1, 1),
+                                   (1, 1)).astype("float32")
+        np.testing.assert_allclose(c_np, c_std, rtol=1e-4, atol=1e-4)
 
 
 def test_tensorcore():
@@ -247,16 +261,14 @@ def test_tensorcore():
 
     AS = s.cache_read(APad, 'shared')
     WS = s.cache_read(W, 'shared')
-    Block_AS = tir.schedule.get_stmt(AS)
-    Block_WS = tir.schedule.get_stmt(WS)
-    AF = s.cache_read(Block_AS.writes[0].buffer, "wmma.matrix_a")
-    WF = s.cache_read(Block_WS.writes[0].buffer, "wmma.matrix_b")
+    AF = s.cache_read(AS.stmt.writes[0].buffer, "wmma.matrix_a")
+    WF = s.cache_read(WS.stmt.writes[0].buffer, "wmma.matrix_b")
     ConvF = s.cache_write(C, "wmma.accumulator")
 
-    block_row_warps = 4
-    block_col_warps = 2
-    warp_row_tiles = 2
-    warp_col_tiles = 4
+    block_row_warps = 1
+    block_col_warps = 1
+    warp_row_tiles = 1
+    warp_col_tiles = 1
     warp_size = 32
     chunk = 2
 
@@ -282,9 +294,9 @@ def test_tensorcore():
 
     # Schedule local computation
     s.compute_at(ConvF, oc)
-    n, o, ic, kh, kw, nnf, oof, ii = s.get_axes(ConvF)[-8:]
+    ic, kh, kw, nnf, oof, ii = s.get_axes(ConvF)[-6:]
     ko, ki = s.split(ic, factor=chunk)
-    s.reorder(ko, kh, ki, kw, n, o, nnf, oof, ii)
+    s.reorder(ko, kh, ki, kw, nnf, oof, ii)
 
     # Move intermediate computation into each output compute tile
     s.compute_at(AF, kw)
@@ -292,13 +304,9 @@ def test_tensorcore():
 
     # Schedule for A's share memory
     s.compute_at(AS, kh)
-    n, w, i, nn, ii = s.get_axes(AS)[-5:]
-    tx, xo = s.split(n, nparts=block_row_warps)
-    ty, yo = s.split(xo, nparts=block_col_warps)
+    w, i, nn, ii = s.get_axes(AS)[-4:]
     t = s.fuse(nn, ii)
     to, ti = s.split(t, factor=warp_size)
-    s.bind(tx, thread_y)
-    s.bind(ty, thread_z)
     s.bind(ti, thread_x)
 
     # Schedule for W's share memory
@@ -314,16 +322,15 @@ def test_tensorcore():
     s.vectorize(ti)
 
     s.compute_inline(s.get_block("A_pad"))
-
     init = s.decompose_reduction(ConvF, ko)
-
-    s.tensorize(nnf, tir.TensorIntrin(gemm_desc, gemm_intrin))
+    s.tensorize(s.get_axes(ConvF)[-3], tir.TensorIntrin(gemm_desc, gemm_intrin))
     s.tensorize(s.get_axes(init)[-2], tir.TensorIntrin(fill_desc, fill_intrin))
-    s.tensorize(nnc, tir.TensorIntrin(store_desc, store_intrin))
+    s.tensorize(s.get_axes(Conv)[-2], tir.TensorIntrin(store_desc, store_intrin))
     s.tensorize(s.get_axes(AF)[-2], tir.TensorIntrin(load_a_desc, load_a_intrin))
     s.tensorize(s.get_axes(WF)[-2], tir.TensorIntrin(load_b_desc, load_b_intrin))
 
     print(tvm.hybrid.ashybrid(s.func))
+    print(tvm.lower(s.func, None, simple_mode=True))
     build_and_test(s.func)
 
 
