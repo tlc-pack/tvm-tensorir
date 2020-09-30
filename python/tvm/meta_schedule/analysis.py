@@ -18,7 +18,7 @@
 from typing import List, Optional, Tuple
 
 from tvm.ir import Op
-from tvm.tir import BufferLoad, IterVar, Var
+from tvm.tir import BufferLoad, IterVar, Var, PrimFunc
 
 from . import _ffi_api_analysis
 from .instruction import BlockRV
@@ -371,4 +371,16 @@ def is_output_block(sch: Schedule, block: BlockRV) -> bool:
     """
     return bool(
         _ffi_api_analysis.IsOutputBlock(sch, block)  # pylint: disable=no-member
+    )
+
+
+def can_tensorize_rewrite(sch: Schedule, block: BlockRV, desc_func: PrimFunc) -> bool:
+    return bool(
+        _ffi_api_analysis.CanTensorizeRewrite(sch, block, desc_func)  # pylint: disable=no-member
+    )
+
+
+def do_tensorize_rewrite(sch: Schedule, block: BlockRV, desc_func: PrimFunc) -> None:
+    _ffi_api_analysis.DoTensorizeRewrite(  # pylint: disable=no-member
+        sch, block, desc_func
     )

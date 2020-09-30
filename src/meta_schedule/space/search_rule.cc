@@ -17,6 +17,7 @@
  * under the License.
  */
 #include "./search_rule.h"  // NOLINT(build/include)
+#include "../tir/schedule/schedule_common.h"
 
 #include "../analysis.h"
 #include "../search.h"
@@ -235,6 +236,32 @@ SearchRule MultiLevelTiling(String tiling_structure) {
   };
   return SearchRule("multi_level_tiling", f_apply);
 }
+
+/********** Tensorize Rewrite **********/
+
+class TensorizeRewrite {
+ public:
+  tir::PrimFunc desc_func;
+
+  explicit TensorizeRewrite(tir::PrimFunc desc_func) : desc_func(std::move(desc_func)) {}
+
+  RulePackedArgs operator()(Schedule sch, BlockRV block_rv) {
+    if (CanTensorizeRewrite(sch, block_rv, desc_func)) {
+      DoTensorizeRewrite(sch, block_rv, desc_func);
+      return RulePackedArgs(/*proceed=*/{}, /*skipped=*/{sch});
+    }
+    return RulePackedArgs(sch);
+  }
+
+  /*! \brief Rule creator */
+  static SearchRule MakeRule(tir::PrimFunc desc_func) {
+    auto invoke = [&](Schedule sch, BlockRV block) -> RulePackedArgs {
+      TensorizeRewrite rule(desc_func);
+      return rule(sch, block);
+    };
+    return SearchRule("tensorize_rewrite", invoke);
+  }
+};
 
 /********** FFI **********/
 

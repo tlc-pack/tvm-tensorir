@@ -106,7 +106,9 @@ def tensorized_batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 def test_auto_tensorize_tensorcore():
     sch = ms.Schedule(batched_matmul)
     block = sch.get_block(name="update")
-    sch.detect_tensorize(block, desc_tensorcore)
+    assert ms.analysis.can_tensorize_rewrite(sch, block, desc_tensorcore)
+    ms.analysis.do_tensorize_rewrite(sch, block, desc_tensorcore)
+
     i, j, k = sch.sch.get_axes(sch.evaluate(block))[-3:]
     tensor_intrin = tvm.tir.TensorIntrin(desc_tensorcore, impl_tensorcore)
     sch.sch.tensorize(i, tensor_intrin)
@@ -163,7 +165,9 @@ def dot_product_batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 def test_auto_tensorize_dot_product():
     sch = ms.Schedule(batched_matmul)
     block = sch.get_block(name="update")
-    sch.detect_tensorize(block, desc_dot_product)
+    assert ms.analysis.can_tensorize_rewrite(sch, block, desc_dot_product)
+    ms.analysis.do_tensorize_rewrite(sch, block, desc_dot_product)
+
     k = sch.sch.get_axes(sch.evaluate(block))[-1]
     tensor_intrin = tvm.tir.TensorIntrin(desc_dot_product, impl_dot_product)
     sch.sch.tensorize(k, tensor_intrin)
