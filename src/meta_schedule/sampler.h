@@ -19,6 +19,8 @@
 #ifndef SRC_META_SCHEDULE_SAMPLER_H_
 #define SRC_META_SCHEDULE_SAMPLER_H_
 
+#include <tvm/runtime/container.h>
+
 #include <memory>
 #include <random>
 #include <vector>
@@ -61,6 +63,42 @@ class Sampler {
    * \return A list of length n, the tiling factors sampled
    */
   std::vector<int> SampleTileFactor(int n, int extent, const std::vector<int>& candidates);
+  /*!
+   * \brief Sample n floats uniformly in [min, max)
+   * \param min The left boundary
+   * \param max The right boundary
+   * \return The list of floats sampled
+   */
+  std::vector<double> SampleUniform(int n, double min, double max);
+  /*!
+   * \brief Sample from a Bernoulli distribution
+   * \param p Parameter in the Bernoulli distribution
+   * \return return true with probability p, and false with probability (1 - p)
+   */
+  bool SampleBernoulli(double p);
+  /*!
+   * \brief Create a multinomial sampler based on the specific weights
+   * \param weights The weights, event probabilities
+   * \return The multinomial sampler
+   */
+  std::function<int()> MakeMultinomial(const std::vector<double>& weights);
+  /*!
+   * \brief Sample an array with replacement
+   * \tparam T The type of elements
+   * \param array The array to be indexed
+   * \param num_samples Number of samples we want to draw
+   * \return The result of sampling
+   */
+  template <class T>
+  runtime::Array<T> SampleWithReplacement(const runtime::Array<T>& array, int num_samples) {
+    std::vector<int> indices = SampleInts(num_samples, 0, array.size());
+    runtime::Array<T> result;
+    result.reserve(num_samples);
+    for (int index : indices) {
+      result.push_back(array[index]);
+    }
+    return result;
+  }
   /*! \brief Default constructor */
   Sampler() : Sampler(DeviceRand) {}
   /*!
