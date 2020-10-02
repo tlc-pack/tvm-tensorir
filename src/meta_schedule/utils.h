@@ -159,46 +159,49 @@ class SizedHeap {
    * \brief Constructor
    * \param size_limit The up-limit of the heap
    */
-  explicit SizedHeap(int size_limit) : size_limit_(size_limit) { heap_.reserve(size_limit_); }
+  explicit SizedHeap(int size_limit) : size_limit(size_limit) { heap.reserve(size_limit); }
 
   /*!
    * \brief Push the specific item to the heap if its key did not appears in the heap
    * \param item The item to be pushed
    */
   void Push(const ItemType& item) {
-    if (in_heap_.count(item.key)) {
+    if (in_heap.count(item.key)) {
       return;
     }
-    int size = heap_.size();
-    if (size < size_limit_) {
+    int size = heap.size();
+    if (size < size_limit) {
       // Heap is not full, just push
-      heap_.emplace_back(item);
-      std::push_heap(heap_.begin(), heap_.end());
-      in_heap_.insert(item.key);
-    } else if (item < heap_.front()) {
+      heap.emplace_back(item);
+      std::push_heap(heap.begin(), heap.end());
+      in_heap.insert(item.key);
+    } else if (item < heap.front()) {
       // if the item is better than the worst one in the heap, we can safely kick it out
-      in_heap_.erase(heap_.front().key);
-      in_heap_.insert(item.key);
-      std::pop_heap(heap_.begin(), heap_.end());
-      heap_.back() = item;
-      std::push_heap(heap_.begin(), heap_.end());
+      in_heap.erase(heap.front().key);
+      in_heap.insert(item.key);
+      std::pop_heap(heap.begin(), heap.end());
+      heap.back() = item;
+      std::push_heap(heap.begin(), heap.end());
     }
     // Otherwise, the item is worse than any other element in the heap
   }
 
   /*!
-   * \brief Add the specific key to the heap to avoid it being pushed
+   * \brief Add keys to the heap to avoid it being pushed later
+   * \tparam IterType Type of the input iterator
    * \param key The key to be inserted
    */
-  void AddKey(const KeyType& key) { in_heap_.insert(key); }
+  template <class IterType>
+  void AddKeys(IterType begin, IterType end) {
+    in_heap.insert(begin, end);
+  }
 
- private:
   /*! \brief Up-limit of the heap size */
-  int size_limit_;
+  int size_limit;
   /*! \brief The heap, the worse the topper */
-  std::vector<ItemType> heap_;
+  std::vector<ItemType> heap;
   /*! \brief Collection of keys in th heap */
-  std::unordered_set<KeyType> in_heap_;
+  std::unordered_set<KeyType> in_heap;
 };
 
 /*!
@@ -214,19 +217,19 @@ class SortedTable {
    * \param key The key to be checked
    * \return A boolean indicating if it is in the table
    */
-  bool Has(const KeyType& key) const { return keys_.count(key); }
+  bool Has(const KeyType& key) const { return keys.count(key); }
 
   /*!
    * \brief Add a key to the table
    * \param key The key to be added
    */
-  void Add(const KeyType& key) { keys_.insert(key); }
+  void Add(const KeyType& key) { keys.insert(key); }
 
   /*!
    * \brief Add a value to the table
    * \param value The value to be added
    */
-  void Add(const ValueType& value) { values_.push_back(value); }
+  void Add(const ValueType& value) { values.insert(value); }
 
   /*!
    * \brief Get the top-k values, the smaller the better
@@ -237,7 +240,7 @@ class SortedTable {
     std::vector<ValueType> result;
     result.reserve(top_k);
     int i = 0;
-    for (const ValueType& value : values_) {
+    for (const ValueType& value : values) {
       result.push_back(value);
       if (++i >= top_k) {
         break;
@@ -246,11 +249,10 @@ class SortedTable {
     return result;
   }
 
- private:
   /*! \brief The table to store keys */
-  std::unordered_set<KeyType> keys_;
+  std::unordered_set<KeyType> keys;
   /*! \brief The table to store values */
-  std::multiset<ValueType> values_;
+  std::multiset<ValueType> values;
 };
 
 }  // namespace meta_schedule

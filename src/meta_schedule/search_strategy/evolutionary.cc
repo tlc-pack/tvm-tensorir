@@ -20,41 +20,18 @@
 #include "../measure.h"
 #include "../search.h"
 #include "../utils.h"
+#include "./mutator.h"
 
 namespace tvm {
 namespace meta_schedule {
 
-/********** Mutator **********/
-
-/*! \brief A mutation rule for the genetic algorithm  */
-class MutatorNode : public Object {
- public:
-  /*! \brief The probability weight of choosing this rule */
-  double p;
-
-  /*! \brief Base destructor */
-  virtual ~MutatorNode() = default;
-
-  /*!
-   * \brief Mutate the schedule by applying the mutation
-   * \param sch The schedule to be mutated
-   * \param sampler The random number sampler
-   * \return The new schedule after mutation, NullOpt if mutation fails
-   */
-  virtual Optional<Schedule> Apply(const Schedule& sch, Sampler* sampler) = 0;
-
-  static constexpr const char* _type_key = "meta_schedule.Mutator";
-  TVM_DECLARE_BASE_OBJECT_INFO(MutatorNode, Object);
-};
-
-/*!
- * \brief Managed refernce to MutatorNode
- * \sa MutatorNode
+/*
+ * TODO(@junrushao1994): Items left undone
+ * 1) early stopping
+ * 2) check if space is fully explored
+ * 3) report sampling failures in init population
+ * 4) make sure schedule is still valid
  */
-class Mutator : public ObjectRef {
- public:
-  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Mutator, ObjectRef, MutatorNode);
-};
 
 /********** Evolutionary **********/
 
@@ -138,26 +115,25 @@ class EvolutionaryNode : public SearchStrategyNode {
 
   /*!
    * \brief Perform evolutionary search using genetic algorithm with the cost model
-   * \param initial_population The initial population
+   * \param task The search task
+   * \param inits The initial population
    * \param num_samples The number of samples to be draw
    * \return An array of schedules, the sampling result
    */
-  Array<Schedule> EvolveWithCostModel(const SearchTask& task,
-                                      const Array<Schedule>& initial_population, int num_samples);
+  Array<Schedule> EvolveWithCostModel(const SearchTask& task, const Array<Schedule>& inits,
+                                      int num_samples);
 
   /*!
    * \brief Construct measure inputs out of the candidate schedules
    * \param task The search task
    * \param bests The best scored candidate schedules
    * \param rands Some rand candidate schedules
-   * \param batch_size Up-limit of the number of schedules to be picked
    * \param num_bests Up-limit of the number of schedules to be picked from bests
    * \param num_rands Up-limit of the number of schedules to be picked from rands
    * \return An array of MeasureInput to be picked
    */
-  Array<MeasureInput> MakeMeasureInputs(const SearchTask& task, const Array<Schedule>& bests,
-                                        const Array<Schedule>& rands, int batch_size, int num_bests,
-                                        int num_rands);
+  Array<MeasureInput> PickMeasureInputs(const SearchTask& task, const Array<Schedule>& bests,
+                                        const Array<Schedule>& rands, int num_bests, int num_rands);
 };
 
 /*!
@@ -218,30 +194,56 @@ Evolutionary::Evolutionary(int num_measure_trials, int num_measure_per_batch,
 Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const SearchSpace& space,
                                             const ProgramMeasurer& measurer, int verbose) {
   measurer->Reset();
-  int num_eps_rand = this->eps_greedy * this->num_measure_per_batch;
+  int num_rands = this->eps_greedy * this->num_measure_per_batch;
+  int num_bests = num_measure_per_batch - num_rands;
+  int num_measured = 0;
   Array<Schedule> support = space->GetSupport(task);
-  for (int num_measures = 0; num_measures < num_measure_trials;) {
-    Array<Schedule> population = SampleInitPopulation(support);
-    Array<Schedule> rands = sampler_.SampleWithReplacement(rands, num_eps_rand * 3);
-    Array<Schedule> bests = EvolveWithCostModel(task, population, num_measure_per_batch * 2);
-    int batch_size = std::min(num_measure_per_batch, num_measure_trials - num_measures);
-    Array<MeasureInput> measure_inputs = MakeMeasureInputs(
-        /*task=*/task, /*bests=*/bests, /*rands=*/rands, /*batch_size=*/batch_size,
-        /*num_bests=*/num_measure_per_batch - num_eps_rand, /*num_rands=*/num_eps_rand);
+  for (;;) {
+    // `inits`: Sampled initial population, whose size is at most `this->population`
+    Array<Schedule> inits = SampleInitPopulation(support);
+    // `rands`: Randomly pick from `inits`
+    Array<Schedule> rands = sampler_.SampleWithReplacement(inits, num_rands * 3);
+    // `bests`: Explore the space using mutators
+    // and pick candidates according to the cost model
+    // return with at most the size specified
+    Array<Schedule> bests = EvolveWithCostModel(task, inits, num_measure_per_batch * 2);
+    // Do measurement
+    Array<MeasureInput> measure_inputs = PickMeasureInputs(
+        /*task=*/task, /*bests=*/bests, /*rands=*/rands,
+        /*num_bests=*/num_bests, /*num_rands=*/num_rands);
+    Array<MeasureResult> measure_results =
+        measurer->BatchMeasure(measure_inputs, measure_inputs.size(), verbose);
+    // Record the measurement result
+    CHECK_EQ(measure_inputs.size(), measure_results.size());
+    int n_measures = measure_inputs.size();
+    for (int i = 0; i < n_measures; ++i) {
+      const MeasureInput& measure_input = measure_inputs[i];
+      const MeasureResult& measure_result = measure_results[i];
+      double avg_time_cost = FloatArrayMean(measure_result->costs);
+      measured_.Add(MeasuredState(avg_time_cost, measure_input->sch));
+    }
+    num_measured += measure_results.size();
+    if (num_measured < num_measure_trials) {
+      cost_model->Update(measure_inputs, measure_results);
+    } else {
+      break;
+    }
   }
   return measurer->best_sch;
 }
 
 Array<Schedule> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& support) {
+  int num_measured = population * use_measured_ratio;
+  int num_sampled = population - num_measured;
   Array<Schedule> results;
   results.reserve(population);
   // Pick measured states
-  std::vector<MeasuredState> measured = measured_.GetTopK(population * use_measured_ratio);
+  std::vector<MeasuredState> measured = measured_.GetTopK(num_measured);
   for (const MeasuredState& state : measured) {
     results.push_back(state.sch);
   }
   // Pick unmeasured states
-  for (int i = results.size(); i < population; ++i) {
+  for (int i = 0; i < num_sampled; ++i) {
     int sample_index = sampler_.SampleInt(0, support.size());
     Schedule sch = support[sample_index]->copy();
     sch->ReplayOnce();  // TODO(@junrushao1994): deal with exceptions
@@ -251,21 +253,35 @@ Array<Schedule> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& su
 }
 
 Array<Schedule> EvolutionaryNode::EvolveWithCostModel(const SearchTask& task,
-                                                      const Array<Schedule>& initial_population,
+                                                      const Array<Schedule>& inits,
                                                       int num_samples) {
   // The heap to record best schedules
+  /*! \brief Item in the heap */
   struct HeapItem {
+    /*! \brief We de-duplicate using strings */
     using KeyType = String;
+    /*! \brief The string key used for de-duplication */
     String key;
+    /*! \brief The prediction score, the larger the better */
     double score;
+    /*! \brief The schedule */
     Schedule sch;
+    /*!
+     * \brief Constructor
+     * \param key The string key used for de-duplication
+     * \param score The predicted score, the larger the better
+     * \param sch The schedule
+     */
     explicit HeapItem(const String& key, double score, const Schedule& sch)
         : key(key), score(score), sch(sch) {}
-    bool operator<(const HeapItem& rhs) const { return score < rhs.score; }
+    /*! \brief Comparator */
+    bool operator<(const HeapItem& rhs) const { return score > rhs.score; }
   };
   SizedHeap<HeapItem> heap(num_samples);
+  // We do not consider schedules that are already measured
+  heap.AddKeys(measured_.keys.begin(), measured_.keys.end());
   // Prepare search queues
-  std::vector<Schedule> sch_curr(initial_population.begin(), initial_population.end());
+  std::vector<Schedule> sch_curr(inits.begin(), inits.end());
   std::vector<Schedule> sch_next;
   sch_curr.reserve(population);
   sch_next.reserve(population);
@@ -283,34 +299,45 @@ Array<Schedule> EvolutionaryNode::EvolveWithCostModel(const SearchTask& task,
       break;
     }
     // Make sampler from sch_curr with scores predicted
-    std::function<int()> sch_curr_sampler = sampler_.MakeMultinomial(scores);
     // Sample according to the score
-    for (int i = 0; i < population;) {
+    std::function<int()> sch_curr_sampler = sampler_.MakeMultinomial(scores);
+    sch_next.clear();
+    for (int i = 0; i < population; ++i) {
       const Schedule& sch = sch_curr[sch_curr_sampler()];
-      if (!sampler_.SampleBernoulli(p_mutate)) {
-        ++i;
+      if (sampler_.SampleBernoulli(p_mutate)) {
+        // with probability `p_mutate`, choose a mutator
+        const Mutator& mutator = mutators[mutator_sampler_()];
+        // apply the mutator
+        if (Optional<Schedule> new_sch = mutator->Apply(sch, &sampler_)) {
+          sch_next.emplace_back(new_sch.value());
+        } else {
+          // if not successful, take a step back and redo
+          --i;
+        }
+      } else {
         sch_next.emplace_back(sch);
-        continue;
-      }
-      const Mutator& mutator = mutators[mutator_sampler_()];
-      if (Optional<Schedule> new_sch = mutator->Apply(sch, &sampler_)) {
-        ++i;
-        sch_next.emplace_back(new_sch.value());
       }
     }
   }
+  // Return the best states from the heap
+  std::sort(heap.heap.begin(), heap.heap.end());
+  Array<Schedule> results;
+  results.reserve(num_samples);
+  for (const HeapItem& item : heap.heap) {
+    results.push_back(item.sch);
+  }
+  return results;
 }
 
-Array<MeasureInput> EvolutionaryNode::MakeMeasureInputs(const SearchTask& task,
+Array<MeasureInput> EvolutionaryNode::PickMeasureInputs(const SearchTask& task,
                                                         const Array<Schedule>& bests,
-                                                        const Array<Schedule>& rands,
-                                                        int batch_size, int num_bests,
-                                                        int num_rands) {
-  size_t i_bests = 0;
-  size_t i_rands = 0;
+                                                        const Array<Schedule>& rands,  //
+                                                        int num_bests, int num_rands) {
+  int n = num_bests + num_rands;
+  size_t i_bests = 0, i_rands = 0;
   Array<MeasureInput> results;
-  results.reserve(batch_size);
-  for (int i = 0; i < batch_size;) {
+  results.reserve(n);
+  for (int i = 0; i < n;) {
     bool has_best = i_bests < bests.size();
     bool has_rand = i_rands < rands.size();
     // Pick a schedule
@@ -373,7 +400,6 @@ struct Internal {
   }
 };
 
-TVM_REGISTER_OBJECT_TYPE(MutatorNode);
 TVM_REGISTER_NODE_TYPE(EvolutionaryNode);
 TVM_REGISTER_GLOBAL("meta_schedule.Evolutionary").set_body_typed(Internal::New);
 
