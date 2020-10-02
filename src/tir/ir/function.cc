@@ -63,12 +63,27 @@ FuncType PrimFuncNode::func_type_annotation() const {
 }
 
 TensorIntrin::TensorIntrin(PrimFunc desc_func, PrimFunc intrin_func) {
-  // check both functions' bodies are directly block
-  CHECK(desc_func->body.as<BlockRealizeNode>());
-  CHECK(intrin_func->body.as<BlockRealizeNode>());
   // check the number of func var is equal
   CHECK_EQ(desc_func->params.size(), intrin_func->params.size());
   CHECK_EQ(desc_func->buffer_map.size(), intrin_func->buffer_map.size());
+
+  // check both functions' bodies are directly block
+  const auto* desc_realize = desc_func->body.as<BlockRealizeNode>();
+  const auto* intrin_realize = intrin_func->body.as<BlockRealizeNode>();
+  CHECK(desc_realize != nullptr);
+  CHECK(intrin_realize != nullptr);
+  CHECK_EQ(desc_realize->exec_scope, intrin_realize->exec_scope);
+
+  const Block& desc_block = desc_realize->block;
+  const Block& intrin_block = intrin_realize->block;
+
+  // check block var number and iter type
+  CHECK_EQ(desc_block->iter_vars.size(), intrin_block->iter_vars.size());
+  for (size_t i = 0; i < desc_block->iter_vars.size(); i++) {
+    const IterVar& desc_var = desc_block->iter_vars[i];
+    const IterVar& intrin_var = intrin_block->iter_vars[i];
+    CHECK(desc_var->iter_type == intrin_var->iter_type);
+  }
 
   auto n = make_object<TensorIntrinNode>();
   n->description = std::move(desc_func);
