@@ -541,6 +541,11 @@ TVM_DLL const Op& vectorlow();
  */
 TVM_DLL const Op& vectorcombine();
 
+/*!
+ * \brief tvm intrinsic for getting element offset in TensorIR
+ */
+TVM_DLL const Op& get_elem_offset();
+
 /*! \brief The kind of structure field info used in intrinsic */
 enum TVMStructFieldKind : int {
   // array head address

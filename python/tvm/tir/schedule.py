@@ -372,6 +372,15 @@ def create_schedule(func):
     return CreateSchedule(func)
 
 
+def validate_hierarchy(func):
+    """Validate whether a func satisfies the hierarchy constraints
+    Parameters
+    ----------
+    func: TIRFunction
+    """
+    ValidateHierarchy(func)
+
+
 def get_stmt(sref):
     """Get Stmt from sref
     Parameters

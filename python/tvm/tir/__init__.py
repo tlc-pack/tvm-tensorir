@@ -46,7 +46,7 @@ from .op import isnan, isfinite, isinf, copysign
 from .op import div, indexdiv, indexmod, truncdiv, truncmod, floordiv, floormod
 from .op import comm_reducer, min, max, sum, thread_axis
 
-from .schedule import create_schedule, Schedule
+from .schedule import create_schedule, Schedule, validate_hierarchy
 
 from . import ir_builder
 from . import transform

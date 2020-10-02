@@ -224,6 +224,10 @@ TIR_DEFINE_BUILTIN_FUNC(vectorlow).set_attr<TCallEffectKind>("TCallEffectKind",
 TIR_DEFINE_BUILTIN_FUNC(vectorcombine)
     .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kPure));
 
+TIR_DEFINE_BUILTIN_FUNC(get_elem_offset)
+    .set_attr<TCallEffectKind>("TCallEffectKind", Integer(CallEffectKind::kPure));
+
+
 }  // namespace builtin
 }  // namespace tir
 }  // namespace tvm
