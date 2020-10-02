@@ -248,13 +248,13 @@ class PatternMatcher : public ExprVisitor {
  */
 class MatchingSimplifier : public ExprMutator {
  public:
-  MatchingSimplifier(const std::unordered_map<Var, PrimExpr, ObjectHash, ObjectEqual>& var_map,
+  MatchingSimplifier(const std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual>& var_map,
                      arith::Analyzer* parent);
 
   PrimExpr VisitExpr(const PrimExpr& expr) override;
 
  private:
-  const std::unordered_map<Var, PrimExpr, ObjectHash, ObjectEqual>& var_map_;
+  const std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual>& var_map_;
   arith::Analyzer* analyzer_;
 };
 
