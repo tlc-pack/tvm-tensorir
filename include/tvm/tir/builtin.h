@@ -554,6 +554,11 @@ TVM_DLL const Op& vectorlow();
 TVM_DLL const Op& vectorcombine();
 
 /*!
+ * \brief tvm intrinsic for getting element offset in TensorIR
+ */
+TVM_DLL const Op& get_elem_offset();
+
+/*!
  * \brief atomic add instruction, corresponding e.g. to atomicAdd in CUDA
  */
 TVM_DLL const Op& atomic_add();

@@ -48,7 +48,7 @@ from .op import div, indexdiv, indexmod, truncdiv, truncmod, floordiv, floormod
 from .op import comm_reducer, min, max, sum
 from .op import q_multiply_shift
 
-from .schedule import create_schedule, Schedule
+from .schedule import create_schedule, Schedule, validate_hierarchy
 
 from . import ir_builder
 from . import transform

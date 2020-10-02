@@ -71,7 +71,7 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& sref, const String& exe_scope) {
   // Update AST
   Array<IterVar> iter_vars;
   Array<PrimExpr> values;
-  std::unordered_map<Var, PrimExpr, ObjectHash, ObjectEqual> var_map;
+  std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> var_map;
   for (size_t i = 0; i < inner_block->iter_vars.size(); ++i) {
     const IterVar iter_var = inner_block->iter_vars[i];
     const IterVar new_iter_var(iter_var->dom, iter_var->var.copy_with_suffix(""),
