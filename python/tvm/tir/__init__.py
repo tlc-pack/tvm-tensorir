@@ -49,6 +49,7 @@ from .op import comm_reducer, min, max, sum
 from .op import q_multiply_shift
 
 from .schedule import StmtSRef, BlockScope, ScheduleState, Schedule, ScheduleError
+from .schedule import create_schedule, validate_hierarchy
 
 from . import schedule
 from . import ir_builder
