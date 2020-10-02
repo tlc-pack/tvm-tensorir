@@ -58,113 +58,21 @@ class Mutator : public ObjectRef {
 
 /********** Evolutionary **********/
 
-/*!
- * \brief Get the string representation of a schedule
- * \param sch The schedule to be stringified
- * \return The string representation of a schedule
- */
-String Repr(const Schedule& sch) {
-  const auto* f = runtime::Registry::Get("hybrid.AsHybrid");
-  CHECK(f) << "IndexError: global function \"hybrid.AsHybrid\" not found";
-  String s = (*f)(sch->sch->func, false);
-  return s;
-}
-
-/*! \brief The measured states */
-struct MeasuredState {
-  /*! \brief Running time */
-  double time;
-  /*! \brief The schedule to be measured */
-  Schedule sch;
-  /*! \brief Constructor */
-  explicit MeasuredState(double time, const Schedule& sch) : time(time), sch(sch) {}
-  /*! \brief Comparator */
-  bool operator<(const MeasuredState& rhs) const { return time < rhs.time; }
-};
-
-class SizedHeap {
- public:
-  explicit SizedHeap(int size_limit) : size_limit_(size_limit) { heap_.reserve(size_limit_); }
-
-  void Push(double time, const Schedule& sch) {
-    String str_repr = Repr(sch);
-    if (in_heap_.count(str_repr)) {
-      return;
-    }
-    int size = heap_.size();
-    if (size < size_limit_) {
-      // Heap is not full, just push
-      heap_.emplace_back(time, sch);
-      std::push_heap(heap_.begin(), heap_.end());
-      in_heap_.insert(str_repr);
-    } else if (time < heap_.front().time) {
-      // if the time is better than the worse one in the heap, we can safely kick it out
-      String old_str_repr = Repr(heap_.front().sch);
-      in_heap_.erase(old_str_repr);
-      in_heap_.insert(str_repr);
-      std::pop_heap(heap_.begin(), heap_.end());
-      heap_.back() = MeasuredState(time, sch);
-      std::push_heap(heap_.begin(), heap_.end());
-    }
-    // Otherwise, the time is worse than any other element in the heap
-  }
-
- private:
-  int size_limit_;
-  std::vector<MeasuredState> heap_;
-  std::unordered_set<String> in_heap_;
-};
-
-/*! \brief A table storing all the states that have been measured */
-class MeasuredStates {
- public:
-  /*!
-   * \brief Check if a string representation is in the table
-   * \param str_repr The string representation to be checked
-   * \return A boolean indicating if it is in the table
-   */
-  bool Has(const String& str_repr) const { return table_.count(str_repr); }
-
-  /*!
-   * \brief Add a string representation to the table
-   * \param str_repr The string representation to be added
-   */
-  void Add(const String& str_repr) { table_.insert(str_repr); }
-
-  /*!
-   * \brief Add a schedule and its running time to the table
-   * \param time The running time
-   * \param sch The schedule
-   */
-  void Add(double time, const Schedule& sch) { states_.emplace(time, sch); }
-
-  /*!
-   * \brief Get the best k states
-   * \param num_states The number of the best states to get
-   * \return A list with length at most `num_states`
-   */
-  Array<Schedule> GetBestStates(int num_states) const {
-    Array<Schedule> result;
-    result.reserve(num_states);
-    int i = 0;
-    for (const MeasuredState& state : states_) {
-      result.push_back(state.sch);
-      if (++i >= num_states) {
-        break;
-      }
-    }
-    return result;
-  }
-
- private:
-  /*! \brief The table to store string representation */
-  std::unordered_set<String> table_;
-  /*! \brief The table to store measured states */
-  std::multiset<MeasuredState> states_;
-};
-
 /*! \brief Evolutionary Search */
 class EvolutionaryNode : public SearchStrategyNode {
+ private:
+  /*! \brief The measured states */
+  struct MeasuredState {
+    /*! \brief Running time */
+    double time;
+    /*! \brief The schedule to be measured */
+    Schedule sch;
+    /*! \brief Constructor */
+    explicit MeasuredState(double time, const Schedule& sch) : time(time), sch(sch) {}
+    /*! \brief Comparator */
+    bool operator<(const MeasuredState& rhs) const { return time < rhs.time; }
+  };
+
  public:
   /*! \brief The number of iterations of measurements performed by genetic algorithm */
   int num_measure_trials;
@@ -182,13 +90,13 @@ class EvolutionaryNode : public SearchStrategyNode {
   double p_mutate;
   /*! \brief A list of mutations allowed to happen */
   Array<Mutator> mutators;
-
+  /*! \brief A cost model helping to explore the search space */
   CostModel cost_model;
-
+  /*! \brief A random number generator */
   Sampler sampler_;
-
-  MeasuredStates measured_;
-
+  /*! \brief A table storing all states that have been measured */
+  SortedTable<String, MeasuredState> measured_;
+  /*! \brief A helper function that samples the index of mutators to be used */
   std::function<int()> mutator_sampler_;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
@@ -260,9 +168,18 @@ class Evolutionary : public SearchStrategy {
  public:
   /*!
    * \brief Constructor
+   * \param num_measure_trials The number of iterations of measurements performed by genetic
+   * algorithm
+   * \param num_measure_per_batch The number of measurements in each batch
+   * \param num_iters_in_genetic_algo The number of iterations performed by generic algorithm
+   * \param eps_greedy The percentage of measurements to use randomly sampled states
+   * \param use_measured_ratio The percentage of previously measured states used in the initial
+   * population
+   * \param population The population size for evolutionary search
+   * \param p_mutate The probability to perform mutation
    * \param mutators A list of mutations allowed to happen
+   * \param cost_model A cost model helping to explore the search space
    */
-  // TODO
   explicit Evolutionary(int num_measure_trials, int num_measure_per_batch,
                         int num_iters_in_genetic_algo, double eps_greedy, double use_measured_ratio,
                         int population, double p_mutate, Array<Mutator> mutators,
@@ -316,8 +233,14 @@ Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const Search
 }
 
 Array<Schedule> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& support) {
-  Array<Schedule> results = measured_.GetBestStates(population * use_measured_ratio);
+  Array<Schedule> results;
   results.reserve(population);
+  // Pick measured states
+  std::vector<MeasuredState> measured = measured_.GetTopK(population * use_measured_ratio);
+  for (const MeasuredState& state : measured) {
+    results.push_back(state.sch);
+  }
+  // Pick unmeasured states
   for (int i = results.size(); i < population; ++i) {
     int sample_index = sampler_.SampleInt(0, support.size());
     Schedule sch = support[sample_index]->copy();
@@ -330,21 +253,30 @@ Array<Schedule> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& su
 Array<Schedule> EvolutionaryNode::EvolveWithCostModel(const SearchTask& task,
                                                       const Array<Schedule>& initial_population,
                                                       int num_samples) {
+  // The heap to record best schedules
+  struct HeapItem {
+    using KeyType = String;
+    String key;
+    double score;
+    Schedule sch;
+    explicit HeapItem(const String& key, double score, const Schedule& sch)
+        : key(key), score(score), sch(sch) {}
+    bool operator<(const HeapItem& rhs) const { return score < rhs.score; }
+  };
+  SizedHeap<HeapItem> heap(num_samples);
   // Prepare search queues
   std::vector<Schedule> sch_curr(initial_population.begin(), initial_population.end());
   std::vector<Schedule> sch_next;
   sch_curr.reserve(population);
   sch_next.reserve(population);
-  // The heap to record best schedules
-  SizedHeap heap(num_samples);
   // Main loop: (num_iters_in_genetic_algo + 1) times
-  for (int iter = 0;; ++iter) {
+  for (int iter = 0;; ++iter, sch_curr.swap(sch_next)) {
     // Predict running time with the cost model
     std::vector<double> scores = cost_model->Predict(task, sch_curr);
     // Put the predicted perf to the heap
     CHECK_EQ(scores.size(), sch_curr.size());
     for (int i = 0, n = scores.size(); i < n; ++i) {
-      heap.Push(scores[i], sch_curr[i]);
+      heap.Push(HeapItem(Repr(sch_curr[i]), scores[i], sch_curr[i]));
     }
     // Discontinue once it reaches end of search
     if (iter == num_iters_in_genetic_algo) {
@@ -418,7 +350,17 @@ Array<MeasureInput> EvolutionaryNode::MakeMeasureInputs(const SearchTask& task,
 struct Internal {
   /*!
    * \brief Constructor of Evolutionary
+   * \param num_measure_trials The number of iterations of measurements performed by genetic
+   * algorithm
+   * \param num_measure_per_batch The number of measurements in each batch
+   * \param num_iters_in_genetic_algo The number of iterations performed by generic algorithm
+   * \param eps_greedy The percentage of measurements to use randomly sampled states
+   * \param use_measured_ratio The percentage of previously measured states used in the initial
+   * population
+   * \param population The population size for evolutionary search
+   * \param p_mutate The probability to perform mutation
    * \param mutators A list of mutations allowed to happen
+   * \param cost_model A cost model helping to explore the search space
    * \return The Evolutionary constructed
    * \sa Evolutionary::Evolutionary
    */
@@ -426,7 +368,6 @@ struct Internal {
                           int num_iters_in_genetic_algo, double eps_greedy,
                           double use_measured_ratio, int population, double p_mutate,
                           Array<Mutator> mutators, CostModel cost_model) {
-    // TODO: doc
     return Evolutionary(num_measure_trials, num_measure_per_batch, num_iters_in_genetic_algo,
                         eps_greedy, use_measured_ratio, population, p_mutate, mutators, cost_model);
   }
