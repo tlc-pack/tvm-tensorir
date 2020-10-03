@@ -104,6 +104,17 @@ def test_meta_schedule_sample_tile_factor():
     assert prod == 1024
 
 
+def test_meta_schedule_sample_perfect_tile():
+    from functools import reduce  # pylint: disable=import-outside-toplevel
+
+    sch = ms.Schedule(func=matmul)
+    i, _, _ = sch.get_axes(sch.get_block("C"))
+    factors = sch.sample_perfect_tile(n=4, loop=i)
+    factors = [sch.evaluate(i) for i in factors]
+    prod = reduce(lambda x, y: x * y, factors)
+    assert prod == 1024
+
+
 def test_meta_schedule_copy():
     sch = ms.Schedule(func=matmul)
     i, j, k = sch.get_axes(sch.get_block("C"))
@@ -139,4 +150,5 @@ if __name__ == "__main__":
     test_meta_schedule_split()
     test_meta_schedule_reorder()
     test_meta_schedule_sample_tile_factor()
+    test_meta_schedule_sample_perfect_tile()
     test_meta_schedule_copy()

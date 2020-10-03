@@ -112,7 +112,7 @@ class ScheduleNode : public Object {
    * \param max_innermost_factor The maximum factor in the innermost loop
    * \return An array of random variables, the result of sampling
    */
-  Array<tir::Var> SamplePerfectTile(int n, LoopRV loop, int max_innermost_factor);
+  Array<tir::Var> SamplePerfectTile(int n, LoopRV loop, int max_innermost_factor = 16);
   /*!
    * \brief Apply the instruction SampleTileFactor
    * \param n The number of loops after tiling

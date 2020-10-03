@@ -79,6 +79,32 @@ class Schedule(Object):
         """
         return _ffi_api.ScheduleEval(self, random_variable)  # pylint: disable=no-member
 
+    def sample_perfect_tile(
+        self,
+        n: int,
+        loop: LoopRV,
+        max_innermost_factor: int = 16,
+    ) -> List[ExprRV]:
+        """Split a loop by the given tiling factors
+
+        Parameters
+        ----------
+        n: int
+            The number of loops after tiling
+        loop: LoopRV
+            The loop to be tiled
+        max_innermost_factor: int
+            The maximum factor in the innermost loop
+
+        Returns
+        -------
+        factors : List[ExprRV]
+            The result of sampling
+        """
+        return _ffi_api.ScheduleSamplePerfectTile(  # pylint: disable=no-member
+            self, n, loop, max_innermost_factor
+        )
+
     def sample_tile_factor(
         self,
         n: int,

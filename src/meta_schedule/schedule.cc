@@ -481,7 +481,12 @@ void ScheduleNode::ReplayOnce() {
   std::unordered_map<const Object*, const Object*> var_map;
   // Step 2. Replay all the instructions in the trace
   for (const Instruction& previous_instruction : this->trace) {
-    if (const auto* inst = previous_instruction.as<SampleTileFactorInstNode>()) {
+    if (const auto* inst = previous_instruction.as<SamplePerfectTileInstNode>()) {
+      StoreArray(&var_map, inst->outputs,
+                 sch->SamplePerfectTile(/*n=*/inst->outputs.size(),
+                                        /*loop=*/LookupVar(var_map, inst->loop),
+                                        /*max_innermost_factor=*/inst->max_innermost_factor));
+    } else if (const auto* inst = previous_instruction.as<SampleTileFactorInstNode>()) {
       StoreArray(&var_map, inst->outputs,
                  sch->SampleTileFactor(/*n=*/inst->outputs.size(),
                                        /*loop=*/LookupVar(var_map, inst->loop),
@@ -545,6 +550,14 @@ struct Internal {
     throw;
   }
   /*!
+   * \brief FFI function, corresponds to Schedule::SamplePerfectTile
+   * \sa ScheduleNode::SamplePerfectTile
+   */
+  static Array<tir::Var> SamplePerfectTile(Schedule sch, int n, LoopRV loop,
+                                           int max_innermost_factor) {
+    return sch->SamplePerfectTile(n, loop, max_innermost_factor);
+  }
+  /*!
    * \brief FFI function, corresponds to Schedule::SampleTileFactor
    * \sa ScheduleNode::SampleTileFactor
    */
@@ -591,6 +604,8 @@ TVM_REGISTER_NODE_TYPE(ScheduleNode);
 TVM_REGISTER_GLOBAL("meta_schedule.Schedule").set_body_typed(Internal::New);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCopy").set_body_typed(Internal::Copy);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleEval").set_body_typed(Internal::Eval);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSamplePerfectTile")
+    .set_body_typed(Internal::SamplePerfectTile);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleTileFactor")
     .set_body_typed(Internal::SampleTileFactor);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetBlock").set_body_typed(Internal::GetBlock);

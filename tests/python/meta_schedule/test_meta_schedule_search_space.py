@@ -39,12 +39,12 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 def test_meta_schedule_schedule_fn():
-    def schedule_matmul(sch):
+    def schedule_matmul(sch: ms.Schedule):
         block = sch.get_block(name="C")
         i, j, k = sch.get_axes(block=block)
-        i_tiles = sch.sample_tile_factor(n=4, loop=i, where=[1, 2, 4])
-        j_tiles = sch.sample_tile_factor(n=4, loop=j, where=[1, 2, 4])
-        k_tiles = sch.sample_tile_factor(n=2, loop=k, where=[1, 2, 4])
+        i_tiles = sch.sample_perfect_tile(n=4, loop=i)
+        j_tiles = sch.sample_perfect_tile(n=4, loop=j)
+        k_tiles = sch.sample_perfect_tile(n=2, loop=k)
         i_0, i_1, i_2, i_3 = sch.split(loop=i, factors=i_tiles)
         j_0, j_1, j_2, j_3 = sch.split(loop=j, factors=j_tiles)
         k_0, k_1 = sch.split(loop=k, factors=k_tiles)
@@ -78,9 +78,7 @@ def test_meta_schedule_post_order_apply():
                 ("reduce", reduce_indices),
             ]:
                 if iter_type == expect_iter_type:
-                    tiles = sch.sample_tile_factor(
-                        n=len(indices), loop=axis, where=[1, 2, 4]
-                    )
+                    tiles = sch.sample_perfect_tile(n=len(indices), loop=axis)
                     splits = sch.split(loop=axis, factors=tiles)
                     for i, split in zip(indices, splits):
                         order[i].append(split)
