@@ -16,6 +16,9 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#ifndef SRC_META_SCHEDULE_SEARCH_STRATEGY_MUTATOR_H_
+#define SRC_META_SCHEDULE_SEARCH_STRATEGY_MUTATOR_H_
+
 #include "../schedule.h"
 
 namespace tvm {
@@ -23,7 +26,7 @@ namespace meta_schedule {
 
 /********** Mutator **********/
 
-/*! \brief A mutation rule for the genetic algorithm  */
+/*! \brief A mutation rule for the genetic algorithm */
 class MutatorNode : public Object {
  public:
   /*! \brief The probability weight of choosing this rule */
@@ -55,3 +58,5 @@ class Mutator : public ObjectRef {
 
 }  // namespace meta_schedule
 }  // namespace tvm
+
+#endif  // SRC_META_SCHEDULE_SEARCH_STRATEGY_MUTATOR_H_

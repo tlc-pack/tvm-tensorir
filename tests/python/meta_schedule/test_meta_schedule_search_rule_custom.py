@@ -47,20 +47,18 @@ def do_nothing(sch: ms.Schedule, _block: ms.BlockRV):
 @ms.register_rule("do_mlt")
 def do_mlt(sch: ms.Schedule, block: ms.BlockRV):
     TILING_FORMAT = "SSRSRS"  # pylint: disable=invalid-name
-    SPATIAL = 0  # pylint: disable=invalid-name
-    REDUCTION = 2  # pylint: disable=invalid-name
     spatial_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "S"]
     reduce_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "R"]
     order = [list() for _ in TILING_FORMAT]
     axes = sch.get_axes(block=block)
-    iter_vars = ms.helpers.block_from_sref(sch.evaluate(block)).iter_vars
-    assert len(axes) == len(iter_vars)
-    for axis, iter_var in zip(axes, iter_vars):
-        for iter_type, indices in [
-            (SPATIAL, spatial_indices),
-            (REDUCTION, reduce_indices),
+    iter_types = ms.analysis.get_block_var_types(sch, block)
+    assert len(axes) == len(iter_types)
+    for axis, iter_type in zip(axes, iter_types):
+        for expect_iter_type, indices in [
+            ("spatial", spatial_indices),
+            ("reduce", reduce_indices),
         ]:
-            if iter_var.iter_type == iter_type:
+            if iter_type == expect_iter_type:
                 tiles = sch.sample_tile_factor(
                     n=len(indices), loop=axis, where=[1, 2, 4]
                 )

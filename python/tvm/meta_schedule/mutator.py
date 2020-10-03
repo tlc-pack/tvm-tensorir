@@ -14,14 +14,20 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Temporary helper functions that are going to be removed once analyzer is ready."""
-
-from . import _ffi_api
-
-
-def block_from_sref(block_sref):
-    return _ffi_api.BlockFromStmtSRef(block_sref)  # pylint: disable=no-member
+"""Mutators that helps explores the space.
+It mutates a schedule to an adjacent one by doing small modification"""
+from tvm._ffi import register_object
+from tvm.runtime import Object
 
 
-def loop_from_sref(loop_sref):
-    return _ffi_api.LoopFromStmtSRef(loop_sref)  # pylint: disable=no-member
+@register_object("meta_schedule.Mutator")
+class Mutator(Object):
+    """A mutation rule for the genetic algorithm
+
+    Parameters
+    ----------
+    p: float
+        The probability mass of choosing this mutator
+    """
+
+    p: float

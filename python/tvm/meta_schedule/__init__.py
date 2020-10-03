@@ -16,8 +16,8 @@
 # under the License.
 """ Meta Schedule """
 from ..ir import PrimExpr as ExprRV
-from . import helpers  # TODO(@junrushao1994)
 from . import analysis, search_rule
+from .cost_model import RandomModel
 from .measure import LocalBuilder, RPCRunner
 from .random_variable import BlockRV, ExprRV, LoopRV
 from .schedule import Schedule
