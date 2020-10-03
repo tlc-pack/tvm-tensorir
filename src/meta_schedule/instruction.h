@@ -48,6 +48,50 @@ class Instruction : public ObjectRef {
   Instruction() = default;
 };
 
+/**************** SamplePerfectTile ****************/
+
+/*! \brief An instruction to sample possible perfect tiling factors */
+class SamplePerfectTileInstNode : public InstructionNode {
+ public:
+  /*! \brief The loop to be tiled */
+  LoopRV loop;
+  /*! \brief The maximum factor in the innermost loop */
+  int max_innermost_factor;
+  /*! \brief The output variables it creates */
+  Array<tir::Var> outputs;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("loop", &loop);
+    v->Visit("max_innermost_factor", &max_innermost_factor);
+    v->Visit("outputs", &outputs);
+  }
+
+  static constexpr const char* _type_key = "meta_schedule.SamplePerfectTileInst";
+  TVM_DECLARE_FINAL_OBJECT_INFO(SamplePerfectTileInstNode, InstructionNode);
+};
+
+/*!
+ * \brief Managed reference to SamplePerfectTileInstNode
+ * \sa SamplePerfectTileInstNode
+ */
+class SamplePerfectTileInst : public Instruction {
+ public:
+  /*!
+   * \brief Constructor
+   * \param loop The loop to be tiled
+   * \param max_innermost_factor The maximum factor in the innermost loop
+   * \param outputs The output variables it creates
+   */
+  explicit SamplePerfectTileInst(LoopRV loop, int max_innermost_factor, Array<tir::Var> outputs);
+
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(SamplePerfectTileInst, Instruction,
+                                            SamplePerfectTileInstNode);
+
+ protected:
+  /*! \brief Constructor. The node should never be constructed directly. */
+  SamplePerfectTileInst() = default;
+};
+
 /**************** SampleTileFactorInst ****************/
 
 /*! \brief An instruction to sample possible tiling factors */

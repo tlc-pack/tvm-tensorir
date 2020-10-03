@@ -70,7 +70,16 @@ class Sampler {
    * \return A list of length n_splits, the tiling factors sampled, the product of which strictly
    * equals to extent
    */
-  std::vector<int> SamplePerfectTiling(int n_splits, int extent);
+  std::vector<int> SamplePerfectTile(int n_splits, int extent);
+  /*!
+   * \brief Sample perfect tiling factor of the specific extent
+   * \param n_splits The number of parts the loop is split
+   * \param extent Length of the loop
+   * \param max_innermost_factor A small number indicating the max length of the innermost loop
+   * \return A list of length n_splits, the tiling factors sampled, the product of which strictly
+   * equals to extent
+   */
+  std::vector<int> SamplePerfectTile(int n_splits, int extent, int max_innermost_factor);
   /*!
    * \brief Sample n floats uniformly in [min, max)
    * \param min The left boundary

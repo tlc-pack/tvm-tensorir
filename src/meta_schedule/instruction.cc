@@ -21,6 +21,15 @@
 namespace tvm {
 namespace meta_schedule {
 
+SamplePerfectTileInst::SamplePerfectTileInst(LoopRV loop, int max_innermost_factor,
+                                             Array<tir::Var> outputs) {
+  ObjectPtr<SamplePerfectTileInstNode> n = make_object<SamplePerfectTileInstNode>();
+  n->loop = std::move(loop);
+  n->max_innermost_factor = max_innermost_factor;
+  n->outputs = std::move(outputs);
+  data_ = std::move(n);
+}
+
 SampleTileFactorInst::SampleTileFactorInst(LoopRV loop, Array<Integer> where,
                                            Array<tir::Var> outputs) {
   ObjectPtr<SampleTileFactorInstNode> n = make_object<SampleTileFactorInstNode>();
@@ -87,6 +96,7 @@ CacheWriteInst::CacheWriteInst(BlockRV block, String storage_scope) {
 }
 
 TVM_REGISTER_NODE_TYPE(InstructionNode);
+TVM_REGISTER_NODE_TYPE(SamplePerfectTileInstNode);
 TVM_REGISTER_NODE_TYPE(SampleTileFactorInstNode);
 TVM_REGISTER_NODE_TYPE(GetBlockInstNode);
 TVM_REGISTER_NODE_TYPE(GetAxesInstNode);

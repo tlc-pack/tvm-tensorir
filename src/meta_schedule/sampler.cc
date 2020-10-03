@@ -208,7 +208,7 @@ std::vector<int> Sampler::SampleTileFactor(int n, int extent, const std::vector<
   return sample;
 }
 
-std::vector<int> Sampler::SamplePerfectTiling(int n_splits, int extent) {
+std::vector<int> Sampler::SamplePerfectTile(int n_splits, int extent) {
   CHECK_GE(extent, 1) << "ValueError: Cannot tile a loop with 0 or negative extent";
   CHECK_GE(n_splits, 1) << "ValueError: Cannot tile a loop to 0 or negative splits";
   // Do renaming to make it more readable in terms of combinatorics
@@ -275,6 +275,26 @@ std::vector<int> Sampler::SamplePerfectTiling(int n_splits, int extent) {
       }
     }
   }
+  return result;
+}
+
+std::vector<int> Sampler::SamplePerfectTile(int n_splits, int extent, int max_innermost_factor) {
+  CHECK_GE(n_splits, 2) << "ValueError: Cannot tile a loop into " << n_splits << " splits";
+  std::vector<int> innermost_candidates;
+  innermost_candidates.reserve(max_innermost_factor);
+  for (int i = 1; i <= max_innermost_factor; ++i) {
+    if (extent % i == 0) {
+      innermost_candidates.push_back(i);
+    }
+  }
+  // N.B. Theoretically sampling evenly breaks the uniform sampling of the global sampling space.
+  // We should do multiple factorization to weight the choices. However, it would lead to slower
+  // sampling speed. On the other hand, considering potential tricks we might do on the innermost
+  // loop, in which sampling uniformly does not help, let's leave it as it is for now, and maybe add
+  // more heuristics in the future
+  int innermost = innermost_candidates[SampleInt(0, innermost_candidates.size())];
+  std::vector<int> result = SamplePerfectTile(n_splits - 1, extent / innermost);
+  result.push_back(innermost);
   return result;
 }
 
