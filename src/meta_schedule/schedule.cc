@@ -477,11 +477,11 @@ Array<TObjectRef> LookupArray(const std::unordered_map<const Object*, const Obje
 }
 
 void ScheduleNode::ReplayOnce() {
-  // // Step 1. Create a new schedule to temporarily hold the replay result
-  // Schedule sch(this->orig_func);
-  // // Maps an old random variable to its corresponding new random variable in the replay
-  // std::unordered_map<const Object*, const Object*> var_map;
-  // // Step 2. Replay all the instructions in the trace
+  // Step 1. Create a new schedule to temporarily hold the replay result
+  Schedule sch(this->orig_func);
+  // Maps an old random variable to its corresponding new random variable in the replay
+  std::unordered_map<const Object*, const Object*> var_map;
+  // Step 2. Replay all the instructions in the trace
   // for (const Instruction& previous_instruction : this->trace) {
   //   if (const auto* inst = previous_instruction.as<SamplePerfectTileInstNode>()) {
   //     StoreArray(&var_map, inst->outputs,

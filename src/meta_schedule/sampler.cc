@@ -211,26 +211,50 @@ std::vector<int> Sampler::SampleTileFactor(int n, int extent, const std::vector<
 std::vector<int> Sampler::SamplePerfectTile(int n_splits, int extent) {
   CHECK_GE(extent, 1) << "ValueError: Cannot tile a loop with 0 or negative extent";
   CHECK_GE(n_splits, 1) << "ValueError: Cannot tile a loop to 0 or negative splits";
-  // Do renaming to make it more readable in terms of combinatorics
-  const PrimeTable* prime_tab = PrimeTable::Global();
   // Handle special case that we can potentially accelerate
   if (n_splits == 1) {
     return {extent};
   }
-  std::vector<int> result(n_splits, 1);
   if (extent == 1) {
-    return result;
+    return std::vector<int>(n_splits, 1);
   }
-  std::vector<std::pair<int, int>> factorized = prime_tab->Factorize(extent);
   // Enumerate each pair (i, j), we define
   //    (a, p) = (j, 1)             if i == -1 (in this case j must be a prime number)
   //             (primes[i], j)     if i != -1
   // Then the factorization is
   //    extent = (a_1 ^ p_1) * (a_2 ^ p_2) ... (a_l ^ p_l)
+  const PrimeTable* prime_tab = PrimeTable::Global();
+  std::vector<std::pair<int, int>> factorized = prime_tab->Factorize(extent);
+  if (n_splits == 2) {
+    // n_splits = 2, this can be taken special care of,
+    // because general reservoir sampling can be avoided to accelerate the sampling
+    int result0 = 1;
+    int result1 = 1;
+    for (const std::pair<int, int>& ij : factorized) {
+      // Case 1: (a, p) = (j, 1), where j is a prime number
+      if (ij.first == -1) {
+        (SampleInt(0, 2) ? result1 : result0) *= ij.second;
+        continue;
+      }
+      // Case 2: (a = primes[i], p = 1)
+      int p = ij.second;
+      const int* pow = prime_tab->pow_tab[ij.first].data() - 1;
+      int x1 = SampleInt(0, p + 1);
+      int x2 = p - x1;
+      if (x1 != 0) {
+        result0 *= pow[x1];
+      }
+      if (x2 != 0) {
+        result1 *= pow[x2];
+      }
+    }
+    return {result0, result1};
+  }
   // Data range:
   //    2 <= extent <= 2^31 - 1
-  //    2 <= n_splits <= max tiling splits
+  //    3 <= n_splits <= max tiling splits
   //    1 <= p <= 31
+  std::vector<int> result(n_splits, 1);
   for (const std::pair<int, int>& ij : factorized) {
     // Handle special cases to accelerate sampling
     // Case 1: (a, p) = (j, 1), where j is a prime number
@@ -244,20 +268,6 @@ std::vector<int> Sampler::SamplePerfectTile(int n_splits, int extent) {
       result[SampleInt(0, n_splits)] *= prime_tab->primes[ij.first];
       continue;
     }
-    // Case 3: n_splits = 2, this is taken special care
-    // because general reservoir sampling can be avoided to accelerate the sampling
-    const int* pow = prime_tab->pow_tab[ij.first].data() - 1;
-    if (n_splits == 2) {
-      int x1 = SampleInt(0, p + 1);
-      int x2 = p - x1;
-      if (x1 != 0) {
-        result[0] *= pow[x1];
-      }
-      if (x2 != 0) {
-        result[1] *= pow[x2];
-      }
-      continue;
-    }
     // The general case. We have to sample uniformly from the solution of:
     //    x_1 + x_2 + ... + x_{n_splits} = p
     // where x_i >= 0
@@ -267,6 +277,7 @@ std::vector<int> Sampler::SamplePerfectTile(int n_splits, int extent) {
     std::vector<int> sampled = SampleWithoutReplacement(p + n_splits - 1, n_splits - 1);
     std::sort(sampled.begin(), sampled.end());
     sampled.push_back(p + n_splits - 1);
+    const int* pow = prime_tab->pow_tab[ij.first].data() - 1;
     for (int i = 0, last = -1; i < n_splits; ++i) {
       int x = sampled[i] - last - 1;
       last = sampled[i];
