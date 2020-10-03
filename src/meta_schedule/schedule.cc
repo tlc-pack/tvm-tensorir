@@ -219,7 +219,7 @@ int ScheduleNode::Eval(const PrimExpr& expr) {
 
 /**************** Sampling ****************/
 
-Array<tir::Var> ScheduleNode::SamplePerfectTile(int n, const LoopRV& loop,
+Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop,
                                                 int max_innermost_factor) {
   int inst_id = this->trace.size();
   // Sample the output
@@ -227,12 +227,12 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n, const LoopRV& loop,
   {
     const auto* extent = Eval(loop)->GetStmt<tir::LoopNode>()->extent.as<IntImmNode>();
     CHECK(extent);
-    samples = sampler.SamplePerfectTile(n, extent->value, max_innermost_factor);
+    samples = sampler.SamplePerfectTile(n_splits, extent->value, max_innermost_factor);
   }
   // Create the output random variable
   String name_prefix = Eval(loop)->GetStmt<tir::LoopNode>()->loop_var->name_hint + ".";
   Array<tir::Var> outputs;
-  for (int i = 0; i < n; ++i) {
+  for (int i = 0; i < n_splits; ++i) {
     tir::Var output(name_prefix + std::to_string(i));
     outputs.push_back(output);
     // Update the symbol table
@@ -240,11 +240,12 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n, const LoopRV& loop,
     this->sym_tab.emplace(output, SymbolTableEntry(inst_id, value));
   }
   // Put the instruction in the trace
-  this->trace.push_back(SamplePerfectTileAttrs::MakeInst(n, loop, max_innermost_factor, outputs));
+  this->trace.push_back(
+      SamplePerfectTileAttrs::MakeInst(n_splits, loop, max_innermost_factor, outputs));
   return outputs;
 }
 
-Array<tir::Var> ScheduleNode::SampleTileFactor(int n, const LoopRV& loop,
+Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
                                                const Array<Integer>& where) {
   int inst_id = this->trace.size();
   // Sample the output
@@ -256,12 +257,12 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n, const LoopRV& loop,
     for (const Integer& item : where) {
       candidates.push_back(item);
     }
-    samples = sampler.SampleTileFactor(n, extent->value, candidates);
+    samples = sampler.SampleTileFactor(n_splits, extent->value, candidates);
   }
   // Create the output random variable
   String name_prefix = Eval(loop)->GetStmt<tir::LoopNode>()->loop_var->name_hint + ".";
   Array<tir::Var> outputs;
-  for (int i = 0; i < n; ++i) {
+  for (int i = 0; i < n_splits; ++i) {
     tir::Var output(name_prefix + std::to_string(i));
     outputs.push_back(output);
     // Update the symbol table
@@ -269,7 +270,7 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n, const LoopRV& loop,
     this->sym_tab.emplace(output, SymbolTableEntry(inst_id, value));
   }
   // Put the instruction in the trace
-  this->trace.push_back(SampleTileFactorAttrs::MakeInst(n, loop, where, outputs));
+  this->trace.push_back(SampleTileFactorAttrs::MakeInst(n_splits, loop, where, outputs));
   return outputs;
 }
 
@@ -338,8 +339,8 @@ Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<PrimExpr>& fac
   std::vector<tir::StmtSRef> tir_result;
   {
     tir::StmtSRef tir_loop = Eval(loop);
-    int n = factors.size();
-    for (int i = n - 1; i >= 1; --i) {
+    int n_splits = factors.size();
+    for (int i = n_splits - 1; i >= 1; --i) {
       int factor = this->Eval(factors[i]);
       const PrimExpr& extent = tir_loop->GetStmt<tir::LoopNode>()->extent;
       PrimExpr nparts = floordiv(extent + factor - 1, factor);
@@ -476,43 +477,72 @@ Array<TObjectRef> LookupArray(const std::unordered_map<const Object*, const Obje
   return result;
 }
 
+#define TVM_META_SCHEDULE_APPLY_INST(Inst, Inputs, Outputs, AttrType) \
+  if (const auto* attr = Inst->attrs.as<AttrType>()) {                \
+    Outputs = attr->ApplyToSchedule(this, Inputs);                    \
+  }
+
 void ScheduleNode::ReplayOnce() {
   // Step 1. Create a new schedule to temporarily hold the replay result
   Schedule sch(this->orig_func);
   // Maps an old random variable to its corresponding new random variable in the replay
   std::unordered_map<const Object*, const Object*> var_map;
   // Step 2. Replay all the instructions in the trace
-  // for (const Instruction& previous_instruction : this->trace) {
-  //   if (const auto* inst = previous_instruction.as<SamplePerfectTileInstNode>()) {
-  //     StoreArray(&var_map, inst->outputs,
-  //                sch->SamplePerfectTile(/*n=*/inst->outputs.size(),
-  //                                       /*loop=*/LookupVar(var_map, inst->loop),
-  //                                       /*max_innermost_factor=*/inst->max_innermost_factor));
-  //   } else if (const auto* inst = previous_instruction.as<SampleTileFactorInstNode>()) {
-  //     StoreArray(&var_map, inst->outputs,
-  //                sch->SampleTileFactor(/*n=*/inst->outputs.size(),
-  //                                      /*loop=*/LookupVar(var_map, inst->loop),
-  //                                      /*where=*/inst->where));
-  //   } else if (const auto* inst = previous_instruction.as<GetBlockInstNode>()) {
-  //     StoreVar(&var_map, inst->output, sch->GetBlock(/*name=*/inst->name));
-  //   } else if (const auto* inst = previous_instruction.as<GetAxesInstNode>()) {
-  //     StoreArray(&var_map, inst->outputs, sch->GetAxes(/*block=*/LookupVar(var_map,
-  //     inst->block)));
-  //   } else if (const auto* inst = previous_instruction.as<SplitInstNode>()) {
-  //     StoreArray(&var_map, inst->outputs,
-  //                sch->Split(/*loop=*/LookupVar(var_map, inst->loop),
-  //                           /*factors=*/LookupArray(var_map, inst->factors)));
-  //   } else if (const auto* inst = previous_instruction.as<ReorderInstNode>()) {
-  //     sch->Reorder(/*after_axes=*/LookupArray(var_map, inst->after_axes));
-  //   } else if (const auto* inst = previous_instruction.as<DecomposeReductionInstNode>()) {
-  //     StoreVar(&var_map, inst->output,
-  //              sch->DecomposeReduction(/*block=*/LookupVar(var_map, inst->block),
-  //                                      /*loop=*/LookupVar(var_map, inst->loop)));
-  //   } else {
-  //     LOG(FATAL) << "TypeError: Unsupported instruction to be replayed: "
-  //                << previous_instruction->GetTypeKey();
-  //   }
-  // }
+  for (const Instruction& prev_inst : this->trace) {
+    const Array<ObjectRef>& prev_inputs = prev_inst->inputs;
+    const Array<ObjectRef>& prev_outputs = prev_inst->outputs;
+    Array<ObjectRef> inputs;
+    Array<ObjectRef> outputs;
+    inputs.reserve(prev_inputs.size());
+    for (const ObjectRef& input : prev_inputs) {
+      const Object* ptr = input.get();
+      CHECK(var_map.count(ptr));
+      inputs.push_back(GetRef<ObjectRef>(var_map.at(ptr)));
+    }
+    TVM_META_SCHEDULE_APPLY_INST(prev_inst, inputs, outputs, SamplePerfectTileAttrs);
+    TVM_META_SCHEDULE_APPLY_INST(prev_inst, inputs, outputs, SampleTileFactorAttrs);
+    TVM_META_SCHEDULE_APPLY_INST(prev_inst, inputs, outputs, GetOnlyConsumerAttrs);
+    TVM_META_SCHEDULE_APPLY_INST(prev_inst, inputs, outputs, GetBlockAttrs);
+    TVM_META_SCHEDULE_APPLY_INST(prev_inst, inputs, outputs, GetAxesAttrs);
+    TVM_META_SCHEDULE_APPLY_INST(prev_inst, inputs, outputs, SplitAttrs);
+    TVM_META_SCHEDULE_APPLY_INST(prev_inst, inputs, outputs, ReorderAttrs);
+    TVM_META_SCHEDULE_APPLY_INST(prev_inst, inputs, outputs, ComputeInlineAttrs);
+    TVM_META_SCHEDULE_APPLY_INST(prev_inst, inputs, outputs, CacheWriteAttrs);
+    TVM_META_SCHEDULE_APPLY_INST(prev_inst, inputs, outputs, DecomposeReductionAttrs);
+    CHECK_EQ(prev_outputs.size(), outputs.size()) << "ValueError: Output size mismatch";
+    for (int i = 0, n = outputs.size(); i < n; ++i) {
+      var_map[prev_outputs[i].get()] = outputs[i].get();
+    }
+    //   if (const auto* inst = previous_instruction.as<SamplePerfectTileInstNode>()) {
+    //     StoreArray(&var_map, inst->outputs,
+    //                sch->SamplePerfectTile(/*n=*/inst->outputs.size(),
+    //                                       /*loop=*/LookupVar(var_map, inst->loop),
+    //                                       /*max_innermost_factor=*/inst->max_innermost_factor));
+    //   } else if (const auto* inst = previous_instruction.as<SampleTileFactorInstNode>()) {
+    //     StoreArray(&var_map, inst->outputs,
+    //                sch->SampleTileFactor(/*n=*/inst->outputs.size(),
+    //                                      /*loop=*/LookupVar(var_map, inst->loop),
+    //                                      /*where=*/inst->where));
+    //   } else if (const auto* inst = previous_instruction.as<GetBlockInstNode>()) {
+    //     StoreVar(&var_map, inst->output, sch->GetBlock(/*name=*/inst->name));
+    //   } else if (const auto* inst = previous_instruction.as<GetAxesInstNode>()) {
+    //     StoreArray(&var_map, inst->outputs, sch->GetAxes(/*block=*/LookupVar(var_map,
+    //     inst->block)));
+    //   } else if (const auto* inst = previous_instruction.as<SplitInstNode>()) {
+    //     StoreArray(&var_map, inst->outputs,
+    //                sch->Split(/*loop=*/LookupVar(var_map, inst->loop),
+    //                           /*factors=*/LookupArray(var_map, inst->factors)));
+    //   } else if (const auto* inst = previous_instruction.as<ReorderInstNode>()) {
+    //     sch->Reorder(/*after_axes=*/LookupArray(var_map, inst->after_axes));
+    //   } else if (const auto* inst = previous_instruction.as<DecomposeReductionInstNode>()) {
+    //     StoreVar(&var_map, inst->output,
+    //              sch->DecomposeReduction(/*block=*/LookupVar(var_map, inst->block),
+    //                                      /*loop=*/LookupVar(var_map, inst->loop)));
+    //   } else {
+    //     LOG(FATAL) << "TypeError: Unsupported instruction to be replayed: "
+    //                << previous_instruction->GetTypeKey();
+    //   }
+  }
   // // Step 3. Re-assign all the variables back according to the symbol table
   // this->sch = sch->sch;
   // for (auto& kv_entry : this->sym_tab) {
@@ -523,6 +553,8 @@ void ScheduleNode::ReplayOnce() {
   //   }
   // }
 }
+
+#undef TVM_META_SCHEDULE_APPLY_INST
 
 /**************** FFI ****************/
 
@@ -538,7 +570,7 @@ struct Internal {
    */
   static Schedule Copy(Schedule sch) { return sch->copy(); }
   /*!
-   * \brief FFI function, corresponds to Schedule::Eval
+   * \brief FFI function, corresponds to ScheduleNode::Eval
    * \sa ScheduleNode::Eval
    */
   static ObjectRef Eval(Schedule sch, ObjectRef obj) {
@@ -552,52 +584,76 @@ struct Internal {
     LOG(FATAL) << "TypeError: Not a random variable type: " << obj->GetTypeKey();
     throw;
   }
+  /**************** Sampling ****************/
   /*!
-   * \brief FFI function, corresponds to Schedule::SamplePerfectTile
+   * \brief FFI function, corresponds to ScheduleNode::SamplePerfectTile
    * \sa ScheduleNode::SamplePerfectTile
    */
-  static Array<tir::Var> SamplePerfectTile(Schedule sch, int n, LoopRV loop,
+  static Array<tir::Var> SamplePerfectTile(Schedule sch, int n_splits, LoopRV loop,
                                            int max_innermost_factor) {
-    return sch->SamplePerfectTile(n, loop, max_innermost_factor);
+    return sch->SamplePerfectTile(n_splits, loop, max_innermost_factor);
   }
   /*!
-   * \brief FFI function, corresponds to Schedule::SampleTileFactor
+   * \brief FFI function, corresponds to ScheduleNode::SampleTileFactor
    * \sa ScheduleNode::SampleTileFactor
    */
-  static Array<tir::Var> SampleTileFactor(Schedule sch, int n, LoopRV loop, Array<Integer> where) {
-    return sch->SampleTileFactor(n, loop, where);
+  static Array<tir::Var> SampleTileFactor(Schedule sch, int n_splits, LoopRV loop,
+                                          Array<Integer> where) {
+    return sch->SampleTileFactor(n_splits, loop, where);
+  }
+  /**************** Block/Loop Relationship ****************/
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::GetOnlyConsumer
+   * \sa ScheduleNode::GetOnlyConsumer
+   */
+  static Optional<BlockRV> GetOnlyConsumer(Schedule sch, BlockRV block) {
+    return sch->GetOnlyConsumer(block);
   }
   /*!
-   * \brief FFI function, corresponds to Schedule::GetBlock
+   * \brief FFI function, corresponds to ScheduleNode::GetBlock
    * \sa ScheduleNode::GetBlock
    */
   static BlockRV GetBlock(Schedule sch, String name) { return sch->GetBlock(name); }
   /*!
-   * \brief FFI function, corresponds to Schedule::GetAxes
+   * \brief FFI function, corresponds to ScheduleNode::GetAxes
    * \sa ScheduleNode::GetAxes
    */
   static Array<LoopRV> GetAxes(Schedule sch, BlockRV block) { return sch->GetAxes(block); }
+  /**************** Scheduling Primitives ****************/
   /*!
-   * \brief FFI function, corresponds to Schedule::Split
+   * \brief FFI function, corresponds to ScheduleNode::Split
    * \sa ScheduleNode::Split
    */
   static Array<LoopRV> Split(Schedule sch, LoopRV loop, Array<PrimExpr> factors) {
     return sch->Split(loop, factors);
   }
   /*!
-   * \brief FFI function, corresponds to Schedule::Reorder
+   * \brief FFI function, corresponds to ScheduleNode::Reorder
    * \sa ScheduleNode::Reorder
    */
   static void Reorder(Schedule sch, Array<LoopRV> after_axes) { return sch->Reorder(after_axes); }
   /*!
-   * \brief FFI function, corresponds to Schedule::DecomposeReduction
+   * \brief FFI function, corresponds to ScheduleNode::ComputeInline
+   * \sa ScheduleNode::ComputeInline
+   */
+  static void ComputeInline(Schedule sch, BlockRV block) { sch->ComputeInline(block); }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::CacheWrite
+   * \sa ScheduleNode::CacheWrite
+   */
+  static BlockRV CacheWrite(Schedule sch, BlockRV block, String storage_scope) {
+    return sch->CacheWrite(block, storage_scope);
+  }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::DecomposeReduction
    * \sa ScheduleNode::DecomposeReduction
    */
   static BlockRV DecomposeReduction(Schedule sch, BlockRV block, LoopRV loop) {
     return sch->DecomposeReduction(block, loop);
   }
+  /**************** Replay ****************/
   /*!
-   * \brief FFI function, corresponds to Schedule::ReplayOnce
+   * \brief FFI function, corresponds to ScheduleNode::ReplayOnce
    * \sa ScheduleNode::ReplayOnce
    */
   static void ReplayOnce(Schedule sch) { return sch->ReplayOnce(); }
@@ -611,10 +667,14 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSamplePerfectTile")
     .set_body_typed(Internal::SamplePerfectTile);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleTileFactor")
     .set_body_typed(Internal::SampleTileFactor);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetOnlyConsumer")
+    .set_body_typed(Internal::GetOnlyConsumer);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetBlock").set_body_typed(Internal::GetBlock);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetAxes").set_body_typed(Internal::GetAxes);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSplit").set_body_typed(Internal::Split);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReorder").set_body_typed(Internal::Reorder);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleComputeInline").set_body_typed(Internal::ComputeInline);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCacheWrite").set_body_typed(Internal::CacheWrite);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleDecomposeReduction")
     .set_body_typed(Internal::DecomposeReduction);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReplayOnce").set_body_typed(Internal::ReplayOnce);

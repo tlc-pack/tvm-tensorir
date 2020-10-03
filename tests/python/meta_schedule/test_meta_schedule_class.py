@@ -36,6 +36,38 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
 
+@tvm.hybrid.script
+def matmul_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
+    A = tir.match_buffer(a, (1024, 1024), "float32")
+    B = tir.match_buffer(b, (1024, 1024), "float32")
+    D = tir.match_buffer(d, (1024, 1024), "float32")
+    C = tir.buffer_allocate((1024, 1024), "float32")
+    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
+    with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
+        reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
+    with tir.block([1024, 1024], "relu") as [vi, vj]:
+        D[vi, vj] = tir.max(C[vi, vj], 0.0)
+
+
+@tvm.hybrid.script
+def elementwise(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (1024, 1024), "float32")
+    B = tir.buffer_allocate((1024, 1024), "float32")
+    C = tir.match_buffer(c, (1024, 1024), "float32")
+    with tir.block([1024, 1024], "B") as [vi, vj]:
+        B[vi, vj] = A[vi, vj] + 1.0
+    with tir.block([1024, 1024], "C") as [vi, vj]:
+        C[vi, vj] = B[vi, vj] * 2.0
+
+
+@tvm.hybrid.script
+def elementwise_inlined(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (1024, 1024), "float32")
+    C = tir.match_buffer(c, (1024, 1024), "float32")
+    with tir.block([1024, 1024], "C") as [vi, vj]:
+        C[vi, vj] = (A[vi, vj] + 1.0) * 2.0
+
+
 # pylint: enable=invalid-name,no-member
 
 
@@ -43,6 +75,69 @@ def test_meta_schedule_creation():
     sch = ms.Schedule(func=matmul)
     assert tvm.ir.structural_equal(sch.orig_func, sch.sch.func)
     assert len(sch.trace) == 0
+
+
+def test_meta_schedule_copy():
+    sch = ms.Schedule(func=matmul)
+    i, j, k = sch.get_axes(sch.get_block("C"))
+    sch_copy = sch.copy()
+    assert not sch.evaluate(i).same_as(sch_copy.evaluate(i))
+    assert not sch.evaluate(j).same_as(sch_copy.evaluate(j))
+    assert not sch.evaluate(k).same_as(sch_copy.evaluate(k))
+    assert sch.evaluate(i).stmt.same_as(sch_copy.evaluate(i).stmt)
+    assert sch.evaluate(j).stmt.same_as(sch_copy.evaluate(j).stmt)
+    assert sch.evaluate(k).stmt.same_as(sch_copy.evaluate(k).stmt)
+    i_0, i_1 = sch.split(i, [2, 512])
+    j_0, j_1 = sch_copy.split(j, [4, 256])
+
+    assert sch.evaluate(i_0).stmt.extent == 2
+    assert sch.evaluate(i_1).stmt.extent == 512
+    with pytest.raises(IndexError):
+        sch_copy.evaluate(i_0)
+    with pytest.raises(IndexError):
+        sch_copy.evaluate(i_1)
+
+    with pytest.raises(IndexError):
+        sch.evaluate(j_0)
+    with pytest.raises(IndexError):
+        sch.evaluate(j_1)
+    assert sch_copy.evaluate(j_0).stmt.extent == 4
+    assert sch_copy.evaluate(j_1).stmt.extent == 256
+
+
+def test_meta_schedule_sample_tile_factor():
+    from functools import reduce  # pylint: disable=import-outside-toplevel
+
+    where = [1, 2, 4]
+    sch = ms.Schedule(func=matmul)
+    i, _, _ = sch.get_axes(sch.get_block("C"))
+    factors = sch.sample_tile_factor(n_splits=4, loop=i, where=where)
+    factors = [sch.evaluate(i) for i in factors]
+    for i in factors[1:]:
+        assert i in where
+    prod = reduce(lambda x, y: x * y, factors)
+    assert prod == 1024
+
+
+def test_meta_schedule_sample_perfect_tile():
+    from functools import reduce  # pylint: disable=import-outside-toplevel
+
+    sch = ms.Schedule(func=matmul)
+    i, _, _ = sch.get_axes(sch.get_block("C"))
+    factors = sch.sample_perfect_tile(n_splits=4, loop=i)
+    factors = [sch.evaluate(i) for i in factors]
+    prod = reduce(lambda x, y: x * y, factors)
+    assert prod == 1024
+
+
+def test_meta_schedule_get_only_consumer():
+    sch = ms.Schedule(func=matmul_relu)
+    block = sch.get_block("matmul")
+    consumer = sch.get_only_consumer(block)
+    assert tvm.ir.structural_equal(
+        sch.evaluate(consumer).stmt,
+        sch.evaluate(sch.get_block("relu")).stmt,
+    )
 
 
 def test_meta_schedule_get_block():
@@ -90,65 +185,23 @@ def test_meta_schedule_reorder():
     assert tvm.ir.structural_equal(i_2, ti_2.stmt)
 
 
-def test_meta_schedule_sample_tile_factor():
-    from functools import reduce  # pylint: disable=import-outside-toplevel
-
-    where = [1, 2, 4]
-    sch = ms.Schedule(func=matmul)
-    i, _, _ = sch.get_axes(sch.get_block("C"))
-    factors = sch.sample_tile_factor(n_splits=4, loop=i, where=where)
-    factors = [sch.evaluate(i) for i in factors]
-    for i in factors[1:]:
-        assert i in where
-    prod = reduce(lambda x, y: x * y, factors)
-    assert prod == 1024
-
-
-def test_meta_schedule_sample_perfect_tile():
-    from functools import reduce  # pylint: disable=import-outside-toplevel
-
-    sch = ms.Schedule(func=matmul)
-    i, _, _ = sch.get_axes(sch.get_block("C"))
-    factors = sch.sample_perfect_tile(n_splits=4, loop=i)
-    factors = [sch.evaluate(i) for i in factors]
-    prod = reduce(lambda x, y: x * y, factors)
-    assert prod == 1024
-
-
-def test_meta_schedule_copy():
-    sch = ms.Schedule(func=matmul)
-    i, j, k = sch.get_axes(sch.get_block("C"))
-    sch_copy = sch.copy()
-    assert not sch.evaluate(i).same_as(sch_copy.evaluate(i))
-    assert not sch.evaluate(j).same_as(sch_copy.evaluate(j))
-    assert not sch.evaluate(k).same_as(sch_copy.evaluate(k))
-    assert sch.evaluate(i).stmt.same_as(sch_copy.evaluate(i).stmt)
-    assert sch.evaluate(j).stmt.same_as(sch_copy.evaluate(j).stmt)
-    assert sch.evaluate(k).stmt.same_as(sch_copy.evaluate(k).stmt)
-    i_0, i_1 = sch.split(i, [2, 512])
-    j_0, j_1 = sch_copy.split(j, [4, 256])
-
-    assert sch.evaluate(i_0).stmt.extent == 2
-    assert sch.evaluate(i_1).stmt.extent == 512
-    with pytest.raises(IndexError):
-        sch_copy.evaluate(i_0)
-    with pytest.raises(IndexError):
-        sch_copy.evaluate(i_1)
-
-    with pytest.raises(IndexError):
-        sch.evaluate(j_0)
-    with pytest.raises(IndexError):
-        sch.evaluate(j_1)
-    assert sch_copy.evaluate(j_0).stmt.extent == 4
-    assert sch_copy.evaluate(j_1).stmt.extent == 256
+def test_meta_schedule_compute_inline():
+    sch = ms.Schedule(func=elementwise)
+    block = sch.get_block(name="B")
+    sch.compute_inline(block=block)
+    assert tvm.ir.structural_equal(sch.sch.func, elementwise_inlined)
 
 
 if __name__ == "__main__":
     test_meta_schedule_creation()
+    test_meta_schedule_copy()
+    test_meta_schedule_sample_tile_factor()
+    test_meta_schedule_sample_perfect_tile()
+    test_meta_schedule_get_only_consumer()
     test_meta_schedule_get_block()
     test_meta_schedule_get_axes()
     test_meta_schedule_split()
     test_meta_schedule_reorder()
-    test_meta_schedule_sample_tile_factor()
-    test_meta_schedule_sample_perfect_tile()
-    test_meta_schedule_copy()
+    test_meta_schedule_compute_inline()
+    # test_meta_schedule_cache_write()
+    # test_meta_schedule_decompose_reduction()

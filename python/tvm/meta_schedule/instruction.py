@@ -18,8 +18,8 @@
 from typing import List
 
 from tvm._ffi import register_object
-from tvm.runtime import Object
 from tvm.ir import Attrs
+from tvm.runtime import Object
 
 
 @register_object("meta_schedule.Instruction")

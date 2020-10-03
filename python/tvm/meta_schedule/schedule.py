@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Main class of meta schedule """
-from typing import List, Union
+from typing import List, Optional, Union
 
 from tvm import tir
 from tvm._ffi import register_object
@@ -79,6 +79,8 @@ class Schedule(Object):
         """
         return _ffi_api.ScheduleEval(self, random_variable)  # pylint: disable=no-member
 
+    ######### Sampling #########
+
     def sample_perfect_tile(
         self,
         n_splits: int,
@@ -131,6 +133,25 @@ class Schedule(Object):
             self, n_splits, loop, where
         )
 
+    ######### Block/Loop Relationship #########
+
+    def get_only_consumer(self, block: BlockRV) -> Optional[BlockRV]:
+        """Apply the instruction GetBlock, get a block by its name
+
+        Parameters
+        ----------
+        block: BlockRV
+            The block to be queried
+
+        Returns
+        -------
+        only_consumer : Optional[BlockRV]
+            A block, its only consumer; or None if it does not exist
+        """
+        return _ffi_api.ScheduleGetOnlyConsumer(  # pylint: disable=no-member
+            self, block
+        )
+
     def get_block(self, name: str) -> BlockRV:
         """Apply the instruction GetBlock, get a block by its name
 
@@ -141,7 +162,7 @@ class Schedule(Object):
 
         Returns
         -------
-        BlockRV : BlockRV
+        block : BlockRV
             The block retrieved
         """
         return _ffi_api.ScheduleGetBlock(self, name)  # pylint: disable=no-member
@@ -160,6 +181,8 @@ class Schedule(Object):
             The loop nests above the block
         """
         return _ffi_api.ScheduleGetAxes(self, block)  # pylint: disable=no-member
+
+    ########## Scheduling Primitives ##########
 
     def split(
         self,
@@ -192,6 +215,35 @@ class Schedule(Object):
         """
         _ffi_api.ScheduleReorder(self, after_axes)  # pylint: disable=no-member
 
+    def compute_inline(self, block: BlockRV) -> None:
+        """Apply the instruction compute_inline
+
+        Parameters
+        ----------
+        block: BlockRV
+            The block to be computed inline
+        """
+        _ffi_api.ScheduleComputeInline(self, block)  # pylint: disable=no-member
+
+    def cache_write(self, block: BlockRV, storage_scope: str) -> BlockRV:
+        """Apply the instruction cache_write
+
+        Parameters
+        ----------
+        block: BlockRV
+            The block to be buffered
+        storage_scope: str
+            The storage scope
+
+        Returns
+        -------
+        block : BlockRV
+            The cache write stage
+        """
+        return _ffi_api.ScheduleCacheWrite(  # pylint: disable=no-member
+            self, block, storage_scope
+        )
+
     def decompose_reduction(
         self,
         block: BlockRV,
@@ -214,6 +266,8 @@ class Schedule(Object):
         return _ffi_api.ScheduleDecomposeReduction(  # pylint: disable=no-member
             self, block, loop
         )
+
+    ########## Replay ##########
 
     def replay_once(self) -> None:
         """ Replay the trace to generate a new state of scheduling """

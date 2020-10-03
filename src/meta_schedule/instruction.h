@@ -24,6 +24,8 @@
 namespace tvm {
 namespace meta_schedule {
 
+class ScheduleNode;
+
 /**************** Instruction ****************/
 
 /*! \brief Base class for all meta scheduling instrructions */
@@ -80,6 +82,8 @@ struct SamplePerfectTileAttrs : public tvm::AttrsNode<SamplePerfectTileAttrs> {
 
   static Instruction MakeInst(int n_splits, const LoopRV& loop, int max_innermost_factor,
                               const Array<tir::Var>& outputs);
+
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 };
 
 struct SampleTileFactorAttrs : public tvm::AttrsNode<SampleTileFactorAttrs> {
@@ -93,24 +97,35 @@ struct SampleTileFactorAttrs : public tvm::AttrsNode<SampleTileFactorAttrs> {
 
   static Instruction MakeInst(int n_splits, const LoopRV& loop, const Array<Integer>& where,
                               const Array<tir::Var>& outputs);
+
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 };
 
 /**************** Block/Loop Relationship ****************/
 
 struct GetOnlyConsumerAttrs : public tvm::AttrsNode<GetOnlyConsumerAttrs> {
   TVM_DECLARE_ATTRS(GetOnlyConsumerAttrs, "meta_schedule.attrs.GetOnlyConsumerAttrs") {}
+
   static Instruction MakeInst(const BlockRV& block, const BlockRV& output);
+
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 };
 
 struct GetBlockAttrs : public tvm::AttrsNode<GetBlockAttrs> {
   String name;
   TVM_DECLARE_ATTRS(GetBlockAttrs, "meta_schedule.attrs.GetBlockAttrs") { TVM_ATTR_FIELD(name); }
+
   static Instruction MakeInst(const String& name, const BlockRV& output);
+
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 };
 
 struct GetAxesAttrs : public tvm::AttrsNode<GetAxesAttrs> {
   TVM_DECLARE_ATTRS(GetAxesAttrs, "meta_schedule.attrs.GetAxesAttrs") {}
+
   static Instruction MakeInst(const BlockRV& block, const Array<LoopRV>& outputs);
+
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 };
 
 /**************** Scheduling Primitives ****************/
@@ -118,18 +133,27 @@ struct GetAxesAttrs : public tvm::AttrsNode<GetAxesAttrs> {
 struct SplitAttrs : public tvm::AttrsNode<SplitAttrs> {
   Array<PrimExpr> factors;
   TVM_DECLARE_ATTRS(SplitAttrs, "meta_schedule.attrs.SplitAttrs") { TVM_ATTR_FIELD(factors); }
+
   static Instruction MakeInst(const LoopRV& loop, const Array<PrimExpr>& factors,
                               const Array<LoopRV>& outputs);
+
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 };
 
 struct ReorderAttrs : public tvm::AttrsNode<ReorderAttrs> {
   TVM_DECLARE_ATTRS(ReorderAttrs, "meta_schedule.attrs.ReorderAttrs") {}
+
   static Instruction MakeInst(const Array<LoopRV>& after_axes);
+
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 };
 
 struct ComputeInlineAttrs : public tvm::AttrsNode<ComputeInlineAttrs> {
   TVM_DECLARE_ATTRS(ComputeInlineAttrs, "meta_schedule.attrs.ComputeInlineAttrs") {}
+
   static Instruction MakeInst(const BlockRV& block);
+
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 };
 
 struct CacheWriteAttrs : public tvm::AttrsNode<CacheWriteAttrs> {
@@ -137,13 +161,19 @@ struct CacheWriteAttrs : public tvm::AttrsNode<CacheWriteAttrs> {
   TVM_DECLARE_ATTRS(CacheWriteAttrs, "meta_schedule.attrs.CacheWriteAttrs") {
     TVM_ATTR_FIELD(storage_scope);
   }
+
   static Instruction MakeInst(const BlockRV& block, const String& storage_scope,
                               const BlockRV& output);
+
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 };
 
 struct DecomposeReductionAttrs : public tvm::AttrsNode<DecomposeReductionAttrs> {
   TVM_DECLARE_ATTRS(DecomposeReductionAttrs, "meta_schedule.attrs.DecomposeReductionAttrs") {}
+
   static Instruction MakeInst(const BlockRV& block, const LoopRV& loop, const BlockRV& output);
+
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 };
 
 }  // namespace meta_schedule

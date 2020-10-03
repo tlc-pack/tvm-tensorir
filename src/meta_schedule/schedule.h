@@ -106,21 +106,22 @@ class ScheduleNode : public Object {
   int Eval(const PrimExpr& expr);
   /**************** Sampling ****************/
   /*!
-   * \brief Apply the instruction SampleTileFactor
-   * \param n The number of loops after tiling
+   * \brief Apply the instruction SamplePerfectTile
+   * \param n_splits The number of loops after tiling
    * \param loop The loop to be tiled
    * \param max_innermost_factor The maximum factor in the innermost loop
    * \return An array of random variables, the result of sampling
    */
-  Array<tir::Var> SamplePerfectTile(int n, const LoopRV& loop, int max_innermost_factor = 16);
+  Array<tir::Var> SamplePerfectTile(int n_splits, const LoopRV& loop,
+                                    int max_innermost_factor = 16);
   /*!
    * \brief Apply the instruction SampleTileFactor
-   * \param n The number of loops after tiling
+   * \param n_splits The number of loops after tiling
    * \param loop The loop to be tiled
    * \param where The distribution of tile size to be sampled
    * \return An array of random variables, the result of sampling
    */
-  Array<tir::Var> SampleTileFactor(int n, const LoopRV& loop, const Array<Integer>& where);
+  Array<tir::Var> SampleTileFactor(int n_splits, const LoopRV& loop, const Array<Integer>& where);
   /**************** Block/Loop Relationship ****************/
   /*!
    * \brief Get the only consumer of a specific block
