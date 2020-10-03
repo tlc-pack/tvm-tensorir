@@ -56,13 +56,21 @@ class Sampler {
    */
   std::vector<int> SampleInts(int n, int min_inclusive, int max_exclusive);
   /*!
-   * \brief Sample n tiling factors of the given extent
+   * \brief Sample n tiling factors of the specific extent
    * \param n The number of parts the loop is split
    * \param extent Length of the loop
    * \param candidates The possible tiling factors
    * \return A list of length n, the tiling factors sampled
    */
   std::vector<int> SampleTileFactor(int n, int extent, const std::vector<int>& candidates);
+  /*!
+   * \brief Sample perfect tiling factor of the specific extent
+   * \param n_splits The number of parts the loop is split
+   * \param extent Length of the loop
+   * \return A list of length n_splits, the tiling factors sampled, the product of which strictly
+   * equals to extent
+   */
+  std::vector<int> SamplePerfectTiling(int n_splits, int extent);
   /*!
    * \brief Sample n floats uniformly in [min, max)
    * \param min The left boundary
@@ -99,6 +107,13 @@ class Sampler {
     }
     return result;
   }
+  /*!
+   * \brief Classic sampling without replacement
+   * \param n The population size
+   * \param k The number of samples to be drawn from the population
+   * \return A list of indices, samples drawn, unsorted and index starting from 0
+   */
+  std::vector<int> SampleWithoutReplacement(int n, int k);
   /*! \brief Default constructor */
   Sampler() : Sampler(DeviceRand) {}
   /*!
@@ -106,7 +121,7 @@ class Sampler {
    */
   explicit Sampler(sampler::DeviceRandType) : Sampler(std::random_device /**/ {}()) {}
   /*!
-   * \brief Constructor. Construct a sampler seeded with the given integer
+   * \brief Constructor. Construct a sampler seeded with the specific integer
    * \param seed The random seed
    */
   explicit Sampler(int seed) : rand(seed) {}
