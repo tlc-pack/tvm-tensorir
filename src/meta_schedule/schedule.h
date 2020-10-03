@@ -109,6 +109,14 @@ class ScheduleNode : public Object {
    * \brief Apply the instruction SampleTileFactor
    * \param n The number of loops after tiling
    * \param loop The loop to be tiled
+   * \param max_innermost_factor The maximum factor in the innermost loop
+   * \return An array of random variables, the result of sampling
+   */
+  Array<tir::Var> SamplePerfectTile(int n, LoopRV loop, int max_innermost_factor);
+  /*!
+   * \brief Apply the instruction SampleTileFactor
+   * \param n The number of loops after tiling
+   * \param loop The loop to be tiled
    * \param where The distribution of tile size to be sampled
    * \return An array of random variables, the result of sampling
    */

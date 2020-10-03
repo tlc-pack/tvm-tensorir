@@ -219,6 +219,30 @@ int ScheduleNode::Eval(const PrimExpr& expr) {
 
 /**************** Sampling ****************/
 
+Array<tir::Var> ScheduleNode::SamplePerfectTile(int n, LoopRV loop, int max_innermost_factor) {
+  int inst_id = this->trace.size();
+  // Sample the output
+  std::vector<int> samples;
+  {
+    const auto* extent = Eval(loop)->GetStmt<tir::LoopNode>()->extent.as<IntImmNode>();
+    CHECK(extent);
+    samples = sampler.SamplePerfectTile(n, extent->value, max_innermost_factor);
+  }
+  // Create the output random variable
+  String name_prefix = Eval(loop)->GetStmt<tir::LoopNode>()->loop_var->name_hint + ".";
+  Array<tir::Var> outputs;
+  for (int i = 0; i < n; ++i) {
+    tir::Var output(name_prefix + std::to_string(i));
+    outputs.push_back(output);
+    // Update the symbol table
+    Integer value = samples[i];
+    this->sym_tab.emplace(output, SymbolTableEntry(inst_id, value));
+  }
+  // Put the instruction in the trace
+  this->trace.push_back(SamplePerfectTileInst(loop, max_innermost_factor, outputs));
+  return outputs;
+}
+
 Array<tir::Var> ScheduleNode::SampleTileFactor(int n, LoopRV loop, Array<Integer> where) {
   int inst_id = this->trace.size();
   // Sample the output
