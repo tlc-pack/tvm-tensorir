@@ -59,7 +59,7 @@ def do_mlt(sch: ms.Schedule, block: ms.BlockRV):
             ("reduce", reduce_indices),
         ]:
             if iter_type == expect_iter_type:
-                tiles = sch.sample_perfect_tile(n=len(indices), loop=axis)
+                tiles = sch.sample_perfect_tile(n_splits=len(indices), loop=axis)
                 splits = sch.split(loop=axis, factors=tiles)
                 for i, split in zip(indices, splits):
                     order[i].append(split)

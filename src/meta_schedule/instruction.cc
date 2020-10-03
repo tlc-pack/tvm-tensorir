@@ -21,91 +21,119 @@
 namespace tvm {
 namespace meta_schedule {
 
-SamplePerfectTileInst::SamplePerfectTileInst(LoopRV loop, int max_innermost_factor,
-                                             Array<tir::Var> outputs) {
-  ObjectPtr<SamplePerfectTileInstNode> n = make_object<SamplePerfectTileInstNode>();
-  n->loop = std::move(loop);
+/**************** Constructors ****************/
+
+Instruction::Instruction(Array<ObjectRef> inputs, Array<ObjectRef> outputs, Attrs attrs) {
+  ObjectPtr<InstructionNode> n = make_object<InstructionNode>();
+  n->inputs = std::move(inputs);
+  n->outputs = std::move(outputs);
+  n->attrs = std::move(attrs);
+  data_ = std::move(n);
+}
+
+/**************** MakeInst: Sampling  ****************/
+
+Instruction SamplePerfectTileAttrs::MakeInst(int n_splits, const LoopRV& loop,
+                                             int max_innermost_factor,
+                                             const Array<tir::Var>& outputs) {
+  ObjectPtr<SamplePerfectTileAttrs> n = make_object<SamplePerfectTileAttrs>();
+  n->n_splits = n_splits;
   n->max_innermost_factor = max_innermost_factor;
-  n->outputs = std::move(outputs);
-  data_ = std::move(n);
+  return Instruction(/*inputs=*/{loop},
+                     /*outputs=*/{outputs.begin(), outputs.end()},
+                     /*attrs=*/Attrs(std::move(n)));
 }
 
-SampleTileFactorInst::SampleTileFactorInst(LoopRV loop, Array<Integer> where,
-                                           Array<tir::Var> outputs) {
-  ObjectPtr<SampleTileFactorInstNode> n = make_object<SampleTileFactorInstNode>();
-  n->loop = std::move(loop);
-  n->where = std::move(where);
-  n->outputs = std::move(outputs);
-  data_ = std::move(n);
+Instruction SampleTileFactorAttrs::MakeInst(int n_splits, const LoopRV& loop,
+                                            const Array<Integer>& where,
+                                            const Array<tir::Var>& outputs) {
+  ObjectPtr<SampleTileFactorAttrs> n = make_object<SampleTileFactorAttrs>();
+  n->n_splits = n_splits;
+  n->where = where;
+  return Instruction(/*inputs=*/{loop},
+                     /*outputs=*/{outputs.begin(), outputs.end()},
+                     /*attrs=*/Attrs(std::move(n)));
 }
 
-GetBlockInst::GetBlockInst(String name, BlockRV output) {
-  ObjectPtr<GetBlockInstNode> n = make_object<GetBlockInstNode>();
-  n->name = std::move(name);
-  n->output = std::move(output);
-  data_ = std::move(n);
+/**************** MakeInst: Block/Loop Relationship  ****************/
+
+Instruction GetOnlyConsumerAttrs::MakeInst(const BlockRV& block, const BlockRV& output) {
+  ObjectPtr<GetOnlyConsumerAttrs> n = make_object<GetOnlyConsumerAttrs>();
+  return Instruction(/*inputs=*/{block},
+                     /*outputs=*/{output},
+                     /*attrs=*/Attrs(std::move(n)));
 }
 
-GetAxesInst::GetAxesInst(BlockRV block, Array<LoopRV> outputs) {
-  ObjectPtr<GetAxesInstNode> n = make_object<GetAxesInstNode>();
-  n->block = std::move(block);
-  n->outputs = std::move(outputs);
-  data_ = std::move(n);
+Instruction GetBlockAttrs::MakeInst(const String& name, const BlockRV& output) {
+  ObjectPtr<GetBlockAttrs> n = make_object<GetBlockAttrs>();
+  n->name = name;
+  return Instruction(/*inputs=*/{},
+                     /*outputs=*/{output},
+                     /*attrs=*/Attrs(std::move(n)));
 }
 
-SplitInst::SplitInst(LoopRV loop, Array<PrimExpr> factors, Array<LoopRV> outputs) {
-  ObjectPtr<SplitInstNode> n = make_object<SplitInstNode>();
-  n->loop = std::move(loop);
-  n->factors = std::move(factors);
-  n->outputs = std::move(outputs);
-  data_ = std::move(n);
+Instruction GetAxesAttrs::MakeInst(const BlockRV& block, const Array<LoopRV>& outputs) {
+  ObjectPtr<GetAxesAttrs> n = make_object<GetAxesAttrs>();
+  return Instruction(/*inputs=*/{block},
+                     /*outputs=*/{outputs.begin(), outputs.end()},
+                     /*attrs=*/Attrs(std::move(n)));
 }
 
-ReorderInst::ReorderInst(Array<LoopRV> after_axes) {
-  ObjectPtr<ReorderInstNode> n = make_object<ReorderInstNode>();
-  n->after_axes = std::move(after_axes);
-  data_ = std::move(n);
+/**************** MakeInst: Scheduling Primitives  ****************/
+
+Instruction SplitAttrs::MakeInst(const LoopRV& loop, const Array<PrimExpr>& factors,
+                                 const Array<LoopRV>& outputs) {
+  ObjectPtr<SplitAttrs> n = make_object<SplitAttrs>();
+  n->factors = factors;
+  return Instruction(/*inputs=*/{loop},
+                     /*outputs=*/{outputs.begin(), outputs.end()},
+                     /*attrs=*/Attrs(std::move(n)));
 }
 
-ComputeInlineInst::ComputeInlineInst(BlockRV block) {
-  ObjectPtr<ComputeInlineInstNode> n = make_object<ComputeInlineInstNode>();
-  n->block = std::move(block);
-  data_ = std::move(n);
+Instruction ReorderAttrs::MakeInst(const Array<LoopRV>& after_axes) {
+  ObjectPtr<ReorderAttrs> n = make_object<ReorderAttrs>();
+  return Instruction(/*inputs=*/{after_axes.begin(), after_axes.end()},
+                     /*outputs=*/{},
+                     /*attrs=*/Attrs(std::move(n)));
 }
 
-DecomposeReductionInst::DecomposeReductionInst(BlockRV block, LoopRV loop, BlockRV output) {
-  ObjectPtr<DecomposeReductionInstNode> n = make_object<DecomposeReductionInstNode>();
-  n->block = std::move(block);
-  n->loop = std::move(loop);
-  n->output = std::move(output);
-  data_ = std::move(n);
+Instruction ComputeInlineAttrs::MakeInst(const BlockRV& block) {
+  ObjectPtr<ComputeInlineAttrs> n = make_object<ComputeInlineAttrs>();
+  return Instruction(/*inputs=*/{block},
+                     /*outputs=*/{},
+                     /*attrs=*/Attrs(std::move(n)));
 }
 
-GetOnlyConsumerInst::GetOnlyConsumerInst(BlockRV block, BlockRV output) {
-  ObjectPtr<GetOnlyConsumerInstNode> n = make_object<GetOnlyConsumerInstNode>();
-  n->block = std::move(block);
-  n->output = std::move(output);
-  data_ = std::move(n);
+Instruction CacheWriteAttrs::MakeInst(const BlockRV& block, const String& storage_scope,
+                                      const BlockRV& output) {
+  ObjectPtr<CacheWriteAttrs> n = make_object<CacheWriteAttrs>();
+  n->storage_scope = storage_scope;
+  return Instruction(/*inputs=*/{block},
+                     /*outputs=*/{output},
+                     /*attrs=*/Attrs(std::move(n)));
 }
 
-CacheWriteInst::CacheWriteInst(BlockRV block, String storage_scope) {
-  ObjectPtr<CacheWriteInstNode> n = make_object<CacheWriteInstNode>();
-  n->block = std::move(block);
-  n->storage_scope = std::move(storage_scope);
-  data_ = std::move(n);
+Instruction DecomposeReductionAttrs::MakeInst(const BlockRV& block, const LoopRV& loop,
+                                              const BlockRV& output) {
+  ObjectPtr<DecomposeReductionAttrs> n = make_object<DecomposeReductionAttrs>();
+  return Instruction(/*inputs=*/{block, loop},
+                     /*outputs=*/{output},
+                     /*attrs=*/Attrs(std::move(n)));
 }
+
+/**************** FFI ****************/
 
 TVM_REGISTER_NODE_TYPE(InstructionNode);
-TVM_REGISTER_NODE_TYPE(SamplePerfectTileInstNode);
-TVM_REGISTER_NODE_TYPE(SampleTileFactorInstNode);
-TVM_REGISTER_NODE_TYPE(GetBlockInstNode);
-TVM_REGISTER_NODE_TYPE(GetAxesInstNode);
-TVM_REGISTER_NODE_TYPE(SplitInstNode);
-TVM_REGISTER_NODE_TYPE(ReorderInstNode);
-TVM_REGISTER_NODE_TYPE(ComputeInlineInstNode);
-TVM_REGISTER_NODE_TYPE(CacheWriteInstNode);
-TVM_REGISTER_NODE_TYPE(DecomposeReductionInstNode);
-TVM_REGISTER_NODE_TYPE(GetOnlyConsumerInstNode);
+TVM_REGISTER_NODE_TYPE(SamplePerfectTileAttrs);
+TVM_REGISTER_NODE_TYPE(SampleTileFactorAttrs);
+TVM_REGISTER_NODE_TYPE(GetBlockAttrs);
+TVM_REGISTER_NODE_TYPE(GetAxesAttrs);
+TVM_REGISTER_NODE_TYPE(SplitAttrs);
+TVM_REGISTER_NODE_TYPE(ReorderAttrs);
+TVM_REGISTER_NODE_TYPE(ComputeInlineAttrs);
+TVM_REGISTER_NODE_TYPE(CacheWriteAttrs);
+TVM_REGISTER_NODE_TYPE(DecomposeReductionAttrs);
+TVM_REGISTER_NODE_TYPE(GetOnlyConsumerAttrs);
 
 }  // namespace meta_schedule
 }  // namespace tvm

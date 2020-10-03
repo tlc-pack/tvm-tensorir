@@ -219,7 +219,8 @@ int ScheduleNode::Eval(const PrimExpr& expr) {
 
 /**************** Sampling ****************/
 
-Array<tir::Var> ScheduleNode::SamplePerfectTile(int n, LoopRV loop, int max_innermost_factor) {
+Array<tir::Var> ScheduleNode::SamplePerfectTile(int n, const LoopRV& loop,
+                                                int max_innermost_factor) {
   int inst_id = this->trace.size();
   // Sample the output
   std::vector<int> samples;
@@ -239,11 +240,12 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n, LoopRV loop, int max_inne
     this->sym_tab.emplace(output, SymbolTableEntry(inst_id, value));
   }
   // Put the instruction in the trace
-  this->trace.push_back(SamplePerfectTileInst(loop, max_innermost_factor, outputs));
+  this->trace.push_back(SamplePerfectTileAttrs::MakeInst(n, loop, max_innermost_factor, outputs));
   return outputs;
 }
 
-Array<tir::Var> ScheduleNode::SampleTileFactor(int n, LoopRV loop, Array<Integer> where) {
+Array<tir::Var> ScheduleNode::SampleTileFactor(int n, const LoopRV& loop,
+                                               const Array<Integer>& where) {
   int inst_id = this->trace.size();
   // Sample the output
   std::vector<int> samples;
@@ -267,11 +269,11 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n, LoopRV loop, Array<Integer
     this->sym_tab.emplace(output, SymbolTableEntry(inst_id, value));
   }
   // Put the instruction in the trace
-  this->trace.push_back(SampleTileFactorInst(loop, where, outputs));
+  this->trace.push_back(SampleTileFactorAttrs::MakeInst(n, loop, where, outputs));
   return outputs;
 }
 
-/**************** Block Relationship ****************/
+/**************** Block/Loop Relationship ****************/
 
 Optional<BlockRV> ScheduleNode::GetOnlyConsumer(const BlockRV& block) {
   int inst_id = this->trace.size();
@@ -292,11 +294,9 @@ Optional<BlockRV> ScheduleNode::GetOnlyConsumer(const BlockRV& block) {
   // Update the symbol table
   this->sym_tab.emplace(output, SymbolTableEntry(inst_id, result_sref[0]));
   // Put the instruction in the trace
-  this->trace.push_back(GetOnlyConsumerInst(block, output));
+  this->trace.push_back(GetOnlyConsumerAttrs::MakeInst(block, output));
   return output;
 }
-
-/**************** Schedule Primitives ****************/
 
 BlockRV ScheduleNode::GetBlock(const String& name) {
   int inst_id = this->trace.size();
@@ -309,7 +309,7 @@ BlockRV ScheduleNode::GetBlock(const String& name) {
   // Update the symbol table
   this->sym_tab.emplace(output, SymbolTableEntry(inst_id, tir_result[0]));
   // Put the instruction in the trace
-  this->trace.push_back(GetBlockInst(name, output));
+  this->trace.push_back(GetBlockAttrs::MakeInst(name, output));
   return output;
 }
 
@@ -326,9 +326,11 @@ Array<LoopRV> ScheduleNode::GetAxes(const BlockRV& block) {
     this->sym_tab.emplace(output, SymbolTableEntry(inst_id, axis));
   }
   // Put the instruction in the trace
-  this->trace.push_back(GetAxesInst(block, outputs));
+  this->trace.push_back(GetAxesAttrs::MakeInst(block, outputs));
   return outputs;
 }
+
+/**************** Schedule Primitives ****************/
 
 Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<PrimExpr>& factors) {
   int inst_id = this->trace.size();
@@ -358,7 +360,7 @@ Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<PrimExpr>& fac
     this->sym_tab.emplace(output, SymbolTableEntry(inst_id, axis));
   }
   // Put the instruction in the trace
-  this->trace.push_back(SplitInst(loop, factors, outputs));
+  this->trace.push_back(SplitAttrs::MakeInst(loop, factors, outputs));
   return outputs;
 }
 
@@ -370,7 +372,7 @@ void ScheduleNode::Reorder(const Array<LoopRV>& after_axes) {
   }
   this->sch->reorder(tir_inputs);
   // Put the instruction in the trace
-  this->trace.push_back(ReorderInst(after_axes));
+  this->trace.push_back(ReorderAttrs::MakeInst(after_axes));
 }
 
 void ScheduleNode::ComputeInline(const BlockRV& block) {
@@ -378,7 +380,7 @@ void ScheduleNode::ComputeInline(const BlockRV& block) {
   tir::StmtSRef block_sref = this->Eval(block);
   this->sch->compute_inline(block_sref);
   // Put the instruction in the trace
-  this->trace.push_back(ComputeInlineInst(block));
+  this->trace.push_back(ComputeInlineAttrs::MakeInst(block));
 }
 
 BlockRV ScheduleNode::CacheWrite(const BlockRV& block_rv, const String& storage_scope) {
@@ -394,7 +396,7 @@ BlockRV ScheduleNode::CacheWrite(const BlockRV& block_rv, const String& storage_
   // Update the symbol table
   this->sym_tab.emplace(output, SymbolTableEntry(inst_id, tir_result));
   // Put the instruction in the trace
-  this->trace.push_back(CacheWriteInst(block_rv, storage_scope));
+  this->trace.push_back(CacheWriteAttrs::MakeInst(block_rv, storage_scope, output));
   return output;
 }
 
@@ -407,7 +409,7 @@ BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const LoopRV& loo
   // Update the symbol table
   this->sym_tab.emplace(output, SymbolTableEntry(inst_id, tir_result));
   // Put the instruction in the trace
-  this->trace.push_back(DecomposeReductionInst(block, loop, output));
+  this->trace.push_back(DecomposeReductionAttrs::MakeInst(block, loop, output));
   return output;
 }
 
@@ -475,50 +477,51 @@ Array<TObjectRef> LookupArray(const std::unordered_map<const Object*, const Obje
 }
 
 void ScheduleNode::ReplayOnce() {
-  // Step 1. Create a new schedule to temporarily hold the replay result
-  Schedule sch(this->orig_func);
-  // Maps an old random variable to its corresponding new random variable in the replay
-  std::unordered_map<const Object*, const Object*> var_map;
-  // Step 2. Replay all the instructions in the trace
-  for (const Instruction& previous_instruction : this->trace) {
-    if (const auto* inst = previous_instruction.as<SamplePerfectTileInstNode>()) {
-      StoreArray(&var_map, inst->outputs,
-                 sch->SamplePerfectTile(/*n=*/inst->outputs.size(),
-                                        /*loop=*/LookupVar(var_map, inst->loop),
-                                        /*max_innermost_factor=*/inst->max_innermost_factor));
-    } else if (const auto* inst = previous_instruction.as<SampleTileFactorInstNode>()) {
-      StoreArray(&var_map, inst->outputs,
-                 sch->SampleTileFactor(/*n=*/inst->outputs.size(),
-                                       /*loop=*/LookupVar(var_map, inst->loop),
-                                       /*where=*/inst->where));
-    } else if (const auto* inst = previous_instruction.as<GetBlockInstNode>()) {
-      StoreVar(&var_map, inst->output, sch->GetBlock(/*name=*/inst->name));
-    } else if (const auto* inst = previous_instruction.as<GetAxesInstNode>()) {
-      StoreArray(&var_map, inst->outputs, sch->GetAxes(/*block=*/LookupVar(var_map, inst->block)));
-    } else if (const auto* inst = previous_instruction.as<SplitInstNode>()) {
-      StoreArray(&var_map, inst->outputs,
-                 sch->Split(/*loop=*/LookupVar(var_map, inst->loop),
-                            /*factors=*/LookupArray(var_map, inst->factors)));
-    } else if (const auto* inst = previous_instruction.as<ReorderInstNode>()) {
-      sch->Reorder(/*after_axes=*/LookupArray(var_map, inst->after_axes));
-    } else if (const auto* inst = previous_instruction.as<DecomposeReductionInstNode>()) {
-      StoreVar(&var_map, inst->output,
-               sch->DecomposeReduction(/*block=*/LookupVar(var_map, inst->block),
-                                       /*loop=*/LookupVar(var_map, inst->loop)));
-    } else {
-      LOG(FATAL) << "TypeError: Unsupported instruction to be replayed: "
-                 << previous_instruction->GetTypeKey();
-    }
-  }
-  // Step 3. Re-assign all the variables back according to the symbol table
-  this->sch = sch->sch;
-  for (auto& kv_entry : this->sym_tab) {
-    const ObjectRef& old_var = kv_entry.first;
-    const ObjectRef& new_var = LookupVar(var_map, old_var);
-    if (const Optional<ObjectRef>& new_value = sch->sym_tab.at(new_var).value) {
-      kv_entry.second.value = new_value.value();
-    }
-  }
+  // // Step 1. Create a new schedule to temporarily hold the replay result
+  // Schedule sch(this->orig_func);
+  // // Maps an old random variable to its corresponding new random variable in the replay
+  // std::unordered_map<const Object*, const Object*> var_map;
+  // // Step 2. Replay all the instructions in the trace
+  // for (const Instruction& previous_instruction : this->trace) {
+  //   if (const auto* inst = previous_instruction.as<SamplePerfectTileInstNode>()) {
+  //     StoreArray(&var_map, inst->outputs,
+  //                sch->SamplePerfectTile(/*n=*/inst->outputs.size(),
+  //                                       /*loop=*/LookupVar(var_map, inst->loop),
+  //                                       /*max_innermost_factor=*/inst->max_innermost_factor));
+  //   } else if (const auto* inst = previous_instruction.as<SampleTileFactorInstNode>()) {
+  //     StoreArray(&var_map, inst->outputs,
+  //                sch->SampleTileFactor(/*n=*/inst->outputs.size(),
+  //                                      /*loop=*/LookupVar(var_map, inst->loop),
+  //                                      /*where=*/inst->where));
+  //   } else if (const auto* inst = previous_instruction.as<GetBlockInstNode>()) {
+  //     StoreVar(&var_map, inst->output, sch->GetBlock(/*name=*/inst->name));
+  //   } else if (const auto* inst = previous_instruction.as<GetAxesInstNode>()) {
+  //     StoreArray(&var_map, inst->outputs, sch->GetAxes(/*block=*/LookupVar(var_map,
+  //     inst->block)));
+  //   } else if (const auto* inst = previous_instruction.as<SplitInstNode>()) {
+  //     StoreArray(&var_map, inst->outputs,
+  //                sch->Split(/*loop=*/LookupVar(var_map, inst->loop),
+  //                           /*factors=*/LookupArray(var_map, inst->factors)));
+  //   } else if (const auto* inst = previous_instruction.as<ReorderInstNode>()) {
+  //     sch->Reorder(/*after_axes=*/LookupArray(var_map, inst->after_axes));
+  //   } else if (const auto* inst = previous_instruction.as<DecomposeReductionInstNode>()) {
+  //     StoreVar(&var_map, inst->output,
+  //              sch->DecomposeReduction(/*block=*/LookupVar(var_map, inst->block),
+  //                                      /*loop=*/LookupVar(var_map, inst->loop)));
+  //   } else {
+  //     LOG(FATAL) << "TypeError: Unsupported instruction to be replayed: "
+  //                << previous_instruction->GetTypeKey();
+  //   }
+  // }
+  // // Step 3. Re-assign all the variables back according to the symbol table
+  // this->sch = sch->sch;
+  // for (auto& kv_entry : this->sym_tab) {
+  //   const ObjectRef& old_var = kv_entry.first;
+  //   const ObjectRef& new_var = LookupVar(var_map, old_var);
+  //   if (const Optional<ObjectRef>& new_value = sch->sym_tab.at(new_var).value) {
+  //     kv_entry.second.value = new_value.value();
+  //   }
+  // }
 }
 
 /**************** FFI ****************/

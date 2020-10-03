@@ -96,7 +96,7 @@ def test_meta_schedule_sample_tile_factor():
     where = [1, 2, 4]
     sch = ms.Schedule(func=matmul)
     i, _, _ = sch.get_axes(sch.get_block("C"))
-    factors = sch.sample_tile_factor(n=4, loop=i, where=where)
+    factors = sch.sample_tile_factor(n_splits=4, loop=i, where=where)
     factors = [sch.evaluate(i) for i in factors]
     for i in factors[1:]:
         assert i in where
@@ -109,7 +109,7 @@ def test_meta_schedule_sample_perfect_tile():
 
     sch = ms.Schedule(func=matmul)
     i, _, _ = sch.get_axes(sch.get_block("C"))
-    factors = sch.sample_perfect_tile(n=4, loop=i)
+    factors = sch.sample_perfect_tile(n_splits=4, loop=i)
     factors = [sch.evaluate(i) for i in factors]
     prod = reduce(lambda x, y: x * y, factors)
     assert prod == 1024

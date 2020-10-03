@@ -15,45 +15,17 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Meta Schedule Instructions """
+from typing import List
+
 from tvm._ffi import register_object
 from tvm.runtime import Object
+from tvm.ir import Attrs
 
 
 @register_object("meta_schedule.Instruction")
 class Instruction(Object):
-    """Base class for all meta scheduling instrructions"""
+    """An instruction in meta scheduling"""
 
-
-@register_object("meta_schedule.SamplePerfectTileInst")
-class SamplePerfectTileInst(Instruction):
-    """An instruction to sample possible perfect tiling factors"""
-
-
-@register_object("meta_schedule.SampleTileFactorInst")
-class SampleTileFactorInst(Instruction):
-    """An instruction to sample possible tiling factors"""
-
-
-@register_object("meta_schedule.GetBlockInst")
-class GetBlockInst(Instruction):
-    """An instruction to retrieve a block using its name"""
-
-
-@register_object("meta_schedule.GetAxesInst")
-class GetAxesInst(Instruction):
-    """An instruction to retrieve nested loop axes on top of a block"""
-
-
-@register_object("meta_schedule.SplitInst")
-class SplitInst(Instruction):
-    """An instruction to split a loop by a set of factors"""
-
-
-@register_object("meta_schedule.ReorderInst")
-class ReorderInst(Instruction):
-    """An instruction to reorder the given axes"""
-
-
-@register_object("meta_schedule.DecomposeReductionInst")
-class DecomposeReductionInst(Instruction):
-    """An instruction for decompose_reduction in TIR"""
+    inputs: List[Object]
+    outputs: List[Object]
+    attrs: Attrs

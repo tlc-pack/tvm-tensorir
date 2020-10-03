@@ -112,7 +112,7 @@ class ScheduleNode : public Object {
    * \param max_innermost_factor The maximum factor in the innermost loop
    * \return An array of random variables, the result of sampling
    */
-  Array<tir::Var> SamplePerfectTile(int n, LoopRV loop, int max_innermost_factor = 16);
+  Array<tir::Var> SamplePerfectTile(int n, const LoopRV& loop, int max_innermost_factor = 16);
   /*!
    * \brief Apply the instruction SampleTileFactor
    * \param n The number of loops after tiling
@@ -120,15 +120,14 @@ class ScheduleNode : public Object {
    * \param where The distribution of tile size to be sampled
    * \return An array of random variables, the result of sampling
    */
-  Array<tir::Var> SampleTileFactor(int n, LoopRV loop, Array<Integer> where);
-  /**************** Block Relationship ****************/
+  Array<tir::Var> SampleTileFactor(int n, const LoopRV& loop, const Array<Integer>& where);
+  /**************** Block/Loop Relationship ****************/
   /*!
    * \brief Get the only consumer of a specific block
    * \param block The block to be queried
    * \return A block, its only consumer; or NullOpt if it does not exist
    */
   Optional<BlockRV> GetOnlyConsumer(const BlockRV& block);
-  /**************** Scheduling Primitives ****************/
   /*!
    * \brief Apply the instruction GetBlock
    * \param name The name of the block to get retrieved
@@ -141,6 +140,7 @@ class ScheduleNode : public Object {
    * \return An array of loop random variables
    */
   Array<LoopRV> GetAxes(const BlockRV& block);
+  /**************** Scheduling Primitives ****************/
   /*!
    * \brief Apply the instruction Split
    * \param loop The loop to be split

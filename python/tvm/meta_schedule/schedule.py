@@ -81,7 +81,7 @@ class Schedule(Object):
 
     def sample_perfect_tile(
         self,
-        n: int,
+        n_splits: int,
         loop: LoopRV,
         max_innermost_factor: int = 16,
     ) -> List[ExprRV]:
@@ -89,7 +89,7 @@ class Schedule(Object):
 
         Parameters
         ----------
-        n: int
+        n_splits: int
             The number of loops after tiling
         loop: LoopRV
             The loop to be tiled
@@ -102,12 +102,12 @@ class Schedule(Object):
             The result of sampling
         """
         return _ffi_api.ScheduleSamplePerfectTile(  # pylint: disable=no-member
-            self, n, loop, max_innermost_factor
+            self, n_splits, loop, max_innermost_factor
         )
 
     def sample_tile_factor(
         self,
-        n: int,
+        n_splits: int,
         loop: LoopRV,
         where: List[int],
     ) -> List[ExprRV]:
@@ -115,7 +115,7 @@ class Schedule(Object):
 
         Parameters
         ----------
-        n: int
+        n_splits: int
             The number of loops after tiling
         loop: LoopRV
             The loop to be tiled
@@ -128,7 +128,7 @@ class Schedule(Object):
             The result of sampling
         """
         return _ffi_api.ScheduleSampleTileFactor(  # pylint: disable=no-member
-            self, n, loop, where
+            self, n_splits, loop, where
         )
 
     def get_block(self, name: str) -> BlockRV:
