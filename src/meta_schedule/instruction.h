@@ -134,8 +134,7 @@ struct GetAxesAttrs : public tvm::AttrsNode<GetAxesAttrs> {
 /**************** Scheduling Primitives ****************/
 
 struct SplitAttrs : public tvm::AttrsNode<SplitAttrs> {
-  Array<PrimExpr> factors;
-  TVM_DECLARE_ATTRS(SplitAttrs, "meta_schedule.attrs.SplitAttrs") { TVM_ATTR_FIELD(factors); }
+  TVM_DECLARE_ATTRS(SplitAttrs, "meta_schedule.attrs.SplitAttrs") {}
 
   static Instruction MakeInst(const LoopRV& loop, const Array<PrimExpr>& factors,
                               const Array<LoopRV>& outputs);

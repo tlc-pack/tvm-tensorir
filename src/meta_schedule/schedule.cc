@@ -61,7 +61,12 @@ struct SRefTranslator {
   StmtSRef Trans(const StmtSRef& sref) { return trans_.at(sref.operator->()); }
 
   /*! \brief Translate StmtSRefNode */
-  StmtSRef Trans(const StmtSRefNode* sref) { return trans_.at(sref); }
+  StmtSRef Trans(const StmtSRefNode* sref) {
+    if (trans_.count(sref)) {
+      return trans_.at(sref);
+    }
+    return trans_[sref] = StmtSRef(nullptr, nullptr, -1, false);
+  }
 
   /*! \brief Translate Array<StmtSRef> */
   Array<StmtSRef> Trans(const Array<StmtSRef>& list) {
@@ -206,7 +211,8 @@ int ScheduleNode::Eval(const PrimExpr& expr) {
   // Replace all the tir::Var with their corresponding value in the symbol table
   PrimExpr transformed = tir::Substitute(expr, [this](const tir::Var& var) -> Optional<PrimExpr> {
     auto iter = this->sym_tab.find(var);
-    CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding ExprRV: " << var;
+    CHECK(iter != this->sym_tab.end())
+        << "IndexError: Cannot find corresponding ExprRV: " << var << '@' << var.get();
     const Optional<ObjectRef>& obj = iter->second;
     CHECK(obj.defined()) << "ValueError: Variable \"" << var->name_hint
                          << "\" is not defined in the meta scheduling";
@@ -440,6 +446,28 @@ void ScheduleNode::Replay(bool follow_decision) {
   std::unordered_map<const Object*, const Object*> var_map;
   // Maps an old instruction to its corresponding new instruction
   std::unordered_map<const InstructionNode*, const InstructionNode*> inst_map;
+
+  auto f_var_convert = [&var_map](const tir::Var& var) -> Optional<PrimExpr> {
+    const Object* src = var.get();
+    if (!var_map.count(src)) {
+      return NullOpt;
+    }
+    const Object* dst = var_map.at(var.get());
+    CHECK(dst->IsInstance<tir::VarNode>());
+    return GetRef<tir::Var>(static_cast<const tir::VarNode*>(dst));
+  };
+
+  auto f_var_map = [&var_map, &f_var_convert](const ObjectRef& obj) -> ObjectRef {
+    if (const auto* expr = obj.as<PrimExprNode>()) {
+      return tir::Substitute(GetRef<PrimExpr>(expr), f_var_convert);
+    } else {
+      const Object* src = obj.get();
+      CHECK(var_map.count(src));
+      const Object* dst = var_map.at(src);
+      return GetRef<ObjectRef>(dst);
+    }
+  };
+
   // Step 2. Re-do all the instructions in the trace, including sampling instructions
   for (const Instruction& old_inst : this->trace) {
     const Array<ObjectRef>& old_inputs = old_inst->inputs;
@@ -448,9 +476,7 @@ void ScheduleNode::Replay(bool follow_decision) {
     Array<ObjectRef> new_inputs;
     new_inputs.reserve(old_inputs.size());
     for (const ObjectRef& input : old_inputs) {
-      const Object* ptr = input.get();
-      CHECK(var_map.count(ptr));
-      new_inputs.push_back(GetRef<ObjectRef>(var_map.at(ptr)));
+      new_inputs.push_back(f_var_map(input));
     }
     // Step 2.2. Construct new outputs
     Array<ObjectRef> new_outputs =

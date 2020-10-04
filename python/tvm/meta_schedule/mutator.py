@@ -53,7 +53,7 @@ class Mutator(Object):
         new_sch : Optional[Schedule]
             The new schedule after mutation, or None if cannot find a viable solution
         """
-        return _ffi_api_mutator.Apply(  # pylint: disable=no-member
+        return _ffi_api_mutator.MutatorApply(  # pylint: disable=no-member
             self, task, sch, None
         )
 

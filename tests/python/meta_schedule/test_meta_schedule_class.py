@@ -235,6 +235,8 @@ def test_meta_schedule_replay_decision():
     j_tiles = sch.sample_perfect_tile(n_splits=3, loop=j)
     i_inst = sch.trace[-2]
     j_inst = sch.trace[-1]
+    sch.split(loop=i, factors=i_tiles)
+    sch.split(loop=j, factors=j_tiles)
     i_cnt = defaultdict(int)
     j_cnt = defaultdict(int)
     for _ in range(100):

@@ -158,16 +158,24 @@ Array<ObjectRef> GetAxesAttrs::ApplyToSchedule(ScheduleNode* sch,
 Instruction SplitAttrs::MakeInst(const LoopRV& loop, const Array<PrimExpr>& factors,
                                  const Array<LoopRV>& outputs) {
   ObjectPtr<SplitAttrs> n = make_object<SplitAttrs>();
-  n->factors = factors;
-  return Instruction(/*inputs=*/{loop},
+  Array<ObjectRef> inputs;
+  inputs.reserve(1 + factors.size());
+  inputs.push_back(loop);
+  inputs.insert(inputs.end(), factors.begin(), factors.end());
+  return Instruction(/*inputs=*/inputs,
                      /*outputs=*/{outputs.begin(), outputs.end()},
                      /*attrs=*/Attrs(std::move(n)));
 }
 
 Array<ObjectRef> SplitAttrs::ApplyToSchedule(ScheduleNode* sch,
                                              const Array<ObjectRef>& inputs) const {
-  CHECK_EQ(inputs.size(), 1);
+  CHECK_GE(inputs.size(), 3);
   TVM_META_SCHEDULE_CAST_INPUT(LoopRV, loop, inputs[0]);
+  Array<PrimExpr> factors;
+  for (int i = 1, n = inputs.size(); i < n; ++i) {
+    TVM_META_SCHEDULE_CAST_INPUT(PrimExpr, factor, inputs[i]);
+    factors.push_back(factor);
+  }
   return AdaptOutputs(sch->Split(loop, factors));
 }
 

@@ -21,6 +21,13 @@ from .cost_model import RandomModel
 from .measure import LocalBuilder, RPCRunner
 from .random_variable import BlockRV, ExprRV, LoopRV
 from .schedule import Schedule
-from .search import PostOrderApply, Replay, SearchRule, autotune, register_rule
+from .search import (
+    PostOrderApply,
+    Replay,
+    SearchRule,
+    autotune,
+    register_rule,
+    Evolutionary,
+)
 from .search_task import SearchTask
 from .mutator import MutateTileSize

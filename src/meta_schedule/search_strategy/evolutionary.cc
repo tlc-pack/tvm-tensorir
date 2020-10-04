@@ -102,10 +102,8 @@ class EvolutionaryNode : public SearchStrategyNode {
   Optional<Schedule> Search(const SearchTask& task, const SearchSpace& space,
                             const ProgramMeasurer& measurer, int verbose) override;
 
-  static constexpr const char* _type_key = "meta_schedule.Evolutionary";
-  TVM_DECLARE_FINAL_OBJECT_INFO(EvolutionaryNode, SearchStrategyNode);
+  /********** Stages in evolutionary search **********/
 
- private:
   /*!
    * \brief Sample the initial population from the support
    * \param support The support to be sampled from
@@ -134,6 +132,9 @@ class EvolutionaryNode : public SearchStrategyNode {
    */
   Array<MeasureInput> PickMeasureInputs(const SearchTask& task, const Array<Schedule>& bests,
                                         const Array<Schedule>& rands, int num_bests, int num_rands);
+
+  static constexpr const char* _type_key = "meta_schedule.Evolutionary";
+  TVM_DECLARE_FINAL_OBJECT_INFO(EvolutionaryNode, SearchStrategyNode);
 };
 
 /*!
@@ -398,10 +399,38 @@ struct Internal {
     return Evolutionary(num_measure_trials, num_measure_per_batch, num_iters_in_genetic_algo,
                         eps_greedy, use_measured_ratio, population, p_mutate, mutators, cost_model);
   }
+  /*!
+   * \brief Sample the initial population from the support
+   * \param self The evolutionary seach class
+   * \param support The support to be sampled from
+   * \return The generated samples
+   * \sa EvolutionaryNode::SampleInitPopulation
+   */
+  static Array<Schedule> EvolutionarySampleInitPopulation(Evolutionary self,
+                                                          Array<Schedule> support) {
+    return self->SampleInitPopulation(support);
+  }
+  /*!
+   * \brief Perform evolutionary search using genetic algorithm with the cost model
+   * \param self The evolutionary seach class
+   * \param task The search task
+   * \param inits The initial population
+   * \param num_samples The number of samples to be draw
+   * \return An array of schedules, the sampling result
+   * \sa EvolutionaryNode::EvolveWithCostModel
+   */
+  static Array<Schedule> EvolutionaryEvolveWithCostModel(Evolutionary self, SearchTask task,
+                                                         Array<Schedule> inits, int num_samples) {
+    return self->EvolveWithCostModel(task, inits, num_samples);
+  }
 };
 
 TVM_REGISTER_NODE_TYPE(EvolutionaryNode);
 TVM_REGISTER_GLOBAL("meta_schedule.Evolutionary").set_body_typed(Internal::New);
+TVM_REGISTER_GLOBAL("meta_schedule.EvolutionarySampleInitPopulation")
+    .set_body_typed(Internal::EvolutionarySampleInitPopulation);
+TVM_REGISTER_GLOBAL("meta_schedule.EvolutionaryEvolveWithCostModel")
+    .set_body_typed(Internal::EvolutionaryEvolveWithCostModel);
 
 }  // namespace meta_schedule
 }  // namespace tvm

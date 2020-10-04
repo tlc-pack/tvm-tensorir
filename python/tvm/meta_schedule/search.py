@@ -332,6 +332,21 @@ class Evolutionary(SearchStrategy):
             cost_model,
         )
 
+    def sample_init_population(self, support: List[Schedule]) -> List[Schedule]:
+        return _ffi_api.EvolutionarySampleInitPopulation(  # pylint: disable=no-member
+            self, support
+        )
+
+    def evolve_with_cost_model(
+        self,
+        task: SearchTask,
+        inits: List[Schedule],
+        num_samples: int,
+    ) -> List[Schedule]:
+        return _ffi_api.EvolutionaryEvolveWithCostModel(  # pylint: disable=no-member
+            self, task, inits, num_samples
+        )
+
 
 ########## Search API ##########
 

@@ -133,7 +133,7 @@ struct Internal {
 
 TVM_REGISTER_OBJECT_TYPE(MutatorNode);
 TVM_REGISTER_NODE_TYPE(MutateTileSizeNode);
-TVM_REGISTER_GLOBAL("meta_schedule.mutator.Apply").set_body_typed(Internal::MutatorApply);
+TVM_REGISTER_GLOBAL("meta_schedule.mutator.MutatorApply").set_body_typed(Internal::MutatorApply);
 TVM_REGISTER_GLOBAL("meta_schedule.mutator.MutateTileSize")
     .set_body_typed(Internal::MutateTileSizeNew);
 
