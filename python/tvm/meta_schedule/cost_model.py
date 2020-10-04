@@ -30,21 +30,11 @@ from .search_task import SearchTask
 class CostModel(Object):
     """The base class for cost model"""
 
-
-@register_object("meta_schedule.RandomModel")
-class RandomModel(CostModel):
-    """A model returns random estimation for all inputs"""
-
-    def __init__(self):
-        self.__init_handle_by_constructor__(
-            _ffi_api.RandomModel  # pylint: disable=no-member
-        )
-
     def update(
         self,
         inputs: List[MeasureInput],
         results: List[MeasureResult],
-    ):
+    ) -> None:
         """Update the cost model according to new measurement results (training data).
 
         Parameters
@@ -81,3 +71,13 @@ class RandomModel(CostModel):
             schedules,
         )
         return [x.value for x in result]
+
+
+@register_object("meta_schedule.RandomModel")
+class RandomModel(CostModel):
+    """A model returns random estimation for all inputs"""
+
+    def __init__(self):
+        self.__init_handle_by_constructor__(
+            _ffi_api.RandomModel  # pylint: disable=no-member
+        )
