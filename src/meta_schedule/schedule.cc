@@ -245,7 +245,7 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
   // Put the instruction in the trace
   this->trace.push_back(
       SamplePerfectTileAttrs::MakeInst(n_splits, loop, max_innermost_factor, outputs));
-  this->decisions.push_back(AsArray(samples));
+  this->decisions.Set(this->trace.back(), AsArray(samples));
   return outputs;
 }
 
@@ -276,7 +276,7 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
   }
   // Put the instruction in the trace
   this->trace.push_back(SampleTileFactorAttrs::MakeInst(n_splits, loop, where, outputs));
-  this->decisions.push_back(AsArray(samples));
+  this->decisions.Set(this->trace.back(), AsArray(samples));
   return outputs;
 }
 
@@ -421,23 +421,26 @@ void ScheduleNode::ReSample() {
   Schedule new_sch(this->orig_func);
   // Maps an old random variable to its corresponding new random variable in the re-sampling
   std::unordered_map<const Object*, const Object*> var_map;
+  // Maps an old instruction to its corresponding new instruction
+  std::unordered_map<const InstructionNode*, const InstructionNode*> inst_map;
   // Step 2. Re-do all the instructions in the trace, including sampling instructions
-  for (const Instruction& prev_inst : this->trace) {
-    const Array<ObjectRef>& prev_inputs = prev_inst->inputs;
-    const Array<ObjectRef>& prev_outputs = prev_inst->outputs;
-    Array<ObjectRef> inputs;
-    inputs.reserve(prev_inputs.size());
-    for (const ObjectRef& input : prev_inputs) {
+  for (const Instruction& old_inst : this->trace) {
+    const Array<ObjectRef>& old_inputs = old_inst->inputs;
+    const Array<ObjectRef>& old_outputs = old_inst->outputs;
+    Array<ObjectRef> new_inputs;
+    new_inputs.reserve(old_inputs.size());
+    for (const ObjectRef& input : old_inputs) {
       const Object* ptr = input.get();
       CHECK(var_map.count(ptr));
-      inputs.push_back(GetRef<ObjectRef>(var_map.at(ptr)));
+      new_inputs.push_back(GetRef<ObjectRef>(var_map.at(ptr)));
     }
-    Array<ObjectRef> outputs =
-        Instruction::ApplyToSchedule(new_sch.operator->(), prev_inst->inst_attrs, inputs);
-    CHECK_EQ(prev_outputs.size(), outputs.size()) << "ValueError: Output size mismatch";
-    for (int i = 0, n = outputs.size(); i < n; ++i) {
-      var_map[prev_outputs[i].get()] = outputs[i].get();
+    Array<ObjectRef> new_outputs =
+        Instruction::ApplyToSchedule(new_sch.operator->(), old_inst->inst_attrs, new_inputs);
+    CHECK_EQ(old_outputs.size(), new_outputs.size()) << "ValueError: Output size mismatch";
+    for (int i = 0, n = new_outputs.size(); i < n; ++i) {
+      var_map[old_outputs[i].get()] = new_outputs[i].get();
     }
+    inst_map[old_inst.operator->()] = new_sch->trace.back().operator->();
   }
   // Step 3. Re-assign all the variables back according to the symbol table
   this->sch = new_sch->sch;
@@ -446,6 +449,15 @@ void ScheduleNode::ReSample() {
     const ObjectRef& new_var = GetRef<ObjectRef>(var_map.at(old_var.get()));
     kv_entry.second = new_sch->sym_tab.at(new_var);
   }
+  // Step 4. Map decisions back
+  Map<Instruction, Array<ObjectRef>> decisions;
+  for (auto& kv : this->decisions) {
+    const InstructionNode* old_inst = kv.first.operator->();
+    const InstructionNode* new_inst = inst_map.at(old_inst);
+    const Array<ObjectRef>& decision = new_sch->decisions.at(GetRef<Instruction>(new_inst));
+    decisions.Set(GetRef<Instruction>(old_inst), decision);
+  }
+  this->decisions = std::move(decisions);
 }
 
 /**************** FFI ****************/

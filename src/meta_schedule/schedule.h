@@ -48,7 +48,7 @@ class ScheduleNode : public Object {
   /*! \brief The trace of instructions used */
   Array<Instruction> trace;
   /*! \brief The decisions made in sampling */
-  Array<Array<ObjectRef>> decisions;
+  Map<Instruction, Array<ObjectRef>> decisions;
   /*! \brief The symbol table with information of all defined variables in the meta schedule */
   TSymbolTable sym_tab;
   /*! \brief The random number generator */

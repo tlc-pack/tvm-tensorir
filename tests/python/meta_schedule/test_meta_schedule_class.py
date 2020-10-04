@@ -196,13 +196,21 @@ def test_meta_schedule_resample():
     from functools import reduce  # pylint: disable=import-outside-toplevel
 
     sch = ms.Schedule(func=matmul)
-    i, _, _ = sch.get_axes(sch.get_block("C"))
-    factors = sch.sample_perfect_tile(n_splits=4, loop=i)
+    i, j, _ = sch.get_axes(sch.get_block("C"))
+    i_tiles = sch.sample_perfect_tile(n_splits=4, loop=i)
+    j_tiles = sch.sample_perfect_tile(n_splits=3, loop=j)
+    i_inst = sch.trace[-2]
+    j_inst = sch.trace[-1]
     for _ in range(100):
         sch.resample()
-        evaluated_factors = [sch.evaluate(i) for i in factors]
-        prod = reduce(lambda x, y: x * y, evaluated_factors)
-        assert prod == 1024
+        i_eval = [sch.evaluate(i) for i in i_tiles]
+        j_eval = [sch.evaluate(j) for j in j_tiles]
+        i_dec = list(sch.decisions[i_inst])
+        j_dec = list(sch.decisions[j_inst])
+        assert i_eval == i_dec
+        assert j_eval == j_dec
+        assert reduce(lambda x, y: x * y, i_eval) == 1024
+        assert reduce(lambda x, y: x * y, j_eval) == 1024
 
 
 if __name__ == "__main__":
