@@ -19,15 +19,15 @@ from ..ir import PrimExpr as ExprRV
 from . import analysis, search_rule
 from .cost_model import RandomModel
 from .measure import LocalBuilder, RPCRunner
+from .mutator import MutateTileSize
 from .random_variable import BlockRV, ExprRV, LoopRV
 from .schedule import Schedule
 from .search import (
+    Evolutionary,
     PostOrderApply,
     Replay,
     SearchRule,
     autotune,
     register_rule,
-    Evolutionary,
 )
 from .search_task import SearchTask
-from .mutator import MutateTileSize

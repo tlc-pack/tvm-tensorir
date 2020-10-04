@@ -21,9 +21,9 @@ from typing import Optional
 from tvm._ffi import register_object
 from tvm.runtime import Object
 
-from .search_task import SearchTask
-from .schedule import Schedule
 from . import _ffi_api_mutator
+from .schedule import Schedule
+from .search_task import SearchTask
 
 
 @register_object("meta_schedule.Mutator")
