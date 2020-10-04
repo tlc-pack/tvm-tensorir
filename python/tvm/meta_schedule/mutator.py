@@ -16,8 +16,14 @@
 # under the License.
 """Mutators that helps explores the space.
 It mutates a schedule to an adjacent one by doing small modification"""
+from typing import Optional
+
 from tvm._ffi import register_object
 from tvm.runtime import Object
+
+from .search_task import SearchTask
+from .schedule import Schedule
+from . import _ffi_api_mutator
 
 
 @register_object("meta_schedule.Mutator")
@@ -31,3 +37,32 @@ class Mutator(Object):
     """
 
     p: float
+
+    def apply(self, task: SearchTask, sch: Schedule) -> Optional[Schedule]:
+        """Mutate the schedule by applying the mutation.
+
+        Parameters
+        ----------
+        task : SearchTask
+            The search task
+        sch: Schedule
+            The schedule to be mutated
+
+        Returns
+        -------
+        new_sch : Optional[Schedule]
+            The new schedule after mutation, or None if cannot find a viable solution
+        """
+        return _ffi_api_mutator.Apply(  # pylint: disable=no-member
+            self, task, sch, None
+        )
+
+
+@register_object("meta_schedule.MutateTileSize")
+class MutateTileSize(Mutator):
+    """Mutate the sampled tile size by re-factorized two axes"""
+
+    def __init__(self, p: float):
+        self.__init_handle_by_constructor__(
+            _ffi_api_mutator.MutateTileSize, p  # pylint: disable=no-member
+        )

@@ -134,6 +134,11 @@ class Sampler {
    * \param seed The random seed
    */
   explicit Sampler(int seed) : rand(seed) {}
+  /*!
+   * \brief Return a thread-local instance of the sampler
+   * \return The thread-local sampler
+   */
+  static Sampler* ThreadLocal();
 
  private:
   /*! \brief The random number generator */

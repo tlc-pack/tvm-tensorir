@@ -14,13 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-""" Meta Schedule """
-from ..ir import PrimExpr as ExprRV
-from . import analysis, search_rule
-from .cost_model import RandomModel
-from .measure import LocalBuilder, RPCRunner
-from .random_variable import BlockRV, ExprRV, LoopRV
-from .schedule import Schedule
-from .search import PostOrderApply, Replay, SearchRule, autotune, register_rule
-from .search_task import SearchTask
-from .mutator import MutateTileSize
+"""FFI APIs for mutators in meta schedule"""
+import tvm._ffi
+
+tvm._ffi._init_api("meta_schedule.mutator", __name__)

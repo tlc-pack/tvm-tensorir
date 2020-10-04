@@ -28,18 +28,20 @@ namespace tvm {
 namespace meta_schedule {
 
 Schedule::Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
-                   TSymbolTable sym_tab, Sampler sampler) {
+                   Map<Instruction, Array<ObjectRef>> decisions, TSymbolTable sym_tab,
+                   Sampler sampler) {
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
   n->orig_func = std::move(orig_func);
   n->sch = std::move(sch);
   n->trace = std::move(trace);
+  n->decisions = std::move(decisions);
   n->sym_tab = std::move(sym_tab);
   n->sampler = std::move(sampler);
   data_ = std::move(n);
 }
 
 Schedule::Schedule(tir::PrimFunc orig_func)
-    : Schedule(orig_func, tir::ScheduleNode::Create(orig_func), {}, {}, Sampler(DeviceRand)) {}
+    : Schedule(orig_func, tir::ScheduleNode::Create(orig_func), {}, {}, {}, Sampler(DeviceRand)) {}
 
 /**************** Utility ****************/
 
@@ -162,11 +164,13 @@ struct SRefTranslator {
 };
 
 Schedule ScheduleNode::copy() const {
+  // TODO(@junrushao1994): translate this->decisions too
   SRefTranslator translator;
   tir::Schedule tir_sch = translator.Trans(this->sch);
   return Schedule(/*orig_func=*/this->orig_func,
                   /*sch=*/tir_sch,
                   /*trace=*/this->trace,
+                  /*decisions=*/this->decisions,
                   /*sym_tab=*/translator.Trans(this->sym_tab),
                   /*sampler=*/this->sampler);
 }
@@ -466,6 +470,7 @@ void ScheduleNode::Replay(bool follow_decision) {
       for (int i = 0, n = decisions.size(); i < n; ++i) {
         new_sch->sym_tab[new_outputs[i]] = decisions[i];
       }
+      new_sch->decisions.Set(new_inst, decisions);
     }
   }
   // Step 3. Re-assign all the variables back according to the symbol table

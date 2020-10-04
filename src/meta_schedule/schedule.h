@@ -201,10 +201,12 @@ class Schedule : public ObjectRef {
    * \param orig_func The original TIR PrimFunc to be scheduled
    * \param sch The TIR schedule in the current stage
    * \param trace The trace of instructions used
+   * \param decisions The decisions made in sampling
    * \param sym_tab The symbol table with information of all defined variables in the meta schedule
    */
   explicit Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
-                    TSymbolTable sym_tab, Sampler sampler);
+                    Map<Instruction, Array<ObjectRef>> decisions, TSymbolTable sym_tab,
+                    Sampler sampler);
   /*!
    * \brief Constructor: other fields are created with default value
    * \param orig_func The original TIR PrimFunc to be scheduled

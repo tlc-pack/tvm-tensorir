@@ -47,6 +47,26 @@ inline Array<ObjectRef> AsArray(const std::vector<int>& v) {
   return result;
 }
 
+template <class T>
+inline std::vector<T> DowncastArray(const Array<ObjectRef>& array) {
+  std::vector<T> result;
+  result.reserve(array.size());
+  for (const ObjectRef& obj : array) {
+    result.push_back(Downcast<T>(obj));
+  }
+  return result;
+}
+
+template <>
+inline std::vector<int> DowncastArray(const Array<ObjectRef>& array) {
+  std::vector<int> result;
+  result.reserve(array.size());
+  for (const ObjectRef& obj : array) {
+    result.push_back(Downcast<Integer>(obj));
+  }
+  return result;
+}
+
 /*!
  * \brief Compute mean of a FloatImm array.
  * Taken from Ansor

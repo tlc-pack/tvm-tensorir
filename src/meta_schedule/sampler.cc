@@ -320,5 +320,10 @@ std::vector<int> Sampler::SamplePerfectTile(int n_splits, int extent, int max_in
   return result;
 }
 
+Sampler* Sampler::ThreadLocal() {
+  thread_local Sampler sampler;
+  return &sampler;
+}
+
 }  // namespace meta_schedule
 }  // namespace tvm

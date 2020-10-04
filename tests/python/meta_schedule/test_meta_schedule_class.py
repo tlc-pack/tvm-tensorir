@@ -227,7 +227,7 @@ def test_meta_schedule_resample():
 
 
 def test_meta_schedule_replay_decision():
-    from collections import defaultdict
+    from collections import defaultdict  # pylint: disable=import-outside-toplevel
 
     sch = ms.Schedule(func=matmul)
     i, j, _ = sch.get_axes(sch.get_block("C"))
