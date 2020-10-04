@@ -14,14 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Temporary helper functions that are going to be removed once analyzer is ready."""
+"""FFI APIs for mutators in meta schedule"""
+import tvm._ffi
 
-from . import _ffi_api
-
-
-def block_from_sref(block_sref):
-    return _ffi_api.BlockFromStmtSRef(block_sref)  # pylint: disable=no-member
-
-
-def loop_from_sref(loop_sref):
-    return _ffi_api.LoopFromStmtSRef(loop_sref)  # pylint: disable=no-member
+tvm._ffi._init_api("meta_schedule.mutator", __name__)
