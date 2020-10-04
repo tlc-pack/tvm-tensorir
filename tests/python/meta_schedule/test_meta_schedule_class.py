@@ -192,6 +192,19 @@ def test_meta_schedule_compute_inline():
     assert tvm.ir.structural_equal(sch.sch.func, elementwise_inlined)
 
 
+def test_meta_schedule_mutate_decision():
+    sch = ms.Schedule(func=matmul)
+    i, j, _ = sch.get_axes(sch.get_block("C"))
+    sch.sample_perfect_tile(n_splits=4, loop=i)
+    sch.sample_perfect_tile(n_splits=3, loop=j)
+    i_inst = sch.trace[-2]
+    j_inst = sch.trace[-1]
+    sch.mutate_decision(i_inst, [1, 1, 1, 1024])
+    assert list(sch.decisions[i_inst]) == [1, 1, 1, 1024]
+    sch.mutate_decision(j_inst, None)
+    assert not j_inst in sch.decisions
+
+
 def test_meta_schedule_resample():
     from functools import reduce  # pylint: disable=import-outside-toplevel
 
@@ -201,7 +214,7 @@ def test_meta_schedule_resample():
     j_tiles = sch.sample_perfect_tile(n_splits=3, loop=j)
     i_inst = sch.trace[-2]
     j_inst = sch.trace[-1]
-    for _ in range(100):
+    for _ in range(10):
         sch.resample()
         i_eval = [sch.evaluate(i) for i in i_tiles]
         j_eval = [sch.evaluate(j) for j in j_tiles]
@@ -211,6 +224,32 @@ def test_meta_schedule_resample():
         assert j_eval == j_dec
         assert reduce(lambda x, y: x * y, i_eval) == 1024
         assert reduce(lambda x, y: x * y, j_eval) == 1024
+
+
+def test_meta_schedule_replay_decision():
+    from collections import defaultdict
+
+    sch = ms.Schedule(func=matmul)
+    i, j, _ = sch.get_axes(sch.get_block("C"))
+    i_tiles = sch.sample_perfect_tile(n_splits=4, loop=i)
+    j_tiles = sch.sample_perfect_tile(n_splits=3, loop=j)
+    i_inst = sch.trace[-2]
+    j_inst = sch.trace[-1]
+    i_cnt = defaultdict(int)
+    j_cnt = defaultdict(int)
+    for _ in range(100):
+        # set i to deterministic
+        sch.mutate_decision(i_inst, [1, 1, 1, 1024])
+        # set i to random
+        sch.mutate_decision(j_inst, None)
+        # go!
+        sch.replay_decision()
+        i_eval = [sch.evaluate(i) for i in i_tiles]
+        j_eval = [sch.evaluate(j) for j in j_tiles]
+        i_cnt[str(i_eval)] += 1
+        j_cnt[str(j_eval)] += 1
+    assert len(i_cnt) == 1
+    assert len(j_cnt) > 1
 
 
 if __name__ == "__main__":
@@ -226,4 +265,6 @@ if __name__ == "__main__":
     test_meta_schedule_compute_inline()
     # test_meta_schedule_cache_write()
     # test_meta_schedule_decompose_reduction()
+    test_meta_schedule_mutate_decision()
     test_meta_schedule_resample()
+    test_meta_schedule_replay_decision()

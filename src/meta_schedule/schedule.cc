@@ -416,7 +416,20 @@ BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const LoopRV& loo
 
 /**************** Trace-related ****************/
 
-void ScheduleNode::ReSample() {
+void ScheduleNode::MutateDecision(const Instruction& inst,
+                                  const Optional<Array<ObjectRef>>& decision) {
+  if (decision.defined()) {
+    this->decisions.Set(inst, decision.value());
+  } else {
+    this->decisions.erase(inst);
+  }
+}
+
+void ScheduleNode::ReSample() { this->Replay(/*follow_decision=*/false); }
+
+void ScheduleNode::ReplayDecision() { this->Replay(/*follow_decision=*/true); }
+
+void ScheduleNode::Replay(bool follow_decision) {
   // Step 1. Create a new schedule to temporarily hold the re-sampling result
   Schedule new_sch(this->orig_func);
   // Maps an old random variable to its corresponding new random variable in the re-sampling
@@ -427,6 +440,7 @@ void ScheduleNode::ReSample() {
   for (const Instruction& old_inst : this->trace) {
     const Array<ObjectRef>& old_inputs = old_inst->inputs;
     const Array<ObjectRef>& old_outputs = old_inst->outputs;
+    // Step 2.1. Construct new inputs
     Array<ObjectRef> new_inputs;
     new_inputs.reserve(old_inputs.size());
     for (const ObjectRef& input : old_inputs) {
@@ -434,13 +448,25 @@ void ScheduleNode::ReSample() {
       CHECK(var_map.count(ptr));
       new_inputs.push_back(GetRef<ObjectRef>(var_map.at(ptr)));
     }
+    // Step 2.2. Construct new outputs
     Array<ObjectRef> new_outputs =
         Instruction::ApplyToSchedule(new_sch.operator->(), old_inst->inst_attrs, new_inputs);
     CHECK_EQ(old_outputs.size(), new_outputs.size()) << "ValueError: Output size mismatch";
+    // Step 2.3. Set up correspondence between old and new outputs
     for (int i = 0, n = new_outputs.size(); i < n; ++i) {
       var_map[old_outputs[i].get()] = new_outputs[i].get();
     }
-    inst_map[old_inst.operator->()] = new_sch->trace.back().operator->();
+    // Step 2.4. Set up correspondence between old and new instructions
+    const Instruction& new_inst = new_sch->trace.back();
+    inst_map[old_inst.operator->()] = new_inst.operator->();
+    // Step 2.5. Change the decision if we want to follow pre-set decisions
+    if (follow_decision && this->decisions.count(old_inst)) {
+      Array<ObjectRef> decisions = this->decisions.at(old_inst);
+      CHECK_EQ(decisions.size(), new_outputs.size());
+      for (int i = 0, n = decisions.size(); i < n; ++i) {
+        new_sch->sym_tab[new_outputs[i]] = decisions[i];
+      }
+    }
   }
   // Step 3. Re-assign all the variables back according to the symbol table
   this->sch = new_sch->sch;
@@ -557,10 +583,22 @@ struct Internal {
   }
   /**************** Trace-related ****************/
   /*!
+   * \brief FFI function, corresponds to ScheduleNode::MutateDecision
+   * \sa ScheduleNode::MutateDecision
+   */
+  static void MutateDecision(Schedule sch, Instruction inst, Optional<Array<ObjectRef>> decision) {
+    return sch->MutateDecision(inst, decision);
+  }
+  /*!
    * \brief FFI function, corresponds to ScheduleNode::ReSample
    * \sa ScheduleNode::ReSample
    */
-  static void ReSample(Schedule sch) { return sch->ReSample(); }
+  static void ReSample(Schedule sch) { sch->ReSample(); }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::ReplayDecision
+   * \sa ScheduleNode::ReplayDecision
+   */
+  static void ReplayDecision(Schedule sch) { sch->ReplayDecision(); }
 };
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
@@ -581,7 +619,11 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleComputeInline").set_body_typed(Intern
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCacheWrite").set_body_typed(Internal::CacheWrite);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleDecomposeReduction")
     .set_body_typed(Internal::DecomposeReduction);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMutateDecision")
+    .set_body_typed(Internal::MutateDecision);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReSample").set_body_typed(Internal::ReSample);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReplayDecision")
+    .set_body_typed(Internal::ReplayDecision);
 
 }  // namespace meta_schedule
 }  // namespace tvm
