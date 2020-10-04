@@ -192,9 +192,9 @@ def test_matmul_schedule_fn():
     def schedule_matmul(sch):
         block = sch.get_block(name="matmul")
         i, j, k = sch.get_axes(block=block)
-        i_tiles = sch.sample_tile_factor(n=4, loop=i, where=[1, 2, 4])
-        j_tiles = sch.sample_tile_factor(n=4, loop=j, where=[1, 2, 4])
-        k_tiles = sch.sample_tile_factor(n=2, loop=k, where=[1, 2, 4])
+        i_tiles = sch.sample_perfect_tile(n_splits=4, loop=i)
+        j_tiles = sch.sample_perfect_tile(n_splits=4, loop=j)
+        k_tiles = sch.sample_perfect_tile(n_splits=2, loop=k)
         i_0, i_1, i_2, i_3 = sch.split(loop=i, factors=i_tiles)
         j_0, j_1, j_2, j_3 = sch.split(loop=j, factors=j_tiles)
         k_0, k_1 = sch.split(loop=k, factors=k_tiles)
@@ -238,9 +238,9 @@ def test_matmul_relu_schedule_fn():
     def schedule_matmul(sch):
         block = sch.get_block(name="matmul")
         i, j, k = sch.get_axes(block=block)
-        i_tiles = sch.sample_tile_factor(n=4, loop=i, where=[1, 2, 4])
-        j_tiles = sch.sample_tile_factor(n=4, loop=j, where=[1, 2, 4])
-        k_tiles = sch.sample_tile_factor(n=2, loop=k, where=[1, 2, 4])
+        i_tiles = sch.sample_perfect_tile(n_splits=4, loop=i)
+        j_tiles = sch.sample_perfect_tile(n_splits=4, loop=j)
+        k_tiles = sch.sample_perfect_tile(n_splits=2, loop=k)
         i_0, i_1, i_2, i_3 = sch.split(loop=i, factors=i_tiles)
         j_0, j_1, j_2, j_3 = sch.split(loop=j, factors=j_tiles)
         k_0, k_1 = sch.split(loop=k, factors=k_tiles)
@@ -286,25 +286,25 @@ def test_conv2d_schedule_fn():
         block = sch.get_block(name="conv2d_nchw")
         i_n, i_co, i_h, i_w, i_ci, i_kh, i_kw = sch.get_axes(block=block)
 
-        factors = sch.sample_tile_factor(n=4, loop=i_n, where=[1, 2, 4])
+        factors = sch.sample_perfect_tile(n_splits=4, loop=i_n)
         i_n_0, i_n_1, i_n_2, i_n_3 = sch.split(loop=i_n, factors=factors)
 
-        factors = sch.sample_tile_factor(n=4, loop=i_co, where=[1, 2, 4])
+        factors = sch.sample_perfect_tile(n_splits=4, loop=i_co)
         i_co_0, i_co_1, i_co_2, i_co_3 = sch.split(loop=i_co, factors=factors)
 
-        factors = sch.sample_tile_factor(n=4, loop=i_h, where=[1, 2, 4])
+        factors = sch.sample_perfect_tile(n_splits=4, loop=i_h)
         i_h_0, i_h_1, i_h_2, i_h_3 = sch.split(loop=i_h, factors=factors)
 
-        factors = sch.sample_tile_factor(n=4, loop=i_w, where=[1, 2, 4])
+        factors = sch.sample_perfect_tile(n_splits=4, loop=i_w)
         i_w_0, i_w_1, i_w_2, i_w_3 = sch.split(loop=i_w, factors=factors)
 
-        factors = sch.sample_tile_factor(n=2, loop=i_ci, where=[1, 2, 4])
+        factors = sch.sample_perfect_tile(n_splits=2, loop=i_ci)
         i_ci_0, i_ci_1 = sch.split(loop=i_ci, factors=factors)
 
-        factors = sch.sample_tile_factor(n=2, loop=i_kh, where=[1, 2, 4])
+        factors = sch.sample_perfect_tile(n_splits=2, loop=i_kh)
         i_kh_0, i_kh_1 = sch.split(loop=i_kh, factors=factors)
 
-        factors = sch.sample_tile_factor(n=2, loop=i_kw, where=[1, 2, 4])
+        factors = sch.sample_perfect_tile(n_splits=2, loop=i_kw)
         i_kw_0, i_kw_1 = sch.split(loop=i_kw, factors=factors)
         sch.reorder(
             [i_n_0, i_co_0, i_h_0, i_w_0]  # S
@@ -372,6 +372,46 @@ def test_conv2d_relu_plus_one_post_order_apply():
         print(tvm.hybrid.ashybrid(sch.sch.func))
 
 
+@pytest.mark.skip(reason="needs RPC")
+def test_matmul_evolutionary():
+    task = ms.SearchTask(func=matmul)
+    strategy = ms.Evolutionary(
+        num_measure_trials=128,
+        num_measure_per_batch=16,
+        num_iters_in_genetic_algo=1,
+        eps_greedy=0.02,
+        use_measured_ratio=0.05,
+        population=16,
+        p_mutate=0.85,
+        mutators=[ms.MutateTileSize(p=1.0)],
+        cost_model=ms.RandomModel(),
+    )
+    space = ms.PostOrderApply(
+        rule=ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS")
+    )
+    # Test API:
+    #   sample_init_population
+    #   evolve_with_cost_model
+    strategy.evolve_with_cost_model(
+        task=task,
+        inits=strategy.sample_init_population(
+            space.get_support(task=task), num_samples=15
+        ),
+        num_samples=100,
+    )
+    # End-to-end integration test
+    sch = ms.autotune(
+        task=task,
+        space=space,
+        strategy=strategy,
+        runner="rpc://0.0.0.0:3012:local * 16",
+    )
+    if sch is None:
+        print("No valid schedule found")
+    else:
+        print(tvm.hybrid.ashybrid(sch.sch.func))
+
+
 if __name__ == "__main__":
     test_matmul_schedule_fn()
     test_matmul_post_order_apply()
@@ -380,3 +420,4 @@ if __name__ == "__main__":
     test_conv2d_schedule_fn()
     test_conv2d_post_order_apply()
     test_conv2d_relu_plus_one_post_order_apply()
+    test_matmul_evolutionary()

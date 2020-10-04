@@ -33,30 +33,13 @@ namespace meta_schedule {
 
 class Schedule;
 
-/*! \brief An entry in the symbol table in meta schedule */
-class SymbolTableEntry {
- public:
-  /*! \brief The index of the instruction that generates the current random variable */
-  int source;
-  /*! \brief The value of the current random variable */
-  Optional<ObjectRef> value;
-  /*!
-   * \brief Constructor
-   * \param source The index of the instruction that generates the current random variable
-   * \param value The value of the current random variable
-   */
-  explicit SymbolTableEntry(int source, Optional<ObjectRef> value)
-      : source(source), value(std::move(value)) {}
-};
-
-/*!
- * \brief The symbol table, which maps a random variable to a SymbolTableEntry
- * \sa SymbolTableEntry
- */
-using SymbolTable = std::unordered_map<ObjectRef, SymbolTableEntry, ObjectPtrHash, ObjectPtrEqual>;
-
 /*! \brief The meta schedule class */
 class ScheduleNode : public Object {
+ public:
+  /*! \brief Type of the symbol table, which maps a random variable to its value */
+  using TSymbolTable =
+      std::unordered_map<ObjectRef, Optional<ObjectRef>, ObjectPtrHash, ObjectPtrEqual>;
+
  public:
   /*! \brief The original TIR PrimFunc to be scheduled */
   tir::PrimFunc orig_func;
@@ -64,8 +47,10 @@ class ScheduleNode : public Object {
   tir::Schedule sch{nullptr};
   /*! \brief The trace of instructions used */
   Array<Instruction> trace;
+  /*! \brief The decisions made in sampling */
+  Map<Instruction, Array<ObjectRef>> decisions;
   /*! \brief The symbol table with information of all defined variables in the meta schedule */
-  SymbolTable sym_tab;
+  TSymbolTable sym_tab;
   /*! \brief The random number generator */
   Sampler sampler;
 
@@ -73,6 +58,7 @@ class ScheduleNode : public Object {
     v->Visit("orig_func", &orig_func);
     v->Visit("sch", &sch);
     v->Visit("trace", &trace);
+    v->Visit("decisions", &decisions);
     // `sym_tab` is not visited
     // `sampler` is not visited
   }
@@ -106,21 +92,29 @@ class ScheduleNode : public Object {
   int Eval(const PrimExpr& expr);
   /**************** Sampling ****************/
   /*!
+   * \brief Apply the instruction SamplePerfectTile
+   * \param n_splits The number of loops after tiling
+   * \param loop The loop to be tiled
+   * \param max_innermost_factor The maximum factor in the innermost loop
+   * \return An array of random variables, the result of sampling
+   */
+  Array<tir::Var> SamplePerfectTile(int n_splits, const LoopRV& loop,
+                                    int max_innermost_factor = 16);
+  /*!
    * \brief Apply the instruction SampleTileFactor
-   * \param n The number of loops after tiling
+   * \param n_splits The number of loops after tiling
    * \param loop The loop to be tiled
    * \param where The distribution of tile size to be sampled
    * \return An array of random variables, the result of sampling
    */
-  Array<tir::Var> SampleTileFactor(int n, LoopRV loop, Array<Integer> where);
-  /**************** Block Relationship ****************/
+  Array<tir::Var> SampleTileFactor(int n_splits, const LoopRV& loop, const Array<Integer>& where);
+  /**************** Block/Loop Relationship ****************/
   /*!
    * \brief Get the only consumer of a specific block
    * \param block The block to be queried
    * \return A block, its only consumer; or NullOpt if it does not exist
    */
   Optional<BlockRV> GetOnlyConsumer(const BlockRV& block);
-  /**************** Scheduling Primitives ****************/
   /*!
    * \brief Apply the instruction GetBlock
    * \param name The name of the block to get retrieved
@@ -133,6 +127,7 @@ class ScheduleNode : public Object {
    * \return An array of loop random variables
    */
   Array<LoopRV> GetAxes(const BlockRV& block);
+  /**************** Scheduling Primitives ****************/
   /*!
    * \brief Apply the instruction Split
    * \param loop The loop to be split
@@ -165,24 +160,53 @@ class ScheduleNode : public Object {
    * \return The block random variable indicating the decomposition result
    */
   BlockRV DecomposeReduction(const BlockRV& block, const LoopRV& loop);
-  /**************** Replay ****************/
+  /**************** Trace-related ****************/
   /*!
-   * \brief Replay the trace to generate a new state of scheduling
+   * \brief Mutate the decision on the specific instruction
+   * \param inst The instruction whose decision is mutated
+   * \param decision The decision to be mutated to. If it is NullOpt, then remove it from decisions
+   * \note This method does not replay the trace and does not do any validity check
    */
-  void ReplayOnce();
+  void MutateDecision(const Instruction& inst, const Optional<Array<ObjectRef>>& decision);
+  /*!
+   * \brief Re-sample along the trace to generatea new sequence of
+   * scheduling instructions and program states
+   */
+  void ReSample();
+  /*!
+   * \brief Replay the trace with the decision stored in the schedule class.
+   * If a decision has been changed using MutateDecision, then it will generate
+   * different schedule. This process is theoretically deterministic if all sampling
+   * instructions have decision made
+   * \sa MutateDecision
+   */
+  void ReplayDecision();
+
+ private:
+  /*!
+   * \brief Replay the trace with the decision stored in the schedule class.
+   * If follow decision is true, and a decision has been changed using MutateDecision,
+   * then it will generate different underlying TIR schedule
+   * \param follow_decision Whether to follow existing decisions stored in the class.
+   * If the flag is true, then the replay process will be deterministic
+   */
+  void Replay(bool follow_decision);
 };
 
 class Schedule : public ObjectRef {
  public:
+  using TSymbolTable = ScheduleNode::TSymbolTable;
   /*!
    * \brief Constructor
    * \param orig_func The original TIR PrimFunc to be scheduled
    * \param sch The TIR schedule in the current stage
    * \param trace The trace of instructions used
+   * \param decisions The decisions made in sampling
    * \param sym_tab The symbol table with information of all defined variables in the meta schedule
    */
   explicit Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
-                    SymbolTable sym_tab, Sampler sampler);
+                    Map<Instruction, Array<ObjectRef>> decisions, TSymbolTable sym_tab,
+                    Sampler sampler);
   /*!
    * \brief Constructor: other fields are created with default value
    * \param orig_func The original TIR PrimFunc to be scheduled

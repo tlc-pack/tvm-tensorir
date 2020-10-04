@@ -113,6 +113,20 @@ struct Internal {
     return space->GetSupport(task);
   }
   /*!
+   * \brief Explore the search space and find the best schedule
+   * \param strategy The strategy to explore the search space
+   * \param task The search task
+   * \param space The search space
+   * \param measurer The measurer that builds, runs and profiles sampled programs
+   * \param verbose Whether or not in verbose mode
+   * \return The best schedule found, NullOpt if no valid schedule is found
+   */
+  static Optional<Schedule> SearchStrategySearch(SearchStrategy strategy, SearchTask task,
+                                                 SearchSpace space, ProgramMeasurer measurer,
+                                                 int verbose) {
+    return strategy->Search(task, space, measurer, verbose);
+  }
+  /*!
    * \brief Constructor of RulePackedArgs
    * \param proceed The arguments the rule should apply to
    * \param skipped The arguments the rule should skip
@@ -160,6 +174,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.SearchSpaceSampleSchedule")
     .set_body_typed(Internal::SearchSpaceSampleSchedule);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchSpaceGetSupport")
     .set_body_typed(Internal::SearchSpaceGetSupport);
+TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategySearch")
+    .set_body_typed(Internal::SearchStrategySearch);
 TVM_REGISTER_GLOBAL("meta_schedule.RulePackedArgs").set_body_typed(Internal::RulePackedArgsNew);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRule").set_body_typed(Internal::SearchRuleNew);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleCall").set_body_typed(Internal::SearchRuleCall);

@@ -373,7 +373,56 @@ class RPCRunner(ProgramRunner):
 
 @register_object("meta_schedule.MeasureCallback")
 class MeasureCallback(Object):
-    """ The base class of measurement callback functions. """
+    """The base class of measurement callback functions."""
+
+
+########## ProgramMeasurer ##########
+
+
+@register_object("meta_schedule.ProgramMeasurer")
+class ProgramMeasurer(Object):
+    """Measurer that measures the time costs of tvm programs.
+
+    Parameters
+    ----------
+    builder : ProgramBuilder
+        The ProgramBuilder to build each program
+    runner : ProgramRunner
+        The ProgramRunner to measure each program
+    callbacks : List[MeasureCallback]
+        MeasureCallback to be called after each measure batch
+    num_measured : int
+        Number of samples that have been measured
+    best_time_cost : float
+        The best running time (the smaller the better)
+    best_index : int
+        The index of the samples that the best schedule is in
+    best_sch : Optional[Schedule]
+        The best schedule found so far
+    """
+
+    builder: ProgramBuilder
+    runner: ProgramRunner
+    callbacks: List[MeasureCallback]
+    num_measured: int
+    best_time_cost: float
+    best_index: int
+    best_sch: Optional[Schedule]
+
+    def __init__(
+        self,
+        builder: ProgramBuilder,
+        runner: ProgramRunner,
+        callbacks: Optional[List[MeasureCallback]] = None,
+    ):
+        if callbacks is None:
+            callbacks = []
+        self.__init_handle_by_constructor__(
+            _ffi_api.ProgramMeasurer,  # pylint: disable=no-member
+            builder,
+            runner,
+            callbacks,
+        )
 
 
 ########## Worker of LocalBuilder ##########
