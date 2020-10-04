@@ -101,7 +101,7 @@ ProgramMeasurer::ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner,
 ProgramMeasurer::ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner,
                                  Array<MeasureCallback> callbacks)
     : ProgramMeasurer(builder, runner, callbacks, /*num_measured=*/0,
-                      /*best_time_cost=*/MAX_TIME_COST, /*best_index=*/-1, /*best_sch=*/NullOpt) {}
+                      /*best_time_cost=*/kMaxTimeCost, /*best_index=*/-1, /*best_sch=*/NullOpt) {}
 
 /********** Shallow copy functions **********/
 
@@ -155,7 +155,7 @@ Array<MeasureResult> RPCRunnerNode::Run(const Array<MeasureInput>& inputs,
 
 void ProgramMeasurerNode::Reset() {
   num_measured = 0;
-  best_time_cost = ProgramMeasurer::MAX_TIME_COST;
+  best_time_cost = ProgramMeasurer::kMaxTimeCost;
   best_index = -1;
   best_sch = NullOpt;
 }
@@ -316,6 +316,18 @@ struct Internal {
     return RPCRunner(tracker, priority, n_parallel, timeout, number, repeat, min_repeat_ms,
                      cooldown_interval, enable_cpu_cache_flush);
   }
+  /*!
+   * \brief Constructor of ProgramMeasurerNew
+   * \param builder The program builder
+   * \param runner The program runner
+   * \param callbacks The callbacks invoked after measurement
+   * \return The ProgramMeasurer constructed
+   * \sa ProgramMeasurer::ProgramMeasurer
+   */
+  static ProgramMeasurer ProgramMeasurerNew(ProgramBuilder builder, ProgramRunner runner,
+                                            Array<MeasureCallback> callbacks) {
+    return ProgramMeasurer(builder, runner, callbacks);
+  }
   /********** Member methods **********/
   /*!
    * \brief Invoke ProgramBuilder::Build
@@ -359,6 +371,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.BuildResult").set_body_typed(Internal::BuildR
 TVM_REGISTER_GLOBAL("meta_schedule.MeasureResult").set_body_typed(Internal::MeasureResultNew);
 TVM_REGISTER_GLOBAL("meta_schedule.LocalBuilder").set_body_typed(Internal::LocalBuilderNew);
 TVM_REGISTER_GLOBAL("meta_schedule.RPCRunner").set_body_typed(Internal::RPCRunnerNew);
+TVM_REGISTER_GLOBAL("meta_schedule.ProgramMeasurer").set_body_typed(Internal::ProgramMeasurerNew);
 TVM_REGISTER_GLOBAL("meta_schedule.ProgramBuilderBuild")
     .set_body_typed(Internal::ProgramBuilderBuild);
 TVM_REGISTER_GLOBAL("meta_schedule.ProgramRunnerRun").set_body_typed(Internal::ProgramRunnerRun);
