@@ -62,6 +62,13 @@ class Instruction : public ObjectRef {
    */
   explicit Instruction(Array<ObjectRef> inputs, Array<ObjectRef> outputs, Attrs attrs);
 
+  /*!
+   * \brief Apply an instruction to the specific schedule, and return the outputs
+   * \param sch The schedule to be applied
+   * \param inst_attrs Attributes of the instruction
+   * \param inputs The inputs to the instruction
+   * \return The outputs of the instruction applied
+   */
   static Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Attrs& inst_attrs,
                                           const Array<ObjectRef>& inputs);
 
@@ -74,108 +81,251 @@ class Instruction : public ObjectRef {
 
 /**************** Sampling ****************/
 
+/*! \brief Attrs of the instruction to sample perfect tile factors */
 struct SamplePerfectTileAttrs : public tvm::AttrsNode<SamplePerfectTileAttrs> {
+  /*! \brief The number of loops after tiling */
   int n_splits;
+  /*! \brief The maximum factor in the innermost loop */
   int max_innermost_factor;
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param n_splits The number of loops after tiling
+   * \param loop The loop to be tiled
+   * \param max_innermost_factor The maximum factor in the innermost loop
+   * \param outputs Outputs of the instruction
+   * \return The instruction created
+   */
+  static Instruction MakeInst(int n_splits, const LoopRV& loop, int max_innermost_factor,
+                              const Array<tir::Var>& outputs);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
   TVM_DECLARE_ATTRS(SamplePerfectTileAttrs, "meta_schedule.attrs.SamplePerfectTileAttrs") {
     TVM_ATTR_FIELD(n_splits);
     TVM_ATTR_FIELD(max_innermost_factor);
   }
-
-  static Instruction MakeInst(int n_splits, const LoopRV& loop, int max_innermost_factor,
-                              const Array<tir::Var>& outputs);
-
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 };
 
+/*! \brief Attrs of the instruction to sample tiling factors */
 struct SampleTileFactorAttrs : public tvm::AttrsNode<SampleTileFactorAttrs> {
+  /*! \brief The number of loops after tiling */
   int n_splits;
+  /*! \brief The distribution to be sampled from */
   Array<Integer> where;
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param n_splits The number of loops after tiling
+   * \param loop The loop to be tiled
+   * \param where The distribution to be sampled from
+   * \param outputs Outputs of the instruction
+   * \return The instruction created
+   */
+  static Instruction MakeInst(int n_splits, const LoopRV& loop, const Array<Integer>& where,
+                              const Array<tir::Var>& outputs);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
   TVM_DECLARE_ATTRS(SampleTileFactorAttrs, "meta_schedule.attrs.SampleTileFactorAttrs") {
     TVM_ATTR_FIELD(n_splits);
     TVM_ATTR_FIELD(where);
   }
-
-  static Instruction MakeInst(int n_splits, const LoopRV& loop, const Array<Integer>& where,
-                              const Array<tir::Var>& outputs);
-
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 };
 
 /**************** Block/Loop Relationship ****************/
 
+/*! \brief Attrs of the instruction that gets the only consumer of a specific block */
 struct GetOnlyConsumerAttrs : public tvm::AttrsNode<GetOnlyConsumerAttrs> {
-  TVM_DECLARE_ATTRS(GetOnlyConsumerAttrs, "meta_schedule.attrs.GetOnlyConsumerAttrs") {}
-
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param block The block to be queried
+   * \param output The output of the query
+   * \return The instruction created
+   */
   static Instruction MakeInst(const BlockRV& block, const BlockRV& output);
 
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+
+  TVM_DECLARE_ATTRS(GetOnlyConsumerAttrs, "meta_schedule.attrs.GetOnlyConsumerAttrs") {}
 };
 
+/*! \brief Attrs of the instruction that gets a specific block by its name */
 struct GetBlockAttrs : public tvm::AttrsNode<GetBlockAttrs> {
+  /*! \brief The name of the block */
   String name;
-  TVM_DECLARE_ATTRS(GetBlockAttrs, "meta_schedule.attrs.GetBlockAttrs") { TVM_ATTR_FIELD(name); }
 
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param name The name of the block
+   * \param output The output of the query
+   * \return The instruction created
+   */
   static Instruction MakeInst(const String& name, const BlockRV& output);
 
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+
+  TVM_DECLARE_ATTRS(GetBlockAttrs, "meta_schedule.attrs.GetBlockAttrs") { TVM_ATTR_FIELD(name); }
 };
 
+/*! \brief Attrs of the instruction that gets loop axes on top of a specifc block */
 struct GetAxesAttrs : public tvm::AttrsNode<GetAxesAttrs> {
-  TVM_DECLARE_ATTRS(GetAxesAttrs, "meta_schedule.attrs.GetAxesAttrs") {}
-
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param block The name of the block
+   * \param outputs The outputs of the query
+   * \return The instruction created
+   */
   static Instruction MakeInst(const BlockRV& block, const Array<LoopRV>& outputs);
 
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+
+  TVM_DECLARE_ATTRS(GetAxesAttrs, "meta_schedule.attrs.GetAxesAttrs") {}
 };
 
 /**************** Scheduling Primitives ****************/
 
+/*! \brief Attrs of the instruction that applies loop splitting */
 struct SplitAttrs : public tvm::AttrsNode<SplitAttrs> {
-  TVM_DECLARE_ATTRS(SplitAttrs, "meta_schedule.attrs.SplitAttrs") {}
-
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param loop The loop to be split
+   * \param factors Thee splitting factors
+   * \param outputs The outputs of the query
+   * \return The instruction created
+   */
   static Instruction MakeInst(const LoopRV& loop, const Array<PrimExpr>& factors,
                               const Array<LoopRV>& outputs);
 
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+
+  TVM_DECLARE_ATTRS(SplitAttrs, "meta_schedule.attrs.SplitAttrs") {}
 };
 
+/*! \brief Attrs of the instruction that applies loop reordering */
 struct ReorderAttrs : public tvm::AttrsNode<ReorderAttrs> {
-  TVM_DECLARE_ATTRS(ReorderAttrs, "meta_schedule.attrs.ReorderAttrs") {}
-
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param after_axes The axes to be reordered
+   * \return The instruction created
+   */
   static Instruction MakeInst(const Array<LoopRV>& after_axes);
 
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+
+  TVM_DECLARE_ATTRS(ReorderAttrs, "meta_schedule.attrs.ReorderAttrs") {}
 };
 
+/*! \brief Attrs of the instruction that applies compute_inline */
 struct ComputeInlineAttrs : public tvm::AttrsNode<ComputeInlineAttrs> {
-  TVM_DECLARE_ATTRS(ComputeInlineAttrs, "meta_schedule.attrs.ComputeInlineAttrs") {}
-
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param block The block to be computed inline
+   * \return The instruction created
+   */
   static Instruction MakeInst(const BlockRV& block);
 
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+
+  TVM_DECLARE_ATTRS(ComputeInlineAttrs, "meta_schedule.attrs.ComputeInlineAttrs") {}
 };
 
+/*! \brief Attrs of the instruction that applies cache_write */
 struct CacheWriteAttrs : public tvm::AttrsNode<CacheWriteAttrs> {
+  /*! \brief The storage scope of the instruction cache_write */
   String storage_scope;
-  TVM_DECLARE_ATTRS(CacheWriteAttrs, "meta_schedule.attrs.CacheWriteAttrs") {
-    TVM_ATTR_FIELD(storage_scope);
-  }
 
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param block The block to be cache written
+   * \param storage_scope The storage scope of the instruction
+   * \param output The output of the instruction
+   * \return The instruction created
+   */
   static Instruction MakeInst(const BlockRV& block, const String& storage_scope,
                               const BlockRV& output);
 
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+
+  TVM_DECLARE_ATTRS(CacheWriteAttrs, "meta_schedule.attrs.CacheWriteAttrs") {
+    TVM_ATTR_FIELD(storage_scope);
+  }
 };
 
+/*! \brief Attrs of the instruction that applies decompose_reduction */
 struct DecomposeReductionAttrs : public tvm::AttrsNode<DecomposeReductionAttrs> {
-  TVM_DECLARE_ATTRS(DecomposeReductionAttrs, "meta_schedule.attrs.DecomposeReductionAttrs") {}
-
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param block The reduction block to be decomposed
+   * \param loop The loop to be decomposed at
+   * \param output The output of the instruction
+   * \return The instruction created
+   */
   static Instruction MakeInst(const BlockRV& block, const LoopRV& loop, const BlockRV& output);
 
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+
+  TVM_DECLARE_ATTRS(DecomposeReductionAttrs, "meta_schedule.attrs.DecomposeReductionAttrs") {}
 };
 
 }  // namespace meta_schedule

@@ -24,8 +24,87 @@ from tvm.runtime import Object
 
 @register_object("meta_schedule.Instruction")
 class Instruction(Object):
-    """An instruction in meta scheduling"""
+    """An instruction in meta scheduling
+
+    Parameters
+    ----------
+    inputs : List[Object]
+        The input random variables it consumers
+    outputs : List[Object]
+        The output random variables it produces
+    inst_attrs : Attrs
+        The attributes of the instruction
+    """
 
     inputs: List[Object]
     outputs: List[Object]
-    attrs: Attrs
+    inst_attrs: Attrs
+
+
+########## Sampling ##########
+
+
+@register_object("meta_schedule.attrs.SamplePerfectTileAttrs")
+class SamplePerfectTileAttrs(Attrs):
+    """Attrs of the instruction to sample perfect tile factors"""
+
+    n_splits: int
+    max_innermost_factor: int
+
+
+@register_object("meta_schedule.attrs.SampleTileFactorAttrs")
+class SampleTileFactorAttrs(Attrs):
+    """Attrs of the instruction to sample tiling factors"""
+
+    n_splits: int
+    where: List[int]
+
+
+########## Block/Loop Relationship ##########
+
+
+@register_object("meta_schedule.attrs.GetOnlyConsumerAttrs")
+class GetOnlyConsumerAttrs(Attrs):
+    """Attrs of the instruction that gets the only consumer of a specific block"""
+
+
+@register_object("meta_schedule.attrs.GetBlockAttrs")
+class GetBlockAttrs(Attrs):
+    """Attrs of the instruction that gets a specific block by its name"""
+
+    name: str
+
+
+@register_object("meta_schedule.attrs.GetAxesAttrs")
+class GetAxesAttrs(Attrs):
+    """Attrs of the instruction that gets loop axes on top of a specifc block"""
+
+
+########## Scheduling Primitives ##########
+
+
+@register_object("meta_schedule.attrs.SplitAttrs")
+class SplitAttrs(Attrs):
+    """Attrs of the instruction that applies loop splitting"""
+
+
+@register_object("meta_schedule.attrs.ReorderAttrs")
+class ReorderAttrs(Attrs):
+    """Attrs of the instruction that applies loop reordering"""
+
+
+@register_object("meta_schedule.attrs.ComputeInlineAttrs")
+class ComputeInlineAttrs(Attrs):
+    """Attrs of the instruction that applies compute_inline"""
+
+
+@register_object("meta_schedule.attrs.CacheWriteAttrs")
+class CacheWriteAttrs(Attrs):
+    """Attrs of the instruction that applies cache_write"""
+
+    storage_scope: str
+
+
+@register_object("meta_schedule.attrs.DecomposeReductionAttrs")
+class DecomposeReductionAttrs(Attrs):
+    """Attrs of the instruction that applies decompose_reduction"""
