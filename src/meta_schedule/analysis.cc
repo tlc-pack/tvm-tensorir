@@ -390,8 +390,7 @@ void DoMultiLevelTiling(Schedule sch, BlockRV block_rv, String tiling_structure)
       continue;
     }
     int n_tiles = idx->size();
-    Array<tir::Var> factors =
-        sch->SampleTileFactor(/*n=*/n_tiles, /*loop=*/axes[i], /*where=*/{1, 2, 4});
+    Array<tir::Var> factors = sch->SamplePerfectTile(/*n=*/n_tiles, /*loop=*/axes[i]);
     Array<LoopRV> splits =
         sch->Split(/*loop=*/axes[i], /*factors=*/{factors.begin(), factors.end()});
     for (int j = 0; j < n_tiles; ++j) {

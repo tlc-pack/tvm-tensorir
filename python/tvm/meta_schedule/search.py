@@ -22,7 +22,9 @@ from tvm.runtime import Object
 from tvm.tir import PrimFunc
 
 from . import _ffi_api
-from .measure import MeasureCallback, ProgramBuilder, ProgramRunner
+from .cost_model import CostModel
+from .measure import MeasureCallback, ProgramBuilder, ProgramMeasurer, ProgramRunner
+from .mutator import Mutator
 from .random_variable import BlockRV
 from .schedule import Schedule
 from .search_task import SearchTask
@@ -211,10 +213,51 @@ class SearchStrategy(Object):
             return Replay()
         raise ValueError("Cannot create search strategy from: " + strategy)
 
+    def search(
+        self,
+        task: SearchTask,
+        space: SearchSpace,
+        measurer: ProgramMeasurer,
+        verbose: int,
+    ) -> Optional[Schedule]:
+        """Explore the search space and find the best schedule
+
+        Parameters
+        ----------
+        task : SearchTask
+            The search task
+        space : SearchSpace
+            The search space
+        measurer : ProgramMeasurer
+            The measurer that builds, runs and profiles sampled programs
+        verbose : int
+            Whether or not in verbose mode
+
+        Returns
+        -------
+        schedule : Optional[Schedule]
+            The best schedule found, None if no valid schedule is found
+        """
+        return _ffi_api.SearchStrategySearch(  # pylint: disable=no-member
+            task, space, measurer, verbose
+        )
+
 
 @register_object("meta_schedule.Replay")
 class Replay(SearchStrategy):
-    """ defined in src/meta_schedule/search.h """
+    """A search strategy that just repeatedly replay the sampling process,
+    do random sampling, and picks the best from the results
+
+    Parameters
+    ----------
+    batch_size : int
+        Size of a batch for measurement
+    num_iterations : int
+        Number of iterations of replaying
+    """
+
+    batch_size: int
+    num_iterations: int
 
     def __init__(
         self,
@@ -225,6 +268,117 @@ class Replay(SearchStrategy):
             _ffi_api.Replay,  # pylint: disable=no-member
             batch_size,
             num_iterations,
+        )
+
+
+@register_object("meta_schedule.Evolutionary")
+class Evolutionary(SearchStrategy):
+    """Evolutionary Search.
+
+    Parameters
+    ----------
+    num_measure_trials : int
+        The number of iterations of measurements performed by genetic algorithm
+    num_measure_per_batch : int
+        The number of measurements in each batch
+    num_iters_in_genetic_algo : int
+        The number of iterations performed by generic algorithm.*/
+    eps_greedy : float
+        The percentage of measurements to use randomly sampled states.
+    use_measured_ratio : float
+        The percentage of previously measured states used in the initial population
+    population : int
+        The population size for evolutionary search
+    p_mutate : float
+        The probability to perform mutation
+    mutators : List[Mutator]
+        A list of mutations allowed to happen
+    cost_model : CostModel
+        A cost model helping to explore the search space
+    """
+
+    num_measure_trials: int
+    num_measure_per_batch: int
+    num_iters_in_genetic_algo: int
+    eps_greedy: float
+    use_measured_ratio: float
+    population: int
+    p_mutate: float
+    mutators: List[Mutator]
+    cost_model: CostModel
+
+    def __init__(
+        self,
+        num_measure_trials: int,
+        num_measure_per_batch: int,
+        num_iters_in_genetic_algo: int,
+        eps_greedy: float,
+        use_measured_ratio: float,
+        population: int,
+        p_mutate: float,
+        mutators: List[Mutator],
+        cost_model: CostModel,
+    ):
+        self.__init_handle_by_constructor__(
+            _ffi_api.Evolutionary,  # pylint: disable=no-member
+            num_measure_trials,
+            num_measure_per_batch,
+            num_iters_in_genetic_algo,
+            eps_greedy,
+            use_measured_ratio,
+            population,
+            p_mutate,
+            mutators,
+            cost_model,
+        )
+
+    def sample_init_population(
+        self,
+        support: List[Schedule],
+        num_samples: int,
+    ) -> List[Schedule]:
+        """Sample the initial population from the support
+
+        Parameters
+        ----------
+        support : List[Schedule]
+            The search task
+        num_samples : SearchSpace
+            The number of samples to be drawn
+
+        Returns
+        -------
+        samples : List[Schedule]
+            The initial population sampled from support
+        """
+        return _ffi_api.EvolutionarySampleInitPopulation(  # pylint: disable=no-member
+            self, support, num_samples
+        )
+
+    def evolve_with_cost_model(
+        self,
+        task: SearchTask,
+        inits: List[Schedule],
+        num_samples: int,
+    ) -> List[Schedule]:
+        """Perform evolutionary search using genetic algorithm with the cost model
+
+        Parameters
+        ----------
+        task : SearchTask
+            The search task
+        inits : List[Schedule]
+            The initial population
+        num_samples : int
+            The number of samples to be drawn
+
+        Returns
+        -------
+        samples : List[Schedule]
+            The best samples in terms of the cost model's scores
+        """
+        return _ffi_api.EvolutionaryEvolveWithCostModel(  # pylint: disable=no-member
+            self, task, inits, num_samples
         )
 
 
