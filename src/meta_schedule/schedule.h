@@ -47,6 +47,8 @@ class ScheduleNode : public Object {
   tir::Schedule sch{nullptr};
   /*! \brief The trace of instructions used */
   Array<Instruction> trace;
+  /*! \brief The decisions made in sampling */
+  Array<Array<ObjectRef>> decisions;
   /*! \brief The symbol table with information of all defined variables in the meta schedule */
   TSymbolTable sym_tab;
   /*! \brief The random number generator */
@@ -56,6 +58,7 @@ class ScheduleNode : public Object {
     v->Visit("orig_func", &orig_func);
     v->Visit("sch", &sch);
     v->Visit("trace", &trace);
+    v->Visit("decisions", &decisions);
     // `sym_tab` is not visited
     // `sampler` is not visited
   }
@@ -157,11 +160,12 @@ class ScheduleNode : public Object {
    * \return The block random variable indicating the decomposition result
    */
   BlockRV DecomposeReduction(const BlockRV& block, const LoopRV& loop);
-  /**************** Replay ****************/
+  /**************** Trace-related ****************/
   /*!
-   * \brief Replay the trace to generate a new state of scheduling
+   * \brief Re-sample along the trace to generatea new sequence of
+   * scheduling instructions and program states
    */
-  void ReplayOnce();
+  void ReSample();
 };
 
 class Schedule : public ObjectRef {

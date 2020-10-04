@@ -43,6 +43,7 @@ class Schedule(Object):
     orig_func: tir.PrimFunc
     sch: tir.Schedule
     trace: List[Instruction]
+    decisions: List[List[Object]]
 
     def __init__(self, func: tir.PrimFunc):
         self.__init_handle_by_constructor__(
@@ -267,8 +268,9 @@ class Schedule(Object):
             self, block, loop
         )
 
-    ########## Replay ##########
+    ########## Trace-related ##########
 
-    def replay_once(self) -> None:
-        """ Replay the trace to generate a new state of scheduling """
-        return _ffi_api.ScheduleReplayOnce(self)  # pylint: disable=no-member
+    def resample(self) -> None:
+        """Re-sample along the trace to generatea new sequence of
+        scheduling instructions and program states"""
+        return _ffi_api.ScheduleReSample(self)  # pylint: disable=no-member

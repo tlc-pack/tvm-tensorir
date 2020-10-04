@@ -246,7 +246,7 @@ Array<Schedule> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& su
   for (int i = 0; i < num_sampled; ++i) {
     int sample_index = sampler_.SampleInt(0, support.size());
     Schedule sch = support[sample_index]->copy();
-    sch->ReplayOnce();  // TODO(@junrushao1994): deal with exceptions
+    sch->ReSample();  // TODO(@junrushao1994): deal with exceptions
     results.push_back(sch);
   }
   return results;

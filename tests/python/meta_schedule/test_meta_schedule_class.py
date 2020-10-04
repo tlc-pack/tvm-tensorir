@@ -192,6 +192,19 @@ def test_meta_schedule_compute_inline():
     assert tvm.ir.structural_equal(sch.sch.func, elementwise_inlined)
 
 
+def test_meta_schedule_resample():
+    from functools import reduce  # pylint: disable=import-outside-toplevel
+
+    sch = ms.Schedule(func=matmul)
+    i, _, _ = sch.get_axes(sch.get_block("C"))
+    factors = sch.sample_perfect_tile(n_splits=4, loop=i)
+    for _ in range(100):
+        sch.resample()
+        evaluated_factors = [sch.evaluate(i) for i in factors]
+        prod = reduce(lambda x, y: x * y, evaluated_factors)
+        assert prod == 1024
+
+
 if __name__ == "__main__":
     test_meta_schedule_creation()
     test_meta_schedule_copy()
@@ -205,3 +218,4 @@ if __name__ == "__main__":
     test_meta_schedule_compute_inline()
     # test_meta_schedule_cache_write()
     # test_meta_schedule_decompose_reduction()
+    test_meta_schedule_resample()

@@ -32,6 +32,21 @@
 namespace tvm {
 namespace meta_schedule {
 
+template <class T>
+inline Array<ObjectRef> AsArray(const std::vector<T>& v) {
+  return {v.begin(), v.end()};
+}
+
+template <>
+inline Array<ObjectRef> AsArray(const std::vector<int>& v) {
+  Array<ObjectRef> result;
+  result.reserve(v.size());
+  for (int x : v) {
+    result.push_back(Integer(x));
+  }
+  return result;
+}
+
 /*!
  * \brief Compute mean of a FloatImm array.
  * Taken from Ansor

@@ -22,6 +22,7 @@
 #include <tvm/tir/stmt_functor.h>
 
 #include "./sampler.h"
+#include "./utils.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -244,6 +245,7 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
   // Put the instruction in the trace
   this->trace.push_back(
       SamplePerfectTileAttrs::MakeInst(n_splits, loop, max_innermost_factor, outputs));
+  this->decisions.push_back(AsArray(samples));
   return outputs;
 }
 
@@ -274,6 +276,7 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
   }
   // Put the instruction in the trace
   this->trace.push_back(SampleTileFactorAttrs::MakeInst(n_splits, loop, where, outputs));
+  this->decisions.push_back(AsArray(samples));
   return outputs;
 }
 
@@ -411,14 +414,14 @@ BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const LoopRV& loo
   return output;
 }
 
-/**************** Replay ****************/
+/**************** Trace-related ****************/
 
-void ScheduleNode::ReplayOnce() {
-  // Step 1. Create a new schedule to temporarily hold the replay result
+void ScheduleNode::ReSample() {
+  // Step 1. Create a new schedule to temporarily hold the re-sampling result
   Schedule new_sch(this->orig_func);
-  // Maps an old random variable to its corresponding new random variable in the replay
+  // Maps an old random variable to its corresponding new random variable in the re-sampling
   std::unordered_map<const Object*, const Object*> var_map;
-  // Step 2. Replay all the instructions in the trace
+  // Step 2. Re-do all the instructions in the trace, including sampling instructions
   for (const Instruction& prev_inst : this->trace) {
     const Array<ObjectRef>& prev_inputs = prev_inst->inputs;
     const Array<ObjectRef>& prev_outputs = prev_inst->outputs;
@@ -540,12 +543,12 @@ struct Internal {
   static BlockRV DecomposeReduction(Schedule sch, BlockRV block, LoopRV loop) {
     return sch->DecomposeReduction(block, loop);
   }
-  /**************** Replay ****************/
+  /**************** Trace-related ****************/
   /*!
-   * \brief FFI function, corresponds to ScheduleNode::ReplayOnce
-   * \sa ScheduleNode::ReplayOnce
+   * \brief FFI function, corresponds to ScheduleNode::ReSample
+   * \sa ScheduleNode::ReSample
    */
-  static void ReplayOnce(Schedule sch) { return sch->ReplayOnce(); }
+  static void ReSample(Schedule sch) { return sch->ReSample(); }
 };
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
@@ -566,7 +569,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleComputeInline").set_body_typed(Intern
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCacheWrite").set_body_typed(Internal::CacheWrite);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleDecomposeReduction")
     .set_body_typed(Internal::DecomposeReduction);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReplayOnce").set_body_typed(Internal::ReplayOnce);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReSample").set_body_typed(Internal::ReSample);
 
 }  // namespace meta_schedule
 }  // namespace tvm
