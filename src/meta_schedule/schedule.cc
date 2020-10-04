@@ -416,75 +416,9 @@ BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const LoopRV& loo
 
 /**************** Replay ****************/
 
-/*!
- * \brief Store the mapping "old_var => new_var" into var_map
- * \param var_map The old-to-new variable mapping table
- * \param old_var The old variable
- * \param new_var The new variable
- */
-void StoreVar(std::unordered_map<const Object*, const Object*>* var_map, const ObjectRef& old_var,
-              const ObjectRef& new_var) {
-  var_map->emplace(old_var.get(), new_var.get());
-}
-
-/*!
- * \brief Store a list of mappings "old_var => new_var" into var_map
- * \tparam TObjectRef Type of the random variable, can be `Block`, `LoopAxis` and `tir::Var`
- * \param var_map The old-to-new variable mapping table
- * \param old_vars The list of old variables
- * \param new_vars The list of new variables
- */
-template <class TObjectRef>
-void StoreArray(std::unordered_map<const Object*, const Object*>* var_map,
-                const Array<TObjectRef>& old_vars, const Array<TObjectRef>& new_vars) {
-  CHECK_EQ(old_vars.size(), new_vars.size());
-  int n = old_vars.size();
-  for (int i = 0; i < n; ++i) {
-    StoreVar(var_map, old_vars[i], new_vars[i]);
-  }
-}
-
-/*!
- * \brief In replay, lookup a random variable in the old-to-new variable mapping table
- * \tparam TObjectRef Type of the random variable, can be `Block`, `LoopAxis` and `tir::Var`
- * \param var_map Maps old variables to new variables
- * \param obj The old variable to be looked up
- * \return The new variable
- */
-template <class TObjectRef>
-TObjectRef LookupVar(const std::unordered_map<const Object*, const Object*>& var_map,
-                     const TObjectRef& obj) {
-  using TContainer = typename TObjectRef::ContainerType;
-  const Object* ret = var_map.at(obj.get());
-  CHECK(ret->IsInstance<TContainer>());
-  return GetRef<TObjectRef>(static_cast<const TContainer*>(ret));
-}
-
-/*!
- * \brief In replay, lookup a list of random variables in the old-to-new variable mapping table
- * \tparam TObjectRef Type of the random variable, can be `Block`, `LoopAxis` and `tir::Var`
- * \param var_map Maps old variables to new variables
- * \param obj The list of old variables to be looked up
- * \return The list of new variables
- */
-template <class TObjectRef>
-Array<TObjectRef> LookupArray(const std::unordered_map<const Object*, const Object*>& var_map,
-                              const Array<TObjectRef>& objs) {
-  Array<TObjectRef> result;
-  for (const TObjectRef& obj : objs) {
-    result.push_back(LookupVar(var_map, obj));
-  }
-  return result;
-}
-
-#define TVM_META_SCHEDULE_APPLY_INST(Inst, Inputs, Outputs, AttrType) \
-  if (const auto* attr = Inst->attrs.as<AttrType>()) {                \
-    Outputs = attr->ApplyToSchedule(this, Inputs);                    \
-  }
-
 void ScheduleNode::ReplayOnce() {
   // Step 1. Create a new schedule to temporarily hold the replay result
-  Schedule sch(this->orig_func);
+  Schedule new_sch(this->orig_func);
   // Maps an old random variable to its corresponding new random variable in the replay
   std::unordered_map<const Object*, const Object*> var_map;
   // Step 2. Replay all the instructions in the trace
@@ -492,69 +426,27 @@ void ScheduleNode::ReplayOnce() {
     const Array<ObjectRef>& prev_inputs = prev_inst->inputs;
     const Array<ObjectRef>& prev_outputs = prev_inst->outputs;
     Array<ObjectRef> inputs;
-    Array<ObjectRef> outputs;
     inputs.reserve(prev_inputs.size());
     for (const ObjectRef& input : prev_inputs) {
       const Object* ptr = input.get();
       CHECK(var_map.count(ptr));
       inputs.push_back(GetRef<ObjectRef>(var_map.at(ptr)));
     }
-    TVM_META_SCHEDULE_APPLY_INST(prev_inst, inputs, outputs, SamplePerfectTileAttrs);
-    TVM_META_SCHEDULE_APPLY_INST(prev_inst, inputs, outputs, SampleTileFactorAttrs);
-    TVM_META_SCHEDULE_APPLY_INST(prev_inst, inputs, outputs, GetOnlyConsumerAttrs);
-    TVM_META_SCHEDULE_APPLY_INST(prev_inst, inputs, outputs, GetBlockAttrs);
-    TVM_META_SCHEDULE_APPLY_INST(prev_inst, inputs, outputs, GetAxesAttrs);
-    TVM_META_SCHEDULE_APPLY_INST(prev_inst, inputs, outputs, SplitAttrs);
-    TVM_META_SCHEDULE_APPLY_INST(prev_inst, inputs, outputs, ReorderAttrs);
-    TVM_META_SCHEDULE_APPLY_INST(prev_inst, inputs, outputs, ComputeInlineAttrs);
-    TVM_META_SCHEDULE_APPLY_INST(prev_inst, inputs, outputs, CacheWriteAttrs);
-    TVM_META_SCHEDULE_APPLY_INST(prev_inst, inputs, outputs, DecomposeReductionAttrs);
+    Array<ObjectRef> outputs =
+        Instruction::ApplyToSchedule(new_sch.operator->(), prev_inst->inst_attrs, inputs);
     CHECK_EQ(prev_outputs.size(), outputs.size()) << "ValueError: Output size mismatch";
     for (int i = 0, n = outputs.size(); i < n; ++i) {
       var_map[prev_outputs[i].get()] = outputs[i].get();
     }
-    //   if (const auto* inst = previous_instruction.as<SamplePerfectTileInstNode>()) {
-    //     StoreArray(&var_map, inst->outputs,
-    //                sch->SamplePerfectTile(/*n=*/inst->outputs.size(),
-    //                                       /*loop=*/LookupVar(var_map, inst->loop),
-    //                                       /*max_innermost_factor=*/inst->max_innermost_factor));
-    //   } else if (const auto* inst = previous_instruction.as<SampleTileFactorInstNode>()) {
-    //     StoreArray(&var_map, inst->outputs,
-    //                sch->SampleTileFactor(/*n=*/inst->outputs.size(),
-    //                                      /*loop=*/LookupVar(var_map, inst->loop),
-    //                                      /*where=*/inst->where));
-    //   } else if (const auto* inst = previous_instruction.as<GetBlockInstNode>()) {
-    //     StoreVar(&var_map, inst->output, sch->GetBlock(/*name=*/inst->name));
-    //   } else if (const auto* inst = previous_instruction.as<GetAxesInstNode>()) {
-    //     StoreArray(&var_map, inst->outputs, sch->GetAxes(/*block=*/LookupVar(var_map,
-    //     inst->block)));
-    //   } else if (const auto* inst = previous_instruction.as<SplitInstNode>()) {
-    //     StoreArray(&var_map, inst->outputs,
-    //                sch->Split(/*loop=*/LookupVar(var_map, inst->loop),
-    //                           /*factors=*/LookupArray(var_map, inst->factors)));
-    //   } else if (const auto* inst = previous_instruction.as<ReorderInstNode>()) {
-    //     sch->Reorder(/*after_axes=*/LookupArray(var_map, inst->after_axes));
-    //   } else if (const auto* inst = previous_instruction.as<DecomposeReductionInstNode>()) {
-    //     StoreVar(&var_map, inst->output,
-    //              sch->DecomposeReduction(/*block=*/LookupVar(var_map, inst->block),
-    //                                      /*loop=*/LookupVar(var_map, inst->loop)));
-    //   } else {
-    //     LOG(FATAL) << "TypeError: Unsupported instruction to be replayed: "
-    //                << previous_instruction->GetTypeKey();
-    //   }
   }
-  // // Step 3. Re-assign all the variables back according to the symbol table
-  // this->sch = sch->sch;
-  // for (auto& kv_entry : this->sym_tab) {
-  //   const ObjectRef& old_var = kv_entry.first;
-  //   const ObjectRef& new_var = LookupVar(var_map, old_var);
-  //   if (const Optional<ObjectRef>& new_value = sch->sym_tab.at(new_var).value) {
-  //     kv_entry.second.value = new_value.value();
-  //   }
-  // }
+  // Step 3. Re-assign all the variables back according to the symbol table
+  this->sch = new_sch->sch;
+  for (auto& kv_entry : this->sym_tab) {
+    const ObjectRef& old_var = kv_entry.first;
+    const ObjectRef& new_var = GetRef<ObjectRef>(var_map.at(old_var.get()));
+    kv_entry.second.value = new_sch->sym_tab.at(new_var).value;
+  }
 }
-
-#undef TVM_META_SCHEDULE_APPLY_INST
 
 /**************** FFI ****************/
 

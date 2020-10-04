@@ -36,12 +36,12 @@ class InstructionNode : public Object {
   /*! \brief The output random variables it produces */
   Array<ObjectRef> outputs;
   /*! \brief The attributes of the instruction */
-  Attrs attrs;
+  Attrs inst_attrs;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("inputs", &inputs);
     v->Visit("outputs", &outputs);
-    v->Visit("attrs", &attrs);
+    v->Visit("inst_attrs", &inst_attrs);
   }
 
   static constexpr const char* _type_key = "meta_schedule.Instruction";
@@ -61,6 +61,9 @@ class Instruction : public ObjectRef {
    * \param attrs The attributes of the instruction
    */
   explicit Instruction(Array<ObjectRef> inputs, Array<ObjectRef> outputs, Attrs attrs);
+
+  static Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Attrs& inst_attrs,
+                                          const Array<ObjectRef>& inputs);
 
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Instruction, ObjectRef, InstructionNode);
 

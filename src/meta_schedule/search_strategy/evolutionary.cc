@@ -308,7 +308,7 @@ Array<Schedule> EvolutionaryNode::EvolveWithCostModel(const SearchTask& task,
         // with probability `p_mutate`, choose a mutator
         const Mutator& mutator = mutators[mutator_sampler_()];
         // apply the mutator
-        if (Optional<Schedule> new_sch = mutator->Apply(sch, &sampler_)) {
+        if (Optional<Schedule> new_sch = mutator->Apply(task, sch, &sampler_)) {
           sch_next.emplace_back(new_sch.value());
         } else {
           // if not successful, take a step back and redo

@@ -169,6 +169,17 @@ std::function<int()> Sampler::MakeMultinomial(const std::vector<double>& weights
 }
 
 std::vector<int> Sampler::SampleWithoutReplacement(int n, int k) {
+  if (k == 1) {
+    return {SampleInt(0, n)};
+  }
+  if (k == 2) {
+    int result0 = SampleInt(0, n);
+    int result1 = SampleInt(0, n - 1);
+    if (result1 >= result0) {
+      result1 += 1;
+    }
+    return {result0, result1};
+  }
   std::vector<int> order(n);
   for (int i = 0; i < n; ++i) {
     order[i] = i;

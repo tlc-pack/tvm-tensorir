@@ -21,7 +21,25 @@
 namespace tvm {
 namespace meta_schedule {
 
+/********** Constructor **********/
+
+MutateTileSize::MutateTileSize(double p) {
+  ObjectPtr<MutateTileSizeNode> n = make_object<MutateTileSizeNode>();
+  n->p = p;
+  data_ = std::move(n);
+}
+
+/********** MutateTileSize **********/
+
+Optional<Schedule> MutateTileSizeNode::Apply(const SearchTask& task, const Schedule& sch,
+                                             Sampler* sampler) {
+  return NullOpt;
+}
+
+/********** FFI **********/
+
 TVM_REGISTER_OBJECT_TYPE(MutatorNode);
+TVM_REGISTER_NODE_TYPE(MutateTileSizeNode);
 
 }  // namespace meta_schedule
 }  // namespace tvm

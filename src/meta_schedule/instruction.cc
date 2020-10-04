@@ -25,11 +25,11 @@ namespace meta_schedule {
 
 /**************** Constructors ****************/
 
-Instruction::Instruction(Array<ObjectRef> inputs, Array<ObjectRef> outputs, Attrs attrs) {
+Instruction::Instruction(Array<ObjectRef> inputs, Array<ObjectRef> outputs, Attrs inst_attrs) {
   ObjectPtr<InstructionNode> n = make_object<InstructionNode>();
   n->inputs = std::move(inputs);
   n->outputs = std::move(outputs);
-  n->attrs = std::move(attrs);
+  n->inst_attrs = std::move(inst_attrs);
   data_ = std::move(n);
 }
 
@@ -41,9 +41,34 @@ Instruction::Instruction(Array<ObjectRef> inputs, Array<ObjectRef> outputs, Attr
       << "' from: " << Input->GetTypeKey();                                      \
   CastType VarName = Downcast<CastType>(Input);
 
+#define TVM_META_SCHEDULE_APPLY_INST(Schedule, Attrs, Inputs, AttrType) \
+  if (const auto* n = Attrs.as<AttrType>()) {                           \
+    return n->ApplyToSchedule(Schedule, Inputs);                        \
+  }
+
 template <class T>
 Array<ObjectRef> AdaptOutputs(const Array<T>& outputs) {
   return {outputs.begin(), outputs.end()};
+}
+
+/**************** Instruction  ****************/
+
+Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Attrs& inst_attrs,
+                                              const Array<ObjectRef>& inputs) {
+  // TODO(@junrushao1994): dispatch using a vtable
+  CHECK(inst_attrs.defined()) << "ValueError: `inst_attrs` is undefined";
+  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, SamplePerfectTileAttrs);
+  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, SampleTileFactorAttrs);
+  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, GetOnlyConsumerAttrs);
+  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, GetBlockAttrs);
+  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, GetAxesAttrs);
+  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, SplitAttrs);
+  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, ReorderAttrs);
+  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, ComputeInlineAttrs);
+  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, CacheWriteAttrs);
+  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, DecomposeReductionAttrs);
+  LOG(FATAL) << "TypeError: Cannot recognize instruction attribute: " << inst_attrs->GetTypeKey();
+  throw;
 }
 
 /**************** MakeInst/ApplyToSchedule: Sampling  ****************/
@@ -227,6 +252,9 @@ TVM_REGISTER_NODE_TYPE(ComputeInlineAttrs);
 TVM_REGISTER_NODE_TYPE(CacheWriteAttrs);
 TVM_REGISTER_NODE_TYPE(DecomposeReductionAttrs);
 TVM_REGISTER_NODE_TYPE(GetOnlyConsumerAttrs);
+
+#undef TVM_META_SCHEDULE_CAST_INPUT
+#undef TVM_META_SCHEDULE_APPLY_INST
 
 }  // namespace meta_schedule
 }  // namespace tvm
