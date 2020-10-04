@@ -107,15 +107,16 @@ class EvolutionaryNode : public SearchStrategyNode {
   /*!
    * \brief Sample the initial population from the support
    * \param support The support to be sampled from
+   * \param num_samples The number of samples to be drawn
    * \return The generated samples
    */
-  Array<Schedule> SampleInitPopulation(const Array<Schedule>& support);
+  Array<Schedule> SampleInitPopulation(const Array<Schedule>& support, int num_samples);
 
   /*!
    * \brief Perform evolutionary search using genetic algorithm with the cost model
    * \param task The search task
    * \param inits The initial population
-   * \param num_samples The number of samples to be draw
+   * \param num_samples The number of samples to be drawn
    * \return An array of schedules, the sampling result
    */
   Array<Schedule> EvolveWithCostModel(const SearchTask& task, const Array<Schedule>& inits,
@@ -201,7 +202,7 @@ Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const Search
   Array<Schedule> support = space->GetSupport(task);
   for (;;) {
     // `inits`: Sampled initial population, whose size is at most `this->population`
-    Array<Schedule> inits = SampleInitPopulation(support);
+    Array<Schedule> inits = SampleInitPopulation(support, population);
     // `rands`: Randomly pick from `inits`
     Array<Schedule> rands = sampler_.SampleWithReplacement(inits, num_rands * 3);
     // `bests`: Explore the space using mutators
@@ -233,18 +234,18 @@ Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const Search
   return measurer->best_sch;
 }
 
-Array<Schedule> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& support) {
-  int num_measured = population * use_measured_ratio;
-  int num_sampled = population - num_measured;
+Array<Schedule> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& support,
+                                                       int num_samples) {
+  int num_measured = num_samples * use_measured_ratio;
   Array<Schedule> results;
-  results.reserve(population);
+  results.reserve(num_samples);
   // Pick measured states
   std::vector<MeasuredState> measured = measured_.GetTopK(num_measured);
   for (const MeasuredState& state : measured) {
     results.push_back(state.sch);
   }
   // Pick unmeasured states
-  for (int i = 0; i < num_sampled; ++i) {
+  for (int i = results.size(); i < num_samples; ++i) {
     int sample_index = sampler_.SampleInt(0, support.size());
     Schedule sch = support[sample_index]->copy();
     sch->ReSample();  // TODO(@junrushao1994): deal with exceptions
@@ -403,19 +404,21 @@ struct Internal {
    * \brief Sample the initial population from the support
    * \param self The evolutionary seach class
    * \param support The support to be sampled from
+   * \param num_samples The number of samples to be drawn
    * \return The generated samples
    * \sa EvolutionaryNode::SampleInitPopulation
    */
   static Array<Schedule> EvolutionarySampleInitPopulation(Evolutionary self,
-                                                          Array<Schedule> support) {
-    return self->SampleInitPopulation(support);
+                                                          Array<Schedule> support,
+                                                          int num_samples) {
+    return self->SampleInitPopulation(support, num_samples);
   }
   /*!
    * \brief Perform evolutionary search using genetic algorithm with the cost model
    * \param self The evolutionary seach class
    * \param task The search task
    * \param inits The initial population
-   * \param num_samples The number of samples to be draw
+   * \param num_samples The number of samples to be drawn
    * \return An array of schedules, the sampling result
    * \sa EvolutionaryNode::EvolveWithCostModel
    */

@@ -372,6 +372,46 @@ def test_conv2d_relu_plus_one_post_order_apply():
         print(tvm.hybrid.ashybrid(sch.sch.func))
 
 
+@pytest.mark.skip(reason="needs RPC")
+def test_matmul_evolutionary():
+    task = ms.SearchTask(func=matmul)
+    strategy = ms.Evolutionary(
+        num_measure_trials=128,
+        num_measure_per_batch=16,
+        num_iters_in_genetic_algo=1,
+        eps_greedy=0.02,
+        use_measured_ratio=0.05,
+        population=16,
+        p_mutate=0.85,
+        mutators=[ms.MutateTileSize(p=1.0)],
+        cost_model=ms.RandomModel(),
+    )
+    space = ms.PostOrderApply(
+        rule=ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS")
+    )
+    # Test API:
+    #   sample_init_population
+    #   evolve_with_cost_model
+    strategy.evolve_with_cost_model(
+        task=task,
+        inits=strategy.sample_init_population(
+            space.get_support(task=task), num_samples=15
+        ),
+        num_samples=100,
+    )
+    # End-to-end integration test
+    sch = ms.autotune(
+        task=task,
+        space=space,
+        strategy=strategy,
+        runner="rpc://0.0.0.0:3012:local * 16",
+    )
+    if sch is None:
+        print("No valid schedule found")
+    else:
+        print(tvm.hybrid.ashybrid(sch.sch.func))
+
+
 if __name__ == "__main__":
     test_matmul_schedule_fn()
     test_matmul_post_order_apply()
@@ -380,3 +420,4 @@ if __name__ == "__main__":
     test_conv2d_schedule_fn()
     test_conv2d_post_order_apply()
     test_conv2d_relu_plus_one_post_order_apply()
+    test_matmul_evolutionary()
