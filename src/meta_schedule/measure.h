@@ -523,7 +523,7 @@ class ProgramMeasurer : public ObjectRef {
                            Array<MeasureCallback> callbacks);
 
   /*! \brief The maximum time cost*/
-  static const constexpr double MAX_TIME_COST = 1e10;
+  static const constexpr double kMaxTimeCost = 1e10;
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(ProgramMeasurer, ObjectRef, ProgramMeasurerNode);
 };

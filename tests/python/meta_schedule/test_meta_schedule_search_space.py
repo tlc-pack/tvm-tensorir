@@ -39,12 +39,12 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 def test_meta_schedule_schedule_fn():
-    def schedule_matmul(sch):
+    def schedule_matmul(sch: ms.Schedule):
         block = sch.get_block(name="C")
         i, j, k = sch.get_axes(block=block)
-        i_tiles = sch.sample_tile_factor(n=4, loop=i, where=[1, 2, 4])
-        j_tiles = sch.sample_tile_factor(n=4, loop=j, where=[1, 2, 4])
-        k_tiles = sch.sample_tile_factor(n=2, loop=k, where=[1, 2, 4])
+        i_tiles = sch.sample_perfect_tile(n_splits=4, loop=i)
+        j_tiles = sch.sample_perfect_tile(n_splits=4, loop=j)
+        k_tiles = sch.sample_perfect_tile(n_splits=2, loop=k)
         i_0, i_1, i_2, i_3 = sch.split(loop=i, factors=i_tiles)
         j_0, j_1, j_2, j_3 = sch.split(loop=j, factors=j_tiles)
         k_0, k_1 = sch.split(loop=k, factors=k_tiles)
@@ -66,23 +66,19 @@ def test_meta_schedule_post_order_apply():
     @ms.register_rule("do_mlt")
     def do_mlt(sch: ms.Schedule, block: ms.BlockRV):
         TILING_FORMAT = "SSRSRS"  # pylint: disable=invalid-name
-        SPATIAL = 0  # pylint: disable=invalid-name
-        REDUCTION = 2  # pylint: disable=invalid-name
         spatial_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "S"]
         reduce_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "R"]
         order = [list() for _ in TILING_FORMAT]
         axes = sch.get_axes(block=block)
-        iter_vars = ms.helpers.block_from_sref(sch.evaluate(block)).iter_vars
-        assert len(axes) == len(iter_vars)
-        for axis, iter_var in zip(axes, iter_vars):
-            for iter_type, indices in [
-                (SPATIAL, spatial_indices),
-                (REDUCTION, reduce_indices),
+        iter_types = ms.analysis.get_block_var_types(sch, block)
+        assert len(axes) == len(iter_types)
+        for axis, iter_type in zip(axes, iter_types):
+            for expect_iter_type, indices in [
+                ("spatial", spatial_indices),
+                ("reduce", reduce_indices),
             ]:
-                if iter_var.iter_type == iter_type:
-                    tiles = sch.sample_tile_factor(
-                        n=len(indices), loop=axis, where=[1, 2, 4]
-                    )
+                if iter_type == expect_iter_type:
+                    tiles = sch.sample_perfect_tile(n_splits=len(indices), loop=axis)
                     splits = sch.split(loop=axis, factors=tiles)
                     for i, split in zip(indices, splits):
                         order[i].append(split)

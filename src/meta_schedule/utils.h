@@ -23,12 +23,49 @@
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/expr.h>
 
+#include <set>
+#include <unordered_set>
 #include <vector>
 
 #include "./schedule.h"
 
 namespace tvm {
 namespace meta_schedule {
+
+template <class T>
+inline Array<ObjectRef> AsArray(const std::vector<T>& v) {
+  return {v.begin(), v.end()};
+}
+
+template <>
+inline Array<ObjectRef> AsArray(const std::vector<int>& v) {
+  Array<ObjectRef> result;
+  result.reserve(v.size());
+  for (int x : v) {
+    result.push_back(Integer(x));
+  }
+  return result;
+}
+
+template <class T>
+inline std::vector<T> DowncastArray(const Array<ObjectRef>& array) {
+  std::vector<T> result;
+  result.reserve(array.size());
+  for (const ObjectRef& obj : array) {
+    result.push_back(Downcast<T>(obj));
+  }
+  return result;
+}
+
+template <>
+inline std::vector<int> DowncastArray(const Array<ObjectRef>& array) {
+  std::vector<int> result;
+  result.reserve(array.size());
+  for (const ObjectRef& obj : array) {
+    result.push_back(Downcast<Integer>(obj));
+  }
+  return result;
+}
 
 /*!
  * \brief Compute mean of a FloatImm array.
@@ -132,15 +169,126 @@ inline bool DomainEqual(const Array<Range>& lhs, const Array<Range>& rhs) {
 }
 
 /*!
- * \brief Convert the meta schedule's current conditional TIR to string
- * \param sch The meta schedule class
- * \return A string, the hybrid function
+ * \brief Get the string representation of a schedule
+ * \param sch The schedule to be stringified
+ * \return The string representation of a schedule
  */
-inline String AsHybrid(const Schedule& sch) {
+inline String Repr(const Schedule& sch) {
   const auto* f = runtime::Registry::Get("hybrid.AsHybrid");
+  CHECK(f) << "IndexError: global function \"hybrid.AsHybrid\" not found";
   String s = (*f)(sch->sch->func, false);
   return s;
 }
+
+/*!
+ * \brief A heap with a size up-limit. If out-growth happens, it evicted the worst items
+ * \tparam ItemType Type of the items in the heap. ItemType::KeyType is the type of its key, which
+ * the container can access using ItemType::key
+ */
+template <class ItemType>
+class SizedHeap {
+  using KeyType = typename ItemType::KeyType;
+
+ public:
+  /*!
+   * \brief Constructor
+   * \param size_limit The up-limit of the heap
+   */
+  explicit SizedHeap(int size_limit) : size_limit(size_limit) { heap.reserve(size_limit); }
+
+  /*!
+   * \brief Push the specific item to the heap if its key did not appears in the heap
+   * \param item The item to be pushed
+   */
+  void Push(const ItemType& item) {
+    if (in_heap.count(item.key)) {
+      return;
+    }
+    int size = heap.size();
+    if (size < size_limit) {
+      // Heap is not full, just push
+      heap.emplace_back(item);
+      std::push_heap(heap.begin(), heap.end());
+      in_heap.insert(item.key);
+    } else if (item < heap.front()) {
+      // if the item is better than the worst one in the heap, we can safely kick it out
+      in_heap.erase(heap.front().key);
+      in_heap.insert(item.key);
+      std::pop_heap(heap.begin(), heap.end());
+      heap.back() = item;
+      std::push_heap(heap.begin(), heap.end());
+    }
+    // Otherwise, the item is worse than any other element in the heap
+  }
+
+  /*!
+   * \brief Add keys to the heap to avoid it being pushed later
+   * \tparam IterType Type of the input iterator
+   * \param key The key to be inserted
+   */
+  template <class IterType>
+  void AddKeys(IterType begin, IterType end) {
+    in_heap.insert(begin, end);
+  }
+
+  /*! \brief Up-limit of the heap size */
+  int size_limit;
+  /*! \brief The heap, the worse the topper */
+  std::vector<ItemType> heap;
+  /*! \brief Collection of keys in th heap */
+  std::unordered_set<KeyType> in_heap;
+};
+
+/*!
+ * \brief A table containing keys for de-duplication and sorted values
+ * \tparam KeyType Type of the keys
+ * \tparam ValueType Type of the values
+ */
+template <class KeyType, class ValueType>
+class SortedTable {
+ public:
+  /*!
+   * \brief Check if a key is in the table
+   * \param key The key to be checked
+   * \return A boolean indicating if it is in the table
+   */
+  bool Has(const KeyType& key) const { return keys.count(key); }
+
+  /*!
+   * \brief Add a key to the table
+   * \param key The key to be added
+   */
+  void Add(const KeyType& key) { keys.insert(key); }
+
+  /*!
+   * \brief Add a value to the table
+   * \param value The value to be added
+   */
+  void Add(const ValueType& value) { values.insert(value); }
+
+  /*!
+   * \brief Get the top-k values, the smaller the better
+   * \param top_k The number of top-k values to be retrieved
+   * \return A vector of values whose length is at most `top_k`
+   */
+  std::vector<ValueType> GetTopK(int top_k) const {
+    std::vector<ValueType> result;
+    result.reserve(top_k);
+    int i = 0;
+    for (const ValueType& value : values) {
+      result.push_back(value);
+      if (++i >= top_k) {
+        break;
+      }
+    }
+    return result;
+  }
+
+  /*! \brief The table to store keys */
+  std::unordered_set<KeyType> keys;
+  /*! \brief The table to store values */
+  std::multiset<ValueType> values;
+};
 
 }  // namespace meta_schedule
 }  // namespace tvm
