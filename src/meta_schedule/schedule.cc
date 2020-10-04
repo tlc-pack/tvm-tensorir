@@ -27,7 +27,7 @@ namespace tvm {
 namespace meta_schedule {
 
 Schedule::Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
-                   SymbolTable sym_tab, Sampler sampler) {
+                   TSymbolTable sym_tab, Sampler sampler) {
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
   n->orig_func = std::move(orig_func);
   n->sch = std::move(sch);
@@ -44,6 +44,7 @@ Schedule::Schedule(tir::PrimFunc orig_func)
 
 /*! \brief Helper class to do tir::StmtSRef translation */
 struct SRefTranslator {
+  using TSymbolTable = ScheduleNode::TSymbolTable;
   using StmtSRef = tir::StmtSRef;
   using StmtSRefNode = tir::StmtSRefNode;
   using DepEdge = tir::DepEdge;
@@ -109,13 +110,13 @@ struct SRefTranslator {
     return result;
   }
 
-  /*! \brief Translate SymbolTable */
-  SymbolTable Trans(const SymbolTable& tab) {
-    SymbolTable result = tab;
+  /*! \brief Translate the symbol table */
+  TSymbolTable Trans(const TSymbolTable& tab) {
+    TSymbolTable result = tab;
     for (auto& kv : result) {
-      SymbolTableEntry& entry = kv.second;
-      if (const auto* sref = entry.value.as<StmtSRefNode>()) {
-        entry.value = Trans(sref);
+      Optional<ObjectRef>& entry = kv.second;
+      if (const auto* sref = entry.as<StmtSRefNode>()) {
+        entry = Trans(sref);
       }
     }
     return result;
@@ -174,7 +175,7 @@ Schedule ScheduleNode::copy() const {
 tir::StmtSRef ScheduleNode::Eval(const BlockRV& block) {
   auto iter = this->sym_tab.find(block);
   CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding BlockRV: " << block;
-  const Optional<ObjectRef> obj = iter->second.value;
+  const Optional<ObjectRef>& obj = iter->second;
   CHECK(obj.defined()) << "ValueError: Corresponding BlockRV's value is not defined: " << block;
   if (const auto* sref = obj.as<tir::StmtSRefNode>()) {
     return GetRef<tir::StmtSRef>(sref);
@@ -186,7 +187,7 @@ tir::StmtSRef ScheduleNode::Eval(const BlockRV& block) {
 tir::StmtSRef ScheduleNode::Eval(const LoopRV& loop) {
   auto iter = this->sym_tab.find(loop);
   CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding LoopRV: " << loop;
-  const Optional<ObjectRef> obj = iter->second.value;
+  const Optional<ObjectRef>& obj = iter->second;
   CHECK(obj.defined()) << "ValueError: Corresponding LoopRV's value is not defined: " << loop;
   if (const auto* sref = obj.as<tir::StmtSRefNode>()) {
     return GetRef<tir::StmtSRef>(sref);
@@ -201,7 +202,7 @@ int ScheduleNode::Eval(const PrimExpr& expr) {
   PrimExpr transformed = tir::Substitute(expr, [this](const tir::Var& var) -> Optional<PrimExpr> {
     auto iter = this->sym_tab.find(var);
     CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding ExprRV: " << var;
-    const Optional<ObjectRef> obj = iter->second.value;
+    const Optional<ObjectRef>& obj = iter->second;
     CHECK(obj.defined()) << "ValueError: Variable \"" << var->name_hint
                          << "\" is not defined in the meta scheduling";
     if (const auto* expr = obj.as<PrimExprNode>()) {
@@ -221,23 +222,24 @@ int ScheduleNode::Eval(const PrimExpr& expr) {
 
 Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop,
                                                 int max_innermost_factor) {
-  int inst_id = this->trace.size();
-  // Sample the output
-  std::vector<int> samples;
+  const auto* tir_loop = Eval(loop)->GetStmt<tir::LoopNode>();
+  CHECK(tir_loop);
+  int64_t extent;
   {
-    const auto* extent = Eval(loop)->GetStmt<tir::LoopNode>()->extent.as<IntImmNode>();
-    CHECK(extent);
-    samples = sampler.SamplePerfectTile(n_splits, extent->value, max_innermost_factor);
+    const auto* p_extent = tir_loop->extent.as<IntImmNode>();
+    CHECK(p_extent);
+    extent = p_extent->value;
   }
+  // Sample the output
+  std::vector<int> samples = sampler.SamplePerfectTile(n_splits, extent, max_innermost_factor);
   // Create the output random variable
-  String name_prefix = Eval(loop)->GetStmt<tir::LoopNode>()->loop_var->name_hint + ".";
+  String name_prefix = tir_loop->loop_var->name_hint + ".";
   Array<tir::Var> outputs;
   for (int i = 0; i < n_splits; ++i) {
     tir::Var output(name_prefix + std::to_string(i));
     outputs.push_back(output);
     // Update the symbol table
-    Integer value = samples[i];
-    this->sym_tab.emplace(output, SymbolTableEntry(inst_id, value));
+    this->sym_tab.emplace(output, Integer(samples[i]));
   }
   // Put the instruction in the trace
   this->trace.push_back(
@@ -247,27 +249,28 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
 
 Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
                                                const Array<Integer>& where) {
-  int inst_id = this->trace.size();
-  // Sample the output
-  std::vector<int> samples;
+  const auto* tir_loop = Eval(loop)->GetStmt<tir::LoopNode>();
+  CHECK(tir_loop);
+  int64_t extent;
+  std::vector<int> candidates;
   {
-    const auto* extent = Eval(loop)->GetStmt<tir::LoopNode>()->extent.as<IntImmNode>();
-    CHECK(extent);
-    std::vector<int> candidates;
+    const auto* p_extent = tir_loop->extent.as<IntImmNode>();
+    CHECK(p_extent);
+    extent = p_extent->value;
     for (const Integer& item : where) {
       candidates.push_back(item);
     }
-    samples = sampler.SampleTileFactor(n_splits, extent->value, candidates);
   }
+  // Sample the output
+  std::vector<int> samples = sampler.SampleTileFactor(n_splits, extent, candidates);
   // Create the output random variable
-  String name_prefix = Eval(loop)->GetStmt<tir::LoopNode>()->loop_var->name_hint + ".";
+  String name_prefix = tir_loop->loop_var->name_hint + ".";
   Array<tir::Var> outputs;
   for (int i = 0; i < n_splits; ++i) {
     tir::Var output(name_prefix + std::to_string(i));
     outputs.push_back(output);
     // Update the symbol table
-    Integer value = samples[i];
-    this->sym_tab.emplace(output, SymbolTableEntry(inst_id, value));
+    this->sym_tab.emplace(output, Integer(samples[i]));
   }
   // Put the instruction in the trace
   this->trace.push_back(SampleTileFactorAttrs::MakeInst(n_splits, loop, where, outputs));
@@ -277,7 +280,6 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
 /**************** Block/Loop Relationship ****************/
 
 Optional<BlockRV> ScheduleNode::GetOnlyConsumer(const BlockRV& block) {
-  int inst_id = this->trace.size();
   // Find the output from TIR
   tir::StmtSRef block_sref = Eval(block);
   Array<tir::DepEdge> succ_edges = this->sch->GetParentScope(block_sref).GetSuccessors(block_sref);
@@ -293,14 +295,13 @@ Optional<BlockRV> ScheduleNode::GetOnlyConsumer(const BlockRV& block) {
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
-  this->sym_tab.emplace(output, SymbolTableEntry(inst_id, result_sref[0]));
+  this->sym_tab.emplace(output, result_sref[0]);
   // Put the instruction in the trace
   this->trace.push_back(GetOnlyConsumerAttrs::MakeInst(block, output));
   return output;
 }
 
 BlockRV ScheduleNode::GetBlock(const String& name) {
-  int inst_id = this->trace.size();
   // Find the output from TIR
   Array<tir::StmtSRef> tir_result = this->sch->GetBlock(name);
   CHECK(!tir_result.empty()) << "ValueError: Cannot get a block with name: " << name;
@@ -308,14 +309,13 @@ BlockRV ScheduleNode::GetBlock(const String& name) {
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
-  this->sym_tab.emplace(output, SymbolTableEntry(inst_id, tir_result[0]));
+  this->sym_tab.emplace(output, tir_result[0]);
   // Put the instruction in the trace
   this->trace.push_back(GetBlockAttrs::MakeInst(name, output));
   return output;
 }
 
 Array<LoopRV> ScheduleNode::GetAxes(const BlockRV& block) {
-  int inst_id = this->trace.size();
   // Find the output from TIR
   Array<tir::StmtSRef> tir_result = this->sch->GetLoopsInScope(Eval(block));
   // Create the output random variable
@@ -324,7 +324,7 @@ Array<LoopRV> ScheduleNode::GetAxes(const BlockRV& block) {
     LoopRV output;
     outputs.push_back(output);
     // Update the symbol table
-    this->sym_tab.emplace(output, SymbolTableEntry(inst_id, axis));
+    this->sym_tab.emplace(output, axis);
   }
   // Put the instruction in the trace
   this->trace.push_back(GetAxesAttrs::MakeInst(block, outputs));
@@ -334,7 +334,6 @@ Array<LoopRV> ScheduleNode::GetAxes(const BlockRV& block) {
 /**************** Schedule Primitives ****************/
 
 Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<PrimExpr>& factors) {
-  int inst_id = this->trace.size();
   // Find the output from TIR
   std::vector<tir::StmtSRef> tir_result;
   {
@@ -358,7 +357,7 @@ Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<PrimExpr>& fac
     LoopRV output;
     outputs.push_back(output);
     // Update the symbol table
-    this->sym_tab.emplace(output, SymbolTableEntry(inst_id, axis));
+    this->sym_tab.emplace(output, axis);
   }
   // Put the instruction in the trace
   this->trace.push_back(SplitAttrs::MakeInst(loop, factors, outputs));
@@ -385,7 +384,6 @@ void ScheduleNode::ComputeInline(const BlockRV& block) {
 }
 
 BlockRV ScheduleNode::CacheWrite(const BlockRV& block_rv, const String& storage_scope) {
-  int inst_id = this->trace.size();
   // Find the output from TIR
   tir::StmtSRef block_sref = this->Eval(block_rv);
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
@@ -395,20 +393,19 @@ BlockRV ScheduleNode::CacheWrite(const BlockRV& block_rv, const String& storage_
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
-  this->sym_tab.emplace(output, SymbolTableEntry(inst_id, tir_result));
+  this->sym_tab.emplace(output, tir_result);
   // Put the instruction in the trace
   this->trace.push_back(CacheWriteAttrs::MakeInst(block_rv, storage_scope, output));
   return output;
 }
 
 BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const LoopRV& loop) {
-  int inst_id = this->trace.size();
   // Find the output from TIR
   tir::StmtSRef tir_result = this->sch->decompose_reduction(Eval(block), Eval(loop));
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
-  this->sym_tab.emplace(output, SymbolTableEntry(inst_id, tir_result));
+  this->sym_tab.emplace(output, tir_result);
   // Put the instruction in the trace
   this->trace.push_back(DecomposeReductionAttrs::MakeInst(block, loop, output));
   return output;
@@ -444,7 +441,7 @@ void ScheduleNode::ReplayOnce() {
   for (auto& kv_entry : this->sym_tab) {
     const ObjectRef& old_var = kv_entry.first;
     const ObjectRef& new_var = GetRef<ObjectRef>(var_map.at(old_var.get()));
-    kv_entry.second.value = new_sch->sym_tab.at(new_var).value;
+    kv_entry.second = new_sch->sym_tab.at(new_var);
   }
 }
 

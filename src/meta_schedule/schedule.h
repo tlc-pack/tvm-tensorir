@@ -33,30 +33,13 @@ namespace meta_schedule {
 
 class Schedule;
 
-/*! \brief An entry in the symbol table in meta schedule */
-class SymbolTableEntry {
- public:
-  /*! \brief The index of the instruction that generates the current random variable */
-  int source;
-  /*! \brief The value of the current random variable */
-  Optional<ObjectRef> value;
-  /*!
-   * \brief Constructor
-   * \param source The index of the instruction that generates the current random variable
-   * \param value The value of the current random variable
-   */
-  explicit SymbolTableEntry(int source, Optional<ObjectRef> value)
-      : source(source), value(std::move(value)) {}
-};
-
-/*!
- * \brief The symbol table, which maps a random variable to a SymbolTableEntry
- * \sa SymbolTableEntry
- */
-using SymbolTable = std::unordered_map<ObjectRef, SymbolTableEntry, ObjectPtrHash, ObjectPtrEqual>;
-
 /*! \brief The meta schedule class */
 class ScheduleNode : public Object {
+ public:
+  /*! \brief Type of the symbol table, which maps a random variable to its value */
+  using TSymbolTable =
+      std::unordered_map<ObjectRef, Optional<ObjectRef>, ObjectPtrHash, ObjectPtrEqual>;
+
  public:
   /*! \brief The original TIR PrimFunc to be scheduled */
   tir::PrimFunc orig_func;
@@ -65,7 +48,7 @@ class ScheduleNode : public Object {
   /*! \brief The trace of instructions used */
   Array<Instruction> trace;
   /*! \brief The symbol table with information of all defined variables in the meta schedule */
-  SymbolTable sym_tab;
+  TSymbolTable sym_tab;
   /*! \brief The random number generator */
   Sampler sampler;
 
@@ -183,6 +166,7 @@ class ScheduleNode : public Object {
 
 class Schedule : public ObjectRef {
  public:
+  using TSymbolTable = ScheduleNode::TSymbolTable;
   /*!
    * \brief Constructor
    * \param orig_func The original TIR PrimFunc to be scheduled
@@ -191,7 +175,7 @@ class Schedule : public ObjectRef {
    * \param sym_tab The symbol table with information of all defined variables in the meta schedule
    */
   explicit Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
-                    SymbolTable sym_tab, Sampler sampler);
+                    TSymbolTable sym_tab, Sampler sampler);
   /*!
    * \brief Constructor: other fields are created with default value
    * \param orig_func The original TIR PrimFunc to be scheduled
