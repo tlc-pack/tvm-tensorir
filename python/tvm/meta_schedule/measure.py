@@ -39,7 +39,7 @@ from tvm.runtime import Object
 
 from . import _ffi_api
 from .measure_record import BuildResult, MeasureInput, MeasureResult
-from .measure_util import check_remote, cpu_count
+from .utils import check_remote, cpu_count
 from .schedule import Schedule
 
 ########## ProgramBuilder ##########

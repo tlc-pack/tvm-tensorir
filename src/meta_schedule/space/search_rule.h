@@ -17,8 +17,8 @@
  * under the License.
  */
 
-#ifndef SRC_META_SCHEDULE_SEARCH_SPACE_SEARCH_RULE_H_
-#define SRC_META_SCHEDULE_SEARCH_SPACE_SEARCH_RULE_H_
+#ifndef SRC_META_SCHEDULE_SPACE_SEARCH_RULE_H_
+#define SRC_META_SCHEDULE_SPACE_SEARCH_RULE_H_
 
 #include <vector>
 
@@ -131,4 +131,4 @@ class SearchRule : public ObjectRef {
 }  // namespace meta_schedule
 }  // namespace tvm
 
-#endif  // SRC_META_SCHEDULE_SEARCH_SPACE_SEARCH_RULE_H_
+#endif  // SRC_META_SCHEDULE_SPACE_SEARCH_RULE_H_

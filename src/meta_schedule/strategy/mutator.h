@@ -16,8 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#ifndef SRC_META_SCHEDULE_SEARCH_STRATEGY_MUTATOR_H_
-#define SRC_META_SCHEDULE_SEARCH_STRATEGY_MUTATOR_H_
+#ifndef SRC_META_SCHEDULE_STRATEGY_MUTATOR_H_
+#define SRC_META_SCHEDULE_STRATEGY_MUTATOR_H_
 
 #include "../schedule.h"
 #include "../search.h"
@@ -100,4 +100,4 @@ class MutateTileSize : public Mutator {
 }  // namespace meta_schedule
 }  // namespace tvm
 
-#endif  // SRC_META_SCHEDULE_SEARCH_STRATEGY_MUTATOR_H_
+#endif  // SRC_META_SCHEDULE_STRATEGY_MUTATOR_H_
