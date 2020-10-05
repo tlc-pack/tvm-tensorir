@@ -25,6 +25,10 @@ namespace meta_schedule {
 
 /**************** Constructors ****************/
 
+BlockRV::BlockRV() { data_ = make_object<BlockRVNode>(); }
+
+LoopRV::LoopRV() { data_ = make_object<LoopRVNode>(); }
+
 Instruction::Instruction(Array<ObjectRef> inputs, Array<ObjectRef> outputs, Attrs inst_attrs) {
   ObjectPtr<InstructionNode> n = make_object<InstructionNode>();
   n->inputs = std::move(inputs);
@@ -249,6 +253,8 @@ Array<ObjectRef> DecomposeReductionAttrs::ApplyToSchedule(ScheduleNode* sch,
 
 /**************** FFI ****************/
 
+TVM_REGISTER_NODE_TYPE(BlockRVNode);
+TVM_REGISTER_NODE_TYPE(LoopRVNode);
 TVM_REGISTER_NODE_TYPE(InstructionNode);
 TVM_REGISTER_NODE_TYPE(SamplePerfectTileAttrs);
 TVM_REGISTER_NODE_TYPE(SampleTileFactorAttrs);

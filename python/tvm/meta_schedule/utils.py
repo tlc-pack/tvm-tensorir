@@ -1,0 +1,614 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+""" Utility functions used for measuring """
+import multiprocessing
+import multiprocessing.pool
+import os
+import shutil
+import signal
+import tempfile
+import time
+import traceback
+from threading import Thread
+from typing import List, Tuple
+
+import psutil
+
+from tvm import rpc
+from tvm._ffi import register_func
+from tvm.contrib import ndk as build_func_ndk
+from tvm.contrib import tar as build_func_tar
+from tvm.driver import build as tvm_build
+from tvm.runtime import NDArray, TVMContext, ndarray
+from tvm.tir import PrimFunc
+
+from .measure_record import BuildResult, MeasureErrorNo, MeasureInput, MeasureResult
+
+MAX_ERROR_MSG_LEN = int(1e9)
+# The maximum possible cost used to indicate the cost for timeout
+# We use 1e10 instead of sys.float_info.max for better readability in log
+MAX_TIME_COST = 1e10
+
+
+def make_error_msg() -> str:
+    """ Get the error message from traceback. """
+    error_msg = str(traceback.format_exc())
+    if len(error_msg) > MAX_ERROR_MSG_LEN:
+        error_msg = (
+            error_msg[: MAX_ERROR_MSG_LEN // 2]
+            + "\n...\n"
+            + error_msg[-MAX_ERROR_MSG_LEN // 2 :]
+        )
+    return error_msg
+
+
+class NoDaemonProcess(multiprocessing.Process):
+    @property
+    def daemon(self):
+        return False
+
+    @daemon.setter
+    def daemon(self, value):
+        pass
+
+
+class NoDaemonContext(type(multiprocessing.get_context())):
+    Process = NoDaemonProcess
+
+
+class NoDaemonPool(multiprocessing.pool.Pool):
+    """A no daemon pool version of multiprocessing.Pool.
+    This allows us to start new processes inside the worker function"""
+
+    def __init__(self, *args, **kwargs):
+        kwargs["context"] = NoDaemonContext()
+        super().__init__(*args, **kwargs)
+
+    def __reduce__(self):
+        pass
+
+
+def kill_child_processes(parent_pid, sig=signal.SIGTERM):
+    """kill all child processes recursively"""
+    try:
+        parent = psutil.Process(parent_pid)
+    except psutil.NoSuchProcess:
+        return
+    children = parent.children(recursive=True)
+    for process in children:
+        try:
+            process.send_signal(sig)
+        except psutil.NoSuchProcess:
+            return
+
+
+def call_func_with_timeout(timeout, func, args=(), kwargs=None):
+    """Call a function with timeout"""
+
+    def func_wrapper(que):
+        if kwargs:
+            que.put(func(*args, **kwargs))
+        else:
+            que.put(func(*args))
+
+    que = multiprocessing.Queue(2)
+    process = multiprocessing.Process(target=func_wrapper, args=(que,))
+    process.start()
+    process.join(timeout)
+
+    try:
+        res = que.get(block=False)
+    except multiprocessing.queues.Empty:
+        res = TimeoutError()
+
+    # clean queue and process
+    kill_child_processes(process.pid)
+    process.terminate()
+    process.join()
+    que.close()
+    que.join_thread()
+    del process
+    del que
+
+    if isinstance(res, TimeoutError):
+        raise TimeoutError
+
+    return res
+
+
+def parse_tracker_key(  # pylint: disable=missing-function-docstring
+    tracker: str,
+) -> Tuple[str, int, str]:
+    result = tracker.split(":")
+    if len(result) != 3:
+        raise ValueError(
+            f"Unable to parse tracker: {tracker}. Please use the correct format "
+            "'host:port:device_key', e.g. '0.0.0.0:9089:local'"
+        )
+    host, port, device_key = map(str.strip, result)
+    try:
+        port = int(port)
+    except ValueError:
+        raise ValueError(
+            f"Unable to parse tracker: {tracker}. The port should be an integer. "
+            "Please use the correct format 'host:port:device_key', e.g. '0.0.0.0:9089:local'"
+        )
+    return host, port, device_key
+
+
+def request_remote(
+    tracker: str,
+    priority: int = 1,
+    timeout: int = 60,
+) -> rpc.RPCSession:
+    """Request a remote session.
+
+    Parameters
+    ----------
+    tracker: str
+        The host address, port and device key of the RPC tracker
+    priority : int = 1
+        The priority of this request, larger is more prior.
+    timeout : int = 60
+        The timeout of this session in second.
+
+    Returns
+    -------
+    remote : RPCSession
+        The connected remote RPCSession.
+    """
+    # connect to the tracker
+    host, port, device_key = parse_tracker_key(tracker)
+    tracker = rpc.connect_tracker(host, port)
+    remote = tracker.request(device_key, priority=priority, session_timeout=timeout)
+    return remote
+
+
+def check_remote(tracker: str, priority: int = 100, timeout: int = 10) -> bool:
+    """
+    Check the availability of a remote device.
+
+    Parameters
+    ----------
+    tracker: str
+        The host address, port and device key of the RPC tracker
+    priority: int = 100
+        The priority of this request, larger is more prior.
+    timeout: int = 10
+        The timeout of this check in seconds.
+
+    Returns
+    -------
+    available: bool
+        True if can find available device.
+    """
+
+    def _check():
+        request_remote(tracker, priority)
+
+    t = Thread(target=_check)
+    t.start()
+    t.join(timeout)
+    return not t.is_alive()
+
+
+def realize_arguments(
+    _remote: rpc.RPCSession,
+    ctx: TVMContext,
+    func: PrimFunc,
+) -> List[NDArray]:
+    """
+    Check the availability of a remote device.
+
+    Parameters
+    ----------
+    _remote: RPCSession
+        The connected remote RPCSession
+    ctx: TVMContext
+        The context that ndarrays to be creaetd on the remote
+    func: PrimFunc
+        The PrimFunc to be run on the remote
+
+    Returns
+    -------
+    args: List[NDArray]
+        A list of arguments fed to the TVM runtime module built
+    """
+    args = []
+    for arg in func.params:
+        if arg.dtype == "handle":
+            buffer = func.buffer_map[arg]
+            args.append(ndarray.empty(shape=buffer.shape, dtype=buffer.dtype, ctx=ctx))
+        else:
+            raise NotImplementedError(
+                "Unsupported type in realize_arguments: " + str(arg.dtype)
+            )
+    # TODO(@junrushao1994): rebase and enable this
+    # try:
+    #     f_random_fill = remote.get_function("tvm.contrib.random.random_fill")
+    # except AttributeError:
+    #     raise AttributeError(
+    #         "Please make sure USE_RANDOM is ON in the config.cmake "
+    #         "on the remote devices"
+    #     )
+    # for array in ndarrays:
+    #     f_random_fill(array)
+    return args
+
+
+def cpu_count() -> int:
+    """
+    Check the number of cpus available on the local device
+
+    Returns
+    -------
+    cpu_count: int
+        The number of cpus available on the local device
+    """
+    return multiprocessing.cpu_count()
+
+
+def vprint(verbose: int, content: str, end: str) -> None:
+    """
+    Print the content if verbose level >= 1
+
+    Parameters
+    ----------
+    verbose: int
+        The verbosity level
+    content: str
+        The content to be printed
+    end: str
+        The end of the print function used in python print
+    """
+    if verbose >= 1:
+        print(content, end=end)
+
+
+########## Worker of LocalBuilder ##########
+
+
+# We use fork and a global variable to copy arguments between processes.
+# This can avoid expensive serialization of TVM IR when using multiprocessing.Pool
+LOCAL_BUILDER_WORKER_ARGS = None
+
+
+@register_func("meta_schedule.local_builder.build")
+def local_builder_build(
+    measure_inputs: List[MeasureInput],
+    timeout: int,
+    n_parallel: int,
+    build_func: str = "tar",
+    verbose: int = 1,
+) -> List[BuildResult]:
+    """
+    Build function of LocalBuilder to build the MeasureInputs to runnable modules.
+
+    Parameters
+    ----------
+    measure_inputs : List[MeasureInput]
+        The MeasureInputs to be built.
+    timeout : int
+        The timeout limit (in second) for each build process.
+        This is used in a wrapper of the multiprocessing.Process.join().
+    n_parallel : int
+        Number of processes used to build in parallel.
+    build_func : str = 'tar'
+        The name of build function to process the built module.
+    verbose: int = 1
+        Verbosity level. 0 for silent, 1 to output information during program building.
+
+    Returns
+    -------
+    results : List[BuildResult]
+        The build results of these MeasureInputs.
+    """
+    global LOCAL_BUILDER_WORKER_ARGS
+    LOCAL_BUILDER_WORKER_ARGS = (measure_inputs, build_func, timeout, verbose)
+    pool = NoDaemonPool(n_parallel)
+    indices = [i for i, _ in enumerate(measure_inputs)]
+    results = pool.map(local_builder_wrapped_worker, indices)
+    pool.terminate()
+    pool.join()
+    del pool
+    results = [BuildResult(*item) for item in results]
+    return results
+
+
+def local_builder_worker(
+    index: int,
+    measure_inputs: List[MeasureInput],
+    build_func: str,
+    timeout: int,
+    verbose: int,
+) -> BuildResult.TYPE:
+    """ Local worker for ProgramBuilder """
+    # deal with build_func
+    build_func = {
+        "tar": build_func_tar.tar,  # export to tar
+        "ndk": build_func_ndk.create_shared,  # export to ndk
+    }.get(build_func, build_func)
+    if isinstance(build_func, str):
+        raise ValueError("Invalid build_func: " + build_func)
+    # deal with measure_input
+    measure_input = measure_inputs[index]
+
+    def timed_func() -> BuildResult.TYPE:
+        tic = time.time()
+        # return values
+        filename = ""
+        error_no = MeasureErrorNo.NO_ERROR
+        error_msg = ""
+        time_cost = 1e9
+        # create temporary path
+        filename = os.path.join(
+            tempfile.mkdtemp(), "tmp_func." + build_func.output_format
+        )
+        try:
+            func = tvm_build(
+                measure_input.sch.sch.func,
+                target=measure_input.task.target,
+                target_host=measure_input.task.target_host,
+            )
+            func.export_library(filename, build_func)
+        except Exception:  # pylint: disable=broad-except
+            vprint(verbose, ".E", end="")  # Build error
+            error_no = MeasureErrorNo.COMPILE_HOST
+            error_msg = make_error_msg()
+        else:
+            vprint(verbose, ".", end="")  # Build success
+        time_cost = time.time() - tic
+        return filename, error_no, error_msg, time_cost
+
+    try:
+        return call_func_with_timeout(timeout, timed_func)
+    except TimeoutError:
+        vprint(verbose, ".T", end="")  # Build timeout
+        return "", MeasureErrorNo.BUILD_TIMEOUT, "", timeout
+
+
+def local_builder_wrapped_worker(
+    index: int,
+) -> BuildResult.TYPE:
+    """
+    Build function of LocalBuilder to be ran in the Builder thread pool.
+
+    Parameters
+    ----------
+    index : int
+        The MeasureInput index to be processed by the current Builder thread.
+
+    Returns
+    -------
+    res : BuildResult.TYPE
+        The build result of this Builder thread.
+    """
+    global LOCAL_BUILDER_WORKER_ARGS
+    return local_builder_worker(index, *LOCAL_BUILDER_WORKER_ARGS)
+
+
+########## Worker of RPCRunner ##########
+
+# We use fork and a global variable to copy arguments between processes.
+# This can avoid expensive serialization of TVM IR when using multiprocessing.Pool
+RPC_RUNNER_WORKER_ARGS = None
+
+
+@register_func("meta_schedule.rpc_runner.run")
+def rpc_runner_run(
+    measure_inputs: List[MeasureInput],
+    build_results: List[BuildResult],
+    tracker: str,
+    priority: int = 1,
+    n_parallel: int = 1,  # TODO(@junrushao1994): perhaps auto detect?
+    timeout: int = 10,
+    number: int = 3,
+    repeat: int = 1,
+    min_repeat_ms: int = 0,
+    cooldown_interval: float = 0.0,
+    enable_cpu_cache_flush: bool = False,
+    verbose: int = 1,
+) -> List[MeasureResult]:
+    """Run function of RPCRunner to test the performance of the input BuildResults.
+
+    Parameters
+    ----------
+    inputs : List[MeasureInput]
+        The MeasureInputs to be measured.
+    build_results : List[BuildResult]
+        The BuildResults to be measured.
+    tracker: str
+        The host address, port and device key of the RPC tracker
+    priority : int = 1
+        The priority of this run request, larger is more prior.
+    n_parallel : int = 1
+        The number of tasks run in parallel.
+    timeout : int = 10
+        The timeout limit (in second) for each run.
+        This is used in a wrapper of the multiprocessing.Process.join().
+    number : int = 3
+        The number of times to run the generated code for taking average.
+        We call these runs as one `repeat` of measurement.
+    repeat : int = 1
+        The number of times to repeat the measurement.
+        In total, the generated code will be run (1 + number x repeat) times,
+        where the first "1" is warm up and will be discarded.
+        The returned result contains `repeat` costs,
+        each of which is an average of `number` costs.
+    min_repeat_ms : int = 0
+        The minimum duration of one `repeat` in milliseconds.
+        By default, one `repeat` contains `number` runs. If this parameter is set,
+        the parameters `number` will be dynamically adjusted to meet the
+        minimum duration requirement of one `repeat`.
+        i.e., When the run time of one `repeat` falls below this time, the `number` parameter
+        will be automatically increased.
+    cooldown_interval : float = 0.0
+        The cool down interval between two measurements.
+    enable_cpu_cache_flush: bool = False
+        Whether to flush cache on CPU between repeated measurements.
+        Flushing cache can make the measured latency of one operator closer to
+        its actual latency during end-to-end inference.
+        To make this option effective, the argument `number` should also be set to 1.
+        This is only has effect on CPU task.
+    verbose: int = 1
+        Verbosity level. 0 for silent, 1 to output information during program measuring.
+
+    Returns
+    -------
+    res : List[MeasureResult]
+        The measure results of these MeasureInputs.
+    """
+    global RPC_RUNNER_WORKER_ARGS
+    RPC_RUNNER_WORKER_ARGS = (
+        measure_inputs,
+        build_results,
+        tracker,
+        priority,
+        timeout,
+        number,
+        repeat,
+        min_repeat_ms,
+        cooldown_interval,
+        enable_cpu_cache_flush,
+        verbose,
+    )
+
+    assert len(measure_inputs) == len(
+        build_results
+    ), "Measure input size should be equal to build results"
+    pool = NoDaemonPool(n_parallel)
+    indices = [i for i, _ in enumerate(measure_inputs)]
+    results = pool.map(rpc_runner_wrapped_worker, indices)
+    pool.terminate()
+    pool.join()
+    del pool
+    results = [MeasureResult(*item) for item in results]
+    vprint(verbose, "", end="\n")
+    return results
+
+
+def rpc_runner_worker(
+    index: int,
+    measure_inputs: List[MeasureInput],
+    build_results: List[BuildResult],
+    tracker: str,
+    priority: int,
+    timeout: int,
+    number: int,
+    repeat: int,
+    min_repeat_ms: int,
+    cooldown_interval: float,
+    _enable_cpu_cache_flush: bool,
+    verbose: int,
+) -> MeasureResult.TYPE:
+    """ RPC worker for ProgramRunner """
+    measure_input = measure_inputs[index]
+    build_result = build_results[index]
+
+    if build_result.error_no != MeasureErrorNo.NO_ERROR:
+        return (
+            (MAX_TIME_COST,),
+            build_result.error_no,
+            build_result.error_msg,
+            build_result.time_cost,
+            time.time(),
+        )
+
+    def timed_func():
+        tic = time.time()
+
+        costs = (MAX_TIME_COST,)
+        error_no = 0
+        error_msg = ""
+        all_cost = MAX_TIME_COST
+        timestamp = -1.0
+
+        try:
+            try:
+                # upload built module
+                remote = request_remote(tracker, priority, timeout)
+                remote.upload(build_result.filename)
+                func = remote.load_module(os.path.split(build_result.filename)[1])
+                # TODO(@junrushao1994): rebase and fix this
+                ctx = remote.context(str(measure_input.task.target), 0)
+                time_f = func.time_evaluator(
+                    func_name=func.entry_name,
+                    ctx=ctx,
+                    number=number,
+                    repeat=repeat,
+                    min_repeat_ms=min_repeat_ms,
+                    # TODO(@junrushao1994): rebase and enable this
+                    # f_preproc="cache_flush_cpu_non_first_arg" if enable_cpu_cache_flush else "",
+                )
+            except Exception:  # pylint: disable=broad-except
+                vprint(verbose, "*E", end="")  # Device compilation error
+                error_no = MeasureErrorNo.COMPILE_DEVICE
+                error_msg = make_error_msg()
+                raise
+            try:
+                args = realize_arguments(remote, ctx, measure_input.task.func)
+                ctx.sync()
+                costs = time_f(*args).results
+                # clean up remote files
+                remote.remove(build_result.filename)
+                remote.remove(os.path.splitext(build_result.filename)[0] + ".so")
+                remote.remove("")
+            except Exception:  # pylint: disable=broad-except
+                vprint(verbose, "*E", end="")  # Runtime Error
+                error_no = MeasureErrorNo.RUNTIME_DEVICE
+                error_msg = make_error_msg()
+                raise
+        except Exception:  # pylint: disable=broad-except
+            pass
+        else:
+            vprint(verbose, "*", end="")
+        shutil.rmtree(os.path.dirname(build_result.filename))
+        timestamp = time.time()
+        all_cost = timestamp - tic + build_result.time_cost
+        time.sleep(cooldown_interval)
+        return costs, error_no, error_msg, all_cost, timestamp
+
+    try:
+        return call_func_with_timeout(timeout, timed_func)
+    except TimeoutError:
+        vprint(verbose, "*T", end="")  # Run timeout
+        return (
+            (MAX_TIME_COST,),
+            MeasureErrorNo.RUN_TIMEOUT,
+            "",
+            build_result.time_cost + timeout,
+            time.time(),
+        )
+
+
+def rpc_runner_wrapped_worker(
+    index: int,
+) -> MeasureResult.TYPE:
+    """Function to be ran in the RPCRunner thread pool.
+
+    Parameters
+    ----------
+    index : int
+        The MeasureInput and BuildResult index to be processed by the current Runner thread.
+
+    Returns
+    -------
+    result : MeasureResult.TYPE
+        The measure result of this Runner thread.
+    """
+    global RPC_RUNNER_WORKER_ARGS
+    return rpc_runner_worker(index, *RPC_RUNNER_WORKER_ARGS)

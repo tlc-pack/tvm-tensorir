@@ -22,8 +22,7 @@ from tvm._ffi import register_object
 from tvm.runtime import Object
 
 from . import _ffi_api
-from .instruction import Instruction
-from .random_variable import RAND_VAR_TYPE, BlockRV, ExprRV, LoopRV
+from .instruction import RAND_VAR_TYPE, BlockRV, ExprRV, Instruction, LoopRV
 
 
 @register_object("meta_schedule.Schedule")
