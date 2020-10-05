@@ -18,8 +18,8 @@
  */
 #include <tvm/tir/stmt_functor.h>
 
-#include "../measure.h"
 #include "../search.h"
+#include "./search_rule.h"
 
 namespace tvm {
 namespace meta_schedule {

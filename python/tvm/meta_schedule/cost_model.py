@@ -21,9 +21,9 @@ from tvm._ffi import register_object
 from tvm.runtime import Object
 
 from . import _ffi_api
-from .measure import MeasureInput, MeasureResult
+from .measure_record import MeasureInput, MeasureResult
 from .schedule import Schedule
-from .search_task import SearchTask
+from .search import SearchTask
 
 
 @register_object("meta_schedule.CostModel")

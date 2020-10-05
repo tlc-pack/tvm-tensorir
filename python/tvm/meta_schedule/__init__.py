@@ -15,19 +15,16 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Meta Schedule """
-from ..ir import PrimExpr as ExprRV
-from . import analysis, search_rule
+from . import analysis, mutator, search_rule, space, strategy
+from .auto_tune import autotune
 from .cost_model import RandomModel
-from .measure import LocalBuilder, RPCRunner
-from .mutator import MutateTileSize
-from .random_variable import BlockRV, ExprRV, LoopRV
-from .schedule import Schedule
-from .search import (
-    Evolutionary,
-    PostOrderApply,
-    Replay,
-    SearchRule,
-    autotune,
-    register_rule,
+from .instruction import BlockRV, ExprRV, LoopRV
+from .measure import (
+    LocalBuilder,
+    ProgramBuilder,
+    ProgramMeasurer,
+    ProgramRunner,
+    RPCRunner,
 )
-from .search_task import SearchTask
+from .schedule import Schedule
+from .search import SearchSpace, SearchStrategy, SearchTask
