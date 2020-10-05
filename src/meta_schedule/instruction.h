@@ -19,12 +19,53 @@
 #ifndef SRC_META_SCHEDULE_INSTRUCTION_H_
 #define SRC_META_SCHEDULE_INSTRUCTION_H_
 
-#include "./random_variable.h"
+#include <tvm/ir/attrs.h>
+#include <tvm/tir/var.h>
 
 namespace tvm {
 namespace meta_schedule {
 
 class ScheduleNode;
+
+/**************** Random variables ****************/
+
+/*! \brief A random variable that evaluates to a TIR block */
+class BlockRVNode : public runtime::Object {
+ public:
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+  static constexpr const char* _type_key = "meta_schedule.BlockRV";
+  TVM_DECLARE_FINAL_OBJECT_INFO(BlockRVNode, Object);
+};
+
+/*!
+ * \brief Managed reference to BlockRVNode
+ * \sa BlockRVNode
+ */
+class BlockRV : public runtime::ObjectRef {
+ public:
+  /*! \brief Constructor */
+  BlockRV();
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BlockRV, ObjectRef, BlockRVNode);
+};
+
+/*! \brief A random variable that evaluates to a TIR loop axis */
+class LoopRVNode : public runtime::Object {
+ public:
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+  static constexpr const char* _type_key = "meta_schedule.LoopRV";
+  TVM_DECLARE_FINAL_OBJECT_INFO(LoopRVNode, Object);
+};
+
+/*!
+ * \brief Managed reference to LoopRVNode
+ * \sa LoopRVNode
+ */
+class LoopRV : public runtime::ObjectRef {
+ public:
+  /*! \brief Constructor */
+  LoopRV();
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LoopRV, ObjectRef, LoopRVNode);
+};
 
 /**************** Instruction ****************/
 
