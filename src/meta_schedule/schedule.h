@@ -22,10 +22,8 @@
 #include <tvm/tir/schedule.h>
 
 #include <unordered_map>
-#include <utility>
 
 #include "./instruction.h"
-#include "./random_variable.h"
 #include "./sampler.h"
 
 namespace tvm {
@@ -215,6 +213,18 @@ class Schedule : public ObjectRef {
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
 };
+
+/*!
+ * \brief Get the string representation of a schedule
+ * \param sch The schedule to be stringified
+ * \return The string representation of a schedule
+ */
+inline String Repr(const Schedule& sch) {
+  const auto* f = runtime::Registry::Get("hybrid.AsHybrid");
+  CHECK(f) << "IndexError: global function \"hybrid.AsHybrid\" not found";
+  String s = (*f)(sch->sch->func, false);
+  return s;
+}
 
 }  // namespace meta_schedule
 }  // namespace tvm

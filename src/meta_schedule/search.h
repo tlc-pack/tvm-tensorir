@@ -19,13 +19,56 @@
 #ifndef SRC_META_SCHEDULE_SEARCH_H_
 #define SRC_META_SCHEDULE_SEARCH_H_
 
-#include <vector>
+#include <tvm/target/target.h>
 
-#include "./measure.h"
 #include "./schedule.h"
 
 namespace tvm {
 namespace meta_schedule {
+
+class ProgramMeasurer;
+
+/********** SearchTask **********/
+
+/*! \brief Descrption of a search task */
+class SearchTaskNode : public Object {
+ public:
+  /*! \brief The function to be optimized */
+  tir::PrimFunc func;
+  /*! \brief Name of this search task */
+  String task_name;
+  /*! \brief The target to be built at */
+  Target target;
+  /*! \brief The target host to be built at */
+  Target target_host;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("func", &func);
+    v->Visit("task_name", &task_name);
+    v->Visit("target", &target);
+    v->Visit("target_host", &target_host);
+  }
+
+  static constexpr const char* _type_key = "meta_schedule.SearchTask";
+  TVM_DECLARE_FINAL_OBJECT_INFO(SearchTaskNode, Object);
+};
+
+/*!
+ * \brief Managed reference to SearchTaskNode
+ * \sa SearchTaskNode
+ */
+class SearchTask : public ObjectRef {
+ public:
+  /*!
+   * \brief Constructor
+   * \param func The function to be optimized
+   * \param task_name Name of this search task
+   * \param target The target to be built at
+   * \param target_host The target host to be built at
+   */
+  explicit SearchTask(tir::PrimFunc func, String task_name, Target target, Target target_host);
+  TVM_DEFINE_OBJECT_REF_METHODS(SearchTask, ObjectRef, SearchTaskNode);
+};
 
 /********** SearchSpace **********/
 
@@ -100,124 +143,6 @@ class SearchStrategy : public ObjectRef {
  public:
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchStrategy, ObjectRef, SearchStrategyNode);
 };
-
-/********** RulePackedArgs **********/
-
-/*!
- * \brief Input/output arguments of a SearchRule
- * \sa SearchRule
- * \sa SearchRuleNode
- */
-class RulePackedArgsNode : public Object {
- public:
-  /*! \brief The arguments the rule should apply to */
-  Array<Schedule> proceed;
-  /*! \brief The arguments the rule should skip */
-  Array<Schedule> skipped;
-
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("proceed", &proceed);
-    v->Visit("skipped", &skipped);
-  }
-
-  static constexpr const char* _type_key = "meta_schedule.RulePackedArgs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(RulePackedArgsNode, Object);
-};
-
-/*!
- * \brief Managed reference to RulePackedArgsNode
- * \sa RulePackedArgs
- */
-class RulePackedArgs : public ObjectRef {
- public:
-  /*! \brief Constructing the packed args using a single schedule */
-  explicit RulePackedArgs(Schedule schedule);
-  /*!
-   * \brief Constructor
-   * \param proceed The arguments the rule should apply to
-   * \param skipped The arguments the rule should skip
-   */
-  explicit RulePackedArgs(Array<Schedule> proceed, Array<Schedule> skipped);
-
-  TVM_DEFINE_OBJECT_REF_METHODS(RulePackedArgs, ObjectRef, RulePackedArgsNode);
-};
-
-/********** SearchRule **********/
-
-/*!
- * \brief A rule that applies to a block and generates a snippet of schedule on it
- */
-class SearchRuleNode : public Object {
- public:
-  using FApply = runtime::TypedPackedFunc<RulePackedArgs(Schedule, BlockRV)>;
-  /*! \brief Name of the rule */
-  String name;
-  /*! \brief A packed function that applies the rule */
-  FApply apply_;
-
-  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("name", &name); }
-  /*!
-   * \brief Apply the rule with a single schedule
-   * \param schedule Where the schedule snippets should be generated
-   * \param block The block the rule applies on
-   */
-  RulePackedArgs Apply(Schedule schedule, BlockRV block) const;
-  /*!
-   * \brief Apply the rule with a list of schedules
-   * \param schedules Where the schedule snippets should be generated
-   * \param block The block the rule applies on
-   */
-  RulePackedArgs Apply(RulePackedArgs schedules, BlockRV block) const;
-
-  static constexpr const char* _type_key = "meta_schedule.SearchRule";
-  TVM_DECLARE_FINAL_OBJECT_INFO(SearchRuleNode, Object);
-};
-
-/*!
- * \brief Managed reference to SearchRuleNode
- * \sa SearchRuleNode
- */
-class SearchRule : public ObjectRef {
- public:
-  /*!
-   * \brief Constructing with name and a packed function
-   * \param name Name of the search rule
-   * \param apply The application function
-   */
-  explicit SearchRule(String name, runtime::PackedFunc apply);
-  /*!
-   * \brief Constructing with name and a typed packed function
-   * \param name Name of the search rule
-   * \param apply The application function
-   */
-  explicit SearchRule(String name, SearchRuleNode::FApply apply);
-  /*!
-   * \brief Composing search rules sequentially into a single rule
-   * \param name Name of the new composite search rule
-   * \param rules The rules provided sequentially
-   * \return The composite rule
-   */
-  TVM_DLL static SearchRule Compose(const String& name, const std::vector<SearchRule>& rules);
-
-  TVM_DEFINE_OBJECT_REF_METHODS(SearchRule, ObjectRef, SearchRuleNode);
-};
-
-/********** Search **********/
-
-/*!
- * \brief The entry function for auto tuning
- * \param task The search task
- * \param space The search space
- * \param strategy The search strategy
- * \param builder Program builder used to run TIR build process
- * \param runner Program runner used to run the TIR profiling process, or interact with RPC tracker
- * \param measure_callbacks The callbacks to be triggered after each batch of meansuring
- * \param verbose Flag for the verbose mode
- * \return The best schedule found, NullOpt if no valid schedule is found in the search space
- */
-TVM_DLL Optional<Schedule> AutoTune(SearchTask task, SearchSpace space, SearchStrategy strategy,
-                                    ProgramBuilder builder, ProgramRunner runner,
-                                    Array<MeasureCallback> measure_callbacks, int verbose);
 
 }  // namespace meta_schedule
 }  // namespace tvm

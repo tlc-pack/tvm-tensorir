@@ -29,33 +29,6 @@ namespace meta_schedule {
 
 /********** Constructors **********/
 
-MeasureInput::MeasureInput(SearchTask task, Schedule sch) {
-  ObjectPtr<MeasureInputNode> n = make_object<MeasureInputNode>();
-  n->task = std::move(task);
-  n->sch = std::move(sch);
-  data_ = std::move(n);
-}
-
-BuildResult::BuildResult(String filename, int error_no, String error_msg, double time_cost) {
-  ObjectPtr<BuildResultNode> n = make_object<BuildResultNode>();
-  n->filename = std::move(filename);
-  n->error_no = error_no;
-  n->error_msg = std::move(error_msg);
-  n->time_cost = time_cost;
-  data_ = std::move(n);
-}
-
-MeasureResult::MeasureResult(Array<PrimExpr> costs, int error_no, String error_msg, double all_cost,
-                             double timestamp) {
-  ObjectPtr<MeasureResultNode> n = make_object<MeasureResultNode>();
-  n->costs = std::move(costs);
-  n->error_no = error_no;
-  n->error_msg = std::move(error_msg);
-  n->all_cost = all_cost;
-  n->timestamp = timestamp;
-  data_ = std::move(n);
-}
-
 LocalBuilder::LocalBuilder(int timeout, int n_parallel, String build_func) {
   if (build_func != "tar" && build_func != "ndk") {
     LOG(FATAL) << "ValueError: Unknown build_func in LocalBuilder: " << build_func;
@@ -102,24 +75,6 @@ ProgramMeasurer::ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner,
                                  Array<MeasureCallback> callbacks)
     : ProgramMeasurer(builder, runner, callbacks, /*num_measured=*/0,
                       /*best_time_cost=*/kMaxTimeCost, /*best_index=*/-1, /*best_sch=*/NullOpt) {}
-
-/********** Shallow copy functions **********/
-
-MeasureInput MeasureInputNode::copy() const {
-  ObjectPtr<MeasureInputNode> n = make_object<MeasureInputNode>();
-  n->sch = sch;
-  return MeasureInput(n);
-}
-
-MeasureResult MeasureResultNode::copy() const {
-  ObjectPtr<MeasureResultNode> n = make_object<MeasureResultNode>();
-  n->costs = costs;
-  n->error_no = error_no;
-  n->error_msg = error_msg;
-  n->all_cost = all_cost;
-  n->timestamp = timestamp;
-  return MeasureResult(n);
-}
 
 /********** LocalBuilder **********/
 
@@ -204,85 +159,10 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
   return measure_results;
 }
 
-/********** Printing functions **********/
-
-TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-    .set_dispatch<MeasureResultNode>([](const ObjectRef& ref, ReprPrinter* p) {
-      auto* node = static_cast<const MeasureResultNode*>(ref.get());
-      if (node->error_no == static_cast<int>(MeasureErrorNO::kNoError)) {
-        p->stream << "MeasureResult(cost:[";
-        auto old_config = p->stream.precision(4);
-        for (size_t i = 0; i < node->costs.size(); ++i) {
-          auto pf = node->costs[i].as<FloatImmNode>();
-          CHECK(pf != nullptr);
-          p->stream << pf->value;
-          if (i != node->costs.size() - 1) {
-            p->stream << ",";
-          }
-        }
-        p->stream.precision(old_config);
-        p->stream << "], ";
-        p->stream << "error_no:" << 0 << ", "
-                  << "all_cost:" << node->all_cost << ", "
-                  << "Tstamp:" << node->timestamp << ")";
-      } else {
-        p->stream << "MeasureResult("
-                  << "error_type:"
-                  << MeasureErrorNOToStr(static_cast<MeasureErrorNO>(node->error_no)) << ", "
-                  << "error_msg:" << node->error_msg << ", "
-                  << "all_cost:" << node->all_cost << ", "
-                  << "Tstamp:" << node->timestamp << ")";
-      }
-    });
-
-TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-    .set_dispatch<BuildResultNode>([](const ObjectRef& ref, ReprPrinter* p) {
-      auto* node = static_cast<const BuildResultNode*>(ref.get());
-      p->stream << "BuildResult(" << node->filename << ", " << node->error_no << ", "
-                << node->time_cost << ")";
-    });
-
 /********** FFI **********/
 
 struct Internal {
   /********** Constructors **********/
-  /*!
-   * \brief Constructor of MeasureInput
-   * \param task The task to be measured
-   * \param state Concrete schedule of the task
-   * \return The MeasureInput constructed
-   * \sa MeasureInput::MeasureInput
-   */
-  static MeasureInput MeasureInputNew(SearchTask task, Schedule sch) {
-    return MeasureInput(task, sch);
-  }
-  /*!
-   * \brief Constructor of BuildResult
-   * \param filename The filename of built binary file.
-   * \param error_no The error code.
-   * \param error_msg The error message if there is any error.
-   * \param time_cost The time cost of build.
-   * \return The BuildResult constructed
-   * \sa BuildResult::BuildResult
-   */
-  static BuildResult BuildResultNew(String filename, int error_no, String error_msg,
-                                    double time_cost) {
-    return BuildResult(filename, error_no, error_msg, time_cost);
-  }
-  /*!
-   * \brief Constructor of MeasureResult
-   * \param costs The time costs of execution.
-   * \param error_no The error code.
-   * \param error_msg The error message if there is any error.
-   * \param all_cost The time cost of build and run.
-   * \param timestamp The time stamps of this measurement.
-   * \return The MeasureResult constructed
-   * \sa MeasureResult::MeasureResult
-   */
-  static MeasureResult MeasureResultNew(Array<PrimExpr> costs, int error_no, String error_msg,
-                                        double all_cost, double timestamp) {
-    return MeasureResult(costs, error_no, error_msg, all_cost, timestamp);
-  }
   /*!
    * \brief The constructor.
    * \param timeout The timeout limit (in second) for each build process.
@@ -356,9 +236,6 @@ struct Internal {
   }
 };
 
-TVM_REGISTER_NODE_TYPE(MeasureInputNode);
-TVM_REGISTER_NODE_TYPE(BuildResultNode);
-TVM_REGISTER_NODE_TYPE(MeasureResultNode);
 TVM_REGISTER_OBJECT_TYPE(ProgramRunnerNode);
 TVM_REGISTER_OBJECT_TYPE(ProgramBuilderNode);
 TVM_REGISTER_NODE_TYPE(LocalBuilderNode);
@@ -366,9 +243,6 @@ TVM_REGISTER_NODE_TYPE(RPCRunnerNode);
 TVM_REGISTER_OBJECT_TYPE(MeasureCallbackNode);
 TVM_REGISTER_NODE_TYPE(ProgramMeasurerNode);
 
-TVM_REGISTER_GLOBAL("meta_schedule.MeasureInput").set_body_typed(Internal::MeasureInputNew);
-TVM_REGISTER_GLOBAL("meta_schedule.BuildResult").set_body_typed(Internal::BuildResultNew);
-TVM_REGISTER_GLOBAL("meta_schedule.MeasureResult").set_body_typed(Internal::MeasureResultNew);
 TVM_REGISTER_GLOBAL("meta_schedule.LocalBuilder").set_body_typed(Internal::LocalBuilderNew);
 TVM_REGISTER_GLOBAL("meta_schedule.RPCRunner").set_body_typed(Internal::RPCRunnerNew);
 TVM_REGISTER_GLOBAL("meta_schedule.ProgramMeasurer").set_body_typed(Internal::ProgramMeasurerNew);
