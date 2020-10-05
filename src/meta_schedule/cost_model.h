@@ -21,8 +21,7 @@
 
 #include <vector>
 
-#include "./measure.h"
-#include "./sampler.h"
+#include "./measure_record.h"
 #include "./schedule.h"
 
 namespace tvm {
