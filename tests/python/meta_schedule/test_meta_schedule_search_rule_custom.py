@@ -21,7 +21,7 @@ import tvm
 from tvm import meta_schedule as ms
 from tvm import tir
 from tvm.hybrid import ty
-from tvm.meta_schedule.search import RulePackedArgs
+from tvm.meta_schedule.search_rule import RulePackedArgs
 
 # pylint: disable=invalid-name,no-member
 
@@ -39,12 +39,12 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 # pylint: enable=invalid-name,no-member
 
 
-@ms.register_rule("do_nothing")
+@ms.search_rule.register_rule("do_nothing")
 def do_nothing(sch: ms.Schedule, _block: ms.BlockRV):
     return sch
 
 
-@ms.register_rule("do_mlt")
+@ms.search_rule.register_rule("do_mlt")
 def do_mlt(sch: ms.Schedule, block: ms.BlockRV):
     TILING_FORMAT = "SSRSRS"  # pylint: disable=invalid-name
     spatial_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "S"]
@@ -90,7 +90,7 @@ def test_meta_schedule_rule_do_mlt():
 
 
 def test_meta_schedule_rule_composite_0():
-    rule = ms.SearchRule.compose(
+    rule = ms.search_rule.compose(
         name="composed",
         rules=[
             do_nothing,
@@ -111,7 +111,7 @@ def test_meta_schedule_rule_composite_0():
 
 
 def test_meta_schedule_rule_composite_1():
-    rule = ms.SearchRule.compose(
+    rule = ms.search_rule.compose(
         name="composed",
         rules=[
             do_mlt,
