@@ -84,11 +84,11 @@ class SearchSpace(Object):
     generated via loop analysis, ansor-like rules that apply to each block, etc."""
 
     @staticmethod
-    def create(space: Any) -> "SearchSpace":
-        from . import search_space  # pylint: disable=import-outside-toplevel
+    def create(arg) -> "SearchSpace":
+        from . import space  # pylint: disable=import-outside-toplevel
 
-        if callable(space):
-            return search_space.ScheduleFn(space)
+        if callable(arg):
+            return space.ScheduleFn(arg)
 
         raise ValueError("Cannot create search space from: " + space)
 
@@ -113,11 +113,11 @@ class SearchStrategy(Object):
     """
 
     @staticmethod
-    def create(strategy: str) -> "SearchStrategy":
-        from . import search_strategy  # pylint: disable=import-outside-toplevel
+    def create(arg) -> "SearchStrategy":
+        from . import strategy  # pylint: disable=import-outside-toplevel
 
-        if strategy == "replay":
-            return search_strategy.Replay()
+        if arg == "replay":
+            return strategy.Replay()
         raise ValueError("Cannot create search strategy from: " + strategy)
 
     def search(

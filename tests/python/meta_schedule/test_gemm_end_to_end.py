@@ -223,7 +223,7 @@ def test_matmul_post_order_apply():
     )
     sch = ms.autotune(
         task=matmul,
-        space=ms.search_space.PostOrderApply(rule=rule),
+        space=ms.space.PostOrderApply(rule=rule),
         strategy="replay",
         runner="rpc://0.0.0.0:3012:local * 16",
     )
@@ -270,7 +270,7 @@ def test_matmul_relu_post_order_apply():
     )
     sch = ms.autotune(
         task=matmul_relu,
-        space=ms.search_space.PostOrderApply(rule=rule),
+        space=ms.space.PostOrderApply(rule=rule),
         strategy="replay",
         runner="rpc://0.0.0.0:3012:local * 16",
     )
@@ -338,7 +338,7 @@ def test_conv2d_post_order_apply():
     )
     sch = ms.autotune(
         task=conv2d,
-        space=ms.search_space.PostOrderApply(rule=rule),
+        space=ms.space.PostOrderApply(rule=rule),
         strategy="replay",
         runner="rpc://0.0.0.0:3012:local * 16",
     )
@@ -362,7 +362,7 @@ def test_conv2d_relu_plus_one_post_order_apply():
     )
     sch = ms.autotune(
         task=conv2d_relu_plus_one,
-        space=ms.search_space.PostOrderApply(rule=rule),
+        space=ms.space.PostOrderApply(rule=rule),
         strategy="replay",
         runner="rpc://0.0.0.0:3012:local * 16",
     )
@@ -375,7 +375,7 @@ def test_conv2d_relu_plus_one_post_order_apply():
 @pytest.mark.skip(reason="needs RPC")
 def test_matmul_evolutionary():
     task = ms.SearchTask(func=matmul)
-    strategy = ms.search_strategy.Evolutionary(
+    strategy = ms.strategy.Evolutionary(
         num_measure_trials=128,
         num_measure_per_batch=16,
         num_iters_in_genetic_algo=1,
@@ -386,7 +386,7 @@ def test_matmul_evolutionary():
         mutators=[ms.mutator.MutateTileSize(p=1.0)],
         cost_model=ms.RandomModel(),
     )
-    space = ms.search_space.PostOrderApply(
+    space = ms.space.PostOrderApply(
         rule=ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS")
     )
     # Test API:

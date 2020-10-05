@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Meta Schedule """
-from . import analysis, mutator, search_rule, search_space, search_strategy
+from . import analysis, mutator, search_rule, space, strategy
 from .auto_tune import autotune
 from .cost_model import RandomModel
 from .instruction import BlockRV, ExprRV, LoopRV
