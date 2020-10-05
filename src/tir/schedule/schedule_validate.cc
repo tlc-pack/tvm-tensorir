@@ -134,10 +134,10 @@ bool IsAllUniqueVars(const std::vector<PrimExpr>& list) {
  * If so, it provides two functions, replace and postproc, for replacing this pattern
  * and removing them
  */
-class FuseSplitDetecter : public ExprVisitor {
+class FuseSplitDetector : public ExprVisitor {
  public:
   /*! \brief Constructor */
-  explicit FuseSplitDetecter(std::unordered_map<const VarNode*, PrimExpr>* loop_var_extents)
+  explicit FuseSplitDetector(std::unordered_map<const VarNode*, PrimExpr>* loop_var_extents)
       : loop_var_extents(loop_var_extents) {}
 
   /*! \brief Check if the PrimExpr is in fuse pattern. If so, set replace and postproc for it */
@@ -260,7 +260,7 @@ class FuseSplitDetecter : public ExprVisitor {
 class FuseSplitNormalizer : public ExprMutator {
  public:
   /*! \brief Constructor */
-  explicit FuseSplitNormalizer(const FuseSplitDetecter& detector) : detector_(detector) {}
+  explicit FuseSplitNormalizer(const FuseSplitDetector& detector) : detector_(detector) {}
   /*! \brief Destructor. Invoke postproc only if replacement happens at least once. */
   ~FuseSplitNormalizer() {
     if (replaced_) {
@@ -280,7 +280,7 @@ class FuseSplitNormalizer : public ExprMutator {
 
  private:
   /*! \brief The detector that has detected some pattern */
-  const FuseSplitDetecter& detector_;
+  const FuseSplitDetector& detector_;
   /*! \brief Indicating if replacement happens at least once */
   bool replaced_ = false;
 };
@@ -316,7 +316,7 @@ class LoopValidator : public StmtVisitor {
     std::vector<std::pair<PrimExpr, PrimExpr>> predicates = SplitPredicate(realize->predicate);
     for (;;) {
       // Detect fuse/split pattern
-      FuseSplitDetecter detector(&loop_vars);
+      FuseSplitDetector detector(&loop_vars);
       for (const auto& binding : bindings) {
         detector(binding);
         if (detector.replace) {

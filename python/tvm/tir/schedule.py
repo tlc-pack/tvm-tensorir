@@ -276,6 +276,21 @@ class Schedule(Object):
         """
         ScheduleComputeAt(self, block, loop)
 
+    def reverse_compute_at(self, block, loop):
+        """Attach one block under specific loop and cover the required region.
+        Node that only complete block can do reverse_compute_at
+
+        Parameters
+        ----------
+        block: Block
+            The Block to be reverse_compute_at
+
+        loop: Loop
+            The target loop
+
+        """
+        ScheduleReverseComputeAt(self, block, loop)
+
     def bind(self, loop, thread_ivar):
         """Bind ivar to thread index thread_ivar
         Parameters
