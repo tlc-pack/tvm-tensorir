@@ -19,7 +19,7 @@
 #ifndef SRC_META_SCHEDULE_SAMPLER_H_
 #define SRC_META_SCHEDULE_SAMPLER_H_
 
-#include <tvm/runtime/container.h>
+#include <tvm/node/node.h>
 
 #include <memory>
 #include <random>

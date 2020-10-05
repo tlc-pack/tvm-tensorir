@@ -19,13 +19,13 @@
 #ifndef SRC_META_SCHEDULE_RANDOM_VARIABLE_H_
 #define SRC_META_SCHEDULE_RANDOM_VARIABLE_H_
 
-#include <tvm/tir/schedule.h>
+#include <tvm/node/node.h>
 
 namespace tvm {
 namespace meta_schedule {
 
 /*! \brief A random variable that evaluates to a TIR block */
-class BlockRVNode : public Object {
+class BlockRVNode : public runtime::Object {
  public:
   void VisitAttrs(tvm::AttrVisitor* v) {}
   static constexpr const char* _type_key = "meta_schedule.BlockRV";
@@ -36,7 +36,7 @@ class BlockRVNode : public Object {
  * \brief Managed reference to BlockRVNode
  * \sa BlockRVNode
  */
-class BlockRV : public ObjectRef {
+class BlockRV : public runtime::ObjectRef {
  public:
   /*! \brief Constructor */
   BlockRV();
@@ -44,7 +44,7 @@ class BlockRV : public ObjectRef {
 };
 
 /*! \brief A random variable that evaluates to a TIR loop axis */
-class LoopRVNode : public Object {
+class LoopRVNode : public runtime::Object {
  public:
   void VisitAttrs(tvm::AttrVisitor* v) {}
   static constexpr const char* _type_key = "meta_schedule.LoopRV";
@@ -55,7 +55,7 @@ class LoopRVNode : public Object {
  * \brief Managed reference to LoopRVNode
  * \sa LoopRVNode
  */
-class LoopRV : public ObjectRef {
+class LoopRV : public runtime::ObjectRef {
  public:
   /*! \brief Constructor */
   LoopRV();

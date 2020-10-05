@@ -20,14 +20,11 @@
 #define SRC_META_SCHEDULE_UTILS_H_
 
 #include <tvm/arith/analyzer.h>
-#include <tvm/runtime/registry.h>
 #include <tvm/tir/expr.h>
 
 #include <set>
 #include <unordered_set>
 #include <vector>
-
-#include "./schedule.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -166,18 +163,6 @@ inline bool DomainEqual(const Array<Range>& lhs, const Array<Range>& rhs) {
     }
   }
   return true;
-}
-
-/*!
- * \brief Get the string representation of a schedule
- * \param sch The schedule to be stringified
- * \return The string representation of a schedule
- */
-inline String Repr(const Schedule& sch) {
-  const auto* f = runtime::Registry::Get("hybrid.AsHybrid");
-  CHECK(f) << "IndexError: global function \"hybrid.AsHybrid\" not found";
-  String s = (*f)(sch->sch->func, false);
-  return s;
 }
 
 /*!

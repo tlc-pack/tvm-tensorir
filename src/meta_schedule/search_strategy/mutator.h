@@ -20,7 +20,7 @@
 #define SRC_META_SCHEDULE_SEARCH_STRATEGY_MUTATOR_H_
 
 #include "../schedule.h"
-#include "../search_task.h"
+#include "../search.h"
 
 namespace tvm {
 namespace meta_schedule {

@@ -19,6 +19,9 @@
 #ifndef SRC_META_SCHEDULE_INSTRUCTION_H_
 #define SRC_META_SCHEDULE_INSTRUCTION_H_
 
+#include <tvm/ir/attrs.h>
+#include <tvm/tir/var.h>
+
 #include "./random_variable.h"
 
 namespace tvm {
