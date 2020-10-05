@@ -95,11 +95,11 @@ def tensorized_batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                      B[vn:vn + 1, vj:vj + 16, vk:vk + 16]])
                 tir.writes(C[vn:vn + 1, vi:vi + 16, vj:vj + 16])
                 tir.evaluate(
-                    tir.tvm_mma_sync(C.data, tir.floordiv((vn * 16384 + (vi * 128 + vj)), 256),
+                    tir.tvm_mma_sync(C.data, tir.floordiv(tir.get_elem_offset(C[vn, vi, vj], dtype="int32"), 256),
                                      A.data,
-                                     tir.floordiv((vn * 16384 + (vi * 128 + vk)), 256), B.data,
-                                     tir.floordiv((vn * 16384 + (vj * 128 + vk)), 256), C.data,
-                                     tir.floordiv((vn * 16384 + (vi * 128 + vj)), 256),
+                                     tir.floordiv(tir.get_elem_offset(A[vn, vi, vk], dtype="int32"), 256), B.data,
+                                     tir.floordiv(tir.get_elem_offset(B[vn, vj, vk], dtype="int32"), 256), C.data,
+                                     tir.floordiv(tir.get_elem_offset(C[vn, vi, vj], dtype="int32"), 256),
                                      dtype="handle"))
 
 

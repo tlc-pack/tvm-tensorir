@@ -302,7 +302,7 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
   // Map from rhs buffer to lhs buffer
   std::unordered_map<Buffer, Buffer, ObjectHash, ObjectEqual> rhs_buffer_map_;
   // Buffer indices mapping
-  std::unordered_map<Buffer, std::vector<Var>, ObjectPtrHash, ObjectPtrEqual> buffer_indices_;
+  std::unordered_map<Buffer, std::vector<PrimExpr>, ObjectPtrHash, ObjectPtrEqual> buffer_indices_;
   std::vector<IterVar> extra_block_vars_;
 
   bool VisitExpr(const PrimExpr& n, const PrimExpr& other) override;
