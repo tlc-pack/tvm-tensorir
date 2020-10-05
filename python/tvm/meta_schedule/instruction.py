@@ -15,11 +15,30 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Meta Schedule Instructions """
-from typing import List
+from typing import List, Union
 
 from tvm._ffi import register_object
 from tvm.ir import Attrs
+from tvm.ir import PrimExpr as ExprRV  # pylint: disable=unused-import
 from tvm.runtime import Object
+
+########## Random Variables ##########
+
+
+@register_object("meta_schedule.BlockRV")
+class BlockRV(Object):
+    """ A random variable that evaluates to a TIR block """
+
+
+@register_object("meta_schedule.LoopRV")
+class LoopRV(Object):
+    """ A random variable that evaluates to a TIR loop axis """
+
+
+RAND_VAR_TYPE = Union[ExprRV, BlockRV, LoopRV]  # pylint: disable=invalid-name
+
+
+########## Instruction ##########
 
 
 @register_object("meta_schedule.Instruction")

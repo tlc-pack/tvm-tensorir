@@ -53,7 +53,7 @@ def test_meta_schedule_mutate_tile_size():
     n_fails = 0
 
     task = ms.SearchTask(func=matmul)
-    mutator = ms.MutateTileSize(p=1.0)
+    mutator = ms.mutator.MutateTileSize(p=1.0)
     sch = ms.Schedule(func=matmul)
     i, j, k = sch.get_axes(sch.get_block("C"))
     i_tiles = sch.sample_perfect_tile(n_splits=4, loop=i)

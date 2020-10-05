@@ -182,7 +182,7 @@ def conv2d_relu_plus_one(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
 # pylint: enable=invalid-name,no-member
 
 
-@ms.register_rule("do_nothing")
+@ms.search_rule.register_rule("do_nothing")
 def do_nothing(sch: ms.Schedule, _block: ms.BlockRV):
     return sch
 
@@ -214,7 +214,7 @@ def test_matmul_schedule_fn():
 
 @pytest.mark.skip(reason="needs RPC")
 def test_matmul_post_order_apply():
-    rule = ms.SearchRule.compose(
+    rule = ms.search_rule.compose(
         name="composed",
         rules=[
             do_nothing,
@@ -223,7 +223,7 @@ def test_matmul_post_order_apply():
     )
     sch = ms.autotune(
         task=matmul,
-        space=ms.PostOrderApply(rule=rule),
+        space=ms.search_space.PostOrderApply(rule=rule),
         strategy="replay",
         runner="rpc://0.0.0.0:3012:local * 16",
     )
@@ -260,7 +260,7 @@ def test_matmul_relu_schedule_fn():
 
 @pytest.mark.skip(reason="needs RPC")
 def test_matmul_relu_post_order_apply():
-    rule = ms.SearchRule.compose(
+    rule = ms.search_rule.compose(
         name="composed",
         rules=[
             do_nothing,
@@ -270,7 +270,7 @@ def test_matmul_relu_post_order_apply():
     )
     sch = ms.autotune(
         task=matmul_relu,
-        space=ms.PostOrderApply(rule=rule),
+        space=ms.search_space.PostOrderApply(rule=rule),
         strategy="replay",
         runner="rpc://0.0.0.0:3012:local * 16",
     )
@@ -329,7 +329,7 @@ def test_conv2d_schedule_fn():
 
 @pytest.mark.skip(reason="needs RPC")
 def test_conv2d_post_order_apply():
-    rule = ms.SearchRule.compose(
+    rule = ms.search_rule.compose(
         name="composed",
         rules=[
             do_nothing,
@@ -338,7 +338,7 @@ def test_conv2d_post_order_apply():
     )
     sch = ms.autotune(
         task=conv2d,
-        space=ms.PostOrderApply(rule=rule),
+        space=ms.search_space.PostOrderApply(rule=rule),
         strategy="replay",
         runner="rpc://0.0.0.0:3012:local * 16",
     )
@@ -350,7 +350,7 @@ def test_conv2d_post_order_apply():
 
 @pytest.mark.skip(reason="needs RPC")
 def test_conv2d_relu_plus_one_post_order_apply():
-    rule = ms.SearchRule.compose(
+    rule = ms.search_rule.compose(
         name="composed",
         rules=[
             do_nothing,
@@ -362,7 +362,7 @@ def test_conv2d_relu_plus_one_post_order_apply():
     )
     sch = ms.autotune(
         task=conv2d_relu_plus_one,
-        space=ms.PostOrderApply(rule=rule),
+        space=ms.search_space.PostOrderApply(rule=rule),
         strategy="replay",
         runner="rpc://0.0.0.0:3012:local * 16",
     )
@@ -375,7 +375,7 @@ def test_conv2d_relu_plus_one_post_order_apply():
 @pytest.mark.skip(reason="needs RPC")
 def test_matmul_evolutionary():
     task = ms.SearchTask(func=matmul)
-    strategy = ms.Evolutionary(
+    strategy = ms.search_strategy.Evolutionary(
         num_measure_trials=128,
         num_measure_per_batch=16,
         num_iters_in_genetic_algo=1,
@@ -383,10 +383,10 @@ def test_matmul_evolutionary():
         use_measured_ratio=0.05,
         population=16,
         p_mutate=0.85,
-        mutators=[ms.MutateTileSize(p=1.0)],
+        mutators=[ms.mutator.MutateTileSize(p=1.0)],
         cost_model=ms.RandomModel(),
     )
-    space = ms.PostOrderApply(
+    space = ms.search_space.PostOrderApply(
         rule=ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS")
     )
     # Test API:

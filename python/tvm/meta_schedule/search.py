@@ -15,141 +15,63 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Search API """
-from typing import Callable, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
+from tvm.target import Target
+from tvm.target import create as create_target
 from tvm.tir import PrimFunc
 
 from . import _ffi_api
-from .cost_model import CostModel
-from .measure import MeasureCallback, ProgramBuilder, ProgramMeasurer, ProgramRunner
-from .mutator import Mutator
-from .random_variable import BlockRV
 from .schedule import Schedule
-from .search_task import SearchTask
 
-########## RulePackedArgs ##########
+########## SearchTask ##########
+
+TargetType = Union[Target, str, Dict[str, Any]]
 
 
-@register_object("meta_schedule.RulePackedArgs")
-class RulePackedArgs(Object):
-    """Input/output arguments of a SearchRule
+@register_object("meta_schedule.SearchTask")
+class SearchTask(Object):
+    """Descrption of a search task
 
     Parameters
     ----------
-    proceed: List[Schedule]
-        The arguments the rule should apply to
-    skipped: List[Schedule]
-        The arguments the rule should skip
+    func: PrimFunc
+        The function to be optimized
+    task_name: str
+        Name of this search task
+    target: Target
+        The target to be built at
+    target_host: Target
+        The target host to be built at
     """
 
-    proceed: List[Schedule]
-    skipped: List[Schedule]
+    func: PrimFunc
+    task_name: str
+    target: Target
+    target_host: Target
 
     def __init__(
         self,
-        proceed: List[Schedule],
-        skipped: List[Schedule],
+        func: PrimFunc,
+        task_name: Optional[str] = None,
+        target: TargetType = "llvm",
+        target_host: TargetType = "llvm",
     ):
+        if task_name is None:
+            task_name = func.__qualname__
+        if not isinstance(target, Target):
+            target = create_target(target)
+        if not isinstance(target_host, Target):
+            target_host = create_target(target_host)
         self.__init_handle_by_constructor__(
-            _ffi_api.RulePackedArgs,  # pylint: disable=no-member
-            proceed,
-            skipped,
+            _ffi_api.SearchTask,  # pylint: disable=no-member
+            func,
+            task_name,
+            target,
+            target_host,
         )
-
-
-########## SearchRule ##########
-
-
-@register_object("meta_schedule.SearchRule")
-class SearchRule(Object):
-    """A rule that applies to a block and generates a snippet of schedule on it"""
-
-    name: str
-
-    def __init__(self, name: str, apply: Callable[[Schedule, BlockRV], RulePackedArgs]):
-        self.__init_handle_by_constructor__(
-            _ffi_api.SearchRule,  # pylint: disable=no-member
-            name,
-            apply,
-        )
-
-    def __call__(self, sch: Schedule, block: BlockRV) -> RulePackedArgs:
-        """Apply the rule to a block
-
-        Parameters
-        ----------
-        sch: Schedule
-            Where the schedule snippets should be generated
-        block: BlockRV
-            The block the rule applies on
-
-        Returns
-        ----------
-        result: RulePackedArgs
-            The new schedules generated
-        """
-        return _ffi_api.SearchRuleCall(self, sch, block)  # pylint: disable=no-member
-
-    @staticmethod
-    def compose(name: str, rules: List["SearchRule"]) -> "SearchRule":
-        """Composing search rules sequentially into a single rule
-
-        Parameters
-        ----------
-        name: str
-            Name of the new composite search rule
-        rules: List[SearchRule]
-            The rules provided sequentially
-
-        Returns
-        ----------
-        rule: ScheduleRule
-            The composite rule
-        """
-        return _ffi_api.SearchRuleCompose(  # pylint: disable=no-member
-            name,
-            rules,
-        )
-
-
-def register_rule(name) -> SearchRule:
-    """Register a search rule by wrapping the decorated function to SearchRule
-
-    Parameters
-    ----------
-    name : str
-        Name of the rule
-
-    Returns
-    -------
-    rule : SearchRule
-        The search rule
-    """
-
-    def wrap(func):
-        def apply(sch: Schedule, block: BlockRV) -> RulePackedArgs:
-            result = func(sch, block)
-            if isinstance(result, RulePackedArgs):
-                return result
-            if isinstance(result, Schedule):
-                return RulePackedArgs(proceed=[result], skipped=[])
-            if isinstance(result, list):
-                return RulePackedArgs(proceed=result, skipped=[])
-            assert isinstance(
-                result, dict
-            ), "SearchRule does not support return type: " + str(type(result))
-            assert {"proceed", "skipped"}.issuperset(
-                set(result.keys())
-            ), "Only the following keys are allowed: 'proceed', 'skipped'"
-            proceed = result.get("proceed", [])
-            skipped = result.get("skipped", [])
-            return RulePackedArgs(proceed=proceed, skipped=skipped)
-
-        return SearchRule(name, apply)
-
-    return wrap
 
 
 ########## SearchSpace ##########
@@ -161,6 +83,15 @@ class SearchSpace(Object):
     The search space could be specified by manually written schedule function,
     generated via loop analysis, ansor-like rules that apply to each block, etc."""
 
+    @staticmethod
+    def create(space: Any) -> "SearchSpace":
+        from . import search_space  # pylint: disable=import-outside-toplevel
+
+        if callable(space):
+            return search_space.ScheduleFn(space)
+
+        raise ValueError("Cannot create search space from: " + space)
+
     def sample_schedule(self, task: SearchTask) -> Schedule:
         return _ffi_api.SearchSpaceSampleSchedule(  # pylint: disable=no-member
             self, task
@@ -168,32 +99,6 @@ class SearchSpace(Object):
 
     def get_support(self, task: SearchTask) -> List[Schedule]:
         return _ffi_api.SearchSpaceGetSupport(self, task)  # pylint: disable=no-member
-
-
-@register_object("meta_schedule.ScheduleFn")
-class ScheduleFn(SearchSpace):
-    """Search space that is specified by a schedule function"""
-
-    TYPE = Callable[[Schedule], None]
-
-    def __init__(self, func: TYPE):
-        self.__init_handle_by_constructor__(
-            _ffi_api.ScheduleFn,  # pylint: disable=no-member
-            func,
-        )
-
-
-@register_object("meta_schedule.PostOrderApply")
-class PostOrderApply(SearchSpace):
-    """Search space that is specified by applying rules in post-DFS order"""
-
-    rule: SearchRule
-
-    def __init__(self, rule: SearchRule):
-        self.__init_handle_by_constructor__(
-            _ffi_api.PostOrderApply,  # pylint: disable=no-member
-            rule,
-        )
 
 
 ########## SearchStrategy ##########
@@ -209,15 +114,17 @@ class SearchStrategy(Object):
 
     @staticmethod
     def create(strategy: str) -> "SearchStrategy":
+        from . import search_strategy  # pylint: disable=import-outside-toplevel
+
         if strategy == "replay":
-            return Replay()
+            return search_strategy.Replay()
         raise ValueError("Cannot create search strategy from: " + strategy)
 
     def search(
         self,
         task: SearchTask,
         space: SearchSpace,
-        measurer: ProgramMeasurer,
+        measurer: "ProgramMeasurer",
         verbose: int,
     ) -> Optional[Schedule]:
         """Explore the search space and find the best schedule
@@ -241,201 +148,3 @@ class SearchStrategy(Object):
         return _ffi_api.SearchStrategySearch(  # pylint: disable=no-member
             task, space, measurer, verbose
         )
-
-
-@register_object("meta_schedule.Replay")
-class Replay(SearchStrategy):
-    """A search strategy that just repeatedly replay the sampling process,
-    do random sampling, and picks the best from the results
-
-    Parameters
-    ----------
-    batch_size : int
-        Size of a batch for measurement
-    num_iterations : int
-        Number of iterations of replaying
-    """
-
-    batch_size: int
-    num_iterations: int
-
-    def __init__(
-        self,
-        batch_size: int = 16,
-        num_iterations: int = 128,
-    ):
-        self.__init_handle_by_constructor__(
-            _ffi_api.Replay,  # pylint: disable=no-member
-            batch_size,
-            num_iterations,
-        )
-
-
-@register_object("meta_schedule.Evolutionary")
-class Evolutionary(SearchStrategy):
-    """Evolutionary Search.
-
-    Parameters
-    ----------
-    num_measure_trials : int
-        The number of iterations of measurements performed by genetic algorithm
-    num_measure_per_batch : int
-        The number of measurements in each batch
-    num_iters_in_genetic_algo : int
-        The number of iterations performed by generic algorithm.*/
-    eps_greedy : float
-        The percentage of measurements to use randomly sampled states.
-    use_measured_ratio : float
-        The percentage of previously measured states used in the initial population
-    population : int
-        The population size for evolutionary search
-    p_mutate : float
-        The probability to perform mutation
-    mutators : List[Mutator]
-        A list of mutations allowed to happen
-    cost_model : CostModel
-        A cost model helping to explore the search space
-    """
-
-    num_measure_trials: int
-    num_measure_per_batch: int
-    num_iters_in_genetic_algo: int
-    eps_greedy: float
-    use_measured_ratio: float
-    population: int
-    p_mutate: float
-    mutators: List[Mutator]
-    cost_model: CostModel
-
-    def __init__(
-        self,
-        num_measure_trials: int,
-        num_measure_per_batch: int,
-        num_iters_in_genetic_algo: int,
-        eps_greedy: float,
-        use_measured_ratio: float,
-        population: int,
-        p_mutate: float,
-        mutators: List[Mutator],
-        cost_model: CostModel,
-    ):
-        self.__init_handle_by_constructor__(
-            _ffi_api.Evolutionary,  # pylint: disable=no-member
-            num_measure_trials,
-            num_measure_per_batch,
-            num_iters_in_genetic_algo,
-            eps_greedy,
-            use_measured_ratio,
-            population,
-            p_mutate,
-            mutators,
-            cost_model,
-        )
-
-    def sample_init_population(
-        self,
-        support: List[Schedule],
-        num_samples: int,
-    ) -> List[Schedule]:
-        """Sample the initial population from the support
-
-        Parameters
-        ----------
-        support : List[Schedule]
-            The search task
-        num_samples : SearchSpace
-            The number of samples to be drawn
-
-        Returns
-        -------
-        samples : List[Schedule]
-            The initial population sampled from support
-        """
-        return _ffi_api.EvolutionarySampleInitPopulation(  # pylint: disable=no-member
-            self, support, num_samples
-        )
-
-    def evolve_with_cost_model(
-        self,
-        task: SearchTask,
-        inits: List[Schedule],
-        num_samples: int,
-    ) -> List[Schedule]:
-        """Perform evolutionary search using genetic algorithm with the cost model
-
-        Parameters
-        ----------
-        task : SearchTask
-            The search task
-        inits : List[Schedule]
-            The initial population
-        num_samples : int
-            The number of samples to be drawn
-
-        Returns
-        -------
-        samples : List[Schedule]
-            The best samples in terms of the cost model's scores
-        """
-        return _ffi_api.EvolutionaryEvolveWithCostModel(  # pylint: disable=no-member
-            self, task, inits, num_samples
-        )
-
-
-########## Search API ##########
-
-
-def autotune(
-    task: Union[PrimFunc, SearchTask],
-    space: Union[ScheduleFn.TYPE, SearchSpace],
-    strategy: Union[str, SearchStrategy],
-    builder: Union[str, ProgramBuilder] = "local",
-    runner: Union[str, ProgramRunner] = "rpc",
-    measure_callbacks: Optional[List[MeasureCallback]] = None,
-    verbose: int = 1,
-) -> Optional[Schedule]:
-    """The entry function for auto tuning.
-
-    Parameters
-    ----------
-    task: Union[PrimFunc, SearchTask]
-        The search task
-    space: Union[ScheduleFn.TYPE, SearchSpace]
-        The search space
-    strategy: Union[str, SearchStrategy]
-        The search strategy
-    builder: Union[str, ProgramBuilder]
-        Program builder used to run TIR build process
-    runner: Union[str, ProgramRunner]
-        Program runner used to run the TIR profiling process, or interact with RPC tracker
-    measure_callbacks: Optional[List[MeasureCallback]]
-        The callbacks to be triggered after each batch of meansuring
-    verbose: int
-        Flag for the verbose mode
-
-    Returns
-    -------
-    best_schedule : Optional[Schedule]
-        The best schedule found, None if no valid schedule is found in the search space
-    """
-    if not isinstance(task, SearchTask):
-        task = SearchTask(task)
-    if not isinstance(space, SearchSpace):
-        space = ScheduleFn(space)
-    if not isinstance(strategy, SearchStrategy):
-        strategy = SearchStrategy.create(strategy)
-    if not isinstance(builder, ProgramBuilder):
-        builder = ProgramBuilder.create(builder)
-    if not isinstance(runner, ProgramRunner):
-        runner = ProgramRunner.create(runner)
-    if measure_callbacks is None:
-        measure_callbacks = []
-    return _ffi_api.AutoTune(  # pylint: disable=no-member
-        task,
-        space,
-        strategy,
-        builder,
-        runner,
-        measure_callbacks,
-        verbose,
-    )
