@@ -19,8 +19,6 @@
 #ifndef SRC_META_SCHEDULE_ANALYSIS_H_
 #define SRC_META_SCHEDULE_ANALYSIS_H_
 
-#include <utility>
-
 #include "./schedule.h"
 
 namespace tvm {

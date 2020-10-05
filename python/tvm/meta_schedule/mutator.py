@@ -23,7 +23,7 @@ from tvm.runtime import Object
 
 from . import _ffi_api_mutator
 from .schedule import Schedule
-from .search_task import SearchTask
+from .search import SearchTask
 
 
 @register_object("meta_schedule.Mutator")

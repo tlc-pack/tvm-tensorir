@@ -24,66 +24,33 @@
 namespace tvm {
 namespace meta_schedule {
 
-using runtime::PackedFunc;
+/********** Constructor **********/
 
-/********** Constructors **********/
-
-RulePackedArgs::RulePackedArgs(Schedule schedule) : RulePackedArgs({schedule}, {}) {}
-
-RulePackedArgs::RulePackedArgs(Array<Schedule> proceed, Array<Schedule> skipped) {
-  ObjectPtr<RulePackedArgsNode> n = make_object<RulePackedArgsNode>();
-  n->proceed = std::move(proceed);
-  n->skipped = std::move(skipped);
+SearchTask::SearchTask(tir::PrimFunc func, String task_name, Target target, Target target_host) {
+  ObjectPtr<SearchTaskNode> n = make_object<SearchTaskNode>();
+  n->func = std::move(func);
+  n->task_name = std::move(task_name);
+  n->target = std::move(target);
+  n->target_host = std::move(target_host);
   data_ = std::move(n);
-}
-
-SearchRule::SearchRule(String name, PackedFunc apply) {
-  ObjectPtr<SearchRuleNode> n = make_object<SearchRuleNode>();
-  n->name = std::move(name);
-  n->apply_ = apply;
-  data_ = std::move(n);
-}
-
-SearchRule::SearchRule(String name, SearchRuleNode::FApply apply) {
-  ObjectPtr<SearchRuleNode> n = make_object<SearchRuleNode>();
-  n->name = std::move(name);
-  n->apply_ = std::move(apply);
-  data_ = std::move(n);
-}
-
-/********** SearchRule **********/
-
-RulePackedArgs SearchRuleNode::Apply(Schedule schedule, BlockRV block) const {
-  return Apply(RulePackedArgs(schedule), block);
-}
-
-RulePackedArgs SearchRuleNode::Apply(RulePackedArgs schedules, BlockRV block) const {
-  Array<Schedule> skipped = schedules->skipped;
-  Array<Schedule> proceed;
-  for (const Schedule& sch : schedules->proceed) {
-    RulePackedArgs results = apply_(sch, block);
-    proceed.insert(proceed.end(), results->proceed.begin(), results->proceed.end());
-    skipped.insert(skipped.end(), results->skipped.begin(), results->skipped.end());
-  }
-  return RulePackedArgs(proceed, skipped);
-}
-
-SearchRule SearchRule::Compose(const String& name, const std::vector<SearchRule>& rules) {
-  auto apply = [rules](Schedule schedule, BlockRV block) -> RulePackedArgs {
-    RulePackedArgs results(schedule);
-    for (const SearchRule& rule : rules) {
-      results = rule->Apply(results, block);
-    }
-    return results;
-  };
-  return SearchRule(name, SearchRuleNode::FApply(apply));
 }
 
 /********** Search **********/
 
-Optional<Schedule> AutoTune(SearchTask task, SearchSpace space, SearchStrategy strategy,
-                            ProgramBuilder builder, ProgramRunner runner,
-                            Array<MeasureCallback> measure_callbacks, int verbose) {
+/*!
+ * \brief The entry function for auto tuning
+ * \param task The search task
+ * \param space The search space
+ * \param strategy The search strategy
+ * \param builder Program builder used to run TIR build process
+ * \param runner Program runner used to run the TIR profiling process, or interact with RPC tracker
+ * \param measure_callbacks The callbacks to be triggered after each batch of meansuring
+ * \param verbose Flag for the verbose mode
+ * \return The best schedule found, NullOpt if no valid schedule is found in the search space
+ */
+TVM_DLL Optional<Schedule> AutoTune(SearchTask task, SearchSpace space, SearchStrategy strategy,
+                                    ProgramBuilder builder, ProgramRunner runner,
+                                    Array<MeasureCallback> measure_callbacks, int verbose) {
   return strategy->Search(task, space, ProgramMeasurer(builder, runner, measure_callbacks),
                           verbose);
 }
@@ -91,6 +58,19 @@ Optional<Schedule> AutoTune(SearchTask task, SearchSpace space, SearchStrategy s
 /********** FFI **********/
 
 struct Internal {
+  /*!
+   * \brief Wrap for SearchTask::SearchTask
+   * \param func The function to be optimized
+   * \param task_name Name of this search task
+   * \param target The target to be built at
+   * \param target_host The target host to be built at
+   * \return SearchTask, the new object constructed
+   * \sa SearchTask::SearchTask
+   */
+  static SearchTask SearchTaskNew(tir::PrimFunc func, String task_name, Target target,
+                                  Target target_host) {
+    return SearchTask(func, task_name, target, target_host);
+  }
   /*!
    * \brief Sample a schedule out of the search space, calls SearchSpaceNode::SampleSchedule
    * \param space The specific space
@@ -126,60 +106,19 @@ struct Internal {
                                                  int verbose) {
     return strategy->Search(task, space, measurer, verbose);
   }
-  /*!
-   * \brief Constructor of RulePackedArgs
-   * \param proceed The arguments the rule should apply to
-   * \param skipped The arguments the rule should skip
-   * \sa RulePackedArgs::RulePackedArgs
-   */
-  static RulePackedArgs RulePackedArgsNew(Array<Schedule> proceed, Array<Schedule> skipped) {
-    return RulePackedArgs(proceed, skipped);
-  }
-  /*!
-   * \brief Constructor of SearchRule
-   * \param name Name of the search rule
-   * \param apply The application function
-   * \sa SearchRule::SearchRule
-   */
-  static SearchRule SearchRuleNew(String name, PackedFunc apply) { return SearchRule(name, apply); }
-  /*!
-   * \brief Apply the rule with a single schedule
-   * \param rule The search rule to be called
-   * \param schedule Where the schedule snippets should be generated
-   * \param block The block the rule applies on
-   * \sa SearchRuleNode::Apply
-   */
-  static RulePackedArgs SearchRuleCall(SearchRule rule, Schedule sch, BlockRV block) {
-    return rule->Apply(sch, block);
-  }
-  /*!
-   * \brief Composing search rules sequentially into a single rule
-   * \param name Name of the new composite search rule
-   * \param rules The rules provided sequentially
-   * \return The composite rule
-   * \sa SearchRule::Compose
-   */
-  static SearchRule Compose(String name, Array<SearchRule> rules) {
-    return SearchRule::Compose(name, {rules.begin(), rules.end()});
-  }
 };
 
-TVM_REGISTER_NODE_TYPE(RulePackedArgsNode);
-TVM_REGISTER_NODE_TYPE(SearchRuleNode);
 TVM_REGISTER_NODE_TYPE(SearchTaskNode);
 TVM_REGISTER_OBJECT_TYPE(SearchSpaceNode);
 TVM_REGISTER_OBJECT_TYPE(SearchStrategyNode);
 
+TVM_REGISTER_GLOBAL("meta_schedule.SearchTask").set_body_typed(Internal::SearchTaskNew);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchSpaceSampleSchedule")
     .set_body_typed(Internal::SearchSpaceSampleSchedule);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchSpaceGetSupport")
     .set_body_typed(Internal::SearchSpaceGetSupport);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchStrategySearch")
     .set_body_typed(Internal::SearchStrategySearch);
-TVM_REGISTER_GLOBAL("meta_schedule.RulePackedArgs").set_body_typed(Internal::RulePackedArgsNew);
-TVM_REGISTER_GLOBAL("meta_schedule.SearchRule").set_body_typed(Internal::SearchRuleNew);
-TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleCall").set_body_typed(Internal::SearchRuleCall);
-TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleCompose").set_body_typed(Internal::Compose);
 TVM_REGISTER_GLOBAL("meta_schedule.AutoTune").set_body_typed(AutoTune);
 
 }  // namespace meta_schedule

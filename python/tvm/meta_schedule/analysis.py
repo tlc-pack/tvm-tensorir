@@ -21,7 +21,7 @@ from tvm.ir import Op
 from tvm.tir import BufferLoad, IterVar, Var
 
 from . import _ffi_api_analysis
-from .random_variable import BlockRV
+from .instruction import BlockRV
 from .schedule import Schedule
 
 

@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "../measure.h"
 #include "../search.h"
 
 namespace tvm {
