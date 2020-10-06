@@ -560,6 +560,12 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleComputeAt")
       return schedule->compute_at(block_sref, loop_sref);
     });
 
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleReverseComputeAt")
+    .set_body_typed<void(Schedule, StmtSRef, StmtSRef)>([](Schedule schedule, StmtSRef block_sref,
+                                                           StmtSRef loop_sref) {
+      return schedule->reverse_compute_at(block_sref, loop_sref);
+    });
+
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleComputeInline")
     .set_body_typed<void(Schedule, StmtSRef)>([](Schedule schedule, StmtSRef block_sref) {
       return schedule->compute_inline(block_sref);
