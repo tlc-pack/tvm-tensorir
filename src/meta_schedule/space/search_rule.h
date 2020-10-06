@@ -20,8 +20,6 @@
 #ifndef SRC_META_SCHEDULE_SPACE_SEARCH_RULE_H_
 #define SRC_META_SCHEDULE_SPACE_SEARCH_RULE_H_
 
-#include <vector>
-
 #include "../schedule.h"
 #include "../search.h"
 
@@ -51,7 +49,7 @@ class SearchRuleNode : public Object {
 
   /*! \brief Name of the rule */
   String name;
-  /*! \brief An std::function that applies the rule */
+  /*! \brief A packed function that applies the rule */
   FApply apply_;
 
   void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("name", &name); }
@@ -82,21 +80,49 @@ class SearchRule : public ObjectRef {
   using FApply = SearchRuleNode::FApply;
 
   /*!
-   * \brief Constructing with name and an std::function
+   * \brief Constructing with name and a packed function
    * \param name Name of the search rule
    * \param apply The application function
    */
-  explicit SearchRule(String name, SearchRuleNode::FApply apply);
-  /*!
-   * \brief Composing search rules sequentially into a single rule
-   * \param name Name of the new composite search rule
-   * \param rules The rules provided sequentially
-   * \return The composite rule
-   */
-  TVM_DLL static SearchRule Compose(const String& name, std::vector<SearchRule> rules);
+  explicit SearchRule(String name, FApply apply);
 
   TVM_DEFINE_OBJECT_REF_METHODS(SearchRule, ObjectRef, SearchRuleNode);
 };
+
+/*!
+ * \brief Composing search rules sequentially into a single rule
+ * \param name Name of the new composite search rule
+ * \param rules The rules provided sequentially
+ * \return The composite rule
+ */
+TVM_DLL SearchRule SearchRuleCompose(const String& name, const Array<SearchRule>& rules);
+
+/********** Built-in SearchRules **********/
+
+/*!
+ * \brief Create a rule that inlines all possible blocks
+ * \return The rule created
+ */
+TVM_DLL SearchRule AlwaysInline();
+
+/*!
+ * \brief Create a rule that adds a cache write stage after multi-level tiling
+ * \return The rule created
+ */
+TVM_DLL SearchRule AddCacheWrite();
+
+/*!
+ * \brief Create a rule that does multi-level tiling and fusion together if there is sufficient
+ * amount of data reuse
+ * \return The rule created
+ */
+TVM_DLL SearchRule MultiLevelTilingWithFusion(String tiling_structure);
+
+/*!
+ * \brief Create a rule that does multi-level tiling if there is sufficient amount of data reuse
+ * \return The rule created
+ */
+TVM_DLL SearchRule MultiLevelTiling(String tiling_structure);
 
 }  // namespace meta_schedule
 }  // namespace tvm
