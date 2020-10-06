@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """Search rules in meta schedule"""
-from typing import Callable, List
+from typing import Callable, List, Any, Dict, Optional
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
@@ -23,35 +23,7 @@ from tvm.runtime import Object
 from . import _ffi_api, _ffi_api_rule
 from .instruction import BlockRV
 from .schedule import Schedule
-
-########## RulePackedArgs ##########
-
-
-@register_object("meta_schedule.RulePackedArgs")
-class RulePackedArgs(Object):
-    """Input/output arguments of a SearchRule
-
-    Parameters
-    ----------
-    proceed: List[Schedule]
-        The arguments the rule should apply to
-    skipped: List[Schedule]
-        The arguments the rule should skip
-    """
-
-    proceed: List[Schedule]
-    skipped: List[Schedule]
-
-    def __init__(
-        self,
-        proceed: List[Schedule],
-        skipped: List[Schedule],
-    ):
-        self.__init_handle_by_constructor__(
-            _ffi_api.RulePackedArgs,  # pylint: disable=no-member
-            proceed,
-            skipped,
-        )
+from .search import SearchTask
 
 
 ########## SearchRule ##########
@@ -61,34 +33,56 @@ class RulePackedArgs(Object):
 class SearchRule(Object):
     """A rule that applies to a block and generates a snippet of schedule on it"""
 
+    CONTEXT_INFO_TYPE = Optional[Dict[str, Any]]
+    RETURN_TYPE = Dict[Schedule, CONTEXT_INFO_TYPE]
+
     name: str
 
-    def __init__(self, name: str, apply: Callable[[Schedule, BlockRV], RulePackedArgs]):
+    def __init__(
+        self,
+        name: str,
+        apply: Callable[
+            [SearchTask, Schedule, BlockRV, CONTEXT_INFO_TYPE], RETURN_TYPE
+        ],
+    ):
         self.__init_handle_by_constructor__(
             _ffi_api.SearchRule,  # pylint: disable=no-member
             name,
             apply,
         )
 
-    def __call__(self, sch: Schedule, block: BlockRV) -> RulePackedArgs:
+    def __call__(
+        self,
+        task: SearchTask,
+        sch: Schedule,
+        block: BlockRV,
+        info: CONTEXT_INFO_TYPE = None,
+    ) -> RETURN_TYPE:
         """Apply the rule to a block
 
         Parameters
         ----------
+        task: SearchTask
+            The search task
         sch: Schedule
             Where the schedule snippets should be generated
         block: BlockRV
             The block the rule applies on
+        info: CONTEXT_INFO_TYPE
+            The context info about the schedule
 
         Returns
         ----------
-        result: RulePackedArgs
+        result: RETURN_TYPE
             The new schedules generated
         """
-        return _ffi_api.SearchRuleCall(self, sch, block)  # pylint: disable=no-member
+        ret = _ffi_api.SearchRuleApply(  # pylint: disable=no-member
+            self, task, sch, block, info
+        )
+        return {k: v for k, v in ret.items()}
 
 
-def compose(name: str, rules: List["SearchRule"]) -> "SearchRule":
+def compose(name: str, rules: List[SearchRule]) -> SearchRule:
     """Composing search rules sequentially into a single rule
 
     Parameters
@@ -124,23 +118,24 @@ def register_rule(name) -> SearchRule:
     """
 
     def wrap(func):
-        def apply(sch: Schedule, block: BlockRV) -> RulePackedArgs:
-            result = func(sch, block)
-            if isinstance(result, RulePackedArgs):
-                return result
-            if isinstance(result, Schedule):
-                return RulePackedArgs(proceed=[result], skipped=[])
-            if isinstance(result, list):
-                return RulePackedArgs(proceed=result, skipped=[])
-            assert isinstance(
-                result, dict
-            ), "SearchRule does not support return type: " + str(type(result))
-            assert {"proceed", "skipped"}.issuperset(
-                set(result.keys())
-            ), "Only the following keys are allowed: 'proceed', 'skipped'"
-            proceed = result.get("proceed", [])
-            skipped = result.get("skipped", [])
-            return RulePackedArgs(proceed=proceed, skipped=skipped)
+        def apply(
+            task: SearchTask,
+            sch: Schedule,
+            block: BlockRV,
+            info: SearchRule.CONTEXT_INFO_TYPE,
+        ) -> SearchRule.RETURN_TYPE:
+            ret = func(task, sch, block, info)
+            if isinstance(ret, Schedule):
+                return {ret: info}
+            if isinstance(ret, dict):
+                for k, v in ret.items():
+                    assert isinstance(k, Schedule)
+                    assert v is None or isinstance(v, dict)
+                return ret
+            raise TypeError(
+                "SearchRule shoud return Dict<Schedule, ContextInfo>, "
+                + f"but gets type '{type(ret)}': {ret}"
+            )
 
         return SearchRule(name, apply)
 

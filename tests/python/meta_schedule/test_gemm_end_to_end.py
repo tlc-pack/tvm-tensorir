@@ -183,7 +183,7 @@ def conv2d_relu_plus_one(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
 
 
 @ms.search_rule.register_rule("do_nothing")
-def do_nothing(sch: ms.Schedule, _block: ms.BlockRV):
+def do_nothing(_task, sch: ms.Schedule, _block: ms.BlockRV, _info):
     return sch
 
 
@@ -413,11 +413,11 @@ def test_matmul_evolutionary():
 
 
 if __name__ == "__main__":
-    test_matmul_schedule_fn()
-    test_matmul_post_order_apply()
-    test_matmul_relu_schedule_fn()
-    test_matmul_relu_post_order_apply()
-    test_conv2d_schedule_fn()
-    test_conv2d_post_order_apply()
+    # test_matmul_schedule_fn()
+    # test_matmul_post_order_apply()
+    # test_matmul_relu_schedule_fn()
+    # test_matmul_relu_post_order_apply()
+    # test_conv2d_schedule_fn()
+    # test_conv2d_post_order_apply()
     test_conv2d_relu_plus_one_post_order_apply()
     test_matmul_evolutionary()

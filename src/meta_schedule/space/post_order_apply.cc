@@ -55,12 +55,14 @@ class PostOrderApplyNode : public SearchSpaceNode {
   Array<Schedule> GetSupport(const SearchTask& task) override;
   /*!
    * \brief Apply the rule on the subtree rooted at the given block
+   * \param task The search task
    * \param block The block to be visited
    * \param sch The schedule snippet
    * \param is_root If the given block is the root of the PrimFunc
    * \return A list of schedules generated
    */
-  Array<Schedule> VisitBlock(const tir::Block& block, const Schedule& sch, bool is_root);
+  Array<Schedule> VisitBlock(const SearchTask& task, const tir::Block& block, const Schedule& sch,
+                             bool is_root);
 
   static constexpr const char* _type_key = "meta_schedule.PostOrderApply";
   TVM_DECLARE_FINAL_OBJECT_INFO(PostOrderApplyNode, SearchSpaceNode);
@@ -104,13 +106,14 @@ Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task) {
   CHECK(block_realize != nullptr) << "TypeError: PrimFunc should root at BlockRealize, but gets: "
                                   << task->func->body->GetTypeKey();
   return VisitBlock(
+      /*task=*/task,
       /*block=*/block_realize->block,
       /*sch=*/Schedule(task->func),
       /*is_root=*/true);
 }
 
-Array<Schedule> PostOrderApplyNode::VisitBlock(const tir::Block& block, const Schedule& sch,
-                                               bool is_root) {
+Array<Schedule> PostOrderApplyNode::VisitBlock(const SearchTask& task, const tir::Block& block,
+                                               const Schedule& sch, bool is_root) {
   Array<tir::Block> children;
   // Collect children
   tir::PreOrderVisit(block, [&children](const ObjectRef& node) {
@@ -127,7 +130,7 @@ Array<Schedule> PostOrderApplyNode::VisitBlock(const tir::Block& block, const Sc
     for (const Schedule& sch : schedules) {
       // if this child still exists
       if (sch->sch->stmt2ref.count(child.get())) {
-        Array<Schedule> result = VisitBlock(child, sch, false);
+        Array<Schedule> result = VisitBlock(task, child, sch, false);
         new_schedules.insert(new_schedules.end(), result.begin(), result.end());
       } else {
         new_schedules.push_back(sch);
@@ -139,9 +142,11 @@ Array<Schedule> PostOrderApplyNode::VisitBlock(const tir::Block& block, const Sc
   if (!is_root) {
     Array<Schedule> new_schedules;
     for (const Schedule& sch : schedules) {
-      RulePackedArgs result = rule->Apply(sch, sch->GetBlock(block->tag));
-      new_schedules.insert(new_schedules.end(), result->proceed.begin(), result->proceed.end());
-      new_schedules.insert(new_schedules.end(), result->skipped.begin(), result->skipped.end());
+      Map<Schedule, SearchRule::TContextInfo> applied =
+          rule->Apply(task, sch, sch->GetBlock(block->tag), {});
+      for (const auto& kv : applied) {
+        new_schedules.push_back(kv.first);
+      }
     }
     schedules = new_schedules;
   }

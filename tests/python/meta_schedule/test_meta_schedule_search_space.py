@@ -64,7 +64,7 @@ def test_meta_schedule_schedule_fn():
 
 def test_meta_schedule_post_order_apply():
     @ms.search_rule.register_rule("do_mlt")
-    def do_mlt(sch: ms.Schedule, block: ms.BlockRV):
+    def do_mlt(_task, sch: ms.Schedule, block: ms.BlockRV, _info):
         TILING_FORMAT = "SSRSRS"  # pylint: disable=invalid-name
         spatial_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "S"]
         reduce_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "R"]
