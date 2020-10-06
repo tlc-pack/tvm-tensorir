@@ -148,6 +148,46 @@ def test_compute_at():
 
 
 @tvm.hybrid.script
+def reverse_compute_at_element_wise(a: ty.handle, c: ty.handle) -> None:
+    # function attr dict
+    C = tir.match_buffer(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    B = tir.buffer_allocate([128, 128], elem_offset=0, align=128, offset_factor=1)
+
+    # body
+    for i0_outer in range(0, 8):
+        for i1_outer in range(0, 8):
+            for i0_inner in range(0, 16):
+                for i1_inner in range(0, 16):
+                    with tir.block([128, 128], "B") as [vi, vj]:
+                        tir.bind(vi, ((i0_outer*16) + i0_inner))
+                        tir.bind(vj, ((i1_outer*16) + i1_inner))
+                        B[vi, vj] = (A[vi, vj]*tir.float32(2))
+                for ax1 in range(0, 16):
+                    with tir.block([128, 128], "C") as [vi, vj]:
+                        tir.bind(vi, ((i0_outer*16) + i0_inner))
+                        tir.bind(vj, ((i1_outer*16) + ax1))
+                        C[vi, vj] = (B[vi, vj] + tir.float32(1))
+
+
+def test_reverse_compute_at():
+    func = util.element_wise_stmt()
+
+    # schedule
+    s = tir.create_schedule(func)
+    B = s.get_block("B")
+    C = s.get_block("C")
+    i, j = s.get_axes(B)
+    i1, i2 = s.split(i, 16)
+    j1, j2 = s.split(j, 16)
+    s.reorder(i1, j1, i2, j2)
+    s.reverse_compute_at(C, i2)
+
+    tvm.ir.assert_structural_equal(reverse_compute_at_element_wise, s.func)
+    assert s.validate_sref()
+
+
+@tvm.hybrid.script
 def predicate_fuse(b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float32")
     B = tir.match_buffer(b, (16, 16), "float32")
@@ -493,6 +533,7 @@ if __name__ == "__main__":
     test_fuse_loop_sref()
     test_reorder_normal()
     test_compute_at()
+    test_reverse_compute_at()
     test_compute_inline()
     test_compute_at_fail()
     test_reduction()
