@@ -29,13 +29,13 @@ namespace meta_schedule {
 /*! \brief Search space that is specified by applying rules in post-DFS order */
 class PostOrderApplyNode : public SearchSpaceNode {
  public:
-  /*! \brief The rule to be applied */
-  SearchRule rule;
+  /*! \brief The rules to be applied */
+  Array<SearchRule> stages;
   /*! \brief The source of randomness */
   Sampler sampler_;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("rule", &rule);
+    v->Visit("stages", &stages);
     // sampler_ is not visited
   }
   /*! \brief Default destructor */
@@ -56,13 +56,14 @@ class PostOrderApplyNode : public SearchSpaceNode {
   /*!
    * \brief Apply the rule on the subtree rooted at the given block
    * \param task The search task
+   * \param rule The rule used in the current stage
    * \param block The block to be visited
    * \param sch The schedule snippet
    * \param is_root If the given block is the root of the PrimFunc
    * \return A list of schedules generated
    */
-  Array<Schedule> VisitBlock(const SearchTask& task, const tir::Block& block, const Schedule& sch,
-                             bool is_root);
+  Array<Schedule> VisitBlock(const SearchTask& task, const SearchRule& rule,
+                             const tir::Block& block, const Schedule& sch, bool is_root);
 
   static constexpr const char* _type_key = "meta_schedule.PostOrderApply";
   TVM_DECLARE_FINAL_OBJECT_INFO(PostOrderApplyNode, SearchSpaceNode);
@@ -76,18 +77,18 @@ class PostOrderApply : public SearchSpace {
  public:
   /*!
    * \brief Constructor
-   * \param rule The rule to be applied
+   * \param stages The rules to be applied
    */
-  explicit PostOrderApply(SearchRule rule);
+  explicit PostOrderApply(Array<SearchRule> stages);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(PostOrderApply, SearchSpace, PostOrderApplyNode);
 };
 
 /********** Constructor **********/
 
-PostOrderApply::PostOrderApply(SearchRule rule) {
+PostOrderApply::PostOrderApply(Array<SearchRule> stages) {
   ObjectPtr<PostOrderApplyNode> n = make_object<PostOrderApplyNode>();
-  n->rule = std::move(rule);
+  n->stages = std::move(stages);
   n->sampler_ = Sampler();
   data_ = std::move(n);
 }
@@ -102,18 +103,33 @@ Schedule PostOrderApplyNode::SampleSchedule(const SearchTask& task) {
 }
 
 Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task) {
-  const auto* block_realize = task->func->body.as<tir::BlockRealizeNode>();
-  CHECK(block_realize != nullptr) << "TypeError: PrimFunc should root at BlockRealize, but gets: "
-                                  << task->func->body->GetTypeKey();
-  return VisitBlock(
-      /*task=*/task,
-      /*block=*/block_realize->block,
-      /*sch=*/Schedule(task->func),
-      /*is_root=*/true);
+  Array<Schedule> curr{Schedule(task->func)};
+  Array<Schedule> next;
+  for (const SearchRule& rule : stages) {
+    for (const Schedule& sch : curr) {
+      const auto* block_realize = sch->sch->func->body.as<tir::BlockRealizeNode>();
+      CHECK(block_realize != nullptr)
+          << "TypeError: PrimFunc should root at BlockRealize, but gets: "
+          << task->func->body->GetTypeKey();
+      Array<Schedule> ret = VisitBlock(
+          /*task=*/task,
+          /*rule=*/rule,
+          /*block=*/block_realize->block,
+          /*sch=*/sch,
+          /*is_root=*/true);
+      next.insert(next.end(), ret.begin(), ret.end());
+    }
+    curr.clear();
+    Array<Schedule> swap = curr;
+    curr = next;
+    next = swap;
+  }
+  return curr;
 }
 
-Array<Schedule> PostOrderApplyNode::VisitBlock(const SearchTask& task, const tir::Block& block,
-                                               const Schedule& sch, bool is_root) {
+Array<Schedule> PostOrderApplyNode::VisitBlock(const SearchTask& task, const SearchRule& rule,
+                                               const tir::Block& block, const Schedule& sch,
+                                               bool is_root) {
   Array<tir::Block> children;
   // Collect children
   tir::PreOrderVisit(block, [&children](const ObjectRef& node) {
@@ -130,7 +146,7 @@ Array<Schedule> PostOrderApplyNode::VisitBlock(const SearchTask& task, const tir
     for (const Schedule& sch : schedules) {
       // if this child still exists
       if (sch->sch->stmt2ref.count(child.get())) {
-        Array<Schedule> result = VisitBlock(task, child, sch, false);
+        Array<Schedule> result = VisitBlock(task, rule, child, sch, false);
         new_schedules.insert(new_schedules.end(), result.begin(), result.end());
       } else {
         new_schedules.push_back(sch);
@@ -162,7 +178,7 @@ struct Internal {
    * \return The PostOrderApply constructed
    * \sa PostOrderApply::PostOrderApply
    */
-  static PostOrderApply New(SearchRule rule) { return PostOrderApply(rule); }
+  static PostOrderApply New(Array<SearchRule> stages) { return PostOrderApply(stages); }
 };
 
 TVM_REGISTER_NODE_TYPE(PostOrderApplyNode);

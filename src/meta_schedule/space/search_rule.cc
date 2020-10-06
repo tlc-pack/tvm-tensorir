@@ -283,11 +283,11 @@ TVM_REGISTER_NODE_TYPE(SearchRuleNode);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRule").set_body_typed(Internal::SearchRuleNew);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleCompose").set_body_typed(Internal::Compose);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleApply").set_body_typed(Internal::SearchRuleApply);
-TVM_REGISTER_GLOBAL("meta_schedule.rule.AlwaysInline").set_body_typed(AlwaysInline::New);
-TVM_REGISTER_GLOBAL("meta_schedule.rule.AddCacheWrite").set_body_typed(AddCacheWrite::New);
-TVM_REGISTER_GLOBAL("meta_schedule.rule.MultiLevelTilingWithFusion")
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AlwaysInline").set_body_typed(AlwaysInline::New);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AddCacheWrite").set_body_typed(AddCacheWrite::New);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTilingWithFusion")
     .set_body_typed(MultiLevelTilingWithFusion::New);
-TVM_REGISTER_GLOBAL("meta_schedule.rule.MultiLevelTiling")
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTiling")
     .set_body_typed(MultiLevelTiling::MakeRule);
 
 }  // namespace meta_schedule

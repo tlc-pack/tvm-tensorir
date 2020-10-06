@@ -15,16 +15,15 @@
 # specific language governing permissions and limitations
 # under the License.
 """Search rules in meta schedule"""
-from typing import Callable, List, Any, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
 
-from . import _ffi_api, _ffi_api_rule
+from . import _ffi_api, _ffi_api_search_rule
 from .instruction import BlockRV
 from .schedule import Schedule
 from .search import SearchTask
-
 
 ########## SearchRule ##########
 
@@ -150,7 +149,7 @@ def always_inline() -> SearchRule:
     rule: SearchRule
         A search rule that does inlining
     """
-    return _ffi_api_rule.AlwaysInline()  # pylint: disable=no-member
+    return _ffi_api_search_rule.AlwaysInline()  # pylint: disable=no-member
 
 
 def add_cache_write() -> SearchRule:
@@ -161,7 +160,7 @@ def add_cache_write() -> SearchRule:
     rule: SearchRule
         A search rule that does cache write
     """
-    return _ffi_api_rule.AddCacheWrite()  # pylint: disable=no-member
+    return _ffi_api_search_rule.AddCacheWrite()  # pylint: disable=no-member
 
 
 def multi_level_tiling_with_fusion(tiling_structure: str) -> SearchRule:
@@ -179,7 +178,7 @@ def multi_level_tiling_with_fusion(tiling_structure: str) -> SearchRule:
     rule: SearchRule
         A search rule that does multi-level tiling with fusion
     """
-    return _ffi_api_rule.MultiLevelTilingWithFusion(  # pylint: disable=no-member
+    return _ffi_api_search_rule.MultiLevelTilingWithFusion(  # pylint: disable=no-member
         tiling_structure
     )
 
@@ -198,4 +197,6 @@ def multi_level_tiling(tiling_structure: str) -> SearchRule:
     rule: SearchRule
         A search rule that does multi-level tiling
     """
-    return _ffi_api_rule.MultiLevelTiling(tiling_structure)  # pylint: disable=no-member
+    return _ffi_api_search_rule.MultiLevelTiling(  # pylint: disable=no-member
+        tiling_structure
+    )
