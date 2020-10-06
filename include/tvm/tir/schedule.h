@@ -139,12 +139,18 @@ class ScheduleNode : public Object {
   Array<StmtSRef> split(const StmtSRef& loop_sref, const PrimExpr& nparts, const PrimExpr& factor);
 
   /*!
-   * \brief Move the block under the loop and regenerate the
-   *        loops to cover the producing region.
+   * \brief Move the block under the loop and regenerate the loops to cover the producing region.
    * \param block_sref The block to be moved
    * \param loop_sref The target loop
    */
   void compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref);
+
+  /*!
+   * \brief Move the block under the loop and regenerate the loops to cover the producing region.
+   * \param block_sref The block to be moved
+   * \param loop_sref The target loop
+   */
+  void reverse_compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref);
 
   /*!
    * \brief Make the block inline
