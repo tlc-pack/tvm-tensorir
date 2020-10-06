@@ -65,8 +65,8 @@ class EvolutionaryNode : public SearchStrategyNode {
   int population;
   /*! \brief The probability to perform mutation */
   double p_mutate;
-  /*! \brief A list of mutations allowed to happen */
-  Array<Mutator> mutators;
+  /*! \brief Mutators and their probability mass */
+  Map<Mutator, FloatImm> mutator_probs;
   /*! \brief A cost model helping to explore the search space */
   CostModel cost_model;
   /*! \brief A random number generator */
@@ -74,7 +74,7 @@ class EvolutionaryNode : public SearchStrategyNode {
   /*! \brief A table storing all states that have been measured */
   SortedTable<String, MeasuredState> measured_;
   /*! \brief A helper function that samples the index of mutators to be used */
-  std::function<int()> mutator_sampler_;
+  std::function<Mutator()> mutator_sampler_;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("num_measure_trials", &num_measure_trials);
@@ -84,7 +84,7 @@ class EvolutionaryNode : public SearchStrategyNode {
     v->Visit("use_measured_ratio", &use_measured_ratio);
     v->Visit("population", &population);
     v->Visit("p_mutate", &p_mutate);
-    v->Visit("mutators", &mutators);
+    v->Visit("mutator_probs", &mutator_probs);
     v->Visit("cost_model", &cost_model);
     // sampler_ is not visited
     // measured_ is not visited
@@ -123,16 +123,24 @@ class EvolutionaryNode : public SearchStrategyNode {
                                       int num_samples);
 
   /*!
-   * \brief Construct measure inputs out of the candidate schedules
-   * \param task The search task
-   * \param bests The best scored candidate schedules
-   * \param rands Some rand candidate schedules
-   * \param num_bests Up-limit of the number of schedules to be picked from bests
-   * \param num_rands Up-limit of the number of schedules to be picked from rands
-   * \return An array of MeasureInput to be picked
+   * \brief Pick a batch of samples for measurement with epsilon greedy
+   * \param inits The initial population used when picking random states
+   * \param bests The best populations according to the cost model when picking top states
+   * \return A list of schedules, result of epsilon-greedy sampling
    */
-  Array<MeasureInput> PickMeasureInputs(const SearchTask& task, const Array<Schedule>& bests,
-                                        const Array<Schedule>& rands, int num_bests, int num_rands);
+  Array<Schedule> PickWithEpsGreedy(const Array<Schedule>& inits, const Array<Schedule>& bests);
+
+  /*!
+   * \brief Make measurements and update the cost model
+   * \param task The search task
+   * \param schedules The schedules to be measured
+   * \param measurer The measurer
+   * \param verbose A boolean flag for verbosity
+   * \return A list of MeasureResult for measurements
+   */
+  Array<MeasureResult> MeasureAndUpdateCostModel(const SearchTask& task,
+                                                 const Array<Schedule>& schedules,
+                                                 const ProgramMeasurer& measurer, int verbose);
 
   static constexpr const char* _type_key = "meta_schedule.Evolutionary";
   TVM_DECLARE_FINAL_OBJECT_INFO(EvolutionaryNode, SearchStrategyNode);
@@ -155,12 +163,12 @@ class Evolutionary : public SearchStrategy {
    * population
    * \param population The population size for evolutionary search
    * \param p_mutate The probability to perform mutation
-   * \param mutators A list of mutations allowed to happen
+   * \param mutator_probs Mutators and their probability mass
    * \param cost_model A cost model helping to explore the search space
    */
   explicit Evolutionary(int num_measure_trials, int num_measure_per_batch,
                         int num_iters_in_genetic_algo, double eps_greedy, double use_measured_ratio,
-                        int population, double p_mutate, Array<Mutator> mutators,
+                        int population, double p_mutate, Map<Mutator, FloatImm> mutator_probs,
                         CostModel cost_model);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Evolutionary, SearchStrategy, EvolutionaryNode);
@@ -171,11 +179,13 @@ class Evolutionary : public SearchStrategy {
 Evolutionary::Evolutionary(int num_measure_trials, int num_measure_per_batch,
                            int num_iters_in_genetic_algo, double eps_greedy,
                            double use_measured_ratio, int population, double p_mutate,
-                           Array<Mutator> mutators, CostModel cost_model) {
+                           Map<Mutator, FloatImm> mutator_probs, CostModel cost_model) {
   // Extract weights of mutators
-  std::vector<double> weights;
-  for (const auto& mutator : mutators) {
-    weights.push_back(mutator->p);
+  std::vector<Mutator> mutators;
+  std::vector<double> mutator_mass;
+  for (const auto& kv : mutator_probs) {
+    mutators.push_back(kv.first);
+    mutator_mass.push_back(kv.second->value);
   }
   ObjectPtr<EvolutionaryNode> n = make_object<EvolutionaryNode>();
   n->num_measure_trials = num_measure_trials;
@@ -185,9 +195,13 @@ Evolutionary::Evolutionary(int num_measure_trials, int num_measure_per_batch,
   n->use_measured_ratio = use_measured_ratio;
   n->population = population;
   n->p_mutate = p_mutate;
-  n->mutators = std::move(mutators);
+  n->mutator_probs = std::move(mutator_probs);
   n->cost_model = std::move(cost_model);
-  n->mutator_sampler_ = n->sampler_.MakeMultinomial(weights);
+  auto mutator_index_sampler = n->sampler_.MakeMultinomial(mutator_mass);
+  n->mutator_sampler_ = [mutator_index_sampler = std::move(mutator_index_sampler),
+                         mutators = std::move(mutators)]() -> Mutator {
+    return mutators[mutator_index_sampler()];
+  };
   data_ = std::move(n);
 }
 
@@ -196,40 +210,18 @@ Evolutionary::Evolutionary(int num_measure_trials, int num_measure_per_batch,
 Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const SearchSpace& space,
                                             const ProgramMeasurer& measurer, int verbose) {
   measurer->Reset();
-  int num_rands = this->eps_greedy * this->num_measure_per_batch;
-  int num_bests = num_measure_per_batch - num_rands;
-  int num_measured = 0;
   Array<Schedule> support = space->GetSupport(task);
-  for (;;) {
+  for (int num_measured = 0; num_measured < num_measure_trials;) {
     // `inits`: Sampled initial population, whose size is at most `this->population`
     Array<Schedule> inits = SampleInitPopulation(support, population);
-    // `rands`: Randomly pick from `inits`
-    Array<Schedule> rands = sampler_.SampleWithReplacement(inits, num_rands * 3);
-    // `bests`: Explore the space using mutators
-    // and pick candidates according to the cost model
-    // return with at most the size specified
+    // `bests`: The best schedules according to the cost mode when explore the space using mutators
     Array<Schedule> bests = EvolveWithCostModel(task, inits, num_measure_per_batch * 2);
-    // Do measurement
-    Array<MeasureInput> measure_inputs = PickMeasureInputs(
-        /*task=*/task, /*bests=*/bests, /*rands=*/rands,
-        /*num_bests=*/num_bests, /*num_rands=*/num_rands);
+    // Pick candidates with eps greedy
+    Array<Schedule> picks = PickWithEpsGreedy(inits, bests);
+    // Run measurement, update cost model
     Array<MeasureResult> measure_results =
-        measurer->BatchMeasure(measure_inputs, measure_inputs.size(), verbose);
-    // Record the measurement result
-    CHECK_EQ(measure_inputs.size(), measure_results.size());
-    int n_measures = measure_inputs.size();
-    for (int i = 0; i < n_measures; ++i) {
-      const MeasureInput& measure_input = measure_inputs[i];
-      const MeasureResult& measure_result = measure_results[i];
-      double avg_time_cost = FloatArrayMean(measure_result->costs);
-      measured_.Add(MeasuredState(avg_time_cost, measure_input->sch));
-    }
+        MeasureAndUpdateCostModel(task, picks, measurer, verbose);
     num_measured += measure_results.size();
-    if (num_measured < num_measure_trials) {
-      cost_model->Update(measure_inputs, measure_results);
-    } else {
-      break;
-    }
   }
   return measurer->best_sch;
 }
@@ -308,7 +300,7 @@ Array<Schedule> EvolutionaryNode::EvolveWithCostModel(const SearchTask& task,
       const Schedule& sch = sch_curr[sch_curr_sampler()];
       if (sampler_.SampleBernoulli(p_mutate)) {
         // with probability `p_mutate`, choose a mutator
-        const Mutator& mutator = mutators[mutator_sampler_()];
+        Mutator mutator = mutator_sampler_();
         // apply the mutator
         if (Optional<Schedule> new_sch = mutator->Apply(task, sch, &sampler_)) {
           sch_next.emplace_back(new_sch.value());
@@ -331,19 +323,20 @@ Array<Schedule> EvolutionaryNode::EvolveWithCostModel(const SearchTask& task,
   return results;
 }
 
-Array<MeasureInput> EvolutionaryNode::PickMeasureInputs(const SearchTask& task,
-                                                        const Array<Schedule>& bests,
-                                                        const Array<Schedule>& rands,  //
-                                                        int num_bests, int num_rands) {
-  int n = num_bests + num_rands;
-  size_t i_bests = 0, i_rands = 0;
-  Array<MeasureInput> results;
+Array<Schedule> EvolutionaryNode::PickWithEpsGreedy(const Array<Schedule>& inits,
+                                                    const Array<Schedule>& bests) {
+  int n = this->num_measure_per_batch;
+  int num_rands = n * this->eps_greedy;
+  int num_bests = n - num_rands;
+  Array<Schedule> rands = sampler_.SampleWithReplacement(inits, num_rands * 3);
+  Array<Schedule> results;
   results.reserve(n);
-  for (int i = 0; i < n;) {
-    bool has_best = i_bests < bests.size();
-    bool has_rand = i_rands < rands.size();
+  for (int i = 0, i_bests = 0, i_rands = 0; i < n;) {
+    bool has_best = i_bests < static_cast<int>(bests.size());
+    bool has_rand = i_rands < static_cast<int>(rands.size());
     // Pick a schedule
     Schedule sch(nullptr);
+    // If needs `bests`, then prefer `bests`
     if (i < num_bests) {
       if (has_best) {
         sch = bests[i_bests++];
@@ -353,6 +346,7 @@ Array<MeasureInput> EvolutionaryNode::PickMeasureInputs(const SearchTask& task,
         break;
       }
     } else {
+      // Else prefer `rands`
       if (has_rand) {
         sch = rands[i_rands++];
       } else if (has_best) {
@@ -369,9 +363,36 @@ Array<MeasureInput> EvolutionaryNode::PickMeasureInputs(const SearchTask& task,
     // If not, it is the schedule we want to pick
     ++i;
     measured_.Add(repr);
-    results.push_back(MeasureInput(task, sch));
+    results.push_back(sch);
   }
   return results;
+}
+
+Array<MeasureResult> EvolutionaryNode::MeasureAndUpdateCostModel(const SearchTask& task,
+                                                                 const Array<Schedule>& schedules,
+                                                                 const ProgramMeasurer& measurer,
+                                                                 int verbose) {
+  // Assemble `measure_inputs`
+  Array<MeasureInput> measure_inputs;
+  measure_inputs.reserve(schedules.size());
+  for (const Schedule& sch : schedules) {
+    measure_inputs.push_back(MeasureInput(task, sch));
+  }
+  // Run and get `measure_results`
+  Array<MeasureResult> measure_results =
+      measurer->BatchMeasure(measure_inputs, measure_inputs.size(), verbose);
+  // Record the measurement result
+  CHECK_EQ(measure_inputs.size(), measure_results.size());
+  // Update the measure
+  for (int i = 0, n = measure_inputs.size(); i < n; ++i) {
+    const MeasureInput& measure_input = measure_inputs[i];
+    const MeasureResult& measure_result = measure_results[i];
+    double avg_time_cost = FloatArrayMean(measure_result->costs);
+    measured_.Add(MeasuredState(avg_time_cost, measure_input->sch));
+  }
+  // Update the cost model
+  cost_model->Update(measure_inputs, measure_results);
+  return measure_results;
 }
 
 /********** FFI **********/
@@ -388,7 +409,7 @@ struct Internal {
    * population
    * \param population The population size for evolutionary search
    * \param p_mutate The probability to perform mutation
-   * \param mutators A list of mutations allowed to happen
+   * \param mutator_probs Mutators and their probability mass
    * \param cost_model A cost model helping to explore the search space
    * \return The Evolutionary constructed
    * \sa Evolutionary::Evolutionary
@@ -396,9 +417,10 @@ struct Internal {
   static Evolutionary New(int num_measure_trials, int num_measure_per_batch,
                           int num_iters_in_genetic_algo, double eps_greedy,
                           double use_measured_ratio, int population, double p_mutate,
-                          Array<Mutator> mutators, CostModel cost_model) {
+                          Map<Mutator, FloatImm> mutator_probs, CostModel cost_model) {
     return Evolutionary(num_measure_trials, num_measure_per_batch, num_iters_in_genetic_algo,
-                        eps_greedy, use_measured_ratio, population, p_mutate, mutators, cost_model);
+                        eps_greedy, use_measured_ratio, population, p_mutate, mutator_probs,
+                        cost_model);
   }
   /*!
    * \brief Sample the initial population from the support
@@ -426,6 +448,35 @@ struct Internal {
                                                          Array<Schedule> inits, int num_samples) {
     return self->EvolveWithCostModel(task, inits, num_samples);
   }
+
+  /*!
+   * \brief Pick a batch of samples for measurement with epsilon greedy
+   * \param inits The initial population used when picking random states
+   * \param bests The best populations according to the cost model when picking top states
+   * \return A list of schedules, result of epsilon-greedy sampling
+   * \sa EvolutionaryNode::PickWithEpsGreedy
+   */
+  static Array<Schedule> EvolutionaryPickWithEpsGreedy(Evolutionary self, Array<Schedule> inits,
+                                                       Array<Schedule> bests) {
+    return self->PickWithEpsGreedy(inits, bests);
+  }
+
+  /*!
+   * \brief Make measurements and update the cost model
+   * \param task The search task
+   * \param schedules The schedules to be measured
+   * \param measurer The measurer
+   * \param verbose A boolean flag for verbosity
+   * \return A list of MeasureResult for measurements
+   * \sa EvolutionaryNode::MeasureAndUpdateCostModel
+   */
+  static Array<MeasureResult> EvolutionaryMeasureAndUpdateCostModel(Evolutionary self,
+                                                                    SearchTask task,
+                                                                    Array<Schedule> schedules,
+                                                                    ProgramMeasurer measurer,
+                                                                    int verbose) {
+    return self->MeasureAndUpdateCostModel(task, schedules, measurer, verbose);
+  }
 };
 
 TVM_REGISTER_NODE_TYPE(EvolutionaryNode);
@@ -434,6 +485,10 @@ TVM_REGISTER_GLOBAL("meta_schedule.EvolutionarySampleInitPopulation")
     .set_body_typed(Internal::EvolutionarySampleInitPopulation);
 TVM_REGISTER_GLOBAL("meta_schedule.EvolutionaryEvolveWithCostModel")
     .set_body_typed(Internal::EvolutionaryEvolveWithCostModel);
+TVM_REGISTER_GLOBAL("meta_schedule.EvolutionaryPickWithEpsGreedy")
+    .set_body_typed(Internal::EvolutionaryPickWithEpsGreedy);
+TVM_REGISTER_GLOBAL("meta_schedule.EvolutionaryMeasureAndUpdateCostModel")
+    .set_body_typed(Internal::EvolutionaryMeasureAndUpdateCostModel);
 
 }  // namespace meta_schedule
 }  // namespace tvm
