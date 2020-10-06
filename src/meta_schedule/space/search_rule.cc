@@ -243,19 +243,20 @@ class TensorizeRewrite {
 
   explicit TensorizeRewrite(tir::PrimFunc desc_func) : desc_func(std::move(desc_func)) {}
 
-  RulePackedArgs operator()(Schedule sch, BlockRV block_rv) {
+  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
+                const TContextInfo& info) {
     if (CanTensorizeRewrite(sch, block_rv, desc_func)) {
       DoTensorizeRewrite(sch, block_rv, desc_func);
-      return RulePackedArgs(/*proceed=*/{}, /*skipped=*/{sch});
+      return {{sch, info}};
     }
-    return RulePackedArgs(sch);
+    return {{sch, info}};
   }
 
   /*! \brief Rule creator */
   static SearchRule MakeRule(tir::PrimFunc desc_func) {
-    auto invoke = [&](Schedule sch, BlockRV block) -> RulePackedArgs {
+    auto invoke = [&](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
       TensorizeRewrite rule(desc_func);
-      return rule(sch, block);
+      return rule.Apply(task, sch, block, info);
     };
     return SearchRule("tensorize_rewrite", invoke);
   }
