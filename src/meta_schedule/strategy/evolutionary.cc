@@ -288,7 +288,7 @@ Array<Schedule> EvolutionaryNode::EvolveWithCostModel(const SearchTask& task,
   sch_curr.reserve(population);
   sch_next.reserve(population);
   // Main loop: (num_iters_in_genetic_algo + 1) times
-  for (int iter = 0;; ++iter, sch_curr.swap(sch_next)) {
+  for (int iter = 0;; ++iter, sch_curr.clear(), sch_curr.swap(sch_next)) {
     // Predict running time with the cost model
     std::vector<double> scores = cost_model->Predict(task, sch_curr);
     // Put the predicted perf to the heap
