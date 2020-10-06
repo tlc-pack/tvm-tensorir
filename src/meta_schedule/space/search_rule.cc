@@ -237,11 +237,11 @@ SearchRule MultiLevelTiling(String tiling_structure) {
 
 /********** Tensorize Rewrite **********/
 
-class TensorizeRewrite {
+class RuleTensorizeRewrite {
  public:
   tir::PrimFunc desc_func;
 
-  explicit TensorizeRewrite(tir::PrimFunc desc_func) : desc_func(std::move(desc_func)) {}
+  explicit RuleTensorizeRewrite(tir::PrimFunc desc_func) : desc_func(std::move(desc_func)) {}
 
   TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
                 const TContextInfo& info) {
@@ -251,16 +251,16 @@ class TensorizeRewrite {
     }
     return {{sch, info}};
   }
-
-  /*! \brief Rule creator */
-  static SearchRule MakeRule(tir::PrimFunc desc_func) {
-    auto invoke = [&](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
-      TensorizeRewrite rule(desc_func);
-      return rule.Apply(task, sch, block, info);
-    };
-    return SearchRule("tensorize_rewrite", invoke);
-  }
 };
+
+/*! \brief Rule creator */
+SearchRule TensorizeRewrite(tir::PrimFunc desc_func) {
+  auto invoke = [&](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
+    RuleTensorizeRewrite rule(desc_func);
+    return rule.Apply(task, sch, block, info);
+  };
+  return SearchRule("tensorize_rewrite", invoke);
+}
 
 /********** FFI **********/
 
@@ -308,6 +308,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AddCacheWrite").set_body_typed(Ad
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTilingWithFusion")
     .set_body_typed(MultiLevelTilingWithFusion);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTiling").set_body_typed(MultiLevelTiling);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.TensorizeRewrite").set_body_typed(TensorizeRewrite);
 
 }  // namespace meta_schedule
 }  // namespace tvm
