@@ -183,7 +183,7 @@ def conv2d_relu_plus_one(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
 
 
 @ms.search_rule.register_rule("do_nothing")
-def do_nothing(sch: ms.Schedule, _block: ms.BlockRV):
+def do_nothing(_task, sch: ms.Schedule, _block: ms.BlockRV, _info):
     return sch
 
 
@@ -223,7 +223,7 @@ def test_matmul_post_order_apply():
     )
     sch = ms.autotune(
         task=matmul,
-        space=ms.space.PostOrderApply(rule=rule),
+        space=ms.space.PostOrderApply(stages=[rule]),
         strategy="replay",
         runner="rpc://0.0.0.0:3012:local * 16",
     )
@@ -270,7 +270,7 @@ def test_matmul_relu_post_order_apply():
     )
     sch = ms.autotune(
         task=matmul_relu,
-        space=ms.space.PostOrderApply(rule=rule),
+        space=ms.space.PostOrderApply(stages=[rule]),
         strategy="replay",
         runner="rpc://0.0.0.0:3012:local * 16",
     )
@@ -338,7 +338,7 @@ def test_conv2d_post_order_apply():
     )
     sch = ms.autotune(
         task=conv2d,
-        space=ms.space.PostOrderApply(rule=rule),
+        space=ms.space.PostOrderApply(stages=[rule]),
         strategy="replay",
         runner="rpc://0.0.0.0:3012:local * 16",
     )
@@ -362,7 +362,7 @@ def test_conv2d_relu_plus_one_post_order_apply():
     )
     sch = ms.autotune(
         task=conv2d_relu_plus_one,
-        space=ms.space.PostOrderApply(rule=rule),
+        space=ms.space.PostOrderApply(stages=[rule]),
         strategy="replay",
         runner="rpc://0.0.0.0:3012:local * 16",
     )
@@ -386,9 +386,8 @@ def test_matmul_evolutionary():
         mutators=[ms.mutator.MutateTileSize(p=1.0)],
         cost_model=ms.RandomModel(),
     )
-    space = ms.space.PostOrderApply(
-        rule=ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS")
-    )
+    rule = ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS")
+    space = ms.space.PostOrderApply(stages=[rule])
     # Test API:
     #   sample_init_population
     #   evolve_with_cost_model
