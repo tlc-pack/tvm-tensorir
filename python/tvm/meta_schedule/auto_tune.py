@@ -15,12 +15,12 @@
 # specific language governing permissions and limitations
 # under the License.
 """ The Auto-Tuning API """
-from typing import Callable, List, Optional, Union
+from typing import Callable, Optional, Union
 
 from tvm.tir import PrimFunc
 
 from . import _ffi_api
-from .measure import MeasureCallback, ProgramBuilder, ProgramRunner
+from .measure import ProgramMeasurer
 from .schedule import Schedule
 from .search import SearchSpace, SearchStrategy, SearchTask
 
@@ -29,9 +29,7 @@ def autotune(
     task: Union[PrimFunc, SearchTask],
     space: Union[Callable[[Schedule], None], SearchSpace],
     strategy: Union[str, SearchStrategy],
-    builder: Union[str, ProgramBuilder] = "local",
-    runner: Union[str, ProgramRunner] = "rpc",
-    measure_callbacks: Optional[List[MeasureCallback]] = None,
+    measurer: Optional[ProgramMeasurer] = None,
     verbose: int = 1,
 ) -> Optional[Schedule]:
     """The entry function for auto tuning.
@@ -44,12 +42,8 @@ def autotune(
         The search space
     strategy: Union[str, SearchStrategy]
         The search strategy
-    builder: Union[str, ProgramBuilder]
-        Program builder used to run TIR build process
-    runner: Union[str, ProgramRunner]
-        Program runner used to run the TIR profiling process, or interact with RPC tracker
-    measure_callbacks: Optional[List[MeasureCallback]]
-        The callbacks to be triggered after each batch of meansuring
+    measurer: Optional[ProgramMeasurer]
+        The measurer that builds, runs and profiles sampled programs
     verbose: int
         Flag for the verbose mode
 
@@ -64,18 +58,12 @@ def autotune(
         space = SearchSpace.create(space)
     if not isinstance(strategy, SearchStrategy):
         strategy = SearchStrategy.create(strategy)
-    if not isinstance(builder, ProgramBuilder):
-        builder = ProgramBuilder.create(builder)
-    if not isinstance(runner, ProgramRunner):
-        runner = ProgramRunner.create(runner)
-    if measure_callbacks is None:
-        measure_callbacks = []
+    if measurer is None:
+        measurer = ProgramMeasurer()
     return _ffi_api.AutoTune(  # pylint: disable=no-member
         task,
         space,
         strategy,
-        builder,
-        runner,
-        measure_callbacks,
+        measurer,
         verbose,
     )
