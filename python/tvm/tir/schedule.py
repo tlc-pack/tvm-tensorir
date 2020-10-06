@@ -288,6 +288,32 @@ class Schedule(Object):
         loop: Loop
             The target loop
 
+        Example
+        -------
+        .. code-block:: python
+
+            for i0_outer, i1_outer, i0_inner, i1_inner in tir.grid(8, 8, 16, 16):
+                with tir.block([128, 128], "B") as [vi, vj]:
+                    tir.bind(vi, ((i0_outer*16) + i0_inner))
+                    tir.bind(vj, ((i1_outer*16) + i1_inner))
+                    B[vi, vj] = A[vi, vj] * 2 .0
+            with tir.block([128, 128], "C") as [vi, vj]:
+                C[vi, vj] = B[vi, vj] + 1.0
+
+        After reverse_compute_at(C, i0_inner)
+        .. code-block:: python
+
+            for i0_outer, i1_outer, i1_inner in range(8, 8, 16):
+                for i1_inner in range(0, 16):
+                    with tir.block([128, 128], "B") as [vi, vj]:
+                        tir.bind(vi, ((i0_outer*16) + i0_inner))
+                        tir.bind(vj, ((i1_outer*16) + i1_inner))
+                        B[vi, vj] = A[vi, vj] * 2 .0
+                for ax1 in range(0, 16):
+                    with tir.block([128, 128], "C") as [vi, vj]:
+                        tir.bind(vi, ((i0_outer*16) + i0_inner))
+                        tir.bind(vj, ((i1_outer*16) + ax1))
+                        C[vi, vj] = B[vi, vj] + 1.0
         """
         ScheduleReverseComputeAt(self, block, loop)
 
