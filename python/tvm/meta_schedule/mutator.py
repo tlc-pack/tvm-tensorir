@@ -21,7 +21,7 @@ from typing import Optional
 from tvm._ffi import register_object
 from tvm.runtime import Object
 
-from . import _ffi_api_mutator, _ffi_api
+from . import _ffi_api, _ffi_api_mutator
 from .schedule import Schedule
 from .search import SearchTask
 

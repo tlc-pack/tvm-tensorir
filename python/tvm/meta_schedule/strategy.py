@@ -15,17 +15,17 @@
 # specific language governing permissions and limitations
 # under the License.
 """Search strategy"""
-from typing import List, Dict
+from typing import Dict, List
 
 from tvm._ffi import register_object
 
 from . import _ffi_api
 from .cost_model import CostModel
+from .measure import ProgramMeasurer
+from .measure_record import MeasureResult
 from .mutator import Mutator
 from .schedule import Schedule
 from .search import SearchStrategy, SearchTask
-from .measure import ProgramMeasurer
-from .measure_record import MeasureResult
 
 
 @register_object("meta_schedule.Replay")

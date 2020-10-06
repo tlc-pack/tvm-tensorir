@@ -204,7 +204,9 @@ def test_matmul_schedule_fn():
         task=matmul,
         space=schedule_matmul,
         strategy="replay",
-        runner="rpc://0.0.0.0:3012:local * 16",
+        measurer=ms.ProgramMeasurer(
+            runner="rpc://0.0.0.0:3012:local * 16",
+        ),
     )
     if sch is None:
         print("No valid schedule found")
@@ -225,7 +227,9 @@ def test_matmul_post_order_apply():
         task=matmul,
         space=ms.space.PostOrderApply(stages=[rule]),
         strategy="replay",
-        runner="rpc://0.0.0.0:3012:local * 16",
+        measurer=ms.ProgramMeasurer(
+            runner="rpc://0.0.0.0:3012:local * 16",
+        ),
     )
     if sch is None:
         print("No valid schedule found")
@@ -250,7 +254,9 @@ def test_matmul_relu_schedule_fn():
         task=matmul_relu,
         space=schedule_matmul,
         strategy="replay",
-        runner="rpc://0.0.0.0:3012:local * 16",
+        measurer=ms.ProgramMeasurer(
+            runner="rpc://0.0.0.0:3012:local * 16",
+        ),
     )
     if sch is None:
         print("No valid schedule found")
@@ -272,7 +278,9 @@ def test_matmul_relu_post_order_apply():
         task=matmul_relu,
         space=ms.space.PostOrderApply(stages=[rule]),
         strategy="replay",
-        runner="rpc://0.0.0.0:3012:local * 16",
+        measurer=ms.ProgramMeasurer(
+            runner="rpc://0.0.0.0:3012:local * 16",
+        ),
     )
     if sch is None:
         print("No valid schedule found")
@@ -319,7 +327,9 @@ def test_conv2d_schedule_fn():
         task=conv2d,
         space=schedule_conv2d,
         strategy="replay",
-        runner="rpc://0.0.0.0:3012:local * 16",
+        measurer=ms.ProgramMeasurer(
+            runner="rpc://0.0.0.0:3012:local * 16",
+        ),
     )
     if sch is None:
         print("No valid schedule found")
@@ -340,7 +350,9 @@ def test_conv2d_post_order_apply():
         task=conv2d,
         space=ms.space.PostOrderApply(stages=[rule]),
         strategy="replay",
-        runner="rpc://0.0.0.0:3012:local * 16",
+        measurer=ms.ProgramMeasurer(
+            runner="rpc://0.0.0.0:3012:local * 16",
+        ),
     )
     if sch is None:
         print("No valid schedule found")
@@ -364,7 +376,9 @@ def test_conv2d_relu_plus_one_post_order_apply():
         task=conv2d_relu_plus_one,
         space=ms.space.PostOrderApply(stages=[rule]),
         strategy="replay",
-        runner="rpc://0.0.0.0:3012:local * 16",
+        measurer=ms.ProgramMeasurer(
+            runner="rpc://0.0.0.0:3012:local * 16",
+        ),
     )
     if sch is None:
         print("No valid schedule found")
@@ -376,9 +390,7 @@ def test_conv2d_relu_plus_one_post_order_apply():
 def test_matmul_evolutionary_step_by_step():
     task = ms.SearchTask(func=matmul)
     measurer = ms.ProgramMeasurer(
-        builder=ms.ProgramBuilder.create("local"),
-        runner=ms.ProgramRunner.create("rpc://0.0.0.0:3012:local * 16"),
-        callbacks=None,
+        runner="rpc://0.0.0.0:3012:local * 16",
     )
     strategy = ms.strategy.Evolutionary(
         num_measure_trials=128,
@@ -432,7 +444,9 @@ def test_matmul_evolutionary_end_to_end():
             },
             cost_model=ms.RandomModel(),
         ),
-        runner="rpc://0.0.0.0:3012:local * 16",
+        measurer=ms.ProgramMeasurer(
+            runner="rpc://0.0.0.0:3012:local * 16",
+        ),
     )
     if sch is None:
         print("No valid schedule found")
