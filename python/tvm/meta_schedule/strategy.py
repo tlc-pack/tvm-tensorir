@@ -15,12 +15,14 @@
 # specific language governing permissions and limitations
 # under the License.
 """Search strategy"""
-from typing import List
+from typing import Dict, List
 
 from tvm._ffi import register_object
 
 from . import _ffi_api
 from .cost_model import CostModel
+from .measure import ProgramMeasurer
+from .measure_record import MeasureResult
 from .mutator import Mutator
 from .schedule import Schedule
 from .search import SearchStrategy, SearchTask
@@ -74,8 +76,8 @@ class Evolutionary(SearchStrategy):
         The population size for evolutionary search
     p_mutate : float
         The probability to perform mutation
-    mutators : List[Mutator]
-        A list of mutations allowed to happen
+    mutator_probs : Dict[Mutator, float]
+        Mutators and their probability mass
     cost_model : CostModel
         A cost model helping to explore the search space
     """
@@ -87,7 +89,7 @@ class Evolutionary(SearchStrategy):
     use_measured_ratio: float
     population: int
     p_mutate: float
-    mutators: List[Mutator]
+    mutator_probs: Dict[Mutator, float]
     cost_model: CostModel
 
     def __init__(
@@ -99,7 +101,7 @@ class Evolutionary(SearchStrategy):
         use_measured_ratio: float,
         population: int,
         p_mutate: float,
-        mutators: List[Mutator],
+        mutator_probs: Dict[Mutator, float],
         cost_model: CostModel,
     ):
         self.__init_handle_by_constructor__(
@@ -111,7 +113,7 @@ class Evolutionary(SearchStrategy):
             use_measured_ratio,
             population,
             p_mutate,
-            mutators,
+            mutator_probs,
             cost_model,
         )
 
@@ -162,4 +164,58 @@ class Evolutionary(SearchStrategy):
         """
         return _ffi_api.EvolutionaryEvolveWithCostModel(  # pylint: disable=no-member
             self, task, inits, num_samples
+        )
+
+    def pick_with_eps_greedy(
+        self,
+        inits: List[Schedule],
+        bests: List[Schedule],
+    ) -> List[Schedule]:
+        """Pick a batch of samples for measurement with epsilon greedy
+
+        Parameters
+        ----------
+        inits : List[Schedule]
+            The initial population
+        bests : List[Schedule]
+            The best populations according to the cost model when picking top states
+
+        Returns
+        -------
+        samples : List[Schedule]
+            A list of schedules, result of epsilon-greedy sampling
+        """
+        return _ffi_api.EvolutionaryPickWithEpsGreedy(  # pylint: disable=no-member
+            self, inits, bests
+        )
+
+    def measure_and_update_cost_model(
+        self,
+        task: SearchTask,
+        schedules: List[Schedule],
+        measurer: ProgramMeasurer,
+        verbose: int,
+    ) -> List[MeasureResult]:
+        """Make measurements and update the cost model
+
+        Parameters
+        ----------
+        task : SearchTask
+            The search task
+        schedules : List[Schedule]
+            The schedules to be measured
+        measurer : ProgramMeasurer
+            The measurer
+        verbose : int
+            A boolean flag for verbosity
+
+        Returns
+        -------
+        samples : List[MeasureResult]
+            A list of MeasureResult for measurements
+        """
+        return (
+            _ffi_api.EvolutionaryMeasureAndUpdateCostModel(  # pylint: disable=no-member
+                self, task, schedules, measurer, verbose
+            )
         )
