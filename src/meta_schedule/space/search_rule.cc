@@ -25,25 +25,11 @@
 namespace tvm {
 namespace meta_schedule {
 
-using runtime::PackedFunc;
+using TContextInfo = SearchRuleNode::TContextInfo;
+using TReturn = SearchRuleNode::TReturn;
+using FApply = SearchRuleNode::FApply;
 
 /********** Constructors **********/
-
-RulePackedArgs::RulePackedArgs(Schedule schedule) : RulePackedArgs({schedule}, {}) {}
-
-RulePackedArgs::RulePackedArgs(Array<Schedule> proceed, Array<Schedule> skipped) {
-  ObjectPtr<RulePackedArgsNode> n = make_object<RulePackedArgsNode>();
-  n->proceed = std::move(proceed);
-  n->skipped = std::move(skipped);
-  data_ = std::move(n);
-}
-
-SearchRule::SearchRule(String name, PackedFunc apply) {
-  ObjectPtr<SearchRuleNode> n = make_object<SearchRuleNode>();
-  n->name = std::move(name);
-  n->apply_ = apply;
-  data_ = std::move(n);
-}
 
 SearchRule::SearchRule(String name, SearchRuleNode::FApply apply) {
   ObjectPtr<SearchRuleNode> n = make_object<SearchRuleNode>();
@@ -54,28 +40,31 @@ SearchRule::SearchRule(String name, SearchRuleNode::FApply apply) {
 
 /********** SearchRule **********/
 
-RulePackedArgs SearchRuleNode::Apply(Schedule schedule, BlockRV block) const {
-  return Apply(RulePackedArgs(schedule), block);
-}
-
-RulePackedArgs SearchRuleNode::Apply(RulePackedArgs schedules, BlockRV block) const {
-  Array<Schedule> skipped = schedules->skipped;
-  Array<Schedule> proceed;
-  for (const Schedule& sch : schedules->proceed) {
-    RulePackedArgs results = apply_(sch, block);
-    proceed.insert(proceed.end(), results->proceed.begin(), results->proceed.end());
-    skipped.insert(skipped.end(), results->skipped.begin(), results->skipped.end());
+TReturn SearchRuleNode::Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block,
+                              const TContextInfo& info) const {
+  if (sch->Eval(block)->stmt == nullptr) {
+    return {{sch, info}};
   }
-  return RulePackedArgs(proceed, skipped);
+  return apply_(task, sch, block, info);
 }
 
-SearchRule SearchRule::Compose(const String& name, const std::vector<SearchRule>& rules) {
-  auto apply = [rules](Schedule schedule, BlockRV block) -> RulePackedArgs {
-    RulePackedArgs results(schedule);
+SearchRule SearchRule::Compose(const String& name, std::vector<SearchRule> rules) {
+  auto apply = [rules{std::move(rules)}](SearchTask task, Schedule sch, BlockRV block,
+                                         TContextInfo info) -> TReturn {
+    using ItemType = std::pair<Schedule, TContextInfo>;
+    std::vector<ItemType> curr{{sch, info}};
+    std::vector<ItemType> next;
     for (const SearchRule& rule : rules) {
-      results = rule->Apply(results, block);
+      for (const ItemType& sch_info : curr) {
+        TReturn results = rule->Apply(task, sch_info.first, block, sch_info.second);
+        for (ItemType kv : results) {
+          next.emplace_back(std::move(kv.first), std::move(kv.second));
+        }
+      }
+      curr.clear();
+      curr.swap(next);
     }
-    return results;
+    return {curr.begin(), curr.end()};
   };
   return SearchRule(name, SearchRuleNode::FApply(apply));
 }
@@ -89,33 +78,34 @@ class AlwaysInline {
   AlwaysInline() = default;
 
   /*! \brief Rule application */
-  RulePackedArgs operator()(Schedule sch, BlockRV block_rv) {
+  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
+                const TContextInfo& info) {
     static const Op& op_exp = Op::Get("tir.exp");
     if (HasReduceBlockVar(sch, block_rv) || IsOutputBlock(sch, block_rv)) {
-      return RulePackedArgs(sch);
+      return {{sch, info}};
     }
     if (HasBranch(sch, block_rv) || CountOp(sch, block_rv, op_exp)) {
-      return RulePackedArgs(sch);
+      return {{sch, info}};
     }
     if (Optional<Array<Bool>> access = InspectLoadIndices(sch, block_rv)) {
       CHECK_EQ(access.value().size(), 3);
       bool injective = access.value()[1];
       bool order = access.value()[2];
       if (!order || !injective) {
-        return RulePackedArgs(sch);
+        return {{sch, info}};
       }
     } else {
-      return RulePackedArgs(sch);
+      return {{sch, info}};
     }
     sch->ComputeInline(block_rv);
-    return RulePackedArgs(/*proceed=*/{}, /*ignored=*/{sch});
+    return {{sch, info}};
   }
 
   /*! \brief Rule creator */
-  static SearchRule MakeRule() {
-    auto invoke = [](Schedule sch, BlockRV block) -> RulePackedArgs {
+  static SearchRule New() {
+    auto invoke = [](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
       AlwaysInline rule;
-      return rule(sch, block);
+      return rule.Apply(task, sch, block, info);
     };
     return SearchRule("always_inline", invoke);
   }
@@ -130,29 +120,30 @@ class AddCacheWrite {
   AddCacheWrite() = default;
 
   /*! \brief Rule application */
-  RulePackedArgs operator()(Schedule sch, BlockRV block_rv) {
+  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
+                const TContextInfo& info) {
     if (!NeedsMultiLevelTiling(sch, block_rv)) {
-      return RulePackedArgs(sch);
+      return {{sch, info}};
     }
     // The only consumer will not be fused
     if (Optional<BlockRV> opt_consumer_rv = sch->GetOnlyConsumer(block_rv)) {
       BlockRV consumer_rv = opt_consumer_rv.value();
       if (!HasReduceBlockVar(sch, block_rv) || !HasReduceBlockVar(sch, consumer_rv)) {
         if (IsElementWiseMatch(sch, block_rv, consumer_rv)) {
-          return RulePackedArgs(sch);
+          return {{sch, info}};
         }
       }
     }
     // Add a cache write
     sch->CacheWrite(block_rv, "local");
-    return RulePackedArgs(/*proceed=*/{}, /*ignored=*/{sch});
+    return {{sch, info}};
   }
 
   /*! \brief Rule creator */
-  static SearchRule MakeRule() {
-    auto invoke = [](Schedule sch, BlockRV block) -> RulePackedArgs {
+  static SearchRule New() {
+    auto invoke = [](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
       AddCacheWrite rule;
-      return rule(sch, block);
+      return rule.Apply(task, sch, block, info);
     };
     return SearchRule("multi_level_tiling", invoke);
   }
@@ -177,35 +168,37 @@ class MultiLevelTilingWithFusion {
       : tiling_structure(std::move(tiling_structure)) {}
 
   /*! \brief Rule application */
-  RulePackedArgs operator()(Schedule sch, BlockRV block_rv) {
+  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
+                const TContextInfo& info) {
     // Rule out the possibility that it does not need multi-level tiling
     if (!NeedsMultiLevelTiling(sch, block_rv)) {
-      return RulePackedArgs(sch);
+      return {{sch, info}};
     }
     // Get the only consumer
     Optional<BlockRV> opt_consumer_rv = sch->GetOnlyConsumer(block_rv);
     if (!opt_consumer_rv.defined()) {
-      return RulePackedArgs(sch);
+      return {{sch, info}};
     }
     // Check elementwise-match
     BlockRV consumer_rv = opt_consumer_rv.value();
     if (HasReduceBlockVar(sch, block_rv) && HasReduceBlockVar(sch, consumer_rv)) {
-      return RulePackedArgs(sch);
+      return {{sch, info}};
     }
     if (!IsElementWiseMatch(sch, block_rv, consumer_rv)) {
-      return RulePackedArgs(sch);
+      return {{sch, info}};
     }
     DoMultiLevelTiling(sch, block_rv, tiling_structure);
     LOG(INFO) << "We can do multi-level-tiling with fusion!";
     // TODO(@junrushao1994): add fusion
-    return RulePackedArgs(/*proceed=*/{}, /*ignored=*/{sch});
+    return {{sch, info}};
   }
 
   /*! \brief Rule creator */
-  static SearchRule MakeRule(String tiling_structure) {
-    auto invoke = [tiling_structure](Schedule sch, BlockRV block) -> RulePackedArgs {
+  static SearchRule New(String tiling_structure) {
+    auto invoke = [tiling_structure{std::move(tiling_structure)}](
+                      SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
       MultiLevelTilingWithFusion rule(tiling_structure);
-      return rule(sch, block);
+      return rule.Apply(task, sch, block, info);
     };
     return SearchRule("multi_level_tiling_with_fusion", invoke);
   }
@@ -213,7 +206,8 @@ class MultiLevelTilingWithFusion {
 
 /********** Multi-Level-Tiling **********/
 
-/*! \brief Create a rule that does multi-level tiling if there is sufficient amount of data reuse */
+/*! \brief Create a rule that does multi-level tiling if there is sufficient amount of data reuse
+ */
 class MultiLevelTiling {
  public:
   /*! \brief The structure of tiling, e.g. "SSRSRS" on CPU */
@@ -227,20 +221,22 @@ class MultiLevelTiling {
       : tiling_structure(std::move(tiling_structure)) {}
 
   /*! \brief Rule application */
-  RulePackedArgs operator()(Schedule sch, BlockRV block_rv) {
+  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
+                const TContextInfo& info) {
     // Right now it only works with a leaf block with a single statement
     if (NeedsMultiLevelTiling(sch, block_rv)) {
       DoMultiLevelTiling(sch, block_rv, tiling_structure);
-      return RulePackedArgs(/*proceed=*/{}, /*ignored=*/{sch});
+      return {{sch, info}};
     }
-    return RulePackedArgs(sch);
+    return {{sch, info}};
   }
 
   /*! \brief Rule creator */
   static SearchRule MakeRule(String tiling_structure) {
-    auto invoke = [tiling_structure](Schedule sch, BlockRV block) -> RulePackedArgs {
+    auto invoke = [tiling_structure{std::move(tiling_structure)}](
+                      SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
       MultiLevelTiling rule(tiling_structure);
-      return rule(sch, block);
+      return rule.Apply(task, sch, block, info);
     };
     return SearchRule("multi_level_tiling", invoke);
   }
@@ -250,30 +246,26 @@ class MultiLevelTiling {
 
 struct Internal {
   /*!
-   * \brief Constructor of RulePackedArgs
-   * \param proceed The arguments the rule should apply to
-   * \param skipped The arguments the rule should skip
-   * \sa RulePackedArgs::RulePackedArgs
-   */
-  static RulePackedArgs RulePackedArgsNew(Array<Schedule> proceed, Array<Schedule> skipped) {
-    return RulePackedArgs(proceed, skipped);
-  }
-  /*!
    * \brief Constructor of SearchRule
    * \param name Name of the search rule
    * \param apply The application function
+   * \return The SearchRule created
    * \sa SearchRule::SearchRule
    */
   static SearchRule SearchRuleNew(String name, PackedFunc apply) { return SearchRule(name, apply); }
   /*!
    * \brief Apply the rule with a single schedule
    * \param rule The search rule to be called
-   * \param schedule Where the schedule snippets should be generated
+   * \param task The search task
+   * \param sch The schedule that the context info is attached to
    * \param block The block the rule applies on
+   * \param info The information about the context the rule is in
+   * \return The result of rule application
    * \sa SearchRuleNode::Apply
    */
-  static RulePackedArgs SearchRuleCall(SearchRule rule, Schedule sch, BlockRV block) {
-    return rule->Apply(sch, block);
+  static TReturn SearchRuleApply(SearchRule rule, SearchTask task, Schedule sch, BlockRV block,
+                                 TContextInfo info) {
+    return rule->Apply(task, sch, block, info);
   }
   /*!
    * \brief Composing search rules sequentially into a single rule
@@ -287,17 +279,15 @@ struct Internal {
   }
 };
 
-TVM_REGISTER_NODE_TYPE(RulePackedArgsNode);
 TVM_REGISTER_NODE_TYPE(SearchRuleNode);
-TVM_REGISTER_GLOBAL("meta_schedule.RulePackedArgs").set_body_typed(Internal::RulePackedArgsNew);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRule").set_body_typed(Internal::SearchRuleNew);
-TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleCall").set_body_typed(Internal::SearchRuleCall);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleCompose").set_body_typed(Internal::Compose);
-TVM_REGISTER_GLOBAL("meta_schedule.rule.AlwaysInline").set_body_typed(AlwaysInline::MakeRule);
-TVM_REGISTER_GLOBAL("meta_schedule.rule.AddCacheWrite").set_body_typed(AddCacheWrite::MakeRule);
-TVM_REGISTER_GLOBAL("meta_schedule.rule.MultiLevelTilingWithFusion")
-    .set_body_typed(MultiLevelTilingWithFusion::MakeRule);
-TVM_REGISTER_GLOBAL("meta_schedule.rule.MultiLevelTiling")
+TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleApply").set_body_typed(Internal::SearchRuleApply);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AlwaysInline").set_body_typed(AlwaysInline::New);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AddCacheWrite").set_body_typed(AddCacheWrite::New);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTilingWithFusion")
+    .set_body_typed(MultiLevelTilingWithFusion::New);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTiling")
     .set_body_typed(MultiLevelTiling::MakeRule);
 
 }  // namespace meta_schedule
