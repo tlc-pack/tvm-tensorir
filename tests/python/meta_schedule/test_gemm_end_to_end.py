@@ -383,7 +383,7 @@ def test_matmul_evolutionary():
         use_measured_ratio=0.05,
         population=16,
         p_mutate=0.85,
-        mutators=[ms.mutator.MutateTileSize(p=1.0)],
+        mutator_probs={ms.mutator.mutate_tile_size(): 1.0},
         cost_model=ms.RandomModel(),
     )
     rule = ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS")

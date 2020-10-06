@@ -84,7 +84,7 @@ class SearchRule : public ObjectRef {
    * \param name Name of the search rule
    * \param apply The application function
    */
-  explicit SearchRule(String name, SearchRuleNode::FApply apply);
+  explicit SearchRule(String name, FApply apply);
 
   TVM_DEFINE_OBJECT_REF_METHODS(SearchRule, ObjectRef, SearchRuleNode);
 };
@@ -97,7 +97,7 @@ class SearchRule : public ObjectRef {
  */
 TVM_DLL SearchRule SearchRuleCompose(const String& name, const Array<SearchRule>& rules);
 
-/********** Built-in Rules **********/
+/********** Built-in SearchRules **********/
 
 /*!
  * \brief Create a rule that inlines all possible blocks

@@ -65,8 +65,8 @@ class EvolutionaryNode : public SearchStrategyNode {
   int population;
   /*! \brief The probability to perform mutation */
   double p_mutate;
-  /*! \brief A list of mutations allowed to happen */
-  Array<Mutator> mutators;
+  /*! \brief Mutators and their probability mass */
+  Map<Mutator, FloatImm> mutator_probs;
   /*! \brief A cost model helping to explore the search space */
   CostModel cost_model;
   /*! \brief A random number generator */
@@ -74,7 +74,7 @@ class EvolutionaryNode : public SearchStrategyNode {
   /*! \brief A table storing all states that have been measured */
   SortedTable<String, MeasuredState> measured_;
   /*! \brief A helper function that samples the index of mutators to be used */
-  std::function<int()> mutator_sampler_;
+  std::function<Mutator()> mutator_sampler_;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("num_measure_trials", &num_measure_trials);
@@ -84,7 +84,7 @@ class EvolutionaryNode : public SearchStrategyNode {
     v->Visit("use_measured_ratio", &use_measured_ratio);
     v->Visit("population", &population);
     v->Visit("p_mutate", &p_mutate);
-    v->Visit("mutators", &mutators);
+    v->Visit("mutator_probs", &mutator_probs);
     v->Visit("cost_model", &cost_model);
     // sampler_ is not visited
     // measured_ is not visited
@@ -155,12 +155,12 @@ class Evolutionary : public SearchStrategy {
    * population
    * \param population The population size for evolutionary search
    * \param p_mutate The probability to perform mutation
-   * \param mutators A list of mutations allowed to happen
+   * \param mutator_probs Mutators and their probability mass
    * \param cost_model A cost model helping to explore the search space
    */
   explicit Evolutionary(int num_measure_trials, int num_measure_per_batch,
                         int num_iters_in_genetic_algo, double eps_greedy, double use_measured_ratio,
-                        int population, double p_mutate, Array<Mutator> mutators,
+                        int population, double p_mutate, Map<Mutator, FloatImm> mutator_probs,
                         CostModel cost_model);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Evolutionary, SearchStrategy, EvolutionaryNode);
@@ -171,11 +171,13 @@ class Evolutionary : public SearchStrategy {
 Evolutionary::Evolutionary(int num_measure_trials, int num_measure_per_batch,
                            int num_iters_in_genetic_algo, double eps_greedy,
                            double use_measured_ratio, int population, double p_mutate,
-                           Array<Mutator> mutators, CostModel cost_model) {
+                           Map<Mutator, FloatImm> mutator_probs, CostModel cost_model) {
   // Extract weights of mutators
-  std::vector<double> weights;
-  for (const auto& mutator : mutators) {
-    weights.push_back(mutator->p);
+  std::vector<Mutator> mutators;
+  std::vector<double> mutator_mass;
+  for (const auto& kv : mutator_probs) {
+    mutators.push_back(kv.first);
+    mutator_mass.push_back(kv.second->value);
   }
   ObjectPtr<EvolutionaryNode> n = make_object<EvolutionaryNode>();
   n->num_measure_trials = num_measure_trials;
@@ -185,9 +187,13 @@ Evolutionary::Evolutionary(int num_measure_trials, int num_measure_per_batch,
   n->use_measured_ratio = use_measured_ratio;
   n->population = population;
   n->p_mutate = p_mutate;
-  n->mutators = std::move(mutators);
+  n->mutator_probs = std::move(mutator_probs);
   n->cost_model = std::move(cost_model);
-  n->mutator_sampler_ = n->sampler_.MakeMultinomial(weights);
+  auto mutator_index_sampler = n->sampler_.MakeMultinomial(mutator_mass);
+  n->mutator_sampler_ = [mutator_index_sampler = std::move(mutator_index_sampler),
+                         mutators = std::move(mutators)]() -> Mutator {
+    return mutators[mutator_index_sampler()];
+  };
   data_ = std::move(n);
 }
 
@@ -308,7 +314,7 @@ Array<Schedule> EvolutionaryNode::EvolveWithCostModel(const SearchTask& task,
       const Schedule& sch = sch_curr[sch_curr_sampler()];
       if (sampler_.SampleBernoulli(p_mutate)) {
         // with probability `p_mutate`, choose a mutator
-        const Mutator& mutator = mutators[mutator_sampler_()];
+        Mutator mutator = mutator_sampler_();
         // apply the mutator
         if (Optional<Schedule> new_sch = mutator->Apply(task, sch, &sampler_)) {
           sch_next.emplace_back(new_sch.value());
@@ -388,7 +394,7 @@ struct Internal {
    * population
    * \param population The population size for evolutionary search
    * \param p_mutate The probability to perform mutation
-   * \param mutators A list of mutations allowed to happen
+   * \param mutator_probs Mutators and their probability mass
    * \param cost_model A cost model helping to explore the search space
    * \return The Evolutionary constructed
    * \sa Evolutionary::Evolutionary
@@ -396,9 +402,10 @@ struct Internal {
   static Evolutionary New(int num_measure_trials, int num_measure_per_batch,
                           int num_iters_in_genetic_algo, double eps_greedy,
                           double use_measured_ratio, int population, double p_mutate,
-                          Array<Mutator> mutators, CostModel cost_model) {
+                          Map<Mutator, FloatImm> mutator_probs, CostModel cost_model) {
     return Evolutionary(num_measure_trials, num_measure_per_batch, num_iters_in_genetic_algo,
-                        eps_greedy, use_measured_ratio, population, p_mutate, mutators, cost_model);
+                        eps_greedy, use_measured_ratio, population, p_mutate, mutator_probs,
+                        cost_model);
   }
   /*!
    * \brief Sample the initial population from the support

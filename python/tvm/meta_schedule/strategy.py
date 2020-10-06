@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """Search strategy"""
-from typing import List
+from typing import List, Dict
 
 from tvm._ffi import register_object
 
@@ -74,8 +74,8 @@ class Evolutionary(SearchStrategy):
         The population size for evolutionary search
     p_mutate : float
         The probability to perform mutation
-    mutators : List[Mutator]
-        A list of mutations allowed to happen
+    mutator_probs : Dict[Mutator, float]
+        Mutators and their probability mass
     cost_model : CostModel
         A cost model helping to explore the search space
     """
@@ -87,7 +87,7 @@ class Evolutionary(SearchStrategy):
     use_measured_ratio: float
     population: int
     p_mutate: float
-    mutators: List[Mutator]
+    mutator_probs: Dict[Mutator, float]
     cost_model: CostModel
 
     def __init__(
@@ -99,7 +99,7 @@ class Evolutionary(SearchStrategy):
         use_measured_ratio: float,
         population: int,
         p_mutate: float,
-        mutators: List[Mutator],
+        mutator_probs: Dict[Mutator, float],
         cost_model: CostModel,
     ):
         self.__init_handle_by_constructor__(
@@ -111,7 +111,7 @@ class Evolutionary(SearchStrategy):
             use_measured_ratio,
             population,
             p_mutate,
-            mutators,
+            mutator_probs,
             cost_model,
         )
 
