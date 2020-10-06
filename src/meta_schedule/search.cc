@@ -42,17 +42,13 @@ SearchTask::SearchTask(tir::PrimFunc func, String task_name, Target target, Targ
  * \param task The search task
  * \param space The search space
  * \param strategy The search strategy
- * \param builder Program builder used to run TIR build process
- * \param runner Program runner used to run the TIR profiling process, or interact with RPC tracker
- * \param measure_callbacks The callbacks to be triggered after each batch of meansuring
+ * \param measurer The measurer that builds, runs and profiles sampled programs
  * \param verbose Flag for the verbose mode
  * \return The best schedule found, NullOpt if no valid schedule is found in the search space
  */
 TVM_DLL Optional<Schedule> AutoTune(SearchTask task, SearchSpace space, SearchStrategy strategy,
-                                    ProgramBuilder builder, ProgramRunner runner,
-                                    Array<MeasureCallback> measure_callbacks, int verbose) {
-  return strategy->Search(task, space, ProgramMeasurer(builder, runner, measure_callbacks),
-                          verbose);
+                                    ProgramMeasurer measurer, int verbose) {
+  return strategy->Search(task, space, measurer, verbose);
 }
 
 /********** FFI **********/
