@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """Search space"""
-from typing import Callable
+from typing import Callable, List
 
 from tvm._ffi import register_object
 
@@ -42,10 +42,10 @@ class ScheduleFn(SearchSpace):
 class PostOrderApply(SearchSpace):
     """Search space that is specified by applying rules in post-DFS order"""
 
-    rule: SearchRule
+    stages: List[SearchRule]
 
-    def __init__(self, rule: SearchRule):
+    def __init__(self, stages: List[SearchRule]):
         self.__init_handle_by_constructor__(
             _ffi_api.PostOrderApply,  # pylint: disable=no-member
-            rule,
+            stages,
         )
