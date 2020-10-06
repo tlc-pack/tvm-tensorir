@@ -21,7 +21,7 @@ from typing import Optional
 from tvm._ffi import register_object
 from tvm.runtime import Object
 
-from . import _ffi_api_mutator
+from . import _ffi_api, _ffi_api_mutator
 from .schedule import Schedule
 from .search import SearchTask
 
@@ -36,7 +36,7 @@ class Mutator(Object):
         The probability mass of choosing this mutator
     """
 
-    p: float
+    name: str
 
     def apply(self, task: SearchTask, sch: Schedule) -> Optional[Schedule]:
         """Mutate the schedule by applying the mutation.
@@ -53,16 +53,15 @@ class Mutator(Object):
         new_sch : Optional[Schedule]
             The new schedule after mutation, or None if cannot find a viable solution
         """
-        return _ffi_api_mutator.MutatorApply(  # pylint: disable=no-member
-            self, task, sch, None
-        )
+        return _ffi_api.MutatorApply(self, task, sch, None)  # pylint: disable=no-member
 
 
-@register_object("meta_schedule.MutateTileSize")
-class MutateTileSize(Mutator):
-    """Mutate the sampled tile size by re-factorized two axes"""
+def mutate_tile_size() -> Mutator:
+    """Create a mutator that randomly mutate the tile size
 
-    def __init__(self, p: float):
-        self.__init_handle_by_constructor__(
-            _ffi_api_mutator.MutateTileSize, p  # pylint: disable=no-member
-        )
+    Returns
+    ----------
+    mutator: Mutator
+        The mutator created
+    """
+    return _ffi_api_mutator.MutateTileSize()  # pylint: disable=no-member

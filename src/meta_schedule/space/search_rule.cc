@@ -48,9 +48,8 @@ TReturn SearchRuleNode::Apply(const SearchTask& task, const Schedule& sch, const
   return apply_(task, sch, block, info);
 }
 
-SearchRule SearchRule::Compose(const String& name, std::vector<SearchRule> rules) {
-  auto apply = [rules{std::move(rules)}](SearchTask task, Schedule sch, BlockRV block,
-                                         TContextInfo info) -> TReturn {
+SearchRule SearchRuleCompose(const String& name, const Array<SearchRule>& rules) {
+  auto apply = [rules](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
     using ItemType = std::pair<Schedule, TContextInfo>;
     std::vector<ItemType> curr{{sch, info}};
     std::vector<ItemType> next;
@@ -71,11 +70,11 @@ SearchRule SearchRule::Compose(const String& name, std::vector<SearchRule> rules
 
 /********** Always-Inline **********/
 
-/*! \brief Create a rule that inlines all possible blocks */
-class AlwaysInline {
+/*! \brief A rule that inlines all possible blocks */
+class RuleAlwaysInline {
  public:
   /*! \brief Default constructor */
-  AlwaysInline() = default;
+  RuleAlwaysInline() = default;
 
   /*! \brief Rule application */
   TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
@@ -100,24 +99,23 @@ class AlwaysInline {
     sch->ComputeInline(block_rv);
     return {{sch, info}};
   }
-
-  /*! \brief Rule creator */
-  static SearchRule New() {
-    auto invoke = [](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
-      AlwaysInline rule;
-      return rule.Apply(task, sch, block, info);
-    };
-    return SearchRule("always_inline", invoke);
-  }
 };
+
+SearchRule AlwaysInline() {
+  auto f_apply = [](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
+    RuleAlwaysInline rule;
+    return rule.Apply(task, sch, block, info);
+  };
+  return SearchRule("always_inline", f_apply);
+}
 
 /********** Add-Cache-Write **********/
 
-/*! \brief Create a rule that adds a cache write stage after multi-level tiling */
-class AddCacheWrite {
+/*! \brief A rule that adds a cache write stage after multi-level tiling */
+class RuleAddCacheWrite {
  public:
   /*! \brief Default constructor */
-  AddCacheWrite() = default;
+  RuleAddCacheWrite() = default;
 
   /*! \brief Rule application */
   TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
@@ -138,24 +136,23 @@ class AddCacheWrite {
     sch->CacheWrite(block_rv, "local");
     return {{sch, info}};
   }
-
-  /*! \brief Rule creator */
-  static SearchRule New() {
-    auto invoke = [](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
-      AddCacheWrite rule;
-      return rule.Apply(task, sch, block, info);
-    };
-    return SearchRule("multi_level_tiling", invoke);
-  }
 };
+
+SearchRule AddCacheWrite() {
+  auto f_apply = [](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
+    RuleAddCacheWrite rule;
+    return rule.Apply(task, sch, block, info);
+  };
+  return SearchRule("multi_level_tiling", f_apply);
+}
 
 /********** Multi-Level-Tiling-With-Fusion **********/
 
 /*!
- * \brief Create a rule that does multi-level tiling and fusion together if there is sufficient
+ * \brief A rule that does multi-level tiling and fusion together if there is sufficient
  * amount of data reuse
  */
-class MultiLevelTilingWithFusion {
+class RuleMultiLevelTilingWithFusion {
  public:
   /*! \brief The structure of tiling, e.g. "SSRSRS" on CPU */
   String tiling_structure;
@@ -164,7 +161,7 @@ class MultiLevelTilingWithFusion {
    * \brief Constructor
    * \param tiling_structure The structure of tiling
    */
-  explicit MultiLevelTilingWithFusion(String tiling_structure)
+  explicit RuleMultiLevelTilingWithFusion(String tiling_structure)
       : tiling_structure(std::move(tiling_structure)) {}
 
   /*! \brief Rule application */
@@ -192,23 +189,21 @@ class MultiLevelTilingWithFusion {
     // TODO(@junrushao1994): add fusion
     return {{sch, info}};
   }
-
-  /*! \brief Rule creator */
-  static SearchRule New(String tiling_structure) {
-    auto invoke = [tiling_structure{std::move(tiling_structure)}](
-                      SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
-      MultiLevelTilingWithFusion rule(tiling_structure);
-      return rule.Apply(task, sch, block, info);
-    };
-    return SearchRule("multi_level_tiling_with_fusion", invoke);
-  }
 };
+
+SearchRule MultiLevelTilingWithFusion(String tiling_structure) {
+  auto f_apply = [tiling_structure{std::move(tiling_structure)}](
+                     SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
+    RuleMultiLevelTilingWithFusion rule(tiling_structure);
+    return rule.Apply(task, sch, block, info);
+  };
+  return SearchRule("multi_level_tiling_with_fusion", f_apply);
+}
 
 /********** Multi-Level-Tiling **********/
 
-/*! \brief Create a rule that does multi-level tiling if there is sufficient amount of data reuse
- */
-class MultiLevelTiling {
+/*! \brief A rule that does multi-level tiling if there is sufficient amount of data reuse */
+class RuleMultiLevelTiling {
  public:
   /*! \brief The structure of tiling, e.g. "SSRSRS" on CPU */
   String tiling_structure;
@@ -217,7 +212,7 @@ class MultiLevelTiling {
    * \brief Constructor
    * \param tiling_structure The structure of tiling
    */
-  explicit MultiLevelTiling(String tiling_structure)
+  explicit RuleMultiLevelTiling(String tiling_structure)
       : tiling_structure(std::move(tiling_structure)) {}
 
   /*! \brief Rule application */
@@ -230,17 +225,16 @@ class MultiLevelTiling {
     }
     return {{sch, info}};
   }
-
-  /*! \brief Rule creator */
-  static SearchRule MakeRule(String tiling_structure) {
-    auto invoke = [tiling_structure{std::move(tiling_structure)}](
-                      SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
-      MultiLevelTiling rule(tiling_structure);
-      return rule.Apply(task, sch, block, info);
-    };
-    return SearchRule("multi_level_tiling", invoke);
-  }
 };
+
+SearchRule MultiLevelTiling(String tiling_structure) {
+  auto f_apply = [tiling_structure{std::move(tiling_structure)}](
+                     SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
+    RuleMultiLevelTiling rule(tiling_structure);
+    return rule.Apply(task, sch, block, info);
+  };
+  return SearchRule("multi_level_tiling", f_apply);
+}
 
 /********** FFI **********/
 
@@ -275,20 +269,19 @@ struct Internal {
    * \sa SearchRule::Compose
    */
   static SearchRule Compose(String name, Array<SearchRule> rules) {
-    return SearchRule::Compose(name, {rules.begin(), rules.end()});
+    return SearchRuleCompose(name, rules);
   }
 };
 
 TVM_REGISTER_NODE_TYPE(SearchRuleNode);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRule").set_body_typed(Internal::SearchRuleNew);
-TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleCompose").set_body_typed(Internal::Compose);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleApply").set_body_typed(Internal::SearchRuleApply);
-TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AlwaysInline").set_body_typed(AlwaysInline::New);
-TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AddCacheWrite").set_body_typed(AddCacheWrite::New);
+TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleCompose").set_body_typed(SearchRuleCompose);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AlwaysInline").set_body_typed(AlwaysInline);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AddCacheWrite").set_body_typed(AddCacheWrite);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTilingWithFusion")
-    .set_body_typed(MultiLevelTilingWithFusion::New);
-TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTiling")
-    .set_body_typed(MultiLevelTiling::MakeRule);
+    .set_body_typed(MultiLevelTilingWithFusion);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTiling").set_body_typed(MultiLevelTiling);
 
 }  // namespace meta_schedule
 }  // namespace tvm
