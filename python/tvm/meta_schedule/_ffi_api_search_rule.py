@@ -17,4 +17,4 @@
 """FFI APIs for search rules in meta schedule"""
 import tvm._ffi
 
-tvm._ffi._init_api("meta_schedule.rule", __name__)
+tvm._ffi._init_api("meta_schedule.search_rule", __name__)

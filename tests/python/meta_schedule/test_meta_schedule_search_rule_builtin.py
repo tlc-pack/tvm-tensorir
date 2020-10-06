@@ -86,9 +86,10 @@ def conv2d_relu_plus_one(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
 
 
 def test_meta_schedule_rule_always_inline():
+    task = ms.SearchTask(func=conv2d_relu_plus_one)
     sch = ms.Schedule(func=conv2d_relu_plus_one)
     block = sch.get_block("relu")
-    ms.search_rule.always_inline()(sch, block)
+    ms.search_rule.always_inline()(task, sch, block)
     with pytest.raises(ValueError):
         sch.get_block("relu")
     sch.get_block("conv2d_pad_x")
@@ -97,17 +98,19 @@ def test_meta_schedule_rule_always_inline():
 
 
 def test_meta_schedule_rule_add_cache_write():
+    task = ms.SearchTask(func=matmul)
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    ms.search_rule.add_cache_write()(sch, block)
+    ms.search_rule.add_cache_write()(task, sch, block)
     sch.get_block("matmul")
     assert sch.evaluate(block).stmt.tag == ""
 
 
 def test_meta_schedule_rule_multi_level_tiling():
+    task = ms.SearchTask(func=matmul)
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    ms.search_rule.multi_level_tiling("SSRSRS")(sch, block)
+    ms.search_rule.multi_level_tiling("SSRSRS")(task, sch, block)
     assert len(sch.get_axes(block)) == 10
 
 

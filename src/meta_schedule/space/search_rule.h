@@ -23,77 +23,49 @@
 #include <vector>
 
 #include "../schedule.h"
+#include "../search.h"
 
 namespace tvm {
 namespace meta_schedule {
 
-/********** RulePackedArgs **********/
-
-/*!
- * \brief Input/output arguments of a SearchRule
- * \sa SearchRule
- * \sa SearchRuleNode
- */
-class RulePackedArgsNode : public Object {
- public:
-  /*! \brief The arguments the rule should apply to */
-  Array<Schedule> proceed;
-  /*! \brief The arguments the rule should skip */
-  Array<Schedule> skipped;
-
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("proceed", &proceed);
-    v->Visit("skipped", &skipped);
-  }
-
-  static constexpr const char* _type_key = "meta_schedule.RulePackedArgs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(RulePackedArgsNode, Object);
-};
-
-/*!
- * \brief Managed reference to RulePackedArgsNode
- * \sa RulePackedArgs
- */
-class RulePackedArgs : public ObjectRef {
- public:
-  /*! \brief Constructing the packed args using a single schedule */
-  explicit RulePackedArgs(Schedule schedule);
-  /*!
-   * \brief Constructor
-   * \param proceed The arguments the rule should apply to
-   * \param skipped The arguments the rule should skip
-   */
-  explicit RulePackedArgs(Array<Schedule> proceed, Array<Schedule> skipped);
-
-  TVM_DEFINE_OBJECT_REF_METHODS(RulePackedArgs, ObjectRef, RulePackedArgsNode);
-};
-
 /********** SearchRule **********/
 
 /*!
- * \brief A rule that applies to a block and generates a snippet of schedule on it
+ * \brief A rule that applies to a block and generates a snippet of schedule on it.
+ * the SearchRule API is designed with the following signature:
+ *
+ *     (task: SearchTask, sch: Schedule, block: BlockRV, info: Dict[str, Any])
+ *        -> Dict[Schedule, Any]
+ *
+ * \note The input schedule becomes invalid after calling SearchRule API, because
+ * it is possible to be mutated.
  */
 class SearchRuleNode : public Object {
  public:
-  using FApply = runtime::TypedPackedFunc<RulePackedArgs(Schedule, BlockRV)>;
+  /*! \brief Dictionary holding context-related information */
+  using TContextInfo = Optional<Map<String, ObjectRef>>;
+  /*! \brief Return type of SearchRule */
+  using TReturn = Map<Schedule, TContextInfo>;
+  /*! \brief The SearchRule application function */
+  using FApply = runtime::TypedPackedFunc<TReturn(SearchTask, Schedule, BlockRV, TContextInfo)>;
+
   /*! \brief Name of the rule */
   String name;
-  /*! \brief A packed function that applies the rule */
+  /*! \brief An std::function that applies the rule */
   FApply apply_;
 
   void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("name", &name); }
+
   /*!
-   * \brief Apply the rule with a single schedule
-   * \param schedule Where the schedule snippets should be generated
+   * \brief Apply the rule with a schedule with contexts
+   * \param task The search task
+   * \param sch The schedule that the context info is attached to
    * \param block The block the rule applies on
+   * \param info The information about the context the rule is in
+   * \return A schedule-context mapping
    */
-  RulePackedArgs Apply(Schedule schedule, BlockRV block) const;
-  /*!
-   * \brief Apply the rule with a list of schedules
-   * \param schedules Where the schedule snippets should be generated
-   * \param block The block the rule applies on
-   */
-  RulePackedArgs Apply(RulePackedArgs schedules, BlockRV block) const;
+  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block,
+                const TContextInfo& info) const;
 
   static constexpr const char* _type_key = "meta_schedule.SearchRule";
   TVM_DECLARE_FINAL_OBJECT_INFO(SearchRuleNode, Object);
@@ -105,14 +77,12 @@ class SearchRuleNode : public Object {
  */
 class SearchRule : public ObjectRef {
  public:
+  using TContextInfo = SearchRuleNode::TContextInfo;
+  using TReturn = SearchRuleNode::TReturn;
+  using FApply = SearchRuleNode::FApply;
+
   /*!
-   * \brief Constructing with name and a packed function
-   * \param name Name of the search rule
-   * \param apply The application function
-   */
-  explicit SearchRule(String name, runtime::PackedFunc apply);
-  /*!
-   * \brief Constructing with name and a typed packed function
+   * \brief Constructing with name and an std::function
    * \param name Name of the search rule
    * \param apply The application function
    */
@@ -123,7 +93,7 @@ class SearchRule : public ObjectRef {
    * \param rules The rules provided sequentially
    * \return The composite rule
    */
-  TVM_DLL static SearchRule Compose(const String& name, const std::vector<SearchRule>& rules);
+  TVM_DLL static SearchRule Compose(const String& name, std::vector<SearchRule> rules);
 
   TVM_DEFINE_OBJECT_REF_METHODS(SearchRule, ObjectRef, SearchRuleNode);
 };
