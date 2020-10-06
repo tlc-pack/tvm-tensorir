@@ -140,7 +140,7 @@ bool ExprContainsVar(const PrimExpr& expr, const PrimExpr& vars);
  * \param vars the vars to be inspected
  * \return Whether the expr contains any var of vars
  */
-bool ExprContainsVar(const PrimExpr& expr, const std::set<const VarNode*> vars);
+bool ExprContainsVar(const PrimExpr& expr, const std::unordered_set<const VarNode*> vars);
 
 /*!
  * \brief Update the scope (dependency) information of a given block statement

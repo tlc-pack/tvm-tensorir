@@ -470,7 +470,7 @@ bool CanTensorizeRewrite(Schedule sch, BlockRV block_rv, tir::PrimFunc desc_func
   const tir::StmtSRef& block_sref = sch->Eval(block_rv);
   const tir::BlockRealize& block = tir::GetBlockRealize(block_sref);
   // Get desc_block, collect the loops outside desc_block at the same time
-  std::set<const tir::VarNode*> desc_loop_vars;
+  std::unordered_set<const tir::VarNode*> desc_loop_vars;
   std::vector<const tir::LoopNode*> desc_loops;
   const tir::BlockRealizeNode* desc_block = nullptr;
   const auto* desc_body = desc_func->body.as<tir::BlockRealizeNode>();
@@ -498,7 +498,7 @@ bool CanTensorizeRewrite(Schedule sch, BlockRV block_rv, tir::PrimFunc desc_func
   // in other words, with tir.block(..., vi=Ci+i, vj=Cj+j, vk=Ck+k), then we split and reorder
   // i, j, k according to the loops outside desc_block
   // Collect the loops outside block
-  std::set<const tir::VarNode*> loop_vars;
+  std::unordered_set<const tir::VarNode*> loop_vars;
   std::vector<const tir::LoopNode*> loops;
   for (const tir::StmtSRefNode* sref = block_sref->parent;; sref = sref->parent) {
     const auto* loop_ptr = sref->GetStmt<tir::LoopNode>();
@@ -555,7 +555,7 @@ void DoTensorizeRewrite(Schedule sch, BlockRV block_rv, tir::PrimFunc desc_func)
   const tir::StmtSRef& block_sref = sch->Eval(block_rv);
   const tir::BlockRealize& block = tir::GetBlockRealize(block_sref);
   // Get desc_block, collect the loops outside desc_block at the same time
-  std::set<const tir::VarNode*> desc_loop_vars;
+  std::unordered_set<const tir::VarNode*> desc_loop_vars;
   std::vector<const tir::LoopNode*> desc_loops;
   const tir::BlockRealizeNode* desc_block = nullptr;
   const auto* desc_body = desc_func->body.as<tir::BlockRealizeNode>();
@@ -582,7 +582,7 @@ void DoTensorizeRewrite(Schedule sch, BlockRV block_rv, tir::PrimFunc desc_func)
   // in other words, with tir.block(..., vi=Ci+i, vj=Cj+j, vk=Ck+k), then we split and reorder
   // i, j, k according to the loops outside desc_block
   // Collect the loops outside block
-  std::set<const tir::VarNode*> loop_vars;
+  std::unordered_set<const tir::VarNode*> loop_vars;
   std::vector<LoopRV> loops;
   const auto& all_loops = sch->GetAxes(block_rv);
   for (auto it = all_loops.rbegin(); it != all_loops.rend(); ++it) {

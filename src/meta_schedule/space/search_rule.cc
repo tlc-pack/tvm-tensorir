@@ -17,10 +17,8 @@
  * under the License.
  */
 #include "./search_rule.h"  // NOLINT(build/include)
-#include "../tir/schedule/schedule_common.h"
 
 #include "../analysis.h"
-#include "../search.h"
 #include "../utils.h"
 
 namespace tvm {
