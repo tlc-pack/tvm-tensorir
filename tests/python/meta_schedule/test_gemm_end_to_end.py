@@ -373,36 +373,65 @@ def test_conv2d_relu_plus_one_post_order_apply():
 
 
 @pytest.mark.skip(reason="needs RPC")
-def test_matmul_evolutionary():
+def test_matmul_evolutionary_step_by_step():
     task = ms.SearchTask(func=matmul)
+    measurer = ms.ProgramMeasurer(
+        builder=ms.ProgramBuilder.create("local"),
+        runner=ms.ProgramRunner.create("rpc://0.0.0.0:3012:local * 16"),
+        callbacks=None,
+    )
     strategy = ms.strategy.Evolutionary(
         num_measure_trials=128,
         num_measure_per_batch=16,
         num_iters_in_genetic_algo=1,
-        eps_greedy=0.02,
+        eps_greedy=0.07,
         use_measured_ratio=0.05,
         population=16,
         p_mutate=0.85,
         mutator_probs={ms.mutator.mutate_tile_size(): 1.0},
         cost_model=ms.RandomModel(),
     )
-    rule = ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS")
-    space = ms.space.PostOrderApply(stages=[rule])
+    space = ms.space.PostOrderApply(
+        stages=[
+            ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS"),
+        ]
+    )
+    support = space.get_support(task=task)
     # Test API:
     #   sample_init_population
     #   evolve_with_cost_model
-    strategy.evolve_with_cost_model(
-        task=task,
-        inits=strategy.sample_init_population(
-            space.get_support(task=task), num_samples=15
-        ),
-        num_samples=100,
+    #   pick_with_eps_greedy
+    #   measure_and_update_cost_model
+    inits = strategy.sample_init_population(support=support, num_samples=15)
+    bests = strategy.evolve_with_cost_model(task=task, inits=inits, num_samples=100)
+    schedules = strategy.pick_with_eps_greedy(inits=inits, bests=bests)
+    strategy.measure_and_update_cost_model(
+        task=task, schedules=schedules, measurer=measurer, verbose=1
     )
-    # End-to-end integration test
+
+
+@pytest.mark.skip(reason="needs RPC")
+def test_matmul_evolutionary_end_to_end():
     sch = ms.autotune(
-        task=task,
-        space=space,
-        strategy=strategy,
+        task=ms.SearchTask(func=matmul),
+        space=ms.space.PostOrderApply(
+            stages=[
+                ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS"),
+            ]
+        ),
+        strategy=ms.strategy.Evolutionary(
+            num_measure_trials=128,
+            num_measure_per_batch=16,
+            num_iters_in_genetic_algo=1,
+            eps_greedy=0.07,
+            use_measured_ratio=0.05,
+            population=16,
+            p_mutate=0.85,
+            mutator_probs={
+                ms.mutator.mutate_tile_size(): 1.0,
+            },
+            cost_model=ms.RandomModel(),
+        ),
         runner="rpc://0.0.0.0:3012:local * 16",
     )
     if sch is None:
@@ -419,4 +448,5 @@ if __name__ == "__main__":
     test_conv2d_schedule_fn()
     test_conv2d_post_order_apply()
     test_conv2d_relu_plus_one_post_order_apply()
-    test_matmul_evolutionary()
+    test_matmul_evolutionary_step_by_step()
+    test_matmul_evolutionary_end_to_end()

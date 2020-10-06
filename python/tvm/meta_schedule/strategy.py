@@ -24,6 +24,8 @@ from .cost_model import CostModel
 from .mutator import Mutator
 from .schedule import Schedule
 from .search import SearchStrategy, SearchTask
+from .measure import ProgramMeasurer
+from .measure_record import MeasureResult
 
 
 @register_object("meta_schedule.Replay")
@@ -162,4 +164,58 @@ class Evolutionary(SearchStrategy):
         """
         return _ffi_api.EvolutionaryEvolveWithCostModel(  # pylint: disable=no-member
             self, task, inits, num_samples
+        )
+
+    def pick_with_eps_greedy(
+        self,
+        inits: List[Schedule],
+        bests: List[Schedule],
+    ) -> List[Schedule]:
+        """Pick a batch of samples for measurement with epsilon greedy
+
+        Parameters
+        ----------
+        inits : List[Schedule]
+            The initial population
+        bests : List[Schedule]
+            The best populations according to the cost model when picking top states
+
+        Returns
+        -------
+        samples : List[Schedule]
+            A list of schedules, result of epsilon-greedy sampling
+        """
+        return _ffi_api.EvolutionaryPickWithEpsGreedy(  # pylint: disable=no-member
+            self, inits, bests
+        )
+
+    def measure_and_update_cost_model(
+        self,
+        task: SearchTask,
+        schedules: List[Schedule],
+        measurer: ProgramMeasurer,
+        verbose: int,
+    ) -> List[MeasureResult]:
+        """Make measurements and update the cost model
+
+        Parameters
+        ----------
+        task : SearchTask
+            The search task
+        schedules : List[Schedule]
+            The schedules to be measured
+        measurer : ProgramMeasurer
+            The measurer
+        verbose : int
+            A boolean flag for verbosity
+
+        Returns
+        -------
+        samples : List[MeasureResult]
+            A list of MeasureResult for measurements
+        """
+        return (
+            _ffi_api.EvolutionaryMeasureAndUpdateCostModel(  # pylint: disable=no-member
+                self, task, schedules, measurer, verbose
+            )
         )
