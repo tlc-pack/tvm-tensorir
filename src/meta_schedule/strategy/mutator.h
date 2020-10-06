@@ -30,11 +30,15 @@ namespace meta_schedule {
 /*! \brief A mutation rule for the genetic algorithm */
 class MutatorNode : public Object {
  public:
-  /*! \brief The probability weight of choosing this rule */
-  double p;
+  /*! \brief The mutator application function */
+  using FApply = runtime::TypedPackedFunc<Optional<Schedule>(SearchTask, Schedule, void*)>;
 
-  /*! \brief Base destructor */
-  virtual ~MutatorNode() = default;
+  /*! \brief Name of the mutator */
+  String name;
+  /*! \brief A packed function that applies the mutator */
+  FApply apply_;
+
+  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("name", &name); }
 
   /*!
    * \brief Mutate the schedule by applying the mutation
@@ -43,8 +47,7 @@ class MutatorNode : public Object {
    * \param sampler The random number sampler
    * \return The new schedule after mutation, NullOpt if mutation fails
    */
-  virtual Optional<Schedule> Apply(const SearchTask& task, const Schedule& sch,
-                                   Sampler* sampler) = 0;
+  Optional<Schedule> Apply(const SearchTask& task, const Schedule& sch, Sampler* sampler);
 
   static constexpr const char* _type_key = "meta_schedule.Mutator";
   TVM_DECLARE_BASE_OBJECT_INFO(MutatorNode, Object);
@@ -56,46 +59,25 @@ class MutatorNode : public Object {
  */
 class Mutator : public ObjectRef {
  public:
+  using FApply = MutatorNode::FApply;
+
+  /*!
+   * \brief Constructing with name and a packed function
+   * \param name Name of the mutator
+   * \param apply The application function
+   */
+  explicit Mutator(String name, FApply apply);
+
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Mutator, ObjectRef, MutatorNode);
 };
 
-/********** MutateTileSize **********/
-
-/*! \brief Mutate the sampled tile size by re-factorized two axes */
-class MutateTileSizeNode : public MutatorNode {
- public:
-  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("p", &p); }
-
-  /*! \brief Default destructor */
-  ~MutateTileSizeNode() = default;
-
-  /*!
-   * \brief Mutate the schedule by applying the mutation
-   * \param task The search task
-   * \param sch The schedule to be mutated
-   * \param sampler The random number sampler
-   * \return The new schedule after mutation, NullOpt if mutation fails
-   */
-  Optional<Schedule> Apply(const SearchTask& task, const Schedule& sch, Sampler* sampler);
-
-  static constexpr const char* _type_key = "meta_schedule.MutateTileSize";
-  TVM_DECLARE_BASE_OBJECT_INFO(MutateTileSizeNode, MutatorNode);
-};
+/********** Built-in Mutators **********/
 
 /*!
- * \brief Managed refernce to MutateTileSizeNode
- * \sa MutateTileSizeNode
+ * \brief Create a mutator that randomly mutate the tile size
+ * \return The mutator created
  */
-class MutateTileSize : public Mutator {
- public:
-  /*!
-   * \brief Constructor
-   * \param p The probability mass that this rule is selected
-   */
-  explicit MutateTileSize(double p);
-
-  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(MutateTileSize, Mutator, MutateTileSizeNode);
-};
+TVM_DLL Mutator MutateTileSize();
 
 }  // namespace meta_schedule
 }  // namespace tvm

@@ -32,7 +32,7 @@ get the measurement results. The flow of data structures is
 We implement these in python to utilize python's multiprocessing and error handling.
 """
 import os
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
@@ -270,15 +270,19 @@ class ProgramMeasurer(Object):
 
     def __init__(
         self,
-        builder: ProgramBuilder,
-        runner: ProgramRunner,
-        callbacks: Optional[List[MeasureCallback]] = None,
+        builder: Union[str, ProgramBuilder] = "local",
+        runner: Union[str, ProgramRunner] = "rpc",
+        measure_callbacks: Optional[List[MeasureCallback]] = None,
     ):
-        if callbacks is None:
-            callbacks = []
+        if not isinstance(builder, ProgramBuilder):
+            builder = ProgramBuilder.create(builder)
+        if not isinstance(runner, ProgramRunner):
+            runner = ProgramRunner.create(runner)
+        if measure_callbacks is None:
+            measure_callbacks = []
         self.__init_handle_by_constructor__(
             _ffi_api.ProgramMeasurer,  # pylint: disable=no-member
             builder,
             runner,
-            callbacks,
+            measure_callbacks,
         )
