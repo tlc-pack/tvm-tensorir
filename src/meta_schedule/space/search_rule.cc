@@ -79,7 +79,7 @@ class RuleAlwaysInline {
   TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
                 const TContextInfo& info) {
     tir::StmtSRef block_sref = sch->Eval(block_rv);
-    if (IsSpatial(sch->sch, block_sref) || IsOutputBlock(sch->sch, block_sref)) {
+    if (!IsSpatial(sch->sch, block_sref) || IsOutputBlock(sch->sch, block_sref)) {
       return {{sch, info}};
     }
     if (IsStrictlyInlineable(sch->sch, block_sref)) {
@@ -116,15 +116,15 @@ class RuleAddCacheWrite {
     // The only consumer will not be fused
     if (Optional<BlockRV> opt_consumer_rv = sch->GetOnlyConsumer(block_rv)) {
       BlockRV consumer_rv = opt_consumer_rv.value();
-      if (!IsSpatial(sch->sch, block) && !IsSpatial(sch->sch, block)) {
-        return {{sch, info}};
-      }
-      if (IsElementWiseMatch(sch->sch, block, sch->Eval(consumer_rv))) {
-        // Add a cache write
-        sch->CacheWrite(block_rv, "local");
-        return {{sch, info}};
+      if (IsSpatial(sch->sch, block) || IsSpatial(sch->sch, block)) {
+        if (IsElementWiseMatch(sch->sch, block, sch->Eval(consumer_rv))) {
+          // It has an elementwise only consumer
+          return {{sch, info}};
+        }
       }
     }
+    // Add a cache write
+    sch->CacheWrite(block_rv, "local");
     return {{sch, info}};
   }
 };

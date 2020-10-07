@@ -17,8 +17,8 @@
 """Meta schedule analysis API """
 from typing import List
 
-from tvm.ir import Op
 from tvm import tir
+from tvm.ir import Op
 
 from . import _ffi_api_analysis
 from .schedule import Schedule
