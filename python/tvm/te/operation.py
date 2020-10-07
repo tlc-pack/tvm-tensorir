@@ -379,3 +379,21 @@ def reduce_axis(dom, name="rv"):
         An iteration variable representing the value.
     """
     return tvm.tir.IterVar(dom, name, 2)
+
+
+def create_tir(ops):
+    """Create a PrimFunc for tir schedule
+
+    Parameters
+    ----------
+    ops : list of Operations
+        The source expression.
+
+    Returns
+    -------
+    func : tir.PrimFunc
+        The created function.
+    """
+    if not isinstance(ops, (list, tvm.ir.container.Array)):
+        ops = [ops]
+    return _ffi_api.CreateTir(ops)

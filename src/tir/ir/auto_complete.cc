@@ -25,6 +25,7 @@
 #include <tvm/arith/int_set.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/stmt_functor.h>
+#include <tvm/tir/stmt.h>
 
 #include <utility>
 
@@ -141,11 +142,6 @@ void BlockReadWriteCollector::VisitStmt_(const BlockRealizeNode* op) {
   }
 }
 
-}  // namespace tir
-
-namespace tir {
-namespace script {
-
 /*! \brief Generate surrounding loops automatically */
 class AutoCompleter : public StmtMutator {
  public:
@@ -186,21 +182,20 @@ class AutoCompleter : public StmtMutator {
   }
 };
 
-TVM_REGISTER_GLOBAL("script.AutoComplete")
-    .set_body_typed<Stmt(Stmt, Array<BufferAllocate>)>([](Stmt body,
-                                                          Array<BufferAllocate> root_allocates) {
-      AutoCompleter auto_completer;
-      // generate surrounding loops automatically
-      Stmt res = auto_completer(std::move(body));
-      // generate root block automatically
-      if (auto_completer.contains_block &&
-          (!res->IsInstance<BlockRealizeNode>() || !root_allocates.empty())) {
-        res = Block({}, {}, {}, res, root_allocates, {}, "root");
-        res = BlockRealize({}, Bool(true), Downcast<Block>(res), String(""));
-      }
-      return res;
-    });
+Stmt auto_complete(const Stmt& body, const Array<BufferAllocate>& root_allocates) {
+  AutoCompleter auto_completer;
+  // generate surrounding loops automatically
+  Stmt res = auto_completer(body);
+  // generate root block automatically
+  if (auto_completer.contains_block &&
+      (!res->IsInstance<BlockRealizeNode>() || !root_allocates.empty())) {
+    res = Block({}, {}, {}, res, root_allocates, {}, "root");
+    res = BlockRealize({}, Bool(true), Downcast<Block>(res), String(""));
+  }
+  return res;
+}
 
-}  // namespace script
+TVM_REGISTER_GLOBAL("hybrid.AutoComplete").set_body_typed(auto_complete);
+
 }  // namespace tir
 }  // namespace tvm
