@@ -27,10 +27,12 @@ namespace tvm {
 namespace tir {
 
 bool CheckOneLine(const Stmt& s) {
-  bool legal = true;
-  PostOrderVisit(s, [&legal](const ObjectRef& obj) {
-    if (obj->IsInstance<SeqStmtNode>()) {
+  bool legal = true, meet_block = false;
+  PostOrderVisit(s, [&legal, &meet_block](const ObjectRef& obj) {
+    if (obj->IsInstance<SeqStmtNode>() && !meet_block) {
       legal = false;
+    } else if (obj->IsInstance<BlockRealizeNode>()) {
+      meet_block = true;
     }
   });
   return legal;
