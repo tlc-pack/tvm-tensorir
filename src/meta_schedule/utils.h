@@ -26,8 +26,44 @@
 #include <unordered_set>
 #include <vector>
 
+#include "../arith/pattern_match.h"
+
 namespace tvm {
 namespace meta_schedule {
+
+/*!
+ * \brief Checks if the specific expr is an integer constant
+ * \param x The expr to be checked
+ * \return A boolean flag indicating if it is a constant integer, or broadcast of constant integer
+ */
+inline bool IsConstInt(const PrimExpr& x) {
+  if (x->IsInstance<tir::IntImmNode>()) {
+    return true;
+  }
+  if (const auto* op = x.as<tir::BroadcastNode>()) {
+    return op->value->IsInstance<tir::IntImmNode>();
+  }
+  return false;
+}
+
+/*!
+ * \brief Check if an expression consists of a single variable, or a variable +/i an constant
+ * \param expr The expression to be checked
+ * \return result Output, the var inside if it satisfies the condition; otherwise NullOpt
+ */
+inline Optional<tir::Var> IsVarPlusMinusConst(const PrimExpr& expr) {
+  // match: "var"
+  if (const auto* var = expr.as<tir::VarNode>()) {
+    return GetRef<tir::Var>(var);
+  }
+  arith::PVar<tir::Var> var;
+  arith::PVar<IntImm> shift;
+  // match: "var +/- shift"
+  if ((var + shift).Match(expr) || (var - shift).Match(expr) || (shift + var).Match(expr)) {
+    return var.Eval();
+  }
+  return NullOpt;
+}
 
 template <class T>
 inline Array<ObjectRef> AsArray(const std::vector<T>& v) {
