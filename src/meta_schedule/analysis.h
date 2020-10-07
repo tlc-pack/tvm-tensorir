@@ -19,6 +19,9 @@
 #ifndef SRC_META_SCHEDULE_ANALYSIS_H_
 #define SRC_META_SCHEDULE_ANALYSIS_H_
 
+#include <utility>
+
+#include "../tir/schedule/schedule_common.h"
 #include "./schedule.h"
 
 namespace tvm {
@@ -176,6 +179,30 @@ TVM_DLL bool IsElementWiseMatch(Schedule sch, BlockRV producer, BlockRV consumer
  * \return A boolean flag indicating if it is an output block
  */
 TVM_DLL bool IsOutputBlock(Schedule sch, BlockRV block);
+
+class AutoTensorizeComparator : public tir::TensorizeComparator {
+ public:
+  explicit AutoTensorizeComparator() : tir::TensorizeComparator(false) {}
+
+  bool CompareBuffer(const tir::Buffer& lhs, const tir::Buffer& rhs) override;
+};
+
+/*!
+ * \brief Checks if a block is potential to rewrite and do tensorize
+ * \param sch The meta schedule class
+ * \param block_rv The block random variable to be analyzed
+ * \param desc_func The description function of TensorIntrin we want to match
+ * \return A boolean flag indicating if is able to rewrite and do tensorize
+ */
+TVM_DLL bool CanTensorizeRewrite(Schedule sch, BlockRV block_rv, tir::PrimFunc desc_func);
+
+/*!
+ * \brief Rewrite a block to do tensorize in the future
+ * \param sch The meta schedule class
+ * \param block_rv The block random variable to be analyzed
+ * \param desc_func The description function of TensorIntrin we want to match
+ */
+TVM_DLL void DoTensorizeRewrite(Schedule sch, BlockRV block_rv, tir::PrimFunc desc_func);
 
 }  // namespace meta_schedule
 }  // namespace tvm
