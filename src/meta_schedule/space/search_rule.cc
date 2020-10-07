@@ -267,7 +267,8 @@ class RuleTensorizeRewrite {
 
   TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
                 const TContextInfo& info) {
-    if (CanTensorizeRewrite(sch, block_rv, desc_func)) {
+    tir::StmtSRef block = sch->Eval(block_rv);
+    if (CanTensorizeRewrite(sch->sch, block, desc_func)) {
       DoTensorizeRewrite(sch, block_rv, desc_func);
       return {{sch, info}};
     }

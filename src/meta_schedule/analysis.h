@@ -119,13 +119,6 @@ TVM_DLL bool NeedsMultiLevelTiling(const tir::Schedule& sch, const tir::StmtSRef
  */
 TVM_DLL bool IsStrictlyInlineable(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
 
-class AutoTensorizeComparator : public tir::TensorizeComparator {
- public:
-  explicit AutoTensorizeComparator() : tir::TensorizeComparator(false) {}
-
-  bool CompareBuffer(const tir::Buffer& lhs, const tir::Buffer& rhs) override;
-};
-
 /*!
  * \brief Checks if a block is potential to rewrite and do tensorize
  * \param sch The meta schedule class
@@ -133,7 +126,8 @@ class AutoTensorizeComparator : public tir::TensorizeComparator {
  * \param desc_func The description function of TensorIntrin we want to match
  * \return A boolean flag indicating if is able to rewrite and do tensorize
  */
-TVM_DLL bool CanTensorizeRewrite(Schedule sch, BlockRV block_rv, tir::PrimFunc desc_func);
+TVM_DLL bool CanTensorizeRewrite(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
+                                 const tir::PrimFunc& desc_func);
 
 /*!
  * \brief Rewrite a block to do tensorize in the future

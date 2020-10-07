@@ -346,18 +346,23 @@ bool IsStrictlyInlineable(const tir::Schedule& sch, const tir::StmtSRef& block_s
   return true;
 }
 
-bool AutoTensorizeComparator::CompareBuffer(const tir::Buffer& lhs, const tir::Buffer& rhs) {
-  if (lhs.same_as(rhs)) return true;
-  // Remap both buffer itself and buffer data
-  // Skip buffer shape
-  bool equal = DefEqual(lhs, rhs) && DefEqual(lhs->data, rhs->data) &&
-               lhs->buffer_type == rhs->buffer_type && CompareType(lhs->dtype, rhs->dtype);
-  if (equal) rhs_buffer_map_[rhs] = lhs;
-  return equal;
-}
+class AutoTensorizeComparator : public tir::TensorizeComparator {
+ public:
+  AutoTensorizeComparator() : tir::TensorizeComparator(false) {}
 
-bool CanTensorizeRewrite(Schedule sch, BlockRV block_rv, tir::PrimFunc desc_func) {
-  const tir::StmtSRef& block_sref = sch->Eval(block_rv);
+  bool CompareBuffer(const tir::Buffer& lhs, const tir::Buffer& rhs) override {
+    if (lhs.same_as(rhs)) return true;
+    // Remap both buffer itself and buffer data
+    // Skip buffer shape
+    bool equal = DefEqual(lhs, rhs) && DefEqual(lhs->data, rhs->data) &&
+                 lhs->buffer_type == rhs->buffer_type && CompareType(lhs->dtype, rhs->dtype);
+    if (equal) rhs_buffer_map_[rhs] = lhs;
+    return equal;
+  }
+};
+
+bool CanTensorizeRewrite(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
+                         const tir::PrimFunc& desc_func) {
   const tir::BlockRealize& block = tir::GetBlockRealize(block_sref);
   // Get desc_block, collect the loops outside desc_block at the same time
   std::unordered_set<const tir::VarNode*> desc_loop_vars;
@@ -423,7 +428,7 @@ bool CanTensorizeRewrite(Schedule sch, BlockRV block_rv, tir::PrimFunc desc_func
       }
     }
     // check mapping
-    const tir::StmtSRefNode* loop_sref = sch->sch->stmt2ref[loop_i].operator->();
+    const tir::StmtSRefNode* loop_sref = sch->stmt2ref[loop_i].operator->();
     auto it = loop_map.find(loop_sref);
     if (it == loop_map.end()) {
       loop_map[loop_sref] = desc_loop_i;
@@ -554,6 +559,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.analysis.HasBranch").set_body_typed(HasBranch
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsElementWiseMatch").set_body_typed(IsElementWiseMatch);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.NeedsMultiLevelTiling")
     .set_body_typed(NeedsMultiLevelTiling);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsStrictlyInlineable")
+    .set_body_typed(IsStrictlyInlineable);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.CanTensorizeRewrite")
     .set_body_typed(CanTensorizeRewrite);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.DoTensorizeRewrite").set_body_typed(DoTensorizeRewrite);
