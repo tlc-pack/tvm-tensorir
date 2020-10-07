@@ -19,7 +19,6 @@
 #include "./search_rule.h"  // NOLINT(build/include)
 
 #include "../analysis.h"
-#include "../search.h"
 #include "../utils.h"
 
 namespace tvm {
@@ -236,6 +235,33 @@ SearchRule MultiLevelTiling(String tiling_structure) {
   return SearchRule("multi_level_tiling", f_apply);
 }
 
+/********** Tensorize Rewrite **********/
+
+class RuleTensorizeRewrite {
+ public:
+  tir::PrimFunc desc_func;
+
+  explicit RuleTensorizeRewrite(tir::PrimFunc desc_func) : desc_func(std::move(desc_func)) {}
+
+  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
+                const TContextInfo& info) {
+    if (CanTensorizeRewrite(sch, block_rv, desc_func)) {
+      DoTensorizeRewrite(sch, block_rv, desc_func);
+      return {{sch, info}};
+    }
+    return {{sch, info}};
+  }
+};
+
+/*! \brief Rule creator */
+SearchRule TensorizeRewrite(tir::PrimFunc desc_func) {
+  auto invoke = [&](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
+    RuleTensorizeRewrite rule(desc_func);
+    return rule.Apply(task, sch, block, info);
+  };
+  return SearchRule("tensorize_rewrite", invoke);
+}
+
 /********** FFI **********/
 
 struct Internal {
@@ -282,6 +308,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AddCacheWrite").set_body_typed(Ad
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTilingWithFusion")
     .set_body_typed(MultiLevelTilingWithFusion);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTiling").set_body_typed(MultiLevelTiling);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.TensorizeRewrite").set_body_typed(TensorizeRewrite);
 
 }  // namespace meta_schedule
 }  // namespace tvm
