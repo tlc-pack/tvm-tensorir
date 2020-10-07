@@ -78,24 +78,14 @@ class RuleAlwaysInline {
   /*! \brief Rule application */
   TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
                 const TContextInfo& info) {
-    static const Op& op_exp = Op::Get("tir.exp");
-    if (HasReduceBlockVar(sch, block_rv) || IsOutputBlock(sch, block_rv)) {
+    tir::StmtSRef block_sref = sch->Eval(block_rv);
+    if (!IsSpatial(sch->sch, block_sref) || IsOutputBlock(sch->sch, block_sref)) {
       return {{sch, info}};
     }
-    if (HasBranch(sch, block_rv) || CountOp(sch, block_rv, op_exp)) {
+    if (IsStrictlyInlineable(sch->sch, block_sref)) {
+      sch->ComputeInline(block_rv);
       return {{sch, info}};
     }
-    if (Optional<Array<Bool>> access = InspectLoadIndices(sch, block_rv)) {
-      CHECK_EQ(access.value().size(), 3);
-      bool injective = access.value()[1];
-      bool order = access.value()[2];
-      if (!order || !injective) {
-        return {{sch, info}};
-      }
-    } else {
-      return {{sch, info}};
-    }
-    sch->ComputeInline(block_rv);
     return {{sch, info}};
   }
 };
@@ -119,14 +109,16 @@ class RuleAddCacheWrite {
   /*! \brief Rule application */
   TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
                 const TContextInfo& info) {
-    if (!NeedsMultiLevelTiling(sch, block_rv)) {
+    tir::StmtSRef block = sch->Eval(block_rv);
+    if (!NeedsMultiLevelTiling(sch->sch, block)) {
       return {{sch, info}};
     }
     // The only consumer will not be fused
     if (Optional<BlockRV> opt_consumer_rv = sch->GetOnlyConsumer(block_rv)) {
       BlockRV consumer_rv = opt_consumer_rv.value();
-      if (!HasReduceBlockVar(sch, block_rv) || !HasReduceBlockVar(sch, consumer_rv)) {
-        if (IsElementWiseMatch(sch, block_rv, consumer_rv)) {
+      if (IsSpatial(sch->sch, block) || IsSpatial(sch->sch, block)) {
+        if (IsElementWiseMatch(sch->sch, block, sch->Eval(consumer_rv))) {
+          // It has an elementwise only consumer
           return {{sch, info}};
         }
       }
@@ -147,13 +139,42 @@ SearchRule AddCacheWrite() {
 
 /********** Multi-Level-Tiling-With-Fusion **********/
 
+void DoMultiLevelTiling(Schedule sch, BlockRV block_rv, String tiling_structure) {
+  // Do the multi-level tiling
+  std::vector<int> s_idx = FindCharPos(tiling_structure, 'S');
+  std::vector<int> r_idx = FindCharPos(tiling_structure, 'R');
+  std::vector<std::vector<LoopRV>> order(tiling_structure.size());
+  Array<LoopRV> axes = sch->GetAxes(block_rv);
+  Array<Integer> iter_types = GetBlockVarTypes(sch->sch, sch->Eval(block_rv));
+  CHECK_EQ(axes.size(), iter_types.size());
+  int n = axes.size();
+  for (int i = 0; i < n; ++i) {
+    std::vector<int>* idx = nullptr;
+    if (iter_types[i] == tir::IterVarType::kDataPar) {
+      idx = &s_idx;
+    } else if (iter_types[i] == tir::IterVarType::kCommReduce) {
+      idx = &r_idx;
+    } else {
+      continue;
+    }
+    int n_tiles = idx->size();
+    Array<tir::Var> factors = sch->SamplePerfectTile(/*n=*/n_tiles, /*loop=*/axes[i]);
+    Array<LoopRV> splits =
+        sch->Split(/*loop=*/axes[i], /*factors=*/{factors.begin(), factors.end()});
+    for (int j = 0; j < n_tiles; ++j) {
+      order[idx->at(j)].push_back(splits[j]);
+    }
+  }
+  sch->Reorder(ConcatArray(order));
+}
+
 /*!
  * \brief A rule that does multi-level tiling and fusion together if there is sufficient
  * amount of data reuse
  */
 class RuleMultiLevelTilingWithFusion {
  public:
-  /*! \brief The structure of tiling, e.g. "SSRSRS" on CPU */
+  /*! \brief The structure of tiling, e.g. "SSRSRS" on CPU, or "SSSRRSRS" on GPU */
   String tiling_structure;
 
   /*!
@@ -167,7 +188,8 @@ class RuleMultiLevelTilingWithFusion {
   TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
                 const TContextInfo& info) {
     // Rule out the possibility that it does not need multi-level tiling
-    if (!NeedsMultiLevelTiling(sch, block_rv)) {
+    tir::StmtSRef block_sref = sch->Eval(block_rv);
+    if (!NeedsMultiLevelTiling(sch->sch, block_sref)) {
       return {{sch, info}};
     }
     // Get the only consumer
@@ -177,10 +199,10 @@ class RuleMultiLevelTilingWithFusion {
     }
     // Check elementwise-match
     BlockRV consumer_rv = opt_consumer_rv.value();
-    if (HasReduceBlockVar(sch, block_rv) && HasReduceBlockVar(sch, consumer_rv)) {
+    if (!IsSpatial(sch->sch, block_sref) && !IsSpatial(sch->sch, block_sref)) {
       return {{sch, info}};
     }
-    if (!IsElementWiseMatch(sch, block_rv, consumer_rv)) {
+    if (!IsElementWiseMatch(sch->sch, block_sref, sch->Eval(consumer_rv))) {
       return {{sch, info}};
     }
     DoMultiLevelTiling(sch, block_rv, tiling_structure);
@@ -218,7 +240,7 @@ class RuleMultiLevelTiling {
   TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
                 const TContextInfo& info) {
     // Right now it only works with a leaf block with a single statement
-    if (NeedsMultiLevelTiling(sch, block_rv)) {
+    if (NeedsMultiLevelTiling(sch->sch, sch->Eval(block_rv))) {
       DoMultiLevelTiling(sch, block_rv, tiling_structure);
       return {{sch, info}};
     }
@@ -245,7 +267,8 @@ class RuleTensorizeRewrite {
 
   TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
                 const TContextInfo& info) {
-    if (CanTensorizeRewrite(sch, block_rv, desc_func)) {
+    tir::StmtSRef block = sch->Eval(block_rv);
+    if (CanTensorizeRewrite(sch->sch, block, desc_func)) {
       DoTensorizeRewrite(sch, block_rv, desc_func);
       return {{sch, info}};
     }
