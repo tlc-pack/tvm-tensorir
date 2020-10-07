@@ -51,7 +51,7 @@ def do_mlt(_task: ms.SearchTask, sch: ms.Schedule, block: ms.BlockRV, _info):
     reduce_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "R"]
     order = [list() for _ in TILING_FORMAT]
     axes = sch.get_axes(block=block)
-    iter_types = ms.analysis.get_block_var_types(sch, block)
+    iter_types = ms.analysis.get_block_var_types(sch.sch, sch.evaluate(block))
     assert len(axes) == len(iter_types)
     for axis, iter_type in zip(axes, iter_types):
         for expect_iter_type, indices in [
@@ -79,7 +79,9 @@ def test_meta_schedule_rule_do_nothing():
 def test_meta_schedule_rule_do_mlt():
     task = ms.SearchTask(func=matmul)
     sch = ms.Schedule(func=matmul)
-    args: SearchRule.RETURN_TYPE = do_mlt(task, sch, sch.get_block("C"), None)
+    args: SearchRule.RETURN_TYPE = do_mlt(
+        task, sch, sch.get_block("C"), None
+    )
     assert len(args) == 1
     sch = list(args.keys())[0].sch
     i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [

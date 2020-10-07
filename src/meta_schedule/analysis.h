@@ -32,62 +32,53 @@ namespace meta_schedule {
  * 1) number of blocks vars equals to number of loop vars
  * 2) each block var is bound to a loop var directly
  * 3) the order is preserved, i.e. the i-th block var is the i-th loop var
- * \param sch The meta schedule class
- * \param block The block random variable to be analyzed
+ * \param sch The TIR schedule class
+ * \param block_sref The block to be analyzed
  * \return A boolean indicating if the block binding is trivial
  */
-TVM_DLL bool IsTrivialBinding(Schedule sch, BlockRV block);
+TVM_DLL bool IsTrivialBinding(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
 
 /*!
  * \brief Returns the IterVarType of each block var
- * \param sch The meta schedule class
- * \param block The block random variable to be analyzed
+ * \param sch The TIR schedule class
+ * \param block_sref The block to be analyzed
  * \return An array of integers, the IterVarTypes corresponding to each block var in order
  * \sa tir::IterVarType
  */
-TVM_DLL Array<Integer> GetBlockVarTypes(Schedule sch, BlockRV block);
+TVM_DLL Array<Integer> GetBlockVarTypes(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
 
 /*!
- * \brief Checks if the specific block is a leaf block
- * \param sch The meta schedule class
- * \param block The block random variable to be analyzed
- * \return A boolean indiciating if the block is a leaf block
+ * \brief Check if the iter types of all block vars are data parallel
+ * \param sch The TIR schedule class
+ * \param block_sref The block to be analyzed
+ * \return A boolean indicating if the block is spatial
  */
-TVM_DLL bool IsLeafBlock(Schedule sch, BlockRV block);
+TVM_DLL bool IsSpatial(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
 
 /*!
  * \brief Checks if the specific block is a leaf block and its body is a single statement
- * \param sch The meta schedule class
- * \param block The block random variable to be analyzed
+ * \param sch The TIR schedule class
+ * \param block_sref The block to be analyzed
  * \return A boolean indiciating if the block is a leaf block and its body is a single statement
  */
-TVM_DLL bool IsLeafBlockWithSingleStmt(Schedule sch, BlockRV block);
+TVM_DLL bool IsSingleStmtLeaf(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
 
 /*!
- * \brief Get the buffer written in the single statement of a leaf statement
- * \param sch The meta schedule class
- * \param block The block random variable to be analyzed
- * \return A BufferLoad indicating the buffer and its indices to be written
- * \note It is intended to return type BufferLoad, because it has included all necessary info
+ * \brief Checks if a block is output block
+ * \param sch The TIR schedule class
+ * \param block_sref The block to be analyzed
+ * \return A boolean flag indicating if it is an output block
  */
-TVM_DLL tir::BufferLoad GetBufferStore(Schedule sch, BlockRV block);
-
-/*!
- * \brief Get all the buffers read in the single statement of a leaf statement
- * \param sch The meta schedule class
- * \param block The block random variable to be analyzed
- * \return An array of BufferLoad indicating the buffers and their indices to be read
- */
-TVM_DLL Array<tir::BufferLoad> GetBufferLoad(Schedule sch, BlockRV block);
+TVM_DLL bool IsOutputBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
 
 /*!
  * \brief Count the number of occurrence of an operator, i.e. tir.exp
- * \param sch The meta schedule class
- * \param block The block random variable to be analyzed
+ * \param sch The TIR schedule class
+ * \param block_sref The block to be analyzed
  * \param op The operator to be counted
  * \return An integer indicating the number of its occurrence
  */
-TVM_DLL int CountOp(Schedule sch, BlockRV block, Op op);
+TVM_DLL int CountOp(const tir::Schedule& sch, const tir::StmtSRef& block_sref, const Op& op);
 
 /*!
  * \brief Check if there is any branch in the given block, which includes
@@ -95,97 +86,38 @@ TVM_DLL int CountOp(Schedule sch, BlockRV block, Op op);
  * 2) if-then-else statement
  * 3) select expression
  * 4) if-then-else operator
- * \param sch The meta schedule class
- * \param block The block random variable to be analyzed
+ * \param sch The TIR schedule class
+ * \param block_sref The block to be analyzed
  * \return A boolean indicating there is at least a branch in the given block
  */
-TVM_DLL bool HasBranch(Schedule sch, BlockRV block);
+TVM_DLL bool HasBranch(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
 
 /*!
- * \brief Check if the specifc block satisfies
- * 1) it is a leaf block with a single statement as its body
- * 2) indices in BufferStore are either constants, or block vars +/- constants
- * If condition is satisfied, return an array of block vars
- * that are used in BufferStore indices in the same order as they appears in indices
+ * \brief Checks whether the producer and consumer matches in elementwise way.
+ * Assuming consumer_sref is the only consumer of producer_sref.
  * \param sch The meta schedule class
- * \param block The block random variable to be analyzed
- * \return An array of block vars, in the same order as they appears in indices,
- * if the condition is satisfied; NullOpt otherwise
+ * \param producer_sref The producer block
+ * \param consumer_sref The consumer block
+ * \return A boolean flag indicating if they match
  */
-TVM_DLL Optional<Array<tir::Var>> BlockVarsUsedInStore(Schedule sch, BlockRV block);
-
-/*!
- * \brief Count the number of block vars that are not used in the BufferLoad
- * \param load The BufferLoad to be examined
- * \param block_vars The list of block vars
- * \return An integer indicating number of block vars that are not used
- */
-TVM_DLL int CountMissingBlockVars(tir::BufferLoad load, Array<tir::Var> block_vars);
-
-/*!
- * \brief Inspect the mapping between indices in all BufferLoads and block vars used in BufferStore.
- * First, call `BlockVarsUsedInStore` to get block vars.
- * Second, for each BufferLoad and its indices, check
- * 1) exists: the mapping from load -> block vars exists
- * 2) surjective: every block var is mapped to at least once
- * 3) injective: every block var is mapped to at most once
- * 4) order: the mapping is kept in order
- * If the mapping doesn't exist, then return NullOpt;
- * Otherwise, return (surjective, injective, order)
- * \param sch The meta schedule class
- * \param block The block random variable to be analyzed
- * \return NullOpt if the mapping doesn't exist, otherwise (surjective, injective, order)
- * \sa BlockVarsUsedInStore
- */
-TVM_DLL Optional<Array<Bool>> InspectLoadIndices(Schedule sch, BlockRV block);
-
-/*!
- * \brief Check if a block has at least one block var that is reduction
- * \param sch The meta schedule class
- * \param block The block random variable to be analyzed
- * \return A boolean flag indicating if there is at least one reduction block var
- */
-TVM_DLL bool HasReduceBlockVar(Schedule sch, BlockRV block);
+TVM_DLL bool IsElementWiseMatch(const tir::Schedule& sch, const tir::StmtSRef& producer_sref,
+                                const tir::StmtSRef& consumer_sref);
 
 /*!
  * \brief Checks if a block needs multi-level tiling
- * \param sch The meta schedule class
- * \param block The block random variable to be analyzed
+ * \param sch The TIR schedule class
+ * \param block_sref The block to be analyzed
  * \return A boolean flag indicating if the block needs multi-level tiling
  */
-TVM_DLL bool NeedsMultiLevelTiling(Schedule sch, BlockRV block);
+TVM_DLL bool NeedsMultiLevelTiling(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
 
 /*!
- * \brief Do the multi-level tiling according to the structure
- * \param sch The meta schedule class
- * \param block The block random variable to be analyzed
- * \param format The tiling structure
+ * \brief Checks if a block can be inlined
+ * \param sch The TIR schedule class
+ * \param block_sref The block to be analyzed
+ * \return A boolean flag indicating if the block needs multi-level tiling
  */
-TVM_DLL void DoMultiLevelTiling(Schedule sch, BlockRV block, String tiling_structure);
-
-/*!
- * \brief Checks whether the producer and consumer matches in elementwise way
- * \param sch The meta schedule class
- * \param producer The producer block
- * \param consumer The consumer block
- * \return A boolean flag indicating if they match
- */
-TVM_DLL bool IsElementWiseMatch(Schedule sch, BlockRV producer, BlockRV consumer);
-
-/*!
- * \brief Checks if a block is output block
- * \param sch The meta schedule class
- * \param block The block random variable to be analyzed
- * \return A boolean flag indicating if it is an output block
- */
-TVM_DLL bool IsOutputBlock(Schedule sch, BlockRV block);
-
-class AutoTensorizeComparator : public tir::TensorizeComparator {
- public:
-  explicit AutoTensorizeComparator() : tir::TensorizeComparator(false) {}
-
-  bool CompareBuffer(const tir::Buffer& lhs, const tir::Buffer& rhs) override;
-};
+TVM_DLL bool IsStrictlyInlineable(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
 
 /*!
  * \brief Checks if a block is potential to rewrite and do tensorize
@@ -194,7 +126,8 @@ class AutoTensorizeComparator : public tir::TensorizeComparator {
  * \param desc_func The description function of TensorIntrin we want to match
  * \return A boolean flag indicating if is able to rewrite and do tensorize
  */
-TVM_DLL bool CanTensorizeRewrite(Schedule sch, BlockRV block_rv, tir::PrimFunc desc_func);
+TVM_DLL bool CanTensorizeRewrite(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
+                                 const tir::PrimFunc& desc_func);
 
 /*!
  * \brief Rewrite a block to do tensorize in the future
