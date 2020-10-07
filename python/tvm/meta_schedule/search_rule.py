@@ -19,6 +19,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
+from tvm.tir import PrimFunc
 
 from . import _ffi_api, _ffi_api_search_rule
 from .instruction import BlockRV
@@ -200,3 +201,7 @@ def multi_level_tiling(tiling_structure: str) -> SearchRule:
     return _ffi_api_search_rule.MultiLevelTiling(  # pylint: disable=no-member
         tiling_structure
     )
+
+
+def tensorize_rewrite(desc_func: PrimFunc) -> SearchRule:
+    return _ffi_api_search_rule.TensorizeRewrite(desc_func)
