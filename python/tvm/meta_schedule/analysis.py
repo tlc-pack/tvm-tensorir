@@ -375,12 +375,39 @@ def is_output_block(sch: Schedule, block: BlockRV) -> bool:
 
 
 def can_tensorize_rewrite(sch: Schedule, block: BlockRV, desc_func: PrimFunc) -> bool:
+    """Checks if a block is potential to rewrite and do tensorize
+
+    Parameters
+    ----------
+    sch: Schedule
+        The meta schedule class
+    block: BlockRV
+        The block random variable to be analyzed
+    desc_func: PrimFunc
+        The description function of TensorIntrin we want to match
+
+    Returns
+    -------
+    result: bool
+        A boolean flag indicating if is able to rewrite and do tensorize
+    """
     return bool(
         _ffi_api_analysis.CanTensorizeRewrite(sch, block, desc_func)  # pylint: disable=no-member
     )
 
 
 def do_tensorize_rewrite(sch: Schedule, block: BlockRV, desc_func: PrimFunc) -> None:
+    """Rewrite a block to do tensorize in the future
+
+    Parameters
+    ----------
+    sch: Schedule
+        The meta schedule class
+    block: BlockRV
+        The block random variable to be analyzed
+    desc_func: PrimFunc
+        The description function of TensorIntrin we want to match
+    """
     _ffi_api_analysis.DoTensorizeRewrite(  # pylint: disable=no-member
         sch, block, desc_func
     )
