@@ -16,80 +16,39 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+// TODO(@junrushao1994): move to TIR analysis
 #include "./analysis.h"  // NOLINT(build/include)
 
-#include <tvm/arith/analyzer.h>
 #include <tvm/tir/stmt_functor.h>
 
-#include "../arith/pattern_match.h"
-#include "../tir/schedule/schedule_common.h"  // TODO(@junrushao1994): replace it
+#include "../tir/schedule/schedule_common.h"
 #include "./utils.h"
 
 namespace tvm {
 namespace meta_schedule {
 
-/*!
- * \brief Checks if the specific expr is an integer constant
- * \param x The expr to be checked
- * \return A boolean flag indicating if it is a constant integer, or broadcast of constant integer
- */
-static bool IsConstInt(const PrimExpr& x) {
-  if (x->IsInstance<tir::IntImmNode>()) {
-    return true;
-  }
-  if (const auto* op = x.as<tir::BroadcastNode>()) {
-    return op->value->IsInstance<tir::IntImmNode>();
-  }
-  return false;
-}
-
-/*!
- * \brief Check if an expression consists of a single variable, or a variable +/i an constant
- * \param expr The expression to be checked
- * \param result Output, the var inside if it satisfies the condition
- * \return A boolean indicating if it satisfies the condition
- */
-static bool IsVarPlusMinusConst(const PrimExpr& expr, tir::Var* result) {
-  // match: "var"
-  if (const auto* var = expr.as<tir::VarNode>()) {
-    *result = GetRef<tir::Var>(var);
-    return true;
-  }
-  arith::PVar<tir::Var> var;
-  arith::PVar<IntImm> shift;
-  // match: "var +/- shift"
-  if ((var + shift).Match(expr) || (var - shift).Match(expr) || (shift + var).Match(expr)) {
-    *result = var.Eval();
-    return true;
-  }
-  return false;
-}
-
-bool IsTrivialBinding(Schedule sch, BlockRV block_rv) {
-  tir::StmtSRef block_sref = sch->Eval(block_rv);
+bool IsTrivialBinding(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   tir::BlockRealize realize = tir::GetBlockRealize(block_sref);
-  Array<tir::StmtSRef> loops = sch->sch->GetLoopsInScope(block_sref);
+  Array<tir::StmtSRef> loops = sch->GetLoopsInScope(block_sref);
   const Array<PrimExpr>& bindings = realize->binding_values;
   if (loops.size() != bindings.size()) {
     return false;
   }
   int n = loops.size();
-  arith::Analyzer analyzer;
   for (int i = 0; i < n; ++i) {
     const PrimExpr& bind = bindings[i];
     const auto* loop = loops[i]->GetStmt<tir::LoopNode>();
     CHECK(loop) << "TypeError: Expects Loop, but gets: " << loops[i]->stmt->GetTypeKey();
-    if (!analyzer.CanProve(bind == loop->loop_var)) {
+    if (bind.as<tir::VarNode>() != loop->loop_var.get()) {
       return false;
     }
   }
   return true;
 }
 
-Array<Integer> GetBlockVarTypes(Schedule sch, BlockRV block_rv) {
-  tir::StmtSRef block_sref = sch->Eval(block_rv);
+Array<Integer> GetBlockVarTypes(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   Array<Integer> result;
@@ -100,83 +59,51 @@ Array<Integer> GetBlockVarTypes(Schedule sch, BlockRV block_rv) {
   return result;
 }
 
-bool IsLeafBlock(Schedule sch, BlockRV block_rv) {
-  tir::StmtSRef block_sref = sch->Eval(block_rv);
+bool IsSpatial(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
-  bool is_leaf = true;
-  tir::PreOrderVisit(block->body, [&is_leaf](const ObjectRef& obj) -> bool {
-    if (is_leaf == false) {
+  for (const tir::IterVar& iter_var : block->iter_vars) {
+    if (iter_var->iter_type != tir::IterVarType::kDataPar) {
       return false;
     }
-    if (obj->IsInstance<tir::BlockNode>()) {
-      is_leaf = false;
-      return false;
-    }
-    return true;
-  });
-  return is_leaf;
+  }
+  return true;
 }
 
-bool IsLeafBlockWithSingleStmt(Schedule sch, BlockRV block_rv) {
-  tir::StmtSRef block_sref = sch->Eval(block_rv);
+bool IsSingleStmtLeaf(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   const tir::Stmt& body = block->body;
-  if (body->IsInstance<tir::BufferStoreNode>()) {
-    return true;
-  }
-  if (body->IsInstance<tir::ReduceStepNode>()) {
-    return true;
+  return body->IsInstance<tir::BufferStoreNode>() || body->IsInstance<tir::ReduceStepNode>();
+}
+
+bool IsOutputBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
+  tir::StmtSRef parent_sref = sch->GetParentBlockSRef(block_sref);
+  const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  const auto* parent = parent_sref->GetStmt<tir::BlockNode>();
+  CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
+  CHECK(parent) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
+  if (parent_sref.get() == sch->root.get()) {
+    for (const tir::TensorRegion& write : block->writes) {
+      for (const auto& kv : sch->func->buffer_map) {
+        if (write->buffer.get() == kv.second.get()) {
+          return true;
+        }
+      }
+    }
+  } else {
+    for (const tir::TensorRegion& write : block->writes) {
+      for (const tir::TensorRegion& parent_write : parent->writes) {
+        if (write->buffer.get() == parent_write->buffer.get()) {
+          return true;
+        }
+      }
+    }
   }
   return false;
 }
 
-tir::BufferLoad GetBufferStore(Schedule sch, BlockRV block_rv) {
-  tir::StmtSRef block_sref = sch->Eval(block_rv);
-  const auto* block = block_sref->GetStmt<tir::BlockNode>();
-  CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
-  if (const auto* body = block->body.as<tir::BufferStoreNode>()) {
-    return tir::BufferLoad(body->buffer, body->indices);
-  }
-  if (const auto* body = block->body.as<tir::ReduceStepNode>()) {
-    const auto* buffer_update = body->lhs.as<tir::BufferLoadNode>();
-    CHECK(buffer_update) << "TypeError: LHS of ReduceStep is expected to be BufferLoad, but gets: "
-                         << body->lhs->GetTypeKey();
-    return GetRef<tir::BufferLoad>(buffer_update);
-  }
-  LOG(FATAL) << "ValueError: `GetBufferStore` only applies to a leaf block whose body is single "
-                "statement, but get: "
-             << GetRef<tir::Block>(block);
-  throw;
-}
-
-Array<tir::BufferLoad> GetBufferLoad(Schedule sch, BlockRV block_rv) {
-  tir::StmtSRef block_sref = sch->Eval(block_rv);
-  const auto* block = block_sref->GetStmt<tir::BlockNode>();
-  CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
-  Array<tir::BufferLoad> reads;
-  auto f_visit = [&reads](const ObjectRef& obj) {
-    if (const auto* load = obj.as<tir::BufferLoadNode>()) {
-      reads.push_back(GetRef<tir::BufferLoad>(load));
-    }
-  };
-  if (const auto* body = block->body.as<tir::BufferStoreNode>()) {
-    tir::PostOrderVisit(body->value, f_visit);
-    return reads;
-  }
-  if (const auto* body = block->body.as<tir::ReduceStepNode>()) {
-    tir::PostOrderVisit(body->rhs, f_visit);
-    return reads;
-  }
-  LOG(FATAL) << "ValueError: `GetBufferLoad` only applies to a leaf block whose body is single "
-                "statement, but get: "
-             << GetRef<tir::Block>(block);
-  throw;
-}
-
-int CountOp(Schedule sch, BlockRV block_rv, Op op) {
-  tir::StmtSRef block_sref = sch->Eval(block_rv);
+int CountOp(const tir::Schedule& sch, const tir::StmtSRef& block_sref, const Op& op) {
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   int count = 0;
@@ -190,14 +117,12 @@ int CountOp(Schedule sch, BlockRV block_rv, Op op) {
   return count;
 }
 
-bool HasBranch(Schedule sch, BlockRV block_rv) {
-  tir::StmtSRef block_sref = sch->Eval(block_rv);
+bool HasBranch(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   bool has_branch = false;
   arith::Analyzer analyzer;
-  const Op& op_if_then_else = Op::Get("tir.if_then_else");
-  auto f_visit = [&has_branch, &analyzer, &op_if_then_else](const ObjectRef& obj) -> bool {
+  auto f_visit = [&has_branch, &analyzer](const ObjectRef& obj) -> bool {
     if (has_branch) {
       // stop visiting
       return false;
@@ -212,6 +137,7 @@ bool HasBranch(Schedule sch, BlockRV block_rv) {
       has_branch = true;
     } else if (const auto* call = obj.as<tir::CallNode>()) {
       // Case 3: Call
+      static const Op& op_if_then_else = Op::Get("tir.if_then_else");
       if (call->op.same_as(op_if_then_else)) {
         has_branch = true;
       }
@@ -222,144 +148,163 @@ bool HasBranch(Schedule sch, BlockRV block_rv) {
   return has_branch;
 }
 
-Optional<Array<tir::Var>> BlockVarsUsedInStore(Schedule sch, BlockRV block_rv) {
-  tir::StmtSRef block_sref = sch->Eval(block_rv);
-  const auto* block = block_sref->GetStmt<tir::BlockNode>();
-  CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
-  if (!IsLeafBlockWithSingleStmt(sch, block_rv)) {
-    return NullOpt;
-  }
-  // Collect block vars
-  std::unordered_set<const tir::VarNode*> block_vars;
-  for (const tir::IterVar& iter_var : block->iter_vars) {
-    block_vars.insert(iter_var->var.get());
-  }
-  Array<tir::Var> result;
-  tir::BufferLoad store = GetBufferStore(sch, block_rv);
-  for (const PrimExpr& idx : store->indices) {
-    if (IsConstInt(idx)) {
-      continue;
-    }
-    tir::Var var;
-    if (IsVarPlusMinusConst(idx, &var)) {
-      if (block_vars.count(var.get())) {
-        result.push_back(var);
-        continue;
-      }
-    }
-    return NullOpt;
-  }
-  return result;
-}
-
-int CountMissingBlockVars(tir::BufferLoad load, Array<tir::Var> block_vars) {
-  int n_missing = 0;
-  // Collect vars that are used in indices of BufferLoad
-  std::unordered_set<const tir::VarNode*> vars_in_load;
-  for (const PrimExpr& idx : load->indices) {
-    tir::PostOrderVisit(idx, [&vars_in_load](const ObjectRef& obj) {
-      if (const auto* var = obj.as<tir::VarNode>()) {
-        vars_in_load.insert(var);
-      }
-    });
-  }
-  // Enumerate and count missing ones
-  for (const tir::Var& var : block_vars) {
-    if (!vars_in_load.count(var.get())) {
-      ++n_missing;
-    }
-  }
-  return n_missing;
-}
-
-Optional<Array<Bool>> InspectLoadIndices(Schedule sch, BlockRV block_rv) {
-  // Filter out block vars that corresponding to indices in BufferStore
-  Optional<Array<tir::Var>> store = BlockVarsUsedInStore(sch, block_rv);
-  if (!store.defined()) {
-    return NullOpt;
-  }
-  // Index those BufferStore indices
-  std::unordered_map<const tir::VarNode*, int> store_indices;
-  {
-    int index = 0;
-    for (const tir::Var& var : store.value()) {
-      store_indices[var.get()] = index++;
+Optional<Array<Bool>> GetReadPattern(const Array<tir::IterVar>& block_vars,
+                                     const Array<PrimExpr>& read_axes) {
+  // Maps a block var to its index
+  std::unordered_map<const tir::VarNode*, int> block_var_to_idx;
+  for (const tir::IterVar& iter_var : block_vars) {
+    if (iter_var->iter_type == tir::IterVarType::kDataPar) {
+      int index = block_var_to_idx.size();
+      block_var_to_idx[iter_var->var.get()] = index;
     }
   }
   bool surjective = true;
   bool injective = true;
   bool ordered = true;
-  Array<tir::BufferLoad> loads = GetBufferLoad(sch, block_rv);
-  for (const tir::BufferLoad& load : loads) {
-    // load -> store mapping result
-    std::vector<int> load_mapped_to_store_index;
-    // Number of times that a store axis is mapped to
-    std::vector<int> store_be_mapped_times(store_indices.size(), 0);
-    // Enumerate each index, collect the load -> store mapping info
-    for (const PrimExpr& idx : load->indices) {
-      if (IsConstInt(idx)) {
+  // `read_which_block_var[i] = j` maps non-constant read-axis[i] to block_var[j]
+  std::vector<int> read_which_block_var;
+  // Number of times that a block var is mapped to
+  std::vector<int> block_var_mapped_times(block_var_to_idx.size(), 0);
+  // Enumerate each index, collect the read axis -> block var mapping info
+  for (const PrimExpr& idx : read_axes) {
+    if (IsConstInt(idx)) {
+      continue;
+    }
+    // Check if it matches a block var
+    if (Optional<tir::Var> opt_var = IsVarPlusMinusConst(idx)) {
+      tir::Var var = opt_var.value();
+      if (block_var_to_idx.count(var.get())) {
+        int index = block_var_to_idx.at(var.get());
+        read_which_block_var.push_back(index);
+        ++block_var_mapped_times[index];
         continue;
       }
-      tir::Var var;
-      // Check if it matches a block var
-      if (IsVarPlusMinusConst(idx, &var)) {
-        if (store_indices.count(var.get())) {
-          int index = store_indices.at(var.get());
-          load_mapped_to_store_index.push_back(index);
-          store_be_mapped_times[index] += 1;
-          continue;
-        }
-      }
-      // If not, the load-store mapping does not exist
-      return NullOpt;
     }
-    // Check `store_be_mapped_times` to determine if the mapping is injective and surjective
-    for (int times : store_be_mapped_times) {
-      // If there is a store axis that doesn't have corresponding any load axis
-      if (times == 0) {
-        surjective = false;
-      }
-      // If there is a store axis that has more than 2 corresponding load axes
-      if (times >= 2) {
-        injective = false;
-      }
+    // If not, the mapping does not exist
+    return NullOpt;
+  }
+  // Check `block_var_mapped_times` to determine if the mapping is injective and surjective
+  for (int times : block_var_mapped_times) {
+    // If there is a block var that doesn't have corresponding any read axis
+    if (times == 0) {
+      surjective = false;
     }
-    // Check `load_mapped_to_store_index` to determine if the mapping is in order
-    for (size_t i = 1; i < load_mapped_to_store_index.size(); ++i) {
-      if (load_mapped_to_store_index[i - 1] > load_mapped_to_store_index[i]) {
-        ordered = false;
-        break;
-      }
+    // If there is a block var that has more than 2 corresponding load axes
+    if (times >= 2) {
+      injective = false;
+    }
+  }
+  // Check `read_which_block_var` to determine if the mapping is in order
+  for (size_t i = 1; i < read_which_block_var.size(); ++i) {
+    if (read_which_block_var[i - 1] > read_which_block_var[i]) {
+      ordered = false;
+      break;
     }
   }
   return Array<Bool>{Bool(surjective), Bool(injective), Bool(ordered)};
 }
 
-bool HasReduceBlockVar(Schedule sch, BlockRV block_rv) {
-  Array<Integer> iter_types = GetBlockVarTypes(sch, block_rv);
-  for (const Integer& iter_type : iter_types) {
-    if (iter_type == tir::IterVarType::kCommReduce) {
-      return true;
+bool IsElementWiseMatch(const tir::Schedule& sch, const tir::StmtSRef& producer_sref,
+                        const tir::StmtSRef& consumer_sref) {
+  // Assume consumer is the only consumer of the producer
+  tir::StmtSRef parent_sref = sch->GetParentBlockSRef(producer_sref);
+  const auto* producer = producer_sref->GetStmt<tir::BlockNode>();
+  const auto* consumer = consumer_sref->GetStmt<tir::BlockNode>();
+  CHECK(producer) << "TypeError: Expects Block, but gets: " << producer_sref->stmt->GetTypeKey();
+  CHECK(consumer) << "TypeError: Expects Block, but gets: " << consumer_sref->stmt->GetTypeKey();
+  if (producer->writes.empty()) {
+    return false;
+  }
+  // Cond 1: size of the read/write regions match
+  std::unordered_set<const tir::BufferNode*> buffer_produced;
+  {
+    std::vector<tir::TensorRegion> producer_reads, producer_writes;
+    std::vector<tir::TensorRegion> consumer_reads, consumer_writes;
+    tir::RelaxRegion(producer_sref, parent_sref, &producer_reads, &producer_writes);
+    tir::RelaxRegion(consumer_sref, parent_sref, &consumer_reads, &consumer_writes);
+    const Array<Range>& region = producer_writes.at(0)->region;
+    // Cond 1.1: check all producer's write regions share the same shape
+    for (const tir::TensorRegion& write : producer_writes) {
+      buffer_produced.insert(write->buffer.get());
+      if (!DomainEqual(write->region, region)) {
+        return false;
+      }
+    }
+    // Cond 1.2: check all consumer's write regions share the same shape
+    for (const tir::TensorRegion& write : consumer_writes) {
+      if (!DomainEqual(write->region, region)) {
+        return false;
+      }
+    }
+    // Cond 1.3: check if the consumer reads the entire region the producer produces
+    for (const tir::TensorRegion& write : producer_writes) {
+      for (const tir::TensorRegion& read : consumer_reads) {
+        if (write->buffer.get() == read->buffer.get()) {
+          if (!DomainEqual(write->region, read->region)) {
+            return false;
+          }
+        }
+      }
     }
   }
-  return false;
+  // Cond 2: The read is elementwise
+  const Array<tir::IterVar>& block_vars = consumer->iter_vars;
+  for (const tir::TensorRegion& read : consumer->reads) {
+    if (!buffer_produced.count(read->buffer.get())) {
+      continue;
+    }
+    Array<PrimExpr> read_axes;
+    read_axes.reserve(read->region.size());
+    for (const Range& range : read->region) {
+      if (IsConstInt(range->extent)) {
+        read_axes.push_back(range->min);
+      } else {
+        return false;
+      }
+    }
+    if (Optional<Array<Bool>> access = GetReadPattern(block_vars, read_axes)) {
+      CHECK_EQ(access.value().size(), 3);
+      bool surjective = access.value()[0];
+      bool injective = access.value()[1];
+      bool order = access.value()[2];
+      if (!surjective || !injective || !order) {
+        return false;
+      }
+    }
+  }
+  // TODO(@junrushao1994): examine region cover here or defer to TIR compute_at?
+  return true;
 }
 
-bool NeedsMultiLevelTiling(Schedule sch, BlockRV block_rv) {
-  // Right now it only works with a leaf block with a single statement
-  if (!IsTrivialBinding(sch, block_rv)) {
+bool NeedsMultiLevelTiling(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
+  // Right now it only works with trivial binding
+  if (!IsTrivialBinding(sch, block_sref)) {
     return false;
   }
-  // Get block vars used in BufferStore
-  Optional<Array<tir::Var>> block_vars = BlockVarsUsedInStore(sch, block_rv);
-  if (!block_vars.defined()) {
+  const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
+  // Assume complete/reduction block
+  if (block->writes.size() != 1) {
     return false;
   }
-  // Check reuse
-  Array<tir::BufferLoad> loads = GetBufferLoad(sch, block_rv);
   int n_missing = 0;
-  for (const tir::BufferLoad& load : loads) {
-    n_missing += CountMissingBlockVars(load, block_vars.value());
+  for (const tir::TensorRegion& region : block->reads) {
+    std::unordered_set<const tir::VarNode*> vars_in_load;
+    for (const Range& range : region->region) {
+      if (!IsConstInt(range->extent)) {
+        return false;
+      }
+      tir::PostOrderVisit(range->min, [&vars_in_load](const ObjectRef& obj) {
+        if (const auto* var = obj.as<tir::VarNode>()) {
+          vars_in_load.insert(var);
+        }
+      });
+    }
+    for (const tir::IterVar& block_var : block->iter_vars) {
+      if (!vars_in_load.count(block_var->var.get())) {
+        ++n_missing;
+      }
+    }
   }
   if (n_missing >= 2) {
     return true;
@@ -367,93 +312,38 @@ bool NeedsMultiLevelTiling(Schedule sch, BlockRV block_rv) {
   if (n_missing == 0) {
     return false;
   }
-  // n_missing == 1, check reduction axes
-  return HasReduceBlockVar(sch, block_rv);
+  return !IsSpatial(sch, block_sref);
 }
 
-void DoMultiLevelTiling(Schedule sch, BlockRV block_rv, String tiling_structure) {
-  // Do the multi-level tiling
-  std::vector<int> s_idx = FindCharPos(tiling_structure, 'S');
-  std::vector<int> r_idx = FindCharPos(tiling_structure, 'R');
-  std::vector<std::vector<LoopRV>> order(tiling_structure.size());
-  Array<LoopRV> axes = sch->GetAxes(block_rv);
-  Array<Integer> iter_types = GetBlockVarTypes(sch, block_rv);
-  CHECK_EQ(axes.size(), iter_types.size());
-  int n = axes.size();
-  for (int i = 0; i < n; ++i) {
-    std::vector<int>* idx = nullptr;
-    if (iter_types[i] == tir::IterVarType::kDataPar) {
-      idx = &s_idx;
-    } else if (iter_types[i] == tir::IterVarType::kCommReduce) {
-      idx = &r_idx;
-    } else {
-      continue;
-    }
-    int n_tiles = idx->size();
-    Array<tir::Var> factors = sch->SamplePerfectTile(/*n=*/n_tiles, /*loop=*/axes[i]);
-    Array<LoopRV> splits =
-        sch->Split(/*loop=*/axes[i], /*factors=*/{factors.begin(), factors.end()});
-    for (int j = 0; j < n_tiles; ++j) {
-      order[idx->at(j)].push_back(splits[j]);
-    }
-  }
-  sch->Reorder(ConcatArray(order));
-}
-
-TVM_DLL bool IsElementWiseMatch(Schedule sch, BlockRV producer_rv, BlockRV consumer_rv) {
-  const auto* producer_block = sch->Eval(producer_rv)->GetStmt<tir::BlockNode>();
-  const auto* consumer_block = sch->Eval(consumer_rv)->GetStmt<tir::BlockNode>();
-  CHECK(producer_block);
-  CHECK(consumer_block);
-  CHECK_GE(producer_block->writes.size(), 1U);
-  // Check condition 1: They have the same output size
-  const tir::TensorRegion& write_region = producer_block->writes[0];
-  for (const tir::TensorRegion& region : producer_block->writes) {
-    if (!write_region->buffer.same_as(region->buffer)) {
-      continue;
-    }
-    if (!DomainEqual(write_region->region, region->region)) {
-      return false;
-    }
-  }
-  for (const tir::TensorRegion& region : consumer_block->writes) {
-    if (!write_region->buffer.same_as(region->buffer)) {
-      continue;
-    }
-    if (!DomainEqual(write_region->region, region->region)) {
-      return false;
-    }
-  }
-  // Check condition 2: The read is elementwise
-  Optional<Array<tir::Var>> block_vars = BlockVarsUsedInStore(sch, consumer_rv);
-  if (!block_vars.defined()) {
+bool IsStrictlyInlineable(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
+  static const Op& op_tir_exp = Op::Get("tir.exp");
+  const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  if (HasBranch(sch, block_sref) || CountOp(sch, block_sref, op_tir_exp)) {
     return false;
   }
-  if (Optional<Array<Bool>> access = InspectLoadIndices(sch, consumer_rv)) {
-    CHECK_EQ(access.value().size(), 3);
-    bool surjective = access.value()[0];
-    bool injective = access.value()[1];
-    bool order = access.value()[2];
-    return surjective && injective && order;
-  }
-  return false;
-}
-
-bool IsOutputBlock(Schedule sch, BlockRV block_rv) {
-  tir::StmtSRef block_sref = sch->Eval(block_rv);
-  const auto* block = block_sref->GetStmt<tir::BlockNode>();
-  CHECK(block);
-  tir::StmtSRef parent_sref = sch->sch->GetParentBlockSRef(block_sref);
-  const auto* parent = parent_sref->GetStmt<tir::BlockNode>();
-  CHECK(parent);
-  for (const tir::TensorRegion& write : block->writes) {
-    for (const tir::TensorRegion& parent_write : parent->writes) {
-      if (write->buffer.same_as(parent_write->buffer)) {
-        return true;
+  // Check if it is ordered-injective mapping
+  for (const tir::TensorRegion& region : block->reads) {
+    Array<PrimExpr> read_axes;
+    read_axes.reserve(region->region.size());
+    for (const Range& range : region->region) {
+      if (!IsConstInt(range->extent)) {
+        return false;
+      } else {
+        read_axes.push_back(range->min);
       }
     }
+    if (Optional<Array<Bool>> access = GetReadPattern(block->iter_vars, read_axes)) {
+      CHECK_EQ(access.value().size(), 3);
+      bool injective = access.value()[1];
+      bool order = access.value()[2];
+      if (!order || !injective) {
+        return false;
+      }
+    } else {
+      return false;
+    }
   }
-  return false;
+  return true;
 }
 
 bool AutoTensorizeComparator::CompareBuffer(const tir::Buffer& lhs, const tir::Buffer& rhs) {
@@ -656,24 +546,14 @@ void DoTensorizeRewrite(Schedule sch, BlockRV block_rv, tir::PrimFunc desc_func)
 
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBlockVarTypes").set_body_typed(GetBlockVarTypes);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeafBlock").set_body_typed(IsLeafBlock);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeafBlockWithSingleStmt")
-    .set_body_typed(IsLeafBlockWithSingleStmt);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBufferStore").set_body_typed(GetBufferStore);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBufferLoad").set_body_typed(GetBufferLoad);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsSpatial").set_body_typed(IsSpatial);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsSingleStmtLeaf").set_body_typed(IsSingleStmtLeaf);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsOutputBlock").set_body_typed(IsOutputBlock);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.CountOp").set_body_typed(CountOp);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.HasBranch").set_body_typed(HasBranch);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.BlockVarsUsedInStore")
-    .set_body_typed(BlockVarsUsedInStore);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.CountMissingBlockVars")
-    .set_body_typed(CountMissingBlockVars);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.InspectLoadIndices").set_body_typed(InspectLoadIndices);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.HasReduceBlockVar").set_body_typed(HasReduceBlockVar);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsElementWiseMatch").set_body_typed(IsElementWiseMatch);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.NeedsMultiLevelTiling")
     .set_body_typed(NeedsMultiLevelTiling);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.DoMultiLevelTiling").set_body_typed(DoMultiLevelTiling);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsElementWiseMatch").set_body_typed(IsElementWiseMatch);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsOutputBlock").set_body_typed(IsOutputBlock);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.CanTensorizeRewrite")
     .set_body_typed(CanTensorizeRewrite);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.DoTensorizeRewrite").set_body_typed(DoTensorizeRewrite);
