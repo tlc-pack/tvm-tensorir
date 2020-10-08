@@ -571,6 +571,11 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleComputeInline")
       return schedule->compute_inline(block_sref);
     });
 
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleReverseComputeInline")
+    .set_body_typed<void(Schedule, StmtSRef)>([](Schedule schedule, StmtSRef block_sref) {
+      return schedule->reverse_compute_inline(block_sref);
+    });
+
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleVectorize")
     .set_body_typed<void(Schedule, StmtSRef)>([](Schedule schedule, StmtSRef node) {
       schedule->vectorize(node);

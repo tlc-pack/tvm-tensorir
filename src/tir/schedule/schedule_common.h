@@ -256,8 +256,9 @@ class PatternMatcher : public ExprVisitor {
  */
 class MatchingSimplifier : public ExprMutator {
  public:
-  MatchingSimplifier(const std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual>& var_map,
-                     arith::Analyzer* parent);
+  MatchingSimplifier(
+      const std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual>& var_map,
+      arith::Analyzer* parent);
 
   PrimExpr VisitExpr(const PrimExpr& expr) override;
 
