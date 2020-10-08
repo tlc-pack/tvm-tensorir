@@ -79,7 +79,9 @@ class SearchRule(Object):
         ret = _ffi_api.SearchRuleApply(  # pylint: disable=no-member
             self, task, sch, block, info
         )
-        return {k: v for k, v in ret.items()}
+        return {
+            k: v for k, v in ret.items()  # pylint: disable=unnecessary-comprehension
+        }
 
 
 def compose(name: str, rules: List[SearchRule]) -> SearchRule:
@@ -164,32 +166,12 @@ def add_cache_write() -> SearchRule:
     return _ffi_api_search_rule.AddCacheWrite()  # pylint: disable=no-member
 
 
-def multi_level_tiling_with_fusion(tiling_structure: str) -> SearchRule:
-    """Create a rule that does multi-level tiling and fusion together
-    if there is sufficient amount of data reuse
-
-    Parameters
-    ----------
-    tiling_structure: str
-        Structure of tiling. On CPU, recommended to use 'SSRSRS';
-        On GPU, recommended to use 'SSSRRSRS'
-
-    Returns
-    ----------
-    rule: SearchRule
-        A search rule that does multi-level tiling with fusion
-    """
-    return _ffi_api_search_rule.MultiLevelTilingWithFusion(  # pylint: disable=no-member
-        tiling_structure
-    )
-
-
-def multi_level_tiling(tiling_structure: str) -> SearchRule:
+def multi_level_tiling(structure: str) -> SearchRule:
     """Create a rule that does multi-level tiling if there is sufficient amount of data reuse
 
     Parameters
     ----------
-    tiling_structure: str
+    structure: str
         Structure of tiling. On CPU, recommended to use 'SSRSRS';
         On GPU, recommended to use 'SSSRRSRS'
 
@@ -198,10 +180,25 @@ def multi_level_tiling(tiling_structure: str) -> SearchRule:
     rule: SearchRule
         A search rule that does multi-level tiling
     """
-    return _ffi_api_search_rule.MultiLevelTiling(  # pylint: disable=no-member
-        tiling_structure
-    )
+    return _ffi_api_search_rule.MultiLevelTiling(structure)  # pylint: disable=no-member
+
+
+def fusion(levels: List[int]) -> SearchRule:
+    """Create a rule that does fusion after multi-level tiling
+
+    Parameters
+    ----------
+    levels : List[int]
+        Possible fusion levels. For example, if level = 2, then we do "SSS" tiling
+        and reverse compute at on the second "S".
+
+    Returns
+    ----------
+    rule: SearchRule
+        A search rule that does fusion
+    """
+    return _ffi_api_search_rule.Fusion(levels)  # pylint: disable=no-member
 
 
 def tensorize_rewrite(desc_func: PrimFunc) -> SearchRule:
-    return _ffi_api_search_rule.TensorizeRewrite(desc_func)
+    return _ffi_api_search_rule.TensorizeRewrite(desc_func)  # pylint: disable=no-member

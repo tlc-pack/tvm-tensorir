@@ -38,7 +38,7 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 # pylint: enable=invalid-name,no-member
 
 
-def test_meta_schedule_schedule_fn():
+def test_meta_schedule_search_space_schedule_fn():
     def schedule_matmul(sch: ms.Schedule):
         block = sch.get_block(name="C")
         i, j, k = sch.get_axes(block=block)
@@ -62,8 +62,8 @@ def test_meta_schedule_schedule_fn():
     assert k_0 * k_1 == 1024
 
 
-def test_meta_schedule_post_order_apply():
-    @ms.search_rule.register_rule("do_mlt")
+def test_meta_schedule_search_space_post_order_apply():
+    @ms.rule.register_rule("do_mlt")
     def do_mlt(_task, sch: ms.Schedule, block: ms.BlockRV, _info):
         TILING_FORMAT = "SSRSRS"  # pylint: disable=invalid-name
         spatial_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "S"]
@@ -97,5 +97,5 @@ def test_meta_schedule_post_order_apply():
 
 
 if __name__ == "__main__":
-    test_meta_schedule_schedule_fn()
-    test_meta_schedule_post_order_apply()
+    test_meta_schedule_search_space_schedule_fn()
+    test_meta_schedule_search_space_post_order_apply()

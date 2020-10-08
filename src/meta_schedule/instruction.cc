@@ -68,6 +68,7 @@ Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Attrs& in
   TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, GetAxesAttrs);
   TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, SplitAttrs);
   TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, ReorderAttrs);
+  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, ReverseComputeAtAttrs);
   TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, ComputeInlineAttrs);
   TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, CacheWriteAttrs);
   TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, DecomposeReductionAttrs);
@@ -159,7 +160,7 @@ Array<ObjectRef> GetAxesAttrs::ApplyToSchedule(ScheduleNode* sch,
 
 /**************** MakeInst/ApplyToSchedule: Scheduling Primitives  ****************/
 
-Instruction SplitAttrs::MakeInst(const LoopRV& loop, const Array<PrimExpr>& factors,
+Instruction SplitAttrs::MakeInst(const LoopRV& loop, const Array<Optional<PrimExpr>>& factors,
                                  const Array<LoopRV>& outputs) {
   ObjectPtr<SplitAttrs> n = make_object<SplitAttrs>();
   Array<ObjectRef> inputs;
@@ -175,7 +176,7 @@ Array<ObjectRef> SplitAttrs::ApplyToSchedule(ScheduleNode* sch,
                                              const Array<ObjectRef>& inputs) const {
   CHECK_GE(inputs.size(), 3);
   TVM_META_SCHEDULE_CAST_INPUT(LoopRV, loop, inputs[0]);
-  Array<PrimExpr> factors;
+  Array<Optional<PrimExpr>> factors;
   for (int i = 1, n = inputs.size(); i < n; ++i) {
     TVM_META_SCHEDULE_CAST_INPUT(PrimExpr, factor, inputs[i]);
     factors.push_back(factor);
@@ -201,6 +202,22 @@ Array<ObjectRef> ReorderAttrs::ApplyToSchedule(ScheduleNode* sch,
     }
   }
   sch->Reorder(after_axes);
+  return {};
+}
+
+Instruction ReverseComputeAtAttrs::MakeInst(const BlockRV& block, const LoopRV& loop) {
+  ObjectPtr<ReverseComputeAtAttrs> n = make_object<ReverseComputeAtAttrs>();
+  return Instruction(/*inputs=*/{block, loop},
+                     /*outputs=*/{},
+                     /*attrs=*/Attrs(std::move(n)));
+}
+
+Array<ObjectRef> ReverseComputeAtAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                        const Array<ObjectRef>& inputs) const {
+  CHECK_EQ(inputs.size(), 2);
+  TVM_META_SCHEDULE_CAST_INPUT(BlockRV, block, inputs[0]);
+  TVM_META_SCHEDULE_CAST_INPUT(LoopRV, loop, inputs[1]);
+  sch->ReverseComputeAt(block, loop);
   return {};
 }
 
@@ -262,6 +279,7 @@ TVM_REGISTER_NODE_TYPE(GetBlockAttrs);
 TVM_REGISTER_NODE_TYPE(GetAxesAttrs);
 TVM_REGISTER_NODE_TYPE(SplitAttrs);
 TVM_REGISTER_NODE_TYPE(ReorderAttrs);
+TVM_REGISTER_NODE_TYPE(ReverseComputeAtAttrs);
 TVM_REGISTER_NODE_TYPE(ComputeInlineAttrs);
 TVM_REGISTER_NODE_TYPE(CacheWriteAttrs);
 TVM_REGISTER_NODE_TYPE(DecomposeReductionAttrs);

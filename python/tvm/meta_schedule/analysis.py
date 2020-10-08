@@ -21,8 +21,8 @@ from tvm import tir
 from tvm.ir import Op
 
 from . import _ffi_api_analysis
-from .schedule import Schedule
 from .instruction import BlockRV
+from .schedule import Schedule
 
 
 def is_trivial_binding(sch: tir.Schedule, block: tir.StmtSRef) -> bool:

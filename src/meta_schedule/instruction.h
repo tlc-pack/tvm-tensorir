@@ -265,7 +265,7 @@ struct SplitAttrs : public tvm::AttrsNode<SplitAttrs> {
    * \param outputs The outputs of the query
    * \return The instruction created
    */
-  static Instruction MakeInst(const LoopRV& loop, const Array<PrimExpr>& factors,
+  static Instruction MakeInst(const LoopRV& loop, const Array<Optional<PrimExpr>>& factors,
                               const Array<LoopRV>& outputs);
 
   /*!
@@ -297,6 +297,27 @@ struct ReorderAttrs : public tvm::AttrsNode<ReorderAttrs> {
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
   TVM_DECLARE_ATTRS(ReorderAttrs, "meta_schedule.attrs.ReorderAttrs") {}
+};
+
+/*! \brief Attrs of the instruction that applies compute_inline */
+struct ReverseComputeAtAttrs : public tvm::AttrsNode<ReverseComputeAtAttrs> {
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param block The block to be moved
+   * \param loop The loop to be moved to
+   * \return The instruction created
+   */
+  static Instruction MakeInst(const BlockRV& block, const LoopRV& loop);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+
+  TVM_DECLARE_ATTRS(ReverseComputeAtAttrs, "meta_schedule.attrs.ReverseComputeAtAttrs") {}
 };
 
 /*! \brief Attrs of the instruction that applies compute_inline */
