@@ -131,14 +131,21 @@ class ScheduleNode : public Object {
    * \param loop The loop to be split
    * \param factors The split factors
    * \return An array of loop random variables
-   * \note Splitting from inner to outer, and factors[0] is not used
+   * \note If there is no NullOpt in factors, will split from inner to outer, and factors[0] is not
+   * used
    */
-  Array<LoopRV> Split(const LoopRV& loop, const Array<PrimExpr>& factors);
+  Array<LoopRV> Split(const LoopRV& loop, const Array<Optional<PrimExpr>>& factors);
   /*!
    * \brief Apply the instruction Reorder
    * \param after_axes The axes to be reordered
    */
   void Reorder(const Array<LoopRV>& after_axes);
+  /*!
+   * \brief Move the block under the loop and regenerate the loops to cover the producing region.
+   * \param block The block to be moved
+   * \param loop The loop to be moved to
+   */
+  void ReverseComputeAt(const BlockRV& block, const LoopRV& loop);
   /*!
    * \brief Apply the instruction compute_inline
    * \param block The block to be computed inline

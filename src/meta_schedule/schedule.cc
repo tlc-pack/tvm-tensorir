@@ -346,15 +346,24 @@ Array<LoopRV> ScheduleNode::GetAxes(const BlockRV& block) {
 
 /**************** Schedule Primitives ****************/
 
-Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<PrimExpr>& factors) {
+Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<Optional<PrimExpr>>& factors) {
   // Find the output from TIR
+  int n_splits = factors.size();
   std::vector<tir::StmtSRef> tir_result;
-  {
+  int none_idx = -1;
+  for (int i = 0, n = factors.size(); i < n; ++i) {
+    if (!factors[i].defined()) {
+      CHECK_EQ(none_idx, -1) << "ValueError: `split` allows only at most one tile size to be None";
+      CHECK(i == 0 || i == n - 1)
+          << "ValueError: `split` only allows None to appear at the start or end of the factors";
+      none_idx = i;
+    }
+  }
+  if (none_idx == -1 || none_idx == 0) {
     tir::StmtSRef tir_loop = Eval(loop);
-    int n_splits = factors.size();
     for (int i = n_splits - 1; i >= 1; --i) {
-      int factor = this->Eval(factors[i]);
       const PrimExpr& extent = tir_loop->GetStmt<tir::LoopNode>()->extent;
+      int factor = this->Eval(factors[i].value());
       PrimExpr nparts = floordiv(extent + factor - 1, factor);
       Array<tir::StmtSRef> split_result = this->sch->split(tir_loop, nparts, factor);
       CHECK_EQ(split_result.size(), 2);
@@ -363,6 +372,18 @@ Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<PrimExpr>& fac
     }
     tir_result.push_back(tir_loop);
     std::reverse(tir_result.begin(), tir_result.end());
+  } else {
+    tir::StmtSRef tir_loop = Eval(loop);
+    for (int i = 0; i < n_splits - 1; ++i) {
+      const PrimExpr& extent = tir_loop->GetStmt<tir::LoopNode>()->extent;
+      int nparts = this->Eval(factors[i].value());
+      PrimExpr factor = floordiv(extent + nparts - 1, nparts);
+      Array<tir::StmtSRef> split_result = this->sch->split(tir_loop, nparts, factor);
+      CHECK_EQ(split_result.size(), 2);
+      tir_result.push_back(split_result[0]);
+      tir_loop = split_result[1];
+    }
+    tir_result.push_back(tir_loop);
   }
   // Create the output random variable
   Array<LoopRV> outputs;
@@ -386,6 +407,15 @@ void ScheduleNode::Reorder(const Array<LoopRV>& after_axes) {
   this->sch->reorder(tir_inputs);
   // Put the instruction in the trace
   this->trace.push_back(ReorderAttrs::MakeInst(after_axes));
+}
+
+void ScheduleNode::ReverseComputeAt(const BlockRV& block, const LoopRV& loop) {
+  // Find the inputs to TIR
+  tir::StmtSRef block_sref = this->Eval(block);
+  tir::StmtSRef loop_sref = this->Eval(loop);
+  this->sch->reverse_compute_at(block_sref, loop_sref);
+  // Put the instruction in the trace
+  this->trace.push_back(ReverseComputeAtAttrs::MakeInst(block, loop));
 }
 
 void ScheduleNode::ComputeInline(const BlockRV& block) {
@@ -585,7 +615,7 @@ struct Internal {
    * \brief FFI function, corresponds to ScheduleNode::Split
    * \sa ScheduleNode::Split
    */
-  static Array<LoopRV> Split(Schedule sch, LoopRV loop, Array<PrimExpr> factors) {
+  static Array<LoopRV> Split(Schedule sch, LoopRV loop, Array<Optional<PrimExpr>> factors) {
     return sch->Split(loop, factors);
   }
   /*!
@@ -593,6 +623,13 @@ struct Internal {
    * \sa ScheduleNode::Reorder
    */
   static void Reorder(Schedule sch, Array<LoopRV> after_axes) { return sch->Reorder(after_axes); }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::ReverseComputeAt
+   * \sa ScheduleNode::ReverseComputeAt
+   */
+  static void ReverseComputeAt(Schedule sch, BlockRV block, LoopRV loop) {
+    sch->ReverseComputeAt(block, loop);
+  }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::ComputeInline
    * \sa ScheduleNode::ComputeInline
@@ -646,6 +683,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetBlock").set_body_typed(Internal::G
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetAxes").set_body_typed(Internal::GetAxes);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSplit").set_body_typed(Internal::Split);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReorder").set_body_typed(Internal::Reorder);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReverseComputeAt")
+    .set_body_typed(Internal::ReverseComputeAt);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleComputeInline").set_body_typed(Internal::ComputeInline);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCacheWrite").set_body_typed(Internal::CacheWrite);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleDecomposeReduction")
