@@ -244,7 +244,6 @@ file(GLOB_RECURSE COMPILER_SRCS
     src/arith/*.cc
     src/te/*.cc
     src/autotvm/*.cc
-    src/auto_scheduler/*.cc
     src/meta_schedule/*.cc
     src/tir/*.cc
     src/topi/*.cc
