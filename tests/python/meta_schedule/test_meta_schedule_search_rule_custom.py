@@ -39,12 +39,12 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 # pylint: enable=invalid-name,no-member
 
 
-@ms.search_rule.register_rule("do_nothing")
+@ms.rule.register_rule("do_nothing")
 def do_nothing(_task: ms.SearchTask, sch: ms.Schedule, _block: ms.BlockRV, _info):
     return sch
 
 
-@ms.search_rule.register_rule("do_mlt")
+@ms.rule.register_rule("do_mlt")
 def do_mlt(_task: ms.SearchTask, sch: ms.Schedule, block: ms.BlockRV, _info):
     TILING_FORMAT = "SSRSRS"  # pylint: disable=invalid-name
     spatial_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "S"]
@@ -79,9 +79,7 @@ def test_meta_schedule_rule_do_nothing():
 def test_meta_schedule_rule_do_mlt():
     task = ms.SearchTask(func=matmul)
     sch = ms.Schedule(func=matmul)
-    args: SearchRule.RETURN_TYPE = do_mlt(
-        task, sch, sch.get_block("C"), None
-    )
+    args: SearchRule.RETURN_TYPE = do_mlt(task, sch, sch.get_block("C"), None)
     assert len(args) == 1
     sch = list(args.keys())[0].sch
     i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
@@ -93,7 +91,7 @@ def test_meta_schedule_rule_do_mlt():
 
 
 def test_meta_schedule_rule_composite_0():
-    rule = ms.search_rule.compose(
+    rule = ms.rule.compose(
         name="composed",
         rules=[
             do_nothing,
@@ -114,7 +112,7 @@ def test_meta_schedule_rule_composite_0():
 
 
 def test_meta_schedule_rule_composite_1():
-    rule = ms.search_rule.compose(
+    rule = ms.rule.compose(
         name="composed",
         rules=[
             do_mlt,
