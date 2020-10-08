@@ -182,7 +182,7 @@ def conv2d_relu_plus_one(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
 # pylint: enable=invalid-name,no-member
 
 
-@ms.search_rule.register_rule("do_nothing")
+@ms.rule.register_rule("do_nothing")
 def do_nothing(_task, sch: ms.Schedule, _block: ms.BlockRV, _info):
     return sch
 
@@ -216,11 +216,13 @@ def test_matmul_schedule_fn():
 
 @pytest.mark.skip(reason="needs RPC")
 def test_matmul_post_order_apply():
-    rule = ms.search_rule.compose(
+    rule = ms.rule.compose(
         name="composed",
         rules=[
             do_nothing,
-            ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS"),
+            ms.rule.add_cache_write(),
+            ms.rule.multi_level_tiling(structure="SSRSRS"),
+            ms.rule.fusion(levels=[1, 2]),
         ],
     )
     sch = ms.autotune(
@@ -239,9 +241,9 @@ def test_matmul_post_order_apply():
 
 @pytest.mark.skip(reason="needs RPC")
 def test_matmul_relu_schedule_fn():
-    def schedule_matmul(sch):
-        block = sch.get_block(name="matmul")
-        i, j, k = sch.get_axes(block=block)
+    def schedule_matmul(sch: ms.Schedule):
+        matmul_block = sch.get_block(name="matmul")
+        i, j, k = sch.get_axes(block=matmul_block)
         i_tiles = sch.sample_perfect_tile(n_splits=4, loop=i)
         j_tiles = sch.sample_perfect_tile(n_splits=4, loop=j)
         k_tiles = sch.sample_perfect_tile(n_splits=2, loop=k)
@@ -249,11 +251,13 @@ def test_matmul_relu_schedule_fn():
         j_0, j_1, j_2, j_3 = sch.split(loop=j, factors=j_tiles)
         k_0, k_1 = sch.split(loop=k, factors=k_tiles)
         sch.reorder(after_axes=[i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3])
+        relu_block = sch.get_block(name="relu")
+        sch.reverse_compute_at(relu_block, j_0)
 
     sch = ms.autotune(
         task=matmul_relu,
         space=schedule_matmul,
-        strategy="replay",
+        strategy=ms.strategy.Replay(batch_size=1, num_iterations=1),
         measurer=ms.ProgramMeasurer(
             runner="rpc://0.0.0.0:3012:local * 16",
         ),
@@ -266,12 +270,13 @@ def test_matmul_relu_schedule_fn():
 
 @pytest.mark.skip(reason="needs RPC")
 def test_matmul_relu_post_order_apply():
-    rule = ms.search_rule.compose(
+    rule = ms.rule.compose(
         name="composed",
         rules=[
             do_nothing,
-            ms.search_rule.multi_level_tiling_with_fusion(tiling_structure="SSRSRS"),
-            ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS"),
+            ms.rule.add_cache_write(),
+            ms.rule.multi_level_tiling(structure="SSRSRS"),
+            ms.rule.fusion(levels=[1, 2]),
         ],
     )
     sch = ms.autotune(
@@ -339,11 +344,13 @@ def test_conv2d_schedule_fn():
 
 @pytest.mark.skip(reason="needs RPC")
 def test_conv2d_post_order_apply():
-    rule = ms.search_rule.compose(
+    rule = ms.rule.compose(
         name="composed",
         rules=[
             do_nothing,
-            ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS"),
+            ms.rule.add_cache_write(),
+            ms.rule.multi_level_tiling(structure="SSRSRS"),
+            ms.rule.fusion(levels=[1, 2]),
         ],
     )
     sch = ms.autotune(
@@ -362,19 +369,22 @@ def test_conv2d_post_order_apply():
 
 @pytest.mark.skip(reason="needs RPC")
 def test_conv2d_relu_plus_one_post_order_apply():
-    rule = ms.search_rule.compose(
-        name="composed",
-        rules=[
-            do_nothing,
-            ms.search_rule.always_inline(),
-            ms.search_rule.add_cache_write(),
-            ms.search_rule.multi_level_tiling_with_fusion(tiling_structure="SSRSRS"),
-            ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS"),
-        ],
-    )
     sch = ms.autotune(
         task=conv2d_relu_plus_one,
-        space=ms.space.PostOrderApply(stages=[rule]),
+        space=ms.space.PostOrderApply(
+            stages=[
+                do_nothing,
+                ms.rule.always_inline(),
+                ms.rule.compose(
+                    name="composed",
+                    rules=[
+                        ms.rule.add_cache_write(),
+                        ms.rule.multi_level_tiling(structure="SSRSRS"),
+                        ms.rule.fusion(levels=[1, 2]),
+                    ],
+                ),
+            ]
+        ),
         strategy="replay",
         measurer=ms.ProgramMeasurer(
             runner="rpc://0.0.0.0:3012:local * 16",
@@ -405,7 +415,16 @@ def test_matmul_evolutionary_step_by_step():
     )
     space = ms.space.PostOrderApply(
         stages=[
-            ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS"),
+            do_nothing,
+            ms.rule.always_inline(),
+            ms.rule.compose(
+                name="composed",
+                rules=[
+                    ms.rule.add_cache_write(),
+                    ms.rule.multi_level_tiling(structure="SSRSRS"),
+                    ms.rule.fusion(levels=[1, 2]),
+                ],
+            ),
         ]
     )
     support = space.get_support(task=task)
@@ -428,7 +447,16 @@ def test_matmul_evolutionary_end_to_end():
         task=ms.SearchTask(func=matmul),
         space=ms.space.PostOrderApply(
             stages=[
-                ms.search_rule.multi_level_tiling(tiling_structure="SSRSRS"),
+                do_nothing,
+                ms.rule.always_inline(),
+                ms.rule.compose(
+                    name="composed",
+                    rules=[
+                        ms.rule.add_cache_write(),
+                        ms.rule.multi_level_tiling(structure="SSRSRS"),
+                        ms.rule.fusion(levels=[1, 2]),
+                    ],
+                ),
             ]
         ),
         strategy=ms.strategy.Evolutionary(
