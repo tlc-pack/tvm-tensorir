@@ -67,9 +67,6 @@ from . import hybrid
 # tvm.arith
 from . import arith
 
-# tvm.auto_scheduler
-from . import auto_scheduler
-
 # tvm.meta_schedule
 from . import meta_schedule
 
@@ -83,7 +80,7 @@ def tvm_wrap_excepthook(exception_hook):
     def wrapper(exctype, value, trbk):
         """Clean subprocesses when TVM is interrupted."""
         exception_hook(exctype, value, trbk)
-        if hasattr(multiprocessing, 'active_children'):
+        if hasattr(multiprocessing, "active_children"):
             # pylint: disable=not-callable
             for p in multiprocessing.active_children():
                 p.terminate()
