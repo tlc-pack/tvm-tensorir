@@ -50,6 +50,90 @@ def matmul_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
 
 
 @tvm.hybrid.script
+def matmul_relu_fused(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
+    # function attr dict
+    tir.func_attr({})
+    D = tir.match_buffer(d, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
+    B = tir.match_buffer(b, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
+    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        C = tir.buffer_allocate([1024, 1024], elem_offset=0, align=128, offset_factor=1)
+        for i0 in range(0, 1024):
+            for i1 in range(0, 1024):
+                for i2 in range(0, 1024):
+                    with tir.block(
+                        [1024, 1024, tir.reduce_axis(0, 1024)], "matmul"
+                    ) as [vi, vj, vk]:
+                        tir.bind(vi, i0)
+                        tir.bind(vj, i1)
+                        tir.bind(vk, i2)
+                        tir.reads(
+                            [
+                                C[vi : (vi + 1), vj : (vj + 1)],
+                                A[vi : (vi + 1), vk : (vk + 1)],
+                                B[vk : (vk + 1), vj : (vj + 1)],
+                            ]
+                        )
+                        tir.writes([C[vi : (vi + 1), vj : (vj + 1)]])
+                        reducer.step(C[vi, vj], (A[vi, vk] * B[vk, vj]))
+                with tir.block([1024, 1024], "relu") as [vi_1, vj_1]:
+                    tir.bind(vi_1, i0)
+                    tir.bind(vj_1, i1)
+                    tir.reads([C[vi_1 : (vi_1 + 1), vj_1 : (vj_1 + 1)]])
+                    tir.writes([D[vi_1 : (vi_1 + 1), vj_1 : (vj_1 + 1)]])
+                    D[vi_1, vj_1] = tir.max(C[vi_1, vj_1], tir.float32(0))
+
+
+@tvm.hybrid.script
+def matmul_cache_write(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    # function attr dict
+    tir.func_attr({})
+    C = tir.match_buffer(c, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
+    B = tir.match_buffer(b, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
+    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        C_local = tir.buffer_allocate(
+            [1024, 1024], elem_offset=0, scope="local", align=128, offset_factor=1
+        )
+        for i0 in range(0, 1024):
+            for i1 in range(0, 1024):
+                for i2 in range(0, 1024):
+                    with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "C") as [
+                        vi,
+                        vj,
+                        vk,
+                    ]:
+                        tir.bind(vi, i0)
+                        tir.bind(vj, i1)
+                        tir.bind(vk, i2)
+                        tir.reads(
+                            [
+                                C_local[vi : (vi + 1), vj : (vj + 1)],
+                                A[vi : (vi + 1), vk : (vk + 1)],
+                                B[vk : (vk + 1), vj : (vj + 1)],
+                            ]
+                        )
+                        tir.writes([C_local[vi : (vi + 1), vj : (vj + 1)]])
+                        reducer.step(C_local[vi, vj], (A[vi, vk] * B[vk, vj]))
+        for ax0 in range(0, 1024):
+            for ax1 in range(0, 1024):
+                with tir.block([1024, 1024], "") as [v0, v1]:
+                    tir.bind(v0, ax0)
+                    tir.bind(v1, ax1)
+                    tir.reads([C_local[v0 : (v0 + 1), v1 : (v1 + 1)]])
+                    tir.writes([C[v0 : (v0 + 1), v1 : (v1 + 1)]])
+                    C[v0, v1] = C_local[v0, v1]
+
+
+@tvm.hybrid.script
 def elementwise(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (1024, 1024), "float32")
     B = tir.buffer_allocate((1024, 1024), "float32")
@@ -185,11 +269,26 @@ def test_meta_schedule_reorder():
     assert tvm.ir.structural_equal(i_2, ti_2.stmt)
 
 
+def test_meta_schedule_reverse_compute_at():
+    sch = ms.Schedule(func=matmul_relu)
+    relu_block = sch.get_block("relu")
+    matmul_block = sch.get_block("matmul")
+    _, i_1, _ = sch.get_axes(matmul_block)
+    sch.reverse_compute_at(relu_block, i_1)
+    assert tvm.ir.structural_equal(sch.sch.func, matmul_relu_fused)
+
+
 def test_meta_schedule_compute_inline():
     sch = ms.Schedule(func=elementwise)
     block = sch.get_block(name="B")
     sch.compute_inline(block=block)
     assert tvm.ir.structural_equal(sch.sch.func, elementwise_inlined)
+
+
+def test_meta_schedule_cache_write():
+    sch = ms.Schedule(func=matmul)
+    sch.cache_write(sch.get_block("C"), storage_scope="local")
+    assert tvm.ir.structural_equal(sch.sch.func, matmul_cache_write)
 
 
 def test_meta_schedule_mutate_decision():
@@ -264,8 +363,9 @@ if __name__ == "__main__":
     test_meta_schedule_get_axes()
     test_meta_schedule_split()
     test_meta_schedule_reorder()
+    test_meta_schedule_reverse_compute_at()
     test_meta_schedule_compute_inline()
-    # test_meta_schedule_cache_write()
+    test_meta_schedule_cache_write()
     # test_meta_schedule_decompose_reduction()
     test_meta_schedule_mutate_decision()
     test_meta_schedule_resample()
