@@ -112,17 +112,16 @@ TVM_DLL SearchRule AlwaysInline();
 TVM_DLL SearchRule AddCacheWrite();
 
 /*!
- * \brief Create a rule that does multi-level tiling and fusion together if there is sufficient
- * amount of data reuse
- * \return The rule created
- */
-TVM_DLL SearchRule MultiLevelTilingWithFusion(String tiling_structure);
-
-/*!
  * \brief Create a rule that does multi-level tiling if there is sufficient amount of data reuse
  * \return The rule created
  */
-TVM_DLL SearchRule MultiLevelTiling(String tiling_structure);
+TVM_DLL SearchRule MultiLevelTiling(String structure);
+
+/*!
+ * \brief Fuse after multi-level-tiling
+ * \return The rule created
+ */
+TVM_DLL SearchRule Fusion(Array<Integer> levels);
 
 }  // namespace meta_schedule
 }  // namespace tvm
