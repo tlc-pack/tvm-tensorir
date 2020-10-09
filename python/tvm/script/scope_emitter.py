@@ -16,26 +16,44 @@
 # under the License.
 """TVM Script Scope Emitter for TIR"""
 
+import tvm
 from tvm.te import schedule
 
 
 class ScopeEmitter:
-    """Maintain the nodes and symbols of scopes"""
+    """Maintain the nodes, symbols of scopes and information of blocks"""
+
+    class BlockInfo:
+        def __init__(self):
+            self.allocates = []
+            self.binding = dict()
+            self.reads = None
+            self.writes = None
+            self.annotations = []
+            self.predicate = tvm.runtime.convert(True)
 
     def __init__(self, parser):
-        self.node_stack = [[]]  # AST nodes of scopes
-        self.symbols = [dict()]  # Symbols of scopes
+        self.node_stack = []  # AST nodes of scopes
+        self.block_info_stack = []  # Block info of scopes
+        self.loop_stack = []  # stack of loop vars
+        self.symbols = []  # Symbols of scopes
         self.parser = parser
 
-    def pop_scope(self):
+    def pop_scope(self, is_block=False):
         """Pop the inner most scope"""
         self.symbols.pop()
         self.node_stack.pop()
+        if is_block:
+            self.loop_stack.pop()
+            return self.block_info_stack.pop()
 
-    def new_scope(self):
+    def new_scope(self, is_block=False):
         """ Creating a new scope """
         self.node_stack.append([])
         self.symbols.append(dict())
+        if is_block:
+            self.loop_stack.append([])
+            self.block_info_stack.append(ScopeEmitter.BlockInfo())
 
     def update_symbol(self, name, symbol):
         """Append a symbol into current scope"""
@@ -60,3 +78,6 @@ class ScopeEmitter:
             if name in symbols:
                 return symbols[name]
         return None
+
+    def block_scope(self):
+        return self.block_info_stack[-1]

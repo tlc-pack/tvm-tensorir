@@ -21,7 +21,7 @@ import pytest
 import tvm
 from tvm import meta_schedule as ms
 from tvm import tir
-from tvm.hybrid import ty
+from tvm.script import ty
 
 TILING_FORMAT = "SSRSRS"
 SPATIAL = 0
@@ -30,7 +30,7 @@ REDUCTION = 2
 # pylint: disable=invalid-name,no-member
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (1024, 1024), "float32")
     B = tir.match_buffer(b, (1024, 1024), "float32")
@@ -40,7 +40,7 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def matmul_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     A = tir.match_buffer(a, (1024, 1024), "float32")
     B = tir.match_buffer(b, (1024, 1024), "float32")
@@ -53,7 +53,7 @@ def matmul_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
         D[vi, vj] = tir.max(C[vi, vj], 0.0)
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def conv2d(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     X = tir.match_buffer(x, (1, 512, 7, 7), "float32")
     W = tir.match_buffer(w, (512, 512, 3, 3), "float32")
@@ -91,7 +91,7 @@ def conv2d(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
         )
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def conv2d_relu(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     X = tir.match_buffer(x, (1, 512, 7, 7), "float32")
     W = tir.match_buffer(w, (512, 512, 3, 3), "float32")
@@ -133,7 +133,7 @@ def conv2d_relu(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
         Y[i_n, i_co, i_h, i_w] = tir.max(Y_i[i_n, i_co, i_h, i_w], 0.0)
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def conv2d_relu_plus_one(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     X = tir.match_buffer(x, (1, 512, 7, 7), "float32")
     W = tir.match_buffer(w, (512, 512, 3, 3), "float32")
@@ -211,7 +211,7 @@ def test_matmul_schedule_fn():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.hybrid.ashybrid(sch.sch.func))
+        print(tvm.script.ashybrid(sch.sch.func))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -236,7 +236,7 @@ def test_matmul_post_order_apply():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.hybrid.ashybrid(sch.sch.func))
+        print(tvm.script.ashybrid(sch.sch.func))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -265,7 +265,7 @@ def test_matmul_relu_schedule_fn():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.hybrid.ashybrid(sch.sch.func))
+        print(tvm.script.ashybrid(sch.sch.func))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -290,7 +290,7 @@ def test_matmul_relu_post_order_apply():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.hybrid.ashybrid(sch.sch.func))
+        print(tvm.script.ashybrid(sch.sch.func))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -339,7 +339,7 @@ def test_conv2d_schedule_fn():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.hybrid.ashybrid(sch.sch.func))
+        print(tvm.script.ashybrid(sch.sch.func))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -364,7 +364,7 @@ def test_conv2d_post_order_apply():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.hybrid.ashybrid(sch.sch.func))
+        print(tvm.script.ashybrid(sch.sch.func))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -393,7 +393,7 @@ def test_conv2d_relu_plus_one_post_order_apply():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.hybrid.ashybrid(sch.sch.func))
+        print(tvm.script.ashybrid(sch.sch.func))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -479,7 +479,7 @@ def test_matmul_evolutionary_end_to_end():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.hybrid.ashybrid(sch.sch.func))
+        print(tvm.script.ashybrid(sch.sch.func))
 
 
 if __name__ == "__main__":

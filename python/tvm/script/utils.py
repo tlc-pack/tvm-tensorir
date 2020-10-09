@@ -72,12 +72,14 @@ def tir(script_in):
     """
 
     if inspect.isfunction(script_in):
-        return _parse(script_in)
-
-    if inspect.isclass(script_in):
-        return TVMScriptClass(script_in)
-
-    raise TypeError("Only function and class are supported")
+        result = _parse(script_in)
+    elif inspect.isclass(script_in):
+        result = TVMScriptClass(script_in)
+    else:
+        raise TypeError("Only function and class are supported")
+    result.__name__ = script_in.__name__
+    result.__qualname__ = script_in.__qualname__
+    return result
 
 
 def module(script_in):

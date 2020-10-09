@@ -19,13 +19,13 @@
 import tvm
 from tvm import meta_schedule as ms
 from tvm import tir
-from tvm.hybrid import ty
+from tvm.script import ty
 from tvm.ir import Op
 
 # pylint: disable=invalid-name,no-member
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (1024, 1024), "float32")
     B = tir.match_buffer(b, (1024, 1024), "float32")
@@ -35,7 +35,7 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def split_ewise(a: ty.handle, b: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128))
     B = tir.match_buffer(b, (128, 128))
@@ -47,7 +47,7 @@ def split_ewise(a: ty.handle, b: ty.handle) -> None:
             B[vi, vj] = A[vi, vj] * 2.0
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def many_ewise(x: ty.handle, y: ty.handle) -> None:
     X = tir.match_buffer(x, (128, 128))
     Y = tir.match_buffer(y, (128, 128))
@@ -58,7 +58,7 @@ def many_ewise(x: ty.handle, y: ty.handle) -> None:
         Y[vi, vj] = A[vi, vj] * 2.0
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def split_ewise_multiple(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128))
     B = tir.match_buffer(b, (128, 128))
@@ -72,7 +72,7 @@ def split_ewise_multiple(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             C[vi, vj] = A[vi, vj] * 3.0
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def apply_exp(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128))
     B = tir.match_buffer(b, (128, 128))
@@ -92,7 +92,7 @@ def apply_exp(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             )
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def with_predicate(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128))
     C = tir.match_buffer(c, (128, 128))

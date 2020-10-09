@@ -66,8 +66,7 @@ class Buffer(ObjectGeneric):
                 extent = x.stop - x.start
                 if isinstance(extent, _expr.PrimExpr):
                     extent = _pass.Simplify(x.stop - x.start)
-                doms.append(_make.range_by_min_extent(
-                    x.start, extent))
+                doms.append(_make.range_by_min_extent(x.start, extent))
             return _make.TensorRegion(self._buffer, doms)
         return _make.BufferLoad(self._content_type, self._buffer, index)
 
@@ -75,11 +74,12 @@ class Buffer(ObjectGeneric):
         value = _api.convert(value)
         if value.dtype != self._content_type:
             raise ValueError(
-                "data type does not match content type %s vs %s" % (
-                    value.dtype, self._content_type))
+                "data type does not match content type %s vs %s" % (value.dtype, self._content_type)
+            )
         if isinstance(index, _expr.PrimExpr):
             index = [index]
         self._builder.emit(_make.BufferStore(self._buffer, value, index))
+
 
 class BufferVar(ObjectGeneric):
     """Buffer variable with content type, makes load store easily.
@@ -500,7 +500,7 @@ class IRBuilder(object):
         loop_scope : With.Scope of Var
             The for scope, when enters returns loop_var
         """
-        if name == 'i':
+        if name == "i":
             name = chr(ord(name) + self.nidx) if self.nidx < 3 else name + "_" + str(self.nidx - 3)
             self.nidx += 1
         self._seq_stack.append([])
@@ -508,8 +508,7 @@ class IRBuilder(object):
         extent = end if begin == 0 else _pass.Simplify(end - begin)
 
         def _exit_cb():
-            self.emit(_make.Loop(
-                loop_var, begin, extent, [], self._pop_seq()))
+            self.emit(_make.Loop(loop_var, begin, extent, [], self._pop_seq()))
 
         return WithScope(loop_var, _exit_cb)
 
@@ -581,9 +580,19 @@ class IRBuilder(object):
             writes = [writes]
 
         def _exit_cb():
-            self.emit(_make.Block(
-                block_vars, values, reads, writes, self._pop_seq(), predicate,
-                self._allocate_stack.pop(), annotations, name))
+            self.emit(
+                _make.Block(
+                    block_vars,
+                    values,
+                    reads,
+                    writes,
+                    self._pop_seq(),
+                    predicate,
+                    self._allocate_stack.pop(),
+                    annotations,
+                    name,
+                )
+            )
 
         return WithScope(None, _exit_cb)
 

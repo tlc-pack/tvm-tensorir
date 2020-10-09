@@ -17,10 +17,10 @@
 
 import tvm
 from tvm import tir
-from tvm.hybrid import ty
+from tvm.script import ty
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, [128, 128])
     B = tir.match_buffer(b, [128, 128])
@@ -31,7 +31,7 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def matmul_original(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, [128, 128])
     B = tir.match_buffer(b, [128, 128])
@@ -46,7 +46,7 @@ def matmul_original(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                 C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def element_wise(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128), "float32")
     C = tir.match_buffer(c, (128, 128), "float32")
@@ -59,7 +59,7 @@ def element_wise(a: ty.handle, c: ty.handle) -> None:
         C[vi, vj] = B[vi, vj] + 1.0
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def predicate(b: ty.handle, c: ty.handle) -> None:
     B = tir.match_buffer(b, (16, 16), "float32")
     C = tir.match_buffer(c, (16, 16), "float32")
@@ -73,20 +73,20 @@ def predicate(b: ty.handle, c: ty.handle) -> None:
 
 
 def matmul_stmt():
-    mod = tvm.hybrid.create_module({"matmul": matmul})
+    mod = tvm.script.create_module({"matmul": matmul})
     return mod["matmul"]
 
 
 def matmul_stmt_original():
-    mod = tvm.hybrid.create_module({"matmul_original": matmul_original})
+    mod = tvm.script.create_module({"matmul_original": matmul_original})
     return mod["matmul_original"]
 
 
 def element_wise_stmt():
-    mod = tvm.hybrid.create_module({"element_wise": element_wise})
+    mod = tvm.script.create_module({"element_wise": element_wise})
     return mod["element_wise"]
 
 
 def predicate_stmt():
-    mod = tvm.hybrid.create_module({"predicate": predicate})
+    mod = tvm.script.create_module({"predicate": predicate})
     return mod["predicate"]
