@@ -17,11 +17,12 @@
 
 import numpy as np
 import tvm
+import tvm.testing
 from tvm import tir
-from tvm.hybrid import ty
+from tvm.script import ty
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (1024, 1024), "float32")
     A = tir.match_buffer(a, (1024, 1024), "float32")
@@ -58,11 +59,11 @@ def build_and_test(func):
     build_func(a, b, c)
     tvm.testing.assert_allclose(c.asnumpy(), np.matmul(a.asnumpy(), b.asnumpy()), rtol=1e-5)
     evaluator = build_func.time_evaluator(build_func.entry_name, ctx, number=1)
-    print(tvm.hybrid.ashybrid(func))
+    print(tvm.script.asscript(func))
     return evaluator(a, b, c).mean
 
 
-print(tvm.hybrid.ashybrid(original_func))
+print(tvm.script.asscript(original_func))
 # print('Baseline: %f' % build_and_test(original_func))
 
 ################################################################################################
@@ -151,7 +152,7 @@ print('Opt3: %f' % build_and_test(s.func))
 
 # We have to re-write the algorithm slightly.
 
-@tvm.hybrid.script
+@tvm.script.tir
 def matmul_packed(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (1024, 1024), "float32")
     B = tir.match_buffer(b, (1024, 1024), "float32")

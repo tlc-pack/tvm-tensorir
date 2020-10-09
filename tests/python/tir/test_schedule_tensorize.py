@@ -20,10 +20,10 @@ import util
 from tvm import tir
 
 import numpy as np
-from tvm.hybrid import ty
+from tvm.script import ty
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def desc_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), align=128, offset_factor=1)
     B = tir.match_buffer(b, (16, 16), align=128, offset_factor=1)
@@ -41,7 +41,7 @@ def desc_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                 C[vii, vjj] = C[vii, vjj] + A[vii, vkk] * B[vjj, vkk]
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def intrin_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), align=128, offset_factor=1)
     B = tir.match_buffer(b, (16, 16), align=128, offset_factor=1)
@@ -86,7 +86,7 @@ def test_tensorize_gemm():
     tvm.testing.assert_allclose(c.asnumpy(), np.dot(a_np, b_np.transpose()), rtol=1e-6)
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def lower_intrin_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), align=128, offset_factor=1)
     B = tir.match_buffer(b, (16, 16), align=128, offset_factor=1)
@@ -105,7 +105,7 @@ def lower_intrin_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                       dtype="handle"))
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def tensorized_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     # function attr dict
     C = tir.match_buffer(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
@@ -150,7 +150,7 @@ def test_tensorize_buffer_bind():
     tvm.ir.assert_structural_equal(tensorized_func, s.func)
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, [16, 128, 128])
     B = tir.match_buffer(b, [16, 128, 128])
@@ -163,7 +163,7 @@ def batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         C[vn, vi, vj] = C[vn, vi, vj] + A[vn, vi, vk] * B[vn, vj, vk]
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def tensorized_batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     # function attr dict
     C = tir.match_buffer(c, [16, 128, 128])

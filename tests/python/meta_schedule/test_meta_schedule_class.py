@@ -21,12 +21,12 @@ import pytest
 import tvm
 from tvm import meta_schedule as ms
 from tvm import tir
-from tvm.hybrid import ty
+from tvm.script import ty
 
 # pylint: disable=invalid-name,no-member
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (1024, 1024), "float32")
     B = tir.match_buffer(b, (1024, 1024), "float32")
@@ -36,7 +36,7 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def matmul_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     A = tir.match_buffer(a, (1024, 1024), "float32")
     B = tir.match_buffer(b, (1024, 1024), "float32")
@@ -49,7 +49,7 @@ def matmul_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
         D[vi, vj] = tir.max(C[vi, vj], 0.0)
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def matmul_relu_fused(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     # function attr dict
     tir.func_attr({})
@@ -88,7 +88,7 @@ def matmul_relu_fused(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
                     D[vi_1, vj_1] = tir.max(C[vi_1, vj_1], tir.float32(0))
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def matmul_cache_write(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     # function attr dict
     tir.func_attr({})
@@ -133,7 +133,7 @@ def matmul_cache_write(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                     C[v0, v1] = C_local[v0, v1]
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def elementwise(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (1024, 1024), "float32")
     B = tir.buffer_allocate((1024, 1024), "float32")
@@ -144,7 +144,7 @@ def elementwise(a: ty.handle, c: ty.handle) -> None:
         C[vi, vj] = B[vi, vj] * 2.0
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def elementwise_inlined(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (1024, 1024), "float32")
     C = tir.match_buffer(c, (1024, 1024), "float32")

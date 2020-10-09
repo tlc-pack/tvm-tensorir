@@ -18,10 +18,10 @@
 import tvm
 from tvm import tir
 
-from tvm.hybrid import ty
+from tvm.script import ty
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def gpu_gemm(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     # function attr dict
     tir.func_attr({})
@@ -184,7 +184,7 @@ def gpu_gemm(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                                     C[v0_4, v1_4] = C_local[v0_4, v1_4]
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def warp_testcase(a: ty.handle, b: ty.handle) -> None:
     # function attr dict
     tir.func_attr({})
@@ -209,7 +209,7 @@ def warp_testcase(a: ty.handle, b: ty.handle) -> None:
                                     B[tx, ty] = A[tx, ty] + 1.0
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def warp_fail_case_1(a: ty.handle, b: ty.handle) -> None:
     # function attr dict
     tir.func_attr({})
@@ -234,7 +234,7 @@ def warp_fail_case_1(a: ty.handle, b: ty.handle) -> None:
                                     B[tx, ty] = A[tx, ty] + 1.0
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def warp_fail_case_2(a: ty.handle, b: ty.handle) -> None:
     # function attr dict
     tir.func_attr({})
