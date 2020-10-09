@@ -239,6 +239,16 @@ class Schedule(Object):
         """
         _ffi_api.ScheduleComputeInline(self, block)  # pylint: disable=no-member
 
+    def reverse_compute_inline(self, block: BlockRV) -> None:
+        """Apply the instruction reverse_compute_inline
+
+        Parameters
+        ----------
+        block: BlockRV
+            The block to be reverse computed inline
+        """
+        _ffi_api.ScheduleReverseComputeInline(self, block)  # pylint: disable=no-member
+
     def cache_write(self, block: BlockRV, storage_scope: str) -> BlockRV:
         """Apply the instruction cache_write
 
