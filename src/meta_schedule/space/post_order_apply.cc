@@ -31,12 +31,10 @@ class PostOrderApplyNode : public SearchSpaceNode {
  public:
   /*! \brief The rules to be applied */
   Array<SearchRule> stages;
-  /*! \brief The source of randomness */
-  Sampler sampler_;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("stages", &stages);
-    // sampler_ is not visited
+    // sampler is not visited
   }
   /*! \brief Default destructor */
   ~PostOrderApplyNode() = default;
@@ -45,14 +43,14 @@ class PostOrderApplyNode : public SearchSpaceNode {
    * \param task The search task to be sampled from
    * \return The schedule sampled
    */
-  Schedule SampleSchedule(const SearchTask& task) override;
+  Schedule SampleSchedule(const SearchTask& task, Sampler* sampler) override;
   /*!
    * \brief Get support of the search space
    * \param task The search task to be sampled from
    * \return An array with a single element returned from SampleSchedule
    * \sa ScheduleFnNode::SampleSchedule
    */
-  Array<Schedule> GetSupport(const SearchTask& task) override;
+  Array<Schedule> GetSupport(const SearchTask& task, Sampler* sampler) override;
   /*!
    * \brief Apply the rule on the subtree rooted at the given block
    * \param task The search task
@@ -89,21 +87,20 @@ class PostOrderApply : public SearchSpace {
 PostOrderApply::PostOrderApply(Array<SearchRule> stages) {
   ObjectPtr<PostOrderApplyNode> n = make_object<PostOrderApplyNode>();
   n->stages = std::move(stages);
-  n->sampler_ = Sampler();
   data_ = std::move(n);
 }
 
 /********** Sampling **********/
 
-Schedule PostOrderApplyNode::SampleSchedule(const SearchTask& task) {
-  Array<Schedule> support = GetSupport(task);
+Schedule PostOrderApplyNode::SampleSchedule(const SearchTask& task, Sampler* sampler) {
+  Array<Schedule> support = GetSupport(task, sampler);
   CHECK(!support.empty()) << "ValueError: Found null support";
-  int i = sampler_.SampleInt(0, support.size());
+  int i = sampler->SampleInt(0, support.size());
   return support[i];
 }
 
-Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task) {
-  Array<Schedule> curr{Schedule(task->func)};
+Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* sampler) {
+  Array<Schedule> curr{Schedule(task->func, Integer(sampler->ForkSeed()))};
   Array<Schedule> next;
   for (const SearchRule& rule : stages) {
     for (const Schedule& sch : curr) {

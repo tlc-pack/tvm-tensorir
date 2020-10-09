@@ -49,9 +49,7 @@ def make_error_msg() -> str:
     error_msg = str(traceback.format_exc())
     if len(error_msg) > MAX_ERROR_MSG_LEN:
         error_msg = (
-            error_msg[: MAX_ERROR_MSG_LEN // 2]
-            + "\n...\n"
-            + error_msg[-MAX_ERROR_MSG_LEN // 2 :]
+            error_msg[: MAX_ERROR_MSG_LEN // 2] + "\n...\n" + error_msg[-MAX_ERROR_MSG_LEN // 2 :]
         )
     return error_msg
 
@@ -234,9 +232,7 @@ def realize_arguments(
             buffer = func.buffer_map[arg]
             args.append(ndarray.empty(shape=buffer.shape, dtype=buffer.dtype, ctx=ctx))
         else:
-            raise NotImplementedError(
-                "Unsupported type in realize_arguments: " + str(arg.dtype)
-            )
+            raise NotImplementedError("Unsupported type in realize_arguments: " + str(arg.dtype))
     # TODO(@junrushao1994): rebase and enable this
     # try:
     #     f_random_fill = remote.get_function("tvm.contrib.random.random_fill")
@@ -355,9 +351,7 @@ def local_builder_worker(
         error_msg = ""
         time_cost = 1e9
         # create temporary path
-        filename = os.path.join(
-            tempfile.mkdtemp(), "tmp_func." + build_func.output_format
-        )
+        filename = os.path.join(tempfile.mkdtemp(), "tmp_func." + build_func.output_format)
         try:
             func = tvm_build(
                 measure_input.sch.sch.func,
@@ -512,7 +506,7 @@ def rpc_runner_worker(
     repeat: int,
     min_repeat_ms: int,
     cooldown_interval: float,
-    _enable_cpu_cache_flush: bool,
+    enable_cpu_cache_flush: bool,
     verbose: int,
 ) -> MeasureResult.TYPE:
     """ RPC worker for ProgramRunner """
@@ -551,8 +545,7 @@ def rpc_runner_worker(
                     number=number,
                     repeat=repeat,
                     min_repeat_ms=min_repeat_ms,
-                    # TODO(@junrushao1994): rebase and enable this
-                    # f_preproc="cache_flush_cpu_non_first_arg" if enable_cpu_cache_flush else "",
+                    f_preproc="cache_flush_cpu_non_first_arg" if enable_cpu_cache_flush else "",
                 )
             except Exception:  # pylint: disable=broad-except
                 vprint(verbose, "*E", end="")  # Device compilation error

@@ -123,6 +123,16 @@ struct PrimeTable {
   }
 };
 
+int Sampler::ForkSeed() {
+  uint32_t a = this->rand();
+  uint32_t b = this->rand();
+  uint32_t c = this->rand();
+  uint32_t d = this->rand();
+  return (a ^ b) * (c ^ d) % 1145141;
+}
+
+void Sampler::Seed(int seed) { this->rand.seed(seed); }
+
 int Sampler::SampleInt(int min_inclusive, int max_exclusive) {
   std::uniform_int_distribution<> dist(min_inclusive, max_exclusive - 1);
   return dist(rand);
@@ -318,11 +328,6 @@ std::vector<int> Sampler::SamplePerfectTile(int n_splits, int extent, int max_in
   std::vector<int> result = SamplePerfectTile(n_splits - 1, extent / innermost);
   result.push_back(innermost);
   return result;
-}
-
-Sampler* Sampler::ThreadLocal() {
-  thread_local Sampler sampler;
-  return &sampler;
 }
 
 }  // namespace meta_schedule
