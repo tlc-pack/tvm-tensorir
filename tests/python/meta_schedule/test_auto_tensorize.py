@@ -20,12 +20,12 @@
 import tvm
 from tvm import meta_schedule as ms
 from tvm import tir
-from tvm.hybrid import ty
+from tvm.script import ty
 
 # pylint: disable=invalid-name,no-member
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def batched_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, [16, 128, 128])
     B = tir.match_buffer(b, [16, 128, 128])
@@ -43,7 +43,7 @@ def batched_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         C[vn, vi, vj] = C[vn, vi, vj] + A[vn, vi, vk] * B[vn, vj, vk]
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def desc_tensorcore(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), align=128, offset_factor=1)
     B = tir.match_buffer(b, (16, 16), align=128, offset_factor=1)
@@ -65,7 +65,7 @@ def desc_tensorcore(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                 C[vii, vjj] = C[vii, vjj] + A[vii, vkk] * B[vjj, vkk]
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def impl_tensorcore(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), align=128, offset_factor=1)
     B = tir.match_buffer(b, (16, 16), align=128, offset_factor=1)
@@ -98,7 +98,7 @@ def impl_tensorcore(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         )
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def tensorized_batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     # function attr dict
     C = tir.match_buffer(c, [16, 128, 128])
@@ -151,7 +151,7 @@ def tensorized_batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                 )
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def desc_dot_product(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (4,))
     B = tir.match_buffer(b, (4,))
@@ -165,7 +165,7 @@ def desc_dot_product(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                 C[0] = C[0] + A[vi] * B[vi]
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def impl_dot_product(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (4,))
     B = tir.match_buffer(b, (4,))
@@ -176,7 +176,7 @@ def impl_dot_product(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         tir.evaluate(C.data + A.data + B.data)
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def dot_product_batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, [16, 128, 128])
     B = tir.match_buffer(b, [16, 128, 128])

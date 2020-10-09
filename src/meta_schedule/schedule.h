@@ -227,8 +227,8 @@ class Schedule : public ObjectRef {
  * \return The string representation of a schedule
  */
 inline String Repr(const Schedule& sch) {
-  const auto* f = runtime::Registry::Get("hybrid.AsHybrid");
-  CHECK(f) << "IndexError: global function \"hybrid.AsHybrid\" not found";
+  const auto* f = runtime::Registry::Get("script.AsTVMScript");
+  CHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
   String s = (*f)(sch->sch->func, false);
   return s;
 }

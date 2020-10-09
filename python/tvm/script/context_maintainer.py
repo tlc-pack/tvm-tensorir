@@ -16,6 +16,7 @@
 # under the License.
 """TVM Script Context Maintainer for TIR"""
 
+import tvm
 from tvm.te import schedule
 
 
@@ -34,10 +35,13 @@ class ContextMaintainer:
         # parser
         self.parser = parser
 
-    def pop_scope(self):
+    def pop_scope(self, is_block=False):
         """Pop the inner most scope"""
         self.symbols.pop()
         self.node_stack.pop()
+        if is_block:
+            self.loop_stack.pop()
+            return self.block_info_stack.pop()
 
     def new_scope(self, nodes=None):
         """Creating a new scope"""
@@ -45,6 +49,9 @@ class ContextMaintainer:
             nodes = []
         self.node_stack.append(list(reversed(nodes)))
         self.symbols.append(dict())
+        if is_block:
+            self.loop_stack.append([])
+            self.block_info_stack.append(ScopeEmitter.BlockInfo())
 
     def update_symbol(self, name, symbol):
         """Append a symbol into current scope"""
@@ -72,3 +79,6 @@ class ContextMaintainer:
 
     def report_error(self, message, span):
         self.parser.report_error(message, span)
+
+    def block_scope(self):
+        return self.block_info_stack[-1]
