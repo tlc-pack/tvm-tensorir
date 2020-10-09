@@ -340,6 +340,26 @@ struct ComputeInlineAttrs : public tvm::AttrsNode<ComputeInlineAttrs> {
   TVM_DECLARE_ATTRS(ComputeInlineAttrs, "meta_schedule.attrs.ComputeInlineAttrs") {}
 };
 
+/*! \brief Attrs of the instruction that applies compute_inline */
+struct ReverseComputeInlineAttrs : public tvm::AttrsNode<ReverseComputeInlineAttrs> {
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param block The block to be reverse computed inline
+   * \return The instruction created
+   */
+  static Instruction MakeInst(const BlockRV& block);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+
+  TVM_DECLARE_ATTRS(ReverseComputeInlineAttrs, "meta_schedule.attrs.ReverseComputeInlineAttrs") {}
+};
+
 /*! \brief Attrs of the instruction that applies cache_write */
 struct CacheWriteAttrs : public tvm::AttrsNode<CacheWriteAttrs> {
   /*! \brief The storage scope of the instruction cache_write */

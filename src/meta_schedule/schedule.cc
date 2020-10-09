@@ -426,6 +426,14 @@ void ScheduleNode::ComputeInline(const BlockRV& block) {
   this->trace.push_back(ComputeInlineAttrs::MakeInst(block));
 }
 
+void ScheduleNode::ReverseComputeInline(const BlockRV& block) {
+  // Find the inputs to TIR
+  tir::StmtSRef block_sref = this->Eval(block);
+  this->sch->reverse_compute_inline(block_sref);
+  // Put the instruction in the trace
+  this->trace.push_back(ReverseComputeInlineAttrs::MakeInst(block));
+}
+
 BlockRV ScheduleNode::CacheWrite(const BlockRV& block_rv, const String& storage_scope) {
   // Find the output from TIR
   tir::StmtSRef block_sref = this->Eval(block_rv);
@@ -634,7 +642,11 @@ struct Internal {
    * \brief FFI function, corresponds to ScheduleNode::ComputeInline
    * \sa ScheduleNode::ComputeInline
    */
-  static void ComputeInline(Schedule sch, BlockRV block) { sch->ComputeInline(block); }
+  static void ComputeInline(Schedule sch, BlockRV block) { sch->ComputeInline(block); }  /*!
+   * \brief FFI function, corresponds to ScheduleNode::ReverseComputeInline
+   * \sa ScheduleNode::ReverseComputeInline
+   */
+  static void ReverseComputeInline(Schedule sch, BlockRV block) { sch->ReverseComputeInline(block); }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::CacheWrite
    * \sa ScheduleNode::CacheWrite
@@ -686,6 +698,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReorder").set_body_typed(Internal::Re
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReverseComputeAt")
     .set_body_typed(Internal::ReverseComputeAt);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleComputeInline").set_body_typed(Internal::ComputeInline);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReverseComputeInline").set_body_typed(Internal::ReverseComputeInline);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCacheWrite").set_body_typed(Internal::CacheWrite);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleDecomposeReduction")
     .set_body_typed(Internal::DecomposeReduction);
