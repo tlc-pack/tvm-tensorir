@@ -261,6 +261,16 @@ class Schedule(Object):
         """
         return ScheduleComputeInline(self, block)
 
+    def reverse_compute_inline(self, block):
+        """Mark one block as inline, then the body of computation will be expanded and
+        inserted at the address where the tensor is required.
+        Parameters
+        ----------
+        block: Block
+            The Block to be inlined
+        """
+        return ScheduleReverseComputeInline(self, block)
+
     def compute_at(self, block, loop):
         """Attach one block under specific loop and cover the required region.
         Node that only complete block can do compute_at

@@ -236,6 +236,21 @@ Array<ObjectRef> ComputeInlineAttrs::ApplyToSchedule(ScheduleNode* sch,
   return {};
 }
 
+Instruction ReverseComputeInlineAttrs::MakeInst(const BlockRV& block) {
+  ObjectPtr<ReverseComputeInlineAttrs> n = make_object<ReverseComputeInlineAttrs>();
+  return Instruction(/*inputs=*/{block},
+                     /*outputs=*/{},
+                     /*attrs=*/Attrs(std::move(n)));
+}
+
+Array<ObjectRef> ReverseComputeInlineAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                            const Array<ObjectRef>& inputs) const {
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_CAST_INPUT(BlockRV, block, inputs[0]);
+  sch->ReverseComputeInline(block);
+  return {};
+}
+
 Instruction CacheWriteAttrs::MakeInst(const BlockRV& block, const String& storage_scope,
                                       const BlockRV& output) {
   ObjectPtr<CacheWriteAttrs> n = make_object<CacheWriteAttrs>();
@@ -281,6 +296,7 @@ TVM_REGISTER_NODE_TYPE(SplitAttrs);
 TVM_REGISTER_NODE_TYPE(ReorderAttrs);
 TVM_REGISTER_NODE_TYPE(ReverseComputeAtAttrs);
 TVM_REGISTER_NODE_TYPE(ComputeInlineAttrs);
+TVM_REGISTER_NODE_TYPE(ReverseComputeInlineAttrs);
 TVM_REGISTER_NODE_TYPE(CacheWriteAttrs);
 TVM_REGISTER_NODE_TYPE(DecomposeReductionAttrs);
 TVM_REGISTER_NODE_TYPE(GetOnlyConsumerAttrs);
