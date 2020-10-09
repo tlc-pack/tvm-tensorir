@@ -152,6 +152,84 @@ class MatchBuffer(SpecialStmt):
         super().__init__(match_buffer, def_symbol=True)
 
 
+@register_special_stmt()
+def buffer_allocate(
+    parser,
+    node,
+    shape,
+    dtype="float32",
+    data=None,
+    strides=None,
+    elem_offset=None,
+    scope="global",
+    align=-1,
+    offset_factor=0,
+    buffer_type="default",
+):
+    """Special function buffer_allocate(shape, dtype, data, strides, elem_offset, scope, align,
+                                         offset_factor, buffer_type)
+
+    Example
+    -------
+    .. code-block:: python
+
+        A = tir.buffer_allocate((128, 128), dtype="float32")
+
+    """
+
+    if strides is None:
+        strides = []
+    align = align.value if not isinstance(align, int) else align
+    offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
+    buffer = tvm.tir.decl_buffer(
+        shape,
+        dtype,
+        parser.target[0],
+        data,
+        strides,
+        elem_offset,
+        scope,
+        align,
+        offset_factor,
+        buffer_type,
+    )
+    parser.scope_emitter.block_scope().allocates.append(tvm.tir.BufferAllocate(buffer, scope))
+    return buffer
+
+
+@register_special_stmt()
+def bind(parser, node, block_var, binding):
+    parser.scope_emitter.block_scope().binding[block_var] = binding
+
+
+@register_special_stmt()
+def reads(parser, node, reads):
+    parser.scope_emitter.block_scope().reads = [reads] if not isinstance(reads, list) else reads
+
+
+@register_special_stmt()
+def writes(parser, node, writes):
+    parser.scope_emitter.block_scope().writes = [writes] if not isinstance(writes, list) else writes
+
+
+@register_special_stmt()
+def block_attr(parser, node, attrs):
+    parser.scope_emitter.block_scope().annotations = attrs
+
+
+@register_special_stmt()
+def where(parser, node, predicate):
+    parser.scope_emitter.block_scope().predicate = predicate
+
+
+    """Special function buffer_decl(shape, dtype, data, strides, elem_offset, scope, align,
+                                         offset_factor, buffer_type)
+    Example
+    -------
+    .. code-block:: python
+
+        A = tir.buffer_decl((128, 128), dtype="float32")
+    """
 @register
 class BufferDeclare(SpecialStmt):
     """Special Stmt buffer_decl(shape, dtype, data, strides, elem_offset, scope, align,
@@ -529,6 +607,7 @@ class FuncAttr(SpecialStmt):
     Example
     -------
     .. code-block:: python
+
          tir.func_attr({"tir.noalias": True, "global_symbol"})
     """
 

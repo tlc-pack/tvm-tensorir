@@ -20,10 +20,10 @@ import pytest
 import tvm
 import util
 from tvm import tir
-from tvm.hybrid import ty
+from tvm.script import ty
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def predicate_vectorize(b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float32")
     B = tir.match_buffer(b, (16, 16), "float32")
@@ -36,7 +36,7 @@ def predicate_vectorize(b: ty.handle, c: ty.handle) -> None:
                 C[vi, vj] = (B[vi, vj] + tir.float32(1))
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def predicate_unroll(b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float32")
     B = tir.match_buffer(b, (16, 16), "float32")
@@ -57,12 +57,12 @@ def test_vectorize_normal():
     i, jo, ji = s.get_axes(B)
     s.vectorize(ji)
 
-    mod = tvm.hybrid.create_module(
+    mod = tvm.script.create_module(
         {"predicate_vectorize": predicate_vectorize})
     tvm.ir.assert_structural_equal(s.func, mod["predicate_vectorize"])
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def element_wise_compute_at(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (128, 128), "float32")
     A = tir.match_buffer(a, (128, 128), "float32")
@@ -74,7 +74,7 @@ def element_wise_compute_at(a: ty.handle, c: ty.handle) -> None:
             C[vi, vj] = (B[vi, vj] + tir.float32(1))
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def element_wise_compute_at_vectorize(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128), "float32")
     C = tir.match_buffer(c, (128, 128), "float32")
@@ -93,7 +93,7 @@ def element_wise_compute_at_vectorize(a: ty.handle, c: ty.handle) -> None:
 
 
 def test_vectorize_complete():
-    mod = tvm.hybrid.create_module(
+    mod = tvm.script.create_module(
         {"element_wise_compute_at": element_wise_compute_at})
     func = mod["element_wise_compute_at"]
 
@@ -104,7 +104,7 @@ def test_vectorize_complete():
     i_o, i_i = s.split(inner, 4)
     s.vectorize(i_i)
 
-    mod = tvm.hybrid.create_module(
+    mod = tvm.script.create_module(
         {"element_wise_compute_at_vectorize": element_wise_compute_at_vectorize})
     tvm.ir.assert_structural_equal(
         s.func, mod["element_wise_compute_at_vectorize"])
@@ -127,7 +127,7 @@ def test_unroll_normal():
     i, jo, ji = s.get_axes(B)
     s.unroll(ji)
 
-    mod = tvm.hybrid.create_module({"predicate_unroll": predicate_unroll})
+    mod = tvm.script.create_module({"predicate_unroll": predicate_unroll})
     tvm.ir.assert_structural_equal(s.func, mod["predicate_unroll"])
 
 

@@ -151,5 +151,6 @@ class TensorIntrin(Object):
     intrin_func: PrimFunc
         The function for execution
     """
+
     def __init__(self, desc_func, intrin_func):
         self.__init_handle_by_constructor__(_ffi_api.TensorIntrin, desc_func, intrin_func)

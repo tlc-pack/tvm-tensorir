@@ -1,10 +1,11 @@
 import numpy as np
 import tvm
+import tvm.testing
 from tvm import tir
-from tvm.hybrid import ty
+from tvm.script import ty
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (2048, 2048), "float32")
     A = tir.match_buffer(a, (2048, 2048), "float32")
@@ -18,7 +19,7 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 n = 2048
 device = 'cuda'
 ctx = tvm.context(device, 0)
-mod = tvm.hybrid.create_module({"matmul": matmul})
+mod = tvm.script.create_module({"matmul": matmul})
 
 original_func = mod["matmul"]
 
@@ -34,7 +35,7 @@ def build_and_test(func):
         print("Skip because %s is not enabled" % device)
         return
     f = tvm.build(func, target=device)
-    print(tvm.hybrid.ashybrid(func))
+    print(tvm.script.asscript(func))
     f(a, b, c)
     tvm.testing.assert_allclose(c.asnumpy(), np.dot(a_np.T, b_np), rtol=1e-5)
 
