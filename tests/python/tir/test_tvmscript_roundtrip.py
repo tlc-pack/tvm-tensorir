@@ -18,11 +18,11 @@
 
 import tvm
 from tvm import tir
-from tvm.hybrid import ty
+from tvm.script import ty
 import util
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 class Module1:
     def mmult(A: ty.handle, B: ty.handle, C: ty.handle) -> None:
         # function attr dict
@@ -58,11 +58,11 @@ class Module1:
 
 def test_opt_gemm_normalize():
     mod = Module1()
-    rt_mod = tvm.hybrid.from_source(tvm.hybrid.ashybrid(mod, True))
+    rt_mod = tvm.script.from_source(tvm.script.asscript(mod, True))
     tvm.ir.assert_structural_equal(mod, rt_mod, True)
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 class Module2:
     def mmult(A: ty.handle, B: ty.handle, C: ty.handle) -> None:
         # function attr dict
@@ -93,11 +93,11 @@ class Module2:
 
 def test_opt_gemm_lower():
     mod = Module2()
-    rt_mod = tvm.hybrid.from_source(tvm.hybrid.ashybrid(mod, True))
+    rt_mod = tvm.script.from_source(tvm.script.asscript(mod, True))
     tvm.ir.assert_structural_equal(mod, rt_mod, True)
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 class Module3:
     def mmult(args: ty.handle, arg_type_ids: ty.handle, num_args: ty.int32, out_ret_value: ty.handle, out_ret_tcode: ty.handle) -> ty.int32:
         # function attr dict
@@ -196,11 +196,11 @@ class Module3:
 
 def test_opt_gemm_mod_host():
     mod = Module3()
-    rt_mod = tvm.hybrid.from_source(tvm.hybrid.ashybrid(mod, True))
+    rt_mod = tvm.script.from_source(tvm.script.asscript(mod, True))
     tvm.ir.assert_structural_equal(mod, rt_mod, True)
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def opt_conv_tensorcore_normalize(A: ty.handle, W: ty.handle, Conv: ty.handle) -> None:
     # function attr dict
     tir.func_attr({"global_symbol": "default_function", "tir.noalias": True})
@@ -282,11 +282,11 @@ def opt_conv_tensorcore_normalize(A: ty.handle, W: ty.handle, Conv: ty.handle) -
 
 def test_opt_conv_tensorcore_normalize():
     mod = opt_conv_tensorcore_normalize
-    rt_mod = tvm.hybrid.from_source(tvm.hybrid.ashybrid(mod, True))
+    rt_mod = tvm.script.from_source(tvm.script.asscript(mod, True))
     tvm.ir.assert_structural_equal(mod, rt_mod, True)
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def opt_conv_tensorcore_lower(A: ty.handle, W: ty.handle, Conv: ty.handle) -> None:
     # function attr dict
     tir.func_attr({"global_symbol": "default_function", "tir.noalias": True})
@@ -393,11 +393,11 @@ def opt_conv_tensorcore_lower(A: ty.handle, W: ty.handle, Conv: ty.handle) -> No
 
 def test_opt_conv_tensorcore_lower():
     mod = opt_conv_tensorcore_lower
-    rt_mod = tvm.hybrid.from_source(tvm.hybrid.ashybrid(mod, True))
+    rt_mod = tvm.script.from_source(tvm.script.asscript(mod, True))
     tvm.ir.assert_structural_equal(mod, rt_mod, True)
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def opt_conv_tensorcore_mod_host(args: ty.handle, arg_type_ids: ty.handle, num_args: ty.int32, out_ret_value: ty.handle, out_ret_tcode: ty.handle, resource_handle: ty.handle) -> ty.int32:
     # function attr dict
     tir.func_attr({"tir.noalias": True, "global_symbol": "default_function", "tir.is_entry_func": True, "calling_conv": 1})
@@ -499,7 +499,7 @@ def opt_conv_tensorcore_mod_host(args: ty.handle, arg_type_ids: ty.handle, num_a
 
 def test_opt_conv_tensorcore_mod_host():
     mod = opt_conv_tensorcore_mod_host
-    rt_mod = tvm.hybrid.from_source(tvm.hybrid.ashybrid(mod, True))
+    rt_mod = tvm.script.from_source(tvm.script.asscript(mod, True))
     tvm.ir.assert_structural_equal(mod, rt_mod, True)
 
 
@@ -507,15 +507,15 @@ def test_module_define():
     func1 = util.matmul_stmt()
     func2 = util.element_wise_stmt()
     func3 = util.predicate_stmt()
-    mod1 = tvm.hybrid.create_module({"func1": func1, "func2": func2, "func3": func3})
-    mod2 = tvm.hybrid.create_module(
+    mod1 = tvm.script.create_module({"func1": func1, "func2": func2, "func3": func3})
+    mod2 = tvm.script.create_module(
         {"func1": util.matmul, "func2": util.element_wise, "func3": util.predicate})
     tvm.ir.assert_structural_equal(mod1, mod2)
 
 
 def test_matmul():
     func = util.matmul_stmt_original()
-    rt_func = tvm.hybrid.from_source(tvm.hybrid.ashybrid(func, True))
+    rt_func = tvm.script.from_source(tvm.script.asscript(func, True))
     tvm.ir.assert_structural_equal(func, rt_func)
 
     assert isinstance(rt_func.body.block, tir.stmt.Block)
@@ -529,7 +529,7 @@ def test_matmul():
 
 def test_element_wise():
     func = util.element_wise_stmt()
-    rt_func = tvm.hybrid.from_source(tvm.hybrid.ashybrid(func, True))
+    rt_func = tvm.script.from_source(tvm.script.asscript(func, True))
     tvm.ir.assert_structural_equal(func, rt_func)
 
     assert isinstance(rt_func.body.block, tir.stmt.Block)
@@ -545,7 +545,7 @@ def test_element_wise():
 
 def test_predicate():
     func = util.predicate_stmt()
-    rt_func = tvm.hybrid.from_source(tvm.hybrid.ashybrid(func, True))
+    rt_func = tvm.script.from_source(tvm.script.asscript(func, True))
     tvm.ir.assert_structural_equal(func, rt_func)
 
     assert isinstance(rt_func.body.block, tir.stmt.Block)

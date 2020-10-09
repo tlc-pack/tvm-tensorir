@@ -147,7 +147,7 @@ TIRMetaMutator::FType& TIRMetaMutator::vtable() {
   return inst;
 }
 
-TVM_REGISTER_GLOBAL("tir.hybrid.parser.Mutate_Meta")
+TVM_REGISTER_GLOBAL("tir.script.parser.Mutate_Meta")
 .set_body_typed<void(TIRMetaMutator::SymbolTable, const ObjectRef&)>(
 [](TIRMetaMutator::SymbolTable symbol_table, const ObjectRef& meta_node){
   TIRMetaMutator(symbol_table).Mutate(meta_node);

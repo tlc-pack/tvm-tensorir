@@ -28,6 +28,5 @@ def register_tir_object(type_key=None):
         The type key of the node.
     """
     if not isinstance(type_key, str):
-        return register_object(
-            "tir." + type_key.__name__)(type_key)
+        return register_object("tir." + type_key.__name__)(type_key)
     return register_object(type_key)

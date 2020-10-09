@@ -23,7 +23,7 @@ import gc
 
 def replace_ir_builder():
     func = util.element_wise_stmt()
-    new_func = tvm.hybrid.from_source(tvm.hybrid.ashybrid(func))
+    new_func = tvm.script.from_source(tvm.script.asscript(func))
     s = tir.create_schedule(new_func)
 
     # The target stmt
