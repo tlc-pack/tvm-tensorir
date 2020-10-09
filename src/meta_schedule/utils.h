@@ -65,40 +65,75 @@ inline Optional<tir::Var> IsVarPlusMinusConst(const PrimExpr& expr) {
   return NullOpt;
 }
 
-template <class T>
-inline Array<ObjectRef> AsArray(const std::vector<T>& v) {
-  return {v.begin(), v.end()};
-}
+template <class TSrc, class TDst>
+struct AsArray {};
 
-template <>
-inline Array<ObjectRef> AsArray(const std::vector<int>& v) {
-  Array<ObjectRef> result;
-  result.reserve(v.size());
-  for (int x : v) {
-    result.push_back(Integer(x));
+template <class TSrc>
+struct AsArray<TSrc, TSrc> {
+  inline Array<TSrc> operator()(const std::vector<TSrc>& vec) const {
+    return Array<TSrc>(vec.begin(), vec.end());
   }
-  return result;
-}
+};
 
-template <class T>
-inline std::vector<T> DowncastArray(const Array<ObjectRef>& array) {
-  std::vector<T> result;
-  result.reserve(array.size());
-  for (const ObjectRef& obj : array) {
-    result.push_back(Downcast<T>(obj));
+template <class TDstObjectRef>
+struct AsArray<int, TDstObjectRef> {
+  inline Array<TDstObjectRef> operator()(const std::vector<int>& vec) const {
+    Array<TDstObjectRef> result;
+    result.reserve(vec.size());
+    for (int x : vec) {
+      result.push_back(Integer(x));
+    }
+    return result;
   }
-  return result;
-}
+};
 
-template <>
-inline std::vector<int> DowncastArray(const Array<ObjectRef>& array) {
-  std::vector<int> result;
-  result.reserve(array.size());
-  for (const ObjectRef& obj : array) {
-    result.push_back(Downcast<Integer>(obj));
+template <class TDstObjectRef>
+struct AsArray<double, TDstObjectRef> {
+  inline Array<TDstObjectRef> operator()(const std::vector<double>& vec) const {
+    Array<TDstObjectRef> result;
+    result.reserve(vec.size());
+    for (double x : vec) {
+      result.push_back(FloatImm(tvm::DataType::Float(64), x));
+    }
+    return result;
   }
-  return result;
-}
+};
+
+template <class TSrc, class TDst>
+struct AsVector {};
+
+template <class TSrc>
+struct AsVector<TSrc, TSrc> {
+  inline std::vector<TSrc> operator()(const Array<TSrc>& vec) const {
+    return std::vector<TSrc>(vec.begin(), vec.end());
+  }
+};
+
+template <class TSrcObjectRef>
+struct AsVector<TSrcObjectRef, int> {
+  inline std::vector<int> operator()(const Array<TSrcObjectRef>& vec) const {
+    std::vector<int> results;
+    for (const TSrcObjectRef& x : vec) {
+      const auto* n = x.template as<IntImmNode>();
+      CHECK(n) << "TypeError: Expects IntImm, but gets: " << x->GetTypeKey();
+      results.push_back(n->value);
+    }
+    return results;
+  }
+};
+
+template <class TSrcObjectRef>
+struct AsVector<TSrcObjectRef, double> {
+  inline std::vector<double> operator()(const Array<TSrcObjectRef>& array) const {
+    std::vector<double> results;
+    for (const TSrcObjectRef& x : array) {
+      const auto* n = x.template as<FloatImmNode>();
+      CHECK(n) << "TypeError: Expects FloatImm, but gets: " << x->GetTypeKey();
+      results.push_back(n->value);
+    }
+    return results;
+  }
+};
 
 /*!
  * \brief Compute mean of a FloatImm array.

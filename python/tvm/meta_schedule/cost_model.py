@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """Cost model that estimates the performance of tensor programs"""
-from typing import List
+from typing import List, Optional
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
@@ -77,7 +77,5 @@ class CostModel(Object):
 class RandomModel(CostModel):
     """A model returns random estimation for all inputs"""
 
-    def __init__(self):
-        self.__init_handle_by_constructor__(
-            _ffi_api.RandomModel  # pylint: disable=no-member
-        )
+    def __init__(self, seed: Optional[int] = None):
+        self.__init_handle_by_constructor__(_ffi_api.RandomModel, seed)  # pylint: disable=no-member

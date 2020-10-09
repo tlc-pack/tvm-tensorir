@@ -63,8 +63,6 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
     # so enable them if we are using clang.
     add_compile_options(
       -Wreserved-id-macro
-      -Wused-but-marked-unused
-      -Wdocumentation-unknown-command
       -Wcast-qual
       -Wzero-as-null-pointer-constant
 

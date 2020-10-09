@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """Search strategy"""
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from tvm._ffi import register_object
 
@@ -121,6 +121,7 @@ class Evolutionary(SearchStrategy):
         self,
         support: List[Schedule],
         num_samples: int,
+        seed: Optional[int] = None,
     ) -> List[Schedule]:
         """Sample the initial population from the support
 
@@ -137,7 +138,7 @@ class Evolutionary(SearchStrategy):
             The initial population sampled from support
         """
         return _ffi_api.EvolutionarySampleInitPopulation(  # pylint: disable=no-member
-            self, support, num_samples
+            self, support, num_samples, seed
         )
 
     def evolve_with_cost_model(
@@ -145,6 +146,7 @@ class Evolutionary(SearchStrategy):
         task: SearchTask,
         inits: List[Schedule],
         num_samples: int,
+        seed: Optional[int] = None,
     ) -> List[Schedule]:
         """Perform evolutionary search using genetic algorithm with the cost model
 
@@ -163,13 +165,14 @@ class Evolutionary(SearchStrategy):
             The best samples in terms of the cost model's scores
         """
         return _ffi_api.EvolutionaryEvolveWithCostModel(  # pylint: disable=no-member
-            self, task, inits, num_samples
+            self, task, inits, num_samples, seed
         )
 
     def pick_with_eps_greedy(
         self,
         inits: List[Schedule],
         bests: List[Schedule],
+        seed: Optional[int] = None,
     ) -> List[Schedule]:
         """Pick a batch of samples for measurement with epsilon greedy
 
@@ -186,7 +189,7 @@ class Evolutionary(SearchStrategy):
             A list of schedules, result of epsilon-greedy sampling
         """
         return _ffi_api.EvolutionaryPickWithEpsGreedy(  # pylint: disable=no-member
-            self, inits, bests
+            self, inits, bests, seed
         )
 
     def measure_and_update_cost_model(
@@ -214,8 +217,6 @@ class Evolutionary(SearchStrategy):
         samples : List[MeasureResult]
             A list of MeasureResult for measurements
         """
-        return (
-            _ffi_api.EvolutionaryMeasureAndUpdateCostModel(  # pylint: disable=no-member
-                self, task, schedules, measurer, verbose
-            )
+        return _ffi_api.EvolutionaryMeasureAndUpdateCostModel(  # pylint: disable=no-member
+            self, task, schedules, measurer, verbose
         )

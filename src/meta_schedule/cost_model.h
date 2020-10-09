@@ -46,7 +46,7 @@ class CostModelNode : public Object {
    * \param states The input states
    * \return The predicted scores for all states
    */
-  virtual std::vector<double> Predict(const SearchTask& task, const Array<Schedule>& states) = 0;
+  virtual Array<FloatImm> Predict(const SearchTask& task, const Array<Schedule>& states) = 0;
 
   static constexpr const char* _type_key = "meta_schedule.CostModel";
   TVM_DECLARE_BASE_OBJECT_INFO(CostModelNode, Object);
@@ -59,34 +59,6 @@ class CostModelNode : public Object {
 class CostModel : public ObjectRef {
  public:
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(CostModel, ObjectRef, CostModelNode);
-};
-
-/*! \brief The cost model returning random value for all predictions */
-class RandomModelNode : public CostModelNode {
- public:
-  /*! \brief A sampler for generating random numbers */
-  Sampler sampler_;
-
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    // sampler_ is not visited
-  }
-
-  void Update(const Array<MeasureInput>& inputs, const Array<MeasureResult>& results) override;
-
-  std::vector<double> Predict(const SearchTask& task, const Array<Schedule>& states) override;
-
-  static constexpr const char* _type_key = "meta_schedule.RandomModel";
-  TVM_DECLARE_FINAL_OBJECT_INFO(RandomModelNode, CostModelNode);
-};
-
-/*!
- * \brief Managed reference to RandomModelNode.
- * \sa RandomModelNode
- */
-class RandomModel : public CostModel {
- public:
-  RandomModel();
-  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(RandomModel, CostModel, RandomModelNode);
 };
 
 }  // namespace meta_schedule
