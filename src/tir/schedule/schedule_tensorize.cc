@@ -91,9 +91,9 @@ bool TensorizeComparator::VisitStmt_(const BlockRealizeNode* op, const Stmt& oth
     }
   }
 
-    return VisitExpr(op->predicate, rhs->predicate) && op->exec_scope == rhs->exec_scope &&
-           VisitStmt(op->block, rhs->block);
-  }
+  return VisitExpr(op->predicate, rhs->predicate) && op->exec_scope == rhs->exec_scope &&
+         VisitStmt(op->block, rhs->block);
+}
 
 bool TensorizeComparator::VisitStmt_(const BlockNode* op, const Stmt& other) {
   const auto* rhs = other.as<BlockNode>();
@@ -106,13 +106,13 @@ bool TensorizeComparator::VisitStmt_(const BlockNode* op, const Stmt& other) {
   //    We only compare the inner most several axis
   if (op->iter_vars.size() < rhs->iter_vars.size()) return false;
 
-    size_t offset = op->iter_vars.size() - rhs->iter_vars.size();
-    for (size_t i = 0; i < rhs->iter_vars.size(); ++i) {
-      auto lhs_var = op->iter_vars[i + offset], rhs_var = rhs->iter_vars[i];
-      // Skip iter dom
-      if (!DefEqual(lhs_var->var, rhs_var->var)) return false;
-      if (lhs_var->iter_type != rhs_var->iter_type) return false;
-    }
+  size_t offset = op->iter_vars.size() - rhs->iter_vars.size();
+  for (size_t i = 0; i < rhs->iter_vars.size(); ++i) {
+    auto lhs_var = op->iter_vars[i + offset], rhs_var = rhs->iter_vars[i];
+    // Skip iter dom
+    if (!DefEqual(lhs_var->var, rhs_var->var)) return false;
+    if (lhs_var->iter_type != rhs_var->iter_type) return false;
+  }
 
   for (size_t i = 0; i < offset; i++) {
     if (is_scope_block) {
@@ -128,11 +128,11 @@ bool TensorizeComparator::VisitStmt_(const BlockNode* op, const Stmt& other) {
   return VisitStmt(op->body, rhs->body);
 }
 
-  // Map from rhs buffer to lhs buffer
-  std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> rhs_buffer_map_;
-  // Buffer indices mapping
-  std::unordered_map<Buffer, std::vector<PrimExpr>, ObjectPtrHash, ObjectPtrEqual> buffer_indices_;
-  std::vector<IterVar> extra_block_vars_;
+// Map from rhs buffer to lhs buffer
+std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> rhs_buffer_map_;
+// Buffer indices mapping
+std::unordered_map<Buffer, std::vector<PrimExpr>, ObjectPtrHash, ObjectPtrEqual> buffer_indices_;
+std::vector<IterVar> extra_block_vars_;
 
 // Exprs
 #define TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(OpName)                            \
@@ -203,7 +203,7 @@ bool TensorizeComparator::CompareAnnotation(const Annotation& lhs, const Annotat
   return VisitExpr(lhs->value, rhs->value) && lhs->attr_key == rhs->attr_key;
 }
 
-bool TensorizeComparator:: CompareBuffer(const Buffer& lhs, const Buffer& rhs) {
+bool TensorizeComparator::CompareBuffer(const Buffer& lhs, const Buffer& rhs) {
   if (lhs.same_as(rhs)) return true;
   // Remap both buffer itself and buffer data
   // Skip buffer shape
@@ -223,40 +223,40 @@ bool TensorizeComparator::CompareTensorRegion(const TensorRegion& lhs, const Ten
   // Number of indices in desc_block must be smaller than it in AST
   if (rhs->region.size() > lhs->region.size()) return false;
 
-    std::vector<Range> lhs_region;
-    for (const auto& range : lhs->region) {
-      lhs_region.push_back(Range::FromMinExtent(range->min, range->extent));
-    }
-    // special judge size 1 buffer
-    if (rhs->region.size() == 1 && is_zero(rhs->region[0]->min) && is_one(rhs->region[0]->extent)) {
-      lhs_region.push_back(Range::FromMinExtent(0, 1));
-    }
-    size_t offset = lhs_region.size() - rhs->region.size();
-    // initialize buffer indices
-    bool need_update = false;
-    if (auto it = buffer_indices_.find(lhs->buffer) == buffer_indices_.end()) {
-      need_update = true;
-      buffer_indices_[lhs->buffer] = std::vector<PrimExpr>();
-    } else {
-      if (offset != buffer_indices_[lhs->buffer].size()) return false;
-    }
-    std::vector<PrimExpr>& indices = buffer_indices_[lhs->buffer];
-    for (size_t i = 0; i < offset; ++i) {
-      const Range& range = lhs_region[i];
-      // High-dim region must be element-wise
-      if (!is_one(range->extent)) return false;
-      if (need_update) {
-        indices.push_back(range->min);
-      } else {
-        // The order matters since we only map inner block_var to outside block_var
-        if (!VisitExpr(range->min, indices[i])) return false;
-      }
-    }
-    for (size_t i = 0; i < rhs->region.size(); ++i) {
-      if (!CompareRange(lhs_region[i + offset], rhs->region[i])) return false;
-    }
-    return true;
+  std::vector<Range> lhs_region;
+  for (const auto& range : lhs->region) {
+    lhs_region.push_back(Range::FromMinExtent(range->min, range->extent));
   }
+  // special judge size 1 buffer
+  if (rhs->region.size() == 1 && is_zero(rhs->region[0]->min) && is_one(rhs->region[0]->extent)) {
+    lhs_region.push_back(Range::FromMinExtent(0, 1));
+  }
+  size_t offset = lhs_region.size() - rhs->region.size();
+  // initialize buffer indices
+  bool need_update = false;
+  if (auto it = buffer_indices_.find(lhs->buffer) == buffer_indices_.end()) {
+    need_update = true;
+    buffer_indices_[lhs->buffer] = std::vector<PrimExpr>();
+  } else {
+    if (offset != buffer_indices_[lhs->buffer].size()) return false;
+  }
+  std::vector<PrimExpr>& indices = buffer_indices_[lhs->buffer];
+  for (size_t i = 0; i < offset; ++i) {
+    const Range& range = lhs_region[i];
+    // High-dim region must be element-wise
+    if (!is_one(range->extent)) return false;
+    if (need_update) {
+      indices.push_back(range->min);
+    } else {
+      // The order matters since we only map inner block_var to outside block_var
+      if (!VisitExpr(range->min, indices[i])) return false;
+    }
+  }
+  for (size_t i = 0; i < rhs->region.size(); ++i) {
+    if (!CompareRange(lhs_region[i + offset], rhs->region[i])) return false;
+  }
+  return true;
+}
 
 // Only for BufferStoreNode and BufferLoadNode
 template <typename T>
