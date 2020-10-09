@@ -30,6 +30,7 @@ def autotune(
     space: Union[Callable[[Schedule], None], SearchSpace],
     strategy: Union[str, SearchStrategy],
     measurer: Optional[ProgramMeasurer] = None,
+    seed: Optional[int] = None,
     verbose: int = 1,
 ) -> Optional[Schedule]:
     """The entry function for auto tuning.
@@ -44,6 +45,8 @@ def autotune(
         The search strategy
     measurer: Optional[ProgramMeasurer]
         The measurer that builds, runs and profiles sampled programs
+    seed : Optional[int]
+        The random seed
     verbose: int
         Flag for the verbose mode
 
@@ -65,5 +68,6 @@ def autotune(
         space,
         strategy,
         measurer,
+        seed,
         verbose,
     )

@@ -60,14 +60,14 @@ MeasureResult::MeasureResult(Array<PrimExpr> costs, int error_no, String error_m
 
 // TODO(@junrushao1994): revisit
 
-MeasureInput MeasureInputNode::copy() const {
+MeasureInput MeasureInputNode::Copy() const {
   ObjectPtr<MeasureInputNode> n = make_object<MeasureInputNode>();
   n->task = task;
   n->sch = sch;
   return MeasureInput(n);
 }
 
-MeasureResult MeasureResultNode::copy() const {
+MeasureResult MeasureResultNode::Copy() const {
   ObjectPtr<MeasureResultNode> n = make_object<MeasureResultNode>();
   n->costs = costs;
   n->error_no = error_no;

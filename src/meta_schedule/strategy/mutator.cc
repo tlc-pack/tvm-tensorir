@@ -46,9 +46,6 @@ class MutatorTileSize {
   MutatorTileSize() = default;
 
   Optional<Schedule> Apply(const SearchTask& task, const Schedule& sch, Sampler* sampler) {
-    if (sampler == nullptr) {
-      sampler = Sampler::ThreadLocal();
-    }
     // Find instruction `SamplePerfectTile` whose extent > 1 and n_splits > 1
     std::vector<Instruction> candidates;
     candidates.reserve(sch->decisions.size());
@@ -58,10 +55,10 @@ class MutatorTileSize {
         if (attrs->n_splits <= 1) {
           continue;
         }
-        std::vector<Integer> tiles = DowncastArray<Integer>(kv.second);
+        std::vector<int> tiles = AsVector<ObjectRef, int>()(kv.second);
         int64_t prod = 1;
-        for (const Integer& item : tiles) {
-          prod *= item->value;
+        for (int item : tiles) {
+          prod *= item;
         }
         if (prod > 1) {
           candidates.push_back(inst);
@@ -72,7 +69,7 @@ class MutatorTileSize {
       return NullOpt;
     }
     const Instruction& inst = candidates[sampler->SampleInt(0, candidates.size())];
-    std::vector<int> tiles = DowncastArray<int>(sch->decisions.at(inst));
+    std::vector<int> tiles = AsVector<ObjectRef, int>()(sch->decisions.at(inst));
     int n_splits = tiles.size();
     // Choose two loops
     int x = sampler->SampleInt(0, n_splits);
@@ -123,10 +120,10 @@ class MutatorTileSize {
       len_y = len_y_space[sampler->SampleInt(0, len_y_space.size())];
       len_x = prod / len_y;
     }
-    Schedule new_sch = sch->copy();
+    Schedule new_sch = sch->Copy(sampler->ForkSeed());
     tiles[x] = len_x;
     tiles[y] = len_y;
-    new_sch->MutateDecision(inst, AsArray(tiles));
+    new_sch->MutateDecision(inst, AsArray<int, ObjectRef>()(tiles));
     new_sch->ReplayDecision();
     return new_sch;
   }
@@ -148,8 +145,12 @@ struct Internal {
    * \sa MutatorNode::Apply
    */
   static Optional<Schedule> MutatorApply(Mutator mutator, SearchTask task, Schedule sch,
-                                         void* sampler) {
-    return mutator->Apply(task, sch, static_cast<Sampler*>(sampler));
+                                         Optional<Integer> seed) {
+    Sampler seeded;
+    if (seed.defined()) {
+      seeded.Seed(seed.value());
+    }
+    return mutator->Apply(task, sch, &seeded);
   }
 };
 

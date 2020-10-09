@@ -106,7 +106,7 @@ class MeasureInputNode : public Object {
   }
 
   /*! \brief Do shallow copy. */
-  MeasureInput copy() const;
+  MeasureInput Copy() const;
 
   static constexpr const char* _type_key = "meta_schedule.MeasureInput";
   TVM_DECLARE_FINAL_OBJECT_INFO(MeasureInputNode, Object);
@@ -198,7 +198,7 @@ class MeasureResultNode : public Object {
   }
 
   /*! \brief Do shallow copy. */
-  MeasureResult copy() const;
+  MeasureResult Copy() const;
 
   static constexpr const char* _type_key = "meta_schedule.MeasureResult";
   TVM_DECLARE_FINAL_OBJECT_INFO(MeasureResultNode, Object);

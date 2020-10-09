@@ -44,13 +44,22 @@ class Schedule(Object):
     trace: List[Instruction]
     decisions: List[List[Object]]
 
-    def __init__(self, func: tir.PrimFunc):
+    def __init__(self, func: tir.PrimFunc, seed: Optional[int] = None):
         self.__init_handle_by_constructor__(
-            _ffi_api.Schedule,  # pylint: disable=no-member
-            func,
+            _ffi_api.Schedule, func, seed  # pylint: disable=no-member
         )
 
-    def copy(self) -> "Schedule":
+    def seed(self, new_seed: int) -> None:
+        """Seed the randomness
+
+        Parameters
+        -------
+        new_seed : int
+            The new seed used
+        """
+        return _ffi_api.ScheduleSeed(self, new_seed)  # pylint: disable=no-member
+
+    def copy(self, seed: int) -> "Schedule":
         """Copy the schedule into a new one.
         Operation on the new schedule won't affect the original schedule, and vice versa.
 
@@ -59,7 +68,7 @@ class Schedule(Object):
         new_schedule : Schedule
             A new schedule
         """
-        return _ffi_api.ScheduleCopy(self)  # pylint: disable=no-member
+        return _ffi_api.ScheduleCopy(self, seed)  # pylint: disable=no-member
 
     def evaluate(
         self,
@@ -148,9 +157,7 @@ class Schedule(Object):
         only_consumer : Optional[BlockRV]
             A block, its only consumer; or None if it does not exist
         """
-        return _ffi_api.ScheduleGetOnlyConsumer(  # pylint: disable=no-member
-            self, block
-        )
+        return _ffi_api.ScheduleGetOnlyConsumer(self, block)  # pylint: disable=no-member
 
     def get_block(self, name: str) -> BlockRV:
         """Apply the instruction GetBlock, get a block by its name
@@ -225,9 +232,7 @@ class Schedule(Object):
         loop : LoopRV
             loop The loop to be moved to
         """
-        _ffi_api.ScheduleReverseComputeAt(  # pylint: disable=no-member
-            self, block, loop
-        )
+        _ffi_api.ScheduleReverseComputeAt(self, block, loop)  # pylint: disable=no-member
 
     def compute_inline(self, block: BlockRV) -> None:
         """Apply the instruction compute_inline
@@ -254,9 +259,7 @@ class Schedule(Object):
         block : BlockRV
             The cache write stage
         """
-        return _ffi_api.ScheduleCacheWrite(  # pylint: disable=no-member
-            self, block, storage_scope
-        )
+        return _ffi_api.ScheduleCacheWrite(self, block, storage_scope)  # pylint: disable=no-member
 
     def decompose_reduction(
         self,
@@ -277,9 +280,7 @@ class Schedule(Object):
         block : BlockRV
             The result of the decomposition
         """
-        return _ffi_api.ScheduleDecomposeReduction(  # pylint: disable=no-member
-            self, block, loop
-        )
+        return _ffi_api.ScheduleDecomposeReduction(self, block, loop)  # pylint: disable=no-member
 
     ########## Trace-related ##########
 
@@ -297,9 +298,7 @@ class Schedule(Object):
         decision: Optional[List[Object]]
             The decision to be mutated to. If it is None, then remove it from decisions
         """
-        return _ffi_api.ScheduleMutateDecision(  # pylint: disable=no-member
-            self, inst, decision
-        )
+        return _ffi_api.ScheduleMutateDecision(self, inst, decision)  # pylint: disable=no-member
 
     def resample(self) -> None:
         """Re-sample along the trace to generatea new sequence of

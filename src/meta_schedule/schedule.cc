@@ -29,21 +29,25 @@ namespace meta_schedule {
 
 Schedule::Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
                    Map<Instruction, Array<ObjectRef>> decisions, TSymbolTable sym_tab,
-                   Sampler sampler) {
+                   Optional<Integer> seed) {
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
   n->orig_func = std::move(orig_func);
   n->sch = std::move(sch);
   n->trace = std::move(trace);
   n->decisions = std::move(decisions);
   n->sym_tab = std::move(sym_tab);
-  n->sampler = std::move(sampler);
+  if (seed.defined()) {
+    n->sampler.Seed(seed.value()->value);
+  }
   data_ = std::move(n);
 }
 
-Schedule::Schedule(tir::PrimFunc orig_func)
-    : Schedule(orig_func, tir::ScheduleNode::Create(orig_func), {}, {}, {}, Sampler(DeviceRand)) {}
+Schedule::Schedule(tir::PrimFunc orig_func, Optional<Integer> seed)
+    : Schedule(orig_func, tir::ScheduleNode::Create(orig_func), {}, {}, {}, seed) {}
 
 /**************** Utility ****************/
+
+void ScheduleNode::Seed(int seed) { this->sampler.Seed(seed); }
 
 /*! \brief Helper class to do tir::StmtSRef translation */
 struct SRefTranslator {
@@ -168,7 +172,7 @@ struct SRefTranslator {
   std::unordered_map<const StmtSRefNode*, StmtSRef> trans_;
 };
 
-Schedule ScheduleNode::copy() const {
+Schedule ScheduleNode::Copy(int new_seed) const {
   // TODO(@junrushao1994): translate this->decisions too
   SRefTranslator translator;
   tir::Schedule tir_sch = translator.Trans(this->sch);
@@ -177,7 +181,7 @@ Schedule ScheduleNode::copy() const {
                   /*trace=*/this->trace,
                   /*decisions=*/this->decisions,
                   /*sym_tab=*/translator.Trans(this->sym_tab),
-                  /*sampler=*/this->sampler);
+                  /*seed=*/Integer(new_seed));
 }
 
 /**************** Evaluation ****************/
@@ -255,7 +259,7 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
   // Put the instruction in the trace
   this->trace.push_back(
       SamplePerfectTileAttrs::MakeInst(n_splits, loop, max_innermost_factor, outputs));
-  this->decisions.Set(this->trace.back(), AsArray(samples));
+  this->decisions.Set(this->trace.back(), AsArray<int, ObjectRef>()(samples));
   return outputs;
 }
 
@@ -286,7 +290,7 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
   }
   // Put the instruction in the trace
   this->trace.push_back(SampleTileFactorAttrs::MakeInst(n_splits, loop, where, outputs));
-  this->decisions.Set(this->trace.back(), AsArray(samples));
+  this->decisions.Set(this->trace.back(), AsArray<int, ObjectRef>()(samples));
   return outputs;
 }
 
@@ -471,7 +475,7 @@ void ScheduleNode::ReplayDecision() { this->Replay(/*follow_decision=*/true); }
 
 void ScheduleNode::Replay(bool follow_decision) {
   // Step 1. Create a new schedule to temporarily hold the re-sampling result
-  Schedule new_sch(this->orig_func);
+  Schedule new_sch(this->orig_func, Integer(this->sampler.ForkSeed()));
   // Maps an old random variable to its corresponding new random variable in the re-sampling
   std::unordered_map<const Object*, const Object*> var_map;
   // Maps an old instruction to its corresponding new instruction
@@ -554,12 +558,17 @@ struct Internal {
    * \brief FFI function, corresponds to Schedule::Schedule
    * \sa Schedule::Schedule
    */
-  static Schedule New(tir::PrimFunc func) { return Schedule(func); }
+  static Schedule New(tir::PrimFunc func, Optional<Integer> seed) { return Schedule(func, seed); }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::Seed
+   * \sa ScheduleNode::Seed
+   */
+  static void Seed(Schedule sch, int seed) { return sch->Seed(seed); }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::copy
    * \sa ScheduleNode::Copy
    */
-  static Schedule Copy(Schedule sch) { return sch->copy(); }
+  static Schedule Copy(Schedule sch, int new_seed) { return sch->Copy(new_seed); }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Eval
    * \sa ScheduleNode::Eval
@@ -671,6 +680,7 @@ struct Internal {
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
 TVM_REGISTER_GLOBAL("meta_schedule.Schedule").set_body_typed(Internal::New);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSeed").set_body_typed(Internal::Seed);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCopy").set_body_typed(Internal::Copy);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleEval").set_body_typed(Internal::Eval);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSamplePerfectTile")

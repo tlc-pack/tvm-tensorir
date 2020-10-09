@@ -64,11 +64,16 @@ class ScheduleNode : public Object {
   TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleNode, Object);
   /**************** Utility ****************/
   /*!
+   * \brief Seed the randomness
+   * \param seed The new random seed
+   */
+  void Seed(int seed);
+  /*!
    * \brief Copy the schedule into a new one. Operation on the new schedule won't affect the
    * original schedule, and vice versa.
    * \return A new schedule.
    */
-  Schedule copy() const;
+  Schedule Copy(int new_seed) const;
   /**************** Evaluation of random variables ****************/
   /*!
    * \brief Evaluate the value of a random variable of type Block
@@ -208,15 +213,17 @@ class Schedule : public ObjectRef {
    * \param trace The trace of instructions used
    * \param decisions The decisions made in sampling
    * \param sym_tab The symbol table with information of all defined variables in the meta schedule
+   * \param seed The random seed
    */
   explicit Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
                     Map<Instruction, Array<ObjectRef>> decisions, TSymbolTable sym_tab,
-                    Sampler sampler);
+                    Optional<Integer> seed);
   /*!
    * \brief Constructor: other fields are created with default value
    * \param orig_func The original TIR PrimFunc to be scheduled
+   * \param seed The random seed
    */
-  explicit Schedule(tir::PrimFunc orig_func);
+  explicit Schedule(tir::PrimFunc orig_func, Optional<Integer> seed);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
 };
