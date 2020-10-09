@@ -38,7 +38,12 @@ class Mutator(Object):
 
     name: str
 
-    def apply(self, task: SearchTask, sch: Schedule) -> Optional[Schedule]:
+    def apply(
+        self,
+        task: SearchTask,
+        sch: Schedule,
+        seed: Optional[int] = None,
+    ) -> Optional[Schedule]:
         """Mutate the schedule by applying the mutation.
 
         Parameters
@@ -53,7 +58,7 @@ class Mutator(Object):
         new_sch : Optional[Schedule]
             The new schedule after mutation, or None if cannot find a viable solution
         """
-        return _ffi_api.MutatorApply(self, task, sch, None)  # pylint: disable=no-member
+        return _ffi_api.MutatorApply(self, task, sch, seed)  # pylint: disable=no-member
 
 
 def mutate_tile_size() -> Mutator:

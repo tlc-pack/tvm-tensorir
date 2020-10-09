@@ -61,9 +61,7 @@ def conv2d(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     Y = tir.match_buffer(y, [1, 512, 7, 7], "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
     with tir.block([1, 512, 9, 9], "conv2d_pad_x") as [i_n, i_ci, i_h, i_w]:
-        X_padded[
-            i_n, i_ci, i_h, i_w
-        ] = tir.if_then_else(  # pylint: disable=unexpected-keyword-arg
+        X_padded[i_n, i_ci, i_h, i_w] = tir.if_then_else(  # pylint: disable=unexpected-keyword-arg
             # guard
             ((1 <= i_h < 8) and (1 <= i_w < 8)),
             # the value from input
@@ -100,9 +98,7 @@ def conv2d_relu(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     Y = tir.match_buffer(y, [1, 512, 7, 7], "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
     with tir.block([1, 512, 9, 9], "conv2d_pad_x") as [i_n, i_ci, i_h, i_w]:
-        X_padded[
-            i_n, i_ci, i_h, i_w
-        ] = tir.if_then_else(  # pylint: disable=unexpected-keyword-arg
+        X_padded[i_n, i_ci, i_h, i_w] = tir.if_then_else(  # pylint: disable=unexpected-keyword-arg
             # guard
             ((1 <= i_h < 8) and (1 <= i_w < 8)),
             # the value from input
@@ -143,9 +139,7 @@ def conv2d_relu_plus_one(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     Y = tir.match_buffer(y, [1, 512, 7, 7], "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
     with tir.block([1, 512, 9, 9], "conv2d_pad_x") as [i_n, i_ci, i_h, i_w]:
-        X_padded[
-            i_n, i_ci, i_h, i_w
-        ] = tir.if_then_else(  # pylint: disable=unexpected-keyword-arg
+        X_padded[i_n, i_ci, i_h, i_w] = tir.if_then_else(  # pylint: disable=unexpected-keyword-arg
             # guard
             ((1 <= i_h < 8) and (1 <= i_w < 8)),
             # the value from input
