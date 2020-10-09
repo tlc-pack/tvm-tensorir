@@ -273,6 +273,29 @@ def test_compute_inline():
 
 
 @tvm.script.tir
+def element_wise_reverse_inline(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128), "float32")
+    C = tir.match_buffer(c, (128, 128), "float32")
+
+    with tir.block([], "root") as []:
+        tir.reads([A[0:128, 0:128]])
+        tir.writes([C[0:128, 0:128]])
+        with tir.block([128, 128], "B") as [vi, vj]:
+            C[vi, vj] = (A[vi, vj] * 2.0) + 1.0
+
+
+def test_reverse_compute_inline():
+    func = util.element_wise_stmt()
+
+    # schedule
+    s = tir.create_schedule(func)
+    C = s.get_block("C")
+    s.reverse_compute_inline(C)
+    tvm.ir.assert_structural_equal(element_wise_reverse_inline, s.func)
+    assert s.validate_sref()
+
+
+@tvm.script.tir
 def compute_at_case(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128), "float32")
     C = tir.match_buffer(c, (128, 128), "float32")
@@ -535,6 +558,7 @@ if __name__ == "__main__":
     test_compute_at()
     test_reverse_compute_at()
     test_compute_inline()
+    test_reverse_compute_inline()
     test_compute_at_fail()
     test_reduction()
     test_cache_read()

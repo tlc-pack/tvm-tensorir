@@ -159,6 +159,12 @@ class ScheduleNode : public Object {
   void compute_inline(const StmtSRef& block_sref);
 
   /*!
+   * \brief Make the block inline
+   * \param block_sref The sref of block
+   */
+  void reverse_compute_inline(const StmtSRef& block_sref);
+
+  /*!
    * \brief vectorize a loop
    * \param loop_sref the loop to be vectorized
    */
