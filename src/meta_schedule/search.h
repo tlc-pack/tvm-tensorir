@@ -86,14 +86,14 @@ class SearchSpaceNode : public runtime::Object {
    * \param task The search task to be sampled from
    * \return The schedule sampled
    */
-  virtual Schedule SampleSchedule(const SearchTask& task) = 0;
+  virtual Schedule SampleSchedule(const SearchTask& task, Sampler* sampler) = 0;
   /*!
    * \brief Get support of the search space
    * \param task The search task to be sampled from
    * \return The support of the search space. Any point from the search space should along to one of
    * the traces returned
    */
-  virtual Array<Schedule> GetSupport(const SearchTask& task) = 0;
+  virtual Array<Schedule> GetSupport(const SearchTask& task, Sampler* sampler) = 0;
 
   static constexpr const char* _type_key = "meta_schedule.SearchSpace";
   TVM_DECLARE_BASE_OBJECT_INFO(SearchSpaceNode, Object);
@@ -129,7 +129,8 @@ class SearchStrategyNode : public Object {
    * \return The best schedule found, NullOpt if no valid schedule is found
    */
   virtual Optional<Schedule> Search(const SearchTask& task, const SearchSpace& space,
-                                    const ProgramMeasurer& measurer, int verbose) = 0;
+                                    const ProgramMeasurer& measurer, Sampler* sampler,
+                                    int verbose) = 0;
 
   static constexpr const char* _type_key = "meta_schedule.SearchStrategy";
   TVM_DECLARE_BASE_OBJECT_INFO(SearchStrategyNode, Object);

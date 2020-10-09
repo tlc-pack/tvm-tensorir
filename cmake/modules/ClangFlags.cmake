@@ -64,8 +64,6 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
       # Here we have non-standard warnings that clang has available and are useful
       # so enable them if we are using clang.
       -Wreserved-id-macro
-      -Wused-but-marked-unused
-      -Wdocumentation-unknown-command
       -Wcast-qual
       -Wzero-as-null-pointer-constant
       # These warnings should be enabled one at a time and fixed.

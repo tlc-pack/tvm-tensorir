@@ -154,7 +154,7 @@ class RuleAddCacheWrite {
       }
     }
     // Do nothing, or add a cache write
-    Schedule new_sch = sch->copy();
+    Schedule new_sch = sch->Copy(sch->sampler.ForkSeed());
     BlockRV producer = new_sch->CacheWrite(block_rv, "local");
     return {// Case 0: do nothing
             {sch, TilingContextObj::New(block_rv, NullOpt, false)},
@@ -269,7 +269,7 @@ class RuleFusion {
     for (const Integer& _level : levels) {
       int level = _level;
       int loop_idx = level * context->n_spatial;
-      Schedule new_sch = sch->copy();
+      Schedule new_sch = sch->Copy(sch->sampler.ForkSeed());
       new_sch->ReverseComputeAt(context->consumer.value(), context->after_axes[loop_idx - 1]);
       ret.Set(new_sch, NullOpt);
     }
