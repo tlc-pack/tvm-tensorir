@@ -41,6 +41,10 @@ constexpr sampler::DeviceRandType DeviceRand{};
 /*! \brief Random number sampler used for sampling in meta schedule */
 class Sampler {
  public:
+  /*! \brief Return a seed that can be used to create a new sampler */
+  int ForkSeed();
+  /*! \brief Re-seed the random number generator */
+  void Seed(int seed);
   /*!
    * \brief Sample an integer in [min_inclusive, max_exclusive)
    * \param min_inclusive The left boundary, inclusive
@@ -134,11 +138,6 @@ class Sampler {
    * \param seed The random seed
    */
   explicit Sampler(int seed) : rand(seed) {}
-  /*!
-   * \brief Return a thread-local instance of the sampler
-   * \return The thread-local sampler
-   */
-  static Sampler* ThreadLocal();
 
  private:
   /*! \brief The random number generator */

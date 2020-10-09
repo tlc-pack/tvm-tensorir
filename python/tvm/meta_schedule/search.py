@@ -20,7 +20,6 @@ from typing import Any, Dict, List, Optional, Union
 from tvm._ffi import register_object
 from tvm.runtime import Object
 from tvm.target import Target
-from tvm.target import create as create_target
 from tvm.tir import PrimFunc
 
 from . import _ffi_api
@@ -62,9 +61,9 @@ class SearchTask(Object):
         if task_name is None:
             task_name = func.__qualname__
         if not isinstance(target, Target):
-            target = create_target(target)
+            target = Target(target)
         if not isinstance(target_host, Target):
-            target_host = create_target(target_host)
+            target_host = Target(target_host)
         self.__init_handle_by_constructor__(
             _ffi_api.SearchTask,  # pylint: disable=no-member
             func,
@@ -92,13 +91,19 @@ class SearchSpace(Object):
 
         raise ValueError("Cannot create search space from: " + space)
 
-    def sample_schedule(self, task: SearchTask) -> Schedule:
-        return _ffi_api.SearchSpaceSampleSchedule(  # pylint: disable=no-member
-            self, task
-        )
+    def sample_schedule(
+        self,
+        task: SearchTask,
+        seed: Optional[int] = None,
+    ) -> Schedule:
+        return _ffi_api.SearchSpaceSampleSchedule(self, task, seed)  # pylint: disable=no-member
 
-    def get_support(self, task: SearchTask) -> List[Schedule]:
-        return _ffi_api.SearchSpaceGetSupport(self, task)  # pylint: disable=no-member
+    def get_support(
+        self,
+        task: SearchTask,
+        seed: Optional[int] = None,
+    ) -> List[Schedule]:
+        return _ffi_api.SearchSpaceGetSupport(self, task, seed)  # pylint: disable=no-member
 
 
 ########## SearchStrategy ##########
@@ -125,7 +130,8 @@ class SearchStrategy(Object):
         task: SearchTask,
         space: SearchSpace,
         measurer: "ProgramMeasurer",
-        verbose: int,
+        seed: Optional[int] = None,
+        verbose: int = 1,
     ) -> Optional[Schedule]:
         """Explore the search space and find the best schedule
 
@@ -146,5 +152,5 @@ class SearchStrategy(Object):
             The best schedule found, None if no valid schedule is found
         """
         return _ffi_api.SearchStrategySearch(  # pylint: disable=no-member
-            task, space, measurer, verbose
+            task, space, measurer, seed, verbose
         )

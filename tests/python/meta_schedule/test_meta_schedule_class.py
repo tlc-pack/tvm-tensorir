@@ -65,9 +65,11 @@ def matmul_relu_fused(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
         for i0 in range(0, 1024):
             for i1 in range(0, 1024):
                 for i2 in range(0, 1024):
-                    with tir.block(
-                        [1024, 1024, tir.reduce_axis(0, 1024)], "matmul"
-                    ) as [vi, vj, vk]:
+                    with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "matmul") as [
+                        vi,
+                        vj,
+                        vk,
+                    ]:
                         tir.bind(vi, i0)
                         tir.bind(vj, i1)
                         tir.bind(vk, i2)
@@ -164,7 +166,7 @@ def test_meta_schedule_creation():
 def test_meta_schedule_copy():
     sch = ms.Schedule(func=matmul)
     i, j, k = sch.get_axes(sch.get_block("C"))
-    sch_copy = sch.copy()
+    sch_copy = sch.copy(seed=42)
     assert not sch.evaluate(i).same_as(sch_copy.evaluate(i))
     assert not sch.evaluate(j).same_as(sch_copy.evaluate(j))
     assert not sch.evaluate(k).same_as(sch_copy.evaluate(k))
@@ -246,9 +248,7 @@ def test_meta_schedule_get_axes():
 def test_meta_schedule_split():
     sch = ms.Schedule(func=matmul)
     i, _, _ = sch.get_axes(sch.get_block("C"))
-    i_0, i_1, i_2 = [
-        sch.evaluate(i).stmt for i in sch.split(loop=i, factors=[4, 8, 32])
-    ]
+    i_0, i_1, i_2 = [sch.evaluate(i).stmt for i in sch.split(loop=i, factors=[4, 8, 32])]
     assert tvm.ir.structural_equal(i_0, sch.sch.func.body.block.body)
     assert tvm.ir.structural_equal(i_1, sch.sch.func.body.block.body.body)
     assert tvm.ir.structural_equal(i_2, sch.sch.func.body.block.body.body.body)

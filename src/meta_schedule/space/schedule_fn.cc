@@ -41,14 +41,14 @@ class ScheduleFnNode : public SearchSpaceNode {
    * \param task The search task to be sampled from
    * \return The schedule sampled
    */
-  Schedule SampleSchedule(const SearchTask& task) override;
+  Schedule SampleSchedule(const SearchTask& task, Sampler* sampler) override;
   /*!
    * \brief Get support of the search space
    * \param task The search task to be sampled from
    * \return An array with a single element returned from SampleSchedule
    * \sa ScheduleFnNode::SampleSchedule
    */
-  Array<Schedule> GetSupport(const SearchTask& task) override;
+  Array<Schedule> GetSupport(const SearchTask& task, Sampler* sampler) override;
 
   static constexpr const char* _type_key = "meta_schedule.ScheduleFn";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleFnNode, SearchSpaceNode);
@@ -78,14 +78,14 @@ ScheduleFn::ScheduleFn(PackedFunc sch_fn) {
 
 /********** Sampling **********/
 
-Schedule ScheduleFnNode::SampleSchedule(const SearchTask& task) {
-  Schedule sch(task->func);
+Schedule ScheduleFnNode::SampleSchedule(const SearchTask& task, Sampler* sampler) {
+  Schedule sch(task->func, Integer(sampler->ForkSeed()));
   this->sch_fn_(sch);
   return sch;
 }
 
-Array<Schedule> ScheduleFnNode::GetSupport(const SearchTask& task) {
-  return {SampleSchedule(task)};
+Array<Schedule> ScheduleFnNode::GetSupport(const SearchTask& task, Sampler* sampler) {
+  return {SampleSchedule(task, sampler)};
 }
 
 /********** FFI **********/
