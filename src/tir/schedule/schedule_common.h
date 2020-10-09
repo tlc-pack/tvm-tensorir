@@ -96,7 +96,7 @@ StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef
  * \param writes The vector to store the writes result
  * \param relax_vars The additional vars should be relaxed
  * \note reads and writes can be nullptr. In that case, we will ignore relax reads or writes region.
- * \example
+ * For example
  *   Before relax
  *   \code
  *     for i = 0 to 10
@@ -246,7 +246,7 @@ class PatternMatcher : public ExprVisitor {
 
 /*!
  * \brief Match block var expr and simplify it to the block var
- * \example
+ * For example
  *   block var v0 = i * 4 + j
  *
  *   expr before simplify
