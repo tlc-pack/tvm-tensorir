@@ -32,6 +32,7 @@ from tvm.tir import expr as _expr
 from . import scope_emitter, special_stmt, scope_handler, intrin, ty
 from .meta_unparser import MetaUnparser
 from .registry import Registry
+from .special_stmt import HybridLambda, HybridReducer
 from . import _ffi_api
 
 
@@ -282,24 +283,37 @@ class TVMScriptParser(ast.NodeVisitor):
         """
 
         self.init_function_parsing_env()
+        # New Scope : PrimFunc
+        self.scope_emitter.new_scope()
         # add parameters of function
         for arg in node.args.args:
             arg_var = tvm.te.var(arg.arg, self.get_type(arg.annotation))
             self.scope_emitter.update_symbol(arg.arg, arg_var)
             self.params.append(arg_var)
-
-        # visit the body of function
+        # New Scope : Implicit root block
+        self.scope_emitter.new_scope(is_block=True)
+        # fetch the body of root block
         self.scope_emitter.node_stack[-1].extend(reversed(node.body))
-
-        # fetch the body and return a tir.PrimFunc
+        body = self.get_body()
+        # Emit Scope : Implicit root block
+        root_info = self.scope_emitter.pop_scope(is_block=True)
+        # Fix the body
+        # 1. generate root block if necessary
+        # 2. generate surrounding loops for blocks if necessary
+        body = AutoComplete(body, root_info.allocates)
+        # return a tir.PrimFunc
+        ret_type = self.get_type(node.returns)
         func = tvm.tir.PrimFunc(
             self.params,
-            self.get_body(),
-            ret_type=self.get_type(node.returns),
+            body,
+            ret_type=ret_type,
             buffer_map=self.buffer_map,
             attrs=tvm.ir.make_node("DictAttrs", **self.dict_attr),
         )
         self.functions[GlobalVar(node.name)] = func
+
+        # Emit Scope : PrimFunc
+        self.scope_emitter.pop_scope()
         return func
 
     def visit_Assign(self, node):
@@ -308,9 +322,10 @@ class TVMScriptParser(ast.NodeVisitor):
             Assign(expr* targets, expr value, string? type_comment)
         By now only 3 types of Assign is supported:
             1. special stmts with return value
-                1.1 Buffer = tir.buffer_bind()/tir.buffer_decl()
-                1.2 Var = tir.var()
-                1.3 Var = tir.env_thread()
+                1.1 Buffer = tir.buffer_bind()/tir.buffer_allocate()
+                1.2 HybridReducer = tir.comm_reducer()
+                1.3 Var = tir.var()
+                1.4 Var = tir.env_thread()
             2. (BufferStore) Buffer[PrimExpr, PrimExpr, ..., PrimExpr] = PrimExpr
             3. (Store)       Var[PrimExpr] = PrimExpr
             4. with scope handlers with concise scoping and var def
@@ -383,8 +398,9 @@ class TVMScriptParser(ast.NodeVisitor):
         """For visitor
         AST abstract grammar:
             For(expr target, expr iter, stmt* body, stmt* orelse, string? type_comment)
-        By now only 1 type of For is supported:
-            1. for name in tir.serial/parallel/vectorized/unroll(begin, end)
+        By now only 2 types of For is supported:
+            1. for name in tir.range(begin, end, for_type)
+            2. for name in tir.grid(begin, end, annotation)
         """
 
         # check node.iter, which is a Call
@@ -413,7 +429,7 @@ class TVMScriptParser(ast.NodeVisitor):
             With(withitem* items, stmt* body, string? type_comment)
             withitem = (expr context_expr, expr? optional_vars)
         By now 2 types of With is supported:
-            1. with tir.allocate() as targets:
+            1. with tir.block(*axes)/tir.allocate() as targets:
             2. with tir.let()/tir.Assert()/tir.attr()//tir.realize()
         """
         if not len(node.items) == 1:
@@ -505,6 +521,7 @@ class TVMScriptParser(ast.NodeVisitor):
         """Expr visitor
         AST abstract grammar:
             Expr(expr value)
+
         Now only 3 types of `Expr` stmt is allowed:
             1. reducer.step()/tir.store()
             2. tir.attr()/tir.assert()/tir.allocate()/tir.realize()
@@ -517,6 +534,23 @@ class TVMScriptParser(ast.NodeVisitor):
         if res is None or isinstance(res, tvm.tir.Stmt):
             return res
         self.report_error("Invalid Expr stmt")
+
+    def visit_Lambda(self, node):
+        """Lambda visitor
+        AST abstract grammar:
+            Lambda(arguments args, expr body)
+
+        Now lambda can be only used in comm_reducer
+        """
+
+        args = list()
+        for arg in node.args.args:
+            args.append(tvm.te.var(arg.arg))
+            self.scope_emitter.update_symbol(arg.arg, args[-1])
+        res = HybridLambda(args, self.visit(node.body))
+        for arg in node.args.args:
+            self.scope_emitter.remove_symbol(arg.arg)
+        return res
 
     def visit_BinOp(self, node):
         """BinOp visitor
@@ -572,10 +606,11 @@ class TVMScriptParser(ast.NodeVisitor):
             slice = Slice(expr? lower, expr? upper, expr? step)
                     | ExtSlice(slice* dims)
                     | Index(expr value)
-        By now only 2 types of Subscript are supported:
+        By now only 3 types of Subscript are supported:
             1. Buffer[index, index, ...], Buffer element access(BufferLoad & BufferStore)
                Var[index] Buffer element access()
-            2. meta[type_key][index], Meta info access
+            2. Buffer[slice, slice, ...], TensorRegion
+            3. meta[type_key][index], Meta info access
         """
 
         symbol = self.visit(node.value)
@@ -594,7 +629,7 @@ class TVMScriptParser(ast.NodeVisitor):
                 else:
                     return symbol, indexes
             else:
-                # Buffer Region, now used in tir.realize(buffer[bounds])
+                # TensorRegion
                 doms = []
                 slice_nodes = []
                 if isinstance(node.slice, ast.Slice):
@@ -616,7 +651,7 @@ class TVMScriptParser(ast.NodeVisitor):
                         ana = tvm.arith.Analyzer()
                         extent = ana.simplify(extent)
                     doms.append(tvm.ir.Range.from_min_extent(lower, extent))
-                return symbol, doms
+                return tvm.tir.TensorRegion(symbol, doms)
         else:
             res = symbol[self.visit(slice)]
             if res is None:

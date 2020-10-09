@@ -357,6 +357,7 @@ class Annotation(Stmt):
     value : PrimExpr
         the value of annotation
     """
+
     def __init__(self, key, value):
         self.__init_handle_by_constructor__(_ffi_api.Annotation, key, value)
 
@@ -385,19 +386,16 @@ class Loop(Stmt):
     body : Stmt
         The body statement.
     """
+
     DataPar = 0
     Reduce = 1
     Scan = 2
     Opaque = 3
-    def __init__(self,
-                 loop_var,
-                 min_val,
-                 extent,
-                 annotations,
-                 body):
+
+    def __init__(self, loop_var, min_val, extent, annotations, body):
         self.__init_handle_by_constructor__(
-            _ffi_api.Loop, loop_var, min_val, extent,
-            annotations, body)
+            _ffi_api.Loop, loop_var, min_val, extent, annotations, body
+        )
 
 
 @tvm._ffi.register_object
@@ -428,9 +426,11 @@ class Block(Stmt):
         the tag of the block.
 
     """
+
     def __init__(self, iter_vars, reads, writes, body, allocations, annotations, tag):
         self.__init_handle_by_constructor__(
-            _ffi_api.Block, iter_vars, reads, writes, body, allocations, annotations, tag)
+            _ffi_api.Block, iter_vars, reads, writes, body, allocations, annotations, tag
+        )
 
 
 @tvm._ffi.register_object
@@ -451,9 +451,11 @@ class BlockRealize(Stmt):
     exe_scope: str
         Execution scope of the block
     """
+
     def __init__(self, values, predicate, block, exe_scope=""):
         self.__init_handle_by_constructor__(
-            _ffi_api.BlockRealize, values, predicate, block, exe_scope)
+            _ffi_api.BlockRealize, values, predicate, block, exe_scope
+        )
 
 
 @tvm._ffi.register_object
@@ -469,9 +471,9 @@ class BufferAllocate(Stmt):
         The buffer scope
 
     """
+
     def __init__(self, buffer, scope):
-        self.__init_handle_by_constructor__(
-            _ffi_api.BufferAllocate, buffer, scope)
+        self.__init_handle_by_constructor__(_ffi_api.BufferAllocate, buffer, scope)
 
 
 @tvm._ffi.register_object
@@ -489,6 +491,7 @@ class ReduceStep(Stmt):
     rhs : PrimExpr
         rhs expression
     """
+
     def __init__(self, comm_reducer, lhs, rhs):
         self.__init_handle_by_constructor__(_ffi_api.ReduceStep, comm_reducer, lhs, rhs)
 

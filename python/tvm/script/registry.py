@@ -144,7 +144,10 @@ def func_wrapper(func_name, func_to_register, arg_list, category, concise=False,
             parser.scope_emitter.node_stack[-1].extend(reversed(node.body))
             for loop_var in loop_vars:
                 parser.scope_emitter.update_symbol(loop_var.name, loop_var)
+                parser.scope_emitter.loop_stack[-1].append(loop_var)
             body = parser.get_body()
+            for loop_var in loop_vars:
+                parser.scope_emitter.loop_stack[-1].pop()
             parser.scope_emitter.pop_scope()
         elif category == Category.WITH_SCOPE:
             if not with_var:

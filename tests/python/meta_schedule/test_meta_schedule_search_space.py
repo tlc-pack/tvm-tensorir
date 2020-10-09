@@ -20,12 +20,12 @@
 import tvm
 from tvm import meta_schedule as ms
 from tvm import tir
-from tvm.hybrid import ty
+from tvm.script import ty
 
 # pylint: disable=invalid-name,no-member
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (1024, 1024), "float32")
     B = tir.match_buffer(b, (1024, 1024), "float32")
