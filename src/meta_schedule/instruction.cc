@@ -239,12 +239,12 @@ Array<ObjectRef> ComputeInlineAttrs::ApplyToSchedule(ScheduleNode* sch,
 Instruction ReverseComputeInlineAttrs::MakeInst(const BlockRV& block) {
   ObjectPtr<ReverseComputeInlineAttrs> n = make_object<ReverseComputeInlineAttrs>();
   return Instruction(/*inputs=*/{block},
-      /*outputs=*/{},
-      /*attrs=*/Attrs(std::move(n)));
+                     /*outputs=*/{},
+                     /*attrs=*/Attrs(std::move(n)));
 }
 
 Array<ObjectRef> ReverseComputeInlineAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                     const Array<ObjectRef>& inputs) const {
+                                                            const Array<ObjectRef>& inputs) const {
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_CAST_INPUT(BlockRV, block, inputs[0]);
   sch->ReverseComputeInline(block);

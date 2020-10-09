@@ -152,9 +152,9 @@ class ScheduleNode : public Object {
    */
   void ComputeInline(const BlockRV& block);
   /*!
- * \brief Apply the instruction reverse+compute_inline
- * \param block The block to be reverse computed inline
- */
+   * \brief Apply the instruction reverse+compute_inline
+   * \param block The block to be reverse computed inline
+   */
   void ReverseComputeInline(const BlockRV& block);
   /*!
    * \brief Apply the instruction cache_write
