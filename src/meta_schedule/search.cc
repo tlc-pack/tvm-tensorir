@@ -43,12 +43,17 @@ SearchTask::SearchTask(tir::PrimFunc func, String task_name, Target target, Targ
  * \param space The search space
  * \param strategy The search strategy
  * \param measurer The measurer that builds, runs and profiles sampled programs
+ * \param seed The randon seed
  * \param verbose Flag for the verbose mode
  * \return The best schedule found, NullOpt if no valid schedule is found in the search space
  */
 TVM_DLL Optional<Schedule> AutoTune(SearchTask task, SearchSpace space, SearchStrategy strategy,
-                                    ProgramMeasurer measurer, int verbose) {
-  return strategy->Search(task, space, measurer, verbose);
+                                    ProgramMeasurer measurer, Optional<Integer> seed, int verbose) {
+  Sampler seeded;
+  if (seed.defined()) {
+    seeded.Seed(seed.value());
+  }
+  return strategy->Search(task, space, measurer, &seeded, verbose);
 }
 
 /********** FFI **********/
@@ -74,8 +79,13 @@ struct Internal {
    * \return The schedule sampled
    * \sa SearchSpaceNode::SampleSchedule
    */
-  static Schedule SearchSpaceSampleSchedule(SearchSpace space, SearchTask task) {
-    return space->SampleSchedule(task);
+  static Schedule SearchSpaceSampleSchedule(SearchSpace space, SearchTask task,
+                                            Optional<Integer> seed) {
+    Sampler seeded;
+    if (seed.defined()) {
+      seeded.Seed(seed.value());
+    }
+    return space->SampleSchedule(task, &seeded);
   }
   /*!
    * \brief Get support of the search space, calls SearchSpaceNode::GetSupport
@@ -85,8 +95,13 @@ struct Internal {
    * the traces returned
    * \sa SearchSpaceNode::GetSupport
    */
-  static Array<Schedule> SearchSpaceGetSupport(SearchSpace space, SearchTask task) {
-    return space->GetSupport(task);
+  static Array<Schedule> SearchSpaceGetSupport(SearchSpace space, SearchTask task,
+                                               Optional<Integer> seed) {
+    Sampler seeded;
+    if (seed.defined()) {
+      seeded.Seed(seed.value());
+    }
+    return space->GetSupport(task, &seeded);
   }
   /*!
    * \brief Explore the search space and find the best schedule
@@ -99,8 +114,12 @@ struct Internal {
    */
   static Optional<Schedule> SearchStrategySearch(SearchStrategy strategy, SearchTask task,
                                                  SearchSpace space, ProgramMeasurer measurer,
-                                                 int verbose) {
-    return strategy->Search(task, space, measurer, verbose);
+                                                 Optional<Integer> seed, int verbose) {
+    Sampler seeded;
+    if (seed.defined()) {
+      seeded.Seed(seed.value());
+    }
+    return strategy->Search(task, space, measurer, &seeded, verbose);
   }
 };
 
