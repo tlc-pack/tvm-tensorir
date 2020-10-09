@@ -436,7 +436,7 @@ class IRBuilder(object):
         ptr : BufferVar
             The buffer var representing the buffer.
         """
-        buffer_var = _expr.Var(name, dtype="handle")
+        buffer_var = _expr.Var(name, dtype=PointerType(PrimType(content_type)))
         return BufferVar(self, buffer_var, None, content_type)
 
     def buffer_ptr(self, buf, shape=None):
