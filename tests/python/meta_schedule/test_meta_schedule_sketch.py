@@ -21,13 +21,13 @@ from typing import List
 import tvm
 from tvm import meta_schedule as ms
 from tvm import tir
-from tvm.hybrid import ty
+from tvm.script import ty
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
 
 # fmt: off
 
-@tvm.hybrid.script
+@tvm.script.tir
 def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (1024, 1024), "float32")
     B = tir.match_buffer(b, (1024, 1024), "float32")
@@ -37,7 +37,7 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def _matmul_sketch_0(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     # function attr dict
     tir.func_attr({})
@@ -68,7 +68,7 @@ def _matmul_sketch_0(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                                     reducer.step(C[vi, vj], (A[vi, vk]*B[vk, vj]))
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def _matmul_sketch_1(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     # function attr dict
     tir.func_attr({})
@@ -108,7 +108,7 @@ def _matmul_sketch_1(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                     C[v0, v1] = C_local[v0, v1]
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def _matmul_sketch_2(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     # function attr dict
     tir.func_attr({})
@@ -147,7 +147,7 @@ def _matmul_sketch_2(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                                 C[v0, v1] = C_local[v0, v1]
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def matmul_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     A = tir.match_buffer(a, (1024, 1024), "float32")
     B = tir.match_buffer(b, (1024, 1024), "float32")
@@ -160,7 +160,7 @@ def matmul_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
         D[vi, vj] = tir.max(C[vi, vj], 0.0)
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def _matmul_relu_sketch_0(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     # function attr dict
     tir.func_attr({})
@@ -200,7 +200,7 @@ def _matmul_relu_sketch_0(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
                     D[vi_1, vj_1] = tir.max(C[vi_1, vj_1], tir.float32(0))
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def _matmul_relu_sketch_1(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     # function attr dict
     tir.func_attr({})
@@ -240,7 +240,7 @@ def _matmul_relu_sketch_1(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
                                     D[vi_1, vj_1] = tir.max(C[vi_1, vj_1], tir.float32(0))
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def _matmul_relu_sketch_2(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     # function attr dict
     tir.func_attr({})
@@ -293,7 +293,7 @@ def _check_sketch(results: List[ms.Schedule], expected: List[tvm.tir.PrimFunc]):
                 found = True
                 break
         if not found:
-            print(tvm.hybrid.ashybrid(x))
+            print(tvm.script.ashybrid(x))
         assert found
 
 

@@ -144,7 +144,7 @@ void BlockReadWriteCollector::VisitStmt_(const BlockRealizeNode* op) {
 }  // namespace tir
 
 namespace tir {
-namespace hybrid {
+namespace script {
 
 /*! \brief Generate surrounding loops automatically */
 class AutoCompleter : public StmtMutator {
@@ -186,7 +186,7 @@ class AutoCompleter : public StmtMutator {
   }
 };
 
-TVM_REGISTER_GLOBAL("hybrid.AutoComplete")
+TVM_REGISTER_GLOBAL("script.AutoComplete")
     .set_body_typed<Stmt(Stmt, Array<BufferAllocate>)>([](Stmt body,
                                                           Array<BufferAllocate> root_allocates) {
       AutoCompleter auto_completer;
@@ -201,6 +201,6 @@ TVM_REGISTER_GLOBAL("hybrid.AutoComplete")
       return res;
     });
 
-}  // namespace hybrid
+}  // namespace script
 }  // namespace tir
 }  // namespace tvm

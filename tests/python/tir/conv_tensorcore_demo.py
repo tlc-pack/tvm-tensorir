@@ -16,17 +16,18 @@
 # under the License.
 
 import tvm
+import tvm.testing
 from tvm import tir
 from tvm.contrib import nvcc
 
 import numpy as np
-from tvm.hybrid import ty
-from topi.testing import conv2d_nhwc_python
+from tvm.script import ty
+from tvm.topi.testing import conv2d_nhwc_python
 
 VERIFY = True
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def conv(a: ty.handle, w: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (2, 14, 14, 4, 16, 16), "float32")
     A = tir.match_buffer(a, (2, 14, 14, 2, 16, 16), "float16")
@@ -46,7 +47,7 @@ def conv(a: ty.handle, w: ty.handle, c: ty.handle) -> None:
                      tir.cast(W[kh, kw, ic, o, ii, oo], "float32"))
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def gemm_desc(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float16", align=128, offset_factor=1, scope="wmma.matrix_a")
     B = tir.match_buffer(b, (16, 16), "float16", align=128, offset_factor=1, scope="wmma.matrix_b")
@@ -66,7 +67,7 @@ def gemm_desc(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                                                                         "float32")
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def gemm_intrin(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float16", align=128, offset_factor=256, scope="wmma.matrix_a")
     B = tir.match_buffer(b, (16, 16), "float16", align=128, offset_factor=256, scope="wmma.matrix_b")
@@ -86,7 +87,7 @@ def gemm_intrin(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                       dtype="handle"))
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def fill_desc(c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256,
                          scope="wmma.accumulator")
@@ -101,7 +102,7 @@ def fill_desc(c: ty.handle) -> None:
                 C[vii, vjj] = tir.float32(0)
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def fill_intrin(c: ty.handle) -> None:
     C = tir.match_buffer(c, (16, 16), "float32", align=128, offset_factor=256,
                          scope="wmma.accumulator")
@@ -115,7 +116,7 @@ def fill_intrin(c: ty.handle) -> None:
                                            dtype="handle"))
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def store_desc(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float32", align=128, offset_factor=256,
                          scope="wmma.accumulator")
@@ -132,7 +133,7 @@ def store_desc(a: ty.handle, c: ty.handle) -> None:
                 C[vii, vjj] = A[vii, vjj]
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def store_intrin(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float32", align=128, offset_factor=256,
                          scope="wmma.accumulator")
@@ -149,7 +150,7 @@ def store_intrin(a: ty.handle, c: ty.handle) -> None:
             dtype="handle"))
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def load_a_desc(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float16", align=128, offset_factor=256,
                          scope="shared")
@@ -166,7 +167,7 @@ def load_a_desc(a: ty.handle, c: ty.handle) -> None:
                 C[vii, vjj] = A[vii, vjj]
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def load_a_intrin(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float16", align=128, offset_factor=256,
                          scope="shared")
@@ -183,7 +184,7 @@ def load_a_intrin(a: ty.handle, c: ty.handle) -> None:
             dtype="handle"))
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def load_b_desc(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float16", align=128, offset_factor=256,
                          scope="shared")
@@ -200,7 +201,7 @@ def load_b_desc(a: ty.handle, c: ty.handle) -> None:
                 C[vii, vjj] = A[vii, vjj]
 
 
-@tvm.hybrid.script
+@tvm.script.tir
 def load_b_intrin(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16), "float16", align=128, offset_factor=256,
                          scope="shared")
@@ -248,7 +249,7 @@ def build_and_test(func, device='cuda', num_runs=10):
 
 
 def test_tensorcore():
-    mod = tvm.hybrid.create_module({"conv": conv})
+    mod = tvm.script.create_module({"conv": conv})
     original_func = mod["conv"]
 
     A = original_func.buffer_map[original_func.params[0]]
@@ -329,7 +330,7 @@ def test_tensorcore():
     s.tensorize(s.get_axes(AF)[-2], tir.TensorIntrin(load_a_desc, load_a_intrin))
     s.tensorize(s.get_axes(WF)[-2], tir.TensorIntrin(load_b_desc, load_b_intrin))
 
-    print(tvm.hybrid.ashybrid(s.func))
+    print(tvm.script.asscript(s.func))
     print(tvm.lower(s.func, None, simple_mode=True))
     build_and_test(s.func)
 
