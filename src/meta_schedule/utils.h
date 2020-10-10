@@ -141,15 +141,13 @@ struct AsVector<TSrcObjectRef, double> {
  * \param float_array The array of floating point numbers to be averaged
  * \return The mean of the given array
  */
-inline double FloatArrayMean(const Array<PrimExpr>& float_array) {
+inline double FloatArrayMean(const Array<FloatImm>& float_array) {
   double sum = 0;
   if (float_array.empty()) {
     return 0.0;
   }
-  for (const auto& x : float_array) {
-    const auto* float_imm = x.as<tir::FloatImmNode>();
-    CHECK(float_imm != nullptr);
-    sum += float_imm->value;
+  for (const FloatImm& x : float_array) {
+    sum += x.get()->value;
   }
   return sum / float_array.size();
 }

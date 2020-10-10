@@ -40,11 +40,13 @@ LocalBuilder::LocalBuilder(int timeout, int n_parallel, String build_func) {
   data_ = std::move(n);
 }
 
-RPCRunner::RPCRunner(String tracker, int priority, int n_parallel, int timeout, int number,
-                     int repeat, int min_repeat_ms, double cooldown_interval,
+RPCRunner::RPCRunner(String key, String host, int port, int priority, int n_parallel, int timeout,
+                     int number, int repeat, int min_repeat_ms, double cooldown_interval,
                      bool enable_cpu_cache_flush) {
   ObjectPtr<RPCRunnerNode> n = make_object<RPCRunnerNode>();
-  n->tracker = std::move(tracker);
+  n->key = std::move(key);
+  n->host = std::move(host);
+  n->port = port;
   n->priority = priority;
   n->timeout = timeout;
   n->n_parallel = n_parallel;
@@ -96,7 +98,7 @@ Array<MeasureResult> RPCRunnerNode::Run(const Array<MeasureInput>& inputs,
                                         int verbose) const {
   if (const auto* f = runtime::Registry::Get("meta_schedule.rpc_runner.run")) {
     Array<MeasureResult> results =
-        (*f)(inputs, build_results, tracker, priority, n_parallel, timeout, number, repeat,
+        (*f)(inputs, build_results, key, host, port, priority, n_parallel, timeout, number, repeat,
              min_repeat_ms, cooldown_interval, enable_cpu_cache_flush, verbose);
     return results;
   }
@@ -190,10 +192,10 @@ struct Internal {
    * \return The RPCRunner constructed
    * \sa RPCRunnerNew::RPCRunnerNew
    */
-  static RPCRunner RPCRunnerNew(String tracker, int priority, int n_parallel, int timeout,
-                                int number, int repeat, int min_repeat_ms, double cooldown_interval,
-                                bool enable_cpu_cache_flush) {
-    return RPCRunner(tracker, priority, n_parallel, timeout, number, repeat, min_repeat_ms,
+  static RPCRunner RPCRunnerNew(String key, String host, int port, int priority, int n_parallel,
+                                int timeout, int number, int repeat, int min_repeat_ms,
+                                double cooldown_interval, bool enable_cpu_cache_flush) {
+    return RPCRunner(key, host, port, priority, n_parallel, timeout, number, repeat, min_repeat_ms,
                      cooldown_interval, enable_cpu_cache_flush);
   }
   /*!
