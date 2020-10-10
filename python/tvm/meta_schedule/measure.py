@@ -40,7 +40,7 @@ from tvm.runtime import Object
 from . import _ffi_api
 from .measure_record import BuildResult, MeasureInput, MeasureResult
 from .schedule import Schedule
-from .utils import check_remote, cpu_count
+from .utils import check_remote_servers, cpu_count
 
 ########## ProgramBuilder ##########
 
@@ -99,8 +99,8 @@ class ProgramRunner(Object):
 
     @staticmethod
     def create(name: str) -> "ProgramRunner":
-        if name == "rpc" or name.startswith("rpc://"):
-            return RPCRunner.create(name)
+        if name == "rpc":
+            return RPCRunner()
         raise ValueError("Unknown name of program builder: " + name)
 
     def run(
@@ -166,15 +166,19 @@ class RPCRunner(ProgramRunner):
     Or sometime we may need to use RPC even in local running to insulate the thread environment.
     (e.g. running CUDA programs)"""
 
-    tracker: str
+    key: str
+    host: str
+    port: int
     priority: int
     n_parallel: int
 
     def __init__(
         self,
-        tracker: Optional[str] = None,
+        key: Optional[str] = None,
+        host: Optional[str] = None,
+        port: Optional[int] = None,
         priority: int = 1,
-        n_parallel: int = 1,
+        n_parallel: Optional[int] = None,
         timeout: int = 10,
         number: int = 3,
         repeat: int = 1,
@@ -182,23 +186,39 @@ class RPCRunner(ProgramRunner):
         cooldown_interval: float = 0.0,
         enable_cpu_cache_flush: bool = False,
     ):
-        if tracker is None:
-            tracker = os.environ.get("TVM_RPC_TRACKER", None)
-        if check_remote(tracker, priority, timeout):
-            print("Get devices for measurement successfully!")
-        else:
-            raise RuntimeError(
-                "Cannot get remote devices from the tracker. "
-                "Please check the status of tracker via "
-                "'python -m tvm.exec.query_rpc_tracker --port [THE PORT YOU USE]' "
-                "and make sure you have free devices on the queue status. "
-                "You may also specify the RPC tracker info by setting "
-                "environment variable 'TVM_RPC_TRACKER', "
-                "e.g. 'TVM_RPC_TRACKER=0.0.0.0:9089:local'"
-            )
+        if key is None:
+            key = os.environ.get("TVM_TRACKER_KEY", None)
+            if key is None:
+                raise ValueError(
+                    "RPC device key is not provided. Please provide 'key' explicitly, "
+                    "or set environment variable TVM_TRACKER_KEY"
+                )
+        if host is None:
+            host = os.environ.get("TVM_TRACKER_HOST", None)
+            if host is None:
+                raise ValueError(
+                    "RPC tracker's host address is not provided. Please provide 'host' explicitly, "
+                    "or set environment variable TVM_TRACKER_HOST"
+                )
+        if port is None:
+            port = os.environ.get("TVM_TRACKER_PORT", None)
+            if port is None:
+                raise ValueError(
+                    "RPC tracker's host address is not provided. Please provide 'port' explicitly, "
+                    "or set environment variable TVM_TRACKER_PORT"
+                )
+            port = int(port)
+
+        n_servers = check_remote_servers(key, host, port, priority, timeout)
+
+        if n_parallel is None:
+            n_parallel = n_servers
+
         self.__init_handle_by_constructor__(
             _ffi_api.RPCRunner,  #  pylint: disable=no-member
-            tracker,
+            key,
+            host,
+            port,
             priority,
             n_parallel,
             timeout,
@@ -208,23 +228,6 @@ class RPCRunner(ProgramRunner):
             cooldown_interval,
             enable_cpu_cache_flush,
         )
-
-    @staticmethod
-    def create(name: str) -> "RPCRunner":
-        RPC_PREFIX = "rpc://"  # pylint: disable=invalid-name
-        if name == "rpc":
-            return RPCRunner()
-        if not name.startswith(RPC_PREFIX):
-            raise ValueError("Invalid RPC config: " + name)
-        name = name[len(RPC_PREFIX) :].strip()
-        if "*" not in name:
-            return RPCRunner(tracker=name)
-        split_result = name.split("*")
-        if len(split_result) != 2:
-            raise ValueError(f"Cannot create RPCRunner from string: {name}")
-        tracker, n_parallel = map(str.strip, split_result)
-        n_parallel = int(n_parallel)
-        return RPCRunner(tracker=tracker, n_parallel=n_parallel)
 
 
 ########## MeasureCallback ##########

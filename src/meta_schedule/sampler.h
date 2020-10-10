@@ -104,23 +104,6 @@ class Sampler {
    */
   std::function<int()> MakeMultinomial(const std::vector<double>& weights);
   /*!
-   * \brief Sample an array with replacement
-   * \tparam T The type of elements
-   * \param array The array to be indexed
-   * \param num_samples Number of samples we want to draw
-   * \return The result of sampling
-   */
-  template <class T>
-  runtime::Array<T> SampleWithReplacement(const runtime::Array<T>& array, int num_samples) {
-    std::vector<int> indices = SampleInts(num_samples, 0, array.size());
-    runtime::Array<T> result;
-    result.reserve(num_samples);
-    for (int index : indices) {
-      result.push_back(array[index]);
-    }
-    return result;
-  }
-  /*!
    * \brief Classic sampling without replacement
    * \param n The population size
    * \param k The number of samples to be drawn from the population
