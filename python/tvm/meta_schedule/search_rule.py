@@ -201,4 +201,16 @@ def fusion(levels: List[int]) -> SearchRule:
 
 
 def tensorize_rewrite(desc_func: PrimFunc) -> SearchRule:
+    """Create a rule that does rewriting for later tensorize
+
+    Parameters
+    ----------
+    desc_func : PrimFunc
+        The description function of TensorIntrin we want to match
+
+    Returns
+    -------
+    rule: SearchRule
+        A search rule that does tensorize rewrite
+    """
     return _ffi_api_search_rule.TensorizeRewrite(desc_func)  # pylint: disable=no-member
