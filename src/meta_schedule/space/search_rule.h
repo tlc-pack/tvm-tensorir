@@ -123,6 +123,13 @@ TVM_DLL SearchRule MultiLevelTiling(String structure);
  */
 TVM_DLL SearchRule Fusion(Array<Integer> levels);
 
+/*!
+ * \brief Rewrite block and its surrounding loops to match desc_func
+ * \param desc_func
+ * \return The rule created
+ */
+TVM_DLL SearchRule TensorizeRewrite(tir::PrimFunc desc_func);
+
 }  // namespace meta_schedule
 }  // namespace tvm
 
