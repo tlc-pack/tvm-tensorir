@@ -179,7 +179,7 @@ class ScheduleNode : public Object {
    */
   void MutateDecision(const Instruction& inst, const Optional<Array<ObjectRef>>& decision);
   /*!
-   * \brief Re-sample along the trace to generatea new sequence of
+   * \brief Re-sample along the trace to generate a new sequence of
    * scheduling instructions and program states
    */
   void ReSample();

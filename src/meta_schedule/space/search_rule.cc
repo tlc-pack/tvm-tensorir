@@ -100,7 +100,7 @@ SearchRule AlwaysInline() {
 
 /********** Add-Cache-Write **********/
 
-/*! \brief Necessary information shared accross tiling stages */
+/*! \brief Necessary information shared across tiling stages */
 class TilingContextObj : public Object {
  public:
   /*! \brief The producer block to be multi-level tiled*/
