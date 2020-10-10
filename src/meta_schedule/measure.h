@@ -171,8 +171,12 @@ class LocalBuilder : public ProgramBuilder {
  */
 class RPCRunnerNode : public ProgramRunnerNode {
  public:
-  /*! \brief The RPC tracker information. */
-  String tracker;
+  /*! \brief The key of the device registered in the RPC tracker. */
+  String key;
+  /*! \brief The host address of the RPC tracker. */
+  String host;
+  /*! \brief The port of RPC tracker */
+  int port;
   /*! \brief The priority of this run request, larger is more prior. */
   int priority;
   /*! \brief The number of tasks run in parallel. */
@@ -185,7 +189,9 @@ class RPCRunnerNode : public ProgramRunnerNode {
     v->Visit("min_repeat_ms", &min_repeat_ms);
     v->Visit("cooldown_interval", &cooldown_interval);
     v->Visit("enable_cpu_cache_flush", &enable_cpu_cache_flush);
-    v->Visit("tracker", &tracker);
+    v->Visit("key", &key);
+    v->Visit("host", &host);
+    v->Visit("port", &port);
     v->Visit("priority", &priority);
     v->Visit("n_parallel", &n_parallel);
   }
@@ -221,8 +227,8 @@ class RPCRunner : public ProgramRunner {
    * \param cooldown_interval The cool down interval between two measurements.
    * \param enable_cpu_cache_flush Whether to flush cache on CPU between repeated measurements.
    */
-  explicit RPCRunner(String tracker, int priority, int n_parallel, int timeout, int number,
-                     int repeat, int min_repeat_ms, double cooldown_interval,
+  explicit RPCRunner(String key, String host, int port, int priority, int n_parallel, int timeout,
+                     int number, int repeat, int min_repeat_ms, double cooldown_interval,
                      bool enable_cpu_cache_flush);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(RPCRunner, ProgramRunner, RPCRunnerNode);

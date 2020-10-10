@@ -128,37 +128,23 @@ def call_func_with_timeout(timeout, func, args=(), kwargs=None):
     return res
 
 
-def parse_tracker_key(  # pylint: disable=missing-function-docstring
-    tracker: str,
-) -> Tuple[str, int, str]:
-    result = tracker.split(":")
-    if len(result) != 3:
-        raise ValueError(
-            f"Unable to parse tracker: {tracker}. Please use the correct format "
-            "'host:port:device_key', e.g. '0.0.0.0:9089:local'"
-        )
-    host, port, device_key = map(str.strip, result)
-    try:
-        port = int(port)
-    except ValueError:
-        raise ValueError(
-            f"Unable to parse tracker: {tracker}. The port should be an integer. "
-            "Please use the correct format 'host:port:device_key', e.g. '0.0.0.0:9089:local'"
-        )
-    return host, port, device_key
-
-
 def request_remote(
-    tracker: str,
+    key: str,
+    host: str,
+    port: int,
     priority: int = 1,
     timeout: int = 60,
-) -> rpc.RPCSession:
+) -> (rpc.TrackerSession, rpc.RPCSession):
     """Request a remote session.
 
     Parameters
     ----------
-    tracker: str
-        The host address, port and device key of the RPC tracker
+    key : str
+        The key of the device registered in the RPC tracker.
+    host : str
+        The host address of the RPC Tracker.
+    port : int
+        The port of RPC Tracker.
     priority : int = 1
         The priority of this request, larger is more prior.
     timeout : int = 60
@@ -166,24 +152,81 @@ def request_remote(
 
     Returns
     -------
+    tracker : TrackerSession
+        The tracker session
     remote : RPCSession
         The connected remote RPCSession.
     """
     # connect to the tracker
-    host, port, device_key = parse_tracker_key(tracker)
     tracker = rpc.connect_tracker(host, port)
-    remote = tracker.request(device_key, priority=priority, session_timeout=timeout)
-    return remote
+    remote = tracker.request(key, priority=priority, session_timeout=timeout)
+    return tracker, remote
 
 
-def check_remote(tracker: str, priority: int = 100, timeout: int = 10) -> bool:
+def check_remote_servers(
+    key: str, host: str, port: int, priority: int = 100, timeout: int = 10
+) -> int:
+    """Check the availability of remote servers.
+
+    Parameters
+    ----------
+    key : str
+        The key of the device registered in the RPC tracker.
+    host : str
+        The host address of the RPC Tracker.
+    port : int
+        The port of RPC Tracker.
+    priority: int = 100
+        The priority of this request, larger is more prior.
+    timeout: int = 10
+        The timeout of this check in seconds.
+
+    Returns
+    -------
+    server_count: int
+        True if can find available device.
+    """
+
+    tracker: rpc.TrackerSession = None
+
+    def _check():
+        nonlocal tracker
+        tracker = request_remote(key, host, port, priority)[0]
+
+    t = Thread(target=_check)
+    t.start()
+    t.join(timeout)
+    if t.is_alive() or tracker is None:
+        raise RuntimeError(
+            "Cannot get remote devices from the tracker. "
+            "Please check the status of tracker via "
+            "'python -m tvm.exec.query_rpc_tracker --port [THE PORT YOU USE]' "
+            "and make sure you have free devices on the queue status. "
+            "Besides hard coding in the program, you may also specify it by setting "
+            "environment variables TVM_TRACKER_HOST, TVM_TRACKER_PORT and TVM_TRACKER_KEY"
+        )
+    tracker_summary = tracker.summary()
+    server_count = 0
+    for item in tracker_summary["server_info"]:
+        _, item_key = item["key"].split(":")  # 'server:rasp3b` -> 'rasp3b'
+        if item_key == key:
+            server_count += 1
+    print(f"Get {server_count} RPC servers for measurement!")
+    return server_count
+
+
+def check_remote(key: str, host: str, port: int, priority: int = 100, timeout: int = 10) -> bool:
     """
     Check the availability of a remote device.
 
     Parameters
     ----------
-    tracker: str
-        The host address, port and device key of the RPC tracker
+    key : str
+        The key of the device registered in the RPC tracker.
+    host : str
+        The host address of the RPC Tracker.
+    port : int
+        The port of RPC Tracker.
     priority: int = 100
         The priority of this request, larger is more prior.
     timeout: int = 10
@@ -196,7 +239,7 @@ def check_remote(tracker: str, priority: int = 100, timeout: int = 10) -> bool:
     """
 
     def _check():
-        request_remote(tracker, priority)
+        request_remote(key, host, port, priority)
 
     t = Thread(target=_check)
     t.start()
@@ -205,7 +248,7 @@ def check_remote(tracker: str, priority: int = 100, timeout: int = 10) -> bool:
 
 
 def realize_arguments(
-    _remote: rpc.RPCSession,
+    remote: rpc.RPCSession,
     ctx: TVMContext,
     func: PrimFunc,
 ) -> List[NDArray]:
@@ -227,22 +270,23 @@ def realize_arguments(
         A list of arguments fed to the TVM runtime module built
     """
     args = []
+    ndarrays = []
     for arg in func.params:
         if arg.dtype == "handle":
             buffer = func.buffer_map[arg]
-            args.append(ndarray.empty(shape=buffer.shape, dtype=buffer.dtype, ctx=ctx))
+            array = ndarray.empty(shape=buffer.shape, dtype=buffer.dtype, ctx=ctx)
+            args.append(array)
+            ndarrays.append(array)
         else:
             raise NotImplementedError("Unsupported type in realize_arguments: " + str(arg.dtype))
-    # TODO(@junrushao1994): rebase and enable this
-    # try:
-    #     f_random_fill = remote.get_function("tvm.contrib.random.random_fill")
-    # except AttributeError:
-    #     raise AttributeError(
-    #         "Please make sure USE_RANDOM is ON in the config.cmake "
-    #         "on the remote devices"
-    #     )
-    # for array in ndarrays:
-    #     f_random_fill(array)
+    try:
+        f_random_fill = remote.get_function("tvm.contrib.random.random_fill")
+    except AttributeError:
+        raise AttributeError(
+            "Please make sure USE_RANDOM is ON in the config.cmake " "on the remote devices"
+        )
+    for array in ndarrays:
+        f_random_fill(array)
     return args
 
 
@@ -406,9 +450,11 @@ RPC_RUNNER_WORKER_ARGS = None
 def rpc_runner_run(
     measure_inputs: List[MeasureInput],
     build_results: List[BuildResult],
-    tracker: str,
+    key: str,
+    host: str,
+    port: int,
     priority: int = 1,
-    n_parallel: int = 1,  # TODO(@junrushao1994): perhaps auto detect?
+    n_parallel: int = 1,
     timeout: int = 10,
     number: int = 3,
     repeat: int = 1,
@@ -425,8 +471,12 @@ def rpc_runner_run(
         The MeasureInputs to be measured.
     build_results : List[BuildResult]
         The BuildResults to be measured.
-    tracker: str
-        The host address, port and device key of the RPC tracker
+    key : str
+        The key of the device registered in the RPC tracker.
+    host : str
+        The host address of the RPC Tracker.
+    port : int
+        The port of RPC Tracker.
     priority : int = 1
         The priority of this run request, larger is more prior.
     n_parallel : int = 1
@@ -470,7 +520,9 @@ def rpc_runner_run(
     RPC_RUNNER_WORKER_ARGS = (
         measure_inputs,
         build_results,
-        tracker,
+        key,
+        host,
+        port,
         priority,
         timeout,
         number,
@@ -499,7 +551,9 @@ def rpc_runner_worker(
     index: int,
     measure_inputs: List[MeasureInput],
     build_results: List[BuildResult],
-    tracker: str,
+    key: str,
+    host: str,
+    port: int,
     priority: int,
     timeout: int,
     number: int,
@@ -534,11 +588,10 @@ def rpc_runner_worker(
         try:
             try:
                 # upload built module
-                remote = request_remote(tracker, priority, timeout)
+                _, remote = request_remote(key, host, port, priority, timeout)
                 remote.upload(build_result.filename)
                 func = remote.load_module(os.path.split(build_result.filename)[1])
-                # TODO(@junrushao1994): rebase and fix this
-                ctx = remote.context(str(measure_input.task.target), 0)
+                ctx = remote.context(measure_input.task.target.kind.name, 0)
                 time_f = func.time_evaluator(
                     func_name=func.entry_name,
                     ctx=ctx,
