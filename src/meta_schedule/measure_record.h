@@ -177,9 +177,8 @@ class MeasureResult;
 /*! \brief Store the results of a measurement. */
 class MeasureResultNode : public Object {
  public:
-  /* TODO(@junrushao1994): use avg_cost instead */
   /*! \brief The time costs of execution. */
-  Array<PrimExpr> costs;
+  Array<FloatImm> costs;
   /*! \brief The error code. (0 means no error, see MeasureErrorNO) */
   int error_no;
   /*! \brief The error message if there is any error. */
@@ -218,7 +217,7 @@ class MeasureResult : public ObjectRef {
    * \param all_cost The time cost of build and run.
    * \param timestamp The time stamps of this measurement.
    */
-  explicit MeasureResult(Array<PrimExpr> costs, int error_no, String error_msg, double all_cost,
+  explicit MeasureResult(Array<FloatImm> costs, int error_no, String error_msg, double all_cost,
                          double timestamp);
 
   TVM_DEFINE_OBJECT_REF_METHODS(MeasureResult, ObjectRef, MeasureResultNode);
