@@ -45,7 +45,7 @@ BuildResult::BuildResult(String filename, int error_no, String error_msg, double
   data_ = std::move(n);
 }
 
-MeasureResult::MeasureResult(Array<PrimExpr> costs, int error_no, String error_msg, double all_cost,
+MeasureResult::MeasureResult(Array<FloatImm> costs, int error_no, String error_msg, double all_cost,
                              double timestamp) {
   ObjectPtr<MeasureResultNode> n = make_object<MeasureResultNode>();
   n->costs = std::move(costs);
@@ -152,7 +152,7 @@ struct Internal {
    * \return The MeasureResult constructed
    * \sa MeasureResult::MeasureResult
    */
-  static MeasureResult MeasureResultNew(Array<PrimExpr> costs, int error_no, String error_msg,
+  static MeasureResult MeasureResultNew(Array<FloatImm> costs, int error_no, String error_msg,
                                         double all_cost, double timestamp) {
     return MeasureResult(costs, error_no, error_msg, all_cost, timestamp);
   }

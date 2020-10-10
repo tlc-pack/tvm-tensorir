@@ -336,7 +336,7 @@ Array<Schedule> EvolutionaryNode::PickWithEpsGreedy(const Array<Schedule>& inits
   int n = this->num_measure_per_batch;
   int num_rands = n * this->eps_greedy;
   int num_bests = n - num_rands;
-  Array<Schedule> rands = sampler->SampleWithReplacement(inits, num_rands * 3);
+  std::vector<int> rands = sampler->SampleWithoutReplacement(inits.size(), inits.size());
   Array<Schedule> results;
   results.reserve(n);
   for (int i = 0, i_bests = 0, i_rands = 0; i < n;) {
@@ -349,14 +349,14 @@ Array<Schedule> EvolutionaryNode::PickWithEpsGreedy(const Array<Schedule>& inits
       if (has_best) {
         sch = bests[i_bests++];
       } else if (has_rand) {
-        sch = rands[i_rands++];
+        sch = inits[rands[i_rands++]];
       } else {
         break;
       }
     } else {
       // Else prefer `rands`
       if (has_rand) {
-        sch = rands[i_rands++];
+        sch = inits[rands[i_rands++]];
       } else if (has_best) {
         sch = bests[i_bests++];
       } else {
@@ -364,14 +364,13 @@ Array<Schedule> EvolutionaryNode::PickWithEpsGreedy(const Array<Schedule>& inits
       }
     }
     // Check if the schedule has been measured before
-    String repr = Repr(sch);
-    if (measured_.Has(repr)) {
-      continue;
-    }
     // If not, it is the schedule we want to pick
-    ++i;
-    measured_.Add(repr);
-    results.push_back(sch);
+    String repr = Repr(sch);
+    if (!measured_.Has(repr)) {
+      ++i;
+      measured_.Add(repr);
+      results.push_back(sch);
+    }
   }
   return results;
 }
