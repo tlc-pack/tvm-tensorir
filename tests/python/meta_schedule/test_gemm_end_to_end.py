@@ -198,14 +198,11 @@ def test_matmul_schedule_fn():
         task=matmul,
         space=schedule_matmul,
         strategy="replay",
-        measurer=ms.ProgramMeasurer(
-            runner="rpc://0.0.0.0:3012:local * 16",
-        ),
     )
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.ashybrid(sch.sch.func))
+        print(tvm.script.asscript(sch.sch.func))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -223,14 +220,11 @@ def test_matmul_post_order_apply():
         task=matmul,
         space=ms.space.PostOrderApply(stages=[rule]),
         strategy="replay",
-        measurer=ms.ProgramMeasurer(
-            runner="rpc://0.0.0.0:3012:local * 16",
-        ),
     )
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.ashybrid(sch.sch.func))
+        print(tvm.script.asscript(sch.sch.func))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -252,14 +246,11 @@ def test_matmul_relu_schedule_fn():
         task=matmul_relu,
         space=schedule_matmul,
         strategy=ms.strategy.Replay(batch_size=1, num_iterations=1),
-        measurer=ms.ProgramMeasurer(
-            runner="rpc://0.0.0.0:3012:local * 16",
-        ),
     )
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.ashybrid(sch.sch.func))
+        print(tvm.script.asscript(sch.sch.func))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -277,14 +268,11 @@ def test_matmul_relu_post_order_apply():
         task=matmul_relu,
         space=ms.space.PostOrderApply(stages=[rule]),
         strategy="replay",
-        measurer=ms.ProgramMeasurer(
-            runner="rpc://0.0.0.0:3012:local * 16",
-        ),
     )
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.ashybrid(sch.sch.func))
+        print(tvm.script.asscript(sch.sch.func))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -326,14 +314,11 @@ def test_conv2d_schedule_fn():
         task=conv2d,
         space=schedule_conv2d,
         strategy="replay",
-        measurer=ms.ProgramMeasurer(
-            runner="rpc://0.0.0.0:3012:local * 16",
-        ),
     )
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.ashybrid(sch.sch.func))
+        print(tvm.script.asscript(sch.sch.func))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -351,14 +336,11 @@ def test_conv2d_post_order_apply():
         task=conv2d,
         space=ms.space.PostOrderApply(stages=[rule]),
         strategy="replay",
-        measurer=ms.ProgramMeasurer(
-            runner="rpc://0.0.0.0:3012:local * 16",
-        ),
     )
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.ashybrid(sch.sch.func))
+        print(tvm.script.asscript(sch.sch.func))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -380,22 +362,17 @@ def test_conv2d_relu_plus_one_post_order_apply():
             ]
         ),
         strategy="replay",
-        measurer=ms.ProgramMeasurer(
-            runner="rpc://0.0.0.0:3012:local * 16",
-        ),
     )
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.ashybrid(sch.sch.func))
+        print(tvm.script.asscript(sch.sch.func))
 
 
 @pytest.mark.skip(reason="needs RPC")
 def test_matmul_evolutionary_step_by_step():
     task = ms.SearchTask(func=matmul)
-    measurer = ms.ProgramMeasurer(
-        runner="rpc://0.0.0.0:3012:local * 16",
-    )
+    measurer = ms.ProgramMeasurer()
     strategy = ms.strategy.Evolutionary(
         num_measure_trials=128,
         num_measure_per_batch=16,
@@ -466,14 +443,11 @@ def test_matmul_evolutionary_end_to_end():
             },
             cost_model=ms.RandomModel(),
         ),
-        measurer=ms.ProgramMeasurer(
-            runner="rpc://0.0.0.0:3012:local * 16",
-        ),
     )
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.ashybrid(sch.sch.func))
+        print(tvm.script.asscript(sch.sch.func))
 
 
 if __name__ == "__main__":
