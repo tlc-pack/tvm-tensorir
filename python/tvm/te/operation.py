@@ -381,7 +381,7 @@ def reduce_axis(dom, name="rv"):
     return tvm.tir.IterVar(dom, name, 2)
 
 
-def create_tir(ops):
+def create_func(ops):
     """Create a PrimFunc for tir schedule
 
     Parameters
@@ -396,4 +396,4 @@ def create_tir(ops):
     """
     if not isinstance(ops, (list, tvm.ir.container.Array)):
         ops = [ops]
-    return _ffi_api.CreateTir(ops)
+    return _ffi_api.CreateFunc(ops)

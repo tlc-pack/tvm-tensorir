@@ -34,7 +34,7 @@ def test_matmul():
     B = te.placeholder((K, N), name="B")
     C = te.compute((M, N), lambda x, y: te.sum(A[x, k] * B[k, y], axis=k), name="C")
 
-    func = te.create_tir(C)
+    func = te.create_func([C])
     # TODO: fix type system
     # tvm.ir.assert_structural_equal(std_func.body, func.body)
     a_np = np.random.uniform(size=(M, K)).astype("float32")
@@ -52,7 +52,7 @@ def test_element_wise():
     B = te.compute((M, N), lambda x, y: A[x, y] * 2, name="B")
     C = te.compute((M, N), lambda x, y: B[x, y] + 1, name="C")
 
-    func = te.create_tir(C)
+    func = te.create_func([C])
     # TODO: fix type system
     # tvm.ir.assert_structural_equal(std_func.body, func.body)
     a_np = np.random.uniform(size=(M, N)).astype("float32")
@@ -123,7 +123,7 @@ def test_conv2d():
                           axis=[ic, kh, kw, ii]),
                       name="Conv")
 
-    func = te.create_tir(Conv)
+    func = te.create_func(Conv)
     func = tvm.build(func)
 
     # TODO: fix type system

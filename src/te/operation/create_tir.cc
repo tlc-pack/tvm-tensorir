@@ -135,7 +135,7 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
   return PrimFunc(func);
 }
 
-TVM_REGISTER_GLOBAL("te.CreateTir").set_body_typed([](const Array<te::Tensor>& tensors) {
+TVM_REGISTER_GLOBAL("te.CreateFunc").set_body_typed([](const Array<te::Tensor>& tensors) {
   return create_tir(tensors);
 });
 
