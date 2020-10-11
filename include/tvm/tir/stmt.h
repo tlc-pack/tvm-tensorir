@@ -1330,6 +1330,13 @@ TVM_DLL PrimExpr TypeAnnotation(DataType dtype);
 // overload printing of for type.
 TVM_DLL std::ostream& operator<<(std::ostream& os, ForType for_type);
 
+/*!
+ * \brief Auto Complete helper for TIR blocks
+ * \param body The body stmt
+ * \return root_allocates The allocations under root block
+ */
+TVM_DLL Stmt auto_complete(const Stmt& body, const Array<BufferAllocate>& root_allocates);
+
 }  // namespace tir
 }  // namespace tvm
 #endif  // TVM_TIR_STMT_H_
