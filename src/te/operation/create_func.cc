@@ -57,7 +57,7 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
     output_set.insert(x);
   }
 
-  // Buffer_map and params for Primfunc
+  // Buffer_map and params for PrimFunc
   Map<Var, Buffer> buffer_map;
   Array<Var> parameters;
 

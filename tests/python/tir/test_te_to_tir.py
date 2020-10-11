@@ -16,6 +16,7 @@
 # under the License.
 
 import tvm
+import tvm.testing
 from tvm import tir
 from tvm import te
 from tvm.script import ty
