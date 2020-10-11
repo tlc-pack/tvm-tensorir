@@ -195,7 +195,7 @@ Stmt auto_complete(const Stmt& body, const Array<BufferAllocate>& root_allocates
   return res;
 }
 
-TVM_REGISTER_GLOBAL("hybrid.AutoComplete").set_body_typed(auto_complete);
+TVM_REGISTER_GLOBAL("script.AutoComplete").set_body_typed(auto_complete);
 
 }  // namespace tir
 }  // namespace tvm

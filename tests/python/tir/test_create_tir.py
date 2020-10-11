@@ -18,10 +18,10 @@
 import tvm
 from tvm import tir
 from tvm import te
-from tvm.hybrid import ty
+from tvm.script import ty
 import util
 import numpy as np
-from topi.testing import conv2d_nhwc_python
+from tvm.topi.testing import conv2d_nhwc_python
 
 M = 128
 K = 128
