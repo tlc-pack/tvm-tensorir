@@ -39,6 +39,35 @@ namespace meta_schedule {
 TVM_DLL bool IsTrivialBinding(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
 
 /*!
+ * \brief Check if a block is the direct children of the root block
+ * \param sch The TIR schedule class
+ * \param block_sref The block to be analyzed
+ * \return A boolean flag indicating if the block is the subroot block
+ */
+TVM_DLL bool IsSubrootBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
+
+/*!
+ * \brief Check if a block has no child block
+ * \param sch The TIR schedule class
+ * \param block_sref The block to be analyzed
+ * \return A boolean flag indicating if the block is a leaf block
+ */
+TVM_DLL bool IsLeafBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
+
+/*!
+ * \brief For each loop var by examing its related block var, find its type in one of the following
+ * 1) IterVarType::kDataPar    = 0
+ * 2) IterVarType::kCommReduce = 2
+ * 3) IterVarType::kOpaque     = 4
+ * \param sch The TIR schedule class
+ * \param block_sref The block to be analyzed
+ * \param loops_sref The loops to be analyzed
+ * \return An array of the same length as loops_sref
+ */
+TVM_DLL Array<Integer> GetLoopType(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
+                                   const Array<tir::StmtSRef>& loops_sref);
+
+/*!
  * \brief Returns the IterVarType of each block var
  * \param sch The TIR schedule class
  * \param block_sref The block to be analyzed

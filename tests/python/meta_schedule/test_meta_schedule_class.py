@@ -216,6 +216,43 @@ def test_meta_schedule_sample_perfect_tile():
     assert prod == 1024
 
 
+def test_meta_schedule_sample_fusible_loops():
+    sch = ms.Schedule(func=matmul)
+    loops = sch.get_axes(block=sch.get_block(name="C"))
+    result = sch.sample_fusible_loops(
+        loops=loops,
+        loop_types=[0, 0, 0],
+        max_extent=1024,
+        include_overflow_loop=True,
+        order="outer_to_inner",
+    )
+    assert sch.evaluate(result) == 2
+    result = sch.sample_fusible_loops(
+        loops=loops,
+        loop_types=[0, 0, 0],
+        max_extent=1023,
+        include_overflow_loop=True,
+        order="outer_to_inner",
+    )
+    assert sch.evaluate(result) == 1
+    result = sch.sample_fusible_loops(
+        loops=loops,
+        loop_types=[0, 0, 0],
+        max_extent=1024,
+        include_overflow_loop=True,
+        order="inner_to_outer",
+    )
+    assert sch.evaluate(result) == 2
+    result = sch.sample_fusible_loops(
+        loops=loops,
+        loop_types=[0, 0, 0],
+        max_extent=1023,
+        include_overflow_loop=True,
+        order="inner_to_outer",
+    )
+    assert sch.evaluate(result) == 1
+
+
 def test_meta_schedule_get_only_consumer():
     sch = ms.Schedule(func=matmul_relu)
     block = sch.get_block("matmul")
@@ -243,6 +280,60 @@ def test_meta_schedule_get_axes():
     assert tvm.ir.structural_equal(i_0, matmul.body.block.body)
     assert tvm.ir.structural_equal(i_1, matmul.body.block.body.body)
     assert tvm.ir.structural_equal(i_2, matmul.body.block.body.body.body)
+
+
+def test_meta_schedule_get_root_blocks():
+    sch = ms.Schedule(func=matmul)
+    blocks = sch.get_root_blocks()
+    assert len(blocks) == 1
+    sch = ms.Schedule(func=matmul_relu)
+    blocks = sch.get_root_blocks()
+    assert len(blocks) == 2
+
+
+def test_meta_schedule_get_leaf_blocks():
+    sch = ms.Schedule(func=matmul)
+    blocks = sch.get_leaf_blocks()
+    assert len(blocks) == 1
+    sch = ms.Schedule(func=matmul_relu)
+    blocks = sch.get_leaf_blocks()
+    assert len(blocks) == 2
+
+
+def test_meta_schedule_fuse():
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block(name="C")
+    i, j, _ = sch.get_axes(block)
+    sch.fuse(loops=[i, j])
+    assert len(sch.get_axes(block)) == 2
+
+
+def test_meta_schedule_parallel():
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block(name="C")
+    i, _, _ = sch.get_axes(block)
+    sch.parallel(i)
+    block = sch.get_block(name="C")
+    i, _, _ = sch.get_axes(block)
+    i = sch.evaluate(i).stmt
+    assert len(i.annotations) == 1
+    (ann,) = i.annotations
+    assert ann.attr_key == "loop_type"
+    assert ann.value == "parallel"
+
+
+def test_meta_schedule_vectorize():
+    sch = ms.Schedule(func=elementwise)
+    block = sch.get_block(name="C")
+    _, j = sch.get_axes(block)
+    sch.vectorize(j)
+    block = sch.get_block(name="C")
+    _, j = sch.get_axes(block)
+    j = sch.evaluate(j).stmt
+    assert len(j.annotations) == 1
+    (ann,) = j.annotations
+    assert ann.attr_key == "loop_type"
+    assert ann.value == "vectorize"
 
 
 def test_meta_schedule_split():
@@ -358,9 +449,15 @@ if __name__ == "__main__":
     test_meta_schedule_copy()
     test_meta_schedule_sample_tile_factor()
     test_meta_schedule_sample_perfect_tile()
+    test_meta_schedule_sample_fusible_loops()
     test_meta_schedule_get_only_consumer()
     test_meta_schedule_get_block()
     test_meta_schedule_get_axes()
+    test_meta_schedule_get_root_blocks()
+    test_meta_schedule_get_leaf_blocks()
+    test_meta_schedule_fuse()
+    test_meta_schedule_parallel()
+    test_meta_schedule_vectorize()
     test_meta_schedule_split()
     test_meta_schedule_reorder()
     test_meta_schedule_reverse_compute_at()

@@ -259,6 +259,7 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
   // Put the instruction in the trace
   this->trace.push_back(
       SamplePerfectTileAttrs::MakeInst(n_splits, loop, max_innermost_factor, outputs));
+  // Put the sampling decision in the decision table
   this->decisions.Set(this->trace.back(), AsArray<int, ObjectRef>()(samples));
   return outputs;
 }
@@ -290,8 +291,82 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
   }
   // Put the instruction in the trace
   this->trace.push_back(SampleTileFactorAttrs::MakeInst(n_splits, loop, where, outputs));
+  // Put the sampling decision in the decision table
   this->decisions.Set(this->trace.back(), AsArray<int, ObjectRef>()(samples));
   return outputs;
+}
+
+tir::Var ScheduleNode::SampleFusibleLoops(const Array<LoopRV>& loops,
+                                          const Array<Integer>& loop_types, int max_extent,
+                                          bool include_overflow_loop, Order order, Mode mode) {
+  int n_loops = loops.size();
+  int i_start, i_end, i_delta;
+  if (order == Order::outer_to_inner) {
+    // 0 to n_loops - 1, step = 1
+    i_start = 0;
+    i_end = n_loops;
+    i_delta = 1;
+  } else if (order == Order::inner_to_order) {
+    // n_loops - 1 to 0, step = -1
+    i_start = n_loops - 1;
+    i_end = -1;
+    i_delta = -1;
+  } else {
+    LOG(FATAL) << "Not reachable";
+    throw;
+  }
+  int n_fusible = 0;
+  int64_t prod_extent = 1;
+  for (int i = i_start; i != i_end; i += i_delta) {
+    // Get the current loop
+    const LoopRV& loop_rv = loops[i];
+    tir::StmtSRef loop_sref = Eval(loop_rv);
+    int loop_type = loop_types[i];
+    const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+    CHECK(loop) << "TypeError: Expects Loop, but gets: " << loop_sref->stmt->GetTypeKey();
+    // Check if the loop has more than one children
+    bool has_multi_children = loop->body->IsInstance<tir::SeqStmtNode>();
+    // If scanning from inner to outer, then we cannot fuse a loop who has multiple children
+    // But if scanning from outer to inner, we can actually fuse it
+    if (has_multi_children && order == Order::inner_to_order) {
+      break;
+    }
+    // Loop cannot have any annotation and must be data parallel
+    if (!loop->annotations.empty() || loop_type != tir::IterVarType::kDataPar) {
+      break;
+    }
+    // then this loop can be fused
+    const auto* extent = loop->extent.as<IntImmNode>();
+    if (prod_extent * extent->value > max_extent) {
+      if (include_overflow_loop) {
+        prod_extent *= extent->value;
+        ++n_fusible;
+      }
+      break;
+    } else {
+      prod_extent *= extent->value;
+      ++n_fusible;
+    }
+    // If scanning from outer to inner, then we cannot fuse the next loop if the current loop has
+    // multiple children
+    if (has_multi_children && order == Order::outer_to_inner) {
+      break;
+    }
+  }
+  if (mode == Mode::rand && n_fusible != 0) {
+    n_fusible = sampler.SampleInt(0, n_fusible + 1);
+  }
+  // Create the output random variable
+  tir::Var output("n_fusible");
+  // Update the symbol table
+  this->sym_tab.emplace(output, Integer(n_fusible));
+  // Put the instruction in the trace
+  this->trace.push_back(
+      SampleFusibleLoopsAttrs::MakeInst(loops, loop_types, max_extent, include_overflow_loop,
+                                        static_cast<int>(order), static_cast<int>(mode), output));
+  // Put the sampling decision in the decision table
+  this->decisions.Set(this->trace.back(), {Integer(n_fusible)});
+  return output;
 }
 
 /**************** Block/Loop Relationship ****************/
@@ -348,7 +423,107 @@ Array<LoopRV> ScheduleNode::GetAxes(const BlockRV& block) {
   return outputs;
 }
 
+Array<BlockRV> ScheduleNode::GetRootBlocks() {
+  Array<tir::StmtSRef> tir_result;
+  Array<BlockRV> outputs;
+  const auto* root_block = this->sch->root->GetStmt<tir::BlockNode>();
+  CHECK(root_block) << "TypeError: Expects Block, but gets: " << root_block;
+  tir::PreOrderVisit(root_block->body, [&tir_result, &outputs, this](const ObjectRef& obj) -> bool {
+    if (const auto* block = obj.as<tir::BlockNode>()) {
+      // Found the output from TIR
+      tir::StmtSRef block_sref = this->sch->stmt2ref.at(block);
+      tir_result.push_back(block_sref);
+      // Create the output random variable
+      BlockRV block_rv;
+      outputs.push_back(block_rv);
+      // Update the symbol table
+      this->sym_tab.emplace(block_rv, block_sref);
+      return false;
+    }
+    return true;
+  });
+  // Put the instruction in the trace
+  this->trace.push_back(GetRootBlocksAttrs::MakeInst(outputs));
+  return outputs;
+}
+
+Array<BlockRV> ScheduleNode::GetLeafBlocks() {
+  class BlockVisitor : public tir::StmtVisitor {
+   public:
+    void VisitStmt_(const tir::BlockNode* block) override {
+      if (!stack.empty()) {
+        children_counter[stack.back()] += 1;
+      }
+      children_counter[block] = 0;
+      stack.push_back(block);
+      tir::StmtVisitor::VisitStmt_(block);
+      stack.pop_back();
+    }
+
+    std::unordered_map<const tir::BlockNode*, int> children_counter;
+    std::vector<const tir::BlockNode*> stack;
+  } v;
+  const auto* root_block = this->sch->root->GetStmt<tir::BlockNode>();
+  CHECK(root_block) << "TypeError: Expects Block, but gets: " << root_block;
+  v(GetRef<tir::Block>(root_block));
+
+  Array<tir::StmtSRef> tir_result;
+  Array<BlockRV> outputs;
+  for (const auto& kv : v.children_counter) {
+    if (kv.second != 0) {
+      continue;
+    }
+    // Found the output from TIR
+    tir::StmtSRef block_sref = this->sch->stmt2ref.at(kv.first);
+    tir_result.push_back(block_sref);
+    // Create the output random variable
+    BlockRV block_rv;
+    outputs.push_back(block_rv);
+    // Update the symbol table
+    this->sym_tab.emplace(block_rv, block_sref);
+  }
+  // Put the instruction in the trace
+  this->trace.push_back(GetLeafBlocksAttrs::MakeInst(outputs));
+  return outputs;
+}
+
 /**************** Schedule Primitives ****************/
+
+LoopRV ScheduleNode::Fuse(const Array<LoopRV>& loops, Optional<Range> opt_range) {
+  if (!opt_range.defined()) {
+    opt_range = Range::FromMinExtent(Integer(0), Integer(loops.size()));
+  }
+  Range range = opt_range.value();
+  int left = this->Eval(range->min);
+  int right = this->Eval(range->min + range->extent);
+  CHECK(left < right) << "ValueError: Cannot fuse an empty range [" << left << ", " << right << ")";
+  // Output from TIR
+  tir::StmtSRef loop_sref = this->Eval(loops[left]);
+  for (int i = left + 1; i < right; ++i) {
+    loop_sref = this->sch->fuse(loop_sref, this->Eval(loops[i]));
+  }
+  // Create the output random variable
+  LoopRV output;
+  // Update the symbol table
+  this->sym_tab.emplace(output, loop_sref);
+  // Put the instruction in the trace
+  this->trace.push_back(FuseAttrs::MakeInst(loops, opt_range, output));
+  return output;
+}
+
+void ScheduleNode::Parallel(const LoopRV& loop) {
+  tir::StmtSRef loop_sref = Eval(loop);
+  this->sch->parallel(loop_sref);
+  // Put the instruction in the trace
+  this->trace.push_back(ParallelAttrs::MakeInst(loop));
+}
+
+void ScheduleNode::Vectorize(const LoopRV& loop) {
+  tir::StmtSRef loop_sref = Eval(loop);
+  this->sch->vectorize(loop_sref);
+  // Put the instruction in the trace
+  this->trace.push_back(VectorizeAttrs::MakeInst(loop));
+}
 
 Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<Optional<PrimExpr>>& factors) {
   // Find the output from TIR
@@ -609,6 +784,15 @@ struct Internal {
                                           Array<Integer> where) {
     return sch->SampleTileFactor(n_splits, loop, where);
   }
+  static tir::Var SampleFusibleLoops(Schedule sch, Array<LoopRV> loops, Array<Integer> loop_types,
+                                     int max_extent, bool include_overflow_loop, int _order,
+                                     int _mode) {
+    ScheduleNode::Order order = static_cast<ScheduleNode::Order>(_order);
+    ScheduleNode::Mode mode = static_cast<ScheduleNode::Mode>(_mode);
+    return sch->SampleFusibleLoops(loops, loop_types, max_extent, include_overflow_loop, order,
+                                   mode);
+  }
+
   /**************** Block/Loop Relationship ****************/
   /*!
    * \brief FFI function, corresponds to ScheduleNode::GetOnlyConsumer
@@ -627,7 +811,34 @@ struct Internal {
    * \sa ScheduleNode::GetAxes
    */
   static Array<LoopRV> GetAxes(Schedule sch, BlockRV block) { return sch->GetAxes(block); }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::GetRootBlocks
+   * \sa ScheduleNode::GetRootBlocks
+   */
+  static Array<BlockRV> GetRootBlocks(Schedule sch) { return sch->GetRootBlocks(); }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::GetLeafBlocks
+   * \sa ScheduleNode::GetLeafBlocks
+   */
+  static Array<BlockRV> GetLeafBlocks(Schedule sch) { return sch->GetLeafBlocks(); }
   /**************** Scheduling Primitives ****************/
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::Fuse
+   * \sa ScheduleNode::Fuse
+   */
+  static LoopRV Fuse(Schedule sch, Array<LoopRV> loops, Optional<Range> range) {
+    return sch->Fuse(loops, range);
+  }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::Parallel
+   * \sa ScheduleNode::Parallel
+   */
+  static void Parallel(Schedule sch, LoopRV loop) { sch->Parallel(loop); }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::Vectorize
+   * \sa ScheduleNode::Vectorize
+   */
+  static void Vectorize(Schedule sch, LoopRV loop) { sch->Vectorize(loop); }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Split
    * \sa ScheduleNode::Split
@@ -651,12 +862,11 @@ struct Internal {
    * \brief FFI function, corresponds to ScheduleNode::ComputeInline
    * \sa ScheduleNode::ComputeInline
    */
-  static void ComputeInline(Schedule sch, BlockRV block) {
-    sch->ComputeInline(block);
-  } /*!
-     * \brief FFI function, corresponds to ScheduleNode::ReverseComputeInline
-     * \sa ScheduleNode::ReverseComputeInline
-     */
+  static void ComputeInline(Schedule sch, BlockRV block) { sch->ComputeInline(block); }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::ReverseComputeInline
+   * \sa ScheduleNode::ReverseComputeInline
+   */
   static void ReverseComputeInline(Schedule sch, BlockRV block) {
     sch->ReverseComputeInline(block);
   }
@@ -703,10 +913,17 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSamplePerfectTile")
     .set_body_typed(Internal::SamplePerfectTile);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleTileFactor")
     .set_body_typed(Internal::SampleTileFactor);
+TVM_REGISTER_GLOBAL("meta_schedule.SampleFusibleLoops")
+    .set_body_typed(Internal::SampleFusibleLoops);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetOnlyConsumer")
     .set_body_typed(Internal::GetOnlyConsumer);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetBlock").set_body_typed(Internal::GetBlock);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetAxes").set_body_typed(Internal::GetAxes);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetRootBlocks").set_body_typed(Internal::GetRootBlocks);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetLeafBlocks").set_body_typed(Internal::GetLeafBlocks);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleFuse").set_body_typed(Internal::Fuse);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleParallel").set_body_typed(Internal::Parallel);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleVectorize").set_body_typed(Internal::Vectorize);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSplit").set_body_typed(Internal::Split);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReorder").set_body_typed(Internal::Reorder);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReverseComputeAt")
