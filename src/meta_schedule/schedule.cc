@@ -353,6 +353,9 @@ tir::Var ScheduleNode::SampleFusibleLoops(const Array<LoopRV>& loops,
       break;
     }
   }
+  if (prod_extent == 1) {
+    n_fusible = 0;
+  }
   if (mode == Mode::rand && n_fusible != 0) {
     n_fusible = sampler.SampleInt(0, n_fusible + 1);
   }

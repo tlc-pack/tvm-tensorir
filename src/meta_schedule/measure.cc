@@ -145,11 +145,11 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
           best_index = num_measured;
           best_sch = measure_input->sch;
         }
-        StdCout(verbose) << std::fixed << std::setprecision(2) << "#" << num_measured
+        StdCout(verbose) << std::fixed << std::setprecision(4) << "#" << num_measured
                          << "\tTime: " << avg_time_cost << "\tBest time: " << best_time_cost
                          << std::endl;
       } else {
-        StdCout(verbose) << std::fixed << std::setprecision(2) << "#" << num_measured
+        StdCout(verbose) << std::fixed << std::setprecision(4) << "#" << num_measured
                          << "\tError: " << MeasureErrorNOToStr(error_no)
                          << "\tBest time: " << best_time_cost << std::endl
                          << "\t\t" << measure_result->error_msg << "\n";

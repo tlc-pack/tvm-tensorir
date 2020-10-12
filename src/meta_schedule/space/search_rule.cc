@@ -363,7 +363,8 @@ class RuleVectorizeInner {
     if (n_fusible == 0) {
       return {{sch, info}};
     }
-    LoopRV fused = sch->Fuse(loop_rvs, Range(Integer(0), Integer(n_fusible)));
+    int n_loops = loop_rvs.size();
+    LoopRV fused = sch->Fuse(loop_rvs, Range(Integer(n_loops - n_fusible), Integer(n_loops)));
     sch->Vectorize(fused);
     return {{sch, info}};
   }
