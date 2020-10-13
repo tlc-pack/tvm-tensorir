@@ -242,10 +242,10 @@ Instruction FuseAttrs::MakeInst(const Array<LoopRV>& loops, const Optional<Range
 
 Array<ObjectRef> FuseAttrs::ApplyToSchedule(ScheduleNode* sch,
                                             const Array<ObjectRef>& inputs) const {
-  int n_loops = inputs.size();
-  CHECK_GE(n_loops, 2);
+  int n_loops = static_cast<int>(inputs.size()) - 2;
+  CHECK_GE(n_loops, 0);
   Array<LoopRV> loops;
-  loops.reserve(inputs.size() - 2);
+  loops.reserve(n_loops);
   for (int i = 0; i < n_loops; ++i) {
     TVM_META_SCHEDULE_CAST_INPUT(LoopRV, loop, inputs[i]);
     loops.push_back(loop);
