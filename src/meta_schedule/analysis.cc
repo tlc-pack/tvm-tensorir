@@ -69,6 +69,18 @@ bool IsLeafBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
   return no_child;
 }
 
+void LazyAnnotateLoopType(const tir::Schedule& sch, const Array<tir::StmtSRef>& loop_srefs,
+                          const String& annotation) {
+  for (const tir::StmtSRef& loop_sref : loop_srefs) {
+    const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+    CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->GetTypeKey();
+    ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
+    new_loop->annotations.push_back(
+        tir::Annotation(tir::attr::loop_type, tir::StringImm(annotation)));
+    sch->Replace(loop_sref, tir::Loop(new_loop));
+  }
+}
+
 Array<Integer> GetLoopType(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
                            const Array<tir::StmtSRef>& loops_sref) {
   tir::BlockRealize realize = tir::GetBlockRealize(block_sref);
@@ -621,6 +633,8 @@ void DoTensorizeRewrite(Schedule sch, BlockRV block_rv, tir::PrimFunc desc_func)
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsSubrootBlock").set_body_typed(IsSubrootBlock);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeafBlock").set_body_typed(IsLeafBlock);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.LazyAnnotateLoopType")
+    .set_body_typed(LazyAnnotateLoopType);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetLoopType").set_body_typed(GetLoopType);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBlockVarTypes").set_body_typed(GetBlockVarTypes);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsSpatial").set_body_typed(IsSpatial);

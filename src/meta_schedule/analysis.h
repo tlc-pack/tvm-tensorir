@@ -55,6 +55,15 @@ TVM_DLL bool IsSubrootBlock(const tir::Schedule& sch, const tir::StmtSRef& block
 TVM_DLL bool IsLeafBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
 
 /*!
+ * \brief Lazily annotate the specific loops with the given loop type
+ * \param sch The schedule to be mutated
+ * \param loop_srefs The loops to be annotated
+ * \param annotation The loop annotation
+ */
+TVM_DLL void LazyAnnotateLoopType(const tir::Schedule& sch, const Array<tir::StmtSRef>& loop_srefs,
+                                  const String& annotation);
+
+/*!
  * \brief For each loop var by examing its related block var, find its type in one of the following
  * 1) IterVarType::kDataPar    = 0
  * 2) IterVarType::kCommReduce = 2

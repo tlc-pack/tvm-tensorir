@@ -475,12 +475,12 @@ def test_matmul_evolutionary_end_to_end():
 
 
 if __name__ == "__main__":
-    test_matmul_schedule_fn()
-    test_matmul_post_order_apply()
-    test_matmul_relu_schedule_fn()
-    test_matmul_relu_post_order_apply()
-    test_conv2d_schedule_fn()
-    test_conv2d_post_order_apply()
-    test_conv2d_relu_plus_one_post_order_apply()
+    # test_matmul_schedule_fn()
+    # test_matmul_post_order_apply()
+    # test_matmul_relu_schedule_fn()
+    # test_matmul_relu_post_order_apply()
+    # test_conv2d_schedule_fn()
+    # test_conv2d_post_order_apply()
+    # test_conv2d_relu_plus_one_post_order_apply()
     test_matmul_evolutionary_step_by_step()
     test_matmul_evolutionary_end_to_end()
