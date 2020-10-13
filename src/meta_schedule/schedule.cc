@@ -21,6 +21,7 @@
 #include <tvm/arith/analyzer.h>
 #include <tvm/tir/stmt_functor.h>
 
+#include "./analysis.h"
 #include "./sampler.h"
 #include "./utils.h"
 
@@ -28,13 +29,14 @@ namespace tvm {
 namespace meta_schedule {
 
 Schedule::Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
-                   Map<Instruction, Array<ObjectRef>> decisions, TSymbolTable sym_tab,
-                   Optional<Integer> seed) {
+                   Map<Instruction, Array<ObjectRef>> decisions, bool normalized,
+                   TSymbolTable sym_tab, Optional<Integer> seed) {
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
   n->orig_func = std::move(orig_func);
   n->sch = std::move(sch);
   n->trace = std::move(trace);
   n->decisions = std::move(decisions);
+  n->normalized = false;
   n->sym_tab = std::move(sym_tab);
   if (seed.defined()) {
     n->sampler.Seed(seed.value()->value);
@@ -43,11 +45,54 @@ Schedule::Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction
 }
 
 Schedule::Schedule(tir::PrimFunc orig_func, Optional<Integer> seed)
-    : Schedule(orig_func, tir::ScheduleNode::Create(orig_func), {}, {}, {}, seed) {}
+    : Schedule(/*orig_func=*/orig_func, /*sch=*/tir::ScheduleNode::Create(orig_func), /*trace=*/{},
+               /*decisions=*/{}, /*normalized=*/false, /*sym_tab=*/{}, /*seed=*/seed) {}
 
 /**************** Utility ****************/
 
 void ScheduleNode::Seed(int seed) { this->sampler.Seed(seed); }
+
+void ScheduleNode::Normalize() {
+  if (this->normalized) {
+    return;
+  }
+  // Fuse "lazy_parallel" loops
+  {
+    Array<Array<tir::StmtSRef>> to_parallel = CollectAnnotatedLoops(this->sch, "lazy_parallel");
+    for (const Array<tir::StmtSRef>& group : to_parallel) {
+      for (const tir::StmtSRef& loop_sref : group) {
+        const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+        CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->GetTypeKey();
+        ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
+        new_loop->annotations.clear();
+        this->sch->Replace(loop_sref, tir::Loop(new_loop));
+      }
+      tir::StmtSRef fused = group[0];
+      for (int i = 1, n = group.size(); i < n; ++i) {
+        fused = this->sch->fuse(fused, group[i]);
+      }
+      this->sch->parallel(fused);
+    }
+  }
+  {
+    Array<Array<tir::StmtSRef>> to_vectorize = CollectAnnotatedLoops(this->sch, "lazy_vectorize");
+    for (const Array<tir::StmtSRef>& group : to_vectorize) {
+      for (const tir::StmtSRef& loop_sref : group) {
+        const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+        CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->GetTypeKey();
+        ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
+        new_loop->annotations.clear();
+        this->sch->Replace(loop_sref, tir::Loop(new_loop));
+      }
+      tir::StmtSRef fused = group[0];
+      for (int i = 1, n = group.size(); i < n; ++i) {
+        fused = this->sch->fuse(fused, group[i]);
+      }
+      this->sch->vectorize(fused);
+    }
+  }
+  this->normalized = true;
+}
 
 /*! \brief Helper class to do tir::StmtSRef translation */
 struct SRefTranslator {
@@ -180,6 +225,7 @@ Schedule ScheduleNode::Copy(int new_seed) const {
                   /*sch=*/tir_sch,
                   /*trace=*/this->trace,
                   /*decisions=*/this->decisions,
+                  /*normalized=*/this->normalized,
                   /*sym_tab=*/translator.Trans(this->sym_tab),
                   /*seed=*/Integer(new_seed));
 }
@@ -492,17 +538,10 @@ Array<BlockRV> ScheduleNode::GetLeafBlocks() {
 
 /**************** Schedule Primitives ****************/
 
-LoopRV ScheduleNode::Fuse(const Array<LoopRV>& loops, Optional<Range> opt_range) {
-  if (!opt_range.defined()) {
-    opt_range = Range::FromMinExtent(Integer(0), Integer(loops.size()));
-  }
-  Range range = opt_range.value();
-  int left = this->Eval(range->min);
-  int right = this->Eval(range->min + range->extent);
-  CHECK(left < right) << "ValueError: Cannot fuse an empty range [" << left << ", " << right << ")";
+LoopRV ScheduleNode::Fuse(const Array<LoopRV>& loops) {
   // Output from TIR
-  tir::StmtSRef loop_sref = this->Eval(loops[left]);
-  for (int i = left + 1; i < right; ++i) {
+  tir::StmtSRef loop_sref = this->Eval(loops[0]);
+  for (int i = 1, n = loops.size(); i < n; ++i) {
     loop_sref = this->sch->fuse(loop_sref, this->Eval(loops[i]));
   }
   // Create the output random variable
@@ -510,22 +549,36 @@ LoopRV ScheduleNode::Fuse(const Array<LoopRV>& loops, Optional<Range> opt_range)
   // Update the symbol table
   this->sym_tab.emplace(output, loop_sref);
   // Put the instruction in the trace
-  this->trace.push_back(FuseAttrs::MakeInst(loops, opt_range, output));
+  this->trace.push_back(FuseAttrs::MakeInst(loops, output));
   return output;
 }
 
-void ScheduleNode::Parallel(const LoopRV& loop) {
-  tir::StmtSRef loop_sref = Eval(loop);
-  this->sch->parallel(loop_sref);
+void ScheduleNode::MarkParallel(const Array<LoopRV>& loops, const Range& range) {
+  Array<tir::StmtSRef> loop_srefs;
+  loop_srefs.reserve(loops.size());
+  for (const LoopRV& loop_rv : loops) {
+    loop_srefs.push_back(Eval(loop_rv));
+  }
+  int left = Eval(range->min);
+  int right = left + Eval(range->extent);
+  AnnotateLoopType(this->sch, {loop_srefs.begin() + left, loop_srefs.begin() + right},
+                   "lazy_parallel");
   // Put the instruction in the trace
-  this->trace.push_back(ParallelAttrs::MakeInst(loop));
+  this->trace.push_back(MarkParallelAttrs::MakeInst(loops, range));
 }
 
-void ScheduleNode::Vectorize(const LoopRV& loop) {
-  tir::StmtSRef loop_sref = Eval(loop);
-  this->sch->vectorize(loop_sref);
+void ScheduleNode::MarkVectorize(const Array<LoopRV>& loops, const Range& range) {
+  Array<tir::StmtSRef> loop_srefs;
+  loop_srefs.reserve(loops.size());
+  for (const LoopRV& loop_rv : loops) {
+    loop_srefs.push_back(Eval(loop_rv));
+  }
+  int left = Eval(range->min);
+  int right = left + Eval(range->extent);
+  AnnotateLoopType(this->sch, {loop_srefs.begin() + left, loop_srefs.begin() + right},
+                   "lazy_vectorize");
   // Put the instruction in the trace
-  this->trace.push_back(VectorizeAttrs::MakeInst(loop));
+  this->trace.push_back(MarkVectorizeAttrs::MakeInst(loops, range));
 }
 
 Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<Optional<PrimExpr>>& factors) {
@@ -595,7 +648,7 @@ void ScheduleNode::ReverseComputeAt(const BlockRV& block, const LoopRV& loop) {
   // Find the inputs to TIR
   tir::StmtSRef block_sref = this->Eval(block);
   tir::StmtSRef loop_sref = this->Eval(loop);
-  this->sch->reverse_compute_at(block_sref, loop_sref);
+  this->sch->reverse_compute_at(block_sref, loop_sref, true);
   // Put the instruction in the trace
   this->trace.push_back(ReverseComputeAtAttrs::MakeInst(block, loop));
 }
@@ -746,6 +799,11 @@ struct Internal {
    */
   static Schedule New(tir::PrimFunc func, Optional<Integer> seed) { return Schedule(func, seed); }
   /*!
+   * \brief FFI function, corresponds to ScheduleNode::Normalize
+   * \sa ScheduleNode::Normalize
+   */
+  static void Normalize(Schedule sch) { sch->Normalize(); }
+  /*!
    * \brief FFI function, corresponds to ScheduleNode::Seed
    * \sa ScheduleNode::Seed
    */
@@ -829,19 +887,21 @@ struct Internal {
    * \brief FFI function, corresponds to ScheduleNode::Fuse
    * \sa ScheduleNode::Fuse
    */
-  static LoopRV Fuse(Schedule sch, Array<LoopRV> loops, Optional<Range> range) {
-    return sch->Fuse(loops, range);
-  }
+  static LoopRV Fuse(Schedule sch, Array<LoopRV> loops) { return sch->Fuse(loops); }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Parallel
    * \sa ScheduleNode::Parallel
    */
-  static void Parallel(Schedule sch, LoopRV loop) { sch->Parallel(loop); }
+  static void MarkParallel(Schedule sch, Array<LoopRV> loops, Range range) {
+    sch->MarkParallel(loops, range);
+  }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Vectorize
    * \sa ScheduleNode::Vectorize
    */
-  static void Vectorize(Schedule sch, LoopRV loop) { sch->Vectorize(loop); }
+  static void MarkVectorize(Schedule sch, Array<LoopRV> loops, Range range) {
+    sch->MarkVectorize(loops, range);
+  }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Split
    * \sa ScheduleNode::Split
@@ -909,6 +969,7 @@ struct Internal {
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
 TVM_REGISTER_GLOBAL("meta_schedule.Schedule").set_body_typed(Internal::New);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleNormalize").set_body_typed(Internal::Normalize);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSeed").set_body_typed(Internal::Seed);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCopy").set_body_typed(Internal::Copy);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleEval").set_body_typed(Internal::Eval);
@@ -925,8 +986,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetAxes").set_body_typed(Internal::Ge
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetRootBlocks").set_body_typed(Internal::GetRootBlocks);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetLeafBlocks").set_body_typed(Internal::GetLeafBlocks);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleFuse").set_body_typed(Internal::Fuse);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleParallel").set_body_typed(Internal::Parallel);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleVectorize").set_body_typed(Internal::Vectorize);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkParallel").set_body_typed(Internal::MarkParallel);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkVectorize").set_body_typed(Internal::MarkVectorize);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSplit").set_body_typed(Internal::Split);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReorder").set_body_typed(Internal::Reorder);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReverseComputeAt")

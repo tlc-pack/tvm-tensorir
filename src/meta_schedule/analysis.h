@@ -60,8 +60,17 @@ TVM_DLL bool IsLeafBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sr
  * \param loop_srefs The loops to be annotated
  * \param annotation The loop annotation
  */
-TVM_DLL void LazyAnnotateLoopType(const tir::Schedule& sch, const Array<tir::StmtSRef>& loop_srefs,
-                                  const String& annotation);
+TVM_DLL void AnnotateLoopType(const tir::Schedule& sch, const Array<tir::StmtSRef>& loop_srefs,
+                              const String& annotation);
+
+/*!
+ * \brief Collect the loops annotated with each sub-tree
+ * \param sch The schedule to be mutated
+ * \param annotation The loop annotation
+ * \return Return an array containing each chain of annotated loops
+ */
+TVM_DLL Array<Array<tir::StmtSRef>> CollectAnnotatedLoops(const tir::Schedule& sch,
+                                                          const String& annotation);
 
 /*!
  * \brief For each loop var by examing its related block var, find its type in one of the following

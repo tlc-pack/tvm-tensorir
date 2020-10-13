@@ -258,45 +258,44 @@ class Schedule(Object):
 
     ########## Scheduling Primitives ##########
 
-    def fuse(self, loops: List[LoopRV], fuse_range: Optional[Tuple[ExprRV, ExprRV]] = None):
+    def fuse(self, loops: List[LoopRV]):
         """Fuse the loops
 
         Parameters
         ----------
         loops : List[LoopRV]
             The block to be queried
-        fuse_range : Optional[Tuple[ExprRV, ExprRV]]
-            If provided, only fuse loops[range.min, range.min + range.extent)
 
         Returns
         -------
         fused : LoopRV
             The fused loop
         """
-        if fuse_range is not None:
-            left, right = fuse_range
-            fuse_range = ir.Range(left, right)
-        return _ffi_api.ScheduleFuse(self, loops, fuse_range)  # pylint: disable=no-member
+        return _ffi_api.ScheduleFuse(self, loops)  # pylint: disable=no-member
 
-    def parallel(self, loop: LoopRV) -> None:
-        """Parallelize a loop
+    def mark_parallel(self, loop: LoopRV, mark_range: ir.Range) -> None:
+        """Mark a range of loops as parallelized
 
         Parameters
         ----------
         loop : LoopRV
             The loop to be parallelized
+        range: Range
+            The range to be marked as parallelized
         """
-        _ffi_api.ScheduleParallel(self, loop)  # pylint: disable=no-member
+        _ffi_api.ScheduleMarkParallel(self, loop, mark_range)  # pylint: disable=no-member
 
-    def vectorize(self, loop: LoopRV) -> None:
-        """Vectorize a loop
+    def mark_vectorize(self, loop: LoopRV, mark_range: ir.Range) -> None:
+        """Mark a range of loops as vectorized
 
         Parameters
         ----------
         loop : LoopRV
             The loop to be vectorized
+        range: Range
+            The range to be marked as vectorized
         """
-        _ffi_api.ScheduleVectorize(self, loop)  # pylint: disable=no-member
+        _ffi_api.ScheduleMarkVectorize(self, loop, mark_range)  # pylint: disable=no-member
 
     def split(
         self,

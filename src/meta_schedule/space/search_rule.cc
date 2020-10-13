@@ -313,12 +313,9 @@ class RuleParallelizeOuter {
     tir::Var n_fusible_rv =
         sch->SampleFusibleLoops(loop_rvs, loop_types, max_extent, /*include_overflow_loop=*/true,
                                 ScheduleNode::Order::outer_to_inner, ScheduleNode::Mode::max);
-    int n_fusible = sch->Eval(n_fusible_rv);
-    if (n_fusible == 0) {
-      return {{sch, info}};
-    }
-    LoopRV fused = sch->Fuse(loop_rvs, Range(Integer(0), Integer(n_fusible)));
-    sch->Parallel(fused);
+    PrimExpr min = Integer(0);
+    PrimExpr extent = n_fusible_rv;
+    sch->MarkParallel(loop_rvs, Range::FromMinExtent(min, extent));
     return {{sch, info}};
   }
 };
@@ -359,13 +356,10 @@ class RuleVectorizeInner {
     tir::Var n_fusible_rv =
         sch->SampleFusibleLoops(loop_rvs, loop_types, max_extent, /*include_overflow_loop=*/false,
                                 ScheduleNode::Order::inner_to_order, ScheduleNode::Mode::max);
-    int n_fusible = sch->Eval(n_fusible_rv);
-    if (n_fusible == 0) {
-      return {{sch, info}};
-    }
     int n_loops = loop_rvs.size();
-    LoopRV fused = sch->Fuse(loop_rvs, Range(Integer(n_loops - n_fusible), Integer(n_loops)));
-    sch->Vectorize(fused);
+    PrimExpr min = Integer(n_loops) - n_fusible_rv;
+    PrimExpr extent = n_fusible_rv;
+    sch->MarkVectorize(loop_rvs, Range::FromMinExtent(min, extent));
     return {{sch, info}};
   }
 };

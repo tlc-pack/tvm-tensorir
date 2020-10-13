@@ -344,12 +344,10 @@ struct FuseAttrs : public tvm::AttrsNode<FuseAttrs> {
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param loops The loops to be fused
-   * \param range If provided, only fuse loops[range.min, range.min + range.extent)
    * \param output The output of the instruction
    * \return The instruction created
    */
-  static Instruction MakeInst(const Array<LoopRV>& loops, const Optional<Range>& range,
-                              const LoopRV& output);
+  static Instruction MakeInst(const Array<LoopRV>& loops, const LoopRV& output);
 
   /*!
    * \brief Apply the instruction to the schedule with given inputs
@@ -362,13 +360,14 @@ struct FuseAttrs : public tvm::AttrsNode<FuseAttrs> {
   TVM_DECLARE_ATTRS(FuseAttrs, "meta_schedule.attrs.FuseAttrs") {}
 };
 
-struct ParallelAttrs : public tvm::AttrsNode<ParallelAttrs> {
+struct MarkParallelAttrs : public tvm::AttrsNode<MarkParallelAttrs> {
   /*!
    * \brief Create instruction given the inputs and outputs
-   * \param loop The loop to be parallelized
+   * \param loops The loops to be parallelized
+   * \param range The range of the loops to be marked
    * \return The instruction created
    */
-  static Instruction MakeInst(const LoopRV& loop);
+  static Instruction MakeInst(const Array<LoopRV>& loops, const Range& range);
 
   /*!
    * \brief Apply the instruction to the schedule with given inputs
@@ -378,16 +377,17 @@ struct ParallelAttrs : public tvm::AttrsNode<ParallelAttrs> {
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
-  TVM_DECLARE_ATTRS(ParallelAttrs, "meta_schedule.attrs.ParallelAttrs") {}
+  TVM_DECLARE_ATTRS(MarkParallelAttrs, "meta_schedule.attrs.MarkParallelAttrs") {}
 };
 
-struct VectorizeAttrs : public tvm::AttrsNode<VectorizeAttrs> {
+struct MarkVectorizeAttrs : public tvm::AttrsNode<MarkVectorizeAttrs> {
   /*!
    * \brief Create instruction given the inputs and outputs
-   * \param loop The loop to be parallelized
+   * \param loops The loop to be parallelized
+   * \param range The range of the loops to be marked
    * \return The instruction created
    */
-  static Instruction MakeInst(const LoopRV& loop);
+  static Instruction MakeInst(const Array<LoopRV>& loops, const Range& range);
 
   /*!
    * \brief Apply the instruction to the schedule with given inputs
@@ -397,7 +397,7 @@ struct VectorizeAttrs : public tvm::AttrsNode<VectorizeAttrs> {
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
-  TVM_DECLARE_ATTRS(VectorizeAttrs, "meta_schedule.attrs.VectorizeAttrs") {}
+  TVM_DECLARE_ATTRS(MarkVectorizeAttrs, "meta_schedule.attrs.MarkVectorizeAttrs") {}
 };
 
 /*! \brief Attrs of the instruction that applies loop splitting */

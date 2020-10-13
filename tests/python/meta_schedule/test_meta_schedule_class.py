@@ -23,7 +23,7 @@ from tvm import meta_schedule as ms
 from tvm import tir
 from tvm.script import ty
 
-# pylint: disable=invalid-name,no-member
+# pylint: disable=invalid-name,no-member,unused-variable
 
 
 @tvm.script.tir
@@ -82,12 +82,14 @@ def matmul_relu_fused(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
                         )
                         tir.writes([C[vi : (vi + 1), vj : (vj + 1)]])
                         reducer.step(C[vi, vj], (A[vi, vk] * B[vk, vj]))
-                with tir.block([1024, 1024], "relu") as [vi_1, vj_1]:
-                    tir.bind(vi_1, i0)
-                    tir.bind(vj_1, i1)
-                    tir.reads([C[vi_1 : (vi_1 + 1), vj_1 : (vj_1 + 1)]])
-                    tir.writes([D[vi_1 : (vi_1 + 1), vj_1 : (vj_1 + 1)]])
-                    D[vi_1, vj_1] = tir.max(C[vi_1, vj_1], tir.float32(0))
+                for ax0 in range(0, 1):
+                    for ax1 in range(0, 1):
+                        with tir.block([1024, 1024], "relu") as [vi_1, vj_1]:
+                            tir.bind(vi_1, i0)
+                            tir.bind(vj_1, i1)
+                            tir.reads([C[vi_1 : (vi_1 + 1), vj_1 : (vj_1 + 1)]])
+                            tir.writes([D[vi_1 : (vi_1 + 1), vj_1 : (vj_1 + 1)]])
+                            D[vi_1, vj_1] = tir.max(C[vi_1, vj_1], tir.float32(0))
 
 
 @tvm.script.tir
@@ -154,7 +156,7 @@ def elementwise_inlined(a: ty.handle, c: ty.handle) -> None:
         C[vi, vj] = (A[vi, vj] + 1.0) * 2.0
 
 
-# pylint: enable=invalid-name,no-member
+# pylint: enable=invalid-name,no-member,unused-variable
 
 
 def test_meta_schedule_creation():
@@ -308,32 +310,42 @@ def test_meta_schedule_fuse():
     assert len(sch.get_axes(block)) == 2
 
 
-def test_meta_schedule_parallel():
+def test_meta_schedule_mark_parallel():
+    def check_annotation(sch, loop):
+        loop = sch.evaluate(loop).stmt
+        assert len(loop.annotations) == 1
+        (ann,) = loop.annotations
+        assert ann.attr_key == "loop_type"
+        assert ann.value == "lazy_parallel"
+
     sch = ms.Schedule(func=matmul)
     block = sch.get_block(name="C")
-    i, _, _ = sch.get_axes(block)
-    sch.parallel(i)
+    axes = sch.get_axes(block)
+    sch.mark_parallel(axes, tvm.ir.Range(0, 3))
     block = sch.get_block(name="C")
-    i, _, _ = sch.get_axes(block)
-    i = sch.evaluate(i).stmt
-    assert len(i.annotations) == 1
-    (ann,) = i.annotations
-    assert ann.attr_key == "loop_type"
-    assert ann.value == "parallel"
+    i, j, k = sch.get_axes(block)
+    check_annotation(sch, i)
+    check_annotation(sch, j)
+    check_annotation(sch, k)
 
 
-def test_meta_schedule_vectorize():
-    sch = ms.Schedule(func=elementwise)
+def test_meta_schedule_mark_vectorize():
+    def check_annotation(sch, loop):
+        loop = sch.evaluate(loop).stmt
+        assert len(loop.annotations) == 1
+        (ann,) = loop.annotations
+        assert ann.attr_key == "loop_type"
+        assert ann.value == "lazy_vectorize"
+
+    sch = ms.Schedule(func=matmul)
     block = sch.get_block(name="C")
-    _, j = sch.get_axes(block)
-    sch.vectorize(j)
+    axes = sch.get_axes(block)
+    sch.mark_vectorize(axes, tvm.ir.Range(0, 3))
     block = sch.get_block(name="C")
-    _, j = sch.get_axes(block)
-    j = sch.evaluate(j).stmt
-    assert len(j.annotations) == 1
-    (ann,) = j.annotations
-    assert ann.attr_key == "loop_type"
-    assert ann.value == "vectorize"
+    i, j, k = sch.get_axes(block)
+    check_annotation(sch, i)
+    check_annotation(sch, j)
+    check_annotation(sch, k)
 
 
 def test_meta_schedule_split():
@@ -456,8 +468,8 @@ if __name__ == "__main__":
     test_meta_schedule_get_root_blocks()
     test_meta_schedule_get_leaf_blocks()
     test_meta_schedule_fuse()
-    test_meta_schedule_parallel()
-    test_meta_schedule_vectorize()
+    test_meta_schedule_mark_parallel()
+    test_meta_schedule_mark_vectorize()
     test_meta_schedule_split()
     test_meta_schedule_reorder()
     test_meta_schedule_reverse_compute_at()

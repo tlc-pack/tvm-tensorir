@@ -119,6 +119,9 @@ void ProgramMeasurerNode::Reset() {
 
 Array<MeasureResult> ProgramMeasurerNode::PureMeasure(const Array<MeasureInput>& measure_inputs,
                                                       int verbose) const {
+  for (const MeasureInput& measure_input : measure_inputs) {
+    measure_input->sch->Normalize();
+  }
   Array<BuildResult> build_results = builder->Build(measure_inputs, verbose);
   Array<MeasureResult> measure_results = runner->Run(measure_inputs, build_results, verbose);
   return measure_results;

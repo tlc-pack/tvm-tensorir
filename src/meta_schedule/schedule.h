@@ -47,6 +47,8 @@ class ScheduleNode : public Object {
   Array<Instruction> trace;
   /*! \brief The decisions made in sampling */
   Map<Instruction, Array<ObjectRef>> decisions;
+  /*! \brief Whether the schedule has been normalized */
+  bool normalized;
   /*! \brief The symbol table with information of all defined variables in the meta schedule */
   TSymbolTable sym_tab;
   /*! \brief The random number generator */
@@ -57,6 +59,7 @@ class ScheduleNode : public Object {
     v->Visit("sch", &sch);
     v->Visit("trace", &trace);
     v->Visit("decisions", &decisions);
+    v->Visit("normalized", &normalized);
     // `sym_tab` is not visited
     // `sampler` is not visited
   }
@@ -74,6 +77,16 @@ class ScheduleNode : public Object {
    * \return A new schedule.
    */
   Schedule Copy(int new_seed) const;
+  /*!
+   * \brief Normalize the underlying TIR schedule in the following steps.
+   * It basically does the following things:
+   * 1) Remove trivial loops whose extent is 1;
+   * 2) Fuse the loops which are marked as "lazy_parallel" / "lazy_vectorize", and
+   * parallel/vectorize them accordingly.
+   *
+   * This method should be called before being sent to the ProgramMeasurer.
+   */
+  void Normalize();
   /**************** Evaluation of random variables ****************/
   /*!
    * \brief Evaluate the value of a random variable of type Block
@@ -174,17 +187,19 @@ class ScheduleNode : public Object {
    * \param range If provided, only fuse loops[range.min, range.min + range.extent)
    * \return The fused loop
    */
-  LoopRV Fuse(const Array<LoopRV>& loops, Optional<Range> range = NullOpt);
+  LoopRV Fuse(const Array<LoopRV>& loops);
   /*!
    * \brief Parallelize a loop
-   * \param loop The loop to be parallelized
+   * \param loops The loop to be parallelized
+   * \param range The range in loops to be marked as "parallel"
    */
-  void Parallel(const LoopRV& loop);
+  void MarkParallel(const Array<LoopRV>& loops, const Range& range);
   /*!
    * \brief Vectorize a loop
-   * \param loop The loop to be vectorized
+   * \param loops The loop to be vectorized
+   * \param range The range in loops to be marked as "vectorize"
    */
-  void Vectorize(const LoopRV& loop);
+  void MarkVectorize(const Array<LoopRV>& loops, const Range& range);
   /*!
    * \brief Apply the instruction Split
    * \param loop The loop to be split
@@ -275,8 +290,8 @@ class Schedule : public ObjectRef {
    * \param seed The random seed
    */
   explicit Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
-                    Map<Instruction, Array<ObjectRef>> decisions, TSymbolTable sym_tab,
-                    Optional<Integer> seed);
+                    Map<Instruction, Array<ObjectRef>> decisions, bool normalized,
+                    TSymbolTable sym_tab, Optional<Integer> seed);
   /*!
    * \brief Constructor: other fields are created with default value
    * \param orig_func The original TIR PrimFunc to be scheduled

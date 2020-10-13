@@ -69,8 +69,8 @@ bool IsLeafBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
   return no_child;
 }
 
-void LazyAnnotateLoopType(const tir::Schedule& sch, const Array<tir::StmtSRef>& loop_srefs,
-                          const String& annotation) {
+void AnnotateLoopType(const tir::Schedule& sch, const Array<tir::StmtSRef>& loop_srefs,
+                      const String& annotation) {
   for (const tir::StmtSRef& loop_sref : loop_srefs) {
     const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
     CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->GetTypeKey();
@@ -79,6 +79,52 @@ void LazyAnnotateLoopType(const tir::Schedule& sch, const Array<tir::StmtSRef>& 
         tir::Annotation(tir::attr::loop_type, tir::StringImm(annotation)));
     sch->Replace(loop_sref, tir::Loop(new_loop));
   }
+}
+
+Array<Array<tir::StmtSRef>> CollectAnnotatedLoops(const tir::Schedule& sch,
+                                                  const String& annotation) {
+  struct LoopCollector : public tir::StmtVisitor {
+    explicit LoopCollector(const String& ann) : ann(ann) {}
+
+    bool IsAnnotatedLoop(const tir::LoopNode* loop) {
+      if (loop->annotations.size() != 1) {
+        return false;
+      }
+      tir::Annotation loop_ann = loop->annotations[0];
+      return loop_ann->attr_key == std::string(tir::attr::loop_type) &&
+             Downcast<tir::StringImm>(loop_ann->value)->value == ann;
+    }
+
+    void VisitStmt_(const tir::LoopNode* loop) override {
+      if (!IsAnnotatedLoop(loop)) {
+        tir::StmtVisitor::VisitStmt_(loop);
+        return;
+      }
+      bool is_top = current.empty();
+      current.push_back(GetRef<tir::Loop>(loop));
+      tir::StmtVisitor::VisitStmt_(loop);
+      if (is_top) {
+        result.push_back({current.begin(), current.end()});
+        current.clear();
+      }
+    }
+
+    const String& ann;
+    Array<tir::Loop> current;
+    Array<Array<tir::Loop>> result;
+  } v(annotation);
+  v(sch->func->body);
+  Array<Array<tir::StmtSRef>> result;
+  result.reserve(v.result.size());
+  for (const Array<tir::Loop>& v_sub_result : v.result) {
+    Array<tir::StmtSRef> sub_result;
+    sub_result.reserve(v_sub_result.size());
+    for (const tir::Loop& loop : v_sub_result) {
+      sub_result.push_back(sch->stmt2ref.at(loop.get()));
+    }
+    result.push_back(sub_result);
+  }
+  return result;
 }
 
 Array<Integer> GetLoopType(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
@@ -633,8 +679,9 @@ void DoTensorizeRewrite(Schedule sch, BlockRV block_rv, tir::PrimFunc desc_func)
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsSubrootBlock").set_body_typed(IsSubrootBlock);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeafBlock").set_body_typed(IsLeafBlock);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.LazyAnnotateLoopType")
-    .set_body_typed(LazyAnnotateLoopType);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.AnnotateLoopType").set_body_typed(AnnotateLoopType);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.CollectAnnotatedLoops")
+    .set_body_typed(CollectAnnotatedLoops);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetLoopType").set_body_typed(GetLoopType);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBlockVarTypes").set_body_typed(GetBlockVarTypes);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsSpatial").set_body_typed(IsSpatial);

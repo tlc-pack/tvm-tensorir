@@ -82,8 +82,8 @@ def is_leaf_block(sch: tir.Schedule, block: tir.StmtSRef) -> bool:
     return bool(_ffi_api_analysis.IsLeafBlock(sch, block))  # pylint: disable=no-member
 
 
-def lazy_annotate_loop_type(sch: tir.Schedule, loops: List[tir.StmtSRef], annotation: str) -> None:
-    """Lazily annotate the specific loops with the given loop type
+def annotate_loop_type(sch: tir.Schedule, loops: List[tir.StmtSRef], annotation: str) -> None:
+    """Annotate the specific loops with the given loop type
 
     Parameters
     ----------
@@ -94,7 +94,25 @@ def lazy_annotate_loop_type(sch: tir.Schedule, loops: List[tir.StmtSRef], annota
     annotation : str
         The loop annotations
     """
-    _ffi_api_analysis.LazyAnnotateLoopType(sch, loops, annotation)  # pylint: disable=no-member
+    _ffi_api_analysis.AnnotateLoopType(sch, loops, annotation)  # pylint: disable=no-member
+
+
+def collect_annotated_loops(sch: tir.Schedule, annotation: str) -> List[List[tir.StmtSRef]]:
+    """Collect the loops annotated with each sub-tree
+
+    Parameters
+    ----------
+    sch : tir.Schedule
+        The TIR schedule class
+    annotation : str
+        The loop annotations
+
+    Returns
+    ----------
+    result : List[List[tir.StmtSRef]]
+        An array containing each chain of annotated loops
+    """
+    return _ffi_api_analysis.CollectAnnotatedLoops(sch, annotation)  # pylint: disable=no-member
 
 
 def get_loop_type(sch: tir.Schedule, block: tir.StmtSRef, loops: List[tir.StmtSRef]) -> List[int]:
