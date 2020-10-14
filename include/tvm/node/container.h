@@ -1354,7 +1354,7 @@ class Map : public ObjectRef {
   /*! \return end iterator */
   iterator end() const { return iterator(GetMapNode()->end()); }
   /*! \return find the key and returns the associated iterator */
-  const iterator find(const K& key) const { return iterator(GetMapNode()->find(key)); }
+  iterator find(const K& key) const { return iterator(GetMapNode()->find(key)); }
 
   void erase(const K& key) { CopyOnWrite()->erase(key); }
 

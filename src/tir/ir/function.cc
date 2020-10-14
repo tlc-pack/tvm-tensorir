@@ -115,6 +115,7 @@ TVM_REGISTER_GLOBAL("tir.TensorIntrin")
       return TensorIntrin(desc_func, intrin_func);
     });
 
+// Mutate buffer's declarations, and replace them in the AST
 class BufferMutator : public StmtExprMutator {
  public:
   explicit BufferMutator(const std::function<Buffer(const Buffer&)>& fmutate) : fmutate_(fmutate) {}
@@ -198,7 +199,9 @@ class BufferMutator : public StmtExprMutator {
   }
 
  private:
+  /* \brief a closure that mutates a buffer */
   std::function<Buffer(const Buffer&)> fmutate_;
+  /* \brief map from old buffer to mutated buffer */
   std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> buffer_map_;
 };
 
