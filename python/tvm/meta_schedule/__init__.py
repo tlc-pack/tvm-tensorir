@@ -21,12 +21,6 @@ from . import space, strategy
 from .auto_tune import autotune
 from .cost_model import RandomModel
 from .instruction import BlockRV, LoopRV
-from .measure import (
-    LocalBuilder,
-    ProgramBuilder,
-    ProgramMeasurer,
-    ProgramRunner,
-    RPCRunner,
-)
+from .measure import LocalBuilder, ProgramBuilder, ProgramMeasurer, ProgramRunner, RPCRunner
 from .schedule import Schedule
 from .search import SearchSpace, SearchStrategy, SearchTask
