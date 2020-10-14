@@ -42,6 +42,15 @@ def _fix_sampling_tile_size(
     assert sum(results) >= 1
 
 
+def _debug(support: List[ms.Schedule]):
+    for i, sch in enumerate(support):
+        print(f"###### {i}")
+        print(tvm.script.asscript(sch.sch.func))
+        for inst in sch.trace:
+            if inst in sch.decisions:
+                print(sch.decisions[inst])
+
+
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
 # fmt: off
 
@@ -161,7 +170,7 @@ def workload_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     B = tir.match_buffer(b, (512, 512), "float32")
     C = tir.match_buffer(c, (512, 512), "float32")
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
-    with tir.block([512, 512, tir.reduce_axis(0, 512)], "matmul") as [vi, vj, vk]:
+    with tir.block([512, 512, tir.reduce_axis(0, 512)], "C") as [vi, vj, vk]:
         reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
 # fmt: on
@@ -215,9 +224,188 @@ def test_meta_schedule_sketch_cpu_matmul():
     )
 
 
+# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
+# fmt: off
+
+@tvm.script.tir
+def _matmul_relu_sketch_0(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
+    # function attr dict
+    tir.func_attr({})
+    D = tir.match_buffer(d, [512, 512], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
+    B = tir.match_buffer(b, [512, 512], elem_offset=0, align=128, offset_factor=1)
+    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        C = tir.buffer_allocate([512, 512], elem_offset=0, align=128, offset_factor=1)
+        for i0_outer_outer_outer in range(0, 1):
+            for i1_outer_outer_outer in range(0, 32):
+                for i0_outer_outer_inner in range(0, 16):
+                    for i1_outer_outer_inner in range(0, 4):
+                        for i2_outer in range(0, 256):
+                            for i0_outer_inner in range(0, 2):
+                                for i1_outer_inner in range(0, 2):
+                                    for i2_inner in range(0, 2):
+                                        for i0_inner in range(0, 16):
+                                            for i1_inner in range(0, 2):
+                                                with tir.block([512, 512, tir.reduce_axis(0, 512)], "matmul") as [vi, vj, vk]:
+                                                    tir.bind(vi, ((((((i0_outer_outer_outer*16) + i0_outer_outer_inner)*2) + i0_outer_inner)*16) + i0_inner))
+                                                    tir.bind(vj, ((((((i1_outer_outer_outer*4) + i1_outer_outer_inner)*2) + i1_outer_inner)*2) + i1_inner))
+                                                    tir.bind(vk, ((i2_outer*2) + i2_inner))
+                                                    tir.reads([C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vk:(vk + 1), vj:(vj + 1)]])
+                                                    tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
+                                                    reducer.step(C[vi, vj], (A[vi, vk]*B[vk, vj]))
+        for i0 in range(0, 512):
+            for i1 in range(0, 512):
+                with tir.block([512, 512], "relu") as [vi_1, vj_1]:
+                    tir.bind(vi_1, i0)
+                    tir.bind(vj_1, i1)
+                    tir.reads([C[vi_1:(vi_1 + 1), vj_1:(vj_1 + 1)]])
+                    tir.writes([D[vi_1:(vi_1 + 1), vj_1:(vj_1 + 1)]])
+                    D[vi_1, vj_1] = tir.max(C[vi_1, vj_1], tir.float32(0))
+
+@tvm.script.tir
+def _matmul_relu_sketch_1(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
+    # function attr dict
+    tir.func_attr({})
+    D = tir.match_buffer(d, [512, 512], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
+    B = tir.match_buffer(b, [512, 512], elem_offset=0, align=128, offset_factor=1)
+    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        C = tir.buffer_allocate([512, 512], elem_offset=0, align=128, offset_factor=1)
+        for i0_outer_outer_outer in range(0, 1):
+            for i1_outer_outer_outer in range(0, 32):
+                for i0_outer_outer_inner in range(0, 16):
+                    for i1_outer_outer_inner in range(0, 4):
+                        for i2_outer in range(0, 256):
+                            for i0_outer_inner in range(0, 2):
+                                for i1_outer_inner in range(0, 2):
+                                    for i2_inner in range(0, 2):
+                                        for i0_inner in range(0, 16):
+                                            for i1_inner in range(0, 2):
+                                                with tir.block([512, 512, tir.reduce_axis(0, 512)], "matmul") as [vi, vj, vk]:
+                                                    tir.bind(vi, ((((((i0_outer_outer_outer*16) + i0_outer_outer_inner)*2) + i0_outer_inner)*16) + i0_inner))
+                                                    tir.bind(vj, ((((((i1_outer_outer_outer*4) + i1_outer_outer_inner)*2) + i1_outer_inner)*2) + i1_inner))
+                                                    tir.bind(vk, ((i2_outer*2) + i2_inner))
+                                                    tir.reads([C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vk:(vk + 1), vj:(vj + 1)]])
+                                                    tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
+                                                    reducer.step(C[vi, vj], (A[vi, vk]*B[vk, vj]))
+                        for ax0 in range(0, 32):
+                            for ax1 in range(0, 4):
+                                with tir.block([512, 512], "relu") as [vi_1, vj_1]:
+                                    tir.bind(vi_1, (((i0_outer_outer_outer*512) + (i0_outer_outer_inner*32)) + ax0))
+                                    tir.bind(vj_1, (((i1_outer_outer_outer*16) + (i1_outer_outer_inner*4)) + ax1))
+                                    tir.reads([C[vi_1:(vi_1 + 1), vj_1:(vj_1 + 1)]])
+                                    tir.writes([D[vi_1:(vi_1 + 1), vj_1:(vj_1 + 1)]])
+                                    D[vi_1, vj_1] = tir.max(C[vi_1, vj_1], tir.float32(0))
+
+@tvm.script.tir
+def _matmul_relu_sketch_2(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
+    # function attr dict
+    tir.func_attr({})
+    D = tir.match_buffer(d, [512, 512], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
+    B = tir.match_buffer(b, [512, 512], elem_offset=0, align=128, offset_factor=1)
+    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        C = tir.buffer_allocate([512, 512], elem_offset=0, align=128, offset_factor=1)
+        for i0_outer_outer_outer in range(0, 1):
+            for i1_outer_outer_outer in range(0, 32):
+                for i0_outer_outer_inner in range(0, 16):
+                    for i1_outer_outer_inner in range(0, 4):
+                        for i2_outer in range(0, 256):
+                            for i0_outer_inner in range(0, 2):
+                                for i1_outer_inner in range(0, 2):
+                                    for i2_inner in range(0, 2):
+                                        for i0_inner in range(0, 16):
+                                            for i1_inner in range(0, 2):
+                                                with tir.block([512, 512, tir.reduce_axis(0, 512)], "matmul") as [vi, vj, vk]:
+                                                    tir.bind(vi, ((((((i0_outer_outer_outer*16) + i0_outer_outer_inner)*2) + i0_outer_inner)*16) + i0_inner))
+                                                    tir.bind(vj, ((((((i1_outer_outer_outer*4) + i1_outer_outer_inner)*2) + i1_outer_inner)*2) + i1_inner))
+                                                    tir.bind(vk, ((i2_outer*2) + i2_inner))
+                                                    tir.reads([C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vk:(vk + 1), vj:(vj + 1)]])
+                                                    tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
+                                                    reducer.step(C[vi, vj], (A[vi, vk]*B[vk, vj]))
+                                        for ax0 in range(0, 16):
+                                            for ax1 in range(0, 2):
+                                                with tir.block([512, 512], "relu") as [vi_1, vj_1]:
+                                                    tir.bind(vi_1, ((((i0_outer_outer_outer*512) + (i0_outer_outer_inner*32)) + (i0_outer_inner*16)) + ax0))
+                                                    tir.bind(vj_1, ((((i1_outer_outer_outer*16) + (i1_outer_outer_inner*4)) + (i1_outer_inner*2)) + ax1))
+                                                    tir.reads([C[vi_1:(vi_1 + 1), vj_1:(vj_1 + 1)]])
+                                                    tir.writes([D[vi_1:(vi_1 + 1), vj_1:(vj_1 + 1)]])
+                                                    D[vi_1, vj_1] = tir.max(C[vi_1, vj_1], tir.float32(0))
+
+# TODO(@junrushao1994): remove it and use workload.matmul
+@tvm.script.tir
+def workload_matmul_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
+    A = tir.match_buffer(a, (512, 512), "float32")
+    B = tir.match_buffer(b, (512, 512), "float32")
+    C = tir.buffer_allocate((512, 512), "float32")
+    D = tir.match_buffer(d, (512, 512), "float32")
+    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
+    with tir.block([512, 512, tir.reduce_axis(0, 512)], "matmul") as [vi, vj, vk]:
+        reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
+    with tir.block([512, 512], "relu") as [vi, vj]:
+        D[vi, vj] = tir.max(C[vi, vj], 0.0)
+
+# fmt: on
+# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks
+
+
 def test_meta_schedule_sketch_cpu_matmul_relu():
-    func = te.create_func(workload.matmul_relu(n=512, m=512, k=512))
-    print(tvm.script.asscript(func))
+    # func = te.create_func(workload.matmul_relu(n=512, m=512, k=512))
+    func = workload_matmul_relu
+    support = ms.space.PostOrderApply(
+        stages=[
+            ms.rule.always_inline(),
+            ms.rule.compose(
+                name="tiling",
+                rules=[
+                    ms.rule.add_cache_write(),
+                    ms.rule.multi_level_tiling(structure="SSRSRS"),
+                    ms.rule.fusion(levels=[1, 2]),
+                ],
+            ),
+        ]
+    ).get_support(task=ms.SearchTask(func=func, task_name="matmul"))
+    assert len(support) == 3
+    expected = [_matmul_relu_sketch_0, _matmul_relu_sketch_1, _matmul_relu_sketch_2]
+    _fix_sampling_tile_size(
+        sch=support[0],
+        decisions=[
+            [1, 16, 2, 16],
+            [32, 4, 2, 2],
+            [256, 2],
+        ],
+        expected=expected,
+    )
+    _fix_sampling_tile_size(
+        sch=support[1],
+        decisions=[
+            [1, 16, 2, 16],
+            [32, 4, 2, 2],
+            [256, 2],
+        ],
+        expected=expected,
+    )
+    _fix_sampling_tile_size(
+        sch=support[2],
+        decisions=[
+            [1, 16, 2, 16],
+            [32, 4, 2, 2],
+            [256, 2],
+        ],
+        expected=expected,
+    )
 
 
 def test_meta_schedule_sketch_cpu_conv2d_nchw():
@@ -278,7 +466,7 @@ def test_meta_schedule_sketch_cpu_max_pool2d_nchw():
 
 if __name__ == "__main__":
     test_meta_schedule_sketch_cpu_matmul()
-    # test_meta_schedule_sketch_cpu_matmul_relu()
+    test_meta_schedule_sketch_cpu_matmul_relu()
     # test_meta_schedule_sketch_cpu_conv2d_nchw()
     # test_meta_schedule_sketch_cpu_conv2d_nchw_bias()
     # test_meta_schedule_sketch_cpu_conv2d_nchw_bias_bn_relu()
