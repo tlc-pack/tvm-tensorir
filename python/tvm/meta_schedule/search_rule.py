@@ -41,9 +41,7 @@ class SearchRule(Object):
     def __init__(
         self,
         name: str,
-        apply: Callable[
-            [SearchTask, Schedule, BlockRV, CONTEXT_INFO_TYPE], RETURN_TYPE
-        ],
+        apply: Callable[[SearchTask, Schedule, BlockRV, CONTEXT_INFO_TYPE], RETURN_TYPE],
     ):
         self.__init_handle_by_constructor__(
             _ffi_api.SearchRule,  # pylint: disable=no-member
@@ -76,12 +74,8 @@ class SearchRule(Object):
         result: RETURN_TYPE
             The new schedules generated
         """
-        ret = _ffi_api.SearchRuleApply(  # pylint: disable=no-member
-            self, task, sch, block, info
-        )
-        return {
-            k: v for k, v in ret.items()  # pylint: disable=unnecessary-comprehension
-        }
+        ret = _ffi_api.SearchRuleApply(self, task, sch, block, info)  # pylint: disable=no-member
+        return {k: v for k, v in ret.items()}  # pylint: disable=unnecessary-comprehension
 
 
 def compose(name: str, rules: List[SearchRule]) -> SearchRule:
@@ -198,6 +192,38 @@ def fusion(levels: List[int]) -> SearchRule:
         A search rule that does fusion
     """
     return _ffi_api_search_rule.Fusion(levels)  # pylint: disable=no-member
+
+
+def parallelize_outer(max_extent: int) -> SearchRule:
+    """Create a rule that parallelizes the outer loops
+
+    Parameters
+    ----------
+    max_extent : int
+        The maximum extent of loops to be parallelized together
+
+    Returns
+    ----------
+    rule: SearchRule
+        The search rule created
+    """
+    return _ffi_api_search_rule.ParallelizeOuter(max_extent)  # pylint: disable=no-member
+
+
+def vectorize_inner(max_extent: int) -> SearchRule:
+    """Create a rule that vectorizes the inner loops
+
+    Parameters
+    ----------
+    max_extent : int
+        The maximum extent of loops to be vectorized together
+
+    Returns
+    ----------
+    rule: SearchRule
+        The search rule created
+    """
+    return _ffi_api_search_rule.VectorizeInner(max_extent)  # pylint: disable=no-member
 
 
 def tensorize_rewrite(desc_func: PrimFunc) -> SearchRule:

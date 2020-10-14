@@ -124,6 +124,18 @@ TVM_DLL SearchRule MultiLevelTiling(String structure);
 TVM_DLL SearchRule Fusion(Array<Integer> levels);
 
 /*!
+ * \brief A rule that parallelizes the outer loops
+ * \return The rule created
+ */
+TVM_DLL SearchRule ParallelizeOuter(int max_extent);
+
+/*!
+ * \brief A rule that parallelizes the outer loops
+ * \return The rule created
+ */
+TVM_DLL SearchRule VectorizeInner(int max_extent);
+
+/*!
  * \brief Rewrite block and its surrounding loops to match desc_func
  * \param desc_func
  * \return The rule created

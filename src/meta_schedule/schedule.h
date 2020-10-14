@@ -47,6 +47,8 @@ class ScheduleNode : public Object {
   Array<Instruction> trace;
   /*! \brief The decisions made in sampling */
   Map<Instruction, Array<ObjectRef>> decisions;
+  /*! \brief Whether the schedule has been normalized */
+  bool normalized;
   /*! \brief The symbol table with information of all defined variables in the meta schedule */
   TSymbolTable sym_tab;
   /*! \brief The random number generator */
@@ -57,6 +59,7 @@ class ScheduleNode : public Object {
     v->Visit("sch", &sch);
     v->Visit("trace", &trace);
     v->Visit("decisions", &decisions);
+    v->Visit("normalized", &normalized);
     // `sym_tab` is not visited
     // `sampler` is not visited
   }
@@ -74,6 +77,16 @@ class ScheduleNode : public Object {
    * \return A new schedule.
    */
   Schedule Copy(int new_seed) const;
+  /*!
+   * \brief Normalize the underlying TIR schedule in the following steps.
+   * It basically does the following things:
+   * 1) Remove trivial loops whose extent is 1;
+   * 2) Fuse the loops which are marked as "lazy_parallel" / "lazy_vectorize", and
+   * parallel/vectorize them accordingly.
+   *
+   * This method should be called before being sent to the ProgramMeasurer.
+   */
+  void Normalize();
   /**************** Evaluation of random variables ****************/
   /*!
    * \brief Evaluate the value of a random variable of type Block
@@ -94,6 +107,14 @@ class ScheduleNode : public Object {
    */
   int Eval(const PrimExpr& expr);
   /**************** Sampling ****************/
+  enum class Order : int {
+    outer_to_inner = 0,
+    inner_to_order = 1,
+  };
+  enum class Mode : int {
+    max = 0,
+    rand = 1,
+  };
   /*!
    * \brief Apply the instruction SamplePerfectTile
    * \param n_splits The number of loops after tiling
@@ -111,6 +132,23 @@ class ScheduleNode : public Object {
    * \return An array of random variables, the result of sampling
    */
   Array<tir::Var> SampleTileFactor(int n_splits, const LoopRV& loop, const Array<Integer>& where);
+  /*!
+   * \brief Sample fusible loops, in the specific order (inner-to-outer or outer-to-inner), where
+   * their product of extent is limited. The sampling could have two modes: max or rand. If it is
+   * using mode "max", the sampling deterministically choose the maximum number of loops to fuse;
+   * Otherwise, if choose mode "rand", it samples the number of viable choices uniformly and return
+   * a randomly selected number of loops to fuse.
+   * \param loops The loops to be fused
+   * \param loop_types Type of the loop
+   * \param max_extent The maximum extent of loops
+   * \param include_overflow_loop Whether to include the last loop that makes the extent larger then
+   * `max_extent`
+   * \param order The order of fusion, can be inner_to_outer or outer_to_inner
+   * \param mode The mode of the fusion, can be max or rand
+   * \return A ExprRV, a random variable indicates the number of loops that can be potentially fused
+   */
+  tir::Var SampleFusibleLoops(const Array<LoopRV>& loops, const Array<Integer>& loop_types,
+                              int max_extent, bool include_overflow_loop, Order order, Mode mode);
   /**************** Block/Loop Relationship ****************/
   /*!
    * \brief Get the only consumer of a specific block
@@ -130,7 +168,38 @@ class ScheduleNode : public Object {
    * \return An array of loop random variables
    */
   Array<LoopRV> GetAxes(const BlockRV& block);
+  /*!
+   * \brief Get the root blocks which are direct children of the root node
+   * \return An array of block random variables, the sub-root blocks
+   * \note It is not useful, should remove
+   */
+  Array<BlockRV> GetRootBlocks();
+  /*!
+   * \brief Get the leaf blocks who do not have any child block
+   * \return An array of block random variables, the leaf blocks
+   * \note It is not useful, should remove
+   */
+  Array<BlockRV> GetLeafBlocks();
   /**************** Scheduling Primitives ****************/
+  /*!
+   * \brief Fuse the loops
+   * \param loops The loops to be fused
+   * \param range If provided, only fuse loops[range.min, range.min + range.extent)
+   * \return The fused loop
+   */
+  LoopRV Fuse(const Array<LoopRV>& loops);
+  /*!
+   * \brief Parallelize a loop
+   * \param loops The loop to be parallelized
+   * \param range The range in loops to be marked as "parallel"
+   */
+  void MarkParallel(const Array<LoopRV>& loops, const Range& range);
+  /*!
+   * \brief Vectorize a loop
+   * \param loops The loop to be vectorized
+   * \param range The range in loops to be marked as "vectorize"
+   */
+  void MarkVectorize(const Array<LoopRV>& loops, const Range& range);
   /*!
    * \brief Apply the instruction Split
    * \param loop The loop to be split
@@ -221,8 +290,8 @@ class Schedule : public ObjectRef {
    * \param seed The random seed
    */
   explicit Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
-                    Map<Instruction, Array<ObjectRef>> decisions, TSymbolTable sym_tab,
-                    Optional<Integer> seed);
+                    Map<Instruction, Array<ObjectRef>> decisions, bool normalized,
+                    TSymbolTable sym_tab, Optional<Integer> seed);
   /*!
    * \brief Constructor: other fields are created with default value
    * \param orig_func The original TIR PrimFunc to be scheduled

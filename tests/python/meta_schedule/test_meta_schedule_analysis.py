@@ -19,8 +19,8 @@
 import tvm
 from tvm import meta_schedule as ms
 from tvm import tir
-from tvm.script import ty
 from tvm.ir import Op
+from tvm.script import ty
 
 # pylint: disable=invalid-name,no-member
 
@@ -115,6 +115,51 @@ def test_meta_schedule_analysis_is_trivial_binding():
     sch = ms.Schedule(func=split_ewise)
     block = sch.get_block("B")
     assert not ms.analysis.is_trivial_binding(sch.sch, sch.evaluate(block))
+
+
+def test_meta_schedule_analysis_is_subroot_block():
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("C")
+    assert ms.analysis.is_subroot_block(sch.sch, sch.evaluate(block))
+
+
+def test_meta_schedule_analysis_is_leaf_block():
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("C")
+    assert ms.analysis.is_leaf_block(sch.sch, sch.evaluate(block))
+
+
+def test_meta_schedule_analysis_annotate_loop_type():
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("C")
+    loops = [sch.evaluate(loop) for loop in sch.get_axes(block)]
+    ms.analysis.annotate_loop_type(sch=sch.sch, loops=loops, annotation="lazy_parallel")
+    assert loops[0].stmt.annotations[0].value == "lazy_parallel"
+    assert loops[1].stmt.annotations[0].value == "lazy_parallel"
+    assert loops[2].stmt.annotations[0].value == "lazy_parallel"
+
+
+def test_meta_schedule_analysis_collect_annotated_loops():  # pylint: disable=invalid-name
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("C")
+    loops = [sch.evaluate(loop) for loop in sch.get_axes(block)]
+    ms.analysis.annotate_loop_type(sch=sch.sch, loops=loops, annotation="lazy_parallel")
+    assert loops[0].stmt.annotations[0].value == "lazy_parallel"
+    assert loops[1].stmt.annotations[0].value == "lazy_parallel"
+    assert loops[2].stmt.annotations[0].value == "lazy_parallel"
+    loops = ms.analysis.collect_annotated_loops(sch.sch, "lazy_parallel")
+    (loops,) = loops
+    assert len(loops) == 3
+
+
+def test_meta_schedule_analysis_get_loop_type():
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("C")
+    loops = [sch.evaluate(loop) for loop in sch.get_axes(block)]
+    i, j, k = ms.analysis.get_loop_type(sch.sch, sch.evaluate(block), loops)
+    assert i == 0
+    assert j == 0
+    assert k == 2
 
 
 def test_meta_schedule_analysis_get_block_var_types():
@@ -221,6 +266,11 @@ def test_meta_schedule_is_strictly_inlineable():
 
 if __name__ == "__main__":
     test_meta_schedule_analysis_is_trivial_binding()
+    test_meta_schedule_analysis_is_subroot_block()
+    test_meta_schedule_analysis_is_leaf_block()
+    test_meta_schedule_analysis_annotate_loop_type()
+    test_meta_schedule_analysis_collect_annotated_loops()
+    test_meta_schedule_analysis_get_loop_type()
     test_meta_schedule_analysis_get_block_var_types()
     test_meta_schedule_analysis_is_spatial()
     test_meta_schedule_analysis_is_single_stmt_leaf()
