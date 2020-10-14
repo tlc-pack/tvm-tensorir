@@ -21,6 +21,7 @@
 #include <tvm/arith/analyzer.h>
 #include <tvm/tir/stmt_functor.h>
 
+#include "./analysis.h"
 #include "./sampler.h"
 #include "./utils.h"
 
@@ -28,13 +29,14 @@ namespace tvm {
 namespace meta_schedule {
 
 Schedule::Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
-                   Map<Instruction, Array<ObjectRef>> decisions, TSymbolTable sym_tab,
-                   Optional<Integer> seed) {
+                   Map<Instruction, Array<ObjectRef>> decisions, bool normalized,
+                   TSymbolTable sym_tab, Optional<Integer> seed) {
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
   n->orig_func = std::move(orig_func);
   n->sch = std::move(sch);
   n->trace = std::move(trace);
   n->decisions = std::move(decisions);
+  n->normalized = false;
   n->sym_tab = std::move(sym_tab);
   if (seed.defined()) {
     n->sampler.Seed(seed.value()->value);
@@ -43,11 +45,54 @@ Schedule::Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction
 }
 
 Schedule::Schedule(tir::PrimFunc orig_func, Optional<Integer> seed)
-    : Schedule(orig_func, tir::ScheduleNode::Create(orig_func), {}, {}, {}, seed) {}
+    : Schedule(/*orig_func=*/orig_func, /*sch=*/tir::ScheduleNode::Create(orig_func), /*trace=*/{},
+               /*decisions=*/{}, /*normalized=*/false, /*sym_tab=*/{}, /*seed=*/seed) {}
 
 /**************** Utility ****************/
 
 void ScheduleNode::Seed(int seed) { this->sampler.Seed(seed); }
+
+void ScheduleNode::Normalize() {
+  if (this->normalized) {
+    return;
+  }
+  // Fuse "lazy_parallel" loops
+  {
+    Array<Array<tir::StmtSRef>> to_parallel = CollectAnnotatedLoops(this->sch, "lazy_parallel");
+    for (const Array<tir::StmtSRef>& group : to_parallel) {
+      for (const tir::StmtSRef& loop_sref : group) {
+        const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+        CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->GetTypeKey();
+        ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
+        new_loop->annotations.clear();
+        this->sch->Replace(loop_sref, tir::Loop(new_loop));
+      }
+      tir::StmtSRef fused = group[0];
+      for (int i = 1, n = group.size(); i < n; ++i) {
+        fused = this->sch->fuse(fused, group[i]);
+      }
+      this->sch->parallel(fused);
+    }
+  }
+  {
+    Array<Array<tir::StmtSRef>> to_vectorize = CollectAnnotatedLoops(this->sch, "lazy_vectorize");
+    for (const Array<tir::StmtSRef>& group : to_vectorize) {
+      for (const tir::StmtSRef& loop_sref : group) {
+        const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+        CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->GetTypeKey();
+        ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
+        new_loop->annotations.clear();
+        this->sch->Replace(loop_sref, tir::Loop(new_loop));
+      }
+      tir::StmtSRef fused = group[0];
+      for (int i = 1, n = group.size(); i < n; ++i) {
+        fused = this->sch->fuse(fused, group[i]);
+      }
+      this->sch->vectorize(fused);
+    }
+  }
+  this->normalized = true;
+}
 
 /*! \brief Helper class to do tir::StmtSRef translation */
 struct SRefTranslator {
@@ -180,6 +225,7 @@ Schedule ScheduleNode::Copy(int new_seed) const {
                   /*sch=*/tir_sch,
                   /*trace=*/this->trace,
                   /*decisions=*/this->decisions,
+                  /*normalized=*/this->normalized,
                   /*sym_tab=*/translator.Trans(this->sym_tab),
                   /*seed=*/Integer(new_seed));
 }
@@ -259,6 +305,7 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
   // Put the instruction in the trace
   this->trace.push_back(
       SamplePerfectTileAttrs::MakeInst(n_splits, loop, max_innermost_factor, outputs));
+  // Put the sampling decision in the decision table
   this->decisions.Set(this->trace.back(), AsArray<int, ObjectRef>()(samples));
   return outputs;
 }
@@ -290,8 +337,85 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
   }
   // Put the instruction in the trace
   this->trace.push_back(SampleTileFactorAttrs::MakeInst(n_splits, loop, where, outputs));
+  // Put the sampling decision in the decision table
   this->decisions.Set(this->trace.back(), AsArray<int, ObjectRef>()(samples));
   return outputs;
+}
+
+tir::Var ScheduleNode::SampleFusibleLoops(const Array<LoopRV>& loops,
+                                          const Array<Integer>& loop_types, int max_extent,
+                                          bool include_overflow_loop, Order order, Mode mode) {
+  int n_loops = loops.size();
+  int i_start, i_end, i_delta;
+  if (order == Order::outer_to_inner) {
+    // 0 to n_loops - 1, step = 1
+    i_start = 0;
+    i_end = n_loops;
+    i_delta = 1;
+  } else if (order == Order::inner_to_order) {
+    // n_loops - 1 to 0, step = -1
+    i_start = n_loops - 1;
+    i_end = -1;
+    i_delta = -1;
+  } else {
+    LOG(FATAL) << "Not reachable";
+    throw;
+  }
+  int n_fusible = 0;
+  int64_t prod_extent = 1;
+  for (int i = i_start; i != i_end; i += i_delta) {
+    // Get the current loop
+    const LoopRV& loop_rv = loops[i];
+    tir::StmtSRef loop_sref = Eval(loop_rv);
+    int loop_type = loop_types[i];
+    const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+    CHECK(loop) << "TypeError: Expects Loop, but gets: " << loop_sref->stmt->GetTypeKey();
+    // Check if the loop has more than one children
+    bool has_multi_children = loop->body->IsInstance<tir::SeqStmtNode>();
+    // If scanning from inner to outer, then we cannot fuse a loop who has multiple children
+    // But if scanning from outer to inner, we can actually fuse it
+    if (has_multi_children && order == Order::inner_to_order) {
+      break;
+    }
+    // Loop cannot have any annotation and must be data parallel
+    if (!loop->annotations.empty() || loop_type != tir::IterVarType::kDataPar) {
+      break;
+    }
+    // then this loop can be fused
+    const auto* extent = loop->extent.as<IntImmNode>();
+    if (prod_extent * extent->value > max_extent) {
+      if (include_overflow_loop) {
+        prod_extent *= extent->value;
+        ++n_fusible;
+      }
+      break;
+    } else {
+      prod_extent *= extent->value;
+      ++n_fusible;
+    }
+    // If scanning from outer to inner, then we cannot fuse the next loop if the current loop has
+    // multiple children
+    if (has_multi_children && order == Order::outer_to_inner) {
+      break;
+    }
+  }
+  if (prod_extent == 1) {
+    n_fusible = 0;
+  }
+  if (mode == Mode::rand && n_fusible != 0) {
+    n_fusible = sampler.SampleInt(0, n_fusible + 1);
+  }
+  // Create the output random variable
+  tir::Var output("n_fusible");
+  // Update the symbol table
+  this->sym_tab.emplace(output, Integer(n_fusible));
+  // Put the instruction in the trace
+  this->trace.push_back(
+      SampleFusibleLoopsAttrs::MakeInst(loops, loop_types, max_extent, include_overflow_loop,
+                                        static_cast<int>(order), static_cast<int>(mode), output));
+  // Put the sampling decision in the decision table
+  this->decisions.Set(this->trace.back(), {Integer(n_fusible)});
+  return output;
 }
 
 /**************** Block/Loop Relationship ****************/
@@ -348,7 +472,114 @@ Array<LoopRV> ScheduleNode::GetAxes(const BlockRV& block) {
   return outputs;
 }
 
+Array<BlockRV> ScheduleNode::GetRootBlocks() {
+  Array<tir::StmtSRef> tir_result;
+  Array<BlockRV> outputs;
+  const auto* root_block = this->sch->root->GetStmt<tir::BlockNode>();
+  CHECK(root_block) << "TypeError: Expects Block, but gets: " << root_block;
+  tir::PreOrderVisit(root_block->body, [&tir_result, &outputs, this](const ObjectRef& obj) -> bool {
+    if (const auto* block = obj.as<tir::BlockNode>()) {
+      // Found the output from TIR
+      tir::StmtSRef block_sref = this->sch->stmt2ref.at(block);
+      tir_result.push_back(block_sref);
+      // Create the output random variable
+      BlockRV block_rv;
+      outputs.push_back(block_rv);
+      // Update the symbol table
+      this->sym_tab.emplace(block_rv, block_sref);
+      return false;
+    }
+    return true;
+  });
+  // Put the instruction in the trace
+  this->trace.push_back(GetRootBlocksAttrs::MakeInst(outputs));
+  return outputs;
+}
+
+Array<BlockRV> ScheduleNode::GetLeafBlocks() {
+  class BlockVisitor : public tir::StmtVisitor {
+   public:
+    void VisitStmt_(const tir::BlockNode* block) override {
+      if (!stack.empty()) {
+        children_counter[stack.back()] += 1;
+      }
+      children_counter[block] = 0;
+      stack.push_back(block);
+      tir::StmtVisitor::VisitStmt_(block);
+      stack.pop_back();
+    }
+
+    std::unordered_map<const tir::BlockNode*, int> children_counter;
+    std::vector<const tir::BlockNode*> stack;
+  } v;
+  const auto* root_block = this->sch->root->GetStmt<tir::BlockNode>();
+  CHECK(root_block) << "TypeError: Expects Block, but gets: " << root_block;
+  v(GetRef<tir::Block>(root_block));
+
+  Array<tir::StmtSRef> tir_result;
+  Array<BlockRV> outputs;
+  for (const auto& kv : v.children_counter) {
+    if (kv.second != 0) {
+      continue;
+    }
+    // Found the output from TIR
+    tir::StmtSRef block_sref = this->sch->stmt2ref.at(kv.first);
+    tir_result.push_back(block_sref);
+    // Create the output random variable
+    BlockRV block_rv;
+    outputs.push_back(block_rv);
+    // Update the symbol table
+    this->sym_tab.emplace(block_rv, block_sref);
+  }
+  // Put the instruction in the trace
+  this->trace.push_back(GetLeafBlocksAttrs::MakeInst(outputs));
+  return outputs;
+}
+
 /**************** Schedule Primitives ****************/
+
+LoopRV ScheduleNode::Fuse(const Array<LoopRV>& loops) {
+  // Output from TIR
+  tir::StmtSRef loop_sref = this->Eval(loops[0]);
+  for (int i = 1, n = loops.size(); i < n; ++i) {
+    loop_sref = this->sch->fuse(loop_sref, this->Eval(loops[i]));
+  }
+  // Create the output random variable
+  LoopRV output;
+  // Update the symbol table
+  this->sym_tab.emplace(output, loop_sref);
+  // Put the instruction in the trace
+  this->trace.push_back(FuseAttrs::MakeInst(loops, output));
+  return output;
+}
+
+void ScheduleNode::MarkParallel(const Array<LoopRV>& loops, const Range& range) {
+  Array<tir::StmtSRef> loop_srefs;
+  loop_srefs.reserve(loops.size());
+  for (const LoopRV& loop_rv : loops) {
+    loop_srefs.push_back(Eval(loop_rv));
+  }
+  int left = Eval(range->min);
+  int right = left + Eval(range->extent);
+  AnnotateLoopType(this->sch, {loop_srefs.begin() + left, loop_srefs.begin() + right},
+                   "lazy_parallel");
+  // Put the instruction in the trace
+  this->trace.push_back(MarkParallelAttrs::MakeInst(loops, range));
+}
+
+void ScheduleNode::MarkVectorize(const Array<LoopRV>& loops, const Range& range) {
+  Array<tir::StmtSRef> loop_srefs;
+  loop_srefs.reserve(loops.size());
+  for (const LoopRV& loop_rv : loops) {
+    loop_srefs.push_back(Eval(loop_rv));
+  }
+  int left = Eval(range->min);
+  int right = left + Eval(range->extent);
+  AnnotateLoopType(this->sch, {loop_srefs.begin() + left, loop_srefs.begin() + right},
+                   "lazy_vectorize");
+  // Put the instruction in the trace
+  this->trace.push_back(MarkVectorizeAttrs::MakeInst(loops, range));
+}
 
 Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<Optional<PrimExpr>>& factors) {
   // Find the output from TIR
@@ -417,7 +648,7 @@ void ScheduleNode::ReverseComputeAt(const BlockRV& block, const LoopRV& loop) {
   // Find the inputs to TIR
   tir::StmtSRef block_sref = this->Eval(block);
   tir::StmtSRef loop_sref = this->Eval(loop);
-  this->sch->reverse_compute_at(block_sref, loop_sref);
+  this->sch->reverse_compute_at(block_sref, loop_sref, true);
   // Put the instruction in the trace
   this->trace.push_back(ReverseComputeAtAttrs::MakeInst(block, loop));
 }
@@ -568,6 +799,11 @@ struct Internal {
    */
   static Schedule New(tir::PrimFunc func, Optional<Integer> seed) { return Schedule(func, seed); }
   /*!
+   * \brief FFI function, corresponds to ScheduleNode::Normalize
+   * \sa ScheduleNode::Normalize
+   */
+  static void Normalize(Schedule sch) { sch->Normalize(); }
+  /*!
    * \brief FFI function, corresponds to ScheduleNode::Seed
    * \sa ScheduleNode::Seed
    */
@@ -609,6 +845,15 @@ struct Internal {
                                           Array<Integer> where) {
     return sch->SampleTileFactor(n_splits, loop, where);
   }
+  static tir::Var SampleFusibleLoops(Schedule sch, Array<LoopRV> loops, Array<Integer> loop_types,
+                                     int max_extent, bool include_overflow_loop, int _order,
+                                     int _mode) {
+    ScheduleNode::Order order = static_cast<ScheduleNode::Order>(_order);
+    ScheduleNode::Mode mode = static_cast<ScheduleNode::Mode>(_mode);
+    return sch->SampleFusibleLoops(loops, loop_types, max_extent, include_overflow_loop, order,
+                                   mode);
+  }
+
   /**************** Block/Loop Relationship ****************/
   /*!
    * \brief FFI function, corresponds to ScheduleNode::GetOnlyConsumer
@@ -627,7 +872,36 @@ struct Internal {
    * \sa ScheduleNode::GetAxes
    */
   static Array<LoopRV> GetAxes(Schedule sch, BlockRV block) { return sch->GetAxes(block); }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::GetRootBlocks
+   * \sa ScheduleNode::GetRootBlocks
+   */
+  static Array<BlockRV> GetRootBlocks(Schedule sch) { return sch->GetRootBlocks(); }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::GetLeafBlocks
+   * \sa ScheduleNode::GetLeafBlocks
+   */
+  static Array<BlockRV> GetLeafBlocks(Schedule sch) { return sch->GetLeafBlocks(); }
   /**************** Scheduling Primitives ****************/
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::Fuse
+   * \sa ScheduleNode::Fuse
+   */
+  static LoopRV Fuse(Schedule sch, Array<LoopRV> loops) { return sch->Fuse(loops); }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::Parallel
+   * \sa ScheduleNode::Parallel
+   */
+  static void MarkParallel(Schedule sch, Array<LoopRV> loops, Range range) {
+    sch->MarkParallel(loops, range);
+  }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::Vectorize
+   * \sa ScheduleNode::Vectorize
+   */
+  static void MarkVectorize(Schedule sch, Array<LoopRV> loops, Range range) {
+    sch->MarkVectorize(loops, range);
+  }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Split
    * \sa ScheduleNode::Split
@@ -651,12 +925,11 @@ struct Internal {
    * \brief FFI function, corresponds to ScheduleNode::ComputeInline
    * \sa ScheduleNode::ComputeInline
    */
-  static void ComputeInline(Schedule sch, BlockRV block) {
-    sch->ComputeInline(block);
-  } /*!
-     * \brief FFI function, corresponds to ScheduleNode::ReverseComputeInline
-     * \sa ScheduleNode::ReverseComputeInline
-     */
+  static void ComputeInline(Schedule sch, BlockRV block) { sch->ComputeInline(block); }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::ReverseComputeInline
+   * \sa ScheduleNode::ReverseComputeInline
+   */
   static void ReverseComputeInline(Schedule sch, BlockRV block) {
     sch->ReverseComputeInline(block);
   }
@@ -696,6 +969,7 @@ struct Internal {
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
 TVM_REGISTER_GLOBAL("meta_schedule.Schedule").set_body_typed(Internal::New);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleNormalize").set_body_typed(Internal::Normalize);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSeed").set_body_typed(Internal::Seed);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCopy").set_body_typed(Internal::Copy);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleEval").set_body_typed(Internal::Eval);
@@ -703,10 +977,17 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSamplePerfectTile")
     .set_body_typed(Internal::SamplePerfectTile);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleTileFactor")
     .set_body_typed(Internal::SampleTileFactor);
+TVM_REGISTER_GLOBAL("meta_schedule.SampleFusibleLoops")
+    .set_body_typed(Internal::SampleFusibleLoops);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetOnlyConsumer")
     .set_body_typed(Internal::GetOnlyConsumer);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetBlock").set_body_typed(Internal::GetBlock);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetAxes").set_body_typed(Internal::GetAxes);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetRootBlocks").set_body_typed(Internal::GetRootBlocks);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetLeafBlocks").set_body_typed(Internal::GetLeafBlocks);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleFuse").set_body_typed(Internal::Fuse);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkParallel").set_body_typed(Internal::MarkParallel);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkVectorize").set_body_typed(Internal::MarkVectorize);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSplit").set_body_typed(Internal::Split);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReorder").set_body_typed(Internal::Reorder);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReverseComputeAt")

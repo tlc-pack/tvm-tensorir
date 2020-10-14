@@ -43,9 +43,99 @@ def is_trivial_binding(sch: tir.Schedule, block: tir.StmtSRef) -> bool:
     result : bool
         A boolean indicating if the block binding is trivial
     """
-    return bool(
-        _ffi_api_analysis.IsTrivialBinding(sch, block)  # pylint: disable=no-member
-    )
+    return bool(_ffi_api_analysis.IsTrivialBinding(sch, block))  # pylint: disable=no-member
+
+
+def is_subroot_block(sch: tir.Schedule, block: tir.StmtSRef) -> bool:
+    """Check if a block is the direct children of the root block
+
+    Parameters
+    ----------
+    sch: tir.Schedule
+        The TIR schedule class
+    block: tir.StmtSRef
+        The block to be analyzed
+
+    Returns
+    -------
+    result : bool
+        A boolean flag indicating if the block is the subroot block
+    """
+    return bool(_ffi_api_analysis.IsSubrootBlock(sch, block))  # pylint: disable=no-member
+
+
+def is_leaf_block(sch: tir.Schedule, block: tir.StmtSRef) -> bool:
+    """Check if a block has no child block
+
+    Parameters
+    ----------
+    sch: tir.Schedule
+        The TIR schedule class
+    block: tir.StmtSRef
+        The block to be analyzed
+
+    Returns
+    -------
+    result : bool
+        A boolean flag indicating if the block is a leaf block
+    """
+    return bool(_ffi_api_analysis.IsLeafBlock(sch, block))  # pylint: disable=no-member
+
+
+def annotate_loop_type(sch: tir.Schedule, loops: List[tir.StmtSRef], annotation: str) -> None:
+    """Annotate the specific loops with the given loop type
+
+    Parameters
+    ----------
+    sch : tir.Schedule
+        The TIR schedule class
+    loops : List[tir.StmtSRef]
+        The loops to be annotated
+    annotation : str
+        The loop annotations
+    """
+    _ffi_api_analysis.AnnotateLoopType(sch, loops, annotation)  # pylint: disable=no-member
+
+
+def collect_annotated_loops(sch: tir.Schedule, annotation: str) -> List[List[tir.StmtSRef]]:
+    """Collect the loops annotated with each sub-tree
+
+    Parameters
+    ----------
+    sch : tir.Schedule
+        The TIR schedule class
+    annotation : str
+        The loop annotations
+
+    Returns
+    ----------
+    result : List[List[tir.StmtSRef]]
+        An array containing each chain of annotated loops
+    """
+    return _ffi_api_analysis.CollectAnnotatedLoops(sch, annotation)  # pylint: disable=no-member
+
+
+def get_loop_type(sch: tir.Schedule, block: tir.StmtSRef, loops: List[tir.StmtSRef]) -> List[int]:
+    """For each loop var by examing its related block var, find its type in one of the following
+    IterVarType::kDataPar    = 0
+    IterVarType::kCommReduce = 2
+    IterVarType::kOpaque     = 4
+
+    Parameters
+    ----------
+    sch: tir.Schedule
+        The TIR schedule class
+    block: tir.StmtSRef
+        The block to be analyzed
+    loops: List[tir.StmtSRef]
+        The loops to be analyzed
+
+    Returns
+    -------
+    result : bool
+        An array of the same length as loops_sref
+    """
+    return _ffi_api_analysis.GetLoopType(sch, block, loops)  # pylint: disable=no-member
 
 
 def get_block_var_types(sch: tir.Schedule, block: tir.StmtSRef) -> List[str]:
@@ -132,9 +222,7 @@ def is_output_block(sch: tir.Schedule, block: tir.StmtSRef) -> bool:
     result : bool
         A boolean flag indicating if it is an output block
     """
-    return bool(
-        _ffi_api_analysis.IsOutputBlock(sch, block)  # pylint: disable=no-member
-    )
+    return bool(_ffi_api_analysis.IsOutputBlock(sch, block))  # pylint: disable=no-member
 
 
 def count_op(sch: tir.Schedule, block: tir.StmtSRef, op: Op) -> int:
@@ -202,9 +290,7 @@ def is_elementwise_match(
         A boolean flag indicating if they match
     """
     return bool(
-        _ffi_api_analysis.IsElementWiseMatch(  # pylint: disable=no-member
-            sch, producer, consumer
-        )
+        _ffi_api_analysis.IsElementWiseMatch(sch, producer, consumer)  # pylint: disable=no-member
     )
 
 
@@ -223,9 +309,7 @@ def needs_multi_level_tiling(sch: tir.Schedule, block: tir.StmtSRef) -> bool:
     result : bool
         A boolean flag indicating if the block needs multi-level tiling
     """
-    return bool(
-        _ffi_api_analysis.NeedsMultiLevelTiling(sch, block)  # pylint: disable=no-member
-    )
+    return bool(_ffi_api_analysis.NeedsMultiLevelTiling(sch, block))  # pylint: disable=no-member
 
 
 def is_strictly_inlineable(sch: tir.Schedule, block: tir.StmtSRef) -> bool:
@@ -243,9 +327,7 @@ def is_strictly_inlineable(sch: tir.Schedule, block: tir.StmtSRef) -> bool:
     result : bool
         A boolean flag indicating if the block needs multi-level tiling
     """
-    return bool(
-        _ffi_api_analysis.IsStrictlyInlineable(sch, block)  # pylint: disable=no-member
-    )
+    return bool(_ffi_api_analysis.IsStrictlyInlineable(sch, block))  # pylint: disable=no-member
 
 
 def can_tensorize_rewrite(
@@ -270,9 +352,7 @@ def can_tensorize_rewrite(
         A boolean flag indicating if is able to rewrite and do tensorize
     """
     return bool(
-        _ffi_api_analysis.CanTensorizeRewrite(  # pylint: disable=no-member
-            sch, block, desc_func
-        )
+        _ffi_api_analysis.CanTensorizeRewrite(sch, block, desc_func)  # pylint: disable=no-member
     )
 
 
@@ -292,6 +372,4 @@ def do_tensorize_rewrite(
     desc_func: PrimFunc
         The description function of TensorIntrin we want to match
     """
-    _ffi_api_analysis.DoTensorizeRewrite(  # pylint: disable=no-member
-        sch, block, desc_func
-    )
+    _ffi_api_analysis.DoTensorizeRewrite(sch, block, desc_func)  # pylint: disable=no-member

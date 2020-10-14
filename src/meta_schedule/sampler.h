@@ -21,22 +21,11 @@
 
 #include <tvm/node/node.h>
 
-#include <memory>
 #include <random>
 #include <vector>
 
 namespace tvm {
 namespace meta_schedule {
-
-namespace sampler {
-
-/*! \brief A phantom type indicating the sampler uses device random as its seed */
-struct DeviceRandType {};
-
-}  // namespace sampler
-
-/*! \brief A singleton indicating the sampler uses device random as its seed */
-constexpr sampler::DeviceRandType DeviceRand{};
 
 /*! \brief Random number sampler used for sampling in meta schedule */
 class Sampler {
@@ -110,12 +99,10 @@ class Sampler {
    * \return A list of indices, samples drawn, unsorted and index starting from 0
    */
   std::vector<int> SampleWithoutReplacement(int n, int k);
-  /*! \brief Default constructor */
-  Sampler() : Sampler(DeviceRand) {}
   /*!
    * \brief Constructor. Construct a sampler seeded with std::random_device
    */
-  explicit Sampler(sampler::DeviceRandType) : Sampler(std::random_device /**/ {}()) {}
+  Sampler() : Sampler(std::random_device /**/ {}()) {}
   /*!
    * \brief Constructor. Construct a sampler seeded with the specific integer
    * \param seed The random seed

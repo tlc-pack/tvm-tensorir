@@ -47,7 +47,7 @@ class Replay(SearchStrategy):
     def __init__(
         self,
         batch_size: int = 16,
-        num_iterations: int = 128,
+        num_iterations: int = 32,
     ):
         self.__init_handle_by_constructor__(
             _ffi_api.Replay,  # pylint: disable=no-member

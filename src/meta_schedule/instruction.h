@@ -186,6 +186,52 @@ struct SampleTileFactorAttrs : public tvm::AttrsNode<SampleTileFactorAttrs> {
   }
 };
 
+/*! \brief Attrs of the instruction to sample fusible loops */
+struct SampleFusibleLoopsAttrs : public tvm::AttrsNode<SampleFusibleLoopsAttrs> {
+  /*! \brief Type of the loop */
+  Array<Integer> loop_types;
+  /*! \brief The maximum extent of loops */
+  int max_extent;
+  /*! \brief Whether to include the last loop that makes the extent larger then `max_extent`*/
+  bool include_overflow_loop;
+  /*! \brief The order of fusion, can be 'outer_to_inner' (0) or 'inner_to_outer' (1) */
+  int order;
+  /*! \brief The mode of the fusion, can be 'max' (0) or 'rand' (1) */
+  int mode;
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param loops The loops to be fused
+   * \param loop_types Type of the loop
+   * \param max_extent The maximum extent of loops
+   * \param include_overflow_loop Whether to include the last loop that makes the extent larger then
+   * `max_extent`
+   * \param order The order of fusion, can be 'outer_to_inner' (0) or 'inner_to_outer' (1)
+   * \param mode The mode of the fusion, can be 'max' (0) or 'rand' (1)
+   * \param output The output of the instruction
+   * \return The instruction created
+   */
+  static Instruction MakeInst(const Array<LoopRV>& loops, const Array<Integer>& loop_types,
+                              int max_extent, bool include_overflow_loop, int order, int mode,
+                              const tir::Var& output);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+
+  TVM_DECLARE_ATTRS(SampleFusibleLoopsAttrs, "meta_schedule.attrs.SampleFusibleLoopsAttrs") {
+    TVM_ATTR_FIELD(loop_types);
+    TVM_ATTR_FIELD(max_extent);
+    TVM_ATTR_FIELD(include_overflow_loop);
+    TVM_ATTR_FIELD(order);
+    TVM_ATTR_FIELD(mode);
+  }
+};
+
 /**************** Block/Loop Relationship ****************/
 
 /*! \brief Attrs of the instruction that gets the only consumer of a specific block */
@@ -254,7 +300,105 @@ struct GetAxesAttrs : public tvm::AttrsNode<GetAxesAttrs> {
   TVM_DECLARE_ATTRS(GetAxesAttrs, "meta_schedule.attrs.GetAxesAttrs") {}
 };
 
+struct GetRootBlocksAttrs : public tvm::AttrsNode<GetRootBlocksAttrs> {
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param outputs The outputs of the instruction
+   * \return The instruction created
+   */
+  static Instruction MakeInst(const Array<BlockRV>& outputs);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+
+  TVM_DECLARE_ATTRS(GetRootBlocksAttrs, "meta_schedule.attrs.GetRootBlocksAttrs") {}
+};
+
+struct GetLeafBlocksAttrs : public tvm::AttrsNode<GetLeafBlocksAttrs> {
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param outputs The outputs of the instruction
+   * \return The instruction created
+   */
+  static Instruction MakeInst(const Array<BlockRV>& outputs);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+
+  TVM_DECLARE_ATTRS(GetLeafBlocksAttrs, "meta_schedule.attrs.GetLeafBlocksAttrs") {}
+};
+
 /**************** Scheduling Primitives ****************/
+
+struct FuseAttrs : public tvm::AttrsNode<FuseAttrs> {
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param loops The loops to be fused
+   * \param output The output of the instruction
+   * \return The instruction created
+   */
+  static Instruction MakeInst(const Array<LoopRV>& loops, const LoopRV& output);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+
+  TVM_DECLARE_ATTRS(FuseAttrs, "meta_schedule.attrs.FuseAttrs") {}
+};
+
+struct MarkParallelAttrs : public tvm::AttrsNode<MarkParallelAttrs> {
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param loops The loops to be parallelized
+   * \param range The range of the loops to be marked
+   * \return The instruction created
+   */
+  static Instruction MakeInst(const Array<LoopRV>& loops, const Range& range);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+
+  TVM_DECLARE_ATTRS(MarkParallelAttrs, "meta_schedule.attrs.MarkParallelAttrs") {}
+};
+
+struct MarkVectorizeAttrs : public tvm::AttrsNode<MarkVectorizeAttrs> {
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param loops The loop to be parallelized
+   * \param range The range of the loops to be marked
+   * \return The instruction created
+   */
+  static Instruction MakeInst(const Array<LoopRV>& loops, const Range& range);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+
+  TVM_DECLARE_ATTRS(MarkVectorizeAttrs, "meta_schedule.attrs.MarkVectorizeAttrs") {}
+};
 
 /*! \brief Attrs of the instruction that applies loop splitting */
 struct SplitAttrs : public tvm::AttrsNode<SplitAttrs> {

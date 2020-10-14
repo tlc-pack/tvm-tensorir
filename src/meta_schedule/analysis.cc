@@ -48,6 +48,133 @@ bool IsTrivialBinding(const tir::Schedule& sch, const tir::StmtSRef& block_sref)
   return true;
 }
 
+bool IsSubrootBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
+  tir::StmtSRef parent_block_sref = sch->GetParentBlockSRef(block_sref);
+  return sch->root.get() == parent_block_sref.get();
+}
+
+bool IsLeafBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
+  const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  bool no_child = true;
+  tir::PreOrderVisit(block->body, [&no_child](const ObjectRef& obj) -> bool {
+    if (!no_child) {
+      return false;
+    }
+    if (obj->IsInstance<tir::BlockNode>()) {
+      no_child = false;
+      return false;
+    }
+    return true;
+  });
+  return no_child;
+}
+
+void AnnotateLoopType(const tir::Schedule& sch, const Array<tir::StmtSRef>& loop_srefs,
+                      const String& annotation) {
+  for (const tir::StmtSRef& loop_sref : loop_srefs) {
+    const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+    CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->GetTypeKey();
+    ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
+    new_loop->annotations.push_back(
+        tir::Annotation(tir::attr::loop_type, tir::StringImm(annotation)));
+    sch->Replace(loop_sref, tir::Loop(new_loop));
+  }
+}
+
+Array<Array<tir::StmtSRef>> CollectAnnotatedLoops(const tir::Schedule& sch,
+                                                  const String& annotation) {
+  struct LoopCollector : public tir::StmtVisitor {
+    explicit LoopCollector(const String& ann) : ann(ann) {}
+
+    bool IsAnnotatedLoop(const tir::LoopNode* loop) {
+      if (loop->annotations.size() != 1) {
+        return false;
+      }
+      tir::Annotation loop_ann = loop->annotations[0];
+      return loop_ann->attr_key == std::string(tir::attr::loop_type) &&
+             Downcast<tir::StringImm>(loop_ann->value)->value == ann;
+    }
+
+    void VisitStmt_(const tir::LoopNode* loop) override {
+      if (!IsAnnotatedLoop(loop)) {
+        tir::StmtVisitor::VisitStmt_(loop);
+        return;
+      }
+      bool is_top = current.empty();
+      current.push_back(GetRef<tir::Loop>(loop));
+      tir::StmtVisitor::VisitStmt_(loop);
+      if (is_top) {
+        result.push_back({current.begin(), current.end()});
+        current.clear();
+      }
+    }
+
+    const String& ann;
+    Array<tir::Loop> current;
+    Array<Array<tir::Loop>> result;
+  } v(annotation);
+  v(sch->func->body);
+  Array<Array<tir::StmtSRef>> result;
+  result.reserve(v.result.size());
+  for (const Array<tir::Loop>& v_sub_result : v.result) {
+    Array<tir::StmtSRef> sub_result;
+    sub_result.reserve(v_sub_result.size());
+    for (const tir::Loop& loop : v_sub_result) {
+      sub_result.push_back(sch->stmt2ref.at(loop.get()));
+    }
+    result.push_back(sub_result);
+  }
+  return result;
+}
+
+Array<Integer> GetLoopType(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
+                           const Array<tir::StmtSRef>& loops_sref) {
+  tir::BlockRealize realize = tir::GetBlockRealize(block_sref);
+  const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  CHECK(block) << "TypeError: Expects block, but gets: " << block_sref->stmt->GetTypeKey();
+  std::unordered_map<const tir::VarNode*, int> data_par;
+  std::unordered_map<const tir::VarNode*, int> reduce;
+  std::unordered_map<const tir::VarNode*, int> other;
+  CHECK_EQ(realize->binding_values.size(), block->iter_vars.size());
+  int n_block_vars = realize->binding_values.size();
+  for (int i = 0; i < n_block_vars; ++i) {
+    const tir::IterVar& iter_var = block->iter_vars[i];
+    const PrimExpr& binding = realize->binding_values[i];
+    std::unordered_map<const tir::VarNode*, int>* ref = nullptr;
+    if (iter_var->iter_type == tir::IterVarType::kDataPar) {
+      ref = &data_par;
+    } else if (iter_var->iter_type == tir::IterVarType::kCommReduce) {
+      ref = &reduce;
+    } else {
+      ref = &other;
+    }
+    tir::PostOrderVisit(binding, [&ref](const ObjectRef& obj) -> void {
+      if (const auto* var = obj.as<tir::VarNode>()) {
+        (*ref)[var] += 1;
+      }
+    });
+  }
+  Array<Integer> result;
+  result.reserve(loops_sref.size());
+  for (const tir::StmtSRef& loop_sref : loops_sref) {
+    const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+    CHECK(loop) << "TypeError: Expects loop, but gets: " << loop_sref->stmt->GetTypeKey();
+    int n_data_par = data_par[loop->loop_var.get()];
+    int n_reduce = reduce[loop->loop_var.get()];
+    int n_other = other[loop->loop_var.get()];
+    if (n_other) {
+      result.push_back(tir::IterVarType::kOpaque);
+    } else if (n_data_par && n_reduce) {
+      result.push_back(tir::IterVarType::kOpaque);
+    } else if (n_reduce) {
+      result.push_back(tir::IterVarType::kCommReduce);
+    } else {
+      result.push_back(tir::IterVarType::kDataPar);
+    }
+  }
+  return result;
+}
+
 Array<Integer> GetBlockVarTypes(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
@@ -550,6 +677,12 @@ void DoTensorizeRewrite(Schedule sch, BlockRV block_rv, tir::PrimFunc desc_func)
 }
 
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsSubrootBlock").set_body_typed(IsSubrootBlock);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeafBlock").set_body_typed(IsLeafBlock);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.AnnotateLoopType").set_body_typed(AnnotateLoopType);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.CollectAnnotatedLoops")
+    .set_body_typed(CollectAnnotatedLoops);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetLoopType").set_body_typed(GetLoopType);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBlockVarTypes").set_body_typed(GetBlockVarTypes);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsSpatial").set_body_typed(IsSpatial);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsSingleStmtLeaf").set_body_typed(IsSingleStmtLeaf);
