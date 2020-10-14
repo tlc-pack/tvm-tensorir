@@ -514,6 +514,12 @@ def test_module_define():
 
 
 def test_matmul():
+    func = util.matmul_stmt()
+    rt_func = tvm.script.from_source(tvm.script.asscript(func, True))
+    tvm.ir.assert_structural_equal(func, rt_func)
+
+
+def test_matmul_original():
     func = util.matmul_stmt_original()
     rt_func = tvm.script.from_source(tvm.script.asscript(func, True))
     tvm.ir.assert_structural_equal(func, rt_func)
@@ -564,5 +570,6 @@ if __name__ == '__main__':
     test_opt_conv_tensorcore_mod_host()
     test_module_define()
     test_matmul()
+    test_matmul_original()
     test_element_wise()
     test_predicate()

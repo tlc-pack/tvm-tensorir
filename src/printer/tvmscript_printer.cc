@@ -946,26 +946,26 @@ Doc TVMScriptPrinter::PrintPrimFunc(const PrimFunc& primFunc) {
     params.push_back(Print(param) << ": " << Print(GetType(param)));
   }
   doc << PrintSep(params, Doc::Text(", ")) << ") -> " << Print(primFunc->ret_type) << ":";
-
-  Doc body = Doc::NewLine();
-  // print buffer_bind
+  Doc header_match_buffer;
+  // print match_buffer
   for (const auto& it : op->buffer_map) {
     buf_not_in_headers.insert(it.second.get());
-    body << Print(it.second) << " = tir.match_buffer(";
-    body << Print(it.first) << ", " << memo_buf_decl_[it.second];
-    body << ")" << Doc::NewLine();
-  }
-  // print comm_reducer
-  for (const auto& it : memo_reducer_) {
-    body << it.second << " = tir.comm_reducer(";
-    var_not_in_headers.insert(it.first->lhs[0].get());
-    var_not_in_headers.insert(it.first->rhs[0].get());
-    body << "lambda " << Print(it.first->lhs[0]) << ", " << Print(it.first->rhs[0]) << ": "
-         << Print(it.first->result[0]) << ", " << Print(it.first->identity_element[0]);
-    body << ")" << Doc::NewLine();
+    header_match_buffer << Doc::NewLine() << Print(it.second) << " = tir.match_buffer(";
+    header_match_buffer << Print(it.first) << ", " << memo_buf_decl_[it.second];
+    header_match_buffer << ")";
   }
   // print body
-  body << "# body" << Doc::NewLine() << PrintBody(op->body);
+  Doc body = Doc::NewLine() << "# body" << Doc::NewLine() << PrintBody(op->body);
+  // print comm_reducer
+  Doc header_reducer;
+  for (const auto& it : memo_reducer_) {
+    header_reducer << Doc::NewLine() << it.second << " = tir.comm_reducer(";
+    var_not_in_headers.insert(it.first->lhs[0].get());
+    var_not_in_headers.insert(it.first->rhs[0].get());
+    header_reducer << "lambda " << Print(it.first->lhs[0]) << ", " << Print(it.first->rhs[0]) << ": "
+         << Print(it.first->result[0]) << ", " << Print(it.first->identity_element[0]);
+    header_reducer << ")";
+  }
   // print func attrs
   Doc header_attr;
   if (primFunc->attrs.defined()) {
@@ -1002,8 +1002,10 @@ Doc TVMScriptPrinter::PrintPrimFunc(const PrimFunc& primFunc) {
       vars.push_back(it.first.get());
     }
   }
-  if (!var_env_map_.empty()) {
+  if (!var_env_map_.empty() || !vars.empty()) {
     header_var << Doc::NewLine() << "# var definition";
+  }
+  if (!var_env_map_.empty()) {
     for (const auto& it : var_env_map_) {
       header_var << Doc::NewLine() << Print(it.first) << " = tir.env_thread("
                  << Doc::StrLiteral(it.second) << ")";
@@ -1027,7 +1029,7 @@ Doc TVMScriptPrinter::PrintPrimFunc(const PrimFunc& primFunc) {
       }
     }
   }
-  doc << Doc::Indent(4, header_attr << header_var << header_buf << body);
+  doc << Doc::Indent(4, header_var << header_attr << header_match_buffer << header_buf << header_reducer << body);
   return doc;
 }
 
