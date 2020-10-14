@@ -39,6 +39,53 @@ namespace meta_schedule {
 TVM_DLL bool IsTrivialBinding(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
 
 /*!
+ * \brief Check if a block is the direct children of the root block
+ * \param sch The TIR schedule class
+ * \param block_sref The block to be analyzed
+ * \return A boolean flag indicating if the block is the subroot block
+ */
+TVM_DLL bool IsSubrootBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
+
+/*!
+ * \brief Check if a block has no child block
+ * \param sch The TIR schedule class
+ * \param block_sref The block to be analyzed
+ * \return A boolean flag indicating if the block is a leaf block
+ */
+TVM_DLL bool IsLeafBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
+
+/*!
+ * \brief Lazily annotate the specific loops with the given loop type
+ * \param sch The schedule to be mutated
+ * \param loop_srefs The loops to be annotated
+ * \param annotation The loop annotation
+ */
+TVM_DLL void AnnotateLoopType(const tir::Schedule& sch, const Array<tir::StmtSRef>& loop_srefs,
+                              const String& annotation);
+
+/*!
+ * \brief Collect the loops annotated with each sub-tree
+ * \param sch The schedule to be mutated
+ * \param annotation The loop annotation
+ * \return Return an array containing each chain of annotated loops
+ */
+TVM_DLL Array<Array<tir::StmtSRef>> CollectAnnotatedLoops(const tir::Schedule& sch,
+                                                          const String& annotation);
+
+/*!
+ * \brief For each loop var by examing its related block var, find its type in one of the following
+ * 1) IterVarType::kDataPar    = 0
+ * 2) IterVarType::kCommReduce = 2
+ * 3) IterVarType::kOpaque     = 4
+ * \param sch The TIR schedule class
+ * \param block_sref The block to be analyzed
+ * \param loops_sref The loops to be analyzed
+ * \return An array of the same length as loops_sref
+ */
+TVM_DLL Array<Integer> GetLoopType(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
+                                   const Array<tir::StmtSRef>& loops_sref);
+
+/*!
  * \brief Returns the IterVarType of each block var
  * \param sch The TIR schedule class
  * \param block_sref The block to be analyzed

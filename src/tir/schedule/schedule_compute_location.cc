@@ -168,12 +168,13 @@ std::vector<StrideIntSet> SolveCover(const BlockNode* block, const std::vector<R
  * \brief Regenerate loop and the block realize outside the specific block with iter information
  * \param block_sref The sref of the block
  * \param loop_sref The parent loop where the new loop nesting will be inserted
- * \param iter_domain The iteration information
  * \param insert_pos The insert postion
+ * \param iter_domain The iteration information
+ * \param preserve_trivial_loop Keep the trivial loops whose extent is 1
  * \return The Updated parent loop
  */
 Loop RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& loop_sref, int insert_pos,
-                     const std::vector<StrideIntSet>& iter_domain) {
+                     const std::vector<StrideIntSet>& iter_domain, bool preserve_trivial_loop) {
   const LoopNode* loop = loop_sref->GetStmt<LoopNode>();
   int n_iter_domain = iter_domain.size();
   // Step 1. Construct loop variables
@@ -197,7 +198,7 @@ Loop RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& loop_sref, int 
   Stmt body = Stmt(realize);
   for (int i = iter_domain.size(); i > 0; --i) {
     const StrideIntSet& domain = iter_domain[i - 1];
-    if (!is_one(domain.extent_)) {
+    if (preserve_trivial_loop || !is_one(domain.extent_)) {
       // TODO(Siyuan): support for loop with annotations
       body = Loop(loop_vars[i - 1], 0, domain.extent_, {}, body);
     }
@@ -333,7 +334,8 @@ std::unordered_map<const VarNode*, Range> RelaxForExecScope(const StmtSRef& loop
   return relax_var;
 }
 
-void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref) {
+void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref,
+                              bool preserve_trivial_loop) {
   /*!
    * Check:
    *   - check input_block is complete/is a dominant reduction block
@@ -415,7 +417,8 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
                                            /*lca_loop_sref=*/loop_sref,
                                            /*consumer_blocks=*/EdgesToSRefs(edges_to_succ),
                                            /*relax_vars=*/RelaxForExecScope(loop_sref, block_sref),
-                                           /*gather_read=*/true)));
+                                           /*gather_read=*/true)),
+      preserve_trivial_loop);
   // Remove leaf
   std::pair<Stmt, Stmt> removed = RemoveLeaf(block_sref, this->root);
   std::unordered_map<const StmtNode*, const StmtNode*> replace_map = {
@@ -432,7 +435,8 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
   }
 }
 
-void ScheduleNode::reverse_compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref) {
+void ScheduleNode::reverse_compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref,
+                                      bool preserve_trivial_loop) {
   /*!
    * Check:
    *   - check input_block is complete/is a dominant reduction block
@@ -506,7 +510,8 @@ void ScheduleNode::reverse_compute_at(const StmtSRef& block_sref, const StmtSRef
                                            /*lca_loop_sref=*/loop_sref,
                                            /*consumer_blocks=*/EdgesToSRefs(edges_to_pred),
                                            /*relax_vars=*/{},
-                                           /*gather_read=*/false)));
+                                           /*gather_read=*/false)),
+      preserve_trivial_loop);
   // Remove leaf
   std::pair<Stmt, Stmt> removed = RemoveLeaf(block_sref, this->root);
   std::unordered_map<const StmtNode*, const StmtNode*> replace_map = {
