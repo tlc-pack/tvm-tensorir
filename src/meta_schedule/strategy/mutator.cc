@@ -124,6 +124,15 @@ class MutatorTileSize {
     tiles[x] = len_x;
     tiles[y] = len_y;
     new_sch->MutateDecision(inst, AsArray<int, ObjectRef>()(tiles));
+    std::unordered_set<Instruction, ObjectPtrHash, ObjectPtrEqual> fusible_samplings;
+    for (const auto& kv : new_sch->decisions) {
+      if (kv.first->inst_attrs->IsInstance<SampleFusibleLoopsAttrs>()) {
+        fusible_samplings.insert(kv.first);
+      }
+    }
+    for (const Instruction& fusible_sample : fusible_samplings) {
+      new_sch->MutateDecision(fusible_sample, NullOpt);
+    }
     new_sch->ReplayDecision();
     return new_sch;
   }

@@ -286,6 +286,93 @@ SearchRule Fusion(Array<Integer> levels) {
   return SearchRule("fusion", f_apply);
 }
 
+/********** ParallelizeOuter **********/
+
+/*! \brief A rule that parallelizes the outer loops */
+class RuleParallelizeOuter {
+ public:
+  /*! \brief The maximum extent of loops to be parallelized together */
+  int max_extent;
+
+  explicit RuleParallelizeOuter(int max_extent) : max_extent(max_extent) {}
+
+  /*! \brief Rule application */
+  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
+                const TContextInfo& info) {
+    tir::StmtSRef block_sref = sch->Eval(block_rv);
+    if (!IsSubrootBlock(sch->sch, block_sref)) {
+      return {{sch, info}};
+    }
+    Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
+    Array<tir::StmtSRef> loop_srefs;
+    loop_srefs.reserve(loop_rvs.size());
+    for (const LoopRV& loop_rv : loop_rvs) {
+      loop_srefs.push_back(sch->Eval(loop_rv));
+    }
+    Array<Integer> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
+    tir::Var n_fusible_rv =
+        sch->SampleFusibleLoops(loop_rvs, loop_types, max_extent, /*include_overflow_loop=*/true,
+                                ScheduleNode::Order::outer_to_inner, ScheduleNode::Mode::max);
+    PrimExpr min = Integer(0);
+    PrimExpr extent = n_fusible_rv;
+    sch->MarkParallel(loop_rvs, Range::FromMinExtent(min, extent));
+    return {{sch, info}};
+  }
+};
+
+SearchRule ParallelizeOuter(int max_extent) {
+  auto f_apply = [max_extent](SearchTask task, Schedule sch, BlockRV block,
+                              TContextInfo info) -> TReturn {
+    RuleParallelizeOuter rule(max_extent);
+    return rule.Apply(task, sch, block, info);
+  };
+  return SearchRule("parallelize_outer", f_apply);
+}
+
+/********** VectorizeInner **********/
+
+/*! \brief A rule that parallelizes the outer loops */
+class RuleVectorizeInner {
+ public:
+  /*! \brief The maximum extent of loops to be parallelized together */
+  int max_extent;
+
+  explicit RuleVectorizeInner(int max_extent) : max_extent(max_extent) {}
+
+  /*! \brief Rule application */
+  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
+                const TContextInfo& info) {
+    tir::StmtSRef block_sref = sch->Eval(block_rv);
+    if (!IsLeafBlock(sch->sch, block_sref)) {
+      return {{sch, info}};
+    }
+    Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
+    Array<tir::StmtSRef> loop_srefs;
+    loop_srefs.reserve(loop_rvs.size());
+    for (const LoopRV& loop_rv : loop_rvs) {
+      loop_srefs.push_back(sch->Eval(loop_rv));
+    }
+    Array<Integer> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
+    tir::Var n_fusible_rv =
+        sch->SampleFusibleLoops(loop_rvs, loop_types, max_extent, /*include_overflow_loop=*/false,
+                                ScheduleNode::Order::inner_to_order, ScheduleNode::Mode::max);
+    int n_loops = loop_rvs.size();
+    PrimExpr min = Integer(n_loops) - n_fusible_rv;
+    PrimExpr extent = n_fusible_rv;
+    sch->MarkVectorize(loop_rvs, Range::FromMinExtent(min, extent));
+    return {{sch, info}};
+  }
+};
+
+SearchRule VectorizeInner(int max_extent) {
+  auto f_apply = [max_extent](SearchTask task, Schedule sch, BlockRV block,
+                              TContextInfo info) -> TReturn {
+    RuleVectorizeInner rule(max_extent);
+    return rule.Apply(task, sch, block, info);
+  };
+  return SearchRule("vectorize_inner", f_apply);
+}
+
 /********** Tensorize Rewrite **********/
 
 class RuleTensorizeRewrite {
@@ -359,6 +446,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AlwaysInline").set_body_typed(Alw
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AddCacheWrite").set_body_typed(AddCacheWrite);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTiling").set_body_typed(MultiLevelTiling);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.Fusion").set_body_typed(Fusion);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.ParallelizeOuter").set_body_typed(ParallelizeOuter);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.VectorizeInner").set_body_typed(VectorizeInner);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.TensorizeRewrite").set_body_typed(TensorizeRewrite);
 
 }  // namespace meta_schedule
