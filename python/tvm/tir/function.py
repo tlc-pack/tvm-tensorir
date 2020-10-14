@@ -80,6 +80,33 @@ class PrimFunc(BaseFunc):
         """
         return PrimFunc(self.params, new_body, self.ret_type, self.buffer_map, self.attrs)
 
+    def bind(self, values):
+        """Bind the free vars of PrimFunc with values
+
+        Parameters
+        ----------
+        values : Union[Dict[Var, PrimExpr], List[PrimExpr], PrimExpr]
+            The values of free vars
+
+        Returns
+        -------
+        new_func : PrimFunc
+            The new function with free vars bound to values
+        """
+        if not isinstance(values, list) and not isinstance(values, dict):
+            values = [values]
+        if isinstance(values, list):
+            free_vars = self.attrs["free_vars"]
+            if free_vars is None or len(free_vars) != len(values):
+                raise ValueError("Inconsistent number of free_vars")
+            values = dict(zip(free_vars, values))
+        elif not isinstance(values, dict):
+            raise ValueError(
+                "PrimFunc.bind expects values to be "
+                "Dict[Var, PrimExpr] or List[PrimExpr] or PrimExpr"
+            )
+        return _ffi_api.BindFreeVars(self, values)
+
 
 @tvm._ffi.register_object("tir.TensorIntrin")
 class TensorIntrin(Object):

@@ -145,6 +145,13 @@ class PrimFunc : public BaseFunc {
                    Map<tir::Var, Buffer> buffer_map = Map<tir::Var, Buffer>(),
                    DictAttrs attrs = NullValue<DictAttrs>());
 
+  /*!
+   * \brief Bind the free vars of PrimFunc with values
+   * \param values The values of free vars
+   * \return The new function with free vars bound to values
+   */
+  TVM_DLL PrimFunc bind_free_vars(Map<tir::Var, PrimExpr> values);
+
   TVM_DEFINE_OBJECT_REF_METHODS(PrimFunc, BaseFunc, PrimFuncNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(PrimFuncNode);
 };
