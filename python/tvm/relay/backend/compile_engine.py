@@ -24,6 +24,8 @@ import tvm
 from tvm import te
 from tvm.runtime import Object
 from tvm.support import libinfo
+
+from ...ir.transform import PassContext
 from ...target import Target
 from ... import autotvm
 from .. import function as _function
@@ -127,7 +129,11 @@ def get_valid_implementations(op, attrs, inputs, out_type, target):
         strategy = fstrategy(attrs, inputs, out_type, target)
     analyzer = tvm.arith.Analyzer()
     ret = []
-    for spec in strategy.specializations:
+    if PassContext.current().config.get("relay.with_tir_schedule", False):
+        specializations = strategy.tir_specializations
+    else:
+        specializations = strategy.specializations
+    for spec in specializations:
         if spec.condition:
             # check if all the clauses in the specialized condition are true
             flag = True

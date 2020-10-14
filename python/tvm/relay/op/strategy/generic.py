@@ -215,6 +215,11 @@ def conv2d_strategy(attrs, inputs, out_type, target):
                 wrap_topi_schedule(topi.generic.schedule_conv2d_nchw),
                 name="conv2d_nchw.generic",
             )
+            strategy.add_tir_implementation(
+                wrap_compute_conv2d(topi.nn.conv2d_nchw),
+                wrap_topi_schedule(topi.generic.default_tir_schedule),
+                name="conv2d_nchw.generic",
+            )
         elif layout == "NHWC":
             assert kernel_layout == "HWIO"
             strategy.add_implementation(

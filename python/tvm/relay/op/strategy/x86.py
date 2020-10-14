@@ -112,6 +112,11 @@ def conv2d_strategy_cpu(attrs, inputs, out_type, target):
                     wrap_topi_schedule(topi.x86.schedule_conv2d_nchw),
                     name="conv2d_nchw.x86",
                 )
+                strategy.add_tir_implementation(
+                    wrap_compute_conv2d(topi.nn.conv2d_nchw),
+                    wrap_topi_schedule(topi.generic.default_tir_schedule),
+                    name="conv2d_nchw.x86",
+                )
         elif _NCHWc_matcher.match(layout):  # check if layout is NCHWxc
             assert _OIHWio_matcher.match(kernel_layout)  # check if kernel is OIHWio
             return conv2d_NCHWc_strategy_cpu(attrs, inputs, out_type, target)

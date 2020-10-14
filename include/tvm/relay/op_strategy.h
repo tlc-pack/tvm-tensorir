@@ -30,6 +30,7 @@
 #include <tvm/target/target.h>
 #include <tvm/te/schedule.h>
 #include <tvm/te/tensor.h>
+#include <tvm/tir/function.h>
 
 #include <string>
 
@@ -45,6 +46,8 @@ class OpImplementationNode : public Object {
   FTVMCompute fcompute;
   /*! \brief Schedule function */
   FTVMSchedule fschedule;
+  /*! \brief The PrimFunc for TensorIR scheduling */
+  FTVMPrimFunc fprim_func;
   /*! \brief Name of the implementation */
   String name;
   /*! \brief Priority level */
@@ -83,6 +86,16 @@ class OpImplementation : public ObjectRef {
   TVM_DLL te::Schedule Schedule(const Attrs& attrs, const Array<te::Tensor>& outs,
                                 const Target& target);
 
+  /*!
+   * \brief Build the scheduled PrimFunc.
+   * \param attrs The attribute of the node.
+   * \param outs The output tensors.
+   * \param target The build target.
+   * \return The scheduled PrimFunc.
+   */
+  TVM_DLL tir::PrimFunc PrimFunc(const Attrs& attrs, const Array<te::Tensor>& outs,
+                                const Target& target);
+
   TVM_DEFINE_OBJECT_REF_METHODS(OpImplementation, ObjectRef, OpImplementationNode);
 };
 
@@ -115,11 +128,12 @@ class OpSpecialization : public ObjectRef {
    * \brief Add an implementation.
    * \param fcompute Compute function
    * \param fschedule Schedule function
+   * \param fprim_func PrimFunc creation function
    * \param name Name of the implementation
    * \param plevel Priority level of the implementation
    */
-  TVM_DLL void AddImplementation(FTVMCompute fcompute, FTVMSchedule fschedule, String name,
-                                 int plevel);
+  TVM_DLL void AddImplementation(const FTVMCompute& fcompute, const FTVMSchedule& fschedule,
+                                 const FTVMPrimFunc& prim_func, String name, int plevel);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(OpSpecialization, ObjectRef, OpSpecializationNode);
 };
@@ -131,8 +145,12 @@ class OpStrategyNode : public Object {
  public:
   /*! \brief List of operator specializations. */
   Array<OpSpecialization> specializations;
+  Array<OpSpecialization> tir_specializations;
 
-  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("specializations", &specializations); }
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("specializations", &specializations);
+    v->Visit("tir_specializations", &tir_specializations);
+  }
 
   static constexpr const char* _type_key = "relay.OpStrategy";
   TVM_DECLARE_FINAL_OBJECT_INFO(OpStrategyNode, ExprNode);
@@ -150,8 +168,18 @@ class OpStrategy : public ObjectRef {
    * \param name Name of the implementation
    * \param plevel Priority level of the implementation
    */
-  TVM_DLL void AddImplementation(FTVMCompute fcompute, FTVMSchedule fschedule, String name,
-                                 int plevel);
+  TVM_DLL void AddImplementation(const FTVMCompute& fcompute, const FTVMSchedule& fschedule,
+                                 String name, int plevel);
+
+  /*!
+   * \brief Add an implementation for tir scheduling
+   * \param fcompute Compute function
+   * \param fprim_func PrimFunc creation function
+   * \param name Name of the implementation
+   * \param plevel Priority level of the implementation
+   */
+  TVM_DLL void AddTirImplementation(const FTVMCompute& fcompute, const FTVMPrimFunc& fprim_func,
+                                    String name, int plevel);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(OpStrategy, ObjectRef, OpStrategyNode);
 };

@@ -144,17 +144,39 @@ class OpStrategy(Object):
         """
         _OpStrategyAddImplementation(self, compute, schedule, name, plevel)
 
+    def add_tir_implementation(self, compute, prim_func, name="default", plevel=10):
+        """Add an implementation to the strategy
 
-def _wrap_default_fstrategy(compute, schedule, name):
+        Parameters
+        ----------
+        compute : function (attrs: Attrs, inputs: List[Tensor], out_type: Type)
+                           -> List[Tensor]
+            The compute function.
+
+        prim_func : function (attrs: Attrs, outs: List[Tensor], target:Target) -> PrimFunc
+            The creator for scheduled function.
+
+        name : str
+            The name of implementation.
+
+        plevel : int
+            The priority level of implementation.
+        """
+        _OpStrategyAddTirImplementation(self, compute, prim_func, name, plevel)
+
+
+def _wrap_default_fstrategy(compute, schedule, prim_func=None, name=""):
     def _fstrategy(attrs, inputs, out_type, target):
         strategy = OpStrategy()
         strategy.add_implementation(compute, schedule, name=name)
+        if prim_func is not None:
+            strategy.add_tir_implementation(compute, prim_func, name=name)
         return strategy
 
     return _fstrategy
 
 
-def _create_fstrategy_from_schedule(op_name, schedule):
+def _create_fstrategy_from_schedule(op_name, schedule, prim_func=None):
     assert hasattr(schedule, "dispatch_dict")
     compute = get(op_name).get_attr("FTVMCompute")
     assert compute is not None, "FTVMCompute is not registered for op %s" % op_name
@@ -162,10 +184,10 @@ def _create_fstrategy_from_schedule(op_name, schedule):
     name_pfx = schedule.__name__
     name_pfx = name_pfx[name_pfx.index("_") + 1 :]
     fstrategy.set_default(
-        _wrap_default_fstrategy(compute, schedule.fdefault, "%s.generic" % name_pfx)
+        _wrap_default_fstrategy(compute, schedule.fdefault, name="%s.generic" % name_pfx)
     )
     for key, sch in schedule.dispatch_dict.items():
-        fstrategy.register(_wrap_default_fstrategy(compute, sch, "%s.%s" % (name_pfx, key)), [key])
+        fstrategy.register(_wrap_default_fstrategy(compute, sch, name="%s.%s" % (name_pfx, key)), [key])
     return fstrategy
 
 
@@ -208,7 +230,7 @@ def register_strategy(op_name, fstrategy=None, level=10):
     return tvm.ir.register_op_attr(op_name, "FTVMStrategy", fstrategy, level)
 
 
-def register_schedule(op_name, schedule, level=10):
+def register_schedule(op_name, schedule, prim_func=None, level=10):
     """Register schedule function for an op.
 
     This is used when compute function is the same for all targets and only
@@ -226,8 +248,8 @@ def register_schedule(op_name, schedule, level=10):
     level : int
         The priority level
     """
-    fstrategy = _create_fstrategy_from_schedule(op_name, schedule)
-    return register_strategy(op_name, fstrategy, level)
+    fstrategy = _create_fstrategy_from_schedule(op_name, schedule, prim_func)
+    return register_strategy(op_name, fstrategy, level=level)
 
 
 def register_injective_schedule(op_name, level=10):
