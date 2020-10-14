@@ -207,7 +207,7 @@ def test_matmul_schedule_fn():
 
 @pytest.mark.skip(reason="needs RPC")
 def test_matmul_post_order_apply():
-    rule = ms.rule.compose(
+    my_rule = ms.rule.compose(
         name="composed",
         rules=[
             do_nothing,
@@ -218,7 +218,13 @@ def test_matmul_post_order_apply():
     )
     sch = ms.autotune(
         task=matmul,
-        space=ms.space.PostOrderApply(stages=[rule]),
+        space=ms.space.PostOrderApply(
+            stages=[
+                my_rule,
+                ms.rule.parallelize_outer(max_extent=256),
+                ms.rule.vectorize_inner(max_extent=32),
+            ]
+        ),
         strategy="replay",
     )
     if sch is None:
@@ -245,7 +251,7 @@ def test_matmul_relu_schedule_fn():
     sch = ms.autotune(
         task=matmul_relu,
         space=schedule_matmul,
-        strategy=ms.strategy.Replay(batch_size=1, num_iterations=1),
+        strategy="replay",
     )
     if sch is None:
         print("No valid schedule found")
@@ -255,7 +261,7 @@ def test_matmul_relu_schedule_fn():
 
 @pytest.mark.skip(reason="needs RPC")
 def test_matmul_relu_post_order_apply():
-    rule = ms.rule.compose(
+    my_rule = ms.rule.compose(
         name="composed",
         rules=[
             do_nothing,
@@ -266,7 +272,13 @@ def test_matmul_relu_post_order_apply():
     )
     sch = ms.autotune(
         task=matmul_relu,
-        space=ms.space.PostOrderApply(stages=[rule]),
+        space=ms.space.PostOrderApply(
+            stages=[
+                my_rule,
+                ms.rule.parallelize_outer(max_extent=256),
+                ms.rule.vectorize_inner(max_extent=32),
+            ]
+        ),
         strategy="replay",
     )
     if sch is None:
@@ -323,7 +335,7 @@ def test_conv2d_schedule_fn():
 
 @pytest.mark.skip(reason="needs RPC")
 def test_conv2d_post_order_apply():
-    rule = ms.rule.compose(
+    my_rule = ms.rule.compose(
         name="composed",
         rules=[
             do_nothing,
@@ -334,7 +346,13 @@ def test_conv2d_post_order_apply():
     )
     sch = ms.autotune(
         task=conv2d,
-        space=ms.space.PostOrderApply(stages=[rule]),
+        space=ms.space.PostOrderApply(
+            stages=[
+                my_rule,
+                ms.rule.parallelize_outer(max_extent=256),
+                ms.rule.vectorize_inner(max_extent=32),
+            ]
+        ),
         strategy="replay",
     )
     if sch is None:
@@ -359,6 +377,8 @@ def test_conv2d_relu_plus_one_post_order_apply():
                         ms.rule.fusion(levels=[1, 2]),
                     ],
                 ),
+                ms.rule.parallelize_outer(max_extent=256),
+                ms.rule.vectorize_inner(max_extent=32),
             ]
         ),
         strategy="replay",
@@ -396,6 +416,8 @@ def test_matmul_evolutionary_step_by_step():
                     ms.rule.fusion(levels=[1, 2]),
                 ],
             ),
+            ms.rule.parallelize_outer(max_extent=256),
+            ms.rule.vectorize_inner(max_extent=32),
         ]
     )
     support = space.get_support(task=task)
@@ -428,6 +450,8 @@ def test_matmul_evolutionary_end_to_end():
                         ms.rule.fusion(levels=[1, 2]),
                     ],
                 ),
+                ms.rule.parallelize_outer(max_extent=256),
+                ms.rule.vectorize_inner(max_extent=32),
             ]
         ),
         strategy=ms.strategy.Evolutionary(

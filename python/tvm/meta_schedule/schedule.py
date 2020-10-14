@@ -15,9 +15,9 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Main class of meta schedule """
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
-from tvm import tir
+from tvm import ir, tir
 from tvm._ffi import register_object
 from tvm.runtime import Object
 
@@ -48,6 +48,8 @@ class Schedule(Object):
         self.__init_handle_by_constructor__(
             _ffi_api.Schedule, func, seed  # pylint: disable=no-member
         )
+
+    ######### Utility #########
 
     def seed(self, new_seed: int) -> None:
         """Seed the randomness
@@ -142,6 +144,51 @@ class Schedule(Object):
             self, n_splits, loop, where
         )
 
+    def sample_fusible_loops(
+        self,
+        loops: List[LoopRV],
+        loop_types: List[int],
+        max_extent: int,
+        include_overflow_loop: bool = True,
+        order: str = "outer_to_inner",
+        mode: str = "max",
+    ) -> ExprRV:
+        """Sample fusible loops, in the specific order (inner-to-outer or outer-to-inner),
+        where their product of extent is limited. The sampling could have two modes: max or rand.
+        If it is using mode "max", the sampling deterministically choose the maximum number of
+        loops to fuse; Otherwise, if choose mode "rand", it samples the number of viable choices
+        uniformly and return a randomly selected number of loops to fuse.
+
+        Parameters
+        ----------
+        loops : List[LoopRV]
+            The loops to be fused
+        loop_types : List[int]
+            Type of the loop
+        max_extent : int
+            The maximum extent of loops
+        include_overflow_loop : bool
+            Whether to include the last loop that makes the extent larger then `max_extent`
+        order : str
+            The order of fusion, can be `inner_to_outer` or `outer_to_inner`
+        mode : str
+            The mode of the fusion, can be `max` or `rand`
+
+        Returns
+        -------
+        n_fusible : ExprRV
+            A ExprRV, a random variable indicates the number of loops that can be potentially fused
+        """
+        order = {"outer_to_inner": 0, "inner_to_outer": 1}.get(order, None)
+        mode = {"max": 0, "rand": 1}.get(mode, None)
+        if order is None:
+            raise ValueError('"order" needs to be one of: "outer_to_inner", "inner_to_order"')
+        if mode is None:
+            raise ValueError('"mode" needs to be one of: "max", "rand"')
+        return _ffi_api.SampleFusibleLoops(  # pylint: disable=no-member
+            self, loops, loop_types, max_extent, include_overflow_loop, order, mode
+        )
+
     ######### Block/Loop Relationship #########
 
     def get_only_consumer(self, block: BlockRV) -> Optional[BlockRV]:
@@ -149,7 +196,7 @@ class Schedule(Object):
 
         Parameters
         ----------
-        block: BlockRV
+        block : BlockRV
             The block to be queried
 
         Returns
@@ -164,7 +211,7 @@ class Schedule(Object):
 
         Parameters
         ----------
-        name: str
+        name : str
             Name of the block
 
         Returns
@@ -179,7 +226,7 @@ class Schedule(Object):
 
         Parameters
         ----------
-        block: BlockRV
+        block : BlockRV
             The block to be queried
 
         Returns
@@ -189,7 +236,66 @@ class Schedule(Object):
         """
         return _ffi_api.ScheduleGetAxes(self, block)  # pylint: disable=no-member
 
+    def get_root_blocks(self) -> List[BlockRV]:
+        """Get the root blocks which are direct children of the root node
+
+        Returns
+        ----------
+        blocks : List[BlockRV]
+            The direct childs block of the root node
+        """
+        return _ffi_api.ScheduleGetRootBlocks(self)  # pylint: disable=no-member
+
+    def get_leaf_blocks(self) -> List[BlockRV]:
+        """Get the leaf blocks who do not have any child block
+
+        Returns
+        ----------
+        blocks : List[BlockRV]
+            The direct childs block of the root node
+        """
+        return _ffi_api.ScheduleGetLeafBlocks(self)  # pylint: disable=no-member
+
     ########## Scheduling Primitives ##########
+
+    def fuse(self, loops: List[LoopRV]):
+        """Fuse the loops
+
+        Parameters
+        ----------
+        loops : List[LoopRV]
+            The block to be queried
+
+        Returns
+        -------
+        fused : LoopRV
+            The fused loop
+        """
+        return _ffi_api.ScheduleFuse(self, loops)  # pylint: disable=no-member
+
+    def mark_parallel(self, loop: LoopRV, mark_range: ir.Range) -> None:
+        """Mark a range of loops as parallelized
+
+        Parameters
+        ----------
+        loop : LoopRV
+            The loop to be parallelized
+        range: Range
+            The range to be marked as parallelized
+        """
+        _ffi_api.ScheduleMarkParallel(self, loop, mark_range)  # pylint: disable=no-member
+
+    def mark_vectorize(self, loop: LoopRV, mark_range: ir.Range) -> None:
+        """Mark a range of loops as vectorized
+
+        Parameters
+        ----------
+        loop : LoopRV
+            The loop to be vectorized
+        range: Range
+            The range to be marked as vectorized
+        """
+        _ffi_api.ScheduleMarkVectorize(self, loop, mark_range)  # pylint: disable=no-member
 
     def split(
         self,
