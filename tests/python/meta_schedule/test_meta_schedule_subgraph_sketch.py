@@ -38,6 +38,7 @@ def _fix_sampling_tile_size(
     for inst, decision in zip(insts, decisions):
         sch.mutate_decision(inst, decision)
     sch.replay_decision()
+    print(tvm.script.asscript(sch.sch.func))
     results = [tvm.ir.structural_equal(sch.sch.func, i) for i in expected]
     assert sum(results) >= 1
 
@@ -198,34 +199,27 @@ def test_meta_schedule_sketch_cpu_matmul():
     func = workload_matmul
     support = _get_support(func=func, task_name="matmul")
     expected = [_matmul_sketch_0, _matmul_sketch_1, _matmul_sketch_2]
+    decisions = [
+        [128, 2, 1, 2],
+        [16, 1, 2, 16],
+        [64, 8],
+    ]
     assert len(support) == 3
     _fix_sampling_tile_size(
         sch=support[0],
-        decisions=[
-            [128, 2, 1, 2],
-            [16, 1, 2, 16],
-            [64, 8],
-        ],
+        decisions=decisions,
         expected=expected,
     )
-    _fix_sampling_tile_size(
-        sch=support[1],
-        decisions=[
-            [2, 4, 32, 2],
-            [8, 8, 2, 4],
-            [128, 4],
-        ],
-        expected=expected,
-    )
-    _fix_sampling_tile_size(
-        sch=support[2],
-        decisions=[
-            [2, 32, 1, 8],
-            [64, 1, 2, 4],
-            [512, 1],
-        ],
-        expected=expected,
-    )
+    # _fix_sampling_tile_size(
+    #     sch=support[1],
+    #     decisions=decisions,
+    #     expected=expected,
+    # )
+    # _fix_sampling_tile_size(
+    #     sch=support[2],
+    #     decisions=decisions,
+    #     expected=expected,
+    # )
 
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
@@ -663,38 +657,145 @@ def test_meta_schedule_sketch_cpu_conv2d_nchw():
     )
 
 
-def test_meta_schedule_sketch_cpu_conv2d_nchw_bias():
-    func = te.create_func(
-        workload.conv2d_nchw_bias(
-            n=1,
-            h=56,
-            w=56,
-            ci=512,
-            co=512,
-            kh=3,
-            kw=3,
-            stride=1,
-            padding=1,
-        )
-    )
-    print(tvm.script.asscript(func))
+# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg
+# fmt: off
+
+@tvm.script.tir
+def workload_conv2d_nchw_bias_bn_relu(var_X: ty.handle, var_W: ty.handle, var_B: ty.handle, var_bn_scale: ty.handle, var_bn_offset: ty.handle, var_compute: ty.handle) -> None:
+    # function attr dict
+    tir.func_attr({})
+    compute = tir.match_buffer(var_compute, [1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
+    X = tir.match_buffer(var_X, [1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
+    W = tir.match_buffer(var_W, [512, 512, 3, 3], elem_offset=0, align=128, offset_factor=1)
+    bn_offset = tir.match_buffer(var_bn_offset, [512, 1, 1], elem_offset=0, align=128, offset_factor=1)
+    B = tir.match_buffer(var_B, [512, 1, 1], elem_offset=0, align=128, offset_factor=1)
+    bn_scale = tir.match_buffer(var_bn_scale, [512, 1, 1], elem_offset=0, align=128, offset_factor=1)
+    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        pad_temp = tir.buffer_allocate([1, 512, 58, 58], elem_offset=0, align=128, offset_factor=1)
+        compute_1 = tir.buffer_allocate([1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
+        bias_add = tir.buffer_allocate([1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
+        bn_mul = tir.buffer_allocate([1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
+        bn_add = tir.buffer_allocate([1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
+        for i0 in range(0, 1):
+            for i1 in range(0, 512):
+                for i2 in range(0, 58):
+                    for i3 in range(0, 58):
+                        with tir.block([1, 512, 58, 58], "pad_temp") as [i0_1, i1_1, i2_1, i3_1]:
+                            tir.bind(i0_1, i0)
+                            tir.bind(i1_1, i1)
+                            tir.bind(i2_1, i2)
+                            tir.bind(i3_1, i3)
+                            tir.reads([X[i0_1:(i0_1 + 1), i1_1:(i1_1 + 1), (i2_1 - 1):((i2_1 - 1) + 1), (i3_1 - 1):((i3_1 - 1) + 1)]])
+                            tir.writes([pad_temp[i0_1:(i0_1 + 1), i1_1:(i1_1 + 1), i2_1:(i2_1 + 1), i3_1:(i3_1 + 1)]])
+                            pad_temp[i0_1, i1_1, i2_1, i3_1] = tir.if_then_else(((((i2_1 >= 1) and (i2_1 < 57)) and (i3_1 >= 1)) and (i3_1 < 57)), X[i0_1, i1_1, (i2_1 - 1), (i3_1 - 1)], tir.float32(0), dtype="float32")
+        for i0_2 in range(0, 1):
+            for i1_2 in range(0, 512):
+                for i2_2 in range(0, 56):
+                    for i3_2 in range(0, 56):
+                        for i4 in range(0, 512):
+                            for i5 in range(0, 3):
+                                for i6 in range(0, 3):
+                                    with tir.block([1, 512, 56, 56, tir.reduce_axis(0, 512), tir.reduce_axis(0, 3), tir.reduce_axis(0, 3)], "compute") as [nn, ff, yy, xx, rc, ry, rx]:
+                                        tir.bind(nn, i0_2)
+                                        tir.bind(ff, i1_2)
+                                        tir.bind(yy, i2_2)
+                                        tir.bind(xx, i3_2)
+                                        tir.bind(rc, i4)
+                                        tir.bind(ry, i5)
+                                        tir.bind(rx, i6)
+                                        tir.reads([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
+                                        tir.writes([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
+                                        reducer.step(compute_1[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
+        for i0_3 in range(0, 1):
+            for i1_3 in range(0, 512):
+                for i2_3 in range(0, 56):
+                    for i3_3 in range(0, 56):
+                        with tir.block([1, 512, 56, 56], "bias_add") as [i, j, k, l]:
+                            tir.bind(i, i0_3)
+                            tir.bind(j, i1_3)
+                            tir.bind(k, i2_3)
+                            tir.bind(l, i3_3)
+                            tir.reads([compute_1[i:(i + 1), j:(j + 1), k:(k + 1), l:(l + 1)], B[j:(j + 1), 0:1, 0:1]])
+                            tir.writes([bias_add[i:(i + 1), j:(j + 1), k:(k + 1), l:(l + 1)]])
+                            bias_add[i, j, k, l] = (compute_1[i, j, k, l] + B[j, 0, 0])
+        for i0_4 in range(0, 1):
+            for i1_4 in range(0, 512):
+                for i2_4 in range(0, 56):
+                    for i3_4 in range(0, 56):
+                        with tir.block([1, 512, 56, 56], "bn_mul") as [i_1, j_1, k_1, l_1]:
+                            tir.bind(i_1, i0_4)
+                            tir.bind(j_1, i1_4)
+                            tir.bind(k_1, i2_4)
+                            tir.bind(l_1, i3_4)
+                            tir.reads([bias_add[i_1:(i_1 + 1), j_1:(j_1 + 1), k_1:(k_1 + 1), l_1:(l_1 + 1)], bn_scale[j_1:(j_1 + 1), 0:1, 0:1]])
+                            tir.writes([bn_mul[i_1:(i_1 + 1), j_1:(j_1 + 1), k_1:(k_1 + 1), l_1:(l_1 + 1)]])
+                            bn_mul[i_1, j_1, k_1, l_1] = (bias_add[i_1, j_1, k_1, l_1]*bn_scale[j_1, 0, 0])
+        for i0_5 in range(0, 1):
+            for i1_5 in range(0, 512):
+                for i2_5 in range(0, 56):
+                    for i3_5 in range(0, 56):
+                        with tir.block([1, 512, 56, 56], "bn_add") as [i_2, j_2, k_2, l_2]:
+                            tir.bind(i_2, i0_5)
+                            tir.bind(j_2, i1_5)
+                            tir.bind(k_2, i2_5)
+                            tir.bind(l_2, i3_5)
+                            tir.reads([bn_mul[i_2:(i_2 + 1), j_2:(j_2 + 1), k_2:(k_2 + 1), l_2:(l_2 + 1)], bn_offset[j_2:(j_2 + 1), 0:1, 0:1]])
+                            tir.writes([bn_add[i_2:(i_2 + 1), j_2:(j_2 + 1), k_2:(k_2 + 1), l_2:(l_2 + 1)]])
+                            bn_add[i_2, j_2, k_2, l_2] = (bn_mul[i_2, j_2, k_2, l_2] + bn_offset[j_2, 0, 0])
+        for i0_6 in range(0, 1):
+            for i1_6 in range(0, 512):
+                for i2_6 in range(0, 56):
+                    for i3_6 in range(0, 56):
+                        with tir.block([1, 512, 56, 56], "compute_2") as [i0_7, i1_7, i2_7, i3_7]:
+                            tir.bind(i0_7, i0_6)
+                            tir.bind(i1_7, i1_6)
+                            tir.bind(i2_7, i2_6)
+                            tir.bind(i3_7, i3_6)
+                            tir.reads([bn_add[i0_7:(i0_7 + 1), i1_7:(i1_7 + 1), i2_7:(i2_7 + 1), i3_7:(i3_7 + 1)]])
+                            tir.writes([compute[i0_7:(i0_7 + 1), i1_7:(i1_7 + 1), i2_7:(i2_7 + 1), i3_7:(i3_7 + 1)]])
+                            compute[i0_7, i1_7, i2_7, i3_7] = tir.max(bn_add[i0_7, i1_7, i2_7, i3_7], tir.float32(0))
+
+# fmt: on
+# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg
 
 
 def test_meta_schedule_sketch_cpu_conv2d_nchw_bias_bn_relu():  # pylint: disable=invalid-name
-    func = te.create_func(
-        workload.conv2d_nchw_bias_bn_relu(
-            n=1,
-            h=56,
-            w=56,
-            ci=512,
-            co=512,
-            kh=3,
-            kw=3,
-            stride=1,
-            padding=1,
-        )
-    )
-    print(tvm.script.asscript(func))
+    # func = te.create_func(
+    #     workload.conv2d_nchw_bias_bn_relu(
+    #         n=1,
+    #         h=56,
+    #         w=56,
+    #         ci=512,
+    #         co=512,
+    #         kh=3,
+    #         kw=3,
+    #         stride=1,
+    #         padding=1,
+    #     )
+    # )
+    func = workload_conv2d_nchw_bias_bn_relu
+    # support = _get_support(func=func, task_name="conv2d_nchw")
+    support = ms.space.PostOrderApply(
+        stages=[
+            ms.rule.always_inline(),
+            # ms.rule.compose(
+            #     name="tiling",
+            #     rules=[
+            #         ms.rule.add_cache_write(),
+            #         ms.rule.multi_level_tiling(structure="SSRSRS"),
+            #         ms.rule.fusion(levels=[1, 2]),
+            #     ],
+            # ),
+        ]
+    ).get_support(task=ms.SearchTask(func=func, task_name="conv2d_nchw_bias_bn_relu"))
+    _debug(support)
+    # assert len(support) == 3
+    # expected = [_conv2d_nchw_sketch_0, _conv2d_nchw_sketch_1, _conv2d_nchw_sketch_2]
+    # print(tvm.script.asscript(func))
 
 
 def test_meta_schedule_sketch_cpu_max_pool2d_nchw():
@@ -704,8 +805,7 @@ def test_meta_schedule_sketch_cpu_max_pool2d_nchw():
 
 if __name__ == "__main__":
     test_meta_schedule_sketch_cpu_matmul()
-    test_meta_schedule_sketch_cpu_matmul_relu()
-    test_meta_schedule_sketch_cpu_conv2d_nchw()
-    # test_meta_schedule_sketch_cpu_conv2d_nchw_bias()
+    # test_meta_schedule_sketch_cpu_matmul_relu()
+    # test_meta_schedule_sketch_cpu_conv2d_nchw()
     # test_meta_schedule_sketch_cpu_conv2d_nchw_bias_bn_relu()
     # test_meta_schedule_sketch_cpu_max_pool2d_nchw()

@@ -23,7 +23,7 @@ from tvm import te, topi
 
 def matmul(n: int, m: int, k: int) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
     a = te.placeholder((n, k), name="A")
-    b = te.placeholder((m, k), name="B")
+    b = te.placeholder((k, m), name="B")
     k = te.reduce_axis((0, k), name="k")
     c = te.compute(
         (n, m),
@@ -64,7 +64,7 @@ def conv2d_nchw(  # pylint: disable=invalid-name
     return (x, w, y)
 
 
-def conv2d_nchw_bias(  # pylint: disable=invalid-name
+def conv2d_nchw_bias_relu(  # pylint: disable=invalid-name
     n: int,
     h: int,
     w: int,
@@ -83,6 +83,7 @@ def conv2d_nchw_bias(  # pylint: disable=invalid-name
     b = te.placeholder((co, 1, 1), name="B")
     y = topi.nn.conv2d_nchw(Input=x, Filter=w, stride=stride, padding=padding, dilation=dilation)
     y = te.compute((n, co, oh, ow), lambda i, j, k, l: y[i, j, k, l] + b[j, 0, 0], name="bias_add")
+    y = topi.nn.relu(y)
     return (x, w, b, y)
 
 

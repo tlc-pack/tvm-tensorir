@@ -79,7 +79,12 @@ class RuleAlwaysInline {
   TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
                 const TContextInfo& info) {
     tir::StmtSRef block_sref = sch->Eval(block_rv);
-    if (!IsSpatial(sch->sch, block_sref) || IsOutputBlock(sch->sch, block_sref)) {
+    if (!IsSpatial(sch->sch, block_sref)) {
+      LOG(INFO) << "Not a spatial block:\n" << block_sref;
+      return {{sch, info}};
+    }
+    if (IsOutputBlock(sch->sch, block_sref)) {
+      LOG(INFO) << "Is aa output block:\n" << block_sref;
       return {{sch, info}};
     }
     if (IsStrictlyInlineable(sch->sch, block_sref)) {
