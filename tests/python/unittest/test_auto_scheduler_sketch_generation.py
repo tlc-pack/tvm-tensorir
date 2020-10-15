@@ -133,9 +133,6 @@ def test_cpu_conv2d_bn_relu_sketch():
         No.2 : Conv2d multi-level tiling without fusion
     """
     assert len(sketches) == 3
-    print(sketches[0])
-    print(sketches[1])
-    print(sketches[2])
     # Sketch 0
     assert_is_not_tiled(sketches[0].stages[1])
     assert_is_tiled(sketches[0].stages[3])
@@ -391,8 +388,8 @@ def test_cuda_conv2d_winograd_sketch():
 
 if __name__ == "__main__":
     # test_cpu_matmul_sketch()
-    test_cpu_conv2d_bn_relu_sketch()
-    # test_cpu_max_pool2d_sketch()
+    # test_cpu_conv2d_bn_relu_sketch()
+    test_cpu_max_pool2d_sketch()
     # test_cpu_min_sketch()
     # test_cpu_softmax_sketch()
     # test_cpu_conv2d_winograd_sketch()

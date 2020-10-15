@@ -428,8 +428,10 @@ bool NeedsMultiLevelTiling(const tir::Schedule& sch, const tir::StmtSRef& block_
       });
     }
     for (const tir::IterVar& block_var : block->iter_vars) {
-      if (!vars_in_load.count(block_var->var.get())) {
-        ++n_missing;
+      if (block_var->iter_type == tir::IterVarType::kDataPar) {
+        if (!vars_in_load.count(block_var->var.get())) {
+          ++n_missing;
+        }
       }
     }
   }
@@ -444,14 +446,11 @@ bool NeedsMultiLevelTiling(const tir::Schedule& sch, const tir::StmtSRef& block_
 
 bool IsStrictlyInlineable(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
   static const Op& op_tir_exp = Op::Get("tir.exp");
-  LOG(INFO) << "Checking is-strictly-inlineable:\n" << block_sref;
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   if (HasBranch(sch, block_sref)) {
-    LOG(INFO) << "  NO: it has branches";
     return false;
   }
   if (CountOp(sch, block_sref, op_tir_exp)) {
-    LOG(INFO) << "  NO: it has op: " << op_tir_exp;
     return false;
   }
   // Check if it is ordered-injective mapping
@@ -460,7 +459,6 @@ bool IsStrictlyInlineable(const tir::Schedule& sch, const tir::StmtSRef& block_s
     read_axes.reserve(region->region.size());
     for (const Range& range : region->region) {
       if (!IsConstInt(range->extent)) {
-        LOG(INFO) << "  NO: it reads weird region";
         return false;
       } else {
         read_axes.push_back(range->min);
@@ -470,18 +468,13 @@ bool IsStrictlyInlineable(const tir::Schedule& sch, const tir::StmtSRef& block_s
       CHECK_EQ(access.value().size(), 3);
       bool injective = access.value()[1];
       bool order = access.value()[2];
-      LOG(INFO) << "  surjective = " << access.value()[0] << ", injective = " << access.value()[1]
-                << ", order = " << access.value()[2];
       if (!order || !injective) {
-        LOG(INFO) << "  NO";
         return false;
       }
     } else {
-      LOG(INFO) << "  NO: pattern does not exist";
       return false;
     }
   }
-  LOG(INFO) << "  YES";
   return true;
 }
 

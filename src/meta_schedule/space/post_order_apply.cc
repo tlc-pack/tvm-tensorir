@@ -51,17 +51,6 @@ class PostOrderApplyNode : public SearchSpaceNode {
    * \sa ScheduleFnNode::SampleSchedule
    */
   Array<Schedule> GetSupport(const SearchTask& task, Sampler* sampler) override;
-  /*!
-   * \brief Apply the rule on the subtree rooted at the given block
-   * \param task The search task
-   * \param rule The rule used in the current stage
-   * \param block The block to be visited
-   * \param sch The schedule snippet
-   * \param is_root If the given block is the root of the PrimFunc
-   * \return A list of schedules generated
-   */
-  Array<Schedule> VisitBlock(const SearchTask& task, const SearchRule& rule,
-                             const tir::Block& block, const Schedule& sch, bool is_root);
 
   static constexpr const char* _type_key = "meta_schedule.PostOrderApply";
   TVM_DECLARE_FINAL_OBJECT_INFO(PostOrderApplyNode, SearchSpaceNode);
@@ -164,49 +153,6 @@ Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* 
     curr = next;
   }
   return curr;
-}
-
-Array<Schedule> PostOrderApplyNode::VisitBlock(const SearchTask& task, const SearchRule& rule,
-                                               const tir::Block& block, const Schedule& sch,
-                                               bool is_root) {
-  Array<tir::Block> children;
-  // Collect children
-  tir::PreOrderVisit(block, [&children](const ObjectRef& node) {
-    if (const auto* block_realize = node.as<tir::BlockRealizeNode>()) {
-      children.push_back(block_realize->block);
-      return false;
-    }
-    return true;
-  });
-  // Visit each children
-  Array<Schedule> schedules{sch};
-  for (const tir::Block& child : children) {
-    Array<Schedule> new_schedules;
-    for (const Schedule& sch : schedules) {
-      // if this child still exists
-      if (sch->sch->stmt2ref.count(child.get())) {
-        Array<Schedule> result = VisitBlock(task, rule, child, sch, false);
-        new_schedules.insert(new_schedules.end(), result.begin(), result.end());
-      } else {
-        new_schedules.push_back(sch);
-      }
-    }
-    schedules = new_schedules;
-  }
-  // Visit itself
-  if (!is_root) {
-    Array<Schedule> new_schedules;
-    for (const Schedule& sch : schedules) {
-      // LOG(INFO) << ""
-      Map<Schedule, SearchRule::TContextInfo> applied =
-          rule->Apply(task, sch, sch->GetBlock(block->tag), {});
-      for (const auto& kv : applied) {
-        new_schedules.push_back(kv.first);
-      }
-    }
-    schedules = new_schedules;
-  }
-  return schedules;
 }
 
 /********** FFI **********/

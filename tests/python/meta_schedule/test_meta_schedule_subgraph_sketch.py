@@ -24,9 +24,12 @@ from tvm.script import ty
 import workload
 
 
+# TODO(@junrushao1994): workload.* instead
+
+
 def _fix_sampling_tile_size(
     sch: ms.Schedule,
-    decisions: List[List[int]],
+    possible_decisions: List[List[List[int]]],
     expected: List[tir.PrimFunc],
 ):
     insts = [
@@ -34,13 +37,16 @@ def _fix_sampling_tile_size(
         for inst in sch.trace
         if isinstance(inst.inst_attrs, ms.instruction.SamplePerfectTileAttrs)
     ]
-    assert len(insts) == len(decisions)
-    for inst, decision in zip(insts, decisions):
-        sch.mutate_decision(inst, decision)
-    sch.replay_decision()
-    print(tvm.script.asscript(sch.sch.func))
-    results = [tvm.ir.structural_equal(sch.sch.func, i) for i in expected]
-    assert sum(results) >= 1
+    for decisions in possible_decisions:
+        if len(insts) != len(decisions):
+            continue
+        for inst, decision in zip(insts, decisions):
+            sch.mutate_decision(inst, decision)
+        sch.replay_decision()
+        results = [tvm.ir.structural_equal(sch.sch.func, i) for i in expected]
+        if sum(results) >= 1:
+            return True
+    return False
 
 
 def _get_support(func: tir.PrimFunc, task_name: str):
@@ -180,7 +186,6 @@ def _matmul_sketch_2(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                                     tir.writes([C[v0:(v0 + 1), v1:(v1 + 1)]])
                                                     C[v0, v1] = C_local[v0, v1]
 
-# TODO(@junrushao1994): remove it and use workload.matmul
 @tvm.script.tir
 def workload_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (512, 512), "float32")
@@ -199,27 +204,39 @@ def test_meta_schedule_sketch_cpu_matmul():
     func = workload_matmul
     support = _get_support(func=func, task_name="matmul")
     expected = [_matmul_sketch_0, _matmul_sketch_1, _matmul_sketch_2]
-    decisions = [
-        [128, 2, 1, 2],
-        [16, 1, 2, 16],
-        [64, 8],
+    possible_decisions = [
+        [
+            [128, 2, 1, 2],
+            [16, 1, 2, 16],
+            [64, 8],
+        ],
+        [
+            [2, 4, 32, 2],
+            [8, 8, 2, 4],
+            [128, 4],
+        ],
+        [
+            [2, 32, 1, 8],
+            [64, 1, 2, 4],
+            [512, 1],
+        ],
     ]
     assert len(support) == 3
     _fix_sampling_tile_size(
         sch=support[0],
-        decisions=decisions,
+        possible_decisions=possible_decisions,
         expected=expected,
     )
-    # _fix_sampling_tile_size(
-    #     sch=support[1],
-    #     decisions=decisions,
-    #     expected=expected,
-    # )
-    # _fix_sampling_tile_size(
-    #     sch=support[2],
-    #     decisions=decisions,
-    #     expected=expected,
-    # )
+    _fix_sampling_tile_size(
+        sch=support[1],
+        possible_decisions=possible_decisions,
+        expected=expected,
+    )
+    _fix_sampling_tile_size(
+        sch=support[2],
+        possible_decisions=possible_decisions,
+        expected=expected,
+    )
 
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
@@ -364,31 +381,36 @@ def test_meta_schedule_sketch_cpu_matmul_relu():
     support = _get_support(func=func, task_name="matmul_relu")
     assert len(support) == 3
     expected = [_matmul_relu_sketch_0, _matmul_relu_sketch_1, _matmul_relu_sketch_2]
-    _fix_sampling_tile_size(
-        sch=support[0],
-        decisions=[
+    possible_decisions = [
+        [
             [1, 16, 2, 16],
             [32, 4, 2, 2],
             [256, 2],
         ],
+        [
+            [1, 16, 2, 16],
+            [32, 4, 2, 2],
+            [256, 2],
+        ],
+        [
+            [1, 16, 2, 16],
+            [32, 4, 2, 2],
+            [256, 2],
+        ],
+    ]
+    _fix_sampling_tile_size(
+        sch=support[0],
+        possible_decisions=possible_decisions,
         expected=expected,
     )
     _fix_sampling_tile_size(
         sch=support[1],
-        decisions=[
-            [1, 16, 2, 16],
-            [32, 4, 2, 2],
-            [256, 2],
-        ],
+        possible_decisions=possible_decisions,
         expected=expected,
     )
     _fix_sampling_tile_size(
         sch=support[2],
-        decisions=[
-            [1, 16, 2, 16],
-            [32, 4, 2, 2],
-            [256, 2],
-        ],
+        possible_decisions=possible_decisions,
         expected=expected,
     )
 
@@ -616,9 +638,8 @@ def test_meta_schedule_sketch_cpu_conv2d_nchw():
     support = _get_support(func=func, task_name="conv2d_nchw")
     assert len(support) == 3
     expected = [_conv2d_nchw_sketch_0, _conv2d_nchw_sketch_1, _conv2d_nchw_sketch_2]
-    _fix_sampling_tile_size(
-        sch=support[0],
-        decisions=[
+    possible_decisions = [
+        [
             [1, 1, 1, 1],
             [8, 1, 16, 4],
             [1, 2, 7, 4],
@@ -627,32 +648,38 @@ def test_meta_schedule_sketch_cpu_conv2d_nchw():
             [1, 3],
             [3, 1],
         ],
+        [
+            [1, 1, 1, 1],
+            [1, 8, 4, 16],
+            [1, 1, 7, 8],
+            [1, 1, 4, 14],
+            [32, 16],
+            [3, 1],
+            [3, 1],
+        ],
+        [
+            [1, 1, 1, 1],
+            [1, 8, 4, 16],
+            [1, 1, 7, 8],
+            [1, 1, 4, 14],
+            [32, 16],
+            [3, 1],
+            [3, 1],
+        ],
+    ]
+    _fix_sampling_tile_size(
+        sch=support[0],
+        possible_decisions=possible_decisions,
         expected=expected,
     )
     _fix_sampling_tile_size(
         sch=support[1],
-        decisions=[
-            [1, 1, 1, 1],
-            [1, 8, 4, 16],
-            [1, 1, 7, 8],
-            [1, 1, 4, 14],
-            [32, 16],
-            [3, 1],
-            [3, 1],
-        ],
+        possible_decisions=possible_decisions,
         expected=expected,
     )
     _fix_sampling_tile_size(
         sch=support[2],
-        decisions=[
-            [1, 1, 1, 1],
-            [1, 8, 4, 16],
-            [1, 1, 7, 8],
-            [1, 1, 4, 14],
-            [32, 16],
-            [3, 1],
-            [3, 1],
-        ],
+        possible_decisions=possible_decisions,
         expected=expected,
     )
 
@@ -777,35 +804,80 @@ def test_meta_schedule_sketch_cpu_conv2d_nchw_bias_bn_relu():  # pylint: disable
     #         padding=1,
     #     )
     # )
-    func = workload_conv2d_nchw_bias_bn_relu
-    # support = _get_support(func=func, task_name="conv2d_nchw")
-    support = ms.space.PostOrderApply(
-        stages=[
-            ms.rule.always_inline(),
-            # ms.rule.compose(
-            #     name="tiling",
-            #     rules=[
-            #         ms.rule.add_cache_write(),
-            #         ms.rule.multi_level_tiling(structure="SSRSRS"),
-            #         ms.rule.fusion(levels=[1, 2]),
-            #     ],
-            # ),
-        ]
-    ).get_support(task=ms.SearchTask(func=func, task_name="conv2d_nchw_bias_bn_relu"))
-    _debug(support)
+    # func = workload_conv2d_nchw_bias_bn_relu
+    # support = _get_support(func=func, task_name="conv2d_nchw_bias_bn_relu")
+    # _debug(support)
     # assert len(support) == 3
     # expected = [_conv2d_nchw_sketch_0, _conv2d_nchw_sketch_1, _conv2d_nchw_sketch_2]
     # print(tvm.script.asscript(func))
+    pass
+
+
+# fmt: off
+# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg,unnecessary-lambda
+
+@tvm.script.tir
+def workload_max_pool2d_nchw(var_X: ty.handle, var_tensor: ty.handle) -> None:
+    # function attr dict
+    tir.func_attr({})
+    X = tir.match_buffer(var_X, [1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
+    tensor = tir.match_buffer(var_tensor, [1, 512, 57, 57], elem_offset=0, align=128, offset_factor=1)
+    reducer = tir.comm_reducer(lambda x, y: tir.max(x, y), tir.float32(-3.40282e+38))
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        pad_temp = tir.buffer_allocate([1, 512, 58, 58], elem_offset=0, align=128, offset_factor=1)
+        for i0 in range(0, 1):
+            for i1 in range(0, 512):
+                for i2 in range(0, 58):
+                    for i3 in range(0, 58):
+                        with tir.block([1, 512, 58, 58], "pad_temp") as [ax0, ax1, ax2, ax3]:
+                            tir.bind(ax0, i0)
+                            tir.bind(ax1, i1)
+                            tir.bind(ax2, i2)
+                            tir.bind(ax3, i3)
+                            tir.reads([X[ax0:(ax0 + 1), ax1:(ax1 + 1), (ax2 - 1):((ax2 - 1) + 1), (ax3 - 1):((ax3 - 1) + 1)]])
+                            tir.writes([pad_temp[ax0:(ax0 + 1), ax1:(ax1 + 1), ax2:(ax2 + 1), ax3:(ax3 + 1)]])
+                            pad_temp[ax0, ax1, ax2, ax3] = tir.if_then_else(((((ax2 >= 1) and (ax2 < 57)) and (ax3 >= 1)) and (ax3 < 57)), X[ax0, ax1, (ax2 - 1), (ax3 - 1)], tir.float32(-3.40282e+38), dtype="float32")
+        for i0_1 in range(0, 1):
+            for i1_1 in range(0, 512):
+                for i2_1 in range(0, 57):
+                    for i3_1 in range(0, 57):
+                        for i4 in range(0, 2):
+                            for i5 in range(0, 2):
+                                with tir.block([1, 512, 57, 57, tir.reduce_axis(0, 2), tir.reduce_axis(0, 2)], "tensor") as [ax0_1, ax1_1, ax2_1, ax3_1, rv, rv_1]:
+                                    tir.bind(ax0_1, i0_1)
+                                    tir.bind(ax1_1, i1_1)
+                                    tir.bind(ax2_1, i2_1)
+                                    tir.bind(ax3_1, i3_1)
+                                    tir.bind(rv, i4)
+                                    tir.bind(rv_1, i5)
+                                    tir.reads([tensor[ax0_1:(ax0_1 + 1), ax1_1:(ax1_1 + 1), ax2_1:(ax2_1 + 1), ax3_1:(ax3_1 + 1)], pad_temp[ax0_1:(ax0_1 + 1), ax1_1:(ax1_1 + 1), (ax2_1 + rv):((ax2_1 + rv) + 1), (ax3_1 + rv_1):((ax3_1 + rv_1) + 1)]])
+                                    tir.writes([tensor[ax0_1:(ax0_1 + 1), ax1_1:(ax1_1 + 1), ax2_1:(ax2_1 + 1), ax3_1:(ax3_1 + 1)]])
+                                    reducer.step(tensor[ax0_1, ax1_1, ax2_1, ax3_1], pad_temp[ax0_1, ax1_1, (ax2_1 + rv), (ax3_1 + rv_1)])
+
+# fmt: on
+# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg,unnecessary-lambda
 
 
 def test_meta_schedule_sketch_cpu_max_pool2d_nchw():
-    func = te.create_func(workload.max_pool2d_nchw(n=1, h=56, w=56, ci=512, padding=1))
-    print(tvm.script.asscript(func))
+    # func = te.create_func(workload.max_pool2d_nchw(n=1, h=56, w=56, ci=512, padding=1))
+    func = workload_max_pool2d_nchw
+    support = _get_support(func=func, task_name="max_pool2d_nchw")
+    assert len(support) == 1
+    expected = [workload_max_pool2d_nchw]
+    possible_decisions = []
+    _fix_sampling_tile_size(
+        sch=support[0],
+        possible_decisions=possible_decisions,
+        expected=expected,
+    )
 
 
 if __name__ == "__main__":
     test_meta_schedule_sketch_cpu_matmul()
-    # test_meta_schedule_sketch_cpu_matmul_relu()
-    # test_meta_schedule_sketch_cpu_conv2d_nchw()
+    test_meta_schedule_sketch_cpu_matmul_relu()
+    test_meta_schedule_sketch_cpu_conv2d_nchw()
     # test_meta_schedule_sketch_cpu_conv2d_nchw_bias_bn_relu()
-    # test_meta_schedule_sketch_cpu_max_pool2d_nchw()
+    test_meta_schedule_sketch_cpu_max_pool2d_nchw()
