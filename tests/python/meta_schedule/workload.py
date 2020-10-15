@@ -64,29 +64,6 @@ def conv2d_nchw(  # pylint: disable=invalid-name
     return (x, w, y)
 
 
-def conv2d_nchw_bias_relu(  # pylint: disable=invalid-name
-    n: int,
-    h: int,
-    w: int,
-    ci: int,
-    co: int,
-    kh: int,
-    kw: int,
-    stride: int,
-    padding: int,
-    dilation: int = 1,
-) -> Tuple[te.Tensor, te.Tensor, te.Tensor, te.Tensor]:
-    oh = (h + 2 * padding - (kh - 1) * dilation - 1) // stride + 1  # pylint: disable=invalid-name
-    ow = (w + 2 * padding - (kw - 1) * dilation - 1) // stride + 1  # pylint: disable=invalid-name
-    x = te.placeholder((n, ci, h, w), name="X")
-    w = te.placeholder((co, ci, kh, kw), name="W")
-    b = te.placeholder((co, 1, 1), name="B")
-    y = topi.nn.conv2d_nchw(Input=x, Filter=w, stride=stride, padding=padding, dilation=dilation)
-    y = te.compute((n, co, oh, ow), lambda i, j, k, l: y[i, j, k, l] + b[j, 0, 0], name="bias_add")
-    y = topi.nn.relu(y)
-    return (x, w, b, y)
-
-
 def conv2d_nchw_bias_bn_relu(  # pylint: disable=invalid-name
     n: int,
     h: int,

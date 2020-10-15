@@ -807,13 +807,12 @@ def test_meta_schedule_sketch_cpu_conv2d_nchw_bias_bn_relu():  # pylint: disable
     #         padding=1,
     #     )
     # )
-    # func = workload_conv2d_nchw_bias_bn_relu
-    # support = _get_support(func=func, task_name="conv2d_nchw_bias_bn_relu")
-    # _debug(support)
-    # assert len(support) == 3
+    func = workload_conv2d_nchw_bias_bn_relu
+    support = _get_support(func=func, task_name="conv2d_nchw_bias_bn_relu")
+    _debug(support)
+    assert len(support) == 3
     # expected = [_conv2d_nchw_sketch_0, _conv2d_nchw_sketch_1, _conv2d_nchw_sketch_2]
     # print(tvm.script.asscript(func))
-    pass
 
 
 # fmt: off
@@ -879,8 +878,8 @@ def test_meta_schedule_sketch_cpu_max_pool2d_nchw():
 
 
 if __name__ == "__main__":
-    # test_meta_schedule_sketch_cpu_matmul()
-    # test_meta_schedule_sketch_cpu_matmul_relu()
+    test_meta_schedule_sketch_cpu_matmul()
+    test_meta_schedule_sketch_cpu_matmul_relu()
     test_meta_schedule_sketch_cpu_conv2d_nchw()
     # test_meta_schedule_sketch_cpu_conv2d_nchw_bias_bn_relu()
-    # test_meta_schedule_sketch_cpu_max_pool2d_nchw()
+    test_meta_schedule_sketch_cpu_max_pool2d_nchw()
