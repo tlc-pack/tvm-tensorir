@@ -80,7 +80,6 @@ def _sparse_dense_bsrmm(data, weight_data, weight_indices, weight_indptr):
     (num_blocks_plus_1,) = get_const_tuple(weight_indptr.shape)
     num_blocks = num_blocks_plus_1 - 1
 
-    print(m, bs_r, bs_c, num_blocks)
     def _compute_block(i, nb_j, j):
         row_start = weight_indptr[nb_j]
         row_end = weight_indptr[nb_j + 1]

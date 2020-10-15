@@ -112,7 +112,7 @@ void BlockReadWriteCollector::VisitStmt_(const ReduceStepNode* op) {
     relaxed_region.push_back(arith::EvalSet(buffer_load->indices[j], dom_map_));
   }
   Update(&writes_buffers_, &write_regions_, buffer_load->buffer, relaxed_region);
-  StmtVisitor::VisitStmt_(op);
+  this->VisitExpr(op->rhs);
 }
 
 void BlockReadWriteCollector::VisitStmt_(const BlockRealizeNode* op) {

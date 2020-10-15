@@ -20,8 +20,10 @@ import scipy.sparse as sp
 
 import tvm
 import tvm.testing
+import tvm.topi.testing
 from tvm import te
 from tvm import tir
+from tvm import topi
 from tvm.script import ty
 
 
@@ -43,31 +45,35 @@ def sparse_dense_bsr(x: ty.handle, data: ty.handle, indices: ty.handle, indptr: 
                 with tir.block([tir.reduce_axis(0, W_indptr[nb_j + 1] - W_indptr[nb_j]), tir.reduce_axis(0, 4)], "bsr_reduce") as [k, c]:
                     reducer.step(BSRmm_block[i, nb_j, j], W_data[k+W_indptr[nb_j], j, c]*X[i, 4*W_indices[k+W_indptr[nb_j]]+c])
 
-    with tir.block([29, 15*7], "bsr_block") as [m, n]:
-        BSRmm[m, n] = BSRmm_block[m, tir.floordiv(n, 7), tir.floormod(n, 7)]
+    for i, j in tir.grid(29, 15*7):
+        with tir.block([29, 15*7], "bsr_block") as [m, n]:
+            BSRmm[m, n] = BSRmm_block[m, tir.floordiv(n, 7), tir.floormod(n, 7)]
 
 
 def schedule_sparse_dense_llvm():
     s = tir.create_schedule(sparse_dense_bsr)
     bsr_par = s.get_block("bsr_par")
     bsr_reduce = s.get_block("bsr_reduce", bsr_par)
+    bsr_block = s.get_block("bsr_block")
+
+    i, j = s.get_axes(bsr_block)
+    jo, ji = s.split(j, 7)
+    s.compute_at(bsr_par, ji)
     ax3, ax4 = s.get_axes(bsr_reduce)
     s.decompose_reduction(bsr_reduce, ax3)
+    s.vectorize(ji)
+    i_jo = s.fuse(i, jo)
+    s.parallel(i_jo)
     return s.func
 
 
-def schedule_sparse_dense_cuda():
-    s = tir.create_schedule(sparse_dense_bsr)
-    bsr_par = s.get_block("bsr_par")
-    bsr_reduce = s.get_block("bsr_reduce", bsr_par)
-    ax3, ax4 = s.get_axes(bsr_reduce)
-    s.decompose_reduction(bsr_reduce, ax3)
-    return s.func
-
-
-_sparse_dense_implement = {
-    "cuda": schedule_sparse_dense_cuda,
+_sparse_dense_implement_tir = {
     "llvm": schedule_sparse_dense_llvm,
+}
+
+_sparse_dense_implement_te = {
+    "generic": (topi.nn.sparse_dense, topi.generic.schedule_sparse_dense),
+    "cpu": (topi.nn.sparse_dense, topi.x86.schedule_sparse_dense),
 }
 
 
@@ -119,10 +125,12 @@ def test_sparse_dense():
             print("Skip because %s is not enabled" % device)
             return
         print("Running on target: %s" % device)
+        # te schedule
         with tvm.target.Target(device):
-            func = _sparse_dense_implement[device]()
-            print(tvm.lower(func, []))
-            func = tvm.build(func)
+            fcompute, fschedule = tvm.topi.testing.dispatch(device, _sparse_dense_implement_te)
+            Y = fcompute(X, W_data, W_indices, W_indptr)
+            s = fschedule([Y])
+            func = tvm.build(s, [X, W_data, W_indices, W_indptr, Y])
             Y_tvm = tvm.nd.array(np.zeros(Y_np.shape, dtype=Y_np.dtype), ctx=ctx)
             func(
                 tvm.nd.array(X_np, ctx=ctx),
@@ -131,9 +139,37 @@ def test_sparse_dense():
                 tvm.nd.array(W_sp_np.indptr, ctx=ctx),
                 Y_tvm,
             )
+            tvm.testing.assert_allclose(Y_tvm.asnumpy(), Y_np, atol=1e-4, rtol=1e-4)
+            evaluator = func.time_evaluator(func.entry_name, ctx, number=10)
+            print("sparse dense te schedule: %f ms" % (evaluator(tvm.nd.array(X_np, ctx=ctx),
+                                                                 tvm.nd.array(W_sp_np.data, ctx=ctx),
+                                                                 tvm.nd.array(W_sp_np.indices, ctx=ctx),
+                                                                 tvm.nd.array(W_sp_np.indptr, ctx=ctx),
+                                                                 Y_tvm).mean * 1e3))
+        # cold time
+        import time
+        time.sleep(1)
+        # tir schedule
+        with tvm.target.Target(device):
+            func = _sparse_dense_implement_tir[device]()
+            func = tvm.build(func)
+            Y_tvm = tvm.nd.array(np.zeros(Y_np.shape, dtype=Y_np.dtype), ctx=ctx)
+            func(
+                tvm.nd.array(X_np, ctx=ctx),
+                tvm.nd.array(W_sp_np.data, ctx=ctx),
+                tvm.nd.array(W_sp_np.indices, ctx=ctx),
+                tvm.nd.array(W_sp_np.indptr, ctx=ctx),
+                Y_tvm
+            )
             tvm.testing.assert_allclose(Y_tvm.asnumpy(), Y_np, atol=1e-5, rtol=1e-5)
+            evaluator = func.time_evaluator(func.entry_name, ctx, number=10)
+            print("sparse dense tir schedule: %f ms" % (evaluator(tvm.nd.array(X_np, ctx=ctx),
+                                                                  tvm.nd.array(W_sp_np.data, ctx=ctx),
+                                                                  tvm.nd.array(W_sp_np.indices, ctx=ctx),
+                                                                  tvm.nd.array(W_sp_np.indptr, ctx=ctx),
+                                                                  Y_tvm).mean * 1e3))
 
-    for device in ["llvm", "cuda"]:
+    for device in ["llvm"]:
         check_device(device)
 
 
