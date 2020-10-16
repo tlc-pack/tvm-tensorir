@@ -192,7 +192,8 @@ def select_implementation(op, attrs, inputs, out_type, target, use_autotvm=True)
     all_impls = get_valid_implementations(op, attrs, inputs, out_type, target)
 
     best_plevel_impl = max(all_impls, key=lambda x: x.plevel)
-    if not use_autotvm:
+    with_tir = PassContext.current().config.get("relay.with_tir_schedule", False)
+    if not use_autotvm or with_tir:
         logger.info(
             "Using %s for %s based on highest priority (%d)",
             best_plevel_impl.name,

@@ -704,7 +704,8 @@ class CompileEngineImpl : public CompileEngineNode {
     }
     // lower the function
     if (const auto* f = runtime::Registry::Get("relay.backend.lower")) {
-      if (with_tir_schedule_) {
+      // TODO(@siyuan): const folder will flush the pass_context
+      if (with_tir_schedule_ && cfunc->prim_func.defined()) {
         cache_node->funcs = (*f)(cfunc->prim_func, NullValue<Array<te::Tensor>>(),
                                  cache_node->func_name, key->source_func);
       } else {
