@@ -69,7 +69,8 @@ _reg.register_injective_schedule("adv_index")
 
 
 # concatenate
-_reg.register_schedule("concatenate", strategy.schedule_concatenate)
+_reg.register_schedule("concatenate", strategy.schedule_concatenate,
+                       strategy.tir_schedule_concatenate)
 
 # strided_set
 @_reg.register_compute("strided_set")

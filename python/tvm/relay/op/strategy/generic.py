@@ -94,6 +94,13 @@ def schedule_injective(attrs, outs, target):
 
 
 @generic_func
+def tir_schedule_injective(attrs, outs, target):
+    """Schedule injective ops"""
+    with target:
+        return topi.generic.default_tir_schedule(outs)
+
+
+@generic_func
 def schedule_reduce(attrs, outs, target):
     """Schedule reduction ops"""
     with target:
@@ -101,6 +108,7 @@ def schedule_reduce(attrs, outs, target):
 
 
 _op._schedule_injective = schedule_injective
+_op._tir_schedule_injective = tir_schedule_injective
 _op._schedule_reduce = schedule_reduce
 
 # concatenate
@@ -111,12 +119,26 @@ def schedule_concatenate(attrs, outs, target):
         return topi.generic.schedule_injective(outs)
 
 
+@generic_func
+def tir_schedule_concatenate(attrs, outs, target):
+    """Tir Schedule concatenate op"""
+    with target:
+        return topi.generic.default_tir_schedule(outs)
+
+
 # pool
 @generic_func
 def schedule_pool(attrs, outs, target):
     """Schedule pooling ops"""
     with target:
         return topi.generic.schedule_pool(outs, attrs.layout)
+
+
+@generic_func
+def tir_schedule_pool(attrs, outs, target):
+    """Schedule pooling ops"""
+    with target:
+        return topi.generic.default_tir_schedule(outs)
 
 
 # pool_grad
@@ -134,6 +156,12 @@ def schedule_adaptive_pool(attrs, outs, target):
     with target:
         return topi.generic.schedule_adaptive_pool(outs)
 
+
+@generic_func
+def tir_schedule_adaptive_pool(attrs, outs, target):
+    """Schedule adaptive pooling ops"""
+    with target:
+        return topi.generic.default_tir_schedule(outs)
 
 # softmax
 def wrap_compute_softmax(topi_compute):
@@ -253,6 +281,11 @@ def conv2d_strategy(attrs, inputs, out_type, target):
             strategy.add_implementation(
                 wrap_compute_conv2d(topi.nn.conv2d_nchw),
                 wrap_topi_schedule(topi.generic.schedule_conv2d_nchw),
+                name="conv2d_nchw.generic",
+            )
+            strategy.add_tir_implementation(
+                wrap_compute_conv2d(topi.nn.conv2d_nchw),
+                wrap_topi_schedule(topi.generic.default_tir_schedule),
                 name="conv2d_nchw.generic",
             )
         elif layout == "NHWC":

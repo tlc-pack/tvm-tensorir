@@ -25,6 +25,8 @@ from tvm import te, autotvm
 from tvm.ir.transform import PassContext
 from tvm.runtime import Object
 from tvm.support import libinfo
+
+from ...ir.transform import PassContext
 from tvm.target import Target
 from .. import function as _function
 from .. import ty as _ty
@@ -130,7 +132,11 @@ def get_valid_implementations(op, attrs, inputs, out_type, target):
         strategy = fstrategy(attrs, inputs, out_type, target)
     analyzer = tvm.arith.Analyzer()
     ret = []
-    for spec in strategy.specializations:
+    if PassContext.current().config.get("relay.with_tir_schedule", False):
+        specializations = strategy.tir_specializations
+    else:
+        specializations = strategy.specializations
+    for spec in specializations:
         if spec.condition:
             # check if all the clauses in the specialized condition are true
             flag = True
@@ -188,6 +194,8 @@ def select_implementation(op, attrs, inputs, out_type, target, use_autotvm=True)
     """
     all_impls = get_valid_implementations(op, attrs, inputs, out_type, target)
     best_plevel_impl = max(all_impls, key=lambda x: x.plevel)
+    with_tir = PassContext.current().config.get("relay.with_tir_schedule", False)
+    if not use_autotvm or with_tir:
 
     # Disable autotvm if auto_scheduler is enabled.
     # (i.e., always return the implementation with the highest priority for auto-scheduler).
