@@ -64,7 +64,7 @@ Array<StmtSRef> ScheduleNode::split(const StmtSRef& loop_sref, const PrimExpr& n
   // TODO(@junrushao1994): use Optional<PrimExpr> instead
   Stmt new_loop_body = SubstituteInScope(loop->body, [&](const VarNode* v) -> PrimExpr {
     if (v == loop->loop_var.get()) {
-      return outer_var * factor + inner_var;
+      return tir::Mul(outer_var, factor) + inner_var;
     } else {
       return NullValue<PrimExpr>();
     }
@@ -76,7 +76,7 @@ Array<StmtSRef> ScheduleNode::split(const StmtSRef& loop_sref, const PrimExpr& n
   PrimExpr inner_extent = factor;
   analyzer.Bind(outer_var, Range::FromMinExtent(outer_min, outer_extent));
   analyzer.Bind(inner_var, Range::FromMinExtent(inner_min, inner_extent));
-  PrimExpr predicate = outer_var * factor + inner_var < loop->extent;
+  PrimExpr predicate = tir::Mul(outer_var, factor) + inner_var < loop->extent;
   if (!analyzer.CanProve(predicate)) {
     new_loop_body = PredicateUpdater(predicate)(new_loop_body);
   }
@@ -125,9 +125,9 @@ StmtSRef ScheduleNode::fuse(const StmtSRef& outer_sref, const StmtSRef& inner_sr
   Var fused_var = outer->loop_var.copy_with_suffix("_" + inner->loop_var->name_hint + "_fused");
   Stmt new_loop_body = SubstituteInScope(inner->body, [&](const VarNode* v) -> PrimExpr {
     if (GetRef<Var>(v).same_as(outer->loop_var)) {
-      return floordiv(fused_var, inner->extent) + outer->min;
+      return tir::FloorDiv(fused_var, inner->extent) + outer->min;
     } else if (GetRef<Var>(v).same_as(inner->loop_var)) {
-      return floormod(fused_var, inner->extent) + inner->min;
+      return tir::FloorMod(fused_var, inner->extent) + inner->min;
     } else {
       return NullValue<PrimExpr>();
     }
