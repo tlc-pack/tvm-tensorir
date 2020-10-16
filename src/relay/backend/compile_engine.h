@@ -71,16 +71,18 @@ class LoweredOutput : public ObjectRef {
 
 /*! \brief Node container to represent a cached function. */
 struct CachedFuncNode : public Object {
-  /* \brief compiled target */
+  /*! \brief compiled target */
   tvm::Target target;
   /*! \brief Function name */
   std::string func_name;
-  /* \brief The inputs to the function */
+  /*! \brief The inputs to the function */
   tvm::Array<te::Tensor> inputs;
-  /* \brief The outputs to the function */
+  /*! \brief The outputs to the function */
   tvm::Array<te::Tensor> outputs;
   /*! \brief The schedule to the function */
   te::Schedule schedule;
+  /*! \brief The Prim function */
+  tir::PrimFunc prim_func;
   /*! \brief The lowered functions to support the function. */
   IRModule funcs = IRModule();
 
@@ -93,6 +95,7 @@ struct CachedFuncNode : public Object {
     v->Visit("inputs", &inputs);
     v->Visit("outputs", &outputs);
     v->Visit("schedule", &schedule);
+    v->Visit("prim_func", &prim_func);
     v->Visit("funcs", &funcs);
     v->Visit("shape_func_param_states", &shape_func_param_states);
   }

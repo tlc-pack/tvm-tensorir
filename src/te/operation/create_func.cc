@@ -126,13 +126,7 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
 
   Stmt root = auto_complete(SeqStmt::Flatten(seq), allocations);
 
-  auto func = make_object<PrimFuncNode>();
-  func->params = parameters;
-  func->buffer_map = buffer_map;
-  func->body = root;
-  func->attrs = DictAttrs(Map<String, ObjectRef>());
-  func->ret_type = TupleType(Array<Type>());
-  return PrimFunc(func);
+  return PrimFunc(parameters, root, VoidType(), buffer_map);
 }
 
 TVM_REGISTER_GLOBAL("te.CreateFunc").set_body_typed([](const Array<te::Tensor>& tensors) {
