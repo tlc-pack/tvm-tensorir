@@ -32,3 +32,12 @@ def default_schedule(outs, auto_inline):
         te.schedule.AutoInlineInjective(s)
         s[x].fuse(s[x].op.axis)
     return s
+
+
+def default_tir_schedule(outs):
+    """Default tir schedule for llvm."""
+    target = tvm.target.Target.current(allow_none=False)
+    if target.kind.name not in ("llvm", "c"):
+        raise RuntimeError("schedule not registered for '%s'" % target)
+    func = te.create_func(outs)
+    return func

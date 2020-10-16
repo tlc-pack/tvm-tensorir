@@ -104,10 +104,10 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
     use_auto_scheduler_ = backend::IsAutoSchedulerEnabled();
   }
 
-  CachedFunc Create(const Function& prim_func) {
+  CachedFunc Create(const Function& func) {
     auto cache_node = make_object<CachedFuncNode>();
     cache_node->target = target_;
-    for (Var param : prim_func->params) {
+    for (Var param : func->params) {
       Array<tvm::te::Tensor> inputs;
       if (const auto* ttype = param->checked_type().as<TensorTypeNode>()) {
         tvm::te::Tensor tensor = tvm::te::placeholder(GetShape(ttype->shape), ttype->dtype);
@@ -128,7 +128,7 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
       memo_[param] = inputs;
     }
     readable_name_stream_ << "fused";
-    cache_node->outputs = this->VisitExpr(prim_func->body);
+    cache_node->outputs = this->VisitExpr(func->body);
     auto candidate_name = readable_name_stream_.str();
     constexpr static size_t kMaxFuncNameLength = 80;
     if (candidate_name.size() > kMaxFuncNameLength) {
@@ -150,6 +150,7 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
     }
 
     te::Schedule schedule;
+    tir::PrimFunc prim_func;
     // No need to register schedule for device copy op.
     if (anchor_attrs_.as<DeviceCopyAttrs>() == nullptr) {
       if (use_auto_scheduler_) {
@@ -166,15 +167,22 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
       // Use TOPI schedule if user specificed, or the function has no auto_scheduler schedule.
       if (!schedule.defined()) {
         ICHECK(anchor_implementation_.defined());
-        schedule = anchor_implementation_.Schedule(anchor_attrs_, tensor_outs, target_);
-      }
-      for (const auto& scalar : scalars_) {
-        if (schedule->Contain(scalar)) {
-          schedule[scalar].compute_inline();
+        auto pass_ctx = transform::PassContext::Current();
+        bool with_tir = pass_ctx->GetConfig<Bool>("relay.with_tir_schedule", Bool(false)).value();
+        if (with_tir) {
+          prim_func = anchor_implementation_.PrimFunc(anchor_attrs_, tensor_outs, target_);
+        } else {
+          schedule = anchor_implementation_.Schedule(anchor_attrs_, tensor_outs, target_);
+        }
+        for (const auto& scalar : scalars_) {
+          if (schedule->Contain(scalar)) {
+            schedule[scalar].compute_inline();
+          }
         }
       }
     }
     cache_node->schedule = std::move(schedule);
+    cache_node->prim_func = std::move(prim_func);
     return CachedFunc(cache_node);
   }
 
@@ -613,6 +621,8 @@ class CompileEngineImpl : public CompileEngineNode {
  public:
   // Lower the function.
   CachedFunc Lower(const CCacheKey& key, std::function<String(String)> mangle_fn) {
+    auto pass_ctx = transform::PassContext::Current();
+    with_tir_schedule_ = pass_ctx->GetConfig<Bool>("relay.with_tir_schedule", Bool(false)).value();
     return LowerInternal(key, mangle_fn)->cached_func;
   }
 
@@ -766,8 +776,13 @@ class CompileEngineImpl : public CompileEngineNode {
       all_args.push_back(arg);
     }
     // lower the function
-    std::unordered_map<te::Tensor, tir::Buffer> binds;
-    cache_node->funcs = tvm::LowerSchedule(cfunc->schedule, all_args, cache_node->func_name, binds);
+    if (with_tir_schedule_ && cfunc->prim_func.defined()) {
+      cache_node->funcs = LowerPrimFunc(cfunc->prim_func, cache_node->func_name);
+    } else {
+      std::unordered_map<te::Tensor, tir::Buffer> binds;
+      cache_node->funcs =
+          tvm::LowerSchedule(cfunc->schedule, all_args, cache_node->func_name, binds);
+    }
 
     value->cached_func = CachedFunc(cache_node);
     return value;
@@ -841,6 +856,8 @@ class CompileEngineImpl : public CompileEngineNode {
   std::unordered_map<CCacheKey, CCacheValue> shape_func_cache_;
   /*! \brief the cache key of the function that is being lowered currently*/
   CCacheKey cur_ccache_key_;
+  /*! \brief whether use tir schedule */
+  bool with_tir_schedule_;
 };
 
 /*! \brief The global compile engine */
