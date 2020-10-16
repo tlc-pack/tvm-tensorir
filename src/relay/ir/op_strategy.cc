@@ -23,6 +23,7 @@
  */
 
 #include <tvm/relay/op_strategy.h>
+#include <tvm/tir/transform.h>
 
 namespace tvm {
 namespace relay {
@@ -30,6 +31,7 @@ namespace relay {
 TVM_REGISTER_NODE_TYPE(OpImplementationNode);
 TVM_REGISTER_NODE_TYPE(OpSpecializationNode);
 TVM_REGISTER_NODE_TYPE(OpStrategyNode);
+TVM_REGISTER_PASS_CONFIG_OPTION("relay.with_tir_schedule", Bool);
 
 Array<te::Tensor> OpImplementation::Compute(const Attrs& attrs, const Array<te::Tensor>& inputs,
                                             const Type& out_type) {
@@ -41,34 +43,59 @@ te::Schedule OpImplementation::Schedule(const Attrs& attrs, const Array<te::Tens
   return (*this)->fschedule(attrs, outs, target);
 }
 
-void OpSpecialization::AddImplementation(tvm::relay::FTVMCompute fcompute,
-                                         tvm::relay::FTVMSchedule fschedule, String name,
-                                         int plevel) {
+tir::PrimFunc OpImplementation::PrimFunc(const Attrs& attrs, const Array<te::Tensor>& outs,
+                                         const Target& target) {
+  return (*this)->fprim_func(attrs, outs, target);
+}
+
+void OpSpecialization::AddImplementation(const FTVMCompute& fcompute, const FTVMSchedule& fschedule,
+                                         const FTVMPrimFunc& prim_func, String name, int plevel) {
   auto n = make_object<OpImplementationNode>();
   n->fcompute = fcompute;
   n->fschedule = fschedule;
+  n->fprim_func = prim_func;
   n->name = std::move(name);
   n->plevel = plevel;
   (*this)->implementations.push_back(OpImplementation(n));
 }
 
-void OpStrategy::AddImplementation(FTVMCompute fcompute, FTVMSchedule fschedule, String name,
-                                   int plevel) {
+void OpStrategy::AddImplementation(const FTVMCompute& fcompute, const FTVMSchedule& fschedule,
+                                   String name, int plevel) {
   auto curr_cond = te::SpecializedCondition::Current();
   auto self = this->operator->();
   Array<OpSpecialization> specializations = self->specializations;
   OpSpecialization op_spec;
   for (OpSpecialization op_spec : specializations) {
     if (op_spec->condition == curr_cond) {
-      op_spec.AddImplementation(fcompute, fschedule, std::move(name), plevel);
+      op_spec.AddImplementation(fcompute, fschedule, FTVMPrimFunc(), std::move(name), plevel);
       return;
     }
   }
   ObjectPtr<OpSpecializationNode> n = make_object<OpSpecializationNode>();
   n->condition = curr_cond;
   op_spec = OpSpecialization(n);
-  op_spec.AddImplementation(fcompute, fschedule, std::move(name), plevel);
+  op_spec.AddImplementation(fcompute, fschedule, FTVMPrimFunc(), std::move(name), plevel);
   self->specializations.push_back(op_spec);
+}
+
+// TODO(Siyuan) : reorganize code
+void OpStrategy::AddTirImplementation(const FTVMCompute& fcompute, const FTVMPrimFunc& fprim_func,
+                                   String name, int plevel) {
+  auto curr_cond = te::SpecializedCondition::Current();
+  auto self = this->operator->();
+  Array<OpSpecialization> specializations = self->tir_specializations;
+  OpSpecialization op_spec;
+  for (OpSpecialization op_spec : specializations) {
+    if (op_spec->condition == curr_cond) {
+      op_spec.AddImplementation(fcompute, FTVMSchedule(), fprim_func, std::move(name), plevel);
+      return;
+    }
+  }
+  ObjectPtr<OpSpecializationNode> n = make_object<OpSpecializationNode>();
+  n->condition = curr_cond;
+  op_spec = OpSpecialization(n);
+  op_spec.AddImplementation(fcompute, FTVMSchedule(), fprim_func, std::move(name), plevel);
+  self->tir_specializations.push_back(op_spec);
 }
 
 TVM_REGISTER_GLOBAL("relay.op._OpImplementationCompute")
@@ -103,6 +130,17 @@ TVM_REGISTER_GLOBAL("relay.op._OpStrategyAddImplementation")
       int plevel = args[4];
       strategy.AddImplementation(compute, schedule, name, plevel);
     });
+
+TVM_REGISTER_GLOBAL("relay.op._OpStrategyAddTirImplementation")
+  .set_body([](TVMArgs args, TVMRetValue* rv) {
+    OpStrategy strategy = args[0];
+    FTVMCompute compute = args[1];
+    FTVMPrimFunc prim_func = args[2];
+    std::string name = args[3];
+    int plevel = args[4];
+    strategy.AddTirImplementation(compute, prim_func, name, plevel);
+  });
+
 
 }  // namespace relay
 }  // namespace tvm
