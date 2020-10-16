@@ -386,32 +386,32 @@ reg.register_pattern("nn.bias_add", OpPattern.BROADCAST)
 
 
 # max_pool1d
-reg.register_schedule("nn.max_pool1d", strategy.schedule_pool)
+reg.register_schedule("nn.max_pool1d", strategy.schedule_pool, strategy.tir_schedule_pool)
 reg.register_pattern("nn.max_pool1d", OpPattern.OUT_ELEMWISE_FUSABLE)
 
 
 # max_pool2d
-reg.register_schedule("nn.max_pool2d", strategy.schedule_pool)
+reg.register_schedule("nn.max_pool2d", strategy.schedule_pool, strategy.tir_schedule_pool)
 reg.register_pattern("nn.max_pool2d", OpPattern.OUT_ELEMWISE_FUSABLE)
 
 
 # max_pool3d
-reg.register_schedule("nn.max_pool3d", strategy.schedule_pool)
+reg.register_schedule("nn.max_pool3d", strategy.schedule_pool, strategy.tir_schedule_pool)
 reg.register_pattern("nn.max_pool3d", OpPattern.OUT_ELEMWISE_FUSABLE)
 
 
 # avg_pool1d
-reg.register_schedule("nn.avg_pool1d", strategy.schedule_pool)
+reg.register_schedule("nn.avg_pool1d", strategy.schedule_pool, strategy.tir_schedule_pool)
 reg.register_pattern("nn.avg_pool1d", OpPattern.OUT_ELEMWISE_FUSABLE)
 
 
 # avg_pool2d
-reg.register_schedule("nn.avg_pool2d", strategy.schedule_pool)
+reg.register_schedule("nn.avg_pool2d", strategy.schedule_pool, strategy.tir_schedule_pool)
 reg.register_pattern("nn.avg_pool2d", OpPattern.OUT_ELEMWISE_FUSABLE)
 
 
 # avg_pool3d
-reg.register_schedule("nn.avg_pool3d", strategy.schedule_pool)
+reg.register_schedule("nn.avg_pool3d", strategy.schedule_pool, strategy.tir_schedule_pool)
 reg.register_pattern("nn.avg_pool3d", OpPattern.OUT_ELEMWISE_FUSABLE)
 
 
@@ -424,34 +424,34 @@ reg.register_pattern("nn.max_pool2d_grad", OpPattern.OUT_ELEMWISE_FUSABLE)
 reg.register_schedule("nn.avg_pool2d_grad", strategy.schedule_pool_grad)
 reg.register_pattern("nn.avg_pool2d_grad", OpPattern.OUT_ELEMWISE_FUSABLE)
 
-
 # global_max_pool2d
-reg.register_schedule("nn.global_max_pool2d", strategy.schedule_adaptive_pool)
+reg.register_schedule("nn.global_max_pool2d", strategy.schedule_adaptive_pool,
+                      strategy.tir_schedule_adaptive_pool)
 reg.register_pattern("nn.global_max_pool2d", OpPattern.OUT_ELEMWISE_FUSABLE)
 
-
 # global_avg_pool2d
-reg.register_schedule("nn.global_avg_pool2d", strategy.schedule_adaptive_pool)
+reg.register_schedule("nn.global_avg_pool2d", strategy.schedule_adaptive_pool,
+                      strategy.tir_schedule_adaptive_pool)
 reg.register_pattern("nn.global_avg_pool2d", OpPattern.OUT_ELEMWISE_FUSABLE)
 
-
 # adaptive_max_pool2d
-reg.register_schedule("nn.adaptive_max_pool2d", strategy.schedule_adaptive_pool)
+reg.register_schedule("nn.adaptive_max_pool2d", strategy.schedule_adaptive_pool,
+                      strategy.tir_schedule_adaptive_pool)
 reg.register_pattern("nn.adaptive_max_pool2d", OpPattern.OUT_ELEMWISE_FUSABLE)
 
-
 # adaptive_avg_pool2d
-reg.register_schedule("nn.adaptive_avg_pool2d", strategy.schedule_adaptive_pool)
+reg.register_schedule("nn.adaptive_avg_pool2d", strategy.schedule_adaptive_pool,
+                      strategy.tir_schedule_adaptive_pool)
 reg.register_pattern("nn.adaptive_avg_pool2d", OpPattern.OUT_ELEMWISE_FUSABLE)
 
-
 # adaptive_max_pool3d
-reg.register_schedule("nn.adaptive_max_pool3d", strategy.schedule_adaptive_pool)
+reg.register_schedule("nn.adaptive_max_pool3d", strategy.schedule_adaptive_pool,
+                      strategy.tir_schedule_adaptive_pool)
 reg.register_pattern("nn.adaptive_max_pool3d", OpPattern.OUT_ELEMWISE_FUSABLE)
 
-
 # adaptive_avg_pool3d
-reg.register_schedule("nn.adaptive_avg_pool3d", strategy.schedule_adaptive_pool)
+reg.register_schedule("nn.adaptive_avg_pool3d", strategy.schedule_adaptive_pool,
+                      strategy.tir_schedule_adaptive_pool)
 reg.register_pattern("nn.adaptive_avg_pool3d", OpPattern.OUT_ELEMWISE_FUSABLE)
 
 

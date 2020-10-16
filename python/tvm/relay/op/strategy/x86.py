@@ -66,6 +66,13 @@ def schedule_adaptive_pool_cpu(attrs, outs, target):
         return topi.x86.schedule_adaptive_pool(outs)
 
 
+@tir_schedule_adaptive_pool.register("cpu")
+def tir_schedule_adaptive_pool(attrs, outs, target):
+    """Schedule adaptive pooling ops"""
+    with target:
+        return topi.generic.default_tir_schedule(outs)
+
+
 @softmax_strategy.register("cpu")
 def softmax_strategy_cpu(attrs, inputs, out_type, target):
     """softmax x86 strategy"""
@@ -74,6 +81,11 @@ def softmax_strategy_cpu(attrs, inputs, out_type, target):
         wrap_compute_softmax(topi.nn.softmax),
         wrap_topi_schedule(topi.x86.schedule_softmax),
         name="softmax.x86",
+    )
+    strategy.add_tir_implementation(
+        wrap_compute_softmax(topi.nn.softmax),
+        wrap_topi_schedule(topi.generic.default_tir_schedule),
+        name="softmax.generic",
     )
     return strategy
 
@@ -96,7 +108,6 @@ def conv2d_strategy_cpu(attrs, inputs, out_type, target):
     kernel_layout = attrs.kernel_layout
     if dilation_h < 1 or dilation_w < 1:
         raise ValueError("dilation should be positive value")
-
     if groups == 1:
         if layout == "NCHW":
             assert kernel_layout == "OIHW"
@@ -111,6 +122,11 @@ def conv2d_strategy_cpu(attrs, inputs, out_type, target):
                     wrap_compute_conv2d(topi.x86.conv2d_nchw),
                     wrap_topi_schedule(topi.x86.schedule_conv2d_nchw),
                     name="conv2d_nchw.x86",
+                )
+                strategy.add_tir_implementation(
+                    wrap_compute_conv2d(topi.nn.conv2d_nchw),
+                    wrap_topi_schedule(topi.generic.default_tir_schedule),
+                    name="tir_conv2d_nchw.generic",
                 )
         elif _NCHWc_matcher.match(layout):  # check if layout is NCHWxc
             assert _OIHWio_matcher.match(kernel_layout)  # check if kernel is OIHWio
@@ -143,6 +159,11 @@ def conv2d_strategy_cpu(attrs, inputs, out_type, target):
                     wrap_topi_schedule(topi.x86.schedule_depthwise_conv2d_nchw),
                     name="depthwise_conv2d_nchw.x86",
                 )
+                strategy.add_tir_implementation(
+                    wrap_compute_conv2d(topi.x86.depthwise_conv2d_nchw),
+                    wrap_topi_schedule(topi.generic.default_tir_schedule),
+                    name="tir_depthwise_conv2d_nchw.generic",
+                )
             else:
                 logger.warning(
                     "For x86 target, depthwise_conv2d with channel "
@@ -174,6 +195,11 @@ def conv2d_strategy_cpu(attrs, inputs, out_type, target):
                 wrap_compute_conv2d(topi.nn.group_conv2d_nchw, has_groups=True),
                 wrap_topi_schedule(topi.generic.schedule_group_conv2d_nchw),
                 name="group_conv2d_nchw.generic",
+            )
+            strategy.add_tir_implementation(
+                wrap_compute_conv2d(topi.nn.group_conv2d_nchw, has_groups=True),
+                wrap_topi_schedule(topi.generic.default_tir_schedule),
+                name="tir_group_conv2d_nchw.generic",
             )
         elif layout == "NHWC":
             assert kernel_layout == "HWIO"
@@ -315,6 +341,12 @@ def dense_strategy_cpu(attrs, inputs, out_type, target):
         wrap_compute_dense(topi.x86.dense_nopack),
         wrap_topi_schedule(topi.x86.schedule_dense_nopack),
         name="dense_nopack.x86",
+        plevel=10,
+    )
+    strategy.add_tir_implementation(
+        wrap_compute_dense(topi.x86.dense_nopack),
+        wrap_topi_schedule(topi.generic.default_tir_schedule),
+        name="dense.generic",
         plevel=10,
     )
     if "cblas" in target.libs:
