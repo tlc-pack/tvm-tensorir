@@ -80,32 +80,29 @@ class PrimFunc(BaseFunc):
         """
         return PrimFunc(self.params, new_body, self.ret_type, self.buffer_map, self.attrs)
 
-    def bind(self, values):
-        """Bind the free vars of PrimFunc with values
+    def specialize_buffer(self, var, shape=None, strides=None, elem_offset=None):
+        """Metaprogramming usage: specialize buffer parameters
 
         Parameters
         ----------
-        values : Union[Dict[Var, PrimExpr], List[PrimExpr], PrimExpr]
-            The values of free vars
+        var: Var
+            The var in function's params
+
+        shape: List[PrimExpr]
+            The shape of the buffer we want to specialize
+
+        strides: List[PrimExpr]
+            The strides of the buffer we want to specialize
+
+        elem_offset: PrimExpr
+            The elem_offset of the buffer we want to specialize
 
         Returns
         -------
         new_func : PrimFunc
-            The new function with free vars bound to values
+            The new function with buffer's parameter specialized in buffer_map
         """
-        if not isinstance(values, list) and not isinstance(values, dict):
-            values = [values]
-        if isinstance(values, list):
-            free_vars = self.attrs["free_vars"]
-            if free_vars is None or len(free_vars) != len(values):
-                raise ValueError("Inconsistent number of free_vars")
-            values = dict(zip(free_vars, values))
-        elif not isinstance(values, dict):
-            raise ValueError(
-                "PrimFunc.bind expects values to be "
-                "Dict[Var, PrimExpr] or List[PrimExpr] or PrimExpr"
-            )
-        return _ffi_api.BindFreeVars(self, values)
+        return _ffi_api.SpecializeBuffer(self, var, shape, strides, elem_offset)
 
 
 @tvm._ffi.register_object("tir.TensorIntrin")

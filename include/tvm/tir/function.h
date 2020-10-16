@@ -146,11 +146,15 @@ class PrimFunc : public BaseFunc {
                    DictAttrs attrs = NullValue<DictAttrs>());
 
   /*!
-   * \brief Bind the free vars of PrimFunc with values
-   * \param values The values of free vars
-   * \return The new function with free vars bound to values
+   * \brief Metaprogramming usage: specialize buffer parameters
+   * \param param The var in function's params
+   * \param shape The shape of the buffer we want to specialize
+   * \param strides The strides of the buffer we want to specialize
+   * \param elem_offset The elem_offset of the buffer we want to specialize
+   * \return
    */
-  TVM_DLL PrimFunc bind_free_vars(Map<tir::Var, PrimExpr> values);
+  TVM_DLL PrimFunc specialize_buffer(tir::Var param, Array<PrimExpr> shape, Array<PrimExpr> strides,
+                                     PrimExpr elem_offset);
 
   TVM_DEFINE_OBJECT_REF_METHODS(PrimFunc, BaseFunc, PrimFuncNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(PrimFuncNode);

@@ -22,6 +22,7 @@
  * \brief The function data structure.
  */
 #include <tvm/runtime/registry.h>
+#include <tvm/tir/analysis.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
 #include <tvm/tir/stmt_functor.h>
@@ -205,62 +206,65 @@ class BufferMutator : public StmtExprMutator {
   std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> buffer_map_;
 };
 
-PrimFunc PrimFunc::bind_free_vars(Map<tir::Var, PrimExpr> values) {
-  // check PrimFunc has free_vars attr
-  const auto& attrs = this->get()->attrs;
-  auto it = attrs->dict.find("free_vars");
-  CHECK(it != attrs->dict.end());
-  const auto* free_vars = (*it).second.as<ArrayNode>();
-  CHECK(free_vars != nullptr);
+PrimFunc PrimFunc::specialize_buffer(tir::Var param, Array<PrimExpr> shape, Array<PrimExpr> strides,
+                                     PrimExpr elem_offset) {
+  tir::ExprDeepEqual equal;
+  std::unordered_map<tir::Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> var_map;
 
-  PrimFunc new_func = *this;
-
-  std::vector<tir::Var> new_free_vars;
-  for (const auto& var_obj : *free_vars) {
-    CHECK(var_obj->IsInstance<tir::VarNode>());
-    const auto& var = Downcast<tir::Var>(var_obj);
-    auto itt = values.find(var);
-    if (itt == values.end()) {
-      new_free_vars.push_back(var);
-    } else {
-      auto f = [&](const Var& v) -> PrimExpr {
-        if (v.same_as(var)) {
-          return (*itt).second;
-        } else {
-          return v;
-        }
-      };
-      auto f_buffer = [&](const Buffer& buf) -> Buffer {
-        Buffer new_buffer = buf;
-        new_buffer.CopyOnWrite()->elem_offset = Substitute(new_buffer->elem_offset, f);
-        std::vector<PrimExpr> new_shape, new_stride;
-        for (const auto& dim : new_buffer->shape) new_shape.push_back(Substitute(dim, f));
-        for (const auto& stride : new_buffer->strides) new_shape.push_back(Substitute(stride, f));
-        new_buffer.CopyOnWrite()->shape = Array<PrimExpr>(new_shape);
-        new_buffer.CopyOnWrite()->strides = Array<PrimExpr>(new_stride);
-        return new_buffer;
-      };
-      // replace vars in buffer
-      BufferMutator buffer_mutator(f_buffer);
-      new_func = buffer_mutator.MutatePrimFunc(new_func);
-      // replace other vars inside body
-      new_func.CopyOnWrite()->body = Substitute(new_func->body, f);
+  const Buffer& buf_to_specialize = this->get()->buffer_map[param];
+  // build var mapping
+  auto build_var_mapping = [&](const PrimExpr new_expr, const PrimExpr old_expr) {
+    if (!equal(new_expr, old_expr)) {
+      const auto* var_ptr = old_expr.as<tir::VarNode>();
+      CHECK(var_ptr != nullptr);
+      auto it = var_map.find(GetRef<tir::Var>(var_ptr));
+      if (it != var_map.end()) {
+        CHECK(equal(it->second, new_expr));
+      } else {
+        var_map[GetRef<tir::Var>(var_ptr)] = new_expr;
+      }
+    }
+  };
+  if (shape.defined()) {
+    CHECK_EQ(shape.size(), buf_to_specialize->shape.size());
+    for (size_t i = 0; i < shape.size(); ++i) {
+      build_var_mapping(shape[i], buf_to_specialize->shape[i]);
     }
   }
-  // update free vars list
-  if (!new_free_vars.empty()) {
-    new_func.CopyOnWrite()->attrs.CopyOnWrite()->dict.CopyOnWrite()->at(String("free_vars")) =
-        Array<Var>(new_free_vars);
-  } else {
-    new_func.CopyOnWrite()->attrs.CopyOnWrite()->dict.CopyOnWrite()->erase(String("free_vars"));
+  if (strides.defined()) {
+    CHECK_EQ(strides.size(), buf_to_specialize->strides.size());
+    for (size_t i = 0; i < strides.size(); ++i) {
+      build_var_mapping(strides[i], buf_to_specialize->strides[i]);
+    }
   }
+  if (elem_offset.defined()) {
+    build_var_mapping(elem_offset, buf_to_specialize->elem_offset);
+  }
+  // build buffer mapping
+  auto f_buffer = [&](const Buffer& buf) -> Buffer {
+    Buffer new_buffer = buf;
+    new_buffer.CopyOnWrite()->elem_offset = Substitute(new_buffer->elem_offset, var_map);
+    std::vector<PrimExpr> new_shape, new_stride;
+    for (const auto& dim : new_buffer->shape) new_shape.push_back(Substitute(dim, var_map));
+    for (const auto& stride : new_buffer->strides) new_shape.push_back(Substitute(stride, var_map));
+    new_buffer.CopyOnWrite()->shape = Array<PrimExpr>(new_shape);
+    new_buffer.CopyOnWrite()->strides = Array<PrimExpr>(new_stride);
+    return new_buffer;
+  };
+  // replace buffer
+  BufferMutator buffer_mutator(f_buffer);
+  PrimFunc new_func = buffer_mutator.MutatePrimFunc(*this);
+  // replace vars in body
+  new_func.CopyOnWrite()->body = Substitute(new_func->body, var_map);
   return new_func;
 }
 
-TVM_REGISTER_GLOBAL("tir.BindFreeVars")
-    .set_body_typed<PrimFunc(PrimFunc, Map<tir::Var, PrimExpr>)>(
-        [](PrimFunc func, Map<tir::Var, PrimExpr> values) {
-          return func.bind_free_vars(std::move(values));
+TVM_REGISTER_GLOBAL("tir.SpecializeBuffer")
+    .set_body_typed<PrimFunc(PrimFunc, Var, Array<PrimExpr>, Array<PrimExpr>, PrimExpr)>(
+        [](PrimFunc func, Var param, Array<PrimExpr> shape, Array<PrimExpr> strides,
+           PrimExpr elem_offset) {
+          return func.specialize_buffer(std::move(param), std::move(shape), std::move(strides),
+                                        std::move(elem_offset));
         });
 
 }  // namespace tir

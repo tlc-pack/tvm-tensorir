@@ -21,9 +21,8 @@ from tvm.script import ty
 
 
 @tvm.script.tir
-def matmul(a: ty.int32, b: ty.int32, c: ty.int32) -> None:
+def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     m = tir.var("int32")
-    tir.func_attr({"free_vars": [m]})
     A = tir.match_buffer(a, [m, m])
     B = tir.match_buffer(b, [m, m])
     C = tir.match_buffer(c, [m, m])
@@ -34,7 +33,7 @@ def matmul(a: ty.int32, b: ty.int32, c: ty.int32) -> None:
 
 
 @tvm.script.tir
-def matmul_128(a: ty.int32, b: ty.int32, c: ty.int32) -> None:
+def matmul_128(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, [128, 128])
     B = tir.match_buffer(b, [128, 128])
     C = tir.match_buffer(c, [128, 128])
@@ -45,19 +44,16 @@ def matmul_128(a: ty.int32, b: ty.int32, c: ty.int32) -> None:
 
 
 def test_tensor_dimension_invariant_code_matmul():
-    m = matmul.attrs["free_vars"][0]
-    func1 = matmul.bind({m: 128})  # syntax 1
-    tvm.ir.assert_structural_equal(func1, matmul_128)
+    a, b, c = matmul.params
+    func = matmul.specialize_buffer(a, shape=[128, 128])
 
-    func2 = matmul.bind(128)  # syntax 2
-    tvm.ir.assert_structural_equal(func2, matmul_128)
+    tvm.ir.assert_structural_equal(func, matmul_128)
 
 
 @tvm.script.tir
 def element_wise(a: ty.handle, c: ty.handle) -> None:
     m = tir.var("int32")
     n = tir.var("int32")
-    tir.func_attr({"free_vars": [m, n]})
     A = tir.match_buffer(a, (m, n), "float32")
     C = tir.match_buffer(c, (m, n), "float32")
 
@@ -67,21 +63,6 @@ def element_wise(a: ty.handle, c: ty.handle) -> None:
         B[vi, vj] = A[vi, vj] * 2.0
 
     with tir.block([m, n], "C") as [vi, vj]:
-        C[vi, vj] = B[vi, vj] + 1.0
-
-
-@tvm.script.tir
-def element_wise_128_n(a: ty.handle, c: ty.handle) -> None:
-    n = tir.var("int32")
-    tir.func_attr({"free_vars": [n]})
-    A = tir.match_buffer(a, (128, n), "float32")
-    C = tir.match_buffer(c, (128, n), "float32")
-    B = tir.buffer_allocate((128, n), "float32")
-
-    with tir.block([128, n], "B") as [vi, vj]:
-        B[vi, vj] = A[vi, vj] * 2.0
-
-    with tir.block([128, n], "C") as [vi, vj]:
         C[vi, vj] = B[vi, vj] + 1.0
 
 
@@ -98,16 +79,30 @@ def element_wise_128_64(a: ty.handle, c: ty.handle) -> None:
         C[vi, vj] = B[vi, vj] + 1.0
 
 
+@tvm.script.tir
+def element_wise_128_n(a: ty.handle, c: ty.handle) -> None:
+    n = tir.var("int32")
+    A = tir.match_buffer(a, (128, n), "float32")
+    C = tir.match_buffer(c, (128, n), "float32")
+    B = tir.buffer_allocate((128, n), "float32")
+
+    with tir.block([128, n], "B") as [vi, vj]:
+        B[vi, vj] = A[vi, vj] * 2.0
+
+    with tir.block([128, n], "C") as [vi, vj]:
+        C[vi, vj] = B[vi, vj] + 1.0
+
+
 def test_tensor_dimension_invariant_code_elemwise():
-    m, n = element_wise.attrs["free_vars"]
-    func1 = element_wise.bind({m: 128, n: 64})  # syntax 1
+    # fully specialized
+    a, c = element_wise.params
+    func1 = element_wise.specialize_buffer(a, shape=[128, 64])
     tvm.ir.assert_structural_equal(func1, element_wise_128_64)
 
-    func2 = element_wise.bind([128, 64])  # syntax 2
-    tvm.ir.assert_structural_equal(func2, element_wise_128_64)
-
-    func3 = element_wise.bind({m: 128})  # syntax 3: partially bind
-    tvm.ir.assert_structural_equal(func3, element_wise_128_n)
+    # partially specialized
+    C = element_wise.buffer_map[c]
+    func2 = element_wise.specialize_buffer(c, shape=[128, C.shape[1]])
+    tvm.ir.assert_structural_equal(func2, element_wise_128_n)
 
 
 if __name__ == '__main__':
