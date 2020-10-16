@@ -59,7 +59,12 @@ class SearchTask(Object):
         target_host: TargetType = "llvm",
     ):
         if task_name is None:
-            task_name = func.__qualname__
+            if hasattr(func, "__qualname__"):
+                task_name = func.__qualname__
+            else:
+                raise ValueError(
+                    "Unable to extract task_name from the PrimFunc, please specific it explicitly"
+                )
         if not isinstance(target, Target):
             target = Target(target)
         if not isinstance(target_host, Target):
