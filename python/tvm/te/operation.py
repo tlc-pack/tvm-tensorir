@@ -441,6 +441,6 @@ def create_func(ops):
     func : tir.PrimFunc
         The created function.
     """
-    if not isinstance(ops, (list, tvm.ir.container.Array)):
+    if not isinstance(ops, (tuple, list, tvm.ir.container.Array)):
         ops = [ops]
     return _ffi_api.CreateFunc(ops)

@@ -79,7 +79,10 @@ class RuleAlwaysInline {
   TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
                 const TContextInfo& info) {
     tir::StmtSRef block_sref = sch->Eval(block_rv);
-    if (!IsSpatial(sch->sch, block_sref) || IsOutputBlock(sch->sch, block_sref)) {
+    if (!IsSpatial(sch->sch, block_sref)) {
+      return {{sch, info}};
+    }
+    if (IsOutputBlock(sch->sch, block_sref)) {
       return {{sch, info}};
     }
     if (IsStrictlyInlineable(sch->sch, block_sref)) {
@@ -204,10 +207,12 @@ class RuleMultiLevelTiling {
     Array<Integer> iter_types = GetBlockVarTypes(sch->sch, sch->Eval(context->producer));
     CHECK_EQ(axes.size(), iter_types.size());
     int n = axes.size();
+    int& n_spatial = context->n_spatial = 0;
     for (int i = 0; i < n; ++i) {
       std::vector<int>* idx = nullptr;
       if (iter_types[i] == tir::IterVarType::kDataPar) {
         idx = &s_idx;
+        ++n_spatial;
       } else if (iter_types[i] == tir::IterVarType::kCommReduce) {
         idx = &r_idx;
       } else {
@@ -221,7 +226,6 @@ class RuleMultiLevelTiling {
         order[idx->at(j)].push_back(splits[j]);
       }
     }
-    context->n_spatial = s_idx.size();
     context->after_axes = ConcatArray(order);
     sch->Reorder(context->after_axes);
     return {{sch, info}};
@@ -268,9 +272,9 @@ class RuleFusion {
     }
     for (const Integer& _level : levels) {
       int level = _level;
-      int loop_idx = level * context->n_spatial;
+      int loop_idx = level * context->n_spatial - 1;
       Schedule new_sch = sch->Copy(sch->sampler.ForkSeed());
-      new_sch->ReverseComputeAt(context->consumer.value(), context->after_axes[loop_idx - 1]);
+      new_sch->ReverseComputeAt(context->consumer.value(), context->after_axes.at(loop_idx));
       ret.Set(new_sch, NullOpt);
     }
     return ret;
