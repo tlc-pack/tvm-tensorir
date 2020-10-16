@@ -443,7 +443,7 @@ struct ReorderAttrs : public tvm::AttrsNode<ReorderAttrs> {
   TVM_DECLARE_ATTRS(ReorderAttrs, "meta_schedule.attrs.ReorderAttrs") {}
 };
 
-/*! \brief Attrs of the instruction that applies compute_inline */
+/*! \brief Attrs of the instruction that applies reverse_compute_at */
 struct ReverseComputeAtAttrs : public tvm::AttrsNode<ReverseComputeAtAttrs> {
   /*!
    * \brief Create instruction given the inputs and outputs

@@ -293,7 +293,7 @@ def _check_sketch(results: List[ms.Schedule], expected: List[tvm.tir.PrimFunc]):
                 found = True
                 break
         if not found:
-            print(tvm.script.ashybrid(x))
+            print(tvm.script.asscript(x))
         assert found
 
 
