@@ -64,6 +64,9 @@ from . import arith
 # support infra
 from . import support
 
+# tvm.script
+from . import script
+
 # tvm.meta_schedule
 from . import meta_schedule
 
