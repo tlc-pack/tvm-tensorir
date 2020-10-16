@@ -414,8 +414,12 @@ bool NeedsMultiLevelTiling(const tir::Schedule& sch, const tir::StmtSRef& block_
   if (block->writes.size() != 1) {
     return false;
   }
-  int n_missing = 0;
+  if (block->reads.empty()) {
+    return false;
+  }
+  std::vector<int> n_missing_block_vars;
   for (const tir::TensorRegion& region : block->reads) {
+    int n_missing = 0;
     std::unordered_set<const tir::VarNode*> vars_in_load;
     for (const Range& range : region->region) {
       if (!IsConstInt(range->extent)) {
@@ -434,11 +438,18 @@ bool NeedsMultiLevelTiling(const tir::Schedule& sch, const tir::StmtSRef& block_
         }
       }
     }
+    n_missing_block_vars.push_back(n_missing);
   }
-  if (n_missing >= 2) {
+  bool is_spatial = IsSpatial(sch, block_sref);
+  int min_n_missing = *std::min_element(n_missing_block_vars.begin(), n_missing_block_vars.end());
+  int sum_n_missing = std::accumulate(n_missing_block_vars.begin(), n_missing_block_vars.end(), 0);
+  if (is_spatial && min_n_missing == 0) {
+    return false;
+  }
+  if (sum_n_missing >= 2) {
     return true;
   }
-  if (n_missing == 0) {
+  if (sum_n_missing == 0) {
     return false;
   }
   return !IsSpatial(sch, block_sref);

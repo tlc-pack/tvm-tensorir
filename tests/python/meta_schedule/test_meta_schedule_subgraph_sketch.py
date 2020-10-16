@@ -46,7 +46,6 @@ def _fix_sampling_tile_size(
         results = [tvm.ir.structural_equal(sch.sch.func, i) for i in expected]
         if sum(results) >= 1:
             return
-        print(tvm.script.asscript(sch.sch.func))
     assert False
 
 
@@ -690,6 +689,184 @@ def test_meta_schedule_sketch_cpu_conv2d_nchw():
 # fmt: off
 
 @tvm.script.tir
+def _conv2d_nchw_bias_bn_relu_sketch_0(var_X: ty.handle, var_W: ty.handle, var_B: ty.handle, var_bn_scale: ty.handle, var_bn_offset: ty.handle, var_compute: ty.handle) -> None:
+    # function attr dict
+    tir.func_attr({})
+    B = tir.match_buffer(var_B, [512, 1, 1], elem_offset=0, align=128, offset_factor=1)
+    compute = tir.match_buffer(var_compute, [1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
+    bn_offset = tir.match_buffer(var_bn_offset, [512, 1, 1], elem_offset=0, align=128, offset_factor=1)
+    X = tir.match_buffer(var_X, [1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
+    bn_scale = tir.match_buffer(var_bn_scale, [512, 1, 1], elem_offset=0, align=128, offset_factor=1)
+    W = tir.match_buffer(var_W, [512, 512, 3, 3], elem_offset=0, align=128, offset_factor=1)
+    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        pad_temp = tir.buffer_allocate([1, 512, 58, 58], elem_offset=0, align=128, offset_factor=1)
+        compute_1 = tir.buffer_allocate([1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
+        for i0 in range(0, 1):
+            for i1 in range(0, 512):
+                for i2 in range(0, 58):
+                    for i3 in range(0, 58):
+                        with tir.block([1, 512, 58, 58], "pad_temp") as [i0_1, i1_1, i2_1, i3_1]:
+                            tir.bind(i0_1, i0)
+                            tir.bind(i1_1, i1)
+                            tir.bind(i2_1, i2)
+                            tir.bind(i3_1, i3)
+                            tir.reads([X[i0_1:(i0_1 + 1), i1_1:(i1_1 + 1), (i2_1 - 1):((i2_1 - 1) + 1), (i3_1 - 1):((i3_1 - 1) + 1)]])
+                            tir.writes([pad_temp[i0_1:(i0_1 + 1), i1_1:(i1_1 + 1), i2_1:(i2_1 + 1), i3_1:(i3_1 + 1)]])
+                            pad_temp[i0_1, i1_1, i2_1, i3_1] = tir.if_then_else(((((i2_1 >= 1) and (i2_1 < 57)) and (i3_1 >= 1)) and (i3_1 < 57)), X[i0_1, i1_1, (i2_1 - 1), (i3_1 - 1)], tir.float32(0), dtype="float32")
+        for i0_2_outer_outer_outer, i1_2_outer_outer_outer, i2_2_outer_outer_outer, i3_2_outer_outer_outer in tir.grid(1, 4, 1, 1):
+            for i0_2_outer_outer_inner, i1_2_outer_outer_inner, i2_2_outer_outer_inner, i3_2_outer_outer_inner in tir.grid(1, 8, 1, 2):
+                for i4_outer, i5_outer, i6_outer in tir.grid(64, 1, 1):
+                    for i0_2_outer_inner, i1_2_outer_inner, i2_2_outer_inner, i3_2_outer_inner in tir.grid(1, 2, 28, 7):
+                        for i4_inner, i5_inner, i6_inner in tir.grid(8, 3, 3):
+                            for i0_2_inner, i1_2_inner, i2_2_inner, i3_2_inner in tir.grid(1, 8, 2, 4):
+                                with tir.block([1, 512, 56, 56, tir.reduce_axis(0, 512), tir.reduce_axis(0, 3), tir.reduce_axis(0, 3)], "compute") as [nn, ff, yy, xx, rc, ry, rx]:
+                                    tir.bind(nn, ((((((i0_2_outer_outer_outer*1) + i0_2_outer_outer_inner)*1) + i0_2_outer_inner)*1) + i0_2_inner))
+                                    tir.bind(ff, ((((((i1_2_outer_outer_outer*8) + i1_2_outer_outer_inner)*2) + i1_2_outer_inner)*8) + i1_2_inner))
+                                    tir.bind(yy, ((((((i2_2_outer_outer_outer*1) + i2_2_outer_outer_inner)*28) + i2_2_outer_inner)*2) + i2_2_inner))
+                                    tir.bind(xx, ((((((i3_2_outer_outer_outer*2) + i3_2_outer_outer_inner)*7) + i3_2_outer_inner)*4) + i3_2_inner))
+                                    tir.bind(rc, ((i4_outer*8) + i4_inner))
+                                    tir.bind(ry, ((i5_outer*3) + i5_inner))
+                                    tir.bind(rx, ((i6_outer*3) + i6_inner))
+                                    tir.reads([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
+                                    tir.writes([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
+                                    reducer.step(compute_1[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
+                for ax0 in range(0, 1):
+                    for ax1 in range(0, 16):
+                        for ax2 in range(0, 56):
+                            for ax3 in range(0, 28):
+                                with tir.block([1, 512, 56, 56], "compute_2") as [i0_7, i1_7, i2_7, i3_7]:
+                                    tir.bind(i0_7, (i0_2_outer_outer_outer + i0_2_outer_outer_inner))
+                                    tir.bind(i1_7, (((i1_2_outer_outer_outer*128) + (i1_2_outer_outer_inner*16)) + ax1))
+                                    tir.bind(i2_7, (((i2_2_outer_outer_outer*56) + (i2_2_outer_outer_inner*56)) + ax2))
+                                    tir.bind(i3_7, (((i3_2_outer_outer_outer*56) + (i3_2_outer_outer_inner*28)) + ax3))
+                                    tir.reads([compute_1[i0_7:(i0_7 + 1), i1_7:(i1_7 + 1), i2_7:(i2_7 + 1), i3_7:(i3_7 + 1)], B[i1_7:(i1_7 + 1), 0:1, 0:1], bn_scale[i1_7:(i1_7 + 1), 0:1, 0:1], bn_offset[i1_7:(i1_7 + 1), 0:1, 0:1]])
+                                    tir.writes([compute[i0_7:(i0_7 + 1), i1_7:(i1_7 + 1), i2_7:(i2_7 + 1), i3_7:(i3_7 + 1)]])
+                                    compute[i0_7, i1_7, i2_7, i3_7] = tir.max((((compute_1[i0_7, i1_7, i2_7, i3_7] + B[i1_7, 0, 0])*bn_scale[i1_7, 0, 0]) + bn_offset[i1_7, 0, 0]), tir.float32(0))
+
+
+@tvm.script.tir
+def _conv2d_nchw_bias_bn_relu_sketch_1(var_X: ty.handle, var_W: ty.handle, var_B: ty.handle, var_bn_scale: ty.handle, var_bn_offset: ty.handle, var_compute: ty.handle) -> None:
+    # function attr dict
+    tir.func_attr({})
+    B = tir.match_buffer(var_B, [512, 1, 1], elem_offset=0, align=128, offset_factor=1)
+    compute = tir.match_buffer(var_compute, [1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
+    bn_offset = tir.match_buffer(var_bn_offset, [512, 1, 1], elem_offset=0, align=128, offset_factor=1)
+    X = tir.match_buffer(var_X, [1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
+    bn_scale = tir.match_buffer(var_bn_scale, [512, 1, 1], elem_offset=0, align=128, offset_factor=1)
+    W = tir.match_buffer(var_W, [512, 512, 3, 3], elem_offset=0, align=128, offset_factor=1)
+    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        pad_temp = tir.buffer_allocate([1, 512, 58, 58], elem_offset=0, align=128, offset_factor=1)
+        compute_1 = tir.buffer_allocate([1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
+        for i0 in range(0, 1):
+            for i1 in range(0, 512):
+                for i2 in range(0, 58):
+                    for i3 in range(0, 58):
+                        with tir.block([1, 512, 58, 58], "pad_temp") as [i0_1, i1_1, i2_1, i3_1]:
+                            tir.bind(i0_1, i0)
+                            tir.bind(i1_1, i1)
+                            tir.bind(i2_1, i2)
+                            tir.bind(i3_1, i3)
+                            tir.reads([X[i0_1:(i0_1 + 1), i1_1:(i1_1 + 1), (i2_1 - 1):((i2_1 - 1) + 1), (i3_1 - 1):((i3_1 - 1) + 1)]])
+                            tir.writes([pad_temp[i0_1:(i0_1 + 1), i1_1:(i1_1 + 1), i2_1:(i2_1 + 1), i3_1:(i3_1 + 1)]])
+                            pad_temp[i0_1, i1_1, i2_1, i3_1] = tir.if_then_else(((((i2_1 >= 1) and (i2_1 < 57)) and (i3_1 >= 1)) and (i3_1 < 57)), X[i0_1, i1_1, (i2_1 - 1), (i3_1 - 1)], tir.float32(0), dtype="float32")
+        for i0_2_outer_outer_outer, i1_2_outer_outer_outer, i2_2_outer_outer_outer, i3_2_outer_outer_outer in tir.grid(1, 4, 1, 1):
+            for i0_2_outer_outer_inner, i1_2_outer_outer_inner, i2_2_outer_outer_inner, i3_2_outer_outer_inner in tir.grid(1, 8, 1, 2):
+                for i4_outer, i5_outer, i6_outer in tir.grid(64, 1, 1):
+                    for i0_2_outer_inner, i1_2_outer_inner, i2_2_outer_inner, i3_2_outer_inner in tir.grid(1, 2, 28, 7):
+                        for i4_inner, i5_inner, i6_inner in tir.grid(8, 3, 3):
+                            for i0_2_inner, i1_2_inner, i2_2_inner, i3_2_inner in tir.grid(1, 8, 2, 4):
+                                with tir.block([1, 512, 56, 56, tir.reduce_axis(0, 512), tir.reduce_axis(0, 3), tir.reduce_axis(0, 3)], "compute") as [nn, ff, yy, xx, rc, ry, rx]:
+                                    tir.bind(nn, ((((((i0_2_outer_outer_outer*1) + i0_2_outer_outer_inner)*1) + i0_2_outer_inner)*1) + i0_2_inner))
+                                    tir.bind(ff, ((((((i1_2_outer_outer_outer*8) + i1_2_outer_outer_inner)*2) + i1_2_outer_inner)*8) + i1_2_inner))
+                                    tir.bind(yy, ((((((i2_2_outer_outer_outer*1) + i2_2_outer_outer_inner)*28) + i2_2_outer_inner)*2) + i2_2_inner))
+                                    tir.bind(xx, ((((((i3_2_outer_outer_outer*2) + i3_2_outer_outer_inner)*7) + i3_2_outer_inner)*4) + i3_2_inner))
+                                    tir.bind(rc, ((i4_outer*8) + i4_inner))
+                                    tir.bind(ry, ((i5_outer*3) + i5_inner))
+                                    tir.bind(rx, ((i6_outer*3) + i6_inner))
+                                    tir.reads([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
+                                    tir.writes([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
+                                    reducer.step(compute_1[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
+            for ax0 in range(0, 1):  # pylint: disable=unused-variable
+                for ax1 in range(0, 128):
+                    for ax2 in range(0, 56):
+                        for ax3 in range(0, 56):
+                            with tir.block([1, 512, 56, 56], "compute_2") as [i0_7, i1_7, i2_7, i3_7]:
+                                tir.bind(i0_7, i0_2_outer_outer_outer)
+                                tir.bind(i1_7, ((i1_2_outer_outer_outer*128) + ax1))
+                                tir.bind(i2_7, ((i2_2_outer_outer_outer*56) + ax2))
+                                tir.bind(i3_7, ((i3_2_outer_outer_outer*56) + ax3))
+                                tir.reads([compute_1[i0_7:(i0_7 + 1), i1_7:(i1_7 + 1), i2_7:(i2_7 + 1), i3_7:(i3_7 + 1)], B[i1_7:(i1_7 + 1), 0:1, 0:1], bn_scale[i1_7:(i1_7 + 1), 0:1, 0:1], bn_offset[i1_7:(i1_7 + 1), 0:1, 0:1]])
+                                tir.writes([compute[i0_7:(i0_7 + 1), i1_7:(i1_7 + 1), i2_7:(i2_7 + 1), i3_7:(i3_7 + 1)]])
+                                compute[i0_7, i1_7, i2_7, i3_7] = tir.max((((compute_1[i0_7, i1_7, i2_7, i3_7] + B[i1_7, 0, 0])*bn_scale[i1_7, 0, 0]) + bn_offset[i1_7, 0, 0]), tir.float32(0))
+
+@tvm.script.tir
+def _conv2d_nchw_bias_bn_relu_sketch_2(var_X: ty.handle, var_W: ty.handle, var_B: ty.handle, var_bn_scale: ty.handle, var_bn_offset: ty.handle, var_compute: ty.handle) -> None:
+    # function attr dict
+    tir.func_attr({})
+    B = tir.match_buffer(var_B, [512, 1, 1], elem_offset=0, align=128, offset_factor=1)
+    compute = tir.match_buffer(var_compute, [1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
+    bn_offset = tir.match_buffer(var_bn_offset, [512, 1, 1], elem_offset=0, align=128, offset_factor=1)
+    X = tir.match_buffer(var_X, [1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
+    bn_scale = tir.match_buffer(var_bn_scale, [512, 1, 1], elem_offset=0, align=128, offset_factor=1)
+    W = tir.match_buffer(var_W, [512, 512, 3, 3], elem_offset=0, align=128, offset_factor=1)
+    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        pad_temp = tir.buffer_allocate([1, 512, 58, 58], elem_offset=0, align=128, offset_factor=1)
+        compute_1 = tir.buffer_allocate([1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
+        for i0 in range(0, 1):
+            for i1 in range(0, 512):
+                for i2 in range(0, 58):
+                    for i3 in range(0, 58):
+                        with tir.block([1, 512, 58, 58], "pad_temp") as [i0_1, i1_1, i2_1, i3_1]:
+                            tir.bind(i0_1, i0)
+                            tir.bind(i1_1, i1)
+                            tir.bind(i2_1, i2)
+                            tir.bind(i3_1, i3)
+                            tir.reads([X[i0_1:(i0_1 + 1), i1_1:(i1_1 + 1), (i2_1 - 1):((i2_1 - 1) + 1), (i3_1 - 1):((i3_1 - 1) + 1)]])
+                            tir.writes([pad_temp[i0_1:(i0_1 + 1), i1_1:(i1_1 + 1), i2_1:(i2_1 + 1), i3_1:(i3_1 + 1)]])
+                            pad_temp[i0_1, i1_1, i2_1, i3_1] = tir.if_then_else(((((i2_1 >= 1) and (i2_1 < 57)) and (i3_1 >= 1)) and (i3_1 < 57)), X[i0_1, i1_1, (i2_1 - 1), (i3_1 - 1)], tir.float32(0), dtype="float32")
+        for i0_2_outer_outer_outer, i1_2_outer_outer_outer, i2_2_outer_outer_outer, i3_2_outer_outer_outer in tir.grid(1, 4, 1, 1):
+            for i0_2_outer_outer_inner, i1_2_outer_outer_inner, i2_2_outer_outer_inner, i3_2_outer_outer_inner in tir.grid(1, 8, 1, 2):
+                for i4_outer, i5_outer, i6_outer in tir.grid(64, 1, 1):
+                    for i0_2_outer_inner, i1_2_outer_inner, i2_2_outer_inner, i3_2_outer_inner in tir.grid(1, 2, 28, 7):
+                        for i4_inner, i5_inner, i6_inner in tir.grid(8, 3, 3):
+                            for i0_2_inner, i1_2_inner, i2_2_inner, i3_2_inner in tir.grid(1, 8, 2, 4):
+                                with tir.block([1, 512, 56, 56, tir.reduce_axis(0, 512), tir.reduce_axis(0, 3), tir.reduce_axis(0, 3)], "compute") as [nn, ff, yy, xx, rc, ry, rx]:
+                                    tir.bind(nn, ((((((i0_2_outer_outer_outer*1) + i0_2_outer_outer_inner)*1) + i0_2_outer_inner)*1) + i0_2_inner))
+                                    tir.bind(ff, ((((((i1_2_outer_outer_outer*8) + i1_2_outer_outer_inner)*2) + i1_2_outer_inner)*8) + i1_2_inner))
+                                    tir.bind(yy, ((((((i2_2_outer_outer_outer*1) + i2_2_outer_outer_inner)*28) + i2_2_outer_inner)*2) + i2_2_inner))
+                                    tir.bind(xx, ((((((i3_2_outer_outer_outer*2) + i3_2_outer_outer_inner)*7) + i3_2_outer_inner)*4) + i3_2_inner))
+                                    tir.bind(rc, ((i4_outer*8) + i4_inner))
+                                    tir.bind(ry, ((i5_outer*3) + i5_inner))
+                                    tir.bind(rx, ((i6_outer*3) + i6_inner))
+                                    tir.reads([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
+                                    tir.writes([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
+                                    reducer.step(compute_1[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
+        for i0_6 in range(0, 1):
+            for i1_6 in range(0, 512):
+                for i2_6 in range(0, 56):
+                    for i3_6 in range(0, 56):
+                        with tir.block([1, 512, 56, 56], "compute_2") as [i0_7, i1_7, i2_7, i3_7]:
+                            tir.bind(i0_7, i0_6)
+                            tir.bind(i1_7, i1_6)
+                            tir.bind(i2_7, i2_6)
+                            tir.bind(i3_7, i3_6)
+                            tir.reads([compute_1[i0_7:(i0_7 + 1), i1_7:(i1_7 + 1), i2_7:(i2_7 + 1), i3_7:(i3_7 + 1)], B[i1_7:(i1_7 + 1), 0:1, 0:1], bn_scale[i1_7:(i1_7 + 1), 0:1, 0:1], bn_offset[i1_7:(i1_7 + 1), 0:1, 0:1]])
+                            tir.writes([compute[i0_7:(i0_7 + 1), i1_7:(i1_7 + 1), i2_7:(i2_7 + 1), i3_7:(i3_7 + 1)]])
+                            compute[i0_7, i1_7, i2_7, i3_7] = tir.max((((compute_1[i0_7, i1_7, i2_7, i3_7] + B[i1_7, 0, 0])*bn_scale[i1_7, 0, 0]) + bn_offset[i1_7, 0, 0]), tir.float32(0))
+
+@tvm.script.tir
 def workload_conv2d_nchw_bias_bn_relu(var_X: ty.handle, var_W: ty.handle, var_B: ty.handle, var_bn_scale: ty.handle, var_bn_offset: ty.handle, var_compute: ty.handle) -> None:
     # function attr dict
     tir.func_attr({})
@@ -808,10 +985,38 @@ def test_meta_schedule_sketch_cpu_conv2d_nchw_bias_bn_relu():  # pylint: disable
     # )
     func = workload_conv2d_nchw_bias_bn_relu
     support = _get_support(func=func, task_name="conv2d_nchw_bias_bn_relu")
-    _debug(support)
     assert len(support) == 3
-    # expected = [_conv2d_nchw_sketch_0, _conv2d_nchw_sketch_1, _conv2d_nchw_sketch_2]
-    # print(tvm.script.asscript(func))
+    expected = [
+        _conv2d_nchw_bias_bn_relu_sketch_0,
+        _conv2d_nchw_bias_bn_relu_sketch_1,
+        _conv2d_nchw_bias_bn_relu_sketch_2,
+    ]
+    possible_decisions = [
+        [
+            [1, 1, 1, 1],
+            [4, 8, 2, 8],
+            [1, 1, 28, 2],
+            [1, 2, 7, 4],
+            [64, 8],
+            [1, 3],
+            [1, 3],
+        ]
+    ]
+    _fix_sampling_tile_size(
+        sch=support[0],
+        possible_decisions=possible_decisions,
+        expected=expected,
+    )
+    _fix_sampling_tile_size(
+        sch=support[1],
+        possible_decisions=possible_decisions,
+        expected=expected,
+    )
+    _fix_sampling_tile_size(
+        sch=support[2],
+        possible_decisions=possible_decisions,
+        expected=expected,
+    )
 
 
 # fmt: off
@@ -880,5 +1085,5 @@ if __name__ == "__main__":
     test_meta_schedule_sketch_cpu_matmul()
     test_meta_schedule_sketch_cpu_matmul_relu()
     test_meta_schedule_sketch_cpu_conv2d_nchw()
-    # test_meta_schedule_sketch_cpu_conv2d_nchw_bias_bn_relu()
+    test_meta_schedule_sketch_cpu_conv2d_nchw_bias_bn_relu()
     test_meta_schedule_sketch_cpu_max_pool2d_nchw()
