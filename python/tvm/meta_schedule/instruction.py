@@ -79,6 +79,17 @@ class SampleTileFactorAttrs(Attrs):
     where: List[int]
 
 
+@register_object("meta_schedule.attrs.SampleFusibleLoopsAttrs")
+class SampleFusibleLoopsAttrs(Attrs):
+    """Attrs of the instruction to sample fusible loops"""
+
+    loop_types: List[int]
+    max_extent: int
+    include_overflow_loop: bool
+    order: int
+    mode: int
+
+
 ########## Block/Loop Relationship ##########
 
 
@@ -99,7 +110,32 @@ class GetAxesAttrs(Attrs):
     """Attrs of the instruction that gets loop axes on top of a specifc block"""
 
 
+@register_object("meta_schedule.attrs.GetRootBlocksAttrs")
+class GetRootBlocksAttrs(Attrs):
+    """Attrs of the instruction to get all the subroot blocks"""
+
+
+@register_object("meta_schedule.attrs.GetLeafBlocksAttrs")
+class GetLeafBlocksAttrs(Attrs):
+    """Attrs of the instruction to get all the leaf blocks"""
+
+
 ########## Scheduling Primitives ##########
+
+
+@register_object("meta_schedule.attrs.FuseAttrs")
+class FuseAttrs(Attrs):
+    """Attrs of the instruction that applies fusion"""
+
+
+@register_object("meta_schedule.attrs.MarkParallelAttrs")
+class MarkParallelAttrs(Attrs):
+    """Attrs of the instruction that marks specific loops as parallelized"""
+
+
+@register_object("meta_schedule.attrs.MarkVectorizeAttrs")
+class MarkVectorizeAttrs(Attrs):
+    """Attrs of the instruction that marks specific loops as vectorized"""
 
 
 @register_object("meta_schedule.attrs.SplitAttrs")
@@ -110,6 +146,11 @@ class SplitAttrs(Attrs):
 @register_object("meta_schedule.attrs.ReorderAttrs")
 class ReorderAttrs(Attrs):
     """Attrs of the instruction that applies loop reordering"""
+
+
+@register_object("meta_schedule.attrs.ReverseComputeAtAttrs")
+class ReverseComputeAtAttrs(Attrs):
+    """Attrs of the instruction that applies reverse_compute_at"""
 
 
 @register_object("meta_schedule.attrs.ComputeInlineAttrs")
