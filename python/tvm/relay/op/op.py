@@ -179,28 +179,55 @@ class OpStrategy(Object):
         """
         _OpStrategyAddImplementation(self, compute, schedule, name, plevel)
 
+    def add_tir_implementation(self, compute, prim_func, name="default", plevel=10):
+        """Add an implementation to the strategy
 
-def _wrap_default_fstrategy(compute, schedule, name):
+        Parameters
+        ----------
+        compute : function (attrs: Attrs, inputs: List[Tensor], out_type: Type)
+                           -> List[Tensor]
+            The compute function.
+
+        prim_func : function (attrs: Attrs, outs: List[Tensor], target:Target) -> PrimFunc
+            The creator for scheduled function.
+
+        name : str
+            The name of implementation.
+
+        plevel : int
+            The priority level of implementation.
+        """
+        _OpStrategyAddTirImplementation(self, compute, prim_func, name, plevel)
+
+
+def _wrap_default_fstrategy(compute, schedule, tir_schedule=None, name=""):
     def _fstrategy(attrs, inputs, out_type, target):
         strategy = OpStrategy()
         strategy.add_implementation(compute, schedule, name=name)
+        if tir_schedule is not None:
+            strategy.add_tir_implementation(compute, tir_schedule, name=name)
         return strategy
 
     return _fstrategy
 
 
-def _create_fstrategy_from_schedule(op_name, schedule):
+def _create_fstrategy_from_schedule(op_name, schedule, tir_schedule=None):
     assert hasattr(schedule, "dispatch_dict")
     compute = get(op_name).get_attr("FTVMCompute")
     assert compute is not None, "FTVMCompute is not registered for op %s" % op_name
     fstrategy = get_native_generic_func("{}_strategy".format(op_name))
     name_pfx = schedule.__name__
-    name_pfx = name_pfx[name_pfx.index("_") + 1 :]
+    name_pfx = name_pfx[name_pfx.index("_") + 1:]
+    _tir_schedule = tir_schedule.fdefault if tir_schedule is not None else None
     fstrategy.set_default(
-        _wrap_default_fstrategy(compute, schedule.fdefault, "%s.generic" % name_pfx)
+        _wrap_default_fstrategy(compute, schedule.fdefault, _tir_schedule,
+                                name="%s.generic" % name_pfx)
     )
     for key, sch in schedule.dispatch_dict.items():
-        fstrategy.register(_wrap_default_fstrategy(compute, sch, "%s.%s" % (name_pfx, key)), [key])
+        _tir_sch = None
+        if tir_schedule is not None:
+            _tir_sch = tir_schedule.dispatch_dict.get(key, tir_schedule.fdefault)
+        fstrategy.register(_wrap_default_fstrategy(compute, sch, _tir_sch, name="%s.%s" % (name_pfx, key)), [key])
     return fstrategy
 
 
@@ -243,7 +270,7 @@ def register_strategy(op_name, fstrategy=None, level=10):
     return tvm.ir.register_op_attr(op_name, "FTVMStrategy", fstrategy, level)
 
 
-def register_schedule(op_name, schedule, level=10):
+def register_schedule(op_name, schedule, tir_schedule=None, level=10):
     """Register schedule function for an op.
 
     This is used when compute function is the same for all targets and only
@@ -258,11 +285,14 @@ def register_schedule(op_name, schedule, level=10):
     schedule : function (attrs: Attrs, outs: List[Tensor], target:Target) -> Schedule
         The schedule function. Need to be target.generic_func.
 
+    tir_schedule : function (attrs: Attrs, outs: List[Tensor], target:Target) -> PrimFunc
+        The schedule function for Tir scheduling. Need to be target.generic_func.
+
     level : int
         The priority level
     """
-    fstrategy = _create_fstrategy_from_schedule(op_name, schedule)
-    return register_strategy(op_name, fstrategy, level)
+    fstrategy = _create_fstrategy_from_schedule(op_name, schedule, tir_schedule)
+    return register_strategy(op_name, fstrategy, level=level)
 
 
 def register_injective_schedule(op_name, level=10):
@@ -276,7 +306,7 @@ def register_injective_schedule(op_name, level=10):
     level : int
         The priority level
     """
-    return register_schedule(op_name, _schedule_injective, level)
+    return register_schedule(op_name, _schedule_injective, _tir_schedule_injective, level=level)
 
 
 def register_broadcast_schedule(op_name, level=10):
@@ -290,7 +320,7 @@ def register_broadcast_schedule(op_name, level=10):
     level : int
         The priority level
     """
-    return register_schedule(op_name, _schedule_injective, level)
+    return register_schedule(op_name, _schedule_injective, _tir_schedule_injective, level=level)
 
 
 def register_reduce_schedule(op_name, level=10):
@@ -304,7 +334,7 @@ def register_reduce_schedule(op_name, level=10):
     level : int
         The priority level
     """
-    return register_schedule(op_name, _schedule_reduce, level)
+    return register_schedule(op_name, _schedule_reduce, level=level)
 
 
 def register_alter_op_layout(op_name, alter_layout=None, level=10):
@@ -495,6 +525,7 @@ def _build(lowered_funcs):
 
 
 _schedule_injective = None
+_tir_schedule_injective = None
 _schedule_reduce = None
 
 __DEBUG_COUNTER__ = 0

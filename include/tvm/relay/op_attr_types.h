@@ -31,6 +31,7 @@
 #include <tvm/te/schedule.h>
 #include <tvm/te/tensor.h>
 #include <tvm/tir/data_layout.h>
+#include <tvm/tir/function.h>
 
 #include <string>
 
@@ -125,6 +126,18 @@ using FTVMCompute = runtime::TypedPackedFunc<Array<te::Tensor>(
  * \return schedule The computation schedule.
  */
 using FTVMSchedule = runtime::TypedPackedFunc<te::Schedule(
+    const Attrs& attrs, const Array<te::Tensor>& outs, const Target& target)>;
+
+/*!
+ * \brief Build the computation PrimFunc for
+ *  op whose root is at current op.
+ *
+ * \param attrs The attribute of the node.
+ * \param outs The output tensors.
+ * \param target The build target.
+ * \return schedule The computation schedule.
+ */
+using FTVMPrimFunc = runtime::TypedPackedFunc<tir::PrimFunc(
     const Attrs& attrs, const Array<te::Tensor>& outs, const Target& target)>;
 
 /*!
