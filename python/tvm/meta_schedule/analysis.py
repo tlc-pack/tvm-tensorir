@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """Meta schedule analysis API """
-from typing import List
+from typing import List, Optional
 
 from tvm import tir
 from tvm.ir import Op
@@ -330,29 +330,30 @@ def is_strictly_inlineable(sch: tir.Schedule, block: tir.StmtSRef) -> bool:
     return bool(_ffi_api_analysis.IsStrictlyInlineable(sch, block))  # pylint: disable=no-member
 
 
-def can_tensorize_rewrite(
+def get_tensorize_loop_mapping(
     sch: tir.Schedule,
     block: tir.StmtSRef,
     desc_func: tir.PrimFunc,
-) -> bool:
-    """Checks if a block is potential to rewrite and do tensorize
+) -> Optional[object]:
+    """Check if the given block can be tensorized, and in the meantime gather the necessary
+    information for tensorization
 
     Parameters
     ----------
     sch: Schedule
-        The meta schedule class
-    block: BlockRV
-        The block random variable to be analyzed
+        The TIR class
+    block: tir.StmtSRef
+        The block to be analyzed
     desc_func: PrimFunc
         The description function of TensorIntrin we want to match
 
     Returns
     -------
-    result: bool
-        A boolean flag indicating if is able to rewrite and do tensorize
+    result: Optional[TensorizeInfo]
+        The necessary information used for tensorization, or None if the block cannot be tensorized
     """
-    return bool(
-        _ffi_api_analysis.CanTensorizeRewrite(sch, block, desc_func)  # pylint: disable=no-member
+    return _ffi_api_analysis.GetTensorizeLoopMapping(  # pylint: disable=no-member
+        sch, block, desc_func
     )
 
 
