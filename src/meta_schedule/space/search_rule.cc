@@ -388,10 +388,12 @@ class RuleTensorizeRewrite {
   TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
                 const TContextInfo& info) {
     tir::StmtSRef block = sch->Eval(block_rv);
-    if (CanTensorizeRewrite(sch->sch, block, desc_func)) {
-      DoTensorizeRewrite(sch, block_rv, desc_func);
+    Optional<TensorizeInfo> opt_tensorize_info =
+        GetTensorizeLoopMapping(sch->sch, block, desc_func);
+    if (!opt_tensorize_info.defined()) {
       return {{sch, info}};
     }
+    DoTensorizeRewrite(sch, block_rv, desc_func);
     return {{sch, info}};
   }
 };

@@ -19,10 +19,9 @@
 from typing import List
 
 import tvm
-from tvm import te, tir, meta_schedule as ms
+from tvm import meta_schedule as ms
+from tvm import tir
 from tvm.script import ty
-import workload
-
 
 # TODO(@junrushao1994): workload.* instead
 
@@ -734,7 +733,7 @@ def _conv2d_nchw_bias_bn_relu_sketch_0(var_X: ty.handle, var_W: ty.handle, var_B
                                     tir.reads([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
                                     tir.writes([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
                                     reducer.step(compute_1[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
-                for ax0 in range(0, 1):
+                for ax0 in range(0, 1):  # pylint: disable=unused-variable
                     for ax1 in range(0, 16):
                         for ax2 in range(0, 56):
                             for ax3 in range(0, 28):
