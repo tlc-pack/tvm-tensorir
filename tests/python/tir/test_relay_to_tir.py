@@ -15,19 +15,18 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import tvm
-from tvm import te
+import pytest
 import numpy as np
+
+import tvm
 from tvm.contrib import graph_runtime as runtime
 from tvm import relay
-from tvm.relay import testing
-import logging
 
+# import logging
 # logging.basicConfig(level=logging.DEBUG)  # to dump TVM IR after fusion
-dtype="float32"
 
 
-def get_network(name, batch_size):
+def get_network(name, batch_size, dtype="float32"):
     """Get the symbol definition and random weight of a network"""
     input_shape = (batch_size, 3, 224, 224)
     output_shape = (batch_size, 1000)
@@ -67,7 +66,7 @@ def get_network(name, batch_size):
         simple_net = relay.nn.relu(simple_net)
         simple_net = relay.Function(relay.analysis.free_vars(simple_net), simple_net)
         mod = tvm.IRModule.from_expr(simple_net)
-        net, params = testing.create_workload(simple_net)
+        _net, params = relay.testing.create_workload(simple_net)
     else:
         raise ValueError("Unsupported network: " + name)
 
@@ -78,7 +77,7 @@ def verify_workload(workload):
     print("Testing", workload)
     mod, params, input_shape, output_shape = get_network(workload, 1)
 
-    target = 'llvm'
+    target = "llvm"
     ctx = tvm.context(target, 0)
     data = np.random.uniform(-1, 1, size=input_shape).astype("float32")
 
@@ -97,6 +96,7 @@ def verify_workload(workload):
     np.testing.assert_allclose(out, std, rtol=1e-4, atol=1e-4)
 
 
+@pytest.mark.skip("Heavy workload")
 def test_workload():
     verify_workload("simple")
     verify_workload("resnet-18")
