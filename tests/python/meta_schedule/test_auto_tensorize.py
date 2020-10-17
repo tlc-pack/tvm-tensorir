@@ -131,21 +131,13 @@ def tensorized_batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                 tir.evaluate(
                     tir.tvm_mma_sync(
                         C.data,
-                        tir.floordiv(
-                            tir.get_elem_offset(C[vn, vi, vj], dtype="int32"), 256
-                        ),
+                        tir.floordiv(tir.get_elem_offset(C[vn, vi, vj], dtype="int32"), 256),
                         A.data,
-                        tir.floordiv(
-                            tir.get_elem_offset(A[vn, vi, vk], dtype="int32"), 256
-                        ),
+                        tir.floordiv(tir.get_elem_offset(A[vn, vi, vk], dtype="int32"), 256),
                         B.data,
-                        tir.floordiv(
-                            tir.get_elem_offset(B[vn, vj, vk], dtype="int32"), 256
-                        ),
+                        tir.floordiv(tir.get_elem_offset(B[vn, vj, vk], dtype="int32"), 256),
                         C.data,
-                        tir.floordiv(
-                            tir.get_elem_offset(C[vn, vi, vj], dtype="int32"), 256
-                        ),
+                        tir.floordiv(tir.get_elem_offset(C[vn, vi, vj], dtype="int32"), 256),
                         dtype="handle",
                     )
                 )
@@ -208,26 +200,36 @@ def dot_product_batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 def test_auto_tensorize_tensorcore():
     sch = ms.Schedule(batched_matmul)
     block = sch.get_block(name="update")
-    assert ms.analysis.can_tensorize_rewrite(sch.sch, sch.evaluate(block), desc_tensorcore)
+    assert (
+        ms.analysis.get_tensorize_loop_mapping(
+            sch.sch,
+            sch.evaluate(block),
+            desc_tensorcore,
+        )
+        is not None
+    )
     ms.analysis.do_tensorize_rewrite(sch, block, desc_tensorcore)
-
-    i, j, k = sch.sch.get_axes(sch.evaluate(block))[-3:]
+    i, _, _ = sch.sch.get_axes(sch.evaluate(block))[-3:]
     tensor_intrin = tvm.tir.TensorIntrin(desc_tensorcore, impl_tensorcore)
     sch.sch.tensorize(i, tensor_intrin)
-
     tvm.ir.assert_structural_equal(tensorized_batch_matmul, sch.sch.func)
 
 
 def test_auto_tensorize_dot_product():
     sch = ms.Schedule(batched_matmul)
     block = sch.get_block(name="update")
-    assert ms.analysis.can_tensorize_rewrite(sch.sch, sch.evaluate(block), desc_dot_product)
+    assert (
+        ms.analysis.get_tensorize_loop_mapping(
+            sch.sch,
+            sch.evaluate(block),
+            desc_dot_product,
+        )
+        is not None
+    )
     ms.analysis.do_tensorize_rewrite(sch, block, desc_dot_product)
-
     k = sch.sch.get_axes(sch.evaluate(block))[-1]
     tensor_intrin = tvm.tir.TensorIntrin(desc_dot_product, impl_dot_product)
     sch.sch.tensorize(k, tensor_intrin)
-
     tvm.ir.assert_structural_equal(dot_product_batch_matmul, sch.sch.func)
 
 

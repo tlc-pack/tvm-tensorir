@@ -166,21 +166,53 @@ TVM_DLL bool NeedsMultiLevelTiling(const tir::Schedule& sch, const tir::StmtSRef
  */
 TVM_DLL bool IsStrictlyInlineable(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
 
+/*! \brief Necessary information used for tensorization */
+class TensorizeInfoNode : public Object {
+ public:
+  /*! \brief Maps block loops to desc loops */
+  Map<tir::StmtSRef, tir::Loop> loop_map;
+  /*! \brief Maps loops in desc to its index, outer to inner */
+  Map<tir::Loop, Integer> desc_loop_indexer;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("loop_map", &loop_map);
+    v->Visit("desc_loop_indexer", &desc_loop_indexer);
+  }
+
+  static constexpr const char* _type_key = "meta_schedule.analysis.TensorizeInfo";
+  TVM_DECLARE_FINAL_OBJECT_INFO(TensorizeInfoNode, Object);
+};
+
 /*!
- * \brief Checks if a block is potential to rewrite and do tensorize
- * \param sch The meta schedule class
- * \param block_rv The block random variable to be analyzed
- * \param desc_func The description function of TensorIntrin we want to match
- * \return A boolean flag indicating if is able to rewrite and do tensorize
+ * \brief Managed reference to TensorizeInfoNode
+ * \sa TensorizeInfoNode
  */
-TVM_DLL bool CanTensorizeRewrite(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
-                                 const tir::PrimFunc& desc_func);
+class TensorizeInfo : public ObjectRef {
+ public:
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(TensorizeInfo, ObjectRef, TensorizeInfoNode);
+};
+
+/*!
+ * \brief Check if the given block can be tensorized, and in the meantime gather the necessary
+ * information for tensorization
+ * \param sch The TIR schedule
+ * \param block_sref The block to be analyzed
+ * \param desc_func The target function for tensorization
+ * \return The necessary information used for tensorization, or NullOpt if the block cannot be
+ * tensorized
+ */
+TVM_DLL Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::Schedule& sch,
+                                                        const tir::StmtSRef& block_sref,
+                                                        const tir::PrimFunc& desc_func);
 
 /*!
  * \brief Rewrite a block to do tensorize in the future
  * \param sch The meta schedule class
  * \param block_rv The block random variable to be analyzed
  * \param desc_func The description function of TensorIntrin we want to match
+ *
+ * TODO(@junrushao1994,@spectrometerHBH): it should not be an analysis function.
+ * Better to put it in search rule instead
  */
 TVM_DLL void DoTensorizeRewrite(Schedule sch, BlockRV block_rv, tir::PrimFunc desc_func);
 
