@@ -19,6 +19,7 @@
 // TODO(@junrushao1994): move to TIR analysis
 #include "./analysis.h"  // NOLINT(build/include)
 
+#include <tvm/arith/analyzer.h>
 #include <tvm/tir/stmt_functor.h>
 
 #include "../tir/schedule/schedule_common.h"
@@ -504,193 +505,191 @@ class AutoTensorizeComparator : public tir::TensorizeComparator {
   }
 };
 
-bool CanTensorizeRewrite(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
-                         const tir::PrimFunc& desc_func) {
-  const tir::BlockRealize& block = tir::GetBlockRealize(block_sref);
-  // Get desc_block, collect the loops outside desc_block at the same time
-  std::unordered_set<const tir::VarNode*> desc_loop_vars;
-  std::vector<const tir::LoopNode*> desc_loops;
-  const tir::BlockRealizeNode* desc_block = nullptr;
-  const auto* desc_body = desc_func->body.as<tir::BlockRealizeNode>();
-  CHECK(desc_body);
-  tir::PostOrderVisit(desc_body->block->body, [&](const ObjectRef& obj) {
-    if (obj->IsInstance<tir::BlockRealizeNode>()) {
-      desc_block = obj.as<tir::BlockRealizeNode>();
-      return false;
-    } else if (obj->IsInstance<tir::LoopNode>()) {
-      const auto* desc_loop_ptr = obj.as<tir::LoopNode>();
-      desc_loops.push_back(desc_loop_ptr);
-      desc_loop_vars.insert(desc_loop_ptr->loop_var.get());
-      if (!tir::is_zero(desc_loop_ptr->min)) return false;
-    }
-    return true;
-  });
-  std::reverse(desc_loops.begin(), desc_loops.end());
-  CHECK(desc_block);
-  // compare the block with desc_block
-  // Ignore the scope of buffers when comparing, since we can do cache_read/write
-  AutoTensorizeComparator comparator;
-  if (!comparator.VisitStmt(block, GetRef<tir::BlockRealize>(desc_block))) return false;
-  // matched, try to do tiling automatically if possible
+Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::Schedule& sch,
+                                                const tir::StmtSRef& block_sref,
+                                                const tir::PrimFunc& desc_func) {
+  // Try to do tiling automatically if possible
   // Now the heuristic is that if block's block var binding is constant + loop var,
   // in other words, with tir.block(..., vi=Ci+i, vj=Cj+j, vk=Ck+k), then we split and reorder
   // i, j, k according to the loops outside desc_block
   // Collect the loops outside block
-  std::unordered_set<const tir::VarNode*> loop_vars;
-  std::vector<const tir::LoopNode*> loops;
-  for (const tir::StmtSRefNode* sref = block_sref->parent;; sref = sref->parent) {
-    const auto* loop_ptr = sref->GetStmt<tir::LoopNode>();
-    if (loop_ptr == nullptr || loop_ptr->body->IsInstance<tir::SeqStmtNode>()) break;
-    loops.push_back(loop_ptr);
-    loop_vars.insert(loop_ptr->loop_var.get());
-    CHECK(tir::is_zero(loop_ptr->min));
-  }
-  std::reverse(loops.begin(), loops.end());
-  // map from block loops to desc block loops
   arith::Analyzer analyzer;
-  std::map<const tir::StmtSRefNode*, int> loop_map;
-  size_t offset = block->binding_values.size() - desc_block->binding_values.size();
-  for (size_t i = 0; i < desc_block->binding_values.size(); ++i) {
-    // find the corresponding loop of the ith block var of block
-    const tir::LoopNode* loop_i = nullptr;
-    for (const auto& loop : loops) {
-      const PrimExpr& r = analyzer.Simplify(block->binding_values[i + offset] - loop->loop_var);
-      if (!tir::ExprContainsVar(r, loop_vars)) {
-        loop_i = loop;
+  const tir::BlockRealize& block = tir::GetBlockRealize(block_sref);
+  // Step 1. Analyze desc_func, extract its block, loops and loop vars
+  const tir::BlockRealizeNode* desc_block = nullptr;
+  std::vector<const tir::LoopNode*> desc_loops;
+  std::unordered_set<const tir::VarNode*> desc_loop_vars;
+  {
+    auto f_visit = [&desc_block, &desc_loops, &desc_loop_vars,
+                    &analyzer](const ObjectRef& obj) -> bool {
+      // Extract the block
+      if (const auto* block = obj.as<tir::BlockRealizeNode>()) {
+        desc_block = block;
+        return false;
+      }
+      // Extract the loops
+      if (const auto* loop = obj.as<tir::LoopNode>()) {
+        desc_loops.push_back(loop);
+        desc_loop_vars.insert(loop->loop_var.get());
+        if (!analyzer.CanProve(loop->min == 0)) {
+          return false;
+        }
+      }
+      return true;
+    };
+    const auto* desc_body = desc_func->body.as<tir::BlockRealizeNode>();
+    CHECK(desc_body);
+    tir::PostOrderVisit(desc_body->block->body, f_visit);
+    std::reverse(desc_loops.begin(), desc_loops.end());
+    CHECK(desc_block);
+  }
+  // Step 2. Check if `desc_block` matches `block`
+  // Ignore the scope of buffers when comparing, since we can do cache_read/write
+  if (!AutoTensorizeComparator().VisitStmt(block, GetRef<tir::BlockRealize>(desc_block))) {
+    return NullOpt;
+  }
+  // Step 3. Extract the loops on top of the block. It is a mirror step of Step 1
+  std::vector<const tir::LoopNode*> block_loops;
+  std::unordered_set<const tir::VarNode*> block_loop_vars;
+  {
+    for (const tir::StmtSRefNode* loop_sref = block_sref->parent;; loop_sref = loop_sref->parent) {
+      const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+      if (loop == nullptr || loop->body->IsInstance<tir::SeqStmtNode>()) {
+        break;
+      }
+      block_loops.push_back(loop);
+      block_loop_vars.insert(loop->loop_var.get());
+      if (!analyzer.CanProve(loop->min == 0)) {
+        return NullOpt;
+      }
+    }
+    std::reverse(block_loops.begin(), block_loops.end());
+  }
+  // Step 4. Map from block loops to desc block loops
+  ObjectPtr<TensorizeInfoNode> ret = make_object<TensorizeInfoNode>();
+  int n_block_vars = block->binding_values.size();
+  int n_desc_vars = desc_block->binding_values.size();
+  int offset = n_block_vars - n_desc_vars;
+  if (offset < 0) {
+    return NullOpt;
+  }
+  // We align the block and desc block's bindings from the right side
+  // block     (v0=..., v1=..., v2=...)
+  //                    ^ i_block
+  // desc_block(        v1=..., v2=...)
+  //                    ^ i_desc
+  for (int i_desc = 0, i_block = offset; i_desc < n_desc_vars; ++i_desc, ++i_block) {
+    // For each block var binding, we find
+    const PrimExpr& block_bind = block->binding_values[i_block];
+    const PrimExpr& desc_bind = desc_block->binding_values[i_desc];
+    // Step 4.1. Find the corresponding loop of the i-th block var of block
+    const tir::LoopNode* block_loop = nullptr;
+    for (int i = 0, n = block_loops.size(); i < n; ++i) {
+      // Check if block_bind = block_loops[i]->loop_var + stuff-irrelevant-of-loop-vars
+      PrimExpr r = analyzer.Simplify(block_bind - block_loops[i]->loop_var);
+      if (!tir::ExprContainsVar(r, block_loop_vars)) {
+        block_loop = block_loops[i];
         break;
       }
     }
-    // find the corresponding loop of the ith block var of desc block
-    int desc_loop_i = -1;
-    for (size_t j = 0; j < desc_loops.size(); ++j) {
-      const PrimExpr& r =
-          analyzer.Simplify(desc_block->binding_values[i] - desc_loops[j]->loop_var);
+    if (block_loop == nullptr) {
+      return NullOpt;
+    }
+    // Step 4.2. Find the corresponding loop of the i-th block var of desc
+    const tir::LoopNode* desc_loop = nullptr;
+    for (int i = 0, n = desc_loops.size(); i < n; ++i) {
+      // Check if desc_bind = loops[i]->loop_var + stuff-irrelevant-of-loop-vars
+      PrimExpr r = analyzer.Simplify(desc_bind - desc_loops[i]->loop_var);
       if (!tir::ExprContainsVar(r, desc_loop_vars)) {
-        desc_loop_i = j;
+        desc_loop = desc_loops[i];
         break;
       }
     }
-    // check mapping
-    const tir::StmtSRefNode* loop_sref = sch->stmt2ref[loop_i].operator->();
-    auto it = loop_map.find(loop_sref);
-    if (it == loop_map.end()) {
-      loop_map[loop_sref] = desc_loop_i;
-    } else {
-      if (it->second != desc_loop_i) return false;
+    if (block_loop == nullptr) {
+      return NullOpt;
     }
-    for (auto it : loop_map) {
-      const IntImm& loop_extent =
-          Downcast<IntImm>(analyzer.Simplify(it.first->GetStmt<tir::LoopNode>()->extent));
-      const IntImm& desc_loop_extent =
-          Downcast<IntImm>(analyzer.Simplify(desc_loops[it.second]->extent));
-      if (loop_extent->value % desc_loop_extent->value != 0) return false;
+    // Step 4.3. Check divisibility of loop extents
+    PrimExpr block_extent = analyzer.Simplify(block_loop->extent);
+    PrimExpr desc_extent = analyzer.Simplify(desc_loop->extent);
+    if (const auto* int_block_extent = block_extent.as<IntImmNode>()) {
+      if (const auto* int_desc_extent = desc_extent.as<IntImmNode>()) {
+        if (int_block_extent->value % int_desc_extent->value != 0) {
+          return NullOpt;
+        }
+      } else {
+        return NullOpt;
+      }
+    } else {
+      return NullOpt;
+    }
+    // Step 4.4. Maps the result of Step 4.1 to Step 4.2
+    const tir::StmtSRef& block_loop_sref = sch->stmt2ref[block_loop];
+    auto it = ret->loop_map.find(block_loop_sref);
+    if (it == ret->loop_map.end()) {
+      ret->loop_map.Set(block_loop_sref, GetRef<tir::Loop>(desc_loop));
+    } else if ((*it).second.get() != desc_loop) {
+      return NullOpt;
     }
   }
-  return true;
+  for (int i = 0, n = desc_loops.size(); i < n; ++i) {
+    ret->desc_loop_indexer.Set(GetRef<tir::Loop>(desc_loops[i]), Integer(i));
+  }
+  return TensorizeInfo(ret);
 }
 
 void DoTensorizeRewrite(Schedule sch, BlockRV block_rv, tir::PrimFunc desc_func) {
   const tir::StmtSRef& block_sref = sch->Eval(block_rv);
-  const tir::BlockRealize& block = tir::GetBlockRealize(block_sref);
-  // Get desc_block, collect the loops outside desc_block at the same time
-  std::unordered_set<const tir::VarNode*> desc_loop_vars;
-  std::vector<const tir::LoopNode*> desc_loops;
-  const tir::BlockRealizeNode* desc_block = nullptr;
-  const auto* desc_body = desc_func->body.as<tir::BlockRealizeNode>();
-  CHECK(desc_body);
-  tir::PostOrderVisit(desc_body->block->body, [&](const ObjectRef& obj) {
-    if (obj->IsInstance<tir::BlockRealizeNode>()) {
-      desc_block = obj.as<tir::BlockRealizeNode>();
-      return false;
-    } else if (obj->IsInstance<tir::LoopNode>()) {
-      const auto* desc_loop_ptr = obj.as<tir::LoopNode>();
-      desc_loops.push_back(desc_loop_ptr);
-      desc_loop_vars.insert(desc_loop_ptr->loop_var.get());
-      CHECK(tir::is_zero(desc_loop_ptr->min));
-    }
-    return true;
-  });
-  std::reverse(desc_loops.begin(), desc_loops.end());
-  // compare the block with desc_block
-  // Ignore the scope of buffers when comparing, since we can do cache_read/write
-  AutoTensorizeComparator comparator;
-  CHECK(comparator.VisitStmt(block, GetRef<tir::BlockRealize>(desc_block)));
-  // matched, try to do auto tiling if possible
-  // Now the heuristic is that if block's block var binding is constant + loop var,
-  // in other words, with tir.block(..., vi=Ci+i, vj=Cj+j, vk=Ck+k), then we split and reorder
-  // i, j, k according to the loops outside desc_block
-  // Collect the loops outside block
-  std::unordered_set<const tir::VarNode*> loop_vars;
-  std::vector<LoopRV> loops;
-  const auto& all_loops = sch->GetAxes(block_rv);
-  for (auto it = all_loops.rbegin(); it != all_loops.rend(); ++it) {
-    const auto* loop_ptr = sch->Eval(*it)->GetStmt<tir::LoopNode>();
-    if (loop_ptr->body->IsInstance<tir::SeqStmtNode>()) break;
-    loops.push_back(*it);
-    loop_vars.insert(loop_ptr->loop_var.get());
-    CHECK(tir::is_zero(loop_ptr->min));
-  }
-  // build map from block loops to desc block loops
-  arith::Analyzer analyzer;
-  std::unordered_map<LoopRV, int, ObjectHash, ObjectEqual> loop_map;
-  size_t offset = block->binding_values.size() - desc_block->binding_values.size();
-  for (size_t i = 0; i < desc_block->binding_values.size(); ++i) {
-    // find the corresponding loop of the ith block var of block
-    LoopRV loop_i;
-    for (const auto& loop : loops) {
-      const PrimExpr& r = analyzer.Simplify(block->binding_values[i + offset] -
-                                            sch->Eval(loop)->GetStmt<tir::LoopNode>()->loop_var);
-      if (!tir::ExprContainsVar(r, loop_vars)) {
-        loop_i = loop;
-        break;
-      }
-    }
-    // find the corresponding loop of the ith block var of desc block
-    int desc_loop_i = -1;
-    for (size_t j = 0; j < desc_loops.size(); ++j) {
-      const PrimExpr& r =
-          analyzer.Simplify(desc_block->binding_values[i] - desc_loops[j]->loop_var);
-      if (!tir::ExprContainsVar(r, desc_loop_vars)) {
-        desc_loop_i = j;
-        break;
-      }
-    }
-    // check mapping is consistent
-    auto it = loop_map.find(loop_i);
-    if (it == loop_map.end()) {
-      loop_map[loop_i] = desc_loop_i;
-    } else {
-      CHECK_EQ(it->second, desc_loop_i);
+  Optional<ObjectRef> opt_tensorize_info = GetTensorizeLoopMapping(sch->sch, block_sref, desc_func);
+  const TensorizeInfoNode* info = opt_tensorize_info.as<TensorizeInfoNode>();
+  CHECK(info);
+  Map<tir::StmtSRef, LoopRV> loop2rv;
+  {
+    Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
+    for (const LoopRV& loop_rv : loop_rvs) {
+      loop2rv.Set(sch->Eval(loop_rv), loop_rv);
     }
   }
   // split the loops
-  std::unordered_set<const tir::StmtSRefNode*> subloops_set;
+  arith::Analyzer analyzer;
+  std::unordered_set<const Object*> inner_loops;
   std::vector<LoopRV> reorder_suffix;
-  reorder_suffix.resize(loop_map.size());
-  for (const auto& it : loop_map) {
-    const IntImm& loop_extent =
-        Downcast<IntImm>(analyzer.Simplify(sch->Eval(it.first)->GetStmt<tir::LoopNode>()->extent));
-    const IntImm& desc_loop_extent =
-        Downcast<IntImm>(analyzer.Simplify(desc_loops[it.second]->extent));
-    CHECK_EQ(loop_extent->value % desc_loop_extent->value, 0);
-    const auto& res = sch->Split(it.first, {div(loop_extent, desc_loop_extent), desc_loop_extent});
-    reorder_suffix[it.second] = res[1];
-    subloops_set.insert(sch->Eval(res[1]).operator->());
+  reorder_suffix.resize(info->loop_map.size());
+  for (const auto& kv : info->loop_map) {
+    const tir::StmtSRef& block_loop_sref = kv.first;
+    const tir::LoopNode* block_loop = block_loop_sref->GetStmt<tir::LoopNode>();
+    const tir::LoopNode* desc_loop = kv.second.get();
+    int desc_loop_index = info->desc_loop_indexer.at(GetRef<tir::Loop>(desc_loop));
+    CHECK(block_loop != nullptr && desc_loop != nullptr);
+    PrimExpr extent = analyzer.Simplify(block_loop->extent);
+    PrimExpr desc_extent = analyzer.Simplify(desc_loop->extent);
+    const auto* int_block_extent = extent.as<IntImmNode>();
+    const auto* int_desc_extent = desc_extent.as<IntImmNode>();
+    CHECK(int_block_extent != nullptr && int_desc_extent != nullptr);
+    int64_t total = int_block_extent->value;
+    int64_t inner = int_desc_extent->value;
+    CHECK_EQ(total % inner, 0);
+    int64_t outer = int_block_extent->value / int_desc_extent->value;
+    Array<LoopRV> split = sch->Split(loop2rv.at(block_loop_sref), {Integer(outer), Integer(inner)});
+    CHECK_EQ(split.size(), 2);
+    reorder_suffix[desc_loop_index] = split[1];
+    inner_loops.insert(sch->Eval(split[1]).get());
   }
-  // reorder the loops
+  // Reorder the loops
   std::vector<LoopRV> reorder_list;
-  const auto& all_loops_after_split = sch->GetAxes(block_rv);
   bool meet = false;
-  for (const auto& loop : all_loops_after_split) {
-    if (subloops_set.count(sch->Eval(loop).operator->())) {
+  Array<LoopRV> all_loops = sch->GetAxes(block_rv);
+  for (const LoopRV& loop : all_loops) {
+    if (inner_loops.count(sch->Eval(loop).get())) {
       meet = true;
-    } else {
-      if (meet) reorder_list.push_back(loop);
+    } else if (meet) {
+      reorder_list.push_back(loop);
     }
   }
   reorder_list.insert(reorder_list.end(), reorder_suffix.begin(), reorder_suffix.end());
   sch->Reorder(reorder_list);
 }
+
+TVM_REGISTER_NODE_TYPE(TensorizeInfoNode);
 
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsSubrootBlock").set_body_typed(IsSubrootBlock);
@@ -710,8 +709,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.analysis.NeedsMultiLevelTiling")
     .set_body_typed(NeedsMultiLevelTiling);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsStrictlyInlineable")
     .set_body_typed(IsStrictlyInlineable);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.CanTensorizeRewrite")
-    .set_body_typed(CanTensorizeRewrite);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetTensorizeLoopMapping")
+    .set_body_typed(GetTensorizeLoopMapping);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.DoTensorizeRewrite").set_body_typed(DoTensorizeRewrite);
 
 }  // namespace meta_schedule
