@@ -16,7 +16,7 @@
 # under the License.
 
 import tvm
-from tvm import tir
+from tvm import tir, te
 from tvm.script import ty
 
 
@@ -68,6 +68,20 @@ def matmul_128_n_removed(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
 
 
+@tvm.script.tir
+def matmul_128_n_8x(a: ty.handle, b: ty.handle, c: ty.handle, n: ty.int32) -> None:
+    x = tir.var("int32")
+    m = tir.var("int32")
+    A = tir.match_buffer(a, [m, x*8])
+    B = tir.match_buffer(b, [m, x*8])
+    C = tir.match_buffer(c, [m, m])
+    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
+
+    assert (n == x*8), "violate specialize constraint"
+    with tir.block([m, m, tir.reduce_axis(0, n)], "update") as [vi, vj, vk]:
+        reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
+
+
 def test_tensor_dimension_invariant_code_matmul():
     a, b, c, n = matmul.params
     func = matmul.specialize(a, tir.decl_buffer((128, 128))).remove_const_param(n)
@@ -78,6 +92,9 @@ def test_tensor_dimension_invariant_code_matmul():
 
     func = matmul.specialize(n, 128).remove_const_param(n)
     tvm.ir.assert_structural_equal(func, matmul_128_n_removed)
+
+    func = matmul.specialize(n, te.var("x")*8)
+    tvm.ir.assert_structural_equal(func, matmul_128_n_8x)
 
 
 @tvm.script.tir

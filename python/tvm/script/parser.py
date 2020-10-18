@@ -544,12 +544,14 @@ class TVMScriptParser(ast.NodeVisitor):
         """
 
         args = list()
+        self.scope_emitter.symbols.append(dict())
         for arg in node.args.args:
             args.append(tvm.te.var(arg.arg))
             self.scope_emitter.update_symbol(arg.arg, args[-1])
         res = TVMScriptLambda(args, self.visit(node.body))
         for arg in node.args.args:
             self.scope_emitter.remove_symbol(arg.arg)
+        self.scope_emitter.symbols.pop()
         return res
 
     def visit_BinOp(self, node):
