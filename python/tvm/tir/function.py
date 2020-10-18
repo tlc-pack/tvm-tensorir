@@ -80,29 +80,38 @@ class PrimFunc(BaseFunc):
         """
         return PrimFunc(self.params, new_body, self.ret_type, self.buffer_map, self.attrs)
 
-    def specialize_buffer(self, var, shape=None, strides=None, elem_offset=None):
-        """Metaprogramming usage: specialize buffer parameters
+    def specialize(self, var, instance):
+        """Metaprogramming usage: specialize parameters of PrimFunc
 
         Parameters
         ----------
         var: Var
             The var in function's params
 
-        shape: List[PrimExpr]
-            The shape of the buffer we want to specialize
-
-        strides: List[PrimExpr]
-            The strides of the buffer we want to specialize
-
-        elem_offset: PrimExpr
-            The elem_offset of the buffer we want to specialize
+        instance : Union[PrimExpr, Buffer]
+            The instance we use to specialize the PrimFunc
 
         Returns
         -------
         new_func : PrimFunc
-            The new function with buffer's parameter specialized in buffer_map
+            The new function with parameter specialized
         """
-        return _ffi_api.SpecializeBuffer(self, var, shape, strides, elem_offset)
+        return _ffi_api.Specialize(self, var, tvm.runtime.convert(instance))
+
+    def remove_const_param(self, var):
+        """
+
+        Parameters
+        ----------
+        var: Var
+            The var in function's params, which is a constant now
+
+        Returns
+        -------
+        new_func : PrimFunc
+            The new function with const parameter removed
+        """
+        return _ffi_api.RemoveConstParam(self, var)
 
 
 @tvm._ffi.register_object("tir.TensorIntrin")

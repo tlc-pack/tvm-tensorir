@@ -148,13 +148,17 @@ class PrimFunc : public BaseFunc {
   /*!
    * \brief Metaprogramming usage: specialize buffer parameters
    * \param param The var in function's params
-   * \param shape The shape of the buffer we want to specialize
-   * \param strides The strides of the buffer we want to specialize
-   * \param elem_offset The elem_offset of the buffer we want to specialize
-   * \return
+   * \param instance The shape of the buffer we want to specialize
+   * \return The new function with parameter specialized
    */
-  TVM_DLL PrimFunc specialize_buffer(tir::Var param, Array<PrimExpr> shape, Array<PrimExpr> strides,
-                                     PrimExpr elem_offset);
+  TVM_DLL PrimFunc specialize(const tir::Var& param, const ObjectRef& instance);
+
+  /*!
+   * \brief Remove a parameter that is constant inside PrimFunc
+   * \param param The constant parameter to be removed
+   * \return The new function with parameter removed
+   */
+  TVM_DLL PrimFunc remove_constant_param(const tir::Var& param);
 
   TVM_DEFINE_OBJECT_REF_METHODS(PrimFunc, BaseFunc, PrimFuncNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(PrimFuncNode);

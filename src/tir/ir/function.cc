@@ -27,6 +27,9 @@
 #include <tvm/tir/op.h>
 #include <tvm/tir/stmt_functor.h>
 
+#include <utility>
+
+#include "../schedule/schedule_common.h"
 #include "functor_common.h"
 
 namespace tvm {
@@ -119,7 +122,8 @@ TVM_REGISTER_GLOBAL("tir.TensorIntrin")
 // Mutate buffer's declarations, and replace them in the AST
 class BufferMutator : public StmtExprMutator {
  public:
-  explicit BufferMutator(const std::function<Buffer(const Buffer&)>& fmutate) : fmutate_(fmutate) {}
+  explicit BufferMutator(std::function<Buffer(const Buffer&)> fmutate)
+      : fmutate_(std::move(fmutate)) {}
 
   PrimFunc MutatePrimFunc(PrimFunc f) {
     PrimFunc new_f = f;
@@ -206,43 +210,141 @@ class BufferMutator : public StmtExprMutator {
   std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> buffer_map_;
 };
 
-PrimFunc PrimFunc::specialize_buffer(tir::Var param, Array<PrimExpr> shape, Array<PrimExpr> strides,
-                                     PrimExpr elem_offset) {
-  tir::ExprDeepEqual equal;
-  std::unordered_map<tir::Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> var_map;
+using VarMapType = std::unordered_map<tir::Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual>;
 
-  const Buffer& buf_to_specialize = this->get()->buffer_map[param];
-  // build var mapping
-  auto build_var_mapping = [&](const PrimExpr new_expr, const PrimExpr old_expr) {
-    if (!equal(new_expr, old_expr)) {
-      const auto* var_ptr = old_expr.as<tir::VarNode>();
-      CHECK(var_ptr != nullptr);
-      auto it = var_map.find(GetRef<tir::Var>(var_ptr));
-      if (it != var_map.end()) {
-        CHECK(equal(it->second, new_expr));
-      } else {
-        var_map[GetRef<tir::Var>(var_ptr)] = new_expr;
-      }
+class SpecializeConstraintRemover : public StmtMutator {
+ public:
+  explicit SpecializeConstraintRemover(const Var& param) : param_(param) {}
+
+  Stmt VisitStmt_(const AssertStmtNode* op) override {
+    if (auto eq = op->condition.as<EQNode>()) {
+      if (eq->a.same_as(param_)) return op->body;
     }
+    return StmtMutator::VisitStmt_(op);
+  }
+
+  Stmt VisitStmt_(const SeqStmtNode* op) override { return GetRef<SeqStmt>(op); }
+
+ private:
+  const tir::Var& param_;
+};
+
+PrimFunc RemoveSpecializeConstraint(const PrimFunc& f, const tir::Var& param) {
+  CHECK(f->body->IsInstance<BlockRealizeNode>())
+      << "ValueError: The body of PrimFunc ought to be block";
+  SpecializeConstraintRemover specialize_constraint_remover(param);
+  PrimFunc new_f = f;
+  BlockRealize new_block = Downcast<BlockRealize>(f->body);
+  new_block.CopyOnWrite()->block.CopyOnWrite()->body =
+      specialize_constraint_remover(new_block->block->body);
+  new_f.CopyOnWrite()->body = new_block;
+  return new_f;
+}
+
+PrimExpr FetchSpecializeConstraint(const PrimFunc& f, const tir::Var& param) {
+  CHECK(f->body->IsInstance<BlockRealizeNode>())
+      << "ValueError: The body of PrimFunc ought to be block";
+  PrimExpr result(nullptr);
+  tir::PreOrderVisit(f->body.as<BlockRealizeNode>()->block->body,
+                     [&](const ObjectRef& obj) -> bool {
+                       if (obj->IsInstance<AssertStmtNode>()) {
+                         if (auto eq = obj.as<AssertStmtNode>()->condition.as<EQNode>()) {
+                           if (eq->a.same_as(param)) {
+                             result = eq->b;
+                           }
+                         }
+                       } else if (obj->IsInstance<SeqStmtNode>()) {
+                         return false;
+                       }
+                       return true;
+                     });
+  return result;
+}
+
+PrimFunc ExertSpecializeConstraint(const VarMapType& param_var_map, const PrimFunc& f) {
+  CHECK(f->body->IsInstance<BlockRealizeNode>())
+      << "ValueError: The body of PrimFunc ought to be block";
+  Stmt body = f->body.as<BlockRealizeNode>()->block->body;
+  for (const auto& it : param_var_map) {
+    PrimExpr old_constraint = FetchSpecializeConstraint(f, it.first);
+    CHECK(!old_constraint.defined())
+        << "ValueError: param " << it.first << "has already been specialized";
+  }
+  for (const auto& it : param_var_map) {
+    body = AssertStmt(EQ(it.first, it.second), StringImm("violate specialize constraint"), body);
+  }
+  PrimFunc new_f = f;
+  BlockRealize new_block = Downcast<BlockRealize>(f->body);
+  new_block.CopyOnWrite()->block.CopyOnWrite()->body = body;
+  new_f.CopyOnWrite()->body = new_block;
+  return new_f;
+}
+
+PrimFunc PrimFunc::specialize(const tir::Var& param, const ObjectRef& instance) {
+  // preliminaries
+  tir::ExprDeepEqual equal;
+  VarMapType internal_var_map, param_var_map, all_var_map;
+  auto in_params = [&](const Var& param) {
+    auto it = std::find_if(this->get()->params.begin(), this->get()->params.end(),
+                           [&](const tir::Var& var) { return var.same_as(param); });
+    return it != this->get()->params.end();
   };
-  if (shape.defined()) {
-    CHECK_EQ(shape.size(), buf_to_specialize->shape.size());
-    for (size_t i = 0; i < shape.size(); ++i) {
-      build_var_mapping(shape[i], buf_to_specialize->shape[i]);
+  auto in_buffer_map = [&](const Buffer& buf) {
+    auto it =
+        std::find_if(this->get()->buffer_map.begin(), this->get()->buffer_map.end(),
+                     [&](const std::pair<tir::Var, Buffer>& it) { return it.second.same_as(buf); });
+    return it != this->get()->buffer_map.end();
+  };
+  // check param is in PrimFunc's parameters
+  CHECK(in_params(param)) << "ValueError: specialize expects param to be in PrimFunc's params";
+  if (instance->IsInstance<BufferNode>()) {
+    // specialize a param in buffer_map
+    Buffer specific_buf = Downcast<Buffer>(instance);
+    CHECK_GT(this->get()->buffer_map.count(param), 0)
+        << "ValueError: specialize expects param to be in PrimFunc's buffer_map";
+    const Buffer& buf_to_specialize = this->get()->buffer_map[param];
+    // build var mapping using specific_buf's parameters
+    auto build_var_mapping = [&](const PrimExpr& new_expr, const PrimExpr& old_expr) {
+      if (!equal(new_expr, old_expr)) {
+        CHECK(old_expr->IsInstance<tir::VarNode>());
+        const Var& var = Downcast<tir::Var>(old_expr);
+        std::unordered_map<tir::Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual>& var_map =
+            in_params(var) ? param_var_map : internal_var_map;
+        auto it = var_map.find(var);
+        if (it != var_map.end()) {
+          CHECK(equal(it->second, new_expr));
+        } else {
+          var_map[var] = new_expr;
+          all_var_map[var] = new_expr;
+        }
+      }
+    };
+    CHECK_EQ(specific_buf->shape.size(), buf_to_specialize->shape.size());
+    for (size_t i = 0; i < specific_buf->shape.size(); ++i) {
+      build_var_mapping(specific_buf->shape[i], buf_to_specialize->shape[i]);
     }
-  }
-  if (strides.defined()) {
-    CHECK_EQ(strides.size(), buf_to_specialize->strides.size());
-    for (size_t i = 0; i < strides.size(); ++i) {
-      build_var_mapping(strides[i], buf_to_specialize->strides[i]);
+    CHECK_EQ(specific_buf->strides.size(), buf_to_specialize->strides.size());
+    for (size_t i = 0; i < specific_buf->strides.size(); ++i) {
+      build_var_mapping(specific_buf->strides[i], buf_to_specialize->strides[i]);
     }
+    build_var_mapping(specific_buf->elem_offset, buf_to_specialize->elem_offset);
+  } else if (instance->IsInstance<PrimExprNode>()) {
+    // specialize a param not in buffer_map
+    CHECK_EQ(this->get()->buffer_map.count(param), 0)
+        << "ValueError: specialize expects param to not be in PrimFunc's buffer_map";
+    PrimExpr specific_expr = Downcast<PrimExpr>(instance);
+    // build var mapping using specific_expr
+    CHECK(!FetchSpecializeConstraint(*this, param).defined())
+        << "ValueError: param already specialized";
+    param_var_map[param] = specific_expr;
+    all_var_map[param] = specific_expr;
+  } else {
+    LOG(FATAL) << "TypeError: PrimFunc.specialize expects instance to be Buffer or PrimExpr";
   }
-  if (elem_offset.defined()) {
-    build_var_mapping(elem_offset, buf_to_specialize->elem_offset);
-  }
-  // build buffer mapping
+  // buffer replacement function
   auto f_buffer = [&](const Buffer& buf) -> Buffer {
     Buffer new_buffer = buf;
+    const auto& var_map = in_buffer_map(buf) ? all_var_map : internal_var_map;
     new_buffer.CopyOnWrite()->elem_offset = Substitute(new_buffer->elem_offset, var_map);
     std::vector<PrimExpr> new_shape, new_stride;
     for (const auto& dim : new_buffer->shape) new_shape.push_back(Substitute(dim, var_map));
@@ -255,17 +357,64 @@ PrimFunc PrimFunc::specialize_buffer(tir::Var param, Array<PrimExpr> shape, Arra
   BufferMutator buffer_mutator(f_buffer);
   PrimFunc new_func = buffer_mutator.MutatePrimFunc(*this);
   // replace vars in body
-  new_func.CopyOnWrite()->body = Substitute(new_func->body, var_map);
+  new_func.CopyOnWrite()->body = Substitute(new_func->body, internal_var_map);
+  new_func = ExertSpecializeConstraint(param_var_map, new_func);
   return new_func;
 }
 
-TVM_REGISTER_GLOBAL("tir.SpecializeBuffer")
-    .set_body_typed<PrimFunc(PrimFunc, Var, Array<PrimExpr>, Array<PrimExpr>, PrimExpr)>(
-        [](PrimFunc func, Var param, Array<PrimExpr> shape, Array<PrimExpr> strides,
-           PrimExpr elem_offset) {
-          return func.specialize_buffer(std::move(param), std::move(shape), std::move(strides),
-                                        std::move(elem_offset));
-        });
+PrimFunc PrimFunc::remove_constant_param(const tir::Var& param) {
+  // Check param is in params
+  auto in_params = [&](const Var& param) {
+    auto it = std::find_if(this->get()->params.begin(), this->get()->params.end(),
+                           [&](const tir::Var& var) { return var.same_as(param); });
+    return it != this->get()->params.end();
+  };
+  CHECK(in_params(param));
+  // Check param is constant
+  // Cond 1. Buffer map has no param
+  for (const auto& it : this->get()->buffer_map) {
+    CHECK(!it.first.same_as(param));
+    for (const auto& expr : it.second->shape) CHECK(!StmtExprContainsVar(expr, {param}));
+    for (const auto& expr : it.second->strides) CHECK(!StmtExprContainsVar(expr, {param}));
+    CHECK(!StmtExprContainsVar(it.second->elem_offset, {param}));
+  }
+  // Cond 2. body contains no param or param is constantly specialized
+  PrimExpr constraint = FetchSpecializeConstraint(*this, param);
+  auto is_constant = [&](PrimExpr expr) -> bool {
+    arith::Analyzer analyzer;
+    if (expr.defined()) {
+      expr = analyzer.Simplify(expr);
+    } else {
+      return false;
+    }
+    return expr->IsInstance<IntImmNode>() || expr->IsInstance<FloatImmNode>();
+  };
+  bool needs_substitute = StmtExprContainsVar(this->get()->body, param);
+  CHECK(is_constant(constraint) || !needs_substitute);
+  // Remove
+  PrimFunc new_f = *this;
+  if (constraint.defined()) {
+    new_f = RemoveSpecializeConstraint(new_f, param);
+    new_f.CopyOnWrite()->body = Substitute(new_f->body, {{param, constraint}});
+  }
+  std::vector<tir::Var> new_params;
+  for (const auto& var : this->get()->params) {
+    if (!var.same_as(param)) new_params.push_back(var);
+  }
+  new_f.CopyOnWrite()->params = new_params;
+  return new_f;
+}
+
+TVM_REGISTER_GLOBAL("tir.Specialize")
+    .set_body_typed<PrimFunc(PrimFunc, Var, ObjectRef)>([](PrimFunc func, Var param,
+                                                           ObjectRef instance) {
+      return func.specialize(std::move(param), std::move(instance));
+    });
+
+TVM_REGISTER_GLOBAL("tir.RemoveConstParam")
+    .set_body_typed<PrimFunc(PrimFunc, Var)>([](PrimFunc func, tir::Var param) {
+      return func.remove_constant_param(std::move(param));
+    });
 
 }  // namespace tir
 }  // namespace tvm

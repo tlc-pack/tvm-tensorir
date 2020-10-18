@@ -21,14 +21,14 @@ from tvm.script import ty
 
 
 @tvm.script.tir
-def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+def matmul(a: ty.handle, b: ty.handle, c: ty.handle, n: ty.int32) -> None:
     m = tir.var("int32")
-    A = tir.match_buffer(a, [m, m])
-    B = tir.match_buffer(b, [m, m])
+    A = tir.match_buffer(a, [m, n])
+    B = tir.match_buffer(b, [m, n])
     C = tir.match_buffer(c, [m, m])
     reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
-    with tir.block([m, m, tir.reduce_axis(0, m)], "update") as [vi, vj, vk]:
+    with tir.block([m, m, tir.reduce_axis(0, n)], "update") as [vi, vj, vk]:
         reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
 
 
@@ -43,11 +43,41 @@ def matmul_128(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
 
 
-def test_tensor_dimension_invariant_code_matmul():
-    a, b, c = matmul.params
-    func = matmul.specialize_buffer(a, shape=[128, 128])
+@tvm.script.tir
+def matmul_128_n(a: ty.handle, b: ty.handle, c: ty.handle, n: ty.int32) -> None:
+    m = tir.var("int32")
+    A = tir.match_buffer(a, [m, 128])
+    B = tir.match_buffer(b, [m, 128])
+    C = tir.match_buffer(c, [m, m])
+    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
+    assert (n == 128), "violate specialize constraint"
+    with tir.block([m, m, tir.reduce_axis(0, n)], "update") as [vi, vj, vk]:
+        reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
+
+
+@tvm.script.tir
+def matmul_128_n_removed(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    m = tir.var("int32")
+    A = tir.match_buffer(a, [m, 128])
+    B = tir.match_buffer(b, [m, 128])
+    C = tir.match_buffer(c, [m, m])
+    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
+
+    with tir.block([m, m, tir.reduce_axis(0, 128)], "update") as [vi, vj, vk]:
+        reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
+
+
+def test_tensor_dimension_invariant_code_matmul():
+    a, b, c, n = matmul.params
+    func = matmul.specialize(a, tir.decl_buffer((128, 128))).remove_const_param(n)
     tvm.ir.assert_structural_equal(func, matmul_128)
+
+    func = matmul.specialize(n, 128)
+    tvm.ir.assert_structural_equal(func, matmul_128_n)
+
+    func = matmul.specialize(n, 128).remove_const_param(n)
+    tvm.ir.assert_structural_equal(func, matmul_128_n_removed)
 
 
 @tvm.script.tir
@@ -96,12 +126,12 @@ def element_wise_128_n(a: ty.handle, c: ty.handle) -> None:
 def test_tensor_dimension_invariant_code_elemwise():
     # fully specialized
     a, c = element_wise.params
-    func1 = element_wise.specialize_buffer(a, shape=[128, 64])
+    func1 = element_wise.specialize(a, tir.decl_buffer((128, 64)))
     tvm.ir.assert_structural_equal(func1, element_wise_128_64)
 
     # partially specialized
     C = element_wise.buffer_map[c]
-    func2 = element_wise.specialize_buffer(c, shape=[128, C.shape[1]])
+    func2 = element_wise.specialize(c, tir.decl_buffer((128, C.shape[1])))
     tvm.ir.assert_structural_equal(func2, element_wise_128_n)
 
 
