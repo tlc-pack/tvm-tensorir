@@ -145,21 +145,6 @@ class PrimFunc : public BaseFunc {
                    Map<tir::Var, Buffer> buffer_map = Map<tir::Var, Buffer>(),
                    DictAttrs attrs = NullValue<DictAttrs>());
 
-  /*!
-   * \brief Metaprogramming usage: specialize buffer parameters
-   * \param param The var in function's params
-   * \param instance The shape of the buffer we want to specialize
-   * \return The new function with parameter specialized
-   */
-  TVM_DLL PrimFunc specialize(const tir::Var& param, const ObjectRef& instance);
-
-  /*!
-   * \brief Remove a parameter that is constant inside PrimFunc
-   * \param param The constant parameter to be removed
-   * \return The new function with parameter removed
-   */
-  TVM_DLL PrimFunc remove_constant_param(const tir::Var& param);
-
   TVM_DEFINE_OBJECT_REF_METHODS(PrimFunc, BaseFunc, PrimFuncNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(PrimFuncNode);
 };

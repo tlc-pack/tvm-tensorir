@@ -99,7 +99,7 @@ class PrimFunc(BaseFunc):
         return _ffi_api.Specialize(self, var, tvm.runtime.convert(instance))
 
     def remove_const_param(self, var):
-        """
+        """Remove constant parameters from param list
 
         Parameters
         ----------
