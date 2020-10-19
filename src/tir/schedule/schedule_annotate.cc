@@ -130,6 +130,7 @@ void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const Annotation& 
 }
 
 void ScheduleNode::vectorize(const StmtSRef& loop_sref) {
+  if (is_one(loop_sref->GetStmt<LoopNode>()->extent)) return;
   ParallelCompute(loop_sref, Annotation(attr::loop_type, StringImm("vectorize")));
 }
 
