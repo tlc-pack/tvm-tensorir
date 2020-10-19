@@ -24,8 +24,8 @@
 
 #include <tvm/arith/int_set.h>
 #include <tvm/runtime/registry.h>
-#include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/stmt.h>
+#include <tvm/tir/stmt_functor.h>
 
 #include <utility>
 
