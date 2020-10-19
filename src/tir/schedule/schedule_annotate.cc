@@ -47,7 +47,7 @@ bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
   for (int i = 0; i < n; ++i) {
     const IterVar& iter_var = block->iter_vars[i];
     const PrimExpr& binding = realize->binding_values[i];
-    if (iter_var->iter_type != kDataPar && ExprContainsVar(binding, loop_var)) {
+    if (iter_var->iter_type != kDataPar && StmtExprContainsVar(binding, loop_var)) {
       return false;
     }
   }
