@@ -127,20 +127,20 @@ TensorRegion RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
 std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root);
 
 /*!
- * \brief Inspect whether the expr contains any var of vars
- * \param expr the expected expr
+ * \brief Inspect whether the stmt/expr contains any var of vars
+ * \param obj the expected stmt/expr
  * \param vars the expected expr with vars
- * \return Whether any var appears in expr
+ * \return Whether any var appears in stmt/expr
  */
-bool ExprContainsVar(const PrimExpr& expr, const PrimExpr& vars);
+bool StmtExprContainsVar(const ObjectRef& obj, const PrimExpr& vars);
 
 /*!
- * \brief Inspect whether the expr contains any var of vars
- * \param expr the expected expr
+ * \brief Inspect whether the stmt/expr contains any var of vars
+ * \param obj the expected stmt/expr
  * \param vars the vars to be inspected
- * \return Whether the expr contains any var of vars
+ * \return Whether the stmt/expr contains any var of vars
  */
-bool ExprContainsVar(const PrimExpr& expr, const std::unordered_set<const VarNode*> vars);
+bool StmtExprContainsVar(const ObjectRef& obj, const std::unordered_set<const VarNode*> vars);
 
 /*!
  * \brief Update the scope (dependency) information of a given block statement

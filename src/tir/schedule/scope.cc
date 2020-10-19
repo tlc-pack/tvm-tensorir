@@ -126,7 +126,7 @@ bool CheckReductionInstance(const Array<IterVar>& iter_vars,
     // Check 2. Each reduction iter_var should not be used to index output buffer
     if (kind == kCommReduce) {
       for (const PrimExpr& idx : output_buffer_indices) {
-        if (ExprContainsVar(idx, iter_var->var)) {
+        if (StmtExprContainsVar(idx, iter_var->var)) {
           return false;
         }
       }

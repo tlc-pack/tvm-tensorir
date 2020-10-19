@@ -206,16 +206,16 @@ def env_thread(parser, node, env_name):
     return v
 
 
-class HybridLambda:
-    """Hybrid Lambda, used in lambda expression"""
+class TVMScriptLambda:
+    """TVM Script Lambda, used in lambda expression"""
 
     def __init__(self, args, body):
         self.args = args
         self.body = body
 
 
-class HybridReducer:
-    """Hybrid Reducer, used in reducer declaration"""
+class TVMScriptReducer:
+    """TVM Script Reducer, used in reducer declaration"""
 
     def __init__(self, combiner, identity):
         self.combiner = combiner
@@ -240,8 +240,8 @@ def comm_reducer(parser, node, combiner, identity):
 
     """
 
-    if isinstance(combiner, HybridLambda) and len(combiner.args) == 2:
-        return HybridReducer(combiner, identity)
+    if isinstance(combiner, TVMScriptLambda) and len(combiner.args) == 2:
+        return TVMScriptReducer(combiner, identity)
     parser.report_error("comm_reducer expect a 2-argument lambda function as first argument")
 
 

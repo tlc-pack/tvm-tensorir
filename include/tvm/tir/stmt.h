@@ -1085,6 +1085,7 @@ class Block : public Stmt {
                          Array<Annotation> annotations, std::string tag);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Block, Stmt, BlockNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(BlockNode);
 };
 
 /*!
@@ -1134,6 +1135,7 @@ class BlockRealize : public Stmt {
                                 String exe_scope);
 
   TVM_DEFINE_OBJECT_REF_METHODS(BlockRealize, Stmt, BlockRealizeNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(BlockRealizeNode);
 };
 
 /*!

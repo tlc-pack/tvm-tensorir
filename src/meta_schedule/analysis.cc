@@ -587,7 +587,7 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::Schedule& sch,
     for (int i = 0, n = block_loops.size(); i < n; ++i) {
       // Check if block_bind = block_loops[i]->loop_var + stuff-irrelevant-of-loop-vars
       PrimExpr r = analyzer.Simplify(block_bind - block_loops[i]->loop_var);
-      if (!tir::ExprContainsVar(r, block_loop_vars)) {
+      if (!tir::StmtExprContainsVar(r, block_loop_vars)) {
         block_loop = block_loops[i];
         break;
       }
@@ -600,7 +600,7 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::Schedule& sch,
     for (int i = 0, n = desc_loops.size(); i < n; ++i) {
       // Check if desc_bind = loops[i]->loop_var + stuff-irrelevant-of-loop-vars
       PrimExpr r = analyzer.Simplify(desc_bind - desc_loops[i]->loop_var);
-      if (!tir::ExprContainsVar(r, desc_loop_vars)) {
+      if (!tir::StmtExprContainsVar(r, desc_loop_vars)) {
         desc_loop = desc_loops[i];
         break;
       }
