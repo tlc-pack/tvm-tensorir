@@ -24,6 +24,9 @@
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
+#include <tvm/tir/stmt_functor.h>
+
+#include <utility>
 
 namespace tvm {
 namespace tir {

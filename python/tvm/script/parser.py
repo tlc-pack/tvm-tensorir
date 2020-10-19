@@ -32,7 +32,7 @@ from tvm.tir import expr as _expr
 from . import scope_emitter, special_stmt, scope_handler, intrin, ty
 from .meta_unparser import MetaUnparser
 from .registry import Registry
-from .special_stmt import HybridLambda, HybridReducer
+from .special_stmt import TVMScriptLambda, TVMScriptReducer
 from . import _ffi_api
 
 
@@ -323,7 +323,7 @@ class TVMScriptParser(ast.NodeVisitor):
         By now only 3 types of Assign is supported:
             1. special stmts with return value
                 1.1 Buffer = tir.buffer_bind()/tir.buffer_allocate()
-                1.2 HybridReducer = tir.comm_reducer()
+                1.2 TVMScriptReducer = tir.comm_reducer()
                 1.3 Var = tir.var()
                 1.4 Var = tir.env_thread()
             2. (BufferStore) Buffer[PrimExpr, PrimExpr, ..., PrimExpr] = PrimExpr
@@ -544,12 +544,14 @@ class TVMScriptParser(ast.NodeVisitor):
         """
 
         args = list()
+        self.scope_emitter.symbols.append(dict())
         for arg in node.args.args:
             args.append(tvm.te.var(arg.arg))
             self.scope_emitter.update_symbol(arg.arg, args[-1])
-        res = HybridLambda(args, self.visit(node.body))
+        res = TVMScriptLambda(args, self.visit(node.body))
         for arg in node.args.args:
             self.scope_emitter.remove_symbol(arg.arg)
+        self.scope_emitter.symbols.pop()
         return res
 
     def visit_BinOp(self, node):

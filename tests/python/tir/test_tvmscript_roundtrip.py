@@ -497,6 +497,7 @@ def opt_conv_tensorcore_mod_host(args: ty.handle, arg_type_ids: ty.handle, num_a
     stack_tcode[8] = 0
     tir.evaluate(tir.tvm_call_packed_lowered("default_function_kernel0", stack_value, stack_tcode, 0, 9, dtype="int32"))
 
+
 def test_opt_conv_tensorcore_mod_host():
     mod = opt_conv_tensorcore_mod_host
     rt_mod = tvm.script.from_source(tvm.script.asscript(mod, True))
