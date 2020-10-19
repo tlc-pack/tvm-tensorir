@@ -373,9 +373,9 @@ void UpdateScope(const StmtNode* stmt,
 
 // Return whether `expr` contains any variable used in `vars`
 // Return true if `vars` contains no variable
-bool ExprContainsVar(const PrimExpr& expr, const std::unordered_set<const VarNode*> vars) {
+bool StmtExprContainsVar(const ObjectRef& obj, const std::unordered_set<const VarNode*> vars) {
   bool ret = false;
-  PostOrderVisit(expr, [&vars, &ret](const ObjectRef& node) {
+  PostOrderVisit(obj, [&vars, &ret](const ObjectRef& node) {
     if (const auto* op = node.as<VarNode>()) {
       if (vars.count(op) != 0) {
         ret = true;
@@ -385,7 +385,7 @@ bool ExprContainsVar(const PrimExpr& expr, const std::unordered_set<const VarNod
   return ret;
 }
 
-bool ExprContainsVar(const PrimExpr& expr, const PrimExpr& vars) {
+bool StmtExprContainsVar(const ObjectRef& obj, const PrimExpr& vars) {
   std::unordered_set<const VarNode*> var_set;
   // gather vars
   PostOrderVisit(vars, [&var_set](const ObjectRef& node) {
@@ -394,7 +394,7 @@ bool ExprContainsVar(const PrimExpr& expr, const PrimExpr& vars) {
   if (var_set.empty()) {
     return true;
   }
-  return ExprContainsVar(expr, var_set);
+  return StmtExprContainsVar(obj, var_set);
 }
 
 MatchingSimplifier::MatchingSimplifier(
@@ -435,7 +435,7 @@ PrimExpr MatchingSimplifier::VisitExpr(const PrimExpr& expr) {
       }
 
       // sub
-      if (!ExprContainsVar(diff, x.second)) {
+      if (!StmtExprContainsVar(diff, x.second)) {
         return VisitExpr(x.first + diff);
       }
     }

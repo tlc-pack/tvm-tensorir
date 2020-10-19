@@ -404,11 +404,41 @@ Stmt StmtMutator::VisitStmt_(const EvaluateNode* op) {
 }
 
 Stmt StmtMutator::VisitStmt_(const BlockNode* op) {
+  auto fmutate_range = [this](const Range& range) {
+    PrimExpr min = this->VisitExpr(range->min);
+    PrimExpr extent = this->VisitExpr(range->extent);
+    if (min.same_as(range->min) && extent.same_as(range->extent)) {
+      return range;
+    } else {
+      return Range::FromMinExtent(min, extent);
+    }
+  };
+  auto fmutate_iter_var = [&fmutate_range](const IterVar& iter_var) {
+    Range range = fmutate_range(iter_var->dom);
+    if (range.same_as(iter_var->dom)) {
+      return iter_var;
+    } else {
+      return IterVar(range, iter_var->var, iter_var->iter_type, iter_var->thread_tag);
+    }
+  };
+  auto fmutate_annotation = [this](const Annotation& annotation) {
+    PrimExpr value = this->VisitExpr(annotation->value);
+    if (value.same_as(annotation->value)) {
+      return annotation;
+    } else {
+      return Annotation(annotation->attr_key, annotation->value);
+    }
+  };
+  Array<IterVar> iter_vars = MutateArray(op->iter_vars, fmutate_iter_var);
+  Array<Annotation> annotations = MutateArray(op->annotations, fmutate_annotation);
   Stmt body = this->VisitStmt(op->body);
-  if (body.same_as(op->body)) {
+  if (body.same_as(op->body) && iter_vars.same_as(op->iter_vars) &&
+      annotations.same_as(op->annotations)) {
     return GetRef<Stmt>(op);
   } else {
     auto n = CopyOnWrite(op);
+    n->iter_vars = std::move(iter_vars);
+    n->annotations = std::move(annotations);
     n->body = std::move(body);
     return Stmt(n);
   }

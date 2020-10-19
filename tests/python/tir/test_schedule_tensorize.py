@@ -16,6 +16,7 @@
 # under the License.
 
 import tvm
+import tvm.testing
 import util
 from tvm import tir
 
@@ -131,6 +132,7 @@ def tensorized_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                      B.data, tir.floordiv(tir.get_elem_offset(B[vj, vk], dtype="int32"), 256),
                                      C.data, tir.floordiv(tir.get_elem_offset(C[vi, vj], dtype="int32"), 256),
                                      dtype="handle"))
+
 
 def test_tensorize_buffer_bind():
     func = util.matmul_stmt()
