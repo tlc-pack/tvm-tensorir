@@ -299,6 +299,5 @@ PrimExpr ExprMutator::VisitExpr_(const ShuffleNode* op) {
   }
 }
 
-
 }  // namespace tir
 }  // namespace tvm

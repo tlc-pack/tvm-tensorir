@@ -84,7 +84,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
       }
       // loop_var of a higher loop shouldn't contain loop var
       const Var& loop_var = higher_loop->GetStmt<LoopNode>()->loop_var;
-      CHECK(!ExprContainsVar(binding, loop_var))
+      CHECK(!StmtExprContainsVar(binding, loop_var))
           << "ValueError: 'decompose_reduction' expect the loop to be higher "
              "than all the loops related to reduce block var";
     }
@@ -131,7 +131,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
     const auto* higher_loop = loops[i]->GetStmt<LoopNode>();
     for (const PrimExpr& expr : init_realize->binding_values) {
       // Skip irrelevant loops
-      if (!ExprContainsVar(expr, higher_loop->loop_var)) {
+      if (!StmtExprContainsVar(expr, higher_loop->loop_var)) {
         continue;
       }
       // Create a new equivalent to the loop
@@ -247,7 +247,7 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
         if (iter_var->iter_type != IterVarType::kCommReduce) {
           continue;
         }
-        CHECK(!ExprContainsVar(binding, loop_var)) << "ValueError: 'merge_reduction' expects LCA "
+        CHECK(!StmtExprContainsVar(binding, loop_var)) << "ValueError: 'merge_reduction' expects LCA "
                                                       "to be higher than all the loops related to "
                                                       "update_block's reduce block var";
       }
