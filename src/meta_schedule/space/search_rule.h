@@ -127,13 +127,13 @@ TVM_DLL SearchRule Fusion(Array<Integer> levels);
  * \brief A rule that parallelizes the outer loops
  * \return The rule created
  */
-TVM_DLL SearchRule ParallelizeOuter(int max_extent);
+TVM_DLL SearchRule MarkParallelizeOuter(int max_extent);
 
 /*!
  * \brief A rule that parallelizes the outer loops
  * \return The rule created
  */
-TVM_DLL SearchRule VectorizeInner(int max_extent);
+TVM_DLL SearchRule MarkVectorizeInner(int max_extent);
 
 /*!
  * \brief Rewrite block and its surrounding loops to match desc_func

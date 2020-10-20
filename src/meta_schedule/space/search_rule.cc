@@ -290,15 +290,15 @@ SearchRule Fusion(Array<Integer> levels) {
   return SearchRule("fusion", f_apply);
 }
 
-/********** ParallelizeOuter **********/
+/********** MarkParallelizeOuter **********/
 
 /*! \brief A rule that parallelizes the outer loops */
-class RuleParallelizeOuter {
+class RuleMarkParallelizeOuter {
  public:
   /*! \brief The maximum extent of loops to be parallelized together */
   int max_extent;
 
-  explicit RuleParallelizeOuter(int max_extent) : max_extent(max_extent) {}
+  explicit RuleMarkParallelizeOuter(int max_extent) : max_extent(max_extent) {}
 
   /*! \brief Rule application */
   TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
@@ -324,24 +324,24 @@ class RuleParallelizeOuter {
   }
 };
 
-SearchRule ParallelizeOuter(int max_extent) {
+SearchRule MarkParallelizeOuter(int max_extent) {
   auto f_apply = [max_extent](SearchTask task, Schedule sch, BlockRV block,
                               TContextInfo info) -> TReturn {
-    RuleParallelizeOuter rule(max_extent);
+    RuleMarkParallelizeOuter rule(max_extent);
     return rule.Apply(task, sch, block, info);
   };
-  return SearchRule("parallelize_outer", f_apply);
+  return SearchRule("mark_parallelize_outer", f_apply);
 }
 
-/********** VectorizeInner **********/
+/********** MarkVectorizeInner **********/
 
 /*! \brief A rule that parallelizes the outer loops */
-class RuleVectorizeInner {
+class RuleMarkVectorizeInner {
  public:
   /*! \brief The maximum extent of loops to be parallelized together */
   int max_extent;
 
-  explicit RuleVectorizeInner(int max_extent) : max_extent(max_extent) {}
+  explicit RuleMarkVectorizeInner(int max_extent) : max_extent(max_extent) {}
 
   /*! \brief Rule application */
   TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
@@ -368,10 +368,10 @@ class RuleVectorizeInner {
   }
 };
 
-SearchRule VectorizeInner(int max_extent) {
+SearchRule MarkVectorizeInner(int max_extent) {
   auto f_apply = [max_extent](SearchTask task, Schedule sch, BlockRV block,
                               TContextInfo info) -> TReturn {
-    RuleVectorizeInner rule(max_extent);
+    RuleMarkVectorizeInner rule(max_extent);
     return rule.Apply(task, sch, block, info);
   };
   return SearchRule("vectorize_inner", f_apply);
@@ -452,8 +452,10 @@ TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AlwaysInline").set_body_typed(Alw
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AddCacheWrite").set_body_typed(AddCacheWrite);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTiling").set_body_typed(MultiLevelTiling);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.Fusion").set_body_typed(Fusion);
-TVM_REGISTER_GLOBAL("meta_schedule.search_rule.ParallelizeOuter").set_body_typed(ParallelizeOuter);
-TVM_REGISTER_GLOBAL("meta_schedule.search_rule.VectorizeInner").set_body_typed(VectorizeInner);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkParallelizeOuter")
+    .set_body_typed(MarkParallelizeOuter);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkVectorizeInner")
+    .set_body_typed(MarkVectorizeInner);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.TensorizeRewrite").set_body_typed(TensorizeRewrite);
 
 }  // namespace meta_schedule

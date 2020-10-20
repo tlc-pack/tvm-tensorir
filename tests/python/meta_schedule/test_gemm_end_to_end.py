@@ -221,8 +221,8 @@ def test_matmul_post_order_apply():
         space=ms.space.PostOrderApply(
             stages=[
                 my_rule,
-                ms.rule.parallelize_outer(max_extent=256),
-                ms.rule.vectorize_inner(max_extent=32),
+                ms.rule.mark_parallelize_outer(max_extent=256),
+                ms.rule.mark_vectorize_inner(max_extent=32),
             ]
         ),
         strategy="replay",
@@ -275,8 +275,8 @@ def test_matmul_relu_post_order_apply():
         space=ms.space.PostOrderApply(
             stages=[
                 my_rule,
-                ms.rule.parallelize_outer(max_extent=256),
-                ms.rule.vectorize_inner(max_extent=32),
+                ms.rule.mark_parallelize_outer(max_extent=256),
+                ms.rule.mark_vectorize_inner(max_extent=32),
             ]
         ),
         strategy="replay",
@@ -349,8 +349,8 @@ def test_conv2d_post_order_apply():
         space=ms.space.PostOrderApply(
             stages=[
                 my_rule,
-                ms.rule.parallelize_outer(max_extent=256),
-                ms.rule.vectorize_inner(max_extent=32),
+                ms.rule.mark_parallelize_outer(max_extent=256),
+                ms.rule.mark_vectorize_inner(max_extent=32),
             ]
         ),
         strategy="replay",
@@ -377,8 +377,8 @@ def test_conv2d_relu_plus_one_post_order_apply():
                         ms.rule.fusion(levels=[1, 2]),
                     ],
                 ),
-                ms.rule.parallelize_outer(max_extent=256),
-                ms.rule.vectorize_inner(max_extent=32),
+                ms.rule.mark_parallelize_outer(max_extent=256),
+                ms.rule.mark_vectorize_inner(max_extent=32),
             ]
         ),
         strategy="replay",
@@ -416,8 +416,8 @@ def test_matmul_evolutionary_step_by_step():
                     ms.rule.fusion(levels=[1, 2]),
                 ],
             ),
-            ms.rule.parallelize_outer(max_extent=256),
-            ms.rule.vectorize_inner(max_extent=32),
+            ms.rule.mark_parallelize_outer(max_extent=256),
+            ms.rule.mark_vectorize_inner(max_extent=32),
         ]
     )
     support = space.get_support(task=task)
@@ -450,8 +450,8 @@ def test_matmul_evolutionary_end_to_end():
                         ms.rule.fusion(levels=[1, 2]),
                     ],
                 ),
-                ms.rule.parallelize_outer(max_extent=256),
-                ms.rule.vectorize_inner(max_extent=32),
+                ms.rule.mark_parallelize_outer(max_extent=256),
+                ms.rule.mark_vectorize_inner(max_extent=32),
             ]
         ),
         strategy=ms.strategy.Evolutionary(

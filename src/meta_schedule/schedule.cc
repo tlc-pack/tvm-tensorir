@@ -806,11 +806,6 @@ struct Internal {
    */
   static Schedule New(tir::PrimFunc func, Optional<Integer> seed) { return Schedule(func, seed); }
   /*!
-   * \brief FFI function, corresponds to ScheduleNode::Normalize
-   * \sa ScheduleNode::Normalize
-   */
-  static void Normalize(Schedule sch) { sch->Normalize(); }
-  /*!
    * \brief FFI function, corresponds to ScheduleNode::Seed
    * \sa ScheduleNode::Seed
    */
