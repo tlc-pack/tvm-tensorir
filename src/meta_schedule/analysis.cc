@@ -17,11 +17,12 @@
  * under the License.
  */
 // TODO(@junrushao1994): move to TIR analysis
-#include <numeric>
 #include "./analysis.h"  // NOLINT(build/include)
 
 #include <tvm/arith/analyzer.h>
 #include <tvm/tir/stmt_functor.h>
+
+#include <numeric>
 
 #include "../tir/schedule/schedule_common.h"
 #include "./utils.h"
@@ -494,6 +495,23 @@ bool IsStrictlyInlineable(const tir::Schedule& sch, const tir::StmtSRef& block_s
 class AutoTensorizeComparator : public tir::TensorizeComparator {
  public:
   AutoTensorizeComparator() : tir::TensorizeComparator(false) {}
+
+  bool VisitStmt(const tir::Stmt& n, const tir::Stmt& rhs) override {
+    if (n.same_as(rhs)) return true;
+    tir::Stmt lhs = n;
+    if (const auto* reduce_step = n.as<tir::ReduceStepNode>()) {
+      const auto* buffer_load = reduce_step->lhs.as<tir::BufferLoadNode>();
+      lhs = tir::BufferStore(/*buffer=*/buffer_load->buffer,
+                             /*value=*/reduce_step->ApplyCombiner(),
+                             /*indices=*/buffer_load->indices);
+    }
+    if (lhs->type_index() != rhs->type_index()) {
+      return false;
+    }
+    bool equal = tir::StmtComparator::VisitStmt(lhs, rhs);
+    CHECK(equal || !assert_mode_) << "Stmts are not matching between:\n" << n << "\nand\n" << rhs;
+    return equal;
+  }
 
   bool CompareBuffer(const tir::Buffer& lhs, const tir::Buffer& rhs) override {
     if (lhs.same_as(rhs)) return true;

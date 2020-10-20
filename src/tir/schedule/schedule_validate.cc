@@ -114,17 +114,60 @@ std::vector<std::pair<PrimExpr, PrimExpr>> SplitPredicate(PrimExpr pred) {
  * \param list The list to be checked
  * \return A boolean indicating the check result
  */
-bool IsAllUniqueVars(const std::vector<PrimExpr>& list) {
+bool IsAllUniqueVars(const std::vector<PrimExpr>& list,
+                     const std::unordered_set<const VarNode*>& consts) {
+  auto is_const = [&consts](const PrimExpr& expr) -> bool {
+    return expr->IsInstance<IntImmNode>() || consts.count(static_cast<const VarNode*>(expr.get()));
+  };
+
   std::unordered_set<const PrimExprNode*> exists;
   for (const PrimExpr& item : list) {
-    if (!item->IsInstance<VarNode>()) {
+    // We allow the following situation
+    // 1) item = const
+    // 2) item = var
+    // 3) item = const + const
+    // 4) item = const + var
+    // 5) item = var + const
+    // 6) item = var - const
+    if (is_const(item)) {
+      // Case 1
+      continue;
+    }
+    const VarNode* var = nullptr;
+    if (const auto* the_var = item.as<VarNode>()) {
+      // Case 2
+      var = the_var;
+    } else if (const auto* add = item.as<AddNode>()) {
+      bool a_is_const = is_const(add->a);
+      bool b_is_const = is_const(add->b);
+      if (a_is_const && b_is_const) {
+        // Case 3
+        continue;
+      } else if (a_is_const) {
+        // Case 4
+        var = add->b.as<VarNode>();
+      } else if (b_is_const) {
+        // Case 5
+        var = add->a.as<VarNode>();
+      } else {
+        return false;
+      }
+    } else if (const auto* minus = item.as<SubNode>()) {
+      bool b_is_const = is_const(add->b);
+      if (b_is_const) {
+        // Case 6
+        var = add->a.as<VarNode>();
+      } else {
+        return false;
+      }
+    } else {
       return false;
     }
-    const PrimExprNode* p = item.get();
-    if (exists.count(p)) {
+    CHECK(var);
+    if (exists.count(var)) {
       return false;
     }
-    exists.insert(p);
+    exists.insert(var);
   }
   return true;
 }
@@ -306,18 +349,24 @@ class LoopValidator : public StmtVisitor {
   void VisitStmt_(const BlockRealizeNode* realize) final {
     // Check StmtSRef's binding validity on all blocks
     stmt2ref_->at(realize->block.get())->binding_valid = ValidateBlockBinding(realize);
+    for (const IterVar& block_var : realize->block->iter_vars) {
+      ancestor_block_vars_.insert(block_var->var.get());
+    }
     StmtVisitor::VisitStmt_(realize);
+    for (const IterVar& block_var : realize->block->iter_vars) {
+      ancestor_block_vars_.erase(block_var->var.get());
+    }
   }
   /*! \brief Validate the binding of a given block */
   bool ValidateBlockBinding(const BlockRealizeNode* realize) {
     // validate the bindings to loop variables
-    std::vector<PrimExpr> bindings{realize->binding_values.begin(), realize->binding_values.end()};
     std::unordered_map<const VarNode*, PrimExpr> loop_vars{loop_var_extents_};
+    std::vector<PrimExpr> bindings{realize->binding_values.begin(), realize->binding_values.end()};
     std::vector<std::pair<PrimExpr, PrimExpr>> predicates = SplitPredicate(realize->predicate);
     for (;;) {
       // Detect fuse/split pattern
       FuseSplitDetector detector(&loop_vars);
-      for (const auto& binding : bindings) {
+      for (const PrimExpr& binding : bindings) {
         detector(binding);
         if (detector.replace) {
           break;
@@ -330,7 +379,7 @@ class LoopValidator : public StmtVisitor {
       // Substitute pattern
       FuseSplitNormalizer normalizer(detector);
       // Update all bindings, remove split/fuse pattern, and replace with loop variable
-      for (auto& binding : bindings) {
+      for (PrimExpr& binding : bindings) {
         binding = normalizer(binding);
       }
       // Update lhs of all predicates
@@ -347,7 +396,7 @@ class LoopValidator : public StmtVisitor {
       }
       predicates.swap(new_predicates);
     }
-    return predicates.empty() && IsAllUniqueVars(bindings);
+    return predicates.empty() && IsAllUniqueVars(bindings, ancestor_block_vars_);
   }
 
  private:
@@ -355,6 +404,8 @@ class LoopValidator : public StmtVisitor {
   std::unordered_map<const VarNode*, PrimExpr> loop_var_extents_;
   /*! \brief ScheduleNode::stmt2ref whose StmtSRef::binding_valid needs updating */
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
+  /*! \brief The block vars in the ancestor blocks */
+  std::unordered_set<const VarNode*> ancestor_block_vars_;
   /*! \brief An analyzer used to simplify expressions */
   arith::Analyzer analyzer_;
 };
