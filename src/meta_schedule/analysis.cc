@@ -17,6 +17,7 @@
  * under the License.
  */
 // TODO(@junrushao1994): move to TIR analysis
+#include <numeric>
 #include "./analysis.h"  // NOLINT(build/include)
 
 #include <tvm/arith/analyzer.h>
