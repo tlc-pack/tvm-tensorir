@@ -15,7 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 """Schedule nodes and APIs in TIR schedule"""
-import tvm._ffi
+import tvm
+from . import _ffi_api_schedule
 from tvm.runtime import Object
 
 
@@ -33,7 +34,7 @@ class Schedule(Object):
         scope: StmtSRef, optional
             The scope block stmt sref
         """
-        blocks = ScheduleBlocks(self, scope)
+        blocks = _ffi_api_schedule.ScheduleBlocks(self, scope)
         if not blocks:
             return None
         if len(blocks) == 1:
@@ -54,9 +55,9 @@ class Schedule(Object):
             The blocks sref that match the arguments
         """
         if isinstance(arg, str):
-            blocks = GetBlocksFromTag(self, arg, scope)
+            blocks = _ffi_api_schedule.GetBlocksFromTag(self, arg, scope)
         else:
-            blocks = GetBlocksFromBuffer(self, arg, scope)
+            blocks = _ffi_api_schedule.GetBlocksFromBuffer(self, arg, scope)
         if not blocks:
             return None
         if len(blocks) == 1:
@@ -74,7 +75,7 @@ class Schedule(Object):
         axes: List of StmtSRef or StmtSRef
             The axes of the block
         """
-        axes = ScheduleGetLoopsInScope(self, block)
+        axes = _ffi_api_schedule.ScheduleGetLoopsInScope(self, block)
         if len(axes) == 1:
             axes = axes[0]
         return axes
@@ -90,7 +91,7 @@ class Schedule(Object):
         sref : StmtSRef
             The stmt schedulable reference
         """
-        return GetStmtSRef(self, stmt)
+        return _ffi_api_schedule.GetStmtSRef(self, stmt)
 
     def replace(self, sref, target_stmt, block_sref_map=None):
         """Replace a subtree of AST with new stmt
@@ -104,10 +105,10 @@ class Schedule(Object):
         block_sref_map: Map
             The remap of block_sref
         """
-        return Replace(self, sref, target_stmt, block_sref_map)
+        return _ffi_api_schedule.Replace(self, sref, target_stmt, block_sref_map)
 
     def validate_sref(self):
-        return ValidateSRef(self)
+        return _ffi_api_schedule.ValidateSRef(self)
 
     # Dependency
     def get_successors(self, block, scope=None):
@@ -126,7 +127,7 @@ class Schedule(Object):
 
         if scope is None:
             scope = self.root
-        return GetSuccessors(self, scope, block)
+        return _ffi_api_schedule.GetSuccessors(self, scope, block)
 
     def get_predecessors(self, block, scope=None):
         """Get the dependency predecessors of the block
@@ -144,7 +145,7 @@ class Schedule(Object):
 
         if scope is None:
             scope = self.root
-        return GetPredecessors(self, scope, block)
+        return _ffi_api_schedule.GetPredecessors(self, scope, block)
 
     def reorder(self, *args):
         """reorder the arguments in the specified order
@@ -154,7 +155,7 @@ class Schedule(Object):
             The order to be ordered
         """
 
-        ScheduleReorder(self, args)
+        _ffi_api_schedule.ScheduleReorder(self, args)
 
     def fuse(self, outer_loop, inner_loop):
         """Return all axes of the specific block
@@ -171,7 +172,7 @@ class Schedule(Object):
         loop: Loop
             The fused loop
         """
-        return ScheduleFuse(self, outer_loop, inner_loop)
+        return _ffi_api_schedule.ScheduleFuse(self, outer_loop, inner_loop)
 
     def split(self, loop, factor=None, nparts=None):
         """split a specified loop into two loops by factor or nparts
@@ -195,11 +196,11 @@ class Schedule(Object):
         if nparts is not None:
             if factor is not None:
                 raise ValueError("Do not need to provide both outer and nparts")
-            outer, inner = ScheduleSplitByNParts(self, loop, nparts)
+            outer, inner = _ffi_api_schedule.ScheduleSplitByNParts(self, loop, nparts)
         else:
             if factor is None:
                 raise ValueError("Either nparts or factor need to be provided")
-            outer, inner = ScheduleSplitByFactor(self, loop, factor)
+            outer, inner = _ffi_api_schedule.ScheduleSplitByFactor(self, loop, factor)
         return outer, inner
 
     def vectorize(self, loop):
@@ -209,7 +210,7 @@ class Schedule(Object):
         loop : Loop
             The loop to be vectorized
         """
-        ScheduleVectorize(self, loop)
+        _ffi_api_schedule.ScheduleVectorize(self, loop)
 
     def parallel(self, loop):
         """parallel a loop
@@ -218,7 +219,7 @@ class Schedule(Object):
         loop : Loop
             The loop to be paralleled
         """
-        ScheduleParallel(self, loop)
+        _ffi_api_schedule.ScheduleParallel(self, loop)
 
     def unroll(self, loop):
         """unroll a loop
@@ -227,7 +228,7 @@ class Schedule(Object):
         loop : Loop
             The loop to be unrolled
         """
-        ScheduleUnroll(self, loop)
+        _ffi_api_schedule.ScheduleUnroll(self, loop)
 
     def cache_read(self, buffer, scope):
         """Create a cache read of original tensor for readers.
@@ -238,7 +239,7 @@ class Schedule(Object):
         scope : str
             The storage scope
         """
-        return ScheduleCacheRead(self, buffer, scope)
+        return _ffi_api_schedule.ScheduleCacheRead(self, buffer, scope)
 
     def cache_write(self, buffer, scope):
         """Create a cache write of original tensor, before storing into tensor.
@@ -249,7 +250,7 @@ class Schedule(Object):
         scope : str
             The storage scope
         """
-        return ScheduleCacheWrite(self, buffer, scope)
+        return _ffi_api_schedule.ScheduleCacheWrite(self, buffer, scope)
 
     def compute_inline(self, block):
         """Mark one block as inline, then the body of computation will be expanded and
@@ -259,7 +260,7 @@ class Schedule(Object):
         block: Block
             The Block to be inlined
         """
-        return ScheduleComputeInline(self, block)
+        return _ffi_api_schedule.ScheduleComputeInline(self, block)
 
     def reverse_compute_inline(self, block):
         """Mark one block as inline, then the body of computation will be expanded and
@@ -269,7 +270,7 @@ class Schedule(Object):
         block: Block
             The Block to be inlined
         """
-        return ScheduleReverseComputeInline(self, block)
+        return _ffi_api_schedule.ScheduleReverseComputeInline(self, block)
 
     def compute_at(self, block, loop):
         """Attach one block under specific loop and cover the required region.
@@ -284,7 +285,7 @@ class Schedule(Object):
             The target loop
 
         """
-        ScheduleComputeAt(self, block, loop)
+        _ffi_api_schedule.ScheduleComputeAt(self, block, loop)
 
     def reverse_compute_at(self, block, loop):
         """Attach one block under specific loop and cover the required region.
@@ -325,7 +326,7 @@ class Schedule(Object):
                         tir.bind(vj, ((i1_outer*16) + ax1))
                         C[vi, vj] = B[vi, vj] + 1.0
         """
-        ScheduleReverseComputeAt(self, block, loop)
+        _ffi_api_schedule.ScheduleReverseComputeAt(self, block, loop)
 
     def bind(self, loop, thread_ivar):
         """Bind ivar to thread index thread_ivar
@@ -336,7 +337,7 @@ class Schedule(Object):
         thread_ivar : IterVar
             The thread to be binded.
         """
-        ScheduleBind(self, loop, thread_ivar)
+        _ffi_api_schedule.ScheduleBind(self, loop, thread_ivar)
 
     def blockize(self, loop):
         """make subtree rooted by sref into a block
@@ -349,7 +350,7 @@ class Schedule(Object):
         block: Block
             The new block
         """
-        return ScheduleBlockize(self, loop)
+        return _ffi_api_schedule.ScheduleBlockize(self, loop)
 
     def tensorize(self, loop, intrinsic):
         """Tensorize the computation enclosed by loop with tensor_intrin
@@ -360,7 +361,7 @@ class Schedule(Object):
         intrinsic: Intrinsic
             the tensor intrinsic
         """
-        ScheduleTensorize(self, loop, intrinsic)
+        _ffi_api_schedule.ScheduleTensorize(self, loop, intrinsic)
 
     def decompose_reduction(self, block, loop):
         """Decompose reduction block into init&update blocks
@@ -376,7 +377,7 @@ class Schedule(Object):
         init: Block
             The init block
         """
-        return ScheduleDecomposeReduction(self, block, loop)
+        return _ffi_api_schedule.ScheduleDecomposeReduction(self, block, loop)
 
     def merge_reduction(self, init, update):
         """Merge init&update block into reduction block
@@ -388,7 +389,7 @@ class Schedule(Object):
         update: Block
             The update Block
         """
-        ScheduleMergeReduction(self, init, update)
+        _ffi_api_schedule.ScheduleMergeReduction(self, init, update)
 
     def register_reducer(self, fcombine, identity):
         """Register a reducer into schedule
@@ -408,7 +409,7 @@ class Schedule(Object):
         result = tvm.runtime.convert([fcombine(lvar, rvar)])
         id_elem = tvm.runtime.convert([identity])
         combiner = tvm.tir.CommReducer(lhs, rhs, result, id_elem)
-        ScheduleRegisterReducer(self, combiner)
+        _ffi_api_schedule.ScheduleRegisterReducer(self, combiner)
 
 
 def create_schedule(func):
@@ -420,7 +421,7 @@ def create_schedule(func):
     ------
     schedule: tir.Schedule
     """
-    return CreateSchedule(func)
+    return _ffi_api_schedule.CreateSchedule(func)
 
 
 def validate_hierarchy(func):
@@ -429,7 +430,7 @@ def validate_hierarchy(func):
     ----------
     func: TIRFunction
     """
-    ValidateHierarchy(func)
+    _ffi_api_schedule.ValidateHierarchy(func)
 
 
 def get_stmt(sref):
@@ -441,7 +442,7 @@ def get_stmt(sref):
     ------
     stmt: stmt
     """
-    return GetStmt(sref)
+    return _ffi_api_schedule.GetStmt(sref)
 
 
 @tvm._ffi.register_object
@@ -450,7 +451,7 @@ class StmtSRef(Object):
 
     @property
     def stmt(self):
-        return GetStmt(self)
+        return _ffi_api_schedule.GetStmt(self)
 
 
 tvm._ffi._init_api("tir.schedule", __name__)
