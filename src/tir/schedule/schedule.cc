@@ -621,6 +621,13 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleMergeReduction")
       schedule->merge_reduction(init, update);
     });
 
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleRfactor")
+    .set_body_typed<StmtSRef(Schedule, StmtSRef, StmtSRef)>([](Schedule schedule,
+                                                               StmtSRef block_sref,
+                                                               StmtSRef loop_sref) {
+      return schedule->rfactor(block_sref, loop_sref);
+    });
+
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleTensorize")
     .set_body_typed<void(Schedule, StmtSRef, TensorIntrin)>([](Schedule schedule, StmtSRef sref,
                                                                TensorIntrin intrinsic) {

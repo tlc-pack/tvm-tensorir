@@ -274,5 +274,9 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   UpdateScope(GetParentBlockSRef(update_sref)->stmt, this->stmt2ref, &this->scopes);
 }
 
+StmtSRef ScheduleNode::rfactor(const StmtSRef& block_sref, const StmtSRef& loop_sref) {
+  return block_sref;
+}
+
 }  // namespace tir
 }  // namespace tvm
