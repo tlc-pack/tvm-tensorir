@@ -47,8 +47,6 @@ class ScheduleNode : public Object {
   Array<Instruction> trace;
   /*! \brief The decisions made in sampling */
   Map<Instruction, Array<ObjectRef>> decisions;
-  /*! \brief Whether the schedule has been normalized */
-  bool normalized;
   /*! \brief The symbol table with information of all defined variables in the meta schedule */
   TSymbolTable sym_tab;
   /*! \brief The random number generator */
@@ -59,7 +57,6 @@ class ScheduleNode : public Object {
     v->Visit("sch", &sch);
     v->Visit("trace", &trace);
     v->Visit("decisions", &decisions);
-    v->Visit("normalized", &normalized);
     // `sym_tab` is not visited
     // `sampler` is not visited
   }
@@ -297,8 +294,8 @@ class Schedule : public ObjectRef {
    * \param seed The random seed
    */
   explicit Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
-                    Map<Instruction, Array<ObjectRef>> decisions, bool normalized,
-                    TSymbolTable sym_tab, Optional<Integer> seed);
+                    Map<Instruction, Array<ObjectRef>> decisions, TSymbolTable sym_tab,
+                    Optional<Integer> seed);
   /*!
    * \brief Constructor: other fields are created with default value
    * \param orig_func The original TIR PrimFunc to be scheduled

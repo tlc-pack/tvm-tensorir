@@ -29,14 +29,13 @@ namespace tvm {
 namespace meta_schedule {
 
 Schedule::Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
-                   Map<Instruction, Array<ObjectRef>> decisions, bool normalized,
-                   TSymbolTable sym_tab, Optional<Integer> seed) {
+                   Map<Instruction, Array<ObjectRef>> decisions, TSymbolTable sym_tab,
+                   Optional<Integer> seed) {
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
   n->orig_func = std::move(orig_func);
   n->sch = std::move(sch);
   n->trace = std::move(trace);
   n->decisions = std::move(decisions);
-  n->normalized = false;
   n->sym_tab = std::move(sym_tab);
   if (seed.defined()) {
     n->sampler.Seed(seed.value()->value);
@@ -46,16 +45,13 @@ Schedule::Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction
 
 Schedule::Schedule(tir::PrimFunc orig_func, Optional<Integer> seed)
     : Schedule(/*orig_func=*/orig_func, /*sch=*/tir::ScheduleNode::Create(orig_func), /*trace=*/{},
-               /*decisions=*/{}, /*normalized=*/false, /*sym_tab=*/{}, /*seed=*/seed) {}
+               /*decisions=*/{}, /*sym_tab=*/{}, /*seed=*/seed) {}
 
 /**************** Utility ****************/
 
 void ScheduleNode::Seed(int seed) { this->sampler.Seed(seed); }
 
 void ScheduleNode::Normalize() {
-  if (this->normalized) {
-    return;
-  }
   // Fuse "lazy_parallel" loops
   {
     Array<Array<tir::StmtSRef>> to_parallel = CollectAnnotatedLoops(this->sch, "lazy_parallel");
@@ -91,7 +87,6 @@ void ScheduleNode::Normalize() {
       this->sch->vectorize(fused);
     }
   }
-  this->normalized = true;
 }
 
 /*! \brief Helper class to do tir::StmtSRef translation */
@@ -225,7 +220,6 @@ Schedule ScheduleNode::Copy(int new_seed) const {
                   /*sch=*/tir_sch,
                   /*trace=*/this->trace,
                   /*decisions=*/this->decisions,
-                  /*normalized=*/this->normalized,
                   /*sym_tab=*/translator.Trans(this->sym_tab),
                   /*seed=*/Integer(new_seed));
 }
@@ -989,7 +983,6 @@ struct Internal {
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
 TVM_REGISTER_GLOBAL("meta_schedule.Schedule").set_body_typed(Internal::New);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleNormalize").set_body_typed(Internal::Normalize);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSeed").set_body_typed(Internal::Seed);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCopy").set_body_typed(Internal::Copy);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleEval").set_body_typed(Internal::Eval);
