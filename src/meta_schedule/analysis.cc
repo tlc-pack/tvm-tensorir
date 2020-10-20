@@ -706,6 +706,7 @@ void DoTensorizeRewrite(Schedule sch, BlockRV block_rv, tir::PrimFunc desc_func)
   }
   reorder_list.insert(reorder_list.end(), reorder_suffix.begin(), reorder_suffix.end());
   sch->Reorder(reorder_list);
+  sch->Blockize(reorder_suffix.at(0), "");
 }
 
 TVM_REGISTER_NODE_TYPE(TensorizeInfoNode);

@@ -685,6 +685,19 @@ BlockRV ScheduleNode::CacheWrite(const BlockRV& block_rv, const String& storage_
   return output;
 }
 
+BlockRV ScheduleNode::Blockize(const LoopRV& loop_rv, const String& exec_scope) {
+  // Find the output from TIR
+  tir::StmtSRef loop_sref = this->Eval(loop_rv);
+  tir::StmtSRef tir_result = this->sch->blockize(loop_sref, exec_scope);
+  // Create the output random variable
+  BlockRV output;
+  // Update the symbol table
+  this->sym_tab.emplace(output, tir_result);
+  // Put the instruction in the trace
+  this->trace.push_back(BlockizeAttrs::MakeInst(loop_rv, exec_scope, output));
+  return output;
+}
+
 BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const LoopRV& loop) {
   // Find the output from TIR
   tir::StmtSRef tir_result = this->sch->decompose_reduction(Eval(block), Eval(loop));
@@ -941,6 +954,13 @@ struct Internal {
     return sch->CacheWrite(block, storage_scope);
   }
   /*!
+   * \brief FFI function, corresponds to ScheduleNode::Blockize
+   * \sa ScheduleNode::Blockize
+   */
+  static BlockRV Blockize(Schedule sch, LoopRV loop, String exec_scope) {
+    return sch->Blockize(loop, exec_scope);
+  }
+  /*!
    * \brief FFI function, corresponds to ScheduleNode::DecomposeReduction
    * \sa ScheduleNode::DecomposeReduction
    */
@@ -996,6 +1016,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleComputeInline").set_body_typed(Intern
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReverseComputeInline")
     .set_body_typed(Internal::ReverseComputeInline);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCacheWrite").set_body_typed(Internal::CacheWrite);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleBlockize").set_body_typed(Internal::Blockize);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleDecomposeReduction")
     .set_body_typed(Internal::DecomposeReduction);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMutateDecision")

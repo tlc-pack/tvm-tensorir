@@ -238,6 +238,13 @@ class ScheduleNode : public Object {
    */
   BlockRV CacheWrite(const BlockRV& block, const String& storage_scope);
   /*!
+   * \brief Apply blockize to the schedule
+   * \param loop The loop to be blockized
+   * \param exec_scope The execution scope
+   * \return A block random variable pointing to the new block
+   */
+  BlockRV Blockize(const LoopRV& loop, const String& exe_scope);
+  /*!
    * \brief Apply the instruction DecomposeReduction
    * \param block The block to be decomposed
    * \param loop The loop to be decomposed at
