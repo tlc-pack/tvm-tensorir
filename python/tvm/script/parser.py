@@ -486,6 +486,7 @@ class TVMScriptParser(ast.NodeVisitor):
         func = self.visit(node.iter.func)
         if not isinstance(func, ForScopeHandler):
             self.report_error("Only for scope handlers can be used in for stmt")
+        # prepare for new for scope
         old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
         self.current_lineno, self.current_col_offset = (
             self.base_lineno + node.iter.lineno - 1,
@@ -493,12 +494,12 @@ class TVMScriptParser(ast.NodeVisitor):
         )
         self.scope_emitter.new_scope()
         self.scope_emitter.node_stack[-1].extend(reversed(node.body))
-
+        # for scope handler process the scope
         func.enter_scope(node, self.scope_emitter)
         func.body = self.parse_body()
         arg_list = self.parse_arg_list(func, node.iter)
         res = func.exit_scope(node, self.scope_emitter, arg_list)
-
+        # exit the scope
         self.scope_emitter.pop_scope()
         self.current_lineno, self.current_col_offset = old_lineno, old_col_offset
         return res
@@ -526,7 +527,7 @@ class TVMScriptParser(ast.NodeVisitor):
 
         if not isinstance(func, WithScopeHandler):
             self.report_error("Function not allowed in with scope")
-
+        # prepare for new block scope
         old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
         self.current_lineno, self.current_col_offset = (
             self.base_lineno + func_call.lineno - 1,
@@ -534,13 +535,13 @@ class TVMScriptParser(ast.NodeVisitor):
         )
         self.scope_emitter.new_scope(is_block=True)
         self.scope_emitter.node_stack[-1].extend(reversed(node.body))
-
+        # with scope handler process the scope
         func.enter_scope(node, self.scope_emitter)
         func.body = self.parse_body()
         arg_list = self.parse_arg_list(func, func_call)
         res = func.exit_scope(node, self.scope_emitter, arg_list)
-
-        self.scope_emitter.pop_scope()
+        # exit the scope
+        self.scope_emitter.pop_scope(is_block=True)
         self.current_lineno, self.current_col_offset = old_lineno, old_col_offset
         return res
 

@@ -29,7 +29,9 @@ class Registry(object):
     @staticmethod
     def lookup(name):
         if name in Registry.registrations:
-            return Registry.registrations[name]
+            # every time we create a new handler
+            # since we may want to keep some local info inside it
+            return Registry.registrations[name]()
         return None
 
 
@@ -39,5 +41,5 @@ def register(registration):
         key = registration_obj.signature()[0]
     else:
         raise ValueError()
-    Registry.registrations[key] = registration_obj
+    Registry.registrations[key] = registration
     return registration

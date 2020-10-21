@@ -108,72 +108,75 @@ class BufferAllocate(SpecialStmt):
             offset_factor=0,
             buffer_type="default",
         ):
-            pass
+            assert isinstance(self.node, ast.Assign)
+
+            if strides is None:
+                strides = []
+            align = align.value if not isinstance(align, int) else align
+            offset_factor = (
+                offset_factor.value if not isinstance(offset_factor, int) else offset_factor
+            )
+            buffer = tvm.tir.decl_buffer(
+                shape,
+                dtype,
+                self.node.targets[0].id,
+                data,
+                strides,
+                elem_offset,
+                scope,
+                align,
+                offset_factor,
+                buffer_type,
+            )
+            self.context.block_scope().allocates.append(tvm.tir.BufferAllocate(buffer, scope))
+            self.context.update_symbol(self.node.targets[0].id, buffer)
 
         super().__init__(buffer_allocate, def_symbol=True)
-
-    def handle(self, node, context, arg_list):
-        pass
 
 
 @register
 class BlockVarBind(SpecialStmt):
     def __init__(self):
         def bind(block_var, binding):
-            pass
+            self.context.block_scope().binding[block_var] = binding
 
         super().__init__(bind, def_symbol=False)
-
-    def handle(self, node, context, arg_list):
-        pass
 
 
 @register
 class BlockReads(SpecialStmt):
     def __init__(self):
         def reads(reads):
-            pass
+            self.context.block_scope().reads = [reads] if not isinstance(reads, list) else reads
 
         super().__init__(reads, def_symbol=False)
-
-    def handle(self, node, context, arg_list):
-        pass
 
 
 @register
 class BlockWrites(SpecialStmt):
     def __init__(self):
         def writes(writes):
-            pass
+            self.context.block_scope().writes = [writes] if not isinstance(writes, list) else writes
 
         super().__init__(writes, def_symbol=False)
-
-    def handle(self, node, context, arg_list):
-        pass
 
 
 @register
 class BlockAttr(SpecialStmt):
     def __init__(self):
         def block_attr(attrs):
-            pass
+            self.context.block_scope().annotations = attrs
 
         super().__init__(block_attr, def_symbol=False)
-
-    def handle(self, node, context, arg_list):
-        pass
 
 
 @register
 class BlockPredicate(SpecialStmt):
     def __init__(self):
         def where(predicate):
-            pass
+            self.context.block_scope().predicate = predicate
 
         super().__init__(where, def_symbol=False)
-
-    def handle(self, node, context, arg_list):
-        pass
 
 
 @register
@@ -194,9 +197,6 @@ class BufferDeclare(SpecialStmt):
 
         super().__init__(buffer_decl, def_symbol=True)
 
-    def handle(self, node, context, arg_list):
-        pass
-
 
 @register
 class VarDef(SpecialStmt):
@@ -206,9 +206,6 @@ class VarDef(SpecialStmt):
 
         super().__init__(var, def_symbol=True)
 
-    def handle(self, node, context, arg_list):
-        pass
-
 
 @register
 class EnvThread(SpecialStmt):
@@ -217,9 +214,6 @@ class EnvThread(SpecialStmt):
             pass
 
         super().__init__(env_thread, def_symbol=True)
-
-    def handle(self, node, context, arg_list):
-        pass
 
 
 class TVMScriptLambda:
@@ -267,6 +261,3 @@ class FuncAttr(SpecialStmt):
             pass
 
         super().__init__(func_attr, def_symbol=False)
-
-    def handle(self, node, context, arg_list):
-        pass

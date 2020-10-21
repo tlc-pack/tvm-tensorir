@@ -17,7 +17,6 @@
 """TVM Script Parser Scope Handler Classes"""
 # pylint: disable=redefined-builtin, unused-argument, invalid-name
 
-import inspect
 from typed_ast import ast3 as ast
 import tvm.tir
 from .utils import get_param_list
@@ -54,7 +53,7 @@ class WithScopeHandler(ScopeHandler):
 class Block(WithScopeHandler):
     def __init__(self):
         def block(axes=None, name="", exec_scope=""):
-            block_info = self.context.block_scope()
+            block_info = self.context.block_info_stack[-1]
             if axes is None:
                 axes = []
             if len(axes) != len(self.block_vars):
@@ -109,7 +108,7 @@ class Block(WithScopeHandler):
             )
             # create block var binding
             if not block_info.binding:
-                values = self.context.loop_stack[-1].copy()
+                values = self.context.loop_stack[-2].copy()
                 if len(values) == 0:
                     values = [None] * len(block_iters)
                 elif len(values) != len(block_iters):
@@ -253,93 +252,119 @@ class Let(WithScopeHandler):
 class ForScopeHandler(ScopeHandler):
     def __init__(self, func):
         super().__init__(func)
+        self.loop_vars = None
+
+    def enter_scope(self, node, context):
+        assert isinstance(node, ast.For)
+
+        loop_var_names = list()
+        if isinstance(node.target, ast.Name):
+            loop_var_names.append(node.target.id)
+        elif isinstance(node.target, ast.Tuple):
+            for elt in node.target.elts:
+                if not isinstance(elt, ast.Name):
+                    context.report_error("Invalid loop var")
+                loop_var_names.append(elt.id)
+        else:
+            context.report_error("Invalid loop var")
+
+        self.loop_vars = [tvm.te.var(name, dtype="int32") for name in loop_var_names]
+        for loop_var in self.loop_vars:
+            context.update_symbol(loop_var.name, loop_var)
+            context.loop_stack[-1].append(loop_var)
+
+    def exit_scope(self, node, context, arg_list):
+        for loop_var in self.loop_vars:
+            context.loop_stack[-1].pop()
+        return super().exit_scope(node, context, arg_list)
 
 
 @register
 class Serial(ForScopeHandler):
     def __init__(self):
         def serial(begin, end):
-            pass
+            if len(self.loop_vars) != 1:
+                self.context.report_error("Expect exact 1 loop var")
+            ana = tvm.arith.Analyzer()
+            extent = end if begin == 0 else ana.simplify(end - begin)
+            return tvm.tir.For(self.loop_vars[0], begin, extent, 0, 0, self.body)
 
         super().__init__(serial)
-
-    def enter_scope(self, node, context):
-        super().enter_scope(node, context)
-
-    def exit_scope(self, node, context, arg_list):
-        super().exit_scope(node, context, arg_list)
 
 
 @register
 class Parallel(ForScopeHandler):
     def __init__(self):
         def parallel(begin, end):
-            pass
+            if len(self.loop_vars) != 1:
+                self.context.report_error("Expect exact 1 loop var")
+            ana = tvm.arith.Analyzer()
+            extent = end if begin == 0 else ana.simplify(end - begin)
+            return tvm.tir.For(self.loop_vars[0], begin, extent, 1, 0, self.body)
 
         super().__init__(parallel)
-
-    def enter_scope(self, node, context):
-        super().enter_scope(node, context)
-
-    def exit_scope(self, node, context, arg_list):
-        super().exit_scope(node, context, arg_list)
 
 
 @register
 class Vectorized(ForScopeHandler):
     def __init__(self):
         def vectorized(begin, end):
-            pass
+            if len(self.loop_vars) != 1:
+                self.context.report_error("Expect exact 1 loop var")
+            ana = tvm.arith.Analyzer()
+            extent = end if begin == 0 else ana.simplify(end - begin)
+            return tvm.tir.For(self.loop_vars[0], begin, extent, 2, 0, self.body)
 
         super().__init__(vectorized)
-
-    def enter_scope(self, node, context):
-        super().enter_scope(node, context)
-
-    def exit_scope(self, node, context, arg_list):
-        super().exit_scope(node, context, arg_list)
 
 
 @register
 class Unroll(ForScopeHandler):
     def __init__(self):
         def unroll(begin, end):
-            pass
+            if len(self.loop_vars) != 1:
+                self.context.report_error("Expect exact 1 loop var")
+            ana = tvm.arith.Analyzer()
+            extent = end if begin == 0 else ana.simplify(end - begin)
+            return tvm.tir.For(self.loop_vars[0], begin, extent, 3, 0, self.body)
 
         super().__init__(unroll)
-
-    def enter_scope(self, node, context):
-        super().enter_scope(node, context)
-
-    def exit_scope(self, node, context, arg_list):
-        super().exit_scope(node, context, arg_list)
 
 
 @register
 class RangeHandler(ForScopeHandler):
     def __init__(self):
         def Range(begin, end, annotation=None):
-            pass
+            if len(self.loop_vars) != 1:
+                self.context.report_error("Expect exact 1 loop var")
+            ana = tvm.arith.Analyzer()
+            extent = end if begin == 0 else ana.simplify(end - begin)
+            if annotation is None:
+                annotation = []
+            else:
+                annotation = [
+                    tvm.tir.Annotation(
+                        key, tvm.runtime.convert(val) if isinstance(val, str) else val
+                    )
+                    for key, val in annotation.items()
+                ]
+            return tvm.tir.Loop(self.loop_vars[0], begin, extent, annotation, self.body)
 
         super().__init__(Range)
 
-    def enter_scope(self, node, context):
-        super().enter_scope(node, context)
-
-    def exit_scope(self, node, context, arg_list):
-        super().exit_scope(node, context, arg_list)
+    def signature(self):
+        return "range", get_param_list(self.func)
 
 
 @register
 class Grid(ForScopeHandler):
     def __init__(self):
         def grid(*extents):
-            pass
+            if len(self.loop_vars) != len(extents):
+                self.context.report_error("Inconsistent number of loop vars and extents")
+            body = self.body
+            for loop_var, extent in zip(reversed(self.loop_vars), reversed(extents)):
+                body = tvm.tir.Loop(loop_var, 0, extent, [], body)
+            return body
 
         super().__init__(grid)
-
-    def enter_scope(self, node, context):
-        super().enter_scope(node, context)
-
-    def exit_scope(self, node, context, arg_list):
-        super().exit_scope(node, context, arg_list)
