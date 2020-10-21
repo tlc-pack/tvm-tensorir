@@ -524,5 +524,5 @@ def test_auto_tensorize_rule_dot_product():
 if __name__ == "__main__":
     test_auto_tensorize_tensorcore()
     test_auto_tensorize_dot_product()
-    test_auto_tensorize_rule_tensorcore()
-    test_auto_tensorize_rule_dot_product()
+    # test_auto_tensorize_rule_tensorcore()
+    # test_auto_tensorize_rule_dot_product()

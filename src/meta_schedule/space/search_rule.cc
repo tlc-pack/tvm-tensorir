@@ -399,7 +399,7 @@ class RuleMarkTensorize {
     }
     // Split the loops
     arith::Analyzer analyzer;
-    std::unordered_set<const Object*> inner_loops;
+    std::unordered_set<const tir::StmtSRefNode*> inner_loops;
     std::vector<LoopRV> reorder_suffix;
     reorder_suffix.resize(info->loop_map.size());
     for (const auto& kv : info->loop_map) {
@@ -423,7 +423,7 @@ class RuleMarkTensorize {
       Array<LoopRV> split =
           sch->Split(loop2rv.at(block_loop_sref), {Integer(outer), Integer(inner)});
       CHECK_EQ(split.size(), 2);
-      inner_loops.insert(sch->Eval(split[1]).get());
+      inner_loops.insert(sch->Eval(split[1]).operator->());
       // The inner split will be reordered to the loop domain that is tensorized
       int desc_loop_index = info->desc_loop_indexer.at(GetRef<tir::Loop>(desc_loop));
       reorder_suffix[desc_loop_index] = split[1];
@@ -433,7 +433,7 @@ class RuleMarkTensorize {
     bool meet = false;
     Array<LoopRV> all_loops = sch->GetAxes(block_rv);
     for (const LoopRV& loop : all_loops) {
-      if (inner_loops.count(sch->Eval(loop).get())) {
+      if (inner_loops.count(sch->Eval(loop).operator->())) {
         meet = true;
       } else if (meet) {
         reorder_list.push_back(loop);
@@ -444,6 +444,17 @@ class RuleMarkTensorize {
     // Do blockize
     if (!reorder_suffix.empty()) {
       sch->Blockize(reorder_suffix[0], "");
+    }
+    // Annotate the block
+    {
+      tir::StmtSRef last_loop_sref = sch->Eval(reorder_list.back());
+      const auto* last_loop = last_loop_sref->GetStmt<tir::LoopNode>();
+      CHECK(last_loop) << "TypeError: Expects Loop, but gets: "
+                       << last_loop_sref->stmt->GetTypeKey();
+      const auto* realize = last_loop->body.as<tir::BlockRealizeNode>();
+      CHECK(realize) << "TypeError: Expects BlockRealize, but gets: "
+                     << last_loop->body->GetTypeKey();
+      AnnotateBlockType(sch->sch, sch->sch->stmt2ref.at(realize->block.get()), "lazy_tensorize");
     }
   }
 
