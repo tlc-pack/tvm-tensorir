@@ -139,6 +139,17 @@ def test_meta_schedule_analysis_annotate_loop_type():
     assert loops[2].stmt.annotations[0].value == "lazy_parallel"
 
 
+def test_meta_schedule_analysis_annotate_block_type():
+    sch = ms.Schedule(func=matmul)
+    block = sch.evaluate(sch.get_block("C"))
+    ms.analysis.annotate_block_type(
+        sch=sch.sch,
+        block=block,
+        annotation="lazy_tensorize",
+    )
+    assert block.stmt.annotations[0].value == "lazy_tensorize"
+
+
 def test_meta_schedule_analysis_collect_annotated_loops():  # pylint: disable=invalid-name
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("C")
@@ -269,6 +280,7 @@ if __name__ == "__main__":
     test_meta_schedule_analysis_is_subroot_block()
     test_meta_schedule_analysis_is_leaf_block()
     test_meta_schedule_analysis_annotate_loop_type()
+    test_meta_schedule_analysis_annotate_block_type()
     test_meta_schedule_analysis_collect_annotated_loops()
     test_meta_schedule_analysis_get_loop_type()
     test_meta_schedule_analysis_get_block_var_types()

@@ -97,6 +97,21 @@ def annotate_loop_type(sch: tir.Schedule, loops: List[tir.StmtSRef], annotation:
     _ffi_api_analysis.AnnotateLoopType(sch, loops, annotation)  # pylint: disable=no-member
 
 
+def annotate_block_type(sch: tir.Schedule, block: tir.StmtSRef, annotation: str) -> None:
+    """Annotate the specific block with the given block type
+
+    Parameters
+    ----------
+    sch : tir.Schedule
+        The TIR schedule class
+    block : tir.StmtSRef
+        The block to be annotated
+    annotation : str
+        The block annotations
+    """
+    _ffi_api_analysis.AnnotateBlockType(sch, block, annotation)  # pylint: disable=no-member
+
+
 def collect_annotated_loops(sch: tir.Schedule, annotation: str) -> List[List[tir.StmtSRef]]:
     """Collect the loops annotated with each sub-tree
 
