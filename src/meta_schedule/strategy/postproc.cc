@@ -113,7 +113,27 @@ class PostprocRewriteTensorize {
     return result;
   }
 
-  bool Proc(Schedule sch) {
+  bool CanTensorize(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
+                    const tir::TensorIntrin& intrin) {
+    Optional<TensorizeInfo> opt_tensorize_info =
+        GetTensorizeLoopMapping(sch, block_sref, intrin->description);
+    if (!opt_tensorize_info.defined()) {
+      return false;
+    }
+    const auto* info = opt_tensorize_info.value().get();
+    arith::Analyzer analyzer;
+    for (const auto& kv : info->loop_map) {
+      const tir::StmtSRef& block_loop_sref = kv.first;
+      const auto* block_loop = block_loop_sref->GetStmt<tir::LoopNode>();
+      const tir::Loop& desc_loop = kv.second;
+      if (!analyzer.CanProve(block_loop->extent == desc_loop->extent)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool Proc(const Schedule& sch) {
     while (Optional<tir::Block> opt_block = FindAnnotatedBlock(sch)) {
       tir::Block block = opt_block.value();
       tir::StmtSRef block_sref = sch->sch->stmt2ref.at(block.get());
@@ -131,7 +151,13 @@ class PostprocRewriteTensorize {
       if (block->body->IsInstance<tir::ReduceStepNode>()) {
         sch->sch->decompose_reduction(block_sref, loop_srefs[0]);
       }
-      LOG(INFO) << "schedule:\n" << Repr(sch);
+      // Tensorize
+      for (const tir::TensorIntrin& intrin : tensor_intrins) {
+        if (CanTensorize(sch->sch, block_sref, intrin)) {
+          sch->sch->tensorize(loop_srefs[0], intrin);
+          return true;
+        }
+      }
     }
     return false;
   }
