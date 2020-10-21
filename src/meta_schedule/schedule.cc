@@ -29,14 +29,13 @@ namespace tvm {
 namespace meta_schedule {
 
 Schedule::Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
-                   Map<Instruction, Array<ObjectRef>> decisions, bool normalized,
-                   TSymbolTable sym_tab, Optional<Integer> seed) {
+                   Map<Instruction, Array<ObjectRef>> decisions, TSymbolTable sym_tab,
+                   Optional<Integer> seed) {
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
   n->orig_func = std::move(orig_func);
   n->sch = std::move(sch);
   n->trace = std::move(trace);
   n->decisions = std::move(decisions);
-  n->normalized = false;
   n->sym_tab = std::move(sym_tab);
   if (seed.defined()) {
     n->sampler.Seed(seed.value()->value);
@@ -46,53 +45,11 @@ Schedule::Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction
 
 Schedule::Schedule(tir::PrimFunc orig_func, Optional<Integer> seed)
     : Schedule(/*orig_func=*/orig_func, /*sch=*/tir::ScheduleNode::Create(orig_func), /*trace=*/{},
-               /*decisions=*/{}, /*normalized=*/false, /*sym_tab=*/{}, /*seed=*/seed) {}
+               /*decisions=*/{}, /*sym_tab=*/{}, /*seed=*/seed) {}
 
 /**************** Utility ****************/
 
 void ScheduleNode::Seed(int seed) { this->sampler.Seed(seed); }
-
-void ScheduleNode::Normalize() {
-  if (this->normalized) {
-    return;
-  }
-  // Fuse "lazy_parallel" loops
-  {
-    Array<Array<tir::StmtSRef>> to_parallel = CollectAnnotatedLoops(this->sch, "lazy_parallel");
-    for (const Array<tir::StmtSRef>& group : to_parallel) {
-      for (const tir::StmtSRef& loop_sref : group) {
-        const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
-        CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->GetTypeKey();
-        ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
-        new_loop->annotations.clear();
-        this->sch->Replace(loop_sref, tir::Loop(new_loop));
-      }
-      tir::StmtSRef fused = group[0];
-      for (int i = 1, n = group.size(); i < n; ++i) {
-        fused = this->sch->fuse(fused, group[i]);
-      }
-      this->sch->parallel(fused);
-    }
-  }
-  {
-    Array<Array<tir::StmtSRef>> to_vectorize = CollectAnnotatedLoops(this->sch, "lazy_vectorize");
-    for (const Array<tir::StmtSRef>& group : to_vectorize) {
-      for (const tir::StmtSRef& loop_sref : group) {
-        const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
-        CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->GetTypeKey();
-        ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
-        new_loop->annotations.clear();
-        this->sch->Replace(loop_sref, tir::Loop(new_loop));
-      }
-      tir::StmtSRef fused = group[0];
-      for (int i = 1, n = group.size(); i < n; ++i) {
-        fused = this->sch->fuse(fused, group[i]);
-      }
-      this->sch->vectorize(fused);
-    }
-  }
-  this->normalized = true;
-}
 
 /*! \brief Helper class to do tir::StmtSRef translation */
 struct SRefTranslator {
@@ -225,7 +182,6 @@ Schedule ScheduleNode::Copy(int new_seed) const {
                   /*sch=*/tir_sch,
                   /*trace=*/this->trace,
                   /*decisions=*/this->decisions,
-                  /*normalized=*/this->normalized,
                   /*sym_tab=*/translator.Trans(this->sym_tab),
                   /*seed=*/Integer(new_seed));
 }
@@ -685,6 +641,19 @@ BlockRV ScheduleNode::CacheWrite(const BlockRV& block_rv, const String& storage_
   return output;
 }
 
+BlockRV ScheduleNode::Blockize(const LoopRV& loop_rv, const String& exec_scope) {
+  // Find the output from TIR
+  tir::StmtSRef loop_sref = this->Eval(loop_rv);
+  tir::StmtSRef tir_result = this->sch->blockize(loop_sref, exec_scope);
+  // Create the output random variable
+  BlockRV output;
+  // Update the symbol table
+  this->sym_tab.emplace(output, tir_result);
+  // Put the instruction in the trace
+  this->trace.push_back(BlockizeAttrs::MakeInst(loop_rv, exec_scope, output));
+  return output;
+}
+
 BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const LoopRV& loop) {
   // Find the output from TIR
   tir::StmtSRef tir_result = this->sch->decompose_reduction(Eval(block), Eval(loop));
@@ -798,11 +767,6 @@ struct Internal {
    * \sa Schedule::Schedule
    */
   static Schedule New(tir::PrimFunc func, Optional<Integer> seed) { return Schedule(func, seed); }
-  /*!
-   * \brief FFI function, corresponds to ScheduleNode::Normalize
-   * \sa ScheduleNode::Normalize
-   */
-  static void Normalize(Schedule sch) { sch->Normalize(); }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Seed
    * \sa ScheduleNode::Seed
@@ -941,6 +905,13 @@ struct Internal {
     return sch->CacheWrite(block, storage_scope);
   }
   /*!
+   * \brief FFI function, corresponds to ScheduleNode::Blockize
+   * \sa ScheduleNode::Blockize
+   */
+  static BlockRV Blockize(Schedule sch, LoopRV loop, String exec_scope) {
+    return sch->Blockize(loop, exec_scope);
+  }
+  /*!
    * \brief FFI function, corresponds to ScheduleNode::DecomposeReduction
    * \sa ScheduleNode::DecomposeReduction
    */
@@ -969,7 +940,6 @@ struct Internal {
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
 TVM_REGISTER_GLOBAL("meta_schedule.Schedule").set_body_typed(Internal::New);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleNormalize").set_body_typed(Internal::Normalize);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSeed").set_body_typed(Internal::Seed);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCopy").set_body_typed(Internal::Copy);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleEval").set_body_typed(Internal::Eval);
@@ -996,6 +966,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleComputeInline").set_body_typed(Intern
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReverseComputeInline")
     .set_body_typed(Internal::ReverseComputeInline);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCacheWrite").set_body_typed(Internal::CacheWrite);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleBlockize").set_body_typed(Internal::Blockize);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleDecomposeReduction")
     .set_body_typed(Internal::DecomposeReduction);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMutateDecision")

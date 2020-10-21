@@ -77,6 +77,7 @@ Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Attrs& in
   TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, ReverseComputeAtAttrs);
   TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, ComputeInlineAttrs);
   TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, CacheWriteAttrs);
+  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, BlockizeAttrs);
   TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, DecomposeReductionAttrs);
   LOG(FATAL) << "TypeError: Cannot recognize instruction attribute: " << inst_attrs->GetTypeKey();
   throw;
@@ -397,6 +398,22 @@ Array<ObjectRef> CacheWriteAttrs::ApplyToSchedule(ScheduleNode* sch,
   return {sch->CacheWrite(block, storage_scope)};
 }
 
+Instruction BlockizeAttrs::MakeInst(const LoopRV& loop, const String& exec_scope,
+                                    const BlockRV& output) {
+  ObjectPtr<BlockizeAttrs> n = make_object<BlockizeAttrs>();
+  n->exec_scope = exec_scope;
+  return Instruction(/*inputs=*/{loop},
+                     /*outputs=*/{output},
+                     /*attrs=*/Attrs(std::move(n)));
+}
+
+Array<ObjectRef> BlockizeAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                const Array<ObjectRef>& inputs) const {
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_CAST_INPUT(LoopRV, loop, inputs[0]);
+  return {sch->Blockize(loop, exec_scope)};
+}
+
 Instruction DecomposeReductionAttrs::MakeInst(const BlockRV& block, const LoopRV& loop,
                                               const BlockRV& output) {
   ObjectPtr<DecomposeReductionAttrs> n = make_object<DecomposeReductionAttrs>();
@@ -435,6 +452,7 @@ TVM_REGISTER_NODE_TYPE(ReverseComputeAtAttrs);
 TVM_REGISTER_NODE_TYPE(ComputeInlineAttrs);
 TVM_REGISTER_NODE_TYPE(ReverseComputeInlineAttrs);
 TVM_REGISTER_NODE_TYPE(CacheWriteAttrs);
+TVM_REGISTER_NODE_TYPE(BlockizeAttrs);
 TVM_REGISTER_NODE_TYPE(DecomposeReductionAttrs);
 
 #undef TVM_META_SCHEDULE_CAST_INPUT
