@@ -47,8 +47,6 @@ class ScheduleNode : public Object {
   Array<Instruction> trace;
   /*! \brief The decisions made in sampling */
   Map<Instruction, Array<ObjectRef>> decisions;
-  /*! \brief Whether the schedule has been normalized */
-  bool normalized;
   /*! \brief The symbol table with information of all defined variables in the meta schedule */
   TSymbolTable sym_tab;
   /*! \brief The random number generator */
@@ -59,7 +57,6 @@ class ScheduleNode : public Object {
     v->Visit("sch", &sch);
     v->Visit("trace", &trace);
     v->Visit("decisions", &decisions);
-    v->Visit("normalized", &normalized);
     // `sym_tab` is not visited
     // `sampler` is not visited
   }
@@ -77,16 +74,6 @@ class ScheduleNode : public Object {
    * \return A new schedule.
    */
   Schedule Copy(int new_seed) const;
-  /*!
-   * \brief Normalize the underlying TIR schedule in the following steps.
-   * It basically does the following things:
-   * 1) Remove trivial loops whose extent is 1;
-   * 2) Fuse the loops which are marked as "lazy_parallel" / "lazy_vectorize", and
-   * parallel/vectorize them accordingly.
-   *
-   * This method should be called before being sent to the ProgramMeasurer.
-   */
-  void Normalize();
   /**************** Evaluation of random variables ****************/
   /*!
    * \brief Evaluate the value of a random variable of type Block
@@ -238,6 +225,13 @@ class ScheduleNode : public Object {
    */
   BlockRV CacheWrite(const BlockRV& block, const String& storage_scope);
   /*!
+   * \brief Apply blockize to the schedule
+   * \param loop The loop to be blockized
+   * \param exec_scope The execution scope
+   * \return A block random variable pointing to the new block
+   */
+  BlockRV Blockize(const LoopRV& loop, const String& exe_scope);
+  /*!
    * \brief Apply the instruction DecomposeReduction
    * \param block The block to be decomposed
    * \param loop The loop to be decomposed at
@@ -290,8 +284,8 @@ class Schedule : public ObjectRef {
    * \param seed The random seed
    */
   explicit Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
-                    Map<Instruction, Array<ObjectRef>> decisions, bool normalized,
-                    TSymbolTable sym_tab, Optional<Integer> seed);
+                    Map<Instruction, Array<ObjectRef>> decisions, TSymbolTable sym_tab,
+                    Optional<Integer> seed);
   /*!
    * \brief Constructor: other fields are created with default value
    * \param orig_func The original TIR PrimFunc to be scheduled

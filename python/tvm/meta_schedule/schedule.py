@@ -377,6 +377,23 @@ class Schedule(Object):
         """
         return _ffi_api.ScheduleCacheWrite(self, block, storage_scope)  # pylint: disable=no-member
 
+    def blockize(self, loop: LoopRV, exec_scope: str = "") -> BlockRV:
+        """Apply the instruction blockize
+
+        Parameters
+        ----------
+        loop : LoopRV
+            The loop to be blockized
+        exec_scope: str
+            The execution scope
+
+        Returns
+        -------
+        block : BlockRV
+            The new block
+        """
+        return _ffi_api.ScheduleBlockize(self, loop, exec_scope)  # pylint: disable=no-member
+
     def decompose_reduction(
         self,
         block: BlockRV,

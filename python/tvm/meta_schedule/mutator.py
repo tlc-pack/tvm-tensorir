@@ -21,20 +21,14 @@ from typing import Optional
 from tvm._ffi import register_object
 from tvm.runtime import Object
 
-from . import _ffi_api, _ffi_api_mutator
+from . import _ffi_api_mutator
 from .schedule import Schedule
 from .search import SearchTask
 
 
 @register_object("meta_schedule.Mutator")
 class Mutator(Object):
-    """A mutation rule for the genetic algorithm
-
-    Parameters
-    ----------
-    p: float
-        The probability mass of choosing this mutator
-    """
+    """A mutation rule for the genetic algorithm"""
 
     name: str
 
@@ -58,7 +52,7 @@ class Mutator(Object):
         new_sch : Optional[Schedule]
             The new schedule after mutation, or None if cannot find a viable solution
         """
-        return _ffi_api.MutatorApply(self, task, sch, seed)  # pylint: disable=no-member
+        return _ffi_api_mutator.Apply(self, task, sch, seed)  # pylint: disable=no-member
 
 
 def mutate_tile_size() -> Mutator:
