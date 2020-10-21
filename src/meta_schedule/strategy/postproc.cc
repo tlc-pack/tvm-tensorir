@@ -102,6 +102,8 @@ struct Internal {
 
 TVM_REGISTER_NODE_TYPE(PostprocNode);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.Apply").set_body_typed(Internal::Apply);
+TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteParallel").set_body_typed(RewriteParallel);
+TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteVectorize").set_body_typed(RewriteVectorize);
 
 }  // namespace meta_schedule
 }  // namespace tvm

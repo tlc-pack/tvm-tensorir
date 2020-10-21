@@ -14,3 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+"""FFI APIs for postprocssing in meta schedule"""
+import tvm._ffi
+
+tvm._ffi._init_api("meta_schedule.postproc", __name__)

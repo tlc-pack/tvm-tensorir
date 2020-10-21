@@ -205,34 +205,6 @@ def test_matmul_schedule_fn():
 
 
 @pytest.mark.skip(reason="needs RPC")
-def test_matmul_post_order_apply():
-    my_rule = ms.rule.compose(
-        name="composed",
-        rules=[
-            do_nothing,
-            ms.rule.add_cache_write(),
-            ms.rule.multi_level_tiling(structure="SSRSRS"),
-            ms.rule.fusion(levels=[1, 2]),
-        ],
-    )
-    sch = ms.autotune(
-        task=matmul,
-        space=ms.space.PostOrderApply(
-            stages=[
-                my_rule,
-                ms.rule.mark_parallelize_outer(max_extent=256),
-                ms.rule.mark_vectorize_inner(max_extent=32),
-            ]
-        ),
-        strategy="replay",
-    )
-    if sch is None:
-        print("No valid schedule found")
-    else:
-        print(tvm.script.asscript(sch.sch.func))
-
-
-@pytest.mark.skip(reason="needs RPC")
 def test_matmul_relu_schedule_fn():
     def schedule_matmul(sch: ms.Schedule):
         matmul_block = sch.get_block(name="matmul")
@@ -250,34 +222,6 @@ def test_matmul_relu_schedule_fn():
     sch = ms.autotune(
         task=matmul_relu,
         space=schedule_matmul,
-        strategy="replay",
-    )
-    if sch is None:
-        print("No valid schedule found")
-    else:
-        print(tvm.script.asscript(sch.sch.func))
-
-
-@pytest.mark.skip(reason="needs RPC")
-def test_matmul_relu_post_order_apply():
-    my_rule = ms.rule.compose(
-        name="composed",
-        rules=[
-            do_nothing,
-            ms.rule.add_cache_write(),
-            ms.rule.multi_level_tiling(structure="SSRSRS"),
-            ms.rule.fusion(levels=[1, 2]),
-        ],
-    )
-    sch = ms.autotune(
-        task=matmul_relu,
-        space=ms.space.PostOrderApply(
-            stages=[
-                my_rule,
-                ms.rule.mark_parallelize_outer(max_extent=256),
-                ms.rule.mark_vectorize_inner(max_extent=32),
-            ]
-        ),
         strategy="replay",
     )
     if sch is None:
@@ -324,6 +268,62 @@ def test_conv2d_schedule_fn():
     sch = ms.autotune(
         task=conv2d,
         space=schedule_conv2d,
+        strategy="replay",
+    )
+    if sch is None:
+        print("No valid schedule found")
+    else:
+        print(tvm.script.asscript(sch.sch.func))
+
+
+@pytest.mark.skip(reason="needs RPC")
+def test_matmul_post_order_apply():
+    my_rule = ms.rule.compose(
+        name="composed",
+        rules=[
+            do_nothing,
+            ms.rule.add_cache_write(),
+            ms.rule.multi_level_tiling(structure="SSRSRS"),
+            ms.rule.fusion(levels=[1, 2]),
+        ],
+    )
+    sch = ms.autotune(
+        task=matmul,
+        space=ms.space.PostOrderApply(
+            stages=[
+                my_rule,
+                ms.rule.mark_parallelize_outer(max_extent=256),
+                ms.rule.mark_vectorize_inner(max_extent=32),
+            ]
+        ),
+        strategy="replay",
+    )
+    if sch is None:
+        print("No valid schedule found")
+    else:
+        print(tvm.script.asscript(sch.sch.func))
+
+
+@pytest.mark.skip(reason="needs RPC")
+def test_matmul_relu_post_order_apply():
+    my_rule = ms.rule.compose(
+        name="composed",
+        rules=[
+            do_nothing,
+            ms.rule.add_cache_write(),
+            ms.rule.multi_level_tiling(structure="SSRSRS"),
+            ms.rule.fusion(levels=[1, 2]),
+        ],
+    )
+    sch = ms.autotune(
+        task=matmul_relu,
+        space=ms.space.PostOrderApply(
+            stages=[
+                my_rule,
+                ms.rule.mark_parallelize_outer(max_extent=256),
+                ms.rule.mark_vectorize_inner(max_extent=32),
+            ]
+        ),
         strategy="replay",
     )
     if sch is None:
@@ -474,12 +474,15 @@ def test_matmul_evolutionary_end_to_end():
 
 
 if __name__ == "__main__":
+    # ScheduleFn + Replay
     test_matmul_schedule_fn()
-    test_matmul_post_order_apply()
     test_matmul_relu_schedule_fn()
-    test_matmul_relu_post_order_apply()
     test_conv2d_schedule_fn()
+    # PostOrderApply + Replay
+    test_matmul_post_order_apply()
+    test_matmul_relu_post_order_apply()
     test_conv2d_post_order_apply()
     test_conv2d_relu_plus_one_post_order_apply()
+    # PostOrderApply + Evo Search
     test_matmul_evolutionary_step_by_step()
     test_matmul_evolutionary_end_to_end()
