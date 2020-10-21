@@ -54,9 +54,11 @@ class ContextMaintainer:
             self.loop_stack.pop()
             self.block_info_stack.pop()
 
-    def new_scope(self, is_block=False):
+    def new_scope(self, is_block=False, nodes=None):
         """Creating a new scope"""
-        self.node_stack.append([])
+        if nodes is None:
+            nodes = []
+        self.node_stack.append(list(reversed(nodes)))
         self.symbols.append(dict())
         if is_block:
             self.loop_stack.append([])

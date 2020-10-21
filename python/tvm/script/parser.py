@@ -349,9 +349,8 @@ class TVMScriptParser(ast.NodeVisitor):
             self.context.update_symbol(arg.arg, arg_var)
             self.context.func_params.append(arg_var)
         # New Scope : Implicit root block
-        self.context.new_scope(is_block=True)
+        self.context.new_scope(is_block=True, nodes=node.body)
         # fetch the body of root block
-        self.context.node_stack[-1].extend(reversed(node.body))
         body = self.parse_body()
         # Emit Scope : Implicit root block
         root_info = self.context.block_scope()
@@ -484,8 +483,7 @@ class TVMScriptParser(ast.NodeVisitor):
             self.base_lineno + node.iter.lineno - 1,
             node.iter.col_offset,
         )
-        self.context.new_scope()
-        self.context.node_stack[-1].extend(reversed(node.body))
+        self.context.new_scope(nodes=node.body)
         # for scope handler process the scope
         func.enter_scope(node, self.context)
         func.body = self.parse_body()
@@ -525,8 +523,7 @@ class TVMScriptParser(ast.NodeVisitor):
             self.base_lineno + func_call.lineno - 1,
             func_call.col_offset,
         )
-        self.context.new_scope(is_block=True)
-        self.context.node_stack[-1].extend(reversed(node.body))
+        self.context.new_scope(is_block=True, nodes=node.body)
         # with scope handler process the scope
         func.enter_scope(node, self.context)
         func.body = self.parse_body()
@@ -545,15 +542,13 @@ class TVMScriptParser(ast.NodeVisitor):
 
         condition = self.visit(node.test)
         # then body
-        self.context.new_scope()
-        self.context.node_stack[-1].extend(reversed(node.body))
+        self.context.new_scope(nodes=node.body)
         then_body = self.parse_body()
         self.context.pop_scope()
 
         # else body
         if len(node.orelse) > 0:
-            self.context.new_scope()
-            self.context.node_stack[-1].extend(reversed(node.orelse))
+            self.context.new_scope(nodes=node.orelse)
             else_body = self.parse_body()
             self.context.pop_scope()
         else:
