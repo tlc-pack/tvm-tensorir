@@ -50,6 +50,56 @@ def matmul_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
 
 
 @tvm.script.tir
+def matmul_blockized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    # function attr dict
+    tir.func_attr({})
+    C = tir.match_buffer(c, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
+    B = tir.match_buffer(b, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
+    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        for i0 in range(0, 1024):
+            for i1 in range(0, 1024):
+                with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "blockized_C") as [
+                    vi,
+                    vj,
+                    vk,
+                ]:
+                    tir.bind(vi, i0)
+                    tir.bind(vj, i1)
+                    tir.bind(vk, 0)
+                    tir.reads(
+                        [
+                            C[vi : (vi + 1), vj : (vj + 1)],
+                            A[vi : (vi + 1), 0:1024],
+                            B[0:1024, vj : (vj + 1)],
+                        ]
+                    )
+                    tir.writes([C[vi : (vi + 1), vj : (vj + 1)]])
+                    for i2 in range(0, 1024):
+                        with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "C") as [
+                            vi_1,
+                            vj_1,
+                            vk_1,
+                        ]:
+                            tir.bind(vi_1, vi)
+                            tir.bind(vj_1, vj)
+                            tir.bind(vk_1, i2)
+                            tir.reads(
+                                [
+                                    C[vi_1 : (vi_1 + 1), vj_1 : (vj_1 + 1)],
+                                    A[vi_1 : (vi_1 + 1), vk_1 : (vk_1 + 1)],
+                                    B[vk_1 : (vk_1 + 1), vj_1 : (vj_1 + 1)],
+                                ]
+                            )
+                            tir.writes([C[vi_1 : (vi_1 + 1), vj_1 : (vj_1 + 1)]])
+                            reducer.step(C[vi_1, vj_1], (A[vi_1, vk_1] * B[vk_1, vj_1]))
+
+
+@tvm.script.tir
 def matmul_relu_fused(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     # function attr dict
     tir.func_attr({})
@@ -394,6 +444,14 @@ def test_meta_schedule_cache_write():
     assert tvm.ir.structural_equal(sch.sch.func, matmul_cache_write)
 
 
+def test_meta_schedule_blockize():
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("C")
+    _, _, k = sch.get_axes(block)
+    sch.blockize(k)
+    assert tvm.ir.structural_equal(sch.sch.func, matmul_blockized)
+
+
 def test_meta_schedule_mutate_decision():
     sch = ms.Schedule(func=matmul)
     i, j, _ = sch.get_axes(sch.get_block("C"))
@@ -475,6 +533,7 @@ if __name__ == "__main__":
     test_meta_schedule_reverse_compute_at()
     test_meta_schedule_compute_inline()
     test_meta_schedule_cache_write()
+    test_meta_schedule_blockize()
     # test_meta_schedule_decompose_reduction()
     test_meta_schedule_mutate_decision()
     test_meta_schedule_resample()

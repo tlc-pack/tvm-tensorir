@@ -27,7 +27,6 @@ from threading import Thread
 from typing import List, Tuple
 
 import psutil
-
 from tvm import rpc
 from tvm._ffi import register_func
 from tvm.contrib import ndk as build_func_ndk

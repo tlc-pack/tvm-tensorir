@@ -532,6 +532,33 @@ struct CacheWriteAttrs : public tvm::AttrsNode<CacheWriteAttrs> {
   }
 };
 
+/*! \brief Attrs of the instruction that applies blockize */
+struct BlockizeAttrs : public tvm::AttrsNode<BlockizeAttrs> {
+  /*! \brief The execution scope of the instruction blockize */
+  String exec_scope;
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param loop The loop to be blockized
+   * \param exec_scope The execution scope
+   * \param output The output of the instruction
+   * \return The instruction created
+   */
+  static Instruction MakeInst(const LoopRV& block, const String& exec_scope, const BlockRV& output);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+
+  TVM_DECLARE_ATTRS(BlockizeAttrs, "meta_schedule.attrs.BlockizeAttrs") {
+    TVM_ATTR_FIELD(exec_scope);
+  }
+};
+
 /*! \brief Attrs of the instruction that applies decompose_reduction */
 struct DecomposeReductionAttrs : public tvm::AttrsNode<DecomposeReductionAttrs> {
   /*!
