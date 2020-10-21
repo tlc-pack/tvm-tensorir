@@ -19,7 +19,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
-from tvm.tir import PrimFunc
+from tvm.tir import TensorIntrin
 
 from . import _ffi_api, _ffi_api_search_rule
 from .instruction import BlockRV
@@ -226,17 +226,17 @@ def mark_vectorize_inner(max_extent: int) -> SearchRule:
     return _ffi_api_search_rule.MarkVectorizeInner(max_extent)  # pylint: disable=no-member
 
 
-def tensorize_rewrite(desc_func: PrimFunc) -> SearchRule:
-    """Create a rule that does rewriting for later tensorize
+def mark_tensorize(tensor_intrins: List[TensorIntrin]) -> SearchRule:
+    """Rewrite block and its surrounding loops to match the tensor intrinsics if possible
 
     Parameters
     ----------
-    desc_func : PrimFunc
-        The description function of TensorIntrin we want to match
+    tensor_intrins : List[TensorIntrin]
+        The tensor intrinsics to be matched
 
     Returns
     -------
     rule: SearchRule
-        A search rule that does tensorize rewrite
+        The rule created
     """
-    return _ffi_api_search_rule.TensorizeRewrite(desc_func)  # pylint: disable=no-member
+    return _ffi_api_search_rule.MarkTensorize(tensor_intrins)  # pylint: disable=no-member

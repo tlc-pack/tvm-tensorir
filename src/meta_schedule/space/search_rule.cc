@@ -377,34 +377,105 @@ SearchRule MarkVectorizeInner(int max_extent) {
   return SearchRule("vectorize_inner", f_apply);
 }
 
-/********** Tensorize Rewrite **********/
+/********** MarkTensorize **********/
 
-class RuleTensorizeRewrite {
+class RuleMarkTensorize {
  public:
-  tir::PrimFunc desc_func;
+  /*! \brief The tensor intrinsics to be used */
+  Array<tir::TensorIntrin> tensor_intrins;
 
-  explicit RuleTensorizeRewrite(tir::PrimFunc desc_func) : desc_func(std::move(desc_func)) {}
+  explicit RuleMarkTensorize(Array<tir::TensorIntrin> tensor_intrins)
+      : tensor_intrins(tensor_intrins) {}
 
+  void BlockizeAndMark(const Schedule& sch, const BlockRV& block_rv, const tir::PrimFunc& desc_func,
+                       const TensorizeInfoNode* info) {
+    // Construct a mapping from tir loops back to LoopRVs
+    Map<tir::StmtSRef, LoopRV> loop2rv;
+    {
+      Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
+      for (const LoopRV& loop_rv : loop_rvs) {
+        loop2rv.Set(sch->Eval(loop_rv), loop_rv);
+      }
+    }
+    // Split the loops
+    arith::Analyzer analyzer;
+    std::unordered_set<const Object*> inner_loops;
+    std::vector<LoopRV> reorder_suffix;
+    reorder_suffix.resize(info->loop_map.size());
+    for (const auto& kv : info->loop_map) {
+      // Extract mapping (block_loop => desc_loop)
+      const tir::StmtSRef& block_loop_sref = kv.first;
+      const tir::LoopNode* block_loop = block_loop_sref->GetStmt<tir::LoopNode>();
+      const tir::LoopNode* desc_loop = kv.second.get();
+      CHECK(block_loop != nullptr && desc_loop != nullptr);
+      // Extract the loop extent
+      PrimExpr block_extent = analyzer.Simplify(block_loop->extent);
+      PrimExpr desc_extent = analyzer.Simplify(desc_loop->extent);
+      const auto* int_block_extent = block_extent.as<IntImmNode>();
+      const auto* int_desc_extent = desc_extent.as<IntImmNode>();
+      CHECK(int_block_extent != nullptr && int_desc_extent != nullptr);
+      // Check divisibility
+      int64_t total = int_block_extent->value;
+      int64_t inner = int_desc_extent->value;
+      CHECK_EQ(total % inner, 0);
+      int64_t outer = int_block_extent->value / int_desc_extent->value;
+      // Do the split
+      Array<LoopRV> split =
+          sch->Split(loop2rv.at(block_loop_sref), {Integer(outer), Integer(inner)});
+      CHECK_EQ(split.size(), 2);
+      inner_loops.insert(sch->Eval(split[1]).get());
+      // The inner split will be reordered to the loop domain that is tensorized
+      int desc_loop_index = info->desc_loop_indexer.at(GetRef<tir::Loop>(desc_loop));
+      reorder_suffix[desc_loop_index] = split[1];
+    }
+    // Reorder the loops
+    std::vector<LoopRV> reorder_list;
+    bool meet = false;
+    Array<LoopRV> all_loops = sch->GetAxes(block_rv);
+    for (const LoopRV& loop : all_loops) {
+      if (inner_loops.count(sch->Eval(loop).get())) {
+        meet = true;
+      } else if (meet) {
+        reorder_list.push_back(loop);
+      }
+    }
+    reorder_list.insert(reorder_list.end(), reorder_suffix.begin(), reorder_suffix.end());
+    sch->Reorder(reorder_list);
+    // Do blockize
+    if (!reorder_suffix.empty()) {
+      sch->Blockize(reorder_suffix[0], "");
+    }
+  }
+
+  /*! \brief Rule application */
   TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
                 const TContextInfo& info) {
-    tir::StmtSRef block = sch->Eval(block_rv);
-    Optional<TensorizeInfo> opt_tensorize_info =
-        GetTensorizeLoopMapping(sch->sch, block, desc_func);
-    if (!opt_tensorize_info.defined()) {
-      return {{sch, info}};
+    tir::StmtSRef block_sref = sch->Eval(block_rv);
+    TReturn result{{sch, info}};
+    Optional<Schedule> next_sch = NullOpt;
+    for (const tir::TensorIntrin& intrin : tensor_intrins) {
+      if (!next_sch.defined()) {
+        next_sch = sch->Copy(sch->sampler.ForkSeed());
+      }
+      Schedule cur_sch = next_sch.value();
+      if (Optional<TensorizeInfo> opt_tensorize_info =
+              GetTensorizeLoopMapping(cur_sch->sch, block_sref, intrin->description)) {
+        BlockizeAndMark(cur_sch, block_rv, intrin->description, opt_tensorize_info.value().get());
+        result.Set(cur_sch, {});
+        next_sch = NullOpt;
+      }
     }
-    DoTensorizeRewrite(sch, block_rv, desc_func);
-    return {{sch, info}};
+    return result;
   }
 };
 
-/*! \brief Rule creator */
-SearchRule TensorizeRewrite(tir::PrimFunc desc_func) {
-  auto invoke = [&](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
-    RuleTensorizeRewrite rule(desc_func);
+SearchRule MarkTensorize(Array<tir::TensorIntrin> tensor_intrins) {
+  auto f_apply = [tensor_intrins{std::move(tensor_intrins)}](
+                     SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
+    RuleMarkTensorize rule(tensor_intrins);
     return rule.Apply(task, sch, block, info);
   };
-  return SearchRule("tensorize_rewrite", invoke);
+  return SearchRule("mark_tensorize", f_apply);
 }
 
 /********** FFI **********/
@@ -456,7 +527,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkParallelizeOuter")
     .set_body_typed(MarkParallelizeOuter);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkVectorizeInner")
     .set_body_typed(MarkVectorizeInner);
-TVM_REGISTER_GLOBAL("meta_schedule.search_rule.TensorizeRewrite").set_body_typed(TensorizeRewrite);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkTensorize").set_body_typed(MarkTensorize);
 
 }  // namespace meta_schedule
 }  // namespace tvm

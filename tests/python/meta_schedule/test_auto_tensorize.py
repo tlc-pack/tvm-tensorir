@@ -486,6 +486,43 @@ def test_auto_tensorize_dot_product():
     tvm.ir.assert_structural_equal(dot_product_tensorized, sch.sch.func)
 
 
+def _check_sketch(result, expected):
+    assert len(result) == len(expected)
+    for x in result:
+        found = False
+        for y in expected:
+            if tvm.ir.structural_equal(x.sch.func, y):
+                found = True
+                break
+        assert found
+
+
+def test_auto_tensorize_rule_tensorcore():
+    mma_sync = tvm.tir.TensorIntrin(tensorcore_desc, tensorcore_impl)
+    task = ms.SearchTask(func=batched_matmul)
+    space = ms.space.PostOrderApply(
+        stages=[
+            ms.rule.mark_tensorize(tensor_intrins=[mma_sync]),
+        ]
+    )
+    schs = space.get_support(task=task)
+    _check_sketch(schs, [batched_matmul, tensorcore_blockized])
+
+
+def test_auto_tensorize_rule_dot_product():
+    dot_prod = tvm.tir.TensorIntrin(dot_product_desc, dot_product_impl)
+    task = ms.SearchTask(func=batched_matmul)
+    space = ms.space.PostOrderApply(
+        stages=[
+            ms.rule.mark_tensorize(tensor_intrins=[dot_prod]),
+        ]
+    )
+    schs = space.get_support(task=task)
+    _check_sketch(schs, [batched_matmul, dot_product_blockized])
+
+
 if __name__ == "__main__":
     test_auto_tensorize_tensorcore()
     test_auto_tensorize_dot_product()
+    test_auto_tensorize_rule_tensorcore()
+    test_auto_tensorize_rule_dot_product()

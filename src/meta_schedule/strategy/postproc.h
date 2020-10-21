@@ -78,8 +78,18 @@ Array<Postproc> PostprocDefaults();
 
 /********** Built-in Post Processors **********/
 
+/*!
+ * \brief Creates a postprocessor that fuses the loops which are marked as "lazy_parallel",
+ * and then parallelize the fused loop
+ * \return The postprocessor
+ */
 TVM_DLL Postproc RewriteParallel();
 
+/*!
+ * \brief Creates a postprocessor that fuses the loops which are marked as "lazy_vectorize",
+ * and then apply vectorization on the fused loop
+ * \return The postprocessor
+ */
 TVM_DLL Postproc RewriteVectorize();
 
 }  // namespace meta_schedule

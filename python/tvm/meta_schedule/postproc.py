@@ -51,3 +51,27 @@ class Postproc(Object):
             If the post-processing succeeds
         """
         return _ffi_api_postproc.Apply(self, sch, seed)  # pylint: disable=no-member
+
+
+def rewrite_parallel() -> Postproc:
+    """Creates a postprocessor that fuses the loops which are marked as "lazy_parallel",
+    and then parallelize the fused loop
+
+    Returns
+    ----------
+    postproc: Postproc
+        The postprocessor created
+    """
+    return _ffi_api_postproc.RewriteParallel()  # pylint: disable=no-member
+
+
+def rewrite_vectorize() -> Postproc:
+    """Creates a postprocessor that fuses the loops which are marked as "lazy_vectorize",
+    and then apply vectorization on the fused loop
+
+    Returns
+    ----------
+    postproc: Postproc
+        The postprocessor created
+    """
+    return _ffi_api_postproc.RewriteVectorize()  # pylint: disable=no-member
