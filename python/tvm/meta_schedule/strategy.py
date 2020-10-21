@@ -24,6 +24,7 @@ from .cost_model import CostModel
 from .measure import ProgramMeasurer
 from .measure_record import MeasureResult
 from .mutator import Mutator
+from .postproc import Postproc
 from .schedule import Schedule
 from .search import SearchStrategy, SearchTask
 
@@ -43,16 +44,19 @@ class Replay(SearchStrategy):
 
     batch_size: int
     num_iterations: int
+    postprocs: List[Postproc]
 
     def __init__(
         self,
         batch_size: int = 16,
         num_iterations: int = 32,
+        postprocs: Optional[List[Postproc]] = None,
     ):
         self.__init_handle_by_constructor__(
             _ffi_api.Replay,  # pylint: disable=no-member
             batch_size,
             num_iterations,
+            postprocs,
         )
 
 
@@ -91,6 +95,7 @@ class Evolutionary(SearchStrategy):
     p_mutate: float
     mutator_probs: Dict[Mutator, float]
     cost_model: CostModel
+    postprocs: List[Postproc]
 
     def __init__(
         self,
@@ -103,6 +108,7 @@ class Evolutionary(SearchStrategy):
         p_mutate: float,
         mutator_probs: Dict[Mutator, float],
         cost_model: CostModel,
+        postprocs: Optional[List[Postproc]] = None,
     ):
         self.__init_handle_by_constructor__(
             _ffi_api.Evolutionary,  # pylint: disable=no-member
@@ -115,6 +121,7 @@ class Evolutionary(SearchStrategy):
             p_mutate,
             mutator_probs,
             cost_model,
+            postprocs,
         )
 
     def sample_init_population(
