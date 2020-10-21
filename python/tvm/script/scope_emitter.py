@@ -81,3 +81,6 @@ class ScopeEmitter:
 
     def block_scope(self):
         return self.block_info_stack[-1]
+
+    def report_error(self, message):
+        self.parser.report_error(message)

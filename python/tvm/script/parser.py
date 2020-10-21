@@ -229,12 +229,10 @@ class TVMScriptParser(ast.NodeVisitor):
         kw_args = [self.visit(keyword) for keyword in node_call.keywords]
         kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
         # get the name and parameter list of func
-        if inspect.isfunction(func):
-            func_name = func.__qualname__
-            param_list = get_param_list(func)
-        elif isinstance(func, (ScopeHandler, SpecialStmt)):
+        if isinstance(func, (Intrin, ScopeHandler, SpecialStmt)):
             func_name, param_list = func.signature()
         else:
+            print(func)
             raise Exception("Internal Error")
         # check arguments and parameter list and get a list of arguments
         reader = CallArgumentReader(func_name, args, kw_args, self)
@@ -391,7 +389,7 @@ class TVMScriptParser(ast.NodeVisitor):
 
         By now 3 patterns of Assign is supported:
             1. special stmts with return value
-                1.1 Buffer = tir.buffer_bind()/tir.buffer_allocate()
+                1.1 Buffer = tir.match_buffer()/tir.buffer_allocate()
                 1.2 TVMScriptReducer = tir.comm_reducer()
                 1.3 Var = tir.var()
                 1.4 Var = tir.env_thread()
@@ -407,6 +405,7 @@ class TVMScriptParser(ast.NodeVisitor):
         if isinstance(node.targets[0], ast.Name) and isinstance(node.value, ast.Call):
             # Pattern 1 & Pattern 4
             func = self.visit(node.value.func)
+            arg_list = self.parse_arg_list(func, node.value)
             if isinstance(func, WithScopeHandler):
                 if not func.concise_scope or not func.def_symbol:
                     self.report_error(
@@ -419,7 +418,6 @@ class TVMScriptParser(ast.NodeVisitor):
                 return func.exit_scope(node, self.scope_emitter, arg_list)
             elif isinstance(func, SpecialStmt):
                 # Pattern 1
-                arg_list = None
                 func.handle(node, self.scope_emitter, arg_list)
             else:
                 self.report_error("Unsupported Assign stmt")
@@ -539,7 +537,7 @@ class TVMScriptParser(ast.NodeVisitor):
 
         func.enter_scope(node, self.scope_emitter)
         func.body = self.parse_body()
-        arg_list = self.parse_arg_list(func, func_node)
+        arg_list = self.parse_arg_list(func, func_call)
         res = func.exit_scope(node, self.scope_emitter, arg_list)
 
         self.scope_emitter.pop_scope()
@@ -720,7 +718,7 @@ class TVMScriptParser(ast.NodeVisitor):
                 indexes = self.visit(node.slice.value)
                 indexes = list(indexes) if isinstance(indexes, tuple) else [indexes]
                 if isinstance(node.ctx, ast.Load):
-                    if isinstance(symbol, tir.expr.Var):
+                    if isinstance(symbol, tvm.tir.expr.Var):
                         return tvm.tir.Load("float32", symbol, indexes, True)
                     else:
                         return tvm.tir.BufferLoad(symbol, indexes)

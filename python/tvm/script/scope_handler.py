@@ -28,6 +28,8 @@ class ScopeHandler:
     def __init__(self, func):
         self.func = func
         self.body = None
+        self.node = None
+        self.context = None
 
     def signature(self):
         return "tir." + self.func.__name__, get_param_list(self.func)
@@ -36,7 +38,9 @@ class ScopeHandler:
         pass
 
     def exit_scope(self, node, context, arg_list):
-        pass
+        self.node = node
+        self.context = context
+        return self.func(*arg_list)
 
 
 class WithScopeHandler(ScopeHandler):
@@ -50,17 +54,98 @@ class WithScopeHandler(ScopeHandler):
 class Block(WithScopeHandler):
     def __init__(self):
         def block(axes=None, name="", exec_scope=""):
-            pass
+            block_info = self.context.block_scope()
+            if axes is None:
+                axes = []
+            if len(axes) != len(self.block_vars):
+                self.context.report_error("Inconsistent number of block vars")
+            block_iters = []
+            for i in range(len(axes)):
+                axis = tvm.runtime.convert(axes[i])
+                if isinstance(axis, tvm.tir.PrimExpr):
+                    block_var_dom = tvm.ir.Range.from_min_extent(0, axis)
+                    block_iters.append(tvm.tir.IterVar(block_var_dom, self.block_vars[i], 0))
+                elif isinstance(axis, tvm.ir.Range):
+                    block_iters.append(tvm.tir.IterVar(axis, self.block_vars[i], 0))
+                elif isinstance(axis, tvm.tir.IterVar):
+                    block_iters.append(
+                        tvm.tir.IterVar(axis.dom, self.block_vars[i], axis.iter_type)
+                    )
+                else:
+                    self.context.report_error("Invalid argument of tir.block()")
+            # create block IO info
+            if block_info.reads is None:
+                reads = None
+            else:
+                reads = []
+                for read in block_info.reads:
+                    if isinstance(read, tvm.tir.BufferLoad):
+                        doms = []
+                        for index in read.indices:
+                            doms.append(tvm.ir.Range.from_min_extent(index, 1))
+                        reads.append(tvm.tir.TensorRegion(read.buffer, doms))
+                    else:
+                        reads.append(read)
+            if block_info.writes is None:
+                writes = None
+            else:
+                writes = []
+                for write in block_info.writes:
+                    if isinstance(write, tvm.tir.BufferLoad):
+                        doms = []
+                        for index in write.indices:
+                            doms.append(tvm.ir.Range.from_min_extent(index, 1))
+                        writes.append(tvm.tir.TensorRegion(write.buffer, doms))
+                    else:
+                        writes.append(write)
+            inner = tvm.tir.Block(
+                block_iters,
+                reads,
+                writes,
+                self.body,
+                block_info.allocates,
+                block_info.annotations,
+                name,
+            )
+            # create block var binding
+            if not block_info.binding:
+                values = self.context.loop_stack[-1].copy()
+                if len(values) == 0:
+                    values = [None] * len(block_iters)
+                elif len(values) != len(block_iters):
+                    self.context.report_error(
+                        "Autocomplete block var binding expect larger number of loops"
+                    )
+            else:
+                for block_var in self.block_vars:
+                    if block_var not in block_info.binding:
+                        self.context.report_error("Missing block var binding for " + block_var.name)
+                values = [block_info.binding[block_var] for block_var in self.block_vars]
+
+            body = tvm.tir.BlockRealize(values, block_info.predicate, inner, exec_scope)
+            return body
 
         super().__init__(func=block, concise_scope=False, def_symbol=True)
+        self.block_vars = None
 
     def enter_scope(self, node, context):
         # define block vars
-        pass
+        assert isinstance(node, ast.With)
 
-    def exit_scope(self, node, context, arg_list):
-        # construct a BlockRealize(Block)
-        pass
+        var_names = None
+        if isinstance(node.items[0].optional_vars, ast.Name):
+            var_names = [node.items[0].optional_vars.id]
+        elif isinstance(node.items[0].optional_vars, (ast.List, ast.Tuple)):
+            for var in node.items[0].optional_vars.elts:
+                if not isinstance(var, ast.Name):
+                    context.parser.report_error("Invalid optional var definition")
+            var_names = [var.id for var in node.items[0].optional_vars.elts]
+        else:
+            context.parser.report_error("Invalid optional var definition")
+
+        self.block_vars = [tvm.te.var(name) for name in var_names]
+        for block_var in self.block_vars:
+            context.update_symbol(block_var.name, block_var)
 
 
 @register

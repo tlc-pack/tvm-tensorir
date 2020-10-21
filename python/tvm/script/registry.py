@@ -39,6 +39,5 @@ def register(registration):
         key = registration_obj.signature()[0]
     else:
         raise ValueError()
-    print(key, registration_obj)
     Registry.registrations[key] = registration_obj
     return registration

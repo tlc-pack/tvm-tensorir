@@ -39,12 +39,16 @@ class SpecialStmt:
     def __init__(self, func, def_symbol):
         self.func = func
         self.def_symbol = def_symbol
+        self.node = None
+        self.context = None
 
     def signature(self):
         return "tir." + self.func.__name__, get_param_list(self.func)
 
     def handle(self, node, context, arg_list):
-        pass
+        self.node = node
+        self.context = context
+        return self.func(*arg_list)
 
 
 @register
@@ -62,12 +66,32 @@ class MatchBuffer(SpecialStmt):
             offset_factor=0,
             buffer_type="default",
         ):
-            pass
+            assert isinstance(self.node, ast.Assign)
+
+            if param not in self.context.parser.params:
+                self.context.report_error("Can not bind non-input param to buffer")
+            if strides is None:
+                strides = []
+            align = align.value if not isinstance(align, int) else align
+            offset_factor = (
+                offset_factor.value if not isinstance(offset_factor, int) else offset_factor
+            )
+            buffer = tvm.tir.decl_buffer(
+                shape,
+                dtype,
+                self.node.targets[0].id,
+                data,
+                strides,
+                elem_offset,
+                scope,
+                align,
+                offset_factor,
+                buffer_type,
+            )
+            self.context.parser.buffer_map[param] = buffer
+            self.context.update_symbol(self.node.targets[0].id, buffer)
 
         super().__init__(match_buffer, def_symbol=True)
-
-    def handle(self, node, context, arg_list):
-        pass
 
 
 @register
@@ -222,12 +246,18 @@ class TVMScriptReducer:
 class CommReducer(SpecialStmt):
     def __init__(self):
         def comm_reducer(combiner, identity):
-            pass
+            if isinstance(combiner, TVMScriptLambda) and len(combiner.args) == 2:
+                assert isinstance(self.node, ast.Assign)
+                assert isinstance(self.node.targets[0], ast.Name)
+                self.context.update_symbol(
+                    self.node.targets[0].id, TVMScriptReducer(combiner, identity)
+                )
+            else:
+                self.context.report_error(
+                    "comm_reducer expect a 2-argument lambda function as first argument"
+                )
 
         super().__init__(comm_reducer, def_symbol=True)
-
-    def handle(self, node, context, arg_list):
-        pass
 
 
 @register

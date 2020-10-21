@@ -228,7 +228,7 @@ class Store(Intrin):
 class StepIntrin(Intrin):
     def __init__(self, reducer):
         def intrin(lhs, rhs):
-            return tvm.tir.ReduceStep(self.reducer, lhs, rhs)
+            return tvm.tir.ReduceStep(self.reducer.reducer, lhs, rhs)
 
         super().__init__(intrin, stmt=True)
         self.reducer = reducer
