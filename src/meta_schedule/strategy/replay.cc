@@ -81,6 +81,11 @@ Replay::Replay(int batch_size, int num_iterations, Optional<Array<Postproc>> pos
   ObjectPtr<ReplayNode> n = make_object<ReplayNode>();
   n->batch_size = batch_size;
   n->num_iterations = num_iterations;
+  if (postprocs.defined()) {
+    n->postprocs = postprocs.value();
+  } else {
+    n->postprocs = PostprocDefaults();
+  }
   data_ = std::move(n);
 }
 

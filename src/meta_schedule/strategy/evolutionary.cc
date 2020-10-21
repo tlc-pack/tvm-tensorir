@@ -197,6 +197,11 @@ Evolutionary::Evolutionary(int num_measure_trials, int num_measure_per_batch,
   n->p_mutate = p_mutate;
   n->mutator_probs = std::move(mutator_probs);
   n->cost_model = std::move(cost_model);
+  if (postprocs.defined()) {
+    n->postprocs = postprocs.value();
+  } else {
+    n->postprocs = PostprocDefaults();
+  }
   data_ = std::move(n);
 }
 

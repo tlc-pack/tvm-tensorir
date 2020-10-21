@@ -70,9 +70,13 @@ class Postproc : public ObjectRef {
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Postproc, ObjectRef, PostprocNode);
 };
 
-/********** Built-in Post Processors **********/
+/*!
+ * \brief Get the default post-processors
+ * \return A list of post-processors
+ */
+Array<Postproc> PostprocDefaults();
 
-TVM_DLL Array<Postproc> GetDefaultPostprocs();
+/********** Built-in Post Processors **********/
 
 TVM_DLL Postproc RewriteParallel();
 

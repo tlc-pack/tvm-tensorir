@@ -21,7 +21,45 @@
 namespace tvm {
 namespace meta_schedule {
 
-TVM_REGISTER_NODE_TYPE(PostprocNode);
+/********** Constructor **********/
 
+Postproc::Postproc(String name, FProc proc) {
+  ObjectPtr<PostprocNode> n = make_object<PostprocNode>();
+  n->name = std::move(name);
+  n->proc_ = std::move(proc);
+  data_ = std::move(n);
 }
+
+/********** Postproc **********/
+
+bool PostprocNode::Apply(const Schedule& sch, Sampler* sampler) { return proc_(sch, sampler); }
+
+Array<Postproc> PostprocDefaults() { return {RewriteParallel(), RewriteVectorize()}; }
+
+/********** Built-in Post-Processors **********/
+
+Postproc RewriteParallel() { return Postproc("rewrite_parallel", nullptr); }
+
+Postproc RewriteVectorize() { return Postproc("rewrite_vectorize", nullptr); }
+
+/********** FFI **********/
+
+struct Internal {
+  /*!
+   * \brief FFI function for PostProcNode::Apply
+   * \sa PostProcNode::Apply
+   */
+  static bool Apply(Postproc self, Schedule sch, Optional<Integer> seed) {
+    Sampler seeded;
+    if (seed.defined()) {
+      seeded.Seed(seed.value());
+    }
+    return self->Apply(sch, &seeded);
+  }
+};
+
+TVM_REGISTER_NODE_TYPE(PostprocNode);
+TVM_REGISTER_GLOBAL("meta_schedule.postproc.Apply").set_body_typed(Internal::Apply);
+
+}  // namespace meta_schedule
 }  // namespace tvm

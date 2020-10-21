@@ -153,8 +153,8 @@ struct Internal {
    * \brief FFI function for MutatorNode::Apply
    * \sa MutatorNode::Apply
    */
-  static Optional<Schedule> MutatorApply(Mutator mutator, SearchTask task, Schedule sch,
-                                         Optional<Integer> seed) {
+  static Optional<Schedule> Apply(Mutator mutator, SearchTask task, Schedule sch,
+                                  Optional<Integer> seed) {
     Sampler seeded;
     if (seed.defined()) {
       seeded.Seed(seed.value());
@@ -164,7 +164,7 @@ struct Internal {
 };
 
 TVM_REGISTER_NODE_TYPE(MutatorNode);
-TVM_REGISTER_GLOBAL("meta_schedule.mutator.Apply").set_body_typed(Internal::MutatorApply);
+TVM_REGISTER_GLOBAL("meta_schedule.mutator.Apply").set_body_typed(Internal::Apply);
 TVM_REGISTER_GLOBAL("meta_schedule.mutator.MutateTileSize").set_body_typed(MutateTileSize);
 
 }  // namespace meta_schedule
