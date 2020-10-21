@@ -30,6 +30,7 @@ When registering a special stmt, the first two arguments must be parser, node
 from typed_ast import ast3 as ast
 
 import tvm.tir
+from tvm import te
 from .utils import get_param_list
 from .intrin import StepIntrin
 from .registry import register
@@ -193,7 +194,28 @@ class BufferDeclare(SpecialStmt):
             offset_factor=0,
             buffer_type="default",
         ):
-            pass
+            assert isinstance(self.node, ast.Assign)
+
+            if strides is None:
+                strides = []
+            align = align.value if not isinstance(align, int) else align
+            offset_factor = (
+                offset_factor.value if not isinstance(offset_factor, int) else offset_factor
+            )
+            buffer = tvm.tir.decl_buffer(
+                shape,
+                dtype,
+                self.node.targets[0].id,
+                data,
+                strides,
+                elem_offset,
+                scope,
+                align,
+                offset_factor,
+                buffer_type,
+            )
+            self.context.update_symbol(self.node.targets[0].id, buffer)
+            return buffer
 
         super().__init__(buffer_decl, def_symbol=True)
 
@@ -202,7 +224,9 @@ class BufferDeclare(SpecialStmt):
 class VarDef(SpecialStmt):
     def __init__(self):
         def var(dtype):
-            pass
+            assert isinstance(self.node, ast.Assign)
+            v = te.var(self.node.targets[0].id, dtype)
+            self.context.update_symbol(v.name, v)
 
         super().__init__(var, def_symbol=True)
 
@@ -211,7 +235,10 @@ class VarDef(SpecialStmt):
 class EnvThread(SpecialStmt):
     def __init__(self):
         def env_thread(env_name):
-            pass
+            assert isinstance(self.node, ast.Assign)
+            v = te.var(self.node.targets[0].id)
+            self.context.parser.var_env_dict[v] = env_name
+            self.context.update_symbol(v.name, v)
 
         super().__init__(env_thread, def_symbol=True)
 
@@ -242,7 +269,6 @@ class CommReducer(SpecialStmt):
         def comm_reducer(combiner, identity):
             if isinstance(combiner, TVMScriptLambda) and len(combiner.args) == 2:
                 assert isinstance(self.node, ast.Assign)
-                assert isinstance(self.node.targets[0], ast.Name)
                 self.context.update_symbol(
                     self.node.targets[0].id, TVMScriptReducer(combiner, identity)
                 )
@@ -258,6 +284,6 @@ class CommReducer(SpecialStmt):
 class FuncAttr(SpecialStmt):
     def __init__(self):
         def func_attr(dict_attr):
-            pass
+            self.context.parser.dict_attr = dict_attr
 
         super().__init__(func_attr, def_symbol=False)

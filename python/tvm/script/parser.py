@@ -575,11 +575,12 @@ class TVMScriptParser(ast.NodeVisitor):
             Call(expr func, expr* args, keyword* keywords)
             keyword = (identifier? arg, expr value)
 
-        By now 2 patterns of Call is allowed
+        By now 3 patterns of Call is allowed
             1. Intrin representing PrimExpr/IterVar
                 1.1 tir.int/uint/float8/16/32/64/floormod/floordiv/load/cast/ramp/broadcast/max
                 1.2 tir.range/reduce_axis/scan_axis/opaque_axis
             2. tir.Op(dtype, ...)
+            3. other callable functions
         """
 
         func = self.visit(node.func)
@@ -587,12 +588,15 @@ class TVMScriptParser(ast.NodeVisitor):
             # pattern 1
             arg_list = self.parse_arg_list(func, node)
             return func.handle(arg_list)
-        elif isinstance(func, tvm.tir.op.Op):
-            # pattern 2
+        else:
             args = [self.visit(arg) for arg in node.args]
             kw_args = [self.visit(keyword) for keyword in node.keywords]
             kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
-            return tvm.tir.Call(kw_args["dtype"], func, args)
+            if isinstance(func, tvm.tir.op.Op):
+                # pattern 2
+                return tvm.tir.Call(kw_args["dtype"], func, args)
+            elif callable(func):
+                return func(*args, **kw_args)
 
         self.report_error("Unsupported function call")
 

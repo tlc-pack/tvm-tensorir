@@ -48,6 +48,22 @@ class WithScopeHandler(ScopeHandler):
         self.concise_scope = concise_scope
         self.def_symbol = def_symbol
 
+    @staticmethod
+    def get_optional_var_names(node, context):
+        assert isinstance(node, ast.With)
+
+        var_names = None
+        if isinstance(node.items[0].optional_vars, ast.Name):
+            var_names = [node.items[0].optional_vars.id]
+        elif isinstance(node.items[0].optional_vars, (ast.List, ast.Tuple)):
+            for var in node.items[0].optional_vars.elts:
+                if not isinstance(var, ast.Name):
+                    context.parser.report_error("Invalid optional var definition")
+            var_names = [var.id for var in node.items[0].optional_vars.elts]
+        else:
+            context.parser.report_error("Invalid optional var definition")
+        return var_names
+
 
 @register
 class Block(WithScopeHandler):
@@ -131,17 +147,7 @@ class Block(WithScopeHandler):
         # define block vars
         assert isinstance(node, ast.With)
 
-        var_names = None
-        if isinstance(node.items[0].optional_vars, ast.Name):
-            var_names = [node.items[0].optional_vars.id]
-        elif isinstance(node.items[0].optional_vars, (ast.List, ast.Tuple)):
-            for var in node.items[0].optional_vars.elts:
-                if not isinstance(var, ast.Name):
-                    context.parser.report_error("Invalid optional var definition")
-            var_names = [var.id for var in node.items[0].optional_vars.elts]
-        else:
-            context.parser.report_error("Invalid optional var definition")
-
+        var_names = WithScopeHandler.get_optional_var_names(node, context)
         self.block_vars = [tvm.te.var(name) for name in var_names]
         for block_var in self.block_vars:
             context.update_symbol(block_var.name, block_var)
@@ -151,102 +157,93 @@ class Block(WithScopeHandler):
 class Allocate(WithScopeHandler):
     def __init__(self):
         def allocate(extents, dtype, scope, condition=True):
-            pass
+            condition = tvm.runtime.convert(condition)
+            scope = tvm.runtime.convert(scope)
+            body = tvm.tir.Allocate(self.buffer_var, dtype, extents, condition, self.body)
+            return tvm.tir.AttrStmt(self.buffer_var, "storage_scope", scope, body)
 
         super().__init__(allocate, concise_scope=True, def_symbol=True)
+        self.buffer_var = None
 
     def enter_scope(self, node, context):
         # define buffer vars in symbol table
-        pass
+        if isinstance(node, ast.With):
+            names = WithScopeHandler.get_optional_var_names(node, context)
+            if len(names) != 1:
+                context.report_error("Unexpected number of vars")
+            name = names[0]
+        elif isinstance(node, ast.Assign):
+            name = node.targets[0].id
+        else:
+            raise Exception("Internal Bug")
 
-    def exit_scope(self, node, context, arg_list):
-        # construct an Attr(Allocate())
-        pass
+        self.buffer_var = tvm.te.var(name, "handle")
+        context.update_symbol(name, self.buffer_var)
 
 
 @register
 class LaunchThread(WithScopeHandler):
     def __init__(self):
         def launch_thread(env_var, extent):
-            pass
+            extent = tvm.runtime.convert(extent)
+            return tvm.tir.AttrStmt(
+                tvm.tir.IterVar(
+                    None,
+                    env_var,
+                    getattr(tvm.tir.IterVar, "ThreadIndex"),
+                    self.context.parser.var_env_dict[env_var],
+                ),
+                "thread_extent",
+                extent,
+                self.body,
+            )
 
         super().__init__(launch_thread, concise_scope=True, def_symbol=False)
-
-    def enter_scope(self, node, context):
-        # do nothing
-        pass
-
-    def exit_scope(self, node, context, arg_list):
-        # construct Attr(IterVar)
-        pass
 
 
 @register
 class Realize(WithScopeHandler):
     def __init__(self):
         def realize(buffer_bounds, scope, condition=True):
-            pass
+            buffer, bounds = buffer_bounds.buffer, buffer_bounds.region
+            scope = tvm.runtime.convert(scope)
+            return tvm.tir.AttrStmt(
+                buffer,
+                "realize_scope",
+                scope,
+                tvm.tir.BufferRealize(buffer, bounds, condition, self.body),
+            )
 
         super().__init__(realize, concise_scope=True, def_symbol=False)
-
-    def enter_scope(self, node, context):
-        # do nothing
-        pass
-
-    def exit_scope(self, node, context, arg_list):
-        # construct Attr(BufferRealize)
-        pass
 
 
 @register
 class Attr(WithScopeHandler):
     def __init__(self):
-        def attr(attr_key, value):
-            pass
+        def attr(attr_node, attr_key, value):
+            attr_node = tvm.runtime.convert(attr_node)
+            value = tvm.runtime.convert(value)
+            return tvm.tir.AttrStmt(attr_node, attr_key, value, self.body)
 
         super().__init__(attr, concise_scope=True, def_symbol=False)
-
-    def enter_scope(self, node, context):
-        # do nothing
-        pass
-
-    def exit_scope(self, node, context, arg_list):
-        # construct Attr
-        pass
 
 
 @register
 class AssertHandler(WithScopeHandler):
     def __init__(self):
         def Assert(condition, message):
-            pass
+            return tvm.tir.AssertStmt(condition, tvm.runtime.convert(message), self.body)
 
         super().__init__(Assert, concise_scope=True, def_symbol=False)
-
-    def enter_scope(self, node, context):
-        # do nothing
-        pass
-
-    def exit_scope(self, node, context, arg_list):
-        # construct Assert
-        pass
 
 
 @register
 class Let(WithScopeHandler):
     def __init__(self):
         def let(var, value):
-            pass
+            return tvm.tir.LetStmt(var, value, self.body)
 
         super().__init__(let, concise_scope=False, def_symbol=False)
-
-    def enter_scope(self, node, context):
-        # do nothing
-        pass
-
-    def exit_scope(self, node, context, arg_list):
-        # construct Let
-        pass
 
 
 class ForScopeHandler(ScopeHandler):
