@@ -18,6 +18,7 @@
  */
 #include "../measure.h"
 #include "../search.h"
+#include "./postproc.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -34,10 +35,13 @@ class ReplayNode : public SearchStrategyNode {
   int batch_size;
   /*! \brief Number of iterations of replaying */
   int num_iterations;
+  /*! \brief Postprocessors */
+  Array<Postproc> postprocs;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("batch_size", &batch_size);
     v->Visit("num_iterations", &num_iterations);
+    v->Visit("postprocs", &postprocs);
   }
   /*!
    * \brief Explore the search space and find the best schedule
@@ -66,17 +70,22 @@ class Replay : public SearchStrategy {
    * \param batch_size Size of a batch for measurement
    * \param num_iterations Number of iterations of replaying
    */
-  explicit Replay(int batch_size, int num_iterations);
+  explicit Replay(int batch_size, int num_iterations, Optional<Array<Postproc>> postprocs);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Replay, SearchStrategy, ReplayNode);
 };
 
 /********** Constructor **********/
 
-Replay::Replay(int batch_size, int num_iterations) {
+Replay::Replay(int batch_size, int num_iterations, Optional<Array<Postproc>> postprocs) {
   ObjectPtr<ReplayNode> n = make_object<ReplayNode>();
   n->batch_size = batch_size;
   n->num_iterations = num_iterations;
+  if (postprocs.defined()) {
+    n->postprocs = postprocs.value();
+  } else {
+    n->postprocs = PostprocDefaults();
+  }
   data_ = std::move(n);
 }
 
@@ -85,13 +94,25 @@ Replay::Replay(int batch_size, int num_iterations) {
 Optional<Schedule> ReplayNode::Search(const SearchTask& task, const SearchSpace& space,
                                       const ProgramMeasurer& measurer, Sampler* sampler,
                                       int verbose) {
+  // TODO(@junrushao1994): improve the logic here
   measurer->Reset();
   for (int iter_id = 0; iter_id < num_iterations;) {
     Array<MeasureInput> measure_inputs;
     measure_inputs.reserve(batch_size);
     for (int batch_id = 0; batch_id < batch_size && iter_id < num_iterations;
          ++batch_id, ++iter_id) {
-      measure_inputs.push_back(MeasureInput(task, space->SampleSchedule(task, sampler)));
+      Schedule sch = space->SampleSchedule(task, sampler);
+      bool valid = true;
+      for (const Postproc& postproc : this->postprocs) {
+        if (!postproc->Apply(sch, sampler)) {
+          valid = false;
+          break;
+        }
+      }
+      if (!valid) {
+        continue;
+      }
+      measure_inputs.push_back(MeasureInput(task, sch));
     }
     measurer->BatchMeasure(measure_inputs, this->batch_size, verbose);
   }
@@ -108,8 +129,8 @@ struct Internal {
    * \return The Replay constructed
    * \sa Replay::Replay
    */
-  static Replay New(int batch_size, int num_iterations) {
-    return Replay(batch_size, num_iterations);
+  static Replay New(int batch_size, int num_iterations, Optional<Array<Postproc>> postprocs) {
+    return Replay(batch_size, num_iterations, postprocs);
   }
 };
 

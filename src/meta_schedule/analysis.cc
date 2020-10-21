@@ -17,11 +17,12 @@
  * under the License.
  */
 // TODO(@junrushao1994): move to TIR analysis
-#include <numeric>
 #include "./analysis.h"  // NOLINT(build/include)
 
 #include <tvm/arith/analyzer.h>
 #include <tvm/tir/stmt_functor.h>
+
+#include <numeric>
 
 #include "../tir/schedule/schedule_common.h"
 #include "./utils.h"
@@ -75,12 +76,23 @@ void AnnotateLoopType(const tir::Schedule& sch, const Array<tir::StmtSRef>& loop
                       const String& annotation) {
   for (const tir::StmtSRef& loop_sref : loop_srefs) {
     const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
-    CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->GetTypeKey();
+    CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
     ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
     new_loop->annotations.push_back(
         tir::Annotation(tir::attr::loop_type, tir::StringImm(annotation)));
     sch->Replace(loop_sref, tir::Loop(new_loop));
   }
+}
+
+void AnnotateBlockType(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
+                       const String& annotation) {
+  const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  CHECK(block) << "TypeError: Expects LoopNode, but gets: " << block_sref->stmt->GetTypeKey();
+  ObjectPtr<tir::BlockNode> new_block = make_object<tir::BlockNode>(*block);
+  new_block->annotations.push_back(
+      tir::Annotation(tir::attr::loop_type, tir::StringImm(annotation)));
+  tir::Block new_block_obj = tir::Block(new_block);
+  sch->Replace(block_sref, new_block_obj, {{new_block_obj, GetRef<tir::Block>(block)}});
 }
 
 Array<Array<tir::StmtSRef>> CollectAnnotatedLoops(const tir::Schedule& sch,
@@ -495,6 +507,23 @@ class AutoTensorizeComparator : public tir::TensorizeComparator {
  public:
   AutoTensorizeComparator() : tir::TensorizeComparator(false) {}
 
+  bool VisitStmt(const tir::Stmt& n, const tir::Stmt& rhs) override {
+    if (n.same_as(rhs)) return true;
+    tir::Stmt lhs = n;
+    if (const auto* reduce_step = n.as<tir::ReduceStepNode>()) {
+      const auto* buffer_load = reduce_step->lhs.as<tir::BufferLoadNode>();
+      lhs = tir::BufferStore(/*buffer=*/buffer_load->buffer,
+                             /*value=*/reduce_step->ApplyCombiner(),
+                             /*indices=*/buffer_load->indices);
+    }
+    if (lhs->type_index() != rhs->type_index()) {
+      return false;
+    }
+    bool equal = tir::StmtComparator::VisitStmt(lhs, rhs);
+    CHECK(equal || !assert_mode_) << "Stmts are not matching between:\n" << n << "\nand\n" << rhs;
+    return equal;
+  }
+
   bool CompareBuffer(const tir::Buffer& lhs, const tir::Buffer& rhs) override {
     if (lhs.same_as(rhs)) return true;
     // Remap both buffer itself and buffer data
@@ -688,6 +717,7 @@ void DoTensorizeRewrite(Schedule sch, BlockRV block_rv, tir::PrimFunc desc_func)
   }
   reorder_list.insert(reorder_list.end(), reorder_suffix.begin(), reorder_suffix.end());
   sch->Reorder(reorder_list);
+  sch->Blockize(reorder_suffix.at(0), "");
 }
 
 TVM_REGISTER_NODE_TYPE(TensorizeInfoNode);
@@ -696,6 +726,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(Is
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsSubrootBlock").set_body_typed(IsSubrootBlock);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeafBlock").set_body_typed(IsLeafBlock);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.AnnotateLoopType").set_body_typed(AnnotateLoopType);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.AnnotateBlockType").set_body_typed(AnnotateBlockType);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.CollectAnnotatedLoops")
     .set_body_typed(CollectAnnotatedLoops);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetLoopType").set_body_typed(GetLoopType);
