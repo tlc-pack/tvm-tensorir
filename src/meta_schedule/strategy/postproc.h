@@ -92,6 +92,12 @@ TVM_DLL Postproc RewriteParallel();
  */
 TVM_DLL Postproc RewriteVectorize();
 
+/*!
+ * \brief Creates a postprocessor that matches the region that is marked as "lazy_tensorize"
+ * \return The postprocessor created
+ */
+TVM_DLL Postproc RewriteTensorize(Array<tir::TensorIntrin> tensor_intrins);
+
 }  // namespace meta_schedule
 }  // namespace tvm
 

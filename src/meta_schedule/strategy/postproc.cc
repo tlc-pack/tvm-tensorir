@@ -38,50 +38,110 @@ bool PostprocNode::Apply(const Schedule& sch, Sampler* sampler) { return proc_(s
 
 Array<Postproc> PostprocDefaults() { return {RewriteParallel(), RewriteVectorize()}; }
 
-/********** Built-in Post-Processors **********/
+/********** RewriteParallel **********/
 
 Postproc RewriteParallel() {
-  auto f_proc = [](Schedule self, void* _sampler) -> bool {
-    Array<Array<tir::StmtSRef>> to_parallel = CollectAnnotatedLoops(self->sch, "lazy_parallel");
+  auto f_proc = [](Schedule sch, void* _sampler) -> bool {
+    Array<Array<tir::StmtSRef>> to_parallel = CollectAnnotatedLoops(sch->sch, "lazy_parallel");
     for (const Array<tir::StmtSRef>& group : to_parallel) {
       for (const tir::StmtSRef& loop_sref : group) {
         const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
         CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->GetTypeKey();
         ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
         new_loop->annotations.clear();
-        self->sch->Replace(loop_sref, tir::Loop(new_loop));
+        sch->sch->Replace(loop_sref, tir::Loop(new_loop));
       }
       tir::StmtSRef fused = group[0];
       for (int i = 1, n = group.size(); i < n; ++i) {
-        fused = self->sch->fuse(fused, group[i]);
+        fused = sch->sch->fuse(fused, group[i]);
       }
-      self->sch->parallel(fused);
+      sch->sch->parallel(fused);
     }
     return true;
   };
   return Postproc("rewrite_parallel", f_proc);
 }
 
+/********** RewriteVectorize **********/
+
 Postproc RewriteVectorize() {
-  auto f_proc = [](Schedule self, void* _sampler) -> bool {
-    Array<Array<tir::StmtSRef>> to_vectorize = CollectAnnotatedLoops(self->sch, "lazy_vectorize");
+  auto f_proc = [](Schedule sch, void* _sampler) -> bool {
+    Array<Array<tir::StmtSRef>> to_vectorize = CollectAnnotatedLoops(sch->sch, "lazy_vectorize");
     for (const Array<tir::StmtSRef>& group : to_vectorize) {
       for (const tir::StmtSRef& loop_sref : group) {
         const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
         CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->GetTypeKey();
         ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
         new_loop->annotations.clear();
-        self->sch->Replace(loop_sref, tir::Loop(new_loop));
+        sch->sch->Replace(loop_sref, tir::Loop(new_loop));
       }
       tir::StmtSRef fused = group[0];
       for (int i = 1, n = group.size(); i < n; ++i) {
-        fused = self->sch->fuse(fused, group[i]);
+        fused = sch->sch->fuse(fused, group[i]);
       }
-      self->sch->vectorize(fused);
+      sch->sch->vectorize(fused);
     }
     return true;
   };
   return Postproc("rewrite_vectorize", f_proc);
+}
+
+/********** RewriteTensorize **********/
+
+class PostprocRewriteTensorize {
+ public:
+  Array<tir::TensorIntrin> tensor_intrins;
+
+  explicit PostprocRewriteTensorize(Array<tir::TensorIntrin> tensor_intrins)
+      : tensor_intrins(tensor_intrins) {}
+
+  Optional<tir::Block> FindAnnotatedBlock(const Schedule& sch) {
+    Optional<tir::Block> result = NullOpt;
+    tir::PreOrderVisit(sch->sch->func->body, [&result](const ObjectRef& obj) -> bool {
+      if (const auto* block = obj.as<tir::BlockNode>()) {
+        if (!block->annotations.empty()) {
+          tir::Annotation ann = block->annotations[0];
+          if (ann->attr_key == std::string(tir::attr::loop_type) &&
+              Downcast<tir::StringImm>(ann->value)->value == "lazy_tensorize") {
+            result = GetRef<tir::Block>(block);
+            return false;
+          }
+        }
+      }
+      return true;
+    });
+    return result;
+  }
+
+  bool Proc(Schedule sch) {
+    while (Optional<tir::Block> opt_block = FindAnnotatedBlock(sch)) {
+      tir::Block block = opt_block.value();
+      tir::StmtSRef block_sref = sch->sch->stmt2ref.at(block.get());
+      // Remove the annotation
+      {
+        ObjectPtr<tir::BlockNode> new_block = make_object<tir::BlockNode>(*block.get());
+        new_block->annotations.clear();
+        tir::Block new_block_obj = tir::Block(new_block);
+        sch->sch->Replace(block_sref, new_block_obj, {{new_block_obj, block}});
+        block = new_block_obj;
+      }
+      // Get the surrounding loops
+      Array<tir::StmtSRef> loop_srefs = sch->sch->GetLoopsInScope(block_sref);
+      // Decompose Reduction
+      if (block->body->IsInstance<tir::ReduceStepNode>()) {
+        sch->sch->decompose_reduction(block_sref, loop_srefs[0]);
+      }
+      LOG(INFO) << "schedule:\n" << Repr(sch);
+    }
+    return false;
+  }
+};
+
+Postproc RewriteTensorize(Array<tir::TensorIntrin> tensor_intrins) {
+  auto f_proc = [tensor_intrins{std::move(tensor_intrins)}](Schedule self, void* _sampler) -> bool {
+    return PostprocRewriteTensorize(tensor_intrins).Proc(self);
+  };
+  return Postproc("rewrite_tensorize", f_proc);
 }
 
 /********** FFI **********/
@@ -104,6 +164,7 @@ TVM_REGISTER_NODE_TYPE(PostprocNode);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.Apply").set_body_typed(Internal::Apply);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteParallel").set_body_typed(RewriteParallel);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteVectorize").set_body_typed(RewriteVectorize);
+TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteTensorize").set_body_typed(RewriteTensorize);
 
 }  // namespace meta_schedule
 }  // namespace tvm

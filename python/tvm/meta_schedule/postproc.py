@@ -16,10 +16,11 @@
 # under the License.
 """Postprocessors are applied at the final stage before a schedule is sent to be measured"""
 
-from typing import Optional
+from typing import List, Optional
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
+from tvm.tir import TensorIntrin
 
 from . import _ffi_api_postproc
 from .schedule import Schedule
@@ -75,3 +76,14 @@ def rewrite_vectorize() -> Postproc:
         The postprocessor created
     """
     return _ffi_api_postproc.RewriteVectorize()  # pylint: disable=no-member
+
+
+def rewrite_tensorize(tensor_intrins: List[TensorIntrin]) -> Postproc:
+    """Creates a postprocessor that matches the region that is marked as "lazy_tensorize"
+
+    Returns
+    ----------
+    postproc: Postproc
+        The postprocessor created
+    """
+    return _ffi_api_postproc.RewriteTensorize(tensor_intrins)  # pylint: disable=no-member
