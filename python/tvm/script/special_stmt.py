@@ -14,18 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""TVM Script Parser Special Stmt Functions
-This module provides the functions registered into parser under special_stmt category.
-special_stmt functions don't correspond to an IRNode in the AST directly. It is usually
-used for some information that is not suitable to be printed directly.
-special_stmt can appear as 2 formats
-.. code-block:: python
-
-    target = tir.name():
-    tir.name()
-
-When registering a special stmt, the first two arguments must be parser, node
-"""
+"""TVM Script Parser Special Stmt Classes"""
 # pylint: disable=unused-argument, no-self-argument, inconsistent-return-statements
 from typed_ast import ast3 as ast
 
@@ -69,7 +58,7 @@ class MatchBuffer(SpecialStmt):
         ):
             assert isinstance(self.node, ast.Assign)
 
-            if param not in self.context.parser.params:
+            if param not in self.context.func_params:
                 self.context.report_error("Can not bind non-input param to buffer")
             if strides is None:
                 strides = []
@@ -89,7 +78,7 @@ class MatchBuffer(SpecialStmt):
                 offset_factor,
                 buffer_type,
             )
-            self.context.parser.buffer_map[param] = buffer
+            self.context.func_buffer_map[param] = buffer
             self.context.update_symbol(self.node.targets[0].id, buffer)
 
         super().__init__(match_buffer, def_symbol=True)
@@ -237,7 +226,7 @@ class EnvThread(SpecialStmt):
         def env_thread(env_name):
             assert isinstance(self.node, ast.Assign)
             v = te.var(self.node.targets[0].id)
-            self.context.parser.var_env_dict[v] = env_name
+            self.context.func_var_env_dict[v] = env_name
             self.context.update_symbol(v.name, v)
 
         super().__init__(env_thread, def_symbol=True)
@@ -284,6 +273,6 @@ class CommReducer(SpecialStmt):
 class FuncAttr(SpecialStmt):
     def __init__(self):
         def func_attr(dict_attr):
-            self.context.parser.dict_attr = dict_attr
+            self.context.func_dict_attr = dict_attr
 
         super().__init__(func_attr, def_symbol=False)

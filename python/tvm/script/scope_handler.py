@@ -58,10 +58,10 @@ class WithScopeHandler(ScopeHandler):
         elif isinstance(node.items[0].optional_vars, (ast.List, ast.Tuple)):
             for var in node.items[0].optional_vars.elts:
                 if not isinstance(var, ast.Name):
-                    context.parser.report_error("Invalid optional var definition")
+                    context.report_error("Invalid optional var definition")
             var_names = [var.id for var in node.items[0].optional_vars.elts]
         else:
-            context.parser.report_error("Invalid optional var definition")
+            context.report_error("Invalid optional var definition")
         return var_names
 
 
@@ -191,7 +191,7 @@ class LaunchThread(WithScopeHandler):
                     None,
                     env_var,
                     getattr(tvm.tir.IterVar, "ThreadIndex"),
-                    self.context.parser.var_env_dict[env_var],
+                    self.context.func_var_env_dict[env_var],
                 ),
                 "thread_extent",
                 extent,

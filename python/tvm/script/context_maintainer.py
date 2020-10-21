@@ -14,14 +14,14 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""TVM Script Scope Emitter for TIR"""
+"""TVM Script Context Maintainer for TIR"""
 
 import tvm
 from tvm.te import schedule
 
 
-class ScopeEmitter:
-    """Maintain the nodes, symbols of scopes and information of blocks"""
+class ContextMaintainer:
+    """Maintain all the necessary context info"""
 
     class BlockInfo:
         def __init__(self):
@@ -33,10 +33,17 @@ class ScopeEmitter:
             self.predicate = tvm.runtime.convert(True)
 
     def __init__(self, parser):
+        # scope context
         self.node_stack = []  # AST nodes of scopes
         self.block_info_stack = []  # Block info of scopes
         self.loop_stack = []  # stack of loop vars
-        self.symbols = []  # Symbols of scopes
+        self.symbols = []  # symbols of scopes
+        # function context
+        self.func_params = []  # parameter list of function
+        self.func_buffer_map = {}  # buffer_map of function
+        self.func_dict_attr = {}  # func_attr of function
+        self.func_var_env_dict = {}  # map from var to env_name
+        # parser
         self.parser = parser
 
     def pop_scope(self, is_block=False):
@@ -45,15 +52,15 @@ class ScopeEmitter:
         self.node_stack.pop()
         if is_block:
             self.loop_stack.pop()
-            return self.block_info_stack.pop()
+            self.block_info_stack.pop()
 
     def new_scope(self, is_block=False):
-        """ Creating a new scope """
+        """Creating a new scope"""
         self.node_stack.append([])
         self.symbols.append(dict())
         if is_block:
             self.loop_stack.append([])
-            self.block_info_stack.append(ScopeEmitter.BlockInfo())
+            self.block_info_stack.append(ContextMaintainer.BlockInfo())
 
     def update_symbol(self, name, symbol):
         """Append a symbol into current scope"""

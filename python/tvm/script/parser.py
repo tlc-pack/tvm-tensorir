@@ -30,13 +30,12 @@ from tvm.ir import GlobalVar
 from tvm.tir import all as _all
 from tvm.tir import expr as _expr
 
-from . import scope_emitter, ty
+from . import context_maintainer, ty
 from .meta_unparser import MetaUnparser
 from .registry import Registry
 from .intrin import Intrin
 from .special_stmt import TVMScriptLambda, SpecialStmt
 from .scope_handler import ScopeHandler, WithScopeHandler, ForScopeHandler
-from .utils import get_param_list
 from . import _ffi_api
 
 
@@ -125,11 +124,7 @@ class TVMScriptParser(ast.NodeVisitor):
     _unaryop_maker = {ast.USub: operator.neg, ast.Invert: operator.invert, ast.Not: tvm.tir.Not}
 
     def __init__(self, src, base_lienno):
-        self.params = None
-        self.buffer_map = None
-        self.dict_attr = None
-        self.scope_emitter = None
-        self.var_env_dict = None
+        self.context = None
 
         self.src = src.split("\n")
         self.base_lineno = base_lienno
@@ -141,11 +136,7 @@ class TVMScriptParser(ast.NodeVisitor):
 
     def init_function_parsing_env(self):
         """Initialize function parsing environment"""
-        self.params = []  # parameter list
-        self.buffer_map = {}  # buffer map
-        self.dict_attr = {}  # dict attr
-        self.scope_emitter = scope_emitter.ScopeEmitter(self)  # scope emitter
-        self.var_env_dict = {}  # map from var to thread env name
+        self.context = context_maintainer.ContextMaintainer(self)  # scope emitter
 
     @staticmethod
     def is_meta(node):
@@ -216,8 +207,8 @@ class TVMScriptParser(ast.NodeVisitor):
 
     def parse_body(self):
         body = []
-        while len(self.scope_emitter.node_stack[-1]) > 0:
-            res = self.visit(self.scope_emitter.node_stack[-1].pop())
+        while len(self.context.node_stack[-1]) > 0:
+            res = self.visit(self.context.node_stack[-1].pop())
             if res is not None:
                 body.append(res)
         return tvm.tir.SeqStmt(body) if len(body) > 1 else body[0]
@@ -351,19 +342,20 @@ class TVMScriptParser(ast.NodeVisitor):
 
         self.init_function_parsing_env()
         # New Scope : PrimFunc
-        self.scope_emitter.new_scope()
+        self.context.new_scope()
         # add parameters of function
         for arg in node.args.args:
             arg_var = tvm.te.var(arg.arg, self.parse_type(arg.annotation))
-            self.scope_emitter.update_symbol(arg.arg, arg_var)
-            self.params.append(arg_var)
+            self.context.update_symbol(arg.arg, arg_var)
+            self.context.func_params.append(arg_var)
         # New Scope : Implicit root block
-        self.scope_emitter.new_scope(is_block=True)
+        self.context.new_scope(is_block=True)
         # fetch the body of root block
-        self.scope_emitter.node_stack[-1].extend(reversed(node.body))
+        self.context.node_stack[-1].extend(reversed(node.body))
         body = self.parse_body()
         # Emit Scope : Implicit root block
-        root_info = self.scope_emitter.pop_scope(is_block=True)
+        root_info = self.context.block_scope()
+        self.context.pop_scope(is_block=True)
         # Fix the body
         # 1. generate root block if necessary
         # 2. generate surrounding loops for blocks if necessary
@@ -371,15 +363,15 @@ class TVMScriptParser(ast.NodeVisitor):
         # return a tir.PrimFunc
         ret_type = self.parse_type(node.returns)
         func = tvm.tir.PrimFunc(
-            self.params,
+            self.context.func_params,
             body,
             ret_type=ret_type,
-            buffer_map=self.buffer_map,
-            attrs=tvm.ir.make_node("DictAttrs", **self.dict_attr),
+            buffer_map=self.context.func_buffer_map,
+            attrs=tvm.ir.make_node("DictAttrs", **self.context.func_dict_attr),
         )
         self.functions[GlobalVar(node.name)] = func
         # Emit Scope : PrimFunc
-        self.scope_emitter.pop_scope()
+        self.context.pop_scope()
         return func
 
     def visit_Assign(self, node):
@@ -412,13 +404,13 @@ class TVMScriptParser(ast.NodeVisitor):
                         "with scope handler " + func.signature()[0] + " is not suitable here"
                     )
                 # Pattern 4
-                func.enter_scope(node, self.scope_emitter)
+                func.enter_scope(node, self.context)
                 arg_list = self.parse_arg_list(func, node.value)
                 func.body = self.parse_body()
-                return func.exit_scope(node, self.scope_emitter, arg_list)
+                return func.exit_scope(node, self.context, arg_list)
             elif isinstance(func, SpecialStmt):
                 # Pattern 1
-                func.handle(node, self.scope_emitter, arg_list)
+                func.handle(node, self.context, arg_list)
             else:
                 self.report_error("Unsupported Assign stmt")
         elif isinstance(node.targets[0], ast.Subscript):
@@ -449,9 +441,9 @@ class TVMScriptParser(ast.NodeVisitor):
         if isinstance(node.target, ast.Name):
             value = self.visit(node.value)
             var = tvm.te.var(node.target.id, self.parse_type(node.annotation))
-            self.scope_emitter.update_symbol(var.name, var)
+            self.context.update_symbol(var.name, var)
             body = self.parse_body()
-            self.scope_emitter.remove_symbol(var.name)
+            self.context.remove_symbol(var.name)
             return tvm.tir.LetStmt(var, value, body)
         else:
             self.report_error("Unsupported AnnAssign stmt")
@@ -492,15 +484,15 @@ class TVMScriptParser(ast.NodeVisitor):
             self.base_lineno + node.iter.lineno - 1,
             node.iter.col_offset,
         )
-        self.scope_emitter.new_scope()
-        self.scope_emitter.node_stack[-1].extend(reversed(node.body))
+        self.context.new_scope()
+        self.context.node_stack[-1].extend(reversed(node.body))
         # for scope handler process the scope
-        func.enter_scope(node, self.scope_emitter)
+        func.enter_scope(node, self.context)
         func.body = self.parse_body()
         arg_list = self.parse_arg_list(func, node.iter)
-        res = func.exit_scope(node, self.scope_emitter, arg_list)
+        res = func.exit_scope(node, self.context, arg_list)
         # exit the scope
-        self.scope_emitter.pop_scope()
+        self.context.pop_scope()
         self.current_lineno, self.current_col_offset = old_lineno, old_col_offset
         return res
 
@@ -533,15 +525,15 @@ class TVMScriptParser(ast.NodeVisitor):
             self.base_lineno + func_call.lineno - 1,
             func_call.col_offset,
         )
-        self.scope_emitter.new_scope(is_block=True)
-        self.scope_emitter.node_stack[-1].extend(reversed(node.body))
+        self.context.new_scope(is_block=True)
+        self.context.node_stack[-1].extend(reversed(node.body))
         # with scope handler process the scope
-        func.enter_scope(node, self.scope_emitter)
+        func.enter_scope(node, self.context)
         func.body = self.parse_body()
         arg_list = self.parse_arg_list(func, func_call)
-        res = func.exit_scope(node, self.scope_emitter, arg_list)
+        res = func.exit_scope(node, self.context, arg_list)
         # exit the scope
-        self.scope_emitter.pop_scope(is_block=True)
+        self.context.pop_scope(is_block=True)
         self.current_lineno, self.current_col_offset = old_lineno, old_col_offset
         return res
 
@@ -553,17 +545,17 @@ class TVMScriptParser(ast.NodeVisitor):
 
         condition = self.visit(node.test)
         # then body
-        self.scope_emitter.new_scope()
-        self.scope_emitter.node_stack[-1].extend(reversed(node.body))
+        self.context.new_scope()
+        self.context.node_stack[-1].extend(reversed(node.body))
         then_body = self.parse_body()
-        self.scope_emitter.pop_scope()
+        self.context.pop_scope()
 
         # else body
         if len(node.orelse) > 0:
-            self.scope_emitter.new_scope()
-            self.scope_emitter.node_stack[-1].extend(reversed(node.orelse))
+            self.context.new_scope()
+            self.context.node_stack[-1].extend(reversed(node.orelse))
             else_body = self.parse_body()
-            self.scope_emitter.pop_scope()
+            self.context.pop_scope()
         else:
             else_body = None
 
@@ -625,12 +617,12 @@ class TVMScriptParser(ast.NodeVisitor):
             return func.handle(arg_list)
         elif isinstance(func, WithScopeHandler) and func.concise_scope and not func.def_symbol:
             # pattern 2
-            func.enter_scope(node, self.scope_emitter)
+            func.enter_scope(node, self.context)
             func.body = self.parse_body()
-            return func.exit_scope(node, self.scope_emitter, arg_list)
+            return func.exit_scope(node, self.context, arg_list)
         elif isinstance(func, SpecialStmt) and not func.def_symbol:
             # pattern 3
-            return func.handle(node, self.scope_emitter, arg_list)
+            return func.handle(node, self.context, arg_list)
 
         self.report_error("Invalid Expr stmt")
 
@@ -643,14 +635,14 @@ class TVMScriptParser(ast.NodeVisitor):
         """
 
         args = list()
-        self.scope_emitter.symbols.append(dict())
+        self.context.symbols.append(dict())
         for arg in node.args.args:
             args.append(tvm.te.var(arg.arg))
-            self.scope_emitter.update_symbol(arg.arg, args[-1])
+            self.context.update_symbol(arg.arg, args[-1])
         res = TVMScriptLambda(args, self.visit(node.body))
         for arg in node.args.args:
-            self.scope_emitter.remove_symbol(arg.arg)
-        self.scope_emitter.symbols.pop()
+            self.context.remove_symbol(arg.arg)
+        self.context.symbols.pop()
         return res
 
     def visit_BinOp(self, node):
@@ -835,7 +827,7 @@ class TVMScriptParser(ast.NodeVisitor):
         symbol = Registry.lookup(name)
         if symbol is not None:
             return symbol
-        symbol = self.scope_emitter.lookup_symbol(name)
+        symbol = self.context.lookup_symbol(name)
         if symbol is not None:
             return symbol
         self.report_error("Unknown identifier %s" % name)

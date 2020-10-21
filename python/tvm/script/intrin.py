@@ -14,10 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""TVM Script Parser Intrinsic Functions
-
-IRNodes (StmtNodes without body, PrimExprNodes and more) are called intrins
-"""
+"""TVM Script Parser Intrinsic Classes"""
 # pylint: disable=redefined-builtin
 import tvm.tir
 from .registry import register
