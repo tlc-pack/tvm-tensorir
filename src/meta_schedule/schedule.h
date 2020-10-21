@@ -74,16 +74,6 @@ class ScheduleNode : public Object {
    * \return A new schedule.
    */
   Schedule Copy(int new_seed) const;
-  /*!
-   * \brief Normalize the underlying TIR schedule in the following steps.
-   * It basically does the following things:
-   * 1) Remove trivial loops whose extent is 1;
-   * 2) Fuse the loops which are marked as "lazy_parallel" / "lazy_vectorize", and
-   * parallel/vectorize them accordingly.
-   *
-   * This method should be called before being sent to the ProgramMeasurer.
-   */
-  void Normalize();
   /**************** Evaluation of random variables ****************/
   /*!
    * \brief Evaluate the value of a random variable of type Block

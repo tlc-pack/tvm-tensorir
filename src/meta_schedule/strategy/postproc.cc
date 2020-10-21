@@ -18,6 +18,8 @@
  */
 #include "./postproc.h"  // NOLINT(build/include)
 
+#include "../analysis.h"
+
 namespace tvm {
 namespace meta_schedule {
 
@@ -38,9 +40,49 @@ Array<Postproc> PostprocDefaults() { return {RewriteParallel(), RewriteVectorize
 
 /********** Built-in Post-Processors **********/
 
-Postproc RewriteParallel() { return Postproc("rewrite_parallel", nullptr); }
+Postproc RewriteParallel() {
+  auto f_proc = [](Schedule self, void* _sampler) -> bool {
+    Array<Array<tir::StmtSRef>> to_parallel = CollectAnnotatedLoops(self->sch, "lazy_parallel");
+    for (const Array<tir::StmtSRef>& group : to_parallel) {
+      for (const tir::StmtSRef& loop_sref : group) {
+        const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+        CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->GetTypeKey();
+        ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
+        new_loop->annotations.clear();
+        self->sch->Replace(loop_sref, tir::Loop(new_loop));
+      }
+      tir::StmtSRef fused = group[0];
+      for (int i = 1, n = group.size(); i < n; ++i) {
+        fused = self->sch->fuse(fused, group[i]);
+      }
+      self->sch->parallel(fused);
+    }
+    return true;
+  };
+  return Postproc("rewrite_parallel", f_proc);
+}
 
-Postproc RewriteVectorize() { return Postproc("rewrite_vectorize", nullptr); }
+Postproc RewriteVectorize() {
+  auto f_proc = [](Schedule self, void* _sampler) -> bool {
+    Array<Array<tir::StmtSRef>> to_vectorize = CollectAnnotatedLoops(self->sch, "lazy_vectorize");
+    for (const Array<tir::StmtSRef>& group : to_vectorize) {
+      for (const tir::StmtSRef& loop_sref : group) {
+        const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+        CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->GetTypeKey();
+        ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
+        new_loop->annotations.clear();
+        self->sch->Replace(loop_sref, tir::Loop(new_loop));
+      }
+      tir::StmtSRef fused = group[0];
+      for (int i = 1, n = group.size(); i < n; ++i) {
+        fused = self->sch->fuse(fused, group[i]);
+      }
+      self->sch->vectorize(fused);
+    }
+    return true;
+  };
+  return Postproc("rewrite_vectorize", f_proc);
+}
 
 /********** FFI **********/
 

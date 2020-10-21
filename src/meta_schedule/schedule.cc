@@ -51,44 +51,6 @@ Schedule::Schedule(tir::PrimFunc orig_func, Optional<Integer> seed)
 
 void ScheduleNode::Seed(int seed) { this->sampler.Seed(seed); }
 
-void ScheduleNode::Normalize() {
-  // Fuse "lazy_parallel" loops
-  {
-    Array<Array<tir::StmtSRef>> to_parallel = CollectAnnotatedLoops(this->sch, "lazy_parallel");
-    for (const Array<tir::StmtSRef>& group : to_parallel) {
-      for (const tir::StmtSRef& loop_sref : group) {
-        const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
-        CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->GetTypeKey();
-        ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
-        new_loop->annotations.clear();
-        this->sch->Replace(loop_sref, tir::Loop(new_loop));
-      }
-      tir::StmtSRef fused = group[0];
-      for (int i = 1, n = group.size(); i < n; ++i) {
-        fused = this->sch->fuse(fused, group[i]);
-      }
-      this->sch->parallel(fused);
-    }
-  }
-  {
-    Array<Array<tir::StmtSRef>> to_vectorize = CollectAnnotatedLoops(this->sch, "lazy_vectorize");
-    for (const Array<tir::StmtSRef>& group : to_vectorize) {
-      for (const tir::StmtSRef& loop_sref : group) {
-        const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
-        CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->GetTypeKey();
-        ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
-        new_loop->annotations.clear();
-        this->sch->Replace(loop_sref, tir::Loop(new_loop));
-      }
-      tir::StmtSRef fused = group[0];
-      for (int i = 1, n = group.size(); i < n; ++i) {
-        fused = this->sch->fuse(fused, group[i]);
-      }
-      this->sch->vectorize(fused);
-    }
-  }
-}
-
 /*! \brief Helper class to do tir::StmtSRef translation */
 struct SRefTranslator {
   using TSymbolTable = ScheduleNode::TSymbolTable;

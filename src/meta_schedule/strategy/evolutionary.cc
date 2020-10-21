@@ -373,6 +373,17 @@ Array<Schedule> EvolutionaryNode::PickWithEpsGreedy(const Array<Schedule>& inits
         break;
       }
     }
+    // Postprocess the schedule
+    bool valid = true;
+    for (const Postproc& postproc : postprocs) {
+      if (!postproc->Apply(sch, sampler)) {
+        valid = false;
+        break;
+      }
+    }
+    if (!valid) {
+      continue;
+    }
     // Check if the schedule has been measured before
     // If not, it is the schedule we want to pick
     String repr = Repr(sch);
