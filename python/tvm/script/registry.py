@@ -26,6 +26,12 @@ class Registry(object):
 
     registrations = dict()
 
+    @staticmethod
+    def lookup(name):
+        if name in Registry.registrations:
+            return Registry.registrations[name]
+        return None
+
 
 def register(registration):
     if inspect.isclass(registration):

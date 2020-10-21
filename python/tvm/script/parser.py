@@ -79,13 +79,6 @@ class CallArgumentReader(object):
             return self.args[pos - 1 :]
         return []
 
-    def auto_insert_body(self, pos, body):
-        """Automatically provide body as function call argument"""
-        if len(self.args) >= pos:
-            self.args.insert(pos - 1, body)
-        else:
-            self.kwargs["body"] = body
-
 
 class TVMScriptParserError(RuntimeError):
     """TVM script Parser Runtime Error"""
@@ -609,7 +602,7 @@ class TVMScriptParser(ast.NodeVisitor):
         AST abstract grammar:
             Expr(expr value)
 
-        Now only 3 types of `Expr` stmt is allowed:
+        Now only 3 types of Expr stmt is allowed:
             1. Intrin representing Stmt without body
                 reducer.step()/tir.store()
             2. with scope handlers with concise scoping without var def
@@ -772,7 +765,7 @@ class TVMScriptParser(ast.NodeVisitor):
         if isinstance(node.value, ast.Name):
             if node.value.id == "tir":
                 func_name = "tir." + node.attr
-                res = Registry[func_name]
+                res = Registry.lookup(func_name)
                 if res is not None:
                     return res
                 try:
@@ -836,7 +829,7 @@ class TVMScriptParser(ast.NodeVisitor):
         name = node.id
         if name == "meta":
             return self.meta
-        symbol = Registry.look_up_function(name)
+        symbol = Registry.lookup(name)
         if symbol is not None:
             return symbol
         symbol = self.scope_emitter.lookup_symbol(name)

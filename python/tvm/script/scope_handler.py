@@ -30,7 +30,7 @@ class ScopeHandler:
         self.body = None
 
     def signature(self):
-        return "tir." + self.func.__qualname__, get_param_list(self.func)
+        return "tir." + self.func.__name__, get_param_list(self.func)
 
     def enter_scope(self, node, context):
         pass
@@ -136,6 +136,7 @@ class AssertHandler(WithScopeHandler):
     def __init__(self):
         def Assert(condition, message):
             pass
+
         super().__init__(Assert, concise_scope=True, def_symbol=False)
 
     def enter_scope(self, node, context):
@@ -185,7 +186,7 @@ class Serial(ForScopeHandler):
 
 
 @register
-class Paralel(ForScopeHandler):
+class Parallel(ForScopeHandler):
     def __init__(self):
         def parallel(begin, end):
             pass

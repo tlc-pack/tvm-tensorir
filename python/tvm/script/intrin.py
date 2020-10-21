@@ -30,7 +30,7 @@ class Intrin:
         self.stmt = stmt
 
     def signature(self):
-        return self.intrin.__qualname__, get_param_list(self.intrin)
+        return "tir." + self.intrin.__name__, get_param_list(self.intrin)
 
     def handle(self, arg_list):
         return self.intrin(*arg_list)
@@ -38,7 +38,7 @@ class Intrin:
 
 @register
 class Bool(Intrin):
-    def __init__(self, intrin):
+    def __init__(self):
         def bool(imm):
             return tvm.tir.const(imm, "bool")
 
@@ -223,6 +223,18 @@ class Store(Intrin):
             return tvm.tir.Store(var, value, index, predicate)
 
         super().__init__(store, stmt=True)
+
+
+class StepIntrin(Intrin):
+    def __init__(self, reducer):
+        def intrin(lhs, rhs):
+            return tvm.tir.ReduceStep(self.reducer, lhs, rhs)
+
+        super().__init__(intrin, stmt=True)
+        self.reducer = reducer
+
+    def signature(self):
+        return "TVMScriptReducer.step", get_param_list(self.intrin)
 
 
 @register

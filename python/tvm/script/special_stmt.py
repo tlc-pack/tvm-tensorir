@@ -31,7 +31,7 @@ from typed_ast import ast3 as ast
 
 import tvm.tir
 from .utils import get_param_list
-from .intrin import Intrin
+from .intrin import StepIntrin
 from .registry import register
 
 
@@ -41,7 +41,7 @@ class SpecialStmt:
         self.def_symbol = def_symbol
 
     def signature(self):
-        return "tir." + self.func.__qualname__, get_param_list(self.func)
+        return "tir." + self.func.__name__, get_param_list(self.func)
 
     def handle(self, node, context, arg_list):
         pass
@@ -51,16 +51,16 @@ class SpecialStmt:
 class MatchBuffer(SpecialStmt):
     def __init__(self):
         def match_buffer(
-                param,
-                shape,
-                dtype="float32",
-                data=None,
-                strides=None,
-                elem_offset=None,
-                scope="global",
-                align=-1,
-                offset_factor=0,
-                buffer_type="default",
+            param,
+            shape,
+            dtype="float32",
+            data=None,
+            strides=None,
+            elem_offset=None,
+            scope="global",
+            align=-1,
+            offset_factor=0,
+            buffer_type="default",
         ):
             pass
 
@@ -74,15 +74,15 @@ class MatchBuffer(SpecialStmt):
 class BufferAllocate(SpecialStmt):
     def __init__(self):
         def buffer_allocate(
-                shape,
-                dtype="float32",
-                data=None,
-                strides=None,
-                elem_offset=None,
-                scope="global",
-                align=-1,
-                offset_factor=0,
-                buffer_type="default",
+            shape,
+            dtype="float32",
+            data=None,
+            strides=None,
+            elem_offset=None,
+            scope="global",
+            align=-1,
+            offset_factor=0,
+            buffer_type="default",
         ):
             pass
 
@@ -124,7 +124,6 @@ class BlockWrites(SpecialStmt):
 
         super().__init__(writes, def_symbol=False)
 
-
     def handle(self, node, context, arg_list):
         pass
 
@@ -157,15 +156,15 @@ class BlockPredicate(SpecialStmt):
 class BufferDeclare(SpecialStmt):
     def __init__(self):
         def buffer_decl(
-                shape,
-                dtype="float32",
-                data=None,
-                strides=None,
-                elem_offset=None,
-                scope="global",
-                align=-1,
-                offset_factor=0,
-                buffer_type="default",
+            shape,
+            dtype="float32",
+            data=None,
+            strides=None,
+            elem_offset=None,
+            scope="global",
+            align=-1,
+            offset_factor=0,
+            buffer_type="default",
         ):
             pass
 
@@ -210,24 +209,13 @@ class TVMScriptLambda:
 class TVMScriptReducer:
     """TVM Script Reducer, used in reducer declaration"""
 
-    class StepIntrin(Intrin):
-        def __init__(self, reducer):
-            def intrin(lhs, rhs):
-                return tvm.tir.ReduceStep(self.reducer, lhs, rhs)
-
-            super().__init__(intrin, stmt=True)
-            self.reducer = reducer
-
-        def signature(self):
-            return "TVMScriptReducer.step", get_param_list(self.intrin)
-
     def __init__(self, combiner, identity):
         self.combiner = combiner
         self.identity = identity
         self.reducer = tvm.tir.CommReducer(
             [self.combiner.args[0]], [self.combiner.args[1]], [self.combiner.body], [self.identity]
         )
-        self.step = TVMScriptReducer.StepIntrin(self)
+        self.step = StepIntrin(self)
 
 
 @register
