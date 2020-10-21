@@ -30,180 +30,212 @@ When registering a special stmt, the first two arguments must be parser, node
 from typed_ast import ast3 as ast
 
 import tvm.tir
-from tvm import te
-from .registry import register_special_stmt
+from .utils import get_param_list
+from .intrin import Intrin
+from .registry import register
 
 
-@register_special_stmt()
-def match_buffer(
-    parser,
-    node,
-    param,
-    shape,
-    dtype="float32",
-    data=None,
-    strides=None,
-    elem_offset=None,
-    scope="global",
-    align=-1,
-    offset_factor=0,
-    buffer_type="default",
-):
-    """Special function match_buffer(var, shape, dtype, data, strides, elem_offset, scope, align,
-                                      offset_factor, buffer_type)
-    Example
-    -------
-    .. code-block:: python
+class SpecialStmt:
+    def __init__(self, def_symbol):
+        self.def_symbol = def_symbol
 
-        A = tir.match_buffer(a, (128, 128), dtype="float32")
-    """
+    @staticmethod
+    def signature():
+        pass
 
-    if param not in parser.params:
-        parser.report_error("Can not bind non-input param to buffer")
-    if strides is None:
-        strides = []
-    align = align.value if not isinstance(align, int) else align
-    offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
-    buffer = tvm.tir.decl_buffer(
-        shape,
-        dtype,
-        parser.target[0],
-        data,
-        strides,
-        elem_offset,
-        scope,
-        align,
-        offset_factor,
-        buffer_type,
-    )
-    parser.buffer_map[param] = buffer
-    return buffer
+    def handle(self, node, context, arg_list):
+        pass
 
 
-@register_special_stmt()
-def buffer_allocate(
-    parser,
-    node,
-    shape,
-    dtype="float32",
-    data=None,
-    strides=None,
-    elem_offset=None,
-    scope="global",
-    align=-1,
-    offset_factor=0,
-    buffer_type="default",
-):
-    """Special function buffer_allocate(shape, dtype, data, strides, elem_offset, scope, align,
-                                         offset_factor, buffer_type)
+@register
+class MatchBuffer(SpecialStmt):
+    def __init__(self):
+        super().__init__(def_symbol=True)
 
-    Example
-    -------
-    .. code-block:: python
+    @staticmethod
+    def signature():
+        def match_buffer(
+            param,
+            shape,
+            dtype="float32",
+            data=None,
+            strides=None,
+            elem_offset=None,
+            scope="global",
+            align=-1,
+            offset_factor=0,
+            buffer_type="default",
+        ):
+            pass
 
-        A = tir.buffer_allocate((128, 128), dtype="float32")
+        return "match_buffer", get_param_list(match_buffer)
 
-    """
-
-    if strides is None:
-        strides = []
-    align = align.value if not isinstance(align, int) else align
-    offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
-    buffer = tvm.tir.decl_buffer(
-        shape,
-        dtype,
-        parser.target[0],
-        data,
-        strides,
-        elem_offset,
-        scope,
-        align,
-        offset_factor,
-        buffer_type,
-    )
-    parser.scope_emitter.block_scope().allocates.append(tvm.tir.BufferAllocate(buffer, scope))
-    return buffer
+    def handle(self, node, context, arg_list):
+        pass
 
 
-@register_special_stmt()
-def bind(parser, node, block_var, binding):
-    parser.scope_emitter.block_scope().binding[block_var] = binding
+@register
+class BufferAllocate(SpecialStmt):
+    def __init__(self):
+        super().__init__(def_symbol=True)
+
+    @staticmethod
+    def signature():
+        def buffer_allocate(
+            shape,
+            dtype="float32",
+            data=None,
+            strides=None,
+            elem_offset=None,
+            scope="global",
+            align=-1,
+            offset_factor=0,
+            buffer_type="default",
+        ):
+            pass
+
+        return "buffer_allocate", get_param_list(buffer_allocate)
+
+    def handle(self, node, context, arg_list):
+        pass
 
 
-@register_special_stmt()
-def reads(parser, node, reads):
-    parser.scope_emitter.block_scope().reads = [reads] if not isinstance(reads, list) else reads
+@register
+class BlockVarBind(SpecialStmt):
+    def __init__(self):
+        super().__init__(def_symbol=False)
+
+    @staticmethod
+    def signature():
+        def bind(block_var, binding):
+            pass
+
+        return "bind", get_param_list(bind)
+
+    def handle(self, node, context, arg_list):
+        pass
 
 
-@register_special_stmt()
-def writes(parser, node, writes):
-    parser.scope_emitter.block_scope().writes = [writes] if not isinstance(writes, list) else writes
+@register
+class BlockReads(SpecialStmt):
+    def __init__(self):
+        super().__init__(def_symbol=False)
+
+    @staticmethod
+    def signature():
+        def reads(reads):
+            pass
+
+        return "reads", get_param_list(reads)
+
+    def handle(self, node, context, arg_list):
+        pass
 
 
-@register_special_stmt()
-def block_attr(parser, node, attrs):
-    parser.scope_emitter.block_scope().annotations = attrs
+@register
+class BlockWrites(SpecialStmt):
+    def __init__(self):
+        super().__init__(def_symbol=False)
+
+    @staticmethod
+    def signature():
+        def writes(writes):
+            pass
+
+        return "writes", get_param_list(writes)
+
+    def handle(self, node, context, arg_list):
+        pass
 
 
-@register_special_stmt()
-def where(parser, node, predicate):
-    parser.scope_emitter.block_scope().predicate = predicate
+@register
+class BlockAttr(SpecialStmt):
+    def __init__(self):
+        super().__init__(def_symbol=False)
+
+    @staticmethod
+    def signature():
+        def block_attr(attrs):
+            pass
+
+        return "block_attr", get_param_list(block_attr)
+
+    def handle(self, node, context, arg_list):
+        pass
 
 
-@register_special_stmt()
-def buffer_decl(
-    parser,
-    node,
-    shape,
-    dtype="float32",
-    data=None,
-    strides=None,
-    elem_offset=None,
-    scope="global",
-    align=-1,
-    offset_factor=0,
-    buffer_type="default",
-):
-    """Special function buffer_decl(shape, dtype, data, strides, elem_offset, scope, align,
-                                         offset_factor, buffer_type)
-    Example
-    -------
-    .. code-block:: python
+@register
+class BlockPredicate(SpecialStmt):
+    def __init__(self):
+        super().__init__(def_symbol=False)
 
-        A = tir.buffer_decl((128, 128), dtype="float32")
-    """
+    @staticmethod
+    def signature():
+        def where(predicate):
+            pass
 
-    if strides is None:
-        strides = []
-    align = align.value if not isinstance(align, int) else align
-    offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
-    buffer = tvm.tir.decl_buffer(
-        shape,
-        dtype,
-        parser.target[0],
-        data,
-        strides,
-        elem_offset,
-        scope,
-        align,
-        offset_factor,
-        buffer_type,
-    )
-    return buffer
+        return "where", get_param_list(where)
+
+    def handle(self, node, context, arg_list):
+        pass
 
 
-@register_special_stmt()
-def var(parser, node, dtype):
-    """ Special function for defining a Var"""
-    return te.var(parser.target[0], dtype)
+@register
+class BufferDeclare(SpecialStmt):
+    def __init__(self):
+        super().__init__(def_symbol=True)
+
+    @staticmethod
+    def signature():
+        def buffer_decl(
+            shape,
+            dtype="float32",
+            data=None,
+            strides=None,
+            elem_offset=None,
+            scope="global",
+            align=-1,
+            offset_factor=0,
+            buffer_type="default",
+        ):
+            pass
+
+        return "buffer_decl", get_param_list(buffer_decl)
+
+    def handle(self, node, context, arg_list):
+        pass
 
 
-@register_special_stmt()
-def env_thread(parser, node, env_name):
-    """ Bind a var to thread env """
-    v = te.var(parser.target[0])
-    parser.var_env_dict[v] = env_name
-    return v
+@register
+class VarDef(SpecialStmt):
+    def __init__(self):
+        super().__init__(def_symbol=True)
+
+    @staticmethod
+    def signature():
+        def var(dtype):
+            pass
+
+        return "var", get_param_list(var)
+
+    def handle(self, node, context, arg_list):
+        pass
+
+
+@register
+class EnvThread(SpecialStmt):
+    def __init__(self):
+        super().__init__(def_symbol=True)
+
+    @staticmethod
+    def signature():
+        def env_thread(env_name):
+            pass
+
+        return "env_thread", get_param_list(env_thread)
+
+    def handle(self, node, context, arg_list):
+        pass
 
 
 class TVMScriptLambda:
@@ -217,43 +249,53 @@ class TVMScriptLambda:
 class TVMScriptReducer:
     """TVM Script Reducer, used in reducer declaration"""
 
+    class StepIntrin(Intrin):
+        def __init__(self, reducer):
+            def intrin(lhs, rhs):
+                return tvm.tir.ReduceStep(self.reducer, lhs, rhs)
+
+            super().__init__(intrin)
+            self.reducer = reducer
+
+        def signature(self):
+            return "TVMScriptReducer.step", get_param_list(self.intrin)
+
     def __init__(self, combiner, identity):
         self.combiner = combiner
         self.identity = identity
         self.reducer = tvm.tir.CommReducer(
             [self.combiner.args[0]], [self.combiner.args[1]], [self.combiner.body], [self.identity]
         )
-
-    def step(self, lhs, rhs):
-        return tvm.tir.ReduceStep(self.reducer, lhs, rhs)
+        self.step = TVMScriptReducer.StepIntrin(self)
 
 
-@register_special_stmt()
-def comm_reducer(parser, node, combiner, identity):
-    """Special function for defining a comm_reducer
+@register
+class CommReducer(SpecialStmt):
+    def __init__(self):
+        super().__init__(def_symbol=True)
 
-    Example
-    -------
-    .. code-block:: python
+    @staticmethod
+    def signature():
+        def comm_reducer(combiner, identity):
+            pass
 
-        reducer = tir.comm_reducer(lambda x, y: x + y, float32(0))
+        return "comm_reducer", get_param_list(comm_reducer)
 
-    """
-
-    if isinstance(combiner, TVMScriptLambda) and len(combiner.args) == 2:
-        return TVMScriptReducer(combiner, identity)
-    parser.report_error("comm_reducer expect a 2-argument lambda function as first argument")
+    def handle(self, node, context, arg_list):
+        pass
 
 
-@register_special_stmt()
-def func_attr(parser, node, dict_attr):
-    """Special function for declaring the DictAttr of PrimFunc
+@register
+class FuncAttr(SpecialStmt):
+    def __init__(self):
+        super().__init__(def_symbol=False)
 
-    Example
-    -------
-    .. code-block:: python
+    @staticmethod
+    def signature():
+        def func_attr(dict_attr):
+            pass
 
-         tir.func_attr({"tir.noalias": True, "global_symbol"})
-    """
+        return "func_attr", get_param_list(func_attr)
 
-    parser.dict_attr = dict_attr
+    def handle(self, node, context, arg_list):
+        pass

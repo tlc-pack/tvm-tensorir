@@ -20,20 +20,70 @@
 # pylint: disable=unused-import
 import json
 import operator
+import inspect
 from typed_ast import ast3 as ast
 
-import tvm._ffi
-from tvm import tir
+import tvm
+from tvm import IRModule
 from tvm._ffi.base import TVMError
 from tvm.ir import GlobalVar
 from tvm.tir import all as _all
 from tvm.tir import expr as _expr
 
-from . import scope_emitter, special_stmt, scope_handler, intrin, ty
+from . import scope_emitter, intrin, ty
 from .meta_unparser import MetaUnparser
 from .registry import Registry
-from .special_stmt import TVMScriptLambda, TVMScriptReducer
+from .special_stmt import TVMScriptLambda, SpecialStmt
+from .scope_handler import ScopeHandler, WithScopeHandler, ForScopeHandler
+from .utils import get_param_list
 from . import _ffi_api
+
+
+class CallArgumentReader(object):
+    """A helper class which read required argument from passed arguments"""
+
+    def __init__(self, func_name, args, kwargs, parser):
+        self.func_name = func_name
+        self.args = args
+        self.kwargs = kwargs
+        self.parser = parser
+
+    def get_pos_only_arg(self, pos, name):
+        """Get corresponding position only function argument from argument list"""
+        if len(self.args) >= pos:
+            arg = self.args[pos - 1]
+        elif name not in self.kwargs:
+            self.parser.report_error(self.func_name + " misses argument " + name)
+        else:
+            arg = self.kwargs[name]
+
+        return arg
+
+    def get_kwarg(self, pos, name, default):
+        """Get corresponding keyword function argument from argument list
+        If user doesn't provide the argument, set it to default value
+        """
+        if len(self.args) >= pos:
+            arg = self.args[pos - 1]
+        elif name in self.kwargs:
+            arg = self.kwargs[name]
+        else:
+            return default
+
+        return arg
+
+    def get_varargs(self, pos):
+        """Get corresponding variable argument from argument list"""
+        if len(self.args) >= pos and len(self.kwargs) == 0:
+            return self.args[pos - 1 :]
+        return []
+
+    def auto_insert_body(self, pos, body):
+        """Automatically provide body as function call argument"""
+        if len(self.args) >= pos:
+            self.args.insert(pos - 1, body)
+        else:
+            self.kwargs["body"] = body
 
 
 class TVMScriptParserError(RuntimeError):
@@ -59,26 +109,26 @@ class TVMScriptParser(ast.NodeVisitor):
     """
 
     _binop_maker = {
-        ast.Add: tir.Add,
-        ast.Sub: tir.Sub,
-        ast.Mult: tir.Mul,
-        ast.Div: tir.Div,
-        ast.FloorDiv: tir.FloorDiv,
-        ast.Mod: tir.FloorMod,
+        ast.Add: tvm.tir.Add,
+        ast.Sub: tvm.tir.Sub,
+        ast.Mult: tvm.tir.Mul,
+        ast.Div: tvm.tir.Div,
+        ast.FloorDiv: tvm.tir.FloorDiv,
+        ast.Mod: tvm.tir.FloorMod,
         ast.BitOr: operator.or_,
         ast.BitAnd: operator.and_,
         ast.BitXor: operator.xor,
-        ast.Gt: tir.GT,
-        ast.GtE: tir.GE,
-        ast.Lt: tir.LT,
-        ast.LtE: tir.LE,
-        ast.Eq: tir.EQ,
-        ast.NotEq: tir.NE,
-        ast.And: tir.And,
-        ast.Or: tir.Or,
+        ast.Gt: tvm.tir.GT,
+        ast.GtE: tvm.tir.GE,
+        ast.Lt: tvm.tir.LT,
+        ast.LtE: tvm.tir.LE,
+        ast.Eq: tvm.tir.EQ,
+        ast.NotEq: tvm.tir.NE,
+        ast.And: tvm.tir.And,
+        ast.Or: tvm.tir.Or,
     }
 
-    _unaryop_maker = {ast.USub: operator.neg, ast.Invert: operator.invert, ast.Not: tir.Not}
+    _unaryop_maker = {ast.USub: operator.neg, ast.Invert: operator.invert, ast.Not: tvm.tir.Not}
 
     def __init__(self, src, base_lienno):
         self.params = None
@@ -94,7 +144,6 @@ class TVMScriptParser(ast.NodeVisitor):
         self.meta = None
 
         self.functions = {}
-        self.target = None
 
     def init_function_parsing_env(self):
         """Initialize function parsing environment"""
@@ -171,7 +220,7 @@ class TVMScriptParser(ast.NodeVisitor):
             col_offset = self.current_col_offset
         raise TVMScriptParserError(self.wrap_line_col(message, lineno, col_offset))
 
-    def get_body(self):
+    def parse_body(self):
         body = []
         while len(self.scope_emitter.node_stack[-1]) > 0:
             res = self.visit(self.scope_emitter.node_stack[-1].pop())
@@ -179,7 +228,34 @@ class TVMScriptParser(ast.NodeVisitor):
                 body.append(res)
         return tvm.tir.SeqStmt(body) if len(body) > 1 else body[0]
 
-    def get_type(self, type_node):
+    def parse_arg_list(self, func, node_call):
+        assert isinstance(node_call, ast.Call)
+        # collect arguments
+        args = [self.visit(arg) for arg in node_call.args]
+        kw_args = [self.visit(keyword) for keyword in node_call.keywords]
+        kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
+        # get the name and parameter list of func
+        if inspect.isfunction(func):
+            func_name = func.__qualname__
+            param_list = get_param_list(func)
+        elif isinstance(func, (ScopeHandler, SpecialStmt)):
+            func_name, param_list = func.signature()
+        else:
+            raise Exception("Internal Error")
+        # check arguments and parameter list and get a list of arguments
+        reader = CallArgumentReader(func_name, args, kw_args, self)
+        pos_only, kwargs, varargs = param_list
+        internal_args = list()
+        for i, arg_name in enumerate(pos_only):
+            internal_args.append(reader.get_pos_only_arg(i + 1, arg_name))
+        for i, arg_info in enumerate(kwargs):
+            arg_name, default = arg_info
+            internal_args.append(reader.get_kwarg(i + 1 + len(pos_only), arg_name, default=default))
+        if varargs is not None:
+            internal_args.extend(reader.get_varargs(len(pos_only) + len(kwargs) + 1))
+        return internal_args
+
+    def parse_type(self, type_node):
         """ Parse type """
         if type_node is None:
             self.report_error("missing type annotation")
@@ -268,7 +344,6 @@ class TVMScriptParser(ast.NodeVisitor):
         for body_element in node.body:
             if isinstance(body_element, ast.FunctionDef):
                 self.visit(body_element)
-        from .utils import create_module
 
         return create_module(self.functions)
 
@@ -287,22 +362,22 @@ class TVMScriptParser(ast.NodeVisitor):
         self.scope_emitter.new_scope()
         # add parameters of function
         for arg in node.args.args:
-            arg_var = tvm.te.var(arg.arg, self.get_type(arg.annotation))
+            arg_var = tvm.te.var(arg.arg, self.parse_type(arg.annotation))
             self.scope_emitter.update_symbol(arg.arg, arg_var)
             self.params.append(arg_var)
         # New Scope : Implicit root block
         self.scope_emitter.new_scope(is_block=True)
         # fetch the body of root block
         self.scope_emitter.node_stack[-1].extend(reversed(node.body))
-        body = self.get_body()
+        body = self.parse_body()
         # Emit Scope : Implicit root block
         root_info = self.scope_emitter.pop_scope(is_block=True)
         # Fix the body
         # 1. generate root block if necessary
         # 2. generate surrounding loops for blocks if necessary
-        body = AutoComplete(body, root_info.allocates)
+        body = _ffi_api.AutoComplete(body, root_info.allocates)
         # return a tir.PrimFunc
-        ret_type = self.get_type(node.returns)
+        ret_type = self.parse_type(node.returns)
         func = tvm.tir.PrimFunc(
             self.params,
             body,
@@ -311,7 +386,6 @@ class TVMScriptParser(ast.NodeVisitor):
             attrs=tvm.ir.make_node("DictAttrs", **self.dict_attr),
         )
         self.functions[GlobalVar(node.name)] = func
-
         # Emit Scope : PrimFunc
         self.scope_emitter.pop_scope()
         return func
@@ -320,7 +394,8 @@ class TVMScriptParser(ast.NodeVisitor):
         """Assign visitor
         AST abstract grammar:
             Assign(expr* targets, expr value, string? type_comment)
-        By now only 3 types of Assign is supported:
+
+        By now 3 patterns of Assign is supported:
             1. special stmts with return value
                 1.1 Buffer = tir.buffer_bind()/tir.buffer_allocate()
                 1.2 TVMScriptReducer = tir.comm_reducer()
@@ -329,37 +404,42 @@ class TVMScriptParser(ast.NodeVisitor):
             2. (BufferStore) Buffer[PrimExpr, PrimExpr, ..., PrimExpr] = PrimExpr
             3. (Store)       Var[PrimExpr] = PrimExpr
             4. with scope handlers with concise scoping and var def
-                4.1 var = tir.alloc_with_scope()
+                4.1 var = tir.allocate()
         """
 
         if not len(node.targets) == 1:
             self.report_error("Only one-valued assignment is supported now")
-        target = node.targets[0]
 
-        if isinstance(target, ast.Name):
-            # scenario 1&4
-            self.target = [target.id]
-            if not isinstance(node.value, ast.Call):
-                self.report_error("Unsupported assign stmt")
+        if isinstance(node.targets[0], ast.Name) and isinstance(node.value, ast.Call):
+            # Pattern 1 & Pattern 4
             func = self.visit(node.value.func)
-            if Registry.is_with_scope(func):
-                # scenario 4
-                return self.visit(node.value)
+            if isinstance(func, WithScopeHandler):
+                if not func.concise_scope or not func.def_symbol:
+                    self.report_error(
+                        "with scope handler " + func.signature()[0] + " is not suitable here"
+                    )
+                # Pattern 4
+                func.enter_scope(node, self.scope_emitter)
+                arg_list = self.parse_arg_list(func, node.value)
+                func.body = self.parse_body()
+                return func.exit_scope(node, self.scope_emitter, arg_list)
+            elif isinstance(func, SpecialStmt):
+                # Pattern 1
+                arg_list = None
+                func.handle(node, self.scope_emitter, arg_list)
             else:
-                # scenario 1
-                rhs = self.visit(node.value)
-                self.scope_emitter.update_symbol(target.id, rhs)
-        elif isinstance(target, ast.Subscript):
-            # scenario 2&3
-            symbol, indexes = self.visit(target)
+                self.report_error("Unsupported Assign stmt")
+        elif isinstance(node.targets[0], ast.Subscript):
+            # Pattern 2 & Pattern 3
+            symbol, indexes = self.visit(node.targets[0])
             rhs = self.visit(node.value)
             if isinstance(symbol, tvm.tir.Buffer):
-                # BufferStore
+                # Pattern 2
                 return tvm.tir.BufferStore(symbol, tvm.runtime.convert(rhs), indexes)
             else:
                 if len(indexes) != 1:
                     self.report_error("Invalid Store stmt")
-                # Store
+                # Pattern 3
                 return tvm.tir.Store(
                     symbol, tvm.runtime.convert(rhs), indexes[0], tvm.runtime.convert(True)
                 )
@@ -370,14 +450,17 @@ class TVMScriptParser(ast.NodeVisitor):
         """AnnAssign visitor
         AST abstract grammar:
             AnnAssign(expr target, expr annotation, expr? value, int simple)
-        Corresponds to concise mode of with tir.let()
+
+        Pattern corresponds to concise mode of with tir.let()
         """
 
         if isinstance(node.target, ast.Name):
             value = self.visit(node.value)
-            var = tvm.te.var(node.target.id, self.get_type(node.annotation))
+            var = tvm.te.var(node.target.id, self.parse_type(node.annotation))
             self.scope_emitter.update_symbol(var.name, var)
-            return tvm.tir.LetStmt(var, value, self.visit(self.scope_emitter.node_stack[-1].pop()))
+            body = self.parse_body()
+            self.scope_emitter.remove_symbol(var.name)
+            return tvm.tir.LetStmt(var, value, body)
         else:
             self.report_error("Unsupported AnnAssign stmt")
 
@@ -385,41 +468,46 @@ class TVMScriptParser(ast.NodeVisitor):
         """Assert visitor
         AST abstract grammar:
             Assert(expr test, expr? msg)
-        Corresponds to concise mode of with tir.assert()
+
+        Pattern corresponds to concise mode of with tir.Assert()
         """
 
         condition = self.visit(node.test)
         if node.msg is None:
             self.report_error("Message of AssertStmt can't be None")
         message = self.visit(node.msg)
-        return tvm.tir.AssertStmt(condition, tvm.runtime.convert(message), self.get_body())
+        body = self.parse_body()
+        return tvm.tir.AssertStmt(condition, tvm.runtime.convert(message), body)
 
     def visit_For(self, node):
         """For visitor
         AST abstract grammar:
             For(expr target, expr iter, stmt* body, stmt* orelse, string? type_comment)
-        By now only 2 types of For is supported:
-            1. for name in tir.range(begin, end, for_type)
-            2. for name in tir.grid(begin, end, annotation)
+        By now 1 pattern of For is supported:
+            1. for scope handler
+                for name in tir.range()/tir.grid()/tir.serial()/tir.parallel()/tir.vectorized()
+                            /tir.unroll()/range()
         """
 
-        # check node.iter, which is a Call
         if not isinstance(node.iter, ast.Call):
             self.report_error("The loop iter should be a Call")
         func = self.visit(node.iter.func)
-        if not Registry.is_for_scope(func):
-            self.report_error("Function not allowed in for scope")
-        # collect arguments
-        args = [self.visit(arg) for arg in node.iter.args]
-        kw_args = [self.visit(keyword) for keyword in node.iter.keywords]
-        kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
-
+        if not isinstance(func, ForScopeHandler):
+            self.report_error("Only for scope handlers can be used in for stmt")
         old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
         self.current_lineno, self.current_col_offset = (
             self.base_lineno + node.iter.lineno - 1,
             node.iter.col_offset,
         )
-        res = func(self, node, args, kw_args)
+        self.scope_emitter.new_scope()
+        self.scope_emitter.node_stack[-1].extend(reversed(node.body))
+
+        func.enter_scope(node, self.scope_emitter)
+        func.body = self.parse_body()
+        arg_list = self.parse_arg_list(func, node.iter)
+        res = func.exit_scope(node, self.scope_emitter, arg_list)
+
+        self.scope_emitter.pop_scope()
         self.current_lineno, self.current_col_offset = old_lineno, old_col_offset
         return res
 
@@ -428,10 +516,13 @@ class TVMScriptParser(ast.NodeVisitor):
         AST abstract grammar:
             With(withitem* items, stmt* body, string? type_comment)
             withitem = (expr context_expr, expr? optional_vars)
-        By now 2 types of With is supported:
-            1. with tir.block(*axes)/tir.allocate() as targets:
-            2. with tir.let()/tir.Assert()/tir.attr()//tir.realize()
+        By now 2 patterns of With is supported:
+            1. with scope handler with symbol def
+                with tir.block(*axes)/tir.allocate() as targets:
+            2. with scope handler without symbol def
+                with tir.let()/tir.Assert()/tir.attr()//tir.realize()
         """
+
         if not len(node.items) == 1:
             self.report_error("Only one with element is supported now")
         if not isinstance(node.items[0].context_expr, ast.Call):
@@ -441,32 +532,23 @@ class TVMScriptParser(ast.NodeVisitor):
         func_node = func_call.func
         func = self.visit(func_node)
 
-        if not Registry.is_with_scope(func):
+        if not isinstance(func, WithScopeHandler):
             self.report_error("Function not allowed in with scope")
-
-        self.target = []
-        if node.items[0].optional_vars is not None:
-            # preprocess optional var names
-            if isinstance(node.items[0].optional_vars, ast.Name):
-                self.target = [node.items[0].optional_vars.id]
-            elif isinstance(node.items[0].optional_vars, (ast.List, ast.Tuple)):
-                for var in node.items[0].optional_vars.elts:
-                    if not isinstance(var, ast.Name):
-                        self.report_error("Invalid optional var definition")
-                self.target = [var.id for var in node.items[0].optional_vars.elts]
-            else:
-                self.report_error("Invalid optional var definition")
-        # parse other arguments
-        args = [self.visit(arg) for arg in func_call.args]
-        kw_args = [self.visit(keyword) for keyword in func_call.keywords]
-        kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
 
         old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
         self.current_lineno, self.current_col_offset = (
             self.base_lineno + func_call.lineno - 1,
             func_call.col_offset,
         )
-        res = func(self, node, args, kw_args)
+        self.scope_emitter.new_scope(is_block=True)
+        self.scope_emitter.node_stack[-1].extend(reversed(node.body))
+
+        func.enter_scope(node, self.scope_emitter)
+        func.body = self.parse_body()
+        arg_list = self.parse_arg_list(func, func_node)
+        res = func.exit_scope(node, self.scope_emitter, arg_list)
+
+        self.scope_emitter.pop_scope()
         self.current_lineno, self.current_col_offset = old_lineno, old_col_offset
         return res
 
@@ -480,17 +562,18 @@ class TVMScriptParser(ast.NodeVisitor):
         # then body
         self.scope_emitter.new_scope()
         self.scope_emitter.node_stack[-1].extend(reversed(node.body))
-        then_body = self.get_body()
+        then_body = self.parse_body()
         self.scope_emitter.pop_scope()
 
         # else body
         if len(node.orelse) > 0:
             self.scope_emitter.new_scope()
             self.scope_emitter.node_stack[-1].extend(reversed(node.orelse))
-            else_body = self.get_body()
+            else_body = self.parse_body()
             self.scope_emitter.pop_scope()
         else:
             else_body = None
+
         return tvm.tir.IfThenElse(condition, then_body, else_body)
 
     def visit_Call(self, node):
@@ -498,14 +581,11 @@ class TVMScriptParser(ast.NodeVisitor):
         AST abstract grammar:
             Call(expr func, expr* args, keyword* keywords)
             keyword = (identifier? arg, expr value)
-        All the functions used outside With and For are registered in special_stmt or intrin
+
+        By now 1 pattern of Call is allowed
         """
 
         func = self.visit(node.func)
-        # collect arguments
-        args = [self.visit(arg) for arg in node.args]
-        kw_args = [self.visit(keyword) for keyword in node.keywords]
-        kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
 
         if callable(func):
             if Registry.is_registered(func):
@@ -524,8 +604,10 @@ class TVMScriptParser(ast.NodeVisitor):
 
         Now only 3 types of `Expr` stmt is allowed:
             1. reducer.step()/tir.store()
-            2. tir.attr()/tir.assert()/tir.allocate()/tir.realize()
-            3. tir.set_func_attr()
+            2. with scope handlers with concise scoping without var def
+                tir.attr()/tir.assert()/tir.allocate()/tir.realize()
+            3. special stmt without var def
+                tir.func_attr()/tir.reads()/tir.writes()/tir.bind()/tir.where()/tir.block_attr()
         """
 
         if not isinstance(node.value, ast.Call):
@@ -792,4 +874,89 @@ def from_source(src, func_lineno=0):
         raise TVMScriptParserError(inject_e)
 
 
-tvm._ffi._init_api("script", __name__)
+def _parse(script_in):
+    """Helper function to parse TVM script into TIR"""
+    return from_source(inspect.getsource(script_in), inspect.getsourcelines(script_in)[1])
+
+
+def create_module(functions=None):
+    """Construct a module from list of functions.
+
+    Parameters
+    -----------
+    functions: Optional[dict].
+        Map of GlobalVar or str to PrimFunc
+
+    Returns
+    -------
+    mod : IRModule
+        An IRModule containing the passed definitions
+    """
+
+    return IRModule(functions=functions)
+
+
+def asscript(input_ir, show_meta=False):
+    """Transform a PrimFunc or IRModule to python syntax script
+
+    Parameters
+    ----------
+    input_ir : Union[PrimFunc, IRModule]
+        The PrimFunc or IRModule to be dumped
+
+    show_meta : bool
+        Whether show meta
+
+    Returns
+    -------
+    script : str
+        The Python script
+    """
+
+    return _ffi_api.AsTVMScript(input_ir, show_meta)
+
+
+def tir(script_in):
+    """Decorate a python function or class as tvm script.
+
+    The tvm function or parsing support parsing to the internal TIR.
+
+    Returns
+    -------
+    output : Union[Function, Module]
+        The Function or Module in IR.
+    """
+
+    if inspect.isfunction(script_in):
+        result = _parse(script_in)
+    elif inspect.isclass(script_in):
+        result = TVMScriptClass(script_in)
+    else:
+        raise TypeError("Only function and class are supported")
+    result.__name__ = script_in.__name__
+    result.__qualname__ = script_in.__qualname__
+    return result
+
+
+def module(script_in):
+    """Decorate a python function or class as tvm script.
+
+    Alias for tvm.script.tir for now.
+
+    Returns
+    -------
+    output : Union[Function, Module]
+        The Function or Module in IR.
+    """
+    return tir(script_in)
+
+
+class TVMScriptClass:
+    """Helper class for decorating a class"""
+
+    def __init__(self, script_in):
+        self.script = script_in
+
+    def __call__(self, *args, **kwargs):
+        # call the parser to transform tvm script into TIR
+        return _parse(self.script)
