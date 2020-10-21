@@ -14,53 +14,40 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Mutators that helps explores the space.
-It mutates a schedule to an adjacent one by doing small modification"""
+"""Postprocessors are applied at the final stage before a schedule is sent to be measured"""
+
 from typing import Optional
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
 
-from . import _ffi_api_mutator
+from . import _ffi_api_postproc
 from .schedule import Schedule
-from .search import SearchTask
 
 
-@register_object("meta_schedule.Mutator")
-class Mutator(Object):
-    """A mutation rule for the genetic algorithm"""
+@register_object("meta_schedule.Postproc")
+class Postproc(Object):
+    """A post processor, used for the search strategy for postprocess the schedule it gets"""
 
     name: str
 
     def apply(
         self,
-        task: SearchTask,
         sch: Schedule,
         seed: Optional[int] = None,
-    ) -> Optional[Schedule]:
-        """Mutate the schedule by applying the mutation.
+    ) -> bool:
+        """Postprocess the schedule.
 
         Parameters
         ----------
-        task : SearchTask
-            The search task
-        sch: Schedule
+        sch : Schedule
             The schedule to be mutated
+        seed : Optional[int]
+            The random seed
 
         Returns
         -------
-        new_sch : Optional[Schedule]
-            The new schedule after mutation, or None if cannot find a viable solution
+        result : bool
+            If the post-processing succeeds
         """
-        return _ffi_api_mutator.Apply(self, task, sch, seed)  # pylint: disable=no-member
-
-
-def mutate_tile_size() -> Mutator:
-    """Create a mutator that randomly mutate the tile size
-
-    Returns
-    ----------
-    mutator: Mutator
-        The mutator created
-    """
-    return _ffi_api_mutator.MutateTileSize()  # pylint: disable=no-member
+        return _ffi_api_postproc.Apply(self, sch, seed)  # pylint: disable=no-member

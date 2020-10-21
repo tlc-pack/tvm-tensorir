@@ -164,7 +164,7 @@ struct Internal {
 };
 
 TVM_REGISTER_NODE_TYPE(MutatorNode);
-TVM_REGISTER_GLOBAL("meta_schedule.MutatorApply").set_body_typed(Internal::MutatorApply);
+TVM_REGISTER_GLOBAL("meta_schedule.mutator.Apply").set_body_typed(Internal::MutatorApply);
 TVM_REGISTER_GLOBAL("meta_schedule.mutator.MutateTileSize").set_body_typed(MutateTileSize);
 
 }  // namespace meta_schedule

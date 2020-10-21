@@ -17,7 +17,6 @@
 """ Test multi-level tiling """
 # pylint: disable=missing-function-docstring
 import pytest
-
 import tvm
 from tvm import meta_schedule as ms
 from tvm import tir

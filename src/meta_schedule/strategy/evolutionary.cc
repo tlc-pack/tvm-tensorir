@@ -21,6 +21,7 @@
 #include "../search.h"
 #include "../utils.h"
 #include "./mutator.h"
+#include "./postproc.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -69,6 +70,8 @@ class EvolutionaryNode : public SearchStrategyNode {
   Map<Mutator, FloatImm> mutator_probs;
   /*! \brief A cost model helping to explore the search space */
   CostModel cost_model;
+  /*! \brief Postprocessors */
+  Array<Postproc> postprocs;
   /*! \brief A table storing all states that have been measured */
   SortedTable<String, MeasuredState> measured_;
 
@@ -82,7 +85,7 @@ class EvolutionaryNode : public SearchStrategyNode {
     v->Visit("p_mutate", &p_mutate);
     v->Visit("mutator_probs", &mutator_probs);
     v->Visit("cost_model", &cost_model);
-    // sampler_ is not visited
+    v->Visit("postprocs", &postprocs);
     // measured_ is not visited
   }
 
@@ -167,11 +170,12 @@ class Evolutionary : public SearchStrategy {
    * \param p_mutate The probability to perform mutation
    * \param mutator_probs Mutators and their probability mass
    * \param cost_model A cost model helping to explore the search space
+   * \param postprocs The postprocessors. If not present, use default built-in
    */
   explicit Evolutionary(int num_measure_trials, int num_measure_per_batch,
                         int num_iters_in_genetic_algo, double eps_greedy, double use_measured_ratio,
                         int population, double p_mutate, Map<Mutator, FloatImm> mutator_probs,
-                        CostModel cost_model);
+                        CostModel cost_model, Optional<Array<Postproc>> postprocs);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Evolutionary, SearchStrategy, EvolutionaryNode);
 };
@@ -181,7 +185,8 @@ class Evolutionary : public SearchStrategy {
 Evolutionary::Evolutionary(int num_measure_trials, int num_measure_per_batch,
                            int num_iters_in_genetic_algo, double eps_greedy,
                            double use_measured_ratio, int population, double p_mutate,
-                           Map<Mutator, FloatImm> mutator_probs, CostModel cost_model) {
+                           Map<Mutator, FloatImm> mutator_probs, CostModel cost_model,
+                           Optional<Array<Postproc>> postprocs) {
   ObjectPtr<EvolutionaryNode> n = make_object<EvolutionaryNode>();
   n->num_measure_trials = num_measure_trials;
   n->num_measure_per_batch = num_measure_per_batch;
@@ -424,10 +429,11 @@ struct Internal {
   static Evolutionary New(int num_measure_trials, int num_measure_per_batch,
                           int num_iters_in_genetic_algo, double eps_greedy,
                           double use_measured_ratio, int population, double p_mutate,
-                          Map<Mutator, FloatImm> mutator_probs, CostModel cost_model) {
+                          Map<Mutator, FloatImm> mutator_probs, CostModel cost_model,
+                          Optional<Array<Postproc>> postprocs) {
     return Evolutionary(num_measure_trials, num_measure_per_batch, num_iters_in_genetic_algo,
                         eps_greedy, use_measured_ratio, population, p_mutate, mutator_probs,
-                        cost_model);
+                        cost_model, postprocs);
   }
   /*!
    * \brief Sample the initial population from the support
