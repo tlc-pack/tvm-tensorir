@@ -17,9 +17,6 @@
 """TVM Script Parser Function Registry """
 # pylint: disable=inconsistent-return-statements
 import inspect
-from typed_ast import ast3 as ast
-
-import tvm
 
 
 class Registry(object):
@@ -31,13 +28,11 @@ class Registry(object):
 
 
 def register(registration):
-    if inspect.isfunction(registration):
-        key = "tir." + registration.__qualname__
-    elif inspect.isclass(registration):
-        registration = registration()
-        key = "tir." + registration.signature()[0]
+    if inspect.isclass(registration):
+        registration_obj = registration()
+        key = registration_obj.signature()[0]
     else:
         raise ValueError()
-    print(key, registration)
-    Registry.registrations[key] = registration
+    print(key, registration_obj)
+    Registry.registrations[key] = registration_obj
     return registration

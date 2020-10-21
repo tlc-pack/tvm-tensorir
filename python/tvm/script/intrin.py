@@ -25,8 +25,9 @@ from .utils import get_param_list
 
 
 class Intrin:
-    def __init__(self, intrin):
+    def __init__(self, intrin, stmt=False):
         self.intrin = intrin
+        self.stmt = stmt
 
     def signature(self):
         return self.intrin.__qualname__, get_param_list(self.intrin)
@@ -212,7 +213,7 @@ class Evaluate(Intrin):
         def evaluate(value):
             return tvm.tir.Evaluate(value)
 
-        super().__init__(evaluate)
+        super().__init__(evaluate, stmt=True)
 
 
 @register
@@ -221,7 +222,7 @@ class Store(Intrin):
         def store(var, index, value, predicate=True):
             return tvm.tir.Store(var, value, index, predicate)
 
-        super().__init__(store)
+        super().__init__(store, stmt=True)
 
 
 @register

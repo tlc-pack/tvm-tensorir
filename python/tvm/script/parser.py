@@ -30,9 +30,10 @@ from tvm.ir import GlobalVar
 from tvm.tir import all as _all
 from tvm.tir import expr as _expr
 
-from . import scope_emitter, intrin, ty
+from . import scope_emitter, ty
 from .meta_unparser import MetaUnparser
 from .registry import Registry
+from .intrin import Intrin
 from .special_stmt import TVMScriptLambda, SpecialStmt
 from .scope_handler import ScopeHandler, WithScopeHandler, ForScopeHandler
 from .utils import get_param_list
@@ -582,17 +583,23 @@ class TVMScriptParser(ast.NodeVisitor):
             Call(expr func, expr* args, keyword* keywords)
             keyword = (identifier? arg, expr value)
 
-        By now 1 pattern of Call is allowed
+        By now 2 patterns of Call is allowed
+            1. Intrin representing PrimExpr/IterVar
+                1.1 tir.int/uint/float8/16/32/64/floormod/floordiv/load/cast/ramp/broadcast/max
+                1.2 tir.range/reduce_axis/scan_axis/opaque_axis
+            2. tir.Op(dtype, ...)
         """
 
         func = self.visit(node.func)
-
-        if callable(func):
-            if Registry.is_registered(func):
-                return func(self, node, args, kw_args)
-            else:
-                return func(*args, **kw_args)
+        if isinstance(func, Intrin) and not func.stmt:
+            # pattern 1
+            arg_list = self.parse_arg_list(func, node)
+            return func.handle(arg_list)
         elif isinstance(func, tvm.tir.op.Op):
+            # pattern 2
+            args = [self.visit(arg) for arg in node.args]
+            kw_args = [self.visit(keyword) for keyword in node.keywords]
+            kw_args = {kw_arg[0]: kw_arg[1] for kw_arg in kw_args}
             return tvm.tir.Call(kw_args["dtype"], func, args)
 
         self.report_error("Unsupported function call")
@@ -603,7 +610,8 @@ class TVMScriptParser(ast.NodeVisitor):
             Expr(expr value)
 
         Now only 3 types of `Expr` stmt is allowed:
-            1. reducer.step()/tir.store()
+            1. Intrin representing Stmt without body
+                reducer.step()/tir.store()
             2. with scope handlers with concise scoping without var def
                 tir.attr()/tir.assert()/tir.allocate()/tir.realize()
             3. special stmt without var def
@@ -612,9 +620,22 @@ class TVMScriptParser(ast.NodeVisitor):
 
         if not isinstance(node.value, ast.Call):
             self.report_error("Unsupported Expr stmt")
-        res = self.visit(node.value)
-        if res is None or isinstance(res, tvm.tir.Stmt):
-            return res
+
+        func = self.visit(node.value.func)
+        arg_list = self.parse_arg_list(func, node.value)
+
+        if isinstance(func, Intrin) and func.stmt:
+            # pattern 1
+            return func.handle(arg_list)
+        elif isinstance(func, WithScopeHandler) and func.concise_scope and not func.def_symbol:
+            # pattern 2
+            func.enter_scope(node, self.scope_emitter)
+            func.body = self.parse_body()
+            return func.exit_scope(node, self.scope_emitter, arg_list)
+        elif isinstance(func, SpecialStmt) and not func.def_symbol:
+            # pattern 3
+            return func.handle(node, self.scope_emitter, arg_list)
+
         self.report_error("Invalid Expr stmt")
 
     def visit_Lambda(self, node):
@@ -690,7 +711,7 @@ class TVMScriptParser(ast.NodeVisitor):
             slice = Slice(expr? lower, expr? upper, expr? step)
                     | ExtSlice(slice* dims)
                     | Index(expr value)
-        By now only 3 types of Subscript are supported:
+        By now 3 patterns of Subscript are supported:
             1. Buffer[index, index, ...], Buffer element access(BufferLoad & BufferStore)
                Var[index] Buffer element access()
             2. Buffer[slice, slice, ...], TensorRegion
@@ -751,7 +772,7 @@ class TVMScriptParser(ast.NodeVisitor):
         if isinstance(node.value, ast.Name):
             if node.value.id == "tir":
                 func_name = "tir." + node.attr
-                res = Registry.look_up_function(func_name)
+                res = Registry[func_name]
                 if res is not None:
                     return res
                 try:

@@ -36,12 +36,12 @@ from .registry import register
 
 
 class SpecialStmt:
-    def __init__(self, def_symbol):
+    def __init__(self, func, def_symbol):
+        self.func = func
         self.def_symbol = def_symbol
 
-    @staticmethod
-    def signature():
-        pass
+    def signature(self):
+        return "tir." + self.func.__qualname__, get_param_list(self.func)
 
     def handle(self, node, context, arg_list):
         pass
@@ -50,25 +50,21 @@ class SpecialStmt:
 @register
 class MatchBuffer(SpecialStmt):
     def __init__(self):
-        super().__init__(def_symbol=True)
-
-    @staticmethod
-    def signature():
         def match_buffer(
-            param,
-            shape,
-            dtype="float32",
-            data=None,
-            strides=None,
-            elem_offset=None,
-            scope="global",
-            align=-1,
-            offset_factor=0,
-            buffer_type="default",
+                param,
+                shape,
+                dtype="float32",
+                data=None,
+                strides=None,
+                elem_offset=None,
+                scope="global",
+                align=-1,
+                offset_factor=0,
+                buffer_type="default",
         ):
             pass
 
-        return "match_buffer", get_param_list(match_buffer)
+        super().__init__(match_buffer, def_symbol=True)
 
     def handle(self, node, context, arg_list):
         pass
@@ -77,24 +73,20 @@ class MatchBuffer(SpecialStmt):
 @register
 class BufferAllocate(SpecialStmt):
     def __init__(self):
-        super().__init__(def_symbol=True)
-
-    @staticmethod
-    def signature():
         def buffer_allocate(
-            shape,
-            dtype="float32",
-            data=None,
-            strides=None,
-            elem_offset=None,
-            scope="global",
-            align=-1,
-            offset_factor=0,
-            buffer_type="default",
+                shape,
+                dtype="float32",
+                data=None,
+                strides=None,
+                elem_offset=None,
+                scope="global",
+                align=-1,
+                offset_factor=0,
+                buffer_type="default",
         ):
             pass
 
-        return "buffer_allocate", get_param_list(buffer_allocate)
+        super().__init__(buffer_allocate, def_symbol=True)
 
     def handle(self, node, context, arg_list):
         pass
@@ -103,14 +95,10 @@ class BufferAllocate(SpecialStmt):
 @register
 class BlockVarBind(SpecialStmt):
     def __init__(self):
-        super().__init__(def_symbol=False)
-
-    @staticmethod
-    def signature():
         def bind(block_var, binding):
             pass
 
-        return "bind", get_param_list(bind)
+        super().__init__(bind, def_symbol=False)
 
     def handle(self, node, context, arg_list):
         pass
@@ -119,14 +107,10 @@ class BlockVarBind(SpecialStmt):
 @register
 class BlockReads(SpecialStmt):
     def __init__(self):
-        super().__init__(def_symbol=False)
-
-    @staticmethod
-    def signature():
         def reads(reads):
             pass
 
-        return "reads", get_param_list(reads)
+        super().__init__(reads, def_symbol=False)
 
     def handle(self, node, context, arg_list):
         pass
@@ -135,14 +119,11 @@ class BlockReads(SpecialStmt):
 @register
 class BlockWrites(SpecialStmt):
     def __init__(self):
-        super().__init__(def_symbol=False)
-
-    @staticmethod
-    def signature():
         def writes(writes):
             pass
 
-        return "writes", get_param_list(writes)
+        super().__init__(writes, def_symbol=False)
+
 
     def handle(self, node, context, arg_list):
         pass
@@ -151,14 +132,10 @@ class BlockWrites(SpecialStmt):
 @register
 class BlockAttr(SpecialStmt):
     def __init__(self):
-        super().__init__(def_symbol=False)
-
-    @staticmethod
-    def signature():
         def block_attr(attrs):
             pass
 
-        return "block_attr", get_param_list(block_attr)
+        super().__init__(block_attr, def_symbol=False)
 
     def handle(self, node, context, arg_list):
         pass
@@ -167,14 +144,10 @@ class BlockAttr(SpecialStmt):
 @register
 class BlockPredicate(SpecialStmt):
     def __init__(self):
-        super().__init__(def_symbol=False)
-
-    @staticmethod
-    def signature():
         def where(predicate):
             pass
 
-        return "where", get_param_list(where)
+        super().__init__(where, def_symbol=False)
 
     def handle(self, node, context, arg_list):
         pass
@@ -183,24 +156,20 @@ class BlockPredicate(SpecialStmt):
 @register
 class BufferDeclare(SpecialStmt):
     def __init__(self):
-        super().__init__(def_symbol=True)
-
-    @staticmethod
-    def signature():
         def buffer_decl(
-            shape,
-            dtype="float32",
-            data=None,
-            strides=None,
-            elem_offset=None,
-            scope="global",
-            align=-1,
-            offset_factor=0,
-            buffer_type="default",
+                shape,
+                dtype="float32",
+                data=None,
+                strides=None,
+                elem_offset=None,
+                scope="global",
+                align=-1,
+                offset_factor=0,
+                buffer_type="default",
         ):
             pass
 
-        return "buffer_decl", get_param_list(buffer_decl)
+        super().__init__(buffer_decl, def_symbol=True)
 
     def handle(self, node, context, arg_list):
         pass
@@ -209,14 +178,10 @@ class BufferDeclare(SpecialStmt):
 @register
 class VarDef(SpecialStmt):
     def __init__(self):
-        super().__init__(def_symbol=True)
-
-    @staticmethod
-    def signature():
         def var(dtype):
             pass
 
-        return "var", get_param_list(var)
+        super().__init__(var, def_symbol=True)
 
     def handle(self, node, context, arg_list):
         pass
@@ -225,14 +190,10 @@ class VarDef(SpecialStmt):
 @register
 class EnvThread(SpecialStmt):
     def __init__(self):
-        super().__init__(def_symbol=True)
-
-    @staticmethod
-    def signature():
         def env_thread(env_name):
             pass
 
-        return "env_thread", get_param_list(env_thread)
+        super().__init__(env_thread, def_symbol=True)
 
     def handle(self, node, context, arg_list):
         pass
@@ -254,7 +215,7 @@ class TVMScriptReducer:
             def intrin(lhs, rhs):
                 return tvm.tir.ReduceStep(self.reducer, lhs, rhs)
 
-            super().__init__(intrin)
+            super().__init__(intrin, stmt=True)
             self.reducer = reducer
 
         def signature(self):
@@ -272,14 +233,10 @@ class TVMScriptReducer:
 @register
 class CommReducer(SpecialStmt):
     def __init__(self):
-        super().__init__(def_symbol=True)
-
-    @staticmethod
-    def signature():
         def comm_reducer(combiner, identity):
             pass
 
-        return "comm_reducer", get_param_list(comm_reducer)
+        super().__init__(comm_reducer, def_symbol=True)
 
     def handle(self, node, context, arg_list):
         pass
@@ -288,14 +245,10 @@ class CommReducer(SpecialStmt):
 @register
 class FuncAttr(SpecialStmt):
     def __init__(self):
-        super().__init__(def_symbol=False)
-
-    @staticmethod
-    def signature():
         def func_attr(dict_attr):
             pass
 
-        return "func_attr", get_param_list(func_attr)
+        super().__init__(func_attr, def_symbol=False)
 
     def handle(self, node, context, arg_list):
         pass

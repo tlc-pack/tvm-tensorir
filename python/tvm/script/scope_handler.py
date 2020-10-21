@@ -25,12 +25,12 @@ from .registry import register
 
 
 class ScopeHandler:
-    def __init__(self):
+    def __init__(self, func):
+        self.func = func
         self.body = None
 
-    @staticmethod
-    def signature():
-        pass
+    def signature(self):
+        return "tir." + self.func.__qualname__, get_param_list(self.func)
 
     def enter_scope(self, node, context):
         pass
@@ -40,8 +40,8 @@ class ScopeHandler:
 
 
 class WithScopeHandler(ScopeHandler):
-    def __init__(self, concise_scope, def_symbol):
-        super().__init__()
+    def __init__(self, func, concise_scope, def_symbol):
+        super().__init__(func)
         self.concise_scope = concise_scope
         self.def_symbol = def_symbol
 
@@ -49,14 +49,10 @@ class WithScopeHandler(ScopeHandler):
 @register
 class Block(WithScopeHandler):
     def __init__(self):
-        super().__init__(concise_scope=False, def_symbol=True)
-
-    @staticmethod
-    def signature():
         def block(axes=None, name="", exec_scope=""):
             pass
 
-        return "block", get_param_list(block)
+        super().__init__(func=block, concise_scope=False, def_symbol=True)
 
     def enter_scope(self, node, context):
         # define block vars
@@ -70,14 +66,10 @@ class Block(WithScopeHandler):
 @register
 class Allocate(WithScopeHandler):
     def __init__(self):
-        super().__init__(concise_scope=True, def_symbol=True)
-
-    @staticmethod
-    def signature():
         def allocate(extents, dtype, scope, condition=True):
             pass
 
-        return "allocate", get_param_list(allocate)
+        super().__init__(allocate, concise_scope=True, def_symbol=True)
 
     def enter_scope(self, node, context):
         # define buffer vars in symbol table
@@ -91,14 +83,10 @@ class Allocate(WithScopeHandler):
 @register
 class LaunchThread(WithScopeHandler):
     def __init__(self):
-        super().__init__(concise_scope=True, def_symbol=False)
-
-    @staticmethod
-    def signature():
         def launch_thread(env_var, extent):
             pass
 
-        return "launch_thread", get_param_list(launch_thread)
+        super().__init__(launch_thread, concise_scope=True, def_symbol=False)
 
     def enter_scope(self, node, context):
         # do nothing
@@ -112,14 +100,10 @@ class LaunchThread(WithScopeHandler):
 @register
 class Realize(WithScopeHandler):
     def __init__(self):
-        super().__init__(concise_scope=True, def_symbol=False)
-
-    @staticmethod
-    def signature():
         def realize(buffer_bounds, scope, condition=True):
             pass
 
-        return "realize", get_param_list(realize)
+        super().__init__(realize, concise_scope=True, def_symbol=False)
 
     def enter_scope(self, node, context):
         # do nothing
@@ -133,14 +117,10 @@ class Realize(WithScopeHandler):
 @register
 class Attr(WithScopeHandler):
     def __init__(self):
-        super().__init__(concise_scope=True, def_symbol=False)
-
-    @staticmethod
-    def signature():
         def attr(attr_key, value):
             pass
 
-        return "attr", get_param_list(attr)
+        super().__init__(attr, concise_scope=True, def_symbol=False)
 
     def enter_scope(self, node, context):
         # do nothing
@@ -152,16 +132,11 @@ class Attr(WithScopeHandler):
 
 
 @register
-class Assert(WithScopeHandler):
+class AssertHandler(WithScopeHandler):
     def __init__(self):
-        super().__init__(concise_scope=True, def_symbol=False)
-
-    @staticmethod
-    def signature():
-        def assert_sig(condition, message):
+        def Assert(condition, message):
             pass
-
-        return "Assert", get_param_list(assert_sig)
+        super().__init__(Assert, concise_scope=True, def_symbol=False)
 
     def enter_scope(self, node, context):
         # do nothing
@@ -175,14 +150,10 @@ class Assert(WithScopeHandler):
 @register
 class Let(WithScopeHandler):
     def __init__(self):
-        super().__init__(concise_scope=False, def_symbol=False)
-
-    @staticmethod
-    def signature():
         def let(var, value):
             pass
 
-        return "let", get_param_list(let)
+        super().__init__(let, concise_scope=False, def_symbol=False)
 
     def enter_scope(self, node, context):
         # do nothing
@@ -194,21 +165,17 @@ class Let(WithScopeHandler):
 
 
 class ForScopeHandler(ScopeHandler):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, func):
+        super().__init__(func)
 
 
 @register
 class Serial(ForScopeHandler):
     def __init__(self):
-        super().__init__()
-
-    @staticmethod
-    def signature():
         def serial(begin, end):
             pass
 
-        return "serial", get_param_list(serial)
+        super().__init__(serial)
 
     def enter_scope(self, node, context):
         super().enter_scope(node, context)
@@ -218,16 +185,12 @@ class Serial(ForScopeHandler):
 
 
 @register
-class Parallel(ForScopeHandler):
+class Paralel(ForScopeHandler):
     def __init__(self):
-        super().__init__()
-
-    @staticmethod
-    def signature():
         def parallel(begin, end):
             pass
 
-        return "parallel", get_param_list(parallel)
+        super().__init__(parallel)
 
     def enter_scope(self, node, context):
         super().enter_scope(node, context)
@@ -239,14 +202,10 @@ class Parallel(ForScopeHandler):
 @register
 class Vectorized(ForScopeHandler):
     def __init__(self):
-        super().__init__()
-
-    @staticmethod
-    def signature():
         def vectorized(begin, end):
             pass
 
-        return "vectorized", get_param_list(vectorized)
+        super().__init__(vectorized)
 
     def enter_scope(self, node, context):
         super().enter_scope(node, context)
@@ -258,14 +217,10 @@ class Vectorized(ForScopeHandler):
 @register
 class Unroll(ForScopeHandler):
     def __init__(self):
-        super().__init__()
-
-    @staticmethod
-    def signature():
         def unroll(begin, end):
             pass
 
-        return "unroll", get_param_list(unroll)
+        super().__init__(unroll)
 
     def enter_scope(self, node, context):
         super().enter_scope(node, context)
@@ -275,16 +230,12 @@ class Unroll(ForScopeHandler):
 
 
 @register
-class Range(ForScopeHandler):
+class RangeHandler(ForScopeHandler):
     def __init__(self):
-        super().__init__()
-
-    @staticmethod
-    def signature():
-        def loop_range(begin, end, annotation=None):
+        def Range(begin, end, annotation=None):
             pass
 
-        return "Range", get_param_list(loop_range)
+        super().__init__(Range)
 
     def enter_scope(self, node, context):
         super().enter_scope(node, context)
@@ -296,14 +247,10 @@ class Range(ForScopeHandler):
 @register
 class Grid(ForScopeHandler):
     def __init__(self):
-        super().__init__()
-
-    @staticmethod
-    def signature():
         def grid(*extents):
             pass
 
-        return "grid", get_param_list(grid)
+        super().__init__(grid)
 
     def enter_scope(self, node, context):
         super().enter_scope(node, context)
