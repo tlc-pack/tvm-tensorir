@@ -14,196 +14,222 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""TVM Script Parser Special Stmt Functions
-This module provides the functions registered into parser under special_stmt category.
-special_stmt functions don't correspond to an IRNode in the AST directly. It is usually
-used for some information that is not suitable to be printed directly.
-special_stmt can appear as 2 formats
-.. code-block:: python
-
-    target = tir.name():
-    tir.name()
-
-When registering a special stmt, the first two arguments must be parser, node
-"""
+"""TVM Script Parser Special Stmt Classes"""
 # pylint: disable=unused-argument, no-self-argument, inconsistent-return-statements
 from typed_ast import ast3 as ast
 
 import tvm.tir
 from tvm import te
-from .registry import register_special_stmt
+from .utils import get_param_list
+from .intrin import StepIntrin
+from .registry import register
 
 
-@register_special_stmt()
-def match_buffer(
-    parser,
-    node,
-    param,
-    shape,
-    dtype="float32",
-    data=None,
-    strides=None,
-    elem_offset=None,
-    scope="global",
-    align=-1,
-    offset_factor=0,
-    buffer_type="default",
-):
-    """Special function match_buffer(var, shape, dtype, data, strides, elem_offset, scope, align,
-                                      offset_factor, buffer_type)
-    Example
-    -------
-    .. code-block:: python
+class SpecialStmt:
+    def __init__(self, func, def_symbol):
+        self.func = func
+        self.def_symbol = def_symbol
+        self.node = None
+        self.context = None
 
-        A = tir.match_buffer(a, (128, 128), dtype="float32")
-    """
+    def signature(self):
+        return "tir." + self.func.__name__, get_param_list(self.func)
 
-    if param not in parser.params:
-        parser.report_error("Can not bind non-input param to buffer")
-    if strides is None:
-        strides = []
-    align = align.value if not isinstance(align, int) else align
-    offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
-    buffer = tvm.tir.decl_buffer(
-        shape,
-        dtype,
-        parser.target[0],
-        data,
-        strides,
-        elem_offset,
-        scope,
-        align,
-        offset_factor,
-        buffer_type,
-    )
-    parser.buffer_map[param] = buffer
-    return buffer
+    def handle(self, node, context, arg_list):
+        self.node = node
+        self.context = context
+        return self.func(*arg_list)
 
 
-@register_special_stmt()
-def buffer_allocate(
-    parser,
-    node,
-    shape,
-    dtype="float32",
-    data=None,
-    strides=None,
-    elem_offset=None,
-    scope="global",
-    align=-1,
-    offset_factor=0,
-    buffer_type="default",
-):
-    """Special function buffer_allocate(shape, dtype, data, strides, elem_offset, scope, align,
-                                         offset_factor, buffer_type)
+@register
+class MatchBuffer(SpecialStmt):
+    def __init__(self):
+        def match_buffer(
+            param,
+            shape,
+            dtype="float32",
+            data=None,
+            strides=None,
+            elem_offset=None,
+            scope="global",
+            align=-1,
+            offset_factor=0,
+            buffer_type="default",
+        ):
+            assert isinstance(self.node, ast.Assign)
 
-    Example
-    -------
-    .. code-block:: python
+            if param not in self.context.func_params:
+                self.context.report_error("Can not bind non-input param to buffer")
+            if strides is None:
+                strides = []
+            align = align.value if not isinstance(align, int) else align
+            offset_factor = (
+                offset_factor.value if not isinstance(offset_factor, int) else offset_factor
+            )
+            buffer = tvm.tir.decl_buffer(
+                shape,
+                dtype,
+                self.node.targets[0].id,
+                data,
+                strides,
+                elem_offset,
+                scope,
+                align,
+                offset_factor,
+                buffer_type,
+            )
+            self.context.func_buffer_map[param] = buffer
+            self.context.update_symbol(self.node.targets[0].id, buffer)
 
-        A = tir.buffer_allocate((128, 128), dtype="float32")
-
-    """
-
-    if strides is None:
-        strides = []
-    align = align.value if not isinstance(align, int) else align
-    offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
-    buffer = tvm.tir.decl_buffer(
-        shape,
-        dtype,
-        parser.target[0],
-        data,
-        strides,
-        elem_offset,
-        scope,
-        align,
-        offset_factor,
-        buffer_type,
-    )
-    parser.scope_emitter.block_scope().allocates.append(tvm.tir.BufferAllocate(buffer, scope))
-    return buffer
+        super().__init__(match_buffer, def_symbol=True)
 
 
-@register_special_stmt()
-def bind(parser, node, block_var, binding):
-    parser.scope_emitter.block_scope().binding[block_var] = binding
+@register
+class BufferAllocate(SpecialStmt):
+    def __init__(self):
+        def buffer_allocate(
+            shape,
+            dtype="float32",
+            data=None,
+            strides=None,
+            elem_offset=None,
+            scope="global",
+            align=-1,
+            offset_factor=0,
+            buffer_type="default",
+        ):
+            assert isinstance(self.node, ast.Assign)
+
+            if strides is None:
+                strides = []
+            align = align.value if not isinstance(align, int) else align
+            offset_factor = (
+                offset_factor.value if not isinstance(offset_factor, int) else offset_factor
+            )
+            buffer = tvm.tir.decl_buffer(
+                shape,
+                dtype,
+                self.node.targets[0].id,
+                data,
+                strides,
+                elem_offset,
+                scope,
+                align,
+                offset_factor,
+                buffer_type,
+            )
+            self.context.block_scope().allocates.append(tvm.tir.BufferAllocate(buffer, scope))
+            self.context.update_symbol(self.node.targets[0].id, buffer)
+
+        super().__init__(buffer_allocate, def_symbol=True)
 
 
-@register_special_stmt()
-def reads(parser, node, reads):
-    parser.scope_emitter.block_scope().reads = [reads] if not isinstance(reads, list) else reads
+@register
+class BlockVarBind(SpecialStmt):
+    def __init__(self):
+        def bind(block_var, binding):
+            self.context.block_scope().binding[block_var] = binding
+
+        super().__init__(bind, def_symbol=False)
 
 
-@register_special_stmt()
-def writes(parser, node, writes):
-    parser.scope_emitter.block_scope().writes = [writes] if not isinstance(writes, list) else writes
+@register
+class BlockReads(SpecialStmt):
+    def __init__(self):
+        def reads(reads):
+            self.context.block_scope().reads = [reads] if not isinstance(reads, list) else reads
+
+        super().__init__(reads, def_symbol=False)
 
 
-@register_special_stmt()
-def block_attr(parser, node, attrs):
-    parser.scope_emitter.block_scope().annotations = attrs
+@register
+class BlockWrites(SpecialStmt):
+    def __init__(self):
+        def writes(writes):
+            self.context.block_scope().writes = [writes] if not isinstance(writes, list) else writes
+
+        super().__init__(writes, def_symbol=False)
 
 
-@register_special_stmt()
-def where(parser, node, predicate):
-    parser.scope_emitter.block_scope().predicate = predicate
+@register
+class BlockAttr(SpecialStmt):
+    def __init__(self):
+        def block_attr(attrs):
+            self.context.block_scope().annotations = attrs
+
+        super().__init__(block_attr, def_symbol=False)
 
 
-@register_special_stmt()
-def buffer_decl(
-    parser,
-    node,
-    shape,
-    dtype="float32",
-    data=None,
-    strides=None,
-    elem_offset=None,
-    scope="global",
-    align=-1,
-    offset_factor=0,
-    buffer_type="default",
-):
-    """Special function buffer_decl(shape, dtype, data, strides, elem_offset, scope, align,
-                                         offset_factor, buffer_type)
-    Example
-    -------
-    .. code-block:: python
+@register
+class BlockPredicate(SpecialStmt):
+    def __init__(self):
+        def where(predicate):
+            self.context.block_scope().predicate = predicate
 
-        A = tir.buffer_decl((128, 128), dtype="float32")
-    """
-
-    if strides is None:
-        strides = []
-    align = align.value if not isinstance(align, int) else align
-    offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
-    buffer = tvm.tir.decl_buffer(
-        shape,
-        dtype,
-        parser.target[0],
-        data,
-        strides,
-        elem_offset,
-        scope,
-        align,
-        offset_factor,
-        buffer_type,
-    )
-    return buffer
+        super().__init__(where, def_symbol=False)
 
 
-@register_special_stmt()
-def var(parser, node, dtype):
-    """ Special function for defining a Var"""
-    return te.var(parser.target[0], dtype)
+@register
+class BufferDeclare(SpecialStmt):
+    def __init__(self):
+        def buffer_decl(
+            shape,
+            dtype="float32",
+            data=None,
+            strides=None,
+            elem_offset=None,
+            scope="global",
+            align=-1,
+            offset_factor=0,
+            buffer_type="default",
+        ):
+            assert isinstance(self.node, ast.Assign)
+
+            if strides is None:
+                strides = []
+            align = align.value if not isinstance(align, int) else align
+            offset_factor = (
+                offset_factor.value if not isinstance(offset_factor, int) else offset_factor
+            )
+            buffer = tvm.tir.decl_buffer(
+                shape,
+                dtype,
+                self.node.targets[0].id,
+                data,
+                strides,
+                elem_offset,
+                scope,
+                align,
+                offset_factor,
+                buffer_type,
+            )
+            self.context.update_symbol(self.node.targets[0].id, buffer)
+            return buffer
+
+        super().__init__(buffer_decl, def_symbol=True)
 
 
-@register_special_stmt()
-def env_thread(parser, node, env_name):
-    """ Bind a var to thread env """
-    v = te.var(parser.target[0])
-    parser.var_env_dict[v] = env_name
-    return v
+@register
+class VarDef(SpecialStmt):
+    def __init__(self):
+        def var(dtype):
+            assert isinstance(self.node, ast.Assign)
+            v = te.var(self.node.targets[0].id, dtype)
+            self.context.update_symbol(v.name, v)
+
+        super().__init__(var, def_symbol=True)
+
+
+@register
+class EnvThread(SpecialStmt):
+    def __init__(self):
+        def env_thread(env_name):
+            assert isinstance(self.node, ast.Assign)
+            v = te.var(self.node.targets[0].id)
+            self.context.func_var_env_dict[v] = env_name
+            self.context.update_symbol(v.name, v)
+
+        super().__init__(env_thread, def_symbol=True)
 
 
 class TVMScriptLambda:
@@ -223,37 +249,30 @@ class TVMScriptReducer:
         self.reducer = tvm.tir.CommReducer(
             [self.combiner.args[0]], [self.combiner.args[1]], [self.combiner.body], [self.identity]
         )
-
-    def step(self, lhs, rhs):
-        return tvm.tir.ReduceStep(self.reducer, lhs, rhs)
+        self.step = StepIntrin(self)
 
 
-@register_special_stmt()
-def comm_reducer(parser, node, combiner, identity):
-    """Special function for defining a comm_reducer
+@register
+class CommReducer(SpecialStmt):
+    def __init__(self):
+        def comm_reducer(combiner, identity):
+            if isinstance(combiner, TVMScriptLambda) and len(combiner.args) == 2:
+                assert isinstance(self.node, ast.Assign)
+                self.context.update_symbol(
+                    self.node.targets[0].id, TVMScriptReducer(combiner, identity)
+                )
+            else:
+                self.context.report_error(
+                    "comm_reducer expect a 2-argument lambda function as first argument"
+                )
 
-    Example
-    -------
-    .. code-block:: python
-
-        reducer = tir.comm_reducer(lambda x, y: x + y, float32(0))
-
-    """
-
-    if isinstance(combiner, TVMScriptLambda) and len(combiner.args) == 2:
-        return TVMScriptReducer(combiner, identity)
-    parser.report_error("comm_reducer expect a 2-argument lambda function as first argument")
+        super().__init__(comm_reducer, def_symbol=True)
 
 
-@register_special_stmt()
-def func_attr(parser, node, dict_attr):
-    """Special function for declaring the DictAttr of PrimFunc
+@register
+class FuncAttr(SpecialStmt):
+    def __init__(self):
+        def func_attr(dict_attr):
+            self.context.func_dict_attr = dict_attr
 
-    Example
-    -------
-    .. code-block:: python
-
-         tir.func_attr({"tir.noalias": True, "global_symbol"})
-    """
-
-    parser.dict_attr = dict_attr
+        super().__init__(func_attr, def_symbol=False)
