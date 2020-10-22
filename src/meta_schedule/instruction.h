@@ -69,12 +69,17 @@ class LoopRV : public runtime::ObjectRef {
 
 /**************** InstAttrs ****************/
 
+/*! \brief Attributes of an instruction */
 class InstAttrsNode : public Object {
  public:
   static constexpr const char* _type_key = "meta_schedule.InstAttrs";
   TVM_DECLARE_BASE_OBJECT_INFO(InstAttrsNode, Object);
 };
 
+/*!
+ * \brief Managed reference to InstAttrsNode
+ * \sa InstAttrsNode
+ */
 class InstAttrs : public ObjectRef {
  public:
   TVM_DEFINE_OBJECT_REF_METHODS(InstAttrs, ObjectRef, InstAttrsNode);
@@ -142,11 +147,6 @@ struct SamplePerfectTileAttrs : public InstAttrsNode {
   /*! \brief The maximum factor in the innermost loop */
   int max_innermost_factor;
 
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("n_splits", &n_splits);
-    v->Visit("max_innermost_factor", &max_innermost_factor);
-  }
-
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param n_splits The number of loops after tiling
@@ -166,6 +166,11 @@ struct SamplePerfectTileAttrs : public InstAttrsNode {
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("n_splits", &n_splits);
+    v->Visit("max_innermost_factor", &max_innermost_factor);
+  }
+
   static constexpr const char* _type_key = "meta_schedule.attrs.SamplePerfectTileAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(SamplePerfectTileAttrs, InstAttrsNode);
 };
@@ -176,11 +181,6 @@ struct SampleTileFactorAttrs : public InstAttrsNode {
   int n_splits;
   /*! \brief The distribution to be sampled from */
   Array<Integer> where;
-
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("n_splits", &n_splits);
-    v->Visit("where", &where);
-  }
 
   /*!
    * \brief Create instruction given the inputs and outputs
@@ -201,6 +201,11 @@ struct SampleTileFactorAttrs : public InstAttrsNode {
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("n_splits", &n_splits);
+    v->Visit("where", &where);
+  }
+
   static constexpr const char* _type_key = "meta_schedule.attrs.SampleTileFactorAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(SampleTileFactorAttrs, InstAttrsNode);
 };
@@ -217,14 +222,6 @@ struct SampleFusibleLoopsAttrs : public InstAttrsNode {
   int order;
   /*! \brief The mode of the fusion, can be 'max' (0) or 'rand' (1) */
   int mode;
-
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("loop_types", &loop_types);
-    v->Visit("max_extent", &max_extent);
-    v->Visit("include_overflow_loop", &include_overflow_loop);
-    v->Visit("order", &order);
-    v->Visit("mode", &mode);
-  }
 
   /*!
    * \brief Create instruction given the inputs and outputs
@@ -250,6 +247,14 @@ struct SampleFusibleLoopsAttrs : public InstAttrsNode {
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("loop_types", &loop_types);
+    v->Visit("max_extent", &max_extent);
+    v->Visit("include_overflow_loop", &include_overflow_loop);
+    v->Visit("order", &order);
+    v->Visit("mode", &mode);
+  }
+
   static constexpr const char* _type_key = "meta_schedule.attrs.SampleFusibleLoopsAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(SampleFusibleLoopsAttrs, InstAttrsNode);
 };
@@ -258,8 +263,6 @@ struct SampleFusibleLoopsAttrs : public InstAttrsNode {
 
 /*! \brief Attrs of the instruction that gets the only consumer of a specific block */
 struct GetOnlyConsumerAttrs : public InstAttrsNode {
-  void VisitAttrs(tvm::AttrVisitor* v) {}
-
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param block The block to be queried
@@ -276,6 +279,8 @@ struct GetOnlyConsumerAttrs : public InstAttrsNode {
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
   static constexpr const char* _type_key = "meta_schedule.attrs.GetOnlyConsumerAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(GetOnlyConsumerAttrs, InstAttrsNode);
 };
@@ -284,8 +289,6 @@ struct GetOnlyConsumerAttrs : public InstAttrsNode {
 struct GetBlockAttrs : public InstAttrsNode {
   /*! \brief The name of the block */
   String name;
-
-  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("name", &name); }
 
   /*!
    * \brief Create instruction given the inputs and outputs
@@ -303,14 +306,14 @@ struct GetBlockAttrs : public InstAttrsNode {
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
+  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("name", &name); }
+
   static constexpr const char* _type_key = "meta_schedule.attrs.GetBlockAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(GetBlockAttrs, InstAttrsNode);
 };
 
 /*! \brief Attrs of the instruction that gets loop axes on top of a specifc block */
 struct GetAxesAttrs : public InstAttrsNode {
-  void VisitAttrs(tvm::AttrVisitor* v) {}
-
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param block The name of the block
@@ -327,13 +330,13 @@ struct GetAxesAttrs : public InstAttrsNode {
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
   static constexpr const char* _type_key = "meta_schedule.attrs.GetAxesAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(GetAxesAttrs, InstAttrsNode);
 };
 
 struct GetRootBlocksAttrs : public InstAttrsNode {
-  void VisitAttrs(tvm::AttrVisitor* v) {}
-
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param outputs The outputs of the instruction
@@ -348,14 +351,14 @@ struct GetRootBlocksAttrs : public InstAttrsNode {
    * \return Outputs of the instruction
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {}
 
   static constexpr const char* _type_key = "meta_schedule.attrs.GetRootBlocksAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(GetRootBlocksAttrs, InstAttrsNode);
 };
 
 struct GetLeafBlocksAttrs : public InstAttrsNode {
-  void VisitAttrs(tvm::AttrVisitor* v) {}
-
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param outputs The outputs of the instruction
@@ -370,6 +373,8 @@ struct GetLeafBlocksAttrs : public InstAttrsNode {
    * \return Outputs of the instruction
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {}
 
   static constexpr const char* _type_key = "meta_schedule.attrs.GetLeafBlocksAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(GetLeafBlocksAttrs, InstAttrsNode);
@@ -378,8 +383,6 @@ struct GetLeafBlocksAttrs : public InstAttrsNode {
 /**************** Scheduling Primitives ****************/
 
 struct FuseAttrs : public InstAttrsNode {
-  void VisitAttrs(tvm::AttrVisitor* v) {}
-
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param loops The loops to be fused
@@ -396,13 +399,13 @@ struct FuseAttrs : public InstAttrsNode {
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
   static constexpr const char* _type_key = "meta_schedule.attrs.FuseAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(FuseAttrs, InstAttrsNode);
 };
 
 struct MarkParallelAttrs : public InstAttrsNode {
-  void VisitAttrs(tvm::AttrVisitor* v) {}
-
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param loops The loops to be parallelized
@@ -419,13 +422,13 @@ struct MarkParallelAttrs : public InstAttrsNode {
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
   static constexpr const char* _type_key = "meta_schedule.attrs.MarkParallelAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(MarkParallelAttrs, InstAttrsNode);
 };
 
 struct MarkVectorizeAttrs : public InstAttrsNode {
-  void VisitAttrs(tvm::AttrVisitor* v) {}
-
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param loops The loop to be parallelized
@@ -442,14 +445,14 @@ struct MarkVectorizeAttrs : public InstAttrsNode {
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
   static constexpr const char* _type_key = "meta_schedule.attrs.MarkVectorizeAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(MarkVectorizeAttrs, InstAttrsNode);
 };
 
 /*! \brief Attrs of the instruction that applies loop splitting */
 struct SplitAttrs : public InstAttrsNode {
-  void VisitAttrs(tvm::AttrVisitor* v) {}
-
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param loop The loop to be split
@@ -468,14 +471,14 @@ struct SplitAttrs : public InstAttrsNode {
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
   static constexpr const char* _type_key = "meta_schedule.attrs.SplitAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(SplitAttrs, InstAttrsNode);
 };
 
 /*! \brief Attrs of the instruction that applies loop reordering */
 struct ReorderAttrs : public InstAttrsNode {
-  void VisitAttrs(tvm::AttrVisitor* v) {}
-
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param after_axes The axes to be reordered
@@ -491,14 +494,14 @@ struct ReorderAttrs : public InstAttrsNode {
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
   static constexpr const char* _type_key = "meta_schedule.attrs.ReorderAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(ReorderAttrs, InstAttrsNode);
 };
 
 /*! \brief Attrs of the instruction that applies reverse_compute_at */
 struct ReverseComputeAtAttrs : public InstAttrsNode {
-  void VisitAttrs(tvm::AttrVisitor* v) {}
-
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param block The block to be moved
@@ -515,14 +518,14 @@ struct ReverseComputeAtAttrs : public InstAttrsNode {
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
   static constexpr const char* _type_key = "meta_schedule.attrs.ReverseComputeAtAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(ReverseComputeAtAttrs, InstAttrsNode);
 };
 
 /*! \brief Attrs of the instruction that applies compute_inline */
 struct ComputeInlineAttrs : public InstAttrsNode {
-  void VisitAttrs(tvm::AttrVisitor* v) {}
-
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param block The block to be computed inline
@@ -538,14 +541,14 @@ struct ComputeInlineAttrs : public InstAttrsNode {
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
   static constexpr const char* _type_key = "meta_schedule.attrs.ComputeInlineAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(ComputeInlineAttrs, InstAttrsNode);
 };
 
 /*! \brief Attrs of the instruction that applies compute_inline */
 struct ReverseComputeInlineAttrs : public InstAttrsNode {
-  void VisitAttrs(tvm::AttrVisitor* v) {}
-
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param block The block to be reverse computed inline
@@ -561,6 +564,8 @@ struct ReverseComputeInlineAttrs : public InstAttrsNode {
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
   static constexpr const char* _type_key = "meta_schedule.attrs.ReverseComputeInlineAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(ReverseComputeInlineAttrs, InstAttrsNode);
 };
@@ -569,8 +574,6 @@ struct ReverseComputeInlineAttrs : public InstAttrsNode {
 struct CacheWriteAttrs : public InstAttrsNode {
   /*! \brief The storage scope of the instruction cache_write */
   String storage_scope;
-
-  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("storage_scope", &storage_scope); }
 
   /*!
    * \brief Create instruction given the inputs and outputs
@@ -590,6 +593,8 @@ struct CacheWriteAttrs : public InstAttrsNode {
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
+  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("storage_scope", &storage_scope); }
+
   static constexpr const char* _type_key = "meta_schedule.attrs.CacheWriteAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(CacheWriteAttrs, InstAttrsNode);
 };
@@ -598,8 +603,6 @@ struct CacheWriteAttrs : public InstAttrsNode {
 struct BlockizeAttrs : public InstAttrsNode {
   /*! \brief The execution scope of the instruction blockize */
   String exec_scope;
-
-  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("exec_scope", &exec_scope); }
 
   /*!
    * \brief Create instruction given the inputs and outputs
@@ -618,14 +621,14 @@ struct BlockizeAttrs : public InstAttrsNode {
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
 
+  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("exec_scope", &exec_scope); }
+
   static constexpr const char* _type_key = "meta_schedule.attrs.BlockizeAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(BlockizeAttrs, InstAttrsNode);
 };
 
 /*! \brief Attrs of the instruction that applies decompose_reduction */
 struct DecomposeReductionAttrs : public InstAttrsNode {
-  void VisitAttrs(tvm::AttrVisitor* v) {}
-
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param block The reduction block to be decomposed
@@ -642,6 +645,8 @@ struct DecomposeReductionAttrs : public InstAttrsNode {
    * \return Outputs of the instruction
    */
   Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {}
 
   static constexpr const char* _type_key = "meta_schedule.attrs.DecomposeReductionAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(DecomposeReductionAttrs, InstAttrsNode);
