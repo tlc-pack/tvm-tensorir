@@ -667,59 +667,6 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::Schedule& sch,
   return TensorizeInfo(ret);
 }
 
-void DoTensorizeRewrite(Schedule sch, BlockRV block_rv, tir::PrimFunc desc_func) {
-  const tir::StmtSRef& block_sref = sch->Eval(block_rv);
-  Optional<ObjectRef> opt_tensorize_info = GetTensorizeLoopMapping(sch->sch, block_sref, desc_func);
-  const TensorizeInfoNode* info = opt_tensorize_info.as<TensorizeInfoNode>();
-  CHECK(info);
-  Map<tir::StmtSRef, LoopRV> loop2rv;
-  {
-    Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
-    for (const LoopRV& loop_rv : loop_rvs) {
-      loop2rv.Set(sch->Eval(loop_rv), loop_rv);
-    }
-  }
-  // split the loops
-  arith::Analyzer analyzer;
-  std::unordered_set<const Object*> inner_loops;
-  std::vector<LoopRV> reorder_suffix;
-  reorder_suffix.resize(info->loop_map.size());
-  for (const auto& kv : info->loop_map) {
-    const tir::StmtSRef& block_loop_sref = kv.first;
-    const tir::LoopNode* block_loop = block_loop_sref->GetStmt<tir::LoopNode>();
-    const tir::LoopNode* desc_loop = kv.second.get();
-    int desc_loop_index = info->desc_loop_indexer.at(GetRef<tir::Loop>(desc_loop));
-    CHECK(block_loop != nullptr && desc_loop != nullptr);
-    PrimExpr extent = analyzer.Simplify(block_loop->extent);
-    PrimExpr desc_extent = analyzer.Simplify(desc_loop->extent);
-    const auto* int_block_extent = extent.as<IntImmNode>();
-    const auto* int_desc_extent = desc_extent.as<IntImmNode>();
-    CHECK(int_block_extent != nullptr && int_desc_extent != nullptr);
-    int64_t total = int_block_extent->value;
-    int64_t inner = int_desc_extent->value;
-    CHECK_EQ(total % inner, 0);
-    int64_t outer = int_block_extent->value / int_desc_extent->value;
-    Array<LoopRV> split = sch->Split(loop2rv.at(block_loop_sref), {Integer(outer), Integer(inner)});
-    CHECK_EQ(split.size(), 2);
-    reorder_suffix[desc_loop_index] = split[1];
-    inner_loops.insert(sch->Eval(split[1]).get());
-  }
-  // Reorder the loops
-  std::vector<LoopRV> reorder_list;
-  bool meet = false;
-  Array<LoopRV> all_loops = sch->GetAxes(block_rv);
-  for (const LoopRV& loop : all_loops) {
-    if (inner_loops.count(sch->Eval(loop).get())) {
-      meet = true;
-    } else if (meet) {
-      reorder_list.push_back(loop);
-    }
-  }
-  reorder_list.insert(reorder_list.end(), reorder_suffix.begin(), reorder_suffix.end());
-  sch->Reorder(reorder_list);
-  sch->Blockize(reorder_suffix.at(0), "");
-}
-
 TVM_REGISTER_NODE_TYPE(TensorizeInfoNode);
 
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
@@ -743,7 +690,6 @@ TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsStrictlyInlineable")
     .set_body_typed(IsStrictlyInlineable);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetTensorizeLoopMapping")
     .set_body_typed(GetTensorizeLoopMapping);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.DoTensorizeRewrite").set_body_typed(DoTensorizeRewrite);
 
 }  // namespace meta_schedule
 }  // namespace tvm
