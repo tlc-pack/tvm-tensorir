@@ -72,6 +72,15 @@ class LoopRV : public runtime::ObjectRef {
 /*! \brief Attributes of an instruction */
 class InstAttrsNode : public Object {
  public:
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  virtual Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                           const Array<ObjectRef>& inputs) const = 0;
+
   static constexpr const char* _type_key = "meta_schedule.InstAttrs";
   TVM_DECLARE_BASE_OBJECT_INFO(InstAttrsNode, Object);
 };
@@ -164,7 +173,8 @@ struct SamplePerfectTileAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("n_splits", &n_splits);
@@ -199,7 +209,8 @@ struct SampleTileFactorAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("n_splits", &n_splits);
@@ -245,7 +256,8 @@ struct SampleFusibleLoopsAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("loop_types", &loop_types);
@@ -277,7 +289,8 @@ struct GetOnlyConsumerAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
 
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
@@ -304,7 +317,8 @@ struct GetBlockAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
 
   void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("name", &name); }
 
@@ -328,7 +342,8 @@ struct GetAxesAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
 
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
@@ -350,7 +365,8 @@ struct GetRootBlocksAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
 
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
@@ -372,7 +388,8 @@ struct GetLeafBlocksAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
 
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
@@ -397,7 +414,8 @@ struct FuseAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
 
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
@@ -420,7 +438,8 @@ struct MarkParallelAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
 
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
@@ -443,7 +462,8 @@ struct MarkVectorizeAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
 
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
@@ -469,7 +489,8 @@ struct SplitAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
 
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
@@ -492,7 +513,8 @@ struct ReorderAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
 
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
@@ -516,7 +538,8 @@ struct ReverseComputeAtAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
 
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
@@ -539,7 +562,8 @@ struct ComputeInlineAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
 
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
@@ -562,7 +586,8 @@ struct ReverseComputeInlineAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
 
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
@@ -591,7 +616,8 @@ struct CacheWriteAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
 
   void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("storage_scope", &storage_scope); }
 
@@ -619,7 +645,8 @@ struct BlockizeAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
 
   void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("exec_scope", &exec_scope); }
 
@@ -644,7 +671,8 @@ struct DecomposeReductionAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs) const;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
 
   void VisitAttrs(tvm::AttrVisitor* v) {}
 

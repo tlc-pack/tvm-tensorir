@@ -59,28 +59,8 @@ Array<ObjectRef> AdaptOutputs(const Array<T>& outputs) {
 
 Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const InstAttrs& inst_attrs,
                                               const Array<ObjectRef>& inputs) {
-  // TODO(@junrushao1994): dispatch using a vtable
   CHECK(inst_attrs.defined()) << "ValueError: `inst_attrs` is undefined";
-  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, SamplePerfectTileAttrs);
-  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, SampleTileFactorAttrs);
-  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, SampleFusibleLoopsAttrs);
-  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, GetOnlyConsumerAttrs);
-  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, GetBlockAttrs);
-  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, GetAxesAttrs);
-  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, GetRootBlocksAttrs);
-  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, GetLeafBlocksAttrs);
-  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, FuseAttrs);
-  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, MarkParallelAttrs);
-  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, MarkVectorizeAttrs);
-  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, SplitAttrs);
-  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, ReorderAttrs);
-  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, ReverseComputeAtAttrs);
-  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, ComputeInlineAttrs);
-  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, CacheWriteAttrs);
-  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, BlockizeAttrs);
-  TVM_META_SCHEDULE_APPLY_INST(sch, inst_attrs, inputs, DecomposeReductionAttrs);
-  LOG(FATAL) << "TypeError: Cannot recognize instruction attribute: " << inst_attrs->GetTypeKey();
-  throw;
+  return inst_attrs->ApplyToSchedule(sch, inputs);
 }
 
 /**************** MakeInst/ApplyToSchedule: Sampling  ****************/
