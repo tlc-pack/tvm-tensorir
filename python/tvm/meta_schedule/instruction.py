@@ -18,7 +18,6 @@
 from typing import List, Union
 
 from tvm._ffi import register_object
-from tvm.ir import Attrs
 from tvm.ir import PrimExpr as ExprRV  # pylint: disable=unused-import
 from tvm.runtime import Object
 
@@ -41,6 +40,11 @@ RAND_VAR_TYPE = Union[ExprRV, BlockRV, LoopRV]  # pylint: disable=invalid-name
 ########## Instruction ##########
 
 
+@register_object("meta_schedule.InstAttrs")
+class InstAttrs(Object):
+    """Attributes of an instruction"""
+
+
 @register_object("meta_schedule.Instruction")
 class Instruction(Object):
     """An instruction in meta scheduling
@@ -57,14 +61,14 @@ class Instruction(Object):
 
     inputs: List[Object]
     outputs: List[Object]
-    inst_attrs: Attrs
+    inst_attrs: InstAttrs
 
 
 ########## Sampling ##########
 
 
 @register_object("meta_schedule.attrs.SamplePerfectTileAttrs")
-class SamplePerfectTileAttrs(Attrs):
+class SamplePerfectTileAttrs(InstAttrs):
     """Attrs of the instruction to sample perfect tile factors"""
 
     n_splits: int
@@ -72,7 +76,7 @@ class SamplePerfectTileAttrs(Attrs):
 
 
 @register_object("meta_schedule.attrs.SampleTileFactorAttrs")
-class SampleTileFactorAttrs(Attrs):
+class SampleTileFactorAttrs(InstAttrs):
     """Attrs of the instruction to sample tiling factors"""
 
     n_splits: int
@@ -80,7 +84,7 @@ class SampleTileFactorAttrs(Attrs):
 
 
 @register_object("meta_schedule.attrs.SampleFusibleLoopsAttrs")
-class SampleFusibleLoopsAttrs(Attrs):
+class SampleFusibleLoopsAttrs(InstAttrs):
     """Attrs of the instruction to sample fusible loops"""
 
     loop_types: List[int]
@@ -94,29 +98,29 @@ class SampleFusibleLoopsAttrs(Attrs):
 
 
 @register_object("meta_schedule.attrs.GetOnlyConsumerAttrs")
-class GetOnlyConsumerAttrs(Attrs):
+class GetOnlyConsumerAttrs(InstAttrs):
     """Attrs of the instruction that gets the only consumer of a specific block"""
 
 
 @register_object("meta_schedule.attrs.GetBlockAttrs")
-class GetBlockAttrs(Attrs):
+class GetBlockAttrs(InstAttrs):
     """Attrs of the instruction that gets a specific block by its name"""
 
     name: str
 
 
 @register_object("meta_schedule.attrs.GetAxesAttrs")
-class GetAxesAttrs(Attrs):
+class GetAxesAttrs(InstAttrs):
     """Attrs of the instruction that gets loop axes on top of a specifc block"""
 
 
 @register_object("meta_schedule.attrs.GetRootBlocksAttrs")
-class GetRootBlocksAttrs(Attrs):
+class GetRootBlocksAttrs(InstAttrs):
     """Attrs of the instruction to get all the subroot blocks"""
 
 
 @register_object("meta_schedule.attrs.GetLeafBlocksAttrs")
-class GetLeafBlocksAttrs(Attrs):
+class GetLeafBlocksAttrs(InstAttrs):
     """Attrs of the instruction to get all the leaf blocks"""
 
 
@@ -124,47 +128,47 @@ class GetLeafBlocksAttrs(Attrs):
 
 
 @register_object("meta_schedule.attrs.FuseAttrs")
-class FuseAttrs(Attrs):
+class FuseAttrs(InstAttrs):
     """Attrs of the instruction that applies fusion"""
 
 
 @register_object("meta_schedule.attrs.MarkParallelAttrs")
-class MarkParallelAttrs(Attrs):
+class MarkParallelAttrs(InstAttrs):
     """Attrs of the instruction that marks specific loops as parallelized"""
 
 
 @register_object("meta_schedule.attrs.MarkVectorizeAttrs")
-class MarkVectorizeAttrs(Attrs):
+class MarkVectorizeAttrs(InstAttrs):
     """Attrs of the instruction that marks specific loops as vectorized"""
 
 
 @register_object("meta_schedule.attrs.SplitAttrs")
-class SplitAttrs(Attrs):
+class SplitAttrs(InstAttrs):
     """Attrs of the instruction that applies loop splitting"""
 
 
 @register_object("meta_schedule.attrs.ReorderAttrs")
-class ReorderAttrs(Attrs):
+class ReorderAttrs(InstAttrs):
     """Attrs of the instruction that applies loop reordering"""
 
 
 @register_object("meta_schedule.attrs.ReverseComputeAtAttrs")
-class ReverseComputeAtAttrs(Attrs):
+class ReverseComputeAtAttrs(InstAttrs):
     """Attrs of the instruction that applies reverse_compute_at"""
 
 
 @register_object("meta_schedule.attrs.ComputeInlineAttrs")
-class ComputeInlineAttrs(Attrs):
+class ComputeInlineAttrs(InstAttrs):
     """Attrs of the instruction that applies compute_inline"""
 
 
 @register_object("meta_schedule.attrs.CacheWriteAttrs")
-class CacheWriteAttrs(Attrs):
+class CacheWriteAttrs(InstAttrs):
     """Attrs of the instruction that applies cache_write"""
 
     storage_scope: str
 
 
 @register_object("meta_schedule.attrs.DecomposeReductionAttrs")
-class DecomposeReductionAttrs(Attrs):
+class DecomposeReductionAttrs(InstAttrs):
     """Attrs of the instruction that applies decompose_reduction"""
