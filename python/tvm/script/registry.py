@@ -35,11 +35,23 @@ class Registry(object):
         return None
 
 
-def register(registration):
-    if inspect.isclass(registration):
-        registration_obj = registration()
-        key = registration_obj.signature()[0]
+def register(input):
+    if inspect.isfunction(input):
+        from .intrin import Intrin
+
+        def create_new_intrin(func):
+            class NewIntrin(Intrin):
+                def __init__(self):
+                    super().__init__(func)
+
+            return NewIntrin
+
+        registration = create_new_intrin(input)
+    elif inspect.isclass(input):
+        registration = input
     else:
         raise ValueError()
+
+    key = registration().signature()[0]
     Registry.registrations[key] = registration
     return registration

@@ -34,178 +34,142 @@ class Intrin:
 
 
 @register
-class Bool(Intrin):
-    def __init__(self):
-        def bool(imm):
-            return tvm.tir.const(imm, "bool")
-
-        super().__init__(bool)
+def bool(imm):
+    return tvm.tir.const(imm, "bool")
 
 
 @register
-class Int8(Intrin):
-    def __init__(self):
-        def int8(imm):
-            return tvm.tir.const(imm, "int8")
-
-        super().__init__(int8)
+def int8(imm):
+    return tvm.tir.const(imm, "int8")
 
 
 @register
-class Int16(Intrin):
-    def __init__(self):
-        def int16(imm):
-            return tvm.tir.const(imm, "int16")
-
-        super().__init__(int16)
+def int16(imm):
+    return tvm.tir.const(imm, "int16")
 
 
 @register
-class Int32(Intrin):
-    def __init__(self):
-        def int32(imm):
-            return tvm.tir.const(imm, "int32")
-
-        super().__init__(int32)
+def int32(imm):
+    return tvm.tir.const(imm, "int32")
 
 
 @register
-class Int64(Intrin):
-    def __init__(self):
-        def int64(imm):
-            return tvm.tir.const(imm, "int64")
-
-        super().__init__(int64)
+def int64(imm):
+    return tvm.tir.const(imm, "int64")
 
 
 @register
-class UInt8(Intrin):
-    def __init__(self):
-        def uint8(imm):
-            return tvm.tir.const(imm, "uint8")
-
-        super().__init__(uint8)
+def uint8(imm):
+    return tvm.tir.const(imm, "uint8")
 
 
 @register
-class UInt16(Intrin):
-    def __init__(self):
-        def uint16(imm):
-            return tvm.tir.const(imm, "uint16")
-
-        super().__init__(uint16)
+def uint16(imm):
+    return tvm.tir.const(imm, "uint16")
 
 
 @register
-class UInt32(Intrin):
-    def __init__(self):
-        def uint32(imm):
-            return tvm.tir.const(imm, "uint32")
-
-        super().__init__(uint32)
+def uint32(imm):
+    return tvm.tir.const(imm, "uint32")
 
 
 @register
-class UInt64(Intrin):
-    def __init__(self):
-        def uint64(imm):
-            return tvm.tir.const(imm, "uint64")
-
-        super().__init__(uint64)
+def uint64(imm):
+    return tvm.tir.const(imm, "uint64")
 
 
 @register
-class Float8(Intrin):
-    def __init__(self):
-        def float8(imm):
-            return tvm.tir.const(imm, "float8")
-
-        super().__init__(float8)
+def float8(imm):
+    return tvm.tir.const(imm, "float8")
 
 
 @register
-class Float16(Intrin):
-    def __init__(self):
-        def float16(imm):
-            return tvm.tir.const(imm, "float16")
-
-        super().__init__(float16)
+def float16(imm):
+    return tvm.tir.const(imm, "float16")
 
 
 @register
-class Float32(Intrin):
-    def __init__(self):
-        def float32(imm):
-            return tvm.tir.const(imm, "float32")
-
-        super().__init__(float32)
+def float32(imm):
+    return tvm.tir.const(imm, "float32")
 
 
 @register
-class Float64(Intrin):
-    def __init__(self):
-        def float64(imm):
-            return tvm.tir.const(imm, "float64")
-
-        super().__init__(float64)
+def float64(imm):
+    return tvm.tir.const(imm, "float64")
 
 
 @register
-class FloorDiv(Intrin):
-    def __init__(self):
-        def floordiv(x, y):
-            return tvm.tir.floordiv(x, y)
-
-        super().__init__(floordiv)
+def floordiv(x, y):
+    return tvm.tir.floordiv(x, y)
 
 
 @register
-class FloorMod(Intrin):
-    def __init__(self):
-        def floormod(x, y):
-            return tvm.tir.floormod(x, y)
-
-        super().__init__(floormod)
+def floormod(x, y):
+    return tvm.tir.floormod(x, y)
 
 
 @register
-class Load(Intrin):
-    def __init__(self):
-        def load(dtype, var, index, predicate=True):
-            return tvm.tir.Load(dtype, var, index, predicate)
-
-        super().__init__(load)
+def load(dtype, var, index, predicate=True):
+    return tvm.tir.Load(dtype, var, index, predicate)
 
 
 @register
-class Cast(Intrin):
-    def __init__(self):
-        def cast(value, dtype):
-            return tvm.tir.Cast(dtype, value)
-
-        super().__init__(cast)
+def cast(value, dtype):
+    return tvm.tir.Cast(dtype, value)
 
 
 @register
-class Ramp(Intrin):
-    def __init__(self):
-        def ramp(base, stride, lanes):
-            return tvm.tir.Ramp(base, stride, lanes)
-
-        super().__init__(ramp)
+def ramp(base, stride, lanes):
+    return tvm.tir.Ramp(base, stride, lanes)
 
 
 @register
-class BroadCast(Intrin):
-    def __init__(self):
-        def broadcast(value, lanes):
-            return tvm.tir.Broadcast(value, lanes)
-
-        super().__init__(broadcast)
+def broadcast(value, lanes):
+    return tvm.tir.Broadcast(value, lanes)
 
 
 @register
-class Evaluate(Intrin):
+def iter_var(var, dom, iter_type, thread_tag):
+    iter_type = getattr(tvm.tir.IterVar, iter_type)
+    return tvm.tir.IterVar(dom, var, iter_type, thread_tag)
+
+
+@register
+def max(a, b):  # pylint: disable=redefined-builtin
+    return tvm.tir.Max(a, b)
+
+
+def get_axis(begin, end, iter_type):
+    ana = tvm.arith.Analyzer()
+    extent = ana.simplify(end - begin)
+    block_var_dom = tvm.ir.Range.from_min_extent(begin, extent)
+
+    iter_type_dict = {"data_par": 0, "reduce": 2, "scan": 3, "opaque": 4}
+    return tvm.tir.IterVar(block_var_dom, "bv", iter_type_dict[iter_type])
+
+
+@register
+def range(begin, end):
+    return get_axis(begin, end, "data_par")
+
+
+@register
+def reduce_axis(begin, end):
+    return get_axis(begin, end, "reduce")
+
+
+@register
+def scan_axis(begin, end):
+    return get_axis(begin, end, "scan")
+
+
+@register
+def opaque_axis(begin, end):
+    return get_axis(begin, end, "opaque")
+
+
+@register
+class EvaluateIntrin(Intrin):
     def __init__(self):
         def evaluate(value):
             return tvm.tir.Evaluate(value)
@@ -214,7 +178,7 @@ class Evaluate(Intrin):
 
 
 @register
-class Store(Intrin):
+class StoreIntrin(Intrin):
     def __init__(self):
         def store(var, index, value, predicate=True):
             return tvm.tir.Store(var, value, index, predicate)
@@ -232,67 +196,3 @@ class StepIntrin(Intrin):
 
     def signature(self):
         return "TVMScriptReducer.step", get_param_list(self.intrin)
-
-
-@register
-class IterVar(Intrin):
-    def __init__(self):
-        def iter_var(var, dom, iter_type, thread_tag):
-            iter_type = getattr(tvm.tir.IterVar, iter_type)
-            return tvm.tir.IterVar(dom, var, iter_type, thread_tag)
-
-        super().__init__(iter_var)
-
-
-@register
-class Max(Intrin):
-    def __init__(self):
-        def max(a, b):  # pylint: disable=redefined-builtin
-            return tvm.tir.Max(a, b)
-
-        super().__init__(max)
-
-
-def get_axis(begin, end, iter_type):
-    ana = tvm.arith.Analyzer()
-    extent = ana.simplify(end - begin)
-    block_var_dom = tvm.ir.Range.from_min_extent(begin, extent)
-
-    iter_type_dict = {"data_par": 0, "reduce": 2, "scan": 3, "opaque": 4}
-    return tvm.tir.IterVar(block_var_dom, "bv", iter_type_dict[iter_type])
-
-
-@register
-class Range(Intrin):
-    def __init__(self):
-        def range(begin, end):
-            return get_axis(begin, end, "data_par")
-
-        super().__init__(range)
-
-
-@register
-class ReduceAxis(Intrin):
-    def __init__(self):
-        def reduce_axis(begin, end):
-            return get_axis(begin, end, "reduce")
-
-        super().__init__(reduce_axis)
-
-
-@register
-class ScanAxis(Intrin):
-    def __init__(self):
-        def scan_axis(begin, end):
-            return get_axis(begin, end, "scan")
-
-        super().__init__(scan_axis)
-
-
-@register
-class OpaqueAxis(Intrin):
-    def __init__(self):
-        def opaque_axis(begin, end):
-            return get_axis(begin, end, "opaque")
-
-        super().__init__(opaque_axis)

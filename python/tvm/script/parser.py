@@ -617,7 +617,8 @@ class TVMScriptParser(ast.NodeVisitor):
             return func.exit_scope(node, self.context, arg_list)
         elif isinstance(func, SpecialStmt) and not func.def_symbol:
             # pattern 3
-            return func.handle(node, self.context, arg_list)
+            func.handle(node, self.context, arg_list)
+            return
 
         self.report_error("Invalid Expr stmt")
 
