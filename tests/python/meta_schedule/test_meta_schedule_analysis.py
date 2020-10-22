@@ -21,18 +21,9 @@ from tvm import meta_schedule as ms
 from tvm import tir
 from tvm.ir import Op
 from tvm.script import ty
+from tir_workload import matmul
 
 # pylint: disable=invalid-name,no-member
-
-
-@tvm.script.tir
-def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.match_buffer(a, (1024, 1024), "float32")
-    B = tir.match_buffer(b, (1024, 1024), "float32")
-    C = tir.match_buffer(c, (1024, 1024), "float32")
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
-    with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "C") as [vi, vj, vk]:
-        reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
 
 @tvm.script.tir
@@ -110,7 +101,7 @@ def with_predicate(a: ty.handle, c: ty.handle) -> None:
 
 def test_meta_schedule_analysis_is_trivial_binding():
     sch = ms.Schedule(func=matmul)
-    block = sch.get_block("C")
+    block = sch.get_block("matmul")
     assert ms.analysis.is_trivial_binding(sch.sch, sch.evaluate(block))
     sch = ms.Schedule(func=split_ewise)
     block = sch.get_block("B")
@@ -119,19 +110,19 @@ def test_meta_schedule_analysis_is_trivial_binding():
 
 def test_meta_schedule_analysis_is_subroot_block():
     sch = ms.Schedule(func=matmul)
-    block = sch.get_block("C")
+    block = sch.get_block("matmul")
     assert ms.analysis.is_subroot_block(sch.sch, sch.evaluate(block))
 
 
 def test_meta_schedule_analysis_is_leaf_block():
     sch = ms.Schedule(func=matmul)
-    block = sch.get_block("C")
+    block = sch.get_block("matmul")
     assert ms.analysis.is_leaf_block(sch.sch, sch.evaluate(block))
 
 
 def test_meta_schedule_analysis_annotate_loop_type():
     sch = ms.Schedule(func=matmul)
-    block = sch.get_block("C")
+    block = sch.get_block("matmul")
     loops = [sch.evaluate(loop) for loop in sch.get_axes(block)]
     ms.analysis.annotate_loop_type(sch=sch.sch, loops=loops, annotation="lazy_parallel")
     assert loops[0].stmt.annotations[0].value == "lazy_parallel"
@@ -141,7 +132,7 @@ def test_meta_schedule_analysis_annotate_loop_type():
 
 def test_meta_schedule_analysis_annotate_block_type():
     sch = ms.Schedule(func=matmul)
-    block = sch.evaluate(sch.get_block("C"))
+    block = sch.evaluate(sch.get_block("matmul"))
     ms.analysis.annotate_block_type(
         sch=sch.sch,
         block=block,
@@ -152,7 +143,7 @@ def test_meta_schedule_analysis_annotate_block_type():
 
 def test_meta_schedule_analysis_collect_annotated_loops():  # pylint: disable=invalid-name
     sch = ms.Schedule(func=matmul)
-    block = sch.get_block("C")
+    block = sch.get_block("matmul")
     loops = [sch.evaluate(loop) for loop in sch.get_axes(block)]
     ms.analysis.annotate_loop_type(sch=sch.sch, loops=loops, annotation="lazy_parallel")
     assert loops[0].stmt.annotations[0].value == "lazy_parallel"
@@ -165,7 +156,7 @@ def test_meta_schedule_analysis_collect_annotated_loops():  # pylint: disable=in
 
 def test_meta_schedule_analysis_get_loop_type():
     sch = ms.Schedule(func=matmul)
-    block = sch.get_block("C")
+    block = sch.get_block("matmul")
     loops = [sch.evaluate(loop) for loop in sch.get_axes(block)]
     i, j, k = ms.analysis.get_loop_type(sch.sch, sch.evaluate(block), loops)
     assert i == 0
@@ -175,7 +166,7 @@ def test_meta_schedule_analysis_get_loop_type():
 
 def test_meta_schedule_analysis_get_block_var_types():
     sch = ms.Schedule(func=matmul)
-    block = sch.get_block("C")
+    block = sch.get_block("matmul")
     assert ms.analysis.get_block_var_types(sch.sch, sch.evaluate(block)) == [
         "spatial",
         "spatial",
@@ -191,7 +182,7 @@ def test_meta_schedule_analysis_get_block_var_types():
 
 def test_meta_schedule_analysis_is_spatial():
     sch = ms.Schedule(func=matmul)
-    block = sch.get_block("C")
+    block = sch.get_block("matmul")
     assert not ms.analysis.is_spatial(sch.sch, sch.evaluate(block))
     sch = ms.Schedule(func=split_ewise)
     block = sch.get_block("B")
@@ -208,7 +199,7 @@ def test_meta_schedule_analysis_is_spatial():
 
 def test_meta_schedule_analysis_is_single_stmt_leaf():  # pylint: disable=invalid-name
     sch = ms.Schedule(func=matmul)
-    block = sch.get_block("C")
+    block = sch.get_block("matmul")
     assert ms.analysis.is_single_stmt_leaf(sch.sch, sch.evaluate(block))
     sch = ms.Schedule(func=split_ewise)
     block = sch.get_block("B")
@@ -220,7 +211,7 @@ def test_meta_schedule_analysis_is_single_stmt_leaf():  # pylint: disable=invali
 
 def test_meta_schedule_is_output_block():
     sch = ms.Schedule(func=matmul)
-    block = sch.get_block("C")
+    block = sch.get_block("matmul")
     assert ms.analysis.is_output_block(sch.sch, sch.evaluate(block))
     sch = ms.Schedule(func=many_ewise)
     block = sch.get_block("A")
@@ -233,13 +224,13 @@ def test_meta_schedule_analysis_count_op():
     block = sch.get_block("B")
     assert ms.analysis.count_op(sch.sch, sch.evaluate(block), exp) == 2
     sch = ms.Schedule(func=matmul)
-    block = sch.get_block("C")
+    block = sch.get_block("matmul")
     assert ms.analysis.count_op(sch.sch, sch.evaluate(block), exp) == 0
 
 
 def test_meta_schedule_analysis_has_branch():
     sch = ms.Schedule(func=matmul)
-    block = sch.get_block("C")
+    block = sch.get_block("matmul")
     assert not ms.analysis.has_branch(sch.sch, sch.evaluate(block))
     sch = ms.Schedule(func=with_predicate)
     block = sch.get_block("C")
@@ -259,7 +250,7 @@ def test_meta_schedule_is_elementwise_match():
 
 def test_meta_schedule_needs_multi_level_tiling():
     sch = ms.Schedule(func=matmul)
-    block = sch.get_block("C")
+    block = sch.get_block("matmul")
     assert ms.analysis.needs_multi_level_tiling(sch.sch, sch.evaluate(block))
     sch = ms.Schedule(func=split_ewise)
     block = sch.get_block("B")

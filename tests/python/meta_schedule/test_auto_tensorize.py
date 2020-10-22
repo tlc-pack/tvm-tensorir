@@ -14,86 +14,17 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-""" Test multi-level tiling """
+"""Test auto tensorization"""
 # pylint: disable=missing-function-docstring
 
 import tvm
 from tvm import meta_schedule as ms
 from tvm import tir
 from tvm.script import ty
+from tir_workload import batch_matmul
+from tir_tensor_intrin import tensorcore_desc, tensorcore_impl, dot_product_desc, dot_product_impl
 
 # pylint: disable=invalid-name,no-member
-
-
-@tvm.script.tir
-def batched_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.match_buffer(a, [16, 128, 128])
-    B = tir.match_buffer(b, [16, 128, 128])
-    C = tir.match_buffer(c, [16, 128, 128])
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
-
-    with tir.block([16, 128, 128, tir.reduce_axis(0, 128)], "update") as [
-        vn,
-        vi,
-        vj,
-        vk,
-    ]:
-        reducer.step(C[vn, vi, vj], (A[vn, vi, vk] * B[vn, vj, vk]))
-
-
-@tvm.script.tir
-def tensorcore_desc(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.match_buffer(a, (16, 16), align=128, offset_factor=1)
-    B = tir.match_buffer(b, (16, 16), align=128, offset_factor=1)
-    C = tir.match_buffer(c, (16, 16), align=128, offset_factor=1)
-
-    with tir.block([16, 16, tir.reduce_axis(0, 16)], "root") as [vi, vj, vk]:
-        tir.bind(vi, 0)
-        tir.bind(vj, 0)
-        tir.bind(vk, 0)
-        for i, j, k in tir.grid(16, 16, 16):
-            with tir.block([16, 16, tir.reduce_axis(0, 16)], "update") as [
-                vii,
-                vjj,
-                vkk,
-            ]:
-                tir.bind(vii, vi + i)
-                tir.bind(vjj, vj + j)
-                tir.bind(vkk, vk + k)
-                C[vii, vjj] = C[vii, vjj] + A[vii, vkk] * B[vjj, vkk]
-
-
-@tvm.script.tir
-def tensorcore_impl(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.match_buffer(a, (16, 16), align=128, offset_factor=1)
-    B = tir.match_buffer(b, (16, 16), align=128, offset_factor=1)
-    C = tir.match_buffer(c, (16, 16), align=128, offset_factor=1)
-
-    with tir.block([16, 16, tir.reduce_axis(0, 16)], "root") as [vi, vj, vk]:
-        tir.bind(vi, 0)
-        tir.bind(vj, 0)
-        tir.bind(vk, 0)
-        tir.reads(
-            [
-                C[vi : vi + 16, vj : vj + 16],
-                A[vi : vi + 16, vk : vk + 16],
-                B[vj : vj + 16, vk : vk + 16],
-            ]
-        )
-        tir.writes(C[vi : vi + 16, vj : vj + 16])
-        tir.evaluate(
-            tir.tvm_mma_sync(
-                C.data,
-                C.elem_offset // 256,
-                A.data,
-                A.elem_offset // 256,
-                B.data,
-                B.elem_offset // 256,
-                C.data,
-                C.elem_offset // 256,
-                dtype="handle",
-            )
-        )
 
 
 @tvm.script.tir
@@ -282,31 +213,6 @@ def tensorcore_tensorized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 @tvm.script.tir
-def dot_product_desc(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.match_buffer(a, (4,))
-    B = tir.match_buffer(b, (4,))
-    C = tir.match_buffer(c, (1,))
-
-    with tir.block([tir.reduce_axis(0, 4)], "root") as [v0]:
-        tir.bind(v0, 0)
-        for i in range(0, 4):
-            with tir.block([tir.reduce_axis(0, 4)], "update") as [vi]:
-                tir.bind(vi, v0 + i)
-                C[0] = C[0] + A[vi] * B[vi]
-
-
-@tvm.script.tir
-def dot_product_impl(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.match_buffer(a, (4,))
-    B = tir.match_buffer(b, (4,))
-    C = tir.match_buffer(c, (1,))
-
-    with tir.block([tir.reduce_axis(0, 4)], "root") as [v0]:
-        tir.bind(v0, 0)
-        tir.evaluate(C.data + A.data + B.data)
-
-
-@tvm.script.tir
 def dot_product_blockized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     # function attr dict
     tir.func_attr({})
@@ -441,7 +347,7 @@ def dot_product_tensorized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 def test_auto_tensorize_tensorcore():
-    sch = ms.Schedule(batched_matmul)
+    sch = ms.Schedule(batch_matmul)
     block = sch.get_block(name="update")
     assert (
         ms.analysis.get_tensorize_loop_mapping(
@@ -464,7 +370,7 @@ def test_auto_tensorize_tensorcore():
 
 
 def test_auto_tensorize_dot_product():
-    sch = ms.Schedule(batched_matmul)
+    sch = ms.Schedule(batch_matmul)
     block = sch.get_block(name="update")
     assert (
         ms.analysis.get_tensorize_loop_mapping(
@@ -499,7 +405,7 @@ def _check_sketch(result, expected):
 
 def test_auto_tensorize_rule_tensorcore():
     mma_sync = tvm.tir.TensorIntrin(tensorcore_desc, tensorcore_impl)
-    task = ms.SearchTask(func=batched_matmul)
+    task = ms.SearchTask(func=batch_matmul)
     space = ms.space.PostOrderApply(
         stages=[
             ms.rule.mark_tensorize(tensor_intrins=[mma_sync]),
@@ -509,12 +415,12 @@ def test_auto_tensorize_rule_tensorcore():
     schs = space.get_support(task=task)
     for sch in schs:
         postproc.apply(sch)
-    _check_sketch(schs, [batched_matmul, tensorcore_tensorized])
+    _check_sketch(schs, [batch_matmul, tensorcore_tensorized])
 
 
 def test_auto_tensorize_rule_dot_product():
     dot_prod = tvm.tir.TensorIntrin(dot_product_desc, dot_product_impl)
-    task = ms.SearchTask(func=batched_matmul)
+    task = ms.SearchTask(func=batch_matmul)
     space = ms.space.PostOrderApply(
         stages=[
             ms.rule.mark_tensorize(tensor_intrins=[dot_prod]),
@@ -524,7 +430,7 @@ def test_auto_tensorize_rule_dot_product():
     schs = space.get_support(task=task)
     for sch in schs:
         postproc.apply(sch)
-    _check_sketch(schs, [batched_matmul, dot_product_tensorized])
+    _check_sketch(schs, [batch_matmul, dot_product_tensorized])
 
 
 if __name__ == "__main__":
