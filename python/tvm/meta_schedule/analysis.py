@@ -370,22 +370,3 @@ def get_tensorize_loop_mapping(
     return _ffi_api_analysis.GetTensorizeLoopMapping(  # pylint: disable=no-member
         sch, block, desc_func
     )
-
-
-def do_tensorize_rewrite(
-    sch: Schedule,
-    block: BlockRV,
-    desc_func: tir.PrimFunc,
-) -> None:
-    """Rewrite a block to do tensorize in the future
-
-    Parameters
-    ----------
-    sch: Schedule
-        The meta schedule class
-    block: BlockRV
-        The block random variable to be analyzed
-    desc_func: PrimFunc
-        The description function of TensorIntrin we want to match
-    """
-    _ffi_api_analysis.DoTensorizeRewrite(sch, block, desc_func)  # pylint: disable=no-member

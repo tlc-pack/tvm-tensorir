@@ -214,17 +214,6 @@ TVM_DLL Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::Schedule& sch
                                                         const tir::StmtSRef& block_sref,
                                                         const tir::PrimFunc& desc_func);
 
-/*!
- * \brief Rewrite a block to do tensorize in the future
- * \param sch The meta schedule class
- * \param block_rv The block random variable to be analyzed
- * \param desc_func The description function of TensorIntrin we want to match
- *
- * TODO(@junrushao1994,@spectrometerHBH): it should not be an analysis function.
- * Better to put it in search rule instead
- */
-TVM_DLL void DoTensorizeRewrite(Schedule sch, BlockRV block_rv, tir::PrimFunc desc_func);
-
 }  // namespace meta_schedule
 }  // namespace tvm
 

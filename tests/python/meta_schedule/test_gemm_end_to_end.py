@@ -21,35 +21,10 @@ import tvm
 from tvm import meta_schedule as ms
 from tvm import tir
 from tvm.script import ty
-
-TILING_FORMAT = "SSRSRS"
-SPATIAL = 0
-REDUCTION = 2
-
-# pylint: disable=invalid-name,no-member
+from tir_workload import matmul, matmul_relu
 
 
-@tvm.script.tir
-def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.match_buffer(a, (1024, 1024), "float32")
-    B = tir.match_buffer(b, (1024, 1024), "float32")
-    C = tir.match_buffer(c, (1024, 1024), "float32")
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
-    with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
-        reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
-
-
-@tvm.script.tir
-def matmul_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
-    A = tir.match_buffer(a, (1024, 1024), "float32")
-    B = tir.match_buffer(b, (1024, 1024), "float32")
-    D = tir.match_buffer(d, (1024, 1024), "float32")
-    C = tir.buffer_allocate((1024, 1024), "float32")
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
-    with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
-        reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
-    with tir.block([1024, 1024], "relu") as [vi, vj]:
-        D[vi, vj] = tir.max(C[vi, vj], 0.0)
+# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
 
 
 @tvm.script.tir
@@ -172,7 +147,7 @@ def conv2d_relu_plus_one(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
         Y[i_n, i_co, i_h, i_w] = Y_j[i_n, i_co, i_h, i_w] + 1.0
 
 
-# pylint: enable=invalid-name,no-member
+# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks
 
 
 @ms.rule.register_rule("do_nothing")
