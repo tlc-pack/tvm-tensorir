@@ -17,30 +17,13 @@
 """ Test meta schedule SearchSpace """
 # pylint: disable=missing-function-docstring
 
-import tvm
 from tvm import meta_schedule as ms
-from tvm import tir
-from tvm.script import ty
-
-# pylint: disable=invalid-name,no-member
-
-
-@tvm.script.tir
-def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.match_buffer(a, (1024, 1024), "float32")
-    B = tir.match_buffer(b, (1024, 1024), "float32")
-    C = tir.match_buffer(c, (1024, 1024), "float32")
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
-    with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "C") as [vi, vj, vk]:
-        reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
-
-
-# pylint: enable=invalid-name,no-member
+from tir_workload import matmul
 
 
 def test_meta_schedule_search_space_schedule_fn():
     def schedule_matmul(sch: ms.Schedule):
-        block = sch.get_block(name="C")
+        block = sch.get_block("matmul")
         i, j, k = sch.get_axes(block=block)
         i_tiles = sch.sample_perfect_tile(n_splits=4, loop=i)
         j_tiles = sch.sample_perfect_tile(n_splits=4, loop=j)
@@ -55,7 +38,7 @@ def test_meta_schedule_search_space_schedule_fn():
     sch = space.sample_schedule(task)
 
     i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
-        sch.evaluate(i).stmt.extent for i in sch.get_axes(sch.get_block("C"))
+        sch.evaluate(i).stmt.extent for i in sch.get_axes(sch.get_block("matmul"))
     ]
     assert i_0 * i_1 * i_2 * i_3 == 1024
     assert j_0 * j_1 * j_2 * j_3 == 1024
@@ -89,7 +72,7 @@ def test_meta_schedule_search_space_post_order_apply():
     space = ms.space.PostOrderApply(stages=[do_mlt])
     sch = space.sample_schedule(task)
     i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
-        sch.evaluate(i).stmt.extent for i in sch.get_axes(sch.get_block("C"))
+        sch.evaluate(i).stmt.extent for i in sch.get_axes(sch.get_block("matmul"))
     ]
     assert i_0 * i_1 * i_2 * i_3 == 1024
     assert j_0 * j_1 * j_2 * j_3 == 1024
