@@ -24,82 +24,19 @@ from tvm.script import ty
 from tir_workload import batch_matmul
 from tir_tensor_intrin import tensorcore_desc, tensorcore_impl, dot_product_desc, dot_product_impl
 
+
+def _check_sketch(result, expected):
+    assert len(result) == len(expected)
+    for x in result:
+        found = False
+        for y in expected:
+            if tvm.ir.structural_equal(x.sch.func, y):
+                found = True
+                break
+        assert found
+
+
 # pylint: disable=invalid-name,no-member
-
-
-@tvm.script.tir
-def tensorcore_blockized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    # function attr dict
-    tir.func_attr({})
-    C = tir.match_buffer(c, [16, 128, 128], elem_offset=0, align=128, offset_factor=1)
-    A = tir.match_buffer(a, [16, 128, 128], elem_offset=0, align=128, offset_factor=1)
-    B = tir.match_buffer(b, [16, 128, 128], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
-    # body
-    with tir.block([], "root") as []:
-        tir.reads([])
-        tir.writes([])
-        for i0 in range(0, 16):
-            for i1_outer in range(0, 8):
-                for i2_outer in range(0, 8):
-                    for i3_outer in range(0, 8):
-                        with tir.block(
-                            [16, 128, 128, tir.reduce_axis(0, 128)], "blockized_update"
-                        ) as [vn, vi, vj, vk]:
-                            tir.bind(vn, i0)
-                            tir.bind(vi, (i1_outer * 16))
-                            tir.bind(vj, (i2_outer * 16))
-                            tir.bind(vk, (i3_outer * 16))
-                            tir.reads(
-                                [
-                                    C[vn : (vn + 1), vi : (vi + 16), vj : (vj + 16)],
-                                    A[vn : (vn + 1), vi : (vi + 16), vk : (vk + 16)],
-                                    B[vn : (vn + 1), vj : (vj + 16), vk : (vk + 16)],
-                                ]
-                            )
-                            tir.writes([C[vn : (vn + 1), vi : (vi + 16), vj : (vj + 16)]])
-                            for i1_inner in range(0, 16):
-                                for i2_inner in range(0, 16):
-                                    for i3_inner in range(0, 16):
-                                        with tir.block(
-                                            [16, 128, 128, tir.reduce_axis(0, 128)], "update"
-                                        ) as [vn_1, vi_1, vj_1, vk_1]:
-                                            tir.bind(vn_1, vn)
-                                            tir.bind(vi_1, (vi + i1_inner))
-                                            tir.bind(vj_1, (vj + i2_inner))
-                                            tir.bind(vk_1, (vk + i3_inner))
-                                            tir.reads(
-                                                [
-                                                    C[
-                                                        vn_1 : (vn_1 + 1),
-                                                        vi_1 : (vi_1 + 1),
-                                                        vj_1 : (vj_1 + 1),
-                                                    ],
-                                                    A[
-                                                        vn_1 : (vn_1 + 1),
-                                                        vi_1 : (vi_1 + 1),
-                                                        vk_1 : (vk_1 + 1),
-                                                    ],
-                                                    B[
-                                                        vn_1 : (vn_1 + 1),
-                                                        vj_1 : (vj_1 + 1),
-                                                        vk_1 : (vk_1 + 1),
-                                                    ],
-                                                ]
-                                            )
-                                            tir.writes(
-                                                [
-                                                    C[
-                                                        vn_1 : (vn_1 + 1),
-                                                        vi_1 : (vi_1 + 1),
-                                                        vj_1 : (vj_1 + 1),
-                                                    ]
-                                                ]
-                                            )
-                                            reducer.step(
-                                                C[vn_1, vi_1, vj_1],
-                                                (A[vn_1, vi_1, vk_1] * B[vn_1, vj_1, vk_1]),
-                                            )
 
 
 @tvm.script.tir
@@ -213,73 +150,6 @@ def tensorcore_tensorized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 @tvm.script.tir
-def dot_product_blockized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    # function attr dict
-    tir.func_attr({})
-    C = tir.match_buffer(c, [16, 128, 128], elem_offset=0, align=128, offset_factor=1)
-    A = tir.match_buffer(a, [16, 128, 128], elem_offset=0, align=128, offset_factor=1)
-    B = tir.match_buffer(b, [16, 128, 128], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
-    # body
-    with tir.block([], "root") as []:
-        tir.reads([])
-        tir.writes([])
-        for i0 in range(0, 16):
-            for i1 in range(0, 128):
-                for i2 in range(0, 128):
-                    for i3_outer in range(0, 32):
-                        with tir.block(
-                            [16, 128, 128, tir.reduce_axis(0, 128)], "blockized_update"
-                        ) as [vn, vi, vj, vk]:
-                            tir.bind(vn, i0)
-                            tir.bind(vi, i1)
-                            tir.bind(vj, i2)
-                            tir.bind(vk, (i3_outer * 4))
-                            tir.reads(
-                                [
-                                    C[vn : (vn + 1), vi : (vi + 1), vj : (vj + 1)],
-                                    A[vn : (vn + 1), vi : (vi + 1), vk : (vk + 4)],
-                                    B[vn : (vn + 1), vj : (vj + 1), vk : (vk + 4)],
-                                ]
-                            )
-                            tir.writes([C[vn : (vn + 1), vi : (vi + 1), vj : (vj + 1)]])
-                            for i3_inner in range(0, 4):
-                                with tir.block(
-                                    [16, 128, 128, tir.reduce_axis(0, 128)], "update"
-                                ) as [vn_1, vi_1, vj_1, vk_1]:
-                                    tir.bind(vn_1, vn)
-                                    tir.bind(vi_1, vi)
-                                    tir.bind(vj_1, vj)
-                                    tir.bind(vk_1, (vk + i3_inner))
-                                    tir.reads(
-                                        [
-                                            C[
-                                                vn_1 : (vn_1 + 1),
-                                                vi_1 : (vi_1 + 1),
-                                                vj_1 : (vj_1 + 1),
-                                            ],
-                                            A[
-                                                vn_1 : (vn_1 + 1),
-                                                vi_1 : (vi_1 + 1),
-                                                vk_1 : (vk_1 + 1),
-                                            ],
-                                            B[
-                                                vn_1 : (vn_1 + 1),
-                                                vj_1 : (vj_1 + 1),
-                                                vk_1 : (vk_1 + 1),
-                                            ],
-                                        ]
-                                    )
-                                    tir.writes(
-                                        [C[vn_1 : (vn_1 + 1), vi_1 : (vi_1 + 1), vj_1 : (vj_1 + 1)]]
-                                    )
-                                    reducer.step(
-                                        C[vn_1, vi_1, vj_1],
-                                        (A[vn_1, vi_1, vk_1] * B[vn_1, vj_1, vk_1]),
-                                    )
-
-
-@tvm.script.tir
 def dot_product_tensorized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     # function attr dict
     tir.func_attr({})
@@ -346,63 +216,6 @@ def dot_product_tensorized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 # pylint: enable=invalid-name,no-member
 
 
-def test_auto_tensorize_tensorcore():
-    sch = ms.Schedule(batch_matmul)
-    block = sch.get_block(name="update")
-    assert (
-        ms.analysis.get_tensorize_loop_mapping(
-            sch.sch,
-            sch.evaluate(block),
-            tensorcore_desc,
-        )
-        is not None
-    )
-    ms.analysis.do_tensorize_rewrite(sch, block, tensorcore_desc)
-    tvm.ir.assert_structural_equal(tensorcore_blockized, sch.sch.func)
-    # Decompose reduction
-    block = sch.evaluate(sch.get_block(name="update"))
-    i, _, _ = sch.sch.get_axes(block)
-    sch.sch.decompose_reduction(block, i)
-    # Tensorize
-    tensor_intrin = tvm.tir.TensorIntrin(tensorcore_desc, tensorcore_impl)
-    sch.sch.tensorize(i, tensor_intrin)
-    tvm.ir.assert_structural_equal(tensorcore_tensorized, sch.sch.func)
-
-
-def test_auto_tensorize_dot_product():
-    sch = ms.Schedule(batch_matmul)
-    block = sch.get_block(name="update")
-    assert (
-        ms.analysis.get_tensorize_loop_mapping(
-            sch.sch,
-            sch.evaluate(block),
-            dot_product_desc,
-        )
-        is not None
-    )
-    ms.analysis.do_tensorize_rewrite(sch, block, dot_product_desc)
-    tvm.ir.assert_structural_equal(dot_product_blockized, sch.sch.func)
-    # Decompose reduction
-    block = sch.evaluate(sch.get_block(name="update"))
-    i = sch.sch.get_axes(block)
-    sch.sch.decompose_reduction(block, i)
-    # Tensorize
-    tensor_intrin = tvm.tir.TensorIntrin(dot_product_desc, dot_product_impl)
-    sch.sch.tensorize(i, tensor_intrin)
-    tvm.ir.assert_structural_equal(dot_product_tensorized, sch.sch.func)
-
-
-def _check_sketch(result, expected):
-    assert len(result) == len(expected)
-    for x in result:
-        found = False
-        for y in expected:
-            if tvm.ir.structural_equal(x.sch.func, y):
-                found = True
-                break
-        assert found
-
-
 def test_auto_tensorize_rule_tensorcore():
     mma_sync = tvm.tir.TensorIntrin(tensorcore_desc, tensorcore_impl)
     task = ms.SearchTask(func=batch_matmul)
@@ -434,7 +247,5 @@ def test_auto_tensorize_rule_dot_product():
 
 
 if __name__ == "__main__":
-    test_auto_tensorize_tensorcore()
-    test_auto_tensorize_dot_product()
     test_auto_tensorize_rule_tensorcore()
     test_auto_tensorize_rule_dot_product()

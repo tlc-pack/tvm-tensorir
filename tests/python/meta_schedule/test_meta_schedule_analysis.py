@@ -21,7 +21,8 @@ from tvm import meta_schedule as ms
 from tvm import tir
 from tvm.ir import Op
 from tvm.script import ty
-from tir_workload import matmul
+from tir_workload import matmul, batch_matmul
+import tir_tensor_intrin
 
 # pylint: disable=invalid-name,no-member
 
@@ -266,6 +267,25 @@ def test_meta_schedule_is_strictly_inlineable():
     assert not ms.analysis.is_strictly_inlineable(sch.sch, sch.evaluate(block))
 
 
+def test_meta_schedule_get_tensorize_loop_mapping():
+    sch = ms.Schedule(batch_matmul)
+    block = sch.get_block(name="update")
+    assert (
+        ms.analysis.get_tensorize_loop_mapping(
+            sch.sch, sch.evaluate(block), tir_tensor_intrin.tensorcore_desc
+        )
+        is not None
+    )
+    sch = ms.Schedule(batch_matmul)
+    block = sch.get_block(name="update")
+    assert (
+        ms.analysis.get_tensorize_loop_mapping(
+            sch.sch, sch.evaluate(block), tir_tensor_intrin.dot_product_desc
+        )
+        is not None
+    )
+
+
 if __name__ == "__main__":
     test_meta_schedule_analysis_is_trivial_binding()
     test_meta_schedule_analysis_is_subroot_block()
@@ -283,3 +303,4 @@ if __name__ == "__main__":
     test_meta_schedule_is_elementwise_match()
     test_meta_schedule_needs_multi_level_tiling()
     test_meta_schedule_is_strictly_inlineable()
+    test_meta_schedule_get_tensorize_loop_mapping()
