@@ -18,23 +18,7 @@
 # pylint: disable=missing-function-docstring
 import tvm
 from tvm import meta_schedule as ms
-from tvm import tir
-from tvm.script import ty
-
-# pylint: disable=invalid-name,no-member
-
-
-@tvm.script.tir
-def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.match_buffer(a, (1024, 1024), "float32")
-    B = tir.match_buffer(b, (1024, 1024), "float32")
-    C = tir.match_buffer(c, (1024, 1024), "float32")
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
-    with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "C") as [vi, vj, vk]:
-        reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
-
-
-# pylint: enable=invalid-name,no-member
+from tir_workload import matmul
 
 
 def test_meta_schedule_search_task_creation():
