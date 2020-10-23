@@ -361,12 +361,14 @@ class TVMScriptParser(ast.NodeVisitor):
         body = _ffi_api.AutoComplete(body, root_info.allocates)
         # return a tir.PrimFunc
         ret_type = self.parse_type(node.returns)
+        dict_attr = self.context.func_dict_attr
+        attrs = tvm.ir.make_node("DictAttrs", **dict_attr) if dict_attr else None
         func = tvm.tir.PrimFunc(
             self.context.func_params,
             body,
             ret_type=ret_type,
             buffer_map=self.context.func_buffer_map,
-            attrs=tvm.ir.make_node("DictAttrs", **self.context.func_dict_attr),
+            attrs=attrs,
         )
         self.functions[GlobalVar(node.name)] = func
         # Emit Scope : PrimFunc
