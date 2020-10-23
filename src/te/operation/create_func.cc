@@ -43,6 +43,17 @@ class Translator : public ExprMutator {
   const std::unordered_map<te::Operation, Buffer, ObjectPtrHash, ObjectPtrEqual>& buffers_;
 };
 
+std::string GetUniqueName(const std::string& prefix,
+                          std::unordered_map<std::string, int>* name_map) {
+  std::string unique_prefix = prefix;
+  auto it = name_map->find(prefix);
+  if (it != name_map->end()) {
+    while (name_map->count(unique_prefix = prefix + "_" + std::to_string(++it->second)) > 0);
+  }
+  (*name_map)[unique_prefix] = 0;
+  return unique_prefix;
+}
+
 PrimFunc create_tir(const Array<te::Tensor>& tensors) {
   Array<te::Operation> ops;
   for (const auto& tensor : tensors) {
@@ -68,6 +79,9 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
   // root allocation and body(seq_stmt) for root block
   Array<BufferAllocate> allocations;
   Array<Stmt> seq;
+
+  // name map for unique block name
+  std::unordered_map<std::string, int> name_map;
 
   for (const auto& op : order) {
     CHECK_EQ(op->num_outputs(), 1);
@@ -97,6 +111,8 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
       Stmt body;
       if (const auto* reduce = expr.as<ReduceNode>()) {
         CHECK_EQ(reduce->source.size(), 1);
+        PrimExpr lhs = BufferLoad(buffer, indices), rhs = translator(reduce->source[0]);
+        CHECK(lhs->dtype == rhs->dtype);
         body = ReduceStep(reduce->combiner, BufferLoad(buffer, indices),
                           translator(reduce->source[0]));
       } else {
@@ -114,7 +130,7 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
       }
 
       Block block(block_vars, NullValue<Array<TensorRegion>>(), NullValue<Array<TensorRegion>>(),
-                  body, {}, {}, op->name);
+                  body, {}, {}, GetUniqueName(op->name, &name_map));
       Array<PrimExpr> null_bindings;
       for (size_t i = 0; i < block_vars.size(); i++) null_bindings.push_back(NullValue<PrimExpr>());
       BlockRealize realize(null_bindings, Bool(true), block, "");
