@@ -455,7 +455,7 @@ Scope ScheduleNode::GetParentScope(const StmtSRef& sref) const {
 }
 
 Array<StmtSRef> ScheduleNode::GetLoopsInScope(const StmtSRef& block) const {
-  CHECK(block->parent);
+  if (!block->parent) return Array<StmtSRef>();
   Array<StmtSRef> ret;
   StmtSRef sref = GetRef<StmtSRef>(block->parent);
   while (!GetRef<Stmt>(sref->stmt).as<BlockNode>()) {
