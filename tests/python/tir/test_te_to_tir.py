@@ -29,15 +29,25 @@ K = 128
 N = 128
 
 
+def test_unique_name():
+    A = te.placeholder((M, N), name="A")
+    B = te.compute((M, N), lambda x, y: A[x, y] * 2, name="main")
+    C = te.compute((M, N), lambda x, y: B[x, y] + 1, name="main")
+
+    func = te.create_func([C])
+    s = tir.create_schedule(func)
+    assert isinstance(s.get_block("main"), tir.schedule.StmtSRef)
+    assert isinstance(s.get_block("main_1"), tir.schedule.StmtSRef)
+
+
 def test_matmul():
     k = te.reduce_axis((0, K), "k")
     A = te.placeholder((M, K), name="A")
-    B = te.placeholder((K, N), name="B")
-    C = te.compute((M, N), lambda x, y: te.sum(A[x, k] * B[k, y], axis=k), name="C")
+    B = te.placeholder((N, K), name="B")
+    C = te.compute((M, N), lambda x, y: te.sum(A[x, k] * B[y, k], axis=k), name="C")
 
     func = te.create_func([C])
-    # TODO: fix type system
-    # tvm.ir.assert_structural_equal(std_func.body, func.body)
+    tvm.ir.assert_structural_equal(func, util.matmul)
     a_np = np.random.uniform(size=(M, K)).astype("float32")
     b_np = np.random.uniform(size=(K, N)).astype("float32")
     a = tvm.nd.array(a_np)
@@ -45,7 +55,7 @@ def test_matmul():
     c = tvm.nd.array(np.zeros((M, N)).astype("float32"))
     func = tvm.build(func)
     func(a, b, c)
-    tvm.testing.assert_allclose(c.asnumpy(), np.matmul(a.asnumpy(), b.asnumpy()), rtol=1e-5)
+    tvm.testing.assert_allclose(c.asnumpy(), np.matmul(a.asnumpy(), b.asnumpy().transpose()), rtol=1e-5)
 
 
 def test_element_wise():
@@ -54,8 +64,7 @@ def test_element_wise():
     C = te.compute((M, N), lambda x, y: B[x, y] + 1, name="C")
 
     func = te.create_func([C])
-    # TODO: fix type system
-    # tvm.ir.assert_structural_equal(std_func.body, func.body)
+    tvm.ir.assert_structural_equal(func, util.element_wise)
     a_np = np.random.uniform(size=(M, N)).astype("float32")
     a = tvm.nd.array(a_np)
     c = tvm.nd.array(np.zeros((M, N)).astype("float32"))
@@ -127,8 +136,6 @@ def test_conv2d():
     func = te.create_func(Conv)
     func = tvm.build(func)
 
-    # TODO: fix type system
-    # tvm.ir.assert_structural_equal(std_func.body, func.body)
     a_np = np.random.uniform(size=data_shape).astype(A.dtype)
     w_np = np.random.uniform(size=kernel_shape).astype(W.dtype)
     a = tvm.nd.array(a_np)
@@ -146,6 +153,7 @@ def test_conv2d():
 
 
 if __name__ == "__main__":
+    test_unique_name()
     test_matmul()
     test_element_wise()
     test_conv2d()
