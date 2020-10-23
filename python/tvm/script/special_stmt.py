@@ -93,7 +93,7 @@ class BufferAllocate(SpecialStmt):
             data=None,
             strides=None,
             elem_offset=None,
-            scope="global",
+            scope="",
             align=-1,
             offset_factor=0,
             buffer_type="default",
@@ -246,8 +246,14 @@ class TVMScriptReducer:
     def __init__(self, combiner, identity):
         self.combiner = combiner
         self.identity = identity
+        dtype = self.identity.dtype
+        var0 = tvm.tir.Var(self.combiner.args[0].name, dtype)
+        var1 = tvm.tir.Var(self.combiner.args[1].name, dtype)
+        vmap = {self.combiner.args[0]: var0, self.combiner.args[1]: var1}
+        body = tvm.tir.stmt_functor.substitute(self.combiner.body, vmap)
+
         self.reducer = tvm.tir.CommReducer(
-            [self.combiner.args[0]], [self.combiner.args[1]], [self.combiner.body], [self.identity]
+            [var0], [var1], [body], [self.identity]
         )
         self.step = StepIntrin(self)
 
