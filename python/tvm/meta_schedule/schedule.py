@@ -258,6 +258,32 @@ class Schedule(Object):
 
     ########## Scheduling Primitives ##########
 
+    def mark_loop_type(self, loops: List[LoopRV], mark: str, mark_range: ir.Range) -> None:
+        """Mark a range of loops with the specific mark
+
+        Parameters
+        ----------
+        loops: List[LoopRV]
+            The loops to be marked
+        mark : str
+            The annotation
+        mark_range : Range
+            The range to be marked
+        """
+        _ffi_api.ScheduleMarkLoopType(self, loops, mark, mark_range)  # pylint: disable=no-member
+
+    def mark_block_type(self, block: BlockRV, mark: str) -> None:
+        """Mark a range of loops with the specific mark
+
+        Parameters
+        ----------
+        block : BlockRV
+            The block to be marked
+        mark : str
+            The annotation
+        """
+        _ffi_api.ScheduleMarkBlockType(self, block, mark)  # pylint: disable=no-member
+
     def fuse(self, loops: List[LoopRV]):
         """Fuse the loops
 
@@ -272,30 +298,6 @@ class Schedule(Object):
             The fused loop
         """
         return _ffi_api.ScheduleFuse(self, loops)  # pylint: disable=no-member
-
-    def mark_parallel(self, loop: LoopRV, mark_range: ir.Range) -> None:
-        """Mark a range of loops as parallelized
-
-        Parameters
-        ----------
-        loop : LoopRV
-            The loop to be parallelized
-        range: Range
-            The range to be marked as parallelized
-        """
-        _ffi_api.ScheduleMarkParallel(self, loop, mark_range)  # pylint: disable=no-member
-
-    def mark_vectorize(self, loop: LoopRV, mark_range: ir.Range) -> None:
-        """Mark a range of loops as vectorized
-
-        Parameters
-        ----------
-        loop : LoopRV
-            The loop to be vectorized
-        range: Range
-            The range to be marked as vectorized
-        """
-        _ffi_api.ScheduleMarkVectorize(self, loop, mark_range)  # pylint: disable=no-member
 
     def split(
         self,
