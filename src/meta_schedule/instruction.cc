@@ -45,11 +45,6 @@ Instruction::Instruction(Array<ObjectRef> inputs, Array<ObjectRef> outputs, Inst
       << "' from: " << Input->GetTypeKey();                                      \
   CastType VarName = Downcast<CastType>(Input);
 
-#define TVM_META_SCHEDULE_APPLY_INST(Schedule, Attrs, Inputs, AttrType) \
-  if (const auto* n = Attrs.as<AttrType>()) {                           \
-    return n->ApplyToSchedule(Schedule, Inputs);                        \
-  }
-
 template <class T>
 Array<ObjectRef> AdaptOutputs(const Array<T>& outputs) {
   return {outputs.begin(), outputs.end()};
@@ -202,6 +197,48 @@ Array<ObjectRef> GetLeafBlocksAttrs::ApplyToSchedule(ScheduleNode* sch,
 
 /**************** MakeInst/ApplyToSchedule: Scheduling Primitives  ****************/
 
+Instruction MarkLoopTypeAttrs::MakeInst(const Array<LoopRV>& loops, const Range& range,
+                                        const String& mark) {
+  ObjectPtr<MarkLoopTypeAttrs> n = make_object<MarkLoopTypeAttrs>();
+  n->mark = mark;
+  Array<ObjectRef> inputs{loops.begin(), loops.end()};
+  inputs.push_back(range->min);
+  inputs.push_back(range->extent);
+  return Instruction(/*inputs=*/inputs,
+                     /*outputs=*/{},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Array<ObjectRef> MarkLoopTypeAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                    const Array<ObjectRef>& inputs) const {
+  int n_loops = static_cast<int>(inputs.size()) - 2;
+  Array<LoopRV> loops;
+  loops.reserve(n_loops);
+  for (int i = 0; i < n_loops; ++i) {
+    TVM_META_SCHEDULE_CAST_INPUT(LoopRV, loop, inputs[i]);
+    loops.push_back(loop);
+  }
+  TVM_META_SCHEDULE_CAST_INPUT(PrimExpr, min, inputs[n_loops]);
+  TVM_META_SCHEDULE_CAST_INPUT(PrimExpr, extent, inputs[n_loops + 1]);
+  sch->MarkLoopType(loops, mark, Range::FromMinExtent(min, extent));
+  return {};
+}
+
+Instruction MarkBlockTypeAttrs::MakeInst(const BlockRV& block, const String& mark) {
+  ObjectPtr<MarkBlockTypeAttrs> n = make_object<MarkBlockTypeAttrs>();
+  n->mark = mark;
+  return Instruction(/*inputs=*/{block},
+                     /*outputs=*/{},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Array<ObjectRef> MarkBlockTypeAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                     const Array<ObjectRef>& inputs) const {
+  TVM_META_SCHEDULE_CAST_INPUT(BlockRV, block, inputs[0]);
+  sch->MarkBlockType(block, mark);
+  return {};
+}
+
 Instruction FuseAttrs::MakeInst(const Array<LoopRV>& loops, const LoopRV& output) {
   ObjectPtr<FuseAttrs> n = make_object<FuseAttrs>();
   return Instruction(/*inputs=*/{loops.begin(), loops.end()},
@@ -219,56 +256,6 @@ Array<ObjectRef> FuseAttrs::ApplyToSchedule(ScheduleNode* sch,
     loops.push_back(loop);
   }
   return {sch->Fuse(loops)};
-}
-
-Instruction MarkParallelAttrs::MakeInst(const Array<LoopRV>& loops, const Range& range) {
-  ObjectPtr<MarkParallelAttrs> n = make_object<MarkParallelAttrs>();
-  Array<ObjectRef> inputs{loops.begin(), loops.end()};
-  inputs.push_back(range->min);
-  inputs.push_back(range->extent);
-  return Instruction(/*inputs=*/inputs,
-                     /*outputs=*/{},
-                     /*attrs=*/InstAttrs(std::move(n)));
-}
-
-Array<ObjectRef> MarkParallelAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                    const Array<ObjectRef>& inputs) const {
-  int n_loops = static_cast<int>(inputs.size()) - 2;
-  Array<LoopRV> loops;
-  loops.reserve(n_loops);
-  for (int i = 0; i < n_loops; ++i) {
-    TVM_META_SCHEDULE_CAST_INPUT(LoopRV, loop, inputs[i]);
-    loops.push_back(loop);
-  }
-  TVM_META_SCHEDULE_CAST_INPUT(PrimExpr, min, inputs[n_loops]);
-  TVM_META_SCHEDULE_CAST_INPUT(PrimExpr, extent, inputs[n_loops + 1]);
-  sch->MarkParallel(loops, Range::FromMinExtent(min, extent));
-  return {};
-}
-
-Instruction MarkVectorizeAttrs::MakeInst(const Array<LoopRV>& loops, const Range& range) {
-  ObjectPtr<MarkVectorizeAttrs> n = make_object<MarkVectorizeAttrs>();
-  Array<ObjectRef> inputs{loops.begin(), loops.end()};
-  inputs.push_back(range->min);
-  inputs.push_back(range->extent);
-  return Instruction(/*inputs=*/inputs,
-                     /*outputs=*/{},
-                     /*attrs=*/InstAttrs(std::move(n)));
-}
-
-Array<ObjectRef> MarkVectorizeAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                     const Array<ObjectRef>& inputs) const {
-  int n_loops = static_cast<int>(inputs.size()) - 2;
-  Array<LoopRV> loops;
-  loops.reserve(n_loops);
-  for (int i = 0; i < n_loops; ++i) {
-    TVM_META_SCHEDULE_CAST_INPUT(LoopRV, loop, inputs[i]);
-    loops.push_back(loop);
-  }
-  TVM_META_SCHEDULE_CAST_INPUT(PrimExpr, min, inputs[n_loops]);
-  TVM_META_SCHEDULE_CAST_INPUT(PrimExpr, extent, inputs[n_loops + 1]);
-  sch->MarkVectorize(loops, Range::FromMinExtent(min, extent));
-  return {};
 }
 
 Instruction SplitAttrs::MakeInst(const LoopRV& loop, const Array<Optional<PrimExpr>>& factors,
@@ -424,9 +411,9 @@ TVM_REGISTER_NODE_TYPE(GetBlockAttrs);
 TVM_REGISTER_NODE_TYPE(GetAxesAttrs);
 TVM_REGISTER_NODE_TYPE(GetRootBlocksAttrs);
 TVM_REGISTER_NODE_TYPE(GetLeafBlocksAttrs);
+TVM_REGISTER_NODE_TYPE(MarkLoopTypeAttrs);
+TVM_REGISTER_NODE_TYPE(MarkBlockTypeAttrs);
 TVM_REGISTER_NODE_TYPE(FuseAttrs);
-TVM_REGISTER_NODE_TYPE(MarkParallelAttrs);
-TVM_REGISTER_NODE_TYPE(MarkVectorizeAttrs);
 TVM_REGISTER_NODE_TYPE(SplitAttrs);
 TVM_REGISTER_NODE_TYPE(ReorderAttrs);
 TVM_REGISTER_NODE_TYPE(ReverseComputeAtAttrs);
@@ -437,7 +424,6 @@ TVM_REGISTER_NODE_TYPE(BlockizeAttrs);
 TVM_REGISTER_NODE_TYPE(DecomposeReductionAttrs);
 
 #undef TVM_META_SCHEDULE_CAST_INPUT
-#undef TVM_META_SCHEDULE_APPLY_INST
 
 }  // namespace meta_schedule
 }  // namespace tvm
