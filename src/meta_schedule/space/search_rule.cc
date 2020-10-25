@@ -351,7 +351,7 @@ class RuleMarkParallelizeOuter {
                                 ScheduleNode::Order::outer_to_inner, ScheduleNode::Mode::max);
     PrimExpr min = Integer(0);
     PrimExpr extent = n_fusible_rv;
-    sch->MarkParallel(loop_rvs, Range::FromMinExtent(min, extent));
+    sch->MarkLoopType(loop_rvs, "lazy_parallel", Range::FromMinExtent(min, extent));
     return {{sch, info}};
   }
 };
@@ -395,7 +395,7 @@ class RuleMarkVectorizeInner {
     int n_loops = loop_rvs.size();
     PrimExpr min = Integer(n_loops) - n_fusible_rv;
     PrimExpr extent = n_fusible_rv;
-    sch->MarkVectorize(loop_rvs, Range::FromMinExtent(min, extent));
+    sch->MarkLoopType(loop_rvs, "lazy_vectorize", Range::FromMinExtent(min, extent));
     return {{sch, info}};
   }
 };
@@ -478,16 +478,7 @@ class RuleMarkTensorize {
       sch->Blockize(reorder_suffix[0], "");
     }
     // Annotate the block
-    {
-      tir::StmtSRef last_loop_sref = sch->Eval(reorder_list.back());
-      const auto* last_loop = last_loop_sref->GetStmt<tir::LoopNode>();
-      CHECK(last_loop) << "TypeError: Expects Loop, but gets: "
-                       << last_loop_sref->stmt->GetTypeKey();
-      const auto* realize = last_loop->body.as<tir::BlockRealizeNode>();
-      CHECK(realize) << "TypeError: Expects BlockRealize, but gets: "
-                     << last_loop->body->GetTypeKey();
-      AnnotateBlockType(sch->sch, sch->sch->stmt2ref.at(realize->block.get()), "lazy_tensorize");
-    }
+    sch->MarkBlockType(block_rv, "lazy_tensorize");
   }
 
   /*! \brief Rule application */
