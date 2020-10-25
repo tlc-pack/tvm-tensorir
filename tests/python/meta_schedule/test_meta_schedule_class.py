@@ -305,15 +305,7 @@ def test_meta_schedule_get_leaf_blocks():
     assert len(blocks) == 2
 
 
-def test_meta_schedule_fuse():
-    sch = ms.Schedule(func=matmul)
-    block = sch.get_block("matmul")
-    i, j, _ = sch.get_axes(block)
-    sch.fuse(loops=[i, j])
-    assert len(sch.get_axes(block)) == 2
-
-
-def test_meta_schedule_mark_parallel():
+def test_meta_schedule_mark_loop_type():
     def check_annotation(sch, loop):
         loop = sch.evaluate(loop).stmt
         assert len(loop.annotations) == 1
@@ -324,7 +316,7 @@ def test_meta_schedule_mark_parallel():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
     axes = sch.get_axes(block)
-    sch.mark_parallel(axes, tvm.ir.Range(0, 3))
+    sch.mark_loop_type(axes, "lazy_parallel", tvm.ir.Range(0, 3))
     block = sch.get_block("matmul")
     i, j, k = sch.get_axes(block)
     check_annotation(sch, i)
@@ -332,23 +324,26 @@ def test_meta_schedule_mark_parallel():
     check_annotation(sch, k)
 
 
-def test_meta_schedule_mark_vectorize():
-    def check_annotation(sch, loop):
-        loop = sch.evaluate(loop).stmt
-        assert len(loop.annotations) == 1
-        (ann,) = loop.annotations
+def test_meta_schedule_mark_block_type():
+    def check_annotation(sch, block):
+        block = sch.evaluate(block).stmt
+        assert len(block.annotations) == 1
+        (ann,) = block.annotations
         assert ann.attr_key == "loop_type"
-        assert ann.value == "lazy_vectorize"
+        assert ann.value == "lazy_tensorize"
 
     sch = ms.Schedule(func=matmul)
-    block = sch.get_block(name="matmul")
-    axes = sch.get_axes(block)
-    sch.mark_vectorize(axes, tvm.ir.Range(0, 3))
-    block = sch.get_block(name="matmul")
-    i, j, k = sch.get_axes(block)
-    check_annotation(sch, i)
-    check_annotation(sch, j)
-    check_annotation(sch, k)
+    block = sch.get_block("matmul")
+    sch.mark_block_type(block, "lazy_tensorize")
+    check_annotation(sch, block)
+
+
+def test_meta_schedule_fuse():
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("matmul")
+    i, j, _ = sch.get_axes(block)
+    sch.fuse(loops=[i, j])
+    assert len(sch.get_axes(block)) == 2
 
 
 def test_meta_schedule_split():
@@ -478,9 +473,9 @@ if __name__ == "__main__":
     test_meta_schedule_get_axes()
     test_meta_schedule_get_root_blocks()
     test_meta_schedule_get_leaf_blocks()
+    test_meta_schedule_mark_loop_type()
+    test_meta_schedule_mark_block_type()
     test_meta_schedule_fuse()
-    test_meta_schedule_mark_parallel()
-    test_meta_schedule_mark_vectorize()
     test_meta_schedule_split()
     test_meta_schedule_reorder()
     test_meta_schedule_reverse_compute_at()

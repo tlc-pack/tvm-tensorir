@@ -127,19 +127,19 @@ class GetLeafBlocksAttrs(InstAttrs):
 ########## Scheduling Primitives ##########
 
 
+@register_object("meta_schedule.attrs.MarkLoopTypeAttrs")
+class MarkLoopTypeAttrs(InstAttrs):
+    """Attrs of the instruction that marks specific loops"""
+
+
+@register_object("meta_schedule.attrs.MarkBlockTypeAttrs")
+class MarkBlockTypeAttrs(InstAttrs):
+    """Attrs of the instruction that marks a specific block"""
+
+
 @register_object("meta_schedule.attrs.FuseAttrs")
 class FuseAttrs(InstAttrs):
     """Attrs of the instruction that applies fusion"""
-
-
-@register_object("meta_schedule.attrs.MarkParallelAttrs")
-class MarkParallelAttrs(InstAttrs):
-    """Attrs of the instruction that marks specific loops as parallelized"""
-
-
-@register_object("meta_schedule.attrs.MarkVectorizeAttrs")
-class MarkVectorizeAttrs(InstAttrs):
-    """Attrs of the instruction that marks specific loops as vectorized"""
 
 
 @register_object("meta_schedule.attrs.SplitAttrs")
