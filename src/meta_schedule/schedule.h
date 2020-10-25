@@ -169,24 +169,24 @@ class ScheduleNode : public Object {
   Array<BlockRV> GetLeafBlocks();
   /**************** Scheduling Primitives ****************/
   /*!
+   * \brief Mark a loop
+   * \param loops The loops to be marked
+   * \param range The range in loops to be marked
+   * \param mark The annotation
+   */
+  void MarkLoopType(const Array<LoopRV>& loops, const String& mark, const Range& range);
+  /*!
+   * \brief Mark a block
+   * \param block The block to be marked
+   * \param mark The annotation
+   */
+  void MarkBlockType(const BlockRV& block, const String& mark);
+  /*!
    * \brief Fuse the loops
    * \param loops The loops to be fused
-   * \param range If provided, only fuse loops[range.min, range.min + range.extent)
    * \return The fused loop
    */
   LoopRV Fuse(const Array<LoopRV>& loops);
-  /*!
-   * \brief Parallelize a loop
-   * \param loops The loop to be parallelized
-   * \param range The range in loops to be marked as "parallel"
-   */
-  void MarkParallel(const Array<LoopRV>& loops, const Range& range);
-  /*!
-   * \brief Vectorize a loop
-   * \param loops The loop to be vectorized
-   * \param range The range in loops to be marked as "vectorize"
-   */
-  void MarkVectorize(const Array<LoopRV>& loops, const Range& range);
   /*!
    * \brief Apply the instruction Split
    * \param loop The loop to be split
