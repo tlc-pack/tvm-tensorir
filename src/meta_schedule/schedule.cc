@@ -494,6 +494,26 @@ Array<BlockRV> ScheduleNode::GetLeafBlocks() {
 
 /**************** Schedule Primitives ****************/
 
+void ScheduleNode::MarkLoopType(const Array<LoopRV>& loops, const String& mark,
+                                const Range& range) {
+  Array<tir::StmtSRef> loop_srefs;
+  loop_srefs.reserve(loops.size());
+  for (const LoopRV& loop_rv : loops) {
+    loop_srefs.push_back(Eval(loop_rv));
+  }
+  int left = Eval(range->min);
+  int right = left + Eval(range->extent);
+  AnnotateLoopType(this->sch, {loop_srefs.begin() + left, loop_srefs.begin() + right}, mark);
+  // Put the instruction in the trace
+  this->trace.push_back(MarkLoopTypeAttrs::MakeInst(loops, range, mark));
+}
+
+void ScheduleNode::MarkBlockType(const BlockRV& block, const String& mark) {
+  AnnotateBlockType(this->sch, this->Eval(block), mark);
+  // Put the instruction in the trace
+  this->trace.push_back(MarkBlockTypeAttrs::MakeInst(block, mark));
+}
+
 LoopRV ScheduleNode::Fuse(const Array<LoopRV>& loops) {
   // Output from TIR
   tir::StmtSRef loop_sref = this->Eval(loops[0]);
@@ -507,34 +527,6 @@ LoopRV ScheduleNode::Fuse(const Array<LoopRV>& loops) {
   // Put the instruction in the trace
   this->trace.push_back(FuseAttrs::MakeInst(loops, output));
   return output;
-}
-
-void ScheduleNode::MarkParallel(const Array<LoopRV>& loops, const Range& range) {
-  Array<tir::StmtSRef> loop_srefs;
-  loop_srefs.reserve(loops.size());
-  for (const LoopRV& loop_rv : loops) {
-    loop_srefs.push_back(Eval(loop_rv));
-  }
-  int left = Eval(range->min);
-  int right = left + Eval(range->extent);
-  AnnotateLoopType(this->sch, {loop_srefs.begin() + left, loop_srefs.begin() + right},
-                   "lazy_parallel");
-  // Put the instruction in the trace
-  this->trace.push_back(MarkParallelAttrs::MakeInst(loops, range));
-}
-
-void ScheduleNode::MarkVectorize(const Array<LoopRV>& loops, const Range& range) {
-  Array<tir::StmtSRef> loop_srefs;
-  loop_srefs.reserve(loops.size());
-  for (const LoopRV& loop_rv : loops) {
-    loop_srefs.push_back(Eval(loop_rv));
-  }
-  int left = Eval(range->min);
-  int right = left + Eval(range->extent);
-  AnnotateLoopType(this->sch, {loop_srefs.begin() + left, loop_srefs.begin() + right},
-                   "lazy_vectorize");
-  // Put the instruction in the trace
-  this->trace.push_back(MarkVectorizeAttrs::MakeInst(loops, range));
 }
 
 Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<Optional<PrimExpr>>& factors) {
@@ -848,24 +840,24 @@ struct Internal {
   static Array<BlockRV> GetLeafBlocks(Schedule sch) { return sch->GetLeafBlocks(); }
   /**************** Scheduling Primitives ****************/
   /*!
+   * \brief FFI function, corresponds to ScheduleNode::MarkLoopType
+   * \sa ScheduleNode::MarkLoopType
+   */
+  static void MarkLoopType(Schedule sch, Array<LoopRV> loops, String mark, Range range) {
+    sch->MarkLoopType(loops, mark, range);
+  }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::MarkBlockType
+   * \sa ScheduleNode::MarkBlockType
+   */
+  static void MarkBlockType(Schedule sch, BlockRV block, String mark) {
+    sch->MarkBlockType(block, mark);
+  }
+  /*!
    * \brief FFI function, corresponds to ScheduleNode::Fuse
    * \sa ScheduleNode::Fuse
    */
   static LoopRV Fuse(Schedule sch, Array<LoopRV> loops) { return sch->Fuse(loops); }
-  /*!
-   * \brief FFI function, corresponds to ScheduleNode::Parallel
-   * \sa ScheduleNode::Parallel
-   */
-  static void MarkParallel(Schedule sch, Array<LoopRV> loops, Range range) {
-    sch->MarkParallel(loops, range);
-  }
-  /*!
-   * \brief FFI function, corresponds to ScheduleNode::Vectorize
-   * \sa ScheduleNode::Vectorize
-   */
-  static void MarkVectorize(Schedule sch, Array<LoopRV> loops, Range range) {
-    sch->MarkVectorize(loops, range);
-  }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Split
    * \sa ScheduleNode::Split
@@ -955,9 +947,9 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetBlock").set_body_typed(Internal::G
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetAxes").set_body_typed(Internal::GetAxes);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetRootBlocks").set_body_typed(Internal::GetRootBlocks);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetLeafBlocks").set_body_typed(Internal::GetLeafBlocks);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkLoopType").set_body_typed(Internal::MarkLoopType);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkBlockType").set_body_typed(Internal::MarkBlockType);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleFuse").set_body_typed(Internal::Fuse);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkParallel").set_body_typed(Internal::MarkParallel);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkVectorize").set_body_typed(Internal::MarkVectorize);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSplit").set_body_typed(Internal::Split);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReorder").set_body_typed(Internal::Reorder);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReverseComputeAt")
