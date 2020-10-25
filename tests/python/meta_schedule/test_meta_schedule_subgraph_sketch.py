@@ -52,13 +52,11 @@ def _get_support(func: tir.PrimFunc, task_name: str):
     return ms.space.PostOrderApply(
         stages=[
             ms.rule.always_inline(),
-            ms.rule.compose(
-                name="tiling",
-                rules=[
-                    ms.rule.add_cache_write(),
-                    ms.rule.multi_level_tiling(structure="SSRSRS"),
-                    ms.rule.fusion(levels=[1, 2]),
-                ],
+            ms.rule.multi_level_tiling_and_fusion(
+                structure="SSRSRS",
+                add_read_cache=False,
+                add_write_cache=True,
+                fusion_levels=[1, 2],
             ),
         ]
     ).get_support(task=ms.SearchTask(func=func, task_name=task_name))

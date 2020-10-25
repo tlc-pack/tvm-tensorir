@@ -160,6 +160,40 @@ def add_cache_write() -> SearchRule:
     return _ffi_api_search_rule.AddCacheWrite()  # pylint: disable=no-member
 
 
+def multi_level_tiling_and_fusion(
+    structure: str,
+    add_read_cache: bool,
+    add_write_cache: bool,
+    fusion_levels: List[int],
+) -> SearchRule:
+    """Create a rule that does multi-level tiling if there is sufficient amount of data reuse.
+    Optionally add read cache and write cache, do fusion if possible.
+
+    Parameters
+    ----------
+    structure : str
+        Structure of tiling. On CPU, recommended to use 'SSRSRS';
+        On GPU, recommended to use 'SSSRRSRS'
+    add_read_cache : bool
+        Add cache_read before the multi-level tiling
+    add_write_cache : bool
+        Add cache_write after the multi-level tiling
+    fusion_levels : List[int]
+        The possible tile levels that a single elementwise consumer is fused at
+
+    Returns
+    ----------
+    rule: SearchRule
+        The rule created
+    """
+    return _ffi_api_search_rule.MultiLevelTilingAndFusion(  # pylint: disable=no-member
+        structure,
+        add_read_cache,
+        add_write_cache,
+        fusion_levels,
+    )
+
+
 def multi_level_tiling(structure: str) -> SearchRule:
     """Create a rule that does multi-level tiling if there is sufficient amount of data reuse
 
