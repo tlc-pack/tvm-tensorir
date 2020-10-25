@@ -138,26 +138,20 @@ def register_rule(name) -> SearchRule:
     return wrap
 
 
-def always_inline() -> SearchRule:
-    """Create a rule that inlines all possible blocks
+def inline_pure_spatial(strict_mode: bool) -> SearchRule:
+    """Create a rule that inlines all possible pure spatial block
+
+    Parameters
+    ----------
+    strict_mode : bool
+        Requires the block to be strictly inlineable
 
     Returns
     ----------
     rule: SearchRule
         A search rule that does inlining
     """
-    return _ffi_api_search_rule.AlwaysInline()  # pylint: disable=no-member
-
-
-def add_cache_write() -> SearchRule:
-    """Create a rule that adds a cache write stage after multi-level tiling
-
-    Returns
-    ----------
-    rule: SearchRule
-        A search rule that does cache write
-    """
-    return _ffi_api_search_rule.AddCacheWrite()  # pylint: disable=no-member
+    return _ffi_api_search_rule.InlinePureSpatial(strict_mode)  # pylint: disable=no-member
 
 
 def multi_level_tiling_and_fusion(
@@ -192,40 +186,6 @@ def multi_level_tiling_and_fusion(
         add_write_cache,
         fusion_levels,
     )
-
-
-def multi_level_tiling(structure: str) -> SearchRule:
-    """Create a rule that does multi-level tiling if there is sufficient amount of data reuse
-
-    Parameters
-    ----------
-    structure: str
-        Structure of tiling. On CPU, recommended to use 'SSRSRS';
-        On GPU, recommended to use 'SSSRRSRS'
-
-    Returns
-    ----------
-    rule: SearchRule
-        A search rule that does multi-level tiling
-    """
-    return _ffi_api_search_rule.MultiLevelTiling(structure)  # pylint: disable=no-member
-
-
-def fusion(levels: List[int]) -> SearchRule:
-    """Create a rule that does fusion after multi-level tiling
-
-    Parameters
-    ----------
-    levels : List[int]
-        Possible fusion levels. For example, if level = 2, then we do "SSS" tiling
-        and reverse compute at on the second "S".
-
-    Returns
-    ----------
-    rule: SearchRule
-        A search rule that does fusion
-    """
-    return _ffi_api_search_rule.Fusion(levels)  # pylint: disable=no-member
 
 
 def mark_parallelize_outer(max_extent: int) -> SearchRule:

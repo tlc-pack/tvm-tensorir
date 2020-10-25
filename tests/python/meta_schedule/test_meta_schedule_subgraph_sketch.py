@@ -51,7 +51,7 @@ def _fix_sampling_tile_size(
 def _get_support(func: tir.PrimFunc, task_name: str):
     return ms.space.PostOrderApply(
         stages=[
-            ms.rule.always_inline(),
+            ms.rule.inline_pure_spatial(strict_mode=True),
             ms.rule.multi_level_tiling_and_fusion(
                 structure="SSRSRS",
                 add_read_cache=False,

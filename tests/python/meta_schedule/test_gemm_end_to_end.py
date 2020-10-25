@@ -335,7 +335,7 @@ def test_conv2d_relu_plus_one_post_order_apply():
         task=conv2d_relu_plus_one,
         space=ms.space.PostOrderApply(
             stages=[
-                ms.rule.always_inline(),
+                ms.rule.inline_pure_spatial(strict_mode=True),
                 ms.rule.multi_level_tiling_and_fusion(
                     structure="SSRSRS",
                     add_read_cache=False,
@@ -372,7 +372,7 @@ def test_matmul_evolutionary_step_by_step():
     )
     space = ms.space.PostOrderApply(
         stages=[
-            ms.rule.always_inline(),
+            ms.rule.inline_pure_spatial(strict_mode=True),
             ms.rule.multi_level_tiling_and_fusion(
                 structure="SSRSRS",
                 add_read_cache=False,
@@ -404,7 +404,7 @@ def test_matmul_evolutionary_end_to_end():
         task=ms.SearchTask(func=matmul),
         space=ms.space.PostOrderApply(
             stages=[
-                ms.rule.always_inline(),
+                ms.rule.inline_pure_spatial(strict_mode=True),
                 ms.rule.multi_level_tiling_and_fusion(
                     structure="SSRSRS",
                     add_read_cache=False,

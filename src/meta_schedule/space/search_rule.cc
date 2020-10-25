@@ -70,14 +70,17 @@ SearchRule SearchRuleCompose(const String& name, const Array<SearchRule>& rules)
 /********** Always-Inline **********/
 
 /*! \brief A rule that inlines all possible blocks */
-class RuleAlwaysInline {
+class RuleInlinePureSpatial {
  public:
+  /*! \brief Requires the pure spatial block to be strictly-inlineable */
+  bool strict_mode;
+
   /*! \brief Default constructor */
-  RuleAlwaysInline() = default;
+  explicit RuleInlinePureSpatial(bool strict_mode) : strict_mode(strict_mode) {}
 
   /*! \brief Rule application */
   TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
-                const TContextInfo& info) {
+                const TContextInfo& info) const {
     tir::StmtSRef block_sref = sch->Eval(block_rv);
     if (!IsSpatial(sch->sch, block_sref)) {
       return {{sch, info}};
@@ -85,7 +88,7 @@ class RuleAlwaysInline {
     if (IsOutputBlock(sch->sch, block_sref)) {
       return {{sch, info}};
     }
-    if (IsStrictlyInlineable(sch->sch, block_sref)) {
+    if (!strict_mode || IsStrictlyInlineable(sch->sch, block_sref)) {
       sch->ComputeInline(block_rv);
       return {{sch, info}};
     }
@@ -93,12 +96,13 @@ class RuleAlwaysInline {
   }
 };
 
-SearchRule AlwaysInline() {
-  auto f_apply = [](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
-    RuleAlwaysInline rule;
+SearchRule InlinePureSpatial(bool strict_mode) {
+  auto f_apply = [strict_mode](SearchTask task, Schedule sch, BlockRV block,
+                               TContextInfo info) -> TReturn {
+    RuleInlinePureSpatial rule(strict_mode);
     return rule.Apply(task, sch, block, info);
   };
-  return SearchRule("always_inline", f_apply);
+  return SearchRule("inline_pure_spatial", f_apply);
 }
 
 /********** Multi-Level-Tiling-And-Fusion **********/
@@ -315,7 +319,7 @@ SearchRule MultiLevelTilingAndFusion(String structure, bool add_read_cache, bool
                                          TContextInfo info) -> TReturn {
     return rule.Apply(task, sch, block, info);
   };
-  return SearchRule("always_inline", f_apply);
+  return SearchRule("multi_level_tiling_and_fusion", f_apply);
 }
 
 /********** MarkParallelizeOuter **********/
@@ -558,7 +562,8 @@ TVM_REGISTER_NODE_TYPE(SearchRuleNode);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRule").set_body_typed(Internal::SearchRuleNew);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleApply").set_body_typed(Internal::SearchRuleApply);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleCompose").set_body_typed(SearchRuleCompose);
-TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AlwaysInline").set_body_typed(AlwaysInline);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.InlinePureSpatial")
+    .set_body_typed(InlinePureSpatial);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTilingAndFusion")
     .set_body_typed(MultiLevelTilingAndFusion);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkParallelizeOuter")

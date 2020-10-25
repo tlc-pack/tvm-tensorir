@@ -100,10 +100,11 @@ TVM_DLL SearchRule SearchRuleCompose(const String& name, const Array<SearchRule>
 /********** Built-in SearchRules **********/
 
 /*!
- * \brief Create a rule that inlines all possible blocks
+ * \brief Create a rule that inlines all possible pure spatial block
+ * \param strict_mode Requires the block to be strictly inlineable
  * \return The rule created
  */
-TVM_DLL SearchRule AlwaysInline();
+TVM_DLL SearchRule InlinePureSpatial(bool strict_mode);
 
 /*!
  * \brief Create a rule that does multi-level tiling if there is sufficient amount of data reuse.
