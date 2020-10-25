@@ -100,28 +100,23 @@ TVM_DLL SearchRule SearchRuleCompose(const String& name, const Array<SearchRule>
 /********** Built-in SearchRules **********/
 
 /*!
- * \brief Create a rule that inlines all possible blocks
+ * \brief Create a rule that inlines all possible pure spatial block
+ * \param strict_mode Requires the block to be strictly inlineable
  * \return The rule created
  */
-TVM_DLL SearchRule AlwaysInline();
+TVM_DLL SearchRule InlinePureSpatial(bool strict_mode);
 
 /*!
- * \brief Create a rule that adds a cache write stage after multi-level tiling
+ * \brief Create a rule that does multi-level tiling if there is sufficient amount of data reuse.
+ * Optionally add read cache and write cache, do fusion if possible
+ * \param structure The tiling structure
+ * \param add_read_cache Add cache_read before the multi-level tiling
+ * \param add_write_cache Add cache_write after the multi-level tiling
+ * \param fusion_levels The possible tile levels that a single elementwise consumer is fused at
  * \return The rule created
  */
-TVM_DLL SearchRule AddCacheWrite();
-
-/*!
- * \brief Create a rule that does multi-level tiling if there is sufficient amount of data reuse
- * \return The rule created
- */
-TVM_DLL SearchRule MultiLevelTiling(String structure);
-
-/*!
- * \brief Fuse after multi-level-tiling
- * \return The rule created
- */
-TVM_DLL SearchRule Fusion(Array<Integer> levels);
+TVM_DLL SearchRule MultiLevelTilingAndFusion(String structure, bool add_read_cache,
+                                             bool add_write_cache, Array<Integer> fusion_levels);
 
 /*!
  * \brief A rule that parallelizes the outer loops

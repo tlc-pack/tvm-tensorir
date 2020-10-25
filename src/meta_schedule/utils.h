@@ -210,6 +210,21 @@ inline std::vector<T> ConcatArray(const std::vector<std::vector<T> >& source) {
 }
 
 /*!
+ * \brief Concatenate the nested vector into a flattened vector
+ * \tparam T The element type of the nested vector
+ * \param source The nested vector
+ * \return The flattened vector
+ */
+template <class T>
+inline Array<T> ConcatArray(const std::vector<Array<T> >& source) {
+  Array<T> result;
+  for (const Array<T>& item : source) {
+    result.insert(result.end(), item.begin(), item.end());
+  }
+  return result;
+}
+
+/*!
  * \brief Compare two domains and check if they are equal
  * \param lhs One domain
  * \param rhs The other domain
