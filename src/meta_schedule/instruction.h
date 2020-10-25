@@ -399,6 +399,61 @@ struct GetLeafBlocksAttrs : public InstAttrsNode {
 
 /**************** Scheduling Primitives ****************/
 
+struct MarkLoopTypeAttrs : public InstAttrsNode {
+  /*! \brief The loop annotation */
+  String mark;
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param loops The loops to be mark
+   * \param range The range of the loops to be marked
+   * \param mark The annotation
+   * \return The instruction created
+   */
+  static Instruction MakeInst(const Array<LoopRV>& loops, const Range& range, const String& mark);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
+
+  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("mark", &mark); }
+
+  static constexpr const char* _type_key = "meta_schedule.attrs.MarkLoopTypeAttrs";
+  TVM_DECLARE_FINAL_OBJECT_INFO(MarkLoopTypeAttrs, InstAttrsNode);
+};
+
+struct MarkBlockTypeAttrs : public InstAttrsNode {
+  /*! \brief The loop annotation */
+  String mark;
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param block The block to be marked
+   * \param mark The annotation
+   * \return The instruction created
+   */
+  static Instruction MakeInst(const BlockRV& block, const String& mark);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
+
+  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("mark", &mark); }
+
+  static constexpr const char* _type_key = "meta_schedule.attrs.MarkBlockTypeAttrs";
+  TVM_DECLARE_FINAL_OBJECT_INFO(MarkBlockTypeAttrs, InstAttrsNode);
+};
+
 struct FuseAttrs : public InstAttrsNode {
   /*!
    * \brief Create instruction given the inputs and outputs
@@ -421,54 +476,6 @@ struct FuseAttrs : public InstAttrsNode {
 
   static constexpr const char* _type_key = "meta_schedule.attrs.FuseAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(FuseAttrs, InstAttrsNode);
-};
-
-struct MarkParallelAttrs : public InstAttrsNode {
-  /*!
-   * \brief Create instruction given the inputs and outputs
-   * \param loops The loops to be parallelized
-   * \param range The range of the loops to be marked
-   * \return The instruction created
-   */
-  static Instruction MakeInst(const Array<LoopRV>& loops, const Range& range);
-
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void VisitAttrs(tvm::AttrVisitor* v) {}
-
-  static constexpr const char* _type_key = "meta_schedule.attrs.MarkParallelAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(MarkParallelAttrs, InstAttrsNode);
-};
-
-struct MarkVectorizeAttrs : public InstAttrsNode {
-  /*!
-   * \brief Create instruction given the inputs and outputs
-   * \param loops The loop to be parallelized
-   * \param range The range of the loops to be marked
-   * \return The instruction created
-   */
-  static Instruction MakeInst(const Array<LoopRV>& loops, const Range& range);
-
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void VisitAttrs(tvm::AttrVisitor* v) {}
-
-  static constexpr const char* _type_key = "meta_schedule.attrs.MarkVectorizeAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(MarkVectorizeAttrs, InstAttrsNode);
 };
 
 /*! \brief Attrs of the instruction that applies loop splitting */
