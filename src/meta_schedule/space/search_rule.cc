@@ -70,14 +70,17 @@ SearchRule SearchRuleCompose(const String& name, const Array<SearchRule>& rules)
 /********** Always-Inline **********/
 
 /*! \brief A rule that inlines all possible blocks */
-class RuleAlwaysInline {
+class RuleInlinePureSpatial {
  public:
+  /*! \brief Requires the pure spatial block to be strictly-inlineable */
+  bool strict_mode;
+
   /*! \brief Default constructor */
-  RuleAlwaysInline() = default;
+  explicit RuleInlinePureSpatial(bool strict_mode) : strict_mode(strict_mode) {}
 
   /*! \brief Rule application */
   TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
-                const TContextInfo& info) {
+                const TContextInfo& info) const {
     tir::StmtSRef block_sref = sch->Eval(block_rv);
     if (!IsSpatial(sch->sch, block_sref)) {
       return {{sch, info}};
@@ -85,7 +88,7 @@ class RuleAlwaysInline {
     if (IsOutputBlock(sch->sch, block_sref)) {
       return {{sch, info}};
     }
-    if (IsStrictlyInlineable(sch->sch, block_sref)) {
+    if (!strict_mode || IsStrictlyInlineable(sch->sch, block_sref)) {
       sch->ComputeInline(block_rv);
       return {{sch, info}};
     }
@@ -93,201 +96,230 @@ class RuleAlwaysInline {
   }
 };
 
-SearchRule AlwaysInline() {
-  auto f_apply = [](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
-    RuleAlwaysInline rule;
+SearchRule InlinePureSpatial(bool strict_mode) {
+  auto f_apply = [strict_mode](SearchTask task, Schedule sch, BlockRV block,
+                               TContextInfo info) -> TReturn {
+    RuleInlinePureSpatial rule(strict_mode);
     return rule.Apply(task, sch, block, info);
   };
-  return SearchRule("always_inline", f_apply);
+  return SearchRule("inline_pure_spatial", f_apply);
 }
 
-/********** Add-Cache-Write **********/
+/********** Multi-Level-Tiling-And-Fusion **********/
 
-/*! \brief Necessary information shared across tiling stages */
-class TilingContextObj : public Object {
+class RuleMultiLevelTilingAndFusion {
  public:
-  /*! \brief The producer block to be multi-level tiled*/
-  BlockRV producer;
-  /*! \brief The consumer block that is fused into the producer block  */
-  Optional<BlockRV> consumer;
-  /*! \brief If the consumer a cache_write stage, which fusion is a must */
-  bool is_consumer_cache_write;
-  /*! \brief Number of spatial loops in the producer */
-  mutable int n_spatial = -1;
-  /*! \brief The order of loops on top of the producer after multi-level tiling */
-  mutable std::vector<LoopRV> after_axes;
+  String structure;
+  bool add_read_cache;
+  bool add_write_cache;
+  Array<Integer> fusion_levels;
+  std::vector<int> s_idx;
+  std::vector<int> r_idx;
 
-  static Map<String, ObjectRef> New(BlockRV producer, Optional<BlockRV> consumer,
-                                    bool is_consumer_cache_write) {
-    ObjectPtr<TilingContextObj> n = make_object<TilingContextObj>();
-    n->producer = std::move(producer);
-    n->consumer = std::move(consumer);
-    n->is_consumer_cache_write = is_consumer_cache_write;
-    return {{"tiling", ObjectRef(n)}};
-  }
-
-  static constexpr const char* _type_key = "meta_schedule.TilingContextObj";
-  TVM_DECLARE_FINAL_OBJECT_INFO(TilingContextObj, Object);
-};
-
-/*! \brief A rule that adds a cache write stage after multi-level tiling */
-class RuleAddCacheWrite {
- public:
-  /*! \brief Default constructor */
-  RuleAddCacheWrite() = default;
-
-  /*! \brief Rule application */
-  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
-                const TContextInfo& info) {
-    CHECK(!info.defined());
-    tir::StmtSRef block_sref = sch->Eval(block_rv);
-    // The block does not need multi-level-tiling, then do not add cache write after it
-    if (!NeedsMultiLevelTiling(sch->sch, block_sref)) {
-      return {{sch, NullOpt}};
-    }
-    // If the block already has an elementwise matched consumer, do not add cache write after it
-    if (Optional<BlockRV> opt_consumer_rv = sch->GetOnlyConsumer(block_rv)) {
-      BlockRV consumer_rv = opt_consumer_rv.value();
-      tir::StmtSRef consumer_sref = sch->Eval(consumer_rv);
-      if (IsSpatial(sch->sch, block_sref) || IsSpatial(sch->sch, consumer_sref)) {
-        if (IsElementWiseMatch(sch->sch, block_sref, consumer_sref)) {
-          // It has an elementwise only consumer
-          return {{sch, TilingContextObj::New(block_rv, consumer_rv, false)}};
+  explicit RuleMultiLevelTilingAndFusion(String structure, bool add_read_cache,
+                                         bool add_write_cache, Array<Integer> fusion_levels)
+      : structure(structure),
+        add_read_cache(add_read_cache),
+        add_write_cache(add_write_cache),
+        fusion_levels(fusion_levels),
+        s_idx(),
+        r_idx() {
+    // Process `structure` and set `s_idx` and `r_idx` properly
+    int structure_len = structure.length();
+    int num_s_in_prefix = structure_len;
+    for (int i = 0; i < structure_len; ++i) {
+      char c = structure->data[i];
+      if (c == 'S') {
+        s_idx.push_back(i);
+      } else if (c == 'R') {
+        if (r_idx.empty()) {
+          num_s_in_prefix = i;
         }
+        r_idx.push_back(i);
+      } else {
+        LOG(FATAL) << "ValueError: Invalid tiling structure, only accepts string of 'S's and 'R's, "
+                      "but gets: "
+                   << structure;
       }
     }
-    // Do nothing, or add a cache write
-    Schedule new_sch = sch->Copy(sch->sampler.ForkSeed());
-    BlockRV producer = new_sch->CacheWrite(block_rv, "local");
-    return {// Case 0: do nothing
-            {sch, TilingContextObj::New(block_rv, NullOpt, false)},
-            // Case 1: add cache write
-            {new_sch, TilingContextObj::New(producer, block_rv, true)}};
-  }
-};
-
-SearchRule AddCacheWrite() {
-  auto f_apply = [](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
-    RuleAddCacheWrite rule;
-    return rule.Apply(task, sch, block, info);
-  };
-  return SearchRule("multi_level_tiling", f_apply);
-}
-
-/********** Multi-Level-Tiling **********/
-
-/*! \brief A rule that does multi-level tiling if there is sufficient amount of data reuse */
-class RuleMultiLevelTiling {
- public:
-  /*! \brief The structure of tiling, e.g. "SSRSRS" on CPU */
-  String structure;
-
-  /*!
-   * \brief Constructor
-   * \param structure The structure of tiling
-   */
-  explicit RuleMultiLevelTiling(String structure) : structure(std::move(structure)) {}
-
-  /*! \brief Rule application */
-  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& _block_rv,
-                const TContextInfo& info) {
-    if (!info.defined()) {
-      return {{sch, NullOpt}};
+    // Process `fusion_levels`
+    std::unordered_set<int> used_levels;
+    for (const Integer& _level : fusion_levels) {
+      int level = _level;
+      CHECK_GE(level, 1) << "ValueError: The fusion level must be >= 1, but gets " << level;
+      CHECK_LE(level, num_s_in_prefix)
+          << "ValueError: The fusion level must be <= "
+             "the number of prefix spatial tiles, but gets fusion_level "
+          << level << " and number of prefix spatial tiles " << num_s_in_prefix;
+      CHECK(!used_levels.count(level))
+          << "ValueError: Duplicate fusion levels are not allowed, but gets multiple " << level;
+      used_levels.insert(level);
     }
-    const auto* context = info.value().at("tiling").as<TilingContextObj>();
-    CHECK(context);
-    // Find 'S' in the format, i.e. spatial levels
-    std::vector<int> s_idx = FindCharPos(structure, 'S');
-    // Find 'R' in the format, i.e. reduction levels
-    std::vector<int> r_idx = FindCharPos(structure, 'R');
-    // Concat of `order` is the reordering order
-    std::vector<std::vector<LoopRV>> order(structure.size());
+  }
+
+  struct State {
+    Schedule sch;
+    BlockRV block_rv;
+    Optional<BlockRV> only_consumer;
+    bool only_consumer_is_cache_write;
+    Array<Array<LoopRV>> tiles;
+
+    explicit State(Schedule sch, BlockRV block_rv, Optional<BlockRV> only_consumer = NullOpt,
+                   bool only_consumer_is_cache_write = false, Array<Array<LoopRV>> tiles = {})
+        : sch(std::move(sch)),
+          block_rv(std::move(block_rv)),
+          only_consumer(std::move(only_consumer)),
+          only_consumer_is_cache_write(only_consumer_is_cache_write),
+          tiles(std::move(tiles)) {}
+  };
+
+  std::vector<State> AddWriteCache(State state) const {
+    Schedule sch = state.sch;
+    BlockRV block_rv = state.block_rv;
+    tir::StmtSRef block_sref = sch->Eval(block_rv);
+    // Find the only-consumer for the block
+    // If the only-consumer can be fused, then do not add any write cache
+    if (Optional<BlockRV> opt_consumer_rv = sch->GetOnlyConsumer(state.block_rv)) {
+      BlockRV consumer_rv = opt_consumer_rv.value();
+      tir::StmtSRef consumer_sref = sch->Eval(consumer_rv);
+      // Check if it can be directly fused
+      if ((IsSpatial(sch->sch, block_sref) || IsSpatial(sch->sch, consumer_sref)) &&
+          IsElementWiseMatch(sch->sch, block_sref, consumer_sref)) {
+        state.only_consumer = consumer_rv;
+        state.only_consumer_is_cache_write = false;
+        return {state};
+      }
+    }
+    std::vector<State> result;
+    // Case 0. Do not add write cache, then fusion won't happen later either
+    result.push_back(state);
+    // Case 1. Add a write cache
+    if (add_write_cache) {
+      // Fork a new schedule
+      state.sch = sch->Copy(sch->sampler.ForkSeed());
+      // The original block to tiled
+      state.block_rv = state.sch->CacheWrite(block_rv, "local");
+      // The cache write block
+      state.only_consumer = block_rv;
+      state.only_consumer_is_cache_write = true;
+      result.push_back(std::move(state));
+    }
+    return result;
+  }
+
+  State DoTiling(State state) const {
+    Schedule& sch = state.sch;
+    BlockRV& block_rv = state.block_rv;
+    // Concat of `tiles` is the reordering order
+    std::vector<Array<LoopRV>> tiles(structure.size());
     // Get block vars and loop axes
-    Array<LoopRV> axes = sch->GetAxes(context->producer);
-    Array<Integer> iter_types = GetBlockVarTypes(sch->sch, sch->Eval(context->producer));
+    Array<Integer> iter_types = GetBlockVarTypes(sch->sch, sch->Eval(block_rv));
+    Array<LoopRV> axes = sch->GetAxes(block_rv);
     CHECK_EQ(axes.size(), iter_types.size());
-    int n = axes.size();
-    int& n_spatial = context->n_spatial = 0;
-    for (int i = 0; i < n; ++i) {
-      std::vector<int>* idx = nullptr;
+    // For each loop axis, tile it
+    for (int i = 0, n = axes.size(); i < n; ++i) {
+      const std::vector<int>* idx = nullptr;
       if (iter_types[i] == tir::IterVarType::kDataPar) {
         idx = &s_idx;
-        ++n_spatial;
       } else if (iter_types[i] == tir::IterVarType::kCommReduce) {
         idx = &r_idx;
       } else {
         continue;
       }
+      // Number of splits to be made
       int n_tiles = idx->size();
+      // Do the split
       Array<tir::Var> factors = sch->SamplePerfectTile(/*n=*/n_tiles, /*loop=*/axes[i]);
       Array<LoopRV> splits =
           sch->Split(/*loop=*/axes[i], /*factors=*/{factors.begin(), factors.end()});
+      // Put every tile to its slot
       for (int j = 0; j < n_tiles; ++j) {
-        order[idx->at(j)].push_back(splits[j]);
+        tiles[idx->at(j)].push_back(splits[j]);
       }
     }
-    context->after_axes = ConcatArray(order);
-    sch->Reorder(context->after_axes);
-    return {{sch, info}};
+    sch->Reorder(ConcatArray(tiles));
+    state.tiles = Array<Array<LoopRV>>{tiles.begin(), tiles.end()};
+    return state;
   }
-};
 
-SearchRule MultiLevelTiling(String structure) {
-  auto f_apply = [structure{std::move(structure)}](SearchTask task, Schedule sch, BlockRV block,
-                                                   TContextInfo info) -> TReturn {
-    RuleMultiLevelTiling rule(structure);
-    return rule.Apply(task, sch, block, info);
-  };
-  return SearchRule("multi_level_tiling", f_apply);
-}
+  std::vector<State> FuseWithElementwiseConsumer(State state) const {
+    // If the only-consumer does not exist, or is not elementwise, then do not do fusion
+    if (!state.only_consumer.defined()) {
+      return {state};
+    }
+    std::vector<State> result;
+    // Special case.
+    // `cache_write` must be fused at some level, otherwise it has no benefit
+    // On the other hand, If the only consumer is not cache_write, then we may choose not to fuse
+    if (!state.only_consumer_is_cache_write) {
+      result.push_back(state);
+    }
+    Schedule sch = state.sch;
+    BlockRV consumer = state.only_consumer.value();
+    for (const Integer& _level : fusion_levels) {
+      // Enumerate the level of tile to be fused at
+      int level = _level;
+      const LoopRV& loop = state.tiles[level - 1].back();
+      State new_state = state;
+      new_state.sch = state.sch->Copy(sch->sampler.ForkSeed());
+      new_state.sch->ReverseComputeAt(consumer, loop);
+      result.push_back(new_state);
+    }
+    return result;
+  }
 
-/********** Fusion **********/
-
-/*! \brief A rule that does fusion after multi-level tiling */
-class RuleFusion {
- public:
-  /*! \brief Candidate levels of fusion */
-  Array<Integer> levels;
-
-  /*!
-   * \brief Constructor
-   * \param levels Candidate levels of fusion
-   */
-  explicit RuleFusion(Array<Integer> levels) : levels(std::move(levels)) {}
-
-  /*! \brief Rule application */
-  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& _block_rv,
-                const TContextInfo& info) {
-    if (!info.defined()) {
+  TReturn Apply(const SearchTask& task, const Schedule& sch, BlockRV block_rv,
+                const TContextInfo& _info) const {
+    // If multi-level-tiling is not required
+    if (!NeedsMultiLevelTiling(sch->sch, sch->Eval(block_rv))) {
       return {{sch, NullOpt}};
     }
-    const auto* context = info.value().at("tiling").as<TilingContextObj>();
-    CHECK(context);
-    if (!context->consumer.defined()) {
-      return {{sch, NullOpt}};
+    // States
+    std::vector<State> states{State(sch, block_rv)};
+    // Add write cache
+    {
+      std::vector<State> next_states;
+      for (State& state : states) {
+        std::vector<State> news = AddWriteCache(std::move(state));
+        next_states.insert(next_states.end(), std::make_move_iterator(news.begin()),
+                           std::make_move_iterator(news.end()));
+      }
+      states.swap(next_states);
+    }
+    // Do the multi-level tiling
+    {
+      std::vector<State> next_states;
+      for (State& state : states) {
+        next_states.push_back(DoTiling(std::move(state)));
+      }
+      states.swap(next_states);
+    }
+    // Fuse with elementwise consumer
+    {
+      std::vector<State> next_states;
+      for (State& state : states) {
+        std::vector<State> news = FuseWithElementwiseConsumer(std::move(state));
+        next_states.insert(next_states.end(), std::make_move_iterator(news.begin()),
+                           std::make_move_iterator(news.end()));
+      }
+      states.swap(next_states);
     }
     TReturn ret;
-    if (!context->is_consumer_cache_write) {
-      ret.Set(sch, NullOpt);
-    }
-    for (const Integer& _level : levels) {
-      int level = _level;
-      int loop_idx = level * context->n_spatial - 1;
-      Schedule new_sch = sch->Copy(sch->sampler.ForkSeed());
-      new_sch->ReverseComputeAt(context->consumer.value(), context->after_axes.at(loop_idx));
-      ret.Set(new_sch, NullOpt);
+    for (const State& state : states) {
+      ret.Set(state.sch, NullOpt);
     }
     return ret;
   }
 };
 
-SearchRule Fusion(Array<Integer> levels) {
-  auto f_apply = [levels{std::move(levels)}](SearchTask task, Schedule sch, BlockRV block,
-                                             TContextInfo info) -> TReturn {
-    RuleFusion rule(levels);
+SearchRule MultiLevelTilingAndFusion(String structure, bool add_read_cache, bool add_write_cache,
+                                     Array<Integer> fusion_levels) {
+  RuleMultiLevelTilingAndFusion rule(structure, add_read_cache, add_write_cache, fusion_levels);
+  auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch, BlockRV block,
+                                         TContextInfo info) -> TReturn {
     return rule.Apply(task, sch, block, info);
   };
-  return SearchRule("fusion", f_apply);
+  return SearchRule("multi_level_tiling_and_fusion", f_apply);
 }
 
 /********** MarkParallelizeOuter **********/
@@ -530,10 +562,10 @@ TVM_REGISTER_NODE_TYPE(SearchRuleNode);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRule").set_body_typed(Internal::SearchRuleNew);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleApply").set_body_typed(Internal::SearchRuleApply);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleCompose").set_body_typed(SearchRuleCompose);
-TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AlwaysInline").set_body_typed(AlwaysInline);
-TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AddCacheWrite").set_body_typed(AddCacheWrite);
-TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTiling").set_body_typed(MultiLevelTiling);
-TVM_REGISTER_GLOBAL("meta_schedule.search_rule.Fusion").set_body_typed(Fusion);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.InlinePureSpatial")
+    .set_body_typed(InlinePureSpatial);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTilingAndFusion")
+    .set_body_typed(MultiLevelTilingAndFusion);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkParallelizeOuter")
     .set_body_typed(MarkParallelizeOuter);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkVectorizeInner")
