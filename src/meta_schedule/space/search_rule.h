@@ -112,11 +112,13 @@ TVM_DLL SearchRule InlinePureSpatial(bool strict_mode);
  * \param structure The tiling structure
  * \param add_read_cache Add cache_read before the multi-level tiling
  * \param add_write_cache Add cache_write after the multi-level tiling
+ * \param must_add_write_cache Must add cache_write after the multi-level tiling
  * \param fusion_levels The possible tile levels that a single elementwise consumer is fused at
  * \return The rule created
  */
 TVM_DLL SearchRule MultiLevelTilingAndFusion(String structure, bool add_read_cache,
-                                             bool add_write_cache, Array<Integer> fusion_levels);
+                                             bool add_write_cache, bool must_add_write_cache,
+                                             Array<Integer> fusion_levels);
 
 /*!
  * \brief A rule that parallelizes the outer loops

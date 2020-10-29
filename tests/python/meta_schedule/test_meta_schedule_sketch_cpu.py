@@ -56,6 +56,7 @@ def _get_support(func: tir.PrimFunc, task_name: str):
                 structure="SSRSRS",
                 add_read_cache=False,
                 add_write_cache=True,
+                must_add_write_cache=False,
                 fusion_levels=[1, 2],
             ),
         ]

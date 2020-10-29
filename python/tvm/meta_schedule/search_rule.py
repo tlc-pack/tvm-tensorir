@@ -158,6 +158,7 @@ def multi_level_tiling_and_fusion(
     structure: str,
     add_read_cache: bool,
     add_write_cache: bool,
+    must_add_write_cache: bool,
     fusion_levels: List[int],
 ) -> SearchRule:
     """Create a rule that does multi-level tiling if there is sufficient amount of data reuse.
@@ -172,6 +173,8 @@ def multi_level_tiling_and_fusion(
         Add cache_read before the multi-level tiling
     add_write_cache : bool
         Add cache_write after the multi-level tiling
+    must_add_write_cache : bool
+        Must add cache_write after the multi-level tiling
     fusion_levels : List[int]
         The possible tile levels that a single elementwise consumer is fused at
 
@@ -184,6 +187,7 @@ def multi_level_tiling_and_fusion(
         structure,
         add_read_cache,
         add_write_cache,
+        must_add_write_cache,
         fusion_levels,
     )
 
