@@ -224,6 +224,12 @@ class ScheduleNode : public Object {
    * \param block The block to be moved
    * \param loop The loop to be moved to
    */
+  void ComputeAt(const BlockRV& block, const LoopRV& loop);
+  /*!
+   * \brief Move the block under the loop and regenerate the loops to cover the producing region.
+   * \param block The block to be moved
+   * \param loop The loop to be moved to
+   */
   void ReverseComputeAt(const BlockRV& block, const LoopRV& loop);
   /*!
    * \brief Apply the instruction compute_inline

@@ -145,6 +145,10 @@ class RuleMultiLevelTilingAndFusion {
                    << structure;
       }
     }
+    CHECK(!s_idx.empty())
+        << "ValueError: Invalid tiling structure, cannot find any 'S' in the format";
+    CHECK(!r_idx.empty())
+        << "ValueError: Invalid tiling structure, cannot find any 'R' in the format";
     // Process `fusion_levels`
     std::unordered_set<int> used_levels;
     for (const Integer& _level : fusion_levels) {
@@ -212,6 +216,32 @@ class RuleMultiLevelTilingAndFusion {
       result.push_back(std::move(state));
     }
     return result;
+  }
+
+  State AddReadCache(State state) const {
+    if (!must_cache_read) {
+      return state;
+    }
+    Schedule& sch = state.sch;
+    BlockRV& block_rv = state.block_rv;
+    std::unordered_map<tir::Buffer, BufferRV, ObjectPtrHash, ObjectPtrEqual> buffer_map;
+    for (const BufferRV& buffer : sch->GetReadBuffers(block_rv)) {
+      buffer_map[sch->Eval(buffer)] = buffer;
+    }
+    for (const BufferRV& buffer : sch->GetWriteBuffers(block_rv)) {
+      tir::Buffer tir_buffer = sch->Eval(buffer);
+      if (buffer_map.count(tir_buffer)) {
+        buffer_map.erase(tir_buffer);
+      }
+    }
+    for (const auto& kv : buffer_map) {
+      BufferRV buffer = kv.second;
+      BlockRV cache_read_block = sch->CacheRead(buffer, "shared");
+      const Array<LoopRV>& r_tiles = state.tiles[r_idx.front()];
+      CHECK(!r_tiles.empty()) << "ValueError: Cannot find any reduction loop in the block";
+      sch->ComputeAt(cache_read_block, r_tiles.back());
+    }
+    return state;
   }
 
   State DoTiling(State state) const {
@@ -287,9 +317,10 @@ class RuleMultiLevelTilingAndFusion {
     {
       std::vector<State> next_states;
       for (State& state : states) {
-        std::vector<State> news = AddWriteCache(std::move(state));
-        next_states.insert(next_states.end(), std::make_move_iterator(news.begin()),
-                           std::make_move_iterator(news.end()));
+        std::vector<State> new_states = AddWriteCache(std::move(state));
+        next_states.insert(next_states.end(),                            //
+                           std::make_move_iterator(new_states.begin()),  //
+                           std::make_move_iterator(new_states.end()));
       }
       states.swap(next_states);
     }
@@ -301,13 +332,22 @@ class RuleMultiLevelTilingAndFusion {
       }
       states.swap(next_states);
     }
+    // Add read cache
+    {
+      std::vector<State> next_states;
+      for (State& state : states) {
+        next_states.push_back(AddReadCache(std::move(state)));
+      }
+      states.swap(next_states);
+    }
     // Fuse with elementwise consumer
     {
       std::vector<State> next_states;
       for (State& state : states) {
-        std::vector<State> news = FuseWithElementwiseConsumer(std::move(state));
-        next_states.insert(next_states.end(), std::make_move_iterator(news.begin()),
-                           std::make_move_iterator(news.end()));
+        std::vector<State> new_states = FuseWithElementwiseConsumer(std::move(state));
+        next_states.insert(next_states.end(),                            //
+                           std::make_move_iterator(new_states.begin()),  //
+                           std::make_move_iterator(new_states.end()));
       }
       states.swap(next_states);
     }
