@@ -599,6 +599,31 @@ struct ReorderAttrs : public InstAttrsNode {
 };
 
 /*! \brief Attrs of the instruction that applies reverse_compute_at */
+struct ComputeAtAttrs : public InstAttrsNode {
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param block The block to be moved
+   * \param loop The loop to be moved to
+   * \return The instruction created
+   */
+  static Instruction MakeInst(const BlockRV& block, const LoopRV& loop);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
+  static constexpr const char* _type_key = "meta_schedule.attrs.ComputeAtAttrs";
+  TVM_DECLARE_FINAL_OBJECT_INFO(ComputeAtAttrs, InstAttrsNode);
+};
+
+/*! \brief Attrs of the instruction that applies reverse_compute_at */
 struct ReverseComputeAtAttrs : public InstAttrsNode {
   /*!
    * \brief Create instruction given the inputs and outputs

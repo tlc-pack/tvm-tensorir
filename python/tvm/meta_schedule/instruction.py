@@ -33,6 +33,7 @@ class BlockRV(Object):
 class LoopRV(Object):
     """ A random variable that evaluates to a TIR loop axis """
 
+
 @register_object("meta_schedule.BufferRV")
 class BufferRV(Object):
     """ A random variable that evaluates to a TIR buffer """
@@ -164,6 +165,11 @@ class SplitAttrs(InstAttrs):
 @register_object("meta_schedule.attrs.ReorderAttrs")
 class ReorderAttrs(InstAttrs):
     """Attrs of the instruction that applies loop reordering"""
+
+
+@register_object("meta_schedule.attrs.ComputeAtAttrs")
+class ComputeAtAttrs(InstAttrs):
+    """Attrs of the instruction that applies compute_at"""
 
 
 @register_object("meta_schedule.attrs.ReverseComputeAtAttrs")
