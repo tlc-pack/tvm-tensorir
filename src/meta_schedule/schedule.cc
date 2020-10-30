@@ -641,6 +641,15 @@ void ScheduleNode::Reorder(const Array<LoopRV>& after_axes) {
   this->trace.push_back(ReorderAttrs::MakeInst(after_axes));
 }
 
+void ScheduleNode::ComputeAt(const BlockRV& block, const LoopRV& loop) {
+  // Find the inputs to TIR
+  tir::StmtSRef block_sref = this->Eval(block);
+  tir::StmtSRef loop_sref = this->Eval(loop);
+  this->sch->compute_at(block_sref, loop_sref, true);
+  // Put the instruction in the trace
+  this->trace.push_back(ComputeAtAttrs::MakeInst(block, loop));
+}
+
 void ScheduleNode::ReverseComputeAt(const BlockRV& block, const LoopRV& loop) {
   // Find the inputs to TIR
   tir::StmtSRef block_sref = this->Eval(block);
@@ -946,6 +955,11 @@ struct Internal {
    */
   static void Reorder(Schedule sch, Array<LoopRV> after_axes) { return sch->Reorder(after_axes); }
   /*!
+   * \brief FFI function, corresponds to ScheduleNode::ComputeAt
+   * \sa ScheduleNode::ComputeAt
+   */
+  static void ComputeAt(Schedule sch, BlockRV block, LoopRV loop) { sch->ComputeAt(block, loop); }
+  /*!
    * \brief FFI function, corresponds to ScheduleNode::ReverseComputeAt
    * \sa ScheduleNode::ReverseComputeAt
    */
@@ -1038,6 +1052,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkBlockType").set_body_typed(Intern
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleFuse").set_body_typed(Internal::Fuse);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSplit").set_body_typed(Internal::Split);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReorder").set_body_typed(Internal::Reorder);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleComputeAt").set_body_typed(Internal::ComputeAt);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReverseComputeAt")
     .set_body_typed(Internal::ReverseComputeAt);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleComputeInline").set_body_typed(Internal::ComputeInline);
