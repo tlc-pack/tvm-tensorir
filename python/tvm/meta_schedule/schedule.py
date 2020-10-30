@@ -360,6 +360,18 @@ class Schedule(Object):
         """
         _ffi_api.ScheduleReorder(self, after_axes)  # pylint: disable=no-member
 
+    def compute_at(self, block: BlockRV, loop: LoopRV) -> None:
+        """Move the block under the loop and regenerate the loops to cover the producing region.
+
+        Parameters
+        ----------
+        block : BlockRV
+            block The block to be moved
+        loop : LoopRV
+            loop The loop to be moved to
+        """
+        _ffi_api.ScheduleComputeAt(self, block, loop)  # pylint: disable=no-member
+
     def reverse_compute_at(self, block: BlockRV, loop: LoopRV) -> None:
         """Move the block under the loop and regenerate the loops to cover the producing region.
 
