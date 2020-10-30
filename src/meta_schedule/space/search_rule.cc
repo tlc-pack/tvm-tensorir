@@ -110,17 +110,20 @@ SearchRule InlinePureSpatial(bool strict_mode) {
 class RuleMultiLevelTilingAndFusion {
  public:
   String structure;
-  bool add_read_cache;
-  bool add_write_cache;
+  bool must_cache_read;
+  bool can_cache_write;
+  bool must_cache_write;
   Array<Integer> fusion_levels;
   std::vector<int> s_idx;
   std::vector<int> r_idx;
 
-  explicit RuleMultiLevelTilingAndFusion(String structure, bool add_read_cache,
-                                         bool add_write_cache, Array<Integer> fusion_levels)
+  explicit RuleMultiLevelTilingAndFusion(String structure, bool must_cache_read,
+                                         bool can_cache_write, bool must_cache_write,
+                                         Array<Integer> fusion_levels)
       : structure(structure),
-        add_read_cache(add_read_cache),
-        add_write_cache(add_write_cache),
+        must_cache_read(must_cache_read),
+        can_cache_write(can_cache_write),
+        must_cache_write(must_cache_write),
         fusion_levels(fusion_levels),
         s_idx(),
         r_idx() {
@@ -192,13 +195,17 @@ class RuleMultiLevelTilingAndFusion {
     }
     std::vector<State> result;
     // Case 0. Do not add write cache, then fusion won't happen later either
-    result.push_back(state);
+    if (!must_cache_write) {
+      result.push_back(state);
+    }
     // Case 1. Add a write cache
-    if (add_write_cache) {
+    if (can_cache_write) {
       // Fork a new schedule
       state.sch = sch->Copy(sch->sampler.ForkSeed());
       // The original block to tiled
-      state.block_rv = state.sch->CacheWrite(block_rv, "local");
+      Array<BufferRV> buffers = state.sch->GetWriteBuffers(block_rv);
+      CHECK_EQ(buffers.size(), 1);
+      state.block_rv = state.sch->CacheWrite(buffers[0], "local");
       // The cache write block
       state.only_consumer = block_rv;
       state.only_consumer_is_cache_write = true;
@@ -312,9 +319,14 @@ class RuleMultiLevelTilingAndFusion {
   }
 };
 
-SearchRule MultiLevelTilingAndFusion(String structure, bool add_read_cache, bool add_write_cache,
-                                     Array<Integer> fusion_levels) {
-  RuleMultiLevelTilingAndFusion rule(structure, add_read_cache, add_write_cache, fusion_levels);
+SearchRule MultiLevelTilingAndFusion(String structure, bool must_cache_read, bool can_cache_write,
+                                     bool must_cache_write, Array<Integer> fusion_levels) {
+  if (!can_cache_write && must_cache_write) {
+    LOG(FATAL) << "ValueError: Conflict options, cannot have can_cache_write = false, and "
+                  "must_cache_write = true at the same time";
+  }
+  RuleMultiLevelTilingAndFusion rule(structure, must_cache_read, can_cache_write, must_cache_write,
+                                     fusion_levels);
   auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch, BlockRV block,
                                          TContextInfo info) -> TReturn {
     return rule.Apply(task, sch, block, info);

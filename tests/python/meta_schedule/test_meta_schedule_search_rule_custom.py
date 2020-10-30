@@ -17,10 +17,10 @@
 """ Test meta schedule SearchRule """
 # pylint: disable=missing-function-docstring
 
+from tir_workload import matmul
 from tvm import meta_schedule as ms
 from tvm import tir
 from tvm.meta_schedule.search_rule import SearchRule
-from tir_workload import matmul
 
 
 @ms.rule.register_rule("do_nothing")
