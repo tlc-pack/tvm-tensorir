@@ -33,6 +33,10 @@ class BlockRV(Object):
 class LoopRV(Object):
     """ A random variable that evaluates to a TIR loop axis """
 
+@register_object("meta_schedule.BufferRV")
+class BufferRV(Object):
+    """ A random variable that evaluates to a TIR buffer """
+
 
 RAND_VAR_TYPE = Union[ExprRV, BlockRV, LoopRV]  # pylint: disable=invalid-name
 
@@ -114,6 +118,16 @@ class GetAxesAttrs(InstAttrs):
     """Attrs of the instruction that gets loop axes on top of a specifc block"""
 
 
+@register_object("meta_schedule.attrs.GetReadBuffersAttrs")
+class GetReadBuffersAttrs(InstAttrs):
+    """Attrs of the instruction that gets the buffers the block reads"""
+
+
+@register_object("meta_schedule.attrs.GetWriteBuffersAttrs")
+class GetWriteBuffersAttrs(InstAttrs):
+    """Attrs of the instruction that gets the buffers the block writes"""
+
+
 @register_object("meta_schedule.attrs.GetRootBlocksAttrs")
 class GetRootBlocksAttrs(InstAttrs):
     """Attrs of the instruction to get all the subroot blocks"""
@@ -160,6 +174,13 @@ class ReverseComputeAtAttrs(InstAttrs):
 @register_object("meta_schedule.attrs.ComputeInlineAttrs")
 class ComputeInlineAttrs(InstAttrs):
     """Attrs of the instruction that applies compute_inline"""
+
+
+@register_object("meta_schedule.attrs.CacheReadAttrs")
+class CacheReadAttrs(InstAttrs):
+    """Attrs of the instruction that applies cache_read"""
+
+    storage_scope: str
 
 
 @register_object("meta_schedule.attrs.CacheWriteAttrs")
