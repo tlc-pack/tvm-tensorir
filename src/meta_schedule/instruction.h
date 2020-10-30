@@ -67,6 +67,25 @@ class LoopRV : public runtime::ObjectRef {
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LoopRV, ObjectRef, LoopRVNode);
 };
 
+/*! \brief A random variable that evaluates to a TIR block */
+class BufferRVNode : public runtime::Object {
+ public:
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+  static constexpr const char* _type_key = "meta_schedule.BufferRV";
+  TVM_DECLARE_FINAL_OBJECT_INFO(BufferRVNode, Object);
+};
+
+/*!
+ * \brief Managed reference to BufferRVNode
+ * \sa BufferRV
+ */
+class BufferRV : public runtime::ObjectRef {
+ public:
+  /*! \brief Constructor */
+  BufferRV();
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BufferRV, ObjectRef, BufferRVNode);
+};
+
 /**************** InstAttrs ****************/
 
 /*! \brief Attributes of an instruction */
@@ -351,6 +370,56 @@ struct GetAxesAttrs : public InstAttrsNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(GetAxesAttrs, InstAttrsNode);
 };
 
+/*! \brief Attrs of the instruction that gets the buffers the block reads */
+struct GetReadBuffersAttrs : public InstAttrsNode {
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param block The name of the block
+   * \param outputs The outputs of the query
+   * \return The instruction created
+   */
+  static Instruction MakeInst(const BlockRV& block, const Array<BufferRV>& outputs);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
+  static constexpr const char* _type_key = "meta_schedule.attrs.GetReadBuffersAttrs";
+  TVM_DECLARE_FINAL_OBJECT_INFO(GetReadBuffersAttrs, InstAttrsNode);
+};
+
+/*! \brief Attrs of the instruction that gets the buffers the block writes */
+struct GetWriteBuffersAttrs : public InstAttrsNode {
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param block The name of the block
+   * \param outputs The outputs of the query
+   * \return The instruction created
+   */
+  static Instruction MakeInst(const BlockRV& block, const Array<BufferRV>& outputs);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
+  static constexpr const char* _type_key = "meta_schedule.attrs.GetWriteBuffersAttrs";
+  TVM_DECLARE_FINAL_OBJECT_INFO(GetWriteBuffersAttrs, InstAttrsNode);
+};
+
 struct GetRootBlocksAttrs : public InstAttrsNode {
   /*!
    * \brief Create instruction given the inputs and outputs
@@ -603,18 +672,48 @@ struct ReverseComputeInlineAttrs : public InstAttrsNode {
 };
 
 /*! \brief Attrs of the instruction that applies cache_write */
+struct CacheReadAttrs : public InstAttrsNode {
+  /*! \brief The storage scope of the instruction cache_write */
+  String storage_scope;
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param buffer The buffer to be cached
+   * \param storage_scope The storage scope of the instruction
+   * \param output The output of the instruction
+   * \return The instruction created
+   */
+  static Instruction MakeInst(const BufferRV& buffer, const String& storage_scope,
+                              const BlockRV& output);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
+
+  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("storage_scope", &storage_scope); }
+
+  static constexpr const char* _type_key = "meta_schedule.attrs.CacheReadAttrs";
+  TVM_DECLARE_FINAL_OBJECT_INFO(CacheReadAttrs, InstAttrsNode);
+};
+
+/*! \brief Attrs of the instruction that applies cache_write */
 struct CacheWriteAttrs : public InstAttrsNode {
   /*! \brief The storage scope of the instruction cache_write */
   String storage_scope;
 
   /*!
    * \brief Create instruction given the inputs and outputs
-   * \param block The block to be cache written
+   * \param buffer The buffer to be cached
    * \param storage_scope The storage scope of the instruction
    * \param output The output of the instruction
    * \return The instruction created
    */
-  static Instruction MakeInst(const BlockRV& block, const String& storage_scope,
+  static Instruction MakeInst(const BufferRV& buffer, const String& storage_scope,
                               const BlockRV& output);
 
   /*!

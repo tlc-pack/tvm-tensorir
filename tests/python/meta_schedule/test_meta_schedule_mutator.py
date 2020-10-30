@@ -15,9 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 """Test for meta schedule mutators"""
+from tir_workload import matmul
+
 # pylint: disable=missing-function-docstring
 from tvm import meta_schedule as ms
-from tir_workload import matmul
 
 
 def test_meta_schedule_mutate_tile_size():

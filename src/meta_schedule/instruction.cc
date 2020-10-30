@@ -29,6 +29,8 @@ BlockRV::BlockRV() { data_ = make_object<BlockRVNode>(); }
 
 LoopRV::LoopRV() { data_ = make_object<LoopRVNode>(); }
 
+BufferRV::BufferRV() { data_ = make_object<BufferRVNode>(); }
+
 Instruction::Instruction(Array<ObjectRef> inputs, Array<ObjectRef> outputs, InstAttrs inst_attrs) {
   ObjectPtr<InstructionNode> n = make_object<InstructionNode>();
   n->inputs = std::move(inputs);
@@ -167,6 +169,34 @@ Array<ObjectRef> GetAxesAttrs::ApplyToSchedule(ScheduleNode* sch,
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_CAST_INPUT(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetAxes(block));
+}
+
+Instruction GetReadBuffersAttrs::MakeInst(const BlockRV& block, const Array<BufferRV>& outputs) {
+  ObjectPtr<GetReadBuffersAttrs> n = make_object<GetReadBuffersAttrs>();
+  return Instruction(/*inputs=*/{block},
+                     /*outputs=*/{outputs.begin(), outputs.end()},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Array<ObjectRef> GetReadBuffersAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                      const Array<ObjectRef>& inputs) const {
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_CAST_INPUT(BlockRV, block, inputs[0]);
+  return AdaptOutputs(sch->GetReadBuffers(block));
+}
+
+Instruction GetWriteBuffersAttrs::MakeInst(const BlockRV& block, const Array<BufferRV>& outputs) {
+  ObjectPtr<GetWriteBuffersAttrs> n = make_object<GetWriteBuffersAttrs>();
+  return Instruction(/*inputs=*/{block},
+                     /*outputs=*/{outputs.begin(), outputs.end()},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Array<ObjectRef> GetWriteBuffersAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                       const Array<ObjectRef>& inputs) const {
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_CAST_INPUT(BlockRV, block, inputs[0]);
+  return AdaptOutputs(sch->GetWriteBuffers(block));
 }
 
 Instruction GetRootBlocksAttrs::MakeInst(const Array<BlockRV>& outputs) {
@@ -349,11 +379,27 @@ Array<ObjectRef> ReverseComputeInlineAttrs::ApplyToSchedule(ScheduleNode* sch,
   return {};
 }
 
-Instruction CacheWriteAttrs::MakeInst(const BlockRV& block, const String& storage_scope,
+Instruction CacheReadAttrs::MakeInst(const BufferRV& buffer, const String& storage_scope,
+                                     const BlockRV& output) {
+  ObjectPtr<CacheReadAttrs> n = make_object<CacheReadAttrs>();
+  n->storage_scope = storage_scope;
+  return Instruction(/*inputs=*/{buffer},
+                     /*outputs=*/{output},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Array<ObjectRef> CacheReadAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                 const Array<ObjectRef>& inputs) const {
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_CAST_INPUT(BufferRV, buffer, inputs[0]);
+  return {sch->CacheRead(buffer, storage_scope)};
+}
+
+Instruction CacheWriteAttrs::MakeInst(const BufferRV& buffer, const String& storage_scope,
                                       const BlockRV& output) {
   ObjectPtr<CacheWriteAttrs> n = make_object<CacheWriteAttrs>();
   n->storage_scope = storage_scope;
-  return Instruction(/*inputs=*/{block},
+  return Instruction(/*inputs=*/{buffer},
                      /*outputs=*/{output},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
@@ -361,8 +407,8 @@ Instruction CacheWriteAttrs::MakeInst(const BlockRV& block, const String& storag
 Array<ObjectRef> CacheWriteAttrs::ApplyToSchedule(ScheduleNode* sch,
                                                   const Array<ObjectRef>& inputs) const {
   CHECK_EQ(inputs.size(), 1);
-  TVM_META_SCHEDULE_CAST_INPUT(BlockRV, block, inputs[0]);
-  return {sch->CacheWrite(block, storage_scope)};
+  TVM_META_SCHEDULE_CAST_INPUT(BufferRV, buffer, inputs[0]);
+  return {sch->CacheWrite(buffer, storage_scope)};
 }
 
 Instruction BlockizeAttrs::MakeInst(const LoopRV& loop, const String& exec_scope,
@@ -401,6 +447,7 @@ Array<ObjectRef> DecomposeReductionAttrs::ApplyToSchedule(ScheduleNode* sch,
 
 TVM_REGISTER_NODE_TYPE(BlockRVNode);
 TVM_REGISTER_NODE_TYPE(LoopRVNode);
+TVM_REGISTER_NODE_TYPE(BufferRVNode);
 TVM_REGISTER_OBJECT_TYPE(InstAttrsNode);
 TVM_REGISTER_NODE_TYPE(InstructionNode);
 TVM_REGISTER_NODE_TYPE(SamplePerfectTileAttrs);
@@ -409,6 +456,8 @@ TVM_REGISTER_NODE_TYPE(SampleFusibleLoopsAttrs);
 TVM_REGISTER_NODE_TYPE(GetOnlyConsumerAttrs);
 TVM_REGISTER_NODE_TYPE(GetBlockAttrs);
 TVM_REGISTER_NODE_TYPE(GetAxesAttrs);
+TVM_REGISTER_NODE_TYPE(GetReadBuffersAttrs);
+TVM_REGISTER_NODE_TYPE(GetWriteBuffersAttrs);
 TVM_REGISTER_NODE_TYPE(GetRootBlocksAttrs);
 TVM_REGISTER_NODE_TYPE(GetLeafBlocksAttrs);
 TVM_REGISTER_NODE_TYPE(MarkLoopTypeAttrs);
@@ -419,6 +468,7 @@ TVM_REGISTER_NODE_TYPE(ReorderAttrs);
 TVM_REGISTER_NODE_TYPE(ReverseComputeAtAttrs);
 TVM_REGISTER_NODE_TYPE(ComputeInlineAttrs);
 TVM_REGISTER_NODE_TYPE(ReverseComputeInlineAttrs);
+TVM_REGISTER_NODE_TYPE(CacheReadAttrs);
 TVM_REGISTER_NODE_TYPE(CacheWriteAttrs);
 TVM_REGISTER_NODE_TYPE(BlockizeAttrs);
 TVM_REGISTER_NODE_TYPE(DecomposeReductionAttrs);

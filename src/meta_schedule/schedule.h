@@ -82,11 +82,17 @@ class ScheduleNode : public Object {
    */
   tir::StmtSRef Eval(const BlockRV& block);
   /*!
-   * \brief Evaluate the value of a random variable of type LoopAxis
+   * \brief Evaluate the value of a random variable of type Loop
    * \param loop The loop random variable to be evaluated
    * \return The TIR SRef to the block evaluated
    */
   tir::StmtSRef Eval(const LoopRV& loop);
+  /*!
+   * \brief Evaluate the value of a random variable of type Buffer
+   * \param buffer The buffer random variable to be evaluated
+   * \return A TIR buffer, the result of evaluation
+   */
+  tir::Buffer Eval(const BufferRV& buffer);
   /*!
    * \brief Evaluate the value of a PrimExpr, containing random variable of type tir::Var
    * \param expr The expression containing random variables to be evaluated
@@ -156,6 +162,18 @@ class ScheduleNode : public Object {
    */
   Array<LoopRV> GetAxes(const BlockRV& block);
   /*!
+   * \brief Get the buffers the block reads
+   * \param block The block
+   * \return A list of buffers the block reads
+   */
+  Array<BufferRV> GetReadBuffers(const BlockRV& block);
+  /*!
+   * \brief Get the buffers the block writes
+   * \param block The block
+   * \return A list of buffers the block writes
+   */
+  Array<BufferRV> GetWriteBuffers(const BlockRV& block);
+  /*!
    * \brief Get the root blocks which are direct children of the root node
    * \return An array of block random variables, the sub-root blocks
    * \note It is not useful, should remove
@@ -218,12 +236,19 @@ class ScheduleNode : public Object {
    */
   void ReverseComputeInline(const BlockRV& block);
   /*!
-   * \brief Apply the instruction cache_write
-   * \param block The block to be buffered
+   * \brief Apply the instruction cache_read
+   * \param buffer The buffer to be cached
    * \param storage_scope The storage scope
    * \return The cache write stage
    */
-  BlockRV CacheWrite(const BlockRV& block, const String& storage_scope);
+  BlockRV CacheRead(const BufferRV& buffer, const String& storage_scope);
+  /*!
+   * \brief Apply the instruction cache_write
+   * \param buffer The buffer to be cached
+   * \param storage_scope The storage scope
+   * \return The cache write stage
+   */
+  BlockRV CacheWrite(const BufferRV& buffer, const String& storage_scope);
   /*!
    * \brief Apply blockize to the schedule
    * \param loop The loop to be blockized
