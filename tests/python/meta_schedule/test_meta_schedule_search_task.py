@@ -17,8 +17,8 @@
 """ Test for search task class """
 # pylint: disable=missing-function-docstring
 import tvm
-from tvm import meta_schedule as ms
 from tir_workload import matmul
+from tvm import meta_schedule as ms
 
 
 def test_meta_schedule_search_task_creation():

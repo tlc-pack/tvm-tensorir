@@ -18,11 +18,16 @@
 # pylint: disable=missing-function-docstring
 
 import tvm
+from tir_tensor_intrin import (
+    dot_product_desc,
+    dot_product_impl,
+    tensorcore_desc,
+    tensorcore_impl,
+)
+from tir_workload import batch_matmul
 from tvm import meta_schedule as ms
 from tvm import tir
 from tvm.script import ty
-from tir_workload import batch_matmul
-from tir_tensor_intrin import tensorcore_desc, tensorcore_impl, dot_product_desc, dot_product_impl
 
 
 def _check_sketch(result, expected):
