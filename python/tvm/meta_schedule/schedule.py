@@ -22,7 +22,7 @@ from tvm._ffi import register_object
 from tvm.runtime import Object
 
 from . import _ffi_api
-from .instruction import RAND_VAR_TYPE, BlockRV, ExprRV, Instruction, LoopRV
+from .instruction import RAND_VAR_TYPE, BlockRV, ExprRV, Instruction, LoopRV, BufferRV
 
 
 @register_object("meta_schedule.Schedule")
@@ -236,6 +236,36 @@ class Schedule(Object):
         """
         return _ffi_api.ScheduleGetAxes(self, block)  # pylint: disable=no-member
 
+    def get_read_buffers(self, block: BlockRV) -> List[BufferRV]:
+        """Get the buffers the block reads
+
+        Parameters
+        ----------
+        block : BlockRV
+            The block to be queried
+
+        Returns
+        -------
+        buffers : List[BufferRV]
+            A list of buffers the block reads
+        """
+        return _ffi_api.ScheduleGetReadBuffers(self, block)  # pylint: disable=no-member
+
+    def get_write_buffers(self, block: BlockRV) -> List[BufferRV]:
+        """Get the buffers the block writes
+
+        Parameters
+        ----------
+        block : BlockRV
+            The block to be queried
+
+        Returns
+        -------
+        buffers : List[BufferRV]
+            A list of buffers the block writes
+        """
+        return _ffi_api.ScheduleGetWriteBuffers(self, block)  # pylint: disable=no-member
+
     def get_root_blocks(self) -> List[BlockRV]:
         """Get the root blocks which are direct children of the root node
 
@@ -362,13 +392,13 @@ class Schedule(Object):
         """
         _ffi_api.ScheduleReverseComputeInline(self, block)  # pylint: disable=no-member
 
-    def cache_write(self, block: BlockRV, storage_scope: str) -> BlockRV:
-        """Apply the instruction cache_write
+    def cache_read(self, buffer: BufferRV, storage_scope: str) -> BlockRV:
+        """Apply the instruction cache_read
 
         Parameters
         ----------
-        block: BlockRV
-            The block to be buffered
+        buffer: BufferRV
+            The buffer to be cached
         storage_scope: str
             The storage scope
 
@@ -377,7 +407,24 @@ class Schedule(Object):
         block : BlockRV
             The cache write stage
         """
-        return _ffi_api.ScheduleCacheWrite(self, block, storage_scope)  # pylint: disable=no-member
+        return _ffi_api.ScheduleCacheRead(self, buffer, storage_scope)  # pylint: disable=no-member
+
+    def cache_write(self, buffer: BufferRV, storage_scope: str) -> BlockRV:
+        """Apply the instruction cache_write
+
+        Parameters
+        ----------
+        buffer: BufferRV
+            The buffer to be cached
+        storage_scope: str
+            The storage scope
+
+        Returns
+        -------
+        block : BlockRV
+            The cache write stage
+        """
+        return _ffi_api.ScheduleCacheWrite(self, buffer, storage_scope)  # pylint: disable=no-member
 
     def blockize(self, loop: LoopRV, exec_scope: str = "") -> BlockRV:
         """Apply the instruction blockize
