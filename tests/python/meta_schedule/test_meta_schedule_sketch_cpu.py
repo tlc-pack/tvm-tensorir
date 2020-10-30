@@ -54,9 +54,9 @@ def _get_support(func: tir.PrimFunc, task_name: str):
             ms.rule.inline_pure_spatial(strict_mode=True),
             ms.rule.multi_level_tiling_and_fusion(
                 structure="SSRSRS",
-                add_read_cache=False,
-                add_write_cache=True,
-                must_add_write_cache=False,
+                must_cache_read=False,
+                can_cache_write=True,
+                must_cache_write=False,
                 fusion_levels=[1, 2],
             ),
         ]

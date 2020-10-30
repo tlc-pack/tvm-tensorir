@@ -156,9 +156,9 @@ def inline_pure_spatial(strict_mode: bool) -> SearchRule:
 
 def multi_level_tiling_and_fusion(
     structure: str,
-    add_read_cache: bool,
-    add_write_cache: bool,
-    must_add_write_cache: bool,
+    must_cache_read: bool,
+    can_cache_write: bool,
+    must_cache_write: bool,
     fusion_levels: List[int],
 ) -> SearchRule:
     """Create a rule that does multi-level tiling if there is sufficient amount of data reuse.
@@ -169,11 +169,11 @@ def multi_level_tiling_and_fusion(
     structure : str
         Structure of tiling. On CPU, recommended to use 'SSRSRS';
         On GPU, recommended to use 'SSSRRSRS'
-    add_read_cache : bool
+    must_cache_read : bool
         Add cache_read before the multi-level tiling
-    add_write_cache : bool
+    can_cache_write : bool
         Add cache_write after the multi-level tiling
-    must_add_write_cache : bool
+    must_cache_write : bool
         Must add cache_write after the multi-level tiling
     fusion_levels : List[int]
         The possible tile levels that a single elementwise consumer is fused at
@@ -185,9 +185,9 @@ def multi_level_tiling_and_fusion(
     """
     return _ffi_api_search_rule.MultiLevelTilingAndFusion(  # pylint: disable=no-member
         structure,
-        add_read_cache,
-        add_write_cache,
-        must_add_write_cache,
+        must_cache_read,
+        can_cache_write,
+        must_cache_write,
         fusion_levels,
     )
 

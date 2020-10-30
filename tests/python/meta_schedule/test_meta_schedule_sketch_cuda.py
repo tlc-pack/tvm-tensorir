@@ -30,9 +30,9 @@ def _get_support(func: tir.PrimFunc, task_name: str, target):
             ms.rule.inline_pure_spatial(strict_mode=False),
             ms.rule.multi_level_tiling_and_fusion(
                 structure="SSSRRSRS",
-                add_read_cache=True,
-                add_write_cache=True,
-                must_add_write_cache=True,
+                must_cache_read=True,
+                can_cache_write=True,
+                must_cache_write=True,
                 fusion_levels=[3],
             ),
         ]
