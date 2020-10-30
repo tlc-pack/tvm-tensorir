@@ -19,10 +19,10 @@ import pytest
 
 # pylint: disable=missing-function-docstring
 import tvm
+from tir_workload import matmul, matmul_relu
 from tvm import meta_schedule as ms
 from tvm import tir
 from tvm.script import ty
-from tir_workload import matmul, matmul_relu
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
 # fmt: off
@@ -101,6 +101,44 @@ def matmul_relu_fused(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
                             tir.writes([D[vi_1 : (vi_1 + 1), vj_1 : (vj_1 + 1)]])
                             D[vi_1, vj_1] = tir.max(C[vi_1, vj_1], tir.float32(0))
 
+@tvm.script.tir
+def matmul_cache_read(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    C = tir.match_buffer(c, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
+    B = tir.match_buffer(b, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
+    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        A_local = tir.buffer_allocate([1024, 1024], elem_offset=0, scope="local", align=128, offset_factor=1)
+        B_local = tir.buffer_allocate([1024, 1024], elem_offset=0, scope="local", align=128, offset_factor=1)
+        for ax0 in range(0, 1024):
+            for ax1 in range(0, 1024):
+                with tir.block([1024, 1024], "") as [v0, v1]:
+                    tir.bind(v0, ax0)
+                    tir.bind(v1, ax1)
+                    tir.reads([B[v0:(v0 + 1), v1:(v1 + 1)]])
+                    tir.writes([B_local[v0:(v0 + 1), v1:(v1 + 1)]])
+                    B_local[v0, v1] = B[v0, v1]
+        for ax0_1 in range(0, 1024):
+            for ax1_1 in range(0, 1024):
+                with tir.block([1024, 1024], "") as [v0_1, v1_1]:
+                    tir.bind(v0_1, ax0_1)
+                    tir.bind(v1_1, ax1_1)
+                    tir.reads([A[v0_1:(v0_1 + 1), v1_1:(v1_1 + 1)]])
+                    tir.writes([A_local[v0_1:(v0_1 + 1), v1_1:(v1_1 + 1)]])
+                    A_local[v0_1, v1_1] = A[v0_1, v1_1]
+        for i0 in range(0, 1024):
+            for i1 in range(0, 1024):
+                for i2 in range(0, 1024):
+                    with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
+                        tir.bind(vi, i0)
+                        tir.bind(vj, i1)
+                        tir.bind(vk, i2)
+                        tir.reads([C[vi:(vi + 1), vj:(vj + 1)], A_local[vi:(vi + 1), vk:(vk + 1)], B_local[vk:(vk + 1), vj:(vj + 1)]])
+                        tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
+                        reducer.step(C[vi, vj], (A_local[vi, vk]*B_local[vk, vj]))
 
 @tvm.script.tir
 def matmul_cache_write(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
@@ -287,6 +325,26 @@ def test_meta_schedule_get_axes():
     assert tvm.ir.structural_equal(i_2, matmul.body.block.body.body.body)
 
 
+def test_meta_schedule_get_read_buffers():
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("matmul")
+    buffers = sch.get_read_buffers(block)
+    buffers = [sch.evaluate(b) for b in buffers]
+    assert len(buffers) == 3
+    assert buffers[0].name == "C"
+    assert buffers[1].name == "A"
+    assert buffers[2].name == "B"
+
+
+def test_meta_schedule_get_write_buffers():
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("matmul")
+    buffers = sch.get_write_buffers(block)
+    buffers = [sch.evaluate(b) for b in buffers]
+    assert len(buffers) == 1
+    assert buffers[0].name == "C"
+
+
 def test_meta_schedule_get_root_blocks():
     sch = ms.Schedule(func=matmul)
     blocks = sch.get_root_blocks()
@@ -386,9 +444,20 @@ def test_meta_schedule_compute_inline():
     assert tvm.ir.structural_equal(sch.sch.func, elementwise_inlined)
 
 
+def test_meta_schedule_cache_read():
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("matmul")
+    _buffer_c, buffer_a, buffer_b = sch.get_read_buffers(block)
+    sch.cache_read(buffer_a, storage_scope="local")
+    sch.cache_read(buffer_b, storage_scope="local")
+    assert tvm.ir.structural_equal(sch.sch.func, matmul_cache_read)
+
+
 def test_meta_schedule_cache_write():
     sch = ms.Schedule(func=matmul)
-    sch.cache_write(sch.get_block("matmul"), storage_scope="local")
+    block = sch.get_block("matmul")
+    (buffer,) = sch.get_write_buffers(block)
+    sch.cache_write(buffer, storage_scope="local")
     assert tvm.ir.structural_equal(sch.sch.func, matmul_cache_write)
 
 
@@ -471,6 +540,8 @@ if __name__ == "__main__":
     test_meta_schedule_get_only_consumer()
     test_meta_schedule_get_block()
     test_meta_schedule_get_axes()
+    test_meta_schedule_get_read_buffers()
+    test_meta_schedule_get_write_buffers()
     test_meta_schedule_get_root_blocks()
     test_meta_schedule_get_leaf_blocks()
     test_meta_schedule_mark_loop_type()
@@ -480,6 +551,7 @@ if __name__ == "__main__":
     test_meta_schedule_reorder()
     test_meta_schedule_reverse_compute_at()
     test_meta_schedule_compute_inline()
+    test_meta_schedule_cache_read()
     test_meta_schedule_cache_write()
     test_meta_schedule_blockize()
     # test_meta_schedule_decompose_reduction()
