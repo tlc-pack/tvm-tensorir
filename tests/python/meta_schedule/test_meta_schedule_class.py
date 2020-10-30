@@ -19,10 +19,10 @@ import pytest
 
 # pylint: disable=missing-function-docstring
 import tvm
+from tir_workload import matmul, matmul_relu
 from tvm import meta_schedule as ms
 from tvm import tir
 from tvm.script import ty
-from tir_workload import matmul, matmul_relu
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
 # fmt: off
