@@ -17,8 +17,8 @@
 """ Test meta schedule SearchSpace """
 # pylint: disable=missing-function-docstring
 
-from tvm import meta_schedule as ms
 from tir_workload import matmul
+from tvm import meta_schedule as ms
 
 
 def test_meta_schedule_search_space_schedule_fn():

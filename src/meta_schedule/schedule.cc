@@ -212,6 +212,19 @@ tir::StmtSRef ScheduleNode::Eval(const LoopRV& loop) {
   throw;
 }
 
+tir::Buffer ScheduleNode::Eval(const BufferRV& buffer) {
+  auto iter = this->sym_tab.find(buffer);
+  CHECK(iter != this->sym_tab.end())
+      << "IndexError: Cannot find corresponding BufferRV: " << buffer;
+  const Optional<ObjectRef>& obj = iter->second;
+  CHECK(obj.defined()) << "ValueError: Corresponding BufferRV's value is not defined: " << buffer;
+  if (const auto* sref = obj.as<tir::BufferNode>()) {
+    return GetRef<tir::Buffer>(sref);
+  }
+  LOG(FATAL) << "TypeError: BufferRV's corresponding type is invalid: " << obj->GetTypeKey();
+  throw;
+}
+
 int ScheduleNode::Eval(const PrimExpr& expr) {
   arith::Analyzer analyzer;
   // Replace all the tir::Var with their corresponding value in the symbol table
@@ -428,6 +441,42 @@ Array<LoopRV> ScheduleNode::GetAxes(const BlockRV& block) {
   return outputs;
 }
 
+Array<BufferRV> ScheduleNode::GetReadBuffers(const BlockRV& block_rv) {
+  tir::StmtSRef block_sref = Eval(block_rv);
+  const tir::BlockNode* block = block_sref->GetStmt<tir::BlockNode>();
+  CHECK(block != nullptr) << "TypeError: Expects `BlockNode`, but gets: "
+                          << block_sref->stmt->GetTypeKey();
+  // Create the output random variable
+  Array<BufferRV> outputs;
+  for (const tir::TensorRegion& tensor_region : block->reads) {
+    BufferRV output;
+    outputs.push_back(output);
+    // Update the symbol table
+    this->sym_tab.emplace(output, tensor_region->buffer);
+  }
+  // Put the instruction in the trace
+  this->trace.push_back(GetReadBuffersAttrs::MakeInst(block_rv, outputs));
+  return outputs;
+}
+
+Array<BufferRV> ScheduleNode::GetWriteBuffers(const BlockRV& block_rv) {
+  tir::StmtSRef block_sref = Eval(block_rv);
+  const tir::BlockNode* block = block_sref->GetStmt<tir::BlockNode>();
+  CHECK(block != nullptr) << "TypeError: Expects `BlockNode`, but gets: "
+                          << block_sref->stmt->GetTypeKey();
+  // Create the output random variable
+  Array<BufferRV> outputs;
+  for (const tir::TensorRegion& tensor_region : block->writes) {
+    BufferRV output;
+    outputs.push_back(output);
+    // Update the symbol table
+    this->sym_tab.emplace(output, tensor_region->buffer);
+  }
+  // Put the instruction in the trace
+  this->trace.push_back(GetWriteBuffersAttrs::MakeInst(block_rv, outputs));
+  return outputs;
+}
+
 Array<BlockRV> ScheduleNode::GetRootBlocks() {
   Array<tir::StmtSRef> tir_result;
   Array<BlockRV> outputs;
@@ -617,19 +666,29 @@ void ScheduleNode::ReverseComputeInline(const BlockRV& block) {
   this->trace.push_back(ReverseComputeInlineAttrs::MakeInst(block));
 }
 
-BlockRV ScheduleNode::CacheWrite(const BlockRV& block_rv, const String& storage_scope) {
+BlockRV ScheduleNode::CacheRead(const BufferRV& buffer_rv, const String& storage_scope) {
   // Find the output from TIR
-  tir::StmtSRef block_sref = this->Eval(block_rv);
-  const auto* block = block_sref->GetStmt<tir::BlockNode>();
-  CHECK(block) << "TypeError: Expects block, but gets type: " << block_sref->stmt->GetTypeKey();
-  CHECK_EQ(block->writes.size(), 1) << "ValueError: only blocks with a single written is supported";
-  tir::StmtSRef tir_result = this->sch->cache_write(block->writes[0]->buffer, storage_scope);
+  tir::Buffer buffer = this->Eval(buffer_rv);
+  tir::StmtSRef tir_result = this->sch->cache_read(buffer, storage_scope);
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
   this->sym_tab.emplace(output, tir_result);
   // Put the instruction in the trace
-  this->trace.push_back(CacheWriteAttrs::MakeInst(block_rv, storage_scope, output));
+  this->trace.push_back(CacheReadAttrs::MakeInst(buffer_rv, storage_scope, output));
+  return output;
+}
+
+BlockRV ScheduleNode::CacheWrite(const BufferRV& buffer_rv, const String& storage_scope) {
+  // Find the output from TIR
+  tir::Buffer buffer = this->Eval(buffer_rv);
+  tir::StmtSRef tir_result = this->sch->cache_write(buffer, storage_scope);
+  // Create the output random variable
+  BlockRV output;
+  // Update the symbol table
+  this->sym_tab.emplace(output, tir_result);
+  // Put the instruction in the trace
+  this->trace.push_back(CacheWriteAttrs::MakeInst(buffer_rv, storage_scope, output));
   return output;
 }
 
@@ -778,6 +837,8 @@ struct Internal {
       return sch->Eval(GetRef<BlockRV>(v));
     } else if (const auto* v = obj.as<LoopRVNode>()) {
       return sch->Eval(GetRef<LoopRV>(v));
+    } else if (const auto* v = obj.as<BufferRVNode>()) {
+      return sch->Eval(GetRef<BufferRV>(v));
     } else if (const auto* v = obj.as<PrimExprNode>()) {
       return Integer(sch->Eval(GetRef<PrimExpr>(v)));
     }
@@ -828,6 +889,20 @@ struct Internal {
    * \sa ScheduleNode::GetAxes
    */
   static Array<LoopRV> GetAxes(Schedule sch, BlockRV block) { return sch->GetAxes(block); }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::GetReadBuffers
+   * \sa ScheduleNode::GetReadBuffers
+   */
+  static Array<BufferRV> GetReadBuffers(Schedule sch, BlockRV block) {
+    return sch->GetReadBuffers(block);
+  }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::GetWriteBuffers
+   * \sa ScheduleNode::GetWriteBuffers
+   */
+  static Array<BufferRV> GetWriteBuffers(Schedule sch, BlockRV block) {
+    return sch->GetWriteBuffers(block);
+  }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::GetRootBlocks
    * \sa ScheduleNode::GetRootBlocks
@@ -890,11 +965,18 @@ struct Internal {
     sch->ReverseComputeInline(block);
   }
   /*!
+   * \brief FFI function, corresponds to ScheduleNode::CacheRead
+   * \sa ScheduleNode::CacheRead
+   */
+  static BlockRV CacheRead(Schedule sch, BufferRV buffer, String storage_scope) {
+    return sch->CacheRead(buffer, storage_scope);
+  }
+  /*!
    * \brief FFI function, corresponds to ScheduleNode::CacheWrite
    * \sa ScheduleNode::CacheWrite
    */
-  static BlockRV CacheWrite(Schedule sch, BlockRV block, String storage_scope) {
-    return sch->CacheWrite(block, storage_scope);
+  static BlockRV CacheWrite(Schedule sch, BufferRV buffer, String storage_scope) {
+    return sch->CacheWrite(buffer, storage_scope);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Blockize
@@ -945,6 +1027,10 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetOnlyConsumer")
     .set_body_typed(Internal::GetOnlyConsumer);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetBlock").set_body_typed(Internal::GetBlock);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetAxes").set_body_typed(Internal::GetAxes);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetReadBuffers")
+    .set_body_typed(Internal::GetReadBuffers);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetWriteBuffers")
+    .set_body_typed(Internal::GetWriteBuffers);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetRootBlocks").set_body_typed(Internal::GetRootBlocks);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetLeafBlocks").set_body_typed(Internal::GetLeafBlocks);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkLoopType").set_body_typed(Internal::MarkLoopType);
@@ -957,6 +1043,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReverseComputeAt")
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleComputeInline").set_body_typed(Internal::ComputeInline);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReverseComputeInline")
     .set_body_typed(Internal::ReverseComputeInline);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCacheRead").set_body_typed(Internal::CacheRead);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCacheWrite").set_body_typed(Internal::CacheWrite);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleBlockize").set_body_typed(Internal::Blockize);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleDecomposeReduction")

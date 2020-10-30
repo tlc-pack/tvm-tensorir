@@ -20,7 +20,6 @@ import tvm
 from tvm import tir
 from tvm.script import ty
 
-
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
 # fmt: off
 
