@@ -333,6 +333,22 @@ Array<ObjectRef> ReorderAttrs::ApplyToSchedule(ScheduleNode* sch,
   return {};
 }
 
+Instruction ComputeAtAttrs::MakeInst(const BlockRV& block, const LoopRV& loop) {
+  ObjectPtr<ComputeAtAttrs> n = make_object<ComputeAtAttrs>();
+  return Instruction(/*inputs=*/{block, loop},
+                     /*outputs=*/{},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Array<ObjectRef> ComputeAtAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                 const Array<ObjectRef>& inputs) const {
+  CHECK_EQ(inputs.size(), 2);
+  TVM_META_SCHEDULE_CAST_INPUT(BlockRV, block, inputs[0]);
+  TVM_META_SCHEDULE_CAST_INPUT(LoopRV, loop, inputs[1]);
+  sch->ComputeAt(block, loop);
+  return {};
+}
+
 Instruction ReverseComputeAtAttrs::MakeInst(const BlockRV& block, const LoopRV& loop) {
   ObjectPtr<ReverseComputeAtAttrs> n = make_object<ReverseComputeAtAttrs>();
   return Instruction(/*inputs=*/{block, loop},
@@ -465,6 +481,7 @@ TVM_REGISTER_NODE_TYPE(MarkBlockTypeAttrs);
 TVM_REGISTER_NODE_TYPE(FuseAttrs);
 TVM_REGISTER_NODE_TYPE(SplitAttrs);
 TVM_REGISTER_NODE_TYPE(ReorderAttrs);
+TVM_REGISTER_NODE_TYPE(ComputeAtAttrs);
 TVM_REGISTER_NODE_TYPE(ReverseComputeAtAttrs);
 TVM_REGISTER_NODE_TYPE(ComputeInlineAttrs);
 TVM_REGISTER_NODE_TYPE(ReverseComputeInlineAttrs);
