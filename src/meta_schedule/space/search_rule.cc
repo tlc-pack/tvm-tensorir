@@ -114,17 +114,20 @@ class RuleMultiLevelTilingAndFusion {
   bool can_cache_write;
   bool must_cache_write;
   Array<Integer> fusion_levels;
+  Optional<Integer> vector_load_max_len;
   std::vector<int> s_idx;
   std::vector<int> r_idx;
 
   explicit RuleMultiLevelTilingAndFusion(String structure, bool must_cache_read,
                                          bool can_cache_write, bool must_cache_write,
-                                         Array<Integer> fusion_levels)
+                                         Array<Integer> fusion_levels,
+                                         Optional<Integer> vector_load_max_len)
       : structure(structure),
         must_cache_read(must_cache_read),
         can_cache_write(can_cache_write),
         must_cache_write(must_cache_write),
         fusion_levels(fusion_levels),
+        vector_load_max_len(vector_load_max_len),
         s_idx(),
         r_idx() {
     // Process `structure` and set `s_idx` and `r_idx` properly
@@ -235,11 +238,36 @@ class RuleMultiLevelTilingAndFusion {
       }
     }
     for (const auto& kv : buffer_map) {
+      tir::Buffer tir_buffer = kv.first;
       BufferRV buffer = kv.second;
+      // Do cache_read
       BlockRV cache_read_block = sch->CacheRead(buffer, "shared");
+      // Insert cache_read block to the proper place
       const Array<LoopRV>& r_tiles = state.tiles[r_idx.front()];
       CHECK(!r_tiles.empty()) << "ValueError: Cannot find any reduction loop in the block";
       sch->ComputeAt(cache_read_block, r_tiles.back());
+      // The code below did Vectorized loading on GPU
+      if (!vector_load_max_len.defined()) {
+        continue;
+      }
+      // Fuse the iterators
+      Array<LoopRV> to_fuse;
+      {
+        Array<LoopRV> cache_read_axes = sch->GetAxes(cache_read_block);
+        int n_axes = cache_read_axes.size();
+        int ndim = tir_buffer->shape.size();
+        for (int i = n_axes - ndim; i < n_axes; ++i) {
+          to_fuse.push_back(cache_read_axes[i]);
+        }
+      }
+      LoopRV fused = sch->Fuse(to_fuse);
+      // Split into inner and outer
+      Array<tir::Var> factors = sch->SamplePerfectTile(2, fused, vector_load_max_len.value());
+      CHECK_EQ(factors.size(), 2);
+      Array<LoopRV> tiles = sch->Split(fused, {factors[0], factors[1]});
+      CHECK_EQ(tiles.size(), 2);
+      // Vectorize the inner loop
+      sch->MarkLoopType({tiles[1]}, "lazy_vectorize", Range::FromMinExtent(Integer(0), Integer(1)));
     }
     return state;
   }
@@ -360,13 +388,14 @@ class RuleMultiLevelTilingAndFusion {
 };
 
 SearchRule MultiLevelTilingAndFusion(String structure, bool must_cache_read, bool can_cache_write,
-                                     bool must_cache_write, Array<Integer> fusion_levels) {
+                                     bool must_cache_write, Array<Integer> fusion_levels,
+                                     Optional<Integer> vector_load_max_len) {
   if (!can_cache_write && must_cache_write) {
     LOG(FATAL) << "ValueError: Conflict options, cannot have can_cache_write = false, and "
                   "must_cache_write = true at the same time";
   }
   RuleMultiLevelTilingAndFusion rule(structure, must_cache_read, can_cache_write, must_cache_write,
-                                     fusion_levels);
+                                     fusion_levels, vector_load_max_len);
   auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch, BlockRV block,
                                          TContextInfo info) -> TReturn {
     return rule.Apply(task, sch, block, info);
