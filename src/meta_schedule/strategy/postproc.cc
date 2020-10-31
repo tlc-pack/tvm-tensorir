@@ -67,6 +67,7 @@ Postproc RewriteParallel() {
 Postproc RewriteVectorize() {
   auto f_proc = [](Schedule sch, void* _sampler) -> bool {
     Array<Array<tir::StmtSRef>> to_vectorize = CollectAnnotatedLoops(sch->sch, "lazy_vectorize");
+    arith::Analyzer analyzer;
     for (const Array<tir::StmtSRef>& group : to_vectorize) {
       for (const tir::StmtSRef& loop_sref : group) {
         const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
@@ -79,7 +80,13 @@ Postproc RewriteVectorize() {
       for (int i = 1, n = group.size(); i < n; ++i) {
         fused = sch->sch->fuse(fused, group[i]);
       }
-      sch->sch->vectorize(fused);
+      // Vectorize the loops whose extent is possible to be > 1
+      // TODO(@junrushao1994): move the logic to meta schedule class
+      const tir::LoopNode* loop = fused->GetStmt<tir::LoopNode>();
+      CHECK(loop);
+      if (!analyzer.CanProve(loop->extent <= 1)) {
+        sch->sch->vectorize(fused);
+      }
     }
     return true;
   };
