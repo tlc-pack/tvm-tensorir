@@ -78,24 +78,6 @@ def split_element_wise(a: ty.handle, c: ty.handle) -> None:
             C[vi, vj] = B[vi, vj] + 1.0
 
 
-@tvm.script.tir
-def split_fuse_element_wise(a: ty.handle, c: ty.handle) -> None:
-    C = tir.match_buffer(c, (128, 128), "float32")
-    A = tir.match_buffer(a, (128, 128), "float32")
-    B = tir.buffer_allocate((128, 128), "float32")
-    for i, j in tir.grid(128, 128):
-        with tir.block([128, 128], "B") as [vi, vj]:
-            tir.bind(vi, ((tir.floordiv(i, 16) * 16) + tir.floormod(i, 16)))
-            tir.bind(vj, j)
-            B[vi, vj] = (A[vi, vj] * tir.float32(2))
-    for i, j in tir.grid(128, 130):
-        with tir.block([128, 128], "C") as [vi, vj]:
-            tir.where((((tir.floordiv(j, 13) * 13) + tir.floormod(j, 13)) < 128))
-            tir.bind(vi, i)
-            tir.bind(vj, ((tir.floordiv(j, 13) * 13) + tir.floormod(j, 13)))
-            C[vi, vj] = (B[vi, vj] + tir.float32(1))
-
-
 def test_split_fuse():
     func = util.element_wise_stmt()
 
@@ -193,9 +175,8 @@ def predicate_fuse(b: ty.handle, c: ty.handle) -> None:
     B = tir.match_buffer(b, (16, 16), "float32")
     for i in range(0, 256):
         with tir.block([16, 16], "update") as [vi, vj]:
-            tir.where((((tir.floormod(tir.floordiv(i, 4), 4) * 4) + tir.floormod(i, 4)) < 16))
-            tir.bind(vi, tir.floordiv(tir.floordiv(i, 4), 4))
-            tir.bind(vj, ((tir.floormod(tir.floordiv(i, 4), 4) * 4) + tir.floormod(i, 4)))
+            tir.bind(vi, tir.floordiv(i, 16))
+            tir.bind(vj, (tir.floormod(tir.floordiv(i, 4), 4)*4) + tir.floormod(i, 4))
             C[vi, vj] = (B[vi, vj] + tir.float32(1))
 
 
@@ -205,12 +186,14 @@ def test_fuse_loop_sref():
     # schedule
     s = tir.create_schedule(func)
     update = s.get_block("update")
-    i, j, k = s.get_axes(update)
-    ij = s.fuse(i, j)
-    s.fuse(ij, k)
+    i, jo, ji = s.get_axes(update)
+    ijo = s.fuse(i, jo)
+    s.fuse(ijo, ji)
 
     mod = tvm.script.create_module({"predicate_fuse": predicate_fuse})
     predicate_fuse_func = mod["predicate_fuse"]
+
+    print(tvm.script.asscript(s.func))
 
     tvm.ir.assert_structural_equal(s.func, predicate_fuse_func)
     assert s.validate_sref()

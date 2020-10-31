@@ -66,7 +66,6 @@ def predicate(b: ty.handle, c: ty.handle) -> None:
 
     for i, jo, ji in tir.grid(16, 4, 4):
         with tir.block([16, 16], "update") as [vi, vj]:
-            tir.where(jo * 4 + ji < 16)
             tir.bind(vi, i)
             tir.bind(vj, jo * 4 + ji)
             C[vi, vj] = B[vi, vj] + 1.0
