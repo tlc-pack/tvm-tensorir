@@ -490,11 +490,11 @@ class IterMapRewriter : public ExprMutator {
       }
       if (j == expr->args.size()) return NullOpt;
       // look for the longest predicate started from expr->args[j]
-      IterSumExpr sub_expr(nullptr);
+      Optional<IterSumExpr> sub_expr;
       for (const auto& it : pred_sum_exprs) {
         if (IterSplitEqual(expr->args[j], it->args.back(), false)) {
           // find a predicate started from expr->args[j]
-          if (!sub_expr.defined() || sub_expr->args.size() < it->args.size()) {
+          if (!sub_expr || sub_expr.value()->args.size() < it->args.size()) {
             sub_expr = it;
           }
         } else if (extent) {
@@ -505,10 +505,10 @@ class IterMapRewriter : public ExprMutator {
           }
         }
       }
-      if (sub_expr.defined()) {
+      if (sub_expr) {
         // sub_expr found
         // mark the iterators in the sub_expr as visited
-        for (auto it = sub_expr->args.rbegin(); it != sub_expr->args.rend(); ++it) {
+        for (auto it = sub_expr.value()->args.rbegin(); it != sub_expr.value()->args.rend(); ++it) {
           size_t j = 0;
           for (; j < expr->args.size(); ++j) {
             if (!visited[j] && IterSplitEqual(expr->args[j], *it, false)) {
@@ -519,10 +519,10 @@ class IterMapRewriter : public ExprMutator {
           visited[j] = true;
           iters.push_back(expr->args[j]);
         }
-        IterSplitExpr sub_iter = sum_fuse_map_[sub_expr];
+        IterSplitExpr sub_iter = sum_fuse_map_[sub_expr.value()];
         sub_iter.CopyOnWrite()->scale = expected_scale;
-        expected_scale *= sum_fuse_map_[sub_expr]->source->extent;
-        i += sub_expr->args.size();
+        expected_scale *= sum_fuse_map_[sub_expr.value()]->source->extent;
+        i += sub_expr.value()->args.size();
         sub_iters.push_back(sub_iter);
       } else {
         // sub_expr not found, skip this iterator
@@ -644,6 +644,9 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
   std::vector<Predicate> predicates = SplitPredicate(input_pred);
   if (!is_one(input_pred) && predicates.empty()) return Array<IterSumExpr>();
 
+  // We have to make sure when we visit an iterator, all the predicates related with its successors
+  // in the iter var graph has been visited, where the expression of this iterator will contain the
+  // expression of its successor, so we sort them by their sizes.
   PrimExprSizeCounter prim_expr_size_counter;
   for (auto& predicate : predicates) {
     std::get<0>(predicate) = prim_expr_size_counter.Count(std::get<1>(predicate));
@@ -1067,7 +1070,7 @@ class SubspaceDivider {
         if (!inner) return Fail();
         inner_args.push_back(new_arg = arg_division.GetInnerAsSplit());
         inner = true;
-        // Y(i)*1+0
+        // Yi*1+0
       } else if (arg_division.IsOuter()) {
         outer_args.push_back(new_arg = arg_division.GetOuterAsSplit());
         inner = false;
