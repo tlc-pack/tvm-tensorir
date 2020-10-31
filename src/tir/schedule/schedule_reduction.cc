@@ -247,9 +247,10 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
         if (iter_var->iter_type != IterVarType::kCommReduce) {
           continue;
         }
-        CHECK(!StmtExprContainsVar(binding, loop_var)) << "ValueError: 'merge_reduction' expects LCA "
-                                                      "to be higher than all the loops related to "
-                                                      "update_block's reduce block var";
+        CHECK(!StmtExprContainsVar(binding, loop_var))
+            << "ValueError: 'merge_reduction' expects LCA "
+               "to be higher than all the loops related to "
+               "update_block's reduce block var";
       }
     }
   }

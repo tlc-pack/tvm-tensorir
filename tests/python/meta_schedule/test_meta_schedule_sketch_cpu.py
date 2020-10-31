@@ -77,11 +77,9 @@ def _debug(support: List[ms.Schedule]):
 
 @tvm.script.tir
 def _matmul_sketch_0(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    # function attr dict
-    tir.func_attr({})
     C = tir.match_buffer(c, [512, 512], elem_offset=0, align=128, offset_factor=1)
-    A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
     B = tir.match_buffer(b, [512, 512], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
     reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
@@ -99,8 +97,8 @@ def _matmul_sketch_0(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                         for i0_inner in range(0, 16):
                                             for i1_inner in range(0, 4):
                                                 with tir.block([512, 512, tir.reduce_axis(0, 512)], "C") as [vi, vj, vk]:
-                                                    tir.bind(vi, ((((((i0_outer_outer_outer*1) + i0_outer_outer_inner)*1) + i0_outer_inner)*16) + i0_inner))
-                                                    tir.bind(vj, ((((((i1_outer_outer_outer*8) + i1_outer_outer_inner)*8) + i1_outer_inner)*4) + i1_inner))
+                                                    tir.bind(vi, (i0_outer_outer_outer*16) + i0_inner)
+                                                    tir.bind(vj, ((((i1_outer_outer_outer*256) + (i1_outer_outer_inner*32)) + (i1_outer_inner*4)) + i1_inner))
                                                     tir.bind(vk, ((i2_outer*2) + i2_inner))
                                                     tir.reads([C_local[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vk:(vk + 1), vj:(vj + 1)]])
                                                     tir.writes([C_local[vi:(vi + 1), vj:(vj + 1)]])
@@ -108,19 +106,18 @@ def _matmul_sketch_0(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                         for ax0 in range(0, 16):
                             for ax1 in range(0, 32):
                                 with tir.block([512, 512], "") as [v0, v1]:
-                                    tir.bind(v0, (((i0_outer_outer_outer*16) + (i0_outer_outer_inner*16)) + ax0))
+                                    tir.bind(v0, ((i0_outer_outer_outer*16) + ax0))
                                     tir.bind(v1, (((i1_outer_outer_outer*256) + (i1_outer_outer_inner*32)) + ax1))
                                     tir.reads([C_local[v0:(v0 + 1), v1:(v1 + 1)]])
                                     tir.writes([C[v0:(v0 + 1), v1:(v1 + 1)]])
                                     C[v0, v1] = C_local[v0, v1]
 
+
 @tvm.script.tir
 def _matmul_sketch_1(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    # function attr dict
-    tir.func_attr({})
     C = tir.match_buffer(c, [512, 512], elem_offset=0, align=128, offset_factor=1)
-    A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
     B = tir.match_buffer(b, [512, 512], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
     reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
@@ -138,8 +135,8 @@ def _matmul_sketch_1(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                         for i0_inner in range(0, 16):
                                             for i1_inner in range(0, 4):
                                                 with tir.block([512, 512, tir.reduce_axis(0, 512)], "C") as [vi, vj, vk]:
-                                                    tir.bind(vi, ((((((i0_outer_outer_outer*1) + i0_outer_outer_inner)*1) + i0_outer_inner)*16) + i0_inner))
-                                                    tir.bind(vj, ((((((i1_outer_outer_outer*8) + i1_outer_outer_inner)*8) + i1_outer_inner)*4) + i1_inner))
+                                                    tir.bind(vi, ((i0_outer_outer_outer*16) + i0_inner))
+                                                    tir.bind(vj, ((((i1_outer_outer_outer*256) + (i1_outer_outer_inner*32)) + (i1_outer_inner*4)) + i1_inner))
                                                     tir.bind(vk, ((i2_outer*2) + i2_inner))
                                                     tir.reads([C_local[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vk:(vk + 1), vj:(vj + 1)]])
                                                     tir.writes([C_local[vi:(vi + 1), vj:(vj + 1)]])
@@ -153,13 +150,12 @@ def _matmul_sketch_1(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                             tir.writes([C[v0:(v0 + 1), v1:(v1 + 1)]])
                             C[v0, v1] = C_local[v0, v1]
 
+
 @tvm.script.tir
 def _matmul_sketch_2(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    # function attr dict
-    tir.func_attr({})
     C = tir.match_buffer(c, [512, 512], elem_offset=0, align=128, offset_factor=1)
-    A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
     B = tir.match_buffer(b, [512, 512], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
     reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
@@ -176,12 +172,13 @@ def _matmul_sketch_2(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                         for i0_inner in range(0, 2):
                                             for i1_inner in range(0, 2):
                                                 with tir.block([512, 512, tir.reduce_axis(0, 512)], "C") as [vi, vj, vk]:
-                                                    tir.bind(vi, ((((((i0_outer_outer_outer*32) + i0_outer_outer_inner)*1) + i0_outer_inner)*2) + i0_inner))
-                                                    tir.bind(vj, ((((((i1_outer_outer_outer*1) + i1_outer_outer_inner)*4) + i1_outer_inner)*2) + i1_inner))
+                                                    tir.bind(vi, (((i0_outer_outer_outer*64) + (i0_outer_outer_inner*2)) + i0_inner))
+                                                    tir.bind(vj, (((i1_outer_outer_outer*8) + (i1_outer_inner*2)) + i1_inner))
                                                     tir.bind(vk, ((i2_outer*2) + i2_inner))
                                                     tir.reads([C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vk:(vk + 1), vj:(vj + 1)]])
                                                     tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
                                                     reducer.step(C[vi, vj], (A[vi, vk]*B[vk, vj]))
+
 
 @tvm.script.tir
 def workload_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
@@ -241,11 +238,9 @@ def test_meta_schedule_sketch_cpu_matmul():
 
 @tvm.script.tir
 def _matmul_relu_sketch_0(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
-    # function attr dict
-    tir.func_attr({})
+    B = tir.match_buffer(b, [512, 512], elem_offset=0, align=128, offset_factor=1)
     D = tir.match_buffer(d, [512, 512], elem_offset=0, align=128, offset_factor=1)
     A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
-    B = tir.match_buffer(b, [512, 512], elem_offset=0, align=128, offset_factor=1)
     reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
@@ -263,28 +258,27 @@ def _matmul_relu_sketch_0(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
                                         for i0_inner in range(0, 2):
                                             for i1_inner in range(0, 2):
                                                 with tir.block([512, 512, tir.reduce_axis(0, 512)], "matmul") as [vi, vj, vk]:
-                                                    tir.bind(vi, ((((((i0_outer_outer_outer*2) + i0_outer_outer_inner)*128) + i0_outer_inner)*2) + i0_inner))
-                                                    tir.bind(vj, ((((((i1_outer_outer_outer*2) + i1_outer_outer_inner)*32) + i1_outer_inner)*2) + i1_inner))
-                                                    tir.bind(vk, ((i2_outer*1) + i2_inner))
+                                                    tir.bind(vi, (((i0_outer_outer_inner*256) + (i0_outer_inner*2)) + i0_inner))
+                                                    tir.bind(vj, ((((i1_outer_outer_outer*128) + (i1_outer_outer_inner*64)) + (i1_outer_inner*2)) + i1_inner))
+                                                    tir.bind(vk, i2_outer)
                                                     tir.reads([C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vk:(vk + 1), vj:(vj + 1)]])
                                                     tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
                                                     reducer.step(C[vi, vj], (A[vi, vk]*B[vk, vj]))
                         for ax0 in range(0, 256):
                             for ax1 in range(0, 64):
                                 with tir.block([512, 512], "relu") as [vi_1, vj_1]:
-                                    tir.bind(vi_1, (((i0_outer_outer_outer*512) + (i0_outer_outer_inner*256)) + ax0))
+                                    tir.bind(vi_1, ((i0_outer_outer_inner*256) + ax0))
                                     tir.bind(vj_1, (((i1_outer_outer_outer*128) + (i1_outer_outer_inner*64)) + ax1))
                                     tir.reads([C[vi_1:(vi_1 + 1), vj_1:(vj_1 + 1)]])
                                     tir.writes([D[vi_1:(vi_1 + 1), vj_1:(vj_1 + 1)]])
                                     D[vi_1, vj_1] = tir.max(C[vi_1, vj_1], tir.float32(0))
 
+
 @tvm.script.tir
 def _matmul_relu_sketch_1(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
-    # function attr dict
-    tir.func_attr({})
     D = tir.match_buffer(d, [512, 512], elem_offset=0, align=128, offset_factor=1)
-    A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
     B = tir.match_buffer(b, [512, 512], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
     reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
@@ -302,28 +296,27 @@ def _matmul_relu_sketch_1(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
                                         for i0_inner in range(0, 2):
                                             for i1_inner in range(0, 2):
                                                 with tir.block([512, 512, tir.reduce_axis(0, 512)], "matmul") as [vi, vj, vk]:
-                                                    tir.bind(vi, ((((((i0_outer_outer_outer*2) + i0_outer_outer_inner)*128) + i0_outer_inner)*2) + i0_inner))
-                                                    tir.bind(vj, ((((((i1_outer_outer_outer*2) + i1_outer_outer_inner)*32) + i1_outer_inner)*2) + i1_inner))
-                                                    tir.bind(vk, ((i2_outer*1) + i2_inner))
+                                                    tir.bind(vi, (((i0_outer_outer_inner*256) + (i0_outer_inner*2)) + i0_inner))
+                                                    tir.bind(vj, ((((i1_outer_outer_outer*128) + (i1_outer_outer_inner*64)) + (i1_outer_inner*2)) + i1_inner))
+                                                    tir.bind(vk, i2_outer)
                                                     tir.reads([C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vk:(vk + 1), vj:(vj + 1)]])
                                                     tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
                                                     reducer.step(C[vi, vj], (A[vi, vk]*B[vk, vj]))
                 for ax0 in range(0, 512):
                     for ax1 in range(0, 128):
                         with tir.block([512, 512], "relu") as [vi_1, vj_1]:
-                            tir.bind(vi_1, ((i0_outer_outer_outer*512) + ax0))
+                            tir.bind(vi_1, ax0)
                             tir.bind(vj_1, ((i1_outer_outer_outer*128) + ax1))
                             tir.reads([C[vi_1:(vi_1 + 1), vj_1:(vj_1 + 1)]])
                             tir.writes([D[vi_1:(vi_1 + 1), vj_1:(vj_1 + 1)]])
                             D[vi_1, vj_1] = tir.max(C[vi_1, vj_1], tir.float32(0))
 
+
 @tvm.script.tir
 def _matmul_relu_sketch_2(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
-    # function attr dict
-    tir.func_attr({})
     D = tir.match_buffer(d, [512, 512], elem_offset=0, align=128, offset_factor=1)
-    A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
     B = tir.match_buffer(b, [512, 512], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
     reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
@@ -341,9 +334,9 @@ def _matmul_relu_sketch_2(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
                                         for i0_inner in range(0, 2):
                                             for i1_inner in range(0, 2):
                                                 with tir.block([512, 512, tir.reduce_axis(0, 512)], "matmul") as [vi, vj, vk]:
-                                                    tir.bind(vi, ((((((i0_outer_outer_outer*2) + i0_outer_outer_inner)*128) + i0_outer_inner)*2) + i0_inner))
-                                                    tir.bind(vj, ((((((i1_outer_outer_outer*2) + i1_outer_outer_inner)*32) + i1_outer_inner)*2) + i1_inner))
-                                                    tir.bind(vk, ((i2_outer*1) + i2_inner))
+                                                    tir.bind(vi, (((i0_outer_outer_inner*256) + (i0_outer_inner*2)) + i0_inner))
+                                                    tir.bind(vj, ((((i1_outer_outer_outer*128) + (i1_outer_outer_inner*64)) + (i1_outer_inner*2)) + i1_inner))
+                                                    tir.bind(vk, i2_outer)
                                                     tir.reads([C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vk:(vk + 1), vj:(vj + 1)]])
                                                     tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
                                                     reducer.step(C[vi, vj], (A[vi, vk]*B[vk, vj]))
@@ -355,6 +348,7 @@ def _matmul_relu_sketch_2(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
                     tir.reads([C[vi_1:(vi_1 + 1), vj_1:(vj_1 + 1)]])
                     tir.writes([D[vi_1:(vi_1 + 1), vj_1:(vj_1 + 1)]])
                     D[vi_1, vj_1] = tir.max(C[vi_1, vj_1], tir.float32(0))
+
 
 @tvm.script.tir
 def workload_matmul_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
@@ -448,13 +442,13 @@ def _conv2d_nchw_sketch_0(var_X: ty.handle, var_W: ty.handle, var_compute: ty.ha
                         for i4_inner, i5_inner, i6_inner in tir.grid(2, 3, 1):
                             for i0_2_inner, i1_2_inner, i2_2_inner, i3_2_inner in tir.grid(1, 2, 14, 2):
                                 with tir.block([1, 512, 56, 56, tir.reduce_axis(0, 512), tir.reduce_axis(0, 3), tir.reduce_axis(0, 3)], "compute") as [nn, ff, yy, xx, rc, ry, rx]:
-                                    tir.bind(nn, ((((((i0_2_outer_outer_outer*1) + i0_2_outer_outer_inner)*1) + i0_2_outer_inner)*1) + i0_2_inner))
-                                    tir.bind(ff, ((((((i1_2_outer_outer_outer*8) + i1_2_outer_outer_inner)*16) + i1_2_outer_inner)*2) + i1_2_inner))
-                                    tir.bind(yy, ((((((i2_2_outer_outer_outer*2) + i2_2_outer_outer_inner)*1) + i2_2_outer_inner)*14) + i2_2_inner))
-                                    tir.bind(xx, ((((((i3_2_outer_outer_outer*4) + i3_2_outer_outer_inner)*1) + i3_2_outer_inner)*2) + i3_2_inner))
+                                    tir.bind(nn, 0)
+                                    tir.bind(ff, ((((i1_2_outer_outer_outer*256) + (i1_2_outer_outer_inner*32)) + (i1_2_outer_inner*2)) + i1_2_inner))
+                                    tir.bind(yy, (((i2_2_outer_outer_outer*28) + (i2_2_outer_outer_inner*14)) + i2_2_inner))
+                                    tir.bind(xx, (((i3_2_outer_outer_outer*8) + (i3_2_outer_outer_inner*2)) + i3_2_inner))
                                     tir.bind(rc, ((i4_outer*2) + i4_inner))
-                                    tir.bind(ry, ((i5_outer*3) + i5_inner))
-                                    tir.bind(rx, ((i6_outer*1) + i6_inner))
+                                    tir.bind(ry, i5_inner)
+                                    tir.bind(rx, i6_outer)
                                     tir.reads([compute_local[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
                                     tir.writes([compute_local[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
                                     reducer.step(compute_local[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
@@ -463,13 +457,14 @@ def _conv2d_nchw_sketch_0(var_X: ty.handle, var_W: ty.handle, var_compute: ty.ha
                         for ax2 in range(0, 14):
                             for ax3 in range(0, 2):
                                 with tir.block([1, 512, 56, 56], "") as [v0, v1, v2, v3]:
-                                    tir.bind(v0, (i0_2_outer_outer_outer + i0_2_outer_outer_inner))
+                                    tir.bind(v0, 0)
                                     tir.bind(v1, (((i1_2_outer_outer_outer*256) + (i1_2_outer_outer_inner*32)) + ax1))
                                     tir.bind(v2, (((i2_2_outer_outer_outer*28) + (i2_2_outer_outer_inner*14)) + ax2))
                                     tir.bind(v3, (((i3_2_outer_outer_outer*8) + (i3_2_outer_outer_inner*2)) + ax3))
                                     tir.reads([compute_local[v0:(v0 + 1), v1:(v1 + 1), v2:(v2 + 1), v3:(v3 + 1)]])
                                     tir.writes([compute[v0:(v0 + 1), v1:(v1 + 1), v2:(v2 + 1), v3:(v3 + 1)]])
                                     compute[v0, v1, v2, v3] = compute_local[v0, v1, v2, v3]
+
 
 @tvm.script.tir
 def _conv2d_nchw_sketch_1(var_X: ty.handle, var_W: ty.handle, var_compute: ty.handle) -> None:
@@ -504,13 +499,13 @@ def _conv2d_nchw_sketch_1(var_X: ty.handle, var_W: ty.handle, var_compute: ty.ha
                         for i4_inner, i5_inner, i6_inner in tir.grid(2, 3, 1):
                             for i0_2_inner, i1_2_inner, i2_2_inner, i3_2_inner in tir.grid(1, 2, 14, 2):
                                 with tir.block([1, 512, 56, 56, tir.reduce_axis(0, 512), tir.reduce_axis(0, 3), tir.reduce_axis(0, 3)], "compute") as [nn, ff, yy, xx, rc, ry, rx]:
-                                    tir.bind(nn, ((((((i0_2_outer_outer_outer*1) + i0_2_outer_outer_inner)*1) + i0_2_outer_inner)*1) + i0_2_inner))
-                                    tir.bind(ff, ((((((i1_2_outer_outer_outer*8) + i1_2_outer_outer_inner)*16) + i1_2_outer_inner)*2) + i1_2_inner))
-                                    tir.bind(yy, ((((((i2_2_outer_outer_outer*2) + i2_2_outer_outer_inner)*1) + i2_2_outer_inner)*14) + i2_2_inner))
-                                    tir.bind(xx, ((((((i3_2_outer_outer_outer*4) + i3_2_outer_outer_inner)*1) + i3_2_outer_inner)*2) + i3_2_inner))
+                                    tir.bind(nn, 0)
+                                    tir.bind(ff, ((((i1_2_outer_outer_outer*256) + (i1_2_outer_outer_inner*32)) + (i1_2_outer_inner*2)) + i1_2_inner))
+                                    tir.bind(yy, (((i2_2_outer_outer_outer*28) + (i2_2_outer_outer_inner*14)) + i2_2_inner))
+                                    tir.bind(xx, (((i3_2_outer_outer_outer*8) + (i3_2_outer_outer_inner*2)) + i3_2_inner))
                                     tir.bind(rc, ((i4_outer*2) + i4_inner))
-                                    tir.bind(ry, ((i5_outer*3) + i5_inner))
-                                    tir.bind(rx, ((i6_outer*1) + i6_inner))
+                                    tir.bind(ry, i5_inner)
+                                    tir.bind(rx, i6_outer)
                                     tir.reads([compute_local[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
                                     tir.writes([compute_local[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
                                     reducer.step(compute_local[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
@@ -519,13 +514,14 @@ def _conv2d_nchw_sketch_1(var_X: ty.handle, var_W: ty.handle, var_compute: ty.ha
                     for ax2 in range(0, 28):
                         for ax3 in range(0, 8):
                             with tir.block([1, 512, 56, 56], "") as [v0, v1, v2, v3]:
-                                tir.bind(v0, i0_2_outer_outer_outer)
+                                tir.bind(v0, 0)
                                 tir.bind(v1, ((i1_2_outer_outer_outer*256) + ax1))
                                 tir.bind(v2, ((i2_2_outer_outer_outer*28) + ax2))
                                 tir.bind(v3, ((i3_2_outer_outer_outer*8) + ax3))
                                 tir.reads([compute_local[v0:(v0 + 1), v1:(v1 + 1), v2:(v2 + 1), v3:(v3 + 1)]])
                                 tir.writes([compute[v0:(v0 + 1), v1:(v1 + 1), v2:(v2 + 1), v3:(v3 + 1)]])
                                 compute[v0, v1, v2, v3] = compute_local[v0, v1, v2, v3]
+
 
 @tvm.script.tir
 def _conv2d_nchw_sketch_2(var_X: ty.handle, var_W: ty.handle, var_compute: ty.handle) -> None:
@@ -559,13 +555,13 @@ def _conv2d_nchw_sketch_2(var_X: ty.handle, var_W: ty.handle, var_compute: ty.ha
                         for i4_inner, i5_inner, i6_inner in tir.grid(16, 3, 3):
                             for i0_2_inner, i1_2_inner, i2_2_inner, i3_2_inner in tir.grid(1, 8, 8, 14):
                                 with tir.block([1, 512, 56, 56, tir.reduce_axis(0, 512), tir.reduce_axis(0, 3), tir.reduce_axis(0, 3)], "compute") as [nn, ff, yy, xx, rc, ry, rx]:
-                                    tir.bind(nn, ((((((i0_2_outer_outer_outer*1) + i0_2_outer_outer_inner)*1) + i0_2_outer_inner)*1) + i0_2_inner))
-                                    tir.bind(ff, ((((((i1_2_outer_outer_outer*16) + i1_2_outer_outer_inner)*2) + i1_2_outer_inner)*8) + i1_2_inner))
-                                    tir.bind(yy, ((((((i2_2_outer_outer_outer*7) + i2_2_outer_outer_inner)*1) + i2_2_outer_inner)*8) + i2_2_inner))
-                                    tir.bind(xx, ((((((i3_2_outer_outer_outer*1) + i3_2_outer_outer_inner)*4) + i3_2_outer_inner)*14) + i3_2_inner))
+                                    tir.bind(nn, 0)
+                                    tir.bind(ff, ((((i1_2_outer_outer_outer*256) + (i1_2_outer_outer_inner*16)) + (i1_2_outer_inner*8)) + i1_2_inner))
+                                    tir.bind(yy, ((i2_2_outer_outer_inner*8) + i2_2_inner))
+                                    tir.bind(xx, ((i3_2_outer_inner*14) + i3_2_inner))
                                     tir.bind(rc, ((i4_outer*16) + i4_inner))
-                                    tir.bind(ry, ((i5_outer*3) + i5_inner))
-                                    tir.bind(rx, ((i6_outer*3) + i6_inner))
+                                    tir.bind(ry, i5_inner)
+                                    tir.bind(rx, i6_inner)
                                     tir.reads([compute[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
                                     tir.writes([compute[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
                                     reducer.step(compute[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
@@ -722,13 +718,13 @@ def _conv2d_nchw_bias_bn_relu_sketch_0(var_X: ty.handle, var_W: ty.handle, var_B
                         for i4_inner, i5_inner, i6_inner in tir.grid(8, 3, 3):
                             for i0_2_inner, i1_2_inner, i2_2_inner, i3_2_inner in tir.grid(1, 8, 2, 4):
                                 with tir.block([1, 512, 56, 56, tir.reduce_axis(0, 512), tir.reduce_axis(0, 3), tir.reduce_axis(0, 3)], "compute") as [nn, ff, yy, xx, rc, ry, rx]:
-                                    tir.bind(nn, ((((((i0_2_outer_outer_outer*1) + i0_2_outer_outer_inner)*1) + i0_2_outer_inner)*1) + i0_2_inner))
-                                    tir.bind(ff, ((((((i1_2_outer_outer_outer*8) + i1_2_outer_outer_inner)*2) + i1_2_outer_inner)*8) + i1_2_inner))
-                                    tir.bind(yy, ((((((i2_2_outer_outer_outer*1) + i2_2_outer_outer_inner)*28) + i2_2_outer_inner)*2) + i2_2_inner))
-                                    tir.bind(xx, ((((((i3_2_outer_outer_outer*2) + i3_2_outer_outer_inner)*7) + i3_2_outer_inner)*4) + i3_2_inner))
+                                    tir.bind(nn, 0)
+                                    tir.bind(ff, ((((i1_2_outer_outer_outer*128) + (i1_2_outer_outer_inner*16)) + (i1_2_outer_inner*8)) + i1_2_inner))
+                                    tir.bind(yy, ((i2_2_outer_inner*2) + i2_2_inner))
+                                    tir.bind(xx, (((i3_2_outer_outer_inner*28) + (i3_2_outer_inner*4)) + i3_2_inner))
                                     tir.bind(rc, ((i4_outer*8) + i4_inner))
-                                    tir.bind(ry, ((i5_outer*3) + i5_inner))
-                                    tir.bind(rx, ((i6_outer*3) + i6_inner))
+                                    tir.bind(ry, i5_inner)
+                                    tir.bind(rx, i6_inner)
                                     tir.reads([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
                                     tir.writes([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
                                     reducer.step(compute_1[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
@@ -737,10 +733,10 @@ def _conv2d_nchw_bias_bn_relu_sketch_0(var_X: ty.handle, var_W: ty.handle, var_B
                         for ax2 in range(0, 56):
                             for ax3 in range(0, 28):
                                 with tir.block([1, 512, 56, 56], "compute_2") as [i0_7, i1_7, i2_7, i3_7]:
-                                    tir.bind(i0_7, (i0_2_outer_outer_outer + i0_2_outer_outer_inner))
+                                    tir.bind(i0_7, 0)
                                     tir.bind(i1_7, (((i1_2_outer_outer_outer*128) + (i1_2_outer_outer_inner*16)) + ax1))
-                                    tir.bind(i2_7, (((i2_2_outer_outer_outer*56) + (i2_2_outer_outer_inner*56)) + ax2))
-                                    tir.bind(i3_7, (((i3_2_outer_outer_outer*56) + (i3_2_outer_outer_inner*28)) + ax3))
+                                    tir.bind(i2_7, ax2)
+                                    tir.bind(i3_7, ((i3_2_outer_outer_inner*28) + ax3))
                                     tir.reads([compute_1[i0_7:(i0_7 + 1), i1_7:(i1_7 + 1), i2_7:(i2_7 + 1), i3_7:(i3_7 + 1)], B[i1_7:(i1_7 + 1), 0:1, 0:1], bn_scale[i1_7:(i1_7 + 1), 0:1, 0:1], bn_offset[i1_7:(i1_7 + 1), 0:1, 0:1]])
                                     tir.writes([compute[i0_7:(i0_7 + 1), i1_7:(i1_7 + 1), i2_7:(i2_7 + 1), i3_7:(i3_7 + 1)]])
                                     compute[i0_7, i1_7, i2_7, i3_7] = tir.max((((compute_1[i0_7, i1_7, i2_7, i3_7] + B[i1_7, 0, 0])*bn_scale[i1_7, 0, 0]) + bn_offset[i1_7, 0, 0]), tir.float32(0))
@@ -782,13 +778,13 @@ def _conv2d_nchw_bias_bn_relu_sketch_1(var_X: ty.handle, var_W: ty.handle, var_B
                         for i4_inner, i5_inner, i6_inner in tir.grid(8, 3, 3):
                             for i0_2_inner, i1_2_inner, i2_2_inner, i3_2_inner in tir.grid(1, 8, 2, 4):
                                 with tir.block([1, 512, 56, 56, tir.reduce_axis(0, 512), tir.reduce_axis(0, 3), tir.reduce_axis(0, 3)], "compute") as [nn, ff, yy, xx, rc, ry, rx]:
-                                    tir.bind(nn, ((((((i0_2_outer_outer_outer*1) + i0_2_outer_outer_inner)*1) + i0_2_outer_inner)*1) + i0_2_inner))
-                                    tir.bind(ff, ((((((i1_2_outer_outer_outer*8) + i1_2_outer_outer_inner)*2) + i1_2_outer_inner)*8) + i1_2_inner))
-                                    tir.bind(yy, ((((((i2_2_outer_outer_outer*1) + i2_2_outer_outer_inner)*28) + i2_2_outer_inner)*2) + i2_2_inner))
-                                    tir.bind(xx, ((((((i3_2_outer_outer_outer*2) + i3_2_outer_outer_inner)*7) + i3_2_outer_inner)*4) + i3_2_inner))
+                                    tir.bind(nn, 0)
+                                    tir.bind(ff, ((((i1_2_outer_outer_outer*128) + (i1_2_outer_outer_inner*16)) + (i1_2_outer_inner*8)) + i1_2_inner))
+                                    tir.bind(yy, ((i2_2_outer_inner*2) + i2_2_inner))
+                                    tir.bind(xx, (((i3_2_outer_outer_inner*28) + (i3_2_outer_inner*4)) + i3_2_inner))
                                     tir.bind(rc, ((i4_outer*8) + i4_inner))
-                                    tir.bind(ry, ((i5_outer*3) + i5_inner))
-                                    tir.bind(rx, ((i6_outer*3) + i6_inner))
+                                    tir.bind(ry, i5_inner)
+                                    tir.bind(rx, i6_inner)
                                     tir.reads([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
                                     tir.writes([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
                                     reducer.step(compute_1[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
@@ -797,13 +793,14 @@ def _conv2d_nchw_bias_bn_relu_sketch_1(var_X: ty.handle, var_W: ty.handle, var_B
                     for ax2 in range(0, 56):
                         for ax3 in range(0, 56):
                             with tir.block([1, 512, 56, 56], "compute_2") as [i0_7, i1_7, i2_7, i3_7]:
-                                tir.bind(i0_7, i0_2_outer_outer_outer)
+                                tir.bind(i0_7, 0)
                                 tir.bind(i1_7, ((i1_2_outer_outer_outer*128) + ax1))
-                                tir.bind(i2_7, ((i2_2_outer_outer_outer*56) + ax2))
-                                tir.bind(i3_7, ((i3_2_outer_outer_outer*56) + ax3))
+                                tir.bind(i2_7, ax2)
+                                tir.bind(i3_7, ax3)
                                 tir.reads([compute_1[i0_7:(i0_7 + 1), i1_7:(i1_7 + 1), i2_7:(i2_7 + 1), i3_7:(i3_7 + 1)], B[i1_7:(i1_7 + 1), 0:1, 0:1], bn_scale[i1_7:(i1_7 + 1), 0:1, 0:1], bn_offset[i1_7:(i1_7 + 1), 0:1, 0:1]])
                                 tir.writes([compute[i0_7:(i0_7 + 1), i1_7:(i1_7 + 1), i2_7:(i2_7 + 1), i3_7:(i3_7 + 1)]])
                                 compute[i0_7, i1_7, i2_7, i3_7] = tir.max((((compute_1[i0_7, i1_7, i2_7, i3_7] + B[i1_7, 0, 0])*bn_scale[i1_7, 0, 0]) + bn_offset[i1_7, 0, 0]), tir.float32(0))
+
 
 @tvm.script.tir
 def _conv2d_nchw_bias_bn_relu_sketch_2(var_X: ty.handle, var_W: ty.handle, var_B: ty.handle, var_bn_scale: ty.handle, var_bn_offset: ty.handle, var_compute: ty.handle) -> None:
@@ -841,13 +838,13 @@ def _conv2d_nchw_bias_bn_relu_sketch_2(var_X: ty.handle, var_W: ty.handle, var_B
                         for i4_inner, i5_inner, i6_inner in tir.grid(8, 3, 3):
                             for i0_2_inner, i1_2_inner, i2_2_inner, i3_2_inner in tir.grid(1, 8, 2, 4):
                                 with tir.block([1, 512, 56, 56, tir.reduce_axis(0, 512), tir.reduce_axis(0, 3), tir.reduce_axis(0, 3)], "compute") as [nn, ff, yy, xx, rc, ry, rx]:
-                                    tir.bind(nn, ((((((i0_2_outer_outer_outer*1) + i0_2_outer_outer_inner)*1) + i0_2_outer_inner)*1) + i0_2_inner))
-                                    tir.bind(ff, ((((((i1_2_outer_outer_outer*8) + i1_2_outer_outer_inner)*2) + i1_2_outer_inner)*8) + i1_2_inner))
-                                    tir.bind(yy, ((((((i2_2_outer_outer_outer*1) + i2_2_outer_outer_inner)*28) + i2_2_outer_inner)*2) + i2_2_inner))
-                                    tir.bind(xx, ((((((i3_2_outer_outer_outer*2) + i3_2_outer_outer_inner)*7) + i3_2_outer_inner)*4) + i3_2_inner))
+                                    tir.bind(nn, 0)
+                                    tir.bind(ff, ((((i1_2_outer_outer_outer*128) + (i1_2_outer_outer_inner*16)) + (i1_2_outer_inner*8)) + i1_2_inner))
+                                    tir.bind(yy, ((i2_2_outer_inner*2) + i2_2_inner))
+                                    tir.bind(xx, (((i3_2_outer_outer_inner*28) + (i3_2_outer_inner*4)) + i3_2_inner))
                                     tir.bind(rc, ((i4_outer*8) + i4_inner))
-                                    tir.bind(ry, ((i5_outer*3) + i5_inner))
-                                    tir.bind(rx, ((i6_outer*3) + i6_inner))
+                                    tir.bind(ry, i5_inner)
+                                    tir.bind(rx, i6_inner)
                                     tir.reads([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
                                     tir.writes([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
                                     reducer.step(compute_1[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
@@ -863,6 +860,7 @@ def _conv2d_nchw_bias_bn_relu_sketch_2(var_X: ty.handle, var_W: ty.handle, var_B
                             tir.reads([compute_1[i0_7:(i0_7 + 1), i1_7:(i1_7 + 1), i2_7:(i2_7 + 1), i3_7:(i3_7 + 1)], B[i1_7:(i1_7 + 1), 0:1, 0:1], bn_scale[i1_7:(i1_7 + 1), 0:1, 0:1], bn_offset[i1_7:(i1_7 + 1), 0:1, 0:1]])
                             tir.writes([compute[i0_7:(i0_7 + 1), i1_7:(i1_7 + 1), i2_7:(i2_7 + 1), i3_7:(i3_7 + 1)]])
                             compute[i0_7, i1_7, i2_7, i3_7] = tir.max((((compute_1[i0_7, i1_7, i2_7, i3_7] + B[i1_7, 0, 0])*bn_scale[i1_7, 0, 0]) + bn_offset[i1_7, 0, 0]), tir.float32(0))
+
 
 @tvm.script.tir
 def workload_conv2d_nchw_bias_bn_relu(var_X: ty.handle, var_W: ty.handle, var_B: ty.handle, var_bn_scale: ty.handle, var_bn_offset: ty.handle, var_compute: ty.handle) -> None:
