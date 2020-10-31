@@ -136,6 +136,7 @@ class IterMark : public ObjectRef {
   TVM_DLL IterMark(PrimExpr source, PrimExpr extent);
 
   TVM_DEFINE_OBJECT_REF_METHODS(IterMark, ObjectRef, IterMarkNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(IterMarkNode);
 };
 
 /*!
@@ -272,13 +273,51 @@ class IterSumExpr : public IterMapExpr {
  *
  * \param indices The indices to detect pattern for.
  * \param input_iters Map from variable to iterator's range.
+ * \param predicate The predicate input_iters should follow
  * \param analyzer Analyzer used to get context information.
  *
  * \return The detected pattern if a match exists,
  *         otherwise return an empty array.
  */
 Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, Range>& input_iters,
-                                 arith::Analyzer* analyzer);
+                                 const PrimExpr& predicate, arith::Analyzer* analyzer);
+
+/*!
+ * \brief Use IterVarMap detector to rewrite and simplify the indices
+ *
+ * \param indices The indices to detect pattern for.
+ * \param input_iters Map from variable to iterator's range
+ * \param predicate The predicate input_iters should follow
+ *
+ * \return The indices after rewrite
+ */
+Array<PrimExpr> IterMapRewriteSimplify(const Array<PrimExpr>& indices,
+                                       const Map<Var, Range>& input_iters,
+                                       const PrimExpr& predicate);
+
+/*!
+ * \brief Detect if indices can be written as
+ *
+ * [a_0*e_0 + b_0 + c_0, a_1*e_1 + b_1, ..., a_n*e_n + b_n]
+ *
+ * where a = some-quasi-affine-iter-map(input_iters \set_minus input_sub_iters)
+ *       b = some-quasi-affine-iter-map(input_sub_iters)
+ *       c is constant symbols
+ *       e is the extent of b
+ *
+ * \param indices The indices to detect pattern for.
+ * \param input_iters Map from variable to iterator's range.
+ * \param sub_iters Iterators of subspace
+ * \param predicate The predicate for input_inters
+ * \param analyzer Analyzer used to get context information.
+ *
+ * \return The detected a and b if a match exists,
+ *         otherwise return an empty array.
+ */
+Array<Array<PrimExpr>> SubspaceDivision(const Array<PrimExpr>& indices,
+                                        const Map<Var, Range>& input_iters,
+                                        const Array<Var>& inner_iters, const PrimExpr& predicate,
+                                        arith::Analyzer* analyzer);
 
 }  // namespace arith
 }  // namespace tvm

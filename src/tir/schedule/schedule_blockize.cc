@@ -129,7 +129,6 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& sref, const String& exe_scope) {
   auto outer_realize = BlockRealize(values, IntImm(DataType::Bool(), 1), outer_block, exe_scope);
   this->Replace(sref, outer_realize);
   // Check loop binding
-  // TODO(Siyuan): enhance validation
   this->ValidateLoops();
 
   return this->stmt2ref.at(outer_block.get());
