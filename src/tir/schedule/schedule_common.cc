@@ -74,7 +74,8 @@ class IRSubstitueInScope : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const BlockRealizeNode* op) final {
-    auto fmutate = [this](const PrimExpr& e) { return this->VisitExpr(e); };
+    arith::Analyzer analyzer;
+    auto fmutate = [&](const PrimExpr& e) { return this->VisitExpr(e); };
     Array<PrimExpr> v = op->binding_values;
     v.MutateByApply(fmutate);
     PrimExpr pred = this->VisitExpr(op->predicate);
@@ -83,7 +84,7 @@ class IRSubstitueInScope : public StmtExprMutator {
     } else {
       auto n = CopyOnWrite(op);
       n->binding_values = std::move(v);
-      n->predicate = std::move(pred);
+      n->predicate = std::move(analyzer.Simplify(pred));
       return Stmt(n);
     }
   }

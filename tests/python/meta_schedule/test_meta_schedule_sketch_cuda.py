@@ -114,7 +114,7 @@ def _matmul_sketch_0(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                     for ax0 in range(0, 16):
                                         for ax1 in range(0, 64):
                                             with tir.block([512, 512], "") as [v0, v1]:
-                                                tir.bind(v0, ((((i0_outer_outer_outer_outer*512) + (i0_outer_outer_outer_inner*64)) + (i0_outer_outer_inner*16)) + ax0))
+                                                tir.bind(v0, (((i0_outer_outer_outer_inner*64) + (i0_outer_outer_inner*16)) + ax0))
                                                 tir.bind(v1, ((i2_outer_outer*64) + ax1))
                                                 tir.reads([A[v0:(v0 + 1), v1:(v1 + 1)]])
                                                 tir.writes([A_shared[v0:(v0 + 1), v1:(v1 + 1)]])
@@ -134,16 +134,16 @@ def _matmul_sketch_0(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                                     for i0_inner in range(0, 2):
                                                         for i1_inner in range(0, 4):
                                                             with tir.block([512, 512, tir.reduce_axis(0, 512)], "C") as [vi, vj, vk]:
-                                                                tir.bind(vi, ((((((((i0_outer_outer_outer_outer*8) + i0_outer_outer_outer_inner)*4) + i0_outer_outer_inner)*8) + i0_outer_inner)*2) + i0_inner))
-                                                                tir.bind(vj, ((((((((i1_outer_outer_outer_outer*4) + i1_outer_outer_outer_inner)*4) + i1_outer_outer_inner)*2) + i1_outer_inner)*4) + i1_inner))
-                                                                tir.bind(vk, ((((i2_outer_outer*32) + i2_outer_inner)*2) + i2_inner))
+                                                                tir.bind(vi, ((((i0_outer_outer_outer_inner*64) + (i0_outer_outer_inner*16)) + (i0_outer_inner*2)) + i0_inner))
+                                                                tir.bind(vj, (((((i1_outer_outer_outer_outer*128) + (i1_outer_outer_outer_inner*32)) + (i1_outer_outer_inner*8)) + (i1_outer_inner*4)) + i1_inner))
+                                                                tir.bind(vk, (((i2_outer_outer*64) + (i2_outer_inner*2)) + i2_inner))
                                                                 tir.reads([C_local[vi:(vi + 1), vj:(vj + 1)], A_shared[vi:(vi + 1), vk:(vk + 1)], B_shared[vk:(vk + 1), vj:(vj + 1)]])
                                                                 tir.writes([C_local[vi:(vi + 1), vj:(vj + 1)]])
                                                                 reducer.step(C_local[vi, vj], (A_shared[vi, vk]*B_shared[vk, vj]))
                                 for ax0_2 in range(0, 16):
                                     for ax1_2 in range(0, 8):
                                         with tir.block([512, 512], "") as [v0_2, v1_2]:
-                                            tir.bind(v0_2, ((((i0_outer_outer_outer_outer*512) + (i0_outer_outer_outer_inner*64)) + (i0_outer_outer_inner*16)) + ax0_2))
+                                            tir.bind(v0_2, (((i0_outer_outer_outer_inner*64) + (i0_outer_outer_inner*16)) + ax0_2))
                                             tir.bind(v1_2, ((((i1_outer_outer_outer_outer*128) + (i1_outer_outer_outer_inner*32)) + (i1_outer_outer_inner*8)) + ax1_2))
                                             tir.reads([C_local[v0_2:(v0_2 + 1), v1_2:(v1_2 + 1)]])
                                             tir.writes([C[v0_2:(v0_2 + 1), v1_2:(v1_2 + 1)]])
