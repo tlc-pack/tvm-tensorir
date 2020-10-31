@@ -160,6 +160,7 @@ def multi_level_tiling_and_fusion(
     can_cache_write: bool,
     must_cache_write: bool,
     fusion_levels: List[int],
+    vector_load_max_len: Optional[int] = None,
 ) -> SearchRule:
     """Create a rule that does multi-level tiling if there is sufficient amount of data reuse.
     Optionally add read cache and write cache, do fusion if possible.
@@ -177,6 +178,8 @@ def multi_level_tiling_and_fusion(
         Must add cache_write after the multi-level tiling
     fusion_levels : List[int]
         The possible tile levels that a single elementwise consumer is fused at
+    vector_load_max_len : Optional[int]
+        For cache_read, if vectorized load is used, the max length of the vectorized load
 
     Returns
     ----------
@@ -189,6 +192,7 @@ def multi_level_tiling_and_fusion(
         can_cache_write,
         must_cache_write,
         fusion_levels,
+        vector_load_max_len,
     )
 
 
