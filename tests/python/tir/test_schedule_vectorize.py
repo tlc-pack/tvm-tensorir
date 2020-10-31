@@ -30,7 +30,6 @@ def predicate_vectorize(b: ty.handle, c: ty.handle) -> None:
     for i, jo in tir.grid(16, 4):
         for ji in range(0, 4, annotation={"loop_type": "vectorize"}):
             with tir.block([16, 16], "update") as [vi, vj]:
-                tir.where(((jo * 4) + ji) < 16)
                 tir.bind(vi, i)
                 tir.bind(vj, (jo * 4) + ji)
                 C[vi, vj] = (B[vi, vj] + tir.float32(1))
@@ -43,7 +42,6 @@ def predicate_unroll(b: ty.handle, c: ty.handle) -> None:
     for i, jo in tir.grid(16, 4):
         for ji in range(0, 4, annotation={"loop_type": "unroll"}):
             with tir.block([16, 16], "update") as [vi, vj]:
-                tir.where(((jo * 4) + ji) < 16)
                 tir.bind(vi, i)
                 tir.bind(vj, (jo * 4) + ji)
                 C[vi, vj] = (B[vi, vj] + tir.float32(1))

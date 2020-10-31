@@ -16,6 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include <tvm/arith/iter_affine_map.h>
+
 #include "./schedule_common.h"
 
 namespace tvm {
@@ -42,6 +44,45 @@ class PredicateUpdater : public StmtMutator {
   const PrimExpr& predicate_;
 };
 
+class BlockRealizeRewriter : public StmtExprMutator {
+ public:
+  explicit BlockRealizeRewriter(
+      const std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual>& loop_map) {
+    loop_map_.insert(loop_map.begin(), loop_map.end());
+  }
+
+  Stmt VisitStmt_(const LoopNode* op) final {
+    loop_map_[op->loop_var] = Range::FromMinExtent(op->min, op->extent);
+    Stmt res = StmtMutator::VisitStmt_(op);
+    loop_map_.erase(op->loop_var);
+    return res;
+  }
+
+  Stmt VisitStmt_(const BlockRealizeNode* op) final {
+    auto v = arith::IterMapRewriteSimplify(op->binding_values, loop_map_, op->predicate);
+    if (v.same_as(op->binding_values)) {
+      return GetRef<Stmt>(op);
+    } else {
+      auto n = CopyOnWrite(op);
+      n->binding_values = std::move(v);
+      return Stmt(n);
+    }
+  }
+
+ private:
+  std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> loop_map_;
+};
+
+Stmt RewriteBindings(const Stmt& stmt, const Array<StmtSRef>& loops) {
+  std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> loop_map;
+  for (const auto& sref : loops) {
+    const auto* loop = sref->GetStmt<LoopNode>();
+    loop_map[loop->loop_var] = Range::FromMinExtent(loop->min, loop->extent);
+  }
+  BlockRealizeRewriter rewriter(loop_map);
+  return rewriter(stmt);
+}
+
 Array<StmtSRef> ScheduleNode::split(const StmtSRef& loop_sref, const PrimExpr& nparts,
                                     const PrimExpr& factor) {
   // Equivalence
@@ -64,7 +105,7 @@ Array<StmtSRef> ScheduleNode::split(const StmtSRef& loop_sref, const PrimExpr& n
   // TODO(@junrushao1994): use Optional<PrimExpr> instead
   Stmt new_loop_body = SubstituteInScope(loop->body, [&](const VarNode* v) -> PrimExpr {
     if (v == loop->loop_var.get()) {
-      return tir::Mul(outer_var, factor) + inner_var;
+      return outer_var * factor + inner_var;
     } else {
       return NullValue<PrimExpr>();
     }
@@ -76,15 +117,16 @@ Array<StmtSRef> ScheduleNode::split(const StmtSRef& loop_sref, const PrimExpr& n
   PrimExpr inner_extent = factor;
   analyzer.Bind(outer_var, Range::FromMinExtent(outer_min, outer_extent));
   analyzer.Bind(inner_var, Range::FromMinExtent(inner_min, inner_extent));
-  PrimExpr predicate = tir::Mul(outer_var, factor) + inner_var < loop->extent;
+  PrimExpr predicate = outer_var * factor + inner_var < loop->extent;
   if (!analyzer.CanProve(predicate)) {
     new_loop_body = PredicateUpdater(predicate)(new_loop_body);
   }
   // Step 3. Generate two nested loops to replace the original loop
   Loop inner_loop(inner_var, inner_min, inner_extent, loop->annotations, new_loop_body);
   Loop outer_loop(outer_var, outer_min, outer_extent, loop->annotations, inner_loop);
+  outer_loop = Downcast<Loop>(RewriteBindings(outer_loop, GetLoopsInScope(loop_sref)));
   this->Replace(loop_sref, outer_loop);
-  return {stmt2ref.at(outer_loop.get()), stmt2ref.at(inner_loop.get())};
+  return {stmt2ref.at(outer_loop.get()), stmt2ref.at(outer_loop->body.get())};
 }
 
 StmtSRef ScheduleNode::fuse(const StmtSRef& outer_sref, const StmtSRef& inner_sref) {
@@ -121,21 +163,22 @@ StmtSRef ScheduleNode::fuse(const StmtSRef& outer_sref, const StmtSRef& inner_sr
   CHECK(analyzer.CanProve(inner->min == 0))
       << "ValueError: Only support inner loop starting with 0 for now";
   CHECK(analyzer.CanProve(outer->min == 0))
-      << "ValueError: Only support outter loop starting with 0 for now";
+      << "ValueError: Only support outer loop starting with 0 for now";
   Var fused_var = outer->loop_var.copy_with_suffix("_" + inner->loop_var->name_hint + "_fused");
   Stmt new_loop_body = SubstituteInScope(inner->body, [&](const VarNode* v) -> PrimExpr {
     if (GetRef<Var>(v).same_as(outer->loop_var)) {
-      return tir::FloorDiv(fused_var, inner->extent) + outer->min;
+      return floordiv(fused_var, inner->extent) + outer->min;
     } else if (GetRef<Var>(v).same_as(inner->loop_var)) {
-      return tir::FloorMod(fused_var, inner->extent) + inner->min;
+      return floormod(fused_var, inner->extent) + inner->min;
     } else {
       return NullValue<PrimExpr>();
     }
   });
   // Step 3. Generate a loop to replace the original two nested loops
   PrimExpr fused_min = 0;
-  PrimExpr fused_extent = outer->extent * inner->extent;
+  PrimExpr fused_extent = analyzer.Simplify(outer->extent * inner->extent);
   Loop fused_loop = Loop(fused_var, fused_min, fused_extent, outer->annotations, new_loop_body);
+  fused_loop = Downcast<Loop>(RewriteBindings(fused_loop, GetLoopsInScope(outer_sref)));
   this->Replace(outer_sref, fused_loop);
   return stmt2ref.at(fused_loop.get());
 }
