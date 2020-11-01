@@ -35,9 +35,9 @@ def tensorcore_desc(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         tir.bind(vk, 0)
         for i, j, k in tir.grid(16, 16, 16):
             with tir.block([16, 16, tir.reduce_axis(0, 16)], "update") as [vii, vjj, vkk]:
-                tir.bind(vii, vi + i)
-                tir.bind(vjj, vj + j)
-                tir.bind(vkk, vk + k)
+                tir.bind(vii, vi * 16 + i)
+                tir.bind(vjj, vj * 16 + j)
+                tir.bind(vkk, vk * 16 + k)
                 C[vii, vjj] = C[vii, vjj] + A[vii, vkk] * B[vjj, vkk]
 
 
@@ -52,11 +52,11 @@ def tensorcore_impl(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         tir.bind(vj, 0)
         tir.bind(vk, 0)
         tir.reads([
-            C[vi : vi + 16, vj : vj + 16],
-            A[vi : vi + 16, vk : vk + 16],
-            B[vj : vj + 16, vk : vk + 16],
+            C[vi * 16 : vi * 16 + 16, vj * 16 : vj + 16],
+            A[vi * 16 : vi * 16 + 16, vk * 16 : vk + 16],
+            B[vj * 16 : vj * 16 + 16, vk * 16 : vk + 16],
         ])
-        tir.writes(C[vi : vi + 16, vj : vj + 16])
+        tir.writes(C[vi * 16 : vi * 16 + 16, vj * 16 : vj * 16 + 16])
         tir.evaluate(
             tir.tvm_mma_sync(
                 C.data,

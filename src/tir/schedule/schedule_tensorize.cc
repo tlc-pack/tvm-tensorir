@@ -128,12 +128,6 @@ bool TensorizeComparator::VisitStmt_(const BlockNode* op, const Stmt& other) {
   return VisitStmt(op->body, rhs->body);
 }
 
-// Map from rhs buffer to lhs buffer
-std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> rhs_buffer_map_;
-// Buffer indices mapping
-std::unordered_map<Buffer, std::vector<PrimExpr>, ObjectPtrHash, ObjectPtrEqual> buffer_indices_;
-std::vector<IterVar> extra_block_vars_;
-
 // Exprs
 #define TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(OpName)                            \
   bool TensorizeComparator::VisitExpr_(const OpName* op, const PrimExpr& other) { \

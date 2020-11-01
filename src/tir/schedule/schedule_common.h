@@ -27,6 +27,7 @@
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
+#include <tvm/arith/iter_affine_map.h>
 
 #include <algorithm>
 #include <set>
@@ -242,29 +243,6 @@ class PatternMatcher : public ExprVisitor {
   bool match_success_{true};
   PrimExpr pattern_, expr_to_match_;
   std::unordered_map<const VarNode*, PrimExpr> filled_map_;
-};
-
-/*!
- * \brief Match block var expr and simplify it to the block var
- * For example
- *   block var v0 = i * 4 + j
- *
- *   expr before simplify
- *      k * 16 + i * 4 + j
- *   expr after simplify
- *      k * 16 + v0
- */
-class MatchingSimplifier : public ExprMutator {
- public:
-  MatchingSimplifier(
-      const std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual>& var_map,
-      arith::Analyzer* parent);
-
-  PrimExpr VisitExpr(const PrimExpr& expr) override;
-
- private:
-  const std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual>& var_map_;
-  arith::Analyzer* analyzer_;
 };
 
 /* \brief Auto calculate the block read write region */

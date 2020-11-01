@@ -398,52 +398,6 @@ bool StmtExprContainsVar(const ObjectRef& obj, const PrimExpr& vars) {
   return StmtExprContainsVar(obj, var_set);
 }
 
-MatchingSimplifier::MatchingSimplifier(
-    const std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual>& var_map,
-    arith::Analyzer* parent)
-    : var_map_(var_map), analyzer_(parent) {}
-
-PrimExpr MatchingSimplifier::VisitExpr(const PrimExpr& expr) {
-  if (is_const_int(expr)) {
-    return expr;
-  }
-
-  for (const auto& x : var_map_) {
-    if (x.first.dtype() == expr.dtype()) {
-      PrimExpr diff = analyzer_->Simplify(expr - x.second);
-
-      // direct replace
-      if (is_const_int(diff)) {
-        return x.first + diff;
-      }
-
-      PrimExpr quet;
-      PrimExpr inv_quet;
-      if (!is_zero(x.second)) {
-        quet = analyzer_->Simplify(expr / x.second);
-      }
-      if (!is_zero(expr)) {
-        inv_quet = analyzer_->Simplify(x.second / expr);
-      }
-
-      // multiplier
-      if (quet.defined() && is_const_int(quet)) {
-        return x.first * quet;
-      }
-
-      if (inv_quet.defined() && is_const_int(inv_quet) && !is_zero(inv_quet)) {
-        return x.first / inv_quet;
-      }
-
-      // sub
-      if (!StmtExprContainsVar(diff, x.second)) {
-        return VisitExpr(x.first + diff);
-      }
-    }
-  }
-  return ExprMutator::VisitExpr(expr);
-}
-
 void PatternMatcher::VisitExpr_(const VarNode* op) {
   auto it = filled_map_.find(op);
   if (it == filled_map_.end()) {

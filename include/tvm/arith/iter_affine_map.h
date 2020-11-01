@@ -293,30 +293,117 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
 Array<PrimExpr> IterMapRewriteSimplify(const Array<PrimExpr>& indices,
                                        const Map<Var, Range>& input_iters,
                                        const PrimExpr& predicate);
+/*!
+ * \brief Given an IterVar map, transform it to normal PrimExpr
+ */
+class IterVarMapConverter {
+ public:
+  explicit IterVarMapConverter(Analyzer* analyzer) : analyzer_(analyzer) {}
+
+  PrimExpr Convert(const IterMapExpr& expr);
+  PrimExpr ConvertIterSumExpr(const IterSumExpr& expr);
+  PrimExpr ConvertIterSplitExpr(const IterSplitExpr& expr);
+
+ private:
+  Analyzer* analyzer_;
+};
+
+class DivisionForm;
+
+/*!
+ * \brief Denotes outer*inner_extent + inner, where outer and inner are IterVarMaps
+ */
+class DivisionFormNode : public Object {
+ public:
+  /*!
+   * \brief IterMapExpr of outer iters
+   */
+  IterMapExpr outer;
+  /*!
+   * \brief IterMapExpr of inner iters
+   */
+  IterMapExpr inner;
+  /*!
+   * \brief extent of outer
+   */
+  PrimExpr outer_extent;
+  /*!
+   * \brief extent of inner
+   */
+  PrimExpr inner_extent;
+
+  // overrides
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("outer", &outer);
+    v->Visit("inner", &inner);
+    v->Visit("outer_extent", &outer_extent);
+    v->Visit("inner_extent", &inner_extent);
+  }
+
+  bool IsOuter() const;
+  bool IsInner() const;
+  bool OuterIsSplit() const;
+  bool InnerIsSplit() const;
+
+  static IterSplitExpr GetAsSplit(const IterMapExpr& expr, const PrimExpr& extent);
+  IterSplitExpr GetOuterAsSplit() const;
+  IterSplitExpr GetInnerAsSplit() const;
+  static DivisionForm MakeInner(const IterMapExpr& iter, const PrimExpr& extent);
+  static DivisionForm MakeOuter(const IterMapExpr& iter, const PrimExpr& extent);
+
+  bool SEqualReduce(const DivisionFormNode* other, SEqualReducer equal) const {
+    return equal(outer, other->outer) && equal(outer_extent, other->outer_extent) && equal(inner, other->inner) && equal(inner_extent, other->inner_extent);
+  }
+
+  void SHashReduce(SHashReducer hash_reduce) const {
+    hash_reduce(outer);
+    hash_reduce(outer_extent);
+    hash_reduce(inner);
+    hash_reduce(inner_extent);
+  }
+
+  static constexpr const bool _type_has_method_sequal_reduce = true;
+  static constexpr const bool _type_has_method_shash_reduce = true;
+  static constexpr const char* _type_key = "arith.DivisionForm";
+  TVM_DECLARE_FINAL_OBJECT_INFO(DivisionFormNode, Object);
+};
+
+/*!
+ * \brief Managed reference to DivisionFormNode
+ * \sa DivisionFormNode
+ */
+class DivisionForm : public ObjectRef {
+ public:
+  TVM_DLL DivisionForm(IterMapExpr outer, PrimExpr outer_extent, IterMapExpr inner,
+                       PrimExpr inner_extent);
+
+  TVM_DEFINE_OBJECT_REF_METHODS(DivisionForm, ObjectRef, DivisionFormNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(DivisionFormNode);
+};
 
 /*!
  * \brief Detect if indices can be written as
  *
  * [a_0*e_0 + b_0 + c_0, a_1*e_1 + b_1, ..., a_n*e_n + b_n]
  *
- * where a = some-quasi-affine-iter-map(input_iters \set_minus input_sub_iters)
- *       b = some-quasi-affine-iter-map(input_sub_iters)
+ * where a = some-quasi-affine-iter-map(input_iters \set_minus inner_iters)
+ *       b = some-quasi-affine-iter-map(inner_iters)
  *       c is constant symbols
  *       e is the extent of b
  *
  * \param indices The indices to detect pattern for.
  * \param input_iters Map from variable to iterator's range.
- * \param sub_iters Iterators of subspace
+ * \param inner_iters Iterators of subspace
  * \param predicate The predicate for input_inters
  * \param analyzer Analyzer used to get context information.
  *
  * \return The detected a and b if a match exists,
  *         otherwise return an empty array.
  */
-Array<Array<PrimExpr>> SubspaceDivision(const Array<PrimExpr>& indices,
-                                        const Map<Var, Range>& input_iters,
-                                        const Array<Var>& inner_iters, const PrimExpr& predicate,
-                                        arith::Analyzer* analyzer);
+Array<DivisionForm> SubspaceDivision(const Array<PrimExpr>& indices,
+                                     const Map<Var, Range>& input_iters,
+                                     const Array<Var>& inner_iters, const PrimExpr& predicate,
+                                     arith::Analyzer* analyzer);
 
 }  // namespace arith
 }  // namespace tvm

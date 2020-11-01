@@ -63,17 +63,17 @@ def tensorcore_tensorized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                             [16, 128, 128, tir.reduce_axis(0, 128)], "blockized_update"
                         ) as [vn, vi, vj, vk]:
                             tir.bind(vn, i0)
-                            tir.bind(vi, (i1_outer * 16))
-                            tir.bind(vj, (i2_outer * 16))
-                            tir.bind(vk, (i3_outer * 16))
+                            tir.bind(vi, i1_outer)
+                            tir.bind(vj, i2_outer)
+                            tir.bind(vk, i3_outer)
                             tir.reads(
                                 [
-                                    C[vn : (vn + 1), vi : (vi + 16), vj : (vj + 16)],
-                                    A[vn : (vn + 1), vi : (vi + 16), vk : (vk + 16)],
-                                    B[vn : (vn + 1), vj : (vj + 16), vk : (vk + 16)],
+                                    C[vn : (vn + 1), vi * 16 : (vi * 16 + 16), vj * 16 : (vj * 16 + 16)],
+                                    A[vn : (vn + 1), vi * 16 : (vi * 16 + 16), vk * 16 : (vk * 16 + 16)],
+                                    B[vn : (vn + 1), vj * 16 : (vj * 16 + 16), vk * 16 : (vk * 16 + 16)],
                                 ]
                             )
-                            tir.writes([C[vn : (vn + 1), vi : (vi + 16), vj : (vj + 16)]])
+                            tir.writes([C[vn : (vn + 1), vi * 16 : (vi * 16 + 16), vj * 16 : (vj * 16 + 16)]])
                             for i1_inner_init in range(0, 16):
                                 for i2_inner_init in range(0, 16):
                                     with tir.block([16, 128, 128], "update_init") as [
