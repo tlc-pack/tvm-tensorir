@@ -531,6 +531,131 @@ def test_cache_read_write():
     assert s.validate_sref()
 
 
+@tvm.script.tir
+def blockize_schedule_1(a: ty.handle, c: ty.handle) -> None:
+    C = tir.match_buffer(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        B = tir.buffer_allocate([128, 128], elem_offset=0, align=128, offset_factor=1)
+        for i0_outer in range(0, 8):
+            for i1_outer in range(0, 8):
+                with tir.block([8, 8], "blockized_B") as [vio, vjo]:
+                    tir.bind(vio, i0_outer)
+                    tir.bind(vjo, i1_outer)
+                    tir.reads([A[(vio*16):((vio*16) + 16), (vjo*16):((vjo*16) + 16)]])
+                    tir.writes([B[(vio*16):((vio*16) + 16), (vjo*16):((vjo*16) + 16)]])
+                    for i0_inner in range(0, 16):
+                        for i1_inner in range(0, 16):
+                            with tir.block([128, 128], "B") as [vi, vj]:
+                                tir.bind(vi, ((vio*16) + i0_inner))
+                                tir.bind(vj, ((vjo*16) + i1_inner))
+                                tir.reads([A[vi:(vi + 1), vj:(vj + 1)]])
+                                tir.writes([B[vi:(vi + 1), vj:(vj + 1)]])
+                                B[vi, vj] = (A[vi, vj]*tir.float32(2))
+                with tir.block([8, 8], "blockized_C") as [vio, vjo]:
+                    tir.bind(vio, i0_outer)
+                    tir.bind(vjo, i1_outer)
+                    tir.reads([B[(vio*16):((vio*16) + 16), (vjo*16):((vjo*16) + 16)]])
+                    tir.writes([C[(vio*16):((vio*16) + 16), (vjo*16):((vjo*16) + 16)]])
+                    for ax0 in range(0, 16):
+                        for ax1 in range(0, 16):
+                            with tir.block([128, 128], "C") as [vi, vj]:
+                                tir.bind(vi, ((vio*16) + ax0))
+                                tir.bind(vj, ((vjo*16) + ax1))
+                                tir.reads([B[vi:(vi + 1), vj:(vj + 1)]])
+                                tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
+                                C[vi, vj] = (B[vi, vj] + tir.float32(1))
+
+
+@tvm.script.tir
+def blockize_schedule_2(a: ty.handle, c: ty.handle) -> None:
+    C = tir.match_buffer(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        B = tir.buffer_allocate([128, 128], elem_offset=0, align=128, offset_factor=1)
+        for i0_outer in range(0, 4):
+            for i1_outer in range(0, 4):
+                for ax0 in range(0, 2):
+                    for ax1 in range(0, 2):
+                        with tir.block([8, 8], "blockized_B") as [vio, vjo]:
+                            tir.bind(vio, ((i0_outer*2) + ax0))
+                            tir.bind(vjo, ((i1_outer*2) + ax1))
+                            tir.reads([A[(vio*16):((vio*16) + 16), (vjo*16):((vjo*16) + 16)]])
+                            tir.writes([B[(vio*16):((vio*16) + 16), (vjo*16):((vjo*16) + 16)]])
+                            for i0_inner in range(0, 16):
+                                for i1_inner in range(0, 16):
+                                    with tir.block([128, 128], "B") as [vi, vj]:
+                                        tir.bind(vi, ((vio*16) + i0_inner))
+                                        tir.bind(vj, ((vjo*16) + i1_inner))
+                                        tir.reads([A[vi:(vi + 1), vj:(vj + 1)]])
+                                        tir.writes([B[vi:(vi + 1), vj:(vj + 1)]])
+                                        B[vi, vj] = (A[vi, vj]*tir.float32(2))
+                for i0_inner_1 in range(0, 32):
+                    for i1_inner_1 in range(0, 32):
+                        with tir.block([128, 128], "C") as [vi, vj]:
+                            tir.bind(vi, ((i0_outer*32) + i0_inner_1))
+                            tir.bind(vj, ((i1_outer*32) + i1_inner_1))
+                            tir.reads([B[vi:(vi + 1), vj:(vj + 1)]])
+                            tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
+                            C[vi, vj] = (B[vi, vj] + tir.float32(1))
+
+
+def test_blockize_schedule():
+    func = util.element_wise_stmt()
+
+    # test 1
+    s = tir.create_schedule(func)
+    B = s.get_block("B")
+    C = s.get_block("C")
+    x, y = s.get_axes(B)
+    xo, xi = s.split(x, 16)
+    yo, yi = s.split(y, 16)
+    s.reorder(xo, yo, xi, yi)
+    s.blockize(xi)
+    s.reverse_compute_at(C, yo)
+    s.blockize(s.get_axes(C)[-2])
+
+    tvm.ir.assert_structural_equal(s.func, blockize_schedule_1)
+
+    # test 2
+    s = tir.create_schedule(func)
+    B = s.get_block("B")
+    C = s.get_block("C")
+    x, y = s.get_axes(C)
+    xo, xi = s.split(x, 16)
+    yo, yi = s.split(y, 16)
+    s.reorder(xo, yo, xi, yi)
+    s.blockize(xi)
+    s.compute_at(B, yo)
+    s.blockize(s.get_axes(B)[-2])
+
+    tvm.ir.assert_structural_equal(s.func, blockize_schedule_1)
+
+    # test 3
+    s = tir.create_schedule(func)
+    B = s.get_block("B")
+    C = s.get_block("C")
+    x, y = s.get_axes(B)
+    xo, xi = s.split(x, 16)
+    yo, yi = s.split(y, 16)
+    s.reorder(xo, yo, xi, yi)
+    b_outer = s.blockize(xi)
+
+    xC, yC = s.get_axes(C)
+    xCo, xCi = s.split(xC, 32)
+    yCo, yCi = s.split(yC, 32)
+    s.reorder(xCo, yCo, xCi, yCi)
+    s.compute_at(b_outer, yCo)
+
+    tvm.ir.assert_structural_equal(s.func, blockize_schedule_2)
+
+
 if __name__ == "__main__":
     test_fuse()
     test_split_fuse()
@@ -546,3 +671,4 @@ if __name__ == "__main__":
     test_cache_write()
     test_cache_read_write()
     test_blockize()
+    test_blockize_schedule()
