@@ -98,6 +98,13 @@ TVM_DLL Postproc RewriteVectorize();
  */
 TVM_DLL Postproc RewriteTensorize(Array<tir::TensorIntrin> tensor_intrins);
 
+/*!
+ * \brief Creates a postprocessor that do block/vthread/thread binding for cuda
+ * \param warp_size Number of threads in a CUDA warp
+ * \return The postprocessor created
+ */
+TVM_DLL Postproc RewriteCudaThreadBind(int warp_size);
+
 }  // namespace meta_schedule
 }  // namespace tvm
 
