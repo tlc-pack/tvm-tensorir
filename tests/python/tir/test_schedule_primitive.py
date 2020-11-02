@@ -450,14 +450,10 @@ def test_blockize():
     xo, xi = s.split(x, 16)
     yo, yi = s.split(y, 16)
     s.reorder(xo, yo, xi, yi)
-    print(tvm.script.asscript(s.func))
     s.blockize(xi)
 
     mod = tvm.script.create_module({"blockize": blockize})
     blockized_func = mod["blockize"]
-
-    print(tvm.script.asscript(blockized_func))
-    print(tvm.script.asscript(s.func))
 
     tvm.ir.assert_structural_equal(blockized_func, s.func)
     assert s.validate_sref()
