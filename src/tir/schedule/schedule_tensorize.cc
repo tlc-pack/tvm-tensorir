@@ -26,6 +26,7 @@
 
 #include <utility>
 
+#include "../../arith/pattern_match.h"
 #include "../ir/functor_common.h"
 #include "./schedule_common.h"
 
@@ -80,14 +81,56 @@ bool TensorizeComparator::VisitStmt_(const BlockRealizeNode* op, const Stmt& oth
   if (!is_scope_block) {
     size_t offset = op->binding_values.size() - rhs->binding_values.size();
     if (rhs->binding_values.size() > op->binding_values.size()) return false;
-    for (size_t i = 0; i < rhs->binding_values.size(); i++) {
-      if (!VisitExpr(op->binding_values[i + offset], rhs->binding_values[i])) return false;
-    }
-    const Block& block = op->block;
-    for (size_t i = 0; i < offset; i++) {
-      Var block_var = Downcast<Var>(op->binding_values[i]);
-      auto it = equal_map_.find(block_var);
-      equal_map_[block->iter_vars[i]->var] = (it == equal_map_.end() ? block_var : it->second);
+    if (is_inner_block) {
+      // weak pattern matching for the inner block (the son of the scope block)
+      // where the pattern is v + iter <=> expr + iter
+      for (size_t i = 0; i < rhs->binding_values.size(); ++i) {
+        PrimExpr lhs_expr, rhs_expr;
+        Optional<Var> lhs_iter, rhs_iter;
+        auto detect = [](const PrimExpr& binding) -> std::pair<PrimExpr, Optional<Var>> {
+          arith::PVar<PrimExpr> expr;
+          arith::PVar<Var> iter;
+          if (iter.Match(binding)) {
+            return std::make_pair(0, iter.Eval());
+          } else if ((expr + iter).Match(binding)) {
+            return std::make_pair(expr.Eval(), iter.Eval());
+          } else if ((iter + expr).Match(binding)) {
+            return std::make_pair(expr.Eval(), iter.Eval());
+          } else {
+            return std::make_pair(expr.Eval(), NullOpt);
+          }
+        };
+        std::tie(lhs_expr, lhs_iter) = detect(op->binding_values[i + offset]);
+        std::tie(rhs_expr, rhs_iter) = detect(rhs->binding_values[i]);
+        CHECK((lhs_iter && rhs_iter) || (!lhs_iter && !rhs_iter)) << "Incompatible binding";
+        if (lhs_iter) VisitExpr(lhs_iter.value(), rhs_iter.value());
+        if (is_zero(rhs_expr)) {
+          CHECK(is_zero(lhs_expr)) << "Incompatible binding";
+        } else {
+          const auto* bv = rhs_expr.as<VarNode>();
+          if (!bv) {
+            VisitExpr(lhs_expr, rhs_expr);
+          } else {
+            auto it = equal_map_.find(GetRef<Var>(bv));
+            if (it == equal_map_.end()) {
+              equal_map_[GetRef<Var>(bv)] = lhs_expr;
+            } else {
+              CHECK(it->second->IsInstance<PrimExprNode>());
+              VisitExpr(lhs_expr, Downcast<PrimExpr>(it->second));
+            }
+          }
+        }
+      }
+    } else {
+      for (size_t i = 0; i < rhs->binding_values.size(); ++i) {
+        if (!VisitExpr(op->binding_values[i + offset], rhs->binding_values[i])) return false;
+      }
+      const Block& block = op->block;
+      for (size_t i = 0; i < offset; ++i) {
+        Var block_var = Downcast<Var>(op->binding_values[i]);
+        auto it = equal_map_.find(block_var);
+        equal_map_[block->iter_vars[i]->var] = (it == equal_map_.end() ? block_var : it->second);
+      }
     }
   }
 
@@ -114,25 +157,24 @@ bool TensorizeComparator::VisitStmt_(const BlockNode* op, const Stmt& other) {
     if (lhs_var->iter_type != rhs_var->iter_type) return false;
   }
 
-  for (size_t i = 0; i < offset; i++) {
+  for (size_t i = 0; i < offset; ++i) {
     if (is_scope_block) {
       extra_block_vars_.push_back(op->iter_vars[i]);
     }
   }
+
+  if (!is_scope_block) {
+    if (!CompareArray(op->writes, rhs->writes, &TensorizeComparator::CompareTensorRegion))
+      return false;
+    if (!CompareArray(op->reads, rhs->reads, &TensorizeComparator::CompareTensorRegion))
+      return false;
+    if (!CompareArray(op->annotations, rhs->annotations, &TensorizeComparator::CompareAnnotation))
+      return false;
+  }
+  if (!is_scope_block) is_inner_block = false;
   is_scope_block = false;
-  if (!CompareArray(op->writes, rhs->writes, &TensorizeComparator::CompareTensorRegion))
-    return false;
-  if (!CompareArray(op->reads, rhs->reads, &TensorizeComparator::CompareTensorRegion)) return false;
-  if (!CompareArray(op->annotations, rhs->annotations, &TensorizeComparator::CompareAnnotation))
-    return false;
   return VisitStmt(op->body, rhs->body);
 }
-
-// Map from rhs buffer to lhs buffer
-std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> rhs_buffer_map_;
-// Buffer indices mapping
-std::unordered_map<Buffer, std::vector<PrimExpr>, ObjectPtrHash, ObjectPtrEqual> buffer_indices_;
-std::vector<IterVar> extra_block_vars_;
 
 // Exprs
 #define TVM_DECLARE_TENSORIZE_COMPARATOR_BINOP(OpName)                            \
@@ -431,7 +473,7 @@ class BufferReplacer : public StmtExprMutator {
   }
 };
 
-void ScheduleNode::tensorize(const StmtSRef& sref, const TensorIntrin& intrinsic) {
+void ScheduleNode::tensorize(const StmtSRef& loop_sref, const TensorIntrin& intrinsic) {
   /*!
    * Check:
    *   - Check buffer binding, including type, alignment, shape and etc.
@@ -443,14 +485,15 @@ void ScheduleNode::tensorize(const StmtSRef& sref, const TensorIntrin& intrinsic
    *   - Mutate implement function with buffer binding
    *   - Replace the sub tree with the mutated function.
    */
-  // TODO(Siyuan): fix range
-  const auto* loop = sref->GetStmt<LoopNode>();
+  const auto* loop = loop_sref->GetStmt<LoopNode>();
   CHECK(loop) << "Only support tensorize a loop for now";
 
-  const auto* intrin_block_realize = intrinsic->implementation->body.as<BlockRealizeNode>();
-  const Block& intrin_block = intrin_block_realize->block;
+  const auto* desc_block_realize = intrinsic->description->body.as<BlockRealizeNode>();
+  const Block& desc_block = desc_block_realize->block;
+  const auto* impl_block_realize = intrinsic->implementation->body.as<BlockRealizeNode>();
+  const Block& impl_block = impl_block_realize->block;
 
-  const StmtSRef& block_sref = blockize(sref, intrin_block_realize->exec_scope);
+  const StmtSRef& block_sref = blockize(loop_sref, impl_block_realize->exec_scope);
   const BlockRealize& block_realize = GetBlockRealize(block_sref);
 
   TensorizeComparator comparator;
@@ -476,10 +519,10 @@ void ScheduleNode::tensorize(const StmtSRef& sref, const TensorIntrin& intrinsic
   for (const auto& pair : buffer_map) {
     update_var_map(pair.first->data, pair.second->data);
   }
-  CHECK(intrin_block_realize);
+  CHECK(impl_block_realize);
   // Mutate implementation function
   Stmt new_stmt = BufferReplacer(buffer_map, var_map, std::move(comparator.extra_block_vars_),
-                                 comparator.buffer_indices_)(intrin_block_realize->block);
+                                 comparator.buffer_indices_)(impl_block_realize->block);
   const auto* block_node = new_stmt.as<BlockNode>();
   std::unordered_map<const VarNode*, PrimExpr> element_offset;
   auto get_element_offset = [&element_offset](const Array<TensorRegion>& old_regions,
@@ -504,13 +547,26 @@ void ScheduleNode::tensorize(const StmtSRef& sref, const TensorIntrin& intrinsic
       }
     }
   };
-  get_element_offset(block_node->reads, intrin_block->reads);
-  get_element_offset(block_node->writes, intrin_block->writes);
+  get_element_offset(block_node->reads, impl_block->reads);
+  get_element_offset(block_node->writes, impl_block->writes);
   Block new_block = Downcast<Block>(Substitute(new_stmt, element_offset));
+
+  std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> bv_map;
+  for (size_t i = 0; i < desc_block->iter_vars.size(); ++i) {
+    auto it = comparator.equal_map_.find(desc_block->iter_vars[i]->var);
+    CHECK(it != comparator.equal_map_.end());
+    bv_map[impl_block->iter_vars[i]->var] = Downcast<PrimExpr>(it->second);
+  }
+  Stmt new_body = SubstituteInScope(new_block->body, [&](const VarNode* var) -> PrimExpr {
+    auto it = bv_map.find(GetRef<Var>(var));
+    if (it == bv_map.end())
+      return GetRef<Var>(var);
+    else
+      return it->second;
+  });
+
   // Replace
-  Map<Block, Block> block_map;
-  block_map.Set(new_block, block_realize->block);
-  this->Replace(block_sref, new_block, block_map);
+  this->Replace(stmt2ref.at(block_realize->block->body.get()), new_body);
 }
 
 }  // namespace tir
