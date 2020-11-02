@@ -44,7 +44,7 @@ def test_integration_matmul():
             ]
         ),
         strategy=ms.strategy.Replay(
-            batch_size=16,
+            batch_size=1,
             num_iterations=32,
             postprocs=[
                 ms.postproc.rewrite_vectorize(),

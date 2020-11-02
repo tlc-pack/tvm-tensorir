@@ -291,7 +291,37 @@ class PostprocRewriteCudaThreadBind {
     return true;
   }
 
-  bool BindSpatial(const Schedule& sch, const BlockRV& block_rv) const { return true; }
+  bool BindSpatial(const Schedule& sch, const BlockRV& block_rv) const {
+    Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
+    tir::StmtSRef block_sref = sch->Eval(block_rv);
+    Array<tir::StmtSRef> loop_srefs;
+    for (const LoopRV& loop_rv : loop_rvs) {
+      tir::StmtSRef loop_sref = sch->Eval(loop_rv);
+      loop_srefs.push_back(loop_sref);
+      const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+      CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
+      if (!loop->annotations.empty()) {
+        return false;
+      }
+    }
+    Array<Integer> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
+    int n_spatial = 0;
+    for (const Integer& _loop_type : loop_types) {
+      int loop_type = _loop_type;
+      if (loop_type == tir::kDataPar) {
+        ++n_spatial;
+      } else {
+        break;
+      }
+    }
+    CHECK(n_spatial > 0) << "NotImplementedError: binding no spatial loops is not supported yet";
+    LoopRV fused = sch->Fuse({loop_rvs.begin(), loop_rvs.begin() + n_spatial});
+    Array<LoopRV> splits = sch->Split(fused, {NullOpt, Integer(32)});
+    CHECK_EQ(splits.size(), 2);
+    sch->sch->bind(sch->Eval(splits[0]), MakeThreadIdx("blockIdx.x"));
+    sch->sch->bind(sch->Eval(splits[1]), MakeThreadIdx("threadIdx.x"));
+    return true;
+  }
 
   bool Proc(const Schedule& sch) const {
     Array<BlockRV> root_block_rvs = sch->GetRootBlocks();
