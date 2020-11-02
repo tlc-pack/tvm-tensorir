@@ -81,7 +81,6 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
   arith::Analyzer analyzer;
   auto division = arith::SubspaceDivision(block_realize->binding_values, iters, inner_iters,
                                           block_realize->predicate, &analyzer);
-  LOG(INFO) << "Division" << division;
   CHECK(!division.empty())
       << "ValueError: The bindings of the block below can not be blockized by loops under "
       << loop->loop_var;
@@ -195,9 +194,6 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
       BlockRealize(outer_bindings, division.back()->outer_extent, outer_block, exec_scope);
 
   this->Replace(loop_sref, outer_realize, {{inner_block, block}});
-  const auto* f = runtime::Registry::Get("script.AsTVMScript");
-  String s = (*f)(this->func, false);
-  LOG(INFO) << s;
   // Check loop binding
   this->ValidateLoops();
 

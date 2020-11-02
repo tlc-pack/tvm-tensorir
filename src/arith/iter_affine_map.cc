@@ -158,6 +158,17 @@ PrimExpr IterVarMapConverter::ConvertIterSplitExpr(const IterSplitExpr& expr) {
   }
 }
 
+PrimExpr IterVarMapConvert(const IterMapExpr& expr) {
+  arith::Analyzer analyzer;
+  IterVarMapConverter converter(&analyzer);
+  return converter.Convert(expr);
+}
+
+TVM_REGISTER_GLOBAL("arith.IterVarMapConvert")
+    .set_body_typed([](const IterMapExpr& expr) {
+      return IterVarMapConvert(expr);
+    });
+
 /*!
  * \brief Count the size of the PrimExpr
  */

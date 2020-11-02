@@ -100,12 +100,8 @@ bool TensorizeComparator::VisitStmt_(const BlockRealizeNode* op, const Stmt& oth
             return std::make_pair(expr.Eval(), NullOpt);
           }
         };
-        LOG(INFO) << "compare binding: " << op->binding_values[i + offset] << " "
-                  << rhs->binding_values[i];
         std::tie(lhs_expr, lhs_iter) = detect(op->binding_values[i + offset]);
         std::tie(rhs_expr, rhs_iter) = detect(rhs->binding_values[i]);
-        LOG(INFO) << "compare binding lhs: " << lhs_expr << " " << lhs_iter;
-        LOG(INFO) << "compare binding rhs: " << rhs_expr << " " << rhs_iter;
         CHECK((lhs_iter && rhs_iter) || (!lhs_iter && !rhs_iter)) << "Incompatible binding";
         if (lhs_iter) VisitExpr(lhs_iter.value(), rhs_iter.value());
         if (is_zero(rhs_expr)) {
@@ -117,7 +113,6 @@ bool TensorizeComparator::VisitStmt_(const BlockRealizeNode* op, const Stmt& oth
           } else {
             auto it = equal_map_.find(GetRef<Var>(bv));
             if (it == equal_map_.end()) {
-              LOG(INFO) << GetRef<Var>(bv) << " <=> " << lhs_expr;
               equal_map_[GetRef<Var>(bv)] = lhs_expr;
             } else {
               CHECK(it->second->IsInstance<PrimExprNode>());
@@ -498,10 +493,6 @@ void ScheduleNode::tensorize(const StmtSRef& loop_sref, const TensorIntrin& intr
   const auto* impl_block_realize = intrinsic->implementation->body.as<BlockRealizeNode>();
   const Block& impl_block = impl_block_realize->block;
 
-  const auto* f = runtime::Registry::Get("script.AsTVMScript");
-  String s = (*f)(this->func, false);
-  LOG(INFO) << s;
-
   const StmtSRef& block_sref = blockize(loop_sref, impl_block_realize->exec_scope);
   const BlockRealize& block_realize = GetBlockRealize(block_sref);
 
@@ -564,7 +555,6 @@ void ScheduleNode::tensorize(const StmtSRef& loop_sref, const TensorIntrin& intr
   for (size_t i = 0; i < desc_block->iter_vars.size(); ++i) {
     auto it = comparator.equal_map_.find(desc_block->iter_vars[i]->var);
     CHECK(it != comparator.equal_map_.end());
-    LOG(INFO) << desc_block->iter_vars[i]->var << " " << it->second;
     bv_map[impl_block->iter_vars[i]->var] = Downcast<PrimExpr>(it->second);
   }
   Stmt new_body = SubstituteInScope(new_block->body, [&](const VarNode* var) -> PrimExpr {
@@ -574,12 +564,9 @@ void ScheduleNode::tensorize(const StmtSRef& loop_sref, const TensorIntrin& intr
     else
       return it->second;
   });
-  LOG(INFO) << new_body;
 
   // Replace
   this->Replace(stmt2ref.at(block_realize->block->body.get()), new_body);
-  String s2 = (*f)(this->func, false);
-  LOG(INFO) << s2;
 }
 
 }  // namespace tir
