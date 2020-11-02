@@ -352,7 +352,8 @@ class DivisionFormNode : public Object {
   static DivisionForm MakeOuter(const IterMapExpr& iter, const PrimExpr& extent);
 
   bool SEqualReduce(const DivisionFormNode* other, SEqualReducer equal) const {
-    return equal(outer, other->outer) && equal(outer_extent, other->outer_extent) && equal(inner, other->inner) && equal(inner_extent, other->inner_extent);
+    return equal(outer, other->outer) && equal(outer_extent, other->outer_extent) &&
+           equal(inner, other->inner) && equal(inner_extent, other->inner_extent);
   }
 
   void SHashReduce(SHashReducer hash_reduce) const {

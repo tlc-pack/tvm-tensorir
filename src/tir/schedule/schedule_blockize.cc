@@ -87,30 +87,38 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
       << loop->loop_var;
   // Generate inner block
   arith::IterVarMapConverter converter(&analyzer);
-  Array<IterVar> outer_block_vars;
+  Array<IterVar> inner_block_vars, outer_block_vars;
   Array<PrimExpr> inner_bindings, outer_bindings;
   std::unordered_map<Var, int, ObjectPtrHash, ObjectPtrEqual> block_var_no;
   for (size_t i = 0; i < block->iter_vars.size(); ++i) {
     const IterVar iter_var = block->iter_vars[i];
-    const IterVar outer_var(Range::FromMinExtent(0, division[i]->outer_extent),
-                            iter_var->var.copy_with_suffix("o"), iter_var->iter_type);
-    outer_bindings.push_back(converter.Convert(division[i]->outer));
-    outer_block_vars.push_back(outer_var);
-
-    PrimExpr base = is_one(division[i]->outer_extent) ? 0 : outer_var * division[i]->inner_extent;
-    if (const auto* op = division[i]->inner.as<arith::IterSumExprNode>()) {
-      base = base + op->base;
-      inner_bindings.push_back(base + converter.Convert(arith::IterSumExpr(op->args, 0)));
+    if (division[i]->IsOuter()) {
+      // extract this iter var to outer block directly
+      outer_bindings.push_back(converter.Convert(division[i]->outer));
+      outer_block_vars.push_back(iter_var);
     } else {
-      inner_bindings.push_back(base + converter.Convert(division[i]->inner));
+      const IterVar outer_var(Range::FromMinExtent(0, division[i]->outer_extent),
+                              iter_var->var.copy_with_suffix("o"), iter_var->iter_type);
+      outer_bindings.push_back(converter.Convert(division[i]->outer));
+      outer_block_vars.push_back(outer_var);
+      // generate a new iter var for outer block
+      PrimExpr base = division[i]->IsInner() ? 0 : outer_var * division[i]->inner_extent;
+      if (const auto* op = division[i]->inner.as<arith::IterSumExprNode>()) {
+        base = base + op->base;
+        inner_bindings.push_back(base + converter.Convert(arith::IterSumExpr(op->args, 0)));
+      } else {
+        inner_bindings.push_back(base + converter.Convert(division[i]->inner));
+      }
+      inner_block_vars.push_back(iter_var);
     }
     block_var_no[iter_var->var] = i;
-    LOG(INFO) << "outer_var " << outer_var << " = " << outer_bindings.back();
-    LOG(INFO) << "inner_var " << iter_var << " = " << inner_bindings.back();
   }
+  Block inner_block = block;
+  inner_block.CopyOnWrite()->iter_vars = inner_block_vars;
   BlockRealize inner_br = block_realize;
   inner_br.CopyOnWrite()->binding_values = inner_bindings;
   inner_br.CopyOnWrite()->predicate = division.back()->inner_extent;
+  inner_br.CopyOnWrite()->block = inner_block;
   // Regenerate inner_loops
   Stmt body = inner_br;
   for (const auto& inner_loop : inner_loops) {
@@ -120,45 +128,57 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
   }
   // Calculate outer block's IO region
   auto rewrite_range = [&](const Range& range) -> Range {
+    auto get_base = [&](const arith::IterMapExpr& expr) -> PrimExpr {
+      if (const auto* op = expr.as<arith::IterSplitExprNode>()) {
+        return 0;
+      } else if (const auto* op = expr.as<arith::IterSumExprNode>()) {
+        return op->base;
+      } else {
+        LOG(FATAL);
+        return 0;
+      }
+    };
     // Detect that the range is under valid pattern
     arith::PVar<Var> v;
     arith::PVar<PrimExpr> d, c;
-    // LOG(INFO) << range;
     if (c.Match(range->extent) && (d + v * c).Match(range->min)) {
       // [d + v*c: d + v*c + c]
       auto it = block_var_no.find(v.Eval());
-      CHECK(it != block_var_no.end())
-          << "ValueError: The TensorRegion of the block below can not be blockized";
-      PrimExpr base = analyzer.Simplify(d.Eval() * c.Eval());
-      PrimExpr extent = analyzer.Simplify(division[it->second]->inner_extent * c.Eval());
-      // LOG(INFO) << base << " " << outer_block_vars[it->second] << " " << extent;
-      return Range::FromMinExtent(base + outer_block_vars[it->second] * extent, extent);
+      if (it != block_var_no.end()) {
+        PrimExpr base =
+            analyzer.Simplify(d.Eval() + get_base(division[it->second]->inner) * c.Eval());
+        PrimExpr extent = analyzer.Simplify(division[it->second]->inner_extent * c.Eval());
+        if (!division[it->second]->IsInner()) base += outer_block_vars[it->second] * extent;
+        return Range::FromMinExtent(base, extent);
+      }
     } else if (c.Match(range->extent) && (v * c).Match(range->min)) {
       // [v*c : v*c + c]
       auto it = block_var_no.find(v.Eval());
-      CHECK(it != block_var_no.end())
-          << "ValueError: The TensorRegion of the block below can not be blockized";
-      PrimExpr extent = analyzer.Simplify(division[it->second]->inner_extent * c.Eval());
-      // LOG(INFO) << outer_block_vars[it->second] << " " << extent;
-      return Range::FromMinExtent(outer_block_vars[it->second] * extent, extent);
+      if (it != block_var_no.end()) {
+        PrimExpr base = analyzer.Simplify(get_base(division[it->second]->inner) * c.Eval());
+        PrimExpr extent = analyzer.Simplify(division[it->second]->inner_extent * c.Eval());
+        if (!division[it->second]->IsInner()) base += outer_block_vars[it->second] * extent;
+        return Range::FromMinExtent(base, extent);
+      }
     } else if (is_one(range->extent) && v.Match_(range->min)) {
       // [v : v + 1]
       auto it = block_var_no.find(v.Eval());
-      CHECK(it != block_var_no.end())
-          << "ValueError: The TensorRegion of the block below can not be blockized";
-      PrimExpr extent = analyzer.Simplify(division[it->second]->inner_extent);
-      // LOG(INFO) << outer_block_vars[it->second] << " " << extent;
-      return Range::FromMinExtent(outer_block_vars[it->second] * extent, extent);
+      if (it != block_var_no.end()) {
+        PrimExpr base = analyzer.Simplify(get_base(division[it->second]->inner));
+        PrimExpr extent = analyzer.Simplify(division[it->second]->inner_extent);
+        if (!division[it->second]->IsInner()) base += outer_block_vars[it->second] * extent;
+        return Range::FromMinExtent(base, extent);
+      }
     } else {
       LOG(FATAL) << "ValueError: The TensorRegion of the block below can not be blockized";
       return Range(0, 0);
     }
+    return range;
   };
 
   std::vector<TensorRegion> reads, writes;
   auto rewrite_region = [&](std::vector<TensorRegion>* regions, Array<TensorRegion> old_regions) {
-    for (size_t i = 0; i < old_regions.size(); ++i) {
-      auto tensor_region = old_regions[i];
+    for (auto tensor_region : old_regions) {
       std::vector<Range> region;
       for (const auto& range : tensor_region->region) {
         region.push_back(rewrite_range(range));
@@ -174,8 +194,10 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
   auto outer_realize =
       BlockRealize(outer_bindings, division.back()->outer_extent, outer_block, exec_scope);
 
-  this->Replace(loop_sref, outer_realize);
-  LOG(INFO) << this->func;
+  this->Replace(loop_sref, outer_realize, {{inner_block, block}});
+  const auto* f = runtime::Registry::Get("script.AsTVMScript");
+  String s = (*f)(this->func, false);
+  LOG(INFO) << s;
   // Check loop binding
   this->ValidateLoops();
 

@@ -36,9 +36,9 @@ def desc_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         tir.bind(vk, 0)
         for i, j, k in tir.grid(16, 16, 16):
             with tir.block([16, 16, tir.reduce_axis(0, 16)], "update") as [vii, vjj, vkk]:
-                tir.bind(vii, vi*16 + i)
-                tir.bind(vjj, vj*16 + j)
-                tir.bind(vkk, vk*16 + k)
+                tir.bind(vii, vi + i)
+                tir.bind(vjj, vj + j)
+                tir.bind(vkk, vk + k)
                 C[vii, vjj] = C[vii, vjj] + A[vii, vkk] * B[vjj, vkk]
 
 
@@ -54,9 +54,9 @@ def intrin_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         tir.bind(vk, 0)
         for i, j, k in tir.grid(16, 16, 16):
             with tir.block([16, 16, tir.reduce_axis(0, 16)], "update") as [vii, vjj, vkk]:
-                tir.bind(vii, vi*16 + i)
-                tir.bind(vjj, vj*16 + j)
-                tir.bind(vkk, vk*16 + k)
+                tir.bind(vii, vi + i)
+                tir.bind(vjj, vj + j)
+                tir.bind(vkk, vk + k)
                 C[vii, vjj] = C[vii, vjj] + B[vjj, vkk] * A[vii, vkk]
 
 
@@ -97,8 +97,8 @@ def lower_intrin_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.bind(vk, 0)
-        tir.reads([C[vi*16:vi*16 + 16, vj*16:vj*16 + 16], A[vi*16:vi*16 + 16, vk*16:vk*16 + 16], B[vj*16:vj*16 + 16, vk*16:vk*16 + 16]])
-        tir.writes(C[vi*16:vi*16 + 16, vj*16:vj*16 + 16])
+        tir.reads([C[vi:vi + 16, vj:vj + 16], A[vi:vi + 16, vk:vk + 16], B[vj:vj + 16, vk:vk + 16]])
+        tir.writes(C[vi:vi + 16, vj:vj + 16])
         tir.evaluate(tir.tvm_mma_sync(C.data, C.elem_offset // 256,
                                       A.data, A.elem_offset // 256,
                                       B.data, B.elem_offset // 256,
@@ -120,7 +120,7 @@ def tensorized_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                 tir.bind(vj_init, ((j_outer * 16) + j_inner_init))
                 C[vi_init, vj_init] = tir.float32(0)
         for k_outer in tir.grid(8):
-            with tir.block([16, 16, tir.reduce_axis(0, 16)], "update") as [vi, vj, vk]:
+            with tir.block([8, 8, tir.reduce_axis(0, 8)], "update") as [vi, vj, vk]:
                 tir.bind(vi, i_outer)
                 tir.bind(vj, j_outer)
                 tir.bind(vk, k_outer)
@@ -177,7 +177,7 @@ def tensorized_batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     # body
     for n in range(0, 16):
         for i, j, k in tir.grid(8, 8, 8):
-            with tir.block([16, 16, 16, tir.reduce_axis(0, 16)], "update") as [vn, vi, vj, vk]:
+            with tir.block([16, 8, 8, tir.reduce_axis(0, 8)], "update") as [vn, vi, vj, vk]:
                 tir.bind(vn, n)
                 tir.bind(vi, i)
                 tir.bind(vj, j)

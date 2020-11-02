@@ -236,10 +236,10 @@ class ScheduleNode : public Object {
 
   /*!
    * \brief Tensorize the computation enclosed by loop with tensor_intrin
-   * \param sref the loop/block to be tensorized
+   * \param loop_sref the loop/block to be tensorized
    * \param intrinsic the tensor intrinsic
    */
-  void tensorize(const StmtSRef& sref, const TensorIntrin& intrinsic);
+  void tensorize(const StmtSRef& loop_sref, const TensorIntrin& intrinsic);
 
   /*!
    * \brief Register a reducer pattern

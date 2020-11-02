@@ -283,6 +283,8 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
   // Buffer indices mapping
   std::unordered_map<Buffer, std::vector<PrimExpr>, ObjectPtrHash, ObjectPtrEqual> buffer_indices_;
   std::vector<IterVar> extra_block_vars_;
+  // variable remap if any
+  std::unordered_map<ObjectRef, ObjectRef, ObjectPtrHash, ObjectPtrEqual> equal_map_;
 
   bool VisitExpr(const PrimExpr& n, const PrimExpr& other) override;
   bool VisitStmt(const Stmt& n, const Stmt& other) override;
@@ -329,10 +331,8 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
   bool CompareType(const DataType& lhs, const DataType& rhs);
 
  protected:
-  // variable remap if any
-  std::unordered_map<ObjectRef, ObjectRef, ObjectPtrHash, ObjectPtrEqual> equal_map_;
   bool assert_mode_;
-  bool is_scope_block = true;
+  bool is_scope_block = true, is_inner_block = true;
 };
 
 /*! \brief namespace for default reducer patterns */
