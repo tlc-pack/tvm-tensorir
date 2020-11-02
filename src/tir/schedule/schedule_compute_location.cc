@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include "../../arith/pattern_match.h"
 #include "./schedule_common.h"
 
 namespace tvm {
@@ -82,37 +83,6 @@ std::vector<StmtSRef> EdgesToSRefs(const Array<DepEdge>& edges) {
   return result;
 }
 
-/*! \note We need the stride factor in order to solve the problem of set patterns in a
- *        tensorized block, but only needed the union function. So this class is kept
- *        private to the file instead of being generic in the IntSet
- */
-class StrideIntSet {
- public:
-  StrideIntSet() = default;
-  StrideIntSet(PrimExpr min, PrimExpr extent, PrimExpr stride)
-      : min_(std::move(min)), extent_(std::move(extent)), stride_(std::move(stride)) {}
-
-  static StrideIntSet Union(const StrideIntSet& lhs, const StrideIntSet& rhs) {
-    StrideIntSet ret;
-    if (lhs.stride_.defined()) {
-      CHECK(rhs.stride_.defined());
-      CHECK(ExprDeepEqual()(lhs.stride_, rhs.stride_));
-      ret.min_ = min(lhs.min_, rhs.min_);
-      ret.extent_ = max(lhs.extent_ + lhs.min_, rhs.extent_ + rhs.min_) - ret.min_;
-      ret.stride_ = lhs.stride_;
-    } else {
-      ret.min_ = rhs.min_;
-      ret.extent_ = rhs.extent_;
-      ret.stride_ = rhs.stride_;
-    }
-    return ret;
-  }
-
-  PrimExpr min_;
-  PrimExpr extent_;
-  PrimExpr stride_;
-};
-
 /*!
  * \brief Find the minimum region to cover the requirement
  * \param block The producer block to be solved
@@ -121,17 +91,17 @@ class StrideIntSet {
  * \param buf The buffer in interest
  * \return The iteration information for each var
  */
-std::vector<StrideIntSet> SolveCover(const BlockNode* block, const BufferRegionMap& consumes,
-                                     bool gather_write) {
+std::vector<arith::IntSet> SolveCover(const BlockNode* block, const BufferRegionMap& consumes,
+                                      bool gather_write) {
   const Array<IterVar>& iter_vars = block->iter_vars;
-  std::vector<StrideIntSet> iter_domain(iter_vars.size());
-  std::unordered_map<const VarNode*, int> iter_var_indexer;
+  // initialize the iter domain
+  std::vector<arith::IntSet> iter_domain(iter_vars.size());
+  for (size_t i = 0; i < iter_vars.size(); ++i) iter_domain[i] = arith::IntSet::Nothing();
   // Maps IterVar::var back to its index in `iter_vars`
-  {
-    int iter_var_index = 0;
-    for (const IterVar& iter_var : iter_vars) {
-      iter_var_indexer[iter_var->var.get()] = iter_var_index++;
-    }
+  std::unordered_map<const VarNode*, int> iter_var_indexer;
+  int iter_var_index = 0;
+  for (const IterVar& iter_var : iter_vars) {
+    iter_var_indexer[iter_var->var.get()] = iter_var_index++;
   }
   // Collect the ranges written in the producer block
   BufferRegionMap produces;
@@ -153,26 +123,31 @@ std::vector<StrideIntSet> SolveCover(const BlockNode* block, const BufferRegionM
       for (size_t i = 0; i < it.second.size(); ++i) {
         const Range& produce = it.second[i];
         const Range& consume = itt->second[i];
-        const auto* var = produce->min.as<VarNode>();
-        CHECK(var != nullptr)
-            << "TypeError: The left bound of the range of the producer block must be Var";
-        CHECK_GT(iter_var_indexer.count(var), 0) << "Find irrelevant variable in produces";
-        StrideIntSet& iset = iter_domain[iter_var_indexer[var]];
-        // It changes the consumers range's stride to `produce->extent`
-        PrimExpr strides = produce->extent;
-        PrimExpr min = consume->min;
-        PrimExpr extent = analyzer.Simplify((consume->extent + strides - 1) / strides);
-        iset = StrideIntSet::Union(iset, StrideIntSet(min, extent, strides));
+        PrimExpr min, extent;
+        arith::PVar<Var> v;
+        arith::PVar<PrimExpr> c;
+        if (c.Match(produce->extent) &&
+            ((v * c).Match(produce->min) || (c * v).Match(produce->min))) {
+          min = div(consume->min, c.Eval());
+          extent = analyzer.Simplify((consume->extent + c.Eval() - 1) / c.Eval());
+        } else if (is_one(produce->extent) && v.Match(produce->min)) {
+          min = consume->min;
+          extent = consume->extent;
+        } else {
+          LOG(FATAL) << "ValueError: TensorRegion pattern match failed";
+        }
+        const auto* var = v.Eval().get();
+        arith::IntSet& iset = iter_domain[iter_var_indexer[var]];
+        iset = arith::Union({iset, arith::IntSet::FromRange(Range::FromMinExtent(min, extent))});
       }
     }
   }
   // Rewrite the un-touched iteration domain to the default value
   for (const IterVar& iter_var : iter_vars) {
-    StrideIntSet& domain = iter_domain[iter_var_indexer[iter_var->var.get()]];
-    if (!domain.min_.defined() || !domain.extent_.defined() || !domain.stride_.defined()) {
-      domain.min_ = iter_var->dom->min;
-      domain.extent_ = iter_var->dom->extent;
-      domain.stride_ = 1;
+    arith::IntSet& domain = iter_domain[iter_var_indexer[iter_var->var.get()]];
+    if (domain.IsNothing()) {
+      domain =
+          arith::IntSet::FromRange(Range::FromMinExtent(iter_var->dom->min, iter_var->dom->extent));
     }
   }
   return iter_domain;
@@ -188,7 +163,7 @@ std::vector<StrideIntSet> SolveCover(const BlockNode* block, const BufferRegionM
  * \return The Updated parent loop
  */
 Loop RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& loop_sref, int insert_pos,
-                     const std::vector<StrideIntSet>& iter_domain, bool preserve_trivial_loop) {
+                     const std::vector<arith::IntSet>& iter_domain, bool preserve_trivial_loop) {
   const auto* loop = loop_sref->GetStmt<LoopNode>();
   int n_iter_domain = iter_domain.size();
   // Step 1. Construct loop variables
@@ -198,24 +173,27 @@ Loop RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& loop_sref, int 
     loop_vars.emplace_back("ax" + std::to_string(i));
   }
   // Step 2. Create a new BlockRealizeNode
+  arith::Analyzer analyzer;
   ObjectPtr<BlockRealizeNode> realize =
       make_object<BlockRealizeNode>(*GetBlockRealize(block_sref).get());
   for (int i = 0; i < n_iter_domain; ++i) {
-    const StrideIntSet& domain = iter_domain[i];
+    const arith::IntSet& domain = iter_domain[i];
     // Add binding for each block var
-    if (!is_one(domain.extent_)) {
-      realize->binding_values.Set(i, domain.min_ + loop_vars[i] * domain.stride_);
+    PrimExpr extent = analyzer.Simplify(domain.max() - domain.min() + 1);
+    if (!is_one(extent)) {
+      realize->binding_values.Set(i, domain.min() + loop_vars[i]);
     } else {
-      realize->binding_values.Set(i, domain.min_);
+      realize->binding_values.Set(i, domain.min());
     }
   }
   // Step 3. Create loops above the BlockRealizeNode
   Stmt body = Stmt(realize);
   for (int i = iter_domain.size(); i > 0; --i) {
-    const StrideIntSet& domain = iter_domain[i - 1];
-    if (preserve_trivial_loop || !is_one(domain.extent_)) {
+    const arith::IntSet& domain = iter_domain[i - 1];
+    PrimExpr extent = analyzer.Simplify(domain.max() - domain.min() + 1);
+    if (preserve_trivial_loop || !is_one(extent)) {
       // TODO(Siyuan): support for loop with annotations
-      body = Loop(loop_vars[i - 1], 0, domain.extent_, {}, body);
+      body = Loop(loop_vars[i - 1], 0, extent, {}, body);
     }
   }
   // Step 3. Insert the new statement into the children of the loop
