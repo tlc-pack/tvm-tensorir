@@ -20,6 +20,17 @@ from tvm import te
 from tvm.tir import floormod, floordiv
 
 
+def convert_division(divisions):
+    if divisions is None or len(divisions) == 0:
+        return []
+    res = []
+    for division in divisions[:-1]:
+        res.append([tvm.arith.iter_map_convert(division.outer),
+                    tvm.arith.iter_map_convert(division.inner)])
+    res.append([divisions[-1].outer_extent, divisions[-1].inner_extent])
+    return res
+
+
 def ifuse(inputs, pred_extent=None):
     """Fuse iterators"""
     value, extent = 0, 1
