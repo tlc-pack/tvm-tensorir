@@ -193,8 +193,6 @@ def test_fuse_loop_sref():
     mod = tvm.script.create_module({"predicate_fuse": predicate_fuse})
     predicate_fuse_func = mod["predicate_fuse"]
 
-    print(tvm.script.asscript(s.func))
-
     tvm.ir.assert_structural_equal(s.func, predicate_fuse_func)
     assert s.validate_sref()
 
@@ -428,13 +426,13 @@ def blockize(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (128, 128), "float32")
     B = tir.buffer_allocate((128, 128), "float32")
     for i, j in tir.grid(8, 8):
-        with tir.block([128, 128], "blockized_B") as [vi, vj]:
-            tir.bind(vi, i * 16)
-            tir.bind(vj, j * 16)
+        with tir.block([8, 8], "blockized_B") as [vi, vj]:
+            tir.bind(vi, i)
+            tir.bind(vj, j)
             for ii, jj in tir.grid(16, 16):
                 with tir.block([128, 128], "B") as [vii, vjj]:
-                    tir.bind(vii, vi + ii)
-                    tir.bind(vjj, vj + jj)
+                    tir.bind(vii, vi*16 + ii)
+                    tir.bind(vjj, vj*16 + jj)
                     B[vii, vjj] = (A[vii, vjj] * tir.float32(2))
     for i, j in tir.grid(128, 128):
         with tir.block([128, 128], "C") as [vi, vj]:
