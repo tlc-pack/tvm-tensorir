@@ -88,6 +88,13 @@ class IterSumExpr(IterMapExpr):
         self.__init_handle_by_constructor__(_ffi_api.IterSumExpr, args, base)
 
 
+@tvm._ffi.register_object("arith.DivisionForm")
+class DivisionForm(Object):
+    def __init__(self, outer, outer_extent, inner, inner_extent):
+        self.__init_handle_by_constructor__(_ffi_api.DivisionForm, outer, outer_extent, inner,
+                                            inner_extent)
+
+
 def detect_iter_map(indices, input_iters, predicate=True):
     """Detect if indices can be written mapped iters from input_iters.
 
@@ -143,3 +150,7 @@ def subspace_division(indices, input_iters, sub_iters, predicate=True):
         Empty array if no match can be found.
     """
     return _ffi_api.SubspaceDivision(indices, input_iters, sub_iters, predicate)
+
+
+def iter_map_convert(expr):
+    return _ffi_api.IterVarMapConvert(expr)
