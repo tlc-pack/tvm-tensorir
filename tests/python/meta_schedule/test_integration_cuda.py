@@ -41,15 +41,15 @@ def test_integration_matmul():
                     vector_load_max_len=4,
                     tile_marks=["lazy_blockIdx.x", "lazy_vthread", "lazy_threadIdx.x"],
                 ),
-            ]
-        ),
-        strategy=ms.strategy.Replay(
-            batch_size=1,
-            num_iterations=32,
+            ],
             postprocs=[
                 ms.postproc.rewrite_vectorize(),
                 ms.postproc.rewrite_cuda_thread_bind(warp_size=32),
             ],
+        ),
+        strategy=ms.strategy.Replay(
+            batch_size=1,
+            num_iterations=32,
         ),
     )
     if sch is None:

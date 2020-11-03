@@ -72,7 +72,7 @@ def _debug(support: List[ms.Schedule]):
                 print(sch.decisions[inst], ",")
 
 
-# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
+# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unused-variable
 # fmt: off
 
 @tvm.script.tir
@@ -190,7 +190,7 @@ def workload_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
 
 # fmt: on
-# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks
+# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unused-variable
 
 
 def test_meta_schedule_sketch_cpu_matmul():
@@ -233,7 +233,7 @@ def test_meta_schedule_sketch_cpu_matmul():
     )
 
 
-# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
+# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unused-variable
 # fmt: off
 
 @tvm.script.tir
@@ -363,7 +363,7 @@ def workload_matmul_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
         D[vi, vj] = tir.max(C[vi, vj], 0.0)
 
 # fmt: on
-# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks
+# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unused-variable
 
 
 def test_meta_schedule_sketch_cpu_matmul_relu():
@@ -406,7 +406,7 @@ def test_meta_schedule_sketch_cpu_matmul_relu():
     )
 
 
-# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg
+# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg,unused-variable
 # fmt: off
 
 @tvm.script.tir
@@ -452,7 +452,7 @@ def _conv2d_nchw_sketch_0(var_X: ty.handle, var_W: ty.handle, var_compute: ty.ha
                                     tir.reads([compute_local[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
                                     tir.writes([compute_local[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
                                     reducer.step(compute_local[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
-                for ax0 in range(0, 1):  # pylint: disable=unused-variable
+                for ax0 in range(0, 1):
                     for ax1 in range(0, 32):
                         for ax2 in range(0, 14):
                             for ax3 in range(0, 2):
@@ -509,7 +509,7 @@ def _conv2d_nchw_sketch_1(var_X: ty.handle, var_W: ty.handle, var_compute: ty.ha
                                     tir.reads([compute_local[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
                                     tir.writes([compute_local[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
                                     reducer.step(compute_local[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
-            for ax0 in range(0, 1):  # pylint: disable=unused-variable
+            for ax0 in range(0, 1):
                 for ax1 in range(0, 256):
                     for ax2 in range(0, 28):
                         for ax3 in range(0, 8):
@@ -612,7 +612,7 @@ def workload_conv2d_nchw(var_X: ty.handle, var_W: ty.handle, var_compute: ty.han
                                         reducer.step(compute[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
 
 # fmt: on
-# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg
+# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg,unused-variable
 
 
 def test_meta_schedule_sketch_cpu_conv2d_nchw():
@@ -679,7 +679,7 @@ def test_meta_schedule_sketch_cpu_conv2d_nchw():
     )
 
 
-# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg
+# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg,unused-variable
 # fmt: off
 
 @tvm.script.tir
@@ -728,7 +728,7 @@ def _conv2d_nchw_bias_bn_relu_sketch_0(var_X: ty.handle, var_W: ty.handle, var_B
                                     tir.reads([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
                                     tir.writes([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
                                     reducer.step(compute_1[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
-                for ax0 in range(0, 1):  # pylint: disable=unused-variable
+                for ax0 in range(0, 1):
                     for ax1 in range(0, 16):
                         for ax2 in range(0, 56):
                             for ax3 in range(0, 28):
@@ -788,7 +788,7 @@ def _conv2d_nchw_bias_bn_relu_sketch_1(var_X: ty.handle, var_W: ty.handle, var_B
                                     tir.reads([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
                                     tir.writes([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
                                     reducer.step(compute_1[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
-            for ax0 in range(0, 1):  # pylint: disable=unused-variable
+            for ax0 in range(0, 1):
                 for ax1 in range(0, 128):
                     for ax2 in range(0, 56):
                         for ax3 in range(0, 56):
@@ -962,7 +962,7 @@ def workload_conv2d_nchw_bias_bn_relu(var_X: ty.handle, var_W: ty.handle, var_B:
                             compute[i0_7, i1_7, i2_7, i3_7] = tir.max(bn_add[i0_7, i1_7, i2_7, i3_7], tir.float32(0))
 
 # fmt: on
-# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg
+# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg,unused-variable
 
 
 def test_meta_schedule_sketch_cpu_conv2d_nchw_bias_bn_relu():  # pylint: disable=invalid-name
@@ -1016,7 +1016,7 @@ def test_meta_schedule_sketch_cpu_conv2d_nchw_bias_bn_relu():  # pylint: disable
 
 
 # fmt: off
-# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg,unnecessary-lambda
+# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg,unnecessary-lambda,unused-variable
 
 @tvm.script.tir
 def workload_max_pool2d_nchw(var_X: ty.handle, var_tensor: ty.handle) -> None:
@@ -1060,7 +1060,7 @@ def workload_max_pool2d_nchw(var_X: ty.handle, var_tensor: ty.handle) -> None:
                                     reducer.step(tensor[ax0_1, ax1_1, ax2_1, ax3_1], pad_temp[ax0_1, ax1_1, (ax2_1 + rv), (ax3_1 + rv_1)])
 
 # fmt: on
-# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg,unnecessary-lambda
+# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg,unnecessary-lambda,unused-variable
 
 
 def test_meta_schedule_sketch_cpu_max_pool2d_nchw():
