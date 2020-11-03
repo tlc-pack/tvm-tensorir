@@ -410,8 +410,7 @@ class BufferFlattener : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const AttrStmtNode* op) final {
-    LOG(FATAL) << "AttrStmt is not allowed in TIR schedule for now.";
-    return Stmt();
+    return StmtMutator::VisitStmt_(op);
   }
 
   Stmt VisitStmt_(const BufferStoreNode* op) final {
