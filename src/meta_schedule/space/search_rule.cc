@@ -115,19 +115,22 @@ class RuleMultiLevelTilingAndFusion {
   bool must_cache_write;
   Array<Integer> fusion_levels;
   Optional<Integer> vector_load_max_len;
+  Array<String> tile_marks;
   std::vector<int> s_idx;
   std::vector<int> r_idx;
 
   explicit RuleMultiLevelTilingAndFusion(String structure, bool must_cache_read,
                                          bool can_cache_write, bool must_cache_write,
                                          Array<Integer> fusion_levels,
-                                         Optional<Integer> vector_load_max_len)
+                                         Optional<Integer> vector_load_max_len,
+                                         Optional<Array<String>> tile_marks)
       : structure(structure),
         must_cache_read(must_cache_read),
         can_cache_write(can_cache_write),
         must_cache_write(must_cache_write),
         fusion_levels(fusion_levels),
         vector_load_max_len(vector_load_max_len),
+        tile_marks(tile_marks.value_or(Array<String>{})),
         s_idx(),
         r_idx() {
     // Process `structure` and set `s_idx` and `r_idx` properly
@@ -221,12 +224,12 @@ class RuleMultiLevelTilingAndFusion {
     return result;
   }
 
-  State AddReadCache(State state) const {
+  void AddReadCache(State* state) const {
     if (!must_cache_read) {
-      return state;
+      return;
     }
-    Schedule& sch = state.sch;
-    BlockRV& block_rv = state.block_rv;
+    Schedule& sch = state->sch;
+    BlockRV& block_rv = state->block_rv;
     std::unordered_map<tir::Buffer, BufferRV, ObjectPtrHash, ObjectPtrEqual> buffer_map;
     for (const BufferRV& buffer : sch->GetReadBuffers(block_rv)) {
       buffer_map[sch->Eval(buffer)] = buffer;
@@ -243,7 +246,7 @@ class RuleMultiLevelTilingAndFusion {
       // Do cache_read
       BlockRV cache_read_block = sch->CacheRead(buffer, "shared");
       // Insert cache_read block to the proper place
-      const Array<LoopRV>& r_tiles = state.tiles[r_idx.front()];
+      const Array<LoopRV>& r_tiles = state->tiles[r_idx.front()];
       CHECK(!r_tiles.empty()) << "ValueError: Cannot find any reduction loop in the block";
       sch->ComputeAt(cache_read_block, r_tiles.back());
       // The code below did Vectorized loading on GPU
@@ -267,14 +270,13 @@ class RuleMultiLevelTilingAndFusion {
       Array<LoopRV> tiles = sch->Split(fused, {factors[0], factors[1]});
       CHECK_EQ(tiles.size(), 2);
       // Vectorize the inner loop
-      sch->MarkLoopType({tiles[1]}, "lazy_vectorize", Range::FromMinExtent(Integer(0), Integer(1)));
+      sch->MarkLoopType({tiles[1]}, "lazy_vectorize", NullOpt);
     }
-    return state;
   }
 
-  State DoTiling(State state) const {
-    Schedule& sch = state.sch;
-    BlockRV& block_rv = state.block_rv;
+  void DoTiling(State* state) const {
+    Schedule& sch = state->sch;
+    BlockRV& block_rv = state->block_rv;
     // Concat of `tiles` is the reordering order
     std::vector<Array<LoopRV>> tiles(structure.size());
     // Get block vars and loop axes
@@ -303,8 +305,7 @@ class RuleMultiLevelTilingAndFusion {
       }
     }
     sch->Reorder(ConcatArray(tiles));
-    state.tiles = Array<Array<LoopRV>>{tiles.begin(), tiles.end()};
-    return state;
+    state->tiles = Array<Array<LoopRV>>{tiles.begin(), tiles.end()};
   }
 
   std::vector<State> FuseWithElementwiseConsumer(State state) const {
@@ -333,6 +334,15 @@ class RuleMultiLevelTilingAndFusion {
     return result;
   }
 
+  void MarkTiles(State* state) const {
+    Schedule& sch = state->sch;
+    Array<Array<LoopRV>>& tiles = state->tiles;
+    int n = std::min(tile_marks.size(), tiles.size());
+    for (int i = 0; i < n; ++i) {
+      sch->MarkLoopType(tiles[i], tile_marks[i], NullOpt);
+    }
+  }
+
   TReturn Apply(const SearchTask& task, const Schedule& sch, BlockRV block_rv,
                 const TContextInfo& _info) const {
     // If multi-level-tiling is not required
@@ -353,20 +363,12 @@ class RuleMultiLevelTilingAndFusion {
       states.swap(next_states);
     }
     // Do the multi-level tiling
-    {
-      std::vector<State> next_states;
-      for (State& state : states) {
-        next_states.push_back(DoTiling(std::move(state)));
-      }
-      states.swap(next_states);
+    for (State& state : states) {
+      DoTiling(&state);
     }
     // Add read cache
-    {
-      std::vector<State> next_states;
-      for (State& state : states) {
-        next_states.push_back(AddReadCache(std::move(state)));
-      }
-      states.swap(next_states);
+    for (State& state : states) {
+      AddReadCache(&state);
     }
     // Fuse with elementwise consumer
     {
@@ -379,6 +381,10 @@ class RuleMultiLevelTilingAndFusion {
       }
       states.swap(next_states);
     }
+    // Add tile marks
+    for (State& state : states) {
+      MarkTiles(&state);
+    }
     TReturn ret;
     for (const State& state : states) {
       ret.Set(state.sch, NullOpt);
@@ -389,13 +395,14 @@ class RuleMultiLevelTilingAndFusion {
 
 SearchRule MultiLevelTilingAndFusion(String structure, bool must_cache_read, bool can_cache_write,
                                      bool must_cache_write, Array<Integer> fusion_levels,
-                                     Optional<Integer> vector_load_max_len) {
+                                     Optional<Integer> vector_load_max_len,
+                                     Optional<Array<String>> tile_marks) {
   if (!can_cache_write && must_cache_write) {
     LOG(FATAL) << "ValueError: Conflict options, cannot have can_cache_write = false, and "
                   "must_cache_write = true at the same time";
   }
   RuleMultiLevelTilingAndFusion rule(structure, must_cache_read, can_cache_write, must_cache_write,
-                                     fusion_levels, vector_load_max_len);
+                                     fusion_levels, vector_load_max_len, tile_marks);
   auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch, BlockRV block,
                                          TContextInfo info) -> TReturn {
     return rule.Apply(task, sch, block, info);

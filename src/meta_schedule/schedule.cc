@@ -544,12 +544,13 @@ Array<BlockRV> ScheduleNode::GetLeafBlocks() {
 /**************** Schedule Primitives ****************/
 
 void ScheduleNode::MarkLoopType(const Array<LoopRV>& loops, const String& mark,
-                                const Range& range) {
+                                const Optional<Range>& opt_range) {
   Array<tir::StmtSRef> loop_srefs;
   loop_srefs.reserve(loops.size());
   for (const LoopRV& loop_rv : loops) {
     loop_srefs.push_back(Eval(loop_rv));
   }
+  Range range = opt_range.value_or(Range::FromMinExtent(Integer(0), Integer(loops.size())));
   int left = Eval(range->min);
   int right = left + Eval(range->extent);
   AnnotateLoopType(this->sch, {loop_srefs.begin() + left, loop_srefs.begin() + right}, mark);
