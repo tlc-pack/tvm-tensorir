@@ -96,6 +96,13 @@ class SearchSpace(Object):
 
         raise ValueError("Cannot create search space from: " + space)
 
+    def postprocess(
+        self,
+        sch: Schedule,
+        seed: Optional[int] = None,
+    ) -> bool:
+        return _ffi_api.SearchSpacePostprocess(self, sch, seed)  # pylint: disable=no-member
+
     def sample_schedule(
         self,
         task: SearchTask,

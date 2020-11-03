@@ -24,9 +24,8 @@ from .cost_model import CostModel
 from .measure import ProgramMeasurer
 from .measure_record import MeasureResult
 from .mutator import Mutator
-from .postproc import Postproc
 from .schedule import Schedule
-from .search import SearchStrategy, SearchTask
+from .search import SearchSpace, SearchStrategy, SearchTask
 
 
 @register_object("meta_schedule.Replay")
@@ -44,19 +43,16 @@ class Replay(SearchStrategy):
 
     batch_size: int
     num_iterations: int
-    postprocs: List[Postproc]
 
     def __init__(
         self,
         batch_size: int = 16,
         num_iterations: int = 32,
-        postprocs: Optional[List[Postproc]] = None,
     ):
         self.__init_handle_by_constructor__(
             _ffi_api.Replay,  # pylint: disable=no-member
             batch_size,
             num_iterations,
-            postprocs,
         )
 
 
@@ -95,7 +91,6 @@ class Evolutionary(SearchStrategy):
     p_mutate: float
     mutator_probs: Dict[Mutator, float]
     cost_model: CostModel
-    postprocs: List[Postproc]
 
     def __init__(
         self,
@@ -108,7 +103,6 @@ class Evolutionary(SearchStrategy):
         p_mutate: float,
         mutator_probs: Dict[Mutator, float],
         cost_model: CostModel,
-        postprocs: Optional[List[Postproc]] = None,
     ):
         self.__init_handle_by_constructor__(
             _ffi_api.Evolutionary,  # pylint: disable=no-member
@@ -121,13 +115,13 @@ class Evolutionary(SearchStrategy):
             p_mutate,
             mutator_probs,
             cost_model,
-            postprocs,
         )
 
     def sample_init_population(
         self,
         support: List[Schedule],
         num_samples: int,
+        space: SearchSpace,
         seed: Optional[int] = None,
     ) -> List[Schedule]:
         """Sample the initial population from the support
@@ -145,7 +139,7 @@ class Evolutionary(SearchStrategy):
             The initial population sampled from support
         """
         return _ffi_api.EvolutionarySampleInitPopulation(  # pylint: disable=no-member
-            self, support, num_samples, seed
+            self, support, num_samples, space, seed
         )
 
     def evolve_with_cost_model(
@@ -153,6 +147,7 @@ class Evolutionary(SearchStrategy):
         task: SearchTask,
         inits: List[Schedule],
         num_samples: int,
+        space: SearchSpace,
         seed: Optional[int] = None,
     ) -> List[Schedule]:
         """Perform evolutionary search using genetic algorithm with the cost model
@@ -172,13 +167,14 @@ class Evolutionary(SearchStrategy):
             The best samples in terms of the cost model's scores
         """
         return _ffi_api.EvolutionaryEvolveWithCostModel(  # pylint: disable=no-member
-            self, task, inits, num_samples, seed
+            self, task, inits, num_samples, space, seed
         )
 
     def pick_with_eps_greedy(
         self,
         inits: List[Schedule],
         bests: List[Schedule],
+        space: SearchSpace,
         seed: Optional[int] = None,
     ) -> List[Schedule]:
         """Pick a batch of samples for measurement with epsilon greedy
@@ -196,7 +192,7 @@ class Evolutionary(SearchStrategy):
             A list of schedules, result of epsilon-greedy sampling
         """
         return _ffi_api.EvolutionaryPickWithEpsGreedy(  # pylint: disable=no-member
-            self, inits, bests, seed
+            self, inits, bests, space, seed
         )
 
     def measure_and_update_cost_model(

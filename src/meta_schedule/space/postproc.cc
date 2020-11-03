@@ -36,8 +36,6 @@ Postproc::Postproc(String name, FProc proc) {
 
 bool PostprocNode::Apply(const Schedule& sch, Sampler* sampler) { return proc_(sch, sampler); }
 
-Array<Postproc> PostprocDefaults() { return {RewriteParallel(), RewriteVectorize()}; }
-
 /********** RewriteParallel **********/
 
 Postproc RewriteParallel() {

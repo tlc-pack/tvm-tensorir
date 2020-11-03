@@ -70,12 +70,6 @@ class Postproc : public ObjectRef {
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Postproc, ObjectRef, PostprocNode);
 };
 
-/*!
- * \brief Get the default post-processors
- * \return A list of post-processors
- */
-Array<Postproc> PostprocDefaults();
-
 /********** Built-in Post Processors **********/
 
 /*!
