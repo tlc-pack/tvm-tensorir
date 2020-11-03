@@ -163,6 +163,8 @@ class StmtReplacer : public StmtMutator {
   const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map;
 };
 
+bool CheckOneLine(const Stmt& s);
+
 /*!
  * \brief PrimExpr pattern matcher.
  *

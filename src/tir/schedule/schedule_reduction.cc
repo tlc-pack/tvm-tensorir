@@ -274,8 +274,46 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   UpdateScope(GetParentBlockSRef(update_sref)->stmt, this->stmt2ref, &this->scopes);
 }
 
-StmtSRef ScheduleNode::rfactor(const StmtSRef& block_sref, const StmtSRef& loop_sref) {
-  return block_sref;
+StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref) {
+  const auto* loop = loop_sref->GetStmt<LoopNode>();
+  CHECK(loop) << "TypeError: Only support rfactor a loop for now, but get type: "
+              << loop_sref->stmt->GetTypeKey();
+  CHECK(CheckOneLine(GetRef<Stmt>(loop_sref->stmt)))
+      << "ValueError: Only one line subtree can be rfactor";
+  // get the inner block
+  Array<StmtSRef> child_blocks = GetChildBlocks(loop_sref);
+  CHECK_EQ(child_blocks.size(), 1) << "ValueError: Only one line subtree can be rfactor";
+  StmtSRef block_sref = child_blocks[0];
+  BlockRealize block_realize = GetBlockRealize(block_sref);
+  Block block = block_realize->block;
+  // Check the block is reduction block
+  Scope scope = GetParentScope(block_sref);
+  CHECK(scope.IsReduction(block_sref)) << "ValueError: Can only rfactor a reduction block";
+
+  // Get the iters outside the block
+  std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> iters;
+  std::vector<const LoopNode*> affected_loops;
+  auto loops = GetLoopsInScope(block_sref);
+  bool find = false;
+  for (auto it = loops.rend(); it != loops.rbegin(); ++it) {
+    const auto* l = (*it)->GetStmt<LoopNode>();
+    CHECK(l) << "InternalError: GetLoopsInScope returns a block sref";
+    iters[l->loop_var] = Range::FromMinExtent(l->min, l->extent);
+    if (!find) {
+      if (l->body->IsInstance<SeqStmtNode>()) {
+        find = true;
+      } else {
+        affected_loops.push_back(l);
+      }
+    }
+  }
+
+  // Do subspace division with subspace {loop}
+  arith::Analyzer analyzer;
+  auto division = arith::SubspaceDivision(block_realize->binding_values, iters, {loop->loop_var},
+                                          block_realize->predicate, &analyzer);
+
+  return loop_sref;
 }
 
 }  // namespace tir

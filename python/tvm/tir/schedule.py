@@ -411,21 +411,20 @@ class Schedule(Object):
         combiner = tvm.tir.CommReducer(lhs, rhs, result, id_elem)
         _ffi_api_schedule.ScheduleRegisterReducer(self, combiner)
 
-    def rfactor(self, block, loop):
+    def rfactor(self, loop):
         """rfactor a reduction block using loop
 
         Parameters
         ----------
-        block : StmtSRef
-            the reduction block we want to do rfactor
         loop : StmtSRef
             the loop outside block we want to do rfactor
+
         Returns
         -------
         new_block : StmtSRef
              the sref of new block
         """
-        return _ffi_api_schedule.ScheduleRfactor(self, block, loop)
+        return _ffi_api_schedule.ScheduleRfactor(self, loop)
 
 
 def create_schedule(func):

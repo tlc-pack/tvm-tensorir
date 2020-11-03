@@ -249,11 +249,10 @@ class ScheduleNode : public Object {
 
   /*!
    * \brief rfactor a reduction block using loop
-   * \param block_sref the reduction block we want to do rfactor
    * \param loop_sref the loop outside block we want to do rfactor
    * \return the sref of new block
    */
-  StmtSRef rfactor(const StmtSRef& block_sref, const StmtSRef& loop_sref);
+  StmtSRef rfactor(const StmtSRef& loop_sref);
 
   /*!
    * \brief validate sref tree and scope information
