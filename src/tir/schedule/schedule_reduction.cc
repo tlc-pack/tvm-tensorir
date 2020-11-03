@@ -288,7 +288,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref) {
   Block block = block_realize->block;
   // Check the block is reduction block
   Scope scope = GetParentScope(block_sref);
-  CHECK(scope.IsReduction(block_sref)) << "ValueError: Can only rfactor a reduction block";
+  CHECK(scope.IsReduction(block_sref)) << "ValueError: can only rfactor a reduction block";
 
   // Get the iters outside the block
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> iters;
@@ -312,6 +312,14 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref) {
   arith::Analyzer analyzer;
   auto division = arith::SubspaceDivision(block_realize->binding_values, iters, {loop->loop_var},
                                           block_realize->predicate, &analyzer);
+  CHECK(is_one(division.back()->inner_extent))
+      << "ValueError: can not rfactor a loop related with predicate";
+  for (size_t i = 0; i < block->iter_vars.size(); ++i) {
+    if (block->iter_vars[i]->iter_type == IterVarType::kDataPar) {
+      CHECK(division[i]->IsOuter())
+          << "ValueError: can not rfactor a loop that touches data par block vars";
+    }
+  }
 
   return loop_sref;
 }
