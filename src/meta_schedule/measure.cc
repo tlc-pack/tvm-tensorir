@@ -152,7 +152,9 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
         StdCout(verbose) << std::fixed << std::setprecision(4) << "#" << num_measured
                          << "\tError: " << MeasureErrorNOToStr(error_no)
                          << "\tBest time: " << best_time_cost << std::endl
-                         << "\t\t" << measure_result->error_msg << "\n";
+                         << "\t\t" << measure_result->error_msg << "\n"
+                         << "\nThe IR is:\n"
+                         << Repr(measure_input->sch);
       }
     }
     measure_results.insert(measure_results.end(), batch_measure_results.begin(),
