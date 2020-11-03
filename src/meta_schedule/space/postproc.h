@@ -16,8 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#ifndef SRC_META_SCHEDULE_STRATEGY_POSTPROC_H_
-#define SRC_META_SCHEDULE_STRATEGY_POSTPROC_H_
+#ifndef SRC_META_SCHEDULE_SPACE_POSTPROC_H_
+#define SRC_META_SCHEDULE_SPACE_POSTPROC_H_
 
 #include "../schedule.h"
 #include "../search.h"
@@ -108,4 +108,4 @@ TVM_DLL Postproc RewriteCudaThreadBind(int warp_size);
 }  // namespace meta_schedule
 }  // namespace tvm
 
-#endif  // SRC_META_SCHEDULE_STRATEGY_POSTPROC_H_
+#endif  // SRC_META_SCHEDULE_SPACE_POSTPROC_H_
