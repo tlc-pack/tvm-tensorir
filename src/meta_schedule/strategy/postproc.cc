@@ -177,6 +177,173 @@ Postproc RewriteTensorize(Array<tir::TensorIntrin> tensor_intrins) {
   return Postproc("rewrite_tensorize", f_proc);
 }
 
+/********** RewriteCudaThreadBind **********/
+
+inline tir::IterVar MakeThreadIdx(const String& name) {
+  return tir::IterVar(Range(nullptr), tir::Var(name), tir::kThreadIndex, name);
+}
+
+class PostprocRewriteCudaThreadBind {
+ public:
+  /*! \brief Number of threads in a CUDA warp, should be 32 */
+  int warp_size;
+
+  explicit PostprocRewriteCudaThreadBind(int warp_size) : warp_size(warp_size) {}
+
+  bool BindMultiLevelTiled(const Schedule& sch, const BlockRV& block_rv) const {
+    arith::Analyzer analyzer;
+    Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
+    std::vector<tir::StmtSRef> loop_srefs;
+    // The indices of `blockIdx.x` / `vthread` / `threadIdx.x` annotation
+    std::vector<int> block_idx;
+    std::vector<int> vthread_idx;
+    std::vector<int> thread_idx;
+    PrimExpr prod_extent = Integer(1);
+    for (const LoopRV& loop_rv : loop_rvs) {
+      int i = loop_srefs.size();
+      // Evaluate to a TIR loop
+      tir::StmtSRef loop_sref = sch->Eval(loop_rv);
+      loop_srefs.push_back(loop_sref);
+      const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+      CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
+      prod_extent = prod_extent * loop->extent;
+      if (loop->annotations.empty()) {
+        continue;
+      }
+      if (loop->annotations.size() != 1) {
+        return false;
+      }
+      // Check the annotation
+      if (loop->annotations[0]->attr_key == tir::attr::loop_type) {
+        if (const auto* str_imm = loop->annotations[0]->value.as<tir::StringImmNode>()) {
+          const String& ann = str_imm->value;
+          if (ann == "lazy_blockIdx.x") {
+            block_idx.push_back(i);
+          } else if (ann == "lazy_vthread") {
+            vthread_idx.push_back(i);
+          } else if (ann == "lazy_threadIdx.x") {
+            thread_idx.push_back(i);
+          } else {
+            return false;
+          }
+        }
+      }
+    }
+    prod_extent = analyzer.Simplify(prod_extent);
+    // Check if the block is annotated
+    if (block_idx.empty()) {
+      return false;
+    }
+    CHECK(!vthread_idx.empty());
+    CHECK(!thread_idx.empty());
+    // Remove the annotation on the loop
+    for (const tir::StmtSRef& loop_sref : loop_srefs) {
+      const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+      CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
+      ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
+      new_loop->annotations.clear();
+      sch->sch->Replace(loop_sref, tir::Loop(new_loop));
+    }
+    // Check if `prod_extent <= warp_size`
+    if (analyzer.CanProve(prod_extent <= warp_size)) {
+      // If so, only bind `threadIdx.x`
+      std::vector<int> indices;
+      indices.insert(indices.end(), block_idx.begin(), block_idx.end());
+      indices.insert(indices.end(), vthread_idx.begin(), vthread_idx.end());
+      indices.insert(indices.end(), thread_idx.begin(), thread_idx.end());
+      std::sort(indices.begin(), indices.end());
+      std::vector<LoopRV> to_fuse;
+      for (int idx : indices) {
+        to_fuse.push_back(loop_rvs[idx]);
+      }
+      LoopRV fused = sch->Fuse(to_fuse);
+      sch->sch->bind(sch->Eval(fused), MakeThreadIdx("threadIdx.x"));
+    } else {
+      // Otherwise, bind `blockIdx.x`, `vthread` and `threadIdx.x`
+      {
+        // bind `blockIdx.x`
+        std::vector<LoopRV> to_fuse;
+        for (int idx : block_idx) {
+          to_fuse.push_back(loop_rvs[idx]);
+        }
+        LoopRV fused = sch->Fuse(to_fuse);
+        sch->sch->bind(sch->Eval(fused), MakeThreadIdx("blockIdx.x"));
+      }
+      {
+        // bind `vthread`
+        std::vector<LoopRV> to_fuse;
+        for (int idx : vthread_idx) {
+          to_fuse.push_back(loop_rvs[idx]);
+        }
+        LoopRV fused = sch->Fuse(to_fuse);
+        sch->sch->bind(sch->Eval(fused), MakeThreadIdx("vthread"));
+      }
+      {
+        // bind `threadIdx.x`
+        std::vector<LoopRV> to_fuse;
+        for (int idx : thread_idx) {
+          to_fuse.push_back(loop_rvs[idx]);
+        }
+        LoopRV fused = sch->Fuse(to_fuse);
+        sch->sch->bind(sch->Eval(fused), MakeThreadIdx("threadIdx.x"));
+      }
+    }
+    return true;
+  }
+
+  bool BindSpatial(const Schedule& sch, const BlockRV& block_rv) const {
+    Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
+    tir::StmtSRef block_sref = sch->Eval(block_rv);
+    Array<tir::StmtSRef> loop_srefs;
+    for (const LoopRV& loop_rv : loop_rvs) {
+      tir::StmtSRef loop_sref = sch->Eval(loop_rv);
+      loop_srefs.push_back(loop_sref);
+      const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+      CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
+      if (!loop->annotations.empty()) {
+        return false;
+      }
+    }
+    Array<Integer> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
+    int n_spatial = 0;
+    for (const Integer& _loop_type : loop_types) {
+      int loop_type = _loop_type;
+      if (loop_type == tir::kDataPar) {
+        ++n_spatial;
+      } else {
+        break;
+      }
+    }
+    CHECK(n_spatial > 0) << "NotImplementedError: binding no spatial loops is not supported yet";
+    LoopRV fused = sch->Fuse({loop_rvs.begin(), loop_rvs.begin() + n_spatial});
+    Array<LoopRV> splits = sch->Split(fused, {NullOpt, Integer(32)});
+    CHECK_EQ(splits.size(), 2);
+    sch->sch->bind(sch->Eval(splits[0]), MakeThreadIdx("blockIdx.x"));
+    sch->sch->bind(sch->Eval(splits[1]), MakeThreadIdx("threadIdx.x"));
+    return true;
+  }
+
+  bool Proc(const Schedule& sch) const {
+    Array<BlockRV> root_block_rvs = sch->GetRootBlocks();
+    for (const BlockRV& block_rv : root_block_rvs) {
+      if (BindMultiLevelTiled(sch, block_rv)) {
+        continue;
+      }
+      if (BindSpatial(sch, block_rv)) {
+        continue;
+      }
+    }
+    return true;
+  }
+};
+
+Postproc RewriteCudaThreadBind(int warp_size) {
+  auto f_proc = [warp_size](Schedule sch, void* _sampler) -> bool {
+    return PostprocRewriteCudaThreadBind(warp_size).Proc(sch);
+  };
+  return Postproc("rewrite_cuda_thread_bind", f_proc);
+}
+
 /********** FFI **********/
 
 struct Internal {
@@ -198,6 +365,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.postproc.Apply").set_body_typed(Internal::App
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteParallel").set_body_typed(RewriteParallel);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteVectorize").set_body_typed(RewriteVectorize);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteTensorize").set_body_typed(RewriteTensorize);
+TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteCudaThreadBind")
+    .set_body_typed(RewriteCudaThreadBind);
 
 }  // namespace meta_schedule
 }  // namespace tvm

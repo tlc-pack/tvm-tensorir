@@ -87,3 +87,14 @@ def rewrite_tensorize(tensor_intrins: List[TensorIntrin]) -> Postproc:
         The postprocessor created
     """
     return _ffi_api_postproc.RewriteTensorize(tensor_intrins)  # pylint: disable=no-member
+
+
+def rewrite_cuda_thread_bind(warp_size: int) -> Postproc:
+    """Creates a postprocessor that do block/vthread/thread binding for cuda
+
+    Returns
+    ----------
+    postproc: Postproc
+        The postprocessor created
+    """
+    return _ffi_api_postproc.RewriteCudaThreadBind(warp_size)  # pylint: disable=no-member

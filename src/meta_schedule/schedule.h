@@ -192,7 +192,7 @@ class ScheduleNode : public Object {
    * \param range The range in loops to be marked
    * \param mark The annotation
    */
-  void MarkLoopType(const Array<LoopRV>& loops, const String& mark, const Range& range);
+  void MarkLoopType(const Array<LoopRV>& loops, const String& mark, const Optional<Range>& range);
   /*!
    * \brief Mark a block
    * \param block The block to be marked
