@@ -59,6 +59,7 @@ def _get_support(func: tir.PrimFunc, task_name: str):
                 must_cache_write=True,
                 fusion_levels=[3],
                 vector_load_max_len=32,
+                tile_marks=["lazy_blockIdx.x", "lazy_vthread", "lazy_threadIdx.x"],
             ),
         ]
     ).get_support(
@@ -105,13 +106,13 @@ def _matmul_sketch_0(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         C_local = tir.buffer_allocate([512, 512], elem_offset=0, scope="local", align=128, offset_factor=1)
         B_shared = tir.buffer_allocate([512, 512], elem_offset=0, scope="shared", align=128, offset_factor=1)
         A_shared = tir.buffer_allocate([512, 512], elem_offset=0, scope="shared", align=128, offset_factor=1)
-        for i0_outer_outer_outer_outer in range(0, 1):
-            for i1_outer_outer_outer_outer in range(0, 2):
-                for i0_outer_outer_outer_inner in range(0, 16):
-                    for i1_outer_outer_outer_inner in range(0, 4):
-                        for i0_outer_outer_inner in range(0, 2):
-                            for i1_outer_outer_inner in range(0, 8):
-                                for i2_outer_outer in range(0, 1):
+        for _i0_outer_outer_outer_outer in range(0, 1, annotation = {"loop_type":"lazy_blockIdx.x"}):
+            for i1_outer_outer_outer_outer in range(0, 2, annotation = {"loop_type":"lazy_blockIdx.x"}):
+                for i0_outer_outer_outer_inner in range(0, 16, annotation = {"loop_type":"lazy_vthread"}):
+                    for i1_outer_outer_outer_inner in range(0, 4, annotation = {"loop_type":"lazy_vthread"}):
+                        for i0_outer_outer_inner in range(0, 2, annotation = {"loop_type":"lazy_threadIdx.x"}):
+                            for i1_outer_outer_inner in range(0, 8, annotation = {"loop_type":"lazy_threadIdx.x"}):
+                                for _i2_outer_outer in range(0, 1):
                                     for ax0_ax1_fused_outer in range(0, 2048):
                                         for ax0_ax1_fused_inner in range(0, 4, annotation = {"loop_type":"lazy_vectorize"}):
                                             with tir.block([512, 512], "") as [v0, v1]:
@@ -129,7 +130,7 @@ def _matmul_sketch_0(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                                 tir.writes([B_shared[v0_1:(v0_1 + 1), v1_1:(v1_1 + 1)]])
                                                 B_shared[v0_1, v1_1] = B[v0_1, v1_1]
                                     for i2_outer_inner in range(0, 128):
-                                        for i0_outer_inner in range(0, 1):
+                                        for _i0_outer_inner in range(0, 1):
                                             for i1_outer_inner in range(0, 2):
                                                 for i2_inner in range(0, 4):
                                                     for i0_inner in range(0, 16):
