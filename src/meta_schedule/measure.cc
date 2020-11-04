@@ -148,12 +148,18 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
         StdCout(verbose) << std::fixed << std::setprecision(4) << "#" << num_measured
                          << "\tTime: " << avg_time_cost << "\tBest time: " << best_time_cost
                          << std::endl;
+      } else if (error_no == MeasureErrorNO::kRunTimeoutError ||
+                 error_no == MeasureErrorNO::kBuildTimeoutError) {
+        StdCout(verbose) << std::fixed << std::setprecision(4) << "#" << num_measured
+                         << "\tError: " << MeasureErrorNOToStr(error_no)
+                         << "\tBest time: " << best_time_cost << std::endl
+                         << measure_result->error_msg << "\n";
       } else {
         StdCout(verbose) << std::fixed << std::setprecision(4) << "#" << num_measured
                          << "\tError: " << MeasureErrorNOToStr(error_no)
                          << "\tBest time: " << best_time_cost << std::endl
-                         << "\t\t" << measure_result->error_msg << "\n"
-                         << "\nThe IR is:\n"
+                         << measure_result->error_msg << "\n"
+                         << "The IR is:\n"
                          << Repr(measure_input->sch);
       }
     }

@@ -17,6 +17,7 @@
  * under the License.
  */
 #include "../search.h"
+#include "./postproc.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -30,12 +31,21 @@ class ScheduleFnNode : public SearchSpaceNode {
  public:
   /*! \brief The schedule function used */
   TypedPackedFunc<void(Schedule)> sch_fn_;
+  /*! \brief The postprocessors */
+  Array<Postproc> postprocs;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("postprocs", &postprocs);
     // sch_fn_ is not visited
   }
   /*! \brief Default destructor */
   ~ScheduleFnNode() = default;
+  /*!
+   * \brief Apply postprocessors onto the schedule
+   * \param sch The schedule to be postprocessed
+   * \param sampler The random number generator
+   */
+  bool Postprocess(const Schedule& sch, Sampler* sampler) override;
   /*!
    * \brief Sample a schedule out of the search space
    * \param task The search task to be sampled from
@@ -62,21 +72,32 @@ class ScheduleFn : public SearchSpace {
   /*!
    * Constructor
    * \param sch_fn The schedule function
+   * \param postprocs The postprocessors
    */
-  explicit ScheduleFn(PackedFunc sch_fn);
+  explicit ScheduleFn(PackedFunc sch_fn, Array<Postproc> postprocs);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(ScheduleFn, SearchSpace, ScheduleFnNode);
 };
 
 /********** Constructor **********/
 
-ScheduleFn::ScheduleFn(PackedFunc sch_fn) {
+ScheduleFn::ScheduleFn(PackedFunc sch_fn, Array<Postproc> postprocs) {
   ObjectPtr<ScheduleFnNode> n = make_object<ScheduleFnNode>();
+  n->postprocs = std::move(postprocs);
   n->sch_fn_ = sch_fn;
   data_ = std::move(n);
 }
 
 /********** Sampling **********/
+
+bool ScheduleFnNode::Postprocess(const Schedule& sch, Sampler* sampler) {
+  for (const Postproc& postproc : postprocs) {
+    if (!postproc->Apply(sch, sampler)) {
+      return false;
+    }
+  }
+  return true;
+}
 
 Schedule ScheduleFnNode::SampleSchedule(const SearchTask& task, Sampler* sampler) {
   Schedule sch(task->func, Integer(sampler->ForkSeed()));
@@ -94,10 +115,13 @@ struct Internal {
   /*!
    * \brief Constructor of ScheduleFn
    * \param sch_fn The schedule function
+   * \param postprocs The postprocessors
    * \return The ScheduleFn constructed
    * \sa ScheduleFn::ScheduleFn
    */
-  static ScheduleFn New(PackedFunc sch_fn) { return ScheduleFn(sch_fn); }
+  static ScheduleFn New(PackedFunc sch_fn, Array<Postproc> postprocs) {
+    return ScheduleFn(sch_fn, postprocs);
+  }
 };
 
 TVM_REGISTER_NODE_TYPE(ScheduleFnNode);

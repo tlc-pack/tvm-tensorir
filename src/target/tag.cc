@@ -21,6 +21,7 @@
  * \file src/target/target_tag.cc
  * \brief Target tag registry
  */
+#include <tvm/ir/expr.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/target/tag.h>
 #include <tvm/target/target.h>
@@ -72,6 +73,10 @@ TVM_REGISTER_TARGET_TAG("nvidia/rtx2080ti")
     .set_config({
         {"kind", String("cuda")},
         {"arch", String("sm_75")},
+        {"shared_memory_per_block", Integer(49152)},
+        {"registers_per_block", Integer(65536)},
+        {"max_threads_per_block", Integer(1024)},
+        {"vector_unit_bytes", Integer(16)},
     });
 
 }  // namespace tvm
