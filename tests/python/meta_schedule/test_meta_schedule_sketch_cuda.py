@@ -81,7 +81,7 @@ def _debug(support: List[ms.Schedule]):
                 print(sch.decisions[inst], ",")
 
 
-# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
+# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unused-variable
 # fmt: off
 
 @tvm.script.tir
@@ -152,7 +152,7 @@ def _matmul_sketch_0(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                             C[v0_2, v1_2] = C_local[v0_2, v1_2]
 
 # fmt: on
-# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks
+# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unused-variable
 
 
 def test_meta_schedule_sketch_cuda_matmul():

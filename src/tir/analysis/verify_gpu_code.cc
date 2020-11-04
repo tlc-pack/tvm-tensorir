@@ -91,12 +91,19 @@ class GPUCodeVerifier : public StmtExprVisitor {
         // enter a new kernel, reset statistics
         Reset_();
       }
-
-      Var var = op->node.as<IterVarNode>()->var;
+      const auto* iter_var = op->node.as<IterVarNode>();
       const auto* extent = op->value.as<IntImmNode>();
+      ICHECK(iter_var);
       ICHECK(extent);
 
-      std::string name = var.get()->name_hint;
+      String name = "";
+      const String& var_name = iter_var->var->name_hint;
+      if (var_name == "threadIdx.x" || var_name == "threadIdx.y" || var_name == "threadIdx.z" ||
+          var_name == "vthread") {
+        name = var_name;
+      } else {
+        name = iter_var->thread_tag;
+      }
       // record the number of threads in a block
       if (name == "threadIdx.x" || name == "threadIdx.y" || name == "threadIdx.z" ||
           name == "vthread") {
