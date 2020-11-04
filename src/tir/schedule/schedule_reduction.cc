@@ -289,13 +289,12 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref) {
   // Check the block is reduction block
   Scope scope = GetParentScope(block_sref);
   CHECK(scope.IsReduction(block_sref)) << "ValueError: can only rfactor a reduction block";
-
   // Get the iters outside the block
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> iters;
   std::vector<const LoopNode*> affected_loops;
   auto loops = GetLoopsInScope(block_sref);
   bool find = false;
-  for (auto it = loops.rend(); it != loops.rbegin(); ++it) {
+  for (auto it = loops.rbegin(); it != loops.rend(); ++it) {
     const auto* l = (*it)->GetStmt<LoopNode>();
     CHECK(l) << "InternalError: GetLoopsInScope returns a block sref";
     iters[l->loop_var] = Range::FromMinExtent(l->min, l->extent);
@@ -307,19 +306,48 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref) {
       }
     }
   }
-
   // Do subspace division with subspace {loop}
+  BlockRealize rf_br = block_realize;
+  Block rf_block = block;
+  std::vector<PrimExpr> rf_bindings;
+  std::vector<IterVar> rf_iters;
+  std::unordered_map<const VarNode*, PrimExpr> var_map;
+  IterVar new_iter(Range::FromMinExtent(loop->min, loop->extent),
+                   Var("v" + loop->loop_var->name_hint), IterVarType::kDataPar);
+  // calculate new bindings for rf block
   arith::Analyzer analyzer;
   auto division = arith::SubspaceDivision(block_realize->binding_values, iters, {loop->loop_var},
                                           block_realize->predicate, &analyzer);
+  arith::IterVarMapConverter converter(&analyzer);
   CHECK(is_one(division.back()->inner_extent))
       << "ValueError: can not rfactor a loop related with predicate";
   for (size_t i = 0; i < block->iter_vars.size(); ++i) {
     if (block->iter_vars[i]->iter_type == IterVarType::kDataPar) {
       CHECK(division[i]->IsOuter())
           << "ValueError: can not rfactor a loop that touches data par block vars";
+    } else {
+      if (!division[i]->IsOuter()) {
+        var_map[block->iter_vars[i]->var.get()] =
+            block->iter_vars[i] * division[i]->inner_extent +
+            Substitute(converter.Convert(division[i]->inner), {{loop->loop_var, new_iter->var}});
+      }
     }
+    rf_bindings.push_back(converter.Convert(division[i]->outer));
+    rf_iters.push_back(block->iter_vars[i]);
   }
+  rf_bindings.push_back(loop->loop_var);
+  rf_iters.push_back(new_iter);
+  // create rf block
+  std::vector<TensorRegion> reads, writes;
+  for (const auto& read : rf_block->reads) reads.push_back(SubstituteTensorRegion(read, var_map));
+  for (const auto& write : rf_block->writes)
+    writes.push_back(SubstituteTensorRegion(write, var_map));
+  rf_block.CopyOnWrite()->body = SubstituteInScope(rf_block->body, var_map);
+  rf_block.CopyOnWrite()->iter_vars = rf_iters;
+  rf_block.CopyOnWrite()->reads = reads;
+  rf_block.CopyOnWrite()->writes = writes;
+  rf_br.CopyOnWrite()->block = rf_block;
+  rf_br.CopyOnWrite()->binding_values = rf_bindings;
 
   return loop_sref;
 }

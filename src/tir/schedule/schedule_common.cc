@@ -99,6 +99,32 @@ Stmt SubstituteInScope(const Stmt& stmt,
 }
 
 Stmt SubstituteInScope(const Stmt& stmt,
+                       const std::unordered_map<const VarNode*, PrimExpr>& var_map) {
+  auto vmap = [&](const VarNode* v) -> PrimExpr {
+    const auto& it = var_map.find(v);
+    if (it != var_map.end()) {
+      return it->second;
+    } else {
+      return NullValue<PrimExpr>();
+    }
+  };
+  return IRSubstitueInScope(vmap)(stmt);
+}
+
+PrimExpr SubstituteInScope(const PrimExpr& expr,
+                       const std::unordered_map<const VarNode*, PrimExpr>& var_map) {
+  auto vmap = [&](const VarNode* v) -> PrimExpr {
+    const auto& it = var_map.find(v);
+    if (it != var_map.end()) {
+      return it->second;
+    } else {
+      return NullValue<PrimExpr>();
+    }
+  };
+  return IRSubstitueInScope(vmap)(expr);
+}
+
+Stmt SubstituteInScope(const Stmt& stmt,
                        const std::unordered_map<const VarNode*, const VarNode*>& var_map) {
   auto vmap = [&](const VarNode* v) -> PrimExpr {
     const auto& it = var_map.find(v);
@@ -127,6 +153,18 @@ PrimExpr SubstituteInScope(const PrimExpr& expr,
 TensorRegion SubstituteTensorRegion(
     const TensorRegion& tensor_region,
     const std::unordered_map<const VarNode*, const VarNode*>& var_map) {
+  auto new_tensor_region = make_object<TensorRegionNode>(*tensor_region.operator->());
+  new_tensor_region->region = Array<Range>(make_object<ArrayNode>());
+  for (const auto& range : tensor_region->region) {
+    new_tensor_region->region.push_back(Range::FromMinExtent(
+        SubstituteInScope(range->min, var_map), SubstituteInScope(range->extent, var_map)));
+  }
+  return TensorRegion(new_tensor_region);
+}
+
+TensorRegion SubstituteTensorRegion(
+    const TensorRegion& tensor_region,
+    const std::unordered_map<const VarNode*, PrimExpr>& var_map) {
   auto new_tensor_region = make_object<TensorRegionNode>(*tensor_region.operator->());
   new_tensor_region->region = Array<Range>(make_object<ArrayNode>());
   for (const auto& range : tensor_region->region) {

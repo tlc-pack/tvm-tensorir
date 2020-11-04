@@ -656,6 +656,19 @@ def test_blockize_schedule():
     tvm.ir.assert_structural_equal(s.func, blockize_schedule_2)
 
 
+def test_rfactor():
+    func = util.matmul_stmt()
+
+    s = tir.create_schedule(func)
+    C = s.get_block("update")
+    i, j, k = s.get_axes(C)
+    ko, ki = s.split(k, 32)
+    kio, kii = s.split(ki, 4)
+
+    print(tvm.script.asscript(s.func))
+    s.rfactor(kii)
+
+
 if __name__ == "__main__":
     test_fuse()
     test_split_fuse()
@@ -672,3 +685,4 @@ if __name__ == "__main__":
     test_cache_read_write()
     test_blockize()
     test_blockize_schedule()
+    test_rfactor()
