@@ -17,6 +17,7 @@
  * under the License.
  */
 #include "./postproc.h"  // NOLINT(build/include)
+#include <tvm/tir/transform.h>
 
 #include "../analysis.h"
 
@@ -35,8 +36,6 @@ Postproc::Postproc(String name, FProc proc) {
 /********** Postproc **********/
 
 bool PostprocNode::Apply(const Schedule& sch, Sampler* sampler) { return proc_(sch, sampler); }
-
-Array<Postproc> PostprocDefaults() { return {RewriteParallel(), RewriteVectorize()}; }
 
 /********** RewriteParallel **********/
 
@@ -344,6 +343,68 @@ Postproc RewriteCudaThreadBind(int warp_size) {
   return Postproc("rewrite_cuda_thread_bind", f_proc);
 }
 
+/********** VerifyGPUCode **********/
+
+class PostprocVerifyGPUCode {
+ public:
+  int shared_memory_per_block;
+  int registers_per_block;
+  int max_threads_per_block;
+  int vector_unit_bytes;
+
+  explicit PostprocVerifyGPUCode(Target target)
+      : shared_memory_per_block(ExtractFromTarget(target, "shared_memory_per_block")),
+        registers_per_block(ExtractFromTarget(target, "registers_per_block")),
+        max_threads_per_block(ExtractFromTarget(target, "max_threads_per_block")),
+        vector_unit_bytes(ExtractFromTarget(target, "vector_unit_bytes")) {}
+
+  static int ExtractFromTarget(const Target& target, const char* name) {
+    if (Optional<Integer> v = target->GetAttr<Integer>(name)) {
+      return v.value();
+    }
+    LOG(FATAL) << "AttributedError: \"shared_memory_per_block\" is not defined in the target";
+    throw;
+  }
+
+  bool Proc(const Schedule& sch) const {
+    static const constexpr int MAX_VTHREADS = 8;
+    tir::transform::Sequential passes({
+        // Phase 0
+        tir::transform::InjectPrefetch(),
+        tir::transform::BufferFlatten(),
+        // Phase 1
+        tir::transform::NarrowDataType(32),
+        tir::transform::Simplify(),
+        tir::transform::VectorizeLoop(true),
+        tir::transform::InjectVirtualThread(),
+        tir::transform::StorageRewrite(),
+        tir::transform::Simplify(),
+        tir::transform::VerifyGPUCode({
+            {"max_shared_memory_per_block", shared_memory_per_block},
+            {"max_local_memory_per_block", registers_per_block},
+            {"max_threads_per_block", max_threads_per_block},
+            {"max_vector_bytes", vector_unit_bytes},
+            {"max_vthread", MAX_VTHREADS},
+        }),
+    });
+    IRModule mod({{GlobalVar("main"), sch->sch->func}});
+    try {
+      passes(std::move(mod));
+    } catch (const dmlc::Error& e) {
+      return false;
+    }
+    return true;
+  }
+};
+
+Postproc VerifyGPUCode(Target target) {
+  PostprocVerifyGPUCode postproc(target);
+  auto f_proc = [postproc{std::move(postproc)}](Schedule sch, void* _sampler) -> bool {
+    return postproc.Proc(sch);
+  };
+  return Postproc("verify_gpu_code", f_proc);
+}
+
 /********** FFI **********/
 
 struct Internal {
@@ -367,6 +428,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteVectorize").set_body_typed(Re
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteTensorize").set_body_typed(RewriteTensorize);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteCudaThreadBind")
     .set_body_typed(RewriteCudaThreadBind);
+TVM_REGISTER_GLOBAL("meta_schedule.postproc.VerifyGPUCode").set_body_typed(VerifyGPUCode);
 
 }  // namespace meta_schedule
 }  // namespace tvm

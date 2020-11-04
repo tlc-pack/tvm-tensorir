@@ -19,6 +19,7 @@
 #include <tvm/tir/stmt_functor.h>
 
 #include "../search.h"
+#include "./postproc.h"
 #include "./search_rule.h"
 
 namespace tvm {
@@ -31,13 +32,21 @@ class PostOrderApplyNode : public SearchSpaceNode {
  public:
   /*! \brief The rules to be applied */
   Array<SearchRule> stages;
+  /*! \brief The postprocessors */
+  Array<Postproc> postprocs;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("stages", &stages);
-    // sampler is not visited
+    v->Visit("postprocs", &postprocs);
   }
   /*! \brief Default destructor */
   ~PostOrderApplyNode() = default;
+  /*!
+   * \brief Apply postprocessors onto the schedule
+   * \param sch The schedule to be postprocessed
+   * \param sampler The random number generator
+   */
+  bool Postprocess(const Schedule& sch, Sampler* sampler) override;
   /*!
    * \brief Sample a schedule out of the search space
    * \param task The search task to be sampled from
@@ -66,20 +75,30 @@ class PostOrderApply : public SearchSpace {
    * \brief Constructor
    * \param stages The rules to be applied
    */
-  explicit PostOrderApply(Array<SearchRule> stages);
+  explicit PostOrderApply(Array<SearchRule> stages, Array<Postproc> postprocs);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(PostOrderApply, SearchSpace, PostOrderApplyNode);
 };
 
 /********** Constructor **********/
 
-PostOrderApply::PostOrderApply(Array<SearchRule> stages) {
+PostOrderApply::PostOrderApply(Array<SearchRule> stages, Array<Postproc> postprocs) {
   ObjectPtr<PostOrderApplyNode> n = make_object<PostOrderApplyNode>();
   n->stages = std::move(stages);
+  n->postprocs = std::move(postprocs);
   data_ = std::move(n);
 }
 
 /********** Sampling **********/
+
+bool PostOrderApplyNode::Postprocess(const Schedule& sch, Sampler* sampler) {
+  for (const Postproc& postproc : postprocs) {
+    if (!postproc->Apply(sch, sampler)) {
+      return false;
+    }
+  }
+  return true;
+}
 
 Schedule PostOrderApplyNode::SampleSchedule(const SearchTask& task, Sampler* sampler) {
   Array<Schedule> support = GetSupport(task, sampler);
@@ -161,10 +180,13 @@ struct Internal {
   /*!
    * \brief Constructor of PostOrderApply
    * \param rule The rule to be applied
+   * \param postprocs The postprocessors
    * \return The PostOrderApply constructed
    * \sa PostOrderApply::PostOrderApply
    */
-  static PostOrderApply New(Array<SearchRule> stages) { return PostOrderApply(stages); }
+  static PostOrderApply New(Array<SearchRule> stages, Array<Postproc> postprocs) {
+    return PostOrderApply(stages, postprocs);
+  }
 };
 
 TVM_REGISTER_NODE_TYPE(PostOrderApplyNode);

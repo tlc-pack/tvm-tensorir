@@ -23,12 +23,17 @@ import tvm
 from tir_workload import matmul
 from tvm import meta_schedule as ms
 
+TARGET = tvm.target.Target("nvidia/rtx2080ti")
+
 
 @pytest.mark.skip(reason="needs RPC")
 def test_integration_matmul():
     os.environ["TVM_TRACKER_KEY"] = "test"
     sch = ms.autotune(
-        task=ms.SearchTask(func=matmul, target="cuda"),
+        task=ms.SearchTask(
+            func=matmul,
+            target=TARGET,
+        ),
         space=ms.space.PostOrderApply(
             stages=[
                 ms.rule.inline_pure_spatial(strict_mode=False),
@@ -41,16 +46,14 @@ def test_integration_matmul():
                     vector_load_max_len=4,
                     tile_marks=["lazy_blockIdx.x", "lazy_vthread", "lazy_threadIdx.x"],
                 ),
-            ]
-        ),
-        strategy=ms.strategy.Replay(
-            batch_size=1,
-            num_iterations=32,
+            ],
             postprocs=[
                 ms.postproc.rewrite_vectorize(),
                 ms.postproc.rewrite_cuda_thread_bind(warp_size=32),
+                ms.postproc.verify_gpu_code(target=TARGET),
             ],
         ),
+        strategy=ms.strategy.Replay(num_iterations=32),
     )
     if sch is None:
         print("No valid schedule found")
