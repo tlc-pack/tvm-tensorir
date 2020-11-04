@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include <tvm/support/parallel_for.h>
 #include "../measure.h"
 #include "../search.h"
 
@@ -85,19 +86,32 @@ Replay::Replay(int batch_size, int num_iterations) {
 Optional<Schedule> ReplayNode::Search(const SearchTask& task, const SearchSpace& space,
                                       const ProgramMeasurer& measurer, Sampler* sampler,
                                       int verbose) {
-  // TODO(@junrushao1994): improve the logic here
   measurer->Reset();
-  for (int iter_id = 0; iter_id < num_iterations;) {
-    Array<MeasureInput> measure_inputs;
-    measure_inputs.reserve(batch_size);
-    for (int batch_id = 0; batch_id < batch_size && iter_id < num_iterations;
-         ++batch_id, ++iter_id) {
-      Schedule sch = space->SampleSchedule(task, sampler);
-      if (space->Postprocess(sch, sampler)) {
-        measure_inputs.push_back(MeasureInput(task, sch));
+
+  std::vector<Sampler> thread_samplers;
+  std::vector<MeasureInput> thread_measure_inputs;
+  thread_samplers.reserve(this->batch_size);
+  thread_measure_inputs.reserve(this->batch_size);
+  for (int i = 0; i < batch_size; ++i) {
+    thread_samplers.emplace_back(sampler->ForkSeed());
+    thread_measure_inputs.emplace_back(nullptr);
+  }
+  for (int st = 0; st < num_iterations; st += batch_size) {
+    int count = std::min(st + batch_size, num_iterations) - st;
+    auto worker = [&task, &space, &thread_samplers, &thread_measure_inputs](int i) {
+      Sampler* sampler = &thread_samplers[i];
+      for (;;) {
+        Schedule sch = space->SampleSchedule(task, sampler);
+        if (space->Postprocess(sch, sampler)) {
+          thread_measure_inputs[i] = MeasureInput(task, sch);
+          break;
+        }
       }
-    }
-    measurer->BatchMeasure(measure_inputs, this->batch_size, verbose);
+    };
+    support::parallel_for(0, count, worker);
+    Array<MeasureInput> measure_inputs{thread_measure_inputs.begin(),
+                                       thread_measure_inputs.begin() + count};
+    measurer->BatchMeasure(measure_inputs, count, verbose);
   }
   return measurer->best_sch;
 }

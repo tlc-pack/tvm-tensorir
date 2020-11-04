@@ -26,6 +26,7 @@ from .measure_record import MeasureResult
 from .mutator import Mutator
 from .schedule import Schedule
 from .search import SearchSpace, SearchStrategy, SearchTask
+from .utils import cpu_count
 
 
 @register_object("meta_schedule.Replay")
@@ -46,9 +47,11 @@ class Replay(SearchStrategy):
 
     def __init__(
         self,
-        batch_size: int = 16,
         num_iterations: int = 32,
+        batch_size: Optional[int] = None,
     ):
+        if batch_size is None:
+            batch_size = cpu_count()
         self.__init_handle_by_constructor__(
             _ffi_api.Replay,  # pylint: disable=no-member
             batch_size,

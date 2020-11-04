@@ -53,10 +53,7 @@ def test_integration_matmul():
                 ms.postproc.verify_gpu_code(target=TARGET),
             ],
         ),
-        strategy=ms.strategy.Replay(
-            batch_size=1,
-            num_iterations=32,
-        ),
+        strategy=ms.strategy.Replay(num_iterations=32),
     )
     if sch is None:
         print("No valid schedule found")
