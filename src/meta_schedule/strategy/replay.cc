@@ -16,9 +16,9 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include <tvm/support/parallel_for.h>
 #include "../measure.h"
 #include "../search.h"
-#include "./postproc.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -35,13 +35,10 @@ class ReplayNode : public SearchStrategyNode {
   int batch_size;
   /*! \brief Number of iterations of replaying */
   int num_iterations;
-  /*! \brief Postprocessors */
-  Array<Postproc> postprocs;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("batch_size", &batch_size);
     v->Visit("num_iterations", &num_iterations);
-    v->Visit("postprocs", &postprocs);
   }
   /*!
    * \brief Explore the search space and find the best schedule
@@ -70,22 +67,17 @@ class Replay : public SearchStrategy {
    * \param batch_size Size of a batch for measurement
    * \param num_iterations Number of iterations of replaying
    */
-  explicit Replay(int batch_size, int num_iterations, Optional<Array<Postproc>> postprocs);
+  explicit Replay(int batch_size, int num_iterations);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Replay, SearchStrategy, ReplayNode);
 };
 
 /********** Constructor **********/
 
-Replay::Replay(int batch_size, int num_iterations, Optional<Array<Postproc>> postprocs) {
+Replay::Replay(int batch_size, int num_iterations) {
   ObjectPtr<ReplayNode> n = make_object<ReplayNode>();
   n->batch_size = batch_size;
   n->num_iterations = num_iterations;
-  if (postprocs.defined()) {
-    n->postprocs = postprocs.value();
-  } else {
-    n->postprocs = PostprocDefaults();
-  }
   data_ = std::move(n);
 }
 
@@ -94,27 +86,32 @@ Replay::Replay(int batch_size, int num_iterations, Optional<Array<Postproc>> pos
 Optional<Schedule> ReplayNode::Search(const SearchTask& task, const SearchSpace& space,
                                       const ProgramMeasurer& measurer, Sampler* sampler,
                                       int verbose) {
-  // TODO(@junrushao1994): improve the logic here
   measurer->Reset();
-  for (int iter_id = 0; iter_id < num_iterations;) {
-    Array<MeasureInput> measure_inputs;
-    measure_inputs.reserve(batch_size);
-    for (int batch_id = 0; batch_id < batch_size && iter_id < num_iterations;
-         ++batch_id, ++iter_id) {
-      Schedule sch = space->SampleSchedule(task, sampler);
-      bool valid = true;
-      for (const Postproc& postproc : this->postprocs) {
-        if (!postproc->Apply(sch, sampler)) {
-          valid = false;
+
+  std::vector<Sampler> thread_samplers;
+  std::vector<MeasureInput> thread_measure_inputs;
+  thread_samplers.reserve(this->batch_size);
+  thread_measure_inputs.reserve(this->batch_size);
+  for (int i = 0; i < batch_size; ++i) {
+    thread_samplers.emplace_back(sampler->ForkSeed());
+    thread_measure_inputs.emplace_back(nullptr);
+  }
+  for (int st = 0; st < num_iterations; st += batch_size) {
+    int count = std::min(st + batch_size, num_iterations) - st;
+    auto worker = [&task, &space, &thread_samplers, &thread_measure_inputs](int i) {
+      Sampler* sampler = &thread_samplers[i];
+      for (;;) {
+        Schedule sch = space->SampleSchedule(task, sampler);
+        if (space->Postprocess(sch, sampler)) {
+          thread_measure_inputs[i] = MeasureInput(task, sch);
           break;
         }
       }
-      if (!valid) {
-        continue;
-      }
-      measure_inputs.push_back(MeasureInput(task, sch));
-    }
-    measurer->BatchMeasure(measure_inputs, this->batch_size, verbose);
+    };
+    support::parallel_for(0, count, worker);
+    Array<MeasureInput> measure_inputs{thread_measure_inputs.begin(),
+                                       thread_measure_inputs.begin() + count};
+    measurer->BatchMeasure(measure_inputs, count, verbose);
   }
   return measurer->best_sch;
 }
@@ -129,8 +126,8 @@ struct Internal {
    * \return The Replay constructed
    * \sa Replay::Replay
    */
-  static Replay New(int batch_size, int num_iterations, Optional<Array<Postproc>> postprocs) {
-    return Replay(batch_size, num_iterations, postprocs);
+  static Replay New(int batch_size, int num_iterations) {
+    return Replay(batch_size, num_iterations);
   }
 };
 

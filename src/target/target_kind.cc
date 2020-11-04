@@ -240,6 +240,7 @@ TVM_REGISTER_TARGET_KIND("cuda", kDLCUDA)
     .add_attr_option<Integer>("shared_memory_per_block")
     .add_attr_option<Integer>("registers_per_block")
     .add_attr_option<Integer>("max_threads_per_block")
+    .add_attr_option<Integer>("vector_unit_bytes")
     .set_default_keys({"cuda", "gpu"});
 
 TVM_REGISTER_TARGET_KIND("nvptx", kDLCUDA)

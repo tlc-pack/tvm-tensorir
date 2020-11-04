@@ -20,6 +20,7 @@ from typing import List, Optional
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
+from tvm.target import Target
 from tvm.tir import TensorIntrin
 
 from . import _ffi_api_postproc
@@ -98,3 +99,14 @@ def rewrite_cuda_thread_bind(warp_size: int) -> Postproc:
         The postprocessor created
     """
     return _ffi_api_postproc.RewriteCudaThreadBind(warp_size)  # pylint: disable=no-member
+
+
+def verify_gpu_code(target: Target.TYPE) -> Postproc:
+    """Creates a postprocessor that do block/vthread/thread binding for cuda
+
+    Returns
+    ----------
+    postproc: Postproc
+        The postprocessor created
+    """
+    return _ffi_api_postproc.VerifyGPUCode(Target(target))  # pylint: disable=no-member
