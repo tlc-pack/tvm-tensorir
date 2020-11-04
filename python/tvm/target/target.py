@@ -16,6 +16,7 @@
 # under the License.
 """Target data structure."""
 import json
+from typing import Union, Any, Dict
 import os
 import re
 import warnings
@@ -544,3 +545,6 @@ def _load_config_dict(config_dict_str):
         if not isinstance(key, str):
             return None
     return config
+
+
+Target.TYPE = Union[Target, str, Dict[str, Any]]
