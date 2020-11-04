@@ -622,8 +622,9 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleMergeReduction")
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleRfactor")
-    .set_body_typed<StmtSRef(Schedule, StmtSRef)>([](Schedule schedule, StmtSRef loop_sref) {
-      return schedule->rfactor(loop_sref);
+    .set_body_typed<StmtSRef(Schedule, StmtSRef, int)>([](Schedule schedule, StmtSRef loop_sref,
+                                                          int factor_axis) {
+      return schedule->rfactor(loop_sref, factor_axis);
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleTensorize")

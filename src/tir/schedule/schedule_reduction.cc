@@ -274,7 +274,7 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   UpdateScope(GetParentBlockSRef(update_sref)->stmt, this->stmt2ref, &this->scopes);
 }
 
-StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref) {
+StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   const auto* loop = loop_sref->GetStmt<LoopNode>();
   CHECK(loop) << "TypeError: Only support rfactor a loop for now, but get type: "
               << loop_sref->stmt->GetTypeKey();
@@ -289,6 +289,9 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref) {
   // Check the block is reduction block
   Scope scope = GetParentScope(block_sref);
   CHECK(scope.IsReduction(block_sref)) << "ValueError: can only rfactor a reduction block";
+  // Get the reduce step inside the block
+  const auto* step = block->body.as<ReduceStepNode>();
+  CHECK(step) << "ValueError: the body of the block ought to be a ReduceStep stmt";
   // Get the iters outside the block
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> iters;
   std::vector<const LoopNode*> affected_loops;
@@ -312,8 +315,8 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref) {
   std::vector<PrimExpr> rf_bindings;
   std::vector<IterVar> rf_iters;
   std::unordered_map<const VarNode*, PrimExpr> var_map;
-  IterVar new_iter(Range::FromMinExtent(loop->min, loop->extent),
-                   Var("v" + loop->loop_var->name_hint), IterVarType::kDataPar);
+  IterVar rf_iter(Range::FromMinExtent(loop->min, loop->extent),
+                  Var("v" + loop->loop_var->name_hint), IterVarType::kDataPar);
   // calculate new bindings for rf block
   arith::Analyzer analyzer;
   auto division = arith::SubspaceDivision(block_realize->binding_values, iters, {loop->loop_var},
@@ -329,20 +332,45 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref) {
       if (!division[i]->IsOuter()) {
         var_map[block->iter_vars[i]->var.get()] =
             block->iter_vars[i] * division[i]->inner_extent +
-            Substitute(converter.Convert(division[i]->inner), {{loop->loop_var, new_iter->var}});
+            Substitute(converter.Convert(division[i]->inner), {{loop->loop_var, rf_iter->var}});
       }
     }
     rf_bindings.push_back(converter.Convert(division[i]->outer));
     rf_iters.push_back(block->iter_vars[i]);
   }
   rf_bindings.push_back(loop->loop_var);
-  rf_iters.push_back(new_iter);
+  rf_iters.push_back(rf_iter);
   // create rf block
+  const auto* write_position = step->lhs.as<BufferLoadNode>();
+  CHECK(write_position) << "InternalError: invalid ReduceStep stmt";
+  CHECK(0 <= factor_axis && factor_axis <= write_position->buffer->shape.size())
+      << "ValueError: factor_axis should be in range [0, " << write_position->buffer->shape.size()
+      << "]";
+  Array<PrimExpr> rf_shape = write_position->buffer->shape;
+  Array<PrimExpr> rf_indices = write_position->indices;
+  rf_shape.insert(rf_shape.begin() + factor_axis, loop->extent);
+  rf_indices.insert(rf_indices.begin() + factor_axis, rf_iter->var);
+  Buffer rf_buf = write_position->buffer;
+  rf_buf.CopyOnWrite()->shape = rf_shape;
+  rf_buf.CopyOnWrite()->name = rf_buf->name + "_rf";
+  ReduceStep rf_step = GetRef<ReduceStep>(step);
+  rf_step.CopyOnWrite()->lhs = BufferLoad(rf_buf, rf_indices);
+
   std::vector<TensorRegion> reads, writes;
-  for (const auto& read : rf_block->reads) reads.push_back(SubstituteTensorRegion(read, var_map));
-  for (const auto& write : rf_block->writes)
-    writes.push_back(SubstituteTensorRegion(write, var_map));
-  rf_block.CopyOnWrite()->body = SubstituteInScope(rf_block->body, var_map);
+  auto rf_region = [&](Array<TensorRegion> regions, std::vector<TensorRegion>& rf_regions) {
+    for (const auto& t_region : regions) {
+      if (t_region->buffer.same_as(write_position->buffer)) {
+        Region region = t_region->region;
+        region.insert(region.begin() + factor_axis, Range::FromMinExtent(rf_iter->var, 1));
+        rf_regions.emplace_back(rf_buf, region);
+      } else {
+        rf_regions.push_back(SubstituteTensorRegion(t_region, var_map));
+      }
+    }
+  };
+  rf_region(rf_block->reads, reads);
+  rf_region(rf_block->writes, writes);
+  rf_block.CopyOnWrite()->body = Substitute((Stmt)rf_step, var_map);
   rf_block.CopyOnWrite()->iter_vars = rf_iters;
   rf_block.CopyOnWrite()->reads = reads;
   rf_block.CopyOnWrite()->writes = writes;

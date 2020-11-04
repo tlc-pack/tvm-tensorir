@@ -250,9 +250,10 @@ class ScheduleNode : public Object {
   /*!
    * \brief rfactor a reduction block using loop
    * \param loop_sref the loop outside block we want to do rfactor
+   * \param factor_axis the position where the new axis is placed
    * \return the sref of new block
    */
-  StmtSRef rfactor(const StmtSRef& loop_sref);
+  StmtSRef rfactor(const StmtSRef& loop_sref, int factor_axis);
 
   /*!
    * \brief validate sref tree and scope information

@@ -1193,6 +1193,7 @@ class ReduceStep : public Stmt {
                              const BufferStore& update);
 
   TVM_DEFINE_OBJECT_REF_METHODS(ReduceStep, Stmt, ReduceStepNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(ReduceStepNode);
 };
 
 /*! \brief namespace of possible attribute sin AttrStmt.attr_key */
