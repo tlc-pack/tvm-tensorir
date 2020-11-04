@@ -82,6 +82,12 @@ class SearchSpaceNode : public runtime::Object {
   /*! \brief Virtual destructor */
   virtual ~SearchSpaceNode() = default;
   /*!
+   * \brief Apply postprocessors onto the schedule
+   * \param sch The schedule to be postprocessed
+   * \param sampler The random number generator
+   */
+  virtual bool Postprocess(const Schedule& sch, Sampler* sampler) = 0;
+  /*!
    * \brief Sample a schedule out of the search space
    * \param task The search task to be sampled from
    * \return The schedule sampled

@@ -495,7 +495,7 @@ def test_meta_schedule_compute_inline():
 def test_meta_schedule_cache_read():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    _buffer_c, buffer_a, buffer_b = sch.get_read_buffers(block)
+    _, buffer_a, buffer_b = sch.get_read_buffers(block)
     sch.cache_read(buffer_a, storage_scope="local")
     sch.cache_read(buffer_b, storage_scope="local")
     assert tvm.ir.structural_equal(sch.sch.func, matmul_cache_read)

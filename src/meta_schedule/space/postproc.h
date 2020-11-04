@@ -16,8 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#ifndef SRC_META_SCHEDULE_STRATEGY_POSTPROC_H_
-#define SRC_META_SCHEDULE_STRATEGY_POSTPROC_H_
+#ifndef SRC_META_SCHEDULE_SPACE_POSTPROC_H_
+#define SRC_META_SCHEDULE_SPACE_POSTPROC_H_
 
 #include "../schedule.h"
 #include "../search.h"
@@ -70,12 +70,6 @@ class Postproc : public ObjectRef {
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Postproc, ObjectRef, PostprocNode);
 };
 
-/*!
- * \brief Get the default post-processors
- * \return A list of post-processors
- */
-Array<Postproc> PostprocDefaults();
-
 /********** Built-in Post Processors **********/
 
 /*!
@@ -105,7 +99,14 @@ TVM_DLL Postproc RewriteTensorize(Array<tir::TensorIntrin> tensor_intrins);
  */
 TVM_DLL Postproc RewriteCudaThreadBind(int warp_size);
 
+/*!
+ * \brief Creates a postprocessor that verifies if the GPU code is correct
+ * \param target The compilation target
+ * \return The postprocessor created
+ */
+TVM_DLL Postproc VerifyGPUCode(Target target);
+
 }  // namespace meta_schedule
 }  // namespace tvm
 
-#endif  // SRC_META_SCHEDULE_STRATEGY_POSTPROC_H_
+#endif  // SRC_META_SCHEDULE_SPACE_POSTPROC_H_
