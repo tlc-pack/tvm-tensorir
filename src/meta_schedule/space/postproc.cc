@@ -388,7 +388,11 @@ class PostprocVerifyGPUCode {
         }),
     });
     IRModule mod({{GlobalVar("main"), sch->sch->func}});
-    mod = passes(std::move(mod));
+    try {
+      passes(std::move(mod));
+    } catch (const dmlc::Error& e) {
+      return false;
+    }
     return true;
   }
 };
