@@ -99,6 +99,13 @@ TVM_DLL Postproc RewriteTensorize(Array<tir::TensorIntrin> tensor_intrins);
  */
 TVM_DLL Postproc RewriteCudaThreadBind(int warp_size);
 
+/*!
+ * \brief Creates a postprocessor that verifies if the GPU code is correct
+ * \param target The compilation target
+ * \return The postprocessor created
+ */
+TVM_DLL Postproc VerifyGPUCode(Target target);
+
 }  // namespace meta_schedule
 }  // namespace tvm
 
