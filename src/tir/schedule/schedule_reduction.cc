@@ -159,14 +159,15 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
                        /*annotations=*/parent->annotations,
                        /*body=*/SeqStmt::Flatten(Array<Stmt>{body, parent->body})));
   } else if (const auto* parent = loop_sref->parent->GetStmt<BlockNode>()) {
-    this->Replace(GetRef<StmtSRef>(loop_sref->parent),
-                  Block(/*iter_vars=*/parent->iter_vars,
-                        /*reads=*/parent->reads,
-                        /*writes=*/parent->writes,
-                        /*body=*/SeqStmt::Flatten(Array<Stmt>{body, parent->body}),
-                        /*allocations=*/parent->allocations,
-                        /*annotations=*/parent->annotations,
-                        /*tag=*/parent->tag));
+    Block new_block = Block(/*iter_vars=*/parent->iter_vars,
+                            /*reads=*/parent->reads,
+                            /*writes=*/parent->writes,
+                            /*body=*/SeqStmt::Flatten(Array<Stmt>{body, parent->body}),
+                            /*allocations=*/parent->allocations,
+                            /*annotations=*/parent->annotations,
+                            /*tag=*/parent->tag);
+    this->Replace(GetRef<StmtSRef>(loop_sref->parent), new_block,
+                  {{new_block, GetRef<Block>(parent)}});
   } else {
     LOG(FATAL) << "TypeError: 'decompose_reduction' is applied to loop whose parent's type is not "
                   "unsupported: "
@@ -274,6 +275,16 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   UpdateScope(GetParentBlockSRef(update_sref)->stmt, this->stmt2ref, &this->scopes);
 }
 
+class VarCollector : public StmtExprVisitor {
+ public:
+  explicit VarCollector(std::unordered_set<const VarNode*>& res) : res(res) {}
+
+  void VisitExpr_(const VarNode* op) override { res.insert(op); }
+
+ private:
+  std::unordered_set<const VarNode*>& res;
+};
+
 StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   const auto* loop = loop_sref->GetStmt<LoopNode>();
   CHECK(loop) << "TypeError: Only support rfactor a loop for now, but get type: "
@@ -289,28 +300,30 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   // Check the block is reduction block
   Scope scope = GetParentScope(block_sref);
   CHECK(scope.IsReduction(block_sref)) << "ValueError: can only rfactor a reduction block";
-  // Get the reduce step inside the block
+  // Collect the info of loop&block iter relation
+  std::unordered_set<const VarNode*> data_par_loops, reduce_loops;
+  for (size_t i = 0; i < block->iter_vars.size(); ++i) {
+    if (block->iter_vars[i]->iter_type == IterVarType::kDataPar) {
+      VarCollector collector(data_par_loops);
+      collector(block_realize->binding_values[i]);
+    } else if (block->iter_vars[i]->iter_type == IterVarType::kCommReduce) {
+      VarCollector collector(reduce_loops);
+      collector(block_realize->binding_values[i]);
+    }
+  }
+  // Get the ReduceStep inside the block
   const auto* step = block->body.as<ReduceStepNode>();
   CHECK(step) << "ValueError: the body of the block ought to be a ReduceStep stmt";
-  // Get the iters outside the block
+  // Get the loops outside the block
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> iters;
-  std::vector<const LoopNode*> affected_loops;
   auto loops = GetLoopsInScope(block_sref);
-  bool find = false;
   for (auto it = loops.rbegin(); it != loops.rend(); ++it) {
     const auto* l = (*it)->GetStmt<LoopNode>();
     CHECK(l) << "InternalError: GetLoopsInScope returns a block sref";
+    CHECK(!data_par_loops.count(l->loop_var.get()) || !reduce_loops.count(l->loop_var.get()))
+        << "ValueError: loop " << l->loop_var << " is related with both data_par and reduce iters ";
     iters[l->loop_var] = Range::FromMinExtent(l->min, l->extent);
-    if (!find) {
-      if (l->body->IsInstance<SeqStmtNode>()) {
-        find = true;
-      } else {
-        affected_loops.push_back(l);
-      }
-    }
   }
-  IterVar rf_iter(Range::FromMinExtent(loop->min, loop->extent),
-                  Var("v" + loop->loop_var->name_hint), IterVarType::kDataPar);
   // Do subspace division with subspace {loop}
   arith::Analyzer analyzer;
   auto division = arith::SubspaceDivision(block_realize->binding_values, iters, {loop->loop_var},
@@ -319,6 +332,8 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   CHECK(is_one(division.back()->inner_extent))
       << "ValueError: can not rfactor a loop related with predicate";
   // create rf block
+  IterVar rf_iter(Range::FromMinExtent(loop->min, loop->extent),
+                  Var("v" + loop->loop_var->name_hint), IterVarType::kDataPar);
   BlockRealize rf_block_realize = block_realize;
   Block rf_block = block;
   std::vector<PrimExpr> rf_bindings;
@@ -376,7 +391,6 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   rf_block.CopyOnWrite()->writes = rf_writes;
   rf_block_realize.CopyOnWrite()->block = rf_block;
   rf_block_realize.CopyOnWrite()->binding_values = rf_bindings;
-
   // create write back block
   BlockRealize wb_block_realize = block_realize;
   Block wb_block = block;
@@ -399,24 +413,66 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   auto wb_region = [&](const BufferLoad& load) {
     std::vector<Range> region;
     for (const auto& index : load->indices) region.push_back(Range::FromMinExtent(index, 1));
-    LOG(INFO) << load->buffer;
-    LOG(INFO) << TensorRegion(load->buffer, region);
     return TensorRegion(load->buffer, region);
   };
-
   ReduceStep wb_step = GetRef<ReduceStep>(step);
   wb_step.CopyOnWrite()->rhs = rf_step->lhs;
   wb_step = Downcast<ReduceStep>(Substitute((Stmt)wb_step, var_map));
-
   wb_block.CopyOnWrite()->body = wb_step;
   wb_block.CopyOnWrite()->reads = {wb_region(Downcast<BufferLoad>(wb_step->rhs))};
   wb_block.CopyOnWrite()->writes = {wb_region(Downcast<BufferLoad>(wb_step->lhs))};
   wb_block.CopyOnWrite()->iter_vars = wb_iters;
   wb_block_realize.CopyOnWrite()->block = wb_block;
   wb_block_realize.CopyOnWrite()->binding_values = wb_bindings;
+  // create loops outside write back block
+  Stmt body = wb_block_realize;
+  Var new_loop_var = loop->loop_var.copy_with_suffix("");
+  body = Loop(new_loop_var, loop->min, loop->extent, loop->annotations,
+              SubstituteInScope(body, {{loop->loop_var.get(), new_loop_var.get()}}));
 
-  LOG(INFO) << rf_block_realize;
-  LOG(INFO) << wb_block_realize;
+  Optional<StmtSRef> top;
+  for (int i = loops.size() - 1; i >= 0; --i) {
+    const auto* l = loops[i]->GetStmt<LoopNode>();
+    CHECK(l) << "InternalError: GetLoopsInScope returns a block sref";
+    if (l->body->IsInstance<SeqStmtNode>()) {
+      CHECK(i != loops.size() - 1) << "ValueError: can not rfactor";
+      top = loops[i + 1];
+      break;
+    }
+    if (data_par_loops.count(l->loop_var.get())) {
+      new_loop_var = l->loop_var.copy_with_suffix("");
+      body = Loop(new_loop_var, l->min, l->extent, l->annotations,
+                  SubstituteInScope(body, {{l->loop_var.get(), new_loop_var.get()}}));
+    }
+  }
+  if (!top) top = loops[0];
+  LOG(INFO) << top.value();
+  auto insert = [](Stmt body, int64_t pos, Stmt input) -> SeqStmt {
+    std::vector<Stmt> res;
+    if (const auto* op = body.as<SeqStmtNode>()) {
+      for (const auto& stmt : op->seq) res.push_back(stmt);
+    } else {
+      res.push_back(body);
+    }
+    res.insert(res.begin() + pos, input);
+    return SeqStmt(res);
+  };
+  // insert wb block under top
+  if (const auto* parent = top.value()->parent->GetStmt<LoopNode>()) {
+    SeqStmt parent_body = insert(parent->body, top.value()->seq_index + 1, body);
+    this->Replace(
+        GetRef<StmtSRef>(top.value()->parent),
+        Loop(parent->loop_var, parent->min, parent->extent, parent->annotations, parent_body));
+  } else if (const auto* parent = top.value()->parent->GetStmt<BlockNode>()) {
+    SeqStmt parent_body = insert(parent->body, top.value()->seq_index + 1, body);
+    Block new_block = Block(parent->iter_vars, parent->reads, parent->writes, parent_body,
+                            parent->allocations, parent->annotations, parent->tag);
+    this->Replace(GetRef<StmtSRef>(top.value()->parent), new_block,
+                  {{new_block, GetRef<Block>(parent)}});
+  }
+  // replace rf block
+  this->Replace(block_sref, rf_block, {{rf_block, block}});
+  LOG(INFO) << this->func;
 
   return stmt2ref.at(block.get());
 }
