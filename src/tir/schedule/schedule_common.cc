@@ -112,7 +112,7 @@ Stmt SubstituteInScope(const Stmt& stmt,
 }
 
 PrimExpr SubstituteInScope(const PrimExpr& expr,
-                       const std::unordered_map<const VarNode*, PrimExpr>& var_map) {
+                           const std::unordered_map<const VarNode*, PrimExpr>& var_map) {
   auto vmap = [&](const VarNode* v) -> PrimExpr {
     const auto& it = var_map.find(v);
     if (it != var_map.end()) {
@@ -162,9 +162,8 @@ TensorRegion SubstituteTensorRegion(
   return TensorRegion(new_tensor_region);
 }
 
-TensorRegion SubstituteTensorRegion(
-    const TensorRegion& tensor_region,
-    const std::unordered_map<const VarNode*, PrimExpr>& var_map) {
+TensorRegion SubstituteTensorRegion(const TensorRegion& tensor_region,
+                                    const std::unordered_map<const VarNode*, PrimExpr>& var_map) {
   auto new_tensor_region = make_object<TensorRegionNode>(*tensor_region.operator->());
   new_tensor_region->region = Array<Range>(make_object<ArrayNode>());
   for (const auto& range : tensor_region->region) {

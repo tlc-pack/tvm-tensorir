@@ -665,7 +665,7 @@ def test_rfactor():
     ko, ki = s.split(k, 32)
     kio, kii = s.split(ki, 4)
 
-    s.rfactor(kii, 0)
+    s.rfactor(kii, 1)
     print(tvm.script.asscript(s.func))
 
 

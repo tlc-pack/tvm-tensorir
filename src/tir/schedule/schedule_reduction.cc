@@ -309,21 +309,21 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
       }
     }
   }
-  // Do subspace division with subspace {loop}
-  BlockRealize rf_br = block_realize;
-  Block rf_block = block;
-  std::vector<PrimExpr> rf_bindings;
-  std::vector<IterVar> rf_iters;
-  std::unordered_map<const VarNode*, PrimExpr> var_map;
   IterVar rf_iter(Range::FromMinExtent(loop->min, loop->extent),
                   Var("v" + loop->loop_var->name_hint), IterVarType::kDataPar);
-  // calculate new bindings for rf block
+  // Do subspace division with subspace {loop}
   arith::Analyzer analyzer;
   auto division = arith::SubspaceDivision(block_realize->binding_values, iters, {loop->loop_var},
                                           block_realize->predicate, &analyzer);
   arith::IterVarMapConverter converter(&analyzer);
   CHECK(is_one(division.back()->inner_extent))
       << "ValueError: can not rfactor a loop related with predicate";
+  // create rf block
+  BlockRealize rf_block_realize = block_realize;
+  Block rf_block = block;
+  std::vector<PrimExpr> rf_bindings;
+  std::vector<IterVar> rf_iters;
+  std::unordered_map<const VarNode*, PrimExpr> var_map;
   for (size_t i = 0; i < block->iter_vars.size(); ++i) {
     if (block->iter_vars[i]->iter_type == IterVarType::kDataPar) {
       CHECK(division[i]->IsOuter())
@@ -340,7 +340,6 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   }
   rf_bindings.push_back(loop->loop_var);
   rf_iters.push_back(rf_iter);
-  // create rf block
   const auto* write_position = step->lhs.as<BufferLoadNode>();
   CHECK(write_position) << "InternalError: invalid ReduceStep stmt";
   CHECK(0 <= factor_axis && factor_axis <= write_position->buffer->shape.size())
@@ -353,10 +352,11 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   Buffer rf_buf = write_position->buffer;
   rf_buf.CopyOnWrite()->shape = rf_shape;
   rf_buf.CopyOnWrite()->name = rf_buf->name + "_rf";
+  rf_buf.CopyOnWrite()->data = rf_buf->data.copy_with_suffix("_rf");
   ReduceStep rf_step = GetRef<ReduceStep>(step);
   rf_step.CopyOnWrite()->lhs = BufferLoad(rf_buf, rf_indices);
 
-  std::vector<TensorRegion> reads, writes;
+  std::vector<TensorRegion> rf_reads, rf_writes;
   auto rf_region = [&](Array<TensorRegion> regions, std::vector<TensorRegion>& rf_regions) {
     for (const auto& t_region : regions) {
       if (t_region->buffer.same_as(write_position->buffer)) {
@@ -368,16 +368,57 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
       }
     }
   };
-  rf_region(rf_block->reads, reads);
-  rf_region(rf_block->writes, writes);
+  rf_region(rf_block->reads, rf_reads);
+  rf_region(rf_block->writes, rf_writes);
   rf_block.CopyOnWrite()->body = Substitute((Stmt)rf_step, var_map);
   rf_block.CopyOnWrite()->iter_vars = rf_iters;
-  rf_block.CopyOnWrite()->reads = reads;
-  rf_block.CopyOnWrite()->writes = writes;
-  rf_br.CopyOnWrite()->block = rf_block;
-  rf_br.CopyOnWrite()->binding_values = rf_bindings;
+  rf_block.CopyOnWrite()->reads = rf_reads;
+  rf_block.CopyOnWrite()->writes = rf_writes;
+  rf_block_realize.CopyOnWrite()->block = rf_block;
+  rf_block_realize.CopyOnWrite()->binding_values = rf_bindings;
 
-  return loop_sref;
+  // create write back block
+  BlockRealize wb_block_realize = block_realize;
+  Block wb_block = block;
+  std::vector<PrimExpr> wb_bindings;
+  std::vector<IterVar> wb_iters;
+  var_map.clear();
+  for (size_t i = 0; i < block->iter_vars.size(); ++i) {
+    if (block->iter_vars[i]->iter_type == IterVarType::kDataPar) {
+      wb_iters.emplace_back(block->iter_vars[i]->dom, block->iter_vars[i]->var.copy_with_suffix(""),
+                            block->iter_vars[i]->iter_type);
+      wb_bindings.push_back(block_realize->binding_values[i]);
+      var_map[block->iter_vars[i]->var.get()] = wb_iters.back();
+    }
+  }
+  wb_iters.emplace_back(Range::FromMinExtent(loop->min, loop->extent),
+                        Var("v" + loop->loop_var->name_hint), IterVarType::kCommReduce);
+  wb_bindings.push_back(loop->loop_var);
+  var_map[rf_iter->var.get()] = wb_iters.back();
+
+  auto wb_region = [&](const BufferLoad& load) {
+    std::vector<Range> region;
+    for (const auto& index : load->indices) region.push_back(Range::FromMinExtent(index, 1));
+    LOG(INFO) << load->buffer;
+    LOG(INFO) << TensorRegion(load->buffer, region);
+    return TensorRegion(load->buffer, region);
+  };
+
+  ReduceStep wb_step = GetRef<ReduceStep>(step);
+  wb_step.CopyOnWrite()->rhs = rf_step->lhs;
+  wb_step = Downcast<ReduceStep>(Substitute((Stmt)wb_step, var_map));
+
+  wb_block.CopyOnWrite()->body = wb_step;
+  wb_block.CopyOnWrite()->reads = {wb_region(Downcast<BufferLoad>(wb_step->rhs))};
+  wb_block.CopyOnWrite()->writes = {wb_region(Downcast<BufferLoad>(wb_step->lhs))};
+  wb_block.CopyOnWrite()->iter_vars = wb_iters;
+  wb_block_realize.CopyOnWrite()->block = wb_block;
+  wb_block_realize.CopyOnWrite()->binding_values = wb_bindings;
+
+  LOG(INFO) << rf_block_realize;
+  LOG(INFO) << wb_block_realize;
+
+  return stmt2ref.at(block.get());
 }
 
 }  // namespace tir
