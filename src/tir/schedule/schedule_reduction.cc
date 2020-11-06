@@ -424,11 +424,11 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   wb_block.CopyOnWrite()->iter_vars = wb_iters;
   wb_block_realize.CopyOnWrite()->block = wb_block;
   wb_block_realize.CopyOnWrite()->binding_values = wb_bindings;
-  // create loops outside write back block
-  Stmt body = wb_block_realize;
-  Var new_loop_var = loop->loop_var.copy_with_suffix("");
-  body = Loop(new_loop_var, loop->min, loop->extent, loop->annotations,
-              SubstituteInScope(body, {{loop->loop_var.get(), new_loop_var.get()}}));
+  // create loops outside write back block and rfactor bclok
+  Stmt rf_body = rf_block_realize, wb_body = wb_block_realize;
+  Var wb_loop_var = loop->loop_var.copy_with_suffix("");
+  wb_body = Loop(wb_loop_var, loop->min, loop->extent, loop->annotations,
+                 SubstituteInScope(wb_body, {{loop->loop_var.get(), wb_loop_var.get()}}));
 
   Optional<StmtSRef> top;
   for (int i = loops.size() - 1; i >= 0; --i) {
@@ -439,40 +439,55 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
       top = loops[i + 1];
       break;
     }
+    if (l != loop) {
+      // copy this loop outside rfactor block
+      Loop rf_loop = GetRef<Loop>(l);
+      rf_loop.CopyOnWrite()->body = rf_body;
+      rf_body = rf_loop;
+    }
     if (data_par_loops.count(l->loop_var.get())) {
-      new_loop_var = l->loop_var.copy_with_suffix("");
-      body = Loop(new_loop_var, l->min, l->extent, l->annotations,
-                  SubstituteInScope(body, {{l->loop_var.get(), new_loop_var.get()}}));
+      // copy this loop outside write back block
+      wb_loop_var = l->loop_var.copy_with_suffix("");
+      wb_body = Loop(wb_loop_var, l->min, l->extent, l->annotations,
+                     SubstituteInScope(wb_body, {{l->loop_var.get(), wb_loop_var.get()}}));
     }
   }
+  Loop rf_loop = GetRef<Loop>(loop);
+  rf_loop.CopyOnWrite()->body = rf_body;
+  rf_body = rf_loop;
   if (!top) top = loops[0];
-  auto insert = [](Stmt body, int64_t pos, Stmt input) -> SeqStmt {
+
+  // insert rf block and wb block under top
+  auto insert = [](Stmt body, int64_t pos, std::vector<Stmt> input) -> SeqStmt {
+    if (pos == -1) return SeqStmt(input);
     std::vector<Stmt> res;
     if (const auto* op = body.as<SeqStmtNode>()) {
       for (const auto& stmt : op->seq) res.push_back(stmt);
     } else {
-      res.push_back(body);
+      LOG(FATAL);
     }
-    res.insert(res.begin() + pos, input);
+    res.insert(res.begin() + pos, input.begin(), input.end());
     return SeqStmt(res);
   };
-  // insert wb block under top
   if (const auto* parent = top.value()->parent->GetStmt<LoopNode>()) {
-    SeqStmt parent_body = insert(parent->body, top.value()->seq_index + 1, body);
+    SeqStmt parent_body = insert(parent->body, top.value()->seq_index, {rf_body, wb_body});
     this->Replace(
         GetRef<StmtSRef>(top.value()->parent),
-        Loop(parent->loop_var, parent->min, parent->extent, parent->annotations, parent_body));
+        Loop(parent->loop_var, parent->min, parent->extent, parent->annotations, parent_body),
+        {{wb_block, block}});
   } else if (const auto* parent = top.value()->parent->GetStmt<BlockNode>()) {
-    SeqStmt parent_body = insert(parent->body, top.value()->seq_index + 1, body);
+    SeqStmt parent_body = insert(parent->body, top.value()->seq_index, {rf_body, wb_body});
     Block new_block = Block(parent->iter_vars, parent->reads, parent->writes, parent_body,
                             parent->allocations, parent->annotations, parent->tag);
     this->Replace(GetRef<StmtSRef>(top.value()->parent), new_block,
-                  {{new_block, GetRef<Block>(parent)}});
+                  {{new_block, GetRef<Block>(parent)}, {wb_block, block}});
   }
-  // replace rf block
-  Loop rf_outer = GetRef<Loop>(loops.back()->GetStmt<LoopNode>());
-  rf_outer.CopyOnWrite()->body = rf_block_realize;
-  this->Replace(loops.back(), rf_outer, {{rf_block, block}});
+  // insert rf buffer into scope block's allocation
+  StmtSRef scope_sref = GetParentBlockSRef(block_sref);
+  Block scope_block = GetRef<Block>(scope_sref->GetStmt<BlockNode>()),
+        new_scope_block = scope_block;
+  new_scope_block.CopyOnWrite()->allocations.push_back(BufferAllocate(rf_buf, ""));
+  this->Replace(scope_sref, new_scope_block, {{new_scope_block, scope_block}});
 
   return stmt2ref.at(rf_block.get());
 }
