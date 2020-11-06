@@ -23,6 +23,19 @@
 namespace tvm {
 namespace meta_schedule {
 
+/**************** Utilities ****************/
+
+#define TVM_META_SCHEDULE_INST_CAST(CastType, VarName, Input)                    \
+  CHECK(Input->IsInstance<CastType::ContainerType>())                            \
+      << "TypeError: Cannot downcast to '" << CastType::ContainerType::_type_key \
+      << "' from: " << Input->GetTypeKey();                                      \
+  CastType VarName = Downcast<CastType>(Input);
+
+template <class T>
+Array<ObjectRef> AdaptOutputs(const Array<T>& outputs) {
+  return {outputs.begin(), outputs.end()};
+}
+
 /**************** Constructors ****************/
 
 BlockRV::BlockRV() { data_ = make_object<BlockRVNode>(); }
@@ -38,20 +51,6 @@ Instruction::Instruction(Array<ObjectRef> inputs, Array<ObjectRef> outputs, Inst
   n->inst_attrs = std::move(inst_attrs);
   data_ = std::move(n);
 }
-
-/**************** Utilities ****************/
-
-#define TVM_META_SCHEDULE_CAST_INPUT(CastType, VarName, Input)                   \
-  CHECK(Input->IsInstance<CastType::ContainerType>())                            \
-      << "TypeError: Cannot downcast to '" << CastType::ContainerType::_type_key \
-      << "' from: " << Input->GetTypeKey();                                      \
-  CastType VarName = Downcast<CastType>(Input);
-
-template <class T>
-Array<ObjectRef> AdaptOutputs(const Array<T>& outputs) {
-  return {outputs.begin(), outputs.end()};
-}
-
 /**************** Instruction  ****************/
 
 Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const InstAttrs& inst_attrs,
@@ -60,7 +59,8 @@ Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const InstAttrs
   return inst_attrs->ApplyToSchedule(sch, inputs);
 }
 
-/**************** MakeInst/ApplyToSchedule: Sampling  ****************/
+/**************** MakeInst  ****************/
+/**************** (MakeInst) Sampling  ****************/
 
 Instruction SamplePerfectTileAttrs::MakeInst(int n_splits, const LoopRV& loop,
                                              int max_innermost_factor,
@@ -73,13 +73,6 @@ Instruction SamplePerfectTileAttrs::MakeInst(int n_splits, const LoopRV& loop,
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Array<ObjectRef> SamplePerfectTileAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                         const Array<ObjectRef>& inputs) const {
-  CHECK_EQ(inputs.size(), 1);
-  TVM_META_SCHEDULE_CAST_INPUT(LoopRV, loop, inputs[0]);
-  return AdaptOutputs(sch->SamplePerfectTile(n_splits, loop, max_innermost_factor));
-}
-
 Instruction SampleTileFactorAttrs::MakeInst(int n_splits, const LoopRV& loop,
                                             const Array<Integer>& where,
                                             const Array<tir::Var>& outputs) {
@@ -89,13 +82,6 @@ Instruction SampleTileFactorAttrs::MakeInst(int n_splits, const LoopRV& loop,
   return Instruction(/*inputs=*/{loop},
                      /*outputs=*/{outputs.begin(), outputs.end()},
                      /*attrs=*/InstAttrs(std::move(n)));
-}
-
-Array<ObjectRef> SampleTileFactorAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                        const Array<ObjectRef>& inputs) const {
-  CHECK_EQ(inputs.size(), 1);
-  TVM_META_SCHEDULE_CAST_INPUT(LoopRV, loop, inputs[0]);
-  return AdaptOutputs(sch->SampleTileFactor(n_splits, loop, where));
 }
 
 Instruction SampleFusibleLoopsAttrs::MakeInst(const Array<LoopRV>& loops,
@@ -113,34 +99,13 @@ Instruction SampleFusibleLoopsAttrs::MakeInst(const Array<LoopRV>& loops,
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Array<ObjectRef> SampleFusibleLoopsAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                          const Array<ObjectRef>& inputs) const {
-  Array<LoopRV> loops;
-  loops.reserve(inputs.size());
-  for (int i = 0, n = inputs.size(); i < n; ++i) {
-    TVM_META_SCHEDULE_CAST_INPUT(LoopRV, loop, inputs[i]);
-    loops.push_back(loop);
-  }
-  ScheduleNode::Order the_order = static_cast<ScheduleNode::Order>(this->order);
-  ScheduleNode::Mode the_mode = static_cast<ScheduleNode::Mode>(this->mode);
-  return {sch->SampleFusibleLoops(loops, loop_types, max_extent, include_overflow_loop, the_order,
-                                  the_mode)};
-}
-
-/**************** MakeInst/ApplyToSchedule: Block/Loop Relationship  ****************/
+/**************** (MakeInst) Block/Loop Relationship  ****************/
 
 Instruction GetOnlyConsumerAttrs::MakeInst(const BlockRV& block, const BlockRV& output) {
   ObjectPtr<GetOnlyConsumerAttrs> n = make_object<GetOnlyConsumerAttrs>();
   return Instruction(/*inputs=*/{block},
                      /*outputs=*/{output},
                      /*attrs=*/InstAttrs(std::move(n)));
-}
-
-Array<ObjectRef> GetOnlyConsumerAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                       const Array<ObjectRef>& inputs) const {
-  CHECK_EQ(inputs.size(), 1);
-  TVM_META_SCHEDULE_CAST_INPUT(BlockRV, block, inputs[0]);
-  return {sch->GetOnlyConsumer(block)};
 }
 
 Instruction GetBlockAttrs::MakeInst(const String& name, const BlockRV& output) {
@@ -151,24 +116,11 @@ Instruction GetBlockAttrs::MakeInst(const String& name, const BlockRV& output) {
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Array<ObjectRef> GetBlockAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                const Array<ObjectRef>& inputs) const {
-  CHECK_EQ(inputs.size(), 0);
-  return {sch->GetBlock(name)};
-}
-
 Instruction GetAxesAttrs::MakeInst(const BlockRV& block, const Array<LoopRV>& outputs) {
   ObjectPtr<GetAxesAttrs> n = make_object<GetAxesAttrs>();
   return Instruction(/*inputs=*/{block},
                      /*outputs=*/{outputs.begin(), outputs.end()},
                      /*attrs=*/InstAttrs(std::move(n)));
-}
-
-Array<ObjectRef> GetAxesAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                               const Array<ObjectRef>& inputs) const {
-  CHECK_EQ(inputs.size(), 1);
-  TVM_META_SCHEDULE_CAST_INPUT(BlockRV, block, inputs[0]);
-  return AdaptOutputs(sch->GetAxes(block));
 }
 
 Instruction GetReadBuffersAttrs::MakeInst(const BlockRV& block, const Array<BufferRV>& outputs) {
@@ -178,25 +130,11 @@ Instruction GetReadBuffersAttrs::MakeInst(const BlockRV& block, const Array<Buff
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Array<ObjectRef> GetReadBuffersAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                      const Array<ObjectRef>& inputs) const {
-  CHECK_EQ(inputs.size(), 1);
-  TVM_META_SCHEDULE_CAST_INPUT(BlockRV, block, inputs[0]);
-  return AdaptOutputs(sch->GetReadBuffers(block));
-}
-
 Instruction GetWriteBuffersAttrs::MakeInst(const BlockRV& block, const Array<BufferRV>& outputs) {
   ObjectPtr<GetWriteBuffersAttrs> n = make_object<GetWriteBuffersAttrs>();
   return Instruction(/*inputs=*/{block},
                      /*outputs=*/{outputs.begin(), outputs.end()},
                      /*attrs=*/InstAttrs(std::move(n)));
-}
-
-Array<ObjectRef> GetWriteBuffersAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                       const Array<ObjectRef>& inputs) const {
-  CHECK_EQ(inputs.size(), 1);
-  TVM_META_SCHEDULE_CAST_INPUT(BlockRV, block, inputs[0]);
-  return AdaptOutputs(sch->GetWriteBuffers(block));
 }
 
 Instruction GetRootBlocksAttrs::MakeInst(const Array<BlockRV>& outputs) {
@@ -206,12 +144,6 @@ Instruction GetRootBlocksAttrs::MakeInst(const Array<BlockRV>& outputs) {
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Array<ObjectRef> GetRootBlocksAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                     const Array<ObjectRef>& inputs) const {
-  CHECK_EQ(inputs.size(), 0);
-  return AdaptOutputs(sch->GetRootBlocks());
-}
-
 Instruction GetLeafBlocksAttrs::MakeInst(const Array<BlockRV>& outputs) {
   ObjectPtr<GetLeafBlocksAttrs> n = make_object<GetLeafBlocksAttrs>();
   return Instruction(/*inputs=*/{},
@@ -219,73 +151,13 @@ Instruction GetLeafBlocksAttrs::MakeInst(const Array<BlockRV>& outputs) {
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Array<ObjectRef> GetLeafBlocksAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                     const Array<ObjectRef>& inputs) const {
-  CHECK_EQ(inputs.size(), 0);
-  return AdaptOutputs(sch->GetLeafBlocks());
-}
-
-/**************** MakeInst/ApplyToSchedule: Scheduling Primitives  ****************/
-
-Instruction MarkLoopTypeAttrs::MakeInst(const Array<LoopRV>& loops, const Range& range,
-                                        const String& mark) {
-  ObjectPtr<MarkLoopTypeAttrs> n = make_object<MarkLoopTypeAttrs>();
-  n->mark = mark;
-  Array<ObjectRef> inputs{loops.begin(), loops.end()};
-  inputs.push_back(range->min);
-  inputs.push_back(range->extent);
-  return Instruction(/*inputs=*/inputs,
-                     /*outputs=*/{},
-                     /*attrs=*/InstAttrs(std::move(n)));
-}
-
-Array<ObjectRef> MarkLoopTypeAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                    const Array<ObjectRef>& inputs) const {
-  int n_loops = static_cast<int>(inputs.size()) - 2;
-  Array<LoopRV> loops;
-  loops.reserve(n_loops);
-  for (int i = 0; i < n_loops; ++i) {
-    TVM_META_SCHEDULE_CAST_INPUT(LoopRV, loop, inputs[i]);
-    loops.push_back(loop);
-  }
-  TVM_META_SCHEDULE_CAST_INPUT(PrimExpr, min, inputs[n_loops]);
-  TVM_META_SCHEDULE_CAST_INPUT(PrimExpr, extent, inputs[n_loops + 1]);
-  sch->MarkLoopType(loops, mark, Range::FromMinExtent(min, extent));
-  return {};
-}
-
-Instruction MarkBlockTypeAttrs::MakeInst(const BlockRV& block, const String& mark) {
-  ObjectPtr<MarkBlockTypeAttrs> n = make_object<MarkBlockTypeAttrs>();
-  n->mark = mark;
-  return Instruction(/*inputs=*/{block},
-                     /*outputs=*/{},
-                     /*attrs=*/InstAttrs(std::move(n)));
-}
-
-Array<ObjectRef> MarkBlockTypeAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                     const Array<ObjectRef>& inputs) const {
-  TVM_META_SCHEDULE_CAST_INPUT(BlockRV, block, inputs[0]);
-  sch->MarkBlockType(block, mark);
-  return {};
-}
+/**************** (MakeInst) Scheduling Primitives  ****************/
 
 Instruction FuseAttrs::MakeInst(const Array<LoopRV>& loops, const LoopRV& output) {
   ObjectPtr<FuseAttrs> n = make_object<FuseAttrs>();
   return Instruction(/*inputs=*/{loops.begin(), loops.end()},
                      /*outputs=*/{output},
                      /*attrs=*/InstAttrs(std::move(n)));
-}
-
-Array<ObjectRef> FuseAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                            const Array<ObjectRef>& inputs) const {
-  int n_loops = inputs.size();
-  Array<LoopRV> loops;
-  loops.reserve(n_loops);
-  for (int i = 0; i < n_loops; ++i) {
-    TVM_META_SCHEDULE_CAST_INPUT(LoopRV, loop, inputs[i]);
-    loops.push_back(loop);
-  }
-  return {sch->Fuse(loops)};
 }
 
 Instruction SplitAttrs::MakeInst(const LoopRV& loop, const Array<Optional<PrimExpr>>& factors,
@@ -300,23 +172,221 @@ Instruction SplitAttrs::MakeInst(const LoopRV& loop, const Array<Optional<PrimEx
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Array<ObjectRef> SplitAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                             const Array<ObjectRef>& inputs) const {
-  CHECK_GE(inputs.size(), 3);
-  TVM_META_SCHEDULE_CAST_INPUT(LoopRV, loop, inputs[0]);
-  Array<Optional<PrimExpr>> factors;
-  for (int i = 1, n = inputs.size(); i < n; ++i) {
-    TVM_META_SCHEDULE_CAST_INPUT(PrimExpr, factor, inputs[i]);
-    factors.push_back(factor);
-  }
-  return AdaptOutputs(sch->Split(loop, factors));
-}
-
 Instruction ReorderAttrs::MakeInst(const Array<LoopRV>& after_axes) {
   ObjectPtr<ReorderAttrs> n = make_object<ReorderAttrs>();
   return Instruction(/*inputs=*/{after_axes.begin(), after_axes.end()},
                      /*outputs=*/{},
                      /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Instruction ComputeAtAttrs::MakeInst(const BlockRV& block, const LoopRV& loop) {
+  ObjectPtr<ComputeAtAttrs> n = make_object<ComputeAtAttrs>();
+  return Instruction(/*inputs=*/{block, loop},
+                     /*outputs=*/{},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Instruction ReverseComputeAtAttrs::MakeInst(const BlockRV& block, const LoopRV& loop) {
+  ObjectPtr<ReverseComputeAtAttrs> n = make_object<ReverseComputeAtAttrs>();
+  return Instruction(/*inputs=*/{block, loop},
+                     /*outputs=*/{},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Instruction ComputeInlineAttrs::MakeInst(const BlockRV& block) {
+  ObjectPtr<ComputeInlineAttrs> n = make_object<ComputeInlineAttrs>();
+  return Instruction(/*inputs=*/{block},
+                     /*outputs=*/{},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Instruction ReverseComputeInlineAttrs::MakeInst(const BlockRV& block) {
+  ObjectPtr<ReverseComputeInlineAttrs> n = make_object<ReverseComputeInlineAttrs>();
+  return Instruction(/*inputs=*/{block},
+                     /*outputs=*/{},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Instruction MarkLoopTypeAttrs::MakeInst(const Array<LoopRV>& loops, const Range& range,
+                                        const String& mark) {
+  ObjectPtr<MarkLoopTypeAttrs> n = make_object<MarkLoopTypeAttrs>();
+  n->mark = mark;
+  Array<ObjectRef> inputs{loops.begin(), loops.end()};
+  inputs.push_back(range->min);
+  inputs.push_back(range->extent);
+  return Instruction(/*inputs=*/inputs,
+                     /*outputs=*/{},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Instruction MarkBlockTypeAttrs::MakeInst(const BlockRV& block, const String& mark) {
+  ObjectPtr<MarkBlockTypeAttrs> n = make_object<MarkBlockTypeAttrs>();
+  n->mark = mark;
+  return Instruction(/*inputs=*/{block},
+                     /*outputs=*/{},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Instruction CacheReadAttrs::MakeInst(const BufferRV& buffer, const String& storage_scope,
+                                     const BlockRV& output) {
+  ObjectPtr<CacheReadAttrs> n = make_object<CacheReadAttrs>();
+  n->storage_scope = storage_scope;
+  return Instruction(/*inputs=*/{buffer},
+                     /*outputs=*/{output},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Instruction CacheWriteAttrs::MakeInst(const BufferRV& buffer, const String& storage_scope,
+                                      const BlockRV& output) {
+  ObjectPtr<CacheWriteAttrs> n = make_object<CacheWriteAttrs>();
+  n->storage_scope = storage_scope;
+  return Instruction(/*inputs=*/{buffer},
+                     /*outputs=*/{output},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Instruction BlockizeAttrs::MakeInst(const LoopRV& loop, const String& exec_scope,
+                                    const BlockRV& output) {
+  ObjectPtr<BlockizeAttrs> n = make_object<BlockizeAttrs>();
+  n->exec_scope = exec_scope;
+  return Instruction(/*inputs=*/{loop},
+                     /*outputs=*/{output},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Instruction DecomposeReductionAttrs::MakeInst(const BlockRV& block, const LoopRV& loop,
+                                              const BlockRV& output) {
+  ObjectPtr<DecomposeReductionAttrs> n = make_object<DecomposeReductionAttrs>();
+  return Instruction(/*inputs=*/{block, loop},
+                     /*outputs=*/{output},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
+/**************** ApplyToSchedule  ****************/
+/**************** (ApplyToSchedule) Sampling  ****************/
+
+Array<ObjectRef> SamplePerfectTileAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                         const Array<ObjectRef>& inputs) const {
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
+  return AdaptOutputs(sch->SamplePerfectTile(n_splits, loop, max_innermost_factor));
+}
+
+Array<ObjectRef> SampleTileFactorAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                        const Array<ObjectRef>& inputs) const {
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
+  return AdaptOutputs(sch->SampleTileFactor(n_splits, loop, where));
+}
+
+Array<ObjectRef> SampleFusibleLoopsAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                          const Array<ObjectRef>& inputs) const {
+  Array<LoopRV> loops;
+  loops.reserve(inputs.size());
+  for (int i = 0, n = inputs.size(); i < n; ++i) {
+    TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[i]);
+    loops.push_back(loop);
+  }
+  ScheduleNode::Order the_order = static_cast<ScheduleNode::Order>(this->order);
+  ScheduleNode::Mode the_mode = static_cast<ScheduleNode::Mode>(this->mode);
+  return {sch->SampleFusibleLoops(loops, loop_types, max_extent, include_overflow_loop, the_order,
+                                  the_mode)};
+}
+
+/**************** (ApplyToSchedule) Block/Loop Relationship  ****************/
+
+Array<ObjectRef> GetOnlyConsumerAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                       const Array<ObjectRef>& inputs) const {
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
+  return {sch->GetOnlyConsumer(block)};
+}
+
+Array<ObjectRef> GetBlockAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                const Array<ObjectRef>& inputs) const {
+  CHECK_EQ(inputs.size(), 0);
+  return {sch->GetBlock(name)};
+}
+
+Array<ObjectRef> GetAxesAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                               const Array<ObjectRef>& inputs) const {
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
+  return AdaptOutputs(sch->GetAxes(block));
+}
+
+Array<ObjectRef> GetReadBuffersAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                      const Array<ObjectRef>& inputs) const {
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
+  return AdaptOutputs(sch->GetReadBuffers(block));
+}
+
+Array<ObjectRef> GetWriteBuffersAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                       const Array<ObjectRef>& inputs) const {
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
+  return AdaptOutputs(sch->GetWriteBuffers(block));
+}
+
+Array<ObjectRef> GetRootBlocksAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                     const Array<ObjectRef>& inputs) const {
+  CHECK_EQ(inputs.size(), 0);
+  return AdaptOutputs(sch->GetRootBlocks());
+}
+
+Array<ObjectRef> GetLeafBlocksAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                     const Array<ObjectRef>& inputs) const {
+  CHECK_EQ(inputs.size(), 0);
+  return AdaptOutputs(sch->GetLeafBlocks());
+}
+
+/**************** (ApplyToSchedule) Scheduling Primitives  ****************/
+
+Array<ObjectRef> MarkLoopTypeAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                    const Array<ObjectRef>& inputs) const {
+  int n_loops = static_cast<int>(inputs.size()) - 2;
+  Array<LoopRV> loops;
+  loops.reserve(n_loops);
+  for (int i = 0; i < n_loops; ++i) {
+    TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[i]);
+    loops.push_back(loop);
+  }
+  TVM_META_SCHEDULE_INST_CAST(PrimExpr, min, inputs[n_loops]);
+  TVM_META_SCHEDULE_INST_CAST(PrimExpr, extent, inputs[n_loops + 1]);
+  sch->MarkLoopType(loops, mark, Range::FromMinExtent(min, extent));
+  return {};
+}
+
+Array<ObjectRef> MarkBlockTypeAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                     const Array<ObjectRef>& inputs) const {
+  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
+  sch->MarkBlockType(block, mark);
+  return {};
+}
+
+Array<ObjectRef> FuseAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                            const Array<ObjectRef>& inputs) const {
+  int n_loops = inputs.size();
+  Array<LoopRV> loops;
+  loops.reserve(n_loops);
+  for (int i = 0; i < n_loops; ++i) {
+    TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[i]);
+    loops.push_back(loop);
+  }
+  return {sch->Fuse(loops)};
+}
+
+Array<ObjectRef> SplitAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                             const Array<ObjectRef>& inputs) const {
+  CHECK_GE(inputs.size(), 3);
+  TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
+  Array<Optional<PrimExpr>> factors;
+  for (int i = 1, n = inputs.size(); i < n; ++i) {
+    TVM_META_SCHEDULE_INST_CAST(PrimExpr, factor, inputs[i]);
+    factors.push_back(factor);
+  }
+  return AdaptOutputs(sch->Split(loop, factors));
 }
 
 Array<ObjectRef> ReorderAttrs::ApplyToSchedule(ScheduleNode* sch,
@@ -333,129 +403,66 @@ Array<ObjectRef> ReorderAttrs::ApplyToSchedule(ScheduleNode* sch,
   return {};
 }
 
-Instruction ComputeAtAttrs::MakeInst(const BlockRV& block, const LoopRV& loop) {
-  ObjectPtr<ComputeAtAttrs> n = make_object<ComputeAtAttrs>();
-  return Instruction(/*inputs=*/{block, loop},
-                     /*outputs=*/{},
-                     /*attrs=*/InstAttrs(std::move(n)));
-}
-
 Array<ObjectRef> ComputeAtAttrs::ApplyToSchedule(ScheduleNode* sch,
                                                  const Array<ObjectRef>& inputs) const {
   CHECK_EQ(inputs.size(), 2);
-  TVM_META_SCHEDULE_CAST_INPUT(BlockRV, block, inputs[0]);
-  TVM_META_SCHEDULE_CAST_INPUT(LoopRV, loop, inputs[1]);
+  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
+  TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[1]);
   sch->ComputeAt(block, loop);
   return {};
-}
-
-Instruction ReverseComputeAtAttrs::MakeInst(const BlockRV& block, const LoopRV& loop) {
-  ObjectPtr<ReverseComputeAtAttrs> n = make_object<ReverseComputeAtAttrs>();
-  return Instruction(/*inputs=*/{block, loop},
-                     /*outputs=*/{},
-                     /*attrs=*/InstAttrs(std::move(n)));
 }
 
 Array<ObjectRef> ReverseComputeAtAttrs::ApplyToSchedule(ScheduleNode* sch,
                                                         const Array<ObjectRef>& inputs) const {
   CHECK_EQ(inputs.size(), 2);
-  TVM_META_SCHEDULE_CAST_INPUT(BlockRV, block, inputs[0]);
-  TVM_META_SCHEDULE_CAST_INPUT(LoopRV, loop, inputs[1]);
+  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
+  TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[1]);
   sch->ReverseComputeAt(block, loop);
   return {};
-}
-
-Instruction ComputeInlineAttrs::MakeInst(const BlockRV& block) {
-  ObjectPtr<ComputeInlineAttrs> n = make_object<ComputeInlineAttrs>();
-  return Instruction(/*inputs=*/{block},
-                     /*outputs=*/{},
-                     /*attrs=*/InstAttrs(std::move(n)));
 }
 
 Array<ObjectRef> ComputeInlineAttrs::ApplyToSchedule(ScheduleNode* sch,
                                                      const Array<ObjectRef>& inputs) const {
   CHECK_EQ(inputs.size(), 1);
-  TVM_META_SCHEDULE_CAST_INPUT(BlockRV, block, inputs[0]);
+  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   sch->ComputeInline(block);
   return {};
-}
-
-Instruction ReverseComputeInlineAttrs::MakeInst(const BlockRV& block) {
-  ObjectPtr<ReverseComputeInlineAttrs> n = make_object<ReverseComputeInlineAttrs>();
-  return Instruction(/*inputs=*/{block},
-                     /*outputs=*/{},
-                     /*attrs=*/InstAttrs(std::move(n)));
 }
 
 Array<ObjectRef> ReverseComputeInlineAttrs::ApplyToSchedule(ScheduleNode* sch,
                                                             const Array<ObjectRef>& inputs) const {
   CHECK_EQ(inputs.size(), 1);
-  TVM_META_SCHEDULE_CAST_INPUT(BlockRV, block, inputs[0]);
+  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   sch->ReverseComputeInline(block);
   return {};
-}
-
-Instruction CacheReadAttrs::MakeInst(const BufferRV& buffer, const String& storage_scope,
-                                     const BlockRV& output) {
-  ObjectPtr<CacheReadAttrs> n = make_object<CacheReadAttrs>();
-  n->storage_scope = storage_scope;
-  return Instruction(/*inputs=*/{buffer},
-                     /*outputs=*/{output},
-                     /*attrs=*/InstAttrs(std::move(n)));
 }
 
 Array<ObjectRef> CacheReadAttrs::ApplyToSchedule(ScheduleNode* sch,
                                                  const Array<ObjectRef>& inputs) const {
   CHECK_EQ(inputs.size(), 1);
-  TVM_META_SCHEDULE_CAST_INPUT(BufferRV, buffer, inputs[0]);
+  TVM_META_SCHEDULE_INST_CAST(BufferRV, buffer, inputs[0]);
   return {sch->CacheRead(buffer, storage_scope)};
-}
-
-Instruction CacheWriteAttrs::MakeInst(const BufferRV& buffer, const String& storage_scope,
-                                      const BlockRV& output) {
-  ObjectPtr<CacheWriteAttrs> n = make_object<CacheWriteAttrs>();
-  n->storage_scope = storage_scope;
-  return Instruction(/*inputs=*/{buffer},
-                     /*outputs=*/{output},
-                     /*attrs=*/InstAttrs(std::move(n)));
 }
 
 Array<ObjectRef> CacheWriteAttrs::ApplyToSchedule(ScheduleNode* sch,
                                                   const Array<ObjectRef>& inputs) const {
   CHECK_EQ(inputs.size(), 1);
-  TVM_META_SCHEDULE_CAST_INPUT(BufferRV, buffer, inputs[0]);
+  TVM_META_SCHEDULE_INST_CAST(BufferRV, buffer, inputs[0]);
   return {sch->CacheWrite(buffer, storage_scope)};
-}
-
-Instruction BlockizeAttrs::MakeInst(const LoopRV& loop, const String& exec_scope,
-                                    const BlockRV& output) {
-  ObjectPtr<BlockizeAttrs> n = make_object<BlockizeAttrs>();
-  n->exec_scope = exec_scope;
-  return Instruction(/*inputs=*/{loop},
-                     /*outputs=*/{output},
-                     /*attrs=*/InstAttrs(std::move(n)));
 }
 
 Array<ObjectRef> BlockizeAttrs::ApplyToSchedule(ScheduleNode* sch,
                                                 const Array<ObjectRef>& inputs) const {
   CHECK_EQ(inputs.size(), 1);
-  TVM_META_SCHEDULE_CAST_INPUT(LoopRV, loop, inputs[0]);
+  TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   return {sch->Blockize(loop, exec_scope)};
-}
-
-Instruction DecomposeReductionAttrs::MakeInst(const BlockRV& block, const LoopRV& loop,
-                                              const BlockRV& output) {
-  ObjectPtr<DecomposeReductionAttrs> n = make_object<DecomposeReductionAttrs>();
-  return Instruction(/*inputs=*/{block, loop},
-                     /*outputs=*/{output},
-                     /*attrs=*/InstAttrs(std::move(n)));
 }
 
 Array<ObjectRef> DecomposeReductionAttrs::ApplyToSchedule(ScheduleNode* sch,
                                                           const Array<ObjectRef>& inputs) const {
   CHECK_EQ(inputs.size(), 2);
-  TVM_META_SCHEDULE_CAST_INPUT(BlockRV, block, inputs[0]);
-  TVM_META_SCHEDULE_CAST_INPUT(LoopRV, loop, inputs[1]);
+  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
+  TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[1]);
   return {sch->DecomposeReduction(block, loop)};
 }
 
@@ -490,7 +497,7 @@ TVM_REGISTER_NODE_TYPE(CacheWriteAttrs);
 TVM_REGISTER_NODE_TYPE(BlockizeAttrs);
 TVM_REGISTER_NODE_TYPE(DecomposeReductionAttrs);
 
-#undef TVM_META_SCHEDULE_CAST_INPUT
+#undef TVM_META_SCHEDULE_INST_CAST
 
 }  // namespace meta_schedule
 }  // namespace tvm
