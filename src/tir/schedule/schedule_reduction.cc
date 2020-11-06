@@ -446,7 +446,6 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
     }
   }
   if (!top) top = loops[0];
-  LOG(INFO) << top.value();
   auto insert = [](Stmt body, int64_t pos, Stmt input) -> SeqStmt {
     std::vector<Stmt> res;
     if (const auto* op = body.as<SeqStmtNode>()) {
@@ -471,10 +470,11 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
                   {{new_block, GetRef<Block>(parent)}});
   }
   // replace rf block
-  this->Replace(block_sref, rf_block, {{rf_block, block}});
-  LOG(INFO) << this->func;
+  Loop rf_outer = GetRef<Loop>(loops.back()->GetStmt<LoopNode>());
+  rf_outer.CopyOnWrite()->body = rf_block_realize;
+  this->Replace(loops.back(), rf_outer, {{rf_block, block}});
 
-  return stmt2ref.at(block.get());
+  return stmt2ref.at(rf_block.get());
 }
 
 }  // namespace tir

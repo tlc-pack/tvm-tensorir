@@ -939,6 +939,7 @@ class Loop : public Stmt {
                         Stmt body);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Loop, Stmt, LoopNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(LoopNode);
 };
 
 /*!
