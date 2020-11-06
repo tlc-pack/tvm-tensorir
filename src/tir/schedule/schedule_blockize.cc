@@ -194,8 +194,8 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
       BlockRealize(outer_bindings, division.back()->outer_extent, outer_block, exec_scope);
 
   this->Replace(loop_sref, outer_realize, {{inner_block, block}});
-  UpdateScope(GetParentBlockSRef(this->stmt2ref.at(outer_block.get()))->stmt,
-              this->stmt2ref, &this->scopes);
+  UpdateScope(GetParentBlockSRef(this->stmt2ref.at(outer_block.get()))->stmt, this->stmt2ref,
+              &this->scopes);
   UpdateScope(outer_block.get(), this->stmt2ref, &this->scopes);
 
   // Check loop binding
