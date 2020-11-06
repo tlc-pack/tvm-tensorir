@@ -65,6 +65,15 @@ Stmt SubstituteInScope(const Stmt& stmt,
                        const std::unordered_map<const VarNode*, const VarNode*>& var_map);
 
 /*!
+ * \brief Substitute the var in current block scope specified in var map
+ * \param stmt The source stmt to be substituted
+ * \param var_map The mapping of var
+ * \return The converted stmt
+ */
+Stmt SubstituteInScope(const Stmt& stmt,
+                       const std::unordered_map<const VarNode*, PrimExpr>& var_map);
+
+/*!
  * \brief Substitute the var in TensorRegion
  * \param tensor_region The source TensorRegion to be substituted
  * \param var_map the mapping of var
@@ -73,6 +82,17 @@ Stmt SubstituteInScope(const Stmt& stmt,
 TensorRegion SubstituteTensorRegion(
     const TensorRegion& tensor_region,
     const std::unordered_map<const VarNode*, const VarNode*>& var_map);
+
+/*!
+ * \brief Substitute the var in TensorRegion
+ * \param tensor_region The source TensorRegion to be substituted
+ * \param var_map the mapping of var
+ * \return The converted tensor region
+ */
+TensorRegion SubstituteTensorRegion(
+    const TensorRegion& tensor_region,
+    const std::unordered_map<const VarNode*, PrimExpr>& var_map);
+
 
 /*!
  * \brief Get BlockRealize with by Block
@@ -162,6 +182,8 @@ class StmtReplacer : public StmtMutator {
 
   const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map;
 };
+
+bool CheckOneLine(const Stmt& s);
 
 /*!
  * \brief PrimExpr pattern matcher.

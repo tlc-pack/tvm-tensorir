@@ -953,6 +953,18 @@ TVM_REGISTER_GLOBAL("tir.ReduceStep")
 
 TVM_REGISTER_NODE_TYPE(ReduceStepNode);
 
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<ReduceStepNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const ReduceStepNode*>(node.get());
+
+      p->PrintIndent();
+      p->stream << "reduce_step(";
+      p->Print(op->lhs);
+      p->stream << ", ";
+      p->Print(op->rhs);
+      p->stream << ")\n";
+    });
+
 PrimExpr TypeAnnotation(DataType dtype) {
   static auto op = Op::Get("tir.type_annotation");
   return tir::Call(dtype, op, {});
