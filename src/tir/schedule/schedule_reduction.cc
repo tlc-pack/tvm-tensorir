@@ -488,6 +488,8 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
         new_scope_block = scope_block;
   new_scope_block.CopyOnWrite()->allocations.push_back(BufferAllocate(rf_buf, ""));
   this->Replace(scope_sref, new_scope_block, {{new_scope_block, scope_block}});
+  // Update scope information
+  UpdateScope(scope_sref->stmt, this->stmt2ref, &this->scopes);
 
   return stmt2ref.at(rf_block.get());
 }
