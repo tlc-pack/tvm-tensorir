@@ -350,8 +350,14 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
             Substitute(converter.Convert(division[i]->inner), {{loop->loop_var, rf_iter->var}});
       }
     }
-    rf_bindings.push_back(converter.Convert(division[i]->outer));
-    rf_iters.push_back(block->iter_vars[i]);
+    if (!is_one(division[i]->outer_extent)) {
+      rf_bindings.push_back(converter.Convert(division[i]->outer));
+      IterVar new_iter = block->iter_vars[i];
+      new_iter.CopyOnWrite()->dom = Range::FromMinExtent(0, division[i]->outer_extent);
+      rf_iters.push_back(new_iter);
+    } else {
+      var_map[block->iter_vars[i]->var.get()] = 0;
+    }
   }
   rf_bindings.push_back(loop->loop_var);
   rf_iters.push_back(rf_iter);
