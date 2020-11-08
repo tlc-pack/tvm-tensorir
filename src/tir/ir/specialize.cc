@@ -56,7 +56,19 @@ class BufferMutator : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const BlockNode* op) override {
-    auto fmutate_buffer_allocate = [this](const BufferAllocate& buffer_allocate) {
+    auto fmutate_range = [&](const Range& range) {
+      PrimExpr min = this->VisitExpr(range->min);
+      PrimExpr extent = this->VisitExpr(range->extent);
+      if (min.same_as(range->min) && extent.same_as(range->extent)) {
+        return range;
+      } else {
+        auto n = CopyOnWrite(range.get());
+        n->min = std::move(min);
+        n->extent = std::move(extent);
+        return Range(n);
+      }
+    };
+    auto fmutate_buffer_allocate = [&](const BufferAllocate& buffer_allocate) {
       Buffer buf = fmutate_(buffer_allocate->buffer);
       if (buf.same_as(buffer_allocate->buffer)) {
         return buffer_allocate;
@@ -67,53 +79,84 @@ class BufferMutator : public StmtExprMutator {
         return BufferAllocate(n);
       }
     };
-    auto fmutate_tensor_region = [this](const TensorRegion& tensor_region) {
+    auto fmutate_tensor_region = [&](const TensorRegion& tensor_region) {
       auto it = buffer_map_.find(tensor_region->buffer);
-      if (it == buffer_map_.end()) {
+      Array<Range> region = MutateArray(tensor_region->region, fmutate_range);
+      if (it == buffer_map_.end() && region.same_as(tensor_region->region)) {
         return tensor_region;
       } else {
         auto n = CopyOnWrite(tensor_region.get());
         n->buffer = it->second;
+        n->region = std::move(region);
         return TensorRegion(n);
+      }
+    };
+    auto fmutate_iter_var = [&](const IterVar& iter_var) {
+      Range range = fmutate_range(iter_var->dom);
+      if (range.same_as(iter_var->dom)) {
+        return iter_var;
+      } else {
+        auto n = CopyOnWrite(iter_var.get());
+        n->dom = std::move(range);
+        return IterVar(n);
+      }
+    };
+    auto fmutate_annotation = [this](const Annotation& annotation) {
+      PrimExpr value = this->VisitExpr(annotation->value);
+      if (value.same_as(annotation->value)) {
+        return annotation;
+      } else {
+        return Annotation(annotation->attr_key, annotation->value);
       }
     };
     Array<BufferAllocate> allocations = MutateArray(op->allocations, fmutate_buffer_allocate);
     Array<TensorRegion> reads = MutateArray(op->reads, fmutate_tensor_region);
     Array<TensorRegion> writes = MutateArray(op->writes, fmutate_tensor_region);
+    Array<IterVar> block_vars = MutateArray(op->iter_vars, fmutate_iter_var);
+    Array<Annotation> annotations = MutateArray(op->annotations, fmutate_annotation);
     Stmt body = VisitStmt(op->body);
     if (allocations.same_as(op->allocations) && reads.same_as(op->reads) &&
-        writes.same_as(op->writes) && body.same_as(op->body)) {
+        writes.same_as(op->writes) && block_vars.same_as(op->iter_vars) && body.same_as(op->body) &&
+        annotations.same_as(op->annotations)) {
       return GetRef<Block>(op);
     } else {
       auto n = CopyOnWrite(op);
       n->allocations = std::move(allocations);
       n->reads = std::move(reads);
       n->writes = std::move(writes);
+      n->iter_vars = std::move(block_vars);
+      n->annotations = std::move(annotations);
       n->body = std::move(body);
       return Stmt(n);
     }
   }
 
   Stmt VisitStmt_(const BufferStoreNode* op) override {
+    auto fmutate = [this](const PrimExpr& e) { return this->VisitExpr(e); };
     auto it = buffer_map_.find(op->buffer);
     PrimExpr value = VisitExpr(op->value);
-    if (it == buffer_map_.end() && value.same_as(op->value)) {
+    Array<PrimExpr> indices = MutateArray(op->indices, fmutate);
+    if (it == buffer_map_.end() && value.same_as(op->value) && indices.same_as(op->indices)) {
       return GetRef<BufferStore>(op);
     } else {
       auto n = CopyOnWrite(op);
       n->buffer = it->second;
       n->value = std::move(value);
+      n->indices = std::move(indices);
       return Stmt(n);
     }
   }
 
   PrimExpr VisitExpr_(const BufferLoadNode* op) override {
+    auto fmutate = [this](const PrimExpr& e) { return this->VisitExpr(e); };
     auto it = buffer_map_.find(op->buffer);
-    if (it == buffer_map_.end()) {
+    Array<PrimExpr> indices = MutateArray(op->indices, fmutate);
+    if (it == buffer_map_.end() && indices.same_as(op->indices)) {
       return GetRef<BufferLoad>(op);
     } else {
       auto n = CopyOnWrite(op);
       n->buffer = it->second;
+      n->indices = std::move(indices);
       return PrimExpr(n);
     }
   }
@@ -315,7 +358,7 @@ PrimFunc RemoveConstantParam(PrimFunc func, const tir::Var& param) {
   PrimFunc new_f = func;
   if (constraint.defined()) {
     new_f = RemoveSpecializeConstraint(new_f, param);
-    new_f.CopyOnWrite()->body = Substitute(new_f->body, {{param, constraint}});
+    new_f = GenerateNewFunc(new_f, {{param, constraint}}, {}, {{param, constraint}});
   }
   std::vector<tir::Var> new_params;
   for (const auto& var : func->params) {

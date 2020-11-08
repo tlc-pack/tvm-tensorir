@@ -333,7 +333,7 @@ std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root) {
   Stmt last = GetRef<Stmt>(sref->stmt);
   sref = GetRef<StmtSRef>(sref->parent);
   Stmt stmt = GetRef<Stmt>(sref->stmt);
-  while (!sref.same_as(root) || stmt.as<BlockNode>() == nullptr) {
+  while (!sref.same_as(root) && stmt.as<BlockNode>() == nullptr) {
     const auto* loop = stmt.as<LoopNode>();
     CHECK(loop != nullptr);
     const auto* seq = loop->body.as<SeqStmtNode>();
