@@ -94,6 +94,7 @@ bool Scope::IsComplete(const StmtSRef& block_sref) const {
       return false;
     }
   }
+  /*
   // Cond 3. Check if there is no overlap between buffers read and buffers written
   for (const TensorRegion& write : block->writes) {
     const Buffer& buffer = write->buffer;
@@ -103,6 +104,7 @@ bool Scope::IsComplete(const StmtSRef& block_sref) const {
       }
     }
   }
+  */
   return true;
 }
 

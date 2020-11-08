@@ -137,8 +137,13 @@ std::vector<arith::IntSet> SolveCover(const BlockNode* block, const BufferRegion
           LOG(FATAL) << "ValueError: TensorRegion pattern match failed";
         }
         const auto* var = v.Eval().get();
-        arith::IntSet& iset = iter_domain[iter_var_indexer[var]];
-        iset = arith::Union({iset, arith::IntSet::FromRange(Range::FromMinExtent(min, extent))});
+        if (iter_var_indexer.count(var)) {
+          arith::IntSet& iset = iter_domain[iter_var_indexer[var]];
+          iset = arith::Union({iset, arith::IntSet::FromRange(Range::FromMinExtent(min, extent))});
+        } else {
+          CHECK(analyzer.CanProve(produce->min - consume->min == 0));
+          CHECK(analyzer.CanProve(produce->extent - produce->extent == 0));
+        }
       }
     }
   }
