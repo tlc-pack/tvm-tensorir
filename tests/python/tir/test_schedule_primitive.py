@@ -669,7 +669,7 @@ def matmul_rfactor(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             for i1 in range(0, 128):
                 for i2_outer in range(0, 4):
                     for i2_inner_outer in range(0, 8):
-                        with tir.block([128, 128, tir.reduce_axis(0, 128), 4], "update") as [vi, vj, vk, vi2_inner_inner]:
+                        with tir.block([128, 128, tir.reduce_axis(0, 32), 4], "update") as [vi, vj, vk, vi2_inner_inner]:
                             tir.bind(vi, i0)
                             tir.bind(vj, i1)
                             tir.bind(vk, ((i2_outer*8) + i2_inner_outer))
