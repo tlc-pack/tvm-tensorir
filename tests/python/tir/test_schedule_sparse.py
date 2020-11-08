@@ -73,35 +73,13 @@ def schedule_sparse_dense_llvm(func):
     return s.func
 
 
-def schedule_sparse_dense_cuda(func):
-    s = tir.create_schedule(func)
-    bsr_par = s.get_block("bsr_par")
-    bsr_reduce = s.get_block("bsr_reduce", bsr_par)
-    bsr_block = s.get_block("bsr_block")
-
-    i, j = s.get_axes(bsr_block)
-    s.compute_at(bsr_par, j)
-    elem_idx, c = s.get_axes(bsr_reduce)
-    rf = s.rfactor(c, 0)
-    c_wb = s.get_axes(bsr_reduce)
-    s.bind(i, te.thread_axis("blockIdx.x"))
-    s.bind(j, te.thread_axis("blockIdx.y"))
-    s.bind(c_wb, te.thread_axis("threadIdx.x"))
-    s.compute_at(rf, c_wb)
-    print(tvm.script.asscript(s.func))
-
-    return s.func
-
-
 _sparse_dense_implement_tir = {
     "llvm": schedule_sparse_dense_llvm,
-    "cuda": schedule_sparse_dense_cuda
 }
 
 _sparse_dense_implement_te = {
     "generic": (topi.nn.sparse_dense, topi.generic.schedule_sparse_dense),
     "cpu": (topi.nn.sparse_dense, topi.x86.schedule_sparse_dense),
-    "cuda": (topi.cuda.sparse_dense, topi.cuda.schedule_sparse_dense)
 }
 
 
@@ -129,8 +107,7 @@ def random_bsr_matrix(M, N, BS_R, BS_C, density, dtype):
 
 
 def test_sparse_dense():
-    np.random.seed(42)
-    for _ in range(1):
+    for _ in range(20):
         BS_R = np.random.randint(1, 16)
         BS_C = np.random.randint(1, 16)
         M = np.random.randint(1, 32)
@@ -185,25 +162,24 @@ def test_sparse_dense():
                 func = func.specialize(data, tir.decl_buffer(W_data.shape))
                 func = func.specialize(N_blocks, N // BS_R).remove_const_param(N_blocks)
                 func = _sparse_dense_implement_tir[device](func)
-                print(tvm.lower(func, []))
-                # func = tvm.build(func)
-                # Y_tvm = tvm.nd.array(np.zeros(Y_np.shape, dtype=Y_np.dtype), ctx=ctx)
-                # func(
-                #     tvm.nd.array(X_np, ctx=ctx),
-                #     tvm.nd.array(W_sp_np.data, ctx=ctx),
-                #     tvm.nd.array(W_sp_np.indices, ctx=ctx),
-                #     tvm.nd.array(W_sp_np.indptr, ctx=ctx),
-                #     Y_tvm
-                # )
-                # tvm.testing.assert_allclose(Y_tvm.asnumpy(), Y_np, atol=1e-5, rtol=1e-5)
-                # evaluator = func.time_evaluator(func.entry_name, ctx, number=10)
-                # print("sparse dense tir schedule: %f ms" % (evaluator(tvm.nd.array(X_np, ctx=ctx),
-                #                                                       tvm.nd.array(W_sp_np.data, ctx=ctx),
-                #                                                       tvm.nd.array(W_sp_np.indices, ctx=ctx),
-                #                                                       tvm.nd.array(W_sp_np.indptr, ctx=ctx),
-                #                                                       Y_tvm).mean * 1e3))
+                func = tvm.build(func)
+                Y_tvm = tvm.nd.array(np.zeros(Y_np.shape, dtype=Y_np.dtype), ctx=ctx)
+                func(
+                    tvm.nd.array(X_np, ctx=ctx),
+                    tvm.nd.array(W_sp_np.data, ctx=ctx),
+                    tvm.nd.array(W_sp_np.indices, ctx=ctx),
+                    tvm.nd.array(W_sp_np.indptr, ctx=ctx),
+                    Y_tvm
+                )
+                tvm.testing.assert_allclose(Y_tvm.asnumpy(), Y_np, atol=1e-5, rtol=1e-5)
+                evaluator = func.time_evaluator(func.entry_name, ctx, number=10)
+                print("sparse dense tir schedule: %f ms" % (evaluator(tvm.nd.array(X_np, ctx=ctx),
+                                                                      tvm.nd.array(W_sp_np.data, ctx=ctx),
+                                                                      tvm.nd.array(W_sp_np.indices, ctx=ctx),
+                                                                      tvm.nd.array(W_sp_np.indptr, ctx=ctx),
+                                                                      Y_tvm).mean * 1e3))
 
-        for device in ["cuda"]:
+        for device in ["llvm"]:
             check_device(device)
 
 
