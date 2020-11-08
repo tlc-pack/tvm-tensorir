@@ -139,11 +139,13 @@ class PrimFuncSpecializer : public StmtExprMutator {
     op = expr.as<BufferLoadNode>();
     ICHECK(op != nullptr);
     auto it = buffer_map_.find(op->buffer);
-    if (it == buffer_map_.end()) {
+    Array<PrimExpr> indices = MutateArray(op->indices, fmutate);
+    if (it == buffer_map_.end() && indices.same_as(op->indices)) {
       return GetRef<BufferLoad>(op);
     } else {
       auto n = make_object<BufferLoadNode>(*op);
       n->buffer = it->second;
+      n->indices = std::move(indices);
       return PrimExpr(n);
     }
   }
