@@ -51,7 +51,23 @@ Instruction::Instruction(Array<ObjectRef> inputs, Array<ObjectRef> outputs, Inst
   n->inst_attrs = std::move(inst_attrs);
   data_ = std::move(n);
 }
+
 /**************** Instruction  ****************/
+
+Array<ObjectRef> InstructionNode::Export(const Map<ObjectRef, String>& rv_names) const {
+  Array<ObjectRef> result;
+  result.reserve(4);
+  result.push_back(inst_attrs->GetName());
+  for (const Array<ObjectRef>& rvs : {this->inputs, this->outputs}) {
+    Array<String> names;
+    names.reserve(rvs.size());
+    for (const ObjectRef& rv : rvs) {
+      names.push_back(rv_names.at(rv));
+    }
+  }
+  inst_attrs->Export(&result);
+  return result;
+}
 
 Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const InstAttrs& inst_attrs,
                                               const Array<ObjectRef>& inputs) {
@@ -464,6 +480,243 @@ Array<ObjectRef> DecomposeReductionAttrs::ApplyToSchedule(ScheduleNode* sch,
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[1]);
   return {sch->DecomposeReduction(block, loop)};
+}
+
+/**************** Export  ****************/
+/**************** (Export) Sampling  ****************/
+
+void SamplePerfectTileAttrs::Export(Array<ObjectRef>* result) const {
+  result->push_back(Array<ObjectRef>{
+      Integer(n_splits),              //
+      Integer(max_innermost_factor),  //
+  });
+}
+
+void SampleTileFactorAttrs::Export(Array<ObjectRef>* result) const {
+  result->push_back(Array<ObjectRef>{
+      Integer(n_splits),  //
+      where,              //
+  });
+}
+
+void SampleFusibleLoopsAttrs::Export(Array<ObjectRef>* result) const {
+  result->push_back(Array<ObjectRef>{
+      loop_types,                      //
+      Integer(max_extent),             //
+      Integer(include_overflow_loop),  //
+      Integer(order),                  //
+      Integer(mode),                   //
+  });
+}
+
+/**************** (Export) Block/Loop Relationship  ****************/
+
+void GetOnlyConsumerAttrs::Export(Array<ObjectRef>* result) const {}
+
+void GetBlockAttrs::Export(Array<ObjectRef>* result) const {
+  result->push_back(Array<ObjectRef>{name});
+}
+
+void GetAxesAttrs::Export(Array<ObjectRef>* result) const {}
+void GetReadBuffersAttrs::Export(Array<ObjectRef>* result) const {}
+void GetWriteBuffersAttrs::Export(Array<ObjectRef>* result) const {}
+void GetRootBlocksAttrs::Export(Array<ObjectRef>* result) const {}
+void GetLeafBlocksAttrs::Export(Array<ObjectRef>* result) const {}
+
+/**************** (Export) Scheduling Primitives  ****************/
+
+void MarkLoopTypeAttrs::Export(Array<ObjectRef>* result) const {
+  result->push_back(Array<ObjectRef>{mark});
+}
+
+void MarkBlockTypeAttrs::Export(Array<ObjectRef>* result) const {
+  result->push_back(Array<ObjectRef>{mark});
+}
+
+void FuseAttrs::Export(Array<ObjectRef>* result) const {}
+void SplitAttrs::Export(Array<ObjectRef>* result) const {}
+void ReorderAttrs::Export(Array<ObjectRef>* result) const {}
+void ComputeAtAttrs::Export(Array<ObjectRef>* result) const {}
+void ReverseComputeAtAttrs::Export(Array<ObjectRef>* result) const {}
+void ComputeInlineAttrs::Export(Array<ObjectRef>* result) const {}
+void ReverseComputeInlineAttrs::Export(Array<ObjectRef>* result) const {}
+
+void CacheReadAttrs::Export(Array<ObjectRef>* result) const {
+  result->push_back(Array<ObjectRef>{storage_scope});
+}
+
+void CacheWriteAttrs::Export(Array<ObjectRef>* result) const {
+  result->push_back(Array<ObjectRef>{storage_scope});
+}
+
+void BlockizeAttrs::Export(Array<ObjectRef>* result) const {
+  result->push_back(Array<ObjectRef>{exec_scope});
+}
+
+void DecomposeReductionAttrs::Export(Array<ObjectRef>* result) const {}
+
+/**************** Import  ****************/
+/**************** (Import) Sampling  ****************/
+
+InstAttrs SamplePerfectTileAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 4);
+  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
+  CHECK_EQ(from.size(), 2);
+  ObjectPtr<SamplePerfectTileAttrs> n = make_object<SamplePerfectTileAttrs>();
+  n->n_splits = Downcast<Integer>(from[0]);
+  n->max_innermost_factor = Downcast<Integer>(from[1]);
+  return InstAttrs(std::move(n));
+}
+
+InstAttrs SampleTileFactorAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 4);
+  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
+  CHECK_EQ(from.size(), 2);
+  ObjectPtr<SampleTileFactorAttrs> n = make_object<SampleTileFactorAttrs>();
+  n->n_splits = Downcast<Integer>(from[0]);
+  n->where = Downcast<Array<Integer>>(from[1]);
+  return InstAttrs(std::move(n));
+}
+
+InstAttrs SampleFusibleLoopsAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 4);
+  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
+  CHECK_EQ(from.size(), 5);
+  ObjectPtr<SampleFusibleLoopsAttrs> n = make_object<SampleFusibleLoopsAttrs>();
+  n->loop_types = Downcast<Array<Integer>>(from[0]);
+  n->max_extent = Downcast<Integer>(from[1]);
+  n->include_overflow_loop = Downcast<Integer>(from[2]);
+  n->order = Downcast<Integer>(from[3]);
+  n->mode = Downcast<Integer>(from[4]);
+  return InstAttrs(std::move(n));
+}
+
+/**************** (Import) Block/Loop Relationship  ****************/
+
+InstAttrs GetOnlyConsumerAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 3);
+  return InstAttrs(make_object<GetOnlyConsumerAttrs>());
+}
+
+InstAttrs GetBlockAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 4);
+  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
+  CHECK_EQ(from.size(), 1);
+  ObjectPtr<GetBlockAttrs> n = make_object<GetBlockAttrs>();
+  n->name = Downcast<String>(from[0]);
+  return InstAttrs(std::move(n));
+}
+
+InstAttrs GetAxesAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 3);
+  return InstAttrs(make_object<GetAxesAttrs>());
+}
+
+InstAttrs GetReadBuffersAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 3);
+  return InstAttrs(make_object<GetReadBuffersAttrs>());
+}
+
+InstAttrs GetWriteBuffersAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 3);
+  return InstAttrs(make_object<GetWriteBuffersAttrs>());
+}
+
+InstAttrs GetRootBlocksAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 3);
+  return InstAttrs(make_object<GetRootBlocksAttrs>());
+}
+
+InstAttrs GetLeafBlocksAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 3);
+  return InstAttrs(make_object<GetLeafBlocksAttrs>());
+}
+
+/**************** (Import) Scheduling Primitives  ****************/
+
+InstAttrs MarkLoopTypeAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 4);
+  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
+  CHECK_EQ(from.size(), 1);
+  ObjectPtr<MarkLoopTypeAttrs> n = make_object<MarkLoopTypeAttrs>();
+  n->mark = Downcast<String>(from[0]);
+  return InstAttrs(std::move(n));
+}
+
+InstAttrs MarkBlockTypeAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 4);
+  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
+  CHECK_EQ(from.size(), 1);
+  ObjectPtr<MarkBlockTypeAttrs> n = make_object<MarkBlockTypeAttrs>();
+  n->mark = Downcast<String>(from[0]);
+  return InstAttrs(std::move(n));
+}
+
+InstAttrs FuseAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 3);
+  return InstAttrs(make_object<FuseAttrs>());
+}
+
+InstAttrs SplitAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 3);
+  return InstAttrs(make_object<SplitAttrs>());
+}
+
+InstAttrs ReorderAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 3);
+  return InstAttrs(make_object<ReorderAttrs>());
+}
+
+InstAttrs ComputeAtAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 3);
+  return InstAttrs(make_object<ComputeAtAttrs>());
+}
+
+InstAttrs ReverseComputeAtAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 3);
+  return InstAttrs(make_object<ReverseComputeAtAttrs>());
+}
+
+InstAttrs ComputeInlineAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 3);
+  return InstAttrs(make_object<ComputeInlineAttrs>());
+}
+
+InstAttrs ReverseComputeInlineAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 3);
+  return InstAttrs(make_object<ReverseComputeInlineAttrs>());
+}
+
+InstAttrs CacheReadAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 4);
+  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
+  CHECK_EQ(from.size(), 1);
+  ObjectPtr<CacheReadAttrs> n = make_object<CacheReadAttrs>();
+  n->storage_scope = Downcast<String>(from[0]);
+  return InstAttrs(std::move(n));
+}
+
+InstAttrs CacheWriteAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 4);
+  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
+  CHECK_EQ(from.size(), 1);
+  ObjectPtr<CacheWriteAttrs> n = make_object<CacheWriteAttrs>();
+  n->storage_scope = Downcast<String>(from[0]);
+  return InstAttrs(std::move(n));
+}
+
+InstAttrs BlockizeAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 4);
+  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
+  CHECK_EQ(from.size(), 1);
+  ObjectPtr<BlockizeAttrs> n = make_object<BlockizeAttrs>();
+  n->exec_scope = Downcast<String>(from[0]);
+  return InstAttrs(std::move(n));
+}
+
+InstAttrs DecomposeReductionAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 3);
+  return InstAttrs(make_object<DecomposeReductionAttrs>());
 }
 
 /**************** FFI ****************/
