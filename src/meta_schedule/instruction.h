@@ -167,6 +167,9 @@ class Instruction : public ObjectRef {
   static Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const InstAttrs& inst_attrs,
                                           const Array<ObjectRef>& inputs);
 
+  static Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& record,
+                                          Map<String, ObjectRef>* named_rvs);
+
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Instruction, ObjectRef, InstructionNode);
 
  protected:
@@ -212,8 +215,8 @@ struct SamplePerfectTileAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "SamplePerfectTile";
+  static String Name() { return "SamplePerfectTile"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.SamplePerfectTileAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(SamplePerfectTileAttrs, InstAttrsNode);
 };
@@ -254,8 +257,8 @@ struct SampleTileFactorAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "SampleTileFactor";
+  static String Name() { return "SampleTileFactor"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.SampleTileFactorAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(SampleTileFactorAttrs, InstAttrsNode);
 };
@@ -310,8 +313,8 @@ struct SampleFusibleLoopsAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "SampleFusibleLoops";
+  static String Name() { return "SampleFusibleLoops"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.SampleFusibleLoopsAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(SampleFusibleLoopsAttrs, InstAttrsNode);
 };
@@ -343,8 +346,8 @@ struct GetOnlyConsumerAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "GetOnlyConsumer";
+  static String Name() { return "GetOnlyConsumer"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.GetOnlyConsumerAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(GetOnlyConsumerAttrs, InstAttrsNode);
 };
@@ -377,8 +380,8 @@ struct GetBlockAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "GetBlock";
+  static String Name() { return "GetBlock"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.GetBlockAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(GetBlockAttrs, InstAttrsNode);
 };
@@ -408,8 +411,8 @@ struct GetAxesAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "GetAxes";
+  static String Name() { return "GetAxes"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.GetAxesAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(GetAxesAttrs, InstAttrsNode);
 };
@@ -439,8 +442,8 @@ struct GetReadBuffersAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "GetReadBuffers";
+  static String Name() { return "GetReadBuffers"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.GetReadBuffersAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(GetReadBuffersAttrs, InstAttrsNode);
 };
@@ -470,8 +473,8 @@ struct GetWriteBuffersAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "GetWriteBuffers";
+  static String Name() { return "GetWriteBuffers"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.GetWriteBuffersAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(GetWriteBuffersAttrs, InstAttrsNode);
 };
@@ -499,8 +502,8 @@ struct GetRootBlocksAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "GetRootBlocks";
+  static String Name() { return "GetRootBlocks"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.GetRootBlocksAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(GetRootBlocksAttrs, InstAttrsNode);
 };
@@ -528,8 +531,8 @@ struct GetLeafBlocksAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "GetLeafBlocks";
+  static String Name() { return "GetLeafBlocks"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.GetLeafBlocksAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(GetLeafBlocksAttrs, InstAttrsNode);
 };
@@ -564,8 +567,8 @@ struct MarkLoopTypeAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "MarkLoopType";
+  static String Name() { return "MarkLoopType"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.MarkLoopTypeAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(MarkLoopTypeAttrs, InstAttrsNode);
 };
@@ -597,8 +600,8 @@ struct MarkBlockTypeAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "MarkBlockType";
+  static String Name() { return "MarkBlockType"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.MarkBlockTypeAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(MarkBlockTypeAttrs, InstAttrsNode);
 };
@@ -627,8 +630,8 @@ struct FuseAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "Fuse";
+  static String Name() { return "Fuse"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.FuseAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(FuseAttrs, InstAttrsNode);
 };
@@ -660,8 +663,8 @@ struct SplitAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "Split";
+  static String Name() { return "Split"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.SplitAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(SplitAttrs, InstAttrsNode);
 };
@@ -690,8 +693,8 @@ struct ReorderAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "Reorder";
+  static String Name() { return "Reorder"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.ReorderAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(ReorderAttrs, InstAttrsNode);
 };
@@ -721,8 +724,8 @@ struct ComputeAtAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "ComputeAt";
+  static String Name() { return "ComputeAt"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.ComputeAtAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(ComputeAtAttrs, InstAttrsNode);
 };
@@ -752,8 +755,8 @@ struct ReverseComputeAtAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "ReverseComputeAt";
+  static String Name() { return "ReverseComputeAt"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.ReverseComputeAtAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(ReverseComputeAtAttrs, InstAttrsNode);
 };
@@ -782,8 +785,8 @@ struct ComputeInlineAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "ComputeInline";
+  static String Name() { return "ComputeInline"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.ComputeInlineAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(ComputeInlineAttrs, InstAttrsNode);
 };
@@ -812,8 +815,8 @@ struct ReverseComputeInlineAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "ReverseComputeInline";
+  static String Name() { return "ReverseComputeInline"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.ReverseComputeInlineAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(ReverseComputeInlineAttrs, InstAttrsNode);
 };
@@ -848,8 +851,8 @@ struct CacheReadAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "CacheRead";
+  static String Name() { return "CacheRead"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.CacheReadAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(CacheReadAttrs, InstAttrsNode);
 };
@@ -884,8 +887,8 @@ struct CacheWriteAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "CacheWrite";
+  static String Name() { return "CacheWrite"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.CacheWriteAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(CacheWriteAttrs, InstAttrsNode);
 };
@@ -919,8 +922,8 @@ struct BlockizeAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "Blockize";
+  static String Name() { return "Blockize"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.BlockizeAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(BlockizeAttrs, InstAttrsNode);
 };
@@ -951,8 +954,8 @@ struct DecomposeReductionAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  String GetName() const override { return _name; }
-  static constexpr const char* _name = "DecomposeReduction";
+  static String Name() { return "DecomposeReduction"; }
+  String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.DecomposeReductionAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(DecomposeReductionAttrs, InstAttrsNode);
 };

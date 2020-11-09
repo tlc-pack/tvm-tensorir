@@ -55,9 +55,12 @@ Instruction::Instruction(Array<ObjectRef> inputs, Array<ObjectRef> outputs, Inst
 /**************** Instruction  ****************/
 
 Array<ObjectRef> InstructionNode::Export(const Map<ObjectRef, String>& rv_names) const {
-  Array<ObjectRef> result;
-  result.reserve(4);
-  result.push_back(inst_attrs->GetName());
+  Array<ObjectRef> record;
+  record.reserve(4);
+  // record[0]: inst_attrs::_name
+  record.push_back(inst_attrs->GetName());
+  // record[1]: inputs
+  // record[2]: outputs
   for (const Array<ObjectRef>& rvs : {this->inputs, this->outputs}) {
     Array<String> names;
     names.reserve(rvs.size());
@@ -65,14 +68,83 @@ Array<ObjectRef> InstructionNode::Export(const Map<ObjectRef, String>& rv_names)
       names.push_back(rv_names.at(rv));
     }
   }
-  inst_attrs->Export(&result);
-  return result;
+  // record[3]: (optional) inst_attrs
+  // TODO record[4]: (optional) decision
+  inst_attrs->Export(&record);
+  return record;
 }
 
 Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const InstAttrs& inst_attrs,
                                               const Array<ObjectRef>& inputs) {
-  CHECK(inst_attrs.defined()) << "ValueError: `inst_attrs` is undefined";
   return inst_attrs->ApplyToSchedule(sch, inputs);
+}
+
+Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& record,
+                                              Map<String, ObjectRef>* named_rvs) {
+#define TVM_META_SCHEDULE_INST_VTABLE_ENTRY(AttrsTyppe) \
+  { AttrsTyppe::Name(), AttrsTyppe::Import }
+  static const std::unordered_map<String, std::function<InstAttrs(const Array<ObjectRef>&)>>
+      vtable = {
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SamplePerfectTileAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleTileFactorAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleFusibleLoopsAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetOnlyConsumerAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetBlockAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetAxesAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetReadBuffersAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetWriteBuffersAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetRootBlocksAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetLeafBlocksAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(MarkLoopTypeAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(MarkBlockTypeAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(FuseAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SplitAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(ReorderAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(ComputeAtAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(ReverseComputeAtAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(ComputeInlineAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(ReverseComputeInlineAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(CacheReadAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(CacheWriteAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(BlockizeAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(DecomposeReductionAttrs),
+      };
+#undef TVM_META_SCHEDULE_INST_VTABLE_ENTRY
+  CHECK_GE(record.size(), 3);
+  // Extract record[0]: inst_attrs::_name
+  String attrs_name = Downcast<String>(record[0]);
+  // Extract record[1]: inputs
+  Array<ObjectRef> inputs;
+  {
+    Array<ObjectRef> record_inputs = Downcast<Array<ObjectRef>>(record[1]);
+    inputs.reserve(record_inputs.size());
+    for (const ObjectRef& obj : record_inputs) {
+      if (const auto* integer = obj.as<IntImmNode>()) {
+        inputs.push_back(GetRef<Integer>(integer));
+      } else if (const auto* str = obj.as<StringObj>()) {
+        inputs.push_back(GetRef<String>(str));
+      } else {
+        LOG(FATAL) << "TypeError: Cannot deal with type '" << obj->GetTypeKey()
+                   << "' for input: " << obj;
+      }
+    }
+  }
+  // Extract record[2]: outputs
+  Array<String> record_outputs = Downcast<Array<String>>(record[2]);
+  // Extract record[3]: (optional) inst_attrs
+  InstAttrs inst_attrs = vtable.at(attrs_name)(record);
+  // TODO Extract record[4]: (optional) decision
+  // Get the new output random variables
+  Array<ObjectRef> outputs = inst_attrs->ApplyToSchedule(sch, inputs);
+  {
+    // link `record_outputs` and `outputs`
+    CHECK_EQ(record_outputs.size(), outputs.size());
+    int n = record_outputs.size();
+    for (int i = 0; i < n; ++i) {
+      named_rvs->Set(record_outputs[i], outputs[i]);
+    }
+  }
+  return outputs;
 }
 
 /**************** MakeInst  ****************/
