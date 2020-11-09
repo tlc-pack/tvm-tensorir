@@ -126,12 +126,13 @@ struct SRefTranslator {
 
   /*! \brief Translate the symbol table */
   TSymbolTable Trans(const TSymbolTable& tab) {
-    TSymbolTable result = tab;
-    for (auto& kv : result) {
-      Optional<ObjectRef>& entry = kv.second;
+    TSymbolTable result;
+    for (const auto& kv : tab) {
+      Optional<ObjectRef> entry = kv.second;
       if (const auto* sref = entry.as<StmtSRefNode>()) {
         entry = Trans(sref);
       }
+      result.Set(kv.first, entry);
     }
     return result;
   }
@@ -186,12 +187,43 @@ Schedule ScheduleNode::Copy(int new_seed) const {
                   /*seed=*/Integer(new_seed));
 }
 
-/**************** Evaluation ****************/
+/**************** Serialization ****************/
+
+Schedule ScheduleNode::Import(const Array<ObjectRef>& records, const tir::PrimFunc& orig_func,
+                              Optional<Integer> seed) {
+  Schedule sch(orig_func, seed);
+  Map<String, ObjectRef> named_rvs;
+  for (const ObjectRef& record_obj : records) {
+    Array<ObjectRef> record = Downcast<Array<ObjectRef>>(record_obj);
+    Instruction::ApplyToSchedule(sch.operator->(), record, &named_rvs);
+  }
+  return sch;
+}
+
+Array<ObjectRef> ScheduleNode::Export() const {
+  Map<ObjectRef, String> rv_names;
+  for (const Instruction& inst : trace) {
+    for (const ObjectRef& output : inst->outputs) {
+      int i = rv_names.size();
+      rv_names.Set(output, "v" + std::to_string(i));
+    }
+  }
+  Array<ObjectRef> records;
+  for (const Instruction& inst : trace) {
+    Optional<Array<ObjectRef>> decision = decisions.count(inst)
+                                              ? Optional<Array<ObjectRef>>(decisions.at(inst))
+                                              : Optional<Array<ObjectRef>>(NullOpt);
+    records.push_back(inst->Export(rv_names, decision));
+  }
+  return records;
+}
+
+/**************** Evaluation of random variables ****************/
 
 tir::StmtSRef ScheduleNode::Eval(const BlockRV& block) {
   auto iter = this->sym_tab.find(block);
   CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding BlockRV: " << block;
-  const Optional<ObjectRef>& obj = iter->second;
+  const Optional<ObjectRef>& obj = (*iter).second;
   CHECK(obj.defined()) << "ValueError: Corresponding BlockRV's value is not defined: " << block;
   if (const auto* sref = obj.as<tir::StmtSRefNode>()) {
     return GetRef<tir::StmtSRef>(sref);
@@ -203,7 +235,7 @@ tir::StmtSRef ScheduleNode::Eval(const BlockRV& block) {
 tir::StmtSRef ScheduleNode::Eval(const LoopRV& loop) {
   auto iter = this->sym_tab.find(loop);
   CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding LoopRV: " << loop;
-  const Optional<ObjectRef>& obj = iter->second;
+  const Optional<ObjectRef>& obj = (*iter).second;
   CHECK(obj.defined()) << "ValueError: Corresponding LoopRV's value is not defined: " << loop;
   if (const auto* sref = obj.as<tir::StmtSRefNode>()) {
     return GetRef<tir::StmtSRef>(sref);
@@ -216,7 +248,7 @@ tir::Buffer ScheduleNode::Eval(const BufferRV& buffer) {
   auto iter = this->sym_tab.find(buffer);
   CHECK(iter != this->sym_tab.end())
       << "IndexError: Cannot find corresponding BufferRV: " << buffer;
-  const Optional<ObjectRef>& obj = iter->second;
+  const Optional<ObjectRef>& obj = (*iter).second;
   CHECK(obj.defined()) << "ValueError: Corresponding BufferRV's value is not defined: " << buffer;
   if (const auto* sref = obj.as<tir::BufferNode>()) {
     return GetRef<tir::Buffer>(sref);
@@ -232,7 +264,7 @@ int ScheduleNode::Eval(const PrimExpr& expr) {
     auto iter = this->sym_tab.find(var);
     CHECK(iter != this->sym_tab.end())
         << "IndexError: Cannot find corresponding ExprRV: " << var << '@' << var.get();
-    const Optional<ObjectRef>& obj = iter->second;
+    const Optional<ObjectRef>& obj = (*iter).second;
     CHECK(obj.defined()) << "ValueError: Variable \"" << var->name_hint
                          << "\" is not defined in the meta scheduling";
     if (const auto* expr = obj.as<PrimExprNode>()) {
@@ -269,7 +301,7 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
     tir::Var output(name_prefix + std::to_string(i));
     outputs.push_back(output);
     // Update the symbol table
-    this->sym_tab.emplace(output, Integer(samples[i]));
+    this->sym_tab.Set(output, Integer(samples[i]));
   }
   // Put the instruction in the trace
   this->trace.push_back(
@@ -302,7 +334,7 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
     tir::Var output(name_prefix + std::to_string(i));
     outputs.push_back(output);
     // Update the symbol table
-    this->sym_tab.emplace(output, Integer(samples[i]));
+    this->sym_tab.Set(output, Integer(samples[i]));
   }
   // Put the instruction in the trace
   this->trace.push_back(SampleTileFactorAttrs::MakeInst(n_splits, loop, where, outputs));
@@ -377,7 +409,7 @@ tir::Var ScheduleNode::SampleFusibleLoops(const Array<LoopRV>& loops,
   // Create the output random variable
   tir::Var output("n_fusible");
   // Update the symbol table
-  this->sym_tab.emplace(output, Integer(n_fusible));
+  this->sym_tab.Set(output, Integer(n_fusible));
   // Put the instruction in the trace
   this->trace.push_back(
       SampleFusibleLoopsAttrs::MakeInst(loops, loop_types, max_extent, include_overflow_loop,
@@ -405,7 +437,7 @@ Optional<BlockRV> ScheduleNode::GetOnlyConsumer(const BlockRV& block) {
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
-  this->sym_tab.emplace(output, result_sref[0]);
+  this->sym_tab.Set(output, result_sref[0]);
   // Put the instruction in the trace
   this->trace.push_back(GetOnlyConsumerAttrs::MakeInst(block, output));
   return output;
@@ -419,7 +451,7 @@ BlockRV ScheduleNode::GetBlock(const String& name) {
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
-  this->sym_tab.emplace(output, tir_result[0]);
+  this->sym_tab.Set(output, tir_result[0]);
   // Put the instruction in the trace
   this->trace.push_back(GetBlockAttrs::MakeInst(name, output));
   return output;
@@ -434,7 +466,7 @@ Array<LoopRV> ScheduleNode::GetAxes(const BlockRV& block) {
     LoopRV output;
     outputs.push_back(output);
     // Update the symbol table
-    this->sym_tab.emplace(output, axis);
+    this->sym_tab.Set(output, axis);
   }
   // Put the instruction in the trace
   this->trace.push_back(GetAxesAttrs::MakeInst(block, outputs));
@@ -452,7 +484,7 @@ Array<BufferRV> ScheduleNode::GetReadBuffers(const BlockRV& block_rv) {
     BufferRV output;
     outputs.push_back(output);
     // Update the symbol table
-    this->sym_tab.emplace(output, tensor_region->buffer);
+    this->sym_tab.Set(output, tensor_region->buffer);
   }
   // Put the instruction in the trace
   this->trace.push_back(GetReadBuffersAttrs::MakeInst(block_rv, outputs));
@@ -470,7 +502,7 @@ Array<BufferRV> ScheduleNode::GetWriteBuffers(const BlockRV& block_rv) {
     BufferRV output;
     outputs.push_back(output);
     // Update the symbol table
-    this->sym_tab.emplace(output, tensor_region->buffer);
+    this->sym_tab.Set(output, tensor_region->buffer);
   }
   // Put the instruction in the trace
   this->trace.push_back(GetWriteBuffersAttrs::MakeInst(block_rv, outputs));
@@ -491,7 +523,7 @@ Array<BlockRV> ScheduleNode::GetRootBlocks() {
       BlockRV block_rv;
       outputs.push_back(block_rv);
       // Update the symbol table
-      this->sym_tab.emplace(block_rv, block_sref);
+      this->sym_tab.Set(block_rv, block_sref);
       return false;
     }
     return true;
@@ -534,7 +566,7 @@ Array<BlockRV> ScheduleNode::GetLeafBlocks() {
     BlockRV block_rv;
     outputs.push_back(block_rv);
     // Update the symbol table
-    this->sym_tab.emplace(block_rv, block_sref);
+    this->sym_tab.Set(block_rv, block_sref);
   }
   // Put the instruction in the trace
   this->trace.push_back(GetLeafBlocksAttrs::MakeInst(outputs));
@@ -573,7 +605,7 @@ LoopRV ScheduleNode::Fuse(const Array<LoopRV>& loops) {
   // Create the output random variable
   LoopRV output;
   // Update the symbol table
-  this->sym_tab.emplace(output, loop_sref);
+  this->sym_tab.Set(output, loop_sref);
   // Put the instruction in the trace
   this->trace.push_back(FuseAttrs::MakeInst(loops, output));
   return output;
@@ -624,7 +656,7 @@ Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<Optional<PrimE
     LoopRV output;
     outputs.push_back(output);
     // Update the symbol table
-    this->sym_tab.emplace(output, axis);
+    this->sym_tab.Set(output, axis);
   }
   // Put the instruction in the trace
   this->trace.push_back(SplitAttrs::MakeInst(loop, factors, outputs));
@@ -683,7 +715,7 @@ BlockRV ScheduleNode::CacheRead(const BufferRV& buffer_rv, const String& storage
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
-  this->sym_tab.emplace(output, tir_result);
+  this->sym_tab.Set(output, tir_result);
   // Put the instruction in the trace
   this->trace.push_back(CacheReadAttrs::MakeInst(buffer_rv, storage_scope, output));
   return output;
@@ -696,7 +728,7 @@ BlockRV ScheduleNode::CacheWrite(const BufferRV& buffer_rv, const String& storag
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
-  this->sym_tab.emplace(output, tir_result);
+  this->sym_tab.Set(output, tir_result);
   // Put the instruction in the trace
   this->trace.push_back(CacheWriteAttrs::MakeInst(buffer_rv, storage_scope, output));
   return output;
@@ -709,7 +741,7 @@ BlockRV ScheduleNode::Blockize(const LoopRV& loop_rv, const String& exec_scope) 
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
-  this->sym_tab.emplace(output, tir_result);
+  this->sym_tab.Set(output, tir_result);
   // Put the instruction in the trace
   this->trace.push_back(BlockizeAttrs::MakeInst(loop_rv, exec_scope, output));
   return output;
@@ -721,7 +753,7 @@ BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const LoopRV& loo
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
-  this->sym_tab.emplace(output, tir_result);
+  this->sym_tab.Set(output, tir_result);
   // Put the instruction in the trace
   this->trace.push_back(DecomposeReductionAttrs::MakeInst(block, loop, output));
   return output;
@@ -733,8 +765,10 @@ void ScheduleNode::MutateDecision(const Instruction& inst,
                                   const Optional<Array<ObjectRef>>& decision) {
   if (decision.defined()) {
     this->decisions.Set(inst, decision.value());
-  } else {
+  } else if (this->decisions.count(inst)) {
     this->decisions.erase(inst);
+  } else {
+    LOG(FATAL) << "ValueError: Cannot find the instruction in decisions";
   }
 }
 
@@ -797,25 +831,29 @@ void ScheduleNode::Replay(bool follow_decision) {
       Array<ObjectRef> decisions = this->decisions.at(old_inst);
       CHECK_EQ(decisions.size(), new_outputs.size());
       for (int i = 0, n = decisions.size(); i < n; ++i) {
-        new_sch->sym_tab[new_outputs[i]] = decisions[i];
+        new_sch->sym_tab.Set(new_outputs[i], decisions[i]);
       }
       new_sch->decisions.Set(new_inst, decisions);
     }
   }
-  // Step 3. Re-assign all the variables back according to the symbol table
   this->sch = new_sch->sch;
-  for (auto& kv_entry : this->sym_tab) {
-    const ObjectRef& old_var = kv_entry.first;
-    const ObjectRef& new_var = GetRef<ObjectRef>(var_map.at(old_var.get()));
-    kv_entry.second = new_sch->sym_tab.at(new_var);
+  // Step 3. Re-assign all the variables back according to the symbol table
+  {
+    TSymbolTable new_sym_tab;
+    for (const auto& kv_entry : this->sym_tab) {
+      ObjectRef old_var = kv_entry.first;
+      ObjectRef new_var = GetRef<ObjectRef>(var_map.at(old_var.get()));
+      new_sym_tab.Set(old_var, new_sch->sym_tab.at(new_var));
+    }
+    this->sym_tab = new_sym_tab;
   }
   // Step 4. Map decisions back
   Map<Instruction, Array<ObjectRef>> decisions;
-  for (auto& kv : this->decisions) {
-    const InstructionNode* old_inst = kv.first.operator->();
-    const InstructionNode* new_inst = inst_map.at(old_inst);
-    const Array<ObjectRef>& decision = new_sch->decisions.at(GetRef<Instruction>(new_inst));
-    decisions.Set(GetRef<Instruction>(old_inst), decision);
+  for (const Instruction& old_inst : this->trace) {
+    Instruction new_inst = GetRef<Instruction>(inst_map.at(old_inst.get()));
+    if (new_sch->decisions.count(new_inst)) {
+      decisions.Set(old_inst, new_sch->decisions.at(new_inst));
+    }
   }
   this->decisions = std::move(decisions);
 }
@@ -828,6 +866,7 @@ struct Internal {
    * \sa Schedule::Schedule
    */
   static Schedule New(tir::PrimFunc func, Optional<Integer> seed) { return Schedule(func, seed); }
+  /**************** Utility ****************/
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Seed
    * \sa ScheduleNode::Seed
@@ -838,6 +877,21 @@ struct Internal {
    * \sa ScheduleNode::Copy
    */
   static Schedule Copy(Schedule sch, int new_seed) { return sch->Copy(new_seed); }
+  /**************** Serialization ****************/
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::Import
+   * \sa ScheduleNode::Import
+   */
+  static Schedule Import(Array<ObjectRef> records, tir::PrimFunc orig_func,
+                         Optional<Integer> seed) {
+    return ScheduleNode::Import(records, orig_func, seed);
+  }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::Export
+   * \sa ScheduleNode::Export
+   */
+  static Array<ObjectRef> Export(Schedule self) { return self->Export(); }
+  /**************** Evaluation of random variables ****************/
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Eval
    * \sa ScheduleNode::Eval
@@ -1031,6 +1085,8 @@ TVM_REGISTER_NODE_TYPE(ScheduleNode);
 TVM_REGISTER_GLOBAL("meta_schedule.Schedule").set_body_typed(Internal::New);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSeed").set_body_typed(Internal::Seed);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCopy").set_body_typed(Internal::Copy);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleImport").set_body_typed(Internal::Import);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleExport").set_body_typed(Internal::Export);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleEval").set_body_typed(Internal::Eval);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSamplePerfectTile")
     .set_body_typed(Internal::SamplePerfectTile);
