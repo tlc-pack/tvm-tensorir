@@ -35,8 +35,7 @@ class Schedule;
 class ScheduleNode : public Object {
  public:
   /*! \brief Type of the symbol table, which maps a random variable to its value */
-  using TSymbolTable =
-      std::unordered_map<ObjectRef, Optional<ObjectRef>, ObjectPtrHash, ObjectPtrEqual>;
+  using TSymbolTable = Map<ObjectRef, Optional<ObjectRef>>;
 
  public:
   /*! \brief The original TIR PrimFunc to be scheduled */
@@ -57,7 +56,7 @@ class ScheduleNode : public Object {
     v->Visit("sch", &sch);
     v->Visit("trace", &trace);
     v->Visit("decisions", &decisions);
-    // `sym_tab` is not visited
+    v->Visit("sym_tab", &sym_tab);
     // `sampler` is not visited
   }
   static constexpr const char* _type_key = "meta_schedule.Schedule";
@@ -74,6 +73,21 @@ class ScheduleNode : public Object {
    * \return A new schedule.
    */
   Schedule Copy(int new_seed) const;
+  /**************** Serialization ****************/
+  /*!
+   * \brief Import from the records
+   * \param records The serialized trace of scheduling
+   * \param orig_func The TIR function to be scheduled
+   * \param seed The random seed
+   * \return The schedule imported
+   */
+  static Schedule Import(const Array<ObjectRef>& records, const tir::PrimFunc& orig_func,
+                         Optional<Integer> seed);
+  /*!
+   * \brief Export as records
+   * \return The record exported
+   */
+  Array<ObjectRef> Export() const;
   /**************** Evaluation of random variables ****************/
   /*!
    * \brief Evaluate the value of a random variable of type Block
