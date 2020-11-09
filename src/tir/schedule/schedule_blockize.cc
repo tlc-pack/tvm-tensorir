@@ -39,6 +39,33 @@ bool CheckOneLine(const Stmt& s) {
   return legal;
 }
 
+Array<arith::DivisionForm> WeakSubspaceDivision(const Array<PrimExpr>& indices,
+                                                const Map<Var, Range>& input_iters,
+                                                const Array<Var>& inner_iters,
+                                                const PrimExpr& predicate,
+                                                arith::Analyzer* analyzer) {
+  std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> inner_iter_range;
+  for (const auto& inner_iter : inner_iters) inner_iter_range[inner_iter] = input_iters[inner_iter];
+  auto divisions =
+      arith::SubspaceDivision(indices, inner_iter_range, inner_iters, predicate, analyzer);
+  std::vector<arith::DivisionForm> res;
+  for (const auto& division : divisions) {
+    if (!division->IsInner()) return {};
+    if (const auto* inner = division->inner.as<arith::IterSumExprNode>()) {
+      if (is_zero(inner->base)) {
+        res.push_back(division);
+      } else {
+        if (!inner->args.empty()) return {};
+        res.emplace_back(arith::IterSumExpr({}, inner->base), 1, arith::IterSumExpr({}, 0), 1);
+      }
+    } else {
+      if (!division->InnerIsSplit()) return {};
+      res.push_back(division);
+    }
+  }
+  return res;
+}
+
 StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_scope) {
   /*!
    * Check:
@@ -81,6 +108,11 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
   arith::Analyzer analyzer;
   auto division = arith::SubspaceDivision(block_realize->binding_values, iters, inner_iters,
                                           block_realize->predicate, &analyzer);
+  if (division.empty()) {
+    // It is still possible to blockize if we can not do perfect subspace division
+    division = WeakSubspaceDivision(block_realize->binding_values, iters, inner_iters,
+                                    block_realize->predicate, &analyzer);
+  }
   CHECK(!division.empty())
       << "ValueError: The bindings of the block below can not be blockized by loops under "
       << loop->loop_var;
@@ -137,6 +169,20 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
         return 0;
       }
     };
+    // Check if the range contains block vars that is not outer
+    std::unordered_set<const VarNode*> vars;
+    CollectVars(vars, range->extent);
+    CollectVars(vars, range->min);
+    bool find = false;
+    for (const auto& var : vars) {
+      auto it = block_var_no.find(GetRef<Var>(var));
+      if (it != block_var_no.end() && !division[it->second]->IsOuter()) {
+        find = true;
+        break;
+      }
+    }
+    // The range is constant
+    if (!find) return range;
     // Detect that the range is under valid pattern
     arith::PVar<Var> v;
     arith::PVar<PrimExpr> d, c;
