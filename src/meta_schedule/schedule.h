@@ -73,6 +73,21 @@ class ScheduleNode : public Object {
    * \return A new schedule.
    */
   Schedule Copy(int new_seed) const;
+  /**************** Serialization ****************/
+  /*!
+   * \brief Import from the records
+   * \param records The trace of scheduling
+   * \param orig_func The TIR function to be scheduled
+   * \param seed The random seed
+   * \return The schedule imported
+   */
+  static Schedule Import(const Array<ObjectRef>& records, const tir::PrimFunc& orig_func,
+                         Optional<Integer> seed);
+  /*!
+   * \brief Export as records
+   * \return The record exported
+   */
+  Array<ObjectRef> Export() const;
   /**************** Evaluation of random variables ****************/
   /*!
    * \brief Evaluate the value of a random variable of type Block

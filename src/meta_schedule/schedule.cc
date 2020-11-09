@@ -187,7 +187,38 @@ Schedule ScheduleNode::Copy(int new_seed) const {
                   /*seed=*/Integer(new_seed));
 }
 
-/**************** Evaluation ****************/
+/**************** Serialization ****************/
+
+Schedule ScheduleNode::Import(const Array<ObjectRef>& records, const tir::PrimFunc& orig_func,
+                              Optional<Integer> seed) {
+  Schedule sch(orig_func, seed);
+  Map<String, ObjectRef> named_rvs;
+  for (const ObjectRef& record_obj : records) {
+    Array<ObjectRef> record = Downcast<Array<ObjectRef>>(record_obj);
+    Instruction::ApplyToSchedule(sch.operator->(), record, &named_rvs);
+  }
+  return sch;
+}
+
+Array<ObjectRef> ScheduleNode::Export() const {
+  Map<ObjectRef, String> rv_names;
+  for (const Instruction& inst : trace) {
+    for (const ObjectRef& output : inst->outputs) {
+      int i = rv_names.size();
+      rv_names.Set(output, "v" + std::to_string(i));
+    }
+  }
+  Array<ObjectRef> records;
+  for (const Instruction& inst : trace) {
+    Optional<Array<ObjectRef>> decision = decisions.count(inst)
+                                              ? Optional<Array<ObjectRef>>(decisions.at(inst))
+                                              : Optional<Array<ObjectRef>>(NullOpt);
+    records.push_back(inst->Export(rv_names, decision));
+  }
+  return records;
+}
+
+/**************** Evaluation of random variables ****************/
 
 tir::StmtSRef ScheduleNode::Eval(const BlockRV& block) {
   auto iter = this->sym_tab.find(block);
@@ -833,6 +864,7 @@ struct Internal {
    * \sa Schedule::Schedule
    */
   static Schedule New(tir::PrimFunc func, Optional<Integer> seed) { return Schedule(func, seed); }
+  /**************** Utility ****************/
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Seed
    * \sa ScheduleNode::Seed
@@ -843,6 +875,21 @@ struct Internal {
    * \sa ScheduleNode::Copy
    */
   static Schedule Copy(Schedule sch, int new_seed) { return sch->Copy(new_seed); }
+  /**************** Serialization ****************/
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::Import
+   * \sa ScheduleNode::Import
+   */
+  static Schedule Import(Array<ObjectRef> records, tir::PrimFunc orig_func,
+                         Optional<Integer> seed) {
+    return ScheduleNode::Import(records, orig_func, seed);
+  }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::Export
+   * \sa ScheduleNode::Export
+   */
+  static Array<ObjectRef> Export(Schedule self) { return self->Export(); }
+  /**************** Evaluation of random variables ****************/
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Eval
    * \sa ScheduleNode::Eval
@@ -1036,6 +1083,8 @@ TVM_REGISTER_NODE_TYPE(ScheduleNode);
 TVM_REGISTER_GLOBAL("meta_schedule.Schedule").set_body_typed(Internal::New);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSeed").set_body_typed(Internal::Seed);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCopy").set_body_typed(Internal::Copy);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleImport").set_body_typed(Internal::Import);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleExport").set_body_typed(Internal::Export);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleEval").set_body_typed(Internal::Eval);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSamplePerfectTile")
     .set_body_typed(Internal::SamplePerfectTile);
