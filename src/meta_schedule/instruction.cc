@@ -54,7 +54,8 @@ Instruction::Instruction(Array<ObjectRef> inputs, Array<ObjectRef> outputs, Inst
 
 /**************** Instruction  ****************/
 
-Array<ObjectRef> InstructionNode::Export(const Map<ObjectRef, String>& rv_names) const {
+Array<ObjectRef> InstructionNode::Export(const Map<ObjectRef, String>& rv_names,
+                                         const Optional<Array<ObjectRef>>& decision) const {
   Array<ObjectRef> record;
   record.reserve(4);
   // record[0]: inst_attrs::_name
@@ -69,8 +70,8 @@ Array<ObjectRef> InstructionNode::Export(const Map<ObjectRef, String>& rv_names)
     }
   }
   // record[3]: (optional) inst_attrs
-  // TODO record[4]: (optional) decision
-  inst_attrs->Export(&record);
+  // record[4]: (optional) decision
+  inst_attrs->Export(&record, decision);
   return record;
 }
 
@@ -111,6 +112,7 @@ Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Array<Obj
       };
 #undef TVM_META_SCHEDULE_INST_VTABLE_ENTRY
   CHECK_GE(record.size(), 3);
+  CHECK_LE(record.size(), 5);
   // Extract record[0]: inst_attrs::_name
   String attrs_name = Downcast<String>(record[0]);
   // Extract record[1]: inputs
@@ -133,7 +135,10 @@ Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Array<Obj
   Array<String> record_outputs = Downcast<Array<String>>(record[2]);
   // Extract record[3]: (optional) inst_attrs
   InstAttrs inst_attrs = vtable.at(attrs_name)(record);
-  // TODO Extract record[4]: (optional) decision
+  // Extract record[4]: (optional) decision
+  Optional<Array<ObjectRef>> opt_decision = record.size() >= 5
+                                                ? Downcast<Array<ObjectRef>>(record[4])
+                                                : Optional<Array<ObjectRef>>(NullOpt);
   // Get the new output random variables
   Array<ObjectRef> outputs = inst_attrs->ApplyToSchedule(sch, inputs);
   {
@@ -143,6 +148,15 @@ Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Array<Obj
     for (int i = 0; i < n; ++i) {
       named_rvs->Set(record_outputs[i], outputs[i]);
     }
+  }
+  if (opt_decision.defined()) {
+    Array<ObjectRef> decision = opt_decision.value();
+    CHECK_EQ(decision.size(), outputs.size());
+    int n = decision.size();
+    for (int i = 0; i < n; ++i) {
+      sch->sym_tab.Set(outputs[i], decision[i]);
+    }
+    sch->decisions.Set(sch->trace.back(), decision);
   }
   return outputs;
 }
@@ -557,75 +571,148 @@ Array<ObjectRef> DecomposeReductionAttrs::ApplyToSchedule(ScheduleNode* sch,
 /**************** Export  ****************/
 /**************** (Export) Sampling  ****************/
 
-void SamplePerfectTileAttrs::Export(Array<ObjectRef>* result) const {
-  result->push_back(Array<ObjectRef>{
+void SamplePerfectTileAttrs::Export(Array<ObjectRef>* record,
+                                    const Optional<Array<ObjectRef>>& decision) const {
+  record->push_back(Array<ObjectRef>{
       Integer(n_splits),              //
       Integer(max_innermost_factor),  //
   });
+  if (decision.defined()) {
+    record->push_back(decision.value());
+  }
 }
 
-void SampleTileFactorAttrs::Export(Array<ObjectRef>* result) const {
-  result->push_back(Array<ObjectRef>{
+void SampleTileFactorAttrs::Export(Array<ObjectRef>* record,
+                                   const Optional<Array<ObjectRef>>& decision) const {
+  record->push_back(Array<ObjectRef>{
       Integer(n_splits),  //
       where,              //
   });
+  if (decision.defined()) {
+    record->push_back(decision.value());
+  }
 }
 
-void SampleFusibleLoopsAttrs::Export(Array<ObjectRef>* result) const {
-  result->push_back(Array<ObjectRef>{
+void SampleFusibleLoopsAttrs::Export(Array<ObjectRef>* record,
+                                     const Optional<Array<ObjectRef>>& decision) const {
+  record->push_back(Array<ObjectRef>{
       loop_types,                      //
       Integer(max_extent),             //
       Integer(include_overflow_loop),  //
       Integer(order),                  //
       Integer(mode),                   //
   });
+  if (decision.defined()) {
+    record->push_back(decision.value());
+  }
 }
 
 /**************** (Export) Block/Loop Relationship  ****************/
 
-void GetOnlyConsumerAttrs::Export(Array<ObjectRef>* result) const {}
-
-void GetBlockAttrs::Export(Array<ObjectRef>* result) const {
-  result->push_back(Array<ObjectRef>{name});
+void GetOnlyConsumerAttrs::Export(Array<ObjectRef>* record,
+                                  const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
 }
 
-void GetAxesAttrs::Export(Array<ObjectRef>* result) const {}
-void GetReadBuffersAttrs::Export(Array<ObjectRef>* result) const {}
-void GetWriteBuffersAttrs::Export(Array<ObjectRef>* result) const {}
-void GetRootBlocksAttrs::Export(Array<ObjectRef>* result) const {}
-void GetLeafBlocksAttrs::Export(Array<ObjectRef>* result) const {}
+void GetBlockAttrs::Export(Array<ObjectRef>* record,
+                           const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+  record->push_back(Array<ObjectRef>{name});
+}
+
+void GetAxesAttrs::Export(Array<ObjectRef>* record,
+                          const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+}
+
+void GetReadBuffersAttrs::Export(Array<ObjectRef>* record,
+                                 const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+}
+
+void GetWriteBuffersAttrs::Export(Array<ObjectRef>* record,
+                                  const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+}
+
+void GetRootBlocksAttrs::Export(Array<ObjectRef>* record,
+                                const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+}
+
+void GetLeafBlocksAttrs::Export(Array<ObjectRef>* record,
+                                const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+}
 
 /**************** (Export) Scheduling Primitives  ****************/
 
-void MarkLoopTypeAttrs::Export(Array<ObjectRef>* result) const {
-  result->push_back(Array<ObjectRef>{mark});
+void MarkLoopTypeAttrs::Export(Array<ObjectRef>* record,
+                               const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+  record->push_back(Array<ObjectRef>{mark});
 }
 
-void MarkBlockTypeAttrs::Export(Array<ObjectRef>* result) const {
-  result->push_back(Array<ObjectRef>{mark});
+void MarkBlockTypeAttrs::Export(Array<ObjectRef>* record,
+                                const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+  record->push_back(Array<ObjectRef>{mark});
 }
 
-void FuseAttrs::Export(Array<ObjectRef>* result) const {}
-void SplitAttrs::Export(Array<ObjectRef>* result) const {}
-void ReorderAttrs::Export(Array<ObjectRef>* result) const {}
-void ComputeAtAttrs::Export(Array<ObjectRef>* result) const {}
-void ReverseComputeAtAttrs::Export(Array<ObjectRef>* result) const {}
-void ComputeInlineAttrs::Export(Array<ObjectRef>* result) const {}
-void ReverseComputeInlineAttrs::Export(Array<ObjectRef>* result) const {}
-
-void CacheReadAttrs::Export(Array<ObjectRef>* result) const {
-  result->push_back(Array<ObjectRef>{storage_scope});
+void FuseAttrs::Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
 }
 
-void CacheWriteAttrs::Export(Array<ObjectRef>* result) const {
-  result->push_back(Array<ObjectRef>{storage_scope});
+void SplitAttrs::Export(Array<ObjectRef>* record,
+                        const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
 }
 
-void BlockizeAttrs::Export(Array<ObjectRef>* result) const {
-  result->push_back(Array<ObjectRef>{exec_scope});
+void ReorderAttrs::Export(Array<ObjectRef>* record,
+                          const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
 }
 
-void DecomposeReductionAttrs::Export(Array<ObjectRef>* result) const {}
+void ComputeAtAttrs::Export(Array<ObjectRef>* record,
+                            const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+}
+
+void ReverseComputeAtAttrs::Export(Array<ObjectRef>* record,
+                                   const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+}
+void ComputeInlineAttrs::Export(Array<ObjectRef>* record,
+                                const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+}
+void ReverseComputeInlineAttrs::Export(Array<ObjectRef>* record,
+                                       const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+}
+
+void CacheReadAttrs::Export(Array<ObjectRef>* record,
+                            const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+  record->push_back(Array<ObjectRef>{storage_scope});
+}
+
+void CacheWriteAttrs::Export(Array<ObjectRef>* record,
+                             const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+  record->push_back(Array<ObjectRef>{storage_scope});
+}
+
+void BlockizeAttrs::Export(Array<ObjectRef>* record,
+                           const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+  record->push_back(Array<ObjectRef>{exec_scope});
+}
+
+void DecomposeReductionAttrs::Export(Array<ObjectRef>* record,
+                                     const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+}
 
 /**************** Import  ****************/
 /**************** (Import) Sampling  ****************/
