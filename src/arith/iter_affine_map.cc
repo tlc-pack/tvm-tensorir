@@ -1221,7 +1221,7 @@ Array<DivisionForm> SubspaceDivision(const Array<PrimExpr>& indices,
                                      const Array<Var>& inner_iters, const PrimExpr& predicate,
                                      arith::Analyzer* analyzer) {
   const auto& maps = DetectIterMap(indices, input_iters, predicate, analyzer);
-  if (indices.empty()) return {};
+  if (maps.empty()) return {};
 
   std::unordered_set<const VarNode*> inner_iter_set;
   for (const auto& inner_iter : inner_iters) inner_iter_set.insert(inner_iter.get());
