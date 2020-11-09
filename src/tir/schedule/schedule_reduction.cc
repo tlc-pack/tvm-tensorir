@@ -285,6 +285,11 @@ class VarCollector : public StmtExprVisitor {
   std::unordered_set<const VarNode*>& res;
 };
 
+void CollectVars(std::unordered_set<const VarNode*>& res, const PrimExpr& expr) {
+  VarCollector collector(res);
+  collector(expr);
+}
+
 StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   const auto* loop = loop_sref->GetStmt<LoopNode>();
   CHECK(loop) << "TypeError: Only support rfactor a loop for now, but get type: "
@@ -304,11 +309,9 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   std::unordered_set<const VarNode*> data_par_loops, reduce_loops;
   for (size_t i = 0; i < block->iter_vars.size(); ++i) {
     if (block->iter_vars[i]->iter_type == IterVarType::kDataPar) {
-      VarCollector collector(data_par_loops);
-      collector(block_realize->binding_values[i]);
+      CollectVars(data_par_loops, block_realize->binding_values[i]);
     } else if (block->iter_vars[i]->iter_type == IterVarType::kCommReduce) {
-      VarCollector collector(reduce_loops);
-      collector(block_realize->binding_values[i]);
+      CollectVars(reduce_loops, block_realize->binding_values[i]);
     }
   }
   // Get the ReduceStep inside the block
