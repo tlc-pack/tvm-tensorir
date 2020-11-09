@@ -185,6 +185,8 @@ class StmtReplacer : public StmtMutator {
 
 bool CheckOneLine(const Stmt& s);
 
+void CollectVars(std::unordered_set<const VarNode*>& res, const PrimExpr& expr);
+
 /*!
  * \brief PrimExpr pattern matcher.
  *
