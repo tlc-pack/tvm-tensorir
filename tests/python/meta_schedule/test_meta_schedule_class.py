@@ -239,10 +239,17 @@ def elementwise_inlined(a: ty.handle, c: ty.handle) -> None:
 # pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks
 
 
+def _check_serialization(sch, func):
+    record = sch.export()
+    new_sch = ms.Schedule.import_(record, func)
+    assert tvm.ir.structural_equal(new_sch.sch.func, sch.sch.func)
+
+
 def test_meta_schedule_creation():
     sch = ms.Schedule(func=matmul)
     assert tvm.ir.structural_equal(sch.orig_func, sch.sch.func)
     assert len(sch.trace) == 0
+    _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_copy():
@@ -271,6 +278,8 @@ def test_meta_schedule_copy():
         sch.evaluate(j_1)
     assert sch_copy.evaluate(j_0).stmt.extent == 4
     assert sch_copy.evaluate(j_1).stmt.extent == 256
+    _check_serialization(sch, func=matmul)
+    _check_serialization(sch_copy, func=matmul)
 
 
 def test_meta_schedule_sample_tile_factor():
@@ -285,6 +294,7 @@ def test_meta_schedule_sample_tile_factor():
         assert i in where
     prod = reduce(lambda x, y: x * y, factors)
     assert prod == 1024
+    _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_sample_perfect_tile():
@@ -296,6 +306,7 @@ def test_meta_schedule_sample_perfect_tile():
     factors = [sch.evaluate(i) for i in factors]
     prod = reduce(lambda x, y: x * y, factors)
     assert prod == 1024
+    _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_sample_fusible_loops():
@@ -333,6 +344,7 @@ def test_meta_schedule_sample_fusible_loops():
         order="inner_to_outer",
     )
     assert sch.evaluate(result) == 1
+    _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_get_only_consumer():
@@ -343,6 +355,7 @@ def test_meta_schedule_get_only_consumer():
         sch.evaluate(consumer).stmt,
         sch.evaluate(sch.get_block("relu")).stmt,
     )
+    _check_serialization(sch, func=matmul_relu)
 
 
 def test_meta_schedule_get_block():
@@ -352,6 +365,7 @@ def test_meta_schedule_get_block():
         sch.evaluate(block).stmt,
         matmul.body.block.body.body.body.body.block,
     )
+    _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_get_axes():
@@ -362,6 +376,7 @@ def test_meta_schedule_get_axes():
     assert tvm.ir.structural_equal(i_0, matmul.body.block.body)
     assert tvm.ir.structural_equal(i_1, matmul.body.block.body.body)
     assert tvm.ir.structural_equal(i_2, matmul.body.block.body.body.body)
+    _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_get_read_buffers():
@@ -373,6 +388,7 @@ def test_meta_schedule_get_read_buffers():
     assert buffers[0].name == "C"
     assert buffers[1].name == "A"
     assert buffers[2].name == "B"
+    _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_get_write_buffers():
@@ -382,24 +398,29 @@ def test_meta_schedule_get_write_buffers():
     buffers = [sch.evaluate(b) for b in buffers]
     assert len(buffers) == 1
     assert buffers[0].name == "C"
+    _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_get_root_blocks():
     sch = ms.Schedule(func=matmul)
     blocks = sch.get_root_blocks()
     assert len(blocks) == 1
+    _check_serialization(sch, func=matmul)
     sch = ms.Schedule(func=matmul_relu)
     blocks = sch.get_root_blocks()
     assert len(blocks) == 2
+    _check_serialization(sch, func=matmul_relu)
 
 
 def test_meta_schedule_get_leaf_blocks():
     sch = ms.Schedule(func=matmul)
     blocks = sch.get_leaf_blocks()
     assert len(blocks) == 1
+    _check_serialization(sch, func=matmul)
     sch = ms.Schedule(func=matmul_relu)
     blocks = sch.get_leaf_blocks()
     assert len(blocks) == 2
+    _check_serialization(sch, func=matmul_relu)
 
 
 def test_meta_schedule_mark_loop_type():
@@ -419,6 +440,7 @@ def test_meta_schedule_mark_loop_type():
     check_annotation(sch, i)
     check_annotation(sch, j)
     check_annotation(sch, k)
+    _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_mark_block_type():
@@ -433,6 +455,7 @@ def test_meta_schedule_mark_block_type():
     block = sch.get_block("matmul")
     sch.mark_block_type(block, "lazy_tensorize")
     check_annotation(sch, block)
+    _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_fuse():
@@ -441,6 +464,7 @@ def test_meta_schedule_fuse():
     i, j, _ = sch.get_axes(block)
     sch.fuse(loops=[i, j])
     assert len(sch.get_axes(block)) == 2
+    _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_split():
@@ -450,6 +474,7 @@ def test_meta_schedule_split():
     assert tvm.ir.structural_equal(i_0, sch.sch.func.body.block.body)
     assert tvm.ir.structural_equal(i_1, sch.sch.func.body.block.body.body)
     assert tvm.ir.structural_equal(i_2, sch.sch.func.body.block.body.body.body)
+    _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_reorder():
@@ -465,6 +490,7 @@ def test_meta_schedule_reorder():
     assert tvm.ir.structural_equal(i_0, ti_0.stmt)
     assert tvm.ir.structural_equal(i_1, ti_1.stmt)
     assert tvm.ir.structural_equal(i_2, ti_2.stmt)
+    _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_compute_at():
@@ -474,6 +500,7 @@ def test_meta_schedule_compute_at():
     _, _, i_2 = sch.get_axes(matmul_block)
     sch.compute_at(plus_one_block, i_2)
     assert tvm.ir.structural_equal(sch.sch.func, plus_one_matmul_fused)
+    _check_serialization(sch, func=plus_one_matmul)
 
 
 def test_meta_schedule_reverse_compute_at():
@@ -483,6 +510,7 @@ def test_meta_schedule_reverse_compute_at():
     _, i_1, _ = sch.get_axes(matmul_block)
     sch.reverse_compute_at(relu_block, i_1)
     assert tvm.ir.structural_equal(sch.sch.func, matmul_relu_fused)
+    _check_serialization(sch, func=matmul_relu)
 
 
 def test_meta_schedule_compute_inline():
@@ -490,6 +518,7 @@ def test_meta_schedule_compute_inline():
     block = sch.get_block(name="B")
     sch.compute_inline(block=block)
     assert tvm.ir.structural_equal(sch.sch.func, elementwise_inlined)
+    _check_serialization(sch, func=elementwise)
 
 
 def test_meta_schedule_cache_read():
@@ -499,6 +528,7 @@ def test_meta_schedule_cache_read():
     sch.cache_read(buffer_a, storage_scope="local")
     sch.cache_read(buffer_b, storage_scope="local")
     assert tvm.ir.structural_equal(sch.sch.func, matmul_cache_read)
+    _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_cache_write():
@@ -507,6 +537,7 @@ def test_meta_schedule_cache_write():
     (buffer,) = sch.get_write_buffers(block)
     sch.cache_write(buffer, storage_scope="local")
     assert tvm.ir.structural_equal(sch.sch.func, matmul_cache_write)
+    _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_blockize():
@@ -515,6 +546,7 @@ def test_meta_schedule_blockize():
     _, _, k = sch.get_axes(block)
     sch.blockize(k)
     assert tvm.ir.structural_equal(sch.sch.func, matmul_blockized)
+    _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_mutate_decision():
@@ -528,6 +560,7 @@ def test_meta_schedule_mutate_decision():
     assert list(sch.decisions[i_inst]) == [1, 1, 1, 1024]
     sch.mutate_decision(j_inst, None)
     assert not j_inst in sch.decisions
+    _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_resample():
@@ -539,6 +572,7 @@ def test_meta_schedule_resample():
     j_tiles = sch.sample_perfect_tile(n_splits=3, loop=j)
     i_inst = sch.trace[-2]
     j_inst = sch.trace[-1]
+    _check_serialization(sch, func=matmul)
     for _ in range(10):
         sch.resample()
         i_eval = [sch.evaluate(i) for i in i_tiles]
@@ -549,6 +583,7 @@ def test_meta_schedule_resample():
         assert j_eval == j_dec
         assert reduce(lambda x, y: x * y, i_eval) == 1024
         assert reduce(lambda x, y: x * y, j_eval) == 1024
+        _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_replay_decision():
@@ -564,10 +599,11 @@ def test_meta_schedule_replay_decision():
     sch.split(loop=j, factors=j_tiles)
     i_cnt = defaultdict(int)
     j_cnt = defaultdict(int)
+    # _check_serialization(sch, func=matmul)
     for _ in range(100):
         # set i to deterministic
         sch.mutate_decision(i_inst, [1, 1, 1, 1024])
-        # set i to random
+        # set j to random
         sch.mutate_decision(j_inst, None)
         # go!
         sch.replay_decision()
@@ -575,6 +611,7 @@ def test_meta_schedule_replay_decision():
         j_eval = [sch.evaluate(j) for j in j_tiles]
         i_cnt[str(i_eval)] += 1
         j_cnt[str(j_eval)] += 1
+        _check_serialization(sch, func=matmul)
     assert len(i_cnt) == 1
     assert len(j_cnt) > 1
 
