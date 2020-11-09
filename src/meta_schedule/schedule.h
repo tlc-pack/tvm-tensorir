@@ -76,7 +76,7 @@ class ScheduleNode : public Object {
   /**************** Serialization ****************/
   /*!
    * \brief Import from the records
-   * \param records The trace of scheduling
+   * \param records The serialized trace of scheduling
    * \param orig_func The TIR function to be scheduled
    * \param seed The random seed
    * \return The schedule imported

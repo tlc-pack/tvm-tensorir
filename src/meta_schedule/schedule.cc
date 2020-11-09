@@ -765,8 +765,10 @@ void ScheduleNode::MutateDecision(const Instruction& inst,
                                   const Optional<Array<ObjectRef>>& decision) {
   if (decision.defined()) {
     this->decisions.Set(inst, decision.value());
-  } else {
+  } else if (this->decisions.count(inst)) {
     this->decisions.erase(inst);
+  } else {
+    LOG(FATAL) << "ValueError: Cannot find the instruction in decisions";
   }
 }
 
@@ -847,11 +849,11 @@ void ScheduleNode::Replay(bool follow_decision) {
   }
   // Step 4. Map decisions back
   Map<Instruction, Array<ObjectRef>> decisions;
-  for (auto& kv : this->decisions) {
-    const InstructionNode* old_inst = kv.first.operator->();
-    const InstructionNode* new_inst = inst_map.at(old_inst);
-    const Array<ObjectRef>& decision = new_sch->decisions.at(GetRef<Instruction>(new_inst));
-    decisions.Set(GetRef<Instruction>(old_inst), decision);
+  for (const Instruction& old_inst : this->trace) {
+    Instruction new_inst = GetRef<Instruction>(inst_map.at(old_inst.get()));
+    if (new_sch->decisions.count(new_inst)) {
+      decisions.Set(old_inst, new_sch->decisions.at(new_inst));
+    }
   }
   this->decisions = std::move(decisions);
 }

@@ -63,11 +63,16 @@ Array<ObjectRef> InstructionNode::Export(const Map<ObjectRef, String>& rv_names,
   // record[1]: inputs
   // record[2]: outputs
   for (const Array<ObjectRef>& rvs : {this->inputs, this->outputs}) {
-    Array<String> names;
+    Array<ObjectRef> names;
     names.reserve(rvs.size());
     for (const ObjectRef& rv : rvs) {
-      names.push_back(rv_names.at(rv));
+      if (const auto* integer = rv.as<IntImmNode>()) {
+        names.push_back(GetRef<IntImm>(integer));
+      } else {
+        names.push_back(rv_names.at(rv));
+      }
     }
+    record.push_back(names);
   }
   // record[3]: (optional) inst_attrs
   // record[4]: (optional) decision
@@ -124,7 +129,7 @@ Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Array<Obj
       if (const auto* integer = obj.as<IntImmNode>()) {
         inputs.push_back(GetRef<Integer>(integer));
       } else if (const auto* str = obj.as<StringObj>()) {
-        inputs.push_back(GetRef<String>(str));
+        inputs.push_back(named_rvs->at(GetRef<String>(str)));
       } else {
         LOG(FATAL) << "TypeError: Cannot deal with type '" << obj->GetTypeKey()
                    << "' for input: " << obj;
@@ -718,7 +723,8 @@ void DecomposeReductionAttrs::Export(Array<ObjectRef>* record,
 /**************** (Import) Sampling  ****************/
 
 InstAttrs SamplePerfectTileAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 4);
+  CHECK_GE(record.size(), 4);
+  CHECK_LE(record.size(), 5);
   Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
   CHECK_EQ(from.size(), 2);
   ObjectPtr<SamplePerfectTileAttrs> n = make_object<SamplePerfectTileAttrs>();
@@ -728,7 +734,8 @@ InstAttrs SamplePerfectTileAttrs::Import(const Array<ObjectRef>& record) {
 }
 
 InstAttrs SampleTileFactorAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 4);
+  CHECK_GE(record.size(), 4);
+  CHECK_LE(record.size(), 5);
   Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
   CHECK_EQ(from.size(), 2);
   ObjectPtr<SampleTileFactorAttrs> n = make_object<SampleTileFactorAttrs>();
@@ -738,7 +745,8 @@ InstAttrs SampleTileFactorAttrs::Import(const Array<ObjectRef>& record) {
 }
 
 InstAttrs SampleFusibleLoopsAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 4);
+  CHECK_GE(record.size(), 4);
+  CHECK_LE(record.size(), 5);
   Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
   CHECK_EQ(from.size(), 5);
   ObjectPtr<SampleFusibleLoopsAttrs> n = make_object<SampleFusibleLoopsAttrs>();
