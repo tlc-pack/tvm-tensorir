@@ -17,7 +17,6 @@
  * under the License.
  */
 
-#include <tvm/node/structural_equal.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/builtin.h>
@@ -554,9 +553,13 @@ void ScheduleNode::tensorize(const StmtSRef& loop_sref, const TensorIntrin& intr
   std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> bv_map;
   for (size_t i = 0; i < desc_block->iter_vars.size(); ++i) {
     auto it = comparator.equal_map_.find(desc_block->iter_vars[i]->var);
-    CHECK(it != comparator.equal_map_.end());
-    bv_map[impl_block->iter_vars[i]->var] = Downcast<PrimExpr>(it->second);
+    if (it != comparator.equal_map_.end()) {
+      bv_map[impl_block->iter_vars[i]->var] = Downcast<PrimExpr>(it->second);
+    } else {
+      bv_map[impl_block->iter_vars[i]->var] = 0;
+    }
   }
+
   Stmt new_body = SubstituteInScope(new_block->body, [&](const VarNode* var) -> PrimExpr {
     auto it = bv_map.find(GetRef<Var>(var));
     if (it == bv_map.end())
