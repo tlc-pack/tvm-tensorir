@@ -15,7 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Main class of meta schedule """
-from typing import List, Optional, Tuple, Union
+import json
+from typing import List, Optional, Union, Any
 
 from tvm import ir, tir
 from tvm._ffi import register_object
@@ -71,6 +72,55 @@ class Schedule(Object):
             A new schedule
         """
         return _ffi_api.ScheduleCopy(self, seed)  # pylint: disable=no-member
+
+    ######### Serialization #########
+
+    @staticmethod
+    def import_(
+        record: str,
+        func: tir.PrimFunc,
+        seed: Optional[int] = None,
+    ) -> "Schedule":
+        """Import from the records
+
+        Parameters
+        ----------
+        record : str
+            The serialized trace of scheduling
+        func : tir.PrimFunc
+            The TIR function to be scheduled
+        seed : Optional[int]
+            The random seed
+
+        Returns
+        -------
+        schedule : Schedule
+            The schedule imported
+        """
+        record = json.loads(record)
+        return _ffi_api.ScheduleImport(record, func, seed)  # pylint: disable=no-member
+
+    def export(self) -> str:
+        """Export as records
+
+        Returns
+        -------
+        records : Any
+            The record exported
+        """
+        def to_native_py(obj):
+            if isinstance(obj, ir.Array):
+                return list(to_native_py(item) for item in obj)
+            if isinstance(obj, ir.Map):
+                return {to_native_py(k): to_native_py(v) for k, v in obj.items()}  # pylint: disable=unnecessary-comprehension)
+            if isinstance(obj, tir.IntImm):
+                return int(obj)
+            return obj
+        records = _ffi_api.ScheduleExport(self)  # pylint: disable=no-member
+        records = to_native_py(records)
+        return json.dumps(records)
+
+    ######### Evaluation of random variables #########
 
     def evaluate(
         self,
