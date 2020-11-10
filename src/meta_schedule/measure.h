@@ -45,6 +45,8 @@
 namespace tvm {
 namespace meta_schedule {
 
+static constexpr const char* kLogVersion = "v0.0.1";
+
 /********** ProgramBuilder **********/
 
 /*! \brief ProgramBuilder that builds the programs */
