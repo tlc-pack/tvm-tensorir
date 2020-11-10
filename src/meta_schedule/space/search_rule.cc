@@ -270,7 +270,7 @@ class RuleMultiLevelTilingAndFusion {
       Array<LoopRV> tiles = sch->Split(fused, {factors[0], factors[1]});
       CHECK_EQ(tiles.size(), 2);
       // Vectorize the inner loop
-      sch->MarkLoopType({tiles[1]}, "lazy_vectorize", NullOpt);
+      sch->MarkLoopType({tiles[1]}, "lazy_vectorize", Integer(1), NullOpt);
     }
   }
 
@@ -339,7 +339,7 @@ class RuleMultiLevelTilingAndFusion {
     Array<Array<LoopRV>>& tiles = state->tiles;
     int n = std::min(tile_marks.size(), tiles.size());
     for (int i = 0; i < n; ++i) {
-      sch->MarkLoopType(tiles[i], tile_marks[i], NullOpt);
+      sch->MarkLoopType(tiles[i], tile_marks[i], Integer(tiles[i].size()), NullOpt);
     }
   }
 
@@ -437,9 +437,7 @@ class RuleMarkParallelizeOuter {
     tir::Var n_fusible_rv =
         sch->SampleFusibleLoops(loop_rvs, loop_types, max_extent, /*include_overflow_loop=*/true,
                                 ScheduleNode::Order::outer_to_inner, ScheduleNode::Mode::max);
-    PrimExpr min = Integer(0);
-    PrimExpr extent = n_fusible_rv;
-    sch->MarkLoopType(loop_rvs, "lazy_parallel", Range::FromMinExtent(min, extent));
+    sch->MarkLoopType(loop_rvs, "lazy_parallel", n_fusible_rv, NullOpt);
     return {{sch, info}};
   }
 };
@@ -480,10 +478,7 @@ class RuleMarkVectorizeInner {
     tir::Var n_fusible_rv =
         sch->SampleFusibleLoops(loop_rvs, loop_types, max_extent, /*include_overflow_loop=*/false,
                                 ScheduleNode::Order::inner_to_order, ScheduleNode::Mode::max);
-    int n_loops = loop_rvs.size();
-    PrimExpr min = Integer(n_loops) - n_fusible_rv;
-    PrimExpr extent = n_fusible_rv;
-    sch->MarkLoopType(loop_rvs, "lazy_vectorize", Range::FromMinExtent(min, extent));
+    sch->MarkLoopType(loop_rvs, "lazy_vectorize", NullOpt, n_fusible_rv);
     return {{sch, info}};
   }
 };

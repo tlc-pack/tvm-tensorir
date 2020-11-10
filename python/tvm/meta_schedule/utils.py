@@ -65,10 +65,8 @@ def serialize_json(record: Any) -> str:
             return {
                 to_native_py(k): to_native_py(v) for k, v in obj.items()
             }  # pylint: disable=unnecessary-comprehension)
-        if isinstance(obj, IntImm):
-            return int(obj)
-        if isinstance(obj, FloatImm):
-            return float(obj)
+        if isinstance(obj, (IntImm, FloatImm)):
+            return obj.value
         return obj
 
     record = to_native_py(record)

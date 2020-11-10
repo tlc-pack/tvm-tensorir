@@ -332,7 +332,13 @@ class Schedule(Object):
 
     ########## Scheduling Primitives ##########
 
-    def mark_loop_type(self, loops: List[LoopRV], mark: str, mark_range: ir.Range) -> None:
+    def mark_loop_type(
+        self,
+        loops: List[LoopRV],
+        mark: str,
+        first_n: Optional[ir.PrimExpr],
+        last_n: Optional[ir.PrimExpr],
+    ) -> None:
         """Mark a range of loops with the specific mark
 
         Parameters
@@ -341,10 +347,12 @@ class Schedule(Object):
             The loops to be marked
         mark : str
             The annotation
-        mark_range : Range
-            The range to be marked
+        first_n : Optional[ir.PrimExpr]
+            The first n loops to be marked
+        last_n : Optional[ir.PrimExpr]
+            The last n loops to be marked
         """
-        _ffi_api.ScheduleMarkLoopType(self, loops, mark, mark_range)  # pylint: disable=no-member
+        _ffi_api.ScheduleMarkLoopType(self, loops, mark, first_n, last_n)  # pylint: disable=no-member
 
     def mark_block_type(self, block: BlockRV, mark: str) -> None:
         """Mark a range of loops with the specific mark

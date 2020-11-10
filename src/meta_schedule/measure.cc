@@ -168,6 +168,9 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
     }
     measure_results.insert(measure_results.end(), batch_measure_results.begin(),
                            batch_measure_results.end());
+    for (const MeasureCallback& callback : this->callbacks) {
+      callback->Callback(measure_inputs, measure_results);
+    }
   }
   return measure_results;
 }

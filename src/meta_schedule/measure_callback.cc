@@ -59,14 +59,20 @@ void RecordToFileNode::Callback(const Array<MeasureInput>& inputs,
   std::ofstream ofs(this->filename, std::ofstream::app);
   CHECK_EQ(inputs.size(), results.size());
   for (int i = 0, n = inputs.size(); i < n; ++i) {
+    const MeasureInput& measure_input = inputs[i];
+    const MeasureResult& measure_result = results[i];
+    MeasureErrorNO error_no = static_cast<MeasureErrorNO>(measure_result->error_no);
+    if (error_no != MeasureErrorNO::kNoError) {
+      continue;
+    }
     Array<ObjectRef> result{
-        this->task_name,           //
-        this->target,              //
-        this->target_host,         //
-        results[i]->costs,         //
-        inputs[i]->sch->Export(),  //
-        String(kLogVersion),       //
-        this->prim_func_b64,       //
+        this->task_name,               //
+        this->target,                  //
+        this->target_host,             //
+        measure_result->costs,         //
+        measure_input->sch->Export(),  //
+        String(kLogVersion),           //
+        this->prim_func_b64,           //
     };
     String record = (*f_serialize)(result);
     ofs << record << std::endl;

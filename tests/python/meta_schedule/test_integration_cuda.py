@@ -56,9 +56,15 @@ def test_integration_matmul():
             func=matmul,
             target=TARGET,
             task_name="cuda_matmul",
+            filename="./cuda_matmul.json",
         ),
         space=_make_cuda_space(),
         strategy=ms.strategy.Replay(num_iterations=32),
+        measurer=ms.ProgramMeasurer(
+            measure_callbacks=[
+                ms.RecordToFile(),
+            ]
+        ),
     )
     if sch is None:
         print("No valid schedule found")

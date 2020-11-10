@@ -55,9 +55,15 @@ def test_matmul_post_order_apply():
             func=matmul,
             target=TARGET,
             task_name="cpu_matmul",
+            filename="./cpu_matmul.json",
         ),
         space=_make_cpu_space(),
         strategy=ms.strategy.Replay(num_iterations=32),
+        measurer=ms.ProgramMeasurer(
+            measure_callbacks=[
+                ms.RecordToFile(),
+            ]
+        ),
     )
     if sch is None:
         print("No valid schedule found")
@@ -73,9 +79,15 @@ def test_matmul_relu_post_order_apply():
             func=matmul_relu,
             target=TARGET,
             task_name="cpu_matmul_relu",
+            filename="./cpu_matmul_relu.json",
         ),
         space=_make_cpu_space(),
         strategy=ms.strategy.Replay(num_iterations=32),
+        measurer=ms.ProgramMeasurer(
+            measure_callbacks=[
+                ms.RecordToFile(),
+            ]
+        ),
     )
     if sch is None:
         print("No valid schedule found")
