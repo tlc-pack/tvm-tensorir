@@ -238,6 +238,14 @@ class MeasureCallback(Object):
     """The base class of measurement callback functions."""
 
 
+@register_object("meta_schedule.RecordToFile")
+class RecordToFile(Object):
+    """The base class of measurement callback functions."""
+
+    def __init__(self):
+        self.__init_handle_by_constructor__(_ffi_api.RecordToFile)  # pylint: disable=no-member
+
+
 ########## ProgramMeasurer ##########
 
 

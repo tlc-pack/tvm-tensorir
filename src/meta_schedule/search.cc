@@ -26,12 +26,14 @@ namespace meta_schedule {
 
 /********** Constructor **********/
 
-SearchTask::SearchTask(tir::PrimFunc func, String task_name, Target target, Target target_host) {
+SearchTask::SearchTask(tir::PrimFunc func, String task_name, Target target, Target target_host,
+                       Optional<String> filename) {
   ObjectPtr<SearchTaskNode> n = make_object<SearchTaskNode>();
   n->func = std::move(func);
   n->task_name = std::move(task_name);
   n->target = std::move(target);
   n->target_host = std::move(target_host);
+  n->filename = std::move(filename);
   data_ = std::move(n);
 }
 
@@ -69,8 +71,8 @@ struct Internal {
    * \sa SearchTask::SearchTask
    */
   static SearchTask SearchTaskNew(tir::PrimFunc func, String task_name, Target target,
-                                  Target target_host) {
-    return SearchTask(func, task_name, target, target_host);
+                                  Target target_host, Optional<String> filename) {
+    return SearchTask(func, task_name, target, target_host, filename);
   }
   /*!
    * \brief Apply postprocessors onto the schedule
