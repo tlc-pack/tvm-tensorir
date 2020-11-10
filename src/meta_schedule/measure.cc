@@ -110,11 +110,14 @@ Array<MeasureResult> RPCRunnerNode::Run(const Array<MeasureInput>& inputs,
 
 /********** ProgramMeasurer **********/
 
-void ProgramMeasurerNode::Reset() {
+void ProgramMeasurerNode::Init(const SearchTask& task) {
   num_measured = 0;
   best_time_cost = ProgramMeasurer::kMaxTimeCost;
   best_index = -1;
   best_sch = NullOpt;
+  for (const MeasureCallback& callback : callbacks) {
+    callback->Init(task);
+  }
 }
 
 Array<MeasureResult> ProgramMeasurerNode::PureMeasure(const Array<MeasureInput>& measure_inputs,

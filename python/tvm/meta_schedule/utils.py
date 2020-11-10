@@ -15,6 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Utility functions used for measuring """
+import json
 import multiprocessing
 import multiprocessing.pool
 import os
@@ -24,7 +25,7 @@ import tempfile
 import time
 import traceback
 from threading import Thread
-from typing import List, Tuple
+from typing import Any, List
 
 import psutil
 from tvm import rpc
@@ -33,7 +34,7 @@ from tvm.contrib import ndk as build_func_ndk
 from tvm.contrib import tar as build_func_tar
 from tvm.driver import build as tvm_build
 from tvm.runtime import NDArray, TVMContext, ndarray
-from tvm.tir import PrimFunc
+from tvm.tir import PrimFunc, IntImm, FloatImm
 
 from .measure_record import BuildResult, MeasureErrorNo, MeasureInput, MeasureResult
 
@@ -51,6 +52,33 @@ def make_error_msg() -> str:
             error_msg[: MAX_ERROR_MSG_LEN // 2] + "\n...\n" + error_msg[-MAX_ERROR_MSG_LEN // 2 :]
         )
     return error_msg
+
+
+@register_func("meta_schedule._serialize_json")
+def serialize_json(record: Any) -> str:
+    """Serialize the record to JSON"""
+
+    def to_native_py(obj):
+        if isinstance(obj, ir.Array):
+            return list(to_native_py(item) for item in obj)
+        if isinstance(obj, ir.Map):
+            return {
+                to_native_py(k): to_native_py(v) for k, v in obj.items()
+            }  # pylint: disable=unnecessary-comprehension)
+        if isinstance(obj, IntImm):
+            return int(obj)
+        if isinstance(obj, FloatImm):
+            return float(obj)
+        return obj
+
+    record = to_native_py(record)
+    return json.dumps(record).strip()
+
+
+@register_func("meta_schedule._deserialize_json")
+def deserialize_json(record: str) -> Any:
+    """Deserialize the record from JSON"""
+    return json.loads(record)
 
 
 class NoDaemonProcess(multiprocessing.Process):

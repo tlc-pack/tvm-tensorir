@@ -16,7 +16,7 @@
 # under the License.
 """ Main class of meta schedule """
 import json
-from typing import List, Optional, Union, Any
+from typing import List, Optional, Union
 
 from tvm import ir, tir
 from tvm._ffi import register_object
@@ -24,6 +24,7 @@ from tvm.runtime import Object
 
 from . import _ffi_api
 from .instruction import RAND_VAR_TYPE, BlockRV, BufferRV, ExprRV, Instruction, LoopRV
+from .utils import serialize_json, deserialize_json
 
 
 @register_object("meta_schedule.Schedule")
@@ -97,7 +98,7 @@ class Schedule(Object):
         schedule : Schedule
             The schedule imported
         """
-        record = json.loads(record)
+        record = deserialize_json(record)
         return _ffi_api.ScheduleImport(record, func, seed)  # pylint: disable=no-member
 
     def export(self) -> str:
@@ -105,20 +106,11 @@ class Schedule(Object):
 
         Returns
         -------
-        records : Any
+        records : str
             The record exported
         """
-        def to_native_py(obj):
-            if isinstance(obj, ir.Array):
-                return list(to_native_py(item) for item in obj)
-            if isinstance(obj, ir.Map):
-                return {to_native_py(k): to_native_py(v) for k, v in obj.items()}  # pylint: disable=unnecessary-comprehension)
-            if isinstance(obj, tir.IntImm):
-                return int(obj)
-            return obj
         records = _ffi_api.ScheduleExport(self)  # pylint: disable=no-member
-        records = to_native_py(records)
-        return json.dumps(records)
+        return serialize_json(records)
 
     ######### Evaluation of random variables #########
 
