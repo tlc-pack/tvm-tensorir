@@ -28,13 +28,13 @@ from threading import Thread
 from typing import Any, List
 
 import psutil
-from tvm import rpc
+from tvm import ir, rpc
 from tvm._ffi import register_func
 from tvm.contrib import ndk as build_func_ndk
 from tvm.contrib import tar as build_func_tar
 from tvm.driver import build as tvm_build
 from tvm.runtime import NDArray, TVMContext, ndarray
-from tvm.tir import PrimFunc, IntImm, FloatImm
+from tvm.tir import FloatImm, IntImm, PrimFunc
 
 from .measure_record import BuildResult, MeasureErrorNo, MeasureInput, MeasureResult
 

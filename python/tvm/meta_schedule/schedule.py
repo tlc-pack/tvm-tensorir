@@ -15,7 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Main class of meta schedule """
-import json
 from typing import List, Optional, Union
 
 from tvm import ir, tir
@@ -24,7 +23,6 @@ from tvm.runtime import Object
 
 from . import _ffi_api
 from .instruction import RAND_VAR_TYPE, BlockRV, BufferRV, ExprRV, Instruction, LoopRV
-from .utils import serialize_json, deserialize_json
 
 
 @register_object("meta_schedule.Schedule")
@@ -98,6 +96,8 @@ class Schedule(Object):
         schedule : Schedule
             The schedule imported
         """
+        from .utils import deserialize_json  # pylint: disable=import-outside-toplevel
+
         record = deserialize_json(record)
         return _ffi_api.ScheduleImport(record, func, seed)  # pylint: disable=no-member
 
@@ -109,6 +109,8 @@ class Schedule(Object):
         records : str
             The record exported
         """
+        from .utils import serialize_json  # pylint: disable=import-outside-toplevel
+
         records = _ffi_api.ScheduleExport(self)  # pylint: disable=no-member
         return serialize_json(records)
 
