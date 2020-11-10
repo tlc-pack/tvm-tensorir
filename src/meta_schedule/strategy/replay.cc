@@ -86,7 +86,7 @@ Replay::Replay(int batch_size, int num_iterations) {
 Optional<Schedule> ReplayNode::Search(const SearchTask& task, const SearchSpace& space,
                                       const ProgramMeasurer& measurer, Sampler* sampler,
                                       int verbose) {
-  measurer->Reset();
+  measurer->Init(task);
 
   std::vector<Sampler> thread_samplers;
   std::vector<MeasureInput> thread_measure_inputs;

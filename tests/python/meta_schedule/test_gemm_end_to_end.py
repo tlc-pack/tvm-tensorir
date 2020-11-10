@@ -254,127 +254,6 @@ def test_conv2d_schedule_fn():
 
 
 @pytest.mark.skip(reason="needs RPC")
-def test_matmul_post_order_apply():
-    os.environ["TVM_TRACKER_KEY"] = "test"
-    sch = ms.autotune(
-        task=matmul,
-        space=ms.space.PostOrderApply(
-            stages=[
-                ms.rule.multi_level_tiling_and_fusion(
-                    structure="SSRSRS",
-                    must_cache_read=False,
-                    can_cache_write=True,
-                    must_cache_write=False,
-                    fusion_levels=[1, 2],
-                ),
-                ms.rule.mark_parallelize_outer(max_extent=256),
-                ms.rule.mark_vectorize_inner(max_extent=32),
-            ],
-            postprocs=[
-                ms.postproc.rewrite_parallel(),
-                ms.postproc.rewrite_vectorize(),
-            ],
-        ),
-        strategy="replay",
-    )
-    if sch is None:
-        print("No valid schedule found")
-    else:
-        print(tvm.script.asscript(sch.sch.func))
-
-
-@pytest.mark.skip(reason="needs RPC")
-def test_matmul_relu_post_order_apply():
-    os.environ["TVM_TRACKER_KEY"] = "test"
-    sch = ms.autotune(
-        task=matmul_relu,
-        space=ms.space.PostOrderApply(
-            stages=[
-                ms.rule.multi_level_tiling_and_fusion(
-                    structure="SSRSRS",
-                    must_cache_read=False,
-                    can_cache_write=True,
-                    must_cache_write=False,
-                    fusion_levels=[1, 2],
-                ),
-                ms.rule.mark_parallelize_outer(max_extent=256),
-                ms.rule.mark_vectorize_inner(max_extent=32),
-            ],
-            postprocs=[
-                ms.postproc.rewrite_parallel(),
-                ms.postproc.rewrite_vectorize(),
-            ],
-        ),
-        strategy="replay",
-    )
-    if sch is None:
-        print("No valid schedule found")
-    else:
-        print(tvm.script.asscript(sch.sch.func))
-
-
-@pytest.mark.skip(reason="needs RPC")
-def test_conv2d_post_order_apply():
-    os.environ["TVM_TRACKER_KEY"] = "test"
-    sch = ms.autotune(
-        task=conv2d,
-        space=ms.space.PostOrderApply(
-            stages=[
-                ms.rule.multi_level_tiling_and_fusion(
-                    structure="SSRSRS",
-                    must_cache_read=False,
-                    can_cache_write=True,
-                    must_cache_write=False,
-                    fusion_levels=[1, 2],
-                ),
-                ms.rule.mark_parallelize_outer(max_extent=256),
-                ms.rule.mark_vectorize_inner(max_extent=32),
-            ],
-            postprocs=[
-                ms.postproc.rewrite_parallel(),
-                ms.postproc.rewrite_vectorize(),
-            ],
-        ),
-        strategy="replay",
-    )
-    if sch is None:
-        print("No valid schedule found")
-    else:
-        print(tvm.script.asscript(sch.sch.func))
-
-
-@pytest.mark.skip(reason="needs RPC")
-def test_conv2d_relu_plus_one_post_order_apply():
-    os.environ["TVM_TRACKER_KEY"] = "test"
-    sch = ms.autotune(
-        task=conv2d_relu_plus_one,
-        space=ms.space.PostOrderApply(
-            stages=[
-                ms.rule.inline_pure_spatial(strict_mode=True),
-                ms.rule.multi_level_tiling_and_fusion(
-                    structure="SSRSRS",
-                    must_cache_read=False,
-                    can_cache_write=True,
-                    must_cache_write=False,
-                    fusion_levels=[1, 2],
-                ),
-                ms.rule.mark_parallelize_outer(max_extent=256),
-                ms.rule.mark_vectorize_inner(max_extent=32),
-            ],
-            postprocs=[
-                ms.postproc.rewrite_parallel(),
-                ms.postproc.rewrite_vectorize(),
-            ],
-        ),
-        strategy="replay",
-    )
-    if sch is None:
-        print("No valid schedule found")
-    else:
-        print(tvm.script.asscript(sch.sch.func))
-
-
-@pytest.mark.skip(reason="needs RPC")
 def test_matmul_evolutionary_step_by_step():
     os.environ["TVM_TRACKER_KEY"] = "test"
     task = ms.SearchTask(func=matmul)
@@ -470,11 +349,6 @@ if __name__ == "__main__":
     test_matmul_schedule_fn()
     test_matmul_relu_schedule_fn()
     test_conv2d_schedule_fn()
-    # PostOrderApply + Replay
-    test_matmul_post_order_apply()
-    test_matmul_relu_post_order_apply()
-    test_conv2d_post_order_apply()
-    test_conv2d_relu_plus_one_post_order_apply()
     # PostOrderApply + Evo Search
     test_matmul_evolutionary_step_by_step()
     test_matmul_evolutionary_end_to_end()

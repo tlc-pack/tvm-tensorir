@@ -15,8 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Main class of meta schedule """
-import json
-from typing import List, Optional, Union, Any
+from typing import List, Optional, Union
 
 from tvm import ir, tir
 from tvm._ffi import register_object
@@ -97,7 +96,9 @@ class Schedule(Object):
         schedule : Schedule
             The schedule imported
         """
-        record = json.loads(record)
+        from .utils import deserialize_json  # pylint: disable=import-outside-toplevel
+
+        record = deserialize_json(record)
         return _ffi_api.ScheduleImport(record, func, seed)  # pylint: disable=no-member
 
     def export(self) -> str:
@@ -105,20 +106,13 @@ class Schedule(Object):
 
         Returns
         -------
-        records : Any
+        records : str
             The record exported
         """
-        def to_native_py(obj):
-            if isinstance(obj, ir.Array):
-                return list(to_native_py(item) for item in obj)
-            if isinstance(obj, ir.Map):
-                return {to_native_py(k): to_native_py(v) for k, v in obj.items()}  # pylint: disable=unnecessary-comprehension)
-            if isinstance(obj, tir.IntImm):
-                return int(obj)
-            return obj
+        from .utils import serialize_json  # pylint: disable=import-outside-toplevel
+
         records = _ffi_api.ScheduleExport(self)  # pylint: disable=no-member
-        records = to_native_py(records)
-        return json.dumps(records)
+        return serialize_json(records)
 
     ######### Evaluation of random variables #########
 
@@ -338,7 +332,13 @@ class Schedule(Object):
 
     ########## Scheduling Primitives ##########
 
-    def mark_loop_type(self, loops: List[LoopRV], mark: str, mark_range: ir.Range) -> None:
+    def mark_loop_type(
+        self,
+        loops: List[LoopRV],
+        mark: str,
+        first_n: Optional[ir.PrimExpr],
+        last_n: Optional[ir.PrimExpr],
+    ) -> None:
         """Mark a range of loops with the specific mark
 
         Parameters
@@ -347,10 +347,12 @@ class Schedule(Object):
             The loops to be marked
         mark : str
             The annotation
-        mark_range : Range
-            The range to be marked
+        first_n : Optional[ir.PrimExpr]
+            The first n loops to be marked
+        last_n : Optional[ir.PrimExpr]
+            The last n loops to be marked
         """
-        _ffi_api.ScheduleMarkLoopType(self, loops, mark, mark_range)  # pylint: disable=no-member
+        _ffi_api.ScheduleMarkLoopType(self, loops, mark, first_n, last_n)  # pylint: disable=no-member
 
     def mark_block_type(self, block: BlockRV, mark: str) -> None:
         """Mark a range of loops with the specific mark

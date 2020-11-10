@@ -41,12 +41,15 @@ class SearchTaskNode : public Object {
   Target target;
   /*! \brief The target host to be built at */
   Target target_host;
+  /*! \brief The file to load/store search logs */
+  Optional<String> filename;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("func", &func);
     v->Visit("task_name", &task_name);
     v->Visit("target", &target);
     v->Visit("target_host", &target_host);
+    v->Visit("filename", &filename);
   }
 
   static constexpr const char* _type_key = "meta_schedule.SearchTask";
@@ -65,8 +68,10 @@ class SearchTask : public ObjectRef {
    * \param task_name Name of this search task
    * \param target The target to be built at
    * \param target_host The target host to be built at
+   * \param filename The file to load/store search logs
    */
-  explicit SearchTask(tir::PrimFunc func, String task_name, Target target, Target target_host);
+  explicit SearchTask(tir::PrimFunc func, String task_name, Target target, Target target_host,
+                      Optional<String> filename);
   TVM_DEFINE_OBJECT_REF_METHODS(SearchTask, ObjectRef, SearchTaskNode);
 };
 
