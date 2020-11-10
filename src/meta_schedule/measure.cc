@@ -16,12 +16,12 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "./measure.h"  // NOLINT(build/include)
-
-#include <tvm/node/node.h>
-
+#include <dmlc/memory_io.h>  // NOLINT(build/include)
+#include <tvm/node/serialization.h>
 #include <algorithm>
 
+#include "../support/base64.h"
+#include "./measure.h"
 #include "./utils.h"
 
 namespace tvm {
@@ -110,11 +110,79 @@ Array<MeasureResult> RPCRunnerNode::Run(const Array<MeasureInput>& inputs,
 
 /********** ProgramMeasurer **********/
 
-void ProgramMeasurerNode::Reset() {
+void ProgramMeasurerNode::Init(const SearchTask& task) {
   num_measured = 0;
   best_time_cost = ProgramMeasurer::kMaxTimeCost;
   best_index = -1;
   best_sch = NullOpt;
+  for (const MeasureCallback& callback : callbacks) {
+    callback->Init(task);
+  }
+  // Loading existing logs from file
+  if (!task->filename.defined()) {
+    return;
+  }
+  static const auto* f_deserialize = runtime::Registry::Get("meta_schedule._deserialize_json");
+  CHECK(f_deserialize) << "IndexError: Cannot find packed function \""
+                          "meta_schedule._deserialize_json\", which should be registered in python";
+  std::ifstream ifs(task->filename.value());
+  if (!ifs.is_open() || ifs.fail()) {
+    return;
+  }
+  std::vector<Array<ObjectRef>> records;
+  for (std::string line; std::getline(ifs, line);) {
+    if (line.empty() || line[0] == '#' || line[0] == '/' || std::isspace(line[0])) {
+      continue;
+    }
+    Array<ObjectRef> record = (*f_deserialize)(line);
+    records.push_back(record);
+  }
+  LOG(INFO) << "Found " << records.size() << " record(s) in the file: " << task->filename.value()
+            << ". Now loading...";
+  for (const Array<ObjectRef>& record : records) {
+    CHECK_EQ(record.size(), 7);
+    String task_name = Downcast<String>(record[0]);
+    if (task_name != task->task_name) {
+      continue;
+    }
+    String log_version = Downcast<String>(record[5]);
+    if (log_version != String(kLogVersion)) {
+      continue;
+    }
+    // TODO(@junrushao1994): structural equality of target
+    Map<String, ObjectRef> target = Downcast<Map<String, ObjectRef>>(record[1]);
+    if (Target(target)->str() != task->target->str()) {
+      continue;
+    }
+    Map<String, ObjectRef> target_host = Downcast<Map<String, ObjectRef>>(record[2]);
+    if (Target(target_host)->str() != task->target_host->str()) {
+      continue;
+    }
+    tir::PrimFunc orig_func{nullptr};
+    {
+      std::string prim_func_b64 = Downcast<String>(record[6]);
+      dmlc::MemoryStringStream mstrm(&prim_func_b64);
+      support::Base64InStream b64strm(&mstrm);
+      std::string parsed;
+      b64strm.InitPosition();
+      dmlc::Stream* strm = &b64strm;
+      strm->Read(&parsed);
+      orig_func = Downcast<tir::PrimFunc>(LoadJSON(parsed));
+    }
+    Array<ObjectRef> trace = Downcast<Array<ObjectRef>>(record[4]);
+    Schedule sch = ScheduleNode::Import(trace, orig_func, /*seed=*/NullOpt);
+    Array<FloatImm> costs = Downcast<Array<FloatImm>>(record[3]);
+    double avg_time_cost = FloatArrayMean(costs);
+    ++num_measured;
+    if (avg_time_cost < best_time_cost) {
+      best_time_cost = avg_time_cost;
+      best_index = num_measured;
+      best_sch = sch;
+    }
+  }
+  LOG(INFO) << "Loaded " << num_measured
+            << " valid records from the file: " << task->filename.value()
+            << ". Best time cost: " << best_time_cost;
 }
 
 Array<MeasureResult> ProgramMeasurerNode::PureMeasure(const Array<MeasureInput>& measure_inputs,
@@ -165,6 +233,9 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
     }
     measure_results.insert(measure_results.end(), batch_measure_results.begin(),
                            batch_measure_results.end());
+    for (const MeasureCallback& callback : this->callbacks) {
+      callback->Callback(measure_inputs, measure_results);
+    }
   }
   return measure_results;
 }
