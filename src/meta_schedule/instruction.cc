@@ -68,8 +68,11 @@ Array<ObjectRef> InstructionNode::Export(const Map<ObjectRef, String>& rv_names,
     for (const ObjectRef& rv : rvs) {
       if (const auto* integer = rv.as<IntImmNode>()) {
         names.push_back(GetRef<IntImm>(integer));
-      } else {
+      } else if (rv_names.count(rv)) {
         names.push_back(rv_names.at(rv));
+      } else {
+        LOG(INFO) << "TypeError: Unable to handle: " << rv << ". Its type is: " << rv->GetTypeKey();
+        throw;
       }
     }
     record.push_back(names);
@@ -314,13 +317,13 @@ Instruction ReverseComputeInlineAttrs::MakeInst(const BlockRV& block) {
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction MarkLoopTypeAttrs::MakeInst(const Array<LoopRV>& loops, const Range& range,
-                                        const String& mark) {
+Instruction MarkLoopTypeAttrs::MakeInst(const Array<LoopRV>& loops, const String& mark,
+                                        const PrimExpr& first_n, const PrimExpr& last_n) {
   ObjectPtr<MarkLoopTypeAttrs> n = make_object<MarkLoopTypeAttrs>();
   n->mark = mark;
   Array<ObjectRef> inputs{loops.begin(), loops.end()};
-  inputs.push_back(range->min);
-  inputs.push_back(range->extent);
+  inputs.push_back(first_n);
+  inputs.push_back(last_n);
   return Instruction(/*inputs=*/inputs,
                      /*outputs=*/{},
                      /*attrs=*/InstAttrs(std::move(n)));
@@ -459,9 +462,9 @@ Array<ObjectRef> MarkLoopTypeAttrs::ApplyToSchedule(ScheduleNode* sch,
     TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[i]);
     loops.push_back(loop);
   }
-  TVM_META_SCHEDULE_INST_CAST(PrimExpr, min, inputs[n_loops]);
-  TVM_META_SCHEDULE_INST_CAST(PrimExpr, extent, inputs[n_loops + 1]);
-  sch->MarkLoopType(loops, mark, Range::FromMinExtent(min, extent));
+  TVM_META_SCHEDULE_INST_CAST(PrimExpr, first_n, inputs[n_loops]);
+  TVM_META_SCHEDULE_INST_CAST(PrimExpr, last_n, inputs[n_loops + 1]);
+  sch->MarkLoopType(loops, mark, first_n, last_n);
   return {};
 }
 

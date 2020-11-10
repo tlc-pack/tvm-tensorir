@@ -576,18 +576,28 @@ Array<BlockRV> ScheduleNode::GetLeafBlocks() {
 /**************** Schedule Primitives ****************/
 
 void ScheduleNode::MarkLoopType(const Array<LoopRV>& loops, const String& mark,
-                                const Optional<Range>& opt_range) {
+                                const Optional<PrimExpr>& first_n,
+                                const Optional<PrimExpr>& last_n) {
   Array<tir::StmtSRef> loop_srefs;
   loop_srefs.reserve(loops.size());
   for (const LoopRV& loop_rv : loops) {
     loop_srefs.push_back(Eval(loop_rv));
   }
-  Range range = opt_range.value_or(Range::FromMinExtent(Integer(0), Integer(loops.size())));
-  int left = Eval(range->min);
-  int right = left + Eval(range->extent);
-  AnnotateLoopType(this->sch, {loop_srefs.begin() + left, loop_srefs.begin() + right}, mark);
+  if (first_n.defined()) {
+    int n = Eval(first_n.value());
+    int st = 0;
+    int ed = n;
+    AnnotateLoopType(this->sch, {loop_srefs.begin() + st, loop_srefs.begin() + ed}, mark);
+  }
+  if (last_n.defined()) {
+    int n = Eval(last_n.value());
+    int ed = static_cast<int>(loops.size());
+    int st = ed - n;
+    AnnotateLoopType(this->sch, {loop_srefs.begin() + st, loop_srefs.begin() + ed}, mark);
+  }
   // Put the instruction in the trace
-  this->trace.push_back(MarkLoopTypeAttrs::MakeInst(loops, range, mark));
+  this->trace.push_back(MarkLoopTypeAttrs::MakeInst(loops, mark, first_n.value_or(Integer(0)),
+                                                    last_n.value_or(Integer(0))));
 }
 
 void ScheduleNode::MarkBlockType(const BlockRV& block, const String& mark) {
@@ -982,8 +992,9 @@ struct Internal {
    * \brief FFI function, corresponds to ScheduleNode::MarkLoopType
    * \sa ScheduleNode::MarkLoopType
    */
-  static void MarkLoopType(Schedule sch, Array<LoopRV> loops, String mark, Range range) {
-    sch->MarkLoopType(loops, mark, range);
+  static void MarkLoopType(Schedule sch, Array<LoopRV> loops, String mark,
+                           Optional<PrimExpr> first_n, Optional<PrimExpr> last_n) {
+    sch->MarkLoopType(loops, mark, first_n, last_n);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::MarkBlockType

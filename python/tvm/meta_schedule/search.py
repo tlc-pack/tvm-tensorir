@@ -50,6 +50,7 @@ class SearchTask(Object):
     task_name: str
     target: Target
     target_host: Target
+    filename: Optional[str]
 
     def __init__(
         self,
@@ -57,6 +58,7 @@ class SearchTask(Object):
         task_name: Optional[str] = None,
         target: TargetType = "llvm",
         target_host: TargetType = "llvm",
+        filename: Optional[str] = None,
     ):
         if task_name is None:
             if hasattr(func, "__qualname__"):
@@ -75,6 +77,7 @@ class SearchTask(Object):
             task_name,
             target,
             target_host,
+            filename,
         )
 
 

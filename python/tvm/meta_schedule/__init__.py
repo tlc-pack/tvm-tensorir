@@ -26,6 +26,7 @@ from .measure import (
     ProgramBuilder,
     ProgramMeasurer,
     ProgramRunner,
+    RecordToFile,
     RPCRunner,
 )
 from .schedule import Schedule

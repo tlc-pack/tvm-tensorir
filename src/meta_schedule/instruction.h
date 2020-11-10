@@ -550,11 +550,13 @@ struct MarkLoopTypeAttrs : public InstAttrsNode {
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param loops The loops to be mark
-   * \param range The range of the loops to be marked
    * \param mark The annotation
+   * \param first_n To mark the first n loops
+   * \param last_n To mark the last n loops
    * \return The instruction created
    */
-  static Instruction MakeInst(const Array<LoopRV>& loops, const Range& range, const String& mark);
+  static Instruction MakeInst(const Array<LoopRV>& loops, const String& mark, const PrimExpr& first,
+                              const PrimExpr& last_n);
 
   /*!
    * \brief Apply the instruction to the schedule with given inputs
