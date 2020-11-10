@@ -45,6 +45,8 @@
 namespace tvm {
 namespace meta_schedule {
 
+static constexpr const char* kLogVersion = "v0.0.1";
+
 /********** ProgramBuilder **********/
 
 /*! \brief ProgramBuilder that builds the programs */
@@ -241,6 +243,11 @@ class MeasureCallbackNode : public Object {
  public:
   virtual ~MeasureCallbackNode() = default;
   /*!
+   * \brief Initialize the callback
+   * \param task The search task
+   */
+  virtual void Init(const SearchTask& task) = 0;
+  /*!
    * \brief Callback function that will be called on measurement input/result pairs
    * after each measurement batch.
    * \param inputs An Array of MeasureInput.
@@ -301,8 +308,11 @@ class ProgramMeasurerNode : public Object {
    */
   Array<MeasureResult> BatchMeasure(const Array<MeasureInput>& measure_inputs, int batch_size,
                                     int verbose);
-  /*! \brief Reset book keeping variables */
-  void Reset();
+  /*!
+   * \brief Initialize the measurer
+   * \param task The search task
+   */
+  void Init(const SearchTask& task);
 
   static constexpr const char* _type_key = "meta_schedule.ProgramMeasurer";
   TVM_DECLARE_FINAL_OBJECT_INFO(ProgramMeasurerNode, Object);

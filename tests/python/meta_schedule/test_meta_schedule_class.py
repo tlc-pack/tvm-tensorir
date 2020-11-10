@@ -434,7 +434,7 @@ def test_meta_schedule_mark_loop_type():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
     axes = sch.get_axes(block)
-    sch.mark_loop_type(axes, "lazy_parallel", tvm.ir.Range(0, 3))
+    sch.mark_loop_type(axes, "lazy_parallel", 3, None)
     block = sch.get_block("matmul")
     i, j, k = sch.get_axes(block)
     check_annotation(sch, i)

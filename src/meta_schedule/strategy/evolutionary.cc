@@ -202,7 +202,7 @@ Evolutionary::Evolutionary(int num_measure_trials, int num_measure_per_batch,
 Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const SearchSpace& space,
                                             const ProgramMeasurer& measurer, Sampler* sampler,
                                             int verbose) {
-  measurer->Reset();
+  measurer->Init(task);
   Array<Schedule> support = space->GetSupport(task, sampler);
   for (int num_measured = 0; num_measured < num_measure_trials;) {
     // `inits`: Sampled initial population, whose size is at most `this->population`

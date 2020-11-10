@@ -203,10 +203,12 @@ class ScheduleNode : public Object {
   /*!
    * \brief Mark a loop
    * \param loops The loops to be marked
-   * \param range The range in loops to be marked
    * \param mark The annotation
+   * \param first_n The first n loops to be marked
+   * \param last_n The last n loops to be marked
    */
-  void MarkLoopType(const Array<LoopRV>& loops, const String& mark, const Optional<Range>& range);
+  void MarkLoopType(const Array<LoopRV>& loops, const String& mark,
+                    const Optional<PrimExpr>& first_n, const Optional<PrimExpr>& last_n);
   /*!
    * \brief Mark a block
    * \param block The block to be marked
