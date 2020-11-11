@@ -72,19 +72,18 @@ class ScheduleNode : public Object {
 
   /*!
    * \brief Get block from its tag
-   * \param scope The block scope
    * \param tag The query tag
    * \return the block schedulable reference list
    */
-  Array<StmtSRef> GetBlock(const std::string& tag, StmtSRef scope = StmtSRef()) const;
+  Array<StmtSRef> GetBlock(const std::string& tag) const;
 
   /*!
    * \brief Get block from its output tensor
-   * \param scope The block scope
    * \param buffer The query buffer
+   * \param scope The scope of interest
    * \return the block schedulable reference list
    */
-  Array<StmtSRef> GetBlock(const Buffer& buffer, StmtSRef scope = StmtSRef()) const;
+  Array<StmtSRef> GetBlock(const Buffer& buffer, const StmtSRef& scope) const;
 
   /*!
    * \brief Get all blocks in the scope
