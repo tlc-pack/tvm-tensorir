@@ -411,7 +411,7 @@ def test_cache_write():
     # schedule
     s = tir.create_schedule(func)
     C = s.get_block(buffer_c)
-    CC = s.cache_write(buffer_c, 'local')
+    CC = s.cache_write(C, 0, 'local')
 
     mod = tvm.script.create_module({"cache_write": cache_write})
     cached_func = mod["cache_write"]
@@ -523,9 +523,8 @@ def test_cache_read_write():
 
     # schedule cache write
     s = tir.create_schedule(func)
-    blockA = tir.schedule.get_stmt(s.get_block("A"))
-    A = blockA.writes[0].buffer
-    s.cache_write(A, "local")
+    blockA = s.get_block("A")
+    s.cache_write(blockA, 0, "local")
 
     tvm.ir.assert_structural_equal(test_func_cache_write, s.func)
     assert s.validate_sref()

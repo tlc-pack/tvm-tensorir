@@ -534,8 +534,7 @@ def test_meta_schedule_cache_read():
 def test_meta_schedule_cache_write():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    (buffer,) = sch.get_write_buffers(block)
-    sch.cache_write(buffer, storage_scope="local")
+    sch.cache_write(block, storage_scope="local")
     assert tvm.ir.structural_equal(sch.sch.func, matmul_cache_write)
     _check_serialization(sch, func=matmul)
 

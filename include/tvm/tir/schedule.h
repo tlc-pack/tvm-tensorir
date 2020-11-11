@@ -222,10 +222,11 @@ class ScheduleNode : public Object {
 
   /*!
    * \brief Create a cache write of original tensor, before storing into tensor.
-   * \param buffer The buffer
+   * \param block_sref The producer of the buffer
+   * \param i The index of the buffer in block's write region
    * \param storage_scope The storage scope
    */
-  StmtSRef cache_write(const Buffer& buffer, const std::string& storage_scope);
+  StmtSRef cache_write(const StmtSRef& block_sref, size_t i, const std::string& storage_scope);
 
   /*!
    * \brief make subtree rooted by loop_sref into a block
