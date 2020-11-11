@@ -1081,10 +1081,39 @@ def test_meta_schedule_sketch_cpu_max_pool2d_nchw():
         expected=expected,
     )
 
+from tir_tensor_intrin import (
+    dot_product_desc,
+    dot_product_impl,
+    tensorcore_desc,
+    tensorcore_impl,
+)
+from tir_workload import batch_matmul
+
+
+def test_meta_schedule_sketch_cpu_matmul_auto_tensorize():
+    dot_prod = tvm.tir.TensorIntrin(dot_product_desc, dot_product_impl)
+    schs = ms.space.PostOrderApply(
+        stages=[
+            ms.rule.mark_tensorize(tensor_intrins=[dot_prod]),
+            ms.rule.inline_pure_spatial(strict_mode=True),
+            ms.rule.multi_level_tiling_and_fusion(
+                structure="SSRSRS",
+                must_cache_read=False,
+                can_cache_write=True,
+                must_cache_write=False,
+                fusion_levels=[1, 2],
+            ),
+        ]
+    ).get_support(task=ms.SearchTask(func=batch_matmul, task_name="matmul"))
+
+    for sch in schs:
+        print(tvm.script.asscript(sch.sch.func))
+
 
 if __name__ == "__main__":
-    test_meta_schedule_sketch_cpu_matmul()
-    test_meta_schedule_sketch_cpu_matmul_relu()
-    test_meta_schedule_sketch_cpu_conv2d_nchw()
-    test_meta_schedule_sketch_cpu_conv2d_nchw_bias_bn_relu()
-    test_meta_schedule_sketch_cpu_max_pool2d_nchw()
+    # test_meta_schedule_sketch_cpu_matmul()
+    # test_meta_schedule_sketch_cpu_matmul_relu()
+    # test_meta_schedule_sketch_cpu_conv2d_nchw()
+    # test_meta_schedule_sketch_cpu_conv2d_nchw_bias_bn_relu()
+    # test_meta_schedule_sketch_cpu_max_pool2d_nchw()
+    test_meta_schedule_sketch_cpu_matmul_auto_tensorize()
