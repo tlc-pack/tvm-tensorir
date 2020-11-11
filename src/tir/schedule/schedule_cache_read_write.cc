@@ -557,7 +557,8 @@ StmtSRef ScheduleNode::cache_read(const Buffer& read_buffer, const std::string& 
   return stmt2ref.at(cache_read_stage.get());
 }
 
-StmtSRef ScheduleNode::cache_write(const Buffer& write_buffer, const std::string& storage_scope) {
+StmtSRef ScheduleNode::cache_write(const StmtSRef& block_sref, size_t i,
+                                   const std::string& storage_scope) {
   /*!
    * Check:
    *   - check the buffer has only one writing block
@@ -568,14 +569,16 @@ StmtSRef ScheduleNode::cache_write(const Buffer& write_buffer, const std::string
    *   - find the lowest ancestor of the block and ANY ONE of the producer blocks.
    *   - Copy the buffer with the necessary region.
    */
+  const auto* block_ptr = block_sref->GetStmt<BlockNode>();
+  CHECK(block_ptr) << "ValueError: `cache_write` expects a block as the first argument";
+  CHECK(block_ptr->writes.size() > i) << "ValueError: index out of range";
+  Buffer write_buffer = block_ptr->writes[i]->buffer;
   CacheStageInfo info;
   info.write_buffer = write_buffer;
   // Create corresponding the buffer to be read, i.e. result of cache_write
   info.read_buffer = write_buffer->WithScope(storage_scope);
   // Create the corresponding buffer allocation
   info.alloc = BufferAllocate(info.read_buffer, storage_scope);
-  // Find the innermost writer to the write buffer
-  StmtSRef block_sref = GetInnermostWriterBlock(this, write_buffer);
   CHECK(!block_sref.same_as(this->root))
       << "ValueError: `cache_write` cannot be applied to an input buffer";
   // Find the parent scope

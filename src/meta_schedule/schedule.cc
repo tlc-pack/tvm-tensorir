@@ -736,16 +736,15 @@ BlockRV ScheduleNode::CacheRead(const BufferRV& buffer_rv, const String& storage
   return output;
 }
 
-BlockRV ScheduleNode::CacheWrite(const BufferRV& buffer_rv, const String& storage_scope) {
+BlockRV ScheduleNode::CacheWrite(const BlockRV& block, const String& storage_scope) {
   // Find the output from TIR
-  tir::Buffer buffer = this->Eval(buffer_rv);
-  tir::StmtSRef tir_result = this->sch->cache_write(buffer, storage_scope);
+  tir::StmtSRef tir_result = this->sch->cache_write(Eval(block), 0, storage_scope);
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
   this->sym_tab.Set(output, tir_result);
   // Put the instruction in the trace
-  this->trace.push_back(CacheWriteAttrs::MakeInst(buffer_rv, storage_scope, output));
+  this->trace.push_back(CacheWriteAttrs::MakeInst(block, storage_scope, output));
   return output;
 }
 
@@ -1062,8 +1061,8 @@ struct Internal {
    * \brief FFI function, corresponds to ScheduleNode::CacheWrite
    * \sa ScheduleNode::CacheWrite
    */
-  static BlockRV CacheWrite(Schedule sch, BufferRV buffer, String storage_scope) {
-    return sch->CacheWrite(buffer, storage_scope);
+  static BlockRV CacheWrite(Schedule sch, BlockRV block, String storage_scope) {
+    return sch->CacheWrite(block, storage_scope);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Blockize

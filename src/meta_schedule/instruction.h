@@ -870,12 +870,12 @@ struct CacheWriteAttrs : public InstAttrsNode {
 
   /*!
    * \brief Create instruction given the inputs and outputs
-   * \param buffer The buffer to be cached
+   * \param block The buffer to be cached
    * \param storage_scope The storage scope of the instruction
    * \param output The output of the instruction
    * \return The instruction created
    */
-  static Instruction MakeInst(const BufferRV& buffer, const String& storage_scope,
+  static Instruction MakeInst(const BlockRV& block, const String& storage_scope,
                               const BlockRV& output);
 
   /*!

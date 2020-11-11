@@ -241,16 +241,18 @@ class Schedule(Object):
         """
         return _ffi_api_schedule.ScheduleCacheRead(self, buffer, scope)
 
-    def cache_write(self, buffer, scope):
+    def cache_write(self, block, index, scope):
         """Create a cache write of original tensor, before storing into tensor.
         Parameters
         ----------
-        buffer : Buffer
-            The buffer to be cache_written
+        block : Block
+            The write block of the buffer to be cache_writte
+        index : int
+            The index of the buffer in block's write region
         scope : str
             The storage scope
         """
-        return _ffi_api_schedule.ScheduleCacheWrite(self, buffer, scope)
+        return _ffi_api_schedule.ScheduleCacheWrite(self, block, index, scope)
 
     def compute_inline(self, block):
         """Mark one block as inline, then the body of computation will be expanded and

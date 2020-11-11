@@ -266,11 +266,11 @@ class ScheduleNode : public Object {
   BlockRV CacheRead(const BufferRV& buffer, const String& storage_scope);
   /*!
    * \brief Apply the instruction cache_write
-   * \param buffer The buffer to be cached
+   * \param block The write block of the buffer to be cached
    * \param storage_scope The storage scope
    * \return The cache write stage
    */
-  BlockRV CacheWrite(const BufferRV& buffer, const String& storage_scope);
+  BlockRV CacheWrite(const BlockRV& block, const String& storage_scope);
   /*!
    * \brief Apply blockize to the schedule
    * \param loop The loop to be blockized

@@ -346,11 +346,11 @@ Instruction CacheReadAttrs::MakeInst(const BufferRV& buffer, const String& stora
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction CacheWriteAttrs::MakeInst(const BufferRV& buffer, const String& storage_scope,
+Instruction CacheWriteAttrs::MakeInst(const BlockRV& block, const String& storage_scope,
                                       const BlockRV& output) {
   ObjectPtr<CacheWriteAttrs> n = make_object<CacheWriteAttrs>();
   n->storage_scope = storage_scope;
-  return Instruction(/*inputs=*/{buffer},
+  return Instruction(/*inputs=*/{block},
                      /*outputs=*/{output},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
@@ -563,8 +563,8 @@ Array<ObjectRef> CacheReadAttrs::ApplyToSchedule(ScheduleNode* sch,
 Array<ObjectRef> CacheWriteAttrs::ApplyToSchedule(ScheduleNode* sch,
                                                   const Array<ObjectRef>& inputs) const {
   CHECK_EQ(inputs.size(), 1);
-  TVM_META_SCHEDULE_INST_CAST(BufferRV, buffer, inputs[0]);
-  return {sch->CacheWrite(buffer, storage_scope)};
+  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
+  return {sch->CacheWrite(block, storage_scope)};
 }
 
 Array<ObjectRef> BlockizeAttrs::ApplyToSchedule(ScheduleNode* sch,
