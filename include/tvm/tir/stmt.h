@@ -1214,6 +1214,7 @@ class ReduceStepNode : public StmtNode {
   PrimExpr rhs;
 
   void VisitAttrs(AttrVisitor* v) {
+    v->Visit("comm_reducer", &comm_reducer);
     v->Visit("lhs", &lhs);
     v->Visit("rhs", &rhs);
   }
