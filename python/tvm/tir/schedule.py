@@ -55,7 +55,7 @@ class Schedule(Object):
             The blocks sref that match the arguments
         """
         if isinstance(arg, str):
-            blocks = _ffi_api_schedule.GetBlocksFromTag(self, arg, scope)
+            blocks = _ffi_api_schedule.GetBlocksFromTag(self, arg)
         else:
             blocks = _ffi_api_schedule.GetBlocksFromBuffer(self, arg, scope)
         if not blocks:
