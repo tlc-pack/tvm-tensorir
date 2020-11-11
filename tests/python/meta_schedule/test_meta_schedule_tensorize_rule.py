@@ -212,7 +212,7 @@ def dot_product_tensorized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                         ]
                                     ]
                                 )
-                                tir.evaluate(((C.data + A.data) + B.data))
+                                tir.evaluate(tir.call_extern("vec4add", C.data, C.elem_offset, A.data, A.elem_offset, B.data, B.elem_offset, dtype="int32"))
 
 
 # pylint: enable=invalid-name,no-member
