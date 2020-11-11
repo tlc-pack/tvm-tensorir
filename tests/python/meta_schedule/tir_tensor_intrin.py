@@ -94,7 +94,9 @@ def dot_product_impl(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
     with tir.block([tir.reduce_axis(0, 4)], "root") as [v0]:
         tir.bind(v0, 0)
-        tir.evaluate(C.data + A.data + B.data)
+        tir.reads([C[0 : 1], A[v0 : v0 + 4], B[v0 : v0 + 4]])
+        tir.writes([C[0 : 1]])
+        tir.evaluate(tir.call_extern("vec4add", C.data, C.elem_offset, A.data, A.elem_offset, B.data, B.elem_offset, dtype="int32"))
 
 # fmt: on
 # pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks
