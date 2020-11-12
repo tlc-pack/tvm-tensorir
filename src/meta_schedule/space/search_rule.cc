@@ -249,10 +249,6 @@ class RuleMultiLevelTilingAndFusion {
       const Array<LoopRV>& r_tiles = state->tiles[r_idx.front()];
       CHECK(!r_tiles.empty()) << "ValueError: Cannot find any reduction loop in the block";
       sch->ComputeAt(cache_read_block, r_tiles.back());
-      // The code below did Vectorized loading on GPU
-      if (!vector_load_max_len.defined()) {
-        continue;
-      }
       // Fuse the iterators
       Array<LoopRV> to_fuse;
       {
@@ -264,13 +260,20 @@ class RuleMultiLevelTilingAndFusion {
         }
       }
       LoopRV fused = sch->Fuse(to_fuse);
-      // Split into inner and outer
-      Array<tir::Var> factors = sch->SamplePerfectTile(2, fused, vector_load_max_len.value());
-      CHECK_EQ(factors.size(), 2);
-      Array<LoopRV> tiles = sch->Split(fused, {factors[0], factors[1]});
-      CHECK_EQ(tiles.size(), 2);
-      // Vectorize the inner loop
-      sch->MarkLoopType({tiles[1]}, "lazy_vectorize", Integer(1), NullOpt);
+      if (vector_load_max_len.defined()) {
+        // cooperative fetch + vectorized loading
+        // Split into inner and outer
+        Array<tir::Var> factors = sch->SamplePerfectTile(2, fused, vector_load_max_len.value());
+        CHECK_EQ(factors.size(), 2);
+        Array<LoopRV> tiles = sch->Split(fused, {factors[0], factors[1]});
+        CHECK_EQ(tiles.size(), 2);
+        // Vectorize the inner loop
+        sch->MarkLoopType({tiles[0]}, "lazy_cooperative_fetch", Integer(1), NullOpt);
+        sch->MarkLoopType({tiles[1]}, "lazy_vectorize", Integer(1), NullOpt);
+      } else {
+        // cooperative fetch only
+        sch->MarkLoopType({fused}, "lazy_cooperative_fetch", Integer(1), NullOpt);
+      }
     }
   }
 
