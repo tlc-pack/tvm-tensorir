@@ -372,6 +372,12 @@ Instruction DecomposeReductionAttrs::MakeInst(const BlockRV& block, const LoopRV
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
+Instruction EnterPostProcAttrs::MakeInst() {
+  return Instruction(/*inputs=*/{},
+                     /*outputs=*/{},
+                     /*attrs=*/InstAttrs(make_object<EnterPostProcAttrs>()));
+}
+
 /**************** ApplyToSchedule  ****************/
 /**************** (ApplyToSchedule) Sampling  ****************/
 
@@ -576,6 +582,13 @@ Array<ObjectRef> DecomposeReductionAttrs::ApplyToSchedule(ScheduleNode* sch,
   return {sch->DecomposeReduction(block, loop)};
 }
 
+Array<ObjectRef> EnterPostProcAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                     const Array<ObjectRef>& inputs) const {
+  CHECK_EQ(inputs.size(), 0);
+  sch->EnterPostProc();
+  return {};
+}
+
 /**************** Export  ****************/
 /**************** (Export) Sampling  ****************/
 
@@ -719,6 +732,11 @@ void BlockizeAttrs::Export(Array<ObjectRef>* record,
 
 void DecomposeReductionAttrs::Export(Array<ObjectRef>* record,
                                      const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+}
+
+void EnterPostProcAttrs::Export(Array<ObjectRef>* record,
+                                const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
 }
 
@@ -887,6 +905,11 @@ InstAttrs BlockizeAttrs::Import(const Array<ObjectRef>& record) {
 InstAttrs DecomposeReductionAttrs::Import(const Array<ObjectRef>& record) {
   CHECK_EQ(record.size(), 3);
   return InstAttrs(make_object<DecomposeReductionAttrs>());
+}
+
+InstAttrs EnterPostProcAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 3);
+  return InstAttrs(make_object<EnterPostProcAttrs>());
 }
 
 /**************** FFI ****************/

@@ -24,27 +24,24 @@ from tir_workload import matmul, matmul_relu
 from tvm import meta_schedule as ms
 
 TARGET = tvm.target.Target("llvm")
-
-
-def _make_cpu_space():
-    return ms.space.PostOrderApply(
-        stages=[
-            ms.rule.inline_pure_spatial(strict_mode=True),
-            ms.rule.multi_level_tiling_and_fusion(
-                structure="SSRSRS",
-                must_cache_read=False,
-                can_cache_write=True,
-                must_cache_write=False,
-                fusion_levels=[1, 2],
-            ),
-            ms.rule.mark_parallelize_outer(max_extent=256),
-            ms.rule.mark_vectorize_inner(max_extent=32),
-        ],
-        postprocs=[
-            ms.postproc.rewrite_parallel(),
-            ms.postproc.rewrite_vectorize(),
-        ],
-    )
+SPACE = ms.space.PostOrderApply(
+    stages=[
+        ms.rule.inline_pure_spatial(strict_mode=True),
+        ms.rule.multi_level_tiling_and_fusion(
+            structure="SSRSRS",
+            must_cache_read=False,
+            can_cache_write=True,
+            must_cache_write=False,
+            fusion_levels=[1, 2],
+        ),
+        ms.rule.mark_parallelize_outer(max_extent=256),
+        ms.rule.mark_vectorize_inner(max_extent=32),
+    ],
+    postprocs=[
+        ms.postproc.rewrite_parallel(),
+        ms.postproc.rewrite_vectorize(),
+    ],
+)
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -57,7 +54,7 @@ def test_matmul_post_order_apply():
             task_name="cpu_matmul",
             filename="./cpu_matmul.json",
         ),
-        space=_make_cpu_space(),
+        space=SPACE,
         strategy=ms.strategy.Replay(num_iterations=32),
         measurer=ms.ProgramMeasurer(
             measure_callbacks=[
@@ -81,7 +78,7 @@ def test_matmul_relu_post_order_apply():
             task_name="cpu_matmul_relu",
             filename="./cpu_matmul_relu.json",
         ),
-        space=_make_cpu_space(),
+        space=SPACE,
         strategy=ms.strategy.Replay(num_iterations=32),
         measurer=ms.ProgramMeasurer(
             measure_callbacks=[
