@@ -37,22 +37,75 @@ Postproc::Postproc(String name, FProc proc) {
 
 bool PostprocNode::Apply(const Schedule& sch, Sampler* sampler) { return proc_(sch, sampler); }
 
+/********** Utility helpers **********/
+
+bool CheckLoopType(const tir::StmtSRef& loop_sref, const String& expected) {
+  const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+  if (loop == nullptr || loop->annotations.empty() || loop->annotations.size() != 1 ||
+      loop->annotations[0]->attr_key != tir::attr::loop_type) {
+    return false;
+  }
+  const auto* str_imm = loop->annotations[0]->value.as<tir::StringImmNode>();
+  if (!str_imm) {
+    return false;
+  }
+  const String& ann = str_imm->value;
+  return ann == expected;
+}
+
+void RemoveAnnotation(const Schedule& sch, const tir::StmtSRef& loop_sref) {
+  const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+  CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
+  ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
+  new_loop->annotations.clear();
+  sch->sch->Replace(loop_sref, tir::Loop(new_loop));
+}
+
+PrimExpr GetLoopExtent(const tir::StmtSRef& loop_sref) {
+  const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+  CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
+  return loop->extent;
+}
+
+std::vector<tir::StmtSRef> CollectAllBlocks(const Schedule& sch) {
+  std::vector<tir::StmtSRef> all_blocks;
+  const auto* root_block = sch->sch->root->GetStmt<tir::BlockNode>();
+  CHECK(root_block) << "TypeError: Expects Block, but gets: " << root_block;
+  tir::PreOrderVisit(root_block->body, [&all_blocks, &sch](const ObjectRef& obj) -> bool {
+    if (const auto* block = obj.as<tir::BlockNode>()) {
+      all_blocks.push_back(sch->sch->stmt2ref.at(block));
+    }
+    return true;
+  });
+  return all_blocks;
+}
+
 /********** RewriteParallel **********/
 
 Postproc RewriteParallel() {
   auto f_proc = [](Schedule sch, void* _sampler) -> bool {
-    Array<Array<tir::StmtSRef>> to_parallel = CollectAnnotatedLoops(sch->sch, "lazy_parallel");
-    for (const Array<tir::StmtSRef>& group : to_parallel) {
-      for (const tir::StmtSRef& loop_sref : group) {
-        const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
-        CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->GetTypeKey();
-        ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
-        new_loop->annotations.clear();
-        sch->sch->Replace(loop_sref, tir::Loop(new_loop));
+    std::vector<tir::StmtSRef> all_blocks = CollectAllBlocks(sch);
+    for (const tir::StmtSRef& block_sref : all_blocks) {
+      Array<tir::StmtSRef> loop_srefs = sch->sch->GetLoopsInScope(block_sref);
+      std::vector<int> parallel_ids;
+      {
+        int i = 0;
+        for (const tir::StmtSRef& loop_sref : loop_srefs) {
+          if (CheckLoopType(loop_sref, "lazy_parallel")) {
+            parallel_ids.push_back(i);
+          }
+          ++i;
+        }
       }
-      tir::StmtSRef fused = group[0];
-      for (int i = 1, n = group.size(); i < n; ++i) {
-        fused = sch->sch->fuse(fused, group[i]);
+      if (parallel_ids.empty()) {
+        continue;
+      }
+      for (int id : parallel_ids) {
+        RemoveAnnotation(sch, loop_srefs[id]);
+      }
+      tir::StmtSRef fused = loop_srefs[parallel_ids[0]];
+      for (int i = 1, n = parallel_ids.size(); i < n; ++i) {
+        fused = sch->sch->fuse(fused, loop_srefs[parallel_ids[i]]);
       }
       sch->sch->parallel(fused);
     }
@@ -65,25 +118,31 @@ Postproc RewriteParallel() {
 
 Postproc RewriteVectorize() {
   auto f_proc = [](Schedule sch, void* _sampler) -> bool {
-    Array<Array<tir::StmtSRef>> to_vectorize = CollectAnnotatedLoops(sch->sch, "lazy_vectorize");
+    std::vector<tir::StmtSRef> all_blocks = CollectAllBlocks(sch);
     arith::Analyzer analyzer;
-    for (const Array<tir::StmtSRef>& group : to_vectorize) {
-      for (const tir::StmtSRef& loop_sref : group) {
-        const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
-        CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->GetTypeKey();
-        ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
-        new_loop->annotations.clear();
-        sch->sch->Replace(loop_sref, tir::Loop(new_loop));
+    for (const tir::StmtSRef& block_sref : all_blocks) {
+      Array<tir::StmtSRef> loop_srefs = sch->sch->GetLoopsInScope(block_sref);
+      std::vector<int> vectorize_ids;
+      {
+        int i = 0;
+        for (const tir::StmtSRef& loop_sref : loop_srefs) {
+          if (CheckLoopType(loop_sref, "lazy_vectorize")) {
+            vectorize_ids.push_back(i);
+          }
+          ++i;
+        }
       }
-      tir::StmtSRef fused = group[0];
-      for (int i = 1, n = group.size(); i < n; ++i) {
-        fused = sch->sch->fuse(fused, group[i]);
+      if (vectorize_ids.empty()) {
+        continue;
       }
-      // Vectorize the loops whose extent is possible to be > 1
-      // TODO(@junrushao1994): move the logic to meta schedule class
-      const tir::LoopNode* loop = fused->GetStmt<tir::LoopNode>();
-      CHECK(loop);
-      if (!analyzer.CanProve(loop->extent <= 1)) {
+      for (int id : vectorize_ids) {
+        RemoveAnnotation(sch, loop_srefs[id]);
+      }
+      tir::StmtSRef fused = loop_srefs[vectorize_ids[0]];
+      for (int i = 1, n = vectorize_ids.size(); i < n; ++i) {
+        fused = sch->sch->fuse(fused, loop_srefs[vectorize_ids[i]]);
+      }
+      if (!analyzer.CanProve(GetLoopExtent(fused) <= 1)) {
         sch->sch->vectorize(fused);
       }
     }
@@ -205,43 +264,22 @@ class PostprocRewriteCudaThreadBind {
       loop_srefs.push_back(loop_sref);
       const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
       CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
-      prod_extent = prod_extent * loop->extent;
-      if (loop->annotations.empty()) {
+      // Check the annotation
+      if (CheckLoopType(loop_sref, "lazy_blockIdx.x")) {
+        block_idx.push_back(i);
+      } else if (CheckLoopType(loop_sref, "lazy_vthread")) {
+        vthread_idx.push_back(i);
+      } else if (CheckLoopType(loop_sref, "lazy_threadIdx.x")) {
+        thread_idx.push_back(i);
+      } else {
         continue;
       }
-      if (loop->annotations.size() != 1) {
-        return false;
-      }
-      // Check the annotation
-      if (loop->annotations[0]->attr_key == tir::attr::loop_type) {
-        if (const auto* str_imm = loop->annotations[0]->value.as<tir::StringImmNode>()) {
-          const String& ann = str_imm->value;
-          if (ann == "lazy_blockIdx.x") {
-            block_idx.push_back(i);
-          } else if (ann == "lazy_vthread") {
-            vthread_idx.push_back(i);
-          } else if (ann == "lazy_threadIdx.x") {
-            thread_idx.push_back(i);
-          } else {
-            return false;
-          }
-        }
-      }
+      prod_extent = prod_extent * loop->extent;
     }
     prod_extent = analyzer.Simplify(prod_extent);
     // Check if the block is annotated
-    if (block_idx.empty()) {
+    if (block_idx.empty() || vthread_idx.empty() || thread_idx.empty()) {
       return false;
-    }
-    CHECK(!vthread_idx.empty());
-    CHECK(!thread_idx.empty());
-    // Remove the annotation on the loop
-    for (const tir::StmtSRef& loop_sref : loop_srefs) {
-      const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
-      CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
-      ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
-      new_loop->annotations.clear();
-      sch->sch->Replace(loop_sref, tir::Loop(new_loop));
     }
     // Check if `prod_extent <= warp_size`
     if (analyzer.CanProve(prod_extent <= warp_size)) {
@@ -251,39 +289,63 @@ class PostprocRewriteCudaThreadBind {
       indices.insert(indices.end(), vthread_idx.begin(), vthread_idx.end());
       indices.insert(indices.end(), thread_idx.begin(), thread_idx.end());
       std::sort(indices.begin(), indices.end());
+      // Remove the annotation on the loop
+      for (int idx : indices) {
+        RemoveAnnotation(sch, loop_srefs[idx]);
+      }
+      // Do fusion
       std::vector<LoopRV> to_fuse;
       for (int idx : indices) {
         to_fuse.push_back(loop_rvs[idx]);
       }
       LoopRV fused = sch->Fuse(to_fuse);
+      // Do binding
       sch->sch->bind(sch->Eval(fused), MakeThreadIdx("threadIdx.x"));
     } else {
       // Otherwise, bind `blockIdx.x`, `vthread` and `threadIdx.x`
       {
         // bind `blockIdx.x`
+        // Remove the annotation on the loop
+        for (int idx : block_idx) {
+          RemoveAnnotation(sch, loop_srefs[idx]);
+        }
+        // Do fusion
         std::vector<LoopRV> to_fuse;
         for (int idx : block_idx) {
           to_fuse.push_back(loop_rvs[idx]);
         }
         LoopRV fused = sch->Fuse(to_fuse);
+        // Do binding
         sch->sch->bind(sch->Eval(fused), MakeThreadIdx("blockIdx.x"));
       }
       {
         // bind `vthread`
+        // Remove the annotation on the loop
+        for (int idx : vthread_idx) {
+          RemoveAnnotation(sch, loop_srefs[idx]);
+        }
+        // Do fusion
         std::vector<LoopRV> to_fuse;
         for (int idx : vthread_idx) {
           to_fuse.push_back(loop_rvs[idx]);
         }
         LoopRV fused = sch->Fuse(to_fuse);
+        // Do binding
         sch->sch->bind(sch->Eval(fused), MakeThreadIdx("vthread"));
       }
       {
         // bind `threadIdx.x`
+        // Remove the annotation on the loop
+        for (int idx : thread_idx) {
+          RemoveAnnotation(sch, loop_srefs[idx]);
+        }
+        // Do fusion
         std::vector<LoopRV> to_fuse;
         for (int idx : thread_idx) {
           to_fuse.push_back(loop_rvs[idx]);
         }
         LoopRV fused = sch->Fuse(to_fuse);
+        // Do binding
         sch->sch->bind(sch->Eval(fused), MakeThreadIdx("threadIdx.x"));
       }
     }
@@ -322,6 +384,33 @@ class PostprocRewriteCudaThreadBind {
     return true;
   }
 
+  void BindCooperativeFetch(const Schedule& sch, const tir::StmtSRef& block_sref) const {
+    Array<tir::StmtSRef> axes = sch->sch->GetLoopsInScope(block_sref);
+    for (const tir::StmtSRef& loop_sref : axes) {
+      const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+      CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
+      if (!CheckLoopType(loop_sref, "lazy_cooperative_fetch")) {
+        continue;
+      }
+      RemoveAnnotation(sch, loop_sref);
+      tir::StmtSRef threadIdx_sref{nullptr};
+      for (tir::StmtSRefNode* upper = loop_sref->parent; upper; upper = upper->parent) {
+        tir::StmtSRef upper_sref = GetRef<tir::StmtSRef>(upper);
+        if (CheckLoopType(upper_sref, "threadIdx.x")) {
+          threadIdx_sref = upper_sref;
+          break;
+        }
+      }
+      CHECK(threadIdx_sref.defined())
+          << "ValueError: Cannto find 'threadIdx.x' above cooperative fetching";
+      PrimExpr factor = GetLoopExtent(threadIdx_sref);
+      PrimExpr nparts = floordiv(GetLoopExtent(loop_sref) + factor - 1, factor);
+      Array<tir::StmtSRef> splits = sch->sch->split(loop_sref, nparts, factor);
+      CHECK_EQ(splits.size(), 2);
+      sch->sch->bind(splits[1], MakeThreadIdx("threadIdx.x"));
+    }
+  }
+
   bool Proc(const Schedule& sch) const {
     Array<BlockRV> root_block_rvs = sch->GetRootBlocks();
     for (const BlockRV& block_rv : root_block_rvs) {
@@ -331,6 +420,19 @@ class PostprocRewriteCudaThreadBind {
       if (BindSpatial(sch, block_rv)) {
         continue;
       }
+    }
+    // Collect all the blocks
+    std::vector<tir::StmtSRef> all_blocks;
+    const auto* root_block = sch->sch->root->GetStmt<tir::BlockNode>();
+    CHECK(root_block) << "TypeError: Expects Block, but gets: " << root_block;
+    tir::PreOrderVisit(root_block->body, [&all_blocks, &sch](const ObjectRef& obj) -> bool {
+      if (const auto* block = obj.as<tir::BlockNode>()) {
+        all_blocks.push_back(sch->sch->stmt2ref.at(block));
+      }
+      return true;
+    });
+    for (const tir::StmtSRef& block_sref : all_blocks) {
+      BindCooperativeFetch(sch, block_sref);
     }
     return true;
   }
@@ -347,46 +449,34 @@ Postproc RewriteCudaThreadBind(int warp_size) {
 
 class PostprocVerifyGPUCode {
  public:
-  int shared_memory_per_block;
-  int registers_per_block;
-  int max_threads_per_block;
-  int vector_unit_bytes;
+  const tir::transform::Sequential passes;
 
   explicit PostprocVerifyGPUCode(Target target)
-      : shared_memory_per_block(ExtractFromTarget(target, "shared_memory_per_block")),
-        registers_per_block(ExtractFromTarget(target, "registers_per_block")),
-        max_threads_per_block(ExtractFromTarget(target, "max_threads_per_block")),
-        vector_unit_bytes(ExtractFromTarget(target, "vector_unit_bytes")) {}
+      : passes({tir::transform::InjectPrefetch(),       //
+                tir::transform::BufferFlatten(),        //
+                tir::transform::NarrowDataType(32),     //
+                tir::transform::Simplify(),             //
+                tir::transform::VectorizeLoop(true),    //
+                tir::transform::InjectVirtualThread(),  //
+                tir::transform::StorageRewrite(),       //
+                tir::transform::Simplify(),             //
+                tir::transform::VerifyGPUCode({
+                    {"max_shared_memory_per_block", Extract(target, "shared_memory_per_block")},
+                    {"max_local_memory_per_block", Extract(target, "registers_per_block")},
+                    {"max_threads_per_block", Extract(target, "max_threads_per_block")},
+                    {"max_vector_bytes", Extract(target, "vector_unit_bytes")},
+                    {"max_vthread", Integer(8)},
+                })}) {}
 
-  static int ExtractFromTarget(const Target& target, const char* name) {
+  static Integer Extract(const Target& target, const char* name) {
     if (Optional<Integer> v = target->GetAttr<Integer>(name)) {
       return v.value();
     }
-    LOG(FATAL) << "AttributedError: \"shared_memory_per_block\" is not defined in the target";
+    LOG(FATAL) << "AttributedError: \"" << name << "\" is not defined in the target";
     throw;
   }
 
   bool Proc(const Schedule& sch) const {
-    static const constexpr int MAX_VTHREADS = 8;
-    tir::transform::Sequential passes({
-        // Phase 0
-        tir::transform::InjectPrefetch(),
-        tir::transform::BufferFlatten(),
-        // Phase 1
-        tir::transform::NarrowDataType(32),
-        tir::transform::Simplify(),
-        tir::transform::VectorizeLoop(true),
-        tir::transform::InjectVirtualThread(),
-        tir::transform::StorageRewrite(),
-        tir::transform::Simplify(),
-        tir::transform::VerifyGPUCode({
-            {"max_shared_memory_per_block", shared_memory_per_block},
-            {"max_local_memory_per_block", registers_per_block},
-            {"max_threads_per_block", max_threads_per_block},
-            {"max_vector_bytes", vector_unit_bytes},
-            {"max_vthread", MAX_VTHREADS},
-        }),
-    });
     IRModule mod({{GlobalVar("main"), sch->sch->func}});
     try {
       passes(std::move(mod));

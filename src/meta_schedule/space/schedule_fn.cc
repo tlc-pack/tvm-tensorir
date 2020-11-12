@@ -91,6 +91,7 @@ ScheduleFn::ScheduleFn(PackedFunc sch_fn, Array<Postproc> postprocs) {
 /********** Sampling **********/
 
 bool ScheduleFnNode::Postprocess(const Schedule& sch, Sampler* sampler) {
+  sch->EnterPostProc();
   for (const Postproc& postproc : postprocs) {
     if (!postproc->Apply(sch, sampler)) {
       return false;
