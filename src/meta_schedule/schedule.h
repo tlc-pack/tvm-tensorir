@@ -285,6 +285,8 @@ class ScheduleNode : public Object {
    * \return The block random variable indicating the decomposition result
    */
   BlockRV DecomposeReduction(const BlockRV& block, const LoopRV& loop);
+  /*! \brief An NOP indicating entrance of post processing*/
+  void EnterPostProc();
   /**************** Trace-related ****************/
   /*!
    * \brief Mutate the decision on the specific instruction
