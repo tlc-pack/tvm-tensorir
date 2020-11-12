@@ -92,6 +92,7 @@ PostOrderApply::PostOrderApply(Array<SearchRule> stages, Array<Postproc> postpro
 /********** Sampling **********/
 
 bool PostOrderApplyNode::Postprocess(const Schedule& sch, Sampler* sampler) {
+  sch->EnterPostProc();
   for (const Postproc& postproc : postprocs) {
     if (!postproc->Apply(sch, sampler)) {
       return false;
