@@ -24,28 +24,25 @@ from tir_workload import matmul
 from tvm import meta_schedule as ms
 
 TARGET = tvm.target.Target("nvidia/rtx2080ti")
-
-
-def _make_cuda_space():
-    return ms.space.PostOrderApply(
-        stages=[
-            ms.rule.inline_pure_spatial(strict_mode=False),
-            ms.rule.multi_level_tiling_and_fusion(
-                structure="SSSRRSRS",
-                must_cache_read=True,
-                can_cache_write=True,
-                must_cache_write=True,
-                fusion_levels=[3],
-                vector_load_max_len=4,
-                tile_marks=["lazy_blockIdx.x", "lazy_vthread", "lazy_threadIdx.x"],
-            ),
-        ],
-        postprocs=[
-            ms.postproc.rewrite_vectorize(),
-            ms.postproc.rewrite_cuda_thread_bind(warp_size=32),
-            ms.postproc.verify_gpu_code(target=TARGET),
-        ],
-    )
+SPACE = ms.space.PostOrderApply(
+    stages=[
+        ms.rule.inline_pure_spatial(strict_mode=False),
+        ms.rule.multi_level_tiling_and_fusion(
+            structure="SSSRRSRS",
+            must_cache_read=True,
+            can_cache_write=True,
+            must_cache_write=True,
+            fusion_levels=[3],
+            vector_load_max_len=4,
+            tile_marks=["lazy_blockIdx.x", "lazy_vthread", "lazy_threadIdx.x"],
+        ),
+    ],
+    postprocs=[
+        ms.postproc.rewrite_vectorize(),
+        ms.postproc.rewrite_cuda_thread_bind(warp_size=32),
+        ms.postproc.verify_gpu_code(target=TARGET),
+    ],
+)
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -58,7 +55,7 @@ def test_integration_matmul():
             task_name="cuda_matmul",
             filename="./cuda_matmul.json",
         ),
-        space=_make_cuda_space(),
+        space=SPACE,
         strategy=ms.strategy.Replay(num_iterations=32),
         measurer=ms.ProgramMeasurer(
             measure_callbacks=[

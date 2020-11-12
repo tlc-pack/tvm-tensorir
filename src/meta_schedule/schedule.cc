@@ -210,6 +210,9 @@ Array<ObjectRef> ScheduleNode::Export() const {
   }
   Array<ObjectRef> records;
   for (const Instruction& inst : trace) {
+    if (inst->inst_attrs->IsInstance<EnterPostProcAttrs>()) {
+      break;
+    }
     Optional<Array<ObjectRef>> decision = decisions.count(inst)
                                               ? Optional<Array<ObjectRef>>(decisions.at(inst))
                                               : Optional<Array<ObjectRef>>(NullOpt);
@@ -768,6 +771,8 @@ BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const LoopRV& loo
   this->trace.push_back(DecomposeReductionAttrs::MakeInst(block, loop, output));
   return output;
 }
+
+void ScheduleNode::EnterPostProc() { this->trace.push_back(EnterPostProcAttrs::MakeInst()); }
 
 /**************** Trace-related ****************/
 

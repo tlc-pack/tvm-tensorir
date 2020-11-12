@@ -26,6 +26,22 @@ from tvm.script import ty
 # TODO(@junrushao1994): workload.* instead
 
 
+SPACE = ms.space.PostOrderApply(
+    stages=[
+        ms.rule.inline_pure_spatial(strict_mode=True),
+        ms.rule.multi_level_tiling_and_fusion(
+            structure="SSRSRS",
+            must_cache_read=False,
+            can_cache_write=True,
+            must_cache_write=False,
+            fusion_levels=[1, 2],
+        ),
+    ],
+    postprocs=[
+    ],
+)
+
+
 def _fix_sampling_tile_size(
     sch: ms.Schedule,
     possible_decisions: List[List[List[int]]],
@@ -49,18 +65,7 @@ def _fix_sampling_tile_size(
 
 
 def _get_support(func: tir.PrimFunc, task_name: str):
-    return ms.space.PostOrderApply(
-        stages=[
-            ms.rule.inline_pure_spatial(strict_mode=True),
-            ms.rule.multi_level_tiling_and_fusion(
-                structure="SSRSRS",
-                must_cache_read=False,
-                can_cache_write=True,
-                must_cache_write=False,
-                fusion_levels=[1, 2],
-            ),
-        ]
-    ).get_support(task=ms.SearchTask(func=func, task_name=task_name))
+    return SPACE.get_support(task=ms.SearchTask(func=func, task_name=task_name))
 
 
 def _debug(support: List[ms.Schedule]):
