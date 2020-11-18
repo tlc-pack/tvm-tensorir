@@ -85,6 +85,7 @@ std::vector<tir::StmtSRef> CollectAllBlocks(const Schedule& sch) {
 Postproc RewriteParallel() {
   auto f_proc = [](Schedule sch, void* _sampler) -> bool {
     std::vector<tir::StmtSRef> all_blocks = CollectAllBlocks(sch);
+    arith::Analyzer analyzer;
     for (const tir::StmtSRef& block_sref : all_blocks) {
       Array<tir::StmtSRef> loop_srefs = sch->sch->GetLoopsInScope(block_sref);
       std::vector<int> parallel_ids;
@@ -103,11 +104,23 @@ Postproc RewriteParallel() {
       for (int id : parallel_ids) {
         RemoveAnnotation(sch, loop_srefs[id]);
       }
-      tir::StmtSRef fused = loop_srefs[parallel_ids[0]];
-      for (int i = 1, n = parallel_ids.size(); i < n; ++i) {
-        fused = sch->sch->fuse(fused, loop_srefs[parallel_ids[i]]);
+      Array<Integer> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
+      int n = parallel_ids.size();
+      tir::StmtSRef fused{nullptr};
+      for (int i = 0; i < n; ++i) {
+        int loop_type = loop_types[i];
+        if (loop_type != tir::IterVarType::kDataPar) {
+          break;
+        }
+        if (fused.defined()) {
+          fused = sch->sch->fuse(fused, loop_srefs[parallel_ids[i]]);
+        } else {
+          fused = loop_srefs[parallel_ids[i]];
+        }
       }
-      sch->sch->parallel(fused);
+      if (fused.defined() && !analyzer.CanProve(GetLoopExtent(fused) <= 1)) {
+        sch->sch->parallel(fused);
+      }
     }
     return true;
   };
@@ -138,11 +151,21 @@ Postproc RewriteVectorize() {
       for (int id : vectorize_ids) {
         RemoveAnnotation(sch, loop_srefs[id]);
       }
-      tir::StmtSRef fused = loop_srefs[vectorize_ids[0]];
-      for (int i = 1, n = vectorize_ids.size(); i < n; ++i) {
-        fused = sch->sch->fuse(fused, loop_srefs[vectorize_ids[i]]);
+      Array<Integer> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
+      int n = vectorize_ids.size();
+      tir::StmtSRef fused{nullptr};
+      for (int i = n - 1; i >= 0; --i) {
+        int loop_type = loop_types[i];
+        if (loop_type != tir::IterVarType::kDataPar) {
+          break;
+        }
+        if (fused.defined()) {
+          fused = sch->sch->fuse(loop_srefs[vectorize_ids[i]], fused);
+        } else {
+          fused = loop_srefs[vectorize_ids[i]];
+        }
       }
-      if (!analyzer.CanProve(GetLoopExtent(fused) <= 1)) {
+      if (fused.defined() && !analyzer.CanProve(GetLoopExtent(fused) <= 1)) {
         sch->sch->vectorize(fused);
       }
     }
