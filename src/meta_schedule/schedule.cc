@@ -349,6 +349,8 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
 tir::Var ScheduleNode::SampleFusibleLoops(const Array<LoopRV>& loops,
                                           const Array<Integer>& loop_types, int max_extent,
                                           bool include_overflow_loop, Order order, Mode mode) {
+  CHECK_EQ(loops.size(), loop_types.size())
+      << "ValueError: 'loops' and 'loop_types' must have equal number of elements";
   int n_loops = loops.size();
   int i_start, i_end, i_delta;
   if (order == Order::outer_to_inner) {

@@ -199,3 +199,8 @@ class CacheWriteAttrs(InstAttrs):
 @register_object("meta_schedule.attrs.DecomposeReductionAttrs")
 class DecomposeReductionAttrs(InstAttrs):
     """Attrs of the instruction that applies decompose_reduction"""
+
+
+@register_object("meta_schedule.attrs.EnterPostProcAttrs")
+class EnterPostProcAttrs(InstAttrs):
+    """Attrs of an NOP that indicates entrance of post processing"""
