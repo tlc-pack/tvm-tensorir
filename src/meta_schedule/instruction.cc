@@ -97,7 +97,8 @@ Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Array<Obj
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SamplePerfectTileAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleTileFactorAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleFusibleLoopsAttrs),
-          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetOnlyConsumerAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetProducersAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetConsumersAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetBlockAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetAxesAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetReadBuffersAttrs),
@@ -211,10 +212,17 @@ Instruction SampleFusibleLoopsAttrs::MakeInst(const Array<LoopRV>& loops,
 
 /**************** (MakeInst) Block/Loop Relationship  ****************/
 
-Instruction GetOnlyConsumerAttrs::MakeInst(const BlockRV& block, const BlockRV& output) {
-  ObjectPtr<GetOnlyConsumerAttrs> n = make_object<GetOnlyConsumerAttrs>();
+Instruction GetProducersAttrs::MakeInst(const BlockRV& block, const Array<BlockRV>& outputs) {
+  ObjectPtr<GetProducersAttrs> n = make_object<GetProducersAttrs>();
   return Instruction(/*inputs=*/{block},
-                     /*outputs=*/{output},
+                     /*outputs=*/{outputs.begin(), outputs.end()},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Instruction GetConsumersAttrs::MakeInst(const BlockRV& block, const Array<BlockRV>& outputs) {
+  ObjectPtr<GetConsumersAttrs> n = make_object<GetConsumersAttrs>();
+  return Instruction(/*inputs=*/{block},
+                     /*outputs=*/{outputs.begin(), outputs.end()},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
@@ -411,11 +419,18 @@ Array<ObjectRef> SampleFusibleLoopsAttrs::ApplyToSchedule(ScheduleNode* sch,
 
 /**************** (ApplyToSchedule) Block/Loop Relationship  ****************/
 
-Array<ObjectRef> GetOnlyConsumerAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                       const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> GetProducersAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                    const Array<ObjectRef>& inputs) const {
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
-  return {sch->GetOnlyConsumer(block)};
+  return {sch->GetProducers(block)};
+}
+
+Array<ObjectRef> GetConsumersAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                    const Array<ObjectRef>& inputs) const {
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
+  return {sch->GetConsumers(block)};
 }
 
 Array<ObjectRef> GetBlockAttrs::ApplyToSchedule(ScheduleNode* sch,
@@ -630,8 +645,13 @@ void SampleFusibleLoopsAttrs::Export(Array<ObjectRef>* record,
 
 /**************** (Export) Block/Loop Relationship  ****************/
 
-void GetOnlyConsumerAttrs::Export(Array<ObjectRef>* record,
-                                  const Optional<Array<ObjectRef>>& decision) const {
+void GetProducersAttrs::Export(Array<ObjectRef>* record,
+                               const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+}
+
+void GetConsumersAttrs::Export(Array<ObjectRef>* record,
+                               const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
 }
 
@@ -781,9 +801,14 @@ InstAttrs SampleFusibleLoopsAttrs::Import(const Array<ObjectRef>& record) {
 
 /**************** (Import) Block/Loop Relationship  ****************/
 
-InstAttrs GetOnlyConsumerAttrs::Import(const Array<ObjectRef>& record) {
+InstAttrs GetProducersAttrs::Import(const Array<ObjectRef>& record) {
   CHECK_EQ(record.size(), 3);
-  return InstAttrs(make_object<GetOnlyConsumerAttrs>());
+  return InstAttrs(make_object<GetProducersAttrs>());
+}
+
+InstAttrs GetConsumersAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 3);
+  return InstAttrs(make_object<GetConsumersAttrs>());
 }
 
 InstAttrs GetBlockAttrs::Import(const Array<ObjectRef>& record) {
@@ -922,7 +947,8 @@ TVM_REGISTER_NODE_TYPE(InstructionNode);
 TVM_REGISTER_NODE_TYPE(SamplePerfectTileAttrs);
 TVM_REGISTER_NODE_TYPE(SampleTileFactorAttrs);
 TVM_REGISTER_NODE_TYPE(SampleFusibleLoopsAttrs);
-TVM_REGISTER_NODE_TYPE(GetOnlyConsumerAttrs);
+TVM_REGISTER_NODE_TYPE(GetProducersAttrs);
+TVM_REGISTER_NODE_TYPE(GetConsumersAttrs);
 TVM_REGISTER_NODE_TYPE(GetBlockAttrs);
 TVM_REGISTER_NODE_TYPE(GetAxesAttrs);
 TVM_REGISTER_NODE_TYPE(GetReadBuffersAttrs);

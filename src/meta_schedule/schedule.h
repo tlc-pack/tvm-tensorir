@@ -158,6 +158,16 @@ class ScheduleNode : public Object {
                               int max_extent, bool include_overflow_loop, Order order, Mode mode);
   /**************** Block/Loop Relationship ****************/
   /*!
+   * \brief Get the producer of a specific block
+   * \return The producers
+   */
+  Array<BlockRV> GetProducers(const BlockRV& block);
+  /*!
+   * \brief Get the consumers of a specific block
+   * \return The consumers
+   */
+  Array<BlockRV> GetConsumers(const BlockRV& block);
+  /*!
    * \brief Get the only consumer of a specific block
    * \param block The block to be queried
    * \return A block, its only consumer; or NullOpt if it does not exist

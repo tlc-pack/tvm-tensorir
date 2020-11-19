@@ -347,10 +347,10 @@ def test_meta_schedule_sample_fusible_loops():
     _check_serialization(sch, func=matmul)
 
 
-def test_meta_schedule_get_only_consumer():
+def test_meta_schedule_get_consumers():
     sch = ms.Schedule(func=matmul_relu)
     block = sch.get_block("matmul")
-    consumer = sch.get_only_consumer(block)
+    (consumer,) = sch.get_consumers(block)
     assert tvm.ir.structural_equal(
         sch.evaluate(consumer).stmt,
         sch.evaluate(sch.get_block("relu")).stmt,
@@ -621,7 +621,7 @@ if __name__ == "__main__":
     test_meta_schedule_sample_tile_factor()
     test_meta_schedule_sample_perfect_tile()
     test_meta_schedule_sample_fusible_loops()
-    test_meta_schedule_get_only_consumer()
+    test_meta_schedule_get_consumers()
     test_meta_schedule_get_block()
     test_meta_schedule_get_axes()
     test_meta_schedule_get_read_buffers()

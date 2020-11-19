@@ -426,6 +426,49 @@ tir::Var ScheduleNode::SampleFusibleLoops(const Array<LoopRV>& loops,
 
 /**************** Block/Loop Relationship ****************/
 
+Array<BlockRV> ScheduleNode::GetProducers(const BlockRV& block) {
+  // Find the output from TIR
+  tir::StmtSRef block_sref = Eval(block);
+  Array<tir::DepEdge> pred_edges =
+      this->sch->GetParentScope(block_sref).GetPredecessors(block_sref);
+  // Create the output random variable
+  Array<BlockRV> outputs;
+  outputs.reserve(pred_edges.size());
+  for (const tir::DepEdge edge : pred_edges) {
+    if (edge->type == tir::DepType::kRAW || edge->type == tir::DepType::kWAW) {
+      // Create the output random variable
+      BlockRV output;
+      // Update the symbol table
+      this->sym_tab.Set(output, edge->dst);
+      outputs.push_back(output);
+    }
+  }
+  // Put the instruction in the trace
+  this->trace.push_back(GetProducersAttrs::MakeInst(block, outputs));
+  return outputs;
+}
+
+Array<BlockRV> ScheduleNode::GetConsumers(const BlockRV& block) {
+  // Find the output from TIR
+  tir::StmtSRef block_sref = Eval(block);
+  Array<tir::DepEdge> succ_edges = this->sch->GetParentScope(block_sref).GetSuccessors(block_sref);
+  // Create the output random variable
+  Array<BlockRV> outputs;
+  outputs.reserve(succ_edges.size());
+  for (const tir::DepEdge edge : succ_edges) {
+    if (edge->type == tir::DepType::kRAW || edge->type == tir::DepType::kWAW) {
+      // Create the output random variable
+      BlockRV output;
+      // Update the symbol table
+      this->sym_tab.Set(output, edge->dst);
+      outputs.push_back(output);
+    }
+  }
+  // Put the instruction in the trace
+  this->trace.push_back(GetConsumersAttrs::MakeInst(block, outputs));
+  return outputs;
+}
+
 Optional<BlockRV> ScheduleNode::GetOnlyConsumer(const BlockRV& block) {
   // Find the output from TIR
   tir::StmtSRef block_sref = Eval(block);
@@ -444,7 +487,7 @@ Optional<BlockRV> ScheduleNode::GetOnlyConsumer(const BlockRV& block) {
   // Update the symbol table
   this->sym_tab.Set(output, result_sref[0]);
   // Put the instruction in the trace
-  this->trace.push_back(GetOnlyConsumerAttrs::MakeInst(block, output));
+  // this->trace.push_back(GetOnlyConsumerAttrs::MakeInst(block, output));
   return output;
 }
 
@@ -953,11 +996,18 @@ struct Internal {
 
   /**************** Block/Loop Relationship ****************/
   /*!
-   * \brief FFI function, corresponds to ScheduleNode::GetOnlyConsumer
-   * \sa ScheduleNode::GetOnlyConsumer
+   * \brief FFI function, corresponds to ScheduleNode::GetProducers
+   * \sa ScheduleNode::GetProducers
    */
-  static Optional<BlockRV> GetOnlyConsumer(Schedule sch, BlockRV block) {
-    return sch->GetOnlyConsumer(block);
+  static Array<BlockRV> GetProducers(Schedule sch, BlockRV block) {
+    return sch->GetProducers(block);
+  }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::GetConsumers
+   * \sa ScheduleNode::GetConsumers
+   */
+  static Array<BlockRV> GetConsumers(Schedule sch, BlockRV block) {
+    return sch->GetConsumers(block);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::GetBlock
@@ -1111,8 +1161,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleTileFactor")
     .set_body_typed(Internal::SampleTileFactor);
 TVM_REGISTER_GLOBAL("meta_schedule.SampleFusibleLoops")
     .set_body_typed(Internal::SampleFusibleLoops);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetOnlyConsumer")
-    .set_body_typed(Internal::GetOnlyConsumer);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetProducers").set_body_typed(Internal::GetProducers);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetConsumers").set_body_typed(Internal::GetConsumers);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetBlock").set_body_typed(Internal::GetBlock);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetAxes").set_body_typed(Internal::GetAxes);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetReadBuffers")
