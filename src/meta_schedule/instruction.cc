@@ -345,11 +345,12 @@ Instruction MarkBlockTypeAttrs::MakeInst(const BlockRV& block, const String& mar
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction CacheReadAttrs::MakeInst(const BufferRV& buffer, const String& storage_scope,
+Instruction CacheReadAttrs::MakeInst(const BlockRV& block, int i, const String& storage_scope,
                                      const BlockRV& output) {
   ObjectPtr<CacheReadAttrs> n = make_object<CacheReadAttrs>();
+  n->i = i;
   n->storage_scope = storage_scope;
-  return Instruction(/*inputs=*/{buffer},
+  return Instruction(/*inputs=*/{block},
                      /*outputs=*/{output},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
@@ -572,8 +573,8 @@ Array<ObjectRef> ReverseComputeInlineAttrs::ApplyToSchedule(ScheduleNode* sch,
 Array<ObjectRef> CacheReadAttrs::ApplyToSchedule(ScheduleNode* sch,
                                                  const Array<ObjectRef>& inputs) const {
   CHECK_EQ(inputs.size(), 1);
-  TVM_META_SCHEDULE_INST_CAST(BufferRV, buffer, inputs[0]);
-  return {sch->CacheRead(buffer, storage_scope)};
+  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
+  return {sch->CacheRead(block, i, storage_scope)};
 }
 
 Array<ObjectRef> CacheWriteAttrs::ApplyToSchedule(ScheduleNode* sch,
@@ -736,7 +737,7 @@ void ReverseComputeInlineAttrs::Export(Array<ObjectRef>* record,
 void CacheReadAttrs::Export(Array<ObjectRef>* record,
                             const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{storage_scope});
+  record->push_back(Array<ObjectRef>{Integer(i), storage_scope});
 }
 
 void CacheWriteAttrs::Export(Array<ObjectRef>* record,
@@ -904,9 +905,10 @@ InstAttrs ReverseComputeInlineAttrs::Import(const Array<ObjectRef>& record) {
 InstAttrs CacheReadAttrs::Import(const Array<ObjectRef>& record) {
   CHECK_EQ(record.size(), 4);
   Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 1);
+  CHECK_EQ(from.size(), 2);
   ObjectPtr<CacheReadAttrs> n = make_object<CacheReadAttrs>();
-  n->storage_scope = Downcast<String>(from[0]);
+  n->i = Downcast<Integer>(from[0]);
+  n->storage_scope = Downcast<String>(from[1]);
   return InstAttrs(std::move(n));
 }
 

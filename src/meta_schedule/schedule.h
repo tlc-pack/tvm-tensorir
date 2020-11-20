@@ -263,11 +263,12 @@ class ScheduleNode : public Object {
   void ReverseComputeInline(const BlockRV& block);
   /*!
    * \brief Apply the instruction cache_read
-   * \param buffer The buffer to be cached
+   * \param block The read block of the buffer to be cached
+   * \param i The index of the buffer in block's read region
    * \param storage_scope The storage scope
    * \return The cache write stage
    */
-  BlockRV CacheRead(const BufferRV& buffer, const String& storage_scope);
+  BlockRV CacheRead(const BlockRV& block, int i, const String& storage_scope);
   /*!
    * \brief Apply the instruction cache_write
    * \param block The write block of the buffer to be cached

@@ -744,19 +744,16 @@ void ScheduleNode::ReverseComputeInline(const BlockRV& block) {
   this->trace.push_back(ReverseComputeInlineAttrs::MakeInst(block));
 }
 
-BlockRV ScheduleNode::CacheRead(const BufferRV& buffer_rv, const String& storage_scope) {
-  // TODO
-  return BlockRV(nullptr);
-  // // Find the output from TIR
-  // tir::Buffer buffer = this->Eval(buffer_rv);
-  // tir::StmtSRef tir_result = this->sch->cache_read(buffer, storage_scope);
-  // // Create the output random variable
-  // BlockRV output;
-  // // Update the symbol table
-  // this->sym_tab.Set(output, tir_result);
-  // // Put the instruction in the trace
-  // this->trace.push_back(CacheReadAttrs::MakeInst(buffer_rv, storage_scope, output));
-  // return output;
+BlockRV ScheduleNode::CacheRead(const BlockRV& block, int i, const String& storage_scope) {
+  // Find the output from TIR
+  tir::StmtSRef tir_result = this->sch->cache_read(Eval(block), i, storage_scope);
+  // Create the output random variable
+  BlockRV output;
+  // Update the symbol table
+  this->sym_tab.Set(output, tir_result);
+  // Put the instruction in the trace
+  this->trace.push_back(CacheReadAttrs::MakeInst(block, i, storage_scope, output));
+  return output;
 }
 
 BlockRV ScheduleNode::CacheWrite(const BlockRV& block, int i, const String& storage_scope) {
@@ -1084,8 +1081,8 @@ struct Internal {
    * \brief FFI function, corresponds to ScheduleNode::CacheRead
    * \sa ScheduleNode::CacheRead
    */
-  static BlockRV CacheRead(Schedule sch, BufferRV buffer, String storage_scope) {
-    return sch->CacheRead(buffer, storage_scope);
+  static BlockRV CacheRead(Schedule sch, BlockRV block, int i, String storage_scope) {
+    return sch->CacheRead(block, i, storage_scope);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::CacheWrite

@@ -243,7 +243,9 @@ class RuleMultiLevelTilingAndFusion {
       tir::Buffer tir_buffer = kv.first;
       BufferRV buffer = kv.second;
       // Do cache_read
-      BlockRV cache_read_block = sch->CacheRead(buffer, "shared");
+      // TODO
+      BlockRV cache_read_block;
+      // BlockRV cache_read_block = sch->CacheRead(buffer, "shared");
       // Insert cache_read block to the proper place
       const Array<LoopRV>& r_tiles = state->tiles[r_idx.front()];
       CHECK(!r_tiles.empty()) << "ValueError: Cannot find any reduction loop in the block";
