@@ -227,40 +227,54 @@ class RuleMultiLevelTilingAndFusion {
     if (!must_cache_read) {
       return;
     }
+    // Extract the block to be worked on
     Schedule& sch = state->sch;
     BlockRV& block_rv = state->block_rv;
-    std::unordered_map<tir::Buffer, BufferRV, ObjectPtrHash, ObjectPtrEqual> buffer_map;
-    for (const BufferRV& buffer : sch->GetReadBuffers(block_rv)) {
-      buffer_map[sch->Eval(buffer)] = buffer;
-    }
-    for (const BufferRV& buffer : sch->GetWriteBuffers(block_rv)) {
-      tir::Buffer tir_buffer = sch->Eval(buffer);
-      if (buffer_map.count(tir_buffer)) {
-        buffer_map.erase(tir_buffer);
+    tir::StmtSRef block_sref = sch->Eval(block_rv);
+    // Find all indices of the read buffers
+    std::vector<int> read_buffer_indices;
+    {
+      const auto* block = block_sref->GetStmt<tir::BlockNode>();
+      int n_reads = block->reads.size();
+      int n_writes = block->writes.size();
+      for (int i = 0; i < n_reads; ++i) {
+        const tir::Buffer& read_buffer = block->reads[i]->buffer;
+        bool found = false;
+        for (int j = 0; j < n_writes; ++j) {
+          const tir::Buffer& write_buffer = block->writes[j]->buffer;
+          if (read_buffer.same_as(write_buffer)) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          read_buffer_indices.push_back(i);
+        }
       }
+      std::reverse(read_buffer_indices.begin(), read_buffer_indices.end());
     }
-    for (const auto& kv : buffer_map) {
-      tir::Buffer tir_buffer = kv.first;
-      BufferRV buffer = kv.second;
+    // Enumerate all buffers that are read but not written
+    for (int i : read_buffer_indices) {
+      const auto* block = block_sref->GetStmt<tir::BlockNode>();
+      const tir::Buffer& buffer = block->reads[i]->buffer;
       // Do cache_read
-      // TODO
-      BlockRV cache_read_block;
-      // BlockRV cache_read_block = sch->CacheRead(buffer, "shared");
+      BlockRV cache_read_block = sch->CacheRead(block_rv, i, "shared");
       // Insert cache_read block to the proper place
       const Array<LoopRV>& r_tiles = state->tiles[r_idx.front()];
       CHECK(!r_tiles.empty()) << "ValueError: Cannot find any reduction loop in the block";
       sch->ComputeAt(cache_read_block, r_tiles.back());
-      // Fuse the iterators
+      // Fuse the iterators of the cache_read
       Array<LoopRV> to_fuse;
       {
         Array<LoopRV> cache_read_axes = sch->GetAxes(cache_read_block);
         int n_axes = cache_read_axes.size();
-        int ndim = tir_buffer->shape.size();
+        int ndim = buffer->shape.size();
         for (int i = n_axes - ndim; i < n_axes; ++i) {
           to_fuse.push_back(cache_read_axes[i]);
         }
       }
       LoopRV fused = sch->Fuse(to_fuse);
+      // Do cooperative fetching
       if (vector_load_max_len.defined()) {
         // cooperative fetch + vectorized loading
         // Split into inner and outer

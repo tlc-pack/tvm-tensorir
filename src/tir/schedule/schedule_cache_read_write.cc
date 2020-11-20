@@ -533,7 +533,7 @@ StmtSRef ScheduleNode::cache_read(StmtSRef block_sref, size_t i, const std::stri
     CHECK_LT(i, block->reads.size()) << "ValueError: index out of range";
     read_buffer = block->reads[i]->buffer;
   }
-  block_sref = GetInnermostWriterBlock(this, read_buffer);
+  block_sref = GetInnermostWriterBlock(this, read_buffer);  // TODO(@junrushao1994): change it
   CacheStageInfo info;
   info.read_buffer = read_buffer;
   // Create corresponding the buffer to be written, i.e. result of cache_read
