@@ -192,8 +192,9 @@ class RuleMultiLevelTilingAndFusion {
     tir::StmtSRef block_sref = sch->Eval(block_rv);
     // Find the only-consumer for the block
     // If the only-consumer can be fused, then do not add any write cache
-    if (Optional<BlockRV> opt_consumer_rv = sch->GetOnlyConsumer(state.block_rv)) {
-      BlockRV consumer_rv = opt_consumer_rv.value();
+    Array<BlockRV> consumers = sch->GetConsumers(state.block_rv);
+    if (consumers.size() == 1) {
+      BlockRV consumer_rv = consumers[0];
       tir::StmtSRef consumer_sref = sch->Eval(consumer_rv);
       // Check if it can be directly fused
       if ((IsSpatial(sch->sch, block_sref) || IsSpatial(sch->sch, consumer_sref)) &&

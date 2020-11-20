@@ -469,28 +469,6 @@ Array<BlockRV> ScheduleNode::GetConsumers(const BlockRV& block) {
   return outputs;
 }
 
-Optional<BlockRV> ScheduleNode::GetOnlyConsumer(const BlockRV& block) {
-  // Find the output from TIR
-  tir::StmtSRef block_sref = Eval(block);
-  Array<tir::DepEdge> succ_edges = this->sch->GetParentScope(block_sref).GetSuccessors(block_sref);
-  std::vector<tir::StmtSRef> result_sref;
-  for (const tir::DepEdge edge : succ_edges) {
-    if (edge->type == tir::DepType::kRAW || edge->type == tir::DepType::kWAW) {
-      result_sref.push_back(edge->dst);
-    }
-  }
-  if (result_sref.size() != 1) {
-    return NullOpt;
-  }
-  // Create the output random variable
-  BlockRV output;
-  // Update the symbol table
-  this->sym_tab.Set(output, result_sref[0]);
-  // Put the instruction in the trace
-  // this->trace.push_back(GetOnlyConsumerAttrs::MakeInst(block, output));
-  return output;
-}
-
 BlockRV ScheduleNode::GetBlock(const String& name) {
   // Find the output from TIR
   Array<tir::StmtSRef> tir_result = this->sch->GetBlock(name);

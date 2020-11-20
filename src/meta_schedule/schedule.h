@@ -168,12 +168,6 @@ class ScheduleNode : public Object {
    */
   Array<BlockRV> GetConsumers(const BlockRV& block);
   /*!
-   * \brief Get the only consumer of a specific block
-   * \param block The block to be queried
-   * \return A block, its only consumer; or NullOpt if it does not exist
-   */
-  Optional<BlockRV> GetOnlyConsumer(const BlockRV& block);
-  /*!
    * \brief Apply the instruction GetBlock
    * \param name The name of the block to get retrieved
    * \return A block random variable, the return value of the instruction
