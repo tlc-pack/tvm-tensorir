@@ -432,10 +432,6 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
 
 void ScheduleNode::reverse_compute_at(const StmtSRef& block_sref, const StmtSRef& loop_sref,
                                       bool preserve_trivial_loop) {
-  std::cout << "reversing compute at";
-  std::cout << this->func;
-  std::cout << block_sref;
-  std::cout << loop_sref;
   /*!
    * Check:
    *   - check input_block is complete/is a dominant reduction block

@@ -347,6 +347,17 @@ def test_meta_schedule_sample_fusible_loops():
     _check_serialization(sch, func=matmul)
 
 
+def test_meta_schedule_get_producers():
+    sch = ms.Schedule(func=matmul_relu)
+    block = sch.get_block("relu")
+    (producer,) = sch.get_producers(block)
+    assert tvm.ir.structural_equal(
+        sch.evaluate(producer).stmt,
+        sch.evaluate(sch.get_block("matmul")).stmt,
+    )
+    _check_serialization(sch, func=matmul_relu)
+
+
 def test_meta_schedule_get_consumers():
     sch = ms.Schedule(func=matmul_relu)
     block = sch.get_block("matmul")
@@ -621,6 +632,7 @@ if __name__ == "__main__":
     test_meta_schedule_sample_tile_factor()
     test_meta_schedule_sample_perfect_tile()
     test_meta_schedule_sample_fusible_loops()
+    test_meta_schedule_get_producers()
     test_meta_schedule_get_consumers()
     test_meta_schedule_get_block()
     test_meta_schedule_get_axes()

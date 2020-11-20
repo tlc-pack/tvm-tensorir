@@ -37,8 +37,7 @@ SPACE = ms.space.PostOrderApply(
             fusion_levels=[1, 2],
         ),
     ],
-    postprocs=[
-    ],
+    postprocs=[],
 )
 
 
@@ -1081,6 +1080,7 @@ def test_meta_schedule_sketch_cpu_max_pool2d_nchw():
         expected=expected,
     )
 
+
 from tir_tensor_intrin import (
     dot_product_desc,
     dot_product_impl,
@@ -1111,9 +1111,9 @@ def test_meta_schedule_sketch_cpu_matmul_auto_tensorize():
 
 
 if __name__ == "__main__":
-    # test_meta_schedule_sketch_cpu_matmul()
-    # test_meta_schedule_sketch_cpu_matmul_relu()
-    # test_meta_schedule_sketch_cpu_conv2d_nchw()
-    # test_meta_schedule_sketch_cpu_conv2d_nchw_bias_bn_relu()
-    # test_meta_schedule_sketch_cpu_max_pool2d_nchw()
+    test_meta_schedule_sketch_cpu_matmul()
+    test_meta_schedule_sketch_cpu_matmul_relu()
+    test_meta_schedule_sketch_cpu_conv2d_nchw()
+    test_meta_schedule_sketch_cpu_conv2d_nchw_bias_bn_relu()
+    test_meta_schedule_sketch_cpu_max_pool2d_nchw()
     test_meta_schedule_sketch_cpu_matmul_auto_tensorize()

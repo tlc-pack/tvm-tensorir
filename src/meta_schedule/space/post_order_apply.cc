@@ -141,10 +141,6 @@ Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* 
   using ScheduleAndUnvisitedBlocks = std::pair<Schedule, Array<tir::StmtSRef>>;
   Array<Schedule> curr{Schedule(task->func, Integer(sampler->ForkSeed()))};
   for (const SearchRule& rule : stages) {
-    LOG(INFO) << "Current Rule:" << rule->name;
-    LOG(INFO) << "Current>>>";
-    for (const auto& sch : curr) LOG(INFO) << sch->sch->func;
-    LOG(INFO) << "Current<<<";
     std::vector<ScheduleAndUnvisitedBlocks> stack;
     stack.reserve(curr.size());
     for (const Schedule& sch : curr) {
@@ -162,14 +158,11 @@ Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* 
         continue;
       }
       // otherwise, get the last block that is not visited
-      tir::StmtSRef block_sref = unvisited.back();
-      unvisited.erase(unvisited.end() - 1);
+      tir::StmtSRef block_sref = unvisited[0];
+      unvisited.erase(unvisited.begin());
       const auto* block = block_sref->GetStmt<tir::BlockNode>();
       CHECK(block) << "TypeError: Expects BlockNode, but gets: " << block_sref->stmt->GetTypeKey();
       // apply the rule to the block
-      LOG(INFO) << "Applying:";
-      LOG(INFO) << "<<< " << sch->sch->func;
-      LOG(INFO) << "<<< " << block_sref;
       Map<Schedule, SearchRule::TContextInfo> applied =
           rule->Apply(task, sch, /*block=*/sch->GetBlock(block->tag), /*info=*/{});
       // append the newly got schedules to the top of the stack

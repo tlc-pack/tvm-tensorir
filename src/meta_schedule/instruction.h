@@ -894,6 +894,7 @@ struct CacheReadAttrs : public InstAttrsNode {
 
 /*! \brief Attrs of the instruction that applies cache_write */
 struct CacheWriteAttrs : public InstAttrsNode {
+  // TODO: add index
   /*! \brief The storage scope of the instruction cache_write */
   String storage_scope;
 

@@ -423,14 +423,14 @@ Array<ObjectRef> GetProducersAttrs::ApplyToSchedule(ScheduleNode* sch,
                                                     const Array<ObjectRef>& inputs) const {
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
-  return {sch->GetProducers(block)};
+  return AdaptOutputs(sch->GetProducers(block));
 }
 
 Array<ObjectRef> GetConsumersAttrs::ApplyToSchedule(ScheduleNode* sch,
                                                     const Array<ObjectRef>& inputs) const {
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
-  return {sch->GetConsumers(block)};
+  return AdaptOutputs(sch->GetConsumers(block));
 }
 
 Array<ObjectRef> GetBlockAttrs::ApplyToSchedule(ScheduleNode* sch,
