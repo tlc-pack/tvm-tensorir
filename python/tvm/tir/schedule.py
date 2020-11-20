@@ -230,16 +230,18 @@ class Schedule(Object):
         """
         _ffi_api_schedule.ScheduleUnroll(self, loop)
 
-    def cache_read(self, buffer, scope):
+    def cache_read(self, block, index, scope):
         """Create a cache read of original tensor for readers.
         Parameters
         ----------
-        buffer : Buffer
-            The buffer to be cache_read
+        block : Block
+            The consumer of the buffer
+        index : int
+            The index of the buffer in block's read region
         scope : str
             The storage scope
         """
-        return _ffi_api_schedule.ScheduleCacheRead(self, buffer, scope)
+        return _ffi_api_schedule.ScheduleCacheRead(self, block, index, scope)
 
     def cache_write(self, block, index, scope):
         """Create a cache write of original tensor, before storing into tensor.

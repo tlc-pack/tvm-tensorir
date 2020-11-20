@@ -745,16 +745,18 @@ void ScheduleNode::ReverseComputeInline(const BlockRV& block) {
 }
 
 BlockRV ScheduleNode::CacheRead(const BufferRV& buffer_rv, const String& storage_scope) {
-  // Find the output from TIR
-  tir::Buffer buffer = this->Eval(buffer_rv);
-  tir::StmtSRef tir_result = this->sch->cache_read(buffer, storage_scope);
-  // Create the output random variable
-  BlockRV output;
-  // Update the symbol table
-  this->sym_tab.Set(output, tir_result);
-  // Put the instruction in the trace
-  this->trace.push_back(CacheReadAttrs::MakeInst(buffer_rv, storage_scope, output));
-  return output;
+  // TODO
+  return BlockRV(nullptr);
+  // // Find the output from TIR
+  // tir::Buffer buffer = this->Eval(buffer_rv);
+  // tir::StmtSRef tir_result = this->sch->cache_read(buffer, storage_scope);
+  // // Create the output random variable
+  // BlockRV output;
+  // // Update the symbol table
+  // this->sym_tab.Set(output, tir_result);
+  // // Put the instruction in the trace
+  // this->trace.push_back(CacheReadAttrs::MakeInst(buffer_rv, storage_scope, output));
+  // return output;
 }
 
 BlockRV ScheduleNode::CacheWrite(const BlockRV& block, int i, const String& storage_scope) {

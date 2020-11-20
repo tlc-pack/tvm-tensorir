@@ -515,7 +515,7 @@ class CacheWriteRewriter : public StmtExprMutator {
   CacheStageInfo* info_;
 };
 
-StmtSRef ScheduleNode::cache_read(const Buffer& read_buffer, const std::string& storage_scope) {
+StmtSRef ScheduleNode::cache_read(StmtSRef block_sref, size_t i, const std::string& storage_scope) {
   /*!
    * Check:
    *   - check the buffer has only one writing block
@@ -526,6 +526,14 @@ StmtSRef ScheduleNode::cache_read(const Buffer& read_buffer, const std::string& 
    *   - find the lowest ancestor of the block and ANY ONE of the consumers blocks.
    *   - Copy the buffer with the necessary region.
    */
+  Buffer read_buffer{nullptr};
+  {
+    const auto* block = block_sref->GetStmt<BlockNode>();
+    CHECK(block) << "ValueError: `cache_read` expects a block as the first argument";
+    CHECK_LT(i, block->reads.size()) << "ValueError: index out of range";
+    read_buffer = block->reads[i]->buffer;
+  }
+  block_sref = GetInnermostWriterBlock(this, read_buffer);
   CacheStageInfo info;
   info.read_buffer = read_buffer;
   // Create corresponding the buffer to be written, i.e. result of cache_read
@@ -533,7 +541,6 @@ StmtSRef ScheduleNode::cache_read(const Buffer& read_buffer, const std::string& 
   // Create the corresponding buffer allocation
   info.alloc = BufferAllocate(info.write_buffer, storage_scope);
   // Find the innermost writer to the read buffer
-  StmtSRef block_sref = GetInnermostWriterBlock(this, read_buffer);
   StmtSRef scope_sref{nullptr};
   TensorRegion cache_region(nullptr);
   if (!block_sref.same_as(this->root)) {
@@ -543,7 +550,7 @@ StmtSRef ScheduleNode::cache_read(const Buffer& read_buffer, const std::string& 
     CHECK(!IsOutputBlock(block_sref, scope_sref));
     // Find the region to be cache_read
     cache_region = RelaxRegion(block_sref, scope_sref, GetOnlyWriteRegion(block_sref));
-    // Detector insert position
+    // Detect insert position
     CacheLocDetector::Detect(this, block_sref, scope_sref, &info);
   } else {
     info.loc_sref = this->root;
@@ -557,7 +564,7 @@ StmtSRef ScheduleNode::cache_read(const Buffer& read_buffer, const std::string& 
   return stmt2ref.at(cache_read_stage.get());
 }
 
-StmtSRef ScheduleNode::cache_write(const StmtSRef& block_sref, size_t i,
+StmtSRef ScheduleNode::cache_write(StmtSRef block_sref, size_t i,
                                    const std::string& storage_scope) {
   /*!
    * Check:
@@ -569,10 +576,10 @@ StmtSRef ScheduleNode::cache_write(const StmtSRef& block_sref, size_t i,
    *   - find the lowest ancestor of the block and ANY ONE of the producer blocks.
    *   - Copy the buffer with the necessary region.
    */
-  const auto* block_ptr = block_sref->GetStmt<BlockNode>();
-  CHECK(block_ptr) << "ValueError: `cache_write` expects a block as the first argument";
-  CHECK(block_ptr->writes.size() > i) << "ValueError: index out of range";
-  Buffer write_buffer = block_ptr->writes[i]->buffer;
+  const auto* block = block_sref->GetStmt<BlockNode>();
+  CHECK(block) << "ValueError: `cache_write` expects a block as the first argument";
+  CHECK_LT(i, block->writes.size()) << "ValueError: index out of range";
+  Buffer write_buffer = block->writes[i]->buffer;
   CacheStageInfo info;
   info.write_buffer = write_buffer;
   // Create corresponding the buffer to be read, i.e. result of cache_write

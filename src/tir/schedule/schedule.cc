@@ -399,7 +399,10 @@ Array<StmtSRef> ScheduleNode::GetBlock(const std::string& tag) const {
   return ret;
 }
 
-Array<StmtSRef> ScheduleNode::GetBlock(const Buffer& buffer, const StmtSRef& scope) const {
+Array<StmtSRef> ScheduleNode::GetBlock(const Buffer& buffer, StmtSRef scope) const {
+  if (!scope.defined()) {
+    scope = root;
+  }
   CHECK(GetRef<Stmt>(scope->stmt).as<BlockNode>());
   CHECK_GT(scopes.count(scope), 0);
   const auto& buffer_writers = scopes.at(scope)->buffer_writers;
@@ -609,9 +612,10 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheWrite")
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheRead")
-    .set_body_typed<StmtSRef(Schedule, Buffer, std::string)>([](Schedule schedule, Buffer buffer,
-                                                                std::string scope) {
-      return schedule->cache_read(buffer, scope);
+    .set_body_typed<StmtSRef(Schedule, StmtSRef, size_t, std::string)>([](Schedule schedule,
+                                                                          StmtSRef block, size_t i,
+                                                                          std::string scope) {
+      return schedule->cache_read(block, i, scope);
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleMergeReduction")
