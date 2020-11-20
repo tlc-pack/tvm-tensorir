@@ -490,13 +490,15 @@ class Schedule(Object):
         """
         return _ffi_api.ScheduleCacheRead(self, buffer, storage_scope)  # pylint: disable=no-member
 
-    def cache_write(self, buffer: BufferRV, storage_scope: str) -> BlockRV:
+    def cache_write(self, buffer: BufferRV, i: int, storage_scope: str) -> BlockRV:
         """Apply the instruction cache_write
 
         Parameters
         ----------
         buffer: BufferRV
             The buffer to be cached
+        i: int
+            The index of the buffer in block's write region
         storage_scope: str
             The storage scope
 
@@ -505,7 +507,9 @@ class Schedule(Object):
         block : BlockRV
             The cache write stage
         """
-        return _ffi_api.ScheduleCacheWrite(self, buffer, storage_scope)  # pylint: disable=no-member
+        return _ffi_api.ScheduleCacheWrite(  # pylint: disable=no-member
+            self, buffer, i, storage_scope
+        )
 
     def blockize(self, loop: LoopRV, exec_scope: str = "") -> BlockRV:
         """Apply the instruction blockize

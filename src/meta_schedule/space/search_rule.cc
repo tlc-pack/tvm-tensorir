@@ -214,7 +214,7 @@ class RuleMultiLevelTilingAndFusion {
       // Fork a new schedule
       state.sch = sch->Copy(sch->sampler.ForkSeed());
       // The original block to tiled
-      state.block_rv = state.sch->CacheWrite(block_rv, "local");
+      state.block_rv = state.sch->CacheWrite(block_rv, 0, "local");
       // The cache write block
       state.only_consumer = block_rv;
       state.only_consumer_is_cache_write = true;

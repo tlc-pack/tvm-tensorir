@@ -894,20 +894,25 @@ struct CacheReadAttrs : public InstAttrsNode {
 
 /*! \brief Attrs of the instruction that applies cache_write */
 struct CacheWriteAttrs : public InstAttrsNode {
-  // TODO: add index
+  /*! \brief The index of the buffer in block's write region */
+  int i;
   /*! \brief The storage scope of the instruction cache_write */
   String storage_scope;
 
-  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("storage_scope", &storage_scope); }
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("i", &i);
+    v->Visit("storage_scope", &storage_scope);
+  }
 
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param block The buffer to be cached
+   * \param i The index of the buffer in block's write region
    * \param storage_scope The storage scope of the instruction
    * \param output The output of the instruction
    * \return The instruction created
    */
-  static Instruction MakeInst(const BlockRV& block, const String& storage_scope,
+  static Instruction MakeInst(const BlockRV& block, int i, const String& storage_scope,
                               const BlockRV& output);
 
   /*!

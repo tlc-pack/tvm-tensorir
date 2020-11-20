@@ -354,9 +354,10 @@ Instruction CacheReadAttrs::MakeInst(const BufferRV& buffer, const String& stora
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction CacheWriteAttrs::MakeInst(const BlockRV& block, const String& storage_scope,
+Instruction CacheWriteAttrs::MakeInst(const BlockRV& block, int i, const String& storage_scope,
                                       const BlockRV& output) {
   ObjectPtr<CacheWriteAttrs> n = make_object<CacheWriteAttrs>();
+  n->i = i;
   n->storage_scope = storage_scope;
   return Instruction(/*inputs=*/{block},
                      /*outputs=*/{output},
@@ -579,7 +580,7 @@ Array<ObjectRef> CacheWriteAttrs::ApplyToSchedule(ScheduleNode* sch,
                                                   const Array<ObjectRef>& inputs) const {
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
-  return {sch->CacheWrite(block, storage_scope)};
+  return {sch->CacheWrite(block, i, storage_scope)};
 }
 
 Array<ObjectRef> BlockizeAttrs::ApplyToSchedule(ScheduleNode* sch,
@@ -741,7 +742,7 @@ void CacheReadAttrs::Export(Array<ObjectRef>* record,
 void CacheWriteAttrs::Export(Array<ObjectRef>* record,
                              const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{storage_scope});
+  record->push_back(Array<ObjectRef>{Integer(i), storage_scope});
 }
 
 void BlockizeAttrs::Export(Array<ObjectRef>* record,
@@ -912,9 +913,10 @@ InstAttrs CacheReadAttrs::Import(const Array<ObjectRef>& record) {
 InstAttrs CacheWriteAttrs::Import(const Array<ObjectRef>& record) {
   CHECK_EQ(record.size(), 4);
   Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 1);
+  CHECK_EQ(from.size(), 2);
   ObjectPtr<CacheWriteAttrs> n = make_object<CacheWriteAttrs>();
-  n->storage_scope = Downcast<String>(from[0]);
+  n->i = Downcast<Integer>(from[0]);
+  n->storage_scope = Downcast<String>(from[1]);
   return InstAttrs(std::move(n));
 }
 

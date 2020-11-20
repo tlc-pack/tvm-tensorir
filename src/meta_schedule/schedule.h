@@ -271,10 +271,11 @@ class ScheduleNode : public Object {
   /*!
    * \brief Apply the instruction cache_write
    * \param block The write block of the buffer to be cached
+   * \param i The index of the buffer in block's write region
    * \param storage_scope The storage scope
    * \return The cache write stage
    */
-  BlockRV CacheWrite(const BlockRV& block, const String& storage_scope);
+  BlockRV CacheWrite(const BlockRV& block, int i, const String& storage_scope);
   /*!
    * \brief Apply blockize to the schedule
    * \param loop The loop to be blockized
