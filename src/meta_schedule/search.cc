@@ -80,7 +80,7 @@ struct Internal {
    * \param sch The schedule to be postprocessed
    * \param sampler The random number generator
    * \return Whether postprocessing has succeeded
-   * \sa SearchSpaceNode::SearchSpacePostprocess
+   * \sa SearchSpaceNode::Postprocess
    */
   static bool SearchSpacePostprocess(SearchSpace space, Schedule sch, Optional<Integer> seed) {
     Sampler seeded;
@@ -145,6 +145,8 @@ TVM_REGISTER_OBJECT_TYPE(SearchSpaceNode);
 TVM_REGISTER_OBJECT_TYPE(SearchStrategyNode);
 
 TVM_REGISTER_GLOBAL("meta_schedule.SearchTask").set_body_typed(Internal::SearchTaskNew);
+TVM_REGISTER_GLOBAL("meta_schedule.SearchSpacePostprocess")
+    .set_body_typed(Internal::SearchSpacePostprocess);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchSpaceSampleSchedule")
     .set_body_typed(Internal::SearchSpaceSampleSchedule);
 TVM_REGISTER_GLOBAL("meta_schedule.SearchSpaceGetSupport")
