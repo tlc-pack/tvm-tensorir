@@ -97,7 +97,8 @@ Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Array<Obj
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SamplePerfectTileAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleTileFactorAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleFusibleLoopsAttrs),
-          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetOnlyConsumerAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetProducersAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetConsumersAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetBlockAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetAxesAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetReadBuffersAttrs),
@@ -211,10 +212,17 @@ Instruction SampleFusibleLoopsAttrs::MakeInst(const Array<LoopRV>& loops,
 
 /**************** (MakeInst) Block/Loop Relationship  ****************/
 
-Instruction GetOnlyConsumerAttrs::MakeInst(const BlockRV& block, const BlockRV& output) {
-  ObjectPtr<GetOnlyConsumerAttrs> n = make_object<GetOnlyConsumerAttrs>();
+Instruction GetProducersAttrs::MakeInst(const BlockRV& block, const Array<BlockRV>& outputs) {
+  ObjectPtr<GetProducersAttrs> n = make_object<GetProducersAttrs>();
   return Instruction(/*inputs=*/{block},
-                     /*outputs=*/{output},
+                     /*outputs=*/{outputs.begin(), outputs.end()},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Instruction GetConsumersAttrs::MakeInst(const BlockRV& block, const Array<BlockRV>& outputs) {
+  ObjectPtr<GetConsumersAttrs> n = make_object<GetConsumersAttrs>();
+  return Instruction(/*inputs=*/{block},
+                     /*outputs=*/{outputs.begin(), outputs.end()},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
@@ -337,20 +345,22 @@ Instruction MarkBlockTypeAttrs::MakeInst(const BlockRV& block, const String& mar
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction CacheReadAttrs::MakeInst(const BufferRV& buffer, const String& storage_scope,
+Instruction CacheReadAttrs::MakeInst(const BlockRV& block, int i, const String& storage_scope,
                                      const BlockRV& output) {
   ObjectPtr<CacheReadAttrs> n = make_object<CacheReadAttrs>();
+  n->i = i;
   n->storage_scope = storage_scope;
-  return Instruction(/*inputs=*/{buffer},
+  return Instruction(/*inputs=*/{block},
                      /*outputs=*/{output},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction CacheWriteAttrs::MakeInst(const BufferRV& buffer, const String& storage_scope,
+Instruction CacheWriteAttrs::MakeInst(const BlockRV& block, int i, const String& storage_scope,
                                       const BlockRV& output) {
   ObjectPtr<CacheWriteAttrs> n = make_object<CacheWriteAttrs>();
+  n->i = i;
   n->storage_scope = storage_scope;
-  return Instruction(/*inputs=*/{buffer},
+  return Instruction(/*inputs=*/{block},
                      /*outputs=*/{output},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
@@ -411,11 +421,18 @@ Array<ObjectRef> SampleFusibleLoopsAttrs::ApplyToSchedule(ScheduleNode* sch,
 
 /**************** (ApplyToSchedule) Block/Loop Relationship  ****************/
 
-Array<ObjectRef> GetOnlyConsumerAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                       const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> GetProducersAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                    const Array<ObjectRef>& inputs) const {
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
-  return {sch->GetOnlyConsumer(block)};
+  return AdaptOutputs(sch->GetProducers(block));
+}
+
+Array<ObjectRef> GetConsumersAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                    const Array<ObjectRef>& inputs) const {
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
+  return AdaptOutputs(sch->GetConsumers(block));
 }
 
 Array<ObjectRef> GetBlockAttrs::ApplyToSchedule(ScheduleNode* sch,
@@ -556,15 +573,15 @@ Array<ObjectRef> ReverseComputeInlineAttrs::ApplyToSchedule(ScheduleNode* sch,
 Array<ObjectRef> CacheReadAttrs::ApplyToSchedule(ScheduleNode* sch,
                                                  const Array<ObjectRef>& inputs) const {
   CHECK_EQ(inputs.size(), 1);
-  TVM_META_SCHEDULE_INST_CAST(BufferRV, buffer, inputs[0]);
-  return {sch->CacheRead(buffer, storage_scope)};
+  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
+  return {sch->CacheRead(block, i, storage_scope)};
 }
 
 Array<ObjectRef> CacheWriteAttrs::ApplyToSchedule(ScheduleNode* sch,
                                                   const Array<ObjectRef>& inputs) const {
   CHECK_EQ(inputs.size(), 1);
-  TVM_META_SCHEDULE_INST_CAST(BufferRV, buffer, inputs[0]);
-  return {sch->CacheWrite(buffer, storage_scope)};
+  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
+  return {sch->CacheWrite(block, i, storage_scope)};
 }
 
 Array<ObjectRef> BlockizeAttrs::ApplyToSchedule(ScheduleNode* sch,
@@ -630,8 +647,13 @@ void SampleFusibleLoopsAttrs::Export(Array<ObjectRef>* record,
 
 /**************** (Export) Block/Loop Relationship  ****************/
 
-void GetOnlyConsumerAttrs::Export(Array<ObjectRef>* record,
-                                  const Optional<Array<ObjectRef>>& decision) const {
+void GetProducersAttrs::Export(Array<ObjectRef>* record,
+                               const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+}
+
+void GetConsumersAttrs::Export(Array<ObjectRef>* record,
+                               const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
 }
 
@@ -715,13 +737,13 @@ void ReverseComputeInlineAttrs::Export(Array<ObjectRef>* record,
 void CacheReadAttrs::Export(Array<ObjectRef>* record,
                             const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{storage_scope});
+  record->push_back(Array<ObjectRef>{Integer(i), storage_scope});
 }
 
 void CacheWriteAttrs::Export(Array<ObjectRef>* record,
                              const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{storage_scope});
+  record->push_back(Array<ObjectRef>{Integer(i), storage_scope});
 }
 
 void BlockizeAttrs::Export(Array<ObjectRef>* record,
@@ -781,9 +803,14 @@ InstAttrs SampleFusibleLoopsAttrs::Import(const Array<ObjectRef>& record) {
 
 /**************** (Import) Block/Loop Relationship  ****************/
 
-InstAttrs GetOnlyConsumerAttrs::Import(const Array<ObjectRef>& record) {
+InstAttrs GetProducersAttrs::Import(const Array<ObjectRef>& record) {
   CHECK_EQ(record.size(), 3);
-  return InstAttrs(make_object<GetOnlyConsumerAttrs>());
+  return InstAttrs(make_object<GetProducersAttrs>());
+}
+
+InstAttrs GetConsumersAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 3);
+  return InstAttrs(make_object<GetConsumersAttrs>());
 }
 
 InstAttrs GetBlockAttrs::Import(const Array<ObjectRef>& record) {
@@ -878,18 +905,20 @@ InstAttrs ReverseComputeInlineAttrs::Import(const Array<ObjectRef>& record) {
 InstAttrs CacheReadAttrs::Import(const Array<ObjectRef>& record) {
   CHECK_EQ(record.size(), 4);
   Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 1);
+  CHECK_EQ(from.size(), 2);
   ObjectPtr<CacheReadAttrs> n = make_object<CacheReadAttrs>();
-  n->storage_scope = Downcast<String>(from[0]);
+  n->i = Downcast<Integer>(from[0]);
+  n->storage_scope = Downcast<String>(from[1]);
   return InstAttrs(std::move(n));
 }
 
 InstAttrs CacheWriteAttrs::Import(const Array<ObjectRef>& record) {
   CHECK_EQ(record.size(), 4);
   Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 1);
+  CHECK_EQ(from.size(), 2);
   ObjectPtr<CacheWriteAttrs> n = make_object<CacheWriteAttrs>();
-  n->storage_scope = Downcast<String>(from[0]);
+  n->i = Downcast<Integer>(from[0]);
+  n->storage_scope = Downcast<String>(from[1]);
   return InstAttrs(std::move(n));
 }
 
@@ -922,7 +951,8 @@ TVM_REGISTER_NODE_TYPE(InstructionNode);
 TVM_REGISTER_NODE_TYPE(SamplePerfectTileAttrs);
 TVM_REGISTER_NODE_TYPE(SampleTileFactorAttrs);
 TVM_REGISTER_NODE_TYPE(SampleFusibleLoopsAttrs);
-TVM_REGISTER_NODE_TYPE(GetOnlyConsumerAttrs);
+TVM_REGISTER_NODE_TYPE(GetProducersAttrs);
+TVM_REGISTER_NODE_TYPE(GetConsumersAttrs);
 TVM_REGISTER_NODE_TYPE(GetBlockAttrs);
 TVM_REGISTER_NODE_TYPE(GetAxesAttrs);
 TVM_REGISTER_NODE_TYPE(GetReadBuffersAttrs);

@@ -32,13 +32,14 @@ SPACE = ms.space.PostOrderApply(
         ms.rule.multi_level_tiling_and_fusion(
             structure="SSRSRS",
             must_cache_read=False,
+            cache_read_scope="global",
             can_cache_write=True,
             must_cache_write=False,
+            cache_write_scope="global",
             fusion_levels=[1, 2],
         ),
     ],
-    postprocs=[
-    ],
+    postprocs=[],
 )
 
 
@@ -90,7 +91,7 @@ def _matmul_sketch_0(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     with tir.block([], "root") as []:
         tir.reads([])
         tir.writes([])
-        C_local = tir.buffer_allocate([512, 512], elem_offset=0, scope="local", align=128, offset_factor=1)
+        C_local = tir.buffer_allocate([512, 512], elem_offset=0, scope="global", align=128, offset_factor=1)
         for i0_outer_outer_outer in range(0, 32):
             for i1_outer_outer_outer in range(0, 2):
                 for i0_outer_outer_inner in range(0, 1):
@@ -128,7 +129,7 @@ def _matmul_sketch_1(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     with tir.block([], "root") as []:
         tir.reads([])
         tir.writes([])
-        C_local = tir.buffer_allocate([512, 512], elem_offset=0, scope="local", align=128, offset_factor=1)
+        C_local = tir.buffer_allocate([512, 512], elem_offset=0, scope="global", align=128, offset_factor=1)
         for i0_outer_outer_outer in range(0, 32):
             for i1_outer_outer_outer in range(0, 2):
                 for i0_outer_outer_inner in range(0, 1):
@@ -427,7 +428,7 @@ def _conv2d_nchw_sketch_0(var_X: ty.handle, var_W: ty.handle, var_compute: ty.ha
         tir.reads([])
         tir.writes([])
         pad_temp = tir.buffer_allocate([1, 512, 58, 58], elem_offset=0, align=128, offset_factor=1)
-        compute_local = tir.buffer_allocate([1, 512, 56, 56], elem_offset=0, scope="local", align=128, offset_factor=1)
+        compute_local = tir.buffer_allocate([1, 512, 56, 56], elem_offset=0, scope="global", align=128, offset_factor=1)
         for i0 in range(0, 1):
             for i1 in range(0, 512):
                 for i2 in range(0, 58):
@@ -484,7 +485,7 @@ def _conv2d_nchw_sketch_1(var_X: ty.handle, var_W: ty.handle, var_compute: ty.ha
         tir.reads([])
         tir.writes([])
         pad_temp = tir.buffer_allocate([1, 512, 58, 58], elem_offset=0, align=128, offset_factor=1)
-        compute_local = tir.buffer_allocate([1, 512, 56, 56], elem_offset=0, scope="local", align=128, offset_factor=1)
+        compute_local = tir.buffer_allocate([1, 512, 56, 56], elem_offset=0, scope="global", align=128, offset_factor=1)
         for i0 in range(0, 1):
             for i1 in range(0, 512):
                 for i2 in range(0, 58):

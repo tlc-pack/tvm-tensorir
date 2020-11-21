@@ -382,15 +382,18 @@ void ScheduleNode::UpdateSRef(StmtSRefNode* sref, const Stmt& stmt) {
   sref->stmt = stmt.operator->();
 }
 
-Array<StmtSRef> ScheduleNode::GetBlock(const std::string& tag, StmtSRef scope) const {
-  if (!scope.defined()) {
-    scope = root;
-  }
-  CHECK(GetRef<Stmt>(scope->stmt).as<BlockNode>());
-  Array<StmtSRef> ret;
-  for (const auto& block : Blocks(scope)) {
-    if (GetRef<Stmt>(block->stmt).as<BlockNode>()->tag == tag) {
-      ret.push_back(block);
+Array<StmtSRef> ScheduleNode::GetBlock(const std::string& tag) const {
+  std::vector<StmtSRef> ret, scope_stack;
+  scope_stack.push_back(root);
+  while (!scope_stack.empty()) {
+    StmtSRef scope = scope_stack.back();
+    scope_stack.pop_back();
+    CHECK(GetRef<Stmt>(scope->stmt).as<BlockNode>());
+    for (const auto& block : Blocks(scope)) {
+      if (GetRef<Stmt>(block->stmt).as<BlockNode>()->tag == tag) {
+        ret.push_back(block);
+      }
+      scope_stack.push_back(block);
     }
   }
   return ret;
@@ -504,10 +507,8 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBlocks")
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.GetBlocksFromTag")
-    .set_body_typed<Array<StmtSRef>(Schedule, std::string, StmtSRef)>([](Schedule schedule,
-                                                                         std::string tag,
-                                                                         StmtSRef scope) {
-      return schedule->GetBlock(tag, scope);
+    .set_body_typed<Array<StmtSRef>(Schedule, std::string)>([](Schedule schedule, std::string tag) {
+      return schedule->GetBlock(tag);
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.GetBlocksFromBuffer")
@@ -604,15 +605,17 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDecomposeReduction")
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheWrite")
-    .set_body_typed<StmtSRef(Schedule, Buffer, std::string)>([](Schedule schedule, Buffer buffer,
-                                                                std::string scope) {
-      return schedule->cache_write(buffer, scope);
+    .set_body_typed<StmtSRef(Schedule, StmtSRef, size_t, std::string)>([](Schedule schedule,
+                                                                          StmtSRef block, size_t i,
+                                                                          std::string scope) {
+      return schedule->cache_write(block, i, scope);
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheRead")
-    .set_body_typed<StmtSRef(Schedule, Buffer, std::string)>([](Schedule schedule, Buffer buffer,
-                                                                std::string scope) {
-      return schedule->cache_read(buffer, scope);
+    .set_body_typed<StmtSRef(Schedule, StmtSRef, size_t, std::string)>([](Schedule schedule,
+                                                                          StmtSRef block, size_t i,
+                                                                          std::string scope) {
+      return schedule->cache_read(block, i, scope);
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleMergeReduction")

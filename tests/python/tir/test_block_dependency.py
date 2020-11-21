@@ -85,6 +85,6 @@ def test_WAR_dependency():
 
 
 if __name__ == "__main__":
-    test_element_wise_dependency()
+    # test_element_wise_dependency()
     test_matmul_dependency()
-    test_WAR_dependency()
+    # test_WAR_dependency()
