@@ -605,15 +605,15 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDecomposeReduction")
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheWrite")
-    .set_body_typed<StmtSRef(Schedule, StmtSRef, size_t, std::string)>([](Schedule schedule,
-                                                                          StmtSRef block, size_t i,
+    .set_body_typed<StmtSRef(Schedule, StmtSRef, int, std::string)>([](Schedule schedule,
+                                                                          StmtSRef block, int i,
                                                                           std::string scope) {
       return schedule->cache_write(block, i, scope);
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheRead")
-    .set_body_typed<StmtSRef(Schedule, StmtSRef, size_t, std::string)>([](Schedule schedule,
-                                                                          StmtSRef block, size_t i,
+    .set_body_typed<StmtSRef(Schedule, StmtSRef, int, std::string)>([](Schedule schedule,
+                                                                          StmtSRef block, int i,
                                                                           std::string scope) {
       return schedule->cache_read(block, i, scope);
     });
