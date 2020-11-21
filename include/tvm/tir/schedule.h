@@ -72,19 +72,18 @@ class ScheduleNode : public Object {
 
   /*!
    * \brief Get block from its tag
-   * \param scope The block scope
    * \param tag The query tag
    * \return the block schedulable reference list
    */
-  Array<StmtSRef> GetBlock(const std::string& tag, StmtSRef scope = StmtSRef()) const;
+  Array<StmtSRef> GetBlock(const std::string& tag) const;
 
   /*!
    * \brief Get block from its output tensor
-   * \param scope The block scope
    * \param buffer The query buffer
+   * \param scope The scope of interest
    * \return the block schedulable reference list
    */
-  Array<StmtSRef> GetBlock(const Buffer& buffer, StmtSRef scope = StmtSRef()) const;
+  Array<StmtSRef> GetBlock(const Buffer& buffer, StmtSRef scope) const;
 
   /*!
    * \brief Get all blocks in the scope
@@ -215,17 +214,19 @@ class ScheduleNode : public Object {
 
   /*!
    * \brief Create a cache read of original tensor for readers.
-   * \param buffer The buffer
+   * \param block_sref The consumer of the buffer
+   * \param i The index of the buffer in block's read region
    * \param storage_scope The storage scope
    */
-  StmtSRef cache_read(const Buffer& buffer, const std::string& storage_scope);
+  StmtSRef cache_read(StmtSRef block_sref, size_t i, const std::string& storage_scope);
 
   /*!
    * \brief Create a cache write of original tensor, before storing into tensor.
-   * \param buffer The buffer
+   * \param block_sref The producer of the buffer
+   * \param i The index of the buffer in block's write region
    * \param storage_scope The storage scope
    */
-  StmtSRef cache_write(const Buffer& buffer, const std::string& storage_scope);
+  StmtSRef cache_write(StmtSRef block_sref, size_t i, const std::string& storage_scope);
 
   /*!
    * \brief make subtree rooted by loop_sref into a block

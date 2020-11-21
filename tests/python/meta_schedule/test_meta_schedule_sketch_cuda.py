@@ -30,8 +30,10 @@ SPACE = ms.space.PostOrderApply(
         ms.rule.multi_level_tiling_and_fusion(
             structure="SSSRRSRS",
             must_cache_read=True,
+            cache_read_scope="shared",
             can_cache_write=True,
             must_cache_write=True,
+            cache_write_scope="local",
             fusion_levels=[3],
             vector_load_max_len=4,
             tile_marks=["lazy_blockIdx.x", "lazy_vthread", "lazy_threadIdx.x"],

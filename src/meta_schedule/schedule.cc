@@ -426,26 +426,47 @@ tir::Var ScheduleNode::SampleFusibleLoops(const Array<LoopRV>& loops,
 
 /**************** Block/Loop Relationship ****************/
 
-Optional<BlockRV> ScheduleNode::GetOnlyConsumer(const BlockRV& block) {
+Array<BlockRV> ScheduleNode::GetProducers(const BlockRV& block) {
+  // Find the output from TIR
+  tir::StmtSRef block_sref = Eval(block);
+  Array<tir::DepEdge> pred_edges =
+      this->sch->GetParentScope(block_sref).GetPredecessors(block_sref);
+  // Create the output random variable
+  Array<BlockRV> outputs;
+  outputs.reserve(pred_edges.size());
+  for (const tir::DepEdge edge : pred_edges) {
+    if (edge->type == tir::DepType::kRAW || edge->type == tir::DepType::kWAW) {
+      // Create the output random variable
+      BlockRV output;
+      // Update the symbol table
+      this->sym_tab.Set(output, edge->dst);
+      outputs.push_back(output);
+    }
+  }
+  // Put the instruction in the trace
+  this->trace.push_back(GetProducersAttrs::MakeInst(block, outputs));
+  return outputs;
+}
+
+Array<BlockRV> ScheduleNode::GetConsumers(const BlockRV& block) {
   // Find the output from TIR
   tir::StmtSRef block_sref = Eval(block);
   Array<tir::DepEdge> succ_edges = this->sch->GetParentScope(block_sref).GetSuccessors(block_sref);
-  std::vector<tir::StmtSRef> result_sref;
+  // Create the output random variable
+  Array<BlockRV> outputs;
+  outputs.reserve(succ_edges.size());
   for (const tir::DepEdge edge : succ_edges) {
     if (edge->type == tir::DepType::kRAW || edge->type == tir::DepType::kWAW) {
-      result_sref.push_back(edge->dst);
+      // Create the output random variable
+      BlockRV output;
+      // Update the symbol table
+      this->sym_tab.Set(output, edge->dst);
+      outputs.push_back(output);
     }
   }
-  if (result_sref.size() != 1) {
-    return NullOpt;
-  }
-  // Create the output random variable
-  BlockRV output;
-  // Update the symbol table
-  this->sym_tab.Set(output, result_sref[0]);
   // Put the instruction in the trace
-  this->trace.push_back(GetOnlyConsumerAttrs::MakeInst(block, output));
-  return output;
+  this->trace.push_back(GetConsumersAttrs::MakeInst(block, outputs));
+  return outputs;
 }
 
 BlockRV ScheduleNode::GetBlock(const String& name) {
@@ -723,29 +744,27 @@ void ScheduleNode::ReverseComputeInline(const BlockRV& block) {
   this->trace.push_back(ReverseComputeInlineAttrs::MakeInst(block));
 }
 
-BlockRV ScheduleNode::CacheRead(const BufferRV& buffer_rv, const String& storage_scope) {
+BlockRV ScheduleNode::CacheRead(const BlockRV& block, int i, const String& storage_scope) {
   // Find the output from TIR
-  tir::Buffer buffer = this->Eval(buffer_rv);
-  tir::StmtSRef tir_result = this->sch->cache_read(buffer, storage_scope);
+  tir::StmtSRef tir_result = this->sch->cache_read(Eval(block), i, storage_scope);
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
   this->sym_tab.Set(output, tir_result);
   // Put the instruction in the trace
-  this->trace.push_back(CacheReadAttrs::MakeInst(buffer_rv, storage_scope, output));
+  this->trace.push_back(CacheReadAttrs::MakeInst(block, i, storage_scope, output));
   return output;
 }
 
-BlockRV ScheduleNode::CacheWrite(const BufferRV& buffer_rv, const String& storage_scope) {
+BlockRV ScheduleNode::CacheWrite(const BlockRV& block, int i, const String& storage_scope) {
   // Find the output from TIR
-  tir::Buffer buffer = this->Eval(buffer_rv);
-  tir::StmtSRef tir_result = this->sch->cache_write(buffer, storage_scope);
+  tir::StmtSRef tir_result = this->sch->cache_write(Eval(block), i, storage_scope);
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
   this->sym_tab.Set(output, tir_result);
   // Put the instruction in the trace
-  this->trace.push_back(CacheWriteAttrs::MakeInst(buffer_rv, storage_scope, output));
+  this->trace.push_back(CacheWriteAttrs::MakeInst(block, i, storage_scope, output));
   return output;
 }
 
@@ -954,11 +973,18 @@ struct Internal {
 
   /**************** Block/Loop Relationship ****************/
   /*!
-   * \brief FFI function, corresponds to ScheduleNode::GetOnlyConsumer
-   * \sa ScheduleNode::GetOnlyConsumer
+   * \brief FFI function, corresponds to ScheduleNode::GetProducers
+   * \sa ScheduleNode::GetProducers
    */
-  static Optional<BlockRV> GetOnlyConsumer(Schedule sch, BlockRV block) {
-    return sch->GetOnlyConsumer(block);
+  static Array<BlockRV> GetProducers(Schedule sch, BlockRV block) {
+    return sch->GetProducers(block);
+  }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::GetConsumers
+   * \sa ScheduleNode::GetConsumers
+   */
+  static Array<BlockRV> GetConsumers(Schedule sch, BlockRV block) {
+    return sch->GetConsumers(block);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::GetBlock
@@ -1055,15 +1081,15 @@ struct Internal {
    * \brief FFI function, corresponds to ScheduleNode::CacheRead
    * \sa ScheduleNode::CacheRead
    */
-  static BlockRV CacheRead(Schedule sch, BufferRV buffer, String storage_scope) {
-    return sch->CacheRead(buffer, storage_scope);
+  static BlockRV CacheRead(Schedule sch, BlockRV block, int i, String storage_scope) {
+    return sch->CacheRead(block, i, storage_scope);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::CacheWrite
    * \sa ScheduleNode::CacheWrite
    */
-  static BlockRV CacheWrite(Schedule sch, BufferRV buffer, String storage_scope) {
-    return sch->CacheWrite(buffer, storage_scope);
+  static BlockRV CacheWrite(Schedule sch, BlockRV block, int i, String storage_scope) {
+    return sch->CacheWrite(block, i, storage_scope);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Blockize
@@ -1112,8 +1138,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleTileFactor")
     .set_body_typed(Internal::SampleTileFactor);
 TVM_REGISTER_GLOBAL("meta_schedule.SampleFusibleLoops")
     .set_body_typed(Internal::SampleFusibleLoops);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetOnlyConsumer")
-    .set_body_typed(Internal::GetOnlyConsumer);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetProducers").set_body_typed(Internal::GetProducers);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetConsumers").set_body_typed(Internal::GetConsumers);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetBlock").set_body_typed(Internal::GetBlock);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetAxes").set_body_typed(Internal::GetAxes);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetReadBuffers")

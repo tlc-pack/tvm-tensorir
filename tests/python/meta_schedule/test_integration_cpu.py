@@ -30,8 +30,10 @@ SPACE = ms.space.PostOrderApply(
         ms.rule.multi_level_tiling_and_fusion(
             structure="SSRSRS",
             must_cache_read=False,
+            cache_read_scope="global",
             can_cache_write=True,
             must_cache_write=False,
+            cache_write_scope="global",
             fusion_levels=[1, 2],
         ),
         ms.rule.mark_parallelize_outer(max_extent=256),

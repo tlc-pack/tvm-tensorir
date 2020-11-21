@@ -158,11 +158,15 @@ class ScheduleNode : public Object {
                               int max_extent, bool include_overflow_loop, Order order, Mode mode);
   /**************** Block/Loop Relationship ****************/
   /*!
-   * \brief Get the only consumer of a specific block
-   * \param block The block to be queried
-   * \return A block, its only consumer; or NullOpt if it does not exist
+   * \brief Get the producer of a specific block
+   * \return The producers
    */
-  Optional<BlockRV> GetOnlyConsumer(const BlockRV& block);
+  Array<BlockRV> GetProducers(const BlockRV& block);
+  /*!
+   * \brief Get the consumers of a specific block
+   * \return The consumers
+   */
+  Array<BlockRV> GetConsumers(const BlockRV& block);
   /*!
    * \brief Apply the instruction GetBlock
    * \param name The name of the block to get retrieved
@@ -259,18 +263,20 @@ class ScheduleNode : public Object {
   void ReverseComputeInline(const BlockRV& block);
   /*!
    * \brief Apply the instruction cache_read
-   * \param buffer The buffer to be cached
+   * \param block The read block of the buffer to be cached
+   * \param i The index of the buffer in block's read region
    * \param storage_scope The storage scope
    * \return The cache write stage
    */
-  BlockRV CacheRead(const BufferRV& buffer, const String& storage_scope);
+  BlockRV CacheRead(const BlockRV& block, int i, const String& storage_scope);
   /*!
    * \brief Apply the instruction cache_write
-   * \param buffer The buffer to be cached
+   * \param block The write block of the buffer to be cached
+   * \param i The index of the buffer in block's write region
    * \param storage_scope The storage scope
    * \return The cache write stage
    */
-  BlockRV CacheWrite(const BufferRV& buffer, const String& storage_scope);
+  BlockRV CacheWrite(const BlockRV& block, int i, const String& storage_scope);
   /*!
    * \brief Apply blockize to the schedule
    * \param loop The loop to be blockized

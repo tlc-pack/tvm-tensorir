@@ -347,10 +347,21 @@ def test_meta_schedule_sample_fusible_loops():
     _check_serialization(sch, func=matmul)
 
 
-def test_meta_schedule_get_only_consumer():
+def test_meta_schedule_get_producers():
+    sch = ms.Schedule(func=matmul_relu)
+    block = sch.get_block("relu")
+    (producer,) = sch.get_producers(block)
+    assert tvm.ir.structural_equal(
+        sch.evaluate(producer).stmt,
+        sch.evaluate(sch.get_block("matmul")).stmt,
+    )
+    _check_serialization(sch, func=matmul_relu)
+
+
+def test_meta_schedule_get_consumers():
     sch = ms.Schedule(func=matmul_relu)
     block = sch.get_block("matmul")
-    consumer = sch.get_only_consumer(block)
+    (consumer,) = sch.get_consumers(block)
     assert tvm.ir.structural_equal(
         sch.evaluate(consumer).stmt,
         sch.evaluate(sch.get_block("relu")).stmt,
@@ -524,9 +535,8 @@ def test_meta_schedule_compute_inline():
 def test_meta_schedule_cache_read():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    _, buffer_a, buffer_b = sch.get_read_buffers(block)
-    sch.cache_read(buffer_a, storage_scope="local")
-    sch.cache_read(buffer_b, storage_scope="local")
+    sch.cache_read(block, i=1, storage_scope="local")
+    sch.cache_read(block, i=2, storage_scope="local")
     assert tvm.ir.structural_equal(sch.sch.func, matmul_cache_read)
     _check_serialization(sch, func=matmul)
 
@@ -534,8 +544,7 @@ def test_meta_schedule_cache_read():
 def test_meta_schedule_cache_write():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    (buffer,) = sch.get_write_buffers(block)
-    sch.cache_write(buffer, storage_scope="local")
+    sch.cache_write(block, i=0, storage_scope="local")
     assert tvm.ir.structural_equal(sch.sch.func, matmul_cache_write)
     _check_serialization(sch, func=matmul)
 
@@ -622,7 +631,8 @@ if __name__ == "__main__":
     test_meta_schedule_sample_tile_factor()
     test_meta_schedule_sample_perfect_tile()
     test_meta_schedule_sample_fusible_loops()
-    test_meta_schedule_get_only_consumer()
+    test_meta_schedule_get_producers()
+    test_meta_schedule_get_consumers()
     test_meta_schedule_get_block()
     test_meta_schedule_get_axes()
     test_meta_schedule_get_read_buffers()
