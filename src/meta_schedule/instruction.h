@@ -323,8 +323,8 @@ struct SampleFusibleLoopsAttrs : public InstAttrsNode {
 
 /**************** Block/Loop Relationship ****************/
 
-/*! \brief Attrs of the instruction that gets the only consumer of a specific block */
-struct GetOnlyConsumerAttrs : public InstAttrsNode {
+/*! \brief Attrs of the instruction that gets the producers of a specific block */
+struct GetProducersAttrs : public InstAttrsNode {
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
   /*!
@@ -333,7 +333,7 @@ struct GetOnlyConsumerAttrs : public InstAttrsNode {
    * \param output The output of the query
    * \return The instruction created
    */
-  static Instruction MakeInst(const BlockRV& block, const BlockRV& output);
+  static Instruction MakeInst(const BlockRV& block, const Array<BlockRV>& outputs);
 
   /*!
    * \brief Apply the instruction to the schedule with given inputs
@@ -348,10 +348,41 @@ struct GetOnlyConsumerAttrs : public InstAttrsNode {
 
   static InstAttrs Import(const Array<ObjectRef>& record);
 
-  static String Name() { return "GetOnlyConsumer"; }
+  static String Name() { return "GetProducers"; }
   String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.GetOnlyConsumerAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(GetOnlyConsumerAttrs, InstAttrsNode);
+  static constexpr const char* _type_key = "meta_schedule.attrs.GetProducersAttrs";
+  TVM_DECLARE_FINAL_OBJECT_INFO(GetProducersAttrs, InstAttrsNode);
+};
+
+/*! \brief Attrs of the instruction that gets the consumers of a specific block */
+struct GetConsumersAttrs : public InstAttrsNode {
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param block The block to be queried
+   * \param output The output of the query
+   * \return The instruction created
+   */
+  static Instruction MakeInst(const BlockRV& block, const Array<BlockRV>& outputs);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
+
+  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
+
+  static InstAttrs Import(const Array<ObjectRef>& record);
+
+  static String Name() { return "GetConsumers"; }
+  String GetName() const override { return Name(); }
+  static constexpr const char* _type_key = "meta_schedule.attrs.GetConsumersAttrs";
+  TVM_DECLARE_FINAL_OBJECT_INFO(GetConsumersAttrs, InstAttrsNode);
 };
 
 /*! \brief Attrs of the instruction that gets a specific block by its name */
@@ -827,19 +858,25 @@ struct ReverseComputeInlineAttrs : public InstAttrsNode {
 
 /*! \brief Attrs of the instruction that applies cache_write */
 struct CacheReadAttrs : public InstAttrsNode {
+  /*! \brief The index of the buffer in block's write region */
+  int i;
   /*! \brief The storage scope of the instruction cache_write */
   String storage_scope;
 
-  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("storage_scope", &storage_scope); }
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("i", &i);
+    v->Visit("storage_scope", &storage_scope);
+  }
 
   /*!
    * \brief Create instruction given the inputs and outputs
-   * \param buffer The buffer to be cached
+   * \param block The buffer to be cached
+   * \param i The index of the buffer in block's read region
    * \param storage_scope The storage scope of the instruction
    * \param output The output of the instruction
    * \return The instruction created
    */
-  static Instruction MakeInst(const BufferRV& buffer, const String& storage_scope,
+  static Instruction MakeInst(const BlockRV& block, int i, const String& storage_scope,
                               const BlockRV& output);
 
   /*!
@@ -863,19 +900,25 @@ struct CacheReadAttrs : public InstAttrsNode {
 
 /*! \brief Attrs of the instruction that applies cache_write */
 struct CacheWriteAttrs : public InstAttrsNode {
+  /*! \brief The index of the buffer in block's write region */
+  int i;
   /*! \brief The storage scope of the instruction cache_write */
   String storage_scope;
 
-  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("storage_scope", &storage_scope); }
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("i", &i);
+    v->Visit("storage_scope", &storage_scope);
+  }
 
   /*!
    * \brief Create instruction given the inputs and outputs
-   * \param buffer The buffer to be cached
+   * \param block The buffer to be cached
+   * \param i The index of the buffer in block's write region
    * \param storage_scope The storage scope of the instruction
    * \param output The output of the instruction
    * \return The instruction created
    */
-  static Instruction MakeInst(const BufferRV& buffer, const String& storage_scope,
+  static Instruction MakeInst(const BlockRV& block, int i, const String& storage_scope,
                               const BlockRV& output);
 
   /*!

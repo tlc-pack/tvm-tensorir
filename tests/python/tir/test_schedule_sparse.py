@@ -58,7 +58,7 @@ def sparse_dense_bsr(x: ty.handle, data: ty.handle, indices: ty.handle, indptr: 
 def schedule_sparse_dense_llvm(func):
     s = tir.create_schedule(func)
     bsr_par = s.get_block("bsr_par")
-    bsr_reduce = s.get_block("bsr_reduce", bsr_par)
+    bsr_reduce = s.get_block("bsr_reduce")
     bsr_block = s.get_block("bsr_block")
 
     i, j = s.get_axes(bsr_block)

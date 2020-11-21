@@ -101,10 +101,14 @@ class SampleFusibleLoopsAttrs(InstAttrs):
 
 ########## Block/Loop Relationship ##########
 
+@register_object("meta_schedule.attrs.GetProducersAttrs")
+class GetProducersAttrs(InstAttrs):
+    """Attrs of the instruction that gets the producers of a specific block"""
 
-@register_object("meta_schedule.attrs.GetOnlyConsumerAttrs")
-class GetOnlyConsumerAttrs(InstAttrs):
-    """Attrs of the instruction that gets the only consumer of a specific block"""
+
+@register_object("meta_schedule.attrs.GetConsumersAttrs")
+class GetConsumersAttrs(InstAttrs):
+    """Attrs of the instruction that gets the consumers of a specific block"""
 
 
 @register_object("meta_schedule.attrs.GetBlockAttrs")

@@ -142,14 +142,14 @@ def reverse_compute_at_element_wise(a: ty.handle, c: ty.handle) -> None:
             for i0_inner in range(0, 16):
                 for i1_inner in range(0, 16):
                     with tir.block([128, 128], "B") as [vi, vj]:
-                        tir.bind(vi, ((i0_outer*16) + i0_inner))
-                        tir.bind(vj, ((i1_outer*16) + i1_inner))
-                        B[vi, vj] = (A[vi, vj]*tir.float32(2))
+                        tir.bind(vi, ((i0_outer * 16) + i0_inner))
+                        tir.bind(vj, ((i1_outer * 16) + i1_inner))
+                        B[vi, vj] = A[vi, vj] * tir.float32(2)
                 for ax1 in range(0, 16):
                     with tir.block([128, 128], "C") as [vi, vj]:
-                        tir.bind(vi, ((i0_outer*16) + i0_inner))
-                        tir.bind(vj, ((i1_outer*16) + ax1))
-                        C[vi, vj] = (B[vi, vj] + tir.float32(1))
+                        tir.bind(vi, ((i0_outer * 16) + i0_inner))
+                        tir.bind(vj, ((i1_outer * 16) + ax1))
+                        C[vi, vj] = B[vi, vj] + tir.float32(1)
 
 
 def test_reverse_compute_at():
@@ -176,8 +176,8 @@ def predicate_fuse(b: ty.handle, c: ty.handle) -> None:
     for i in range(0, 256):
         with tir.block([16, 16], "update") as [vi, vj]:
             tir.bind(vi, tir.floordiv(i, 16))
-            tir.bind(vj, (tir.floormod(tir.floordiv(i, 4), 4)*4) + tir.floormod(i, 4))
-            C[vi, vj] = (B[vi, vj] + tir.float32(1))
+            tir.bind(vj, (tir.floormod(tir.floordiv(i, 4), 4) * 4) + tir.floormod(i, 4))
+            C[vi, vj] = B[vi, vj] + tir.float32(1)
 
 
 def test_fuse_loop_sref():
@@ -211,7 +211,7 @@ def matmul_reorder(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             tir.bind(vi, tir.floordiv(i, 128))
             tir.bind(vj, tir.floormod(i, 128))
             tir.bind(vk, k)
-            C[vi, vj] = (C[vi, vj] + (A[vi, vk] * B[vj, vk]))
+            C[vi, vj] = C[vi, vj] + (A[vi, vk] * B[vj, vk])
 
 
 def test_reorder_normal():
@@ -327,7 +327,7 @@ def matmul_reduction(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             C[vi, vj] = tir.float32(0)
         for k in range(0, 128):
             with tir.block([128, 128, tir.reduce_axis(0, 128)], "update") as [vi, vj, vk]:
-                C[vi, vj] = (C[vi, vj] + (A[vi, vk] * B[vj, vk]))
+                C[vi, vj] = C[vi, vj] + (A[vi, vk] * B[vj, vk])
 
 
 def test_reduction():
@@ -362,15 +362,14 @@ def cache_read(a: ty.handle, c: ty.handle) -> None:
     for i in range(0, 128):
         for j in range(0, 128):
             with tir.block([128, 128], "B") as [vi, vj]:
-                B[vi, vj] = (AA[vi, vj] * tir.float32(2))
+                B[vi, vj] = AA[vi, vj] * tir.float32(2)
         for j in range(0, 128):
             with tir.block([128, 128], "C") as [vi, vj]:
-                C[vi, vj] = (B[vi, vj] + tir.float32(1))
+                C[vi, vj] = B[vi, vj] + tir.float32(1)
 
 
 def test_cache_read():
     func = util.element_wise_stmt()
-    buffer_a = func.buffer_map[func.params[0]]
 
     # schedule
     s = tir.create_schedule(func)
@@ -378,8 +377,7 @@ def test_cache_read():
     C = s.get_block("C")
     outer, inner = s.get_axes(C)
     s.compute_at(B, outer)
-    AA = s.cache_read(buffer_a, 'local')
-
+    AA = s.cache_read(B, 0, "local")
     mod = tvm.script.create_module({"cache_read": cache_read})
     cached_func = mod["cache_read"]
 
@@ -395,10 +393,10 @@ def cache_write(a: ty.handle, c: ty.handle) -> None:
     CC = tir.buffer_allocate((128, 128), "float32", scope="local")
     for i, j in tir.grid(128, 128):
         with tir.block([128, 128], "B") as [vi, vj]:
-            B[vi, vj] = (A[vi, vj] * tir.float32(2))
+            B[vi, vj] = A[vi, vj] * tir.float32(2)
     for i, j in tir.grid(128, 128):
         with tir.block([128, 128], "CC") as [vi, vj]:
-            CC[vi, vj] = (B[vi, vj] + tir.float32(1))
+            CC[vi, vj] = B[vi, vj] + tir.float32(1)
     for i, j in tir.grid(128, 128):
         with tir.block([128, 128], "C") as [vi, vj]:
             C[vi, vj] = CC[vi, vj]
@@ -411,7 +409,7 @@ def test_cache_write():
     # schedule
     s = tir.create_schedule(func)
     C = s.get_block(buffer_c)
-    CC = s.cache_write(buffer_c, 'local')
+    CC = s.cache_write(C, 0, "local")
 
     mod = tvm.script.create_module({"cache_write": cache_write})
     cached_func = mod["cache_write"]
@@ -431,12 +429,12 @@ def blockize(a: ty.handle, c: ty.handle) -> None:
             tir.bind(vj, j)
             for ii, jj in tir.grid(16, 16):
                 with tir.block([128, 128], "B") as [vii, vjj]:
-                    tir.bind(vii, vi*16 + ii)
-                    tir.bind(vjj, vj*16 + jj)
-                    B[vii, vjj] = (A[vii, vjj] * tir.float32(2))
+                    tir.bind(vii, vi * 16 + ii)
+                    tir.bind(vjj, vj * 16 + jj)
+                    B[vii, vjj] = A[vii, vjj] * tir.float32(2)
     for i, j in tir.grid(128, 128):
         with tir.block([128, 128], "C") as [vi, vj]:
-            C[vi, vj] = (B[vi, vj] + tir.float32(1))
+            C[vi, vj] = B[vi, vj] + tir.float32(1)
 
 
 def test_blockize():
@@ -482,9 +480,11 @@ def test_func_cache_read(a: ty.handle, c: ty.handle) -> None:
     # body
     B = tir.buffer_allocate([128, 128], elem_offset=0, align=128, offset_factor=1)
     D = tir.buffer_allocate([128, 128], elem_offset=0, align=128, offset_factor=1)
-    A_local = tir.buffer_allocate([128, 128], elem_offset=0, scope="local", align=128, offset_factor=1)
+    A_local = tir.buffer_allocate(
+        [128, 128], elem_offset=0, scope="local", align=128, offset_factor=1
+    )
     with tir.block([128, 128, tir.reduce_axis(0, 128)], "A") as [vi, vj, vk]:
-        A[vi, vj] = (A[vi, vj] + (B[vi, vk]*C[vj, vk]))
+        A[vi, vj] = A[vi, vj] + (B[vi, vk] * C[vj, vk])
     with tir.block([128, 128], "") as [v0, v1]:
         A_local[v0, v1] = A[v0, v1]
     with tir.block([128, 128], "D") as [vi_1, vj_1]:
@@ -500,9 +500,11 @@ def test_func_cache_write(a: ty.handle, c: ty.handle) -> None:
     # body
     B = tir.buffer_allocate([128, 128], elem_offset=0, align=128, offset_factor=1)
     D = tir.buffer_allocate([128, 128], elem_offset=0, align=128, offset_factor=1)
-    A_local = tir.buffer_allocate([128, 128], elem_offset=0, scope="local", align=128, offset_factor=1)
+    A_local = tir.buffer_allocate(
+        [128, 128], elem_offset=0, scope="local", align=128, offset_factor=1
+    )
     with tir.block([128, 128, tir.reduce_axis(0, 128)], "A") as [vi, vj, vk]:
-        A_local[vi, vj] = (A_local[vi, vj] + (B[vi, vk]*C[vj, vk]))
+        A_local[vi, vj] = A_local[vi, vj] + (B[vi, vk] * C[vj, vk])
     with tir.block([128, 128], "") as [v0, v1]:
         A[v0, v1] = A_local[v0, v1]
     with tir.block([128, 128], "D") as [vi_1, vj_1]:
@@ -514,19 +516,15 @@ def test_cache_read_write():
 
     # schedule cache read
     s = tir.create_schedule(func)
-    blockA = tir.schedule.get_stmt(s.get_block("A"))
-    A = blockA.writes[0].buffer
-    s.cache_read(A, "local")
-
+    blockA = s.get_block("A")
+    s.cache_read(blockA, 0, "local")
     tvm.ir.assert_structural_equal(test_func_cache_read, s.func)
     assert s.validate_sref()
 
     # schedule cache write
     s = tir.create_schedule(func)
-    blockA = tir.schedule.get_stmt(s.get_block("A"))
-    A = blockA.writes[0].buffer
-    s.cache_write(A, "local")
-
+    blockA = s.get_block("A")
+    s.cache_write(blockA, 0, "local")
     tvm.ir.assert_structural_equal(test_func_cache_write, s.func)
     assert s.validate_sref()
 
@@ -545,29 +543,29 @@ def blockize_schedule_1(a: ty.handle, c: ty.handle) -> None:
                 with tir.block([8, 8], "blockized_B") as [vio, vjo]:
                     tir.bind(vio, i0_outer)
                     tir.bind(vjo, i1_outer)
-                    tir.reads([A[(vio*16):((vio*16) + 16), (vjo*16):((vjo*16) + 16)]])
-                    tir.writes([B[(vio*16):((vio*16) + 16), (vjo*16):((vjo*16) + 16)]])
+                    tir.reads([A[(vio * 16) : ((vio * 16) + 16), (vjo * 16) : ((vjo * 16) + 16)]])
+                    tir.writes([B[(vio * 16) : ((vio * 16) + 16), (vjo * 16) : ((vjo * 16) + 16)]])
                     for i0_inner in range(0, 16):
                         for i1_inner in range(0, 16):
                             with tir.block([128, 128], "B") as [vi, vj]:
-                                tir.bind(vi, ((vio*16) + i0_inner))
-                                tir.bind(vj, ((vjo*16) + i1_inner))
-                                tir.reads([A[vi:(vi + 1), vj:(vj + 1)]])
-                                tir.writes([B[vi:(vi + 1), vj:(vj + 1)]])
-                                B[vi, vj] = (A[vi, vj]*tir.float32(2))
+                                tir.bind(vi, ((vio * 16) + i0_inner))
+                                tir.bind(vj, ((vjo * 16) + i1_inner))
+                                tir.reads([A[vi : (vi + 1), vj : (vj + 1)]])
+                                tir.writes([B[vi : (vi + 1), vj : (vj + 1)]])
+                                B[vi, vj] = A[vi, vj] * tir.float32(2)
                 with tir.block([8, 8], "blockized_C") as [vio, vjo]:
                     tir.bind(vio, i0_outer)
                     tir.bind(vjo, i1_outer)
-                    tir.reads([B[(vio*16):((vio*16) + 16), (vjo*16):((vjo*16) + 16)]])
-                    tir.writes([C[(vio*16):((vio*16) + 16), (vjo*16):((vjo*16) + 16)]])
+                    tir.reads([B[(vio * 16) : ((vio * 16) + 16), (vjo * 16) : ((vjo * 16) + 16)]])
+                    tir.writes([C[(vio * 16) : ((vio * 16) + 16), (vjo * 16) : ((vjo * 16) + 16)]])
                     for ax0 in range(0, 16):
                         for ax1 in range(0, 16):
                             with tir.block([128, 128], "C") as [vi, vj]:
-                                tir.bind(vi, ((vio*16) + ax0))
-                                tir.bind(vj, ((vjo*16) + ax1))
-                                tir.reads([B[vi:(vi + 1), vj:(vj + 1)]])
-                                tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
-                                C[vi, vj] = (B[vi, vj] + tir.float32(1))
+                                tir.bind(vi, ((vio * 16) + ax0))
+                                tir.bind(vj, ((vjo * 16) + ax1))
+                                tir.reads([B[vi : (vi + 1), vj : (vj + 1)]])
+                                tir.writes([C[vi : (vi + 1), vj : (vj + 1)]])
+                                C[vi, vj] = B[vi, vj] + tir.float32(1)
 
 
 @tvm.script.tir
@@ -584,26 +582,30 @@ def blockize_schedule_2(a: ty.handle, c: ty.handle) -> None:
                 for ax0 in range(0, 2):
                     for ax1 in range(0, 2):
                         with tir.block([8, 8], "blockized_B") as [vio, vjo]:
-                            tir.bind(vio, ((i0_outer*2) + ax0))
-                            tir.bind(vjo, ((i1_outer*2) + ax1))
-                            tir.reads([A[(vio*16):((vio*16) + 16), (vjo*16):((vjo*16) + 16)]])
-                            tir.writes([B[(vio*16):((vio*16) + 16), (vjo*16):((vjo*16) + 16)]])
+                            tir.bind(vio, ((i0_outer * 2) + ax0))
+                            tir.bind(vjo, ((i1_outer * 2) + ax1))
+                            tir.reads(
+                                [A[(vio * 16) : ((vio * 16) + 16), (vjo * 16) : ((vjo * 16) + 16)]]
+                            )
+                            tir.writes(
+                                [B[(vio * 16) : ((vio * 16) + 16), (vjo * 16) : ((vjo * 16) + 16)]]
+                            )
                             for i0_inner in range(0, 16):
                                 for i1_inner in range(0, 16):
                                     with tir.block([128, 128], "B") as [vi, vj]:
-                                        tir.bind(vi, ((vio*16) + i0_inner))
-                                        tir.bind(vj, ((vjo*16) + i1_inner))
-                                        tir.reads([A[vi:(vi + 1), vj:(vj + 1)]])
-                                        tir.writes([B[vi:(vi + 1), vj:(vj + 1)]])
-                                        B[vi, vj] = (A[vi, vj]*tir.float32(2))
+                                        tir.bind(vi, ((vio * 16) + i0_inner))
+                                        tir.bind(vj, ((vjo * 16) + i1_inner))
+                                        tir.reads([A[vi : (vi + 1), vj : (vj + 1)]])
+                                        tir.writes([B[vi : (vi + 1), vj : (vj + 1)]])
+                                        B[vi, vj] = A[vi, vj] * tir.float32(2)
                 for i0_inner_1 in range(0, 32):
                     for i1_inner_1 in range(0, 32):
                         with tir.block([128, 128], "C") as [vi, vj]:
-                            tir.bind(vi, ((i0_outer*32) + i0_inner_1))
-                            tir.bind(vj, ((i1_outer*32) + i1_inner_1))
-                            tir.reads([B[vi:(vi + 1), vj:(vj + 1)]])
-                            tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
-                            C[vi, vj] = (B[vi, vj] + tir.float32(1))
+                            tir.bind(vi, ((i0_outer * 32) + i0_inner_1))
+                            tir.bind(vj, ((i1_outer * 32) + i1_inner_1))
+                            tir.reads([B[vi : (vi + 1), vj : (vj + 1)]])
+                            tir.writes([C[vi : (vi + 1), vj : (vj + 1)]])
+                            C[vi, vj] = B[vi, vj] + tir.float32(1)
 
 
 def test_blockize_schedule():
@@ -669,15 +671,26 @@ def matmul_rfactor(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             for i1 in range(0, 128):
                 for i2_outer in range(0, 4):
                     for i2_inner_outer in range(0, 8):
-                        with tir.block([128, 128, tir.reduce_axis(0, 32), 4], "update") as [vi, vj, vk, vi2_inner_inner]:
+                        with tir.block([128, 128, tir.reduce_axis(0, 32), 4], "update") as [
+                            vi,
+                            vj,
+                            vk,
+                            vi2_inner_inner,
+                        ]:
                             tir.bind(vi, i0)
                             tir.bind(vj, i1)
-                            tir.bind(vk, ((i2_outer*8) + i2_inner_outer))
+                            tir.bind(vk, ((i2_outer * 8) + i2_inner_outer))
                             tir.bind(vi2_inner_inner, i2_inner_inner)
-                            reducer.step(C_rf[vi2_inner_inner, vi, vj], (A[vi, ((vk*4) + vi2_inner_inner)]*B[vj, ((vk*4) + vi2_inner_inner)]))
+                            reducer.step(
+                                C_rf[vi2_inner_inner, vi, vj],
+                                (
+                                    A[vi, ((vk * 4) + vi2_inner_inner)]
+                                    * B[vj, ((vk * 4) + vi2_inner_inner)]
+                                ),
+                            )
     with tir.block([128, 128, tir.reduce_axis(0, 4)], "update") as [vi, vj, vi2_inner_inner]:
-        tir.reads([C_rf[vi2_inner_inner:(vi2_inner_inner + 1), vi:(vi + 1), vj:(vj + 1)]])
-        tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
+        tir.reads([C_rf[vi2_inner_inner : (vi2_inner_inner + 1), vi : (vi + 1), vj : (vj + 1)]])
+        tir.writes([C[vi : (vi + 1), vj : (vj + 1)]])
         reducer.step(C[vi, vj], C_rf[vi2_inner_inner, vi, vj])
 
 
