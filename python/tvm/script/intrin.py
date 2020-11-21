@@ -99,6 +99,16 @@ def float64(imm, span):
 
 
 @register
+def min_value(dtype):
+    return tvm.tir.min_value(dtype)
+
+
+@register
+def max_value(dtype):
+    return tvm.tir.max_value(dtype)
+
+
+@register
 def floordiv(x, y, span):
     return tvm.tir.floordiv(x, y, span)
 
