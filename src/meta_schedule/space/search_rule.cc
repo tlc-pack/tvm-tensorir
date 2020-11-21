@@ -67,6 +67,15 @@ SearchRule SearchRuleCompose(const String& name, const Array<SearchRule>& rules)
   return SearchRule(name, SearchRuleNode::FApply(apply));
 }
 
+/********** Utility functions **********/
+
+bool HasAnnotation(const Schedule& sch, const BlockRV& block_rv) {
+  tir::StmtSRef block_sref = sch->Eval(block_rv);
+  const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  CHECK(block) << "TypeError: Expect BlockNode, but gets type: " << block_sref->stmt->GetTypeKey();
+  return !block->annotations.empty();
+}
+
 /********** Always-Inline **********/
 
 /*! \brief A rule that inlines all possible blocks */
@@ -111,8 +120,10 @@ class RuleMultiLevelTilingAndFusion {
  public:
   String structure;
   bool must_cache_read;
+  String cache_read_scope;
   bool can_cache_write;
   bool must_cache_write;
+  String cache_write_scope;
   Array<Integer> fusion_levels;
   Optional<Integer> vector_load_max_len;
   Array<String> tile_marks;
@@ -120,14 +131,17 @@ class RuleMultiLevelTilingAndFusion {
   std::vector<int> r_idx;
 
   explicit RuleMultiLevelTilingAndFusion(String structure, bool must_cache_read,
-                                         bool can_cache_write, bool must_cache_write,
+                                         String cache_read_scope, bool can_cache_write,
+                                         bool must_cache_write, String cache_write_scope,
                                          Array<Integer> fusion_levels,
                                          Optional<Integer> vector_load_max_len,
                                          Optional<Array<String>> tile_marks)
       : structure(structure),
         must_cache_read(must_cache_read),
+        cache_read_scope(cache_read_scope),
         can_cache_write(can_cache_write),
         must_cache_write(must_cache_write),
+        cache_write_scope(cache_write_scope),
         fusion_levels(fusion_levels),
         vector_load_max_len(vector_load_max_len),
         tile_marks(tile_marks.value_or(Array<String>{})),
@@ -192,8 +206,9 @@ class RuleMultiLevelTilingAndFusion {
     tir::StmtSRef block_sref = sch->Eval(block_rv);
     // Find the only-consumer for the block
     // If the only-consumer can be fused, then do not add any write cache
-    if (Optional<BlockRV> opt_consumer_rv = sch->GetOnlyConsumer(state.block_rv)) {
-      BlockRV consumer_rv = opt_consumer_rv.value();
+    Array<BlockRV> consumers = sch->GetConsumers(state.block_rv);
+    if (consumers.size() == 1) {
+      BlockRV consumer_rv = consumers[0];
       tir::StmtSRef consumer_sref = sch->Eval(consumer_rv);
       // Check if it can be directly fused
       if ((IsSpatial(sch->sch, block_sref) || IsSpatial(sch->sch, consumer_sref)) &&
@@ -213,9 +228,7 @@ class RuleMultiLevelTilingAndFusion {
       // Fork a new schedule
       state.sch = sch->Copy(sch->sampler.ForkSeed());
       // The original block to tiled
-      Array<BufferRV> buffers = state.sch->GetWriteBuffers(block_rv);
-      CHECK_EQ(buffers.size(), 1);
-      state.block_rv = state.sch->CacheWrite(buffers[0], "local");
+      state.block_rv = state.sch->CacheWrite(block_rv, 0, cache_write_scope);
       // The cache write block
       state.only_consumer = block_rv;
       state.only_consumer_is_cache_write = true;
@@ -228,38 +241,54 @@ class RuleMultiLevelTilingAndFusion {
     if (!must_cache_read) {
       return;
     }
+    // Extract the block to be worked on
     Schedule& sch = state->sch;
     BlockRV& block_rv = state->block_rv;
-    std::unordered_map<tir::Buffer, BufferRV, ObjectPtrHash, ObjectPtrEqual> buffer_map;
-    for (const BufferRV& buffer : sch->GetReadBuffers(block_rv)) {
-      buffer_map[sch->Eval(buffer)] = buffer;
-    }
-    for (const BufferRV& buffer : sch->GetWriteBuffers(block_rv)) {
-      tir::Buffer tir_buffer = sch->Eval(buffer);
-      if (buffer_map.count(tir_buffer)) {
-        buffer_map.erase(tir_buffer);
+    tir::StmtSRef block_sref = sch->Eval(block_rv);
+    // Find all indices of the read buffers
+    std::vector<int> read_buffer_indices;
+    {
+      const auto* block = block_sref->GetStmt<tir::BlockNode>();
+      int n_reads = block->reads.size();
+      int n_writes = block->writes.size();
+      for (int i = 0; i < n_reads; ++i) {
+        const tir::Buffer& read_buffer = block->reads[i]->buffer;
+        bool found = false;
+        for (int j = 0; j < n_writes; ++j) {
+          const tir::Buffer& write_buffer = block->writes[j]->buffer;
+          if (read_buffer.same_as(write_buffer)) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          read_buffer_indices.push_back(i);
+        }
       }
+      std::reverse(read_buffer_indices.begin(), read_buffer_indices.end());
     }
-    for (const auto& kv : buffer_map) {
-      tir::Buffer tir_buffer = kv.first;
-      BufferRV buffer = kv.second;
+    // Enumerate all buffers that are read but not written
+    for (int i : read_buffer_indices) {
+      const auto* block = block_sref->GetStmt<tir::BlockNode>();
+      const tir::Buffer& buffer = block->reads[i]->buffer;
       // Do cache_read
-      BlockRV cache_read_block = sch->CacheRead(buffer, "shared");
+      BlockRV cache_read_block = sch->CacheRead(block_rv, i, cache_read_scope);
       // Insert cache_read block to the proper place
       const Array<LoopRV>& r_tiles = state->tiles[r_idx.front()];
       CHECK(!r_tiles.empty()) << "ValueError: Cannot find any reduction loop in the block";
       sch->ComputeAt(cache_read_block, r_tiles.back());
-      // Fuse the iterators
+      // Fuse the iterators of the cache_read
       Array<LoopRV> to_fuse;
       {
         Array<LoopRV> cache_read_axes = sch->GetAxes(cache_read_block);
         int n_axes = cache_read_axes.size();
-        int ndim = tir_buffer->shape.size();
+        int ndim = buffer->shape.size();
         for (int i = n_axes - ndim; i < n_axes; ++i) {
           to_fuse.push_back(cache_read_axes[i]);
         }
       }
       LoopRV fused = sch->Fuse(to_fuse);
+      // Do cooperative fetching
       if (vector_load_max_len.defined()) {
         // cooperative fetch + vectorized loading
         // Split into inner and outer
@@ -348,6 +377,9 @@ class RuleMultiLevelTilingAndFusion {
 
   TReturn Apply(const SearchTask& task, const Schedule& sch, BlockRV block_rv,
                 const TContextInfo& _info) const {
+    if (HasAnnotation(sch, block_rv)) {
+      return {{sch, NullOpt}};
+    }
     // If multi-level-tiling is not required
     if (!NeedsMultiLevelTiling(sch->sch, sch->Eval(block_rv))) {
       return {{sch, NullOpt}};
@@ -396,16 +428,19 @@ class RuleMultiLevelTilingAndFusion {
   }
 };
 
-SearchRule MultiLevelTilingAndFusion(String structure, bool must_cache_read, bool can_cache_write,
-                                     bool must_cache_write, Array<Integer> fusion_levels,
+SearchRule MultiLevelTilingAndFusion(String structure, bool must_cache_read,
+                                     String cache_read_scope, bool can_cache_write,
+                                     bool must_cache_write, String cache_write_scope,
+                                     Array<Integer> fusion_levels,
                                      Optional<Integer> vector_load_max_len,
                                      Optional<Array<String>> tile_marks) {
   if (!can_cache_write && must_cache_write) {
     LOG(FATAL) << "ValueError: Conflict options, cannot have can_cache_write = false, and "
                   "must_cache_write = true at the same time";
   }
-  RuleMultiLevelTilingAndFusion rule(structure, must_cache_read, can_cache_write, must_cache_write,
-                                     fusion_levels, vector_load_max_len, tile_marks);
+  RuleMultiLevelTilingAndFusion rule(structure, must_cache_read, cache_read_scope, can_cache_write,
+                                     must_cache_write, cache_write_scope, fusion_levels,
+                                     vector_load_max_len, tile_marks);
   auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch, BlockRV block,
                                          TContextInfo info) -> TReturn {
     return rule.Apply(task, sch, block, info);

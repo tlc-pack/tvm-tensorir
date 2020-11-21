@@ -235,8 +235,8 @@ class Schedule(Object):
 
     ######### Block/Loop Relationship #########
 
-    def get_only_consumer(self, block: BlockRV) -> Optional[BlockRV]:
-        """Apply the instruction GetBlock, get a block by its name
+    def get_producers(self, block: BlockRV) -> List[BlockRV]:
+        """Get the producers of a specific block
 
         Parameters
         ----------
@@ -245,10 +245,25 @@ class Schedule(Object):
 
         Returns
         -------
-        only_consumer : Optional[BlockRV]
-            A block, its only consumer; or None if it does not exist
+        producers : List[BlockRV]
+            The producers
         """
-        return _ffi_api.ScheduleGetOnlyConsumer(self, block)  # pylint: disable=no-member
+        return _ffi_api.ScheduleGetProducers(self, block)  # pylint: disable=no-member
+
+    def get_consumers(self, block: BlockRV) -> List[BlockRV]:
+        """Get the consumers of a specific block
+
+        Parameters
+        ----------
+        block : BlockRV
+            The block to be queried
+
+        Returns
+        -------
+        consumers : List[BlockRV]
+            The consumers
+        """
+        return _ffi_api.ScheduleGetConsumers(self, block)  # pylint: disable=no-member
 
     def get_block(self, name: str) -> BlockRV:
         """Apply the instruction GetBlock, get a block by its name
@@ -352,7 +367,9 @@ class Schedule(Object):
         last_n : Optional[ir.PrimExpr]
             The last n loops to be marked
         """
-        _ffi_api.ScheduleMarkLoopType(self, loops, mark, first_n, last_n)  # pylint: disable=no-member
+        _ffi_api.ScheduleMarkLoopType(  # pylint: disable=no-member
+            self, loops, mark, first_n, last_n
+        )
 
     def mark_block_type(self, block: BlockRV, mark: str) -> None:
         """Mark a range of loops with the specific mark
@@ -456,13 +473,15 @@ class Schedule(Object):
         """
         _ffi_api.ScheduleReverseComputeInline(self, block)  # pylint: disable=no-member
 
-    def cache_read(self, buffer: BufferRV, storage_scope: str) -> BlockRV:
+    def cache_read(self, block: BlockRV, i: int, storage_scope: str) -> BlockRV:
         """Apply the instruction cache_read
 
         Parameters
         ----------
-        buffer: BufferRV
-            The buffer to be cached
+        block: BlockRV
+            The read block of the buffer to be cached
+        i: int
+            The index of the buffer in block's read region
         storage_scope: str
             The storage scope
 
@@ -471,15 +490,19 @@ class Schedule(Object):
         block : BlockRV
             The cache write stage
         """
-        return _ffi_api.ScheduleCacheRead(self, buffer, storage_scope)  # pylint: disable=no-member
+        return _ffi_api.ScheduleCacheRead(  # pylint: disable=no-member
+            self, block, i, storage_scope
+        )
 
-    def cache_write(self, buffer: BufferRV, storage_scope: str) -> BlockRV:
+    def cache_write(self, block: BlockRV, i: int, storage_scope: str) -> BlockRV:
         """Apply the instruction cache_write
 
         Parameters
         ----------
-        buffer: BufferRV
-            The buffer to be cached
+        block: BlockRV
+            The write block of the buffer to be cached
+        i: int
+            The index of the buffer in block's write region
         storage_scope: str
             The storage scope
 
@@ -488,7 +511,9 @@ class Schedule(Object):
         block : BlockRV
             The cache write stage
         """
-        return _ffi_api.ScheduleCacheWrite(self, buffer, storage_scope)  # pylint: disable=no-member
+        return _ffi_api.ScheduleCacheWrite(  # pylint: disable=no-member
+            self, block, i, storage_scope
+        )
 
     def blockize(self, loop: LoopRV, exec_scope: str = "") -> BlockRV:
         """Apply the instruction blockize

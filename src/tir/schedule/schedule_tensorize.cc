@@ -163,12 +163,15 @@ bool TensorizeComparator::VisitStmt_(const BlockNode* op, const Stmt& other) {
   }
 
   if (!is_scope_block) {
-    if (!CompareArray(op->writes, rhs->writes, &TensorizeComparator::CompareTensorRegion))
+    if (!CompareArray(op->writes, rhs->writes, &TensorizeComparator::CompareTensorRegion)) {
       return false;
-    if (!CompareArray(op->reads, rhs->reads, &TensorizeComparator::CompareTensorRegion))
+    }
+    if (!CompareArray(op->reads, rhs->reads, &TensorizeComparator::CompareTensorRegion)) {
       return false;
-    if (!CompareArray(op->annotations, rhs->annotations, &TensorizeComparator::CompareAnnotation))
+    }
+    if (!CompareArray(op->annotations, rhs->annotations, &TensorizeComparator::CompareAnnotation)) {
       return false;
+    }
   }
   if (!is_scope_block) is_inner_block = false;
   is_scope_block = false;
@@ -250,9 +253,9 @@ bool TensorizeComparator::CompareBuffer(const Buffer& lhs, const Buffer& rhs) {
   // Skip buffer shape
   bool equal = DefEqual(lhs, rhs) && DefEqual(lhs->data, rhs->data) &&
                CompareType(lhs->dtype, rhs->dtype) && lhs->scope == rhs->scope;
-  if (equal)
+  if (equal) {
     rhs_buffer_map_[rhs] = lhs;
-  else if (assert_mode_) {
+  } else if (assert_mode_) {
     LOG(FATAL) << "Buffers are not matching between:" << lhs << " and " << rhs;
   }
   return equal;

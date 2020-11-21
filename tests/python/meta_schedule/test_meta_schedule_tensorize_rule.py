@@ -59,21 +59,44 @@ def tensorcore_tensorized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             for i1_outer in range(0, 8):
                 for i2_outer in range(0, 8):
                     for i3_outer in range(0, 8):
-                        with tir.block(
-                            [16, 8, 8, tir.reduce_axis(0, 8)], "blockized_update"
-                        ) as [vn, vi, vj, vk]:
+                        with tir.block([16, 8, 8, tir.reduce_axis(0, 8)], "blockized_update") as [
+                            vn,
+                            vi,
+                            vj,
+                            vk,
+                        ]:
                             tir.bind(vn, i0)
                             tir.bind(vi, i1_outer)
                             tir.bind(vj, i2_outer)
                             tir.bind(vk, i3_outer)
                             tir.reads(
                                 [
-                                    C[vn : (vn + 1), vi * 16 : (vi * 16 + 16), vj * 16 : (vj * 16 + 16)],
-                                    A[vn : (vn + 1), vi * 16 : (vi * 16 + 16), vk * 16 : (vk * 16 + 16)],
-                                    B[vn : (vn + 1), vj * 16 : (vj * 16 + 16), vk * 16 : (vk * 16 + 16)],
+                                    C[
+                                        vn : (vn + 1),
+                                        vi * 16 : (vi * 16 + 16),
+                                        vj * 16 : (vj * 16 + 16),
+                                    ],
+                                    A[
+                                        vn : (vn + 1),
+                                        vi * 16 : (vi * 16 + 16),
+                                        vk * 16 : (vk * 16 + 16),
+                                    ],
+                                    B[
+                                        vn : (vn + 1),
+                                        vj * 16 : (vj * 16 + 16),
+                                        vk * 16 : (vk * 16 + 16),
+                                    ],
                                 ]
                             )
-                            tir.writes([C[vn : (vn + 1), vi * 16 : (vi * 16 + 16), vj * 16 : (vj * 16 + 16)]])
+                            tir.writes(
+                                [
+                                    C[
+                                        vn : (vn + 1),
+                                        vi * 16 : (vi * 16 + 16),
+                                        vj * 16 : (vj * 16 + 16),
+                                    ]
+                                ]
+                            )
                             for i1_inner_init in range(0, 16):
                                 for i2_inner_init in range(0, 16):
                                     with tir.block([128, 128], "update_init") as [
@@ -121,28 +144,42 @@ def tensorcore_tensorized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                     ]
                                 )
                                 tir.writes(
-                                    [C[vn : (vn + 1), vi * 16 : (vi * 16 + 16), vj * 16 : (vj * 16 + 16)]]
+                                    [
+                                        C[
+                                            vn : (vn + 1),
+                                            vi * 16 : (vi * 16 + 16),
+                                            vj * 16 : (vj * 16 + 16),
+                                        ]
+                                    ]
                                 )
                                 tir.evaluate(
                                     tir.tvm_mma_sync(
                                         C.data,
                                         tir.floordiv(
-                                            tir.get_elem_offset(C[vn, vi * 16, vj * 16], dtype="int32"),
+                                            tir.get_elem_offset(
+                                                C[vn, vi * 16, vj * 16], dtype="int32"
+                                            ),
                                             256,
                                         ),
                                         A.data,
                                         tir.floordiv(
-                                            tir.get_elem_offset(A[vn, vi * 16, vk * 16], dtype="int32"),
+                                            tir.get_elem_offset(
+                                                A[vn, vi * 16, vk * 16], dtype="int32"
+                                            ),
                                             256,
                                         ),
                                         B.data,
                                         tir.floordiv(
-                                            tir.get_elem_offset(B[vn, vj * 16, vk * 16], dtype="int32"),
+                                            tir.get_elem_offset(
+                                                B[vn, vj * 16, vk * 16], dtype="int32"
+                                            ),
                                             256,
                                         ),
                                         C.data,
                                         tir.floordiv(
-                                            tir.get_elem_offset(C[vn, vi * 16, vj * 16], dtype="int32"),
+                                            tir.get_elem_offset(
+                                                C[vn, vi * 16, vj * 16], dtype="int32"
+                                            ),
                                             256,
                                         ),
                                         dtype="handle",
@@ -198,21 +235,32 @@ def dot_product_tensorized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                 tir.bind(v0, 0)
                                 tir.reads(
                                     [
-                                    C[vn : (vn + 1), vi : (vi + 1), vj : (vj + 1)],
-                                    A[vn : (vn + 1), vi : (vi + 1), vk * 4 : (vk * 4 + 4)],
-                                    B[vn : (vn + 1), vj : (vj + 1), vk * 4 : (vk * 4 + 4)],
+                                        C[vn : (vn + 1), vi : (vi + 1), vj : (vj + 1)],
+                                        A[vn : (vn + 1), vi : (vi + 1), vk * 4 : (vk * 4 + 4)],
+                                        B[vn : (vn + 1), vj : (vj + 1), vk * 4 : (vk * 4 + 4)],
                                     ]
                                 )
                                 tir.writes(
                                     [
                                         C[
-                                        vn : (vn + 1),
-                                        vi : (vi + 1),
-                                        vj : (vj + 1),
+                                            vn : (vn + 1),
+                                            vi : (vi + 1),
+                                            vj : (vj + 1),
                                         ]
                                     ]
                                 )
-                                tir.evaluate(((C.data + A.data) + B.data))
+                                tir.evaluate(
+                                    tir.call_extern(  # pylint: disable=redundant-keyword-arg
+                                        "vec4add",
+                                        C.data,
+                                        C.elem_offset,
+                                        A.data,
+                                        A.elem_offset,
+                                        B.data,
+                                        B.elem_offset,
+                                        dtype="int32",
+                                    )
+                                )
 
 
 # pylint: enable=invalid-name,no-member
