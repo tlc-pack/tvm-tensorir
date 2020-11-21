@@ -120,8 +120,10 @@ class RuleMultiLevelTilingAndFusion {
  public:
   String structure;
   bool must_cache_read;
+  String cache_read_scope;
   bool can_cache_write;
   bool must_cache_write;
+  String cache_write_scope;
   Array<Integer> fusion_levels;
   Optional<Integer> vector_load_max_len;
   Array<String> tile_marks;
@@ -129,14 +131,17 @@ class RuleMultiLevelTilingAndFusion {
   std::vector<int> r_idx;
 
   explicit RuleMultiLevelTilingAndFusion(String structure, bool must_cache_read,
-                                         bool can_cache_write, bool must_cache_write,
+                                         String cache_read_scope, bool can_cache_write,
+                                         bool must_cache_write, String cache_write_scope,
                                          Array<Integer> fusion_levels,
                                          Optional<Integer> vector_load_max_len,
                                          Optional<Array<String>> tile_marks)
       : structure(structure),
         must_cache_read(must_cache_read),
+        cache_read_scope(cache_read_scope),
         can_cache_write(can_cache_write),
         must_cache_write(must_cache_write),
+        cache_write_scope(cache_write_scope),
         fusion_levels(fusion_levels),
         vector_load_max_len(vector_load_max_len),
         tile_marks(tile_marks.value_or(Array<String>{})),
@@ -223,7 +228,7 @@ class RuleMultiLevelTilingAndFusion {
       // Fork a new schedule
       state.sch = sch->Copy(sch->sampler.ForkSeed());
       // The original block to tiled
-      state.block_rv = state.sch->CacheWrite(block_rv, 0, "local");
+      state.block_rv = state.sch->CacheWrite(block_rv, 0, cache_write_scope);
       // The cache write block
       state.only_consumer = block_rv;
       state.only_consumer_is_cache_write = true;
@@ -267,7 +272,7 @@ class RuleMultiLevelTilingAndFusion {
       const auto* block = block_sref->GetStmt<tir::BlockNode>();
       const tir::Buffer& buffer = block->reads[i]->buffer;
       // Do cache_read
-      BlockRV cache_read_block = sch->CacheRead(block_rv, i, "shared");
+      BlockRV cache_read_block = sch->CacheRead(block_rv, i, cache_read_scope);
       // Insert cache_read block to the proper place
       const Array<LoopRV>& r_tiles = state->tiles[r_idx.front()];
       CHECK(!r_tiles.empty()) << "ValueError: Cannot find any reduction loop in the block";
@@ -423,16 +428,19 @@ class RuleMultiLevelTilingAndFusion {
   }
 };
 
-SearchRule MultiLevelTilingAndFusion(String structure, bool must_cache_read, bool can_cache_write,
-                                     bool must_cache_write, Array<Integer> fusion_levels,
+SearchRule MultiLevelTilingAndFusion(String structure, bool must_cache_read,
+                                     String cache_read_scope, bool can_cache_write,
+                                     bool must_cache_write, String cache_write_scope,
+                                     Array<Integer> fusion_levels,
                                      Optional<Integer> vector_load_max_len,
                                      Optional<Array<String>> tile_marks) {
   if (!can_cache_write && must_cache_write) {
     LOG(FATAL) << "ValueError: Conflict options, cannot have can_cache_write = false, and "
                   "must_cache_write = true at the same time";
   }
-  RuleMultiLevelTilingAndFusion rule(structure, must_cache_read, can_cache_write, must_cache_write,
-                                     fusion_levels, vector_load_max_len, tile_marks);
+  RuleMultiLevelTilingAndFusion rule(structure, must_cache_read, cache_read_scope, can_cache_write,
+                                     must_cache_write, cache_write_scope, fusion_levels,
+                                     vector_load_max_len, tile_marks);
   auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch, BlockRV block,
                                          TContextInfo info) -> TReturn {
     return rule.Apply(task, sch, block, info);
