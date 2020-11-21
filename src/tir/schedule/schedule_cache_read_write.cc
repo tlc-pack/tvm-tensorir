@@ -516,7 +516,7 @@ class CacheWriteRewriter : public StmtExprMutator {
   CacheStageInfo* info_;
 };
 
-StmtSRef ScheduleNode::cache_read(StmtSRef block_sref, size_t i, const std::string& storage_scope) {
+StmtSRef ScheduleNode::cache_read(StmtSRef block_sref, int i, const std::string& storage_scope) {
   /*!
    * Check:
    *   - check the buffer has only one writing block
@@ -566,7 +566,7 @@ StmtSRef ScheduleNode::cache_read(StmtSRef block_sref, size_t i, const std::stri
   return stmt2ref.at(cache_read_stage.get());
 }
 
-StmtSRef ScheduleNode::cache_write(StmtSRef block_sref, size_t i,
+StmtSRef ScheduleNode::cache_write(StmtSRef block_sref, int i,
                                    const std::string& storage_scope) {
   /*!
    * Check:
