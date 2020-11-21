@@ -43,7 +43,7 @@ def matmul_relu(n: int, m: int, k: int) -> Tuple[te.Tensor, te.Tensor, te.Tensor
         name="C",
     )
     d = topi.nn.relu(c)  # pylint: disable=invalid-name
-    return (a, b, c, d)
+    return (a, b, d)
 
 
 def conv2d_nchw(  # pylint: disable=invalid-name
@@ -104,4 +104,4 @@ def max_pool2d_nchw(  # pylint: disable=invalid-name
 ) -> Tuple[te.Tensor, te.Tensor]:  # pylint: disable=invalid-name
     x = te.placeholder((n, ci, h, w), name="X")
     y = topi.nn.pool(x, [2, 2], [1, 1], [padding, padding, padding, padding], "max")
-    return [x, y]
+    return (x, y)

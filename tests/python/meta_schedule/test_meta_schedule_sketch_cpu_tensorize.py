@@ -26,7 +26,6 @@ from tir_tensor_intrin import (
 from tir_workload import batch_matmul
 from tvm import meta_schedule as ms
 
-
 TARGET = tvm.target.Target("llvm")
 DOT_PROD = tvm.tir.TensorIntrin(dot_product_desc, dot_product_impl)
 TENSOR_CORE = tvm.tir.TensorIntrin(tensorcore_desc, tensorcore_impl)
