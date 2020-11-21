@@ -18,9 +18,10 @@
 # pylint: disable=missing-function-docstring
 from typing import List
 
+import te_workload
 import tvm
 from tvm import meta_schedule as ms
-from tvm import tir
+from tvm import te, tir
 from tvm.script import ty
 
 TARGET = tvm.target.Target("cuda")
@@ -92,15 +93,6 @@ def _debug(support: List[ms.Schedule]):
 # fmt: off
 
 @tvm.script.tir
-def workload_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    A = tir.match_buffer(a, (512, 512), "float32")
-    B = tir.match_buffer(b, (512, 512), "float32")
-    C = tir.match_buffer(c, (512, 512), "float32")
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
-    with tir.block([512, 512, tir.reduce_axis(0, 512)], "C") as [vi, vj, vk]:
-        reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
-
-@tvm.script.tir
 def _matmul_sketch_0(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, [512, 512], elem_offset=0, align=128, offset_factor=1)
     A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
@@ -163,7 +155,7 @@ def _matmul_sketch_0(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 def test_meta_schedule_sketch_cuda_matmul():
-    func = workload_matmul
+    func = te.create_func(te_workload.matmul(512, 512, 512))
     support = _get_support(func=func, task_name="matmul")
     expected = [_matmul_sketch_0]
     possible_decisions = [
