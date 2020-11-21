@@ -15,9 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Test for meta schedule analysis """
-import tir_tensor_intrin
-
 # pylint: disable=missing-function-docstring
+import tir_tensor_intrin
 import tvm
 from tir_workload import batch_matmul, matmul
 from tvm import meta_schedule as ms
