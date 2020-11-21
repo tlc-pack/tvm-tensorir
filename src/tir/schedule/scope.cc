@@ -138,6 +138,8 @@ bool CheckReductionInstance(const Array<IterVar>& iter_vars,
 }
 
 bool Scope::IsReduction(const StmtSRef& block_sref) const {
+  // TODO(@spectrometerHBH): change the definition of reduction block
+  return true;
   const BlockNode* block = block_sref->GetStmt<BlockNode>();
   CHECK(block != nullptr)
       << "InternalError: Scope::IsReduction only accepts tir::Block, but get type: "

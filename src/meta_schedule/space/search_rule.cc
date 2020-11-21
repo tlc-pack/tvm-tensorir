@@ -67,6 +67,15 @@ SearchRule SearchRuleCompose(const String& name, const Array<SearchRule>& rules)
   return SearchRule(name, SearchRuleNode::FApply(apply));
 }
 
+/********** Utility functions **********/
+
+bool HasAnnotation(const Schedule& sch, const BlockRV& block_rv) {
+  tir::StmtSRef block_sref = sch->Eval(block_rv);
+  const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  CHECK(block) << "TypeError: Expect BlockNode, but gets type: " << block_sref->stmt->GetTypeKey();
+  return !block->annotations.empty();
+}
+
 /********** Always-Inline **********/
 
 /*! \brief A rule that inlines all possible blocks */
@@ -363,6 +372,9 @@ class RuleMultiLevelTilingAndFusion {
 
   TReturn Apply(const SearchTask& task, const Schedule& sch, BlockRV block_rv,
                 const TContextInfo& _info) const {
+    if (HasAnnotation(sch, block_rv)) {
+      return {{sch, NullOpt}};
+    }
     // If multi-level-tiling is not required
     if (!NeedsMultiLevelTiling(sch->sch, sch->Eval(block_rv))) {
       return {{sch, NullOpt}};
