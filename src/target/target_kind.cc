@@ -218,6 +218,7 @@ TVM_REGISTER_TARGET_KIND("llvm", kDLCPU)
     .add_attr_option<String>("mfloat-abi")
     .add_attr_option<Bool>("system-lib")
     .add_attr_option<String>("runtime")
+    .add_attr_option<Integer>("num_cores")
     .add_attr_option<Bool>("link-params", Bool(false))
     .set_default_keys({"cpu"});
 
