@@ -79,4 +79,22 @@ TVM_REGISTER_TARGET_TAG("nvidia/rtx2080ti")
         {"vector_unit_bytes", Integer(16)},
     });
 
+TVM_REGISTER_TARGET_TAG("raspberry-pi/4b")
+    .set_config({
+        {"kind", String("llvm")},
+        {"mtriple", String("armv8l-linux-gnueabihf")},
+        {"mcpu", String("cortex-a72")},
+        {"mattr", Array<String>{"+neon"}},
+        {"num_cores", Integer(4)},
+    });
+
+TVM_REGISTER_TARGET_TAG("raspberry-pi/4b-64")
+    .set_config({
+        {"kind", String("llvm")},
+        {"mtriple", String("aarch64-linux-gnu")},
+        {"mcpu", String("cortex-a72")},
+        {"mattr", Array<String>{"+neon"}},
+        {"num_cores", Integer(4)},
+    });
+
 }  // namespace tvm
