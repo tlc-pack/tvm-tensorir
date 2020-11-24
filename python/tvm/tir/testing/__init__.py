@@ -15,4 +15,4 @@
 # specific language governing permissions and limitations
 # under the License.
 """Testing utils for TIR"""
-from . import workload_op
+from . import workload_te
