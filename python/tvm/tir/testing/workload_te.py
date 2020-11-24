@@ -354,3 +354,124 @@ def norm_bmn(  # pylint: disable=invalid-name
     )
     d = te.compute((B,), lambda b: te.sqrt(c[b]), name="D")
     return (a, d)
+
+
+def conv2d_nhwc_without_layout_rewrite(  # pylint: disable=invalid-name
+    Input: int,
+    Filter: int,
+    stride: int,
+    padding: int,
+    dilation: int,
+    out_dtype="float32",
+):
+    """A copy of `topi.nn.conv2d_nhwc` but without the 'layout_free` attribute.
+    We use this in single op and subgraph evaluation
+    because we don't want to introduce graph level optimization.
+    """
+    assert isinstance(stride, int) or len(stride) == 2
+    assert isinstance(dilation, int) or len(dilation) == 2
+
+    if isinstance(stride, int):
+        stride_h = stride_w = stride
+    else:
+        stride_h, stride_w = stride
+
+    if isinstance(dilation, int):
+        dilation_h = dilation_w = dilation
+    else:
+        dilation_h, dilation_w = dilation
+
+    batch, in_height, in_width, in_channel = Input.shape
+    kernel_h, kernel_w, _channel, num_filter = Filter.shape
+
+    # compute the output shape
+    dilated_kernel_h = (kernel_h - 1) * dilation_h + 1
+    dilated_kernel_w = (kernel_w - 1) * dilation_w + 1
+    pad_top, pad_left, pad_down, pad_right = topi.nn.get_pad_tuple(
+        padding, (dilated_kernel_h, dilated_kernel_w)
+    )
+    out_channel = num_filter
+    out_height = topi.util.simplify(
+        (in_height - dilated_kernel_h + pad_top + pad_down) // stride_h + 1
+    )
+    out_width = topi.util.simplify(
+        (in_width - dilated_kernel_w + pad_left + pad_right) // stride_w + 1
+    )
+    pad_before = [0, pad_top, pad_left, 0]
+    pad_after = [0, pad_down, pad_right, 0]
+    PaddedInput = topi.nn.pad(Input, pad_before, pad_after, name="PaddedInput")
+    rc = te.reduce_axis((0, in_channel), name="rc")
+    ry = te.reduce_axis((0, kernel_h), name="ry")
+    rx = te.reduce_axis((0, kernel_w), name="rx")
+    Output = te.compute(
+        (batch, out_height, out_width, out_channel),
+        lambda nn, yy, xx, ff: te.sum(
+            PaddedInput[
+                nn, yy * stride_h + ry * dilation_h, xx * stride_w + rx * dilation_w, rc
+            ].astype(out_dtype)
+            * Filter[ry, rx, rc, ff].astype(out_dtype),
+            axis=[ry, rx, rc],
+        ),
+        name="Conv2dOutput",
+        tag="conv2d_nhwc",
+    )
+    return Output
+
+
+def conv2d_nhwc_bn_relu(  # pylint: disable=invalid-name
+    N: int,
+    H: int,
+    W: int,
+    CI: int,
+    CO: int,
+    kernel_size: int,
+    strides: int,
+    padding: int,
+    dilation: int = 1,
+) -> Tuple[te.Tensor, te.Tensor, te.Tensor, te.Tensor, te.Tensor, te.Tensor]:
+    data = te.placeholder((N, H, W, CI), name="data")
+    kernel = te.placeholder((kernel_size, kernel_size, CI, CO), name="kernel")
+    bias = te.placeholder((CO,), name="bias")
+    bn_scale = te.placeholder((CO,), name="bn_scale")
+    bn_offset = te.placeholder((CO,), name="bn_offset")
+    OH = (H + 2 * padding - (kernel_size - 1) * dilation - 1) // strides + 1
+    OW = (W + 2 * padding - (kernel_size - 1) * dilation - 1) // strides + 1
+    conv = conv2d_nhwc_without_layout_rewrite(data, kernel, strides, padding, dilation)
+    conv = te.compute(
+        (N, OH, OW, CO), lambda i, j, k, l: conv[i, j, k, l] + bias[l], name="bias_add"
+    )
+    conv = te.compute(
+        (N, OH, OW, CO), lambda i, j, k, l: conv[i, j, k, l] * bn_scale[l], name="bn_mul"
+    )
+    conv = te.compute(
+        (N, OH, OW, CO), lambda i, j, k, l: conv[i, j, k, l] + bn_offset[l], name="bn_add"
+    )
+    out = topi.nn.relu(conv)
+    return (data, kernel, bias, bn_offset, bn_scale, out)
+
+
+def transpose_batch_matmul(  # pylint: disable=invalid-name
+    batch: int,
+    seq_len: int,
+    n_head: int,
+    n_dim: int,
+) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
+    query = te.placeholder((batch, seq_len, n_head, n_dim), name="query")
+    value = te.placeholder((batch, seq_len, n_head, n_dim), name="value")
+    query_T = te.compute(
+        (batch, n_head, seq_len, n_dim),
+        lambda b, h, l, d: query[b, l, h, d],
+        name="query_T",
+    )
+    value_T = te.compute(
+        (batch, n_head, n_dim, seq_len),
+        lambda b, h, d, l: value[b, l, h, d],
+        name="value_T",
+    )
+    k = te.reduce_axis((0, n_dim), name="k")
+    out = te.compute(
+        (batch, n_head, seq_len, seq_len),
+        lambda b, h, i, j: te.sum(query_T[b, h, i, k] * value_T[b, h, k, j], axis=[k]),
+        name="C",
+    )
+    return (query, value, out)
