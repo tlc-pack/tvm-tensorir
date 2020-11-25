@@ -730,10 +730,15 @@ Doc TVMScriptPrinter::VisitType_(const TupleTypeNode* node) {
 }
 
 Doc TVMScriptPrinter::VisitStmt_(const BlockRealizeNode* op) {
-  const BlockNode* block_op = (op->block).as<BlockNode>();
+  const auto* block_op = (op->block).as<BlockNode>();
+  const auto* reduction = op->block.as<ReductionBlockNode>();
   // print block name and block vars
   Doc doc;
-  doc << "with tir.block([";
+  if (reduction) {
+    doc << "with tir.reduction([";
+  } else {
+    doc << "with tir.block([";
+  }
   std::vector<Doc> block_var_docs;
   for (const auto& iter_var : block_op->iter_vars) {
     Doc block_var_doc;
@@ -789,6 +794,9 @@ Doc TVMScriptPrinter::VisitStmt_(const BlockRealizeNode* op) {
   body << Doc::NewLine();
   for (const auto& allocate : block_op->allocations) {
     body << Print(allocate) << Doc::NewLine();
+  }
+  if (reduction) {
+    body << Print(reduction->init);
   }
   body << PrintBody(block_op->body);
   doc << Doc::Indent(4, block_attr_doc << body);

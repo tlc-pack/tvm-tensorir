@@ -1050,7 +1050,7 @@ class BlockNode : public StmtNode {
   /*! \brief The tag of the block. */
   std::string tag;
 
-  void VisitAttrs(AttrVisitor* v) {
+  virtual void VisitAttrs(AttrVisitor* v) {
     v->Visit("body", &body);
     v->Visit("iter_vars", &iter_vars);
     v->Visit("reads", &reads);
@@ -1066,7 +1066,7 @@ class BlockNode : public StmtNode {
            equal(reads, other->reads) && equal(writes, other->writes);
   }
 
-  void SHashReduce(SHashReducer hash_reduce) const {
+  virtual void SHashReduce(SHashReducer hash_reduce) const {
     hash_reduce.DefHash(iter_vars);
     hash_reduce(reads);
     hash_reduce(writes);
@@ -1087,6 +1087,58 @@ class Block : public Stmt {
 
   TVM_DEFINE_OBJECT_REF_METHODS(Block, Stmt, BlockNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(BlockNode);
+};
+
+/*!
+ * \brief A block that is a reduction block, which contains an explicit init block
+ */
+class ReductionBlockNode : public BlockNode {
+ public:
+  Block init;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("body", &body);
+    v->Visit("iter_vars", &iter_vars);
+    v->Visit("reads", &reads);
+    v->Visit("writes", &writes);
+    v->Visit("allocations", &allocations);
+    v->Visit("annotations", &annotations);
+    v->Visit("tag", &tag);
+    v->Visit("init", &init);
+  }
+
+  bool SEqualReduce(const ReductionBlockNode* other, SEqualReducer equal) const {
+    return equal.DefEqual(iter_vars, other->iter_vars) && equal(allocations, other->allocations) &&
+           equal(body, other->body) && equal(annotations, other->annotations) &&
+           equal(reads, other->reads) && equal(writes, other->writes) && equal(init, other->init);
+  }
+
+  void SHashReduce(SHashReducer hash_reduce) const {
+    hash_reduce.DefHash(iter_vars);
+    hash_reduce(reads);
+    hash_reduce(writes);
+    hash_reduce(allocations);
+    hash_reduce(annotations);
+    hash_reduce(body);
+    hash_reduce(init);
+  }
+
+  static constexpr const char* _type_key = "ReductionBlock";
+};
+
+/*!
+ * \brief Managed reference to ReductionBlockNode
+ * \sa ReductionBlockNode
+ */
+class ReductionBlock : public Block {
+ public:
+  TVM_DLL ReductionBlock(Array<IterVar> iter_vars, Array<TensorRegion> reads,
+                         Array<TensorRegion> writes, Stmt body, Block init,
+                         Array<BufferAllocate> allocations, Array<Annotation> annotations,
+                         std::string tag);
+
+  TVM_DEFINE_OBJECT_REF_METHODS(ReductionBlock, Block, ReductionBlockNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(ReductionBlockNode);
 };
 
 /*!

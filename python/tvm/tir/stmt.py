@@ -434,6 +434,44 @@ class Block(Stmt):
 
 
 @tvm._ffi.register_object
+class ReductionBlock(Stmt):
+    """ReductionBlock node.
+
+    Parameters
+    ----------
+    iter_vars : list of IterVar
+        The reduction block Variable.
+
+    reads : list of TensorRegion
+        The read tensor region of the reduction block.
+
+    writes: list of TensorRegion
+        The write tensor region of the reduction block.
+
+    body: Stmt
+        The update body of the reduction block.
+
+    init: Block
+        The init block of the reduction block
+
+    allocations: list of BufferAllocation
+        The buffer allocations
+
+    annotations: list of Annotation
+        The annotation of the reduction block.
+
+    tag: str
+        the tag of the reduction block.
+    """
+
+    def __init__(self, iter_vars, reads, writes, body, init, allocations, annotations, tag):
+        self.__init_handle_by_constructor__(
+            _ffi_api.ReductionBlock, iter_vars, reads, writes, body, init, allocations, annotations,
+            tag
+        )
+
+
+@tvm._ffi.register_object
 class BlockRealize(Stmt):
     """BlockRealize node.
 
