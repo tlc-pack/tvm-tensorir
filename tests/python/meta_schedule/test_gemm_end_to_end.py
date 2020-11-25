@@ -281,7 +281,7 @@ def test_matmul_evolutionary_step_by_step():
                 cache_write_scope="global",
                 fusion_levels=[1, 2],
             ),
-            ms.rule.mark_parallelize_outer(max_extent=256),
+            ms.rule.mark_parallelize_outer(max_jobs_per_core=8),
             ms.rule.mark_vectorize_inner(max_extent=32),
         ],
         postprocs=[
@@ -320,7 +320,7 @@ def test_matmul_evolutionary_end_to_end():
                     cache_write_scope="global",
                     fusion_levels=[1, 2],
                 ),
-                ms.rule.mark_parallelize_outer(max_extent=256),
+                ms.rule.mark_parallelize_outer(max_jobs_per_core=8),
                 ms.rule.mark_vectorize_inner(max_extent=32),
             ],
             postprocs=[

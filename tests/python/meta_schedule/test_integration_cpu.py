@@ -24,7 +24,7 @@ import tvm
 from tvm import meta_schedule as ms
 from tvm import te
 
-TARGET = tvm.target.Target("llvm")
+TARGET = tvm.target.Target("llvm --num_cores 16")
 SPACE = ms.space.PostOrderApply(
     stages=[
         ms.rule.inline_pure_spatial(strict_mode=True),
@@ -37,7 +37,7 @@ SPACE = ms.space.PostOrderApply(
             cache_write_scope="global",
             fusion_levels=[1, 2],
         ),
-        ms.rule.mark_parallelize_outer(max_extent=256),
+        ms.rule.mark_parallelize_outer(max_jobs_per_core=8),
         ms.rule.mark_vectorize_inner(max_extent=32),
     ],
     postprocs=[

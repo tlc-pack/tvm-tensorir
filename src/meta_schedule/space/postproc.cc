@@ -435,9 +435,7 @@ class PostprocRewriteCudaThreadBind {
 
   bool Proc(const SearchTask& task, const Schedule& sch) const {
     int warp_size = task->target->GetAttr<Integer>("thread_warp_size").value_or(Integer(-1));
-    if (warp_size == -1) {
-      LOG(FATAL) << "ValueError: Cannot find attribute \"thread_warp_size\" in the target";
-    }
+    CHECK(warp_size != -1) << "ValueError: Target does not have attribute \"thread_warp_size\"";
     Array<BlockRV> root_block_rvs = sch->GetRootBlocks();
     for (const BlockRV& block_rv : root_block_rvs) {
       if (BindMultiLevelTiled(sch, block_rv, warp_size)) {

@@ -315,7 +315,8 @@ def realize_arguments(
     return args
 
 
-def cpu_count() -> int:
+@register_func("meta_schedule._cpu_count")
+def cpu_count(logical=True) -> int:
     """
     Check the number of cpus available on the local device
 
@@ -324,7 +325,7 @@ def cpu_count() -> int:
     cpu_count: int
         The number of cpus available on the local device
     """
-    return multiprocessing.cpu_count()
+    return psutil.cpu_count(logical=logical)
 
 
 def vprint(verbose: int, content: str, end: str) -> None:
