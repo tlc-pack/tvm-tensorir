@@ -22,8 +22,8 @@ from tvm import meta_schedule as ms
 
 
 def test_meta_schedule_search_task_creation():
-    task = ms.SearchTask(func=matmul, target="cuda", target_host="llvm")
-    assert tvm.ir.structural_equal(task.func, matmul)
+    task = ms.SearchTask(workload=matmul, target="cuda", target_host="llvm")
+    assert tvm.ir.structural_equal(task.workload, matmul)
     assert str(task.target).startswith("cuda ")
     assert str(task.target_host).startswith("llvm ")
 

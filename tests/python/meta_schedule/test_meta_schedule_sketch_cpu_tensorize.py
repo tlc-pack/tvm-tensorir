@@ -54,10 +54,10 @@ def _make_space(tensor_intrin: tvm.tir.TensorIntrin) -> ms.SearchSpace:
 
 def test_meta_schedule_sketch_cpu_matmul_dot():
     space = _make_space(DOT_PROD)
-    task = ms.SearchTask(func=batch_matmul, task_name="matmul")
+    task = ms.SearchTask(workload=batch_matmul, task_name="matmul")
     schs = space.get_support(task=task)
     for sch in schs:
-        space.postprocess(sch)
+        space.postprocess(task, sch)
         print(tvm.script.asscript(sch.sch.func))
 
 

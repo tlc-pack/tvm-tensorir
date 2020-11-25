@@ -16,12 +16,14 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include <dmlc/memory_io.h>  // NOLINT(build/include)
+#include "./measure.h"  // NOLINT(build/include)
+
+#include <dmlc/memory_io.h>
 #include <tvm/node/serialization.h>
+
 #include <algorithm>
 
 #include "../support/base64.h"
-#include "./measure.h"
 #include "./utils.h"
 
 namespace tvm {
@@ -119,13 +121,13 @@ void ProgramMeasurerNode::Init(const SearchTask& task) {
     callback->Init(task);
   }
   // Loading existing logs from file
-  if (!task->filename.defined()) {
+  if (!task->log_file.defined()) {
     return;
   }
   static const auto* f_deserialize = runtime::Registry::Get("meta_schedule._deserialize_json");
   CHECK(f_deserialize) << "IndexError: Cannot find packed function \""
                           "meta_schedule._deserialize_json\", which should be registered in python";
-  std::ifstream ifs(task->filename.value());
+  std::ifstream ifs(task->log_file.value());
   if (!ifs.is_open() || ifs.fail()) {
     return;
   }
@@ -137,7 +139,7 @@ void ProgramMeasurerNode::Init(const SearchTask& task) {
     Array<ObjectRef> record = (*f_deserialize)(line);
     records.push_back(record);
   }
-  LOG(INFO) << "Found " << records.size() << " record(s) in the file: " << task->filename.value()
+  LOG(INFO) << "Found " << records.size() << " record(s) in the file: " << task->log_file.value()
             << ". Now loading...";
   for (const Array<ObjectRef>& record : records) {
     CHECK_EQ(record.size(), 7);
@@ -161,8 +163,8 @@ void ProgramMeasurerNode::Init(const SearchTask& task) {
     tir::PrimFunc orig_func{nullptr};
     {
       std::string prim_func_b64 = Downcast<String>(record[6]);
-      dmlc::MemoryStringStream mstrm(&prim_func_b64);
-      support::Base64InStream b64strm(&mstrm);
+      dmlc::MemoryStringStream m_stream(&prim_func_b64);
+      support::Base64InStream b64strm(&m_stream);
       std::string parsed;
       b64strm.InitPosition();
       dmlc::Stream* strm = &b64strm;
@@ -181,7 +183,7 @@ void ProgramMeasurerNode::Init(const SearchTask& task) {
     }
   }
   LOG(INFO) << "Loaded " << num_measured
-            << " valid records from the file: " << task->filename.value()
+            << " valid records from the file: " << task->log_file.value()
             << ". Best time cost: " << best_time_cost;
 }
 

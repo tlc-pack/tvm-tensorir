@@ -129,7 +129,7 @@ def register_rule(name) -> SearchRule:
                     assert v is None or isinstance(v, dict)
                 return ret
             raise TypeError(
-                "SearchRule shoud return Dict<Schedule, ContextInfo>, "
+                "SearchRule should return Dict<Schedule, ContextInfo>, "
                 + f"but gets type '{type(ret)}': {ret}"
             )
 
@@ -204,20 +204,20 @@ def multi_level_tiling_and_fusion(
     )
 
 
-def mark_parallelize_outer(max_extent: int) -> SearchRule:
+def mark_parallelize_outer(max_jobs_per_core: int) -> SearchRule:
     """Create a rule that parallelizes the outer loops
 
     Parameters
     ----------
-    max_extent : int
-        The maximum extent of loops to be parallelized together
+    max_jobs_per_core : int
+        The maximum number of jobs to be run each core
 
     Returns
     ----------
     rule: SearchRule
         The search rule created
     """
-    return _ffi_api_search_rule.MarkParallelizeOuter(max_extent)  # pylint: disable=no-member
+    return _ffi_api_search_rule.MarkParallelizeOuter(max_jobs_per_core)  # pylint: disable=no-member
 
 
 def mark_vectorize_inner(max_extent: int) -> SearchRule:
