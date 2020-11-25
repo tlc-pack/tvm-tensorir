@@ -41,12 +41,15 @@ class PostOrderApplyNode : public SearchSpaceNode {
   }
   /*! \brief Default destructor */
   ~PostOrderApplyNode() = default;
+
+  void Init(const SearchTask& task) override;
   /*!
    * \brief Apply postprocessors onto the schedule
+   * \param task The search task
    * \param sch The schedule to be postprocessed
    * \param sampler The random number generator
    */
-  bool Postprocess(const Schedule& sch, Sampler* sampler) override;
+  bool Postprocess(const SearchTask& task, const Schedule& sch, Sampler* sampler) override;
   /*!
    * \brief Sample a schedule out of the search space
    * \param task The search task to be sampled from
@@ -91,10 +94,13 @@ PostOrderApply::PostOrderApply(Array<SearchRule> stages, Array<Postproc> postpro
 
 /********** Sampling **********/
 
-bool PostOrderApplyNode::Postprocess(const Schedule& sch, Sampler* sampler) {
+void PostOrderApplyNode::Init(const SearchTask& task) {}
+
+bool PostOrderApplyNode::Postprocess(const SearchTask& task, const Schedule& sch,
+                                     Sampler* sampler) {
   sch->EnterPostProc();
   for (const Postproc& postproc : postprocs) {
-    if (!postproc->Apply(sch, sampler)) {
+    if (!postproc->Apply(task, sch, sampler)) {
       return false;
     }
   }
@@ -139,7 +145,7 @@ class BlockCollector : public tir::StmtVisitor {
 
 Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* sampler) {
   using ScheduleAndUnvisitedBlocks = std::pair<Schedule, Array<tir::StmtSRef>>;
-  Array<Schedule> curr{Schedule(task->func, Integer(sampler->ForkSeed()))};
+  Array<Schedule> curr{Schedule(task->workload, Integer(sampler->ForkSeed()))};
   for (const SearchRule& rule : stages) {
     std::vector<ScheduleAndUnvisitedBlocks> stack;
     stack.reserve(curr.size());
