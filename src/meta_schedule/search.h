@@ -34,7 +34,7 @@ class ProgramMeasurer;
 class SearchTaskNode : public Object {
  public:
   /*! \brief The function to be optimized */
-  tir::PrimFunc func;
+  tir::PrimFunc workload;
   /*! \brief Name of this search task */
   String task_name;
   /*! \brief The target to be built at */
@@ -45,7 +45,7 @@ class SearchTaskNode : public Object {
   Optional<String> filename;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("func", &func);
+    v->Visit("workload", &workload);
     v->Visit("task_name", &task_name);
     v->Visit("target", &target);
     v->Visit("target_host", &target_host);
@@ -64,13 +64,13 @@ class SearchTask : public ObjectRef {
  public:
   /*!
    * \brief Constructor
-   * \param func The function to be optimized
+   * \param workload The function to be optimized
    * \param task_name Name of this search task
    * \param target The target to be built at
    * \param target_host The target host to be built at
    * \param filename The file to load/store search logs
    */
-  explicit SearchTask(tir::PrimFunc func, String task_name, Target target, Target target_host,
+  explicit SearchTask(tir::PrimFunc workload, String task_name, Target target, Target target_host,
                       Optional<String> filename);
   TVM_DEFINE_OBJECT_REF_METHODS(SearchTask, ObjectRef, SearchTaskNode);
 };

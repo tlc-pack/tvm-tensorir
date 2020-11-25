@@ -631,7 +631,7 @@ def rpc_runner_worker(
                 error_msg = make_error_msg()
                 raise
             try:
-                args = realize_arguments(remote, ctx, measure_input.task.func)
+                args = realize_arguments(remote, ctx, measure_input.task.workload)
                 ctx.sync()
                 costs = time_f(*args).results
                 # clean up remote files

@@ -53,7 +53,7 @@ def test_integration_matmul():
     os.environ["TVM_TRACKER_KEY"] = "test"
     sch = ms.autotune(
         task=ms.SearchTask(
-            func=te.create_func(te_workload.matmul(1024, 1024, 1024)),
+            workload=te.create_func(te_workload.matmul(1024, 1024, 1024)),
             target=TARGET,
             task_name="cuda_matmul",
             filename="./cuda_matmul.json",

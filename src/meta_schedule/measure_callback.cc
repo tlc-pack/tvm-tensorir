@@ -16,11 +16,12 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include <dmlc/memory_io.h>  // NOLINT(build/include)
+#include "./measure_callback.h"  // NOLINT(build/include)
+
+#include <dmlc/memory_io.h>
 #include <tvm/node/serialization.h>
 
 #include "../support/base64.h"
-#include "./measure_callback.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -37,7 +38,7 @@ void RecordToFileNode::Init(const SearchTask& task) {
   this->target = task->target->Export();
   this->target_host = task->target_host->Export();
   {
-    std::string prim_func_json = SaveJSON(task->func);
+    std::string prim_func_json = SaveJSON(task->workload);
     std::string prim_func_b64;
     dmlc::MemoryStringStream mstrm(&prim_func_b64);
     support::Base64OutStream b64strm(&mstrm);

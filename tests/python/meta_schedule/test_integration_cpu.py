@@ -52,7 +52,7 @@ def test_matmul_post_order_apply():
     os.environ["TVM_TRACKER_KEY"] = "test"
     sch = ms.autotune(
         task=ms.SearchTask(
-            func=te.create_func(te_workload.matmul(1024, 1024, 1024)),
+            workload=te.create_func(te_workload.matmul(1024, 1024, 1024)),
             target=TARGET,
             task_name="cpu_matmul",
             filename="./cpu_matmul.json",
@@ -76,7 +76,7 @@ def test_matmul_relu_post_order_apply():
     os.environ["TVM_TRACKER_KEY"] = "test"
     sch = ms.autotune(
         task=ms.SearchTask(
-            func=te.create_func(te_workload.matmul_relu(1024, 1024, 1024)),
+            workload=te.create_func(te_workload.matmul_relu(1024, 1024, 1024)),
             target=TARGET,
             task_name="cpu_matmul_relu",
             filename="./cpu_matmul_relu.json",

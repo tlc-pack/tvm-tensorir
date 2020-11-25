@@ -17,6 +17,7 @@
  * under the License.
  */
 #include "./postproc.h"  // NOLINT(build/include)
+
 #include <tvm/tir/transform.h>
 
 #include "../analysis.h"
@@ -425,7 +426,7 @@ class PostprocRewriteCudaThreadBind {
         }
       }
       CHECK(threadIdx_sref.defined())
-          << "ValueError: Cannto find 'threadIdx.x' above cooperative fetching";
+          << "ValueError: Cannot find 'threadIdx.x' above cooperative fetching";
       PrimExpr factor = GetLoopExtent(threadIdx_sref);
       PrimExpr nparts = floordiv(GetLoopExtent(loop_sref) + factor - 1, factor);
       Array<tir::StmtSRef> splits = sch->sch->split(loop_sref, nparts, factor);

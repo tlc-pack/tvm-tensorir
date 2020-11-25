@@ -36,7 +36,7 @@ class SearchTask(Object):
 
     Parameters
     ----------
-    func: PrimFunc
+    workload: PrimFunc
         The function to be optimized
     task_name: str
         Name of this search task
@@ -46,7 +46,7 @@ class SearchTask(Object):
         The target host to be built at
     """
 
-    func: PrimFunc
+    workload: PrimFunc
     task_name: str
     target: Target
     target_host: Target
@@ -54,15 +54,15 @@ class SearchTask(Object):
 
     def __init__(
         self,
-        func: PrimFunc,
+        workload: PrimFunc,
         task_name: Optional[str] = None,
         target: TargetType = "llvm",
         target_host: TargetType = "llvm",
         filename: Optional[str] = None,
     ):
         if task_name is None:
-            if hasattr(func, "__qualname__"):
-                task_name = func.__qualname__
+            if hasattr(workload, "__qualname__"):
+                task_name = workload.__qualname__
             else:
                 raise ValueError(
                     "Unable to extract task_name from the PrimFunc, please specific it explicitly"
@@ -73,7 +73,7 @@ class SearchTask(Object):
             target_host = Target(target_host)
         self.__init_handle_by_constructor__(
             _ffi_api.SearchTask,  # pylint: disable=no-member
-            func,
+            workload,
             task_name,
             target,
             target_host,

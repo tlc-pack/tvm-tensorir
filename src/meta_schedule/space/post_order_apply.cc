@@ -139,7 +139,7 @@ class BlockCollector : public tir::StmtVisitor {
 
 Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* sampler) {
   using ScheduleAndUnvisitedBlocks = std::pair<Schedule, Array<tir::StmtSRef>>;
-  Array<Schedule> curr{Schedule(task->func, Integer(sampler->ForkSeed()))};
+  Array<Schedule> curr{Schedule(task->workload, Integer(sampler->ForkSeed()))};
   for (const SearchRule& rule : stages) {
     std::vector<ScheduleAndUnvisitedBlocks> stack;
     stack.reserve(curr.size());

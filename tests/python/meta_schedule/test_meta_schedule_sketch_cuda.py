@@ -72,7 +72,7 @@ def _fix_sampling_tile_size(
 def _get_support(func: tir.PrimFunc, task_name: str):
     return SPACE.get_support(
         task=ms.SearchTask(
-            func=func,
+            workload=func,
             task_name=task_name,
             target=TARGET,
             target_host="llvm",

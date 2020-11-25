@@ -256,7 +256,7 @@ def test_conv2d_schedule_fn():
 @pytest.mark.skip(reason="needs RPC")
 def test_matmul_evolutionary_step_by_step():
     os.environ["TVM_TRACKER_KEY"] = "test"
-    task = ms.SearchTask(func=matmul)
+    task = ms.SearchTask(workload=matmul)
     measurer = ms.ProgramMeasurer()
     strategy = ms.strategy.Evolutionary(
         num_measure_trials=128,
@@ -307,7 +307,7 @@ def test_matmul_evolutionary_step_by_step():
 def test_matmul_evolutionary_end_to_end():
     os.environ["TVM_TRACKER_KEY"] = "test"
     sch = ms.autotune(
-        task=ms.SearchTask(func=matmul),
+        task=ms.SearchTask(workload=matmul),
         space=ms.space.PostOrderApply(
             stages=[
                 ms.rule.inline_pure_spatial(strict_mode=True),
