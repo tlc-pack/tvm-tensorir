@@ -31,7 +31,7 @@ namespace meta_schedule {
 class PostprocNode : public Object {
  public:
   /*! \brief The post-processor function */
-  using FProc = runtime::TypedPackedFunc<bool(Schedule, void*)>;
+  using FProc = runtime::TypedPackedFunc<bool(SearchTask, Schedule, void*)>;
 
   /*! \brief Name */
   String name;
@@ -46,7 +46,7 @@ class PostprocNode : public Object {
    * \param sampler The random number sampler
    * \return If the post-processing succeeds
    */
-  bool Apply(const Schedule& sch, Sampler* sampler);
+  bool Apply(const SearchTask& task, const Schedule& sch, Sampler* sampler);
 
   static constexpr const char* _type_key = "meta_schedule.Postproc";
   TVM_DECLARE_BASE_OBJECT_INFO(PostprocNode, Object);

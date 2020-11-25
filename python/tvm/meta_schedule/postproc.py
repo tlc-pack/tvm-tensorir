@@ -25,6 +25,7 @@ from tvm.tir import TensorIntrin
 
 from . import _ffi_api_postproc
 from .schedule import Schedule
+from .search import SearchTask
 
 
 @register_object("meta_schedule.Postproc")
@@ -35,6 +36,7 @@ class Postproc(Object):
 
     def apply(
         self,
+        task: SearchTask,
         sch: Schedule,
         seed: Optional[int] = None,
     ) -> bool:
@@ -52,7 +54,7 @@ class Postproc(Object):
         result : bool
             If the post-processing succeeds
         """
-        return _ffi_api_postproc.Apply(self, sch, seed)  # pylint: disable=no-member
+        return _ffi_api_postproc.Apply(self, task, sch, seed)  # pylint: disable=no-member
 
 
 def rewrite_parallel() -> Postproc:

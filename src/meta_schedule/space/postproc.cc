@@ -36,7 +36,9 @@ Postproc::Postproc(String name, FProc proc) {
 
 /********** Postproc **********/
 
-bool PostprocNode::Apply(const Schedule& sch, Sampler* sampler) { return proc_(sch, sampler); }
+bool PostprocNode::Apply(const SearchTask& task, const Schedule& sch, Sampler* sampler) {
+  return proc_(task, sch, sampler);
+}
 
 /********** Utility helpers **********/
 
@@ -84,7 +86,7 @@ std::vector<tir::StmtSRef> CollectAllBlocks(const Schedule& sch) {
 /********** RewriteParallel **********/
 
 Postproc RewriteParallel() {
-  auto f_proc = [](Schedule sch, void* _sampler) -> bool {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
     std::vector<tir::StmtSRef> all_blocks = CollectAllBlocks(sch);
     arith::Analyzer analyzer;
     for (const tir::StmtSRef& block_sref : all_blocks) {
@@ -131,7 +133,7 @@ Postproc RewriteParallel() {
 /********** RewriteVectorize **********/
 
 Postproc RewriteVectorize() {
-  auto f_proc = [](Schedule sch, void* _sampler) -> bool {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
     std::vector<tir::StmtSRef> all_blocks = CollectAllBlocks(sch);
     arith::Analyzer analyzer;
     for (const tir::StmtSRef& block_sref : all_blocks) {
@@ -253,7 +255,8 @@ class PostprocRewriteTensorize {
 };
 
 Postproc RewriteTensorize(Array<tir::TensorIntrin> tensor_intrins) {
-  auto f_proc = [tensor_intrins{std::move(tensor_intrins)}](Schedule self, void* _sampler) -> bool {
+  auto f_proc = [tensor_intrins{std::move(tensor_intrins)}](SearchTask task, Schedule self,
+                                                            void* _sampler) -> bool {
     return PostprocRewriteTensorize(tensor_intrins).Proc(self);
   };
   return Postproc("rewrite_tensorize", f_proc);
@@ -463,7 +466,7 @@ class PostprocRewriteCudaThreadBind {
 };
 
 Postproc RewriteCudaThreadBind(int warp_size) {
-  auto f_proc = [warp_size](Schedule sch, void* _sampler) -> bool {
+  auto f_proc = [warp_size](SearchTask task, Schedule sch, void* _sampler) -> bool {
     return PostprocRewriteCudaThreadBind(warp_size).Proc(sch);
   };
   return Postproc("rewrite_cuda_thread_bind", f_proc);
@@ -513,7 +516,8 @@ class PostprocVerifyGPUCode {
 
 Postproc VerifyGPUCode(Target target) {
   PostprocVerifyGPUCode postproc(target);
-  auto f_proc = [postproc{std::move(postproc)}](Schedule sch, void* _sampler) -> bool {
+  auto f_proc = [postproc{std::move(postproc)}](SearchTask task, Schedule sch,
+                                                void* _sampler) -> bool {
     return postproc.Proc(sch);
   };
   return Postproc("verify_gpu_code", f_proc);
@@ -526,12 +530,12 @@ struct Internal {
    * \brief FFI function for PostProcNode::Apply
    * \sa PostProcNode::Apply
    */
-  static bool Apply(Postproc self, Schedule sch, Optional<Integer> seed) {
+  static bool Apply(Postproc self, SearchTask task, Schedule sch, Optional<Integer> seed) {
     Sampler seeded;
     if (seed.defined()) {
       seeded.Seed(seed.value());
     }
-    return self->Apply(sch, &seeded);
+    return self->Apply(task, sch, &seeded);
   }
 };
 

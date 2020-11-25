@@ -297,7 +297,7 @@ def test_matmul_evolutionary_step_by_step():
     #   measure_and_update_cost_model
     inits = strategy.sample_init_population(support=support, num_samples=15, space=space)
     bests = strategy.evolve_with_cost_model(task=task, inits=inits, num_samples=100, space=space)
-    schedules = strategy.pick_with_eps_greedy(inits=inits, bests=bests, space=space)
+    schedules = strategy.pick_with_eps_greedy(task=task, inits=inits, bests=bests, space=space)
     strategy.measure_and_update_cost_model(
         task=task, schedules=schedules, measurer=measurer, verbose=1
     )

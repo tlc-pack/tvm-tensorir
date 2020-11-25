@@ -45,10 +45,11 @@ class ScheduleFnNode : public SearchSpaceNode {
 
   /*!
    * \brief Apply postprocessors onto the schedule
+   * \param task The search task
    * \param sch The schedule to be postprocessed
    * \param sampler The random number generator
    */
-  bool Postprocess(const Schedule& sch, Sampler* sampler) override;
+  bool Postprocess(const SearchTask& task, const Schedule& sch, Sampler* sampler) override;
   /*!
    * \brief Sample a schedule out of the search space
    * \param task The search task to be sampled from
@@ -95,10 +96,10 @@ ScheduleFn::ScheduleFn(PackedFunc sch_fn, Array<Postproc> postprocs) {
 
 void ScheduleFnNode::Init(const SearchTask& task) {}
 
-bool ScheduleFnNode::Postprocess(const Schedule& sch, Sampler* sampler) {
+bool ScheduleFnNode::Postprocess(const SearchTask& task, const Schedule& sch, Sampler* sampler) {
   sch->EnterPostProc();
   for (const Postproc& postproc : postprocs) {
-    if (!postproc->Apply(sch, sampler)) {
+    if (!postproc->Apply(task, sch, sampler)) {
       return false;
     }
   }

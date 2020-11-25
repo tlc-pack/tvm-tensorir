@@ -101,10 +101,11 @@ class SearchSpace(Object):
 
     def postprocess(
         self,
+        task: SearchTask,
         sch: Schedule,
         seed: Optional[int] = None,
     ) -> bool:
-        return _ffi_api.SearchSpacePostprocess(self, sch, seed)  # pylint: disable=no-member
+        return _ffi_api.SearchSpacePostprocess(self, task, sch, seed)  # pylint: disable=no-member
 
     def sample_schedule(
         self,

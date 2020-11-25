@@ -79,18 +79,19 @@ struct Internal {
   }
   /*!
    * \brief Apply postprocessors onto the schedule
-   * \param sapce The search space
+   * \param space The search space
    * \param sch The schedule to be postprocessed
    * \param sampler The random number generator
    * \return Whether postprocessing has succeeded
    * \sa SearchSpaceNode::Postprocess
    */
-  static bool SearchSpacePostprocess(SearchSpace space, Schedule sch, Optional<Integer> seed) {
+  static bool SearchSpacePostprocess(SearchSpace space, SearchTask task, Schedule sch,
+                                     Optional<Integer> seed) {
     Sampler seeded;
     if (seed.defined()) {
       seeded.Seed(seed.value());
     }
-    return space->Postprocess(sch, &seeded);
+    return space->Postprocess(task, sch, &seeded);
   }
   /*!
    * \brief Sample a schedule out of the search space, calls SearchSpaceNode::SampleSchedule

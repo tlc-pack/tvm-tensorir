@@ -90,10 +90,11 @@ class SearchSpaceNode : public runtime::Object {
   virtual void Init(const SearchTask& task) = 0;
   /*!
    * \brief Apply postprocessors onto the schedule
+   * \param task The search task
    * \param sch The schedule to be postprocessed
    * \param sampler The random number generator
    */
-  virtual bool Postprocess(const Schedule& sch, Sampler* sampler) = 0;
+  virtual bool Postprocess(const SearchTask& task, const Schedule& sch, Sampler* sampler) = 0;
   /*!
    * \brief Sample a schedule out of the search space
    * \param task The search task to be sampled from

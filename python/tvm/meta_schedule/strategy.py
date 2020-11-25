@@ -175,6 +175,7 @@ class Evolutionary(SearchStrategy):
 
     def pick_with_eps_greedy(
         self,
+        task: SearchTask,
         inits: List[Schedule],
         bests: List[Schedule],
         space: SearchSpace,
@@ -184,6 +185,8 @@ class Evolutionary(SearchStrategy):
 
         Parameters
         ----------
+        task : SearchTask
+            The search task
         inits : List[Schedule]
             The initial population
         bests : List[Schedule]
@@ -195,7 +198,7 @@ class Evolutionary(SearchStrategy):
             A list of schedules, result of epsilon-greedy sampling
         """
         return _ffi_api.EvolutionaryPickWithEpsGreedy(  # pylint: disable=no-member
-            self, inits, bests, space, seed
+            self, task, inits, bests, space, seed
         )
 
     def measure_and_update_cost_model(

@@ -45,10 +45,11 @@ class PostOrderApplyNode : public SearchSpaceNode {
   void Init(const SearchTask& task) override;
   /*!
    * \brief Apply postprocessors onto the schedule
+   * \param task The search task
    * \param sch The schedule to be postprocessed
    * \param sampler The random number generator
    */
-  bool Postprocess(const Schedule& sch, Sampler* sampler) override;
+  bool Postprocess(const SearchTask& task, const Schedule& sch, Sampler* sampler) override;
   /*!
    * \brief Sample a schedule out of the search space
    * \param task The search task to be sampled from
@@ -95,10 +96,11 @@ PostOrderApply::PostOrderApply(Array<SearchRule> stages, Array<Postproc> postpro
 
 void PostOrderApplyNode::Init(const SearchTask& task) {}
 
-bool PostOrderApplyNode::Postprocess(const Schedule& sch, Sampler* sampler) {
+bool PostOrderApplyNode::Postprocess(const SearchTask& task, const Schedule& sch,
+                                     Sampler* sampler) {
   sch->EnterPostProc();
   for (const Postproc& postproc : postprocs) {
-    if (!postproc->Apply(sch, sampler)) {
+    if (!postproc->Apply(task, sch, sampler)) {
       return false;
     }
   }

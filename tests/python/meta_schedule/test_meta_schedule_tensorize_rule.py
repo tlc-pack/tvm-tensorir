@@ -277,7 +277,7 @@ def test_auto_tensorize_rule_tensorcore():
     postproc = ms.postproc.rewrite_tensorize(tensor_intrins=[mma_sync])
     schs = space.get_support(task=task)
     for sch in schs:
-        postproc.apply(sch)
+        postproc.apply(task, sch)
     _check_sketch(schs, [batch_matmul, tensorcore_tensorized])
 
 
@@ -292,7 +292,7 @@ def test_auto_tensorize_rule_dot_product():
     postproc = ms.postproc.rewrite_tensorize(tensor_intrins=[dot_prod])
     schs = space.get_support(task=task)
     for sch in schs:
-        postproc.apply(sch)
+        postproc.apply(task, sch)
     _check_sketch(schs, [batch_matmul, dot_product_tensorized])
 
 

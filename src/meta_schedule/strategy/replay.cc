@@ -103,7 +103,7 @@ Optional<Schedule> ReplayNode::Search(const SearchTask& task, const SearchSpace&
     Sampler* sampler = &thread_samplers[i];
     for (;;) {
       Schedule sch = space->SampleSchedule(task, sampler);
-      if (space->Postprocess(sch, sampler)) {
+      if (space->Postprocess(task, sch, sampler)) {
         thread_measure_inputs[i] = MeasureInput(task, sch);
         break;
       }
