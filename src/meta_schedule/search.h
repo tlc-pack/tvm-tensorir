@@ -86,6 +86,8 @@ class SearchSpaceNode : public runtime::Object {
  public:
   /*! \brief Virtual destructor */
   virtual ~SearchSpaceNode() = default;
+  /*! \brief Initialize the search space */
+  virtual void Init(const SearchTask& task) = 0;
   /*!
    * \brief Apply postprocessors onto the schedule
    * \param sch The schedule to be postprocessed
@@ -131,6 +133,8 @@ class SearchStrategyNode : public Object {
  public:
   /*! \brief Virtual destructor */
   virtual ~SearchStrategyNode() = default;
+  /*! \brief Initialize the search strategy */
+  virtual void Init(const SearchTask& task) = 0;
   /*!
    * \brief Explore the search space and find the best schedule
    * \param task The search task

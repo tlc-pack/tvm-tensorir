@@ -55,6 +55,9 @@ TVM_DLL Optional<Schedule> AutoTune(SearchTask task, SearchSpace space, SearchSt
   if (seed.defined()) {
     seeded.Seed(seed.value());
   }
+  space->Init(task);
+  strategy->Init(task);
+  measurer->Init(task);
   return strategy->Search(task, space, measurer, &seeded, verbose);
 }
 

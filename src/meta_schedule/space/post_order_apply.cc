@@ -41,6 +41,8 @@ class PostOrderApplyNode : public SearchSpaceNode {
   }
   /*! \brief Default destructor */
   ~PostOrderApplyNode() = default;
+
+  void Init(const SearchTask& task) override;
   /*!
    * \brief Apply postprocessors onto the schedule
    * \param sch The schedule to be postprocessed
@@ -90,6 +92,8 @@ PostOrderApply::PostOrderApply(Array<SearchRule> stages, Array<Postproc> postpro
 }
 
 /********** Sampling **********/
+
+void PostOrderApplyNode::Init(const SearchTask& task) {}
 
 bool PostOrderApplyNode::Postprocess(const Schedule& sch, Sampler* sampler) {
   sch->EnterPostProc();

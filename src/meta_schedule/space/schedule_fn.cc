@@ -40,6 +40,9 @@ class ScheduleFnNode : public SearchSpaceNode {
   }
   /*! \brief Default destructor */
   ~ScheduleFnNode() = default;
+
+  void Init(const SearchTask& task) override;
+
   /*!
    * \brief Apply postprocessors onto the schedule
    * \param sch The schedule to be postprocessed
@@ -89,6 +92,8 @@ ScheduleFn::ScheduleFn(PackedFunc sch_fn, Array<Postproc> postprocs) {
 }
 
 /********** Sampling **********/
+
+void ScheduleFnNode::Init(const SearchTask& task) {}
 
 bool ScheduleFnNode::Postprocess(const Schedule& sch, Sampler* sampler) {
   sch->EnterPostProc();

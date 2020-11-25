@@ -53,6 +53,8 @@ class ReplayNode : public SearchStrategyNode {
                             const ProgramMeasurer& measurer, Sampler* sampler,
                             int verbose) override;
 
+  void Init(const SearchTask& task) override;
+
   static constexpr const char* _type_key = "meta_schedule.Replay";
   TVM_DECLARE_FINAL_OBJECT_INFO(ReplayNode, SearchStrategyNode);
 };
@@ -84,11 +86,11 @@ Replay::Replay(int batch_size, int num_trials) {
 
 /********** Search **********/
 
+void ReplayNode::Init(const SearchTask& task) {}
+
 Optional<Schedule> ReplayNode::Search(const SearchTask& task, const SearchSpace& space,
                                       const ProgramMeasurer& measurer, Sampler* sampler,
                                       int verbose) {
-  measurer->Init(task);
-
   std::vector<Sampler> thread_samplers;
   std::vector<MeasureInput> thread_measure_inputs;
   thread_samplers.reserve(this->batch_size);

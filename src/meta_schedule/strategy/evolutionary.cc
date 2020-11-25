@@ -98,6 +98,8 @@ class EvolutionaryNode : public SearchStrategyNode {
                             const ProgramMeasurer& measurer, Sampler* sampler,
                             int verbose) override;
 
+  void Init(const SearchTask& task) override;
+
   /********** Stages in evolutionary search **********/
 
   /*!
@@ -199,10 +201,11 @@ Evolutionary::Evolutionary(int num_measure_trials, int num_measure_per_batch,
 
 /********** Search **********/
 
+void EvolutionaryNode::Init(const SearchTask& task) {}
+
 Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const SearchSpace& space,
                                             const ProgramMeasurer& measurer, Sampler* sampler,
                                             int verbose) {
-  measurer->Init(task);
   Array<Schedule> support = space->GetSupport(task, sampler);
   for (int num_measured = 0; num_measured < num_measure_trials;) {
     // `inits`: Sampled initial population, whose size is at most `this->population`
