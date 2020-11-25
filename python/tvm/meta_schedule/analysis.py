@@ -370,3 +370,19 @@ def get_tensorize_loop_mapping(
     return _ffi_api_analysis.GetTensorizeLoopMapping(  # pylint: disable=no-member
         sch, block, desc_func
     )
+
+
+def count_flop(func: tir.PrimFunc) -> float:
+    """Count the floating point operations of a PrimFunc
+
+    Parameters
+    ----------
+    func: PrimFunc
+        The PrimFunc to be counted
+
+    Returns
+    -------
+    flop: float
+        The number of floating point operations
+    """
+    return _ffi_api_analysis.CountFlop(func)  # pylint: disable=no-member
