@@ -40,12 +40,16 @@ class ScheduleFnNode : public SearchSpaceNode {
   }
   /*! \brief Default destructor */
   ~ScheduleFnNode() = default;
+
+  void Init(const SearchTask& task) override;
+
   /*!
    * \brief Apply postprocessors onto the schedule
+   * \param task The search task
    * \param sch The schedule to be postprocessed
    * \param sampler The random number generator
    */
-  bool Postprocess(const Schedule& sch, Sampler* sampler) override;
+  bool Postprocess(const SearchTask& task, const Schedule& sch, Sampler* sampler) override;
   /*!
    * \brief Sample a schedule out of the search space
    * \param task The search task to be sampled from
@@ -90,10 +94,12 @@ ScheduleFn::ScheduleFn(PackedFunc sch_fn, Array<Postproc> postprocs) {
 
 /********** Sampling **********/
 
-bool ScheduleFnNode::Postprocess(const Schedule& sch, Sampler* sampler) {
+void ScheduleFnNode::Init(const SearchTask& task) {}
+
+bool ScheduleFnNode::Postprocess(const SearchTask& task, const Schedule& sch, Sampler* sampler) {
   sch->EnterPostProc();
   for (const Postproc& postproc : postprocs) {
-    if (!postproc->Apply(sch, sampler)) {
+    if (!postproc->Apply(task, sch, sampler)) {
       return false;
     }
   }
@@ -101,7 +107,7 @@ bool ScheduleFnNode::Postprocess(const Schedule& sch, Sampler* sampler) {
 }
 
 Schedule ScheduleFnNode::SampleSchedule(const SearchTask& task, Sampler* sampler) {
-  Schedule sch(task->func, Integer(sampler->ForkSeed()));
+  Schedule sch(task->workload, Integer(sampler->ForkSeed()));
   this->sch_fn_(sch);
   return sch;
 }

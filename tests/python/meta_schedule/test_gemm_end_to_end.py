@@ -256,7 +256,7 @@ def test_conv2d_schedule_fn():
 @pytest.mark.skip(reason="needs RPC")
 def test_matmul_evolutionary_step_by_step():
     os.environ["TVM_TRACKER_KEY"] = "test"
-    task = ms.SearchTask(func=matmul)
+    task = ms.SearchTask(workload=matmul)
     measurer = ms.ProgramMeasurer()
     strategy = ms.strategy.Evolutionary(
         num_measure_trials=128,
@@ -281,7 +281,7 @@ def test_matmul_evolutionary_step_by_step():
                 cache_write_scope="global",
                 fusion_levels=[1, 2],
             ),
-            ms.rule.mark_parallelize_outer(max_extent=256),
+            ms.rule.mark_parallelize_outer(max_jobs_per_core=8),
             ms.rule.mark_vectorize_inner(max_extent=32),
         ],
         postprocs=[
@@ -297,7 +297,7 @@ def test_matmul_evolutionary_step_by_step():
     #   measure_and_update_cost_model
     inits = strategy.sample_init_population(support=support, num_samples=15, space=space)
     bests = strategy.evolve_with_cost_model(task=task, inits=inits, num_samples=100, space=space)
-    schedules = strategy.pick_with_eps_greedy(inits=inits, bests=bests, space=space)
+    schedules = strategy.pick_with_eps_greedy(task=task, inits=inits, bests=bests, space=space)
     strategy.measure_and_update_cost_model(
         task=task, schedules=schedules, measurer=measurer, verbose=1
     )
@@ -307,7 +307,7 @@ def test_matmul_evolutionary_step_by_step():
 def test_matmul_evolutionary_end_to_end():
     os.environ["TVM_TRACKER_KEY"] = "test"
     sch = ms.autotune(
-        task=ms.SearchTask(func=matmul),
+        task=ms.SearchTask(workload=matmul),
         space=ms.space.PostOrderApply(
             stages=[
                 ms.rule.inline_pure_spatial(strict_mode=True),
@@ -320,7 +320,7 @@ def test_matmul_evolutionary_end_to_end():
                     cache_write_scope="global",
                     fusion_levels=[1, 2],
                 ),
-                ms.rule.mark_parallelize_outer(max_extent=256),
+                ms.rule.mark_parallelize_outer(max_jobs_per_core=8),
                 ms.rule.mark_vectorize_inner(max_extent=32),
             ],
             postprocs=[

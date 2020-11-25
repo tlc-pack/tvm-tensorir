@@ -98,6 +98,8 @@ class EvolutionaryNode : public SearchStrategyNode {
                             const ProgramMeasurer& measurer, Sampler* sampler,
                             int verbose) override;
 
+  void Init(const SearchTask& task) override;
+
   /********** Stages in evolutionary search **********/
 
   /*!
@@ -131,8 +133,9 @@ class EvolutionaryNode : public SearchStrategyNode {
    * \param sampler The random number sampler
    * \return A list of schedules, result of epsilon-greedy sampling
    */
-  Array<Schedule> PickWithEpsGreedy(const Array<Schedule>& inits, const Array<Schedule>& bests,
-                                    const SearchSpace& space, Sampler* sampler);
+  Array<Schedule> PickWithEpsGreedy(const SearchTask& task, const Array<Schedule>& inits,
+                                    const Array<Schedule>& bests, const SearchSpace& space,
+                                    Sampler* sampler);
 
   /*!
    * \brief Make measurements and update the cost model
@@ -199,10 +202,11 @@ Evolutionary::Evolutionary(int num_measure_trials, int num_measure_per_batch,
 
 /********** Search **********/
 
+void EvolutionaryNode::Init(const SearchTask& task) {}
+
 Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const SearchSpace& space,
                                             const ProgramMeasurer& measurer, Sampler* sampler,
                                             int verbose) {
-  measurer->Init(task);
   Array<Schedule> support = space->GetSupport(task, sampler);
   for (int num_measured = 0; num_measured < num_measure_trials;) {
     // `inits`: Sampled initial population, whose size is at most `this->population`
@@ -211,7 +215,7 @@ Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const Search
     Array<Schedule> bests =
         EvolveWithCostModel(task, inits, num_measure_per_batch * 2, space, sampler);
     // Pick candidates with eps greedy
-    Array<Schedule> picks = PickWithEpsGreedy(inits, bests, space, sampler);
+    Array<Schedule> picks = PickWithEpsGreedy(task, inits, bests, space, sampler);
     // Run measurement, update cost model
     Array<MeasureResult> measure_results =
         MeasureAndUpdateCostModel(task, picks, measurer, verbose);
@@ -334,7 +338,8 @@ Array<Schedule> EvolutionaryNode::EvolveWithCostModel(const SearchTask& task,
   return results;
 }
 
-Array<Schedule> EvolutionaryNode::PickWithEpsGreedy(const Array<Schedule>& inits,
+Array<Schedule> EvolutionaryNode::PickWithEpsGreedy(const SearchTask& task,
+                                                    const Array<Schedule>& inits,
                                                     const Array<Schedule>& bests,
                                                     const SearchSpace& space, Sampler* sampler) {
   int n = this->num_measure_per_batch;
@@ -368,7 +373,7 @@ Array<Schedule> EvolutionaryNode::PickWithEpsGreedy(const Array<Schedule>& inits
       }
     }
     // Postprocess the schedule
-    if (space->Postprocess(sch, sampler)) {
+    if (space->Postprocess(task, sch, sampler)) {
       // Check if the schedule has been measured before
       // If not, it is the schedule we want to pick
       String repr = Repr(sch);
@@ -484,14 +489,14 @@ struct Internal {
    * \return A list of schedules, result of epsilon-greedy sampling
    * \sa EvolutionaryNode::PickWithEpsGreedy
    */
-  static Array<Schedule> EvolutionaryPickWithEpsGreedy(Evolutionary self, Array<Schedule> inits,
-                                                       Array<Schedule> bests, SearchSpace space,
-                                                       Optional<Integer> seed) {
+  static Array<Schedule> EvolutionaryPickWithEpsGreedy(Evolutionary self, SearchTask task,
+                                                       Array<Schedule> inits, Array<Schedule> bests,
+                                                       SearchSpace space, Optional<Integer> seed) {
     Sampler seeded;
     if (seed.defined()) {
       seeded.Seed(seed.value());
     }
-    return self->PickWithEpsGreedy(inits, bests, space, &seeded);
+    return self->PickWithEpsGreedy(task, inits, bests, space, &seeded);
   }
 
   /*!

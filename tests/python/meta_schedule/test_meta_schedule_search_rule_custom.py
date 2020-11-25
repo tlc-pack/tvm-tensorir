@@ -52,7 +52,7 @@ def do_mlt(_task: ms.SearchTask, sch: ms.Schedule, block: ms.BlockRV, _info):
 
 
 def test_meta_schedule_rule_do_nothing():
-    task = ms.SearchTask(func=matmul)
+    task = ms.SearchTask(workload=matmul)
     sch = ms.Schedule(func=matmul)
     args: SearchRule.RETURN_TYPE = do_nothing(task, sch, sch.get_block("matmul"), None)
     args = list(args.keys())
@@ -61,7 +61,7 @@ def test_meta_schedule_rule_do_nothing():
 
 
 def test_meta_schedule_rule_do_mlt():
-    task = ms.SearchTask(func=matmul)
+    task = ms.SearchTask(workload=matmul)
     sch = ms.Schedule(func=matmul)
     args: SearchRule.RETURN_TYPE = do_mlt(task, sch, sch.get_block("matmul"), None)
     assert len(args) == 1
@@ -82,7 +82,7 @@ def test_meta_schedule_rule_composite_0():
             do_mlt,
         ],
     )
-    task = ms.SearchTask(func=matmul)
+    task = ms.SearchTask(workload=matmul)
     sch = ms.Schedule(func=matmul)
     args: SearchRule.RETURN_TYPE = rule(task, sch, sch.get_block("matmul"), None)
     assert len(args) == 1
@@ -103,7 +103,7 @@ def test_meta_schedule_rule_composite_1():
             do_nothing,
         ],
     )
-    task = ms.SearchTask(func=matmul)
+    task = ms.SearchTask(workload=matmul)
     sch = ms.Schedule(func=matmul)
     args: SearchRule.RETURN_TYPE = rule(task, sch, sch.get_block("matmul"), None)
     assert len(args) == 1
