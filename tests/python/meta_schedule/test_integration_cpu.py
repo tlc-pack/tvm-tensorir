@@ -24,7 +24,7 @@ import tvm
 from tvm import meta_schedule as ms
 from tvm import te
 
-TARGET = tvm.target.Target("llvm")
+TARGET = tvm.target.Target("llvm --num_cores 16")
 SPACE = ms.space.PostOrderApply(
     stages=[
         ms.rule.inline_pure_spatial(strict_mode=True),
@@ -37,7 +37,7 @@ SPACE = ms.space.PostOrderApply(
             cache_write_scope="global",
             fusion_levels=[1, 2],
         ),
-        ms.rule.mark_parallelize_outer(max_extent=256),
+        ms.rule.mark_parallelize_outer(max_jobs_per_core=8),
         ms.rule.mark_vectorize_inner(max_extent=32),
     ],
     postprocs=[
@@ -52,13 +52,13 @@ def test_matmul_post_order_apply():
     os.environ["TVM_TRACKER_KEY"] = "test"
     sch = ms.autotune(
         task=ms.SearchTask(
-            func=te.create_func(te_workload.matmul(1024, 1024, 1024)),
+            workload=te.create_func(te_workload.matmul(1024, 1024, 1024)),
             target=TARGET,
             task_name="cpu_matmul",
-            filename="./cpu_matmul.json",
+            log_file="./cpu_matmul.json",
         ),
         space=SPACE,
-        strategy=ms.strategy.Replay(num_iterations=32),
+        strategy=ms.strategy.Replay(num_trials=32),
         measurer=ms.ProgramMeasurer(
             measure_callbacks=[
                 ms.RecordToFile(),
@@ -76,13 +76,13 @@ def test_matmul_relu_post_order_apply():
     os.environ["TVM_TRACKER_KEY"] = "test"
     sch = ms.autotune(
         task=ms.SearchTask(
-            func=te.create_func(te_workload.matmul_relu(1024, 1024, 1024)),
+            workload=te.create_func(te_workload.matmul_relu(1024, 1024, 1024)),
             target=TARGET,
             task_name="cpu_matmul_relu",
-            filename="./cpu_matmul_relu.json",
+            log_file="./cpu_matmul_relu.json",
         ),
         space=SPACE,
-        strategy=ms.strategy.Replay(num_iterations=32),
+        strategy=ms.strategy.Replay(num_trials=32),
         measurer=ms.ProgramMeasurer(
             measure_callbacks=[
                 ms.RecordToFile(),

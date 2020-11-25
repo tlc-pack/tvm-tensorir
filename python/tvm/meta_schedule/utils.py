@@ -285,7 +285,7 @@ def realize_arguments(
     _remote: RPCSession
         The connected remote RPCSession
     ctx: TVMContext
-        The context that ndarrays to be creaetd on the remote
+        The context that ndarrays to be created on the remote
     func: PrimFunc
         The PrimFunc to be run on the remote
 
@@ -306,16 +306,17 @@ def realize_arguments(
             raise NotImplementedError("Unsupported type in realize_arguments: " + str(arg.dtype))
     try:
         f_random_fill = remote.get_function("tvm.contrib.random.random_fill")
-    except AttributeError:
+    except AttributeError as error:
         raise AttributeError(
             "Please make sure USE_RANDOM is ON in the config.cmake " "on the remote devices"
-        )
+        ) from error
     for array in ndarrays:
         f_random_fill(array)
     return args
 
 
-def cpu_count() -> int:
+@register_func("meta_schedule._cpu_count")
+def cpu_count(logical=True) -> int:
     """
     Check the number of cpus available on the local device
 
@@ -324,7 +325,7 @@ def cpu_count() -> int:
     cpu_count: int
         The number of cpus available on the local device
     """
-    return multiprocessing.cpu_count()
+    return psutil.cpu_count(logical=logical)
 
 
 def vprint(verbose: int, content: str, end: str) -> None:
@@ -631,7 +632,7 @@ def rpc_runner_worker(
                 error_msg = make_error_msg()
                 raise
             try:
-                args = realize_arguments(remote, ctx, measure_input.task.func)
+                args = realize_arguments(remote, ctx, measure_input.task.workload)
                 ctx.sync()
                 costs = time_f(*args).results
                 # clean up remote files

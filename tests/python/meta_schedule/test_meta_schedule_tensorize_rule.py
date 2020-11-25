@@ -268,7 +268,7 @@ def dot_product_tensorized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 def test_auto_tensorize_rule_tensorcore():
     mma_sync = tvm.tir.TensorIntrin(tensorcore_desc, tensorcore_impl)
-    task = ms.SearchTask(func=batch_matmul)
+    task = ms.SearchTask(workload=batch_matmul)
     space = ms.space.PostOrderApply(
         stages=[
             ms.rule.mark_tensorize(tensor_intrins=[mma_sync]),
@@ -277,13 +277,13 @@ def test_auto_tensorize_rule_tensorcore():
     postproc = ms.postproc.rewrite_tensorize(tensor_intrins=[mma_sync])
     schs = space.get_support(task=task)
     for sch in schs:
-        postproc.apply(sch)
+        postproc.apply(task, sch)
     _check_sketch(schs, [batch_matmul, tensorcore_tensorized])
 
 
 def test_auto_tensorize_rule_dot_product():
     dot_prod = tvm.tir.TensorIntrin(dot_product_desc, dot_product_impl)
-    task = ms.SearchTask(func=batch_matmul)
+    task = ms.SearchTask(workload=batch_matmul)
     space = ms.space.PostOrderApply(
         stages=[
             ms.rule.mark_tensorize(tensor_intrins=[dot_prod]),
@@ -292,7 +292,7 @@ def test_auto_tensorize_rule_dot_product():
     postproc = ms.postproc.rewrite_tensorize(tensor_intrins=[dot_prod])
     schs = space.get_support(task=task)
     for sch in schs:
-        postproc.apply(sch)
+        postproc.apply(task, sch)
     _check_sketch(schs, [batch_matmul, dot_product_tensorized])
 
 

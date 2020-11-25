@@ -20,11 +20,11 @@ from typing import List, Optional
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
-from tvm.target import Target
 from tvm.tir import TensorIntrin
 
 from . import _ffi_api_postproc
 from .schedule import Schedule
+from .search import SearchTask
 
 
 @register_object("meta_schedule.Postproc")
@@ -35,6 +35,7 @@ class Postproc(Object):
 
     def apply(
         self,
+        task: SearchTask,
         sch: Schedule,
         seed: Optional[int] = None,
     ) -> bool:
@@ -52,7 +53,7 @@ class Postproc(Object):
         result : bool
             If the post-processing succeeds
         """
-        return _ffi_api_postproc.Apply(self, sch, seed)  # pylint: disable=no-member
+        return _ffi_api_postproc.Apply(self, task, sch, seed)  # pylint: disable=no-member
 
 
 def rewrite_parallel() -> Postproc:
@@ -90,7 +91,7 @@ def rewrite_tensorize(tensor_intrins: List[TensorIntrin]) -> Postproc:
     return _ffi_api_postproc.RewriteTensorize(tensor_intrins)  # pylint: disable=no-member
 
 
-def rewrite_cuda_thread_bind(warp_size: int) -> Postproc:
+def rewrite_cuda_thread_bind() -> Postproc:
     """Creates a postprocessor that do block/vthread/thread binding for cuda
 
     Returns
@@ -98,10 +99,10 @@ def rewrite_cuda_thread_bind(warp_size: int) -> Postproc:
     postproc: Postproc
         The postprocessor created
     """
-    return _ffi_api_postproc.RewriteCudaThreadBind(warp_size)  # pylint: disable=no-member
+    return _ffi_api_postproc.RewriteCudaThreadBind()  # pylint: disable=no-member
 
 
-def verify_gpu_code(target: Target.TYPE) -> Postproc:
+def verify_gpu_code() -> Postproc:
     """Creates a postprocessor that do block/vthread/thread binding for cuda
 
     Returns
@@ -109,4 +110,4 @@ def verify_gpu_code(target: Target.TYPE) -> Postproc:
     postproc: Postproc
         The postprocessor created
     """
-    return _ffi_api_postproc.VerifyGPUCode(Target(target))  # pylint: disable=no-member
+    return _ffi_api_postproc.VerifyGPUCode()  # pylint: disable=no-member

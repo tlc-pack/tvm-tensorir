@@ -36,7 +36,7 @@ def test_meta_schedule_mutate_tile_size():
     n_trial = 100
     n_fails = 0
 
-    task = ms.SearchTask(func=matmul)
+    task = ms.SearchTask(workload=matmul)
     mutator = ms.mutator.mutate_tile_size()
     sch = ms.Schedule(func=matmul)
     i, j, k = sch.get_axes(sch.get_block("matmul"))
