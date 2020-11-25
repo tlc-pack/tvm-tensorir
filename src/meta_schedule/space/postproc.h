@@ -101,10 +101,9 @@ TVM_DLL Postproc RewriteCudaThreadBind(int warp_size);
 
 /*!
  * \brief Creates a postprocessor that verifies if the GPU code is correct
- * \param target The compilation target
  * \return The postprocessor created
  */
-TVM_DLL Postproc VerifyGPUCode(Target target);
+TVM_DLL Postproc VerifyGPUCode();
 
 }  // namespace meta_schedule
 }  // namespace tvm

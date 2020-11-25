@@ -476,25 +476,6 @@ Postproc RewriteCudaThreadBind(int warp_size) {
 
 class PostprocVerifyGPUCode {
  public:
-  const tir::transform::Sequential passes;
-
-  explicit PostprocVerifyGPUCode(Target target)
-      : passes({tir::transform::InjectPrefetch(),       //
-                tir::transform::BufferFlatten(),        //
-                tir::transform::NarrowDataType(32),     //
-                tir::transform::Simplify(),             //
-                tir::transform::VectorizeLoop(true),    //
-                tir::transform::InjectVirtualThread(),  //
-                tir::transform::StorageRewrite(),       //
-                tir::transform::Simplify(),             //
-                tir::transform::VerifyGPUCode({
-                    {"max_shared_memory_per_block", Extract(target, "shared_memory_per_block")},
-                    {"max_local_memory_per_block", Extract(target, "registers_per_block")},
-                    {"max_threads_per_block", Extract(target, "max_threads_per_block")},
-                    {"max_vector_bytes", Extract(target, "vector_unit_bytes")},
-                    {"max_vthread", Integer(8)},
-                })}) {}
-
   static Integer Extract(const Target& target, const char* name) {
     if (Optional<Integer> v = target->GetAttr<Integer>(name)) {
       return v.value();
@@ -503,7 +484,27 @@ class PostprocVerifyGPUCode {
     throw;
   }
 
-  bool Proc(const Schedule& sch) const {
+  static tir::transform::Sequential MakePasses(const Target& target) {
+    return tir::transform::Sequential(
+        {tir::transform::InjectPrefetch(),       //
+         tir::transform::BufferFlatten(),        //
+         tir::transform::NarrowDataType(32),     //
+         tir::transform::Simplify(),             //
+         tir::transform::VectorizeLoop(true),    //
+         tir::transform::InjectVirtualThread(),  //
+         tir::transform::StorageRewrite(),       //
+         tir::transform::Simplify(),             //
+         tir::transform::VerifyGPUCode({
+             {"max_shared_memory_per_block", Extract(target, "shared_memory_per_block")},
+             {"max_local_memory_per_block", Extract(target, "registers_per_block")},
+             {"max_threads_per_block", Extract(target, "max_threads_per_block")},
+             {"max_vector_bytes", Extract(target, "vector_unit_bytes")},
+             {"max_vthread", Integer(8)},
+         })});
+  }
+
+  bool Proc(const SearchTask& task, const Schedule& sch) const {
+    tir::transform::Sequential passes = MakePasses(task->target);
     IRModule mod({{GlobalVar("main"), sch->sch->func}});
     try {
       passes(std::move(mod));
@@ -514,11 +515,9 @@ class PostprocVerifyGPUCode {
   }
 };
 
-Postproc VerifyGPUCode(Target target) {
-  PostprocVerifyGPUCode postproc(target);
-  auto f_proc = [postproc{std::move(postproc)}](SearchTask task, Schedule sch,
-                                                void* _sampler) -> bool {
-    return postproc.Proc(sch);
+Postproc VerifyGPUCode() {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
+    return PostprocVerifyGPUCode().Proc(task, sch);
   };
   return Postproc("verify_gpu_code", f_proc);
 }
