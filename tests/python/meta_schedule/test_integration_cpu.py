@@ -58,7 +58,7 @@ def test_matmul_post_order_apply():
             log_file="./cpu_matmul.json",
         ),
         space=SPACE,
-        strategy=ms.strategy.Replay(num_iterations=32),
+        strategy=ms.strategy.Replay(num_trials=32),
         measurer=ms.ProgramMeasurer(
             measure_callbacks=[
                 ms.RecordToFile(),
@@ -82,7 +82,7 @@ def test_matmul_relu_post_order_apply():
             log_file="./cpu_matmul_relu.json",
         ),
         space=SPACE,
-        strategy=ms.strategy.Replay(num_iterations=32),
+        strategy=ms.strategy.Replay(num_trials=32),
         measurer=ms.ProgramMeasurer(
             measure_callbacks=[
                 ms.RecordToFile(),

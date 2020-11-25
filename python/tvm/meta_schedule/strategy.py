@@ -38,16 +38,16 @@ class Replay(SearchStrategy):
     ----------
     batch_size : int
         Size of a batch for measurement
-    num_iterations : int
+    num_trials : int
         Number of iterations of replaying
     """
 
     batch_size: int
-    num_iterations: int
+    num_trials: int
 
     def __init__(
         self,
-        num_iterations: int = 32,
+        num_trials: int = 32,
         batch_size: Optional[int] = None,
     ):
         if batch_size is None:
@@ -55,7 +55,7 @@ class Replay(SearchStrategy):
         self.__init_handle_by_constructor__(
             _ffi_api.Replay,  # pylint: disable=no-member
             batch_size,
-            num_iterations,
+            num_trials,
         )
 
 

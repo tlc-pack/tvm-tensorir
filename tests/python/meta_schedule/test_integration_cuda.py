@@ -59,7 +59,7 @@ def test_integration_matmul():
             log_file="./cuda_matmul.json",
         ),
         space=SPACE,
-        strategy=ms.strategy.Replay(num_iterations=32),
+        strategy=ms.strategy.Replay(num_trials=32),
         measurer=ms.ProgramMeasurer(
             measure_callbacks=[
                 ms.RecordToFile(),
