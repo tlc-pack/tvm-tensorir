@@ -270,12 +270,7 @@ inline tir::IterVar MakeThreadIdx(const String& name) {
 
 class PostprocRewriteCudaThreadBind {
  public:
-  /*! \brief Number of threads in a CUDA warp, should be 32 */
-  int warp_size;
-
-  explicit PostprocRewriteCudaThreadBind(int warp_size) : warp_size(warp_size) {}
-
-  bool BindMultiLevelTiled(const Schedule& sch, const BlockRV& block_rv) const {
+  bool BindMultiLevelTiled(const Schedule& sch, const BlockRV& block_rv, int warp_size) const {
     arith::Analyzer analyzer;
     Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
     std::vector<tir::StmtSRef> loop_srefs;
@@ -438,10 +433,14 @@ class PostprocRewriteCudaThreadBind {
     }
   }
 
-  bool Proc(const Schedule& sch) const {
+  bool Proc(const SearchTask& task, const Schedule& sch) const {
+    int warp_size = task->target->GetAttr<Integer>("thread_warp_size").value_or(Integer(-1));
+    if (warp_size == -1) {
+      LOG(FATAL) << "ValueError: Cannot find attribute \"thread_warp_size\" in the target";
+    }
     Array<BlockRV> root_block_rvs = sch->GetRootBlocks();
     for (const BlockRV& block_rv : root_block_rvs) {
-      if (BindMultiLevelTiled(sch, block_rv)) {
+      if (BindMultiLevelTiled(sch, block_rv, warp_size)) {
         continue;
       }
       if (BindSpatial(sch, block_rv)) {
@@ -465,9 +464,9 @@ class PostprocRewriteCudaThreadBind {
   }
 };
 
-Postproc RewriteCudaThreadBind(int warp_size) {
-  auto f_proc = [warp_size](SearchTask task, Schedule sch, void* _sampler) -> bool {
-    return PostprocRewriteCudaThreadBind(warp_size).Proc(sch);
+Postproc RewriteCudaThreadBind() {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
+    return PostprocRewriteCudaThreadBind().Proc(task, sch);
   };
   return Postproc("rewrite_cuda_thread_bind", f_proc);
 }

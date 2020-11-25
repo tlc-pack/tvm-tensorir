@@ -42,7 +42,7 @@ SPACE = ms.space.PostOrderApply(
     ],
     postprocs=[
         ms.postproc.rewrite_vectorize(),
-        ms.postproc.rewrite_cuda_thread_bind(warp_size=32),
+        ms.postproc.rewrite_cuda_thread_bind(),
         ms.postproc.verify_gpu_code(),
     ],
 )
