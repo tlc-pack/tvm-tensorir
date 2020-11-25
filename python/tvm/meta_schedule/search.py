@@ -50,7 +50,7 @@ class SearchTask(Object):
     task_name: str
     target: Target
     target_host: Target
-    filename: Optional[str]
+    log_file: Optional[str]
 
     def __init__(
         self,
@@ -58,7 +58,7 @@ class SearchTask(Object):
         task_name: Optional[str] = None,
         target: TargetType = "llvm",
         target_host: TargetType = "llvm",
-        filename: Optional[str] = None,
+        log_file: Optional[str] = None,
     ):
         if task_name is None:
             if hasattr(workload, "__qualname__"):
@@ -77,7 +77,7 @@ class SearchTask(Object):
             task_name,
             target,
             target_host,
-            filename,
+            log_file,
         )
 
 

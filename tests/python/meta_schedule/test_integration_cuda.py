@@ -56,7 +56,7 @@ def test_integration_matmul():
             workload=te.create_func(te_workload.matmul(1024, 1024, 1024)),
             target=TARGET,
             task_name="cuda_matmul",
-            filename="./cuda_matmul.json",
+            log_file="./cuda_matmul.json",
         ),
         space=SPACE,
         strategy=ms.strategy.Replay(num_iterations=32),
