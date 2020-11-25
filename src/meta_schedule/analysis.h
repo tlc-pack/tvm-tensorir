@@ -214,6 +214,13 @@ TVM_DLL Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::Schedule& sch
                                                         const tir::StmtSRef& block_sref,
                                                         const tir::PrimFunc& desc_func);
 
+/*!
+ * \brief Count the floating point operations of a PrimFunc
+ * \param func The PrimFunc to be counted
+ * \return The number of floating point operations
+ */
+TVM_DLL double CountFlop(const tir::PrimFunc& func);
+
 }  // namespace meta_schedule
 }  // namespace tvm
 
