@@ -667,6 +667,91 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::Schedule& sch,
   return TensorizeInfo(ret);
 }
 
+double CountFlop(const tir::PrimFunc& func) {
+  class FlopCounter : public tir::ExprFunctor<double(const PrimExpr& n)>,
+                      public tir::StmtFunctor<double(const tir::Stmt& n)> {
+   public:
+    ~FlopCounter() {}
+
+    double VisitExpr(const PrimExpr& expr) { return ExprFunctor::VisitExpr(expr); }
+    double VisitStmt(const tir::Stmt& stmt) { return StmtFunctor::VisitStmt(stmt); }
+
+    double VisitStmt_(const tir::IfThenElseNode* branch) override {
+      return std::max(VisitStmt(branch->then_case), VisitStmt(branch->else_case)) +
+             VisitExpr(branch->condition);
+    }
+
+    double VisitStmt_(const tir::BufferStoreNode* store) override {
+      return VisitExpr(store->value);
+    }
+
+    double VisitStmt_(const tir::SeqStmtNode* seq) override {
+      double result = 0.0;
+      for (const tir::Stmt& stmt : seq->seq) {
+        result += VisitStmt(stmt);
+      }
+      return result;
+    }
+
+    double VisitStmt_(const tir::BlockRealizeNode* block) override {
+      return VisitStmt(block->block->body);
+    }
+
+    double VisitStmt_(const tir::BlockNode* block) override { return VisitStmt(block->body); }
+
+    double VisitStmt_(const tir::LoopNode* loop) override {
+      double result = VisitStmt(loop->body);
+      const auto* int_imm = loop->extent.as<IntImmNode>();
+      CHECK(int_imm) << "TypeError: Expect the extent of a loop to be IntImm, but gets: "
+                     << loop->extent->GetTypeKey();
+      result *= int_imm->value;
+      return result;
+    }
+
+    double VisitStmt_(const tir::ReduceStepNode* reduce) override {
+      CHECK(reduce->lhs->IsInstance<tir::BufferLoadNode>())
+          << "TypeError: Expect ReduceStep's lhs to be BufferLoad, but gets: "
+          << reduce->lhs->GetTypeKey();
+      return VisitExpr(reduce->rhs);
+    }
+
+#define TVM_META_SCHEDULE_VISIT_BINARY(Node) \
+  double VisitExpr_(const Node* op) final { return 1.0 + VisitExpr(op->a) + VisitExpr(op->b); }
+    TVM_META_SCHEDULE_VISIT_BINARY(tir::AddNode);
+    TVM_META_SCHEDULE_VISIT_BINARY(tir::SubNode);
+    TVM_META_SCHEDULE_VISIT_BINARY(tir::MulNode);
+    TVM_META_SCHEDULE_VISIT_BINARY(tir::DivNode);
+    TVM_META_SCHEDULE_VISIT_BINARY(tir::ModNode);
+    TVM_META_SCHEDULE_VISIT_BINARY(tir::FloorDivNode);
+    TVM_META_SCHEDULE_VISIT_BINARY(tir::FloorModNode);
+    TVM_META_SCHEDULE_VISIT_BINARY(tir::MinNode);
+    TVM_META_SCHEDULE_VISIT_BINARY(tir::MaxNode);
+    TVM_META_SCHEDULE_VISIT_BINARY(tir::EQNode);
+    TVM_META_SCHEDULE_VISIT_BINARY(tir::NENode);
+    TVM_META_SCHEDULE_VISIT_BINARY(tir::LTNode);
+    TVM_META_SCHEDULE_VISIT_BINARY(tir::LENode);
+    TVM_META_SCHEDULE_VISIT_BINARY(tir::GTNode);
+    TVM_META_SCHEDULE_VISIT_BINARY(tir::GENode);
+    TVM_META_SCHEDULE_VISIT_BINARY(tir::AndNode);
+    TVM_META_SCHEDULE_VISIT_BINARY(tir::OrNode);
+#undef TVM_META_SCHEDULE_VISIT_BINARY
+
+    double VisitExpr_(const tir::NotNode* op) override { return 1.0 + VisitExpr(op->a); }
+    double VisitExpr_(const tir::CastNode* op) override { return VisitExpr(op->value); }
+    double VisitExpr_(const tir::SelectNode* op) override {
+      return VisitExpr(op->condition) +
+             std::max(VisitExpr(op->true_value), VisitExpr(op->false_value));
+    }
+
+    double VisitExpr_(const tir::VarNode* op) override { return 0.0; }
+    double VisitExpr_(const tir::SizeVarNode* op) override { return 0.0; }
+    double VisitExpr_(const tir::BufferLoadNode* op) override { return 0.0; }
+    double VisitExpr_(const IntImmNode* op) override { return 0.0; }
+    double VisitExpr_(const FloatImmNode* op) override { return 0.0; }
+  };
+  return FlopCounter().VisitStmt(func->body);
+}
+
 TVM_REGISTER_NODE_TYPE(TensorizeInfoNode);
 
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
@@ -690,6 +775,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsStrictlyInlineable")
     .set_body_typed(IsStrictlyInlineable);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetTensorizeLoopMapping")
     .set_body_typed(GetTensorizeLoopMapping);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.CountFlop").set_body_typed(CountFlop);
 
 }  // namespace meta_schedule
 }  // namespace tvm
