@@ -34,7 +34,7 @@ class ProgramMeasurer;
 class SearchTaskNode : public Object {
  public:
   /*! \brief The function to be optimized */
-  tir::PrimFunc func;
+  tir::PrimFunc workload;
   /*! \brief Name of this search task */
   String task_name;
   /*! \brief The target to be built at */
@@ -42,14 +42,14 @@ class SearchTaskNode : public Object {
   /*! \brief The target host to be built at */
   Target target_host;
   /*! \brief The file to load/store search logs */
-  Optional<String> filename;
+  Optional<String> log_file;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("func", &func);
+    v->Visit("workload", &workload);
     v->Visit("task_name", &task_name);
     v->Visit("target", &target);
     v->Visit("target_host", &target_host);
-    v->Visit("filename", &filename);
+    v->Visit("log_file", &log_file);
   }
 
   static constexpr const char* _type_key = "meta_schedule.SearchTask";
@@ -64,14 +64,14 @@ class SearchTask : public ObjectRef {
  public:
   /*!
    * \brief Constructor
-   * \param func The function to be optimized
+   * \param workload The function to be optimized
    * \param task_name Name of this search task
    * \param target The target to be built at
    * \param target_host The target host to be built at
-   * \param filename The file to load/store search logs
+   * \param log_file The file to load/store search logs
    */
-  explicit SearchTask(tir::PrimFunc func, String task_name, Target target, Target target_host,
-                      Optional<String> filename);
+  explicit SearchTask(tir::PrimFunc workload, String task_name, Target target, Target target_host,
+                      Optional<String> log_file);
   TVM_DEFINE_OBJECT_REF_METHODS(SearchTask, ObjectRef, SearchTaskNode);
 };
 
@@ -86,12 +86,15 @@ class SearchSpaceNode : public runtime::Object {
  public:
   /*! \brief Virtual destructor */
   virtual ~SearchSpaceNode() = default;
+  /*! \brief Initialize the search space */
+  virtual void Init(const SearchTask& task) = 0;
   /*!
    * \brief Apply postprocessors onto the schedule
+   * \param task The search task
    * \param sch The schedule to be postprocessed
    * \param sampler The random number generator
    */
-  virtual bool Postprocess(const Schedule& sch, Sampler* sampler) = 0;
+  virtual bool Postprocess(const SearchTask& task, const Schedule& sch, Sampler* sampler) = 0;
   /*!
    * \brief Sample a schedule out of the search space
    * \param task The search task to be sampled from
@@ -131,6 +134,8 @@ class SearchStrategyNode : public Object {
  public:
   /*! \brief Virtual destructor */
   virtual ~SearchStrategyNode() = default;
+  /*! \brief Initialize the search strategy */
+  virtual void Init(const SearchTask& task) = 0;
   /*!
    * \brief Explore the search space and find the best schedule
    * \param task The search task

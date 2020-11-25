@@ -130,7 +130,7 @@ TVM_DLL SearchRule MultiLevelTilingAndFusion(String structure, bool must_cache_r
  * \brief A rule that parallelizes the outer loops
  * \return The rule created
  */
-TVM_DLL SearchRule MarkParallelizeOuter(int max_extent);
+TVM_DLL SearchRule MarkParallelizeOuter(int max_jobs_per_core);
 
 /*!
  * \brief A rule that parallelizes the outer loops

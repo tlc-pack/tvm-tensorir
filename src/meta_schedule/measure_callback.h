@@ -25,12 +25,12 @@ namespace tvm {
 namespace meta_schedule {
 
 /*!
- * \brief A callback node used to append newly measured records to a speicifc log file
+ * \brief A callback node used to append newly measured records to a specific log file
  */
 class RecordToFileNode : public MeasureCallbackNode {
  public:
   /*! \brief Name of the log file to be written */
-  String filename;
+  String log_file;
   /*! \brief Name of the task */
   String task_name;
   /*! \brief Serialized JSON-like object for the target */
@@ -41,7 +41,7 @@ class RecordToFileNode : public MeasureCallbackNode {
   String prim_func_b64;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("filename", &filename);
+    v->Visit("log_file", &log_file);
     v->Visit("task_name", &task_name);
     v->Visit("target", &target);
     v->Visit("target_host", &target_host);

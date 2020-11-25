@@ -454,13 +454,31 @@ SearchRule MultiLevelTilingAndFusion(String structure, bool must_cache_read,
 class RuleMarkParallelizeOuter {
  public:
   /*! \brief The maximum extent of loops to be parallelized together */
-  int max_extent;
+  int max_jobs_per_core;
+  bool warned_num_cores_missing;
 
-  explicit RuleMarkParallelizeOuter(int max_extent) : max_extent(max_extent) {}
+  explicit RuleMarkParallelizeOuter(int max_jobs_per_core)
+      : max_jobs_per_core(max_jobs_per_core), warned_num_cores_missing(false) {}
 
   /*! \brief Rule application */
   TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
-                const TContextInfo& info) {
+                const TContextInfo& info) const {
+    int num_cores = task->target->GetAttr<Integer>("num_cores").value_or(-1);
+    if (num_cores == -1) {
+      static const auto* f_cpu_count = runtime::Registry::Get("meta_schedule._cpu_count");
+      CHECK(f_cpu_count)
+          << "ValueError: Cannot find the packed function \"meta_schedule._cpu_count\"";
+      num_cores = (*f_cpu_count)(false);
+      if (!warned_num_cores_missing) {
+        LOG(WARNING)
+            << "ValueError: Target does not have attribute \"num_cores\", using the number of CPU "
+               "cores on the local machine. It may leads to inferior performance because the "
+               "setting on the local machine may mismatch that on the target machine - "
+            << num_cores << " CPU cores";
+        const_cast<RuleMarkParallelizeOuter*>(this)->warned_num_cores_missing = true;
+      }
+    }
+    int max_extent = num_cores * max_jobs_per_core;
     tir::StmtSRef block_sref = sch->Eval(block_rv);
     if (!IsSubrootBlock(sch->sch, block_sref)) {
       return {{sch, info}};
@@ -480,10 +498,10 @@ class RuleMarkParallelizeOuter {
   }
 };
 
-SearchRule MarkParallelizeOuter(int max_extent) {
-  auto f_apply = [max_extent](SearchTask task, Schedule sch, BlockRV block,
-                              TContextInfo info) -> TReturn {
-    RuleMarkParallelizeOuter rule(max_extent);
+SearchRule MarkParallelizeOuter(int max_jobs_per_core) {
+  RuleMarkParallelizeOuter rule(max_jobs_per_core);
+  auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch, BlockRV block,
+                                         TContextInfo info) -> TReturn {
     return rule.Apply(task, sch, block, info);
   };
   return SearchRule("mark_parallelize_outer", f_apply);

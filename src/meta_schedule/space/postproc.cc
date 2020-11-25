@@ -17,6 +17,7 @@
  * under the License.
  */
 #include "./postproc.h"  // NOLINT(build/include)
+
 #include <tvm/tir/transform.h>
 
 #include "../analysis.h"
@@ -35,7 +36,9 @@ Postproc::Postproc(String name, FProc proc) {
 
 /********** Postproc **********/
 
-bool PostprocNode::Apply(const Schedule& sch, Sampler* sampler) { return proc_(sch, sampler); }
+bool PostprocNode::Apply(const SearchTask& task, const Schedule& sch, Sampler* sampler) {
+  return proc_(task, sch, sampler);
+}
 
 /********** Utility helpers **********/
 
@@ -83,7 +86,7 @@ std::vector<tir::StmtSRef> CollectAllBlocks(const Schedule& sch) {
 /********** RewriteParallel **********/
 
 Postproc RewriteParallel() {
-  auto f_proc = [](Schedule sch, void* _sampler) -> bool {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
     std::vector<tir::StmtSRef> all_blocks = CollectAllBlocks(sch);
     arith::Analyzer analyzer;
     for (const tir::StmtSRef& block_sref : all_blocks) {
@@ -130,7 +133,7 @@ Postproc RewriteParallel() {
 /********** RewriteVectorize **********/
 
 Postproc RewriteVectorize() {
-  auto f_proc = [](Schedule sch, void* _sampler) -> bool {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
     std::vector<tir::StmtSRef> all_blocks = CollectAllBlocks(sch);
     arith::Analyzer analyzer;
     for (const tir::StmtSRef& block_sref : all_blocks) {
@@ -252,7 +255,8 @@ class PostprocRewriteTensorize {
 };
 
 Postproc RewriteTensorize(Array<tir::TensorIntrin> tensor_intrins) {
-  auto f_proc = [tensor_intrins{std::move(tensor_intrins)}](Schedule self, void* _sampler) -> bool {
+  auto f_proc = [tensor_intrins{std::move(tensor_intrins)}](SearchTask task, Schedule self,
+                                                            void* _sampler) -> bool {
     return PostprocRewriteTensorize(tensor_intrins).Proc(self);
   };
   return Postproc("rewrite_tensorize", f_proc);
@@ -266,12 +270,7 @@ inline tir::IterVar MakeThreadIdx(const String& name) {
 
 class PostprocRewriteCudaThreadBind {
  public:
-  /*! \brief Number of threads in a CUDA warp, should be 32 */
-  int warp_size;
-
-  explicit PostprocRewriteCudaThreadBind(int warp_size) : warp_size(warp_size) {}
-
-  bool BindMultiLevelTiled(const Schedule& sch, const BlockRV& block_rv) const {
+  bool BindMultiLevelTiled(const Schedule& sch, const BlockRV& block_rv, int warp_size) const {
     arith::Analyzer analyzer;
     Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
     std::vector<tir::StmtSRef> loop_srefs;
@@ -425,7 +424,7 @@ class PostprocRewriteCudaThreadBind {
         }
       }
       CHECK(threadIdx_sref.defined())
-          << "ValueError: Cannto find 'threadIdx.x' above cooperative fetching";
+          << "ValueError: Cannot find 'threadIdx.x' above cooperative fetching";
       PrimExpr factor = GetLoopExtent(threadIdx_sref);
       PrimExpr nparts = floordiv(GetLoopExtent(loop_sref) + factor - 1, factor);
       Array<tir::StmtSRef> splits = sch->sch->split(loop_sref, nparts, factor);
@@ -434,10 +433,12 @@ class PostprocRewriteCudaThreadBind {
     }
   }
 
-  bool Proc(const Schedule& sch) const {
+  bool Proc(const SearchTask& task, const Schedule& sch) const {
+    int warp_size = task->target->GetAttr<Integer>("thread_warp_size").value_or(Integer(-1));
+    CHECK(warp_size != -1) << "ValueError: Target does not have attribute \"thread_warp_size\"";
     Array<BlockRV> root_block_rvs = sch->GetRootBlocks();
     for (const BlockRV& block_rv : root_block_rvs) {
-      if (BindMultiLevelTiled(sch, block_rv)) {
+      if (BindMultiLevelTiled(sch, block_rv, warp_size)) {
         continue;
       }
       if (BindSpatial(sch, block_rv)) {
@@ -461,9 +462,9 @@ class PostprocRewriteCudaThreadBind {
   }
 };
 
-Postproc RewriteCudaThreadBind(int warp_size) {
-  auto f_proc = [warp_size](Schedule sch, void* _sampler) -> bool {
-    return PostprocRewriteCudaThreadBind(warp_size).Proc(sch);
+Postproc RewriteCudaThreadBind() {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
+    return PostprocRewriteCudaThreadBind().Proc(task, sch);
   };
   return Postproc("rewrite_cuda_thread_bind", f_proc);
 }
@@ -472,25 +473,6 @@ Postproc RewriteCudaThreadBind(int warp_size) {
 
 class PostprocVerifyGPUCode {
  public:
-  const tir::transform::Sequential passes;
-
-  explicit PostprocVerifyGPUCode(Target target)
-      : passes({tir::transform::InjectPrefetch(),       //
-                tir::transform::BufferFlatten(),        //
-                tir::transform::NarrowDataType(32),     //
-                tir::transform::Simplify(),             //
-                tir::transform::VectorizeLoop(true),    //
-                tir::transform::InjectVirtualThread(),  //
-                tir::transform::StorageRewrite(),       //
-                tir::transform::Simplify(),             //
-                tir::transform::VerifyGPUCode({
-                    {"max_shared_memory_per_block", Extract(target, "shared_memory_per_block")},
-                    {"max_local_memory_per_block", Extract(target, "registers_per_block")},
-                    {"max_threads_per_block", Extract(target, "max_threads_per_block")},
-                    {"max_vector_bytes", Extract(target, "vector_unit_bytes")},
-                    {"max_vthread", Integer(8)},
-                })}) {}
-
   static Integer Extract(const Target& target, const char* name) {
     if (Optional<Integer> v = target->GetAttr<Integer>(name)) {
       return v.value();
@@ -499,7 +481,27 @@ class PostprocVerifyGPUCode {
     throw;
   }
 
-  bool Proc(const Schedule& sch) const {
+  static tir::transform::Sequential MakePasses(const Target& target) {
+    return tir::transform::Sequential(
+        {tir::transform::InjectPrefetch(),       //
+         tir::transform::BufferFlatten(),        //
+         tir::transform::NarrowDataType(32),     //
+         tir::transform::Simplify(),             //
+         tir::transform::VectorizeLoop(true),    //
+         tir::transform::InjectVirtualThread(),  //
+         tir::transform::StorageRewrite(),       //
+         tir::transform::Simplify(),             //
+         tir::transform::VerifyGPUCode({
+             {"max_shared_memory_per_block", Extract(target, "shared_memory_per_block")},
+             {"max_local_memory_per_block", Extract(target, "registers_per_block")},
+             {"max_threads_per_block", Extract(target, "max_threads_per_block")},
+             {"max_vector_bytes", Extract(target, "vector_unit_bytes")},
+             {"max_vthread", Integer(8)},
+         })});
+  }
+
+  bool Proc(const SearchTask& task, const Schedule& sch) const {
+    tir::transform::Sequential passes = MakePasses(task->target);
     IRModule mod({{GlobalVar("main"), sch->sch->func}});
     try {
       passes(std::move(mod));
@@ -510,10 +512,9 @@ class PostprocVerifyGPUCode {
   }
 };
 
-Postproc VerifyGPUCode(Target target) {
-  PostprocVerifyGPUCode postproc(target);
-  auto f_proc = [postproc{std::move(postproc)}](Schedule sch, void* _sampler) -> bool {
-    return postproc.Proc(sch);
+Postproc VerifyGPUCode() {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
+    return PostprocVerifyGPUCode().Proc(task, sch);
   };
   return Postproc("verify_gpu_code", f_proc);
 }
@@ -525,12 +526,12 @@ struct Internal {
    * \brief FFI function for PostProcNode::Apply
    * \sa PostProcNode::Apply
    */
-  static bool Apply(Postproc self, Schedule sch, Optional<Integer> seed) {
+  static bool Apply(Postproc self, SearchTask task, Schedule sch, Optional<Integer> seed) {
     Sampler seeded;
     if (seed.defined()) {
       seeded.Seed(seed.value());
     }
-    return self->Apply(sch, &seeded);
+    return self->Apply(task, sch, &seeded);
   }
 };
 
