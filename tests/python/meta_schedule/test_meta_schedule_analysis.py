@@ -18,7 +18,7 @@
 # pylint: disable=missing-function-docstring
 import tir_tensor_intrin
 import tvm
-from tir_workload import batch_matmul, matmul
+from tir_workload import batch_matmul, matmul, matmul_relu
 from tvm import meta_schedule as ms
 from tvm import tir
 from tvm.ir import Op
@@ -286,6 +286,15 @@ def test_meta_schedule_get_tensorize_loop_mapping():
     )
 
 
+def test_meta_schedule_analysis_count_flop():
+    result = ms.analysis.count_flop(matmul)
+    expected = 1024 ** 3
+    assert abs(result - expected) < 0.5
+    result = ms.analysis.count_flop(matmul_relu)
+    expected = 1024 ** 3 + 1024 ** 2
+    assert abs(result - expected) < 0.5
+
+
 if __name__ == "__main__":
     test_meta_schedule_analysis_is_trivial_binding()
     test_meta_schedule_analysis_is_subroot_block()
@@ -304,3 +313,4 @@ if __name__ == "__main__":
     test_meta_schedule_needs_multi_level_tiling()
     test_meta_schedule_is_strictly_inlineable()
     test_meta_schedule_get_tensorize_loop_mapping()
+    test_meta_schedule_analysis_count_flop()
