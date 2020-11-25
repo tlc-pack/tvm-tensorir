@@ -42,8 +42,8 @@ SPACE = ms.space.PostOrderApply(
     ],
     postprocs=[
         ms.postproc.rewrite_vectorize(),
-        ms.postproc.rewrite_cuda_thread_bind(warp_size=32),
-        ms.postproc.verify_gpu_code(target=TARGET),
+        ms.postproc.rewrite_cuda_thread_bind(),
+        ms.postproc.verify_gpu_code(),
     ],
 )
 
@@ -53,13 +53,13 @@ def test_integration_matmul():
     os.environ["TVM_TRACKER_KEY"] = "test"
     sch = ms.autotune(
         task=ms.SearchTask(
-            func=te.create_func(te_workload.matmul(1024, 1024, 1024)),
+            workload=te.create_func(te_workload.matmul(1024, 1024, 1024)),
             target=TARGET,
             task_name="cuda_matmul",
-            filename="./cuda_matmul.json",
+            log_file="./cuda_matmul.json",
         ),
         space=SPACE,
-        strategy=ms.strategy.Replay(num_iterations=32),
+        strategy=ms.strategy.Replay(num_trials=32),
         measurer=ms.ProgramMeasurer(
             measure_callbacks=[
                 ms.RecordToFile(),

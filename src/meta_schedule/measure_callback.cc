@@ -16,11 +16,12 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include <dmlc/memory_io.h>  // NOLINT(build/include)
+#include "./measure_callback.h"  // NOLINT(build/include)
+
+#include <dmlc/memory_io.h>
 #include <tvm/node/serialization.h>
 
 #include "../support/base64.h"
-#include "./measure_callback.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -30,17 +31,17 @@ namespace meta_schedule {
 RecordToFile::RecordToFile() { data_ = make_object<RecordToFileNode>(); }
 
 void RecordToFileNode::Init(const SearchTask& task) {
-  CHECK(!task->filename.value_or("").empty())
-      << "ValueError: filename is not specified in SeachTask";
-  this->filename = task->filename.value();
+  CHECK(!task->log_file.value_or("").empty())
+      << "ValueError: log_file is not specified in SeachTask";
+  this->log_file = task->log_file.value();
   this->task_name = task->task_name;
   this->target = task->target->Export();
   this->target_host = task->target_host->Export();
   {
-    std::string prim_func_json = SaveJSON(task->func);
+    std::string prim_func_json = SaveJSON(task->workload);
     std::string prim_func_b64;
-    dmlc::MemoryStringStream mstrm(&prim_func_b64);
-    support::Base64OutStream b64strm(&mstrm);
+    dmlc::MemoryStringStream m_stream(&prim_func_b64);
+    support::Base64OutStream b64strm(&m_stream);
     dmlc::Stream* strm = &b64strm;
     strm->Write(prim_func_json);
     b64strm.Finish();
@@ -53,8 +54,8 @@ void RecordToFileNode::Callback(const Array<MeasureInput>& inputs,
   static const auto* f_serialize = runtime::Registry::Get("meta_schedule._serialize_json");
   CHECK(f_serialize) << "IndexError: Cannot find packed function \""
                         "meta_schedule._serialize_json\", which should be registered in python";
-  CHECK(!this->filename.empty()) << "ValueError: empty filename for measure logs";
-  std::ofstream ofs(this->filename, std::ofstream::app);
+  CHECK(!this->log_file.empty()) << "ValueError: empty log_file for measure logs";
+  std::ofstream ofs(this->log_file, std::ofstream::app);
   CHECK_EQ(inputs.size(), results.size());
   for (int i = 0, n = inputs.size(); i < n; ++i) {
     const MeasureInput& measure_input = inputs[i];

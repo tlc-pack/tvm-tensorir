@@ -31,7 +31,7 @@ namespace meta_schedule {
 class PostprocNode : public Object {
  public:
   /*! \brief The post-processor function */
-  using FProc = runtime::TypedPackedFunc<bool(Schedule, void*)>;
+  using FProc = runtime::TypedPackedFunc<bool(SearchTask, Schedule, void*)>;
 
   /*! \brief Name */
   String name;
@@ -46,7 +46,7 @@ class PostprocNode : public Object {
    * \param sampler The random number sampler
    * \return If the post-processing succeeds
    */
-  bool Apply(const Schedule& sch, Sampler* sampler);
+  bool Apply(const SearchTask& task, const Schedule& sch, Sampler* sampler);
 
   static constexpr const char* _type_key = "meta_schedule.Postproc";
   TVM_DECLARE_BASE_OBJECT_INFO(PostprocNode, Object);
@@ -94,17 +94,15 @@ TVM_DLL Postproc RewriteTensorize(Array<tir::TensorIntrin> tensor_intrins);
 
 /*!
  * \brief Creates a postprocessor that do block/vthread/thread binding for cuda
- * \param warp_size Number of threads in a CUDA warp
  * \return The postprocessor created
  */
-TVM_DLL Postproc RewriteCudaThreadBind(int warp_size);
+TVM_DLL Postproc RewriteCudaThreadBind();
 
 /*!
  * \brief Creates a postprocessor that verifies if the GPU code is correct
- * \param target The compilation target
  * \return The postprocessor created
  */
-TVM_DLL Postproc VerifyGPUCode(Target target);
+TVM_DLL Postproc VerifyGPUCode();
 
 }  // namespace meta_schedule
 }  // namespace tvm
