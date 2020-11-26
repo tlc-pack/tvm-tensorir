@@ -31,6 +31,7 @@ class ContextMaintainer:
             self.writes = None
             self.annotations = []
             self.predicate = tvm.runtime.convert(True)
+            self.init = None
 
     def __init__(self, parser):
         # scope context

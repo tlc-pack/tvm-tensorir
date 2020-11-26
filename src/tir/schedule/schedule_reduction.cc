@@ -52,15 +52,8 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
   CHECK(loop != nullptr)
       << "TypeError: 'decompose_reduction' expect a loop as second argument, but get type: "
       << loop_sref->stmt->GetTypeKey();
-  const auto* reduce_step = block->body.as<ReduceStepNode>();
-  CHECK(reduce_step != nullptr) << "TypeError: 'decompose_reduction' expects the body of the block "
-                                   "is ReduceStep, but get type: "
-                                << block->body->GetTypeKey();
-  const auto* buffer_load = reduce_step->lhs.as<BufferLoadNode>();
-  CHECK(buffer_load != nullptr)
-      << "TypeError: 'decompose_reduction' expects the body of the reduce step "
-         "is BufferLoad, but get type: "
-      << reduce_step->lhs->GetTypeKey();
+  CHECK(block->init) << "ValueError: 'decompose_reduction' expect a reduction block, "
+                        "but the block has no init block";
   Array<StmtSRef> loops = GetLoopsInScope(block_sref);
   const BlockRealizeNode* realize = GetBlockRealize(block_sref).get();
   // Cond 0. Check loop_sref is an ancestor of block_sref
@@ -118,10 +111,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
     block_var_map[iter_var->var.get()] = new_iter_var->var.get();
   }
   // Step 2. After copying block vars, substitute them in init block
-  init_block->body = SubstituteInScope(
-      BufferStore(buffer_load->buffer, reduce_step->comm_reducer->identity_element[0],
-                  buffer_load->indices),
-      block_var_map);
+  init_block->body = SubstituteInScope(block->init.value(), block_var_map);
   for (const TensorRegion& write : block->writes) {
     init_block->writes.push_back(SubstituteTensorRegion(write, block_var_map));
   }
@@ -178,7 +168,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
       /*iter_vars=*/block->iter_vars,
       /*reads=*/block->reads,
       /*writes=*/block->writes,
-      /*body=*/BufferStore(buffer_load->buffer, reduce_step->ApplyCombiner(), buffer_load->indices),
+      /*body=*/block->body,
       /*allocations=*/block->allocations,
       /*annotations=*/block->annotations,
       /*tag=*/block->tag + "_update");

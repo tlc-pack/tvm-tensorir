@@ -709,7 +709,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 // Block
 Block::Block(Array<IterVar> iter_vars, Array<TensorRegion> reads, Array<TensorRegion> writes,
              Stmt body, Array<BufferAllocate> allocations, Array<Annotation> annotations,
-             std::string tag) {
+             std::string tag, Optional<Stmt> init) {
   ObjectPtr<BlockNode> node = make_object<BlockNode>();
   node->iter_vars = std::move(iter_vars);
   node->reads = std::move(reads);
@@ -718,16 +718,17 @@ Block::Block(Array<IterVar> iter_vars, Array<TensorRegion> reads, Array<TensorRe
   node->allocations = std::move(allocations);
   node->annotations = std::move(annotations);
   node->tag = std::move(tag);
+  node->init = std::move(init);
   data_ = std::move(node);
 }
 
 TVM_REGISTER_GLOBAL("tir.Block")
     .set_body_typed<Block(Array<IterVar>, Array<TensorRegion>, Array<TensorRegion>, Stmt,
-                          Array<BufferAllocate>, Array<Annotation>, std::string)>(
+                          Array<BufferAllocate>, Array<Annotation>, std::string, Optional<Stmt>)>(
         [](Array<IterVar> iter_vars, Array<TensorRegion> reads, Array<TensorRegion> writes,
            Stmt body, Array<BufferAllocate> allocates, Array<Annotation> annotations,
-           std::string tag) {
-          return Block(iter_vars, reads, writes, body, allocates, annotations, tag);
+           std::string tag, Optional<Stmt> init) {
+          return Block(iter_vars, reads, writes, body, allocates, annotations, tag, init);
         });
 
 TVM_REGISTER_NODE_TYPE(BlockNode);
@@ -787,96 +788,9 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       for (const auto& allocate : op->allocations) {
         p->Print(allocate);
       }
-      p->Print(op->body);
-      p->indent -= 2;
-      p->PrintIndent();
-      p->stream << "}\n";
-    });
-
-// Block
-ReductionBlock::ReductionBlock(Array<IterVar> iter_vars, Array<TensorRegion> reads,
-                               Array<TensorRegion> writes, Stmt body, Block init,
-                               Array<BufferAllocate> allocations, Array<Annotation> annotations,
-                               std::string tag) {
-  ObjectPtr<ReductionBlockNode> node = make_object<ReductionBlockNode>();
-  node->iter_vars = std::move(iter_vars);
-  node->reads = std::move(reads);
-  node->writes = std::move(writes);
-  node->body = std::move(body);
-  node->allocations = std::move(allocations);
-  node->annotations = std::move(annotations);
-  node->tag = std::move(tag);
-  node->init = std::move(init);
-  data_ = std::move(node);
-}
-
-TVM_REGISTER_GLOBAL("tir.ReductionBlock")
-    .set_body_typed<ReductionBlock(Array<IterVar>, Array<TensorRegion>, Array<TensorRegion>, Stmt,
-                                   Block, Array<BufferAllocate>, Array<Annotation>, std::string)>(
-        [](Array<IterVar> iter_vars, Array<TensorRegion> reads, Array<TensorRegion> writes,
-           Stmt body, Block init, Array<BufferAllocate> allocates, Array<Annotation> annotations,
-           std::string tag) {
-          return ReductionBlock(iter_vars, reads, writes, body, init, allocates, annotations, tag);
-        });
-
-TVM_REGISTER_NODE_TYPE(ReductionBlockNode);
-
-TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-    .set_dispatch<ReductionBlockNode>([](const ObjectRef& node, ReprPrinter* p) {
-      auto* op = static_cast<const ReductionBlockNode*>(node.get());
-
-      // print block name and block vars
-      p->PrintIndent();
-      p->stream << "reduction block " << op->tag << "(";
-      for (size_t i = 0; i < op->iter_vars.size(); ++i) {
-        const auto& iter_var = op->iter_vars[i];
-        if (iter_var->iter_type != kDataPar) {
-          std::string str;
-          switch (iter_var->iter_type) {
-            case kCommReduce:
-              str = "reduce";
-              break;
-            case kOrdered:
-              str = "ordered";
-              break;
-            case kOpaque:
-              str = "opaque";
-              break;
-            default:
-              str = "unknown";
-              break;
-          }
-          p->stream << str << " ";
-        }
-        p->Print(iter_var->var);
-        p->stream << "[";
-        p->Print(iter_var->dom->min);
-        p->stream << ":";
-        p->Print(iter_var->dom->min + iter_var->dom->extent);
-        p->stream << "]=None";
-        if (i != op->iter_vars.size() - 1) {
-          p->stream << ", ";
-        }
+      if (op->init) {
+        p->Print(op->init.value());
       }
-      p->stream << ")";
-
-      // print tensor region and annotations
-      p->stream << " W: ";
-      p->Print(op->writes);
-      p->stream << " R: ";
-      p->Print(op->reads);
-      if (!op->annotations.empty()) {
-        p->stream << " attr: ";
-        p->Print(op->annotations);
-      }
-
-      // print body
-      p->stream << " {\n";
-      p->indent += 2;
-      for (const auto& allocate : op->allocations) {
-        p->Print(allocate);
-      }
-      p->Print(op->init);
       p->Print(op->body);
       p->indent -= 2;
       p->PrintIndent();

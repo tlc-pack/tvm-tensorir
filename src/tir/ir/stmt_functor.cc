@@ -114,6 +114,7 @@ void StmtVisitor::VisitStmt_(const EvaluateNode* op) { this->VisitExpr(op->value
 
 void StmtVisitor::VisitStmt_(const BlockNode* op) {
   VisitArray(op->allocations, [this](const Stmt& s) { this->VisitStmt(s); });
+  if (op->init) this->VisitStmt(op->init.value());
   this->VisitStmt(op->body);
 }
 
