@@ -242,7 +242,8 @@ void ProgramMeasurerNode::Init(const SearchTask& task) {
     if (!log_file_lines.empty()) {
       LOG(INFO) << "Loaded " << imported_records.size()
                 << " valid record(s) from the file: " << log_file
-                << ". Best time cost: " << best_time_cost;
+                << ". Best time cost: " << (best_time_cost * 1000) << " ms, "
+                << (task->flop_ct / best_time_cost / 1e9) << " GFLOPs";
     }
   } else {
     LOG(INFO) << "No log file is used.";
@@ -269,6 +270,7 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
       ++num_measured;
       const MeasureInput& measure_input = batch_measure_inputs[i];
       const MeasureResult& measure_result = batch_measure_results[i];
+      double flop_ct = measure_input->task->flop_ct;
       MeasureErrorNO error_no = static_cast<MeasureErrorNO>(measure_result->error_no);
       if (error_no == MeasureErrorNO::kNoError) {
         double avg_time_cost = FloatArrayMean(measure_result->costs);
@@ -277,19 +279,22 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
           best_index = num_measured;
           best_sch = measure_input->sch;
         }
-        StdCout(verbose) << std::fixed << std::setprecision(4) << "#" << num_measured
-                         << "\tTime: " << avg_time_cost << "\tBest time: " << best_time_cost
-                         << std::endl;
+        StdCout(verbose) << std::fixed << std::setprecision(2) << "#" << num_measured
+                         << "\tTime: " << (avg_time_cost * 1000) << " ms, "
+                         << (flop_ct / avg_time_cost / 1e9) << " GFLOPs"
+                         << "\tBest time: " << (best_time_cost * 1000) << " ms, "
+                         << (flop_ct / best_time_cost / 1e9) << " GFLOPs" << std::endl;
       } else if (error_no == MeasureErrorNO::kRunTimeoutError ||
                  error_no == MeasureErrorNO::kBuildTimeoutError) {
-        StdCout(verbose) << std::fixed << std::setprecision(4) << "#" << num_measured
+        StdCout(verbose) << std::fixed << std::setprecision(2) << "#" << num_measured
                          << "\tError: " << MeasureErrorNOToStr(error_no)
-                         << "\tBest time: " << best_time_cost << std::endl
-                         << measure_result->error_msg << "\n";
+                         << "\tBest time: " << (best_time_cost * 1000) << " ms, "
+                         << (flop_ct / best_time_cost / 1e9) << " GFLOPs" << std::endl;
       } else {
-        StdCout(verbose) << std::fixed << std::setprecision(4) << "#" << num_measured
+        StdCout(verbose) << std::fixed << std::setprecision(2) << "#" << num_measured
                          << "\tError: " << MeasureErrorNOToStr(error_no)
-                         << "\tBest time: " << best_time_cost << std::endl
+                         << "\tBest time: " << (best_time_cost * 1000) << " ms, "
+                         << (flop_ct / best_time_cost / 1e9) << " GFLOPs" << std::endl
                          << measure_result->error_msg << "\n"
                          << "The IR is:\n"
                          << Repr(measure_input->sch);
