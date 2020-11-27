@@ -143,28 +143,29 @@ MeasureRecord::MeasureRecord(Schedule sch, Array<FloatImm> costs) {
   data_ = std::move(n);
 }
 
-std::vector<Array<ObjectRef>> ParseLogFile(const String& filename) {
-  static const auto* f_deserialize = runtime::Registry::Get("meta_schedule._deserialize_json");
-  CHECK(f_deserialize) << "IndexError: Cannot find packed function \""
-                          "meta_schedule._deserialize_json\", which should be registered in python";
+std::vector<String> LoadLogFile(const String& filename) {
   std::ifstream ifs(filename);
   if (!ifs.is_open() || ifs.fail()) {
     LOG(INFO) << "File not found: " << filename << ". No recrod is loaded";
     return {};
   }
-  std::vector<Array<ObjectRef>> records;
+  std::vector<String> result;
   for (std::string line; std::getline(ifs, line);) {
-    if (line.empty() || line[0] == '#' || line[0] == '/' || std::isspace(line[0])) {
-      continue;
+    if (!line.empty() && line[0] != '#' && line[0] != '/' && !std::isspace(line[0])) {
+      result.push_back(line);
     }
-    Array<ObjectRef> record = (*f_deserialize)(line);
-    records.push_back(record);
   }
-  LOG(INFO) << "Found " << records.size() << " record(s) in the file: " << filename;
-  return records;
+  return result;
 }
 
-Optional<MeasureRecord> ParseRecord(const SearchTask& task, const Array<ObjectRef>& record) {
+Array<ObjectRef> DeserializeLog(const String& line) {
+  static const auto* f_deserialize = runtime::Registry::Get("meta_schedule._deserialize_json");
+  CHECK(f_deserialize) << "IndexError: Cannot find packed function \""
+                          "meta_schedule._deserialize_json\", which should be registered in python";
+  return (*f_deserialize)(line);
+}
+
+Optional<MeasureRecord> ImportLog(const SearchTask& task, const Array<ObjectRef>& record) {
   CHECK_EQ(record.size(), 7);
   String task_name = Downcast<String>(record[0]);
   Map<String, ObjectRef> target = Downcast<Map<String, ObjectRef>>(record[1]);
@@ -203,29 +204,42 @@ void ProgramMeasurerNode::Init(const SearchTask& task) {
   }
   // Loading existing logs from file
   if (task->log_file.defined()) {
+    // Read every line of the log file
     String log_file = task->log_file.value();
-    std::vector<Array<ObjectRef>> records = ParseLogFile(log_file);
-    if (!records.empty()) {
-      std::vector<Optional<MeasureRecord>> imported;
-      imported.reserve(records.size());
-      for (const Array<ObjectRef>& record : records) {
-        imported.push_back(ParseRecord(task, record));
-      }
-      for (const Optional<MeasureRecord>& opt_record : imported) {
-        if (!opt_record.defined()) {
-          continue;
-        }
-        ++num_measured;
-        const MeasureRecord& record = opt_record.value();
-        if (record->avg_cost < best_time_cost) {
-          best_time_cost = record->avg_cost;
-          best_index = num_measured;
-          best_sch = record->sch;
-        }
-      }
+    std::vector<String> log_file_lines = LoadLogFile(log_file);
+    if (!log_file_lines.empty()) {
+      LOG(INFO) << "Found " << log_file_lines.size() << " record(s) in the file: " << log_file
+                << ". Now parsing...";
+    }
+    // Parse the log file
+    std::vector<Array<ObjectRef>> parsed_records;
+    parsed_records.reserve(log_file_lines.size());
+    for (const String& line : log_file_lines) {
+      parsed_records.push_back(DeserializeLog(line));
+    }
+    // Import from the log file
+    std::vector<Optional<MeasureRecord>> imported_records;
+    imported_records.reserve(parsed_records.size());
+    for (const Array<ObjectRef>& record : parsed_records) {
+      imported_records.push_back(ImportLog(task, record));
+    }
+    if (!log_file_lines.empty()) {
       LOG(INFO) << "Loaded " << num_measured
-                << " valid records from the file: " << task->log_file.value()
+                << " valid record(s) from the file: " << task->log_file.value()
                 << ". Best time cost: " << best_time_cost;
+    }
+    // Find the best result
+    for (const Optional<MeasureRecord>& opt_record : imported_records) {
+      if (!opt_record.defined()) {
+        continue;
+      }
+      ++num_measured;
+      const MeasureRecord& record = opt_record.value();
+      if (record->avg_cost < best_time_cost) {
+        best_time_cost = record->avg_cost;
+        best_index = num_measured;
+        best_sch = record->sch;
+      }
     }
   } else {
     LOG(INFO) << "No log file is used.";
