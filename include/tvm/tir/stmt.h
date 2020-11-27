@@ -308,6 +308,7 @@ class BufferStore : public Stmt {
   TVM_DLL explicit BufferStore(Buffer buffer, PrimExpr value, Array<PrimExpr> indices);
 
   TVM_DEFINE_OBJECT_REF_METHODS(BufferStore, Stmt, BufferStoreNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(BufferStoreNode);
 };
 
 /*!
@@ -1195,9 +1196,6 @@ class ReduceStepNode : public StmtNode {
 class ReduceStep : public Stmt {
  public:
   TVM_DLL explicit ReduceStep(CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs);
-
-  static Stmt FromInitUpdate(const Array<CommReducer>& patterns, const PrimExpr& init,
-                             const BufferStore& update);
 
   TVM_DEFINE_OBJECT_REF_METHODS(ReduceStep, Stmt, ReduceStepNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(ReduceStepNode);

@@ -58,14 +58,24 @@ def test_reduction_decompose():
     tvm.ir.assert_structural_equal(matmul_decompose0, s.func)
 
 
+def test_reduction_merge():
+    s = tir.create_schedule(matmul_decompose0)
+    init = s.get_block("init")
+    update = s.get_block("update")
+    s.merge_reduction(init, update)
+    tvm.ir.assert_structural_equal(matmul, s.func)
+
+
 def test_reduction_blockize():
     s = tir.create_schedule(matmul)
     C = s.get_block("update")
     i, j, k = s.get_axes(C)
-    pass
+    s.blockize(j)
+    print(tvm.script.asscript(s.func))
 
 
 if __name__ == "__main__":
     test_reduction_roundtrip()
     test_reduction_decompose()
+    test_reduction_merge()
     test_reduction_blockize()

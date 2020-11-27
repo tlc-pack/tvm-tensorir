@@ -916,39 +916,6 @@ PrimExpr ReduceStepNode::ApplyCombiner(const PrimExpr& lhs, const PrimExpr& rhs)
   return Substitute(comm_reducer->result[0], vmap);
 }
 
-std::tuple<bool, PrimExpr, PrimExpr> ReducerMatched(const CommReducer& reducer,
-                                                    const PrimExpr& init, const PrimExpr update) {
-  ExprDeepEqual equal;
-  if (!equal(reducer->identity_element[0], init))
-    return std::make_tuple(false, NullValue<PrimExpr>(), NullValue<PrimExpr>());
-  PatternMatcher pattern_matcher(reducer->result[0]);
-  pattern_matcher.Match(update);
-  return std::make_tuple(pattern_matcher.Success(), pattern_matcher.Eval(reducer->lhs[0]),
-                         pattern_matcher.Eval(reducer->rhs[0]));
-}
-
-Stmt ReduceStep::FromInitUpdate(const Array<CommReducer>& patterns, const PrimExpr& init,
-                                const BufferStore& update) {
-  ExprDeepEqual equal;
-  const auto& lhs = BufferLoad(update->buffer, update->indices);
-  // Check user defined patterns
-  for (const auto& reducer : patterns) {
-    const auto& res = ReducerMatched(reducer, init, update->value);
-    if (std::get<0>(res) && equal(lhs, std::get<1>(res))) {
-      return ReduceStep(reducer, std::get<1>(res), std::get<2>(res));
-    }
-  }
-  // Check default patterns
-  for (const auto& reducer : default_reducer::default_reducers) {
-    const auto& res = ReducerMatched(reducer.GetReducer(init.dtype()), init, update->value);
-    if (std::get<0>(res) && equal(lhs, std::get<1>(res))) {
-      return ReduceStep(reducer.GetReducer(init.dtype()), std::get<1>(res), std::get<2>(res));
-    }
-  }
-  LOG(FATAL) << "No reducer pattern matched for " << init << " " << update;
-  return NullValue<ReduceStep>();
-}
-
 TVM_REGISTER_GLOBAL("tir.ReduceStep")
     .set_body_typed<ReduceStep(CommReducer, PrimExpr, PrimExpr)>([](CommReducer comm_reducer,
                                                                     PrimExpr lhs, PrimExpr rhs) {

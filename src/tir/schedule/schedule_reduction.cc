@@ -178,10 +178,35 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
   return stmt2ref.at(init_block.get());
 }
 
+std::tuple<bool, PrimExpr, PrimExpr> ReducerMatched(const CommReducer& reducer,
+                                                    const PrimExpr& init, const PrimExpr update) {
+  ExprDeepEqual equal;
+  if (!equal(reducer->identity_element[0], init))
+    return std::make_tuple(false, NullValue<PrimExpr>(), NullValue<PrimExpr>());
+  PatternMatcher pattern_matcher(reducer->result[0]);
+  pattern_matcher.Match(update);
+  return std::make_tuple(pattern_matcher.Success(), pattern_matcher.Eval(reducer->lhs[0]),
+                         pattern_matcher.Eval(reducer->rhs[0]));
+}
+
+bool FromInitUpdate(const PrimExpr& init, const BufferStore& update) {
+  ExprDeepEqual equal;
+  const auto& lhs = BufferLoad(update->buffer, update->indices);
+  // Check default patterns
+  for (const auto& reducer : default_reducer::default_reducers) {
+    const auto& res = ReducerMatched(reducer.GetReducer(init.dtype()), init, update->value);
+    if (std::get<0>(res) && equal(lhs, std::get<1>(res))) {
+      return true;
+    }
+  }
+  LOG(FATAL) << "No reducer pattern matched for " << init << " " << update;
+  return false;
+}
+
 void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& update_sref) {
   /*!
    * Check
-   *   - init_block is under the same scope with update_sref
+   *   - init_sref is under the same scope with update_sref
    *   - LCA is higher than all the loops related to update_block's reduce block var
    *   - init_block's write region is the same as update_block's write region under LCA
    *   - the merged block is decomposable (i.e satisfying the check's of decompose_reduction)
@@ -199,6 +224,15 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
       << update_sref->stmt->GetTypeKey();
   const auto* init_body = init->body.as<BufferStoreNode>();
   const auto* update_body = update->body.as<BufferStoreNode>();
+  CHECK(init_body != nullptr && update_body != nullptr)
+      << "ValueError: 'merge_reduction' expects the body of init and update block to be BufferStore";
+  CHECK(FromInitUpdate(init_body->value, GetRef<BufferStore>(update_body)))
+      << "ValueError: 'merge_reduction' pattern detect failed";
+  const BlockRealizeNode* init_realize = GetBlockRealize(init_sref).get();
+  const BlockRealizeNode* update_realize = GetBlockRealize(update_sref).get();
+  ExprDeepEqual equal;
+  CHECK(equal(init_realize->predicate, update_realize->predicate))
+      << "ValueError: 'merge_reduction' expects the predicate of init and update to be the same";
   const StmtSRef& scope = GetParentBlockSRef(init_sref);
   StmtSRef lca = LowestCommonAncestor({init_sref, update_sref}, scope);
   // Cond 1. Check init_block is under the same scope with update_sref
@@ -216,7 +250,6 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
         << "ValueError: 'merge_reduction' has inconsistent ranks between the write region of "
            "'init' and that of 'update'";
     for (size_t i = 0; i < init_region->region.size(); ++i) {
-      ExprDeepEqual equal;
       CHECK(equal(init_region->region[i]->min, update_region->region[i]->min) &&
             equal(init_region->region[i]->extent, update_region->region[i]->extent))
           << "ValueError: 'merge_reduction' has inconsistent write domain on axis " << i;
@@ -226,7 +259,6 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   CHECK(this->scopes.at(scope).CanMergeReduction(init_sref, update_sref));
   // Cond 2. Check LCA is higher than all the loops related to update_block's reduce block var
   if (!scope.same_as(lca)) {
-    const BlockRealizeNode* update_realize = GetBlockRealize(update_sref).get();
     for (const StmtSRef& higher_loop : GetLoopsInScope(update_sref)) {
       if (higher_loop.same_as(lca)) {
         break;
@@ -250,16 +282,17 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   std::pair<Stmt, Stmt> removed = RemoveLeaf(init_sref, scope);
   this->Replace(lca, removed.second);
   // Step 2. Change the update block to reduction block
+  BufferStore new_init = GetRef<BufferStore>(update_body);
+  new_init.CopyOnWrite()->value = init_body->value;
   Block merged(
       /*iter_vars=*/update->iter_vars,
       /*reads=*/update->reads,
       /*writes=*/update->writes,
-      /*body=*/
-      ReduceStep::FromInitUpdate(this->reducers_, init_body->value,
-                                 GetRef<BufferStore>(update_body)),
+      /*body=*/update->body,
       /*allocations=*/update->allocations,
       /*annotations=*/update->annotations,
-      /*tag=*/update->tag);
+      /*tag=*/update->tag,
+      /*init=*/new_init);
   this->Replace(update_sref, merged, {{merged, GetRef<Block>(update)}});
   // Update scope information
   UpdateScope(GetParentBlockSRef(update_sref)->stmt, this->stmt2ref, &this->scopes);
