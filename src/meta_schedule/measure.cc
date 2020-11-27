@@ -189,6 +189,9 @@ Optional<MeasureRecord> ImportLog(const SearchTask& task, const Array<ObjectRef>
     strm->Read(&parsed);
     orig_func = Downcast<tir::PrimFunc>(LoadJSON(parsed));
   }
+  if (!StructuralEqual()(orig_func, task->workload)) {
+    return NullOpt;
+  }
   return MeasureRecord(/*sch=*/ScheduleNode::Import(/*trace=*/Downcast<Array<ObjectRef>>(record[4]),
                                                     /*orig_func=*/orig_func, /*seed=*/NullOpt),
                        /*costs=*/Downcast<Array<FloatImm>>(record[3]));
@@ -223,11 +226,6 @@ void ProgramMeasurerNode::Init(const SearchTask& task) {
     for (const Array<ObjectRef>& record : parsed_records) {
       imported_records.push_back(ImportLog(task, record));
     }
-    if (!log_file_lines.empty()) {
-      LOG(INFO) << "Loaded " << num_measured
-                << " valid record(s) from the file: " << task->log_file.value()
-                << ". Best time cost: " << best_time_cost;
-    }
     // Find the best result
     for (const Optional<MeasureRecord>& opt_record : imported_records) {
       if (!opt_record.defined()) {
@@ -240,6 +238,11 @@ void ProgramMeasurerNode::Init(const SearchTask& task) {
         best_index = num_measured;
         best_sch = record->sch;
       }
+    }
+    if (!log_file_lines.empty()) {
+      LOG(INFO) << "Loaded " << imported_records.size()
+                << " valid record(s) from the file: " << log_file
+                << ". Best time cost: " << best_time_cost;
     }
   } else {
     LOG(INFO) << "No log file is used.";
