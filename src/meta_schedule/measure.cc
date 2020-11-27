@@ -112,24 +112,45 @@ Array<MeasureResult> RPCRunnerNode::Run(const Array<MeasureInput>& inputs,
 
 /********** ProgramMeasurer **********/
 
-void ProgramMeasurerNode::Init(const SearchTask& task) {
-  num_measured = 0;
-  best_time_cost = ProgramMeasurer::kMaxTimeCost;
-  best_index = -1;
-  best_sch = NullOpt;
-  for (const MeasureCallback& callback : callbacks) {
-    callback->Init(task);
+class MeasureRecordNode : public Object {
+ public:
+  Schedule sch;
+  Array<FloatImm> costs;
+  double avg_cost;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("sch", &sch);
+    v->Visit("costs", &costs);
+    v->Visit("avg_cost", &avg_cost);
   }
-  // Loading existing logs from file
-  if (!task->log_file.defined()) {
-    return;
-  }
+
+  static constexpr const char* _type_key = "meta_schedule.MeasureRecord";
+  TVM_DECLARE_FINAL_OBJECT_INFO(MeasureRecordNode, Object);
+};
+
+class MeasureRecord : public ObjectRef {
+ public:
+  explicit MeasureRecord(Schedule sch, Array<FloatImm> costs);
+
+  TVM_DEFINE_OBJECT_REF_METHODS(MeasureRecord, ObjectRef, MeasureRecordNode);
+};
+
+MeasureRecord::MeasureRecord(Schedule sch, Array<FloatImm> costs) {
+  ObjectPtr<MeasureRecordNode> n = make_object<MeasureRecordNode>();
+  n->sch = std::move(sch);
+  n->costs = std::move(costs);
+  n->avg_cost = FloatArrayMean(n->costs);
+  data_ = std::move(n);
+}
+
+std::vector<Array<ObjectRef>> ParseLogFile(const String& filename) {
   static const auto* f_deserialize = runtime::Registry::Get("meta_schedule._deserialize_json");
   CHECK(f_deserialize) << "IndexError: Cannot find packed function \""
                           "meta_schedule._deserialize_json\", which should be registered in python";
-  std::ifstream ifs(task->log_file.value());
+  std::ifstream ifs(filename);
   if (!ifs.is_open() || ifs.fail()) {
-    return;
+    LOG(INFO) << "File not found: " << filename << ". No recrod is loaded";
+    return {};
   }
   std::vector<Array<ObjectRef>> records;
   for (std::string line; std::getline(ifs, line);) {
@@ -139,52 +160,76 @@ void ProgramMeasurerNode::Init(const SearchTask& task) {
     Array<ObjectRef> record = (*f_deserialize)(line);
     records.push_back(record);
   }
-  LOG(INFO) << "Found " << records.size() << " record(s) in the file: " << task->log_file.value()
-            << ". Now loading...";
-  for (const Array<ObjectRef>& record : records) {
-    CHECK_EQ(record.size(), 7);
-    String task_name = Downcast<String>(record[0]);
-    if (task_name != task->task_name) {
-      continue;
-    }
-    String log_version = Downcast<String>(record[5]);
-    if (log_version != String(kLogVersion)) {
-      continue;
-    }
-    // TODO(@junrushao1994): structural equality of target
-    Map<String, ObjectRef> target = Downcast<Map<String, ObjectRef>>(record[1]);
-    if (Target(target)->str() != task->target->str()) {
-      continue;
-    }
-    Map<String, ObjectRef> target_host = Downcast<Map<String, ObjectRef>>(record[2]);
-    if (Target(target_host)->str() != task->target_host->str()) {
-      continue;
-    }
-    tir::PrimFunc orig_func{nullptr};
-    {
-      std::string prim_func_b64 = Downcast<String>(record[6]);
-      dmlc::MemoryStringStream m_stream(&prim_func_b64);
-      support::Base64InStream b64strm(&m_stream);
-      std::string parsed;
-      b64strm.InitPosition();
-      dmlc::Stream* strm = &b64strm;
-      strm->Read(&parsed);
-      orig_func = Downcast<tir::PrimFunc>(LoadJSON(parsed));
-    }
-    Array<ObjectRef> trace = Downcast<Array<ObjectRef>>(record[4]);
-    Schedule sch = ScheduleNode::Import(trace, orig_func, /*seed=*/NullOpt);
-    Array<FloatImm> costs = Downcast<Array<FloatImm>>(record[3]);
-    double avg_time_cost = FloatArrayMean(costs);
-    ++num_measured;
-    if (avg_time_cost < best_time_cost) {
-      best_time_cost = avg_time_cost;
-      best_index = num_measured;
-      best_sch = sch;
-    }
+  LOG(INFO) << "Found " << records.size() << " record(s) in the file: " << filename;
+  return records;
+}
+
+Optional<MeasureRecord> ParseRecord(const SearchTask& task, const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 7);
+  String task_name = Downcast<String>(record[0]);
+  Map<String, ObjectRef> target = Downcast<Map<String, ObjectRef>>(record[1]);
+  Map<String, ObjectRef> target_host = Downcast<Map<String, ObjectRef>>(record[2]);
+  String log_version = Downcast<String>(record[5]);
+  // TODO(@junrushao1994): structural equality of target
+  if (task_name != task->task_name ||                  //
+      log_version != String(kLogVersion) ||            //
+      Target(target)->str() != task->target->str() ||  //
+      Target(target_host)->str() != task->target_host->str()) {
+    return NullOpt;
   }
-  LOG(INFO) << "Loaded " << num_measured
-            << " valid records from the file: " << task->log_file.value()
-            << ". Best time cost: " << best_time_cost;
+  tir::PrimFunc orig_func{nullptr};
+  {
+    std::string prim_func_b64 = Downcast<String>(record[6]);
+    dmlc::MemoryStringStream m_stream(&prim_func_b64);
+    support::Base64InStream b64strm(&m_stream);
+    std::string parsed;
+    b64strm.InitPosition();
+    dmlc::Stream* strm = &b64strm;
+    strm->Read(&parsed);
+    orig_func = Downcast<tir::PrimFunc>(LoadJSON(parsed));
+  }
+  return MeasureRecord(/*sch=*/ScheduleNode::Import(/*trace=*/Downcast<Array<ObjectRef>>(record[4]),
+                                                    /*orig_func=*/orig_func, /*seed=*/NullOpt),
+                       /*costs=*/Downcast<Array<FloatImm>>(record[3]));
+}
+
+void ProgramMeasurerNode::Init(const SearchTask& task) {
+  num_measured = 0;
+  best_time_cost = ProgramMeasurer::kMaxTimeCost;
+  best_index = -1;
+  best_sch = NullOpt;
+  for (const MeasureCallback& callback : callbacks) {
+    callback->Init(task);
+  }
+  // Loading existing logs from file
+  if (task->log_file.defined()) {
+    String log_file = task->log_file.value();
+    std::vector<Array<ObjectRef>> records = ParseLogFile(log_file);
+    if (!records.empty()) {
+      std::vector<Optional<MeasureRecord>> imported;
+      imported.reserve(records.size());
+      for (const Array<ObjectRef>& record : records) {
+        imported.push_back(ParseRecord(task, record));
+      }
+      for (const Optional<MeasureRecord>& opt_record : imported) {
+        if (!opt_record.defined()) {
+          continue;
+        }
+        ++num_measured;
+        const MeasureRecord& record = opt_record.value();
+        if (record->avg_cost < best_time_cost) {
+          best_time_cost = record->avg_cost;
+          best_index = num_measured;
+          best_sch = record->sch;
+        }
+      }
+      LOG(INFO) << "Loaded " << num_measured
+                << " valid records from the file: " << task->log_file.value()
+                << ". Best time cost: " << best_time_cost;
+    }
+  } else {
+    LOG(INFO) << "No log file is used.";
+  }
 }
 
 Array<MeasureResult> ProgramMeasurerNode::PureMeasure(const Array<MeasureInput>& measure_inputs,
