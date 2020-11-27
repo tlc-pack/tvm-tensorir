@@ -21,6 +21,7 @@
 
 #include "./analysis.h"
 #include "./measure.h"
+#include "./utils.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -70,13 +71,12 @@ TVM_DLL Optional<Schedule> AutoTune(SearchTask task, SearchSpace space, SearchSt
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<SearchTaskNode>([](const ObjectRef& obj, ReprPrinter* p) {
-      static const auto* f = runtime::Registry::Get("script.AsTVMScript");
-      CHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
       const auto* n = static_cast<const SearchTaskNode*>(obj.get());
-      p->stream << "SearchTask(task_name=" << n->task_name << ", flop_ct = " << n->flop_ct
-                << "), workload:\n"
-                << ((*f)(n->workload, false).operator String());
+      p->stream << "SearchTask(task_name=" << n->task_name << ", flop_ct=" << std::fixed
+                << n->flop_ct << "), workload:\n"
+                << Repr(n->workload);
     });
+
 /********** FFI **********/
 
 struct Internal {
