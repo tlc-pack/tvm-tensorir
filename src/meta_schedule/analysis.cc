@@ -520,7 +520,9 @@ class AutoTensorizeComparator : public tir::TensorizeComparator {
       return false;
     }
     bool equal = tir::StmtComparator::VisitStmt(lhs, rhs);
-    CHECK(equal || !assert_mode_) << "Stmts are not matching between:\n" << n << "\nand\n" << rhs;
+    CHECK(equal || !assert_mode_) << "Statements are not matching between:\n"
+                                  << n << "\nand\n"
+                                  << rhs;
     return equal;
   }
 
@@ -668,39 +670,114 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::Schedule& sch,
 }
 
 double CountFlop(const tir::PrimFunc& func) {
-  class FlopCounter : public tir::ExprFunctor<double(const PrimExpr& n)>,
-                      public tir::StmtFunctor<double(const tir::Stmt& n)> {
+  struct TResult {
+    using TTable = std::unordered_map<int32_t, double>;
+
+    TResult() = default;
+
+    explicit TResult(const tvm::DataType& dtype) { Add(dtype); }
+
+    void Add(const tvm::DataType& dtype) { data_[DataType2Int(dtype)] += 1; }
+
+    TResult operator+=(const TResult& rhs) {
+      for (const auto& kv : rhs.data_) {
+        data_[kv.first] += kv.second;
+      }
+      return *this;
+    }
+
+    TResult operator*=(int64_t rhs) {
+      for (auto& kv : data_) {
+        kv.second *= rhs;
+      }
+      return *this;
+    }
+
+    TResult MaxWith(const TResult& rhs) {
+      for (const auto& kv : rhs.data_) {
+        double& v = data_[kv.first];
+        if (v < kv.second) {
+          v = kv.second;
+        }
+      }
+      return *this;
+    }
+
+    struct DType {
+      uint8_t code : 8;
+      uint8_t bits : 8;
+      uint16_t lanes : 16;
+    };
+    static_assert(sizeof(DType) == 4, "Incorrect size of DType");
+
+    static String Int2Str(int32_t dtype) {
+      union {
+        DType dst;
+        int32_t src;
+      } converter;
+      converter.src = dtype;
+      static std::string type_code_tab[] = {"int", "uint", "float", "handle", "bfloat"};
+      std::ostringstream os;
+      os << type_code_tab[converter.dst.code];
+      os << static_cast<int>(converter.dst.bits);
+      if (converter.dst.lanes != 1) {
+        os << "x" << static_cast<int>(converter.dst.lanes);
+      }
+      return os.str();
+    }
+
+    static int32_t DataType2Int(const tvm::DataType& dtype) {
+      union {
+        DType src;
+        int32_t dst;
+      } converter;
+      converter.src.code = dtype.code();
+      converter.src.bits = dtype.bits();
+      converter.src.lanes = dtype.lanes();
+      return converter.dst;
+    }
+
+    TTable data_;
+  };
+
+  class FlopCounter : public tir::ExprFunctor<TResult(const PrimExpr& n)>,
+                      public tir::StmtFunctor<TResult(const tir::Stmt& n)> {
    public:
     ~FlopCounter() {}
 
-    double VisitExpr(const PrimExpr& expr) { return ExprFunctor::VisitExpr(expr); }
-    double VisitStmt(const tir::Stmt& stmt) { return StmtFunctor::VisitStmt(stmt); }
+    TResult VisitExpr(const PrimExpr& expr) { return ExprFunctor::VisitExpr(expr); }
+    TResult VisitStmt(const tir::Stmt& stmt) { return StmtFunctor::VisitStmt(stmt); }
 
-    double VisitStmt_(const tir::IfThenElseNode* branch) override {
-      return std::max(VisitStmt(branch->then_case), VisitStmt(branch->else_case)) +
-             VisitExpr(branch->condition);
+    TResult VisitStmt_(const tir::IfThenElseNode* branch) override {
+      TResult cond = VisitExpr(branch->condition);
+      cond += VisitStmt(branch->then_case).MaxWith(VisitStmt(branch->else_case));
+      return cond;
     }
 
-    double VisitStmt_(const tir::BufferStoreNode* store) override {
-      return VisitExpr(store->value);
+    TResult VisitStmt_(const tir::BufferStoreNode* store) override {
+      TResult result = VisitExpr(store->value);
+      for (const PrimExpr& e : store->indices) {
+        result += VisitExpr(e);
+      }
+      return result;
     }
 
-    double VisitStmt_(const tir::SeqStmtNode* seq) override {
-      double result = 0.0;
+    TResult VisitStmt_(const tir::SeqStmtNode* seq) override {
+      TResult result;
       for (const tir::Stmt& stmt : seq->seq) {
         result += VisitStmt(stmt);
       }
       return result;
     }
 
-    double VisitStmt_(const tir::BlockRealizeNode* block) override {
+    TResult VisitStmt_(const tir::BlockRealizeNode* block) override {
       return VisitStmt(block->block->body);
     }
 
-    double VisitStmt_(const tir::BlockNode* block) override { return VisitStmt(block->body); }
+    TResult VisitStmt_(const tir::BlockNode* block) override { return VisitStmt(block->body); }
 
-    double VisitStmt_(const tir::LoopNode* loop) override {
-      double result = VisitStmt(loop->body);
+    TResult VisitStmt_(const tir::LoopNode* loop) override {
+      TResult result = VisitStmt(loop->body);
       const auto* int_imm = loop->extent.as<IntImmNode>();
       CHECK(int_imm) << "TypeError: Expect the extent of a loop to be IntImm, but gets: "
                      << loop->extent->GetTypeKey();
@@ -708,15 +785,26 @@ double CountFlop(const tir::PrimFunc& func) {
       return result;
     }
 
-    double VisitStmt_(const tir::ReduceStepNode* reduce) override {
+    TResult VisitStmt_(const tir::ReduceStepNode* reduce) override {
       CHECK(reduce->lhs->IsInstance<tir::BufferLoadNode>())
           << "TypeError: Expect ReduceStep's lhs to be BufferLoad, but gets: "
           << reduce->lhs->GetTypeKey();
-      return VisitExpr(reduce->rhs);
+      TResult result;
+      for (const PrimExpr& i : reduce->comm_reducer->result) {
+        result += VisitExpr(i);
+      }
+      result += VisitExpr(reduce->lhs);
+      result += VisitExpr(reduce->rhs);
+      return result;
     }
 
 #define TVM_META_SCHEDULE_VISIT_BINARY(Node) \
-  double VisitExpr_(const Node* op) final { return 1.0 + VisitExpr(op->a) + VisitExpr(op->b); }
+  TResult VisitExpr_(const Node* op) final { \
+    TResult result(op->dtype);               \
+    result += VisitExpr(op->a);              \
+    result += VisitExpr(op->b);              \
+    return result;                           \
+  }
     TVM_META_SCHEDULE_VISIT_BINARY(tir::AddNode);
     TVM_META_SCHEDULE_VISIT_BINARY(tir::SubNode);
     TVM_META_SCHEDULE_VISIT_BINARY(tir::MulNode);
@@ -735,21 +823,44 @@ double CountFlop(const tir::PrimFunc& func) {
     TVM_META_SCHEDULE_VISIT_BINARY(tir::AndNode);
     TVM_META_SCHEDULE_VISIT_BINARY(tir::OrNode);
 #undef TVM_META_SCHEDULE_VISIT_BINARY
+    TResult VisitExpr_(const tir::CastNode* op) override { return VisitExpr(op->value); }
+    TResult VisitExpr_(const tir::VarNode* op) override { return TResult(); }
+    TResult VisitExpr_(const tir::SizeVarNode* op) override { return TResult(); }
+    TResult VisitExpr_(const tir::BufferLoadNode* op) override { return TResult(); }
+    TResult VisitExpr_(const IntImmNode* op) override { return TResult(); }
+    TResult VisitExpr_(const FloatImmNode* op) override { return TResult(); }
 
-    double VisitExpr_(const tir::NotNode* op) override { return 1.0 + VisitExpr(op->a); }
-    double VisitExpr_(const tir::CastNode* op) override { return VisitExpr(op->value); }
-    double VisitExpr_(const tir::SelectNode* op) override {
-      return VisitExpr(op->condition) +
-             std::max(VisitExpr(op->true_value), VisitExpr(op->false_value));
+    TResult VisitExpr_(const tir::NotNode* op) override {
+      TResult result(op->dtype);
+      result += VisitExpr(op->a);
+      return result;
     }
 
-    double VisitExpr_(const tir::VarNode* op) override { return 0.0; }
-    double VisitExpr_(const tir::SizeVarNode* op) override { return 0.0; }
-    double VisitExpr_(const tir::BufferLoadNode* op) override { return 0.0; }
-    double VisitExpr_(const IntImmNode* op) override { return 0.0; }
-    double VisitExpr_(const FloatImmNode* op) override { return 0.0; }
+    TResult VisitExpr_(const tir::SelectNode* op) override {
+      TResult cond = VisitExpr(op->condition);
+      cond += VisitExpr(op->true_value).MaxWith(VisitExpr(op->false_value));
+      return cond;
+    }
+
+    TResult VisitExpr_(const tir::CallNode* op) override {
+      TResult ret;
+      for (const auto& x : op->args) {
+        ret += VisitExpr(x);
+      }
+      return ret;
+    }
   };
-  return FlopCounter().VisitStmt(func->body);
+  TResult result = FlopCounter().VisitStmt(func->body);
+  double cnt = 0.0;
+  int i32 = TResult::DataType2Int(tvm::DataType::Int(32));
+  int i64 = TResult::DataType2Int(tvm::DataType::Int(64));
+  int u1 = TResult::DataType2Int(tvm::DataType::UInt(1));
+  for (const auto& kv : result.data_) {
+    if (kv.first != i32 && kv.first != i64 && kv.first != u1) {
+      cnt += kv.second;
+    }
+  }
+  return cnt;
 }
 
 TVM_REGISTER_NODE_TYPE(TensorizeInfoNode);
