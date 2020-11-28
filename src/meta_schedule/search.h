@@ -43,6 +43,8 @@ class SearchTaskNode : public Object {
   Target target_host;
   /*! \brief The file to load/store search logs */
   Optional<String> log_file;
+  /*! \brief The number of floating point operations in the task */
+  double flop_ct;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("workload", &workload);
@@ -50,6 +52,7 @@ class SearchTaskNode : public Object {
     v->Visit("target", &target);
     v->Visit("target_host", &target_host);
     v->Visit("log_file", &log_file);
+    v->Visit("flop_ct", &flop_ct);
   }
 
   static constexpr const char* _type_key = "meta_schedule.SearchTask";
