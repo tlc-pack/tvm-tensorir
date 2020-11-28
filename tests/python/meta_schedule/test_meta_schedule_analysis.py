@@ -288,10 +288,10 @@ def test_meta_schedule_get_tensorize_loop_mapping():
 
 def test_meta_schedule_analysis_count_flop():
     result = ms.analysis.count_flop(matmul)
-    expected = 1024 ** 3
+    expected = 2 * 1024 ** 3
     assert abs(result - expected) < 0.5
     result = ms.analysis.count_flop(matmul_relu)
-    expected = 1024 ** 3 + 1024 ** 2
+    expected = 2 * 1024 ** 3 + 1024 ** 2
     assert abs(result - expected) < 0.5
 
 
