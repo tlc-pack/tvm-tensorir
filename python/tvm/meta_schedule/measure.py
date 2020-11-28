@@ -182,7 +182,7 @@ class RPCRunner(ProgramRunner):
         timeout: int = 10,
         number: int = 3,
         repeat: int = 1,
-        min_repeat_ms: int = 0,
+        min_repeat_ms: int = 200,
         cooldown_interval: float = 0.0,
         enable_cpu_cache_flush: bool = False,
     ):
