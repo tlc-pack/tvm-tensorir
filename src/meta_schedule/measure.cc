@@ -112,6 +112,100 @@ Array<MeasureResult> RPCRunnerNode::Run(const Array<MeasureInput>& inputs,
 
 /********** ProgramMeasurer **********/
 
+class MeasureRecordNode : public Object {
+ public:
+  Schedule sch;
+  Array<FloatImm> costs;
+  double avg_cost;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("sch", &sch);
+    v->Visit("costs", &costs);
+    v->Visit("avg_cost", &avg_cost);
+  }
+
+  static constexpr const char* _type_key = "meta_schedule.MeasureRecord";
+  TVM_DECLARE_FINAL_OBJECT_INFO(MeasureRecordNode, Object);
+};
+
+class MeasureRecord : public ObjectRef {
+ public:
+  explicit MeasureRecord(Schedule sch, Array<FloatImm> costs);
+
+  TVM_DEFINE_OBJECT_REF_METHODS(MeasureRecord, ObjectRef, MeasureRecordNode);
+};
+
+MeasureRecord::MeasureRecord(Schedule sch, Array<FloatImm> costs) {
+  ObjectPtr<MeasureRecordNode> n = make_object<MeasureRecordNode>();
+  n->sch = std::move(sch);
+  n->costs = std::move(costs);
+  n->avg_cost = FloatArrayMean(n->costs);
+  data_ = std::move(n);
+}
+
+Array<String> LoadLogFile(const String& filename) {
+  std::ifstream ifs(filename);
+  if (!ifs.is_open() || ifs.fail()) {
+    LOG(INFO) << "File not found: " << filename << ". No recrod is loaded";
+    return {};
+  }
+  Array<String> result;
+  for (std::string line; std::getline(ifs, line);) {
+    if (!line.empty() && line[0] != '#' && line[0] != '/' && !std::isspace(line[0])) {
+      result.push_back(line);
+    }
+  }
+  return result;
+}
+
+Array<ObjectRef> DeserializeLog(const String& line) {
+  static const auto* f_deserialize = runtime::Registry::Get("meta_schedule._deserialize_json");
+  CHECK(f_deserialize) << "IndexError: Cannot find packed function \""
+                          "meta_schedule._deserialize_json\", which should be registered in python";
+  return (*f_deserialize)(line);
+}
+
+Array<Array<ObjectRef>> BatchDeserializeLog(const Array<String>& line) {
+  static const auto* f_deserialize =
+      runtime::Registry::Get("meta_schedule._batch_deserialize_json");
+  CHECK(f_deserialize)
+      << "IndexError: Cannot find packed function \""
+         "meta_schedule._batch_deserialize_json\", which should be registered in python";
+  return (*f_deserialize)(line);
+}
+
+Optional<MeasureRecord> ImportLog(const SearchTask& task, const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 7);
+  String task_name = Downcast<String>(record[0]);
+  Map<String, ObjectRef> target = Downcast<Map<String, ObjectRef>>(record[1]);
+  Map<String, ObjectRef> target_host = Downcast<Map<String, ObjectRef>>(record[2]);
+  String log_version = Downcast<String>(record[5]);
+  // TODO(@junrushao1994): structural equality of target
+  if (task_name != task->task_name ||                  //
+      log_version != String(kLogVersion) ||            //
+      Target(target)->str() != task->target->str() ||  //
+      Target(target_host)->str() != task->target_host->str()) {
+    return NullOpt;
+  }
+  tir::PrimFunc orig_func{nullptr};
+  {
+    std::string prim_func_b64 = Downcast<String>(record[6]);
+    dmlc::MemoryStringStream m_stream(&prim_func_b64);
+    support::Base64InStream b64strm(&m_stream);
+    std::string parsed;
+    b64strm.InitPosition();
+    dmlc::Stream* strm = &b64strm;
+    strm->Read(&parsed);
+    orig_func = Downcast<tir::PrimFunc>(LoadJSON(parsed));
+  }
+  if (!StructuralEqual()(orig_func, task->workload)) {
+    return NullOpt;
+  }
+  return MeasureRecord(/*sch=*/ScheduleNode::Import(/*trace=*/Downcast<Array<ObjectRef>>(record[4]),
+                                                    /*orig_func=*/orig_func, /*seed=*/NullOpt),
+                       /*costs=*/Downcast<Array<FloatImm>>(record[3]));
+}
+
 void ProgramMeasurerNode::Init(const SearchTask& task) {
   num_measured = 0;
   best_time_cost = ProgramMeasurer::kMaxTimeCost;
@@ -121,70 +215,48 @@ void ProgramMeasurerNode::Init(const SearchTask& task) {
     callback->Init(task);
   }
   // Loading existing logs from file
-  if (!task->log_file.defined()) {
-    return;
+  if (task->log_file.defined()) {
+    // Read every line of the log file
+    String log_file = task->log_file.value();
+    Array<String> log_file_lines = LoadLogFile(log_file);
+    if (!log_file_lines.empty()) {
+      LOG(INFO) << "Found " << log_file_lines.size() << " record(s) in the file: " << log_file
+                << ". Now parsing...";
+    }
+    // Parse the log file
+    Array<Array<ObjectRef>> parsed_records;
+    parsed_records.reserve(log_file_lines.size());
+    for (const String& line : log_file_lines) {
+      parsed_records.push_back(DeserializeLog(line));
+    }
+    // Import from the log file
+    std::vector<Optional<MeasureRecord>> imported_records;
+    imported_records.reserve(parsed_records.size());
+    for (const Array<ObjectRef>& record : parsed_records) {
+      imported_records.push_back(ImportLog(task, record));
+    }
+    // Find the best result
+    for (const Optional<MeasureRecord>& opt_record : imported_records) {
+      if (!opt_record.defined()) {
+        continue;
+      }
+      ++num_measured;
+      const MeasureRecord& record = opt_record.value();
+      if (record->avg_cost < best_time_cost) {
+        best_time_cost = record->avg_cost;
+        best_index = num_measured;
+        best_sch = record->sch;
+      }
+    }
+    if (!log_file_lines.empty()) {
+      LOG(INFO) << "Loaded " << imported_records.size()
+                << " valid record(s) from the file: " << log_file
+                << ". Best time cost: " << (best_time_cost * 1000) << " ms, "
+                << (task->flop_ct / best_time_cost / 1e9) << " GFLOPs";
+    }
+  } else {
+    LOG(INFO) << "No log file is used.";
   }
-  static const auto* f_deserialize = runtime::Registry::Get("meta_schedule._deserialize_json");
-  CHECK(f_deserialize) << "IndexError: Cannot find packed function \""
-                          "meta_schedule._deserialize_json\", which should be registered in python";
-  std::ifstream ifs(task->log_file.value());
-  if (!ifs.is_open() || ifs.fail()) {
-    return;
-  }
-  std::vector<Array<ObjectRef>> records;
-  for (std::string line; std::getline(ifs, line);) {
-    if (line.empty() || line[0] == '#' || line[0] == '/' || std::isspace(line[0])) {
-      continue;
-    }
-    Array<ObjectRef> record = (*f_deserialize)(line);
-    records.push_back(record);
-  }
-  LOG(INFO) << "Found " << records.size() << " record(s) in the file: " << task->log_file.value()
-            << ". Now loading...";
-  for (const Array<ObjectRef>& record : records) {
-    CHECK_EQ(record.size(), 7);
-    String task_name = Downcast<String>(record[0]);
-    if (task_name != task->task_name) {
-      continue;
-    }
-    String log_version = Downcast<String>(record[5]);
-    if (log_version != String(kLogVersion)) {
-      continue;
-    }
-    // TODO(@junrushao1994): structural equality of target
-    Map<String, ObjectRef> target = Downcast<Map<String, ObjectRef>>(record[1]);
-    if (Target(target)->str() != task->target->str()) {
-      continue;
-    }
-    Map<String, ObjectRef> target_host = Downcast<Map<String, ObjectRef>>(record[2]);
-    if (Target(target_host)->str() != task->target_host->str()) {
-      continue;
-    }
-    tir::PrimFunc orig_func{nullptr};
-    {
-      std::string prim_func_b64 = Downcast<String>(record[6]);
-      dmlc::MemoryStringStream m_stream(&prim_func_b64);
-      support::Base64InStream b64strm(&m_stream);
-      std::string parsed;
-      b64strm.InitPosition();
-      dmlc::Stream* strm = &b64strm;
-      strm->Read(&parsed);
-      orig_func = Downcast<tir::PrimFunc>(LoadJSON(parsed));
-    }
-    Array<ObjectRef> trace = Downcast<Array<ObjectRef>>(record[4]);
-    Schedule sch = ScheduleNode::Import(trace, orig_func, /*seed=*/NullOpt);
-    Array<FloatImm> costs = Downcast<Array<FloatImm>>(record[3]);
-    double avg_time_cost = FloatArrayMean(costs);
-    ++num_measured;
-    if (avg_time_cost < best_time_cost) {
-      best_time_cost = avg_time_cost;
-      best_index = num_measured;
-      best_sch = sch;
-    }
-  }
-  LOG(INFO) << "Loaded " << num_measured
-            << " valid records from the file: " << task->log_file.value()
-            << ". Best time cost: " << best_time_cost;
 }
 
 Array<MeasureResult> ProgramMeasurerNode::PureMeasure(const Array<MeasureInput>& measure_inputs,
@@ -207,6 +279,7 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
       ++num_measured;
       const MeasureInput& measure_input = batch_measure_inputs[i];
       const MeasureResult& measure_result = batch_measure_results[i];
+      double flop_ct = measure_input->task->flop_ct;
       MeasureErrorNO error_no = static_cast<MeasureErrorNO>(measure_result->error_no);
       if (error_no == MeasureErrorNO::kNoError) {
         double avg_time_cost = FloatArrayMean(measure_result->costs);
@@ -215,19 +288,22 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
           best_index = num_measured;
           best_sch = measure_input->sch;
         }
-        StdCout(verbose) << std::fixed << std::setprecision(4) << "#" << num_measured
-                         << "\tTime: " << avg_time_cost << "\tBest time: " << best_time_cost
-                         << std::endl;
+        StdCout(verbose) << std::fixed << std::setprecision(2) << "#" << num_measured
+                         << "\tTime: " << (avg_time_cost * 1000) << " ms, "
+                         << (flop_ct / avg_time_cost / 1e9) << " GFLOPs"
+                         << "\tBest time: " << (best_time_cost * 1000) << " ms, "
+                         << (flop_ct / best_time_cost / 1e9) << " GFLOPs" << std::endl;
       } else if (error_no == MeasureErrorNO::kRunTimeoutError ||
                  error_no == MeasureErrorNO::kBuildTimeoutError) {
-        StdCout(verbose) << std::fixed << std::setprecision(4) << "#" << num_measured
+        StdCout(verbose) << std::fixed << std::setprecision(2) << "#" << num_measured
                          << "\tError: " << MeasureErrorNOToStr(error_no)
-                         << "\tBest time: " << best_time_cost << std::endl
-                         << measure_result->error_msg << "\n";
+                         << "\tBest time: " << (best_time_cost * 1000) << " ms, "
+                         << (flop_ct / best_time_cost / 1e9) << " GFLOPs" << std::endl;
       } else {
-        StdCout(verbose) << std::fixed << std::setprecision(4) << "#" << num_measured
+        StdCout(verbose) << std::fixed << std::setprecision(2) << "#" << num_measured
                          << "\tError: " << MeasureErrorNOToStr(error_no)
-                         << "\tBest time: " << best_time_cost << std::endl
+                         << "\tBest time: " << (best_time_cost * 1000) << " ms, "
+                         << (flop_ct / best_time_cost / 1e9) << " GFLOPs" << std::endl
                          << measure_result->error_msg << "\n"
                          << "The IR is:\n"
                          << Repr(measure_input->sch);

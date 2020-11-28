@@ -19,7 +19,9 @@
 
 #include "./search.h"  // NOLINT(build/include)
 
+#include "./analysis.h"
 #include "./measure.h"
+#include "./utils.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -34,6 +36,7 @@ SearchTask::SearchTask(tir::PrimFunc workload, String task_name, Target target, 
   n->target = std::move(target);
   n->target_host = std::move(target_host);
   n->log_file = std::move(log_file);
+  n->flop_ct = CountFlop(n->workload);
   data_ = std::move(n);
 }
 
@@ -55,11 +58,24 @@ TVM_DLL Optional<Schedule> AutoTune(SearchTask task, SearchSpace space, SearchSt
   if (seed.defined()) {
     seeded.Seed(seed.value());
   }
+  if (verbose) {
+    LOG(INFO) << "Tuning for task: " << task;
+  }
   space->Init(task);
   strategy->Init(task);
   measurer->Init(task);
   return strategy->Search(task, space, measurer, &seeded, verbose);
 }
+
+/********** Printer **********/
+
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<SearchTaskNode>([](const ObjectRef& obj, ReprPrinter* p) {
+      const auto* n = static_cast<const SearchTaskNode*>(obj.get());
+      p->stream << "SearchTask(task_name=" << n->task_name << ", flop_ct=" << std::fixed
+                << n->flop_ct << "), workload:\n"
+                << Repr(n->workload);
+    });
 
 /********** FFI **********/
 
