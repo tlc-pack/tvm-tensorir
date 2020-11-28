@@ -143,13 +143,13 @@ MeasureRecord::MeasureRecord(Schedule sch, Array<FloatImm> costs) {
   data_ = std::move(n);
 }
 
-std::vector<String> LoadLogFile(const String& filename) {
+Array<String> LoadLogFile(const String& filename) {
   std::ifstream ifs(filename);
   if (!ifs.is_open() || ifs.fail()) {
     LOG(INFO) << "File not found: " << filename << ". No recrod is loaded";
     return {};
   }
-  std::vector<String> result;
+  Array<String> result;
   for (std::string line; std::getline(ifs, line);) {
     if (!line.empty() && line[0] != '#' && line[0] != '/' && !std::isspace(line[0])) {
       result.push_back(line);
@@ -162,6 +162,15 @@ Array<ObjectRef> DeserializeLog(const String& line) {
   static const auto* f_deserialize = runtime::Registry::Get("meta_schedule._deserialize_json");
   CHECK(f_deserialize) << "IndexError: Cannot find packed function \""
                           "meta_schedule._deserialize_json\", which should be registered in python";
+  return (*f_deserialize)(line);
+}
+
+Array<Array<ObjectRef>> BatchDeserializeLog(const Array<String>& line) {
+  static const auto* f_deserialize =
+      runtime::Registry::Get("meta_schedule._batch_deserialize_json");
+  CHECK(f_deserialize)
+      << "IndexError: Cannot find packed function \""
+         "meta_schedule._batch_deserialize_json\", which should be registered in python";
   return (*f_deserialize)(line);
 }
 
@@ -209,13 +218,13 @@ void ProgramMeasurerNode::Init(const SearchTask& task) {
   if (task->log_file.defined()) {
     // Read every line of the log file
     String log_file = task->log_file.value();
-    std::vector<String> log_file_lines = LoadLogFile(log_file);
+    Array<String> log_file_lines = LoadLogFile(log_file);
     if (!log_file_lines.empty()) {
       LOG(INFO) << "Found " << log_file_lines.size() << " record(s) in the file: " << log_file
                 << ". Now parsing...";
     }
     // Parse the log file
-    std::vector<Array<ObjectRef>> parsed_records;
+    Array<Array<ObjectRef>> parsed_records;
     parsed_records.reserve(log_file_lines.size());
     for (const String& line : log_file_lines) {
       parsed_records.push_back(DeserializeLog(line));
