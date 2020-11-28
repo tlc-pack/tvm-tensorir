@@ -46,6 +46,12 @@ inline bool IsConstInt(const PrimExpr& x) {
   return false;
 }
 
+inline String Repr(const tir::PrimFunc& func) {
+  static const auto* f = runtime::Registry::Get("script.AsTVMScript");
+  CHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
+  return (*f)(func, false).operator String();
+}
+
 /*!
  * \brief Check if an expression consists of a single variable, or a variable +/i an constant
  * \param expr The expression to be checked
