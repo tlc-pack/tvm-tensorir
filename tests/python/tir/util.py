@@ -25,10 +25,11 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, [128, 128])
     B = tir.match_buffer(b, [128, 128])
     C = tir.match_buffer(c, [128, 128])
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
     with tir.block([128, 128, tir.reduce_axis(0, 128)], "update") as [vi, vj, vk]:
-        reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
+        with tir.init():
+            C[vi, vj] = 0.0
+        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
 @tvm.script.tir

@@ -21,7 +21,6 @@ from typed_ast import ast3 as ast
 import tvm.tir
 from tvm import te
 from .utils import get_param_list
-from .intrin import StepIntrin
 from .registry import register
 
 
@@ -238,41 +237,6 @@ class TVMScriptLambda:
     def __init__(self, args, body):
         self.args = args
         self.body = body
-
-
-class TVMScriptReducer:
-    """TVM Script Reducer, used in reducer declaration"""
-
-    def __init__(self, combiner, identity):
-        self.combiner = combiner
-        self.identity = identity
-        dtype = self.identity.dtype
-        var0 = tvm.tir.Var(self.combiner.args[0].name, dtype)
-        var1 = tvm.tir.Var(self.combiner.args[1].name, dtype)
-        vmap = {self.combiner.args[0]: var0, self.combiner.args[1]: var1}
-        body = tvm.tir.stmt_functor.substitute(self.combiner.body, vmap)
-
-        self.reducer = tvm.tir.CommReducer(
-            [var0], [var1], [body], [self.identity]
-        )
-        self.step = StepIntrin(self)
-
-
-@register
-class CommReducer(SpecialStmt):
-    def __init__(self):
-        def comm_reducer(combiner, identity):
-            if isinstance(combiner, TVMScriptLambda) and len(combiner.args) == 2:
-                assert isinstance(self.node, ast.Assign)
-                self.context.update_symbol(
-                    self.node.targets[0].id, TVMScriptReducer(combiner, identity)
-                )
-            else:
-                self.context.report_error(
-                    "comm_reducer expect a 2-argument lambda function as first argument"
-                )
-
-        super().__init__(comm_reducer, def_symbol=True)
 
 
 @register

@@ -40,15 +40,14 @@ def sparse_dense_bsr(x: ty.handle, data: ty.handle, indices: ty.handle, indptr: 
     W_indices = tir.match_buffer(indices, [num_blocks], "int32")
     W_indptr = tir.match_buffer(indptr, [N_blocks + 1], "int32")
     BSRmm = tir.match_buffer(bsrmm, [M, N_blocks*bs_r], "float32")
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
-
     BSRmm_block = tir.buffer_allocate([M, N_blocks, bs_r], "float32")
-
     for ax0, ax1, ax2 in tir.grid(M, N_blocks, bs_r):
         with tir.block([M, N_blocks, bs_r], "bsr_par") as [i, nb_j, j]:
             for ax3, ax4 in tir.grid(W_indptr[nb_j + 1] - W_indptr[nb_j], bs_c):
                 with tir.block([tir.reduce_axis(0, W_indptr[nb_j + 1] - W_indptr[nb_j]), tir.reduce_axis(0, bs_c)], "bsr_reduce") as [k, c]:
-                    reducer.step(BSRmm_block[i, nb_j, j], W_data[k+W_indptr[nb_j], j, c]*X[i, bs_c*W_indices[k+W_indptr[nb_j]]+c])
+                    with tir.init():
+                        BSRmm_block[i, nb_j, j] = 0.0
+                    BSRmm_block[i, nb_j, j] = BSRmm_block[i, nb_j, j] + W_data[k+W_indptr[nb_j], j, c]*X[i, bs_c*W_indices[k+W_indptr[nb_j]]+c]
 
     for i, j in tir.grid(M, N_blocks*bs_r):
         with tir.block([M, N_blocks*bs_r], "bsr_block") as [m, n]:
@@ -57,6 +56,7 @@ def sparse_dense_bsr(x: ty.handle, data: ty.handle, indices: ty.handle, indptr: 
 
 def schedule_sparse_dense_llvm(func):
     s = tir.create_schedule(func)
+
     bsr_par = s.get_block("bsr_par")
     bsr_reduce = s.get_block("bsr_reduce")
     bsr_block = s.get_block("bsr_block")

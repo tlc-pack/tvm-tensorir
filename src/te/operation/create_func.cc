@@ -54,6 +54,22 @@ std::string GetUniqueName(const std::string& prefix,
   return unique_prefix;
 }
 
+PrimExpr ApplyCombiner(const CommReducer& comm_reducer, const PrimExpr& lhs, const PrimExpr& rhs) {
+  CHECK_EQ(comm_reducer->lhs.size(), 1);
+  CHECK_EQ(comm_reducer->rhs.size(), 1);
+  CHECK_EQ(comm_reducer->result.size(), 1);
+  auto vmap = [&](const Var& v) -> Optional<PrimExpr> {
+    if (v.same_as(comm_reducer->lhs[0])) {
+      return lhs;
+    } else if (v.same_as(comm_reducer->rhs[0])) {
+      return rhs;
+    } else {
+      return v;
+    }
+  };
+  return Substitute(comm_reducer->result[0], vmap);
+}
+
 PrimFunc create_tir(const Array<te::Tensor>& tensors) {
   Array<te::Operation> ops;
   for (const auto& tensor : tensors) {
@@ -119,6 +135,7 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
       Array<PrimExpr> indices;
       for (const auto& iter_var : compute_op->axis) indices.push_back(iter_var->var);
 
+      Optional<Stmt> init = NullOpt;
       Stmt body;
       Array<PrimExpr> simplified_indices;
 
@@ -127,10 +144,11 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
       }
       if (const auto* reduce = expr.as<ReduceNode>()) {
         CHECK_EQ(reduce->source.size(), 1);
-        PrimExpr lhs = BufferLoad(buffer, indices), rhs = translator(reduce->source[0]);
+        PrimExpr lhs = BufferLoad(buffer, simplified_indices);
+        PrimExpr rhs = analyzer.Simplify(translator(reduce->source[0]));
         CHECK(lhs->dtype == rhs->dtype);
-        body = ReduceStep(reduce->combiner, BufferLoad(buffer, simplified_indices),
-                          analyzer.Simplify(translator(reduce->source[0])));
+        body = BufferStore(buffer, ApplyCombiner(reduce->combiner, lhs, rhs), simplified_indices);
+        init = BufferStore(buffer, reduce->combiner->identity_element[0], indices);
       } else {
         body = BufferStore(buffer, analyzer.Simplify(translator(expr)), simplified_indices);
       }
@@ -146,7 +164,7 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
       }
 
       Block block(block_vars, NullValue<Array<TensorRegion>>(), NullValue<Array<TensorRegion>>(),
-                  body, {}, {}, GetUniqueName(op->name, &name_map));
+                  body, {}, {}, GetUniqueName(op->name, &name_map), init);
       Array<PrimExpr> null_bindings;
       for (size_t i = 0; i < block_vars.size(); i++) null_bindings.push_back(NullValue<PrimExpr>());
       BlockRealize realize(null_bindings, Bool(true), block, "");
