@@ -66,12 +66,33 @@ def test_reduction_merge():
     tvm.ir.assert_structural_equal(matmul, s.func)
 
 
+@tvm.script.tir
+def matmul_blockzied(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    C = tir.match_buffer(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    B = tir.match_buffer(b, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        for i0 in range(0, 128):
+            with tir.block([128, 1, tir.reduce_axis(0, 1)], "blockized_update") as [vi, vjo, vko]:
+                tir.bind(vi, i0)
+                tir.bind(vjo, 0)
+                tir.bind(vko, 0)
+                with tir.init():
+                    for i1 in range(0, 128):
+                        C[vi, i1] = tir.float32(0)
+                with tir.block([128, tir.reduce_axis(0, 128)], "update") as [vj, vk]:
+                    C[vi, vj] = (C[vi, vj] + (A[vi, vk]*B[vj, vk]))
+
+
 def test_reduction_blockize():
     s = tir.create_schedule(matmul)
     C = s.get_block("update")
     i, j, k = s.get_axes(C)
     s.blockize(j)
-    print(tvm.script.asscript(s.func))
+    tvm.ir.assert_structural_equal(matmul_blockzied, s.func)
 
 
 if __name__ == "__main__":

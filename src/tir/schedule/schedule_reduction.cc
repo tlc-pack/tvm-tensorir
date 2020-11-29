@@ -225,7 +225,8 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   const auto* init_body = init->body.as<BufferStoreNode>();
   const auto* update_body = update->body.as<BufferStoreNode>();
   CHECK(init_body != nullptr && update_body != nullptr)
-      << "ValueError: 'merge_reduction' expects the body of init and update block to be BufferStore";
+      << "ValueError: 'merge_reduction' expects the body of init and update block to be "
+         "BufferStore";
   CHECK(FromInitUpdate(init_body->value, GetRef<BufferStore>(update_body)))
       << "ValueError: 'merge_reduction' pattern detect failed";
   const BlockRealizeNode* init_realize = GetBlockRealize(init_sref).get();
