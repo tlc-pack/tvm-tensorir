@@ -132,11 +132,6 @@ void StmtVisitor::VisitStmt_(const LoopNode* op) {
 
 void StmtVisitor::VisitStmt_(const BufferAllocateNode* op) {}
 
-void StmtVisitor::VisitStmt_(const ReduceStepNode* op) {
-  this->VisitExpr(op->lhs);
-  this->VisitExpr(op->rhs);
-}
-
 class StmtMutator::Internal {
  public:
   static Array<PrimExpr> Mutate(StmtMutator* self, const Array<PrimExpr>& arr) {
@@ -496,19 +491,6 @@ Stmt StmtMutator::VisitStmt_(const LoopNode* op) {
 }
 
 Stmt StmtMutator::VisitStmt_(const BufferAllocateNode* op) { return GetRef<Stmt>(op); }
-
-Stmt StmtMutator::VisitStmt_(const ReduceStepNode* op) {
-  PrimExpr lhs = this->VisitExpr(op->lhs);
-  PrimExpr rhs = this->VisitExpr(op->rhs);
-  if (lhs.same_as(op->lhs) && rhs.same_as(op->rhs)) {
-    return GetRef<Stmt>(op);
-  } else {
-    auto n = CopyOnWrite(op);
-    n->lhs = std::move(lhs);
-    n->rhs = std::move(rhs);
-    return Stmt(n);
-  }
-}
 
 // Implementations of IRTransform, PostOrderVisit and Substitute
 class IRApplyVisit : public StmtExprVisitor {

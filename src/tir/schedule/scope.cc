@@ -153,15 +153,8 @@ bool Scope::IsReduction(const StmtSRef& block_sref) const {
     return false;
   }
   // Cond 2. Check the block body is reduction
-  const auto* reduce = block->body.as<ReduceStepNode>();
-  if (reduce == nullptr) {
-    return false;
-  }
-  // Cond 3. All block vars are either data parallel or reduction, and reduction vars should not
-  // affect indexing the output buffer
-  const auto* buffer_load = reduce->lhs.as<BufferLoadNode>();
-  CHECK(buffer_load != nullptr) << "InternalError: ReduceStepNode::lhs should be BufferLoadNode";
-  return CheckReductionInstance(block->iter_vars, buffer_load->indices);
+ if (block->init) return true;
+ else return false;
 }
 
 bool Scope::IsCompactDataFlow(const StmtSRef& subtree_sref, const ScheduleNode* schedule) const {

@@ -101,20 +101,6 @@ void BlockReadWriteCollector::VisitStmt_(const BufferStoreNode* op) {
   StmtVisitor::VisitStmt_(op);
 }
 
-void BlockReadWriteCollector::VisitStmt_(const ReduceStepNode* op) {
-  const auto* buffer_load = op->lhs.as<BufferLoadNode>();
-  CHECK(buffer_load != nullptr)
-      << "TypeError: 'decompose_reduction' expects the body of the reduce step "
-         "is BufferLoad, but get type: "
-      << op->lhs->GetTypeKey();
-  std::vector<arith::IntSet> relaxed_region;
-  for (size_t j = 0; j < buffer_load->indices.size(); ++j) {
-    relaxed_region.push_back(arith::EvalSet(buffer_load->indices[j], dom_map_));
-  }
-  Update(&writes_buffers_, &write_regions_, buffer_load->buffer, relaxed_region);
-  StmtVisitor::VisitStmt_(op);
-}
-
 void BlockReadWriteCollector::VisitStmt_(const BlockRealizeNode* op) {
   std::unordered_map<const VarNode*, PrimExpr> vmap;
   for (size_t i = 0; i < op->block->iter_vars.size(); ++i) {

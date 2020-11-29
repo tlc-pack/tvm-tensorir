@@ -138,7 +138,6 @@ class TVMScriptPrinter : public StmtFunctor<Doc(const Stmt&)>,
   Doc VisitStmt_(const BlockRealizeNode* op) override;
   Doc VisitStmt_(const LoopNode* op) override;
   Doc VisitStmt_(const BufferAllocateNode* op) override;
-  Doc VisitStmt_(const ReduceStepNode* op) override;
   Doc VisitStmtDefault_(const Object* op) override;
 
   Doc VisitType_(const PrimTypeNode* node) override;
@@ -646,17 +645,6 @@ Doc TVMScriptPrinter::VisitStmt_(const IfThenElseNode* op) {
   if (!is_one(op->condition) && op->else_case.defined()) {
     doc << "else:" << Doc::Indent(4, Doc::NewLine() << PrintBody(op->else_case));
   }
-  return doc;
-}
-
-Doc TVMScriptPrinter::VisitStmt_(const ReduceStepNode* op) {
-  Doc doc;
-  const auto& it = memo_reducer_.find(op->comm_reducer.get());
-  if (it == memo_reducer_.end()) {
-    memo_reducer_[op->comm_reducer.get()] = GetUniqueName("reducer");
-  }
-  doc << memo_reducer_[op->comm_reducer.get()] << ".step(";
-  doc << Print(op->lhs) << ", " << Print(op->rhs) << ")";
   return doc;
 }
 

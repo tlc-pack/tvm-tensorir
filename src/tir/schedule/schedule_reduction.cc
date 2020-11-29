@@ -315,6 +315,7 @@ void CollectVars(std::unordered_set<const VarNode*>& res, const PrimExpr& expr) 
 }
 
 StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
+  /*
   const auto* loop = loop_sref->GetStmt<LoopNode>();
   CHECK(loop) << "TypeError: Only support rfactor a loop for now, but get type: "
               << loop_sref->stmt->GetTypeKey();
@@ -525,6 +526,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   UpdateScope(scope_sref->stmt, this->stmt2ref, &this->scopes);
 
   return stmt2ref.at(rf_block.get());
+  */
 }
 
 }  // namespace tir

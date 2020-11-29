@@ -479,26 +479,6 @@ class BufferAllocate(Stmt):
 
 
 @tvm._ffi.register_object
-class ReduceStep(Stmt):
-    """Reduction node
-
-    Parameters
-    ----------
-    comm_reducer : CommReducer
-        the reducer used in Reduction
-
-    lhs : PrimExpr
-        lhs expression
-
-    rhs : PrimExpr
-        rhs expression
-    """
-
-    def __init__(self, comm_reducer, lhs, rhs):
-        self.__init_handle_by_constructor__(_ffi_api.ReduceStep, comm_reducer, lhs, rhs)
-
-
-@tvm._ffi.register_object
 class TensorRegion(Object):
     """TensorRegion Node
 

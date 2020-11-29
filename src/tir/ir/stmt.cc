@@ -889,53 +889,6 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->stream << "}\n";
     });
 
-// ReduceStep
-ReduceStep::ReduceStep(CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs) {
-  ObjectPtr<ReduceStepNode> node = make_object<ReduceStepNode>();
-  node->comm_reducer = std::move(comm_reducer);
-  node->lhs = std::move(lhs);
-  node->rhs = std::move(rhs);
-  data_ = std::move(node);
-}
-
-PrimExpr ReduceStepNode::ApplyCombiner() const { return ApplyCombiner(this->lhs, this->rhs); }
-
-PrimExpr ReduceStepNode::ApplyCombiner(const PrimExpr& lhs, const PrimExpr& rhs) const {
-  CHECK_EQ(comm_reducer->lhs.size(), 1);
-  CHECK_EQ(comm_reducer->rhs.size(), 1);
-  CHECK_EQ(comm_reducer->result.size(), 1);
-  auto vmap = [&](const Var& v) -> Optional<PrimExpr> {
-    if (v.same_as(comm_reducer->lhs[0])) {
-      return lhs;
-    } else if (v.same_as(comm_reducer->rhs[0])) {
-      return rhs;
-    } else {
-      return v;
-    }
-  };
-  return Substitute(comm_reducer->result[0], vmap);
-}
-
-TVM_REGISTER_GLOBAL("tir.ReduceStep")
-    .set_body_typed<ReduceStep(CommReducer, PrimExpr, PrimExpr)>([](CommReducer comm_reducer,
-                                                                    PrimExpr lhs, PrimExpr rhs) {
-      return ReduceStep(comm_reducer, lhs, rhs);
-    });
-
-TVM_REGISTER_NODE_TYPE(ReduceStepNode);
-
-TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-    .set_dispatch<ReduceStepNode>([](const ObjectRef& node, ReprPrinter* p) {
-      auto* op = static_cast<const ReduceStepNode*>(node.get());
-
-      p->PrintIndent();
-      p->stream << "reduce_step(";
-      p->Print(op->lhs);
-      p->stream << ", ";
-      p->Print(op->rhs);
-      p->stream << ")\n";
-    });
-
 PrimExpr TypeAnnotation(DataType dtype) {
   static auto op = Op::Get("tir.type_annotation");
   return tir::Call(dtype, op, {});

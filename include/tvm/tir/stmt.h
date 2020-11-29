@@ -1053,7 +1053,7 @@ class BlockNode : public StmtNode {
   /*! \brief The tag of the block. */
   std::string tag;
 
-  virtual void VisitAttrs(AttrVisitor* v) {
+  void VisitAttrs(AttrVisitor* v) {
     v->Visit("body", &body);
     v->Visit("iter_vars", &iter_vars);
     v->Visit("reads", &reads);
@@ -1070,7 +1070,7 @@ class BlockNode : public StmtNode {
            equal(reads, other->reads) && equal(writes, other->writes) && equal(init, other->init);
   }
 
-  virtual void SHashReduce(SHashReducer hash_reduce) const {
+  void SHashReduce(SHashReducer hash_reduce) const {
     hash_reduce.DefHash(iter_vars);
     hash_reduce(reads);
     hash_reduce(writes);
@@ -1089,7 +1089,7 @@ class Block : public Stmt {
   TVM_DLL explicit Block(Array<IterVar> iter_vars, Array<TensorRegion> reads,
                          Array<TensorRegion> writes, Stmt body, Array<BufferAllocate> allocations,
                          Array<Annotation> annotations, std::string tag,
-                         Optional<Stmt> init = Optional<Stmt>());
+                         Optional<Stmt> init = NullOpt);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Block, Stmt, BlockNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(BlockNode);
@@ -1143,62 +1143,6 @@ class BlockRealize : public Stmt {
 
   TVM_DEFINE_OBJECT_REF_METHODS(BlockRealize, Stmt, BlockRealizeNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(BlockRealizeNode);
-};
-
-/*!
- * \brief A reduction stmt stores both the init expression and update expression
- *        When creating a reduction node, the constructor will try to do reducer
- *        pattern matching for init and update expressions. If successful, we can
- *        get left and right expressions.
- */
-class ReduceStepNode : public StmtNode {
- public:
-  /*! \brief comm reducer used in reduction */
-  CommReducer comm_reducer;
-  /*! \brief lhs expression */
-  PrimExpr lhs;
-  /*! \brief rhs expression */
-  PrimExpr rhs;
-
-  void VisitAttrs(AttrVisitor* v) {
-    v->Visit("comm_reducer", &comm_reducer);
-    v->Visit("lhs", &lhs);
-    v->Visit("rhs", &rhs);
-  }
-
-  bool SEqualReduce(const ReduceStepNode* other, SEqualReducer equal) const {
-    return equal(comm_reducer, other->comm_reducer) && equal(lhs, other->lhs) &&
-           equal(rhs, other->rhs);
-  }
-
-  void SHashReduce(SHashReducer hash_reduce) const {
-    hash_reduce(comm_reducer);
-    hash_reduce(lhs);
-    hash_reduce(rhs);
-  }
-
-  /*! \brief Apply combiner in comm_reducer on lhs and rhs.
-   *         comm_reducer contains two vars(lhs[0] and rhs[0]) and a combiner expr(result[0]).
-   *         We substitute lhs[0] with lhs and substitute rhs[0] with rhs.
-   *         If lhs and rhs is not passed, apply combiner on internal lhs and rhs.
-   */
-  PrimExpr ApplyCombiner() const;
-  PrimExpr ApplyCombiner(const PrimExpr& lhs, const PrimExpr& rhs) const;
-
-  static constexpr const char* _type_key = "ReduceStep";
-  TVM_DECLARE_FINAL_OBJECT_INFO(ReduceStepNode, StmtNode);
-};
-
-/*!
- * \brief Managed reference to ReduceStepNode
- * \sa ReduceStepNode
- */
-class ReduceStep : public Stmt {
- public:
-  TVM_DLL explicit ReduceStep(CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs);
-
-  TVM_DEFINE_OBJECT_REF_METHODS(ReduceStep, Stmt, ReduceStepNode);
-  TVM_DEFINE_OBJECT_REF_COW_METHOD(ReduceStepNode);
 };
 
 /*! \brief namespace of possible attribute sin AttrStmt.attr_key */

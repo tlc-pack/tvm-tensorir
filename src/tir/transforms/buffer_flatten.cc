@@ -49,18 +49,7 @@ class ReductionTransformer : public StmtExprMutator {
     return res;
   }
 
-  Stmt VisitStmt_(const ReduceStepNode* op) override {
-    const auto& init = op->comm_reducer->identity_element[0];
-    const auto* lhs = op->lhs.as<BufferLoadNode>();
-    PrimExpr cond = make_const(DataType::Bool(1), true);
-    for (const auto& iter_var : current_block_->iter_vars)
-      if (iter_var->iter_type == IterVarType::kCommReduce) {
-        cond = cond && (iter_var == 0);
-      }
-    return BufferStore(lhs->buffer,
-                       if_then_else(cond, op->ApplyCombiner(init, op->rhs), op->ApplyCombiner()),
-                       lhs->indices);
-  }
+  // (TODO) bohan
 
  private:
   const BlockNode* current_block_{nullptr};

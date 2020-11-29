@@ -429,12 +429,7 @@ class AutoTensorizeComparator : public tir::TensorizeComparator {
   bool VisitStmt(const tir::Stmt& n, const tir::Stmt& rhs) override {
     if (n.same_as(rhs)) return true;
     tir::Stmt lhs = n;
-    if (const auto* reduce_step = n.as<tir::ReduceStepNode>()) {
-      const auto* buffer_load = reduce_step->lhs.as<tir::BufferLoadNode>();
-      lhs = tir::BufferStore(/*buffer=*/buffer_load->buffer,
-                             /*value=*/reduce_step->ApplyCombiner(),
-                             /*indices=*/buffer_load->indices);
-    }
+    // TODO(bohan)
     if (lhs->type_index() != rhs->type_index()) {
       return false;
     }
