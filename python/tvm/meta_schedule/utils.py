@@ -641,9 +641,12 @@ def rpc_runner_worker(
                 error_msg = make_error_msg()
                 raise
             try:
-                args = realize_arguments(remote, ctx, measure_input.task.workload)
+                # TODO(@junrushao1994): remove the hardcode
+                args_set = [
+                    realize_arguments(remote, ctx, measure_input.task.workload) for _ in range(5)
+                ]
                 ctx.sync()
-                costs = time_f(*args).results
+                costs = sum([time_f(*args).results for args in args_set], ())
                 # clean up remote files
                 remote.remove(build_result.filename)
                 remote.remove(os.path.splitext(build_result.filename)[0] + ".so")
