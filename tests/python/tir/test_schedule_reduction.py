@@ -95,8 +95,52 @@ def test_reduction_blockize():
     tvm.ir.assert_structural_equal(matmul_blockzied, s.func)
 
 
+@tvm.script.tir
+def matmul_scale(a: ty.handle, b: ty.handle, e: ty.handle) -> None:
+    A = tir.match_buffer(a, [128, 128])
+    B = tir.match_buffer(b, [128, 128])
+    E = tir.match_buffer(e, [128, 128])
+
+    C = tir.buffer_allocate([128, 128])
+    D = tir.buffer_allocate([128, 128])
+    with tir.block([128, 128], "D") as [vi, vj]:
+        D[vi, vj] = A[vi, vj] * 2.0
+
+    with tir.block([128, 128, tir.reduce_axis(0, 128)], "C") as [vi, vj, vk]:
+        with tir.init():
+            C[vi, vj] = 0.0
+        C[vi, vj] = C[vi, vj] + D[vi, vk] * B[vj, vk]
+
+    with tir.block([128, 128], "E") as [vi, vj]:
+        E[vi, vj] = C[vi, vj] + 1.0
+
+
+@tvm.script.tir
+def matmul_scale_inline(a: ty.handle, b: ty.handle, e: ty.handle) -> None:
+    A = tir.match_buffer(a, [128, 128])
+    B = tir.match_buffer(b, [128, 128])
+    E = tir.match_buffer(e, [128, 128])
+
+    C = tir.buffer_allocate([128, 128])
+    with tir.block([128, 128, tir.reduce_axis(0, 128)], "C") as [vi, vj, vk]:
+        with tir.init():
+            C[vi, vj] = 0.0
+        C[vi, vj] = C[vi, vj] + (A[vi, vk]*2.0) * B[vj, vk]
+
+    with tir.block([128, 128], "E") as [vi, vj]:
+        E[vi, vj] = C[vi, vj] + 1.0
+
+
+def test_reduction_compute_inline():
+    s = tir.create_schedule(matmul_scale)
+    D = s.get_block("D")
+    s.compute_inline(D)
+    tvm.ir.assert_structural_equal(s.func, matmul_scale_inline)
+
+
 if __name__ == "__main__":
     test_reduction_roundtrip()
     test_reduction_decompose()
     test_reduction_merge()
     test_reduction_blockize()
+    test_reduction_compute_inline()

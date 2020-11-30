@@ -97,25 +97,10 @@ def tensorcore_tensorized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                     ]
                                 ]
                             )
-                            for i1_inner_init in range(0, 16):
-                                for i2_inner_init in range(0, 16):
-                                    with tir.block([128, 128], "update_init") as [
-                                        vi_init,
-                                        vj_init,
-                                    ]:
-                                        tir.bind(vi_init, (vi * 16 + i1_inner_init))
-                                        tir.bind(vj_init, (vj * 16 + i2_inner_init))
-                                        tir.reads([])
-                                        tir.writes(
-                                            [
-                                                C[
-                                                    vn : (vn + 1),
-                                                    vi_init : (vi_init + 1),
-                                                    vj_init : (vj_init + 1),
-                                                ]
-                                            ]
-                                        )
-                                        C[vn, vi_init, vj_init] = tir.float32(0)
+                            with tir.init():
+                                for i1_inner in range(0, 16):
+                                    for i2_inner in range(0, 16):
+                                        C[vn, ((vi*16) + i1_inner), ((vj*16) + i2_inner)] = tir.float32(0)
                             with tir.block([1, 1, tir.reduce_axis(0, 1)], "root") as [
                                 vi_1,
                                 vj_1,
@@ -217,17 +202,7 @@ def dot_product_tensorized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                 ]
                             )
                             tir.writes([C[vn : (vn + 1), vi : (vi + 1), vj : (vj + 1)]])
-                            with tir.block([], "update_init") as []:
-                                tir.reads([])
-                                tir.writes(
-                                    [
-                                        C[
-                                            vn : (vn + 1),
-                                            vi : (vi + 1),
-                                            vj : (vj + 1),
-                                        ]
-                                    ]
-                                )
+                            with tir.init():
                                 C[vn, vi, vj] = tir.float32(0)
                             with tir.block([tir.reduce_axis(0, 1)], "root") as [
                                 v0,

@@ -451,6 +451,8 @@ class CacheWriteRewriter : public StmtExprMutator {
       return std::move(old_stmt);
     }
     // Mutate the body
+    Optional<Stmt> init = NullOpt;
+    if (block->init) init = StmtMutator::VisitStmt(block->init.value());
     Block stmt = Downcast<Block>(StmtMutator::VisitStmt_(block));
     // Find the insertion point
     if (block == info_->loc_sref->stmt) {
