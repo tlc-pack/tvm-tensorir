@@ -42,26 +42,64 @@ bool PostprocNode::Apply(const SearchTask& task, const Schedule& sch, Sampler* s
 
 /********** Utility helpers **********/
 
-bool CheckLoopType(const tir::StmtSRef& loop_sref, const String& expected) {
-  const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
-  if (loop == nullptr || loop->annotations.empty() || loop->annotations.size() != 1 ||
-      loop->annotations[0]->attr_key != tir::attr::loop_type) {
-    return false;
+Optional<String> GetAnn(const tir::StmtSRef& sref, const String& ann_key) {
+  const Array<tir::Annotation>* annotations;
+  if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
+    annotations = &loop->annotations;
+  } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
+    annotations = &block->annotations;
+  } else {
+    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
   }
-  const auto* str_imm = loop->annotations[0]->value.as<tir::StringImmNode>();
-  if (!str_imm) {
-    return false;
+  for (const tir::Annotation& ann : *annotations) {
+    if (ann->attr_key == ann_key) {
+      if (const auto* str_imm = ann->value.as<tir::StringImmNode>()) {
+        return str_imm->value;
+      }
+    }
   }
-  const String& ann = str_imm->value;
-  return ann == expected;
+  return NullOpt;
 }
 
-void RemoveAnnotation(const Schedule& sch, const tir::StmtSRef& loop_sref) {
-  const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
-  CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
-  ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
-  new_loop->annotations.clear();
-  sch->sch->Replace(loop_sref, tir::Loop(new_loop));
+bool HasAnn(const tir::StmtSRef& loop_sref, const String& ann_key, const String& ann_val) {
+  Optional<String> result = GetAnn(loop_sref, ann_key);
+  return result.defined() && result.value() == ann_val;
+}
+
+void RemoveAnn(const Schedule& sch, const tir::StmtSRef& sref, const String& ann_key) {
+  // Extract annotation
+  const Array<tir::Annotation>* annotations;
+  if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
+    annotations = &loop->annotations;
+  } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
+    annotations = &block->annotations;
+  } else {
+    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
+  }
+  // Remove the annotation
+  Array<tir::Annotation> new_ann;
+  int n = annotations->size();
+  new_ann.reserve(n - 1);
+  for (int i = 0; i < n; ++i) {
+    const tir::Annotation& ann = annotations->operator[](i);
+    if (ann->attr_key != ann_key) {
+      new_ann.push_back(ann);
+    }
+  }
+  // Create the new stmt
+  if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
+    ObjectPtr<tir::LoopNode> n = make_object<tir::LoopNode>(*loop);
+    n->annotations = new_ann;
+    sch->sch->Replace(sref, tir::Loop(n));
+  } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
+    ObjectPtr<tir::BlockNode> n = make_object<tir::BlockNode>(*block);
+    n->annotations.clear();
+    tir::Block p(n);
+    sch->sch->Replace(sref, p, {{p, GetRef<tir::Block>(block)}});
+  } else {
+    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
+    throw;
+  }
 }
 
 PrimExpr GetLoopExtent(const tir::StmtSRef& loop_sref) {
@@ -95,7 +133,7 @@ Postproc RewriteParallel() {
       {
         int i = 0;
         for (const tir::StmtSRef& loop_sref : loop_srefs) {
-          if (CheckLoopType(loop_sref, "lazy_parallel")) {
+          if (HasAnn(loop_sref, tir::attr::loop_type, "lazy_parallel")) {
             parallel_ids.push_back(i);
           }
           ++i;
@@ -105,7 +143,7 @@ Postproc RewriteParallel() {
         continue;
       }
       for (int id : parallel_ids) {
-        RemoveAnnotation(sch, loop_srefs[id]);
+        RemoveAnn(sch, loop_srefs[id], tir::attr::loop_type);
       }
       Array<Integer> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
       int n = parallel_ids.size();
@@ -142,7 +180,7 @@ Postproc RewriteVectorize() {
       {
         int i = 0;
         for (const tir::StmtSRef& loop_sref : loop_srefs) {
-          if (CheckLoopType(loop_sref, "lazy_vectorize")) {
+          if (HasAnn(loop_sref, tir::attr::loop_type, "lazy_vectorize")) {
             vectorize_ids.push_back(i);
           }
           ++i;
@@ -152,7 +190,7 @@ Postproc RewriteVectorize() {
         continue;
       }
       for (int id : vectorize_ids) {
-        RemoveAnnotation(sch, loop_srefs[id]);
+        RemoveAnn(sch, loop_srefs[id], tir::attr::loop_type);
       }
       Array<Integer> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
       int n = vectorize_ids.size();
@@ -186,17 +224,14 @@ class PostprocRewriteTensorize {
   explicit PostprocRewriteTensorize(Array<tir::TensorIntrin> tensor_intrins)
       : tensor_intrins(tensor_intrins) {}
 
-  Optional<tir::Block> FindAnnotatedBlock(const Schedule& sch) {
-    Optional<tir::Block> result = NullOpt;
-    tir::PreOrderVisit(sch->sch->func->body, [&result](const ObjectRef& obj) -> bool {
+  Optional<tir::StmtSRef> FindTensorized(const Schedule& sch) {
+    Optional<tir::StmtSRef> result = NullOpt;
+    tir::PreOrderVisit(sch->sch->func->body, [&result, &sch](const ObjectRef& obj) -> bool {
       if (const auto* block = obj.as<tir::BlockNode>()) {
-        if (!block->annotations.empty()) {
-          tir::Annotation ann = block->annotations[0];
-          if (ann->attr_key == std::string(tir::attr::block_type) &&
-              Downcast<tir::StringImm>(ann->value)->value == "lazy_tensorize") {
-            result = GetRef<tir::Block>(block);
-            return false;
-          }
+        tir::StmtSRef block_sref = sch->sch->stmt2ref.at(block);
+        if (HasAnn(block_sref, tir::attr::block_type, "lazy_tensorize")) {
+          result = block_sref;
+          return false;
         }
       }
       return true;
@@ -225,22 +260,20 @@ class PostprocRewriteTensorize {
   }
 
   bool Proc(const Schedule& sch) {
-    while (Optional<tir::Block> opt_block = FindAnnotatedBlock(sch)) {
-      tir::Block block = opt_block.value();
-      tir::StmtSRef block_sref = sch->sch->stmt2ref.at(block.get());
+    while (Optional<tir::StmtSRef> opt_block_sref = FindTensorized(sch)) {
+      tir::StmtSRef block_sref = opt_block_sref.value();
       // Remove the annotation
-      {
-        ObjectPtr<tir::BlockNode> new_block = make_object<tir::BlockNode>(*block.get());
-        new_block->annotations.clear();
-        tir::Block new_block_obj = tir::Block(new_block);
-        sch->sch->Replace(block_sref, new_block_obj, {{new_block_obj, block}});
-        block = new_block_obj;
-      }
+      RemoveAnn(sch, block_sref, tir::attr::block_type);
       // Get the surrounding loops
       Array<tir::StmtSRef> loop_srefs = sch->sch->GetLoopsInScope(block_sref);
       // Decompose Reduction
-      if (block->body->IsInstance<tir::ReduceStepNode>()) {
-        sch->sch->decompose_reduction(block_sref, loop_srefs[0]);
+      {
+        const auto* block = block_sref->GetStmt<tir::BlockNode>();
+        CHECK(block) << "TypeError: Expects BlockNode, but gets: "
+                     << block_sref->stmt->GetTypeKey();
+        if (block->body->IsInstance<tir::ReduceStepNode>()) {
+          sch->sch->decompose_reduction(block_sref, loop_srefs[0]);
+        }
       }
       // Tensorize
       for (const tir::TensorIntrin& intrin : tensor_intrins) {
@@ -287,11 +320,11 @@ class PostprocRewriteCudaThreadBind {
       const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
       CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
       // Check the annotation
-      if (CheckLoopType(loop_sref, "lazy_blockIdx.x")) {
+      if (HasAnn(loop_sref, tir::attr::loop_type, "lazy_blockIdx.x")) {
         block_idx.push_back(i);
-      } else if (CheckLoopType(loop_sref, "lazy_vthread")) {
+      } else if (HasAnn(loop_sref, tir::attr::loop_type, "lazy_vthread")) {
         vthread_idx.push_back(i);
-      } else if (CheckLoopType(loop_sref, "lazy_threadIdx.x")) {
+      } else if (HasAnn(loop_sref, tir::attr::loop_type, "lazy_threadIdx.x")) {
         thread_idx.push_back(i);
       } else {
         continue;
@@ -313,7 +346,7 @@ class PostprocRewriteCudaThreadBind {
       std::sort(indices.begin(), indices.end());
       // Remove the annotation on the loop
       for (int idx : indices) {
-        RemoveAnnotation(sch, loop_srefs[idx]);
+        RemoveAnn(sch, loop_srefs[idx], tir::attr::loop_type);
       }
       // Do fusion
       std::vector<LoopRV> to_fuse;
@@ -329,7 +362,7 @@ class PostprocRewriteCudaThreadBind {
         // bind `blockIdx.x`
         // Remove the annotation on the loop
         for (int idx : block_idx) {
-          RemoveAnnotation(sch, loop_srefs[idx]);
+          RemoveAnn(sch, loop_srefs[idx], tir::attr::loop_type);
         }
         // Do fusion
         std::vector<LoopRV> to_fuse;
@@ -344,7 +377,7 @@ class PostprocRewriteCudaThreadBind {
         // bind `vthread`
         // Remove the annotation on the loop
         for (int idx : vthread_idx) {
-          RemoveAnnotation(sch, loop_srefs[idx]);
+          RemoveAnn(sch, loop_srefs[idx], tir::attr::loop_type);
         }
         // Do fusion
         std::vector<LoopRV> to_fuse;
@@ -359,7 +392,7 @@ class PostprocRewriteCudaThreadBind {
         // bind `threadIdx.x`
         // Remove the annotation on the loop
         for (int idx : thread_idx) {
-          RemoveAnnotation(sch, loop_srefs[idx]);
+          RemoveAnn(sch, loop_srefs[idx], tir::attr::loop_type);
         }
         // Do fusion
         std::vector<LoopRV> to_fuse;
@@ -411,14 +444,14 @@ class PostprocRewriteCudaThreadBind {
     for (const tir::StmtSRef& loop_sref : axes) {
       const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
       CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
-      if (!CheckLoopType(loop_sref, "lazy_cooperative_fetch")) {
+      if (!HasAnn(loop_sref, tir::attr::loop_type, "lazy_cooperative_fetch")) {
         continue;
       }
-      RemoveAnnotation(sch, loop_sref);
+      RemoveAnn(sch, loop_sref, tir::attr::loop_type);
       tir::StmtSRef threadIdx_sref{nullptr};
       for (tir::StmtSRefNode* upper = loop_sref->parent; upper; upper = upper->parent) {
         tir::StmtSRef upper_sref = GetRef<tir::StmtSRef>(upper);
-        if (CheckLoopType(upper_sref, "threadIdx.x")) {
+        if (HasAnn(upper_sref, tir::attr::loop_type, "threadIdx.x")) {
           threadIdx_sref = upper_sref;
           break;
         }
@@ -467,6 +500,25 @@ Postproc RewriteCudaThreadBind() {
     return PostprocRewriteCudaThreadBind().Proc(task, sch);
   };
   return Postproc("rewrite_cuda_thread_bind", f_proc);
+}
+
+/********** RewriteAutoUnroll **********/
+
+class PostprocRewriteAutoUnroll {
+ public:
+  bool Proc(SearchTask task, Schedule sch) {
+    std::vector<tir::StmtSRef> all_blocks = CollectAllBlocks(sch);
+    for (const tir::StmtSRef& block_sref : all_blocks) {
+    }
+    return true;
+  }
+};
+
+Postproc RewriteAutoUnroll() {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
+    return PostprocRewriteAutoUnroll().Proc(task, sch);
+  };
+  return Postproc("rewrite_auto_unroll", f_proc);
 }
 
 /********** VerifyGPUCode **********/
