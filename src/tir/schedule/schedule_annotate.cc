@@ -61,6 +61,9 @@ bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
  * \return A new loop with the given annotation as its last annotation
  */
 Loop WithAnnotation(const LoopNode* loop, const Annotation& annotation) {
+  for (const auto& ann : loop->annotations)
+    CHECK(ann->attr_key != annotation->attr_key)
+        << "ValueError: loop already has annotation with key " << ann->attr_key;
   ObjectPtr<LoopNode> new_loop = make_object<LoopNode>(*loop);
   new_loop->annotations.push_back(annotation);
   return Loop(new_loop);
@@ -94,9 +97,6 @@ void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const Annotation& 
   const auto* loop = loop_sref->GetStmt<LoopNode>();
   CHECK(loop != nullptr) << "TypeError: Parallel compute applies only to a loop, but get: "
                          << loop_sref->stmt->GetTypeKey();
-  CHECK(loop->annotations.empty())
-      << "ValueError: Cannot apply parallelism to a loop that already has annotations: "
-      << loop->annotations;
   // Now only support:
   //   1. All the blocks are complete below
   //   2. A single block below the loop
@@ -153,10 +153,15 @@ void ScheduleNode::unroll(const StmtSRef& loop_sref) {
   const auto* loop = loop_sref->GetStmt<LoopNode>();
   CHECK(loop != nullptr) << "TypeError: Unroll expects a loop, but get type: "
                          << loop_sref->stmt->GetTypeKey();
-  CHECK(loop->annotations.empty())
-      << "ValueError: Cannot apply unrolling to a loop that already has annotations: "
-      << loop->annotations;
   this->Replace(loop_sref, WithAnnotation(loop, Annotation(attr::loop_type, StringImm("unroll"))));
+}
+
+void ScheduleNode::pragma(const StmtSRef& loop_sref, const String& pragma_type,
+                          const PrimExpr& pragma_value) {
+  const auto* loop_ptr = loop_sref->GetStmt<LoopNode>();
+  CHECK(loop_ptr) << "TypeError: pragma expects a Loop as its first argument";
+  this->Replace(loop_sref,
+                WithAnnotation(loop_ptr, Annotation("pragma_" + pragma_type, pragma_value)));
 }
 
 }  // namespace tir
