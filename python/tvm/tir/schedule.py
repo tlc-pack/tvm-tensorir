@@ -433,6 +433,22 @@ class Schedule(Object):
         """
         return _ffi_api_schedule.ScheduleRfactor(self, loop, factor_axis)
 
+    def pragma(self, loop, pragma_type, pragma_value):
+        """add annotation to a loop
+
+        Parameters
+        ----------
+        loop : StmtSRef
+            the loop of interest
+
+        pragma_type : str
+            the attr key
+
+        pragma_value : PrimExpr
+            the attr value
+        """
+        return _ffi_api_schedule.SchedulePragma(self, loop, pragma_type, pragma_value)
+
 
 def create_schedule(func):
     """Create a schedule for a function

@@ -707,6 +707,40 @@ def test_rfactor():
     tvm.ir.assert_structural_equal(s.func, matmul_rfactor)
 
 
+@tvm.script.tir
+def matmul_pragma(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    C = tir.match_buffer(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    B = tir.match_buffer(b, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        for i0 in range(0, 128, annotation = {"pragma_auto_unroll_max_step":16, "pragma_unroll_explicit":False}):
+            for i1 in range(0, 128):
+                for i2 in range(0, 128):
+                    with tir.block([128, 128, tir.reduce_axis(0, 128)], "update") as [vi, vj, vk]:
+                        tir.bind(vi, i0)
+                        tir.bind(vj, i1)
+                        tir.bind(vk, i2)
+                        tir.reads([C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vj:(vj + 1), vk:(vk + 1)]])
+                        tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
+                        reducer.step(C[vi, vj], (A[vi, vk]*B[vj, vk]))
+
+
+def test_pragma():
+    func = util.matmul_stmt()
+
+    s = tir.create_schedule(func)
+    C = s.get_block("update")
+    i, j, k = s.get_axes(C)
+    s.pragma(i, "auto_unroll_max_step", 16)
+    s.pragma(i, "unroll_explicit", False)
+
+    tvm.ir.assert_structural_equal(matmul_pragma, s.func)
+
+
 if __name__ == "__main__":
     test_fuse()
     test_split_fuse()
@@ -724,3 +758,4 @@ if __name__ == "__main__":
     test_blockize()
     test_blockize_schedule()
     test_rfactor()
+    test_pragma()
