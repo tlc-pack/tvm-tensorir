@@ -257,6 +257,14 @@ class ScheduleNode : public Object {
   StmtSRef rfactor(const StmtSRef& loop_sref, int factor_axis);
 
   /*!
+   * \brief add annotation to a loop
+   * \param loop_sref the loop of interest
+   * \param pragma_type the attribute key
+   * \param pragma_value the attribute value
+   */
+  void pragma(const StmtSRef& loop_sref, const String& pragma_type, const PrimExpr& pragma_value);
+
+  /*!
    * \brief validate sref tree and scope information
    */
   bool ValidateSRef() const;
