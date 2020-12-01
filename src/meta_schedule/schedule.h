@@ -156,6 +156,13 @@ class ScheduleNode : public Object {
    */
   tir::Var SampleFusibleLoops(const Array<LoopRV>& loops, const Array<Integer>& loop_types,
                               int max_extent, bool include_overflow_loop, Order order, Mode mode);
+  /*!
+   * \brief Sample an integer given the probability distribution
+   * \param candidates The candidates
+   * \param probs The probability distribution of the candidates
+   * \return The random variable
+   */
+  tir::Var SampleCategorical(const Array<Integer>& candidates, const Array<FloatImm>& probs);
   /**************** Block/Loop Relationship ****************/
   /*!
    * \brief Get the producer of a specific block

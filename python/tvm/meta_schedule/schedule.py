@@ -229,8 +229,31 @@ class Schedule(Object):
             raise ValueError('"order" needs to be one of: "outer_to_inner", "inner_to_order"')
         if mode is None:
             raise ValueError('"mode" needs to be one of: "max", "rand"')
-        return _ffi_api.SampleFusibleLoops(  # pylint: disable=no-member
+        return _ffi_api.ScheduleSampleFusibleLoops(  # pylint: disable=no-member
             self, loops, loop_types, max_extent, include_overflow_loop, order, mode
+        )
+
+    def sample_categorical(
+        self,
+        candidates: List[int],
+        probs: List[float],
+    ) -> ExprRV:
+        """Sample an integer given the probability distribution
+
+        Parameters
+        ----------
+        candidates : List[int]
+            The candidates
+        probs : List[float]
+            The probability distribution of the candidates
+
+        Returns
+        -------
+        result : ExprRV
+            A ExprRV, a random variable indicates the sampling result
+        """
+        return _ffi_api.ScheduleSampleCategorical(  # pylint: disable=no-member
+            self, candidates, probs
         )
 
     ######### Block/Loop Relationship #########

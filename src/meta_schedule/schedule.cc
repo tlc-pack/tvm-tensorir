@@ -424,6 +424,28 @@ tir::Var ScheduleNode::SampleFusibleLoops(const Array<LoopRV>& loops,
   return output;
 }
 
+tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
+                                         const Array<FloatImm>& probs) {
+  // Sample the output
+  CHECK_EQ(candidates.size(), probs.size()) << "ValueError: When sampling ";
+  std::vector<double> probs_vec;
+  probs_vec.reserve(probs.size());
+  for (const FloatImm& prob : probs) {
+    probs_vec.push_back(prob->value);
+  }
+  int result = sampler.MakeMultinomial(probs_vec)();
+  // Create the output random variable
+  tir::Var output("n");
+  // Update the symbol table
+  this->sym_tab.Set(output, Integer(result));
+  // Put the instruction in the trace
+  // TODO
+  // this->trace.push_back(SampleCategoricalAttrs::MakeInst(candidates, probs, output));
+  // Put the sampling decision in the decision table
+  this->decisions.Set(this->trace.back(), {Integer(result)});
+  return output;
+}
+
 /**************** Block/Loop Relationship ****************/
 
 Array<BlockRV> ScheduleNode::GetProducers(const BlockRV& block) {
@@ -962,6 +984,10 @@ struct Internal {
                                           Array<Integer> where) {
     return sch->SampleTileFactor(n_splits, loop, where);
   }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::SampleFusibleLoops
+   * \sa ScheduleNode::SampleFusibleLoops
+   */
   static tir::Var SampleFusibleLoops(Schedule sch, Array<LoopRV> loops, Array<Integer> loop_types,
                                      int max_extent, bool include_overflow_loop, int _order,
                                      int _mode) {
@@ -970,7 +996,14 @@ struct Internal {
     return sch->SampleFusibleLoops(loops, loop_types, max_extent, include_overflow_loop, order,
                                    mode);
   }
-
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::SampleCategorical
+   * \sa ScheduleNode::SampleCategorical
+   */
+  static tir::Var SampleCategorical(Schedule sch, Array<Integer> candidates,
+                                    Array<FloatImm> probs) {
+    return sch->SampleCategorical(candidates, probs);
+  }
   /**************** Block/Loop Relationship ****************/
   /*!
    * \brief FFI function, corresponds to ScheduleNode::GetProducers
@@ -1136,8 +1169,10 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSamplePerfectTile")
     .set_body_typed(Internal::SamplePerfectTile);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleTileFactor")
     .set_body_typed(Internal::SampleTileFactor);
-TVM_REGISTER_GLOBAL("meta_schedule.SampleFusibleLoops")
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleFusibleLoops")
     .set_body_typed(Internal::SampleFusibleLoops);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleCategorical")
+    .set_body_typed(Internal::SampleCategorical);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetProducers").set_body_typed(Internal::GetProducers);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetConsumers").set_body_typed(Internal::GetConsumers);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetBlock").set_body_typed(Internal::GetBlock);
