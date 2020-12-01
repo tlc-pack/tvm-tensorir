@@ -45,7 +45,7 @@ def test_schedule1():
     bounds = tvm.te.schedule.InferBound(s)
     assert isinstance(bounds, tvm.container.Map)
     stmt = tvm.te.schedule.ScheduleOps(s, bounds)
-
+    print(stmt)
     func = tvm.te.schedule.SchedulePostProcToPrimFunc([A, A1], stmt, None)
     assert isinstance(func, tvm.tir.PrimFunc)
 
