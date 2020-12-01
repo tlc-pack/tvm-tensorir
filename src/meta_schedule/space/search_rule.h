@@ -139,6 +139,14 @@ TVM_DLL SearchRule MarkParallelizeOuter(int max_jobs_per_core);
 TVM_DLL SearchRule MarkVectorizeInner(int max_extent);
 
 /*!
+ * \brief A rule that marks the loops to be auto-unrolled
+ * \param max_steps The candidate of max_steps in auto_unroll
+ * \param unroll_explicit Whether to unroll explicitly
+ * \return The rule created
+ */
+TVM_DLL SearchRule MarkAutoUnroll(Array<Integer> max_steps, bool unroll_explicit);
+
+/*!
  * \brief Rewrite block and its surrounding loops to match the tensor intrinsics if possible
  * \param tensor_intrins The tensor intrinsics to be matched
  * \return The rule created

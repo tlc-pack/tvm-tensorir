@@ -548,6 +548,48 @@ SearchRule MarkVectorizeInner(int max_extent) {
   return SearchRule("vectorize_inner", f_apply);
 }
 
+/********** MarkAutoUnroll **********/
+
+/*! \brief A rule that parallelizes the outer loops */
+class RuleMarkAutoUnroll {
+ public:
+  /*! \brief The candidate of max_steps in auto_unroll */
+  Array<Integer> max_steps;
+  /*! \brief Whether to unroll explicitly */
+  bool unroll_explicit;
+  /*! \brief The probability of choose each max_step */
+  Array<FloatImm> probs;
+
+  explicit RuleMarkAutoUnroll(const Array<Integer>& max_steps, bool unroll_explicit)
+      : max_steps(max_steps),
+        unroll_explicit(unroll_explicit),
+        probs(max_steps.size(),
+              FloatImm(DataType::Float(64), 1.0 / static_cast<double>(max_steps.size()))) {}
+
+  /*! \brief Rule application */
+  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
+                const TContextInfo& info) const {
+    if (max_steps.empty()) {
+      return {{sch, info}};
+    }
+    tir::StmtSRef block_sref = sch->Eval(block_rv);
+    if (IsLeafBlock(sch->sch, block_sref)) {
+      tir::Var auto_unroll_max_step = sch->SampleCategorical(max_steps, probs);
+      sch->MarkBlockType(block_rv, "auto_unroll");
+    }
+    return {{sch, info}};
+  }
+};
+
+SearchRule MarkAutoUnroll(Array<Integer> max_steps, bool unroll_explicit) {
+  RuleMarkAutoUnroll rule(max_steps, unroll_explicit);
+  auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch, BlockRV block,
+                                         TContextInfo info) -> TReturn {
+    return rule.Apply(task, sch, block, info);
+  };
+  return SearchRule("mark_auto_unroll", f_apply);
+}
+
 /********** MarkTensorize **********/
 
 class RuleMarkTensorize {
@@ -700,6 +742,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkParallelizeOuter")
     .set_body_typed(MarkParallelizeOuter);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkVectorizeInner")
     .set_body_typed(MarkVectorizeInner);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkAutoUnroll").set_body_typed(MarkAutoUnroll);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkTensorize").set_body_typed(MarkTensorize);
 
 }  // namespace meta_schedule
