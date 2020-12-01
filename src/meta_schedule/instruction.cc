@@ -336,10 +336,12 @@ Instruction ReverseComputeInlineAttrs::MakeInst(const BlockRV& block) {
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction MarkLoopTypeAttrs::MakeInst(const Array<LoopRV>& loops, const String& mark,
-                                        const PrimExpr& first_n, const PrimExpr& last_n) {
+Instruction MarkLoopTypeAttrs::MakeInst(const Array<LoopRV>& loops, const String& ann_key,
+                                        const String& ann_val, const PrimExpr& first_n,
+                                        const PrimExpr& last_n) {
   ObjectPtr<MarkLoopTypeAttrs> n = make_object<MarkLoopTypeAttrs>();
-  n->mark = mark;
+  n->ann_key = ann_key;
+  n->ann_val = ann_val;
   Array<ObjectRef> inputs{loops.begin(), loops.end()};
   inputs.push_back(first_n);
   inputs.push_back(last_n);
@@ -348,9 +350,11 @@ Instruction MarkLoopTypeAttrs::MakeInst(const Array<LoopRV>& loops, const String
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction MarkBlockTypeAttrs::MakeInst(const BlockRV& block, const String& mark) {
+Instruction MarkBlockTypeAttrs::MakeInst(const BlockRV& block, const String& ann_key,
+                                         const String& ann_val) {
   ObjectPtr<MarkBlockTypeAttrs> n = make_object<MarkBlockTypeAttrs>();
-  n->mark = mark;
+  n->ann_key = ann_key;
+  n->ann_val = ann_val;
   return Instruction(/*inputs=*/{block},
                      /*outputs=*/{},
                      /*attrs=*/InstAttrs(std::move(n)));
@@ -503,14 +507,14 @@ Array<ObjectRef> MarkLoopTypeAttrs::ApplyToSchedule(ScheduleNode* sch,
   }
   TVM_META_SCHEDULE_INST_CAST(PrimExpr, first_n, inputs[n_loops]);
   TVM_META_SCHEDULE_INST_CAST(PrimExpr, last_n, inputs[n_loops + 1]);
-  sch->MarkLoopType(loops, mark, first_n, last_n);
+  sch->MarkLoopType(loops, ann_key, ann_val, first_n, last_n);
   return {};
 }
 
 Array<ObjectRef> MarkBlockTypeAttrs::ApplyToSchedule(ScheduleNode* sch,
                                                      const Array<ObjectRef>& inputs) const {
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
-  sch->MarkBlockType(block, mark);
+  sch->MarkBlockType(block, ann_key, ann_val);
   return {};
 }
 
@@ -720,13 +724,13 @@ void GetLeafBlocksAttrs::Export(Array<ObjectRef>* record,
 void MarkLoopTypeAttrs::Export(Array<ObjectRef>* record,
                                const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{mark});
+  record->push_back(Array<ObjectRef>{ann_key, ann_val});
 }
 
 void MarkBlockTypeAttrs::Export(Array<ObjectRef>* record,
                                 const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{mark});
+  record->push_back(Array<ObjectRef>{ann_key, ann_val});
 }
 
 void FuseAttrs::Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const {
@@ -890,18 +894,20 @@ InstAttrs GetLeafBlocksAttrs::Import(const Array<ObjectRef>& record) {
 InstAttrs MarkLoopTypeAttrs::Import(const Array<ObjectRef>& record) {
   CHECK_EQ(record.size(), 4);
   Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 1);
+  CHECK_EQ(from.size(), 2);
   ObjectPtr<MarkLoopTypeAttrs> n = make_object<MarkLoopTypeAttrs>();
-  n->mark = Downcast<String>(from[0]);
+  n->ann_key = Downcast<String>(from[0]);
+  n->ann_val = Downcast<String>(from[1]);
   return InstAttrs(std::move(n));
 }
 
 InstAttrs MarkBlockTypeAttrs::Import(const Array<ObjectRef>& record) {
   CHECK_EQ(record.size(), 4);
   Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 1);
+  CHECK_EQ(from.size(), 2);
   ObjectPtr<MarkBlockTypeAttrs> n = make_object<MarkBlockTypeAttrs>();
-  n->mark = Downcast<String>(from[0]);
+  n->ann_key = Downcast<String>(from[0]);
+  n->ann_val = Downcast<String>(from[1]);
   return InstAttrs(std::move(n));
 }
 

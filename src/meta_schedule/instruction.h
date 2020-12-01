@@ -614,21 +614,27 @@ struct GetLeafBlocksAttrs : public InstAttrsNode {
 /**************** Scheduling Primitives ****************/
 
 struct MarkLoopTypeAttrs : public InstAttrsNode {
-  /*! \brief The loop annotation */
-  String mark;
+  /*! \brief The loop annotation key */
+  String ann_key;
+  /*! \brief The loop annotation value */
+  String ann_val;
 
-  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("mark", &mark); }
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("ann_key", &ann_key);
+    v->Visit("ann_val", &ann_val);
+  }
 
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param loops The loops to be mark
-   * \param mark The annotation
+   * \param ann_key The loop annotation key
+   * \param ann_val The loop annotation value
    * \param first_n To mark the first n loops
    * \param last_n To mark the last n loops
    * \return The instruction created
    */
-  static Instruction MakeInst(const Array<LoopRV>& loops, const String& mark, const PrimExpr& first,
-                              const PrimExpr& last_n);
+  static Instruction MakeInst(const Array<LoopRV>& loops, const String& ann_key,
+                              const String& ann_val, const PrimExpr& first, const PrimExpr& last_n);
 
   /*!
    * \brief Apply the instruction to the schedule with given inputs
@@ -650,18 +656,24 @@ struct MarkLoopTypeAttrs : public InstAttrsNode {
 };
 
 struct MarkBlockTypeAttrs : public InstAttrsNode {
-  /*! \brief The loop annotation */
-  String mark;
+  /*! \brief The loop annotation key */
+  String ann_key;
+  /*! \brief The loop annotation value */
+  String ann_val;
 
-  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("mark", &mark); }
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("ann_key", &ann_key);
+    v->Visit("ann_val", &ann_val);
+  }
 
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param block The block to be marked
-   * \param mark The annotation
+   * \param ann_key The loop annotation key
+   * \param ann_val The loop annotation value
    * \return The instruction created
    */
-  static Instruction MakeInst(const BlockRV& block, const String& mark);
+  static Instruction MakeInst(const BlockRV& block, const String& ann_key, const String& ann_val);
 
   /*!
    * \brief Apply the instruction to the schedule with given inputs

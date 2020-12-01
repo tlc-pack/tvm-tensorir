@@ -214,18 +214,20 @@ class ScheduleNode : public Object {
   /*!
    * \brief Mark a loop
    * \param loops The loops to be marked
-   * \param mark The annotation
+   * \param ann_key The annotation key
+   * \param ann_val The annotation value
    * \param first_n The first n loops to be marked
    * \param last_n The last n loops to be marked
    */
-  void MarkLoopType(const Array<LoopRV>& loops, const String& mark,
+  void MarkLoopType(const Array<LoopRV>& loops, const String& ann_key, const String& ann_val,
                     const Optional<PrimExpr>& first_n, const Optional<PrimExpr>& last_n);
   /*!
    * \brief Mark a block
    * \param block The block to be marked
-   * \param mark The annotation
+   * \param ann_key The annotation key
+   * \param ann_val The annotation value
    */
-  void MarkBlockType(const BlockRV& block, const String& mark);
+  void MarkBlockType(const BlockRV& block, const String& ann_key, const String& ann_val);
   /*!
    * \brief Fuse the loops
    * \param loops The loops to be fused

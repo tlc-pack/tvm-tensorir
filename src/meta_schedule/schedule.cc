@@ -622,8 +622,8 @@ Array<BlockRV> ScheduleNode::GetLeafBlocks() {
 
 /**************** Schedule Primitives ****************/
 
-void ScheduleNode::MarkLoopType(const Array<LoopRV>& loops, const String& mark,
-                                const Optional<PrimExpr>& first_n,
+void ScheduleNode::MarkLoopType(const Array<LoopRV>& loops, const String& ann_key,
+                                const String& ann_val, const Optional<PrimExpr>& first_n,
                                 const Optional<PrimExpr>& last_n) {
   Array<tir::StmtSRef> loop_srefs;
   loop_srefs.reserve(loops.size());
@@ -634,23 +634,26 @@ void ScheduleNode::MarkLoopType(const Array<LoopRV>& loops, const String& mark,
     int n = Eval(first_n.value());
     int st = 0;
     int ed = n;
-    AnnotateLoopType(this->sch, {loop_srefs.begin() + st, loop_srefs.begin() + ed}, mark);
+    AnnotateLoopType(this->sch, {loop_srefs.begin() + st, loop_srefs.begin() + ed},  //
+                     ann_key, ann_val);
   }
   if (last_n.defined()) {
     int n = Eval(last_n.value());
     int ed = static_cast<int>(loops.size());
     int st = ed - n;
-    AnnotateLoopType(this->sch, {loop_srefs.begin() + st, loop_srefs.begin() + ed}, mark);
+    AnnotateLoopType(this->sch, {loop_srefs.begin() + st, loop_srefs.begin() + ed},  //
+                     ann_key, ann_val);
   }
   // Put the instruction in the trace
-  this->trace.push_back(MarkLoopTypeAttrs::MakeInst(loops, mark, first_n.value_or(Integer(0)),
-                                                    last_n.value_or(Integer(0))));
+  this->trace.push_back(MarkLoopTypeAttrs::MakeInst(
+      loops, ann_key, ann_val, first_n.value_or(Integer(0)), last_n.value_or(Integer(0))));
 }
 
-void ScheduleNode::MarkBlockType(const BlockRV& block, const String& mark) {
-  AnnotateBlockType(this->sch, this->Eval(block), mark);
+void ScheduleNode::MarkBlockType(const BlockRV& block, const String& ann_key,
+                                 const String& ann_val) {
+  AnnotateBlockType(this->sch, this->Eval(block), ann_key, ann_val);
   // Put the instruction in the trace
-  this->trace.push_back(MarkBlockTypeAttrs::MakeInst(block, mark));
+  this->trace.push_back(MarkBlockTypeAttrs::MakeInst(block, ann_key, ann_val));
 }
 
 LoopRV ScheduleNode::Fuse(const Array<LoopRV>& loops) {
@@ -1057,16 +1060,16 @@ struct Internal {
    * \brief FFI function, corresponds to ScheduleNode::MarkLoopType
    * \sa ScheduleNode::MarkLoopType
    */
-  static void MarkLoopType(Schedule sch, Array<LoopRV> loops, String mark,
+  static void MarkLoopType(Schedule sch, Array<LoopRV> loops, String ann_key, String ann_val,
                            Optional<PrimExpr> first_n, Optional<PrimExpr> last_n) {
-    sch->MarkLoopType(loops, mark, first_n, last_n);
+    sch->MarkLoopType(loops, ann_key, ann_val, first_n, last_n);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::MarkBlockType
    * \sa ScheduleNode::MarkBlockType
    */
-  static void MarkBlockType(Schedule sch, BlockRV block, String mark) {
-    sch->MarkBlockType(block, mark);
+  static void MarkBlockType(Schedule sch, BlockRV block, String ann_key, String ann_val) {
+    sch->MarkBlockType(block, ann_key, ann_val);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Fuse
