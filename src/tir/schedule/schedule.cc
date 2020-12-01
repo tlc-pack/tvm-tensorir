@@ -598,6 +598,12 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnroll")
       schedule->unroll(node);
     });
 
+TVM_REGISTER_GLOBAL("tir.schedule.SchedulePragma")
+    .set_body_typed<void(Schedule, StmtSRef, String, PrimExpr)>(
+        [](Schedule schedule, StmtSRef loop_sref, String pragma_type, PrimExpr pragma_value) {
+          schedule->pragma(loop_sref, pragma_type, pragma_value);
+        });
+
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDecomposeReduction")
     .set_body_typed<StmtSRef(Schedule, StmtSRef, StmtSRef)>([](Schedule schedule, StmtSRef block,
                                                                StmtSRef loop) {
@@ -606,15 +612,15 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDecomposeReduction")
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheWrite")
     .set_body_typed<StmtSRef(Schedule, StmtSRef, int, std::string)>([](Schedule schedule,
-                                                                          StmtSRef block, int i,
-                                                                          std::string scope) {
+                                                                       StmtSRef block, int i,
+                                                                       std::string scope) {
       return schedule->cache_write(block, i, scope);
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheRead")
     .set_body_typed<StmtSRef(Schedule, StmtSRef, int, std::string)>([](Schedule schedule,
-                                                                          StmtSRef block, int i,
-                                                                          std::string scope) {
+                                                                       StmtSRef block, int i,
+                                                                       std::string scope) {
       return schedule->cache_read(block, i, scope);
     });
 
