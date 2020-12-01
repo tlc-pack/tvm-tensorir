@@ -192,7 +192,7 @@ class PostprocRewriteTensorize {
       if (const auto* block = obj.as<tir::BlockNode>()) {
         if (!block->annotations.empty()) {
           tir::Annotation ann = block->annotations[0];
-          if (ann->attr_key == std::string(tir::attr::loop_type) &&
+          if (ann->attr_key == std::string(tir::attr::block_type) &&
               Downcast<tir::StringImm>(ann->value)->value == "lazy_tensorize") {
             result = GetRef<tir::Block>(block);
             return false;

@@ -90,7 +90,7 @@ void AnnotateBlockType(const tir::Schedule& sch, const tir::StmtSRef& block_sref
   CHECK(block) << "TypeError: Expects LoopNode, but gets: " << block_sref->stmt->GetTypeKey();
   ObjectPtr<tir::BlockNode> new_block = make_object<tir::BlockNode>(*block);
   new_block->annotations.push_back(
-      tir::Annotation(tir::attr::loop_type, tir::StringImm(annotation)));
+      tir::Annotation(tir::attr::block_type, tir::StringImm(annotation)));
   tir::Block new_block_obj = tir::Block(new_block);
   sch->Replace(block_sref, new_block_obj, {{new_block_obj, GetRef<tir::Block>(block)}});
 }

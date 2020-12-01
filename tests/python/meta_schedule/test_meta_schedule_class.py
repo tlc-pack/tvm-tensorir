@@ -459,7 +459,7 @@ def test_meta_schedule_mark_block_type():
         block = sch.evaluate(block).stmt
         assert len(block.annotations) == 1
         (ann,) = block.annotations
-        assert ann.attr_key == "loop_type"
+        assert ann.attr_key == "block_type"
         assert ann.value == "lazy_tensorize"
 
     sch = ms.Schedule(func=matmul)
