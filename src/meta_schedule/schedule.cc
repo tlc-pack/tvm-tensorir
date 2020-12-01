@@ -439,8 +439,7 @@ tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
   // Update the symbol table
   this->sym_tab.Set(output, Integer(result));
   // Put the instruction in the trace
-  // TODO
-  // this->trace.push_back(SampleCategoricalAttrs::MakeInst(candidates, probs, output));
+  this->trace.push_back(SampleCategoricalAttrs::MakeInst(candidates, probs, output));
   // Put the sampling decision in the decision table
   this->decisions.Set(this->trace.back(), {Integer(result)});
   return output;

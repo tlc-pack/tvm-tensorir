@@ -321,6 +321,47 @@ struct SampleFusibleLoopsAttrs : public InstAttrsNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(SampleFusibleLoopsAttrs, InstAttrsNode);
 };
 
+/*! \brief Attrs of the instruction to sample from a categorical distribution */
+struct SampleCategoricalAttrs : public InstAttrsNode {
+  /*! \brief The candidates */
+  Array<Integer> candidates;
+  /*! \brief The probability distribution of the candidates */
+  Array<FloatImm> probs;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("candidates", &candidates);
+    v->Visit("probs", &probs);
+  }
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param candidates The candidates
+   * \param probs The probability distribution of the candidates
+   * \param output The output the instruction
+   * \return The instruction created
+   */
+  static Instruction MakeInst(const Array<Integer>& candidates, const Array<FloatImm>& probs,
+                              const tir::Var& output);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
+
+  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
+
+  static InstAttrs Import(const Array<ObjectRef>& record);
+
+  static String Name() { return "SampleCategorical"; }
+  String GetName() const override { return Name(); }
+  static constexpr const char* _type_key = "meta_schedule.attrs.SampleCategoricalAttrs";
+  TVM_DECLARE_FINAL_OBJECT_INFO(SampleCategoricalAttrs, InstAttrsNode);
+};
+
 /**************** Block/Loop Relationship ****************/
 
 /*! \brief Attrs of the instruction that gets the producers of a specific block */
