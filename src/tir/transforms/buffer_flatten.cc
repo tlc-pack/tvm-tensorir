@@ -360,7 +360,7 @@ class BufferFlattener : public StmtExprMutator {
     bool thread_binded = false;
 
     ForType for_type = ForType::Serial;
-    for (const auto& annotation : op->annotations)
+    for (const auto& annotation : op->annotations) {
       if (annotation->attr_key == tir::attr::loop_type) {
         std::string type = Downcast<StringImm>(annotation->value)->value;
         if (type == "unroll") {
@@ -374,6 +374,7 @@ class BufferFlattener : public StmtExprMutator {
           thread_tag = Downcast<StringImm>(annotation->value)->value;
         }
       }
+    }
 
     Stmt body = op->body;
     for (auto it = pending_allocate_.begin(); it != pending_allocate_.end();) {
@@ -384,7 +385,6 @@ class BufferFlattener : public StmtExprMutator {
           extents *= extent.max() - extent.min() + 1;
         }
         body = Allocate(n->buffer->data, n->buffer->dtype, {extents}, const_true(), body);
-
         // Change empty scope into global
         std::string scope = n->scope.empty() ? "global" : n->scope;
         body = AttrStmt(n->buffer->data, attr::storage_scope, StringImm(scope), body);
@@ -394,13 +394,22 @@ class BufferFlattener : public StmtExprMutator {
       }
     }
 
+    Stmt for_stmt;
     if (thread_binded) {
-      return AttrStmt(
+      for_stmt = AttrStmt(
           IterVar(Range(op->min, op->extent), op->loop_var, IterVarType::kThreadIndex, thread_tag),
           thread_tag == "vthread" ? attr::virtual_thread : attr::thread_extent, op->extent, body);
     } else {
-      return For(op->loop_var, op->min, op->extent, for_type, DeviceAPI::None, body);
+      for_stmt = For(op->loop_var, op->min, op->extent, for_type, DeviceAPI::None, body);
     }
+
+    for (const auto& annotation : op->annotations) {
+      if (attr::IsPragmaKey(annotation->attr_key)) {
+        for_stmt = AttrStmt(op->loop_var, annotation->attr_key, annotation->value, for_stmt);
+      }
+    }
+
+    return for_stmt;
   }
 
   // TODO(Siyuan): add support for For and AttrStmt
