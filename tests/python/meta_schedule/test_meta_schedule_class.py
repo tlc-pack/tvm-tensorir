@@ -15,9 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Test for meta schedule class """
-import pytest
-
 # pylint: disable=missing-function-docstring
+from collections import defaultdict
+
+import pytest
 import tvm
 from tir_workload import matmul, matmul_relu
 from tvm import meta_schedule as ms
@@ -347,6 +348,20 @@ def test_meta_schedule_sample_fusible_loops():
     _check_serialization(sch, func=matmul)
 
 
+def test_meta_schedule_sample_categorical():
+    n = 1000
+    sch = ms.Schedule(func=matmul)
+    counter = defaultdict(int)
+    candidates = [5, 2, 7, 1]
+    probs = [0.15, 0.55, 0.05, 0.25]
+    for _ in range(n):
+        v = sch.evaluate(sch.sample_categorical(candidates, probs))
+        counter[v] += 1
+    for i, prob in enumerate(probs):
+        assert (prob - 0.05) * n <= counter[candidates[i]] <= (prob + 0.05) * n
+    _check_serialization(sch, func=matmul)
+
+
 def test_meta_schedule_get_producers():
     sch = ms.Schedule(func=matmul_relu)
     block = sch.get_block("relu")
@@ -596,8 +611,6 @@ def test_meta_schedule_resample():
 
 
 def test_meta_schedule_replay_decision():
-    from collections import defaultdict  # pylint: disable=import-outside-toplevel
-
     sch = ms.Schedule(func=matmul)
     i, j, _ = sch.get_axes(sch.get_block("matmul"))
     i_tiles = sch.sample_perfect_tile(n_splits=4, loop=i)
@@ -631,6 +644,7 @@ if __name__ == "__main__":
     test_meta_schedule_sample_tile_factor()
     test_meta_schedule_sample_perfect_tile()
     test_meta_schedule_sample_fusible_loops()
+    test_meta_schedule_sample_categorical()
     test_meta_schedule_get_producers()
     test_meta_schedule_get_consumers()
     test_meta_schedule_get_block()

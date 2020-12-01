@@ -433,7 +433,7 @@ tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
   for (const FloatImm& prob : probs) {
     probs_vec.push_back(prob->value);
   }
-  int result = sampler.MakeMultinomial(probs_vec)();
+  int result = candidates[sampler.MakeMultinomial(probs_vec)()];
   // Create the output random variable
   tir::Var output("n");
   // Update the symbol table
