@@ -236,6 +236,24 @@ def mark_vectorize_inner(max_extent: int) -> SearchRule:
     return _ffi_api_search_rule.MarkVectorizeInner(max_extent)  # pylint: disable=no-member
 
 
+def mark_auto_unroll(max_steps: List[int], unroll_explicit: bool) -> SearchRule:
+    """Create a rule that marks the loops to be auto-unrolled
+
+    Parameters
+    ----------
+    max_steps : List[int]
+        The candidate of max_steps in auto_unroll
+    unroll_explicit : bool
+        Whether to unroll explicitly
+
+    Returns
+    ----------
+    rule: SearchRule
+        The search rule created
+    """
+    return _ffi_api_search_rule.MarkAutoUnroll(max_steps, unroll_explicit)  # pylint: disable=no-member
+
+
 def mark_tensorize(tensor_intrins: List[TensorIntrin]) -> SearchRule:
     """Rewrite block and its surrounding loops to match the tensor intrinsics if possible
 
