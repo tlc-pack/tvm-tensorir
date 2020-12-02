@@ -511,14 +511,14 @@ class PostprocRewriteAutoUnroll {
     std::vector<tir::StmtSRef> all_blocks = CollectAllBlocks(sch);
     for (const tir::StmtSRef& block_sref : all_blocks) {
       int max_step = -1;
-      bool unroll_explicit = false;
+      int unroll_explicit = -1;
       if (Optional<String> unroll = GetAnn(block_sref, tir::attr::auto_unroll_explicit)) {
         max_step = std::atoi(unroll.value().operator std::string().c_str());
-        unroll_explicit = true;
+        unroll_explicit = 1;
         RemoveAnn(sch->sch, block_sref, tir::attr::auto_unroll_explicit);
       } else if (Optional<String> unroll = GetAnn(block_sref, tir::attr::auto_unroll_implicit)) {
         max_step = std::atoi(unroll.value().operator std::string().c_str());
-        unroll_explicit = false;
+        unroll_explicit = 0;
         RemoveAnn(sch->sch, block_sref, tir::attr::auto_unroll_implicit);
       } else {
         continue;
@@ -528,6 +528,8 @@ class PostprocRewriteAutoUnroll {
         continue;
       }
       tir::StmtSRef loop_sref = loop_srefs[0];
+      sch->sch->pragma(loop_sref, "auto_unroll_max_step", Integer(max_step));
+      sch->sch->pragma(loop_sref, "unroll_explicit", Integer(unroll_explicit));
     }
     return true;
   }
