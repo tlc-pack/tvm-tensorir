@@ -297,11 +297,13 @@ class RuleMultiLevelTilingAndFusion {
         Array<LoopRV> tiles = sch->Split(fused, {factors[0], factors[1]});
         CHECK_EQ(tiles.size(), 2);
         // Vectorize the inner loop
-        sch->MarkLoopType({tiles[0]}, "lazy_cooperative_fetch", Integer(1), NullOpt);
-        sch->MarkLoopType({tiles[1]}, "lazy_vectorize", Integer(1), NullOpt);
+        sch->MarkLoopType({tiles[0]}, tir::attr::loop_type, "lazy_cooperative_fetch", Integer(1),
+                          NullOpt);
+        sch->MarkLoopType({tiles[1]}, tir::attr::loop_type, "lazy_vectorize", Integer(1), NullOpt);
       } else {
         // cooperative fetch only
-        sch->MarkLoopType({fused}, "lazy_cooperative_fetch", Integer(1), NullOpt);
+        sch->MarkLoopType({fused}, tir::attr::loop_type, "lazy_cooperative_fetch", Integer(1),
+                          NullOpt);
       }
     }
   }
@@ -371,7 +373,8 @@ class RuleMultiLevelTilingAndFusion {
     Array<Array<LoopRV>>& tiles = state->tiles;
     int n = std::min(tile_marks.size(), tiles.size());
     for (int i = 0; i < n; ++i) {
-      sch->MarkLoopType(tiles[i], tile_marks[i], Integer(tiles[i].size()), NullOpt);
+      sch->MarkLoopType(tiles[i], tir::attr::loop_type, tile_marks[i], Integer(tiles[i].size()),
+                        NullOpt);
     }
   }
 
@@ -493,7 +496,7 @@ class RuleMarkParallelizeOuter {
     tir::Var n_fusible_rv =
         sch->SampleFusibleLoops(loop_rvs, loop_types, max_extent, /*include_overflow_loop=*/true,
                                 ScheduleNode::Order::outer_to_inner, ScheduleNode::Mode::max);
-    sch->MarkLoopType(loop_rvs, "lazy_parallel", n_fusible_rv, NullOpt);
+    sch->MarkLoopType(loop_rvs, tir::attr::loop_type, "lazy_parallel", n_fusible_rv, NullOpt);
     return {{sch, info}};
   }
 };
@@ -534,7 +537,7 @@ class RuleMarkVectorizeInner {
     tir::Var n_fusible_rv =
         sch->SampleFusibleLoops(loop_rvs, loop_types, max_extent, /*include_overflow_loop=*/false,
                                 ScheduleNode::Order::inner_to_order, ScheduleNode::Mode::max);
-    sch->MarkLoopType(loop_rvs, "lazy_vectorize", NullOpt, n_fusible_rv);
+    sch->MarkLoopType(loop_rvs, tir::attr::loop_type, "lazy_vectorize", NullOpt, n_fusible_rv);
     return {{sch, info}};
   }
 };
@@ -546,6 +549,48 @@ SearchRule MarkVectorizeInner(int max_extent) {
     return rule.Apply(task, sch, block, info);
   };
   return SearchRule("vectorize_inner", f_apply);
+}
+
+/********** MarkAutoUnroll **********/
+
+/*! \brief A rule that parallelizes the outer loops */
+class RuleMarkAutoUnroll {
+ public:
+  /*! \brief The candidate of max_steps in auto_unroll */
+  Array<Integer> max_steps;
+  /*! \brief Whether to unroll explicitly */
+  bool unroll_explicit;
+  /*! \brief The probability of choose each max_step */
+  Array<FloatImm> probs;
+
+  explicit RuleMarkAutoUnroll(const Array<Integer>& max_steps, bool unroll_explicit)
+      : max_steps(max_steps),
+        unroll_explicit(unroll_explicit),
+        probs(max_steps.size(),
+              FloatImm(DataType::Float(64), 1.0 / static_cast<double>(max_steps.size()))) {}
+
+  /*! \brief Rule application */
+  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
+                const TContextInfo& info) const {
+    if (max_steps.empty()) {
+      return {{sch, info}};
+    }
+    tir::StmtSRef block_sref = sch->Eval(block_rv);
+    if (IsLeafBlock(sch->sch, block_sref)) {
+      tir::Var max_step = sch->SampleCategorical(max_steps, probs);
+      sch->AutoUnroll(block_rv, max_step, unroll_explicit);
+    }
+    return {{sch, info}};
+  }
+};
+
+SearchRule MarkAutoUnroll(Array<Integer> max_steps, bool unroll_explicit) {
+  RuleMarkAutoUnroll rule(max_steps, unroll_explicit);
+  auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch, BlockRV block,
+                                         TContextInfo info) -> TReturn {
+    return rule.Apply(task, sch, block, info);
+  };
+  return SearchRule("mark_auto_unroll", f_apply);
 }
 
 /********** MarkTensorize **********/
@@ -617,7 +662,7 @@ class RuleMarkTensorize {
       sch->Blockize(reorder_suffix[0], "");
     }
     // Annotate the block
-    sch->MarkBlockType(block_rv, "lazy_tensorize");
+    sch->MarkBlockType(block_rv, tir::attr::block_type, "lazy_tensorize");
   }
 
   /*! \brief Rule application */
@@ -700,6 +745,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkParallelizeOuter")
     .set_body_typed(MarkParallelizeOuter);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkVectorizeInner")
     .set_body_typed(MarkVectorizeInner);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkAutoUnroll").set_body_typed(MarkAutoUnroll);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkTensorize").set_body_typed(MarkTensorize);
 
 }  // namespace meta_schedule

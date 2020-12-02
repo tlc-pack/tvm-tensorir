@@ -61,11 +61,22 @@ bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
  * \return A new loop with the given annotation as its last annotation
  */
 Loop WithAnnotation(const LoopNode* loop, const Annotation& annotation) {
-  for (const auto& ann : loop->annotations)
-    CHECK(ann->attr_key != annotation->attr_key)
-        << "ValueError: loop already has annotation with key " << ann->attr_key;
+  bool found = false;
+  int n = loop->annotations.size();
+  Array<Annotation> annotations = loop->annotations;
+  for (int i = 0; i < n; ++i) {
+    const Annotation& ann = annotations[i];
+    if (ann->attr_key == annotation->attr_key) {
+      annotations.Set(i, annotation);
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    annotations.push_back(annotation);
+  }
   ObjectPtr<LoopNode> new_loop = make_object<LoopNode>(*loop);
-  new_loop->annotations.push_back(annotation);
+  new_loop->annotations = std::move(annotations);
   return Loop(new_loop);
 }
 

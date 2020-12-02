@@ -156,6 +156,13 @@ class ScheduleNode : public Object {
    */
   tir::Var SampleFusibleLoops(const Array<LoopRV>& loops, const Array<Integer>& loop_types,
                               int max_extent, bool include_overflow_loop, Order order, Mode mode);
+  /*!
+   * \brief Sample an integer given the probability distribution
+   * \param candidates The candidates
+   * \param probs The probability distribution of the candidates
+   * \return The random variable
+   */
+  tir::Var SampleCategorical(const Array<Integer>& candidates, const Array<FloatImm>& probs);
   /**************** Block/Loop Relationship ****************/
   /*!
    * \brief Get the producer of a specific block
@@ -207,18 +214,20 @@ class ScheduleNode : public Object {
   /*!
    * \brief Mark a loop
    * \param loops The loops to be marked
-   * \param mark The annotation
+   * \param ann_key The annotation key
+   * \param ann_val The annotation value
    * \param first_n The first n loops to be marked
    * \param last_n The last n loops to be marked
    */
-  void MarkLoopType(const Array<LoopRV>& loops, const String& mark,
+  void MarkLoopType(const Array<LoopRV>& loops, const String& ann_key, const String& ann_val,
                     const Optional<PrimExpr>& first_n, const Optional<PrimExpr>& last_n);
   /*!
    * \brief Mark a block
    * \param block The block to be marked
-   * \param mark The annotation
+   * \param ann_key The annotation key
+   * \param ann_val The annotation value
    */
-  void MarkBlockType(const BlockRV& block, const String& mark);
+  void MarkBlockType(const BlockRV& block, const String& ann_key, const String& ann_val);
   /*!
    * \brief Fuse the loops
    * \param loops The loops to be fused
@@ -291,6 +300,13 @@ class ScheduleNode : public Object {
    * \return The block random variable indicating the decomposition result
    */
   BlockRV DecomposeReduction(const BlockRV& block, const LoopRV& loop);
+  /*!
+   * \brief Apply auto-unroll onto a block
+   * \param block The block to be applied
+   * \param max_step The maximum steps to be unrolled
+   * \param unroll_explicit Whether to unroll explicitly
+   */
+  void AutoUnroll(const BlockRV& block, const PrimExpr& max_step, bool unroll_explicit);
   /*! \brief An NOP indicating entrance of post processing*/
   void EnterPostProc();
   /**************** Trace-related ****************/

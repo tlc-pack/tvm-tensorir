@@ -321,6 +321,47 @@ struct SampleFusibleLoopsAttrs : public InstAttrsNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(SampleFusibleLoopsAttrs, InstAttrsNode);
 };
 
+/*! \brief Attrs of the instruction to sample from a categorical distribution */
+struct SampleCategoricalAttrs : public InstAttrsNode {
+  /*! \brief The candidates */
+  Array<Integer> candidates;
+  /*! \brief The probability distribution of the candidates */
+  Array<FloatImm> probs;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("candidates", &candidates);
+    v->Visit("probs", &probs);
+  }
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param candidates The candidates
+   * \param probs The probability distribution of the candidates
+   * \param output The output the instruction
+   * \return The instruction created
+   */
+  static Instruction MakeInst(const Array<Integer>& candidates, const Array<FloatImm>& probs,
+                              const tir::Var& output);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
+
+  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
+
+  static InstAttrs Import(const Array<ObjectRef>& record);
+
+  static String Name() { return "SampleCategorical"; }
+  String GetName() const override { return Name(); }
+  static constexpr const char* _type_key = "meta_schedule.attrs.SampleCategoricalAttrs";
+  TVM_DECLARE_FINAL_OBJECT_INFO(SampleCategoricalAttrs, InstAttrsNode);
+};
+
 /**************** Block/Loop Relationship ****************/
 
 /*! \brief Attrs of the instruction that gets the producers of a specific block */
@@ -573,21 +614,27 @@ struct GetLeafBlocksAttrs : public InstAttrsNode {
 /**************** Scheduling Primitives ****************/
 
 struct MarkLoopTypeAttrs : public InstAttrsNode {
-  /*! \brief The loop annotation */
-  String mark;
+  /*! \brief The loop annotation key */
+  String ann_key;
+  /*! \brief The loop annotation value */
+  String ann_val;
 
-  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("mark", &mark); }
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("ann_key", &ann_key);
+    v->Visit("ann_val", &ann_val);
+  }
 
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param loops The loops to be mark
-   * \param mark The annotation
+   * \param ann_key The loop annotation key
+   * \param ann_val The loop annotation value
    * \param first_n To mark the first n loops
    * \param last_n To mark the last n loops
    * \return The instruction created
    */
-  static Instruction MakeInst(const Array<LoopRV>& loops, const String& mark, const PrimExpr& first,
-                              const PrimExpr& last_n);
+  static Instruction MakeInst(const Array<LoopRV>& loops, const String& ann_key,
+                              const String& ann_val, const PrimExpr& first, const PrimExpr& last_n);
 
   /*!
    * \brief Apply the instruction to the schedule with given inputs
@@ -609,18 +656,24 @@ struct MarkLoopTypeAttrs : public InstAttrsNode {
 };
 
 struct MarkBlockTypeAttrs : public InstAttrsNode {
-  /*! \brief The loop annotation */
-  String mark;
+  /*! \brief The loop annotation key */
+  String ann_key;
+  /*! \brief The loop annotation value */
+  String ann_val;
 
-  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("mark", &mark); }
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("ann_key", &ann_key);
+    v->Visit("ann_val", &ann_val);
+  }
 
   /*!
    * \brief Create instruction given the inputs and outputs
    * \param block The block to be marked
-   * \param mark The annotation
+   * \param ann_key The loop annotation key
+   * \param ann_val The loop annotation value
    * \return The instruction created
    */
-  static Instruction MakeInst(const BlockRV& block, const String& mark);
+  static Instruction MakeInst(const BlockRV& block, const String& ann_key, const String& ann_val);
 
   /*!
    * \brief Apply the instruction to the schedule with given inputs
@@ -1005,6 +1058,41 @@ struct DecomposeReductionAttrs : public InstAttrsNode {
   String GetName() const override { return Name(); }
   static constexpr const char* _type_key = "meta_schedule.attrs.DecomposeReductionAttrs";
   TVM_DECLARE_FINAL_OBJECT_INFO(DecomposeReductionAttrs, InstAttrsNode);
+};
+
+/*! \brief Attrs of the instruction that applies auto_unroll */
+struct AutoUnrollAttrs : public InstAttrsNode {
+  /*! \brief Whether to unroll explicitly */
+  bool unroll_explicit;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param block The reduction block to be decomposed
+   * \param max_step The maximum unroll steps
+   * \param unroll_explicit Whether to unroll explicitly
+   * \return The instruction created
+   */
+  static Instruction MakeInst(const BlockRV& block, const PrimExpr& max_step, bool unroll_explicit);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
+
+  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
+
+  static InstAttrs Import(const Array<ObjectRef>& record);
+
+  static String Name() { return "AutoUnroll"; }
+  String GetName() const override { return Name(); }
+  static constexpr const char* _type_key = "meta_schedule.attrs.AutoUnrollAttrs";
+  TVM_DECLARE_FINAL_OBJECT_INFO(AutoUnrollAttrs, InstAttrsNode);
 };
 
 /*! \brief Attrs of an NOP that indicates entrance of post processing */
