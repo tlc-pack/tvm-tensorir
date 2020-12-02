@@ -119,6 +119,7 @@ Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Array<Obj
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(CacheWriteAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(BlockizeAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(DecomposeReductionAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(AutoUnrollAttrs),
       };
 #undef TVM_META_SCHEDULE_INST_VTABLE_ENTRY
   CHECK_GE(record.size(), 3);
@@ -397,6 +398,15 @@ Instruction DecomposeReductionAttrs::MakeInst(const BlockRV& block, const LoopRV
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
+Instruction AutoUnrollAttrs::MakeInst(const BlockRV& block, const PrimExpr& max_step,
+                                      bool unroll_explicit) {
+  ObjectPtr<AutoUnrollAttrs> n = make_object<AutoUnrollAttrs>();
+  n->unroll_explicit = unroll_explicit;
+  return Instruction(/*inputs=*/{block, max_step},
+                     /*outputs=*/{},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
 Instruction EnterPostProcAttrs::MakeInst() {
   return Instruction(/*inputs=*/{},
                      /*outputs=*/{},
@@ -619,6 +629,15 @@ Array<ObjectRef> DecomposeReductionAttrs::ApplyToSchedule(ScheduleNode* sch,
   return {sch->DecomposeReduction(block, loop)};
 }
 
+Array<ObjectRef> AutoUnrollAttrs::ApplyToSchedule(ScheduleNode* sch,
+                                                  const Array<ObjectRef>& inputs) const {
+  CHECK_EQ(inputs.size(), 2);
+  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
+  TVM_META_SCHEDULE_INST_CAST(PrimExpr, max_step, inputs[1]);
+  sch->AutoUnroll(block, max_step, unroll_explicit);
+  return {};
+}
+
 Array<ObjectRef> EnterPostProcAttrs::ApplyToSchedule(ScheduleNode* sch,
                                                      const Array<ObjectRef>& inputs) const {
   CHECK_EQ(inputs.size(), 0);
@@ -786,6 +805,12 @@ void BlockizeAttrs::Export(Array<ObjectRef>* record,
 void DecomposeReductionAttrs::Export(Array<ObjectRef>* record,
                                      const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
+}
+
+void AutoUnrollAttrs::Export(Array<ObjectRef>* record,
+                             const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+  record->push_back(Array<ObjectRef>{Integer(unroll_explicit)});
 }
 
 void EnterPostProcAttrs::Export(Array<ObjectRef>* record,
@@ -980,6 +1005,15 @@ InstAttrs DecomposeReductionAttrs::Import(const Array<ObjectRef>& record) {
   return InstAttrs(make_object<DecomposeReductionAttrs>());
 }
 
+InstAttrs AutoUnrollAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_EQ(record.size(), 4);
+  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
+  CHECK_EQ(from.size(), 1);
+  ObjectPtr<AutoUnrollAttrs> n = make_object<AutoUnrollAttrs>();
+  n->unroll_explicit = Downcast<Integer>(from[0])->value;
+  return InstAttrs(std::move(n));
+}
+
 InstAttrs EnterPostProcAttrs::Import(const Array<ObjectRef>& record) {
   CHECK_EQ(record.size(), 3);
   return InstAttrs(make_object<EnterPostProcAttrs>());
@@ -1017,6 +1051,7 @@ TVM_REGISTER_NODE_TYPE(CacheReadAttrs);
 TVM_REGISTER_NODE_TYPE(CacheWriteAttrs);
 TVM_REGISTER_NODE_TYPE(BlockizeAttrs);
 TVM_REGISTER_NODE_TYPE(DecomposeReductionAttrs);
+TVM_REGISTER_NODE_TYPE(AutoUnrollAttrs);
 TVM_REGISTER_NODE_TYPE(EnterPostProcAttrs);
 
 #undef TVM_META_SCHEDULE_INST_CAST

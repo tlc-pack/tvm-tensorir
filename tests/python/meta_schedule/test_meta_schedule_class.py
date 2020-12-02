@@ -573,6 +573,13 @@ def test_meta_schedule_blockize():
     _check_serialization(sch, func=matmul)
 
 
+def test_meta_schedule_auto_unroll():
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("matmul")
+    sch.auto_unroll(block, 10, True)
+    _check_serialization(sch, func=matmul)
+
+
 def test_meta_schedule_mutate_decision():
     sch = ms.Schedule(func=matmul)
     i, j, _ = sch.get_axes(sch.get_block("matmul"))
@@ -665,6 +672,7 @@ if __name__ == "__main__":
     test_meta_schedule_cache_write()
     test_meta_schedule_blockize()
     # test_meta_schedule_decompose_reduction()
+    test_meta_schedule_auto_unroll()
     test_meta_schedule_mutate_decision()
     test_meta_schedule_resample()
     test_meta_schedule_replay_decision()

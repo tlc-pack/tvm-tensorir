@@ -577,13 +577,8 @@ class RuleMarkAutoUnroll {
     }
     tir::StmtSRef block_sref = sch->Eval(block_rv);
     if (IsLeafBlock(sch->sch, block_sref)) {
-      tir::Var auto_unroll_max_step = sch->SampleCategorical(max_steps, probs);
-      // TODO
-      if (unroll_explicit) {
-        sch->MarkBlockType(block_rv, tir::attr::auto_unroll_explicit, "auto_unroll");
-      } else {
-        sch->MarkBlockType(block_rv, tir::attr::auto_unroll_implicit, "auto_unroll");
-      }
+      tir::Var max_step = sch->SampleCategorical(max_steps, probs);
+      sch->AutoUnroll(block_rv, max_step, unroll_explicit);
     }
     return {{sch, info}};
   }

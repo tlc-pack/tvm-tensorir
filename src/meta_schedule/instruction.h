@@ -1060,6 +1060,41 @@ struct DecomposeReductionAttrs : public InstAttrsNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(DecomposeReductionAttrs, InstAttrsNode);
 };
 
+/*! \brief Attrs of the instruction that applies auto_unroll */
+struct AutoUnrollAttrs : public InstAttrsNode {
+  /*! \brief Whether to unroll explicitly */
+  bool unroll_explicit;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param block The reduction block to be decomposed
+   * \param max_step The maximum unroll steps
+   * \param unroll_explicit Whether to unroll explicitly
+   * \return The instruction created
+   */
+  static Instruction MakeInst(const BlockRV& block, const PrimExpr& max_step, bool unroll_explicit);
+
+  /*!
+   * \brief Apply the instruction to the schedule with given inputs
+   * \param sch The schedule to be applied
+   * \param inputs The input of the instruction
+   * \return Outputs of the instruction
+   */
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
+                                   const Array<ObjectRef>& inputs) const override;
+
+  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
+
+  static InstAttrs Import(const Array<ObjectRef>& record);
+
+  static String Name() { return "AutoUnroll"; }
+  String GetName() const override { return Name(); }
+  static constexpr const char* _type_key = "meta_schedule.attrs.AutoUnrollAttrs";
+  TVM_DECLARE_FINAL_OBJECT_INFO(AutoUnrollAttrs, InstAttrsNode);
+};
+
 /*! \brief Attrs of an NOP that indicates entrance of post processing */
 struct EnterPostProcAttrs : public InstAttrsNode {
   void VisitAttrs(tvm::AttrVisitor* v) {}

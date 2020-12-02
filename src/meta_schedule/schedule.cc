@@ -817,6 +817,16 @@ BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const LoopRV& loo
   return output;
 }
 
+void ScheduleNode::AutoUnroll(const BlockRV& block_rv, const PrimExpr& max_step_rv,
+                              bool unroll_explicit) {
+  int max_step = this->Eval(max_step_rv);
+  if (unroll_explicit) {
+    MarkBlockType(block_rv, tir::attr::auto_unroll_explicit, std::to_string(max_step));
+  } else {
+    MarkBlockType(block_rv, tir::attr::auto_unroll_implicit, std::to_string(max_step));
+  }
+}
+
 void ScheduleNode::EnterPostProc() { this->trace.push_back(EnterPostProcAttrs::MakeInst()); }
 
 /**************** Trace-related ****************/
@@ -1140,6 +1150,9 @@ struct Internal {
   static BlockRV DecomposeReduction(Schedule sch, BlockRV block, LoopRV loop) {
     return sch->DecomposeReduction(block, loop);
   }
+  static void AutoUnroll(Schedule sch, BlockRV block, PrimExpr max_step, bool unroll_explicit) {
+    sch->AutoUnroll(block, max_step, unroll_explicit);
+  }
   /**************** Trace-related ****************/
   /*!
    * \brief FFI function, corresponds to ScheduleNode::MutateDecision
@@ -1201,6 +1214,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCacheWrite").set_body_typed(Internal:
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleBlockize").set_body_typed(Internal::Blockize);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleDecomposeReduction")
     .set_body_typed(Internal::DecomposeReduction);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleAutoUnroll").set_body_typed(Internal::AutoUnroll);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMutateDecision")
     .set_body_typed(Internal::MutateDecision);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReSample").set_body_typed(Internal::ReSample);
