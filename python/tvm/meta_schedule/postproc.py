@@ -102,6 +102,17 @@ def rewrite_cuda_thread_bind() -> Postproc:
     return _ffi_api_postproc.RewriteCudaThreadBind()  # pylint: disable=no-member
 
 
+def rewrite_auto_unroll() -> Postproc:
+    """Creates a postprocessor that rewrite auto unrolling
+
+    Returns
+    ----------
+    postproc: Postproc
+        The postprocessor created
+    """
+    return _ffi_api_postproc.RewriteAutoUnroll()  # pylint: disable=no-member
+
+
 def verify_gpu_code() -> Postproc:
     """Creates a postprocessor that do block/vthread/thread binding for cuda
 

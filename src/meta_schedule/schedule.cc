@@ -424,6 +424,27 @@ tir::Var ScheduleNode::SampleFusibleLoops(const Array<LoopRV>& loops,
   return output;
 }
 
+tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
+                                         const Array<FloatImm>& probs) {
+  // Sample the output
+  CHECK_EQ(candidates.size(), probs.size()) << "ValueError: When sampling ";
+  std::vector<double> probs_vec;
+  probs_vec.reserve(probs.size());
+  for (const FloatImm& prob : probs) {
+    probs_vec.push_back(prob->value);
+  }
+  int result = candidates[sampler.MakeMultinomial(probs_vec)()];
+  // Create the output random variable
+  tir::Var output("n");
+  // Update the symbol table
+  this->sym_tab.Set(output, Integer(result));
+  // Put the instruction in the trace
+  this->trace.push_back(SampleCategoricalAttrs::MakeInst(candidates, probs, output));
+  // Put the sampling decision in the decision table
+  this->decisions.Set(this->trace.back(), {Integer(result)});
+  return output;
+}
+
 /**************** Block/Loop Relationship ****************/
 
 Array<BlockRV> ScheduleNode::GetProducers(const BlockRV& block) {
@@ -601,8 +622,8 @@ Array<BlockRV> ScheduleNode::GetLeafBlocks() {
 
 /**************** Schedule Primitives ****************/
 
-void ScheduleNode::MarkLoopType(const Array<LoopRV>& loops, const String& mark,
-                                const Optional<PrimExpr>& first_n,
+void ScheduleNode::MarkLoopType(const Array<LoopRV>& loops, const String& ann_key,
+                                const String& ann_val, const Optional<PrimExpr>& first_n,
                                 const Optional<PrimExpr>& last_n) {
   Array<tir::StmtSRef> loop_srefs;
   loop_srefs.reserve(loops.size());
@@ -613,23 +634,26 @@ void ScheduleNode::MarkLoopType(const Array<LoopRV>& loops, const String& mark,
     int n = Eval(first_n.value());
     int st = 0;
     int ed = n;
-    AnnotateLoopType(this->sch, {loop_srefs.begin() + st, loop_srefs.begin() + ed}, mark);
+    AnnotateLoopType(this->sch, {loop_srefs.begin() + st, loop_srefs.begin() + ed},  //
+                     ann_key, ann_val);
   }
   if (last_n.defined()) {
     int n = Eval(last_n.value());
     int ed = static_cast<int>(loops.size());
     int st = ed - n;
-    AnnotateLoopType(this->sch, {loop_srefs.begin() + st, loop_srefs.begin() + ed}, mark);
+    AnnotateLoopType(this->sch, {loop_srefs.begin() + st, loop_srefs.begin() + ed},  //
+                     ann_key, ann_val);
   }
   // Put the instruction in the trace
-  this->trace.push_back(MarkLoopTypeAttrs::MakeInst(loops, mark, first_n.value_or(Integer(0)),
-                                                    last_n.value_or(Integer(0))));
+  this->trace.push_back(MarkLoopTypeAttrs::MakeInst(
+      loops, ann_key, ann_val, first_n.value_or(Integer(0)), last_n.value_or(Integer(0))));
 }
 
-void ScheduleNode::MarkBlockType(const BlockRV& block, const String& mark) {
-  AnnotateBlockType(this->sch, this->Eval(block), mark);
+void ScheduleNode::MarkBlockType(const BlockRV& block, const String& ann_key,
+                                 const String& ann_val) {
+  AnnotateBlockType(this->sch, this->Eval(block), ann_key, ann_val);
   // Put the instruction in the trace
-  this->trace.push_back(MarkBlockTypeAttrs::MakeInst(block, mark));
+  this->trace.push_back(MarkBlockTypeAttrs::MakeInst(block, ann_key, ann_val));
 }
 
 LoopRV ScheduleNode::Fuse(const Array<LoopRV>& loops) {
@@ -791,6 +815,16 @@ BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const LoopRV& loo
   // Put the instruction in the trace
   this->trace.push_back(DecomposeReductionAttrs::MakeInst(block, loop, output));
   return output;
+}
+
+void ScheduleNode::AutoUnroll(const BlockRV& block_rv, const PrimExpr& max_step_rv,
+                              bool unroll_explicit) {
+  int max_step = this->Eval(max_step_rv);
+  if (unroll_explicit) {
+    MarkBlockType(block_rv, tir::attr::auto_unroll_explicit, std::to_string(max_step));
+  } else {
+    MarkBlockType(block_rv, tir::attr::auto_unroll_implicit, std::to_string(max_step));
+  }
 }
 
 void ScheduleNode::EnterPostProc() { this->trace.push_back(EnterPostProcAttrs::MakeInst()); }
@@ -962,6 +996,10 @@ struct Internal {
                                           Array<Integer> where) {
     return sch->SampleTileFactor(n_splits, loop, where);
   }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::SampleFusibleLoops
+   * \sa ScheduleNode::SampleFusibleLoops
+   */
   static tir::Var SampleFusibleLoops(Schedule sch, Array<LoopRV> loops, Array<Integer> loop_types,
                                      int max_extent, bool include_overflow_loop, int _order,
                                      int _mode) {
@@ -970,7 +1008,14 @@ struct Internal {
     return sch->SampleFusibleLoops(loops, loop_types, max_extent, include_overflow_loop, order,
                                    mode);
   }
-
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::SampleCategorical
+   * \sa ScheduleNode::SampleCategorical
+   */
+  static tir::Var SampleCategorical(Schedule sch, Array<Integer> candidates,
+                                    Array<FloatImm> probs) {
+    return sch->SampleCategorical(candidates, probs);
+  }
   /**************** Block/Loop Relationship ****************/
   /*!
    * \brief FFI function, corresponds to ScheduleNode::GetProducers
@@ -1025,16 +1070,16 @@ struct Internal {
    * \brief FFI function, corresponds to ScheduleNode::MarkLoopType
    * \sa ScheduleNode::MarkLoopType
    */
-  static void MarkLoopType(Schedule sch, Array<LoopRV> loops, String mark,
+  static void MarkLoopType(Schedule sch, Array<LoopRV> loops, String ann_key, String ann_val,
                            Optional<PrimExpr> first_n, Optional<PrimExpr> last_n) {
-    sch->MarkLoopType(loops, mark, first_n, last_n);
+    sch->MarkLoopType(loops, ann_key, ann_val, first_n, last_n);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::MarkBlockType
    * \sa ScheduleNode::MarkBlockType
    */
-  static void MarkBlockType(Schedule sch, BlockRV block, String mark) {
-    sch->MarkBlockType(block, mark);
+  static void MarkBlockType(Schedule sch, BlockRV block, String ann_key, String ann_val) {
+    sch->MarkBlockType(block, ann_key, ann_val);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Fuse
@@ -1105,6 +1150,9 @@ struct Internal {
   static BlockRV DecomposeReduction(Schedule sch, BlockRV block, LoopRV loop) {
     return sch->DecomposeReduction(block, loop);
   }
+  static void AutoUnroll(Schedule sch, BlockRV block, PrimExpr max_step, bool unroll_explicit) {
+    sch->AutoUnroll(block, max_step, unroll_explicit);
+  }
   /**************** Trace-related ****************/
   /*!
    * \brief FFI function, corresponds to ScheduleNode::MutateDecision
@@ -1136,8 +1184,10 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSamplePerfectTile")
     .set_body_typed(Internal::SamplePerfectTile);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleTileFactor")
     .set_body_typed(Internal::SampleTileFactor);
-TVM_REGISTER_GLOBAL("meta_schedule.SampleFusibleLoops")
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleFusibleLoops")
     .set_body_typed(Internal::SampleFusibleLoops);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleCategorical")
+    .set_body_typed(Internal::SampleCategorical);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetProducers").set_body_typed(Internal::GetProducers);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetConsumers").set_body_typed(Internal::GetConsumers);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetBlock").set_body_typed(Internal::GetBlock);
@@ -1164,6 +1214,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCacheWrite").set_body_typed(Internal:
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleBlockize").set_body_typed(Internal::Blockize);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleDecomposeReduction")
     .set_body_typed(Internal::DecomposeReduction);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleAutoUnroll").set_body_typed(Internal::AutoUnroll);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMutateDecision")
     .set_body_typed(Internal::MutateDecision);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReSample").set_body_typed(Internal::ReSample);

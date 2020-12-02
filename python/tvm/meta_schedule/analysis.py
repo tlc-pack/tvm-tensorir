@@ -82,7 +82,12 @@ def is_leaf_block(sch: tir.Schedule, block: tir.StmtSRef) -> bool:
     return bool(_ffi_api_analysis.IsLeafBlock(sch, block))  # pylint: disable=no-member
 
 
-def annotate_loop_type(sch: tir.Schedule, loops: List[tir.StmtSRef], annotation: str) -> None:
+def annotate_loop_type(
+    sch: tir.Schedule,
+    loops: List[tir.StmtSRef],
+    ann_key: str,
+    ann_val: str,
+) -> None:
     """Annotate the specific loops with the given loop type
 
     Parameters
@@ -91,13 +96,20 @@ def annotate_loop_type(sch: tir.Schedule, loops: List[tir.StmtSRef], annotation:
         The TIR schedule class
     loops : List[tir.StmtSRef]
         The loops to be annotated
-    annotation : str
-        The loop annotations
+    ann_key : str
+        The loop annotation key
+    ann_val : str
+        The loop annotation value
     """
-    _ffi_api_analysis.AnnotateLoopType(sch, loops, annotation)  # pylint: disable=no-member
+    _ffi_api_analysis.AnnotateLoopType(sch, loops, ann_key, ann_val)  # pylint: disable=no-member
 
 
-def annotate_block_type(sch: tir.Schedule, block: tir.StmtSRef, annotation: str) -> None:
+def annotate_block_type(
+    sch: tir.Schedule,
+    block: tir.StmtSRef,
+    ann_key: str,
+    ann_val: str,
+) -> None:
     """Annotate the specific block with the given block type
 
     Parameters
@@ -106,10 +118,12 @@ def annotate_block_type(sch: tir.Schedule, block: tir.StmtSRef, annotation: str)
         The TIR schedule class
     block : tir.StmtSRef
         The block to be annotated
-    annotation : str
-        The block annotations
+    ann_key : str
+        The loop annotation key
+    ann_val : str
+        The loop annotation value
     """
-    _ffi_api_analysis.AnnotateBlockType(sch, block, annotation)  # pylint: disable=no-member
+    _ffi_api_analysis.AnnotateBlockType(sch, block, ann_key, ann_val)  # pylint: disable=no-member
 
 
 def collect_annotated_loops(sch: tir.Schedule, annotation: str) -> List[List[tir.StmtSRef]]:

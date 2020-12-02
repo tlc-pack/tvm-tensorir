@@ -39,10 +39,12 @@ SPACE = ms.space.PostOrderApply(
         ),
         ms.rule.mark_parallelize_outer(max_jobs_per_core=8),
         ms.rule.mark_vectorize_inner(max_extent=32),
+        ms.rule.mark_auto_unroll(max_steps=[0, 16, 64, 512], unroll_explicit=True),
     ],
     postprocs=[
         ms.postproc.rewrite_parallel(),
         ms.postproc.rewrite_vectorize(),
+        ms.postproc.rewrite_auto_unroll(),
     ],
 )
 
