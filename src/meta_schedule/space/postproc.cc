@@ -615,6 +615,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteVectorize").set_body_typed(Re
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteTensorize").set_body_typed(RewriteTensorize);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteCudaThreadBind")
     .set_body_typed(RewriteCudaThreadBind);
+TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteAutoUnroll").set_body_typed(RewriteAutoUnroll);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.VerifyGPUCode").set_body_typed(VerifyGPUCode);
 
 }  // namespace meta_schedule
