@@ -99,6 +99,12 @@ TVM_DLL Postproc RewriteTensorize(Array<tir::TensorIntrin> tensor_intrins);
 TVM_DLL Postproc RewriteCudaThreadBind();
 
 /*!
+ * \brief Creates a postprocessor that rewrite auto unrolling
+ * \return The postprocessor created
+ */
+TVM_DLL Postproc RewriteAutoUnroll();
+
+/*!
  * \brief Creates a postprocessor that verifies if the GPU code is correct
  * \return The postprocessor created
  */

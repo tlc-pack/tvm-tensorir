@@ -99,7 +99,16 @@ class SampleFusibleLoopsAttrs(InstAttrs):
     mode: int
 
 
+@register_object("meta_schedule.attrs.SampleCategoricalAttrs")
+class SampleCategoricalAttrs(InstAttrs):
+    """Attrs of the instruction to sample from a categorical distribution"""
+
+    candidates: List[int]
+    probs: List[float]
+
+
 ########## Block/Loop Relationship ##########
+
 
 @register_object("meta_schedule.attrs.GetProducersAttrs")
 class GetProducersAttrs(InstAttrs):

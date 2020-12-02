@@ -229,8 +229,31 @@ class Schedule(Object):
             raise ValueError('"order" needs to be one of: "outer_to_inner", "inner_to_order"')
         if mode is None:
             raise ValueError('"mode" needs to be one of: "max", "rand"')
-        return _ffi_api.SampleFusibleLoops(  # pylint: disable=no-member
+        return _ffi_api.ScheduleSampleFusibleLoops(  # pylint: disable=no-member
             self, loops, loop_types, max_extent, include_overflow_loop, order, mode
+        )
+
+    def sample_categorical(
+        self,
+        candidates: List[int],
+        probs: List[float],
+    ) -> ExprRV:
+        """Sample an integer given the probability distribution
+
+        Parameters
+        ----------
+        candidates : List[int]
+            The candidates
+        probs : List[float]
+            The probability distribution of the candidates
+
+        Returns
+        -------
+        result : ExprRV
+            A ExprRV, a random variable indicates the sampling result
+        """
+        return _ffi_api.ScheduleSampleCategorical(  # pylint: disable=no-member
+            self, candidates, probs
         )
 
     ######### Block/Loop Relationship #########
@@ -331,7 +354,7 @@ class Schedule(Object):
         Returns
         ----------
         blocks : List[BlockRV]
-            The direct childs block of the root node
+            The direct child block of the root node
         """
         return _ffi_api.ScheduleGetRootBlocks(self)  # pylint: disable=no-member
 
@@ -341,7 +364,7 @@ class Schedule(Object):
         Returns
         ----------
         blocks : List[BlockRV]
-            The direct childs block of the root node
+            The direct child block of the root node
         """
         return _ffi_api.ScheduleGetLeafBlocks(self)  # pylint: disable=no-member
 
@@ -350,7 +373,8 @@ class Schedule(Object):
     def mark_loop_type(
         self,
         loops: List[LoopRV],
-        mark: str,
+        ann_key: str,
+        ann_val: str,
         first_n: Optional[ir.PrimExpr],
         last_n: Optional[ir.PrimExpr],
     ) -> None:
@@ -360,28 +384,32 @@ class Schedule(Object):
         ----------
         loops: List[LoopRV]
             The loops to be marked
-        mark : str
-            The annotation
+        ann_key : str
+            The annotation key
+        ann_val : str
+            The annotation value
         first_n : Optional[ir.PrimExpr]
             The first n loops to be marked
         last_n : Optional[ir.PrimExpr]
             The last n loops to be marked
         """
         _ffi_api.ScheduleMarkLoopType(  # pylint: disable=no-member
-            self, loops, mark, first_n, last_n
+            self, loops, ann_key, ann_val, first_n, last_n
         )
 
-    def mark_block_type(self, block: BlockRV, mark: str) -> None:
+    def mark_block_type(self, block: BlockRV, ann_key: str, ann_val: str) -> None:
         """Mark a range of loops with the specific mark
 
         Parameters
         ----------
         block : BlockRV
             The block to be marked
-        mark : str
-            The annotation
+        ann_key : str
+            The annotation key
+        ann_val : str
+            The annotation value
         """
-        _ffi_api.ScheduleMarkBlockType(self, block, mark)  # pylint: disable=no-member
+        _ffi_api.ScheduleMarkBlockType(self, block, ann_key, ann_val)  # pylint: disable=no-member
 
     def fuse(self, loops: List[LoopRV]):
         """Fuse the loops
@@ -552,6 +580,20 @@ class Schedule(Object):
             The result of the decomposition
         """
         return _ffi_api.ScheduleDecomposeReduction(self, block, loop)  # pylint: disable=no-member
+
+    def auto_unroll(self, block: BlockRV, max_step: ExprRV, unroll_explicit: bool) -> None:
+        """Apply auto-unroll onto a block
+
+        Parameters
+        ----------
+        block: BlockRV
+            The block to be applied on
+        max_step: ExprRV
+            The maximum steps to be unrolled
+        unroll_explicit: bool
+            Whether to unroll explicitly
+        """
+        _ffi_api.ScheduleAutoUnroll(self, block, max_step, unroll_explicit)
 
     ########## Trace-related ##########
 
