@@ -125,7 +125,12 @@ def test_meta_schedule_analysis_annotate_loop_type():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
     loops = [sch.evaluate(loop) for loop in sch.get_axes(block)]
-    ms.analysis.annotate_loop_type(sch=sch.sch, loops=loops, annotation="lazy_parallel")
+    ms.analysis.annotate_loop_type(
+        sch=sch.sch,
+        loops=loops,
+        ann_key="loop_type",
+        ann_val="lazy_parallel",
+    )
     assert loops[0].stmt.annotations[0].value == "lazy_parallel"
     assert loops[1].stmt.annotations[0].value == "lazy_parallel"
     assert loops[2].stmt.annotations[0].value == "lazy_parallel"
@@ -137,7 +142,8 @@ def test_meta_schedule_analysis_annotate_block_type():
     ms.analysis.annotate_block_type(
         sch=sch.sch,
         block=block,
-        annotation="lazy_tensorize",
+        ann_key="block_type",
+        ann_val="lazy_tensorize",
     )
     assert block.stmt.annotations[0].value == "lazy_tensorize"
 
@@ -146,7 +152,12 @@ def test_meta_schedule_analysis_collect_annotated_loops():  # pylint: disable=in
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
     loops = [sch.evaluate(loop) for loop in sch.get_axes(block)]
-    ms.analysis.annotate_loop_type(sch=sch.sch, loops=loops, annotation="lazy_parallel")
+    ms.analysis.annotate_loop_type(
+        sch=sch.sch,
+        loops=loops,
+        ann_key="loop_type",
+        ann_val="lazy_parallel",
+    )
     assert loops[0].stmt.annotations[0].value == "lazy_parallel"
     assert loops[1].stmt.annotations[0].value == "lazy_parallel"
     assert loops[2].stmt.annotations[0].value == "lazy_parallel"

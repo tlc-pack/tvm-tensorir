@@ -73,24 +73,22 @@ bool IsLeafBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
 }
 
 void AnnotateLoopType(const tir::Schedule& sch, const Array<tir::StmtSRef>& loop_srefs,
-                      const String& annotation) {
+                      const String& ann_key, const String& ann_val) {
   for (const tir::StmtSRef& loop_sref : loop_srefs) {
     const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
     CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
     ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
-    new_loop->annotations.push_back(
-        tir::Annotation(tir::attr::loop_type, tir::StringImm(annotation)));
+    new_loop->annotations.push_back(tir::Annotation(ann_key, tir::StringImm(ann_val)));
     sch->Replace(loop_sref, tir::Loop(new_loop));
   }
 }
 
 void AnnotateBlockType(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
-                       const String& annotation) {
+                       const String& ann_key, const String& ann_val) {
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   CHECK(block) << "TypeError: Expects LoopNode, but gets: " << block_sref->stmt->GetTypeKey();
   ObjectPtr<tir::BlockNode> new_block = make_object<tir::BlockNode>(*block);
-  new_block->annotations.push_back(
-      tir::Annotation(tir::attr::loop_type, tir::StringImm(annotation)));
+  new_block->annotations.push_back(tir::Annotation(ann_key, tir::StringImm(ann_val)));
   tir::Block new_block_obj = tir::Block(new_block);
   sch->Replace(block_sref, new_block_obj, {{new_block_obj, GetRef<tir::Block>(block)}});
 }
