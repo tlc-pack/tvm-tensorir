@@ -54,22 +54,6 @@ std::string GetUniqueName(const std::string& prefix,
   return unique_prefix;
 }
 
-PrimExpr ApplyCombiner(const CommReducer& comm_reducer, const PrimExpr& lhs, const PrimExpr& rhs) {
-  CHECK_EQ(comm_reducer->lhs.size(), 1);
-  CHECK_EQ(comm_reducer->rhs.size(), 1);
-  CHECK_EQ(comm_reducer->result.size(), 1);
-  auto vmap = [&](const Var& v) -> Optional<PrimExpr> {
-    if (v.same_as(comm_reducer->lhs[0])) {
-      return lhs;
-    } else if (v.same_as(comm_reducer->rhs[0])) {
-      return rhs;
-    } else {
-      return v;
-    }
-  };
-  return Substitute(comm_reducer->result[0], vmap);
-}
-
 PrimFunc create_tir(const Array<te::Tensor>& tensors) {
   Array<te::Operation> ops;
   for (const auto& tensor : tensors) {
@@ -147,8 +131,9 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
         PrimExpr lhs = BufferLoad(buffer, simplified_indices);
         PrimExpr rhs = analyzer.Simplify(translator(reduce->source[0]));
         CHECK(lhs->dtype == rhs->dtype);
-        body = BufferStore(buffer, ApplyCombiner(reduce->combiner, lhs, rhs), simplified_indices);
-        init = BufferStore(buffer, reduce->combiner->identity_element[0], indices);
+        body = BufferStore(buffer, reduce->combiner.get()->operator()({lhs}, {rhs})[0],
+                           simplified_indices);
+        init = BufferStore(buffer, reduce->combiner->identity_element[0], simplified_indices);
       } else {
         body = BufferStore(buffer, analyzer.Simplify(translator(expr)), simplified_indices);
       }

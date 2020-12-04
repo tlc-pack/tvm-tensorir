@@ -91,8 +91,8 @@ class StatementInliner : public StmtExprMutator {
       reads = block_read_write_collector.reads();
     }
 
-    auto block =
-        Block(op->iter_vars, reads, op->writes, op->body, allocations, op->annotations, op->tag, op->init);
+    auto block = Block(op->iter_vars, reads, op->writes, op->body, allocations, op->annotations,
+                       op->tag, op->init);
 
     block_sref_map_->Set(block, origin_block);
     return std::move(block);
@@ -196,9 +196,9 @@ class ReverseStatementInliner : public StmtExprMutator {
     // update read/write region
     BlockReadWriteCollector block_read_write_collector(allocations);
     block_read_write_collector(op->body);
-    auto block =
-        Block(op->iter_vars, block_read_write_collector.reads(),
-              block_read_write_collector.writes(), op->body, allocations, op->annotations, op->tag, op->init);
+    auto block = Block(op->iter_vars, block_read_write_collector.reads(),
+                       block_read_write_collector.writes(), op->body, allocations, op->annotations,
+                       op->tag, op->init);
     if (is_producer) block_sref_map_->Set(block, origin_producer);
     return std::move(Block(block));
   }

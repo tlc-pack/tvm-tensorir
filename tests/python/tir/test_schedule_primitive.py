@@ -670,12 +670,7 @@ def matmul_rfactor(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             for i1 in range(0, 128):
                 for i2_outer in range(0, 4):
                     for i2_inner_outer in range(0, 8):
-                        with tir.block([128, 128, tir.reduce_axis(0, 32), 4], "update") as [
-                            vi,
-                            vj,
-                            vk,
-                            vi2_inner_inner,
-                        ]:
+                        with tir.block([128, 128, tir.reduce_axis(0, 32), 4], "update") as [vi, vj, vk, vi2_inner_inner]:
                             tir.bind(vi, i0)
                             tir.bind(vj, i1)
                             tir.bind(vk, ((i2_outer * 8) + i2_inner_outer))
@@ -690,17 +685,19 @@ def matmul_rfactor(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         C[vi, vj] = C[vi, vj] + C_rf[vi2_inner_inner, vi, vj]
 
 
-# def test_rfactor():
-#     func = util.matmul_stmt()
-#
-#     s = tir.create_schedule(func)
-#     C = s.get_block("update")
-#     i, j, k = s.get_axes(C)
-#     ko, ki = s.split(k, 32)
-#     kio, kii = s.split(ki, 4)
-#     wb = s.rfactor(kii, 0)
-#
-#     tvm.ir.assert_structural_equal(s.func, matmul_rfactor)
+def test_rfactor():
+    func = util.matmul_stmt()
+
+    s = tir.create_schedule(func)
+    C = s.get_block("update")
+    i, j, k = s.get_axes(C)
+    ko, ki = s.split(k, 32)
+    kio, kii = s.split(ki, 4)
+    wb = s.rfactor(kii, 0)
+    print(tvm.script.asscript(s.func))
+    print(tvm.script.asscript(matmul_rfactor))
+
+    tvm.ir.assert_structural_equal(s.func, matmul_rfactor)
 
 
 @tvm.script.tir
@@ -753,5 +750,5 @@ if __name__ == "__main__":
     test_cache_read_write()
     test_blockize()
     test_blockize_schedule()
-    # test_rfactor()
+    test_rfactor()
     test_pragma()

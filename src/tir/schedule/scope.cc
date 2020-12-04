@@ -153,8 +153,10 @@ bool Scope::IsReduction(const StmtSRef& block_sref) const {
     return false;
   }
   // Cond 2. Check the block body is reduction
- if (block->init) return true;
- else return false;
+  if (block->init)
+    return true;
+  else
+    return false;
 }
 
 bool Scope::IsCompactDataFlow(const StmtSRef& subtree_sref, const ScheduleNode* schedule) const {

@@ -21,7 +21,7 @@
 namespace tvm {
 namespace tir {
 
-bool ListContains(const Array<StmtSRef>& list, const StmtSRef& element) {
+bool ListContainsElement(const Array<StmtSRef>& list, const StmtSRef& element) {
   for (const StmtSRef& ele : list) {
     if (ele.same_as(element)) {
       return true;
@@ -57,7 +57,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
   Array<StmtSRef> loops = GetLoopsInScope(block_sref);
   const BlockRealizeNode* realize = GetBlockRealize(block_sref).get();
   // Cond 0. Check loop_sref is an ancestor of block_sref
-  CHECK(ListContains(loops, loop_sref))
+  CHECK(ListContainsElement(loops, loop_sref))
       << "ValueError: 'decompose_reduction' expect the loop to be an ancestor of block";
   // Cond 1. Check block is reduction
   CHECK(GetParentScope(block_sref).IsReduction(block_sref))
@@ -189,18 +189,19 @@ std::tuple<bool, PrimExpr, PrimExpr> ReducerMatched(const CommReducer& reducer,
                          pattern_matcher.Eval(reducer->rhs[0]));
 }
 
-bool FromInitUpdate(const PrimExpr& init, const BufferStore& update) {
+std::tuple<Optional<CommReducer>, PrimExpr, PrimExpr> FromInitUpdate(const PrimExpr& init,
+                                                                     const BufferStore& update) {
   ExprDeepEqual equal;
   const auto& lhs = BufferLoad(update->buffer, update->indices);
   // Check default patterns
   for (const auto& reducer : default_reducer::default_reducers) {
     const auto& res = ReducerMatched(reducer.GetReducer(init.dtype()), init, update->value);
     if (std::get<0>(res) && equal(lhs, std::get<1>(res))) {
-      return true;
+      return std::make_tuple(reducer.GetReducer(init.dtype()), std::get<1>(res), std::get<2>(res));
     }
   }
   LOG(FATAL) << "No reducer pattern matched for " << init << " " << update;
-  return false;
+  return std::make_tuple(NullOpt, 0, 0);
 }
 
 void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& update_sref) {
@@ -227,7 +228,7 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   CHECK(init_body != nullptr && update_body != nullptr)
       << "ValueError: 'merge_reduction' expects the body of init and update block to be "
          "BufferStore";
-  CHECK(FromInitUpdate(init_body->value, GetRef<BufferStore>(update_body)))
+  CHECK(std::get<0>(FromInitUpdate(init_body->value, GetRef<BufferStore>(update_body))))
       << "ValueError: 'merge_reduction' pattern detect failed";
   const BlockRealizeNode* init_realize = GetBlockRealize(init_sref).get();
   const BlockRealizeNode* update_realize = GetBlockRealize(update_sref).get();
@@ -315,7 +316,6 @@ void CollectVars(std::unordered_set<const VarNode*>& res, const PrimExpr& expr) 
 }
 
 StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
-  /*
   const auto* loop = loop_sref->GetStmt<LoopNode>();
   CHECK(loop) << "TypeError: Only support rfactor a loop for now, but get type: "
               << loop_sref->stmt->GetTypeKey();
@@ -339,9 +339,15 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
       CollectVars(reduce_loops, block_realize->binding_values[i]);
     }
   }
-  // Get the ReduceStep inside the block
-  const auto* step = block->body.as<ReduceStepNode>();
-  CHECK(step) << "ValueError: the body of the block ought to be a ReduceStep stmt";
+  // Get the init BufferStore and update buffer store
+  const auto* init = block->init.as<BufferStoreNode>();
+  const auto* update = block->body.as<BufferStoreNode>();
+  CHECK(init) << "ValueError: the init of the block ought to be a BufferStore stmt";
+  CHECK(update) << "ValueError: the body of the block ought to be a BufferStore stmt";
+  const auto& res = FromInitUpdate(init->value, GetRef<BufferStore>(update));
+  const Optional<CommReducer>& reducer = std::get<0>(res);
+  const PrimExpr &lhs = std::get<1>(res), rhs = std::get<2>(res);
+  CHECK(reducer) << "ValueError: unrecognized reducer pattern";
   // Get the loops outside the block
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> iters;
   auto loops = GetLoopsInScope(block_sref);
@@ -389,26 +395,25 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   }
   rf_bindings.push_back(loop->loop_var);
   rf_iters.push_back(rf_iter);
-  const auto* write_position = step->lhs.as<BufferLoadNode>();
-  CHECK(write_position) << "InternalError: invalid ReduceStep stmt";
-  CHECK(0 <= factor_axis && factor_axis <= write_position->buffer->shape.size())
-      << "ValueError: factor_axis should be in range [0, " << write_position->buffer->shape.size()
-      << "]";
-  Array<PrimExpr> rf_shape = write_position->buffer->shape;
-  Array<PrimExpr> rf_indices = write_position->indices;
+  CHECK(0 <= factor_axis && factor_axis <= update->buffer->shape.size())
+      << "ValueError: factor_axis should be in range [0, " << update->buffer->shape.size() << "]";
+  Array<PrimExpr> rf_shape = update->buffer->shape;
+  Array<PrimExpr> rf_indices = update->indices;
   rf_shape.insert(rf_shape.begin() + factor_axis, loop->extent);
   rf_indices.insert(rf_indices.begin() + factor_axis, rf_iter->var);
-  Buffer rf_buf = write_position->buffer;
+  Buffer rf_buf = update->buffer;
   rf_buf.CopyOnWrite()->shape = rf_shape;
   rf_buf.CopyOnWrite()->name = rf_buf->name + "_rf";
   rf_buf.CopyOnWrite()->data = rf_buf->data.copy_with_suffix("_rf");
-  ReduceStep rf_step = GetRef<ReduceStep>(step);
-  rf_step.CopyOnWrite()->lhs = BufferLoad(rf_buf, rf_indices);
-
+  BufferStore rf_update = GetRef<BufferStore>(update);
+  rf_update.CopyOnWrite()->buffer = rf_buf;
+  rf_update.CopyOnWrite()->indices = rf_indices;
+  rf_update.CopyOnWrite()->value =
+      reducer.value().get()->operator()({BufferLoad(rf_buf, rf_indices)}, {rhs})[0];
   std::vector<TensorRegion> rf_reads, rf_writes;
   auto rf_region = [&](Array<TensorRegion> regions, std::vector<TensorRegion>& rf_regions) {
     for (const auto& t_region : regions) {
-      if (t_region->buffer.same_as(write_position->buffer)) {
+      if (t_region->buffer.same_as(update->buffer)) {
         Region region = t_region->region;
         region.insert(region.begin() + factor_axis, Range::FromMinExtent(rf_iter->var, 1));
         rf_regions.emplace_back(rf_buf, region);
@@ -419,10 +424,11 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   };
   rf_region(rf_block->reads, rf_reads);
   rf_region(rf_block->writes, rf_writes);
-  rf_block.CopyOnWrite()->body = Substitute((Stmt)rf_step, var_map);
+  rf_block.CopyOnWrite()->body = Substitute((Stmt)rf_update, var_map);
   rf_block.CopyOnWrite()->iter_vars = rf_iters;
   rf_block.CopyOnWrite()->reads = rf_reads;
   rf_block.CopyOnWrite()->writes = rf_writes;
+  rf_block.CopyOnWrite()->init = BufferStore(rf_buf, init->value, rf_indices);
   rf_block_realize.CopyOnWrite()->block = rf_block;
   rf_block_realize.CopyOnWrite()->binding_values = rf_bindings;
   // create write back block
@@ -449,13 +455,17 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
     for (const auto& index : load->indices) region.push_back(Range::FromMinExtent(index, 1));
     return TensorRegion(load->buffer, region);
   };
-  ReduceStep wb_step = GetRef<ReduceStep>(step);
-  wb_step.CopyOnWrite()->rhs = rf_step->lhs;
-  wb_step = Downcast<ReduceStep>(Substitute((Stmt)wb_step, var_map));
-  wb_block.CopyOnWrite()->body = wb_step;
-  wb_block.CopyOnWrite()->reads = {wb_region(Downcast<BufferLoad>(wb_step->rhs))};
-  wb_block.CopyOnWrite()->writes = {wb_region(Downcast<BufferLoad>(wb_step->lhs))};
+  BufferStore wb_update = GetRef<BufferStore>(update);
+  BufferLoad wb_lhs = Downcast<BufferLoad>(Substitute((PrimExpr)lhs, var_map));
+  BufferLoad wb_rhs = Downcast<BufferLoad>(
+      Substitute((PrimExpr)BufferLoad(rf_update->buffer, rf_update->indices), var_map));
+  wb_update.CopyOnWrite()->value = reducer.value().get()->operator()({wb_lhs}, {wb_rhs})[0];
+  wb_update = Downcast<BufferStore>(Substitute((Stmt)wb_update, var_map));
+  wb_block.CopyOnWrite()->body = wb_update;
+  wb_block.CopyOnWrite()->reads = {wb_region(wb_lhs), wb_region(wb_rhs)};
+  wb_block.CopyOnWrite()->writes = {wb_region(wb_lhs)};
   wb_block.CopyOnWrite()->iter_vars = wb_iters;
+  wb_block.CopyOnWrite()->init = BufferStore(wb_update->buffer, init->value, wb_update->indices);
   wb_block_realize.CopyOnWrite()->block = wb_block;
   wb_block_realize.CopyOnWrite()->binding_values = wb_bindings;
   // create loops outside write back block and rfactor bclok
@@ -463,7 +473,6 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   Var wb_loop_var = loop->loop_var.copy_with_suffix("");
   wb_body = Loop(wb_loop_var, loop->min, loop->extent, loop->annotations,
                  SubstituteInScope(wb_body, {{loop->loop_var.get(), wb_loop_var.get()}}));
-
   Optional<StmtSRef> top;
   for (int i = loops.size() - 1; i >= 0; --i) {
     const auto* l = loops[i]->GetStmt<LoopNode>();
@@ -526,7 +535,6 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   UpdateScope(scope_sref->stmt, this->stmt2ref, &this->scopes);
 
   return stmt2ref.at(rf_block.get());
-  */
 }
 
 }  // namespace tir
