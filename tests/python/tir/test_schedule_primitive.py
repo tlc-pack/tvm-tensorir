@@ -705,7 +705,6 @@ def matmul_pragma(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
     B = tir.match_buffer(b, [128, 128], elem_offset=0, align=128, offset_factor=1)
     A = tir.match_buffer(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
         tir.reads([])
@@ -719,7 +718,9 @@ def matmul_pragma(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                         tir.bind(vk, i2)
                         tir.reads([C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vj:(vj + 1), vk:(vk + 1)]])
                         tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
-                        reducer.step(C[vi, vj], (A[vi, vk]*B[vj, vk]))
+                        with tir.init():
+                            C[vi, vj] = 0.0
+                        C[vi, vj] = C[vi, vj] + (A[vi, vk]*B[vj, vk])
 
 
 def test_pragma():

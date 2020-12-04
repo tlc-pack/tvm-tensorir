@@ -699,19 +699,6 @@ double CountFlop(const tir::PrimFunc& func) {
       return result;
     }
 
-    TResult VisitStmt_(const tir::ReduceStepNode* reduce) override {
-      CHECK(reduce->lhs->IsInstance<tir::BufferLoadNode>())
-          << "TypeError: Expect ReduceStep's lhs to be BufferLoad, but gets: "
-          << reduce->lhs->GetTypeKey();
-      TResult result;
-      for (const PrimExpr& i : reduce->comm_reducer->result) {
-        result += VisitExpr(i);
-      }
-      result += VisitExpr(reduce->lhs);
-      result += VisitExpr(reduce->rhs);
-      return result;
-    }
-
 #define TVM_META_SCHEDULE_VISIT_BINARY(Node) \
   TResult VisitExpr_(const Node* op) final { \
     TResult result(op->dtype);               \

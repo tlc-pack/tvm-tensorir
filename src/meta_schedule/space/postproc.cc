@@ -95,12 +95,7 @@ class PostprocRewriteTensorize {
       Array<tir::StmtSRef> loop_srefs = sch->sch->GetLoopsInScope(block_sref);
       // Decompose Reduction
       {
-        const auto* block = block_sref->GetStmt<tir::BlockNode>();
-        CHECK(block) << "TypeError: Expects BlockNode, but gets: "
-                     << block_sref->stmt->GetTypeKey();
-        if (block->body->IsInstance<tir::ReduceStepNode>()) {
-          sch->sch->decompose_reduction(block_sref, loop_srefs[0]);
-        }
+        // (TODO) bohan
       }
       // Tensorize
       for (const tir::TensorIntrin& intrin : tensor_intrins) {
