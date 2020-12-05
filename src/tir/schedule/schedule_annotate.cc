@@ -111,7 +111,6 @@ void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const Annotation& 
   // Now only support:
   //   1. All the blocks are complete below
   //   2. A single block below the loop
-  // TODO(bohan): support reduction later
   bool is_compact_dataflow = GetParentScope(loop_sref).IsCompactDataFlow(loop_sref, this);
   if (!is_compact_dataflow) {
     Array<Stmt> single_child = GetChildren(GetRef<Stmt>(loop), true);

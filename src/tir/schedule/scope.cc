@@ -80,7 +80,7 @@ bool Scope::IsDominate(const StmtSRef& block_sref) const {
 }
 
 bool Scope::IsComplete(const StmtSRef& block_sref) const {
-  const BlockNode* block = block_sref->GetStmt<BlockNode>();
+  const auto* block = block_sref->GetStmt<BlockNode>();
   CHECK(block != nullptr)
       << "InternalError: Scope::IsComplete only accepts tir::Block, but get type: "
       << block_sref->stmt->GetTypeKey();
@@ -94,7 +94,6 @@ bool Scope::IsComplete(const StmtSRef& block_sref) const {
       return false;
     }
   }
-  /*
   // Cond 3. Check if there is no overlap between buffers read and buffers written
   for (const TensorRegion& write : block->writes) {
     const Buffer& buffer = write->buffer;
@@ -104,7 +103,6 @@ bool Scope::IsComplete(const StmtSRef& block_sref) const {
       }
     }
   }
-  */
   return true;
 }
 
@@ -138,9 +136,7 @@ bool CheckReductionInstance(const Array<IterVar>& iter_vars,
 }
 
 bool Scope::IsReduction(const StmtSRef& block_sref) const {
-  // TODO(@spectrometerHBH): change the definition of reduction block
-  return true;
-  const BlockNode* block = block_sref->GetStmt<BlockNode>();
+  const auto* block = block_sref->GetStmt<BlockNode>();
   CHECK(block != nullptr)
       << "InternalError: Scope::IsReduction only accepts tir::Block, but get type: "
       << block_sref->stmt->GetTypeKey();
@@ -153,10 +149,7 @@ bool Scope::IsReduction(const StmtSRef& block_sref) const {
     return false;
   }
   // Cond 2. Check the block body is reduction
-  if (block->init)
-    return true;
-  else
-    return false;
+  return bool(block->init);
 }
 
 bool Scope::IsCompactDataFlow(const StmtSRef& subtree_sref, const ScheduleNode* schedule) const {

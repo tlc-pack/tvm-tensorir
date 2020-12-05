@@ -16,6 +16,7 @@
 # under the License.
 
 import tvm
+import util
 from tvm import tir
 from tvm.script import ty
 
@@ -138,9 +139,54 @@ def test_reduction_compute_inline():
     tvm.ir.assert_structural_equal(s.func, matmul_scale_inline)
 
 
+@tvm.script.tir
+def matmul_rfactor(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    B = tir.match_buffer(b, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    C = tir.match_buffer(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
+    # body
+    C_rf = tir.buffer_allocate([4, 128, 128], elem_offset=0, align=128, offset_factor=1)
+    for i2_inner_inner in range(0, 4):
+        for i0 in range(0, 128):
+            for i1 in range(0, 128):
+                for i2_outer in range(0, 4):
+                    for i2_inner_outer in range(0, 8):
+                        with tir.block([128, 128, tir.reduce_axis(0, 32), 4], "update") as [vi, vj, vk, vi2_inner_inner]:
+                            tir.bind(vi, i0)
+                            tir.bind(vj, i1)
+                            tir.bind(vk, ((i2_outer * 8) + i2_inner_outer))
+                            tir.bind(vi2_inner_inner, i2_inner_inner)
+                            with tir.init():
+                                C_rf[vi2_inner_inner, vi, vj] = 0.0
+                            C_rf[vi2_inner_inner, vi, vj] = C_rf[vi2_inner_inner, vi, vj] + A[vi, ((vk * 4) + vi2_inner_inner)] * B[vj, ((vk * 4) + vi2_inner_inner)]
+
+    with tir.block([128, 128, tir.reduce_axis(0, 4)], "update") as [vi, vj, vi2_inner_inner]:
+        with tir.init():
+            C[vi, vj] = 0.0
+        C[vi, vj] = C[vi, vj] + C_rf[vi2_inner_inner, vi, vj]
+
+
+def test_reduction_rfactor():
+    func = util.matmul_stmt()
+
+    s = tir.create_schedule(func)
+    C = s.get_block("update")
+    i, j, k = s.get_axes(C)
+    ko, ki = s.split(k, 32)
+    kio, kii = s.split(ki, 4)
+    wb = s.rfactor(kii, 0)
+    tvm.ir.assert_structural_equal(s.func, matmul_rfactor)
+
+
+def test_reduction_allreduce():
+    pass
+
+
 if __name__ == "__main__":
     test_reduction_roundtrip()
     test_reduction_decompose()
     test_reduction_merge()
     test_reduction_blockize()
     test_reduction_compute_inline()
+    test_reduction_rfactor()
+    test_reduction_allreduce()

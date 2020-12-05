@@ -30,29 +30,34 @@
 #include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
+#include <tvm/tir/expr.h>
 
 namespace tvm {
 namespace tir {
 
 /*!
- * \brief Transform reduction call into actual computation
+ * \brief Transform block with init into actual computation
  */
 class ReductionTransformer : public StmtExprMutator {
  public:
   ReductionTransformer() = default;
 
   Stmt VisitStmt_(const BlockNode* op) override {
-    const BlockNode* block = op;
-    std::swap(current_block_, block);
-    Stmt res = StmtMutator::VisitStmt_(op);
-    std::swap(current_block_, block);
-    return res;
+    Block res = Downcast<Block>(StmtMutator::VisitStmt_(op));
+    if (op->init) {
+      PrimExpr condition = Bool(true) ;
+      for (const auto& var : res->iter_vars) {
+        if (var->iter_type == IterVarType::kCommReduce) {
+          condition = And(condition, EQ(var, var->dom->min));
+        }
+      }
+      Stmt init = op->init.value();
+      if (!is_one(condition)) init = IfThenElse(condition, init);
+      res.CopyOnWrite()->body = SeqStmt::Flatten(init, op->body);
+      res.CopyOnWrite()->init = NullOpt;
+    }
+    return std::move(res);
   }
-
-  // (TODO) bohan
-
- private:
-  const BlockNode* current_block_{nullptr};
 };
 
 /*!
