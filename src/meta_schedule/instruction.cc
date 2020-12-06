@@ -42,6 +42,16 @@ BlockRV::BlockRV() { data_ = make_object<BlockRVNode>(); }
 
 LoopRV::LoopRV() { data_ = make_object<LoopRVNode>(); }
 
+LoopRV LoopRV::ComputeInlineRV() {
+  static LoopRV loop_rv;
+  return loop_rv;
+}
+
+LoopRV LoopRV::ComputeRootRV() {
+  static LoopRV loop_rv;
+  return loop_rv;
+}
+
 BufferRV::BufferRV() { data_ = make_object<BufferRVNode>(); }
 
 Instruction::Instruction(Array<ObjectRef> inputs, Array<ObjectRef> outputs, InstAttrs inst_attrs) {
@@ -84,8 +94,9 @@ Array<ObjectRef> InstructionNode::Export(const Map<ObjectRef, String>& rv_names,
 }
 
 Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const InstAttrs& inst_attrs,
-                                              const Array<ObjectRef>& inputs) {
-  return inst_attrs->ApplyToSchedule(sch, inputs);
+                                              const Array<ObjectRef>& inputs,
+                                              const Optional<Array<ObjectRef>>& decision) {
+  return inst_attrs->ApplyToSchedule(sch, inputs, decision);
 }
 
 Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& record,
@@ -134,8 +145,9 @@ Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Array<Obj
     for (const ObjectRef& obj : record_inputs) {
       if (const auto* integer = obj.as<IntImmNode>()) {
         inputs.push_back(GetRef<Integer>(integer));
-      } else if (const auto* str = obj.as<StringObj>()) {
-        inputs.push_back(named_rvs->at(GetRef<String>(str)));
+      } else if (const auto* str_obj = obj.as<StringObj>()) {
+        String str = GetRef<String>(str_obj);
+        inputs.push_back(named_rvs->at(str));
       } else {
         LOG(FATAL) << "TypeError: Cannot deal with type '" << obj->GetTypeKey()
                    << "' for input: " << obj;
@@ -151,7 +163,7 @@ Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Array<Obj
                                                 ? Downcast<Array<ObjectRef>>(record[4])
                                                 : Optional<Array<ObjectRef>>(NullOpt);
   // Get the new output random variables
-  Array<ObjectRef> outputs = inst_attrs->ApplyToSchedule(sch, inputs);
+  Array<ObjectRef> outputs = inst_attrs->ApplyToSchedule(sch, inputs, opt_decision);
   {
     // link `record_outputs` and `outputs`
     CHECK_EQ(record_outputs.size(), outputs.size());
@@ -160,6 +172,7 @@ Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Array<Obj
       named_rvs->Set(record_outputs[i], outputs[i]);
     }
   }
+  // TODO: remove
   if (opt_decision.defined()) {
     Array<ObjectRef> decision = opt_decision.value();
     CHECK_EQ(decision.size(), outputs.size());
@@ -416,22 +429,25 @@ Instruction EnterPostProcAttrs::MakeInst() {
 /**************** ApplyToSchedule  ****************/
 /**************** (ApplyToSchedule) Sampling  ****************/
 
-Array<ObjectRef> SamplePerfectTileAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                         const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> SamplePerfectTileAttrs::ApplyToSchedule(
+    ScheduleNode* sch, const Array<ObjectRef>& inputs,
+    const Optional<Array<ObjectRef>>& decision) const {
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   return AdaptOutputs(sch->SamplePerfectTile(n_splits, loop, max_innermost_factor));
 }
 
-Array<ObjectRef> SampleTileFactorAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                        const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> SampleTileFactorAttrs::ApplyToSchedule(
+    ScheduleNode* sch, const Array<ObjectRef>& inputs,
+    const Optional<Array<ObjectRef>>& decision) const {
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   return AdaptOutputs(sch->SampleTileFactor(n_splits, loop, where));
 }
 
-Array<ObjectRef> SampleFusibleLoopsAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                          const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> SampleFusibleLoopsAttrs::ApplyToSchedule(
+    ScheduleNode* sch, const Array<ObjectRef>& inputs,
+    const Optional<Array<ObjectRef>>& decision) const {
   Array<LoopRV> loops;
   loops.reserve(inputs.size());
   for (int i = 0, n = inputs.size(); i < n; ++i) {
@@ -444,70 +460,87 @@ Array<ObjectRef> SampleFusibleLoopsAttrs::ApplyToSchedule(ScheduleNode* sch,
                                   the_mode)};
 }
 
-Array<ObjectRef> SampleCategoricalAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                         const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> SampleCategoricalAttrs::ApplyToSchedule(
+    ScheduleNode* sch, const Array<ObjectRef>& inputs,
+    const Optional<Array<ObjectRef>>& decision) const {
   return {sch->SampleCategorical(candidates, probs)};
 }
 
 /**************** (ApplyToSchedule) Block/Loop Relationship  ****************/
 
-Array<ObjectRef> GetProducersAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                    const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> GetProducersAttrs::ApplyToSchedule(
+    ScheduleNode* sch, const Array<ObjectRef>& inputs,
+    const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetProducers(block));
 }
 
-Array<ObjectRef> GetConsumersAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                    const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> GetConsumersAttrs::ApplyToSchedule(
+    ScheduleNode* sch, const Array<ObjectRef>& inputs,
+    const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetConsumers(block));
 }
 
-Array<ObjectRef> GetBlockAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> GetBlockAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                                const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 0);
   return {sch->GetBlock(name)};
 }
 
-Array<ObjectRef> GetAxesAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                               const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> GetAxesAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                               const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetAxes(block));
 }
 
-Array<ObjectRef> GetReadBuffersAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                      const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> GetReadBuffersAttrs::ApplyToSchedule(
+    ScheduleNode* sch, const Array<ObjectRef>& inputs,
+    const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetReadBuffers(block));
 }
 
-Array<ObjectRef> GetWriteBuffersAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                       const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> GetWriteBuffersAttrs::ApplyToSchedule(
+    ScheduleNode* sch, const Array<ObjectRef>& inputs,
+    const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetWriteBuffers(block));
 }
 
-Array<ObjectRef> GetRootBlocksAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                     const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> GetRootBlocksAttrs::ApplyToSchedule(
+    ScheduleNode* sch, const Array<ObjectRef>& inputs,
+    const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 0);
   return AdaptOutputs(sch->GetRootBlocks());
 }
 
-Array<ObjectRef> GetLeafBlocksAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                     const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> GetLeafBlocksAttrs::ApplyToSchedule(
+    ScheduleNode* sch, const Array<ObjectRef>& inputs,
+    const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 0);
   return AdaptOutputs(sch->GetLeafBlocks());
 }
 
 /**************** (ApplyToSchedule) Scheduling Primitives  ****************/
 
-Array<ObjectRef> MarkLoopTypeAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                    const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> MarkLoopTypeAttrs::ApplyToSchedule(
+    ScheduleNode* sch, const Array<ObjectRef>& inputs,
+    const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   int n_loops = static_cast<int>(inputs.size()) - 2;
   Array<LoopRV> loops;
   loops.reserve(n_loops);
@@ -521,15 +554,18 @@ Array<ObjectRef> MarkLoopTypeAttrs::ApplyToSchedule(ScheduleNode* sch,
   return {};
 }
 
-Array<ObjectRef> MarkBlockTypeAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                     const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> MarkBlockTypeAttrs::ApplyToSchedule(
+    ScheduleNode* sch, const Array<ObjectRef>& inputs,
+    const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   sch->MarkBlockType(block, ann_key, ann_val);
   return {};
 }
 
-Array<ObjectRef> FuseAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                            const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> FuseAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                            const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   int n_loops = inputs.size();
   Array<LoopRV> loops;
   loops.reserve(n_loops);
@@ -540,8 +576,9 @@ Array<ObjectRef> FuseAttrs::ApplyToSchedule(ScheduleNode* sch,
   return {sch->Fuse(loops)};
 }
 
-Array<ObjectRef> SplitAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                             const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> SplitAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                             const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   CHECK_GE(inputs.size(), 3);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   Array<Optional<PrimExpr>> factors;
@@ -552,8 +589,9 @@ Array<ObjectRef> SplitAttrs::ApplyToSchedule(ScheduleNode* sch,
   return AdaptOutputs(sch->Split(loop, factors));
 }
 
-Array<ObjectRef> ReorderAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                               const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> ReorderAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                               const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   Array<LoopRV> after_axes;
   for (const ObjectRef& obj : inputs) {
     if (const auto* loop = obj.as<LoopRVNode>()) {
@@ -566,8 +604,9 @@ Array<ObjectRef> ReorderAttrs::ApplyToSchedule(ScheduleNode* sch,
   return {};
 }
 
-Array<ObjectRef> ComputeAtAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                 const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> ComputeAtAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                                 const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[1]);
@@ -575,8 +614,10 @@ Array<ObjectRef> ComputeAtAttrs::ApplyToSchedule(ScheduleNode* sch,
   return {};
 }
 
-Array<ObjectRef> ReverseComputeAtAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                        const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> ReverseComputeAtAttrs::ApplyToSchedule(
+    ScheduleNode* sch, const Array<ObjectRef>& inputs,
+    const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[1]);
@@ -584,53 +625,65 @@ Array<ObjectRef> ReverseComputeAtAttrs::ApplyToSchedule(ScheduleNode* sch,
   return {};
 }
 
-Array<ObjectRef> ComputeInlineAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                     const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> ComputeInlineAttrs::ApplyToSchedule(
+    ScheduleNode* sch, const Array<ObjectRef>& inputs,
+    const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   sch->ComputeInline(block);
   return {};
 }
 
-Array<ObjectRef> ReverseComputeInlineAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                            const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> ReverseComputeInlineAttrs::ApplyToSchedule(
+    ScheduleNode* sch, const Array<ObjectRef>& inputs,
+    const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   sch->ReverseComputeInline(block);
   return {};
 }
 
-Array<ObjectRef> CacheReadAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                 const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> CacheReadAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                                 const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return {sch->CacheRead(block, i, storage_scope)};
 }
 
-Array<ObjectRef> CacheWriteAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                  const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> CacheWriteAttrs::ApplyToSchedule(
+    ScheduleNode* sch, const Array<ObjectRef>& inputs,
+    const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return {sch->CacheWrite(block, i, storage_scope)};
 }
 
-Array<ObjectRef> BlockizeAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> BlockizeAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                                const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   return {sch->Blockize(loop, exec_scope)};
 }
 
-Array<ObjectRef> DecomposeReductionAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                          const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> DecomposeReductionAttrs::ApplyToSchedule(
+    ScheduleNode* sch, const Array<ObjectRef>& inputs,
+    const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[1]);
   return {sch->DecomposeReduction(block, loop)};
 }
 
-Array<ObjectRef> AutoUnrollAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                  const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> AutoUnrollAttrs::ApplyToSchedule(
+    ScheduleNode* sch, const Array<ObjectRef>& inputs,
+    const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   TVM_META_SCHEDULE_INST_CAST(PrimExpr, max_step, inputs[1]);
@@ -638,8 +691,10 @@ Array<ObjectRef> AutoUnrollAttrs::ApplyToSchedule(ScheduleNode* sch,
   return {};
 }
 
-Array<ObjectRef> EnterPostProcAttrs::ApplyToSchedule(ScheduleNode* sch,
-                                                     const Array<ObjectRef>& inputs) const {
+Array<ObjectRef> EnterPostProcAttrs::ApplyToSchedule(
+    ScheduleNode* sch, const Array<ObjectRef>& inputs,
+    const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 0);
   sch->EnterPostProc();
   return {};

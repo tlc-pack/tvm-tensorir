@@ -192,7 +192,10 @@ Schedule ScheduleNode::Copy(int new_seed) const {
 Schedule ScheduleNode::Import(const Array<ObjectRef>& records, const tir::PrimFunc& orig_func,
                               Optional<Integer> seed) {
   Schedule sch(orig_func, seed);
-  Map<String, ObjectRef> named_rvs;
+  Map<String, ObjectRef> named_rvs{
+      {LoopRV::inline_rv, LoopRV::ComputeInlineRV()},
+      {LoopRV::root_rv, LoopRV::ComputeRootRV()},
+  };
   for (const ObjectRef& record_obj : records) {
     Array<ObjectRef> record = Downcast<Array<ObjectRef>>(record_obj);
     Instruction::ApplyToSchedule(sch.operator->(), record, &named_rvs);
@@ -201,11 +204,17 @@ Schedule ScheduleNode::Import(const Array<ObjectRef>& records, const tir::PrimFu
 }
 
 Array<ObjectRef> ScheduleNode::Export() const {
-  Map<ObjectRef, String> rv_names;
+  Map<ObjectRef, String> rv_names{
+      {LoopRV::ComputeInlineRV(), LoopRV::inline_rv},
+      {LoopRV::ComputeRootRV(), LoopRV::root_rv},
+  };
   for (const Instruction& inst : trace) {
     for (const ObjectRef& output : inst->outputs) {
-      int i = rv_names.size();
-      rv_names.Set(output, "v" + std::to_string(i));
+      if (!output.same_as(LoopRV::ComputeInlineRV()) && !output.same_as(LoopRV::ComputeRootRV())) {
+        int i = rv_names.size();
+        CHECK(!rv_names.count(output));
+        rv_names.Set(output, "v" + std::to_string(i));
+      }
     }
   }
   Array<ObjectRef> records;
@@ -236,6 +245,12 @@ tir::StmtSRef ScheduleNode::Eval(const BlockRV& block) {
 }
 
 tir::StmtSRef ScheduleNode::Eval(const LoopRV& loop) {
+  if (loop.same_as(LoopRV::ComputeInlineRV())) {
+    LOG(FATAL) << "ValueError: Cannot evaluate the special LoopRV: ComputeInlineRV";
+  }
+  if (loop.same_as(LoopRV::ComputeRootRV())) {
+    LOG(FATAL) << "ValueError: Cannot evaluate the special LoopRV: ComputeRootRV";
+  }
   auto iter = this->sym_tab.find(loop);
   CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding LoopRV: " << loop;
   const Optional<ObjectRef>& obj = (*iter).second;
@@ -443,6 +458,28 @@ tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
   // Put the sampling decision in the decision table
   this->decisions.Set(this->trace.back(), {Integer(result)});
   return output;
+}
+
+LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block) {
+  tir::StmtSRef block_sref = Eval(block);
+  Array<tir::StmtSRef> loop_srefs = sch->GetLoopsInScope(block_sref);
+  int n = loop_srefs.size();
+  int i = sampler.SampleInt(0, n + 2);
+  // Create the output random variable
+  LoopRV output{nullptr};
+  if (i == n) {
+    output = LoopRV::ComputeInlineRV();
+  } else if (i == n + 1) {
+    output = LoopRV::ComputeRootRV();
+  } else {
+    output = LoopRV();
+    // Update the symbol table
+    this->sym_tab.Set(output, loop_srefs[i]);
+  }
+  // Put the instruction in the trace
+  // this->trace.push_back(SampleCategoricalAttrs::MakeInst(candidates, probs, output));
+  // Put the sampling decision in the decision table
+  // this->decisions.Set(this->trace.back(), {});
 }
 
 /**************** Block/Loop Relationship ****************/
@@ -735,6 +772,13 @@ void ScheduleNode::Reorder(const Array<LoopRV>& after_axes) {
 }
 
 void ScheduleNode::ComputeAt(const BlockRV& block, const LoopRV& loop) {
+  if (loop.same_as(LoopRV::ComputeInlineRV())) {
+    ComputeInline(block);
+    return;
+  }
+  if (loop.same_as(LoopRV::ComputeRootRV())) {
+    return;
+  }
   // Find the inputs to TIR
   tir::StmtSRef block_sref = this->Eval(block);
   tir::StmtSRef loop_sref = this->Eval(loop);
@@ -744,6 +788,13 @@ void ScheduleNode::ComputeAt(const BlockRV& block, const LoopRV& loop) {
 }
 
 void ScheduleNode::ReverseComputeAt(const BlockRV& block, const LoopRV& loop) {
+  if (loop.same_as(LoopRV::ComputeInlineRV())) {
+    ReverseComputeInline(block);
+    return;
+  }
+  if (loop.same_as(LoopRV::ComputeRootRV())) {
+    return;
+  }
   // Find the inputs to TIR
   tir::StmtSRef block_sref = this->Eval(block);
   tir::StmtSRef loop_sref = this->Eval(loop);
@@ -886,8 +937,9 @@ void ScheduleNode::Replay(bool follow_decision) {
       new_inputs.push_back(f_var_map(input));
     }
     // Step 2.2. Construct new outputs
-    Array<ObjectRef> new_outputs =
-        Instruction::ApplyToSchedule(new_sch.operator->(), old_inst->inst_attrs, new_inputs);
+    // TODO: refactor this
+    Array<ObjectRef> new_outputs = Instruction::ApplyToSchedule(
+        new_sch.operator->(), old_inst->inst_attrs, new_inputs, NullOpt);
     CHECK_EQ(old_outputs.size(), new_outputs.size()) << "ValueError: Output size mismatch";
     // Step 2.3. Set up correspondence between old and new outputs
     for (int i = 0, n = new_outputs.size(); i < n; ++i) {

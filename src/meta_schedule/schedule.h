@@ -163,6 +163,11 @@ class ScheduleNode : public Object {
    * \return The random variable
    */
   tir::Var SampleCategorical(const Array<Integer>& candidates, const Array<FloatImm>& probs);
+  /*!
+   * \brief Sample a compute-at location from a block
+   * \param block A block to be computed at
+   */
+  LoopRV SampleComputeLocation(const BlockRV& block);
   /**************** Block/Loop Relationship ****************/
   /*!
    * \brief Get the producer of a specific block

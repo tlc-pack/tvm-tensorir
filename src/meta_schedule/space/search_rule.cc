@@ -18,6 +18,7 @@
  */
 #include "./search_rule.h"  // NOLINT(build/include)
 
+#include "../../tir/schedule/schedule_common.h"
 #include "../analysis.h"
 #include "../utils.h"
 
@@ -451,6 +452,53 @@ SearchRule MultiLevelTilingAndFusion(String structure, bool must_cache_read,
   return SearchRule("multi_level_tiling_and_fusion", f_apply);
 }
 
+/********** RandomComputeLocation **********/
+
+class RuleRandomComputeLocation {
+ public:
+  bool IsFreeBlock(const tir::Schedule sch, const tir::StmtSRef& block_sref) const {
+    if (!IsSubrootBlock(sch, block_sref)) {
+      return false;
+    }
+    Array<tir::StmtSRef> loop_srefs = sch->GetLoopsInScope(block_sref);
+    for (const tir::StmtSRef& loop_sref : loop_srefs) {
+      const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+      CHECK(loop) << "TypeError: Expects Loop, but gets: " << loop_sref->stmt->GetTypeKey();
+      if (loop->body->IsInstance<tir::SeqStmtNode>()) {
+        return false;
+      }
+    }
+    Array<PrimExpr> binds = tir::GetBlockRealize(block_sref)->binding_values;
+    for (const PrimExpr& bind : binds) {
+      if (!bind->IsInstance<IntImmNode>() && !bind->IsInstance<tir::VarNode>()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  TReturn Apply(const SearchTask& task, const Schedule& sch, BlockRV block_rv,
+                const TContextInfo& info) const {
+    tir::StmtSRef block_sref = sch->Eval(block_rv);
+    if (!IsFreeBlock(sch->sch, block_sref)) {
+      return {{sch, info}};
+    }
+    Array<BlockRV> consumers = sch->GetConsumers(block_rv);
+    if (consumers.size() != 1) {
+      return {{sch, info}};
+    }
+    BlockRV consumer = consumers[0];
+    // TODO: complete it
+  }
+};
+
+SearchRule RandomComputeLocation() {
+  auto f_apply = [](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
+    return RuleRandomComputeLocation().Apply(task, sch, block, info);
+  };
+  return SearchRule("multi_level_tiling_and_fusion", f_apply);
+}
+
 /********** MarkParallelizeOuter **********/
 
 /*! \brief A rule that parallelizes the outer loops */
@@ -741,6 +789,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.search_rule.InlinePureSpatial")
     .set_body_typed(InlinePureSpatial);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTilingAndFusion")
     .set_body_typed(MultiLevelTilingAndFusion);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.RandomComputeLocation")
+    .set_body_typed(RandomComputeLocation);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkParallelizeOuter")
     .set_body_typed(MarkParallelizeOuter);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkVectorizeInner")

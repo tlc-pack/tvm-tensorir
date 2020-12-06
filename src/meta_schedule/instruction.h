@@ -64,6 +64,13 @@ class LoopRV : public runtime::ObjectRef {
  public:
   /*! \brief Constructor */
   LoopRV();
+  /*! \brief Get the special LoopRV for compute_inline */
+  static LoopRV ComputeInlineRV();
+  /*! \brief Get the special LoopRV for compute_root */
+  static LoopRV ComputeRootRV();
+
+  static constexpr const char* inline_rv = "$inline";
+  static constexpr const char* root_rv = "$root";
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LoopRV, ObjectRef, LoopRVNode);
 };
 
@@ -99,8 +106,8 @@ class InstAttrsNode : public Object {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  virtual Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                           const Array<ObjectRef>& inputs) const = 0;
+  virtual Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                           const Optional<Array<ObjectRef>>& decisions) const = 0;
 
   virtual String GetName() const = 0;
 
@@ -167,7 +174,8 @@ class Instruction : public ObjectRef {
    * \return The outputs of the instruction applied
    */
   static Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const InstAttrs& inst_attrs,
-                                          const Array<ObjectRef>& inputs);
+                                          const Array<ObjectRef>& inputs,
+                                          const Optional<Array<ObjectRef>>& decision);
 
   static Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& record,
                                           Map<String, ObjectRef>* named_rvs);
@@ -210,8 +218,8 @@ struct SamplePerfectTileAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -252,8 +260,8 @@ struct SampleTileFactorAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -308,8 +316,8 @@ struct SampleFusibleLoopsAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -349,8 +357,8 @@ struct SampleCategoricalAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -382,8 +390,8 @@ struct GetProducersAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -413,8 +421,8 @@ struct GetConsumersAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -447,8 +455,8 @@ struct GetBlockAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -478,8 +486,8 @@ struct GetAxesAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -509,8 +517,8 @@ struct GetReadBuffersAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -540,8 +548,8 @@ struct GetWriteBuffersAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -569,8 +577,8 @@ struct GetRootBlocksAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -598,8 +606,8 @@ struct GetLeafBlocksAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -642,8 +650,8 @@ struct MarkLoopTypeAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -681,8 +689,8 @@ struct MarkBlockTypeAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -711,8 +719,8 @@ struct FuseAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -744,8 +752,8 @@ struct SplitAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -774,8 +782,8 @@ struct ReorderAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -805,8 +813,8 @@ struct ComputeAtAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -836,8 +844,8 @@ struct ReverseComputeAtAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -866,8 +874,8 @@ struct ComputeInlineAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -896,8 +904,8 @@ struct ReverseComputeInlineAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -938,8 +946,8 @@ struct CacheReadAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -980,8 +988,8 @@ struct CacheWriteAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -1015,8 +1023,8 @@ struct BlockizeAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -1047,8 +1055,8 @@ struct DecomposeReductionAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -1082,8 +1090,8 @@ struct AutoUnrollAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
@@ -1113,8 +1121,8 @@ struct EnterPostProcAttrs : public InstAttrsNode {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                   const Optional<Array<ObjectRef>>& decision) const override;
 
   void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
 
