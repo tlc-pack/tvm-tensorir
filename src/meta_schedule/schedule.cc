@@ -191,22 +191,23 @@ Schedule ScheduleNode::Copy(int new_seed) const {
 
 Schedule ScheduleNode::Import(const Array<ObjectRef>& records, const tir::PrimFunc& orig_func,
                               Optional<Integer> seed) {
-  Schedule sch(orig_func, seed);
+  // Random variables
   Map<String, ObjectRef> named_rvs{
-      {LoopRV::inline_rv, LoopRV::ComputeInlineRV()},
-      {LoopRV::root_rv, LoopRV::ComputeRootRV()},
+      {String(LoopRV::inline_rv), LoopRV::ComputeInlineRV()},
+      {String(LoopRV::root_rv), LoopRV::ComputeRootRV()},
   };
+  Schedule sch(orig_func, seed);
   for (const ObjectRef& record_obj : records) {
-    Array<ObjectRef> record = Downcast<Array<ObjectRef>>(record_obj);
-    Instruction::ApplyToSchedule(sch.operator->(), record, &named_rvs);
+    Instruction::ApplyToSchedule(sch.operator->(), Downcast<Array<ObjectRef>>(record_obj),
+                                 &named_rvs);
   }
   return sch;
 }
 
 Array<ObjectRef> ScheduleNode::Export() const {
   Map<ObjectRef, String> rv_names{
-      {LoopRV::ComputeInlineRV(), LoopRV::inline_rv},
-      {LoopRV::ComputeRootRV(), LoopRV::root_rv},
+      {LoopRV::ComputeInlineRV(), String(LoopRV::inline_rv)},
+      {LoopRV::ComputeRootRV(), String(LoopRV::root_rv)},
   };
   for (const Instruction& inst : trace) {
     for (const ObjectRef& output : inst->outputs) {
@@ -301,7 +302,8 @@ int ScheduleNode::Eval(const PrimExpr& expr) {
 /**************** Sampling ****************/
 
 Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop,
-                                                int max_innermost_factor) {
+                                                int max_innermost_factor,
+                                                const Optional<Array<ObjectRef>>& decision) {
   const auto* tir_loop = Eval(loop)->GetStmt<tir::LoopNode>();
   CHECK(tir_loop);
   int64_t extent;
@@ -311,7 +313,10 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
     extent = p_extent->value;
   }
   // Sample the output
-  std::vector<int> samples = sampler.SamplePerfectTile(n_splits, extent, max_innermost_factor);
+  std::vector<int> samples =
+      decision.defined()                                  //
+          ? AsVector<ObjectRef, int>()(decision.value())  //
+          : sampler.SamplePerfectTile(n_splits, extent, max_innermost_factor);
   // Create the output random variable
   String name_prefix = tir_loop->loop_var->name_hint + ".";
   Array<tir::Var> outputs;
@@ -330,7 +335,8 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
 }
 
 Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
-                                               const Array<Integer>& where) {
+                                               const Array<Integer>& where,
+                                               const Optional<Array<ObjectRef>>& decision) {
   const auto* tir_loop = Eval(loop)->GetStmt<tir::LoopNode>();
   CHECK(tir_loop);
   int64_t extent;
@@ -344,7 +350,9 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
     }
   }
   // Sample the output
-  std::vector<int> samples = sampler.SampleTileFactor(n_splits, extent, candidates);
+  std::vector<int> samples = decision.defined()                                  //
+                                 ? AsVector<ObjectRef, int>()(decision.value())  //
+                                 : sampler.SampleTileFactor(n_splits, extent, candidates);
   // Create the output random variable
   String name_prefix = tir_loop->loop_var->name_hint + ".";
   Array<tir::Var> outputs;
@@ -363,7 +371,8 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
 
 tir::Var ScheduleNode::SampleFusibleLoops(const Array<LoopRV>& loops,
                                           const Array<Integer>& loop_types, int max_extent,
-                                          bool include_overflow_loop, Order order, Mode mode) {
+                                          bool include_overflow_loop, Order order, Mode mode,
+                                          const Optional<Array<ObjectRef>>& decision) {
   CHECK_EQ(loops.size(), loop_types.size())
       << "ValueError: 'loops' and 'loop_types' must have equal number of elements";
   int n_loops = loops.size();
@@ -424,7 +433,12 @@ tir::Var ScheduleNode::SampleFusibleLoops(const Array<LoopRV>& loops,
     n_fusible = 0;
   }
   if (mode == Mode::rand && n_fusible != 0) {
-    n_fusible = sampler.SampleInt(0, n_fusible + 1);
+    if (decision.defined()) {
+      CHECK_EQ(decision.value().size(), 1);
+      n_fusible = Downcast<Integer>(decision.value()[0]);
+    } else {
+      n_fusible = sampler.SampleInt(0, n_fusible + 1);
+    }
   }
   // Create the output random variable
   tir::Var output("n_fusible");
@@ -440,7 +454,8 @@ tir::Var ScheduleNode::SampleFusibleLoops(const Array<LoopRV>& loops,
 }
 
 tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
-                                         const Array<FloatImm>& probs) {
+                                         const Array<FloatImm>& probs,
+                                         const Optional<Array<ObjectRef>>& decision) {
   // Sample the output
   CHECK_EQ(candidates.size(), probs.size()) << "ValueError: When sampling ";
   std::vector<double> probs_vec;
@@ -448,7 +463,15 @@ tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
   for (const FloatImm& prob : probs) {
     probs_vec.push_back(prob->value);
   }
-  int result = candidates[sampler.MakeMultinomial(probs_vec)()];
+  int sampled = -1;
+  if (decision.defined()) {
+    CHECK_EQ(decision.value().size(), 1);
+    sampled = Downcast<Integer>(decision.value()[0]);
+    sampled = 0;
+  } else {
+    sampled = sampler.MakeMultinomial(probs_vec)();
+  }
+  int result = candidates[sampled];
   // Create the output random variable
   tir::Var output("n");
   // Update the symbol table
@@ -456,11 +479,12 @@ tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
   // Put the instruction in the trace
   this->trace.push_back(SampleCategoricalAttrs::MakeInst(candidates, probs, output));
   // Put the sampling decision in the decision table
-  this->decisions.Set(this->trace.back(), {Integer(result)});
+  this->decisions.Set(this->trace.back(), {Integer(sampled)});
   return output;
 }
 
-LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block) {
+LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block,
+                                           const Optional<Array<ObjectRef>>& decision) {
   tir::StmtSRef block_sref = Eval(block);
   Array<tir::StmtSRef> loop_srefs = sch->GetLoopsInScope(block_sref);
   int n = loop_srefs.size();
@@ -476,10 +500,12 @@ LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block) {
     // Update the symbol table
     this->sym_tab.Set(output, loop_srefs[i]);
   }
+  // TODO
   // Put the instruction in the trace
   // this->trace.push_back(SampleCategoricalAttrs::MakeInst(candidates, probs, output));
   // Put the sampling decision in the decision table
   // this->decisions.Set(this->trace.back(), {});
+  throw;
 }
 
 /**************** Block/Loop Relationship ****************/
@@ -936,10 +962,13 @@ void ScheduleNode::Replay(bool follow_decision) {
     for (const ObjectRef& input : old_inputs) {
       new_inputs.push_back(f_var_map(input));
     }
-    // Step 2.2. Construct new outputs
-    // TODO: refactor this
+    // Step 2.2. Construct decision
+    Optional<Array<ObjectRef>> decision = (follow_decision && this->decisions.count(old_inst))
+                                              ? this->decisions.at(old_inst)
+                                              : Optional<Array<ObjectRef>>(NullOpt);
+    // Step 2.3. Construct new outputs
     Array<ObjectRef> new_outputs = Instruction::ApplyToSchedule(
-        new_sch.operator->(), old_inst->inst_attrs, new_inputs, NullOpt);
+        new_sch.operator->(), old_inst->inst_attrs, new_inputs, decision);
     CHECK_EQ(old_outputs.size(), new_outputs.size()) << "ValueError: Output size mismatch";
     // Step 2.3. Set up correspondence between old and new outputs
     for (int i = 0, n = new_outputs.size(); i < n; ++i) {
@@ -948,15 +977,6 @@ void ScheduleNode::Replay(bool follow_decision) {
     // Step 2.4. Set up correspondence between old and new instructions
     const Instruction& new_inst = new_sch->trace.back();
     inst_map[old_inst.operator->()] = new_inst.operator->();
-    // Step 2.5. Change the decision if we want to follow pre-set decisions
-    if (follow_decision && this->decisions.count(old_inst)) {
-      Array<ObjectRef> decisions = this->decisions.at(old_inst);
-      CHECK_EQ(decisions.size(), new_outputs.size());
-      for (int i = 0, n = decisions.size(); i < n; ++i) {
-        new_sch->sym_tab.Set(new_outputs[i], decisions[i]);
-      }
-      new_sch->decisions.Set(new_inst, decisions);
-    }
   }
   this->sch = new_sch->sch;
   // Step 3. Re-assign all the variables back according to the symbol table
@@ -1037,16 +1057,18 @@ struct Internal {
    * \sa ScheduleNode::SamplePerfectTile
    */
   static Array<tir::Var> SamplePerfectTile(Schedule sch, int n_splits, LoopRV loop,
-                                           int max_innermost_factor) {
-    return sch->SamplePerfectTile(n_splits, loop, max_innermost_factor);
+                                           int max_innermost_factor,
+                                           Optional<Array<ObjectRef>> decision) {
+    return sch->SamplePerfectTile(n_splits, loop, max_innermost_factor, decision);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::SampleTileFactor
    * \sa ScheduleNode::SampleTileFactor
    */
   static Array<tir::Var> SampleTileFactor(Schedule sch, int n_splits, LoopRV loop,
-                                          Array<Integer> where) {
-    return sch->SampleTileFactor(n_splits, loop, where);
+                                          Array<Integer> where,
+                                          Optional<Array<ObjectRef>> decision) {
+    return sch->SampleTileFactor(n_splits, loop, where, decision);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::SampleFusibleLoops
@@ -1054,19 +1076,19 @@ struct Internal {
    */
   static tir::Var SampleFusibleLoops(Schedule sch, Array<LoopRV> loops, Array<Integer> loop_types,
                                      int max_extent, bool include_overflow_loop, int _order,
-                                     int _mode) {
+                                     int _mode, Optional<Array<ObjectRef>> decision) {
     ScheduleNode::Order order = static_cast<ScheduleNode::Order>(_order);
     ScheduleNode::Mode mode = static_cast<ScheduleNode::Mode>(_mode);
     return sch->SampleFusibleLoops(loops, loop_types, max_extent, include_overflow_loop, order,
-                                   mode);
+                                   mode, decision);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::SampleCategorical
    * \sa ScheduleNode::SampleCategorical
    */
-  static tir::Var SampleCategorical(Schedule sch, Array<Integer> candidates,
-                                    Array<FloatImm> probs) {
-    return sch->SampleCategorical(candidates, probs);
+  static tir::Var SampleCategorical(Schedule sch, Array<Integer> candidates, Array<FloatImm> probs,
+                                    Optional<Array<ObjectRef>> decision) {
+    return sch->SampleCategorical(candidates, probs, decision);
   }
   /**************** Block/Loop Relationship ****************/
   /*!

@@ -81,7 +81,8 @@ Array<ObjectRef> InstructionNode::Export(const Map<ObjectRef, String>& rv_names,
       } else if (rv_names.count(rv)) {
         names.push_back(rv_names.at(rv));
       } else {
-        LOG(INFO) << "TypeError: Unable to handle: " << rv << ". Its type is: " << rv->GetTypeKey();
+        LOG(FATAL) << "TypeError: Unable to handle: " << rv
+                   << ". Its type is: " << rv->GetTypeKey();
         throw;
       }
     }
@@ -102,7 +103,7 @@ Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const InstAttrs
 Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& record,
                                               Map<String, ObjectRef>* named_rvs) {
 #define TVM_META_SCHEDULE_INST_VTABLE_ENTRY(AttrsType) \
-  { AttrsType::Name(), AttrsType::Import }
+  { String(AttrsType::Name()), AttrsType::Import }
   static const std::unordered_map<String, std::function<InstAttrs(const Array<ObjectRef>&)>>
       vtable = {
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SamplePerfectTileAttrs),
@@ -135,9 +136,9 @@ Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Array<Obj
 #undef TVM_META_SCHEDULE_INST_VTABLE_ENTRY
   CHECK_GE(record.size(), 3);
   CHECK_LE(record.size(), 5);
-  // Extract record[0]: inst_attrs::_name
+  // Step 1. Extract inst_attrs::_name <= record[0]
   String attrs_name = Downcast<String>(record[0]);
-  // Extract record[1]: inputs
+  // Step 2. Extract record_inputs <= record[1], then translate record_inputs to inputs
   Array<ObjectRef> inputs;
   {
     Array<ObjectRef> record_inputs = Downcast<Array<ObjectRef>>(record[1]);
@@ -147,6 +148,7 @@ Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Array<Obj
         inputs.push_back(GetRef<Integer>(integer));
       } else if (const auto* str_obj = obj.as<StringObj>()) {
         String str = GetRef<String>(str_obj);
+        CHECK(named_rvs->count(str)) << "IndexError: Cannot find variable: " << str;
         inputs.push_back(named_rvs->at(str));
       } else {
         LOG(FATAL) << "TypeError: Cannot deal with type '" << obj->GetTypeKey()
@@ -154,33 +156,20 @@ Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Array<Obj
       }
     }
   }
-  // Extract record[2]: outputs
+  // Step 3. Extract record_outputs <= record[2]
   Array<String> record_outputs = Downcast<Array<String>>(record[2]);
-  // Extract record[3]: (optional) inst_attrs
+  // Step 4. Extract inst_attrs <= record[3]
   InstAttrs inst_attrs = vtable.at(attrs_name)(record);
-  // Extract record[4]: (optional) decision
+  // Step 5. Extract decision <= record[4]
   Optional<Array<ObjectRef>> opt_decision = record.size() >= 5
                                                 ? Downcast<Array<ObjectRef>>(record[4])
                                                 : Optional<Array<ObjectRef>>(NullOpt);
-  // Get the new output random variables
+  // Step 6. Calculate the new outputs, and translate record_outputs to outputs
   Array<ObjectRef> outputs = inst_attrs->ApplyToSchedule(sch, inputs, opt_decision);
-  {
-    // link `record_outputs` and `outputs`
-    CHECK_EQ(record_outputs.size(), outputs.size());
-    int n = record_outputs.size();
-    for (int i = 0; i < n; ++i) {
-      named_rvs->Set(record_outputs[i], outputs[i]);
-    }
-  }
-  // TODO: remove
-  if (opt_decision.defined()) {
-    Array<ObjectRef> decision = opt_decision.value();
-    CHECK_EQ(decision.size(), outputs.size());
-    int n = decision.size();
-    for (int i = 0; i < n; ++i) {
-      sch->sym_tab.Set(outputs[i], decision[i]);
-    }
-    sch->decisions.Set(sch->trace.back(), decision);
+  CHECK_EQ(record_outputs.size(), outputs.size());
+  int n = record_outputs.size();
+  for (int i = 0; i < n; ++i) {
+    named_rvs->Set(record_outputs[i], outputs[i]);
   }
   return outputs;
 }
@@ -434,7 +423,7 @@ Array<ObjectRef> SamplePerfectTileAttrs::ApplyToSchedule(
     const Optional<Array<ObjectRef>>& decision) const {
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
-  return AdaptOutputs(sch->SamplePerfectTile(n_splits, loop, max_innermost_factor));
+  return AdaptOutputs(sch->SamplePerfectTile(n_splits, loop, max_innermost_factor, decision));
 }
 
 Array<ObjectRef> SampleTileFactorAttrs::ApplyToSchedule(
@@ -442,7 +431,7 @@ Array<ObjectRef> SampleTileFactorAttrs::ApplyToSchedule(
     const Optional<Array<ObjectRef>>& decision) const {
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
-  return AdaptOutputs(sch->SampleTileFactor(n_splits, loop, where));
+  return AdaptOutputs(sch->SampleTileFactor(n_splits, loop, where, decision));
 }
 
 Array<ObjectRef> SampleFusibleLoopsAttrs::ApplyToSchedule(
@@ -457,13 +446,13 @@ Array<ObjectRef> SampleFusibleLoopsAttrs::ApplyToSchedule(
   ScheduleNode::Order the_order = static_cast<ScheduleNode::Order>(this->order);
   ScheduleNode::Mode the_mode = static_cast<ScheduleNode::Mode>(this->mode);
   return {sch->SampleFusibleLoops(loops, loop_types, max_extent, include_overflow_loop, the_order,
-                                  the_mode)};
+                                  the_mode, decision)};
 }
 
 Array<ObjectRef> SampleCategoricalAttrs::ApplyToSchedule(
     ScheduleNode* sch, const Array<ObjectRef>& inputs,
     const Optional<Array<ObjectRef>>& decision) const {
-  return {sch->SampleCategorical(candidates, probs)};
+  return {sch->SampleCategorical(candidates, probs, decision)};
 }
 
 /**************** (ApplyToSchedule) Block/Loop Relationship  ****************/

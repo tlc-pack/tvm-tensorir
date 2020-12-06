@@ -489,6 +489,7 @@ class RuleRandomComputeLocation {
     }
     BlockRV consumer = consumers[0];
     // TODO: complete it
+    throw;
   }
 };
 

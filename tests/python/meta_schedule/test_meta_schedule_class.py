@@ -256,7 +256,7 @@ def test_meta_schedule_creation():
 def test_meta_schedule_copy():
     sch = ms.Schedule(func=matmul)
     i, j, k = sch.get_axes(sch.get_block("matmul"))
-    sch_copy = sch.copy(seed=42)
+    sch_copy: ms.Schedule = sch.copy(seed=42)
     assert not sch.evaluate(i).same_as(sch_copy.evaluate(i))
     assert not sch.evaluate(j).same_as(sch_copy.evaluate(j))
     assert not sch.evaluate(k).same_as(sch_copy.evaluate(k))

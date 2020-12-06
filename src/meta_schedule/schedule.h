@@ -129,8 +129,8 @@ class ScheduleNode : public Object {
    * \param max_innermost_factor The maximum factor in the innermost loop
    * \return An array of random variables, the result of sampling
    */
-  Array<tir::Var> SamplePerfectTile(int n_splits, const LoopRV& loop,
-                                    int max_innermost_factor = 16);
+  Array<tir::Var> SamplePerfectTile(int n_splits, const LoopRV& loop, int max_innermost_factor = 16,
+                                    const Optional<Array<ObjectRef>>& decision = NullOpt);
   /*!
    * \brief Apply the instruction SampleTileFactor
    * \param n_splits The number of loops after tiling
@@ -138,7 +138,8 @@ class ScheduleNode : public Object {
    * \param where The distribution of tile size to be sampled
    * \return An array of random variables, the result of sampling
    */
-  Array<tir::Var> SampleTileFactor(int n_splits, const LoopRV& loop, const Array<Integer>& where);
+  Array<tir::Var> SampleTileFactor(int n_splits, const LoopRV& loop, const Array<Integer>& where,
+                                   const Optional<Array<ObjectRef>>& decision = NullOpt);
   /*!
    * \brief Sample fusible loops, in the specific order (inner-to-outer or outer-to-inner), where
    * their product of extent is limited. The sampling could have two modes: max or rand. If it is
@@ -155,19 +156,22 @@ class ScheduleNode : public Object {
    * \return A ExprRV, a random variable indicates the number of loops that can be potentially fused
    */
   tir::Var SampleFusibleLoops(const Array<LoopRV>& loops, const Array<Integer>& loop_types,
-                              int max_extent, bool include_overflow_loop, Order order, Mode mode);
+                              int max_extent, bool include_overflow_loop, Order order, Mode mode,
+                              const Optional<Array<ObjectRef>>& decision = NullOpt);
   /*!
    * \brief Sample an integer given the probability distribution
    * \param candidates The candidates
    * \param probs The probability distribution of the candidates
    * \return The random variable
    */
-  tir::Var SampleCategorical(const Array<Integer>& candidates, const Array<FloatImm>& probs);
+  tir::Var SampleCategorical(const Array<Integer>& candidates, const Array<FloatImm>& probs,
+                             const Optional<Array<ObjectRef>>& decision = NullOpt);
   /*!
    * \brief Sample a compute-at location from a block
    * \param block A block to be computed at
    */
-  LoopRV SampleComputeLocation(const BlockRV& block);
+  LoopRV SampleComputeLocation(const BlockRV& block,
+                               const Optional<Array<ObjectRef>>& decision = NullOpt);
   /**************** Block/Loop Relationship ****************/
   /*!
    * \brief Get the producer of a specific block
