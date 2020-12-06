@@ -31,6 +31,69 @@
 namespace tvm {
 namespace meta_schedule {
 
+/**************** Array Handling ****************/
+
+/*!
+ * \brief Compute mean of a FloatImm array.
+ * Taken from Ansor
+ * \param float_array The array of floating point numbers to be averaged
+ * \return The mean of the given array
+ */
+inline double FloatArrayMean(const Array<FloatImm>& float_array) {
+  double sum = 0;
+  if (float_array.empty()) {
+    return 0.0;
+  }
+  for (const FloatImm& x : float_array) {
+    sum += x.get()->value;
+  }
+  return sum / float_array.size();
+}
+
+/*!
+ * \brief Get the only element from a single-element array
+ * \tparam T The type to be downcasted to
+ * \param array The single-element array
+ * \return The element
+ */
+template <class T>
+inline int GetOnlyElement(const Array<ObjectRef>& array) {
+  CHECK_EQ(array.size(), 1) << "ValueError: Not a single-element array: " << array;
+  return Downcast<T>(array[0]);
+}
+
+/*!
+ * \brief Concatenate the nested vector into a flattened vector
+ * \tparam T The element type of the nested vector
+ * \param source The nested vector
+ * \return The flattened vector
+ */
+template <class T>
+inline std::vector<T> ConcatArray(const std::vector<std::vector<T> >& source) {
+  std::vector<T> result;
+  for (const std::vector<T>& item : source) {
+    result.insert(result.end(), item.begin(), item.end());
+  }
+  return result;
+}
+
+/*!
+ * \brief Concatenate the nested vector into a flattened vector
+ * \tparam T The element type of the nested vector
+ * \param source The nested vector
+ * \return The flattened vector
+ */
+template <class T>
+inline Array<T> ConcatArray(const std::vector<Array<T> >& source) {
+  Array<T> result;
+  for (const Array<T>& item : source) {
+    result.insert(result.end(), item.begin(), item.end());
+  }
+  return result;
+}
+
+/**************** Expression Parsing ****************/
+
 /*!
  * \brief Checks if the specific expr is an integer constant
  * \param x The expr to be checked
@@ -44,12 +107,6 @@ inline bool IsConstInt(const PrimExpr& x) {
     return op->value->IsInstance<tir::IntImmNode>();
   }
   return false;
-}
-
-inline String Repr(const tir::PrimFunc& func) {
-  static const auto* f = runtime::Registry::Get("script.AsTVMScript");
-  CHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
-  return (*f)(func, false).operator String();
 }
 
 /*!
@@ -70,6 +127,41 @@ inline Optional<tir::Var> IsVarPlusMinusConst(const PrimExpr& expr) {
   }
   return NullOpt;
 }
+
+/**************** TIR-related ****************/
+
+inline String Repr(const tir::PrimFunc& func) {
+  static const auto* f = runtime::Registry::Get("script.AsTVMScript");
+  CHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
+  return (*f)(func, false).operator String();
+}
+
+/*!
+ * \brief Compare two domains and check if they are equal
+ * \param lhs One domain
+ * \param rhs The other domain
+ * \return A boolean indicating if the two domains are proved to be equal
+ */
+inline bool DomainEqual(const Array<Range>& lhs, const Array<Range>& rhs) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+  arith::Analyzer analyzer;
+  int n = lhs.size();
+  for (int i = 0; i < n; ++i) {
+    const Range& l = lhs[i];
+    const Range& r = rhs[i];
+    if (!analyzer.CanProve(l->min == r->min)) {
+      return false;
+    }
+    if (!analyzer.CanProve(l->extent == r->extent)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**************** AsArray<TSrc, TDst> ****************/
 
 template <class TSrc, class TDst>
 struct AsArray {};
@@ -104,6 +196,8 @@ struct AsArray<double, TDstObjectRef> {
     return result;
   }
 };
+
+/**************** AsVector<TSrc, TDst> ****************/
 
 template <class TSrc, class TDst>
 struct AsVector {};
@@ -141,22 +235,7 @@ struct AsVector<TSrcObjectRef, double> {
   }
 };
 
-/*!
- * \brief Compute mean of a FloatImm array.
- * Taken from Ansor
- * \param float_array The array of floating point numbers to be averaged
- * \return The mean of the given array
- */
-inline double FloatArrayMean(const Array<FloatImm>& float_array) {
-  double sum = 0;
-  if (float_array.empty()) {
-    return 0.0;
-  }
-  for (const FloatImm& x : float_array) {
-    sum += x.get()->value;
-  }
-  return sum / float_array.size();
-}
+/**************** I/O ****************/
 
 /*!
  * \brief An empty output stream
@@ -182,6 +261,8 @@ inline std::ostream& StdCout(int verbose, int setting = 1) {
   return verbose >= setting ? std::cout : NullStream::Global();
 }
 
+/**************** String Manipulation ****************/
+
 /*!
  * \brief Find all positions that the specific char occurs in the string
  * \param str The string to be examined
@@ -200,60 +281,7 @@ inline std::vector<int> FindCharPos(const String& str, char c) {
   return result;
 }
 
-/*!
- * \brief Concatenate the nested vector into a flattened vector
- * \tparam T The element type of the nested vector
- * \param source The nested vector
- * \return The flattened vector
- */
-template <class T>
-inline std::vector<T> ConcatArray(const std::vector<std::vector<T> >& source) {
-  std::vector<T> result;
-  for (const std::vector<T>& item : source) {
-    result.insert(result.end(), item.begin(), item.end());
-  }
-  return result;
-}
-
-/*!
- * \brief Concatenate the nested vector into a flattened vector
- * \tparam T The element type of the nested vector
- * \param source The nested vector
- * \return The flattened vector
- */
-template <class T>
-inline Array<T> ConcatArray(const std::vector<Array<T> >& source) {
-  Array<T> result;
-  for (const Array<T>& item : source) {
-    result.insert(result.end(), item.begin(), item.end());
-  }
-  return result;
-}
-
-/*!
- * \brief Compare two domains and check if they are equal
- * \param lhs One domain
- * \param rhs The other domain
- * \return A boolean indicating if the two domains are proved to be equal
- */
-inline bool DomainEqual(const Array<Range>& lhs, const Array<Range>& rhs) {
-  if (lhs.size() != rhs.size()) {
-    return false;
-  }
-  arith::Analyzer analyzer;
-  int n = lhs.size();
-  for (int i = 0; i < n; ++i) {
-    const Range& l = lhs[i];
-    const Range& r = rhs[i];
-    if (!analyzer.CanProve(l->min == r->min)) {
-      return false;
-    }
-    if (!analyzer.CanProve(l->extent == r->extent)) {
-      return false;
-    }
-  }
-  return true;
-}
+/**************** Data Structure ****************/
 
 /*!
  * \brief A heap with a size up-limit. If out-growth happens, it evicted the worst items

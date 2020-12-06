@@ -205,19 +205,23 @@ Schedule ScheduleNode::Import(const Array<ObjectRef>& records, const tir::PrimFu
 }
 
 Array<ObjectRef> ScheduleNode::Export() const {
+  LoopRV inline_rv = LoopRV::ComputeInlineRV();
+  LoopRV root_rv = LoopRV::ComputeRootRV();
   Map<ObjectRef, String> rv_names{
-      {LoopRV::ComputeInlineRV(), String(LoopRV::inline_rv)},
-      {LoopRV::ComputeRootRV(), String(LoopRV::root_rv)},
+      {inline_rv, String(LoopRV::inline_rv)},
+      {root_rv, String(LoopRV::root_rv)},
   };
+  // Allocate names for random variables
   for (const Instruction& inst : trace) {
     for (const ObjectRef& output : inst->outputs) {
-      if (!output.same_as(LoopRV::ComputeInlineRV()) && !output.same_as(LoopRV::ComputeRootRV())) {
+      if (!output.same_as(inline_rv) && !output.same_as(root_rv)) {
         int i = rv_names.size();
         CHECK(!rv_names.count(output));
         rv_names.Set(output, "v" + std::to_string(i));
       }
     }
   }
+  // Export to records
   Array<ObjectRef> records;
   for (const Instruction& inst : trace) {
     if (inst->inst_attrs->IsInstance<EnterPostProcAttrs>()) {
@@ -433,12 +437,9 @@ tir::Var ScheduleNode::SampleFusibleLoops(const Array<LoopRV>& loops,
     n_fusible = 0;
   }
   if (mode == Mode::rand && n_fusible != 0) {
-    if (decision.defined()) {
-      CHECK_EQ(decision.value().size(), 1);
-      n_fusible = Downcast<Integer>(decision.value()[0]);
-    } else {
-      n_fusible = sampler.SampleInt(0, n_fusible + 1);
-    }
+    n_fusible = decision.defined()                               //
+                    ? GetOnlyElement<Integer>(decision.value())  //
+                    : sampler.SampleInt(0, n_fusible + 1);
   }
   // Create the output random variable
   tir::Var output("n_fusible");
@@ -463,14 +464,9 @@ tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
   for (const FloatImm& prob : probs) {
     probs_vec.push_back(prob->value);
   }
-  int sampled = -1;
-  if (decision.defined()) {
-    CHECK_EQ(decision.value().size(), 1);
-    sampled = Downcast<Integer>(decision.value()[0]);
-    sampled = 0;
-  } else {
-    sampled = sampler.MakeMultinomial(probs_vec)();
-  }
+  int sampled = decision.defined()                               //
+                    ? GetOnlyElement<Integer>(decision.value())  //
+                    : sampler.MakeMultinomial(probs_vec)();
   int result = candidates[sampled];
   // Create the output random variable
   tir::Var output("n");
@@ -488,7 +484,9 @@ LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block,
   tir::StmtSRef block_sref = Eval(block);
   Array<tir::StmtSRef> loop_srefs = sch->GetLoopsInScope(block_sref);
   int n = loop_srefs.size();
-  int i = sampler.SampleInt(0, n + 2);
+  int i = decision.defined()                               //
+              ? GetOnlyElement<Integer>(decision.value())  //
+              : sampler.SampleInt(0, n + 2);
   // Create the output random variable
   LoopRV output{nullptr};
   if (i == n) {
@@ -502,10 +500,10 @@ LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block,
   }
   // TODO
   // Put the instruction in the trace
-  // this->trace.push_back(SampleCategoricalAttrs::MakeInst(candidates, probs, output));
+  // this->trace.push_back(SampleComputeLocation::MakeInst(candidates, probs, output));
   // Put the sampling decision in the decision table
-  // this->decisions.Set(this->trace.back(), {});
-  throw;
+  this->decisions.Set(this->trace.back(), {Integer(i)});
+  return output;
 }
 
 /**************** Block/Loop Relationship ****************/
@@ -1090,6 +1088,14 @@ struct Internal {
                                     Optional<Array<ObjectRef>> decision) {
     return sch->SampleCategorical(candidates, probs, decision);
   }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::SampleComputeLocation
+   * \sa ScheduleNode::SampleComputeLocation
+   */
+  static LoopRV SampleComputeLocation(Schedule sch, BlockRV block,
+                                      Optional<Array<ObjectRef>> decision) {
+    return sch->SampleComputeLocation(block, decision);
+  }
   /**************** Block/Loop Relationship ****************/
   /*!
    * \brief FFI function, corresponds to ScheduleNode::GetProducers
@@ -1262,6 +1268,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleFusibleLoops")
     .set_body_typed(Internal::SampleFusibleLoops);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleCategorical")
     .set_body_typed(Internal::SampleCategorical);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleComputeLocation")
+    .set_body_typed(Internal::SampleComputeLocation);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetProducers").set_body_typed(Internal::GetProducers);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetConsumers").set_body_typed(Internal::GetConsumers);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetBlock").set_body_typed(Internal::GetBlock);

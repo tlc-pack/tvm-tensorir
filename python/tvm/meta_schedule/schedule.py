@@ -264,6 +264,29 @@ class Schedule(Object):
             self, candidates, probs, decision
         )
 
+    def sample_compute_location(
+        self,
+        block: BlockRV,
+        decision: Optional[int] = None,
+    ) -> LoopRV:
+        """Sample a compute-at location from a block
+
+        Parameters
+        ----------
+        block : BlockRV
+            A block to be computed at
+
+        Returns
+        -------
+        result : LoopRV
+            The loop to be computed at
+        """
+        if decision is not None:
+            decision = [decision]
+        return _ffi_api.ScheduleSampleComputeLocation(  # pylint: disable=no-member
+            self, block, decision
+        )
+
     ######### Block/Loop Relationship #########
 
     def get_producers(self, block: BlockRV) -> List[BlockRV]:

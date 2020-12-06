@@ -169,6 +169,7 @@ class ScheduleNode : public Object {
   /*!
    * \brief Sample a compute-at location from a block
    * \param block A block to be computed at
+   * \return The loop to be computed at
    */
   LoopRV SampleComputeLocation(const BlockRV& block,
                                const Optional<Array<ObjectRef>>& decision = NullOpt);
