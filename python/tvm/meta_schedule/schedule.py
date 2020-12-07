@@ -190,6 +190,32 @@ class Schedule(Object):
             self, n_splits, loop, where, decision
         )
 
+    def sample_int(
+        self,
+        min_inclusive: ExprRV,
+        max_exclusive: ExprRV,
+        decision: Optional[int] = None,
+    ) -> ExprRV:
+        """Sample an integer in [min_exclusive, max_inclusive)
+
+        Parameters
+        ----------
+        min_inclusive : ExprRV
+            The left boundary, inclusive
+        max_exclusive : ExprRV
+            The right boundary, exclusive
+
+        Returns
+        -------
+        result : ExprRV
+            A ExprRV, a random variable indicates the sampling result
+        """
+        if decision is not None:
+            decision = [decision]
+        return _ffi_api.ScheduleSampleInt(  # pylint: disable=no-member
+            self, min_inclusive, max_exclusive, decision
+        )
+
     def sample_fusible_loops(
         self,
         loops: List[LoopRV],

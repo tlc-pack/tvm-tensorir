@@ -311,6 +311,24 @@ def test_meta_schedule_sample_perfect_tile():
     _check_serialization(sch, func=matmul)
 
 
+def test_meta_schedule_sample_int():
+    n = 20
+    sch = ms.Schedule(func=matmul)
+    counter = defaultdict(int)
+    v = sch.sample_int(9, 12)
+    for _ in range(n):
+        sch.resample()
+        counter[int(sch.evaluate(v))] += 1
+        new_sch = _check_serialization(sch, func=matmul)
+        old_decision = int(sch.decisions[sch.trace[-1]][0])
+        new_decision = int(new_sch.decisions[new_sch.trace[-1]][0])
+        assert old_decision == new_decision
+    assert len(counter) == 3
+    assert 9 in counter
+    assert 10 in counter
+    assert 11 in counter
+
+
 def test_meta_schedule_sample_fusible_loops():
     sch = ms.Schedule(func=matmul)
     loops = sch.get_axes(block=sch.get_block("matmul"))
@@ -668,6 +686,7 @@ if __name__ == "__main__":
     test_meta_schedule_copy()
     test_meta_schedule_sample_tile_factor()
     test_meta_schedule_sample_perfect_tile()
+    test_meta_schedule_sample_int()
     test_meta_schedule_sample_fusible_loops()
     test_meta_schedule_sample_categorical()
     test_meta_schedule_sample_compute_location()

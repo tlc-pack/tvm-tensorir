@@ -90,6 +90,7 @@ Array<ObjectRef> Instruction::ImportToSchedule(ScheduleNode* sch, const Array<Ob
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SamplePerfectTileAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleTileFactorAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleFusibleLoopsAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleIntAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleCategoricalAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleComputeLocationAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetProducersAttrs),
@@ -193,6 +194,13 @@ Instruction SampleFusibleLoopsAttrs::Make(const Array<LoopRV>& loops,
   return Instruction(/*inputs=*/{loops.begin(), loops.end()},
                      /*outputs=*/{output},
                      /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Instruction SampleIntAttrs::Make(const PrimExpr& min_inclusive, const PrimExpr& max_exclusive,
+                                 const tir::Var& output) {
+  return Instruction(/*inputs=*/{min_inclusive, max_exclusive},
+                     /*outputs=*/{output},
+                     /*attrs=*/InstAttrs(make_object<SampleIntAttrs>()));
 }
 
 Instruction SampleCategoricalAttrs::Make(const Array<Integer>& candidates,
@@ -446,6 +454,14 @@ Array<ObjectRef> SampleFusibleLoopsAttrs::ApplyToSchedule(
   ScheduleNode::Mode the_mode = static_cast<ScheduleNode::Mode>(this->mode);
   return {sch->SampleFusibleLoops(loops, loop_types, max_extent, include_overflow_loop, the_order,
                                   the_mode, decision)};
+}
+
+Array<ObjectRef> SampleIntAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                                 const Optional<Array<ObjectRef>>& decision) const {
+  CHECK_EQ(inputs.size(), 2);
+  TVM_META_SCHEDULE_INST_CAST(PrimExpr, min_inclusive, inputs[0]);
+  TVM_META_SCHEDULE_INST_CAST(PrimExpr, max_exclusive, inputs[1]);
+  return {sch->SampleInt(min_inclusive, max_exclusive, decision)};
 }
 
 Array<ObjectRef> SampleCategoricalAttrs::ApplyToSchedule(
@@ -738,6 +754,14 @@ void SampleFusibleLoopsAttrs::Export(Array<ObjectRef>* record,
   }
 }
 
+void SampleIntAttrs::Export(Array<ObjectRef>* record,
+                            const Optional<Array<ObjectRef>>& decision) const {
+  record->push_back(Array<ObjectRef>{});
+  if (decision.defined()) {
+    record->push_back(decision.value());
+  }
+}
+
 void SampleCategoricalAttrs::Export(Array<ObjectRef>* record,
                                     const Optional<Array<ObjectRef>>& decision) const {
   record->push_back(Array<ObjectRef>{
@@ -840,6 +864,14 @@ InstAttrs SampleFusibleLoopsAttrs::Import(const Array<ObjectRef>& record) {
   n->order = Downcast<Integer>(from[3]);
   n->mode = Downcast<Integer>(from[4]);
   return InstAttrs(std::move(n));
+}
+
+InstAttrs SampleIntAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_GE(record.size(), 4);
+  CHECK_LE(record.size(), 5);
+  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
+  CHECK_EQ(from.size(), 0);
+  return InstAttrs(make_object<SampleIntAttrs>());
 }
 
 InstAttrs SampleCategoricalAttrs::Import(const Array<ObjectRef>& record) {
@@ -972,6 +1004,7 @@ TVM_REGISTER_NODE_TYPE(InstructionNode);
 TVM_REGISTER_NODE_TYPE(SamplePerfectTileAttrs);
 TVM_REGISTER_NODE_TYPE(SampleTileFactorAttrs);
 TVM_REGISTER_NODE_TYPE(SampleFusibleLoopsAttrs);
+TVM_REGISTER_NODE_TYPE(SampleIntAttrs);
 TVM_REGISTER_NODE_TYPE(SampleCategoricalAttrs);
 TVM_REGISTER_NODE_TYPE(SampleComputeLocationAttrs);
 TVM_REGISTER_NODE_TYPE(GetProducersAttrs);

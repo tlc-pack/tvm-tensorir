@@ -165,6 +165,14 @@ class ScheduleNode : public Object {
                               int max_extent, bool include_overflow_loop, Order order, Mode mode,
                               const Optional<Array<ObjectRef>>& decision = NullOpt);
   /*!
+   * \brief Sample an integer in [min_inclusive, max_exclusive)
+   * \param min_inclusive The left boundary, inclusive
+   * \param max_exclusive The right boundary, exclusive
+   * \return The integer sampled
+   */
+  tir::Var SampleInt(const PrimExpr& min_inclusive, const PrimExpr& max_exclusive,
+                     const Optional<Array<ObjectRef>>& decision = NullOpt);
+  /*!
    * \brief Sample an integer given the probability distribution
    * \param candidates The candidates
    * \param probs The probability distribution of the candidates

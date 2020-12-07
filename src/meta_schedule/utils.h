@@ -144,6 +144,12 @@ inline PrimExpr GetLoopExtent(const tir::StmtSRef& loop_sref) {
   return loop->extent;
 }
 
+inline Optional<Integer> GetLoopIntExtent(const tir::StmtSRef& loop_sref) {
+  PrimExpr extent = GetLoopExtent(loop_sref);
+  const auto* int_extent = extent.as<IntImmNode>();
+  return int_extent ? Integer(int_extent->value) : Optional<Integer>(NullOpt);
+}
+
 /*!
  * \brief Compare two domains and check if they are equal
  * \param lhs One domain

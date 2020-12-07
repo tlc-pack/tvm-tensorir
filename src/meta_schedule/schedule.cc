@@ -460,6 +460,24 @@ tir::Var ScheduleNode::SampleFusibleLoops(const Array<LoopRV>& loops,
   return output;
 }
 
+tir::Var ScheduleNode::SampleInt(const PrimExpr& min_inclusive, const PrimExpr& max_exclusive,
+                                 const Optional<Array<ObjectRef>>& decision) {
+  int num_min_inclusive = this->Eval(min_inclusive);
+  int num_max_exclusive = this->Eval(max_exclusive);
+  int sampled = decision.defined()                               //
+                    ? GetOnlyElement<Integer>(decision.value())  //
+                    : sampler.SampleInt(num_min_inclusive, num_max_exclusive);
+  // Create the output random variable
+  tir::Var output("n");
+  // Update the symbol table
+  this->sym_tab.Set(output, Integer(sampled));
+  // Put the instruction in the trace
+  this->trace.push_back(SampleIntAttrs::Make(min_inclusive, max_exclusive, output));
+  // Put the sampling decision in the decision table
+  this->decisions.Set(this->trace.back(), {Integer(sampled)});
+  return output;
+}
+
 tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
                                          const Array<FloatImm>& probs,
                                          const Optional<Array<ObjectRef>>& decision) {
@@ -1083,6 +1101,14 @@ struct Internal {
     return sch->SampleTileFactor(n_splits, loop, where, decision);
   }
   /*!
+   * \brief FFI function, corresponds to ScheduleNode::SampleInt
+   * \sa ScheduleNode::SampleInt
+   */
+  static tir::Var SampleInt(Schedule sch, PrimExpr min_inclusive, PrimExpr max_exclusive,
+                            Optional<Array<ObjectRef>> decision) {
+    return sch->SampleInt(min_inclusive, max_exclusive, decision);
+  }
+  /*!
    * \brief FFI function, corresponds to ScheduleNode::SampleFusibleLoops
    * \sa ScheduleNode::SampleFusibleLoops
    */
@@ -1280,6 +1306,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleTileFactor")
     .set_body_typed(Internal::SampleTileFactor);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleFusibleLoops")
     .set_body_typed(Internal::SampleFusibleLoops);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleInt").set_body_typed(Internal::SampleInt);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleCategorical")
     .set_body_typed(Internal::SampleCategorical);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleComputeLocation")

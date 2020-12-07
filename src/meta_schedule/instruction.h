@@ -288,6 +288,25 @@ struct SampleFusibleLoopsAttrs : public InstAttrsNode {
 };
 
 /*! \brief Attrs of the instruction to sample from a categorical distribution */
+struct SampleIntAttrs : public InstAttrsNode {
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param candidates The candidates
+   * \param probs The probability distribution of the candidates
+   * \param output The output the instruction
+   * \return The instruction created
+   */
+  static Instruction Make(const PrimExpr& min_inclusive, const PrimExpr& max_exclusive,
+                          const tir::Var& output);
+
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SampleIntAttrs,                        //
+                                      "meta_schedule.attrs.SampleIntAttrs",  //
+                                      "SampleInt");
+};
+
+/*! \brief Attrs of the instruction to sample from a categorical distribution */
 struct SampleCategoricalAttrs : public InstAttrsNode {
   /*! \brief The candidates */
   Array<Integer> candidates;

@@ -1318,6 +1318,12 @@ constexpr const char* loop_type = "loop_type";
 /*! \brief Mark the type of a block. */
 constexpr const char* block_type = "block_type";
 
+/*! \brief Mark auto_parallel setting on the block. */
+constexpr const char* auto_parallel = "auto_parallel";
+
+/*! \brief Mark auto_vectorize setting on the block. */
+constexpr const char* auto_vectorize = "auto_vectorize";
+
 /*! \brief Mark auto_unroll setting on the block. */
 constexpr const char* auto_unroll_explicit = "auto_unroll_explicit";
 

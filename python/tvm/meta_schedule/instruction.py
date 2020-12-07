@@ -109,6 +109,11 @@ class SampleFusibleLoopsAttrs(InstAttrs):
     mode: int
 
 
+@register_object("meta_schedule.attrs.SampleIntAttrs")
+class SampleIntAttrs(InstAttrs):
+    """Attrs of the instruction to sample an integer in [min_inclusive, max_exclusive)"""
+
+
 @register_object("meta_schedule.attrs.SampleCategoricalAttrs")
 class SampleCategoricalAttrs(InstAttrs):
     """Attrs of the instruction to sample from a categorical distribution"""
