@@ -91,6 +91,7 @@ Array<ObjectRef> Instruction::ImportToSchedule(ScheduleNode* sch, const Array<Ob
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleTileFactorAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleFusibleLoopsAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleCategoricalAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleComputeLocationAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetProducersAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetConsumersAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetBlockAttrs),
@@ -458,9 +459,9 @@ Array<ObjectRef> SampleCategoricalAttrs::ApplyToSchedule(
 Array<ObjectRef> SampleComputeLocationAttrs::ApplyToSchedule(
     ScheduleNode* sch, const Array<ObjectRef>& inputs,
     const Optional<Array<ObjectRef>>& decision) const {
-  CHECK_EQ(inputs.size(), 0);
+  CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
-  return {sch->SampleComputeLocation(block)};
+  return {sch->SampleComputeLocation(block, decision)};
 }
 
 /**************** (ApplyToSchedule) Block/Loop Relationship  ****************/
@@ -749,6 +750,14 @@ void SampleCategoricalAttrs::Export(Array<ObjectRef>* record,
   }
 }
 
+void SampleComputeLocationAttrs::Export(Array<ObjectRef>* record,
+                                        const Optional<Array<ObjectRef>>& decision) const {
+  record->push_back(Array<ObjectRef>{});
+  if (decision.defined()) {
+    record->push_back(decision.value());
+  }
+}
+
 /**************** (Export) Block/Loop Relationship  ****************/
 
 void GetBlockAttrs::Export(Array<ObjectRef>* record,
@@ -845,6 +854,14 @@ InstAttrs SampleCategoricalAttrs::Import(const Array<ObjectRef>& record) {
   return InstAttrs(std::move(n));
 }
 
+InstAttrs SampleComputeLocationAttrs::Import(const Array<ObjectRef>& record) {
+  CHECK_GE(record.size(), 4);
+  CHECK_LE(record.size(), 5);
+  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
+  CHECK_EQ(from.size(), 0);
+  return InstAttrs(make_object<SampleComputeLocationAttrs>());
+}
+
 /**************** (Import) Block/Loop Relationship  ****************/
 
 InstAttrs GetBlockAttrs::Import(const Array<ObjectRef>& record) {
@@ -928,7 +945,6 @@ InstAttrs AutoUnrollAttrs::Import(const Array<ObjectRef>& record) {
     return InstAttrs(make_object<AttrsType>());                                                \
   }
 
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(SampleComputeLocationAttrs);
 TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetProducersAttrs);
 TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetConsumersAttrs);
 TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetAxesAttrs);
@@ -983,6 +999,9 @@ TVM_REGISTER_NODE_TYPE(BlockizeAttrs);
 TVM_REGISTER_NODE_TYPE(DecomposeReductionAttrs);
 TVM_REGISTER_NODE_TYPE(AutoUnrollAttrs);
 TVM_REGISTER_NODE_TYPE(EnterPostProcAttrs);
+
+TVM_REGISTER_GLOBAL("meta_schedule.LoopRVComputeInlineRV").set_body_typed(LoopRV::ComputeInlineRV);
+TVM_REGISTER_GLOBAL("meta_schedule.LoopRVComputeRootRV").set_body_typed(LoopRV::ComputeRootRV);
 
 }  // namespace meta_schedule
 }  // namespace tvm

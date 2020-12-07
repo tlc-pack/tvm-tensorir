@@ -113,6 +113,12 @@ class ScheduleNode : public Object {
    * \return The result of the evaluation
    */
   int Eval(const PrimExpr& expr);
+  /*!
+   * \brief Evaluate the value of a random variable of type Loop, or inline_rv, or root_rv
+   * \param loop The loop random variable to be evaluated
+   * \return The TIR SRef to the block evaluated, or inline_rv, or root_rv
+   */
+  ObjectRef EvalLoopExtended(const LoopRV& loop);
   /**************** Sampling ****************/
   enum class Order : int {
     outer_to_inner = 0,

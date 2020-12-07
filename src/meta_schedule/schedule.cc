@@ -192,10 +192,7 @@ Schedule ScheduleNode::Copy(int new_seed) const {
 Schedule ScheduleNode::Import(const Array<ObjectRef>& records, const tir::PrimFunc& orig_func,
                               Optional<Integer> seed) {
   // Random variables
-  Map<String, ObjectRef> named_rvs{
-      {String(LoopRV::inline_rv), LoopRV::ComputeInlineRV()},
-      {String(LoopRV::root_rv), LoopRV::ComputeRootRV()},
-  };
+  Map<String, ObjectRef> named_rvs;
   Schedule sch(orig_func, seed);
   for (const ObjectRef& record_obj : records) {
     Instruction::ImportToSchedule(sch.operator->(), Downcast<Array<ObjectRef>>(record_obj),
@@ -205,20 +202,13 @@ Schedule ScheduleNode::Import(const Array<ObjectRef>& records, const tir::PrimFu
 }
 
 Array<ObjectRef> ScheduleNode::Export() const {
-  LoopRV inline_rv = LoopRV::ComputeInlineRV();
-  LoopRV root_rv = LoopRV::ComputeRootRV();
-  Map<ObjectRef, String> rv_names{
-      {inline_rv, String(LoopRV::inline_rv)},
-      {root_rv, String(LoopRV::root_rv)},
-  };
+  Map<ObjectRef, String> rv_names;
   // Allocate names for random variables
   for (const Instruction& inst : trace) {
     for (const ObjectRef& output : inst->outputs) {
-      if (!output.same_as(inline_rv) && !output.same_as(root_rv)) {
-        int i = rv_names.size();
-        CHECK(!rv_names.count(output));
-        rv_names.Set(output, "v" + std::to_string(i));
-      }
+      int i = rv_names.size();
+      CHECK(!rv_names.count(output));
+      rv_names.Set(output, "v" + std::to_string(i));
     }
   }
   // Export to records
@@ -250,16 +240,30 @@ tir::StmtSRef ScheduleNode::Eval(const BlockRV& block) {
 }
 
 tir::StmtSRef ScheduleNode::Eval(const LoopRV& loop) {
-  if (loop.same_as(LoopRV::ComputeInlineRV())) {
-    LOG(FATAL) << "ValueError: Cannot evaluate the special LoopRV: ComputeInlineRV";
-  }
-  if (loop.same_as(LoopRV::ComputeRootRV())) {
-    LOG(FATAL) << "ValueError: Cannot evaluate the special LoopRV: ComputeRootRV";
-  }
   auto iter = this->sym_tab.find(loop);
   CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding LoopRV: " << loop;
   const Optional<ObjectRef>& obj = (*iter).second;
   CHECK(obj.defined()) << "ValueError: Corresponding LoopRV's value is not defined: " << loop;
+  if (const auto* sref = obj.as<tir::StmtSRefNode>()) {
+    return GetRef<tir::StmtSRef>(sref);
+  }
+  LOG(FATAL) << "TypeError: LoopRV's corresponding type is invalid: " << obj->GetTypeKey();
+  throw;
+}
+
+ObjectRef ScheduleNode::EvalLoopExtended(const LoopRV& loop) {
+  static LoopRV inline_rv = LoopRV::ComputeInlineRV();
+  static LoopRV root_rv = LoopRV::ComputeRootRV();
+  auto iter = this->sym_tab.find(loop);
+  CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding LoopRV: " << loop;
+  const Optional<ObjectRef>& obj = (*iter).second;
+  CHECK(obj.defined()) << "ValueError: Corresponding LoopRV's value is not defined: " << loop;
+  if (obj.same_as(inline_rv)) {
+    return String(LoopRV::inline_rv);
+  }
+  if (obj.same_as(root_rv)) {
+    return String(LoopRV::root_rv);
+  }
   if (const auto* sref = obj.as<tir::StmtSRefNode>()) {
     return GetRef<tir::StmtSRef>(sref);
   }
@@ -488,14 +492,13 @@ LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block,
               ? GetOnlyElement<Integer>(decision.value())  //
               : sampler.SampleInt(0, n + 2);
   // Create the output random variable
-  LoopRV output{nullptr};
+  LoopRV output;
+  // Update the symbol table
   if (i == n) {
-    output = LoopRV::ComputeInlineRV();
+    this->sym_tab.Set(output, LoopRV::ComputeInlineRV());
   } else if (i == n + 1) {
-    output = LoopRV::ComputeRootRV();
+    this->sym_tab.Set(output, LoopRV::ComputeRootRV());
   } else {
-    output = LoopRV();
-    // Update the symbol table
     this->sym_tab.Set(output, loop_srefs[i]);
   }
   // Put the instruction in the trace
@@ -795,32 +798,34 @@ void ScheduleNode::Reorder(const Array<LoopRV>& after_axes) {
 }
 
 void ScheduleNode::ComputeAt(const BlockRV& block, const LoopRV& loop) {
-  if (loop.same_as(LoopRV::ComputeInlineRV())) {
+  ObjectRef loop_eval = this->EvalLoopExtended(loop);
+  if (loop_eval.same_as(LoopRV::ComputeInlineRV())) {
     ComputeInline(block);
     return;
   }
-  if (loop.same_as(LoopRV::ComputeRootRV())) {
+  if (loop_eval.same_as(LoopRV::ComputeRootRV())) {
     return;
   }
   // Find the inputs to TIR
   tir::StmtSRef block_sref = this->Eval(block);
-  tir::StmtSRef loop_sref = this->Eval(loop);
+  tir::StmtSRef loop_sref = Downcast<tir::StmtSRef>(loop_eval);
   this->sch->compute_at(block_sref, loop_sref, true);
   // Put the instruction in the trace
   this->trace.push_back(ComputeAtAttrs::Make(block, loop));
 }
 
 void ScheduleNode::ReverseComputeAt(const BlockRV& block, const LoopRV& loop) {
-  if (loop.same_as(LoopRV::ComputeInlineRV())) {
+  ObjectRef loop_eval = this->EvalLoopExtended(loop);
+  if (loop_eval.same_as(LoopRV::ComputeInlineRV())) {
     ReverseComputeInline(block);
     return;
   }
-  if (loop.same_as(LoopRV::ComputeRootRV())) {
+  if (loop_eval.same_as(LoopRV::ComputeRootRV())) {
     return;
   }
   // Find the inputs to TIR
   tir::StmtSRef block_sref = this->Eval(block);
-  tir::StmtSRef loop_sref = this->Eval(loop);
+  tir::StmtSRef loop_sref = Downcast<tir::StmtSRef>(loop_eval);
   this->sch->reverse_compute_at(block_sref, loop_sref, true);
   // Put the instruction in the trace
   this->trace.push_back(ReverseComputeAtAttrs::Make(block, loop));
@@ -1039,7 +1044,7 @@ struct Internal {
     if (const auto* v = obj.as<BlockRVNode>()) {
       return sch->Eval(GetRef<BlockRV>(v));
     } else if (const auto* v = obj.as<LoopRVNode>()) {
-      return sch->Eval(GetRef<LoopRV>(v));
+      return sch->EvalLoopExtended(GetRef<LoopRV>(v));
     } else if (const auto* v = obj.as<BufferRVNode>()) {
       return sch->Eval(GetRef<BufferRV>(v));
     } else if (const auto* v = obj.as<PrimExprNode>()) {
