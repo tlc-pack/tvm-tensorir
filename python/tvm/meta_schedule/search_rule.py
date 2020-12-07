@@ -262,9 +262,9 @@ def mark_auto_unroll(max_steps: List[int], unroll_explicit: bool) -> SearchRule:
     rule: SearchRule
         The search rule created
     """
-    return _ffi_api_search_rule.MarkAutoUnroll(
+    return _ffi_api_search_rule.MarkAutoUnroll(  # pylint: disable=no-member
         max_steps, unroll_explicit
-    )  # pylint: disable=no-member
+    )
 
 
 def mark_tensorize(tensor_intrins: List[TensorIntrin]) -> SearchRule:
