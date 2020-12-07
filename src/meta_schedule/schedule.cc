@@ -716,8 +716,9 @@ void ScheduleNode::MarkLoop(const Array<LoopRV>& loops, const String& ann_key,
                                             last_n.value_or(Integer(0))));
 }
 
-void ScheduleNode::MarkBlock(const BlockRV& block, const String& ann_key, const String& ann_val) {
-  AddAnn(this->sch, this->Eval(block), ann_key, ann_val);
+void ScheduleNode::MarkBlock(const BlockRV& block, const String& ann_key, const PrimExpr& ann_val) {
+  int value = this->Eval(ann_val);
+  AddAnn(this->sch, this->Eval(block), ann_key, std::to_string(value));
   // Put the instruction in the trace
   this->trace.push_back(MarkBlockAttrs::Make(block, ann_key, ann_val));
 }
@@ -1171,7 +1172,7 @@ struct Internal {
    * \brief FFI function, corresponds to ScheduleNode::MarkBlock
    * \sa ScheduleNode::MarkBlock
    */
-  static void MarkBlock(Schedule sch, BlockRV block, String ann_key, String ann_val) {
+  static void MarkBlock(Schedule sch, BlockRV block, String ann_key, PrimExpr ann_val) {
     sch->MarkBlock(block, ann_key, ann_val);
   }
   /*!

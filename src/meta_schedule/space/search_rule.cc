@@ -726,7 +726,7 @@ class RuleMarkTensorize {
       sch->Blockize(reorder_suffix[0], "");
     }
     // Annotate the block
-    sch->MarkBlock(block_rv, tir::attr::auto_tensorize, "1");
+    sch->MarkBlock(block_rv, tir::attr::auto_tensorize, Integer(1));
   }
 
   /*! \brief Rule application */

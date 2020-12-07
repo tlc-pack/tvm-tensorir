@@ -428,8 +428,8 @@ class Schedule(Object):
             self, loops, ann_key, ann_val, first_n, last_n
         )
 
-    def mark_block(self, block: BlockRV, ann_key: str, ann_val: str) -> None:
-        """Mark a range of loops with the specific mark
+    def mark_block(self, block: BlockRV, ann_key: str, ann_val: ExprRV) -> None:
+        """Mark a block
 
         Parameters
         ----------
@@ -437,12 +437,12 @@ class Schedule(Object):
             The block to be marked
         ann_key : str
             The annotation key
-        ann_val : str
+        ann_val : ExprRV
             The annotation value
         """
         _ffi_api.ScheduleMarkBlock(self, block, ann_key, ann_val)  # pylint: disable=no-member
 
-    def fuse(self, loops: List[LoopRV]):
+    def fuse(self, loops: List[LoopRV]) -> LoopRV:
         """Fuse the loops
 
         Parameters
@@ -624,9 +624,9 @@ class Schedule(Object):
         unroll_explicit: bool
             Whether to unroll explicitly
         """
-        _ffi_api.ScheduleAutoUnroll(
+        _ffi_api.ScheduleAutoUnroll(  # pylint: disable=no-member
             self, block, max_step, unroll_explicit
-        )  # pylint: disable=no-member
+        )
 
     ########## Trace-related ##########
 

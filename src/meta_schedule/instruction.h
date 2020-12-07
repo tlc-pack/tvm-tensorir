@@ -499,13 +499,8 @@ struct MarkLoopAttrs : public InstAttrsNode {
 struct MarkBlockAttrs : public InstAttrsNode {
   /*! \brief The loop annotation key */
   String ann_key;
-  /*! \brief The loop annotation value */
-  String ann_val;
 
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("ann_key", &ann_key);
-    v->Visit("ann_val", &ann_val);
-  }
+  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("ann_key", &ann_key); }
 
   /*!
    * \brief Create instruction given the inputs and outputs
@@ -514,7 +509,7 @@ struct MarkBlockAttrs : public InstAttrsNode {
    * \param ann_val The loop annotation value
    * \return The instruction created
    */
-  static Instruction Make(const BlockRV& block, const String& ann_key, const String& ann_val);
+  static Instruction Make(const BlockRV& block, const String& ann_key, const PrimExpr& ann_val);
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(MarkBlockAttrs,                        //
                                       "meta_schedule.attrs.MarkBlockAttrs",  //

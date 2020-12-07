@@ -493,11 +493,11 @@ def test_meta_schedule_mark_block():
         assert len(block.annotations) == 1
         (ann,) = block.annotations
         assert ann.attr_key == "ann_key"
-        assert ann.value == "ann_val"
+        assert ann.value == "1"
 
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    sch.mark_block(block, "ann_key", "ann_val")
+    sch.mark_block(block, "ann_key", 1)
     check_annotation(sch, block)
     _check_serialization(sch, func=matmul)
 

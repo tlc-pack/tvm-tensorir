@@ -342,11 +342,10 @@ Instruction MarkLoopAttrs::Make(const Array<LoopRV>& loops, const String& ann_ke
 }
 
 Instruction MarkBlockAttrs::Make(const BlockRV& block, const String& ann_key,
-                                 const String& ann_val) {
+                                 const PrimExpr& ann_val) {
   ObjectPtr<MarkBlockAttrs> n = make_object<MarkBlockAttrs>();
   n->ann_key = ann_key;
-  n->ann_val = ann_val;
-  return Instruction(/*inputs=*/{block},
+  return Instruction(/*inputs=*/{block, ann_val},
                      /*outputs=*/{},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
@@ -554,7 +553,9 @@ Array<ObjectRef> MarkLoopAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<O
 Array<ObjectRef> MarkBlockAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
                                                  const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
+  CHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
+  TVM_META_SCHEDULE_INST_CAST(PrimExpr, ann_val, inputs[1]);
   sch->MarkBlock(block, ann_key, ann_val);
   return {};
 }
@@ -775,7 +776,7 @@ void MarkLoopAttrs::Export(Array<ObjectRef>* record,
 void MarkBlockAttrs::Export(Array<ObjectRef>* record,
                             const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{ann_key, ann_val});
+  record->push_back(Array<ObjectRef>{ann_key});
 }
 
 void CacheReadAttrs::Export(Array<ObjectRef>* record,
@@ -886,10 +887,9 @@ InstAttrs MarkLoopAttrs::Import(const Array<ObjectRef>& record) {
 InstAttrs MarkBlockAttrs::Import(const Array<ObjectRef>& record) {
   CHECK_EQ(record.size(), 4);
   Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 2);
+  CHECK_EQ(from.size(), 1);
   ObjectPtr<MarkBlockAttrs> n = make_object<MarkBlockAttrs>();
   n->ann_key = Downcast<String>(from[0]);
-  n->ann_val = Downcast<String>(from[1]);
   return InstAttrs(std::move(n));
 }
 

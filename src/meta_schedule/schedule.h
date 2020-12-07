@@ -243,7 +243,7 @@ class ScheduleNode : public Object {
    * \param ann_key The annotation key
    * \param ann_val The annotation value
    */
-  void MarkBlock(const BlockRV& block, const String& ann_key, const String& ann_val);
+  void MarkBlock(const BlockRV& block, const String& ann_key, const PrimExpr& ann_val);
   /*!
    * \brief Fuse the loops
    * \param loops The loops to be fused
