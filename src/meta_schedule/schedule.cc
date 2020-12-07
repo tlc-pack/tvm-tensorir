@@ -687,9 +687,9 @@ Array<BlockRV> ScheduleNode::GetLeafBlocks() {
 
 /**************** Schedule Primitives ****************/
 
-void ScheduleNode::MarkLoopType(const Array<LoopRV>& loops, const String& ann_key,
-                                const String& ann_val, const Optional<PrimExpr>& first_n,
-                                const Optional<PrimExpr>& last_n) {
+void ScheduleNode::MarkLoop(const Array<LoopRV>& loops, const String& ann_key,
+                            const String& ann_val, const Optional<PrimExpr>& first_n,
+                            const Optional<PrimExpr>& last_n) {
   Array<tir::StmtSRef> loop_srefs;
   loop_srefs.reserve(loops.size());
   for (const LoopRV& loop_rv : loops) {
@@ -712,8 +712,8 @@ void ScheduleNode::MarkLoopType(const Array<LoopRV>& loops, const String& ann_ke
     }
   }
   // Put the instruction in the trace
-  this->trace.push_back(MarkLoopTypeAttrs::Make(
-      loops, ann_key, ann_val, first_n.value_or(Integer(0)), last_n.value_or(Integer(0))));
+  this->trace.push_back(MarkLoopAttrs::Make(loops, ann_key, ann_val, first_n.value_or(Integer(0)),
+                                            last_n.value_or(Integer(0))));
 }
 
 void ScheduleNode::MarkBlockType(const BlockRV& block, const String& ann_key,
@@ -1161,12 +1161,12 @@ struct Internal {
   static Array<BlockRV> GetLeafBlocks(Schedule sch) { return sch->GetLeafBlocks(); }
   /**************** Scheduling Primitives ****************/
   /*!
-   * \brief FFI function, corresponds to ScheduleNode::MarkLoopType
-   * \sa ScheduleNode::MarkLoopType
+   * \brief FFI function, corresponds to ScheduleNode::MarkLoop
+   * \sa ScheduleNode::MarkLoop
    */
-  static void MarkLoopType(Schedule sch, Array<LoopRV> loops, String ann_key, String ann_val,
-                           Optional<PrimExpr> first_n, Optional<PrimExpr> last_n) {
-    sch->MarkLoopType(loops, ann_key, ann_val, first_n, last_n);
+  static void MarkLoop(Schedule sch, Array<LoopRV> loops, String ann_key, String ann_val,
+                       Optional<PrimExpr> first_n, Optional<PrimExpr> last_n) {
+    sch->MarkLoop(loops, ann_key, ann_val, first_n, last_n);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::MarkBlockType
@@ -1294,7 +1294,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetWriteBuffers")
     .set_body_typed(Internal::GetWriteBuffers);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetRootBlocks").set_body_typed(Internal::GetRootBlocks);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetLeafBlocks").set_body_typed(Internal::GetLeafBlocks);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkLoopType").set_body_typed(Internal::MarkLoopType);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkLoop").set_body_typed(Internal::MarkLoop);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkBlockType").set_body_typed(Internal::MarkBlockType);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleFuse").set_body_typed(Internal::Fuse);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSplit").set_body_typed(Internal::Split);

@@ -468,7 +468,7 @@ struct GetLeafBlocksAttrs : public InstAttrsNode {
 
 /**************** Scheduling Primitives ****************/
 
-struct MarkLoopTypeAttrs : public InstAttrsNode {
+struct MarkLoopAttrs : public InstAttrsNode {
   /*! \brief The loop annotation key */
   String ann_key;
   /*! \brief The loop annotation value */
@@ -491,9 +491,9 @@ struct MarkLoopTypeAttrs : public InstAttrsNode {
   static Instruction Make(const Array<LoopRV>& loops, const String& ann_key, const String& ann_val,
                           const PrimExpr& first, const PrimExpr& last_n);
 
-  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(MarkLoopTypeAttrs,                        //
-                                      "meta_schedule.attrs.MarkLoopTypeAttrs",  //
-                                      "MarkLoopType");
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(MarkLoopAttrs,                        //
+                                      "meta_schedule.attrs.MarkLoopAttrs",  //
+                                      "MarkLoop");
 };
 
 struct MarkBlockTypeAttrs : public InstAttrsNode {

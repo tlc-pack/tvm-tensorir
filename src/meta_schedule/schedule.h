@@ -235,8 +235,8 @@ class ScheduleNode : public Object {
    * \param first_n The first n loops to be marked
    * \param last_n The last n loops to be marked
    */
-  void MarkLoopType(const Array<LoopRV>& loops, const String& ann_key, const String& ann_val,
-                    const Optional<PrimExpr>& first_n, const Optional<PrimExpr>& last_n);
+  void MarkLoop(const Array<LoopRV>& loops, const String& ann_key, const String& ann_val,
+                const Optional<PrimExpr>& first_n, const Optional<PrimExpr>& last_n);
   /*!
    * \brief Mark a block
    * \param block The block to be marked

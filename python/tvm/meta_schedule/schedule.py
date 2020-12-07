@@ -401,7 +401,7 @@ class Schedule(Object):
 
     ########## Scheduling Primitives ##########
 
-    def mark_loop_type(
+    def mark_loop(
         self,
         loops: List[LoopRV],
         ann_key: str,
@@ -424,7 +424,7 @@ class Schedule(Object):
         last_n : Optional[ir.PrimExpr]
             The last n loops to be marked
         """
-        _ffi_api.ScheduleMarkLoopType(  # pylint: disable=no-member
+        _ffi_api.ScheduleMarkLoop(  # pylint: disable=no-member
             self, loops, ann_key, ann_val, first_n, last_n
         )
 
@@ -624,7 +624,9 @@ class Schedule(Object):
         unroll_explicit: bool
             Whether to unroll explicitly
         """
-        _ffi_api.ScheduleAutoUnroll(self, block, max_step, unroll_explicit)
+        _ffi_api.ScheduleAutoUnroll(
+            self, block, max_step, unroll_explicit
+        )  # pylint: disable=no-member
 
     ########## Trace-related ##########
 

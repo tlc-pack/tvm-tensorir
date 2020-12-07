@@ -100,7 +100,7 @@ Array<ObjectRef> Instruction::ImportToSchedule(ScheduleNode* sch, const Array<Ob
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetWriteBuffersAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetRootBlocksAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetLeafBlocksAttrs),
-          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(MarkLoopTypeAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(MarkLoopAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(MarkBlockTypeAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(FuseAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SplitAttrs),
@@ -327,10 +327,10 @@ Instruction ReverseComputeInlineAttrs::Make(const BlockRV& block) {
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction MarkLoopTypeAttrs::Make(const Array<LoopRV>& loops, const String& ann_key,
-                                    const String& ann_val, const PrimExpr& first_n,
-                                    const PrimExpr& last_n) {
-  ObjectPtr<MarkLoopTypeAttrs> n = make_object<MarkLoopTypeAttrs>();
+Instruction MarkLoopAttrs::Make(const Array<LoopRV>& loops, const String& ann_key,
+                                const String& ann_val, const PrimExpr& first_n,
+                                const PrimExpr& last_n) {
+  ObjectPtr<MarkLoopAttrs> n = make_object<MarkLoopAttrs>();
   n->ann_key = ann_key;
   n->ann_val = ann_val;
   Array<ObjectRef> inputs{loops.begin(), loops.end()};
@@ -535,9 +535,8 @@ Array<ObjectRef> GetLeafBlocksAttrs::ApplyToSchedule(
 
 /**************** (ApplyToSchedule) Scheduling Primitives  ****************/
 
-Array<ObjectRef> MarkLoopTypeAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> MarkLoopAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                                const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
   int n_loops = static_cast<int>(inputs.size()) - 2;
   Array<LoopRV> loops;
@@ -548,7 +547,7 @@ Array<ObjectRef> MarkLoopTypeAttrs::ApplyToSchedule(
   }
   TVM_META_SCHEDULE_INST_CAST(PrimExpr, first_n, inputs[n_loops]);
   TVM_META_SCHEDULE_INST_CAST(PrimExpr, last_n, inputs[n_loops + 1]);
-  sch->MarkLoopType(loops, ann_key, ann_val, first_n, last_n);
+  sch->MarkLoop(loops, ann_key, ann_val, first_n, last_n);
   return {};
 }
 
@@ -768,8 +767,8 @@ void GetBlockAttrs::Export(Array<ObjectRef>* record,
 
 /**************** (Export) Scheduling Primitives  ****************/
 
-void MarkLoopTypeAttrs::Export(Array<ObjectRef>* record,
-                               const Optional<Array<ObjectRef>>& decision) const {
+void MarkLoopAttrs::Export(Array<ObjectRef>* record,
+                           const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
   record->push_back(Array<ObjectRef>{ann_key, ann_val});
 }
@@ -875,11 +874,11 @@ InstAttrs GetBlockAttrs::Import(const Array<ObjectRef>& record) {
 
 /**************** (Import) Scheduling Primitives  ****************/
 
-InstAttrs MarkLoopTypeAttrs::Import(const Array<ObjectRef>& record) {
+InstAttrs MarkLoopAttrs::Import(const Array<ObjectRef>& record) {
   CHECK_EQ(record.size(), 4);
   Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
   CHECK_EQ(from.size(), 2);
-  ObjectPtr<MarkLoopTypeAttrs> n = make_object<MarkLoopTypeAttrs>();
+  ObjectPtr<MarkLoopAttrs> n = make_object<MarkLoopAttrs>();
   n->ann_key = Downcast<String>(from[0]);
   n->ann_val = Downcast<String>(from[1]);
   return InstAttrs(std::move(n));
@@ -984,7 +983,7 @@ TVM_REGISTER_NODE_TYPE(GetReadBuffersAttrs);
 TVM_REGISTER_NODE_TYPE(GetWriteBuffersAttrs);
 TVM_REGISTER_NODE_TYPE(GetRootBlocksAttrs);
 TVM_REGISTER_NODE_TYPE(GetLeafBlocksAttrs);
-TVM_REGISTER_NODE_TYPE(MarkLoopTypeAttrs);
+TVM_REGISTER_NODE_TYPE(MarkLoopAttrs);
 TVM_REGISTER_NODE_TYPE(MarkBlockTypeAttrs);
 TVM_REGISTER_NODE_TYPE(FuseAttrs);
 TVM_REGISTER_NODE_TYPE(SplitAttrs);

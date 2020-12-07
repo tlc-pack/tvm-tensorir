@@ -467,7 +467,7 @@ def test_meta_schedule_get_leaf_blocks():
     _check_serialization(sch, func=matmul_relu)
 
 
-def test_meta_schedule_mark_loop_type():
+def test_meta_schedule_mark_loop():
     def check_annotation(sch, loop):
         loop = sch.evaluate(loop).stmt
         assert len(loop.annotations) == 1
@@ -478,7 +478,7 @@ def test_meta_schedule_mark_loop_type():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
     axes = sch.get_axes(block)
-    sch.mark_loop_type(axes, "loop_type", "lazy_parallel", 3, None)
+    sch.mark_loop(axes, "loop_type", "lazy_parallel", 3, None)
     block = sch.get_block("matmul")
     i, j, k = sch.get_axes(block)
     check_annotation(sch, i)
@@ -679,7 +679,7 @@ if __name__ == "__main__":
     test_meta_schedule_get_write_buffers()
     test_meta_schedule_get_root_blocks()
     test_meta_schedule_get_leaf_blocks()
-    test_meta_schedule_mark_loop_type()
+    test_meta_schedule_mark_loop()
     test_meta_schedule_mark_block_type()
     test_meta_schedule_fuse()
     test_meta_schedule_split()

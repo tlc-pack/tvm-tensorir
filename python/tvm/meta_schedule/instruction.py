@@ -170,8 +170,8 @@ class GetLeafBlocksAttrs(InstAttrs):
 ########## Scheduling Primitives ##########
 
 
-@register_object("meta_schedule.attrs.MarkLoopTypeAttrs")
-class MarkLoopTypeAttrs(InstAttrs):
+@register_object("meta_schedule.attrs.MarkLoopAttrs")
+class MarkLoopAttrs(InstAttrs):
     """Attrs of the instruction that marks specific loops"""
 
 

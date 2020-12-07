@@ -297,13 +297,12 @@ class RuleMultiLevelTiling {
         Array<LoopRV> tiles = sch->Split(fused, {factors[0], factors[1]});
         CHECK_EQ(tiles.size(), 2);
         // Vectorize the inner loop
-        sch->MarkLoopType({tiles[0]}, tir::attr::loop_type, "lazy_cooperative_fetch", Integer(1),
-                          NullOpt);
-        sch->MarkLoopType({tiles[1]}, tir::attr::loop_type, "lazy_vectorize", Integer(1), NullOpt);
+        sch->MarkLoop({tiles[0]}, tir::attr::loop_type, "lazy_cooperative_fetch", Integer(1),
+                      NullOpt);
+        sch->MarkLoop({tiles[1]}, tir::attr::loop_type, "lazy_vectorize", Integer(1), NullOpt);
       } else {
         // cooperative fetch only
-        sch->MarkLoopType({fused}, tir::attr::loop_type, "lazy_cooperative_fetch", Integer(1),
-                          NullOpt);
+        sch->MarkLoop({fused}, tir::attr::loop_type, "lazy_cooperative_fetch", Integer(1), NullOpt);
       }
     }
   }
@@ -373,8 +372,8 @@ class RuleMultiLevelTiling {
     Array<Array<LoopRV>>& tiles = state->tiles;
     int n = std::min(tile_marks.size(), tiles.size());
     for (int i = 0; i < n; ++i) {
-      sch->MarkLoopType(tiles[i], tir::attr::loop_type, tile_marks[i], Integer(tiles[i].size()),
-                        NullOpt);
+      sch->MarkLoop(tiles[i], tir::attr::loop_type, tile_marks[i], Integer(tiles[i].size()),
+                    NullOpt);
     }
   }
 
@@ -561,7 +560,7 @@ class RuleMarkParallelizeOuter {
     tir::Var n_fusible_rv =
         sch->SampleFusibleLoops(loop_rvs, loop_types, max_extent, /*include_overflow_loop=*/true,
                                 ScheduleNode::Order::outer_to_inner, ScheduleNode::Mode::max);
-    sch->MarkLoopType(loop_rvs, tir::attr::loop_type, "lazy_parallel", n_fusible_rv, NullOpt);
+    sch->MarkLoop(loop_rvs, tir::attr::loop_type, "lazy_parallel", n_fusible_rv, NullOpt);
     return {{sch, info}};
   }
 };
@@ -602,7 +601,7 @@ class RuleMarkVectorizeInner {
     tir::Var n_fusible_rv =
         sch->SampleFusibleLoops(loop_rvs, loop_types, max_extent, /*include_overflow_loop=*/false,
                                 ScheduleNode::Order::inner_to_order, ScheduleNode::Mode::max);
-    sch->MarkLoopType(loop_rvs, tir::attr::loop_type, "lazy_vectorize", NullOpt, n_fusible_rv);
+    sch->MarkLoop(loop_rvs, tir::attr::loop_type, "lazy_vectorize", NullOpt, n_fusible_rv);
     return {{sch, info}};
   }
 };
