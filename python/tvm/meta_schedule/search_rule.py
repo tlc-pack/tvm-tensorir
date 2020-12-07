@@ -267,6 +267,50 @@ def mark_auto_unroll(max_steps: List[int], unroll_explicit: bool) -> SearchRule:
     )
 
 
+def parallelize_vectorize_unroll(
+    max_jobs_per_core: int = 16,
+    maximize_parallel: bool = True,
+    max_vectorize_extent: int = 32,
+    unroll_max_steps: Optional[List[int]] = None,
+    unroll_explicit: bool = True,
+):
+    """Mark parallelize, vectorize and unroll to each block correspondingly
+
+    Parameters
+    ----------
+    max_jobs_per_core: int
+        The maximum number of jobs to be launched per CPU core. It sets the uplimit of CPU
+        parallism, i.e. `num_cores * max_jobs_per_core`.
+        Use -1 to disable parallism.
+    maximize_parallel: bool
+        Whether to maximize the parallelism in decision making. If true, we
+        deterministically parallelize the outer loops to maximum; Otherwise, we randomly pick a
+        parallelism extent
+    max_vectorize_extent: int
+        The maximum extent to be vectorized. It sets the uplimit of the CPU vectorization.
+        Use -1 to disable vectorization.
+    unroll_max_steps: Optional[List[int]]
+        The maximum number of unroll steps to be done.
+        Use None to disable unroll
+    unroll_explicit: bool
+        Whether to explicitly unroll the loop, or just add a unroll pragma
+
+    Returns
+    ----------
+    rule: SearchRule
+        The search rule created
+    """
+    if unroll_max_steps is None:
+        unroll_max_steps = []
+    return _ffi_api_search_rule.ParallelizeVectorizeUnroll(  # pylint: disable=no-member
+        max_jobs_per_core,
+        maximize_parallel,
+        max_vectorize_extent,
+        unroll_max_steps,
+        unroll_explicit,
+    )
+
+
 def mark_tensorize(tensor_intrins: List[TensorIntrin]) -> SearchRule:
     """Rewrite block and its surrounding loops to match the tensor intrinsics if possible
 
