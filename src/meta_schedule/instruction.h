@@ -752,7 +752,7 @@ struct AutoUnrollAttrs : public InstAttrsNode {
   /*! \brief Whether to unroll explicitly */
   bool unroll_explicit;
 
-  void VisitAttrs(tvm::AttrVisitor* v) {}
+  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("unroll_explicit", &unroll_explicit); }
 
   /*!
    * \brief Create instruction given the inputs and outputs
@@ -766,6 +766,38 @@ struct AutoUnrollAttrs : public InstAttrsNode {
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(AutoUnrollAttrs,                        //
                                       "meta_schedule.attrs.AutoUnrollAttrs",  //
                                       "AutoUnroll");
+};
+
+/*! \brief Attrs of the instruction that applies parallel */
+struct ParallelAttrs : public InstAttrsNode {
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param loop The loop to be parallelized
+   * \return The instruction created
+   */
+  static Instruction Make(const LoopRV& loop);
+
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(ParallelAttrs,                        //
+                                      "meta_schedule.attrs.ParallelAttrs",  //
+                                      "parallel");
+};
+
+/*! \brief Attrs of the instruction that applies vectorize */
+struct VectorizeAttrs : public InstAttrsNode {
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param loop The loop to be vectorized
+   * \return The instruction created
+   */
+  static Instruction Make(const LoopRV& loop);
+
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(VectorizeAttrs,                        //
+                                      "meta_schedule.attrs.VectorizeAttrs",  //
+                                      "vectorize");
 };
 
 /*! \brief Attrs of an NOP that indicates entrance of post processing */

@@ -638,6 +638,26 @@ class Schedule(Object):
         """
         return _ffi_api.ScheduleDecomposeReduction(self, block, loop)  # pylint: disable=no-member
 
+    def parallel(self, loop: LoopRV) -> None:
+        """Parallelize a specific loop
+
+        Parameters
+        ----------
+        loop: LoopRV
+            The loop to be parallelized
+        """
+        _ffi_api.ScheduleParallel(self, loop)  # pylint: disable=no-member
+
+    def vectorize(self, loop: LoopRV) -> None:
+        """Vectorize a specific loop
+
+        Parameters
+        ----------
+        loop: LoopRV
+            The loop to be vectorized
+        """
+        _ffi_api.ScheduleVectorize(self, loop)  # pylint: disable=no-member
+
     def auto_unroll(self, block: BlockRV, max_step: ExprRV, unroll_explicit: bool) -> None:
         """Apply auto-unroll onto a block
 

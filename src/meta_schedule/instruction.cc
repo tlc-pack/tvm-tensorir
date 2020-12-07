@@ -115,6 +115,8 @@ Array<ObjectRef> Instruction::ImportToSchedule(ScheduleNode* sch, const Array<Ob
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(BlockizeAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(DecomposeReductionAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(AutoUnrollAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(ParallelAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(VectorizeAttrs),
       };
 #undef TVM_META_SCHEDULE_INST_VTABLE_ENTRY
   CHECK_GE(record.size(), 3);
@@ -402,6 +404,18 @@ Instruction AutoUnrollAttrs::Make(const BlockRV& block, const PrimExpr& max_step
   return Instruction(/*inputs=*/{block, max_step},
                      /*outputs=*/{},
                      /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Instruction ParallelAttrs::Make(const LoopRV& loop) {
+  return Instruction(/*inputs=*/{loop},
+                     /*outputs=*/{},
+                     /*attrs=*/InstAttrs(make_object<ParallelAttrs>()));
+}
+
+Instruction VectorizeAttrs::Make(const LoopRV& loop) {
+  return Instruction(/*inputs=*/{loop},
+                     /*outputs=*/{},
+                     /*attrs=*/InstAttrs(make_object<VectorizeAttrs>()));
 }
 
 Instruction EnterPostProcAttrs::Make() {
@@ -704,6 +718,23 @@ Array<ObjectRef> AutoUnrollAttrs::ApplyToSchedule(
   return {};
 }
 
+Array<ObjectRef> ParallelAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                                const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
+  sch->Parallel(loop);
+  return {};
+}
+Array<ObjectRef> VectorizeAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                                 const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
+  sch->Vectorize(loop);
+  return {};
+}
+
 Array<ObjectRef> EnterPostProcAttrs::ApplyToSchedule(
     ScheduleNode* sch, const Array<ObjectRef>& inputs,
     const Optional<Array<ObjectRef>>& decision) const {
@@ -991,6 +1022,8 @@ TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ComputeInlineAttrs);
 TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ReverseComputeInlineAttrs);
 TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(DecomposeReductionAttrs);
 TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(EnterPostProcAttrs);
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ParallelAttrs);
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(VectorizeAttrs);
 
 #undef TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY
 
@@ -1030,6 +1063,8 @@ TVM_REGISTER_NODE_TYPE(BlockizeAttrs);
 TVM_REGISTER_NODE_TYPE(DecomposeReductionAttrs);
 TVM_REGISTER_NODE_TYPE(AutoUnrollAttrs);
 TVM_REGISTER_NODE_TYPE(EnterPostProcAttrs);
+TVM_REGISTER_NODE_TYPE(ParallelAttrs);
+TVM_REGISTER_NODE_TYPE(VectorizeAttrs);
 
 TVM_REGISTER_GLOBAL("meta_schedule.LoopRVComputeInlineRV").set_body_typed(LoopRV::ComputeInlineRV);
 TVM_REGISTER_GLOBAL("meta_schedule.LoopRVComputeRootRV").set_body_typed(LoopRV::ComputeRootRV);

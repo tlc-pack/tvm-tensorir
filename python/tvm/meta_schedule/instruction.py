@@ -237,3 +237,13 @@ class DecomposeReductionAttrs(InstAttrs):
 @register_object("meta_schedule.attrs.EnterPostProcAttrs")
 class EnterPostProcAttrs(InstAttrs):
     """Attrs of an NOP that indicates entrance of post processing"""
+
+
+@register_object("meta_schedule.attrs.ParallelAttrs")
+class ParallelAttrs(InstAttrs):
+    """Attrs of the instruction that applies parallel"""
+
+
+@register_object("meta_schedule.attrs.VectorizeAttrs")
+class VectorizeAttrs(InstAttrs):
+    """Attrs of the instruction that applies vectorize"""

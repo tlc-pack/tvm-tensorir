@@ -609,6 +609,36 @@ def test_meta_schedule_blockize():
     _check_serialization(sch, func=matmul)
 
 
+def test_meta_schedule_parallel():
+    def check_annotation(sch, loop):
+        loop = sch.evaluate(loop).stmt
+        assert len(loop.annotations) == 1
+        (ann,) = loop.annotations
+        assert ann.attr_key == "loop_type"
+        assert ann.value == "parallel"
+
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("matmul")
+    i, _, _ = sch.get_axes(block)
+    sch.parallel(i)
+    check_annotation(sch, i)
+
+
+def test_meta_schedule_vectorize():
+    def check_annotation(sch, loop):
+        loop = sch.evaluate(loop).stmt
+        assert len(loop.annotations) == 1
+        (ann,) = loop.annotations
+        assert ann.attr_key == "loop_type"
+        assert ann.value == "vectorize"
+
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("matmul")
+    i, _, _ = sch.get_axes(block)
+    sch.vectorize(i)
+    check_annotation(sch, i)
+
+
 def test_meta_schedule_auto_unroll():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
@@ -710,6 +740,8 @@ if __name__ == "__main__":
     test_meta_schedule_cache_write()
     test_meta_schedule_blockize()
     # test_meta_schedule_decompose_reduction()
+    test_meta_schedule_parallel()
+    test_meta_schedule_vectorize()
     test_meta_schedule_auto_unroll()
     test_meta_schedule_mutate_decision()
     test_meta_schedule_resample()

@@ -105,6 +105,13 @@ TVM_DLL Postproc RewriteCudaThreadBind();
 TVM_DLL Postproc RewriteAutoUnroll();
 
 /*!
+ * \brief Creates a postprocessor that applies parallelization, vectorization and auto unrolling
+ * according to the annotation of each block
+ * \return The postprocessor created
+ */
+TVM_DLL Postproc RewriteParallelizeVectorizeUnroll();
+
+/*!
  * \brief Creates a postprocessor that verifies if the GPU code is correct
  * \return The postprocessor created
  */

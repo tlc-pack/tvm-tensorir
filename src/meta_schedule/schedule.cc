@@ -742,6 +742,7 @@ void ScheduleNode::MarkBlock(const BlockRV& block, const String& ann_key, const 
 }
 
 LoopRV ScheduleNode::Fuse(const Array<LoopRV>& loops) {
+  CHECK(!loops.empty()) << "ValueError: Cannot fuse 0 loops";
   // Output from TIR
   tir::StmtSRef loop_sref = this->Eval(loops[0]);
   for (int i = 1, n = loops.size(); i < n; ++i) {
@@ -932,6 +933,20 @@ void ScheduleNode::AutoUnroll(const BlockRV& block_rv, const PrimExpr& max_step_
   }
   // Put the instruction in the trace
   this->trace.push_back(AutoUnrollAttrs::Make(block_rv, max_step_rv, unroll_explicit));
+}
+
+void ScheduleNode::Parallel(const LoopRV& loop) {
+  tir::StmtSRef loop_sref = this->Eval(loop);
+  sch->parallel(loop_sref);
+  // Put the instruction in the trace
+  this->trace.push_back(ParallelAttrs::Make(loop));
+}
+
+void ScheduleNode::Vectorize(const LoopRV& loop) {
+  tir::StmtSRef loop_sref = this->Eval(loop);
+  sch->vectorize(loop_sref);
+  // Put the instruction in the trace
+  this->trace.push_back(VectorizeAttrs::Make(loop));
 }
 
 void ScheduleNode::EnterPostProc() { this->trace.push_back(EnterPostProcAttrs::Make()); }
@@ -1273,6 +1288,16 @@ struct Internal {
   static void AutoUnroll(Schedule sch, BlockRV block, PrimExpr max_step, bool unroll_explicit) {
     sch->AutoUnroll(block, max_step, unroll_explicit);
   }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::Parallel
+   * \sa ScheduleNode::Parallel
+   */
+  static void Parallel(Schedule sch, LoopRV loop) { sch->Parallel(loop); }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::Vectorize
+   * \sa ScheduleNode::Vectorize
+   */
+  static void Vectorize(Schedule sch, LoopRV loop) { sch->Vectorize(loop); }
   /**************** Trace-related ****************/
   /*!
    * \brief FFI function, corresponds to ScheduleNode::MutateDecision
@@ -1338,6 +1363,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleBlockize").set_body_typed(Internal::B
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleDecomposeReduction")
     .set_body_typed(Internal::DecomposeReduction);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleAutoUnroll").set_body_typed(Internal::AutoUnroll);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleParallel").set_body_typed(Internal::Parallel);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleVectorize").set_body_typed(Internal::Vectorize);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMutateDecision")
     .set_body_typed(Internal::MutateDecision);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReSample").set_body_typed(Internal::ReSample);

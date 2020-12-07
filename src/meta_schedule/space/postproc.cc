@@ -477,6 +477,105 @@ Postproc RewriteAutoUnroll() {
   return Postproc("rewrite_auto_unroll", f_proc);
 }
 
+/********** RewriteParallelizeVectorizeUnroll **********/
+
+class PostprocRewriteParallelizeVectorizeUnroll {
+ public:
+  struct Parsed {
+    int num_parallel;
+    int num_vectorize;
+    int unroll_explicit;
+    int unroll_implicit;
+  };
+
+  static Optional<tir::Block> FindAnnotatedBlock(const tir::Schedule& sch, Parsed* parsed) {
+    Optional<tir::Block> result = NullOpt;
+    *parsed = Parsed{-1, -1, -1, -1};
+    tir::PreOrderVisit(sch->func->body, [&sch, &parsed, &result](const ObjectRef& obj) -> bool {
+      if (const auto* block = obj.as<tir::BlockNode>()) {
+        tir::StmtSRef block_sref = sch->stmt2ref.at(block);
+        bool found = false;
+        // Check parallel
+        if (Optional<String> ann = GetAnn(block_sref, tir::attr::auto_parallel)) {
+          found = true;
+          parsed->num_parallel = std::atoi(ann.value().c_str());
+          DelAnn(sch, block_sref, tir::attr::auto_parallel);
+        }
+        // Check vectorize
+        if (Optional<String> ann = GetAnn(block_sref, tir::attr::auto_vectorize)) {
+          found = true;
+          parsed->num_vectorize = std::atoi(ann.value().c_str());
+          DelAnn(sch, block_sref, tir::attr::auto_vectorize);
+        }
+        // Check unroll explicit
+        if (Optional<String> ann = GetAnn(block_sref, tir::attr::auto_unroll_explicit)) {
+          found = true;
+          parsed->unroll_explicit = std::atoi(ann.value().c_str());
+          DelAnn(sch, block_sref, tir::attr::auto_unroll_explicit);
+        }
+        // Check unroll implicit
+        if (Optional<String> ann = GetAnn(block_sref, tir::attr::auto_unroll_implicit)) {
+          found = true;
+          parsed->unroll_implicit = std::atoi(ann.value().c_str());
+          DelAnn(sch, block_sref, tir::attr::auto_unroll_implicit);
+        }
+        if (found) {
+          result = GetRef<tir::Block>(block);
+          return false;
+        }
+      }
+      return true;
+    });
+    return result;
+  }
+
+  bool Proc(const Schedule& sch) const {
+    Parsed parsed;
+    while (Optional<tir::Block> opt_block = FindAnnotatedBlock(sch->sch, &parsed)) {
+      // Extract block info
+      const auto* block = opt_block.value().get();
+      tir::StmtSRef block_sref = sch->sch->stmt2ref.at(block);
+      BlockRV block_rv = sch->GetBlock(block->tag);
+      // Extract loop info
+      Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
+      int n_loops = loop_rvs.size();
+      Array<tir::StmtSRef> loop_srefs;
+      {
+        loop_srefs.reserve(n_loops);
+        for (const LoopRV& loop_rv : loop_rvs) {
+          loop_srefs.push_back(sch->Eval(loop_rv));
+        }
+      }
+      // Sanity check
+      CHECK_LE(parsed.num_parallel, n_loops) << "ValueError: Not enough loops to be parallelized";
+      CHECK_LE(parsed.num_vectorize, n_loops) << "ValueError: Not enough loops to be vectorized";
+      CHECK(parsed.unroll_explicit == -1 || parsed.unroll_implicit == -1)
+          << "ValueError: `auto_unroll_explicit` and `auto_unroll_explicit` cannot co-exist";
+      // Prefer num_parallel to num_vectorize
+      if (parsed.num_parallel != -1 && parsed.num_vectorize != -1) {
+        parsed.num_vectorize = std::min(parsed.num_vectorize, n_loops - parsed.num_parallel);
+      }
+      // Parallelize
+      if (parsed.num_parallel != -1) {
+        LoopRV fused = sch->Fuse({loop_rvs.begin(), loop_rvs.begin() + parsed.num_parallel});
+        // Parallelize(sch, block_rv, loop_rvs, parsed.num_parallel);
+      }
+      //   if (Optional<String> ann = GetAnn(block_sref, tir::attr::auto_parallel)) {
+      //     int num_parallel = std::atoi(ann.value().c_str());
+      //     DelAnn(sch->sch, block_sref, tir::attr::auto_parallel);
+      //     Parallelize(sch, block_rv, block_sref, block, num_parallel);
+      //   }
+    }
+  }
+};
+
+Postproc RewriteParallelizeVectorizeUnroll() {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
+    return PostprocRewriteParallelizeVectorizeUnroll().Proc(sch);
+  };
+  return Postproc("rewrite_parallelize_vectorize_unroll", f_proc);
+}
+
 /********** VerifyGPUCode **********/
 
 class PostprocVerifyGPUCode {
@@ -551,6 +650,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteTensorize").set_body_typed(Re
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteCudaThreadBind")
     .set_body_typed(RewriteCudaThreadBind);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteAutoUnroll").set_body_typed(RewriteAutoUnroll);
+TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteParallelizeVectorizeUnroll")
+    .set_body_typed(RewriteParallelizeVectorizeUnroll);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.VerifyGPUCode").set_body_typed(VerifyGPUCode);
 
 }  // namespace meta_schedule

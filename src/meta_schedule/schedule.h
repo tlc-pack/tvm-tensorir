@@ -331,6 +331,16 @@ class ScheduleNode : public Object {
    * \param unroll_explicit Whether to unroll explicitly
    */
   void AutoUnroll(const BlockRV& block, const PrimExpr& max_step, bool unroll_explicit);
+  /*!
+   * \brief Parallelize a specific loop
+   * \param loop The loop to be parallelized
+   */
+  void Parallel(const LoopRV& loop);
+  /*!
+   * \brief Vectorize a specific loop
+   * \param loop The loop to be vectorized
+   */
+  void Vectorize(const LoopRV& loop);
   /*! \brief An NOP indicating entrance of post processing*/
   void EnterPostProc();
   /**************** Trace-related ****************/
