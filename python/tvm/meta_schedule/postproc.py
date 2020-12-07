@@ -81,7 +81,7 @@ def rewrite_vectorize() -> Postproc:
 
 
 def rewrite_tensorize(tensor_intrins: List[TensorIntrin]) -> Postproc:
-    """Creates a postprocessor that matches the region that is marked as "lazy_tensorize"
+    """Creates a postprocessor that matches the region that is marked as auto tensorized
 
     Returns
     ----------

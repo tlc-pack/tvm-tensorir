@@ -164,7 +164,7 @@ class PostprocRewriteTensorize {
     tir::PreOrderVisit(sch->sch->func->body, [&result, &sch](const ObjectRef& obj) -> bool {
       if (const auto* block = obj.as<tir::BlockNode>()) {
         tir::StmtSRef block_sref = sch->sch->stmt2ref.at(block);
-        if (HasAnn(block_sref, tir::attr::block_type, "lazy_tensorize")) {
+        if (HasAnn(block_sref, tir::attr::auto_tensorize, "1")) {
           result = block_sref;
           return false;
         }
@@ -198,7 +198,7 @@ class PostprocRewriteTensorize {
     while (Optional<tir::StmtSRef> opt_block_sref = FindTensorized(sch)) {
       tir::StmtSRef block_sref = opt_block_sref.value();
       // Remove the annotation
-      DelAnn(sch->sch, block_sref, tir::attr::block_type);
+      DelAnn(sch->sch, block_sref, tir::attr::auto_tensorize);
       // Get the surrounding loops
       Array<tir::StmtSRef> loop_srefs = sch->sch->GetLoopsInScope(block_sref);
       // Decompose Reduction

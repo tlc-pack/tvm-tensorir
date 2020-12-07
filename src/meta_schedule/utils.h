@@ -215,6 +215,8 @@ inline void DelAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const St
       new_ann.push_back(ann);
     }
   }
+  CHECK_NE(annotations->size(), new_ann.size())
+      << "IndexError: Cannot find annotation key: " << ann_key;
   // Create the new stmt
   if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
     ObjectPtr<tir::LoopNode> n = make_object<tir::LoopNode>(*loop);

@@ -472,13 +472,13 @@ def test_meta_schedule_mark_loop():
         loop = sch.evaluate(loop).stmt
         assert len(loop.annotations) == 1
         (ann,) = loop.annotations
-        assert ann.attr_key == "loop_type"
-        assert ann.value == "lazy_parallel"
+        assert ann.attr_key == "ann_key"
+        assert ann.value == "ann_val"
 
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
     axes = sch.get_axes(block)
-    sch.mark_loop(axes, "loop_type", "lazy_parallel", 3, None)
+    sch.mark_loop(axes, "ann_key", "ann_val", 3, None)
     block = sch.get_block("matmul")
     i, j, k = sch.get_axes(block)
     check_annotation(sch, i)
@@ -492,12 +492,12 @@ def test_meta_schedule_mark_block():
         block = sch.evaluate(block).stmt
         assert len(block.annotations) == 1
         (ann,) = block.annotations
-        assert ann.attr_key == "block_type"
-        assert ann.value == "lazy_tensorize"
+        assert ann.attr_key == "ann_key"
+        assert ann.value == "ann_val"
 
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    sch.mark_block(block, "block_type", "lazy_tensorize")
+    sch.mark_block(block, "ann_key", "ann_val")
     check_annotation(sch, block)
     _check_serialization(sch, func=matmul)
 

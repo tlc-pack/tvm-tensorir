@@ -1324,6 +1324,9 @@ constexpr const char* auto_unroll_explicit = "auto_unroll_explicit";
 /*! \brief Mark auto_unroll setting on the block. */
 constexpr const char* auto_unroll_implicit = "auto_unroll_implicit";
 
+/*! \brief Mark auto_tensorize setting on the block. */
+constexpr const char* auto_tensorize = "auto_tensorize";
+
 /*!
  * \brief Check if attr_key is a pragma key extension
  * \param attr_key The attr key to be compared
