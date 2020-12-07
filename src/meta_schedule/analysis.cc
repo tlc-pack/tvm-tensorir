@@ -72,73 +72,6 @@ bool IsLeafBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
   return no_child;
 }
 
-void AnnotateLoopType(const tir::Schedule& sch, const Array<tir::StmtSRef>& loop_srefs,
-                      const String& ann_key, const String& ann_val) {
-  for (const tir::StmtSRef& loop_sref : loop_srefs) {
-    const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
-    CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
-    ObjectPtr<tir::LoopNode> new_loop = make_object<tir::LoopNode>(*loop);
-    new_loop->annotations.push_back(tir::Annotation(ann_key, tir::StringImm(ann_val)));
-    sch->Replace(loop_sref, tir::Loop(new_loop));
-  }
-}
-
-void AnnotateBlockType(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
-                       const String& ann_key, const String& ann_val) {
-  const auto* block = block_sref->GetStmt<tir::BlockNode>();
-  CHECK(block) << "TypeError: Expects LoopNode, but gets: " << block_sref->stmt->GetTypeKey();
-  ObjectPtr<tir::BlockNode> new_block = make_object<tir::BlockNode>(*block);
-  new_block->annotations.push_back(tir::Annotation(ann_key, tir::StringImm(ann_val)));
-  tir::Block new_block_obj = tir::Block(new_block);
-  sch->Replace(block_sref, new_block_obj, {{new_block_obj, GetRef<tir::Block>(block)}});
-}
-
-Array<Array<tir::StmtSRef>> CollectAnnotatedLoops(const tir::Schedule& sch,
-                                                  const String& annotation) {
-  struct LoopCollector : public tir::StmtVisitor {
-    explicit LoopCollector(const String& ann) : ann(ann) {}
-
-    bool IsAnnotatedLoop(const tir::LoopNode* loop) {
-      if (loop->annotations.size() != 1) {
-        return false;
-      }
-      tir::Annotation loop_ann = loop->annotations[0];
-      return loop_ann->attr_key == std::string(tir::attr::loop_type) &&
-             Downcast<tir::StringImm>(loop_ann->value)->value == ann;
-    }
-
-    void VisitStmt_(const tir::LoopNode* loop) override {
-      if (!IsAnnotatedLoop(loop)) {
-        tir::StmtVisitor::VisitStmt_(loop);
-        return;
-      }
-      bool is_top = current.empty();
-      current.push_back(GetRef<tir::Loop>(loop));
-      tir::StmtVisitor::VisitStmt_(loop);
-      if (is_top) {
-        result.push_back({current.begin(), current.end()});
-        current.clear();
-      }
-    }
-
-    const String& ann;
-    Array<tir::Loop> current;
-    Array<Array<tir::Loop>> result;
-  } v(annotation);
-  v(sch->func->body);
-  Array<Array<tir::StmtSRef>> result;
-  result.reserve(v.result.size());
-  for (const Array<tir::Loop>& v_sub_result : v.result) {
-    Array<tir::StmtSRef> sub_result;
-    sub_result.reserve(v_sub_result.size());
-    for (const tir::Loop& loop : v_sub_result) {
-      sub_result.push_back(sch->stmt2ref.at(loop.get()));
-    }
-    result.push_back(sub_result);
-  }
-  return result;
-}
-
 Array<Integer> GetLoopType(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
                            const Array<tir::StmtSRef>& loops_sref) {
   tir::BlockRealize realize = tir::GetBlockRealize(block_sref);
@@ -207,13 +140,6 @@ bool IsSpatial(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
     }
   }
   return true;
-}
-
-bool IsSingleStmtLeaf(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
-  const auto* block = block_sref->GetStmt<tir::BlockNode>();
-  CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
-  const tir::Stmt& body = block->body;
-  return body->IsInstance<tir::BufferStoreNode>() || body->IsInstance<tir::ReduceStepNode>();
 }
 
 bool IsOutputBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
@@ -866,14 +792,9 @@ TVM_REGISTER_NODE_TYPE(TensorizeInfoNode);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsSubrootBlock").set_body_typed(IsSubrootBlock);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeafBlock").set_body_typed(IsLeafBlock);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.AnnotateLoopType").set_body_typed(AnnotateLoopType);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.AnnotateBlockType").set_body_typed(AnnotateBlockType);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.CollectAnnotatedLoops")
-    .set_body_typed(CollectAnnotatedLoops);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetLoopType").set_body_typed(GetLoopType);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBlockVarTypes").set_body_typed(GetBlockVarTypes);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsSpatial").set_body_typed(IsSpatial);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsSingleStmtLeaf").set_body_typed(IsSingleStmtLeaf);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsOutputBlock").set_body_typed(IsOutputBlock);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.CountOp").set_body_typed(CountOp);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.HasBranch").set_body_typed(HasBranch);

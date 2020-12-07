@@ -191,23 +191,27 @@ Schedule ScheduleNode::Copy(int new_seed) const {
 
 Schedule ScheduleNode::Import(const Array<ObjectRef>& records, const tir::PrimFunc& orig_func,
                               Optional<Integer> seed) {
-  Schedule sch(orig_func, seed);
+  // Random variables
   Map<String, ObjectRef> named_rvs;
+  Schedule sch(orig_func, seed);
   for (const ObjectRef& record_obj : records) {
-    Array<ObjectRef> record = Downcast<Array<ObjectRef>>(record_obj);
-    Instruction::ApplyToSchedule(sch.operator->(), record, &named_rvs);
+    Instruction::ImportToSchedule(sch.operator->(), Downcast<Array<ObjectRef>>(record_obj),
+                                  &named_rvs);
   }
   return sch;
 }
 
 Array<ObjectRef> ScheduleNode::Export() const {
   Map<ObjectRef, String> rv_names;
+  // Allocate names for random variables
   for (const Instruction& inst : trace) {
     for (const ObjectRef& output : inst->outputs) {
       int i = rv_names.size();
+      CHECK(!rv_names.count(output));
       rv_names.Set(output, "v" + std::to_string(i));
     }
   }
+  // Export to records
   Array<ObjectRef> records;
   for (const Instruction& inst : trace) {
     if (inst->inst_attrs->IsInstance<EnterPostProcAttrs>()) {
@@ -240,6 +244,26 @@ tir::StmtSRef ScheduleNode::Eval(const LoopRV& loop) {
   CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding LoopRV: " << loop;
   const Optional<ObjectRef>& obj = (*iter).second;
   CHECK(obj.defined()) << "ValueError: Corresponding LoopRV's value is not defined: " << loop;
+  if (const auto* sref = obj.as<tir::StmtSRefNode>()) {
+    return GetRef<tir::StmtSRef>(sref);
+  }
+  LOG(FATAL) << "TypeError: LoopRV's corresponding type is invalid: " << obj->GetTypeKey();
+  throw;
+}
+
+ObjectRef ScheduleNode::EvalLoopExtended(const LoopRV& loop) {
+  static LoopRV inline_rv = LoopRV::ComputeInlineRV();
+  static LoopRV root_rv = LoopRV::ComputeRootRV();
+  auto iter = this->sym_tab.find(loop);
+  CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding LoopRV: " << loop;
+  const Optional<ObjectRef>& obj = (*iter).second;
+  CHECK(obj.defined()) << "ValueError: Corresponding LoopRV's value is not defined: " << loop;
+  if (obj.same_as(inline_rv)) {
+    return String(LoopRV::inline_rv);
+  }
+  if (obj.same_as(root_rv)) {
+    return String(LoopRV::root_rv);
+  }
   if (const auto* sref = obj.as<tir::StmtSRefNode>()) {
     return GetRef<tir::StmtSRef>(sref);
   }
@@ -286,7 +310,8 @@ int ScheduleNode::Eval(const PrimExpr& expr) {
 /**************** Sampling ****************/
 
 Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop,
-                                                int max_innermost_factor) {
+                                                int max_innermost_factor,
+                                                const Optional<Array<ObjectRef>>& decision) {
   const auto* tir_loop = Eval(loop)->GetStmt<tir::LoopNode>();
   CHECK(tir_loop);
   int64_t extent;
@@ -296,7 +321,10 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
     extent = p_extent->value;
   }
   // Sample the output
-  std::vector<int> samples = sampler.SamplePerfectTile(n_splits, extent, max_innermost_factor);
+  std::vector<int> samples =
+      decision.defined()                                  //
+          ? AsVector<ObjectRef, int>()(decision.value())  //
+          : sampler.SamplePerfectTile(n_splits, extent, max_innermost_factor);
   // Create the output random variable
   String name_prefix = tir_loop->loop_var->name_hint + ".";
   Array<tir::Var> outputs;
@@ -308,14 +336,15 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
   }
   // Put the instruction in the trace
   this->trace.push_back(
-      SamplePerfectTileAttrs::MakeInst(n_splits, loop, max_innermost_factor, outputs));
+      SamplePerfectTileAttrs::Make(n_splits, loop, max_innermost_factor, outputs));
   // Put the sampling decision in the decision table
   this->decisions.Set(this->trace.back(), AsArray<int, ObjectRef>()(samples));
   return outputs;
 }
 
 Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
-                                               const Array<Integer>& where) {
+                                               const Array<Integer>& where,
+                                               const Optional<Array<ObjectRef>>& decision) {
   const auto* tir_loop = Eval(loop)->GetStmt<tir::LoopNode>();
   CHECK(tir_loop);
   int64_t extent;
@@ -329,7 +358,9 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
     }
   }
   // Sample the output
-  std::vector<int> samples = sampler.SampleTileFactor(n_splits, extent, candidates);
+  std::vector<int> samples = decision.defined()                                  //
+                                 ? AsVector<ObjectRef, int>()(decision.value())  //
+                                 : sampler.SampleTileFactor(n_splits, extent, candidates);
   // Create the output random variable
   String name_prefix = tir_loop->loop_var->name_hint + ".";
   Array<tir::Var> outputs;
@@ -340,7 +371,7 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
     this->sym_tab.Set(output, Integer(samples[i]));
   }
   // Put the instruction in the trace
-  this->trace.push_back(SampleTileFactorAttrs::MakeInst(n_splits, loop, where, outputs));
+  this->trace.push_back(SampleTileFactorAttrs::Make(n_splits, loop, where, outputs));
   // Put the sampling decision in the decision table
   this->decisions.Set(this->trace.back(), AsArray<int, ObjectRef>()(samples));
   return outputs;
@@ -348,7 +379,8 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
 
 tir::Var ScheduleNode::SampleFusibleLoops(const Array<LoopRV>& loops,
                                           const Array<Integer>& loop_types, int max_extent,
-                                          bool include_overflow_loop, Order order, Mode mode) {
+                                          bool include_overflow_loop, Order order, Mode mode,
+                                          const Optional<Array<ObjectRef>>& decision) {
   CHECK_EQ(loops.size(), loop_types.size())
       << "ValueError: 'loops' and 'loop_types' must have equal number of elements";
   int n_loops = loops.size();
@@ -389,6 +421,8 @@ tir::Var ScheduleNode::SampleFusibleLoops(const Array<LoopRV>& loops,
     }
     // then this loop can be fused
     const auto* extent = loop->extent.as<IntImmNode>();
+    CHECK(extent) << "TypeError: Loop extent is not constant integer: " << loop->extent
+                  << ", the IR is: " << Repr(this->sch->func);
     if (prod_extent * extent->value > max_extent) {
       if (include_overflow_loop) {
         prod_extent *= extent->value;
@@ -409,7 +443,9 @@ tir::Var ScheduleNode::SampleFusibleLoops(const Array<LoopRV>& loops,
     n_fusible = 0;
   }
   if (mode == Mode::rand && n_fusible != 0) {
-    n_fusible = sampler.SampleInt(0, n_fusible + 1);
+    n_fusible = decision.defined()                               //
+                    ? GetOnlyElement<Integer>(decision.value())  //
+                    : sampler.SampleInt(0, n_fusible + 1);
   }
   // Create the output random variable
   tir::Var output("n_fusible");
@@ -417,15 +453,16 @@ tir::Var ScheduleNode::SampleFusibleLoops(const Array<LoopRV>& loops,
   this->sym_tab.Set(output, Integer(n_fusible));
   // Put the instruction in the trace
   this->trace.push_back(
-      SampleFusibleLoopsAttrs::MakeInst(loops, loop_types, max_extent, include_overflow_loop,
-                                        static_cast<int>(order), static_cast<int>(mode), output));
+      SampleFusibleLoopsAttrs::Make(loops, loop_types, max_extent, include_overflow_loop,
+                                    static_cast<int>(order), static_cast<int>(mode), output));
   // Put the sampling decision in the decision table
   this->decisions.Set(this->trace.back(), {Integer(n_fusible)});
   return output;
 }
 
 tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
-                                         const Array<FloatImm>& probs) {
+                                         const Array<FloatImm>& probs,
+                                         const Optional<Array<ObjectRef>>& decision) {
   // Sample the output
   CHECK_EQ(candidates.size(), probs.size()) << "ValueError: When sampling ";
   std::vector<double> probs_vec;
@@ -433,15 +470,43 @@ tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
   for (const FloatImm& prob : probs) {
     probs_vec.push_back(prob->value);
   }
-  int result = candidates[sampler.MakeMultinomial(probs_vec)()];
+  int sampled = decision.defined()                               //
+                    ? GetOnlyElement<Integer>(decision.value())  //
+                    : sampler.MakeMultinomial(probs_vec)();
+  int result = candidates[sampled];
   // Create the output random variable
   tir::Var output("n");
   // Update the symbol table
   this->sym_tab.Set(output, Integer(result));
   // Put the instruction in the trace
-  this->trace.push_back(SampleCategoricalAttrs::MakeInst(candidates, probs, output));
+  this->trace.push_back(SampleCategoricalAttrs::Make(candidates, probs, output));
   // Put the sampling decision in the decision table
-  this->decisions.Set(this->trace.back(), {Integer(result)});
+  this->decisions.Set(this->trace.back(), {Integer(sampled)});
+  return output;
+}
+
+LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block,
+                                           const Optional<Array<ObjectRef>>& decision) {
+  tir::StmtSRef block_sref = Eval(block);
+  Array<tir::StmtSRef> loop_srefs = sch->GetLoopsInScope(block_sref);
+  int n = loop_srefs.size();
+  int i = decision.defined()                               //
+              ? GetOnlyElement<Integer>(decision.value())  //
+              : sampler.SampleInt(0, n + 2);
+  // Create the output random variable
+  LoopRV output;
+  // Update the symbol table
+  if (i == n) {
+    this->sym_tab.Set(output, LoopRV::ComputeInlineRV());
+  } else if (i == n + 1) {
+    this->sym_tab.Set(output, LoopRV::ComputeRootRV());
+  } else {
+    this->sym_tab.Set(output, loop_srefs[i]);
+  }
+  // Put the instruction in the trace
+  this->trace.push_back(SampleComputeLocationAttrs::Make(block, output));
+  // Put the sampling decision in the decision table
+  this->decisions.Set(this->trace.back(), {Integer(i)});
   return output;
 }
 
@@ -465,7 +530,7 @@ Array<BlockRV> ScheduleNode::GetProducers(const BlockRV& block) {
     }
   }
   // Put the instruction in the trace
-  this->trace.push_back(GetProducersAttrs::MakeInst(block, outputs));
+  this->trace.push_back(GetProducersAttrs::Make(block, outputs));
   return outputs;
 }
 
@@ -486,7 +551,7 @@ Array<BlockRV> ScheduleNode::GetConsumers(const BlockRV& block) {
     }
   }
   // Put the instruction in the trace
-  this->trace.push_back(GetConsumersAttrs::MakeInst(block, outputs));
+  this->trace.push_back(GetConsumersAttrs::Make(block, outputs));
   return outputs;
 }
 
@@ -500,7 +565,7 @@ BlockRV ScheduleNode::GetBlock(const String& name) {
   // Update the symbol table
   this->sym_tab.Set(output, tir_result[0]);
   // Put the instruction in the trace
-  this->trace.push_back(GetBlockAttrs::MakeInst(name, output));
+  this->trace.push_back(GetBlockAttrs::Make(name, output));
   return output;
 }
 
@@ -516,7 +581,7 @@ Array<LoopRV> ScheduleNode::GetAxes(const BlockRV& block) {
     this->sym_tab.Set(output, axis);
   }
   // Put the instruction in the trace
-  this->trace.push_back(GetAxesAttrs::MakeInst(block, outputs));
+  this->trace.push_back(GetAxesAttrs::Make(block, outputs));
   return outputs;
 }
 
@@ -534,7 +599,7 @@ Array<BufferRV> ScheduleNode::GetReadBuffers(const BlockRV& block_rv) {
     this->sym_tab.Set(output, tensor_region->buffer);
   }
   // Put the instruction in the trace
-  this->trace.push_back(GetReadBuffersAttrs::MakeInst(block_rv, outputs));
+  this->trace.push_back(GetReadBuffersAttrs::Make(block_rv, outputs));
   return outputs;
 }
 
@@ -552,7 +617,7 @@ Array<BufferRV> ScheduleNode::GetWriteBuffers(const BlockRV& block_rv) {
     this->sym_tab.Set(output, tensor_region->buffer);
   }
   // Put the instruction in the trace
-  this->trace.push_back(GetWriteBuffersAttrs::MakeInst(block_rv, outputs));
+  this->trace.push_back(GetWriteBuffersAttrs::Make(block_rv, outputs));
   return outputs;
 }
 
@@ -576,7 +641,7 @@ Array<BlockRV> ScheduleNode::GetRootBlocks() {
     return true;
   });
   // Put the instruction in the trace
-  this->trace.push_back(GetRootBlocksAttrs::MakeInst(outputs));
+  this->trace.push_back(GetRootBlocksAttrs::Make(outputs));
   return outputs;
 }
 
@@ -616,7 +681,7 @@ Array<BlockRV> ScheduleNode::GetLeafBlocks() {
     this->sym_tab.Set(block_rv, block_sref);
   }
   // Put the instruction in the trace
-  this->trace.push_back(GetLeafBlocksAttrs::MakeInst(outputs));
+  this->trace.push_back(GetLeafBlocksAttrs::Make(outputs));
   return outputs;
 }
 
@@ -634,26 +699,28 @@ void ScheduleNode::MarkLoopType(const Array<LoopRV>& loops, const String& ann_ke
     int n = Eval(first_n.value());
     int st = 0;
     int ed = n;
-    AnnotateLoopType(this->sch, {loop_srefs.begin() + st, loop_srefs.begin() + ed},  //
-                     ann_key, ann_val);
+    for (int i = st; i < ed; ++i) {
+      AddAnn(this->sch, loop_srefs[i], ann_key, ann_val);
+    }
   }
   if (last_n.defined()) {
     int n = Eval(last_n.value());
     int ed = static_cast<int>(loops.size());
     int st = ed - n;
-    AnnotateLoopType(this->sch, {loop_srefs.begin() + st, loop_srefs.begin() + ed},  //
-                     ann_key, ann_val);
+    for (int i = st; i < ed; ++i) {
+      AddAnn(this->sch, loop_srefs[i], ann_key, ann_val);
+    }
   }
   // Put the instruction in the trace
-  this->trace.push_back(MarkLoopTypeAttrs::MakeInst(
+  this->trace.push_back(MarkLoopTypeAttrs::Make(
       loops, ann_key, ann_val, first_n.value_or(Integer(0)), last_n.value_or(Integer(0))));
 }
 
 void ScheduleNode::MarkBlockType(const BlockRV& block, const String& ann_key,
                                  const String& ann_val) {
-  AnnotateBlockType(this->sch, this->Eval(block), ann_key, ann_val);
+  AddAnn(this->sch, this->Eval(block), ann_key, ann_val);
   // Put the instruction in the trace
-  this->trace.push_back(MarkBlockTypeAttrs::MakeInst(block, ann_key, ann_val));
+  this->trace.push_back(MarkBlockTypeAttrs::Make(block, ann_key, ann_val));
 }
 
 LoopRV ScheduleNode::Fuse(const Array<LoopRV>& loops) {
@@ -667,7 +734,7 @@ LoopRV ScheduleNode::Fuse(const Array<LoopRV>& loops) {
   // Update the symbol table
   this->sym_tab.Set(output, loop_sref);
   // Put the instruction in the trace
-  this->trace.push_back(FuseAttrs::MakeInst(loops, output));
+  this->trace.push_back(FuseAttrs::Make(loops, output));
   return output;
 }
 
@@ -719,7 +786,7 @@ Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<Optional<PrimE
     this->sym_tab.Set(output, axis);
   }
   // Put the instruction in the trace
-  this->trace.push_back(SplitAttrs::MakeInst(loop, factors, outputs));
+  this->trace.push_back(SplitAttrs::Make(loop, factors, outputs));
   return outputs;
 }
 
@@ -731,25 +798,41 @@ void ScheduleNode::Reorder(const Array<LoopRV>& after_axes) {
   }
   this->sch->reorder(tir_inputs);
   // Put the instruction in the trace
-  this->trace.push_back(ReorderAttrs::MakeInst(after_axes));
+  this->trace.push_back(ReorderAttrs::Make(after_axes));
 }
 
 void ScheduleNode::ComputeAt(const BlockRV& block, const LoopRV& loop) {
+  ObjectRef loop_eval = this->EvalLoopExtended(loop);
+  if (loop_eval.same_as(LoopRV::ComputeInlineRV())) {
+    ComputeInline(block);
+    return;
+  }
+  if (loop_eval.same_as(LoopRV::ComputeRootRV())) {
+    return;
+  }
   // Find the inputs to TIR
   tir::StmtSRef block_sref = this->Eval(block);
-  tir::StmtSRef loop_sref = this->Eval(loop);
+  tir::StmtSRef loop_sref = Downcast<tir::StmtSRef>(loop_eval);
   this->sch->compute_at(block_sref, loop_sref, true);
   // Put the instruction in the trace
-  this->trace.push_back(ComputeAtAttrs::MakeInst(block, loop));
+  this->trace.push_back(ComputeAtAttrs::Make(block, loop));
 }
 
 void ScheduleNode::ReverseComputeAt(const BlockRV& block, const LoopRV& loop) {
+  ObjectRef loop_eval = this->EvalLoopExtended(loop);
+  if (loop_eval.same_as(LoopRV::ComputeInlineRV())) {
+    ReverseComputeInline(block);
+    return;
+  }
+  if (loop_eval.same_as(LoopRV::ComputeRootRV())) {
+    return;
+  }
   // Find the inputs to TIR
   tir::StmtSRef block_sref = this->Eval(block);
-  tir::StmtSRef loop_sref = this->Eval(loop);
+  tir::StmtSRef loop_sref = Downcast<tir::StmtSRef>(loop_eval);
   this->sch->reverse_compute_at(block_sref, loop_sref, true);
   // Put the instruction in the trace
-  this->trace.push_back(ReverseComputeAtAttrs::MakeInst(block, loop));
+  this->trace.push_back(ReverseComputeAtAttrs::Make(block, loop));
 }
 
 void ScheduleNode::ComputeInline(const BlockRV& block) {
@@ -757,7 +840,7 @@ void ScheduleNode::ComputeInline(const BlockRV& block) {
   tir::StmtSRef block_sref = this->Eval(block);
   this->sch->compute_inline(block_sref);
   // Put the instruction in the trace
-  this->trace.push_back(ComputeInlineAttrs::MakeInst(block));
+  this->trace.push_back(ComputeInlineAttrs::Make(block));
 }
 
 void ScheduleNode::ReverseComputeInline(const BlockRV& block) {
@@ -765,7 +848,7 @@ void ScheduleNode::ReverseComputeInline(const BlockRV& block) {
   tir::StmtSRef block_sref = this->Eval(block);
   this->sch->reverse_compute_inline(block_sref);
   // Put the instruction in the trace
-  this->trace.push_back(ReverseComputeInlineAttrs::MakeInst(block));
+  this->trace.push_back(ReverseComputeInlineAttrs::Make(block));
 }
 
 BlockRV ScheduleNode::CacheRead(const BlockRV& block, int i, const String& storage_scope) {
@@ -776,7 +859,7 @@ BlockRV ScheduleNode::CacheRead(const BlockRV& block, int i, const String& stora
   // Update the symbol table
   this->sym_tab.Set(output, tir_result);
   // Put the instruction in the trace
-  this->trace.push_back(CacheReadAttrs::MakeInst(block, i, storage_scope, output));
+  this->trace.push_back(CacheReadAttrs::Make(block, i, storage_scope, output));
   return output;
 }
 
@@ -788,7 +871,7 @@ BlockRV ScheduleNode::CacheWrite(const BlockRV& block, int i, const String& stor
   // Update the symbol table
   this->sym_tab.Set(output, tir_result);
   // Put the instruction in the trace
-  this->trace.push_back(CacheWriteAttrs::MakeInst(block, i, storage_scope, output));
+  this->trace.push_back(CacheWriteAttrs::Make(block, i, storage_scope, output));
   return output;
 }
 
@@ -801,7 +884,7 @@ BlockRV ScheduleNode::Blockize(const LoopRV& loop_rv, const String& exec_scope) 
   // Update the symbol table
   this->sym_tab.Set(output, tir_result);
   // Put the instruction in the trace
-  this->trace.push_back(BlockizeAttrs::MakeInst(loop_rv, exec_scope, output));
+  this->trace.push_back(BlockizeAttrs::Make(loop_rv, exec_scope, output));
   return output;
 }
 
@@ -813,7 +896,7 @@ BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const LoopRV& loo
   // Update the symbol table
   this->sym_tab.Set(output, tir_result);
   // Put the instruction in the trace
-  this->trace.push_back(DecomposeReductionAttrs::MakeInst(block, loop, output));
+  this->trace.push_back(DecomposeReductionAttrs::Make(block, loop, output));
   return output;
 }
 
@@ -821,13 +904,19 @@ void ScheduleNode::AutoUnroll(const BlockRV& block_rv, const PrimExpr& max_step_
                               bool unroll_explicit) {
   int max_step = this->Eval(max_step_rv);
   if (unroll_explicit) {
-    MarkBlockType(block_rv, tir::attr::auto_unroll_explicit, std::to_string(max_step));
+    AddAnn(this->sch, this->Eval(block_rv),  //
+           /*ann_key=*/tir::attr::auto_unroll_explicit,
+           /*ann_val=*/std::to_string(max_step));
   } else {
-    MarkBlockType(block_rv, tir::attr::auto_unroll_implicit, std::to_string(max_step));
+    AddAnn(this->sch, this->Eval(block_rv),  //
+           /*ann_key=*/tir::attr::auto_unroll_implicit,
+           /*ann_val=*/std::to_string(max_step));
   }
+  // Put the instruction in the trace
+  this->trace.push_back(AutoUnrollAttrs::Make(block_rv, max_step_rv, unroll_explicit));
 }
 
-void ScheduleNode::EnterPostProc() { this->trace.push_back(EnterPostProcAttrs::MakeInst()); }
+void ScheduleNode::EnterPostProc() { this->trace.push_back(EnterPostProcAttrs::Make()); }
 
 /**************** Trace-related ****************/
 
@@ -885,9 +974,13 @@ void ScheduleNode::Replay(bool follow_decision) {
     for (const ObjectRef& input : old_inputs) {
       new_inputs.push_back(f_var_map(input));
     }
-    // Step 2.2. Construct new outputs
+    // Step 2.2. Construct decision
+    Optional<Array<ObjectRef>> decision = (follow_decision && this->decisions.count(old_inst))
+                                              ? this->decisions.at(old_inst)
+                                              : Optional<Array<ObjectRef>>(NullOpt);
+    // Step 2.3. Construct new outputs
     Array<ObjectRef> new_outputs =
-        Instruction::ApplyToSchedule(new_sch.operator->(), old_inst->inst_attrs, new_inputs);
+        old_inst->inst_attrs->ApplyToSchedule(new_sch.operator->(), new_inputs, decision);
     CHECK_EQ(old_outputs.size(), new_outputs.size()) << "ValueError: Output size mismatch";
     // Step 2.3. Set up correspondence between old and new outputs
     for (int i = 0, n = new_outputs.size(); i < n; ++i) {
@@ -896,15 +989,6 @@ void ScheduleNode::Replay(bool follow_decision) {
     // Step 2.4. Set up correspondence between old and new instructions
     const Instruction& new_inst = new_sch->trace.back();
     inst_map[old_inst.operator->()] = new_inst.operator->();
-    // Step 2.5. Change the decision if we want to follow pre-set decisions
-    if (follow_decision && this->decisions.count(old_inst)) {
-      Array<ObjectRef> decisions = this->decisions.at(old_inst);
-      CHECK_EQ(decisions.size(), new_outputs.size());
-      for (int i = 0, n = decisions.size(); i < n; ++i) {
-        new_sch->sym_tab.Set(new_outputs[i], decisions[i]);
-      }
-      new_sch->decisions.Set(new_inst, decisions);
-    }
   }
   this->sch = new_sch->sch;
   // Step 3. Re-assign all the variables back according to the symbol table
@@ -970,7 +1054,7 @@ struct Internal {
     if (const auto* v = obj.as<BlockRVNode>()) {
       return sch->Eval(GetRef<BlockRV>(v));
     } else if (const auto* v = obj.as<LoopRVNode>()) {
-      return sch->Eval(GetRef<LoopRV>(v));
+      return sch->EvalLoopExtended(GetRef<LoopRV>(v));
     } else if (const auto* v = obj.as<BufferRVNode>()) {
       return sch->Eval(GetRef<BufferRV>(v));
     } else if (const auto* v = obj.as<PrimExprNode>()) {
@@ -985,16 +1069,18 @@ struct Internal {
    * \sa ScheduleNode::SamplePerfectTile
    */
   static Array<tir::Var> SamplePerfectTile(Schedule sch, int n_splits, LoopRV loop,
-                                           int max_innermost_factor) {
-    return sch->SamplePerfectTile(n_splits, loop, max_innermost_factor);
+                                           int max_innermost_factor,
+                                           Optional<Array<ObjectRef>> decision) {
+    return sch->SamplePerfectTile(n_splits, loop, max_innermost_factor, decision);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::SampleTileFactor
    * \sa ScheduleNode::SampleTileFactor
    */
   static Array<tir::Var> SampleTileFactor(Schedule sch, int n_splits, LoopRV loop,
-                                          Array<Integer> where) {
-    return sch->SampleTileFactor(n_splits, loop, where);
+                                          Array<Integer> where,
+                                          Optional<Array<ObjectRef>> decision) {
+    return sch->SampleTileFactor(n_splits, loop, where, decision);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::SampleFusibleLoops
@@ -1002,19 +1088,27 @@ struct Internal {
    */
   static tir::Var SampleFusibleLoops(Schedule sch, Array<LoopRV> loops, Array<Integer> loop_types,
                                      int max_extent, bool include_overflow_loop, int _order,
-                                     int _mode) {
+                                     int _mode, Optional<Array<ObjectRef>> decision) {
     ScheduleNode::Order order = static_cast<ScheduleNode::Order>(_order);
     ScheduleNode::Mode mode = static_cast<ScheduleNode::Mode>(_mode);
     return sch->SampleFusibleLoops(loops, loop_types, max_extent, include_overflow_loop, order,
-                                   mode);
+                                   mode, decision);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::SampleCategorical
    * \sa ScheduleNode::SampleCategorical
    */
-  static tir::Var SampleCategorical(Schedule sch, Array<Integer> candidates,
-                                    Array<FloatImm> probs) {
-    return sch->SampleCategorical(candidates, probs);
+  static tir::Var SampleCategorical(Schedule sch, Array<Integer> candidates, Array<FloatImm> probs,
+                                    Optional<Array<ObjectRef>> decision) {
+    return sch->SampleCategorical(candidates, probs, decision);
+  }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::SampleComputeLocation
+   * \sa ScheduleNode::SampleComputeLocation
+   */
+  static LoopRV SampleComputeLocation(Schedule sch, BlockRV block,
+                                      Optional<Array<ObjectRef>> decision) {
+    return sch->SampleComputeLocation(block, decision);
   }
   /**************** Block/Loop Relationship ****************/
   /*!
@@ -1188,6 +1282,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleFusibleLoops")
     .set_body_typed(Internal::SampleFusibleLoops);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleCategorical")
     .set_body_typed(Internal::SampleCategorical);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleComputeLocation")
+    .set_body_typed(Internal::SampleComputeLocation);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetProducers").set_body_typed(Internal::GetProducers);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetConsumers").set_body_typed(Internal::GetConsumers);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetBlock").set_body_typed(Internal::GetBlock);

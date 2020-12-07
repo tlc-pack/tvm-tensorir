@@ -37,6 +37,7 @@ SPACE = ms.space.PostOrderApply(
             cache_write_scope="global",
             fusion_levels=[1, 2],
         ),
+        ms.rule.random_compute_location(),
         ms.rule.mark_parallelize_outer(max_jobs_per_core=8),
         ms.rule.mark_vectorize_inner(max_extent=32),
         ms.rule.mark_auto_unroll(max_steps=[0, 16, 64, 512], unroll_explicit=True),
