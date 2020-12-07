@@ -113,6 +113,18 @@ def rewrite_auto_unroll() -> Postproc:
     return _ffi_api_postproc.RewriteAutoUnroll()  # pylint: disable=no-member
 
 
+def rewrite_parallel_vectorize_unroll() -> Postproc:
+    """Creates a postprocessor that applies parallelization, vectorization and auto unrolling,
+    according to the annotation of each block
+
+    Returns
+    ----------
+    postproc: Postproc
+        The postprocessor created
+    """
+    return _ffi_api_postproc.RewriteParallelizeVectorizeUnroll()  # pylint: disable=no-member
+
+
 def verify_gpu_code() -> Postproc:
     """Creates a postprocessor that do block/vthread/thread binding for cuda
 

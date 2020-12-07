@@ -240,7 +240,7 @@ inline void DelAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const St
 }
 
 inline void AddAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const String& ann_key,
-                   const String& ann_val) {
+                   const PrimExpr& ann_val) {
   // Extract annotation
   const Array<tir::Annotation>* annotations;
   if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
@@ -258,7 +258,7 @@ inline void AddAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const St
   }
   // Add the new annotation
   Array<tir::Annotation> new_ann(*annotations);
-  new_ann.push_back(tir::Annotation(ann_key, tir::StringImm(ann_val)));
+  new_ann.push_back(tir::Annotation(ann_key, ann_val));
   // Create the new stmt
   if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
     ObjectPtr<tir::LoopNode> n = make_object<tir::LoopNode>(*loop);

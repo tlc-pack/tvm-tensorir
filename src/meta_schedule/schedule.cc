@@ -718,7 +718,7 @@ void ScheduleNode::MarkLoop(const Array<LoopRV>& loops, const String& ann_key,
     int st = 0;
     int ed = n;
     for (int i = st; i < ed; ++i) {
-      AddAnn(this->sch, loop_srefs[i], ann_key, ann_val);
+      AddAnn(this->sch, loop_srefs[i], ann_key, tir::StringImm(ann_val));
     }
   }
   if (last_n.defined()) {
@@ -726,7 +726,7 @@ void ScheduleNode::MarkLoop(const Array<LoopRV>& loops, const String& ann_key,
     int ed = static_cast<int>(loops.size());
     int st = ed - n;
     for (int i = st; i < ed; ++i) {
-      AddAnn(this->sch, loop_srefs[i], ann_key, ann_val);
+      AddAnn(this->sch, loop_srefs[i], ann_key, tir::StringImm(ann_val));
     }
   }
   // Put the instruction in the trace
@@ -734,9 +734,19 @@ void ScheduleNode::MarkLoop(const Array<LoopRV>& loops, const String& ann_key,
                                             last_n.value_or(Integer(0))));
 }
 
+void ScheduleNode::MarkLoop(const LoopRV& loop, const String& ann_key, const PrimExpr& ann_val) {
+  CHECK(ann_val->IsInstance<tir::StringImmNode>() || ann_val->IsInstance<IntImmNode>())
+      << "TypeError: Only StringImm and IntImm are supported for now, but gets: "
+      << ann_val->GetTypeKey();
+  AddAnn(this->sch, this->Eval(loop), ann_key, ann_val);
+  // TODO
+  // Put the instruction in the trace
+  // this->trace.push_back(MarkBlockAttrs::Make(block, ann_key, ann_val));
+}
+
 void ScheduleNode::MarkBlock(const BlockRV& block, const String& ann_key, const PrimExpr& ann_val) {
   int value = this->Eval(ann_val);
-  AddAnn(this->sch, this->Eval(block), ann_key, std::to_string(value));
+  AddAnn(this->sch, this->Eval(block), ann_key, tir::StringImm(std::to_string(value)));
   // Put the instruction in the trace
   this->trace.push_back(MarkBlockAttrs::Make(block, ann_key, ann_val));
 }
@@ -925,11 +935,11 @@ void ScheduleNode::AutoUnroll(const BlockRV& block_rv, const PrimExpr& max_step_
   if (unroll_explicit) {
     AddAnn(this->sch, this->Eval(block_rv),  //
            /*ann_key=*/tir::attr::auto_unroll_explicit,
-           /*ann_val=*/std::to_string(max_step));
+           /*ann_val=*/tir::StringImm(std::to_string(max_step)));
   } else {
     AddAnn(this->sch, this->Eval(block_rv),  //
            /*ann_key=*/tir::attr::auto_unroll_implicit,
-           /*ann_val=*/std::to_string(max_step));
+           /*ann_val=*/tir::StringImm(std::to_string(max_step)));
   }
   // Put the instruction in the trace
   this->trace.push_back(AutoUnrollAttrs::Make(block_rv, max_step_rv, unroll_explicit));

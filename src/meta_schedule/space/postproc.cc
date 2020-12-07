@@ -539,33 +539,43 @@ class PostprocRewriteParallelizeVectorizeUnroll {
       // Extract loop info
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
       int n_loops = loop_rvs.size();
-      Array<tir::StmtSRef> loop_srefs;
-      {
-        loop_srefs.reserve(n_loops);
-        for (const LoopRV& loop_rv : loop_rvs) {
-          loop_srefs.push_back(sch->Eval(loop_rv));
-        }
+      if (n_loops == 0) {
+        continue;
       }
-      // Sanity check
+      // Prefer num_parallel to num_vectorize
       CHECK_LE(parsed.num_parallel, n_loops) << "ValueError: Not enough loops to be parallelized";
       CHECK_LE(parsed.num_vectorize, n_loops) << "ValueError: Not enough loops to be vectorized";
-      CHECK(parsed.unroll_explicit == -1 || parsed.unroll_implicit == -1)
-          << "ValueError: `auto_unroll_explicit` and `auto_unroll_explicit` cannot co-exist";
-      // Prefer num_parallel to num_vectorize
       if (parsed.num_parallel != -1 && parsed.num_vectorize != -1) {
         parsed.num_vectorize = std::min(parsed.num_vectorize, n_loops - parsed.num_parallel);
       }
       // Parallelize
-      if (parsed.num_parallel != -1) {
+      if (parsed.num_parallel > 0) {
         LoopRV fused = sch->Fuse({loop_rvs.begin(), loop_rvs.begin() + parsed.num_parallel});
-        // Parallelize(sch, block_rv, loop_rvs, parsed.num_parallel);
+        sch->Parallel(fused);
+        for (int i = 0; i < parsed.num_parallel; ++i) {
+          loop_rvs.Set(i, fused);
+        }
       }
-      //   if (Optional<String> ann = GetAnn(block_sref, tir::attr::auto_parallel)) {
-      //     int num_parallel = std::atoi(ann.value().c_str());
-      //     DelAnn(sch->sch, block_sref, tir::attr::auto_parallel);
-      //     Parallelize(sch, block_rv, block_sref, block, num_parallel);
-      //   }
+      // Vectorize
+      if (parsed.num_vectorize > 0) {
+        LoopRV fused = sch->Fuse({loop_rvs.end() - parsed.num_vectorize, loop_rvs.end()});
+        sch->Vectorize(fused);
+        for (int i = n_loops - parsed.num_vectorize; i < n_loops; ++i) {
+          loop_rvs.Set(i, fused);
+        }
+      }
+      // AutoUnroll
+      if (parsed.unroll_explicit != -1 || parsed.unroll_implicit != -1) {
+        CHECK(!(parsed.unroll_explicit != -1 && parsed.unroll_implicit != -1))
+            << "ValueError: `auto_unroll_explicit` and `auto_unroll_explicit` cannot co-exist";
+        int unroll_explicit = parsed.unroll_explicit != -1;
+        int max_step = parsed.unroll_explicit + parsed.unroll_implicit + 1;
+        LoopRV loop = loop_rvs[0];
+        sch->MarkLoop(loop, "pragma_auto_unroll_max_step", Integer(max_step));
+        sch->MarkLoop(loop, "pragma_unroll_explicit", Integer(unroll_explicit));
+      }
     }
+    return true;
   }
 };
 
