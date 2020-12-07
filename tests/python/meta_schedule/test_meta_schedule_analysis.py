@@ -121,51 +121,6 @@ def test_meta_schedule_analysis_is_leaf_block():
     assert ms.analysis.is_leaf_block(sch.sch, sch.evaluate(block))
 
 
-def test_meta_schedule_analysis_annotate_loop_type():
-    sch = ms.Schedule(func=matmul)
-    block = sch.get_block("matmul")
-    loops = [sch.evaluate(loop) for loop in sch.get_axes(block)]
-    ms.analysis.annotate_loop_type(
-        sch=sch.sch,
-        loops=loops,
-        ann_key="loop_type",
-        ann_val="lazy_parallel",
-    )
-    assert loops[0].stmt.annotations[0].value == "lazy_parallel"
-    assert loops[1].stmt.annotations[0].value == "lazy_parallel"
-    assert loops[2].stmt.annotations[0].value == "lazy_parallel"
-
-
-def test_meta_schedule_analysis_annotate_block_type():
-    sch = ms.Schedule(func=matmul)
-    block = sch.evaluate(sch.get_block("matmul"))
-    ms.analysis.annotate_block_type(
-        sch=sch.sch,
-        block=block,
-        ann_key="block_type",
-        ann_val="lazy_tensorize",
-    )
-    assert block.stmt.annotations[0].value == "lazy_tensorize"
-
-
-def test_meta_schedule_analysis_collect_annotated_loops():  # pylint: disable=invalid-name
-    sch = ms.Schedule(func=matmul)
-    block = sch.get_block("matmul")
-    loops = [sch.evaluate(loop) for loop in sch.get_axes(block)]
-    ms.analysis.annotate_loop_type(
-        sch=sch.sch,
-        loops=loops,
-        ann_key="loop_type",
-        ann_val="lazy_parallel",
-    )
-    assert loops[0].stmt.annotations[0].value == "lazy_parallel"
-    assert loops[1].stmt.annotations[0].value == "lazy_parallel"
-    assert loops[2].stmt.annotations[0].value == "lazy_parallel"
-    loops = ms.analysis.collect_annotated_loops(sch.sch, "lazy_parallel")
-    (loops,) = loops
-    assert len(loops) == 3
-
-
 def test_meta_schedule_analysis_get_loop_type():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
@@ -207,18 +162,6 @@ def test_meta_schedule_analysis_is_spatial():
     sch = ms.Schedule(func=split_ewise_multiple)
     block = sch.get_block("B")
     assert ms.analysis.is_spatial(sch.sch, sch.evaluate(block))
-
-
-def test_meta_schedule_analysis_is_single_stmt_leaf():  # pylint: disable=invalid-name
-    sch = ms.Schedule(func=matmul)
-    block = sch.get_block("matmul")
-    assert ms.analysis.is_single_stmt_leaf(sch.sch, sch.evaluate(block))
-    sch = ms.Schedule(func=split_ewise)
-    block = sch.get_block("B")
-    assert ms.analysis.is_single_stmt_leaf(sch.sch, sch.evaluate(block))
-    sch = ms.Schedule(func=split_ewise_multiple)
-    block = sch.get_block("B")
-    assert not ms.analysis.is_single_stmt_leaf(sch.sch, sch.evaluate(block))
 
 
 def test_meta_schedule_is_output_block():
@@ -310,13 +253,9 @@ if __name__ == "__main__":
     test_meta_schedule_analysis_is_trivial_binding()
     test_meta_schedule_analysis_is_subroot_block()
     test_meta_schedule_analysis_is_leaf_block()
-    test_meta_schedule_analysis_annotate_loop_type()
-    test_meta_schedule_analysis_annotate_block_type()
-    test_meta_schedule_analysis_collect_annotated_loops()
     test_meta_schedule_analysis_get_loop_type()
     test_meta_schedule_analysis_get_block_var_types()
     test_meta_schedule_analysis_is_spatial()
-    test_meta_schedule_analysis_is_single_stmt_leaf()
     test_meta_schedule_is_output_block()
     test_meta_schedule_analysis_count_op()
     test_meta_schedule_analysis_has_branch()

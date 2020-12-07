@@ -240,10 +240,11 @@ def elementwise_inlined(a: ty.handle, c: ty.handle) -> None:
 # pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks
 
 
-def _check_serialization(sch, func):
+def _check_serialization(sch, func) -> ms.Schedule:
     record = sch.export()
     new_sch = ms.Schedule.import_(record, func)
     assert tvm.ir.structural_equal(new_sch.sch.func, sch.sch.func)
+    return new_sch
 
 
 def test_meta_schedule_creation():
@@ -256,7 +257,7 @@ def test_meta_schedule_creation():
 def test_meta_schedule_copy():
     sch = ms.Schedule(func=matmul)
     i, j, k = sch.get_axes(sch.get_block("matmul"))
-    sch_copy = sch.copy(seed=42)
+    sch_copy: ms.Schedule = sch.copy(seed=42)
     assert not sch.evaluate(i).same_as(sch_copy.evaluate(i))
     assert not sch.evaluate(j).same_as(sch_copy.evaluate(j))
     assert not sch.evaluate(k).same_as(sch_copy.evaluate(k))
@@ -358,8 +359,25 @@ def test_meta_schedule_sample_categorical():
         v = sch.evaluate(sch.sample_categorical(candidates, probs))
         counter[v] += 1
     for i, prob in enumerate(probs):
-        assert (prob - 0.05) * n <= counter[candidates[i]] <= (prob + 0.05) * n
+        assert (prob - 0.07) * n <= counter[candidates[i]] <= (prob + 0.07) * n
     _check_serialization(sch, func=matmul)
+
+
+def test_meta_schedule_sample_compute_location():
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("matmul")
+    counter = defaultdict(int)
+    loop = sch.sample_compute_location(block=block)
+    for _ in range(100):
+        sch.resample()
+        counter[str(sch.evaluate(loop))] += 1
+        new_sch = _check_serialization(sch, func=matmul)
+        old_decision = int(sch.decisions[sch.trace[-1]][0])
+        new_decision = int(new_sch.decisions[new_sch.trace[-1]][0])
+        assert old_decision == new_decision
+    assert len(counter) == 5
+    assert "$root" in counter
+    assert "$inline" in counter
 
 
 def test_meta_schedule_get_producers():
@@ -652,6 +670,7 @@ if __name__ == "__main__":
     test_meta_schedule_sample_perfect_tile()
     test_meta_schedule_sample_fusible_loops()
     test_meta_schedule_sample_categorical()
+    test_meta_schedule_sample_compute_location()
     test_meta_schedule_get_producers()
     test_meta_schedule_get_consumers()
     test_meta_schedule_get_block()
