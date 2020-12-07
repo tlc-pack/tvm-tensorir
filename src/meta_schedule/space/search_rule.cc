@@ -117,7 +117,7 @@ SearchRule InlinePureSpatial(bool strict_mode) {
 
 /********** Multi-Level-Tiling-And-Fusion **********/
 
-class RuleMultiLevelTilingAndFusion {
+class RuleMultiLevelTiling {
  public:
   String structure;
   bool must_cache_read;
@@ -131,12 +131,11 @@ class RuleMultiLevelTilingAndFusion {
   std::vector<int> s_idx;
   std::vector<int> r_idx;
 
-  explicit RuleMultiLevelTilingAndFusion(String structure, bool must_cache_read,
-                                         String cache_read_scope, bool can_cache_write,
-                                         bool must_cache_write, String cache_write_scope,
-                                         Array<Integer> fusion_levels,
-                                         Optional<Integer> vector_load_max_len,
-                                         Optional<Array<String>> tile_marks)
+  explicit RuleMultiLevelTiling(String structure, bool must_cache_read, String cache_read_scope,
+                                bool can_cache_write, bool must_cache_write,
+                                String cache_write_scope, Array<Integer> fusion_levels,
+                                Optional<Integer> vector_load_max_len,
+                                Optional<Array<String>> tile_marks)
       : structure(structure),
         must_cache_read(must_cache_read),
         cache_read_scope(cache_read_scope),
@@ -432,24 +431,22 @@ class RuleMultiLevelTilingAndFusion {
   }
 };
 
-SearchRule MultiLevelTilingAndFusion(String structure, bool must_cache_read,
-                                     String cache_read_scope, bool can_cache_write,
-                                     bool must_cache_write, String cache_write_scope,
-                                     Array<Integer> fusion_levels,
-                                     Optional<Integer> vector_load_max_len,
-                                     Optional<Array<String>> tile_marks) {
+SearchRule MultiLevelTiling(String structure, bool must_cache_read, String cache_read_scope,
+                            bool can_cache_write, bool must_cache_write, String cache_write_scope,
+                            Array<Integer> fusion_levels, Optional<Integer> vector_load_max_len,
+                            Optional<Array<String>> tile_marks) {
   if (!can_cache_write && must_cache_write) {
     LOG(FATAL) << "ValueError: Conflict options, cannot have can_cache_write = false, and "
                   "must_cache_write = true at the same time";
   }
-  RuleMultiLevelTilingAndFusion rule(structure, must_cache_read, cache_read_scope, can_cache_write,
-                                     must_cache_write, cache_write_scope, fusion_levels,
-                                     vector_load_max_len, tile_marks);
+  RuleMultiLevelTiling rule(structure, must_cache_read, cache_read_scope, can_cache_write,
+                            must_cache_write, cache_write_scope, fusion_levels, vector_load_max_len,
+                            tile_marks);
   auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch, BlockRV block,
                                          TContextInfo info) -> TReturn {
     return rule.Apply(task, sch, block, info);
   };
-  return SearchRule("multi_level_tiling_and_fusion", f_apply);
+  return SearchRule("multi_level_tiling", f_apply);
 }
 
 /********** RandomComputeLocation **********/
@@ -807,8 +804,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleApply").set_body_typed(Internal::Se
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleCompose").set_body_typed(SearchRuleCompose);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.InlinePureSpatial")
     .set_body_typed(InlinePureSpatial);
-TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTilingAndFusion")
-    .set_body_typed(MultiLevelTilingAndFusion);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTiling").set_body_typed(MultiLevelTiling);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.RandomComputeLocation")
     .set_body_typed(RandomComputeLocation);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkParallelizeOuter")

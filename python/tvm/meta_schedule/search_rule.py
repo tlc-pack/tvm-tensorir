@@ -154,7 +154,7 @@ def inline_pure_spatial(strict_mode: bool) -> SearchRule:
     return _ffi_api_search_rule.InlinePureSpatial(strict_mode)  # pylint: disable=no-member
 
 
-def multi_level_tiling_and_fusion(
+def multi_level_tiling(
     structure: str,
     must_cache_read: bool,
     cache_read_scope: str,
@@ -191,7 +191,7 @@ def multi_level_tiling_and_fusion(
     rule: SearchRule
         The rule created
     """
-    return _ffi_api_search_rule.MultiLevelTilingAndFusion(  # pylint: disable=no-member
+    return _ffi_api_search_rule.MultiLevelTiling(  # pylint: disable=no-member
         structure,
         must_cache_read,
         cache_read_scope,

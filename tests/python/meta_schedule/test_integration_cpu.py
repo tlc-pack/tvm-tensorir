@@ -28,7 +28,7 @@ TARGET = tvm.target.Target("llvm --num_cores 16")
 SPACE = ms.space.PostOrderApply(
     stages=[
         ms.rule.inline_pure_spatial(strict_mode=True),
-        ms.rule.multi_level_tiling_and_fusion(
+        ms.rule.multi_level_tiling(
             structure="SSRSRS",
             must_cache_read=False,
             cache_read_scope="global",
