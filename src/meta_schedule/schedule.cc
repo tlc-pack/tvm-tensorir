@@ -699,15 +699,17 @@ void ScheduleNode::MarkLoopType(const Array<LoopRV>& loops, const String& ann_ke
     int n = Eval(first_n.value());
     int st = 0;
     int ed = n;
-    AnnotateLoopType(this->sch, {loop_srefs.begin() + st, loop_srefs.begin() + ed},  //
-                     ann_key, ann_val);
+    for (int i = st; i < ed; ++i) {
+      AddAnn(this->sch, loop_srefs[i], ann_key, ann_val);
+    }
   }
   if (last_n.defined()) {
     int n = Eval(last_n.value());
     int ed = static_cast<int>(loops.size());
     int st = ed - n;
-    AnnotateLoopType(this->sch, {loop_srefs.begin() + st, loop_srefs.begin() + ed},  //
-                     ann_key, ann_val);
+    for (int i = st; i < ed; ++i) {
+      AddAnn(this->sch, loop_srefs[i], ann_key, ann_val);
+    }
   }
   // Put the instruction in the trace
   this->trace.push_back(MarkLoopTypeAttrs::Make(
@@ -716,7 +718,7 @@ void ScheduleNode::MarkLoopType(const Array<LoopRV>& loops, const String& ann_ke
 
 void ScheduleNode::MarkBlockType(const BlockRV& block, const String& ann_key,
                                  const String& ann_val) {
-  AnnotateBlockType(this->sch, this->Eval(block), ann_key, ann_val);
+  AddAnn(this->sch, this->Eval(block), ann_key, ann_val);
   // Put the instruction in the trace
   this->trace.push_back(MarkBlockTypeAttrs::Make(block, ann_key, ann_val));
 }
@@ -902,13 +904,13 @@ void ScheduleNode::AutoUnroll(const BlockRV& block_rv, const PrimExpr& max_step_
                               bool unroll_explicit) {
   int max_step = this->Eval(max_step_rv);
   if (unroll_explicit) {
-    AnnotateBlockType(this->sch, this->Eval(block_rv),
-                      /*ann_key=*/tir::attr::auto_unroll_explicit,
-                      /*ann_val=*/std::to_string(max_step));
+    AddAnn(this->sch, this->Eval(block_rv),  //
+           /*ann_key=*/tir::attr::auto_unroll_explicit,
+           /*ann_val=*/std::to_string(max_step));
   } else {
-    AnnotateBlockType(this->sch, this->Eval(block_rv),
-                      /*ann_key=*/tir::attr::auto_unroll_implicit,
-                      /*ann_val=*/std::to_string(max_step));
+    AddAnn(this->sch, this->Eval(block_rv),  //
+           /*ann_key=*/tir::attr::auto_unroll_implicit,
+           /*ann_val=*/std::to_string(max_step));
   }
   // Put the instruction in the trace
   this->trace.push_back(AutoUnrollAttrs::Make(block_rv, max_step_rv, unroll_explicit));

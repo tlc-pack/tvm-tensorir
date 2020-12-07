@@ -25,6 +25,7 @@
 
 #include <set>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "../arith/pattern_match.h"
@@ -217,11 +218,11 @@ inline void DelAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const St
   // Create the new stmt
   if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
     ObjectPtr<tir::LoopNode> n = make_object<tir::LoopNode>(*loop);
-    n->annotations = new_ann;
+    n->annotations = std::move(new_ann);
     sch->Replace(sref, tir::Loop(n));
   } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
     ObjectPtr<tir::BlockNode> n = make_object<tir::BlockNode>(*block);
-    n->annotations.clear();
+    n->annotations = std::move(new_ann);
     tir::Block p(n);
     sch->Replace(sref, p, {{p, GetRef<tir::Block>(block)}});
   } else {
@@ -253,11 +254,11 @@ inline void AddAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const St
   // Create the new stmt
   if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
     ObjectPtr<tir::LoopNode> n = make_object<tir::LoopNode>(*loop);
-    n->annotations = new_ann;
+    n->annotations = std::move(new_ann);
     sch->Replace(sref, tir::Loop(n));
   } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
     ObjectPtr<tir::BlockNode> n = make_object<tir::BlockNode>(*block);
-    n->annotations.clear();
+    n->annotations = std::move(new_ann);
     tir::Block p(n);
     sch->Replace(sref, p, {{p, GetRef<tir::Block>(block)}});
   } else {

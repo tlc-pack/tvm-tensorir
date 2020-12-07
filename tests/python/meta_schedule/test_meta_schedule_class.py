@@ -359,7 +359,7 @@ def test_meta_schedule_sample_categorical():
         v = sch.evaluate(sch.sample_categorical(candidates, probs))
         counter[v] += 1
     for i, prob in enumerate(probs):
-        assert (prob - 0.05) * n <= counter[candidates[i]] <= (prob + 0.05) * n
+        assert (prob - 0.07) * n <= counter[candidates[i]] <= (prob + 0.07) * n
     _check_serialization(sch, func=matmul)
 
 
