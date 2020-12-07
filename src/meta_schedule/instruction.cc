@@ -94,16 +94,10 @@ Array<ObjectRef> InstructionNode::Export(const Map<ObjectRef, String>& rv_names,
   return record;
 }
 
-Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const InstAttrs& inst_attrs,
-                                              const Array<ObjectRef>& inputs,
-                                              const Optional<Array<ObjectRef>>& decision) {
-  return inst_attrs->ApplyToSchedule(sch, inputs, decision);
-}
-
-Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& record,
-                                              Map<String, ObjectRef>* named_rvs) {
+Array<ObjectRef> Instruction::ImportToSchedule(ScheduleNode* sch, const Array<ObjectRef>& record,
+                                               Map<String, ObjectRef>* named_rvs) {
 #define TVM_META_SCHEDULE_INST_VTABLE_ENTRY(AttrsType) \
-  { String(AttrsType::Name()), AttrsType::Import }
+  { String(AttrsType::_name), AttrsType::Import }
   static const std::unordered_map<String, std::function<InstAttrs(const Array<ObjectRef>&)>>
       vtable = {
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SamplePerfectTileAttrs),
@@ -174,12 +168,11 @@ Array<ObjectRef> Instruction::ApplyToSchedule(ScheduleNode* sch, const Array<Obj
   return outputs;
 }
 
-/**************** MakeInst  ****************/
-/**************** (MakeInst) Sampling  ****************/
+/**************** Make  ****************/
+/**************** (Make) Sampling  ****************/
 
-Instruction SamplePerfectTileAttrs::MakeInst(int n_splits, const LoopRV& loop,
-                                             int max_innermost_factor,
-                                             const Array<tir::Var>& outputs) {
+Instruction SamplePerfectTileAttrs::Make(int n_splits, const LoopRV& loop, int max_innermost_factor,
+                                         const Array<tir::Var>& outputs) {
   ObjectPtr<SamplePerfectTileAttrs> n = make_object<SamplePerfectTileAttrs>();
   n->n_splits = n_splits;
   n->max_innermost_factor = max_innermost_factor;
@@ -188,9 +181,9 @@ Instruction SamplePerfectTileAttrs::MakeInst(int n_splits, const LoopRV& loop,
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction SampleTileFactorAttrs::MakeInst(int n_splits, const LoopRV& loop,
-                                            const Array<Integer>& where,
-                                            const Array<tir::Var>& outputs) {
+Instruction SampleTileFactorAttrs::Make(int n_splits, const LoopRV& loop,
+                                        const Array<Integer>& where,
+                                        const Array<tir::Var>& outputs) {
   ObjectPtr<SampleTileFactorAttrs> n = make_object<SampleTileFactorAttrs>();
   n->n_splits = n_splits;
   n->where = where;
@@ -199,10 +192,10 @@ Instruction SampleTileFactorAttrs::MakeInst(int n_splits, const LoopRV& loop,
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction SampleFusibleLoopsAttrs::MakeInst(const Array<LoopRV>& loops,
-                                              const Array<Integer>& loop_types, int max_extent,
-                                              bool include_overflow_loop, int order, int mode,
-                                              const tir::Var& output) {
+Instruction SampleFusibleLoopsAttrs::Make(const Array<LoopRV>& loops,
+                                          const Array<Integer>& loop_types, int max_extent,
+                                          bool include_overflow_loop, int order, int mode,
+                                          const tir::Var& output) {
   ObjectPtr<SampleFusibleLoopsAttrs> n = make_object<SampleFusibleLoopsAttrs>();
   n->loop_types = loop_types;
   n->max_extent = max_extent;
@@ -214,8 +207,8 @@ Instruction SampleFusibleLoopsAttrs::MakeInst(const Array<LoopRV>& loops,
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction SampleCategoricalAttrs::MakeInst(const Array<Integer>& candidates,
-                                             const Array<FloatImm>& probs, const tir::Var& output) {
+Instruction SampleCategoricalAttrs::Make(const Array<Integer>& candidates,
+                                         const Array<FloatImm>& probs, const tir::Var& output) {
   ObjectPtr<SampleCategoricalAttrs> n = make_object<SampleCategoricalAttrs>();
   n->candidates = candidates;
   n->probs = probs;
@@ -224,23 +217,23 @@ Instruction SampleCategoricalAttrs::MakeInst(const Array<Integer>& candidates,
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-/**************** (MakeInst) Block/Loop Relationship  ****************/
+/**************** (Make) Block/Loop Relationship  ****************/
 
-Instruction GetProducersAttrs::MakeInst(const BlockRV& block, const Array<BlockRV>& outputs) {
+Instruction GetProducersAttrs::Make(const BlockRV& block, const Array<BlockRV>& outputs) {
   ObjectPtr<GetProducersAttrs> n = make_object<GetProducersAttrs>();
   return Instruction(/*inputs=*/{block},
                      /*outputs=*/{outputs.begin(), outputs.end()},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction GetConsumersAttrs::MakeInst(const BlockRV& block, const Array<BlockRV>& outputs) {
+Instruction GetConsumersAttrs::Make(const BlockRV& block, const Array<BlockRV>& outputs) {
   ObjectPtr<GetConsumersAttrs> n = make_object<GetConsumersAttrs>();
   return Instruction(/*inputs=*/{block},
                      /*outputs=*/{outputs.begin(), outputs.end()},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction GetBlockAttrs::MakeInst(const String& name, const BlockRV& output) {
+Instruction GetBlockAttrs::Make(const String& name, const BlockRV& output) {
   ObjectPtr<GetBlockAttrs> n = make_object<GetBlockAttrs>();
   n->name = name;
   return Instruction(/*inputs=*/{},
@@ -248,52 +241,52 @@ Instruction GetBlockAttrs::MakeInst(const String& name, const BlockRV& output) {
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction GetAxesAttrs::MakeInst(const BlockRV& block, const Array<LoopRV>& outputs) {
+Instruction GetAxesAttrs::Make(const BlockRV& block, const Array<LoopRV>& outputs) {
   ObjectPtr<GetAxesAttrs> n = make_object<GetAxesAttrs>();
   return Instruction(/*inputs=*/{block},
                      /*outputs=*/{outputs.begin(), outputs.end()},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction GetReadBuffersAttrs::MakeInst(const BlockRV& block, const Array<BufferRV>& outputs) {
+Instruction GetReadBuffersAttrs::Make(const BlockRV& block, const Array<BufferRV>& outputs) {
   ObjectPtr<GetReadBuffersAttrs> n = make_object<GetReadBuffersAttrs>();
   return Instruction(/*inputs=*/{block},
                      /*outputs=*/{outputs.begin(), outputs.end()},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction GetWriteBuffersAttrs::MakeInst(const BlockRV& block, const Array<BufferRV>& outputs) {
+Instruction GetWriteBuffersAttrs::Make(const BlockRV& block, const Array<BufferRV>& outputs) {
   ObjectPtr<GetWriteBuffersAttrs> n = make_object<GetWriteBuffersAttrs>();
   return Instruction(/*inputs=*/{block},
                      /*outputs=*/{outputs.begin(), outputs.end()},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction GetRootBlocksAttrs::MakeInst(const Array<BlockRV>& outputs) {
+Instruction GetRootBlocksAttrs::Make(const Array<BlockRV>& outputs) {
   ObjectPtr<GetRootBlocksAttrs> n = make_object<GetRootBlocksAttrs>();
   return Instruction(/*inputs=*/{},
                      /*outputs=*/{outputs.begin(), outputs.end()},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction GetLeafBlocksAttrs::MakeInst(const Array<BlockRV>& outputs) {
+Instruction GetLeafBlocksAttrs::Make(const Array<BlockRV>& outputs) {
   ObjectPtr<GetLeafBlocksAttrs> n = make_object<GetLeafBlocksAttrs>();
   return Instruction(/*inputs=*/{},
                      /*outputs=*/{outputs.begin(), outputs.end()},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-/**************** (MakeInst) Scheduling Primitives  ****************/
+/**************** (Make) Scheduling Primitives  ****************/
 
-Instruction FuseAttrs::MakeInst(const Array<LoopRV>& loops, const LoopRV& output) {
+Instruction FuseAttrs::Make(const Array<LoopRV>& loops, const LoopRV& output) {
   ObjectPtr<FuseAttrs> n = make_object<FuseAttrs>();
   return Instruction(/*inputs=*/{loops.begin(), loops.end()},
                      /*outputs=*/{output},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction SplitAttrs::MakeInst(const LoopRV& loop, const Array<Optional<PrimExpr>>& factors,
-                                 const Array<LoopRV>& outputs) {
+Instruction SplitAttrs::Make(const LoopRV& loop, const Array<Optional<PrimExpr>>& factors,
+                             const Array<LoopRV>& outputs) {
   ObjectPtr<SplitAttrs> n = make_object<SplitAttrs>();
   Array<ObjectRef> inputs;
   inputs.reserve(1 + factors.size());
@@ -304,44 +297,44 @@ Instruction SplitAttrs::MakeInst(const LoopRV& loop, const Array<Optional<PrimEx
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction ReorderAttrs::MakeInst(const Array<LoopRV>& after_axes) {
+Instruction ReorderAttrs::Make(const Array<LoopRV>& after_axes) {
   ObjectPtr<ReorderAttrs> n = make_object<ReorderAttrs>();
   return Instruction(/*inputs=*/{after_axes.begin(), after_axes.end()},
                      /*outputs=*/{},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction ComputeAtAttrs::MakeInst(const BlockRV& block, const LoopRV& loop) {
+Instruction ComputeAtAttrs::Make(const BlockRV& block, const LoopRV& loop) {
   ObjectPtr<ComputeAtAttrs> n = make_object<ComputeAtAttrs>();
   return Instruction(/*inputs=*/{block, loop},
                      /*outputs=*/{},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction ReverseComputeAtAttrs::MakeInst(const BlockRV& block, const LoopRV& loop) {
+Instruction ReverseComputeAtAttrs::Make(const BlockRV& block, const LoopRV& loop) {
   ObjectPtr<ReverseComputeAtAttrs> n = make_object<ReverseComputeAtAttrs>();
   return Instruction(/*inputs=*/{block, loop},
                      /*outputs=*/{},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction ComputeInlineAttrs::MakeInst(const BlockRV& block) {
+Instruction ComputeInlineAttrs::Make(const BlockRV& block) {
   ObjectPtr<ComputeInlineAttrs> n = make_object<ComputeInlineAttrs>();
   return Instruction(/*inputs=*/{block},
                      /*outputs=*/{},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction ReverseComputeInlineAttrs::MakeInst(const BlockRV& block) {
+Instruction ReverseComputeInlineAttrs::Make(const BlockRV& block) {
   ObjectPtr<ReverseComputeInlineAttrs> n = make_object<ReverseComputeInlineAttrs>();
   return Instruction(/*inputs=*/{block},
                      /*outputs=*/{},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction MarkLoopTypeAttrs::MakeInst(const Array<LoopRV>& loops, const String& ann_key,
-                                        const String& ann_val, const PrimExpr& first_n,
-                                        const PrimExpr& last_n) {
+Instruction MarkLoopTypeAttrs::Make(const Array<LoopRV>& loops, const String& ann_key,
+                                    const String& ann_val, const PrimExpr& first_n,
+                                    const PrimExpr& last_n) {
   ObjectPtr<MarkLoopTypeAttrs> n = make_object<MarkLoopTypeAttrs>();
   n->ann_key = ann_key;
   n->ann_val = ann_val;
@@ -353,8 +346,8 @@ Instruction MarkLoopTypeAttrs::MakeInst(const Array<LoopRV>& loops, const String
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction MarkBlockTypeAttrs::MakeInst(const BlockRV& block, const String& ann_key,
-                                         const String& ann_val) {
+Instruction MarkBlockTypeAttrs::Make(const BlockRV& block, const String& ann_key,
+                                     const String& ann_val) {
   ObjectPtr<MarkBlockTypeAttrs> n = make_object<MarkBlockTypeAttrs>();
   n->ann_key = ann_key;
   n->ann_val = ann_val;
@@ -363,8 +356,8 @@ Instruction MarkBlockTypeAttrs::MakeInst(const BlockRV& block, const String& ann
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction CacheReadAttrs::MakeInst(const BlockRV& block, int i, const String& storage_scope,
-                                     const BlockRV& output) {
+Instruction CacheReadAttrs::Make(const BlockRV& block, int i, const String& storage_scope,
+                                 const BlockRV& output) {
   ObjectPtr<CacheReadAttrs> n = make_object<CacheReadAttrs>();
   n->i = i;
   n->storage_scope = storage_scope;
@@ -373,8 +366,8 @@ Instruction CacheReadAttrs::MakeInst(const BlockRV& block, int i, const String& 
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction CacheWriteAttrs::MakeInst(const BlockRV& block, int i, const String& storage_scope,
-                                      const BlockRV& output) {
+Instruction CacheWriteAttrs::Make(const BlockRV& block, int i, const String& storage_scope,
+                                  const BlockRV& output) {
   ObjectPtr<CacheWriteAttrs> n = make_object<CacheWriteAttrs>();
   n->i = i;
   n->storage_scope = storage_scope;
@@ -383,8 +376,8 @@ Instruction CacheWriteAttrs::MakeInst(const BlockRV& block, int i, const String&
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction BlockizeAttrs::MakeInst(const LoopRV& loop, const String& exec_scope,
-                                    const BlockRV& output) {
+Instruction BlockizeAttrs::Make(const LoopRV& loop, const String& exec_scope,
+                                const BlockRV& output) {
   ObjectPtr<BlockizeAttrs> n = make_object<BlockizeAttrs>();
   n->exec_scope = exec_scope;
   return Instruction(/*inputs=*/{loop},
@@ -392,16 +385,16 @@ Instruction BlockizeAttrs::MakeInst(const LoopRV& loop, const String& exec_scope
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction DecomposeReductionAttrs::MakeInst(const BlockRV& block, const LoopRV& loop,
-                                              const BlockRV& output) {
+Instruction DecomposeReductionAttrs::Make(const BlockRV& block, const LoopRV& loop,
+                                          const BlockRV& output) {
   ObjectPtr<DecomposeReductionAttrs> n = make_object<DecomposeReductionAttrs>();
   return Instruction(/*inputs=*/{block, loop},
                      /*outputs=*/{output},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction AutoUnrollAttrs::MakeInst(const BlockRV& block, const PrimExpr& max_step,
-                                      bool unroll_explicit) {
+Instruction AutoUnrollAttrs::Make(const BlockRV& block, const PrimExpr& max_step,
+                                  bool unroll_explicit) {
   ObjectPtr<AutoUnrollAttrs> n = make_object<AutoUnrollAttrs>();
   n->unroll_explicit = unroll_explicit;
   return Instruction(/*inputs=*/{block, max_step},
@@ -409,7 +402,7 @@ Instruction AutoUnrollAttrs::MakeInst(const BlockRV& block, const PrimExpr& max_
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction EnterPostProcAttrs::MakeInst() {
+Instruction EnterPostProcAttrs::Make() {
   return Instruction(/*inputs=*/{},
                      /*outputs=*/{},
                      /*attrs=*/InstAttrs(make_object<EnterPostProcAttrs>()));
@@ -741,45 +734,10 @@ void SampleCategoricalAttrs::Export(Array<ObjectRef>* record,
 
 /**************** (Export) Block/Loop Relationship  ****************/
 
-void GetProducersAttrs::Export(Array<ObjectRef>* record,
-                               const Optional<Array<ObjectRef>>& decision) const {
-  CHECK(!decision.defined());
-}
-
-void GetConsumersAttrs::Export(Array<ObjectRef>* record,
-                               const Optional<Array<ObjectRef>>& decision) const {
-  CHECK(!decision.defined());
-}
-
 void GetBlockAttrs::Export(Array<ObjectRef>* record,
                            const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
   record->push_back(Array<ObjectRef>{name});
-}
-
-void GetAxesAttrs::Export(Array<ObjectRef>* record,
-                          const Optional<Array<ObjectRef>>& decision) const {
-  CHECK(!decision.defined());
-}
-
-void GetReadBuffersAttrs::Export(Array<ObjectRef>* record,
-                                 const Optional<Array<ObjectRef>>& decision) const {
-  CHECK(!decision.defined());
-}
-
-void GetWriteBuffersAttrs::Export(Array<ObjectRef>* record,
-                                  const Optional<Array<ObjectRef>>& decision) const {
-  CHECK(!decision.defined());
-}
-
-void GetRootBlocksAttrs::Export(Array<ObjectRef>* record,
-                                const Optional<Array<ObjectRef>>& decision) const {
-  CHECK(!decision.defined());
-}
-
-void GetLeafBlocksAttrs::Export(Array<ObjectRef>* record,
-                                const Optional<Array<ObjectRef>>& decision) const {
-  CHECK(!decision.defined());
 }
 
 /**************** (Export) Scheduling Primitives  ****************/
@@ -794,38 +752,6 @@ void MarkBlockTypeAttrs::Export(Array<ObjectRef>* record,
                                 const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
   record->push_back(Array<ObjectRef>{ann_key, ann_val});
-}
-
-void FuseAttrs::Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const {
-  CHECK(!decision.defined());
-}
-
-void SplitAttrs::Export(Array<ObjectRef>* record,
-                        const Optional<Array<ObjectRef>>& decision) const {
-  CHECK(!decision.defined());
-}
-
-void ReorderAttrs::Export(Array<ObjectRef>* record,
-                          const Optional<Array<ObjectRef>>& decision) const {
-  CHECK(!decision.defined());
-}
-
-void ComputeAtAttrs::Export(Array<ObjectRef>* record,
-                            const Optional<Array<ObjectRef>>& decision) const {
-  CHECK(!decision.defined());
-}
-
-void ReverseComputeAtAttrs::Export(Array<ObjectRef>* record,
-                                   const Optional<Array<ObjectRef>>& decision) const {
-  CHECK(!decision.defined());
-}
-void ComputeInlineAttrs::Export(Array<ObjectRef>* record,
-                                const Optional<Array<ObjectRef>>& decision) const {
-  CHECK(!decision.defined());
-}
-void ReverseComputeInlineAttrs::Export(Array<ObjectRef>* record,
-                                       const Optional<Array<ObjectRef>>& decision) const {
-  CHECK(!decision.defined());
 }
 
 void CacheReadAttrs::Export(Array<ObjectRef>* record,
@@ -846,20 +772,10 @@ void BlockizeAttrs::Export(Array<ObjectRef>* record,
   record->push_back(Array<ObjectRef>{exec_scope});
 }
 
-void DecomposeReductionAttrs::Export(Array<ObjectRef>* record,
-                                     const Optional<Array<ObjectRef>>& decision) const {
-  CHECK(!decision.defined());
-}
-
 void AutoUnrollAttrs::Export(Array<ObjectRef>* record,
                              const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
   record->push_back(Array<ObjectRef>{Integer(unroll_explicit)});
-}
-
-void EnterPostProcAttrs::Export(Array<ObjectRef>* record,
-                                const Optional<Array<ObjectRef>>& decision) const {
-  CHECK(!decision.defined());
 }
 
 /**************** Import  ****************/
@@ -914,16 +830,6 @@ InstAttrs SampleCategoricalAttrs::Import(const Array<ObjectRef>& record) {
 
 /**************** (Import) Block/Loop Relationship  ****************/
 
-InstAttrs GetProducersAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 3);
-  return InstAttrs(make_object<GetProducersAttrs>());
-}
-
-InstAttrs GetConsumersAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 3);
-  return InstAttrs(make_object<GetConsumersAttrs>());
-}
-
 InstAttrs GetBlockAttrs::Import(const Array<ObjectRef>& record) {
   CHECK_EQ(record.size(), 4);
   Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
@@ -931,31 +837,6 @@ InstAttrs GetBlockAttrs::Import(const Array<ObjectRef>& record) {
   ObjectPtr<GetBlockAttrs> n = make_object<GetBlockAttrs>();
   n->name = Downcast<String>(from[0]);
   return InstAttrs(std::move(n));
-}
-
-InstAttrs GetAxesAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 3);
-  return InstAttrs(make_object<GetAxesAttrs>());
-}
-
-InstAttrs GetReadBuffersAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 3);
-  return InstAttrs(make_object<GetReadBuffersAttrs>());
-}
-
-InstAttrs GetWriteBuffersAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 3);
-  return InstAttrs(make_object<GetWriteBuffersAttrs>());
-}
-
-InstAttrs GetRootBlocksAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 3);
-  return InstAttrs(make_object<GetRootBlocksAttrs>());
-}
-
-InstAttrs GetLeafBlocksAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 3);
-  return InstAttrs(make_object<GetLeafBlocksAttrs>());
 }
 
 /**************** (Import) Scheduling Primitives  ****************/
@@ -978,41 +859,6 @@ InstAttrs MarkBlockTypeAttrs::Import(const Array<ObjectRef>& record) {
   n->ann_key = Downcast<String>(from[0]);
   n->ann_val = Downcast<String>(from[1]);
   return InstAttrs(std::move(n));
-}
-
-InstAttrs FuseAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 3);
-  return InstAttrs(make_object<FuseAttrs>());
-}
-
-InstAttrs SplitAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 3);
-  return InstAttrs(make_object<SplitAttrs>());
-}
-
-InstAttrs ReorderAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 3);
-  return InstAttrs(make_object<ReorderAttrs>());
-}
-
-InstAttrs ComputeAtAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 3);
-  return InstAttrs(make_object<ComputeAtAttrs>());
-}
-
-InstAttrs ReverseComputeAtAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 3);
-  return InstAttrs(make_object<ReverseComputeAtAttrs>());
-}
-
-InstAttrs ComputeInlineAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 3);
-  return InstAttrs(make_object<ComputeInlineAttrs>());
-}
-
-InstAttrs ReverseComputeInlineAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 3);
-  return InstAttrs(make_object<ReverseComputeInlineAttrs>());
 }
 
 InstAttrs CacheReadAttrs::Import(const Array<ObjectRef>& record) {
@@ -1044,11 +890,6 @@ InstAttrs BlockizeAttrs::Import(const Array<ObjectRef>& record) {
   return InstAttrs(std::move(n));
 }
 
-InstAttrs DecomposeReductionAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 3);
-  return InstAttrs(make_object<DecomposeReductionAttrs>());
-}
-
 InstAttrs AutoUnrollAttrs::Import(const Array<ObjectRef>& record) {
   CHECK_EQ(record.size(), 4);
   Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
@@ -1058,10 +899,36 @@ InstAttrs AutoUnrollAttrs::Import(const Array<ObjectRef>& record) {
   return InstAttrs(std::move(n));
 }
 
-InstAttrs EnterPostProcAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 3);
-  return InstAttrs(make_object<EnterPostProcAttrs>());
-}
+/**************** Import/Export for empty instructions ****************/
+
+#define TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(AttrsType)                                  \
+  void AttrsType::Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) \
+      const {                                                                                  \
+    CHECK(!decision.defined());                                                                \
+  }                                                                                            \
+  InstAttrs AttrsType::Import(const Array<ObjectRef>& record) {                                \
+    CHECK_EQ(record.size(), 3);                                                                \
+    return InstAttrs(make_object<AttrsType>());                                                \
+  }
+
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetProducersAttrs);
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetConsumersAttrs);
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetAxesAttrs);
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetReadBuffersAttrs);
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetWriteBuffersAttrs);
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetRootBlocksAttrs);
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetLeafBlocksAttrs);
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(FuseAttrs);
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(SplitAttrs);
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ReorderAttrs);
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ComputeAtAttrs);
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ReverseComputeAtAttrs);
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ComputeInlineAttrs);
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ReverseComputeInlineAttrs);
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(DecomposeReductionAttrs);
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(EnterPostProcAttrs);
+
+#undef TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY
 
 /**************** FFI ****************/
 
