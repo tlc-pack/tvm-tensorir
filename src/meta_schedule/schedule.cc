@@ -421,6 +421,8 @@ tir::Var ScheduleNode::SampleFusibleLoops(const Array<LoopRV>& loops,
     }
     // then this loop can be fused
     const auto* extent = loop->extent.as<IntImmNode>();
+    CHECK(extent) << "TypeError: Loop extent is not constant integer: " << loop->extent
+                  << ", the IR is: " << Repr(this->sch->func);
     if (prod_extent * extent->value > max_extent) {
       if (include_overflow_loop) {
         prod_extent *= extent->value;
@@ -900,10 +902,16 @@ void ScheduleNode::AutoUnroll(const BlockRV& block_rv, const PrimExpr& max_step_
                               bool unroll_explicit) {
   int max_step = this->Eval(max_step_rv);
   if (unroll_explicit) {
-    MarkBlockType(block_rv, tir::attr::auto_unroll_explicit, std::to_string(max_step));
+    AnnotateBlockType(this->sch, this->Eval(block_rv),
+                      /*ann_key=*/tir::attr::auto_unroll_explicit,
+                      /*ann_val=*/std::to_string(max_step));
   } else {
-    MarkBlockType(block_rv, tir::attr::auto_unroll_implicit, std::to_string(max_step));
+    AnnotateBlockType(this->sch, this->Eval(block_rv),
+                      /*ann_key=*/tir::attr::auto_unroll_implicit,
+                      /*ann_val=*/std::to_string(max_step));
   }
+  // Put the instruction in the trace
+  this->trace.push_back(AutoUnrollAttrs::Make(block_rv, max_step_rv, unroll_explicit));
 }
 
 void ScheduleNode::EnterPostProc() { this->trace.push_back(EnterPostProcAttrs::Make()); }

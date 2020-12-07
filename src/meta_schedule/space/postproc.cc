@@ -21,6 +21,7 @@
 #include <tvm/tir/transform.h>
 
 #include "../analysis.h"
+#include "../utils.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -41,72 +42,6 @@ bool PostprocNode::Apply(const SearchTask& task, const Schedule& sch, Sampler* s
 }
 
 /********** Utility helpers **********/
-
-Optional<String> GetAnn(const tir::StmtSRef& sref, const String& ann_key) {
-  const Array<tir::Annotation>* annotations;
-  if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
-    annotations = &loop->annotations;
-  } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
-    annotations = &block->annotations;
-  } else {
-    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
-  }
-  for (const tir::Annotation& ann : *annotations) {
-    if (ann->attr_key == ann_key) {
-      if (const auto* str_imm = ann->value.as<tir::StringImmNode>()) {
-        return str_imm->value;
-      }
-    }
-  }
-  return NullOpt;
-}
-
-bool HasAnn(const tir::StmtSRef& loop_sref, const String& ann_key, const String& ann_val) {
-  Optional<String> result = GetAnn(loop_sref, ann_key);
-  return result.defined() && result.value() == ann_val;
-}
-
-void RemoveAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const String& ann_key) {
-  // Extract annotation
-  const Array<tir::Annotation>* annotations;
-  if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
-    annotations = &loop->annotations;
-  } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
-    annotations = &block->annotations;
-  } else {
-    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
-  }
-  // Remove the annotation
-  Array<tir::Annotation> new_ann;
-  int n = annotations->size();
-  new_ann.reserve(n - 1);
-  for (int i = 0; i < n; ++i) {
-    const tir::Annotation& ann = annotations->operator[](i);
-    if (ann->attr_key != ann_key) {
-      new_ann.push_back(ann);
-    }
-  }
-  // Create the new stmt
-  if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
-    ObjectPtr<tir::LoopNode> n = make_object<tir::LoopNode>(*loop);
-    n->annotations = new_ann;
-    sch->Replace(sref, tir::Loop(n));
-  } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
-    ObjectPtr<tir::BlockNode> n = make_object<tir::BlockNode>(*block);
-    n->annotations.clear();
-    tir::Block p(n);
-    sch->Replace(sref, p, {{p, GetRef<tir::Block>(block)}});
-  } else {
-    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
-    throw;
-  }
-}
-
-PrimExpr GetLoopExtent(const tir::StmtSRef& loop_sref) {
-  const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
-  CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
-  return loop->extent;
-}
 
 std::vector<tir::StmtSRef> CollectAllBlocks(const Schedule& sch) {
   std::vector<tir::StmtSRef> all_blocks;
@@ -143,7 +78,7 @@ Postproc RewriteParallel() {
         continue;
       }
       for (int id : parallel_ids) {
-        RemoveAnn(sch->sch, loop_srefs[id], tir::attr::loop_type);
+        DelAnn(sch->sch, loop_srefs[id], tir::attr::loop_type);
       }
       Array<Integer> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
       int n = parallel_ids.size();
@@ -190,7 +125,7 @@ Postproc RewriteVectorize() {
         continue;
       }
       for (int id : vectorize_ids) {
-        RemoveAnn(sch->sch, loop_srefs[id], tir::attr::loop_type);
+        DelAnn(sch->sch, loop_srefs[id], tir::attr::loop_type);
       }
       Array<Integer> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
       int n = vectorize_ids.size();
@@ -263,7 +198,7 @@ class PostprocRewriteTensorize {
     while (Optional<tir::StmtSRef> opt_block_sref = FindTensorized(sch)) {
       tir::StmtSRef block_sref = opt_block_sref.value();
       // Remove the annotation
-      RemoveAnn(sch->sch, block_sref, tir::attr::block_type);
+      DelAnn(sch->sch, block_sref, tir::attr::block_type);
       // Get the surrounding loops
       Array<tir::StmtSRef> loop_srefs = sch->sch->GetLoopsInScope(block_sref);
       // Decompose Reduction
@@ -346,7 +281,7 @@ class PostprocRewriteCudaThreadBind {
       std::sort(indices.begin(), indices.end());
       // Remove the annotation on the loop
       for (int idx : indices) {
-        RemoveAnn(sch->sch, loop_srefs[idx], tir::attr::loop_type);
+        DelAnn(sch->sch, loop_srefs[idx], tir::attr::loop_type);
       }
       // Do fusion
       std::vector<LoopRV> to_fuse;
@@ -362,7 +297,7 @@ class PostprocRewriteCudaThreadBind {
         // bind `blockIdx.x`
         // Remove the annotation on the loop
         for (int idx : block_idx) {
-          RemoveAnn(sch->sch, loop_srefs[idx], tir::attr::loop_type);
+          DelAnn(sch->sch, loop_srefs[idx], tir::attr::loop_type);
         }
         // Do fusion
         std::vector<LoopRV> to_fuse;
@@ -377,7 +312,7 @@ class PostprocRewriteCudaThreadBind {
         // bind `vthread`
         // Remove the annotation on the loop
         for (int idx : vthread_idx) {
-          RemoveAnn(sch->sch, loop_srefs[idx], tir::attr::loop_type);
+          DelAnn(sch->sch, loop_srefs[idx], tir::attr::loop_type);
         }
         // Do fusion
         std::vector<LoopRV> to_fuse;
@@ -392,7 +327,7 @@ class PostprocRewriteCudaThreadBind {
         // bind `threadIdx.x`
         // Remove the annotation on the loop
         for (int idx : thread_idx) {
-          RemoveAnn(sch->sch, loop_srefs[idx], tir::attr::loop_type);
+          DelAnn(sch->sch, loop_srefs[idx], tir::attr::loop_type);
         }
         // Do fusion
         std::vector<LoopRV> to_fuse;
@@ -447,7 +382,7 @@ class PostprocRewriteCudaThreadBind {
       if (!HasAnn(loop_sref, tir::attr::loop_type, "lazy_cooperative_fetch")) {
         continue;
       }
-      RemoveAnn(sch->sch, loop_sref, tir::attr::loop_type);
+      DelAnn(sch->sch, loop_sref, tir::attr::loop_type);
       tir::StmtSRef threadIdx_sref{nullptr};
       for (tir::StmtSRefNode* upper = loop_sref->parent; upper; upper = upper->parent) {
         tir::StmtSRef upper_sref = GetRef<tir::StmtSRef>(upper);
@@ -515,11 +450,11 @@ class PostprocRewriteAutoUnroll {
       if (Optional<String> unroll = GetAnn(block_sref, tir::attr::auto_unroll_explicit)) {
         max_step = std::atoi(unroll.value().operator std::string().c_str());
         unroll_explicit = 1;
-        RemoveAnn(sch->sch, block_sref, tir::attr::auto_unroll_explicit);
+        DelAnn(sch->sch, block_sref, tir::attr::auto_unroll_explicit);
       } else if (Optional<String> unroll = GetAnn(block_sref, tir::attr::auto_unroll_implicit)) {
         max_step = std::atoi(unroll.value().operator std::string().c_str());
         unroll_explicit = 0;
-        RemoveAnn(sch->sch, block_sref, tir::attr::auto_unroll_implicit);
+        DelAnn(sch->sch, block_sref, tir::attr::auto_unroll_implicit);
       } else {
         continue;
       }
