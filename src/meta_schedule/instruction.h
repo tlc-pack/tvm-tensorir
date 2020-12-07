@@ -314,6 +314,21 @@ struct SampleCategoricalAttrs : public InstAttrsNode {
                                       "SampleCategorical");
 };
 
+/*! \brief Attrs of the instruction to sample a compute-at location from a block */
+struct SampleComputeLocationAttrs : public InstAttrsNode {
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \return The instruction created
+   */
+  static Instruction Make(const BlockRV& block, const LoopRV& output);
+
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SampleComputeLocationAttrs,
+                                      "meta_schedule.attrs.SampleComputeLocationAttrs",
+                                      "SampleComputeLocation");
+};
+
 /**************** Block/Loop Relationship ****************/
 
 /*! \brief Attrs of the instruction that gets the producers of a specific block */

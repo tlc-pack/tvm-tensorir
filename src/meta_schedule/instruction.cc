@@ -23,19 +23,6 @@
 namespace tvm {
 namespace meta_schedule {
 
-/**************** Utilities ****************/
-
-#define TVM_META_SCHEDULE_INST_CAST(CastType, VarName, Input)                    \
-  CHECK(Input->IsInstance<CastType::ContainerType>())                            \
-      << "TypeError: Cannot downcast to '" << CastType::ContainerType::_type_key \
-      << "' from: " << Input->GetTypeKey();                                      \
-  CastType VarName = Downcast<CastType>(Input);
-
-template <class T>
-Array<ObjectRef> AdaptOutputs(const Array<T>& outputs) {
-  return {outputs.begin(), outputs.end()};
-}
-
 /**************** Constructors ****************/
 
 BlockRV::BlockRV() { data_ = make_object<BlockRVNode>(); }
@@ -213,6 +200,13 @@ Instruction SampleCategoricalAttrs::Make(const Array<Integer>& candidates,
   n->candidates = candidates;
   n->probs = probs;
   return Instruction(/*inputs=*/{},
+                     /*outputs=*/{output},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
+Instruction SampleComputeLocationAttrs::Make(const BlockRV& block, const LoopRV& output) {
+  ObjectPtr<SampleComputeLocationAttrs> n = make_object<SampleComputeLocationAttrs>();
+  return Instruction(/*inputs=*/{block},
                      /*outputs=*/{output},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
@@ -409,6 +403,18 @@ Instruction EnterPostProcAttrs::Make() {
 }
 
 /**************** ApplyToSchedule  ****************/
+
+#define TVM_META_SCHEDULE_INST_CAST(CastType, VarName, Input)                    \
+  CHECK(Input->IsInstance<CastType::ContainerType>())                            \
+      << "TypeError: Cannot downcast to '" << CastType::ContainerType::_type_key \
+      << "' from: " << Input->GetTypeKey();                                      \
+  CastType VarName = Downcast<CastType>(Input);
+
+template <class T>
+Array<ObjectRef> AdaptOutputs(const Array<T>& outputs) {
+  return {outputs.begin(), outputs.end()};
+}
+
 /**************** (ApplyToSchedule) Sampling  ****************/
 
 Array<ObjectRef> SamplePerfectTileAttrs::ApplyToSchedule(
@@ -445,7 +451,16 @@ Array<ObjectRef> SampleFusibleLoopsAttrs::ApplyToSchedule(
 Array<ObjectRef> SampleCategoricalAttrs::ApplyToSchedule(
     ScheduleNode* sch, const Array<ObjectRef>& inputs,
     const Optional<Array<ObjectRef>>& decision) const {
+  CHECK_EQ(inputs.size(), 0);
   return {sch->SampleCategorical(candidates, probs, decision)};
+}
+
+Array<ObjectRef> SampleComputeLocationAttrs::ApplyToSchedule(
+    ScheduleNode* sch, const Array<ObjectRef>& inputs,
+    const Optional<Array<ObjectRef>>& decision) const {
+  CHECK_EQ(inputs.size(), 0);
+  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
+  return {sch->SampleComputeLocation(block)};
 }
 
 /**************** (ApplyToSchedule) Block/Loop Relationship  ****************/
@@ -682,6 +697,8 @@ Array<ObjectRef> EnterPostProcAttrs::ApplyToSchedule(
   return {};
 }
 
+#undef TVM_META_SCHEDULE_INST_CAST
+
 /**************** Export  ****************/
 /**************** (Export) Sampling  ****************/
 
@@ -911,6 +928,7 @@ InstAttrs AutoUnrollAttrs::Import(const Array<ObjectRef>& record) {
     return InstAttrs(make_object<AttrsType>());                                                \
   }
 
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(SampleComputeLocationAttrs);
 TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetProducersAttrs);
 TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetConsumersAttrs);
 TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetAxesAttrs);
@@ -941,6 +959,7 @@ TVM_REGISTER_NODE_TYPE(SamplePerfectTileAttrs);
 TVM_REGISTER_NODE_TYPE(SampleTileFactorAttrs);
 TVM_REGISTER_NODE_TYPE(SampleFusibleLoopsAttrs);
 TVM_REGISTER_NODE_TYPE(SampleCategoricalAttrs);
+TVM_REGISTER_NODE_TYPE(SampleComputeLocationAttrs);
 TVM_REGISTER_NODE_TYPE(GetProducersAttrs);
 TVM_REGISTER_NODE_TYPE(GetConsumersAttrs);
 TVM_REGISTER_NODE_TYPE(GetBlockAttrs);
@@ -964,8 +983,6 @@ TVM_REGISTER_NODE_TYPE(BlockizeAttrs);
 TVM_REGISTER_NODE_TYPE(DecomposeReductionAttrs);
 TVM_REGISTER_NODE_TYPE(AutoUnrollAttrs);
 TVM_REGISTER_NODE_TYPE(EnterPostProcAttrs);
-
-#undef TVM_META_SCHEDULE_INST_CAST
 
 }  // namespace meta_schedule
 }  // namespace tvm

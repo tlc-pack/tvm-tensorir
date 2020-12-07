@@ -107,6 +107,11 @@ class SampleCategoricalAttrs(InstAttrs):
     probs: List[float]
 
 
+@register_object("meta_schedule.attrs.SampleComputeLocationAttrs")
+class SampleComputeLocationAttrs(InstAttrs):
+    """Attrs of the instruction to sample a compute-at location from a block"""
+
+
 ########## Block/Loop Relationship ##########
 
 

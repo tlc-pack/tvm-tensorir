@@ -498,9 +498,8 @@ LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block,
     // Update the symbol table
     this->sym_tab.Set(output, loop_srefs[i]);
   }
-  // TODO
   // Put the instruction in the trace
-  // this->trace.push_back(SampleComputeLocation::Make(candidates, probs, output));
+  this->trace.push_back(SampleComputeLocationAttrs::Make(block, output));
   // Put the sampling decision in the decision table
   this->decisions.Set(this->trace.back(), {Integer(i)});
   return output;
