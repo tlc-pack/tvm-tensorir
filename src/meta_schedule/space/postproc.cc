@@ -56,100 +56,6 @@ std::vector<tir::StmtSRef> CollectAllBlocks(const Schedule& sch) {
   return all_blocks;
 }
 
-/********** RewriteParallel **********/
-
-Postproc RewriteParallel() {
-  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
-    std::vector<tir::StmtSRef> all_blocks = CollectAllBlocks(sch);
-    arith::Analyzer analyzer;
-    for (const tir::StmtSRef& block_sref : all_blocks) {
-      Array<tir::StmtSRef> loop_srefs = sch->sch->GetLoopsInScope(block_sref);
-      std::vector<int> parallel_ids;
-      {
-        int i = 0;
-        for (const tir::StmtSRef& loop_sref : loop_srefs) {
-          if (HasAnn(loop_sref, tir::attr::loop_type, "lazy_parallel")) {
-            parallel_ids.push_back(i);
-          }
-          ++i;
-        }
-      }
-      if (parallel_ids.empty()) {
-        continue;
-      }
-      for (int id : parallel_ids) {
-        DelAnn(sch->sch, loop_srefs[id], tir::attr::loop_type);
-      }
-      Array<Integer> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
-      int n = parallel_ids.size();
-      tir::StmtSRef fused{nullptr};
-      for (int i = 0; i < n; ++i) {
-        int loop_type = loop_types[i];
-        if (loop_type != tir::IterVarType::kDataPar) {
-          break;
-        }
-        if (fused.defined()) {
-          fused = sch->sch->fuse(fused, loop_srefs[parallel_ids[i]]);
-        } else {
-          fused = loop_srefs[parallel_ids[i]];
-        }
-      }
-      if (fused.defined() && !analyzer.CanProve(GetLoopExtent(fused) <= 1)) {
-        sch->sch->parallel(fused);
-      }
-    }
-    return true;
-  };
-  return Postproc("rewrite_parallel", f_proc);
-}
-
-/********** RewriteVectorize **********/
-
-Postproc RewriteVectorize() {
-  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
-    std::vector<tir::StmtSRef> all_blocks = CollectAllBlocks(sch);
-    arith::Analyzer analyzer;
-    for (const tir::StmtSRef& block_sref : all_blocks) {
-      Array<tir::StmtSRef> loop_srefs = sch->sch->GetLoopsInScope(block_sref);
-      std::vector<int> vectorize_ids;
-      {
-        int i = 0;
-        for (const tir::StmtSRef& loop_sref : loop_srefs) {
-          if (HasAnn(loop_sref, tir::attr::loop_type, "lazy_vectorize")) {
-            vectorize_ids.push_back(i);
-          }
-          ++i;
-        }
-      }
-      if (vectorize_ids.empty()) {
-        continue;
-      }
-      for (int id : vectorize_ids) {
-        DelAnn(sch->sch, loop_srefs[id], tir::attr::loop_type);
-      }
-      Array<Integer> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
-      int n = vectorize_ids.size();
-      tir::StmtSRef fused{nullptr};
-      for (int i = n - 1; i >= 0; --i) {
-        int loop_type = loop_types[i];
-        if (loop_type != tir::IterVarType::kDataPar) {
-          break;
-        }
-        if (fused.defined()) {
-          fused = sch->sch->fuse(loop_srefs[vectorize_ids[i]], fused);
-        } else {
-          fused = loop_srefs[vectorize_ids[i]];
-        }
-      }
-      if (fused.defined() && !analyzer.CanProve(GetLoopExtent(fused) <= 1)) {
-        sch->sch->vectorize(fused);
-      }
-    }
-    return true;
-  };
-  return Postproc("rewrite_vectorize", f_proc);
-}
-
 /********** RewriteTensorize **********/
 
 class PostprocRewriteTensorize {
@@ -438,45 +344,6 @@ Postproc RewriteCudaThreadBind() {
   return Postproc("rewrite_cuda_thread_bind", f_proc);
 }
 
-/********** RewriteAutoUnroll **********/
-
-class PostprocRewriteAutoUnroll {
- public:
-  bool Proc(SearchTask task, Schedule sch) {
-    std::vector<tir::StmtSRef> all_blocks = CollectAllBlocks(sch);
-    for (const tir::StmtSRef& block_sref : all_blocks) {
-      int max_step = -1;
-      int unroll_explicit = -1;
-      if (Optional<String> unroll = GetAnn(block_sref, tir::attr::auto_unroll_explicit)) {
-        max_step = std::atoi(unroll.value().operator std::string().c_str());
-        unroll_explicit = 1;
-        DelAnn(sch->sch, block_sref, tir::attr::auto_unroll_explicit);
-      } else if (Optional<String> unroll = GetAnn(block_sref, tir::attr::auto_unroll_implicit)) {
-        max_step = std::atoi(unroll.value().operator std::string().c_str());
-        unroll_explicit = 0;
-        DelAnn(sch->sch, block_sref, tir::attr::auto_unroll_implicit);
-      } else {
-        continue;
-      }
-      Array<tir::StmtSRef> loop_srefs = sch->sch->GetLoopsInScope(block_sref);
-      if (loop_srefs.empty()) {
-        continue;
-      }
-      tir::StmtSRef loop_sref = loop_srefs[0];
-      sch->sch->pragma(loop_sref, "auto_unroll_max_step", Integer(max_step));
-      sch->sch->pragma(loop_sref, "unroll_explicit", Integer(unroll_explicit));
-    }
-    return true;
-  }
-};
-
-Postproc RewriteAutoUnroll() {
-  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
-    return PostprocRewriteAutoUnroll().Proc(task, sch);
-  };
-  return Postproc("rewrite_auto_unroll", f_proc);
-}
-
 /********** RewriteParallelizeVectorizeUnroll **********/
 
 class PostprocRewriteParallelizeVectorizeUnroll {
@@ -656,12 +523,9 @@ struct Internal {
 
 TVM_REGISTER_NODE_TYPE(PostprocNode);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.Apply").set_body_typed(Internal::Apply);
-TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteParallel").set_body_typed(RewriteParallel);
-TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteVectorize").set_body_typed(RewriteVectorize);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteTensorize").set_body_typed(RewriteTensorize);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteCudaThreadBind")
     .set_body_typed(RewriteCudaThreadBind);
-TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteAutoUnroll").set_body_typed(RewriteAutoUnroll);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteParallelizeVectorizeUnroll")
     .set_body_typed(RewriteParallelizeVectorizeUnroll);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.VerifyGPUCode").set_body_typed(VerifyGPUCode);

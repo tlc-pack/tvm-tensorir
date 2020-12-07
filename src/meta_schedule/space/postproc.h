@@ -73,18 +73,11 @@ class Postproc : public ObjectRef {
 /********** Built-in Post Processors **********/
 
 /*!
- * \brief Creates a postprocessor that fuses the loops which are marked as "lazy_parallel",
- * and then parallelize the fused loop
- * \return The postprocessor
+ * \brief Creates a postprocessor that applies parallelization, vectorization and auto unrolling
+ * according to the annotation of each block
+ * \return The postprocessor created
  */
-TVM_DLL Postproc RewriteParallel();
-
-/*!
- * \brief Creates a postprocessor that fuses the loops which are marked as "lazy_vectorize",
- * and then apply vectorization on the fused loop
- * \return The postprocessor
- */
-TVM_DLL Postproc RewriteVectorize();
+TVM_DLL Postproc RewriteParallelizeVectorizeUnroll();
 
 /*!
  * \brief Creates a postprocessor that matches the region that is marked as auto tensorized
@@ -97,19 +90,6 @@ TVM_DLL Postproc RewriteTensorize(Array<tir::TensorIntrin> tensor_intrins);
  * \return The postprocessor created
  */
 TVM_DLL Postproc RewriteCudaThreadBind();
-
-/*!
- * \brief Creates a postprocessor that rewrite auto unrolling
- * \return The postprocessor created
- */
-TVM_DLL Postproc RewriteAutoUnroll();
-
-/*!
- * \brief Creates a postprocessor that applies parallelization, vectorization and auto unrolling
- * according to the annotation of each block
- * \return The postprocessor created
- */
-TVM_DLL Postproc RewriteParallelizeVectorizeUnroll();
 
 /*!
  * \brief Creates a postprocessor that verifies if the GPU code is correct

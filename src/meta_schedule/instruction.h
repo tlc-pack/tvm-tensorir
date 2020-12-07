@@ -747,27 +747,6 @@ struct DecomposeReductionAttrs : public InstAttrsNode {
                                       "DecomposeReduction");
 };
 
-/*! \brief Attrs of the instruction that applies auto_unroll */
-struct AutoUnrollAttrs : public InstAttrsNode {
-  /*! \brief Whether to unroll explicitly */
-  bool unroll_explicit;
-
-  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("unroll_explicit", &unroll_explicit); }
-
-  /*!
-   * \brief Create instruction given the inputs and outputs
-   * \param block The reduction block to be decomposed
-   * \param max_step The maximum unroll steps
-   * \param unroll_explicit Whether to unroll explicitly
-   * \return The instruction created
-   */
-  static Instruction Make(const BlockRV& block, const PrimExpr& max_step, bool unroll_explicit);
-
-  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(AutoUnrollAttrs,                        //
-                                      "meta_schedule.attrs.AutoUnrollAttrs",  //
-                                      "AutoUnroll");
-};
-
 /*! \brief Attrs of the instruction that applies parallel */
 struct ParallelAttrs : public InstAttrsNode {
   void VisitAttrs(tvm::AttrVisitor* v) {}

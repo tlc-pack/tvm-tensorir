@@ -56,30 +56,6 @@ class Postproc(Object):
         return _ffi_api_postproc.Apply(self, task, sch, seed)  # pylint: disable=no-member
 
 
-def rewrite_parallel() -> Postproc:
-    """Creates a postprocessor that fuses the loops which are marked as "lazy_parallel",
-    and then parallelize the fused loop
-
-    Returns
-    ----------
-    postproc: Postproc
-        The postprocessor created
-    """
-    return _ffi_api_postproc.RewriteParallel()  # pylint: disable=no-member
-
-
-def rewrite_vectorize() -> Postproc:
-    """Creates a postprocessor that fuses the loops which are marked as "lazy_vectorize",
-    and then apply vectorization on the fused loop
-
-    Returns
-    ----------
-    postproc: Postproc
-        The postprocessor created
-    """
-    return _ffi_api_postproc.RewriteVectorize()  # pylint: disable=no-member
-
-
 def rewrite_tensorize(tensor_intrins: List[TensorIntrin]) -> Postproc:
     """Creates a postprocessor that matches the region that is marked as auto tensorized
 
@@ -100,17 +76,6 @@ def rewrite_cuda_thread_bind() -> Postproc:
         The postprocessor created
     """
     return _ffi_api_postproc.RewriteCudaThreadBind()  # pylint: disable=no-member
-
-
-def rewrite_auto_unroll() -> Postproc:
-    """Creates a postprocessor that rewrite auto unrolling
-
-    Returns
-    ----------
-    postproc: Postproc
-        The postprocessor created
-    """
-    return _ffi_api_postproc.RewriteAutoUnroll()  # pylint: disable=no-member
 
 
 def rewrite_parallel_vectorize_unroll() -> Postproc:

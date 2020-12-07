@@ -332,13 +332,6 @@ class ScheduleNode : public Object {
    */
   BlockRV DecomposeReduction(const BlockRV& block, const LoopRV& loop);
   /*!
-   * \brief Apply auto-unroll onto a block
-   * \param block The block to be applied
-   * \param max_step The maximum steps to be unrolled
-   * \param unroll_explicit Whether to unroll explicitly
-   */
-  void AutoUnroll(const BlockRV& block, const PrimExpr& max_step, bool unroll_explicit);
-  /*!
    * \brief Parallelize a specific loop
    * \param loop The loop to be parallelized
    */

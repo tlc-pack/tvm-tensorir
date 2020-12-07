@@ -215,58 +215,6 @@ def random_compute_location() -> SearchRule:
     return _ffi_api_search_rule.RandomComputeLocation()  # pylint: disable=no-member
 
 
-def mark_parallelize_outer(max_jobs_per_core: int) -> SearchRule:
-    """Create a rule that parallelizes the outer loops
-
-    Parameters
-    ----------
-    max_jobs_per_core : int
-        The maximum number of jobs to be run each core
-
-    Returns
-    ----------
-    rule: SearchRule
-        The search rule created
-    """
-    return _ffi_api_search_rule.MarkParallelizeOuter(max_jobs_per_core)  # pylint: disable=no-member
-
-
-def mark_vectorize_inner(max_extent: int) -> SearchRule:
-    """Create a rule that vectorizes the inner loops
-
-    Parameters
-    ----------
-    max_extent : int
-        The maximum extent of loops to be vectorized together
-
-    Returns
-    ----------
-    rule: SearchRule
-        The search rule created
-    """
-    return _ffi_api_search_rule.MarkVectorizeInner(max_extent)  # pylint: disable=no-member
-
-
-def mark_auto_unroll(max_steps: List[int], unroll_explicit: bool) -> SearchRule:
-    """Create a rule that marks the loops to be auto-unrolled
-
-    Parameters
-    ----------
-    max_steps : List[int]
-        The candidate of max_steps in auto_unroll
-    unroll_explicit : bool
-        Whether to unroll explicitly
-
-    Returns
-    ----------
-    rule: SearchRule
-        The search rule created
-    """
-    return _ffi_api_search_rule.MarkAutoUnroll(  # pylint: disable=no-member
-        max_steps, unroll_explicit
-    )
-
-
 def parallelize_vectorize_unroll(
     max_jobs_per_core: int = 16,
     maximize_parallel: bool = True,

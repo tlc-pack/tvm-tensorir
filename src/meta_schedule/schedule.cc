@@ -929,22 +929,6 @@ BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const LoopRV& loo
   return output;
 }
 
-void ScheduleNode::AutoUnroll(const BlockRV& block_rv, const PrimExpr& max_step_rv,
-                              bool unroll_explicit) {
-  int max_step = this->Eval(max_step_rv);
-  if (unroll_explicit) {
-    AddAnn(this->sch, this->Eval(block_rv),  //
-           /*ann_key=*/tir::attr::auto_unroll_explicit,
-           /*ann_val=*/tir::StringImm(std::to_string(max_step)));
-  } else {
-    AddAnn(this->sch, this->Eval(block_rv),  //
-           /*ann_key=*/tir::attr::auto_unroll_implicit,
-           /*ann_val=*/tir::StringImm(std::to_string(max_step)));
-  }
-  // Put the instruction in the trace
-  this->trace.push_back(AutoUnrollAttrs::Make(block_rv, max_step_rv, unroll_explicit));
-}
-
 void ScheduleNode::Parallel(const LoopRV& loop) {
   tir::StmtSRef loop_sref = this->Eval(loop);
   sch->parallel(loop_sref);
@@ -1295,9 +1279,6 @@ struct Internal {
   static BlockRV DecomposeReduction(Schedule sch, BlockRV block, LoopRV loop) {
     return sch->DecomposeReduction(block, loop);
   }
-  static void AutoUnroll(Schedule sch, BlockRV block, PrimExpr max_step, bool unroll_explicit) {
-    sch->AutoUnroll(block, max_step, unroll_explicit);
-  }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Parallel
    * \sa ScheduleNode::Parallel
@@ -1372,7 +1353,6 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCacheWrite").set_body_typed(Internal:
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleBlockize").set_body_typed(Internal::Blockize);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleDecomposeReduction")
     .set_body_typed(Internal::DecomposeReduction);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleAutoUnroll").set_body_typed(Internal::AutoUnroll);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleParallel").set_body_typed(Internal::Parallel);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleVectorize").set_body_typed(Internal::Vectorize);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMutateDecision")

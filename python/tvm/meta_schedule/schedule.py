@@ -658,22 +658,6 @@ class Schedule(Object):
         """
         _ffi_api.ScheduleVectorize(self, loop)  # pylint: disable=no-member
 
-    def auto_unroll(self, block: BlockRV, max_step: ExprRV, unroll_explicit: bool) -> None:
-        """Apply auto-unroll onto a block
-
-        Parameters
-        ----------
-        block: BlockRV
-            The block to be applied on
-        max_step: ExprRV
-            The maximum steps to be unrolled
-        unroll_explicit: bool
-            Whether to unroll explicitly
-        """
-        _ffi_api.ScheduleAutoUnroll(  # pylint: disable=no-member
-            self, block, max_step, unroll_explicit
-        )
-
     ########## Trace-related ##########
 
     def mutate_decision(
