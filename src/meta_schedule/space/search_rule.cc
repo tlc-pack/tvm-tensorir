@@ -542,7 +542,7 @@ class RuleMarkParallelizeOuter {
       num_cores = (*f_cpu_count)(false);
       if (!warned_num_cores_missing) {
         LOG(WARNING)
-            << "ValueError: Target does not have attribute \"num_cores\", using the number of CPU "
+            << "Warning: Target does not have attribute \"num_cores\", using the number of CPU "
                "cores on the local machine. It may leads to inferior performance because the "
                "setting on the local machine may mismatch that on the target machine - "
             << num_cores << " CPU cores";
