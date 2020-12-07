@@ -520,7 +520,7 @@ class PostprocRewriteParallelizeVectorizeUnroll {
           DelAnn(sch, block_sref, tir::attr::auto_unroll_implicit);
         }
         if (found) {
-          result = GetRef<tir::Block>(block);
+          result = GetRef<tir::Block>(block_sref->GetStmt<tir::BlockNode>());
           return false;
         }
       }
@@ -571,8 +571,10 @@ class PostprocRewriteParallelizeVectorizeUnroll {
         int unroll_explicit = parsed.unroll_explicit != -1;
         int max_step = parsed.unroll_explicit + parsed.unroll_implicit + 1;
         LoopRV loop = loop_rvs[0];
-        sch->MarkLoop(loop, "pragma_auto_unroll_max_step", Integer(max_step));
-        sch->MarkLoop(loop, "pragma_unroll_explicit", Integer(unroll_explicit));
+        if (max_step > 0) {
+          sch->MarkLoop(loop, "pragma_auto_unroll_max_step", Integer(max_step));
+          sch->MarkLoop(loop, "pragma_unroll_explicit", Integer(unroll_explicit));
+        }
       }
     }
     return true;
