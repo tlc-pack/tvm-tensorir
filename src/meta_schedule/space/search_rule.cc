@@ -488,8 +488,27 @@ class RuleRandomComputeLocation {
       return {{sch, info}};
     }
     BlockRV consumer = consumers[0];
-    // TODO: complete it
-    throw;
+    // Try to compute `block_rv` at `consumer`
+    for (;;) {
+      LoopRV compute_at_loc = sch->SampleComputeLocation(consumer);
+      try {
+        sch->ComputeAt(block_rv, compute_at_loc);
+      } catch (const dmlc::Error& e) {
+        // ComputeAt fails, cleanup the following before re-try:
+        // 1) sym_tab
+        // 2) decisions
+        // 3) trace
+        Instruction inst = sch->trace.back();
+        CHECK(inst->inst_attrs->IsInstance<SampleComputeLocationAttrs>())
+            << "TypeError: Expects `SampleComputeLocationAttrs`, but gets: " << inst->inst_attrs;
+        sch->trace.pop_back();
+        sch->sym_tab.erase(compute_at_loc);
+        sch->decisions.erase(inst);
+        continue;
+      }
+      break;
+    }
+    return {{sch, info}};
   }
 };
 
@@ -497,7 +516,7 @@ SearchRule RandomComputeLocation() {
   auto f_apply = [](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
     return RuleRandomComputeLocation().Apply(task, sch, block, info);
   };
-  return SearchRule("multi_level_tiling_and_fusion", f_apply);
+  return SearchRule("random_compute_location", f_apply);
 }
 
 /********** MarkParallelizeOuter **********/
