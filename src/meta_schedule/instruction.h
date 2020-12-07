@@ -64,6 +64,13 @@ class LoopRV : public runtime::ObjectRef {
  public:
   /*! \brief Constructor */
   LoopRV();
+  /*! \brief Get the special LoopRV for compute_inline */
+  static LoopRV ComputeInlineRV();
+  /*! \brief Get the special LoopRV for compute_root */
+  static LoopRV ComputeRootRV();
+
+  static constexpr const char* inline_rv = "$inline";
+  static constexpr const char* root_rv = "$root";
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LoopRV, ObjectRef, LoopRVNode);
 };
 
@@ -99,8 +106,8 @@ class InstAttrsNode : public Object {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  virtual Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                           const Array<ObjectRef>& inputs) const = 0;
+  virtual Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                           const Optional<Array<ObjectRef>>& decisions) const = 0;
 
   virtual String GetName() const = 0;
 
@@ -119,6 +126,17 @@ class InstAttrs : public ObjectRef {
  public:
   TVM_DEFINE_OBJECT_REF_METHODS(InstAttrs, ObjectRef, InstAttrsNode);
 };
+
+#define TVM_META_SCHEDULE_DEFINE_INST_ATTRS(Cls, TypeKey, InstName)                            \
+  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,          \
+                                   const Optional<Array<ObjectRef>>& decision) const override; \
+  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision)            \
+      const override;                                                                          \
+  static InstAttrs Import(const Array<ObjectRef>& record);                                     \
+  static constexpr const char* _name = InstName;                                               \
+  static constexpr const char* _type_key = TypeKey;                                            \
+  TVM_DECLARE_FINAL_OBJECT_INFO(Cls, InstAttrsNode);                                           \
+  String GetName() const override { return String(_name); }
 
 /**************** Instruction ****************/
 
@@ -159,18 +177,8 @@ class Instruction : public ObjectRef {
    */
   explicit Instruction(Array<ObjectRef> inputs, Array<ObjectRef> outputs, InstAttrs inst_attrs);
 
-  /*!
-   * \brief Apply an instruction to the specific schedule, and return the outputs
-   * \param sch The schedule to be applied
-   * \param inst_attrs Attributes of the instruction
-   * \param inputs The inputs to the instruction
-   * \return The outputs of the instruction applied
-   */
-  static Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const InstAttrs& inst_attrs,
-                                          const Array<ObjectRef>& inputs);
-
-  static Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& record,
-                                          Map<String, ObjectRef>* named_rvs);
+  static Array<ObjectRef> ImportToSchedule(ScheduleNode* sch, const Array<ObjectRef>& record,
+                                           Map<String, ObjectRef>* named_rvs);
 
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Instruction, ObjectRef, InstructionNode);
 
@@ -201,26 +209,12 @@ struct SamplePerfectTileAttrs : public InstAttrsNode {
    * \param outputs Outputs of the instruction
    * \return The instruction created
    */
-  static Instruction MakeInst(int n_splits, const LoopRV& loop, int max_innermost_factor,
-                              const Array<tir::Var>& outputs);
+  static Instruction Make(int n_splits, const LoopRV& loop, int max_innermost_factor,
+                          const Array<tir::Var>& outputs);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "SamplePerfectTile"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.SamplePerfectTileAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(SamplePerfectTileAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SamplePerfectTileAttrs,
+                                      "meta_schedule.attrs.SamplePerfectTileAttrs",
+                                      "SamplePerfectTile");
 };
 
 /*! \brief Attrs of the instruction to sample tiling factors */
@@ -243,26 +237,12 @@ struct SampleTileFactorAttrs : public InstAttrsNode {
    * \param outputs Outputs of the instruction
    * \return The instruction created
    */
-  static Instruction MakeInst(int n_splits, const LoopRV& loop, const Array<Integer>& where,
-                              const Array<tir::Var>& outputs);
+  static Instruction Make(int n_splits, const LoopRV& loop, const Array<Integer>& where,
+                          const Array<tir::Var>& outputs);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "SampleTileFactor"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.SampleTileFactorAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(SampleTileFactorAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SampleTileFactorAttrs,
+                                      "meta_schedule.attrs.SampleTileFactorAttrs",
+                                      "SampleTileFactor");
 };
 
 /*! \brief Attrs of the instruction to sample fusible loops */
@@ -298,27 +278,13 @@ struct SampleFusibleLoopsAttrs : public InstAttrsNode {
    * \param output The output of the instruction
    * \return The instruction created
    */
-  static Instruction MakeInst(const Array<LoopRV>& loops, const Array<Integer>& loop_types,
-                              int max_extent, bool include_overflow_loop, int order, int mode,
-                              const tir::Var& output);
+  static Instruction Make(const Array<LoopRV>& loops, const Array<Integer>& loop_types,
+                          int max_extent, bool include_overflow_loop, int order, int mode,
+                          const tir::Var& output);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "SampleFusibleLoops"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.SampleFusibleLoopsAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(SampleFusibleLoopsAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SampleFusibleLoopsAttrs,
+                                      "meta_schedule.attrs.SampleFusibleLoopsAttrs",
+                                      "SampleFusibleLoops");
 };
 
 /*! \brief Attrs of the instruction to sample from a categorical distribution */
@@ -340,26 +306,27 @@ struct SampleCategoricalAttrs : public InstAttrsNode {
    * \param output The output the instruction
    * \return The instruction created
    */
-  static Instruction MakeInst(const Array<Integer>& candidates, const Array<FloatImm>& probs,
-                              const tir::Var& output);
+  static Instruction Make(const Array<Integer>& candidates, const Array<FloatImm>& probs,
+                          const tir::Var& output);
+
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SampleCategoricalAttrs,
+                                      "meta_schedule.attrs.SampleCategoricalAttrs",
+                                      "SampleCategorical");
+};
+
+/*! \brief Attrs of the instruction to sample a compute-at location from a block */
+struct SampleComputeLocationAttrs : public InstAttrsNode {
+  void VisitAttrs(tvm::AttrVisitor* v) {}
 
   /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
+   * \brief Create instruction given the inputs and outputs
+   * \return The instruction created
    */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
+  static Instruction Make(const BlockRV& block, const LoopRV& output);
 
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "SampleCategorical"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.SampleCategoricalAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(SampleCategoricalAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SampleComputeLocationAttrs,
+                                      "meta_schedule.attrs.SampleComputeLocationAttrs",
+                                      "SampleComputeLocation");
 };
 
 /**************** Block/Loop Relationship ****************/
@@ -374,25 +341,11 @@ struct GetProducersAttrs : public InstAttrsNode {
    * \param output The output of the query
    * \return The instruction created
    */
-  static Instruction MakeInst(const BlockRV& block, const Array<BlockRV>& outputs);
+  static Instruction Make(const BlockRV& block, const Array<BlockRV>& outputs);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "GetProducers"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.GetProducersAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(GetProducersAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(GetProducersAttrs,                        //
+                                      "meta_schedule.attrs.GetProducersAttrs",  //
+                                      "GetProducers");
 };
 
 /*! \brief Attrs of the instruction that gets the consumers of a specific block */
@@ -405,25 +358,11 @@ struct GetConsumersAttrs : public InstAttrsNode {
    * \param output The output of the query
    * \return The instruction created
    */
-  static Instruction MakeInst(const BlockRV& block, const Array<BlockRV>& outputs);
+  static Instruction Make(const BlockRV& block, const Array<BlockRV>& outputs);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "GetConsumers"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.GetConsumersAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(GetConsumersAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(GetConsumersAttrs,                        //
+                                      "meta_schedule.attrs.GetConsumersAttrs",  //
+                                      "GetConsumers");
 };
 
 /*! \brief Attrs of the instruction that gets a specific block by its name */
@@ -439,25 +378,11 @@ struct GetBlockAttrs : public InstAttrsNode {
    * \param output The output of the query
    * \return The instruction created
    */
-  static Instruction MakeInst(const String& name, const BlockRV& output);
+  static Instruction Make(const String& name, const BlockRV& output);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "GetBlock"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.GetBlockAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(GetBlockAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(GetBlockAttrs,                        //
+                                      "meta_schedule.attrs.GetBlockAttrs",  //
+                                      "GetBlock");
 };
 
 /*! \brief Attrs of the instruction that gets loop axes on top of a specifc block */
@@ -470,25 +395,11 @@ struct GetAxesAttrs : public InstAttrsNode {
    * \param outputs The outputs of the query
    * \return The instruction created
    */
-  static Instruction MakeInst(const BlockRV& block, const Array<LoopRV>& outputs);
+  static Instruction Make(const BlockRV& block, const Array<LoopRV>& outputs);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "GetAxes"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.GetAxesAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(GetAxesAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(GetAxesAttrs,                        //
+                                      "meta_schedule.attrs.GetAxesAttrs",  //
+                                      "GetAxes");
 };
 
 /*! \brief Attrs of the instruction that gets the buffers the block reads */
@@ -501,25 +412,11 @@ struct GetReadBuffersAttrs : public InstAttrsNode {
    * \param outputs The outputs of the query
    * \return The instruction created
    */
-  static Instruction MakeInst(const BlockRV& block, const Array<BufferRV>& outputs);
+  static Instruction Make(const BlockRV& block, const Array<BufferRV>& outputs);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "GetReadBuffers"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.GetReadBuffersAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(GetReadBuffersAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(GetReadBuffersAttrs,                        //
+                                      "meta_schedule.attrs.GetReadBuffersAttrs",  //
+                                      "GetReadBuffers");
 };
 
 /*! \brief Attrs of the instruction that gets the buffers the block writes */
@@ -532,25 +429,11 @@ struct GetWriteBuffersAttrs : public InstAttrsNode {
    * \param outputs The outputs of the query
    * \return The instruction created
    */
-  static Instruction MakeInst(const BlockRV& block, const Array<BufferRV>& outputs);
+  static Instruction Make(const BlockRV& block, const Array<BufferRV>& outputs);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "GetWriteBuffers"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.GetWriteBuffersAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(GetWriteBuffersAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(GetWriteBuffersAttrs,                        //
+                                      "meta_schedule.attrs.GetWriteBuffersAttrs",  //
+                                      "GetWriteBuffers");
 };
 
 struct GetRootBlocksAttrs : public InstAttrsNode {
@@ -561,25 +444,11 @@ struct GetRootBlocksAttrs : public InstAttrsNode {
    * \param outputs The outputs of the instruction
    * \return The instruction created
    */
-  static Instruction MakeInst(const Array<BlockRV>& outputs);
+  static Instruction Make(const Array<BlockRV>& outputs);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "GetRootBlocks"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.GetRootBlocksAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(GetRootBlocksAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(GetRootBlocksAttrs,                        //
+                                      "meta_schedule.attrs.GetRootBlocksAttrs",  //
+                                      "GetRootBlocks");
 };
 
 struct GetLeafBlocksAttrs : public InstAttrsNode {
@@ -590,25 +459,11 @@ struct GetLeafBlocksAttrs : public InstAttrsNode {
    * \param outputs The outputs of the instruction
    * \return The instruction created
    */
-  static Instruction MakeInst(const Array<BlockRV>& outputs);
+  static Instruction Make(const Array<BlockRV>& outputs);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "GetLeafBlocks"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.GetLeafBlocksAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(GetLeafBlocksAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(GetLeafBlocksAttrs,                        //
+                                      "meta_schedule.attrs.GetLeafBlocksAttrs",  //
+                                      "GetLeafBlocks");
 };
 
 /**************** Scheduling Primitives ****************/
@@ -633,26 +488,12 @@ struct MarkLoopTypeAttrs : public InstAttrsNode {
    * \param last_n To mark the last n loops
    * \return The instruction created
    */
-  static Instruction MakeInst(const Array<LoopRV>& loops, const String& ann_key,
-                              const String& ann_val, const PrimExpr& first, const PrimExpr& last_n);
+  static Instruction Make(const Array<LoopRV>& loops, const String& ann_key, const String& ann_val,
+                          const PrimExpr& first, const PrimExpr& last_n);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "MarkLoopType"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.MarkLoopTypeAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(MarkLoopTypeAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(MarkLoopTypeAttrs,                        //
+                                      "meta_schedule.attrs.MarkLoopTypeAttrs",  //
+                                      "MarkLoopType");
 };
 
 struct MarkBlockTypeAttrs : public InstAttrsNode {
@@ -673,25 +514,11 @@ struct MarkBlockTypeAttrs : public InstAttrsNode {
    * \param ann_val The loop annotation value
    * \return The instruction created
    */
-  static Instruction MakeInst(const BlockRV& block, const String& ann_key, const String& ann_val);
+  static Instruction Make(const BlockRV& block, const String& ann_key, const String& ann_val);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "MarkBlockType"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.MarkBlockTypeAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(MarkBlockTypeAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(MarkBlockTypeAttrs,                        //
+                                      "meta_schedule.attrs.MarkBlockTypeAttrs",  //
+                                      "MarkBlockType");
 };
 
 struct FuseAttrs : public InstAttrsNode {
@@ -703,25 +530,11 @@ struct FuseAttrs : public InstAttrsNode {
    * \param output The output of the instruction
    * \return The instruction created
    */
-  static Instruction MakeInst(const Array<LoopRV>& loops, const LoopRV& output);
+  static Instruction Make(const Array<LoopRV>& loops, const LoopRV& output);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "Fuse"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.FuseAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(FuseAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(FuseAttrs,                        //
+                                      "meta_schedule.attrs.FuseAttrs",  //
+                                      "Fuse");
 };
 
 /*! \brief Attrs of the instruction that applies loop splitting */
@@ -735,26 +548,12 @@ struct SplitAttrs : public InstAttrsNode {
    * \param outputs The outputs of the query
    * \return The instruction created
    */
-  static Instruction MakeInst(const LoopRV& loop, const Array<Optional<PrimExpr>>& factors,
-                              const Array<LoopRV>& outputs);
+  static Instruction Make(const LoopRV& loop, const Array<Optional<PrimExpr>>& factors,
+                          const Array<LoopRV>& outputs);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "Split"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.SplitAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(SplitAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SplitAttrs,                        //
+                                      "meta_schedule.attrs.SplitAttrs",  //
+                                      "Split");
 };
 
 /*! \brief Attrs of the instruction that applies loop reordering */
@@ -766,25 +565,11 @@ struct ReorderAttrs : public InstAttrsNode {
    * \param after_axes The axes to be reordered
    * \return The instruction created
    */
-  static Instruction MakeInst(const Array<LoopRV>& after_axes);
+  static Instruction Make(const Array<LoopRV>& after_axes);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "Reorder"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.ReorderAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(ReorderAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(ReorderAttrs,                        //
+                                      "meta_schedule.attrs.ReorderAttrs",  //
+                                      "Reorder");
 };
 
 /*! \brief Attrs of the instruction that applies reverse_compute_at */
@@ -797,25 +582,11 @@ struct ComputeAtAttrs : public InstAttrsNode {
    * \param loop The loop to be moved to
    * \return The instruction created
    */
-  static Instruction MakeInst(const BlockRV& block, const LoopRV& loop);
+  static Instruction Make(const BlockRV& block, const LoopRV& loop);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "ComputeAt"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.ComputeAtAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(ComputeAtAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(ComputeAtAttrs,                        //
+                                      "meta_schedule.attrs.ComputeAtAttrs",  //
+                                      "ComputeAt");
 };
 
 /*! \brief Attrs of the instruction that applies reverse_compute_at */
@@ -828,25 +599,11 @@ struct ReverseComputeAtAttrs : public InstAttrsNode {
    * \param loop The loop to be moved to
    * \return The instruction created
    */
-  static Instruction MakeInst(const BlockRV& block, const LoopRV& loop);
+  static Instruction Make(const BlockRV& block, const LoopRV& loop);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "ReverseComputeAt"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.ReverseComputeAtAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(ReverseComputeAtAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(ReverseComputeAtAttrs,                        //
+                                      "meta_schedule.attrs.ReverseComputeAtAttrs",  //
+                                      "ReverseComputeAt");
 };
 
 /*! \brief Attrs of the instruction that applies compute_inline */
@@ -858,25 +615,11 @@ struct ComputeInlineAttrs : public InstAttrsNode {
    * \param block The block to be computed inline
    * \return The instruction created
    */
-  static Instruction MakeInst(const BlockRV& block);
+  static Instruction Make(const BlockRV& block);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "ComputeInline"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.ComputeInlineAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(ComputeInlineAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(ComputeInlineAttrs,                        //
+                                      "meta_schedule.attrs.ComputeInlineAttrs",  //
+                                      "ComputeInline");
 };
 
 /*! \brief Attrs of the instruction that applies compute_inline */
@@ -888,25 +631,11 @@ struct ReverseComputeInlineAttrs : public InstAttrsNode {
    * \param block The block to be reverse computed inline
    * \return The instruction created
    */
-  static Instruction MakeInst(const BlockRV& block);
+  static Instruction Make(const BlockRV& block);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "ReverseComputeInline"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.ReverseComputeInlineAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(ReverseComputeInlineAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(ReverseComputeInlineAttrs,                        //
+                                      "meta_schedule.attrs.ReverseComputeInlineAttrs",  //
+                                      "ReverseComputeInline");
 };
 
 /*! \brief Attrs of the instruction that applies cache_write */
@@ -929,26 +658,12 @@ struct CacheReadAttrs : public InstAttrsNode {
    * \param output The output of the instruction
    * \return The instruction created
    */
-  static Instruction MakeInst(const BlockRV& block, int i, const String& storage_scope,
-                              const BlockRV& output);
+  static Instruction Make(const BlockRV& block, int i, const String& storage_scope,
+                          const BlockRV& output);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "CacheRead"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.CacheReadAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(CacheReadAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(CacheReadAttrs,                        //
+                                      "meta_schedule.attrs.CacheReadAttrs",  //
+                                      "CacheRead");
 };
 
 /*! \brief Attrs of the instruction that applies cache_write */
@@ -971,26 +686,12 @@ struct CacheWriteAttrs : public InstAttrsNode {
    * \param output The output of the instruction
    * \return The instruction created
    */
-  static Instruction MakeInst(const BlockRV& block, int i, const String& storage_scope,
-                              const BlockRV& output);
+  static Instruction Make(const BlockRV& block, int i, const String& storage_scope,
+                          const BlockRV& output);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "CacheWrite"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.CacheWriteAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(CacheWriteAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(CacheWriteAttrs,                        //
+                                      "meta_schedule.attrs.CacheWriteAttrs",  //
+                                      "CacheWrite");
 };
 
 /*! \brief Attrs of the instruction that applies blockize */
@@ -1007,25 +708,11 @@ struct BlockizeAttrs : public InstAttrsNode {
    * \param output The output of the instruction
    * \return The instruction created
    */
-  static Instruction MakeInst(const LoopRV& block, const String& exec_scope, const BlockRV& output);
+  static Instruction Make(const LoopRV& block, const String& exec_scope, const BlockRV& output);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "Blockize"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.BlockizeAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(BlockizeAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(BlockizeAttrs,                        //
+                                      "meta_schedule.attrs.BlockizeAttrs",  //
+                                      "Blockize");
 };
 
 /*! \brief Attrs of the instruction that applies decompose_reduction */
@@ -1039,25 +726,11 @@ struct DecomposeReductionAttrs : public InstAttrsNode {
    * \param output The output of the instruction
    * \return The instruction created
    */
-  static Instruction MakeInst(const BlockRV& block, const LoopRV& loop, const BlockRV& output);
+  static Instruction Make(const BlockRV& block, const LoopRV& loop, const BlockRV& output);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "DecomposeReduction"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.DecomposeReductionAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(DecomposeReductionAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(DecomposeReductionAttrs,                        //
+                                      "meta_schedule.attrs.DecomposeReductionAttrs",  //
+                                      "DecomposeReduction");
 };
 
 /*! \brief Attrs of the instruction that applies auto_unroll */
@@ -1074,25 +747,11 @@ struct AutoUnrollAttrs : public InstAttrsNode {
    * \param unroll_explicit Whether to unroll explicitly
    * \return The instruction created
    */
-  static Instruction MakeInst(const BlockRV& block, const PrimExpr& max_step, bool unroll_explicit);
+  static Instruction Make(const BlockRV& block, const PrimExpr& max_step, bool unroll_explicit);
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "AutoUnroll"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.AutoUnrollAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(AutoUnrollAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(AutoUnrollAttrs,                        //
+                                      "meta_schedule.attrs.AutoUnrollAttrs",  //
+                                      "AutoUnroll");
 };
 
 /*! \brief Attrs of an NOP that indicates entrance of post processing */
@@ -1105,26 +764,14 @@ struct EnterPostProcAttrs : public InstAttrsNode {
    * \param output The output of the query
    * \return The instruction created
    */
-  static Instruction MakeInst();
+  static Instruction Make();
 
-  /*!
-   * \brief Apply the instruction to the schedule with given inputs
-   * \param sch The schedule to be applied
-   * \param inputs The input of the instruction
-   * \return Outputs of the instruction
-   */
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch,
-                                   const Array<ObjectRef>& inputs) const override;
-
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) const override;
-
-  static InstAttrs Import(const Array<ObjectRef>& record);
-
-  static String Name() { return "EnterPostProc"; }
-  String GetName() const override { return Name(); }
-  static constexpr const char* _type_key = "meta_schedule.attrs.EnterPostProcAttrs";
-  TVM_DECLARE_FINAL_OBJECT_INFO(EnterPostProcAttrs, InstAttrsNode);
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(EnterPostProcAttrs,                        //
+                                      "meta_schedule.attrs.EnterPostProcAttrs",  //
+                                      "EnterPostProc");
 };
+
+#undef TVM_META_SCHEDULE_DEFINE_INST_ATTRS
 
 }  // namespace meta_schedule
 }  // namespace tvm

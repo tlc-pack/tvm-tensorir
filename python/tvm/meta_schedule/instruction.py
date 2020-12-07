@@ -21,6 +21,8 @@ from tvm._ffi import register_object
 from tvm.ir import PrimExpr as ExprRV  # pylint: disable=unused-import
 from tvm.runtime import Object
 
+from . import _ffi_api
+
 ########## Random Variables ##########
 
 
@@ -32,6 +34,14 @@ class BlockRV(Object):
 @register_object("meta_schedule.LoopRV")
 class LoopRV(Object):
     """ A random variable that evaluates to a TIR loop axis """
+
+    @staticmethod
+    def inline_rv() -> "LoopRV":
+        return _ffi_api.LoopRVComputeInlineRV()  # pylint: disable=no-member
+
+    @staticmethod
+    def root_rv() -> "LoopRV":
+        return _ffi_api.LoopRVComputeRootRV()  # pylint: disable=no-member
 
 
 @register_object("meta_schedule.BufferRV")
@@ -105,6 +115,11 @@ class SampleCategoricalAttrs(InstAttrs):
 
     candidates: List[int]
     probs: List[float]
+
+
+@register_object("meta_schedule.attrs.SampleComputeLocationAttrs")
+class SampleComputeLocationAttrs(InstAttrs):
+    """Attrs of the instruction to sample a compute-at location from a block"""
 
 
 ########## Block/Loop Relationship ##########

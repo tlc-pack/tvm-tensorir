@@ -21,15 +21,80 @@
 
 #include <tvm/arith/analyzer.h>
 #include <tvm/tir/expr.h>
+#include <tvm/tir/schedule.h>
 
 #include <set>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "../arith/pattern_match.h"
 
 namespace tvm {
 namespace meta_schedule {
+
+/**************** Array Handling ****************/
+
+/*!
+ * \brief Compute mean of a FloatImm array.
+ * Taken from Ansor
+ * \param float_array The array of floating point numbers to be averaged
+ * \return The mean of the given array
+ */
+inline double FloatArrayMean(const Array<FloatImm>& float_array) {
+  double sum = 0;
+  if (float_array.empty()) {
+    return 0.0;
+  }
+  for (const FloatImm& x : float_array) {
+    sum += x.get()->value;
+  }
+  return sum / float_array.size();
+}
+
+/*!
+ * \brief Get the only element from a single-element array
+ * \tparam T The type to be downcasted to
+ * \param array The single-element array
+ * \return The element
+ */
+template <class T>
+inline int GetOnlyElement(const Array<ObjectRef>& array) {
+  CHECK_EQ(array.size(), 1) << "ValueError: Not a single-element array: " << array;
+  return Downcast<T>(array[0]);
+}
+
+/*!
+ * \brief Concatenate the nested vector into a flattened vector
+ * \tparam T The element type of the nested vector
+ * \param source The nested vector
+ * \return The flattened vector
+ */
+template <class T>
+inline std::vector<T> ConcatArray(const std::vector<std::vector<T> >& source) {
+  std::vector<T> result;
+  for (const std::vector<T>& item : source) {
+    result.insert(result.end(), item.begin(), item.end());
+  }
+  return result;
+}
+
+/*!
+ * \brief Concatenate the nested vector into a flattened vector
+ * \tparam T The element type of the nested vector
+ * \param source The nested vector
+ * \return The flattened vector
+ */
+template <class T>
+inline Array<T> ConcatArray(const std::vector<Array<T> >& source) {
+  Array<T> result;
+  for (const Array<T>& item : source) {
+    result.insert(result.end(), item.begin(), item.end());
+  }
+  return result;
+}
+
+/**************** Expression Parsing ****************/
 
 /*!
  * \brief Checks if the specific expr is an integer constant
@@ -44,12 +109,6 @@ inline bool IsConstInt(const PrimExpr& x) {
     return op->value->IsInstance<tir::IntImmNode>();
   }
   return false;
-}
-
-inline String Repr(const tir::PrimFunc& func) {
-  static const auto* f = runtime::Registry::Get("script.AsTVMScript");
-  CHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
-  return (*f)(func, false).operator String();
 }
 
 /*!
@@ -70,6 +129,145 @@ inline Optional<tir::Var> IsVarPlusMinusConst(const PrimExpr& expr) {
   }
   return NullOpt;
 }
+
+/**************** TIR Misc ****************/
+
+inline String Repr(const tir::PrimFunc& func) {
+  static const auto* f = runtime::Registry::Get("script.AsTVMScript");
+  CHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
+  return (*f)(func, false).operator String();
+}
+
+inline PrimExpr GetLoopExtent(const tir::StmtSRef& loop_sref) {
+  const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+  CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
+  return loop->extent;
+}
+
+/*!
+ * \brief Compare two domains and check if they are equal
+ * \param lhs One domain
+ * \param rhs The other domain
+ * \return A boolean indicating if the two domains are proved to be equal
+ */
+inline bool DomainEqual(const Array<Range>& lhs, const Array<Range>& rhs) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+  arith::Analyzer analyzer;
+  int n = lhs.size();
+  for (int i = 0; i < n; ++i) {
+    const Range& l = lhs[i];
+    const Range& r = rhs[i];
+    if (!analyzer.CanProve(l->min == r->min)) {
+      return false;
+    }
+    if (!analyzer.CanProve(l->extent == r->extent)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**************** TIR Annotation ****************/
+
+inline Optional<String> GetAnn(const tir::StmtSRef& sref, const String& ann_key) {
+  const Array<tir::Annotation>* annotations;
+  if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
+    annotations = &loop->annotations;
+  } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
+    annotations = &block->annotations;
+  } else {
+    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
+  }
+  for (const tir::Annotation& ann : *annotations) {
+    if (ann->attr_key == ann_key) {
+      if (const auto* str_imm = ann->value.as<tir::StringImmNode>()) {
+        return str_imm->value;
+      }
+    }
+  }
+  return NullOpt;
+}
+
+inline bool HasAnn(const tir::StmtSRef& loop_sref, const String& ann_key, const String& ann_val) {
+  Optional<String> result = GetAnn(loop_sref, ann_key);
+  return result.defined() && result.value() == ann_val;
+}
+
+inline void DelAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const String& ann_key) {
+  // Extract annotation
+  const Array<tir::Annotation>* annotations;
+  if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
+    annotations = &loop->annotations;
+  } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
+    annotations = &block->annotations;
+  } else {
+    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
+  }
+  // Remove the annotation
+  Array<tir::Annotation> new_ann;
+  int n = annotations->size();
+  new_ann.reserve(n - 1);
+  for (int i = 0; i < n; ++i) {
+    const tir::Annotation& ann = annotations->operator[](i);
+    if (ann->attr_key != ann_key) {
+      new_ann.push_back(ann);
+    }
+  }
+  // Create the new stmt
+  if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
+    ObjectPtr<tir::LoopNode> n = make_object<tir::LoopNode>(*loop);
+    n->annotations = std::move(new_ann);
+    sch->Replace(sref, tir::Loop(n));
+  } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
+    ObjectPtr<tir::BlockNode> n = make_object<tir::BlockNode>(*block);
+    n->annotations = std::move(new_ann);
+    tir::Block p(n);
+    sch->Replace(sref, p, {{p, GetRef<tir::Block>(block)}});
+  } else {
+    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
+    throw;
+  }
+}
+
+inline void AddAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const String& ann_key,
+                   const String& ann_val) {
+  // Extract annotation
+  const Array<tir::Annotation>* annotations;
+  if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
+    annotations = &loop->annotations;
+  } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
+    annotations = &block->annotations;
+  } else {
+    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
+  }
+  // Check if the annotation already exists
+  for (const tir::Annotation& ann : *annotations) {
+    if (ann->attr_key == ann_key) {
+      LOG(FATAL) << "ValueError: Already annotated with key: " << ann_key;
+    }
+  }
+  // Add the new annotation
+  Array<tir::Annotation> new_ann(*annotations);
+  new_ann.push_back(tir::Annotation(ann_key, tir::StringImm(ann_val)));
+  // Create the new stmt
+  if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
+    ObjectPtr<tir::LoopNode> n = make_object<tir::LoopNode>(*loop);
+    n->annotations = std::move(new_ann);
+    sch->Replace(sref, tir::Loop(n));
+  } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
+    ObjectPtr<tir::BlockNode> n = make_object<tir::BlockNode>(*block);
+    n->annotations = std::move(new_ann);
+    tir::Block p(n);
+    sch->Replace(sref, p, {{p, GetRef<tir::Block>(block)}});
+  } else {
+    LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
+    throw;
+  }
+}
+
+/**************** AsArray<TSrc, TDst> ****************/
 
 template <class TSrc, class TDst>
 struct AsArray {};
@@ -104,6 +302,8 @@ struct AsArray<double, TDstObjectRef> {
     return result;
   }
 };
+
+/**************** AsVector<TSrc, TDst> ****************/
 
 template <class TSrc, class TDst>
 struct AsVector {};
@@ -141,22 +341,7 @@ struct AsVector<TSrcObjectRef, double> {
   }
 };
 
-/*!
- * \brief Compute mean of a FloatImm array.
- * Taken from Ansor
- * \param float_array The array of floating point numbers to be averaged
- * \return The mean of the given array
- */
-inline double FloatArrayMean(const Array<FloatImm>& float_array) {
-  double sum = 0;
-  if (float_array.empty()) {
-    return 0.0;
-  }
-  for (const FloatImm& x : float_array) {
-    sum += x.get()->value;
-  }
-  return sum / float_array.size();
-}
+/**************** I/O ****************/
 
 /*!
  * \brief An empty output stream
@@ -182,6 +367,8 @@ inline std::ostream& StdCout(int verbose, int setting = 1) {
   return verbose >= setting ? std::cout : NullStream::Global();
 }
 
+/**************** String Manipulation ****************/
+
 /*!
  * \brief Find all positions that the specific char occurs in the string
  * \param str The string to be examined
@@ -200,60 +387,7 @@ inline std::vector<int> FindCharPos(const String& str, char c) {
   return result;
 }
 
-/*!
- * \brief Concatenate the nested vector into a flattened vector
- * \tparam T The element type of the nested vector
- * \param source The nested vector
- * \return The flattened vector
- */
-template <class T>
-inline std::vector<T> ConcatArray(const std::vector<std::vector<T> >& source) {
-  std::vector<T> result;
-  for (const std::vector<T>& item : source) {
-    result.insert(result.end(), item.begin(), item.end());
-  }
-  return result;
-}
-
-/*!
- * \brief Concatenate the nested vector into a flattened vector
- * \tparam T The element type of the nested vector
- * \param source The nested vector
- * \return The flattened vector
- */
-template <class T>
-inline Array<T> ConcatArray(const std::vector<Array<T> >& source) {
-  Array<T> result;
-  for (const Array<T>& item : source) {
-    result.insert(result.end(), item.begin(), item.end());
-  }
-  return result;
-}
-
-/*!
- * \brief Compare two domains and check if they are equal
- * \param lhs One domain
- * \param rhs The other domain
- * \return A boolean indicating if the two domains are proved to be equal
- */
-inline bool DomainEqual(const Array<Range>& lhs, const Array<Range>& rhs) {
-  if (lhs.size() != rhs.size()) {
-    return false;
-  }
-  arith::Analyzer analyzer;
-  int n = lhs.size();
-  for (int i = 0; i < n; ++i) {
-    const Range& l = lhs[i];
-    const Range& r = rhs[i];
-    if (!analyzer.CanProve(l->min == r->min)) {
-      return false;
-    }
-    if (!analyzer.CanProve(l->extent == r->extent)) {
-      return false;
-    }
-  }
-  return true;
-}
+/**************** Data Structure ****************/
 
 /*!
  * \brief A heap with a size up-limit. If out-growth happens, it evicted the worst items
