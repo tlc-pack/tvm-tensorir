@@ -127,6 +127,12 @@ TVM_DLL SearchRule MultiLevelTilingAndFusion(String structure, bool must_cache_r
                                              Optional<Array<String>> tile_marks);
 
 /*!
+ * \brief A rule that randomly select a compute-at location for a free block
+ * \return The rule created
+ */
+TVM_DLL SearchRule RandomComputeLocation();
+
+/*!
  * \brief A rule that parallelizes the outer loops
  * \return The rule created
  */
