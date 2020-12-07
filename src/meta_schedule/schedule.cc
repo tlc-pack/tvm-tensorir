@@ -716,11 +716,10 @@ void ScheduleNode::MarkLoop(const Array<LoopRV>& loops, const String& ann_key,
                                             last_n.value_or(Integer(0))));
 }
 
-void ScheduleNode::MarkBlockType(const BlockRV& block, const String& ann_key,
-                                 const String& ann_val) {
+void ScheduleNode::MarkBlock(const BlockRV& block, const String& ann_key, const String& ann_val) {
   AddAnn(this->sch, this->Eval(block), ann_key, ann_val);
   // Put the instruction in the trace
-  this->trace.push_back(MarkBlockTypeAttrs::Make(block, ann_key, ann_val));
+  this->trace.push_back(MarkBlockAttrs::Make(block, ann_key, ann_val));
 }
 
 LoopRV ScheduleNode::Fuse(const Array<LoopRV>& loops) {
@@ -1169,11 +1168,11 @@ struct Internal {
     sch->MarkLoop(loops, ann_key, ann_val, first_n, last_n);
   }
   /*!
-   * \brief FFI function, corresponds to ScheduleNode::MarkBlockType
-   * \sa ScheduleNode::MarkBlockType
+   * \brief FFI function, corresponds to ScheduleNode::MarkBlock
+   * \sa ScheduleNode::MarkBlock
    */
-  static void MarkBlockType(Schedule sch, BlockRV block, String ann_key, String ann_val) {
-    sch->MarkBlockType(block, ann_key, ann_val);
+  static void MarkBlock(Schedule sch, BlockRV block, String ann_key, String ann_val) {
+    sch->MarkBlock(block, ann_key, ann_val);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Fuse
@@ -1295,7 +1294,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetWriteBuffers")
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetRootBlocks").set_body_typed(Internal::GetRootBlocks);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetLeafBlocks").set_body_typed(Internal::GetLeafBlocks);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkLoop").set_body_typed(Internal::MarkLoop);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkBlockType").set_body_typed(Internal::MarkBlockType);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkBlock").set_body_typed(Internal::MarkBlock);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleFuse").set_body_typed(Internal::Fuse);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSplit").set_body_typed(Internal::Split);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReorder").set_body_typed(Internal::Reorder);

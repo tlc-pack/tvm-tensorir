@@ -487,7 +487,7 @@ def test_meta_schedule_mark_loop():
     _check_serialization(sch, func=matmul)
 
 
-def test_meta_schedule_mark_block_type():
+def test_meta_schedule_mark_block():
     def check_annotation(sch, block):
         block = sch.evaluate(block).stmt
         assert len(block.annotations) == 1
@@ -497,7 +497,7 @@ def test_meta_schedule_mark_block_type():
 
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    sch.mark_block_type(block, "block_type", "lazy_tensorize")
+    sch.mark_block(block, "block_type", "lazy_tensorize")
     check_annotation(sch, block)
     _check_serialization(sch, func=matmul)
 
@@ -680,7 +680,7 @@ if __name__ == "__main__":
     test_meta_schedule_get_root_blocks()
     test_meta_schedule_get_leaf_blocks()
     test_meta_schedule_mark_loop()
-    test_meta_schedule_mark_block_type()
+    test_meta_schedule_mark_block()
     test_meta_schedule_fuse()
     test_meta_schedule_split()
     test_meta_schedule_reorder()

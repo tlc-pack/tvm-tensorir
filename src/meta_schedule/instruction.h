@@ -496,7 +496,7 @@ struct MarkLoopAttrs : public InstAttrsNode {
                                       "MarkLoop");
 };
 
-struct MarkBlockTypeAttrs : public InstAttrsNode {
+struct MarkBlockAttrs : public InstAttrsNode {
   /*! \brief The loop annotation key */
   String ann_key;
   /*! \brief The loop annotation value */
@@ -516,9 +516,9 @@ struct MarkBlockTypeAttrs : public InstAttrsNode {
    */
   static Instruction Make(const BlockRV& block, const String& ann_key, const String& ann_val);
 
-  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(MarkBlockTypeAttrs,                        //
-                                      "meta_schedule.attrs.MarkBlockTypeAttrs",  //
-                                      "MarkBlockType");
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(MarkBlockAttrs,                        //
+                                      "meta_schedule.attrs.MarkBlockAttrs",  //
+                                      "MarkBlock");
 };
 
 struct FuseAttrs : public InstAttrsNode {

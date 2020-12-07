@@ -428,7 +428,7 @@ class Schedule(Object):
             self, loops, ann_key, ann_val, first_n, last_n
         )
 
-    def mark_block_type(self, block: BlockRV, ann_key: str, ann_val: str) -> None:
+    def mark_block(self, block: BlockRV, ann_key: str, ann_val: str) -> None:
         """Mark a range of loops with the specific mark
 
         Parameters
@@ -440,7 +440,7 @@ class Schedule(Object):
         ann_val : str
             The annotation value
         """
-        _ffi_api.ScheduleMarkBlockType(self, block, ann_key, ann_val)  # pylint: disable=no-member
+        _ffi_api.ScheduleMarkBlock(self, block, ann_key, ann_val)  # pylint: disable=no-member
 
     def fuse(self, loops: List[LoopRV]):
         """Fuse the loops

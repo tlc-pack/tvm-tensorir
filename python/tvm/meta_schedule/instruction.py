@@ -175,8 +175,8 @@ class MarkLoopAttrs(InstAttrs):
     """Attrs of the instruction that marks specific loops"""
 
 
-@register_object("meta_schedule.attrs.MarkBlockTypeAttrs")
-class MarkBlockTypeAttrs(InstAttrs):
+@register_object("meta_schedule.attrs.MarkBlockAttrs")
+class MarkBlockAttrs(InstAttrs):
     """Attrs of the instruction that marks a specific block"""
 
 

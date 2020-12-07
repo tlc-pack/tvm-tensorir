@@ -101,7 +101,7 @@ Array<ObjectRef> Instruction::ImportToSchedule(ScheduleNode* sch, const Array<Ob
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetRootBlocksAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetLeafBlocksAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(MarkLoopAttrs),
-          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(MarkBlockTypeAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(MarkBlockAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(FuseAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SplitAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(ReorderAttrs),
@@ -341,9 +341,9 @@ Instruction MarkLoopAttrs::Make(const Array<LoopRV>& loops, const String& ann_ke
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction MarkBlockTypeAttrs::Make(const BlockRV& block, const String& ann_key,
-                                     const String& ann_val) {
-  ObjectPtr<MarkBlockTypeAttrs> n = make_object<MarkBlockTypeAttrs>();
+Instruction MarkBlockAttrs::Make(const BlockRV& block, const String& ann_key,
+                                 const String& ann_val) {
+  ObjectPtr<MarkBlockAttrs> n = make_object<MarkBlockAttrs>();
   n->ann_key = ann_key;
   n->ann_val = ann_val;
   return Instruction(/*inputs=*/{block},
@@ -551,12 +551,11 @@ Array<ObjectRef> MarkLoopAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<O
   return {};
 }
 
-Array<ObjectRef> MarkBlockTypeAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> MarkBlockAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                                 const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
-  sch->MarkBlockType(block, ann_key, ann_val);
+  sch->MarkBlock(block, ann_key, ann_val);
   return {};
 }
 
@@ -773,8 +772,8 @@ void MarkLoopAttrs::Export(Array<ObjectRef>* record,
   record->push_back(Array<ObjectRef>{ann_key, ann_val});
 }
 
-void MarkBlockTypeAttrs::Export(Array<ObjectRef>* record,
-                                const Optional<Array<ObjectRef>>& decision) const {
+void MarkBlockAttrs::Export(Array<ObjectRef>* record,
+                            const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
   record->push_back(Array<ObjectRef>{ann_key, ann_val});
 }
@@ -884,11 +883,11 @@ InstAttrs MarkLoopAttrs::Import(const Array<ObjectRef>& record) {
   return InstAttrs(std::move(n));
 }
 
-InstAttrs MarkBlockTypeAttrs::Import(const Array<ObjectRef>& record) {
+InstAttrs MarkBlockAttrs::Import(const Array<ObjectRef>& record) {
   CHECK_EQ(record.size(), 4);
   Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
   CHECK_EQ(from.size(), 2);
-  ObjectPtr<MarkBlockTypeAttrs> n = make_object<MarkBlockTypeAttrs>();
+  ObjectPtr<MarkBlockAttrs> n = make_object<MarkBlockAttrs>();
   n->ann_key = Downcast<String>(from[0]);
   n->ann_val = Downcast<String>(from[1]);
   return InstAttrs(std::move(n));
@@ -984,7 +983,7 @@ TVM_REGISTER_NODE_TYPE(GetWriteBuffersAttrs);
 TVM_REGISTER_NODE_TYPE(GetRootBlocksAttrs);
 TVM_REGISTER_NODE_TYPE(GetLeafBlocksAttrs);
 TVM_REGISTER_NODE_TYPE(MarkLoopAttrs);
-TVM_REGISTER_NODE_TYPE(MarkBlockTypeAttrs);
+TVM_REGISTER_NODE_TYPE(MarkBlockAttrs);
 TVM_REGISTER_NODE_TYPE(FuseAttrs);
 TVM_REGISTER_NODE_TYPE(SplitAttrs);
 TVM_REGISTER_NODE_TYPE(ReorderAttrs);
