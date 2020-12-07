@@ -141,6 +141,7 @@ class Schedule(Object):
         n_splits: int,
         loop: LoopRV,
         max_innermost_factor: int = 16,
+        decision: Optional[List[int]] = None,
     ) -> List[ExprRV]:
         """Split a loop by the given tiling factors
 
@@ -159,7 +160,7 @@ class Schedule(Object):
             The result of sampling
         """
         return _ffi_api.ScheduleSamplePerfectTile(  # pylint: disable=no-member
-            self, n_splits, loop, max_innermost_factor
+            self, n_splits, loop, max_innermost_factor, decision
         )
 
     def sample_tile_factor(
@@ -167,6 +168,7 @@ class Schedule(Object):
         n_splits: int,
         loop: LoopRV,
         where: List[int],
+        decision: Optional[List[int]] = None,
     ) -> List[ExprRV]:
         """Split a loop by the given tiling factors
 
@@ -185,7 +187,7 @@ class Schedule(Object):
             The result of sampling
         """
         return _ffi_api.ScheduleSampleTileFactor(  # pylint: disable=no-member
-            self, n_splits, loop, where
+            self, n_splits, loop, where, decision
         )
 
     def sample_fusible_loops(
@@ -196,6 +198,7 @@ class Schedule(Object):
         include_overflow_loop: bool = True,
         order: str = "outer_to_inner",
         mode: str = "max",
+        decision: Optional[int] = None,
     ) -> ExprRV:
         """Sample fusible loops, in the specific order (inner-to-outer or outer-to-inner),
         where their product of extent is limited. The sampling could have two modes: max or rand.
@@ -229,14 +232,17 @@ class Schedule(Object):
             raise ValueError('"order" needs to be one of: "outer_to_inner", "inner_to_order"')
         if mode is None:
             raise ValueError('"mode" needs to be one of: "max", "rand"')
+        if decision is not None:
+            decision = [decision]
         return _ffi_api.ScheduleSampleFusibleLoops(  # pylint: disable=no-member
-            self, loops, loop_types, max_extent, include_overflow_loop, order, mode
+            self, loops, loop_types, max_extent, include_overflow_loop, order, mode, decision
         )
 
     def sample_categorical(
         self,
         candidates: List[int],
         probs: List[float],
+        decision: Optional[int] = None,
     ) -> ExprRV:
         """Sample an integer given the probability distribution
 
@@ -252,8 +258,33 @@ class Schedule(Object):
         result : ExprRV
             A ExprRV, a random variable indicates the sampling result
         """
+        if decision is not None:
+            decision = [decision]
         return _ffi_api.ScheduleSampleCategorical(  # pylint: disable=no-member
-            self, candidates, probs
+            self, candidates, probs, decision
+        )
+
+    def sample_compute_location(
+        self,
+        block: BlockRV,
+        decision: Optional[int] = None,
+    ) -> LoopRV:
+        """Sample a compute-at location from a block
+
+        Parameters
+        ----------
+        block : BlockRV
+            A block to be computed at
+
+        Returns
+        -------
+        result : LoopRV
+            The loop to be computed at
+        """
+        if decision is not None:
+            decision = [decision]
+        return _ffi_api.ScheduleSampleComputeLocation(  # pylint: disable=no-member
+            self, block, decision
         )
 
     ######### Block/Loop Relationship #########
