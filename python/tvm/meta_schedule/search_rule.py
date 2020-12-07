@@ -204,6 +204,17 @@ def multi_level_tiling_and_fusion(
     )
 
 
+def random_compute_location() -> SearchRule:
+    """A rule that randomly select a compute-at location for a free block
+
+    Returns
+    ----------
+    rule: SearchRule
+        The search rule created
+    """
+    return _ffi_api_search_rule.RandomComputeLocation()  # pylint: disable=no-member
+
+
 def mark_parallelize_outer(max_jobs_per_core: int) -> SearchRule:
     """Create a rule that parallelizes the outer loops
 
@@ -251,7 +262,9 @@ def mark_auto_unroll(max_steps: List[int], unroll_explicit: bool) -> SearchRule:
     rule: SearchRule
         The search rule created
     """
-    return _ffi_api_search_rule.MarkAutoUnroll(max_steps, unroll_explicit)  # pylint: disable=no-member
+    return _ffi_api_search_rule.MarkAutoUnroll(  # pylint: disable=no-member
+        max_steps, unroll_explicit
+    )
 
 
 def mark_tensorize(tensor_intrins: List[TensorIntrin]) -> SearchRule:

@@ -55,34 +55,6 @@ TVM_DLL bool IsSubrootBlock(const tir::Schedule& sch, const tir::StmtSRef& block
 TVM_DLL bool IsLeafBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
 
 /*!
- * \brief Annotate the specific loops with the given loop type
- * \param sch The schedule to be mutated
- * \param loop_srefs The loops to be annotated
- * \param ann_key The annotation key
- * \param ann_val The annotation value
- */
-TVM_DLL void AnnotateLoopType(const tir::Schedule& sch, const Array<tir::StmtSRef>& loop_srefs,
-                              const String& ann_key, const String& ann_val);
-
-/*!
- * \brief Annotate the specific block with the given block type
- * \param sch The schedule to be mutated
- * \param block_sref The block to be annotated
- * \param annotation The block annotation
- */
-TVM_DLL void AnnotateBlockType(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
-                               const String& ann_key, const String& ann_val);
-
-/*!
- * \brief Collect the loops annotated with each sub-tree
- * \param sch The schedule to be mutated
- * \param annotation The loop annotation
- * \return Return an array containing each chain of annotated loops
- */
-TVM_DLL Array<Array<tir::StmtSRef>> CollectAnnotatedLoops(const tir::Schedule& sch,
-                                                          const String& annotation);
-
-/*!
  * \brief For each loop var by examing its related block var, find its type in one of the following
  * 1) IterVarType::kDataPar    = 0
  * 2) IterVarType::kCommReduce = 2
@@ -111,14 +83,6 @@ TVM_DLL Array<Integer> GetBlockVarTypes(const tir::Schedule& sch, const tir::Stm
  * \return A boolean indicating if the block is spatial
  */
 TVM_DLL bool IsSpatial(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
-
-/*!
- * \brief Checks if the specific block is a leaf block and its body is a single statement
- * \param sch The TIR schedule class
- * \param block_sref The block to be analyzed
- * \return A boolean indiciating if the block is a leaf block and its body is a single statement
- */
-TVM_DLL bool IsSingleStmtLeaf(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
 
 /*!
  * \brief Checks if a block is output block
