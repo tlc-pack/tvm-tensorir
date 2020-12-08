@@ -880,6 +880,9 @@ void ScheduleNode::Replay(bool follow_decision) {
 
   // Step 2. Re-do all the instructions in the trace, including sampling instructions
   for (const Instruction& old_inst : this->trace) {
+    if (old_inst->inst_attrs->IsInstance<EnterPostProcAttrs>()) {
+      break;
+    }
     const Array<ObjectRef>& old_inputs = old_inst->inputs;
     const Array<ObjectRef>& old_outputs = old_inst->outputs;
     // Step 2.1. Construct new inputs
@@ -910,14 +913,19 @@ void ScheduleNode::Replay(bool follow_decision) {
     TSymbolTable new_sym_tab;
     for (const auto& kv_entry : this->sym_tab) {
       ObjectRef old_var = kv_entry.first;
-      ObjectRef new_var = GetRef<ObjectRef>(var_map.at(old_var.get()));
-      new_sym_tab.Set(old_var, new_sch->sym_tab.at(new_var));
+      if (var_map.count(old_var.get())) {
+        ObjectRef new_var = GetRef<ObjectRef>(var_map.at(old_var.get()));
+        new_sym_tab.Set(old_var, new_sch->sym_tab.at(new_var));
+      }
     }
     this->sym_tab = new_sym_tab;
   }
   // Step 4. Map decisions back
   Map<Instruction, Array<ObjectRef>> decisions;
   for (const Instruction& old_inst : this->trace) {
+    if (old_inst->inst_attrs->IsInstance<EnterPostProcAttrs>()) {
+      break;
+    }
     Instruction new_inst = GetRef<Instruction>(inst_map.at(old_inst.get()));
     if (new_sch->decisions.count(new_inst)) {
       decisions.Set(old_inst, new_sch->decisions.at(new_inst));
