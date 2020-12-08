@@ -546,7 +546,7 @@ class RuleParallelizeVectorizeUnroll {
         LOG(WARNING) << "Warning: Target does not have attribute \"num_cores\", falling back the "
                         "number of CPU cores on the local machine. The inaccuracy in number of "
                         "cores may lead to dramatically inferior performance. Falling back to "
-                        " assuming "
+                        "assuming "
                      << num_cores << " CPU core(s)";
         warned_num_cores_missing = true;
       }
