@@ -147,24 +147,6 @@ class ScheduleNode : public Object {
   Array<tir::Var> SampleTileFactor(int n_splits, const LoopRV& loop, const Array<Integer>& where,
                                    const Optional<Array<ObjectRef>>& decision = NullOpt);
   /*!
-   * \brief Sample fusible loops, in the specific order (inner-to-outer or outer-to-inner), where
-   * their product of extent is limited. The sampling could have two modes: max or rand. If it is
-   * using mode "max", the sampling deterministically choose the maximum number of loops to fuse;
-   * Otherwise, if choose mode "rand", it samples the number of viable choices uniformly and return
-   * a randomly selected number of loops to fuse.
-   * \param loops The loops to be fused
-   * \param loop_types Type of the loop
-   * \param max_extent The maximum extent of loops
-   * \param include_overflow_loop Whether to include the last loop that makes the extent larger then
-   * `max_extent`
-   * \param order The order of fusion, can be inner_to_outer or outer_to_inner
-   * \param mode The mode of the fusion, can be max or rand
-   * \return A ExprRV, a random variable indicates the number of loops that can be potentially fused
-   */
-  tir::Var SampleFusibleLoops(const Array<LoopRV>& loops, const Array<Integer>& loop_types,
-                              int max_extent, bool include_overflow_loop, Order order, Mode mode,
-                              const Optional<Array<ObjectRef>>& decision = NullOpt);
-  /*!
    * \brief Sample an integer in [min_inclusive, max_exclusive)
    * \param min_inclusive The left boundary, inclusive
    * \param max_exclusive The right boundary, exclusive

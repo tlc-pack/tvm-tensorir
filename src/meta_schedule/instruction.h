@@ -245,48 +245,6 @@ struct SampleTileFactorAttrs : public InstAttrsNode {
                                       "SampleTileFactor");
 };
 
-/*! \brief Attrs of the instruction to sample fusible loops */
-struct SampleFusibleLoopsAttrs : public InstAttrsNode {
-  /*! \brief Type of the loop */
-  Array<Integer> loop_types;
-  /*! \brief The maximum extent of loops */
-  int max_extent;
-  /*! \brief Whether to include the last loop that makes the extent larger then `max_extent`*/
-  bool include_overflow_loop;
-  /*! \brief The order of fusion, can be 'outer_to_inner' (0) or 'inner_to_outer' (1) */
-  int order;
-  /*! \brief The mode of the fusion, can be 'max' (0) or 'rand' (1) */
-  int mode;
-
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("loop_types", &loop_types);
-    v->Visit("max_extent", &max_extent);
-    v->Visit("include_overflow_loop", &include_overflow_loop);
-    v->Visit("order", &order);
-    v->Visit("mode", &mode);
-  }
-
-  /*!
-   * \brief Create instruction given the inputs and outputs
-   * \param loops The loops to be fused
-   * \param loop_types Type of the loop
-   * \param max_extent The maximum extent of loops
-   * \param include_overflow_loop Whether to include the last loop that makes the extent larger then
-   * `max_extent`
-   * \param order The order of fusion, can be 'outer_to_inner' (0) or 'inner_to_outer' (1)
-   * \param mode The mode of the fusion, can be 'max' (0) or 'rand' (1)
-   * \param output The output of the instruction
-   * \return The instruction created
-   */
-  static Instruction Make(const Array<LoopRV>& loops, const Array<Integer>& loop_types,
-                          int max_extent, bool include_overflow_loop, int order, int mode,
-                          const tir::Var& output);
-
-  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SampleFusibleLoopsAttrs,
-                                      "meta_schedule.attrs.SampleFusibleLoopsAttrs",
-                                      "SampleFusibleLoops");
-};
-
 /*! \brief Attrs of the instruction to sample from a categorical distribution */
 struct SampleIntAttrs : public InstAttrsNode {
   void VisitAttrs(tvm::AttrVisitor* v) {}

@@ -89,7 +89,6 @@ Array<ObjectRef> Instruction::ImportToSchedule(ScheduleNode* sch, const Array<Ob
       vtable = {
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SamplePerfectTileAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleTileFactorAttrs),
-          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleFusibleLoopsAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleIntAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleCategoricalAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleComputeLocationAttrs),
@@ -179,21 +178,6 @@ Instruction SampleTileFactorAttrs::Make(int n_splits, const LoopRV& loop,
   n->where = where;
   return Instruction(/*inputs=*/{loop},
                      /*outputs=*/{outputs.begin(), outputs.end()},
-                     /*attrs=*/InstAttrs(std::move(n)));
-}
-
-Instruction SampleFusibleLoopsAttrs::Make(const Array<LoopRV>& loops,
-                                          const Array<Integer>& loop_types, int max_extent,
-                                          bool include_overflow_loop, int order, int mode,
-                                          const tir::Var& output) {
-  ObjectPtr<SampleFusibleLoopsAttrs> n = make_object<SampleFusibleLoopsAttrs>();
-  n->loop_types = loop_types;
-  n->max_extent = max_extent;
-  n->include_overflow_loop = include_overflow_loop;
-  n->order = order;
-  n->mode = mode;
-  return Instruction(/*inputs=*/{loops.begin(), loops.end()},
-                     /*outputs=*/{output},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
@@ -445,21 +429,6 @@ Array<ObjectRef> SampleTileFactorAttrs::ApplyToSchedule(
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   return AdaptOutputs(sch->SampleTileFactor(n_splits, loop, where, decision));
-}
-
-Array<ObjectRef> SampleFusibleLoopsAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
-  Array<LoopRV> loops;
-  loops.reserve(inputs.size());
-  for (int i = 0, n = inputs.size(); i < n; ++i) {
-    TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[i]);
-    loops.push_back(loop);
-  }
-  ScheduleNode::Order the_order = static_cast<ScheduleNode::Order>(this->order);
-  ScheduleNode::Mode the_mode = static_cast<ScheduleNode::Mode>(this->mode);
-  return {sch->SampleFusibleLoops(loops, loop_types, max_extent, include_overflow_loop, the_order,
-                                  the_mode, decision)};
 }
 
 Array<ObjectRef> SampleIntAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
@@ -752,20 +721,6 @@ void SampleTileFactorAttrs::Export(Array<ObjectRef>* record,
   }
 }
 
-void SampleFusibleLoopsAttrs::Export(Array<ObjectRef>* record,
-                                     const Optional<Array<ObjectRef>>& decision) const {
-  record->push_back(Array<ObjectRef>{
-      loop_types,                      //
-      Integer(max_extent),             //
-      Integer(include_overflow_loop),  //
-      Integer(order),                  //
-      Integer(mode),                   //
-  });
-  if (decision.defined()) {
-    record->push_back(decision.value());
-  }
-}
-
 void SampleIntAttrs::Export(Array<ObjectRef>* record,
                             const Optional<Array<ObjectRef>>& decision) const {
   record->push_back(Array<ObjectRef>{});
@@ -855,20 +810,6 @@ InstAttrs SampleTileFactorAttrs::Import(const Array<ObjectRef>& record) {
   ObjectPtr<SampleTileFactorAttrs> n = make_object<SampleTileFactorAttrs>();
   n->n_splits = Downcast<Integer>(from[0]);
   n->where = Downcast<Array<Integer>>(from[1]);
-  return InstAttrs(std::move(n));
-}
-
-InstAttrs SampleFusibleLoopsAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_GE(record.size(), 4);
-  CHECK_LE(record.size(), 5);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 5);
-  ObjectPtr<SampleFusibleLoopsAttrs> n = make_object<SampleFusibleLoopsAttrs>();
-  n->loop_types = Downcast<Array<Integer>>(from[0]);
-  n->max_extent = Downcast<Integer>(from[1]);
-  n->include_overflow_loop = Downcast<Integer>(from[2]);
-  n->order = Downcast<Integer>(from[3]);
-  n->mode = Downcast<Integer>(from[4]);
   return InstAttrs(std::move(n));
 }
 
@@ -1002,7 +943,6 @@ TVM_REGISTER_OBJECT_TYPE(InstAttrsNode);
 TVM_REGISTER_NODE_TYPE(InstructionNode);
 TVM_REGISTER_NODE_TYPE(SamplePerfectTileAttrs);
 TVM_REGISTER_NODE_TYPE(SampleTileFactorAttrs);
-TVM_REGISTER_NODE_TYPE(SampleFusibleLoopsAttrs);
 TVM_REGISTER_NODE_TYPE(SampleIntAttrs);
 TVM_REGISTER_NODE_TYPE(SampleCategoricalAttrs);
 TVM_REGISTER_NODE_TYPE(SampleComputeLocationAttrs);

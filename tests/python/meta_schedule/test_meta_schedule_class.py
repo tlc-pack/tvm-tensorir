@@ -329,44 +329,6 @@ def test_meta_schedule_sample_int():
     assert 11 in counter
 
 
-def test_meta_schedule_sample_fusible_loops():
-    sch = ms.Schedule(func=matmul)
-    loops = sch.get_axes(block=sch.get_block("matmul"))
-    result = sch.sample_fusible_loops(
-        loops=loops,
-        loop_types=[0, 0, 0],
-        max_extent=1024,
-        include_overflow_loop=True,
-        order="outer_to_inner",
-    )
-    assert sch.evaluate(result) == 2
-    result = sch.sample_fusible_loops(
-        loops=loops,
-        loop_types=[0, 0, 0],
-        max_extent=1023,
-        include_overflow_loop=True,
-        order="outer_to_inner",
-    )
-    assert sch.evaluate(result) == 1
-    result = sch.sample_fusible_loops(
-        loops=loops,
-        loop_types=[0, 0, 0],
-        max_extent=1024,
-        include_overflow_loop=True,
-        order="inner_to_outer",
-    )
-    assert sch.evaluate(result) == 2
-    result = sch.sample_fusible_loops(
-        loops=loops,
-        loop_types=[0, 0, 0],
-        max_extent=1023,
-        include_overflow_loop=True,
-        order="inner_to_outer",
-    )
-    assert sch.evaluate(result) == 1
-    _check_serialization(sch, func=matmul)
-
-
 def test_meta_schedule_sample_categorical():
     n = 1000
     sch = ms.Schedule(func=matmul)
@@ -706,7 +668,6 @@ if __name__ == "__main__":
     test_meta_schedule_sample_tile_factor()
     test_meta_schedule_sample_perfect_tile()
     test_meta_schedule_sample_int()
-    test_meta_schedule_sample_fusible_loops()
     test_meta_schedule_sample_categorical()
     test_meta_schedule_sample_compute_location()
     test_meta_schedule_get_producers()

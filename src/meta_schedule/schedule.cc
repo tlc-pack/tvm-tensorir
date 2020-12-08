@@ -377,89 +377,6 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
   return outputs;
 }
 
-tir::Var ScheduleNode::SampleFusibleLoops(const Array<LoopRV>& loops,
-                                          const Array<Integer>& loop_types, int max_extent,
-                                          bool include_overflow_loop, Order order, Mode mode,
-                                          const Optional<Array<ObjectRef>>& decision) {
-  CHECK_EQ(loops.size(), loop_types.size())
-      << "ValueError: 'loops' and 'loop_types' must have equal number of elements";
-  int n_loops = loops.size();
-  int i_start, i_end, i_delta;
-  if (order == Order::outer_to_inner) {
-    // 0 to n_loops - 1, step = 1
-    i_start = 0;
-    i_end = n_loops;
-    i_delta = 1;
-  } else if (order == Order::inner_to_order) {
-    // n_loops - 1 to 0, step = -1
-    i_start = n_loops - 1;
-    i_end = -1;
-    i_delta = -1;
-  } else {
-    LOG(FATAL) << "Not reachable";
-    throw;
-  }
-  int n_fusible = 0;
-  int64_t prod_extent = 1;
-  for (int i = i_start; i != i_end; i += i_delta) {
-    // Get the current loop
-    const LoopRV& loop_rv = loops[i];
-    tir::StmtSRef loop_sref = Eval(loop_rv);
-    int loop_type = loop_types[i];
-    const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
-    CHECK(loop) << "TypeError: Expects Loop, but gets: " << loop_sref->stmt->GetTypeKey();
-    // Check if the loop has more than one children
-    bool has_multi_children = loop->body->IsInstance<tir::SeqStmtNode>();
-    // If scanning from inner to outer, then we cannot fuse a loop who has multiple children
-    // But if scanning from outer to inner, we can actually fuse it
-    if (has_multi_children && order == Order::inner_to_order) {
-      break;
-    }
-    // Loop cannot have any annotation and must be data parallel
-    if (!loop->annotations.empty() || loop_type != tir::IterVarType::kDataPar) {
-      break;
-    }
-    // then this loop can be fused
-    const auto* extent = loop->extent.as<IntImmNode>();
-    CHECK(extent) << "TypeError: Loop extent is not constant integer: " << loop->extent
-                  << ", the IR is: " << Repr(this->sch->func);
-    if (prod_extent * extent->value > max_extent) {
-      if (include_overflow_loop) {
-        prod_extent *= extent->value;
-        ++n_fusible;
-      }
-      break;
-    } else {
-      prod_extent *= extent->value;
-      ++n_fusible;
-    }
-    // If scanning from outer to inner, then we cannot fuse the next loop if the current loop has
-    // multiple children
-    if (has_multi_children && order == Order::outer_to_inner) {
-      break;
-    }
-  }
-  if (prod_extent == 1) {
-    n_fusible = 0;
-  }
-  if (mode == Mode::rand && n_fusible != 0) {
-    n_fusible = decision.defined()                               //
-                    ? GetOnlyElement<Integer>(decision.value())  //
-                    : sampler.SampleInt(0, n_fusible + 1);
-  }
-  // Create the output random variable
-  tir::Var output("n_fusible");
-  // Update the symbol table
-  this->sym_tab.Set(output, Integer(n_fusible));
-  // Put the instruction in the trace
-  this->trace.push_back(
-      SampleFusibleLoopsAttrs::Make(loops, loop_types, max_extent, include_overflow_loop,
-                                    static_cast<int>(order), static_cast<int>(mode), output));
-  // Put the sampling decision in the decision table
-  this->decisions.Set(this->trace.back(), {Integer(n_fusible)});
-  return output;
-}
-
 tir::Var ScheduleNode::SampleInt(const PrimExpr& min_inclusive, const PrimExpr& max_exclusive,
                                  const Optional<Array<ObjectRef>>& decision) {
   int num_min_inclusive = this->Eval(min_inclusive);
@@ -1088,18 +1005,6 @@ struct Internal {
     return sch->SampleInt(min_inclusive, max_exclusive, decision);
   }
   /*!
-   * \brief FFI function, corresponds to ScheduleNode::SampleFusibleLoops
-   * \sa ScheduleNode::SampleFusibleLoops
-   */
-  static tir::Var SampleFusibleLoops(Schedule sch, Array<LoopRV> loops, Array<Integer> loop_types,
-                                     int max_extent, bool include_overflow_loop, int _order,
-                                     int _mode, Optional<Array<ObjectRef>> decision) {
-    ScheduleNode::Order order = static_cast<ScheduleNode::Order>(_order);
-    ScheduleNode::Mode mode = static_cast<ScheduleNode::Mode>(_mode);
-    return sch->SampleFusibleLoops(loops, loop_types, max_extent, include_overflow_loop, order,
-                                   mode, decision);
-  }
-  /*!
    * \brief FFI function, corresponds to ScheduleNode::SampleCategorical
    * \sa ScheduleNode::SampleCategorical
    */
@@ -1293,8 +1198,6 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSamplePerfectTile")
     .set_body_typed(Internal::SamplePerfectTile);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleTileFactor")
     .set_body_typed(Internal::SampleTileFactor);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleFusibleLoops")
-    .set_body_typed(Internal::SampleFusibleLoops);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleInt").set_body_typed(Internal::SampleInt);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSampleCategorical")
     .set_body_typed(Internal::SampleCategorical);

@@ -217,54 +217,6 @@ class Schedule(Object):
             self, min_inclusive, max_exclusive, decision
         )
 
-    def sample_fusible_loops(
-        self,
-        loops: List[LoopRV],
-        loop_types: List[int],
-        max_extent: int,
-        include_overflow_loop: bool = True,
-        order: str = "outer_to_inner",
-        mode: str = "max",
-        decision: Optional[int] = None,
-    ) -> ExprRV:
-        """Sample fusible loops, in the specific order (inner-to-outer or outer-to-inner),
-        where their product of extent is limited. The sampling could have two modes: max or rand.
-        If it is using mode "max", the sampling deterministically choose the maximum number of
-        loops to fuse; Otherwise, if choose mode "rand", it samples the number of viable choices
-        uniformly and return a randomly selected number of loops to fuse.
-
-        Parameters
-        ----------
-        loops : List[LoopRV]
-            The loops to be fused
-        loop_types : List[int]
-            Type of the loop
-        max_extent : int
-            The maximum extent of loops
-        include_overflow_loop : bool
-            Whether to include the last loop that makes the extent larger then `max_extent`
-        order : str
-            The order of fusion, can be `inner_to_outer` or `outer_to_inner`
-        mode : str
-            The mode of the fusion, can be `max` or `rand`
-
-        Returns
-        -------
-        n_fusible : ExprRV
-            A ExprRV, a random variable indicates the number of loops that can be potentially fused
-        """
-        order = {"outer_to_inner": 0, "inner_to_outer": 1}.get(order, None)
-        mode = {"max": 0, "rand": 1}.get(mode, None)
-        if order is None:
-            raise ValueError('"order" needs to be one of: "outer_to_inner", "inner_to_order"')
-        if mode is None:
-            raise ValueError('"mode" needs to be one of: "max", "rand"')
-        if decision is not None:
-            decision = [decision]
-        return _ffi_api.ScheduleSampleFusibleLoops(  # pylint: disable=no-member
-            self, loops, loop_types, max_extent, include_overflow_loop, order, mode, decision
-        )
-
     def sample_categorical(
         self,
         candidates: List[int],

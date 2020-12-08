@@ -98,17 +98,6 @@ class SampleTileFactorAttrs(InstAttrs):
     where: List[int]
 
 
-@register_object("meta_schedule.attrs.SampleFusibleLoopsAttrs")
-class SampleFusibleLoopsAttrs(InstAttrs):
-    """Attrs of the instruction to sample fusible loops"""
-
-    loop_types: List[int]
-    max_extent: int
-    include_overflow_loop: bool
-    order: int
-    mode: int
-
-
 @register_object("meta_schedule.attrs.SampleIntAttrs")
 class SampleIntAttrs(InstAttrs):
     """Attrs of the instruction to sample an integer in [min_inclusive, max_exclusive)"""
