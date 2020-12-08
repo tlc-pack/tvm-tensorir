@@ -500,15 +500,12 @@ struct MarkLoopAttrs : public InstAttrsNode {
 
   /*!
    * \brief Create instruction given the inputs and outputs
-   * \param loops The loops to be mark
+   * \param loops The loop to be mark
    * \param ann_key The loop annotation key
    * \param ann_val The loop annotation value
-   * \param first_n To mark the first n loops
-   * \param last_n To mark the last n loops
    * \return The instruction created
    */
-  static Instruction Make(const Array<LoopRV>& loops, const String& ann_key, const String& ann_val,
-                          const PrimExpr& first, const PrimExpr& last_n);
+  static Instruction Make(const LoopRV& loop, const String& ann_key, const PrimExpr& ann_val);
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(MarkLoopAttrs,                        //
                                       "meta_schedule.attrs.MarkLoopAttrs",  //

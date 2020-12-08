@@ -336,15 +336,17 @@ Instruction ReverseComputeInlineAttrs::Make(const BlockRV& block) {
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction MarkLoopAttrs::Make(const Array<LoopRV>& loops, const String& ann_key,
-                                const String& ann_val, const PrimExpr& first_n,
-                                const PrimExpr& last_n) {
+Instruction MarkLoopAttrs::Make(const LoopRV& loop, const String& ann_key,
+                                const PrimExpr& ann_val) {
+  Array<ObjectRef> inputs{loop};
   ObjectPtr<MarkLoopAttrs> n = make_object<MarkLoopAttrs>();
   n->ann_key = ann_key;
-  n->ann_val = ann_val;
-  Array<ObjectRef> inputs{loops.begin(), loops.end()};
-  inputs.push_back(first_n);
-  inputs.push_back(last_n);
+  if (const auto* str_imm = ann_val.as<tir::StringImmNode>()) {
+    n->ann_val = str_imm->value;
+  } else if (const auto* int_imm = ann_val.as<tir::IntImmNode>()) {
+    n->ann_val = "";
+    inputs.push_back(Integer(int_imm->value));
+  }
   return Instruction(/*inputs=*/inputs,
                      /*outputs=*/{},
                      /*attrs=*/InstAttrs(std::move(n)));
@@ -557,16 +559,16 @@ Array<ObjectRef> GetLeafBlocksAttrs::ApplyToSchedule(
 Array<ObjectRef> MarkLoopAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
                                                 const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
-  int n_loops = static_cast<int>(inputs.size()) - 2;
-  Array<LoopRV> loops;
-  loops.reserve(n_loops);
-  for (int i = 0; i < n_loops; ++i) {
-    TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[i]);
-    loops.push_back(loop);
+  CHECK(inputs.size() == 1 || inputs.size() == 2);
+  TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
+  if (ann_val == "") {
+    CHECK_EQ(inputs.size(), 2);
+    TVM_META_SCHEDULE_INST_CAST(PrimExpr, val, inputs[1]);
+    sch->MarkLoop(loop, ann_key, val);
+  } else {
+    CHECK_EQ(inputs.size(), 1);
+    sch->MarkLoop(loop, ann_key, tir::StringImm(ann_val));
   }
-  TVM_META_SCHEDULE_INST_CAST(PrimExpr, first_n, inputs[n_loops]);
-  TVM_META_SCHEDULE_INST_CAST(PrimExpr, last_n, inputs[n_loops + 1]);
-  sch->MarkLoop(loops, ann_key, ann_val, first_n, last_n);
   return {};
 }
 

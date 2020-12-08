@@ -495,13 +495,9 @@ def test_meta_schedule_mark_loop():
 
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    axes = sch.get_axes(block)
-    sch.mark_loop(axes, "ann_key", "ann_val", 3, None)
-    block = sch.get_block("matmul")
-    i, j, k = sch.get_axes(block)
+    i, _, _ = sch.get_axes(block)
+    sch.mark_loop(i, "ann_key", "ann_val")
     check_annotation(sch, i)
-    check_annotation(sch, j)
-    check_annotation(sch, k)
     _check_serialization(sch, func=matmul)
 
 

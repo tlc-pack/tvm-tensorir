@@ -705,43 +705,13 @@ Array<BlockRV> ScheduleNode::GetLeafBlocks() {
 
 /**************** Schedule Primitives ****************/
 
-void ScheduleNode::MarkLoop(const Array<LoopRV>& loops, const String& ann_key,
-                            const String& ann_val, const Optional<PrimExpr>& first_n,
-                            const Optional<PrimExpr>& last_n) {
-  Array<tir::StmtSRef> loop_srefs;
-  loop_srefs.reserve(loops.size());
-  for (const LoopRV& loop_rv : loops) {
-    loop_srefs.push_back(Eval(loop_rv));
-  }
-  if (first_n.defined()) {
-    int n = Eval(first_n.value());
-    int st = 0;
-    int ed = n;
-    for (int i = st; i < ed; ++i) {
-      AddAnn(this->sch, loop_srefs[i], ann_key, tir::StringImm(ann_val));
-    }
-  }
-  if (last_n.defined()) {
-    int n = Eval(last_n.value());
-    int ed = static_cast<int>(loops.size());
-    int st = ed - n;
-    for (int i = st; i < ed; ++i) {
-      AddAnn(this->sch, loop_srefs[i], ann_key, tir::StringImm(ann_val));
-    }
-  }
-  // Put the instruction in the trace
-  this->trace.push_back(MarkLoopAttrs::Make(loops, ann_key, ann_val, first_n.value_or(Integer(0)),
-                                            last_n.value_or(Integer(0))));
-}
-
 void ScheduleNode::MarkLoop(const LoopRV& loop, const String& ann_key, const PrimExpr& ann_val) {
   CHECK(ann_val->IsInstance<tir::StringImmNode>() || ann_val->IsInstance<IntImmNode>())
       << "TypeError: Only StringImm and IntImm are supported for now, but gets: "
       << ann_val->GetTypeKey();
   AddAnn(this->sch, this->Eval(loop), ann_key, ann_val);
-  // TODO
   // Put the instruction in the trace
-  // this->trace.push_back(MarkBlockAttrs::Make(block, ann_key, ann_val));
+  this->trace.push_back(MarkLoopAttrs::Make(loop, ann_key, ann_val));
 }
 
 void ScheduleNode::MarkBlock(const BlockRV& block, const String& ann_key, const PrimExpr& ann_val) {
@@ -1199,9 +1169,12 @@ struct Internal {
    * \brief FFI function, corresponds to ScheduleNode::MarkLoop
    * \sa ScheduleNode::MarkLoop
    */
-  static void MarkLoop(Schedule sch, Array<LoopRV> loops, String ann_key, String ann_val,
-                       Optional<PrimExpr> first_n, Optional<PrimExpr> last_n) {
-    sch->MarkLoop(loops, ann_key, ann_val, first_n, last_n);
+  static void MarkLoop(Schedule sch, LoopRV loop, String ann_key, ObjectRef ann_val) {
+    if (const auto* str_obj = ann_val.as<StringObj>()) {
+      sch->MarkLoop(loop, ann_key, tir::StringImm(GetRef<String>(str_obj)));
+    } else {
+      sch->MarkLoop(loop, ann_key, Downcast<PrimExpr>(ann_val));
+    }
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::MarkBlock

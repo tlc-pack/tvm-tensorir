@@ -20,6 +20,7 @@ from typing import List, Optional, Union
 from tvm import ir, tir
 from tvm._ffi import register_object
 from tvm.runtime import Object
+from tvm.runtime.container import String
 
 from . import _ffi_api
 from .instruction import RAND_VAR_TYPE, BlockRV, BufferRV, ExprRV, Instruction, LoopRV
@@ -432,8 +433,6 @@ class Schedule(Object):
         loops: List[LoopRV],
         ann_key: str,
         ann_val: str,
-        first_n: Optional[ir.PrimExpr],
-        last_n: Optional[ir.PrimExpr],
     ) -> None:
         """Mark a range of loops with the specific mark
 
@@ -445,14 +444,11 @@ class Schedule(Object):
             The annotation key
         ann_val : str
             The annotation value
-        first_n : Optional[ir.PrimExpr]
-            The first n loops to be marked
-        last_n : Optional[ir.PrimExpr]
-            The last n loops to be marked
         """
-        _ffi_api.ScheduleMarkLoop(  # pylint: disable=no-member
-            self, loops, ann_key, ann_val, first_n, last_n
-        )
+        # TODO(@junrushao1994): it is a workaround
+        if isinstance(ann_val, str):
+            ann_val = String(ann_val)
+        _ffi_api.ScheduleMarkLoop(self, loops, ann_key, ann_val)  # pylint: disable=no-member
 
     def mark_block(self, block: BlockRV, ann_key: str, ann_val: ExprRV) -> None:
         """Mark a block

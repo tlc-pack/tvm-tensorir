@@ -237,16 +237,6 @@ class ScheduleNode : public Object {
   /**************** Scheduling Primitives ****************/
   /*!
    * \brief Mark a loop
-   * \param loops The loops to be marked
-   * \param ann_key The annotation key
-   * \param ann_val The annotation value
-   * \param first_n The first n loops to be marked
-   * \param last_n The last n loops to be marked
-   */
-  void MarkLoop(const Array<LoopRV>& loops, const String& ann_key, const String& ann_val,
-                const Optional<PrimExpr>& first_n, const Optional<PrimExpr>& last_n);
-  /*!
-   * \brief Mark a loop
    * \param loop The loop to be marked
    * \param ann_key The annotation key
    * \param ann_val The annotation value

@@ -297,12 +297,11 @@ class RuleMultiLevelTiling {
         Array<LoopRV> tiles = sch->Split(fused, {factors[0], factors[1]});
         CHECK_EQ(tiles.size(), 2);
         // Vectorize the inner loop
-        sch->MarkLoop({tiles[0]}, tir::attr::loop_type, "lazy_cooperative_fetch", Integer(1),
-                      NullOpt);
-        sch->MarkLoop({tiles[1]}, tir::attr::loop_type, "lazy_vectorize", Integer(1), NullOpt);
+        sch->MarkLoop(tiles[0], tir::attr::loop_type, tir::StringImm("lazy_cooperative_fetch"));
+        sch->MarkLoop(tiles[1], tir::attr::loop_type, tir::StringImm("lazy_vectorize"));
       } else {
         // cooperative fetch only
-        sch->MarkLoop({fused}, tir::attr::loop_type, "lazy_cooperative_fetch", Integer(1), NullOpt);
+        sch->MarkLoop(fused, tir::attr::loop_type, tir::StringImm("lazy_cooperative_fetch"));
       }
     }
   }
@@ -372,8 +371,9 @@ class RuleMultiLevelTiling {
     Array<Array<LoopRV>>& tiles = state->tiles;
     int n = std::min(tile_marks.size(), tiles.size());
     for (int i = 0; i < n; ++i) {
-      sch->MarkLoop(tiles[i], tir::attr::loop_type, tile_marks[i], Integer(tiles[i].size()),
-                    NullOpt);
+      for (const LoopRV& loop : tiles[i]) {
+        sch->MarkLoop(loop, tir::attr::loop_type, tir::StringImm(tile_marks[i]));
+      }
     }
   }
 
