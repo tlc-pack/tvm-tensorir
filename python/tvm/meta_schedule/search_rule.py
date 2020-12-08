@@ -217,7 +217,6 @@ def random_compute_location() -> SearchRule:
 
 def parallelize_vectorize_unroll(
     max_jobs_per_core: int = 16,
-    maximize_parallel: bool = True,
     max_vectorize_extent: int = 32,
     unroll_max_steps: Optional[List[int]] = None,
     unroll_explicit: bool = True,
@@ -230,10 +229,6 @@ def parallelize_vectorize_unroll(
         The maximum number of jobs to be launched per CPU core. It sets the uplimit of CPU
         parallism, i.e. `num_cores * max_jobs_per_core`.
         Use -1 to disable parallism.
-    maximize_parallel: bool
-        Whether to maximize the parallelism in decision making. If true, we
-        deterministically parallelize the outer loops to maximum; Otherwise, we randomly pick a
-        parallelism extent
     max_vectorize_extent: int
         The maximum extent to be vectorized. It sets the uplimit of the CPU vectorization.
         Use -1 to disable vectorization.
@@ -252,7 +247,6 @@ def parallelize_vectorize_unroll(
         unroll_max_steps = []
     return _ffi_api_search_rule.ParallelizeVectorizeUnroll(  # pylint: disable=no-member
         max_jobs_per_core,
-        maximize_parallel,
         max_vectorize_extent,
         unroll_max_steps,
         unroll_explicit,

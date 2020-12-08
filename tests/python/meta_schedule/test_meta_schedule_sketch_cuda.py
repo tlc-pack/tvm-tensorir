@@ -63,7 +63,6 @@ def _fix_sampling_tile_size(
         for inst, decision in zip(insts, decisions):
             sch.mutate_decision(inst, decision)
         sch.replay_decision()
-        print(tvm.script.asscript(sch.sch.func))
         results = [tvm.ir.structural_equal(sch.sch.func, i) for i in expected]
         if sum(results) >= 1:
             return
