@@ -72,8 +72,8 @@ bool IsLeafBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
   return no_child;
 }
 
-Array<Integer> GetLoopType(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
-                           const Array<tir::StmtSRef>& loops_sref) {
+std::vector<int> GetLoopType(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
+                             const Array<tir::StmtSRef>& loops_sref) {
   tir::BlockRealize realize = tir::GetBlockRealize(block_sref);
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   CHECK(block) << "TypeError: Expects block, but gets: " << block_sref->stmt->GetTypeKey();
@@ -99,7 +99,7 @@ Array<Integer> GetLoopType(const tir::Schedule& sch, const tir::StmtSRef& block_
       }
     });
   }
-  Array<Integer> result;
+  std::vector<int> result;
   result.reserve(loops_sref.size());
   for (const tir::StmtSRef& loop_sref : loops_sref) {
     const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
@@ -787,12 +787,20 @@ double CountFlop(const tir::PrimFunc& func) {
   return cnt;
 }
 
+struct Internal {
+  static Array<Integer> FFIGetLoopType(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
+                                       const Array<tir::StmtSRef>& loops_sref) {
+    std::vector<int> result = GetLoopType(sch, block_sref, loops_sref);
+    return AsArray<int, Integer>()(result);
+  }
+};
+
 TVM_REGISTER_NODE_TYPE(TensorizeInfoNode);
 
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsSubrootBlock").set_body_typed(IsSubrootBlock);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeafBlock").set_body_typed(IsLeafBlock);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetLoopType").set_body_typed(GetLoopType);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetLoopType").set_body_typed(Internal::FFIGetLoopType);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBlockVarTypes").set_body_typed(GetBlockVarTypes);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsSpatial").set_body_typed(IsSpatial);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsOutputBlock").set_body_typed(IsOutputBlock);

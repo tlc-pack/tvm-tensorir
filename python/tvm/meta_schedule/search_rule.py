@@ -154,7 +154,7 @@ def inline_pure_spatial(strict_mode: bool) -> SearchRule:
     return _ffi_api_search_rule.InlinePureSpatial(strict_mode)  # pylint: disable=no-member
 
 
-def multi_level_tiling_and_fusion(
+def multi_level_tiling(
     structure: str,
     must_cache_read: bool,
     cache_read_scope: str,
@@ -191,7 +191,7 @@ def multi_level_tiling_and_fusion(
     rule: SearchRule
         The rule created
     """
-    return _ffi_api_search_rule.MultiLevelTilingAndFusion(  # pylint: disable=no-member
+    return _ffi_api_search_rule.MultiLevelTiling(  # pylint: disable=no-member
         structure,
         must_cache_read,
         cache_read_scope,
@@ -215,55 +215,47 @@ def random_compute_location() -> SearchRule:
     return _ffi_api_search_rule.RandomComputeLocation()  # pylint: disable=no-member
 
 
-def mark_parallelize_outer(max_jobs_per_core: int) -> SearchRule:
-    """Create a rule that parallelizes the outer loops
+def parallelize_vectorize_unroll(
+    max_jobs_per_core: int = 16,
+    maximize_parallel: bool = True,
+    max_vectorize_extent: int = 32,
+    unroll_max_steps: Optional[List[int]] = None,
+    unroll_explicit: bool = True,
+) -> SearchRule:
+    """Mark parallelize, vectorize and unroll to each block correspondingly
 
     Parameters
     ----------
-    max_jobs_per_core : int
-        The maximum number of jobs to be run each core
+    max_jobs_per_core: int
+        The maximum number of jobs to be launched per CPU core. It sets the uplimit of CPU
+        parallism, i.e. `num_cores * max_jobs_per_core`.
+        Use -1 to disable parallism.
+    maximize_parallel: bool
+        Whether to maximize the parallelism in decision making. If true, we
+        deterministically parallelize the outer loops to maximum; Otherwise, we randomly pick a
+        parallelism extent
+    max_vectorize_extent: int
+        The maximum extent to be vectorized. It sets the uplimit of the CPU vectorization.
+        Use -1 to disable vectorization.
+    unroll_max_steps: Optional[List[int]]
+        The maximum number of unroll steps to be done.
+        Use None to disable unroll
+    unroll_explicit: bool
+        Whether to explicitly unroll the loop, or just add a unroll pragma
 
     Returns
     ----------
     rule: SearchRule
         The search rule created
     """
-    return _ffi_api_search_rule.MarkParallelizeOuter(max_jobs_per_core)  # pylint: disable=no-member
-
-
-def mark_vectorize_inner(max_extent: int) -> SearchRule:
-    """Create a rule that vectorizes the inner loops
-
-    Parameters
-    ----------
-    max_extent : int
-        The maximum extent of loops to be vectorized together
-
-    Returns
-    ----------
-    rule: SearchRule
-        The search rule created
-    """
-    return _ffi_api_search_rule.MarkVectorizeInner(max_extent)  # pylint: disable=no-member
-
-
-def mark_auto_unroll(max_steps: List[int], unroll_explicit: bool) -> SearchRule:
-    """Create a rule that marks the loops to be auto-unrolled
-
-    Parameters
-    ----------
-    max_steps : List[int]
-        The candidate of max_steps in auto_unroll
-    unroll_explicit : bool
-        Whether to unroll explicitly
-
-    Returns
-    ----------
-    rule: SearchRule
-        The search rule created
-    """
-    return _ffi_api_search_rule.MarkAutoUnroll(  # pylint: disable=no-member
-        max_steps, unroll_explicit
+    if unroll_max_steps is None:
+        unroll_max_steps = []
+    return _ffi_api_search_rule.ParallelizeVectorizeUnroll(  # pylint: disable=no-member
+        max_jobs_per_core,
+        maximize_parallel,
+        max_vectorize_extent,
+        unroll_max_steps,
+        unroll_explicit,
     )
 
 
