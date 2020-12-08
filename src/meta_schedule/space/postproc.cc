@@ -349,15 +349,23 @@ Postproc RewriteCudaThreadBind() {
 class PostprocRewriteParallelizeVectorizeUnroll {
  public:
   struct Parsed {
-    int num_parallel;
-    int num_vectorize;
+    int max_parallel_extent;
+    int max_vectorize_extent;
     int unroll_explicit;
     int unroll_implicit;
+    int num_parallel_loops;
+    int num_vectorize_loops;
   };
+
+  static bool HasSingleChild(const tir::StmtSRef& loop_sref) {
+    const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+    CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
+    return !loop->body->IsInstance<tir::SeqStmtNode>();
+  }
 
   static Optional<tir::Block> FindAnnotatedBlock(const tir::Schedule& sch, Parsed* parsed) {
     Optional<tir::Block> result = NullOpt;
-    *parsed = Parsed{-1, -1, -1, -1};
+    *parsed = Parsed{-1, -1, -1, -1, -1, -1};
     tir::PreOrderVisit(sch->func->body, [&sch, &parsed, &result](const ObjectRef& obj) -> bool {
       if (result.defined()) {
         return false;
@@ -366,16 +374,16 @@ class PostprocRewriteParallelizeVectorizeUnroll {
         tir::StmtSRef block_sref = sch->stmt2ref.at(block);
         bool found = false;
         // Check parallel
-        if (Optional<String> ann = GetAnn(block_sref, tir::attr::auto_parallel)) {
+        if (Optional<String> ann = GetAnn(block_sref, tir::attr::auto_parallel_extent)) {
           found = true;
-          parsed->num_parallel = std::atoi(ann.value().c_str());
-          DelAnn(sch, block_sref, tir::attr::auto_parallel);
+          parsed->max_parallel_extent = std::atoi(ann.value().c_str());
+          DelAnn(sch, block_sref, tir::attr::auto_parallel_extent);
         }
         // Check vectorize
-        if (Optional<String> ann = GetAnn(block_sref, tir::attr::auto_vectorize)) {
+        if (Optional<String> ann = GetAnn(block_sref, tir::attr::auto_vectorize_extent)) {
           found = true;
-          parsed->num_vectorize = std::atoi(ann.value().c_str());
-          DelAnn(sch, block_sref, tir::attr::auto_vectorize);
+          parsed->max_vectorize_extent = std::atoi(ann.value().c_str());
+          DelAnn(sch, block_sref, tir::attr::auto_vectorize_extent);
         }
         // Check unroll explicit
         if (Optional<String> ann = GetAnn(block_sref, tir::attr::auto_unroll_explicit)) {
@@ -399,6 +407,80 @@ class PostprocRewriteParallelizeVectorizeUnroll {
     return result;
   }
 
+  static void AdjustParallelVectorize(const Schedule& sch, const tir::StmtSRef& block_sref,
+                                      const Array<LoopRV>& loop_rvs, Parsed* parsed) {
+    if (parsed->max_parallel_extent == -1 && parsed->max_vectorize_extent == -1) {
+      return;
+    }
+    int n_loops = loop_rvs.size();
+    // Extract loop_srefs
+    Array<tir::StmtSRef> loop_srefs;
+    {
+      loop_srefs.reserve(n_loops);
+      for (const LoopRV& loop_rv : loop_rvs) {
+        loop_srefs.push_back(sch->Eval(loop_rv));
+      }
+    }
+    // Calculate the iterator types
+    std::vector<int> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
+    // Calculate the parallelize extent
+    if (parsed->max_parallel_extent != -1) {
+      int max_extent = parsed->max_parallel_extent;
+      int& num_fusible = parsed->num_parallel_loops = 0;
+      int64_t prod_extent = 1;
+      for (int i = 0; i < n_loops && loop_types[i] == tir::IterVarType::kDataPar; ++i) {
+        const tir::StmtSRef& loop_sref = loop_srefs[i];
+        // Check if the loop extent is valid
+        Optional<Integer> extent = GetLoopIntExtent(loop_sref);
+        if (!extent.defined()) {
+          break;
+        }
+        // Then we can fuse it in
+        ++num_fusible;
+        // Check if we need to break
+        prod_extent *= extent.value()->value;
+        if (prod_extent > max_extent || !HasSingleChild(loop_sref)) {
+          break;
+        }
+      }
+      if (prod_extent == 1) {
+        num_fusible = -1;
+      }
+    }
+    // Calculate the vectorize extent
+    if (parsed->max_vectorize_extent != -1) {
+      int max_extent = parsed->max_vectorize_extent;
+      int& num_fusible = parsed->num_vectorize_loops = 0;
+      int64_t prod_extent = 1;
+      for (int i = n_loops - 1; i >= 0 && loop_types[i] == tir::IterVarType::kDataPar; --i) {
+        const tir::StmtSRef& loop_sref = loop_srefs[i];
+        // Cannot fuse with a loop with multiple children
+        if (!HasSingleChild(loop_sref)) {
+          break;
+        }
+        // Check if the loop extent is valid
+        Optional<Integer> extent = GetLoopIntExtent(loop_sref);
+        if (!extent.defined()) {
+          break;
+        }
+        // Check if the extent is still in a good range
+        prod_extent *= extent.value()->value;
+        if (prod_extent > max_extent) {
+          break;
+        }
+        ++num_fusible;
+      }
+      if (prod_extent == 1) {
+        num_fusible = -1;
+      }
+    }
+    // Prefer num_vectorize to num_parallel
+    if (parsed->num_parallel_loops != -1 && parsed->num_vectorize_loops != -1) {
+      parsed->num_parallel_loops = std::min(parsed->num_parallel_loops,  //
+                                            n_loops - parsed->num_parallel_loops);
+    }
+  }
+
   bool Proc(const Schedule& sch) const {
     Parsed parsed;
     while (Optional<tir::Block> opt_block = FindAnnotatedBlock(sch->sch, &parsed)) {
@@ -412,45 +494,20 @@ class PostprocRewriteParallelizeVectorizeUnroll {
       if (n_loops == 0) {
         continue;
       }
-      if (parsed.num_parallel != -1 || parsed.num_vectorize != -1) {
-        Array<tir::StmtSRef> loop_srefs;
-        {
-          loop_srefs.reserve(loop_rvs.size());
-          for (const LoopRV& loop_rv : loop_rvs) {
-            loop_srefs.push_back(sch->Eval(loop_rv));
-          }
-        }
-        std::vector<int> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
-        int max_parallel = 0;
-        int max_vectorize = 0;
-        for (int i = 0; i < n_loops && loop_types[i] == tir::IterVarType::kDataPar;
-             ++i, ++max_parallel) {
-        }
-        for (int i = n_loops - 1; i >= 0 && loop_types[i] == tir::IterVarType::kDataPar;
-             --i, ++max_vectorize) {
-        }
-        parsed.num_parallel = std::min(parsed.num_parallel, max_parallel);
-        parsed.num_vectorize = std::min(parsed.num_parallel, max_vectorize);
-      }
-      // Prefer num_parallel to num_vectorize
-      CHECK_LE(parsed.num_parallel, n_loops) << "ValueError: Not enough loops to be parallelized";
-      CHECK_LE(parsed.num_vectorize, n_loops) << "ValueError: Not enough loops to be vectorized";
-      if (parsed.num_parallel != -1 && parsed.num_vectorize != -1) {
-        parsed.num_vectorize = std::min(parsed.num_vectorize, n_loops - parsed.num_parallel);
-      }
+      AdjustParallelVectorize(sch, block_sref, loop_rvs, &parsed);
       // Parallelize
-      if (parsed.num_parallel > 0) {
-        LoopRV fused = sch->Fuse({loop_rvs.begin(), loop_rvs.begin() + parsed.num_parallel});
+      if (parsed.num_parallel_loops > 0) {
+        LoopRV fused = sch->Fuse({loop_rvs.begin(), loop_rvs.begin() + parsed.num_parallel_loops});
         sch->Parallel(fused);
-        for (int i = 0; i < parsed.num_parallel; ++i) {
+        for (int i = 0; i < parsed.num_parallel_loops; ++i) {
           loop_rvs.Set(i, fused);
         }
       }
       // Vectorize
-      if (parsed.num_vectorize > 0) {
-        LoopRV fused = sch->Fuse({loop_rvs.end() - parsed.num_vectorize, loop_rvs.end()});
+      if (parsed.num_vectorize_loops > 0) {
+        LoopRV fused = sch->Fuse({loop_rvs.end() - parsed.num_vectorize_loops, loop_rvs.end()});
         sch->Vectorize(fused);
-        for (int i = n_loops - parsed.num_vectorize; i < n_loops; ++i) {
+        for (int i = n_loops - parsed.num_vectorize_loops; i < n_loops; ++i) {
           loop_rvs.Set(i, fused);
         }
       }

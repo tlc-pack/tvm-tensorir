@@ -111,7 +111,11 @@ Optional<Schedule> ReplayNode::Search(const SearchTask& task, const SearchSpace&
   };
   for (int st = 0; st < num_trials; st += batch_size) {
     int count = std::min(st + batch_size, num_trials) - st;
-    support::parallel_for(0, count, worker);
+    if (count == 1) {
+      worker(0);
+    } else {
+      support::parallel_for(0, count, worker);
+    }
     Array<MeasureInput> measure_inputs{thread_measure_inputs.begin(),
                                        thread_measure_inputs.begin() + count};
     measurer->BatchMeasure(measure_inputs, count, verbose);
