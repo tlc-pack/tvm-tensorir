@@ -20,6 +20,7 @@ from typing import List, Optional, Union
 from tvm import ir, tir
 from tvm._ffi import register_object
 from tvm.runtime import Object
+from tvm.runtime.container import String
 
 from . import _ffi_api
 from .instruction import RAND_VAR_TYPE, BlockRV, BufferRV, ExprRV, Instruction, LoopRV
@@ -190,52 +191,30 @@ class Schedule(Object):
             self, n_splits, loop, where, decision
         )
 
-    def sample_fusible_loops(
+    def sample_int(
         self,
-        loops: List[LoopRV],
-        loop_types: List[int],
-        max_extent: int,
-        include_overflow_loop: bool = True,
-        order: str = "outer_to_inner",
-        mode: str = "max",
+        min_inclusive: ExprRV,
+        max_exclusive: ExprRV,
         decision: Optional[int] = None,
     ) -> ExprRV:
-        """Sample fusible loops, in the specific order (inner-to-outer or outer-to-inner),
-        where their product of extent is limited. The sampling could have two modes: max or rand.
-        If it is using mode "max", the sampling deterministically choose the maximum number of
-        loops to fuse; Otherwise, if choose mode "rand", it samples the number of viable choices
-        uniformly and return a randomly selected number of loops to fuse.
+        """Sample an integer in [min_exclusive, max_inclusive)
 
         Parameters
         ----------
-        loops : List[LoopRV]
-            The loops to be fused
-        loop_types : List[int]
-            Type of the loop
-        max_extent : int
-            The maximum extent of loops
-        include_overflow_loop : bool
-            Whether to include the last loop that makes the extent larger then `max_extent`
-        order : str
-            The order of fusion, can be `inner_to_outer` or `outer_to_inner`
-        mode : str
-            The mode of the fusion, can be `max` or `rand`
+        min_inclusive : ExprRV
+            The left boundary, inclusive
+        max_exclusive : ExprRV
+            The right boundary, exclusive
 
         Returns
         -------
-        n_fusible : ExprRV
-            A ExprRV, a random variable indicates the number of loops that can be potentially fused
+        result : ExprRV
+            A ExprRV, a random variable indicates the sampling result
         """
-        order = {"outer_to_inner": 0, "inner_to_outer": 1}.get(order, None)
-        mode = {"max": 0, "rand": 1}.get(mode, None)
-        if order is None:
-            raise ValueError('"order" needs to be one of: "outer_to_inner", "inner_to_order"')
-        if mode is None:
-            raise ValueError('"mode" needs to be one of: "max", "rand"')
         if decision is not None:
             decision = [decision]
-        return _ffi_api.ScheduleSampleFusibleLoops(  # pylint: disable=no-member
-            self, loops, loop_types, max_extent, include_overflow_loop, order, mode, decision
+        return _ffi_api.ScheduleSampleInt(  # pylint: disable=no-member
+            self, min_inclusive, max_exclusive, decision
         )
 
     def sample_categorical(
@@ -401,13 +380,11 @@ class Schedule(Object):
 
     ########## Scheduling Primitives ##########
 
-    def mark_loop_type(
+    def mark_loop(
         self,
         loops: List[LoopRV],
         ann_key: str,
         ann_val: str,
-        first_n: Optional[ir.PrimExpr],
-        last_n: Optional[ir.PrimExpr],
     ) -> None:
         """Mark a range of loops with the specific mark
 
@@ -419,17 +396,14 @@ class Schedule(Object):
             The annotation key
         ann_val : str
             The annotation value
-        first_n : Optional[ir.PrimExpr]
-            The first n loops to be marked
-        last_n : Optional[ir.PrimExpr]
-            The last n loops to be marked
         """
-        _ffi_api.ScheduleMarkLoopType(  # pylint: disable=no-member
-            self, loops, ann_key, ann_val, first_n, last_n
-        )
+        # TODO(@junrushao1994): it is a workaround
+        if isinstance(ann_val, str):
+            ann_val = String(ann_val)
+        _ffi_api.ScheduleMarkLoop(self, loops, ann_key, ann_val)  # pylint: disable=no-member
 
-    def mark_block_type(self, block: BlockRV, ann_key: str, ann_val: str) -> None:
-        """Mark a range of loops with the specific mark
+    def mark_block(self, block: BlockRV, ann_key: str, ann_val: ExprRV) -> None:
+        """Mark a block
 
         Parameters
         ----------
@@ -437,12 +411,12 @@ class Schedule(Object):
             The block to be marked
         ann_key : str
             The annotation key
-        ann_val : str
+        ann_val : ExprRV
             The annotation value
         """
-        _ffi_api.ScheduleMarkBlockType(self, block, ann_key, ann_val)  # pylint: disable=no-member
+        _ffi_api.ScheduleMarkBlock(self, block, ann_key, ann_val)  # pylint: disable=no-member
 
-    def fuse(self, loops: List[LoopRV]):
+    def fuse(self, loops: List[LoopRV]) -> LoopRV:
         """Fuse the loops
 
         Parameters
@@ -612,19 +586,25 @@ class Schedule(Object):
         """
         return _ffi_api.ScheduleDecomposeReduction(self, block, loop)  # pylint: disable=no-member
 
-    def auto_unroll(self, block: BlockRV, max_step: ExprRV, unroll_explicit: bool) -> None:
-        """Apply auto-unroll onto a block
+    def parallel(self, loop: LoopRV) -> None:
+        """Parallelize a specific loop
 
         Parameters
         ----------
-        block: BlockRV
-            The block to be applied on
-        max_step: ExprRV
-            The maximum steps to be unrolled
-        unroll_explicit: bool
-            Whether to unroll explicitly
+        loop: LoopRV
+            The loop to be parallelized
         """
-        _ffi_api.ScheduleAutoUnroll(self, block, max_step, unroll_explicit)
+        _ffi_api.ScheduleParallel(self, loop)  # pylint: disable=no-member
+
+    def vectorize(self, loop: LoopRV) -> None:
+        """Vectorize a specific loop
+
+        Parameters
+        ----------
+        loop: LoopRV
+            The loop to be vectorized
+        """
+        _ffi_api.ScheduleVectorize(self, loop)  # pylint: disable=no-member
 
     ########## Trace-related ##########
 

@@ -28,7 +28,7 @@ TARGET = tvm.target.Target("cuda")
 SPACE = ms.space.PostOrderApply(
     stages=[
         ms.rule.inline_pure_spatial(strict_mode=False),
-        ms.rule.multi_level_tiling_and_fusion(
+        ms.rule.multi_level_tiling(
             structure="SSSRRSRS",
             must_cache_read=True,
             cache_read_scope="shared",
@@ -41,7 +41,7 @@ SPACE = ms.space.PostOrderApply(
         ),
     ],
     postprocs=[
-        ms.postproc.rewrite_vectorize(),
+        ms.postproc.rewrite_parallel_vectorize_unroll(),
         ms.postproc.rewrite_cuda_thread_bind(),
     ],
 )
@@ -63,6 +63,7 @@ def _fix_sampling_tile_size(
         for inst, decision in zip(insts, decisions):
             sch.mutate_decision(inst, decision)
         sch.replay_decision()
+        print(tvm.script.asscript(sch.sch.func))
         results = [tvm.ir.structural_equal(sch.sch.func, i) for i in expected]
         if sum(results) >= 1:
             return

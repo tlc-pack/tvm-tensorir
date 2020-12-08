@@ -119,12 +119,11 @@ TVM_DLL SearchRule InlinePureSpatial(bool strict_mode);
  * \param tile_marks The marks to be used on each tile
  * \return The rule created
  */
-TVM_DLL SearchRule MultiLevelTilingAndFusion(String structure, bool must_cache_read,
-                                             String cache_read_scope, bool can_cache_write,
-                                             bool must_cache_write, String cache_write_scope,
-                                             Array<Integer> fusion_levels,
-                                             Optional<Integer> vector_load_max_len,
-                                             Optional<Array<String>> tile_marks);
+TVM_DLL SearchRule MultiLevelTiling(String structure, bool must_cache_read, String cache_read_scope,
+                                    bool can_cache_write, bool must_cache_write,
+                                    String cache_write_scope, Array<Integer> fusion_levels,
+                                    Optional<Integer> vector_load_max_len,
+                                    Optional<Array<String>> tile_marks);
 
 /*!
  * \brief A rule that randomly select a compute-at location for a free block
@@ -133,24 +132,23 @@ TVM_DLL SearchRule MultiLevelTilingAndFusion(String structure, bool must_cache_r
 TVM_DLL SearchRule RandomComputeLocation();
 
 /*!
- * \brief A rule that parallelizes the outer loops
+ * \brief Mark parallelize, vectorize and unroll to each block correspondingly
+ * \param max_jobs_per_core The maximum number of jobs to be launched per CPU core. It sets the
+ * uplimit of CPU parallism, i.e. `num_cores * max_jobs_per_core`. Use -1 to disable parallism.
+ * \param maximize_parallel Whether to maximize the parallelism in decision making. If true, we
+ * deterministically parallelize the outer loops to maximum; Otherwise, we randomly pick a
+ * parallelism extent
+ * \param max_vectorize_extent The maximum extent to be vectorized. It sets the uplimit of the CPU
+ * vectorization. Use -1 to disable vectorization.
+ * \param unroll_max_steps The maximum number of unroll steps to be done. Use an empty array to
+ * disable unroll
+ * \param unroll_explicit Whether to explicitly unroll the loop, or just add a unroll pragma
  * \return The rule created
  */
-TVM_DLL SearchRule MarkParallelizeOuter(int max_jobs_per_core);
-
-/*!
- * \brief A rule that parallelizes the outer loops
- * \return The rule created
- */
-TVM_DLL SearchRule MarkVectorizeInner(int max_extent);
-
-/*!
- * \brief A rule that marks the loops to be auto-unrolled
- * \param max_steps The candidate of max_steps in auto_unroll
- * \param unroll_explicit Whether to unroll explicitly
- * \return The rule created
- */
-TVM_DLL SearchRule MarkAutoUnroll(Array<Integer> max_steps, bool unroll_explicit);
+TVM_DLL SearchRule ParallelizeVectorizeUnroll(int max_jobs_per_core, bool maximize_parallel,
+                                              int max_vectorize_extent,
+                                              Array<Integer> unroll_max_steps,
+                                              bool unroll_explicit);
 
 /*!
  * \brief Rewrite block and its surrounding loops to match the tensor intrinsics if possible
