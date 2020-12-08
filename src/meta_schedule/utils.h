@@ -144,6 +144,12 @@ inline PrimExpr GetLoopExtent(const tir::StmtSRef& loop_sref) {
   return loop->extent;
 }
 
+inline Optional<Integer> GetLoopIntExtent(const tir::StmtSRef& loop_sref) {
+  PrimExpr extent = GetLoopExtent(loop_sref);
+  const auto* int_extent = extent.as<IntImmNode>();
+  return int_extent ? Integer(int_extent->value) : Optional<Integer>(NullOpt);
+}
+
 /*!
  * \brief Compare two domains and check if they are equal
  * \param lhs One domain
@@ -215,6 +221,8 @@ inline void DelAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const St
       new_ann.push_back(ann);
     }
   }
+  CHECK_NE(annotations->size(), new_ann.size())
+      << "IndexError: Cannot find annotation key: " << ann_key;
   // Create the new stmt
   if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
     ObjectPtr<tir::LoopNode> n = make_object<tir::LoopNode>(*loop);
@@ -232,7 +240,7 @@ inline void DelAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const St
 }
 
 inline void AddAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const String& ann_key,
-                   const String& ann_val) {
+                   const PrimExpr& ann_val) {
   // Extract annotation
   const Array<tir::Annotation>* annotations;
   if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
@@ -250,7 +258,7 @@ inline void AddAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const St
   }
   // Add the new annotation
   Array<tir::Annotation> new_ann(*annotations);
-  new_ann.push_back(tir::Annotation(ann_key, tir::StringImm(ann_val)));
+  new_ann.push_back(tir::Annotation(ann_key, ann_val));
   // Create the new stmt
   if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
     ObjectPtr<tir::LoopNode> n = make_object<tir::LoopNode>(*loop);

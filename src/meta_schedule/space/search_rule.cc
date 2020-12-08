@@ -117,7 +117,7 @@ SearchRule InlinePureSpatial(bool strict_mode) {
 
 /********** Multi-Level-Tiling-And-Fusion **********/
 
-class RuleMultiLevelTilingAndFusion {
+class RuleMultiLevelTiling {
  public:
   String structure;
   bool must_cache_read;
@@ -131,12 +131,11 @@ class RuleMultiLevelTilingAndFusion {
   std::vector<int> s_idx;
   std::vector<int> r_idx;
 
-  explicit RuleMultiLevelTilingAndFusion(String structure, bool must_cache_read,
-                                         String cache_read_scope, bool can_cache_write,
-                                         bool must_cache_write, String cache_write_scope,
-                                         Array<Integer> fusion_levels,
-                                         Optional<Integer> vector_load_max_len,
-                                         Optional<Array<String>> tile_marks)
+  explicit RuleMultiLevelTiling(String structure, bool must_cache_read, String cache_read_scope,
+                                bool can_cache_write, bool must_cache_write,
+                                String cache_write_scope, Array<Integer> fusion_levels,
+                                Optional<Integer> vector_load_max_len,
+                                Optional<Array<String>> tile_marks)
       : structure(structure),
         must_cache_read(must_cache_read),
         cache_read_scope(cache_read_scope),
@@ -298,13 +297,11 @@ class RuleMultiLevelTilingAndFusion {
         Array<LoopRV> tiles = sch->Split(fused, {factors[0], factors[1]});
         CHECK_EQ(tiles.size(), 2);
         // Vectorize the inner loop
-        sch->MarkLoopType({tiles[0]}, tir::attr::loop_type, "lazy_cooperative_fetch", Integer(1),
-                          NullOpt);
-        sch->MarkLoopType({tiles[1]}, tir::attr::loop_type, "lazy_vectorize", Integer(1), NullOpt);
+        sch->MarkLoop(tiles[0], tir::attr::loop_type, tir::StringImm("lazy_cooperative_fetch"));
+        sch->MarkLoop(tiles[1], tir::attr::loop_type, tir::StringImm("lazy_vectorize"));
       } else {
         // cooperative fetch only
-        sch->MarkLoopType({fused}, tir::attr::loop_type, "lazy_cooperative_fetch", Integer(1),
-                          NullOpt);
+        sch->MarkLoop(fused, tir::attr::loop_type, tir::StringImm("lazy_cooperative_fetch"));
       }
     }
   }
@@ -374,8 +371,9 @@ class RuleMultiLevelTilingAndFusion {
     Array<Array<LoopRV>>& tiles = state->tiles;
     int n = std::min(tile_marks.size(), tiles.size());
     for (int i = 0; i < n; ++i) {
-      sch->MarkLoopType(tiles[i], tir::attr::loop_type, tile_marks[i], Integer(tiles[i].size()),
-                        NullOpt);
+      for (const LoopRV& loop : tiles[i]) {
+        sch->MarkLoop(loop, tir::attr::loop_type, tir::StringImm(tile_marks[i]));
+      }
     }
   }
 
@@ -432,24 +430,22 @@ class RuleMultiLevelTilingAndFusion {
   }
 };
 
-SearchRule MultiLevelTilingAndFusion(String structure, bool must_cache_read,
-                                     String cache_read_scope, bool can_cache_write,
-                                     bool must_cache_write, String cache_write_scope,
-                                     Array<Integer> fusion_levels,
-                                     Optional<Integer> vector_load_max_len,
-                                     Optional<Array<String>> tile_marks) {
+SearchRule MultiLevelTiling(String structure, bool must_cache_read, String cache_read_scope,
+                            bool can_cache_write, bool must_cache_write, String cache_write_scope,
+                            Array<Integer> fusion_levels, Optional<Integer> vector_load_max_len,
+                            Optional<Array<String>> tile_marks) {
   if (!can_cache_write && must_cache_write) {
     LOG(FATAL) << "ValueError: Conflict options, cannot have can_cache_write = false, and "
                   "must_cache_write = true at the same time";
   }
-  RuleMultiLevelTilingAndFusion rule(structure, must_cache_read, cache_read_scope, can_cache_write,
-                                     must_cache_write, cache_write_scope, fusion_levels,
-                                     vector_load_max_len, tile_marks);
+  RuleMultiLevelTiling rule(structure, must_cache_read, cache_read_scope, can_cache_write,
+                            must_cache_write, cache_write_scope, fusion_levels, vector_load_max_len,
+                            tile_marks);
   auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch, BlockRV block,
                                          TContextInfo info) -> TReturn {
     return rule.Apply(task, sch, block, info);
   };
-  return SearchRule("multi_level_tiling_and_fusion", f_apply);
+  return SearchRule("multi_level_tiling", f_apply);
 }
 
 /********** RandomComputeLocation **********/
@@ -519,146 +515,189 @@ SearchRule RandomComputeLocation() {
   return SearchRule("random_compute_location", f_apply);
 }
 
-/********** MarkParallelizeOuter **********/
+/********** ParallelizeVectorizeUnroll **********/
 
-/*! \brief A rule that parallelizes the outer loops */
-class RuleMarkParallelizeOuter {
+class RuleParallelizeVectorizeUnroll {
  public:
-  /*! \brief The maximum extent of loops to be parallelized together */
   int max_jobs_per_core;
-  bool warned_num_cores_missing;
+  bool maximize_parallel;
+  int max_vectorize_extent;
+  Array<Integer> unroll_max_steps;
+  bool unroll_explicit;
 
-  explicit RuleMarkParallelizeOuter(int max_jobs_per_core)
-      : max_jobs_per_core(max_jobs_per_core), warned_num_cores_missing(false) {}
+  mutable bool warned_num_cores_missing;
 
-  /*! \brief Rule application */
-  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
-                const TContextInfo& info) const {
-    int num_cores = task->target->GetAttr<Integer>("num_cores").value_or(-1);
+  explicit RuleParallelizeVectorizeUnroll(int max_jobs_per_core, bool maximize_parallel,
+                                          int max_vectorize_extent,
+                                          const Array<Integer>& unroll_max_steps,
+                                          bool unroll_explicit)
+      : max_jobs_per_core(max_jobs_per_core),
+        maximize_parallel(maximize_parallel),
+        max_vectorize_extent(max_vectorize_extent),
+        unroll_max_steps(unroll_max_steps),
+        unroll_explicit(unroll_explicit),
+        warned_num_cores_missing(false) {}
+
+  int GetMaxParallelExtent(const Target& target) const {
+    int num_cores = target->GetAttr<Integer>("num_cores").value_or(-1);
     if (num_cores == -1) {
       static const auto* f_cpu_count = runtime::Registry::Get("meta_schedule._cpu_count");
       CHECK(f_cpu_count)
           << "ValueError: Cannot find the packed function \"meta_schedule._cpu_count\"";
       num_cores = (*f_cpu_count)(false);
       if (!warned_num_cores_missing) {
-        LOG(WARNING)
-            << "Warning: Target does not have attribute \"num_cores\", using the number of CPU "
-               "cores on the local machine. It may leads to inferior performance because the "
-               "setting on the local machine may mismatch that on the target machine - "
-            << num_cores << " CPU cores";
-        const_cast<RuleMarkParallelizeOuter*>(this)->warned_num_cores_missing = true;
+        LOG(WARNING) << "Warning: Target does not have attribute \"num_cores\", falling back the "
+                        "number of CPU cores on the local machine. The inaccuracy in number of "
+                        "cores may lead to dramatically inferior performance. Falling back to "
+                        " assuming "
+                     << num_cores << " CPU core(s)";
+        warned_num_cores_missing = true;
       }
     }
-    int max_extent = num_cores * max_jobs_per_core;
-    tir::StmtSRef block_sref = sch->Eval(block_rv);
-    if (!IsSubrootBlock(sch->sch, block_sref)) {
-      return {{sch, info}};
-    }
-    Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
-    Array<tir::StmtSRef> loop_srefs;
-    loop_srefs.reserve(loop_rvs.size());
-    for (const LoopRV& loop_rv : loop_rvs) {
-      loop_srefs.push_back(sch->Eval(loop_rv));
-    }
-    Array<Integer> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
-    tir::Var n_fusible_rv =
-        sch->SampleFusibleLoops(loop_rvs, loop_types, max_extent, /*include_overflow_loop=*/true,
-                                ScheduleNode::Order::outer_to_inner, ScheduleNode::Mode::max);
-    sch->MarkLoopType(loop_rvs, tir::attr::loop_type, "lazy_parallel", n_fusible_rv, NullOpt);
-    return {{sch, info}};
+    return num_cores * max_jobs_per_core;
   }
-};
 
-SearchRule MarkParallelizeOuter(int max_jobs_per_core) {
-  RuleMarkParallelizeOuter rule(max_jobs_per_core);
-  auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch, BlockRV block,
-                                         TContextInfo info) -> TReturn {
-    return rule.Apply(task, sch, block, info);
-  };
-  return SearchRule("mark_parallelize_outer", f_apply);
-}
-
-/********** MarkVectorizeInner **********/
-
-/*! \brief A rule that parallelizes the outer loops */
-class RuleMarkVectorizeInner {
- public:
-  /*! \brief The maximum extent of loops to be parallelized together */
-  int max_extent;
-
-  explicit RuleMarkVectorizeInner(int max_extent) : max_extent(max_extent) {}
-
-  /*! \brief Rule application */
-  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
-                const TContextInfo& info) {
-    tir::StmtSRef block_sref = sch->Eval(block_rv);
-    if (!IsLeafBlock(sch->sch, block_sref)) {
-      return {{sch, info}};
-    }
-    Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
-    Array<tir::StmtSRef> loop_srefs;
-    loop_srefs.reserve(loop_rvs.size());
-    for (const LoopRV& loop_rv : loop_rvs) {
-      loop_srefs.push_back(sch->Eval(loop_rv));
-    }
-    Array<Integer> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
-    tir::Var n_fusible_rv =
-        sch->SampleFusibleLoops(loop_rvs, loop_types, max_extent, /*include_overflow_loop=*/false,
-                                ScheduleNode::Order::inner_to_order, ScheduleNode::Mode::max);
-    sch->MarkLoopType(loop_rvs, tir::attr::loop_type, "lazy_vectorize", NullOpt, n_fusible_rv);
-    return {{sch, info}};
+  static bool HasSingleChild(const tir::StmtSRef& loop_sref) {
+    const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+    CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
+    return !loop->body->IsInstance<tir::SeqStmtNode>();
   }
-};
 
-SearchRule MarkVectorizeInner(int max_extent) {
-  auto f_apply = [max_extent](SearchTask task, Schedule sch, BlockRV block,
-                              TContextInfo info) -> TReturn {
-    RuleMarkVectorizeInner rule(max_extent);
-    return rule.Apply(task, sch, block, info);
-  };
-  return SearchRule("vectorize_inner", f_apply);
-}
+  static bool IsLeftmostSubroot(const tir::Schedule& sch, tir::StmtSRef block_sref) {
+    if (!IsSubrootBlock(sch, block_sref)) {
+      return false;
+    }
+    tir::StmtSRefNode* child_sref = block_sref.operator->();
+    for (tir::StmtSRefNode* parent_sref = child_sref->parent;;
+         child_sref = parent_sref, parent_sref = child_sref->parent) {
+      const auto* parent_loop = parent_sref->GetStmt<tir::LoopNode>();
+      if (parent_loop == nullptr) {
+        return true;
+      }
+      const auto* seq_stmt = parent_loop->body.as<tir::SeqStmtNode>();
+      if (seq_stmt == nullptr) {
+        continue;
+      }
+      const tir::Stmt& first_child = seq_stmt->seq[0];
+      if (first_child.get() != child_sref->stmt) {
+        return false;
+      }
+    }
+    return true;
+  }
 
-/********** MarkAutoUnroll **********/
+  void Parallelize(const Schedule& sch, const BlockRV& block_rv, const tir::StmtSRef& block_sref,
+                   const Array<tir::StmtSRef>& loop_srefs, const std::vector<int>& loop_types,
+                   int max_extent) const {
+    int n = loop_srefs.size();
+    int num_fusible = 0;
+    int64_t prod_extent = 1;
+    for (int i = 0; i < n && loop_types[i] == tir::IterVarType::kDataPar; ++i) {
+      const tir::StmtSRef& loop_sref = loop_srefs[i];
+      // Check if the loop extent is valid
+      Optional<Integer> extent = GetLoopIntExtent(loop_sref);
+      if (!extent.defined()) {
+        break;
+      }
+      // Then we can fuse it in
+      ++num_fusible;
+      // Check if we need to break
+      prod_extent *= extent.value()->value;
+      if (prod_extent > max_extent || !HasSingleChild(loop_sref)) {
+        break;
+      }
+    }
+    if (prod_extent == 1) {
+      num_fusible = 0;
+    }
+    Optional<Array<ObjectRef>> decision = maximize_parallel ? Array<ObjectRef>{Integer(num_fusible)}
+                                                            : Optional<Array<ObjectRef>>(NullOpt);
+    tir::Var num_parallel = sch->SampleInt(Integer(0), Integer(num_fusible + 1), decision);
+    sch->MarkBlock(block_rv, tir::attr::auto_parallel, num_parallel);
+  }
 
-/*! \brief A rule that parallelizes the outer loops */
-class RuleMarkAutoUnroll {
- public:
-  /*! \brief The candidate of max_steps in auto_unroll */
-  Array<Integer> max_steps;
-  /*! \brief Whether to unroll explicitly */
-  bool unroll_explicit;
-  /*! \brief The probability of choose each max_step */
-  Array<FloatImm> probs;
+  void Vectorize(const Schedule& sch, const BlockRV& block_rv, const tir::StmtSRef& block_sref,
+                 const Array<tir::StmtSRef>& loop_srefs, const std::vector<int>& loop_types,
+                 int max_extent) const {
+    int n = loop_srefs.size();
+    int num_fusible = 0;
+    int64_t prod_extent = 1;
+    for (int i = n - 1; i >= 0 && loop_types[i] == tir::IterVarType::kDataPar; --i) {
+      const tir::StmtSRef& loop_sref = loop_srefs[i];
+      // Cannot fuse with a loop with multiple children
+      if (!HasSingleChild(loop_sref)) {
+        break;
+      }
+      // Check if the loop extent is valid
+      Optional<Integer> extent = GetLoopIntExtent(loop_sref);
+      if (!extent.defined()) {
+        break;
+      }
+      // Check if the extent is still in a good range
+      prod_extent *= extent.value()->value;
+      if (prod_extent > max_extent) {
+        break;
+      }
+      ++num_fusible;
+    }
+    sch->MarkBlock(block_rv, tir::attr::auto_vectorize, Integer(num_fusible));
+  }
 
-  explicit RuleMarkAutoUnroll(const Array<Integer>& max_steps, bool unroll_explicit)
-      : max_steps(max_steps),
-        unroll_explicit(unroll_explicit),
-        probs(max_steps.size(),
-              FloatImm(DataType::Float(64), 1.0 / static_cast<double>(max_steps.size()))) {}
+  void AutoUnroll(const Schedule& sch, const BlockRV& block_rv) const {
+    int n = unroll_max_steps.size();
+    double prob = 1.0 / n;
+    Array<FloatImm> probs(n, FloatImm(DataType::Float(64), prob));
+    tir::Var max_step = sch->SampleCategorical(unroll_max_steps, probs);
+    if (unroll_explicit) {
+      sch->MarkBlock(block_rv, tir::attr::auto_unroll_explicit, max_step);
+    } else {
+      sch->MarkBlock(block_rv, tir::attr::auto_unroll_implicit, max_step);
+    }
+  }
 
-  /*! \brief Rule application */
   TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
                 const TContextInfo& info) const {
-    if (max_steps.empty()) {
-      return {{sch, info}};
-    }
+    // Extract basic information
+    Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
     tir::StmtSRef block_sref = sch->Eval(block_rv);
-    if (IsLeafBlock(sch->sch, block_sref)) {
-      tir::Var max_step = sch->SampleCategorical(max_steps, probs);
-      sch->AutoUnroll(block_rv, max_step, unroll_explicit);
+    Array<tir::StmtSRef> loop_srefs;
+    {
+      loop_srefs.reserve(loop_rvs.size());
+      for (const LoopRV& loop_rv : loop_rvs) {
+        loop_srefs.push_back(sch->Eval(loop_rv));
+      }
+    }
+    std::vector<int> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
+    // Check if the block is root and leaf
+    bool is_leftmost_root = IsLeftmostSubroot(sch->sch, block_sref);
+    bool is_leaf = IsLeafBlock(sch->sch, block_sref);
+    // Parallelization
+    if (max_jobs_per_core != -1 && is_leftmost_root) {
+      Parallelize(sch, block_rv, block_sref, loop_srefs, loop_types,
+                  GetMaxParallelExtent(task->target));
+    }
+    // Vectorization
+    if (max_vectorize_extent != -1 && is_leaf) {
+      Vectorize(sch, block_rv, block_sref, loop_srefs, loop_types, max_vectorize_extent);
+    }
+    // Unroll
+    if (!unroll_max_steps.empty() && is_leftmost_root) {
+      AutoUnroll(sch, block_rv);
     }
     return {{sch, info}};
   }
 };
 
-SearchRule MarkAutoUnroll(Array<Integer> max_steps, bool unroll_explicit) {
-  RuleMarkAutoUnroll rule(max_steps, unroll_explicit);
+SearchRule ParallelizeVectorizeUnroll(int max_jobs_per_core, bool maximize_parallel,
+                                      int max_vectorize_extent, Array<Integer> unroll_max_steps,
+                                      bool unroll_explicit) {
+  RuleParallelizeVectorizeUnroll rule(max_jobs_per_core, maximize_parallel, max_vectorize_extent,
+                                      unroll_max_steps, unroll_explicit);
   auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch, BlockRV block,
                                          TContextInfo info) -> TReturn {
     return rule.Apply(task, sch, block, info);
   };
-  return SearchRule("mark_auto_unroll", f_apply);
+  return SearchRule("parallelize_vectorize_unroll", f_apply);
 }
 
 /********** MarkTensorize **********/
@@ -730,7 +769,7 @@ class RuleMarkTensorize {
       sch->Blockize(reorder_suffix[0], "");
     }
     // Annotate the block
-    sch->MarkBlockType(block_rv, tir::attr::block_type, "lazy_tensorize");
+    sch->MarkBlock(block_rv, tir::attr::auto_tensorize, Integer(1));
   }
 
   /*! \brief Rule application */
@@ -807,15 +846,11 @@ TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleApply").set_body_typed(Internal::Se
 TVM_REGISTER_GLOBAL("meta_schedule.SearchRuleCompose").set_body_typed(SearchRuleCompose);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.InlinePureSpatial")
     .set_body_typed(InlinePureSpatial);
-TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTilingAndFusion")
-    .set_body_typed(MultiLevelTilingAndFusion);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MultiLevelTiling").set_body_typed(MultiLevelTiling);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.RandomComputeLocation")
     .set_body_typed(RandomComputeLocation);
-TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkParallelizeOuter")
-    .set_body_typed(MarkParallelizeOuter);
-TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkVectorizeInner")
-    .set_body_typed(MarkVectorizeInner);
-TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkAutoUnroll").set_body_typed(MarkAutoUnroll);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.ParallelizeVectorizeUnroll")
+    .set_body_typed(ParallelizeVectorizeUnroll);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkTensorize").set_body_typed(MarkTensorize);
 
 }  // namespace meta_schedule

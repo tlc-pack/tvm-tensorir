@@ -89,7 +89,7 @@ Array<ObjectRef> Instruction::ImportToSchedule(ScheduleNode* sch, const Array<Ob
       vtable = {
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SamplePerfectTileAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleTileFactorAttrs),
-          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleFusibleLoopsAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleIntAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleCategoricalAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleComputeLocationAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetProducersAttrs),
@@ -100,8 +100,8 @@ Array<ObjectRef> Instruction::ImportToSchedule(ScheduleNode* sch, const Array<Ob
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetWriteBuffersAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetRootBlocksAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetLeafBlocksAttrs),
-          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(MarkLoopTypeAttrs),
-          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(MarkBlockTypeAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(MarkLoopAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(MarkBlockAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(FuseAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SplitAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(ReorderAttrs),
@@ -113,7 +113,8 @@ Array<ObjectRef> Instruction::ImportToSchedule(ScheduleNode* sch, const Array<Ob
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(CacheWriteAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(BlockizeAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(DecomposeReductionAttrs),
-          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(AutoUnrollAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(ParallelAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(VectorizeAttrs),
       };
 #undef TVM_META_SCHEDULE_INST_VTABLE_ENTRY
   CHECK_GE(record.size(), 3);
@@ -180,19 +181,11 @@ Instruction SampleTileFactorAttrs::Make(int n_splits, const LoopRV& loop,
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction SampleFusibleLoopsAttrs::Make(const Array<LoopRV>& loops,
-                                          const Array<Integer>& loop_types, int max_extent,
-                                          bool include_overflow_loop, int order, int mode,
-                                          const tir::Var& output) {
-  ObjectPtr<SampleFusibleLoopsAttrs> n = make_object<SampleFusibleLoopsAttrs>();
-  n->loop_types = loop_types;
-  n->max_extent = max_extent;
-  n->include_overflow_loop = include_overflow_loop;
-  n->order = order;
-  n->mode = mode;
-  return Instruction(/*inputs=*/{loops.begin(), loops.end()},
+Instruction SampleIntAttrs::Make(const PrimExpr& min_inclusive, const PrimExpr& max_exclusive,
+                                 const tir::Var& output) {
+  return Instruction(/*inputs=*/{min_inclusive, max_exclusive},
                      /*outputs=*/{output},
-                     /*attrs=*/InstAttrs(std::move(n)));
+                     /*attrs=*/InstAttrs(make_object<SampleIntAttrs>()));
 }
 
 Instruction SampleCategoricalAttrs::Make(const Array<Integer>& candidates,
@@ -327,26 +320,27 @@ Instruction ReverseComputeInlineAttrs::Make(const BlockRV& block) {
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction MarkLoopTypeAttrs::Make(const Array<LoopRV>& loops, const String& ann_key,
-                                    const String& ann_val, const PrimExpr& first_n,
-                                    const PrimExpr& last_n) {
-  ObjectPtr<MarkLoopTypeAttrs> n = make_object<MarkLoopTypeAttrs>();
+Instruction MarkLoopAttrs::Make(const LoopRV& loop, const String& ann_key,
+                                const PrimExpr& ann_val) {
+  Array<ObjectRef> inputs{loop};
+  ObjectPtr<MarkLoopAttrs> n = make_object<MarkLoopAttrs>();
   n->ann_key = ann_key;
-  n->ann_val = ann_val;
-  Array<ObjectRef> inputs{loops.begin(), loops.end()};
-  inputs.push_back(first_n);
-  inputs.push_back(last_n);
+  if (const auto* str_imm = ann_val.as<tir::StringImmNode>()) {
+    n->ann_val = str_imm->value;
+  } else if (const auto* int_imm = ann_val.as<tir::IntImmNode>()) {
+    n->ann_val = "";
+    inputs.push_back(Integer(int_imm->value));
+  }
   return Instruction(/*inputs=*/inputs,
                      /*outputs=*/{},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction MarkBlockTypeAttrs::Make(const BlockRV& block, const String& ann_key,
-                                     const String& ann_val) {
-  ObjectPtr<MarkBlockTypeAttrs> n = make_object<MarkBlockTypeAttrs>();
+Instruction MarkBlockAttrs::Make(const BlockRV& block, const String& ann_key,
+                                 const PrimExpr& ann_val) {
+  ObjectPtr<MarkBlockAttrs> n = make_object<MarkBlockAttrs>();
   n->ann_key = ann_key;
-  n->ann_val = ann_val;
-  return Instruction(/*inputs=*/{block},
+  return Instruction(/*inputs=*/{block, ann_val},
                      /*outputs=*/{},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
@@ -388,13 +382,16 @@ Instruction DecomposeReductionAttrs::Make(const BlockRV& block, const LoopRV& lo
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction AutoUnrollAttrs::Make(const BlockRV& block, const PrimExpr& max_step,
-                                  bool unroll_explicit) {
-  ObjectPtr<AutoUnrollAttrs> n = make_object<AutoUnrollAttrs>();
-  n->unroll_explicit = unroll_explicit;
-  return Instruction(/*inputs=*/{block, max_step},
+Instruction ParallelAttrs::Make(const LoopRV& loop) {
+  return Instruction(/*inputs=*/{loop},
                      /*outputs=*/{},
-                     /*attrs=*/InstAttrs(std::move(n)));
+                     /*attrs=*/InstAttrs(make_object<ParallelAttrs>()));
+}
+
+Instruction VectorizeAttrs::Make(const LoopRV& loop) {
+  return Instruction(/*inputs=*/{loop},
+                     /*outputs=*/{},
+                     /*attrs=*/InstAttrs(make_object<VectorizeAttrs>()));
 }
 
 Instruction EnterPostProcAttrs::Make() {
@@ -434,19 +431,12 @@ Array<ObjectRef> SampleTileFactorAttrs::ApplyToSchedule(
   return AdaptOutputs(sch->SampleTileFactor(n_splits, loop, where, decision));
 }
 
-Array<ObjectRef> SampleFusibleLoopsAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
-  Array<LoopRV> loops;
-  loops.reserve(inputs.size());
-  for (int i = 0, n = inputs.size(); i < n; ++i) {
-    TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[i]);
-    loops.push_back(loop);
-  }
-  ScheduleNode::Order the_order = static_cast<ScheduleNode::Order>(this->order);
-  ScheduleNode::Mode the_mode = static_cast<ScheduleNode::Mode>(this->mode);
-  return {sch->SampleFusibleLoops(loops, loop_types, max_extent, include_overflow_loop, the_order,
-                                  the_mode, decision)};
+Array<ObjectRef> SampleIntAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                                 const Optional<Array<ObjectRef>>& decision) const {
+  CHECK_EQ(inputs.size(), 2);
+  TVM_META_SCHEDULE_INST_CAST(PrimExpr, min_inclusive, inputs[0]);
+  TVM_META_SCHEDULE_INST_CAST(PrimExpr, max_exclusive, inputs[1]);
+  return {sch->SampleInt(min_inclusive, max_exclusive, decision)};
 }
 
 Array<ObjectRef> SampleCategoricalAttrs::ApplyToSchedule(
@@ -535,29 +525,29 @@ Array<ObjectRef> GetLeafBlocksAttrs::ApplyToSchedule(
 
 /**************** (ApplyToSchedule) Scheduling Primitives  ****************/
 
-Array<ObjectRef> MarkLoopTypeAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> MarkLoopAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                                const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
-  int n_loops = static_cast<int>(inputs.size()) - 2;
-  Array<LoopRV> loops;
-  loops.reserve(n_loops);
-  for (int i = 0; i < n_loops; ++i) {
-    TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[i]);
-    loops.push_back(loop);
+  CHECK(inputs.size() == 1 || inputs.size() == 2);
+  TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
+  if (ann_val == "") {
+    CHECK_EQ(inputs.size(), 2);
+    TVM_META_SCHEDULE_INST_CAST(PrimExpr, val, inputs[1]);
+    sch->MarkLoop(loop, ann_key, val);
+  } else {
+    CHECK_EQ(inputs.size(), 1);
+    sch->MarkLoop(loop, ann_key, tir::StringImm(ann_val));
   }
-  TVM_META_SCHEDULE_INST_CAST(PrimExpr, first_n, inputs[n_loops]);
-  TVM_META_SCHEDULE_INST_CAST(PrimExpr, last_n, inputs[n_loops + 1]);
-  sch->MarkLoopType(loops, ann_key, ann_val, first_n, last_n);
   return {};
 }
 
-Array<ObjectRef> MarkBlockTypeAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> MarkBlockAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                                 const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
+  CHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
-  sch->MarkBlockType(block, ann_key, ann_val);
+  TVM_META_SCHEDULE_INST_CAST(PrimExpr, ann_val, inputs[1]);
+  sch->MarkBlock(block, ann_key, ann_val);
   return {};
 }
 
@@ -678,14 +668,20 @@ Array<ObjectRef> DecomposeReductionAttrs::ApplyToSchedule(
   return {sch->DecomposeReduction(block, loop)};
 }
 
-Array<ObjectRef> AutoUnrollAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> ParallelAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                                const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 2);
-  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
-  TVM_META_SCHEDULE_INST_CAST(PrimExpr, max_step, inputs[1]);
-  sch->AutoUnroll(block, max_step, unroll_explicit);
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
+  sch->Parallel(loop);
+  return {};
+}
+Array<ObjectRef> VectorizeAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
+                                                 const Optional<Array<ObjectRef>>& decision) const {
+  CHECK(!decision.defined());
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
+  sch->Vectorize(loop);
   return {};
 }
 
@@ -725,15 +721,9 @@ void SampleTileFactorAttrs::Export(Array<ObjectRef>* record,
   }
 }
 
-void SampleFusibleLoopsAttrs::Export(Array<ObjectRef>* record,
-                                     const Optional<Array<ObjectRef>>& decision) const {
-  record->push_back(Array<ObjectRef>{
-      loop_types,                      //
-      Integer(max_extent),             //
-      Integer(include_overflow_loop),  //
-      Integer(order),                  //
-      Integer(mode),                   //
-  });
+void SampleIntAttrs::Export(Array<ObjectRef>* record,
+                            const Optional<Array<ObjectRef>>& decision) const {
+  record->push_back(Array<ObjectRef>{});
   if (decision.defined()) {
     record->push_back(decision.value());
   }
@@ -768,16 +758,16 @@ void GetBlockAttrs::Export(Array<ObjectRef>* record,
 
 /**************** (Export) Scheduling Primitives  ****************/
 
-void MarkLoopTypeAttrs::Export(Array<ObjectRef>* record,
-                               const Optional<Array<ObjectRef>>& decision) const {
+void MarkLoopAttrs::Export(Array<ObjectRef>* record,
+                           const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
   record->push_back(Array<ObjectRef>{ann_key, ann_val});
 }
 
-void MarkBlockTypeAttrs::Export(Array<ObjectRef>* record,
-                                const Optional<Array<ObjectRef>>& decision) const {
+void MarkBlockAttrs::Export(Array<ObjectRef>* record,
+                            const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{ann_key, ann_val});
+  record->push_back(Array<ObjectRef>{ann_key});
 }
 
 void CacheReadAttrs::Export(Array<ObjectRef>* record,
@@ -796,12 +786,6 @@ void BlockizeAttrs::Export(Array<ObjectRef>* record,
                            const Optional<Array<ObjectRef>>& decision) const {
   CHECK(!decision.defined());
   record->push_back(Array<ObjectRef>{exec_scope});
-}
-
-void AutoUnrollAttrs::Export(Array<ObjectRef>* record,
-                             const Optional<Array<ObjectRef>>& decision) const {
-  CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{Integer(unroll_explicit)});
 }
 
 /**************** Import  ****************/
@@ -829,18 +813,12 @@ InstAttrs SampleTileFactorAttrs::Import(const Array<ObjectRef>& record) {
   return InstAttrs(std::move(n));
 }
 
-InstAttrs SampleFusibleLoopsAttrs::Import(const Array<ObjectRef>& record) {
+InstAttrs SampleIntAttrs::Import(const Array<ObjectRef>& record) {
   CHECK_GE(record.size(), 4);
   CHECK_LE(record.size(), 5);
   Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 5);
-  ObjectPtr<SampleFusibleLoopsAttrs> n = make_object<SampleFusibleLoopsAttrs>();
-  n->loop_types = Downcast<Array<Integer>>(from[0]);
-  n->max_extent = Downcast<Integer>(from[1]);
-  n->include_overflow_loop = Downcast<Integer>(from[2]);
-  n->order = Downcast<Integer>(from[3]);
-  n->mode = Downcast<Integer>(from[4]);
-  return InstAttrs(std::move(n));
+  CHECK_EQ(from.size(), 0);
+  return InstAttrs(make_object<SampleIntAttrs>());
 }
 
 InstAttrs SampleCategoricalAttrs::Import(const Array<ObjectRef>& record) {
@@ -875,23 +853,22 @@ InstAttrs GetBlockAttrs::Import(const Array<ObjectRef>& record) {
 
 /**************** (Import) Scheduling Primitives  ****************/
 
-InstAttrs MarkLoopTypeAttrs::Import(const Array<ObjectRef>& record) {
+InstAttrs MarkLoopAttrs::Import(const Array<ObjectRef>& record) {
   CHECK_EQ(record.size(), 4);
   Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
   CHECK_EQ(from.size(), 2);
-  ObjectPtr<MarkLoopTypeAttrs> n = make_object<MarkLoopTypeAttrs>();
+  ObjectPtr<MarkLoopAttrs> n = make_object<MarkLoopAttrs>();
   n->ann_key = Downcast<String>(from[0]);
   n->ann_val = Downcast<String>(from[1]);
   return InstAttrs(std::move(n));
 }
 
-InstAttrs MarkBlockTypeAttrs::Import(const Array<ObjectRef>& record) {
+InstAttrs MarkBlockAttrs::Import(const Array<ObjectRef>& record) {
   CHECK_EQ(record.size(), 4);
   Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 2);
-  ObjectPtr<MarkBlockTypeAttrs> n = make_object<MarkBlockTypeAttrs>();
+  CHECK_EQ(from.size(), 1);
+  ObjectPtr<MarkBlockAttrs> n = make_object<MarkBlockAttrs>();
   n->ann_key = Downcast<String>(from[0]);
-  n->ann_val = Downcast<String>(from[1]);
   return InstAttrs(std::move(n));
 }
 
@@ -924,15 +901,6 @@ InstAttrs BlockizeAttrs::Import(const Array<ObjectRef>& record) {
   return InstAttrs(std::move(n));
 }
 
-InstAttrs AutoUnrollAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 4);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 1);
-  ObjectPtr<AutoUnrollAttrs> n = make_object<AutoUnrollAttrs>();
-  n->unroll_explicit = Downcast<Integer>(from[0])->value;
-  return InstAttrs(std::move(n));
-}
-
 /**************** Import/Export for empty instructions ****************/
 
 #define TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(AttrsType)                                  \
@@ -961,6 +929,8 @@ TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ComputeInlineAttrs);
 TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ReverseComputeInlineAttrs);
 TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(DecomposeReductionAttrs);
 TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(EnterPostProcAttrs);
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ParallelAttrs);
+TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(VectorizeAttrs);
 
 #undef TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY
 
@@ -973,7 +943,7 @@ TVM_REGISTER_OBJECT_TYPE(InstAttrsNode);
 TVM_REGISTER_NODE_TYPE(InstructionNode);
 TVM_REGISTER_NODE_TYPE(SamplePerfectTileAttrs);
 TVM_REGISTER_NODE_TYPE(SampleTileFactorAttrs);
-TVM_REGISTER_NODE_TYPE(SampleFusibleLoopsAttrs);
+TVM_REGISTER_NODE_TYPE(SampleIntAttrs);
 TVM_REGISTER_NODE_TYPE(SampleCategoricalAttrs);
 TVM_REGISTER_NODE_TYPE(SampleComputeLocationAttrs);
 TVM_REGISTER_NODE_TYPE(GetProducersAttrs);
@@ -984,8 +954,8 @@ TVM_REGISTER_NODE_TYPE(GetReadBuffersAttrs);
 TVM_REGISTER_NODE_TYPE(GetWriteBuffersAttrs);
 TVM_REGISTER_NODE_TYPE(GetRootBlocksAttrs);
 TVM_REGISTER_NODE_TYPE(GetLeafBlocksAttrs);
-TVM_REGISTER_NODE_TYPE(MarkLoopTypeAttrs);
-TVM_REGISTER_NODE_TYPE(MarkBlockTypeAttrs);
+TVM_REGISTER_NODE_TYPE(MarkLoopAttrs);
+TVM_REGISTER_NODE_TYPE(MarkBlockAttrs);
 TVM_REGISTER_NODE_TYPE(FuseAttrs);
 TVM_REGISTER_NODE_TYPE(SplitAttrs);
 TVM_REGISTER_NODE_TYPE(ReorderAttrs);
@@ -997,8 +967,9 @@ TVM_REGISTER_NODE_TYPE(CacheReadAttrs);
 TVM_REGISTER_NODE_TYPE(CacheWriteAttrs);
 TVM_REGISTER_NODE_TYPE(BlockizeAttrs);
 TVM_REGISTER_NODE_TYPE(DecomposeReductionAttrs);
-TVM_REGISTER_NODE_TYPE(AutoUnrollAttrs);
 TVM_REGISTER_NODE_TYPE(EnterPostProcAttrs);
+TVM_REGISTER_NODE_TYPE(ParallelAttrs);
+TVM_REGISTER_NODE_TYPE(VectorizeAttrs);
 
 TVM_REGISTER_GLOBAL("meta_schedule.LoopRVComputeInlineRV").set_body_typed(LoopRV::ComputeInlineRV);
 TVM_REGISTER_GLOBAL("meta_schedule.LoopRVComputeRootRV").set_body_typed(LoopRV::ComputeRootRV);

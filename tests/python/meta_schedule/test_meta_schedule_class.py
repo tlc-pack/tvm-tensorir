@@ -311,42 +311,22 @@ def test_meta_schedule_sample_perfect_tile():
     _check_serialization(sch, func=matmul)
 
 
-def test_meta_schedule_sample_fusible_loops():
+def test_meta_schedule_sample_int():
+    n = 20
     sch = ms.Schedule(func=matmul)
-    loops = sch.get_axes(block=sch.get_block("matmul"))
-    result = sch.sample_fusible_loops(
-        loops=loops,
-        loop_types=[0, 0, 0],
-        max_extent=1024,
-        include_overflow_loop=True,
-        order="outer_to_inner",
-    )
-    assert sch.evaluate(result) == 2
-    result = sch.sample_fusible_loops(
-        loops=loops,
-        loop_types=[0, 0, 0],
-        max_extent=1023,
-        include_overflow_loop=True,
-        order="outer_to_inner",
-    )
-    assert sch.evaluate(result) == 1
-    result = sch.sample_fusible_loops(
-        loops=loops,
-        loop_types=[0, 0, 0],
-        max_extent=1024,
-        include_overflow_loop=True,
-        order="inner_to_outer",
-    )
-    assert sch.evaluate(result) == 2
-    result = sch.sample_fusible_loops(
-        loops=loops,
-        loop_types=[0, 0, 0],
-        max_extent=1023,
-        include_overflow_loop=True,
-        order="inner_to_outer",
-    )
-    assert sch.evaluate(result) == 1
-    _check_serialization(sch, func=matmul)
+    counter = defaultdict(int)
+    v = sch.sample_int(9, 12)
+    for _ in range(n):
+        sch.resample()
+        counter[int(sch.evaluate(v))] += 1
+        new_sch = _check_serialization(sch, func=matmul)
+        old_decision = int(sch.decisions[sch.trace[-1]][0])
+        new_decision = int(new_sch.decisions[new_sch.trace[-1]][0])
+        assert old_decision == new_decision
+    assert len(counter) == 3
+    assert 9 in counter
+    assert 10 in counter
+    assert 11 in counter
 
 
 def test_meta_schedule_sample_categorical():
@@ -467,37 +447,33 @@ def test_meta_schedule_get_leaf_blocks():
     _check_serialization(sch, func=matmul_relu)
 
 
-def test_meta_schedule_mark_loop_type():
+def test_meta_schedule_mark_loop():
     def check_annotation(sch, loop):
         loop = sch.evaluate(loop).stmt
         assert len(loop.annotations) == 1
         (ann,) = loop.annotations
-        assert ann.attr_key == "loop_type"
-        assert ann.value == "lazy_parallel"
+        assert ann.attr_key == "ann_key"
+        assert ann.value == "ann_val"
 
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    axes = sch.get_axes(block)
-    sch.mark_loop_type(axes, "loop_type", "lazy_parallel", 3, None)
-    block = sch.get_block("matmul")
-    i, j, k = sch.get_axes(block)
+    i, _, _ = sch.get_axes(block)
+    sch.mark_loop(i, "ann_key", "ann_val")
     check_annotation(sch, i)
-    check_annotation(sch, j)
-    check_annotation(sch, k)
     _check_serialization(sch, func=matmul)
 
 
-def test_meta_schedule_mark_block_type():
+def test_meta_schedule_mark_block():
     def check_annotation(sch, block):
         block = sch.evaluate(block).stmt
         assert len(block.annotations) == 1
         (ann,) = block.annotations
-        assert ann.attr_key == "block_type"
-        assert ann.value == "lazy_tensorize"
+        assert ann.attr_key == "ann_key"
+        assert ann.value == "1"
 
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    sch.mark_block_type(block, "block_type", "lazy_tensorize")
+    sch.mark_block(block, "ann_key", 1)
     check_annotation(sch, block)
     _check_serialization(sch, func=matmul)
 
@@ -591,11 +567,34 @@ def test_meta_schedule_blockize():
     _check_serialization(sch, func=matmul)
 
 
-def test_meta_schedule_auto_unroll():
+def test_meta_schedule_parallel():
+    def check_annotation(sch, loop):
+        loop = sch.evaluate(loop).stmt
+        assert len(loop.annotations) == 1
+        (ann,) = loop.annotations
+        assert ann.attr_key == "loop_type"
+        assert ann.value == "parallel"
+
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    sch.auto_unroll(block, 10, True)
-    _check_serialization(sch, func=matmul)
+    i, _, _ = sch.get_axes(block)
+    sch.parallel(i)
+    check_annotation(sch, i)
+
+
+def test_meta_schedule_vectorize():
+    def check_annotation(sch, loop):
+        loop = sch.evaluate(loop).stmt
+        assert len(loop.annotations) == 1
+        (ann,) = loop.annotations
+        assert ann.attr_key == "loop_type"
+        assert ann.value == "vectorize"
+
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("matmul")
+    i, _, _ = sch.get_axes(block)
+    sch.vectorize(i)
+    check_annotation(sch, i)
 
 
 def test_meta_schedule_mutate_decision():
@@ -668,7 +667,7 @@ if __name__ == "__main__":
     test_meta_schedule_copy()
     test_meta_schedule_sample_tile_factor()
     test_meta_schedule_sample_perfect_tile()
-    test_meta_schedule_sample_fusible_loops()
+    test_meta_schedule_sample_int()
     test_meta_schedule_sample_categorical()
     test_meta_schedule_sample_compute_location()
     test_meta_schedule_get_producers()
@@ -679,8 +678,8 @@ if __name__ == "__main__":
     test_meta_schedule_get_write_buffers()
     test_meta_schedule_get_root_blocks()
     test_meta_schedule_get_leaf_blocks()
-    test_meta_schedule_mark_loop_type()
-    test_meta_schedule_mark_block_type()
+    test_meta_schedule_mark_loop()
+    test_meta_schedule_mark_block()
     test_meta_schedule_fuse()
     test_meta_schedule_split()
     test_meta_schedule_reorder()
@@ -691,7 +690,8 @@ if __name__ == "__main__":
     test_meta_schedule_cache_write()
     test_meta_schedule_blockize()
     # test_meta_schedule_decompose_reduction()
-    test_meta_schedule_auto_unroll()
+    test_meta_schedule_parallel()
+    test_meta_schedule_vectorize()
     test_meta_schedule_mutate_decision()
     test_meta_schedule_resample()
     test_meta_schedule_replay_decision()

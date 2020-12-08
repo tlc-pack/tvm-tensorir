@@ -19,7 +19,7 @@
 #ifndef SRC_META_SCHEDULE_ANALYSIS_H_
 #define SRC_META_SCHEDULE_ANALYSIS_H_
 
-#include <utility>
+#include <vector>
 
 #include "../tir/schedule/schedule_common.h"
 #include "./schedule.h"
@@ -64,8 +64,8 @@ TVM_DLL bool IsLeafBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sr
  * \param loops_sref The loops to be analyzed
  * \return An array of the same length as loops_sref
  */
-TVM_DLL Array<Integer> GetLoopType(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
-                                   const Array<tir::StmtSRef>& loops_sref);
+TVM_DLL std::vector<int> GetLoopType(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
+                                     const Array<tir::StmtSRef>& loops_sref);
 
 /*!
  * \brief Returns the IterVarType of each block var
