@@ -28,7 +28,7 @@ TARGET = tvm.target.Target("llvm --num_cores 16")
 SPACE = ms.space.PostOrderApply(
     stages=[
         ms.rule.inline_pure_spatial(strict_mode=True),
-        ms.rule.multi_level_tiling_and_fusion(
+        ms.rule.multi_level_tiling(
             structure="SSRSRS",
             must_cache_read=False,
             cache_read_scope="global",
@@ -38,14 +38,16 @@ SPACE = ms.space.PostOrderApply(
             fusion_levels=[1, 2],
         ),
         ms.rule.random_compute_location(),
-        ms.rule.mark_parallelize_outer(max_jobs_per_core=8),
-        ms.rule.mark_vectorize_inner(max_extent=32),
-        ms.rule.mark_auto_unroll(max_steps=[0, 16, 64, 512], unroll_explicit=True),
+        ms.rule.parallelize_vectorize_unroll(
+            max_jobs_per_core=16,
+            maximize_parallel=True,
+            max_vectorize_extent=32,
+            unroll_max_steps=[0, 16, 64, 512],
+            unroll_explicit=True,
+        ),
     ],
     postprocs=[
-        ms.postproc.rewrite_parallel(),
-        ms.postproc.rewrite_vectorize(),
-        ms.postproc.rewrite_auto_unroll(),
+        ms.postproc.rewrite_parallel_vectorize_unroll(),
     ],
 )
 
