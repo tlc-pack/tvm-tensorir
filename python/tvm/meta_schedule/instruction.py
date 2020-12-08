@@ -98,15 +98,9 @@ class SampleTileFactorAttrs(InstAttrs):
     where: List[int]
 
 
-@register_object("meta_schedule.attrs.SampleFusibleLoopsAttrs")
-class SampleFusibleLoopsAttrs(InstAttrs):
-    """Attrs of the instruction to sample fusible loops"""
-
-    loop_types: List[int]
-    max_extent: int
-    include_overflow_loop: bool
-    order: int
-    mode: int
+@register_object("meta_schedule.attrs.SampleIntAttrs")
+class SampleIntAttrs(InstAttrs):
+    """Attrs of the instruction to sample an integer in [min_inclusive, max_exclusive)"""
 
 
 @register_object("meta_schedule.attrs.SampleCategoricalAttrs")
@@ -170,13 +164,13 @@ class GetLeafBlocksAttrs(InstAttrs):
 ########## Scheduling Primitives ##########
 
 
-@register_object("meta_schedule.attrs.MarkLoopTypeAttrs")
-class MarkLoopTypeAttrs(InstAttrs):
+@register_object("meta_schedule.attrs.MarkLoopAttrs")
+class MarkLoopAttrs(InstAttrs):
     """Attrs of the instruction that marks specific loops"""
 
 
-@register_object("meta_schedule.attrs.MarkBlockTypeAttrs")
-class MarkBlockTypeAttrs(InstAttrs):
+@register_object("meta_schedule.attrs.MarkBlockAttrs")
+class MarkBlockAttrs(InstAttrs):
     """Attrs of the instruction that marks a specific block"""
 
 
@@ -232,3 +226,13 @@ class DecomposeReductionAttrs(InstAttrs):
 @register_object("meta_schedule.attrs.EnterPostProcAttrs")
 class EnterPostProcAttrs(InstAttrs):
     """Attrs of an NOP that indicates entrance of post processing"""
+
+
+@register_object("meta_schedule.attrs.ParallelAttrs")
+class ParallelAttrs(InstAttrs):
+    """Attrs of the instruction that applies parallel"""
+
+
+@register_object("meta_schedule.attrs.VectorizeAttrs")
+class VectorizeAttrs(InstAttrs):
+    """Attrs of the instruction that applies vectorize"""

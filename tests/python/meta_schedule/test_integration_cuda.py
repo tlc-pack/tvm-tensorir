@@ -28,7 +28,7 @@ TARGET = tvm.target.Target("nvidia/rtx2080ti")
 SPACE = ms.space.PostOrderApply(
     stages=[
         ms.rule.inline_pure_spatial(strict_mode=False),
-        ms.rule.multi_level_tiling_and_fusion(
+        ms.rule.multi_level_tiling(
             structure="SSSRRSRS",
             must_cache_read=True,
             cache_read_scope="shared",
@@ -41,7 +41,7 @@ SPACE = ms.space.PostOrderApply(
         ),
     ],
     postprocs=[
-        ms.postproc.rewrite_vectorize(),
+        ms.postproc.rewrite_parallel_vectorize_unroll(),
         ms.postproc.rewrite_cuda_thread_bind(),
         ms.postproc.verify_gpu_code(),
     ],
