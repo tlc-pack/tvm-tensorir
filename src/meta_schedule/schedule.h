@@ -147,23 +147,13 @@ class ScheduleNode : public Object {
   Array<tir::Var> SampleTileFactor(int n_splits, const LoopRV& loop, const Array<Integer>& where,
                                    const Optional<Array<ObjectRef>>& decision = NullOpt);
   /*!
-   * \brief Sample fusible loops, in the specific order (inner-to-outer or outer-to-inner), where
-   * their product of extent is limited. The sampling could have two modes: max or rand. If it is
-   * using mode "max", the sampling deterministically choose the maximum number of loops to fuse;
-   * Otherwise, if choose mode "rand", it samples the number of viable choices uniformly and return
-   * a randomly selected number of loops to fuse.
-   * \param loops The loops to be fused
-   * \param loop_types Type of the loop
-   * \param max_extent The maximum extent of loops
-   * \param include_overflow_loop Whether to include the last loop that makes the extent larger then
-   * `max_extent`
-   * \param order The order of fusion, can be inner_to_outer or outer_to_inner
-   * \param mode The mode of the fusion, can be max or rand
-   * \return A ExprRV, a random variable indicates the number of loops that can be potentially fused
+   * \brief Sample an integer in [min_inclusive, max_exclusive)
+   * \param min_inclusive The left boundary, inclusive
+   * \param max_exclusive The right boundary, exclusive
+   * \return The integer sampled
    */
-  tir::Var SampleFusibleLoops(const Array<LoopRV>& loops, const Array<Integer>& loop_types,
-                              int max_extent, bool include_overflow_loop, Order order, Mode mode,
-                              const Optional<Array<ObjectRef>>& decision = NullOpt);
+  tir::Var SampleInt(const PrimExpr& min_inclusive, const PrimExpr& max_exclusive,
+                     const Optional<Array<ObjectRef>>& decision = NullOpt);
   /*!
    * \brief Sample an integer given the probability distribution
    * \param candidates The candidates
@@ -229,21 +219,18 @@ class ScheduleNode : public Object {
   /**************** Scheduling Primitives ****************/
   /*!
    * \brief Mark a loop
-   * \param loops The loops to be marked
+   * \param loop The loop to be marked
    * \param ann_key The annotation key
    * \param ann_val The annotation value
-   * \param first_n The first n loops to be marked
-   * \param last_n The last n loops to be marked
    */
-  void MarkLoopType(const Array<LoopRV>& loops, const String& ann_key, const String& ann_val,
-                    const Optional<PrimExpr>& first_n, const Optional<PrimExpr>& last_n);
+  void MarkLoop(const LoopRV& loop, const String& ann_key, const PrimExpr& ann_val);
   /*!
    * \brief Mark a block
    * \param block The block to be marked
    * \param ann_key The annotation key
    * \param ann_val The annotation value
    */
-  void MarkBlockType(const BlockRV& block, const String& ann_key, const String& ann_val);
+  void MarkBlock(const BlockRV& block, const String& ann_key, const PrimExpr& ann_val);
   /*!
    * \brief Fuse the loops
    * \param loops The loops to be fused
@@ -317,12 +304,15 @@ class ScheduleNode : public Object {
    */
   BlockRV DecomposeReduction(const BlockRV& block, const LoopRV& loop);
   /*!
-   * \brief Apply auto-unroll onto a block
-   * \param block The block to be applied
-   * \param max_step The maximum steps to be unrolled
-   * \param unroll_explicit Whether to unroll explicitly
+   * \brief Parallelize a specific loop
+   * \param loop The loop to be parallelized
    */
-  void AutoUnroll(const BlockRV& block, const PrimExpr& max_step, bool unroll_explicit);
+  void Parallel(const LoopRV& loop);
+  /*!
+   * \brief Vectorize a specific loop
+   * \param loop The loop to be vectorized
+   */
+  void Vectorize(const LoopRV& loop);
   /*! \brief An NOP indicating entrance of post processing*/
   void EnterPostProc();
   /**************** Trace-related ****************/

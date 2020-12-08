@@ -245,46 +245,23 @@ struct SampleTileFactorAttrs : public InstAttrsNode {
                                       "SampleTileFactor");
 };
 
-/*! \brief Attrs of the instruction to sample fusible loops */
-struct SampleFusibleLoopsAttrs : public InstAttrsNode {
-  /*! \brief Type of the loop */
-  Array<Integer> loop_types;
-  /*! \brief The maximum extent of loops */
-  int max_extent;
-  /*! \brief Whether to include the last loop that makes the extent larger then `max_extent`*/
-  bool include_overflow_loop;
-  /*! \brief The order of fusion, can be 'outer_to_inner' (0) or 'inner_to_outer' (1) */
-  int order;
-  /*! \brief The mode of the fusion, can be 'max' (0) or 'rand' (1) */
-  int mode;
-
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("loop_types", &loop_types);
-    v->Visit("max_extent", &max_extent);
-    v->Visit("include_overflow_loop", &include_overflow_loop);
-    v->Visit("order", &order);
-    v->Visit("mode", &mode);
-  }
+/*! \brief Attrs of the instruction to sample from a categorical distribution */
+struct SampleIntAttrs : public InstAttrsNode {
+  void VisitAttrs(tvm::AttrVisitor* v) {}
 
   /*!
    * \brief Create instruction given the inputs and outputs
-   * \param loops The loops to be fused
-   * \param loop_types Type of the loop
-   * \param max_extent The maximum extent of loops
-   * \param include_overflow_loop Whether to include the last loop that makes the extent larger then
-   * `max_extent`
-   * \param order The order of fusion, can be 'outer_to_inner' (0) or 'inner_to_outer' (1)
-   * \param mode The mode of the fusion, can be 'max' (0) or 'rand' (1)
-   * \param output The output of the instruction
+   * \param candidates The candidates
+   * \param probs The probability distribution of the candidates
+   * \param output The output the instruction
    * \return The instruction created
    */
-  static Instruction Make(const Array<LoopRV>& loops, const Array<Integer>& loop_types,
-                          int max_extent, bool include_overflow_loop, int order, int mode,
+  static Instruction Make(const PrimExpr& min_inclusive, const PrimExpr& max_exclusive,
                           const tir::Var& output);
 
-  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SampleFusibleLoopsAttrs,
-                                      "meta_schedule.attrs.SampleFusibleLoopsAttrs",
-                                      "SampleFusibleLoops");
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SampleIntAttrs,                        //
+                                      "meta_schedule.attrs.SampleIntAttrs",  //
+                                      "SampleInt");
 };
 
 /*! \brief Attrs of the instruction to sample from a categorical distribution */
@@ -468,7 +445,7 @@ struct GetLeafBlocksAttrs : public InstAttrsNode {
 
 /**************** Scheduling Primitives ****************/
 
-struct MarkLoopTypeAttrs : public InstAttrsNode {
+struct MarkLoopAttrs : public InstAttrsNode {
   /*! \brief The loop annotation key */
   String ann_key;
   /*! \brief The loop annotation value */
@@ -481,31 +458,23 @@ struct MarkLoopTypeAttrs : public InstAttrsNode {
 
   /*!
    * \brief Create instruction given the inputs and outputs
-   * \param loops The loops to be mark
+   * \param loops The loop to be mark
    * \param ann_key The loop annotation key
    * \param ann_val The loop annotation value
-   * \param first_n To mark the first n loops
-   * \param last_n To mark the last n loops
    * \return The instruction created
    */
-  static Instruction Make(const Array<LoopRV>& loops, const String& ann_key, const String& ann_val,
-                          const PrimExpr& first, const PrimExpr& last_n);
+  static Instruction Make(const LoopRV& loop, const String& ann_key, const PrimExpr& ann_val);
 
-  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(MarkLoopTypeAttrs,                        //
-                                      "meta_schedule.attrs.MarkLoopTypeAttrs",  //
-                                      "MarkLoopType");
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(MarkLoopAttrs,                        //
+                                      "meta_schedule.attrs.MarkLoopAttrs",  //
+                                      "MarkLoop");
 };
 
-struct MarkBlockTypeAttrs : public InstAttrsNode {
+struct MarkBlockAttrs : public InstAttrsNode {
   /*! \brief The loop annotation key */
   String ann_key;
-  /*! \brief The loop annotation value */
-  String ann_val;
 
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("ann_key", &ann_key);
-    v->Visit("ann_val", &ann_val);
-  }
+  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("ann_key", &ann_key); }
 
   /*!
    * \brief Create instruction given the inputs and outputs
@@ -514,11 +483,11 @@ struct MarkBlockTypeAttrs : public InstAttrsNode {
    * \param ann_val The loop annotation value
    * \return The instruction created
    */
-  static Instruction Make(const BlockRV& block, const String& ann_key, const String& ann_val);
+  static Instruction Make(const BlockRV& block, const String& ann_key, const PrimExpr& ann_val);
 
-  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(MarkBlockTypeAttrs,                        //
-                                      "meta_schedule.attrs.MarkBlockTypeAttrs",  //
-                                      "MarkBlockType");
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(MarkBlockAttrs,                        //
+                                      "meta_schedule.attrs.MarkBlockAttrs",  //
+                                      "MarkBlock");
 };
 
 struct FuseAttrs : public InstAttrsNode {
@@ -733,25 +702,36 @@ struct DecomposeReductionAttrs : public InstAttrsNode {
                                       "DecomposeReduction");
 };
 
-/*! \brief Attrs of the instruction that applies auto_unroll */
-struct AutoUnrollAttrs : public InstAttrsNode {
-  /*! \brief Whether to unroll explicitly */
-  bool unroll_explicit;
-
+/*! \brief Attrs of the instruction that applies parallel */
+struct ParallelAttrs : public InstAttrsNode {
   void VisitAttrs(tvm::AttrVisitor* v) {}
 
   /*!
    * \brief Create instruction given the inputs and outputs
-   * \param block The reduction block to be decomposed
-   * \param max_step The maximum unroll steps
-   * \param unroll_explicit Whether to unroll explicitly
+   * \param loop The loop to be parallelized
    * \return The instruction created
    */
-  static Instruction Make(const BlockRV& block, const PrimExpr& max_step, bool unroll_explicit);
+  static Instruction Make(const LoopRV& loop);
 
-  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(AutoUnrollAttrs,                        //
-                                      "meta_schedule.attrs.AutoUnrollAttrs",  //
-                                      "AutoUnroll");
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(ParallelAttrs,                        //
+                                      "meta_schedule.attrs.ParallelAttrs",  //
+                                      "parallel");
+};
+
+/*! \brief Attrs of the instruction that applies vectorize */
+struct VectorizeAttrs : public InstAttrsNode {
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param loop The loop to be vectorized
+   * \return The instruction created
+   */
+  static Instruction Make(const LoopRV& loop);
+
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(VectorizeAttrs,                        //
+                                      "meta_schedule.attrs.VectorizeAttrs",  //
+                                      "vectorize");
 };
 
 /*! \brief Attrs of an NOP that indicates entrance of post processing */
