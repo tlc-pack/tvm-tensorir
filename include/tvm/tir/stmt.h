@@ -1377,19 +1377,19 @@ constexpr const char* loop_type = "loop_type";
 /*! \brief Mark the type of a block. */
 constexpr const char* block_type = "block_type";
 
-/*! \brief Mark auto_parallel setting on the block. */
-constexpr const char* auto_parallel = "auto_parallel";
+/*! \brief Mark auto-parallel setting on the block. */
+constexpr const char* auto_parallel_extent = "auto_parallel_extent";
 
-/*! \brief Mark auto_vectorize setting on the block. */
-constexpr const char* auto_vectorize = "auto_vectorize";
+/*! \brief Mark auto-vectorize setting on the block. */
+constexpr const char* auto_vectorize_extent = "auto_vectorize_extent";
 
-/*! \brief Mark auto_unroll setting on the block. */
+/*! \brief Mark auto-unroll setting on the block. */
 constexpr const char* auto_unroll_explicit = "auto_unroll_explicit";
 
-/*! \brief Mark auto_unroll setting on the block. */
+/*! \brief Mark auto-unroll setting on the block. */
 constexpr const char* auto_unroll_implicit = "auto_unroll_implicit";
 
-/*! \brief Mark auto_tensorize setting on the block. */
+/*! \brief Mark auto-tensorize setting on the block. */
 constexpr const char* auto_tensorize = "auto_tensorize";
 
 /*!
