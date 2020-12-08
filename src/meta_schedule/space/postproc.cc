@@ -449,7 +449,7 @@ class PostprocRewriteParallelizeVectorizeUnroll {
     }
     // Calculate the vectorize extent
     if (parsed->max_vectorize_extent != -1) {
-      int max_extent = parsed->max_parallel_extent;
+      int max_extent = parsed->max_vectorize_extent;
       int& num_fusible = parsed->num_vectorize_loops = 0;
       int64_t prod_extent = 1;
       for (int i = n_loops - 1; i >= 0 && loop_types[i] == tir::IterVarType::kDataPar; --i) {
