@@ -548,7 +548,8 @@ class RuleParallelizeVectorizeUnroll {
       if (!warned_num_cores_missing) {
         LOG(WARNING) << "Warning: Target does not have attribute \"num_cores\", falling back the "
                         "number of CPU cores on the local machine. The inaccuracy in number of "
-                        "cores may lead to dramatic inferior performance. Falling back to assuming "
+                        "cores may lead to dramatically inferior performance. Falling back to "
+                        " assuming "
                      << num_cores << " CPU core(s)";
         warned_num_cores_missing = true;
       }
@@ -562,8 +563,31 @@ class RuleParallelizeVectorizeUnroll {
     return !loop->body->IsInstance<tir::SeqStmtNode>();
   }
 
+  static bool IsLeftmostSubroot(const tir::Schedule& sch, tir::StmtSRef block_sref) {
+    if (!IsSubrootBlock(sch, block_sref)) {
+      return false;
+    }
+    tir::StmtSRefNode* child_sref = block_sref.operator->();
+    for (tir::StmtSRefNode* parent_sref = child_sref->parent;;
+         child_sref = parent_sref, parent_sref = child_sref->parent) {
+      const auto* parent_loop = parent_sref->GetStmt<tir::LoopNode>();
+      if (parent_loop == nullptr) {
+        return true;
+      }
+      const auto* seq_stmt = parent_loop->body.as<tir::SeqStmtNode>();
+      if (seq_stmt == nullptr) {
+        continue;
+      }
+      const tir::Stmt& first_child = seq_stmt->seq[0];
+      if (first_child.get() != child_sref->stmt) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   void Parallelize(const Schedule& sch, const BlockRV& block_rv, const tir::StmtSRef& block_sref,
-                   const Array<tir::StmtSRef>& loop_srefs, const Array<Integer>& loop_types,
+                   const Array<tir::StmtSRef>& loop_srefs, const std::vector<int>& loop_types,
                    int max_extent) const {
     int n = loop_srefs.size();
     int num_fusible = 0;
@@ -593,7 +617,7 @@ class RuleParallelizeVectorizeUnroll {
   }
 
   void Vectorize(const Schedule& sch, const BlockRV& block_rv, const tir::StmtSRef& block_sref,
-                 const Array<tir::StmtSRef>& loop_srefs, const Array<Integer>& loop_types,
+                 const Array<tir::StmtSRef>& loop_srefs, const std::vector<int>& loop_types,
                  int max_extent) const {
     int n = loop_srefs.size();
     int num_fusible = 0;
@@ -643,12 +667,12 @@ class RuleParallelizeVectorizeUnroll {
         loop_srefs.push_back(sch->Eval(loop_rv));
       }
     }
-    Array<Integer> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
+    std::vector<int> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
     // Check if the block is root and leaf
-    bool is_root = IsSubrootBlock(sch->sch, block_sref);
+    bool is_leftmost_root = IsLeftmostSubroot(sch->sch, block_sref);
     bool is_leaf = IsLeafBlock(sch->sch, block_sref);
     // Parallelization
-    if (max_jobs_per_core != -1 && is_root) {
+    if (max_jobs_per_core != -1 && is_leftmost_root) {
       Parallelize(sch, block_rv, block_sref, loop_srefs, loop_types,
                   GetMaxParallelExtent(task->target));
     }
@@ -657,7 +681,7 @@ class RuleParallelizeVectorizeUnroll {
       Vectorize(sch, block_rv, block_sref, loop_srefs, loop_types, max_vectorize_extent);
     }
     // Unroll
-    if (!unroll_max_steps.empty() && is_leaf) {
+    if (!unroll_max_steps.empty() && is_leftmost_root) {
       AutoUnroll(sch, block_rv);
     }
     return {{sch, info}};

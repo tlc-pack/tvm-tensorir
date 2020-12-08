@@ -261,7 +261,7 @@ class PostprocRewriteCudaThreadBind {
         return false;
       }
     }
-    Array<Integer> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
+    std::vector<int> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
     int n_spatial = 0;
     for (const Integer& _loop_type : loop_types) {
       int loop_type = _loop_type;
@@ -359,6 +359,9 @@ class PostprocRewriteParallelizeVectorizeUnroll {
     Optional<tir::Block> result = NullOpt;
     *parsed = Parsed{-1, -1, -1, -1};
     tir::PreOrderVisit(sch->func->body, [&sch, &parsed, &result](const ObjectRef& obj) -> bool {
+      if (result.defined()) {
+        return false;
+      }
       if (const auto* block = obj.as<tir::BlockNode>()) {
         tir::StmtSRef block_sref = sch->stmt2ref.at(block);
         bool found = false;
@@ -408,6 +411,26 @@ class PostprocRewriteParallelizeVectorizeUnroll {
       int n_loops = loop_rvs.size();
       if (n_loops == 0) {
         continue;
+      }
+      if (parsed.num_parallel != -1 || parsed.num_vectorize != -1) {
+        Array<tir::StmtSRef> loop_srefs;
+        {
+          loop_srefs.reserve(loop_rvs.size());
+          for (const LoopRV& loop_rv : loop_rvs) {
+            loop_srefs.push_back(sch->Eval(loop_rv));
+          }
+        }
+        std::vector<int> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
+        int max_parallel = 0;
+        int max_vectorize = 0;
+        for (int i = 0; i < n_loops && loop_types[i] == tir::IterVarType::kDataPar;
+             ++i, ++max_parallel) {
+        }
+        for (int i = n_loops - 1; i >= 0 && loop_types[i] == tir::IterVarType::kDataPar;
+             --i, ++max_vectorize) {
+        }
+        parsed.num_parallel = std::min(parsed.num_parallel, max_parallel);
+        parsed.num_vectorize = std::min(parsed.num_parallel, max_vectorize);
       }
       // Prefer num_parallel to num_vectorize
       CHECK_LE(parsed.num_parallel, n_loops) << "ValueError: Not enough loops to be parallelized";

@@ -221,7 +221,7 @@ def parallelize_vectorize_unroll(
     max_vectorize_extent: int = 32,
     unroll_max_steps: Optional[List[int]] = None,
     unroll_explicit: bool = True,
-):
+) -> SearchRule:
     """Mark parallelize, vectorize and unroll to each block correspondingly
 
     Parameters
