@@ -40,7 +40,6 @@ SPACE = ms.space.PostOrderApply(
         ms.rule.random_compute_location(),
         ms.rule.parallelize_vectorize_unroll(
             max_jobs_per_core=16,
-            maximize_parallel=True,
             max_vectorize_extent=32,
             unroll_max_steps=[0, 16, 64, 512],
             unroll_explicit=True,
