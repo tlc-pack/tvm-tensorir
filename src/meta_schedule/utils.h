@@ -22,6 +22,7 @@
 #include <tvm/arith/analyzer.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/schedule.h>
+#include <tvm/tir/stmt_functor.h>
 
 #include <set>
 #include <unordered_set>
@@ -173,6 +174,24 @@ inline bool DomainEqual(const Array<Range>& lhs, const Array<Range>& rhs) {
     }
   }
   return true;
+}
+
+template <class FPredicate>
+inline Optional<tir::StmtSRef> FindBlockSRef(const tir::Schedule& sch, FPredicate predicate) {
+  Optional<tir::StmtSRef> result = NullOpt;
+  tir::PreOrderVisit(sch->func->body, [&sch, &result, &predicate](const ObjectRef& obj) -> bool {
+    if (result.defined()) {
+      return false;
+    }
+    if (const auto* block = obj.as<tir::BlockNode>()) {
+      if (predicate(block)) {
+        result = sch->stmt2ref.at(block);
+        return false;
+      }
+    }
+    return true;
+  });
+  return result;
 }
 
 /**************** TIR Annotation ****************/
