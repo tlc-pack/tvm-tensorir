@@ -363,48 +363,51 @@ class PostprocRewriteParallelizeVectorizeUnroll {
     return !loop->body->IsInstance<tir::SeqStmtNode>();
   }
 
-  static Optional<tir::Block> FindAnnotatedBlock(const tir::Schedule& sch, Parsed* parsed) {
-    Optional<tir::Block> result = NullOpt;
-    *parsed = Parsed{-1, -1, -1, -1, -1, -1};
-    tir::PreOrderVisit(sch->func->body, [&sch, &parsed, &result](const ObjectRef& obj) -> bool {
-      if (result.defined()) {
-        return false;
-      }
-      if (const auto* block = obj.as<tir::BlockNode>()) {
-        tir::StmtSRef block_sref = sch->stmt2ref.at(block);
-        bool found = false;
-        // Check parallel
-        if (Optional<String> ann = GetAnn(block_sref, tir::attr::auto_parallel_extent)) {
+  static std::function<bool(const tir::BlockNode*)> MakeAnnParser(Parsed* parsed) {
+    return [&parsed](const tir::BlockNode* block) -> bool {
+      bool found = false;
+      *parsed = Parsed{-1, -1, -1, -1, -1, -1};
+      for (const tir::Annotation& ann : block->annotations) {
+        if (ann->attr_key == tir::attr::auto_parallel_extent) {
           found = true;
-          parsed->max_parallel_extent = std::atoi(ann.value().c_str());
-          DelAnn(sch, block_sref, tir::attr::auto_parallel_extent);
-        }
-        // Check vectorize
-        if (Optional<String> ann = GetAnn(block_sref, tir::attr::auto_vectorize_extent)) {
+          if (const auto* str_imm = ann->value.as<tir::StringImmNode>()) {
+            parsed->max_parallel_extent = std::atoi(str_imm->value.c_str());
+          }
+        } else if (ann->attr_key == tir::attr::auto_vectorize_extent) {
           found = true;
-          parsed->max_vectorize_extent = std::atoi(ann.value().c_str());
-          DelAnn(sch, block_sref, tir::attr::auto_vectorize_extent);
-        }
-        // Check unroll explicit
-        if (Optional<String> ann = GetAnn(block_sref, tir::attr::auto_unroll_explicit)) {
+          if (const auto* str_imm = ann->value.as<tir::StringImmNode>()) {
+            parsed->max_vectorize_extent = std::atoi(str_imm->value.c_str());
+          }
+        } else if (ann->attr_key == tir::attr::auto_unroll_explicit) {
           found = true;
-          parsed->unroll_explicit = std::atoi(ann.value().c_str());
-          DelAnn(sch, block_sref, tir::attr::auto_unroll_explicit);
-        }
-        // Check unroll implicit
-        if (Optional<String> ann = GetAnn(block_sref, tir::attr::auto_unroll_implicit)) {
+          if (const auto* str_imm = ann->value.as<tir::StringImmNode>()) {
+            parsed->unroll_explicit = std::atoi(str_imm->value.c_str());
+          }
+        } else if (ann->attr_key == tir::attr::auto_unroll_implicit) {
           found = true;
-          parsed->unroll_implicit = std::atoi(ann.value().c_str());
-          DelAnn(sch, block_sref, tir::attr::auto_unroll_implicit);
-        }
-        if (found) {
-          result = GetRef<tir::Block>(block_sref->GetStmt<tir::BlockNode>());
-          return false;
+          if (const auto* str_imm = ann->value.as<tir::StringImmNode>()) {
+            parsed->unroll_implicit = std::atoi(str_imm->value.c_str());
+          }
         }
       }
-      return true;
-    });
-    return result;
+      return found;
+    };
+  }
+
+  static void RemoveParsedAnn(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
+                              const Parsed& parsed) {
+    if (parsed.max_parallel_extent != -1) {
+      DelAnn(sch, block_sref, tir::attr::auto_parallel_extent);
+    }
+    if (parsed.max_vectorize_extent != -1) {
+      DelAnn(sch, block_sref, tir::attr::auto_vectorize_extent);
+    }
+    if (parsed.unroll_explicit != -1) {
+      DelAnn(sch, block_sref, tir::attr::auto_unroll_explicit);
+    }
+    if (parsed.unroll_implicit != -1) {
+      DelAnn(sch, block_sref, tir::attr::auto_unroll_implicit);
+    }
   }
 
   static void AdjustParallelVectorize(const Schedule& sch, const tir::StmtSRef& block_sref,
@@ -483,10 +486,12 @@ class PostprocRewriteParallelizeVectorizeUnroll {
 
   bool Proc(const Schedule& sch) const {
     Parsed parsed;
-    while (Optional<tir::Block> opt_block = FindAnnotatedBlock(sch->sch, &parsed)) {
+    while (Optional<tir::StmtSRef> opt_block_sref =
+               FindBlockSRef(sch->sch, MakeAnnParser(&parsed))) {
       // Extract block info
-      const auto* block = opt_block.value().get();
-      tir::StmtSRef block_sref = sch->sch->stmt2ref.at(block);
+      tir::StmtSRef block_sref = opt_block_sref.value();
+      RemoveParsedAnn(sch->sch, block_sref, parsed);
+      const auto* block = block_sref->GetStmt<tir::BlockNode>();
       BlockRV block_rv = sch->GetBlock(block->tag);
       // Extract loop info
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
