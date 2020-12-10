@@ -68,15 +68,6 @@ SearchRule SearchRuleCompose(const String& name, const Array<SearchRule>& rules)
   return SearchRule(name, SearchRuleNode::FApply(apply));
 }
 
-/********** Utility functions **********/
-
-bool HasAnnotation(const Schedule& sch, const BlockRV& block_rv) {
-  tir::StmtSRef block_sref = sch->Eval(block_rv);
-  const auto* block = block_sref->GetStmt<tir::BlockNode>();
-  CHECK(block) << "TypeError: Expect BlockNode, but gets type: " << block_sref->stmt->GetTypeKey();
-  return !block->annotations.empty();
-}
-
 /********** Always-Inline **********/
 
 /*! \brief A rule that inlines all possible blocks */
@@ -379,11 +370,12 @@ class RuleMultiLevelTiling {
 
   TReturn Apply(const SearchTask& task, const Schedule& sch, BlockRV block_rv,
                 const TContextInfo& _info) const {
-    if (HasAnnotation(sch, block_rv)) {
+    tir::StmtSRef block_sref = sch->Eval(block_rv);
+    if (HasAnyAnn(block_sref)) {
       return {{sch, NullOpt}};
     }
     // If multi-level-tiling is not required
-    if (!NeedsMultiLevelTiling(sch->sch, sch->Eval(block_rv))) {
+    if (!NeedsMultiLevelTiling(sch->sch, block_sref)) {
       return {{sch, NullOpt}};
     }
     // States
@@ -582,14 +574,6 @@ class RuleParallelizeVectorizeUnroll {
     // Extract basic information
     Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
     tir::StmtSRef block_sref = sch->Eval(block_rv);
-    Array<tir::StmtSRef> loop_srefs;
-    {
-      loop_srefs.reserve(loop_rvs.size());
-      for (const LoopRV& loop_rv : loop_rvs) {
-        loop_srefs.push_back(sch->Eval(loop_rv));
-      }
-    }
-    std::vector<int> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
     // Check if the block is root and leaf
     bool is_leftmost_root = IsLeftmostSubroot(sch->sch, block_sref);
     bool is_leaf = IsLeafBlock(sch->sch, block_sref);
