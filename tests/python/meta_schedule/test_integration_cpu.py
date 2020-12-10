@@ -23,6 +23,8 @@ import te_workload
 import tvm
 from tvm import meta_schedule as ms
 from tvm import te
+from tvm.tir import testing
+
 
 TARGET = tvm.target.Target("llvm --num_cores 16")
 SPACE = ms.space.PostOrderApply(
@@ -99,6 +101,32 @@ def test_matmul_relu_post_order_apply():
         print(tvm.script.asscript(sch.sch.func))
 
 
+@pytest.mark.skip(reason="needs RPC")
+def test_conv1d_post_order_apply():
+    os.environ["TVM_TRACKER_KEY"] = "test"
+    sch = ms.autotune(
+        task=ms.SearchTask(
+            workload=te.create_func(testing.workload_te.conv1d_nlc(1, 256, 64, 128, 3, 2, 1)),
+            target=TARGET,
+            task_name="conv1d_nlc",
+            # log_file="./conv1d_nlc.json",
+        ),
+        space=SPACE,
+        strategy=ms.strategy.Replay(num_trials=32, batch_size=1),
+        measurer=ms.ProgramMeasurer(
+            measure_callbacks=[
+                # ms.RecordToFile(),
+            ]
+        ),
+        seed=12,
+    )
+    if sch is None:
+        print("No valid schedule found")
+    else:
+        print(tvm.script.asscript(sch.sch.func))
+
+
 if __name__ == "__main__":
     test_matmul_post_order_apply()
     test_matmul_relu_post_order_apply()
+    test_conv1d_post_order_apply()

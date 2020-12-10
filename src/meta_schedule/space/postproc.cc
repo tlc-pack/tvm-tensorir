@@ -261,7 +261,14 @@ class PostprocRewriteCudaThreadBind {
         return false;
       }
     }
-    std::vector<int> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
+    std::vector<int> loop_types;
+    {
+      int n_loops = loop_srefs.size();
+      loop_types.reserve(n_loops);
+      for (int i = 0; i < n_loops; ++i) {
+        loop_types.push_back(GetLoopIterType(sch->sch, loop_srefs[i]));
+      }
+    }
     int n_spatial = 0;
     for (const Integer& _loop_type : loop_types) {
       int loop_type = _loop_type;
@@ -416,16 +423,17 @@ class PostprocRewriteParallelizeVectorizeUnroll {
       return;
     }
     int n_loops = loop_rvs.size();
-    // Extract loop_srefs
+    // Extract loop_srefs, and calculate the iterator types
     Array<tir::StmtSRef> loop_srefs;
+    std::vector<int> loop_types;
     {
       loop_srefs.reserve(n_loops);
+      loop_types.reserve(n_loops);
       for (const LoopRV& loop_rv : loop_rvs) {
         loop_srefs.push_back(sch->Eval(loop_rv));
+        loop_types.push_back(GetLoopIterType(sch->sch, loop_srefs.back()));
       }
     }
-    // Calculate the iterator types
-    std::vector<int> loop_types = GetLoopType(sch->sch, block_sref, loop_srefs);
     // Calculate the parallelize extent
     if (parsed->max_parallel_extent != -1) {
       int max_extent = parsed->max_parallel_extent;

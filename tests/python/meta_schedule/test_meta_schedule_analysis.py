@@ -121,11 +121,13 @@ def test_meta_schedule_analysis_is_leaf_block():
     assert ms.analysis.is_leaf_block(sch.sch, sch.evaluate(block))
 
 
-def test_meta_schedule_analysis_get_loop_type():
+def test_meta_schedule_analysis_get_loop_iter_type():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
-    loops = [sch.evaluate(loop) for loop in sch.get_axes(block)]
-    i, j, k = ms.analysis.get_loop_type(sch.sch, sch.evaluate(block), loops)
+    i, j, k = [sch.evaluate(loop) for loop in sch.get_axes(block)]
+    i = ms.analysis.get_loop_iter_type(sch.sch, i)
+    j = ms.analysis.get_loop_iter_type(sch.sch, j)
+    k = ms.analysis.get_loop_iter_type(sch.sch, k)
     assert i == 0
     assert j == 0
     assert k == 2
@@ -253,7 +255,7 @@ if __name__ == "__main__":
     test_meta_schedule_analysis_is_trivial_binding()
     test_meta_schedule_analysis_is_subroot_block()
     test_meta_schedule_analysis_is_leaf_block()
-    test_meta_schedule_analysis_get_loop_type()
+    test_meta_schedule_analysis_get_loop_iter_type()
     test_meta_schedule_analysis_get_block_var_types()
     test_meta_schedule_analysis_is_spatial()
     test_meta_schedule_is_output_block()
