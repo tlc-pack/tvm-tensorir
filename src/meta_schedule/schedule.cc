@@ -427,13 +427,13 @@ LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block,
   int n = loop_srefs.size();
   int i = decision.defined()                               //
               ? GetOnlyElement<Integer>(decision.value())  //
-              : sampler.SampleInt(0, n + 2);
+              : sampler.SampleInt(-2, n);
   // Create the output random variable
   LoopRV output;
   // Update the symbol table
-  if (i == n) {
+  if (i == -2) {
     this->sym_tab.Set(output, LoopRV::ComputeInlineRV());
-  } else if (i == n + 1) {
+  } else if (i == -1) {
     this->sym_tab.Set(output, LoopRV::ComputeRootRV());
   } else {
     this->sym_tab.Set(output, loop_srefs[i]);

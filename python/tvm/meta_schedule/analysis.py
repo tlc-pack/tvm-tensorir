@@ -21,8 +21,6 @@ from tvm import tir
 from tvm.ir import Op
 
 from . import _ffi_api_analysis
-from .instruction import BlockRV
-from .schedule import Schedule
 
 
 def is_trivial_binding(sch: tir.Schedule, block: tir.StmtSRef) -> bool:
@@ -82,27 +80,26 @@ def is_leaf_block(sch: tir.Schedule, block: tir.StmtSRef) -> bool:
     return bool(_ffi_api_analysis.IsLeafBlock(sch, block))  # pylint: disable=no-member
 
 
-def get_loop_type(sch: tir.Schedule, block: tir.StmtSRef, loops: List[tir.StmtSRef]) -> List[int]:
-    """For each loop var by examing its related block var, find its type in one of the following
-    IterVarType::kDataPar    = 0
-    IterVarType::kCommReduce = 2
-    IterVarType::kOpaque     = 4
+def get_loop_iter_type(sch: tir.Schedule, loop: tir.StmtSRef) -> int:
+    """Given the specific loop var, find its iteration type by checking its related block var.
+    The return value can be one of the following
+    1) IterVarType::kDataPar    = 0
+    2) IterVarType::kCommReduce = 2
+    3) IterVarType::kOpaque     = 4
 
     Parameters
     ----------
     sch: tir.Schedule
         The TIR schedule class
-    block: tir.StmtSRef
-        The block to be analyzed
-    loops: List[tir.StmtSRef]
+    loop: tir.StmtSRef
         The loops to be analyzed
 
     Returns
     -------
-    result : bool
-        An array of the same length as loops_sref
+    result : int
+        The type of the iteration variable
     """
-    return _ffi_api_analysis.GetLoopType(sch, block, loops)  # pylint: disable=no-member
+    return _ffi_api_analysis.GetLoopIterType(sch, loop)  # pylint: disable=no-member
 
 
 def get_block_var_types(sch: tir.Schedule, block: tir.StmtSRef) -> List[str]:
