@@ -215,9 +215,19 @@ inline Optional<String> GetAnn(const tir::StmtSRef& sref, const String& ann_key)
   return NullOpt;
 }
 
-inline bool HasAnn(const tir::StmtSRef& loop_sref, const String& ann_key, const String& ann_val) {
-  Optional<String> result = GetAnn(loop_sref, ann_key);
+inline bool HasAnn(const tir::StmtSRef& sref, const String& ann_key, const String& ann_val) {
+  Optional<String> result = GetAnn(sref, ann_key);
   return result.defined() && result.value() == ann_val;
+}
+
+inline bool HasAnyAnn(const tir::StmtSRef& sref) {
+  if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
+    return !loop->annotations.empty();
+  } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
+    return !block->annotations.empty();
+  }
+  LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
+  throw;
 }
 
 inline void DelAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const String& ann_key) {
