@@ -55,17 +55,16 @@ TVM_DLL bool IsSubrootBlock(const tir::Schedule& sch, const tir::StmtSRef& block
 TVM_DLL bool IsLeafBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
 
 /*!
- * \brief For each loop var by examing its related block var, find its type in one of the following
+ * \brief Given the specific loop var, find its iteration type by checking its related block var.
+ * The return value can be one of the following
  * 1) IterVarType::kDataPar    = 0
  * 2) IterVarType::kCommReduce = 2
  * 3) IterVarType::kOpaque     = 4
  * \param sch The TIR schedule class
- * \param block_sref The block to be analyzed
  * \param loops_sref The loops to be analyzed
- * \return An array of the same length as loops_sref
+ * \return The type of the iteration variable
  */
-TVM_DLL std::vector<int> GetLoopType(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
-                                     const Array<tir::StmtSRef>& loops_sref);
+TVM_DLL tir::IterVarType GetLoopIterType(const tir::Schedule& sch, const tir::StmtSRef& loop_sref);
 
 /*!
  * \brief Returns the IterVarType of each block var

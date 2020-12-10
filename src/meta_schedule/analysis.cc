@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-// TODO(@junrushao1994): move to TIR analysis
 #include "./analysis.h"  // NOLINT(build/include)
 
 #include <tvm/arith/analyzer.h>
@@ -72,52 +71,48 @@ bool IsLeafBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
   return no_child;
 }
 
-std::vector<int> GetLoopType(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
-                             const Array<tir::StmtSRef>& loops_sref) {
-  tir::BlockRealize realize = tir::GetBlockRealize(block_sref);
-  const auto* block = block_sref->GetStmt<tir::BlockNode>();
-  CHECK(block) << "TypeError: Expects block, but gets: " << block_sref->stmt->GetTypeKey();
-  std::unordered_map<const tir::VarNode*, int> data_par;
-  std::unordered_map<const tir::VarNode*, int> reduce;
-  std::unordered_map<const tir::VarNode*, int> other;
-  CHECK_EQ(realize->binding_values.size(), block->iter_vars.size());
-  int n_block_vars = realize->binding_values.size();
-  for (int i = 0; i < n_block_vars; ++i) {
-    const tir::IterVar& iter_var = block->iter_vars[i];
-    const PrimExpr& binding = realize->binding_values[i];
-    std::unordered_map<const tir::VarNode*, int>* ref = nullptr;
-    if (iter_var->iter_type == tir::IterVarType::kDataPar) {
-      ref = &data_par;
-    } else if (iter_var->iter_type == tir::IterVarType::kCommReduce) {
-      ref = &reduce;
-    } else {
-      ref = &other;
-    }
-    tir::PostOrderVisit(binding, [&ref](const ObjectRef& obj) -> void {
-      if (const auto* var = obj.as<tir::VarNode>()) {
-        (*ref)[var] += 1;
+tir::IterVarType GetLoopIterType(const tir::Schedule& sch, const tir::StmtSRef& loop_sref) {
+  int n_spatial = 0, n_reduce = 0, n_other = 0;
+  const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+  CHECK(loop) << "TypeError: Expects loop, but gets: " << loop_sref->stmt->GetTypeKey();
+  auto f_visit = [&loop, &n_spatial, &n_reduce, &n_other](const ObjectRef& obj) -> bool {
+    if (const auto* realize = obj.as<tir::BlockRealizeNode>()) {
+      const tir::BlockNode* block = realize->block.get();
+      // Number of block vars and their bindings
+      CHECK_EQ(realize->binding_values.size(), block->iter_vars.size());
+      int n = realize->binding_values.size();
+      for (int i = 0; i < n; ++i) {
+        const tir::IterVar& iter_var = block->iter_vars[i];
+        const PrimExpr& binding = realize->binding_values[i];
+        // Categorize the current block var
+        int* ref = nullptr;
+        if (iter_var->iter_type == tir::IterVarType::kDataPar) {
+          ref = &n_spatial;
+        } else if (iter_var->iter_type == tir::IterVarType::kCommReduce) {
+          ref = &n_reduce;
+        } else {
+          ref = &n_other;
+        }
+        // Visit the binding to see if `loop_var` appears
+        tir::PostOrderVisit(binding, [&ref, &loop](const ObjectRef& obj) -> void {
+          if (obj.same_as(loop->loop_var)) {
+            (*ref) += 1;
+          }
+        });
       }
-    });
-  }
-  std::vector<int> result;
-  result.reserve(loops_sref.size());
-  for (const tir::StmtSRef& loop_sref : loops_sref) {
-    const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
-    CHECK(loop) << "TypeError: Expects loop, but gets: " << loop_sref->stmt->GetTypeKey();
-    int n_data_par = data_par[loop->loop_var.get()];
-    int n_reduce = reduce[loop->loop_var.get()];
-    int n_other = other[loop->loop_var.get()];
-    if (n_other) {
-      result.push_back(tir::IterVarType::kOpaque);
-    } else if (n_data_par && n_reduce) {
-      result.push_back(tir::IterVarType::kOpaque);
-    } else if (n_reduce) {
-      result.push_back(tir::IterVarType::kCommReduce);
-    } else {
-      result.push_back(tir::IterVarType::kDataPar);
+      return false;
     }
+    return true;
+  };
+  tir::PreOrderVisit(loop->body, f_visit);
+  if (n_other) {
+    return tir::IterVarType::kOpaque;
+  } else if (n_spatial && n_reduce) {
+    return tir::IterVarType::kOpaque;
+  } else if (n_reduce) {
+    return tir::IterVarType::kCommReduce;
   }
-  return result;
+  return tir::IterVarType::kDataPar;
 }
 
 Array<Integer> GetBlockVarTypes(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
@@ -787,20 +782,12 @@ double CountFlop(const tir::PrimFunc& func) {
   return cnt;
 }
 
-struct Internal {
-  static Array<Integer> FFIGetLoopType(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
-                                       const Array<tir::StmtSRef>& loops_sref) {
-    std::vector<int> result = GetLoopType(sch, block_sref, loops_sref);
-    return AsArray<int, Integer>()(result);
-  }
-};
-
 TVM_REGISTER_NODE_TYPE(TensorizeInfoNode);
 
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsSubrootBlock").set_body_typed(IsSubrootBlock);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsLeafBlock").set_body_typed(IsLeafBlock);
-TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetLoopType").set_body_typed(Internal::FFIGetLoopType);
+TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetLoopIterType").set_body_typed(GetLoopIterType);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.GetBlockVarTypes").set_body_typed(GetBlockVarTypes);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsSpatial").set_body_typed(IsSpatial);
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsOutputBlock").set_body_typed(IsOutputBlock);
