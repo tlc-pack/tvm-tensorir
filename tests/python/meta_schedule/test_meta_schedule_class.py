@@ -250,7 +250,7 @@ def _check_serialization(sch, func) -> ms.Schedule:
 def test_meta_schedule_creation():
     sch = ms.Schedule(func=matmul)
     assert tvm.ir.structural_equal(sch.orig_func, sch.sch.func)
-    assert len(sch.trace) == 0
+    assert len(sch.insts) == 0
     _check_serialization(sch, func=matmul)
 
 
@@ -320,8 +320,8 @@ def test_meta_schedule_sample_int():
         sch.resample()
         counter[int(sch.evaluate(v))] += 1
         new_sch = _check_serialization(sch, func=matmul)
-        old_decision = int(sch.decisions[sch.trace[-1]][0])
-        new_decision = int(new_sch.decisions[new_sch.trace[-1]][0])
+        old_decision = int(sch.decisions[sch.insts[-1]][0])
+        new_decision = int(new_sch.decisions[new_sch.insts[-1]][0])
         assert old_decision == new_decision
     assert len(counter) == 3
     assert 9 in counter
@@ -352,8 +352,8 @@ def test_meta_schedule_sample_compute_location():
         sch.resample()
         counter[str(sch.evaluate(loop))] += 1
         new_sch = _check_serialization(sch, func=matmul)
-        old_decision = int(sch.decisions[sch.trace[-1]][0])
-        new_decision = int(new_sch.decisions[new_sch.trace[-1]][0])
+        old_decision = int(sch.decisions[sch.insts[-1]][0])
+        new_decision = int(new_sch.decisions[new_sch.insts[-1]][0])
         assert old_decision == new_decision
     assert len(counter) == 5
     assert "$root" in counter
@@ -602,8 +602,8 @@ def test_meta_schedule_mutate_decision():
     i, j, _ = sch.get_axes(sch.get_block("matmul"))
     sch.sample_perfect_tile(n_splits=4, loop=i)
     sch.sample_perfect_tile(n_splits=3, loop=j)
-    i_inst = sch.trace[-2]
-    j_inst = sch.trace[-1]
+    i_inst = sch.insts[-2]
+    j_inst = sch.insts[-1]
     sch.mutate_decision(i_inst, [1, 1, 1, 1024])
     assert list(sch.decisions[i_inst]) == [1, 1, 1, 1024]
     sch.mutate_decision(j_inst, None)
@@ -618,8 +618,8 @@ def test_meta_schedule_resample():
     i, j, _ = sch.get_axes(sch.get_block("matmul"))
     i_tiles = sch.sample_perfect_tile(n_splits=4, loop=i)
     j_tiles = sch.sample_perfect_tile(n_splits=3, loop=j)
-    i_inst = sch.trace[-2]
-    j_inst = sch.trace[-1]
+    i_inst = sch.insts[-2]
+    j_inst = sch.insts[-1]
     _check_serialization(sch, func=matmul)
     for _ in range(10):
         sch.resample()
@@ -639,8 +639,8 @@ def test_meta_schedule_replay_decision():
     i, j, _ = sch.get_axes(sch.get_block("matmul"))
     i_tiles = sch.sample_perfect_tile(n_splits=4, loop=i)
     j_tiles = sch.sample_perfect_tile(n_splits=3, loop=j)
-    i_inst = sch.trace[-2]
-    j_inst = sch.trace[-1]
+    i_inst = sch.insts[-2]
+    j_inst = sch.insts[-1]
     sch.split(loop=i, factors=i_tiles)
     sch.split(loop=j, factors=j_tiles)
     i_cnt = defaultdict(int)

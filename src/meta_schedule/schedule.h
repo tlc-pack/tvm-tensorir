@@ -42,8 +42,8 @@ class ScheduleNode : public Object {
   tir::PrimFunc orig_func;
   /*! \brief The TIR schedule in the current stage */
   tir::Schedule sch{nullptr};
-  /*! \brief The trace of instructions used */
-  Array<Instruction> trace;
+  /*! \brief The instructions used */
+  Array<Instruction> insts;
   /*! \brief The decisions made in sampling */
   Map<Instruction, Array<ObjectRef>> decisions;
   /*! \brief The symbol table with information of all defined variables in the meta schedule */
@@ -54,7 +54,7 @@ class ScheduleNode : public Object {
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("orig_func", &orig_func);
     v->Visit("sch", &sch);
-    v->Visit("trace", &trace);
+    v->Visit("insts", &insts);
     v->Visit("decisions", &decisions);
     v->Visit("sym_tab", &sym_tab);
     // `sampler` is not visited
@@ -355,12 +355,12 @@ class Schedule : public ObjectRef {
    * \brief Constructor
    * \param orig_func The original TIR PrimFunc to be scheduled
    * \param sch The TIR schedule in the current stage
-   * \param trace The trace of instructions used
+   * \param insts The instructions used
    * \param decisions The decisions made in sampling
    * \param sym_tab The symbol table with information of all defined variables in the meta schedule
    * \param seed The random seed
    */
-  explicit Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
+  explicit Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> insts,
                     Map<Instruction, Array<ObjectRef>> decisions, TSymbolTable sym_tab,
                     Optional<Integer> seed);
   /*!

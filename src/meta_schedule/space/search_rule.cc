@@ -486,10 +486,10 @@ class RuleRandomComputeLocation {
         // 1) sym_tab
         // 2) decisions
         // 3) trace
-        Instruction inst = sch->trace.back();
+        Instruction inst = sch->insts.back();
         CHECK(inst->inst_attrs->IsInstance<SampleComputeLocationAttrs>())
             << "TypeError: Expects `SampleComputeLocationAttrs`, but gets: " << inst->inst_attrs;
-        sch->trace.pop_back();
+        sch->insts.pop_back();
         sch->sym_tab.erase(compute_at_loc);
         sch->decisions.erase(inst);
         continue;

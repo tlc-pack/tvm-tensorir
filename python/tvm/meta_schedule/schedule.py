@@ -17,7 +17,7 @@
 """ Main class of meta schedule """
 from typing import List, Optional, Union
 
-from tvm import ir, tir
+from tvm import tir
 from tvm._ffi import register_object
 from tvm.runtime import Object
 from tvm.runtime.container import String
@@ -36,13 +36,13 @@ class Schedule(Object):
         The original TIR PrimFunc to be scheduled
     sch: tir.Schedule
         The TIR schedule in the current stage
-    trace: List[Instruction]
-        The trace of instructions used
+    insts: List[Instruction]
+        The instructions used
     """
 
     orig_func: tir.PrimFunc
     sch: tir.Schedule
-    trace: List[Instruction]
+    insts: List[Instruction]
     decisions: List[List[Object]]
 
     def __init__(self, func: tir.PrimFunc, seed: Optional[int] = None):

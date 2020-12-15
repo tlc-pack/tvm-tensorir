@@ -201,9 +201,10 @@ Optional<MeasureRecord> ImportLog(const SearchTask& task, const Array<ObjectRef>
   if (!StructuralEqual()(orig_func, task->workload)) {
     return NullOpt;
   }
-  return MeasureRecord(/*sch=*/ScheduleNode::Import(/*trace=*/Downcast<Array<ObjectRef>>(record[4]),
-                                                    /*orig_func=*/orig_func, /*seed=*/NullOpt),
-                       /*costs=*/Downcast<Array<FloatImm>>(record[3]));
+  return MeasureRecord(
+      /*sch=*/ScheduleNode::Import(/*records=*/Downcast<Array<ObjectRef>>(record[4]),
+                                   /*orig_func=*/orig_func, /*seed=*/NullOpt),
+      /*costs=*/Downcast<Array<FloatImm>>(record[3]));
 }
 
 void ProgramMeasurerNode::Init(const SearchTask& task) {
