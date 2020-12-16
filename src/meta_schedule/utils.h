@@ -54,18 +54,6 @@ inline double FloatArrayMean(const Array<FloatImm>& float_array) {
 }
 
 /*!
- * \brief Get the only element from a single-element array
- * \tparam T The type to be downcasted to
- * \param array The single-element array
- * \return The element
- */
-template <class T>
-inline int GetOnlyElement(const Array<ObjectRef>& array) {
-  CHECK_EQ(array.size(), 1) << "ValueError: Not a single-element array: " << array;
-  return Downcast<T>(array[0]);
-}
-
-/*!
  * \brief Concatenate the nested vector into a flattened vector
  * \tparam T The element type of the nested vector
  * \param source The nested vector

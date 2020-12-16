@@ -19,7 +19,6 @@
 #ifndef SRC_META_SCHEDULE_INSTRUCTION_H_
 #define SRC_META_SCHEDULE_INSTRUCTION_H_
 
-#include <tvm/ir/attrs.h>
 #include <tvm/tir/var.h>
 
 namespace tvm {
@@ -143,7 +142,7 @@ class InstAttrs : public ObjectRef {
   Array<ObjectRef> ApplyToSchedule(const Schedule& sch, const Array<ObjectRef>& inputs,      \
                                    const Optional<ObjectRef>& decision) const override;      \
   void Export(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const override; \
-  static InstAttrs Import(const Array<ObjectRef>& record);                                   \
+  static InstAttrs Import(const Array<ObjectRef>& record, Optional<ObjectRef>* decision);    \
   static constexpr const char* _name = InstName;                                             \
   static constexpr const char* _type_key = TypeKey;                                          \
   TVM_DECLARE_FINAL_OBJECT_INFO(Cls, InstAttrsNode);                                         \

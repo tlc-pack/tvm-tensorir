@@ -75,8 +75,7 @@ Array<ObjectRef> InstructionNode::Export(const Map<ObjectRef, String>& rv_names,
     }
     record.push_back(names);
   }
-  // record[3]: (optional) inst_attrs
-  // record[4]: (optional) decision
+  // record[3...]: allocated for inst_attrs
   inst_attrs->Export(&record, decision);
   return record;
 }
@@ -85,7 +84,8 @@ Array<ObjectRef> Instruction::ImportToSchedule(const Schedule& sch, const Array<
                                                Map<String, ObjectRef>* named_rvs) {
 #define TVM_META_SCHEDULE_INST_VTABLE_ENTRY(AttrsType) \
   { String(AttrsType::_name), AttrsType::Import }
-  static const std::unordered_map<String, std::function<InstAttrs(const Array<ObjectRef>&)>>
+  static const std::unordered_map<
+      String, std::function<InstAttrs(const Array<ObjectRef>&, Optional<ObjectRef>*)>>
       vtable = {
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SamplePerfectTileAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleTileFactorAttrs),
@@ -118,7 +118,6 @@ Array<ObjectRef> Instruction::ImportToSchedule(const Schedule& sch, const Array<
       };
 #undef TVM_META_SCHEDULE_INST_VTABLE_ENTRY
   CHECK_GE(record.size(), 3);
-  CHECK_LE(record.size(), 5);
   // Step 1. Extract inst_attrs::_name <= record[0]
   String attrs_name = Downcast<String>(record[0]);
   // Step 2. Extract record_inputs <= record[1], then translate record_inputs to inputs
@@ -142,11 +141,10 @@ Array<ObjectRef> Instruction::ImportToSchedule(const Schedule& sch, const Array<
   // Step 3. Extract record_outputs <= record[2]
   Array<String> record_outputs = Downcast<Array<String>>(record[2]);
   // Step 4. Extract inst_attrs <= record[3]
-  InstAttrs inst_attrs = vtable.at(attrs_name)(record);
-  // Step 5. Extract decision <= record[4]
-  Optional<ObjectRef> opt_decision = record.size() >= 5 ? record[4] : Optional<ObjectRef>(NullOpt);
+  Optional<ObjectRef> decision = NullOpt;
+  InstAttrs inst_attrs = vtable.at(attrs_name)(record, &decision);
   // Step 6. Calculate the new outputs, and translate record_outputs to outputs
-  Array<ObjectRef> outputs = inst_attrs->ApplyToSchedule(sch, inputs, opt_decision);
+  Array<ObjectRef> outputs = inst_attrs->ApplyToSchedule(sch, inputs, decision);
   CHECK_EQ(record_outputs.size(), outputs.size());
   int n = record_outputs.size();
   for (int i = 0; i < n; ++i) {
@@ -713,10 +711,8 @@ Array<ObjectRef> EnterPostProcAttrs::ApplyToSchedule(const Schedule& sch,
 
 void SamplePerfectTileAttrs::Export(Array<ObjectRef>* record,
                                     const Optional<ObjectRef>& decision) const {
-  record->push_back(Array<ObjectRef>{
-      Integer(n_splits),              //
-      Integer(max_innermost_factor),  //
-  });
+  record->push_back(Integer(n_splits));
+  record->push_back(Integer(max_innermost_factor));
   if (decision.defined()) {
     record->push_back(decision.value());
   }
@@ -724,17 +720,14 @@ void SamplePerfectTileAttrs::Export(Array<ObjectRef>* record,
 
 void SampleTileFactorAttrs::Export(Array<ObjectRef>* record,
                                    const Optional<ObjectRef>& decision) const {
-  record->push_back(Array<ObjectRef>{
-      Integer(n_splits),  //
-      where,              //
-  });
+  record->push_back(Integer(n_splits));
+  record->push_back(where);
   if (decision.defined()) {
     record->push_back(decision.value());
   }
 }
 
 void SampleIntAttrs::Export(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
-  record->push_back(Array<ObjectRef>{});
   if (decision.defined()) {
     record->push_back(decision.value());
   }
@@ -742,10 +735,8 @@ void SampleIntAttrs::Export(Array<ObjectRef>* record, const Optional<ObjectRef>&
 
 void SampleCategoricalAttrs::Export(Array<ObjectRef>* record,
                                     const Optional<ObjectRef>& decision) const {
-  record->push_back(Array<ObjectRef>{
-      candidates,
-      probs,
-  });
+  record->push_back(candidates);
+  record->push_back(probs);
   if (decision.defined()) {
     record->push_back(decision.value());
   }
@@ -753,7 +744,6 @@ void SampleCategoricalAttrs::Export(Array<ObjectRef>* record,
 
 void SampleComputeLocationAttrs::Export(Array<ObjectRef>* record,
                                         const Optional<ObjectRef>& decision) const {
-  record->push_back(Array<ObjectRef>{});
   if (decision.defined()) {
     record->push_back(decision.value());
   }
@@ -763,146 +753,130 @@ void SampleComputeLocationAttrs::Export(Array<ObjectRef>* record,
 
 void GetBlockAttrs::Export(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{name});
+  record->push_back(name);
 }
 
 /**************** (Export) Scheduling Primitives  ****************/
 
 void MarkLoopAttrs::Export(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{ann_key, ann_val});
+  record->push_back(ann_key);
+  record->push_back(ann_val);
 }
 
 void MarkBlockAttrs::Export(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{ann_key});
+  record->push_back(ann_key);
 }
 
 void CacheReadAttrs::Export(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{Integer(i), storage_scope});
+  record->push_back(Integer(i));
+  record->push_back(storage_scope);
 }
 
 void CacheWriteAttrs::Export(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{Integer(i), storage_scope});
+  record->push_back(Integer(i));
+  record->push_back(storage_scope);
 }
 
 void BlockizeAttrs::Export(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{exec_scope});
+  record->push_back(exec_scope);
 }
 
 /**************** Import  ****************/
 /**************** (Import) Sampling  ****************/
 
-InstAttrs SamplePerfectTileAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_GE(record.size(), 4);
-  CHECK_LE(record.size(), 5);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 2);
+InstAttrs SamplePerfectTileAttrs::Import(const Array<ObjectRef>& record,
+                                         Optional<ObjectRef>* decision) {
   ObjectPtr<SamplePerfectTileAttrs> n = make_object<SamplePerfectTileAttrs>();
-  n->n_splits = Downcast<Integer>(from[0]);
-  n->max_innermost_factor = Downcast<Integer>(from[1]);
+  n->n_splits = Downcast<Integer>(record[3]);
+  n->max_innermost_factor = Downcast<Integer>(record[4]);
+  if (record.size() > 5) {
+    *decision = Downcast<Array<Integer>>(record[5]);
+  }
   return InstAttrs(std::move(n));
 }
 
-InstAttrs SampleTileFactorAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_GE(record.size(), 4);
-  CHECK_LE(record.size(), 5);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 2);
+InstAttrs SampleTileFactorAttrs::Import(const Array<ObjectRef>& record,
+                                        Optional<ObjectRef>* decision) {
   ObjectPtr<SampleTileFactorAttrs> n = make_object<SampleTileFactorAttrs>();
-  n->n_splits = Downcast<Integer>(from[0]);
-  n->where = Downcast<Array<Integer>>(from[1]);
+  n->n_splits = Downcast<Integer>(record[3]);
+  n->where = Downcast<Array<Integer>>(record[4]);
+  if (record.size() > 5) {
+    *decision = Downcast<Array<Integer>>(record[5]);
+  }
   return InstAttrs(std::move(n));
 }
 
-InstAttrs SampleIntAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_GE(record.size(), 4);
-  CHECK_LE(record.size(), 5);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 0);
+InstAttrs SampleIntAttrs::Import(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {
+  if (record.size() > 3) {
+    *decision = Downcast<Integer>(record[3]);
+  }
   return InstAttrs(make_object<SampleIntAttrs>());
 }
 
-InstAttrs SampleCategoricalAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_GE(record.size(), 4);
-  CHECK_LE(record.size(), 5);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 2);
+InstAttrs SampleCategoricalAttrs::Import(const Array<ObjectRef>& record,
+                                         Optional<ObjectRef>* decision) {
   ObjectPtr<SampleCategoricalAttrs> n = make_object<SampleCategoricalAttrs>();
-  n->candidates = Downcast<Array<Integer>>(from[0]);
-  n->probs = Downcast<Array<FloatImm>>(from[1]);
+  n->candidates = Downcast<Array<Integer>>(record[3]);
+  n->probs = Downcast<Array<FloatImm>>(record[4]);
+  if (record.size() > 5) {
+    *decision = Downcast<Integer>(record[5]);
+  }
   return InstAttrs(std::move(n));
 }
 
-InstAttrs SampleComputeLocationAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_GE(record.size(), 4);
-  CHECK_LE(record.size(), 5);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 0);
+InstAttrs SampleComputeLocationAttrs::Import(const Array<ObjectRef>& record,
+                                             Optional<ObjectRef>* decision) {
+  if (record.size() > 3) {
+    *decision = Downcast<Integer>(record[3]);
+  }
   return InstAttrs(make_object<SampleComputeLocationAttrs>());
 }
 
 /**************** (Import) Block/Loop Relationship  ****************/
 
-InstAttrs GetBlockAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 4);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 1);
+InstAttrs GetBlockAttrs::Import(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {
   ObjectPtr<GetBlockAttrs> n = make_object<GetBlockAttrs>();
-  n->name = Downcast<String>(from[0]);
+  n->name = Downcast<String>(record[3]);
   return InstAttrs(std::move(n));
 }
 
 /**************** (Import) Scheduling Primitives  ****************/
 
-InstAttrs MarkLoopAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 4);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 2);
+InstAttrs MarkLoopAttrs::Import(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {
   ObjectPtr<MarkLoopAttrs> n = make_object<MarkLoopAttrs>();
-  n->ann_key = Downcast<String>(from[0]);
-  n->ann_val = Downcast<String>(from[1]);
+  n->ann_key = Downcast<String>(record[3]);
+  n->ann_val = Downcast<String>(record[4]);
   return InstAttrs(std::move(n));
 }
 
-InstAttrs MarkBlockAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 4);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 1);
+InstAttrs MarkBlockAttrs::Import(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {
   ObjectPtr<MarkBlockAttrs> n = make_object<MarkBlockAttrs>();
-  n->ann_key = Downcast<String>(from[0]);
+  n->ann_key = Downcast<String>(record[3]);
   return InstAttrs(std::move(n));
 }
 
-InstAttrs CacheReadAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 4);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 2);
+InstAttrs CacheReadAttrs::Import(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {
   ObjectPtr<CacheReadAttrs> n = make_object<CacheReadAttrs>();
-  n->i = Downcast<Integer>(from[0]);
-  n->storage_scope = Downcast<String>(from[1]);
+  n->i = Downcast<Integer>(record[3]);
+  n->storage_scope = Downcast<String>(record[4]);
   return InstAttrs(std::move(n));
 }
 
-InstAttrs CacheWriteAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 4);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 2);
+InstAttrs CacheWriteAttrs::Import(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {
   ObjectPtr<CacheWriteAttrs> n = make_object<CacheWriteAttrs>();
-  n->i = Downcast<Integer>(from[0]);
-  n->storage_scope = Downcast<String>(from[1]);
+  n->i = Downcast<Integer>(record[3]);
+  n->storage_scope = Downcast<String>(record[4]);
   return InstAttrs(std::move(n));
 }
 
-InstAttrs BlockizeAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 4);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 1);
+InstAttrs BlockizeAttrs::Import(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {
   ObjectPtr<BlockizeAttrs> n = make_object<BlockizeAttrs>();
-  n->exec_scope = Downcast<String>(from[0]);
+  n->exec_scope = Downcast<String>(record[3]);
   return InstAttrs(std::move(n));
 }
 
@@ -912,8 +886,7 @@ InstAttrs BlockizeAttrs::Import(const Array<ObjectRef>& record) {
   void AttrsType::Export(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const { \
     CHECK(!decision.defined());                                                                 \
   }                                                                                             \
-  InstAttrs AttrsType::Import(const Array<ObjectRef>& record) {                                 \
-    CHECK_EQ(record.size(), 3);                                                                 \
+  InstAttrs AttrsType::Import(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {  \
     return InstAttrs(make_object<AttrsType>());                                                 \
   }
 
