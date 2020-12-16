@@ -98,8 +98,7 @@ void TraceNode::Apply(const Schedule& sch) const {
       }
     }
     // Step 2. Apply the instruction to the schedule to get new outputs
-    Array<ObjectRef> new_outputs =
-        inst->inst_attrs->ApplyToSchedule(sch, new_inputs, decisions.Get(inst));
+    Array<ObjectRef> new_outputs = inst->inst_attrs->Apply(sch, new_inputs, decisions.Get(inst));
     // Step 3. Step up the correspondence between old outputs and construct new outputs
     {
       const Array<ObjectRef>& old_outputs = inst->outputs;
@@ -139,7 +138,7 @@ ObjectRef TraceNode::Serialize() const {
     if (inst->inst_attrs->IsInstance<EnterPostProcAttrs>()) {
       break;
     }
-    json.push_back(inst->Export(rv_names, decisions.Get(inst)));
+    json.push_back(inst->Serialize(rv_names, decisions.Get(inst)));
   }
   return json;
 }
@@ -155,7 +154,7 @@ void TraceNode::Deserialize(const ObjectRef& json, const Schedule& sch) {
     const ArrayNode* inst = (*iter).as<ArrayNode>();
     CHECK(inst) << "TypeError: Expects Array, but gets: " << (*iter)->GetTypeKey();
     // Deserialize it
-    Instruction::ImportToSchedule(sch, GetRef<Array<ObjectRef>>(inst), &named_rvs);
+    InstructionNode::Deserialize(GetRef<Array<ObjectRef>>(inst), &named_rvs, sch);
   }
 }
 

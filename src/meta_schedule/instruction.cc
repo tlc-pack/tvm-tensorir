@@ -51,8 +51,8 @@ Instruction::Instruction(Array<ObjectRef> inputs, Array<ObjectRef> outputs, Inst
 
 /**************** Instruction  ****************/
 
-Array<ObjectRef> InstructionNode::Export(const Map<ObjectRef, String>& rv_names,
-                                         const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> InstructionNode::Serialize(const Map<ObjectRef, String>& rv_names,
+                                            const Optional<ObjectRef>& decision) const {
   Array<ObjectRef> record;
   record.reserve(4);
   // record[0]: inst_attrs::_name
@@ -76,14 +76,15 @@ Array<ObjectRef> InstructionNode::Export(const Map<ObjectRef, String>& rv_names,
     record.push_back(names);
   }
   // record[3...]: allocated for inst_attrs
-  inst_attrs->Export(&record, decision);
+  inst_attrs->Serialize(&record, decision);
   return record;
 }
 
-Array<ObjectRef> Instruction::ImportToSchedule(const Schedule& sch, const Array<ObjectRef>& record,
-                                               Map<String, ObjectRef>* named_rvs) {
+Array<ObjectRef> InstructionNode::Deserialize(const Array<ObjectRef>& record,
+                                              Map<String, ObjectRef>* named_rvs,
+                                              const Schedule& sch) {
 #define TVM_META_SCHEDULE_INST_VTABLE_ENTRY(AttrsType) \
-  { String(AttrsType::_name), AttrsType::Import }
+  { String(AttrsType::_name), AttrsType::Deserialize }
   static const std::unordered_map<
       String, std::function<InstAttrs(const Array<ObjectRef>&, Optional<ObjectRef>*)>>
       vtable = {
@@ -140,11 +141,11 @@ Array<ObjectRef> Instruction::ImportToSchedule(const Schedule& sch, const Array<
   }
   // Step 3. Extract record_outputs <= record[2]
   Array<String> record_outputs = Downcast<Array<String>>(record[2]);
-  // Step 4. Extract inst_attrs <= record[3]
+  // Step 4. Extract inst_attrs <= record[3...]
   Optional<ObjectRef> decision = NullOpt;
   InstAttrs inst_attrs = vtable.at(attrs_name)(record, &decision);
   // Step 6. Calculate the new outputs, and translate record_outputs to outputs
-  Array<ObjectRef> outputs = inst_attrs->ApplyToSchedule(sch, inputs, decision);
+  Array<ObjectRef> outputs = inst_attrs->Apply(sch, inputs, decision);
   CHECK_EQ(record_outputs.size(), outputs.size());
   int n = record_outputs.size();
   for (int i = 0; i < n; ++i) {
@@ -396,7 +397,7 @@ Instruction EnterPostProcAttrs::Make() {
                      /*attrs=*/InstAttrs(make_object<EnterPostProcAttrs>()));
 }
 
-/**************** ApplyToSchedule  ****************/
+/**************** Apply  ****************/
 
 #define TVM_META_SCHEDULE_INST_CAST(CastType, VarName, Input)                    \
   CHECK(Input->IsInstance<CastType::ContainerType>())                            \
@@ -409,11 +410,10 @@ Array<ObjectRef> AdaptOutputs(const Array<T>& outputs) {
   return {outputs.begin(), outputs.end()};
 }
 
-/**************** (ApplyToSchedule) Sampling  ****************/
+/**************** (Apply) Sampling  ****************/
 
-Array<ObjectRef> SamplePerfectTileAttrs::ApplyToSchedule(
-    const Schedule& sch, const Array<ObjectRef>& inputs,
-    const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> SamplePerfectTileAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                               const Optional<ObjectRef>& decision) const {
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   Optional<Array<ObjectRef>> casted_decision = NullOpt;
@@ -424,9 +424,8 @@ Array<ObjectRef> SamplePerfectTileAttrs::ApplyToSchedule(
       sch->SamplePerfectTile(n_splits, loop, max_innermost_factor, casted_decision));
 }
 
-Array<ObjectRef> SampleTileFactorAttrs::ApplyToSchedule(const Schedule& sch,
-                                                        const Array<ObjectRef>& inputs,
-                                                        const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> SampleTileFactorAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                              const Optional<ObjectRef>& decision) const {
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   Optional<Array<ObjectRef>> casted_decision = NullOpt;
@@ -436,103 +435,95 @@ Array<ObjectRef> SampleTileFactorAttrs::ApplyToSchedule(const Schedule& sch,
   return AdaptOutputs(sch->SampleTileFactor(n_splits, loop, where, casted_decision));
 }
 
-Array<ObjectRef> SampleIntAttrs::ApplyToSchedule(const Schedule& sch,
-                                                 const Array<ObjectRef>& inputs,
-                                                 const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> SampleIntAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                       const Optional<ObjectRef>& decision) const {
   CHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(PrimExpr, min_inclusive, inputs[0]);
   TVM_META_SCHEDULE_INST_CAST(PrimExpr, max_exclusive, inputs[1]);
   return {sch->SampleInt(min_inclusive, max_exclusive, decision)};
 }
 
-Array<ObjectRef> SampleCategoricalAttrs::ApplyToSchedule(
-    const Schedule& sch, const Array<ObjectRef>& inputs,
-    const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> SampleCategoricalAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                               const Optional<ObjectRef>& decision) const {
   CHECK_EQ(inputs.size(), 0);
   return {sch->SampleCategorical(candidates, probs, decision)};
 }
 
-Array<ObjectRef> SampleComputeLocationAttrs::ApplyToSchedule(
-    const Schedule& sch, const Array<ObjectRef>& inputs,
-    const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> SampleComputeLocationAttrs::Apply(const Schedule& sch,
+                                                   const Array<ObjectRef>& inputs,
+                                                   const Optional<ObjectRef>& decision) const {
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return {sch->SampleComputeLocation(block, decision)};
 }
 
-/**************** (ApplyToSchedule) Block/Loop Relationship  ****************/
+/**************** (Apply) Block/Loop Relationship  ****************/
 
-Array<ObjectRef> GetProducersAttrs::ApplyToSchedule(const Schedule& sch,
-                                                    const Array<ObjectRef>& inputs,
-                                                    const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> GetProducersAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                          const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetProducers(block));
 }
 
-Array<ObjectRef> GetConsumersAttrs::ApplyToSchedule(const Schedule& sch,
-                                                    const Array<ObjectRef>& inputs,
-                                                    const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> GetConsumersAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                          const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetConsumers(block));
 }
 
-Array<ObjectRef> GetBlockAttrs::ApplyToSchedule(const Schedule& sch, const Array<ObjectRef>& inputs,
-                                                const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> GetBlockAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                      const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 0);
   return {sch->GetBlock(name)};
 }
 
-Array<ObjectRef> GetAxesAttrs::ApplyToSchedule(const Schedule& sch, const Array<ObjectRef>& inputs,
-                                               const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> GetAxesAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                     const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetAxes(block));
 }
 
-Array<ObjectRef> GetReadBuffersAttrs::ApplyToSchedule(const Schedule& sch,
-                                                      const Array<ObjectRef>& inputs,
-                                                      const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> GetReadBuffersAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                            const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetReadBuffers(block));
 }
 
-Array<ObjectRef> GetWriteBuffersAttrs::ApplyToSchedule(const Schedule& sch,
-                                                       const Array<ObjectRef>& inputs,
-                                                       const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> GetWriteBuffersAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                             const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetWriteBuffers(block));
 }
 
-Array<ObjectRef> GetRootBlocksAttrs::ApplyToSchedule(const Schedule& sch,
-                                                     const Array<ObjectRef>& inputs,
-                                                     const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> GetRootBlocksAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                           const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 0);
   return AdaptOutputs(sch->GetRootBlocks());
 }
 
-Array<ObjectRef> GetLeafBlocksAttrs::ApplyToSchedule(const Schedule& sch,
-                                                     const Array<ObjectRef>& inputs,
-                                                     const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> GetLeafBlocksAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                           const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 0);
   return AdaptOutputs(sch->GetLeafBlocks());
 }
 
-/**************** (ApplyToSchedule) Scheduling Primitives  ****************/
+/**************** (Apply) Scheduling Primitives  ****************/
 
-Array<ObjectRef> MarkLoopAttrs::ApplyToSchedule(const Schedule& sch, const Array<ObjectRef>& inputs,
-                                                const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> MarkLoopAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                      const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK(inputs.size() == 1 || inputs.size() == 2);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
@@ -547,9 +538,8 @@ Array<ObjectRef> MarkLoopAttrs::ApplyToSchedule(const Schedule& sch, const Array
   return {};
 }
 
-Array<ObjectRef> MarkBlockAttrs::ApplyToSchedule(const Schedule& sch,
-                                                 const Array<ObjectRef>& inputs,
-                                                 const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> MarkBlockAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                       const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
@@ -558,8 +548,8 @@ Array<ObjectRef> MarkBlockAttrs::ApplyToSchedule(const Schedule& sch,
   return {};
 }
 
-Array<ObjectRef> FuseAttrs::ApplyToSchedule(const Schedule& sch, const Array<ObjectRef>& inputs,
-                                            const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> FuseAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                  const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   int n_loops = inputs.size();
   Array<LoopRV> loops;
@@ -571,8 +561,8 @@ Array<ObjectRef> FuseAttrs::ApplyToSchedule(const Schedule& sch, const Array<Obj
   return {sch->Fuse(loops)};
 }
 
-Array<ObjectRef> SplitAttrs::ApplyToSchedule(const Schedule& sch, const Array<ObjectRef>& inputs,
-                                             const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> SplitAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                   const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_GE(inputs.size(), 3);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
@@ -584,8 +574,8 @@ Array<ObjectRef> SplitAttrs::ApplyToSchedule(const Schedule& sch, const Array<Ob
   return AdaptOutputs(sch->Split(loop, factors));
 }
 
-Array<ObjectRef> ReorderAttrs::ApplyToSchedule(const Schedule& sch, const Array<ObjectRef>& inputs,
-                                               const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> ReorderAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                     const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   Array<LoopRV> after_axes;
   for (const ObjectRef& obj : inputs) {
@@ -599,9 +589,8 @@ Array<ObjectRef> ReorderAttrs::ApplyToSchedule(const Schedule& sch, const Array<
   return {};
 }
 
-Array<ObjectRef> ComputeAtAttrs::ApplyToSchedule(const Schedule& sch,
-                                                 const Array<ObjectRef>& inputs,
-                                                 const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> ComputeAtAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                       const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
@@ -610,9 +599,8 @@ Array<ObjectRef> ComputeAtAttrs::ApplyToSchedule(const Schedule& sch,
   return {};
 }
 
-Array<ObjectRef> ReverseComputeAtAttrs::ApplyToSchedule(const Schedule& sch,
-                                                        const Array<ObjectRef>& inputs,
-                                                        const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> ReverseComputeAtAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                              const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
@@ -621,9 +609,8 @@ Array<ObjectRef> ReverseComputeAtAttrs::ApplyToSchedule(const Schedule& sch,
   return {};
 }
 
-Array<ObjectRef> ComputeInlineAttrs::ApplyToSchedule(const Schedule& sch,
-                                                     const Array<ObjectRef>& inputs,
-                                                     const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> ComputeInlineAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                           const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
@@ -631,9 +618,9 @@ Array<ObjectRef> ComputeInlineAttrs::ApplyToSchedule(const Schedule& sch,
   return {};
 }
 
-Array<ObjectRef> ReverseComputeInlineAttrs::ApplyToSchedule(
-    const Schedule& sch, const Array<ObjectRef>& inputs,
-    const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> ReverseComputeInlineAttrs::Apply(const Schedule& sch,
+                                                  const Array<ObjectRef>& inputs,
+                                                  const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
@@ -641,35 +628,32 @@ Array<ObjectRef> ReverseComputeInlineAttrs::ApplyToSchedule(
   return {};
 }
 
-Array<ObjectRef> CacheReadAttrs::ApplyToSchedule(const Schedule& sch,
-                                                 const Array<ObjectRef>& inputs,
-                                                 const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> CacheReadAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                       const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return {sch->CacheRead(block, i, storage_scope)};
 }
 
-Array<ObjectRef> CacheWriteAttrs::ApplyToSchedule(const Schedule& sch,
-                                                  const Array<ObjectRef>& inputs,
-                                                  const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> CacheWriteAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                        const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return {sch->CacheWrite(block, i, storage_scope)};
 }
 
-Array<ObjectRef> BlockizeAttrs::ApplyToSchedule(const Schedule& sch, const Array<ObjectRef>& inputs,
-                                                const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> BlockizeAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                      const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   return {sch->Blockize(loop, exec_scope)};
 }
 
-Array<ObjectRef> DecomposeReductionAttrs::ApplyToSchedule(
-    const Schedule& sch, const Array<ObjectRef>& inputs,
-    const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> DecomposeReductionAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                                const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
@@ -677,17 +661,16 @@ Array<ObjectRef> DecomposeReductionAttrs::ApplyToSchedule(
   return {sch->DecomposeReduction(block, loop)};
 }
 
-Array<ObjectRef> ParallelAttrs::ApplyToSchedule(const Schedule& sch, const Array<ObjectRef>& inputs,
-                                                const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> ParallelAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                      const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   sch->Parallel(loop);
   return {};
 }
-Array<ObjectRef> VectorizeAttrs::ApplyToSchedule(const Schedule& sch,
-                                                 const Array<ObjectRef>& inputs,
-                                                 const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> VectorizeAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                       const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
@@ -695,9 +678,8 @@ Array<ObjectRef> VectorizeAttrs::ApplyToSchedule(const Schedule& sch,
   return {};
 }
 
-Array<ObjectRef> EnterPostProcAttrs::ApplyToSchedule(const Schedule& sch,
-                                                     const Array<ObjectRef>& inputs,
-                                                     const Optional<ObjectRef>& decision) const {
+Array<ObjectRef> EnterPostProcAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                           const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 0);
   sch->EnterPostProc();
@@ -706,11 +688,11 @@ Array<ObjectRef> EnterPostProcAttrs::ApplyToSchedule(const Schedule& sch,
 
 #undef TVM_META_SCHEDULE_INST_CAST
 
-/**************** Export  ****************/
-/**************** (Export) Sampling  ****************/
+/**************** Serialize  ****************/
+/**************** (Serialize) Sampling  ****************/
 
-void SamplePerfectTileAttrs::Export(Array<ObjectRef>* record,
-                                    const Optional<ObjectRef>& decision) const {
+void SamplePerfectTileAttrs::Serialize(Array<ObjectRef>* record,
+                                       const Optional<ObjectRef>& decision) const {
   record->push_back(Integer(n_splits));
   record->push_back(Integer(max_innermost_factor));
   if (decision.defined()) {
@@ -718,8 +700,8 @@ void SamplePerfectTileAttrs::Export(Array<ObjectRef>* record,
   }
 }
 
-void SampleTileFactorAttrs::Export(Array<ObjectRef>* record,
-                                   const Optional<ObjectRef>& decision) const {
+void SampleTileFactorAttrs::Serialize(Array<ObjectRef>* record,
+                                      const Optional<ObjectRef>& decision) const {
   record->push_back(Integer(n_splits));
   record->push_back(where);
   if (decision.defined()) {
@@ -727,14 +709,15 @@ void SampleTileFactorAttrs::Export(Array<ObjectRef>* record,
   }
 }
 
-void SampleIntAttrs::Export(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
+void SampleIntAttrs::Serialize(Array<ObjectRef>* record,
+                               const Optional<ObjectRef>& decision) const {
   if (decision.defined()) {
     record->push_back(decision.value());
   }
 }
 
-void SampleCategoricalAttrs::Export(Array<ObjectRef>* record,
-                                    const Optional<ObjectRef>& decision) const {
+void SampleCategoricalAttrs::Serialize(Array<ObjectRef>* record,
+                                       const Optional<ObjectRef>& decision) const {
   record->push_back(candidates);
   record->push_back(probs);
   if (decision.defined()) {
@@ -742,55 +725,58 @@ void SampleCategoricalAttrs::Export(Array<ObjectRef>* record,
   }
 }
 
-void SampleComputeLocationAttrs::Export(Array<ObjectRef>* record,
-                                        const Optional<ObjectRef>& decision) const {
+void SampleComputeLocationAttrs::Serialize(Array<ObjectRef>* record,
+                                           const Optional<ObjectRef>& decision) const {
   if (decision.defined()) {
     record->push_back(decision.value());
   }
 }
 
-/**************** (Export) Block/Loop Relationship  ****************/
+/**************** (Serialize) Block/Loop Relationship  ****************/
 
-void GetBlockAttrs::Export(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
+void GetBlockAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   record->push_back(name);
 }
 
-/**************** (Export) Scheduling Primitives  ****************/
+/**************** (Serialize) Scheduling Primitives  ****************/
 
-void MarkLoopAttrs::Export(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
+void MarkLoopAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   record->push_back(ann_key);
   record->push_back(ann_val);
 }
 
-void MarkBlockAttrs::Export(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
+void MarkBlockAttrs::Serialize(Array<ObjectRef>* record,
+                               const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   record->push_back(ann_key);
 }
 
-void CacheReadAttrs::Export(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
+void CacheReadAttrs::Serialize(Array<ObjectRef>* record,
+                               const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   record->push_back(Integer(i));
   record->push_back(storage_scope);
 }
 
-void CacheWriteAttrs::Export(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
+void CacheWriteAttrs::Serialize(Array<ObjectRef>* record,
+                                const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   record->push_back(Integer(i));
   record->push_back(storage_scope);
 }
 
-void BlockizeAttrs::Export(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
+void BlockizeAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   record->push_back(exec_scope);
 }
 
-/**************** Import  ****************/
-/**************** (Import) Sampling  ****************/
+/**************** Deserialize  ****************/
+/**************** (Deserialize) Sampling  ****************/
 
-InstAttrs SamplePerfectTileAttrs::Import(const Array<ObjectRef>& record,
-                                         Optional<ObjectRef>* decision) {
+InstAttrs SamplePerfectTileAttrs::Deserialize(const Array<ObjectRef>& record,
+                                              Optional<ObjectRef>* decision) {
   ObjectPtr<SamplePerfectTileAttrs> n = make_object<SamplePerfectTileAttrs>();
   n->n_splits = Downcast<Integer>(record[3]);
   n->max_innermost_factor = Downcast<Integer>(record[4]);
@@ -800,8 +786,8 @@ InstAttrs SamplePerfectTileAttrs::Import(const Array<ObjectRef>& record,
   return InstAttrs(std::move(n));
 }
 
-InstAttrs SampleTileFactorAttrs::Import(const Array<ObjectRef>& record,
-                                        Optional<ObjectRef>* decision) {
+InstAttrs SampleTileFactorAttrs::Deserialize(const Array<ObjectRef>& record,
+                                             Optional<ObjectRef>* decision) {
   ObjectPtr<SampleTileFactorAttrs> n = make_object<SampleTileFactorAttrs>();
   n->n_splits = Downcast<Integer>(record[3]);
   n->where = Downcast<Array<Integer>>(record[4]);
@@ -811,15 +797,16 @@ InstAttrs SampleTileFactorAttrs::Import(const Array<ObjectRef>& record,
   return InstAttrs(std::move(n));
 }
 
-InstAttrs SampleIntAttrs::Import(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {
+InstAttrs SampleIntAttrs::Deserialize(const Array<ObjectRef>& record,
+                                      Optional<ObjectRef>* decision) {
   if (record.size() > 3) {
     *decision = Downcast<Integer>(record[3]);
   }
   return InstAttrs(make_object<SampleIntAttrs>());
 }
 
-InstAttrs SampleCategoricalAttrs::Import(const Array<ObjectRef>& record,
-                                         Optional<ObjectRef>* decision) {
+InstAttrs SampleCategoricalAttrs::Deserialize(const Array<ObjectRef>& record,
+                                              Optional<ObjectRef>* decision) {
   ObjectPtr<SampleCategoricalAttrs> n = make_object<SampleCategoricalAttrs>();
   n->candidates = Downcast<Array<Integer>>(record[3]);
   n->probs = Downcast<Array<FloatImm>>(record[4]);
@@ -829,87 +816,94 @@ InstAttrs SampleCategoricalAttrs::Import(const Array<ObjectRef>& record,
   return InstAttrs(std::move(n));
 }
 
-InstAttrs SampleComputeLocationAttrs::Import(const Array<ObjectRef>& record,
-                                             Optional<ObjectRef>* decision) {
+InstAttrs SampleComputeLocationAttrs::Deserialize(const Array<ObjectRef>& record,
+                                                  Optional<ObjectRef>* decision) {
   if (record.size() > 3) {
     *decision = Downcast<Integer>(record[3]);
   }
   return InstAttrs(make_object<SampleComputeLocationAttrs>());
 }
 
-/**************** (Import) Block/Loop Relationship  ****************/
+/**************** (Deserialize) Block/Loop Relationship  ****************/
 
-InstAttrs GetBlockAttrs::Import(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {
+InstAttrs GetBlockAttrs::Deserialize(const Array<ObjectRef>& record,
+                                     Optional<ObjectRef>* decision) {
   ObjectPtr<GetBlockAttrs> n = make_object<GetBlockAttrs>();
   n->name = Downcast<String>(record[3]);
   return InstAttrs(std::move(n));
 }
 
-/**************** (Import) Scheduling Primitives  ****************/
+/**************** (Deserialize) Scheduling Primitives  ****************/
 
-InstAttrs MarkLoopAttrs::Import(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {
+InstAttrs MarkLoopAttrs::Deserialize(const Array<ObjectRef>& record,
+                                     Optional<ObjectRef>* decision) {
   ObjectPtr<MarkLoopAttrs> n = make_object<MarkLoopAttrs>();
   n->ann_key = Downcast<String>(record[3]);
   n->ann_val = Downcast<String>(record[4]);
   return InstAttrs(std::move(n));
 }
 
-InstAttrs MarkBlockAttrs::Import(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {
+InstAttrs MarkBlockAttrs::Deserialize(const Array<ObjectRef>& record,
+                                      Optional<ObjectRef>* decision) {
   ObjectPtr<MarkBlockAttrs> n = make_object<MarkBlockAttrs>();
   n->ann_key = Downcast<String>(record[3]);
   return InstAttrs(std::move(n));
 }
 
-InstAttrs CacheReadAttrs::Import(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {
+InstAttrs CacheReadAttrs::Deserialize(const Array<ObjectRef>& record,
+                                      Optional<ObjectRef>* decision) {
   ObjectPtr<CacheReadAttrs> n = make_object<CacheReadAttrs>();
   n->i = Downcast<Integer>(record[3]);
   n->storage_scope = Downcast<String>(record[4]);
   return InstAttrs(std::move(n));
 }
 
-InstAttrs CacheWriteAttrs::Import(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {
+InstAttrs CacheWriteAttrs::Deserialize(const Array<ObjectRef>& record,
+                                       Optional<ObjectRef>* decision) {
   ObjectPtr<CacheWriteAttrs> n = make_object<CacheWriteAttrs>();
   n->i = Downcast<Integer>(record[3]);
   n->storage_scope = Downcast<String>(record[4]);
   return InstAttrs(std::move(n));
 }
 
-InstAttrs BlockizeAttrs::Import(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {
+InstAttrs BlockizeAttrs::Deserialize(const Array<ObjectRef>& record,
+                                     Optional<ObjectRef>* decision) {
   ObjectPtr<BlockizeAttrs> n = make_object<BlockizeAttrs>();
   n->exec_scope = Downcast<String>(record[3]);
   return InstAttrs(std::move(n));
 }
 
-/**************** Import/Export for empty instructions ****************/
+/**************** Deserialize/Serialize for empty instructions ****************/
 
-#define TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(AttrsType)                                   \
-  void AttrsType::Export(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const { \
-    CHECK(!decision.defined());                                                                 \
-  }                                                                                             \
-  InstAttrs AttrsType::Import(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {  \
-    return InstAttrs(make_object<AttrsType>());                                                 \
+#define TVM_META_SCHEDULE_INST_IO_EMPTY(AttrsType)                                                 \
+  void AttrsType::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const { \
+    CHECK(!decision.defined());                                                                    \
+  }                                                                                                \
+  InstAttrs AttrsType::Deserialize(const Array<ObjectRef>& record,                                 \
+                                   Optional<ObjectRef>* decision) {                                \
+    return InstAttrs(make_object<AttrsType>());                                                    \
   }
 
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetProducersAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetConsumersAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetAxesAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetReadBuffersAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetWriteBuffersAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetRootBlocksAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetLeafBlocksAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(FuseAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(SplitAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ReorderAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ComputeAtAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ReverseComputeAtAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ComputeInlineAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ReverseComputeInlineAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(DecomposeReductionAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(EnterPostProcAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ParallelAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(VectorizeAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(GetProducersAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(GetConsumersAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(GetAxesAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(GetReadBuffersAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(GetWriteBuffersAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(GetRootBlocksAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(GetLeafBlocksAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(FuseAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(SplitAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(ReorderAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(ComputeAtAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(ReverseComputeAtAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(ComputeInlineAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(ReverseComputeInlineAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(DecomposeReductionAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(EnterPostProcAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(ParallelAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(VectorizeAttrs);
 
-#undef TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY
+#undef TVM_META_SCHEDULE_INST_Serialize_IMPORT_EMPTY
 
 /**************** FFI ****************/
 
