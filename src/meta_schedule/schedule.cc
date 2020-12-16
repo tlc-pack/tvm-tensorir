@@ -195,8 +195,7 @@ Schedule ScheduleNode::Import(const Array<ObjectRef>& records, const tir::PrimFu
   Map<String, ObjectRef> named_rvs;
   Schedule sch(orig_func, seed);
   for (const ObjectRef& record_obj : records) {
-    Instruction::ImportToSchedule(sch.operator->(), Downcast<Array<ObjectRef>>(record_obj),
-                                  &named_rvs);
+    Instruction::ImportToSchedule(sch, Downcast<Array<ObjectRef>>(record_obj), &named_rvs);
   }
   return sch;
 }
@@ -217,10 +216,7 @@ Array<ObjectRef> ScheduleNode::Export() const {
     if (inst->inst_attrs->IsInstance<EnterPostProcAttrs>()) {
       break;
     }
-    Optional<Array<ObjectRef>> decision = decisions.count(inst)
-                                              ? Optional<Array<ObjectRef>>(decisions.at(inst))
-                                              : Optional<Array<ObjectRef>>(NullOpt);
-    records.push_back(inst->Export(rv_names, decision));
+    records.push_back(inst->Export(rv_names, decisions.Get(inst)));
   }
   return records;
 }
@@ -897,7 +893,7 @@ void ScheduleNode::Replay(bool follow_decision) {
                                               : Optional<Array<ObjectRef>>(NullOpt);
     // Step 2.3. Construct new outputs
     Array<ObjectRef> new_outputs =
-        old_inst->inst_attrs->ApplyToSchedule(new_sch.operator->(), new_inputs, decision);
+        old_inst->inst_attrs->ApplyToSchedule(new_sch, new_inputs, decision);
     CHECK_EQ(old_outputs.size(), new_outputs.size()) << "ValueError: Output size mismatch";
     // Step 2.3. Set up correspondence between old and new outputs
     for (int i = 0, n = new_outputs.size(); i < n; ++i) {
