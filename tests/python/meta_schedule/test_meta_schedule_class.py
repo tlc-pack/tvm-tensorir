@@ -241,8 +241,9 @@ def elementwise_inlined(a: ty.handle, c: ty.handle) -> None:
 
 
 def _check_serialization(sch, func) -> ms.Schedule:
-    record = sch.export()
-    new_sch = ms.Schedule.import_(record, func)
+    record = sch.trace.serialize()
+    new_sch = ms.Schedule(func)
+    ms.Trace.deserialize(record, new_sch)
     assert tvm.ir.structural_equal(new_sch.sch.func, sch.sch.func)
     return new_sch
 

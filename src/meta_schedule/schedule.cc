@@ -184,40 +184,6 @@ Schedule ScheduleNode::Copy(int new_seed) const {
                   /*seed=*/Integer(new_seed));
 }
 
-/**************** Serialization ****************/
-
-Schedule ScheduleNode::Import(const Array<ObjectRef>& records, const tir::PrimFunc& orig_func,
-                              Optional<Integer> seed) {
-  // Random variables
-  Map<String, ObjectRef> named_rvs;
-  Schedule sch(orig_func, seed);
-  for (const ObjectRef& record_obj : records) {
-    Instruction::ImportToSchedule(sch, Downcast<Array<ObjectRef>>(record_obj), &named_rvs);
-  }
-  return sch;
-}
-
-Array<ObjectRef> ScheduleNode::Export() const {
-  Map<ObjectRef, String> rv_names;
-  // Allocate names for random variables
-  for (const Instruction& inst : this->trace->insts) {
-    for (const ObjectRef& output : inst->outputs) {
-      int i = rv_names.size();
-      CHECK(!rv_names.count(output));
-      rv_names.Set(output, "v" + std::to_string(i));
-    }
-  }
-  // Export to records
-  Array<ObjectRef> records;
-  for (const Instruction& inst : this->trace->insts) {
-    if (inst->inst_attrs->IsInstance<EnterPostProcAttrs>()) {
-      break;
-    }
-    records.push_back(inst->Export(rv_names, trace->decisions.Get(inst)));
-  }
-  return records;
-}
-
 /**************** Evaluation of random variables ****************/
 
 tir::StmtSRef ScheduleNode::Eval(const BlockRV& block) {
@@ -838,20 +804,6 @@ struct Internal {
    * \sa ScheduleNode::Copy
    */
   static Schedule Copy(Schedule sch, int new_seed) { return sch->Copy(new_seed); }
-  /**************** Serialization ****************/
-  /*!
-   * \brief FFI function, corresponds to ScheduleNode::Import
-   * \sa ScheduleNode::Import
-   */
-  static Schedule Import(Array<ObjectRef> records, tir::PrimFunc orig_func,
-                         Optional<Integer> seed) {
-    return ScheduleNode::Import(records, orig_func, seed);
-  }
-  /*!
-   * \brief FFI function, corresponds to ScheduleNode::Export
-   * \sa ScheduleNode::Export
-   */
-  static Array<ObjectRef> Export(Schedule self) { return self->Export(); }
   /**************** Evaluation of random variables ****************/
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Eval
@@ -1066,8 +1018,6 @@ TVM_REGISTER_NODE_TYPE(ScheduleNode);
 TVM_REGISTER_GLOBAL("meta_schedule.Schedule").set_body_typed(Internal::New);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSeed").set_body_typed(Internal::Seed);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCopy").set_body_typed(Internal::Copy);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleImport").set_body_typed(Internal::Import);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleExport").set_body_typed(Internal::Export);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleEval").set_body_typed(Internal::Eval);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleSamplePerfectTile")
     .set_body_typed(Internal::SamplePerfectTile);

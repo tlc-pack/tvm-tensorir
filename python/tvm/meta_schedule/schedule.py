@@ -74,48 +74,6 @@ class Schedule(Object):
         """
         return _ffi_api.ScheduleCopy(self, seed)  # pylint: disable=no-member
 
-    ######### Serialization #########
-
-    @staticmethod
-    def import_(
-        record: str,
-        func: tir.PrimFunc,
-        seed: Optional[int] = None,
-    ) -> "Schedule":
-        """Import from the records
-
-        Parameters
-        ----------
-        record : str
-            The serialized trace of scheduling
-        func : tir.PrimFunc
-            The TIR function to be scheduled
-        seed : Optional[int]
-            The random seed
-
-        Returns
-        -------
-        schedule : Schedule
-            The schedule imported
-        """
-        from .utils import deserialize_json  # pylint: disable=import-outside-toplevel
-
-        record = deserialize_json(record)
-        return _ffi_api.ScheduleImport(record, func, seed)  # pylint: disable=no-member
-
-    def export(self) -> str:
-        """Export as records
-
-        Returns
-        -------
-        records : str
-            The record exported
-        """
-        from .utils import serialize_json  # pylint: disable=import-outside-toplevel
-
-        records = _ffi_api.ScheduleExport(self)  # pylint: disable=no-member
-        return serialize_json(records)
-
     ######### Evaluation of random variables #########
 
     def evaluate(
