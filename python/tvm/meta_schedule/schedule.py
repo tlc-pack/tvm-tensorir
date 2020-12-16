@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Main class of meta schedule """
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from tvm import tir
 from tvm._ffi import register_object
@@ -24,6 +24,7 @@ from tvm.runtime.container import String
 
 from . import _ffi_api
 from .instruction import RAND_VAR_TYPE, BlockRV, BufferRV, ExprRV, Instruction, LoopRV
+from .trace import Trace
 
 
 @register_object("meta_schedule.Schedule")
@@ -42,8 +43,8 @@ class Schedule(Object):
 
     orig_func: tir.PrimFunc
     sch: tir.Schedule
-    insts: List[Instruction]
-    decisions: List[List[Object]]
+    trace: Trace
+    sym_tab: Dict[Instruction, Object]
 
     def __init__(self, func: tir.PrimFunc, seed: Optional[int] = None):
         self.__init_handle_by_constructor__(

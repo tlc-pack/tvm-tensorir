@@ -54,6 +54,11 @@ class TraceNode : public runtime::Object {
    */
   void Append(const Instruction& inst, const Array<ObjectRef>& decision);
   /*!
+   * \brief Remove the last element of the trace and return
+   * \return The last element of the trace, which is removed; NullOpt if the trace has been empty
+   */
+  Optional<Instruction> Pop();
+  /*!
    * \brief Apply the trace to the schedule
    * \param sch The schedule to be applied
    */

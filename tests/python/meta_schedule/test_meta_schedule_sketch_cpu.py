@@ -48,7 +48,7 @@ def _fix_sampling_tile_size(
 ):
     insts = [
         inst
-        for inst in sch.insts
+        for inst in sch.trace.insts
         if isinstance(inst.inst_attrs, ms.instruction.SamplePerfectTileAttrs)
     ]
     for decisions in possible_decisions:
@@ -71,9 +71,9 @@ def _debug(support: List[ms.Schedule]):
     for i, sch in enumerate(support):
         print(f"###### {i}")
         print(tvm.script.asscript(sch.sch.func))
-        for inst in sch.insts:
-            if inst in sch.decisions:
-                print(sch.decisions[inst], ",")
+        for inst in sch.trace.insts:
+            if inst in sch.trace.decisions:
+                print(sch.trace.decisions[inst], ",")
 
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unused-variable

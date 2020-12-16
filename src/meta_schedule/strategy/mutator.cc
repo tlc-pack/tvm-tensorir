@@ -48,8 +48,8 @@ class MutatorTileSize {
   Optional<Schedule> Apply(const SearchTask& task, const Schedule& sch, Sampler* sampler) {
     // Find instruction `SamplePerfectTile` whose extent > 1 and n_splits > 1
     std::vector<Instruction> candidates;
-    candidates.reserve(sch->decisions.size());
-    for (const auto& kv : sch->decisions) {
+    candidates.reserve(sch->trace->decisions.size());
+    for (const auto& kv : sch->trace->decisions) {
       const Instruction& inst = kv.first;
       if (const auto* attrs = inst->inst_attrs.as<SamplePerfectTileAttrs>()) {
         if (attrs->n_splits <= 1) {
@@ -69,7 +69,7 @@ class MutatorTileSize {
       return NullOpt;
     }
     const Instruction& inst = candidates[sampler->SampleInt(0, candidates.size())];
-    std::vector<int> tiles = AsVector<ObjectRef, int>()(sch->decisions.at(inst));
+    std::vector<int> tiles = AsVector<ObjectRef, int>()(sch->trace->decisions.at(inst));
     int n_splits = tiles.size();
     // Choose two loops
     int x = sampler->SampleInt(0, n_splits);

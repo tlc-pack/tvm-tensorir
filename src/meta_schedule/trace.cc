@@ -45,6 +45,18 @@ void TraceNode::Append(const Instruction& inst, const Array<ObjectRef>& decision
   decisions.Set(inst, decision);
 }
 
+Optional<Instruction> TraceNode::Pop() {
+  if (insts.empty()) {
+    return NullOpt;
+  }
+  Instruction inst = insts.back();
+  insts.pop_back();
+  if (decisions.count(inst)) {
+    decisions.erase(inst);
+  }
+  return inst;
+}
+
 /**************** Serialization ****************/
 
 void TraceNode::Apply(const Schedule& sch) const {
