@@ -334,25 +334,24 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
 }
 
 tir::Var ScheduleNode::SampleInt(const PrimExpr& min_inclusive, const PrimExpr& max_exclusive,
-                                 const Optional<Array<ObjectRef>>& decision) {
+                                 const Optional<ObjectRef>& decision) {
   int num_min_inclusive = this->Eval(min_inclusive);
   int num_max_exclusive = this->Eval(max_exclusive);
-  int sampled = decision.defined()                               //
-                    ? GetOnlyElement<Integer>(decision.value())  //
+  int sampled = decision.defined()                                //
+                    ? Downcast<Integer>(decision.value())->value  //
                     : sampler.SampleInt(num_min_inclusive, num_max_exclusive);
   // Create the output random variable
   tir::Var output("n");
   // Update the symbol table
   this->sym_tab.Set(output, Integer(sampled));
   // Record the instruction
-  this->trace->Append(SampleIntAttrs::Make(min_inclusive, max_exclusive, output),
-                      {Integer(sampled)});
+  this->trace->Append(SampleIntAttrs::Make(min_inclusive, max_exclusive, output), Integer(sampled));
   return output;
 }
 
 tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
                                          const Array<FloatImm>& probs,
-                                         const Optional<Array<ObjectRef>>& decision) {
+                                         const Optional<ObjectRef>& decision) {
   // Sample the output
   CHECK_EQ(candidates.size(), probs.size()) << "ValueError: When sampling ";
   std::vector<double> probs_vec;
@@ -360,8 +359,8 @@ tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
   for (const FloatImm& prob : probs) {
     probs_vec.push_back(prob->value);
   }
-  int sampled = decision.defined()                               //
-                    ? GetOnlyElement<Integer>(decision.value())  //
+  int sampled = decision.defined()                                //
+                    ? Downcast<Integer>(decision.value())->value  //
                     : sampler.MakeMultinomial(probs_vec)();
   int result = candidates[sampled];
   // Create the output random variable
@@ -369,18 +368,17 @@ tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
   // Update the symbol table
   this->sym_tab.Set(output, Integer(result));
   // Record the instruction
-  this->trace->Append(SampleCategoricalAttrs::Make(candidates, probs, output),  //
-                      {Integer(sampled)});
+  this->trace->Append(SampleCategoricalAttrs::Make(candidates, probs, output), Integer(sampled));
   return output;
 }
 
 LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block,
-                                           const Optional<Array<ObjectRef>>& decision) {
+                                           const Optional<ObjectRef>& decision) {
   tir::StmtSRef block_sref = Eval(block);
   Array<tir::StmtSRef> loop_srefs = sch->GetLoopsInScope(block_sref);
   int n = loop_srefs.size();
-  int i = decision.defined()                               //
-              ? GetOnlyElement<Integer>(decision.value())  //
+  int i = decision.defined()                                //
+              ? Downcast<Integer>(decision.value())->value  //
               : sampler.SampleInt(-2, n);
   // Create the output random variable
   LoopRV output;
@@ -393,8 +391,7 @@ LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block,
     this->sym_tab.Set(output, loop_srefs[i]);
   }
   // Record the instruction
-  this->trace->Append(SampleComputeLocationAttrs::Make(block, output),  //
-                      {Integer(i)});
+  this->trace->Append(SampleComputeLocationAttrs::Make(block, output), Integer(i));
   return output;
 }
 
@@ -846,7 +843,7 @@ struct Internal {
    * \sa ScheduleNode::SampleInt
    */
   static tir::Var SampleInt(Schedule sch, PrimExpr min_inclusive, PrimExpr max_exclusive,
-                            Optional<Array<ObjectRef>> decision) {
+                            Optional<ObjectRef> decision) {
     return sch->SampleInt(min_inclusive, max_exclusive, decision);
   }
   /*!
@@ -854,15 +851,14 @@ struct Internal {
    * \sa ScheduleNode::SampleCategorical
    */
   static tir::Var SampleCategorical(Schedule sch, Array<Integer> candidates, Array<FloatImm> probs,
-                                    Optional<Array<ObjectRef>> decision) {
+                                    Optional<ObjectRef> decision) {
     return sch->SampleCategorical(candidates, probs, decision);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::SampleComputeLocation
    * \sa ScheduleNode::SampleComputeLocation
    */
-  static LoopRV SampleComputeLocation(Schedule sch, BlockRV block,
-                                      Optional<Array<ObjectRef>> decision) {
+  static LoopRV SampleComputeLocation(Schedule sch, BlockRV block, Optional<ObjectRef> decision) {
     return sch->SampleComputeLocation(block, decision);
   }
   /**************** Block/Loop Relationship ****************/

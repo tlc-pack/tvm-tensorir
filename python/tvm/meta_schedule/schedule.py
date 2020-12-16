@@ -170,8 +170,6 @@ class Schedule(Object):
         result : ExprRV
             A ExprRV, a random variable indicates the sampling result
         """
-        if decision is not None:
-            decision = [decision]
         return _ffi_api.ScheduleSampleInt(  # pylint: disable=no-member
             self, min_inclusive, max_exclusive, decision
         )
@@ -196,8 +194,6 @@ class Schedule(Object):
         result : ExprRV
             A ExprRV, a random variable indicates the sampling result
         """
-        if decision is not None:
-            decision = [decision]
         return _ffi_api.ScheduleSampleCategorical(  # pylint: disable=no-member
             self, candidates, probs, decision
         )
@@ -219,8 +215,6 @@ class Schedule(Object):
         result : LoopRV
             The loop to be computed at
         """
-        if decision is not None:
-            decision = [decision]
         return _ffi_api.ScheduleSampleComputeLocation(  # pylint: disable=no-member
             self, block, decision
         )

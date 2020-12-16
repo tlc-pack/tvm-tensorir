@@ -320,8 +320,8 @@ def test_meta_schedule_sample_int():
         v = sch.sample_int(9, 12)
         counter[int(sch.evaluate(v))] += 1
         new_sch = _check_serialization(sch, func=matmul)
-        old_decision = int(sch.trace.decisions[sch.trace.insts[-1]][0])
-        new_decision = int(new_sch.trace.decisions[new_sch.trace.insts[-1]][0])
+        old_decision = int(sch.trace.decisions[sch.trace.insts[-1]])
+        new_decision = int(new_sch.trace.decisions[new_sch.trace.insts[-1]])
         assert old_decision == new_decision
     assert len(counter) == 3
     assert 9 in counter
@@ -351,8 +351,8 @@ def test_meta_schedule_sample_compute_location():
         loop = sch.sample_compute_location(block=block)
         counter[str(sch.evaluate(loop))] += 1
         new_sch = _check_serialization(sch, func=matmul)
-        old_decision = int(sch.trace.decisions[sch.trace.insts[-1]][0])
-        new_decision = int(new_sch.trace.decisions[new_sch.trace.insts[-1]][0])
+        old_decision = int(sch.trace.decisions[sch.trace.insts[-1]])
+        new_decision = int(new_sch.trace.decisions[new_sch.trace.insts[-1]])
         assert old_decision == new_decision
     assert len(counter) == 5
     assert "$root" in counter

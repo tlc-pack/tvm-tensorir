@@ -117,12 +117,11 @@ class InstAttrsNode : public Object {
    * \return Outputs of the instruction
    */
   virtual Array<ObjectRef> ApplyToSchedule(const Schedule& sch, const Array<ObjectRef>& inputs,
-                                           const Optional<Array<ObjectRef>>& decisions) const = 0;
+                                           const Optional<ObjectRef>& decisions) const = 0;
 
   virtual String GetName() const = 0;
 
-  virtual void Export(Array<ObjectRef>* record,
-                      const Optional<Array<ObjectRef>>& decision) const = 0;
+  virtual void Export(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const = 0;
 
   // We intentionally consider sampling instructions as pure too
   virtual bool IsPure() const = 0;
@@ -140,16 +139,15 @@ class InstAttrs : public ObjectRef {
   TVM_DEFINE_OBJECT_REF_METHODS(InstAttrs, ObjectRef, InstAttrsNode);
 };
 
-#define TVM_META_SCHEDULE_DEFINE_INST_ATTRS(Cls, TypeKey, InstName, Pure)                      \
-  Array<ObjectRef> ApplyToSchedule(const Schedule& sch, const Array<ObjectRef>& inputs,        \
-                                   const Optional<Array<ObjectRef>>& decision) const override; \
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision)            \
-      const override;                                                                          \
-  static InstAttrs Import(const Array<ObjectRef>& record);                                     \
-  static constexpr const char* _name = InstName;                                               \
-  static constexpr const char* _type_key = TypeKey;                                            \
-  TVM_DECLARE_FINAL_OBJECT_INFO(Cls, InstAttrsNode);                                           \
-  String GetName() const override { return String(_name); }                                    \
+#define TVM_META_SCHEDULE_DEFINE_INST_ATTRS(Cls, TypeKey, InstName, Pure)                    \
+  Array<ObjectRef> ApplyToSchedule(const Schedule& sch, const Array<ObjectRef>& inputs,      \
+                                   const Optional<ObjectRef>& decision) const override;      \
+  void Export(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const override; \
+  static InstAttrs Import(const Array<ObjectRef>& record);                                   \
+  static constexpr const char* _name = InstName;                                             \
+  static constexpr const char* _type_key = TypeKey;                                          \
+  TVM_DECLARE_FINAL_OBJECT_INFO(Cls, InstAttrsNode);                                         \
+  String GetName() const override { return String(_name); }                                  \
   bool IsPure() const override { return Pure; }
 
 /**************** Instruction ****************/
@@ -171,7 +169,7 @@ class InstructionNode : public Object {
   }
 
   Array<ObjectRef> Export(const Map<ObjectRef, String>& rv_names,
-                          const Optional<Array<ObjectRef>>& decision) const;
+                          const Optional<ObjectRef>& decision) const;
 
   static constexpr const char* _type_key = "meta_schedule.Instruction";
   TVM_DECLARE_FINAL_OBJECT_INFO(InstructionNode, Object);

@@ -45,6 +45,12 @@ class MutatorTileSize {
  public:
   MutatorTileSize() = default;
 
+  static std::vector<int> CastDecision(const ObjectRef& obj) {
+    const auto* arr = obj.as<runtime::ArrayNode>();
+    CHECK(arr) << "TypeError: Expects ArrayNode, but gets: " << obj->GetTypeKey();
+    return AsVector<ObjectRef, int>()(GetRef<Array<ObjectRef>>(arr));
+  }
+
   Optional<Schedule> Apply(const SearchTask& task, const Schedule& sch, Sampler* sampler) {
     // Find instruction `SamplePerfectTile` whose extent > 1 and n_splits > 1
     std::vector<Instruction> candidates;
@@ -55,7 +61,7 @@ class MutatorTileSize {
         if (attrs->n_splits <= 1) {
           continue;
         }
-        std::vector<int> tiles = AsVector<ObjectRef, int>()(kv.second);
+        std::vector<int> tiles = CastDecision(kv.second);
         int64_t prod = 1;
         for (int item : tiles) {
           prod *= item;
@@ -69,7 +75,7 @@ class MutatorTileSize {
       return NullOpt;
     }
     const Instruction& inst = candidates[sampler->SampleInt(0, candidates.size())];
-    std::vector<int> tiles = AsVector<ObjectRef, int>()(sch->trace->decisions.at(inst));
+    std::vector<int> tiles = CastDecision(sch->trace->decisions.at(inst));
     int n_splits = tiles.size();
     // Choose two loops
     int x = sampler->SampleInt(0, n_splits);

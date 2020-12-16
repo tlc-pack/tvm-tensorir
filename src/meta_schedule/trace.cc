@@ -29,7 +29,7 @@ namespace meta_schedule {
 
 Trace::Trace() { data_ = make_object<TraceNode>(); }
 
-Trace::Trace(Array<Instruction> insts, Map<Instruction, Array<ObjectRef>> decisions) {
+Trace::Trace(Array<Instruction> insts, Map<Instruction, ObjectRef> decisions) {
   ObjectPtr<TraceNode> n = make_object<TraceNode>();
   n->insts = std::move(insts);
   n->decisions = std::move(decisions);
@@ -40,7 +40,7 @@ Trace::Trace(Array<Instruction> insts, Map<Instruction, Array<ObjectRef>> decisi
 
 void TraceNode::Append(const Instruction& inst) { insts.push_back(inst); }
 
-void TraceNode::Append(const Instruction& inst, const Array<ObjectRef>& decision) {
+void TraceNode::Append(const Instruction& inst, const ObjectRef& decision) {
   insts.push_back(inst);
   decisions.Set(inst, decision);
 }
@@ -246,7 +246,7 @@ Trace DeadCodeElimination(const Trace& trace) {
     }
     Instruction inst = trace->insts[i];
     result->insts.push_back(inst);
-    if (Optional<Array<ObjectRef>> decision = trace->decisions.Get(inst)) {
+    if (Optional<ObjectRef> decision = trace->decisions.Get(inst)) {
       result->decisions.Set(inst, decision.value());
     }
   }
@@ -261,14 +261,14 @@ struct Internal {
    * \sa Trace::Trace
    */
   static Trace New(Optional<Array<Instruction>> insts,
-                   Optional<Map<Instruction, Array<ObjectRef>>> decisions) {
+                   Optional<Map<Instruction, ObjectRef>> decisions) {
     return Trace(insts.value_or({}), decisions.value_or({}));
   }
   /*!
    * \brief FFI function for TraceNode::Append
    * \sa TraceNode::Append
    */
-  static void Append(Trace self, Instruction inst, Optional<Array<ObjectRef>> decision) {
+  static void Append(Trace self, Instruction inst, Optional<ObjectRef> decision) {
     if (decision.defined()) {
       self->Append(inst, decision.value());
     } else {

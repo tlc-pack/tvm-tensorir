@@ -34,8 +34,7 @@ class TraceNode : public runtime::Object {
   /*! \brief The instructions used */
   Array<Instruction> insts;
   /*! \brief The decisions made in sampling */
-  // TODO: change signature to ObjectRef
-  Map<Instruction, Array<ObjectRef>> decisions;
+  Map<Instruction, ObjectRef> decisions;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("insts", &insts);
@@ -52,7 +51,7 @@ class TraceNode : public runtime::Object {
    * \param inst The instrruction
    * \param decision The sampling decision made on the instruction
    */
-  void Append(const Instruction& inst, const Array<ObjectRef>& decision);
+  void Append(const Instruction& inst, const ObjectRef& decision);
   /*!
    * \brief Remove the last element of the trace and return
    * \return The last element of the trace, which is removed; NullOpt if the trace has been empty
@@ -91,7 +90,7 @@ class Trace : public runtime::ObjectRef {
    * \param insts The instructions used
    * \param decisions The decisions made in sampling
    */
-  explicit Trace(Array<Instruction> insts, Map<Instruction, Array<ObjectRef>> decisions);
+  explicit Trace(Array<Instruction> insts, Map<Instruction, ObjectRef> decisions);
 
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(Trace, runtime::ObjectRef, TraceNode);
 };

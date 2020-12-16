@@ -136,7 +136,7 @@ class ScheduleNode : public Object {
    * \return The integer sampled
    */
   tir::Var SampleInt(const PrimExpr& min_inclusive, const PrimExpr& max_exclusive,
-                     const Optional<Array<ObjectRef>>& decision = NullOpt);
+                     const Optional<ObjectRef>& decision = NullOpt);
   /*!
    * \brief Sample an integer given the probability distribution
    * \param candidates The candidates
@@ -144,14 +144,13 @@ class ScheduleNode : public Object {
    * \return The random variable
    */
   tir::Var SampleCategorical(const Array<Integer>& candidates, const Array<FloatImm>& probs,
-                             const Optional<Array<ObjectRef>>& decision = NullOpt);
+                             const Optional<ObjectRef>& decision = NullOpt);
   /*!
    * \brief Sample a compute-at location from a block
    * \param block A block to be computed at
    * \return The loop to be computed at
    */
-  LoopRV SampleComputeLocation(const BlockRV& block,
-                               const Optional<Array<ObjectRef>>& decision = NullOpt);
+  LoopRV SampleComputeLocation(const BlockRV& block, const Optional<ObjectRef>& decision = NullOpt);
   /**************** Block/Loop Relationship ****************/
   /*!
    * \brief Get the producer of a specific block
