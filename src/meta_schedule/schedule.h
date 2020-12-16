@@ -313,37 +313,6 @@ class ScheduleNode : public Object {
   void Vectorize(const LoopRV& loop);
   /*! \brief An NOP indicating entrance of post processing*/
   void EnterPostProc();
-  /**************** Trace-related ****************/
-  /*!
-   * \brief Mutate the decision on the specific instruction
-   * \param inst The instruction whose decision is mutated
-   * \param decision The decision to be mutated to. If it is NullOpt, then remove it from decisions
-   * \note This method does not replay the trace and does not do any validity check
-   */
-  void MutateDecision(const Instruction& inst, const Optional<Array<ObjectRef>>& decision);
-  /*!
-   * \brief Re-sample along the trace to generate a new sequence of
-   * scheduling instructions and program states
-   */
-  void ReSample();
-  /*!
-   * \brief Replay the trace with the decision stored in the schedule class.
-   * If a decision has been changed using MutateDecision, then it will generate
-   * different schedule. This process is theoretically deterministic if all sampling
-   * instructions have decision made
-   * \sa MutateDecision
-   */
-  void ReplayDecision();
-
- private:
-  /*!
-   * \brief Replay the trace with the decision stored in the schedule class.
-   * If follow decision is true, and a decision has been changed using MutateDecision,
-   * then it will generate different underlying TIR schedule
-   * \param follow_decision Whether to follow existing decisions stored in the class.
-   * If the flag is true, then the replay process will be deterministic
-   */
-  void Replay(bool follow_decision);
 };
 
 class Schedule : public ObjectRef {

@@ -606,33 +606,3 @@ class Schedule(Object):
             The loop to be vectorized
         """
         _ffi_api.ScheduleVectorize(self, loop)  # pylint: disable=no-member
-
-    ########## Trace-related ##########
-
-    def mutate_decision(
-        self,
-        inst: Instruction,
-        decision: Optional[List[Object]],
-    ) -> None:
-        """Mutate the decision on the specific instruction
-
-        Parameters
-        ----------
-        inst: Instruction
-            The instruction whose decision is mutated
-        decision: Optional[List[Object]]
-            The decision to be mutated to. If it is None, then remove it from decisions
-        """
-        return _ffi_api.ScheduleMutateDecision(self, inst, decision)  # pylint: disable=no-member
-
-    def resample(self) -> None:
-        """Re-sample along the trace to generatea new sequence of
-        scheduling instructions and program states"""
-        return _ffi_api.ScheduleReSample(self)  # pylint: disable=no-member
-
-    def replay_decision(self) -> None:
-        """Replay the trace with the decision stored in the schedule class.
-        If a decision has been changed using MutateDecision, then it will generate
-        different schedule. This process is theoretically deterministic if all sampling
-        instructions have decision made."""
-        return _ffi_api.ScheduleReplayDecision(self)  # pylint: disable=no-member

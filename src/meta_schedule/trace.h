@@ -96,7 +96,7 @@ class Trace : public runtime::ObjectRef {
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(Trace, runtime::ObjectRef, TraceNode);
 };
 
-Trace DeadCodeElimination(const Trace& trace);
+TVM_DLL Trace DeadCodeElimination(const Trace& trace);
 
 }  // namespace meta_schedule
 }  // namespace tvm

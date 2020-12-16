@@ -255,7 +255,57 @@ Trace DeadCodeElimination(const Trace& trace) {
 
 /**************** FFI ****************/
 
+struct Internal {
+  /*!
+   * \brief Constructor, which corresponds to Trace
+   * \sa Trace::Trace
+   */
+  static Trace New(Optional<Array<Instruction>> insts,
+                   Optional<Map<Instruction, Array<ObjectRef>>> decisions) {
+    return Trace(insts.value_or({}), decisions.value_or({}));
+  }
+  /*!
+   * \brief FFI function for TraceNode::Append
+   * \sa TraceNode::Append
+   */
+  static void Append(Trace self, Instruction inst, Optional<Array<ObjectRef>> decision) {
+    if (decision.defined()) {
+      self->Append(inst, decision.value());
+    } else {
+      self->Append(inst);
+    }
+  }
+  /*!
+   * \brief FFI function for TraceNode::Pop
+   * \sa TraceNode::Pop
+   */
+  static Optional<Instruction> Pop(Trace self) { return self->Pop(); }
+  /*!
+   * \brief FFI function for TraceNode::Apply
+   * \sa TraceNode::Apply
+   */
+  static void Apply(Trace self, Schedule sch) { self->Apply(sch); }
+  /*!
+   * \brief FFI function for TraceNode::Serialize
+   * \sa TraceNode::Serialize
+   */
+  static ObjectRef Serialize(Trace self) { return self->Serialize(); }
+  /*!
+   * \brief FFI function for TraceNode::Deserialize
+   * \sa TraceNode::Deserialize
+   */
+  static void Deserialize(ObjectRef json, Schedule sch) { TraceNode::Deserialize(json, sch); }
+};
+
 TVM_REGISTER_NODE_TYPE(TraceNode);
+
+TVM_REGISTER_GLOBAL("meta_schedule.Trace").set_body_typed(Internal::New);
+TVM_REGISTER_GLOBAL("meta_schedule.TraceAppend").set_body_typed(Internal::Append);
+TVM_REGISTER_GLOBAL("meta_schedule.TracePop").set_body_typed(Internal::Pop);
+TVM_REGISTER_GLOBAL("meta_schedule.TraceApply").set_body_typed(Internal::Apply);
+TVM_REGISTER_GLOBAL("meta_schedule.TraceSerialize").set_body_typed(Internal::Serialize);
+TVM_REGISTER_GLOBAL("meta_schedule.TraceDeserialize").set_body_typed(Internal::Deserialize);
+TVM_REGISTER_GLOBAL("meta_schedule.TraceDeadCodeElimination").set_body_typed(DeadCodeElimination);
 
 }  // namespace meta_schedule
 }  // namespace tvm

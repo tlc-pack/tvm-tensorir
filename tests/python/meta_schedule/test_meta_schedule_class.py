@@ -313,11 +313,10 @@ def test_meta_schedule_sample_perfect_tile():
 
 def test_meta_schedule_sample_int():
     n = 20
-    sch = ms.Schedule(func=matmul)
     counter = defaultdict(int)
-    v = sch.sample_int(9, 12)
     for _ in range(n):
-        sch.resample()
+        sch = ms.Schedule(func=matmul)
+        v = sch.sample_int(9, 12)
         counter[int(sch.evaluate(v))] += 1
         new_sch = _check_serialization(sch, func=matmul)
         old_decision = int(sch.trace.decisions[sch.trace.insts[-1]][0])
@@ -344,12 +343,11 @@ def test_meta_schedule_sample_categorical():
 
 
 def test_meta_schedule_sample_compute_location():
-    sch = ms.Schedule(func=matmul)
-    block = sch.get_block("matmul")
     counter = defaultdict(int)
-    loop = sch.sample_compute_location(block=block)
     for _ in range(100):
-        sch.resample()
+        sch = ms.Schedule(func=matmul)
+        block = sch.get_block("matmul")
+        loop = sch.sample_compute_location(block=block)
         counter[str(sch.evaluate(loop))] += 1
         new_sch = _check_serialization(sch, func=matmul)
         old_decision = int(sch.trace.decisions[sch.trace.insts[-1]][0])
@@ -597,71 +595,6 @@ def test_meta_schedule_vectorize():
     check_annotation(sch, i)
 
 
-def test_meta_schedule_mutate_decision():
-    sch = ms.Schedule(func=matmul)
-    i, j, _ = sch.get_axes(sch.get_block("matmul"))
-    sch.sample_perfect_tile(n_splits=4, loop=i)
-    sch.sample_perfect_tile(n_splits=3, loop=j)
-    i_inst = sch.trace.insts[-2]
-    j_inst = sch.trace.insts[-1]
-    sch.mutate_decision(i_inst, [1, 1, 1, 1024])
-    assert list(sch.trace.decisions[i_inst]) == [1, 1, 1, 1024]
-    sch.mutate_decision(j_inst, None)
-    assert not j_inst in sch.trace.decisions
-    _check_serialization(sch, func=matmul)
-
-
-def test_meta_schedule_resample():
-    from functools import reduce  # pylint: disable=import-outside-toplevel
-
-    sch = ms.Schedule(func=matmul)
-    i, j, _ = sch.get_axes(sch.get_block("matmul"))
-    i_tiles = sch.sample_perfect_tile(n_splits=4, loop=i)
-    j_tiles = sch.sample_perfect_tile(n_splits=3, loop=j)
-    i_inst = sch.trace.insts[-2]
-    j_inst = sch.trace.insts[-1]
-    _check_serialization(sch, func=matmul)
-    for _ in range(10):
-        sch.resample()
-        i_eval = [sch.evaluate(i) for i in i_tiles]
-        j_eval = [sch.evaluate(j) for j in j_tiles]
-        i_dec = list(sch.trace.decisions[i_inst])
-        j_dec = list(sch.trace.decisions[j_inst])
-        assert i_eval == i_dec
-        assert j_eval == j_dec
-        assert reduce(lambda x, y: x * y, i_eval) == 1024
-        assert reduce(lambda x, y: x * y, j_eval) == 1024
-        _check_serialization(sch, func=matmul)
-
-
-def test_meta_schedule_replay_decision():
-    sch = ms.Schedule(func=matmul)
-    i, j, _ = sch.get_axes(sch.get_block("matmul"))
-    i_tiles = sch.sample_perfect_tile(n_splits=4, loop=i)
-    j_tiles = sch.sample_perfect_tile(n_splits=3, loop=j)
-    i_inst = sch.trace.insts[-2]
-    j_inst = sch.trace.insts[-1]
-    sch.split(loop=i, factors=i_tiles)
-    sch.split(loop=j, factors=j_tiles)
-    i_cnt = defaultdict(int)
-    j_cnt = defaultdict(int)
-    # _check_serialization(sch, func=matmul)
-    for _ in range(100):
-        # set i to deterministic
-        sch.mutate_decision(i_inst, [1, 1, 1, 1024])
-        # set j to random
-        sch.mutate_decision(j_inst, None)
-        # go!
-        sch.replay_decision()
-        i_eval = [sch.evaluate(i) for i in i_tiles]
-        j_eval = [sch.evaluate(j) for j in j_tiles]
-        i_cnt[str(i_eval)] += 1
-        j_cnt[str(j_eval)] += 1
-        _check_serialization(sch, func=matmul)
-    assert len(i_cnt) == 1
-    assert len(j_cnt) > 1
-
-
 if __name__ == "__main__":
     test_meta_schedule_creation()
     test_meta_schedule_copy()
@@ -692,6 +625,3 @@ if __name__ == "__main__":
     # test_meta_schedule_decompose_reduction()
     test_meta_schedule_parallel()
     test_meta_schedule_vectorize()
-    test_meta_schedule_mutate_decision()
-    test_meta_schedule_resample()
-    test_meta_schedule_replay_decision()

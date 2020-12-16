@@ -819,109 +819,6 @@ void ScheduleNode::Vectorize(const LoopRV& loop) {
 
 void ScheduleNode::EnterPostProc() { this->trace->Append(EnterPostProcAttrs::Make()); }
 
-/**************** Trace-related ****************/
-
-void ScheduleNode::MutateDecision(const Instruction& inst,
-                                  const Optional<Array<ObjectRef>>& decision) {
-  if (decision.defined()) {
-    this->trace->decisions.Set(inst, decision.value());
-  } else if (this->trace->decisions.count(inst)) {
-    this->trace->decisions.erase(inst);
-  } else {
-    LOG(FATAL) << "ValueError: Cannot find the instruction in decisions";
-  }
-}
-
-void ScheduleNode::ReSample() { this->Replay(/*follow_decision=*/false); }
-
-void ScheduleNode::ReplayDecision() { this->Replay(/*follow_decision=*/true); }
-
-void ScheduleNode::Replay(bool follow_decision) {
-  // Step 1. Create a new schedule to temporarily hold the re-sampling result
-  Schedule new_sch(this->orig_func, Integer(this->sampler.ForkSeed()));
-  // Maps an old random variable to its corresponding new random variable in the re-sampling
-  std::unordered_map<const Object*, const Object*> var_map;
-  // Maps an old instruction to its corresponding new instruction
-  std::unordered_map<const InstructionNode*, const InstructionNode*> inst_map;
-
-  auto f_var_convert = [&var_map](const tir::Var& var) -> Optional<PrimExpr> {
-    const Object* src = var.get();
-    if (!var_map.count(src)) {
-      return NullOpt;
-    }
-    const Object* dst = var_map.at(var.get());
-    CHECK(dst->IsInstance<tir::VarNode>());
-    return GetRef<tir::Var>(static_cast<const tir::VarNode*>(dst));
-  };
-
-  auto f_var_map = [&var_map, &f_var_convert](const ObjectRef& obj) -> ObjectRef {
-    if (const auto* expr = obj.as<PrimExprNode>()) {
-      return tir::Substitute(GetRef<PrimExpr>(expr), f_var_convert);
-    } else {
-      const Object* src = obj.get();
-      CHECK(var_map.count(src));
-      const Object* dst = var_map.at(src);
-      return GetRef<ObjectRef>(dst);
-    }
-  };
-
-  // Step 2. Re-do all the instructions in the trace, including sampling instructions
-  for (const Instruction& old_inst : this->trace->insts) {
-    if (old_inst->inst_attrs->IsInstance<EnterPostProcAttrs>()) {
-      break;
-    }
-    const Array<ObjectRef>& old_inputs = old_inst->inputs;
-    const Array<ObjectRef>& old_outputs = old_inst->outputs;
-    // Step 2.1. Construct new inputs
-    Array<ObjectRef> new_inputs;
-    new_inputs.reserve(old_inputs.size());
-    for (const ObjectRef& input : old_inputs) {
-      new_inputs.push_back(f_var_map(input));
-    }
-    // Step 2.2. Construct decision
-    Optional<Array<ObjectRef>> decision =
-        (follow_decision && this->trace->decisions.count(old_inst))
-            ? this->trace->decisions.at(old_inst)
-            : Optional<Array<ObjectRef>>(NullOpt);
-    // Step 2.3. Construct new outputs
-    Array<ObjectRef> new_outputs =
-        old_inst->inst_attrs->ApplyToSchedule(new_sch, new_inputs, decision);
-    CHECK_EQ(old_outputs.size(), new_outputs.size()) << "ValueError: Output size mismatch";
-    // Step 2.3. Set up correspondence between old and new outputs
-    for (int i = 0, n = new_outputs.size(); i < n; ++i) {
-      var_map[old_outputs[i].get()] = new_outputs[i].get();
-    }
-    // Step 2.4. Set up correspondence between old and new instructions
-    const Instruction& new_inst = new_sch->trace->insts.back();
-    inst_map[old_inst.operator->()] = new_inst.operator->();
-  }
-  this->sch = new_sch->sch;
-  // Step 3. Re-assign all the variables back according to the symbol table
-  {
-    TSymbolTable new_sym_tab;
-    for (const auto& kv_entry : this->sym_tab) {
-      ObjectRef old_var = kv_entry.first;
-      if (var_map.count(old_var.get())) {
-        ObjectRef new_var = GetRef<ObjectRef>(var_map.at(old_var.get()));
-        new_sym_tab.Set(old_var, new_sch->sym_tab.at(new_var));
-      }
-    }
-    this->sym_tab = new_sym_tab;
-  }
-  // Step 4. Map decisions back
-  Map<Instruction, Array<ObjectRef>> decisions;
-  for (const Instruction& old_inst : this->trace->insts) {
-    if (old_inst->inst_attrs->IsInstance<EnterPostProcAttrs>()) {
-      break;
-    }
-    Instruction new_inst = GetRef<Instruction>(inst_map.at(old_inst.get()));
-    if (new_sch->trace->decisions.count(new_inst)) {
-      decisions.Set(old_inst, new_sch->trace->decisions.at(new_inst));
-    }
-  }
-  this->trace->decisions = std::move(decisions);
-}
-
 /**************** FFI ****************/
 
 struct Internal {
@@ -1163,24 +1060,6 @@ struct Internal {
    * \sa ScheduleNode::Vectorize
    */
   static void Vectorize(Schedule sch, LoopRV loop) { sch->Vectorize(loop); }
-  /**************** Trace-related ****************/
-  /*!
-   * \brief FFI function, corresponds to ScheduleNode::MutateDecision
-   * \sa ScheduleNode::MutateDecision
-   */
-  static void MutateDecision(Schedule sch, Instruction inst, Optional<Array<ObjectRef>> decision) {
-    return sch->MutateDecision(inst, decision);
-  }
-  /*!
-   * \brief FFI function, corresponds to ScheduleNode::ReSample
-   * \sa ScheduleNode::ReSample
-   */
-  static void ReSample(Schedule sch) { sch->ReSample(); }
-  /*!
-   * \brief FFI function, corresponds to ScheduleNode::ReplayDecision
-   * \sa ScheduleNode::ReplayDecision
-   */
-  static void ReplayDecision(Schedule sch) { sch->ReplayDecision(); }
 };
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
@@ -1227,11 +1106,6 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleDecomposeReduction")
     .set_body_typed(Internal::DecomposeReduction);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleParallel").set_body_typed(Internal::Parallel);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleVectorize").set_body_typed(Internal::Vectorize);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMutateDecision")
-    .set_body_typed(Internal::MutateDecision);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReSample").set_body_typed(Internal::ReSample);
-TVM_REGISTER_GLOBAL("meta_schedule.ScheduleReplayDecision")
-    .set_body_typed(Internal::ReplayDecision);
 
 }  // namespace meta_schedule
 }  // namespace tvm
