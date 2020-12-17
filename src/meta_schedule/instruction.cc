@@ -18,6 +18,8 @@
  */
 #include "./instruction.h"  // NOLINT(build/include)
 
+#include <tvm/tir/stmt_functor.h>
+
 #include "./schedule.h"
 
 namespace tvm {
@@ -51,8 +53,8 @@ Instruction::Instruction(Array<ObjectRef> inputs, Array<ObjectRef> outputs, Inst
 
 /**************** Instruction  ****************/
 
-Array<ObjectRef> InstructionNode::Export(const Map<ObjectRef, String>& rv_names,
-                                         const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> InstructionNode::Serialize(const Map<ObjectRef, String>& rv_names,
+                                            const Optional<ObjectRef>& decision) const {
   Array<ObjectRef> record;
   record.reserve(4);
   // record[0]: inst_attrs::_name
@@ -75,17 +77,18 @@ Array<ObjectRef> InstructionNode::Export(const Map<ObjectRef, String>& rv_names,
     }
     record.push_back(names);
   }
-  // record[3]: (optional) inst_attrs
-  // record[4]: (optional) decision
-  inst_attrs->Export(&record, decision);
+  // record[3...]: allocated for inst_attrs
+  inst_attrs->Serialize(&record, decision);
   return record;
 }
 
-Array<ObjectRef> Instruction::ImportToSchedule(ScheduleNode* sch, const Array<ObjectRef>& record,
-                                               Map<String, ObjectRef>* named_rvs) {
+Array<ObjectRef> InstructionNode::Deserialize(const Array<ObjectRef>& record,
+                                              Map<String, ObjectRef>* named_rvs,
+                                              const Schedule& sch) {
 #define TVM_META_SCHEDULE_INST_VTABLE_ENTRY(AttrsType) \
-  { String(AttrsType::_name), AttrsType::Import }
-  static const std::unordered_map<String, std::function<InstAttrs(const Array<ObjectRef>&)>>
+  { String(AttrsType::_name), AttrsType::Deserialize }
+  static const std::unordered_map<
+      String, std::function<InstAttrs(const Array<ObjectRef>&, Optional<ObjectRef>*)>>
       vtable = {
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SamplePerfectTileAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleTileFactorAttrs),
@@ -118,7 +121,6 @@ Array<ObjectRef> Instruction::ImportToSchedule(ScheduleNode* sch, const Array<Ob
       };
 #undef TVM_META_SCHEDULE_INST_VTABLE_ENTRY
   CHECK_GE(record.size(), 3);
-  CHECK_LE(record.size(), 5);
   // Step 1. Extract inst_attrs::_name <= record[0]
   String attrs_name = Downcast<String>(record[0]);
   // Step 2. Extract record_inputs <= record[1], then translate record_inputs to inputs
@@ -141,20 +143,53 @@ Array<ObjectRef> Instruction::ImportToSchedule(ScheduleNode* sch, const Array<Ob
   }
   // Step 3. Extract record_outputs <= record[2]
   Array<String> record_outputs = Downcast<Array<String>>(record[2]);
-  // Step 4. Extract inst_attrs <= record[3]
-  InstAttrs inst_attrs = vtable.at(attrs_name)(record);
-  // Step 5. Extract decision <= record[4]
-  Optional<Array<ObjectRef>> opt_decision = record.size() >= 5
-                                                ? Downcast<Array<ObjectRef>>(record[4])
-                                                : Optional<Array<ObjectRef>>(NullOpt);
+  // Step 4. Extract inst_attrs <= record[3...]
+  Optional<ObjectRef> decision = NullOpt;
+  InstAttrs inst_attrs = vtable.at(attrs_name)(record, &decision);
   // Step 6. Calculate the new outputs, and translate record_outputs to outputs
-  Array<ObjectRef> outputs = inst_attrs->ApplyToSchedule(sch, inputs, opt_decision);
+  Array<ObjectRef> outputs = inst_attrs->Apply(sch, inputs, decision);
   CHECK_EQ(record_outputs.size(), outputs.size());
   int n = record_outputs.size();
   for (int i = 0; i < n; ++i) {
     named_rvs->Set(record_outputs[i], outputs[i]);
   }
   return outputs;
+}
+
+void InstructionNode::AsPython(std::ostream& os, const Map<ObjectRef, String>& rv_names,
+                               const Optional<ObjectRef>& decision) const {
+  auto rename_expr = [&rv_names](const tir::Var& var) -> Optional<PrimExpr> {
+    if (Optional<String> name = rv_names.Get(var)) {
+      return tir::Var(name.value(), var.dtype());
+    }
+    LOG(FATAL) << "ValueError: Variable '" << var << "' is not defined in the schedule.";
+    throw;
+  };
+  auto rv2name = [&rename_expr, &rv_names](const ObjectRef& obj) -> String {
+    if (Optional<String> name = rv_names.Get(obj)) {
+      return name.value();
+    }
+    const auto* prim_expr = obj.as<PrimExprNode>();
+    CHECK(prim_expr) << "TypeError: Cannot handle type: " << obj->GetTypeKey();
+    std::ostringstream oss;
+    oss << tir::Substitute(GetRef<PrimExpr>(prim_expr), rename_expr);
+    return oss.str();
+  };
+  Array<String> input_names;
+  {
+    input_names.reserve(inputs.size());
+    for (const ObjectRef& v : inputs) {
+      input_names.push_back(rv2name(v));
+    }
+  }
+  Array<String> output_names;
+  {
+    output_names.reserve(outputs.size());
+    for (const ObjectRef& v : outputs) {
+      output_names.push_back(rv2name(v));
+    }
+  }
+  inst_attrs->AsPython(os, input_names, output_names, decision);
 }
 
 /**************** Make  ****************/
@@ -400,7 +435,7 @@ Instruction EnterPostProcAttrs::Make() {
                      /*attrs=*/InstAttrs(make_object<EnterPostProcAttrs>()));
 }
 
-/**************** ApplyToSchedule  ****************/
+/**************** Apply  ****************/
 
 #define TVM_META_SCHEDULE_INST_CAST(CastType, VarName, Input)                    \
   CHECK(Input->IsInstance<CastType::ContainerType>())                            \
@@ -413,120 +448,120 @@ Array<ObjectRef> AdaptOutputs(const Array<T>& outputs) {
   return {outputs.begin(), outputs.end()};
 }
 
-/**************** (ApplyToSchedule) Sampling  ****************/
+/**************** (Apply) Sampling  ****************/
 
-Array<ObjectRef> SamplePerfectTileAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> SamplePerfectTileAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                               const Optional<ObjectRef>& decision) const {
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
-  return AdaptOutputs(sch->SamplePerfectTile(n_splits, loop, max_innermost_factor, decision));
+  Optional<Array<ObjectRef>> casted_decision = NullOpt;
+  if (decision.defined()) {
+    casted_decision = Downcast<Array<ObjectRef>>(decision.value());
+  }
+  return AdaptOutputs(
+      sch->SamplePerfectTile(n_splits, loop, max_innermost_factor, casted_decision));
 }
 
-Array<ObjectRef> SampleTileFactorAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> SampleTileFactorAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                              const Optional<ObjectRef>& decision) const {
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
-  return AdaptOutputs(sch->SampleTileFactor(n_splits, loop, where, decision));
+  Optional<Array<ObjectRef>> casted_decision = NullOpt;
+  if (decision.defined()) {
+    casted_decision = Downcast<Array<ObjectRef>>(decision.value());
+  }
+  return AdaptOutputs(sch->SampleTileFactor(n_splits, loop, where, casted_decision));
 }
 
-Array<ObjectRef> SampleIntAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
-                                                 const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> SampleIntAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                       const Optional<ObjectRef>& decision) const {
   CHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(PrimExpr, min_inclusive, inputs[0]);
   TVM_META_SCHEDULE_INST_CAST(PrimExpr, max_exclusive, inputs[1]);
   return {sch->SampleInt(min_inclusive, max_exclusive, decision)};
 }
 
-Array<ObjectRef> SampleCategoricalAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> SampleCategoricalAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                               const Optional<ObjectRef>& decision) const {
   CHECK_EQ(inputs.size(), 0);
   return {sch->SampleCategorical(candidates, probs, decision)};
 }
 
-Array<ObjectRef> SampleComputeLocationAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> SampleComputeLocationAttrs::Apply(const Schedule& sch,
+                                                   const Array<ObjectRef>& inputs,
+                                                   const Optional<ObjectRef>& decision) const {
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return {sch->SampleComputeLocation(block, decision)};
 }
 
-/**************** (ApplyToSchedule) Block/Loop Relationship  ****************/
+/**************** (Apply) Block/Loop Relationship  ****************/
 
-Array<ObjectRef> GetProducersAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> GetProducersAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                          const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetProducers(block));
 }
 
-Array<ObjectRef> GetConsumersAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> GetConsumersAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                          const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetConsumers(block));
 }
 
-Array<ObjectRef> GetBlockAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
-                                                const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> GetBlockAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                      const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 0);
   return {sch->GetBlock(name)};
 }
 
-Array<ObjectRef> GetAxesAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
-                                               const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> GetAxesAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                     const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetAxes(block));
 }
 
-Array<ObjectRef> GetReadBuffersAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> GetReadBuffersAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                            const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetReadBuffers(block));
 }
 
-Array<ObjectRef> GetWriteBuffersAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> GetWriteBuffersAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                             const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetWriteBuffers(block));
 }
 
-Array<ObjectRef> GetRootBlocksAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> GetRootBlocksAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                           const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 0);
   return AdaptOutputs(sch->GetRootBlocks());
 }
 
-Array<ObjectRef> GetLeafBlocksAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> GetLeafBlocksAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                           const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 0);
   return AdaptOutputs(sch->GetLeafBlocks());
 }
 
-/**************** (ApplyToSchedule) Scheduling Primitives  ****************/
+/**************** (Apply) Scheduling Primitives  ****************/
 
-Array<ObjectRef> MarkLoopAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
-                                                const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> MarkLoopAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                      const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK(inputs.size() == 1 || inputs.size() == 2);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
@@ -541,8 +576,8 @@ Array<ObjectRef> MarkLoopAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<O
   return {};
 }
 
-Array<ObjectRef> MarkBlockAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
-                                                 const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> MarkBlockAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                       const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
@@ -551,8 +586,8 @@ Array<ObjectRef> MarkBlockAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<
   return {};
 }
 
-Array<ObjectRef> FuseAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
-                                            const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> FuseAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                  const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   int n_loops = inputs.size();
   Array<LoopRV> loops;
@@ -564,8 +599,8 @@ Array<ObjectRef> FuseAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<Objec
   return {sch->Fuse(loops)};
 }
 
-Array<ObjectRef> SplitAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
-                                             const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> SplitAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                   const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_GE(inputs.size(), 3);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
@@ -577,8 +612,8 @@ Array<ObjectRef> SplitAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<Obje
   return AdaptOutputs(sch->Split(loop, factors));
 }
 
-Array<ObjectRef> ReorderAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
-                                               const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> ReorderAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                     const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   Array<LoopRV> after_axes;
   for (const ObjectRef& obj : inputs) {
@@ -592,8 +627,8 @@ Array<ObjectRef> ReorderAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<Ob
   return {};
 }
 
-Array<ObjectRef> ComputeAtAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
-                                                 const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> ComputeAtAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                       const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
@@ -602,9 +637,8 @@ Array<ObjectRef> ComputeAtAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<
   return {};
 }
 
-Array<ObjectRef> ReverseComputeAtAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> ReverseComputeAtAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                              const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
@@ -613,9 +647,8 @@ Array<ObjectRef> ReverseComputeAtAttrs::ApplyToSchedule(
   return {};
 }
 
-Array<ObjectRef> ComputeInlineAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> ComputeInlineAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                           const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
@@ -623,9 +656,9 @@ Array<ObjectRef> ComputeInlineAttrs::ApplyToSchedule(
   return {};
 }
 
-Array<ObjectRef> ReverseComputeInlineAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> ReverseComputeInlineAttrs::Apply(const Schedule& sch,
+                                                  const Array<ObjectRef>& inputs,
+                                                  const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
@@ -633,34 +666,32 @@ Array<ObjectRef> ReverseComputeInlineAttrs::ApplyToSchedule(
   return {};
 }
 
-Array<ObjectRef> CacheReadAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
-                                                 const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> CacheReadAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                       const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return {sch->CacheRead(block, i, storage_scope)};
 }
 
-Array<ObjectRef> CacheWriteAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> CacheWriteAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                        const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return {sch->CacheWrite(block, i, storage_scope)};
 }
 
-Array<ObjectRef> BlockizeAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
-                                                const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> BlockizeAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                      const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   return {sch->Blockize(loop, exec_scope)};
 }
 
-Array<ObjectRef> DecomposeReductionAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> DecomposeReductionAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                                const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
@@ -668,16 +699,16 @@ Array<ObjectRef> DecomposeReductionAttrs::ApplyToSchedule(
   return {sch->DecomposeReduction(block, loop)};
 }
 
-Array<ObjectRef> ParallelAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
-                                                const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> ParallelAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                      const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   sch->Parallel(loop);
   return {};
 }
-Array<ObjectRef> VectorizeAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
-                                                 const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> VectorizeAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                       const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
@@ -685,9 +716,8 @@ Array<ObjectRef> VectorizeAttrs::ApplyToSchedule(ScheduleNode* sch, const Array<
   return {};
 }
 
-Array<ObjectRef> EnterPostProcAttrs::ApplyToSchedule(
-    ScheduleNode* sch, const Array<ObjectRef>& inputs,
-    const Optional<Array<ObjectRef>>& decision) const {
+Array<ObjectRef> EnterPostProcAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                           const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 0);
   sch->EnterPostProc();
@@ -696,243 +726,587 @@ Array<ObjectRef> EnterPostProcAttrs::ApplyToSchedule(
 
 #undef TVM_META_SCHEDULE_INST_CAST
 
-/**************** Export  ****************/
-/**************** (Export) Sampling  ****************/
+/**************** AsPython  ****************/
 
-void SamplePerfectTileAttrs::Export(Array<ObjectRef>* record,
-                                    const Optional<Array<ObjectRef>>& decision) const {
-  record->push_back(Array<ObjectRef>{
-      Integer(n_splits),              //
-      Integer(max_innermost_factor),  //
-  });
+struct PythonAPICall {
+  String method_name;
+  std::vector<String> arg_names;
+  std::vector<String> args;
+  Optional<String> output;
+
+  explicit PythonAPICall(const String& method_name) : method_name(method_name), output(NullOpt) {}
+
+  void AddArgAttr(const String& arg_name, const ObjectRef& arg) {
+    std::ostringstream os;
+    os << arg;
+    arg_names.push_back(arg_name);
+    args.push_back(os.str());
+  }
+
+  void AddArgAttr(const String& arg_name, int arg) {
+    arg_names.push_back(arg_name);
+    args.push_back(std::to_string(arg));
+  }
+
+  void AddArgInput(const String& arg_name, const String& arg) {
+    arg_names.push_back(arg_name);
+    args.push_back(arg);
+  }
+
+  void AddArgInputList(const String& arg_name, const Array<String>& arg) {
+    std::ostringstream oss;
+    oss << '[';
+    for (int i = 0, n = arg.size(); i < n; ++i) {
+      if (i > 0) {
+        oss << ", ";
+      }
+      oss << arg[i];
+    }
+    oss << ']';
+    arg_names.push_back(arg_name);
+    args.push_back(oss.str());
+  }
+
+  void AddDecision(const Optional<ObjectRef>& decision) {
+    if (decision.defined()) {
+      std::ostringstream os;
+      os << decision;
+      arg_names.push_back("decision");
+      args.push_back(os.str());
+    }
+  }
+
+  void AddOutput(const String& single_output) { output = single_output; }
+
+  void AddOutputs(const Array<String>& outputs) {
+    if (outputs.empty()) {
+      return;
+    }
+    if (outputs.size() == 1) {
+      output = outputs[0] + ",";
+      return;
+    }
+    std::ostringstream oss;
+    oss << outputs[0];
+    for (int i = 1, n = outputs.size(); i < n; ++i) {
+      oss << ", " << outputs[i];
+    }
+    output = oss.str();
+  }
+
+  void Print(std::ostream& os) const {
+    if (output.defined()) {
+      os << output.value() << " = ";
+    }
+    os << "sch." << method_name << '(';
+    int n = args.size();
+    for (int i = 0; i < n; ++i) {
+      if (i > 0) {
+        os << ", ";
+      }
+      os << arg_names[i] << '=' << args[i];
+    }
+    os << ')';
+  }
+};
+
+/**************** (AsPython) Sampling  ****************/
+
+void SamplePerfectTileAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                                      const Array<String>& outputs,
+                                      const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("sample_perfect_tile");
+  py.AddArgAttr("n_splits", this->n_splits);
+  py.AddArgInput("loop", inputs[0]);
+  py.AddArgAttr("max_innermost_factor", this->max_innermost_factor);
+  py.AddDecision(decision);
+  py.AddOutputs(outputs);
+  py.Print(os);
+}
+
+void SampleTileFactorAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                                     const Array<String>& outputs,
+                                     const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("sample_tile_factor");
+  py.AddArgAttr("n_splits", this->n_splits);
+  py.AddArgInput("loop", inputs[0]);
+  py.AddArgAttr("where", this->where);
+  py.AddDecision(decision);
+  py.AddOutputs(outputs);
+  py.Print(os);
+}
+
+void SampleIntAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                              const Array<String>& outputs,
+                              const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("sample_int");
+  py.AddArgInput("min_inclusive", inputs[0]);
+  py.AddArgInput("max_exclusive", inputs[1]);
+  py.AddDecision(decision);
+  py.AddOutput(outputs[0]);
+  py.Print(os);
+}
+
+void SampleCategoricalAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                                      const Array<String>& outputs,
+                                      const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("sample_categorical");
+  py.AddArgAttr("candidates", this->candidates);
+  py.AddArgAttr("probs", this->probs);
+  py.AddDecision(decision);
+  py.AddOutput(outputs[0]);
+  py.Print(os);
+}
+
+void SampleComputeLocationAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                                          const Array<String>& outputs,
+                                          const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("sample_compute_location");
+  py.AddArgInput("block", inputs[0]);
+  py.AddDecision(decision);
+  py.AddOutput(outputs[0]);
+  py.Print(os);
+}
+
+/**************** (AsPython) Block/Loop Relationship ****************/
+
+void GetProducersAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                                 const Array<String>& outputs,
+                                 const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("get_producers");
+  py.AddArgInput("block", inputs[0]);
+  py.AddOutputs(outputs);
+  py.Print(os);
+}
+
+void GetConsumersAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                                 const Array<String>& outputs,
+                                 const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("get_consumers");
+  py.AddArgInput("block", inputs[0]);
+  py.AddOutputs(outputs);
+  py.Print(os);
+}
+
+void GetBlockAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                             const Array<String>& outputs,
+                             const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("get_block");
+  py.AddArgAttr("block", this->name);
+  py.AddOutput(outputs[0]);
+  py.Print(os);
+}
+
+void GetAxesAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                            const Array<String>& outputs,
+                            const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("get_axes");
+  py.AddArgInput("block", inputs[0]);
+  py.AddOutputs(outputs);
+  py.Print(os);
+}
+
+void GetReadBuffersAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                                   const Array<String>& outputs,
+                                   const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("get_read_buffers");
+  py.AddArgInput("block", inputs[0]);
+  py.AddOutputs(outputs);
+  py.Print(os);
+}
+
+void GetWriteBuffersAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                                    const Array<String>& outputs,
+                                    const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("get_write_buffers");
+  py.AddArgInput("block", inputs[0]);
+  py.AddOutputs(outputs);
+  py.Print(os);
+}
+
+void GetRootBlocksAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                                  const Array<String>& outputs,
+                                  const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("get_root_blocks");
+  py.AddOutputs(outputs);
+  py.Print(os);
+}
+
+void GetLeafBlocksAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                                  const Array<String>& outputs,
+                                  const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("get_leaf_blocks");
+  py.AddOutputs(outputs);
+  py.Print(os);
+}
+
+/**************** (AsPython) Scheduling Primitives ****************/
+
+void MarkLoopAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                             const Array<String>& outputs,
+                             const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("mark_loop");
+  if (ann_val.empty()) {
+    py.AddArgInput("loop", inputs[0]);
+    py.AddArgAttr("ann_key", this->ann_key);
+    py.AddArgInput("ann_val", inputs[1]);
+  } else {
+    py.AddArgInput("loop", inputs[0]);
+    py.AddArgAttr("ann_key", this->ann_key);
+    py.AddArgAttr("ann_val", this->ann_val);
+  }
+  py.Print(os);
+}
+
+void MarkBlockAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                              const Array<String>& outputs,
+                              const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("mark_block");
+  py.AddArgInput("block", inputs[0]);
+  py.AddArgAttr("ann_key", this->ann_key);
+  py.AddArgInput("ann_val", inputs[1]);
+  py.Print(os);
+}
+
+void FuseAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                         const Array<String>& outputs, const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("fuse");
+  py.AddArgInputList("loops", inputs);
+  py.AddOutput(outputs[0]);
+  py.Print(os);
+}
+
+void SplitAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                          const Array<String>& outputs, const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("split");
+  py.AddArgInput("loop", inputs[0]);
+  py.AddArgInputList("factors", {inputs.begin() + 1, inputs.end()});
+  py.AddOutputs(outputs);
+  py.Print(os);
+}
+
+void ReorderAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                            const Array<String>& outputs,
+                            const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("reorder");
+  py.AddArgInputList("after_axes", inputs);
+  py.Print(os);
+}
+
+void ComputeAtAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                              const Array<String>& outputs,
+                              const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("compute_at");
+  py.AddArgInput("block", inputs[0]);
+  py.AddArgInput("loop", inputs[1]);
+  py.Print(os);
+}
+
+void ReverseComputeAtAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                                     const Array<String>& outputs,
+                                     const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("reverse_compute_at");
+  py.AddArgInput("block", inputs[0]);
+  py.AddArgInput("loop", inputs[1]);
+  py.Print(os);
+}
+
+void ComputeInlineAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                                  const Array<String>& outputs,
+                                  const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("compute_inline");
+  py.AddArgInput("block", inputs[0]);
+  py.Print(os);
+}
+
+void ReverseComputeInlineAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                                         const Array<String>& outputs,
+                                         const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("reverse_compute_inline");
+  py.AddArgInput("block", inputs[0]);
+  py.Print(os);
+}
+
+void CacheReadAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                              const Array<String>& outputs,
+                              const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("cache_read");
+  py.AddArgInput("block", inputs[0]);
+  py.AddArgAttr("i", this->i);
+  py.AddArgAttr("storage_scope", this->storage_scope);
+  py.AddOutput(outputs[0]);
+  py.Print(os);
+}
+
+void CacheWriteAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                               const Array<String>& outputs,
+                               const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("cache_write");
+  py.AddArgInput("block", inputs[0]);
+  py.AddArgAttr("i", this->i);
+  py.AddArgAttr("storage_scope", this->storage_scope);
+  py.AddOutput(outputs[0]);
+  py.Print(os);
+}
+
+void BlockizeAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                             const Array<String>& outputs,
+                             const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("blockize");
+  py.AddArgInput("loop", inputs[0]);
+  py.AddArgAttr("exec_scope", this->exec_scope);
+  py.AddOutput(outputs[0]);
+  py.Print(os);
+}
+
+void DecomposeReductionAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                                       const Array<String>& outputs,
+                                       const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("decompose_reduction");
+  py.AddArgInput("block", inputs[0]);
+  py.AddArgInput("loop", inputs[1]);
+  py.AddOutput(outputs[0]);
+  py.Print(os);
+}
+
+void EnterPostProcAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                                  const Array<String>& outputs,
+                                  const Optional<ObjectRef>& decision) const {
+  os << "# Postprocessing";
+}
+
+void ParallelAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                             const Array<String>& outputs,
+                             const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("parallel");
+  py.AddArgInput("loop", inputs[0]);
+  py.Print(os);
+}
+
+void VectorizeAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                              const Array<String>& outputs,
+                              const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("vectorize");
+  py.AddArgInput("loop", inputs[0]);
+  py.Print(os);
+}
+
+/**************** Serialize  ****************/
+/**************** (Serialize) Sampling  ****************/
+
+void SamplePerfectTileAttrs::Serialize(Array<ObjectRef>* record,
+                                       const Optional<ObjectRef>& decision) const {
+  record->push_back(Integer(n_splits));
+  record->push_back(Integer(max_innermost_factor));
   if (decision.defined()) {
     record->push_back(decision.value());
   }
 }
 
-void SampleTileFactorAttrs::Export(Array<ObjectRef>* record,
-                                   const Optional<Array<ObjectRef>>& decision) const {
-  record->push_back(Array<ObjectRef>{
-      Integer(n_splits),  //
-      where,              //
-  });
+void SampleTileFactorAttrs::Serialize(Array<ObjectRef>* record,
+                                      const Optional<ObjectRef>& decision) const {
+  record->push_back(Integer(n_splits));
+  record->push_back(where);
   if (decision.defined()) {
     record->push_back(decision.value());
   }
 }
 
-void SampleIntAttrs::Export(Array<ObjectRef>* record,
-                            const Optional<Array<ObjectRef>>& decision) const {
-  record->push_back(Array<ObjectRef>{});
+void SampleIntAttrs::Serialize(Array<ObjectRef>* record,
+                               const Optional<ObjectRef>& decision) const {
   if (decision.defined()) {
     record->push_back(decision.value());
   }
 }
 
-void SampleCategoricalAttrs::Export(Array<ObjectRef>* record,
-                                    const Optional<Array<ObjectRef>>& decision) const {
-  record->push_back(Array<ObjectRef>{
-      candidates,
-      probs,
-  });
+void SampleCategoricalAttrs::Serialize(Array<ObjectRef>* record,
+                                       const Optional<ObjectRef>& decision) const {
+  record->push_back(candidates);
+  record->push_back(probs);
   if (decision.defined()) {
     record->push_back(decision.value());
   }
 }
 
-void SampleComputeLocationAttrs::Export(Array<ObjectRef>* record,
-                                        const Optional<Array<ObjectRef>>& decision) const {
-  record->push_back(Array<ObjectRef>{});
+void SampleComputeLocationAttrs::Serialize(Array<ObjectRef>* record,
+                                           const Optional<ObjectRef>& decision) const {
   if (decision.defined()) {
     record->push_back(decision.value());
   }
 }
 
-/**************** (Export) Block/Loop Relationship  ****************/
+/**************** (Serialize) Block/Loop Relationship  ****************/
 
-void GetBlockAttrs::Export(Array<ObjectRef>* record,
-                           const Optional<Array<ObjectRef>>& decision) const {
+void GetBlockAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{name});
+  record->push_back(name);
 }
 
-/**************** (Export) Scheduling Primitives  ****************/
+/**************** (Serialize) Scheduling Primitives  ****************/
 
-void MarkLoopAttrs::Export(Array<ObjectRef>* record,
-                           const Optional<Array<ObjectRef>>& decision) const {
+void MarkLoopAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{ann_key, ann_val});
+  record->push_back(ann_key);
+  record->push_back(ann_val);
 }
 
-void MarkBlockAttrs::Export(Array<ObjectRef>* record,
-                            const Optional<Array<ObjectRef>>& decision) const {
+void MarkBlockAttrs::Serialize(Array<ObjectRef>* record,
+                               const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{ann_key});
+  record->push_back(ann_key);
 }
 
-void CacheReadAttrs::Export(Array<ObjectRef>* record,
-                            const Optional<Array<ObjectRef>>& decision) const {
+void CacheReadAttrs::Serialize(Array<ObjectRef>* record,
+                               const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{Integer(i), storage_scope});
+  record->push_back(Integer(i));
+  record->push_back(storage_scope);
 }
 
-void CacheWriteAttrs::Export(Array<ObjectRef>* record,
-                             const Optional<Array<ObjectRef>>& decision) const {
+void CacheWriteAttrs::Serialize(Array<ObjectRef>* record,
+                                const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{Integer(i), storage_scope});
+  record->push_back(Integer(i));
+  record->push_back(storage_scope);
 }
 
-void BlockizeAttrs::Export(Array<ObjectRef>* record,
-                           const Optional<Array<ObjectRef>>& decision) const {
+void BlockizeAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(Array<ObjectRef>{exec_scope});
+  record->push_back(exec_scope);
 }
 
-/**************** Import  ****************/
-/**************** (Import) Sampling  ****************/
+/**************** Deserialize  ****************/
+/**************** (Deserialize) Sampling  ****************/
 
-InstAttrs SamplePerfectTileAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_GE(record.size(), 4);
-  CHECK_LE(record.size(), 5);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 2);
+InstAttrs SamplePerfectTileAttrs::Deserialize(const Array<ObjectRef>& record,
+                                              Optional<ObjectRef>* decision) {
   ObjectPtr<SamplePerfectTileAttrs> n = make_object<SamplePerfectTileAttrs>();
-  n->n_splits = Downcast<Integer>(from[0]);
-  n->max_innermost_factor = Downcast<Integer>(from[1]);
+  n->n_splits = Downcast<Integer>(record[3]);
+  n->max_innermost_factor = Downcast<Integer>(record[4]);
+  if (record.size() > 5) {
+    *decision = Downcast<Array<Integer>>(record[5]);
+  }
   return InstAttrs(std::move(n));
 }
 
-InstAttrs SampleTileFactorAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_GE(record.size(), 4);
-  CHECK_LE(record.size(), 5);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 2);
+InstAttrs SampleTileFactorAttrs::Deserialize(const Array<ObjectRef>& record,
+                                             Optional<ObjectRef>* decision) {
   ObjectPtr<SampleTileFactorAttrs> n = make_object<SampleTileFactorAttrs>();
-  n->n_splits = Downcast<Integer>(from[0]);
-  n->where = Downcast<Array<Integer>>(from[1]);
+  n->n_splits = Downcast<Integer>(record[3]);
+  n->where = Downcast<Array<Integer>>(record[4]);
+  if (record.size() > 5) {
+    *decision = Downcast<Array<Integer>>(record[5]);
+  }
   return InstAttrs(std::move(n));
 }
 
-InstAttrs SampleIntAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_GE(record.size(), 4);
-  CHECK_LE(record.size(), 5);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 0);
+InstAttrs SampleIntAttrs::Deserialize(const Array<ObjectRef>& record,
+                                      Optional<ObjectRef>* decision) {
+  if (record.size() > 3) {
+    *decision = Downcast<Integer>(record[3]);
+  }
   return InstAttrs(make_object<SampleIntAttrs>());
 }
 
-InstAttrs SampleCategoricalAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_GE(record.size(), 4);
-  CHECK_LE(record.size(), 5);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 2);
+InstAttrs SampleCategoricalAttrs::Deserialize(const Array<ObjectRef>& record,
+                                              Optional<ObjectRef>* decision) {
   ObjectPtr<SampleCategoricalAttrs> n = make_object<SampleCategoricalAttrs>();
-  n->candidates = Downcast<Array<Integer>>(from[0]);
-  n->probs = Downcast<Array<FloatImm>>(from[1]);
+  n->candidates = Downcast<Array<Integer>>(record[3]);
+  n->probs = Downcast<Array<FloatImm>>(record[4]);
+  if (record.size() > 5) {
+    *decision = Downcast<Integer>(record[5]);
+  }
   return InstAttrs(std::move(n));
 }
 
-InstAttrs SampleComputeLocationAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_GE(record.size(), 4);
-  CHECK_LE(record.size(), 5);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 0);
+InstAttrs SampleComputeLocationAttrs::Deserialize(const Array<ObjectRef>& record,
+                                                  Optional<ObjectRef>* decision) {
+  if (record.size() > 3) {
+    *decision = Downcast<Integer>(record[3]);
+  }
   return InstAttrs(make_object<SampleComputeLocationAttrs>());
 }
 
-/**************** (Import) Block/Loop Relationship  ****************/
+/**************** (Deserialize) Block/Loop Relationship  ****************/
 
-InstAttrs GetBlockAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 4);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 1);
+InstAttrs GetBlockAttrs::Deserialize(const Array<ObjectRef>& record,
+                                     Optional<ObjectRef>* decision) {
   ObjectPtr<GetBlockAttrs> n = make_object<GetBlockAttrs>();
-  n->name = Downcast<String>(from[0]);
+  n->name = Downcast<String>(record[3]);
   return InstAttrs(std::move(n));
 }
 
-/**************** (Import) Scheduling Primitives  ****************/
+/**************** (Deserialize) Scheduling Primitives  ****************/
 
-InstAttrs MarkLoopAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 4);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 2);
+InstAttrs MarkLoopAttrs::Deserialize(const Array<ObjectRef>& record,
+                                     Optional<ObjectRef>* decision) {
   ObjectPtr<MarkLoopAttrs> n = make_object<MarkLoopAttrs>();
-  n->ann_key = Downcast<String>(from[0]);
-  n->ann_val = Downcast<String>(from[1]);
+  n->ann_key = Downcast<String>(record[3]);
+  n->ann_val = Downcast<String>(record[4]);
   return InstAttrs(std::move(n));
 }
 
-InstAttrs MarkBlockAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 4);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 1);
+InstAttrs MarkBlockAttrs::Deserialize(const Array<ObjectRef>& record,
+                                      Optional<ObjectRef>* decision) {
   ObjectPtr<MarkBlockAttrs> n = make_object<MarkBlockAttrs>();
-  n->ann_key = Downcast<String>(from[0]);
+  n->ann_key = Downcast<String>(record[3]);
   return InstAttrs(std::move(n));
 }
 
-InstAttrs CacheReadAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 4);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 2);
+InstAttrs CacheReadAttrs::Deserialize(const Array<ObjectRef>& record,
+                                      Optional<ObjectRef>* decision) {
   ObjectPtr<CacheReadAttrs> n = make_object<CacheReadAttrs>();
-  n->i = Downcast<Integer>(from[0]);
-  n->storage_scope = Downcast<String>(from[1]);
+  n->i = Downcast<Integer>(record[3]);
+  n->storage_scope = Downcast<String>(record[4]);
   return InstAttrs(std::move(n));
 }
 
-InstAttrs CacheWriteAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 4);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 2);
+InstAttrs CacheWriteAttrs::Deserialize(const Array<ObjectRef>& record,
+                                       Optional<ObjectRef>* decision) {
   ObjectPtr<CacheWriteAttrs> n = make_object<CacheWriteAttrs>();
-  n->i = Downcast<Integer>(from[0]);
-  n->storage_scope = Downcast<String>(from[1]);
+  n->i = Downcast<Integer>(record[3]);
+  n->storage_scope = Downcast<String>(record[4]);
   return InstAttrs(std::move(n));
 }
 
-InstAttrs BlockizeAttrs::Import(const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 4);
-  Array<ObjectRef> from = Downcast<Array<ObjectRef>>(record[3]);
-  CHECK_EQ(from.size(), 1);
+InstAttrs BlockizeAttrs::Deserialize(const Array<ObjectRef>& record,
+                                     Optional<ObjectRef>* decision) {
   ObjectPtr<BlockizeAttrs> n = make_object<BlockizeAttrs>();
-  n->exec_scope = Downcast<String>(from[0]);
+  n->exec_scope = Downcast<String>(record[3]);
   return InstAttrs(std::move(n));
 }
 
-/**************** Import/Export for empty instructions ****************/
+/**************** Deserialize/Serialize for empty instructions ****************/
 
-#define TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(AttrsType)                                  \
-  void AttrsType::Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision) \
-      const {                                                                                  \
-    CHECK(!decision.defined());                                                                \
-  }                                                                                            \
-  InstAttrs AttrsType::Import(const Array<ObjectRef>& record) {                                \
-    CHECK_EQ(record.size(), 3);                                                                \
-    return InstAttrs(make_object<AttrsType>());                                                \
+#define TVM_META_SCHEDULE_INST_IO_EMPTY(AttrsType)                                                 \
+  void AttrsType::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const { \
+    CHECK(!decision.defined());                                                                    \
+  }                                                                                                \
+  InstAttrs AttrsType::Deserialize(const Array<ObjectRef>& record,                                 \
+                                   Optional<ObjectRef>* decision) {                                \
+    return InstAttrs(make_object<AttrsType>());                                                    \
   }
 
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetProducersAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetConsumersAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetAxesAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetReadBuffersAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetWriteBuffersAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetRootBlocksAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(GetLeafBlocksAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(FuseAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(SplitAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ReorderAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ComputeAtAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ReverseComputeAtAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ComputeInlineAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ReverseComputeInlineAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(DecomposeReductionAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(EnterPostProcAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(ParallelAttrs);
-TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY(VectorizeAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(GetProducersAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(GetConsumersAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(GetAxesAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(GetReadBuffersAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(GetWriteBuffersAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(GetRootBlocksAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(GetLeafBlocksAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(FuseAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(SplitAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(ReorderAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(ComputeAtAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(ReverseComputeAtAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(ComputeInlineAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(ReverseComputeInlineAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(DecomposeReductionAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(EnterPostProcAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(ParallelAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(VectorizeAttrs);
 
-#undef TVM_META_SCHEDULE_INST_EXPORT_IMPORT_EMPTY
+#undef TVM_META_SCHEDULE_INST_Serialize_IMPORT_EMPTY
 
 /**************** FFI ****************/
 
