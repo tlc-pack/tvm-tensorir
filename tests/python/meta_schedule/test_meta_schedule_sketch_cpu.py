@@ -48,16 +48,22 @@ def _fix_sampling_tile_size(
 ):
     insts = [
         inst
-        for inst in sch.trace
+        for inst in sch.trace.insts
         if isinstance(inst.inst_attrs, ms.instruction.SamplePerfectTileAttrs)
     ]
     for decisions in possible_decisions:
         if len(insts) != len(decisions):
             continue
+        new_decisions = {
+            k: v
+            for k, v in sch.trace.decisions.items()  # pylint: disable=unnecessary-comprehension
+        }
         for inst, decision in zip(insts, decisions):
-            sch.mutate_decision(inst, decision)
-        sch.replay_decision()
-        results = [tvm.ir.structural_equal(sch.sch.func, i) for i in expected]
+            new_decisions[inst] = decision
+        trace = ms.Trace(sch.trace.insts, new_decisions)
+        new_sch = ms.Schedule(sch.orig_func)
+        trace.apply(new_sch)
+        results = [tvm.ir.structural_equal(new_sch.sch.func, i) for i in expected]
         if sum(results) >= 1:
             return
     assert False
@@ -71,9 +77,9 @@ def _debug(support: List[ms.Schedule]):
     for i, sch in enumerate(support):
         print(f"###### {i}")
         print(tvm.script.asscript(sch.sch.func))
-        for inst in sch.trace:
-            if inst in sch.decisions:
-                print(sch.decisions[inst], ",")
+        for inst in sch.trace.insts:
+            if inst in sch.trace.decisions:
+                print(sch.trace.decisions[inst], ",")
 
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unused-variable
