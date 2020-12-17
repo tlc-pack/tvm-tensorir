@@ -15,15 +15,16 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Main class of meta schedule """
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
-from tvm import ir, tir
+from tvm import tir
 from tvm._ffi import register_object
 from tvm.runtime import Object
 from tvm.runtime.container import String
 
 from . import _ffi_api
 from .instruction import RAND_VAR_TYPE, BlockRV, BufferRV, ExprRV, Instruction, LoopRV
+from .trace import Trace
 
 
 @register_object("meta_schedule.Schedule")
@@ -36,14 +37,14 @@ class Schedule(Object):
         The original TIR PrimFunc to be scheduled
     sch: tir.Schedule
         The TIR schedule in the current stage
-    trace: List[Instruction]
-        The trace of instructions used
+    insts: List[Instruction]
+        The instructions used
     """
 
     orig_func: tir.PrimFunc
     sch: tir.Schedule
-    trace: List[Instruction]
-    decisions: List[List[Object]]
+    trace: Trace
+    sym_tab: Dict[Instruction, Object]
 
     def __init__(self, func: tir.PrimFunc, seed: Optional[int] = None):
         self.__init_handle_by_constructor__(
@@ -72,48 +73,6 @@ class Schedule(Object):
             A new schedule
         """
         return _ffi_api.ScheduleCopy(self, seed)  # pylint: disable=no-member
-
-    ######### Serialization #########
-
-    @staticmethod
-    def import_(
-        record: str,
-        func: tir.PrimFunc,
-        seed: Optional[int] = None,
-    ) -> "Schedule":
-        """Import from the records
-
-        Parameters
-        ----------
-        record : str
-            The serialized trace of scheduling
-        func : tir.PrimFunc
-            The TIR function to be scheduled
-        seed : Optional[int]
-            The random seed
-
-        Returns
-        -------
-        schedule : Schedule
-            The schedule imported
-        """
-        from .utils import deserialize_json  # pylint: disable=import-outside-toplevel
-
-        record = deserialize_json(record)
-        return _ffi_api.ScheduleImport(record, func, seed)  # pylint: disable=no-member
-
-    def export(self) -> str:
-        """Export as records
-
-        Returns
-        -------
-        records : str
-            The record exported
-        """
-        from .utils import serialize_json  # pylint: disable=import-outside-toplevel
-
-        records = _ffi_api.ScheduleExport(self)  # pylint: disable=no-member
-        return serialize_json(records)
 
     ######### Evaluation of random variables #########
 
@@ -211,8 +170,6 @@ class Schedule(Object):
         result : ExprRV
             A ExprRV, a random variable indicates the sampling result
         """
-        if decision is not None:
-            decision = [decision]
         return _ffi_api.ScheduleSampleInt(  # pylint: disable=no-member
             self, min_inclusive, max_exclusive, decision
         )
@@ -237,8 +194,6 @@ class Schedule(Object):
         result : ExprRV
             A ExprRV, a random variable indicates the sampling result
         """
-        if decision is not None:
-            decision = [decision]
         return _ffi_api.ScheduleSampleCategorical(  # pylint: disable=no-member
             self, candidates, probs, decision
         )
@@ -260,8 +215,6 @@ class Schedule(Object):
         result : LoopRV
             The loop to be computed at
         """
-        if decision is not None:
-            decision = [decision]
         return _ffi_api.ScheduleSampleComputeLocation(  # pylint: disable=no-member
             self, block, decision
         )
@@ -382,7 +335,7 @@ class Schedule(Object):
 
     def mark_loop(
         self,
-        loops: List[LoopRV],
+        loop: LoopRV,
         ann_key: str,
         ann_val: str,
     ) -> None:
@@ -390,19 +343,23 @@ class Schedule(Object):
 
         Parameters
         ----------
-        loops: List[LoopRV]
+        loop: LoopRV
             The loops to be marked
         ann_key : str
             The annotation key
         ann_val : str
             The annotation value
         """
-        # TODO(@junrushao1994): it is a workaround
         if isinstance(ann_val, str):
             ann_val = String(ann_val)
-        _ffi_api.ScheduleMarkLoop(self, loops, ann_key, ann_val)  # pylint: disable=no-member
+        _ffi_api.ScheduleMarkLoop(self, loop, ann_key, ann_val)  # pylint: disable=no-member
 
-    def mark_block(self, block: BlockRV, ann_key: str, ann_val: ExprRV) -> None:
+    def mark_block(
+        self,
+        block: BlockRV,
+        ann_key: str,
+        ann_val: ExprRV,
+    ) -> None:
         """Mark a block
 
         Parameters
@@ -605,33 +562,3 @@ class Schedule(Object):
             The loop to be vectorized
         """
         _ffi_api.ScheduleVectorize(self, loop)  # pylint: disable=no-member
-
-    ########## Trace-related ##########
-
-    def mutate_decision(
-        self,
-        inst: Instruction,
-        decision: Optional[List[Object]],
-    ) -> None:
-        """Mutate the decision on the specific instruction
-
-        Parameters
-        ----------
-        inst: Instruction
-            The instruction whose decision is mutated
-        decision: Optional[List[Object]]
-            The decision to be mutated to. If it is None, then remove it from decisions
-        """
-        return _ffi_api.ScheduleMutateDecision(self, inst, decision)  # pylint: disable=no-member
-
-    def resample(self) -> None:
-        """Re-sample along the trace to generatea new sequence of
-        scheduling instructions and program states"""
-        return _ffi_api.ScheduleReSample(self)  # pylint: disable=no-member
-
-    def replay_decision(self) -> None:
-        """Replay the trace with the decision stored in the schedule class.
-        If a decision has been changed using MutateDecision, then it will generate
-        different schedule. This process is theoretically deterministic if all sampling
-        instructions have decision made."""
-        return _ffi_api.ScheduleReplayDecision(self)  # pylint: disable=no-member
