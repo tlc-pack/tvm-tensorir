@@ -109,13 +109,13 @@ def test_conv1d_post_order_apply():
             workload=te.create_func(testing.workload_te.conv1d_nlc(1, 256, 64, 128, 3, 2, 1)),
             target=TARGET,
             task_name="conv1d_nlc",
-            # log_file="./conv1d_nlc.json",
+            log_file="./conv1d_nlc.json",
         ),
         space=SPACE,
-        strategy=ms.strategy.Replay(num_trials=32, batch_size=1),
+        strategy=ms.strategy.Replay(num_trials=32),
         measurer=ms.ProgramMeasurer(
             measure_callbacks=[
-                # ms.RecordToFile(),
+                ms.RecordToFile(),
             ]
         ),
         seed=12,

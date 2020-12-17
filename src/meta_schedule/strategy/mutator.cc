@@ -45,17 +45,23 @@ class MutatorTileSize {
  public:
   MutatorTileSize() = default;
 
+  static std::vector<int> CastDecision(const ObjectRef& obj) {
+    const auto* arr = obj.as<runtime::ArrayNode>();
+    CHECK(arr) << "TypeError: Expects ArrayNode, but gets: " << obj->GetTypeKey();
+    return AsVector<ObjectRef, int>()(GetRef<Array<ObjectRef>>(arr));
+  }
+
   Optional<Schedule> Apply(const SearchTask& task, const Schedule& sch, Sampler* sampler) {
     // Find instruction `SamplePerfectTile` whose extent > 1 and n_splits > 1
     std::vector<Instruction> candidates;
-    candidates.reserve(sch->decisions.size());
-    for (const auto& kv : sch->decisions) {
+    candidates.reserve(sch->trace->decisions.size());
+    for (const auto& kv : sch->trace->decisions) {
       const Instruction& inst = kv.first;
       if (const auto* attrs = inst->inst_attrs.as<SamplePerfectTileAttrs>()) {
         if (attrs->n_splits <= 1) {
           continue;
         }
-        std::vector<int> tiles = AsVector<ObjectRef, int>()(kv.second);
+        std::vector<int> tiles = CastDecision(kv.second);
         int64_t prod = 1;
         for (int item : tiles) {
           prod *= item;
@@ -69,7 +75,7 @@ class MutatorTileSize {
       return NullOpt;
     }
     const Instruction& inst = candidates[sampler->SampleInt(0, candidates.size())];
-    std::vector<int> tiles = AsVector<ObjectRef, int>()(sch->decisions.at(inst));
+    std::vector<int> tiles = CastDecision(sch->trace->decisions.at(inst));
     int n_splits = tiles.size();
     // Choose two loops
     int x = sampler->SampleInt(0, n_splits);
@@ -120,21 +126,14 @@ class MutatorTileSize {
       len_y = len_y_space[sampler->SampleInt(0, len_y_space.size())];
       len_x = prod / len_y;
     }
-    Schedule new_sch = sch->Copy(sampler->ForkSeed());
     tiles[x] = len_x;
     tiles[y] = len_y;
-    new_sch->MutateDecision(inst, AsArray<int, ObjectRef>()(tiles));
-    // TODO(@junrushao1994): recover
-    // std::unordered_set<Instruction, ObjectPtrHash, ObjectPtrEqual> fusible_samplings;
-    // for (const auto& kv : new_sch->decisions) {
-    //   if (kv.first->inst_attrs->IsInstance<SampleFusibleLoopsAttrs>()) {
-    //     fusible_samplings.insert(kv.first);
-    //   }
-    // }
-    // for (const Instruction& fusible_sample : fusible_samplings) {
-    //   new_sch->MutateDecision(fusible_sample, NullOpt);
-    // }
-    new_sch->ReplayDecision();
+    Schedule new_sch = Schedule(sch->orig_func, Integer(sampler->ForkSeed()));
+    Trace mutated_trace;
+    mutated_trace->insts = sch->trace->insts;
+    mutated_trace->decisions = sch->trace->decisions;
+    mutated_trace->decisions.Set(inst, AsArray<int, ObjectRef>()(tiles));
+    mutated_trace->Apply(new_sch);
     return new_sch;
   }
 };
