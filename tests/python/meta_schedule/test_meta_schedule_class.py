@@ -245,6 +245,9 @@ def _check_serialization(sch, func) -> ms.Schedule:
     new_sch = ms.Schedule(func)
     ms.Trace.deserialize(record, new_sch)
     assert tvm.ir.structural_equal(new_sch.sch.func, sch.sch.func)
+    py_repr = "\n".join(sch.trace.as_python())
+    new_py_repr = "\n".join(new_sch.trace.as_python())
+    assert py_repr == new_py_repr
     return new_sch
 
 
@@ -579,6 +582,7 @@ def test_meta_schedule_parallel():
     i, _, _ = sch.get_axes(block)
     sch.parallel(i)
     check_annotation(sch, i)
+    _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_vectorize():
@@ -594,6 +598,7 @@ def test_meta_schedule_vectorize():
     i, _, _ = sch.get_axes(block)
     sch.vectorize(i)
     check_annotation(sch, i)
+    _check_serialization(sch, func=matmul)
 
 
 if __name__ == "__main__":
