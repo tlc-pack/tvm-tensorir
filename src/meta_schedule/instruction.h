@@ -19,13 +19,12 @@
 #ifndef SRC_META_SCHEDULE_INSTRUCTION_H_
 #define SRC_META_SCHEDULE_INSTRUCTION_H_
 
-#include <tvm/ir/attrs.h>
 #include <tvm/tir/var.h>
 
 namespace tvm {
 namespace meta_schedule {
 
-class ScheduleNode;
+class Schedule;
 
 /**************** Random variables ****************/
 
@@ -93,6 +92,16 @@ class BufferRV : public runtime::ObjectRef {
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BufferRV, ObjectRef, BufferRVNode);
 };
 
+inline bool IsRV(const ObjectRef& obj) {
+  if (obj->IsInstance<IntImmNode>() || obj->IsInstance<FloatImmNode>()) {
+    return false;
+  }
+  return obj->IsInstance<BlockRVNode>() || obj->IsInstance<LoopRVNode>() ||
+         obj->IsInstance<BufferRVNode>() || obj->IsInstance<tir::VarNode>();
+}
+
+inline bool IsRVExpr(const ObjectRef& obj) { return obj->IsInstance<PrimExprNode>(); }
+
 /**************** InstAttrs ****************/
 
 class InstAttrs;
@@ -106,16 +115,23 @@ class InstAttrsNode : public Object {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  virtual Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,
-                                           const Optional<Array<ObjectRef>>& decisions) const = 0;
+  virtual Array<ObjectRef> Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                 const Optional<ObjectRef>& decisions) const = 0;
 
-  virtual String GetName() const = 0;
-
-  virtual void Export(Array<ObjectRef>* record,
-                      const Optional<Array<ObjectRef>>& decision) const = 0;
+  // We intentionally consider sampling instructions as pure too
+  virtual bool IsPure() const = 0;
 
   static constexpr const char* _type_key = "meta_schedule.InstAttrs";
   TVM_DECLARE_BASE_OBJECT_INFO(InstAttrsNode, Object);
+  friend class InstructionNode;
+
+ private:
+  virtual void Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const = 0;
+
+  virtual void AsPython(std::ostream& os, const Array<String>& inputs, const Array<String>& outputs,
+                        const Optional<ObjectRef>& decision) const = 0;
+
+  virtual String GetName() const = 0;
 };
 
 /*!
@@ -127,16 +143,22 @@ class InstAttrs : public ObjectRef {
   TVM_DEFINE_OBJECT_REF_METHODS(InstAttrs, ObjectRef, InstAttrsNode);
 };
 
-#define TVM_META_SCHEDULE_DEFINE_INST_ATTRS(Cls, TypeKey, InstName)                            \
-  Array<ObjectRef> ApplyToSchedule(ScheduleNode* sch, const Array<ObjectRef>& inputs,          \
-                                   const Optional<Array<ObjectRef>>& decision) const override; \
-  void Export(Array<ObjectRef>* record, const Optional<Array<ObjectRef>>& decision)            \
-      const override;                                                                          \
-  static InstAttrs Import(const Array<ObjectRef>& record);                                     \
-  static constexpr const char* _name = InstName;                                               \
-  static constexpr const char* _type_key = TypeKey;                                            \
-  TVM_DECLARE_FINAL_OBJECT_INFO(Cls, InstAttrsNode);                                           \
-  String GetName() const override { return String(_name); }
+#define TVM_META_SCHEDULE_DEFINE_INST_ATTRS(Cls, TypeKey, InstName, Pure)                       \
+ private:                                                                                       \
+  String GetName() const override { return String(_name); }                                     \
+  void Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const override; \
+  static InstAttrs Deserialize(const Array<ObjectRef>& record, Optional<ObjectRef>* decision);  \
+                                                                                                \
+ public:                                                                                        \
+  static constexpr const char* _name = InstName;                                                \
+  static constexpr const char* _type_key = TypeKey;                                             \
+  Array<ObjectRef> Apply(const Schedule& sch, const Array<ObjectRef>& inputs,                   \
+                         const Optional<ObjectRef>& decision) const override;                   \
+  bool IsPure() const override { return Pure; }                                                 \
+  void AsPython(std::ostream& os, const Array<String>& inputs, const Array<String>& outputs,    \
+                const Optional<ObjectRef>& decision) const override;                            \
+  friend class InstructionNode;                                                                 \
+  TVM_DECLARE_FINAL_OBJECT_INFO(Cls, InstAttrsNode);
 
 /**************** Instruction ****************/
 
@@ -156,8 +178,14 @@ class InstructionNode : public Object {
     v->Visit("inst_attrs", &inst_attrs);
   }
 
-  Array<ObjectRef> Export(const Map<ObjectRef, String>& rv_names,
-                          const Optional<Array<ObjectRef>>& decision) const;
+  Array<ObjectRef> Serialize(const Map<ObjectRef, String>& rv_names,
+                             const Optional<ObjectRef>& decision) const;
+
+  static Array<ObjectRef> Deserialize(const Array<ObjectRef>& record,
+                                      Map<String, ObjectRef>* named_rvs, const Schedule& sch);
+
+  void AsPython(std::ostream& os, const Map<ObjectRef, String>& rv_names,
+                const Optional<ObjectRef>& decision) const;
 
   static constexpr const char* _type_key = "meta_schedule.Instruction";
   TVM_DECLARE_FINAL_OBJECT_INFO(InstructionNode, Object);
@@ -176,9 +204,6 @@ class Instruction : public ObjectRef {
    * \param inst_attrs The attributes of the instruction
    */
   explicit Instruction(Array<ObjectRef> inputs, Array<ObjectRef> outputs, InstAttrs inst_attrs);
-
-  static Array<ObjectRef> ImportToSchedule(ScheduleNode* sch, const Array<ObjectRef>& record,
-                                           Map<String, ObjectRef>* named_rvs);
 
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Instruction, ObjectRef, InstructionNode);
 
@@ -214,7 +239,7 @@ struct SamplePerfectTileAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SamplePerfectTileAttrs,
                                       "meta_schedule.attrs.SamplePerfectTileAttrs",
-                                      "SamplePerfectTile");
+                                      "SamplePerfectTile", true);
 };
 
 /*! \brief Attrs of the instruction to sample tiling factors */
@@ -242,7 +267,7 @@ struct SampleTileFactorAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SampleTileFactorAttrs,
                                       "meta_schedule.attrs.SampleTileFactorAttrs",
-                                      "SampleTileFactor");
+                                      "SampleTileFactor", true);
 };
 
 /*! \brief Attrs of the instruction to sample from a categorical distribution */
@@ -261,7 +286,7 @@ struct SampleIntAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SampleIntAttrs,                        //
                                       "meta_schedule.attrs.SampleIntAttrs",  //
-                                      "SampleInt");
+                                      "SampleInt", true);
 };
 
 /*! \brief Attrs of the instruction to sample from a categorical distribution */
@@ -288,7 +313,7 @@ struct SampleCategoricalAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SampleCategoricalAttrs,
                                       "meta_schedule.attrs.SampleCategoricalAttrs",
-                                      "SampleCategorical");
+                                      "SampleCategorical", true);
 };
 
 /*! \brief Attrs of the instruction to sample a compute-at location from a block */
@@ -303,7 +328,7 @@ struct SampleComputeLocationAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SampleComputeLocationAttrs,
                                       "meta_schedule.attrs.SampleComputeLocationAttrs",
-                                      "SampleComputeLocation");
+                                      "SampleComputeLocation", true);
 };
 
 /**************** Block/Loop Relationship ****************/
@@ -322,7 +347,7 @@ struct GetProducersAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(GetProducersAttrs,                        //
                                       "meta_schedule.attrs.GetProducersAttrs",  //
-                                      "GetProducers");
+                                      "GetProducers", true);
 };
 
 /*! \brief Attrs of the instruction that gets the consumers of a specific block */
@@ -339,7 +364,7 @@ struct GetConsumersAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(GetConsumersAttrs,                        //
                                       "meta_schedule.attrs.GetConsumersAttrs",  //
-                                      "GetConsumers");
+                                      "GetConsumers", true);
 };
 
 /*! \brief Attrs of the instruction that gets a specific block by its name */
@@ -359,7 +384,7 @@ struct GetBlockAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(GetBlockAttrs,                        //
                                       "meta_schedule.attrs.GetBlockAttrs",  //
-                                      "GetBlock");
+                                      "GetBlock", true);
 };
 
 /*! \brief Attrs of the instruction that gets loop axes on top of a specifc block */
@@ -376,7 +401,7 @@ struct GetAxesAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(GetAxesAttrs,                        //
                                       "meta_schedule.attrs.GetAxesAttrs",  //
-                                      "GetAxes");
+                                      "GetAxes", true);
 };
 
 /*! \brief Attrs of the instruction that gets the buffers the block reads */
@@ -393,7 +418,7 @@ struct GetReadBuffersAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(GetReadBuffersAttrs,                        //
                                       "meta_schedule.attrs.GetReadBuffersAttrs",  //
-                                      "GetReadBuffers");
+                                      "GetReadBuffers", true);
 };
 
 /*! \brief Attrs of the instruction that gets the buffers the block writes */
@@ -410,7 +435,7 @@ struct GetWriteBuffersAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(GetWriteBuffersAttrs,                        //
                                       "meta_schedule.attrs.GetWriteBuffersAttrs",  //
-                                      "GetWriteBuffers");
+                                      "GetWriteBuffers", true);
 };
 
 struct GetRootBlocksAttrs : public InstAttrsNode {
@@ -425,7 +450,7 @@ struct GetRootBlocksAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(GetRootBlocksAttrs,                        //
                                       "meta_schedule.attrs.GetRootBlocksAttrs",  //
-                                      "GetRootBlocks");
+                                      "GetRootBlocks", true);
 };
 
 struct GetLeafBlocksAttrs : public InstAttrsNode {
@@ -440,7 +465,7 @@ struct GetLeafBlocksAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(GetLeafBlocksAttrs,                        //
                                       "meta_schedule.attrs.GetLeafBlocksAttrs",  //
-                                      "GetLeafBlocks");
+                                      "GetLeafBlocks", true);
 };
 
 /**************** Scheduling Primitives ****************/
@@ -467,7 +492,7 @@ struct MarkLoopAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(MarkLoopAttrs,                        //
                                       "meta_schedule.attrs.MarkLoopAttrs",  //
-                                      "MarkLoop");
+                                      "MarkLoop", false);
 };
 
 struct MarkBlockAttrs : public InstAttrsNode {
@@ -487,7 +512,7 @@ struct MarkBlockAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(MarkBlockAttrs,                        //
                                       "meta_schedule.attrs.MarkBlockAttrs",  //
-                                      "MarkBlock");
+                                      "MarkBlock", false);
 };
 
 struct FuseAttrs : public InstAttrsNode {
@@ -503,7 +528,7 @@ struct FuseAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(FuseAttrs,                        //
                                       "meta_schedule.attrs.FuseAttrs",  //
-                                      "Fuse");
+                                      "Fuse", false);
 };
 
 /*! \brief Attrs of the instruction that applies loop splitting */
@@ -522,7 +547,7 @@ struct SplitAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(SplitAttrs,                        //
                                       "meta_schedule.attrs.SplitAttrs",  //
-                                      "Split");
+                                      "Split", false);
 };
 
 /*! \brief Attrs of the instruction that applies loop reordering */
@@ -538,7 +563,7 @@ struct ReorderAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(ReorderAttrs,                        //
                                       "meta_schedule.attrs.ReorderAttrs",  //
-                                      "Reorder");
+                                      "Reorder", false);
 };
 
 /*! \brief Attrs of the instruction that applies reverse_compute_at */
@@ -555,7 +580,7 @@ struct ComputeAtAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(ComputeAtAttrs,                        //
                                       "meta_schedule.attrs.ComputeAtAttrs",  //
-                                      "ComputeAt");
+                                      "ComputeAt", false);
 };
 
 /*! \brief Attrs of the instruction that applies reverse_compute_at */
@@ -572,7 +597,7 @@ struct ReverseComputeAtAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(ReverseComputeAtAttrs,                        //
                                       "meta_schedule.attrs.ReverseComputeAtAttrs",  //
-                                      "ReverseComputeAt");
+                                      "ReverseComputeAt", false);
 };
 
 /*! \brief Attrs of the instruction that applies compute_inline */
@@ -588,7 +613,7 @@ struct ComputeInlineAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(ComputeInlineAttrs,                        //
                                       "meta_schedule.attrs.ComputeInlineAttrs",  //
-                                      "ComputeInline");
+                                      "ComputeInline", false);
 };
 
 /*! \brief Attrs of the instruction that applies compute_inline */
@@ -604,7 +629,7 @@ struct ReverseComputeInlineAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(ReverseComputeInlineAttrs,                        //
                                       "meta_schedule.attrs.ReverseComputeInlineAttrs",  //
-                                      "ReverseComputeInline");
+                                      "ReverseComputeInline", false);
 };
 
 /*! \brief Attrs of the instruction that applies cache_write */
@@ -632,7 +657,7 @@ struct CacheReadAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(CacheReadAttrs,                        //
                                       "meta_schedule.attrs.CacheReadAttrs",  //
-                                      "CacheRead");
+                                      "CacheRead", false);
 };
 
 /*! \brief Attrs of the instruction that applies cache_write */
@@ -660,7 +685,7 @@ struct CacheWriteAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(CacheWriteAttrs,                        //
                                       "meta_schedule.attrs.CacheWriteAttrs",  //
-                                      "CacheWrite");
+                                      "CacheWrite", false);
 };
 
 /*! \brief Attrs of the instruction that applies blockize */
@@ -681,7 +706,7 @@ struct BlockizeAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(BlockizeAttrs,                        //
                                       "meta_schedule.attrs.BlockizeAttrs",  //
-                                      "Blockize");
+                                      "Blockize", false);
 };
 
 /*! \brief Attrs of the instruction that applies decompose_reduction */
@@ -699,7 +724,7 @@ struct DecomposeReductionAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(DecomposeReductionAttrs,                        //
                                       "meta_schedule.attrs.DecomposeReductionAttrs",  //
-                                      "DecomposeReduction");
+                                      "DecomposeReduction", false);
 };
 
 /*! \brief Attrs of the instruction that applies parallel */
@@ -715,7 +740,7 @@ struct ParallelAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(ParallelAttrs,                        //
                                       "meta_schedule.attrs.ParallelAttrs",  //
-                                      "parallel");
+                                      "parallel", false);
 };
 
 /*! \brief Attrs of the instruction that applies vectorize */
@@ -731,7 +756,7 @@ struct VectorizeAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(VectorizeAttrs,                        //
                                       "meta_schedule.attrs.VectorizeAttrs",  //
-                                      "vectorize");
+                                      "vectorize", false);
 };
 
 /*! \brief Attrs of an NOP that indicates entrance of post processing */
@@ -748,7 +773,7 @@ struct EnterPostProcAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(EnterPostProcAttrs,                        //
                                       "meta_schedule.attrs.EnterPostProcAttrs",  //
-                                      "EnterPostProc");
+                                      "EnterPostProc", true);
 };
 
 #undef TVM_META_SCHEDULE_DEFINE_INST_ATTRS

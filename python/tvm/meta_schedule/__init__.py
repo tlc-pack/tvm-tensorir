@@ -31,3 +31,4 @@ from .measure import (
 )
 from .schedule import Schedule
 from .search import SearchSpace, SearchStrategy, SearchTask
+from .trace import Trace

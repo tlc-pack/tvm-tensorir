@@ -241,16 +241,20 @@ def elementwise_inlined(a: ty.handle, c: ty.handle) -> None:
 
 
 def _check_serialization(sch, func) -> ms.Schedule:
-    record = sch.export()
-    new_sch = ms.Schedule.import_(record, func)
+    record = sch.trace.serialize()
+    new_sch = ms.Schedule(func)
+    ms.Trace.deserialize(record, new_sch)
     assert tvm.ir.structural_equal(new_sch.sch.func, sch.sch.func)
+    py_repr = "\n".join(sch.trace.as_python())
+    new_py_repr = "\n".join(new_sch.trace.as_python())
+    assert py_repr == new_py_repr
     return new_sch
 
 
 def test_meta_schedule_creation():
     sch = ms.Schedule(func=matmul)
     assert tvm.ir.structural_equal(sch.orig_func, sch.sch.func)
-    assert len(sch.trace) == 0
+    assert len(sch.trace.insts) == 0
     _check_serialization(sch, func=matmul)
 
 
@@ -313,15 +317,14 @@ def test_meta_schedule_sample_perfect_tile():
 
 def test_meta_schedule_sample_int():
     n = 20
-    sch = ms.Schedule(func=matmul)
     counter = defaultdict(int)
-    v = sch.sample_int(9, 12)
     for _ in range(n):
-        sch.resample()
+        sch = ms.Schedule(func=matmul)
+        v = sch.sample_int(9, 12)
         counter[int(sch.evaluate(v))] += 1
         new_sch = _check_serialization(sch, func=matmul)
-        old_decision = int(sch.decisions[sch.trace[-1]][0])
-        new_decision = int(new_sch.decisions[new_sch.trace[-1]][0])
+        old_decision = int(sch.trace.decisions[sch.trace.insts[-1]])
+        new_decision = int(new_sch.trace.decisions[new_sch.trace.insts[-1]])
         assert old_decision == new_decision
     assert len(counter) == 3
     assert 9 in counter
@@ -344,16 +347,15 @@ def test_meta_schedule_sample_categorical():
 
 
 def test_meta_schedule_sample_compute_location():
-    sch = ms.Schedule(func=matmul)
-    block = sch.get_block("matmul")
     counter = defaultdict(int)
-    loop = sch.sample_compute_location(block=block)
     for _ in range(100):
-        sch.resample()
+        sch = ms.Schedule(func=matmul)
+        block = sch.get_block("matmul")
+        loop = sch.sample_compute_location(block=block)
         counter[str(sch.evaluate(loop))] += 1
         new_sch = _check_serialization(sch, func=matmul)
-        old_decision = int(sch.decisions[sch.trace[-1]][0])
-        new_decision = int(new_sch.decisions[new_sch.trace[-1]][0])
+        old_decision = int(sch.trace.decisions[sch.trace.insts[-1]])
+        new_decision = int(new_sch.trace.decisions[new_sch.trace.insts[-1]])
         assert old_decision == new_decision
     assert len(counter) == 5
     assert "$root" in counter
@@ -580,6 +582,7 @@ def test_meta_schedule_parallel():
     i, _, _ = sch.get_axes(block)
     sch.parallel(i)
     check_annotation(sch, i)
+    _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_vectorize():
@@ -595,71 +598,7 @@ def test_meta_schedule_vectorize():
     i, _, _ = sch.get_axes(block)
     sch.vectorize(i)
     check_annotation(sch, i)
-
-
-def test_meta_schedule_mutate_decision():
-    sch = ms.Schedule(func=matmul)
-    i, j, _ = sch.get_axes(sch.get_block("matmul"))
-    sch.sample_perfect_tile(n_splits=4, loop=i)
-    sch.sample_perfect_tile(n_splits=3, loop=j)
-    i_inst = sch.trace[-2]
-    j_inst = sch.trace[-1]
-    sch.mutate_decision(i_inst, [1, 1, 1, 1024])
-    assert list(sch.decisions[i_inst]) == [1, 1, 1, 1024]
-    sch.mutate_decision(j_inst, None)
-    assert not j_inst in sch.decisions
     _check_serialization(sch, func=matmul)
-
-
-def test_meta_schedule_resample():
-    from functools import reduce  # pylint: disable=import-outside-toplevel
-
-    sch = ms.Schedule(func=matmul)
-    i, j, _ = sch.get_axes(sch.get_block("matmul"))
-    i_tiles = sch.sample_perfect_tile(n_splits=4, loop=i)
-    j_tiles = sch.sample_perfect_tile(n_splits=3, loop=j)
-    i_inst = sch.trace[-2]
-    j_inst = sch.trace[-1]
-    _check_serialization(sch, func=matmul)
-    for _ in range(10):
-        sch.resample()
-        i_eval = [sch.evaluate(i) for i in i_tiles]
-        j_eval = [sch.evaluate(j) for j in j_tiles]
-        i_dec = list(sch.decisions[i_inst])
-        j_dec = list(sch.decisions[j_inst])
-        assert i_eval == i_dec
-        assert j_eval == j_dec
-        assert reduce(lambda x, y: x * y, i_eval) == 1024
-        assert reduce(lambda x, y: x * y, j_eval) == 1024
-        _check_serialization(sch, func=matmul)
-
-
-def test_meta_schedule_replay_decision():
-    sch = ms.Schedule(func=matmul)
-    i, j, _ = sch.get_axes(sch.get_block("matmul"))
-    i_tiles = sch.sample_perfect_tile(n_splits=4, loop=i)
-    j_tiles = sch.sample_perfect_tile(n_splits=3, loop=j)
-    i_inst = sch.trace[-2]
-    j_inst = sch.trace[-1]
-    sch.split(loop=i, factors=i_tiles)
-    sch.split(loop=j, factors=j_tiles)
-    i_cnt = defaultdict(int)
-    j_cnt = defaultdict(int)
-    # _check_serialization(sch, func=matmul)
-    for _ in range(100):
-        # set i to deterministic
-        sch.mutate_decision(i_inst, [1, 1, 1, 1024])
-        # set j to random
-        sch.mutate_decision(j_inst, None)
-        # go!
-        sch.replay_decision()
-        i_eval = [sch.evaluate(i) for i in i_tiles]
-        j_eval = [sch.evaluate(j) for j in j_tiles]
-        i_cnt[str(i_eval)] += 1
-        j_cnt[str(j_eval)] += 1
-        _check_serialization(sch, func=matmul)
-    assert len(i_cnt) == 1
-    assert len(j_cnt) > 1
 
 
 if __name__ == "__main__":
@@ -692,6 +631,3 @@ if __name__ == "__main__":
     # test_meta_schedule_decompose_reduction()
     test_meta_schedule_parallel()
     test_meta_schedule_vectorize()
-    test_meta_schedule_mutate_decision()
-    test_meta_schedule_resample()
-    test_meta_schedule_replay_decision()
