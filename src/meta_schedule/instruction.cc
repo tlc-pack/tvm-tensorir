@@ -186,7 +186,7 @@ void InstructionNode::AsPython(std::ostream& os, const Map<ObjectRef, String>& r
   {
     output_names.reserve(outputs.size());
     for (const ObjectRef& v : outputs) {
-      input_names.push_back(rv2name(v));
+      output_names.push_back(rv2name(v));
     }
   }
   inst_attrs->AsPython(os, input_names, output_names, decision);

@@ -62,3 +62,6 @@ class Trace(Object):
     @staticmethod
     def deserialize(json: Any, sch: "Schedule") -> None:
         _ffi_api.TraceDeserialize(json, sch)  # pylint: disable=no-member
+
+    def as_python(self) -> List[str]:
+        return _ffi_api.TraceAsPython(self)  # pylint: disable=no-member
