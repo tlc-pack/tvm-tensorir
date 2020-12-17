@@ -252,6 +252,39 @@ Trace DeadCodeElimination(const Trace& trace) {
   return result;
 }
 
+/**************** AsPython ****************/
+
+Array<String> TraceNode::AsPython() const {
+  Map<ObjectRef, String> rv_names;
+  // Allocate names for random variables
+  for (const Instruction& inst : this->insts) {
+    for (const ObjectRef& output : inst->outputs) {
+      int i = rv_names.size();
+      CHECK(!rv_names.count(output));
+      if (output->IsInstance<BlockRVNode>()) {
+        rv_names.Set(output, "b" + std::to_string(i));
+      } else if (output->IsInstance<LoopRVNode>()) {
+        rv_names.Set(output, "l" + std::to_string(i));
+      } else if (output->IsInstance<BufferRVNode>()) {
+        rv_names.Set(output, "c" + std::to_string(i));
+      } else if (output->IsInstance<tir::VarNode>()) {
+        rv_names.Set(output, "v" + std::to_string(i));
+      } else {
+        LOG(FATAL) << "TypeError: Cannot recognize the type of the random variable: "
+                   << output->GetTypeKey();
+        throw;
+      }
+    }
+  }
+  Array<String> result;
+  for (const Instruction& inst : this->insts) {
+    std::ostringstream oss;
+    inst->AsPython(oss, rv_names, decisions.Get(inst));
+    result.push_back(oss.str());
+  }
+  return result;
+}
+
 /**************** FFI ****************/
 
 struct Internal {
@@ -294,6 +327,10 @@ struct Internal {
    * \sa TraceNode::Deserialize
    */
   static void Deserialize(ObjectRef json, Schedule sch) { TraceNode::Deserialize(json, sch); }
+  /*!
+   * \brief FFI function for TraceNode::AsPython
+   */
+  static Array<String> AsPython(Trace trace) { return trace->AsPython(); }
 };
 
 TVM_REGISTER_NODE_TYPE(TraceNode);
@@ -304,6 +341,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.TracePop").set_body_typed(Internal::Pop);
 TVM_REGISTER_GLOBAL("meta_schedule.TraceApply").set_body_typed(Internal::Apply);
 TVM_REGISTER_GLOBAL("meta_schedule.TraceSerialize").set_body_typed(Internal::Serialize);
 TVM_REGISTER_GLOBAL("meta_schedule.TraceDeserialize").set_body_typed(Internal::Deserialize);
+TVM_REGISTER_GLOBAL("meta_schedule.TraceAsPython").set_body_typed(Internal::AsPython);
 TVM_REGISTER_GLOBAL("meta_schedule.TraceDeadCodeElimination").set_body_typed(DeadCodeElimination);
 
 }  // namespace meta_schedule

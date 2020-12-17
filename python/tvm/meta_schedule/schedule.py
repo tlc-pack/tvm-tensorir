@@ -335,7 +335,7 @@ class Schedule(Object):
 
     def mark_loop(
         self,
-        loops: List[LoopRV],
+        loop: LoopRV,
         ann_key: str,
         ann_val: str,
     ) -> None:
@@ -343,19 +343,23 @@ class Schedule(Object):
 
         Parameters
         ----------
-        loops: List[LoopRV]
+        loop: LoopRV
             The loops to be marked
         ann_key : str
             The annotation key
         ann_val : str
             The annotation value
         """
-        # TODO(@junrushao1994): it is a workaround
         if isinstance(ann_val, str):
             ann_val = String(ann_val)
-        _ffi_api.ScheduleMarkLoop(self, loops, ann_key, ann_val)  # pylint: disable=no-member
+        _ffi_api.ScheduleMarkLoop(self, loop, ann_key, ann_val)  # pylint: disable=no-member
 
-    def mark_block(self, block: BlockRV, ann_key: str, ann_val: ExprRV) -> None:
+    def mark_block(
+        self,
+        block: BlockRV,
+        ann_key: str,
+        ann_val: ExprRV,
+    ) -> None:
         """Mark a block
 
         Parameters

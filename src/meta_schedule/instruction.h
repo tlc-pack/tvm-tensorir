@@ -128,6 +128,9 @@ class InstAttrsNode : public Object {
  private:
   virtual void Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const = 0;
 
+  virtual void AsPython(std::ostream& os, const Array<String>& inputs, const Array<String>& outputs,
+                        const Optional<ObjectRef>& decision) const = 0;
+
   virtual String GetName() const = 0;
 };
 
@@ -152,6 +155,8 @@ class InstAttrs : public ObjectRef {
   Array<ObjectRef> Apply(const Schedule& sch, const Array<ObjectRef>& inputs,                   \
                          const Optional<ObjectRef>& decision) const override;                   \
   bool IsPure() const override { return Pure; }                                                 \
+  void AsPython(std::ostream& os, const Array<String>& inputs, const Array<String>& outputs,    \
+                const Optional<ObjectRef>& decision) const override;                            \
   friend class InstructionNode;                                                                 \
   TVM_DECLARE_FINAL_OBJECT_INFO(Cls, InstAttrsNode);
 
@@ -178,6 +183,9 @@ class InstructionNode : public Object {
 
   static Array<ObjectRef> Deserialize(const Array<ObjectRef>& record,
                                       Map<String, ObjectRef>* named_rvs, const Schedule& sch);
+
+  void AsPython(std::ostream& os, const Map<ObjectRef, String>& rv_names,
+                const Optional<ObjectRef>& decision) const;
 
   static constexpr const char* _type_key = "meta_schedule.Instruction";
   TVM_DECLARE_FINAL_OBJECT_INFO(InstructionNode, Object);

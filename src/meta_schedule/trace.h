@@ -72,6 +72,11 @@ class TraceNode : public runtime::Object {
    * \param sch The schedule to be deserialized on
    */
   static void Deserialize(const ObjectRef& json, const Schedule& sch);
+  /*!
+   * \brief Return to a list of strings that converts the trace to a series of Python API calling
+   * \return The list of strings
+   */
+  Array<String> AsPython() const;
 
   static constexpr const char* _type_key = "meta_schedule.Trace";
   TVM_DECLARE_FINAL_OBJECT_INFO(TraceNode, Object);
