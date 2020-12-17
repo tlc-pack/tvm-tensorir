@@ -25,6 +25,7 @@
 
 #include "./instruction.h"
 #include "./sampler.h"
+#include "./trace.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -42,10 +43,8 @@ class ScheduleNode : public Object {
   tir::PrimFunc orig_func;
   /*! \brief The TIR schedule in the current stage */
   tir::Schedule sch{nullptr};
-  /*! \brief The trace of instructions used */
-  Array<Instruction> trace;
-  /*! \brief The decisions made in sampling */
-  Map<Instruction, Array<ObjectRef>> decisions;
+  /*! \brief The trace of the program execution */
+  Trace trace;
   /*! \brief The symbol table with information of all defined variables in the meta schedule */
   TSymbolTable sym_tab;
   /*! \brief The random number generator */
@@ -55,7 +54,6 @@ class ScheduleNode : public Object {
     v->Visit("orig_func", &orig_func);
     v->Visit("sch", &sch);
     v->Visit("trace", &trace);
-    v->Visit("decisions", &decisions);
     v->Visit("sym_tab", &sym_tab);
     // `sampler` is not visited
   }
@@ -73,21 +71,6 @@ class ScheduleNode : public Object {
    * \return A new schedule.
    */
   Schedule Copy(int new_seed) const;
-  /**************** Serialization ****************/
-  /*!
-   * \brief Import from the records
-   * \param records The serialized trace of scheduling
-   * \param orig_func The TIR function to be scheduled
-   * \param seed The random seed
-   * \return The schedule imported
-   */
-  static Schedule Import(const Array<ObjectRef>& records, const tir::PrimFunc& orig_func,
-                         Optional<Integer> seed);
-  /*!
-   * \brief Export as records
-   * \return The record exported
-   */
-  Array<ObjectRef> Export() const;
   /**************** Evaluation of random variables ****************/
   /*!
    * \brief Evaluate the value of a random variable of type Block
@@ -153,7 +136,7 @@ class ScheduleNode : public Object {
    * \return The integer sampled
    */
   tir::Var SampleInt(const PrimExpr& min_inclusive, const PrimExpr& max_exclusive,
-                     const Optional<Array<ObjectRef>>& decision = NullOpt);
+                     const Optional<ObjectRef>& decision = NullOpt);
   /*!
    * \brief Sample an integer given the probability distribution
    * \param candidates The candidates
@@ -161,14 +144,13 @@ class ScheduleNode : public Object {
    * \return The random variable
    */
   tir::Var SampleCategorical(const Array<Integer>& candidates, const Array<FloatImm>& probs,
-                             const Optional<Array<ObjectRef>>& decision = NullOpt);
+                             const Optional<ObjectRef>& decision = NullOpt);
   /*!
    * \brief Sample a compute-at location from a block
    * \param block A block to be computed at
    * \return The loop to be computed at
    */
-  LoopRV SampleComputeLocation(const BlockRV& block,
-                               const Optional<Array<ObjectRef>>& decision = NullOpt);
+  LoopRV SampleComputeLocation(const BlockRV& block, const Optional<ObjectRef>& decision = NullOpt);
   /**************** Block/Loop Relationship ****************/
   /*!
    * \brief Get the producer of a specific block
@@ -315,37 +297,6 @@ class ScheduleNode : public Object {
   void Vectorize(const LoopRV& loop);
   /*! \brief An NOP indicating entrance of post processing*/
   void EnterPostProc();
-  /**************** Trace-related ****************/
-  /*!
-   * \brief Mutate the decision on the specific instruction
-   * \param inst The instruction whose decision is mutated
-   * \param decision The decision to be mutated to. If it is NullOpt, then remove it from decisions
-   * \note This method does not replay the trace and does not do any validity check
-   */
-  void MutateDecision(const Instruction& inst, const Optional<Array<ObjectRef>>& decision);
-  /*!
-   * \brief Re-sample along the trace to generate a new sequence of
-   * scheduling instructions and program states
-   */
-  void ReSample();
-  /*!
-   * \brief Replay the trace with the decision stored in the schedule class.
-   * If a decision has been changed using MutateDecision, then it will generate
-   * different schedule. This process is theoretically deterministic if all sampling
-   * instructions have decision made
-   * \sa MutateDecision
-   */
-  void ReplayDecision();
-
- private:
-  /*!
-   * \brief Replay the trace with the decision stored in the schedule class.
-   * If follow decision is true, and a decision has been changed using MutateDecision,
-   * then it will generate different underlying TIR schedule
-   * \param follow_decision Whether to follow existing decisions stored in the class.
-   * If the flag is true, then the replay process will be deterministic
-   */
-  void Replay(bool follow_decision);
 };
 
 class Schedule : public ObjectRef {
@@ -355,13 +306,11 @@ class Schedule : public ObjectRef {
    * \brief Constructor
    * \param orig_func The original TIR PrimFunc to be scheduled
    * \param sch The TIR schedule in the current stage
-   * \param trace The trace of instructions used
-   * \param decisions The decisions made in sampling
+   * \param trace The trace of the program execution
    * \param sym_tab The symbol table with information of all defined variables in the meta schedule
    * \param seed The random seed
    */
-  explicit Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Array<Instruction> trace,
-                    Map<Instruction, Array<ObjectRef>> decisions, TSymbolTable sym_tab,
+  explicit Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Trace trace, TSymbolTable sym_tab,
                     Optional<Integer> seed);
   /*!
    * \brief Constructor: other fields are created with default value
