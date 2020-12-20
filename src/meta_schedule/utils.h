@@ -133,6 +133,11 @@ inline PrimExpr GetLoopExtent(const tir::StmtSRef& loop_sref) {
   return loop->extent;
 }
 
+inline Optional<Integer> GetLoopIntExtent(const tir::LoopNode* loop) {
+  const auto* int_extent = loop->extent.as<IntImmNode>();
+  return int_extent ? Integer(int_extent->value) : Optional<Integer>(NullOpt);
+}
+
 inline Optional<Integer> GetLoopIntExtent(const tir::StmtSRef& loop_sref) {
   PrimExpr extent = GetLoopExtent(loop_sref);
   const auto* int_extent = extent.as<IntImmNode>();

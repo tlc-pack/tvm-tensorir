@@ -16,10 +16,15 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include <tvm/tir/analysis.h>
+
 #include "../utils.h"
 
 namespace tvm {
 namespace meta_schedule {
+
+template <class T>
+using BufferMap = std::unordered_map<Buffer, T, ObjectHash, ObjectEqual>;
 
 struct FeatureSet {
   // Group 1: Computation related features
@@ -119,6 +124,181 @@ struct FeatureSet {
   double outer_prod;            // The product of lengths of outer loops
   double num_loops;             // The number of outer loops
   double auto_unroll_max_step;  // The value of pragma "auto_unroll_max_step"
+};
+
+class MathOpCounter : public tir::StmtExprVisitor {
+ public:
+#define TVM_META_SCHEDULE_FEATURE_EXTRACTION_INC_CNT(DType, FloatCounter, IntCounter) \
+  if (DType.is_float()) {                                                             \
+    ++result.FloatCounter;                                                            \
+  } else {                                                                            \
+    ++result.IntCounter;                                                              \
+  }
+#define TVM_META_SCHEDULE_FEATURE_EXTRACTION_SIMPLE(Type, Counter) \
+  void VisitExpr_(const Type* op) final {                          \
+    ++result.Counter;                                              \
+    StmtExprVisitor::VisitExpr_(op);                               \
+  }
+#define TVM_META_SCHEDULE_FEATURE_EXTRACTION_BINARY(Type, FloatCounter, IntCounter) \
+  void VisitExpr_(const Type* op) final {                                           \
+    TVM_META_SCHEDULE_FEATURE_EXTRACTION_INC_CNT(op->dtype,    /**/                 \
+                                                 FloatCounter, /**/                 \
+                                                 IntCounter);                       \
+    StmtExprVisitor::VisitExpr_(op);                                                \
+  }
+
+  TVM_META_SCHEDULE_FEATURE_EXTRACTION_SIMPLE(tir::AndNode, bool_op);
+  TVM_META_SCHEDULE_FEATURE_EXTRACTION_SIMPLE(tir::OrNode, bool_op);
+  TVM_META_SCHEDULE_FEATURE_EXTRACTION_SIMPLE(tir::NotNode, bool_op);
+  TVM_META_SCHEDULE_FEATURE_EXTRACTION_SIMPLE(tir::SelectNode, select_op);
+  TVM_META_SCHEDULE_FEATURE_EXTRACTION_BINARY(tir::AddNode, float_addsub, int_addsub);
+  TVM_META_SCHEDULE_FEATURE_EXTRACTION_BINARY(tir::SubNode, float_addsub, int_addsub);
+  TVM_META_SCHEDULE_FEATURE_EXTRACTION_BINARY(tir::MulNode, float_mul, int_mul);
+  TVM_META_SCHEDULE_FEATURE_EXTRACTION_BINARY(tir::DivNode, float_divmod, int_divmod);
+  TVM_META_SCHEDULE_FEATURE_EXTRACTION_BINARY(tir::ModNode, float_divmod, int_divmod);
+  TVM_META_SCHEDULE_FEATURE_EXTRACTION_BINARY(tir::FloorDivNode, float_divmod, int_divmod);
+  TVM_META_SCHEDULE_FEATURE_EXTRACTION_BINARY(tir::FloorModNode, float_divmod, int_divmod);
+  TVM_META_SCHEDULE_FEATURE_EXTRACTION_BINARY(tir::MaxNode, float_cmp, int_cmp);
+  TVM_META_SCHEDULE_FEATURE_EXTRACTION_BINARY(tir::MinNode, float_cmp, int_cmp);
+  TVM_META_SCHEDULE_FEATURE_EXTRACTION_BINARY(tir::EQNode, float_cmp, int_cmp);
+  TVM_META_SCHEDULE_FEATURE_EXTRACTION_BINARY(tir::NENode, float_cmp, int_cmp);
+  TVM_META_SCHEDULE_FEATURE_EXTRACTION_BINARY(tir::LTNode, float_cmp, int_cmp);
+  TVM_META_SCHEDULE_FEATURE_EXTRACTION_BINARY(tir::LENode, float_cmp, int_cmp);
+  TVM_META_SCHEDULE_FEATURE_EXTRACTION_BINARY(tir::GTNode, float_cmp, int_cmp);
+  TVM_META_SCHEDULE_FEATURE_EXTRACTION_BINARY(tir::GENode, float_cmp, int_cmp);
+
+  void VisitExpr_(const tir::CallNode* op) final {
+    static auto op_call_effect_ = Op::GetAttrMap<tir::TCallEffectKind>("TCallEffectKind");
+    tir::TCallEffectKind effect_kind = op_call_effect_[Downcast<Op>(op->op)];
+    bool is_pure = effect_kind == tir::CallEffectKind::kPure ||
+                   effect_kind == tir::CallEffectKind::kExprAnnotation;
+    if (is_pure) {
+      TVM_META_SCHEDULE_FEATURE_EXTRACTION_INC_CNT(op->dtype, float_math_func, int_math_func);
+    } else {
+      TVM_META_SCHEDULE_FEATURE_EXTRACTION_INC_CNT(op->dtype, float_other_func, int_other_func);
+    }
+    StmtExprVisitor::VisitExpr_(op);
+  }
+
+#undef TVM_META_SCHEDULE_FEATURE_EXTRACTION_BINARY
+#undef TVM_META_SCHEDULE_FEATURE_EXTRACTION_SIMPLE
+#undef TVM_META_SCHEDULE_FEATURE_EXTRACTION_INC_CNT
+
+  // TODO(merrymercy,junrushao1994): Detect MAD (Multiply–add)
+  struct Result {
+    int float_mad{0};         // The number of float MAD (Multiply–add) ops
+    int float_addsub{0};      // The number of float add and sub ops
+    int float_mul{0};         // The number of float multiply ops
+    int float_divmod{0};      // The number of float div and mod ops
+    int float_cmp{0};         // The number of float comparison ops
+    int float_math_func{0};   // The number of float math func calls
+    int float_other_func{0};  // The number of other float func calls
+    int int_mad{0};           // The number of integer MAD (Multiply–add) ops
+    int int_addsub{0};        // The number of integer add and sub ops
+    int int_mul{0};           // The number of integer multiply ops
+    int int_divmod{0};        // The number of integer div and mod ops
+    int int_cmp{0};           // The number of integer comparison ops
+    int int_math_func{0};     // The number of integer math func calls
+    int int_other_func{0};    // The number of other integer func calls
+    int bool_op{0};           // The number of bool ops
+    int select_op{0};         // The number of select ops
+  };
+  Result result;
+
+  static Result Count(const tir::Stmt& stmt) {
+    MathOpCounter counter;
+    counter(stmt);
+    return counter.result;
+  }
+};
+
+class PerStoreFeatureExtractor : public tir::StmtExprVisitor {
+ public:
+  PerStoreFeatureExtractor() {}
+
+  void VisitStmt_(const tir::LoopNode* loop) override {
+    std::vector<const tir::LoopNode*>* ref_loops = nullptr;
+    if (!loop->annotations.empty()) {
+      CHECK_EQ(loop->annotations.size(), 1)
+          << "ValueError: At most one annotation is allowed on a loop, but gets: "
+          << GetRef<tir::Loop>(loop);
+      const tir::Annotation& ann = loop->annotations[0];
+      CHECK_EQ(ann->attr_key, tir::attr::loop_type)
+          << "ValueError: Expects loop annotation to be 'loop_type', but gets: " << ann;
+      const auto* value = ann->value.as<tir::StringImmNode>();
+      CHECK(value) << "ValueError: Expevt loop annotation to be a string, but gets: " << ann;
+      if (value->value == "parallel") {
+        ref_loops = &parallel_;
+      } else if (value->value == "vectorize") {
+        ref_loops = &vectorize_;
+      } else if (value->value == "unroll") {
+        ref_loops = &unroll_;
+      } else if (value->value == "blockIdx.x") {
+        ref_loops = &blockIdx_x_;
+      } else if (value->value == "blockIdx.y") {
+        ref_loops = &blockIdx_y_;
+      } else if (value->value == "blockIdx.z") {
+        ref_loops = &blockIdx_z_;
+      } else if (value->value == "threadIdx.x") {
+        ref_loops = &threadIdx_x_;
+      } else if (value->value == "threadIdx.y") {
+        ref_loops = &threadIdx_y_;
+      } else if (value->value == "threadIdx.z") {
+        ref_loops = &threadIdx_z_;
+      } else if (value->value == "vthread") {
+        ref_loops = &vthread_;
+      } else {
+        LOG(FATAL) << "ValueError: Cannot recognize loop annotation: " << ann;
+        throw;
+      }
+    }
+    loops_.push_back(loop);
+    if (ref_loops != nullptr) {
+      ref_loops->push_back(loop);
+    }
+    StmtExprVisitor::VisitStmt_(loop);
+    if (ref_loops != nullptr) {
+      ref_loops->pop_back();
+    }
+    loops_.pop_back();
+  }
+
+  void VisitStmt_(const tir::BufferStoreNode* store) override {
+    MathOpCounter::Result math_ops = MathOpCounter::Count(GetRef<tir::Stmt>(store));
+    ExtractComputeFeature(store, math_ops);
+  }
+
+  void ExtractComputeFeature(const tir::BufferStoreNode* store,
+                             const MathOpCounter::Result& math_ops) {
+    FeatureSet& feature = buffer_features[store->buffer];
+    double loop_extent = ProdLoopExtent(loops_);
+  }
+
+  static double ProdLoopExtent(const std::vector<const tir::LoopNode*>& loops) {
+    double prod = 1.0;
+    for (const tir::LoopNode* loop : loops) {
+      int64_t extent = GetLoopIntExtent(loop).value();
+      prod *= extent;
+    }
+    return prod;
+  }
+
+ private:
+  BufferMap<FeatureSet> buffer_features;
+  // The shared arithmetic analyzer
+  arith::Analyzer ana_;
+  // The stacks to store different kinds of for-loops
+  std::vector<const tir::LoopNode*> loops_;
+  std::vector<const tir::LoopNode*> parallel_;
+  std::vector<const tir::LoopNode*> vectorize_;
+  std::vector<const tir::LoopNode*> unroll_;
+  std::vector<const tir::LoopNode*> blockIdx_x_;
+  std::vector<const tir::LoopNode*> blockIdx_y_;
+  std::vector<const tir::LoopNode*> blockIdx_z_;
+  std::vector<const tir::LoopNode*> threadIdx_x_;
+  std::vector<const tir::LoopNode*> threadIdx_y_;
+  std::vector<const tir::LoopNode*> threadIdx_z_;
+  std::vector<const tir::LoopNode*> vthread_;
 };
 
 }  // namespace meta_schedule
