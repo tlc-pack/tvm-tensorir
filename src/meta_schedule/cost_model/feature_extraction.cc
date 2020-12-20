@@ -26,6 +26,8 @@ namespace meta_schedule {
 template <class T>
 using BufferMap = std::unordered_map<tir::Buffer, T, ObjectHash, ObjectEqual>;
 
+using MultiDimIdx = Array<PrimExpr>;
+
 struct FeatureSet {
   // Group 1: Computation related features
   enum class AnnPos : int {
@@ -210,6 +212,57 @@ class MathOpCounter : public tir::StmtExprVisitor {
     counter(stmt);
     return counter.result;
   }
+};
+
+class BufferAccessExtractor : public tir::StmtExprVisitor {
+ public:
+  struct Access {
+    FeatureSet::BufferAccessFeature::AccessType type =
+        FeatureSet::BufferAccessFeature::AccessType::kUnknownRW;
+    std::vector<MultiDimIdx> indices;
+  };
+
+  static BufferMap<Access> Extract(const tir::BufferStore& store) {
+    BufferAccessExtractor extractor;
+    Access& access = extractor.accesses[store->buffer];
+    access.type = FeatureSet::BufferAccessFeature::AccessType::kWrite;
+    access.indices.push_back(store->indices);
+    extractor.VisitStmt(store);
+    return extractor.accesses;
+  }
+
+  void VisitExpr_(const tir::BufferLoadNode* load) final {
+    const tir::Buffer& buffer = load->buffer;
+    Access& access = accesses[buffer];
+    switch (access.type) {
+      case FeatureSet::BufferAccessFeature::AccessType::kRead:
+        // do nothing
+        break;
+      case FeatureSet::BufferAccessFeature::AccessType::kWrite:
+        // from write to read-write
+        access.type = FeatureSet::BufferAccessFeature::AccessType::kReadWrite;
+        break;
+      case FeatureSet::BufferAccessFeature::AccessType::kReadWrite:
+        // do nothing
+        break;
+      case FeatureSet::BufferAccessFeature::AccessType::kUnknownRW:
+        // from unknown to read
+        access.type = FeatureSet::BufferAccessFeature::AccessType::kRead;
+        break;
+      default:
+        LOG(FATAL) << "ValueError: Cannot recognize BufferAccessFeature::AccessType: "
+                   << static_cast<int>(access.type);
+    }
+    if (access.type != FeatureSet::BufferAccessFeature::AccessType::kReadWrite) {
+      // If a buffer is both read and written, in the tvm DSL, it must be a update,
+      // so the indices should be the same. Then we can skip appending indices for it.
+      // Otherwise we do the following.
+      access.indices.push_back(load->indices);
+    }
+    StmtExprVisitor::VisitExpr_(load);
+  }
+
+  BufferMap<Access> accesses;
 };
 
 class PerStoreFeatureExtractor : public tir::StmtExprVisitor {
