@@ -24,7 +24,7 @@ namespace tvm {
 namespace meta_schedule {
 
 template <class T>
-using BufferMap = std::unordered_map<Buffer, T, ObjectHash, ObjectEqual>;
+using BufferMap = std::unordered_map<tir::Buffer, T, ObjectHash, ObjectEqual>;
 
 struct FeatureSet {
   // Group 1: Computation related features
@@ -272,6 +272,49 @@ class PerStoreFeatureExtractor : public tir::StmtExprVisitor {
                              const MathOpCounter::Result& math_ops) {
     FeatureSet& feature = buffer_features[store->buffer];
     double loop_extent = ProdLoopExtent(loops_);
+#define TVM_META_SCHEDULE_FEATURE_ASSIGN(Name) feature.Name = loop_extent * math_ops.Name;
+    TVM_META_SCHEDULE_FEATURE_ASSIGN(float_mad);
+    TVM_META_SCHEDULE_FEATURE_ASSIGN(float_addsub);
+    TVM_META_SCHEDULE_FEATURE_ASSIGN(float_mul);
+    TVM_META_SCHEDULE_FEATURE_ASSIGN(float_divmod);
+    TVM_META_SCHEDULE_FEATURE_ASSIGN(float_cmp);
+    TVM_META_SCHEDULE_FEATURE_ASSIGN(float_math_func);
+    TVM_META_SCHEDULE_FEATURE_ASSIGN(float_other_func);
+    TVM_META_SCHEDULE_FEATURE_ASSIGN(int_mad);
+    TVM_META_SCHEDULE_FEATURE_ASSIGN(int_addsub);
+    TVM_META_SCHEDULE_FEATURE_ASSIGN(int_mul);
+    TVM_META_SCHEDULE_FEATURE_ASSIGN(int_divmod);
+    TVM_META_SCHEDULE_FEATURE_ASSIGN(int_cmp);
+    TVM_META_SCHEDULE_FEATURE_ASSIGN(int_math_func);
+    TVM_META_SCHEDULE_FEATURE_ASSIGN(int_other_func);
+    TVM_META_SCHEDULE_FEATURE_ASSIGN(bool_op);
+    TVM_META_SCHEDULE_FEATURE_ASSIGN(select_op);
+#undef TVM_META_SCHEDULE_FEATURE_ASSIGN
+#define TVM_META_SCHEDULE_FEATURE_LOOP(Loops, Num, Len, Prod, Type) \
+  if (Loops.empty()) {                                              \
+    feature.Num = 0;                                                \
+    feature.Len = 0;                                                \
+    feature.Prod = 0;                                               \
+    feature.Type = FeatureSet::AnnPos::kPosNone;                    \
+  } else {                                                          \
+    feature.Num = Loops.size();                                     \
+    feature.Len = GetLoopIntExtent(Loops.back()).value();           \
+    feature.Prod = ProdLoopExtent(Loops);                           \
+    feature.Type = FeatureSet::AnnPos::kPosMixed;                   \
+  }
+    TVM_META_SCHEDULE_FEATURE_LOOP(parallel_, parallel_num, parallel_len, parallel_prod,
+                                   parallel_type);
+    TVM_META_SCHEDULE_FEATURE_LOOP(vectorize_, vec_num, vec_len, vec_prod, vec_type);
+    TVM_META_SCHEDULE_FEATURE_LOOP(unroll_, unroll_num, unroll_len, unroll_prod, unroll_type);
+#undef TVM_META_SCHEDULE_FEATURE_LOOP
+    // TODO: feature.is_gpu
+    feature.blockIdx_x_len = FirstLoopExtent(blockIdx_x_);
+    feature.blockIdx_y_len = FirstLoopExtent(blockIdx_y_);
+    feature.blockIdx_z_len = FirstLoopExtent(blockIdx_z_);
+    feature.threadIdx_x_len = FirstLoopExtent(threadIdx_x_);
+    feature.threadIdx_y_len = FirstLoopExtent(threadIdx_y_);
+    feature.threadIdx_z_len = FirstLoopExtent(threadIdx_z_);
+    feature.vthread_len = FirstLoopExtent(vthread_);
   }
 
   static double ProdLoopExtent(const std::vector<const tir::LoopNode*>& loops) {
@@ -281,6 +324,10 @@ class PerStoreFeatureExtractor : public tir::StmtExprVisitor {
       prod *= extent;
     }
     return prod;
+  }
+
+  static double FirstLoopExtent(const std::vector<const tir::LoopNode*>& loops) {
+    return loops.empty() ? 1.0 : GetLoopIntExtent(loops[0]).value()->value;
   }
 
  private:
