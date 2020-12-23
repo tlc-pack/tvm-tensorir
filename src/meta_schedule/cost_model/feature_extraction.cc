@@ -24,7 +24,9 @@ namespace tvm {
 namespace meta_schedule {
 
 template <class T>
-using BufferMap = std::unordered_map<tir::Buffer, T, ObjectHash, ObjectEqual>;
+using BufferMap = std::unordered_map<const tir::BufferNode*, T>;
+template <class T>
+using LoopMap = std::unordered_map<const tir::LoopNode*, T>;
 
 using MultiDimIdx = Array<PrimExpr>;
 
@@ -84,13 +86,13 @@ struct FeatureSet {
       kRead = 0,       //
       kWrite = 1,      //
       kReadWrite = 2,  //
-      kUnknownRW = 3   //
+      kUnknownRW = 3,  //
     };
     // Data reuse type
     enum class ReuseType : int {
       kLoopMultipleRead = 0,
       kSerialMultipleReadWrite = 1,
-      kNoReuse = 2
+      kNoReuse = 2,
     };
     String buffer_name;              // The name of the buffer
     AccessType acc_type;             // The type of the access
@@ -214,56 +216,176 @@ class MathOpCounter : public tir::StmtExprVisitor {
   }
 };
 
-class BufferAccessExtractor : public tir::StmtExprVisitor {
+class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
  public:
-  struct Access {
-    FeatureSet::BufferAccessFeature::AccessType type =
-        FeatureSet::BufferAccessFeature::AccessType::kUnknownRW;
-    std::vector<MultiDimIdx> indices;
+  struct Relation {
+    int64_t numel = 0;
+    int64_t stride = -1;
+    int64_t innermost_stride = -1;
   };
 
-  static BufferMap<Access> Extract(const tir::BufferStore& store) {
-    BufferAccessExtractor extractor;
-    Access& access = extractor.accesses[store->buffer];
-    access.type = FeatureSet::BufferAccessFeature::AccessType::kWrite;
-    access.indices.push_back(store->indices);
-    extractor.VisitStmt(store);
-    return extractor.accesses;
+  void VisitStmt_(const tir::LoopNode* loop) override {
+    dfs_path.push_back(loop);
+    tir::StmtExprVisitor::VisitStmt_(loop);
+    dfs_path.pop_back();
   }
 
-  void VisitExpr_(const tir::BufferLoadNode* load) final {
-    const tir::Buffer& buffer = load->buffer;
-    Access& access = accesses[buffer];
-    switch (access.type) {
-      case FeatureSet::BufferAccessFeature::AccessType::kRead:
-        // do nothing
-        break;
-      case FeatureSet::BufferAccessFeature::AccessType::kWrite:
-        // from write to read-write
-        access.type = FeatureSet::BufferAccessFeature::AccessType::kReadWrite;
-        break;
-      case FeatureSet::BufferAccessFeature::AccessType::kReadWrite:
-        // do nothing
-        break;
-      case FeatureSet::BufferAccessFeature::AccessType::kUnknownRW:
-        // from unknown to read
-        access.type = FeatureSet::BufferAccessFeature::AccessType::kRead;
-        break;
-      default:
-        LOG(FATAL) << "ValueError: Cannot recognize BufferAccessFeature::AccessType: "
-                   << static_cast<int>(access.type);
+  Array<tir::TensorRegion> FixRegions(const tir::BlockRealizeNode* realize) const {
+    arith::Analyzer analyzer;
+    // Extract the block vars in the parent scope
+    std::unordered_map<const tir::VarNode*, tir::IterVar> parent_block_vars;
+    if (!scopes.empty()) {
+      const tir::BlockNode* parent_block = scopes.back()->block.operator->();
+      for (const tir::IterVar& block_var : parent_block->iter_vars) {
+        parent_block_vars[block_var->var.get()] = block_var;
+      }
     }
-    if (access.type != FeatureSet::BufferAccessFeature::AccessType::kReadWrite) {
-      // If a buffer is both read and written, in the tvm DSL, it must be a update,
-      // so the indices should be the same. Then we can skip appending indices for it.
-      // Otherwise we do the following.
-      access.indices.push_back(load->indices);
+    // Helper function to substitute parent_block_vars to its min
+    auto f_sub = [&parent_block_vars](const PrimExpr& expr) -> Optional<PrimExpr> {
+      if (const auto* var = expr.as<tir::VarNode>()) {
+        auto it = parent_block_vars.find(var);
+        if (it != parent_block_vars.end()) {
+          return it->second->dom->min;
+        }
+      }
+      return NullOpt;
+    };
+    // Apply the substitution to each tensor region
+    Array<tir::TensorRegion> result;
+    result.reserve(realize->block->reads.size() + realize->block->writes.size());
+    for (const Array<tir::TensorRegion>& regions : {realize->block->reads,  //
+                                                    realize->block->writes}) {
+      for (const tir::TensorRegion& tensor_region : regions) {
+        Array<Range> region;
+        region.reserve(tensor_region->region.size());
+        for (const Range& range : tensor_region->region) {
+          region.push_back(
+              Range::FromMinExtent(analyzer.Simplify(tir::Substitute(range->min, f_sub)),
+                                   analyzer.Simplify(tir::Substitute(range->extent, f_sub))));
+        }
+        result.push_back(tir::TensorRegion(tensor_region->buffer, region));
+      }
     }
-    StmtExprVisitor::VisitExpr_(load);
+    return result;
   }
 
-  BufferMap<Access> accesses;
+  std::vector<const tir::LoopNode*> GetParentLoops(const tir::BlockRealizeNode* realize) const {
+    std::vector<const tir::LoopNode*> result;
+    int path_depth = dfs_path.size();
+    for (int i = path_depth - 1; i >= 0; --i) {
+      const tir::StmtNode* stmt = dfs_path[i];
+      if (stmt->IsInstance<tir::LoopNode>()) {
+        result.push_back(static_cast<const tir::LoopNode*>(stmt));
+      } else {
+        break;
+      }
+    }
+    return result;
+  }
+
+  void VisitStmt_(const tir::BlockRealizeNode* realize) override {
+    scopes.push_back(realize);
+    dfs_path.push_back(realize);
+    tir::StmtExprVisitor::VisitStmt_(realize);
+    dfs_path.pop_back();
+    scopes.pop_back();
+    // Simplify the tensor regions touched by assuming parent block vars are constants
+    Array<tir::TensorRegion> tensor_regions = FixRegions(realize);
+    // Extract the parent loops, organized from inner to outer
+    std::vector<const tir::LoopNode*> parent_loops = GetParentLoops(realize);
+    int n_loops = parent_loops.size();
+    // Initially, we bind all the loop variables to a constant
+    arith::Analyzer analyzer;
+    for (int i = 0; i < n_loops; ++i) {
+      const tir::LoopNode* loop = parent_loops[i];
+      analyzer.Bind(loop->loop_var, loop->min);
+    }
+    // Then, we gradually bind the loops from inner to outer,
+    // calculate the area the loops touch on each buffer
+    for (int i = 0; i < n_loops; ++i) {
+      const tir::LoopNode* loop = parent_loops[i];
+      analyzer.Bind(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent),
+                    /*allow_override=*/true);
+      for (const tir::TensorRegion& tensor_region : tensor_regions) {
+        const tir::BufferNode* buffer = tensor_region->buffer.get();
+        relations[loop][buffer].numel += ComputeRegionSize(tensor_region->region, &analyzer);
+      }
+    }
+  }
+
+  static int64_t ComputeRegionSize(const Array<Range>& region, arith::Analyzer* analyzer) {
+    int64_t numel = 1;
+    for (const Range& range : region) {
+      PrimExpr extent = analyzer->Simplify(range->extent);
+      const auto* int_imm = extent.as<IntImmNode>();
+      if (int_imm != nullptr) {
+        numel *= int_imm->value;
+      }
+    }
+    return numel;
+  }
+
+  static LoopMap<BufferMap<Relation>> Extract(const tir::Stmt& stmt) {
+    LoopBufferRelationExtractor extractor;
+    extractor.VisitStmt(stmt);
+    return extractor.relations;
+  }
+
+  LoopMap<BufferMap<Relation>> relations;
+  std::vector<const tir::BlockRealizeNode*> scopes;
+  std::vector<const tir::StmtNode*> dfs_path;
 };
+
+// class BufferAccessExtractor : public tir::StmtExprVisitor {
+//  public:
+//   struct Access {
+//     FeatureSet::BufferAccessFeature::AccessType type =
+//         FeatureSet::BufferAccessFeature::AccessType::kUnknownRW;
+//     std::vector<MultiDimIdx> indices;
+//   };
+
+//   static BufferMap<Access> Extract(const tir::BufferStore& store) {
+//     BufferAccessExtractor extractor;
+//     Access& access = extractor.accesses[store->buffer];
+//     access.type = FeatureSet::BufferAccessFeature::AccessType::kWrite;
+//     access.indices.push_back(store->indices);
+//     extractor.VisitStmt(store);
+//     return extractor.accesses;
+//   }
+
+//   void VisitExpr_(const tir::BufferLoadNode* load) final {
+//     const tir::Buffer& buffer = load->buffer;
+//     Access& access = accesses[buffer];
+//     switch (access.type) {
+//       case FeatureSet::BufferAccessFeature::AccessType::kRead:
+//         // do nothing
+//         break;
+//       case FeatureSet::BufferAccessFeature::AccessType::kWrite:
+//         // from write to read-write
+//         access.type = FeatureSet::BufferAccessFeature::AccessType::kReadWrite;
+//         break;
+//       case FeatureSet::BufferAccessFeature::AccessType::kReadWrite:
+//         // do nothing
+//         break;
+//       case FeatureSet::BufferAccessFeature::AccessType::kUnknownRW:
+//         // from unknown to read
+//         access.type = FeatureSet::BufferAccessFeature::AccessType::kRead;
+//         break;
+//       default:
+//         LOG(FATAL) << "ValueError: Cannot recognize BufferAccessFeature::AccessType: "
+//                    << static_cast<int>(access.type);
+//     }
+//     if (access.type != FeatureSet::BufferAccessFeature::AccessType::kReadWrite) {
+//       // If a buffer is both read and written, in the tvm DSL, it must be a update,
+//       // so the indices should be the same. Then we can skip appending indices for it.
+//       // Otherwise we do the following.
+//       access.indices.push_back(load->indices);
+//     }
+//     StmtExprVisitor::VisitExpr_(load);
+//   }
+
+//   BufferMap<Access> accesses;
+// };
 
 class PerStoreFeatureExtractor : public tir::StmtExprVisitor {
  public:
@@ -323,7 +445,7 @@ class PerStoreFeatureExtractor : public tir::StmtExprVisitor {
 
   void ExtractComputeFeature(const tir::BufferStoreNode* store,
                              const MathOpCounter::Result& math_ops) {
-    FeatureSet& feature = buffer_features[store->buffer];
+    FeatureSet& feature = buffer_features[store->buffer.get()];
     double loop_extent = ProdLoopExtent(loops_);
 #define TVM_META_SCHEDULE_FEATURE_ASSIGN(Name) feature.Name = loop_extent * math_ops.Name;
     TVM_META_SCHEDULE_FEATURE_ASSIGN(float_mad);
@@ -384,6 +506,10 @@ class PerStoreFeatureExtractor : public tir::StmtExprVisitor {
   }
 
  private:
+  // The regions accessed by a specific subtree
+  // i.e. maps (loop-stmt, buffer) => List[unique-bytes-accessed]
+  // StmtMap<BufferMap<std::vector<int64_t>>> loop_buffer_accessed_bytes;
+  // The feature vector for each buffer access
   BufferMap<FeatureSet> buffer_features;
   // The shared arithmetic analyzer
   arith::Analyzer ana_;
