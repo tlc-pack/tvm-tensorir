@@ -230,22 +230,33 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
     dfs_path.pop_back();
   }
 
-  Array<tir::TensorRegion> FixRegions(const tir::BlockRealizeNode* realize) const {
+  Array<tir::TensorRegion> ExtractRegions(const tir::BlockRealizeNode* realize) const {
     arith::Analyzer analyzer;
     // Extract the block vars in the parent scope
-    std::unordered_map<const tir::VarNode*, tir::IterVar> parent_block_vars;
+    std::unordered_map<const tir::VarNode*, PrimExpr> var_substitutes;
+    // Substitute block vars of the parent scope to its min
     if (!scopes.empty()) {
       const tir::BlockNode* parent_block = scopes.back()->block.operator->();
       for (const tir::IterVar& block_var : parent_block->iter_vars) {
-        parent_block_vars[block_var->var.get()] = block_var;
+        var_substitutes[block_var->var.get()] = block_var->dom->min;
       }
     }
-    // Helper function to substitute parent_block_vars to its min
-    auto f_sub = [&parent_block_vars](const PrimExpr& expr) -> Optional<PrimExpr> {
+    // Substitute block vars to its binding
+    {
+      CHECK_EQ(realize->binding_values.size(), realize->block->iter_vars.size());
+      int n = realize->binding_values.size();
+      for (int i = 0; i < n; ++i) {
+        const tir::Var& lhs = realize->block->iter_vars[i]->var;
+        const PrimExpr& rhs = realize->binding_values[i];
+        var_substitutes[lhs.get()] = rhs;
+      }
+    }
+    // Helper function to do the substitution
+    auto f_sub = [&var_substitutes](const PrimExpr& expr) -> Optional<PrimExpr> {
       if (const auto* var = expr.as<tir::VarNode>()) {
-        auto it = parent_block_vars.find(var);
-        if (it != parent_block_vars.end()) {
-          return it->second->dom->min;
+        auto it = var_substitutes.find(var);
+        if (it != var_substitutes.end()) {
+          return it->second;
         }
       }
       return NullOpt;
@@ -259,9 +270,9 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
         Array<Range> region;
         region.reserve(tensor_region->region.size());
         for (const Range& range : tensor_region->region) {
-          region.push_back(
-              Range::FromMinExtent(analyzer.Simplify(tir::Substitute(range->min, f_sub)),
-                                   analyzer.Simplify(tir::Substitute(range->extent, f_sub))));
+          PrimExpr min = analyzer.Simplify(tir::Substitute(range->min, f_sub));
+          PrimExpr extent = analyzer.Simplify(tir::Substitute(range->extent, f_sub));
+          region.push_back(Range::FromMinExtent(min, extent));
         }
         result.push_back(tir::TensorRegion(tensor_region->buffer, region));
       }
@@ -290,7 +301,7 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
     dfs_path.pop_back();
     scopes.pop_back();
     // Simplify the tensor regions touched by assuming parent block vars are constants
-    Array<tir::TensorRegion> tensor_regions = FixRegions(realize);
+    Array<tir::TensorRegion> tensor_regions = ExtractRegions(realize);
     // Extract the parent loops, organized from inner to outer
     std::vector<const tir::LoopNode*> parent_loops = GetParentLoops(realize);
     int n_loops = parent_loops.size();
@@ -314,13 +325,12 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
   }
 
   static int64_t ComputeRegionSize(const Array<Range>& region, arith::Analyzer* analyzer) {
+    // TODO(@junrushao1994): region overlap on the same buffer is not taken into consideration
     int64_t numel = 1;
     for (const Range& range : region) {
-      PrimExpr extent = analyzer->Simplify(range->extent);
-      const auto* int_imm = extent.as<IntImmNode>();
-      if (int_imm != nullptr) {
-        numel *= int_imm->value;
-      }
+      arith::ConstIntBound min_bound = analyzer->const_int_bound(range->min);
+      arith::ConstIntBound max_bound = analyzer->const_int_bound(range->min + range->extent);
+      numel *= max_bound->max_value - min_bound->min_value;
     }
     return numel;
   }
