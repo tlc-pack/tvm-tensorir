@@ -224,13 +224,13 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
     int64_t innermost_stride = -1;
   };
 
-  void VisitStmt_(const tir::LoopNode* loop) override {
-    dfs_path.push_back(loop);
-    tir::StmtExprVisitor::VisitStmt_(loop);
-    dfs_path.pop_back();
-  }
+  struct AccessedRegion {
+    bool is_write;                                      // false - read; true - write
+    std::vector<std::pair<PrimExpr, PrimExpr>> region;  // We use [min, max) to represent a region
+  };
 
-  Array<tir::TensorRegion> ExtractRegions(const tir::BlockRealizeNode* realize) const {
+  BufferMap<std::vector<AccessedRegion>> ExtractRegions(
+      const tir::BlockRealizeNode* realize) const {
     arith::Analyzer analyzer;
     // Extract the block vars in the parent scope
     std::unordered_map<const tir::VarNode*, PrimExpr> var_substitutes;
@@ -262,20 +262,24 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
       return NullOpt;
     };
     // Apply the substitution to each tensor region
-    Array<tir::TensorRegion> result;
+    int is_write = 0;
+    BufferMap<std::vector<AccessedRegion>> result;
     result.reserve(realize->block->reads.size() + realize->block->writes.size());
     for (const Array<tir::TensorRegion>& regions : {realize->block->reads,  //
                                                     realize->block->writes}) {
       for (const tir::TensorRegion& tensor_region : regions) {
-        Array<Range> region;
-        region.reserve(tensor_region->region.size());
+        std::vector<AccessedRegion>& result_regions = result[tensor_region->buffer.get()];
+        result_regions.emplace_back();
+        AccessedRegion& region = result_regions.back();
+        region.is_write = is_write;
+        region.region.reserve(tensor_region->region.size());
         for (const Range& range : tensor_region->region) {
           PrimExpr min = analyzer.Simplify(tir::Substitute(range->min, f_sub));
-          PrimExpr extent = analyzer.Simplify(tir::Substitute(range->extent, f_sub));
-          region.push_back(Range::FromMinExtent(min, extent));
+          PrimExpr max = analyzer.Simplify(tir::Substitute(min + range->extent, f_sub));
+          region.region.emplace_back(min, max);
         }
-        result.push_back(tir::TensorRegion(tensor_region->buffer, region));
       }
+      is_write = 1;
     }
     return result;
   }
@@ -301,7 +305,7 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
     dfs_path.pop_back();
     scopes.pop_back();
     // Simplify the tensor regions touched by assuming parent block vars are constants
-    Array<tir::TensorRegion> tensor_regions = ExtractRegions(realize);
+    BufferMap<std::vector<AccessedRegion>> accessed_buffer_regions = ExtractRegions(realize);
     // Extract the parent loops, organized from inner to outer
     std::vector<const tir::LoopNode*> parent_loops = GetParentLoops(realize);
     int n_loops = parent_loops.size();
@@ -317,20 +321,41 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
       const tir::LoopNode* loop = parent_loops[i];
       analyzer.Bind(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent),
                     /*allow_override=*/true);
-      for (const tir::TensorRegion& tensor_region : tensor_regions) {
-        const tir::BufferNode* buffer = tensor_region->buffer.get();
-        relations[loop][buffer].numel += ComputeRegionSize(tensor_region->region, &analyzer);
+      for (const auto& it : accessed_buffer_regions) {
+        const tir::BufferNode* buffer = it.first;
+        const std::vector<AccessedRegion>& regions = it.second;
+        relations[loop][buffer].numel += ComputeRegionUnionSize(regions, &analyzer);
       }
     }
   }
 
-  static int64_t ComputeRegionSize(const Array<Range>& region, arith::Analyzer* analyzer) {
-    // TODO(@junrushao1994): region overlap on the same buffer is not taken into consideration
+  void VisitStmt_(const tir::LoopNode* loop) override {
+    dfs_path.push_back(loop);
+    tir::StmtExprVisitor::VisitStmt_(loop);
+    dfs_path.pop_back();
+  }
+
+  static int64_t ComputeRegionUnionSize(const std::vector<AccessedRegion>& regions,
+                                        arith::Analyzer* analyzer) {
+    if (regions.empty()) {
+      return 1;
+    }
     int64_t numel = 1;
-    for (const Range& range : region) {
-      arith::ConstIntBound min_bound = analyzer->const_int_bound(range->min);
-      arith::ConstIntBound max_bound = analyzer->const_int_bound(range->min + range->extent);
-      numel *= max_bound->max_value - min_bound->min_value;
+    int n_regions = regions.size();
+    int ndim = regions[0].region.size();
+    for (int i = 0; i < ndim; ++i) {
+      int64_t min = arith::ConstIntBound::kPosInf;
+      int64_t max = arith::ConstIntBound::kNegInf;
+      for (int j = 0; j < n_regions; ++j) {
+        const std::pair<PrimExpr, PrimExpr>& region = regions[j].region[i];
+        arith::ConstIntBound l_bound = analyzer->const_int_bound(region.first);
+        arith::ConstIntBound r_bound = analyzer->const_int_bound(region.second);
+        min = std::min(min, l_bound->min_value);
+        max = std::min(max, r_bound->max_value);
+      }
+      if (min <= max) {
+        numel *= max - min + 1;
+      }
     }
     return numel;
   }
