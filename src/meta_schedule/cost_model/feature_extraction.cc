@@ -271,6 +271,12 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
     std::vector<std::pair<PrimExpr, PrimExpr>> region;  // We use [min, max) to represent a region
   };
 
+  struct StrideInfo {
+    int64_t min_stride;
+    int64_t innermost_stride;
+    int64_t prod_non_strided_loop_extent;
+  };
+
   void VisitStmt_(const tir::BlockRealizeNode* realize) override {
     scopes.push_back(realize);
     dfs_path.push_back(realize);
@@ -307,11 +313,19 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
       std::vector<int> buffer_shape = AsVector<PrimExpr, int>()(buffer->shape);
       // Enumerate loops from inner to outer
       int i = 0;
-      int64_t& stride = buffer_accessed_stride[buffer] = 0;
+      StrideInfo& stride_info = buffer_accessed_stride[buffer];
+      // Calculate stride_info.min_stride
+      int64_t& stride = stride_info.min_stride = 0;
       for (; i < n_loops && stride == 0; ++i) {
         stride = CalcVarStrideOnRegion(regions, buffer_shape, parent_loops[i]->loop_var);
       }
-      buffer_innermost_stride[buffer] = (i == 0) ? stride : 0;
+      // Calculate stride_info.innermost_stride
+      stride_info.innermost_stride = (i == 0) ? stride : 0;
+      // Calculate stride_info.prod
+      int64_t& prod = stride_info.prod_non_strided_loop_extent = 1;
+      for (int j = 0; j < i; ++j) {
+        prod *= GetLoopIntExtent(parent_loops[j]).value()->value;
+      }
     }
   }
 
@@ -326,11 +340,11 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
     extractor.VisitStmt(stmt);
   }
 
-  LoopMap<BufferMap<int64_t>> loop_buffer_accessed_numel;
-  BufferMap<int64_t> buffer_accessed_stride;
-  BufferMap<int64_t> buffer_innermost_stride;
   std::vector<const tir::BlockRealizeNode*> scopes;
   std::vector<const tir::StmtNode*> dfs_path;
+
+  LoopMap<BufferMap<int64_t>> loop_buffer_accessed_numel;
+  BufferMap<StrideInfo> buffer_accessed_stride;
 
  private:
   static int64_t CalcRegionUnionSize(const std::vector<AccessedRegion>& regions,
