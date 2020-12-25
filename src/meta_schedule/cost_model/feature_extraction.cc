@@ -28,8 +28,6 @@ using BufferMap = std::unordered_map<const tir::BufferNode*, T>;
 template <class T>
 using LoopMap = std::unordered_map<const tir::LoopNode*, T>;
 
-using MultiDimIdx = Array<PrimExpr>;
-
 struct FeatureSet {
   // Group 1: Computation related features
   enum class AnnPos : int {
@@ -216,18 +214,175 @@ class MathOpCounter : public tir::StmtExprVisitor {
   }
 };
 
+class CoefficientExtractor : public tir::StmtExprVisitor {
+ public:
+  explicit CoefficientExtractor(const tir::Var& var)
+      : var(var), stride(0), visited_var(false), visited_add(false), visited_mul(false) {}
+
+  void VisitExpr_(const tir::MulNode* node) override {
+    StmtExprVisitor::VisitExpr_(node);
+    if (visited_var) {
+      if (!visited_add) {
+        if (const auto* a = node->a.as<IntImmNode>()) {
+          visited_mul = true;
+          stride = a->value;
+        } else if (const auto* b = node->b.as<IntImmNode>()) {
+          visited_mul = true;
+          stride = b->value;
+        }
+      }
+    }
+  }
+
+  void VisitExpr_(const tir::AddNode* node) override {
+    StmtExprVisitor::VisitExpr_(node);
+    if (visited_var) {
+      if (!visited_mul) {
+        visited_add = true;
+        stride = 1;
+      }
+    }
+  }
+
+  void VisitExpr_(const tir::VarNode* node) override {
+    if (node == var.get()) {
+      visited_var = true;
+      stride = 2;  // This is a magic default stride in case our approximation strategy fails
+    }
+  }
+
+  static int64_t Extract(const PrimExpr& expr, const tir::Var& var) {
+    CoefficientExtractor extractor(var);
+    extractor.VisitExpr(expr);
+    return extractor.visited_var ? extractor.stride : 0;
+  }
+
+  const tir::Var& var;
+  int64_t stride;
+  bool visited_var;
+  bool visited_add;
+  bool visited_mul;
+};
+
 class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
  public:
-  struct Relation {
-    int64_t numel = 0;
-    int64_t stride = -1;
-    int64_t innermost_stride = -1;
-  };
-
   struct AccessedRegion {
     bool is_write;                                      // false - read; true - write
     std::vector<std::pair<PrimExpr, PrimExpr>> region;  // We use [min, max) to represent a region
   };
+
+  void VisitStmt_(const tir::BlockRealizeNode* realize) override {
+    scopes.push_back(realize);
+    dfs_path.push_back(realize);
+    tir::StmtExprVisitor::VisitStmt_(realize);
+    dfs_path.pop_back();
+    scopes.pop_back();
+    // Simplify the tensor regions touched by assuming parent block vars are constants
+    BufferMap<std::vector<AccessedRegion>> accessed_buffer_regions = ExtractRegions(realize);
+    // Extract the parent loops, organized from inner to outer
+    std::vector<const tir::LoopNode*> parent_loops = GetParentLoops(realize);
+    int n_loops = parent_loops.size();
+    // Initially, we bind all the loop variables to a constant
+    arith::Analyzer analyzer;
+    for (int i = 0; i < n_loops; ++i) {
+      const tir::LoopNode* loop = parent_loops[i];
+      analyzer.Bind(loop->loop_var, loop->min);
+    }
+    // Then, we gradually bind the loops from inner to outer,
+    // calculate the area the loops touch on each buffer, which is `Relation::numel`
+    for (int i = 0; i < n_loops; ++i) {
+      const tir::LoopNode* loop = parent_loops[i];
+      analyzer.Bind(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent),
+                    /*allow_override=*/true);
+      for (const auto& it : accessed_buffer_regions) {
+        const tir::BufferNode* buffer = it.first;
+        const std::vector<AccessedRegion>& regions = it.second;
+        loop_buffer_accessed_numel[loop][buffer] += CalcRegionUnionSize(regions, &analyzer);
+      }
+    }
+    // Next, for each buffer, we find the loop stride on it
+    for (const auto& it : accessed_buffer_regions) {
+      const tir::BufferNode* buffer = it.first;
+      const std::vector<AccessedRegion>& regions = it.second;
+      std::vector<int> buffer_shape = AsVector<PrimExpr, int>()(buffer->shape);
+      // Enumerate loops from inner to outer
+      int i = 0;
+      int64_t& stride = buffer_accessed_stride[buffer] = 0;
+      for (; i < n_loops && stride == 0; ++i) {
+        stride = CalcVarStrideOnRegion(regions, buffer_shape, parent_loops[i]->loop_var);
+      }
+      buffer_innermost_stride[buffer] = (i == 0) ? stride : 0;
+    }
+  }
+
+  void VisitStmt_(const tir::LoopNode* loop) override {
+    dfs_path.push_back(loop);
+    tir::StmtExprVisitor::VisitStmt_(loop);
+    dfs_path.pop_back();
+  }
+
+  static void Extract(const tir::Stmt& stmt) {
+    LoopBufferRelationExtractor extractor;
+    extractor.VisitStmt(stmt);
+  }
+
+  LoopMap<BufferMap<int64_t>> loop_buffer_accessed_numel;
+  BufferMap<int64_t> buffer_accessed_stride;
+  BufferMap<int64_t> buffer_innermost_stride;
+  std::vector<const tir::BlockRealizeNode*> scopes;
+  std::vector<const tir::StmtNode*> dfs_path;
+
+ private:
+  static int64_t CalcRegionUnionSize(const std::vector<AccessedRegion>& regions,
+                                     arith::Analyzer* analyzer) {
+    if (regions.empty()) {
+      return 1;
+    }
+    int64_t numel = 1;
+    int n_regions = regions.size();
+    int ndim = regions[0].region.size();
+    for (int i = 0; i < ndim; ++i) {
+      int64_t min = arith::ConstIntBound::kPosInf;
+      int64_t max = arith::ConstIntBound::kNegInf;
+      for (int j = 0; j < n_regions; ++j) {
+        const std::pair<PrimExpr, PrimExpr>& region = regions[j].region[i];
+        arith::ConstIntBound l_bound = analyzer->const_int_bound(region.first);
+        arith::ConstIntBound r_bound = analyzer->const_int_bound(region.second);
+        min = std::min(min, l_bound->min_value);
+        max = std::min(max, r_bound->max_value);
+      }
+      if (min <= max) {
+        numel *= max - min + 1;
+      }
+    }
+    return numel;
+  }
+
+  static int64_t CalcVarStrideOnRegion(const std::vector<AccessedRegion>& regions,
+                                       const std::vector<int>& shape, const tir::Var& var) {
+    constexpr int64_t kNotFound = std::numeric_limits<int64_t>::max();
+    int ndim = shape.size();
+    // Calculate the stride of buffer
+    std::vector<int64_t> buffer_stride(shape.begin(), shape.end());
+    for (int i = ndim - 1; i >= 1; --i) {
+      buffer_stride[i - 1] *= buffer_stride[i];
+    }
+    // Calculate the min stride possible
+    int64_t result = kNotFound;
+    for (const AccessedRegion& region : regions) {
+      CHECK_EQ(region.region.size(), shape.size());
+      // Find the rightest dimension that contains the given variable
+      for (int i = ndim - 1; i >= 0; --i) {
+        const PrimExpr& idx = region.region[i].first;
+        int64_t coef = CoefficientExtractor::Extract(idx, var);
+        if (coef != 0) {
+          result = std::min(result, std::abs(coef) * buffer_stride[i]);
+          break;
+        }
+      }
+    }
+    return (result == kNotFound) ? 0 : result;
+  }
 
   BufferMap<std::vector<AccessedRegion>> ExtractRegions(
       const tir::BlockRealizeNode* realize) const {
@@ -297,78 +452,6 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
     }
     return result;
   }
-
-  void VisitStmt_(const tir::BlockRealizeNode* realize) override {
-    scopes.push_back(realize);
-    dfs_path.push_back(realize);
-    tir::StmtExprVisitor::VisitStmt_(realize);
-    dfs_path.pop_back();
-    scopes.pop_back();
-    // Simplify the tensor regions touched by assuming parent block vars are constants
-    BufferMap<std::vector<AccessedRegion>> accessed_buffer_regions = ExtractRegions(realize);
-    // Extract the parent loops, organized from inner to outer
-    std::vector<const tir::LoopNode*> parent_loops = GetParentLoops(realize);
-    int n_loops = parent_loops.size();
-    // Initially, we bind all the loop variables to a constant
-    arith::Analyzer analyzer;
-    for (int i = 0; i < n_loops; ++i) {
-      const tir::LoopNode* loop = parent_loops[i];
-      analyzer.Bind(loop->loop_var, loop->min);
-    }
-    // Then, we gradually bind the loops from inner to outer,
-    // calculate the area the loops touch on each buffer
-    for (int i = 0; i < n_loops; ++i) {
-      const tir::LoopNode* loop = parent_loops[i];
-      analyzer.Bind(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent),
-                    /*allow_override=*/true);
-      for (const auto& it : accessed_buffer_regions) {
-        const tir::BufferNode* buffer = it.first;
-        const std::vector<AccessedRegion>& regions = it.second;
-        relations[loop][buffer].numel += ComputeRegionUnionSize(regions, &analyzer);
-      }
-    }
-  }
-
-  void VisitStmt_(const tir::LoopNode* loop) override {
-    dfs_path.push_back(loop);
-    tir::StmtExprVisitor::VisitStmt_(loop);
-    dfs_path.pop_back();
-  }
-
-  static int64_t ComputeRegionUnionSize(const std::vector<AccessedRegion>& regions,
-                                        arith::Analyzer* analyzer) {
-    if (regions.empty()) {
-      return 1;
-    }
-    int64_t numel = 1;
-    int n_regions = regions.size();
-    int ndim = regions[0].region.size();
-    for (int i = 0; i < ndim; ++i) {
-      int64_t min = arith::ConstIntBound::kPosInf;
-      int64_t max = arith::ConstIntBound::kNegInf;
-      for (int j = 0; j < n_regions; ++j) {
-        const std::pair<PrimExpr, PrimExpr>& region = regions[j].region[i];
-        arith::ConstIntBound l_bound = analyzer->const_int_bound(region.first);
-        arith::ConstIntBound r_bound = analyzer->const_int_bound(region.second);
-        min = std::min(min, l_bound->min_value);
-        max = std::min(max, r_bound->max_value);
-      }
-      if (min <= max) {
-        numel *= max - min + 1;
-      }
-    }
-    return numel;
-  }
-
-  static LoopMap<BufferMap<Relation>> Extract(const tir::Stmt& stmt) {
-    LoopBufferRelationExtractor extractor;
-    extractor.VisitStmt(stmt);
-    return extractor.relations;
-  }
-
-  LoopMap<BufferMap<Relation>> relations;
-  std::vector<const tir::BlockRealizeNode*> scopes;
-  std::vector<const tir::StmtNode*> dfs_path;
 };
 
 // class BufferAccessExtractor : public tir::StmtExprVisitor {
