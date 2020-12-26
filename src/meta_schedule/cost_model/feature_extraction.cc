@@ -27,6 +27,11 @@ template <class T>
 using BufferMap = std::unordered_map<const tir::BufferNode*, T>;
 template <class T>
 using LoopMap = std::unordered_map<const tir::LoopNode*, T>;
+template <class T>
+using StmtMap = std::unordered_map<const tir::StmtNode*, T>;
+
+// A hypercube region of a buffer, using represented by [min, max) instead of [min, min + extent)
+using HyperCube = std::vector<std::pair<PrimExpr, PrimExpr>>;
 
 struct FeatureSet {
   // Group 1: Computation related features
@@ -266,11 +271,6 @@ class CoefficientExtractor : public tir::StmtExprVisitor {
 
 class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
  public:
-  struct AccessedRegion {
-    bool is_write;                                      // false - read; true - write
-    std::vector<std::pair<PrimExpr, PrimExpr>> region;  // We use [min, max) to represent a region
-  };
-
   struct StrideInfo {
     int64_t min_stride;
     int64_t innermost_stride;
@@ -284,7 +284,7 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
     dfs_path.pop_back();
     scopes.pop_back();
     // Simplify the tensor regions touched by assuming parent block vars are constants
-    BufferMap<std::vector<AccessedRegion>> accessed_buffer_regions = ExtractRegions(realize);
+    BufferMap<std::vector<HyperCube>> accessed_buffer_regions = ExtractBlockAccesses(realize);
     // Extract the parent loops, organized from inner to outer
     std::vector<const tir::LoopNode*> parent_loops = GetParentLoops(realize);
     int n_loops = parent_loops.size();
@@ -302,14 +302,14 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
                     /*allow_override=*/true);
       for (const auto& it : accessed_buffer_regions) {
         const tir::BufferNode* buffer = it.first;
-        const std::vector<AccessedRegion>& regions = it.second;
+        const std::vector<HyperCube>& regions = it.second;
         loop_buffer_accessed_numel[loop][buffer] += CalcRegionUnionSize(regions, &analyzer);
       }
     }
     // Next, for each buffer, we find the loop stride on it
     for (const auto& it : accessed_buffer_regions) {
       const tir::BufferNode* buffer = it.first;
-      const std::vector<AccessedRegion>& regions = it.second;
+      const std::vector<HyperCube>& regions = it.second;
       std::vector<int> buffer_shape = AsVector<PrimExpr, int>()(buffer->shape);
       // Enumerate loops from inner to outer
       int i = 0;
@@ -347,19 +347,19 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
   BufferMap<StrideInfo> buffer_accessed_stride;
 
  private:
-  static int64_t CalcRegionUnionSize(const std::vector<AccessedRegion>& regions,
+  static int64_t CalcRegionUnionSize(const std::vector<HyperCube>& regions,
                                      arith::Analyzer* analyzer) {
     if (regions.empty()) {
       return 1;
     }
     int64_t numel = 1;
     int n_regions = regions.size();
-    int ndim = regions[0].region.size();
+    int ndim = regions[0].size();
     for (int i = 0; i < ndim; ++i) {
       int64_t min = arith::ConstIntBound::kPosInf;
       int64_t max = arith::ConstIntBound::kNegInf;
       for (int j = 0; j < n_regions; ++j) {
-        const std::pair<PrimExpr, PrimExpr>& region = regions[j].region[i];
+        const std::pair<PrimExpr, PrimExpr>& region = regions[j][i];
         arith::ConstIntBound l_bound = analyzer->const_int_bound(region.first);
         arith::ConstIntBound r_bound = analyzer->const_int_bound(region.second);
         min = std::min(min, l_bound->min_value);
@@ -372,7 +372,7 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
     return numel;
   }
 
-  static int64_t CalcVarStrideOnRegion(const std::vector<AccessedRegion>& regions,
+  static int64_t CalcVarStrideOnRegion(const std::vector<HyperCube>& regions,
                                        const std::vector<int>& shape, const tir::Var& var) {
     constexpr int64_t kNotFound = std::numeric_limits<int64_t>::max();
     int ndim = shape.size();
@@ -383,11 +383,11 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
     }
     // Calculate the min stride possible
     int64_t result = kNotFound;
-    for (const AccessedRegion& region : regions) {
-      CHECK_EQ(region.region.size(), shape.size());
+    for (const HyperCube& region : regions) {
+      CHECK_EQ(region.size(), shape.size());
       // Find the rightest dimension that contains the given variable
       for (int i = ndim - 1; i >= 0; --i) {
-        const PrimExpr& idx = region.region[i].first;
+        const PrimExpr& idx = region[i].first;
         int64_t coef = CoefficientExtractor::Extract(idx, var);
         if (coef != 0) {
           result = std::min(result, std::abs(coef) * buffer_stride[i]);
@@ -398,9 +398,39 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
     return (result == kNotFound) ? 0 : result;
   }
 
-  BufferMap<std::vector<AccessedRegion>> ExtractRegions(
+  BufferMap<std::vector<HyperCube>> ExtractBlockAccesses(
       const tir::BlockRealizeNode* realize) const {
+    // Check if each region is 'update'
     arith::Analyzer analyzer;
+    int n_reads = realize->block->reads.size();
+    int n_writes = realize->block->writes.size();
+    std::vector<int> is_read_update(n_reads, 0);
+    for (int i_r = 0; i_r < n_reads; ++i_r) {
+      // Enumerate each read region
+      const tir::TensorRegion& r = realize->block->reads[i_r];
+      for (int i_w = 0; i_w < n_writes; ++i_w) {
+        // Enumerate each write region
+        const tir::TensorRegion& w = realize->block->writes[i_w];
+        if (r->buffer.same_as(w->buffer)) {
+          const Array<Range>& r_region = r->region;
+          const Array<Range>& w_region = w->region;
+          int ndim = r_region.size();
+          // Check if `r_region` and `w_region` are exactly the same
+          bool is_same = true;
+          for (int i = 0; i < ndim; ++i) {
+            if (!analyzer.CanProve(r_region[i]->min == w_region[i]->min) ||
+                !analyzer.CanProve(r_region[i]->extent == w_region[i]->extent)) {
+              is_same = false;
+              break;
+            }
+          }
+          // If so, mark it
+          if (is_same) {
+            is_read_update[i_r] = true;
+          }
+        }
+      }
+    }
     // Extract the block vars in the parent scope
     std::unordered_map<const tir::VarNode*, PrimExpr> var_substitutes;
     // Substitute block vars of the parent scope to its min
@@ -420,35 +450,44 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
         var_substitutes[lhs.get()] = rhs;
       }
     }
-    // Helper function to do the substitution
-    auto f_sub = [&var_substitutes](const PrimExpr& expr) -> Optional<PrimExpr> {
-      if (const auto* var = expr.as<tir::VarNode>()) {
-        auto it = var_substitutes.find(var);
-        if (it != var_substitutes.end()) {
-          return it->second;
+    // Helper function to convert a TIR region into our hyper-cube and do necessary simplification
+    auto f_make_hyper_cube = [&analyzer,
+                              &var_substitutes](const Array<Range>& region) -> HyperCube {
+      // Helper function to do the substitution
+      auto f_sub = [&var_substitutes](const PrimExpr& expr) -> Optional<PrimExpr> {
+        if (const auto* var = expr.as<tir::VarNode>()) {
+          auto it = var_substitutes.find(var);
+          if (it != var_substitutes.end()) {
+            return it->second;
+          }
         }
+        return NullOpt;
+      };
+      int ndim = region.size();
+      HyperCube result;
+      result.reserve(ndim);
+      for (int i = 0; i < ndim; ++i) {
+        const Range& range = region[i];
+        PrimExpr min = analyzer.Simplify(tir::Substitute(range->min, f_sub));
+        PrimExpr max = analyzer.Simplify(tir::Substitute(min + range->extent, f_sub));
+        result.emplace_back(min, max);
       }
-      return NullOpt;
+      return result;
     };
     // Apply the substitution to each tensor region
-    int is_write = 0;
-    BufferMap<std::vector<AccessedRegion>> result;
+    BufferMap<std::vector<HyperCube>> result;
     result.reserve(realize->block->reads.size() + realize->block->writes.size());
-    for (const Array<tir::TensorRegion>& regions : {realize->block->reads,  //
-                                                    realize->block->writes}) {
-      for (const tir::TensorRegion& tensor_region : regions) {
-        std::vector<AccessedRegion>& result_regions = result[tensor_region->buffer.get()];
-        result_regions.emplace_back();
-        AccessedRegion& region = result_regions.back();
-        region.is_write = is_write;
-        region.region.reserve(tensor_region->region.size());
-        for (const Range& range : tensor_region->region) {
-          PrimExpr min = analyzer.Simplify(tir::Substitute(range->min, f_sub));
-          PrimExpr max = analyzer.Simplify(tir::Substitute(min + range->extent, f_sub));
-          region.region.emplace_back(min, max);
-        }
+    for (int i = 0; i < n_reads; ++i) {
+      // Skip those update regions
+      if (is_read_update[i]) {
+        continue;
       }
-      is_write = 1;
+      const tir::TensorRegion& region = realize->block->reads[i];
+      result[region->buffer.get()].push_back(f_make_hyper_cube(region->region));
+    }
+    for (int i = 0; i < n_writes; ++i) {
+      const tir::TensorRegion& region = realize->block->reads[i];
+      result[region->buffer.get()].push_back(f_make_hyper_cube(region->region));
     }
     return result;
   }
