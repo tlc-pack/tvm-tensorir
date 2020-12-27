@@ -18,6 +18,11 @@
  */
 #include <tvm/tir/analysis.h>
 
+#include <algorithm>
+#include <numeric>
+#include <unordered_map>
+#include <unordered_set>
+
 #include "../utils.h"
 
 namespace tvm {
@@ -93,9 +98,9 @@ struct FeatureSet {
     };
     // Data reuse type
     enum class ReuseType : int {
-      kLoopMultipleRead = 0,
-      kSerialMultipleReadWrite = 1,
-      kNoReuse = 2,
+      kLoopMultipleRead = 0,         // Buffer reuse because accessed on each iteration of a loop
+      kSerialMultipleReadWrite = 1,  // Buffer reuse because it is serially accessed
+      kNoReuse = 2,                  // No buffer reuse
     };
     String buffer_name;              // The name of the buffer
     AccessType acc_type;             // The type of the access
@@ -277,6 +282,13 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
     int64_t prod_non_strided_loop_extent;
   };
 
+  struct ReuseInfo {
+    FeatureSet::BufferAccessFeature::ReuseType reuse_type;
+    double reuse_dis_iter;
+    double reuse_dis_bytes;
+    int64_t reuse_ct;
+  };
+
   void VisitStmt_(const tir::BlockRealizeNode* realize) override {
     scopes.push_back(realize);
     dfs_path.push_back(realize);
@@ -300,11 +312,15 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
       const tir::LoopNode* loop = parent_loops[i];
       analyzer.Bind(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent),
                     /*allow_override=*/true);
+      int64_t touched_bytes = 0;
       for (const auto& it : accessed_buffer_regions) {
         const tir::BufferNode* buffer = it.first;
         const std::vector<HyperCube>& regions = it.second;
-        loop_buffer_accessed_numel[loop][buffer] += CalcRegionUnionSize(regions, &analyzer);
+        int64_t numel = CalcRegionUnionSize(regions, &analyzer);
+        loop_buffer_accessed_numel[loop][buffer].push_back(numel);
+        touched_bytes += numel * buffer->dtype.bytes();
       }
+      for_touched_bytes[loop] = touched_bytes;
     }
     // Next, for each buffer, we find the loop stride on it
     for (const auto& it : accessed_buffer_regions) {
@@ -327,6 +343,75 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
         prod *= GetLoopIntExtent(parent_loops[j]).value()->value;
       }
     }
+    // Finally, calculate the buffer reuse
+    for (const auto& it : accessed_buffer_regions) {
+      const tir::BufferNode* buffer = it.first;
+      const std::vector<HyperCube>& regions = it.second;
+      if (regions.size() >= 2 && !parent_loops.empty()) {
+        // Serial reuse
+        const tir::LoopNode* loop = parent_loops[0];
+        const std::vector<int64_t>& numels = loop_buffer_accessed_numel[loop][buffer];
+        int64_t loop_extent = GetLoopIntExtent(loop).value()->value;
+        double reuse_dis_iter = numels.empty()  //
+                                    ? 1         //
+                                    : *std::min_element(numels.begin(), numels.end());
+        double reuse_dis_bytes = for_touched_bytes[loop];
+        buffer_reuse[buffer] = {
+            FeatureSet::BufferAccessFeature::ReuseType::kSerialMultipleReadWrite,
+            reuse_dis_iter / loop_extent,   //
+            reuse_dis_bytes / loop_extent,  //
+            static_cast<int64_t>(regions.size()) - 1,
+        };
+        continue;
+      }
+      // Collect all `tir::Var`s that appears in the buffer region
+      std::unordered_set<const tir::VarNode*> region_vars;
+      for (const HyperCube& region : regions) {
+        for (const std::pair<PrimExpr, PrimExpr>& range : region) {
+          tir::PostOrderVisit(range.first, [&region_vars](const ObjectRef& obj) -> void {
+            if (const auto* var = obj.as<tir::VarNode>()) {
+              region_vars.insert(var);
+            }
+          });
+        }
+      }
+      // Find the innermost loop that does not determine the buffer region,
+      // i.e. detect reuse on each iteration of a loop
+      int invariant_loop_idx = -1;
+      for (int i = 0; i < n_loops; ++i) {
+        if (!region_vars.count(parent_loops[i]->loop_var.get())) {
+          invariant_loop_idx = i;
+          break;
+        }
+      }
+      // The region depends on all the loops, i.e. there is no reuse
+      if (invariant_loop_idx == -1) {
+        buffer_reuse[buffer] = {FeatureSet::BufferAccessFeature::ReuseType::kNoReuse, 0, 0, 0};
+        continue;
+      }
+      // There is loop reuse at `invariant_loop_idx`
+      const tir::LoopNode* loop = parent_loops[invariant_loop_idx];
+      int64_t loop_extent = GetLoopIntExtent(loop).value()->value;
+      int64_t reuse_dis_iter = 1;
+      int64_t reuse_dis_bytes = 0;
+      // Calculate `reuse_dis_iter` and `reuse_dis_bytes`
+      if (invariant_loop_idx == 0) {
+        reuse_dis_bytes = loop_buffer_accessed_numel[loop][buffer].size();
+      } else {
+        for (int i = 0; i < invariant_loop_idx; ++i) {
+          reuse_dis_iter *= GetLoopIntExtent(parent_loops[i]).value()->value;
+        }
+        const std::vector<int64_t>& numels = loop_buffer_accessed_numel[loop][buffer];
+        reuse_dis_bytes = std::accumulate(numels.begin(), numels.end(), int64_t(0));
+      }
+      reuse_dis_bytes *= buffer->dtype.bytes();
+      buffer_reuse[buffer] = {
+          FeatureSet::BufferAccessFeature::ReuseType::kLoopMultipleRead,
+          reuse_dis_iter,   //
+          reuse_dis_bytes,  //
+          loop_extent,      //
+      };
+    }
   }
 
   void VisitStmt_(const tir::LoopNode* loop) override {
@@ -343,8 +428,10 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
   std::vector<const tir::BlockRealizeNode*> scopes;
   std::vector<const tir::StmtNode*> dfs_path;
 
-  LoopMap<BufferMap<int64_t>> loop_buffer_accessed_numel;
+  LoopMap<BufferMap<std::vector<int64_t>>> loop_buffer_accessed_numel;
   BufferMap<StrideInfo> buffer_accessed_stride;
+  BufferMap<ReuseInfo> buffer_reuse;
+  LoopMap<int64_t> for_touched_bytes;
 
  private:
   static int64_t CalcRegionUnionSize(const std::vector<HyperCube>& regions,
