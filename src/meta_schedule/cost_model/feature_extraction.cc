@@ -153,9 +153,11 @@ class MathOpCounter : public tir::StmtExprVisitor {
   }
 #define TVM_META_SCHEDULE_FEATURE_EXTRACTION_BINARY(Type, FloatCounter, IntCounter) \
   void VisitExpr_(const Type* op) final {                                           \
-    TVM_META_SCHEDULE_FEATURE_EXTRACTION_INC_CNT(op->dtype,    /**/                 \
-                                                 FloatCounter, /**/                 \
-                                                 IntCounter);                       \
+    if (op->dtype.is_float()) {                                                     \
+      ++result.FloatCounter;                                                        \
+    } else {                                                                        \
+      ++result.IntCounter;                                                          \
+    }                                                                               \
     StmtExprVisitor::VisitExpr_(op);                                                \
   }
 
@@ -301,7 +303,6 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
     std::vector<const tir::LoopNode*> parent_loops = GetParentLoops(realize);
     int n_loops = parent_loops.size();
     // Initially, we bind all the loop variables to a constant
-    arith::Analyzer analyzer;
     for (int i = 0; i < n_loops; ++i) {
       const tir::LoopNode* loop = parent_loops[i];
       analyzer.Bind(loop->loop_var, loop->min);
@@ -407,9 +408,9 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
       reuse_dis_bytes *= buffer->dtype.bytes();
       buffer_reuse[buffer] = {
           FeatureSet::BufferAccessFeature::ReuseType::kLoopMultipleRead,
-          reuse_dis_iter,   //
-          reuse_dis_bytes,  //
-          loop_extent,      //
+          static_cast<double>(reuse_dis_iter),   //
+          static_cast<double>(reuse_dis_bytes),  //
+          loop_extent,                           //
       };
     }
   }
@@ -427,6 +428,7 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
 
   std::vector<const tir::BlockRealizeNode*> scopes;
   std::vector<const tir::StmtNode*> dfs_path;
+  mutable arith::Analyzer analyzer;
 
   LoopMap<BufferMap<std::vector<int64_t>>> loop_buffer_accessed_numel;
   BufferMap<StrideInfo> buffer_accessed_stride;
@@ -487,8 +489,8 @@ class LoopBufferRelationExtractor : public tir::StmtExprVisitor {
 
   BufferMap<std::vector<HyperCube>> ExtractBlockAccesses(
       const tir::BlockRealizeNode* realize) const {
-    // Check if each region is 'update'
     arith::Analyzer analyzer;
+    // Check if each region is 'update'
     int n_reads = realize->block->reads.size();
     int n_writes = realize->block->writes.size();
     std::vector<int> is_read_update(n_reads, 0);
