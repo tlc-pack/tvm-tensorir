@@ -441,37 +441,52 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   }
 
   void AssignBufferAccessFeature(const tir::BlockRealizeNode* realize,
+                                 const std::vector<const tir::LoopNode*>& loops,
                                  const BufferMap<BufferInfo>& buffer_info) {
     std::vector<FeatureSet::BufferAccess>& features = per_block_feature[realize].buffer_accesses;
     features.reserve(buffer_info.size());
     for (const auto& iter : buffer_info) {
       const tir::BufferNode* buffer = iter.first;
       const BufferInfo& buffer_info = iter.second;
+      int64_t dtype_bytes = buffer->dtype.bytes();
       features.emplace_back();
       FeatureSet::BufferAccess& feature = features.back();
       feature.buffer_name = buffer->name;
       feature.access_type = buffer_info.access_type;
       feature.stride = buffer_info.innermost_stride;
-      // feature.bytes = ;
-      // feature.unique_bytes = ;
-      // feature.lines =;
-      // feature.unique_lines =;
-      // feature.reuse_type =;
-      // feature.reuse_dis_iter =;
-      // feature.reuse_dis_bytes =;
-      // feature.reuse_ct =;
-      // if (feature.reuse_ct > 0) {
-      //   feature.bytes_d_reuse_ct = bytes / reuse_ct;
-      //   feature.unique_bytes_d_reuse_ct = unique_bytes / reuse_ct;
-      //   feature.lines_d_reuse_ct = lines / reuse_ct;
-      //   feature.unique_lines_d_reuse_ct = unique_lines / reuse_ct;
-      // } else {
-      //   // no reuse, multiply by a magic number '2'
-      //   feature.bytes_d_reuse_ct = bytes * 2;
-      //   feature.unique_bytes_d_reuse_ct = unique_bytes * 2;
-      //   feature.lines_d_reuse_ct = lines * 2;
-      //   feature.unique_lines_d_reuse_ct = unique_lines * 2;
-      // }
+      feature.bytes = dtype_bytes * outer_loop_prod_;
+      if (loops.empty()) {
+        feature.unique_bytes = 1;
+        feature.lines = 1;
+        feature.unique_lines = 1;
+      } else {
+        feature.unique_bytes = buffer_info.loop_accessed_numel[0].front() * dtype_bytes;
+        double m = static_cast<double>(buffer_info.min_stride) * dtype_bytes / cache_line_bytes_;
+        feature.lines =
+            outer_loop_prod_ / buffer_info.prod_non_strided_loop_extent * std::min(1.0, m);
+        feature.lines = std::max(1.0, feature.lines);
+        feature.unique_lines = static_cast<double>(feature.lines) / cache_line_bytes_;
+      }
+      feature.reuse_type = buffer_info.reuse_type;
+      feature.reuse_dis_iter = buffer_info.reuse_dis_iter;
+      feature.reuse_dis_bytes = buffer_info.reuse_dis_bytes;
+      feature.reuse_ct = buffer_info.reuse_ct;
+      if (feature.reuse_ct > 0) {
+        feature.bytes_d_reuse_ct =
+            static_cast<double>(feature.bytes) / static_cast<double>(feature.reuse_ct);
+        feature.unique_bytes_d_reuse_ct =
+            static_cast<double>(feature.unique_bytes) / static_cast<double>(feature.reuse_ct);
+        feature.lines_d_reuse_ct =
+            static_cast<double>(feature.lines) / static_cast<double>(feature.reuse_ct);
+        feature.unique_lines_d_reuse_ct =
+            static_cast<double>(feature.unique_lines) / static_cast<double>(feature.reuse_ct);
+      } else {
+        // no reuse, multiply by a magic number '2'
+        feature.bytes_d_reuse_ct = feature.bytes * 2.0;
+        feature.unique_bytes_d_reuse_ct = feature.unique_bytes * 2.0;
+        feature.lines_d_reuse_ct = feature.lines * 2.0;
+        feature.unique_lines_d_reuse_ct = feature.unique_lines * 2.0;
+      }
     }
   }
 
@@ -644,32 +659,29 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     tir::StmtExprVisitor::VisitStmt_(realize);
     dfs_path_.pop_back();
     scopes_.pop_back();
-    std::vector<const tir::LoopNode*> loops = GetParentLoops(realize);
-    // Group 1: Computation related features has been updated via its children
-    // Group 2: Buffer access related features
-    BufferMap<BufferInfo> buffer_info = CalcBufferInfo(realize, loops);
-    AssignBufferAccessFeature(realize, buffer_info);
-  }
-
-  void VisitStmt_(const tir::LoopNode* loop) override {
-    dfs_path_.push_back(loop);
-    tir::StmtExprVisitor::VisitStmt_(loop);
-    dfs_path_.pop_back();
-  }
-
- private:
-  /******** Utility functions ********/
-  std::vector<const tir::LoopNode*> GetParentLoops(const tir::BlockRealizeNode* realize) const {
-    std::vector<const tir::LoopNode*> result;
+    // Get the ancestor loops from inner to outer, up to the parent scope
+    std::vector<const tir::LoopNode*> loops;
     for (auto iter = dfs_path_.rbegin(); iter != dfs_path_.rend(); ++iter) {
       const tir::StmtNode* stmt = *iter;
       if (stmt->IsInstance<tir::LoopNode>()) {
-        result.push_back(static_cast<const tir::LoopNode*>(stmt));
+        loops.push_back(static_cast<const tir::LoopNode*>(stmt));
       } else {
         break;
       }
     }
-    return result;
+    // Group 1: Computation related features has been updated via its children
+    // Group 2: Buffer access related features
+    BufferMap<BufferInfo> buffer_info = CalcBufferInfo(realize, loops);
+    AssignBufferAccessFeature(realize, loops, buffer_info);
+  }
+
+  void VisitStmt_(const tir::LoopNode* loop) override {
+    int64_t extent = GetLoopIntExtent(loop).value()->value;
+    outer_loop_prod_ *= extent;
+    dfs_path_.push_back(loop);
+    tir::StmtExprVisitor::VisitStmt_(loop);
+    dfs_path_.pop_back();
+    outer_loop_prod_ /= extent;
   }
 
  private:
@@ -680,6 +692,10 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   std::vector<const tir::StmtNode*> dfs_path_;
   /*! \brief The persistent analyzer */
   mutable arith::Analyzer analyzer_;
+  /*! \brief The product of the extents of outer loops */
+  int64_t outer_loop_prod_ = 1;
+
+  static constexpr int64_t cache_line_bytes_ = 64;
 };
 
 }  // namespace meta_schedule
