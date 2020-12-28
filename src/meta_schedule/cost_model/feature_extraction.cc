@@ -105,7 +105,7 @@ struct FeatureSet {
     double unique_bytes;             // The touched unique memory in bytes
     double lines;                    // The number of touched cache lines
     double unique_lines;             // The number touched unique cache lines
-    ReuseType reuse_type;            // Tye type of data reuse
+    ReuseType reuse_type;            // The type of data reuse
     double reuse_dis_iter;           // The reuse distance in iterator number
     double reuse_dis_bytes;          // The reuse distance in total touched bytes
     double reuse_ct;                 // The reuse ratio
@@ -115,7 +115,7 @@ struct FeatureSet {
     double unique_lines_d_reuse_ct;  // unique_lines / reuse_ct
     double stride;                   // The stride in access
   };
-  std::vector<BufferAccess> accesses;
+  std::vector<BufferAccess> buffer_accesses;
 
   // Group 3: Arithmetic intensity related features
   // The number of samples to extract for arithmetic intensity curves
@@ -298,33 +298,32 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
 
  private:
   /******** Group 2: Buffer access related features ********/
-  void ExtractBufferAccess(const tir::BlockRealizeNode* realize,
-                           const std::vector<const tir::LoopNode*>& loops,
-                           const BufferMap<Array<NDIntSet>>& buffer_accesses) {
-    struct BufferInfo {
-      /*! \brief The regions that the buffer is accessed */
-      Array<NDIntSet> regions;
-      /*! \brief loop_accessed_numel[i][...] means the number of elements accessed by loops[i] */
-      std::vector<std::vector<int64_t>> loop_accessed_numel;
-      // Stride info
-      int64_t min_stride = 0;
-      int64_t innermost_stride = 0;
-      int64_t prod_non_strided_loop_extent = 0;
-      // Reuse info
-      FeatureSet::BufferAccess::ReuseType reuse_type =
-          FeatureSet::BufferAccess::ReuseType::kNoReuse;
-      double reuse_dis_iter = 0.0;
-      double reuse_dis_bytes = 0.0;
-      int64_t reuse_ct = 0;
-    };
+  struct BufferInfo {
+    FeatureSet::BufferAccess::AccessType access_type =
+        FeatureSet::BufferAccess::AccessType::kUnknownRW;
+    /*! \brief The regions that the buffer is accessed */
+    Array<NDIntSet> regions = {};
+    /*! \brief loop_accessed_numel[i][...] means the number of elements accessed by loops[i] */
+    std::vector<std::vector<int64_t>> loop_accessed_numel = {};
+    // Stride info
+    int64_t min_stride = 0;
+    int64_t innermost_stride = 0;
+    int64_t prod_non_strided_loop_extent = 0;
+    // Reuse info
+    FeatureSet::BufferAccess::ReuseType reuse_type = FeatureSet::BufferAccess::ReuseType::kNoReuse;
+    double reuse_dis_iter = 0.0;
+    double reuse_dis_bytes = 0.0;
+    int64_t reuse_ct = 0;
+  };
+
+  BufferMap<BufferInfo> CalcBufferInfo(const tir::BlockRealizeNode* realize,
+                                       const std::vector<const tir::LoopNode*>& loops) const {
     // Initialize the data structures used for the features
     int n_loops = loops.size();
     std::vector<int64_t> for_touched_bytes(n_loops, int64_t(0));
-    BufferMap<BufferInfo> buffer_info;
-    for (const auto& it : buffer_accesses) {
-      const tir::BufferNode* buffer = it.first;
-      BufferInfo& info = buffer_info[buffer];
-      info.regions = it.second;
+    BufferMap<BufferInfo> buffer_info = GatherBufferAccessInfo(realize);
+    for (auto& it : buffer_info) {
+      BufferInfo& info = it.second;
       info.loop_accessed_numel.resize(n_loops);
     }
     // Part 1. Area-related features
@@ -438,42 +437,50 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
             buffer->dtype.bytes() * std::accumulate(numels.begin(), numels.end(), int64_t(0));
       }
     }
+    return buffer_info;
   }
 
- private:
-  /******** Visitors ********/
-  void VisitStmt_(const tir::BufferStoreNode* store) override {
-    AccumulateMathOpsToParentBlock(store->value);
+  void AssignBufferAccessFeature(const tir::BlockRealizeNode* realize,
+                                 const BufferMap<BufferInfo>& buffer_info) {
+    std::vector<FeatureSet::BufferAccess>& features = per_block_feature[realize].buffer_accesses;
+    features.reserve(buffer_info.size());
+    for (const auto& iter : buffer_info) {
+      const tir::BufferNode* buffer = iter.first;
+      const BufferInfo& buffer_info = iter.second;
+      features.emplace_back();
+      FeatureSet::BufferAccess& feature = features.back();
+      feature.buffer_name = buffer->name;
+      feature.access_type = buffer_info.access_type;
+      feature.stride = buffer_info.innermost_stride;
+      // feature.bytes = ;
+      // feature.unique_bytes = ;
+      // feature.lines =;
+      // feature.unique_lines =;
+      // feature.reuse_type =;
+      // feature.reuse_dis_iter =;
+      // feature.reuse_dis_bytes =;
+      // feature.reuse_ct =;
+      // if (feature.reuse_ct > 0) {
+      //   feature.bytes_d_reuse_ct = bytes / reuse_ct;
+      //   feature.unique_bytes_d_reuse_ct = unique_bytes / reuse_ct;
+      //   feature.lines_d_reuse_ct = lines / reuse_ct;
+      //   feature.unique_lines_d_reuse_ct = unique_lines / reuse_ct;
+      // } else {
+      //   // no reuse, multiply by a magic number '2'
+      //   feature.bytes_d_reuse_ct = bytes * 2;
+      //   feature.unique_bytes_d_reuse_ct = unique_bytes * 2;
+      //   feature.lines_d_reuse_ct = lines * 2;
+      //   feature.unique_lines_d_reuse_ct = unique_lines * 2;
+      // }
+    }
   }
 
-  void VisitStmt_(const tir::ReduceStepNode* reduce) override {
-    AccumulateMathOpsToParentBlock(reduce->rhs);
-  }
-
-  void VisitStmt_(const tir::BlockRealizeNode* realize) override {
-    scopes_.push_back(realize);
-    dfs_path_.push_back(realize);
-    tir::StmtExprVisitor::VisitStmt_(realize);
-    dfs_path_.pop_back();
-    scopes_.pop_back();
-    std::vector<const tir::LoopNode*> loops = GetParentLoops(realize);
-    BufferMap<Array<NDIntSet>> buffer_accesses = GetBufferAccesses(realize);
-    ExtractBufferAccess(realize, loops, buffer_accesses);  // Group 2
-  }
-
-  void VisitStmt_(const tir::LoopNode* loop) override {
-    dfs_path_.push_back(loop);
-    tir::StmtExprVisitor::VisitStmt_(loop);
-    dfs_path_.pop_back();
-  }
-
- private:
-  /******** Some utility functions ********/
-  BufferMap<Array<NDIntSet>> GetBufferAccesses(const tir::BlockRealizeNode* realize) const {
+  BufferMap<BufferInfo> GatherBufferAccessInfo(const tir::BlockRealizeNode* realize) const {
     // Step 1. Check if each region is 'update'
     int n_reads = realize->block->reads.size();
     int n_writes = realize->block->writes.size();
     std::vector<int> is_read_update(n_reads, 0);
+    std::vector<int> is_write_update(n_writes, 0);
     for (int i_r = 0; i_r < n_reads; ++i_r) {
       // Enumerate each read region
       const tir::TensorRegion& r = realize->block->reads[i_r];
@@ -496,6 +503,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
           // If so, mark it
           if (is_same) {
             is_read_update[i_r] = true;
+            is_write_update[i_w] = true;
           }
         }
       }
@@ -543,7 +551,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       return result;
     };
     // Step 3. Apply the substitution to each tensor region
-    BufferMap<Array<NDIntSet>> result;
+    BufferMap<BufferInfo> result;
     result.reserve(realize->block->reads.size() + realize->block->writes.size());
     for (int i = 0; i < n_reads; ++i) {
       // Skip those update regions
@@ -551,11 +559,20 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
         continue;
       }
       const tir::TensorRegion& region = realize->block->reads[i];
-      result[region->buffer.get()].push_back(f_make_int_set(region->region));
+      BufferInfo& buffer_info = result[region->buffer.get()];
+      buffer_info.access_type = FeatureSet::BufferAccess::AccessType::kRead;
+      buffer_info.regions.push_back(f_make_int_set(region->region));
     }
     for (int i = 0; i < n_writes; ++i) {
       const tir::TensorRegion& region = realize->block->reads[i];
-      result[region->buffer.get()].push_back(f_make_int_set(region->region));
+      BufferInfo& buffer_info = result[region->buffer.get()];
+      if (is_write_update[i] ||
+          buffer_info.access_type == FeatureSet::BufferAccess::AccessType::kRead) {
+        buffer_info.access_type = FeatureSet::BufferAccess::AccessType::kReadWrite;
+      } else {
+        buffer_info.access_type = FeatureSet::BufferAccess::AccessType::kWrite;
+      }
+      buffer_info.regions.push_back(f_make_int_set(region->region));
     }
     return result;
   }
@@ -611,6 +628,37 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     return (result == kNotFound) ? 0 : result;
   }
 
+ private:
+  /******** Visitors ********/
+  void VisitStmt_(const tir::BufferStoreNode* store) override {
+    AccumulateMathOpsToParentBlock(store->value);
+  }
+
+  void VisitStmt_(const tir::ReduceStepNode* reduce) override {
+    AccumulateMathOpsToParentBlock(reduce->rhs);
+  }
+
+  void VisitStmt_(const tir::BlockRealizeNode* realize) override {
+    scopes_.push_back(realize);
+    dfs_path_.push_back(realize);
+    tir::StmtExprVisitor::VisitStmt_(realize);
+    dfs_path_.pop_back();
+    scopes_.pop_back();
+    std::vector<const tir::LoopNode*> loops = GetParentLoops(realize);
+    // Group 1: Computation related features has been updated via its children
+    // Group 2: Buffer access related features
+    BufferMap<BufferInfo> buffer_info = CalcBufferInfo(realize, loops);
+    AssignBufferAccessFeature(realize, buffer_info);
+  }
+
+  void VisitStmt_(const tir::LoopNode* loop) override {
+    dfs_path_.push_back(loop);
+    tir::StmtExprVisitor::VisitStmt_(loop);
+    dfs_path_.pop_back();
+  }
+
+ private:
+  /******** Utility functions ********/
   std::vector<const tir::LoopNode*> GetParentLoops(const tir::BlockRealizeNode* realize) const {
     std::vector<const tir::LoopNode*> result;
     for (auto iter = dfs_path_.rbegin(); iter != dfs_path_.rend(); ++iter) {
