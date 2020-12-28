@@ -293,6 +293,20 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
 #undef TVM_FEATURE_MATH_OP_ADD
   }
 
+  void AddLoopFeature(FeatureSet::AnnIter* ann, const std::vector<const tir::LoopNode*>& loops) {
+    if (loops.empty()) {
+      ann->num = 0;
+      ann->len = 0;
+      ann->prod = 0;
+      ann->pos = FeatureSet::AnnIter::Pos::kPosNone;
+    } else {
+      ann->num = loops.size();
+      ann->len = GetLoopIntExtent(loops.back()).value()->value;
+      ann->prod = ProdLoopExtent(loops);
+      ann->pos = FeatureSet::AnnIter::Pos::kPosNone;
+    }
+  }
+
  private:
   /******** Group 2: Buffer access related features ********/
   struct BufferInfo {
@@ -668,10 +682,21 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
         break;
       }
     }
+    FeatureSet& feature = per_block_feature[realize];
     // Group 1: Computation related features
     if (!scopes_.empty()) {
       AddMathOpsToScope(per_block_feature[realize].math_ops, scopes_.back());
     }
+    AddLoopFeature(&feature.vectorize, this->vectorize_);
+    AddLoopFeature(&feature.parallel, this->parallel_);
+    AddLoopFeature(&feature.unroll, this->unroll_);
+    feature.blockIdx_x_len = FirstLoopExtent(blockIdx_x_);
+    feature.blockIdx_y_len = FirstLoopExtent(blockIdx_y_);
+    feature.blockIdx_z_len = FirstLoopExtent(blockIdx_z_);
+    feature.threadIdx_x_len = FirstLoopExtent(threadIdx_x_);
+    feature.threadIdx_y_len = FirstLoopExtent(threadIdx_y_);
+    feature.threadIdx_z_len = FirstLoopExtent(threadIdx_z_);
+    feature.vthread_len = FirstLoopExtent(vthread_);
     // Group 2: Buffer access related features
     BufferMap<BufferInfo> buffer_info = CalcBufferInfo(realize, loops);
     AssignBufferAccessFeature(realize, loops, buffer_info);
@@ -679,11 +704,67 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
 
   void VisitStmt_(const tir::LoopNode* loop) override {
     int64_t extent = GetLoopIntExtent(loop).value()->value;
+    // Handling annotated loops
+    std::vector<const tir::LoopNode*>* ref_loops = nullptr;
+    if (!loop->annotations.empty()) {
+      // TODO: auto unroll
+      CHECK_EQ(loop->annotations.size(), 1)
+          << "ValueError: At most one annotation is allowed on a loop, but gets: "
+          << GetRef<tir::Loop>(loop);
+      const tir::Annotation& ann = loop->annotations[0];
+      CHECK_EQ(ann->attr_key, tir::attr::loop_type)
+          << "ValueError: Expects loop annotation to be 'loop_type', but gets: " << ann;
+      const auto* value = ann->value.as<tir::StringImmNode>();
+      CHECK(value) << "ValueError: Expevt loop annotation to be a string, but gets: " << ann;
+      if (value->value == "parallel") {
+        ref_loops = &parallel_;
+      } else if (value->value == "vectorize") {
+        ref_loops = &vectorize_;
+      } else if (value->value == "unroll") {
+        ref_loops = &unroll_;
+      } else if (value->value == "blockIdx.x") {
+        ref_loops = &blockIdx_x_;
+      } else if (value->value == "blockIdx.y") {
+        ref_loops = &blockIdx_y_;
+      } else if (value->value == "blockIdx.z") {
+        ref_loops = &blockIdx_z_;
+      } else if (value->value == "threadIdx.x") {
+        ref_loops = &threadIdx_x_;
+      } else if (value->value == "threadIdx.y") {
+        ref_loops = &threadIdx_y_;
+      } else if (value->value == "threadIdx.z") {
+        ref_loops = &threadIdx_z_;
+      } else if (value->value == "vthread") {
+        ref_loops = &vthread_;
+      } else {
+        LOG(FATAL) << "ValueError: Cannot recognize loop annotation: " << ann;
+        throw;
+      }
+    }
+    if (ref_loops != nullptr) {
+      ref_loops->push_back(loop);
+    }
     outer_loop_prod_ *= extent;
     dfs_path_.push_back(loop);
     tir::StmtExprVisitor::VisitStmt_(loop);
     dfs_path_.pop_back();
     outer_loop_prod_ /= extent;
+    if (ref_loops != nullptr) {
+      ref_loops->pop_back();
+    }
+  }
+
+ private:
+  static int64_t ProdLoopExtent(const std::vector<const tir::LoopNode*>& loops) {
+    int64_t prod = 1.0;
+    for (const tir::LoopNode* loop : loops) {
+      prod *= GetLoopIntExtent(loop).value()->value;
+    }
+    return prod;
+  }
+
+  static int64_t FirstLoopExtent(const std::vector<const tir::LoopNode*>& loops) {
+    return loops.empty() ? 1 : GetLoopIntExtent(loops[0]).value()->value;
   }
 
  private:
@@ -692,6 +773,17 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   std::vector<const tir::BlockRealizeNode*> scopes_;
   /*! \brief The loop / block-realize visited up-down in the DFS path */
   std::vector<const tir::StmtNode*> dfs_path_;
+  // The stacks to store different kinds of for-loops
+  std::vector<const tir::LoopNode*> parallel_;
+  std::vector<const tir::LoopNode*> vectorize_;
+  std::vector<const tir::LoopNode*> unroll_;
+  std::vector<const tir::LoopNode*> blockIdx_x_;
+  std::vector<const tir::LoopNode*> blockIdx_y_;
+  std::vector<const tir::LoopNode*> blockIdx_z_;
+  std::vector<const tir::LoopNode*> threadIdx_x_;
+  std::vector<const tir::LoopNode*> threadIdx_y_;
+  std::vector<const tir::LoopNode*> threadIdx_z_;
+  std::vector<const tir::LoopNode*> vthread_;
   /*! \brief The persistent analyzer */
   mutable arith::Analyzer analyzer_;
   /*! \brief The product of the extents of outer loops */
