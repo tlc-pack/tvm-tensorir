@@ -135,6 +135,73 @@ struct FeatureSet {
   double auto_unroll_max_step;  // The value of pragma "auto_unroll_max_step"
 };
 
+#define TVM_FEATURE_INC_CNT(DType, FloatCounter, IntCounter) \
+  if (DType.is_float()) {                                    \
+    ++result_.FloatCounter;                                  \
+  } else {                                                   \
+    ++result_.IntCounter;                                    \
+  }
+#define TVM_FEATURE_SIMPLE(Type, Counter) \
+  void VisitExpr_(const Type* op) final { \
+    ++result_.Counter;                    \
+    StmtExprVisitor::VisitExpr_(op);      \
+  }
+#define TVM_FEATURE_BINARY(Type, FloatCounter, IntCounter) \
+  void VisitExpr_(const Type* op) final {                  \
+    if (op->dtype.is_float()) {                            \
+      ++result_.FloatCounter;                              \
+    } else {                                               \
+      ++result_.IntCounter;                                \
+    }                                                      \
+    StmtExprVisitor::VisitExpr_(op);                       \
+  }
+
+class MathOpCounter : public tir::StmtExprVisitor {
+ public:
+  static FeatureSet::MathOps Count(const PrimExpr& expr) {
+    MathOpCounter counter;
+    counter(expr);
+    return counter.result_;
+  }
+
+ private:
+  TVM_FEATURE_SIMPLE(tir::AndNode, bool_op);
+  TVM_FEATURE_SIMPLE(tir::OrNode, bool_op);
+  TVM_FEATURE_SIMPLE(tir::NotNode, bool_op);
+  TVM_FEATURE_SIMPLE(tir::SelectNode, select_op);
+  TVM_FEATURE_BINARY(tir::AddNode, float_addsub, int_addsub);
+  TVM_FEATURE_BINARY(tir::SubNode, float_addsub, int_addsub);
+  TVM_FEATURE_BINARY(tir::MulNode, float_mul, int_mul);
+  TVM_FEATURE_BINARY(tir::DivNode, float_divmod, int_divmod);
+  TVM_FEATURE_BINARY(tir::ModNode, float_divmod, int_divmod);
+  TVM_FEATURE_BINARY(tir::FloorDivNode, float_divmod, int_divmod);
+  TVM_FEATURE_BINARY(tir::FloorModNode, float_divmod, int_divmod);
+  TVM_FEATURE_BINARY(tir::MaxNode, float_cmp, int_cmp);
+  TVM_FEATURE_BINARY(tir::MinNode, float_cmp, int_cmp);
+  TVM_FEATURE_BINARY(tir::EQNode, float_cmp, int_cmp);
+  TVM_FEATURE_BINARY(tir::NENode, float_cmp, int_cmp);
+  TVM_FEATURE_BINARY(tir::LTNode, float_cmp, int_cmp);
+  TVM_FEATURE_BINARY(tir::LENode, float_cmp, int_cmp);
+  TVM_FEATURE_BINARY(tir::GTNode, float_cmp, int_cmp);
+  TVM_FEATURE_BINARY(tir::GENode, float_cmp, int_cmp);
+  void VisitExpr_(const tir::CallNode* op) final {
+    static auto op_call_effect_ = Op::GetAttrMap<tir::TCallEffectKind>("TCallEffectKind");
+    tir::TCallEffectKind effect_kind = op_call_effect_[Downcast<Op>(op->op)];
+    bool is_pure = effect_kind == tir::CallEffectKind::kPure ||
+                   effect_kind == tir::CallEffectKind::kExprAnnotation;
+    if (is_pure) {
+      TVM_FEATURE_INC_CNT(op->dtype, float_math_func, int_math_func);
+    } else {
+      TVM_FEATURE_INC_CNT(op->dtype, float_other_func, int_other_func);
+    }
+    StmtExprVisitor::VisitExpr_(op);
+  }
+  FeatureSet::MathOps result_;
+};
+#undef TVM_FEATURE_BINARY
+#undef TVM_FEATURE_SIMPLE
+#undef TVM_FEATURE_INC_CNT
+
 class CoefficientExtractor : public tir::StmtExprVisitor {
  public:
   explicit CoefficientExtractor(const tir::Var& var)
@@ -193,71 +260,6 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   /******** Group 1: Computation related features ********/
 
   void AccumulateMathOpsToParentBlock(const PrimExpr& expr) {
-    class Counter : public tir::StmtExprVisitor {
-     public:
-      static FeatureSet::MathOps Count(const PrimExpr& expr) {
-        Counter counter;
-        counter(expr);
-        return counter.result_;
-      }
-
-     private:
-#define TVM_FEATURE_INC_CNT(DType, FloatCounter, IntCounter) \
-  if (DType.is_float()) {                                    \
-    ++result_.FloatCounter;                                  \
-  } else {                                                   \
-    ++result_.IntCounter;                                    \
-  }
-#define TVM_FEATURE_SIMPLE(Type, Counter) \
-  void VisitExpr_(const Type* op) final { \
-    ++result_.Counter;                    \
-    StmtExprVisitor::VisitExpr_(op);      \
-  }
-#define TVM_FEATURE_BINARY(Type, FloatCounter, IntCounter) \
-  void VisitExpr_(const Type* op) final {                  \
-    if (op->dtype.is_float()) {                            \
-      ++result_.FloatCounter;                              \
-    } else {                                               \
-      ++result_.IntCounter;                                \
-    }                                                      \
-    StmtExprVisitor::VisitExpr_(op);                       \
-  }
-      TVM_FEATURE_SIMPLE(tir::AndNode, bool_op);
-      TVM_FEATURE_SIMPLE(tir::OrNode, bool_op);
-      TVM_FEATURE_SIMPLE(tir::NotNode, bool_op);
-      TVM_FEATURE_SIMPLE(tir::SelectNode, select_op);
-      TVM_FEATURE_BINARY(tir::AddNode, float_addsub, int_addsub);
-      TVM_FEATURE_BINARY(tir::SubNode, float_addsub, int_addsub);
-      TVM_FEATURE_BINARY(tir::MulNode, float_mul, int_mul);
-      TVM_FEATURE_BINARY(tir::DivNode, float_divmod, int_divmod);
-      TVM_FEATURE_BINARY(tir::ModNode, float_divmod, int_divmod);
-      TVM_FEATURE_BINARY(tir::FloorDivNode, float_divmod, int_divmod);
-      TVM_FEATURE_BINARY(tir::FloorModNode, float_divmod, int_divmod);
-      TVM_FEATURE_BINARY(tir::MaxNode, float_cmp, int_cmp);
-      TVM_FEATURE_BINARY(tir::MinNode, float_cmp, int_cmp);
-      TVM_FEATURE_BINARY(tir::EQNode, float_cmp, int_cmp);
-      TVM_FEATURE_BINARY(tir::NENode, float_cmp, int_cmp);
-      TVM_FEATURE_BINARY(tir::LTNode, float_cmp, int_cmp);
-      TVM_FEATURE_BINARY(tir::LENode, float_cmp, int_cmp);
-      TVM_FEATURE_BINARY(tir::GTNode, float_cmp, int_cmp);
-      TVM_FEATURE_BINARY(tir::GENode, float_cmp, int_cmp);
-      void VisitExpr_(const tir::CallNode* op) final {
-        static auto op_call_effect_ = Op::GetAttrMap<tir::TCallEffectKind>("TCallEffectKind");
-        tir::TCallEffectKind effect_kind = op_call_effect_[Downcast<Op>(op->op)];
-        bool is_pure = effect_kind == tir::CallEffectKind::kPure ||
-                       effect_kind == tir::CallEffectKind::kExprAnnotation;
-        if (is_pure) {
-          TVM_FEATURE_INC_CNT(op->dtype, float_math_func, int_math_func);
-        } else {
-          TVM_FEATURE_INC_CNT(op->dtype, float_other_func, int_other_func);
-        }
-        StmtExprVisitor::VisitExpr_(op);
-      }
-#undef TVM_FEATURE_BINARY
-#undef TVM_FEATURE_SIMPLE
-#undef TVM_FEATURE_INC_CNT
-      FeatureSet::MathOps result_;
-    };
     CHECK(!scopes_.empty());
     const tir::BlockRealizeNode* parent = scopes_.back();
     // The product of the loops up to the parent
@@ -271,7 +273,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       prod_loop_extent *= GetLoopIntExtent(static_cast<const tir::LoopNode*>(stmt)).value()->value;
     }
     // Count the operators
-    FeatureSet::MathOps math_ops = Counter::Count(expr);
+    FeatureSet::MathOps math_ops = MathOpCounter::Count(expr);
     FeatureSet::MathOps& parent_math_ops = per_block_feature[parent].math_ops;
     // Add the math_ops to the parent
 #define TVM_FEATURE_MATH_OP_ADD(Name) parent_math_ops.Name = math_ops.Name * prod_loop_extent
