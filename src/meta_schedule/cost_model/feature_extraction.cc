@@ -259,22 +259,19 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
  private:
   /******** Group 1: Computation related features ********/
 
-  void AccumulateMathOpsToParentBlock(const PrimExpr& expr) {
-    CHECK(!scopes_.empty());
-    const tir::BlockRealizeNode* parent = scopes_.back();
+  void AddMathOpsToScope(const FeatureSet::MathOps& math_ops, const tir::BlockRealizeNode* scope) {
     // The product of the loops up to the parent
     int64_t prod_loop_extent = 1;
     for (auto iter = dfs_path_.rbegin(); iter != dfs_path_.rend(); ++iter) {
       const tir::StmtNode* stmt = *iter;
-      if (stmt == parent) {
+      if (stmt == scope) {
         break;
       }
       CHECK(stmt->IsInstance<tir::LoopNode>());
       prod_loop_extent *= GetLoopIntExtent(static_cast<const tir::LoopNode*>(stmt)).value()->value;
     }
     // Count the operators
-    FeatureSet::MathOps math_ops = MathOpCounter::Count(expr);
-    FeatureSet::MathOps& parent_math_ops = per_block_feature[parent].math_ops;
+    FeatureSet::MathOps& parent_math_ops = per_block_feature[scope].math_ops;
     // Add the math_ops to the parent
 #define TVM_FEATURE_MATH_OP_ADD(Name) parent_math_ops.Name = math_ops.Name * prod_loop_extent
     TVM_FEATURE_MATH_OP_ADD(float_mad);
@@ -646,11 +643,13 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
  private:
   /******** Visitors ********/
   void VisitStmt_(const tir::BufferStoreNode* store) override {
-    AccumulateMathOpsToParentBlock(store->value);
+    CHECK(!scopes_.empty());
+    AddMathOpsToScope(MathOpCounter::Count(store->value), scopes_.back());
   }
 
   void VisitStmt_(const tir::ReduceStepNode* reduce) override {
-    AccumulateMathOpsToParentBlock(reduce->rhs);
+    CHECK(!scopes_.empty());
+    AddMathOpsToScope(MathOpCounter::Count(reduce->rhs), scopes_.back());
   }
 
   void VisitStmt_(const tir::BlockRealizeNode* realize) override {
@@ -669,7 +668,10 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
         break;
       }
     }
-    // Group 1: Computation related features has been updated via its children
+    // Group 1: Computation related features
+    if (!scopes_.empty()) {
+      AddMathOpsToScope(per_block_feature[realize].math_ops, scopes_.back());
+    }
     // Group 2: Buffer access related features
     BufferMap<BufferInfo> buffer_info = CalcBufferInfo(realize, loops);
     AssignBufferAccessFeature(realize, loops, buffer_info);
