@@ -328,10 +328,12 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   };
 
   BufferMap<BufferInfo> CalcBufferInfo(const tir::BlockRealizeNode* realize,
-                                       const std::vector<const tir::LoopNode*>& loops) const {
+                                       const std::vector<const tir::LoopNode*>& loops,
+                                       std::vector<int64_t>* for_touched_bytes_) const {
     // Initialize the data structures used for the features
     int n_loops = loops.size();
-    std::vector<int64_t> for_touched_bytes(n_loops, int64_t(0));
+    std::vector<int64_t>& for_touched_bytes = *for_touched_bytes_ =
+        std::vector<int64_t>(n_loops, int64_t(0));
     BufferMap<BufferInfo> buffer_info = GatherBufferAccessInfo(realize);
     for (auto& it : buffer_info) {
       BufferInfo& info = it.second;
@@ -655,17 +657,63 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   }
 
  private:
+  /******** Group 3: Arithmetic intensity related features ********/
+
+  void CalcAritheticIntensityFeatures(const tir::BlockRealizeNode* realize,
+                                      const std::vector<const tir::LoopNode*>& loops,
+                                      const std::vector<int64_t>& for_touched_bytes,
+                                      const FeatureSet::MathOps& math_ops) {
+    CHECK_EQ(loops.size(), for_touched_bytes.size());
+    int n_loops = loops.size();
+    // Calculate `memory_bytes`
+    std::vector<double> memory_bytes;
+    for (int i = 0; i < n_loops; ++i) {
+      memory_bytes.push_back(std::log2(for_touched_bytes[i]));
+    }
+    // Calculate `compute_ops` and `cur_compute_ops`
+    std::vector<double> compute_ops;
+    double total_compute_ops = math_ops.float_mad + math_ops.float_addsub + math_ops.float_mul +
+                               math_ops.float_divmod + math_ops.float_cmp +
+                               math_ops.float_math_func + math_ops.float_other_func;
+    for (int i = 0; i < n_loops; ++i) {
+      int64_t extent = GetLoopIntExtent(loops[i]).value()->value;
+      total_compute_ops *= extent;
+      compute_ops.push_back(std::log2(total_compute_ops));
+    }
+    // Fill the feature set
+    FeatureSet& feature = per_block_feature[realize];
+    if (total_compute_ops <= 0 || compute_ops.empty()) {
+      for (int i = 0; i < FeatureSet::ARITH_INTENSITY_CURVE_SAMPLE_N; ++i) {
+        feature.arith_intensity_curve[i] = 0.0;
+      }
+      return;
+    }
+    int p = 0;
+    for (int i = 0; i < FeatureSet::ARITH_INTENSITY_CURVE_SAMPLE_N; ++i) {
+      double& result = feature.arith_intensity_curve[i];
+      double cur_compute_ops = static_cast<double>(i + 1) /
+                               FeatureSet::ARITH_INTENSITY_CURVE_SAMPLE_N * total_compute_ops;
+      // Find the first `p` that `compute[p] >= total * (i + 1) / N`
+      for (; p < n_loops; ++p) {
+        if (compute_ops[p] >= cur_compute_ops - 1e-4) {
+          break;
+        }
+      }
+      CHECK_LT(p, n_loops);
+      if (p == 0) {
+        result = compute_ops[p] / memory_bytes[p];
+      } else {
+        double base = compute_ops[p - 1] / memory_bytes[p - 1];
+        double slope =
+            (compute_ops[p] / memory_bytes[p] - compute_ops[p - 1] / memory_bytes[p - 1]) /
+            (compute_ops[p] - compute_ops[p - 1]);
+        result = base + slope * (cur_compute_ops - compute_ops[p - 1]);
+      }
+    }
+  }
+
+ private:
   /******** Visitors ********/
-  void VisitStmt_(const tir::BufferStoreNode* store) override {
-    CHECK(!scopes_.empty());
-    AddMathOpsToScope(MathOpCounter::Count(store->value), scopes_.back());
-  }
-
-  void VisitStmt_(const tir::ReduceStepNode* reduce) override {
-    CHECK(!scopes_.empty());
-    AddMathOpsToScope(MathOpCounter::Count(reduce->rhs), scopes_.back());
-  }
-
   void VisitStmt_(const tir::BlockRealizeNode* realize) override {
     scopes_.push_back(realize);
     dfs_path_.push_back(realize);
@@ -698,8 +746,11 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     feature.threadIdx_z_len = FirstLoopExtent(threadIdx_z_);
     feature.vthread_len = FirstLoopExtent(vthread_);
     // Group 2: Buffer access related features
-    BufferMap<BufferInfo> buffer_info = CalcBufferInfo(realize, loops);
+    std::vector<int64_t> for_touched_bytes;
+    BufferMap<BufferInfo> buffer_info = CalcBufferInfo(realize, loops, &for_touched_bytes);
     AssignBufferAccessFeature(realize, loops, buffer_info);
+    // Group 3: Arithmetic intensity related features
+    CalcAritheticIntensityFeatures(realize, loops, for_touched_bytes, feature.math_ops);
   }
 
   void VisitStmt_(const tir::LoopNode* loop) override {
@@ -707,39 +758,36 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     // Handling annotated loops
     std::vector<const tir::LoopNode*>* ref_loops = nullptr;
     if (!loop->annotations.empty()) {
-      // TODO: auto unroll
-      CHECK_EQ(loop->annotations.size(), 1)
-          << "ValueError: At most one annotation is allowed on a loop, but gets: "
-          << GetRef<tir::Loop>(loop);
-      const tir::Annotation& ann = loop->annotations[0];
-      CHECK_EQ(ann->attr_key, tir::attr::loop_type)
-          << "ValueError: Expects loop annotation to be 'loop_type', but gets: " << ann;
-      const auto* value = ann->value.as<tir::StringImmNode>();
-      CHECK(value) << "ValueError: Expevt loop annotation to be a string, but gets: " << ann;
-      if (value->value == "parallel") {
-        ref_loops = &parallel_;
-      } else if (value->value == "vectorize") {
-        ref_loops = &vectorize_;
-      } else if (value->value == "unroll") {
-        ref_loops = &unroll_;
-      } else if (value->value == "blockIdx.x") {
-        ref_loops = &blockIdx_x_;
-      } else if (value->value == "blockIdx.y") {
-        ref_loops = &blockIdx_y_;
-      } else if (value->value == "blockIdx.z") {
-        ref_loops = &blockIdx_z_;
-      } else if (value->value == "threadIdx.x") {
-        ref_loops = &threadIdx_x_;
-      } else if (value->value == "threadIdx.y") {
-        ref_loops = &threadIdx_y_;
-      } else if (value->value == "threadIdx.z") {
-        ref_loops = &threadIdx_z_;
-      } else if (value->value == "vthread") {
-        ref_loops = &vthread_;
-      } else {
-        LOG(FATAL) << "ValueError: Cannot recognize loop annotation: " << ann;
-        throw;
+      std::unordered_set<std::string> annotations;
+      for (const tir::Annotation& ann : loop->annotations) {
+        CHECK_EQ(ann->attr_key, tir::attr::loop_type)
+            << "ValueError: Expects loop annotation to be 'loop_type', but gets: " << ann;
+        const auto* value = ann->value.as<tir::StringImmNode>();
+        CHECK(value) << "ValueError: Expevt loop annotation to be a string, but gets: " << ann;
+        annotations.insert(value->value);
       }
+      if (annotations.count("parallel")) {
+        ref_loops = &parallel_;
+      } else if (annotations.count("vectorize")) {
+        ref_loops = &vectorize_;
+      } else if (annotations.count("unroll")) {
+        ref_loops = &unroll_;
+      } else if (annotations.count("blockIdx.x")) {
+        ref_loops = &blockIdx_x_;
+      } else if (annotations.count("blockIdx.y")) {
+        ref_loops = &blockIdx_y_;
+      } else if (annotations.count("blockIdx.z")) {
+        ref_loops = &blockIdx_z_;
+      } else if (annotations.count("threadIdx.x")) {
+        ref_loops = &threadIdx_x_;
+      } else if (annotations.count("threadIdx.y")) {
+        ref_loops = &threadIdx_y_;
+      } else if (annotations.count("threadIdx.z")) {
+        ref_loops = &threadIdx_z_;
+      } else if (annotations.count("vthread")) {
+        ref_loops = &vthread_;
+      }
+      // TODO: auto unroll
     }
     if (ref_loops != nullptr) {
       ref_loops->push_back(loop);
@@ -752,6 +800,16 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     if (ref_loops != nullptr) {
       ref_loops->pop_back();
     }
+  }
+
+  void VisitStmt_(const tir::BufferStoreNode* store) override {
+    CHECK(!scopes_.empty());
+    AddMathOpsToScope(MathOpCounter::Count(store->value), scopes_.back());
+  }
+
+  void VisitStmt_(const tir::ReduceStepNode* reduce) override {
+    CHECK(!scopes_.empty());
+    AddMathOpsToScope(MathOpCounter::Count(reduce->rhs), scopes_.back());
   }
 
  private:
