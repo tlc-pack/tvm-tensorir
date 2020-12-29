@@ -259,6 +259,22 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
  private:
   /******** Group 1: Computation related features ********/
 
+  void CalcComputeFeature(const tir::BlockRealizeNode* realize, FeatureSet* feature) {
+    if (!scopes_.empty()) {
+      AddMathOpsToScope(feature->math_ops, scopes_.back());
+    }
+    AddLoopFeature(&feature->vectorize, this->vectorize_);
+    AddLoopFeature(&feature->parallel, this->parallel_);
+    AddLoopFeature(&feature->unroll, this->unroll_);
+    feature->blockIdx_x_len = FirstLoopExtent(blockIdx_x_);
+    feature->blockIdx_y_len = FirstLoopExtent(blockIdx_y_);
+    feature->blockIdx_z_len = FirstLoopExtent(blockIdx_z_);
+    feature->threadIdx_x_len = FirstLoopExtent(threadIdx_x_);
+    feature->threadIdx_y_len = FirstLoopExtent(threadIdx_y_);
+    feature->threadIdx_z_len = FirstLoopExtent(threadIdx_z_);
+    feature->vthread_len = FirstLoopExtent(vthread_);
+  }
+
   void AddMathOpsToScope(const FeatureSet::MathOps& math_ops, const tir::BlockRealizeNode* scope) {
     // The product of the loops up to the parent
     int64_t prod_loop_extent = 1;
@@ -270,9 +286,8 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       CHECK(stmt->IsInstance<tir::LoopNode>());
       prod_loop_extent *= GetLoopIntExtent(static_cast<const tir::LoopNode*>(stmt)).value()->value;
     }
-    // Count the operators
-    FeatureSet::MathOps& parent_math_ops = per_block_feature[scope].math_ops;
     // Add the math_ops to the parent
+    FeatureSet::MathOps& parent_math_ops = per_block_feature[scope].math_ops;
 #define TVM_FEATURE_MATH_OP_ADD(Name) parent_math_ops.Name = math_ops.Name * prod_loop_extent
     TVM_FEATURE_MATH_OP_ADD(float_mad);
     TVM_FEATURE_MATH_OP_ADD(float_addsub);
@@ -293,7 +308,8 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
 #undef TVM_FEATURE_MATH_OP_ADD
   }
 
-  void AddLoopFeature(FeatureSet::AnnIter* ann, const std::vector<const tir::LoopNode*>& loops) {
+  void AddLoopFeature(FeatureSet::AnnIter* ann,
+                      const std::vector<const tir::LoopNode*>& loops) const {
     if (loops.empty()) {
       ann->num = 0;
       ann->len = 0;
@@ -453,17 +469,17 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     return buffer_info;
   }
 
-  void AssignBufferAccessFeature(const tir::BlockRealizeNode* realize,
-                                 const std::vector<const tir::LoopNode*>& loops,
-                                 const BufferMap<BufferInfo>& buffer_info) {
-    std::vector<FeatureSet::BufferAccess>& features = per_block_feature[realize].buffer_accesses;
-    features.reserve(buffer_info.size());
+  void CalcBufferAccessFeature(const tir::BlockRealizeNode* realize, FeatureSet* feature_,
+                               const std::vector<const tir::LoopNode*>& loops,
+                               const BufferMap<BufferInfo>& buffer_info) const {
+    std::vector<FeatureSet::BufferAccess>& buffer_features = feature_->buffer_accesses;
+    buffer_features.reserve(buffer_info.size());
     for (const auto& iter : buffer_info) {
       const tir::BufferNode* buffer = iter.first;
       const BufferInfo& buffer_info = iter.second;
       int64_t dtype_bytes = buffer->dtype.bytes();
-      features.emplace_back();
-      FeatureSet::BufferAccess& feature = features.back();
+      buffer_features.emplace_back();
+      FeatureSet::BufferAccess& feature = buffer_features.back();
       feature.buffer_name = buffer->name;
       feature.access_type = buffer_info.access_type;
       feature.stride = buffer_info.innermost_stride;
@@ -659,10 +675,10 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
  private:
   /******** Group 3: Arithmetic intensity related features ********/
 
-  void CalcAritheticIntensityFeatures(const tir::BlockRealizeNode* realize,
-                                      const std::vector<const tir::LoopNode*>& loops,
-                                      const std::vector<int64_t>& for_touched_bytes,
-                                      const FeatureSet::MathOps& math_ops) {
+  void CalcAritheticIntensityFeature(const tir::BlockRealizeNode* realize, FeatureSet* feature,
+                                     const std::vector<const tir::LoopNode*>& loops,
+                                     const std::vector<int64_t>& for_touched_bytes,
+                                     const FeatureSet::MathOps& math_ops) const {
     CHECK_EQ(loops.size(), for_touched_bytes.size());
     int n_loops = loops.size();
     // Calculate `memory_bytes`
@@ -681,16 +697,15 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       compute_ops.push_back(std::log2(total_compute_ops));
     }
     // Fill the feature set
-    FeatureSet& feature = per_block_feature[realize];
     if (total_compute_ops <= 0 || compute_ops.empty()) {
       for (int i = 0; i < FeatureSet::ARITH_INTENSITY_CURVE_SAMPLE_N; ++i) {
-        feature.arith_intensity_curve[i] = 0.0;
+        feature->arith_intensity_curve[i] = 0.0;
       }
       return;
     }
     int p = 0;
     for (int i = 0; i < FeatureSet::ARITH_INTENSITY_CURVE_SAMPLE_N; ++i) {
-      double& result = feature.arith_intensity_curve[i];
+      double& result = feature->arith_intensity_curve[i];
       double cur_compute_ops = static_cast<double>(i + 1) /
                                FeatureSet::ARITH_INTENSITY_CURVE_SAMPLE_N * total_compute_ops;
       // Find the first `p` that `compute[p] >= total * (i + 1) / N`
@@ -713,6 +728,11 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   }
 
  private:
+  /******** Group 5: Outer scope related features ********/
+
+  void CalcOuterScopeFeature(const tir::BlockRealizeNode* realize, FeatureSet* feature) const {}
+
+ private:
   /******** Visitors ********/
   void VisitStmt_(const tir::BlockRealizeNode* realize) override {
     scopes_.push_back(realize);
@@ -732,25 +752,15 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     }
     FeatureSet& feature = per_block_feature[realize];
     // Group 1: Computation related features
-    if (!scopes_.empty()) {
-      AddMathOpsToScope(per_block_feature[realize].math_ops, scopes_.back());
-    }
-    AddLoopFeature(&feature.vectorize, this->vectorize_);
-    AddLoopFeature(&feature.parallel, this->parallel_);
-    AddLoopFeature(&feature.unroll, this->unroll_);
-    feature.blockIdx_x_len = FirstLoopExtent(blockIdx_x_);
-    feature.blockIdx_y_len = FirstLoopExtent(blockIdx_y_);
-    feature.blockIdx_z_len = FirstLoopExtent(blockIdx_z_);
-    feature.threadIdx_x_len = FirstLoopExtent(threadIdx_x_);
-    feature.threadIdx_y_len = FirstLoopExtent(threadIdx_y_);
-    feature.threadIdx_z_len = FirstLoopExtent(threadIdx_z_);
-    feature.vthread_len = FirstLoopExtent(vthread_);
+    CalcComputeFeature(realize, &feature);
     // Group 2: Buffer access related features
     std::vector<int64_t> for_touched_bytes;
     BufferMap<BufferInfo> buffer_info = CalcBufferInfo(realize, loops, &for_touched_bytes);
-    AssignBufferAccessFeature(realize, loops, buffer_info);
+    CalcBufferAccessFeature(realize, &feature, loops, buffer_info);
     // Group 3: Arithmetic intensity related features
-    CalcAritheticIntensityFeatures(realize, loops, for_touched_bytes, feature.math_ops);
+    CalcAritheticIntensityFeature(realize, &feature, loops, for_touched_bytes, feature.math_ops);
+    // Group 5: Outer scope related features
+    // CalcOuterScopeFeature(realize, &feature);
   }
 
   void VisitStmt_(const tir::LoopNode* loop) override {
