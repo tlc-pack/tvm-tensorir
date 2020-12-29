@@ -730,7 +730,11 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
  private:
   /******** Group 5: Outer scope related features ********/
 
-  void CalcOuterScopeFeature(const tir::BlockRealizeNode* realize, FeatureSet* feature) const {}
+  void CalcOuterScopeFeature(const tir::BlockRealizeNode* realize, FeatureSet* feature) const {
+    feature->outer_prod = outer_loop_prod_;
+    feature->num_loops = loops_.size();
+    feature->auto_unroll_max_step = auto_unroll_.empty() ? 0 : auto_unroll_.back();
+  }
 
  private:
   /******** Visitors ********/
@@ -760,21 +764,26 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     // Group 3: Arithmetic intensity related features
     CalcAritheticIntensityFeature(realize, &feature, loops, for_touched_bytes, feature.math_ops);
     // Group 5: Outer scope related features
-    // CalcOuterScopeFeature(realize, &feature);
+    CalcOuterScopeFeature(realize, &feature);
   }
 
   void VisitStmt_(const tir::LoopNode* loop) override {
     int64_t extent = GetLoopIntExtent(loop).value()->value;
+    int64_t auto_unroll = -1;
     // Handling annotated loops
     std::vector<const tir::LoopNode*>* ref_loops = nullptr;
     if (!loop->annotations.empty()) {
       std::unordered_set<std::string> annotations;
       for (const tir::Annotation& ann : loop->annotations) {
-        CHECK_EQ(ann->attr_key, tir::attr::loop_type)
-            << "ValueError: Expects loop annotation to be 'loop_type', but gets: " << ann;
-        const auto* value = ann->value.as<tir::StringImmNode>();
-        CHECK(value) << "ValueError: Expevt loop annotation to be a string, but gets: " << ann;
-        annotations.insert(value->value);
+        if (ann->attr_key == tir::attr::loop_type) {
+          CHECK_EQ(ann->attr_key, tir::attr::loop_type)
+              << "ValueError: Expects loop annotation to be 'loop_type', but gets: " << ann;
+          const auto* value = ann->value.as<tir::StringImmNode>();
+          CHECK(value) << "ValueError: Expevt loop annotation to be a string, but gets: " << ann;
+          annotations.insert(value->value);
+        } else if (ann->attr_key == "pragma_auto_unroll_max_step") {
+          auto_unroll = Downcast<Integer>(ann->value)->value;
+        }
       }
       if (annotations.count("parallel")) {
         ref_loops = &parallel_;
@@ -797,16 +806,23 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       } else if (annotations.count("vthread")) {
         ref_loops = &vthread_;
       }
-      // TODO: auto unroll
     }
     if (ref_loops != nullptr) {
       ref_loops->push_back(loop);
     }
+    if (auto_unroll != -1) {
+      auto_unroll_.push_back(auto_unroll);
+    }
     outer_loop_prod_ *= extent;
     dfs_path_.push_back(loop);
+    loops_.push_back(loop);
     tir::StmtExprVisitor::VisitStmt_(loop);
+    loops_.pop_back();
     dfs_path_.pop_back();
     outer_loop_prod_ /= extent;
+    if (auto_unroll != -1) {
+      auto_unroll_.pop_back();
+    }
     if (ref_loops != nullptr) {
       ref_loops->pop_back();
     }
@@ -842,6 +858,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   /*! \brief The loop / block-realize visited up-down in the DFS path */
   std::vector<const tir::StmtNode*> dfs_path_;
   // The stacks to store different kinds of for-loops
+  std::vector<const tir::LoopNode*> loops_;
   std::vector<const tir::LoopNode*> parallel_;
   std::vector<const tir::LoopNode*> vectorize_;
   std::vector<const tir::LoopNode*> unroll_;
@@ -852,6 +869,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   std::vector<const tir::LoopNode*> threadIdx_y_;
   std::vector<const tir::LoopNode*> threadIdx_z_;
   std::vector<const tir::LoopNode*> vthread_;
+  std::vector<int64_t> auto_unroll_;
   /*! \brief The persistent analyzer */
   mutable arith::Analyzer analyzer_;
   /*! \brief The product of the extents of outer loops */
