@@ -24,6 +24,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "../feature.h"
 #include "../utils.h"
 
 namespace tvm {
@@ -73,18 +74,19 @@ struct FeatureSet {
     int64_t len = 0;           // The length of the innermost iterator with the annotation
     Pos pos = Pos::kPosMixed;  // The position of the iterators with the annotation
   };
-  MathOps math_ops;        // The number of the mathematical operators
-  AnnIter vectorize;       // The statistics of iterators annotated with "vectorize"
-  AnnIter unroll;          // The statistics of iterators annotated with "unroll"
-  AnnIter parallel;        // The statistics of iterators annotated with "parallel"
-  double is_gpu;           // Whether it is a GPU task
-  double blockIdx_x_len;   // The length of blockIdx.x
-  double blockIdx_y_len;   // The length of blockIdx.y
-  double blockIdx_z_len;   // The length of blockIdx.z
-  double threadIdx_x_len;  // The length of threadIdx.x
-  double threadIdx_y_len;  // The length of threadIdx.y
-  double threadIdx_z_len;  // The length of threadIdx.z
-  double vthread_len;      // The length of virtual thread
+  MathOps math_ops;   // The number of the mathematical operators
+  AnnIter vectorize;  // The statistics of iterators annotated with "vectorize"
+  AnnIter unroll;     // The statistics of iterators annotated with "unroll"
+  AnnIter parallel;   // The statistics of iterators annotated with "parallel"
+  // TODO(@junrushao1994): is_gpu
+  // bool is_gpu;              // Whether it is a GPU task
+  int64_t blockIdx_x_len;   // The length of blockIdx.x
+  int64_t blockIdx_y_len;   // The length of blockIdx.y
+  int64_t blockIdx_z_len;   // The length of blockIdx.z
+  int64_t threadIdx_x_len;  // The length of threadIdx.x
+  int64_t threadIdx_y_len;  // The length of threadIdx.y
+  int64_t threadIdx_z_len;  // The length of threadIdx.z
+  int64_t vthread_len;      // The length of virtual thread
 
   // Group 2: Buffer access related features (per buffer)
   struct BufferAccess {
@@ -101,33 +103,33 @@ struct FeatureSet {
     };
     String buffer_name;              // The name of the buffer
     AccessType access_type;          // The type of the access
-    double bytes;                    // The touched memory in bytes
-    double unique_bytes;             // The touched unique memory in bytes
+    int64_t bytes;                   // The touched memory in bytes
+    int64_t unique_bytes;            // The touched unique memory in bytes
     double lines;                    // The number of touched cache lines
     double unique_lines;             // The number touched unique cache lines
     ReuseType reuse_type;            // The type of data reuse
     double reuse_dis_iter;           // The reuse distance in iterator number
     double reuse_dis_bytes;          // The reuse distance in total touched bytes
-    double reuse_ct;                 // The reuse ratio
+    int64_t reuse_ct;                // The reuse ratio
     double bytes_d_reuse_ct;         // bytes        / reuse_ct
     double unique_bytes_d_reuse_ct;  // unique_bytes / reuse_ct
     double lines_d_reuse_ct;         // lines        / reuse_ct
     double unique_lines_d_reuse_ct;  // unique_lines / reuse_ct
-    double stride;                   // The stride in access
+    int64_t stride;                  // The stride in access
   };
   std::vector<BufferAccess> buffer_accesses;
 
   // Group 3: Arithmetic intensity related features
   // The number of samples to extract for arithmetic intensity curves
-  static const int ARITH_INTENSITY_CURVE_SAMPLE_N = 10;
+  static const int NUM_SAMPLE_ARITH_INTENSITY_CURVE = 10;
   // points sampled from the arithmetic intensity curve
-  double arith_intensity_curve[ARITH_INTENSITY_CURVE_SAMPLE_N];
+  double arith_intensity_curve[NUM_SAMPLE_ARITH_INTENSITY_CURVE];
 
   // Group 4: Allocation related features
-  double alloc_size;        // The size of allocated buffer in bytes
-  double alloc_outer_prod;  // The product of lengths of loops outside the scope of the allocation
-  double alloc_inner_prod;  // The product of lengths of loops inside the score of the allocation
-  double alloc_prod;        // alloc_outer_prod * alloc_inner_prod
+  // double alloc_size;        // The size of allocated buffer in bytes
+  // double alloc_outer_prod;  // The product lengths of loops outside the scope of the allocation
+  // double alloc_inner_prod;  // The product lengths of loops inside the score of the allocation
+  // double alloc_prod;        // alloc_outer_prod * alloc_inner_prod
 
   // Group 5: Outer scope related features
   double outer_prod;            // The product of lengths of outer loops
@@ -255,6 +257,12 @@ class CoefficientExtractor : public tir::StmtExprVisitor {
 class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
  public:
   BlockRealizeMap<FeatureSet> per_block_feature;
+
+  static BlockRealizeMap<FeatureSet> Extract(const tir::PrimFunc& func) {
+    PerBlockFeatureExtractor extractor;
+    extractor.VisitStmt(func->body);
+    return extractor.per_block_feature;
+  }
 
  private:
   /******** Group 1: Computation related features ********/
@@ -698,16 +706,16 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     }
     // Fill the feature set
     if (total_compute_ops <= 0 || compute_ops.empty()) {
-      for (int i = 0; i < FeatureSet::ARITH_INTENSITY_CURVE_SAMPLE_N; ++i) {
+      for (int i = 0; i < FeatureSet::NUM_SAMPLE_ARITH_INTENSITY_CURVE; ++i) {
         feature->arith_intensity_curve[i] = 0.0;
       }
       return;
     }
     int p = 0;
-    for (int i = 0; i < FeatureSet::ARITH_INTENSITY_CURVE_SAMPLE_N; ++i) {
+    for (int i = 0; i < FeatureSet::NUM_SAMPLE_ARITH_INTENSITY_CURVE; ++i) {
       double& result = feature->arith_intensity_curve[i];
       double cur_compute_ops = static_cast<double>(i + 1) /
-                               FeatureSet::ARITH_INTENSITY_CURVE_SAMPLE_N * total_compute_ops;
+                               FeatureSet::NUM_SAMPLE_ARITH_INTENSITY_CURVE * total_compute_ops;
       // Find the first `p` that `compute[p] >= total * (i + 1) / N`
       for (; p < n_loops; ++p) {
         if (compute_ops[p] >= cur_compute_ops - 1e-4) {
@@ -877,6 +885,75 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
 
   static constexpr int64_t cache_line_bytes_ = 64;
 };
+
+// shifted log to incorporate the property that slog(0) = 0
+inline double slog(double x) {
+  if (x < 0) {
+    x = -x;
+  }
+  return std::log2(x + 1);
+}
+
+#define TVM_FEATURE_ADD_ANN_ITER(s)                           \
+  slog(s.num), slog(s.num), slog(s.len),                 /**/ \
+      static_cast<double>(static_cast<int>(s.pos) == 0), /**/ \
+      static_cast<double>(static_cast<int>(s.pos) == 1), /**/ \
+      static_cast<double>(static_cast<int>(s.pos) == 2), /**/ \
+      static_cast<double>(static_cast<int>(s.pos) == 3), /**/ \
+      static_cast<double>(static_cast<int>(s.pos) == 4), /**/ \
+      static_cast<double>(static_cast<int>(s.pos) == 5), /**/ \
+      static_cast<double>(static_cast<int>(s.pos) == 6), /**/ \
+      static_cast<double>(static_cast<int>(s.pos) == 7)
+
+std::vector<std::vector<double>> CalcPerBlockFeature(const tir::PrimFunc& func) {
+  BlockRealizeMap<FeatureSet> feature_map = PerBlockFeatureExtractor::Extract(func);
+  std::vector<std::vector<double>> result;
+  result.reserve(feature_map.size());
+  for (const auto& iter : feature_map) {
+    const FeatureSet& feature = iter.second;
+    /***** Group 1: Computation related features *****/
+    std::vector<double> group1{
+        slog(feature.math_ops.float_mad),
+        slog(feature.math_ops.float_addsub),
+        slog(feature.math_ops.float_mul),
+        slog(feature.math_ops.float_divmod),
+        slog(feature.math_ops.float_cmp),
+        slog(feature.math_ops.float_math_func),
+        slog(feature.math_ops.float_other_func),
+        slog(feature.math_ops.int_mad),
+        slog(feature.math_ops.int_addsub),
+        slog(feature.math_ops.int_mul),
+        slog(feature.math_ops.int_divmod),
+        slog(feature.math_ops.int_cmp),
+        slog(feature.math_ops.int_math_func),
+        slog(feature.math_ops.int_other_func),
+        slog(feature.math_ops.bool_op),
+        slog(feature.math_ops.select_op),
+        TVM_FEATURE_ADD_ANN_ITER(feature.vectorize),
+        TVM_FEATURE_ADD_ANN_ITER(feature.unroll),
+        TVM_FEATURE_ADD_ANN_ITER(feature.parallel),
+        slog(feature.blockIdx_x_len),
+        slog(feature.blockIdx_y_len),
+        slog(feature.blockIdx_z_len),
+        slog(feature.threadIdx_x_len),
+        slog(feature.threadIdx_y_len),
+        slog(feature.threadIdx_z_len),
+        slog(feature.vthread_len),
+    };
+    /***** Group 3: Arithmetic intensity related features *****/
+    std::vector<double> group3(
+        feature.arith_intensity_curve,
+        feature.arith_intensity_curve + feature.NUM_SAMPLE_ARITH_INTENSITY_CURVE);
+    /***** Group 5: Outer scope related features *****/
+    std::vector<double> group5{
+        slog(feature.outer_prod),
+        slog(feature.num_loops),
+        slog(feature.auto_unroll_max_step),
+    };
+  }
+}
+
+#undef TVM_FEATURE_ADD_ANN_ITER
 
 }  // namespace meta_schedule
 }  // namespace tvm
