@@ -26,7 +26,8 @@
 namespace tvm {
 namespace meta_schedule {
 
-TVM_DLL std::vector<std::vector<double>> CalcPerBlockFeature(const tir::PrimFunc& func);
+TVM_DLL std::vector<std::vector<double>> CalcPerBlockFeature(const tir::PrimFunc& func,
+                                                             int max_num_buffer_access_features);
 
 TVM_DLL Array<String> PerBlockFeatureNames(const tir::PrimFunc& func);
 

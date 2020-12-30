@@ -905,14 +905,21 @@ inline double slog(double x) {
       static_cast<double>(static_cast<int>(s.pos) == 6), /**/ \
       static_cast<double>(static_cast<int>(s.pos) == 7)
 
-std::vector<std::vector<double>> CalcPerBlockFeature(const tir::PrimFunc& func) {
+std::vector<std::vector<double>> CalcPerBlockFeature(const tir::PrimFunc& func,
+                                                     int max_num_buffer_access_features) {
+  constexpr size_t kNumFeatureGroup1 = 8 * 2 + 11 * 3 + 7;
+  constexpr size_t kNumFeatureGroup2Subgroup = 19;
+  constexpr size_t kNumFeatureGroup3 = FeatureSet::NUM_SAMPLE_ARITH_INTENSITY_CURVE;
+  constexpr size_t kNumFeatureGroup5 = 3;
+  size_t kNumFeatureGroup2 = kNumFeatureGroup2Subgroup * max_num_buffer_access_features;
+
   BlockRealizeMap<FeatureSet> feature_map = PerBlockFeatureExtractor::Extract(func);
-  std::vector<std::vector<double>> result;
-  result.reserve(feature_map.size());
+  std::vector<std::vector<double>> feature_vector;
+  feature_vector.reserve(feature_map.size());
   for (const auto& iter : feature_map) {
     const FeatureSet& feature = iter.second;
     /***** Group 1: Computation related features *****/
-    std::vector<double> group1{
+    std::vector<double> result{
         slog(feature.math_ops.float_mad),
         slog(feature.math_ops.float_addsub),
         slog(feature.math_ops.float_mul),
@@ -940,17 +947,73 @@ std::vector<std::vector<double>> CalcPerBlockFeature(const tir::PrimFunc& func) 
         slog(feature.threadIdx_z_len),
         slog(feature.vthread_len),
     };
+    CHECK_EQ(result.size(), kNumFeatureGroup1);
+    result.reserve(kNumFeatureGroup1 + kNumFeatureGroup2 + kNumFeatureGroup3 + kNumFeatureGroup5);
+    /***** Group 2: Buffer access related features *****/
+    const std::vector<FeatureSet::BufferAccess>& accesses = feature.buffer_accesses;
+    int n_accesses = accesses.size();
+    // Sort the buffers in descending order of (line, bytes)
+    std::vector<int> order(n_accesses);
+    std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(), [&accesses](int l, int r) -> bool {
+      if (accesses[l].lines != accesses[r].lines) {
+        return accesses[l].lines > accesses[r].lines;
+      }
+      if (accesses[l].bytes != accesses[r].bytes) {
+        return accesses[l].bytes > accesses[r].bytes;
+      }
+      return accesses[l].buffer_name < accesses[r].buffer_name;
+    });
+    // Make sure at most `max_num_buffer_access_features` are used
+    if (n_accesses > max_num_buffer_access_features) {
+      order.resize(max_num_buffer_access_features);
+    }
+    for (int idx : order) {
+      const FeatureSet::BufferAccess& access = accesses[idx];
+      std::vector<double> group2_sub{
+          static_cast<double>(static_cast<int>(access.access_type) == 0),
+          static_cast<double>(static_cast<int>(access.access_type) == 1),
+          static_cast<double>(static_cast<int>(access.access_type) == 2),
+          static_cast<double>(static_cast<int>(access.access_type) == 3),
+          slog(access.bytes),
+          slog(access.unique_bytes),
+          slog(access.lines),
+          slog(access.unique_lines),
+          static_cast<double>(static_cast<int>(access.reuse_type) == 0),
+          static_cast<double>(static_cast<int>(access.reuse_type) == 1),
+          static_cast<double>(static_cast<int>(access.reuse_type) == 2),
+          slog(access.reuse_dis_iter),
+          slog(access.reuse_dis_bytes),
+          slog(access.reuse_ct),
+          slog(access.bytes_d_reuse_ct),
+          slog(access.unique_bytes_d_reuse_ct),
+          slog(access.lines_d_reuse_ct),
+          slog(access.unique_lines_d_reuse_ct),
+          slog(access.stride),
+      };
+      CHECK_EQ(group2_sub.size(), kNumFeatureGroup2Subgroup);
+    }
+    // Pad to `max_num_buffer_access_features`
+    if (max_num_buffer_access_features > n_accesses) {
+      int n_pad = (max_num_buffer_access_features - n_accesses) * kNumFeatureGroup2Subgroup;
+      result.resize(result.size() + n_pad, 0.0);
+    }
+    CHECK_EQ(result.size(), kNumFeatureGroup1 + kNumFeatureGroup2);
     /***** Group 3: Arithmetic intensity related features *****/
-    std::vector<double> group3(
-        feature.arith_intensity_curve,
-        feature.arith_intensity_curve + feature.NUM_SAMPLE_ARITH_INTENSITY_CURVE);
+    result.insert(result.end(),  //
+                  std::begin(feature.arith_intensity_curve),
+                  std::end(feature.arith_intensity_curve));
+    CHECK_EQ(result.size(), kNumFeatureGroup1 + kNumFeatureGroup2 + kNumFeatureGroup3);
     /***** Group 5: Outer scope related features *****/
-    std::vector<double> group5{
-        slog(feature.outer_prod),
-        slog(feature.num_loops),
-        slog(feature.auto_unroll_max_step),
-    };
+    result.push_back(slog(feature.outer_prod));
+    result.push_back(slog(feature.num_loops));
+    result.push_back(slog(feature.auto_unroll_max_step));
+    CHECK_EQ(result.size(),
+             kNumFeatureGroup1 + kNumFeatureGroup2 + kNumFeatureGroup3 + kNumFeatureGroup5);
+    // Then append it the the feature vector
+    feature_vector.emplace_back(std::move(result));
   }
+  return feature_vector;
 }
 
 #undef TVM_FEATURE_ADD_ANN_ITER
