@@ -78,8 +78,7 @@ struct FeatureSet {
   AnnIter vectorize;  // The statistics of iterators annotated with "vectorize"
   AnnIter unroll;     // The statistics of iterators annotated with "unroll"
   AnnIter parallel;   // The statistics of iterators annotated with "parallel"
-  // TODO(@junrushao1994): is_gpu
-  // bool is_gpu;              // Whether it is a GPU task
+  // bool is_gpu;              // TODO(@junrushao1994): Whether it is a GPU task
   int64_t blockIdx_x_len;   // The length of blockIdx.x
   int64_t blockIdx_y_len;   // The length of blockIdx.y
   int64_t blockIdx_z_len;   // The length of blockIdx.z
@@ -894,21 +893,21 @@ inline double slog(double x) {
   return std::log2(x + 1);
 }
 
-#define TVM_FEATURE_ADD_ANN_ITER(s)                           \
-  slog(s.num), slog(s.num), slog(s.len),                 /**/ \
-      static_cast<double>(static_cast<int>(s.pos) == 0), /**/ \
-      static_cast<double>(static_cast<int>(s.pos) == 1), /**/ \
-      static_cast<double>(static_cast<int>(s.pos) == 2), /**/ \
-      static_cast<double>(static_cast<int>(s.pos) == 3), /**/ \
-      static_cast<double>(static_cast<int>(s.pos) == 4), /**/ \
-      static_cast<double>(static_cast<int>(s.pos) == 5), /**/ \
-      static_cast<double>(static_cast<int>(s.pos) == 6), /**/ \
+#define TVM_FEATURE_ADD_ANN_ITER(s)                      \
+  slog(s.num), slog(s.num), slog(s.len), /**/            \
+      static_cast<double>(static_cast<int>(s.pos) == 0), \
+      static_cast<double>(static_cast<int>(s.pos) == 1), \
+      static_cast<double>(static_cast<int>(s.pos) == 2), \
+      static_cast<double>(static_cast<int>(s.pos) == 3), \
+      static_cast<double>(static_cast<int>(s.pos) == 4), \
+      static_cast<double>(static_cast<int>(s.pos) == 5), \
+      static_cast<double>(static_cast<int>(s.pos) == 6), \
       static_cast<double>(static_cast<int>(s.pos) == 7)
 
 std::vector<std::vector<double>> CalcPerBlockFeature(const tir::PrimFunc& func,
                                                      int max_num_buffer_access_features) {
   constexpr size_t kNumFeatureGroup1 = 8 * 2 + 11 * 3 + 7;
-  constexpr size_t kNumFeatureGroup2Subgroup = 19;
+  constexpr size_t kNumFeatureGroup2Subgroup = 18;
   constexpr size_t kNumFeatureGroup3 = FeatureSet::NUM_SAMPLE_ARITH_INTENSITY_CURVE;
   constexpr size_t kNumFeatureGroup5 = 3;
   size_t kNumFeatureGroup2 = kNumFeatureGroup2Subgroup * max_num_buffer_access_features;
@@ -974,7 +973,7 @@ std::vector<std::vector<double>> CalcPerBlockFeature(const tir::PrimFunc& func,
           static_cast<double>(static_cast<int>(access.access_type) == 0),
           static_cast<double>(static_cast<int>(access.access_type) == 1),
           static_cast<double>(static_cast<int>(access.access_type) == 2),
-          static_cast<double>(static_cast<int>(access.access_type) == 3),
+          // FeatureSet::BufferAccess::AccessType::kUnknownRW is ignored
           slog(access.bytes),
           slog(access.unique_bytes),
           slog(access.lines),
@@ -1017,6 +1016,109 @@ std::vector<std::vector<double>> CalcPerBlockFeature(const tir::PrimFunc& func,
 }
 
 #undef TVM_FEATURE_ADD_ANN_ITER
+
+Array<String> PerBlockFeatureNames(const tir::PrimFunc& func, int max_num_buffer_access_features) {
+  constexpr size_t kNumFeatureGroup1 = 8 * 2 + 11 * 3 + 7;
+  constexpr size_t kNumFeatureGroup2Subgroup = 18;
+  constexpr size_t kNumFeatureGroup3 = FeatureSet::NUM_SAMPLE_ARITH_INTENSITY_CURVE;
+  constexpr size_t kNumFeatureGroup5 = 3;
+  size_t kNumFeatureGroup2 = kNumFeatureGroup2Subgroup * max_num_buffer_access_features;
+  size_t kTotal = kNumFeatureGroup1 + kNumFeatureGroup2 + kNumFeatureGroup3 + kNumFeatureGroup5;
+  std::vector<String> result{
+      "float_mad",
+      "float_addsub",
+      "float_mul",
+      "float_divmod",
+      "float_cmp",
+      "float_mathfunc",
+      "float_otherfunc",
+      "int_mad",
+      "int_addsub",
+      "int_mul",
+      "int_divmod",
+      "int_cmp",
+      "int_mathfunc",
+      "int_otherfunc",
+      "bool_op",
+      "select_op",
+      "vec_num",
+      "vec_prod",
+      "vec_len",
+      "vec_type.kPosNone",
+      "vec_type.kPosInnerSpatial",
+      "vec_type.kPosMiddleSpatial",
+      "vec_type.kPosOuterSpatial",
+      "vec_type.kPosInnerReduce",
+      "vec_type.kPosMiddleReduce",
+      "vec_type.kPosOuterReduce",
+      "vec_type.kPosMixed",
+      "unroll_num",
+      "unroll_prod",
+      "unroll_len",
+      "unroll_type.kPosNone",
+      "unroll_type.kPosInnerSpatial",
+      "unroll_type.kPosMiddleSpatial",
+      "unroll_type.kPosOuterSpatial",
+      "unroll_type.kPosInnerReduce",
+      "unroll_type.kPosMiddleReduce",
+      "unroll_type.kPosOuterReduce",
+      "unroll_type.kPosMixed",
+      "parallel_num",
+      "parallel_prod",
+      "parallel_len",
+      "parallel_type.kPosNone",
+      "parallel_type.kPosInnerSpatial",
+      "parallel_type.kPosMiddleSpatial",
+      "parallel_type.kPosOuterSpatial",
+      "parallel_type.kPosInnerReduce",
+      "parallel_type.kPosMiddleReduce",
+      "parallel_type.kPosOuterReduce",
+      "parallel_type.kPosMixed",
+      "blockIdx_x_len",
+      "blockIdx_y_len",
+      "blockIdx_z_len",
+      "threadIdx_x_len",
+      "threadIdx_y_len",
+      "threadIdx_z_len",
+      "vthread_len",
+  };
+  // section total: 57
+  for (int i = 0; i < max_num_buffer_access_features; ++i) {
+    String prefix = "B" + std::to_string(i) + ".";
+    std::vector<String> group2_sub{
+        prefix + "acc_type.kRead",
+        prefix + "acc_type.kWrite",
+        prefix + "acc_type.kReadWrite",
+        prefix + "bytes",
+        prefix + "unique_bytes",
+        prefix + "lines",
+        prefix + "unique_lines",
+        prefix + "reuse_type.kLoopMultipleRead",
+        prefix + "reuse_type.kSerialMultipleReadWrite",
+        prefix + "reuse_type.kNoReuse",
+        prefix + "reuse_dis_iter",
+        prefix + "reuse_dis_bytes",
+        prefix + "reuse_ct",
+        prefix + "bytes_d_reuse_ct",
+        prefix + "unique_bytes_d_reuse_ct",
+        prefix + "lines_d_reuse_ct",
+        prefix + "unique_lines_d_reuse_ct",
+        prefix + "stride",
+    };
+    result.insert(result.end(), group2_sub.begin(), group2_sub.end());
+  }
+  // section total : max_num_buffer_access_features * 18
+  for (int i = 0; i < FeatureSet::NUM_SAMPLE_ARITH_INTENSITY_CURVE; ++i) {
+    result.push_back("arith_intensity_curve_" + std::to_string(i));
+  }
+  // section total: NUM_SAMPLE_ARITH_INTENSITY_CURVE
+  result.push_back(("outer_prod"));
+  result.push_back(("num_loops"));
+  result.push_back(("auto_unroll_max_step"));
+  // section total: 3
+  CHECK_EQ(result.size(), kTotal);
+  return {result.begin(), result.end()};
+}
 
 }  // namespace meta_schedule
 }  // namespace tvm
