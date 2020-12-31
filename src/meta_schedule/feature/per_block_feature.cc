@@ -904,21 +904,26 @@ inline double slog(double x) {
       static_cast<double>(static_cast<int>(s.pos) == 6), \
       static_cast<double>(static_cast<int>(s.pos) == 7)
 
-std::vector<std::vector<double>> CalcPerBlockFeature(const tir::PrimFunc& func,
-                                                     int max_num_buffer_access_features) {
+PrimFuncFeature CalcPerBlockFeature(const tir::PrimFunc& func, int max_num_buffer_access_features) {
   constexpr size_t kNumFeatureGroup1 = 8 * 2 + 11 * 3 + 7;
   constexpr size_t kNumFeatureGroup2Subgroup = 18;
   constexpr size_t kNumFeatureGroup3 = FeatureSet::NUM_SAMPLE_ARITH_INTENSITY_CURVE;
   constexpr size_t kNumFeatureGroup5 = 3;
-  size_t kNumFeatureGroup2 = kNumFeatureGroup2Subgroup * max_num_buffer_access_features;
-
+  size_t kNumFeature = kNumFeatureGroup1 +
+                       kNumFeatureGroup2Subgroup * max_num_buffer_access_features +
+                       kNumFeatureGroup3 + kNumFeatureGroup5;
   BlockRealizeMap<FeatureSet> feature_map = PerBlockFeatureExtractor::Extract(func);
-  std::vector<std::vector<double>> feature_vector;
-  feature_vector.reserve(feature_map.size());
+
+  PrimFuncFeature prim_func_feature;
+  prim_func_feature.shape = std::vector<int64_t>{static_cast<int64_t>(feature_map.size()),
+                                                 static_cast<int64_t>(kNumFeature)};
+  std::vector<double>& ret = prim_func_feature.feature;
+  ret.reserve(prim_func_feature.shape[0] * prim_func_feature.shape[1]);
+
   for (const auto& iter : feature_map) {
     const FeatureSet& feature = iter.second;
     /***** Group 1: Computation related features *****/
-    std::vector<double> result{
+    double group1[] = {
         slog(feature.math_ops.float_mad),
         slog(feature.math_ops.float_addsub),
         slog(feature.math_ops.float_mul),
@@ -946,8 +951,8 @@ std::vector<std::vector<double>> CalcPerBlockFeature(const tir::PrimFunc& func,
         slog(feature.threadIdx_z_len),
         slog(feature.vthread_len),
     };
-    CHECK_EQ(result.size(), kNumFeatureGroup1);
-    result.reserve(kNumFeatureGroup1 + kNumFeatureGroup2 + kNumFeatureGroup3 + kNumFeatureGroup5);
+    CHECK_EQ(std::end(group1) - std::begin(group1), kNumFeatureGroup1);
+    ret.insert(ret.end(), std::begin(group1), std::end(group1));
     /***** Group 2: Buffer access related features *****/
     const std::vector<FeatureSet::BufferAccess>& accesses = feature.buffer_accesses;
     int n_accesses = accesses.size();
@@ -969,7 +974,7 @@ std::vector<std::vector<double>> CalcPerBlockFeature(const tir::PrimFunc& func,
     }
     for (int idx : order) {
       const FeatureSet::BufferAccess& access = accesses[idx];
-      std::vector<double> group2_sub{
+      double group2_sub[] = {
           static_cast<double>(static_cast<int>(access.access_type) == 0),
           static_cast<double>(static_cast<int>(access.access_type) == 1),
           static_cast<double>(static_cast<int>(access.access_type) == 2),
@@ -990,29 +995,28 @@ std::vector<std::vector<double>> CalcPerBlockFeature(const tir::PrimFunc& func,
           slog(access.unique_lines_d_reuse_ct),
           slog(access.stride),
       };
-      CHECK_EQ(group2_sub.size(), kNumFeatureGroup2Subgroup);
+      CHECK_EQ(std::end(group2_sub) - std::begin(group2_sub), kNumFeatureGroup2Subgroup);
+      ret.insert(ret.end(), std::begin(group2_sub), std::end(group2_sub));
     }
     // Pad to `max_num_buffer_access_features`
     if (max_num_buffer_access_features > n_accesses) {
       int n_pad = (max_num_buffer_access_features - n_accesses) * kNumFeatureGroup2Subgroup;
-      result.resize(result.size() + n_pad, 0.0);
+      ret.insert(ret.end(), n_pad, 0.0);
     }
-    CHECK_EQ(result.size(), kNumFeatureGroup1 + kNumFeatureGroup2);
     /***** Group 3: Arithmetic intensity related features *****/
-    result.insert(result.end(),  //
-                  std::begin(feature.arith_intensity_curve),
-                  std::end(feature.arith_intensity_curve));
-    CHECK_EQ(result.size(), kNumFeatureGroup1 + kNumFeatureGroup2 + kNumFeatureGroup3);
+    ret.insert(ret.end(),                                  //
+               std::begin(feature.arith_intensity_curve),  //
+               std::end(feature.arith_intensity_curve));
     /***** Group 5: Outer scope related features *****/
-    result.push_back(slog(feature.outer_prod));
-    result.push_back(slog(feature.num_loops));
-    result.push_back(slog(feature.auto_unroll_max_step));
-    CHECK_EQ(result.size(),
-             kNumFeatureGroup1 + kNumFeatureGroup2 + kNumFeatureGroup3 + kNumFeatureGroup5);
-    // Then append it the the feature vector
-    feature_vector.emplace_back(std::move(result));
+    double group5[] = {
+        slog(feature.outer_prod),
+        slog(feature.num_loops),
+        slog(feature.auto_unroll_max_step),
+    };
+    ret.insert(ret.end(), std::begin(group5), std::end(group5));
   }
-  return feature_vector;
+  CHECK_EQ(ret.size(), prim_func_feature.shape[0] * prim_func_feature.shape[1]);
+  return prim_func_feature;
 }
 
 #undef TVM_FEATURE_ADD_ANN_ITER

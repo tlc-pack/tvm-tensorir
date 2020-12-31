@@ -16,31 +16,24 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#ifndef SRC_META_SCHEDULE_FEATURE_H_
-#define SRC_META_SCHEDULE_FEATURE_H_
-
-#include <tvm/tir/function.h>
-
-#include <vector>
+#include "./feature.h"
 
 namespace tvm {
 namespace meta_schedule {
 
-class PrimFuncFeature {
- public:
-  runtime::NDArray AsNDArray();
-
-  std::vector<double> feature;
-  std::vector<int64_t> shape;
-};
-
-TVM_DLL PrimFuncFeature CalcPerBlockFeature(const tir::PrimFunc& func,
-                                            int max_num_buffer_access_features);
-
-TVM_DLL Array<String> PerBlockFeatureNames(const tir::PrimFunc& func,
-                                           int max_num_buffer_access_features);
+runtime::NDArray PrimFuncFeature::AsNDArray() {
+  DLManagedTensor dl_tensor;
+  dl_tensor.dl_tensor.data = feature.data();
+  dl_tensor.dl_tensor.ctx = DLContext{kDLCPU, 0};
+  dl_tensor.dl_tensor.ndim = shape.size();
+  dl_tensor.dl_tensor.dtype = DLDataType{kDLFloat, 64, 1};
+  dl_tensor.dl_tensor.shape = shape.data();
+  dl_tensor.dl_tensor.strides = nullptr;
+  dl_tensor.dl_tensor.byte_offset = 0;
+  dl_tensor.manager_ctx = nullptr;
+  dl_tensor.deleter = nullptr;
+  return runtime::NDArray::FromDLPack(&dl_tensor);
+}
 
 }  // namespace meta_schedule
 }  // namespace tvm
-
-#endif  // SRC_META_SCHEDULE_FEATURE_H_
