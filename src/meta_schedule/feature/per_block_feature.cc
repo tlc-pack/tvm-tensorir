@@ -904,7 +904,8 @@ inline double slog(double x) {
       static_cast<double>(static_cast<int>(s.pos) == 6), \
       static_cast<double>(static_cast<int>(s.pos) == 7)
 
-PrimFuncFeature CalcPerBlockFeature(const tir::PrimFunc& func, int max_num_buffer_access_features) {
+void CalcPerBlockFeature(const tir::PrimFunc& func, int max_num_buffer_access_features,
+                         PrimFuncFeature* prim_func_feature) {
   constexpr size_t kNumFeatureGroup1 = 8 * 2 + 11 * 3 + 7;
   constexpr size_t kNumFeatureGroup2Subgroup = 18;
   constexpr size_t kNumFeatureGroup3 = FeatureSet::NUM_SAMPLE_ARITH_INTENSITY_CURVE;
@@ -914,11 +915,14 @@ PrimFuncFeature CalcPerBlockFeature(const tir::PrimFunc& func, int max_num_buffe
                        kNumFeatureGroup3 + kNumFeatureGroup5;
   BlockRealizeMap<FeatureSet> feature_map = PerBlockFeatureExtractor::Extract(func);
 
-  PrimFuncFeature prim_func_feature;
-  prim_func_feature.shape = std::vector<int64_t>{static_cast<int64_t>(feature_map.size()),
-                                                 static_cast<int64_t>(kNumFeature)};
-  std::vector<double>& ret = prim_func_feature.feature;
-  ret.reserve(prim_func_feature.shape[0] * prim_func_feature.shape[1]);
+  std::vector<double>& ret = prim_func_feature->feature;
+  // Set up the shape of the returned feature
+  {
+    int64_t shape[] = {static_cast<int64_t>(feature_map.size()), static_cast<int64_t>(kNumFeature)};
+    ret.clear();
+    ret.reserve(shape[0] * shape[1]);
+    prim_func_feature->shape = std::vector<int64_t>(std::begin(shape), std::end(shape));
+  }
 
   for (const auto& iter : feature_map) {
     const FeatureSet& feature = iter.second;
@@ -1015,8 +1019,8 @@ PrimFuncFeature CalcPerBlockFeature(const tir::PrimFunc& func, int max_num_buffe
     };
     ret.insert(ret.end(), std::begin(group5), std::end(group5));
   }
-  CHECK_EQ(ret.size(), prim_func_feature.shape[0] * prim_func_feature.shape[1]);
-  return prim_func_feature;
+  // Finally check the shape of the return
+  CHECK_EQ(ret.size(), prim_func_feature->shape[0] * prim_func_feature->shape[1]);
 }
 
 #undef TVM_FEATURE_ADD_ANN_ITER
@@ -1123,6 +1127,19 @@ Array<String> PerBlockFeatureNames(const tir::PrimFunc& func, int max_num_buffer
   CHECK_EQ(result.size(), kTotal);
   return {result.begin(), result.end()};
 }
+
+struct Internal {
+  static runtime::NDArray CalcPerBlockFeature(const tir::PrimFunc& func,
+                                              int max_num_buffer_access_features) {
+    static thread_local PrimFuncFeature result;
+    tvm::meta_schedule::CalcPerBlockFeature(func, max_num_buffer_access_features, &result);
+    return result.AsNDArray();
+  }
+};
+
+TVM_REGISTER_GLOBAL("meta_schedule.CalcPerBlockFeature")
+    .set_body_typed(Internal::CalcPerBlockFeature);
+TVM_REGISTER_GLOBAL("meta_schedule.PerBlockFeatureNames").set_body_typed(PerBlockFeatureNames);
 
 }  // namespace meta_schedule
 }  // namespace tvm
