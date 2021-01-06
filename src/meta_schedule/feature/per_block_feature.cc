@@ -904,7 +904,7 @@ inline double slog(double x) {
       static_cast<double>(static_cast<int>(s.pos) == 6), \
       static_cast<double>(static_cast<int>(s.pos) == 7)
 
-void CalcPerBlockFeature(const tir::PrimFunc& func, int max_num_buffer_access_features,
+void CalcPerBlockFeature(const Schedule& sch, int max_num_buffer_access_features,
                          PrimFuncFeature* prim_func_feature) {
   constexpr size_t kNumFeatureGroup1 = 8 * 2 + 11 * 3 + 7;
   constexpr size_t kNumFeatureGroup2Subgroup = 18;
@@ -913,6 +913,7 @@ void CalcPerBlockFeature(const tir::PrimFunc& func, int max_num_buffer_access_fe
   size_t kNumFeature = kNumFeatureGroup1 +
                        kNumFeatureGroup2Subgroup * max_num_buffer_access_features +
                        kNumFeatureGroup3 + kNumFeatureGroup5;
+  const tir::PrimFunc& func = sch->sch->func;
   BlockRealizeMap<FeatureSet> feature_map = PerBlockFeatureExtractor::Extract(func);
 
   std::vector<double>& ret = prim_func_feature->feature;
@@ -1025,7 +1026,7 @@ void CalcPerBlockFeature(const tir::PrimFunc& func, int max_num_buffer_access_fe
 
 #undef TVM_FEATURE_ADD_ANN_ITER
 
-Array<String> PerBlockFeatureNames(const tir::PrimFunc& func, int max_num_buffer_access_features) {
+Array<String> PerBlockFeatureNames(int max_num_buffer_access_features) {
   constexpr size_t kNumFeatureGroup1 = 8 * 2 + 11 * 3 + 7;
   constexpr size_t kNumFeatureGroup2Subgroup = 18;
   constexpr size_t kNumFeatureGroup3 = FeatureSet::NUM_SAMPLE_ARITH_INTENSITY_CURVE;
@@ -1128,11 +1129,17 @@ Array<String> PerBlockFeatureNames(const tir::PrimFunc& func, int max_num_buffer
   return {result.begin(), result.end()};
 }
 
+PrimFuncFeature CalcPerBlockFeature(const Schedule& sch, int max_num_buffer_access_features) {
+  PrimFuncFeature result;
+  CalcPerBlockFeature(sch, max_num_buffer_access_features, &result);
+  return result;
+}
+
 struct Internal {
-  static runtime::NDArray CalcPerBlockFeature(const tir::PrimFunc& func,
+  static runtime::NDArray CalcPerBlockFeature(const Schedule& sch,
                                               int max_num_buffer_access_features) {
-    static thread_local PrimFuncFeature result;
-    tvm::meta_schedule::CalcPerBlockFeature(func, max_num_buffer_access_features, &result);
+    static thread_local PrimFuncFeature result;  // persists till the program offloading
+    tvm::meta_schedule::CalcPerBlockFeature(sch, max_num_buffer_access_features, &result);
     return result.AsNDArray();
   }
 };

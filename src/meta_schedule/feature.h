@@ -19,9 +19,9 @@
 #ifndef SRC_META_SCHEDULE_FEATURE_H_
 #define SRC_META_SCHEDULE_FEATURE_H_
 
-#include <tvm/tir/function.h>
-
 #include <vector>
+
+#include "./schedule.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -34,11 +34,10 @@ class PrimFuncFeature {
   std::vector<int64_t> shape;
 };
 
-TVM_DLL void CalcPerBlockFeature(const tir::PrimFunc& func, int max_num_buffer_access_features,
-                                 PrimFuncFeature* result);
+TVM_DLL PrimFuncFeature CalcPerBlockFeature(const Schedule& sch,
+                                            int max_num_buffer_access_features);
 
-TVM_DLL Array<String> PerBlockFeatureNames(const tir::PrimFunc& func,
-                                           int max_num_buffer_access_features);
+TVM_DLL Array<String> PerBlockFeatureNames(int max_num_buffer_access_features);
 
 }  // namespace meta_schedule
 }  // namespace tvm

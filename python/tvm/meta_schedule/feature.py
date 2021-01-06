@@ -14,22 +14,20 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-""" Meta Schedule """
-from . import analysis, instruction, mutator
-from . import search_rule as rule
-from . import space, strategy
-from .auto_tune import autotune
-from .cost_model import RandomModel
-from .instruction import BlockRV, BufferRV, LoopRV
-from .measure import (
-    LocalBuilder,
-    ProgramBuilder,
-    ProgramMeasurer,
-    ProgramRunner,
-    RecordToFile,
-    RPCRunner,
-)
+"""Feature extraction interface"""
+
 from .schedule import Schedule
-from .search import SearchSpace, SearchStrategy, SearchTask
-from .trace import Trace
-from . import feature
+from . import _ffi_api
+from ..runtime.ndarray import NDArray
+
+
+def calc_per_block_feature(sch: Schedule, max_num_buffer_access_features: int = 5) -> NDArray:
+    return _ffi_api.CalcPerBlockFeature(  # pylint: disable=no-member
+        sch, max_num_buffer_access_features
+    )
+
+
+def per_bloc_feature_names(max_num_buffer_access_features: int = 5) -> NDArray:
+    return _ffi_api.PerBlockFeatureNames(  # pylint: disable=no-member
+        max_num_buffer_access_features
+    )

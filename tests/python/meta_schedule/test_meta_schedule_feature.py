@@ -14,22 +14,30 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-""" Meta Schedule """
-from . import analysis, instruction, mutator
-from . import search_rule as rule
-from . import space, strategy
-from .auto_tune import autotune
-from .cost_model import RandomModel
-from .instruction import BlockRV, BufferRV, LoopRV
-from .measure import (
-    LocalBuilder,
-    ProgramBuilder,
-    ProgramMeasurer,
-    ProgramRunner,
-    RecordToFile,
-    RPCRunner,
-)
-from .schedule import Schedule
-from .search import SearchSpace, SearchStrategy, SearchTask
-from .trace import Trace
-from . import feature
+"""Test for feature extraction"""
+# pylint: disable=missing-function-docstring
+import te_workload
+from tvm import te
+from tvm import meta_schedule as ms
+import tvm
+
+
+def test_meta_schedule_per_block_feature_cpu_matmul():
+    func = te.create_func(te_workload.matmul(512, 512, 512))
+    sch = ms.Schedule(func)
+    print(tvm.script.asscript(sch.sch.func))
+    print(ms.feature.calc_per_block_feature(sch))
+
+
+def test_meta_schedule_per_block_feature_cpu_fusion():
+    pass
+
+
+def test_meta_schedule_per_block_feature_gpu():
+    pass
+
+
+if __name__ == "__main__":
+    test_meta_schedule_per_block_feature_cpu_matmul()
+    test_meta_schedule_per_block_feature_cpu_fusion()
+    test_meta_schedule_per_block_feature_gpu()
