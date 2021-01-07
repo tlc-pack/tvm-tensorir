@@ -561,6 +561,18 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     }
     // Step 2. Extract the block vars in the parent scope
     std::unordered_map<const tir::VarNode*, PrimExpr> var_substitutes;
+    auto f_substitute = [this, &var_substitutes](const PrimExpr& expr) -> PrimExpr {
+      return analyzer_.Simplify(
+          tir::Substitute(expr, [&var_substitutes](const PrimExpr& expr) -> Optional<PrimExpr> {
+            if (const auto* var = expr.as<tir::VarNode>()) {
+              auto it = var_substitutes.find(var);
+              if (it != var_substitutes.end()) {
+                return it->second;
+              }
+            }
+            return NullOpt;
+          }));
+    };
     // Step 2.1. Substitute block vars of the parent scope to its min
     if (!scopes_.empty()) {
       const tir::BlockNode* parent_block = scopes_.back()->block.operator->();
@@ -575,28 +587,19 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       for (int i = 0; i < n; ++i) {
         const tir::Var& lhs = realize->block->iter_vars[i]->var;
         const PrimExpr& rhs = realize->binding_values[i];
-        var_substitutes[lhs.get()] = rhs;
+        var_substitutes[lhs.get()] = f_substitute(rhs);
       }
     }
     // Step 2.3. Helper to convert a TIR region into our int-set and do necessary simplification
-    auto f_make_int_set = [this, &var_substitutes](const Array<Range>& region) -> NDIntSet {
+    auto f_make_int_set = [&f_substitute](const Array<Range>& region) -> NDIntSet {
       // Helper function to do the substitution
-      auto f_sub = [&var_substitutes](const PrimExpr& expr) -> Optional<PrimExpr> {
-        if (const auto* var = expr.as<tir::VarNode>()) {
-          auto it = var_substitutes.find(var);
-          if (it != var_substitutes.end()) {
-            return it->second;
-          }
-        }
-        return NullOpt;
-      };
       int ndim = region.size();
       NDIntSet result;
       result.reserve(ndim);
       for (int i = 0; i < ndim; ++i) {
         const Range& range = region[i];
-        PrimExpr min = analyzer_.Simplify(tir::Substitute(range->min, f_sub));
-        PrimExpr max = analyzer_.Simplify(tir::Substitute(min + range->extent - 1, f_sub));
+        PrimExpr min = f_substitute(range->min);
+        PrimExpr max = f_substitute(min + range->extent - Integer(1));
         result.push_back(arith::IntSet::Interval(min, max));
       }
       return result;
@@ -644,10 +647,10 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       }
       arith::IntSet union_set = arith::Union(int_sets);
       // Update the area
-      int64_t min = Downcast<IntImm>(union_set.min())->value;
-      int64_t max = Downcast<IntImm>(union_set.max())->value;
-      if (min <= max) {
-        numel *= max - min + 1;
+      PrimExpr extent = analyzer_.Simplify(union_set.max() - union_set.min() + Integer(1));
+      int64_t i64_extent = Downcast<IntImm>(extent)->value;
+      if (i64_extent > 0) {
+        numel *= i64_extent;
       }
     }
     return numel;
@@ -710,6 +713,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       }
       return;
     }
+    total_compute_ops = compute_ops.back();  // i.e. total_compute_ops = log2(total_compute_ops)
     int p = 0;
     for (int i = 0; i < FeatureSet::NUM_SAMPLE_ARITH_INTENSITY_CURVE; ++i) {
       double& result = feature->arith_intensity_curve[i];
@@ -1138,9 +1142,10 @@ PrimFuncFeature CalcPerBlockFeature(const Schedule& sch, int max_num_buffer_acce
 struct Internal {
   static runtime::NDArray CalcPerBlockFeature(const Schedule& sch,
                                               int max_num_buffer_access_features) {
-    static thread_local PrimFuncFeature result;  // persists till the program offloading
-    tvm::meta_schedule::CalcPerBlockFeature(sch, max_num_buffer_access_features, &result);
-    return result.AsNDArray();
+    static thread_local PrimFuncFeature* result =
+        new PrimFuncFeature();  // persists till the program offloading
+    tvm::meta_schedule::CalcPerBlockFeature(sch, max_num_buffer_access_features, result);
+    return result->AsNDArray();
   }
 };
 

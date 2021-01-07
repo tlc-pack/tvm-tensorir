@@ -22,17 +22,17 @@ namespace tvm {
 namespace meta_schedule {
 
 runtime::NDArray PrimFuncFeature::AsNDArray() {
-  DLManagedTensor dl_tensor;
-  dl_tensor.dl_tensor.data = feature.data();
-  dl_tensor.dl_tensor.ctx = DLContext{kDLCPU, 0};
-  dl_tensor.dl_tensor.ndim = shape.size();
-  dl_tensor.dl_tensor.dtype = DLDataType{kDLFloat, 64, 1};
-  dl_tensor.dl_tensor.shape = shape.data();
-  dl_tensor.dl_tensor.strides = nullptr;
-  dl_tensor.dl_tensor.byte_offset = 0;
-  dl_tensor.manager_ctx = nullptr;
-  dl_tensor.deleter = nullptr;
-  return runtime::NDArray::FromDLPack(&dl_tensor);
+  static thread_local DLManagedTensor* dl_tensor = new DLManagedTensor();
+  dl_tensor->dl_tensor.data = feature.data();
+  dl_tensor->dl_tensor.ctx = DLContext{kDLCPU, 0};
+  dl_tensor->dl_tensor.ndim = shape.size();
+  dl_tensor->dl_tensor.dtype = DLDataType{kDLFloat, 64, 1};
+  dl_tensor->dl_tensor.shape = shape.data();
+  dl_tensor->dl_tensor.strides = nullptr;
+  dl_tensor->dl_tensor.byte_offset = 0;
+  dl_tensor->manager_ctx = nullptr;
+  dl_tensor->deleter = nullptr;
+  return runtime::NDArray::FromDLPack(dl_tensor);
 }
 
 }  // namespace meta_schedule
