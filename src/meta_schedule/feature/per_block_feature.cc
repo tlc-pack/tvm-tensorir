@@ -718,9 +718,11 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     }
     // Calculate `compute_ops` and `cur_compute_ops`
     std::vector<double> compute_ops;
-    double total_compute_ops = math_ops.float_mad + math_ops.float_addsub + math_ops.float_mul +
-                               math_ops.float_divmod + math_ops.float_cmp +
-                               math_ops.float_math_func + math_ops.float_other_func;
+    double total_compute_ops =
+        static_cast<double>(math_ops.float_mad + math_ops.float_addsub + math_ops.float_mul +
+                            math_ops.float_divmod + math_ops.float_cmp + math_ops.float_math_func +
+                            math_ops.float_other_func) /
+        outer_loop_prod_;
     for (int i = 0; i < n_loops; ++i) {
       int64_t extent = GetLoopIntExtent(loops[i]).value()->value;
       total_compute_ops *= extent;
@@ -877,7 +879,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
 
  private:
   static int64_t ProdLoopExtent(const std::vector<const tir::LoopNode*>& loops) {
-    int64_t prod = 1.0;
+    int64_t prod = 1;
     for (const tir::LoopNode* loop : loops) {
       prod *= GetLoopIntExtent(loop).value()->value;
     }
@@ -924,7 +926,7 @@ inline double slog(double x) {
 }
 
 #define TVM_FEATURE_ADD_ANN_ITER(s)                      \
-  slog(s.num), slog(s.num), slog(s.len), /**/            \
+  slog(s.num), slog(s.prod), slog(s.len), /**/           \
       static_cast<double>(static_cast<int>(s.pos) == 0), \
       static_cast<double>(static_cast<int>(s.pos) == 1), \
       static_cast<double>(static_cast<int>(s.pos) == 2), \

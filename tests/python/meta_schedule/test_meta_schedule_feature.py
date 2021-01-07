@@ -37,6 +37,7 @@ def test_meta_schedule_per_block_feature_cpu_matmul():
     sch.parallel(i_o)
     sch.parallel(j_o)
     sch.unroll(k)
+    print(tvm.script.asscript(sch.sch.func))
     # Extract features
     feature = ms.feature.calc_per_block_feature(sch)
     assert feature.shape == (2, n_features)
