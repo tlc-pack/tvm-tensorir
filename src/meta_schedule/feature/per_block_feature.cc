@@ -138,21 +138,23 @@ struct FeatureSet {
 
 #define TVM_FEATURE_INC_CNT(DType, FloatCounter, IntCounter) \
   if (DType.is_float()) {                                    \
-    ++result_.FloatCounter;                                  \
+    ++result_->FloatCounter;                                 \
   } else {                                                   \
-    ++result_.IntCounter;                                    \
+    ++result_->IntCounter;                                   \
   }
+
 #define TVM_FEATURE_SIMPLE(Type, Counter) \
   void VisitExpr_(const Type* op) final { \
-    ++result_.Counter;                    \
+    ++result_->Counter;                   \
     StmtExprVisitor::VisitExpr_(op);      \
   }
+
 #define TVM_FEATURE_BINARY(Type, FloatCounter, IntCounter) \
   void VisitExpr_(const Type* op) final {                  \
     if (op->dtype.is_float()) {                            \
-      ++result_.FloatCounter;                              \
+      ++result_->FloatCounter;                             \
     } else {                                               \
-      ++result_.IntCounter;                                \
+      ++result_->IntCounter;                               \
     }                                                      \
     StmtExprVisitor::VisitExpr_(op);                       \
   }
@@ -160,9 +162,15 @@ struct FeatureSet {
 class MathOpCounter : public tir::StmtExprVisitor {
  public:
   static FeatureSet::MathOps Count(const PrimExpr& expr) {
-    MathOpCounter counter;
+    FeatureSet::MathOps math_ops;
+    MathOpCounter counter(&math_ops);
     counter(expr);
-    return counter.result_;
+    return math_ops;
+  }
+
+  static void Count(const PrimExpr& expr, FeatureSet::MathOps* math_ops) {
+    MathOpCounter counter(math_ops);
+    counter(expr);
   }
 
  private:
@@ -197,7 +205,10 @@ class MathOpCounter : public tir::StmtExprVisitor {
     }
     StmtExprVisitor::VisitExpr_(op);
   }
-  FeatureSet::MathOps result_;
+
+  explicit MathOpCounter(FeatureSet::MathOps* result) : result_(result) {}
+
+  FeatureSet::MathOps* result_;
 };
 #undef TVM_FEATURE_BINARY
 #undef TVM_FEATURE_SIMPLE
@@ -274,7 +285,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
 
   void CalcComputeFeature(const tir::BlockRealizeNode* realize, FeatureSet* feature) {
     if (!scopes_.empty()) {
-      AddMathOpsToScope(feature->math_ops, scopes_.back());
+      AddMathOpsToScope(&feature->math_ops);
     }
     AddLoopFeature(&feature->vectorize, this->vectorize_);
     AddLoopFeature(&feature->parallel, this->parallel_);
@@ -288,7 +299,8 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     feature->vthread_len = FirstLoopExtent(vthread_);
   }
 
-  void AddMathOpsToScope(const FeatureSet::MathOps& math_ops, const tir::BlockRealizeNode* scope) {
+  void AddMathOpsToScope(FeatureSet::MathOps* math_ops) {
+    const tir::BlockRealizeNode* scope = scopes_.back();
     // The product of the loops up to the parent
     int64_t prod_loop_extent = 1;
     for (auto iter = dfs_path_.rbegin(); iter != dfs_path_.rend(); ++iter) {
@@ -301,7 +313,9 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     }
     // Add the math_ops to the parent
     FeatureSet::MathOps& parent_math_ops = per_block_feature[scope].math_ops;
-#define TVM_FEATURE_MATH_OP_ADD(Name) parent_math_ops.Name = math_ops.Name * prod_loop_extent
+#define TVM_FEATURE_MATH_OP_ADD(Name)                       \
+  parent_math_ops.Name = math_ops->Name * prod_loop_extent; \
+  math_ops->Name *= outer_loop_prod_
     TVM_FEATURE_MATH_OP_ADD(float_mad);
     TVM_FEATURE_MATH_OP_ADD(float_addsub);
     TVM_FEATURE_MATH_OP_ADD(float_mul);
@@ -327,12 +341,12 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       ann->num = 0;
       ann->len = 0;
       ann->prod = 0;
-      ann->pos = FeatureSet::AnnIter::Pos::kPosNone;
+      ann->pos = FeatureSet::AnnIter::Pos::kPosMixed;
     } else {
       ann->num = loops.size();
       ann->len = GetLoopIntExtent(loops.back()).value()->value;
       ann->prod = ProdLoopExtent(loops);
-      ann->pos = FeatureSet::AnnIter::Pos::kPosNone;
+      ann->pos = FeatureSet::AnnIter::Pos::kPosMixed;
     }
   }
 
@@ -848,12 +862,17 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
 
   void VisitStmt_(const tir::BufferStoreNode* store) override {
     CHECK(!scopes_.empty());
-    AddMathOpsToScope(MathOpCounter::Count(store->value), scopes_.back());
+    FeatureSet::MathOps math_ops = MathOpCounter::Count(store->value);
+    AddMathOpsToScope(&math_ops);
   }
 
   void VisitStmt_(const tir::ReduceStepNode* reduce) override {
     CHECK(!scopes_.empty());
-    AddMathOpsToScope(MathOpCounter::Count(reduce->rhs), scopes_.back());
+    FeatureSet::MathOps math_ops = MathOpCounter::Count(reduce->rhs);
+    for (const PrimExpr& expr : reduce->comm_reducer->result) {
+      MathOpCounter::Count(expr, &math_ops);
+    }
+    AddMathOpsToScope(&math_ops);
   }
 
  private:
