@@ -22,9 +22,23 @@ from ..runtime.ndarray import NDArray
 
 
 def calc_per_block_feature(sch: Schedule, max_num_buffer_access_features: int = 5) -> NDArray:
+    """Calculate the per-block feature
+
+    Parameters
+    ----------
+    sch : Schedule
+        The meta schedule class
+    max_num_buffer_access_features : int
+        The maximum number of buffer accesses
+
+    Returns
+    -------
+    scores: List[float]
+        The predicted scores for all schedules
+    """
     return _ffi_api.CalcPerBlockFeature(  # pylint: disable=no-member
         sch, max_num_buffer_access_features
-    )
+    ).asnumpy()
 
 
 def per_bloc_feature_names(max_num_buffer_access_features: int = 5) -> NDArray:

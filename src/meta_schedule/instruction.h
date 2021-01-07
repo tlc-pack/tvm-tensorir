@@ -759,6 +759,22 @@ struct VectorizeAttrs : public InstAttrsNode {
                                       "vectorize", false);
 };
 
+/*! \brief Attrs of the instruction that applies unroll */
+struct UnrollAttrs : public InstAttrsNode {
+  void VisitAttrs(tvm::AttrVisitor* v) {}
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param loop The loop to be vectorized
+   * \return The instruction created
+   */
+  static Instruction Make(const LoopRV& loop);
+
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(UnrollAttrs,                        //
+                                      "meta_schedule.attrs.UnrollAttrs",  //
+                                      "unroll", false);
+};
+
 /*! \brief Attrs of an NOP that indicates entrance of post processing */
 struct EnterPostProcAttrs : public InstAttrsNode {
   void VisitAttrs(tvm::AttrVisitor* v) {}

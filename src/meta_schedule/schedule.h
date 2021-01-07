@@ -295,6 +295,11 @@ class ScheduleNode : public Object {
    * \param loop The loop to be vectorized
    */
   void Vectorize(const LoopRV& loop);
+  /*!
+   * \brief Unroll a specific loop
+   * \param loop The loop to be unrolled
+   */
+  void Unroll(const LoopRV& loop);
   /*! \brief An NOP indicating entrance of post processing*/
   void EnterPostProc();
 };

@@ -118,6 +118,7 @@ Array<ObjectRef> InstructionNode::Deserialize(const Array<ObjectRef>& record,
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(DecomposeReductionAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(ParallelAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(VectorizeAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(UnrollAttrs),
       };
 #undef TVM_META_SCHEDULE_INST_VTABLE_ENTRY
   CHECK_GE(record.size(), 3);
@@ -429,6 +430,12 @@ Instruction VectorizeAttrs::Make(const LoopRV& loop) {
                      /*attrs=*/InstAttrs(make_object<VectorizeAttrs>()));
 }
 
+Instruction UnrollAttrs::Make(const LoopRV& loop) {
+  return Instruction(/*inputs=*/{loop},
+                     /*outputs=*/{},
+                     /*attrs=*/InstAttrs(make_object<UnrollAttrs>()));
+}
+
 Instruction EnterPostProcAttrs::Make() {
   return Instruction(/*inputs=*/{},
                      /*outputs=*/{},
@@ -707,12 +714,22 @@ Array<ObjectRef> ParallelAttrs::Apply(const Schedule& sch, const Array<ObjectRef
   sch->Parallel(loop);
   return {};
 }
+
 Array<ObjectRef> VectorizeAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
                                        const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   sch->Vectorize(loop);
+  return {};
+}
+
+Array<ObjectRef> UnrollAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                    const Optional<ObjectRef>& decision) const {
+  CHECK(!decision.defined());
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
+  sch->Unroll(loop);
   return {};
 }
 
@@ -1091,6 +1108,14 @@ void VectorizeAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
   py.Print(os);
 }
 
+void UnrollAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                           const Array<String>& outputs,
+                           const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("unroll");
+  py.AddArgInput("loop", inputs[0]);
+  py.Print(os);
+}
+
 /**************** Serialize  ****************/
 /**************** (Serialize) Sampling  ****************/
 
@@ -1305,6 +1330,7 @@ TVM_META_SCHEDULE_INST_IO_EMPTY(DecomposeReductionAttrs);
 TVM_META_SCHEDULE_INST_IO_EMPTY(EnterPostProcAttrs);
 TVM_META_SCHEDULE_INST_IO_EMPTY(ParallelAttrs);
 TVM_META_SCHEDULE_INST_IO_EMPTY(VectorizeAttrs);
+TVM_META_SCHEDULE_INST_IO_EMPTY(UnrollAttrs);
 
 #undef TVM_META_SCHEDULE_INST_Serialize_IMPORT_EMPTY
 
@@ -1344,6 +1370,7 @@ TVM_REGISTER_NODE_TYPE(DecomposeReductionAttrs);
 TVM_REGISTER_NODE_TYPE(EnterPostProcAttrs);
 TVM_REGISTER_NODE_TYPE(ParallelAttrs);
 TVM_REGISTER_NODE_TYPE(VectorizeAttrs);
+TVM_REGISTER_NODE_TYPE(UnrollAttrs);
 
 TVM_REGISTER_GLOBAL("meta_schedule.LoopRVComputeInlineRV").set_body_typed(LoopRV::ComputeInlineRV);
 TVM_REGISTER_GLOBAL("meta_schedule.LoopRVComputeRootRV").set_body_typed(LoopRV::ComputeRootRV);

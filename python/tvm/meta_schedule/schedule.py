@@ -562,3 +562,13 @@ class Schedule(Object):
             The loop to be vectorized
         """
         _ffi_api.ScheduleVectorize(self, loop)  # pylint: disable=no-member
+
+    def unroll(self, loop: LoopRV) -> None:
+        """Unroll a specific loop
+
+        Parameters
+        ----------
+        loop: LoopRV
+            The loop to be unrolled
+        """
+        _ffi_api.ScheduleUnroll(self, loop)  # pylint: disable=no-member

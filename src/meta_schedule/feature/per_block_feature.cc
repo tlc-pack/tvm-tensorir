@@ -256,11 +256,17 @@ class CoefficientExtractor : public tir::StmtExprVisitor {
 class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
  public:
   BlockRealizeMap<FeatureSet> per_block_feature;
+  std::vector<const tir::BlockRealizeNode*> ordered_blocks;
 
-  static BlockRealizeMap<FeatureSet> Extract(const tir::PrimFunc& func) {
+  static std::vector<FeatureSet> Extract(const tir::PrimFunc& func) {
     PerBlockFeatureExtractor extractor;
     extractor.VisitStmt(func->body);
-    return extractor.per_block_feature;
+    std::vector<FeatureSet> result;
+    result.reserve(extractor.ordered_blocks.size());
+    for (const tir::BlockRealizeNode* realize : extractor.ordered_blocks) {
+      result.push_back(extractor.per_block_feature.at(realize));
+    }
+    return result;
   }
 
  private:
@@ -750,6 +756,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
  private:
   /******** Visitors ********/
   void VisitStmt_(const tir::BlockRealizeNode* realize) override {
+    ordered_blocks.push_back(realize);
     scopes_.push_back(realize);
     dfs_path_.push_back(realize);
     tir::StmtExprVisitor::VisitStmt_(realize);
@@ -918,7 +925,7 @@ void CalcPerBlockFeature(const Schedule& sch, int max_num_buffer_access_features
                        kNumFeatureGroup2Subgroup * max_num_buffer_access_features +
                        kNumFeatureGroup3 + kNumFeatureGroup5;
   const tir::PrimFunc& func = sch->sch->func;
-  BlockRealizeMap<FeatureSet> feature_map = PerBlockFeatureExtractor::Extract(func);
+  std::vector<FeatureSet> feature_map = PerBlockFeatureExtractor::Extract(func);
 
   std::vector<double>& ret = prim_func_feature->feature;
   // Set up the shape of the returned feature
@@ -929,8 +936,7 @@ void CalcPerBlockFeature(const Schedule& sch, int max_num_buffer_access_features
     prim_func_feature->shape = std::vector<int64_t>(std::begin(shape), std::end(shape));
   }
 
-  for (const auto& iter : feature_map) {
-    const FeatureSet& feature = iter.second;
+  for (const FeatureSet& feature : feature_map) {
     /***** Group 1: Computation related features *****/
     double group1[] = {
         slog(feature.math_ops.float_mad),

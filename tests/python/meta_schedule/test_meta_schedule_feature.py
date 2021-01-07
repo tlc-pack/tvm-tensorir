@@ -23,10 +23,32 @@ import tvm
 
 
 def test_meta_schedule_per_block_feature_cpu_matmul():
+    names = ms.feature.per_bloc_feature_names()
+    n_features = len(names)
+    # Create schedule
     func = te.create_func(te_workload.matmul(512, 512, 512))
     sch = ms.Schedule(func)
+    block = sch.get_block("C")
+    i, j, k = sch.get_axes(block)
+    i_o, i_i = sch.split(i, factors=[32, 16])
+    j_o, j_i = sch.split(j, factors=[64, 8])
+    sch.reorder(after_axes=[i_o, j_o, k, j_i, i_i])
+    sch.vectorize(j_i)
+    sch.parallel(i_o)
+    sch.parallel(j_o)
+    sch.sch.unroll(sch.evaluate(k))
     print(tvm.script.asscript(sch.sch.func))
-    print(ms.feature.calc_per_block_feature(sch))
+
+    # feature = ms.feature.calc_per_block_feature(sch)
+    # assert feature.shape == (2, n_features)
+    # feature = feature[1]
+    # # correspond the features with their names
+    # feature_dict = {
+    #     name: value
+    #     for name, value in zip(names, feature)  # pylint: disable=unnecessary-comprehension
+    # }
+    # for name, value in feature_dict.items():
+    #     print(name, value)
 
 
 def test_meta_schedule_per_block_feature_cpu_fusion():

@@ -601,6 +601,22 @@ def test_meta_schedule_vectorize():
     _check_serialization(sch, func=matmul)
 
 
+def test_meta_schedule_unroll():
+    def check_annotation(sch, loop):
+        loop = sch.evaluate(loop).stmt
+        assert len(loop.annotations) == 1
+        (ann,) = loop.annotations
+        assert ann.attr_key == "loop_type"
+        assert ann.value == "unroll"
+
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("matmul")
+    _, _, k = sch.get_axes(block)
+    sch.unroll(k)
+    check_annotation(sch, k)
+    _check_serialization(sch, func=matmul)
+
+
 if __name__ == "__main__":
     test_meta_schedule_creation()
     test_meta_schedule_copy()
@@ -631,3 +647,4 @@ if __name__ == "__main__":
     # test_meta_schedule_decompose_reduction()
     test_meta_schedule_parallel()
     test_meta_schedule_vectorize()
+    test_meta_schedule_unroll()
