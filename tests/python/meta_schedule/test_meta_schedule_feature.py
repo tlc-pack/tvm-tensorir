@@ -36,19 +36,18 @@ def test_meta_schedule_per_block_feature_cpu_matmul():
     sch.vectorize(j_i)
     sch.parallel(i_o)
     sch.parallel(j_o)
-    sch.sch.unroll(sch.evaluate(k))
-    print(tvm.script.asscript(sch.sch.func))
-
-    # feature = ms.feature.calc_per_block_feature(sch)
-    # assert feature.shape == (2, n_features)
-    # feature = feature[1]
-    # # correspond the features with their names
-    # feature_dict = {
-    #     name: value
-    #     for name, value in zip(names, feature)  # pylint: disable=unnecessary-comprehension
-    # }
-    # for name, value in feature_dict.items():
-    #     print(name, value)
+    sch.unroll(k)
+    # Extract features
+    feature = ms.feature.calc_per_block_feature(sch)
+    assert feature.shape == (2, n_features)
+    feature = feature[1]
+    # correspond the features with their names
+    feature_dict = {
+        name: value
+        for name, value in zip(names, feature)  # pylint: disable=unnecessary-comprehension
+    }
+    for name, value in feature_dict.items():
+        print(name, value)
 
 
 def test_meta_schedule_per_block_feature_cpu_fusion():
