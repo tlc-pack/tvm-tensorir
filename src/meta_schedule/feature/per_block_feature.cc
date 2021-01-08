@@ -454,7 +454,8 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     }
     // Part 3. Reuse-related features
     for (auto& it : buffer_info) {
-      const tir::BufferNode* buffer = it.first;
+      // The `it.first` is unused:
+      //     const tir::BufferNode* buffer = it.first;
       BufferInfo& info = it.second;
       // Step 3.1. Check serial reuse
       int n_regions = info.regions.size();
@@ -510,8 +511,14 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       double& reuse_dis_bytes = info.reuse_dis_bytes = 0;
       // Calculate `reuse_dis_iter` and `reuse_dis_bytes`
       if (invariant_loop_idx == 0) {
-        reuse_dis_bytes =
-            buffer->dtype.bytes() * info.loop_accessed_numel[invariant_loop_idx].size();
+        reuse_dis_bytes = 0.0;
+        for (const auto& it : buffer_info) {
+          const tir::BufferNode* buffer = it.first;
+          const BufferInfo& info = it.second;
+          int64_t bytes = buffer->dtype.bytes();
+          int64_t n_buffer = info.loop_accessed_numel[invariant_loop_idx].size();
+          reuse_dis_bytes += bytes * n_buffer;
+        }
       } else {
         for (int i = 0; i < invariant_loop_idx; ++i) {
           reuse_dis_iter *= GetLoopIntExtent(loops[i]).value()->value;
@@ -668,8 +675,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     for (int i = 0; i < n_writes; ++i) {
       const tir::TensorRegion& region = realize->block->reads[i];
       BufferInfo& info = result[region->buffer.get()];
-      if (is_write_update[i] ||
-          info.access_type == FeatureSet::BufferAccess::AccessType::kRead) {
+      if (is_write_update[i] || info.access_type == FeatureSet::BufferAccess::AccessType::kRead) {
         info.access_type = FeatureSet::BufferAccess::AccessType::kReadWrite;
       } else {
         info.access_type = FeatureSet::BufferAccess::AccessType::kWrite;
