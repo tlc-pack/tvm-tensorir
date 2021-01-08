@@ -530,32 +530,31 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     buffer_features.reserve(buffer_info.size());
     for (const auto& iter : buffer_info) {
       const tir::BufferNode* buffer = iter.first;
-      const BufferInfo& buffer_info = iter.second;
+      const BufferInfo& info = iter.second;
       int64_t dtype_bytes = buffer->dtype.bytes();
       buffer_features.emplace_back();
       FeatureSet::BufferAccess& feature = buffer_features.back();
       feature.buffer_name = buffer->name;
-      feature.access_type = buffer_info.access_type;
-      feature.stride = buffer_info.innermost_stride;
+      feature.access_type = info.access_type;
+      feature.stride = info.innermost_stride;
       feature.bytes = dtype_bytes * outer_loop_prod_;
       if (loops.empty()) {
         feature.unique_bytes = 1;
         feature.lines = 1;
         feature.unique_lines = 1;
       } else {
-        feature.unique_bytes = buffer_info.loop_accessed_numel.back().front() * dtype_bytes;
-        double m = static_cast<double>(buffer_info.min_stride) * dtype_bytes / kCacheLineBytes;
-        feature.lines =
-            outer_loop_prod_ / buffer_info.prod_non_strided_loop_extent * std::min(1.0, m);
+        feature.unique_bytes = info.loop_accessed_numel.back().front() * dtype_bytes;
+        double m = static_cast<double>(info.min_stride) * dtype_bytes / kCacheLineBytes;
+        feature.lines = outer_loop_prod_ / info.prod_non_strided_loop_extent * std::min(1.0, m);
         feature.lines = std::max(1.0, feature.lines);
         feature.unique_lines = static_cast<double>(feature.unique_bytes) /
-                               std::min(kCacheLineBytes, buffer_info.n_continuous);
+                               std::min(kCacheLineBytes, info.n_continuous);
         feature.unique_lines = std::max(1.0, feature.unique_lines);
       }
-      feature.reuse_type = buffer_info.reuse_type;
-      feature.reuse_dis_iter = buffer_info.reuse_dis_iter;
-      feature.reuse_dis_bytes = buffer_info.reuse_dis_bytes;
-      feature.reuse_ct = buffer_info.reuse_ct;
+      feature.reuse_type = info.reuse_type;
+      feature.reuse_dis_iter = info.reuse_dis_iter;
+      feature.reuse_dis_bytes = info.reuse_dis_bytes;
+      feature.reuse_ct = info.reuse_ct;
       if (feature.reuse_ct > 0) {
         feature.bytes_d_reuse_ct =
             static_cast<double>(feature.bytes) / static_cast<double>(feature.reuse_ct);
@@ -662,20 +661,20 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
         continue;
       }
       const tir::TensorRegion& region = realize->block->reads[i];
-      BufferInfo& buffer_info = result[region->buffer.get()];
-      buffer_info.access_type = FeatureSet::BufferAccess::AccessType::kRead;
-      buffer_info.regions.push_back(f_make_int_set(region->region));
+      BufferInfo& info = result[region->buffer.get()];
+      info.access_type = FeatureSet::BufferAccess::AccessType::kRead;
+      info.regions.push_back(f_make_int_set(region->region));
     }
     for (int i = 0; i < n_writes; ++i) {
       const tir::TensorRegion& region = realize->block->reads[i];
-      BufferInfo& buffer_info = result[region->buffer.get()];
+      BufferInfo& info = result[region->buffer.get()];
       if (is_write_update[i] ||
-          buffer_info.access_type == FeatureSet::BufferAccess::AccessType::kRead) {
-        buffer_info.access_type = FeatureSet::BufferAccess::AccessType::kReadWrite;
+          info.access_type == FeatureSet::BufferAccess::AccessType::kRead) {
+        info.access_type = FeatureSet::BufferAccess::AccessType::kReadWrite;
       } else {
-        buffer_info.access_type = FeatureSet::BufferAccess::AccessType::kWrite;
+        info.access_type = FeatureSet::BufferAccess::AccessType::kWrite;
       }
-      buffer_info.regions.push_back(f_make_int_set(region->region));
+      info.regions.push_back(f_make_int_set(region->region));
     }
     return result;
   }
