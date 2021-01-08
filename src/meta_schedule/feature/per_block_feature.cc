@@ -357,6 +357,8 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
         FeatureSet::BufferAccess::AccessType::kUnknownRW;
     /*! \brief The regions that the buffer is accessed */
     Array<NDIntSet> regions = {};
+    std::vector<int64_t> access_shape;
+    int64_t n_continuous = 1;
     /*! \brief loop_accessed_numel[i][...] means the number of elements accessed by loops[i] */
     std::vector<std::vector<int64_t>> loop_accessed_numel = {};
     // Stride info
@@ -398,7 +400,9 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       for (auto& it : buffer_info) {
         const tir::BufferNode* buffer = it.first;
         BufferInfo& info = it.second;
-        int64_t numel = CalcRegionUnionSize(info.regions);
+        // Note: `info.access_shape` for `i == n_loops - 1` is the only one preserved,
+        // while others are discarded
+        int64_t numel = CalcRegionUnionSize(info.regions, &info.access_shape);
         info.loop_accessed_numel[i].push_back(numel);
         touched_bytes += numel * buffer->dtype.bytes();
       }
@@ -409,12 +413,25 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       const tir::BufferNode* buffer = it.first;
       BufferInfo& info = it.second;
       int ndim = buffer->shape.size();
+      std::vector<int64_t> buffer_shape = AsVector<PrimExpr, int64_t>()(buffer->shape);
+      // Calculate the buffer's stride from its shape
       std::vector<int64_t> buffer_stride(ndim);
       if (ndim >= 1) {
-        std::vector<int64_t> buffer_shape = AsVector<PrimExpr, int64_t>()(buffer->shape);
         buffer_stride[ndim - 1] = 1;
         for (int i = ndim - 2; i >= 0; --i) {
           buffer_stride[i] = buffer_stride[i + 1] * buffer_shape[i + 1];
+        }
+      }
+      // Calculate `n_continuous`
+      {
+        int64_t& n_continuous = info.n_continuous = 1;
+        const std::vector<int64_t>& access_shape = info.access_shape;
+        CHECK_EQ(access_shape.size(), buffer_shape.size());
+        for (int i = ndim - 1; i >= 0; --i) {
+          if (access_shape[i] == buffer_shape[i]) {
+            n_continuous *= buffer_shape[i];
+            break;
+          }
         }
       }
       // Enumerate loops from inner to outer
@@ -508,6 +525,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   void CalcBufferAccessFeature(const tir::BlockRealizeNode* realize, FeatureSet* feature_,
                                const std::vector<const tir::LoopNode*>& loops,
                                const BufferMap<BufferInfo>& buffer_info) const {
+    constexpr int64_t kCacheLineBytes = 64;
     std::vector<FeatureSet::BufferAccess>& buffer_features = feature_->buffer_accesses;
     buffer_features.reserve(buffer_info.size());
     for (const auto& iter : buffer_info) {
@@ -526,11 +544,13 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
         feature.unique_lines = 1;
       } else {
         feature.unique_bytes = buffer_info.loop_accessed_numel.back().front() * dtype_bytes;
-        double m = static_cast<double>(buffer_info.min_stride) * dtype_bytes / cache_line_bytes_;
+        double m = static_cast<double>(buffer_info.min_stride) * dtype_bytes / kCacheLineBytes;
         feature.lines =
             outer_loop_prod_ / buffer_info.prod_non_strided_loop_extent * std::min(1.0, m);
         feature.lines = std::max(1.0, feature.lines);
-        feature.unique_lines = static_cast<double>(feature.lines) / cache_line_bytes_;
+        feature.unique_lines = static_cast<double>(feature.unique_bytes) /
+                               std::min(kCacheLineBytes, buffer_info.n_continuous);
+        feature.unique_lines = std::max(1.0, feature.unique_lines);
       }
       feature.reuse_type = buffer_info.reuse_type;
       feature.reuse_dis_iter = buffer_info.reuse_dis_iter;
@@ -660,10 +680,12 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     return result;
   }
 
-  int64_t CalcRegionUnionSize(const Array<NDIntSet>& regions) const {
+  int64_t CalcRegionUnionSize(const Array<NDIntSet>& regions,
+                              std::vector<int64_t>* access_shape) const {
     if (regions.empty()) {
       return 1;
     }
+    access_shape->clear();
     int64_t numel = 1;
     int n_regions = regions.size();
     int ndim = regions[0].size();
@@ -680,6 +702,9 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       int64_t max = analyzer_.const_int_bound(union_set.max())->max_value;
       if (arith::ConstIntBound::kNegInf < min && max < arith::ConstIntBound::kPosInf) {
         numel *= max - min + 1;
+        access_shape->push_back(max - min + 1);
+      } else {
+        access_shape->push_back(1);
       }
     }
     return numel;
@@ -918,8 +943,6 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   mutable arith::Analyzer analyzer_;
   /*! \brief The product of the extents of outer loops */
   int64_t outer_loop_prod_ = 1;
-
-  static constexpr int64_t cache_line_bytes_ = 64;
 };
 
 // shifted log to incorporate the property that slog(0) = 0
