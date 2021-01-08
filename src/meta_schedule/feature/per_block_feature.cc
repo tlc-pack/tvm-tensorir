@@ -499,9 +499,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
         for (int i = 0; i < invariant_loop_idx; ++i) {
           reuse_dis_iter *= GetLoopIntExtent(loops[i]).value()->value;
         }
-        const std::vector<int64_t>& numels = info.loop_accessed_numel[invariant_loop_idx];
-        reuse_dis_bytes =
-            buffer->dtype.bytes() * std::accumulate(numels.begin(), numels.end(), int64_t(0));
+        reuse_dis_bytes = for_touched_bytes[invariant_loop_idx - 1];
       }
     }
     return buffer_info;
@@ -678,10 +676,10 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       }
       arith::IntSet union_set = arith::Union(int_sets);
       // Update the area
-      PrimExpr extent = analyzer_.Simplify(union_set.max() - union_set.min() + Integer(1));
-      int64_t i64_extent = Downcast<IntImm>(extent)->value;
-      if (i64_extent > 0) {
-        numel *= i64_extent;
+      int64_t min = analyzer_.const_int_bound(union_set.min())->min_value;
+      int64_t max = analyzer_.const_int_bound(union_set.max())->max_value;
+      if (arith::ConstIntBound::kNegInf < min && max < arith::ConstIntBound::kPosInf) {
+        numel *= max - min + 1;
       }
     }
     return numel;
