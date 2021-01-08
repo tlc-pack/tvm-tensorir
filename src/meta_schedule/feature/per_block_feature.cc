@@ -408,13 +408,24 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     for (auto& it : buffer_info) {
       const tir::BufferNode* buffer = it.first;
       BufferInfo& info = it.second;
-      std::vector<int> buffer_shape = AsVector<PrimExpr, int>()(buffer->shape);
+      int ndim = buffer->shape.size();
+      std::vector<int64_t> buffer_stride(ndim);
+      if (ndim >= 1) {
+        std::vector<int64_t> buffer_shape = AsVector<PrimExpr, int64_t>()(buffer->shape);
+        buffer_stride[ndim - 1] = 1;
+        for (int i = ndim - 2; i >= 0; --i) {
+          buffer_stride[i] = buffer_stride[i + 1] * buffer_shape[i + 1];
+        }
+      }
       // Enumerate loops from inner to outer
       int i = 0;
       // Calculate info.min_stride
       int64_t& stride = info.min_stride = 0;
-      for (; i < n_loops && stride == 0; ++i) {
-        stride = CalcVarStrideOnRegion(info.regions, buffer_shape, loops[i]->loop_var);
+      for (; i < n_loops; ++i) {
+        stride = CalcVarStrideOnRegion(info.regions, buffer_stride, loops[i]->loop_var);
+        if (stride != 0) {
+          break;
+        }
       }
       // Calculate info.innermost_stride
       info.innermost_stride = (i == 0) ? stride : 0;
@@ -677,18 +688,14 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   }
 
   static int64_t CalcVarStrideOnRegion(const Array<NDIntSet>& regions,
-                                       const std::vector<int>& shape, const tir::Var& var) {
+                                       const std::vector<int64_t>& buffer_stride,
+                                       const tir::Var& var) {
     constexpr int64_t kNotFound = std::numeric_limits<int64_t>::max();
-    int ndim = shape.size();
-    // Calculate the stride of buffer
-    std::vector<int64_t> buffer_stride(shape.begin(), shape.end());
-    for (int i = ndim - 1; i >= 1; --i) {
-      buffer_stride[i - 1] *= buffer_stride[i];
-    }
+    int ndim = buffer_stride.size();
     // Calculate the min stride possible
     int64_t result = kNotFound;
     for (const NDIntSet& region : regions) {
-      CHECK_EQ(region.size(), shape.size());
+      CHECK_EQ(region.size(), buffer_stride.size());
       // Find the rightest dimension that contains the given variable
       for (int i = ndim - 1; i >= 0; --i) {
         PrimExpr idx = region[i].min();

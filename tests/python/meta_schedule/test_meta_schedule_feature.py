@@ -48,7 +48,8 @@ def test_meta_schedule_per_block_feature_cpu_matmul():
         for name, value in zip(names, feature)  # pylint: disable=unnecessary-comprehension
     }
     for name, value in feature_dict.items():
-        print(name, value)
+        if name.startswith("B1."):
+            print(name, value)
 
 
 def test_meta_schedule_per_block_feature_cpu_fusion():

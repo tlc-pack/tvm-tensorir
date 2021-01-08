@@ -359,6 +359,19 @@ struct AsVector<TSrcObjectRef, int> {
 };
 
 template <class TSrcObjectRef>
+struct AsVector<TSrcObjectRef, int64_t> {
+  inline std::vector<int64_t> operator()(const Array<TSrcObjectRef>& vec) const {
+    std::vector<int64_t> results;
+    for (const TSrcObjectRef& x : vec) {
+      const auto* n = x.template as<IntImmNode>();
+      CHECK(n) << "TypeError: Expects IntImm, but gets: " << x->GetTypeKey();
+      results.push_back(n->value);
+    }
+    return results;
+  }
+};
+
+template <class TSrcObjectRef>
 struct AsVector<TSrcObjectRef, double> {
   inline std::vector<double> operator()(const Array<TSrcObjectRef>& array) const {
     std::vector<double> results;
