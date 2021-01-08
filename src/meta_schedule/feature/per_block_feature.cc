@@ -525,7 +525,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
         feature.lines = 1;
         feature.unique_lines = 1;
       } else {
-        feature.unique_bytes = buffer_info.loop_accessed_numel[0].front() * dtype_bytes;
+        feature.unique_bytes = buffer_info.loop_accessed_numel.back().front() * dtype_bytes;
         double m = static_cast<double>(buffer_info.min_stride) * dtype_bytes / cache_line_bytes_;
         feature.lines =
             outer_loop_prod_ / buffer_info.prod_non_strided_loop_extent * std::min(1.0, m);
