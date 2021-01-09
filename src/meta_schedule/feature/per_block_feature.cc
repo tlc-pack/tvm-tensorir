@@ -38,6 +38,23 @@ using BufferMap = std::unordered_map<const tir::BufferNode*, T>;
 
 using NDIntSet = Array<arith::IntSet>;
 
+std::ostream& operator<<(std::ostream& os, const NDIntSet& nd_int_set) {
+  os << '[';
+  bool is_first = true;
+  for (const arith::IntSet& int_set : nd_int_set) {
+    if (is_first) {
+      is_first = false;
+    } else {
+      os << ", ";
+    }
+    PrimExpr min = int_set.min();
+    PrimExpr max = int_set.max();
+    os << min << ":" << max;
+  }
+  os << ']';
+  return os;
+}
+
 struct FeatureSet {
   // Group 1: Computation related features
   struct MathOps {
@@ -254,7 +271,9 @@ class CoefficientExtractor : public tir::StmtExprVisitor {
   static int64_t Extract(const PrimExpr& expr, const tir::Var& var) {
     CoefficientExtractor extractor(var);
     extractor.VisitExpr(expr);
-    return extractor.visited_var ? extractor.stride : 0;
+    return (extractor.visited_var && !extractor.visited_mul && !extractor.visited_add)
+               ? 1
+               : (extractor.visited_var ? extractor.stride : 0);
   }
 
   const tir::Var& var;
@@ -341,7 +360,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       ann->num = 0;
       ann->len = 0;
       ann->prod = 0;
-      ann->pos = FeatureSet::AnnIter::Pos::kPosMixed;
+      ann->pos = FeatureSet::AnnIter::Pos::kPosNone;
     } else {
       ann->num = loops.size();
       ann->len = GetLoopIntExtent(loops.back()).value()->value;
@@ -358,7 +377,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     /*! \brief The regions that the buffer is accessed */
     Array<NDIntSet> regions = {};
     std::vector<int64_t> access_shape;
-    int64_t n_continuous = 1;
+    int64_t num_continuous_bytes = 1;
     /*! \brief loop_accessed_numel[i][...] means the number of elements accessed by loops[i] */
     std::vector<std::vector<int64_t>> loop_accessed_numel = {};
     // Stride info
@@ -379,7 +398,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     int n_loops = loops.size();
     std::vector<int64_t>& for_touched_bytes = *for_touched_bytes_ =
         std::vector<int64_t>(n_loops, int64_t(0));
-    BufferMap<BufferInfo> buffer_info = GatherBufferAccessInfo(realize);
+    BufferMap<BufferInfo> buffer_info = GatherBufferAccessRegion(realize);
     for (auto& it : buffer_info) {
       BufferInfo& info = it.second;
       info.loop_accessed_numel.resize(n_loops);
@@ -388,7 +407,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     // Step 1.1. we bind all the loop variables to a constant
     for (int i = 0; i < n_loops; ++i) {
       const tir::LoopNode* loop = loops[i];
-      analyzer_.Bind(loop->loop_var, loop->min);
+      analyzer_.Bind(loop->loop_var, loop->min, /*allow_override=*/true);
     }
     // Step 1.2. we gradually bind the loops from inner to outer,
     // calculate the area the loops touch on each buffer
@@ -422,14 +441,14 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
           buffer_stride[i] = buffer_stride[i + 1] * buffer_shape[i + 1];
         }
       }
-      // Calculate `n_continuous`
+      // Calculate `num_continuous_bytes`
       {
-        int64_t& n_continuous = info.n_continuous = 1;
+        int64_t& num_continuous_bytes = info.num_continuous_bytes = 1;
         const std::vector<int64_t>& access_shape = info.access_shape;
         CHECK_EQ(access_shape.size(), buffer_shape.size());
         for (int i = ndim - 1; i >= 0; --i) {
           if (access_shape[i] == buffer_shape[i]) {
-            n_continuous *= buffer_shape[i];
+            num_continuous_bytes = buffer_shape[i] * buffer->dtype.bytes();
             break;
           }
         }
@@ -555,7 +574,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
         feature.lines = outer_loop_prod_ / info.prod_non_strided_loop_extent * std::min(1.0, m);
         feature.lines = std::max(1.0, feature.lines);
         feature.unique_lines = static_cast<double>(feature.unique_bytes) /
-                               std::min(kCacheLineBytes, info.n_continuous);
+                               std::min(kCacheLineBytes, info.num_continuous_bytes);
         feature.unique_lines = std::max(1.0, feature.unique_lines);
       }
       feature.reuse_type = info.reuse_type;
@@ -581,7 +600,8 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     }
   }
 
-  BufferMap<BufferInfo> GatherBufferAccessInfo(const tir::BlockRealizeNode* realize) const {
+  BufferMap<BufferInfo> GatherBufferAccessRegion(const tir::BlockRealizeNode* realize) const {
+    arith::Analyzer analyzer;
     // Step 1. Check if each region is 'update'
     int n_reads = realize->block->reads.size();
     int n_writes = realize->block->writes.size();
@@ -600,8 +620,8 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
           // Check if `r_region` and `w_region` are exactly the same
           bool is_same = true;
           for (int i = 0; i < ndim; ++i) {
-            if (!analyzer_.CanProve(r_region[i]->min == w_region[i]->min) ||
-                !analyzer_.CanProve(r_region[i]->extent == w_region[i]->extent)) {
+            if (!analyzer.CanProve(r_region[i]->min == w_region[i]->min) ||
+                !analyzer.CanProve(r_region[i]->extent == w_region[i]->extent)) {
               is_same = false;
               break;
             }
@@ -616,8 +636,8 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     }
     // Step 2. Extract the block vars in the parent scope
     std::unordered_map<const tir::VarNode*, PrimExpr> var_substitutes;
-    auto f_substitute = [this, &var_substitutes](const PrimExpr& expr) -> PrimExpr {
-      return analyzer_.Simplify(
+    auto f_substitute = [&analyzer, &var_substitutes](const PrimExpr& expr) -> PrimExpr {
+      return analyzer.Simplify(
           tir::Substitute(expr, [&var_substitutes](const PrimExpr& expr) -> Optional<PrimExpr> {
             if (const auto* var = expr.as<tir::VarNode>()) {
               auto it = var_substitutes.find(var);
@@ -673,7 +693,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       info.regions.push_back(f_make_int_set(region->region));
     }
     for (int i = 0; i < n_writes; ++i) {
-      const tir::TensorRegion& region = realize->block->reads[i];
+      const tir::TensorRegion& region = realize->block->writes[i];
       BufferInfo& info = result[region->buffer.get()];
       if (is_write_update[i] || info.access_type == FeatureSet::BufferAccess::AccessType::kRead) {
         info.access_type = FeatureSet::BufferAccess::AccessType::kReadWrite;
@@ -888,11 +908,15 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       auto_unroll_.push_back(auto_unroll);
     }
     outer_loop_prod_ *= extent;
-    dfs_path_.push_back(loop);
-    loops_.push_back(loop);
+    if (extent != 1 || ref_loops != nullptr) {
+      dfs_path_.push_back(loop);
+      loops_.push_back(loop);
+    }
     tir::StmtExprVisitor::VisitStmt_(loop);
-    loops_.pop_back();
-    dfs_path_.pop_back();
+    if (extent != 1 || ref_loops != nullptr) {
+      loops_.pop_back();
+      dfs_path_.pop_back();
+    }
     outer_loop_prod_ /= extent;
     if (auto_unroll != -1) {
       auto_unroll_.pop_back();
