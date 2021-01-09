@@ -50,8 +50,8 @@ def test_meta_schedule_per_block_feature_cpu_matmul():
     sch = _create_schedule(n=512, m=512, k=512)
     # Extract features
     feature = ms.feature.calc_per_block_feature(sch)
-    assert feature.shape == (2, n_features)
-    feature = feature[1]
+    assert feature.shape == (1, n_features)
+    feature = feature[0]
     # correspond the features with their names
     feature_dict = {
         name: value
@@ -215,7 +215,13 @@ def test_meta_schedule_per_block_feature_cpu_fusion():
         b = te.compute((n, m), lambda i, j: a[i][j], name="B")
         c = te.compute((n, m), lambda i, j: b[i][j], name="C")
         func = te.create_func([a, b, c])
-        print(tvm.script.asscript(func))
+        sch = ms.Schedule(func)
+        block_b = sch.get_block("B")
+        block_c = sch.get_block("C")
+        _, j = sch.get_axes(block_c)
+        sch.compute_at(block_b, j)
+        print(tvm.script.asscript(sch.sch.func))
+        return sch
 
     _create_schedule(n=64, m=32)
 
@@ -225,6 +231,6 @@ def test_meta_schedule_per_block_feature_gpu():
 
 
 if __name__ == "__main__":
-    # test_meta_schedule_per_block_feature_cpu_matmul()
+    test_meta_schedule_per_block_feature_cpu_matmul()
     test_meta_schedule_per_block_feature_cpu_fusion()
     # test_meta_schedule_per_block_feature_gpu()

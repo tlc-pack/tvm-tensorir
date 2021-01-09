@@ -807,12 +807,17 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
  private:
   /******** Visitors ********/
   void VisitStmt_(const tir::BlockRealizeNode* realize) override {
-    ordered_blocks.push_back(realize);
+    if (!scopes_.empty()) {
+      ordered_blocks.push_back(realize);
+    }
     scopes_.push_back(realize);
     dfs_path_.push_back(realize);
     tir::StmtExprVisitor::VisitStmt_(realize);
     dfs_path_.pop_back();
     scopes_.pop_back();
+    if (scopes_.empty()) {
+      return;
+    }
     // Get the ancestor loops from inner to outer, up to the parent scope
     std::vector<const tir::LoopNode*> loops;
     for (auto iter = dfs_path_.rbegin(); iter != dfs_path_.rend(); ++iter) {
