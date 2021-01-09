@@ -14,14 +14,15 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Test for feature extraction"""
 # pylint: disable=missing-function-docstring
-import te_workload
-from tvm import te
-from tvm import meta_schedule as ms
-import tvm
+"""Test for feature extraction"""
 import math
+
+import te_workload
+import tvm
 from numpy.testing import assert_allclose
+from tvm import meta_schedule as ms
+from tvm import te
 
 
 def _float_equal(a: float, b: float) -> bool:
@@ -29,21 +30,24 @@ def _float_equal(a: float, b: float) -> bool:
 
 
 def test_meta_schedule_per_block_feature_cpu_matmul():
+    def _create_schedule(n, m, k):
+        func = te.create_func(te_workload.matmul(n=n, m=m, k=k))
+        sch = ms.Schedule(func)
+        block = sch.get_block("C")
+        i, j, k = sch.get_axes(block)
+        i_o, i_i = sch.split(i, factors=[32, 16])
+        j_o, j_i = sch.split(j, factors=[64, 8])
+        sch.reorder(after_axes=[i_o, j_o, k, j_i, i_i])
+        sch.vectorize(j_i)
+        sch.parallel(i_o)
+        sch.parallel(j_o)
+        sch.unroll(k)
+        return sch
+
     names = ms.feature.per_bloc_feature_names()
     n_features = len(names)
     # Create schedule
-    func = te.create_func(te_workload.matmul(512, 512, 512))
-    sch = ms.Schedule(func)
-    block = sch.get_block("C")
-    i, j, k = sch.get_axes(block)
-    i_o, i_i = sch.split(i, factors=[32, 16])
-    j_o, j_i = sch.split(j, factors=[64, 8])
-    sch.reorder(after_axes=[i_o, j_o, k, j_i, i_i])
-    sch.vectorize(j_i)
-    sch.parallel(i_o)
-    sch.parallel(j_o)
-    sch.unroll(k)
-    print(tvm.script.asscript(sch.sch.func))
+    sch = _create_schedule(n=512, m=512, k=512)
     # Extract features
     feature = ms.feature.calc_per_block_feature(sch)
     assert feature.shape == (2, n_features)
@@ -206,7 +210,14 @@ def test_meta_schedule_per_block_feature_cpu_matmul():
 
 
 def test_meta_schedule_per_block_feature_cpu_fusion():
-    pass
+    def _create_schedule(n, m):
+        a = te.placeholder((n, m), name="A")
+        b = te.compute((n, m), lambda i, j: a[i][j], name="B")
+        c = te.compute((n, m), lambda i, j: b[i][j], name="C")
+        func = te.create_func([a, b, c])
+        print(tvm.script.asscript(func))
+
+    _create_schedule(n=64, m=32)
 
 
 def test_meta_schedule_per_block_feature_gpu():
@@ -214,6 +225,6 @@ def test_meta_schedule_per_block_feature_gpu():
 
 
 if __name__ == "__main__":
-    test_meta_schedule_per_block_feature_cpu_matmul()
+    # test_meta_schedule_per_block_feature_cpu_matmul()
     test_meta_schedule_per_block_feature_cpu_fusion()
-    test_meta_schedule_per_block_feature_gpu()
+    # test_meta_schedule_per_block_feature_gpu()

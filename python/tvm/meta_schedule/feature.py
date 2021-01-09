@@ -16,9 +16,9 @@
 # under the License.
 """Feature extraction interface"""
 
-from .schedule import Schedule
-from . import _ffi_api
 from ..runtime.ndarray import NDArray
+from . import _ffi_api
+from .schedule import Schedule
 
 
 def calc_per_block_feature(sch: Schedule, max_num_buffer_access_features: int = 5) -> NDArray:
