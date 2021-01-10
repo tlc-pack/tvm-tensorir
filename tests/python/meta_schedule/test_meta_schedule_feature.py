@@ -22,7 +22,7 @@ import te_workload
 import tvm
 from numpy.testing import assert_allclose
 from tvm import meta_schedule as ms
-from tvm import te
+from tvm import te, tir
 
 
 def _float_equal(a: float, b: float) -> bool:
@@ -362,10 +362,80 @@ def test_meta_schedule_per_block_feature_cpu_fusion():
 
 
 def test_meta_schedule_per_block_feature_gpu():
-    pass
+    def _create_schedule(n, m, k):
+        func = te.create_func(te_workload.matmul(n=n, m=m, k=k))
+        sch = ms.Schedule(func)
+        c = sch.get_block("C")
+        c_local = sch.cache_write(c, 0, "local")
+        i, j, k = sch.get_axes(c_local)
+        # pylint: disable=invalid-name
+        i0, i1, i2, i3, i4 = sch.split(i, factors=[1, 1, 16, 32, 1])
+        j0, j1, j2, j3, j4 = sch.split(j, factors=[8, 4, 1, 1, 16])
+        k0, k1, k2 = sch.split(k, factors=[256, 1, 2])
+        # pylint: enable=invalid-name
+        # fmt: off
+        sch.reorder(after_axes=[
+            i0, j0,  # S
+            i1, j1,  # S
+            i2, j2,  # S
+            k0,      # R
+            k1,      # R
+            i3, j3,  # S
+            k2,      # R
+            i4, j4,  # S
+        ])
+        # fmt: on
+        sch.reverse_compute_at(c, j2)
+
+        b_shared = sch.cache_read(c_local, 2, "shared")
+        sch.compute_at(b_shared, k0)
+        _, _, _, _, _, _, _, b_i, b_j = sch.get_axes(b_shared)
+        b_ij = sch.fuse(loops=[b_i, b_j])
+        b_i, b_j = sch.split(b_ij, factors=[2, 16])
+        sch.sch.bind(
+            sch.evaluate(b_j),
+            te.thread_axis("threadIdx.x"),
+        )
+
+        a_shared = sch.cache_read(c_local, 1, "shared")
+        sch.compute_at(a_shared, k0)
+        _, _, _, _, _, _, _, a_i, a_j = sch.get_axes(a_shared)
+        a_ij = sch.fuse(loops=[a_i, a_j])
+        a_i, a_j = sch.split(a_ij, factors=[4, 16])
+        sch.sch.bind(
+            sch.evaluate(a_j),
+            te.thread_axis("threadIdx.x"),
+        )
+
+        i0_j0 = sch.fuse(loops=[i0, j0])
+        i1_j1 = sch.fuse(loops=[i1, j1])
+        i2_j2 = sch.fuse(loops=[i2, j2])
+
+        sch.sch.bind(
+            sch.evaluate(i0_j0),
+            te.thread_axis("blockIdx.x"),
+        )
+
+        sch.sch.bind(
+            sch.evaluate(i1_j1),
+            te.thread_axis("vthread"),
+        )
+
+        sch.sch.bind(
+            sch.evaluate(i2_j2),
+            te.thread_axis("threadIdx.x"),
+        )
+
+        sch.mark_loop(i0_j0, "pragma_auto_unroll_max_step", tir.IntImm("int32", 1024))
+        sch.mark_loop(i0_j0, "pragma_unroll_explicit", tir.IntImm("int32", 1))
+
+        print(tvm.script.asscript(sch.sch.func))
+        return sch
+
+    sch = _create_schedule(n=512, m=512, k=512)
 
 
 if __name__ == "__main__":
     test_meta_schedule_per_block_feature_cpu_matmul()
     test_meta_schedule_per_block_feature_cpu_fusion()
-    # test_meta_schedule_per_block_feature_gpu()
+    test_meta_schedule_per_block_feature_gpu()
