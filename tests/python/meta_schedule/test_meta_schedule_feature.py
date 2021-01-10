@@ -44,7 +44,7 @@ def test_meta_schedule_per_block_feature_cpu_matmul():
         sch.unroll(k)
         return sch
 
-    names = ms.feature.per_bloc_feature_names()
+    names = list(ms.feature.per_bloc_feature_names())
     n_features = len(names)
     # Create schedule
     sch = _create_schedule(n=512, m=512, k=512)
@@ -66,28 +66,23 @@ def test_meta_schedule_per_block_feature_cpu_matmul():
             continue
         if not _float_equal(feature_dict[name + ".acc_type.kRead"], 1.0):
             continue
-        if _float_equal(feature_dict[name + ".stride"], 0.0):
+        if _float_equal(feature_dict[name + ".stride"], 0):
             b_name = name
         else:
             a_name = name
-    # float math ops
+
     assert_allclose(
-        actual=feature[0:7],
-        desired=[0.0, 27.0, 27.0, 0.0, 0.0, 0.0, 0.0],
-        rtol=1e-5,
-        atol=1e-5,
-    )
-    # int math ops
-    assert_allclose(
-        actual=feature[7:14],
-        desired=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-        rtol=1e-5,
-        atol=1e-5,
-    )
-    # bool and select ops
-    assert_allclose(
-        actual=feature[14:16],
-        desired=[0.0, 0.0],
+        actual=feature[0:16],
+        # fmt: off
+        desired=[
+            # float math ops
+            0, 27, 27, 0, 0, 0, 0,
+            # int math ops
+            0, 0, 0, 0, 0, 0, 0,
+            # bool/select ops
+            0, 0,
+        ],
+        # fmt: on
         rtol=1e-5,
         atol=1e-5,
     )
@@ -202,7 +197,7 @@ def test_meta_schedule_per_block_feature_cpu_matmul():
         desired=[
             27,  # outer_prod
             2.58496,  # num_loops
-            0.0,  # auto_unroll_max_step
+            0,  # auto_unroll_max_step
         ],
         rtol=1e-5,
         atol=1e-5,
@@ -220,10 +215,150 @@ def test_meta_schedule_per_block_feature_cpu_fusion():
         block_c = sch.get_block("C")
         _, j = sch.get_axes(block_c)
         sch.compute_at(block_b, j)
-        print(tvm.script.asscript(sch.sch.func))
         return sch
 
-    _create_schedule(n=64, m=32)
+    names = list(ms.feature.per_bloc_feature_names())
+    n_features = len(names)
+    # Create schedule
+    sch = _create_schedule(n=64, m=32)
+    # Extract features
+    feature = ms.feature.calc_per_block_feature(sch)
+    assert feature.shape == (2, n_features)
+
+    def _check_feature(feature, read_is_serial_reuse):
+        # float/int/bool/select ops
+        assert_allclose(
+            actual=feature[0:16],
+            desired=[0] * 16,
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        # vectorize
+        assert_allclose(
+            actual=feature[16:27],
+            desired=[0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        # unroll
+        assert_allclose(
+            actual=feature[27:38],
+            desired=[0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        # parallel
+        assert_allclose(
+            actual=feature[38:49],
+            desired=[0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        # blockIdx / threadIdx / vthread
+        assert_allclose(
+            actual=feature[49:56],
+            desired=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        buffer_feature_dict = {
+            "B0": feature[56:74],
+            "B1": feature[74:92],
+            "B2": feature[92:110],
+            "B3": feature[110:128],
+            "B4": feature[128:146],
+        }
+        r_name = None
+        w_name = None
+        for name in ["B0", "B1"]:
+            k_read = feature[names.index(name + ".acc_type.kRead")]
+            k_write = feature[names.index(name + ".acc_type.kWrite")]
+            if _float_equal(k_read, 1.0) and _float_equal(k_write, 0.0):
+                r_name = name
+            elif _float_equal(k_read, 0.0) and _float_equal(k_write, 1.0):
+                w_name = name
+        # features for the read buffer
+        assert_allclose(
+            actual=buffer_feature_dict[w_name],
+            # fmt: off
+            desired=[
+                0.0, 1.0, 0.0, 13.000176, 13.000176, 7.011227, 7.011227,
+                0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
+                14.0000877, 14.0000877, 8.0056, 8.0056, 1.0,
+            ],
+            # fmt: on
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        if read_is_serial_reuse:
+            assert_allclose(
+                actual=buffer_feature_dict[r_name],
+                # fmt: off
+                desired=[
+                    1, 0, 0, 13.000176, 13.000176, 7.0112271, 7.0112271,
+                    0, 1, 0, 1, 4.087463, 1,
+                    13.000176, 13.000176, 7.0112271, 7.0112271, 1,
+                ],
+                # fmt: on
+                rtol=1e-5,
+                atol=1e-5,
+            )
+        else:
+            assert_allclose(
+                actual=buffer_feature_dict[r_name],
+                # fmt: off
+                desired=[
+                    1, 0, 0, 13.000176, 13.000176, 7.011227, 7.011227,
+                    0, 0, 1, 0, 0, 0,
+                    14.0000877, 14.0000877, 8.0056, 8.0056, 1,
+                ],
+                # fmt: on
+                rtol=1e-5,
+                atol=1e-5,
+            )
+
+        # an empty buffer "B2"
+        assert_allclose(
+            actual=buffer_feature_dict["B2"],
+            desired=[0] * 18,
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        # an empty buffer "B3"
+        assert_allclose(
+            actual=buffer_feature_dict["B3"],
+            desired=[0] * 18,
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        # an empty buffer "B4"
+        assert_allclose(
+            actual=buffer_feature_dict["B4"],
+            desired=[0] * 18,
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        # arith intensity curve
+        assert_allclose(
+            actual=feature[146:156],
+            desired=[0] * 10,
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        # misc
+        assert_allclose(
+            actual=feature[156:159],
+            desired=[
+                11.000703811645508,  # outer_prod
+                1.5849624872207642,  # num_loops
+                0,  # auto_unroll_max_step
+            ],
+            rtol=1e-5,
+            atol=1e-5,
+        )
+
+    _check_feature(feature[0], read_is_serial_reuse=False)
+    _check_feature(feature[1], read_is_serial_reuse=True)
 
 
 def test_meta_schedule_per_block_feature_gpu():

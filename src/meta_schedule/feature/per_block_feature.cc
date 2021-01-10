@@ -30,11 +30,11 @@
 namespace tvm {
 namespace meta_schedule {
 
-template <class T>
-using BlockRealizeMap = std::unordered_map<const tir::BlockRealizeNode*, T>;
+template <class K, class V>
+using ObjMap = std::unordered_map<const K*, V>;
 
-template <class T>
-using BufferMap = std::unordered_map<const tir::BufferNode*, T>;
+template <class K1, class K2, class V>
+using ObjPairMap = ObjMap<K1, ObjMap<K2, V>>;
 
 using NDIntSet = Array<arith::IntSet>;
 
@@ -285,16 +285,13 @@ class CoefficientExtractor : public tir::StmtExprVisitor {
 
 class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
  public:
-  BlockRealizeMap<FeatureSet> per_block_feature;
-  std::vector<const tir::BlockRealizeNode*> ordered_blocks;
-
   static std::vector<FeatureSet> Extract(const tir::PrimFunc& func) {
     PerBlockFeatureExtractor extractor;
     extractor.VisitStmt(func->body);
     std::vector<FeatureSet> result;
-    result.reserve(extractor.ordered_blocks.size());
-    for (const tir::BlockRealizeNode* realize : extractor.ordered_blocks) {
-      result.push_back(extractor.per_block_feature.at(realize));
+    result.reserve(extractor.ordered_blocks_.size());
+    for (const tir::BlockRealizeNode* realize : extractor.ordered_blocks_) {
+      result.push_back(extractor.per_block_feature_.at(realize));
     }
     return result;
   }
@@ -331,7 +328,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       prod_loop_extent *= GetLoopIntExtent(static_cast<const tir::LoopNode*>(stmt)).value()->value;
     }
     // Add the math_ops to the parent
-    FeatureSet::MathOps& parent_math_ops = per_block_feature[scope].math_ops;
+    FeatureSet::MathOps& parent_math_ops = per_block_feature_[scope].math_ops;
 #define TVM_FEATURE_MATH_OP_ADD(Name)                       \
   parent_math_ops.Name = math_ops->Name * prod_loop_extent; \
   math_ops->Name *= outer_loop_prod_
@@ -390,15 +387,16 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     double reuse_dis_bytes = 0.0;
     int64_t reuse_ct = 0;
   };
+  using BufferInfoMap = ObjMap<tir::BufferNode, BufferInfo>;
 
-  BufferMap<BufferInfo> CalcBufferInfo(const tir::BlockRealizeNode* realize,
-                                       const std::vector<const tir::LoopNode*>& loops,
-                                       std::vector<int64_t>* for_touched_bytes_) const {
+  BufferInfoMap CalcBufferInfo(const tir::BlockRealizeNode* realize,
+                               const std::vector<const tir::LoopNode*>& loops,
+                               std::vector<int64_t>* for_touched_bytes_) {
     // Initialize the data structures used for the features
     int n_loops = loops.size();
     std::vector<int64_t>& for_touched_bytes = *for_touched_bytes_ =
         std::vector<int64_t>(n_loops, int64_t(0));
-    BufferMap<BufferInfo> buffer_info = GatherBufferAccessRegion(realize);
+    BufferInfoMap buffer_info = GatherBufferAccessRegion(realize);
     for (auto& it : buffer_info) {
       BufferInfo& info = it.second;
       info.loop_accessed_numel.resize(n_loops);
@@ -424,6 +422,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
         int64_t numel = CalcRegionUnionSize(info.regions, &info.access_shape);
         info.loop_accessed_numel[i].push_back(numel);
         touched_bytes += numel * buffer->dtype.bytes();
+        buffer_touched_under_loop_[loop][buffer].push_back(numel);
       }
     }
     // Part 2. Stride-related features
@@ -473,28 +472,15 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     }
     // Part 3. Reuse-related features
     for (auto& it : buffer_info) {
-      // The `it.first` is unused:
-      //     const tir::BufferNode* buffer = it.first;
+      const tir::BufferNode* buffer = it.first;
       BufferInfo& info = it.second;
-      // Step 3.1. Check serial reuse
-      int n_regions = info.regions.size();
-      if (n_regions >= 2 && n_loops > 0) {
-        // Serial reuse
-        constexpr int i = 0;
-        const tir::LoopNode* loop = loops[i];
-        const std::vector<int64_t>& numels = info.loop_accessed_numel[i];
-        int64_t loop_extent = GetLoopIntExtent(loop).value()->value;
-        double reuse_dis_iter = numels.empty()  //
-                                    ? 1         //
-                                    : *std::min_element(numels.begin(), numels.end());
-        double reuse_dis_bytes = for_touched_bytes[i];
-        info.reuse_type = FeatureSet::BufferAccess::ReuseType::kSerialMultipleReadWrite;
-        info.reuse_dis_iter = reuse_dis_iter / loop_extent;
-        info.reuse_dis_bytes = reuse_dis_bytes / loop_extent;
-        info.reuse_ct = n_regions - 1;
-        continue;
-      }
-      // Step 3.2. Collect all `tir::Var`s that appears in the buffer region
+      // Default case: no reuse
+      FeatureSet::BufferAccess::ReuseType& reuse_type = info.reuse_type =
+          FeatureSet::BufferAccess::ReuseType::kNoReuse;
+      double& reuse_dis_iter = info.reuse_dis_iter = 0;
+      double& reuse_dis_bytes = info.reuse_dis_bytes = 0;
+      int64_t& reuse_ct = info.reuse_ct = 0;
+      // Step 3.1. Collect all `tir::Var`s that appears in the buffer region
       std::unordered_set<const tir::VarNode*> region_vars;
       for (const NDIntSet& region : info.regions) {
         for (const arith::IntSet& int_set : region) {
@@ -505,44 +491,50 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
           });
         }
       }
-      // Step 3.3. Find the innermost loop that does not determine the buffer region
-      // i.e. detect reuse on each iteration of a loop
-      int invariant_loop_idx = -1;
+      // Step 3.2. Enumerate loops from inner to outer, find the first loop with reuse
       for (int i = 0; i < n_loops; ++i) {
-        if (!region_vars.count(loops[i]->loop_var.get())) {
-          invariant_loop_idx = i;
+        const tir::LoopNode* loop = loops[i];
+        // Case 1. Find an invariant loop, i.e. reuse with kLoopMultipleRead
+        if (!region_vars.count(loop->loop_var.get())) {
+          reuse_type = FeatureSet::BufferAccess::ReuseType::kLoopMultipleRead;
+          reuse_ct = GetLoopIntExtent(loop).value()->value;
+          if (i == 0) {
+            reuse_dis_iter = 1;
+            reuse_dis_bytes = 0.0;
+            for (const auto& it : buffer_info) {
+              const tir::BufferNode* buffer = it.first;
+              const BufferInfo& info = it.second;
+              int64_t bytes = buffer->dtype.bytes();
+              int64_t n_buffer = info.loop_accessed_numel[i].size();
+              reuse_dis_bytes += bytes * n_buffer;
+            }
+          } else {
+            reuse_dis_iter = 1;
+            for (int j = 0; j < i; ++j) {
+              reuse_dis_iter *= GetLoopIntExtent(loops[j]).value()->value;
+            }
+            reuse_dis_bytes = for_touched_bytes[i - 1];
+          }
           break;
         }
-      }
-      // The region depends on all the loops, i.e. there is no reuse
-      if (invariant_loop_idx == -1) {
-        info.reuse_type = FeatureSet::BufferAccess::ReuseType::kNoReuse;
-        info.reuse_dis_iter = 0;
-        info.reuse_dis_bytes = 0;
-        info.reuse_ct = 0;
-        continue;
-      }
-      // Step 3.4. There is loop reuse at `invariant_loop_idx`, i.e. reuse detected
-      const tir::LoopNode* loop = loops[invariant_loop_idx];
-      info.reuse_type = FeatureSet::BufferAccess::ReuseType::kLoopMultipleRead;
-      info.reuse_ct = GetLoopIntExtent(loop).value()->value;
-      double& reuse_dis_iter = info.reuse_dis_iter = 1;
-      double& reuse_dis_bytes = info.reuse_dis_bytes = 0;
-      // Calculate `reuse_dis_iter` and `reuse_dis_bytes`
-      if (invariant_loop_idx == 0) {
-        reuse_dis_bytes = 0.0;
-        for (const auto& it : buffer_info) {
-          const tir::BufferNode* buffer = it.first;
-          const BufferInfo& info = it.second;
-          int64_t bytes = buffer->dtype.bytes();
-          int64_t n_buffer = info.loop_accessed_numel[invariant_loop_idx].size();
-          reuse_dis_bytes += bytes * n_buffer;
+        // Case 2. Find serial reuse, i.e. reuse with kSerialMultipleReadWrite
+        const std::vector<int64_t>& touched = buffer_touched_under_loop_[loop][buffer];
+        if (touched.size() >= 2) {
+          int64_t extent = GetLoopIntExtent(loop).value()->value;
+          reuse_type = FeatureSet::BufferAccess::ReuseType::kSerialMultipleReadWrite;
+          reuse_ct = touched.size() - 1;
+          reuse_dis_iter = *std::min_element(touched.begin(), touched.end());
+          reuse_dis_iter /= extent;
+          reuse_dis_bytes = 0.0;
+          for (const auto& iter : buffer_touched_under_loop_[loop]) {
+            const tir::BufferNode* buffer = iter.first;
+            const std::vector<int64_t>& numels = iter.second;
+            int64_t numel = std::accumulate(numels.begin(), numels.end(), int64_t(0));
+            reuse_dis_bytes += numel * buffer->dtype.bytes();
+          }
+          reuse_dis_bytes /= extent;
+          break;
         }
-      } else {
-        for (int i = 0; i < invariant_loop_idx; ++i) {
-          reuse_dis_iter *= GetLoopIntExtent(loops[i]).value()->value;
-        }
-        reuse_dis_bytes = for_touched_bytes[invariant_loop_idx - 1];
       }
     }
     return buffer_info;
@@ -550,7 +542,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
 
   void CalcBufferAccessFeature(const tir::BlockRealizeNode* realize, FeatureSet* feature_,
                                const std::vector<const tir::LoopNode*>& loops,
-                               const BufferMap<BufferInfo>& buffer_info) const {
+                               const BufferInfoMap& buffer_info) const {
     constexpr int64_t kCacheLineBytes = 64;
     std::vector<FeatureSet::BufferAccess>& buffer_features = feature_->buffer_accesses;
     buffer_features.reserve(buffer_info.size());
@@ -600,7 +592,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     }
   }
 
-  BufferMap<BufferInfo> GatherBufferAccessRegion(const tir::BlockRealizeNode* realize) const {
+  BufferInfoMap GatherBufferAccessRegion(const tir::BlockRealizeNode* realize) const {
     arith::Analyzer analyzer;
     // Step 1. Check if each region is 'update'
     int n_reads = realize->block->reads.size();
@@ -680,7 +672,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       return result;
     };
     // Step 3. Apply the substitution to each tensor region
-    BufferMap<BufferInfo> result;
+    BufferInfoMap result;
     result.reserve(realize->block->reads.size() + realize->block->writes.size());
     for (int i = 0; i < n_reads; ++i) {
       // Skip those update regions
@@ -828,7 +820,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   /******** Visitors ********/
   void VisitStmt_(const tir::BlockRealizeNode* realize) override {
     if (!scopes_.empty()) {
-      ordered_blocks.push_back(realize);
+      ordered_blocks_.push_back(realize);
     }
     scopes_.push_back(realize);
     dfs_path_.push_back(realize);
@@ -848,12 +840,12 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
         break;
       }
     }
-    FeatureSet& feature = per_block_feature[realize];
+    FeatureSet& feature = per_block_feature_[realize];
     // Group 1: Computation related features
     CalcComputeFeature(realize, &feature);
     // Group 2: Buffer access related features
     std::vector<int64_t> for_touched_bytes;
-    BufferMap<BufferInfo> buffer_info = CalcBufferInfo(realize, loops, &for_touched_bytes);
+    BufferInfoMap buffer_info = CalcBufferInfo(realize, loops, &for_touched_bytes);
     CalcBufferAccessFeature(realize, &feature, loops, buffer_info);
     // Group 3: Arithmetic intensity related features
     CalcAritheticIntensityFeature(realize, &feature, loops, for_touched_bytes, feature.math_ops);
@@ -977,6 +969,16 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   mutable arith::Analyzer analyzer_;
   /*! \brief The product of the extents of outer loops */
   int64_t outer_loop_prod_ = 1;
+  /*!
+   * \brief For a specific buffer, record the regions it is acccessed under a specific loop.
+   * The information is preserved across different blocks and is used for detecting serial buffer
+   * reuse
+   */
+  ObjPairMap<tir::LoopNode, tir::BufferNode, std::vector<int64_t>> buffer_touched_under_loop_;
+  /*! \brief The output: features for each BlockRealizeNode */
+  ObjMap<tir::BlockRealizeNode, FeatureSet> per_block_feature_;
+  /*! \brief The pre-order visit order of all the BlockRealizeNodes */
+  std::vector<const tir::BlockRealizeNode*> ordered_blocks_;
 };
 
 // shifted log to incorporate the property that slog(0) = 0
