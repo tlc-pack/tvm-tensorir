@@ -572,3 +572,15 @@ class Schedule(Object):
             The loop to be unrolled
         """
         _ffi_api.ScheduleUnroll(self, loop)  # pylint: disable=no-member
+
+    def bind(self, loop: LoopRV, thread_axis: str) -> None:
+        """Bind a thread_axis to a specific loop
+
+        Parameters
+        ----------
+        loop: LoopRV
+            The loop to be bound
+        thread_axis: str
+            The thread axis to be bound to the loop
+        """
+        _ffi_api.ScheduleBind(self, loop, thread_axis)  # pylint: disable=no-member

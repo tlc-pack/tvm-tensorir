@@ -300,6 +300,12 @@ class ScheduleNode : public Object {
    * \param loop The loop to be unrolled
    */
   void Unroll(const LoopRV& loop);
+  /*!
+   * \brief Bind a thread_axis to a specific loop
+   * \param loop The loop to be unrolled
+   * \param thread_axis The thread axis to be bound to the loop
+   */
+  void Bind(const LoopRV& loop, const String& thread_axis);
   /*! \brief An NOP indicating entrance of post processing*/
   void EnterPostProc();
 };

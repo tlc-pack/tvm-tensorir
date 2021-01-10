@@ -387,49 +387,30 @@ def test_meta_schedule_per_block_feature_gpu():
         # fmt: on
         sch.reverse_compute_at(c, j2)
 
-        b_shared = sch.cache_read(c_local, 2, "shared")
-        sch.compute_at(b_shared, k0)
-        _, _, _, _, _, _, _, b_i, b_j = sch.get_axes(b_shared)
-        b_ij = sch.fuse(loops=[b_i, b_j])
-        b_i, b_j = sch.split(b_ij, factors=[2, 16])
-        sch.sch.bind(
-            sch.evaluate(b_j),
-            te.thread_axis("threadIdx.x"),
-        )
-
         a_shared = sch.cache_read(c_local, 1, "shared")
         sch.compute_at(a_shared, k0)
         _, _, _, _, _, _, _, a_i, a_j = sch.get_axes(a_shared)
         a_ij = sch.fuse(loops=[a_i, a_j])
-        a_i, a_j = sch.split(a_ij, factors=[4, 16])
-        sch.sch.bind(
-            sch.evaluate(a_j),
-            te.thread_axis("threadIdx.x"),
-        )
+        _, a_j = sch.split(a_ij, factors=[4, 16])
+        sch.bind(a_j, "threadIdx.x")
+
+        b_shared = sch.cache_read(c_local, 2, "shared")
+        sch.compute_at(b_shared, k0)
+        _, _, _, _, _, _, _, b_i, b_j = sch.get_axes(b_shared)
+        b_ij = sch.fuse(loops=[b_i, b_j])
+        _, b_j = sch.split(b_ij, factors=[2, 16])
+        sch.bind(b_j, "threadIdx.x")
 
         i0_j0 = sch.fuse(loops=[i0, j0])
         i1_j1 = sch.fuse(loops=[i1, j1])
         i2_j2 = sch.fuse(loops=[i2, j2])
 
-        sch.sch.bind(
-            sch.evaluate(i0_j0),
-            te.thread_axis("blockIdx.x"),
-        )
-
-        sch.sch.bind(
-            sch.evaluate(i1_j1),
-            te.thread_axis("vthread"),
-        )
-
-        sch.sch.bind(
-            sch.evaluate(i2_j2),
-            te.thread_axis("threadIdx.x"),
-        )
-
+        sch.bind(i0_j0, "blockIdx.x")
+        sch.bind(i1_j1, "vthread")
+        sch.bind(i2_j2, "threadIdx.x")
         sch.mark_loop(i0_j0, "pragma_auto_unroll_max_step", tir.IntImm("int32", 1024))
         sch.mark_loop(i0_j0, "pragma_unroll_explicit", tir.IntImm("int32", 1))
 
-        print(tvm.script.asscript(sch.sch.func))
         return sch
 
     sch = _create_schedule(n=512, m=512, k=512)

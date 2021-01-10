@@ -775,6 +775,24 @@ struct UnrollAttrs : public InstAttrsNode {
                                       "unroll", false);
 };
 
+/*! \brief Attrs of the instruction that applies unroll */
+struct BindAttrs : public InstAttrsNode {
+  String thread_axis;
+
+  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("thread_axis", &thread_axis); }
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param loop The loop to be vectorized
+   * \return The instruction created
+   */
+  static Instruction Make(const LoopRV& loop, const String& thread_axis);
+
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(BindAttrs,                        //
+                                      "meta_schedule.attrs.BindAttrs",  //
+                                      "bind", false);
+};
+
 /*! \brief Attrs of an NOP that indicates entrance of post processing */
 struct EnterPostProcAttrs : public InstAttrsNode {
   void VisitAttrs(tvm::AttrVisitor* v) {}

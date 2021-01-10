@@ -119,6 +119,8 @@ Array<ObjectRef> InstructionNode::Deserialize(const Array<ObjectRef>& record,
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(ParallelAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(VectorizeAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(UnrollAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(BindAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(EnterPostProcAttrs),
       };
 #undef TVM_META_SCHEDULE_INST_VTABLE_ENTRY
   CHECK_GE(record.size(), 3);
@@ -436,6 +438,14 @@ Instruction UnrollAttrs::Make(const LoopRV& loop) {
                      /*attrs=*/InstAttrs(make_object<UnrollAttrs>()));
 }
 
+Instruction BindAttrs::Make(const LoopRV& loop, const String& thread_axis) {
+  ObjectPtr<BindAttrs> n = make_object<BindAttrs>();
+  n->thread_axis = thread_axis;
+  return Instruction(/*inputs=*/{loop},
+                     /*outputs=*/{},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
 Instruction EnterPostProcAttrs::Make() {
   return Instruction(/*inputs=*/{},
                      /*outputs=*/{},
@@ -730,6 +740,15 @@ Array<ObjectRef> UnrollAttrs::Apply(const Schedule& sch, const Array<ObjectRef>&
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   sch->Unroll(loop);
+  return {};
+}
+
+Array<ObjectRef> BindAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                  const Optional<ObjectRef>& decision) const {
+  CHECK(!decision.defined());
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
+  sch->Bind(loop, thread_axis);
   return {};
 }
 
@@ -1086,12 +1105,6 @@ void DecomposeReductionAttrs::AsPython(std::ostream& os, const Array<String>& in
   py.Print(os);
 }
 
-void EnterPostProcAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
-                                  const Array<String>& outputs,
-                                  const Optional<ObjectRef>& decision) const {
-  os << "# Postprocessing";
-}
-
 void ParallelAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                              const Array<String>& outputs,
                              const Optional<ObjectRef>& decision) const {
@@ -1114,6 +1127,20 @@ void UnrollAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
   PythonAPICall py("unroll");
   py.AddArgInput("loop", inputs[0]);
   py.Print(os);
+}
+
+void BindAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                         const Array<String>& outputs, const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("bind");
+  py.AddArgInput("loop", inputs[0]);
+  py.AddArgAttr("thread_axis", this->thread_axis);
+  py.Print(os);
+}
+
+void EnterPostProcAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                                  const Array<String>& outputs,
+                                  const Optional<ObjectRef>& decision) const {
+  os << "# Postprocessing";
 }
 
 /**************** Serialize  ****************/
@@ -1171,33 +1198,38 @@ void GetBlockAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef
 
 void MarkLoopAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(ann_key);
-  record->push_back(ann_val);
+  record->push_back(this->ann_key);
+  record->push_back(this->ann_val);
 }
 
 void MarkBlockAttrs::Serialize(Array<ObjectRef>* record,
                                const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(ann_key);
+  record->push_back(this->ann_key);
 }
 
 void CacheReadAttrs::Serialize(Array<ObjectRef>* record,
                                const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   record->push_back(Integer(i));
-  record->push_back(storage_scope);
+  record->push_back(this->storage_scope);
 }
 
 void CacheWriteAttrs::Serialize(Array<ObjectRef>* record,
                                 const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   record->push_back(Integer(i));
-  record->push_back(storage_scope);
+  record->push_back(this->storage_scope);
 }
 
 void BlockizeAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
-  record->push_back(exec_scope);
+  record->push_back(this->exec_scope);
+}
+
+void BindAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
+  CHECK(!decision.defined());
+  record->push_back(this->thread_axis);
 }
 
 /**************** Deserialize  ****************/
@@ -1301,6 +1333,12 @@ InstAttrs BlockizeAttrs::Deserialize(const Array<ObjectRef>& record,
   return InstAttrs(std::move(n));
 }
 
+InstAttrs BindAttrs::Deserialize(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {
+  ObjectPtr<BindAttrs> n = make_object<BindAttrs>();
+  n->thread_axis = Downcast<String>(record[3]);
+  return InstAttrs(std::move(n));
+}
+
 /**************** Deserialize/Serialize for empty instructions ****************/
 
 #define TVM_META_SCHEDULE_INST_IO_EMPTY(AttrsType)                                                 \
@@ -1367,10 +1405,11 @@ TVM_REGISTER_NODE_TYPE(CacheReadAttrs);
 TVM_REGISTER_NODE_TYPE(CacheWriteAttrs);
 TVM_REGISTER_NODE_TYPE(BlockizeAttrs);
 TVM_REGISTER_NODE_TYPE(DecomposeReductionAttrs);
-TVM_REGISTER_NODE_TYPE(EnterPostProcAttrs);
 TVM_REGISTER_NODE_TYPE(ParallelAttrs);
 TVM_REGISTER_NODE_TYPE(VectorizeAttrs);
 TVM_REGISTER_NODE_TYPE(UnrollAttrs);
+TVM_REGISTER_NODE_TYPE(BindAttrs);
+TVM_REGISTER_NODE_TYPE(EnterPostProcAttrs);
 
 TVM_REGISTER_GLOBAL("meta_schedule.LoopRVComputeInlineRV").set_body_typed(LoopRV::ComputeInlineRV);
 TVM_REGISTER_GLOBAL("meta_schedule.LoopRVComputeRootRV").set_body_typed(LoopRV::ComputeRootRV);
