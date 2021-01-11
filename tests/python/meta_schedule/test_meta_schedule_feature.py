@@ -385,38 +385,173 @@ def test_meta_schedule_per_block_feature_gpu():
             i4, j4,  # S
         ])
         # fmt: on
-        sch.reverse_compute_at(c, j2)
-
-        a_shared = sch.cache_read(c_local, 1, "shared")
-        sch.compute_at(a_shared, k0)
-        _, _, _, _, _, _, _, a_i, a_j = sch.get_axes(a_shared)
-        a_ij = sch.fuse(loops=[a_i, a_j])
-        _, a_j = sch.split(a_ij, factors=[4, 16])
-        sch.bind(a_j, "threadIdx.x")
-
-        b_shared = sch.cache_read(c_local, 2, "shared")
-        sch.compute_at(b_shared, k0)
-        _, _, _, _, _, _, _, b_i, b_j = sch.get_axes(b_shared)
-        b_ij = sch.fuse(loops=[b_i, b_j])
-        _, b_j = sch.split(b_ij, factors=[2, 16])
-        sch.bind(b_j, "threadIdx.x")
-
+        # thread binding
         i0_j0 = sch.fuse(loops=[i0, j0])
         i1_j1 = sch.fuse(loops=[i1, j1])
         i2_j2 = sch.fuse(loops=[i2, j2])
-
         sch.bind(i0_j0, "blockIdx.x")
         sch.bind(i1_j1, "vthread")
         sch.bind(i2_j2, "threadIdx.x")
+        # fusion
+        sch.reverse_compute_at(c, i2_j2)
+        # cache read 'B'
+        b_shared = sch.cache_read(c_local, 2, "shared")
+        sch.compute_at(b_shared, k0)
+        _, _, _, _, b_i, b_j = sch.get_axes(b_shared)
+        b_ij = sch.fuse(loops=[b_i, b_j])
+        _, b_j = sch.split(b_ij, factors=[8, 16])
+        sch.bind(b_j, "threadIdx.x")
+        # cache read 'A'
+        a_shared = sch.cache_read(c_local, 1, "shared")
+        sch.compute_at(a_shared, k0)
+        _, _, _, _, a_i, a_j = sch.get_axes(a_shared)
+        a_ij = sch.fuse(loops=[a_i, a_j])
+        _, a_j = sch.split(a_ij, factors=[64, 16])
+        sch.bind(a_j, "threadIdx.x")
+        # auto unroll
         sch.mark_loop(i0_j0, "pragma_auto_unroll_max_step", tir.IntImm("int32", 1024))
         sch.mark_loop(i0_j0, "pragma_unroll_explicit", tir.IntImm("int32", 1))
-
+        print(tvm.script.asscript(sch.sch.func))
         return sch
 
+    names = list(ms.feature.per_bloc_feature_names())
+    n_features = len(names)
+    # Create schedule
     sch = _create_schedule(n=512, m=512, k=512)
+    # Extract features
+    feature = ms.feature.calc_per_block_feature(sch)
+    assert feature.shape == (4, n_features)
+
+    def _display(feature):
+        fea_dict = {}
+        for name, value in zip(names, feature):
+            fea_dict[name] = value
+        for name, value in fea_dict.items():
+            print(name, value)
+
+    def _check_gpu_threads(feature):
+        # blockIdx / threadIdx / vthread
+        assert_allclose(
+            actual=feature[49:56],
+            desired=[3.169925001442312, 1.0, 1.0, 4.087462841250339, 1.0, 1.0, 2.321928094887362],
+            rtol=1e-5,
+            atol=1e-5,
+        )
+
+    def _is_read(feature, buffer_name):
+        result = feature[names.index(buffer_name + ".acc_type.kRead")]
+        return _float_equal(result, 1.0)
+
+    def _is_write(feature, buffer_name):
+        result = feature[names.index(buffer_name + ".acc_type.kWrite")]
+        return _float_equal(result, 1.0)
+
+    def _get_read_write_buffer(feature):  # pylint: disable=inconsistent-return-statements
+        b_0 = feature[56:74]
+        b_1 = feature[74:92]
+        if _is_read(feature, "B0") and _is_write(feature, "B1"):
+            return b_0, b_1
+        if _is_read(feature, "B1") and _is_write(feature, "B0"):
+            return b_1, b_0
+        assert False
+
+    def _check_empty_buffer(feature, buffer_names):
+        buffer_feature_dict = {
+            "B0": feature[56:74],
+            "B1": feature[74:92],
+            "B2": feature[92:110],
+            "B3": feature[110:128],
+            "B4": feature[128:146],
+        }
+        for name in buffer_names:
+            assert_allclose(
+                actual=buffer_feature_dict[name],
+                desired=[0] * 18,
+                rtol=1e-5,
+                atol=1e-5,
+            )
+
+    def _check_shared_read(feature, outer_prod, check_read, check_write):
+        # float/int/bool/select ops, vectorize/unroll/parallel
+        assert_allclose(
+            actual=feature[0:49],
+            desired=[0] * 16 + [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0] * 3,
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        # blockIdx / threadIdx / vthread
+        _check_gpu_threads(feature)
+        # arith intensity curve
+        assert_allclose(
+            actual=feature[146:156],
+            desired=[0] * 10,
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        # check write buffer
+        read, write = _get_read_write_buffer(feature)
+        if check_read:
+            assert_allclose(
+                actual=read,
+                desired=check_read,
+                rtol=1e-5,
+                atol=1e-5,
+            )
+        if check_write:
+            assert_allclose(
+                actual=write,
+                desired=check_write,
+                rtol=1e-5,
+                atol=1e-5,
+            )
+        # check empty buffers
+        _check_empty_buffer(feature, ["B2", "B3", "B4"])
+        # misc
+        assert_allclose(
+            actual=feature[156:159],
+            desired=[
+                outer_prod,  # outer_prod
+                2.8073549,  # num_loops
+                10.001409,  # auto_unroll_max_step
+            ],
+            rtol=1e-5,
+            atol=1e-5,
+        )
+
+    _check_shared_read(
+        feature[0],
+        outer_prod=27.0,
+        # fmt: off
+        check_read=[
+            1, 0, 0, 29, 20, 23, 14, 1, 0, 0, 18, 21, 4.0874629, 25, 16, 19, 10.0014086, 1,
+        ],
+        check_write=[
+            0, 1, 0, 29, 20, 23, 14, 1, 0, 0, 18, 21, 4.0874629, 25, 16, 19, 10.00140858, 1,
+        ],
+        # fmt: on
+    )
+    _check_shared_read(
+        feature[1],
+        outer_prod=24.0,
+        check_read=None,
+        check_write=None,
+        # check_read=[
+        #     1, 0, 0, 26, 20, 20, 14, 1, 0, 0, 15,
+        #     "21.169926", 4.0874629, 22, 16, 16, 10.0014086, 1,
+        # ],
+        # check_write=[
+        #     0, 1, 0, 26, 20, 20, 14, 1, 0, 0, 15,
+        #     "21.169926", 4.087463, 22, 16, 16, 10.0014086, 1,
+        # ],
+    )
+
+    # _display(feature[0])
+    # _display(feature[1])
+    # _display(feature[2])
+    # _display(feature[3])
 
 
 if __name__ == "__main__":
-    test_meta_schedule_per_block_feature_cpu_matmul()
-    test_meta_schedule_per_block_feature_cpu_fusion()
+    # test_meta_schedule_per_block_feature_cpu_matmul()
+    # test_meta_schedule_per_block_feature_cpu_fusion()
     test_meta_schedule_per_block_feature_gpu()
