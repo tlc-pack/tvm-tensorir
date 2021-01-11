@@ -780,6 +780,22 @@ void ScheduleNode::Vectorize(const LoopRV& loop) {
   this->trace->Append(VectorizeAttrs::Make(loop));
 }
 
+void ScheduleNode::Unroll(const LoopRV& loop) {
+  tir::StmtSRef loop_sref = this->Eval(loop);
+  sch->unroll(loop_sref);
+  // Record the instruction
+  this->trace->Append(UnrollAttrs::Make(loop));
+}
+
+void ScheduleNode::Bind(const LoopRV& loop, const String& thread_axis) {
+  tir::StmtSRef loop_sref = this->Eval(loop);
+  tir::IterVar iter_var =
+      tir::IterVar(Range(nullptr), tir::Var(thread_axis), tir::kThreadIndex, thread_axis);
+  sch->bind(loop_sref, iter_var);
+  // Record the instruction
+  this->trace->Append(BindAttrs::Make(loop, thread_axis));
+}
+
 void ScheduleNode::EnterPostProc() { this->trace->Append(EnterPostProcAttrs::Make()); }
 
 /**************** FFI ****************/
@@ -1008,6 +1024,16 @@ struct Internal {
    * \sa ScheduleNode::Vectorize
    */
   static void Vectorize(Schedule sch, LoopRV loop) { sch->Vectorize(loop); }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::Unroll
+   * \sa ScheduleNode::Unroll
+   */
+  static void Unroll(Schedule sch, LoopRV loop) { sch->Unroll(loop); }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::Bind
+   * \sa ScheduleNode::Bind
+   */
+  static void Bind(Schedule sch, LoopRV loop, String thread_axis) { sch->Bind(loop, thread_axis); }
 };
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
@@ -1052,6 +1078,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleDecomposeReduction")
     .set_body_typed(Internal::DecomposeReduction);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleParallel").set_body_typed(Internal::Parallel);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleVectorize").set_body_typed(Internal::Vectorize);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleUnroll").set_body_typed(Internal::Unroll);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleBind").set_body_typed(Internal::Bind);
 
 }  // namespace meta_schedule
 }  // namespace tvm
