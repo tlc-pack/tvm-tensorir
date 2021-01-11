@@ -19,7 +19,6 @@
 import math
 
 import te_workload
-import tvm
 from numpy.testing import assert_allclose
 from tvm import meta_schedule as ms
 from tvm import te, tir
@@ -529,21 +528,14 @@ def test_meta_schedule_per_block_feature_gpu():
         )
         # check write buffer
         read, write = _get_read_write_buffer(feature)
-        # FIXME
-        # assert_allclose(
-        #     actual=read,
-        #     desired=[
-        #         # fmt: off
-        #         1, 0, 0, 20, 20, 14, 14, 0, 1, 0,
-        #         9.002815246582031, 17.768190383911133,
-        #         1.5849624872207642, 19.000001907348633,
-        #         19.000001907348633, 13.000176429748535,
-        #         13.000176429748535, 1,
-        #         # fmt: on
-        #     ],
-        #     rtol=1e-5,
-        #     atol=1e-5,
-        # )
+        assert_allclose(
+            actual=read,
+            # fmt: off
+            desired=[1, 0, 0, 20, 20, 14, 14, 0, 1, 0, 9.002815, 17.754894, 1, 20, 20, 14, 14, 1],
+            # fmt: on
+            rtol=1e-5,
+            atol=1e-5,
+        )
         assert_allclose(
             actual=write,
             # fmt: off
