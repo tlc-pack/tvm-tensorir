@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Meta Schedule """
-from . import analysis, instruction, mutator
+from . import analysis, feature, instruction, mutator
 from . import search_rule as rule
 from . import space, strategy
 from .auto_tune import autotune

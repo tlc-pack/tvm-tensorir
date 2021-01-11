@@ -25,7 +25,6 @@ from tvm import meta_schedule as ms
 from tvm import te
 from tvm.tir import testing
 
-
 TARGET = tvm.target.Target("llvm --num_cores 16")
 SPACE = ms.space.PostOrderApply(
     stages=[
