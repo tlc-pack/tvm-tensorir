@@ -91,6 +91,7 @@ struct FeatureSet {
     int64_t len = 0;           // The length of the innermost iterator with the annotation
     Pos pos = Pos::kPosMixed;  // The position of the iterators with the annotation
   };
+  const tir::BlockRealizeNode* block_realize;
   MathOps math_ops;   // The number of the mathematical operators
   AnnIter vectorize;  // The statistics of iterators annotated with "vectorize"
   AnnIter unroll;     // The statistics of iterators annotated with "unroll"
@@ -841,6 +842,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       }
     }
     FeatureSet& feature = per_block_feature_[realize];
+    feature.block_realize = realize;
     // Group 1: Computation related features
     CalcComputeFeature(realize, &feature);
     // Group 2: Buffer access related features
@@ -903,6 +905,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     if (extent != 1 || ref_loops != nullptr) {
       dfs_path_.push_back(loop);
       loops_.push_back(loop);
+      analyzer_.Bind(loop->loop_var, loop->min);
     }
     tir::StmtExprVisitor::VisitStmt_(loop);
     if (extent != 1 || ref_loops != nullptr) {

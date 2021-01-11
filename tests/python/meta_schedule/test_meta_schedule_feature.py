@@ -411,7 +411,6 @@ def test_meta_schedule_per_block_feature_gpu():
         # auto unroll
         sch.mark_loop(i0_j0, "pragma_auto_unroll_max_step", tir.IntImm("int32", 1024))
         sch.mark_loop(i0_j0, "pragma_unroll_explicit", tir.IntImm("int32", 1))
-        print(tvm.script.asscript(sch.sch.func))
         return sch
 
     names = list(ms.feature.per_bloc_feature_names())
@@ -421,13 +420,6 @@ def test_meta_schedule_per_block_feature_gpu():
     # Extract features
     feature = ms.feature.calc_per_block_feature(sch)
     assert feature.shape == (4, n_features)
-
-    def _display(feature):
-        fea_dict = {}
-        for name, value in zip(names, feature):
-            fea_dict[name] = value
-        for name, value in fea_dict.items():
-            print(name, value)
 
     def _check_gpu_threads(feature):
         # blockIdx / threadIdx / vthread
@@ -537,7 +529,7 @@ def test_meta_schedule_per_block_feature_gpu():
         )
         # check write buffer
         read, write = _get_read_write_buffer(feature)
-        # TODO
+        # FIXME
         # assert_allclose(
         #     actual=read,
         #     desired=[
@@ -575,6 +567,106 @@ def test_meta_schedule_per_block_feature_gpu():
             atol=1e-5,
         )
 
+    def _check_compute(feature):
+        # float/int/bool/select ops, vectorize/unroll/parallel
+        assert_allclose(
+            actual=feature[0:49],
+            desired=[0, 27, 27] + [0] * 13 + [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0] * 3,
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        # blockIdx / threadIdx / vthread
+        _check_gpu_threads(feature)
+        # arith intensity curve
+        assert_allclose(
+            actual=feature[146:156],
+            desired=[
+                0.7097842693328857,
+                0.7548801898956299,
+                0.8775907158851624,
+                0.9820981025695801,
+                1.0400605201721191,
+                1.0980229377746582,
+                1.1437791585922241,
+                1.1447784900665283,
+                1.234665036201477,
+                1.2971993684768677,
+            ],
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        # check A, B, C
+        buffer_feature_dict = {
+            "B0": feature[56:74],
+            "B1": feature[74:92],
+            "B2": feature[92:110],
+            "B3": feature[110:128],
+            "B4": feature[128:146],
+        }
+        a_name = b_name = c_name = None
+        for buffer_name in ["B0", "B1", "B2"]:
+            if _is_read(feature, buffer_name):
+                stride = feature[names.index(buffer_name + ".stride")]
+                if _float_equal(stride, 1.0):
+                    b_name = buffer_name
+                elif _float_equal(stride, 0.0):
+                    a_name = buffer_name
+                else:
+                    assert False
+            else:
+                k_read_write = feature[names.index(buffer_name + ".acc_type.kReadWrite")]
+                assert _float_equal(k_read_write, 1.0)
+                c_name = buffer_name
+        assert a_name is not None
+        assert b_name is not None
+        assert c_name is not None
+        assert_allclose(
+            actual=buffer_feature_dict[a_name],
+            # fmt: off
+            desired=[
+                1, 0, 0, 29, 20, 19, 14, 1, 0, 0, 1,
+                3.70044, 4.0874629, 25, 16, 15, 10.001409, 0.0,
+            ],
+            # fmt: on
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        assert_allclose(
+            actual=buffer_feature_dict[b_name],
+            # fmt: off
+            desired=[
+                1, 0, 0, 29, 20, 23, 14, 1, 0, 0, 5.044394,
+                7.6510515, 5.044394, 24, 15, 18, 9.0028152, 1,
+            ],
+            # fmt: on
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        assert_allclose(
+            actual=buffer_feature_dict[c_name],
+            # fmt: off
+            desired=[
+                0, 0, 1, 29, 20, 23, 14, 1, 0, 0, 4.0874629,
+                7.0552821, 1.5849625, 28, 19, 22, 13.000176, 1,
+            ],
+            # fmt: on
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        # check empty buffers
+        _check_empty_buffer(feature, ["B3", "B4"])
+        # misc
+        assert_allclose(
+            actual=feature[156:159],
+            desired=[
+                27,  # outer_prod
+                3,  # num_loops
+                10.001409,  # auto_unroll_max_step
+            ],
+            rtol=1e-5,
+            atol=1e-5,
+        )
+
     _check_shared_read(
         feature[0],
         outer_prod=27.0,
@@ -583,7 +675,7 @@ def test_meta_schedule_per_block_feature_gpu():
             1, 0, 0, 29, 20, 23, 14, 1, 0, 0, 18, 21, 4.0874629, 25, 16, 19, 10.0014086, 1,
         ],
         check_write=[
-            0, 1, 0, 29, 20, 23, 14, 1, 0, 0, 18, 21, 4.0874629, 25, 16, 19, 10.00140858, 1,
+            0, 1, 0, 29, 20, 23, 14, 1, 0, 0, 18, 21, 4.0874629, 25, 16, 19, 10.0014086, 1,
         ],
         # fmt: on
     )
@@ -592,6 +684,7 @@ def test_meta_schedule_per_block_feature_gpu():
         outer_prod=24.0,
         check_read=None,
         check_write=None,
+        # FIXME
         # check_read=[
         #     1, 0, 0, 26, 20, 20, 14, 1, 0, 0, 15,
         #     "21.169926", 4.0874629, 22, 16, 16, 10.0014086, 1,
@@ -601,15 +694,11 @@ def test_meta_schedule_per_block_feature_gpu():
         #     "21.169926", 4.087463, 22, 16, 16, 10.0014086, 1,
         # ],
     )
+    _check_compute(feature[2])
     _check_local_write(feature[3])
-
-    # _display(feature[0])
-    # _display(feature[1])
-    # _display(feature[2])
-    # _display(feature[3])
 
 
 if __name__ == "__main__":
-    # test_meta_schedule_per_block_feature_cpu_matmul()
-    # test_meta_schedule_per_block_feature_cpu_fusion()
+    test_meta_schedule_per_block_feature_cpu_matmul()
+    test_meta_schedule_per_block_feature_cpu_fusion()
     test_meta_schedule_per_block_feature_gpu()
