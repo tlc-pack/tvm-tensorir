@@ -518,6 +518,63 @@ def test_meta_schedule_per_block_feature_gpu():
             atol=1e-5,
         )
 
+    def _check_local_write(feature):
+        # float/int/bool/select ops, vectorize/unroll/parallel
+        assert_allclose(
+            actual=feature[0:49],
+            desired=[0] * 16 + [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0] * 3,
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        # blockIdx / threadIdx / vthread
+        _check_gpu_threads(feature)
+        # arith intensity curve
+        assert_allclose(
+            actual=feature[146:156],
+            desired=[0] * 10,
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        # check write buffer
+        read, write = _get_read_write_buffer(feature)
+        # TODO
+        # assert_allclose(
+        #     actual=read,
+        #     desired=[
+        #         # fmt: off
+        #         1, 0, 0, 20, 20, 14, 14, 0, 1, 0,
+        #         9.002815246582031, 17.768190383911133,
+        #         1.5849624872207642, 19.000001907348633,
+        #         19.000001907348633, 13.000176429748535,
+        #         13.000176429748535, 1,
+        #         # fmt: on
+        #     ],
+        #     rtol=1e-5,
+        #     atol=1e-5,
+        # )
+        assert_allclose(
+            actual=write,
+            # fmt: off
+            desired=[0, 1, 0, 20, 20, 14, 14, 0, 0, 1, 0, 0, 0, 21, 21, 15, 15, 1],
+            # fmt: on
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        # check empty buffers
+        _check_empty_buffer(feature, ["B2", "B3", "B4"])
+        # misc
+        # TODO(@junrushao1994): investigate into auto_unroll
+        assert_allclose(
+            actual=feature[156:159],
+            desired=[
+                18,  # outer_prod
+                2.5849626,  # num_loops
+                10.001409,  # auto_unroll_max_step
+            ],
+            rtol=1e-5,
+            atol=1e-5,
+        )
+
     _check_shared_read(
         feature[0],
         outer_prod=27.0,
@@ -544,6 +601,7 @@ def test_meta_schedule_per_block_feature_gpu():
         #     "21.169926", 4.087463, 22, 16, 16, 10.0014086, 1,
         # ],
     )
+    _check_local_write(feature[3])
 
     # _display(feature[0])
     # _display(feature[1])
