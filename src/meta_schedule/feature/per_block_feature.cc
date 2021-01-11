@@ -525,7 +525,6 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
           reuse_type = FeatureSet::BufferAccess::ReuseType::kSerialMultipleReadWrite;
           reuse_ct = touched.size() - 1;
           reuse_dis_iter = *std::min_element(touched.begin(), touched.end());
-          reuse_dis_iter /= extent;
           reuse_dis_bytes = 0.0;
           for (const auto& iter : buffer_touched_under_loop_[loop]) {
             const tir::BufferNode* buffer = iter.first;
@@ -533,6 +532,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
             int64_t numel = std::accumulate(numels.begin(), numels.end(), int64_t(0));
             reuse_dis_bytes += numel * buffer->dtype.bytes();
           }
+          reuse_dis_iter /= extent;
           reuse_dis_bytes /= extent;
           break;
         }
