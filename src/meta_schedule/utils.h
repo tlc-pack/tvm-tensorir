@@ -133,6 +133,11 @@ inline PrimExpr GetLoopExtent(const tir::StmtSRef& loop_sref) {
   return loop->extent;
 }
 
+inline Optional<Integer> GetLoopIntExtent(const tir::LoopNode* loop) {
+  const auto* int_extent = loop->extent.as<IntImmNode>();
+  return int_extent ? Integer(int_extent->value) : Optional<Integer>(NullOpt);
+}
+
 inline Optional<Integer> GetLoopIntExtent(const tir::StmtSRef& loop_sref) {
   PrimExpr extent = GetLoopExtent(loop_sref);
   const auto* int_extent = extent.as<IntImmNode>();
@@ -344,6 +349,19 @@ template <class TSrcObjectRef>
 struct AsVector<TSrcObjectRef, int> {
   inline std::vector<int> operator()(const Array<TSrcObjectRef>& vec) const {
     std::vector<int> results;
+    for (const TSrcObjectRef& x : vec) {
+      const auto* n = x.template as<IntImmNode>();
+      CHECK(n) << "TypeError: Expects IntImm, but gets: " << x->GetTypeKey();
+      results.push_back(n->value);
+    }
+    return results;
+  }
+};
+
+template <class TSrcObjectRef>
+struct AsVector<TSrcObjectRef, int64_t> {
+  inline std::vector<int64_t> operator()(const Array<TSrcObjectRef>& vec) const {
+    std::vector<int64_t> results;
     for (const TSrcObjectRef& x : vec) {
       const auto* n = x.template as<IntImmNode>();
       CHECK(n) << "TypeError: Expects IntImm, but gets: " << x->GetTypeKey();
