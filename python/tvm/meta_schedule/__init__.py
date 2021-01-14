@@ -19,7 +19,7 @@ from . import analysis, feature, instruction, mutator
 from . import search_rule as rule
 from . import space, strategy
 from .auto_tune import autotune
-from .cost_model import RandomModel
+from .cost_model import RandCostModel
 from .instruction import BlockRV, BufferRV, LoopRV
 from .measure import (
     LocalBuilder,

@@ -22,10 +22,10 @@
 namespace tvm {
 namespace meta_schedule {
 
-/**************** RandomModel ****************/
+/**************** RandCostModel ****************/
 
 /*! \brief The cost model returning random value for all predictions */
-class RandomModelNode : public CostModelNode {
+class RandCostModelNode : public CostModelNode {
  public:
   /*! \brief A sampler for generating random numbers */
   Sampler sampler;
@@ -47,50 +47,41 @@ class RandomModelNode : public CostModelNode {
    * \param states The input states
    * \return The predicted scores for all states
    */
-  Array<FloatImm> Predict(const SearchTask& task, const Array<Schedule>& states) override;
+  std::vector<double> Predict(const SearchTask& task, const Array<Schedule>& states) override {
+    return sampler.SampleUniform(states.size(), 0.0, 1.0);
+  }
 
-  static constexpr const char* _type_key = "meta_schedule.RandomModel";
-  TVM_DECLARE_FINAL_OBJECT_INFO(RandomModelNode, CostModelNode);
+  static constexpr const char* _type_key = "meta_schedule.RandCostModel";
+  TVM_DECLARE_FINAL_OBJECT_INFO(RandCostModelNode, CostModelNode);
 };
 
 /*!
- * \brief Managed reference to RandomModelNode.
- * \sa RandomModelNode
+ * \brief Managed reference to RandCostModelNode.
+ * \sa RandCostModelNode
  */
-class RandomModel : public CostModel {
+class RandCostModel : public CostModel {
  public:
-  RandomModel();
-  explicit RandomModel(Optional<Integer> seed);
-  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(RandomModel, CostModel, RandomModelNode);
-};
+  RandCostModel() { data_ = make_object<RandCostModelNode>(); }
 
-/**************** Constructors ****************/
-
-RandomModel::RandomModel() : RandomModel(NullOpt) {}
-
-RandomModel::RandomModel(Optional<Integer> seed) {
-  ObjectPtr<RandomModelNode> n = make_object<RandomModelNode>();
-  if (seed.defined()) {
-    n->sampler.Seed(seed.value());
+  explicit RandCostModel(int seed) {
+    ObjectPtr<RandCostModelNode> n = make_object<RandCostModelNode>();
+    n->sampler.Seed(seed);
+    data_ = std::move(n);
   }
-  data_ = std::move(n);
-}
 
-/**************** RandomModel ****************/
-
-Array<FloatImm> RandomModelNode::Predict(const SearchTask& task, const Array<Schedule>& states) {
-  std::vector<double> result = sampler.SampleUniform(states.size(), 0.0, 1.0);
-  return AsArray<double, FloatImm>()(result);
-}
+  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(RandCostModel, CostModel, RandCostModelNode);
+};
 
 /**************** FFI ****************/
 
 struct Internal {
-  static RandomModel New(Optional<Integer> seed) { return RandomModel(seed); }
+  static RandCostModel New(Optional<Integer> seed) {
+    return seed.defined() ? RandCostModel(seed.value()->value) : RandCostModel();
+  }
 };
 
-TVM_REGISTER_NODE_TYPE(RandomModelNode);
-TVM_REGISTER_GLOBAL("meta_schedule.RandomModel").set_body_typed(Internal::New);
+TVM_REGISTER_NODE_TYPE(RandCostModelNode);
+TVM_REGISTER_GLOBAL("meta_schedule.RandCostModel").set_body_typed(Internal::New);
 
 }  // namespace meta_schedule
 }  // namespace tvm
