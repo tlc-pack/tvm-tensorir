@@ -94,10 +94,10 @@ class PyCostModel(CostModel):
     """Base class for cost models implemented in python"""
 
     def __init__(self):
-        def update_func(inputs, results):
+        def update_func(inputs: List[MeasureInput], results: List[MeasureResult]):
             self.update(inputs, results)
 
-        def predict_func(task, schedules, return_ptr):
+        def predict_func(task: SearchTask, schedules: List[Schedule], return_ptr):
             n = len(schedules)
             return_ptr = ctypes.cast(return_ptr, ctypes.POINTER(ctypes.c_float))
             array_wrapper = np.ctypeslib.as_array(return_ptr, shape=(n,))
