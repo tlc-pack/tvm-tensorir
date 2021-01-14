@@ -514,7 +514,13 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
             for (int j = 0; j < i; ++j) {
               reuse_dis_iter *= GetLoopIntExtent(loops[j]).value()->value;
             }
-            reuse_dis_bytes = for_touched_bytes[i - 1];
+            reuse_dis_bytes = 0.0;
+            for (const auto& iter : buffer_touched_under_loop_[loops[i - 1]]) {
+              const tir::BufferNode* buffer = iter.first;
+              const std::vector<int64_t>& numels = iter.second;
+              int64_t numel = std::accumulate(numels.begin(), numels.end(), int64_t(0));
+              reuse_dis_bytes += numel * buffer->dtype.bytes();
+            }
           }
           break;
         }
