@@ -19,6 +19,8 @@
 
 #include "./cost_model.h"  // NOLINT(build/include)
 
+#include "./utils.h"
+
 namespace tvm {
 namespace meta_schedule {
 
@@ -31,7 +33,8 @@ struct Internal {
   }
   static Array<FloatImm> CostModelPredict(CostModel model, SearchTask task,
                                           Array<Schedule> states) {
-    return model->Predict(task, states);
+    std::vector<double> result = model->Predict(task, states);
+    return AsArray<double, FloatImm>()(result);
   }
 };
 

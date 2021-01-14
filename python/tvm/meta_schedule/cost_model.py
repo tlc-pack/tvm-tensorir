@@ -73,9 +73,11 @@ class CostModel(Object):
         return [x.value for x in result]
 
 
-@register_object("meta_schedule.RandomModel")
-class RandomModel(CostModel):
+@register_object("meta_schedule.RandCostModel")
+class RandCostModel(CostModel):
     """A model returns random estimation for all inputs"""
 
     def __init__(self, seed: Optional[int] = None):
-        self.__init_handle_by_constructor__(_ffi_api.RandomModel, seed)  # pylint: disable=no-member
+        self.__init_handle_by_constructor__(
+            _ffi_api.RandCostModel, seed  # pylint: disable=no-member
+        )
