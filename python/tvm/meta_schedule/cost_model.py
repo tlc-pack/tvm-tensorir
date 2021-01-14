@@ -15,8 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 """Cost model that estimates the performance of tensor programs"""
+import ctypes
 from typing import List, Optional
 
+import numpy as np
 from tvm._ffi import register_object
 from tvm.runtime import Object
 
@@ -50,7 +52,7 @@ class CostModel(Object):
         self,
         task: SearchTask,
         schedules: List[Schedule],
-    ) -> List[float]:
+    ) -> np.ndarray:
         """Predict the scores of schedules
 
         Parameters
@@ -62,20 +64,83 @@ class CostModel(Object):
 
         Returns
         -------
-        scores: List[float]
+        scores: numpy.ndarray
+            An NDArray of shape (n, ), where n is the number of schedules passed in.
             The predicted scores for all schedules
         """
-        result = _ffi_api.CostModelPredict(  # pylint: disable=no-member
+        n = len(schedules)
+        result = np.zeros(shape=(n,), dtype="float64")
+        _ffi_api.CostModelPredict(  # pylint: disable=no-member
             self,
             task,
             schedules,
+            result.ctypes.data_as(ctypes.c_void_p),
         )
-        return [x.value for x in result]
+        return result
 
 
-@register_object("meta_schedule.RandomModel")
-class RandomModel(CostModel):
+@register_object("meta_schedule.RandCostModel")
+class RandCostModel(CostModel):
     """A model returns random estimation for all inputs"""
 
     def __init__(self, seed: Optional[int] = None):
-        self.__init_handle_by_constructor__(_ffi_api.RandomModel, seed)  # pylint: disable=no-member
+        self.__init_handle_by_constructor__(
+            _ffi_api.RandCostModel, seed  # pylint: disable=no-member
+        )
+
+
+@register_object("meta_schedule.PyCostModel")
+class PyCostModel(CostModel):
+    """Base class for cost models implemented in python"""
+
+    def __init__(self):
+        def update_func(inputs: List[MeasureInput], results: List[MeasureResult]):
+            self.update(inputs, results)
+
+        def predict_func(task: SearchTask, schedules: List[Schedule], return_ptr):
+            n = len(schedules)
+            return_ptr = ctypes.cast(return_ptr, ctypes.POINTER(ctypes.c_float))
+            array_wrapper = np.ctypeslib.as_array(return_ptr, shape=(n,))
+            array_wrapper[:] = self.predict(task, schedules)
+
+        self.__init_handle_by_constructor__(
+            _ffi_api.PyCostModel, update_func, predict_func  # pylint: disable=no-member
+        )
+
+    def update(
+        self,
+        inputs: List[MeasureInput],
+        results: List[MeasureResult],
+    ) -> None:
+        """Update the cost model according to new measurement results (training data).
+
+        Parameters
+        ----------
+        inputs : List[MeasureInput]
+            The measurement inputs
+        results : List[MeasureResult]
+            The measurement results
+        """
+        raise NotImplementedError
+
+    def predict(
+        self,
+        task: SearchTask,
+        schedules: List[Schedule],
+    ) -> np.ndarray:
+        """Predict the scores of schedules
+
+        Parameters
+        ----------
+        task : SearchTask
+            The search task
+        schedules : List[Schedule]
+            The input schedules
+
+        Returns
+        -------
+        scores: numpy.ndarray
+            An NDArray of shape (n, ), where n is the number of schedules passed in.
+            The predicted scores for all schedules
+        """
+        raise NotImplementedError
