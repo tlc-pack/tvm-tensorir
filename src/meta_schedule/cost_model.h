@@ -46,7 +46,7 @@ class CostModelNode : public Object {
    * \param states The input states
    * \return The predicted scores for all states
    */
-  virtual Array<FloatImm> Predict(const SearchTask& task, const Array<Schedule>& states) = 0;
+  virtual std::vector<double> Predict(const SearchTask& task, const Array<Schedule>& states) = 0;
 
   static constexpr const char* _type_key = "meta_schedule.CostModel";
   TVM_DECLARE_BASE_OBJECT_INFO(CostModelNode, Object);
