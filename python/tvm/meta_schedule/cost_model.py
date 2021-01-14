@@ -52,7 +52,7 @@ class CostModel(Object):
         self,
         task: SearchTask,
         schedules: List[Schedule],
-    ) -> List[float]:
+    ) -> np.ndarray:
         """Predict the scores of schedules
 
         Parameters
@@ -64,7 +64,8 @@ class CostModel(Object):
 
         Returns
         -------
-        scores: List[float]
+        scores: numpy.ndarray
+            An NDArray of shape (n, ), where n is the number of schedules passed in.
             The predicted scores for all schedules
         """
         n = len(schedules)
@@ -110,7 +111,7 @@ class PyCostModel(CostModel):
         self,
         inputs: List[MeasureInput],
         results: List[MeasureResult],
-    ):
+    ) -> None:
         """Update the cost model according to new measurement results (training data).
 
         Parameters
@@ -126,7 +127,7 @@ class PyCostModel(CostModel):
         self,
         task: SearchTask,
         schedules: List[Schedule],
-    ):
+    ) -> np.ndarray:
         """Predict the scores of schedules
 
         Parameters
@@ -138,7 +139,8 @@ class PyCostModel(CostModel):
 
         Returns
         -------
-        scores: List[float]
+        scores: numpy.ndarray
+            An NDArray of shape (n, ), where n is the number of schedules passed in.
             The predicted scores for all schedules
         """
         raise NotImplementedError
