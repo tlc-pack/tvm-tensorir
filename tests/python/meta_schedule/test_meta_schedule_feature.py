@@ -462,7 +462,7 @@ def test_meta_schedule_per_block_feature_gpu():
                 atol=1e-5,
             )
 
-    def _check_shared_read(feature, outer_prod, check_read, check_write):
+    def _check_shared_read(feature, outer_prod, read_feature, write_feature):
         # float/int/bool/select ops, vectorize/unroll/parallel
         assert_allclose(
             actual=feature[0:49],
@@ -481,20 +481,18 @@ def test_meta_schedule_per_block_feature_gpu():
         )
         # check write buffer
         read, write = _get_read_write_buffer(feature)
-        if check_read:
-            assert_allclose(
-                actual=read,
-                desired=check_read,
-                rtol=1e-5,
-                atol=1e-5,
-            )
-        if check_write:
-            assert_allclose(
-                actual=write,
-                desired=check_write,
-                rtol=1e-5,
-                atol=1e-5,
-            )
+        assert_allclose(
+            actual=read,
+            desired=read_feature,
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        assert_allclose(
+            actual=write,
+            desired=write_feature,
+            rtol=1e-5,
+            atol=1e-5,
+        )
         # check empty buffers
         _check_empty_buffer(feature, ["B2", "B3", "B4"])
         # misc
@@ -663,10 +661,10 @@ def test_meta_schedule_per_block_feature_gpu():
         feature[0],
         outer_prod=27.0,
         # fmt: off
-        check_read=[
+        read_feature=[
             1, 0, 0, 29, 20, 23, 14, 1, 0, 0, 18, 21, 4.0874629, 25, 16, 19, 10.0014086, 1,
         ],
-        check_write=[
+        write_feature=[
             0, 1, 0, 29, 20, 23, 14, 1, 0, 0, 18, 21, 4.0874629, 25, 16, 19, 10.0014086, 1,
         ],
         # fmt: on
@@ -674,17 +672,16 @@ def test_meta_schedule_per_block_feature_gpu():
     _check_shared_read(
         feature[1],
         outer_prod=24.0,
-        check_read=None,
-        check_write=None,
-        # FIXME
-        # check_read=[
-        #     1, 0, 0, 26, 20, 20, 14, 1, 0, 0, 15,
-        #     "21.169926", 4.0874629, 22, 16, 16, 10.0014086, 1,
-        # ],
-        # check_write=[
-        #     0, 1, 0, 26, 20, 20, 14, 1, 0, 0, 15,
-        #     "21.169926", 4.087463, 22, 16, 16, 10.0014086, 1,
-        # ],
+        # fmt: off
+        read_feature=[
+            1, 0, 0, 26, 20, 20, 14, 1, 0, 0, 15,
+            21.169926, 4.0874629, 22, 16, 16, 10.0014086, 1,
+        ],
+        write_feature=[
+            0, 1, 0, 26, 20, 20, 14, 1, 0, 0, 15,
+            21.169926, 4.087463, 22, 16, 16, 10.0014086, 1,
+        ],
+        # fmt: on
     )
     _check_compute(feature[2])
     _check_local_write(feature[3])
