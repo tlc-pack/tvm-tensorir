@@ -34,12 +34,7 @@ struct Internal {
   static void CostModelPredict(CostModel model, SearchTask task, Array<Schedule> states,
                                void* p_addr) {
     std::vector<double> result = model->Predict(task, states);
-    int n = result.size();
-    double* src = result.data();
-    double* tgt = static_cast<double*>(p_addr);
-    for (int i = 0; i < n; ++i) {
-      *tgt++ = *src++;
-    }
+    std::copy(result.begin(), result.end(), static_cast<double*>(p_addr));
   }
 };
 
