@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import itertools.chain
+import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
@@ -32,6 +33,9 @@ from .search import SearchTask
 
 if TYPE_CHECKING:
     import xgboost as xgb
+
+
+logger = logging.getLogger("meta_schedule")
 
 
 class XGBDMatrixContext:
@@ -415,8 +419,7 @@ def custom_callback(
                 if "null" in key:
                     continue
                 infos.append("%s: %.6f" % (key, mean))
-            # TODO(@junrushao1994): logger
-            # logger.debug("\t".join(infos))
+            logger.debug("\t".join(infos))
 
         ##### Choose score and do early stopping #####
         score = None
@@ -441,10 +444,9 @@ def custom_callback(
                     best_msg=state["best_msg"],
                 )
         elif env.iteration - best_iteration >= stopping_rounds:
-            # TODO(@junrushao1994): logger
-            # best_msg = state["best_msg"]
-            # if verbose_eval and env.rank == 0:
-            #     logger.debug("XGB stopped. Best iteration: %s ", best_msg)
+            best_msg = state["best_msg"]
+            if verbose_eval and env.rank == 0:
+                logger.debug("XGB stopped. Best iteration: %s ", best_msg)
             raise EarlyStopException(best_iteration)
 
     return callback
