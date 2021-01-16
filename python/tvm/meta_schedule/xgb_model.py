@@ -157,8 +157,10 @@ class PackSum:
 
         Returns
         -------
-        throughputs: np.ndarray
-            The throughput
+        name: str
+            The name of the metric
+        score: float
+            The score of the metric
         """
         # Making prediction
         xs_pred = self.predict_with_score(xs_pred)
@@ -169,6 +171,32 @@ class PackSum:
         square_error = np.square(xs_pred - ys)
         rmse = np.sqrt(square_error.mean())
         return "p-rmse", rmse
+
+    def average_peak_score(self, xs_pred, N) -> Tuple[str, float]:  # pylint: disable=invalid-name
+        """Evaluate average-peak-score@N in the pack-sum format
+
+        Parameters
+        ----------
+        xs_pred: np.ndarray
+            The raw prediction
+        d_train: xgb.DMatrix
+            The ground-truth label matrix
+
+        Returns
+        -------
+        name: str
+            The name of the metric
+        score: float
+            The score of the metric
+        """
+        xs_pred = self.predict_with_score(xs_pred)
+        labels = self.predict_with_score(self.dmatrix.get_label())
+        labels = labels / np.unique(self.ids, return_counts=True)[1]
+        trials = np.argsort(xs_pred)[::-1][:N]
+        trial_scores = xs_pred[trials]
+        curve = max_curve(trial_scores) / np.max(xs_pred)
+        score = np.mean(curve)
+        return "a-peak@%d" % N, score
 
 
 class XGBModel(PyCostModel):
@@ -233,6 +261,10 @@ class XGBModel(PyCostModel):
             d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
             return d_train.rmse(xs_pred)
 
+        def average_peak_score(xs_pred: np.ndarray, d_train: xgb.DMatrix):
+            d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
+            return d_train.average_peak_score(xs_pred, self.plan_size)
+
         # extract feature
         self.cached_features.extend(per_block_feature(x.sch) for x in inputs)
         self.cached_mean_costs = np.append(self.cached_mean_costs, [x.mean_cost for x in results])
@@ -251,7 +283,7 @@ class XGBModel(PyCostModel):
                     metric="tr-p-rmse",
                     fevals=[
                         rmse,
-                        pack_sum_average_peak_score(self.plan_size),
+                        average_peak_score,
                     ],
                     evals=[(d_train, "tr")],
                     verbose_eval=self.verbose_eval,
@@ -416,46 +448,3 @@ def custom_callback(
             raise EarlyStopException(best_iteration)
 
     return callback
-
-
-def pack_sum_average_peak_score(N):  # pylint: disable=invalid-name
-    """Return the evaluation function for average-peak-score@N
-
-    Parameters
-    ----------
-    N: int
-        The "N" in "average-peak-score@N"
-
-    Returns
-    -------
-    The evaluation function
-    """
-
-    def feval(xs_pred, d_train):
-        """Evaluate average-peak-score@N in the pack-sum format
-
-        Parameters
-        ----------
-        xs_pred: np.ndarray
-            The raw prediction
-        d_train: xgb.DMatrix
-            The ground-truth label matrix
-
-        Returns
-        -------
-        name: str
-        score: float
-        The name and score of this metric
-        """
-        d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
-        xs_pred = d_train.predict_with_score(xs_pred)
-        labels = d_train.predict_with_score(d_train.dmatrix.get_label())
-        labels = labels / np.unique(d_train.ids, return_counts=True)[1]
-
-        trials = np.argsort(xs_pred)[::-1][:N]
-        trial_scores = xs_pred[trials]
-        curve = max_curve(trial_scores) / np.max(xs_pred)
-        score = np.mean(curve)
-        return "a-peak@%d" % N, score
-
-    return feval
