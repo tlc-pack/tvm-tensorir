@@ -19,15 +19,16 @@ from __future__ import annotations
 
 import itertools.chain
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, List, Optional, Dict, Tuple, Callable
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from ..autotvm.tuner.metric import max_curve
 from .cost_model import PyCostModel
 from .feature import per_block_feature
 from .measure_record import MeasureInput, MeasureResult
-from .search import SearchTask
 from .schedule import Schedule
+from .search import SearchTask
 
 if TYPE_CHECKING:
     import xgboost as xgb
@@ -250,7 +251,7 @@ class XGBModel(PyCostModel):
                     metric="tr-p-rmse",
                     fevals=[
                         rmse,
-                        # pack_sum_average_peak_score(self.plan_size),
+                        pack_sum_average_peak_score(self.plan_size),
                     ],
                     evals=[(d_train, "tr")],
                     verbose_eval=self.verbose_eval,
@@ -298,8 +299,8 @@ def custom_callback(
     """Callback function for xgboost to support multiple custom evaluation functions"""
     # pylint: disable=import-outside-toplevel
     import xgboost as xgb
-    from xgboost.core import EarlyStopException
     from xgboost.callback import _fmt_metric
+    from xgboost.core import EarlyStopException
 
     try:
         from xgboost.training import aggcv
@@ -415,3 +416,46 @@ def custom_callback(
             raise EarlyStopException(best_iteration)
 
     return callback
+
+
+def pack_sum_average_peak_score(N):  # pylint: disable=invalid-name
+    """Return the evaluation function for average-peak-score@N
+
+    Parameters
+    ----------
+    N: int
+        The "N" in "average-peak-score@N"
+
+    Returns
+    -------
+    The evaluation function
+    """
+
+    def feval(xs_pred, d_train):
+        """Evaluate average-peak-score@N in the pack-sum format
+
+        Parameters
+        ----------
+        xs_pred: np.ndarray
+            The raw prediction
+        d_train: xgb.DMatrix
+            The ground-truth label matrix
+
+        Returns
+        -------
+        name: str
+        score: float
+        The name and score of this metric
+        """
+        d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
+        xs_pred = d_train.predict_with_score(xs_pred)
+        labels = d_train.predict_with_score(d_train.dmatrix.get_label())
+        labels = labels / np.unique(d_train.ids, return_counts=True)[1]
+
+        trials = np.argsort(xs_pred)[::-1][:N]
+        trial_scores = xs_pred[trials]
+        curve = max_curve(trial_scores) / np.max(xs_pred)
+        score = np.mean(curve)
+        return "a-peak@%d" % N, score
+
+    return feval
