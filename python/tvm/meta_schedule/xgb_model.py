@@ -120,7 +120,7 @@ class PackSum:
     def predict_with_score(self, pred) -> np.ndarray:
         return np.bincount(self.ids, weights=pred)
 
-    def square_error_loss(self, xs_pred: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def square_error(self, xs_pred: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Implement square error loss on pack-sum format as
         a custom objective function for xgboost.
 
@@ -136,15 +136,38 @@ class PackSum:
         hessian: np.ndarray
             The hessian according to the xgboost format
         """
-        ys = self.dmatrix.get_label()  # pylint: disable=invalid-name
         # Making prediction
         xs_pred = self.predict_with_score(xs_pred)
         # Propagate prediction to each block
         xs_pred = xs_pred[self.ids]
         # The gradient and hessian
+        ys = self.dmatrix.get_label()  # pylint: disable=invalid-name
         gradient = xs_pred - ys
         hessian = np.ones_like(gradient)
         return gradient * ys, hessian * ys
+
+    def rmse(self, xs_pred) -> Tuple[str, float]:
+        """Evaluate RMSE (rooted mean square error) in the pack-sum format
+
+        Parameters
+        ----------
+        xs_pred: np.ndarray
+            The raw predictions
+
+        Returns
+        -------
+        throughputs: np.ndarray
+            The throughput
+        """
+        # Making prediction
+        xs_pred = self.predict_with_score(xs_pred)
+        # Propagate prediction to each block
+        xs_pred = xs_pred[self.ids]
+        # The RMSE
+        ys = self.dmatrix.get_label()  # pylint: disable=invalid-name
+        square_error = np.square(xs_pred - ys)
+        rmse = np.sqrt(square_error.mean())
+        return "p-rmse", rmse
 
 
 class XGBModel(PyCostModel):
@@ -201,6 +224,14 @@ class XGBModel(PyCostModel):
         if len(inputs) == 0:
             return
 
+        def obj(xs_pred: np.ndarray, d_train: xgb.DMatrix):
+            d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
+            return d_train.square_error(xs_pred)
+
+        def rmse(xs_pred: np.ndarray, d_train: xgb.DMatrix):
+            d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
+            return d_train.rmse(xs_pred)
+
         # extract feature
         self.cached_features.extend(per_block_feature(x.sch) for x in inputs)
         self.cached_mean_costs = np.append(self.cached_mean_costs, [x.mean_cost for x in results])
@@ -212,13 +243,13 @@ class XGBModel(PyCostModel):
             self.xgb_params,
             d_train.dmatrix,
             num_boost_round=10000,
-            obj=pack_sum_square_error,
+            obj=obj,
             callbacks=[
                 custom_callback(
                     stopping_rounds=50,
                     metric="tr-p-rmse",
                     fevals=[
-                        # pack_sum_rmse,
+                        rmse,
                         # pack_sum_average_peak_score(self.plan_size),
                     ],
                     evals=[(d_train, "tr")],
@@ -254,36 +285,6 @@ class XGBModel(PyCostModel):
             ret = np.random.uniform(0, 1, (n,))
         ret = ret.astype("float64")
         return ret
-
-
-def pack_sum_square_error(xs_pred, d_train):
-    """Implement square error loss on pack-sum format as
-     a custom objective function for xgboost.
-
-    Parameters
-    ----------
-    xs_pred: np.ndarray
-        The predictions
-    d_train: xgb.DMatrix
-        The training set
-
-    Returns
-    -------
-    gradient: np.ndarray
-        The gradient according to the xgboost format
-    hessian: np.ndarray
-        The hessian according to the xgboost format
-    """
-    d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
-    ys = d_train.dmatrix.get_label()  # pylint: disable=invalid-name
-    # TODO(@junrushao1994): isn't the following two statements useless?
-    xs_pred = d_train.predict_with_score(xs_pred)
-    xs_pred = xs_pred[d_train.ids]
-    gradient = xs_pred - ys
-    hessian = np.ones_like(gradient)
-    if len(ys) == 0:
-        return gradient, hessian
-    return gradient * ys, hessian * ys
 
 
 def custom_callback(
@@ -346,8 +347,8 @@ def custom_callback(
         if cvfolds is None:
             eval_result = itertools.chain.from_iterable(
                 [
-                    (key, float(v))
-                    for key, v in map(
+                    (key, float(value))
+                    for key, value in map(
                         lambda x: x.split(":"),
                         booster.eval_set(
                             evals,
