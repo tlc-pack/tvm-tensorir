@@ -16,3 +16,31 @@
 # under the License.
 """Integration test for CUDA with Tensor Core"""
 # pylint: disable=missing-function-docstring
+import te_workload
+import tvm
+from tvm import meta_schedule as ms
+from tvm import te
+
+
+TARGET = tvm.target.Target("nvidia/rtx2080ti")
+
+
+def test_integration_conv2d_nchwc():
+    workload = te_workload.conv2d_nchwc(
+        n=1,
+        h=98,
+        w=98,
+        ci=96,
+        co=192,
+        kh=3,
+        kw=3,
+        stride=1,
+        in_type="float16",
+        out_type="float32",
+    )
+    assert list(workload.shape) == [1, 12, 96, 96, 16]
+    workload = te.create_func(workload)
+
+
+if __name__ == "__main__":
+    test_integration_conv2d_nchwc()

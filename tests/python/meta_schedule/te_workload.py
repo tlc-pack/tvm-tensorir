@@ -73,14 +73,15 @@ def conv2d_nchwc(  # pylint: disable=invalid-name
     kh: int,
     kw: int,
     stride: int,
+    in_type: str,
     out_type: str,
 ):
     PACK_C = 16  # pylint: disable=invalid-name
     assert ci % PACK_C == 0
     assert co % PACK_C == 0
     assert stride == 1
-    x = te.placeholder((n, ci // PACK_C, h, w, PACK_C), name="X")
-    w = te.placeholder((co // PACK_C, ci // PACK_C, kh, kw, PACK_C, PACK_C), name="W")
+    X = te.placeholder((n, ci // PACK_C, h, w, PACK_C), name="X")
+    W = te.placeholder((co // PACK_C, ci // PACK_C, kh, kw, PACK_C, PACK_C), name="W")
 
     rc = te.reduce_axis((0, ci), "rc")
     rh = te.reduce_axis((0, kh), "rh")
@@ -89,9 +90,9 @@ def conv2d_nchwc(  # pylint: disable=invalid-name
     def f_compute(n, c0, h, w, c1):
         rc0 = rc // PACK_C
         rc1 = rc % PACK_C
-        xx = x[n, rc0, h + rh, w + rw, rc1].astype(out_type)
-        ww = w[c0, rc0, rh, rw, rc1, c1].astype(out_type)
-        return te.sum(xx * ww, axis=(rc, rh, rw))
+        x = X[n, rc0, h + rh, w + rw, rc1].astype(out_type)
+        w = W[c0, rc0, rh, rw, rc1, c1].astype(out_type)
+        return te.sum(x * w, axis=(rc, rh, rw))
 
     return te.compute(
         (
@@ -102,6 +103,7 @@ def conv2d_nchwc(  # pylint: disable=invalid-name
             PACK_C,
         ),
         f_compute,
+        name="conv2d_nchwc",
     )
 
 
