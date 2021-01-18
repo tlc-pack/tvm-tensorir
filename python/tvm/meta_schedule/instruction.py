@@ -223,6 +223,11 @@ class DecomposeReductionAttrs(InstAttrs):
     """Attrs of the instruction that applies decompose_reduction"""
 
 
+@register_object("meta_schedule.attrs.TensorizeAttrs")
+class TensorizeAttrs(InstAttrs):
+    """Attrs of the instruction that applies tensorize"""
+
+
 @register_object("meta_schedule.attrs.EnterPostProcAttrs")
 class EnterPostProcAttrs(InstAttrs):
     """Attrs of an NOP that indicates entrance of post processing"""

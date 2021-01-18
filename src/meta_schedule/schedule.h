@@ -286,6 +286,12 @@ class ScheduleNode : public Object {
    */
   BlockRV DecomposeReduction(const BlockRV& block, const LoopRV& loop);
   /*!
+   * \brief Tensorize the computation enclosed by loop with tensor_intrin
+   * \param loop The loop under which to be tensorized
+   * \param tensor_intrin_name The name of the tensor intrinsic registered to the system
+   */
+  void Tensorize(const LoopRV& loop, const String& tensor_intrin_name);
+  /*!
    * \brief Parallelize a specific loop
    * \param loop The loop to be parallelized
    */

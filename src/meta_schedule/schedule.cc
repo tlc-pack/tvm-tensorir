@@ -769,6 +769,11 @@ BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const LoopRV& loo
   return output;
 }
 
+void ScheduleNode::Tensorize(const LoopRV& loop, const String& tensor_intrin_name) {
+  sch->tensorize(Eval(loop), tir::TensorIntrin::Get(tensor_intrin_name));
+  this->trace->Append(TensorizeAttrs::Make(loop, tensor_intrin_name));
+}
+
 void ScheduleNode::Parallel(const LoopRV& loop) {
   tir::StmtSRef loop_sref = this->Eval(loop);
   sch->parallel(loop_sref);
@@ -1018,6 +1023,13 @@ struct Internal {
     return sch->DecomposeReduction(block, loop);
   }
   /*!
+   * \brief FFI function, corresponds to ScheduleNode::Tensorize
+   * \sa ScheduleNode::Tensorize
+   */
+  static void Tensorize(Schedule sch, LoopRV loop, String tensor_intrin_name) {
+    sch->Tensorize(loop, tensor_intrin_name);
+  }
+  /*!
    * \brief FFI function, corresponds to ScheduleNode::Parallel
    * \sa ScheduleNode::Parallel
    */
@@ -1079,6 +1091,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleCacheWrite").set_body_typed(Internal:
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleBlockize").set_body_typed(Internal::Blockize);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleDecomposeReduction")
     .set_body_typed(Internal::DecomposeReduction);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleTensorize").set_body_typed(Internal::Tensorize);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleParallel").set_body_typed(Internal::Parallel);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleVectorize").set_body_typed(Internal::Vectorize);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleUnroll").set_body_typed(Internal::Unroll);

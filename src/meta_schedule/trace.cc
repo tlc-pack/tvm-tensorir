@@ -147,7 +147,7 @@ void TraceNode::Deserialize(const ObjectRef& json, const Schedule& sch) {
   const ArrayNode* array = json.as<ArrayNode>();
   CHECK(array) << "TypeError: Expects Array, but gets: " << json->GetTypeKey();
   // Random variables created on the fly
-  Map<String, ObjectRef> named_rvs;
+  Map<String, ObjectRef> named_rvs{{"None", ObjectRef(nullptr)}};
   // For each instruction
   for (auto iter = array->begin(), end = array->end(); iter != end; ++iter) {
     // Extract the serialized JSON array for the instruction
@@ -255,7 +255,7 @@ Trace DeadCodeElimination(const Trace& trace) {
 /**************** AsPython ****************/
 
 Array<String> TraceNode::AsPython() const {
-  Map<ObjectRef, String> rv_names;
+  Map<ObjectRef, String> rv_names{{ObjectRef(nullptr), "None"}};
   // Allocate names for random variables
   for (const Instruction& inst : this->insts) {
     for (const ObjectRef& output : inst->outputs) {
