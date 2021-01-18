@@ -80,8 +80,16 @@ def conv2d_nchwc(  # pylint: disable=invalid-name
     assert ci % PACK_C == 0
     assert co % PACK_C == 0
     assert stride == 1
-    X = te.placeholder((n, ci // PACK_C, h, w, PACK_C), name="X")
-    W = te.placeholder((co // PACK_C, ci // PACK_C, kh, kw, PACK_C, PACK_C), name="W")
+    X = te.placeholder(
+        (n, ci // PACK_C, h, w, PACK_C),
+        dtype=in_type,
+        name="X",
+    )
+    W = te.placeholder(
+        (co // PACK_C, ci // PACK_C, kh, kw, PACK_C, PACK_C),
+        dtype=in_type,
+        name="W",
+    )
 
     rc = te.reduce_axis((0, ci), "rc")
     rh = te.reduce_axis((0, kh), "rh")

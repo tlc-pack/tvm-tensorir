@@ -192,6 +192,7 @@ tir::StmtSRef ScheduleNode::Eval(const BlockRV& block) {
   const Optional<ObjectRef>& obj = (*iter).second;
   CHECK(obj.defined()) << "ValueError: Corresponding BlockRV's value is not defined: " << block;
   if (const auto* sref = obj.as<tir::StmtSRefNode>()) {
+    CHECK(sref->stmt) << "ValueError: The BlockRV has expired";
     return GetRef<tir::StmtSRef>(sref);
   }
   LOG(FATAL) << "TypeError: BlockRV's corresponding type is invalid: " << obj->GetTypeKey();
@@ -204,6 +205,7 @@ tir::StmtSRef ScheduleNode::Eval(const LoopRV& loop) {
   const Optional<ObjectRef>& obj = (*iter).second;
   CHECK(obj.defined()) << "ValueError: Corresponding LoopRV's value is not defined: " << loop;
   if (const auto* sref = obj.as<tir::StmtSRefNode>()) {
+    CHECK(sref->stmt) << "ValueError: The LoopRV has expired";
     return GetRef<tir::StmtSRef>(sref);
   }
   LOG(FATAL) << "TypeError: LoopRV's corresponding type is invalid: " << obj->GetTypeKey();
@@ -224,6 +226,7 @@ ObjectRef ScheduleNode::EvalLoopExtended(const LoopRV& loop) {
     return String(LoopRV::root_rv);
   }
   if (const auto* sref = obj.as<tir::StmtSRefNode>()) {
+    CHECK(sref->stmt) << "ValueError: The LoopRV has expired";
     return GetRef<tir::StmtSRef>(sref);
   }
   LOG(FATAL) << "TypeError: LoopRV's corresponding type is invalid: " << obj->GetTypeKey();
