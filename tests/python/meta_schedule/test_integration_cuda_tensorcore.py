@@ -20,7 +20,7 @@ import te_workload
 import tvm
 from tvm import meta_schedule as ms
 from tvm import te
-
+from tir_tensor_intrin import TENSORCORE_WMMA
 
 TARGET = tvm.target.Target("nvidia/rtx2080ti")
 
@@ -124,6 +124,7 @@ def test_integration_conv2d_nchwc():
         sch.vectorize(fused_1)
         # Decompose reduction
         sch.decompose_reduction(block, thread_idx)
+        # sch.sch.tensorize(sch.evaluate(i_tc), TENSORCORE_WMMA)
         print(tvm.script.asscript(sch.sch.func))
 
     sch = ms.Schedule(func=workload)
