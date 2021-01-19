@@ -34,8 +34,7 @@ class PrimFuncFeature {
   std::vector<int64_t> shape;
 };
 
-TVM_DLL PrimFuncFeature CalcPerBlockFeature(const Schedule& sch,
-                                            int max_num_buffer_access_features);
+TVM_DLL PrimFuncFeature PerBlockFeature(const Schedule& sch, int max_num_buffer_access_features);
 
 TVM_DLL Array<String> PerBlockFeatureNames(int max_num_buffer_access_features);
 

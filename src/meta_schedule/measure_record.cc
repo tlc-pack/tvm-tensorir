@@ -56,9 +56,7 @@ MeasureResult::MeasureResult(Array<FloatImm> costs, int error_no, String error_m
   data_ = std::move(n);
 }
 
-/********** Shallow copy functions **********/
-
-// TODO(@junrushao1994): revisit
+/********** Member methods **********/
 
 MeasureInput MeasureInputNode::Copy() const {
   ObjectPtr<MeasureInputNode> n = make_object<MeasureInputNode>();
@@ -76,6 +74,8 @@ MeasureResult MeasureResultNode::Copy() const {
   n->timestamp = timestamp;
   return MeasureResult(n);
 }
+
+double MeasureResultNode::MeanCost() const { return FloatArrayMean(this->costs); }
 
 /********** Printing functions **********/
 
@@ -156,6 +156,13 @@ struct Internal {
                                         double all_cost, double timestamp) {
     return MeasureResult(costs, error_no, error_msg, all_cost, timestamp);
   }
+  /*!
+   * \brief The average cost
+   * \sa MeasureResultNode::MeanCost
+   */
+  static double MeasureResultMeanCost(MeasureResult measure_result) {
+    return measure_result->MeanCost();
+  }
 };
 
 TVM_REGISTER_NODE_TYPE(MeasureInputNode);
@@ -165,6 +172,8 @@ TVM_REGISTER_NODE_TYPE(MeasureResultNode);
 TVM_REGISTER_GLOBAL("meta_schedule.MeasureInput").set_body_typed(Internal::MeasureInputNew);
 TVM_REGISTER_GLOBAL("meta_schedule.BuildResult").set_body_typed(Internal::BuildResultNew);
 TVM_REGISTER_GLOBAL("meta_schedule.MeasureResult").set_body_typed(Internal::MeasureResultNew);
+TVM_REGISTER_GLOBAL("meta_schedule.MeasureResultMeanCost")
+    .set_body_typed(Internal::MeasureResultMeanCost);
 
 }  // namespace meta_schedule
 }  // namespace tvm

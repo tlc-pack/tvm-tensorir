@@ -1009,8 +1009,8 @@ inline double slog(double x) {
       static_cast<double>(static_cast<int>(s.pos) == 6), \
       static_cast<double>(static_cast<int>(s.pos) == 7)
 
-void CalcPerBlockFeature(const Schedule& sch, int max_num_buffer_access_features,
-                         PrimFuncFeature* prim_func_feature) {
+void PerBlockFeature(const Schedule& sch, int max_num_buffer_access_features,
+                     PrimFuncFeature* prim_func_feature) {
   constexpr size_t kNumFeatureGroup1 = 8 * 2 + 11 * 3 + 7;
   constexpr size_t kNumFeatureGroup2Subgroup = 18;
   constexpr size_t kNumFeatureGroup3 = FeatureSet::NUM_SAMPLE_ARITH_INTENSITY_CURVE;
@@ -1233,24 +1233,22 @@ Array<String> PerBlockFeatureNames(int max_num_buffer_access_features) {
   return {result.begin(), result.end()};
 }
 
-PrimFuncFeature CalcPerBlockFeature(const Schedule& sch, int max_num_buffer_access_features) {
+PrimFuncFeature PerBlockFeature(const Schedule& sch, int max_num_buffer_access_features) {
   PrimFuncFeature result;
-  CalcPerBlockFeature(sch, max_num_buffer_access_features, &result);
+  PerBlockFeature(sch, max_num_buffer_access_features, &result);
   return result;
 }
 
 struct Internal {
-  static runtime::NDArray CalcPerBlockFeature(const Schedule& sch,
-                                              int max_num_buffer_access_features) {
+  static runtime::NDArray PerBlockFeature(const Schedule& sch, int max_num_buffer_access_features) {
     static thread_local PrimFuncFeature* result =
         new PrimFuncFeature();  // persists till the program offloading
-    tvm::meta_schedule::CalcPerBlockFeature(sch, max_num_buffer_access_features, result);
+    tvm::meta_schedule::PerBlockFeature(sch, max_num_buffer_access_features, result);
     return result->AsNDArray();
   }
 };
 
-TVM_REGISTER_GLOBAL("meta_schedule.CalcPerBlockFeature")
-    .set_body_typed(Internal::CalcPerBlockFeature);
+TVM_REGISTER_GLOBAL("meta_schedule.PerBlockFeature").set_body_typed(Internal::PerBlockFeature);
 TVM_REGISTER_GLOBAL("meta_schedule.PerBlockFeatureNames").set_body_typed(PerBlockFeatureNames);
 
 }  // namespace meta_schedule
