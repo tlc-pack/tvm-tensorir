@@ -238,7 +238,7 @@ class XGBModel(PyCostModel):
         model_file: Optional[str] = None,
         seed: int = 43,
     ):
-        super(XGBModel, self).__init__()
+        super().__init__()
         self.xgb_params = {
             "max_depth": 10,
             "gamma": 0.001,
