@@ -199,6 +199,9 @@ class MeasureResultNode : public Object {
   /*! \brief Do shallow copy. */
   MeasureResult Copy() const;
 
+  /*! \brief The average cost */
+  double MeanCost() const;
+
   static constexpr const char* _type_key = "meta_schedule.MeasureResult";
   TVM_DECLARE_FINAL_OBJECT_INFO(MeasureResultNode, Object);
 };
