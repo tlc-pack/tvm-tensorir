@@ -15,13 +15,15 @@
 # specific language governing permissions and limitations
 # under the License.
 """Feature extraction interface"""
+from typing import List
 
-from ..runtime.ndarray import NDArray
+import numpy as np
+
 from . import _ffi_api
 from .schedule import Schedule
 
 
-def calc_per_block_feature(sch: Schedule, max_num_buffer_access_features: int = 5) -> NDArray:
+def per_block_feature(sch: Schedule, max_num_buffer_access_features: int = 5) -> np.ndarray:
     """Calculate the per-block feature
 
     Parameters
@@ -33,15 +35,15 @@ def calc_per_block_feature(sch: Schedule, max_num_buffer_access_features: int = 
 
     Returns
     -------
-    scores: List[float]
-        The predicted scores for all schedules
+    features: np.ndarray
+        A 2d matrix, the feature vectors for each block
     """
-    return _ffi_api.CalcPerBlockFeature(  # pylint: disable=no-member
+    return _ffi_api.PerBlockFeature(  # pylint: disable=no-member
         sch, max_num_buffer_access_features
     ).asnumpy()
 
 
-def per_bloc_feature_names(max_num_buffer_access_features: int = 5) -> NDArray:
+def per_bloc_feature_names(max_num_buffer_access_features: int = 5) -> List[str]:
     return _ffi_api.PerBlockFeatureNames(  # pylint: disable=no-member
         max_num_buffer_access_features
     )

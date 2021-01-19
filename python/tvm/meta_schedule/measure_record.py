@@ -159,3 +159,7 @@ class MeasureResult(Object):
             all_cost,
             timestamp,
         )
+
+    @property
+    def mean_cost(self) -> float:
+        return _ffi_api.MeanResultMeanCost(self)  # pylint: disable=no-member
