@@ -91,12 +91,15 @@ xgb_dmatrix_context = XGBDMatrixContext()
 class PackSum:
     """The pack-sum format
 
-    'dmatrix' is a float64 array of shape [n, m],
-    where `n` is the packed number of blocks,
-    and `m` is the length of feature vector on each block
-
-    'ids' is an int64 array of shape [n] containing nonnegative integers,
-    indicating which the index of a sample that a block belongs to
+    Parameters
+    ----------
+    dmatrix : xgb.DMatrix
+        A float64 array of shape [n, m],
+        where `n` is the packed number of blocks,
+        and `m` is the length of feature vector on each block
+    ids : np.ndarray
+        An int64 array of shape [n] containing nonnegative integers,
+        indicating which the index of a sample that a block belongs to
     """
 
     dmatrix: xgb.DMatrix  # pylint: disable=invalid-name
@@ -107,22 +110,30 @@ class PackSum:
         xs: List[np.ndarray],
         ys: Optional[List[np.ndarray]],
     ):
+        """Create PackSum format given a batch of samples
+
+        Parameters
+        ----------
+        xs : List[np.ndarray]
+            A batch of input samples
+        ys : Optional[List[np.ndarray]]
+            A batch of labels. None means no lables available.
+        """
         repeats = [x.shape[0] for x in xs]
         xs = np.concatenate(xs, axis=0)
         self.ids = np.concatenate([[i] * repeat for i, repeat in enumerate(repeats)], axis=0)
         if ys is None:
             self.dmatrix = xgb.DMatrix(data=xs, label=None)
-            return
-        ys = np.concatenate([[y] * repeat for y, repeat in zip(ys, repeats)], axis=0)
-        self.dmatrix = xgb.DMatrix(data=xs, label=ys)
-        self.dmatrix.set_weight(ys)
-        xgb_dmatrix_context.set("pack-sum", self.dmatrix, self)
+        else:
+            ys = np.concatenate([[y] * repeat for y, repeat in zip(ys, repeats)], axis=0)
+            self.dmatrix = xgb.DMatrix(data=xs, label=ys)
+            self.dmatrix.set_weight(ys)
 
     def predict_with_booster(self, booster: xgb.Booster) -> np.ndarray:
         pred = booster.predict(self.dmatrix)
         return np.bincount(self.ids, weights=pred)
 
-    def predict_with_score(self, pred) -> np.ndarray:
+    def predict_with_score(self, pred: np.ndarray) -> np.ndarray:
         return np.bincount(self.ids, weights=pred)
 
     def square_error(self, xs_pred: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -151,7 +162,7 @@ class PackSum:
         hessian = np.ones_like(gradient)
         return gradient * ys, hessian * ys
 
-    def rmse(self, xs_pred) -> Tuple[str, float]:
+    def rmse(self, xs_pred: np.ndarray) -> Tuple[str, float]:
         """Evaluate RMSE (rooted mean square error) in the pack-sum format
 
         Parameters
@@ -176,7 +187,9 @@ class PackSum:
         rmse = np.sqrt(square_error.mean())
         return "p-rmse", rmse
 
-    def average_peak_score(self, xs_pred, N) -> Tuple[str, float]:  # pylint: disable=invalid-name
+    def average_peak_score(
+        self, xs_pred: np.ndarray, n: int
+    ) -> Tuple[str, float]:  # pylint: disable=invalid-name
         """Evaluate average-peak-score@N in the pack-sum format
 
         Parameters
@@ -185,6 +198,8 @@ class PackSum:
             The raw prediction
         d_train: xgb.DMatrix
             The ground-truth label matrix
+        n : int
+            The N in average-peak-score@N
 
         Returns
         -------
@@ -196,11 +211,11 @@ class PackSum:
         xs_pred = self.predict_with_score(xs_pred)
         labels = self.predict_with_score(self.dmatrix.get_label())
         labels = labels / np.unique(self.ids, return_counts=True)[1]
-        trials = np.argsort(xs_pred)[::-1][:N]
+        trials = np.argsort(xs_pred)[::-1][:n]
         trial_scores = xs_pred[trials]
         curve = max_curve(trial_scores) / np.max(xs_pred)
         score = np.mean(curve)
-        return "a-peak@%d" % N, score
+        return "a-peak@%d" % n, score
 
 
 class XGBModel(PyCostModel):
@@ -223,7 +238,7 @@ class XGBModel(PyCostModel):
         model_file: Optional[str] = None,
         seed: int = 43,
     ):
-        super().__init__()
+        super(XGBModel, self).__init__()
         self.xgb_params = {
             "max_depth": 10,
             "gamma": 0.001,
@@ -243,7 +258,7 @@ class XGBModel(PyCostModel):
         self.cached_features = []
         self.cached_mean_costs = np.empty((0,), dtype="float64")
 
-    def update(self, inputs: List[MeasureInput], results: List[MeasureResult]):
+    def update(self, inputs: List[MeasureInput], results: List[MeasureResult]) -> None:
         """Update the cost model according to new measurement results (training data).
         XGBoost does not support incremental training, so we re-train a new model every time.
         Parameters
@@ -276,6 +291,8 @@ class XGBModel(PyCostModel):
         mean_costs = self.cached_throughputs.min() / self.cached_throughputs
         # train xgb model
         d_train = PackSum(xs=features, ys=mean_costs)
+        xgb_dmatrix_context.set("pack-sum", d_train.dmatrix, d_train)
+
         self.booster = xgb.train(
             self.xgb_params,
             d_train.dmatrix,
