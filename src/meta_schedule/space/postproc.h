@@ -92,6 +92,12 @@ TVM_DLL Postproc RewriteTensorize(Array<tir::TensorIntrin> tensor_intrins);
 TVM_DLL Postproc RewriteCudaThreadBind();
 
 /*!
+ * \brief Creates a postprocessor rewrites "lazy_cooperative_fetch" with the actual threadIdx
+ * \return The postprocessor created
+ */
+TVM_DLL Postproc RewriteCooperativeFetch();
+
+/*!
  * \brief Creates a postprocessor that verifies if the GPU code is correct
  * \return The postprocessor created
  */

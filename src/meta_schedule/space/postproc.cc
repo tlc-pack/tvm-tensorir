@@ -351,6 +351,72 @@ Postproc RewriteCudaThreadBind() {
   return Postproc("rewrite_cuda_thread_bind", f_proc);
 }
 
+/********** RewriteCooperativeFetch **********/
+
+class PostprocRewriteCooperativeFetch {
+ public:
+  static std::function<bool(const tir::BlockNode* block)> MakeBlockFinder(const tir::Schedule& sch,
+                                                                          int* idx) {
+    return [&sch, idx](const tir::BlockNode* block) -> bool {
+      const tir::StmtSRefNode* sref = sch->stmt2ref.at(block)->parent;
+      for (int& i = *idx = 0; sref != nullptr; sref = sref->parent, ++i) {
+        const tir::LoopNode* loop = sref->GetStmt<tir::LoopNode>();
+        if (!loop) {
+          break;
+        }
+        if (HasAnn(sch->stmt2ref.at(loop), tir::attr::loop_type, "lazy_cooperative_fetch")) {
+          return true;
+        }
+      }
+      return false;
+    };
+  }
+
+  bool Proc(const Schedule& sch) const {
+    int idx = 0;
+    while (Optional<tir::StmtSRef> opt_block_sref =
+               FindBlockSRef(sch->sch, MakeBlockFinder(sch->sch, &idx))) {
+      // Extract block info
+      tir::StmtSRef block_sref = opt_block_sref.value();
+      const auto* block = block_sref->GetStmt<tir::BlockNode>();
+      BlockRV block_rv = sch->GetBlock(block->tag);
+      // Extract loop info
+      Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
+      int n_loops = loop_rvs.size();
+      CHECK_LT(idx, n_loops);
+      LoopRV loop_rv = loop_rvs[n_loops - 1 - idx];
+      tir::StmtSRef loop_sref = sch->Eval(loop_rv);
+      // Remove the annotation
+      DelAnn(sch->sch, loop_sref, tir::attr::loop_type);
+      // Find the threadIdx.x binding
+      PrimExpr thread_idx_extent{nullptr};
+      for (const tir::StmtSRefNode* sref = loop_sref->parent;; sref = sref->parent) {
+        CHECK(sref) << "ValueError: Cannot find loops above with threadIdx.x";
+        if (const tir::LoopNode* loop = sref->GetStmt<tir::LoopNode>()) {
+          if (HasAnn(GetRef<tir::StmtSRef>(sref), tir::attr::loop_type, "threadIdx.x")) {
+            CHECK(tir::is_zero(loop->min)) << "ValueError: Expect loops to start from 0, but gets: "
+                                           << GetRef<tir::Loop>(loop);
+            thread_idx_extent = loop->extent;
+            break;
+          }
+        }
+      }
+      // Split the loop
+      Array<LoopRV> split = sch->Split(loop_rv, {thread_idx_extent, NullOpt});
+      CHECK_EQ(split.size(), 2);
+      sch->Bind(split[0], "threadIdx.x");
+    }
+    return true;
+  }
+};
+
+Postproc RewriteCooperativeFetch() {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
+    return PostprocRewriteCooperativeFetch().Proc(sch);
+  };
+  return Postproc("rewrite_cooperative_fetch", f_proc);
+}
+
 /********** RewriteParallelizeVectorizeUnroll **********/
 
 class PostprocRewriteParallelizeVectorizeUnroll {
@@ -619,6 +685,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.postproc.Apply").set_body_typed(Internal::App
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteTensorize").set_body_typed(RewriteTensorize);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteCudaThreadBind")
     .set_body_typed(RewriteCudaThreadBind);
+TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteCooperativeFetch")
+    .set_body_typed(RewriteCooperativeFetch);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteParallelizeVectorizeUnroll")
     .set_body_typed(RewriteParallelizeVectorizeUnroll);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.VerifyGPUCode").set_body_typed(VerifyGPUCode);
