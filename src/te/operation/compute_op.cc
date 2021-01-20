@@ -438,6 +438,9 @@ Stmt ComputeOpNode::BuildProvide(const Stage& stage,
 ComputeLoopNest ComputeLoopNest::Create(const BaseComputeOpNode* self, const Stage& stage,
                                         const std::unordered_map<IterVar, Range>& dom_map,
                                         bool debug_keep_trivial_loop) {
+  // <bojian/TVM-SymbolicTuning>
+  LOG(INFO) << "Creating the ComputeLoopNest for " << stage;
+
   ICHECK_EQ(stage->op.operator->(), self);
   ComputeLoopNest ret;
   // make main loop nest
@@ -445,6 +448,10 @@ ComputeLoopNest ComputeLoopNest::Create(const BaseComputeOpNode* self, const Sta
                                &ret.main_vmap, debug_keep_trivial_loop);
   ret.main_predicates =
       MakeBoundCheck(stage, dom_map, ret.main_vmap, false, std::unordered_set<IterVar>());
+
+  // <bojian/TVM-SymbolicTuning>
+  LOG(INFO) << std::endl << "Finished creating the main predicates";
+
   for (auto& e : ret.main_predicates) {
     e = likely(e);
   }
@@ -493,6 +500,10 @@ ComputeLoopNest ComputeLoopNest::Create(const BaseComputeOpNode* self, const Sta
     ret.num_common_loop = stage->leaf_iter_vars.size();
   }
   // copy elison here.
+
+  // <bojian/TVM-SymbolicTuning>
+  LOG(INFO) << "Finished the creation of ComputeLoopNest" << std::endl;
+
   return ret;
 }
 

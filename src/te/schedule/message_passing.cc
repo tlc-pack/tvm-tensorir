@@ -480,6 +480,10 @@ void PassDownBitMaskOr(const Stage& stage, std::unordered_map<IterVar, int>* p_s
 void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
                       std::unordered_map<IterVar, bool>* p_state, arith::Analyzer* analyzer) {
   auto& state = *p_state;
+
+  // <bojian/TVM-SymbolicTuning>
+  const Stage& stage = s;
+
   for (size_t i = s->relations.size(); i != 0; --i) {
     IterVarRelation rel = s->relations[i - 1];
     if (const SplitNode* s = rel.as<SplitNode>()) {
@@ -491,15 +495,31 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
         PrimExpr step = dom_map.at(s->outer)->extent;
         if (outer || inner) {
           state[s->parent] = true;
+
+          // <bojian/TVM-SymbolicTuning>
+          LOG(INFO) << "Bound checking is required for " << stage;
+
         } else {
           if (analyzer->CanProve(dom_map.at(s->parent)->extent == factor * step)) {
             state[s->parent] = false;
+
+            // <bojian/TVM-SymbolicTuning>
+            // LOG(INFO) << stage << ": " << dom_map.at(s->parent)->extent << "==" << factor * step;
+
           } else {
             state[s->parent] = true;
+
+            // <bojian/TVM-SymbolicTuning>
+            LOG(INFO) << "Bound checking is required for " << stage;
+
           }
         }
       } else {
         state[s->parent] = true;
+
+        // <bojian/TVM-SymbolicTuning>
+        LOG(INFO) << "Bound checking is required for " << stage;
+
       }
     } else if (const FuseNode* s = rel.as<FuseNode>()) {
       bool fused = state.at(s->fused);
@@ -527,6 +547,9 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
                                      const std::unordered_map<IterVar, PrimExpr>& value_map,
                                      bool skip_ivar_domain,
                                      const std::unordered_set<IterVar>& skip_iter) {
+  // <bojian/TVM-SymbolicTuning>
+  LOG(INFO) << "Making bound check for " << stage;
+
   arith::Analyzer analyzer;
 
   std::unordered_map<IterVar, bool> bound_state;
@@ -555,6 +578,11 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       PrimExpr vmax = analyzer.int_set(value, iset_dmap).max();
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
         preds.emplace_back(value < dom->extent);
+
+        // <bojian/TVM-SymbolicTuning>
+        LOG(INFO) << "Emplacing predicate (" << value << "<" << dom->extent 
+                  << ") for " << stage;
+
       }
     }
   }
