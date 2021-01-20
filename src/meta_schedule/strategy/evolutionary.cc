@@ -55,7 +55,7 @@ class EvolutionaryNode : public SearchStrategyNode {
   int num_measure_trials;
   /*! \brief The number of measurements in each batch */
   int num_measure_per_batch;
-  /*! \brief The number of iterations performed by generic algorithm.*/
+  /*! \brief The number of iterations performed by generic algorithm. */
   int num_iters_in_genetic_algo;
   /*! \brief The percentage of measurements to use randomly sampled states. */
   double eps_greedy;
@@ -75,7 +75,7 @@ class EvolutionaryNode : public SearchStrategyNode {
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("num_measure_trials", &num_measure_trials);
     v->Visit("num_measure_per_batch", &num_measure_per_batch);
-    v->Visit("num_measure_per_batch", &num_iters_in_genetic_algo);
+    v->Visit("num_iters_in_genetic_algo", &num_iters_in_genetic_algo);
     v->Visit("eps_greedy", &eps_greedy);
     v->Visit("use_measured_ratio", &use_measured_ratio);
     v->Visit("population", &population);
