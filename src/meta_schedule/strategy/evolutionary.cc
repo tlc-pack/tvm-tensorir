@@ -63,7 +63,7 @@ class EvolutionaryNode : public SearchStrategyNode {
   Database database;
 
   /*** Configuration: the initial population ***/
-  /*! \brief The percentage of previously measured states used in the initial population */
+  /*! \brief The ratio of measured states used in the initial population */
   double init_measured_ratio;
 
   /*** Configuration: evolution ***/
@@ -77,19 +77,23 @@ class EvolutionaryNode : public SearchStrategyNode {
   CostModel cost_model;
 
   /*** Configuration: pick states for measurement ***/
-  /*! \brief The percentage of measurements to use randomly sampled states. */
+  /*! \brief The ratio of measurements to use randomly sampled states. */
   double eps_greedy;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
+    /*** Configuration: global ***/
     v->Visit("total_measures", &total_measures);
-    v->Visit("genetic_algo_iters", &genetic_algo_iters);
-    v->Visit("eps_greedy", &eps_greedy);
-    v->Visit("init_measured_ratio", &init_measured_ratio);
     v->Visit("population", &population);
+    v->Visit("database", &database);
+    /*** Configuration: the initial population ***/
+    v->Visit("init_measured_ratio", &init_measured_ratio);
+    /*** Configuration: evolution ***/
+    v->Visit("genetic_algo_iters", &genetic_algo_iters);
     v->Visit("p_mutate", &p_mutate);
     v->Visit("mutator_probs", &mutator_probs);
     v->Visit("cost_model", &cost_model);
-    v->Visit("database", &database);
+    /*** Configuration: pick states for measurement ***/
+    v->Visit("eps_greedy", &eps_greedy);
   }
 
   /*!
@@ -112,13 +116,10 @@ class EvolutionaryNode : public SearchStrategyNode {
   /*!
    * \brief Sample the initial population from the support
    * \param support The support to be sampled from
-   * \param num_samples The number of samples to be drawn
-   * \param space The search space
    * \param sampler The random number sampler
    * \return The generated samples
    */
-  Array<Schedule> SampleInitPopulation(const Array<Schedule>& support, int num_samples,
-                                       Sampler* sampler);
+  Array<Schedule> SampleInitPopulation(const Array<Schedule>& support, Sampler* sampler);
 
   /*!
    * \brief Perform evolutionary search using genetic algorithm with the cost model
@@ -182,6 +183,13 @@ class EvolutionaryNode : public SearchStrategyNode {
     };
   }
 
+  /*!
+   * \brief Predict the normalized throughput of each candidate.
+   * Write the prediction to each `Database::Entry` and also return a copy
+   * \param task The search task
+   * \param candidates The candidates for prediction
+   * \return The normalized throughput in the prediction
+   */
   std::vector<double> PredictWithCostModel(const SearchTask& task,
                                            std::vector<Database::Entry>* candidates) const {
     Array<Schedule> schs;
@@ -206,20 +214,25 @@ class Evolutionary : public SearchStrategy {
  public:
   /*!
    * \brief Constructor
-   * \param total_measures The number of iterations of measurements performed by genetic
-   * algorithm
-   * \param genetic_algo_iters The number of iterations performed by generic algorithm
-   * \param eps_greedy The percentage of measurements to use randomly sampled states
-   * \param init_measured_ratio The percentage of previously measured states used in the
-   * initial population
+   * \param total_measures The maximum number of measurements performed by genetic algorithm
    * \param population The population size for evolutionary search
+   * \param init_measured_ratio The ratio of measured states used in the initial population
+   * \param genetic_algo_iters The number of iterations performed by generic algorithm
    * \param p_mutate The probability to perform mutation
    * \param mutator_probs Mutators and their probability mass
    * \param cost_model A cost model helping to explore the search space
+   * \param eps_greedy The percentage of measurements to use randomly sampled states
    */
-  explicit Evolutionary(int total_measures, int genetic_algo_iters, double eps_greedy,
-                        double init_measured_ratio, int population, double p_mutate,
-                        Map<Mutator, FloatImm> mutator_probs, CostModel cost_model);
+  explicit Evolutionary(
+      /*** Configuration: global ***/
+      int total_measures, int population,
+      /*** Configuration: the initial population ***/
+      double init_measured_ratio,
+      /*** Configuration: evolution ***/
+      int genetic_algo_iters, double p_mutate, Map<Mutator, FloatImm> mutator_probs,
+      CostModel cost_model,
+      /*** Configuration: pick states for measurement ***/
+      double eps_greedy);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Evolutionary, SearchStrategy, EvolutionaryNode);
 };
@@ -276,19 +289,20 @@ class SizedHeap {
 
 /********** Constructor **********/
 
-Evolutionary::Evolutionary(int total_measures, int genetic_algo_iters, double eps_greedy,
-                           double init_measured_ratio, int population, double p_mutate,
-                           Map<Mutator, FloatImm> mutator_probs, CostModel cost_model) {
+Evolutionary::Evolutionary(int total_measures, int population, double init_measured_ratio,
+                           int genetic_algo_iters, double p_mutate,
+                           Map<Mutator, FloatImm> mutator_probs, CostModel cost_model,
+                           double eps_greedy) {
   ObjectPtr<EvolutionaryNode> n = make_object<EvolutionaryNode>();
   n->total_measures = total_measures;
-  n->genetic_algo_iters = genetic_algo_iters;
-  n->eps_greedy = eps_greedy;
-  n->init_measured_ratio = init_measured_ratio;
   n->population = population;
+  n->database = InMemoryDB();
+  n->init_measured_ratio = init_measured_ratio;
+  n->genetic_algo_iters = genetic_algo_iters;
   n->p_mutate = p_mutate;
   n->mutator_probs = std::move(mutator_probs);
   n->cost_model = std::move(cost_model);
-  n->database = InMemoryDB();
+  n->eps_greedy = eps_greedy;
   data_ = std::move(n);
 }
 
@@ -300,9 +314,9 @@ Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const Search
                                             const ProgramMeasurer& measurer, Sampler* sampler,
                                             int verbose) {
   Array<Schedule> support = space->GetSupport(task, sampler);
-  for (int num_measured = 0; num_measured < total_measures;) {
+  for (int num_measured = 0; num_measured < this->total_measures;) {
     // `inits`: Sampled initial population, whose size is at most `this->population`
-    Array<Schedule> inits = SampleInitPopulation(support, population, sampler);
+    Array<Schedule> inits = SampleInitPopulation(support, sampler);
     // `bests`: The best schedules according to the cost mode when explore the space using mutators
     Array<Schedule> bests = EvolveWithCostModel(task, inits, sampler);
     // Pick candidates with eps greedy
@@ -316,16 +330,17 @@ Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const Search
 }
 
 Array<Schedule> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& support,
-                                                       int num_samples, Sampler* sampler) {
+                                                       Sampler* sampler) {
+  int n = this->population;
   Array<Schedule> results;
-  results.reserve(num_samples);
+  results.reserve(n);
   // Pick measured states
-  int num_measured = num_samples * init_measured_ratio;
+  int num_measured = n * this->init_measured_ratio;
   for (const Database::Entry& entry : database->GetTopK(num_measured)) {
     results.push_back(entry.sch);
   }
   // Pick unmeasured states
-  for (int i = results.size(); i < num_samples; ++i) {
+  for (int i = results.size(); i < n; ++i) {
     const Schedule& sch = support[sampler->SampleInt(0, support.size())];
     // TODO(@junrushao1994): re-sample could fail
     Schedule new_sch(sch->orig_func, Integer(sch->sampler.ForkSeed()));
@@ -485,24 +500,23 @@ Array<MeasureResult> EvolutionaryNode::MeasureAndUpdateCostModel(const SearchTas
 struct Internal {
   /*!
    * \brief Constructor of Evolutionary
-   * \param total_measures The number of iterations of measurements performed by genetic
-   * algorithm
-   * \param genetic_algo_iters The number of iterations performed by generic algorithm
-   * \param eps_greedy The percentage of measurements to use randomly sampled states
-   * \param init_measured_ratio The percentage of previously measured states used in the
-   * initial population
+   * \param total_measures The maximum number of measurements performed by genetic algorithm
    * \param population The population size for evolutionary search
+   * \param init_measured_ratio The ratio of measured states used in the initial population
+   * \param genetic_algo_iters The number of iterations performed by generic algorithm
    * \param p_mutate The probability to perform mutation
    * \param mutator_probs Mutators and their probability mass
    * \param cost_model A cost model helping to explore the search space
+   * \param eps_greedy The percentage of measurements to use randomly sampled states
    * \return The Evolutionary constructed
    * \sa Evolutionary::Evolutionary
    */
-  static Evolutionary New(int total_measures, int genetic_algo_iters, double eps_greedy,
-                          double init_measured_ratio, int population, double p_mutate,
-                          Map<Mutator, FloatImm> mutator_probs, CostModel cost_model) {
-    return Evolutionary(total_measures, genetic_algo_iters, eps_greedy, init_measured_ratio,
-                        population, p_mutate, mutator_probs, cost_model);
+  static Evolutionary New(int total_measures, int population, double init_measured_ratio,
+                          int genetic_algo_iters, double p_mutate,
+                          Map<Mutator, FloatImm> mutator_probs, CostModel cost_model,
+                          double eps_greedy) {
+    return Evolutionary(total_measures, population, init_measured_ratio, genetic_algo_iters,
+                        p_mutate, mutator_probs, cost_model, eps_greedy);
   }
   /*!
    * \brief Sample the initial population from the support
@@ -514,13 +528,13 @@ struct Internal {
    * \sa EvolutionaryNode::SampleInitPopulation
    */
   static Array<Schedule> EvolutionarySampleInitPopulation(Evolutionary self,
-                                                          Array<Schedule> support, int num_samples,
+                                                          Array<Schedule> support,
                                                           Optional<Integer> seed) {
     Sampler seeded;
     if (seed.defined()) {
       seeded.Seed(seed.value());
     }
-    return self->SampleInitPopulation(support, num_samples, &seeded);
+    return self->SampleInitPopulation(support, &seeded);
   }
   /*!
    * \brief Perform evolutionary search using genetic algorithm with the cost model
