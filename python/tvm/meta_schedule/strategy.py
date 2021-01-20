@@ -124,7 +124,6 @@ class Evolutionary(SearchStrategy):
         self,
         support: List[Schedule],
         num_samples: int,
-        space: SearchSpace,
         seed: Optional[int] = None,
     ) -> List[Schedule]:
         """Sample the initial population from the support
@@ -142,7 +141,7 @@ class Evolutionary(SearchStrategy):
             The initial population sampled from support
         """
         return _ffi_api.EvolutionarySampleInitPopulation(  # pylint: disable=no-member
-            self, support, num_samples, space, seed
+            self, support, num_samples, seed
         )
 
     def evolve_with_cost_model(
@@ -150,7 +149,6 @@ class Evolutionary(SearchStrategy):
         task: SearchTask,
         inits: List[Schedule],
         num_samples: int,
-        space: SearchSpace,
         seed: Optional[int] = None,
     ) -> List[Schedule]:
         """Perform evolutionary search using genetic algorithm with the cost model
@@ -170,7 +168,7 @@ class Evolutionary(SearchStrategy):
             The best samples in terms of the cost model's scores
         """
         return _ffi_api.EvolutionaryEvolveWithCostModel(  # pylint: disable=no-member
-            self, task, inits, num_samples, space, seed
+            self, task, inits, num_samples, seed
         )
 
     def pick_with_eps_greedy(
