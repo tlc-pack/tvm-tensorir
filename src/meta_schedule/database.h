@@ -71,6 +71,7 @@ class DatabaseNode : public runtime::Object {
  */
 class Database : public runtime::ObjectRef {
  public:
+  using Entry = DatabaseNode::Entry;
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Database, runtime::ObjectRef, DatabaseNode);
 };
 

@@ -25,13 +25,11 @@ namespace meta_schedule {
 namespace in_memory_db {
 
 struct EntryHasher {
-  size_t operator()(const DatabaseNode::Entry& entry) const {
-    return std::hash<String>()(entry.repr);
-  }
+  size_t operator()(const Database::Entry& entry) const { return std::hash<String>()(entry.repr); }
 };
 
 struct EntryPtrComparator {
-  bool operator()(DatabaseNode::Entry* a, DatabaseNode::Entry* b) const {
+  bool operator()(Database::Entry* a, Database::Entry* b) const {
     if (a->time != b->time) {
       return a->time < b->time;
     }
@@ -53,7 +51,7 @@ class InMemoryDBNode : public DatabaseNode {
    * \param time The running time of the schedule
    */
   void Add(const Schedule& sch, const String& repr, double time) override {
-    DatabaseNode::Entry& entry = entries_[repr];
+    Database::Entry& entry = entries_[repr];
     if (!entry.repr.empty()) {
       if (entry.time >= time) {
         sorted_.erase(&entry);
@@ -92,9 +90,9 @@ class InMemoryDBNode : public DatabaseNode {
 
  private:
   /*! \brief All the measured states, de-duplicated by the string repr */
-  std::unordered_map<String, DatabaseNode::Entry> entries_;
+  std::unordered_map<String, Database::Entry> entries_;
   /*! \brief All the measured states */
-  std::multiset<DatabaseNode::Entry*, EntryPtrComparator> sorted_;
+  std::multiset<Database::Entry*, EntryPtrComparator> sorted_;
 };
 
 class InMemoryDB : public Database {
