@@ -727,6 +727,27 @@ struct DecomposeReductionAttrs : public InstAttrsNode {
                                       "DecomposeReduction", false);
 };
 
+/*! \brief Attrs of the instruction that applies decompose_reduction */
+struct TensorizeAttrs : public InstAttrsNode {
+  /*! \brief Name of the tensor intrinsic */
+  String tensor_intrin_name;
+
+  void VisitAttrs(tvm::AttrVisitor* v) { v->Visit("tensor_intrin_name", &tensor_intrin_name); }
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param block The reduction block to be decomposed
+   * \param loop The loop to be decomposed at
+   * \param output The output of the instruction
+   * \return The instruction created
+   */
+  static Instruction Make(const LoopRV& loop, const String& tensor_intrin_name);
+
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(TensorizeAttrs,                        //
+                                      "meta_schedule.attrs.TensorizeAttrs",  //
+                                      "Tensorize", false);
+};
+
 /*! \brief Attrs of the instruction that applies parallel */
 struct ParallelAttrs : public InstAttrsNode {
   void VisitAttrs(tvm::AttrVisitor* v) {}

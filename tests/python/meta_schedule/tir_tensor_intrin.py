@@ -106,3 +106,15 @@ def dot_product_impl(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 # fmt: on
 # pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks
+
+TENSORCORE_WMMA = tir.TensorIntrin.register(
+    "test.tensorcore.wmma",
+    tensorcore_desc,
+    tensorcore_impl,
+)
+
+NEON_DOT = tir.TensorIntrin.register(
+    "test.neon.dot",
+    dot_product_desc,
+    dot_product_impl,
+)

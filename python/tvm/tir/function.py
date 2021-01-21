@@ -135,3 +135,13 @@ class TensorIntrin(Object):
 
     def __init__(self, desc_func, intrin_func):
         self.__init_handle_by_constructor__(_ffi_api.TensorIntrin, desc_func, intrin_func)
+
+    @staticmethod
+    def register(name: str, desc_func: PrimFunc, intrin_func: PrimFunc):
+        return _ffi_api.TensorIntrinRegister(  # pylint: disable=no-member
+            name, desc_func, intrin_func
+        )
+
+    @staticmethod
+    def get(name: str):
+        return _ffi_api.TensorIntrinGet(name)  # pylint: disable=no-member
