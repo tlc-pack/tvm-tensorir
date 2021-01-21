@@ -367,6 +367,23 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
     } else {
       provide = MergeNest(common, SeqStmt::Flatten(init, provide));
     }
+
+    // <bojian/TVM-SymbolicTuning>
+    auto predicates_tostr =
+        [](const std::vector<PrimExpr>& predicates) -> std::string {
+          std::ostringstream strout;
+          strout << "[";
+          for (const PrimExpr& predicate : predicates) {
+            strout << predicate << ", ";
+          }
+          strout << "]";
+          return strout.str();
+        };
+    LOG(INFO) << "Making ComputeStmt for " << stage
+              << " with main_predicates=" << predicates_tostr(n.main_predicates)
+              << " and init_predicates=" << predicates_tostr(n.init_predicates);
+
+
     // run substitution in the on the full nest, because  loop condition
     // could depend on outer loops.
     return Substitute(provide, n.main_vmap);
@@ -439,6 +456,7 @@ ComputeLoopNest ComputeLoopNest::Create(const BaseComputeOpNode* self, const Sta
                                         const std::unordered_map<IterVar, Range>& dom_map,
                                         bool debug_keep_trivial_loop) {
   // <bojian/TVM-SymbolicTuning>
+  std::cout << std::endl;
   LOG(INFO) << "Creating the ComputeLoopNest for " << stage;
 
   ICHECK_EQ(stage->op.operator->(), self);
@@ -450,7 +468,7 @@ ComputeLoopNest ComputeLoopNest::Create(const BaseComputeOpNode* self, const Sta
       MakeBoundCheck(stage, dom_map, ret.main_vmap, false, std::unordered_set<IterVar>());
 
   // <bojian/TVM-SymbolicTuning>
-  LOG(INFO) << std::endl << "Finished creating the main predicates";
+  LOG(INFO) << "Finished creating the main predicates";
 
   for (auto& e : ret.main_predicates) {
     e = likely(e);
@@ -502,7 +520,8 @@ ComputeLoopNest ComputeLoopNest::Create(const BaseComputeOpNode* self, const Sta
   // copy elison here.
 
   // <bojian/TVM-SymbolicTuning>
-  LOG(INFO) << "Finished the creation of ComputeLoopNest" << std::endl;
+  LOG(INFO) << "Finished the creation of ComputeLoopNest";
+  std::cout << std::endl;
 
   return ret;
 }
