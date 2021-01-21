@@ -34,9 +34,12 @@ Mutator::Mutator(String name, FApply apply) {
 
 /********** Mutator **********/
 
-Optional<Schedule> MutatorNode::Apply(const SearchTask& task, const Schedule& sch,
-                                      Sampler* sampler) {
-  return apply_(task, sch, sampler);
+Optional<Trace> MutatorNode::Apply(const SearchTask& task, const Trace& trace, Sampler* sampler) {
+  try {
+    return apply_(task, trace, sampler);
+  } catch (dmlc::Error& error) {
+    return NullOpt;
+  }
 }
 
 /********** MutateTileSize **********/
@@ -51,11 +54,15 @@ class MutatorTileSize {
     return AsVector<ObjectRef, int>()(GetRef<Array<ObjectRef>>(arr));
   }
 
-  Optional<Schedule> Apply(const SearchTask& task, const Schedule& sch, Sampler* sampler) {
-    // Find instruction `SamplePerfectTile` whose extent > 1 and n_splits > 1
+  /*!
+   * \brief Find instruction `SamplePerfectTile` whose extent > 1 and n_splits > 1
+   * \param trace The trace from which to find the instructions
+   * \return All the candidate instructions
+   */
+  std::vector<Instruction> FindCandidates(const Trace& trace) {
     std::vector<Instruction> candidates;
-    candidates.reserve(sch->trace->decisions.size());
-    for (const auto& kv : sch->trace->decisions) {
+    candidates.reserve(trace->decisions.size());
+    for (const auto& kv : trace->decisions) {
       const Instruction& inst = kv.first;
       if (const auto* attrs = inst->inst_attrs.as<SamplePerfectTileAttrs>()) {
         if (attrs->n_splits <= 1) {
@@ -71,11 +78,17 @@ class MutatorTileSize {
         }
       }
     }
+    return candidates;
+  }
+
+  Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler) {
+    // Find instruction `SamplePerfectTile` whose extent > 1 and n_splits > 1
+    std::vector<Instruction> candidates = FindCandidates(trace);
     if (candidates.empty()) {
       return NullOpt;
     }
     const Instruction& inst = candidates[sampler->SampleInt(0, candidates.size())];
-    std::vector<int> tiles = CastDecision(sch->trace->decisions.at(inst));
+    std::vector<int> tiles = CastDecision(trace->decisions.at(inst));
     int n_splits = tiles.size();
     // Choose two loops
     int x = sampler->SampleInt(0, n_splits);
@@ -128,20 +141,14 @@ class MutatorTileSize {
     }
     tiles[x] = len_x;
     tiles[y] = len_y;
-    Schedule new_sch = Schedule(sch->orig_func, Integer(sampler->ForkSeed()));
-    Trace mutated_trace;
-    mutated_trace->insts = sch->trace->insts;
-    mutated_trace->decisions = sch->trace->decisions;
-    mutated_trace->decisions.Set(inst, AsArray<int, ObjectRef>()(tiles));
-    mutated_trace->Apply(new_sch);
-    return new_sch;
+    return trace->WithDecision(inst, AsArray<int, ObjectRef>()(tiles));
   }
 };
 
 Mutator MutateTileSize() {
-  auto f_apply = [](SearchTask task, Schedule sch, void* sampler) -> Optional<Schedule> {
+  auto f_apply = [](SearchTask task, Trace trace, void* sampler) -> Optional<Trace> {
     MutatorTileSize mutator;
-    return mutator.Apply(task, sch, static_cast<Sampler*>(sampler));
+    return mutator.Apply(task, trace, static_cast<Sampler*>(sampler));
   };
   return Mutator("mutate_tile_size", f_apply);
 }
@@ -153,13 +160,13 @@ struct Internal {
    * \brief FFI function for MutatorNode::Apply
    * \sa MutatorNode::Apply
    */
-  static Optional<Schedule> Apply(Mutator mutator, SearchTask task, Schedule sch,
-                                  Optional<Integer> seed) {
+  static Optional<Trace> Apply(Mutator mutator, SearchTask task, Trace trace,
+                               Optional<Integer> seed) {
     Sampler seeded;
     if (seed.defined()) {
       seeded.Seed(seed.value());
     }
-    return mutator->Apply(task, sch, &seeded);
+    return mutator->Apply(task, trace, &seeded);
   }
 };
 

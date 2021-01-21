@@ -201,7 +201,7 @@ Optional<MeasureRecord> ImportLog(const SearchTask& task, const Array<ObjectRef>
   if (!StructuralEqual()(orig_func, task->workload)) {
     return NullOpt;
   }
-  Schedule sch(orig_func, /*seed=*/NullOpt);
+  Schedule sch(orig_func);
   TraceNode::Deserialize(record[4], sch);
   return MeasureRecord(/*sch=*/sch, /*costs=*/Downcast<Array<FloatImm>>(record[3]));
 }

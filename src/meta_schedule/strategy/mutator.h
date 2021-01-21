@@ -31,7 +31,7 @@ namespace meta_schedule {
 class MutatorNode : public Object {
  public:
   /*! \brief The mutator application function */
-  using FApply = runtime::TypedPackedFunc<Optional<Schedule>(SearchTask, Schedule, void*)>;
+  using FApply = runtime::TypedPackedFunc<Optional<Trace>(SearchTask, Trace, void*)>;
 
   /*! \brief Name of the mutator */
   String name;
@@ -43,11 +43,11 @@ class MutatorNode : public Object {
   /*!
    * \brief Mutate the schedule by applying the mutation
    * \param task The search task
-   * \param sch The schedule to be mutated
+   * \param trace The trace to be mutated
    * \param sampler The random number sampler
    * \return The new schedule after mutation, NullOpt if mutation fails
    */
-  Optional<Schedule> Apply(const SearchTask& task, const Schedule& sch, Sampler* sampler);
+  Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler);
 
   static constexpr const char* _type_key = "meta_schedule.Mutator";
   TVM_DECLARE_BASE_OBJECT_INFO(MutatorNode, Object);
