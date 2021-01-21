@@ -28,10 +28,9 @@ namespace meta_schedule {
 
 /*
  * TODO(@junrushao1994): Items left undone
- * 1) early stopping
+ * 1) early stopping if the best schedule was obtained long long ago
  * 2) check if space is fully explored
- * 3) report sampling failures in init population
- * 4) make sure schedule is still valid
+ * 3) check if the failure count of mutations and stop
  */
 
 /********** Evolutionary **********/
@@ -110,7 +109,7 @@ class EvolutionaryNode : public SearchStrategyNode {
     /*** Configuration: pick states for measurement ***/
     v->Visit("eps_greedy", &eps_greedy);
     /*** Helpers ***/
-    // Not visited: `trace_cache`
+    // Not visited: `trace_cache_`
   }
 
   /*!
@@ -134,8 +133,9 @@ class EvolutionaryNode : public SearchStrategyNode {
    * \brief Sample the initial population from both the support and previously measured traces
    * pick top `k = population *      init_measured_ratio ` from measured
    * pick     `k = population * (1 - init_measured_ratio)` from random support
-   * \param task The search task
    * \param support The support to be sampled from
+   * \param task The search task
+   * \param space The search space
    * \param sampler The random number sampler
    * \return The generated samples, all of which are not post-processed
    */
@@ -144,8 +144,9 @@ class EvolutionaryNode : public SearchStrategyNode {
 
   /*!
    * \brief Perform evolutionary search using genetic algorithm with the cost model
-   * \param task The search task
    * \param inits The initial population
+   * \param task The search task
+   * \param space The search space
    * \param sampler The random number sampler
    * \return An array of schedules, the sampling result
    */
@@ -156,6 +157,7 @@ class EvolutionaryNode : public SearchStrategyNode {
    * \brief Pick a batch of samples for measurement with epsilon greedy
    * \param inits The initial population used when picking random states
    * \param bests The best populations according to the cost model when picking top states
+   * \param task The search task
    * \param space The search space
    * \param sampler The random number sampler
    * \return A list of schedules, result of epsilon-greedy sampling
