@@ -22,7 +22,7 @@ from tvm._ffi import register_object
 from tvm.runtime import Object
 
 from . import _ffi_api_mutator
-from .schedule import Schedule
+from .trace import Trace
 from .search import SearchTask
 
 
@@ -35,24 +35,24 @@ class Mutator(Object):
     def apply(
         self,
         task: SearchTask,
-        sch: Schedule,
+        trace: Trace,
         seed: Optional[int] = None,
-    ) -> Optional[Schedule]:
+    ) -> Optional[Trace]:
         """Mutate the schedule by applying the mutation.
 
         Parameters
         ----------
         task : SearchTask
             The search task
-        sch: Schedule
-            The schedule to be mutated
+        trace: Trace
+            The trace to be mutated
 
         Returns
         -------
-        new_sch : Optional[Schedule]
-            The new schedule after mutation, or None if cannot find a viable solution
+        new_trace : Optional[Trace]
+            The new trace after mutation, or None if cannot find a viable solution
         """
-        return _ffi_api_mutator.Apply(self, task, sch, seed)  # pylint: disable=no-member
+        return _ffi_api_mutator.Apply(self, task, trace, seed)  # pylint: disable=no-member
 
 
 def mutate_tile_size() -> Mutator:

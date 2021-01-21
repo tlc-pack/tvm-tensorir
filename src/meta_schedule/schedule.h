@@ -328,7 +328,12 @@ class Schedule : public ObjectRef {
    * \param orig_func The original TIR PrimFunc to be scheduled
    * \param seed The random seed
    */
-  explicit Schedule(tir::PrimFunc orig_func, Optional<Integer> seed);
+  explicit Schedule(tir::PrimFunc orig_func, int seed);
+  /*!
+   * \brief Constructor: other fields are created with default value
+   * \param orig_func The original TIR PrimFunc to be scheduled
+   */
+  explicit Schedule(tir::PrimFunc orig_func);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
 };

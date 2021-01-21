@@ -259,15 +259,16 @@ def test_matmul_evolutionary_step_by_step():
     task = ms.SearchTask(workload=matmul)
     measurer = ms.ProgramMeasurer()
     strategy = ms.strategy.Evolutionary(
-        num_measure_trials=128,
-        num_measure_per_batch=16,
-        num_iters_in_genetic_algo=1,
-        eps_greedy=0.07,
-        use_measured_ratio=0.05,
+        total_measures=128,
         population=16,
+        init_measured_ratio=0.05,
+        genetic_algo_iters=1,
         p_mutate=0.85,
-        mutator_probs={ms.mutator.mutate_tile_size(): 1.0},
-        cost_model=ms.RandomModel(),
+        mutator_probs={
+            ms.mutator.mutate_tile_size(): 1.0,
+        },
+        cost_model=ms.RandCostModel(),
+        eps_greedy=0.07,
     )
     space = ms.space.PostOrderApply(
         stages=[
@@ -299,11 +300,14 @@ def test_matmul_evolutionary_step_by_step():
     #   evolve_with_cost_model
     #   pick_with_eps_greedy
     #   measure_and_update_cost_model
-    inits = strategy.sample_init_population(support=support, num_samples=15, space=space)
-    bests = strategy.evolve_with_cost_model(task=task, inits=inits, num_samples=100, space=space)
-    schedules = strategy.pick_with_eps_greedy(task=task, inits=inits, bests=bests, space=space)
+    inits = strategy.sample_init_population(support=support, task=task, space=space)
+    bests = strategy.evolve_with_cost_model(inits=inits, task=task, space=space)
+    picks = strategy.pick_with_eps_greedy(inits=inits, bests=bests, task=task, space=space)
     strategy.measure_and_update_cost_model(
-        task=task, schedules=schedules, measurer=measurer, verbose=1
+        task=task,
+        picks=picks,
+        measurer=measurer,
+        verbose=1,
     )
 
 
@@ -337,17 +341,16 @@ def test_matmul_evolutionary_end_to_end():
             ],
         ),
         strategy=ms.strategy.Evolutionary(
-            num_measure_trials=128,
-            num_measure_per_batch=16,
-            num_iters_in_genetic_algo=1,
-            eps_greedy=0.07,
-            use_measured_ratio=0.05,
+            total_measures=128,
             population=16,
+            init_measured_ratio=0.05,
+            genetic_algo_iters=1,
             p_mutate=0.85,
             mutator_probs={
                 ms.mutator.mutate_tile_size(): 1.0,
             },
-            cost_model=ms.RandomModel(),
+            cost_model=ms.RandCostModel(),
+            eps_greedy=0.07,
         ),
     )
     if sch is None:
