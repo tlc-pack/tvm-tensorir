@@ -94,6 +94,32 @@ TensorIntrin::TensorIntrin(PrimFunc desc_func, PrimFunc intrin_func) {
   data_ = std::move(n);
 }
 
+class TensorIntrinManager {
+ public:
+  Map<String, tir::TensorIntrin> reg;
+
+  static TensorIntrinManager* Global() {
+    static TensorIntrinManager* inst = new TensorIntrinManager();
+    return inst;
+  }
+};
+
+TensorIntrin TensorIntrin::Register(String name, PrimFunc desc_func, PrimFunc intrin_func) {
+  TensorIntrinManager* manager = TensorIntrinManager::Global();
+  CHECK_EQ(manager->reg.count(name), 0)
+      << "ValueError: TensorIntrin '" << name << "' has already been registered";
+  TensorIntrin intrin(desc_func, intrin_func);
+  manager->reg.Set(name, intrin);
+  return intrin;
+}
+
+TensorIntrin TensorIntrin::Get(String name) {
+  const TensorIntrinManager* manager = TensorIntrinManager::Global();
+  CHECK_EQ(manager->reg.count(name), 1)
+      << "ValueError: TensorIntrin '" << name << "' is not registered";
+  return manager->reg.at(name);
+}
+
 TVM_REGISTER_NODE_TYPE(PrimFuncNode);
 TVM_REGISTER_NODE_TYPE(TensorIntrinNode);
 
@@ -122,6 +148,9 @@ TVM_REGISTER_GLOBAL("tir.TensorIntrin")
     .set_body_typed([](PrimFunc desc_func, PrimFunc intrin_func) {
       return TensorIntrin(desc_func, intrin_func);
     });
+
+TVM_REGISTER_GLOBAL("tir.TensorIntrinRegister").set_body_typed(TensorIntrin::Register);
+TVM_REGISTER_GLOBAL("tir.TensorIntrinGet").set_body_typed(TensorIntrin::Get);
 
 }  // namespace tir
 }  // namespace tvm

@@ -543,6 +543,22 @@ class Schedule(Object):
         """
         return _ffi_api.ScheduleDecomposeReduction(self, block, loop)  # pylint: disable=no-member
 
+    def tensorize(
+        self,
+        loop: LoopRV,
+        tensor_intrin_name: str,
+    ) -> None:
+        """Tensorize the computation enclosed by loop with tensor_intrin
+
+        Parameters
+        ----------
+        loop: LoopRV
+            The loop under which to be tensorized
+        tensor_intrin_name: str
+            The name of the tensor intrinsic registered to the system
+        """
+        return _ffi_api.ScheduleTensorize(self, loop, tensor_intrin_name)  # pylint: disable=no-member
+
     def parallel(self, loop: LoopRV) -> None:
         """Parallelize a specific loop
 
