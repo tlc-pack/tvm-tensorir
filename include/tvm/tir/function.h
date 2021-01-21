@@ -173,6 +173,11 @@ class TensorIntrinNode : public Object {
 class TensorIntrin : public ObjectRef {
  public:
   TVM_DLL explicit TensorIntrin(PrimFunc desc_func, PrimFunc intrin_func);
+
+  TVM_DLL static TensorIntrin Register(String name, PrimFunc desc_func, PrimFunc intrin_func);
+
+  TVM_DLL static TensorIntrin Get(String name);
+
   TVM_DEFINE_OBJECT_REF_METHODS(TensorIntrin, ObjectRef, TensorIntrinNode)
 };
 
