@@ -41,9 +41,13 @@ Schedule::Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Trace trace, TSym
   data_ = std::move(n);
 }
 
-Schedule::Schedule(tir::PrimFunc orig_func, Optional<Integer> seed)
+Schedule::Schedule(tir::PrimFunc orig_func, int seed)
     : Schedule(/*orig_func=*/orig_func, /*sch=*/tir::ScheduleNode::Create(orig_func),
-               /*trace=*/Trace(), /*sym_tab=*/{}, /*seed=*/seed) {}
+               /*trace=*/Trace(), /*sym_tab=*/{}, /*seed=*/Integer(seed)) {}
+
+Schedule::Schedule(tir::PrimFunc orig_func)
+    : Schedule(/*orig_func=*/orig_func, /*sch=*/tir::ScheduleNode::Create(orig_func),
+               /*trace=*/Trace(), /*sym_tab=*/{}, /*seed=*/Optional<Integer>(NullOpt)) {}
 
 /**************** Utility ****************/
 
@@ -805,7 +809,9 @@ struct Internal {
    * \brief FFI function, corresponds to Schedule::Schedule
    * \sa Schedule::Schedule
    */
-  static Schedule New(tir::PrimFunc func, Optional<Integer> seed) { return Schedule(func, seed); }
+  static Schedule New(tir::PrimFunc func, Optional<Integer> seed) {
+    return seed.defined() ? Schedule(func, seed.value()) : Schedule(func);
+  }
   /**************** Utility ****************/
   /*!
    * \brief FFI function, corresponds to ScheduleNode::Seed

@@ -24,7 +24,7 @@ from .cost_model import CostModel
 from .measure import ProgramMeasurer
 from .measure_record import MeasureResult
 from .mutator import Mutator
-from .schedule import Schedule
+from .trace import Trace
 from .search import SearchSpace, SearchStrategy, SearchTask
 from .utils import cpu_count
 
@@ -63,148 +63,163 @@ class Replay(SearchStrategy):
 class Evolutionary(SearchStrategy):
     """Evolutionary Search.
 
+    The algorithm:
+
+    Loop until #measured >= total_measures:
+      init =
+            pick top `k = population *      init_measured_ratio ` from measured
+            pick     `k = population * (1 - init_measured_ratio)` from random support
+      best = generate `population` states with the cost model,
+            starting from `init`,
+            using mutators
+      chosen = pick top `k = population * (1 - eps_greedy)` from `best`
+            pick     `k = population *      eps_greedy ` from `init`
+    do the measurement on `chosen` & update the cost model
+
+
     Parameters
     ----------
-    num_measure_trials : int
-        The number of iterations of measurements performed by genetic algorithm
-    num_measure_per_batch : int
-        The number of measurements in each batch
-    num_iters_in_genetic_algo : int
-        The number of iterations performed by generic algorithm.*/
-    eps_greedy : float
-        The percentage of measurements to use randomly sampled states.
-    use_measured_ratio : float
-        The percentage of previously measured states used in the initial population
+    total_measures : int
+        The maximum number of measurements performed by genetic algorithm
     population : int
-        The population size for evolutionary search
+        The population size in the evolutionary search
+    database : Database
+        A table storing all states that have been measured
+    init_measured_ratio : float
+        The ratio of measured states used in the initial population
+    genetic_algo_iters : int
+        The number of iterations performed by generic algorithm
     p_mutate : float
         The probability to perform mutation
     mutator_probs : Dict[Mutator, float]
         Mutators and their probability mass
     cost_model : CostModel
         A cost model helping to explore the search space
+    eps_greedy: float
+        The ratio of measurements to use randomly sampled states
     """
 
-    num_measure_trials: int
-    num_measure_per_batch: int
-    num_iters_in_genetic_algo: int
-    eps_greedy: float
-    use_measured_ratio: float
+    # Configuration: global
+    total_measures: int
     population: int
+    database: "Database"
+    # Configuration: the initial population
+    init_measured_ratio: float
+    # Configuration: evolution
+    genetic_algo_iters: int
     p_mutate: float
     mutator_probs: Dict[Mutator, float]
     cost_model: CostModel
+    # Configuration: pick for measurement
+    eps_greedy: float
 
     def __init__(
         self,
-        num_measure_trials: int,
-        num_measure_per_batch: int,
-        num_iters_in_genetic_algo: int,
-        eps_greedy: float,
-        use_measured_ratio: float,
+        total_measures: int,
         population: int,
+        init_measured_ratio: float,
+        genetic_algo_iters: int,
         p_mutate: float,
         mutator_probs: Dict[Mutator, float],
         cost_model: CostModel,
+        eps_greedy: float,
     ):
         self.__init_handle_by_constructor__(
             _ffi_api.Evolutionary,  # pylint: disable=no-member
-            num_measure_trials,
-            num_measure_per_batch,
-            num_iters_in_genetic_algo,
-            eps_greedy,
-            use_measured_ratio,
+            total_measures,
             population,
+            init_measured_ratio,
+            genetic_algo_iters,
             p_mutate,
             mutator_probs,
             cost_model,
+            eps_greedy,
         )
 
     def sample_init_population(
         self,
-        support: List[Schedule],
-        num_samples: int,
+        support: List[Trace],
+        task: SearchTask,
         space: SearchSpace,
         seed: Optional[int] = None,
-    ) -> List[Schedule]:
+    ) -> List[Trace]:
         """Sample the initial population from the support
 
         Parameters
         ----------
-        support : List[Schedule]
+        support : List[Trace]
             The search task
         num_samples : SearchSpace
             The number of samples to be drawn
 
         Returns
         -------
-        samples : List[Schedule]
+        samples : List[Trace]
             The initial population sampled from support
         """
         return _ffi_api.EvolutionarySampleInitPopulation(  # pylint: disable=no-member
-            self, support, num_samples, space, seed
+            self, support, task, space, seed
         )
 
     def evolve_with_cost_model(
         self,
+        inits: List[Trace],
         task: SearchTask,
-        inits: List[Schedule],
-        num_samples: int,
         space: SearchSpace,
         seed: Optional[int] = None,
-    ) -> List[Schedule]:
+    ) -> List[Trace]:
         """Perform evolutionary search using genetic algorithm with the cost model
 
         Parameters
         ----------
         task : SearchTask
             The search task
-        inits : List[Schedule]
+        inits : List[Trace]
             The initial population
         num_samples : int
             The number of samples to be drawn
 
         Returns
         -------
-        samples : List[Schedule]
+        samples : List[Trace]
             The best samples in terms of the cost model's scores
         """
         return _ffi_api.EvolutionaryEvolveWithCostModel(  # pylint: disable=no-member
-            self, task, inits, num_samples, space, seed
+            self, inits, task, space, seed
         )
 
     def pick_with_eps_greedy(
         self,
+        inits: List[Trace],
+        bests: List[Trace],
         task: SearchTask,
-        inits: List[Schedule],
-        bests: List[Schedule],
         space: SearchSpace,
         seed: Optional[int] = None,
-    ) -> List[Schedule]:
+    ) -> List[Trace]:
         """Pick a batch of samples for measurement with epsilon greedy
 
         Parameters
         ----------
         task : SearchTask
             The search task
-        inits : List[Schedule]
+        inits : List[Trace]
             The initial population
-        bests : List[Schedule]
+        bests : List[Trace]
             The best populations according to the cost model when picking top states
 
         Returns
         -------
-        samples : List[Schedule]
-            A list of schedules, result of epsilon-greedy sampling
+        samples : List[Trace]
+            A list of traces, result of epsilon-greedy sampling
         """
         return _ffi_api.EvolutionaryPickWithEpsGreedy(  # pylint: disable=no-member
-            self, task, inits, bests, space, seed
+            self, inits, bests, task, space, seed
         )
 
     def measure_and_update_cost_model(
         self,
         task: SearchTask,
-        schedules: List[Schedule],
+        picks: List[Trace],
         measurer: ProgramMeasurer,
         verbose: int,
     ) -> List[MeasureResult]:
@@ -214,8 +229,8 @@ class Evolutionary(SearchStrategy):
         ----------
         task : SearchTask
             The search task
-        schedules : List[Schedule]
-            The schedules to be measured
+        picks : List[Trace]
+            The picked traces to be measured
         measurer : ProgramMeasurer
             The measurer
         verbose : int
@@ -227,5 +242,5 @@ class Evolutionary(SearchStrategy):
             A list of MeasureResult for measurements
         """
         return _ffi_api.EvolutionaryMeasureAndUpdateCostModel(  # pylint: disable=no-member
-            self, task, schedules, measurer, verbose
+            self, task, picks, measurer, verbose
         )
