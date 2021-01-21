@@ -64,6 +64,57 @@ def conv2d_nchw(  # pylint: disable=invalid-name
     return (x, w, y)
 
 
+def conv2d_nchwc(  # pylint: disable=invalid-name
+    n: int,
+    h: int,
+    w: int,
+    ci: int,
+    co: int,
+    kh: int,
+    kw: int,
+    stride: int,
+    in_type: str,
+    out_type: str,
+):
+    PACK_C = 16  # pylint: disable=invalid-name
+    assert ci % PACK_C == 0
+    assert co % PACK_C == 0
+    assert stride == 1
+    X = te.placeholder(
+        (n, ci // PACK_C, h, w, PACK_C),
+        dtype=in_type,
+        name="X",
+    )
+    W = te.placeholder(
+        (co // PACK_C, ci // PACK_C, kh, kw, PACK_C, PACK_C),
+        dtype=in_type,
+        name="W",
+    )
+
+    rc = te.reduce_axis((0, ci), "rc")
+    rh = te.reduce_axis((0, kh), "rh")
+    rw = te.reduce_axis((0, kw), "rw")
+
+    def f_compute(n, c0, h, w, c1):
+        rc0 = rc // PACK_C
+        rc1 = rc % PACK_C
+        x = X[n, rc0, h + rh, w + rw, rc1].astype(out_type)
+        w = W[c0, rc0, rh, rw, rc1, c1].astype(out_type)
+        return te.sum(x * w, axis=(rc, rh, rw))
+
+    return te.compute(
+        (
+            n,
+            co // PACK_C,
+            h - kh + 1,
+            w - kw + 1,
+            PACK_C,
+        ),
+        f_compute,
+        name="conv2d_nchwc",
+    )
+
+
 def conv2d_nchw_bias_bn_relu(  # pylint: disable=invalid-name
     n: int,
     h: int,
