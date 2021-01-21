@@ -105,6 +105,34 @@ def matmul_blockized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                             reducer.step(C[vi, vj], (A[vi, vk] * B[vk, vj]))
 
 
+
+@tvm.script.tir
+def matmul_decomposed(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    C = tir.match_buffer(c, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
+    B = tir.match_buffer(b, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        for i0 in range(0, 1024):
+            for i1 in range(0, 1024):
+                with tir.block([1024, 1024], "matmul_init") as [vi_init, vj_init]:
+                    tir.bind(vi_init, i0)
+                    tir.bind(vj_init, i1)
+                    tir.reads([])
+                    tir.writes([C[vi_init:(vi_init + 1), vj_init:(vj_init + 1)]])
+                    C[vi_init, vj_init] = tir.float32(0)
+                for i2 in range(0, 1024):
+                    with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "matmul_update") as [vi, vj, vk]:
+                        tir.bind(vi, i0)
+                        tir.bind(vj, i1)
+                        tir.bind(vk, i2)
+                        tir.reads([C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vk:(vk + 1), vj:(vj + 1)]])
+                        tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
+                        C[vi, vj] = (C[vi, vj] + (A[vi, vk]*B[vk, vj]))
+
+
 @tvm.script.tir
 def matmul_relu_fused(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     # function attr dict
@@ -234,6 +262,81 @@ def elementwise_inlined(a: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (1024, 1024), "float32")
     with tir.block([1024, 1024], "C") as [vi, vj]:
         C[vi, vj] = (A[vi, vj] + 1.0) * 2.0
+
+
+
+@tvm.script.tir
+def tensorize_desc(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (16, 16), align=128, offset_factor=1)
+    B = tir.match_buffer(b, (16, 16), align=128, offset_factor=1)
+    C = tir.match_buffer(c, (16, 16), align=128, offset_factor=1)
+
+    with tir.block([16, 16, tir.reduce_axis(0, 16)], "root") as [vi, vj, vk]:
+        tir.bind(vi, 0)
+        tir.bind(vj, 0)
+        tir.bind(vk, 0)
+        for i, j, k in tir.grid(16, 16, 16):
+            with tir.block([16, 16, tir.reduce_axis(0, 16)], "update") as [vii, vjj, vkk]:
+                tir.bind(vii, vi + i)
+                tir.bind(vjj, vj + j)
+                tir.bind(vkk, vk + k)
+                C[vii, vjj] = C[vii, vjj] + A[vii, vkk] * B[vkk, vjj]
+
+
+@tvm.script.tir
+def tensorize_impl(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (16, 16), align=128, offset_factor=1)
+    B = tir.match_buffer(b, (16, 16), align=128, offset_factor=1)
+    C = tir.match_buffer(c, (16, 16), align=128, offset_factor=1)
+
+    with tir.block([16, 16, tir.reduce_axis(0, 16)], "root") as [vi, vj, vk]:
+        tir.bind(vi, 0)
+        tir.bind(vj, 0)
+        tir.bind(vk, 0)
+        for i, j, k in tir.grid(16, 16, 16):
+            with tir.block([16, 16, tir.reduce_axis(0, 16)], "update") as [vii, vjj, vkk]:
+                tir.bind(vii, vi + i)
+                tir.bind(vjj, vj + j)
+                tir.bind(vkk, vk + k)
+                C[vii, vjj] = C[vii, vjj] + A[vii, vkk] * B[vkk, vjj]
+
+
+@tvm.script.tir
+def matmul_tensorized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    C = tir.match_buffer(c, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
+    A = tir.match_buffer(a, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
+    B = tir.match_buffer(b, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        for i0_outer in range(0, 64):
+            for i1_outer in range(0, 64):
+                for i0_inner_init in range(0, 16):
+                    for i1_inner_init in range(0, 16):
+                        with tir.block([1024, 1024], "matmul_init") as [vi_init, vj_init]:
+                            tir.bind(vi_init, ((i0_outer*16) + i0_inner_init))
+                            tir.bind(vj_init, ((i1_outer*16) + i1_inner_init))
+                            tir.reads([])
+                            tir.writes([C[vi_init:(vi_init + 1), vj_init:(vj_init + 1)]])
+                            C[vi_init, vj_init] = tir.float32(0)
+                for i2_outer in range(0, 64):
+                    with tir.block([64, 64, tir.reduce_axis(0, 64)], "blockized_matmul_update") as [vio, vjo, vko]:
+                        tir.bind(vio, i0_outer)
+                        tir.bind(vjo, i1_outer)
+                        tir.bind(vko, i2_outer)
+                        tir.reads([C[(vio*16):((vio*16) + 16), (vjo*16):((vjo*16) + 16)], A[(vio*16):((vio*16) + 16), (vko*16):((vko*16) + 16)], B[(vko*16):((vko*16) + 16), (vjo*16):((vjo*16) + 16)]])
+                        tir.writes([C[(vio*16):((vio*16) + 16), (vjo*16):((vjo*16) + 16)]])
+                        for i in range(0, 16):
+                            for j in range(0, 16):
+                                for k in range(0, 16):
+                                    with tir.block([16, 16, tir.reduce_axis(0, 16)], "update") as [vii, vjj, vkk]:
+                                        tir.bind(vii, ((vio*16) + i))
+                                        tir.bind(vjj, ((vjo*16) + j))
+                                        tir.bind(vkk, ((vko*16) + k))
+                                        tir.reads([C[vii:(vii + 1), vjj:(vjj + 1)], A[vii:(vii + 1), vkk:(vkk + 1)], B[vkk:(vkk + 1), vjj:(vjj + 1)]])
+                                        tir.writes([C[vii:(vii + 1), vjj:(vjj + 1)]])
+                                        C[vii, vjj] = (C[vii, vjj] + (A[vii, vkk]*B[vkk, vjj]))
 
 
 # fmt: on
@@ -569,6 +672,30 @@ def test_meta_schedule_blockize():
     _check_serialization(sch, func=matmul)
 
 
+def test_meta_schedule_decompose_reduction():
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("matmul")
+    _, _, k = sch.get_axes(block)
+    sch.decompose_reduction(block, k)
+    assert tvm.ir.structural_equal(sch.sch.func, matmul_decomposed)
+    _check_serialization(sch, func=matmul)
+
+
+def test_meta_schedule_tensorize():
+    tir.TensorIntrin.register("ms_test.tensor_intrin", tensorize_desc, tensorize_impl)
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("matmul")
+    i, j, k = sch.get_axes(block)
+    i_o, i_i = sch.split(i, [None, 16])
+    j_o, j_i = sch.split(j, [None, 16])
+    k_o, k_i = sch.split(k, [None, 16])
+    sch.reorder([i_o, j_o, k_o, i_i, j_i, k_i])
+    sch.decompose_reduction(block, k_o)
+    sch.tensorize(i_i, "ms_test.tensor_intrin")
+    assert tvm.ir.structural_equal(sch.sch.func, matmul_tensorized)
+    _check_serialization(sch, func=matmul)
+
+
 def test_meta_schedule_parallel():
     def check_annotation(sch, loop):
         loop = sch.evaluate(loop).stmt
@@ -660,7 +787,8 @@ if __name__ == "__main__":
     test_meta_schedule_cache_read()
     test_meta_schedule_cache_write()
     test_meta_schedule_blockize()
-    # test_meta_schedule_decompose_reduction()
+    test_meta_schedule_decompose_reduction()
+    test_meta_schedule_tensorize()
     test_meta_schedule_parallel()
     test_meta_schedule_vectorize()
     test_meta_schedule_unroll()

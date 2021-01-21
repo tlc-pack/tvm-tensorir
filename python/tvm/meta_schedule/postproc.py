@@ -78,6 +78,17 @@ def rewrite_cuda_thread_bind() -> Postproc:
     return _ffi_api_postproc.RewriteCudaThreadBind()  # pylint: disable=no-member
 
 
+def rewrite_cooperative_fetch() -> Postproc:
+    """Creates a postprocessor rewrites "lazy_cooperative_fetch" with the actual threadIdx
+
+    Returns
+    ----------
+    postproc: Postproc
+        The postprocessor created
+    """
+    return _ffi_api_postproc.RewriteCooperativeFetch()  # pylint: disable=no-member
+
+
 def rewrite_parallel_vectorize_unroll() -> Postproc:
     """Creates a postprocessor that applies parallelization, vectorization and auto unrolling,
     according to the annotation of each block
