@@ -107,7 +107,7 @@ bool ScheduleFnNode::Postprocess(const SearchTask& task, const Schedule& sch, Sa
 }
 
 Schedule ScheduleFnNode::SampleSchedule(const SearchTask& task, Sampler* sampler) {
-  Schedule sch(task->workload, Integer(sampler->ForkSeed()));
+  Schedule sch(task->workload, sampler->ForkSeed());
   this->sch_fn_(sch);
   return sch;
 }

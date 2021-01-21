@@ -285,6 +285,55 @@ Array<String> TraceNode::AsPython() const {
   return result;
 }
 
+/**************** Trace creators ****************/
+
+Trace TraceNode::WithNoPostproc() const {
+  int postproc_inst_idx = -1;
+  {
+    int i = 0;
+    for (const Instruction& inst : insts) {
+      if (inst->inst_attrs->IsInstance<EnterPostProcAttrs>()) {
+        postproc_inst_idx = i;
+        break;
+      }
+      ++i;
+    }
+  }
+  if (postproc_inst_idx == -1) {
+    return GetRef<Trace>(this);
+  }
+  Array<Instruction> new_insts{insts.begin(), insts.begin() + postproc_inst_idx};
+  Map<Instruction, ObjectRef> new_decisions;
+  for (const Instruction& inst : insts) {
+    auto iter = decisions.find(inst);
+    if (iter != decisions.end()) {
+      new_decisions.Set(inst, (*iter).second);
+    }
+  }
+  return Trace(std::move(new_insts), std::move(new_decisions));
+}
+
+Trace TraceNode::WithDecision(const Instruction& inst, const ObjectRef& decision) const {
+  int postproc_inst_idx = -1;
+  {
+    int i = 0;
+    for (const Instruction& inst : insts) {
+      if (inst->inst_attrs->IsInstance<EnterPostProcAttrs>()) {
+        postproc_inst_idx = i;
+        break;
+      }
+      ++i;
+    }
+  }
+  Array<Instruction> new_insts =
+      (postproc_inst_idx == -1)
+          ? Array<Instruction>{this->insts.begin(), this->insts.end()}
+          : Array<Instruction>{this->insts.begin(), this->insts.begin() + postproc_inst_idx};
+  Map<Instruction, ObjectRef> new_decisions{this->decisions.begin(), this->decisions.end()};
+  new_decisions.Set(inst, decision);
+  return Trace(new_insts, new_decisions);
+}
+
 /**************** FFI ****************/
 
 struct Internal {

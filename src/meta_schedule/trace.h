@@ -27,6 +27,7 @@ namespace tvm {
 namespace meta_schedule {
 
 class Schedule;
+class Trace;
 
 /*! \brief The trace of program execution */
 class TraceNode : public runtime::Object {
@@ -77,6 +78,18 @@ class TraceNode : public runtime::Object {
    * \return The list of strings
    */
   Array<String> AsPython() const;
+  /*!
+   * \brief Returns a new trace with the postprocessing part truncated
+   * \return The new trace without postprocessing
+   */
+  Trace WithNoPostproc() const;
+  /*!
+   * \brief Returns a new trace with the decision mutated, and the postprocessing part truncated
+   * \param inst The instruction
+   * \param decision The decision
+   * \return The new trace without postprocessing
+   */
+  Trace WithDecision(const Instruction& inst, const ObjectRef& decision) const;
 
   static constexpr const char* _type_key = "meta_schedule.Trace";
   TVM_DECLARE_FINAL_OBJECT_INFO(TraceNode, Object);
