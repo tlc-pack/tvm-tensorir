@@ -48,7 +48,7 @@ def test_meta_schedule_per_block_feature_cpu_matmul():
     # Create schedule
     sch = _create_schedule(n=512, m=512, k=512)
     # Extract features
-    feature = ms.feature.calc_per_block_feature(sch)
+    feature = ms.feature.per_block_feature(sch)
     assert feature.shape == (1, n_features)
     feature = feature[0]
     # correspond the features with their names
@@ -221,7 +221,7 @@ def test_meta_schedule_per_block_feature_cpu_fusion():
     # Create schedule
     sch = _create_schedule(n=64, m=32)
     # Extract features
-    feature = ms.feature.calc_per_block_feature(sch)
+    feature = ms.feature.per_block_feature(sch)
     assert feature.shape == (2, n_features)
 
     def _check_feature(feature, read_is_serial_reuse):
@@ -417,7 +417,7 @@ def test_meta_schedule_per_block_feature_gpu():
     # Create schedule
     sch = _create_schedule(n=512, m=512, k=512)
     # Extract features
-    feature = ms.feature.calc_per_block_feature(sch)
+    feature = ms.feature.per_block_feature(sch)
     assert feature.shape == (4, n_features)
 
     def _check_gpu_threads(feature):

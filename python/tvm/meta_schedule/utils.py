@@ -43,6 +43,9 @@ MAX_ERROR_MSG_LEN = int(1e9)
 # We use 1e10 instead of sys.float_info.max for better readability in log
 MAX_TIME_COST = 1e10
 
+# Change it to 5 on raspberry pi experiments
+RPC_EVAL_REPEAT = 1
+
 
 def make_error_msg() -> str:
     """ Get the error message from traceback. """
@@ -643,7 +646,8 @@ def rpc_runner_worker(
             try:
                 # TODO(@junrushao1994): remove the hardcode
                 args_set = [
-                    realize_arguments(remote, ctx, measure_input.task.workload) for _ in range(5)
+                    realize_arguments(remote, ctx, measure_input.task.workload)
+                    for _ in range(RPC_EVAL_REPEAT)
                 ]
                 ctx.sync()
                 costs = sum([time_f(*args).results for args in args_set], ())

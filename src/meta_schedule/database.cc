@@ -104,7 +104,7 @@ TVM_REGISTER_NODE_TYPE(InMemoryDBNode);
 
 }  // namespace in_memory_db
 
-Database InMemoryDB() { return InMemoryDB(); }
+Database InMemoryDB() { return in_memory_db::InMemoryDB(); }
 
 TVM_REGISTER_OBJECT_TYPE(DatabaseNode);
 
