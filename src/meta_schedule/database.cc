@@ -46,25 +46,23 @@ class InMemoryDBNode : public DatabaseNode {
 
   /*!
    * \brief Add a schedule into the database
-   * \param sch The schedule to be added
+   * \param trace The trace of a schedule to be added
    * \param repr The string representation of the schedule
    * \param time The running time of the schedule
    */
-  void Add(const Schedule& sch, const String& repr, double time) override {
+  void Add(const Trace& trace, const String& repr, double time) override {
     Database::Entry& entry = entries_[repr];
     if (!entry.repr.empty()) {
       if (entry.time >= time) {
         sorted_.erase(&entry);
-        entry.sch = sch;
-        entry.time = time;
-        sorted_.insert(&entry);
+      } else {
+        return;
       }
-    } else {
-      entry.sch = sch;
-      entry.repr = repr;
-      entry.time = time;
-      sorted_.insert(&entry);
     }
+    entry.trace = trace->WithNoPostproc();
+    entry.repr = repr;
+    entry.time = time;
+    sorted_.insert(&entry);
   }
 
   /*!

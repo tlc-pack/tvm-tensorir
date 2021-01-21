@@ -22,7 +22,7 @@
 #include <limits>
 #include <vector>
 
-#include "./schedule.h"
+#include "./trace.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -32,8 +32,8 @@ class DatabaseNode : public runtime::Object {
  public:
   /*! \brief A database entry */
   struct Entry {
-    /*! \brief The schedule */
-    Schedule sch;
+    /*! \brief The trace */
+    Trace trace;
     /*! \brief The string representation of the schedule */
     String repr;
     /*! \brief The running time of the schedule */
@@ -45,11 +45,11 @@ class DatabaseNode : public runtime::Object {
 
   /*!
    * \brief Add a schedule into the database
-   * \param sch The schedule to be added
+   * \param trace The trace of a schedule to be added
    * \param repr The string representation of the schedule
    * \param time The running time of the schedule
    */
-  virtual void Add(const Schedule& sch, const String& repr, double time) = 0;
+  virtual void Add(const Trace& trace, const String& repr, double time) = 0;
 
   /*!
    * \brief Check if a schedule already exists in the database
