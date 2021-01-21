@@ -17,6 +17,7 @@
  * under the License.
  */
 #include "../cost_model.h"
+#include "../database.h"
 #include "../measure.h"
 #include "../search.h"
 #include "../utils.h"
@@ -27,62 +28,88 @@ namespace meta_schedule {
 
 /*
  * TODO(@junrushao1994): Items left undone
- * 1) early stopping
+ * 1) early stopping if the best schedule was obtained long long ago
  * 2) check if space is fully explored
- * 3) report sampling failures in init population
- * 4) make sure schedule is still valid
+ * 3) check if the failure count of mutations and stop
  */
 
 /********** Evolutionary **********/
 
-/*! \brief Evolutionary Search */
-class EvolutionaryNode : public SearchStrategyNode {
- private:
-  /*! \brief The measured states */
-  struct MeasuredState {
-    /*! \brief Running time */
-    double time;
-    /*! \brief The schedule to be measured */
-    Schedule sch;
-    /*! \brief Constructor */
-    explicit MeasuredState(double time, const Schedule& sch) : time(time), sch(sch) {}
-    /*! \brief Comparator */
-    bool operator<(const MeasuredState& rhs) const { return time < rhs.time; }
-  };
+/*! \brief The postprocessed built of a trace */
+struct CachedTrace {
+  /*! \brief The trace */
+  const TraceNode* trace;
+  /*! \brief The schedule the trace creates */
+  Schedule sch;
+  /*! \brief The string representation of the schedule */
+  String repr;
+  /*! \brief The normalized throughput, the higher the better */
+  double throughput;
+};
 
+/*!
+ * \brief Evolutionary Search
+ *
+ * The algorithm:
+ *
+ * Loop until #measured >= total_measures:
+ *   init =
+ *      pick top `k = population *      init_measured_ratio ` from measured
+ *      pick     `k = population * (1 - init_measured_ratio)` from random support
+ *   best = generate `population` states with the cost model,
+ *          starting from `init`,
+ *          using mutators
+ *   chosen = pick top `k = population * (1 - eps_greedy)` from `best`
+ *            pick     `k = population *      eps_greedy ` from `init`
+ *   do the measurement on `chosen` & update the cost model
+ */
+class EvolutionaryNode : public SearchStrategyNode {
  public:
-  /*! \brief The number of iterations of measurements performed by genetic algorithm */
-  int num_measure_trials;
-  /*! \brief The number of measurements in each batch */
-  int num_measure_per_batch;
-  /*! \brief The number of iterations performed by generic algorithm.*/
-  int num_iters_in_genetic_algo;
-  /*! \brief The percentage of measurements to use randomly sampled states. */
-  double eps_greedy;
-  /*! \brief The percentage of previously measured states used in the initial population */
-  double use_measured_ratio;
-  /*! \brief The population size for evolutionary search */
+  /*** Configuration: global ***/
+  /*! \brief The maximum number of measurements performed by genetic algorithm */
+  int total_measures;
+  /*! \brief The population size in the evolutionary search */
   int population;
+  /*! \brief A table storing all states that have been measured */
+  Database database;
+
+  /*** Configuration: the initial population ***/
+  /*! \brief The ratio of measured states used in the initial population */
+  double init_measured_ratio;
+
+  /*** Configuration: evolution ***/
+  /*! \brief The number of iterations performed by generic algorithm. */
+  int genetic_algo_iters;
   /*! \brief The probability to perform mutation */
   double p_mutate;
   /*! \brief Mutators and their probability mass */
   Map<Mutator, FloatImm> mutator_probs;
   /*! \brief A cost model helping to explore the search space */
   CostModel cost_model;
-  /*! \brief A table storing all states that have been measured */
-  SortedTable<String, MeasuredState> measured_;
+
+  /*** Configuration: pick states for measurement ***/
+  /*! \brief The ratio of measurements to use randomly sampled states. */
+  double eps_greedy;
+
+  /*** Helpers ***/
+  mutable std::unordered_map<Trace, CachedTrace, ObjectPtrHash, ObjectPtrEqual> trace_cache_;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("num_measure_trials", &num_measure_trials);
-    v->Visit("num_measure_per_batch", &num_measure_per_batch);
-    v->Visit("num_measure_per_batch", &num_iters_in_genetic_algo);
-    v->Visit("eps_greedy", &eps_greedy);
-    v->Visit("use_measured_ratio", &use_measured_ratio);
+    /*** Configuration: global ***/
+    v->Visit("total_measures", &total_measures);
     v->Visit("population", &population);
+    v->Visit("database", &database);
+    /*** Configuration: the initial population ***/
+    v->Visit("init_measured_ratio", &init_measured_ratio);
+    /*** Configuration: evolution ***/
+    v->Visit("genetic_algo_iters", &genetic_algo_iters);
     v->Visit("p_mutate", &p_mutate);
     v->Visit("mutator_probs", &mutator_probs);
     v->Visit("cost_model", &cost_model);
-    // measured_ is not visited
+    /*** Configuration: pick states for measurement ***/
+    v->Visit("eps_greedy", &eps_greedy);
+    /*** Helpers ***/
+    // Not visited: `trace_cache_`
   }
 
   /*!
@@ -103,39 +130,41 @@ class EvolutionaryNode : public SearchStrategyNode {
   /********** Stages in evolutionary search **********/
 
   /*!
-   * \brief Sample the initial population from the support
+   * \brief Sample the initial population from both the support and previously measured traces
+   * pick top `k = population *      init_measured_ratio ` from measured
+   * pick     `k = population * (1 - init_measured_ratio)` from random support
    * \param support The support to be sampled from
-   * \param num_samples The number of samples to be drawn
+   * \param task The search task
    * \param space The search space
    * \param sampler The random number sampler
-   * \return The generated samples
+   * \return The generated samples, all of which are not post-processed
    */
-  Array<Schedule> SampleInitPopulation(const Array<Schedule>& support, int num_samples,
-                                       const SearchSpace& space, Sampler* sampler);
+  Array<Trace> SampleInitPopulation(const Array<Schedule>& support, const SearchTask& task,
+                                    const SearchSpace& space, Sampler* sampler);
 
   /*!
    * \brief Perform evolutionary search using genetic algorithm with the cost model
-   * \param task The search task
    * \param inits The initial population
-   * \param num_samples The number of samples to be drawn
+   * \param task The search task
    * \param space The search space
    * \param sampler The random number sampler
    * \return An array of schedules, the sampling result
    */
-  Array<Schedule> EvolveWithCostModel(const SearchTask& task, const Array<Schedule>& inits,
-                                      int num_samples, const SearchSpace& space, Sampler* sampler);
+  Array<Trace> EvolveWithCostModel(const Array<Trace>& inits, const SearchTask& task,
+                                   const SearchSpace& space, Sampler* sampler);
 
   /*!
    * \brief Pick a batch of samples for measurement with epsilon greedy
    * \param inits The initial population used when picking random states
    * \param bests The best populations according to the cost model when picking top states
+   * \param task The search task
    * \param space The search space
    * \param sampler The random number sampler
    * \return A list of schedules, result of epsilon-greedy sampling
    */
-  Array<Schedule> PickWithEpsGreedy(const SearchTask& task, const Array<Schedule>& inits,
-                                    const Array<Schedule>& bests, const SearchSpace& space,
-                                    Sampler* sampler);
+  Array<Trace> PickWithEpsGreedy(const Array<Trace>& inits, const Array<Trace>& bests,
+                                 const SearchTask& task, const SearchSpace& space,
+                                 Sampler* sampler);
 
   /*!
    * \brief Make measurements and update the cost model
@@ -145,12 +174,115 @@ class EvolutionaryNode : public SearchStrategyNode {
    * \param verbose A boolean flag for verbosity
    * \return A list of MeasureResult for measurements
    */
-  Array<MeasureResult> MeasureAndUpdateCostModel(const SearchTask& task,
-                                                 const Array<Schedule>& schedules,
+  Array<MeasureResult> MeasureAndUpdateCostModel(const SearchTask& task, const Array<Trace>& picks,
                                                  const ProgramMeasurer& measurer, int verbose);
 
   static constexpr const char* _type_key = "meta_schedule.Evolutionary";
   TVM_DECLARE_FINAL_OBJECT_INFO(EvolutionaryNode, SearchStrategyNode);
+
+ private:
+  // Helper functions
+
+  /*!
+   * \brief Create a sampler function that picks mutators according to the mass function
+   * \param sampler The source of randomness
+   * \return The sampler created
+   */
+  std::function<Optional<Mutator>()> MakeMutatorSampler(Sampler* sampler) const {
+    std::vector<Optional<Mutator>> mutators;
+    std::vector<double> mass;
+    mutators.push_back(NullOpt);
+    mass.push_back(1.0 - p_mutate);
+    for (const auto& kv : mutator_probs) {
+      mutators.push_back(kv.first);
+      mass.push_back(kv.second->value * p_mutate);
+    }
+    auto idx_sampler = sampler->MakeMultinomial(mass);
+    return [idx_sampler = std::move(idx_sampler),
+            mutators = std::move(mutators)]() -> Optional<Mutator> {
+      int i = idx_sampler();
+      return mutators[i];
+    };
+  }
+
+  /*!
+   * \brief Re-sample a trace in the support
+   * \param support_trace The one trace of the support
+   * \param task The search task
+   * \param space The search space
+   * \param sampler Source of randomness
+   * \return The sampling result
+   */
+  Trace ReSampleSupport(const Trace& support_trace, const SearchTask& task,
+                        const SearchSpace& space, Sampler* sampler) const {
+    for (;;) {
+      Map<Instruction, ObjectRef> decisions;
+      for (const auto& kv : support_trace->decisions) {
+        const Instruction& inst = kv.first;
+        const ObjectRef& decision = kv.second;
+        // N.B. We do not change the sampling result from `SampleComputeLocation`,
+        // because it tends to fail quite frequently
+        if (inst->inst_attrs->IsInstance<SampleComputeLocationAttrs>()) {
+          decisions.Set(inst, decision);
+        }
+      }
+      Trace new_trace(support_trace->insts, decisions);
+      CachedTrace* cached_space = PostProcTrace(new_trace, task, space, sampler);
+      if (cached_space != nullptr) {
+        return new_trace;
+      }
+    }
+    LOG(FATAL) << "not reachable";
+    throw;
+  }
+
+  /*!
+   * \brief Postprocess the trace
+   * \param trace The trace to be postprocessed
+   * \param task The search task
+   * \param space The search space
+   * \param sampler Source of randomness
+   * \return The sampling result
+   */
+  CachedTrace* PostProcTrace(const Trace& trace, const SearchTask& task, const SearchSpace& space,
+                             Sampler* sampler) const {
+    if (trace_cache_.count(trace)) {
+      return &trace_cache_.at(trace);
+    }
+    Schedule sch = Schedule(task->workload, sampler->ForkSeed());
+    trace->Apply(sch);
+    if (space->Postprocess(task, sch, sampler)) {
+      CachedTrace& cached_trace = trace_cache_[trace] =
+          CachedTrace{trace.get(), sch, Repr(sch), -1.0};
+      return &cached_trace;
+    }
+    return nullptr;
+  }
+
+  /*!
+   * \brief Predict the normalized throughput of each candidate.
+   * Write the prediction to each `CachedTrace` and also return a copy
+   * \param candidates The candidates for prediction
+   * \param task The search task
+   * \param space The search space
+   * \param sampler Source of randomness
+   * \return The normalized throughput in the prediction
+   */
+  std::vector<double> PredictWithCostModel(std::vector<CachedTrace*>* candidates,
+                                           const SearchTask& task, const SearchSpace& space,
+                                           Sampler* sampler) const {
+    Array<Schedule> schs;
+    schs.reserve(candidates->size());
+    for (CachedTrace* entry : *candidates) {
+      schs.push_back(entry->sch);
+    }
+    std::vector<double> result = cost_model->Predict(task, schs);
+    int i = 0;
+    for (CachedTrace* entry : *candidates) {
+      entry->throughput = result[i++];
+    }
+    return result;
+  }
 };
 
 /*!
@@ -161,42 +293,98 @@ class Evolutionary : public SearchStrategy {
  public:
   /*!
    * \brief Constructor
-   * \param num_measure_trials The number of iterations of measurements performed by genetic
-   * algorithm
-   * \param num_measure_per_batch The number of measurements in each batch
-   * \param num_iters_in_genetic_algo The number of iterations performed by generic algorithm
-   * \param eps_greedy The percentage of measurements to use randomly sampled states
-   * \param use_measured_ratio The percentage of previously measured states used in the initial
-   * population
+   * \param total_measures The maximum number of measurements performed by genetic algorithm
    * \param population The population size for evolutionary search
+   * \param init_measured_ratio The ratio of measured states used in the initial population
+   * \param genetic_algo_iters The number of iterations performed by generic algorithm
    * \param p_mutate The probability to perform mutation
    * \param mutator_probs Mutators and their probability mass
    * \param cost_model A cost model helping to explore the search space
+   * \param eps_greedy The percentage of measurements to use randomly sampled states
    */
-  explicit Evolutionary(int num_measure_trials, int num_measure_per_batch,
-                        int num_iters_in_genetic_algo, double eps_greedy, double use_measured_ratio,
-                        int population, double p_mutate, Map<Mutator, FloatImm> mutator_probs,
-                        CostModel cost_model);
+  explicit Evolutionary(
+      /*** Configuration: global ***/
+      int total_measures, int population,
+      /*** Configuration: the initial population ***/
+      double init_measured_ratio,
+      /*** Configuration: evolution ***/
+      int genetic_algo_iters, double p_mutate, Map<Mutator, FloatImm> mutator_probs,
+      CostModel cost_model,
+      /*** Configuration: pick states for measurement ***/
+      double eps_greedy);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Evolutionary, SearchStrategy, EvolutionaryNode);
 };
 
+/**************** Data Structure ****************/
+
+/*!
+ * \brief A heap with a size up-limit. If overflow happens, it evicted the worst items.
+ * \note It maintains a min heap in terms of `CachedTrace::throughput`. Therefore, when
+ * overflow happens, the element evicted is the one with the min `CachedTrace::throughput`.
+ * As time goes, the elements in the heap are going to be larger.
+ */
+class SizedHeap {
+  /*! \brief The comparator class, used by `std::push_heap` and `std::pop_heap` */
+  struct Comparator {
+    bool operator()(const CachedTrace& a, const CachedTrace& b) const {
+      return a.throughput > b.throughput;
+    }
+  };
+
+ public:
+  /*!
+   * \brief Constructor
+   * \param size_limit The up-limit of the heap size
+   */
+  explicit SizedHeap(int size_limit) : size_limit(size_limit) { heap.reserve(size_limit); }
+
+  /*!
+   * \brief Push the specific item to the heap if its key did not appears in the heap
+   * \param item The item to be pushed
+   */
+  void Push(const CachedTrace& item) {
+    if (!in_heap.insert(item.repr).second) {
+      return;
+    }
+    int size = heap.size();
+    if (size < size_limit) {
+      // Heap is not full, just push
+      heap.emplace_back(item);
+      std::push_heap(heap.begin(), heap.end(), Comparator());
+    } else if (Comparator()(item, heap.front())) {
+      // if the item is better than the worst one in the heap, we can safely kick it out
+      std::pop_heap(heap.begin(), heap.end(), Comparator());
+      heap.back() = item;
+      std::push_heap(heap.begin(), heap.end(), Comparator());
+    }
+    // Otherwise, the item is worse than any other element in the heap
+  }
+
+  /*! \brief Up-limit of the heap size */
+  int size_limit;
+  /*! \brief The heap, the worse the topper */
+  std::vector<CachedTrace> heap;
+  /*! \brief The traces that are in the heap */
+  std::unordered_set<String> in_heap;
+};
+
 /********** Constructor **********/
 
-Evolutionary::Evolutionary(int num_measure_trials, int num_measure_per_batch,
-                           int num_iters_in_genetic_algo, double eps_greedy,
-                           double use_measured_ratio, int population, double p_mutate,
-                           Map<Mutator, FloatImm> mutator_probs, CostModel cost_model) {
+Evolutionary::Evolutionary(int total_measures, int population, double init_measured_ratio,
+                           int genetic_algo_iters, double p_mutate,
+                           Map<Mutator, FloatImm> mutator_probs, CostModel cost_model,
+                           double eps_greedy) {
   ObjectPtr<EvolutionaryNode> n = make_object<EvolutionaryNode>();
-  n->num_measure_trials = num_measure_trials;
-  n->num_measure_per_batch = num_measure_per_batch;
-  n->num_iters_in_genetic_algo = num_iters_in_genetic_algo;
-  n->eps_greedy = eps_greedy;
-  n->use_measured_ratio = use_measured_ratio;
+  n->total_measures = total_measures;
   n->population = population;
+  n->database = InMemoryDB();
+  n->init_measured_ratio = init_measured_ratio;
+  n->genetic_algo_iters = genetic_algo_iters;
   n->p_mutate = p_mutate;
   n->mutator_probs = std::move(mutator_probs);
   n->cost_model = std::move(cost_model);
+  n->eps_greedy = eps_greedy;
   data_ = std::move(n);
 }
 
@@ -208,103 +396,69 @@ Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const Search
                                             const ProgramMeasurer& measurer, Sampler* sampler,
                                             int verbose) {
   Array<Schedule> support = space->GetSupport(task, sampler);
-  for (int num_measured = 0; num_measured < num_measure_trials;) {
+  for (int num_measured = 0; num_measured < this->total_measures;) {
     // `inits`: Sampled initial population, whose size is at most `this->population`
-    Array<Schedule> inits = SampleInitPopulation(support, population, space, sampler);
+    Array<Trace> inits = SampleInitPopulation(support, task, space, sampler);
     // `bests`: The best schedules according to the cost mode when explore the space using mutators
-    Array<Schedule> bests =
-        EvolveWithCostModel(task, inits, num_measure_per_batch * 2, space, sampler);
+    Array<Trace> bests = EvolveWithCostModel(inits, task, space, sampler);
     // Pick candidates with eps greedy
-    Array<Schedule> picks = PickWithEpsGreedy(task, inits, bests, space, sampler);
+    Array<Trace> picks = PickWithEpsGreedy(inits, bests, task, space, sampler);
     // Run measurement, update cost model
-    Array<MeasureResult> measure_results =
-        MeasureAndUpdateCostModel(task, picks, measurer, verbose);
-    num_measured += measure_results.size();
+    Array<MeasureResult> results = MeasureAndUpdateCostModel(task, picks, measurer, verbose);
+    num_measured += results.size();
   }
   return measurer->best_sch;
 }
 
-Array<Schedule> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& support,
-                                                       int num_samples, const SearchSpace& space,
-                                                       Sampler* sampler) {
-  int num_measured = num_samples * use_measured_ratio;
-  Array<Schedule> results;
-  results.reserve(num_samples);
+Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& support,
+                                                    const SearchTask& task,
+                                                    const SearchSpace& space, Sampler* sampler) {
+  int n = this->population;
+  Array<Trace> results;
+  results.reserve(n);
   // Pick measured states
-  std::vector<MeasuredState> measured = measured_.GetTopK(num_measured);
-  for (const MeasuredState& state : measured) {
-    results.push_back(state.sch);
+  int num_measured = n * this->init_measured_ratio;
+  for (const Database::Entry& entry : database->GetTopK(num_measured)) {
+    results.push_back(entry.trace);
   }
   // Pick unmeasured states
-  for (int i = results.size(); i < num_samples; ++i) {
-    int sample_index = sampler->SampleInt(0, support.size());
-    const Schedule& sch = support[sample_index];
-    Schedule new_sch(sch->orig_func, Integer(sch->sampler.ForkSeed()));
-    Trace(sch->trace->insts, {})->Apply(new_sch);
-    results.push_back(new_sch);
+  for (int i = results.size(); i < n; ++i) {
+    const Schedule& sch = support[sampler->SampleInt(0, support.size())];
+    results.push_back(this->ReSampleSupport(sch->trace, task, space, sampler));
   }
   return results;
 }
 
-Array<Schedule> EvolutionaryNode::EvolveWithCostModel(const SearchTask& task,
-                                                      const Array<Schedule>& inits, int num_samples,
-                                                      const SearchSpace& space, Sampler* sampler) {
-  // Extract weights of mutators
-  std::function<Mutator()> mutator_sampler = nullptr;
-  {
-    std::vector<Mutator> mutators;
-    std::vector<double> mutator_mass;
-    for (const auto& kv : mutator_probs) {
-      mutators.push_back(kv.first);
-      mutator_mass.push_back(kv.second->value);
-    }
-    auto idx_sampler = sampler->MakeMultinomial(mutator_mass);
-    mutator_sampler = [idx_sampler = std::move(idx_sampler),
-                       mutators = std::move(mutators)]() -> Mutator {
-      return mutators[idx_sampler()];
-    };
-  }
-  // The heap to record best schedules
-  /*! \brief Item in the heap */
-  struct HeapItem {
-    /*! \brief We de-duplicate using strings */
-    using KeyType = String;
-    /*! \brief The string key used for de-duplication */
-    String key;
-    /*! \brief The prediction score, the larger the better */
-    double score;
-    /*! \brief The schedule */
-    Schedule sch;
-    /*!
-     * \brief Constructor
-     * \param key The string key used for de-duplication
-     * \param score The predicted score, the larger the better
-     * \param sch The schedule
-     */
-    explicit HeapItem(const String& key, double score, const Schedule& sch)
-        : key(key), score(score), sch(sch) {}
-    /*! \brief Comparator */
-    bool operator<(const HeapItem& rhs) const { return score > rhs.score; }
-  };
-  SizedHeap<HeapItem> heap(num_samples);
-  // We do not consider schedules that are already measured
-  heap.AddKeys(measured_.keys.begin(), measured_.keys.end());
+Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
+                                                   const SearchTask& task, const SearchSpace& space,
+                                                   Sampler* sampler) {
+  // Prepare the mutator sampler
+  std::function<Optional<Mutator>()> mutator_sampler = MakeMutatorSampler(sampler);
+  // The heap to record best schedule, we do not consider schedules that are already measured
+  // Also we use `in_heap` to make sure items in the heap are de-duplicated
+  SizedHeap heap(population);
   // Prepare search queues
-  std::vector<Schedule> sch_curr(inits.begin(), inits.end());
-  std::vector<Schedule> sch_next;
+  std::vector<CachedTrace*> sch_curr;
+  std::vector<CachedTrace*> sch_next;
   sch_curr.reserve(population);
   sch_next.reserve(population);
-  // Main loop: (num_iters_in_genetic_algo + 1) times
-  for (int iter = 0;; ++iter, sch_curr.clear(), sch_curr.swap(sch_next)) {
+  for (const Trace& trace : inits) {
+    CachedTrace* cached_trace = PostProcTrace(trace, task, space, sampler);
+    CHECK(cached_trace);
+    sch_curr.push_back(cached_trace);
+  }
+  // Main loop: (genetic_algo_iters + 1) times
+  for (int iter = 0;; ++iter) {
     // Predict running time with the cost model
-    std::vector<double> scores = cost_model->Predict(task, sch_curr);
-    // Put the predicted perf to the heap
-    CHECK_EQ(scores.size(), sch_curr.size());
-    for (int i = 0, n = scores.size(); i < n; ++i) {
-      heap.Push(HeapItem(Repr(sch_curr[i]), scores[i], sch_curr[i]));
+    std::vector<double> scores = this->PredictWithCostModel(&sch_curr, task, space, sampler);
+    // Put the schedules with the predicted perf to the heap
+    for (CachedTrace* entry : sch_curr) {
+      if (!database->Has(entry->repr)) {
+        heap.Push(*entry);
+      }
     }
     // Discontinue once it reaches end of search
-    if (iter == num_iters_in_genetic_algo) {
+    if (iter == genetic_algo_iters) {
       break;
     }
     // Make sampler from sch_curr with scores predicted
@@ -312,90 +466,98 @@ Array<Schedule> EvolutionaryNode::EvolveWithCostModel(const SearchTask& task,
     std::function<int()> sch_curr_sampler = sampler->MakeMultinomial(scores);
     sch_next.clear();
     for (int i = 0; i < population; ++i) {
-      const Schedule& sch = sch_curr[sch_curr_sampler()];
-      if (sampler->SampleBernoulli(p_mutate)) {
-        // with probability `p_mutate`, choose a mutator
-        Mutator mutator = mutator_sampler();
-        // apply the mutator
-        if (Optional<Schedule> new_sch = mutator->Apply(task, sch, sampler)) {
-          sch_next.emplace_back(new_sch.value());
-        } else {
-          // if not successful, take a step back and redo
-          --i;
-        }
-      } else {
-        sch_next.emplace_back(sch);
+      CachedTrace* entry = sch_curr[sch_curr_sampler()];
+      Optional<Mutator> opt_mutator = mutator_sampler();
+      if (!opt_mutator.defined()) {
+        // If we decide not to mutate
+        sch_next.push_back(entry);
+        continue;
       }
+      // Apply the mutator
+      Mutator mutator = opt_mutator.value();
+      // N.B. The `MutatorNode::Apply` will not change the schedule itself inplace
+      if (Optional<Trace> opt_trace = mutator->Apply(task, GetRef<Trace>(entry->trace), sampler)) {
+        if (CachedTrace* new_cached_trace =
+                PostProcTrace(opt_trace.value(), task, space, sampler)) {
+          sch_next.push_back(new_cached_trace);
+          continue;
+        }
+      }
+      // If not successful, take a step back and redo
+      --i;
     }
+    sch_curr.clear();
+    sch_curr.swap(sch_next);
   }
   // Return the best states from the heap
-  std::sort(heap.heap.begin(), heap.heap.end());
-  Array<Schedule> results;
-  results.reserve(num_samples);
-  for (const HeapItem& item : heap.heap) {
-    results.push_back(item.sch);
+  std::sort(heap.heap.begin(), heap.heap.end(),
+            [](const CachedTrace& a, const CachedTrace& b) -> bool {
+              // `time` here is normalized throughput, i.e. the larger the better
+              return a.throughput > b.throughput;
+            });
+  Array<Trace> results;
+  results.reserve(population);
+  for (const CachedTrace& item : heap.heap) {
+    results.push_back(GetRef<Trace>(item.trace));
   }
   return results;
 }
 
-Array<Schedule> EvolutionaryNode::PickWithEpsGreedy(const SearchTask& task,
-                                                    const Array<Schedule>& inits,
-                                                    const Array<Schedule>& bests,
-                                                    const SearchSpace& space, Sampler* sampler) {
-  int n = this->num_measure_per_batch;
+Array<Trace> EvolutionaryNode::PickWithEpsGreedy(const Array<Trace>& inits,
+                                                 const Array<Trace>& bests, const SearchTask& task,
+                                                 const SearchSpace& space, Sampler* sampler) {
+  int n = this->population;
   int num_rands = n * this->eps_greedy;
   int num_bests = n - num_rands;
   std::vector<int> rands = sampler->SampleWithoutReplacement(inits.size(), inits.size());
-  Array<Schedule> results;
+  Array<Trace> results;
   results.reserve(n);
-  for (int i = 0, i_bests = 0, i_rands = 0; i < n;) {
+  for (int i = 0, i_bests = 0, i_rands = 0; i < n; ++i) {
     bool has_best = i_bests < static_cast<int>(bests.size());
     bool has_rand = i_rands < static_cast<int>(rands.size());
     // Pick a schedule
-    Schedule sch(nullptr);
+    Optional<Trace> trace{NullOpt};
     // If needs `bests`, then prefer `bests`
     if (i < num_bests) {
       if (has_best) {
-        sch = bests[i_bests++];
+        trace = bests[i_bests++];
       } else if (has_rand) {
-        sch = inits[rands[i_rands++]];
+        trace = inits[rands[i_rands++]];
       } else {
         break;
       }
     } else {
       // Else prefer `rands`
       if (has_rand) {
-        sch = inits[rands[i_rands++]];
+        trace = inits[rands[i_rands++]];
       } else if (has_best) {
-        sch = bests[i_bests++];
+        trace = bests[i_bests++];
       } else {
         break;
       }
     }
-    // Postprocess the schedule
-    if (space->Postprocess(task, sch, sampler)) {
-      // Check if the schedule has been measured before
-      // If not, it is the schedule we want to pick
-      String repr = Repr(sch);
-      if (!measured_.Has(repr)) {
-        ++i;
-        measured_.Add(repr);
-        results.push_back(sch);
-      }
-    }
+    results.push_back(trace.value());
   }
   return results;
 }
 
 Array<MeasureResult> EvolutionaryNode::MeasureAndUpdateCostModel(const SearchTask& task,
-                                                                 const Array<Schedule>& schedules,
+                                                                 const Array<Trace>& picks,
                                                                  const ProgramMeasurer& measurer,
                                                                  int verbose) {
+  // Extract cached trace info
+  std::vector<CachedTrace> cached_traces;
+  cached_traces.reserve(picks.size());
+  for (const Trace& trace : picks) {
+    auto iter = trace_cache_.find(trace);
+    CHECK(iter != trace_cache_.end());
+    cached_traces.push_back((*iter).second);
+  }
   // Assemble `measure_inputs`
   Array<MeasureInput> measure_inputs;
-  measure_inputs.reserve(schedules.size());
-  for (const Schedule& sch : schedules) {
-    measure_inputs.push_back(MeasureInput(task, sch));
+  measure_inputs.reserve(picks.size());
+  for (const CachedTrace& trace : cached_traces) {
+    measure_inputs.push_back(MeasureInput(task, trace.sch));
   }
   // Run and get `measure_results`
   Array<MeasureResult> measure_results =
@@ -404,10 +566,10 @@ Array<MeasureResult> EvolutionaryNode::MeasureAndUpdateCostModel(const SearchTas
   CHECK_EQ(measure_inputs.size(), measure_results.size());
   // Update the measure
   for (int i = 0, n = measure_inputs.size(); i < n; ++i) {
-    const MeasureInput& measure_input = measure_inputs[i];
     const MeasureResult& measure_result = measure_results[i];
+    const CachedTrace& trace = cached_traces[i];
     double avg_time_cost = FloatArrayMean(measure_result->costs);
-    measured_.Add(MeasuredState(avg_time_cost, measure_input->sch));
+    database->Add(GetRef<Trace>(trace.trace), trace.repr, avg_time_cost);
   }
   // Update the cost model
   cost_model->Update(measure_inputs, measure_results);
@@ -419,27 +581,23 @@ Array<MeasureResult> EvolutionaryNode::MeasureAndUpdateCostModel(const SearchTas
 struct Internal {
   /*!
    * \brief Constructor of Evolutionary
-   * \param num_measure_trials The number of iterations of measurements performed by genetic
-   * algorithm
-   * \param num_measure_per_batch The number of measurements in each batch
-   * \param num_iters_in_genetic_algo The number of iterations performed by generic algorithm
-   * \param eps_greedy The percentage of measurements to use randomly sampled states
-   * \param use_measured_ratio The percentage of previously measured states used in the initial
-   * population
+   * \param total_measures The maximum number of measurements performed by genetic algorithm
    * \param population The population size for evolutionary search
+   * \param init_measured_ratio The ratio of measured states used in the initial population
+   * \param genetic_algo_iters The number of iterations performed by generic algorithm
    * \param p_mutate The probability to perform mutation
    * \param mutator_probs Mutators and their probability mass
    * \param cost_model A cost model helping to explore the search space
+   * \param eps_greedy The percentage of measurements to use randomly sampled states
    * \return The Evolutionary constructed
    * \sa Evolutionary::Evolutionary
    */
-  static Evolutionary New(int num_measure_trials, int num_measure_per_batch,
-                          int num_iters_in_genetic_algo, double eps_greedy,
-                          double use_measured_ratio, int population, double p_mutate,
-                          Map<Mutator, FloatImm> mutator_probs, CostModel cost_model) {
-    return Evolutionary(num_measure_trials, num_measure_per_batch, num_iters_in_genetic_algo,
-                        eps_greedy, use_measured_ratio, population, p_mutate, mutator_probs,
-                        cost_model);
+  static Evolutionary New(int total_measures, int population, double init_measured_ratio,
+                          int genetic_algo_iters, double p_mutate,
+                          Map<Mutator, FloatImm> mutator_probs, CostModel cost_model,
+                          double eps_greedy) {
+    return Evolutionary(total_measures, population, init_measured_ratio, genetic_algo_iters,
+                        p_mutate, mutator_probs, cost_model, eps_greedy);
   }
   /*!
    * \brief Sample the initial population from the support
@@ -450,15 +608,14 @@ struct Internal {
    * \return The generated samples
    * \sa EvolutionaryNode::SampleInitPopulation
    */
-  static Array<Schedule> EvolutionarySampleInitPopulation(Evolutionary self,
-                                                          Array<Schedule> support, int num_samples,
-                                                          SearchSpace space,
-                                                          Optional<Integer> seed) {
+  static Array<Trace> SampleInitPopulation(Evolutionary self, Array<Schedule> support,
+                                           SearchTask task, SearchSpace space,
+                                           Optional<Integer> seed) {
     Sampler seeded;
     if (seed.defined()) {
       seeded.Seed(seed.value());
     }
-    return self->SampleInitPopulation(support, num_samples, space, &seeded);
+    return self->SampleInitPopulation(support, task, space, &seeded);
   }
   /*!
    * \brief Perform evolutionary search using genetic algorithm with the cost model
@@ -470,15 +627,13 @@ struct Internal {
    * \return An array of schedules, the sampling result
    * \sa EvolutionaryNode::EvolveWithCostModel
    */
-  static Array<Schedule> EvolutionaryEvolveWithCostModel(Evolutionary self, SearchTask task,
-                                                         Array<Schedule> inits, int num_samples,
-                                                         SearchSpace space,
-                                                         Optional<Integer> seed) {
+  static Array<Trace> EvolveWithCostModel(Evolutionary self, Array<Trace> inits, SearchTask task,
+                                          SearchSpace space, Optional<Integer> seed) {
     Sampler seeded;
     if (seed.defined()) {
       seeded.Seed(seed.value());
     }
-    return self->EvolveWithCostModel(task, inits, num_samples, space, &seeded);
+    return self->EvolveWithCostModel(inits, task, space, &seeded);
   }
 
   /*!
@@ -489,14 +644,14 @@ struct Internal {
    * \return A list of schedules, result of epsilon-greedy sampling
    * \sa EvolutionaryNode::PickWithEpsGreedy
    */
-  static Array<Schedule> EvolutionaryPickWithEpsGreedy(Evolutionary self, SearchTask task,
-                                                       Array<Schedule> inits, Array<Schedule> bests,
-                                                       SearchSpace space, Optional<Integer> seed) {
+  static Array<Trace> PickWithEpsGreedy(Evolutionary self, Array<Trace> inits, Array<Trace> bests,
+                                        SearchTask task, SearchSpace space,
+                                        Optional<Integer> seed) {
     Sampler seeded;
     if (seed.defined()) {
       seeded.Seed(seed.value());
     }
-    return self->PickWithEpsGreedy(task, inits, bests, space, &seeded);
+    return self->PickWithEpsGreedy(inits, bests, task, space, &seeded);
   }
 
   /*!
@@ -508,11 +663,9 @@ struct Internal {
    * \return A list of MeasureResult for measurements
    * \sa EvolutionaryNode::MeasureAndUpdateCostModel
    */
-  static Array<MeasureResult> EvolutionaryMeasureAndUpdateCostModel(Evolutionary self,
-                                                                    SearchTask task,
-                                                                    Array<Schedule> schedules,
-                                                                    ProgramMeasurer measurer,
-                                                                    int verbose) {
+  static Array<MeasureResult> MeasureAndUpdateCostModel(Evolutionary self, SearchTask task,
+                                                        Array<Trace> schedules,
+                                                        ProgramMeasurer measurer, int verbose) {
     return self->MeasureAndUpdateCostModel(task, schedules, measurer, verbose);
   }
 };
@@ -520,13 +673,13 @@ struct Internal {
 TVM_REGISTER_NODE_TYPE(EvolutionaryNode);
 TVM_REGISTER_GLOBAL("meta_schedule.Evolutionary").set_body_typed(Internal::New);
 TVM_REGISTER_GLOBAL("meta_schedule.EvolutionarySampleInitPopulation")
-    .set_body_typed(Internal::EvolutionarySampleInitPopulation);
+    .set_body_typed(Internal::SampleInitPopulation);
 TVM_REGISTER_GLOBAL("meta_schedule.EvolutionaryEvolveWithCostModel")
-    .set_body_typed(Internal::EvolutionaryEvolveWithCostModel);
+    .set_body_typed(Internal::EvolveWithCostModel);
 TVM_REGISTER_GLOBAL("meta_schedule.EvolutionaryPickWithEpsGreedy")
-    .set_body_typed(Internal::EvolutionaryPickWithEpsGreedy);
+    .set_body_typed(Internal::PickWithEpsGreedy);
 TVM_REGISTER_GLOBAL("meta_schedule.EvolutionaryMeasureAndUpdateCostModel")
-    .set_body_typed(Internal::EvolutionaryMeasureAndUpdateCostModel);
+    .set_body_typed(Internal::MeasureAndUpdateCostModel);
 
 }  // namespace meta_schedule
 }  // namespace tvm
