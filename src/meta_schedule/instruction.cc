@@ -65,7 +65,9 @@ Array<ObjectRef> InstructionNode::Serialize(const Map<ObjectRef, String>& rv_nam
     Array<ObjectRef> names;
     names.reserve(rvs.size());
     for (const ObjectRef& rv : rvs) {
-      if (const auto* integer = rv.as<IntImmNode>()) {
+      if (!rv.defined()) {
+        names.push_back(String("None"));
+      } else if (const auto* integer = rv.as<IntImmNode>()) {
         names.push_back(GetRef<IntImm>(integer));
       } else if (rv_names.count(rv)) {
         names.push_back(rv_names.at(rv));
@@ -116,6 +118,7 @@ Array<ObjectRef> InstructionNode::Deserialize(const Array<ObjectRef>& record,
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(CacheWriteAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(BlockizeAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(DecomposeReductionAttrs),
+          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(TensorizeAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(ParallelAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(VectorizeAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(UnrollAttrs),
@@ -420,6 +423,14 @@ Instruction DecomposeReductionAttrs::Make(const BlockRV& block, const LoopRV& lo
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
+Instruction TensorizeAttrs::Make(const LoopRV& loop, const String& tensor_intrin_name) {
+  ObjectPtr<TensorizeAttrs> n = make_object<TensorizeAttrs>();
+  n->tensor_intrin_name = tensor_intrin_name;
+  return Instruction(/*inputs=*/{loop},
+                     /*outputs=*/{},
+                     /*attrs=*/InstAttrs(std::move(n)));
+}
+
 Instruction ParallelAttrs::Make(const LoopRV& loop) {
   return Instruction(/*inputs=*/{loop},
                      /*outputs=*/{},
@@ -455,10 +466,10 @@ Instruction EnterPostProcAttrs::Make() {
 /**************** Apply  ****************/
 
 #define TVM_META_SCHEDULE_INST_CAST(CastType, VarName, Input)                    \
-  CHECK(Input->IsInstance<CastType::ContainerType>())                            \
+  CHECK(!Input.defined() || Input->IsInstance<CastType::ContainerType>())        \
       << "TypeError: Cannot downcast to '" << CastType::ContainerType::_type_key \
       << "' from: " << Input->GetTypeKey();                                      \
-  CastType VarName = Downcast<CastType>(Input);
+  CastType VarName = Input.defined() ? Downcast<CastType>(Input) : CastType(nullptr);
 
 template <class T>
 Array<ObjectRef> AdaptOutputs(const Array<T>& outputs) {
@@ -714,6 +725,15 @@ Array<ObjectRef> DecomposeReductionAttrs::Apply(const Schedule& sch, const Array
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[1]);
   return {sch->DecomposeReduction(block, loop)};
+}
+
+Array<ObjectRef> TensorizeAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+                                       const Optional<ObjectRef>& decision) const {
+  CHECK(!decision.defined());
+  CHECK_EQ(inputs.size(), 1);
+  TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
+  sch->Tensorize(loop, this->tensor_intrin_name);
+  return {};
 }
 
 Array<ObjectRef> ParallelAttrs::Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
@@ -1105,6 +1125,15 @@ void DecomposeReductionAttrs::AsPython(std::ostream& os, const Array<String>& in
   py.Print(os);
 }
 
+void TensorizeAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
+                              const Array<String>& outputs,
+                              const Optional<ObjectRef>& decision) const {
+  PythonAPICall py("tensorize");
+  py.AddArgInput("loop", inputs[0]);
+  py.AddArgAttr("tensor_intrin_name", this->tensor_intrin_name);
+  py.Print(os);
+}
+
 void ParallelAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                              const Array<String>& outputs,
                              const Optional<ObjectRef>& decision) const {
@@ -1227,6 +1256,12 @@ void BlockizeAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef
   record->push_back(this->exec_scope);
 }
 
+void TensorizeAttrs::Serialize(Array<ObjectRef>* record,
+                               const Optional<ObjectRef>& decision) const {
+  CHECK(!decision.defined());
+  record->push_back(this->tensor_intrin_name);
+}
+
 void BindAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
   CHECK(!decision.defined());
   record->push_back(this->thread_axis);
@@ -1333,6 +1368,13 @@ InstAttrs BlockizeAttrs::Deserialize(const Array<ObjectRef>& record,
   return InstAttrs(std::move(n));
 }
 
+InstAttrs TensorizeAttrs::Deserialize(const Array<ObjectRef>& record,
+                                      Optional<ObjectRef>* decision) {
+  ObjectPtr<TensorizeAttrs> n = make_object<TensorizeAttrs>();
+  n->tensor_intrin_name = Downcast<String>(record[3]);
+  return InstAttrs(std::move(n));
+}
+
 InstAttrs BindAttrs::Deserialize(const Array<ObjectRef>& record, Optional<ObjectRef>* decision) {
   ObjectPtr<BindAttrs> n = make_object<BindAttrs>();
   n->thread_axis = Downcast<String>(record[3]);
@@ -1405,6 +1447,7 @@ TVM_REGISTER_NODE_TYPE(CacheReadAttrs);
 TVM_REGISTER_NODE_TYPE(CacheWriteAttrs);
 TVM_REGISTER_NODE_TYPE(BlockizeAttrs);
 TVM_REGISTER_NODE_TYPE(DecomposeReductionAttrs);
+TVM_REGISTER_NODE_TYPE(TensorizeAttrs);
 TVM_REGISTER_NODE_TYPE(ParallelAttrs);
 TVM_REGISTER_NODE_TYPE(VectorizeAttrs);
 TVM_REGISTER_NODE_TYPE(UnrollAttrs);
