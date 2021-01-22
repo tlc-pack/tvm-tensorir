@@ -375,6 +375,13 @@ class RuleMultiLevelTiling {
       }
     }
     sch->Reorder(ConcatArray(tiles));
+    // Bind the tiles
+    int n_binds = std::min(tile_binds.size(), tiles.size());
+    for (int i = 0; i < n_binds; ++i) {
+      LoopRV fused = sch->Fuse(tiles[i]);
+      sch->Bind(fused, tile_binds[i]);
+      tiles[i] = {fused};
+    }
     state.tiles = Array<Array<LoopRV>>{tiles.begin(), tiles.end()};
     return {state};
   }
@@ -402,17 +409,6 @@ class RuleMultiLevelTiling {
       result.push_back(new_state);
     }
     return result;
-  }
-
-  void MarkTiles(State* state) const {
-    Schedule& sch = state->sch;
-    Array<Array<LoopRV>>& tiles = state->tiles;
-    int n = std::min(tile_binds.size(), tiles.size());
-    for (int i = 0; i < n; ++i) {
-      for (const LoopRV& loop : tiles[i]) {
-        sch->MarkLoop(loop, tir::attr::loop_type, tir::StringImm(tile_binds[i]));
-      }
-    }
   }
 
 #define TVM_SEARCH_RULE_APPLY_SUB_RULE(SrcStates, FSubRule)                          \
@@ -443,12 +439,8 @@ class RuleMultiLevelTiling {
     TVM_SEARCH_RULE_APPLY_SUB_RULE(states, DoTiling);
     // Add read cache
     TVM_SEARCH_RULE_APPLY_SUB_RULE(states, AddReadCache);
-    // Fuse with elementwise consumer
+    // Fuse with write cache
     TVM_SEARCH_RULE_APPLY_SUB_RULE(states, FuseWriteCache);
-    // Add tile marks
-    for (State& state : states) {
-      MarkTiles(&state);
-    }
     Array<Schedule> ret;
     ret.reserve(states.size());
     for (const State& state : states) {

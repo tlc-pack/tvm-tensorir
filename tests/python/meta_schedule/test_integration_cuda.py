@@ -37,7 +37,7 @@ SPACE = ms.space.PostOrderApply(
             cache_write_scope="local",
             fusion_levels=[3],
             vector_load_max_len=4,
-            tile_marks=["lazy_blockIdx.x", "lazy_vthread", "lazy_threadIdx.x"],
+            tile_binds=["blockIdx.x", "vthread", "threadIdx.x"],
         ),
     ],
     postprocs=[
