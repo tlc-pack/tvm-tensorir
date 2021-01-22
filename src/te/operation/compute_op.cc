@@ -379,9 +379,9 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
           strout << "]";
           return strout.str();
         };
-    LOG(INFO) << "Making ComputeStmt for " << stage
-              << " with main_predicates=" << predicates_tostr(n.main_predicates)
-              << " and init_predicates=" << predicates_tostr(n.init_predicates);
+    LOG(INFO) << "Making ComputeStmt for " << stage << " with "
+              << "main_predicates=" << predicates_tostr(n.main_predicates) << " and "
+              << "init_predicates=" << predicates_tostr(n.init_predicates);
 
 
     // run substitution in the on the full nest, because  loop condition
@@ -474,6 +474,10 @@ ComputeLoopNest ComputeLoopNest::Create(const BaseComputeOpNode* self, const Sta
     e = likely(e);
   }
   if (stage->store_predicate.defined()) {
+
+    // <bojian/TVM-SymbolicTuning>
+    LOG(INFO) << "store_predicate=" << stage->store_predicate;
+
     ret.main_predicates.push_back(stage->store_predicate);
   }
   if (self->reduce_axis.size() != 0) {

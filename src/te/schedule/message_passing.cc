@@ -570,6 +570,19 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
     analyzer.Bind(entry.first->var, entry.second);
   }
 
+  auto iter_vars_tostr =
+      [](const Array<IterVar>& iter_vars) -> std::string {
+        std::ostringstream strout;
+        strout << "[";
+        for (const IterVar& iv : iter_vars) {
+          strout << iv << ", ";
+        }
+        strout << "]";
+        return strout.str();
+      };
+  LOG(INFO) <<  "all_iter_vars=" << iter_vars_tostr(stage->all_iter_vars) << ", "
+            << "root_iter_vars=" << iter_vars_tostr(stage->op->root_iter_vars());
+
   for (const IterVar& iv : stage->all_iter_vars) {
     if (skip_iter.count(iv) || iv->iter_type == kOpaque) continue;
     if (bound_state.at(iv)) {
@@ -580,7 +593,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
         preds.emplace_back(value < dom->extent);
 
         // <bojian/TVM-SymbolicTuning>
-        LOG(INFO) << "Emplacing predicate (" << value << "<" << dom->extent 
+        LOG(INFO) << "Inserting predicate (" << value << "<" << dom->extent 
                   << ") for " << stage;
 
       }
@@ -600,10 +613,38 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
         preds.emplace_back(value >= 0);
       }
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < iv->dom->extent)) {
+
+        // <bojian/TVM-SymbolicTuning>
+        if (stage->origin_op->name.find(".local") !=
+            std::string::npos) {
+          LOG(WARNING) << "\'.local\' spotted in " << stage << ". Assuming it is a cache write "
+                          "whose boundary check can be neglected";
+          continue;
+        }
+
         preds.emplace_back(value < iv->dom->extent);
+
+        // <bojian/TVM-SymbolicTuning>
+        LOG(INFO) << "Inserting predicate (" << value << " < " << iv->dom->extent
+                  << ") for " << stage;
+
       }
     }
   }
+
+  // <bojian/TVM-SymbolicTuning>
+  auto predicates_tostr =
+      [](const std::vector<PrimExpr>& predicates) -> std::string {
+        std::ostringstream strout;
+        strout << "[";
+        for (const PrimExpr& predicate : predicates) {
+          strout << predicate << ", ";
+        }
+        strout << "]";
+        return strout.str();
+      };
+  LOG(INFO) << "Inserting predicates=" << predicates_tostr(preds);
+
   return preds;
 }
 }  // namespace te
