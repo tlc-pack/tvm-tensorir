@@ -243,19 +243,25 @@ class RuleMultiLevelTiling {
     }
   }
 
+  /*! \brief The internal state */
   struct State {
+    /*! \brief The schedule */
     Schedule sch;
+    /*! \brief The block random variable to focus on */
     BlockRV block_rv;
-    Optional<BlockRV> only_consumer;
-    bool only_consumer_is_cache_write;
+    /*! \brief The write cache */
+    Optional<BlockRV> write_cache;
+    /*! \brief Whether the write cache is added in the rule */
+    bool write_cache_is_added;
+    /*! \brief The tiles according to the tile structure */
     Array<Array<LoopRV>> tiles;
 
-    explicit State(Schedule sch, BlockRV block_rv, Optional<BlockRV> only_consumer = NullOpt,
-                   bool only_consumer_is_cache_write = false, Array<Array<LoopRV>> tiles = {})
+    explicit State(Schedule sch, BlockRV block_rv, Optional<BlockRV> write_cache = NullOpt,
+                   bool write_cache_is_added = false, Array<Array<LoopRV>> tiles = {})
         : sch(std::move(sch)),
           block_rv(std::move(block_rv)),
-          only_consumer(std::move(only_consumer)),
-          only_consumer_is_cache_write(only_consumer_is_cache_write),
+          write_cache(std::move(write_cache)),
+          write_cache_is_added(write_cache_is_added),
           tiles(std::move(tiles)) {}
   };
 
@@ -272,8 +278,8 @@ class RuleMultiLevelTiling {
       // Check if it can be directly fused
       if ((IsSpatial(sch->sch, block_sref) || IsSpatial(sch->sch, consumer_sref)) &&
           IsElementWiseMatch(sch->sch, block_sref, consumer_sref)) {
-        state.only_consumer = consumer_rv;
-        state.only_consumer_is_cache_write = false;
+        state.write_cache = consumer_rv;
+        state.write_cache_is_added = false;
         return {state};
       }
     }
@@ -289,8 +295,8 @@ class RuleMultiLevelTiling {
       // The original block to tiled
       state.block_rv = state.sch->CacheWrite(block_rv, 0, cache_write_scope);
       // The cache write block
-      state.only_consumer = block_rv;
-      state.only_consumer_is_cache_write = true;
+      state.write_cache = block_rv;
+      state.write_cache_is_added = true;
       result.push_back(std::move(state));
     }
     return result;
@@ -373,23 +379,22 @@ class RuleMultiLevelTiling {
     return {state};
   }
 
-  std::vector<State> DoFusion(State state) const {
+  std::vector<State> FuseWriteCache(State state) const {
     // If the only-consumer does not exist, or is not elementwise, then do not do fusion
-    if (!state.only_consumer.defined()) {
+    if (!state.write_cache.defined()) {
       return {state};
     }
     std::vector<State> result;
     // Special case.
     // `cache_write` must be fused at some level, otherwise it has no benefit
     // On the other hand, If the only consumer is not cache_write, then we may choose not to fuse
-    if (!state.only_consumer_is_cache_write) {
+    if (!state.write_cache_is_added) {
       result.push_back(state);
     }
     Schedule sch = state.sch;
-    BlockRV consumer = state.only_consumer.value();
-    for (const Integer& _level : fusion_levels) {
-      // Enumerate the level of tile to be fused at
-      int level = _level;
+    BlockRV consumer = state.write_cache.value();
+    // Enumerate the level of tile to be fused at
+    for (int level : fusion_levels) {
       const LoopRV& loop = state.tiles[level - 1].back();
       State new_state = state;
       new_state.sch = state.sch->Copy(sch->sampler.ForkSeed());
@@ -439,7 +444,7 @@ class RuleMultiLevelTiling {
     // Add read cache
     TVM_SEARCH_RULE_APPLY_SUB_RULE(states, AddReadCache);
     // Fuse with elementwise consumer
-    TVM_SEARCH_RULE_APPLY_SUB_RULE(states, DoFusion);
+    TVM_SEARCH_RULE_APPLY_SUB_RULE(states, FuseWriteCache);
     // Add tile marks
     for (State& state : states) {
       MarkTiles(&state);
