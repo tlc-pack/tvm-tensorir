@@ -318,6 +318,31 @@ class SchedulePostProc : public StmtExprMutator {
   arith::Analyzer analyzer_;
 };
 
+
+// <bojian/TVM-SymbolicTuning>
+#if defined(SYMTUNE_SCHED_OPT_SPLIT_BLOCKIDX)
+class BlockIdxSplitter : public StmtExprMutator {
+ public:
+  Stmt VisitStmt(const Stmt& input_stmt) override final {
+    LOG(INFO) << "Visiting stmt=" << input_stmt;
+    Stmt stmt = StmtMutator::VisitStmt(input_stmt);
+    return stmt;
+  }
+  Stmt VisitStmt_(const ProducerRealizeNode* op) override final {
+    Tensor t = Downcast<Tensor>(op->producer);
+    if (t->op->name == "T_dense") {
+      LOG(INFO) << "Tensor T_dense is captured";
+      // return IfThenElse(likely())
+    }
+    return StmtExprMutator::VisitStmt_(op);
+  }
+  Stmt VisitStmt_(const IfThenElseNode* op) override final {
+    LOG(INFO) << "Visiting if_then_else op " << GetRef<Stmt>(op);
+    return StmtExprMutator::VisitStmt_(op);
+  }
+};
+#endif
+
 Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_trivial_loop) {
   Stmt body = Stmt();
   std::unordered_map<IterVar, Range> dom_map = as_unordered_map(dom_map_);
@@ -343,6 +368,12 @@ Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_tri
   // reverse the post DFS order.
   for (size_t i = sch->stages.size(); i != 0; --i) {
     Stage s = sch->stages[i - 1];
+
+    // <bojian/TVM-SymbolicTuning>
+#if defined(SYMTUNE_DEBUG_TRACE)
+    LOG(INFO) << "Scheduling for " << s;
+#endif
+
     ICHECK_NE(s->attach_type, kInline) << "call schedule.normalize before scheduleops";
     ICHECK(s->op.defined());
     // no need to specify place holder op.
@@ -377,9 +408,25 @@ Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_tri
           << body;
     }
   }
+  // <bojian/TVM-SymbolicTuning>
+#if defined(SYMTUNE_DEBUG_TRACE)
+  LOG(INFO) << "BodyStmt=" << body;
+#endif
+
   SchedulePostProc post_proc;
   post_proc.Init(sch);
+
+#if defined(SYMTUNE_SCHED_OPT_SPLIT_BLOCKIDX)
+  BlockIdxSplitter blockidx_splitter;
+  body = post_proc(std::move(body));
+  blockidx_splitter(body);
+#if defined(SYMTUNE_DEBUG_TRACE)
+  LOG(INFO) << "BodyStmt after PostProc=" << body;
+#endif
+  return body;
+#else 
   return post_proc(std::move(body));
+#endif
 }
 
 TVM_REGISTER_GLOBAL("schedule.ScheduleOps").set_body([](TVMArgs args, TVMRetValue* ret) {
