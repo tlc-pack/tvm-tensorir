@@ -32,7 +32,7 @@ namespace meta_schedule {
  * \brief A rule that applies to a block and generates a snippet of schedule on it.
  * the SearchRule API is designed with the following signature:
  *
- *     (task: SearchTask, sch: Schedule, block: BlockRV, info: Dict[str, Any])
+ *     (task: SearchTask, sch: Schedule, block: BlockRV)
  *        -> Dict[Schedule, Any]
  *
  * \note The input schedule becomes invalid after calling SearchRule API, because
@@ -40,12 +40,8 @@ namespace meta_schedule {
  */
 class SearchRuleNode : public Object {
  public:
-  /*! \brief Dictionary holding context-related information */
-  using TContextInfo = Optional<Map<String, ObjectRef>>;
-  /*! \brief Return type of SearchRule */
-  using TReturn = Map<Schedule, TContextInfo>;
   /*! \brief The SearchRule application function */
-  using FApply = runtime::TypedPackedFunc<TReturn(SearchTask, Schedule, BlockRV, TContextInfo)>;
+  using FApply = runtime::TypedPackedFunc<Array<Schedule>(SearchTask, Schedule, BlockRV)>;
 
   /*! \brief Name of the rule */
   String name;
@@ -57,13 +53,11 @@ class SearchRuleNode : public Object {
   /*!
    * \brief Apply the rule with a schedule with contexts
    * \param task The search task
-   * \param sch The schedule that the context info is attached to
+   * \param sch The schedule
    * \param block The block the rule applies on
-   * \param info The information about the context the rule is in
    * \return A schedule-context mapping
    */
-  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block,
-                const TContextInfo& info) const;
+  Array<Schedule> Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block) const;
 
   static constexpr const char* _type_key = "meta_schedule.SearchRule";
   TVM_DECLARE_FINAL_OBJECT_INFO(SearchRuleNode, Object);
@@ -75,8 +69,6 @@ class SearchRuleNode : public Object {
  */
 class SearchRule : public ObjectRef {
  public:
-  using TContextInfo = SearchRuleNode::TContextInfo;
-  using TReturn = SearchRuleNode::TReturn;
   using FApply = SearchRuleNode::FApply;
 
   /*!

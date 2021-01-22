@@ -25,10 +25,6 @@
 namespace tvm {
 namespace meta_schedule {
 
-using TContextInfo = SearchRuleNode::TContextInfo;
-using TReturn = SearchRuleNode::TReturn;
-using FApply = SearchRuleNode::FApply;
-
 /********** Constructors **********/
 
 SearchRule::SearchRule(String name, SearchRuleNode::FApply apply) {
@@ -40,24 +36,21 @@ SearchRule::SearchRule(String name, SearchRuleNode::FApply apply) {
 
 /********** SearchRule **********/
 
-TReturn SearchRuleNode::Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block,
-                              const TContextInfo& info) const {
-  if (sch->Eval(block)->stmt == nullptr) {
-    return {{sch, info}};
-  }
-  return apply_(task, sch, block, info);
+Array<Schedule> SearchRuleNode::Apply(const SearchTask& task, const Schedule& sch,
+                                      const BlockRV& block) const {
+  return apply_(task, sch, block);
 }
 
 SearchRule SearchRuleCompose(const String& name, const Array<SearchRule>& rules) {
-  auto apply = [rules](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
-    using ItemType = std::pair<Schedule, TContextInfo>;
-    std::vector<ItemType> curr{{sch, info}};
-    std::vector<ItemType> next;
+  auto apply = [rules](SearchTask task, Schedule sch, BlockRV block) -> Array<Schedule> {
+    std::vector<Schedule> curr{sch};
+    std::vector<Schedule> next;
     for (const SearchRule& rule : rules) {
-      for (const ItemType& sch_info : curr) {
-        TReturn results = rule->Apply(task, sch_info.first, block, sch_info.second);
-        for (ItemType kv : results) {
-          next.emplace_back(std::move(kv.first), std::move(kv.second));
+      for (const Schedule& curr_sch : curr) {
+        Array<Schedule> results = rule->Apply(task, curr_sch, block);
+        next.reserve(next.size() + results.size());
+        for (const Schedule& result_sch : results) {
+          next.push_back(result_sch);
         }
       }
       curr.clear();
@@ -80,28 +73,27 @@ class RuleInlinePureSpatial {
   explicit RuleInlinePureSpatial(bool strict_mode) : strict_mode(strict_mode) {}
 
   /*! \brief Rule application */
-  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
-                const TContextInfo& info) const {
+  Array<Schedule> Apply(const SearchTask& task, const Schedule& sch,
+                        const BlockRV& block_rv) const {
     tir::StmtSRef block_sref = sch->Eval(block_rv);
     if (!IsSpatial(sch->sch, block_sref)) {
-      return {{sch, info}};
+      return {sch};
     }
     if (IsOutputBlock(sch->sch, block_sref)) {
-      return {{sch, info}};
+      return {sch};
     }
     if (!strict_mode || IsStrictlyInlineable(sch->sch, block_sref)) {
       sch->ComputeInline(block_rv);
-      return {{sch, info}};
+      return {sch};
     }
-    return {{sch, info}};
+    return {sch};
   }
 };
 
 SearchRule InlinePureSpatial(bool strict_mode) {
-  auto f_apply = [strict_mode](SearchTask task, Schedule sch, BlockRV block,
-                               TContextInfo info) -> TReturn {
+  auto f_apply = [strict_mode](SearchTask task, Schedule sch, BlockRV block) -> Array<Schedule> {
     RuleInlinePureSpatial rule(strict_mode);
-    return rule.Apply(task, sch, block, info);
+    return rule.Apply(task, sch, block);
   };
   return SearchRule("inline_pure_spatial", f_apply);
 }
@@ -368,15 +360,14 @@ class RuleMultiLevelTiling {
     }
   }
 
-  TReturn Apply(const SearchTask& task, const Schedule& sch, BlockRV block_rv,
-                const TContextInfo& _info) const {
+  Array<Schedule> Apply(const SearchTask& task, const Schedule& sch, BlockRV block_rv) const {
     tir::StmtSRef block_sref = sch->Eval(block_rv);
     if (HasAnyAnn(block_sref)) {
-      return {{sch, NullOpt}};
+      return {sch};
     }
     // If multi-level-tiling is not required
     if (!NeedsMultiLevelTiling(sch->sch, block_sref)) {
-      return {{sch, NullOpt}};
+      return {sch};
     }
     // States
     std::vector<State> states{State(sch, block_rv)};
@@ -414,9 +405,10 @@ class RuleMultiLevelTiling {
     for (State& state : states) {
       MarkTiles(&state);
     }
-    TReturn ret;
+    Array<Schedule> ret;
+    ret.reserve(states.size());
     for (const State& state : states) {
-      ret.Set(state.sch, NullOpt);
+      ret.push_back(state.sch);
     }
     return ret;
   }
@@ -433,9 +425,9 @@ SearchRule MultiLevelTiling(String structure, bool must_cache_read, String cache
   RuleMultiLevelTiling rule(structure, must_cache_read, cache_read_scope, can_cache_write,
                             must_cache_write, cache_write_scope, fusion_levels, vector_load_max_len,
                             tile_marks);
-  auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch, BlockRV block,
-                                         TContextInfo info) -> TReturn {
-    return rule.Apply(task, sch, block, info);
+  auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch,
+                                         BlockRV block) -> Array<Schedule> {
+    return rule.Apply(task, sch, block);
   };
   return SearchRule("multi_level_tiling", f_apply);
 }
@@ -465,15 +457,14 @@ class RuleRandomComputeLocation {
     return true;
   }
 
-  TReturn Apply(const SearchTask& task, const Schedule& sch, BlockRV block_rv,
-                const TContextInfo& info) const {
+  Array<Schedule> Apply(const SearchTask& task, const Schedule& sch, BlockRV block_rv) const {
     tir::StmtSRef block_sref = sch->Eval(block_rv);
     if (!IsFreeBlock(sch->sch, block_sref)) {
-      return {{sch, info}};
+      return {sch};
     }
     Array<BlockRV> consumers = sch->GetConsumers(block_rv);
     if (consumers.size() != 1) {
-      return {{sch, info}};
+      return {sch};
     }
     BlockRV consumer = consumers[0];
     // Try to compute `block_rv` at `consumer`
@@ -492,13 +483,13 @@ class RuleRandomComputeLocation {
       }
       break;
     }
-    return {{sch, info}};
+    return {sch};
   }
 };
 
 SearchRule RandomComputeLocation() {
-  auto f_apply = [](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
-    return RuleRandomComputeLocation().Apply(task, sch, block, info);
+  auto f_apply = [](SearchTask task, Schedule sch, BlockRV block) -> Array<Schedule> {
+    return RuleRandomComputeLocation().Apply(task, sch, block);
   };
   return SearchRule("random_compute_location", f_apply);
 }
@@ -565,8 +556,8 @@ class RuleParallelizeVectorizeUnroll {
     return true;
   }
 
-  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
-                const TContextInfo& info) const {
+  Array<Schedule> Apply(const SearchTask& task, const Schedule& sch,
+                        const BlockRV& block_rv) const {
     // Extract basic information
     Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
     tir::StmtSRef block_sref = sch->Eval(block_rv);
@@ -594,7 +585,7 @@ class RuleParallelizeVectorizeUnroll {
         sch->MarkBlock(block_rv, tir::attr::auto_unroll_implicit, max_step);
       }
     }
-    return {{sch, info}};
+    return {sch};
   }
 };
 
@@ -602,9 +593,9 @@ SearchRule ParallelizeVectorizeUnroll(int max_jobs_per_core, int max_vectorize_e
                                       Array<Integer> unroll_max_steps, bool unroll_explicit) {
   RuleParallelizeVectorizeUnroll rule(max_jobs_per_core, max_vectorize_extent, unroll_max_steps,
                                       unroll_explicit);
-  auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch, BlockRV block,
-                                         TContextInfo info) -> TReturn {
-    return rule.Apply(task, sch, block, info);
+  auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch,
+                                         BlockRV block) -> Array<Schedule> {
+    return rule.Apply(task, sch, block);
   };
   return SearchRule("parallelize_vectorize_unroll", f_apply);
 }
@@ -682,10 +673,9 @@ class RuleMarkTensorize {
   }
 
   /*! \brief Rule application */
-  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
-                const TContextInfo& info) {
+  Array<Schedule> Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv) {
     tir::StmtSRef block_sref = sch->Eval(block_rv);
-    TReturn result{{sch, info}};
+    Array<Schedule> result{sch};
     Optional<Schedule> next_sch = NullOpt;
     for (const tir::TensorIntrin& intrin : tensor_intrins) {
       if (!next_sch.defined()) {
@@ -695,7 +685,7 @@ class RuleMarkTensorize {
       if (Optional<TensorizeInfo> opt_tensorize_info =
               GetTensorizeLoopMapping(cur_sch->sch, block_sref, intrin->description)) {
         BlockizeAndMark(cur_sch, block_rv, intrin->description, opt_tensorize_info.value().get());
-        result.Set(cur_sch, {});
+        result.push_back(cur_sch);
         next_sch = NullOpt;
       }
     }
@@ -704,10 +694,10 @@ class RuleMarkTensorize {
 };
 
 SearchRule MarkTensorize(Array<tir::TensorIntrin> tensor_intrins) {
-  auto f_apply = [tensor_intrins{std::move(tensor_intrins)}](
-                     SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
+  auto f_apply = [tensor_intrins{std::move(tensor_intrins)}](SearchTask task, Schedule sch,
+                                                             BlockRV block) -> Array<Schedule> {
     RuleMarkTensorize rule(tensor_intrins);
-    return rule.Apply(task, sch, block, info);
+    return rule.Apply(task, sch, block);
   };
   return SearchRule("mark_tensorize", f_apply);
 }
@@ -729,13 +719,12 @@ struct Internal {
    * \param task The search task
    * \param sch The schedule that the context info is attached to
    * \param block The block the rule applies on
-   * \param info The information about the context the rule is in
    * \return The result of rule application
    * \sa SearchRuleNode::Apply
    */
-  static TReturn SearchRuleApply(SearchRule rule, SearchTask task, Schedule sch, BlockRV block,
-                                 TContextInfo info) {
-    return rule->Apply(task, sch, block, info);
+  static Array<Schedule> SearchRuleApply(SearchRule rule, SearchTask task, Schedule sch,
+                                         BlockRV block) {
+    return rule->Apply(task, sch, block);
   }
   /*!
    * \brief Composing search rules sequentially into a single rule
