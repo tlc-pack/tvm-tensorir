@@ -108,14 +108,14 @@ TVM_DLL SearchRule InlinePureSpatial(bool strict_mode);
  * \param fusion_levels The possible tile levels that a single elementwise consumer is fused at
  * \param vector_load_max_len For cache_read, if vectorized load is used, the max length of the
  * vectorized load
- * \param tile_marks The marks to be used on each tile
+ * \param tile_binds The marks to be used on each tile
  * \return The rule created
  */
 TVM_DLL SearchRule MultiLevelTiling(String structure, bool must_cache_read, String cache_read_scope,
                                     bool can_cache_write, bool must_cache_write,
                                     String cache_write_scope, Array<Integer> fusion_levels,
                                     Optional<Integer> vector_load_max_len,
-                                    Optional<Array<String>> tile_marks);
+                                    Optional<Array<String>> tile_binds);
 
 /*!
  * \brief A rule that randomly select a compute-at location for a free block
