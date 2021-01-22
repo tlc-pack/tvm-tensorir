@@ -69,10 +69,29 @@ Target TargetTag::AddTag(String name, Map<String, ObjectRef> config, bool overri
 
 /**********  Register Target tags  **********/
 
+// `arch` is determined according to https://developer.nvidia.com/cuda-gpus
+// https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#features-and-technical-specifications
+// `shared_memory_per_block`: Maximum amount of shared memory per thread block
+// `registers_per_block`: Maximum number of 32-bit registers per thread block
+// `max_threads_per_block`: Maximum number of threads per block (always 1024)
+// `thread_warp_size`: warp size (always 32)
+// `vector_unit_bytes`: 16 (?)
+
 TVM_REGISTER_TARGET_TAG("nvidia/rtx2080ti")
     .set_config({
         {"kind", String("cuda")},
         {"arch", String("sm_75")},
+        {"shared_memory_per_block", Integer(49152)},
+        {"registers_per_block", Integer(65536)},
+        {"max_threads_per_block", Integer(1024)},
+        {"vector_unit_bytes", Integer(16)},
+        {"thread_warp_size", Integer(32)},
+    });
+
+TVM_REGISTER_TARGET_TAG("nvidia/jetson-agx-xavier")
+    .set_config({
+        {"kind", String("cuda")},
+        {"arch", String("sm_72")},
         {"shared_memory_per_block", Integer(49152)},
         {"registers_per_block", Integer(65536)},
         {"max_threads_per_block", Integer(1024)},
