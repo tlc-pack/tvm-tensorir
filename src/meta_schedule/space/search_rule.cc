@@ -334,12 +334,11 @@ class RuleMultiLevelTiling {
         Array<LoopRV> splits = sch->Split(fused, {factors[0], factors[1]});
         CHECK_EQ(splits.size(), 2);
         // Vectorize the inner loop
-        sch->MarkLoop(splits[0], tir::attr::loop_type, tir::StringImm("lazy_cooperative_fetch"));
-        sch->MarkLoop(splits[1], tir::attr::loop_type, tir::StringImm("lazy_vectorize"));
-      } else {
-        // cooperative fetch only
-        sch->MarkLoop(fused, tir::attr::loop_type, tir::StringImm("lazy_cooperative_fetch"));
+        sch->Vectorize(splits[1]);
+        fused = splits[0];
       }
+      // Add cooperative fetching
+      sch->MarkLoop(fused, tir::attr::loop_type, tir::StringImm("lazy_cooperative_fetch"));
     }
     return {state};
   }

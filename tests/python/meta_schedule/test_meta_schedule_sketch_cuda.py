@@ -116,7 +116,7 @@ def _matmul_sketch_0(var_A: ty.handle, var_B: ty.handle, var_C: ty.handle) -> No
                 for i0_outer_outer_inner_i1_outer_outer_inner_fused in range(0, 4, annotation = {"loop_type":"threadIdx.x"}):
                     for i2_outer_outer in range(0, 8):
                         for ax0_ax1_fused_outer in range(0, 2048, annotation = {"loop_type":"lazy_cooperative_fetch"}):
-                            for ax0_ax1_fused_inner in range(0, 4, annotation = {"loop_type":"lazy_vectorize"}):
+                            for ax0_ax1_fused_inner in range(0, 4, annotation = {"loop_type":"vectorize"}):
                                 with tir.block([512, 512], "A_shared") as [v0, v1]:
                                     tir.bind(v0, ((tir.floordiv(i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused, 8)*128) + tir.floordiv(((ax0_ax1_fused_outer*4) + ax0_ax1_fused_inner), 64)))
                                     tir.bind(v1, ((i2_outer_outer*64) + tir.floormod(((ax0_ax1_fused_outer*4) + ax0_ax1_fused_inner), 64)))
@@ -124,7 +124,7 @@ def _matmul_sketch_0(var_A: ty.handle, var_B: ty.handle, var_C: ty.handle) -> No
                                     tir.writes([A_shared[v0:(v0 + 1), v1:(v1 + 1)]])
                                     A_shared[v0, v1] = A[v0, v1]
                         for ax0_ax1_fused_outer_1 in range(0, 4096, annotation = {"loop_type":"lazy_cooperative_fetch"}):
-                            for ax0_ax1_fused_inner_1 in range(0, 1, annotation = {"loop_type":"lazy_vectorize"}):
+                            for ax0_ax1_fused_inner_1 in range(0, 1):
                                 with tir.block([512, 512], "B_shared") as [v0_1, v1_1]:
                                     tir.bind(v0_1, ((i2_outer_outer*64) + tir.floordiv((ax0_ax1_fused_outer_1 + ax0_ax1_fused_inner_1), 64)))
                                     tir.bind(v1_1, ((tir.floormod(i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused, 8)*64) + tir.floormod((ax0_ax1_fused_outer_1 + ax0_ax1_fused_inner_1), 64)))
