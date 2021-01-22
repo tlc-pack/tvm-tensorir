@@ -590,6 +590,10 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
             << "root_iter_vars=" << exprs_tostr(stage->op->root_iter_vars());
 #endif
 
+#if defined(SYMTUNE_SCHED_OPT_NO_DUP_IF_CHECKS)
+  PrimExpr prev_predicate;
+#endif
+
   for (const IterVar& iv : stage->all_iter_vars) {
     if (skip_iter.count(iv) || iv->iter_type == kOpaque) continue;
     if (bound_state.at(iv)) {
@@ -597,9 +601,21 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       PrimExpr value = value_map.at(iv) - dom->min;
       PrimExpr vmax = analyzer.int_set(value, iset_dmap).max();
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
+#if defined(SYMTUNE_SCHED_OPT_NO_DUP_IF_CHECKS)
+        if (prev_predicate.defined()) {
+          LOG(WARNING) << "Predicate (" << value << "<" << dom->extent << ") "
+                       << "is assumed to be a subset of "
+                       << "(" << prev_predicate << ")";
+          continue;
+        }
+#endif
+
         preds.emplace_back(value < dom->extent);
 
         // <bojian/TVM-SymbolicTuning>
+#if defined(SYMTUNE_SCHED_OPT_NO_DUP_IF_CHECKS)
+        prev_predicate = value < dom->extent;
+#endif
 #if defined(SYMTUNE_DEBUG_TRACE)
         LOG(INFO) << "Inserting predicate (" << value << "<" << dom->extent 
                   << ") for " << stage;
@@ -624,7 +640,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < iv->dom->extent)) {
 
         // <bojian/TVM-SymbolicTuning>
-#if defined(SYMTUNE_SCHED_OPT)
+#if defined(SYMTUNE_SCHED_OPT_NO_COMPUTE_IF_CHECKS)
         if (stage->origin_op->name.find(".local") !=
             std::string::npos) {
           LOG(WARNING) << "\'.local\' spotted in " << stage << ". Assuming it is a cache write "

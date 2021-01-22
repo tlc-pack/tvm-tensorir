@@ -34,6 +34,9 @@
 #include "../../tir/transforms/ir_utils.h"
 #include "../operation/op_utils.h"
 #include "graph.h"
+// <bojian/TVM-SymbolicTuning>
+#include "../symtune.h"
+
 
 namespace tvm {
 namespace te {
