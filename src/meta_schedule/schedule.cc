@@ -223,11 +223,8 @@ ObjectRef ScheduleNode::EvalLoopExtended(const LoopRV& loop) {
   CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding LoopRV: " << loop;
   const Optional<ObjectRef>& obj = (*iter).second;
   CHECK(obj.defined()) << "ValueError: Corresponding LoopRV's value is not defined: " << loop;
-  if (obj.same_as(inline_rv)) {
-    return String(LoopRV::inline_rv);
-  }
-  if (obj.same_as(root_rv)) {
-    return String(LoopRV::root_rv);
+  if (obj.same_as(inline_rv) || obj.same_as(root_rv)) {
+    return obj;
   }
   if (const auto* sref = obj.as<tir::StmtSRefNode>()) {
     CHECK(sref->stmt) << "ValueError: The LoopRV has expired";
