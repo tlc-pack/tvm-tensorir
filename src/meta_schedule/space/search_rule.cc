@@ -349,6 +349,7 @@ class RuleMultiLevelTiling {
     // Concat of `tiles` is the reordering order
     std::vector<Array<LoopRV>> tiles(structure.size());
     // Get block vars and loop axes
+    // TODO: fix
     Array<Integer> iter_types = GetBlockVarTypes(sch->sch, sch->Eval(block_rv));
     Array<LoopRV> axes = sch->GetAxes(block_rv);
     CHECK_EQ(axes.size(), iter_types.size());

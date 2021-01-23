@@ -144,110 +144,6 @@ inline tir::IterVar MakeThreadIdx(const String& name) {
 
 class PostprocRewriteCudaThreadBind {
  public:
-  bool BindMultiLevelTiled(const Schedule& sch, const BlockRV& block_rv, int warp_size) const {
-    arith::Analyzer analyzer;
-    Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
-    std::vector<tir::StmtSRef> loop_srefs;
-    // The indices of `blockIdx.x` / `vthread` / `threadIdx.x` annotation
-    std::vector<int> block_idx;
-    std::vector<int> vthread_idx;
-    std::vector<int> thread_idx;
-    PrimExpr prod_extent = Integer(1);
-    for (const LoopRV& loop_rv : loop_rvs) {
-      int i = loop_srefs.size();
-      // Evaluate to a TIR loop
-      tir::StmtSRef loop_sref = sch->Eval(loop_rv);
-      loop_srefs.push_back(loop_sref);
-      const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
-      CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
-      // Check the annotation
-      if (HasAnn(loop_sref, tir::attr::loop_type, "lazy_blockIdx.x")) {
-        block_idx.push_back(i);
-      } else if (HasAnn(loop_sref, tir::attr::loop_type, "lazy_vthread")) {
-        vthread_idx.push_back(i);
-      } else if (HasAnn(loop_sref, tir::attr::loop_type, "lazy_threadIdx.x")) {
-        thread_idx.push_back(i);
-      } else {
-        continue;
-      }
-      prod_extent = prod_extent * loop->extent;
-    }
-    prod_extent = analyzer.Simplify(prod_extent);
-    // Check if the block is annotated
-    if (block_idx.empty() || vthread_idx.empty() || thread_idx.empty()) {
-      return false;
-    }
-    // Check if `prod_extent <= warp_size`
-    if (analyzer.CanProve(prod_extent <= warp_size)) {
-      // If so, only bind `threadIdx.x`
-      std::vector<int> indices;
-      indices.insert(indices.end(), block_idx.begin(), block_idx.end());
-      indices.insert(indices.end(), vthread_idx.begin(), vthread_idx.end());
-      indices.insert(indices.end(), thread_idx.begin(), thread_idx.end());
-      std::sort(indices.begin(), indices.end());
-      // Remove the annotation on the loop
-      for (int idx : indices) {
-        DelAnn(sch->sch, loop_srefs[idx], tir::attr::loop_type);
-      }
-      // Do fusion
-      std::vector<LoopRV> to_fuse;
-      for (int idx : indices) {
-        to_fuse.push_back(loop_rvs[idx]);
-      }
-      LoopRV fused = sch->Fuse(to_fuse);
-      // Do binding
-      sch->sch->bind(sch->Eval(fused), MakeThreadIdx("threadIdx.x"));
-    } else {
-      // Otherwise, bind `blockIdx.x`, `vthread` and `threadIdx.x`
-      {
-        // bind `blockIdx.x`
-        // Remove the annotation on the loop
-        for (int idx : block_idx) {
-          DelAnn(sch->sch, loop_srefs[idx], tir::attr::loop_type);
-        }
-        // Do fusion
-        std::vector<LoopRV> to_fuse;
-        for (int idx : block_idx) {
-          to_fuse.push_back(loop_rvs[idx]);
-        }
-        LoopRV fused = sch->Fuse(to_fuse);
-        // Do binding
-        sch->sch->bind(sch->Eval(fused), MakeThreadIdx("blockIdx.x"));
-      }
-      {
-        // bind `vthread`
-        // Remove the annotation on the loop
-        for (int idx : vthread_idx) {
-          DelAnn(sch->sch, loop_srefs[idx], tir::attr::loop_type);
-        }
-        // Do fusion
-        std::vector<LoopRV> to_fuse;
-        for (int idx : vthread_idx) {
-          to_fuse.push_back(loop_rvs[idx]);
-        }
-        LoopRV fused = sch->Fuse(to_fuse);
-        // Do binding
-        sch->sch->bind(sch->Eval(fused), MakeThreadIdx("vthread"));
-      }
-      {
-        // bind `threadIdx.x`
-        // Remove the annotation on the loop
-        for (int idx : thread_idx) {
-          DelAnn(sch->sch, loop_srefs[idx], tir::attr::loop_type);
-        }
-        // Do fusion
-        std::vector<LoopRV> to_fuse;
-        for (int idx : thread_idx) {
-          to_fuse.push_back(loop_rvs[idx]);
-        }
-        LoopRV fused = sch->Fuse(to_fuse);
-        // Do binding
-        sch->sch->bind(sch->Eval(fused), MakeThreadIdx("threadIdx.x"));
-      }
-    }
-    return true;
-  }
-
   bool BindSpatial(const Schedule& sch, const BlockRV& block_rv) const {
     Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
     tir::StmtSRef block_sref = sch->Eval(block_rv);
@@ -287,58 +183,14 @@ class PostprocRewriteCudaThreadBind {
     return true;
   }
 
-  void BindCooperativeFetch(const Schedule& sch, const tir::StmtSRef& block_sref) const {
-    Array<tir::StmtSRef> axes = sch->sch->GetLoopsInScope(block_sref);
-    for (const tir::StmtSRef& loop_sref : axes) {
-      const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
-      CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
-      if (!HasAnn(loop_sref, tir::attr::loop_type, "lazy_cooperative_fetch")) {
-        continue;
-      }
-      DelAnn(sch->sch, loop_sref, tir::attr::loop_type);
-      tir::StmtSRef threadIdx_sref{nullptr};
-      for (tir::StmtSRefNode* upper = loop_sref->parent; upper; upper = upper->parent) {
-        tir::StmtSRef upper_sref = GetRef<tir::StmtSRef>(upper);
-        if (HasAnn(upper_sref, tir::attr::loop_type, "threadIdx.x")) {
-          threadIdx_sref = upper_sref;
-          break;
-        }
-      }
-      CHECK(threadIdx_sref.defined())
-          << "ValueError: Cannot find 'threadIdx.x' above cooperative fetching";
-      PrimExpr factor = GetLoopExtent(threadIdx_sref);
-      PrimExpr nparts = floordiv(GetLoopExtent(loop_sref) + factor - 1, factor);
-      Array<tir::StmtSRef> splits = sch->sch->split(loop_sref, nparts, factor);
-      CHECK_EQ(splits.size(), 2);
-      sch->sch->bind(splits[1], MakeThreadIdx("threadIdx.x"));
-    }
-  }
-
   bool Proc(const SearchTask& task, const Schedule& sch) const {
     int warp_size = task->target->GetAttr<Integer>("thread_warp_size").value_or(Integer(-1));
     CHECK(warp_size != -1) << "ValueError: Target does not have attribute \"thread_warp_size\"";
     Array<BlockRV> root_block_rvs = sch->GetRootBlocks();
     for (const BlockRV& block_rv : root_block_rvs) {
-      if (BindMultiLevelTiled(sch, block_rv, warp_size)) {
-        continue;
-      }
       if (BindSpatial(sch, block_rv)) {
         continue;
       }
-    }
-    // TODO(@junrushao1994): replace with the utility function
-    // Collect all the blocks
-    std::vector<tir::StmtSRef> all_blocks;
-    const auto* root_block = sch->sch->root->GetStmt<tir::BlockNode>();
-    CHECK(root_block) << "TypeError: Expects Block, but gets: " << root_block;
-    tir::PreOrderVisit(root_block->body, [&all_blocks, &sch](const ObjectRef& obj) -> bool {
-      if (const auto* block = obj.as<tir::BlockNode>()) {
-        all_blocks.push_back(sch->sch->stmt2ref.at(block));
-      }
-      return true;
-    });
-    for (const tir::StmtSRef& block_sref : all_blocks) {
-      BindCooperativeFetch(sch, block_sref);
     }
     return true;
   }
