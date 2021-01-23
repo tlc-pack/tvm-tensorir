@@ -41,8 +41,8 @@ SPACE = ms.space.PostOrderApply(
         ),
     ],
     postprocs=[
-        ms.postproc.rewrite_parallel_vectorize_unroll(),
-        ms.postproc.rewrite_cuda_thread_bind(),
+        ms.postproc.rewrite_cooperative_fetch(),
+        ms.postproc.rewrite_unbound_blocks(),
         ms.postproc.verify_gpu_code(),
     ],
 )

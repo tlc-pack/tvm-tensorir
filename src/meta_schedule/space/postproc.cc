@@ -20,6 +20,7 @@
 
 #include <tvm/tir/transform.h>
 
+#include "../../tir/schedule/schedule_common.h"
 #include "../analysis.h"
 #include "../utils.h"
 
@@ -134,73 +135,6 @@ Postproc RewriteTensorize(Array<tir::TensorIntrin> tensor_intrins) {
     return PostprocRewriteTensorize(tensor_intrins).Proc(self);
   };
   return Postproc("rewrite_tensorize", f_proc);
-}
-
-/********** RewriteCudaThreadBind **********/
-
-inline tir::IterVar MakeThreadIdx(const String& name) {
-  return tir::IterVar(Range(nullptr), tir::Var(name), tir::kThreadIndex, name);
-}
-
-class PostprocRewriteCudaThreadBind {
- public:
-  bool BindSpatial(const Schedule& sch, const BlockRV& block_rv) const {
-    Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
-    tir::StmtSRef block_sref = sch->Eval(block_rv);
-    Array<tir::StmtSRef> loop_srefs;
-    for (const LoopRV& loop_rv : loop_rvs) {
-      tir::StmtSRef loop_sref = sch->Eval(loop_rv);
-      loop_srefs.push_back(loop_sref);
-      const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
-      CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
-      if (!loop->annotations.empty()) {
-        return false;
-      }
-    }
-    std::vector<int> loop_types;
-    {
-      int n_loops = loop_srefs.size();
-      loop_types.reserve(n_loops);
-      for (int i = 0; i < n_loops; ++i) {
-        loop_types.push_back(GetLoopIterType(sch->sch, loop_srefs[i]));
-      }
-    }
-    int n_spatial = 0;
-    for (const Integer& _loop_type : loop_types) {
-      int loop_type = _loop_type;
-      if (loop_type == tir::kDataPar) {
-        ++n_spatial;
-      } else {
-        break;
-      }
-    }
-    CHECK(n_spatial > 0) << "NotImplementedError: binding no spatial loops is not supported yet";
-    LoopRV fused = sch->Fuse({loop_rvs.begin(), loop_rvs.begin() + n_spatial});
-    Array<LoopRV> splits = sch->Split(fused, {NullOpt, Integer(32)});
-    CHECK_EQ(splits.size(), 2);
-    sch->sch->bind(sch->Eval(splits[0]), MakeThreadIdx("blockIdx.x"));
-    sch->sch->bind(sch->Eval(splits[1]), MakeThreadIdx("threadIdx.x"));
-    return true;
-  }
-
-  bool Proc(const SearchTask& task, const Schedule& sch) const {
-    int warp_size = task->target->GetAttr<Integer>("thread_warp_size").value_or(Integer(-1));
-    CHECK(warp_size != -1) << "ValueError: Target does not have attribute \"thread_warp_size\"";
-    Array<BlockRV> root_block_rvs = sch->GetRootBlocks();
-    for (const BlockRV& block_rv : root_block_rvs) {
-      if (BindSpatial(sch, block_rv)) {
-        continue;
-      }
-    }
-    return true;
-  }
-};
-
-Postproc RewriteCudaThreadBind() {
-  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
-    return PostprocRewriteCudaThreadBind().Proc(task, sch);
-  };
-  return Postproc("rewrite_cuda_thread_bind", f_proc);
 }
 
 /********** RewriteCooperativeFetch **********/
@@ -466,6 +400,90 @@ Postproc RewriteParallelizeVectorizeUnroll() {
   return Postproc("rewrite_parallelize_vectorize_unroll", f_proc);
 }
 
+/********** RewriteUnboundBlocks **********/
+
+class PostprocRewriteUnboundBlocks {
+ public:
+  /*! \brief A helper class to find an unbound block */
+  class UnboundBlockFinder : public tir::StmtExprVisitor {
+   public:
+    /*! \brief Find the first block that is not bound to any thread axes */
+    static Optional<tir::StmtSRef> Find(const tir::Schedule& sch) {
+      UnboundBlockFinder finder(sch);
+      finder(GetRef<tir::Stmt>(sch->root->stmt));
+      return finder.block_ == nullptr ? Optional<tir::StmtSRef>(NullOpt)
+                                      : sch->stmt2ref.at(finder.block_);
+    }
+
+   private:
+    explicit UnboundBlockFinder(const tir::Schedule& sch) : sch_(sch), block_(nullptr) {}
+
+    void VisitStmt_(const tir::LoopNode* loop) override {
+      if (block_) {
+        return;
+      }
+      if (Optional<String> opt_ann = GetAnn(sch_->stmt2ref.at(loop), tir::attr::loop_type)) {
+        String ann = opt_ann.value();
+        if (ann == "threadIdx.x" || ann == "blockIdx.x" || ann == "vthread") {
+          return;
+        }
+      }
+      tir::StmtExprVisitor::VisitStmt_(loop);
+    }
+
+    void VisitStmt_(const tir::BlockNode* block) override {
+      if (!block_) {
+        block_ = block;
+      }
+    }
+
+    const tir::Schedule& sch_;
+    const tir::BlockNode* block_;
+  };
+
+  void BindThreadAxes(const Schedule& sch, const tir::StmtSRef& block_sref) const {
+    // Extract the block
+    const auto* block = block_sref->GetStmt<tir::BlockNode>();
+    CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
+    BlockRV block_rv = sch->GetBlock(block->tag);
+    // Extract loops
+    Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
+    // Find the outer spatial loops
+    // TODO(@junrushao1994): check if each loop has only one children, otherwise we cannot fuse
+    int n_spatial_loops = 0;
+    for (const LoopRV& loop_rv : loop_rvs) {
+      tir::IterVarType iter_type = GetLoopIterType(sch->sch, sch->Eval(loop_rv));
+      if (iter_type != tir::kDataPar) {
+        break;
+      }
+      ++n_spatial_loops;
+    }
+    CHECK_GT(n_spatial_loops, 0) << "ValueError: not supported when spatial loop doesn't exist";
+    // Fuse the spatial loops
+    LoopRV fused = sch->Fuse({loop_rvs.begin(), loop_rvs.begin() + n_spatial_loops});
+    Array<LoopRV> splits = sch->Split(fused, {NullOpt, Integer(32)});
+    CHECK_EQ(splits.size(), 2);
+    sch->Bind(splits[0], "blockIdx.x");
+    sch->Bind(splits[1], "threadIdx.x");
+  }
+
+  bool Proc(const SearchTask& task, const Schedule& sch) const {
+    int warp_size = task->target->GetAttr<Integer>("thread_warp_size").value_or(Integer(-1));
+    CHECK(warp_size != -1) << "ValueError: Target does not have attribute \"thread_warp_size\"";
+    while (Optional<tir::StmtSRef> opt_block_sref = UnboundBlockFinder::Find(sch->sch)) {
+      BindThreadAxes(sch, opt_block_sref.value());
+    }
+    return true;
+  }
+};
+
+Postproc RewriteUnboundBlocks() {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
+    return PostprocRewriteUnboundBlocks().Proc(task, sch);
+  };
+  return Postproc("rewrite_unbound_blocks", f_proc);
+}
+
 /********** VerifyGPUCode **********/
 
 class PostprocVerifyGPUCode {
@@ -535,10 +553,10 @@ struct Internal {
 TVM_REGISTER_NODE_TYPE(PostprocNode);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.Apply").set_body_typed(Internal::Apply);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteTensorize").set_body_typed(RewriteTensorize);
-TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteCudaThreadBind")
-    .set_body_typed(RewriteCudaThreadBind);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteCooperativeFetch")
     .set_body_typed(RewriteCooperativeFetch);
+TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteUnboundBlocks")
+    .set_body_typed(RewriteUnboundBlocks);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteParallelizeVectorizeUnroll")
     .set_body_typed(RewriteParallelizeVectorizeUnroll);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.VerifyGPUCode").set_body_typed(VerifyGPUCode);
