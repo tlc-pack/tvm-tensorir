@@ -67,17 +67,6 @@ def rewrite_tensorize(tensor_intrins: List[TensorIntrin]) -> Postproc:
     return _ffi_api_postproc.RewriteTensorize(tensor_intrins)  # pylint: disable=no-member
 
 
-def rewrite_cuda_thread_bind() -> Postproc:
-    """Creates a postprocessor that do block/vthread/thread binding for cuda
-
-    Returns
-    ----------
-    postproc: Postproc
-        The postprocessor created
-    """
-    return _ffi_api_postproc.RewriteCudaThreadBind()  # pylint: disable=no-member
-
-
 def rewrite_cooperative_fetch() -> Postproc:
     """Creates a postprocessor rewrites "lazy_cooperative_fetch" with the actual threadIdx
 
@@ -87,6 +76,18 @@ def rewrite_cooperative_fetch() -> Postproc:
         The postprocessor created
     """
     return _ffi_api_postproc.RewriteCooperativeFetch()  # pylint: disable=no-member
+
+
+def rewrite_unbound_blocks() -> Postproc:
+    """Creates a postprocessor that finds each block that is not bound to thread axes,
+    and bind them to `blockIdx.x` and `threadIdx.x`
+
+    Returns
+    ----------
+    postproc: Postproc
+        The postprocessor created
+    """
+    return _ffi_api_postproc.RewriteUnboundBlocks()  # pylint: disable=no-member
 
 
 def rewrite_parallel_vectorize_unroll() -> Postproc:
