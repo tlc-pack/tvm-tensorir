@@ -359,6 +359,56 @@ def test_matmul_evolutionary_end_to_end():
         print(tvm.script.asscript(sch.sch.func))
 
 
+@pytest.mark.skip(reason="needs RPC")
+def test_matmul_evolutionary_xgb():
+    os.environ["TVM_TRACKER_KEY"] = "test"
+    sch = ms.autotune(
+        task=ms.SearchTask(workload=matmul),
+        space=ms.space.PostOrderApply(
+            stages=[
+                ms.rule.inline_pure_spatial(strict_mode=True),
+                ms.rule.multi_level_tiling(
+                    structure="SSRSRS",
+                    must_cache_read=False,
+                    cache_read_scope="global",
+                    can_cache_write=True,
+                    must_cache_write=False,
+                    cache_write_scope="global",
+                    fusion_levels=[1, 2],
+                ),
+                ms.rule.random_compute_location(),
+                ms.rule.parallelize_vectorize_unroll(
+                    max_jobs_per_core=16,
+                    max_vectorize_extent=32,
+                    unroll_max_steps=[0, 16, 64, 512],
+                    unroll_explicit=True,
+                ),
+            ],
+            postprocs=[
+                ms.postproc.rewrite_parallel_vectorize_unroll(),
+            ],
+        ),
+        strategy=ms.strategy.Evolutionary(
+            total_measures=12800,
+            population=16,
+            init_measured_ratio=0.05,
+            genetic_algo_iters=1,
+            p_mutate=0.85,
+            mutator_probs={
+                ms.mutator.mutate_tile_size(): 1.0,
+            },
+            cost_model=ms.XGBModel(
+                num_warmup_sample=0,
+            ),
+            eps_greedy=0.07,
+        ),
+    )
+    if sch is None:
+        print("No valid schedule found")
+    else:
+        print(tvm.script.asscript(sch.sch.func))
+
+
 if __name__ == "__main__":
     # ScheduleFn + Replay
     test_matmul_schedule_fn()
@@ -367,3 +417,5 @@ if __name__ == "__main__":
     # PostOrderApply + Evo Search
     test_matmul_evolutionary_step_by_step()
     test_matmul_evolutionary_end_to_end()
+    # PostOrderApply + Evo Search + XGBModel
+    test_matmul_evolutionary_xgb()
