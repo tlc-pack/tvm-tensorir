@@ -25,6 +25,7 @@ from tvm import meta_schedule as ms
 from tvm import te
 from tvm.tir import testing
 
+RPC_KEY = "test"
 TARGET = tvm.target.Target("llvm --num_cores 16")
 SPACE = ms.space.PostOrderApply(
     stages=[
@@ -54,7 +55,7 @@ SPACE = ms.space.PostOrderApply(
 
 @pytest.mark.skip(reason="needs RPC")
 def test_matmul_post_order_apply():
-    os.environ["TVM_TRACKER_KEY"] = "test"
+    os.environ["TVM_TRACKER_KEY"] = RPC_KEY
     sch = ms.autotune(
         task=ms.SearchTask(
             workload=te.create_func(te_workload.matmul(1024, 1024, 1024)),
@@ -63,7 +64,20 @@ def test_matmul_post_order_apply():
             log_file="./cpu_matmul.json",
         ),
         space=SPACE,
-        strategy=ms.strategy.Replay(num_trials=32),
+        strategy=ms.strategy.Evolutionary(
+            total_measures=128,
+            population=16,
+            init_measured_ratio=0.2,
+            genetic_algo_iters=10,
+            p_mutate=0.85,
+            mutator_probs={
+                ms.mutator.mutate_tile_size(): 1.0,
+            },
+            cost_model=ms.XGBModel(
+                num_warmup_sample=0,
+            ),
+            eps_greedy=0.05,
+        ),
         measurer=ms.ProgramMeasurer(
             measure_callbacks=[
                 ms.RecordToFile(),
@@ -78,7 +92,7 @@ def test_matmul_post_order_apply():
 
 @pytest.mark.skip(reason="needs RPC")
 def test_matmul_relu_post_order_apply():
-    os.environ["TVM_TRACKER_KEY"] = "test"
+    os.environ["TVM_TRACKER_KEY"] = RPC_KEY
     sch = ms.autotune(
         task=ms.SearchTask(
             workload=te.create_func(te_workload.matmul_relu(1024, 1024, 1024)),
@@ -87,7 +101,20 @@ def test_matmul_relu_post_order_apply():
             log_file="./cpu_matmul_relu.json",
         ),
         space=SPACE,
-        strategy=ms.strategy.Replay(num_trials=32),
+        strategy=ms.strategy.Evolutionary(
+            total_measures=128,
+            population=16,
+            init_measured_ratio=0.2,
+            genetic_algo_iters=10,
+            p_mutate=0.85,
+            mutator_probs={
+                ms.mutator.mutate_tile_size(): 1.0,
+            },
+            cost_model=ms.XGBModel(
+                num_warmup_sample=0,
+            ),
+            eps_greedy=0.05,
+        ),
         measurer=ms.ProgramMeasurer(
             measure_callbacks=[
                 ms.RecordToFile(),
@@ -102,7 +129,7 @@ def test_matmul_relu_post_order_apply():
 
 @pytest.mark.skip(reason="needs RPC")
 def test_conv1d_post_order_apply():
-    os.environ["TVM_TRACKER_KEY"] = "test"
+    os.environ["TVM_TRACKER_KEY"] = RPC_KEY
     sch = ms.autotune(
         task=ms.SearchTask(
             workload=te.create_func(testing.workload_te.conv1d_nlc(1, 256, 64, 128, 3, 2, 1)),
@@ -111,7 +138,20 @@ def test_conv1d_post_order_apply():
             log_file="./conv1d_nlc.json",
         ),
         space=SPACE,
-        strategy=ms.strategy.Replay(num_trials=32),
+        strategy=ms.strategy.Evolutionary(
+            total_measures=128,
+            population=16,
+            init_measured_ratio=0.2,
+            genetic_algo_iters=10,
+            p_mutate=0.85,
+            mutator_probs={
+                ms.mutator.mutate_tile_size(): 1.0,
+            },
+            cost_model=ms.XGBModel(
+                num_warmup_sample=0,
+            ),
+            eps_greedy=0.05,
+        ),
         measurer=ms.ProgramMeasurer(
             measure_callbacks=[
                 ms.RecordToFile(),
