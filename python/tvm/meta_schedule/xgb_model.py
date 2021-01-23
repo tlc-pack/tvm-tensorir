@@ -17,7 +17,7 @@
 """XGBoost-based cost model"""
 from __future__ import annotations
 
-import itertools.chain
+from itertools import chain as itertools_chain
 import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger("meta_schedule")
+logging.basicConfig(level=logging.DEBUG)
 
 
 class XGBDMatrixContext:
@@ -119,6 +120,8 @@ class PackSum:
         ys : Optional[List[np.ndarray]]
             A batch of labels. None means no lables available.
         """
+        import xgboost as xgb  # pylint: disable=import-outside-toplevel
+
         repeats = [x.shape[0] for x in xs]
         xs = np.concatenate(xs, axis=0)
         self.ids = np.concatenate([[i] * repeat for i, repeat in enumerate(repeats)], axis=0)
@@ -268,6 +271,8 @@ class XGBModel(PyCostModel):
         results : List[MeasureResult]
             The measurement results
         """
+        import xgboost as xgb  # pylint: disable=import-outside-toplevel
+
         assert len(inputs) == len(results)
         if len(inputs) == 0:
             return
@@ -286,9 +291,9 @@ class XGBModel(PyCostModel):
 
         # extract feature
         self.cached_features.extend(per_block_feature(x.sch) for x in inputs)
-        self.cached_mean_costs = np.append(self.cached_mean_costs, [x.mean_cost for x in results])
+        self.cached_mean_costs = np.append(self.cached_mean_costs, [x.mean_cost() for x in results])
         features = self.cached_features
-        mean_costs = self.cached_throughputs.min() / self.cached_throughputs
+        mean_costs = self.cached_mean_costs.min() / self.cached_mean_costs
         # train xgb model
         d_train = PackSum(xs=features, ys=mean_costs)
         xgb_dmatrix_context.set("pack-sum", d_train.dmatrix, d_train)
@@ -306,7 +311,7 @@ class XGBModel(PyCostModel):
                         rmse,
                         average_peak_score,
                     ],
-                    evals=[(d_train, "tr")],
+                    evals=[(d_train.dmatrix, "tr")],
                     verbose_eval=self.verbose_eval,
                 )
             ],
@@ -330,7 +335,8 @@ class XGBModel(PyCostModel):
         scores: np.ndarray
             The predicted scores for all states
         """
-        if self.booster is not None and len(self.inputs) > self.num_warmup_sample:
+        n_measured = len(self.cached_features)
+        if self.booster is not None and n_measured > self.num_warmup_sample:
             features = [per_block_feature(x) for x in schedules]
             d_test = PackSum(xs=features, ys=None)
             ret = d_test.predict_with_booster(self.booster)
@@ -346,8 +352,7 @@ def custom_callback(
     metric: str,
     fevals: List[Callable],
     evals: List[Tuple[xgb.DMatrix, str]],
-    verbose_eval: bool = True,
-    skip_every: int = 2,
+    verbose_eval: int,
 ):
     """Callback function for xgboost to support multiple custom evaluation functions"""
     # pylint: disable=import-outside-toplevel
@@ -368,6 +373,10 @@ def custom_callback(
         if metric_shortname in name:
             return "a" + name
         return name
+
+    def sort_key(key):
+        key, _ = key
+        return metric_name_for_sort(key)
 
     def init(env: xgb.core.CallbackEnv):
         """Internal function"""
@@ -393,13 +402,11 @@ def custom_callback(
         booster: xgb.Booster = env.model
         iteration: int = env.iteration
         cvfolds: List[xgb.training.CVPack] = env.cvfolds
-        if iteration % skip_every == 1:
-            return
         ##### Evaluation #####
         # `eval_result` is a list of (key, mean)
         eval_result: List[Tuple[str, float]] = []
         if cvfolds is None:
-            eval_result = itertools.chain.from_iterable(
+            eval_result = itertools_chain.from_iterable(
                 [
                     (key, float(value))
                     for key, value in map(
@@ -408,13 +415,13 @@ def custom_callback(
                             evals,
                             iteration=iteration,
                             feval=feval,
-                        ),
+                        ).split()[1:],
                     )
                 ]
                 for feval in fevals
             )
         else:
-            eval_result = itertools.chain.from_iterable(
+            eval_result = itertools_chain.from_iterable(
                 [
                     (key, mean)
                     for key, mean, _std in aggcv(
@@ -427,10 +434,11 @@ def custom_callback(
                 ]
                 for feval in fevals
             )
-        eval_result.sort(key=lambda key, _: metric_name_for_sort(key))
+        eval_result = list(eval_result)
+        eval_result.sort(key=sort_key)
 
         ##### Print eval result #####
-        if not isinstance(verbose_eval, bool) and verbose_eval and iteration % verbose_eval == 0:
+        if verbose_eval and iteration % verbose_eval == 0:
             infos = ["XGB iter: %3d" % iteration]
             for key, mean in eval_result:
                 if "null" in key:
