@@ -22,8 +22,8 @@ from tvm._ffi import register_object
 from tvm.runtime import Object
 
 from . import _ffi_api_mutator
-from .trace import Trace
 from .search import SearchTask
+from .trace import Trace
 
 
 @register_object("meta_schedule.Mutator")
