@@ -20,16 +20,15 @@
 from tir_workload import matmul
 from tvm import meta_schedule as ms
 from tvm import tir
-from tvm.meta_schedule.search_rule import SearchRule
 
 
 @ms.rule.register_rule("do_nothing")
-def do_nothing(_task: ms.SearchTask, sch: ms.Schedule, _block: ms.BlockRV, _info):
+def do_nothing(_task: ms.SearchTask, sch: ms.Schedule, _block: ms.BlockRV):
     return sch
 
 
 @ms.rule.register_rule("do_mlt")
-def do_mlt(_task: ms.SearchTask, sch: ms.Schedule, block: ms.BlockRV, _info):
+def do_mlt(_task: ms.SearchTask, sch: ms.Schedule, block: ms.BlockRV):
     TILING_FORMAT = "SSRSRS"  # pylint: disable=invalid-name
     spatial_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "S"]
     reduce_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "R"]
@@ -54,8 +53,7 @@ def do_mlt(_task: ms.SearchTask, sch: ms.Schedule, block: ms.BlockRV, _info):
 def test_meta_schedule_rule_do_nothing():
     task = ms.SearchTask(workload=matmul)
     sch = ms.Schedule(func=matmul)
-    args: SearchRule.RETURN_TYPE = do_nothing(task, sch, sch.get_block("matmul"), None)
-    args = list(args.keys())
+    args = do_nothing(task, sch, sch.get_block("matmul"))
     assert len(args) == 1
     assert sch.same_as(args[0])
 
@@ -63,9 +61,9 @@ def test_meta_schedule_rule_do_nothing():
 def test_meta_schedule_rule_do_mlt():
     task = ms.SearchTask(workload=matmul)
     sch = ms.Schedule(func=matmul)
-    args: SearchRule.RETURN_TYPE = do_mlt(task, sch, sch.get_block("matmul"), None)
+    args = do_mlt(task, sch, sch.get_block("matmul"))
     assert len(args) == 1
-    sch = list(args.keys())[0].sch
+    sch = args[0].sch
     i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
         i.stmt.extent for i in sch.get_axes(sch.get_block("matmul"))
     ]
@@ -84,9 +82,9 @@ def test_meta_schedule_rule_composite_0():
     )
     task = ms.SearchTask(workload=matmul)
     sch = ms.Schedule(func=matmul)
-    args: SearchRule.RETURN_TYPE = rule(task, sch, sch.get_block("matmul"), None)
+    args = rule(task, sch, sch.get_block("matmul"))
     assert len(args) == 1
-    sch: tir.Schedule = list(args.keys())[0].sch
+    sch: tir.Schedule = args[0].sch
     i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
         i.stmt.extent for i in sch.get_axes(sch.get_block("matmul"))
     ]
@@ -105,9 +103,9 @@ def test_meta_schedule_rule_composite_1():
     )
     task = ms.SearchTask(workload=matmul)
     sch = ms.Schedule(func=matmul)
-    args: SearchRule.RETURN_TYPE = rule(task, sch, sch.get_block("matmul"), None)
+    args = rule(task, sch, sch.get_block("matmul"))
     assert len(args) == 1
-    sch: tir.Schedule = list(args.keys())[0].sch
+    sch: tir.Schedule = args[0].sch
     i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
         i.stmt.extent for i in sch.get_axes(sch.get_block("matmul"))
     ]
