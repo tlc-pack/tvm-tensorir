@@ -432,7 +432,9 @@ class PostprocRewriteUnboundBlocks {
     }
 
     void VisitStmt_(const tir::BlockNode* block) override {
-      if (!block_) {
+      if (block == sch_->root->stmt) {
+        tir::StmtExprVisitor::VisitStmt_(block);
+      } else if (!block_) {
         block_ = block;
       }
     }

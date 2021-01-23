@@ -24,8 +24,8 @@ from .cost_model import CostModel
 from .measure import ProgramMeasurer
 from .measure_record import MeasureResult
 from .mutator import Mutator
-from .trace import Trace
 from .search import SearchSpace, SearchStrategy, SearchTask
+from .trace import Trace
 from .utils import cpu_count
 
 
