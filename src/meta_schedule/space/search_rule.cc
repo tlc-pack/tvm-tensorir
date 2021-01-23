@@ -25,10 +25,6 @@
 namespace tvm {
 namespace meta_schedule {
 
-using TContextInfo = SearchRuleNode::TContextInfo;
-using TReturn = SearchRuleNode::TReturn;
-using FApply = SearchRuleNode::FApply;
-
 /********** Constructors **********/
 
 SearchRule::SearchRule(String name, SearchRuleNode::FApply apply) {
@@ -40,24 +36,21 @@ SearchRule::SearchRule(String name, SearchRuleNode::FApply apply) {
 
 /********** SearchRule **********/
 
-TReturn SearchRuleNode::Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block,
-                              const TContextInfo& info) const {
-  if (sch->Eval(block)->stmt == nullptr) {
-    return {{sch, info}};
-  }
-  return apply_(task, sch, block, info);
+Array<Schedule> SearchRuleNode::Apply(const SearchTask& task, const Schedule& sch,
+                                      const BlockRV& block) const {
+  return apply_(task, sch, block);
 }
 
 SearchRule SearchRuleCompose(const String& name, const Array<SearchRule>& rules) {
-  auto apply = [rules](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
-    using ItemType = std::pair<Schedule, TContextInfo>;
-    std::vector<ItemType> curr{{sch, info}};
-    std::vector<ItemType> next;
+  auto apply = [rules](SearchTask task, Schedule sch, BlockRV block) -> Array<Schedule> {
+    std::vector<Schedule> curr{sch};
+    std::vector<Schedule> next;
     for (const SearchRule& rule : rules) {
-      for (const ItemType& sch_info : curr) {
-        TReturn results = rule->Apply(task, sch_info.first, block, sch_info.second);
-        for (ItemType kv : results) {
-          next.emplace_back(std::move(kv.first), std::move(kv.second));
+      for (const Schedule& curr_sch : curr) {
+        Array<Schedule> results = rule->Apply(task, curr_sch, block);
+        next.reserve(next.size() + results.size());
+        for (const Schedule& result_sch : results) {
+          next.push_back(result_sch);
         }
       }
       curr.clear();
@@ -80,114 +73,195 @@ class RuleInlinePureSpatial {
   explicit RuleInlinePureSpatial(bool strict_mode) : strict_mode(strict_mode) {}
 
   /*! \brief Rule application */
-  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
-                const TContextInfo& info) const {
+  Array<Schedule> Apply(const SearchTask& task, const Schedule& sch,
+                        const BlockRV& block_rv) const {
     tir::StmtSRef block_sref = sch->Eval(block_rv);
     if (!IsSpatial(sch->sch, block_sref)) {
-      return {{sch, info}};
+      return {sch};
     }
     if (IsOutputBlock(sch->sch, block_sref)) {
-      return {{sch, info}};
+      return {sch};
     }
     if (!strict_mode || IsStrictlyInlineable(sch->sch, block_sref)) {
       sch->ComputeInline(block_rv);
-      return {{sch, info}};
+      return {sch};
     }
-    return {{sch, info}};
+    return {sch};
   }
 };
 
 SearchRule InlinePureSpatial(bool strict_mode) {
-  auto f_apply = [strict_mode](SearchTask task, Schedule sch, BlockRV block,
-                               TContextInfo info) -> TReturn {
+  auto f_apply = [strict_mode](SearchTask task, Schedule sch, BlockRV block) -> Array<Schedule> {
     RuleInlinePureSpatial rule(strict_mode);
-    return rule.Apply(task, sch, block, info);
+    return rule.Apply(task, sch, block);
   };
   return SearchRule("inline_pure_spatial", f_apply);
 }
 
 /********** Multi-Level-Tiling-And-Fusion **********/
 
+/*! \brief A rule that does multi-level tiling, and possibly cache_read/write */
 class RuleMultiLevelTiling {
  public:
+  /*!
+   * \brief Structure of the tiling.
+   * Recommendation:
+   * - 'SSRSRS' on CPU
+   * - 'SSSRRSRS' on GPU
+   */
   String structure;
+  /*! \brief Whether we must cache_read the inputs */
   bool must_cache_read;
+  /*! \brief The storage scope of cache_read */
   String cache_read_scope;
+  /*! \brief Whether we could cache_write the inputs */
   bool can_cache_write;
+  /*! \brief Whether we must cache_write the inputs */
   bool must_cache_write;
+  /*! \brief The storage scope of cache_write */
   String cache_write_scope;
-  Array<Integer> fusion_levels;
+  /*! \brief Which levels of tiles the consumer is fused into */
+  std::vector<int> fusion_levels;
+  /*! \brief The length of vectorized cooperative fetching */
   Optional<Integer> vector_load_max_len;
-  Array<String> tile_marks;
+  /*! \brief Which thread axis each level of tile should be bound to */
+  Array<String> tile_binds;
+  /*! \brief The indices of spatial tiles in the structure string */
   std::vector<int> s_idx;
+  /*! \brief The indices of reduction tiles in the structure string */
   std::vector<int> r_idx;
 
-  explicit RuleMultiLevelTiling(String structure, bool must_cache_read, String cache_read_scope,
-                                bool can_cache_write, bool must_cache_write,
-                                String cache_write_scope, Array<Integer> fusion_levels,
-                                Optional<Integer> vector_load_max_len,
-                                Optional<Array<String>> tile_marks)
-      : structure(structure),
-        must_cache_read(must_cache_read),
-        cache_read_scope(cache_read_scope),
-        can_cache_write(can_cache_write),
-        must_cache_write(must_cache_write),
-        cache_write_scope(cache_write_scope),
-        fusion_levels(fusion_levels),
-        vector_load_max_len(vector_load_max_len),
-        tile_marks(tile_marks.value_or(Array<String>{})),
-        s_idx(),
-        r_idx() {
-    // Process `structure` and set `s_idx` and `r_idx` properly
+  /*!
+   * \brief Parse the structure string, extract the indices of each spatial/reduction tile,
+   * and return the number of contiguous spatial tiles in the prefix of the structure string.
+   * \param s_idx The indices of the spatial tiles
+   * \param r_idx The indices of the reduction tiles
+   * \return The number of contiguous spatial tiles in the prefix of the structure string
+   */
+  static int ParseStructure(const String& structure, std::vector<int>* s_idx,
+                            std::vector<int>* r_idx) {
     int structure_len = structure.length();
     int num_s_in_prefix = structure_len;
     for (int i = 0; i < structure_len; ++i) {
       char c = structure->data[i];
       if (c == 'S') {
-        s_idx.push_back(i);
+        s_idx->push_back(i);
       } else if (c == 'R') {
-        if (r_idx.empty()) {
+        if (r_idx->empty()) {
           num_s_in_prefix = i;
         }
-        r_idx.push_back(i);
+        r_idx->push_back(i);
       } else {
         LOG(FATAL) << "ValueError: Invalid tiling structure, only accepts string of 'S's and 'R's, "
                       "but gets: "
                    << structure;
       }
     }
-    CHECK(!s_idx.empty())
+    CHECK(!s_idx->empty())
         << "ValueError: Invalid tiling structure, cannot find any 'S' in the format";
-    CHECK(!r_idx.empty())
+    CHECK(!r_idx->empty())
         << "ValueError: Invalid tiling structure, cannot find any 'R' in the format";
+    return num_s_in_prefix;
+  }
+
+  /*!
+   * \brief Extract the buffer indices of the read buffers, excluding those update buffers
+   * \param block_sref The block to be extracted
+   * \return A vector of integers, the indices of the read buffers
+   */
+  static std::vector<int> GetReadBufferIndices(const tir::StmtSRef& block_sref) {
+    const auto* block = block_sref->GetStmt<tir::BlockNode>();
+    CHECK(block) << "TypeError: Expects 'Block', but gets: " << block_sref->stmt->GetTypeKey();
+    std::vector<int> result;
+    int n_reads = block->reads.size();
+    int n_writes = block->writes.size();
+    for (int i = 0; i < n_reads; ++i) {
+      const tir::Buffer& read_buffer = block->reads[i]->buffer;
+      bool found = false;
+      for (int j = 0; j < n_writes; ++j) {
+        const tir::Buffer& write_buffer = block->writes[j]->buffer;
+        if (read_buffer.same_as(write_buffer)) {
+          // Exclude update buffers
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        result.push_back(i);
+      }
+    }
+    std::reverse(result.begin(), result.end());
+    return result;
+  }
+
+  /*!
+   * \brief Fuse the axes of a cache_read block generated by reading a buffer
+   * \param sch The schedule
+   * \param block_rv The block generated by cache_read
+   * \param buffer The buffer that is cache_read
+   * \return The fused loop
+   */
+  static LoopRV FuseBufferAxes(const Schedule& sch, const BlockRV& block_rv,
+                               const tir::Buffer& buffer) {
+    Array<LoopRV> to_fuse;
+    Array<LoopRV> axes = sch->GetAxes(block_rv);
+    int n_axes = axes.size();
+    int ndim = buffer->shape.size();
+    for (int i = n_axes - ndim; i < n_axes; ++i) {
+      to_fuse.push_back(axes[i]);
+    }
+    return sch->Fuse(to_fuse);
+  }
+
+  explicit RuleMultiLevelTiling(String structure, bool must_cache_read, String cache_read_scope,
+                                bool can_cache_write, bool must_cache_write,
+                                String cache_write_scope, Array<Integer> fusion_levels_,
+                                Optional<Integer> vector_load_max_len,
+                                Optional<Array<String>> tile_binds)
+      : structure(structure),
+        must_cache_read(must_cache_read),
+        cache_read_scope(cache_read_scope),
+        can_cache_write(can_cache_write),
+        must_cache_write(must_cache_write),
+        cache_write_scope(cache_write_scope),
+        fusion_levels(AsVector<Integer, int>()(fusion_levels_)),
+        vector_load_max_len(vector_load_max_len),
+        tile_binds(tile_binds.value_or(Array<String>{})),
+        s_idx(),
+        r_idx() {
+    // Process `structure` and set `s_idx` and `r_idx` properly
+    int num_s_in_prefix = ParseStructure(structure, &s_idx, &r_idx);
     // Process `fusion_levels`
-    std::unordered_set<int> used_levels;
-    for (const Integer& _level : fusion_levels) {
-      int level = _level;
-      CHECK_GE(level, 1) << "ValueError: The fusion level must be >= 1, but gets " << level;
-      CHECK_LE(level, num_s_in_prefix)
+    if (!fusion_levels.empty()) {
+      std::sort(fusion_levels.begin(), fusion_levels.end());
+      CHECK_GE(fusion_levels.front(), 1)
+          << "ValueError: The fusion level must be >= 1, but gets " << fusion_levels_;
+      CHECK_LE(fusion_levels.back(), num_s_in_prefix)
           << "ValueError: The fusion level must be <= "
              "the number of prefix spatial tiles, but gets fusion_level "
-          << level << " and number of prefix spatial tiles " << num_s_in_prefix;
-      CHECK(!used_levels.count(level))
-          << "ValueError: Duplicate fusion levels are not allowed, but gets multiple " << level;
-      used_levels.insert(level);
+          << fusion_levels_ << ", and number of prefix spatial tiles " << num_s_in_prefix;
     }
   }
 
+  /*! \brief The internal state */
   struct State {
+    /*! \brief The schedule */
     Schedule sch;
+    /*! \brief The block random variable to focus on */
     BlockRV block_rv;
-    Optional<BlockRV> only_consumer;
-    bool only_consumer_is_cache_write;
+    /*! \brief The write cache */
+    Optional<BlockRV> write_cache;
+    /*! \brief Whether the write cache is added in the rule */
+    bool write_cache_is_added;
+    /*! \brief The tiles according to the tile structure */
     Array<Array<LoopRV>> tiles;
 
-    explicit State(Schedule sch, BlockRV block_rv, Optional<BlockRV> only_consumer = NullOpt,
-                   bool only_consumer_is_cache_write = false, Array<Array<LoopRV>> tiles = {})
+    explicit State(Schedule sch, BlockRV block_rv, Optional<BlockRV> write_cache = NullOpt,
+                   bool write_cache_is_added = false, Array<Array<LoopRV>> tiles = {})
         : sch(std::move(sch)),
           block_rv(std::move(block_rv)),
-          only_consumer(std::move(only_consumer)),
-          only_consumer_is_cache_write(only_consumer_is_cache_write),
+          write_cache(std::move(write_cache)),
+          write_cache_is_added(write_cache_is_added),
           tiles(std::move(tiles)) {}
   };
 
@@ -204,8 +278,8 @@ class RuleMultiLevelTiling {
       // Check if it can be directly fused
       if ((IsSpatial(sch->sch, block_sref) || IsSpatial(sch->sch, consumer_sref)) &&
           IsElementWiseMatch(sch->sch, block_sref, consumer_sref)) {
-        state.only_consumer = consumer_rv;
-        state.only_consumer_is_cache_write = false;
+        state.write_cache = consumer_rv;
+        state.write_cache_is_added = false;
         return {state};
       }
     }
@@ -221,43 +295,23 @@ class RuleMultiLevelTiling {
       // The original block to tiled
       state.block_rv = state.sch->CacheWrite(block_rv, 0, cache_write_scope);
       // The cache write block
-      state.only_consumer = block_rv;
-      state.only_consumer_is_cache_write = true;
+      state.write_cache = block_rv;
+      state.write_cache_is_added = true;
       result.push_back(std::move(state));
     }
     return result;
   }
 
-  void AddReadCache(State* state) const {
+  std::vector<State> AddReadCache(State state) const {
     if (!must_cache_read) {
-      return;
+      return {state};
     }
     // Extract the block to be worked on
-    Schedule& sch = state->sch;
-    BlockRV& block_rv = state->block_rv;
+    Schedule& sch = state.sch;
+    BlockRV& block_rv = state.block_rv;
     tir::StmtSRef block_sref = sch->Eval(block_rv);
     // Find all indices of the read buffers
-    std::vector<int> read_buffer_indices;
-    {
-      const auto* block = block_sref->GetStmt<tir::BlockNode>();
-      int n_reads = block->reads.size();
-      int n_writes = block->writes.size();
-      for (int i = 0; i < n_reads; ++i) {
-        const tir::Buffer& read_buffer = block->reads[i]->buffer;
-        bool found = false;
-        for (int j = 0; j < n_writes; ++j) {
-          const tir::Buffer& write_buffer = block->writes[j]->buffer;
-          if (read_buffer.same_as(write_buffer)) {
-            found = true;
-            break;
-          }
-        }
-        if (!found) {
-          read_buffer_indices.push_back(i);
-        }
-      }
-      std::reverse(read_buffer_indices.begin(), read_buffer_indices.end());
-    }
+    std::vector<int> read_buffer_indices = GetReadBufferIndices(block_sref);
     // Enumerate all buffers that are read but not written
     for (int i : read_buffer_indices) {
       const auto* block = block_sref->GetStmt<tir::BlockNode>();
@@ -265,44 +319,37 @@ class RuleMultiLevelTiling {
       // Do cache_read
       BlockRV cache_read_block = sch->CacheRead(block_rv, i, cache_read_scope);
       // Insert cache_read block to the proper place
-      const Array<LoopRV>& r_tiles = state->tiles[r_idx.front()];
+      const Array<LoopRV>& r_tiles = state.tiles[r_idx.front()];
       CHECK(!r_tiles.empty()) << "ValueError: Cannot find any reduction loop in the block";
       sch->ComputeAt(cache_read_block, r_tiles.back());
       // Fuse the iterators of the cache_read
-      Array<LoopRV> to_fuse;
-      {
-        Array<LoopRV> cache_read_axes = sch->GetAxes(cache_read_block);
-        int n_axes = cache_read_axes.size();
-        int ndim = buffer->shape.size();
-        for (int i = n_axes - ndim; i < n_axes; ++i) {
-          to_fuse.push_back(cache_read_axes[i]);
-        }
-      }
-      LoopRV fused = sch->Fuse(to_fuse);
+      LoopRV fused = FuseBufferAxes(sch, cache_read_block, buffer);
       // Do cooperative fetching
       if (vector_load_max_len.defined()) {
+        int max_vec_len = vector_load_max_len.value();
         // cooperative fetch + vectorized loading
         // Split into inner and outer
-        Array<tir::Var> factors = sch->SamplePerfectTile(2, fused, vector_load_max_len.value());
+        Array<tir::Var> factors = sch->SamplePerfectTile(2, fused, max_vec_len);
         CHECK_EQ(factors.size(), 2);
-        Array<LoopRV> tiles = sch->Split(fused, {factors[0], factors[1]});
-        CHECK_EQ(tiles.size(), 2);
+        Array<LoopRV> splits = sch->Split(fused, {factors[0], factors[1]});
+        CHECK_EQ(splits.size(), 2);
         // Vectorize the inner loop
-        sch->MarkLoop(tiles[0], tir::attr::loop_type, tir::StringImm("lazy_cooperative_fetch"));
-        sch->MarkLoop(tiles[1], tir::attr::loop_type, tir::StringImm("lazy_vectorize"));
-      } else {
-        // cooperative fetch only
-        sch->MarkLoop(fused, tir::attr::loop_type, tir::StringImm("lazy_cooperative_fetch"));
+        sch->Vectorize(splits[1]);
+        fused = splits[0];
       }
+      // Add cooperative fetching
+      sch->MarkLoop(fused, tir::attr::loop_type, tir::StringImm("lazy_cooperative_fetch"));
     }
+    return {state};
   }
 
-  void DoTiling(State* state) const {
-    Schedule& sch = state->sch;
-    BlockRV& block_rv = state->block_rv;
+  std::vector<State> DoTiling(State state) const {
+    Schedule& sch = state.sch;
+    BlockRV& block_rv = state.block_rv;
     // Concat of `tiles` is the reordering order
     std::vector<Array<LoopRV>> tiles(structure.size());
     // Get block vars and loop axes
+    // TODO: fix
     Array<Integer> iter_types = GetBlockVarTypes(sch->sch, sch->Eval(block_rv));
     Array<LoopRV> axes = sch->GetAxes(block_rv);
     CHECK_EQ(axes.size(), iter_types.size());
@@ -328,26 +375,33 @@ class RuleMultiLevelTiling {
       }
     }
     sch->Reorder(ConcatArray(tiles));
-    state->tiles = Array<Array<LoopRV>>{tiles.begin(), tiles.end()};
+    // Bind the tiles
+    int n_binds = std::min(tile_binds.size(), tiles.size());
+    for (int i = 0; i < n_binds; ++i) {
+      LoopRV fused = sch->Fuse(tiles[i]);
+      sch->Bind(fused, tile_binds[i]);
+      tiles[i] = {fused};
+    }
+    state.tiles = Array<Array<LoopRV>>{tiles.begin(), tiles.end()};
+    return {state};
   }
 
-  std::vector<State> FuseWithElementwiseConsumer(State state) const {
+  std::vector<State> FuseWriteCache(State state) const {
     // If the only-consumer does not exist, or is not elementwise, then do not do fusion
-    if (!state.only_consumer.defined()) {
+    if (!state.write_cache.defined()) {
       return {state};
     }
     std::vector<State> result;
     // Special case.
     // `cache_write` must be fused at some level, otherwise it has no benefit
     // On the other hand, If the only consumer is not cache_write, then we may choose not to fuse
-    if (!state.only_consumer_is_cache_write) {
+    if (!state.write_cache_is_added) {
       result.push_back(state);
     }
     Schedule sch = state.sch;
-    BlockRV consumer = state.only_consumer.value();
-    for (const Integer& _level : fusion_levels) {
-      // Enumerate the level of tile to be fused at
-      int level = _level;
+    BlockRV consumer = state.write_cache.value();
+    // Enumerate the level of tile to be fused at
+    for (int level : fusion_levels) {
       const LoopRV& loop = state.tiles[level - 1].back();
       State new_state = state;
       new_state.sch = state.sch->Copy(sch->sampler.ForkSeed());
@@ -357,85 +411,61 @@ class RuleMultiLevelTiling {
     return result;
   }
 
-  void MarkTiles(State* state) const {
-    Schedule& sch = state->sch;
-    Array<Array<LoopRV>>& tiles = state->tiles;
-    int n = std::min(tile_marks.size(), tiles.size());
-    for (int i = 0; i < n; ++i) {
-      for (const LoopRV& loop : tiles[i]) {
-        sch->MarkLoop(loop, tir::attr::loop_type, tir::StringImm(tile_marks[i]));
-      }
-    }
+#define TVM_SEARCH_RULE_APPLY_SUB_RULE(SrcStates, FSubRule)                          \
+  {                                                                                  \
+    std::vector<State> next_states;                                                  \
+    for (const State& state : SrcStates) {                                           \
+      std::vector<State> result = FSubRule(state);                                   \
+      next_states.insert(next_states.end(), std::make_move_iterator(result.begin()), \
+                         std::make_move_iterator(result.end()));                     \
+    }                                                                                \
+    SrcStates.swap(next_states);                                                     \
   }
 
-  TReturn Apply(const SearchTask& task, const Schedule& sch, BlockRV block_rv,
-                const TContextInfo& _info) const {
+  Array<Schedule> Apply(const SearchTask& task, const Schedule& sch,
+                        const BlockRV& block_rv) const {
     tir::StmtSRef block_sref = sch->Eval(block_rv);
     if (HasAnyAnn(block_sref)) {
-      return {{sch, NullOpt}};
+      return {sch};
     }
-    // If multi-level-tiling is not required
     if (!NeedsMultiLevelTiling(sch->sch, block_sref)) {
-      return {{sch, NullOpt}};
+      return {sch};
     }
     // States
     std::vector<State> states{State(sch, block_rv)};
     // Add write cache
-    {
-      std::vector<State> next_states;
-      for (State& state : states) {
-        std::vector<State> new_states = AddWriteCache(std::move(state));
-        next_states.insert(next_states.end(),                            //
-                           std::make_move_iterator(new_states.begin()),  //
-                           std::make_move_iterator(new_states.end()));
-      }
-      states.swap(next_states);
-    }
+    TVM_SEARCH_RULE_APPLY_SUB_RULE(states, AddWriteCache);
     // Do the multi-level tiling
-    for (State& state : states) {
-      DoTiling(&state);
-    }
+    TVM_SEARCH_RULE_APPLY_SUB_RULE(states, DoTiling);
     // Add read cache
-    for (State& state : states) {
-      AddReadCache(&state);
-    }
-    // Fuse with elementwise consumer
-    {
-      std::vector<State> next_states;
-      for (State& state : states) {
-        std::vector<State> new_states = FuseWithElementwiseConsumer(std::move(state));
-        next_states.insert(next_states.end(),                            //
-                           std::make_move_iterator(new_states.begin()),  //
-                           std::make_move_iterator(new_states.end()));
-      }
-      states.swap(next_states);
-    }
-    // Add tile marks
-    for (State& state : states) {
-      MarkTiles(&state);
-    }
-    TReturn ret;
+    TVM_SEARCH_RULE_APPLY_SUB_RULE(states, AddReadCache);
+    // Fuse with write cache
+    TVM_SEARCH_RULE_APPLY_SUB_RULE(states, FuseWriteCache);
+    Array<Schedule> ret;
+    ret.reserve(states.size());
     for (const State& state : states) {
-      ret.Set(state.sch, NullOpt);
+      ret.push_back(state.sch);
     }
     return ret;
   }
+
+#undef TVM_SEARCH_RULE_APPLY_SUBRULE
 };
 
 SearchRule MultiLevelTiling(String structure, bool must_cache_read, String cache_read_scope,
                             bool can_cache_write, bool must_cache_write, String cache_write_scope,
                             Array<Integer> fusion_levels, Optional<Integer> vector_load_max_len,
-                            Optional<Array<String>> tile_marks) {
+                            Optional<Array<String>> tile_binds) {
   if (!can_cache_write && must_cache_write) {
     LOG(FATAL) << "ValueError: Conflict options, cannot have can_cache_write = false, and "
                   "must_cache_write = true at the same time";
   }
   RuleMultiLevelTiling rule(structure, must_cache_read, cache_read_scope, can_cache_write,
                             must_cache_write, cache_write_scope, fusion_levels, vector_load_max_len,
-                            tile_marks);
-  auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch, BlockRV block,
-                                         TContextInfo info) -> TReturn {
-    return rule.Apply(task, sch, block, info);
+                            tile_binds);
+  auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch,
+                                         BlockRV block) -> Array<Schedule> {
+    return rule.Apply(task, sch, block);
   };
   return SearchRule("multi_level_tiling", f_apply);
 }
@@ -465,15 +495,15 @@ class RuleRandomComputeLocation {
     return true;
   }
 
-  TReturn Apply(const SearchTask& task, const Schedule& sch, BlockRV block_rv,
-                const TContextInfo& info) const {
+  Array<Schedule> Apply(const SearchTask& task, const Schedule& sch,
+                        const BlockRV& block_rv) const {
     tir::StmtSRef block_sref = sch->Eval(block_rv);
     if (!IsFreeBlock(sch->sch, block_sref)) {
-      return {{sch, info}};
+      return {sch};
     }
     Array<BlockRV> consumers = sch->GetConsumers(block_rv);
     if (consumers.size() != 1) {
-      return {{sch, info}};
+      return {sch};
     }
     BlockRV consumer = consumers[0];
     // Try to compute `block_rv` at `consumer`
@@ -492,13 +522,13 @@ class RuleRandomComputeLocation {
       }
       break;
     }
-    return {{sch, info}};
+    return {sch};
   }
 };
 
 SearchRule RandomComputeLocation() {
-  auto f_apply = [](SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
-    return RuleRandomComputeLocation().Apply(task, sch, block, info);
+  auto f_apply = [](SearchTask task, Schedule sch, BlockRV block) -> Array<Schedule> {
+    return RuleRandomComputeLocation().Apply(task, sch, block);
   };
   return SearchRule("random_compute_location", f_apply);
 }
@@ -565,8 +595,8 @@ class RuleParallelizeVectorizeUnroll {
     return true;
   }
 
-  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
-                const TContextInfo& info) const {
+  Array<Schedule> Apply(const SearchTask& task, const Schedule& sch,
+                        const BlockRV& block_rv) const {
     // Extract basic information
     Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
     tir::StmtSRef block_sref = sch->Eval(block_rv);
@@ -594,7 +624,7 @@ class RuleParallelizeVectorizeUnroll {
         sch->MarkBlock(block_rv, tir::attr::auto_unroll_implicit, max_step);
       }
     }
-    return {{sch, info}};
+    return {sch};
   }
 };
 
@@ -602,9 +632,9 @@ SearchRule ParallelizeVectorizeUnroll(int max_jobs_per_core, int max_vectorize_e
                                       Array<Integer> unroll_max_steps, bool unroll_explicit) {
   RuleParallelizeVectorizeUnroll rule(max_jobs_per_core, max_vectorize_extent, unroll_max_steps,
                                       unroll_explicit);
-  auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch, BlockRV block,
-                                         TContextInfo info) -> TReturn {
-    return rule.Apply(task, sch, block, info);
+  auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch,
+                                         BlockRV block) -> Array<Schedule> {
+    return rule.Apply(task, sch, block);
   };
   return SearchRule("parallelize_vectorize_unroll", f_apply);
 }
@@ -682,10 +712,9 @@ class RuleMarkTensorize {
   }
 
   /*! \brief Rule application */
-  TReturn Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv,
-                const TContextInfo& info) {
+  Array<Schedule> Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv) {
     tir::StmtSRef block_sref = sch->Eval(block_rv);
-    TReturn result{{sch, info}};
+    Array<Schedule> result{sch};
     Optional<Schedule> next_sch = NullOpt;
     for (const tir::TensorIntrin& intrin : tensor_intrins) {
       if (!next_sch.defined()) {
@@ -695,7 +724,7 @@ class RuleMarkTensorize {
       if (Optional<TensorizeInfo> opt_tensorize_info =
               GetTensorizeLoopMapping(cur_sch->sch, block_sref, intrin->description)) {
         BlockizeAndMark(cur_sch, block_rv, intrin->description, opt_tensorize_info.value().get());
-        result.Set(cur_sch, {});
+        result.push_back(cur_sch);
         next_sch = NullOpt;
       }
     }
@@ -704,10 +733,10 @@ class RuleMarkTensorize {
 };
 
 SearchRule MarkTensorize(Array<tir::TensorIntrin> tensor_intrins) {
-  auto f_apply = [tensor_intrins{std::move(tensor_intrins)}](
-                     SearchTask task, Schedule sch, BlockRV block, TContextInfo info) -> TReturn {
+  auto f_apply = [tensor_intrins{std::move(tensor_intrins)}](SearchTask task, Schedule sch,
+                                                             BlockRV block) -> Array<Schedule> {
     RuleMarkTensorize rule(tensor_intrins);
-    return rule.Apply(task, sch, block, info);
+    return rule.Apply(task, sch, block);
   };
   return SearchRule("mark_tensorize", f_apply);
 }
@@ -729,13 +758,12 @@ struct Internal {
    * \param task The search task
    * \param sch The schedule that the context info is attached to
    * \param block The block the rule applies on
-   * \param info The information about the context the rule is in
    * \return The result of rule application
    * \sa SearchRuleNode::Apply
    */
-  static TReturn SearchRuleApply(SearchRule rule, SearchTask task, Schedule sch, BlockRV block,
-                                 TContextInfo info) {
-    return rule->Apply(task, sch, block, info);
+  static Array<Schedule> SearchRuleApply(SearchRule rule, SearchTask task, Schedule sch,
+                                         BlockRV block) {
+    return rule->Apply(task, sch, block);
   }
   /*!
    * \brief Composing search rules sequentially into a single rule

@@ -30,6 +30,7 @@ from typing import Any, List
 import psutil
 from tvm import ir, rpc
 from tvm._ffi import register_func
+from tvm.autotvm.measure.measure_methods import set_cuda_target_arch
 from tvm.contrib import ndk as build_func_ndk
 from tvm.contrib import tar as build_func_tar
 from tvm.driver import build as tvm_build
@@ -424,6 +425,8 @@ def local_builder_worker(
         raise ValueError("Invalid build_func: " + build_func)
     # deal with measure_input
     measure_input = measure_inputs[index]
+    if measure_input.task.target.kind.name == "cuda":
+        set_cuda_target_arch(measure_input.task.target.attrs["arch"])
 
     def timed_func() -> BuildResult.TYPE:
         tic = time.time()
