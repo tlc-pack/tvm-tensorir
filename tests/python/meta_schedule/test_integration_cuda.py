@@ -24,7 +24,9 @@ import tvm
 from tvm import meta_schedule as ms
 from tvm import te
 
-TARGET = tvm.target.Target("nvidia/rtx2080ti")
+RPC_KEY = "jetson-agx-xavier"
+TARGET = tvm.target.Target("nvidia/jetson-agx-xavier")
+TARGET_HOST = tvm.target.Target("llvm -mcpu=carmel -mtriple=aarch64-linux-gnu")
 SPACE = ms.space.PostOrderApply(
     stages=[
         ms.rule.inline_pure_spatial(strict_mode=False),
@@ -37,12 +39,12 @@ SPACE = ms.space.PostOrderApply(
             cache_write_scope="local",
             fusion_levels=[3],
             vector_load_max_len=4,
-            tile_marks=["lazy_blockIdx.x", "lazy_vthread", "lazy_threadIdx.x"],
+            tile_binds=["blockIdx.x", "vthread", "threadIdx.x"],
         ),
     ],
     postprocs=[
-        ms.postproc.rewrite_parallel_vectorize_unroll(),
-        ms.postproc.rewrite_cuda_thread_bind(),
+        ms.postproc.rewrite_cooperative_fetch(),
+        ms.postproc.rewrite_unbound_blocks(),
         ms.postproc.verify_gpu_code(),
     ],
 )
@@ -50,11 +52,12 @@ SPACE = ms.space.PostOrderApply(
 
 @pytest.mark.skip(reason="needs RPC")
 def test_integration_matmul():
-    os.environ["TVM_TRACKER_KEY"] = "test"
+    os.environ["TVM_TRACKER_KEY"] = RPC_KEY
     sch = ms.autotune(
         task=ms.SearchTask(
             workload=te.create_func(te_workload.matmul(1024, 1024, 1024)),
             target=TARGET,
+            target_host=TARGET_HOST,
             task_name="cuda_matmul",
             log_file="./cuda_matmul.json",
         ),
