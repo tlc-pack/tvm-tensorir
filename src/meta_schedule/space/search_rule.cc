@@ -506,22 +506,10 @@ class RuleRandomComputeLocation {
       return {sch};
     }
     BlockRV consumer = consumers[0];
-    // Try to compute `block_rv` at `consumer`
-    for (;;) {
-      LoopRV compute_at_loc = sch->SampleComputeLocation(consumer);
-      try {
-        sch->ComputeAt(block_rv, compute_at_loc);
-      } catch (const dmlc::Error& e) {
-        // ComputeAt fails, cleanup the following before re-try:
-        // 1) sym_tab
-        // 2) decisions
-        // 3) trace
-        sch->trace->Pop();
-        sch->sym_tab.erase(compute_at_loc);
-        continue;
-      }
-      break;
-    }
+    // Compute `block_rv` at `consumer`
+    // By default it is "never do compute_at" but later the mutator could mutate this decision
+    LoopRV compute_at_loc = sch->SampleComputeLocation(consumer, Integer(-1));
+    sch->ComputeAt(block_rv, compute_at_loc);
     return {sch};
   }
 };
