@@ -37,12 +37,13 @@ SPACE = ms.space.PostOrderApply(
             cache_write_scope="local",
             fusion_levels=[3],
             vector_load_max_len=4,
-            tile_marks=["lazy_blockIdx.x", "lazy_vthread", "lazy_threadIdx.x"],
+            tile_binds=["blockIdx.x", "vthread", "threadIdx.x"],
         ),
     ],
     postprocs=[
-        ms.postproc.rewrite_parallel_vectorize_unroll(),
-        ms.postproc.rewrite_cuda_thread_bind(),
+        ms.postproc.rewrite_cooperative_fetch(),
+        ms.postproc.rewrite_unbound_blocks(),
+        ms.postproc.verify_gpu_code(),
     ],
 )
 
@@ -99,10 +100,10 @@ def _debug(support: List[ms.Schedule]):
 # fmt: off
 
 @tvm.script.tir
-def _matmul_sketch_0(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    C = tir.match_buffer(c, [512, 512], elem_offset=0, align=128, offset_factor=1)
-    A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
-    B = tir.match_buffer(b, [512, 512], elem_offset=0, align=128, offset_factor=1)
+def _matmul_sketch_0(var_A: ty.handle, var_B: ty.handle, var_C: ty.handle) -> None:
+    A = tir.match_buffer(var_A, [512, 512], elem_offset=0, align=128, offset_factor=1)
+    B = tir.match_buffer(var_B, [512, 512], elem_offset=0, align=128, offset_factor=1)
+    C = tir.match_buffer(var_C, [512, 512], elem_offset=0, align=128, offset_factor=1)
     reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
@@ -111,50 +112,47 @@ def _matmul_sketch_0(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         C_local = tir.buffer_allocate([512, 512], elem_offset=0, scope="local", align=128, offset_factor=1)
         B_shared = tir.buffer_allocate([512, 512], elem_offset=0, scope="shared", align=128, offset_factor=1)
         A_shared = tir.buffer_allocate([512, 512], elem_offset=0, scope="shared", align=128, offset_factor=1)
-        for i0_outer_outer_outer_outer in range(0, 16, annotation = {"loop_type":"lazy_blockIdx.x"}):
-            for i1_outer_outer_outer_outer in range(0, 4, annotation = {"loop_type":"lazy_blockIdx.x"}):
-                for i0_outer_outer_outer_inner in range(0, 8, annotation = {"loop_type":"lazy_vthread"}):
-                    for i1_outer_outer_outer_inner in range(0, 1, annotation = {"loop_type":"lazy_vthread"}):
-                        for i0_outer_outer_inner in range(0, 2, annotation = {"loop_type":"lazy_threadIdx.x"}):
-                            for i1_outer_outer_inner in range(0, 8, annotation = {"loop_type":"lazy_threadIdx.x"}):
-                                for i2_outer_outer in range(0, 64):
-                                    for ax0_ax1_fused_outer in range(0, 16, annotation = {"loop_type":"lazy_cooperative_fetch"}):
-                                        for ax0_ax1_fused_inner in range(0, 1, annotation = {"loop_type":"lazy_vectorize"}):
-                                            with tir.block([512, 512], "") as [v0, v1]:
-                                                tir.bind(v0, ((((i0_outer_outer_outer_outer*32) + (i0_outer_outer_outer_inner*4)) + (i0_outer_outer_inner*2)) + tir.floordiv((ax0_ax1_fused_outer + ax0_ax1_fused_inner), 8)))
-                                                tir.bind(v1, ((i2_outer_outer*8) + tir.floormod((ax0_ax1_fused_outer + ax0_ax1_fused_inner), 8)))
-                                                tir.reads([A[v0:(v0 + 1), v1:(v1 + 1)]])
-                                                tir.writes([A_shared[v0:(v0 + 1), v1:(v1 + 1)]])
-                                                A_shared[v0, v1] = A[v0, v1]
-                                    for ax0_ax1_fused_outer_1 in range(0, 32, annotation = {"loop_type":"lazy_cooperative_fetch"}):
-                                        for ax0_ax1_fused_inner_1 in range(0, 4, annotation = {"loop_type":"lazy_vectorize"}):
-                                            with tir.block([512, 512], "") as [v0_1, v1_1]:
-                                                tir.bind(v0_1, ((i2_outer_outer*8) + tir.floordiv(((ax0_ax1_fused_outer_1*4) + ax0_ax1_fused_inner_1), 16)))
-                                                tir.bind(v1_1, (((i1_outer_outer_outer_outer*128) + (i1_outer_outer_inner*16)) + tir.floormod(((ax0_ax1_fused_outer_1*4) + ax0_ax1_fused_inner_1), 16)))
-                                                tir.reads([B[v0_1:(v0_1 + 1), v1_1:(v1_1 + 1)]])
-                                                tir.writes([B_shared[v0_1:(v0_1 + 1), v1_1:(v1_1 + 1)]])
-                                                B_shared[v0_1, v1_1] = B[v0_1, v1_1]
-                                    for i2_outer_inner in range(0, 8):
-                                        for i0_outer_inner in range(0, 1):
-                                            for i1_outer_inner in range(0, 1):
-                                                for i2_inner in range(0, 1):
-                                                    for i0_inner in range(0, 2):
-                                                        for i1_inner in range(0, 16):
-                                                            with tir.block([512, 512, tir.reduce_axis(0, 512)], "C") as [vi, vj, vk]:
-                                                                tir.bind(vi, ((((i0_outer_outer_outer_outer*32) + (i0_outer_outer_outer_inner*4)) + (i0_outer_outer_inner*2)) + i0_inner))
-                                                                tir.bind(vj, (((i1_outer_outer_outer_outer*128) + (i1_outer_outer_inner*16)) + i1_inner))
-                                                                tir.bind(vk, ((i2_outer_outer*8) + i2_outer_inner))
-                                                                tir.reads([C_local[vi:(vi + 1), vj:(vj + 1)], A_shared[vi:(vi + 1), vk:(vk + 1)], B_shared[vk:(vk + 1), vj:(vj + 1)]])
-                                                                tir.writes([C_local[vi:(vi + 1), vj:(vj + 1)]])
-                                                                reducer.step(C_local[vi, vj], (A_shared[vi, vk]*B_shared[vk, vj]))
-                                for ax0 in range(0, 2):
-                                    for ax1 in range(0, 16):
-                                        with tir.block([512, 512], "") as [v0_2, v1_2]:
-                                            tir.bind(v0_2, ((((i0_outer_outer_outer_outer*32) + (i0_outer_outer_outer_inner*4)) + (i0_outer_outer_inner*2)) + ax0))
-                                            tir.bind(v1_2, (((i1_outer_outer_outer_outer*128) + (i1_outer_outer_inner*16)) + ax1))
-                                            tir.reads([C_local[v0_2:(v0_2 + 1), v1_2:(v1_2 + 1)]])
-                                            tir.writes([C[v0_2:(v0_2 + 1), v1_2:(v1_2 + 1)]])
-                                            C[v0_2, v1_2] = C_local[v0_2, v1_2]
+        for i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused in range(0, 32, annotation = {"loop_type":"blockIdx.x"}):
+            for i0_outer_outer_outer_inner_i1_outer_outer_outer_inner_fused in range(0, 1, annotation = {"loop_type":"vthread"}):
+                for i0_outer_outer_inner_i1_outer_outer_inner_fused in range(0, 4, annotation = {"loop_type":"threadIdx.x"}):
+                    for i2_outer_outer in range(0, 8):
+                        for ax0_ax1_fused_outer in range(0, 2048, annotation = {"loop_type":"lazy_cooperative_fetch"}):
+                            for ax0_ax1_fused_inner in range(0, 4, annotation = {"loop_type":"vectorize"}):
+                                with tir.block([512, 512], "A_shared") as [v0, v1]:
+                                    tir.bind(v0, ((tir.floordiv(i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused, 8)*128) + tir.floordiv(((ax0_ax1_fused_outer*4) + ax0_ax1_fused_inner), 64)))
+                                    tir.bind(v1, ((i2_outer_outer*64) + tir.floormod(((ax0_ax1_fused_outer*4) + ax0_ax1_fused_inner), 64)))
+                                    tir.reads([A[v0:(v0 + 1), v1:(v1 + 1)]])
+                                    tir.writes([A_shared[v0:(v0 + 1), v1:(v1 + 1)]])
+                                    A_shared[v0, v1] = A[v0, v1]
+                        for ax0_ax1_fused_outer_1 in range(0, 4096, annotation = {"loop_type":"lazy_cooperative_fetch"}):
+                            for ax0_ax1_fused_inner_1 in range(0, 1):
+                                with tir.block([512, 512], "B_shared") as [v0_1, v1_1]:
+                                    tir.bind(v0_1, ((i2_outer_outer*64) + tir.floordiv((ax0_ax1_fused_outer_1 + ax0_ax1_fused_inner_1), 64)))
+                                    tir.bind(v1_1, ((tir.floormod(i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused, 8)*64) + tir.floormod((ax0_ax1_fused_outer_1 + ax0_ax1_fused_inner_1), 64)))
+                                    tir.reads([B[v0_1:(v0_1 + 1), v1_1:(v1_1 + 1)]])
+                                    tir.writes([B_shared[v0_1:(v0_1 + 1), v1_1:(v1_1 + 1)]])
+                                    B_shared[v0_1, v1_1] = B[v0_1, v1_1]
+                        for i2_outer_inner in range(0, 16):
+                            for i0_outer_inner in range(0, 2):
+                                for i1_outer_inner in range(0, 4):
+                                    for i2_inner in range(0, 4):
+                                        for i0_inner in range(0, 16):
+                                            for i1_inner in range(0, 16):
+                                                with tir.block([512, 512, tir.reduce_axis(0, 512)], "C") as [i, j, k]:
+                                                    tir.bind(i, ((((tir.floordiv(i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused, 8)*128) + (i0_outer_outer_inner_i1_outer_outer_inner_fused*32)) + (i0_outer_inner*16)) + i0_inner))
+                                                    tir.bind(j, (((tir.floormod(i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused, 8)*64) + (i1_outer_inner*16)) + i1_inner))
+                                                    tir.bind(k, (((i2_outer_outer*64) + (i2_outer_inner*4)) + i2_inner))
+                                                    tir.reads([C_local[i:(i + 1), j:(j + 1)], A_shared[i:(i + 1), k:(k + 1)], B_shared[k:(k + 1), j:(j + 1)]])
+                                                    tir.writes([C_local[i:(i + 1), j:(j + 1)]])
+                                                    reducer.step(C_local[i, j], (A_shared[i, k]*B_shared[k, j]))
+                    for ax0 in range(0, 32):
+                        for ax1 in range(0, 64):
+                            with tir.block([512, 512], "C_local") as [v0_2, v1_2]:
+                                tir.bind(v0_2, (((tir.floordiv(i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused, 8)*128) + (i0_outer_outer_inner_i1_outer_outer_inner_fused*32)) + ax0))
+                                tir.bind(v1_2, ((tir.floormod(i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused, 8)*64) + ax1))
+                                tir.reads([C_local[v0_2:(v0_2 + 1), v1_2:(v1_2 + 1)]])
+                                tir.writes([C[v0_2:(v0_2 + 1), v1_2:(v1_2 + 1)]])
+                                C[v0_2, v1_2] = C_local[v0_2, v1_2]
 
 # fmt: on
 # pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unused-variable
@@ -166,11 +164,11 @@ def test_meta_schedule_sketch_cuda_matmul():
     expected = [_matmul_sketch_0]
     possible_decisions = [
         [
-            [16, 8, 2, 1, 2],
-            [4, 1, 8, 1, 16],
-            [64, 8, 1],
-            [32, 4],
-            [16, 1],
+            [4, 1, 4, 2, 16],
+            [8, 1, 1, 4, 16],
+            [8, 16, 4],
+            [4096, 1],
+            [2048, 4],
         ],
     ]
     assert len(support) == 1

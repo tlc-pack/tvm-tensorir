@@ -86,16 +86,17 @@ TVM_DLL Postproc RewriteParallelizeVectorizeUnroll();
 TVM_DLL Postproc RewriteTensorize(Array<tir::TensorIntrin> tensor_intrins);
 
 /*!
- * \brief Creates a postprocessor that do block/vthread/thread binding for cuda
- * \return The postprocessor created
- */
-TVM_DLL Postproc RewriteCudaThreadBind();
-
-/*!
- * \brief Creates a postprocessor rewrites "lazy_cooperative_fetch" with the actual threadIdx
+ * \brief Creates a postprocessor that rewrites "lazy_cooperative_fetch" with the actual threadIdx
  * \return The postprocessor created
  */
 TVM_DLL Postproc RewriteCooperativeFetch();
+
+/*!
+ * \brief Create a postprocessor that finds each block that is not bound to thread axes, and bind
+ * them to `blockIdx.x` and `threadIdx.x`
+ * \return The postprocessor created
+ */
+TVM_DLL Postproc RewriteUnboundBlocks();
 
 /*!
  * \brief Creates a postprocessor that verifies if the GPU code is correct

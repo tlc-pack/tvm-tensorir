@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """Search rules in meta schedule"""
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, List, Optional
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
@@ -33,15 +33,12 @@ from .search import SearchTask
 class SearchRule(Object):
     """A rule that applies to a block and generates a snippet of schedule on it"""
 
-    CONTEXT_INFO_TYPE = Optional[Dict[str, Any]]
-    RETURN_TYPE = Dict[Schedule, CONTEXT_INFO_TYPE]
-
     name: str
 
     def __init__(
         self,
         name: str,
-        apply: Callable[[SearchTask, Schedule, BlockRV, CONTEXT_INFO_TYPE], RETURN_TYPE],
+        apply: Callable[[SearchTask, Schedule, BlockRV], List[Schedule]],
     ):
         self.__init_handle_by_constructor__(
             _ffi_api.SearchRule,  # pylint: disable=no-member
@@ -54,8 +51,7 @@ class SearchRule(Object):
         task: SearchTask,
         sch: Schedule,
         block: BlockRV,
-        info: CONTEXT_INFO_TYPE = None,
-    ) -> RETURN_TYPE:
+    ) -> List[Schedule]:
         """Apply the rule to a block
 
         Parameters
@@ -66,16 +62,13 @@ class SearchRule(Object):
             Where the schedule snippets should be generated
         block: BlockRV
             The block the rule applies on
-        info: CONTEXT_INFO_TYPE
-            The context info about the schedule
 
         Returns
         ----------
-        result: RETURN_TYPE
+        result: List[Schedule]
             The new schedules generated
         """
-        ret = _ffi_api.SearchRuleApply(self, task, sch, block, info)  # pylint: disable=no-member
-        return {k: v for k, v in ret.items()}  # pylint: disable=unnecessary-comprehension
+        return _ffi_api.SearchRuleApply(self, task, sch, block)  # pylint: disable=no-member
 
 
 def compose(name: str, rules: List[SearchRule]) -> SearchRule:
@@ -118,19 +111,16 @@ def register_rule(name) -> SearchRule:
             task: SearchTask,
             sch: Schedule,
             block: BlockRV,
-            info: SearchRule.CONTEXT_INFO_TYPE,
-        ) -> SearchRule.RETURN_TYPE:
-            ret = func(task, sch, block, info)
+        ) -> List[Schedule]:
+            ret = func(task, sch, block)
             if isinstance(ret, Schedule):
-                return {ret: info}
-            if isinstance(ret, dict):
-                for k, v in ret.items():
-                    assert isinstance(k, Schedule)
-                    assert v is None or isinstance(v, dict)
+                return [ret]
+            if isinstance(ret, (list, tuple)):
+                for item in ret.items():
+                    assert isinstance(item, Schedule)
                 return ret
             raise TypeError(
-                "SearchRule should return Dict<Schedule, ContextInfo>, "
-                + f"but gets type '{type(ret)}': {ret}"
+                "SearchRule should return List[Schedule], " + f"but gets type '{type(ret)}': {ret}"
             )
 
         return SearchRule(name, apply)
@@ -163,7 +153,7 @@ def multi_level_tiling(
     cache_write_scope: str,
     fusion_levels: List[int],
     vector_load_max_len: Optional[int] = None,
-    tile_marks: Optional[List[str]] = None,
+    tile_binds: Optional[List[str]] = None,
 ) -> SearchRule:
     """Create a rule that does multi-level tiling if there is sufficient amount of data reuse.
     Optionally add read cache and write cache, do fusion if possible.
@@ -183,7 +173,7 @@ def multi_level_tiling(
         The possible tile levels that a single elementwise consumer is fused at
     vector_load_max_len : Optional[int]
         For cache_read, if vectorized load is used, the max length of the vectorized load
-    tile_marks : Optional[List[str]]
+    tile_binds : Optional[List[str]]
         The marks to be used on each tile
 
     Returns
@@ -200,7 +190,7 @@ def multi_level_tiling(
         cache_write_scope,
         fusion_levels,
         vector_load_max_len,
-        tile_marks,
+        tile_binds,
     )
 
 

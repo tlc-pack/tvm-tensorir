@@ -18,9 +18,9 @@
 # pylint: disable=missing-function-docstring
 import te_workload
 import tvm
+from tir_tensor_intrin import TENSORCORE_WMMA
 from tvm import meta_schedule as ms
 from tvm import te
-from tir_tensor_intrin import TENSORCORE_WMMA
 
 TARGET = tvm.target.Target("nvidia/rtx2080ti")
 
