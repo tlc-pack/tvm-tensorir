@@ -63,7 +63,20 @@ def test_matmul_post_order_apply():
             log_file="./cpu_matmul.json",
         ),
         space=SPACE,
-        strategy=ms.strategy.Replay(num_trials=32),
+        strategy=ms.strategy.Evolutionary(
+            total_measures=128,
+            population=16,
+            init_measured_ratio=0.2,
+            genetic_algo_iters=10,
+            p_mutate=0.85,
+            mutator_probs={
+                ms.mutator.mutate_tile_size(): 1.0,
+            },
+            cost_model=ms.XGBModel(
+                num_warmup_sample=0,
+            ),
+            eps_greedy=0.05,
+        ),
         measurer=ms.ProgramMeasurer(
             measure_callbacks=[
                 ms.RecordToFile(),
@@ -87,7 +100,20 @@ def test_matmul_relu_post_order_apply():
             log_file="./cpu_matmul_relu.json",
         ),
         space=SPACE,
-        strategy=ms.strategy.Replay(num_trials=32),
+        strategy=ms.strategy.Evolutionary(
+            total_measures=128,
+            population=16,
+            init_measured_ratio=0.2,
+            genetic_algo_iters=10,
+            p_mutate=0.85,
+            mutator_probs={
+                ms.mutator.mutate_tile_size(): 1.0,
+            },
+            cost_model=ms.XGBModel(
+                num_warmup_sample=0,
+            ),
+            eps_greedy=0.05,
+        ),
         measurer=ms.ProgramMeasurer(
             measure_callbacks=[
                 ms.RecordToFile(),
@@ -111,7 +137,20 @@ def test_conv1d_post_order_apply():
             log_file="./conv1d_nlc.json",
         ),
         space=SPACE,
-        strategy=ms.strategy.Replay(num_trials=32),
+        strategy=ms.strategy.Evolutionary(
+            total_measures=128,
+            population=16,
+            init_measured_ratio=0.2,
+            genetic_algo_iters=10,
+            p_mutate=0.85,
+            mutator_probs={
+                ms.mutator.mutate_tile_size(): 1.0,
+            },
+            cost_model=ms.XGBModel(
+                num_warmup_sample=0,
+            ),
+            eps_greedy=0.05,
+        ),
         measurer=ms.ProgramMeasurer(
             measure_callbacks=[
                 ms.RecordToFile(),

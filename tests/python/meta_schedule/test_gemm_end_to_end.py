@@ -389,7 +389,7 @@ def test_matmul_evolutionary_xgb():
             ],
         ),
         strategy=ms.strategy.Evolutionary(
-            total_measures=12800,
+            total_measures=128,
             population=16,
             init_measured_ratio=0.05,
             genetic_algo_iters=1,
