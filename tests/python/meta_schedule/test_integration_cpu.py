@@ -25,6 +25,7 @@ from tvm import meta_schedule as ms
 from tvm import te
 from tvm.tir import testing
 
+RPC_KEY = "test"
 TARGET = tvm.target.Target("llvm --num_cores 16")
 SPACE = ms.space.PostOrderApply(
     stages=[
@@ -54,7 +55,7 @@ SPACE = ms.space.PostOrderApply(
 
 @pytest.mark.skip(reason="needs RPC")
 def test_matmul_post_order_apply():
-    os.environ["TVM_TRACKER_KEY"] = "test"
+    os.environ["TVM_TRACKER_KEY"] = RPC_KEY
     sch = ms.autotune(
         task=ms.SearchTask(
             workload=te.create_func(te_workload.matmul(1024, 1024, 1024)),
@@ -91,7 +92,7 @@ def test_matmul_post_order_apply():
 
 @pytest.mark.skip(reason="needs RPC")
 def test_matmul_relu_post_order_apply():
-    os.environ["TVM_TRACKER_KEY"] = "test"
+    os.environ["TVM_TRACKER_KEY"] = RPC_KEY
     sch = ms.autotune(
         task=ms.SearchTask(
             workload=te.create_func(te_workload.matmul_relu(1024, 1024, 1024)),
@@ -128,7 +129,7 @@ def test_matmul_relu_post_order_apply():
 
 @pytest.mark.skip(reason="needs RPC")
 def test_conv1d_post_order_apply():
-    os.environ["TVM_TRACKER_KEY"] = "test"
+    os.environ["TVM_TRACKER_KEY"] = RPC_KEY
     sch = ms.autotune(
         task=ms.SearchTask(
             workload=te.create_func(testing.workload_te.conv1d_nlc(1, 256, 64, 128, 3, 2, 1)),
