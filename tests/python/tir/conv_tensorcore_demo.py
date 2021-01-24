@@ -315,7 +315,7 @@ def test_tensorcore():
     s.compute_at(WS, kh)
     kw, ic, o, ii, oo = s.get_axes(WS)[-5:]
     tx, xo = s.split(o, nparts=block_row_warps)
-    _, _ = s.split(xo, nparts=block_col_warps)
+    ty, _ = s.split(xo, nparts=block_col_warps)
     t = s.fuse(ii, oo)
     to, ti = s.split(t, nparts=warp_size)
     s.bind(tx, thread_y)
