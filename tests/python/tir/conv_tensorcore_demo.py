@@ -257,13 +257,9 @@ def test_tensorcore():
     mod = tvm.script.create_module({"conv": conv})
     original_func = mod["conv"]
 
-    A = original_func.buffer_map[original_func.params[0]]
-    W = original_func.buffer_map[original_func.params[1]]
-    C = original_func.buffer_map[original_func.params[2]]
     s = tir.create_schedule(original_func)
 
     Conv = s.get_block("Conv")
-    APad = s.func.body.block.allocations[0].buffer
 
     AS = s.cache_read(Conv, 1, "shared")
     WS = s.cache_read(Conv, 2, "shared")
@@ -310,7 +306,7 @@ def test_tensorcore():
 
     # Schedule for A's share memory
     s.compute_at(AS, kh)
-    w, i, nn, ii = s.get_axes(AS)[-4:]
+    _, _, nn, ii = s.get_axes(AS)[-4:]
     t = s.fuse(nn, ii)
     to, ti = s.split(t, factor=warp_size)
     s.bind(ti, thread_x)
@@ -319,7 +315,7 @@ def test_tensorcore():
     s.compute_at(WS, kh)
     kw, ic, o, ii, oo = s.get_axes(WS)[-5:]
     tx, xo = s.split(o, nparts=block_row_warps)
-    ty, yo = s.split(xo, nparts=block_col_warps)
+    _, _ = s.split(xo, nparts=block_col_warps)
     t = s.fuse(ii, oo)
     to, ti = s.split(t, nparts=warp_size)
     s.bind(tx, thread_y)
