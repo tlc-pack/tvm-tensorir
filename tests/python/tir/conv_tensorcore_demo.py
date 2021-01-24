@@ -298,7 +298,7 @@ def test_tensorcore():
     s.compute_at(ConvF, oc)
     ic, kh, kw, nnf, oof, ii = s.get_axes(ConvF)[-6:]
     ko, ki = s.split(ic, factor=chunk)
-    s.reorder(ko, kh, ki, kw, nnf, oof, ii)
+    s.reorder(ko, kh, ki)
 
     # Move intermediate computation into each output compute tile
     s.compute_at(AF, kw)
@@ -308,7 +308,7 @@ def test_tensorcore():
     s.compute_at(AS, kh)
     _, _, nn, ii = s.get_axes(AS)[-4:]
     t = s.fuse(nn, ii)
-    to, ti = s.split(t, factor=warp_size)
+    _, ti = s.split(t, factor=warp_size)
     s.bind(ti, thread_x)
 
     # Schedule for W's share memory
