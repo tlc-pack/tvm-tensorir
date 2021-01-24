@@ -14,18 +14,20 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
+"""TensorCore demo"""
+# pylint: disable=missing-function-docstring
+import numpy as np
 import tvm
 import tvm.testing
 from tvm import tir
 from tvm.contrib import nvcc
-
-import numpy as np
 from tvm.script import ty
 from tvm.topi.testing import conv2d_nhwc_python
 
 VERIFY = True
 
+# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg
+# fmt: off
 
 @tvm.script.tir
 def conv(a: ty.handle, w: ty.handle, c: ty.handle) -> None:
@@ -218,7 +220,11 @@ def load_b_intrin(a: ty.handle, c: ty.handle) -> None:
             dtype="handle"))
 
 
-def build_and_test(func, device='cuda', num_runs=10):
+# fmt: on
+# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg
+
+
+def build_and_test(func, device="cuda", num_runs=10):
     ctx = tvm.context(device, 0)
     if not ctx.exist:
         print("Skip because %s is not enabled" % device)
@@ -241,10 +247,9 @@ def build_and_test(func, device='cuda', num_runs=10):
         a_np = a_np.transpose((0, 4, 1, 2, 3, 5)).reshape((32, 14, 14, 32))
         w_np = w_np.transpose((0, 1, 2, 4, 3, 5)).reshape((3, 3, 32, 64))
         c_np = c.asnumpy().transpose((0, 4, 1, 2, 3, 5)).reshape((32, 14, 14, 64))
-        c_std = conv2d_nhwc_python(a_np.astype("float16"),
-                                   w_np.astype("float16"),
-                                   (1, 1),
-                                   (1, 1)).astype("float32")
+        c_std = conv2d_nhwc_python(
+            a_np.astype("float16"), w_np.astype("float16"), (1, 1), (1, 1)
+        ).astype("float32")
         np.testing.assert_allclose(c_np, c_std, rtol=1e-4, atol=1e-4)
 
 
@@ -260,11 +265,11 @@ def test_tensorcore():
     Conv = s.get_block("Conv")
     APad = s.func.body.block.allocations[0].buffer
 
-    AS = s.cache_read(APad, 'shared')
-    WS = s.cache_read(W, 'shared')
-    AF = s.cache_read(AS.stmt.writes[0].buffer, "wmma.matrix_a")
-    WF = s.cache_read(WS.stmt.writes[0].buffer, "wmma.matrix_b")
-    ConvF = s.cache_write(C, "wmma.accumulator")
+    AS = s.cache_read(Conv, 1, "shared")
+    WS = s.cache_read(Conv, 2, "shared")
+    AF = s.cache_read(Conv, 1, "wmma.matrix_a")
+    WF = s.cache_read(Conv, 2, "wmma.matrix_b")
+    ConvF = s.cache_write(Conv, 0, "wmma.accumulator")
 
     block_row_warps = 1
     block_col_warps = 1
@@ -273,12 +278,12 @@ def test_tensorcore():
     warp_size = 32
     chunk = 2
 
-    block_x = tir.thread_axis('blockIdx.x')
-    block_y = tir.thread_axis('blockIdx.y')
-    block_z = tir.thread_axis('blockIdx.z')
-    thread_x = tir.thread_axis('threadIdx.x')
-    thread_y = tir.thread_axis('threadIdx.y')
-    thread_z = tir.thread_axis('threadIdx.z')
+    block_x = tir.thread_axis("blockIdx.x")
+    block_y = tir.thread_axis("blockIdx.y")
+    block_z = tir.thread_axis("blockIdx.z")
+    thread_x = tir.thread_axis("threadIdx.x")
+    thread_y = tir.thread_axis("threadIdx.y")
+    thread_z = tir.thread_axis("threadIdx.z")
 
     nc, hc, wc, oc, nnc, ooc = s.get_axes(Conv)
     block_k = s.fuse(hc, wc)
