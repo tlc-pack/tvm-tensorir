@@ -461,8 +461,8 @@ def test_meta_schedule_sample_compute_location():
         new_decision = int(new_sch.trace.decisions[new_sch.trace.insts[-1]])
         assert old_decision == new_decision
     assert len(counter) == 5
-    assert "$root" in counter
-    assert "$inline" in counter
+    assert str(ms.LoopRV.root_rv()) in counter
+    assert str(ms.LoopRV.inline_rv()) in counter
 
 
 def test_meta_schedule_get_producers():
