@@ -161,7 +161,16 @@ bool StmtExprContainsVar(const ObjectRef& obj, const PrimExpr& vars);
  * \param vars the vars to be inspected
  * \return Whether the stmt/expr contains any var of vars
  */
-bool StmtExprContainsVar(const ObjectRef& obj, const std::unordered_set<const VarNode*> vars);
+bool StmtExprContainsVar(const ObjectRef& obj, const std::vector<Var>& vars);
+
+/*!
+ * \brief Inspect whether the stmt/expr contains any var of vars
+ * \param obj the expected stmt/expr
+ * \param vars the vars to be inspected
+ * \return Whether the stmt/expr contains any var of vars
+ */
+bool StmtExprContainsVar(const ObjectRef& obj, const std::unordered_set<const VarNode*>& vars);
+
 
 /*!
  * \brief Update the scope (dependency) information of a given block statement
@@ -175,8 +184,8 @@ void UpdateScope(const StmtNode* stmt,
 
 class StmtReplacer : public StmtMutator {
  public:
-  explicit StmtReplacer(const std::unordered_map<const StmtNode*, const StmtNode*>& repalce_map)
-      : replace_map(repalce_map) {}
+  explicit StmtReplacer(const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map)
+      : replace_map(replace_map) {}
 
   Stmt VisitStmt(const Stmt& stmt) override;
 

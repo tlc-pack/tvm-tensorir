@@ -143,7 +143,6 @@ class IterMarkSplitCollector {
     for (IterSumExpr sum_expr : indices) {
       for (IterSplitExpr split : sum_expr->args) {
         this->CollectInternal(split->source);
-
         mark2splits_[split->source].push_back(split);
       }
     }
@@ -155,7 +154,6 @@ class IterMarkSplitCollector {
     if (auto* op = mark->source.as<IterSumExprNode>()) {
       for (IterSplitExpr split : op->args) {
         this->CollectInternal(split->source);
-
         mark2splits_[split->source].push_back(split);
       }
     }
@@ -758,6 +756,16 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
   return results;
 }
 
+Optional<IterSumExpr> DetectIter(const PrimExpr& index, const Map<Var, Range>& input_iters,
+                                 arith::Analyzer* analyzer) {
+  IterMapRewriter rewriter(analyzer, input_iters);
+  IterSumExpr result = rewriter.Rewrite(index);
+  LOG(INFO) << "Detect Result: " << result;
+  if (rewriter.unresolved_count() != 0) return NullOpt;
+  CHECK(result->args.size() <= 1);
+  return result;
+}
+
 TVM_REGISTER_GLOBAL("arith.DetectIterMap")
     .set_body_typed([](const Array<PrimExpr>& indices, const Map<Var, Range>& input_iters,
                        const PrimExpr& input_pred, bool is_bijective) {
@@ -1303,14 +1311,14 @@ class SubspaceDivider {
 };
 
 Array<DivisionForm> SubspaceDivision(const Array<PrimExpr>& indices,
-                                     const Map<Var, Range>& input_iters,
-                                     const Array<Var>& inner_iters, const PrimExpr& predicate,
+                                     const Map<Var, Range>& iter_range_map,
+                                     const Array<Var>& sub_iters, const PrimExpr& predicate,
                                      arith::Analyzer* analyzer) {
-  const auto& maps = DetectIterMap(indices, input_iters, predicate, analyzer);
+  const auto& maps = DetectIterMap(indices, iter_range_map, predicate, analyzer);
   if (maps.empty()) return {};
 
   std::unordered_set<const VarNode*> inner_iter_set;
-  for (const auto& inner_iter : inner_iters) inner_iter_set.insert(inner_iter.get());
+  for (const auto& inner_iter : sub_iters) inner_iter_set.insert(inner_iter.get());
 
   IterMarkSplitCollector collector;
   collector.Collect(maps);
