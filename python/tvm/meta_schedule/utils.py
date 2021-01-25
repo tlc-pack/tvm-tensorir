@@ -452,6 +452,8 @@ def local_builder_worker(
             vprint(verbose, ".E", end="")  # Build error
             error_no = MeasureErrorNo.COMPILE_HOST
             error_msg = make_error_msg()
+            from ..script import asscript
+            error_msg = error_msg + '\n' + asscript(measure_input.sch.sch.func)
         else:
             vprint(verbose, ".", end="")  # Build success
         time_cost = time.time() - tic
