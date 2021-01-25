@@ -411,7 +411,7 @@ void UpdateScope(const StmtNode* stmt,
 
 // Return whether `expr` contains any variable used in `vars`
 // Return true if `vars` contains no variable
-bool StmtExprContainsVar(const ObjectRef& obj, const std::unordered_set<const VarNode*> vars) {
+bool StmtExprContainsVar(const ObjectRef& obj, const std::unordered_set<const VarNode*>& vars) {
   bool ret = false;
   PostOrderVisit(obj, [&vars, &ret](const ObjectRef& node) {
     if (const auto* op = node.as<VarNode>()) {
@@ -421,6 +421,15 @@ bool StmtExprContainsVar(const ObjectRef& obj, const std::unordered_set<const Va
     }
   });
   return ret;
+}
+
+bool StmtExprContainsVar(const ObjectRef& obj, const std::vector<Var>& vars) {
+  std::unordered_set<const VarNode*> var_set;
+  for (const auto& var : vars) var_set.insert(var.get());
+  if (var_set.empty()) {
+    return true;
+  }
+  return StmtExprContainsVar(obj, var_set);
 }
 
 bool StmtExprContainsVar(const ObjectRef& obj, const PrimExpr& vars) {
