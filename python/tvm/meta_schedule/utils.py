@@ -202,7 +202,11 @@ def request_remote(
 
 
 def check_remote_servers(
-    key: str, host: str, port: int, priority: int = 100, timeout: int = 10
+    key: str,
+    host: str,
+    port: int,
+    priority: int = 100,
+    timeout: int = 10,
 ) -> int:
     """Check the availability of remote servers.
 
