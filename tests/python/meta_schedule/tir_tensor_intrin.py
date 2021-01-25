@@ -116,9 +116,9 @@ def wmma_sync_desc(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         tir.bind(vk, 0)
         for i, j, k in tir.grid(16, 16, 16):
             with tir.block([16, 16, tir.reduce_axis(0, 16)], "update") as [vii, vjj, vkk]:
-                tir.bind(vii, i)
-                tir.bind(vjj, j)
-                tir.bind(vkk, k)
+                tir.bind(vii, vi + i)
+                tir.bind(vjj, vj + j)
+                tir.bind(vkk, vk + k)
                 C[vii, vjj] = C[vii, vjj] + tir.cast(A[vii, vkk], "float32") * tir.cast(B[vkk, vjj],
                                                                                         "float32")
 
@@ -211,8 +211,8 @@ def wmma_fill_desc(c: ty.handle) -> None:
         tir.bind(vj, 0)
         for i, j in tir.grid(16, 16):
             with tir.block([16, 16], "init") as [vii, vjj]:
-                tir.bind(vii, i)
-                tir.bind(vjj, j)
+                tir.bind(vii, vi + i)
+                tir.bind(vjj, vj + j)
                 C[vii, vjj] = tir.float32(0)
 
 
@@ -236,8 +236,8 @@ def wmma_store_desc(a: ty.handle, c: ty.handle) -> None:
         tir.bind(vj, 0)
         for i, j in tir.grid(16, 16):
             with tir.block([16, 16], "store") as [vii, vjj]:
-                tir.bind(vii, i)
-                tir.bind(vjj, j)
+                tir.bind(vii, vi + i)
+                tir.bind(vjj, vj + j)
                 C[vii, vjj] = A[vii, vjj]
 
 
