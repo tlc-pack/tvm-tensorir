@@ -334,7 +334,7 @@ class IterMapRewriter : public ExprMutator {
     if (check_scale && !equal(lhs->scale, rhs->scale)) return false;
     if (!equal(lhs->extent, rhs->extent)) return false;
     return true;
-  };
+  }
 
   struct IterSumEqual {
     bool operator()(const IterSumExpr& lhs, const IterSumExpr& rhs) const {
@@ -686,9 +686,9 @@ Array<PrimExpr> IterMapRewriteSimplify(const Array<PrimExpr>& indices,
                                        const PrimExpr& predicate) {
   Analyzer analyzer;
   auto rewrite = DetectIterMap(indices, input_iters, predicate, &analyzer);
-  if (rewrite.empty())
+  if (rewrite.empty()) {
     return indices;
-  else {
+  } else {
     std::vector<PrimExpr> res;
     IterVarMapConverter converter(&analyzer);
     for (const auto& expr : rewrite) res.push_back(converter.Convert(expr));

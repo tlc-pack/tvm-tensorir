@@ -113,10 +113,10 @@ def test_integration_matmul():
         # sch.tensorize(loop, "wmma_load_a")
         # loop = sch.get_axes(block_read_b)[-2]
         # sch.tensorize(loop, "wmma_load_b")
-        loop = sch.get_axes(block_init_c)[-2]
-        sch.tensorize(loop, "wmma_fill")
-        loop = sch.get_axes(block_write_c)[-2]
-        sch.tensorize(loop, "wmma_store")
+        # loop = sch.get_axes(block_init_c)[-2]
+        # sch.tensorize(loop, "wmma_fill")
+        # loop = sch.get_axes(block_write_c)[-2]
+        # sch.tensorize(loop, "wmma_store")
         print(tvm.script.asscript(sch.sch.func))
 
     sch = ms.Schedule(func=workload)
