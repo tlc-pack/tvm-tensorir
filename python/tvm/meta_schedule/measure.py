@@ -31,16 +31,26 @@ get the measurement results. The flow of data structures is
 
 We implement these in python to utilize python's multiprocessing and error handling.
 """
+from __future__ import annotations
+
 import os
-from typing import List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional, Union
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
 
+from ..runtime import ndarray
 from . import _ffi_api
 from .measure_record import BuildResult, MeasureInput, MeasureResult
 from .schedule import Schedule
 from .utils import check_remote_servers, cpu_count
+
+if TYPE_CHECKING:
+    import numpy as np
+
+    from ..target import Target
+    from ..tir import PrimFunc
+
 
 ########## ProgramBuilder ##########
 
@@ -297,3 +307,150 @@ class ProgramMeasurer(Object):
             runner,
             measure_callbacks,
         )
+
+
+########## ProgramTester ##########
+
+
+class ProgramTester:
+    """A utility function to run a specific PrimFunc on RPC"""
+
+    target: Target
+    target_host: Optional[Target]
+    build_func: str
+    rpc_key: str
+    rpc_host: str
+    rpc_port: int
+
+    def __init__(
+        self,
+        target: Target,
+        target_host: Optional[Target] = None,
+        build_func: str = "tar",
+        rpc_key: Optional[str] = None,
+        rpc_host: Optional[str] = None,
+        rpc_port: Optional[int] = None,
+    ):
+        super().__init__()
+        if rpc_key is None:
+            rpc_key = os.environ.get("TVM_TRACKER_KEY", None)
+            if rpc_key is None:
+                raise ValueError(
+                    "RPC device key is not provided. Please provide 'rpc_key' explicitly, "
+                    "or set environment variable TVM_TRACKER_KEY"
+                )
+        if rpc_host is None:
+            rpc_host = os.environ.get("TVM_TRACKER_HOST", None)
+            if rpc_host is None:
+                raise ValueError(
+                    "RPC tracker's host address is not provided. Please provide "
+                    "'rpc_host' explicitly, or set environment variable TVM_TRACKER_HOST"
+                )
+        if rpc_port is None:
+            rpc_port = os.environ.get("TVM_TRACKER_PORT", None)
+            if rpc_port is None:
+                raise ValueError(
+                    "RPC tracker's host address is not provided. Please provide 'port' explicitly, "
+                    "or set environment variable TVM_TRACKER_PORT"
+                )
+            rpc_port = int(rpc_port)
+
+        self.target = target
+        self.target_host = target_host
+        self.build_func = build_func
+        self.rpc_key = rpc_key
+        self.rpc_host = rpc_host
+        self.rpc_port = rpc_port
+
+    def __call__(self, func: PrimFunc, args: List[np.ndarray]):
+        """Build and run the PrimFunc with the specific arguments
+
+        Parameters
+        ----------
+        func : PrimFunc
+            The TIR func to be built and run
+        args : List[np.ndarray]
+            The list of arguments to run
+
+        Returns
+        -------
+        filename : str
+            The path to the exported library
+        """
+        filename = self._build_prim_func(func)
+        args = self._run_exported_library(filename, args)
+        return args
+
+    def _build_prim_func(self, func: PrimFunc) -> str:
+        """Build a PrimFunc
+
+        Parameters
+        ----------
+        func : PrimFunc
+            The TIR func to be built
+
+        Returns
+        -------
+        filename : str
+            The path to the exported library
+        """
+        # pylint: disable=import-outside-toplevel
+        import tempfile
+
+        from tvm.driver import build as tvm_build
+
+        from ..autotvm.measure.measure_methods import set_cuda_target_arch
+        from ..contrib import ndk as build_func_ndk
+        from ..contrib import tar as build_func_tar
+
+        # pylint: enable=import-outside-toplevel
+
+        build_func = self.build_func
+        build_func = {
+            "tar": build_func_tar.tar,  # export to tar
+            "ndk": build_func_ndk.create_shared,  # export to ndk
+        }.get(build_func, build_func)
+        if isinstance(build_func, str):
+            raise ValueError("Invalid build_func: " + build_func)
+        if self.target.kind.name == "cuda":
+            set_cuda_target_arch(self.target.attrs["arch"])
+        func = tvm_build(
+            func,
+            target=self.target,
+            target_host=self.target_host,
+        )
+        filename = os.path.join(tempfile.mkdtemp(), "tmp_func." + build_func.output_format)
+        func.export_library(filename, build_func)
+        return filename
+
+    def _run_exported_library(
+        self,
+        filename: str,
+        args: List[np.ndarray],
+    ) -> List[np.ndarray]:
+        """Run an exported library
+
+        Parameters
+        ----------
+        filename : str
+            The exported library to be uploaded
+        args : List[np.ndarray]
+            The list of arguments to run
+
+        Returns
+        -------
+        args : List[np.ndarray]
+            The result after executing the exported library
+        """
+
+        from .utils import request_remote  # pylint: disable=import-outside-toplevel
+
+        # upload built module
+        _, remote = request_remote(self.rpc_key, self.rpc_host, self.rpc_port)
+        remote.upload(filename)
+        func = remote.load_module(os.path.split(filename)[1])
+        ctx = remote.context(dev_type=self.target.kind.name, dev_id=0)
+        args = [ndarray.array(arg, ctx=ctx) for arg in args]
+        func(*args)
+        args = [arg.asnumpy() for arg in args]
+        return args
