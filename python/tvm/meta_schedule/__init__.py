@@ -20,7 +20,6 @@ from . import search_rule as rule
 from . import space, strategy
 from .auto_tune import autotune
 from .cost_model import RandCostModel
-from .xgb_model import XGBModel
 from .instruction import BlockRV, BufferRV, LoopRV
 from .measure import (
     LocalBuilder,
@@ -33,3 +32,4 @@ from .measure import (
 from .schedule import Schedule
 from .search import SearchSpace, SearchStrategy, SearchTask
 from .trace import Trace
+from .xgb_model import XGBModel

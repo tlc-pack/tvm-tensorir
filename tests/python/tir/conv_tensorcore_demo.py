@@ -14,18 +14,37 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
+"""TensorCore demo"""
+# pylint: disable=missing-function-docstring
+import numpy as np
 import tvm
 import tvm.testing
 from tvm import tir
-from tvm.contrib import nvcc
-
-import numpy as np
 from tvm.script import ty
-from tvm.topi.testing import conv2d_nhwc_python
+from tvm.meta_schedule.measure import ProgramTester
 
 VERIFY = True
 
+RPC_RUN = ProgramTester(
+    target=tvm.target.Target("nvidia/jetson-agx-xavier"),
+    target_host=tvm.target.Target("llvm -mcpu=carmel -mtriple=aarch64-linux-gnu"),
+    build_func="tar",
+    rpc_key="jetson-agx-xavier",
+    rpc_host=None,
+    rpc_port=None,
+)
+
+LOCAL_RUN = ProgramTester(
+    target=tvm.target.Target("llvm"),
+    target_host=None,
+    build_func="tar",
+    rpc_key="local",
+    rpc_host=None,
+    rpc_port=None,
+)
+
+# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg
+# fmt: off
 
 @tvm.script.tir
 def conv(a: ty.handle, w: ty.handle, c: ty.handle) -> None:
@@ -218,53 +237,35 @@ def load_b_intrin(a: ty.handle, c: ty.handle) -> None:
             dtype="handle"))
 
 
-def build_and_test(func, device='cuda', num_runs=10):
-    ctx = tvm.context(device, 0)
-    if not ctx.exist:
-        print("Skip because %s is not enabled" % device)
-        return
+# fmt: on
+# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg
 
-    ctx = tvm.gpu(0)
-    if nvcc.have_tensorcore(ctx.compute_version):
-        with tvm.transform.PassContext(config={"tir.UnrollLoop": {"auto_max_step": 16}}):
-            func = tvm.build(func, target=device)
-    a_np = np.random.uniform(size=(2, 14, 14, 2, 16, 16)).astype("float16")
-    w_np = np.random.uniform(size=(3, 3, 2, 4, 16, 16)).astype("float16")
-    a = tvm.nd.array(a_np, ctx)
-    w = tvm.nd.array(w_np, ctx)
-    c = tvm.nd.array(np.zeros((2, 14, 14, 4, 16, 16), dtype="float32"), ctx)
-    evaluator = func.time_evaluator(func.entry_name, ctx, number=num_runs)
-    print("conv2d with tensor core: %f ms" % (evaluator(a, w, c).mean * 1e3))
 
-    if VERIFY:
-        func(a, w, c)
-        a_np = a_np.transpose((0, 4, 1, 2, 3, 5)).reshape((32, 14, 14, 32))
-        w_np = w_np.transpose((0, 1, 2, 4, 3, 5)).reshape((3, 3, 32, 64))
-        c_np = c.asnumpy().transpose((0, 4, 1, 2, 3, 5)).reshape((32, 14, 14, 64))
-        c_std = conv2d_nhwc_python(a_np.astype("float16"),
-                                   w_np.astype("float16"),
-                                   (1, 1),
-                                   (1, 1)).astype("float32")
-        np.testing.assert_allclose(c_np, c_std, rtol=1e-4, atol=1e-4)
+def build_and_test(local_func, rpc_func):
+    a = np.random.uniform(size=(2, 14, 14, 2, 16, 16)).astype("float16")
+    w = np.random.uniform(size=(3, 3, 2, 4, 16, 16)).astype("float16")
+    c = np.zeros((2, 14, 14, 4, 16, 16), dtype="float32")
+    refs = LOCAL_RUN(local_func, [a, w, c])
+    runs = RPC_RUN(rpc_func, [a, w, c])
+    assert len(refs) == len(runs)
+    for ref, run in zip(refs, runs):
+        print(run.shape, ref.shape)
+        np.testing.assert_allclose(actual=run, desired=ref, rtol=1e-4, atol=1e-4)
 
 
 def test_tensorcore():
     mod = tvm.script.create_module({"conv": conv})
     original_func = mod["conv"]
 
-    A = original_func.buffer_map[original_func.params[0]]
-    W = original_func.buffer_map[original_func.params[1]]
-    C = original_func.buffer_map[original_func.params[2]]
     s = tir.create_schedule(original_func)
 
     Conv = s.get_block("Conv")
-    APad = s.func.body.block.allocations[0].buffer
 
-    AS = s.cache_read(APad, 'shared')
-    WS = s.cache_read(W, 'shared')
-    AF = s.cache_read(AS.stmt.writes[0].buffer, "wmma.matrix_a")
-    WF = s.cache_read(WS.stmt.writes[0].buffer, "wmma.matrix_b")
-    ConvF = s.cache_write(C, "wmma.accumulator")
+    AS = s.cache_read(Conv, 1, "shared")
+    WS = s.cache_read(Conv, 2, "shared")
+    AF = s.cache_read(Conv, 1, "wmma.matrix_a")
+    WF = s.cache_read(Conv, 2, "wmma.matrix_b")
+    ConvF = s.cache_write(Conv, 0, "wmma.accumulator")
 
     block_row_warps = 1
     block_col_warps = 1
@@ -273,12 +274,12 @@ def test_tensorcore():
     warp_size = 32
     chunk = 2
 
-    block_x = tir.thread_axis('blockIdx.x')
-    block_y = tir.thread_axis('blockIdx.y')
-    block_z = tir.thread_axis('blockIdx.z')
-    thread_x = tir.thread_axis('threadIdx.x')
-    thread_y = tir.thread_axis('threadIdx.y')
-    thread_z = tir.thread_axis('threadIdx.z')
+    block_x = tir.thread_axis("blockIdx.x")
+    block_y = tir.thread_axis("blockIdx.y")
+    block_z = tir.thread_axis("blockIdx.z")
+    thread_x = tir.thread_axis("threadIdx.x")
+    thread_y = tir.thread_axis("threadIdx.y")
+    thread_z = tir.thread_axis("threadIdx.z")
 
     nc, hc, wc, oc, nnc, ooc = s.get_axes(Conv)
     block_k = s.fuse(hc, wc)
@@ -295,9 +296,9 @@ def test_tensorcore():
 
     # Schedule local computation
     s.compute_at(ConvF, oc)
-    ic, kh, kw, nnf, oof, ii = s.get_axes(ConvF)[-6:]
+    ic, kh, kw, _nnf, _oof, ii = s.get_axes(ConvF)[-6:]
     ko, ki = s.split(ic, factor=chunk)
-    s.reorder(ko, kh, ki, kw, nnf, oof, ii)
+    s.reorder(ko, kh, ki)
 
     # Move intermediate computation into each output compute tile
     s.compute_at(AF, kw)
@@ -305,16 +306,16 @@ def test_tensorcore():
 
     # Schedule for A's share memory
     s.compute_at(AS, kh)
-    w, i, nn, ii = s.get_axes(AS)[-4:]
+    _, _, nn, ii = s.get_axes(AS)[-4:]
     t = s.fuse(nn, ii)
-    to, ti = s.split(t, factor=warp_size)
+    _, ti = s.split(t, factor=warp_size)
     s.bind(ti, thread_x)
 
     # Schedule for W's share memory
     s.compute_at(WS, kh)
     kw, ic, o, ii, oo = s.get_axes(WS)[-5:]
     tx, xo = s.split(o, nparts=block_row_warps)
-    ty, yo = s.split(xo, nparts=block_col_warps)
+    ty, _ = s.split(xo, nparts=block_col_warps)  # pylint: disable=redefined-outer-name
     t = s.fuse(ii, oo)
     to, ti = s.split(t, nparts=warp_size)
     s.bind(tx, thread_y)
@@ -332,7 +333,7 @@ def test_tensorcore():
 
     print(tvm.script.asscript(s.func))
     print(tvm.lower(s.func, None, simple_mode=True))
-    build_and_test(s.func)
+    build_and_test(conv, s.func)
 
 
 if __name__ == "__main__":
