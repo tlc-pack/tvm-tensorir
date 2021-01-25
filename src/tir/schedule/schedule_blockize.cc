@@ -39,28 +39,24 @@ bool CheckOneLine(const Stmt& s) {
   return legal;
 }
 
-Array<arith::DivisionForm> WeakSubspaceDivision(const Array<PrimExpr>& indices,
-                                                const Map<Var, Range>& input_iters,
-                                                const Array<Var>& inner_iters,
-                                                const PrimExpr& predicate,
-                                                arith::Analyzer* analyzer) {
-  std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> inner_iter_range;
-  for (const auto& inner_iter : inner_iters) inner_iter_range[inner_iter] = input_iters[inner_iter];
-  auto divisions =
-      arith::SubspaceDivision(indices, inner_iter_range, inner_iters, predicate, analyzer);
+Array<arith::DivisionForm> TrivialSubspaceDivision(const Array<IterVar>& iter_vars,
+                                                   const Array<PrimExpr>& bindings,
+                                                   const std::vector<Var>& outer_loops,
+                                                   const std::vector<Var>& inner_loops,
+                                                   const PrimExpr& predicate) {
+  if (!is_one(predicate)) return {};
   std::vector<arith::DivisionForm> res;
-  for (const auto& division : divisions) {
-    if (!division->IsInner()) return {};
-    if (const auto* inner = division->inner.as<arith::IterSumExprNode>()) {
-      if (is_zero(inner->base)) {
-        res.push_back(division);
-      } else {
-        if (!inner->args.empty()) return {};
-        res.emplace_back(arith::IterSumExpr({}, inner->base), 1, arith::IterSumExpr({}, 0), 1);
-      }
+  for (size_t i = 0; i < bindings.size(); ++i) {
+    bool outer = StmtExprContainsVar(bindings[i], outer_loops);
+    bool inner = StmtExprContainsVar(bindings[i], inner_loops);
+    if (outer && !inner) {
+      res.emplace_back(arith::IterSumExpr({}, bindings[i]), iter_vars[i]->dom->extent,
+                       arith::IterSumExpr({}, 0), 1);
+    } else if (inner && !outer) {
+      res.emplace_back(arith::IterSumExpr({}, 0), 1, arith::IterSumExpr({}, bindings[i]),
+                       iter_vars[i]->dom->extent);
     } else {
-      if (!division->InnerIsSplit()) return {};
-      res.push_back(division);
+      return {};
     }
   }
   return res;
@@ -78,9 +74,9 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
   const auto* loop = loop_sref->GetStmt<LoopNode>();
   CHECK(loop) << "TypeError: Only support blockize a loop for now, but get type: "
               << loop_sref->stmt->GetTypeKey();
-  CHECK(CheckOneLine(GetRef<Stmt>(loop_sref->stmt)))
-      << "ValueError: Only one line subtree can be blockize";
-  // get the inner block
+  // check there exists no SeqStmt under loop
+  CHECK(CheckOneLine(GetRef<Stmt>(loop))) << "ValueError: Only one line subtree can be blockize";
+  // get the inner Block, BlockRealize and StmtSRef
   Array<StmtSRef> child_blocks = GetChildBlocks(loop_sref);
   CHECK_EQ(child_blocks.size(), 1) << "ValueError: Only one line subtree can be blockize";
   StmtSRef block_sref = child_blocks[0];
@@ -88,7 +84,7 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
   Block block = block_realize->block;
   // collect loops inside/outside loop_sref
   std::vector<const LoopNode*> outer_loops, inner_loops;
-  std::vector<Var> inner_iters;
+  std::vector<Var> outer_iters, inner_iters;
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> iters;
   bool inner = true;
   for (StmtSRef current_sref = block_sref;;) {
@@ -101,6 +97,7 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
       inner_iters.push_back(current_loop->loop_var);
     } else {
       outer_loops.push_back(current_loop);
+      outer_iters.push_back(current_loop->loop_var);
     }
     iters[current_loop->loop_var] = Range::FromMinExtent(current_loop->min, current_loop->extent);
     if (current_sref == loop_sref) inner = false;
@@ -109,24 +106,27 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
   auto division = arith::SubspaceDivision(block_realize->binding_values, iters, inner_iters,
                                           block_realize->predicate, &analyzer);
   if (division.empty()) {
-    // It is still possible to blockize if we can not do perfect subspace division
-    division = WeakSubspaceDivision(block_realize->binding_values, iters, inner_iters,
-                                    block_realize->predicate, &analyzer);
+    // It is possible to blockize if we can not do perfect subspace division if we can divide
+    // the block var bindings into two categories
+    // 1. The binding covers no inner loop var
+    // 2. The binding covers only inner loop vars
+    division = TrivialSubspaceDivision(block->iter_vars, block_realize->binding_values, outer_iters,
+                                       inner_iters, block_realize->predicate);
   }
-  CHECK(!division.empty())
-      << "ValueError: The bindings of the block below can not be blockized by loops under "
-      << loop->loop_var;
-  // Generate inner block
+  CHECK(!division.empty()) << "ValueError: The bindings of the block below can not be blockized";
+  // Generate a new inner block
   arith::IterVarMapConverter converter(&analyzer);
   Array<IterVar> inner_block_vars, outer_block_vars;
   Array<PrimExpr> inner_bindings, outer_bindings;
   std::unordered_map<Var, int, ObjectPtrHash, ObjectPtrEqual> block_var_no;
+  std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> bv_iters;
   for (size_t i = 0; i < block->iter_vars.size(); ++i) {
-    const IterVar iter_var = block->iter_vars[i];
+    const IterVar& iter_var = block->iter_vars[i];
     if (division[i]->IsOuter()) {
       // extract this iter var to outer block directly
       outer_bindings.push_back(converter.Convert(division[i]->outer));
       outer_block_vars.push_back(iter_var);
+      bv_iters[iter_var->var] = Range::FromMinExtent(iter_var->var, 1);
     } else {
       const IterVar outer_var(Range::FromMinExtent(0, division[i]->outer_extent),
                               iter_var->var.copy_with_suffix("o"), iter_var->iter_type);
@@ -141,6 +141,7 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
         inner_bindings.push_back(base + converter.Convert(division[i]->inner));
       }
       inner_block_vars.push_back(iter_var);
+      bv_iters[iter_var->var] = Range::FromMinExtent(base, division[i]->inner_extent);
     }
     block_var_no[iter_var->var] = i;
   }
@@ -157,70 +158,18 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
     loop_node->body = body;
     body = Loop(loop_node);
   }
-  // Calculate outer block's IO region
+  // Calculate outer block's read/write region
   auto rewrite_range = [&](const Range& range) -> Range {
-    auto get_base = [&](const arith::IterMapExpr& expr) -> PrimExpr {
-      if (const auto* op = expr.as<arith::IterSplitExprNode>()) {
-        return 0;
-      } else if (const auto* op = expr.as<arith::IterSumExprNode>()) {
-        return op->base;
-      } else {
-        LOG(FATAL);
-        return 0;
-      }
-    };
-    // Check if the range contains block vars that is not outer
-    std::unordered_set<const VarNode*> vars;
-    CollectVars(vars, range->extent);
-    CollectVars(vars, range->min);
-    bool find = false;
-    for (const auto& var : vars) {
-      auto it = block_var_no.find(GetRef<Var>(var));
-      if (it != block_var_no.end() && !division[it->second]->IsOuter()) {
-        find = true;
-        break;
-      }
+    auto res = arith::DetectIter(range->min, bv_iters, &analyzer);
+    CHECK(bool(res));
+    auto normalized_expr = res.value();
+    PrimExpr extent = 1;
+    if (normalized_expr->args.size() == 1) {
+      CHECK(analyzer.CanProve(normalized_expr->args[0]->scale - range->extent == 0));
+      extent = normalized_expr->args[0]->extent;
     }
-    // The range is constant
-    if (!find) return range;
-    // Detect that the range is under valid pattern
-    arith::PVar<Var> v;
-    arith::PVar<PrimExpr> d, c;
-    if (c.Match(range->extent) && (d + v * c).Match(range->min)) {
-      // [d + v*c: d + v*c + c]
-      auto it = block_var_no.find(v.Eval());
-      if (it != block_var_no.end()) {
-        PrimExpr base =
-            analyzer.Simplify(d.Eval() + get_base(division[it->second]->inner) * c.Eval());
-        PrimExpr extent = analyzer.Simplify(division[it->second]->inner_extent * c.Eval());
-        if (!division[it->second]->IsInner()) base += outer_block_vars[it->second] * extent;
-        return Range::FromMinExtent(base, extent);
-      }
-    } else if (c.Match(range->extent) && (v * c).Match(range->min)) {
-      // [v*c : v*c + c]
-      auto it = block_var_no.find(v.Eval());
-      if (it != block_var_no.end()) {
-        PrimExpr base = analyzer.Simplify(get_base(division[it->second]->inner) * c.Eval());
-        PrimExpr extent = analyzer.Simplify(division[it->second]->inner_extent * c.Eval());
-        if (!division[it->second]->IsInner()) base += outer_block_vars[it->second] * extent;
-        return Range::FromMinExtent(base, extent);
-      }
-    } else if (is_one(range->extent) && v.Match_(range->min)) {
-      // [v : v + 1]
-      auto it = block_var_no.find(v.Eval());
-      if (it != block_var_no.end()) {
-        PrimExpr base = analyzer.Simplify(get_base(division[it->second]->inner));
-        PrimExpr extent = analyzer.Simplify(division[it->second]->inner_extent);
-        if (!division[it->second]->IsInner()) base += outer_block_vars[it->second] * extent;
-        return Range::FromMinExtent(base, extent);
-      }
-    } else {
-      LOG(FATAL) << "ValueError: The TensorRegion of the block below can not be blockized";
-      return Range(0, 0);
-    }
-    return range;
+    return Range::FromMinExtent(normalized_expr->base, extent * range->extent);
   };
-
   std::vector<TensorRegion> reads, writes;
   auto rewrite_region = [&](std::vector<TensorRegion>* regions, Array<TensorRegion> old_regions) {
     for (auto tensor_region : old_regions) {
@@ -228,12 +177,12 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
       for (const auto& range : tensor_region->region) {
         region.push_back(rewrite_range(range));
       }
-      (*regions).push_back(TensorRegion(tensor_region->buffer, region));
+      (*regions).emplace_back(tensor_region->buffer, region);
     }
   };
   rewrite_region(&reads, block->reads);
   rewrite_region(&writes, block->writes);
-
+  // Generate a new outer block
   auto outer_block = Block(outer_block_vars, reads, writes, body, Array<BufferAllocate>(),
                            Array<Annotation>(), "blockized_" + block->tag);
   auto outer_realize =
