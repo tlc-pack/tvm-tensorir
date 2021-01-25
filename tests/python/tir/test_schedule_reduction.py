@@ -19,6 +19,7 @@ import tvm
 import util
 from tvm import tir
 from tvm.script import ty
+import numpy as np
 
 
 @tvm.script.tir
@@ -178,8 +179,68 @@ def test_reduction_rfactor():
     tvm.ir.assert_structural_equal(s.func, matmul_rfactor)
 
 
+@tvm.script.tir
+def rowsum_allreduce(a: ty.handle, b: ty.handle) -> None:
+    A = tir.match_buffer(a, (16, 16, 16), "float32")
+    B = tir.match_buffer(b, (16, ), "float32")
+
+    with tir.block([16, tir.reduce_axis(0, 16), tir.reduce_axis(0, 16)], "B") as [vii, vi, vj]:
+        with tir.init():
+            B[vii] = tir.float32(0)
+        B[vii] = B[vii] + A[vii, vi, vj]
+
+
 def test_reduction_allreduce():
-    pass
+    ctx = tvm.gpu(0)
+    # Test 1
+    s = tir.create_schedule(rowsum_allreduce)
+    thread_x = tir.thread_axis((0, 16), "threadIdx.x")
+    thread_y = tir.thread_axis((0, 16), "threadIdx.y")
+
+    B_block = s.get_block("B")
+    ax_ii, ax_i, ax_j = s.get_axes(B_block)
+    s.bind(ax_j, thread_x)
+    s.bind(ax_i, thread_y)
+
+    f = tvm.build(s.func, target='cuda')
+    a_np = np.random.uniform(size=(16, 16, 16)).astype("float32")
+    a = tvm.nd.array(a_np, ctx)
+    b = tvm.nd.array(np.zeros((16, ), dtype="float32"), ctx)
+    f(a, b)
+    b_np = np.sum(a_np, axis=(1, 2))
+    np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-4, atol=1e-4)
+
+    # Test 2
+    s = tir.create_schedule(rowsum_allreduce)
+    thread_x = tir.thread_axis((0, 16), "threadIdx.x")
+
+    B_block = s.get_block("B")
+    ax_ii, ax_i, ax_j = s.get_axes(B_block)
+    s.bind(ax_j, thread_x)
+
+    f = tvm.build(s.func, target='cuda')
+    a_np = np.random.uniform(size=(16, 16, 16)).astype("float32")
+    a = tvm.nd.array(a_np, ctx)
+    b = tvm.nd.array(np.zeros((16, ), dtype="float32"), ctx)
+    f(a, b)
+    b_np = np.sum(a_np, axis=(1, 2))
+    np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-4, atol=1e-4)
+
+    # Test 3
+    s = tir.create_schedule(rowsum_allreduce)
+    thread_x = tir.thread_axis((0, 16), "threadIdx.x")
+
+    B_block = s.get_block("B")
+    ax_ii, ax_i, ax_j = s.get_axes(B_block)
+    s.bind(ax_i, thread_x)
+
+    f = tvm.build(s.func, target='cuda')
+    a_np = np.random.uniform(size=(16, 16, 16)).astype("float32")
+    a = tvm.nd.array(a_np, ctx)
+    b = tvm.nd.array(np.zeros((16, ), dtype="float32"), ctx)
+    f(a, b)
+    b_np = np.sum(a_np, axis=(1, 2))
+    np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-4, atol=1e-4)
 
 
 if __name__ == "__main__":

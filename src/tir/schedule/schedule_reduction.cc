@@ -200,7 +200,6 @@ std::tuple<Optional<CommReducer>, PrimExpr, PrimExpr> FromInitUpdate(const PrimE
       return std::make_tuple(reducer.GetReducer(init.dtype()), std::get<1>(res), std::get<2>(res));
     }
   }
-  LOG(FATAL) << "No reducer pattern matched for " << init << " " << update;
   return std::make_tuple(NullOpt, 0, 0);
 }
 
@@ -229,7 +228,8 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
       << "ValueError: 'merge_reduction' expects the body of init and update block to be "
          "BufferStore";
   CHECK(std::get<0>(FromInitUpdate(init_body->value, GetRef<BufferStore>(update_body))))
-      << "ValueError: 'merge_reduction' pattern detect failed";
+      << "ValueError: 'merge_reduction' pattern detect failed. No reducer pattern matched for "
+      << init_body->value << " and " << GetRef<BufferStore>(update_body);
   const BlockRealizeNode* init_realize = GetBlockRealize(init_sref).get();
   const BlockRealizeNode* update_realize = GetBlockRealize(update_sref).get();
   ExprDeepEqual equal;
@@ -345,6 +345,9 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   CHECK(init) << "ValueError: the init of the block ought to be a BufferStore stmt";
   CHECK(update) << "ValueError: the body of the block ought to be a BufferStore stmt";
   const auto& res = FromInitUpdate(init->value, GetRef<BufferStore>(update));
+  CHECK(std::get<0>(res)) << "ValueError: 'merge_reduction' pattern detect failed. "
+                          << "No reducer pattern matched for " << init->value
+                          << " and " << GetRef<BufferStore>(update);
   const Optional<CommReducer>& reducer = std::get<0>(res);
   const PrimExpr &lhs = std::get<1>(res), rhs = std::get<2>(res);
   CHECK(reducer) << "ValueError: unrecognized reducer pattern";

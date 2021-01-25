@@ -148,8 +148,18 @@ bool Scope::IsReduction(const StmtSRef& block_sref) const {
   if (!IsDominate(block_sref)) {
     return false;
   }
-  // Cond 2. Check the block body is reduction
-  return bool(block->init);
+  // Cond 2. Check whether the block body has init.
+  if (block->init == nullptr) {
+    return false;
+  }
+  // Cond 3. All block vars are either data parallel or reduction
+  for (const IterVar& iter_var : block->iter_vars) {
+    if (iter_var->iter_type != kDataPar && iter_var->iter_type != kCommReduce) {
+      return false;
+    }
+  }
+  // Cond 4. All Reduction vars should not affect indexing the output buffer
+  return true;
 }
 
 bool Scope::IsCompactDataFlow(const StmtSRef& subtree_sref, const ScheduleNode* schedule) const {
