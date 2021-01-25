@@ -664,8 +664,8 @@ double CountFlop(const tir::PrimFunc& func) {
    public:
     ~FlopCounter() {}
 
-    TResult VisitExpr(const PrimExpr& expr) { return ExprFunctor::VisitExpr(expr); }
-    TResult VisitStmt(const tir::Stmt& stmt) { return StmtFunctor::VisitStmt(stmt); }
+    TResult VisitExpr(const PrimExpr& expr) override { return ExprFunctor::VisitExpr(expr); }
+    TResult VisitStmt(const tir::Stmt& stmt) override { return StmtFunctor::VisitStmt(stmt); }
 
     TResult VisitStmt_(const tir::IfThenElseNode* branch) override {
       TResult cond = VisitExpr(branch->condition);

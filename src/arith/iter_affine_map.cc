@@ -669,7 +669,6 @@ Optional<IterSumExpr> DetectIter(const PrimExpr& index, const Map<Var, Range>& i
                                  arith::Analyzer* analyzer) {
   IterMapRewriter rewriter(analyzer, input_iters);
   IterSumExpr result = rewriter.Rewrite(index);
-  LOG(INFO) << "Detect Result: " << result;
   if (rewriter.unresolved_count() != 0) return NullOpt;
   CHECK(result->args.size() <= 1);
   return result;
