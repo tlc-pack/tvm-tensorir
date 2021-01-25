@@ -25,18 +25,17 @@
 #include <tvm/tir/stmt_functor.h>
 
 #include <utility>
+
 #include "../tir/ir/functor_common.h"
 
 namespace tvm {
 namespace tir {
 
-class TIRMetaMutator:
-    public StmtExprMutator {
+class TIRMetaMutator : public StmtExprMutator {
  public:
   using SymbolTable = const ObjectRef&;
 
-  explicit TIRMetaMutator(SymbolTable symbol_table_)
-    : symbol_table(symbol_table_) {}
+  explicit TIRMetaMutator(SymbolTable symbol_table_) : symbol_table(symbol_table_) {}
 
   /*! \brief mutate the meta_node */
   ObjectRef Mutate(const ObjectRef& meta_node) {
@@ -55,7 +54,7 @@ class TIRMetaMutator:
 
   /*! \brief Look up node by name_hint in symbol table */
   ObjectRef Lookup(const std::string& name) {
-    auto *array = symbol_table.as<ArrayNode>();
+    auto* array = symbol_table.as<ArrayNode>();
     CHECK(array != nullptr);
     for (size_t i = array->size() - 1; i >= 0; i--) {
       auto* map = array->at(i).as<MapNode>();
@@ -100,9 +99,7 @@ Stmt TIRMetaMutator::VisitStmt_(const BlockNode* op) {
   auto* node = StmtMutator::VisitStmt_(op).as<BlockNode>();
   auto node_ptr = runtime::GetObjectPtr<BlockNode>(const_cast<BlockNode*>(node));
 
-  auto fmutate = [this](const TensorRegion& e) {
-    return Downcast<TensorRegion>(this->Mutate(e));
-  };
+  auto fmutate = [this](const TensorRegion& e) { return Downcast<TensorRegion>(this->Mutate(e)); };
   Array<TensorRegion> reads = MutateArray(op->reads, fmutate);
   Array<TensorRegion> writes = MutateArray(op->writes, fmutate);
   node_ptr->reads = std::move(reads);
@@ -120,27 +117,26 @@ Stmt TIRMetaMutator::VisitStmt_(const BufferStoreNode* op) {
 }
 
 TVM_STATIC_IR_FUNCTOR(TIRMetaMutator, vtable)
-.set_dispatch<TensorRegionNode>([](const ObjectRef& node, TIRMetaMutator* p) -> ObjectRef{
-  auto *op = node.as<TensorRegionNode>();
-  auto node_ptr = runtime::GetObjectPtr<TensorRegionNode>(const_cast<TensorRegionNode*>(op));
+    .set_dispatch<TensorRegionNode>([](const ObjectRef& node, TIRMetaMutator* p) -> ObjectRef {
+      auto* op = node.as<TensorRegionNode>();
+      auto node_ptr = runtime::GetObjectPtr<TensorRegionNode>(const_cast<TensorRegionNode*>(op));
 
-  ObjectRef symbol = p->Lookup(op->buffer->name);
-  node_ptr->buffer = Downcast<Buffer>(symbol);
-  auto fmutate = [p](const Range& e){ return Downcast<Range>(p->Mutate(e)); };
-  node_ptr->region = MutateArray(op->region, fmutate);
-  return TensorRegion(node_ptr);
-});
+      ObjectRef symbol = p->Lookup(op->buffer->name);
+      node_ptr->buffer = Downcast<Buffer>(symbol);
+      auto fmutate = [p](const Range& e) { return Downcast<Range>(p->Mutate(e)); };
+      node_ptr->region = MutateArray(op->region, fmutate);
+      return TensorRegion(node_ptr);
+    });
 
 TVM_STATIC_IR_FUNCTOR(TIRMetaMutator, vtable)
-.set_dispatch<RangeNode>([](const ObjectRef& node, TIRMetaMutator* p) -> ObjectRef{
-  auto *op = node.as<RangeNode>();
-  auto node_ptr = runtime::GetObjectPtr<RangeNode>(const_cast<RangeNode*>(op));
+    .set_dispatch<RangeNode>([](const ObjectRef& node, TIRMetaMutator* p) -> ObjectRef {
+      auto* op = node.as<RangeNode>();
+      auto node_ptr = runtime::GetObjectPtr<RangeNode>(const_cast<RangeNode*>(op));
 
-  node_ptr->min = Downcast<PrimExpr>(p->Mutate(op->min));
-  node_ptr->extent = Downcast<PrimExpr>(p->Mutate(op->extent));
-  return Range(node_ptr);
-});
-
+      node_ptr->min = Downcast<PrimExpr>(p->Mutate(op->min));
+      node_ptr->extent = Downcast<PrimExpr>(p->Mutate(op->extent));
+      return Range(node_ptr);
+    });
 
 TIRMetaMutator::FType& TIRMetaMutator::vtable() {
   static FType inst;
@@ -148,10 +144,10 @@ TIRMetaMutator::FType& TIRMetaMutator::vtable() {
 }
 
 TVM_REGISTER_GLOBAL("tir.script.parser.Mutate_Meta")
-.set_body_typed<void(TIRMetaMutator::SymbolTable, const ObjectRef&)>(
-[](TIRMetaMutator::SymbolTable symbol_table, const ObjectRef& meta_node){
-  TIRMetaMutator(symbol_table).Mutate(meta_node);
-});
+    .set_body_typed<void(TIRMetaMutator::SymbolTable, const ObjectRef&)>(
+        [](TIRMetaMutator::SymbolTable symbol_table, const ObjectRef& meta_node) {
+          TIRMetaMutator(symbol_table).Mutate(meta_node);
+        });
 
 }  // namespace tir
 }  // namespace tvm
