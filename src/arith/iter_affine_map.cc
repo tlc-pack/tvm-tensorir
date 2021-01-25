@@ -212,7 +212,6 @@ class IterMarkSplitCollector {
     for (IterSumExpr sum_expr : indices) {
       for (IterSplitExpr split : sum_expr->args) {
         this->CollectInternal(split->source);
-
         mark2splits_[split->source].push_back(split);
       }
     }
@@ -224,7 +223,6 @@ class IterMarkSplitCollector {
     if (auto* op = mark->source.as<IterSumExprNode>()) {
       for (IterSplitExpr split : op->args) {
         this->CollectInternal(split->source);
-
         mark2splits_[split->source].push_back(split);
       }
     }
@@ -430,13 +428,6 @@ class IterMapRewriter : public ExprMutator {
     return analyzer_->CanProve(lhs - rhs == 0);
   }
 
-  bool CanProveLess(const PrimExpr& lhs, const PrimExpr& rhs) {
-    const auto* clhs = lhs.as<IntImmNode>();
-    const auto* crhs = rhs.as<IntImmNode>();
-    if (clhs && crhs) return clhs->value < crhs->value;
-    return analyzer_->CanProve(lhs - rhs < 0);
-  }
-
   /*!
    * \brief Create a IterSumExpr from expr.
    * \param expr The input expr.
@@ -453,12 +444,14 @@ class IterMapRewriter : public ExprMutator {
     }
   }
 
-  // Try to normalize IterSum into a fused IterMark
-  // IterSum = x1*c1 + x2*c2 + ... + xn*cn
-  //         = (x1*s1 + x2*s2 + ... + xn)*cn
-  //         = y*cn (IterMark y => x1*s1 + x2*s2 + ... + xn)
-  //         = [IterSplit(IterMark(y), scale=cn)]
-  // return a corresponding IterSplitExpr if needed.
+  /*!
+   * \brief IterSum = x1*c1 + x2*c2 + ... + xn*cn
+   *      = (x1*s1 + x2*s2 + ... + xn)*cn
+   *      = y*cn (IterMark y => x1*s1 + x2*s2 + ... + xn)
+   *      = [IterSplit(IterMark(y), scale=cn)]
+   *    return a corresponding IterSplitExpr if needed.
+   *    Try to normalize IterSum into a fused IterMark
+   */
   Optional<IterSplitExpr> TryFuseIters(IterSumExpr expr,
                                        const Optional<PrimExpr>& extent = NullOpt) {
     if (!is_zero(expr->base)) return NullOpt;
@@ -670,6 +663,16 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
   if (!rewriter.CheckBijective(results)) return Array<IterSumExpr>();
 
   return results;
+}
+
+Optional<IterSumExpr> DetectIter(const PrimExpr& index, const Map<Var, Range>& input_iters,
+                                 arith::Analyzer* analyzer) {
+  IterMapRewriter rewriter(analyzer, input_iters);
+  IterSumExpr result = rewriter.Rewrite(index);
+  LOG(INFO) << "Detect Result: " << result;
+  if (rewriter.unresolved_count() != 0) return NullOpt;
+  CHECK(result->args.size() <= 1);
+  return result;
 }
 
 TVM_REGISTER_GLOBAL("arith.DetectIterMap")
@@ -886,8 +889,18 @@ PrimExpr IterMapRewriter::VisitExpr_(const FloorDivNode* op) {
 
   if (a->IsInstance<IterSumExprNode>()) {
     IterSumExpr ret = Downcast<IterSumExpr>(a);
+    PrimExpr base = ret->base;
+    if (!CanProveDivisible(base, b)) {
+      ++unresolved_count_;
+      return FloorDiv(a, b);
+    }
+    ret.CopyOnWrite()->base = 0;
     if (auto opt = TryFuseIters(ret)) {
-      return SplitFloorDivConst(opt.value(), b);
+      auto res = SplitFloorDivConst(opt.value(), b);
+      auto res_op = res.as<IterSplitExprNode>();
+      return res_op && !is_zero(base)
+                 ? IterSumExpr({GetRef<IterSplitExpr>(res_op)}, analyzer_->Simplify(base / b))
+                 : res + analyzer_->Simplify(base / b);
     } else {
       ++unresolved_count_;
       return FloorDiv(a, b);
@@ -960,6 +973,12 @@ PrimExpr IterMapRewriter::VisitExpr_(const FloorModNode* op) {
 
   if (a->IsInstance<IterSumExprNode>()) {
     IterSumExpr ret = Downcast<IterSumExpr>(a);
+    PrimExpr base = ret->base;
+    if (!CanProveDivisible(base, b)) {
+      ++unresolved_count_;
+      return FloorMod(a, b);
+    }
+    ret.CopyOnWrite()->base = 0;
     if (auto opt = TryFuseIters(ret)) {
       return SplitFloorModConst(opt.value(), b);
     } else {
@@ -1217,14 +1236,14 @@ class SubspaceDivider {
 };
 
 Array<DivisionForm> SubspaceDivision(const Array<PrimExpr>& indices,
-                                     const Map<Var, Range>& input_iters,
-                                     const Array<Var>& inner_iters, const PrimExpr& predicate,
+                                     const Map<Var, Range>& iter_range_map,
+                                     const Array<Var>& sub_iters, const PrimExpr& predicate,
                                      arith::Analyzer* analyzer) {
-  const auto& maps = DetectIterMap(indices, input_iters, predicate, analyzer);
+  const auto& maps = DetectIterMap(indices, iter_range_map, predicate, analyzer);
   if (maps.empty()) return {};
 
   std::unordered_set<const VarNode*> inner_iter_set;
-  for (const auto& inner_iter : inner_iters) inner_iter_set.insert(inner_iter.get());
+  for (const auto& inner_iter : sub_iters) inner_iter_set.insert(inner_iter.get());
 
   IterMarkSplitCollector collector;
   collector.Collect(maps);

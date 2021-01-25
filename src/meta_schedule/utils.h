@@ -190,7 +190,7 @@ inline Optional<tir::StmtSRef> FindBlockSRef(const tir::Schedule& sch, FPredicat
 /**************** TIR Annotation ****************/
 
 inline Optional<String> GetAnn(const tir::StmtSRef& sref, const String& ann_key) {
-  const Array<tir::Annotation>* annotations;
+  const Array<tir::Annotation>* annotations = nullptr;
   if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
     annotations = &loop->annotations;
   } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
@@ -225,7 +225,7 @@ inline bool HasAnyAnn(const tir::StmtSRef& sref) {
 
 inline void DelAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const String& ann_key) {
   // Extract annotation
-  const Array<tir::Annotation>* annotations;
+  const Array<tir::Annotation>* annotations = nullptr;
   if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
     annotations = &loop->annotations;
   } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
@@ -264,7 +264,7 @@ inline void DelAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const St
 inline void AddAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const String& ann_key,
                    const PrimExpr& ann_val) {
   // Extract annotation
-  const Array<tir::Annotation>* annotations;
+  const Array<tir::Annotation>* annotations = nullptr;
   if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
     annotations = &loop->annotations;
   } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
