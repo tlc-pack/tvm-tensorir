@@ -35,6 +35,7 @@
 
 #include <algorithm>
 #include <utility>
+#include <vector>
 
 #include "doc.h"
 #include "meta_data.h"
@@ -85,6 +86,8 @@ class TVMScriptPrinter : public StmtFunctor<Doc(const Stmt&)>,
   int num_child_;
   /*! \brief the number of current node */
   int current_num_;
+  /*! \brief loop stack without annotations */
+  std::vector<Loop> loop_stack;
 
   Doc VisitExpr_(const CastNode* op) override;
   Doc VisitExpr_(const VarNode* op) override;
@@ -626,7 +629,8 @@ Doc TVMScriptPrinter::VisitStmt_(const StoreNode* op) {
 }
 
 Doc TVMScriptPrinter::VisitStmt_(const BufferRealizeNode* op) {
-  LOG(FATAL) << "TVM Script Printer Internal Error: All the BufferRealize should be folded with Attr";
+  LOG(FATAL)
+      << "TVM Script Printer Internal Error: All the BufferRealize should be folded with Attr";
   return Doc();
 }
 
@@ -793,27 +797,62 @@ Doc TVMScriptPrinter::VisitStmt_(const BlockRealizeNode* op) {
 
 Doc TVMScriptPrinter::VisitStmt_(const LoopNode* op) {
   Doc doc;
-  // print loop and annotations
-  var_not_in_headers.insert(op->loop_var.get());
-  doc << "for " << Print(op->loop_var);
-  doc << " in range(" << Print(op->min) << ", "
-      << Print(arith::Analyzer().Simplify(op->min + op->extent));
-  if (!op->annotations.empty()) {
-    doc << ", annotation = {";
-    for (size_t i = 0; i < op->annotations.size(); ++i) {
-      if (i != 0) {
-        doc << ", ";
+  auto print_loop = [&](const Loop& loop) -> Doc {
+    Doc res;
+    res << "for " << Print(loop->loop_var);
+    res << " in range(" << Print(loop->min) << ", "
+        << Print(arith::Analyzer().Simplify(loop->min + loop->extent));
+    if (!op->annotations.empty()) {
+      res << ", annotation = {";
+      for (size_t i = 0; i < loop->annotations.size(); ++i) {
+        if (i != 0) {
+          res << ", ";
+        }
+        res << "\"" << loop->annotations[i]->attr_key
+            << "\":" << Print(loop->annotations[i]->value);
       }
-      doc << "\"" << op->annotations[i]->attr_key << "\":" << Print(op->annotations[i]->value);
+      res << "}";
     }
-    doc << "}";
+    res << "):";
+    return res;
+  };
+  auto print_loop_stack = [&]() -> Doc {
+    Doc res;
+    if (loop_stack.size() == 1) {
+      res << print_loop(loop_stack[0]);
+    } else if (loop_stack.size() > 1) {
+      std::vector<Doc> vars, extents;
+      for (const auto& loop : loop_stack) {
+        vars.push_back(Print(loop->loop_var));
+        extents.push_back(Print(loop->extent));
+      }
+      res << "for " << PrintSep(vars, Doc::Text(", ")) << " in tir.grid("
+          << PrintSep(extents, Doc::Text(", ")) << "):";
+    }
+    return res;
+  };
+  var_not_in_headers.insert(op->loop_var.get());
+  const auto* body = op->body.as<LoopNode>();
+  bool simple_loop = op->annotations.empty() && is_zero(op->min);
+  if (simple_loop) loop_stack.push_back(GetRef<Loop>(op));
+  // It is a loop that can be compressed, let the loops below print it out
+  if (simple_loop && body != nullptr) return Print(GetRef<Loop>(body));
+  // It is a loop that can not be compressed
+  bool print_above = !loop_stack.empty();
+  // print loops above if needed
+  if (print_above) {
+    doc << print_loop_stack();
+    loop_stack.clear();
   }
-  doc << "):";
-
-  // print body
-  Doc body;
-  body << Doc::NewLine() << PrintBody(op->body);
-  doc << Doc::Indent(4, body);
+  if (!simple_loop) {
+    // print current loop if needed
+    Doc current_loop;
+    current_loop << print_loop(GetRef<Loop>(op));
+    current_loop << Doc::Indent(4, Doc::NewLine() << PrintBody(op->body));
+    doc << (print_above ? Doc::Indent(4, Doc::NewLine() << current_loop) : current_loop);
+  } else {
+    doc << Doc::Indent(4, Doc::NewLine() << PrintBody(op->body));
+  }
   return doc;
 }
 
@@ -912,8 +951,9 @@ Doc TVMScriptPrinter::PrintPrimFunc(const PrimFunc& primFunc) {
     header_reducer << Doc::NewLine() << it.second << " = tir.comm_reducer(";
     var_not_in_headers.insert(it.first->lhs[0].get());
     var_not_in_headers.insert(it.first->rhs[0].get());
-    header_reducer << "lambda " << Print(it.first->lhs[0]) << ", " << Print(it.first->rhs[0]) << ": "
-         << Print(it.first->result[0]) << ", " << Print(it.first->identity_element[0]);
+    header_reducer << "lambda " << Print(it.first->lhs[0]) << ", " << Print(it.first->rhs[0])
+                   << ": " << Print(it.first->result[0]) << ", "
+                   << Print(it.first->identity_element[0]);
     header_reducer << ")";
   }
   // print func attrs
@@ -970,7 +1010,8 @@ Doc TVMScriptPrinter::PrintPrimFunc(const PrimFunc& primFunc) {
       header_var << PrintDType(var->dtype) << ")";
     }
   }
-  doc << Doc::Indent(4, header_var << header_attr << header_match_buffer << header_buf << header_reducer << body);
+  doc << Doc::Indent(
+      4, header_var << header_attr << header_match_buffer << header_buf << header_reducer << body);
   return doc;
 }
 
