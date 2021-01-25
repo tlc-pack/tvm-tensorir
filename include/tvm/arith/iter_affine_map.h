@@ -293,6 +293,10 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
 Array<PrimExpr> IterMapRewriteSimplify(const Array<PrimExpr>& indices,
                                        const Map<Var, Range>& input_iters,
                                        const PrimExpr& predicate);
+
+Optional<IterSumExpr> DetectIter(const PrimExpr& index, const Map<Var, Range>& input_iters,
+                                 arith::Analyzer* analyzer);
+
 /*!
  * \brief Given an IterVar map, transform it to normal PrimExpr
  */
@@ -387,14 +391,14 @@ class DivisionForm : public ObjectRef {
  *
  * [a_0*e_0 + b_0 + c_0, a_1*e_1 + b_1, ..., a_n*e_n + b_n]
  *
- * where a = some-quasi-affine-iter-map(input_iters \set_minus inner_iters)
- *       b = some-quasi-affine-iter-map(inner_iters)
+ * where a = some-quasi-affine-iter-map(iter_range_map \set_minus sub_iters)
+ *       b = some-quasi-affine-iter-map(sub_iters)
  *       c is constant symbols
  *       e is the extent of b
  *
  * \param indices The indices to detect pattern for.
- * \param input_iters Map from variable to iterator's range.
- * \param inner_iters Iterators of subspace
+ * \param iter_range_map Map from variable to iterator's range.
+ * \param sub_iters Iterators of subspace
  * \param predicate The predicate for input_inters
  * \param analyzer Analyzer used to get context information.
  *
@@ -402,8 +406,8 @@ class DivisionForm : public ObjectRef {
  *         otherwise return an empty array.
  */
 Array<DivisionForm> SubspaceDivision(const Array<PrimExpr>& indices,
-                                     const Map<Var, Range>& input_iters,
-                                     const Array<Var>& inner_iters, const PrimExpr& predicate,
+                                     const Map<Var, Range>& iter_range_map,
+                                     const Array<Var>& sub_iters, const PrimExpr& predicate,
                                      arith::Analyzer* analyzer);
 
 }  // namespace arith
