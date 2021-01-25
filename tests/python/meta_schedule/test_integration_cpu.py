@@ -49,6 +49,7 @@ SPACE = ms.space.PostOrderApply(
     ],
     postprocs=[
         ms.postproc.rewrite_parallel_vectorize_unroll(),
+        ms.postproc.rewrite_reduce_step(),
     ],
 )
 

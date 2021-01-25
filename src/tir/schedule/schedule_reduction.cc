@@ -142,7 +142,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
       body = Loop(/*loop_var=*/new_loop_var,
                   /*min=*/higher_loop->min,
                   /*extent=*/higher_loop->extent,
-                  /*annotations=*/higher_loop->annotations,
+                  /*annotations=*/{},
                   /*body=body*/ SubstituteInScope(body, var_map));
     }
     // Only consider loops higher than the given loop
