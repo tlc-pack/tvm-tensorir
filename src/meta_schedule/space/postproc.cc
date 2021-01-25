@@ -42,21 +42,6 @@ bool PostprocNode::Apply(const SearchTask& task, const Schedule& sch, Sampler* s
   return proc_(task, sch, sampler);
 }
 
-/********** Utility helpers **********/
-
-std::vector<tir::StmtSRef> CollectAllBlocks(const Schedule& sch) {
-  std::vector<tir::StmtSRef> all_blocks;
-  const auto* root_block = sch->sch->root->GetStmt<tir::BlockNode>();
-  CHECK(root_block) << "TypeError: Expects Block, but gets: " << root_block;
-  tir::PreOrderVisit(root_block->body, [&all_blocks, &sch](const ObjectRef& obj) -> bool {
-    if (const auto* block = obj.as<tir::BlockNode>()) {
-      all_blocks.push_back(sch->sch->stmt2ref.at(block));
-    }
-    return true;
-  });
-  return all_blocks;
-}
-
 /********** RewriteTensorize **********/
 
 class PostprocRewriteTensorize {
@@ -486,6 +471,73 @@ Postproc RewriteUnboundBlocks() {
   return Postproc("rewrite_unbound_blocks", f_proc);
 }
 
+/********** RewriteReduceStep **********/
+
+class PostprocRewriteReduceStep {
+ public:
+  class Finder : public tir::StmtVisitor {
+   public:
+    Finder() : result_(nullptr), stack_() {}
+
+    static const tir::BlockNode* Find(const tir::Stmt& stmt) {
+      Finder finder;
+      finder.VisitStmt(stmt);
+      return finder.result_;
+    }
+
+   private:
+    void VisitStmt_(const tir::BlockNode* block) override {
+      if (!result_) {
+        stack_.push_back(block);
+        tir::StmtVisitor::VisitStmt_(block);
+        stack_.pop_back();
+      }
+    }
+
+    void VisitStmt_(const tir::LoopNode* loop) override {
+      if (!result_) {
+        tir::StmtVisitor::VisitStmt_(loop);
+      }
+    }
+
+    void VisitStmt_(const tir::ReduceStepNode* reduce_step) override {
+      if (!result_) {
+        result_ = stack_.back();
+      }
+    }
+
+   private:
+    const tir::BlockNode* result_ = nullptr;
+    std::vector<const tir::BlockNode*> stack_;
+  };
+
+  bool Proc(const Schedule& sch) const {
+    while (const tir::BlockNode* block = Finder::Find(sch->sch->func->body)) {
+      BlockRV block_rv = sch->GetBlock(block->tag);
+      Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
+      int n_loops = loop_rvs.size();
+      for (int i = 0; i < n_loops; ++i) {
+        const LoopRV& loop_rv = loop_rvs[i];
+        tir::StmtSRef loop_sref = sch->Eval(loop_rv);
+        if (GetLoopIterType(sch->sch, loop_sref) != tir::kDataPar) {
+          if (i >= 1) {
+            sch->DecomposeReduction(block_rv, loop_rvs[i - 1]);
+          }
+          break;
+        }
+      }
+    }
+    return true;
+  }
+};
+
+Postproc RewriteReduceStep() {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
+    return PostprocRewriteReduceStep().Proc(sch);
+  };
+  return Postproc("rewrite_reduce_step", f_proc);
+}
+
 /********** VerifyGPUCode **********/
 
 class PostprocVerifyGPUCode {
@@ -562,6 +614,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteUnboundBlocks")
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteParallelizeVectorizeUnroll")
     .set_body_typed(RewriteParallelizeVectorizeUnroll);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.VerifyGPUCode").set_body_typed(VerifyGPUCode);
+TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteReduceStep").set_body_typed(RewriteReduceStep);
 
 }  // namespace meta_schedule
 }  // namespace tvm
