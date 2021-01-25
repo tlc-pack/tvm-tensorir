@@ -17,9 +17,9 @@
 """XGBoost-based cost model"""
 from __future__ import annotations
 
-from itertools import chain as itertools_chain
 import logging
 from collections import defaultdict
+from itertools import chain as itertools_chain
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
