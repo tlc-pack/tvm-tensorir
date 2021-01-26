@@ -174,9 +174,10 @@ std::function<int()> Sampler::MakeMultinomial(const std::vector<double>& weights
   auto sampler = [this, dist = std::move(dist), sums = std::move(sums)]() mutable -> int {
     double p = dist(rand);
     int idx = std::lower_bound(sums.begin(), sums.end(), p) - sums.begin();
+    int n = sums.size();
     CHECK_LE(0, idx);
-    CHECK_LT(idx, static_cast<int>(sums.size()));
-    return idx;
+    CHECK_LE(idx, n);
+    return (idx == n) ? (n - 1) : idx;
   };
   return sampler;
 }

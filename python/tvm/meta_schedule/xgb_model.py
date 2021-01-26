@@ -36,7 +36,6 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger("meta_schedule")
-logging.basicConfig(level=logging.DEBUG)
 
 
 class XGBDMatrixContext:
@@ -444,7 +443,7 @@ def custom_callback(
                 if "null" in key:
                     continue
                 infos.append("%s: %.6f" % (key, mean))
-            logger.debug("\t".join(infos))
+            logger.info("\t".join(infos))
 
         ##### Choose score and do early stopping #####
         score = None
@@ -471,7 +470,7 @@ def custom_callback(
         elif env.iteration - best_iteration >= stopping_rounds:
             best_msg = state["best_msg"]
             if verbose_eval and env.rank == 0:
-                logger.debug("XGB stopped. Best iteration: %s ", best_msg)
+                logger.info("XGB stopped. Best iteration: %s ", best_msg)
             raise EarlyStopException(best_iteration)
 
     return callback
