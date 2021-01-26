@@ -76,7 +76,11 @@ struct GraphCodegen {
   Map<String, IRModule> GetIRModule() {
     return CallFunc<Map<String, IRModule>>("get_irmodule", nullptr);
   }
-
+  
+  Map<String, Map<String, BaseFunc>> GetSchedule(){
+    return CallFunc<Map<String, Map<String, BaseFunc>>>("get_schedule",nullptr);
+  }
+  
   std::unordered_map<std::string, tvm::runtime::NDArray> GetParams() {
     std::unordered_map<std::string, tvm::runtime::NDArray> ret;
     auto names = CallFunc<Array<runtime::String>>("list_params_name", nullptr);
@@ -152,6 +156,10 @@ class RelayBuildModule : public runtime::ModuleNode {
       return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
         CHECK_EQ(args.num_args, 2);
         *rv = this->Optimize(args[0], args[1], this->params_);
+      });
+    } else if (name =="get_primfunc") {
+      return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
+        *rv =this->graph_codegen_->GetSchedule();
       });
     } else {
       LOG(FATAL) << "Unknown packed function: " << name;

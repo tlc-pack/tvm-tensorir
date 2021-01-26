@@ -81,6 +81,7 @@ class BuildModule(object):
         self._optimize = self.mod["optimize"]
         self._set_params_func = self.mod["set_params"]
         self._get_params_func = self.mod["get_params"]
+        self._get_primfunc=self.mod["get_primfunc"]
 
     def build(self, mod, target=None, target_host=None, params=None):
         """
@@ -125,12 +126,13 @@ class BuildModule(object):
             self._set_params(params)
         # Build the IR module
         self._build(mod, target, target_host)
-        # Get artifacts
+        tir_func=self._get_primfunc()
+    # Get artifacts
         graph_json = self.get_json()
         mod = self.get_module()
         params = self.get_params()
 
-        return graph_json, mod, params
+        return graph_json, mod, params, tir_func
 
     def optimize(self, mod, target=None, params=None):
         """
@@ -257,9 +259,9 @@ def build(mod, target=None, target_host=None, params=None, mod_name="default"):
 
     with tophub_context:
         bld_mod = BuildModule()
-        graph_json, mod, params = bld_mod.build(mod, target, target_host, params)
+        graph_json, mod, params,tir_func = bld_mod.build(mod, target, target_host, params)
         mod = _graph_runtime_factory.GraphRuntimeFactoryModule(graph_json, mod, mod_name, params)
-        return mod
+        return mod,tir_func
 
 
 def optimize(mod, target=None, params=None):

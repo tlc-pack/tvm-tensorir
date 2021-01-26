@@ -135,6 +135,9 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
       candidate_name = truncated_name.str();
     }
     cache_node->func_name = candidate_name;
+    if(cache_node->func_name=="fused_nn.global_avg_pool2d"){
+      std::cout<<func<<std::endl;
+    }
     CHECK(anchor_op_.defined());
     // Fusion over tupled results may leave identity relationships
     // between inputs and outputs, and those should not be scheduled.
@@ -143,8 +146,15 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
     for (const auto& tensor : cache_node->outputs) {
       if (!tensor->op.as<te::PlaceholderOpNode>()) {
         tensor_outs.push_back(tensor);
+        if(cache_node->func_name=="fused_nn.global_avg_pool2d"){
+          const auto& compute_op = tensor->op.as<te::ComputeOpNode>();
+          std::cout<<compute_op->axis<<std::endl;
+          std::cout<<compute_op->reduce_axis.size()<<std::endl;
+          std::cout<<compute_op->body;
+        }
       }
     }
+    
     te::Schedule schedule;
     tir::PrimFunc prim_func;
     // No need to register schedule for device copy op.
@@ -165,6 +175,9 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
     }
     cache_node->schedule = std::move(schedule);
     cache_node->prim_func = std::move(prim_func);
+    if(cache_node->func_name=="fused_nn.global_avg_pool2d"){
+      std::cout<<cache_node->prim_func<<std::endl;
+    }
     return CachedFunc(cache_node);
   }
 
