@@ -42,19 +42,6 @@ class AllReduceTransformer : public StmtExprMutator {
   AllReduceTransformer() = default;
 
  public:
-#define TVM_ALLREDUCE_VISIT_NO_BODY(Type)                                                          \
-  Stmt VisitStmt_(const Type* op) override {                                                       \
-    if (status == kDetecting) {                                                                    \
-      stmt_stack_.push_back(GetRef<Stmt>(op));                                                     \
-      Stmt res = StmtMutator::VisitStmt_(op);                                                      \
-      CHECK(!stmt_stack_.empty()) << "Size of stmt_stack_ is expected to be positive, but it is 0";\
-      stmt_stack_.pop_back();                                                                      \
-      return res;                                                                                  \
-    } else {                                                                                       \
-      return StmtMutator::VisitStmt_(op);                                                          \
-    }                                                                                              \
-  }
-
 #define TVM_ALLREDUCE_VISIT_SIMPLE_BODY(Type)                                                      \
   Stmt VisitStmt_(const Type* op) override {                                                       \
     if (status == kDetecting) {                                                                    \
@@ -73,12 +60,6 @@ class AllReduceTransformer : public StmtExprMutator {
     }                                                                                              \
   }
 
-  TVM_ALLREDUCE_VISIT_NO_BODY(StoreNode);
-  TVM_ALLREDUCE_VISIT_NO_BODY(ProducerStoreNode);
-  TVM_ALLREDUCE_VISIT_NO_BODY(PrefetchNode);
-  TVM_ALLREDUCE_VISIT_NO_BODY(EvaluateNode);
-  TVM_ALLREDUCE_VISIT_NO_BODY(BufferAllocateNode);
-
   TVM_ALLREDUCE_VISIT_SIMPLE_BODY(AttrStmtNode);
   TVM_ALLREDUCE_VISIT_SIMPLE_BODY(LetStmtNode);
   TVM_ALLREDUCE_VISIT_SIMPLE_BODY(ForNode);
@@ -89,7 +70,6 @@ class AllReduceTransformer : public StmtExprMutator {
   TVM_ALLREDUCE_VISIT_SIMPLE_BODY(LoopNode);
 
 #undef TVM_ALLREDUCE_VISIT_SIMPLE_BODY
-#undef TVM_ALLREDUCE_VISIT_NO_BODY
 
   Stmt VisitStmt_(const IfThenElseNode* op) override {
     if (status == kDetecting) {
