@@ -948,7 +948,7 @@ void GetBlockAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                              const Array<String>& outputs,
                              const Optional<ObjectRef>& decision) const {
   PythonAPICall py("get_block");
-  py.AddArgAttr("block", this->name);
+  py.AddArgAttr("name", this->name);
   py.AddOutput(outputs[0]);
   py.Print(os);
 }

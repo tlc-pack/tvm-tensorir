@@ -141,7 +141,7 @@ class MutatorTileSize {
     }
     tiles[x] = len_x;
     tiles[y] = len_y;
-    return trace->WithDecision(inst, AsArray<int, ObjectRef>()(tiles));
+    return trace->WithDecision(inst, AsArray<int, ObjectRef>()(tiles), /*remove_postproc=*/true);
   }
 };
 
