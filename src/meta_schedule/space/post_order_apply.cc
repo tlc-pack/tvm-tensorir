@@ -177,7 +177,16 @@ Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* 
     }
     curr = next;
   }
-  return curr;
+  // Simplify the trace
+  Array<Schedule> result;
+  result.reserve(curr.size());
+  for (const Schedule& sch : curr) {
+    Trace trace = sch->trace->Simplified(/*remove_postproc=*/true);
+    Schedule new_sch{task->workload, sampler->ForkSeed()};
+    trace->Apply(new_sch);
+    result.push_back(new_sch);
+  }
+  return result;
 }
 
 /********** FFI **********/
