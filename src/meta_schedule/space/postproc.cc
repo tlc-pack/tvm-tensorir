@@ -470,38 +470,23 @@ Postproc RewriteUnboundBlocks() {
 
 class PostprocRewriteReduceStep {
  public:
-  class Finder : public tir::StmtVisitor {
-   public:
-    Finder() : result_(nullptr), stack_() {}
-
-    static const tir::BlockNode* Find(const tir::Stmt& stmt) {
-      Finder finder;
-      finder.VisitStmt(stmt);
-      return finder.result_;
-    }
-
-   private:
-    void VisitStmt_(const tir::BlockNode* block) override {
-      if (!result_) {
-        stack_.push_back(block);
-        tir::StmtVisitor::VisitStmt_(block);
-        stack_.pop_back();
+  static const tir::BlockNode* find(const tir::Stmt& body) {
+    const tir::BlockNode* res = nullptr;
+    tir::PreOrderVisit(body, [&res] (const ObjectRef& node) {
+      if (const auto* block = node.as<tir::BlockNode>()) {
+        if (block->init.defined()) {
+          res = block;
+          return false;
+        }
       }
-    }
-
-    void VisitStmt_(const tir::LoopNode* loop) override {
-      if (!result_) {
-        tir::StmtVisitor::VisitStmt_(loop);
-      }
-    }
-
-   private:
-    const tir::BlockNode* result_ = nullptr;
-    std::vector<const tir::BlockNode*> stack_;
-  };
+      return true;
+    });
+    CHECK(res == nullptr || res->init.defined());
+    return res;
+  }
 
   bool Proc(const Schedule& sch) const {
-    while (const tir::BlockNode* block = Finder::Find(sch->sch->func->body)) {
+    while (const tir::BlockNode* block = find(sch->sch->func->body)) {
       BlockRV block_rv = sch->GetBlock(block->tag);
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
       int n_loops = loop_rvs.size();
