@@ -226,9 +226,13 @@ class EvolutionaryNode : public SearchStrategyNode {
           decisions.Set(inst, decision);
         }
       }
-      Trace new_trace(support_trace->insts, decisions);
-      CachedTrace* cached_space = PostProcTrace(new_trace, task, space, sampler);
-      if (cached_space != nullptr) {
+      // Remove most of the decisions, i.e. random replay
+      Schedule sch = Schedule(task->workload, sampler->ForkSeed());
+      Trace(support_trace->insts, decisions)->Apply(sch);
+      if (space->Postprocess(task, sch, sampler)) {
+        // We create a new trace here to avoid cyclic dependency
+        Trace new_trace(sch->trace->insts, sch->trace->decisions);
+        trace_cache_[new_trace] = CachedTrace{new_trace.get(), sch, Repr(sch), -1.0};
         return new_trace;
       }
     }
@@ -237,15 +241,16 @@ class EvolutionaryNode : public SearchStrategyNode {
   }
 
   /*!
-   * \brief Postprocess the trace
+   * \brief Replay and postprocess the trace, except for the traces that
+   * have been post-processed before
    * \param trace The trace to be postprocessed
    * \param task The search task
    * \param space The search space
    * \param sampler Source of randomness
    * \return The sampling result
    */
-  CachedTrace* PostProcTrace(const Trace& trace, const SearchTask& task, const SearchSpace& space,
-                             Sampler* sampler) const {
+  CachedTrace* ReplayAndPostProc(const Trace& trace, const SearchTask& task,
+                                 const SearchSpace& space, Sampler* sampler) const {
     if (trace_cache_.count(trace)) {
       return &trace_cache_.at(trace);
     }
@@ -443,7 +448,7 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
   sch_curr.reserve(population);
   sch_next.reserve(population);
   for (const Trace& trace : inits) {
-    CachedTrace* cached_trace = PostProcTrace(trace, task, space, sampler);
+    CachedTrace* cached_trace = ReplayAndPostProc(trace, task, space, sampler);
     CHECK(cached_trace);
     sch_curr.push_back(cached_trace);
   }
@@ -478,7 +483,7 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
       // N.B. The `MutatorNode::Apply` will not change the schedule itself inplace
       if (Optional<Trace> opt_trace = mutator->Apply(task, GetRef<Trace>(entry->trace), sampler)) {
         if (CachedTrace* new_cached_trace =
-                PostProcTrace(opt_trace.value(), task, space, sampler)) {
+                ReplayAndPostProc(opt_trace.value(), task, space, sampler)) {
           sch_next.push_back(new_cached_trace);
           continue;
         }

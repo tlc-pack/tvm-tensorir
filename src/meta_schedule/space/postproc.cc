@@ -520,9 +520,7 @@ class PostprocRewriteReduceStep {
         const LoopRV& loop_rv = loop_rvs[i];
         tir::StmtSRef loop_sref = sch->Eval(loop_rv);
         if (GetLoopIterType(sch->sch, loop_sref) != tir::kDataPar) {
-          if (i >= 1) {
-            sch->DecomposeReduction(block_rv, loop_rvs[i - 1]);
-          }
+          sch->DecomposeReduction(block_rv, loop_rvs[i]);
           break;
         }
       }
