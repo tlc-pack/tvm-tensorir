@@ -59,7 +59,7 @@ class InMemoryDBNode : public DatabaseNode {
         return;
       }
     }
-    entry.trace = trace->WithNoPostproc();
+    entry.trace = trace;
     entry.repr = repr;
     entry.time = time;
     sorted_.insert(&entry);
