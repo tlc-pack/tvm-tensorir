@@ -157,9 +157,14 @@ class RelayBuildModule : public runtime::ModuleNode {
         CHECK_EQ(args.num_args, 2);
         *rv = this->Optimize(args[0], args[1], this->params_);
       });
-    } else if (name =="get_primfunc") {
+    } else if (name == "get_primfunc") {
       return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
-        *rv =this->graph_codegen_->GetSchedule();
+        *rv = this->graph_codegen_->GetSchedule();
+      });
+    } else if (name == "set_tune_result") {
+      return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
+        Map<String, Map<String, tir::PrimFunc>> tune_result = args[0];
+        CompileEngine::Global()->SetTunedResult(tune_result);
       });
     } else {
       LOG(FATAL) << "Unknown packed function: " << name;

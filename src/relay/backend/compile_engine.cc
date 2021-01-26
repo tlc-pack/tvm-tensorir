@@ -36,6 +36,7 @@
 #include <tvm/te/operation.h>
 #include <tvm/te/schedule.h>
 #include <tvm/te/schedule_pass.h>
+#include <tvm/tir/function.h>
 #include <tvm/topi/tags.h>
 
 #include <functional>
@@ -578,7 +579,9 @@ class CompileEngineImpl : public CompileEngineNode {
     with_tir_schedule_ = pass_ctx->GetConfig<Bool>("relay.with_tir_schedule", Bool(false)).value();
     return LowerInternal(key)->cached_func;
   }
-
+  void SetTunedResult(const Map<String, Map<String, tir::PrimFunc>> tune_result) {
+    this->tune_result = tune_result;
+  }
   // For now, build one module per function.
   PackedFunc JIT(const CCacheKey& key) final {
     CCacheValue value = LowerInternal(key);
@@ -698,6 +701,7 @@ class CompileEngineImpl : public CompileEngineNode {
 
     CHECK(!value->cached_func.defined());
     auto cfunc = CreateSchedule(key->source_func, key->target);
+
     auto cache_node = make_object<CachedFuncNode>(*(cfunc.operator->()));
 
     // Skip lowering for device copy node.
@@ -710,6 +714,13 @@ class CompileEngineImpl : public CompileEngineNode {
     }
 
     cache_node->func_name = GetUniqueName(cache_node->func_name);
+    if (!tune_result.empty()) {
+      auto func_map = tune_result.Get(key->target->str());
+      CHECK(func_map != nullptr) << "no target" << key->target << "in tune result";
+      auto prim_func = func_map.value().Get(cache_node->func_name);
+      CHECK(prim_func != nullptr) << "no function of name" << cache_node->func_name;
+      cache_node->prim_func = prim_func.value();
+    }
     // NOTE: array will copy on write.
     Array<te::Tensor> all_args = cache_node->inputs;
     for (te::Tensor arg : cache_node->outputs) {
@@ -802,6 +813,8 @@ class CompileEngineImpl : public CompileEngineNode {
   std::unordered_map<CCacheKey, CCacheValue> cache_;
   /*! \brief internal compiler cache for shape funcs */
   std::unordered_map<CCacheKey, CCacheValue> shape_func_cache_;
+  /*! \brief primfuncs tuned by meta schedule*/
+  Map<String, Map<String, tir::PrimFunc>> tune_result;
   /*! \brief whether use tir schedule */
   bool with_tir_schedule_;
 };
@@ -827,6 +840,11 @@ TVM_REGISTER_GLOBAL("relay.backend._make_CCacheKey")
 TVM_REGISTER_GLOBAL("relay.backend._CompileEngineGlobal").set_body_typed([]() {
   return CompileEngine::Global();
 });
+
+TVM_REGISTER_GLOBAL("relay.backend._CompileEngineSetTuneResult")
+    .set_body_typed([](CompileEngine self, Map<String, Map<String, tir::PrimFunc>> tune_result) {
+      self->SetTunedResult(tune_result);
+    });
 
 TVM_REGISTER_GLOBAL("relay.backend._CompileEngineClear").set_body_typed([](CompileEngine self) {
   self->Clear();

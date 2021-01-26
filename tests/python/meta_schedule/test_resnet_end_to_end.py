@@ -109,49 +109,54 @@ SPACE = ms.space.PostOrderApply(
 @pytest.mark.skip(reason="needs RPC")
 def test_end_to_end_resnet():
     os.environ["TVM_TRACKER_KEY"] = RPC_KEY
-    mod, params, input_shape, output_shape=get_network("resnet-18",1)
+    mod, params, input_shape, output_shape = get_network("resnet-18", 1)
 
     with tvm.transform.PassContext(config={"relay.with_tir_schedule": True}):
-        lib,tir_func = relay.build_module.build(mod, TARGET, params=params)
+        tir_func = relay.build_module.build_primfunc(mod, TARGET, params=params)
 
     # print(tvm.script.asscript(tir_func["llvm -keys=cpu"]["fused_nn_global_avg_pool2d"]))
-    # new_tir_func={}
-    # for target,func_map in tir_func.items():
-    #     print(target)
-    #     new_tir_func[target]={}
-    #     for func_name,func in func_map.items():
-    #         print("func_name:",func_name)
-    #         sch = ms.autotune(
-    #             task=ms.SearchTask(
-    #                 workload=func,
-    #                 target=TARGET,
-    #                 target_host=TARGET_HOST,
-    #                 task_name=func_name,
-    #                 log_file="../log/resnet.json",
-    #             ),
-    #             space=SPACE,
-    #             strategy=ms.strategy.Evolutionary(
-    #                 total_measures=16,
-    #                 population=8,
-    #                 init_measured_ratio=0.2,
-    #                 genetic_algo_iters=10,
-    #                 p_mutate=0.85,
-    #                 mutator_probs={
-    #                     ms.mutator.mutate_tile_size(): 1.0,
-    #                 },
-    #                 cost_model=ms.XGBModel(
-    #                     num_warmup_sample=0,
-    #                 ),
-    #                 eps_greedy=0.05,
-    #             ),
-    #             measurer=ms.ProgramMeasurer(
-    #                 measure_callbacks=[
-    #                     ms.RecordToFile(),
-    #                 ]
-    #             ),
-    #         )
-    #         new_tir_func[target][func_name]=sch.sch.func
+    new_tir_func = {}
+    for target, func_map in tir_func.items():
+        print(target)
+        new_tir_func[target] = {}
+        for func_name, func in func_map.items():
+            print("func_name:", func_name)
+            sch = ms.autotune(
+                task=ms.SearchTask(
+                    workload=func,
+                    target=TARGET,
+                    target_host=TARGET_HOST,
+                    task_name=func_name,
+                    log_file="../log/resnet.json",
+                ),
+                space=SPACE,
+                strategy=ms.strategy.Evolutionary(
+                    total_measures=16,
+                    population=8,
+                    init_measured_ratio=0.2,
+                    genetic_algo_iters=10,
+                    p_mutate=0.85,
+                    mutator_probs={
+                        ms.mutator.mutate_tile_size(): 1.0,
+                    },
+                    cost_model=ms.XGBModel(
+                        num_warmup_sample=0,
+                    ),
+                    eps_greedy=0.05,
+                ),
+                measurer=ms.ProgramMeasurer(
+                    measure_callbacks=[
+                        ms.RecordToFile(),
+                    ]
+                ),
+            )
+            new_tir_func[target][func_name] = sch.sch.func
+
+    with tvm.transform.PassContext(config={"relay.with_tir_schedule": True}):
+        tir_func = relay.build_module.build(mod, TARGET, params=params, tune_result=new_tir_func)
     # print(new_tir_func)
+
+
 
 
 if __name__ == "__main__":
