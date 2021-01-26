@@ -716,9 +716,10 @@ class CompileEngineImpl : public CompileEngineNode {
     cache_node->func_name = GetUniqueName(cache_node->func_name);
     if (!tune_result.empty()) {
       auto func_map = tune_result.Get(key->target->str());
-      CHECK(func_map != nullptr) << "no target" << key->target << "in tune result";
+      CHECK(func_map != nullptr) << "no target " << key->target << " in tune result";
       auto prim_func = func_map.value().Get(cache_node->func_name);
-      CHECK(prim_func != nullptr) << "no function of name" << cache_node->func_name;
+      CHECK(prim_func != nullptr) << "no function of name " << cache_node->func_name
+                                  << " in tune result";
       cache_node->prim_func = prim_func.value();
     }
     // NOTE: array will copy on write.
