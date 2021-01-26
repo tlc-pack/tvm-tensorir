@@ -122,7 +122,7 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
       Stmt body;
       Array<PrimExpr> simplified_indices;
 
-      for (auto index : indices) {
+      for (const auto& index : indices) {
         simplified_indices.push_back(analyzer.Simplify(index));
       }
       if (const auto* reduce = expr.as<ReduceNode>()) {
