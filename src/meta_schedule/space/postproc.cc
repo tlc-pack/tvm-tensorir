@@ -495,12 +495,6 @@ class PostprocRewriteReduceStep {
       }
     }
 
-    void VisitStmt_(const tir::ReduceStepNode* reduce_step) override {
-      if (!result_) {
-        result_ = stack_.back();
-      }
-    }
-
    private:
     const tir::BlockNode* result_ = nullptr;
     std::vector<const tir::BlockNode*> stack_;

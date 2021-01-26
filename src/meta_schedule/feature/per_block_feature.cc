@@ -942,15 +942,6 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     AddMathOpsToScope(&math_ops);
   }
 
-  void VisitStmt_(const tir::ReduceStepNode* reduce) override {
-    CHECK(!scopes_.empty());
-    FeatureSet::MathOps math_ops = MathOpCounter::Count(reduce->rhs);
-    for (const PrimExpr& expr : reduce->comm_reducer->result) {
-      MathOpCounter::Count(expr, &math_ops);
-    }
-    AddMathOpsToScope(&math_ops);
-  }
-
  private:
   static int64_t ProdLoopExtent(const std::vector<const tir::LoopNode*>& loops) {
     int64_t prod = 1;
