@@ -208,7 +208,7 @@ class PostprocRewriteParallelizeVectorizeUnroll {
   }
 
   static std::function<bool(const tir::BlockNode*)> MakeAnnParser(Parsed* parsed) {
-    return [&parsed](const tir::BlockNode* block) -> bool {
+    return [parsed](const tir::BlockNode* block) -> bool {
       bool found = false;
       *parsed = Parsed{-1, -1, -1, -1, -1, -1};
       for (const tir::Annotation& ann : block->annotations) {
