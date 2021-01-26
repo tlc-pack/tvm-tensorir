@@ -79,17 +79,21 @@ class TraceNode : public runtime::Object {
    */
   Array<String> AsPython() const;
   /*!
-   * \brief Returns a new trace with the postprocessing part truncated
-   * \return The new trace without postprocessing
-   */
-  Trace WithNoPostproc() const;
-  /*!
-   * \brief Returns a new trace with the decision mutated, and the postprocessing part truncated
+   * \brief Returns a new trace with the decision mutated, and optionally remove instructions
+   * in post-processing
    * \param inst The instruction
    * \param decision The decision
    * \return The new trace without postprocessing
    */
-  Trace WithDecision(const Instruction& inst, const ObjectRef& decision) const;
+  Trace WithDecision(const Instruction& inst, const ObjectRef& decision,
+                     bool remove_postproc) const;
+  /*!
+   * \brief Returns a simplified trace by dead-code elimination and optionally removing instructions
+   * in post-processing
+   * \param remove_postproc Whether to remove the post-processing code
+   * \return The simplified trace
+   */
+  Trace Simplified(bool remove_postproc) const;
 
   static constexpr const char* _type_key = "meta_schedule.Trace";
   TVM_DECLARE_FINAL_OBJECT_INFO(TraceNode, Object);
@@ -112,8 +116,6 @@ class Trace : public runtime::ObjectRef {
 
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(Trace, runtime::ObjectRef, TraceNode);
 };
-
-TVM_DLL Trace DeadCodeElimination(const Trace& trace);
 
 }  // namespace meta_schedule
 }  // namespace tvm

@@ -828,7 +828,7 @@ struct EnterPostProcAttrs : public InstAttrsNode {
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(EnterPostProcAttrs,                        //
                                       "meta_schedule.attrs.EnterPostProcAttrs",  //
-                                      "EnterPostProc", true);
+                                      "EnterPostProc", false);
 };
 
 #undef TVM_META_SCHEDULE_DEFINE_INST_ATTRS
