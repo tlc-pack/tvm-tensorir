@@ -93,9 +93,20 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
       parameters.push_back(arg);
       buffer_map.Set(arg, input_buffer);
     } else if (const auto& compute_op = op.as<te::ComputeOpNode>()) {
-      Array<IterVar> block_vars = compute_op->axis;
-      block_vars.insert(block_vars.end(), compute_op->reduce_axis.begin(),
-                        compute_op->reduce_axis.end());
+      Array<IterVar> block_vars;
+      arith::Analyzer analyzer;
+
+      auto push_block_vars = [&analyzer, &block_vars](const Array<IterVar>& iters) {
+        for (const auto& iter_var : iters) {
+          auto new_var = make_object<IterVarNode>(*iter_var.get());
+          new_var->dom = Range::FromMinExtent(analyzer.Simplify(iter_var->dom->min),
+                                              analyzer.Simplify(iter_var->dom->extent));
+          block_vars.push_back(IterVar(new_var));
+        }
+      };
+
+      push_block_vars(compute_op->axis);
+      push_block_vars(compute_op->reduce_axis);
 
       CHECK_EQ(compute_op->body.size(), 1);
       const PrimExpr& expr = compute_op->body[0];
@@ -109,14 +120,19 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
       for (const auto& iter_var : compute_op->axis) indices.push_back(iter_var->var);
 
       Stmt body;
+      Array<PrimExpr> simplified_indices;
+
+      for (const auto& index : indices) {
+        simplified_indices.push_back(analyzer.Simplify(index));
+      }
       if (const auto* reduce = expr.as<ReduceNode>()) {
         CHECK_EQ(reduce->source.size(), 1);
         PrimExpr lhs = BufferLoad(buffer, indices), rhs = translator(reduce->source[0]);
         CHECK(lhs->dtype == rhs->dtype);
-        body = ReduceStep(reduce->combiner, BufferLoad(buffer, indices),
-                          translator(reduce->source[0]));
+        body = ReduceStep(reduce->combiner, BufferLoad(buffer, simplified_indices),
+                          analyzer.Simplify(translator(reduce->source[0])));
       } else {
-        body = BufferStore(buffer, translator(expr), indices);
+        body = BufferStore(buffer, analyzer.Simplify(translator(expr)), simplified_indices);
       }
 
       if (output_set.count(op)) {
