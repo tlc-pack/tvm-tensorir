@@ -36,6 +36,19 @@ Trace::Trace(Array<Instruction> insts, Map<Instruction, ObjectRef> decisions) {
   data_ = std::move(n);
 }
 
+/**************** Utilities ****************/
+
+int IndexPostproc(const Array<Instruction>& insts) {
+  int i = 0;
+  for (const Instruction& inst : insts) {
+    if (inst->inst_attrs->IsInstance<EnterPostProcAttrs>()) {
+      return i;
+    }
+    ++i;
+  }
+  return -1;
+}
+
 /**************** Mutation ****************/
 
 void TraceNode::Append(const Instruction& inst) { insts.push_back(inst); }
@@ -160,97 +173,45 @@ void TraceNode::Deserialize(const ObjectRef& json, const Schedule& sch) {
 
 /**************** Def-Use ****************/
 
+/*! \brief An ad hoc data structure for def-use analysis */
 struct DefUseSites {
+  /*! \brief The index of the instruction that defines the random variable */
   int def;
+  /*! \brief The indices of the instructions that use the random variable */
   std::vector<int> use;
-};
 
-std::unordered_map<const Object*, DefUseSites> ExtractDefUseSites(const Trace& trace) {
-  std::unordered_map<const Object*, DefUseSites> result;
-  int i = 0;
-  for (const Instruction& inst : trace->insts) {
-    // Stop analysis on postprocssing
-    if (trace->insts[i]->inst_attrs->IsInstance<EnterPostProcAttrs>()) {
-      break;
-    }
-    // Record def
-    for (const ObjectRef& def : inst->inputs) {
-      if (IsRV(def)) {
-        result[def.get()].def = i;
+  static std::unordered_map<const Object*, DefUseSites> Extract(const Array<Instruction>& insts) {
+    std::unordered_map<const Object*, DefUseSites> result;
+    int n_insts = insts.size();
+    for (int i = 0; i < n_insts; ++i) {
+      const Instruction& inst = insts[i];
+      // Record def
+      for (const ObjectRef& def : inst->outputs) {
+        if (IsRV(def)) {
+          result[def.get()].def = i;
+        }
       }
-    }
-    // Record use
-    for (const ObjectRef& use : inst->outputs) {
-      if (IsRV(use)) {
-        result[use.get()].use.push_back(i);
-      } else if (IsRVExpr(use)) {
-        tir::PostOrderVisit(use, [&result, &i](const ObjectRef& obj) {
+      // Record use
+      for (const ObjectRef& use : inst->inputs) {
+        // Case 1. If the use is a random variable
+        if (IsRV(use)) {
+          result[use.get()].use.push_back(i);
+          continue;
+        }
+        // Case 2. If the use is a PrimExpr containing random variables
+        if (!IsRVExpr(use)) {
+          continue;
+        }
+        tir::PostOrderVisit(use, [&result, i](const ObjectRef& obj) {
           if (const auto* var = obj.as<tir::VarNode>()) {
             result[var].use.push_back(i);
           }
         });
       }
     }
-    ++i;
+    return result;
   }
-  return result;
-}
-
-/**************** Dead code elimination ****************/
-
-Trace DeadCodeElimination(const Trace& trace) {
-  std::unordered_map<const Object*, DefUseSites> def_use = ExtractDefUseSites(trace);
-  // Step 1. Calculate number of instructions
-  int n_inst = trace->insts.size();
-  for (int i = 0; i < n_inst; ++i) {
-    if (trace->insts[i]->inst_attrs->IsInstance<EnterPostProcAttrs>()) {
-      n_inst = i;
-    }
-  }
-  // Step 2. Check in reverse order if the instruction is dead
-  std::vector<int> dead(n_inst, 0);
-  for (int i = n_inst - 1; i >= 0; --i) {
-    // Never remove effectful instructions
-    if (!trace->insts[i]->inst_attrs->IsPure()) {
-      continue;
-    }
-    bool all_outputs_dead = true;
-    // For each output, check if it is dead
-    for (const ObjectRef& output : trace->insts[i]->outputs) {
-      // Skip the non-random-variables
-      if (!def_use.count(output.get())) {
-        continue;
-      }
-      // Check if all the instructions using the output are dead
-      bool all_use_dead = true;
-      for (int use_site : def_use.at(output.get()).use) {
-        if (!dead[use_site]) {
-          all_use_dead = false;
-          break;
-        }
-      }
-      if (!all_use_dead) {
-        all_outputs_dead = false;
-        break;
-      }
-    }
-    if (all_outputs_dead) {
-      dead[i] = 1;
-    }
-  }
-  Trace result;
-  for (int i = 0; i < n_inst; ++i) {
-    if (dead[i]) {
-      continue;
-    }
-    Instruction inst = trace->insts[i];
-    result->insts.push_back(inst);
-    if (Optional<ObjectRef> decision = trace->decisions.Get(inst)) {
-      result->decisions.Set(inst, decision.value());
-    }
-  }
-  return result;
-}
+};
 
 /**************** AsPython ****************/
 
@@ -285,53 +246,79 @@ Array<String> TraceNode::AsPython() const {
   return result;
 }
 
-/**************** Trace creators ****************/
+/**************** New trace creators ****************/
 
-Trace TraceNode::WithNoPostproc() const {
-  int postproc_inst_idx = -1;
-  {
-    int i = 0;
-    for (const Instruction& inst : insts) {
-      if (inst->inst_attrs->IsInstance<EnterPostProcAttrs>()) {
-        postproc_inst_idx = i;
-        break;
-      }
-      ++i;
-    }
-  }
-  if (postproc_inst_idx == -1) {
-    return GetRef<Trace>(this);
-  }
-  Array<Instruction> new_insts{insts.begin(), insts.begin() + postproc_inst_idx};
-  Map<Instruction, ObjectRef> new_decisions;
-  for (const Instruction& inst : insts) {
-    auto iter = decisions.find(inst);
-    if (iter != decisions.end()) {
-      new_decisions.Set(inst, (*iter).second);
-    }
-  }
-  return Trace(std::move(new_insts), std::move(new_decisions));
-}
-
-Trace TraceNode::WithDecision(const Instruction& inst, const ObjectRef& decision) const {
-  int postproc_inst_idx = -1;
-  {
-    int i = 0;
-    for (const Instruction& inst : insts) {
-      if (inst->inst_attrs->IsInstance<EnterPostProcAttrs>()) {
-        postproc_inst_idx = i;
-        break;
-      }
-      ++i;
-    }
-  }
+Trace TraceNode::WithDecision(const Instruction& inst,    //
+                              const ObjectRef& decision,  //
+                              bool remove_postproc) const {
+  int i = remove_postproc ? IndexPostproc(this->insts) : -1;
   Array<Instruction> new_insts =
-      (postproc_inst_idx == -1)
-          ? Array<Instruction>{this->insts.begin(), this->insts.end()}
-          : Array<Instruction>{this->insts.begin(), this->insts.begin() + postproc_inst_idx};
+      (i == -1) ? Array<Instruction>{this->insts.begin(), this->insts.end()}
+                : Array<Instruction>{this->insts.begin(), this->insts.begin() + i};
   Map<Instruction, ObjectRef> new_decisions{this->decisions.begin(), this->decisions.end()};
   new_decisions.Set(inst, decision);
   return Trace(new_insts, new_decisions);
+}
+
+Trace TraceNode::Simplified(bool remove_postproc) const {
+  std::unordered_map<const Object*, DefUseSites> def_use = DefUseSites::Extract(this->insts);
+  // Step 1. Calculate number of instructions
+  int n_inst = remove_postproc ? IndexPostproc(this->insts) : -1;
+  if (n_inst == -1) {
+    n_inst = this->insts.size();
+  }
+  // Step 2. Check in reverse order if the instruction is dead
+  std::vector<int> inst_dead(n_inst, 0);
+  for (int i = n_inst - 1; i >= 0; --i) {
+    const Instruction& inst = this->insts[i];
+    // Never remove effectful instructions
+    if (!inst->inst_attrs->IsPure()) {
+      continue;
+    }
+    // Check if there is any variable defined by `inst`
+    bool all_defs_dead = true;
+    for (const ObjectRef& def : inst->outputs) {
+      if (IsRV(def) && !def_use[def.get()].use.empty()) {
+        // There is an RV used afterwards
+        all_defs_dead = false;
+        break;
+      }
+    }
+    // If all defined variables are dead, then this instruction is dead
+    if (!all_defs_dead) {
+      continue;
+    }
+    inst_dead[i] = 1;
+    // For each variable used by the instruction, remove their use site
+    for (const ObjectRef& use : inst->inputs) {
+      // Case 1. If the use is a random variable
+      if (IsRV(use)) {
+        def_use[use.get()].use.pop_back();
+        continue;
+      }
+      // Case 2. If the use is a PrimExpr containing random variables
+      if (!IsRVExpr(use)) {
+        continue;
+      }
+      tir::PostOrderVisit(use, [&def_use](const ObjectRef& obj) {
+        if (const auto* var = obj.as<tir::VarNode>()) {
+          def_use[var].use.pop_back();
+        }
+      });
+    }
+  }
+  // Construct the result trace
+  Trace result;
+  for (int i = 0; i < n_inst; ++i) {
+    if (!inst_dead[i]) {
+      const Instruction& inst = this->insts[i];
+      result->insts.push_back(inst);
+      if (Optional<ObjectRef> decision = this->decisions.Get(inst)) {
+        result->decisions.Set(inst, decision.value());
+      }
+    }
+  }
+  return result;
 }
 
 /**************** FFI ****************/
@@ -391,7 +378,6 @@ TVM_REGISTER_GLOBAL("meta_schedule.TraceApply").set_body_typed(Internal::Apply);
 TVM_REGISTER_GLOBAL("meta_schedule.TraceSerialize").set_body_typed(Internal::Serialize);
 TVM_REGISTER_GLOBAL("meta_schedule.TraceDeserialize").set_body_typed(Internal::Deserialize);
 TVM_REGISTER_GLOBAL("meta_schedule.TraceAsPython").set_body_typed(Internal::AsPython);
-TVM_REGISTER_GLOBAL("meta_schedule.TraceDeadCodeElimination").set_body_typed(DeadCodeElimination);
 
 }  // namespace meta_schedule
 }  // namespace tvm

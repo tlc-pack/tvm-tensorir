@@ -128,7 +128,7 @@ class PostprocRewriteCooperativeFetch {
  public:
   static std::function<bool(const tir::BlockNode* block)> MakeBlockFinder(const tir::Schedule& sch,
                                                                           int* idx) {
-    return [&sch, idx](const tir::BlockNode* block) -> bool {
+    return [sch, idx](const tir::BlockNode* block) -> bool {
       const tir::StmtSRefNode* sref = sch->stmt2ref.at(block)->parent;
       for (int& i = *idx = 0; sref != nullptr; sref = sref->parent, ++i) {
         const tir::LoopNode* loop = sref->GetStmt<tir::LoopNode>();
@@ -520,9 +520,7 @@ class PostprocRewriteReduceStep {
         const LoopRV& loop_rv = loop_rvs[i];
         tir::StmtSRef loop_sref = sch->Eval(loop_rv);
         if (GetLoopIterType(sch->sch, loop_sref) != tir::kDataPar) {
-          if (i >= 1) {
-            sch->DecomposeReduction(block_rv, loop_rvs[i - 1]);
-          }
+          sch->DecomposeReduction(block_rv, loop_rvs[i]);
           break;
         }
       }
