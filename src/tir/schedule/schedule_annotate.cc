@@ -30,7 +30,7 @@ namespace tir {
  * \return A boolean indicating if the loop var is parallelizable
  */
 bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
-                             const ScheduleNode* schedule, std::string value) {
+                             const ScheduleNode* schedule, const std::string& value) {
   const BlockRealizeNode* realize = block_realize.as<BlockRealizeNode>();
   CHECK(realize != nullptr)
       << "InternalError: in IsLoopVarParallelizable, expect BlockRealize, but get type: "
