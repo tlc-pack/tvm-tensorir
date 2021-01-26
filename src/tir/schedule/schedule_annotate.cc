@@ -51,7 +51,9 @@ bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
     if (contains && iter_var->iter_type != kDataPar && iter_var->iter_type != kCommReduce) {
       return false;
     }
-    if (contains && iter_var->iter_type == kCommReduce && value.substr(0, 7) == "blockIdx") {
+    if (contains && iter_var->iter_type == kCommReduce &&
+        (value.substr(0, 8) == "blockIdx" || value.substr(0, 9) == "vectorize"
+         || value.substr(0, 8) == "parallel")) {
       return false;
     }
   }
