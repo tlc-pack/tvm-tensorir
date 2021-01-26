@@ -427,8 +427,10 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
     results.push_back(entry.trace);
   }
   // Pick unmeasured states
-  for (int i = results.size(); i < n; ++i) {
-    const Schedule& sch = support[sampler->SampleInt(0, support.size())];
+  int num_random = n - static_cast<int>(results.size());
+  std::vector<int> sampled = sampler->SampleInts(num_random, 0, support.size());
+  for (int i = 0; i < num_random; ++i) {
+    const Schedule& sch = support[sampled[i]];
     results.push_back(this->ReSampleSupport(sch->trace, task, space, sampler));
   }
   return results;
