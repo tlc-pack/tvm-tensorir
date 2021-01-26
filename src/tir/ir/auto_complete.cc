@@ -146,6 +146,7 @@ void BlockReadWriteCollector::VisitStmt_(const BlockRealizeNode* op) {
 class AutoCompleter : public StmtMutator {
  public:
   bool contains_block = false;
+  arith::Analyzer analyzer;
 
  private:
   Stmt VisitStmt_(const BlockRealizeNode* op) override {
@@ -160,8 +161,9 @@ class AutoCompleter : public StmtMutator {
       block_with_binding->binding_values = bindings;
       body = BlockRealize(block_with_binding);
       for (int i = op->binding_values.size() - 1; i >= 0; --i) {
-        body = Loop(Downcast<Var>(bindings[i]), op->block->iter_vars[i]->dom->min,
-                    op->block->iter_vars[i]->dom->extent, {}, body);
+        body =
+            Loop(Downcast<Var>(bindings[i]), analyzer.Simplify(op->block->iter_vars[i]->dom->min),
+                 analyzer.Simplify(op->block->iter_vars[i]->dom->extent), {}, body);
       }
     }
     return body;
