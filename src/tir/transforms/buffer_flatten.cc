@@ -343,9 +343,9 @@ class BufferFlattener : public StmtExprMutator {
     // Replace the block var with its value
     auto it = block_var_.find(op);
     if (it != block_var_.end()) {
-      return it->second;
+      return Substitute(it->second, unit_loops_);
     } else {
-      return GetRef<PrimExpr>(op);
+      return Substitute(GetRef<PrimExpr>(op), unit_loops_);
     }
   }
 
@@ -399,6 +399,9 @@ class BufferFlattener : public StmtExprMutator {
       for_stmt = AttrStmt(
           IterVar(Range(op->min, op->extent), op->loop_var, IterVarType::kThreadIndex, thread_tag),
           thread_tag == "vthread" ? attr::virtual_thread : attr::thread_extent, op->extent, body);
+    } else if (is_one(op->extent) && for_type == ForType::Serial) {
+      unit_loops_[op->loop_var.get()] = op->extent;
+      return body;
     } else {
       for_stmt = For(op->loop_var, op->min, op->extent, for_type, DeviceAPI::None, body);
     }
@@ -459,6 +462,7 @@ class BufferFlattener : public StmtExprMutator {
   const std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual>& arg_buffers_;
 
   std::unordered_map<Buffer, BufferAllocate, ObjectPtrHash, ObjectPtrEqual> pending_allocate_;
+  std::unordered_map<const VarNode*, PrimExpr> unit_loops_;
 
   /*!
    * \brief Create a buffer with alternative shape
