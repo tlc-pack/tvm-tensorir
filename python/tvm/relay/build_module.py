@@ -109,6 +109,9 @@ class BuildModule(object):
             Input parameters to the graph that do not change
             during inference time. Used for constant folding.
 
+        tune_result: dict of str to (dict of primfunc to primfunc)
+            the key of the outer dict is the target
+            the inner dict is from the original primfunc to the tuned primfunc
         Returns
         -------
         graph_json : str

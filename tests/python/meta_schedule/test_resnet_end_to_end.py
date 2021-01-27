@@ -108,22 +108,23 @@ SPACE = ms.space.PostOrderApply(
 )
 
 @pytest.mark.skip(reason="needs RPC")
-def test_end_to_end_resnet():
+def test_end_to_end_resnet(log):
     os.environ["TVM_TRACKER_KEY"] = RPC_KEY
     mod, params, input_shape, output_shape = get_network("resnet-18", 1)
 
     ctx = tvm.context("llvm", 0)
     data = np.random.uniform(-1, 1, size=input_shape).astype("float32")
 
+    lib_std = relay.build_module.build(mod, TARGET, params=params)
+
     with tvm.transform.PassContext(config={"relay.with_tir_schedule": True}):
         tir_func = relay.build_module.build_primfunc(mod, TARGET, params=params)
 
-    # print(tvm.script.asscript(tir_func["llvm -keys=cpu"]["fused_nn_global_avg_pool2d"]))
-    new_tir_func = {}
+    tuned_result = {}
     i = 0
     for target, func_map in tir_func.items():
         print(target)
-        new_tir_func[target] = {}
+        tuned_result[target] = {}
         for _, func in func_map.items():
             # print("func_name:", func_name)
             i += 1
@@ -133,7 +134,7 @@ def test_end_to_end_resnet():
                     target=TARGET,
                     target_host=TARGET_HOST,
                     task_name="func" + str(i),
-                    log_file="/home/jhy/tmp/pycharm_project_470/tir_exp/log/resnet.json",
+                    log_file=log,
                 ),
                 space=SPACE,
                 strategy=ms.strategy.Evolutionary(
@@ -156,10 +157,10 @@ def test_end_to_end_resnet():
                     ]
                 ),
             )
-            new_tir_func[target][func] = sch.sch.func
+            tuned_result[target][func] = sch.sch.func
+
     with tvm.transform.PassContext(config={"relay.with_tir_schedule": True}):
-        lib = relay.build_module.build(mod, TARGET, params=params, tune_result=new_tir_func)
-    lib_std = relay.build_module.build(mod, TARGET, params=params)
+        lib = relay.build_module.build(mod, TARGET, params=params)
 
     def run_module(lib):
         module = runtime.GraphModule(lib["default"](ctx))
@@ -174,12 +175,12 @@ def test_end_to_end_resnet():
         module.run()
         return module.get_output(0, tvm.nd.empty(output_shape))
 
-    out = run_module(lib).asnumpy()
     std = run_module(lib_std).asnumpy()
+    out = run_module(lib).asnumpy()
     np.testing.assert_allclose(out, std, rtol=1e-4, atol=1e-4)
 
 
 
 
 if __name__ == "__main__":
-    test_end_to_end_resnet()
+    test_end_to_end_resnet("")

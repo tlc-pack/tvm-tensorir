@@ -644,7 +644,10 @@ class CompileEngineImpl : public CompileEngineNode {
     return ret;
   }
 
-  void Clear() final { cache_.clear(); }
+  void Clear() final {
+    cache_.clear();
+    tune_result.clear();
+  }
   // List all items in the cache.
   Array<ObjectRef> ListItems() {
     std::lock_guard<std::mutex> lock(mutex_);
