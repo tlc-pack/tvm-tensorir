@@ -331,9 +331,6 @@ class Schedule : public ObjectRef {
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
 };
 
-void FromInitUpdate(const PrimExpr& init, const BufferStore& update,
-                    Optional<CommReducer>& res, Optional<PrimExpr>& lhs, Optional<PrimExpr>& rhs);
-
 }  // namespace tir
 }  // namespace tvm
 

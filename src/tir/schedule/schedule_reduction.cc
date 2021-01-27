@@ -178,37 +178,6 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
   return stmt2ref.at(init_block.get());
 }
 
-bool ReducerMatched(const CommReducer& reducer, const PrimExpr& init, const PrimExpr& update,
-                    Optional<PrimExpr>& lhs, Optional<PrimExpr>& rhs) {
-  ExprDeepEqual equal;
-  if (!equal(reducer->identity_element[0], init)) {
-    lhs = rhs = NullOpt;
-    return false;
-  }
-  PatternMatcher pattern_matcher(reducer->result[0]);
-  pattern_matcher.Match(update);
-  lhs = pattern_matcher.Eval(reducer->lhs[0]);
-  rhs = pattern_matcher.Eval(reducer->rhs[0]);
-  return pattern_matcher.Success();
-}
-
-void FromInitUpdate(const PrimExpr& init, const BufferStore& update,
-                    Optional<CommReducer>& res, Optional<PrimExpr>& lhs, Optional<PrimExpr>& rhs) {
-  ExprDeepEqual equal;
-  const auto& buf_load = BufferLoad(update->buffer, update->indices);
-  // Check default patterns
-  for (const auto& reducer : default_reducer::default_reducers) {
-    bool success = ReducerMatched(reducer.GetReducer(init.dtype()), init,
-                                  update->value, lhs, rhs);
-    if (success && equal(buf_load, lhs.value())) {
-      res = reducer.GetReducer(init.dtype());
-      return;
-    }
-  }
-  res = NullOpt;
-  lhs = rhs = NullOpt;
-}
-
 void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& update_sref) {
   /*!
    * Check
@@ -235,7 +204,7 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
          "BufferStore";
   Optional<CommReducer> reducer;
   Optional<PrimExpr> reducer_lhs, reducer_rhs;
-  FromInitUpdate(init_body->value, GetRef<BufferStore>(update_body),
+  CommReducer::FromInitUpdate(init_body->value, GetRef<BufferStore>(update_body),
       reducer, reducer_lhs, reducer_rhs);
   CHECK(reducer.defined())
       << "ValueError: 'merge_reduction' pattern detect failed. No reducer pattern matched for "
@@ -356,7 +325,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   CHECK(update) << "ValueError: the body of the block ought to be a BufferStore stmt";
   Optional<CommReducer> reducer;
   Optional<PrimExpr> reducer_lhs, reducer_rhs;
-  FromInitUpdate(init->value, GetRef<BufferStore>(update),
+  CommReducer::FromInitUpdate(init->value, GetRef<BufferStore>(update),
       reducer, reducer_lhs, reducer_rhs);
   CHECK(reducer.defined()) << "ValueError: 'merge_reduction' pattern detect failed. "
                            << "No reducer pattern matched for " << init->value
