@@ -473,6 +473,9 @@ class PostprocRewriteReduceStep {
   static const tir::BlockNode* find(const tir::Stmt& body) {
     const tir::BlockNode* res = nullptr;
     tir::PreOrderVisit(body, [&res] (const ObjectRef& node) {
+      if (res) {
+        return false;
+      }
       if (const auto* block = node.as<tir::BlockNode>()) {
         if (block->init.defined()) {
           res = block;
