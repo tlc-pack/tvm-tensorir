@@ -313,14 +313,15 @@ class AllReduceTransformer : public StmtExprMutator {
 
     // Step 7. If the reduction can not be represented by a CommReducer, allreduce cannot
     //         be supported.
-    std::tuple<Optional<CommReducer>, PrimExpr, PrimExpr> reducer_res =
-        FromInitUpdate(init_body->value, GetRef<BufferStore>(update_body));
-    Optional<CommReducer> optional_reducer = std::get<0>(reducer_res);
+    Optional<CommReducer> optional_reducer;
+    Optional<PrimExpr> reducer_lhs, reducer_rhs;
+    FromInitUpdate(init_body->value, GetRef<BufferStore>(update_body),
+        optional_reducer, reducer_lhs, reducer_rhs);
     CHECK(optional_reducer.defined())
         << "Cannot find a commutative reducer when allreduce is needed.";
     const auto* reducer = optional_reducer.value().as<CommReducerNode>();
-    PrimExpr update_value = std::get<2>(reducer_res);
-    CHECK(update_value.as<PrimExprNode>());
+    CHECK(reducer_lhs.defined() && reducer_rhs.defined());
+    PrimExpr update_value = reducer_rhs.value();
 
 
     const bool need_normal_reduce = num_bound_rela < num_tot_rela; // In this case, buffer

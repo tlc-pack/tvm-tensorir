@@ -178,29 +178,35 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
   return stmt2ref.at(init_block.get());
 }
 
-std::tuple<bool, PrimExpr, PrimExpr> ReducerMatched(const CommReducer& reducer,
-                                                    const PrimExpr& init, const PrimExpr update) {
+bool ReducerMatched(const CommReducer& reducer, const PrimExpr& init, const PrimExpr& update,
+                    Optional<PrimExpr>& lhs, Optional<PrimExpr>& rhs) {
   ExprDeepEqual equal;
-  if (!equal(reducer->identity_element[0], init))
-    return std::make_tuple(false, PrimExpr(nullptr), PrimExpr(nullptr));
+  if (!equal(reducer->identity_element[0], init)) {
+    lhs = rhs = NullOpt;
+    return false;
+  }
   PatternMatcher pattern_matcher(reducer->result[0]);
   pattern_matcher.Match(update);
-  return std::make_tuple(pattern_matcher.Success(), pattern_matcher.Eval(reducer->lhs[0]),
-                         pattern_matcher.Eval(reducer->rhs[0]));
+  lhs = pattern_matcher.Eval(reducer->lhs[0]);
+  rhs = pattern_matcher.Eval(reducer->rhs[0]);
+  return pattern_matcher.Success();
 }
 
-std::tuple<Optional<CommReducer>, PrimExpr, PrimExpr> FromInitUpdate(const PrimExpr& init,
-                                                                     const BufferStore& update) {
+void FromInitUpdate(const PrimExpr& init, const BufferStore& update,
+                    Optional<CommReducer>& res, Optional<PrimExpr>& lhs, Optional<PrimExpr>& rhs) {
   ExprDeepEqual equal;
-  const auto& lhs = BufferLoad(update->buffer, update->indices);
+  const auto& buf_load = BufferLoad(update->buffer, update->indices);
   // Check default patterns
   for (const auto& reducer : default_reducer::default_reducers) {
-    const auto& res = ReducerMatched(reducer.GetReducer(init.dtype()), init, update->value);
-    if (std::get<0>(res) && equal(lhs, std::get<1>(res))) {
-      return std::make_tuple(reducer.GetReducer(init.dtype()), std::get<1>(res), std::get<2>(res));
+    bool success = ReducerMatched(reducer.GetReducer(init.dtype()), init,
+                                  update->value, lhs, rhs);
+    if (success && equal(buf_load, lhs.value())) {
+      res = reducer.GetReducer(init.dtype());
+      return;
     }
   }
-  return std::make_tuple(NullOpt, PrimExpr(nullptr), PrimExpr(nullptr));
+  res = NullOpt;
+  lhs = rhs = NullOpt;
 }
 
 void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& update_sref) {
@@ -227,7 +233,11 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   CHECK(init_body != nullptr && update_body != nullptr)
       << "ValueError: 'merge_reduction' expects the body of init and update block to be "
          "BufferStore";
-  CHECK(std::get<0>(FromInitUpdate(init_body->value, GetRef<BufferStore>(update_body))))
+  Optional<CommReducer> reducer;
+  Optional<PrimExpr> reducer_lhs, reducer_rhs;
+  FromInitUpdate(init_body->value, GetRef<BufferStore>(update_body),
+      reducer, reducer_lhs, reducer_rhs);
+  CHECK(reducer.defined())
       << "ValueError: 'merge_reduction' pattern detect failed. No reducer pattern matched for "
       << init_body->value << " and " << GetRef<BufferStore>(update_body);
   const BlockRealizeNode* init_realize = GetBlockRealize(init_sref).get();
@@ -344,13 +354,16 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   const auto* update = block->body.as<BufferStoreNode>();
   CHECK(init) << "ValueError: the init of the block ought to be a BufferStore stmt";
   CHECK(update) << "ValueError: the body of the block ought to be a BufferStore stmt";
-  const auto& res = FromInitUpdate(init->value, GetRef<BufferStore>(update));
-  CHECK(std::get<0>(res)) << "ValueError: 'merge_reduction' pattern detect failed. "
-                          << "No reducer pattern matched for " << init->value
-                          << " and " << GetRef<BufferStore>(update);
-  const Optional<CommReducer>& reducer = std::get<0>(res);
-  const PrimExpr &lhs = std::get<1>(res), rhs = std::get<2>(res);
-  CHECK(reducer) << "ValueError: unrecognized reducer pattern";
+  Optional<CommReducer> reducer;
+  Optional<PrimExpr> reducer_lhs, reducer_rhs;
+  FromInitUpdate(init->value, GetRef<BufferStore>(update),
+      reducer, reducer_lhs, reducer_rhs);
+  CHECK(reducer.defined()) << "ValueError: 'merge_reduction' pattern detect failed. "
+                           << "No reducer pattern matched for " << init->value
+                           << " and " << GetRef<BufferStore>(update);
+  CHECK(reducer_lhs.defined() && reducer_rhs.defined());
+  PrimExpr lhs = reducer_lhs.value();
+  PrimExpr rhs = reducer_rhs.value();
   // Get the loops outside the block
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> iters;
   auto loops = GetLoopsInScope(block_sref);
