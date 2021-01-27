@@ -581,6 +581,7 @@ class CompileEngineImpl : public CompileEngineNode {
   }
   void SetTunedResult(const Map<String, Map<String, tir::PrimFunc>> tune_result) {
     this->tune_result = tune_result;
+    this->name_map_.clear();
   }
   // For now, build one module per function.
   PackedFunc JIT(const CCacheKey& key) final {
@@ -714,14 +715,7 @@ class CompileEngineImpl : public CompileEngineNode {
     }
 
     cache_node->func_name = GetUniqueName(cache_node->func_name);
-    if (!tune_result.empty()) {
-      auto func_map = tune_result.Get(key->target->str());
-      CHECK(func_map != nullptr) << "no target " << key->target << " in tune result";
-      auto prim_func = func_map.value().Get(cache_node->func_name);
-      CHECK(prim_func != nullptr) << "no function of name " << cache_node->func_name
-                                  << " in tune result";
-      cache_node->prim_func = prim_func.value();
-    }
+
     // NOTE: array will copy on write.
     Array<te::Tensor> all_args = cache_node->inputs;
     for (te::Tensor arg : cache_node->outputs) {
@@ -731,8 +725,18 @@ class CompileEngineImpl : public CompileEngineNode {
     if (const auto* f = runtime::Registry::Get("relay.backend.lower")) {
       // TODO(@siyuan): const folder will flush the pass_context
       if (with_tir_schedule_ && cfunc->prim_func.defined()) {
-        cache_node->funcs = (*f)(cfunc->prim_func, NullValue<Array<te::Tensor>>(),
-                                 cache_node->func_name, key->source_func);
+        if (!tune_result.empty()) {
+          auto func_map = tune_result.Get(key->target->str());
+          CHECK(func_map != nullptr) << "no target " << key->target << " in tune result";
+          auto prim_func = func_map.value().Get(cache_node->func_name);
+          CHECK(prim_func != nullptr)
+              << "no function of name " << cache_node->func_name << " in tune result";
+          cache_node->funcs = (*f)(prim_func, NullValue<Array<te::Tensor>>(), cache_node->func_name,
+                                   key->source_func);
+        } else {
+          cache_node->funcs = (*f)(cfunc->prim_func, NullValue<Array<te::Tensor>>(),
+                                   cache_node->func_name, key->source_func);
+        }
       } else {
         cache_node->funcs = (*f)(cfunc->schedule, all_args, cache_node->func_name, key->source_func);
       }
