@@ -155,7 +155,8 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
                             /*body=*/SeqStmt::Flatten(Array<Stmt>{body, parent->body}),
                             /*allocations=*/parent->allocations,
                             /*annotations=*/parent->annotations,
-                            /*tag=*/parent->tag);
+                            /*tag=*/parent->tag,
+                            /*init=*/NullOpt);
     this->Replace(GetRef<StmtSRef>(loop_sref->parent), new_block,
                   {{new_block, GetRef<Block>(parent)}});
   } else {
@@ -171,7 +172,8 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
       /*body=*/block->body,
       /*allocations=*/block->allocations,
       /*annotations=*/block->annotations,
-      /*tag=*/block->tag + "_update");
+      /*tag=*/block->tag + "_update",
+      /*init=*/NullOpt);
   this->Replace(block_sref, update_block, {{update_block, GetRef<Block>(block)}});
   // Update scope information
   UpdateScope(GetParentBlockSRef(block_sref)->stmt, this->stmt2ref, &this->scopes);
@@ -506,7 +508,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   } else if (const auto* parent = top.value()->parent->GetStmt<BlockNode>()) {
     SeqStmt parent_body = insert(parent->body, top.value()->seq_index, {rf_body, wb_body});
     Block new_block = Block(parent->iter_vars, parent->reads, parent->writes, parent_body,
-                            parent->allocations, parent->annotations, parent->tag);
+                            parent->allocations, parent->annotations, parent->tag, NullOpt);
     this->Replace(GetRef<StmtSRef>(top.value()->parent), new_block,
                   {{new_block, GetRef<Block>(parent)}, {wb_block, block}});
   }

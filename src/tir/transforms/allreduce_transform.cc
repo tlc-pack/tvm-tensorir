@@ -410,7 +410,7 @@ class AllReduceTransformer : public StmtExprMutator {
       Stmt body0 = Evaluate(call);
       body0 = AttrStmt(GetRef<CommReducer>(reducer), tir::attr::reduce_scope,
                        make_zero(DataType::Handle()), body0);
-      body0 = Block({}, reads, writes, body0, {}, {}, red_tmp_name);
+      body0 = Block({}, reads, writes, body0, {}, {}, red_tmp_name, NullOpt);
       body0 = BlockRealize({}, const_true(), GetRef<Block>(body0.as<BlockNode>()), "");
 
       // Step c. Create block/blockRealize: reduce_temp -> the original write buffer.
@@ -441,7 +441,7 @@ class AllReduceTransformer : public StmtExprMutator {
 
       Stmt body1 = BufferStore(write_buffer, BufferLoad(reduce_temp.value(), {0}),
                                update_body->indices);
-      body1 = Block(iter_vars, reads, writes, body1, {}, {}, block_name);
+      body1 = Block(iter_vars, reads, writes, body1, {}, {}, block_name, NullOpt);
       body1 = BlockRealize(binding_values, op->predicate,
                            GetRef<Block>(body1.as<BlockNode>()), exec_scope);
 
@@ -511,7 +511,7 @@ class AllReduceTransformer : public StmtExprMutator {
 
       Stmt body = BufferStore(write_buffer, BufferLoad(reduce_temp.value(), {0}),
                               update_body->indices);
-      body = Block(iter_vars, reads, writes, body, {}, {}, block_name);
+      body = Block(iter_vars, reads, writes, body, {}, {}, block_name, NullOpt);
       body = BlockRealize(binding_values, op->predicate,
                           GetRef<Block>(body.as<BlockNode>()), exec_scope);
 

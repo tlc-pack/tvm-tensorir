@@ -1089,7 +1089,7 @@ class Block : public Stmt {
   TVM_DLL explicit Block(Array<IterVar> iter_vars, Array<TensorRegion> reads,
                          Array<TensorRegion> writes, Stmt body, Array<BufferAllocate> allocations,
                          Array<Annotation> annotations, std::string tag,
-                         Optional<Stmt> init = NullOpt);
+                         Optional<Stmt> init);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Block, Stmt, BlockNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(BlockNode);
