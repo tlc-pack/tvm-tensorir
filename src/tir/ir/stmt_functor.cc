@@ -114,7 +114,9 @@ void StmtVisitor::VisitStmt_(const EvaluateNode* op) { this->VisitExpr(op->value
 
 void StmtVisitor::VisitStmt_(const BlockNode* op) {
   VisitArray(op->allocations, [this](const Stmt& s) { this->VisitStmt(s); });
-  if (op->init) this->VisitStmt(op->init.value());
+  if (op->init.defined()) {
+    this->VisitStmt(op->init.value());
+  }
   this->VisitStmt(op->body);
 }
 
@@ -445,7 +447,9 @@ Stmt StmtMutator::VisitStmt_(const BlockNode* op) {
   Array<IterVar> block_vars = MutateArray(op->iter_vars, fmutate_iter_var);
   Array<Annotation> annotations = MutateArray(op->annotations, fmutate_annotation);
   Optional<Stmt> init = NullOpt;
-  if (op->init) init = VisitStmt(op->init.value());
+  if (op->init.defined()) {
+    init = VisitStmt(op->init.value());
+  }
   Stmt body = VisitStmt(op->body);
   if (reads.same_as(op->reads) && writes.same_as(op->writes) && block_vars.same_as(op->iter_vars) &&
       body.same_as(op->body) && annotations.same_as(op->annotations) && init.same_as(op->init)) {

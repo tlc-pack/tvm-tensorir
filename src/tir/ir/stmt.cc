@@ -788,7 +788,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       for (const auto& allocate : op->allocations) {
         p->Print(allocate);
       }
-      if (op->init) {
+      if (op->init.defined()) {
         p->Print(op->init.value());
       }
       p->Print(op->body);

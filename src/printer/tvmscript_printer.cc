@@ -718,7 +718,7 @@ Doc TVMScriptPrinter::VisitType_(const TupleTypeNode* node) {
 }
 
 Doc TVMScriptPrinter::VisitStmt_(const BlockRealizeNode* op) {
-  const auto* block_op = (op->block).as<BlockNode>();
+  const auto* block_op = op->block.as<BlockNode>();
   // print block name and block vars
   Doc doc;
   doc << "with tir.block([";
@@ -778,7 +778,7 @@ Doc TVMScriptPrinter::VisitStmt_(const BlockRealizeNode* op) {
   for (const auto& allocate : block_op->allocations) {
     body << Print(allocate) << Doc::NewLine();
   }
-  if (block_op->init) {
+  if (block_op->init.defined()) {
     Doc init_block;
     init_block << "with tir.init():";
     init_block << Doc::Indent(4, Doc::NewLine() << PrintBody(block_op->init.value()));

@@ -52,8 +52,8 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
   CHECK(loop != nullptr)
       << "TypeError: 'decompose_reduction' expect a loop as second argument, but get type: "
       << loop_sref->stmt->GetTypeKey();
-  CHECK(block->init) << "ValueError: 'decompose_reduction' expect a reduction block, "
-                        "but the block has no init block";
+  CHECK(block->init.defined()) << "ValueError: 'decompose_reduction' expect a reduction block, "
+                                  "but the block has no init block";
   Array<StmtSRef> loops = GetLoopsInScope(block_sref);
   const BlockRealizeNode* realize = GetBlockRealize(block_sref).get();
   // Cond 0. Check loop_sref is an ancestor of block_sref
@@ -182,7 +182,7 @@ std::tuple<bool, PrimExpr, PrimExpr> ReducerMatched(const CommReducer& reducer,
                                                     const PrimExpr& init, const PrimExpr update) {
   ExprDeepEqual equal;
   if (!equal(reducer->identity_element[0], init))
-    return std::make_tuple(false, NullValue<PrimExpr>(), NullValue<PrimExpr>());
+    return std::make_tuple(false, PrimExpr(nullptr), PrimExpr(nullptr));
   PatternMatcher pattern_matcher(reducer->result[0]);
   pattern_matcher.Match(update);
   return std::make_tuple(pattern_matcher.Success(), pattern_matcher.Eval(reducer->lhs[0]),
@@ -200,7 +200,7 @@ std::tuple<Optional<CommReducer>, PrimExpr, PrimExpr> FromInitUpdate(const PrimE
       return std::make_tuple(reducer.GetReducer(init.dtype()), std::get<1>(res), std::get<2>(res));
     }
   }
-  return std::make_tuple(NullOpt, 0, 0);
+  return std::make_tuple(NullOpt, PrimExpr(nullptr), PrimExpr(nullptr));
 }
 
 void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& update_sref) {
@@ -398,7 +398,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   }
   rf_bindings.push_back(loop->loop_var);
   rf_iters.push_back(rf_iter);
-  CHECK(0 <= factor_axis && factor_axis <= update->buffer->shape.size())
+  CHECK(0 <= factor_axis && factor_axis <= (int) update->buffer->shape.size())
       << "ValueError: factor_axis should be in range [0, " << update->buffer->shape.size() << "]";
   Array<PrimExpr> rf_shape = update->buffer->shape;
   Array<PrimExpr> rf_indices = update->indices;
@@ -481,7 +481,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
     const auto* l = loops[i]->GetStmt<LoopNode>();
     CHECK(l) << "InternalError: GetLoopsInScope returns a block sref";
     if (l->body->IsInstance<SeqStmtNode>()) {
-      CHECK(i != loops.size() - 1) << "ValueError: can not rfactor";
+      CHECK(i != (int) loops.size() - 1) << "ValueError: can not rfactor";
       top = loops[i + 1];
       break;
     }

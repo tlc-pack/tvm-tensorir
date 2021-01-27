@@ -115,7 +115,7 @@ void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const Annotation& 
   // Now only support:
   //   1. All the blocks are complete below
   //   2. A single block below the loop
-  std::string anno_value = Downcast<StringImm>(annotation->value)->value;
+  const String& anno_value = Downcast<StringImm>(annotation->value)->value;
   bool is_compact_dataflow = GetParentScope(loop_sref).IsCompactDataFlow(loop_sref, this);
   if (!is_compact_dataflow) {
     Array<Stmt> single_child = GetChildren(GetRef<Stmt>(loop), true);

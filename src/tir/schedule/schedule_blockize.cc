@@ -161,7 +161,7 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
   }
   // Regenerate init for outer block
   Optional<Stmt> new_init = NullOpt;
-  if (block->init) {
+  if (block->init.defined()) {
     std::vector<Loop> init_loops;
     std::vector<size_t> init_block_vars;
     std::vector<PrimExpr> init_bindings;
@@ -173,7 +173,7 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
         init_block_vars.push_back(i);
       }
     }
-    for (const auto* inner_loop : inner_loops) {
+    for (const LoopNode* inner_loop : inner_loops) {
       for (size_t i = 0; i < init_block_vars.size(); ++i) {
         if (StmtExprContainsVar(inner_bindings[i], inner_loop->loop_var)) {
           Loop init_loop = GetRef<Loop>(inner_loop);
@@ -183,7 +183,7 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
         }
       }
     }
-    for (auto index : init_block_vars) {
+    for (size_t index : init_block_vars) {
       var_replace_map[inner_block_vars[index]->var] =
           Substitute(inner_bindings[index], binding_replace_map);
     }

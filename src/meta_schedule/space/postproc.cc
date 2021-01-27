@@ -470,7 +470,7 @@ Postproc RewriteUnboundBlocks() {
 
 class PostprocRewriteReduceStep {
  public:
-  static const tir::BlockNode* find(const tir::Stmt& body) {
+  static const tir::BlockNode* Find(const tir::Stmt& body) {
     const tir::BlockNode* res = nullptr;
     tir::PreOrderVisit(body, [&res] (const ObjectRef& node) {
       if (res) {
@@ -489,7 +489,7 @@ class PostprocRewriteReduceStep {
   }
 
   bool Proc(const Schedule& sch) const {
-    while (const tir::BlockNode* block = find(sch->sch->func->body)) {
+    while (const tir::BlockNode* block = Find(sch->sch->func->body)) {
       BlockRV block_rv = sch->GetBlock(block->tag);
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
       int n_loops = loop_rvs.size();
