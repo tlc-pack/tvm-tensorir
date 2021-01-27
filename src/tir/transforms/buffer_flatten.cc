@@ -175,6 +175,9 @@ class RegionGatherer : public StmtExprVisitor {
   void VisitStmt_(const LoopNode* op) final {
     Loop loop = GetRef<Loop>(op);
     loop_stack_.push_back(loop);
+    if (op->annotations.empty() && is_one(op->extent)) {
+      unit_loops_[op->loop_var.get()] = op->min;
+    }
     StmtExprVisitor::VisitStmt_(op);
     loop_stack_.pop_back();
   }
@@ -184,7 +187,7 @@ class RegionGatherer : public StmtExprVisitor {
     for (size_t i = 0; i < block_op->iter_vars.size(); ++i) {
       const auto& iter = block_op->iter_vars[i];
       const auto& v = op->binding_values[i];
-      block_var_[iter->var.get()] = Substitute(v, block_var_);
+      block_var_[iter->var.get()] = Substitute(Substitute(v, block_var_), unit_loops_);
     }
     StmtExprVisitor::VisitStmt_(op);
   }
@@ -221,6 +224,8 @@ class RegionGatherer : public StmtExprVisitor {
       buffers_region_;
   /*! \brief The map from block vars to the expr value */
   std::unordered_map<const VarNode*, PrimExpr> block_var_;
+  /*! \brief The map from unit lopo vars to the expr value */
+  std::unordered_map<const VarNode*, PrimExpr> unit_loops_;
 
  private:
   const std::unordered_map<Buffer, ObjectRef, ObjectPtrHash, ObjectPtrEqual>& buffers_lca_;
@@ -259,8 +264,8 @@ class RegionGatherer : public StmtExprVisitor {
     }
     std::vector<arith::IntSet> region;
     for (const auto& range : tensor_region->region) {
-      Range r = Range::FromMinExtent(Substitute(range->min, block_var_),
-                                     Substitute(range->extent, block_var_));
+      Range r = Range::FromMinExtent(Substitute(Substitute(range->min, block_var_), unit_loops_),
+                                     Substitute(Substitute(range->extent, block_var_), unit_loops_));
       region.push_back(arith::EvalSet(r, dom_map));
     }
     return region;
@@ -284,12 +289,14 @@ class BufferFlattener : public StmtExprMutator {
  public:
   BufferFlattener(
       const std::unordered_map<const VarNode*, PrimExpr>& block_var,
+      const std::unordered_map<const VarNode*, PrimExpr>& unit_loops,
       const std::unordered_map<Buffer, std::vector<arith::IntSet>, ObjectPtrHash, ObjectPtrEqual>&
       buffers_region,
       const std::unordered_map<Buffer, ObjectRef, ObjectPtrHash, ObjectPtrEqual>& buffers_lca,
       const std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual>& arg_buffers)
       : buffers_region_(buffers_region),
         block_var_(block_var),
+        unit_loops_(unit_loops),
         buffers_lca_(buffers_lca),
         arg_buffers_(arg_buffers) {}
 
@@ -399,8 +406,7 @@ class BufferFlattener : public StmtExprMutator {
       for_stmt = AttrStmt(
           IterVar(Range(op->min, op->extent), op->loop_var, IterVarType::kThreadIndex, thread_tag),
           thread_tag == "vthread" ? attr::virtual_thread : attr::thread_extent, op->extent, body);
-    } else if (is_one(op->extent) && for_type == ForType::Serial) {
-      unit_loops_[op->loop_var.get()] = op->extent;
+    } else if (is_one(op->extent) && op->annotations.empty()) {
       return body;
     } else {
       for_stmt = For(op->loop_var, op->min, op->extent, for_type, DeviceAPI::None, body);
@@ -458,11 +464,11 @@ class BufferFlattener : public StmtExprMutator {
   const std::unordered_map<Buffer, std::vector<arith::IntSet>, ObjectPtrHash, ObjectPtrEqual>&
       buffers_region_;
   const std::unordered_map<const VarNode*, PrimExpr>& block_var_;
+  const std::unordered_map<const VarNode*, PrimExpr>& unit_loops_;
   const std::unordered_map<Buffer, ObjectRef, ObjectPtrHash, ObjectPtrEqual>& buffers_lca_;
   const std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual>& arg_buffers_;
 
   std::unordered_map<Buffer, BufferAllocate, ObjectPtrHash, ObjectPtrEqual> pending_allocate_;
-  std::unordered_map<const VarNode*, PrimExpr> unit_loops_;
 
   /*!
    * \brief Create a buffer with alternative shape
@@ -518,8 +524,9 @@ PrimFunc BufferFlatten(PrimFunc f) {
   region_gatherer(fptr->body);
 
   // Transform BufferLoad/BufferStore into Load/Store
-  BufferFlattener flattener(region_gatherer.block_var_, region_gatherer.buffers_region_,
-                            lca_detector.buffers_lca_, lca_detector.arg_buffers_);
+  BufferFlattener flattener(region_gatherer.block_var_, region_gatherer.unit_loops_,
+                            region_gatherer.buffers_region_, lca_detector.buffers_lca_,
+                            lca_detector.arg_buffers_);
   fptr->body = flattener(fptr->body);
 
   return f;
