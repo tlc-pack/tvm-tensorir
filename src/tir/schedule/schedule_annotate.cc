@@ -27,10 +27,11 @@ namespace tir {
  * \param block_realize The block realize node under the loop. It is possible that there are
  * multiple blocks, and in this case, we should invoke this function multiple times.
  * \param schedule The schedule object
+ * \param anno_value The annotation anno_value
  * \return A boolean indicating if the loop var is parallelizable
  */
 bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
-                             const ScheduleNode* schedule, const std::string& value) {
+                             const ScheduleNode* schedule, const std::string& anno_value) {
   const BlockRealizeNode* realize = block_realize.as<BlockRealizeNode>();
   CHECK(realize != nullptr)
       << "InternalError: in IsLoopVarParallelizable, expect BlockRealize, but get type: "
@@ -51,7 +52,7 @@ bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
     if (contains && iter_var->iter_type != kDataPar && iter_var->iter_type != kCommReduce) {
       return false;
     }
-    if (contains && iter_var->iter_type == kCommReduce && value.substr(0, 9) != "threadIdx") {
+    if (contains && iter_var->iter_type == kCommReduce && anno_value.substr(0, 9) != "threadIdx") {
       return false;
     }
   }

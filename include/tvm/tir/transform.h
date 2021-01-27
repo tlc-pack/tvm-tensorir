@@ -339,6 +339,14 @@ TVM_DLL Pass BF16Legalize();
 TVM_DLL Pass PointerValueTypeRewrite();
 
 /*!
+ * \brief Detect the allreduce pattern, and apply transformation
+ *        when allreduce is needed. (When a reduction axis of a
+ *        reduction block is bound to threadIdx, allreduce is needed.)
+ * \return The pass.
+ */
+TVM_DLL Pass AllreduceTransform();
+
+/*!
  * \brief Flatten the multi-dimensional BufferLoad and BufferStore
  *        to single dimensional Load/Store. Also remove Block so that
  *        ensure that the Tir after flatten can not be scheduled again.

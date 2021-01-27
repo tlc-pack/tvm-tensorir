@@ -22,7 +22,8 @@ from tvm import tir
 
 def test_no_allocate():
     mod = tvm.script.create_module({"func": util.matmul_stmt_original()})
-    trans = tvm.transform.Sequential([tvm.tir.transform.BufferFlatten(),
+    trans = tvm.transform.Sequential([tvm.tir.transform.AllreduceTransform(),
+                                      tvm.tir.transform.BufferFlatten(),
                                       tvm.tir.transform.Simplify()])
     mod = trans(mod)
 
@@ -44,7 +45,8 @@ def test_no_allocate():
 
 def test_global_allocate():
     mod = tvm.script.create_module({"func": util.element_wise_stmt()})
-    trans = tvm.transform.Sequential([tvm.tir.transform.BufferFlatten(),
+    trans = tvm.transform.Sequential([tvm.tir.transform.AllreduceTransform(),
+                                      tvm.tir.transform.BufferFlatten(),
                                       tvm.tir.transform.Simplify()])
     mod = trans(mod)
 
@@ -85,7 +87,8 @@ def compute_at_element_wise(a: ty.handle, c: ty.handle) -> None:
 
 def test_local_allocate():
     mod = tvm.script.create_module({"func": compute_at_element_wise})
-    trans = tvm.transform.Sequential([tvm.tir.transform.BufferFlatten(),
+    trans = tvm.transform.Sequential([tvm.tir.transform.AllreduceTransform(),
+                                      tvm.tir.transform.BufferFlatten(),
                                       tvm.tir.transform.Simplify()])
     mod = trans(mod)
 

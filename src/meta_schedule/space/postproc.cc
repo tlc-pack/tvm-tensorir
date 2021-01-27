@@ -536,6 +536,7 @@ class PostprocVerifyGPUCode {
   static tir::transform::Sequential MakePasses(const Target& target) {
     return tir::transform::Sequential(
         {tir::transform::InjectPrefetch(),       //
+         tir::transform::AllreduceTransform(),   //
          tir::transform::BufferFlatten(),        //
          tir::transform::NarrowDataType(32),     //
          tir::transform::Simplify(),             //
