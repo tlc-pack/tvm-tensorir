@@ -136,9 +136,6 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
       candidate_name = truncated_name.str();
     }
     cache_node->func_name = candidate_name;
-    if(cache_node->func_name=="fused_nn.global_avg_pool2d"){
-      std::cout<<func<<std::endl;
-    }
     CHECK(anchor_op_.defined());
     // Fusion over tupled results may leave identity relationships
     // between inputs and outputs, and those should not be scheduled.
@@ -147,12 +144,6 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
     for (const auto& tensor : cache_node->outputs) {
       if (!tensor->op.as<te::PlaceholderOpNode>()) {
         tensor_outs.push_back(tensor);
-        if(cache_node->func_name=="fused_nn.global_avg_pool2d"){
-          const auto& compute_op = tensor->op.as<te::ComputeOpNode>();
-          std::cout<<compute_op->axis<<std::endl;
-          std::cout<<compute_op->reduce_axis.size()<<std::endl;
-          std::cout<<compute_op->body;
-        }
       }
     }
     
@@ -176,9 +167,6 @@ class ScheduleGetter : public backend::MemoizedExprTranslator<Array<te::Tensor>>
     }
     cache_node->schedule = std::move(schedule);
     cache_node->prim_func = std::move(prim_func);
-    if(cache_node->func_name=="fused_nn.global_avg_pool2d"){
-      std::cout<<cache_node->prim_func<<std::endl;
-    }
     return CachedFunc(cache_node);
   }
 
@@ -579,9 +567,17 @@ class CompileEngineImpl : public CompileEngineNode {
     with_tir_schedule_ = pass_ctx->GetConfig<Bool>("relay.with_tir_schedule", Bool(false)).value();
     return LowerInternal(key)->cached_func;
   }
-  void SetTunedResult(const Map<String, Map<String, tir::PrimFunc>> tune_result) {
-    this->tune_result = tune_result;
-    this->name_map_.clear();
+  void SetTunedResult(
+      const Map<String, Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>>
+          tune_result) {
+    for (const auto& kv : tune_result) {
+      std::string target = kv.first;
+      std::unordered_map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual> func_map;
+      for (const auto kv2 : kv.second) {
+        func_map[kv2.first] = kv2.second;
+      }
+      this->tune_result[target] = func_map;
+    }
   }
   // For now, build one module per function.
   PackedFunc JIT(const CCacheKey& key) final {
@@ -726,10 +722,10 @@ class CompileEngineImpl : public CompileEngineNode {
       // TODO(@siyuan): const folder will flush the pass_context
       if (with_tir_schedule_ && cfunc->prim_func.defined()) {
         if (!tune_result.empty()) {
-          auto func_map = tune_result.Get(key->target->str());
-          CHECK(func_map != nullptr) << "no target " << key->target << " in tune result";
-          auto prim_func = func_map.value().Get(cache_node->func_name);
-          CHECK(prim_func != nullptr)
+          auto func_map = tune_result[key->target->str()];
+          CHECK(!func_map.empty()) << "no target " << key->target << " in tune result";
+          auto prim_func = func_map[cfunc->prim_func];
+          CHECK(prim_func.defined())
               << "no function of name " << cache_node->func_name << " in tune result";
           cache_node->funcs = (*f)(prim_func, NullValue<Array<te::Tensor>>(), cache_node->func_name,
                                    key->source_func);
@@ -819,7 +815,9 @@ class CompileEngineImpl : public CompileEngineNode {
   /*! \brief internal compiler cache for shape funcs */
   std::unordered_map<CCacheKey, CCacheValue> shape_func_cache_;
   /*! \brief primfuncs tuned by meta schedule*/
-  Map<String, Map<String, tir::PrimFunc>> tune_result;
+  std::unordered_map<std::string, std::unordered_map<tir::PrimFunc, tir::PrimFunc, StructuralHash,
+                                                     StructuralEqual>>
+      tune_result;
   /*! \brief whether use tir schedule */
   bool with_tir_schedule_;
 };
@@ -847,9 +845,10 @@ TVM_REGISTER_GLOBAL("relay.backend._CompileEngineGlobal").set_body_typed([]() {
 });
 
 TVM_REGISTER_GLOBAL("relay.backend._CompileEngineSetTuneResult")
-    .set_body_typed([](CompileEngine self, Map<String, Map<String, tir::PrimFunc>> tune_result) {
-      self->SetTunedResult(tune_result);
-    });
+    .set_body_typed(
+        [](CompileEngine self,
+           Map<String, Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>>
+               tune_result) { self->SetTunedResult(tune_result); });
 
 TVM_REGISTER_GLOBAL("relay.backend._CompileEngineClear").set_body_typed([](CompileEngine self) {
   self->Clear();

@@ -76,11 +76,13 @@ struct GraphCodegen {
   Map<String, IRModule> GetIRModule() {
     return CallFunc<Map<String, IRModule>>("get_irmodule", nullptr);
   }
-  
-  Map<String, Map<String, BaseFunc>> GetSchedule(){
-    return CallFunc<Map<String, Map<String, BaseFunc>>>("get_schedule",nullptr);
+
+  Map<String, Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>> GetSchedule() {
+    return CallFunc<
+        Map<String, Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>>>(
+        "get_schedule", nullptr);
   }
-  
+
   std::unordered_map<std::string, tvm::runtime::NDArray> GetParams() {
     std::unordered_map<std::string, tvm::runtime::NDArray> ret;
     auto names = CallFunc<Array<runtime::String>>("list_params_name", nullptr);
@@ -163,7 +165,8 @@ class RelayBuildModule : public runtime::ModuleNode {
       });
     } else if (name == "set_tune_result") {
       return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
-        Map<String, Map<String, tir::PrimFunc>> tune_result = args[0];
+        Map<String, Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>>
+            tune_result = args[0];
         CompileEngine::Global()->SetTunedResult(tune_result);
       });
     } else {

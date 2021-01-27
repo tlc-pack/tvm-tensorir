@@ -209,7 +209,9 @@ class CompileEngineNode : public Object {
    * \brief Set tune result
    * @param tune_result the result of meta schedule.
    */
-  virtual void SetTunedResult(const Map<String, Map<String, tir::PrimFunc>> tune_result) = 0;
+  virtual void SetTunedResult(
+      const Map<String, Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>>
+          tune_result) = 0;
 
   /*!
    * \brief Just in time compile to get a PackedFunc.

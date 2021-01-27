@@ -55,7 +55,7 @@ using TargetsMap = std::unordered_map<int, Target>;
 struct LoweredOutput {
   std::string graph_json;
   Map<String, IRModule> lowered_funcs;
-  Map<String, Map<String, BaseFunc>> schedules;
+  Map<String, Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>> schedules;
   Array<tvm::runtime::Module> external_mods;
   std::unordered_map<std::string, tvm::runtime::NDArray> params;
 };
@@ -216,7 +216,8 @@ class GraphRuntimeCodegen : public backend::MemoizedExprTranslator<std::vector<G
     }
     for (auto& kv : schedules_) {
       if (ret.schedules.count(kv.first) == 0) {
-        ret.schedules.Set(kv.first, Map<String,BaseFunc>());
+        ret.schedules.Set(kv.first,
+                          Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>());
       }
       ret.schedules.Set(kv.first,kv.second);
     }
@@ -411,17 +412,14 @@ class GraphRuntimeCodegen : public backend::MemoizedExprTranslator<std::vector<G
     CachedFunc lowered_func = (*pf1)(compile_engine_, key);
     if (!lowered_funcs_.count(target->str())) {
       lowered_funcs_[target->str()] = IRModule(Map<GlobalVar, BaseFunc>({}));
-      schedules_[target->str()]=Map<String,BaseFunc>();
+      schedules_[target->str()] =
+          Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>();
     }
     lowered_funcs_[target->str()]->Update(lowered_func->funcs);
-    std::string unique_name=_GetUniqueName(lowered_func->func_name);
-    std::cout<<lowered_func->func_name<<std::endl;
-    
     if(lowered_func->prim_func.defined()) {
-      schedules_[target->str()].Set(unique_name, lowered_func->prim_func);
-      
+      schedules_[target->str()].Set(lowered_func->prim_func, lowered_func->prim_func);
     }
-    return GraphAddCallNode(op, unique_name, lowered_func->func_name);
+    return GraphAddCallNode(op, _GetUniqueName(lowered_func->func_name), lowered_func->func_name);
   }
 
   std::vector<GraphNodeRef> VisitExpr_(const LetNode* op) override {
@@ -560,7 +558,9 @@ class GraphRuntimeCodegen : public backend::MemoizedExprTranslator<std::vector<G
   /*! \brief lowered funcs */
   std::unordered_map<std::string, IRModule> lowered_funcs_;
   /*! \brief schedules */
-  std::unordered_map<std::string, Map<String, BaseFunc>> schedules_;
+  std::unordered_map<std::string,
+                     Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>>
+      schedules_;
   /*! \brief name map */
   std::unordered_map<std::string, size_t> name_map_;
   /*! \brief compile engine */
