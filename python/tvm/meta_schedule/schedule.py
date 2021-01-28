@@ -21,6 +21,7 @@ from tvm import tir
 from tvm._ffi import register_object
 from tvm.runtime import Object
 from tvm.runtime.container import String
+from tvm.tir import IntImm
 
 from . import _ffi_api
 from .instruction import RAND_VAR_TYPE, BlockRV, BufferRV, ExprRV, Instruction, LoopRV
@@ -352,6 +353,8 @@ class Schedule(Object):
         """
         if isinstance(ann_val, str):
             ann_val = String(ann_val)
+        elif isinstance(ann_val, int):
+            ann_val = IntImm("int64", ann_val)
         _ffi_api.ScheduleMarkLoop(self, loop, ann_key, ann_val)  # pylint: disable=no-member
 
     def mark_block(
@@ -557,7 +560,9 @@ class Schedule(Object):
         tensor_intrin_name: str
             The name of the tensor intrinsic registered to the system
         """
-        return _ffi_api.ScheduleTensorize(self, loop, tensor_intrin_name)  # pylint: disable=no-member
+        return _ffi_api.ScheduleTensorize(  # pylint: disable=no-member
+            self, loop, tensor_intrin_name
+        )
 
     def parallel(self, loop: LoopRV) -> None:
         """Parallelize a specific loop
