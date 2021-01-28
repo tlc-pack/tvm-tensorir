@@ -81,7 +81,7 @@ Database::Entry RecordToEntry(const ObjectRef& record_obj, const SearchTask& tas
   String task_name = Downcast<String>(record->at(0));
   Map<String, ObjectRef> target = Downcast<Map<String, ObjectRef>>(record->at(1));
   Map<String, ObjectRef> target_host = Downcast<Map<String, ObjectRef>>(record->at(2));
-  double time = Downcast<FloatImm>(record->at(3))->value;
+  Array<FloatImm> times = Downcast<Array<FloatImm>>(record->at(3));
   ObjectRef trace_obj = record->at(4);
   String log_version = Downcast<String>(record->at(5));
   // TODO(@junrushao1994): structural equality of target
@@ -107,7 +107,7 @@ Database::Entry RecordToEntry(const ObjectRef& record_obj, const SearchTask& tas
   }
   Schedule sch(orig_func);
   TraceNode::Deserialize(trace_obj, sch);
-  return Database::Entry{sch->trace, Repr(sch), time};
+  return Database::Entry{sch->trace, Repr(sch), FloatArrayMean(times)};
 }
 
 }  // namespace json_io
@@ -156,7 +156,7 @@ class InMemoryDBNode : public DatabaseNode {
         }
       }
       if (total_valid > 0) {
-        LOG(INFO) << "Loaded " << total_valid << " valid record(s)."
+        LOG(INFO) << "Loaded " << total_valid << " valid record(s). "
                   << "Best time cost: " << (this->best.time * 1000) << " ms, "
                   << (task->flop_ct / this->best.time / 1e9) << " GFLOPs";
       } else {
