@@ -115,12 +115,12 @@ void ProgramMeasurerNode::Init(const SearchTask& task) {
 }
 
 Optional<Schedule> ProgramMeasurerNode::GetBest(const SearchTask& task) const {
-  Trace trace = db->GetBest().trace;
+  Optional<Trace> trace = db->GetBest().trace;
   if (!trace.defined()) {
     return NullOpt;
   }
   Schedule sch(task->workload);
-  trace->Apply(sch);
+  trace.value()->Apply(sch);
   return sch;
 }
 

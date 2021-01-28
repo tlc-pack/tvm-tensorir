@@ -424,7 +424,7 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
   // Pick measured states
   int num_measured = n * this->init_measured_ratio;
   for (const Database::Entry& entry : database->GetTopK(num_measured)) {
-    results.push_back(entry.trace);
+    results.push_back(entry.trace.value());
   }
   // Pick unmeasured states
   int num_random = n - static_cast<int>(results.size());

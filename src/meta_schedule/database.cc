@@ -89,7 +89,7 @@ Database::Entry RecordToEntry(const ObjectRef& record_obj, const SearchTask& tas
       log_version != String(kLogVersion) ||            //
       Target(target)->str() != task->target->str() ||  //
       Target(target_host)->str() != task->target_host->str()) {
-    return Database::Entry{Trace(nullptr), String(""), -1};
+    return Database::Entry{NullOpt, String(""), DatabaseNode::kMaxTimeCost};
   }
   tir::PrimFunc orig_func{nullptr};
   {
@@ -103,7 +103,7 @@ Database::Entry RecordToEntry(const ObjectRef& record_obj, const SearchTask& tas
     orig_func = Downcast<tir::PrimFunc>(LoadJSON(parsed));
   }
   if (!StructuralEqual()(orig_func, task->workload)) {
-    return Database::Entry{Trace(nullptr), String(""), -1};
+    return Database::Entry{NullOpt, String(""), DatabaseNode::kMaxTimeCost};
   }
   Schedule sch(orig_func);
   TraceNode::Deserialize(trace_obj, sch);
@@ -152,7 +152,7 @@ class InMemoryDBNode : public DatabaseNode {
         const Entry& entry = records[i];
         if (entry.trace.defined()) {
           ++total_valid;
-          this->Add(entry.trace, entry.repr, entry.time);
+          this->Add(entry.trace.value(), entry.repr, entry.time);
         }
       }
       if (total_valid > 0) {
@@ -241,7 +241,7 @@ class InMemoryDB : public Database {
   explicit InMemoryDB(const Optional<String>& path) {
     ObjectPtr<InMemoryDBNode> n = make_object<InMemoryDBNode>();
     n->path = path;
-    n->best = Database::Entry{Trace(nullptr), String(""), -1};
+    n->best = Database::Entry{NullOpt, String(""), DatabaseNode::kMaxTimeCost};
     data_ = std::move(n);
   }
 

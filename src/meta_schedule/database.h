@@ -35,7 +35,7 @@ class DatabaseNode : public runtime::Object {
   /*! \brief A database entry */
   struct Entry {
     /*! \brief The trace */
-    Trace trace;
+    Optional<Trace> trace;
     /*! \brief The string representation of the schedule */
     String repr;
     /*! \brief The running time of the schedule */
@@ -81,6 +81,9 @@ class DatabaseNode : public runtime::Object {
    * \return An integer, number of measures so far
    */
   virtual int Size() const = 0;
+
+  /*! \brief The maximum time cost*/
+  static const constexpr double kMaxTimeCost = 1e10;
 };
 
 /*!
