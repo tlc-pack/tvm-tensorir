@@ -74,19 +74,12 @@ def serialize_json(record: Any) -> str:
     return json.dumps(record).strip()
 
 
-@register_func("meta_schedule._deserialize_json")
-def deserialize_json(record: str) -> Any:
+@register_func("meta_schedule._deserialize_tuning_records")
+def _deserialize_tuning_records(records: str) -> List[Any]:
     """Deserialize the record from JSON"""
-    return json.loads(record)
+    import ujson
 
-
-@register_func("meta_schedule._batch_deserialize_json")
-def batch_deserialize_json(records: List[str]) -> List[Any]:
-    """Deserialize the record from JSON"""
-    results = []
-    for record in records:
-        results.append(json.loads(record))
-    return results
+    return ujson.loads(records)
 
 
 class NoDaemonProcess(multiprocessing.Process):
