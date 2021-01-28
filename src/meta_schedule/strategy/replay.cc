@@ -120,7 +120,7 @@ Optional<Schedule> ReplayNode::Search(const SearchTask& task, const SearchSpace&
                                        thread_measure_inputs.begin() + count};
     measurer->BatchMeasure(measure_inputs, count, verbose);
   }
-  return measurer->best_sch;
+  return measurer->GetBest(task);
 }
 
 /********** FFI **********/

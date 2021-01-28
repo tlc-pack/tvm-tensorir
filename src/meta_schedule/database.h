@@ -27,6 +27,8 @@
 namespace tvm {
 namespace meta_schedule {
 
+class SearchTask;
+
 /*! \brief An abstract database storing all the tuning records. */
 class DatabaseNode : public runtime::Object {
  public:
@@ -42,6 +44,9 @@ class DatabaseNode : public runtime::Object {
 
   /*! \brief Virtual destructor */
   virtual ~DatabaseNode() = default;
+
+  /*! \brief Initialize the database */
+  virtual void Init(const SearchTask& task) = 0;
 
   /*!
    * \brief Add a schedule into the database
@@ -60,9 +65,22 @@ class DatabaseNode : public runtime::Object {
 
   /*!
    * \brief Get the top-k entries
-   * \param repr The string representation of the schedule
+   * \param top_k The top-k entries to be queried
+   * \return A list of at most `top_k` elements
    */
   virtual std::vector<Entry> GetTopK(int top_k) const = 0;
+
+  /*!
+   * \brief Get the best entry
+   * \return An entry, nullable
+   */
+  virtual Entry GetBest() const = 0;
+
+  /*!
+   * \brief Number of records in the database
+   * \return An integer, number of measures so far
+   */
+  virtual int Size() const = 0;
 };
 
 /*!
@@ -80,7 +98,7 @@ class Database : public runtime::ObjectRef {
  * \param path Path to the file that stores tuning records in JSON format
  * \return The database created
  */
-TVM_DLL Database InMemoryDB(Optional<String> path = NullOpt);
+TVM_DLL Database InMemoryDB(Optional<String> path);
 
 }  // namespace meta_schedule
 }  // namespace tvm

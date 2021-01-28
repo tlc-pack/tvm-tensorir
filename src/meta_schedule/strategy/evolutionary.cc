@@ -383,7 +383,7 @@ Evolutionary::Evolutionary(int total_measures, int population, double init_measu
   ObjectPtr<EvolutionaryNode> n = make_object<EvolutionaryNode>();
   n->total_measures = total_measures;
   n->population = population;
-  n->database = InMemoryDB();
+  n->database = InMemoryDB(NullOpt);
   n->init_measured_ratio = init_measured_ratio;
   n->genetic_algo_iters = genetic_algo_iters;
   n->p_mutate = p_mutate;
@@ -412,7 +412,7 @@ Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const Search
     Array<MeasureResult> results = MeasureAndUpdateCostModel(task, picks, measurer, verbose);
     num_measured += results.size();
   }
-  return measurer->best_sch;
+  return measurer->GetBest(task);
 }
 
 Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& support,

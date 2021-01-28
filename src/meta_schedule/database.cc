@@ -89,7 +89,7 @@ Database::Entry RecordToEntry(const ObjectRef& record_obj, const SearchTask& tas
       log_version != String(kLogVersion) ||            //
       Target(target)->str() != task->target->str() ||  //
       Target(target_host)->str() != task->target_host->str()) {
-    return Database::Entry{Trace(nullptr), String(nullptr), -1};
+    return Database::Entry{Trace(nullptr), String(""), -1};
   }
   tir::PrimFunc orig_func{nullptr};
   {
@@ -103,7 +103,7 @@ Database::Entry RecordToEntry(const ObjectRef& record_obj, const SearchTask& tas
     orig_func = Downcast<tir::PrimFunc>(LoadJSON(parsed));
   }
   if (!StructuralEqual()(orig_func, task->workload)) {
-    return Database::Entry{Trace(nullptr), String(nullptr), -1};
+    return Database::Entry{Trace(nullptr), String(""), -1};
   }
   Schedule sch(orig_func);
   TraceNode::Deserialize(trace_obj, sch);
@@ -132,7 +132,7 @@ class InMemoryDBNode : public DatabaseNode {
   /*! \brief Virtual destructor */
   ~InMemoryDBNode() = default;
 
-  void Init(const SearchTask& task) {
+  void Init(const SearchTask& task) override {
     if (!path.defined()) {
       LOG(INFO) << "Path to tuning logs is not specified - No file is used.";
       return;
@@ -209,7 +209,7 @@ class InMemoryDBNode : public DatabaseNode {
    * \brief Get the top-k entries
    * \param repr The string representation of the schedule
    */
-  std::vector<Entry> GetTopK(int top_k) const {
+  std::vector<Entry> GetTopK(int top_k) const override {
     std::vector<Entry> result;
     result.reserve(top_k);
     auto iter = sorted_.cbegin();
@@ -218,6 +218,10 @@ class InMemoryDBNode : public DatabaseNode {
     }
     return result;
   }
+
+  Entry GetBest() const override { return best; }
+
+  int Size() const override { return entries_.size(); }
 
  public:
   /*! \brief Path to the file that stores tuning records in JSON format */
@@ -237,7 +241,7 @@ class InMemoryDB : public Database {
   explicit InMemoryDB(const Optional<String>& path) {
     ObjectPtr<InMemoryDBNode> n = make_object<InMemoryDBNode>();
     n->path = path;
-    n->best = Database::Entry{Trace(nullptr), String(nullptr), -1};
+    n->best = Database::Entry{Trace(nullptr), String(""), -1};
     data_ = std::move(n);
   }
 
