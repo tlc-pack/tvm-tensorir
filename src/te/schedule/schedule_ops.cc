@@ -320,7 +320,7 @@ class SchedulePostProc : public StmtExprMutator {
 
 
 // <bojian/TVM-SymbolicTuning>
-#if defined(SYMTUNE_SCHED_OPT_SPLIT_BLOCKIDX)
+// #if defined(SYMTUNE_SCHED_OPT_SPLIT_BLOCKIDX)
 class BlockIdxSplitter : public StmtExprMutator {
  public:
   Stmt VisitStmt(const Stmt& input_stmt) override final {
@@ -341,7 +341,6 @@ class BlockIdxSplitter : public StmtExprMutator {
     return StmtExprMutator::VisitStmt_(op);
   }
 };
-#endif
 
 Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_trivial_loop) {
   Stmt body = Stmt();
@@ -416,17 +415,18 @@ Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_tri
   SchedulePostProc post_proc;
   post_proc.Init(sch);
 
-#if defined(SYMTUNE_SCHED_OPT_SPLIT_BLOCKIDX)
-  BlockIdxSplitter blockidx_splitter;
-  body = post_proc(std::move(body));
-  blockidx_splitter(body);
-#if defined(SYMTUNE_DEBUG_TRACE)
-  LOG(INFO) << "BodyStmt after PostProc=" << body;
-#endif
-  return body;
-#else 
   return post_proc(std::move(body));
-#endif
+//   if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
+//     BlockIdxSplitter blockidx_splitter;
+//     body = post_proc(std::move(body));
+//     blockidx_splitter(body);
+// #if defined(SYMTUNE_DEBUG_TRACE)
+//     LOG(INFO) << "BodyStmt after PostProc=" << body;
+// #endif
+//     return body;
+//   } else {
+//     return post_proc(std::move(body));
+//   }
 }
 
 TVM_REGISTER_GLOBAL("schedule.ScheduleOps").set_body([](TVMArgs args, TVMRetValue* ret) {
