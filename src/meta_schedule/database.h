@@ -20,6 +20,7 @@
 #define SRC_META_SCHEDULE_DATABASE_H_
 
 #include <limits>
+#include <numeric>
 #include <vector>
 
 #include "./trace.h"
@@ -39,7 +40,14 @@ class DatabaseNode : public runtime::Object {
     /*! \brief The string representation of the schedule */
     String repr;
     /*! \brief The running time of the schedule */
-    double time;
+    std::vector<double> times;
+
+    double MeanTime() const {
+      if (times.empty()) {
+        return kMaxTimeCost;
+      }
+      return std::accumulate(times.begin(), times.end(), 0.0) / times.size();
+    }
   };
 
   /*! \brief Virtual destructor */
@@ -52,9 +60,9 @@ class DatabaseNode : public runtime::Object {
    * \brief Add a schedule into the database
    * \param trace The trace of a schedule to be added
    * \param repr The string representation of the schedule
-   * \param time The running time of the schedule
+   * \param times The running time of the schedule
    */
-  virtual void Add(const Trace& trace, const String& repr, double time) = 0;
+  virtual void Add(const Trace& trace, const String& repr, const std::vector<double>& times) = 0;
 
   /*!
    * \brief Check if a schedule already exists in the database

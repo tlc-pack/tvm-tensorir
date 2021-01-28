@@ -575,8 +575,8 @@ Array<MeasureResult> EvolutionaryNode::MeasureAndUpdateCostModel(const SearchTas
   for (int i = 0, n = measure_inputs.size(); i < n; ++i) {
     const MeasureResult& measure_result = measure_results[i];
     const CachedTrace& trace = cached_traces[i];
-    double avg_time_cost = FloatArrayMean(measure_result->costs);
-    database->Add(trace.trace->Simplified(/*remove_postproc=*/true), trace.repr, avg_time_cost);
+    database->Add(trace.trace->Simplified(/*remove_postproc=*/true), trace.repr,
+                  AsVector<FloatImm, double>()(measure_result->costs));
   }
   // Update the cost model
   cost_model->Update(measure_inputs, measure_results);

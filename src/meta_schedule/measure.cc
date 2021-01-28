@@ -148,11 +148,9 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
       MeasureErrorNO error_no = static_cast<MeasureErrorNO>(measure_result->error_no);
       if (error_no == MeasureErrorNO::kNoError) {
         double avg_time_cost = FloatArrayMean(measure_result->costs);
-        db->Add(measure_input->sch->trace, Repr(measure_input->sch), avg_time_cost);
-        double best_time_cost = db->GetBest().time;
-        if (best_time_cost < 0) {
-          best_time_cost = 1e9;
-        }
+        db->Add(measure_input->sch->trace, Repr(measure_input->sch),
+                AsVector<FloatImm, double>()(measure_result->costs));
+        double best_time_cost = db->GetBest().MeanTime();
         StdCout(verbose) << std::fixed << std::setprecision(2)  //
                          << '[' << task_name << "] #" << db->Size()
                          << "\tTime: " << (avg_time_cost * 1000) << " ms, "
@@ -161,20 +159,14 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
                          << (flop_ct / best_time_cost / 1e9) << " GFLOPs" << std::endl;
       } else if (error_no == MeasureErrorNO::kRunTimeoutError ||
                  error_no == MeasureErrorNO::kBuildTimeoutError) {
-        double best_time_cost = db->GetBest().time;
-        if (best_time_cost < 0) {
-          best_time_cost = 1e9;
-        }
+        double best_time_cost = db->GetBest().MeanTime();
         StdCout(verbose) << std::fixed << std::setprecision(2)  //
                          << '[' << task_name << "] #" << db->Size()
                          << "\tError: " << MeasureErrorNOToStr(error_no)
                          << "\tBest time: " << (best_time_cost * 1000) << " ms, "
                          << (flop_ct / best_time_cost / 1e9) << " GFLOPs" << std::endl;
       } else {
-        double best_time_cost = db->GetBest().time;
-        if (best_time_cost < 0) {
-          best_time_cost = 1e9;
-        }
+        double best_time_cost = db->GetBest().MeanTime();
         StdCout(verbose) << std::fixed << std::setprecision(2)  //
                          << '[' << task_name << "] #" << db->Size()
                          << "\tError: " << MeasureErrorNOToStr(error_no)

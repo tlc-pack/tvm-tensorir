@@ -89,7 +89,7 @@ Database::Entry RecordToEntry(const ObjectRef& record_obj, const SearchTask& tas
       log_version != String(kLogVersion) ||            //
       Target(target)->str() != task->target->str() ||  //
       Target(target_host)->str() != task->target_host->str()) {
-    return Database::Entry{NullOpt, String(""), DatabaseNode::kMaxTimeCost};
+    return Database::Entry{NullOpt, String(""), {}};
   }
   tir::PrimFunc orig_func{nullptr};
   {
@@ -103,11 +103,11 @@ Database::Entry RecordToEntry(const ObjectRef& record_obj, const SearchTask& tas
     orig_func = Downcast<tir::PrimFunc>(LoadJSON(parsed));
   }
   if (!StructuralEqual()(orig_func, task->workload)) {
-    return Database::Entry{NullOpt, String(""), DatabaseNode::kMaxTimeCost};
+    return Database::Entry{NullOpt, String(""), {}};
   }
   Schedule sch(orig_func);
   TraceNode::Deserialize(trace_obj, sch);
-  return Database::Entry{sch->trace, Repr(sch), FloatArrayMean(times)};
+  return Database::Entry{sch->trace, Repr(sch), AsVector<FloatImm, double>()(times)};
 }
 
 }  // namespace json_io
@@ -120,8 +120,10 @@ struct EntryHasher {
 
 struct EntryPtrComparator {
   bool operator()(Database::Entry* a, Database::Entry* b) const {
-    if (a->time != b->time) {
-      return a->time < b->time;
+    double a_time = a->MeanTime();
+    double b_time = b->MeanTime();
+    if (a_time != b_time) {
+      return a_time < b_time;
     }
     return a->repr.compare(b->repr) < 0;
   }
@@ -152,13 +154,13 @@ class InMemoryDBNode : public DatabaseNode {
         const Entry& entry = records[i];
         if (entry.trace.defined()) {
           ++total_valid;
-          this->Add(entry.trace.value(), entry.repr, entry.time);
+          this->Add(entry.trace.value(), entry.repr, entry.times);
         }
       }
       if (total_valid > 0) {
         LOG(INFO) << "Loaded " << total_valid << " valid record(s). "
-                  << "Best time cost: " << (this->best.time * 1000) << " ms, "
-                  << (task->flop_ct / this->best.time / 1e9) << " GFLOPs";
+                  << "Best time cost: " << (this->best.MeanTime() * 1000) << " ms, "
+                  << (task->flop_ct / this->best.MeanTime() / 1e9) << " GFLOPs";
       } else {
         LOG(INFO) << "No valid records found.";
       }
@@ -180,10 +182,12 @@ class InMemoryDBNode : public DatabaseNode {
    * \param repr The string representation of the schedule
    * \param time The running time of the schedule
    */
-  void Add(const Trace& trace, const String& repr, double time) override {
+  void Add(const Trace& trace, const String& repr, const std::vector<double>& times) override {
+    CHECK(!times.empty());
     Database::Entry& entry = entries_[repr];
+    double time = std::accumulate(times.begin(), times.end(), 0.0) / times.size();
     if (!entry.repr.empty()) {
-      if (entry.time >= time) {
+      if (entry.MeanTime() >= time) {
         sorted_.erase(&entry);
       } else {
         return;
@@ -191,9 +195,9 @@ class InMemoryDBNode : public DatabaseNode {
     }
     entry.trace = trace;
     entry.repr = repr;
-    entry.time = time;
+    entry.times = times;
     sorted_.insert(&entry);
-    if (!best.trace.defined() || best.time > time) {
+    if (!best.trace.defined() || best.MeanTime() > time) {
       best = entry;
     }
   }
@@ -241,7 +245,7 @@ class InMemoryDB : public Database {
   explicit InMemoryDB(const Optional<String>& path) {
     ObjectPtr<InMemoryDBNode> n = make_object<InMemoryDBNode>();
     n->path = path;
-    n->best = Database::Entry{NullOpt, String(""), DatabaseNode::kMaxTimeCost};
+    n->best = Database::Entry{NullOpt, String(""), {}};
     data_ = std::move(n);
   }
 
