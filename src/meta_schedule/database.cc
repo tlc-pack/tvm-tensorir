@@ -18,10 +18,100 @@
  */
 #include "./database.h"  // NOLINT(build/include)
 
+#include <dmlc/memory_io.h>
+#include <tvm/node/serialization.h>
+
 #include <map>
+
+#include "../support/base64.h"
+#include "./measure.h"
+#include "./measure_record.h"
+#include "./utils.h"
 
 namespace tvm {
 namespace meta_schedule {
+namespace json_io {
+
+/*!
+ * \brief Read a specific file line by line, parse them into JSON-like TVM objects
+ * \param path Path to the file
+ * \return Lines of the file, NullOpt if fails to open the file
+ */
+Optional<Array<ObjectRef>> LoadTuningRecords(const String& path) {
+  // Open the file
+  std::ifstream ifs(path);
+  if (!ifs.is_open() || ifs.fail()) {
+    return NullOpt;
+  }
+  // Read lines from the file
+  std::ostringstream os;
+  os << '[';
+  bool is_first = true;
+  for (std::string line; std::getline(ifs, line);) {
+    if (!line.empty() && line[0] != '#' && line[0] != '/' && !std::isspace(line[0])) {
+      if (is_first) {
+        is_first = false;
+      } else {
+        os << ',';
+      }
+      os << line;
+    }
+  }
+  os << ']';
+  // Deserialize the tuning records to JSON-like TVM objects
+  static const auto* f_deserialize =
+      runtime::Registry::Get("meta_schedule._deserialize_tuning_records");
+  CHECK(f_deserialize)
+      << "IndexError: Cannot find packed function \""
+         "meta_schedule._deserialize_tuning_records\", which should be registered in python";
+  ObjectRef parsed = (*f_deserialize)(os.str());
+  const ArrayNode* array = parsed.as<runtime::ArrayNode>();
+  CHECK(array);
+  return GetRef<Array<ObjectRef>>(array);
+}
+
+/*!
+ * \brief Convert a tuning record, represented by JSON-like TVM object, to a database entry
+ * \param record_obj The tuning record
+ * \param task The search task
+ */
+Database::Entry RecordToEntry(const ObjectRef& record_obj, const SearchTask& task) {
+  const auto* record = record_obj.as<ArrayNode>();
+  CHECK_EQ(record->size(), 7);
+  String task_name = Downcast<String>(record->at(0));
+  Map<String, ObjectRef> target = Downcast<Map<String, ObjectRef>>(record->at(1));
+  Map<String, ObjectRef> target_host = Downcast<Map<String, ObjectRef>>(record->at(2));
+  double time = Downcast<FloatImm>(record->at(3))->value;
+  ObjectRef trace_obj = record->at(4);
+  String log_version = Downcast<String>(record->at(5));
+  // TODO(@junrushao1994): structural equality of target
+  if (task_name != task->task_name ||                  //
+      log_version != String(kLogVersion) ||            //
+      Target(target)->str() != task->target->str() ||  //
+      Target(target_host)->str() != task->target_host->str()) {
+    return Database::Entry{Trace(nullptr), String(nullptr), -1};
+  }
+  tir::PrimFunc orig_func{nullptr};
+  {
+    std::string prim_func_b64 = Downcast<String>(record->at(6));
+    dmlc::MemoryStringStream m_stream(&prim_func_b64);
+    support::Base64InStream b64strm(&m_stream);
+    std::string parsed;
+    b64strm.InitPosition();
+    dmlc::Stream* strm = &b64strm;
+    strm->Read(&parsed);
+    orig_func = Downcast<tir::PrimFunc>(LoadJSON(parsed));
+  }
+  if (!StructuralEqual()(orig_func, task->workload)) {
+    return Database::Entry{Trace(nullptr), String(nullptr), -1};
+  }
+  Schedule sch(orig_func);
+  TraceNode::Deserialize(trace_obj, sch);
+  return Database::Entry{sch->trace, Repr(sch), time};
+}
+
+}  // namespace json_io
+
 namespace in_memory_db {
 
 struct EntryHasher {
@@ -42,7 +132,47 @@ class InMemoryDBNode : public DatabaseNode {
   /*! \brief Virtual destructor */
   ~InMemoryDBNode() = default;
 
-  void VisitAttrs(tvm::AttrVisitor* v) {}
+  void Init(const SearchTask& task) {
+    if (!path.defined()) {
+      LOG(INFO) << "Path to tuning logs is not specified - No file is used.";
+      return;
+    }
+    if (Optional<Array<ObjectRef>> opt_loaded = json_io::LoadTuningRecords(path.value())) {
+      Array<ObjectRef> loaded = opt_loaded.value();
+      int n_loaded = loaded.size();
+      LOG(INFO) << "Found " << n_loaded << " record(s) in the file: " << path.value()
+                << ". Now parsing...";
+      std::vector<Entry> records(n_loaded);
+      for (int i = 0; i < n_loaded; ++i) {
+        const ObjectRef& record_obj = loaded[i];
+        records[i] = json_io::RecordToEntry(record_obj, task);
+      }
+      int total_valid = 0;
+      for (int i = 0; i < n_loaded; ++i) {
+        const Entry& entry = records[i];
+        if (entry.trace.defined()) {
+          ++total_valid;
+          this->Add(entry.trace, entry.repr, entry.time);
+        }
+      }
+      if (total_valid > 0) {
+        LOG(INFO) << "Loaded " << total_valid << " valid record(s)."
+                  << "Best time cost: " << (this->best.time * 1000) << " ms, "
+                  << (task->flop_ct / this->best.time / 1e9) << " GFLOPs";
+      } else {
+        LOG(INFO) << "No valid records found.";
+      }
+    } else {
+      LOG(INFO) << "Nothing is loaded because the file cannot be opened: " << path.value();
+    }
+  }
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("path", &path);
+    // `best` is not visited
+    // `entries_` is not visited
+    // `sorted_` is not visited
+  }
 
   /*!
    * \brief Add a schedule into the database
@@ -63,6 +193,9 @@ class InMemoryDBNode : public DatabaseNode {
     entry.repr = repr;
     entry.time = time;
     sorted_.insert(&entry);
+    if (!best.trace.defined() || best.time > time) {
+      best = entry;
+    }
   }
 
   /*!
@@ -86,6 +219,12 @@ class InMemoryDBNode : public DatabaseNode {
     return result;
   }
 
+ public:
+  /*! \brief Path to the file that stores tuning records in JSON format */
+  Optional<String> path;
+  /*! \brief The best entry so far */
+  Entry best;
+
  private:
   /*! \brief All the measured states, de-duplicated by the string repr */
   std::unordered_map<String, Database::Entry> entries_;
@@ -95,7 +234,12 @@ class InMemoryDBNode : public DatabaseNode {
 
 class InMemoryDB : public Database {
  public:
-  InMemoryDB() { data_ = make_object<InMemoryDBNode>(); }
+  explicit InMemoryDB(const Optional<String>& path) {
+    ObjectPtr<InMemoryDBNode> n = make_object<InMemoryDBNode>();
+    n->path = path;
+    n->best = Database::Entry{Trace(nullptr), String(nullptr), -1};
+    data_ = std::move(n);
+  }
 
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(InMemoryDB, Database, InMemoryDBNode);
 };
@@ -104,7 +248,7 @@ TVM_REGISTER_NODE_TYPE(InMemoryDBNode);
 
 }  // namespace in_memory_db
 
-Database InMemoryDB() { return in_memory_db::InMemoryDB(); }
+Database InMemoryDB(Optional<String> path) { return in_memory_db::InMemoryDB(path); }
 
 TVM_REGISTER_OBJECT_TYPE(DatabaseNode);
 

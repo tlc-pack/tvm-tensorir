@@ -77,9 +77,10 @@ class Database : public runtime::ObjectRef {
 
 /*!
  * \brief Create an in-memory database
+ * \param path Path to the file that stores tuning records in JSON format
  * \return The database created
  */
-TVM_DLL Database InMemoryDB();
+TVM_DLL Database InMemoryDB(Optional<String> path = NullOpt);
 
 }  // namespace meta_schedule
 }  // namespace tvm
