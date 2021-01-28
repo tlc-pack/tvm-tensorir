@@ -159,16 +159,16 @@ bool Scope::IsReduction(const StmtSRef& block_sref) const {
     }
   }
   // Cond 4. All Reduction vars should not affect indexing the output buffer
-  bool cond4 = true;
-  PreOrderVisit(GetRef<Block>(block), [block, &cond4] (const ObjectRef& node) {
-    if (!cond4) {
+  bool not_affected = true;
+  PreOrderVisit(GetRef<Block>(block), [block, &not_affected] (const ObjectRef& node) {
+    if (!not_affected) {
       return false;
     }
     if (const auto* var = node.as<BufferStoreNode>()) {
       for (const TensorRegion& write_region : block->writes) {
         if (var->buffer.same_as(write_region->buffer)) {
           if (!CheckReductionInstance(block->iter_vars, var->indices)) {
-            cond4 = false;
+            not_affected = false;
             break;
           }
         }
@@ -177,7 +177,7 @@ bool Scope::IsReduction(const StmtSRef& block_sref) const {
     }
     return true;
   });
-  return cond4;
+  return not_affected;
 }
 
 bool Scope::IsCompactDataFlow(const StmtSRef& subtree_sref, const ScheduleNode* schedule) const {

@@ -429,7 +429,6 @@ class AutoTensorizeComparator : public tir::TensorizeComparator {
   bool VisitStmt(const tir::Stmt& n, const tir::Stmt& rhs) override {
     if (n.same_as(rhs)) return true;
     tir::Stmt lhs = n;
-    // TODO(bohan)
     if (lhs->type_index() != rhs->type_index()) {
       return false;
     }
