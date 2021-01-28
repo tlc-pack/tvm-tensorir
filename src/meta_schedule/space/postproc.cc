@@ -497,6 +497,7 @@ class PostprocRewriteReduceStep {
         const LoopRV& loop_rv = loop_rvs[i];
         tir::StmtSRef loop_sref = sch->Eval(loop_rv);
         if (GetLoopIterType(sch->sch, loop_sref) != tir::kDataPar) {
+          // Insert the initializing block above the first loop which is not data parallel.
           BlockRV init = sch->DecomposeReduction(block_rv, loop_rvs[i]);
           Array<LoopRV> loops = sch->GetAxes(init);
           if (!loops.empty()) {

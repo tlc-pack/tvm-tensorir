@@ -789,6 +789,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
         p->Print(allocate);
       }
       if (op->init.defined()) {
+        // print the block init statement
         p->Print(op->init.value());
       }
       p->Print(op->body);

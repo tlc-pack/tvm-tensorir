@@ -1048,7 +1048,7 @@ class BlockNode : public StmtNode {
   Array<Annotation> annotations;
   /*! \brief The body of the block. */
   Stmt body;
-  /*! \brief The init block of reduction block */
+  /*! \brief The init part of reduction block */
   Optional<Stmt> init;
   /*! \brief The tag of the block. */
   std::string tag;
