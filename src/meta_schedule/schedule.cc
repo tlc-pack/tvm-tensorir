@@ -870,7 +870,7 @@ struct Internal {
    * \sa ScheduleNode::SampleInt
    */
   static tir::Var SampleInt(Schedule sch, PrimExpr min_inclusive, PrimExpr max_exclusive,
-                            Optional<ObjectRef> decision) {
+                            Optional<Integer> decision) {
     return sch->SampleInt(min_inclusive, max_exclusive, decision);
   }
   /*!
@@ -878,14 +878,14 @@ struct Internal {
    * \sa ScheduleNode::SampleCategorical
    */
   static tir::Var SampleCategorical(Schedule sch, Array<Integer> candidates, Array<FloatImm> probs,
-                                    Optional<ObjectRef> decision) {
+                                    Optional<Integer> decision) {
     return sch->SampleCategorical(candidates, probs, decision);
   }
   /*!
    * \brief FFI function, corresponds to ScheduleNode::SampleComputeLocation
    * \sa ScheduleNode::SampleComputeLocation
    */
-  static LoopRV SampleComputeLocation(Schedule sch, BlockRV block, Optional<ObjectRef> decision) {
+  static LoopRV SampleComputeLocation(Schedule sch, BlockRV block, Optional<Integer> decision) {
     return sch->SampleComputeLocation(block, decision);
   }
   /**************** Block/Loop Relationship ****************/

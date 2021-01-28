@@ -520,7 +520,11 @@ class PostprocRewriteReduceStep {
         const LoopRV& loop_rv = loop_rvs[i];
         tir::StmtSRef loop_sref = sch->Eval(loop_rv);
         if (GetLoopIterType(sch->sch, loop_sref) != tir::kDataPar) {
-          sch->DecomposeReduction(block_rv, loop_rvs[i]);
+          BlockRV init = sch->DecomposeReduction(block_rv, loop_rvs[i]);
+          Array<LoopRV> loops = sch->GetAxes(init);
+          if (!loops.empty()) {
+            sch->Vectorize(loops.back());
+          }
           break;
         }
       }
