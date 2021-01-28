@@ -486,9 +486,7 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
   auto& state = *p_state;
 
   // <bojian/TVM-SymbolicTuning>
-#if defined(SYMTUNE_DEBUG_TRACE)
   const Stage& stage = s;
-#endif
 
   for (size_t i = s->relations.size(); i != 0; --i) {
     IterVarRelation rel = s->relations[i - 1];
@@ -503,9 +501,9 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
           state[s->parent] = true;
 
           // <bojian/TVM-SymbolicTuning>
-#if defined(SYMTUNE_DEBUG_TRACE)
-          LOG(INFO) << "Bound checking is required for " << stage;
-#endif
+          if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+            LOG(INFO) << "Bound checking is required for " << stage;
+          }
 
         } else {
           if (analyzer->CanProve(dom_map.at(s->parent)->extent == factor * step)) {
@@ -518,9 +516,9 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
             state[s->parent] = true;
 
             // <bojian/TVM-SymbolicTuning>
-#if defined(SYMTUNE_DEBUG_TRACE)
-            LOG(INFO) << "Bound checking is required for " << stage;
-#endif
+            if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+              LOG(INFO) << "Bound checking is required for " << stage;
+            }
 
           }
         }
@@ -528,9 +526,9 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
         state[s->parent] = true;
 
         // <bojian/TVM-SymbolicTuning>
-#if defined(SYMTUNE_DEBUG_TRACE)
-        LOG(INFO) << "Bound checking is required for " << stage;
-#endif
+        if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+          LOG(INFO) << "Bound checking is required for " << stage;
+        }
 
       }
     } else if (const FuseNode* s = rel.as<FuseNode>()) {
@@ -560,9 +558,9 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
                                      bool skip_ivar_domain,
                                      const std::unordered_set<IterVar>& skip_iter) {
   // <bojian/TVM-SymbolicTuning>
-#if defined(SYMTUNE_DEBUG_TRACE)
-  LOG(INFO) << "Making bound check for " << stage;
-#endif
+  if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+    LOG(INFO) << "Making bound check for " << stage;
+  }
 
   arith::Analyzer analyzer;
 
@@ -585,10 +583,10 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
   }
 
   // <bojian/TVM-SymbolicTuning>
-#if defined(SYMTUNE_DEBUG_TRACE)
-  LOG(INFO) <<  "all_iter_vars=" << exprs_tostr(stage->all_iter_vars) << ", "
-            << "root_iter_vars=" << exprs_tostr(stage->op->root_iter_vars());
-#endif
+  if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+    LOG(INFO) <<  "all_iter_vars=" << exprs_tostr(stage->all_iter_vars) << ", "
+              << "root_iter_vars=" << exprs_tostr(stage->op->root_iter_vars());
+  }
 
   // <bojian/TVM-SymbolicTuning>
   // #if defined(SYMTUNE_SCHED_OPT_NO_DUP_IF_CHECKS)
@@ -603,11 +601,11 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
         if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
           if (prev_predicate.defined()) {
-#if defined(SYMTUNE_DEBUG_TRACE)
-            LOG(WARNING) << "Predicate (" << value << "<" << dom->extent << ") "
-                         << "is assumed to be a subset of "
-                         << "(" << prev_predicate << ")";
-#endif
+            if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+              LOG(WARNING) << "Predicate (" << value << "<" << dom->extent << ") "
+                           << "is assumed to be a subset of "
+                           << "(" << prev_predicate << ")";
+            }
             continue;
           }
         }
@@ -618,10 +616,10 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
         if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
           prev_predicate = value < dom->extent;
         }
-#if defined(SYMTUNE_DEBUG_TRACE)
-        LOG(INFO) << "Inserting predicate (" << value << "<" << dom->extent 
-                  << ") for " << stage;
-#endif
+        if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+          LOG(INFO) << "Inserting predicate (" << value << "<" << dom->extent 
+                    << ") for " << stage;
+        }
 
       }
     }
@@ -645,10 +643,10 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
         if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
           if (stage->origin_op->name.find(".local") !=
               std::string::npos) {
-#if defined(SYMTUNE_DEBUG_TRACE)
-            LOG(WARNING) << "\'.local\' spotted in " << stage << ". Assuming it is a cache write "
-                            "whose boundary check can be neglected";
-#endif
+            if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+              LOG(WARNING) << "\'.local\' spotted in " << stage << ". Assuming it is a cache write "
+                              "whose boundary check can be neglected";
+            }
             continue;
           }
         }
@@ -656,19 +654,19 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
         preds.emplace_back(value < iv->dom->extent);
 
         // <bojian/TVM-SymbolicTuning>
-#if defined(SYMTUNE_DEBUG_TRACE)
-        LOG(INFO) << "Inserting predicate (" << value << " < " << iv->dom->extent
-                  << ") for " << stage;
-#endif
+        if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+          LOG(INFO) << "Inserting predicate (" << value << " < " << iv->dom->extent
+                    << ") for " << stage;
+        }
 
       }
     }
   }
 
   // <bojian/TVM-SymbolicTuning>
-#if defined(SYMTUNE_DEBUG_TRACE)
-  LOG(INFO) << "Inserting predicates=" << exprs_tostr(preds);
-#endif
+  if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+    LOG(INFO) << "Inserting predicates=" << exprs_tostr(preds);
+  }
 
   return preds;
 }

@@ -237,9 +237,9 @@ void PrepareAxisMapping(Stage orig_stage, OpType* op, std::unordered_set<IterVar
     predicates = MakeBoundCheck(orig_stage, dom_map, value_map, true, skip_bound_check);
 
     // <bojian/TVM-SymbolicTuning> Added the logging of predicates.
-#if defined(SYMTUNE_DEBUG_TRACE)
-    LOG(INFO) << "Introducing predicates=" << exprs_tostr(predicates);
-#endif
+    if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+      LOG(INFO) << "Introducing predicates=" << exprs_tostr(predicates);
+    }
 
     // The root axis
     for (IterVar iv : op->axis) {
@@ -449,9 +449,9 @@ Array<Tensor> Schedule::cache_write(const Array<Tensor>& tensor_array, const std
   ICHECK(tensor_array.size() > 0) << "size of tensor_array must be greater than 0";
 
   // <bojian/TVM-SymbolicTuning> Added the logging for cache_write steps.
-#if defined(SYMTUNE_DEBUG_TRACE)
-  LOG(INFO) << "Caching tensors " << exprs_tostr(tensor_array);
-#endif
+  if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+    LOG(INFO) << "Caching tensors " << exprs_tostr(tensor_array);
+  }
 
   Tensor tensor = tensor_array[0];
   Stage orig_stage = operator[](tensor->op);

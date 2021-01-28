@@ -369,9 +369,9 @@ Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_tri
     Stage s = sch->stages[i - 1];
 
     // <bojian/TVM-SymbolicTuning>
-#if defined(SYMTUNE_DEBUG_TRACE)
-    LOG(INFO) << "Scheduling for " << s;
-#endif
+    if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+      LOG(INFO) << "Scheduling for " << s;
+    }
 
     ICHECK_NE(s->attach_type, kInline) << "call schedule.normalize before scheduleops";
     ICHECK(s->op.defined());
@@ -408,9 +408,9 @@ Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_tri
     }
   }
   // <bojian/TVM-SymbolicTuning>
-#if defined(SYMTUNE_DEBUG_TRACE)
-  LOG(INFO) << "BodyStmt=" << body;
-#endif
+  // if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+  //   LOG(INFO) << "BodyStmt=" << body;
+  // }
 
   SchedulePostProc post_proc;
   post_proc.Init(sch);
@@ -420,9 +420,9 @@ Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_tri
 //     BlockIdxSplitter blockidx_splitter;
 //     body = post_proc(std::move(body));
 //     blockidx_splitter(body);
-// #if defined(SYMTUNE_DEBUG_TRACE)
-//     LOG(INFO) << "BodyStmt after PostProc=" << body;
-// #endif
+//     if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+//       LOG(INFO) << "BodyStmt after PostProc=" << body;
+//     }
 //     return body;
 //   } else {
 //     return post_proc(std::move(body));

@@ -372,11 +372,11 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
     }
 
     // <bojian/TVM-SymbolicTuning>
-#if defined(SYMTUNE_DEBUG_TRACE)
-    LOG(INFO) << "Making ComputeStmt for " << stage << " with "
-              << "main_predicates=" << exprs_tostr(n.main_predicates) << " and "
-              << "init_predicates=" << exprs_tostr(n.init_predicates);
-#endif
+    if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+      LOG(INFO) << "Making ComputeStmt for " << stage << " with "
+                << "main_predicates=" << exprs_tostr(n.main_predicates) << " and "
+                << "init_predicates=" << exprs_tostr(n.init_predicates);
+    }
 
     // run substitution in the on the full nest, because  loop condition
     // could depend on outer loops.
@@ -450,10 +450,10 @@ ComputeLoopNest ComputeLoopNest::Create(const BaseComputeOpNode* self, const Sta
                                         const std::unordered_map<IterVar, Range>& dom_map,
                                         bool debug_keep_trivial_loop) {
   // <bojian/TVM-SymbolicTuning> Added the logging for the creation of ComputeLoopNest.
-#if defined(SYMTUNE_DEBUG_TRACE)
-  std::cout << std::endl;
-  LOG(INFO) << "Creating the ComputeLoopNest for " << stage;
-#endif
+  if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+    std::cout << std::endl;
+    LOG(INFO) << "Creating the ComputeLoopNest for " << stage;
+  }
 
   ICHECK_EQ(stage->op.operator->(), self);
   ComputeLoopNest ret;
@@ -464,9 +464,9 @@ ComputeLoopNest ComputeLoopNest::Create(const BaseComputeOpNode* self, const Sta
       MakeBoundCheck(stage, dom_map, ret.main_vmap, false, std::unordered_set<IterVar>());
 
   // <bojian/TVM-SymbolicTuning>
-#if defined(SYMTUNE_DEBUG_TRACE)
-  LOG(INFO) << "Finished creating the main predicates";
-#endif
+  if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+    LOG(INFO) << "Finished creating the main predicates";
+  }
 
   for (auto& e : ret.main_predicates) {
     e = likely(e);
@@ -474,9 +474,9 @@ ComputeLoopNest ComputeLoopNest::Create(const BaseComputeOpNode* self, const Sta
   if (stage->store_predicate.defined()) {
 
     // <bojian/TVM-SymbolicTuning>
-#if defined(SYMTUNE_DEBUG_TRACE)
-    LOG(INFO) << "store_predicate=" << stage->store_predicate;
-#endif
+    if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+      LOG(INFO) << "store_predicate=" << stage->store_predicate;
+    }
 
     ret.main_predicates.push_back(stage->store_predicate);
   }
@@ -524,10 +524,10 @@ ComputeLoopNest ComputeLoopNest::Create(const BaseComputeOpNode* self, const Sta
   // copy elison here.
 
   // <bojian/TVM-SymbolicTuning>
-#if defined(SYMTUNE_DEBUG_TRACE)
-  LOG(INFO) << "Finished the creation of ComputeLoopNest";
-  std::cout << std::endl;
-#endif
+  if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
+    LOG(INFO) << "Finished the creation of ComputeLoopNest";
+    std::cout << std::endl;
+  }
 
   return ret;
 }
