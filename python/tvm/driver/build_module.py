@@ -167,7 +167,7 @@ def lower(sch, args, name="main", binds=None, simple_mode=False):
         mod = form_irmodule(sch, args, name, binds)
     elif isinstance(sch, tvm.tir.PrimFunc):
         func = sch.with_attr("global_symbol", name)
-        if pass_ctx.config.get("tir.restricted_func"):
+        if pass_ctx.config.get("tir.noalias", True):
             func = func.with_attr("tir.noalias", True)
         mod = tvm.IRModule({name: func})
         is_tir_schedule = True
