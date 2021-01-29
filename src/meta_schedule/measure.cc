@@ -61,24 +61,18 @@ RPCRunner::RPCRunner(String key, String host, int port, int priority, int n_para
 }
 
 ProgramMeasurer::ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner,
-                                 Array<MeasureCallback> callbacks, int num_measured,
-                                 double best_time_cost, int best_index,
-                                 Optional<Schedule> best_sch) {
+                                 Array<MeasureCallback> callbacks, Database db) {
   ObjectPtr<ProgramMeasurerNode> n = make_object<ProgramMeasurerNode>();
   n->builder = std::move(builder);
   n->runner = std::move(runner);
   n->callbacks = std::move(callbacks);
-  n->num_measured = num_measured;
-  n->best_time_cost = best_time_cost;
-  n->best_index = best_index;
-  n->best_sch = std::move(best_sch);
+  n->db = std::move(db);
   data_ = std::move(n);
 }
 
 ProgramMeasurer::ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner,
                                  Array<MeasureCallback> callbacks)
-    : ProgramMeasurer(builder, runner, callbacks, /*num_measured=*/0,
-                      /*best_time_cost=*/kMaxTimeCost, /*best_index=*/-1, /*best_sch=*/NullOpt) {}
+    : ProgramMeasurer(builder, runner, callbacks, InMemoryDB(NullOpt)) {}
 
 /********** LocalBuilder **********/
 
@@ -112,151 +106,22 @@ Array<MeasureResult> RPCRunnerNode::Run(const Array<MeasureInput>& inputs,
 
 /********** ProgramMeasurer **********/
 
-class MeasureRecordNode : public Object {
- public:
-  Schedule sch;
-  Array<FloatImm> costs;
-  double avg_cost;
-
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("sch", &sch);
-    v->Visit("costs", &costs);
-    v->Visit("avg_cost", &avg_cost);
-  }
-
-  static constexpr const char* _type_key = "meta_schedule.MeasureRecord";
-  TVM_DECLARE_FINAL_OBJECT_INFO(MeasureRecordNode, Object);
-};
-
-class MeasureRecord : public ObjectRef {
- public:
-  explicit MeasureRecord(Schedule sch, Array<FloatImm> costs);
-
-  TVM_DEFINE_OBJECT_REF_METHODS(MeasureRecord, ObjectRef, MeasureRecordNode);
-};
-
-MeasureRecord::MeasureRecord(Schedule sch, Array<FloatImm> costs) {
-  ObjectPtr<MeasureRecordNode> n = make_object<MeasureRecordNode>();
-  n->sch = std::move(sch);
-  n->costs = std::move(costs);
-  n->avg_cost = FloatArrayMean(n->costs);
-  data_ = std::move(n);
-}
-
-Array<String> LoadLogFile(const String& filename) {
-  std::ifstream ifs(filename);
-  if (!ifs.is_open() || ifs.fail()) {
-    LOG(INFO) << "File not found: " << filename << ". No recrod is loaded";
-    return {};
-  }
-  Array<String> result;
-  for (std::string line; std::getline(ifs, line);) {
-    if (!line.empty() && line[0] != '#' && line[0] != '/' && !std::isspace(line[0])) {
-      result.push_back(line);
-    }
-  }
-  return result;
-}
-
-Array<ObjectRef> DeserializeLog(const String& line) {
-  static const auto* f_deserialize = runtime::Registry::Get("meta_schedule._deserialize_json");
-  CHECK(f_deserialize) << "IndexError: Cannot find packed function \""
-                          "meta_schedule._deserialize_json\", which should be registered in python";
-  return (*f_deserialize)(line);
-}
-
-Array<Array<ObjectRef>> BatchDeserializeLog(const Array<String>& line) {
-  static const auto* f_deserialize =
-      runtime::Registry::Get("meta_schedule._batch_deserialize_json");
-  CHECK(f_deserialize)
-      << "IndexError: Cannot find packed function \""
-         "meta_schedule._batch_deserialize_json\", which should be registered in python";
-  return (*f_deserialize)(line);
-}
-
-Optional<MeasureRecord> ImportLog(const SearchTask& task, const Array<ObjectRef>& record) {
-  CHECK_EQ(record.size(), 7);
-  String task_name = Downcast<String>(record[0]);
-  Map<String, ObjectRef> target = Downcast<Map<String, ObjectRef>>(record[1]);
-  Map<String, ObjectRef> target_host = Downcast<Map<String, ObjectRef>>(record[2]);
-  String log_version = Downcast<String>(record[5]);
-  // TODO(@junrushao1994): structural equality of target
-  if (task_name != task->task_name ||                  //
-      log_version != String(kLogVersion) ||            //
-      Target(target)->str() != task->target->str() ||  //
-      Target(target_host)->str() != task->target_host->str()) {
-    return NullOpt;
-  }
-  tir::PrimFunc orig_func{nullptr};
-  {
-    std::string prim_func_b64 = Downcast<String>(record[6]);
-    dmlc::MemoryStringStream m_stream(&prim_func_b64);
-    support::Base64InStream b64strm(&m_stream);
-    std::string parsed;
-    b64strm.InitPosition();
-    dmlc::Stream* strm = &b64strm;
-    strm->Read(&parsed);
-    orig_func = Downcast<tir::PrimFunc>(LoadJSON(parsed));
-  }
-  if (!StructuralEqual()(orig_func, task->workload)) {
-    return NullOpt;
-  }
-  Schedule sch(orig_func);
-  TraceNode::Deserialize(record[4], sch);
-  return MeasureRecord(/*sch=*/sch, /*costs=*/Downcast<Array<FloatImm>>(record[3]));
-}
-
 void ProgramMeasurerNode::Init(const SearchTask& task) {
-  num_measured = 0;
-  best_time_cost = ProgramMeasurer::kMaxTimeCost;
-  best_index = -1;
-  best_sch = NullOpt;
   for (const MeasureCallback& callback : callbacks) {
     callback->Init(task);
   }
-  // Loading existing logs from file
-  if (task->log_file.defined()) {
-    // Read every line of the log file
-    String log_file = task->log_file.value();
-    Array<String> log_file_lines = LoadLogFile(log_file);
-    if (!log_file_lines.empty()) {
-      LOG(INFO) << "Found " << log_file_lines.size() << " record(s) in the file: " << log_file
-                << ". Now parsing...";
-    }
-    // Parse the log file
-    Array<Array<ObjectRef>> parsed_records;
-    parsed_records.reserve(log_file_lines.size());
-    for (const String& line : log_file_lines) {
-      parsed_records.push_back(DeserializeLog(line));
-    }
-    // Import from the log file
-    std::vector<Optional<MeasureRecord>> imported_records;
-    imported_records.reserve(parsed_records.size());
-    for (const Array<ObjectRef>& record : parsed_records) {
-      imported_records.push_back(ImportLog(task, record));
-    }
-    // Find the best result
-    for (const Optional<MeasureRecord>& opt_record : imported_records) {
-      if (!opt_record.defined()) {
-        continue;
-      }
-      ++num_measured;
-      const MeasureRecord& record = opt_record.value();
-      if (record->avg_cost < best_time_cost) {
-        best_time_cost = record->avg_cost;
-        best_index = num_measured;
-        best_sch = record->sch;
-      }
-    }
-    if (!log_file_lines.empty()) {
-      LOG(INFO) << "Loaded " << imported_records.size()
-                << " valid record(s) from the file: " << log_file
-                << ". Best time cost: " << (best_time_cost * 1000) << " ms, "
-                << (task->flop_ct / best_time_cost / 1e9) << " GFLOPs";
-    }
-  } else {
-    LOG(INFO) << "No log file is used.";
+  this->db = InMemoryDB(task->log_file);
+  this->db->Init(task);
+}
+
+Optional<Schedule> ProgramMeasurerNode::GetBest(const SearchTask& task) const {
+  Optional<Trace> trace = db->GetBest().trace;
+  if (!trace.defined()) {
+    return NullOpt;
   }
+  Schedule sch(task->workload);
+  trace.value()->Apply(sch);
+  return sch;
 }
 
 Array<MeasureResult> ProgramMeasurerNode::PureMeasure(const Array<MeasureInput>& measure_inputs,
@@ -276,31 +141,34 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
                                              measure_inputs.begin() + ed);
     Array<MeasureResult> batch_measure_results = this->PureMeasure(batch_measure_inputs, verbose);
     for (int i = 0; i < ed - st; ++i) {
-      ++num_measured;
       const MeasureInput& measure_input = batch_measure_inputs[i];
       const MeasureResult& measure_result = batch_measure_results[i];
       double flop_ct = measure_input->task->flop_ct;
+      const String& task_name = measure_input->task->task_name;
       MeasureErrorNO error_no = static_cast<MeasureErrorNO>(measure_result->error_no);
       if (error_no == MeasureErrorNO::kNoError) {
         double avg_time_cost = FloatArrayMean(measure_result->costs);
-        if (avg_time_cost < best_time_cost) {
-          best_time_cost = avg_time_cost;
-          best_index = num_measured;
-          best_sch = measure_input->sch;
-        }
-        StdCout(verbose) << std::fixed << std::setprecision(2) << "#" << num_measured
+        db->Add(measure_input->sch->trace, Repr(measure_input->sch),
+                AsVector<FloatImm, double>()(measure_result->costs));
+        double best_time_cost = db->GetBest().MeanTime();
+        StdCout(verbose) << std::fixed << std::setprecision(2)  //
+                         << '[' << task_name << "] #" << db->Size()
                          << "\tTime: " << (avg_time_cost * 1000) << " ms, "
                          << (flop_ct / avg_time_cost / 1e9) << " GFLOPs"
                          << "\tBest time: " << (best_time_cost * 1000) << " ms, "
                          << (flop_ct / best_time_cost / 1e9) << " GFLOPs" << std::endl;
       } else if (error_no == MeasureErrorNO::kRunTimeoutError ||
                  error_no == MeasureErrorNO::kBuildTimeoutError) {
-        StdCout(verbose) << std::fixed << std::setprecision(2) << "#" << num_measured
+        double best_time_cost = db->GetBest().MeanTime();
+        StdCout(verbose) << std::fixed << std::setprecision(2)  //
+                         << '[' << task_name << "] #" << db->Size()
                          << "\tError: " << MeasureErrorNOToStr(error_no)
                          << "\tBest time: " << (best_time_cost * 1000) << " ms, "
                          << (flop_ct / best_time_cost / 1e9) << " GFLOPs" << std::endl;
       } else {
-        StdCout(verbose) << std::fixed << std::setprecision(2) << "#" << num_measured
+        double best_time_cost = db->GetBest().MeanTime();
+        StdCout(verbose) << std::fixed << std::setprecision(2)  //
+                         << '[' << task_name << "] #" << db->Size()
                          << "\tError: " << MeasureErrorNOToStr(error_no)
                          << "\tBest time: " << (best_time_cost * 1000) << " ms, "
                          << (flop_ct / best_time_cost / 1e9) << " GFLOPs" << std::endl

@@ -383,7 +383,7 @@ Evolutionary::Evolutionary(int total_measures, int population, double init_measu
   ObjectPtr<EvolutionaryNode> n = make_object<EvolutionaryNode>();
   n->total_measures = total_measures;
   n->population = population;
-  n->database = InMemoryDB();
+  n->database = InMemoryDB(NullOpt);
   n->init_measured_ratio = init_measured_ratio;
   n->genetic_algo_iters = genetic_algo_iters;
   n->p_mutate = p_mutate;
@@ -412,7 +412,7 @@ Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const Search
     Array<MeasureResult> results = MeasureAndUpdateCostModel(task, picks, measurer, verbose);
     num_measured += results.size();
   }
-  return measurer->best_sch;
+  return measurer->GetBest(task);
 }
 
 Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& support,
@@ -424,7 +424,7 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
   // Pick measured states
   int num_measured = n * this->init_measured_ratio;
   for (const Database::Entry& entry : database->GetTopK(num_measured)) {
-    results.push_back(entry.trace);
+    results.push_back(entry.trace.value());
   }
   // Pick unmeasured states
   int num_random = n - static_cast<int>(results.size());
@@ -575,8 +575,8 @@ Array<MeasureResult> EvolutionaryNode::MeasureAndUpdateCostModel(const SearchTas
   for (int i = 0, n = measure_inputs.size(); i < n; ++i) {
     const MeasureResult& measure_result = measure_results[i];
     const CachedTrace& trace = cached_traces[i];
-    double avg_time_cost = FloatArrayMean(measure_result->costs);
-    database->Add(trace.trace->Simplified(/*remove_postproc=*/true), trace.repr, avg_time_cost);
+    database->Add(trace.trace->Simplified(/*remove_postproc=*/true), trace.repr,
+                  AsVector<FloatImm, double>()(measure_result->costs));
   }
   // Update the cost model
   cost_model->Update(measure_inputs, measure_results);
