@@ -29,6 +29,7 @@ from typing import Any, List
 
 import psutil
 from tvm import ir, rpc
+from tvm import arith
 from tvm._ffi import register_func
 from tvm.autotvm.measure.measure_methods import set_cuda_target_arch
 from tvm.contrib import ndk as build_func_ndk
@@ -301,14 +302,31 @@ def realize_arguments(
     args: List[NDArray]
         A list of arguments fed to the TVM runtime module built
     """
+    from .measure import get_special_buffer
     args = []
     ndarrays = []
+    analyzer = arith.Analyzer()
+
+    if 'tag' in func.attrs and func.attrs['tag'] == 'sparse_dense_bsr':
+        sparse_data, sparse_indices, sparse_indptr = [func.buffer_map[arg] for arg in func.params[1:4]]
+
     for arg in func.params:
         if arg.dtype == "handle":
             buffer = func.buffer_map[arg]
-            array = ndarray.empty(shape=buffer.shape, dtype=buffer.dtype, ctx=ctx)
-            args.append(array)
-            ndarrays.append(array)
+            if buffer == sparse_data:
+                array = ndarray.array(get_special_buffer('sparse_dense_bsr_data'), ctx=ctx)
+                args.append(array)
+            elif buffer == sparse_indices:
+                array = ndarray.array(get_special_buffer('sparse_dense_bsr_indices'), ctx=ctx)
+                args.append(array)
+            elif buffer == sparse_indptr:
+                array = ndarray.array(get_special_buffer('sparse_dense_bsr_indptr'), ctx=ctx)
+                args.append(array)
+            else:
+                shape = [analyzer.simplify(d) for d in buffer.shape]
+                array = ndarray.empty(shape=shape, dtype=buffer.dtype, ctx=ctx)
+                args.append(array)
+                ndarrays.append(array)
         else:
             raise NotImplementedError("Unsupported type in realize_arguments: " + str(arg.dtype))
     try:

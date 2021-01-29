@@ -769,6 +769,15 @@ double CountFlop(const tir::PrimFunc& func) {
       return ret;
     }
   };
+  if (auto flop_count_expr = func->GetAttr<PrimExpr>("flop_ct")) {
+    arith::Analyzer analyzer;
+    PrimExpr flop_count = analyzer.Simplify(flop_count_expr.value());
+    if (const auto *flop_count_imm = flop_count.as<IntImmNode>()) {
+      return static_cast<double>(flop_count_imm->value);
+    } else {
+      LOG(FATAL) << "ValueError: Unable to evaluate flop count";
+    }
+  }
   TResult result = FlopCounter().VisitStmt(func->body);
   double cnt = 0.0;
   int i32 = TResult::DataType2Int(tvm::DataType::Int(32));
