@@ -120,7 +120,9 @@ void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const Annotation& 
         << "ValueError: loop with variable \"" << loop->loop_var << "\" cannot be parallelized, "
         << "because it does not satisfy one-way fine-grained dataflow "
            "condition, and has more than 1 child block";
-    const auto* realize = single_child.as<BlockRealizeNode>();
+    const auto* realize = single_child[0].as<BlockRealizeNode>();
+    CHECK(realize != nullptr) << "TypeError: Expects 'BlockRealizeNode', but gets: "
+                              << single_child[0]->GetTypeKey();
     CHECK(IsLoopVarParallelizable(loop->loop_var, GetRef<Stmt>(realize), this))
         << "ValueError: loop with variable \"" << loop->loop_var
         << "\" cannot be parallelized because of block:\n"
