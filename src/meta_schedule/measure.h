@@ -39,6 +39,7 @@
 #ifndef SRC_META_SCHEDULE_MEASURE_H_
 #define SRC_META_SCHEDULE_MEASURE_H_
 
+#include "./database.h"
 #include "./measure_record.h"
 #include "./schedule.h"
 
@@ -280,23 +281,14 @@ class ProgramMeasurerNode : public Object {
   ProgramRunner runner;
   /*! \brief MeasureCallback to be called after each measure batch. */
   Array<MeasureCallback> callbacks;
-  /*! \brief Number of samples that have been measured. */
-  int num_measured;
-  /*! \brief The best running time (the smaller the better). */
-  double best_time_cost;
-  /*! \brief The index of the samples that the best schedule is in. */
-  int best_index;
-  /*! \brief The best schedule found so far. */
-  Optional<Schedule> best_sch;
+  /*! \brief The database of measured programs. */
+  Database db;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("builder", &builder);
     v->Visit("runner", &runner);
     v->Visit("callbacks", &callbacks);
-    v->Visit("num_measured", &num_measured);
-    v->Visit("best_time_cost", &best_time_cost);
-    v->Visit("best_index", &best_index);
-    v->Visit("best_sch", &best_sch);
+    v->Visit("db", &db);
   }
 
   /*!
@@ -313,6 +305,13 @@ class ProgramMeasurerNode : public Object {
    * \param task The search task
    */
   void Init(const SearchTask& task);
+
+  /*!
+   * \brief Initialize the measurer
+   * \param task The search task
+   * \return The best schedule so far
+   */
+  Optional<Schedule> GetBest(const SearchTask& task) const;
 
   static constexpr const char* _type_key = "meta_schedule.ProgramMeasurer";
   TVM_DECLARE_FINAL_OBJECT_INFO(ProgramMeasurerNode, Object);
@@ -338,14 +337,10 @@ class ProgramMeasurer : public ObjectRef {
    * \param builder The program builder
    * \param runner The program runner
    * \param callbacks The callbacks invoked after measurement
-   * \param num_measure The default number of measurement that have been conducted
-   * \param best_time_cost The current best time for a single measurement
-   * \param best_index The index of the samples that the best schedule is in.
-   * \param best_sch The best schedule found so far
+   * \param db The database of measured programs.
    */
   explicit ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner,
-                           Array<MeasureCallback> callbacks, int num_measured,
-                           double best_time_cost, int best_index, Optional<Schedule> best_sch);
+                           Array<MeasureCallback> callbacks, Database db);
   /*!
    * \brief Simplified constructor
    * \param builder The program builder
@@ -354,9 +349,6 @@ class ProgramMeasurer : public ObjectRef {
    */
   explicit ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner,
                            Array<MeasureCallback> callbacks);
-
-  /*! \brief The maximum time cost*/
-  static const constexpr double kMaxTimeCost = 1e10;
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(ProgramMeasurer, ObjectRef, ProgramMeasurerNode);
 };

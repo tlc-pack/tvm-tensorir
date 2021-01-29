@@ -20,6 +20,7 @@
 #define SRC_META_SCHEDULE_DATABASE_H_
 
 #include <limits>
+#include <numeric>
 #include <vector>
 
 #include "./trace.h"
@@ -27,29 +28,41 @@
 namespace tvm {
 namespace meta_schedule {
 
+class SearchTask;
+
 /*! \brief An abstract database storing all the tuning records. */
 class DatabaseNode : public runtime::Object {
  public:
   /*! \brief A database entry */
   struct Entry {
     /*! \brief The trace */
-    Trace trace;
+    Optional<Trace> trace;
     /*! \brief The string representation of the schedule */
     String repr;
     /*! \brief The running time of the schedule */
-    double time;
+    std::vector<double> times;
+
+    double MeanTime() const {
+      if (times.empty()) {
+        return kMaxTimeCost;
+      }
+      return std::accumulate(times.begin(), times.end(), 0.0) / times.size();
+    }
   };
 
   /*! \brief Virtual destructor */
   virtual ~DatabaseNode() = default;
 
+  /*! \brief Initialize the database */
+  virtual void Init(const SearchTask& task) = 0;
+
   /*!
    * \brief Add a schedule into the database
    * \param trace The trace of a schedule to be added
    * \param repr The string representation of the schedule
-   * \param time The running time of the schedule
+   * \param times The running time of the schedule
    */
-  virtual void Add(const Trace& trace, const String& repr, double time) = 0;
+  virtual void Add(const Trace& trace, const String& repr, const std::vector<double>& times) = 0;
 
   /*!
    * \brief Check if a schedule already exists in the database
@@ -60,9 +73,25 @@ class DatabaseNode : public runtime::Object {
 
   /*!
    * \brief Get the top-k entries
-   * \param repr The string representation of the schedule
+   * \param top_k The top-k entries to be queried
+   * \return A list of at most `top_k` elements
    */
   virtual std::vector<Entry> GetTopK(int top_k) const = 0;
+
+  /*!
+   * \brief Get the best entry
+   * \return An entry, nullable
+   */
+  virtual Entry GetBest() const = 0;
+
+  /*!
+   * \brief Number of records in the database
+   * \return An integer, number of measures so far
+   */
+  virtual int Size() const = 0;
+
+  /*! \brief The maximum time cost*/
+  static const constexpr double kMaxTimeCost = 1e10;
 };
 
 /*!
@@ -77,9 +106,10 @@ class Database : public runtime::ObjectRef {
 
 /*!
  * \brief Create an in-memory database
+ * \param path Path to the file that stores tuning records in JSON format
  * \return The database created
  */
-TVM_DLL Database InMemoryDB();
+TVM_DLL Database InMemoryDB(Optional<String> path);
 
 }  // namespace meta_schedule
 }  // namespace tvm
