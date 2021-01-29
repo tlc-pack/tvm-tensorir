@@ -421,7 +421,7 @@ def _conv2d_nchw_sketch_0(var_X: ty.handle, var_W: ty.handle, var_compute: ty.ha
                             tir.bind(i3_1, i3)
                             tir.reads([X[i0_1:(i0_1 + 1), i1_1:(i1_1 + 1), (i2_1 - 1):((i2_1 - 1) + 1), (i3_1 - 1):((i3_1 - 1) + 1)]])
                             tir.writes([pad_temp[i0_1:(i0_1 + 1), i1_1:(i1_1 + 1), i2_1:(i2_1 + 1), i3_1:(i3_1 + 1)]])
-                            pad_temp[i0_1, i1_1, i2_1, i3_1] = tir.if_then_else(((((i2_1 >= 1) and (i2_1 < 57)) and (i3_1 >= 1)) and (i3_1 < 57)), X[i0_1, i1_1, (i2_1 - 1), (i3_1 - 1)], tir.float32(0), dtype="float32")
+                            pad_temp[i0_1, i1_1, i2_1, i3_1] = tir.if_then_else(((((1 <= i2_1) and (i2_1 < 57)) and (1 <= i3_1)) and (i3_1 < 57)), X[i0_1, i1_1, (i2_1 - 1), (i3_1 - 1)], tir.float32(0), dtype="float32")
         for i0_2_outer_outer_outer, i1_2_outer_outer_outer, i2_2_outer_outer_outer, i3_2_outer_outer_outer in tir.grid(1, 2, 2, 7):
             for i0_2_outer_outer_inner, i1_2_outer_outer_inner, i2_2_outer_outer_inner, i3_2_outer_outer_inner in tir.grid(1, 8, 2, 4):
                 for i4_outer, i5_outer, i6_outer in tir.grid(256, 1, 3):
@@ -478,7 +478,7 @@ def _conv2d_nchw_sketch_1(var_X: ty.handle, var_W: ty.handle, var_compute: ty.ha
                             tir.bind(i3_1, i3)
                             tir.reads([X[i0_1:(i0_1 + 1), i1_1:(i1_1 + 1), (i2_1 - 1):((i2_1 - 1) + 1), (i3_1 - 1):((i3_1 - 1) + 1)]])
                             tir.writes([pad_temp[i0_1:(i0_1 + 1), i1_1:(i1_1 + 1), i2_1:(i2_1 + 1), i3_1:(i3_1 + 1)]])
-                            pad_temp[i0_1, i1_1, i2_1, i3_1] = tir.if_then_else(((((i2_1 >= 1) and (i2_1 < 57)) and (i3_1 >= 1)) and (i3_1 < 57)), X[i0_1, i1_1, (i2_1 - 1), (i3_1 - 1)], tir.float32(0), dtype="float32")
+                            pad_temp[i0_1, i1_1, i2_1, i3_1] = tir.if_then_else(((((1 <= i2_1) and (i2_1 < 57)) and (1 <= i3_1)) and (i3_1 < 57)), X[i0_1, i1_1, (i2_1 - 1), (i3_1 - 1)], tir.float32(0), dtype="float32")
         for i0_2_outer_outer_outer, i1_2_outer_outer_outer, i2_2_outer_outer_outer, i3_2_outer_outer_outer in tir.grid(1, 2, 2, 7):
             for i0_2_outer_outer_inner, i1_2_outer_outer_inner, i2_2_outer_outer_inner, i3_2_outer_outer_inner in tir.grid(1, 8, 2, 4):
                 for i4_outer, i5_outer, i6_outer in tir.grid(256, 1, 3):
@@ -534,7 +534,7 @@ def _conv2d_nchw_sketch_2(var_X: ty.handle, var_W: ty.handle, var_compute: ty.ha
                             tir.bind(i3_1, i3)
                             tir.reads([X[i0_1:(i0_1 + 1), i1_1:(i1_1 + 1), (i2_1 - 1):((i2_1 - 1) + 1), (i3_1 - 1):((i3_1 - 1) + 1)]])
                             tir.writes([pad_temp[i0_1:(i0_1 + 1), i1_1:(i1_1 + 1), i2_1:(i2_1 + 1), i3_1:(i3_1 + 1)]])
-                            pad_temp[i0_1, i1_1, i2_1, i3_1] = tir.if_then_else(((((i2_1 >= 1) and (i2_1 < 57)) and (i3_1 >= 1)) and (i3_1 < 57)), X[i0_1, i1_1, (i2_1 - 1), (i3_1 - 1)], tir.float32(0), dtype="float32")
+                            pad_temp[i0_1, i1_1, i2_1, i3_1] = tir.if_then_else(((((1 <= i2_1) and (i2_1 < 57)) and (1 <= i3_1)) and (i3_1 < 57)), X[i0_1, i1_1, (i2_1 - 1), (i3_1 - 1)], tir.float32(0), dtype="float32")
         for i0_2_outer_outer_outer, i1_2_outer_outer_outer, i2_2_outer_outer_outer, i3_2_outer_outer_outer in tir.grid(1, 2, 1, 1):
             for i0_2_outer_outer_inner, i1_2_outer_outer_inner, i2_2_outer_outer_inner, i3_2_outer_outer_inner in tir.grid(1, 16, 7, 1):
                 for i4_outer, i5_outer, i6_outer in tir.grid(32, 1, 1):
@@ -651,7 +651,7 @@ def _conv2d_nchw_bias_bn_relu_sketch_0(var_X: ty.handle, var_W: ty.handle, var_B
                             tir.bind(i3_1, i3)
                             tir.reads([X[i0_1:(i0_1 + 1), i1_1:(i1_1 + 1), (i2_1 - 1):((i2_1 - 1) + 1), (i3_1 - 1):((i3_1 - 1) + 1)]])
                             tir.writes([pad_temp[i0_1:(i0_1 + 1), i1_1:(i1_1 + 1), i2_1:(i2_1 + 1), i3_1:(i3_1 + 1)]])
-                            pad_temp[i0_1, i1_1, i2_1, i3_1] = tir.if_then_else(((((i2_1 >= 1) and (i2_1 < 57)) and (i3_1 >= 1)) and (i3_1 < 57)), X[i0_1, i1_1, (i2_1 - 1), (i3_1 - 1)], tir.float32(0), dtype="float32")
+                            pad_temp[i0_1, i1_1, i2_1, i3_1] = tir.if_then_else(((((1 <= i2_1) and (i2_1 < 57)) and (1 <= i3_1)) and (i3_1 < 57)), X[i0_1, i1_1, (i2_1 - 1), (i3_1 - 1)], tir.float32(0), dtype="float32")
         for i0_2_outer_outer_outer, i1_2_outer_outer_outer, i2_2_outer_outer_outer, i3_2_outer_outer_outer in tir.grid(1, 4, 1, 1):
             for i0_2_outer_outer_inner, i1_2_outer_outer_inner, i2_2_outer_outer_inner, i3_2_outer_outer_inner in tir.grid(1, 8, 1, 2):
                 for i4_outer, i5_outer, i6_outer in tir.grid(64, 1, 1):
@@ -711,7 +711,7 @@ def _conv2d_nchw_bias_bn_relu_sketch_1(var_X: ty.handle, var_W: ty.handle, var_B
                             tir.bind(i3_1, i3)
                             tir.reads([X[i0_1:(i0_1 + 1), i1_1:(i1_1 + 1), (i2_1 - 1):((i2_1 - 1) + 1), (i3_1 - 1):((i3_1 - 1) + 1)]])
                             tir.writes([pad_temp[i0_1:(i0_1 + 1), i1_1:(i1_1 + 1), i2_1:(i2_1 + 1), i3_1:(i3_1 + 1)]])
-                            pad_temp[i0_1, i1_1, i2_1, i3_1] = tir.if_then_else(((((i2_1 >= 1) and (i2_1 < 57)) and (i3_1 >= 1)) and (i3_1 < 57)), X[i0_1, i1_1, (i2_1 - 1), (i3_1 - 1)], tir.float32(0), dtype="float32")
+                            pad_temp[i0_1, i1_1, i2_1, i3_1] = tir.if_then_else(((((1 <= i2_1) and (i2_1 < 57)) and (1 <= i3_1)) and (i3_1 < 57)), X[i0_1, i1_1, (i2_1 - 1), (i3_1 - 1)], tir.float32(0), dtype="float32")
         for i0_2_outer_outer_outer, i1_2_outer_outer_outer, i2_2_outer_outer_outer, i3_2_outer_outer_outer in tir.grid(1, 4, 1, 1):
             for i0_2_outer_outer_inner, i1_2_outer_outer_inner, i2_2_outer_outer_inner, i3_2_outer_outer_inner in tir.grid(1, 8, 1, 2):
                 for i4_outer, i5_outer, i6_outer in tir.grid(64, 1, 1):
@@ -771,7 +771,7 @@ def _conv2d_nchw_bias_bn_relu_sketch_2(var_X: ty.handle, var_W: ty.handle, var_B
                             tir.bind(i3_1, i3)
                             tir.reads([X[i0_1:(i0_1 + 1), i1_1:(i1_1 + 1), (i2_1 - 1):((i2_1 - 1) + 1), (i3_1 - 1):((i3_1 - 1) + 1)]])
                             tir.writes([pad_temp[i0_1:(i0_1 + 1), i1_1:(i1_1 + 1), i2_1:(i2_1 + 1), i3_1:(i3_1 + 1)]])
-                            pad_temp[i0_1, i1_1, i2_1, i3_1] = tir.if_then_else(((((i2_1 >= 1) and (i2_1 < 57)) and (i3_1 >= 1)) and (i3_1 < 57)), X[i0_1, i1_1, (i2_1 - 1), (i3_1 - 1)], tir.float32(0), dtype="float32")
+                            pad_temp[i0_1, i1_1, i2_1, i3_1] = tir.if_then_else(((((1 <= i2_1) and (i2_1 < 57)) and (1 <= i3_1)) and (i3_1 < 57)), X[i0_1, i1_1, (i2_1 - 1), (i3_1 - 1)], tir.float32(0), dtype="float32")
         for i0_2_outer_outer_outer, i1_2_outer_outer_outer, i2_2_outer_outer_outer, i3_2_outer_outer_outer in tir.grid(1, 4, 1, 1):
             for i0_2_outer_outer_inner, i1_2_outer_outer_inner, i2_2_outer_outer_inner, i3_2_outer_outer_inner in tir.grid(1, 8, 1, 2):
                 for i4_outer, i5_outer, i6_outer in tir.grid(64, 1, 1):
