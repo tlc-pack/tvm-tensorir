@@ -54,11 +54,11 @@ class StmtSimplifier : public IRMutatorWithAnalyzer {
 
     if (op->loop_var->name_hint == "block_offset") {
         // hack for bsr sparse dense
-        tir::PostOrderVisit(GetRef<Stmt>(op), [this](const ObjectRef& node) {
-            if (const ForNode *for_node = node.as<ForNode>()) {
-                analyzer_->Bind(for_node->loop_var, Range::FromMinExtent(for_node->min, for_node->extent));
-            }
-        });
+      tir::PostOrderVisit(GetRef<Stmt>(op), [this](const ObjectRef& node) {
+          if (const ForNode *for_node = node.as<ForNode>()) {
+              analyzer_->Bind(for_node->loop_var, Range::FromMinExtent(for_node->min, for_node->extent));
+          }
+      });
     }
 
     return Parent::VisitStmt_(op);

@@ -454,3 +454,21 @@ class ProgramTester:
         func(*args)
         args = [arg.asnumpy() for arg in args]
         return args
+
+
+# The map stores special registered buffer for measurement
+#  This can be used for sparse workloads when we cannot use random tensors for measurment.
+special_buffer_table = {}
+
+def register_special_buffer(tensor_name, data):
+    """Register special buffer for measurement
+    This can be used for sparse workloads when we cannot use random tensors for measurment.
+    """
+    special_buffer_table[tensor_name] = data
+
+def get_special_buffer(tensor_name):
+    """Get special buffer for measurement.
+    This can be used for sparse workloads when we cannot use random tensors for measurment.
+    The buffers are registered by `register_special_buffer`.
+    """
+    return special_buffer_table.get(tensor_name, None)
