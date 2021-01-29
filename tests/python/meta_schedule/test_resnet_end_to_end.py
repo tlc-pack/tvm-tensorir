@@ -104,6 +104,7 @@ SPACE = ms.space.PostOrderApply(
     ],
     postprocs=[
         ms.postproc.rewrite_parallel_vectorize_unroll(),
+        ms.postproc.rewrite_reduce_step()
     ],
 )
 
@@ -183,4 +184,4 @@ def test_end_to_end_resnet(log):
 
 
 if __name__ == "__main__":
-    test_end_to_end_resnet("")
+    test_end_to_end_resnet(None)

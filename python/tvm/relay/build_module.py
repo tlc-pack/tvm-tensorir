@@ -225,6 +225,10 @@ def build(mod, target=None, target_host=None, params=None, mod_name="default", t
     mod_name: Optional[str]
         The module name we will build
 
+    tune_result: dict of str to (dict of primfunc to primfunc)
+        The results of auto tuning.
+        The key of the outer dict is the target
+        The inner dict is from the original primfunc to the tuned primfunc
     Returns
     -------
     graph_json : str
@@ -301,8 +305,11 @@ def build_primfunc(mod, target=None, target_host=None, params=None, mod_name="de
 
     Returns
     -------
-    tir_func: dict of String to a dict of String to PrimFunc
-        The PrimFunc we build
+    tir_func: dict of str to (dict of primfunc to primfunc)
+        The PrimFuncs we build.
+        The key of outer dict is target str.
+        The inner dict is from the primfunc built to itself which is designed
+        to be consistent with the type of argument tune_result in function build.
     """
     if not isinstance(mod, (IRModule, _function.Function)):
         raise ValueError("Type of input parameter mod must be tvm.IRModule")
