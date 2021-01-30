@@ -432,7 +432,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       const tir::BufferNode* buffer = it.first;
       BufferInfo& info = it.second;
       int ndim = buffer->shape.size();
-      std::vector<int64_t> buffer_shape = AsVector<PrimExpr, int64_t>()(buffer->shape);
+      std::vector<int64_t> buffer_shape = AsVector<PrimExpr, int64_t>(buffer->shape);
       // Calculate the buffer's stride from its shape
       std::vector<int64_t> buffer_stride(ndim);
       if (ndim >= 1) {
