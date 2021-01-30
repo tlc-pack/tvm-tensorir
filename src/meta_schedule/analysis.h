@@ -185,6 +185,13 @@ TVM_DLL Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::Schedule& sch
  */
 TVM_DLL double CountFlop(const tir::PrimFunc& func);
 
+/*!
+ * \brief Checks if the loop/block has only one child
+ * \param loop_or_block_sref The loop/block to be checked
+ * \return A boolean indicating if it has only one child
+ */
+TVM_DLL bool HasSingleChild(const tir::StmtSRef& loop_or_block_sref);
+
 }  // namespace meta_schedule
 }  // namespace tvm
 

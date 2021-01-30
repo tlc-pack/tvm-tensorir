@@ -285,8 +285,8 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
   }
   // Sample the output
   std::vector<int> samples =
-      decision.defined()                                  //
-          ? AsVector<ObjectRef, int>()(decision.value())  //
+      decision.defined()                                //
+          ? AsVector<ObjectRef, int>(decision.value())  //
           : sampler.SamplePerfectTile(n_splits, extent, max_innermost_factor);
   // Create the output random variable
   String name_prefix = tir_loop->loop_var->name_hint + ".";
@@ -299,7 +299,7 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
   }
   // Record the instruction
   this->trace->Append(SamplePerfectTileAttrs::Make(n_splits, loop, max_innermost_factor, outputs),
-                      AsArray<int, ObjectRef>()(samples));
+                      AsArray<int, ObjectRef>(samples));
   return outputs;
 }
 
@@ -319,8 +319,8 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
     }
   }
   // Sample the output
-  std::vector<int> samples = decision.defined()                                  //
-                                 ? AsVector<ObjectRef, int>()(decision.value())  //
+  std::vector<int> samples = decision.defined()                                //
+                                 ? AsVector<ObjectRef, int>(decision.value())  //
                                  : sampler.SampleTileFactor(n_splits, extent, candidates);
   // Create the output random variable
   String name_prefix = tir_loop->loop_var->name_hint + ".";
@@ -333,7 +333,7 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
   }
   // Record the instruction
   this->trace->Append(SampleTileFactorAttrs::Make(n_splits, loop, where, outputs),
-                      AsArray<int, ObjectRef>()(samples));
+                      AsArray<int, ObjectRef>(samples));
   return outputs;
 }
 

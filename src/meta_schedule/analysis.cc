@@ -782,6 +782,23 @@ double CountFlop(const tir::PrimFunc& func) {
   return cnt;
 }
 
+bool HasSingleChild(const tir::StmtSRef& loop_or_block_sref) {
+  const tir::StmtNode* body = nullptr;
+  if (const auto* loop = loop_or_block_sref->GetStmt<tir::LoopNode>()) {
+    body = loop->body.get();
+  } else if (const auto* block = loop_or_block_sref->GetStmt<tir::BlockNode>()) {
+    body = block->body.get();
+  } else {
+    LOG(FATAL) << "TypeError: Unable to recognize the type of `loop_or_block_sref`: "
+               << loop_or_block_sref->stmt->GetTypeKey();
+  }
+  if (body->IsInstance<tir::SeqStmtNode>()) {
+    const auto* seq_stmt = static_cast<const tir::SeqStmtNode*>(body);
+    return seq_stmt->seq.size() == 1;
+  }
+  return true;
+}
+
 TVM_REGISTER_NODE_TYPE(TensorizeInfoNode);
 
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);

@@ -107,7 +107,7 @@ Database::Entry RecordToEntry(const ObjectRef& record_obj, const SearchTask& tas
   }
   Schedule sch(orig_func);
   TraceNode::Deserialize(trace_obj, sch);
-  return Database::Entry{sch->trace, Repr(sch), AsVector<FloatImm, double>()(times)};
+  return Database::Entry{sch->trace, Repr(sch), AsVector<FloatImm, double>(times)};
 }
 
 }  // namespace json_io

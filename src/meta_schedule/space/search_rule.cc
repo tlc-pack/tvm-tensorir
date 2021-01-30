@@ -224,7 +224,7 @@ class RuleMultiLevelTiling {
         can_cache_write(can_cache_write),
         must_cache_write(must_cache_write),
         cache_write_scope(cache_write_scope),
-        fusion_levels(AsVector<Integer, int>()(fusion_levels_)),
+        fusion_levels(AsVector<Integer, int>(fusion_levels_)),
         vector_load_max_len(vector_load_max_len),
         tile_binds(tile_binds.value_or(Array<String>{})),
         s_idx(),
