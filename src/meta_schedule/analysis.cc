@@ -782,6 +782,49 @@ double CountFlop(const tir::PrimFunc& func) {
   return cnt;
 }
 
+bool HasSingleChild(const tir::StmtSRef& loop_or_block_sref) {
+  const tir::StmtNode* body = nullptr;
+  if (const auto* loop = loop_or_block_sref->GetStmt<tir::LoopNode>()) {
+    body = loop->body.get();
+  } else if (const auto* block = loop_or_block_sref->GetStmt<tir::BlockNode>()) {
+    body = block->body.get();
+  } else {
+    LOG(FATAL) << "TypeError: Unable to recognize the type of `loop_or_block_sref`: "
+               << loop_or_block_sref->stmt->GetTypeKey();
+  }
+  if (body->IsInstance<tir::SeqStmtNode>()) {
+    const auto* seq_stmt = static_cast<const tir::SeqStmtNode*>(body);
+    return seq_stmt->seq.size() == 1;
+  }
+  return true;
+}
+
+Array<tir::StmtSRef> CollectComputeLocation(const tir::Schedule& sch,
+                                            const tir::StmtSRef& block_sref) {
+  Array<tir::StmtSRef> loop_srefs = sch->GetLoopsInScope(block_sref);
+  Array<tir::StmtSRef> result;
+  result.reserve(loop_srefs.size());
+  bool visited_reduce = false;
+  for (const tir::StmtSRef& loop_sref : loop_srefs) {
+    const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+    CHECK(loop) << "TypeError: Expects 'Loop', but gets: " << loop_sref->stmt->GetTypeKey();
+    tir::IterVarType iter_type = GetLoopIterType(sch, loop_sref);
+    if (iter_type == tir::IterVarType::kDataPar) {
+      if (visited_reduce) {
+        break;
+      }
+    } else {
+      visited_reduce = true;
+    }
+    result.push_back(loop_sref);
+    // If the loop has multiple children, then do not go into it anymore
+    if (!HasSingleChild(loop_sref)) {
+      break;
+    }
+  }
+  return result;
+}
+
 TVM_REGISTER_NODE_TYPE(TensorizeInfoNode);
 
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);
