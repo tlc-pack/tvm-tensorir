@@ -285,8 +285,8 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
   }
   // Sample the output
   std::vector<int> samples =
-      decision.defined()                                  //
-          ? AsVector<ObjectRef, int>()(decision.value())  //
+      decision.defined()                                //
+          ? AsVector<ObjectRef, int>(decision.value())  //
           : sampler.SamplePerfectTile(n_splits, extent, max_innermost_factor);
   // Create the output random variable
   String name_prefix = tir_loop->loop_var->name_hint + ".";
@@ -299,7 +299,7 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
   }
   // Record the instruction
   this->trace->Append(SamplePerfectTileAttrs::Make(n_splits, loop, max_innermost_factor, outputs),
-                      AsArray<int, ObjectRef>()(samples));
+                      AsArray<int, ObjectRef>(samples));
   return outputs;
 }
 
@@ -319,8 +319,8 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
     }
   }
   // Sample the output
-  std::vector<int> samples = decision.defined()                                  //
-                                 ? AsVector<ObjectRef, int>()(decision.value())  //
+  std::vector<int> samples = decision.defined()                                //
+                                 ? AsVector<ObjectRef, int>(decision.value())  //
                                  : sampler.SampleTileFactor(n_splits, extent, candidates);
   // Create the output random variable
   String name_prefix = tir_loop->loop_var->name_hint + ".";
@@ -333,7 +333,7 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
   }
   // Record the instruction
   this->trace->Append(SampleTileFactorAttrs::Make(n_splits, loop, where, outputs),
-                      AsArray<int, ObjectRef>()(samples));
+                      AsArray<int, ObjectRef>(samples));
   return outputs;
 }
 
@@ -379,23 +379,53 @@ tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
 LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block,
                                            const Optional<ObjectRef>& decision) {
   tir::StmtSRef block_sref = Eval(block);
-  Array<tir::StmtSRef> loop_srefs = sch->GetLoopsInScope(block_sref);
-  int n = loop_srefs.size();
-  int i = decision.defined()                                //
-              ? Downcast<Integer>(decision.value())->value  //
-              : sampler.SampleInt(-2, n);
+  Array<tir::StmtSRef> loop_srefs = CollectComputeLocation(sch, block_sref);
+  // Extract the extents of loops
+  std::vector<int> non_unit_loop_indices;
+  {
+    int i = 0;
+    for (const tir::StmtSRef& loop_sref : loop_srefs) {
+      int64_t extent = GetLoopIntExtent(loop_sref).value()->value;
+      if (extent != 1) {
+        non_unit_loop_indices.push_back(i);
+      }
+      ++i;
+    }
+  }
   // Create the output random variable
   LoopRV output;
+  int idx = -1;  // the decision made, by default it is -1
+  // If the decision has been defined
+  if (decision.defined()) {
+    if (idx == -2) {
+      this->sym_tab.Set(output, LoopRV::ComputeInlineRV());
+    } else if (idx == -1) {
+      this->sym_tab.Set(output, LoopRV::ComputeRootRV());
+    } else {
+      int decided = idx;
+      idx = -1;
+      // Find the last loop that is before or at the decision
+      for (int i : non_unit_loop_indices) {
+        if (i <= decided) {
+          idx = i;
+        } else {
+          break;
+        }
+      }
+    }
+  } else {
+    idx = sampler.SampleInt(-2, non_unit_loop_indices.size());
+  }
   // Update the symbol table
-  if (i == -2) {
+  if (idx == -2) {
     this->sym_tab.Set(output, LoopRV::ComputeInlineRV());
-  } else if (i == -1) {
+  } else if (idx == -1) {
     this->sym_tab.Set(output, LoopRV::ComputeRootRV());
   } else {
-    this->sym_tab.Set(output, loop_srefs[i]);
+    this->sym_tab.Set(output, loop_srefs[idx]);
   }
   // Record the instruction
-  this->trace->Append(SampleComputeLocationAttrs::Make(block, output), Integer(i));
+  this->trace->Append(SampleComputeLocationAttrs::Make(block, output), Integer(idx));
   return output;
 }
 

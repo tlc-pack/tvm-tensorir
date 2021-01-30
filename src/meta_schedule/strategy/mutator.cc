@@ -51,7 +51,7 @@ class MutatorTileSize {
   static std::vector<int> CastDecision(const ObjectRef& obj) {
     const auto* arr = obj.as<runtime::ArrayNode>();
     CHECK(arr) << "TypeError: Expects ArrayNode, but gets: " << obj->GetTypeKey();
-    return AsVector<ObjectRef, int>()(GetRef<Array<ObjectRef>>(arr));
+    return AsVector<ObjectRef, int>(GetRef<Array<ObjectRef>>(arr));
   }
 
   /*!
@@ -141,7 +141,7 @@ class MutatorTileSize {
     }
     tiles[x] = len_x;
     tiles[y] = len_y;
-    return trace->WithDecision(inst, AsArray<int, ObjectRef>()(tiles), /*remove_postproc=*/true);
+    return trace->WithDecision(inst, AsArray<int, ObjectRef>(tiles), /*remove_postproc=*/true);
   }
 };
 
