@@ -192,6 +192,15 @@ TVM_DLL double CountFlop(const tir::PrimFunc& func);
  */
 TVM_DLL bool HasSingleChild(const tir::StmtSRef& loop_or_block_sref);
 
+/*!
+ * \brief Collect all the loops that can be computed at
+ * \param sch The TIR schedule
+ * \param block_sref The block where the loops should be collected from
+ * \return An array of possible compute-at location
+ */
+TVM_DLL Array<tir::StmtSRef> CollectComputeLocation(const tir::Schedule& sch,
+                                                    const tir::StmtSRef& block_sref);
+
 }  // namespace meta_schedule
 }  // namespace tvm
 
