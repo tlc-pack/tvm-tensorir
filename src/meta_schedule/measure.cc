@@ -149,7 +149,7 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
       if (error_no == MeasureErrorNO::kNoError) {
         double avg_time_cost = FloatArrayMean(measure_result->costs);
         db->Add(measure_input->sch->trace, Repr(measure_input->sch),
-                AsVector<FloatImm, double>()(measure_result->costs));
+                AsVector<FloatImm, double>(measure_result->costs));
         double best_time_cost = db->GetBest().MeanTime();
         StdCout(verbose) << std::fixed << std::setprecision(2)  //
                          << '[' << task_name << "] #" << db->Size()
