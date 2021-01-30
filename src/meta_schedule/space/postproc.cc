@@ -201,12 +201,6 @@ class PostprocRewriteParallelizeVectorizeUnroll {
     int num_vectorize_loops;
   };
 
-  static bool HasSingleChild(const tir::StmtSRef& loop_sref) {
-    const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
-    CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
-    return !loop->body->IsInstance<tir::SeqStmtNode>();
-  }
-
   static std::function<bool(const tir::BlockNode*)> MakeAnnParser(Parsed* parsed) {
     return [parsed](const tir::BlockNode* block) -> bool {
       bool found = false;
@@ -523,7 +517,11 @@ class PostprocRewriteReduceStep {
           BlockRV init = sch->DecomposeReduction(block_rv, loop_rvs[i]);
           Array<LoopRV> loops = sch->GetAxes(init);
           if (!loops.empty()) {
-            sch->Vectorize(loops.back());
+            const LoopRV& last_loop = loops.back();
+            const tir::StmtSRef& loop_sref = sch->Eval(last_loop);
+            if (HasSingleChild(loop_sref)) {
+              sch->Vectorize(last_loop);
+            }
           }
           break;
         }
