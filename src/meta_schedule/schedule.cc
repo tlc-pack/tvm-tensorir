@@ -397,13 +397,14 @@ LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block,
   int idx = -1;  // the decision made, by default it is -1
   // If the decision has been defined
   if (decision.defined()) {
-    if (idx == -2) {
+    int decided = Downcast<Integer>(decision)->value;
+    if (decided == -2) {
+      idx = decided;
       this->sym_tab.Set(output, LoopRV::ComputeInlineRV());
-    } else if (idx == -1) {
+    } else if (decided == -1) {
+      idx = decided;
       this->sym_tab.Set(output, LoopRV::ComputeRootRV());
     } else {
-      int decided = idx;
-      idx = -1;
       // Find the last loop that is before or at the decision
       for (int i : non_unit_loop_indices) {
         if (i <= decided) {
