@@ -326,7 +326,8 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
         break;
       }
       CHECK(stmt->IsInstance<tir::LoopNode>());
-      prod_loop_extent *= GetLoopIntExtent(static_cast<const tir::LoopNode*>(stmt)).value()->value;
+      prod_loop_extent *=
+          GetLoopIntExtent(static_cast<const tir::LoopNode*>(stmt)).value_or(1)->value;
     }
     // Add the math_ops to the parent
     FeatureSet::MathOps& parent_math_ops = per_block_feature_[scope].math_ops;
@@ -361,7 +362,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       ann->pos = FeatureSet::AnnIter::Pos::kPosNone;
     } else {
       ann->num = loops.size();
-      ann->len = GetLoopIntExtent(loops.back()).value()->value;
+      ann->len = GetLoopIntExtent(loops.back()).value_or(1)->value;
       ann->prod = ProdLoopExtent(loops);
       ann->pos = FeatureSet::AnnIter::Pos::kPosMixed;
     }
@@ -468,7 +469,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       // Calculate info.prod
       int64_t& prod = info.prod_non_strided_loop_extent = 1;
       for (int j = 0; j < i; ++j) {
-        prod *= GetLoopIntExtent(loops[j]).value()->value;
+        prod *= GetLoopIntExtent(loops[j]).value_or(1)->value;
       }
     }
     // Part 3. Reuse-related features
@@ -498,7 +499,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
         // Case 1. Find an invariant loop, i.e. reuse with kLoopMultipleRead
         if (!region_vars.count(loop->loop_var.get())) {
           reuse_type = FeatureSet::BufferAccess::ReuseType::kLoopMultipleRead;
-          reuse_ct = GetLoopIntExtent(loop).value()->value;
+          reuse_ct = GetLoopIntExtent(loop).value_or(1)->value;
           if (i == 0) {
             reuse_dis_iter = 1;
             reuse_dis_bytes = 0.0;
@@ -512,7 +513,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
           } else {
             reuse_dis_iter = 1;
             for (int j = 0; j < i; ++j) {
-              reuse_dis_iter *= GetLoopIntExtent(loops[j]).value()->value;
+              reuse_dis_iter *= GetLoopIntExtent(loops[j]).value_or(1)->value;
             }
             reuse_dis_bytes = 0.0;
             for (const auto& iter : buffer_touched_under_loop_[loops[i - 1]]) {
@@ -527,7 +528,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
         // Case 2. Find serial reuse, i.e. reuse with kSerialMultipleReadWrite
         const std::vector<int64_t>& touched = buffer_touched_under_loop_[loop][buffer];
         if (touched.size() >= 2) {
-          int64_t extent = GetLoopIntExtent(loop).value()->value;
+          int64_t extent = GetLoopIntExtent(loop).value_or(1)->value;
           reuse_type = FeatureSet::BufferAccess::ReuseType::kSerialMultipleReadWrite;
           reuse_ct = touched.size() - 1;
           reuse_dis_iter = *std::min_element(touched.begin(), touched.end());
@@ -778,7 +779,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
                             math_ops.float_other_func) /
         outer_loop_prod_;
     for (int i = 0; i < n_loops; ++i) {
-      int64_t extent = GetLoopIntExtent(loops[i]).value()->value;
+      int64_t extent = GetLoopIntExtent(loops[i]).value_or(1)->value;
       total_compute_ops *= extent;
       compute_ops.push_back(std::log2(total_compute_ops));
     }
@@ -862,7 +863,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   }
 
   void VisitStmt_(const tir::LoopNode* loop) override {
-    int64_t extent = GetLoopIntExtent(loop).value()->value;
+    int64_t extent = GetLoopIntExtent(loop).value_or(1)->value;
     int64_t auto_unroll = -1;
     // Handling annotated loops
     std::vector<const tir::LoopNode*>* ref_loops = nullptr;
@@ -946,13 +947,13 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   static int64_t ProdLoopExtent(const std::vector<const tir::LoopNode*>& loops) {
     int64_t prod = 1;
     for (const tir::LoopNode* loop : loops) {
-      prod *= GetLoopIntExtent(loop).value()->value;
+      prod *= GetLoopIntExtent(loop).value_or(1)->value;
     }
     return prod;
   }
 
   static int64_t FirstLoopExtent(const std::vector<const tir::LoopNode*>& loops) {
-    return loops.empty() ? 1 : GetLoopIntExtent(loops[0]).value()->value;
+    return loops.empty() ? 1 : GetLoopIntExtent(loops[0]).value_or(1)->value;
   }
 
  private:

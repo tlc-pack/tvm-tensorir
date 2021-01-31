@@ -168,6 +168,10 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
                          << "\tBest time: " << (best_time_cost * 1000) << " ms, "
                          << (flop_ct / best_time_cost / 1e9) << " GFLOPs" << std::endl;
       } else {
+        std::ostringstream os;
+        for (const String& line : measure_input->sch->trace->AsPython()) {
+          os << line << '\n';
+        }
         double best_time_cost = db->GetBest().MeanTime();
         StdCout(verbose) << std::fixed << std::setprecision(4)  //
                          << '[' << task_name << "] #" << num_measures
@@ -176,7 +180,8 @@ Array<MeasureResult> ProgramMeasurerNode::BatchMeasure(const Array<MeasureInput>
                          << (flop_ct / best_time_cost / 1e9) << " GFLOPs" << std::endl
                          << measure_result->error_msg << "\n"
                          << "The IR is:\n"
-                         << Repr(measure_input->sch);
+                         << Repr(measure_input->sch) << "\nSchedule is:\n"
+                         << os.str();
       }
     }
     measure_results.insert(measure_results.end(), batch_measure_results.begin(),

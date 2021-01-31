@@ -170,8 +170,7 @@ class InMemoryDBNode : public DatabaseNode {
         LOG(INFO) << "No valid records found.";
       }
     } else {
-      LOG(INFO) << "Nothing is loaded because the file does not exist or cannot be opened: "
-                << path.value();
+      LOG(INFO) << "Nothing is loaded. File does not exist or cannot be opened";
     }
   }
 
