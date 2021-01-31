@@ -102,12 +102,16 @@ void TraceNode::Apply(const Schedule& sch) const {
       break;
     }
     // Step 1. Extract old inputs and construct new inputs
-    const Array<ObjectRef>& old_inputs = inst->inputs;
-    Array<ObjectRef> new_inputs;
+    const Array<Optional<ObjectRef>>& old_inputs = inst->inputs;
+    Array<Optional<ObjectRef>> new_inputs;
     {
       new_inputs.reserve(old_inputs.size());
-      for (const ObjectRef& old_input : old_inputs) {
-        new_inputs.push_back(f_var_map(old_input));
+      for (const Optional<ObjectRef>& old_input : old_inputs) {
+        if (old_input.defined()) {
+          new_inputs.push_back(f_var_map(old_input.value()));
+        } else {
+          new_inputs.push_back(NullOpt);
+        }
       }
     }
     // Step 2. Apply the instruction to the schedule to get new outputs
@@ -192,7 +196,11 @@ struct DefUseSites {
         }
       }
       // Record use
-      for (const ObjectRef& use : inst->inputs) {
+      for (const Optional<ObjectRef>& opt_use : inst->inputs) {
+        if (!opt_use.defined()) {
+          continue;
+        }
+        ObjectRef use = opt_use.value();
         // Case 1. If the use is a random variable
         if (IsRV(use)) {
           result[use.get()].use.push_back(i);
@@ -290,7 +298,11 @@ Trace TraceNode::Simplified(bool remove_postproc) const {
     }
     inst_dead[i] = 1;
     // For each variable used by the instruction, remove their use site
-    for (const ObjectRef& use : inst->inputs) {
+    for (const Optional<ObjectRef>& opt_use : inst->inputs) {
+      if (!opt_use.defined()) {
+        continue;
+      }
+      ObjectRef use = opt_use.value();
       // Case 1. If the use is a random variable
       if (IsRV(use)) {
         def_use[use.get()].use.pop_back();
