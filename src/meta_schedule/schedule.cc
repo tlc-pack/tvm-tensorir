@@ -388,7 +388,7 @@ LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block,
   {
     int i = 0;
     for (const tir::StmtSRef& loop_sref : loop_srefs) {
-      int64_t extent = GetLoopIntExtent(loop_sref).value()->value;
+      int64_t extent = GetLoopIntExtent(loop_sref).value_or(-1)->value;
       if (extent != 1) {
         non_unit_loop_indices.push_back(i);
       }
