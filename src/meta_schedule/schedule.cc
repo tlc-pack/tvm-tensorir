@@ -223,8 +223,11 @@ ObjectRef ScheduleNode::EvalLoopExtended(const LoopRV& loop) {
   CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding LoopRV: " << loop;
   const Optional<ObjectRef>& obj = (*iter).second;
   CHECK(obj.defined()) << "ValueError: Corresponding LoopRV's value is not defined: " << loop;
-  if (obj.same_as(inline_rv) || obj.same_as(root_rv)) {
-    return obj;
+  if (obj.same_as(inline_rv)) {
+    return inline_rv;
+  }
+  if (obj.same_as(root_rv)) {
+    return root_rv;
   }
   if (const auto* sref = obj.as<tir::StmtSRefNode>()) {
     CHECK(sref->stmt) << "ValueError: The LoopRV has expired";
@@ -385,7 +388,7 @@ LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block,
   {
     int i = 0;
     for (const tir::StmtSRef& loop_sref : loop_srefs) {
-      int64_t extent = GetLoopIntExtent(loop_sref).value()->value;
+      int64_t extent = GetLoopIntExtent(loop_sref).value_or(-1)->value;
       if (extent != 1) {
         non_unit_loop_indices.push_back(i);
       }
@@ -705,16 +708,17 @@ void ScheduleNode::Reorder(const Array<LoopRV>& after_axes) {
 void ScheduleNode::ComputeAt(const BlockRV& block, const LoopRV& loop) {
   ObjectRef loop_eval = this->EvalLoopExtended(loop);
   if (loop_eval.same_as(LoopRV::ComputeInlineRV())) {
-    ComputeInline(block);
-    return;
+    // Find the inputs to TIR
+    tir::StmtSRef block_sref = this->Eval(block);
+    this->sch->compute_inline(block_sref);
+  } else if (loop_eval.same_as(LoopRV::ComputeRootRV())) {
+    // Do nothing
+  } else {
+    // Find the inputs to TIR
+    tir::StmtSRef block_sref = this->Eval(block);
+    tir::StmtSRef loop_sref = Downcast<tir::StmtSRef>(loop_eval);
+    this->sch->compute_at(block_sref, loop_sref, true);
   }
-  if (loop_eval.same_as(LoopRV::ComputeRootRV())) {
-    return;
-  }
-  // Find the inputs to TIR
-  tir::StmtSRef block_sref = this->Eval(block);
-  tir::StmtSRef loop_sref = Downcast<tir::StmtSRef>(loop_eval);
-  this->sch->compute_at(block_sref, loop_sref, true);
   // Record the instruction
   this->trace->Append(ComputeAtAttrs::Make(block, loop));
 }
@@ -722,16 +726,17 @@ void ScheduleNode::ComputeAt(const BlockRV& block, const LoopRV& loop) {
 void ScheduleNode::ReverseComputeAt(const BlockRV& block, const LoopRV& loop) {
   ObjectRef loop_eval = this->EvalLoopExtended(loop);
   if (loop_eval.same_as(LoopRV::ComputeInlineRV())) {
-    ReverseComputeInline(block);
-    return;
+    // Find the inputs to TIR
+    tir::StmtSRef block_sref = this->Eval(block);
+    this->sch->reverse_compute_inline(block_sref);
+  } else if (loop_eval.same_as(LoopRV::ComputeRootRV())) {
+    // Do nothing
+  } else {
+    // Find the inputs to TIR
+    tir::StmtSRef block_sref = this->Eval(block);
+    tir::StmtSRef loop_sref = Downcast<tir::StmtSRef>(loop_eval);
+    this->sch->reverse_compute_at(block_sref, loop_sref, true);
   }
-  if (loop_eval.same_as(LoopRV::ComputeRootRV())) {
-    return;
-  }
-  // Find the inputs to TIR
-  tir::StmtSRef block_sref = this->Eval(block);
-  tir::StmtSRef loop_sref = Downcast<tir::StmtSRef>(loop_eval);
-  this->sch->reverse_compute_at(block_sref, loop_sref, true);
   // Record the instruction
   this->trace->Append(ReverseComputeAtAttrs::Make(block, loop));
 }
