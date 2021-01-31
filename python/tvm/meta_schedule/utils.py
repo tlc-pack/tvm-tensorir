@@ -25,7 +25,7 @@ import tempfile
 import time
 import traceback
 from threading import Thread
-from typing import Any, List
+from typing import Any, List, Tuple
 
 import psutil
 from tvm import ir, rpc
@@ -75,11 +75,9 @@ def serialize_json(record: Any) -> str:
 
 
 @register_func("meta_schedule._deserialize_tuning_records")
-def _deserialize_tuning_records(records: str) -> List[Any]:
+def _deserialize_tuning_records(records: str) -> Any:
     """Deserialize the record from JSON"""
-    import ujson
-
-    return ujson.loads(records)
+    return json.loads(records)  # pylint: disable=c-extension-no-member
 
 
 class NoDaemonProcess(multiprocessing.Process):
@@ -162,7 +160,7 @@ def request_remote(
     port: int,
     priority: int = 1,
     timeout: int = 60,
-) -> (rpc.TrackerSession, rpc.RPCSession):
+) -> Tuple[rpc.TrackerSession, rpc.RPCSession]:
     """Request a remote session.
 
     Parameters

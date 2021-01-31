@@ -99,7 +99,7 @@ class ScheduleNode : public Object {
   /*!
    * \brief Evaluate the value of a random variable of type Loop, or inline_rv, or root_rv
    * \param loop The loop random variable to be evaluated
-   * \return The TIR SRef to the block evaluated, or inline_rv, or root_rv
+   * \return The block evaluated (type tir::StmtSRef), or inline_rv/root_rv (type LoopRV)
    */
   ObjectRef EvalLoopExtended(const LoopRV& loop);
   /**************** Sampling ****************/
