@@ -62,10 +62,9 @@ Array<ObjectRef> InstructionNode::Serialize(const Map<ObjectRef, String>& rv_nam
   record.push_back(inst_attrs->GetName());
   // record[1]: inputs
   {
-    Array<Optional<ObjectRef>> rvs = this->inputs;
     Array<ObjectRef> names;
-    names.reserve(rvs.size());
-    for (const Optional<ObjectRef>& opt_rv : rvs) {
+    names.reserve(this->inputs.size());
+    for (const Optional<ObjectRef>& opt_rv : this->inputs) {
       if (!opt_rv.defined()) {
         names.push_back(String("None"));
         continue;
@@ -85,10 +84,9 @@ Array<ObjectRef> InstructionNode::Serialize(const Map<ObjectRef, String>& rv_nam
   }
   // record[2]: outputs
   {
-    Array<ObjectRef> rvs = this->outputs;
     Array<ObjectRef> names;
-    names.reserve(rvs.size());
-    for (const ObjectRef& rv : rvs) {
+    names.reserve(this->outputs.size());
+    for (const ObjectRef& rv : this->outputs) {
       CHECK(rv.defined());
       if (const auto* integer = rv.as<IntImmNode>()) {
         names.push_back(GetRef<IntImm>(integer));
