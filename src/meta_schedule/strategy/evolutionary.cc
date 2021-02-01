@@ -50,6 +50,10 @@ struct CachedTrace {
   String repr;
   /*! \brief The normalized throughput, the higher the better */
   double throughput;
+
+  static bool Compare(const CachedTrace& lhs, const CachedTrace& rhs) {
+    return lhs.throughput > rhs.throughput;
+  }
 };
 
 /*!
@@ -194,6 +198,7 @@ class EvolutionaryNode : public SearchStrategyNode {
 
  private:
   // Helper functions
+  friend class Evolutionary;
 
   static std::vector<Sampler> ForkSamplers(int n, Sampler* sampler) {
     std::vector<Sampler> result;
@@ -278,34 +283,6 @@ class EvolutionaryNode : public SearchStrategyNode {
     };
   }
 
-  /*!
-   * \brief Replay and postprocess the trace, except for the traces that
-   * have been post-processed before
-   * \param trace The trace to be postprocessed
-   * \param task The search task
-   * \param space The search space
-   * \param sampler Source of randomness
-   * \return The sampling result
-   */
-  CachedTrace* ReplayAndPostProc(const Trace& trace, const SearchTask& task,
-                                 const SearchSpace& space, Sampler* sampler) const {
-    {
-      std::unique_lock<std::mutex> lock(this->trace_cache_mutex_);
-      if (trace_cache_.count(trace)) {
-        return &trace_cache_.at(trace);
-      }
-    }
-    Schedule sch = Schedule(task->workload, sampler->ForkSeed());
-    trace->Apply(sch);
-    if (space->Postprocess(task, sch, sampler)) {
-      std::unique_lock<std::mutex> lock(this->trace_cache_mutex_);
-      CachedTrace& cached_trace = trace_cache_[trace] =
-          CachedTrace{trace.get(), sch, Repr(sch), -1.0};
-      return &cached_trace;
-    }
-    return nullptr;
-  }
-
   void AddCachedTrace(CachedTrace cached_trace) const {
     std::unique_lock<std::mutex> lock(this->trace_cache_mutex_);
     trace_cache_.emplace(GetRef<Trace>(cached_trace.trace), std::move(cached_trace));
@@ -333,6 +310,7 @@ class EvolutionaryNode : public SearchStrategyNode {
       schs.push_back(entry.sch);
     }
     std::vector<double> scores = cost_model->Predict(task, schs);
+    // Normalize the score
     // TODO(@junrushao1994): use softmax + temperature to replace simple normalization to [0.0, +oo)
     for (double& score : scores) {
       score = std::max(0.0, score);
@@ -432,6 +410,13 @@ Evolutionary::Evolutionary(int total_measures, int num_measures_per_iteration, i
                            double init_measured_ratio, int genetic_algo_iters, double p_mutate,
                            Map<Mutator, FloatImm> mutator_probs, CostModel cost_model,
                            double eps_greedy) {
+  // Doing some sanity checks
+  CHECK_LE(num_measures_per_iteration, population)
+      << "ValueError: requires `num_measures_per_iteration <= population`";
+  {
+    Sampler sampler(42);
+    EvolutionaryNode::MakeMutatorSampler(p_mutate, mutator_probs, &sampler);
+  }
   ObjectPtr<EvolutionaryNode> n = make_object<EvolutionaryNode>();
   n->total_measures = total_measures;
   n->num_measures_per_iteration = num_measures_per_iteration;
@@ -454,15 +439,22 @@ Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const Search
                                             const ProgramMeasurer& measurer, Sampler* sampler,
                                             int verbose) {
   Array<Schedule> support = space->GetSupport(task, sampler);
-  trace_cache_.clear();
-  for (int num_measured = 0; num_measured < this->total_measures;) {
+  int iter = 1;
+  for (int num_measured = 0; num_measured < this->total_measures; ++iter) {
+    LOG(INFO) << "Evolutionary search: Iteration #" << iter << " | Measured: " << num_measured
+              << "/" << this->total_measures;
     // `inits`: Sampled initial population, whose size is at most `this->population`
+    LOG(INFO) << "Sampling inital population...";
     Array<Trace> inits = SampleInitPopulation(support, task, space, sampler);
+    LOG(INFO) << "Inital population size: " << inits.size();
     // `bests`: The best schedules according to the cost mode when explore the space using mutators
+    LOG(INFO) << "Evolving...";
     Array<Trace> bests = EvolveWithCostModel(inits, task, space, sampler);
+    LOG(INFO) << "Population size: " << bests.size();
     // Pick candidates with eps greedy
     Array<Trace> picks = PickWithEpsGreedy(inits, bests, task, space, sampler);
     // Run measurement, update cost model
+    LOG(INFO) << "Sending " << picks.size() << " samples for measurement";
     Array<MeasureResult> results = MeasureAndUpdateCostModel(task, picks, measurer, verbose);
     num_measured += results.size();
   }
@@ -473,6 +465,7 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
                                                     const SearchTask& task,
                                                     const SearchSpace& space,
                                                     Sampler* global_sampler) {
+  trace_cache_.clear();
   std::vector<Trace> results;
   results.reserve(this->population);
   // Threading RNG
@@ -547,8 +540,8 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
   // Prepare search queues
   std::vector<CachedTrace> sch_curr;
   std::vector<CachedTrace> sch_next;
-  sch_curr.reserve(population);
-  sch_next.reserve(population);
+  sch_curr.reserve(this->population);
+  sch_next.reserve(this->population);
   for (const Trace& trace : inits) {
     sch_curr.push_back(GetCachedTrace(trace));
   }
@@ -610,17 +603,13 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
       }
     };
     sch_next.clear();
-    sch_next.resize(population);
-    support::parallel_for(0, population, f_find_candidate);
+    sch_next.resize(this->population);
+    support::parallel_for(0, this->population, f_find_candidate);
     sch_curr.clear();
     sch_curr.swap(sch_next);
   }
-  // Return the best states from the heap
-  std::sort(heap.heap.begin(), heap.heap.end(),
-            [](const CachedTrace& a, const CachedTrace& b) -> bool {
-              // `time` here is normalized throughput, i.e. the larger the better
-              return a.throughput > b.throughput;
-            });
+  // Return the best states from the heap, sorting from higher throughput to lower ones
+  std::sort(heap.heap.begin(), heap.heap.end(), CachedTrace::Compare);
   Array<Trace> results;
   results.reserve(this->num_measures_per_iteration);
   for (const CachedTrace& item : heap.heap) {
@@ -632,13 +621,12 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
 Array<Trace> EvolutionaryNode::PickWithEpsGreedy(const Array<Trace>& inits,
                                                  const Array<Trace>& bests, const SearchTask& task,
                                                  const SearchSpace& space, Sampler* sampler) {
-  int n = this->population;
-  int num_rands = n * this->eps_greedy;
-  int num_bests = n - num_rands;
+  int num_rands = this->num_measures_per_iteration * this->eps_greedy;
+  int num_bests = this->num_measures_per_iteration - num_rands;
   std::vector<int> rands = sampler->SampleWithoutReplacement(inits.size(), inits.size());
   Array<Trace> results;
-  results.reserve(n);
-  for (int i = 0, i_bests = 0, i_rands = 0; i < n; ++i) {
+  results.reserve(this->num_measures_per_iteration);
+  for (int i = 0, i_bests = 0, i_rands = 0; i < this->num_measures_per_iteration; ++i) {
     bool has_best = i_bests < static_cast<int>(bests.size());
     bool has_rand = i_rands < static_cast<int>(rands.size());
     // Pick a schedule
@@ -675,9 +663,7 @@ Array<MeasureResult> EvolutionaryNode::MeasureAndUpdateCostModel(const SearchTas
   std::vector<CachedTrace> cached_traces;
   cached_traces.reserve(picks.size());
   for (const Trace& trace : picks) {
-    auto iter = trace_cache_.find(trace);
-    CHECK(iter != trace_cache_.end());
-    cached_traces.push_back((*iter).second);
+    cached_traces.push_back(GetCachedTrace(trace));
   }
   // Assemble `measure_inputs`
   Array<MeasureInput> measure_inputs;
