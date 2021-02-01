@@ -189,15 +189,35 @@ class EvolutionaryNode : public SearchStrategyNode {
    * \return The sampler created
    */
   std::function<Optional<Mutator>()> MakeMutatorSampler(Sampler* sampler) const {
+    CHECK(0.0 <= p_mutate && p_mutate <= 1.0)  //
+        << "ValueError: Probability should be within [0, 1], "
+        << "but get `p_mutate = " << p_mutate << '\'';
     std::vector<Optional<Mutator>> mutators;
-    std::vector<double> mass;
+    std::vector<double> masses;
     mutators.push_back(NullOpt);
-    mass.push_back(1.0 - p_mutate);
+    masses.push_back(1.0 - p_mutate);
+    double total_mass_mutator = 0.0;
     for (const auto& kv : mutator_probs) {
+      const Mutator& mutator = kv.first;
+      double mass = kv.second->value;
+      CHECK_GE(mass, 0.0) << "ValueError: Probability of mutator '" << mutator->name
+                          << "' is ill-formed: " << mass;
+      total_mass_mutator += mass;
       mutators.push_back(kv.first);
-      mass.push_back(kv.second->value * p_mutate);
+      masses.push_back(mass * p_mutate);
     }
-    auto idx_sampler = sampler->MakeMultinomial(mass);
+    // Normalize the sum to 1.0
+    if (total_mass_mutator == 0.0) {
+      masses[0] = 1.0;
+      for (int i = 1, n = masses.size(); i < n; ++i) {
+        masses[i] = 0.0;
+      }
+    } else if (total_mass_mutator != 1.0) {
+      for (int i = 1, n = masses.size(); i < n; ++i) {
+        masses[i] /= total_mass_mutator;
+      }
+    }
+    auto idx_sampler = sampler->MakeMultinomial(masses);
     return [idx_sampler = std::move(idx_sampler),
             mutators = std::move(mutators)]() -> Optional<Mutator> {
       int i = idx_sampler();
