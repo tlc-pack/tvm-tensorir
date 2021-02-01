@@ -72,8 +72,10 @@ class Evolutionary(SearchStrategy):
       best = generate `population` states with the cost model,
             starting from `init`,
             using mutators
-      chosen = pick top `k = population * (1 - eps_greedy)` from `best`
-            pick     `k = population *      eps_greedy ` from `init`
+            and return the top-n states during the search,
+            where `n = num_measures_per_iter`
+      chosen = pick top `k = num_measures_per_iter * (1 - eps_greedy)` from `best`
+               pick     `k = num_measures_per_iter *      eps_greedy ` from `init`
     do the measurement on `chosen` & update the cost model
 
 
@@ -81,6 +83,8 @@ class Evolutionary(SearchStrategy):
     ----------
     total_measures : int
         The maximum number of measurements performed by genetic algorithm
+    num_measures_per_iter : int
+        The number of measures to be performed in each iteration
     population : int
         The population size in the evolutionary search
     database : Database
@@ -116,6 +120,7 @@ class Evolutionary(SearchStrategy):
     def __init__(
         self,
         total_measures: int,
+        num_measures_per_iter: int,
         population: int,
         init_measured_ratio: float,
         genetic_algo_iters: int,
@@ -127,6 +132,7 @@ class Evolutionary(SearchStrategy):
         self.__init_handle_by_constructor__(
             _ffi_api.Evolutionary,  # pylint: disable=no-member
             total_measures,
+            num_measures_per_iter,
             population,
             init_measured_ratio,
             genetic_algo_iters,

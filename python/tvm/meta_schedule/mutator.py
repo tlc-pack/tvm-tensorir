@@ -64,3 +64,14 @@ def mutate_tile_size() -> Mutator:
         The mutator created
     """
     return _ffi_api_mutator.MutateTileSize()  # pylint: disable=no-member
+
+
+def mutate_compute_location() -> Mutator:
+    """Create a mutator that randomly mutate the outcome of SampleComputeLocation
+
+    Returns
+    ----------
+    mutator: Mutator
+        The mutator created
+    """
+    return _ffi_api_mutator.MutateComputeLocation()  # pylint: disable=no-member
