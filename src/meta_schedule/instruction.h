@@ -73,7 +73,7 @@ class LoopRV : public runtime::ObjectRef {
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LoopRV, ObjectRef, LoopRVNode);
 };
 
-/*! \brief A random variable that evaluates to a TIR block */
+/*! \brief A random variable that evaluates to a TIR buffer */
 class BufferRVNode : public runtime::Object {
  public:
   void VisitAttrs(tvm::AttrVisitor* v) {}
