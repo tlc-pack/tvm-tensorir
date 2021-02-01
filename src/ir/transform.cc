@@ -31,6 +31,7 @@
 #include <stack>
 #include <unordered_set>
 
+#include "../printer/text_printer.h"
 #include "../runtime/object_internal.h"
 
 namespace tvm {
@@ -533,6 +534,16 @@ Pass PrintIR(String header, bool show_meta_data) {
 }
 
 TVM_REGISTER_GLOBAL("transform.PrintIR").set_body_typed(PrintIR);
+
+Pass PrintTVMScript(bool show_meta_data) {
+  auto pass_func = [show_meta_data](IRModule mod, const PassContext& ctx) {
+    LOG(INFO) << "PrintTVMScript:\n" << tir::AsTVMScript(mod, show_meta_data);
+    return mod;
+  };
+  return CreateModulePass(pass_func, 0, "PrintTVMScript", {});
+}
+
+TVM_REGISTER_GLOBAL("transform.PrintTVMScript").set_body_typed(PrintTVMScript);
 
 }  // namespace transform
 }  // namespace tvm
