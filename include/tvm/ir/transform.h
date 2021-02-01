@@ -422,6 +422,13 @@ CreateModulePass(const runtime::TypedPackedFunc<IRModule(IRModule, PassContext)>
  */
 TVM_DLL Pass PrintIR(String header = "", bool show_meta_data = false);
 
+/*!
+ * \brief A special trace pass that prints and IR in TVM script to LOG(INFO).
+ * \param show_meta_data Whether should we show meta data.
+ * \return The pass.
+ */
+TVM_DLL Pass PrintTVMScript(bool show_meta_data = false);
+
 }  // namespace transform
 }  // namespace tvm
 
