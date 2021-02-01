@@ -64,6 +64,15 @@ class TraceNode : public runtime::Object {
    */
   void Apply(const Schedule& sch) const;
   /*!
+   * \brief Apply the trace to the schedule
+   * \param sch The schedule to be applied
+   * \param decision_provider Provide decision to each instruction
+   */
+  void Apply(const Schedule& sch,
+             const std::function<Optional<ObjectRef>(const Instruction& inst,
+                                                     const Array<Optional<ObjectRef>>& inputs)>&
+                 decision_provider) const;
+  /*!
    * \brief Export the trace into JSON format
    */
   ObjectRef Serialize() const;

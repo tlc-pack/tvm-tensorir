@@ -73,6 +73,18 @@ Optional<Instruction> TraceNode::Pop() {
 /**************** Serialization ****************/
 
 void TraceNode::Apply(const Schedule& sch) const {
+  this->Apply(sch,
+              [this](const Instruction& inst,
+                     const Array<Optional<ObjectRef>>& inputs) -> Optional<ObjectRef> {
+                // Keep the original decision
+                return this->decisions.Get(inst);
+              });
+}
+
+void TraceNode::Apply(const Schedule& sch,
+                      const std::function<Optional<ObjectRef>(
+                          const Instruction& inst, const Array<Optional<ObjectRef>>& inputs)>&
+                          decision_provider) const {
   // Maps an old random variable to its corresponding new random variable in the re-sampling
   std::unordered_map<const Object*, const Object*> var_map;
   // Utility function to convert an old tir::Var to the new one, according to `var_map`
@@ -115,7 +127,8 @@ void TraceNode::Apply(const Schedule& sch) const {
       }
     }
     // Step 2. Apply the instruction to the schedule to get new outputs
-    Array<ObjectRef> new_outputs = inst->inst_attrs->Apply(sch, new_inputs, decisions.Get(inst));
+    Array<ObjectRef> new_outputs =
+        inst->inst_attrs->Apply(sch, new_inputs, decision_provider(inst, new_inputs));
     // Step 3. Step up the correspondence between old outputs and construct new outputs
     {
       const Array<ObjectRef>& old_outputs = inst->outputs;
