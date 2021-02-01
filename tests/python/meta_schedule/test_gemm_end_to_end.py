@@ -260,12 +260,14 @@ def test_matmul_evolutionary_step_by_step():
     measurer = ms.ProgramMeasurer()
     strategy = ms.strategy.Evolutionary(
         total_measures=128,
-        population=16,
+        num_measures_per_iter=16,
+        population=128,
         init_measured_ratio=0.05,
         genetic_algo_iters=1,
         p_mutate=0.85,
         mutator_probs={
-            ms.mutator.mutate_tile_size(): 1.0,
+            ms.mutator.mutate_tile_size(): 0.95,
+            ms.mutator.mutate_compute_location(): 0.05,
         },
         cost_model=ms.RandCostModel(),
         eps_greedy=0.07,
@@ -282,13 +284,13 @@ def test_matmul_evolutionary_step_by_step():
                 cache_write_scope="global",
                 fusion_levels=[1, 2],
             ),
-            ms.rule.random_compute_location(),
             ms.rule.parallelize_vectorize_unroll(
                 max_jobs_per_core=16,
                 max_vectorize_extent=32,
                 unroll_max_steps=[0, 16, 64, 512],
                 unroll_explicit=True,
             ),
+            ms.rule.random_compute_location(),
         ],
         postprocs=[
             ms.postproc.rewrite_parallel_vectorize_unroll(),
@@ -329,13 +331,13 @@ def test_matmul_evolutionary_end_to_end():
                     cache_write_scope="global",
                     fusion_levels=[1, 2],
                 ),
-                ms.rule.random_compute_location(),
                 ms.rule.parallelize_vectorize_unroll(
                     max_jobs_per_core=16,
                     max_vectorize_extent=32,
                     unroll_max_steps=[0, 16, 64, 512],
                     unroll_explicit=True,
                 ),
+                ms.rule.random_compute_location(),
             ],
             postprocs=[
                 ms.postproc.rewrite_parallel_vectorize_unroll(),
@@ -344,12 +346,14 @@ def test_matmul_evolutionary_end_to_end():
         ),
         strategy=ms.strategy.Evolutionary(
             total_measures=128,
-            population=16,
+            num_measures_per_iter=16,
+            population=128,
             init_measured_ratio=0.05,
             genetic_algo_iters=1,
             p_mutate=0.85,
             mutator_probs={
-                ms.mutator.mutate_tile_size(): 1.0,
+                ms.mutator.mutate_tile_size(): 0.95,
+                ms.mutator.mutate_compute_location(): 0.05,
             },
             cost_model=ms.RandCostModel(),
             eps_greedy=0.07,
@@ -378,13 +382,13 @@ def test_matmul_evolutionary_xgb():
                     cache_write_scope="global",
                     fusion_levels=[1, 2],
                 ),
-                ms.rule.random_compute_location(),
                 ms.rule.parallelize_vectorize_unroll(
                     max_jobs_per_core=16,
                     max_vectorize_extent=32,
                     unroll_max_steps=[0, 16, 64, 512],
                     unroll_explicit=True,
                 ),
+                ms.rule.random_compute_location(),
             ],
             postprocs=[
                 ms.postproc.rewrite_parallel_vectorize_unroll(),
@@ -393,12 +397,14 @@ def test_matmul_evolutionary_xgb():
         ),
         strategy=ms.strategy.Evolutionary(
             total_measures=128,
-            population=16,
+            num_measures_per_iter=16,
+            population=128,
             init_measured_ratio=0.05,
             genetic_algo_iters=1,
             p_mutate=0.85,
             mutator_probs={
-                ms.mutator.mutate_tile_size(): 1.0,
+                ms.mutator.mutate_tile_size(): 0.95,
+                ms.mutator.mutate_compute_location(): 0.05,
             },
             cost_model=ms.XGBModel(
                 num_warmup_sample=0,
