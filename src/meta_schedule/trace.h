@@ -103,6 +103,11 @@ class TraceNode : public runtime::Object {
    * \return The simplified trace
    */
   Trace Simplified(bool remove_postproc) const;
+  /*!
+   * \brief Stringify the trace as applying a sequence of schedule primitives
+   * \return A string, the sequence of schedule primitives
+   */
+  String Stringify() const;
 
   static constexpr const char* _type_key = "meta_schedule.Trace";
   TVM_DECLARE_FINAL_OBJECT_INFO(TraceNode, Object);

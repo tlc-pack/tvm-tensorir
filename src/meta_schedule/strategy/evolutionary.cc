@@ -200,6 +200,12 @@ class EvolutionaryNode : public SearchStrategyNode {
   // Helper functions
   friend class Evolutionary;
 
+  /*!
+   * \brief Fork a sampler into `n` samplers
+   * \param n The number of samplers to be forked
+   * \param sampler The sampler to be forked
+   * \return A list of samplers, the result of forking
+   */
   static std::vector<Sampler> ForkSamplers(int n, Sampler* sampler) {
     std::vector<Sampler> result;
     result.reserve(n);
@@ -209,6 +215,12 @@ class EvolutionaryNode : public SearchStrategyNode {
     return result;
   }
 
+  /*!
+   * \brief Replay the trace and do postprocessing
+   * \param n The number of samplers to be forked
+   * \param sampler The sampler to be forked
+   * \return A list of samplers, the result of forking
+   */
   static Optional<Schedule> ReplayTrace(const Trace& trace, const SearchTask& task,
                                         const SearchSpace& space, Sampler* sampler) {
     Schedule sch(task->workload, sampler->ForkSeed());
@@ -219,14 +231,11 @@ class EvolutionaryNode : public SearchStrategyNode {
     return sch;
   }
 
-  static std::string StringifyTrace(const Trace& trace) {
-    std::ostringstream os;
-    for (const String& line : trace->AsPython()) {
-      os << line << '\n';
-    }
-    return os.str();
-  }
-
+  /*!
+   * \brief Given a set of decisions, keep only "SampleComputeLocation" and discard the rest
+   * \param decisions The decisions
+   * \return The new set of decisions only containing "SampleComputeLocation"
+   */
   static Map<Instruction, ObjectRef> KeepComputeAtDecision(
       const Map<Instruction, ObjectRef>& decisions) {
     Map<Instruction, ObjectRef> result;
@@ -283,11 +292,20 @@ class EvolutionaryNode : public SearchStrategyNode {
     };
   }
 
-  void AddCachedTrace(CachedTrace cached_trace) const {
+  /*!
+   * \brief Add the cached trace into the trace_cache_
+   * \param cached_trace The cached_trace to be added
+   */
+  void AddCachedTrace(const CachedTrace& cached_trace) const {
     std::unique_lock<std::mutex> lock(this->trace_cache_mutex_);
-    trace_cache_.emplace(GetRef<Trace>(cached_trace.trace), std::move(cached_trace));
+    trace_cache_.emplace(GetRef<Trace>(cached_trace.trace), cached_trace);
   }
 
+  /*!
+   * \brief Retrieve the cached trace given the trace
+   * \param trace The trace to be retrieved
+   * \return The cached trace
+   */
   CachedTrace GetCachedTrace(const Trace& trace) const {
     auto iter = trace_cache_.find(trace);
     CHECK(iter != trace_cache_.end());
@@ -484,7 +502,7 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
       Schedule sch = opt_sch.value();
       this->AddCachedTrace(CachedTrace{trace.get(), sch, Repr(sch), -1.0});
     } else {
-      LOG(FATAL) << "ValueError: Cannot postprocess the trace:\n" << StringifyTrace(trace);
+      LOG(FATAL) << "ValueError: Cannot postprocess the trace:\n" << trace->Stringify();
       throw;
     }
   };

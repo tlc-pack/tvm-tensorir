@@ -267,6 +267,14 @@ Array<String> TraceNode::AsPython() const {
   return result;
 }
 
+String TraceNode::Stringify() const {
+  std::ostringstream os;
+  for (const String& line : AsPython()) {
+    os << line << '\n';
+  }
+  return os.str();
+}
+
 /**************** New trace creators ****************/
 
 Trace TraceNode::WithDecision(const Instruction& inst,    //
