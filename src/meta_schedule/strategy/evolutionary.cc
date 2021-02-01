@@ -450,7 +450,7 @@ Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const Search
     // `bests`: The best schedules according to the cost mode when explore the space using mutators
     LOG(INFO) << "Evolving...";
     Array<Trace> bests = EvolveWithCostModel(inits, task, space, sampler);
-    LOG(INFO) << "Population size: " << bests.size();
+    LOG(INFO) << "Ranking by the cost model, the number of samples picked: " << bests.size();
     // Pick candidates with eps greedy
     Array<Trace> picks = PickWithEpsGreedy(inits, bests, task, space, sampler);
     // Run measurement, update cost model
