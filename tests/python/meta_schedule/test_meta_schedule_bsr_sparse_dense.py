@@ -57,7 +57,7 @@ _sparse_dense_implement_te = {
 }
 
 
-def meta_schedule_sparse_dense_llvm(func):
+def meta_schedule_sparse_dense_llvm(func, f_create_args):
     def schedule_sparse_dense(s: ms.Schedule):
         sparse_dense = s.get_block("sparse_dense")
         sparse_dense_local = s.cache_write(sparse_dense, 0, 'local')
@@ -78,9 +78,11 @@ def meta_schedule_sparse_dense_llvm(func):
         s.vectorize(j_init)
 
     task = ms.SearchTask(func, task_name=sparse_dense_bsr.__qualname__)
+    runner = ms.measure.RPCRunner(f_create_args=f_create_args)
+    measurer = ms.measure.ProgramMeasurer(runner=runner)
     space = ms.space.ScheduleFn(schedule_sparse_dense)
     strategy = ms.strategy.Replay(num_trials=200)
-    sch = ms.autotune(task=task, space=space, strategy=strategy, verbose=False)
+    sch = ms.autotune(task=task, space=space, strategy=strategy, measurer=measurer, verbose=False)
     return sch
 
 def random_bsr_matrix(M, N, BS_R, BS_C, density, dtype):
@@ -164,15 +166,17 @@ def test_sparse_dense():
                 func = func.specialize(x, tir.decl_buffer([M, K]))
                 func = func.specialize(data, tir.decl_buffer(W_data.shape))
                 func = func.specialize(N_blocks, N // BS_R).remove_const_param(N_blocks)
-                print(tvm.script.asscript(func))
 
-                # Register the sparse data to special buffer
-                prefix = 'sparse_dense_bsr_'
-                ms.measure.register_special_buffer(prefix + "data", W_sp_np.data)
-                ms.measure.register_special_buffer(prefix + "indices", W_sp_np.indices)
-                ms.measure.register_special_buffer(prefix + "indptr", W_sp_np.indptr)
+                def f_create_args(ctx):
+                    print('create args')
+                    X = tvm.nd.array(X_np, ctx=ctx)
+                    W_data = tvm.nd.array(W_sp_np.data, ctx=ctx)
+                    W_indices = tvm.nd.array(W_sp_np.indices, ctx=ctx)
+                    W_indptr = tvm.nd.array(W_sp_np.indptr, ctx=ctx)
+                    Y = tvm.nd.array(Y_np, ctx=ctx)
+                    return [X, W_data, W_indices, W_indptr, Y]
 
-                sch = meta_schedule_sparse_dense_llvm(func)
+                sch = meta_schedule_sparse_dense_llvm(func, f_create_args)
                 func = sch.sch.func
 
                 func = tvm.build(func)

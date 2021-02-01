@@ -34,12 +34,12 @@ We implement these in python to utilize python's multiprocessing and error handl
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, Callable, List, Optional, Union
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
 
-from ..runtime import ndarray
+from ..runtime import ndarray, NDArray, TVMContext
 from . import _ffi_api
 from .measure_record import BuildResult, MeasureInput, MeasureResult
 from .schedule import Schedule
@@ -195,6 +195,7 @@ class RPCRunner(ProgramRunner):
         min_repeat_ms: int = 40,
         cooldown_interval: float = 0.0,
         enable_cpu_cache_flush: bool = False,
+        f_create_args: Optional[Callable[[TVMContext], List[NDArray]]] = None
     ):
         if key is None:
             key = os.environ.get("TVM_TRACKER_KEY", None)
@@ -237,6 +238,7 @@ class RPCRunner(ProgramRunner):
             min_repeat_ms,
             cooldown_interval,
             enable_cpu_cache_flush,
+            f_create_args,
         )
 
 
@@ -454,21 +456,3 @@ class ProgramTester:
         func(*args)
         args = [arg.asnumpy() for arg in args]
         return args
-
-
-# The map stores special registered buffer for measurement
-#  This can be used for sparse workloads when we cannot use random tensors for measurment.
-special_buffer_table = {}
-
-def register_special_buffer(tensor_name, data):
-    """Register special buffer for measurement
-    This can be used for sparse workloads when we cannot use random tensors for measurment.
-    """
-    special_buffer_table[tensor_name] = data
-
-def get_special_buffer(tensor_name):
-    """Get special buffer for measurement.
-    This can be used for sparse workloads when we cannot use random tensors for measurment.
-    The buffers are registered by `register_special_buffer`.
-    """
-    return special_buffer_table.get(tensor_name, None)

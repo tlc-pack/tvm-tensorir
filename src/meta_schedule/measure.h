@@ -39,6 +39,7 @@
 #ifndef SRC_META_SCHEDULE_MEASURE_H_
 #define SRC_META_SCHEDULE_MEASURE_H_
 
+#include <tvm/runtime/ndarray.h>
 #include "./database.h"
 #include "./measure_record.h"
 #include "./schedule.h"
@@ -83,6 +84,12 @@ class ProgramBuilder : public ObjectRef {
 
 /********** ProgramRunner **********/
 
+/*!
+ * \brief Callback function to create arguments for functions to measure. This can be used for
+ * sparse workloads when we cannot use random tensors for measurment.
+ */
+using FCreateArgs = runtime::TypedPackedFunc<Array<runtime::NDArray>(TVMContext)>;
+
 /*! \brief ProgramRunner that runs the built programs and measure the time cost. */
 class ProgramRunnerNode : public Object {
  public:
@@ -98,6 +105,8 @@ class ProgramRunnerNode : public Object {
   double cooldown_interval;
   /*! \brief Whether to flush cache on CPU between repeated measurements. */
   bool enable_cpu_cache_flush;
+  /*! \brief Callback functions to create arguments */
+  FCreateArgs f_create_args;
   /*! \brief Virtual destructor */
   virtual ~ProgramRunnerNode() = default;
   /*!
@@ -229,10 +238,12 @@ class RPCRunner : public ProgramRunner {
    * \param min_repeat_ms The minimum duration of one repeat in milliseconds.
    * \param cooldown_interval The cool down interval between two measurements.
    * \param enable_cpu_cache_flush Whether to flush cache on CPU between repeated measurements.
+   * \param f_create_args Callback function to create arguments.
    */
-  explicit RPCRunner(String key, String host, int port, int priority, int n_parallel, int timeout,
-                     int number, int repeat, int min_repeat_ms, double cooldown_interval,
-                     bool enable_cpu_cache_flush);
+   explicit RPCRunner(String key, String host, int port, int priority, int n_parallel,
+                         int timeout, int number, int repeat, int min_repeat_ms,
+                         double cooldown_interval, bool enable_cpu_cache_flush,
+                         FCreateArgs f_create_args);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(RPCRunner, ProgramRunner, RPCRunnerNode);
 };
