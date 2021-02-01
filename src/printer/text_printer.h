@@ -351,6 +351,16 @@ class TIRTextPrinter : public StmtFunctor<Doc(const Stmt&)>,
   Doc PrintBody(const Stmt& body, bool indent = true);
 };
 
+/*!
+ * \brief Render the functions as a string in the TVM script
+ *
+ * \param functions The functions to be rendered.
+ * \param show_meta_data Whether to print meta data section.
+ *
+ * \return The text representation.
+ */
+String AsTVMScript(const ObjectRef& functions, bool show_meta_data);
+
 }  // namespace tir
 }  // namespace tvm
 
