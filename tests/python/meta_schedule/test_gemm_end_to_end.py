@@ -265,7 +265,8 @@ def test_matmul_evolutionary_step_by_step():
         genetic_algo_iters=1,
         p_mutate=0.85,
         mutator_probs={
-            ms.mutator.mutate_tile_size(): 1.0,
+            ms.mutator.mutate_tile_size(): 0.95,
+            ms.mutator.mutate_compute_location(): 0.05,
         },
         cost_model=ms.RandCostModel(),
         eps_greedy=0.07,
@@ -349,7 +350,8 @@ def test_matmul_evolutionary_end_to_end():
             genetic_algo_iters=1,
             p_mutate=0.85,
             mutator_probs={
-                ms.mutator.mutate_tile_size(): 1.0,
+                ms.mutator.mutate_tile_size(): 0.95,
+                ms.mutator.mutate_compute_location(): 0.05,
             },
             cost_model=ms.RandCostModel(),
             eps_greedy=0.07,
@@ -398,7 +400,8 @@ def test_matmul_evolutionary_xgb():
             genetic_algo_iters=1,
             p_mutate=0.85,
             mutator_probs={
-                ms.mutator.mutate_tile_size(): 1.0,
+                ms.mutator.mutate_tile_size(): 0.95,
+                ms.mutator.mutate_compute_location(): 0.05,
             },
             cost_model=ms.XGBModel(
                 num_warmup_sample=0,

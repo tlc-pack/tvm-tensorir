@@ -72,7 +72,8 @@ def test_matmul_post_order_apply():
             genetic_algo_iters=10,
             p_mutate=0.85,
             mutator_probs={
-                ms.mutator.mutate_tile_size(): 1.0,
+                ms.mutator.mutate_tile_size(): 0.95,
+                ms.mutator.mutate_compute_location(): 0.05,
             },
             cost_model=ms.XGBModel(
                 num_warmup_sample=0,
@@ -109,7 +110,8 @@ def test_matmul_relu_post_order_apply():
             genetic_algo_iters=10,
             p_mutate=0.85,
             mutator_probs={
-                ms.mutator.mutate_tile_size(): 1.0,
+                ms.mutator.mutate_tile_size(): 0.95,
+                ms.mutator.mutate_compute_location(): 0.05,
             },
             cost_model=ms.XGBModel(
                 num_warmup_sample=0,
@@ -146,7 +148,8 @@ def test_conv1d_post_order_apply():
             genetic_algo_iters=10,
             p_mutate=0.85,
             mutator_probs={
-                ms.mutator.mutate_tile_size(): 1.0,
+                ms.mutator.mutate_tile_size(): 0.95,
+                ms.mutator.mutate_compute_location(): 0.05,
             },
             cost_model=ms.XGBModel(
                 num_warmup_sample=0,
