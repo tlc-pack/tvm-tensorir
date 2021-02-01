@@ -16,6 +16,11 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include <tvm/support/parallel_for.h>
+
+#include <mutex>   // NOLINT(build/c++11)
+#include <thread>  // NOLINT(build/c++11)
+
 #include "../cost_model.h"
 #include "../database.h"
 #include "../measure.h"
@@ -97,6 +102,7 @@ class EvolutionaryNode : public SearchStrategyNode {
 
   /*** Helpers ***/
   mutable std::unordered_map<Trace, CachedTrace, ObjectPtrHash, ObjectPtrEqual> trace_cache_;
+  mutable std::mutex trace_cache_mutex_;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     /*** Configuration: global ***/
@@ -115,6 +121,7 @@ class EvolutionaryNode : public SearchStrategyNode {
     v->Visit("eps_greedy", &eps_greedy);
     /*** Helpers ***/
     // Not visited: `trace_cache_`
+    // Not visited: `trace_cache_mutex_`
   }
 
   /*!
@@ -188,12 +195,53 @@ class EvolutionaryNode : public SearchStrategyNode {
  private:
   // Helper functions
 
+  static std::vector<Sampler> ForkSamplers(int n, Sampler* sampler) {
+    std::vector<Sampler> result;
+    result.reserve(n);
+    for (int i = 0; i < n; ++i) {
+      result.emplace_back(sampler->ForkSeed());
+    }
+    return result;
+  }
+
+  static Optional<Schedule> ReplayTrace(const Trace& trace, const SearchTask& task,
+                                        const SearchSpace& space, Sampler* sampler) {
+    Schedule sch(task->workload, sampler->ForkSeed());
+    trace->Apply(sch);
+    if (!space->Postprocess(task, sch, sampler)) {
+      return NullOpt;
+    }
+    return sch;
+  }
+
+  static std::string StringifyTrace(const Trace& trace) {
+    std::ostringstream os;
+    for (const String& line : trace->AsPython()) {
+      os << line << '\n';
+    }
+    return os.str();
+  }
+
+  static Map<Instruction, ObjectRef> KeepComputeAtDecision(
+      const Map<Instruction, ObjectRef>& decisions) {
+    Map<Instruction, ObjectRef> result;
+    for (const auto& kv : decisions) {
+      const Instruction& inst = kv.first;
+      const ObjectRef& decision = kv.second;
+      if (inst->inst_attrs->IsInstance<SampleComputeLocationAttrs>()) {
+        result.Set(inst, decision);
+      }
+    }
+    return result;
+  }
+
   /*!
    * \brief Create a sampler function that picks mutators according to the mass function
    * \param sampler The source of randomness
    * \return The sampler created
    */
-  std::function<Optional<Mutator>()> MakeMutatorSampler(Sampler* sampler) const {
+  static std::function<Optional<Mutator>()> MakeMutatorSampler(
+      double p_mutate, const Map<Mutator, FloatImm>& mutator_probs, Sampler* sampler) {
     CHECK(0.0 <= p_mutate && p_mutate <= 1.0)  //
         << "ValueError: Probability should be within [0, 1], "
         << "but get `p_mutate = " << p_mutate << '\'';
@@ -231,41 +279,6 @@ class EvolutionaryNode : public SearchStrategyNode {
   }
 
   /*!
-   * \brief Re-sample a trace in the support
-   * \param support_trace The one trace of the support
-   * \param task The search task
-   * \param space The search space
-   * \param sampler Source of randomness
-   * \return The sampling result
-   */
-  Trace ReSampleSupport(const Trace& support_trace, const SearchTask& task,
-                        const SearchSpace& space, Sampler* sampler) const {
-    for (;;) {
-      Map<Instruction, ObjectRef> decisions;
-      for (const auto& kv : support_trace->decisions) {
-        const Instruction& inst = kv.first;
-        const ObjectRef& decision = kv.second;
-        // N.B. We do not change the sampling result from `SampleComputeLocation`,
-        // because it tends to fail quite frequently
-        if (inst->inst_attrs->IsInstance<SampleComputeLocationAttrs>()) {
-          decisions.Set(inst, decision);
-        }
-      }
-      // Remove most of the decisions, i.e. random replay
-      Schedule sch = Schedule(task->workload, sampler->ForkSeed());
-      Trace(support_trace->insts, decisions)->Apply(sch);
-      if (space->Postprocess(task, sch, sampler)) {
-        // We create a new trace here to avoid cyclic dependency
-        Trace new_trace(sch->trace->insts, sch->trace->decisions);
-        trace_cache_[new_trace] = CachedTrace{new_trace.get(), sch, Repr(sch), -1.0};
-        return new_trace;
-      }
-    }
-    LOG(FATAL) << "not reachable";
-    throw;
-  }
-
-  /*!
    * \brief Replay and postprocess the trace, except for the traces that
    * have been post-processed before
    * \param trace The trace to be postprocessed
@@ -276,17 +289,26 @@ class EvolutionaryNode : public SearchStrategyNode {
    */
   CachedTrace* ReplayAndPostProc(const Trace& trace, const SearchTask& task,
                                  const SearchSpace& space, Sampler* sampler) const {
-    if (trace_cache_.count(trace)) {
-      return &trace_cache_.at(trace);
+    {
+      std::unique_lock<std::mutex> lock(this->trace_cache_mutex_);
+      if (trace_cache_.count(trace)) {
+        return &trace_cache_.at(trace);
+      }
     }
     Schedule sch = Schedule(task->workload, sampler->ForkSeed());
     trace->Apply(sch);
     if (space->Postprocess(task, sch, sampler)) {
+      std::unique_lock<std::mutex> lock(this->trace_cache_mutex_);
       CachedTrace& cached_trace = trace_cache_[trace] =
           CachedTrace{trace.get(), sch, Repr(sch), -1.0};
       return &cached_trace;
     }
     return nullptr;
+  }
+
+  void AddCachedTrace(CachedTrace cached_trace) {
+    std::unique_lock<std::mutex> lock(this->trace_cache_mutex_);
+    trace_cache_.emplace(GetRef<Trace>(cached_trace.trace), std::move(cached_trace));
   }
 
   /*!
@@ -428,6 +450,7 @@ Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const Search
                                             const ProgramMeasurer& measurer, Sampler* sampler,
                                             int verbose) {
   Array<Schedule> support = space->GetSupport(task, sampler);
+  trace_cache_.clear();
   for (int num_measured = 0; num_measured < this->total_measures;) {
     // `inits`: Sampled initial population, whose size is at most `this->population`
     Array<Trace> inits = SampleInitPopulation(support, task, space, sampler);
@@ -445,21 +468,52 @@ Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const Search
 Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& support,
                                                     const SearchTask& task,
                                                     const SearchSpace& space, Sampler* sampler) {
-  int n = this->population;
-  Array<Trace> results;
-  results.reserve(n);
+  std::vector<Trace> results;
+  results.reserve(this->population);
+  // Threading RNG
+  int num_threads = std::thread::hardware_concurrency();
+  std::vector<Sampler> thread_samplers = ForkSamplers(num_threads, sampler);
   // Pick measured states
-  int num_measured = n * this->init_measured_ratio;
+  int num_measured = this->population * this->init_measured_ratio;
   for (const Database::Entry& entry : database->GetTopK(num_measured)) {
     results.push_back(entry.trace.value());
   }
+  auto f_proc_measured = [this, num_threads, &results, &thread_samplers, &task,
+                          &space](int i) -> void {
+    Sampler* sampler = &thread_samplers[i % num_threads];
+    const Trace& trace = results[i];
+    if (Optional<Schedule> opt_sch = ReplayTrace(trace, task, space, sampler)) {
+      Schedule sch = opt_sch.value();
+      this->AddCachedTrace(CachedTrace{trace.get(), sch, Repr(sch), -1.0});
+    } else {
+      LOG(FATAL) << "ValueError: Cannot postprocess the trace:\n" << StringifyTrace(trace);
+      throw;
+    }
+  };
+  support::parallel_for(0, results.size(), f_proc_measured);
   // Pick unmeasured states
-  int num_random = n - static_cast<int>(results.size());
-  std::vector<int> sampled = sampler->SampleInts(num_random, 0, support.size());
-  for (int i = 0; i < num_random; ++i) {
-    const Schedule& sch = support[sampled[i]];
-    results.push_back(this->ReSampleSupport(sch->trace, task, space, sampler));
-  }
+  num_measured = results.size();
+  results.resize(this->population, Trace(nullptr));
+  auto f_proc_unmeasured = [this, num_threads, &results, &thread_samplers, &task, &space,
+                            &support](int i) -> void {
+    Sampler* sampler = &thread_samplers[i % num_threads];
+    for (;;) {
+      const Trace& support_trace = support[sampler->SampleInt(0, support.size())]->trace;
+      // Remove most of the decisions, i.e. random replay
+      // N.B. We do not change the sampling result from `SampleComputeLocation`,
+      // because it tends to fail quite frequently
+      Map<Instruction, ObjectRef> decisions = KeepComputeAtDecision(support_trace->decisions);
+      if (Optional<Schedule> opt_sch =
+              ReplayTrace(Trace(support_trace->insts, decisions), task, space, sampler)) {
+        Schedule sch = opt_sch.value();
+        Trace trace(sch->trace->insts, sch->trace->decisions);
+        this->AddCachedTrace(CachedTrace{trace.get(), sch, Repr(sch), -1.0});
+        results[i] = std::move(trace);
+        break;
+      }
+    }
+  };
+  support::parallel_for(num_measured, this->population, f_proc_unmeasured);
   return results;
 }
 
@@ -467,7 +521,8 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
                                                    const SearchTask& task, const SearchSpace& space,
                                                    Sampler* sampler) {
   // Prepare the mutator sampler
-  std::function<Optional<Mutator>()> mutator_sampler = MakeMutatorSampler(sampler);
+  std::function<Optional<Mutator>()> mutator_sampler =
+      MakeMutatorSampler(this->p_mutate, this->mutator_probs, sampler);
   // The heap to record best schedule, we do not consider schedules that are already measured
   // Also we use `in_heap` to make sure items in the heap are de-duplicated
   SizedHeap heap(this->num_measures_per_iteration);
@@ -607,6 +662,7 @@ Array<MeasureResult> EvolutionaryNode::MeasureAndUpdateCostModel(const SearchTas
   }
   // Update the cost model
   cost_model->Update(measure_inputs, measure_results);
+  trace_cache_.clear();
   return measure_results;
 }
 
