@@ -67,7 +67,8 @@ def test_matmul_post_order_apply():
         space=SPACE,
         strategy=ms.strategy.Evolutionary(
             total_measures=128,
-            population=16,
+            num_measures_per_iter=16,
+            population=128,
             init_measured_ratio=0.2,
             genetic_algo_iters=10,
             p_mutate=0.85,
@@ -105,7 +106,8 @@ def test_matmul_relu_post_order_apply():
         space=SPACE,
         strategy=ms.strategy.Evolutionary(
             total_measures=128,
-            population=16,
+            num_measures_per_iter=16,
+            population=128,
             init_measured_ratio=0.2,
             genetic_algo_iters=10,
             p_mutate=0.85,
@@ -143,7 +145,8 @@ def test_conv1d_post_order_apply():
         space=SPACE,
         strategy=ms.strategy.Evolutionary(
             total_measures=128,
-            population=16,
+            num_measures_per_iter=16,
+            population=128,
             init_measured_ratio=0.2,
             genetic_algo_iters=10,
             p_mutate=0.85,

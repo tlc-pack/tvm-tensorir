@@ -58,9 +58,11 @@ struct CachedTrace {
  *      pick     `k = population * (1 - init_measured_ratio)` from random support
  *   best = generate `population` states with the cost model,
  *          starting from `init`,
- *          using mutators
- *   chosen = pick top `k = population * (1 - eps_greedy)` from `best`
- *            pick     `k = population *      eps_greedy ` from `init`
+ *          using mutators,
+ *          and return the top-n states during the search,
+ *          where `n = num_measures_per_iter`
+ *   chosen = pick top `k = num_measures_per_iter * (1 - eps_greedy)` from `best`
+ *            pick     `k = num_measures_per_iter *      eps_greedy ` from `init`
  *   do the measurement on `chosen` & update the cost model
  */
 class EvolutionaryNode : public SearchStrategyNode {
@@ -68,6 +70,8 @@ class EvolutionaryNode : public SearchStrategyNode {
   /*** Configuration: global ***/
   /*! \brief The maximum number of measurements performed by genetic algorithm */
   int total_measures;
+  /*! \brief The number of measures to be performed in each iteration */
+  int num_measures_per_iteration;
   /*! \brief The population size in the evolutionary search */
   int population;
   /*! \brief A table storing all states that have been measured */
@@ -97,6 +101,7 @@ class EvolutionaryNode : public SearchStrategyNode {
   void VisitAttrs(tvm::AttrVisitor* v) {
     /*** Configuration: global ***/
     v->Visit("total_measures", &total_measures);
+    v->Visit("num_measures_per_iteration", &num_measures_per_iteration);
     v->Visit("population", &population);
     v->Visit("database", &database);
     /*** Configuration: the initial population ***/
@@ -319,6 +324,7 @@ class Evolutionary : public SearchStrategy {
   /*!
    * \brief Constructor
    * \param total_measures The maximum number of measurements performed by genetic algorithm
+   * \param num_measures_per_iteration The number of measures to be performed in each iteration
    * \param population The population size for evolutionary search
    * \param init_measured_ratio The ratio of measured states used in the initial population
    * \param genetic_algo_iters The number of iterations performed by generic algorithm
@@ -329,7 +335,7 @@ class Evolutionary : public SearchStrategy {
    */
   explicit Evolutionary(
       /*** Configuration: global ***/
-      int total_measures, int population,
+      int total_measures, int num_measures_per_iteration, int population,
       /*** Configuration: the initial population ***/
       double init_measured_ratio,
       /*** Configuration: evolution ***/
@@ -396,12 +402,13 @@ class SizedHeap {
 
 /********** Constructor **********/
 
-Evolutionary::Evolutionary(int total_measures, int population, double init_measured_ratio,
-                           int genetic_algo_iters, double p_mutate,
+Evolutionary::Evolutionary(int total_measures, int num_measures_per_iteration, int population,
+                           double init_measured_ratio, int genetic_algo_iters, double p_mutate,
                            Map<Mutator, FloatImm> mutator_probs, CostModel cost_model,
                            double eps_greedy) {
   ObjectPtr<EvolutionaryNode> n = make_object<EvolutionaryNode>();
   n->total_measures = total_measures;
+  n->num_measures_per_iteration = num_measures_per_iteration;
   n->population = population;
   n->database = InMemoryDB(NullOpt);
   n->init_measured_ratio = init_measured_ratio;
@@ -463,7 +470,7 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
   std::function<Optional<Mutator>()> mutator_sampler = MakeMutatorSampler(sampler);
   // The heap to record best schedule, we do not consider schedules that are already measured
   // Also we use `in_heap` to make sure items in the heap are de-duplicated
-  SizedHeap heap(population);
+  SizedHeap heap(this->num_measures_per_iteration);
   // Prepare search queues
   std::vector<CachedTrace*> sch_curr;
   std::vector<CachedTrace*> sch_next;
@@ -609,6 +616,7 @@ struct Internal {
   /*!
    * \brief Constructor of Evolutionary
    * \param total_measures The maximum number of measurements performed by genetic algorithm
+   * \param num_measures_per_iteration The number of measures to be performed in each iteration
    * \param population The population size for evolutionary search
    * \param init_measured_ratio The ratio of measured states used in the initial population
    * \param genetic_algo_iters The number of iterations performed by generic algorithm
@@ -619,12 +627,12 @@ struct Internal {
    * \return The Evolutionary constructed
    * \sa Evolutionary::Evolutionary
    */
-  static Evolutionary New(int total_measures, int population, double init_measured_ratio,
-                          int genetic_algo_iters, double p_mutate,
+  static Evolutionary New(int total_measures, int num_measures_per_iteration, int population,
+                          double init_measured_ratio, int genetic_algo_iters, double p_mutate,
                           Map<Mutator, FloatImm> mutator_probs, CostModel cost_model,
                           double eps_greedy) {
-    return Evolutionary(total_measures, population, init_measured_ratio, genetic_algo_iters,
-                        p_mutate, mutator_probs, cost_model, eps_greedy);
+    return Evolutionary(total_measures, num_measures_per_iteration, population, init_measured_ratio,
+                        genetic_algo_iters, p_mutate, mutator_probs, cost_model, eps_greedy);
   }
   /*!
    * \brief Sample the initial population from the support

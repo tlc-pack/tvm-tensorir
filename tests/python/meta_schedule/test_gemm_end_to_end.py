@@ -260,7 +260,8 @@ def test_matmul_evolutionary_step_by_step():
     measurer = ms.ProgramMeasurer()
     strategy = ms.strategy.Evolutionary(
         total_measures=128,
-        population=16,
+        num_measures_per_iter=16,
+        population=128,
         init_measured_ratio=0.05,
         genetic_algo_iters=1,
         p_mutate=0.85,
@@ -345,7 +346,8 @@ def test_matmul_evolutionary_end_to_end():
         ),
         strategy=ms.strategy.Evolutionary(
             total_measures=128,
-            population=16,
+            num_measures_per_iter=16,
+            population=128,
             init_measured_ratio=0.05,
             genetic_algo_iters=1,
             p_mutate=0.85,
@@ -395,7 +397,8 @@ def test_matmul_evolutionary_xgb():
         ),
         strategy=ms.strategy.Evolutionary(
             total_measures=128,
-            population=16,
+            num_measures_per_iter=16,
+            population=128,
             init_measured_ratio=0.05,
             genetic_algo_iters=1,
             p_mutate=0.85,
