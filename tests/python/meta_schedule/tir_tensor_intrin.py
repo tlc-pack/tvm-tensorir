@@ -155,8 +155,8 @@ def wmma_load_a_desc(a: ty.handle, c: ty.handle) -> None:
         tir.bind(vj, 0)
         for i, j in tir.grid(16, 16):
             with tir.block([16, 16], "load") as [vii, vjj]:
-                tir.bind(vii, i)
-                tir.bind(vjj, j)
+                tir.bind(vii, vi + i)
+                tir.bind(vjj, vj + j)
                 C[vii, vjj] = A[vii, vjj]
 
 
@@ -184,8 +184,8 @@ def wmma_load_b_desc(a: ty.handle, c: ty.handle) -> None:
         tir.bind(vj, 0)
         for i, j in tir.grid(16, 16):
             with tir.block([16, 16], "load") as [vii, vjj]:
-                tir.bind(vii, i)
-                tir.bind(vjj, j)
+                tir.bind(vii, vi + i)
+                tir.bind(vjj, vj + j)
                 C[vii, vjj] = A[vii, vjj]
 
 

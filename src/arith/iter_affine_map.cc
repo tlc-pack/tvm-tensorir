@@ -263,31 +263,37 @@ class IterMapRewriter : public ExprMutator {
     return NormalizeToIterWithOffset(ToIterSumExpr(DirectMutate(expr)), extent);
   }
 
-  bool CheckBijective(const Array<IterSumExpr>& indices) {
+  bool CheckBijective(const Array<IterVar>& leaf_vars, const Array<IterSumExpr>& bindings) {
     // This function checks two conditions:
     // - C0: Each iter mark should be fully covered by non-overlapping splits.
     // - C1: All of the input iterators are used.
     //
     // Example: given x in [0, 8) y in [0, 6)
-    // - indices = [x, x+1, y] won't pass because x and x+1 contribute
+    // - bindings = [x, x+1, y] won't pass because x and x+1 contribute
     //   two splits that overlaps with each other.
-    // - indices = [x / 4, x % 4, y] will pass because x / 4 and x % 4
+    // - bindings = [x / 4, x % 4, y] will pass because x / 4 and x % 4
     //   contribute two non-overlapping splits that covers x.
-    // - indices = [x / 4, x % 4] won't pass because y is not used.
+    // - bindings = [x / 4, x % 4] won't pass because y is not used.
     //
     IterMarkSplitCollector collector;
     // We can check that for each iter mark:
     // All the splits that refers to the iter_mark covers its extent.
     // The splits do not overlap with each other.
 
-    collector.Collect(indices);
-    for (const IterMark& mark : collector.visited_) {
-      if (TryNormalizeSplits(mark, collector.mark2splits_[mark]).empty()) return false;
+    bool all_data_par = true;
+    for (const auto& leaf_var : leaf_vars) {
+      all_data_par = all_data_par && (leaf_var->iter_type == kDataPar);
     }
-
-    // all input marks must be visited
-    for (const auto& mark : input_marks_) {
-      if (collector.visited_.count(mark) == 0) return false;
+    collector.Collect(bindings);
+    for (const IterMark& mark : collector.visited_) {
+      if (TryNormalizeSplits(mark, collector.mark2splits_[mark], all_data_par).empty())
+        return false;
+    }
+    if (!all_data_par) {
+      // all input marks must be visited
+      for (const auto& mark : input_marks_) {
+        if (collector.visited_.count(mark) == 0) return false;
+      }
     }
     return true;
   }
@@ -368,7 +374,8 @@ class IterMapRewriter : public ExprMutator {
    * \return The normalized splits.
    */
   Array<IterSplitExpr> TryNormalizeSplits(const IterMark& mark,
-                                          const std::vector<IterSplitExpr>& splits) {
+                                          const std::vector<IterSplitExpr>& splits,
+                                          bool all_data_par) {
     std::vector<bool> used(splits.size(), false);
     std::vector<IterSplitExpr> iters;
     PrimExpr expected_lower_factor = make_const(mark->source->dtype, 1);
@@ -380,11 +387,27 @@ class IterMapRewriter : public ExprMutator {
         if (!used[j] && CanProveEqual(splits[j]->lower_factor, expected_lower_factor)) break;
       }
       if (j == splits.size()) {
-        return Array<IterSplitExpr>();
+        // we do not allow incomplete split if not all leaf iters are data par for now
+        if (!all_data_par) return Array<IterSplitExpr>();
+        // look for the next split skipping this lower factor
+        j = splits.size();
+        for (size_t k = 0; k < splits.size(); ++k) {
+          if (used[k]) continue;
+          if (!used[k] && !CanProveDivisible(splits[k]->lower_factor, expected_lower_factor)) {
+            // all the remaining unused splits should have their lower factor divisible
+            return Array<IterSplitExpr>();
+          }
+          if (j == splits.size() ||
+              CanProveDivisible(splits[j]->lower_factor, splits[k]->lower_factor)) {
+            // note down the split with smaller lower factor
+            j = k;
+          }
+        }
+        if (j == splits.size()) return Array<IterSplitExpr>();
       }
       used[j] = true;
       iters.push_back(splits[j]);
-      expected_lower_factor *= splits[j]->extent;
+      expected_lower_factor = splits[j]->lower_factor * splits[j]->extent;
     }
     if (!CanProveEqual(expected_lower_factor, mark->extent)) return Array<IterSplitExpr>();
     return Array<IterSplitExpr>(iters.rbegin(), iters.rend());
@@ -625,8 +648,9 @@ std::vector<std::tuple<size_t, PrimExpr, PrimExpr>> SplitPredicate(PrimExpr pred
   return result;
 }
 
-Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, Range>& input_iters,
-                                 const PrimExpr& input_pred, arith::Analyzer* analyzer) {
+Array<IterSumExpr> DetectIterMap(const Array<IterVar>& leaf_iters, const Array<PrimExpr>& bindings,
+                                 const Map<Var, Range>& root_iters, const PrimExpr& input_pred,
+                                 arith::Analyzer* analyzer) {
   // Overall detection algorithm is divided into two steps:
   // - Step0: IterMapRewriter rewrites the expression to use IterMapExpr patterns.
   // - Step1: IterIndependenceChecker checks if the iterator are independent.
@@ -646,24 +670,31 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
   std::sort(predicates.begin(), predicates.end(),
             [](const Predicate& a, const Predicate& b) { return std::get<0>(a) < std::get<0>(b); });
 
-  IterMapRewriter rewriter(analyzer, input_iters);
+  IterMapRewriter rewriter(analyzer, root_iters);
 
   // Step0.0: rewrite predicates in the order from size-small ones to size-big ones
   for (Predicate predicate : predicates) {
     PrimExpr res = rewriter.Rewrite(std::get<1>(predicate), std::get<2>(predicate));
     if (rewriter.unresolved_count() != 0) return Array<IterSumExpr>();
   }
-  // Step0.1: rewrite indices
+  // Step0.1: rewrite bindings
   Array<IterSumExpr> results;
-  for (PrimExpr value : indices) {
-    results.push_back(rewriter.Rewrite(value));
+  for (PrimExpr binding : bindings) {
+    results.push_back(rewriter.Rewrite(binding));
     if (rewriter.unresolved_count() != 0) return Array<IterSumExpr>();
   }
   // Step1: IterIndependenceChecker checks if the iterator are independent.
-  if (!rewriter.CheckBijective(results)) return Array<IterSumExpr>();
+  if (!rewriter.CheckBijective(leaf_iters, results)) return Array<IterSumExpr>();
 
   return results;
 }
+
+TVM_REGISTER_GLOBAL("arith.DetectIterMap")
+    .set_body_typed([](const Array<IterVar>& leaf_iters, const Array<PrimExpr>& bindings,
+                       const Map<Var, Range>& root_iters, const PrimExpr& predicate) {
+      arith::Analyzer ana;
+      return DetectIterMap(leaf_iters, bindings, root_iters, predicate, &ana);
+    });
 
 Optional<IterSumExpr> DetectIter(const PrimExpr& index, const Map<Var, Range>& input_iters,
                                  arith::Analyzer* analyzer) {
@@ -674,20 +705,12 @@ Optional<IterSumExpr> DetectIter(const PrimExpr& index, const Map<Var, Range>& i
   return result;
 }
 
-TVM_REGISTER_GLOBAL("arith.DetectIterMap")
-    .set_body_typed([](const Array<PrimExpr>& indices, const Map<Var, Range>& input_iters,
-                       const PrimExpr& predicate) {
-      arith::Analyzer ana;
-      return DetectIterMap(indices, input_iters, predicate, &ana);
-    });
-
-Array<PrimExpr> IterMapRewriteSimplify(const Array<PrimExpr>& indices,
-                                       const Map<Var, Range>& input_iters,
-                                       const PrimExpr& predicate) {
+Array<PrimExpr> IterMapSimplify(const Array<IterVar>& leaf_iters, const Array<PrimExpr>& bindings,
+                                const Map<Var, Range>& root_iters, const PrimExpr& predicate) {
   Analyzer analyzer;
-  auto rewrite = DetectIterMap(indices, input_iters, predicate, &analyzer);
+  auto rewrite = DetectIterMap(leaf_iters, bindings, root_iters, predicate, &analyzer);
   if (rewrite.empty()) {
-    return indices;
+    return bindings;
   } else {
     std::vector<PrimExpr> res;
     IterVarMapConverter converter(&analyzer);
@@ -1005,10 +1028,6 @@ bool DivisionFormNode::IsOuter() const { return is_one(inner_extent); }
 
 bool DivisionFormNode::IsInner() const { return is_one(outer_extent); }
 
-bool DivisionFormNode::OuterIsSplit() const { return outer->IsInstance<IterSplitExprNode>(); }
-
-bool DivisionFormNode::InnerIsSplit() const { return inner->IsInstance<IterSplitExprNode>(); }
-
 TVM_REGISTER_GLOBAL("arith.DivisionForm")
     .set_body_typed([](IterMapExpr outer, PrimExpr outer_extent, IterMapExpr inner,
                        PrimExpr inner_extent) {
@@ -1234,11 +1253,12 @@ class SubspaceDivider {
   std::unordered_map<IterSplitExpr, DivisionForm, ObjectPtrHash, ObjectPtrEqual> split_map_;
 };
 
-Array<DivisionForm> SubspaceDivision(const Array<PrimExpr>& indices,
-                                     const Map<Var, Range>& iter_range_map,
-                                     const Array<Var>& sub_iters, const PrimExpr& predicate,
-                                     arith::Analyzer* analyzer) {
-  const auto& maps = DetectIterMap(indices, iter_range_map, predicate, analyzer);
+Array<DivisionForm> SubspaceDivision(const Array<IterVar>& leaf_iters,
+                                     const Array<PrimExpr>& bindings,
+                                     const Map<Var, Range>& root_iters, const Array<Var>& sub_iters,
+                                     const PrimExpr& predicate, arith::Analyzer* analyzer) {
+  const auto& maps = DetectIterMap(leaf_iters, bindings, root_iters, predicate, analyzer);
+  LOG(INFO) << maps;
   if (maps.empty()) return {};
 
   std::unordered_set<const VarNode*> inner_iter_set;
@@ -1256,15 +1276,15 @@ Array<DivisionForm> SubspaceDivision(const Array<PrimExpr>& indices,
 
   results.emplace_back(IterSumExpr({}, 0), subspace_divider.outer_preds, IterSumExpr({}, 0),
                        subspace_divider.inner_preds);
-
   return results;
 }
 
 TVM_REGISTER_GLOBAL("arith.SubspaceDivision")
-    .set_body_typed([](const Array<PrimExpr>& indices, const Map<Var, Range>& input_iters,
-                       const Array<Var>& sub_iters, const PrimExpr& predicate) {
+    .set_body_typed([](const Array<IterVar>& leaf_iters, const Array<PrimExpr>& bindings,
+                       const Map<Var, Range>& root_iters, const Array<Var>& sub_iters,
+                       const PrimExpr& predicate) {
       arith::Analyzer ana;
-      return SubspaceDivision(indices, input_iters, sub_iters, predicate, &ana);
+      return SubspaceDivision(leaf_iters, bindings, root_iters, sub_iters, predicate, &ana);
     });
 
 }  // namespace arith

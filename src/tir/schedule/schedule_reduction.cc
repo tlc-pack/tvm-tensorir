@@ -387,8 +387,9 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   }
   // Do subspace division with subspace {loop}
   arith::Analyzer analyzer;
-  auto division = arith::SubspaceDivision(block_realize->binding_values, iters, {loop->loop_var},
-                                          block_realize->predicate, &analyzer);
+  auto division =
+      arith::SubspaceDivision(block_realize->block->iter_vars, block_realize->binding_values, iters,
+                              {loop->loop_var}, block_realize->predicate, &analyzer);
   arith::IterVarMapConverter converter(&analyzer);
   CHECK(is_one(division.back()->inner_extent))
       << "ValueError: can not rfactor a loop related with predicate";

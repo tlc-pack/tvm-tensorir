@@ -22,6 +22,7 @@
 #include <tvm/tir/stmt_functor.h>
 
 #include "../../arith/pattern_match.h"
+#include "../../printer/text_printer.h"
 #include "./schedule_common.h"
 
 namespace tvm {
@@ -103,8 +104,9 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
     if (current_sref == loop_sref) inner = false;
   }
   arith::Analyzer analyzer;
-  auto division = arith::SubspaceDivision(block_realize->binding_values, iters, inner_iters,
-                                          block_realize->predicate, &analyzer);
+  LOG(INFO) << "blockize";
+  auto division = arith::SubspaceDivision(block->iter_vars, block_realize->binding_values, iters,
+                                          inner_iters, block_realize->predicate, &analyzer);
   if (division.empty()) {
     // It is possible to blockize if we can not do perfect subspace division if we can divide
     // the block var bindings into two categories
