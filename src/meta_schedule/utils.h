@@ -275,7 +275,7 @@ inline void AddAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const St
   // Check if the annotation already exists
   for (const tir::Annotation& ann : *annotations) {
     if (ann->attr_key == ann_key) {
-      LOG(FATAL) << "ValueError: Already annotated with key: " << ann_key;
+      return;
     }
   }
   // Add the new annotation

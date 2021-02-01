@@ -284,13 +284,13 @@ def test_matmul_evolutionary_step_by_step():
                 cache_write_scope="global",
                 fusion_levels=[1, 2],
             ),
-            ms.rule.random_compute_location(),
             ms.rule.parallelize_vectorize_unroll(
                 max_jobs_per_core=16,
                 max_vectorize_extent=32,
                 unroll_max_steps=[0, 16, 64, 512],
                 unroll_explicit=True,
             ),
+            ms.rule.random_compute_location(),
         ],
         postprocs=[
             ms.postproc.rewrite_parallel_vectorize_unroll(),
@@ -331,13 +331,13 @@ def test_matmul_evolutionary_end_to_end():
                     cache_write_scope="global",
                     fusion_levels=[1, 2],
                 ),
-                ms.rule.random_compute_location(),
                 ms.rule.parallelize_vectorize_unroll(
                     max_jobs_per_core=16,
                     max_vectorize_extent=32,
                     unroll_max_steps=[0, 16, 64, 512],
                     unroll_explicit=True,
                 ),
+                ms.rule.random_compute_location(),
             ],
             postprocs=[
                 ms.postproc.rewrite_parallel_vectorize_unroll(),
@@ -382,13 +382,13 @@ def test_matmul_evolutionary_xgb():
                     cache_write_scope="global",
                     fusion_levels=[1, 2],
                 ),
-                ms.rule.random_compute_location(),
                 ms.rule.parallelize_vectorize_unroll(
                     max_jobs_per_core=16,
                     max_vectorize_extent=32,
                     unroll_max_steps=[0, 16, 64, 512],
                     unroll_explicit=True,
                 ),
+                ms.rule.random_compute_location(),
             ],
             postprocs=[
                 ms.postproc.rewrite_parallel_vectorize_unroll(),

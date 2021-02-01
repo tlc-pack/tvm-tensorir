@@ -530,7 +530,7 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
               return a.throughput > b.throughput;
             });
   Array<Trace> results;
-  results.reserve(population);
+  results.reserve(this->num_measures_per_iteration);
   for (const CachedTrace& item : heap.heap) {
     results.push_back(GetRef<Trace>(item.trace));
   }
