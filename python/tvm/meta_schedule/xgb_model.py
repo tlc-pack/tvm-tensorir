@@ -30,6 +30,7 @@ from .feature import per_block_feature
 from .measure_record import MeasureInput, MeasureResult
 from .schedule import Schedule
 from .search import SearchTask
+from .utils import cpu_count
 
 if TYPE_CHECKING:
     import xgboost as xgb
@@ -247,7 +248,7 @@ class XGBModel(PyCostModel):
             "min_child_weight": 0,
             "eta": 0.2,
             "n_gpus": 0,
-            # "nthread": multiprocessing.cpu_count() // 2,
+            "nthread": cpu_count(False),
             "verbosity": 0,
             "seed": seed,
             "disable_default_eval_metric": 1,
