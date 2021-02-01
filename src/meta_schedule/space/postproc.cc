@@ -272,6 +272,9 @@ class PostprocRewriteParallelizeVectorizeUnroll {
       int64_t prod_extent = 1;
       for (int i = 0; i < n_loops && loop_types[i] == tir::IterVarType::kDataPar; ++i) {
         const tir::StmtSRef& loop_sref = loop_srefs[i];
+        if (HasAnyAnn(loop_sref)) {
+          break;
+        }
         // Check if the loop extent is valid
         Optional<Integer> extent = GetLoopIntExtent(loop_sref);
         if (!extent.defined()) {
@@ -296,6 +299,9 @@ class PostprocRewriteParallelizeVectorizeUnroll {
       int64_t prod_extent = 1;
       for (int i = n_loops - 1; i >= 0 && loop_types[i] == tir::IterVarType::kDataPar; --i) {
         const tir::StmtSRef& loop_sref = loop_srefs[i];
+        if (HasAnyAnn(loop_sref)) {
+          break;
+        }
         // Cannot fuse with a loop with multiple children
         if (!HasSingleChild(loop_sref)) {
           break;
