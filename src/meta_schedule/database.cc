@@ -20,6 +20,7 @@
 
 #include <dmlc/memory_io.h>
 #include <tvm/node/serialization.h>
+#include <tvm/support/parallel_for.h>
 
 #include <map>
 
@@ -44,6 +45,7 @@ Optional<Array<ObjectRef>> LoadTuningRecords(const String& path) {
     return NullOpt;
   }
   // Read lines from the file
+  int count = 0;
   std::ostringstream os;
   os << '[';
   bool is_first = true;
@@ -54,6 +56,7 @@ Optional<Array<ObjectRef>> LoadTuningRecords(const String& path) {
       } else {
         os << ',';
       }
+      ++count;
       os << line;
     }
   }
@@ -61,6 +64,8 @@ Optional<Array<ObjectRef>> LoadTuningRecords(const String& path) {
   // Deserialize the tuning records to JSON-like TVM objects
   static const auto* f_deserialize =
       runtime::Registry::Get("meta_schedule._deserialize_tuning_records");
+  LOG(INFO) << "Found " << count << " tuning record(s)";
+  LOG(INFO) << "Deserializing JSON tuning records...";
   CHECK(f_deserialize)
       << "IndexError: Cannot find packed function \""
          "meta_schedule._deserialize_tuning_records\", which should be registered in python";
@@ -107,7 +112,7 @@ Database::Entry RecordToEntry(const ObjectRef& record_obj, const SearchTask& tas
   }
   Schedule sch(orig_func);
   TraceNode::Deserialize(trace_obj, sch);
-  return Database::Entry{sch->trace, Repr(sch), AsVector<FloatImm, double>()(times)};
+  return Database::Entry{sch->trace, Repr(sch), AsVector<FloatImm, double>(times)};
 }
 
 }  // namespace json_io
@@ -139,16 +144,16 @@ class InMemoryDBNode : public DatabaseNode {
       LOG(INFO) << "Path to tuning logs is not specified - No file is used.";
       return;
     }
+    LOG(INFO) << "Loading tuning records from: " << path.value();
     if (Optional<Array<ObjectRef>> opt_loaded = json_io::LoadTuningRecords(path.value())) {
       Array<ObjectRef> loaded = opt_loaded.value();
       int n_loaded = loaded.size();
-      LOG(INFO) << "Found " << n_loaded << " record(s) in the file: " << path.value()
-                << ". Now parsing...";
+      LOG(INFO) << "Converting tuning records to meta schedule trace...";
       std::vector<Entry> records(n_loaded);
-      for (int i = 0; i < n_loaded; ++i) {
+      support::parallel_for(0, n_loaded, [&loaded, &records, &task](int i) -> void {
         const ObjectRef& record_obj = loaded[i];
         records[i] = json_io::RecordToEntry(record_obj, task);
-      }
+      });
       int total_valid = 0;
       for (int i = 0; i < n_loaded; ++i) {
         const Entry& entry = records[i];
@@ -165,8 +170,7 @@ class InMemoryDBNode : public DatabaseNode {
         LOG(INFO) << "No valid records found.";
       }
     } else {
-      LOG(INFO) << "Nothing is loaded because the file does not exist or cannot be opened: "
-                << path.value();
+      LOG(INFO) << "Nothing is loaded. File does not exist or cannot be opened";
     }
   }
 

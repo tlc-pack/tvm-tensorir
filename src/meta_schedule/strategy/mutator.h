@@ -79,6 +79,12 @@ class Mutator : public ObjectRef {
  */
 TVM_DLL Mutator MutateTileSize();
 
+/*!
+ * \brief Create a mutator that randomly mutate the outcome of SampleComputeLocation
+ * \return The mutator created
+ */
+TVM_DLL Mutator MutateComputeLocation();
+
 }  // namespace meta_schedule
 }  // namespace tvm
 

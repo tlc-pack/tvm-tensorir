@@ -73,7 +73,7 @@ class LoopRV : public runtime::ObjectRef {
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LoopRV, ObjectRef, LoopRVNode);
 };
 
-/*! \brief A random variable that evaluates to a TIR block */
+/*! \brief A random variable that evaluates to a TIR buffer */
 class BufferRVNode : public runtime::Object {
  public:
   void VisitAttrs(tvm::AttrVisitor* v) {}
@@ -115,7 +115,7 @@ class InstAttrsNode : public Object {
    * \param inputs The input of the instruction
    * \return Outputs of the instruction
    */
-  virtual Array<ObjectRef> Apply(const Schedule& sch, const Array<ObjectRef>& inputs,
+  virtual Array<ObjectRef> Apply(const Schedule& sch, const Array<Optional<ObjectRef>>& inputs,
                                  const Optional<ObjectRef>& decisions) const = 0;
 
   // We intentionally consider sampling instructions as pure too
@@ -152,7 +152,7 @@ class InstAttrs : public ObjectRef {
  public:                                                                                        \
   static constexpr const char* _name = InstName;                                                \
   static constexpr const char* _type_key = TypeKey;                                             \
-  Array<ObjectRef> Apply(const Schedule& sch, const Array<ObjectRef>& inputs,                   \
+  Array<ObjectRef> Apply(const Schedule& sch, const Array<Optional<ObjectRef>>& inputs,         \
                          const Optional<ObjectRef>& decision) const override;                   \
   bool IsPure() const override { return Pure; }                                                 \
   void AsPython(std::ostream& os, const Array<String>& inputs, const Array<String>& outputs,    \
@@ -166,7 +166,7 @@ class InstAttrs : public ObjectRef {
 class InstructionNode : public Object {
  public:
   /*! \brief The input random variables it consumers */
-  Array<ObjectRef> inputs;
+  Array<Optional<ObjectRef>> inputs;
   /*! \brief The output random variables it produces */
   Array<ObjectRef> outputs;
   /*! \brief The attributes of the instruction */
@@ -203,7 +203,8 @@ class Instruction : public ObjectRef {
    * \param outputs The output random variables it produces
    * \param inst_attrs The attributes of the instruction
    */
-  explicit Instruction(Array<ObjectRef> inputs, Array<ObjectRef> outputs, InstAttrs inst_attrs);
+  explicit Instruction(Array<Optional<ObjectRef>> inputs, Array<ObjectRef> outputs,
+                       InstAttrs inst_attrs);
 
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Instruction, ObjectRef, InstructionNode);
 

@@ -39,13 +39,13 @@ SPACE = ms.space.PostOrderApply(
             cache_write_scope="global",
             fusion_levels=[1, 2],
         ),
-        ms.rule.random_compute_location(),
         ms.rule.parallelize_vectorize_unroll(
             max_jobs_per_core=16,
             max_vectorize_extent=32,
             unroll_max_steps=[0, 16, 64, 512],
             unroll_explicit=True,
         ),
+        ms.rule.random_compute_location(),
     ],
     postprocs=[
         ms.postproc.rewrite_parallel_vectorize_unroll(),
@@ -67,12 +67,14 @@ def test_matmul_post_order_apply():
         space=SPACE,
         strategy=ms.strategy.Evolutionary(
             total_measures=128,
-            population=16,
+            num_measures_per_iter=16,
+            population=128,
             init_measured_ratio=0.2,
             genetic_algo_iters=10,
             p_mutate=0.85,
             mutator_probs={
-                ms.mutator.mutate_tile_size(): 1.0,
+                ms.mutator.mutate_tile_size(): 0.95,
+                ms.mutator.mutate_compute_location(): 0.05,
             },
             cost_model=ms.XGBModel(
                 num_warmup_sample=0,
@@ -104,12 +106,14 @@ def test_matmul_relu_post_order_apply():
         space=SPACE,
         strategy=ms.strategy.Evolutionary(
             total_measures=128,
-            population=16,
+            num_measures_per_iter=16,
+            population=128,
             init_measured_ratio=0.2,
             genetic_algo_iters=10,
             p_mutate=0.85,
             mutator_probs={
-                ms.mutator.mutate_tile_size(): 1.0,
+                ms.mutator.mutate_tile_size(): 0.95,
+                ms.mutator.mutate_compute_location(): 0.05,
             },
             cost_model=ms.XGBModel(
                 num_warmup_sample=0,
@@ -141,12 +145,14 @@ def test_conv1d_post_order_apply():
         space=SPACE,
         strategy=ms.strategy.Evolutionary(
             total_measures=128,
-            population=16,
+            num_measures_per_iter=16,
+            population=128,
             init_measured_ratio=0.2,
             genetic_algo_iters=10,
             p_mutate=0.85,
             mutator_probs={
-                ms.mutator.mutate_tile_size(): 1.0,
+                ms.mutator.mutate_tile_size(): 0.95,
+                ms.mutator.mutate_compute_location(): 0.05,
             },
             cost_model=ms.XGBModel(
                 num_warmup_sample=0,

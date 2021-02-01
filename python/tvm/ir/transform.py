@@ -330,3 +330,18 @@ def PrintIR(header="", show_meta_data=False):
     The pass
     """
     return _ffi_transform_api.PrintIR(header, show_meta_data)
+
+
+def PrintTVMScript(show_meta_data=False):
+    """A special trace pass that prints IR into TVM script.
+
+    Parameters
+    ----------
+    show_meta_data : bool
+        A boolean flag to indicate if meta data should be printed.
+
+    Returns
+    --------
+    The pass
+    """
+    return _ffi_transform_api.PrintTVMScript(show_meta_data)

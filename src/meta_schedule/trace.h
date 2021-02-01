@@ -64,6 +64,15 @@ class TraceNode : public runtime::Object {
    */
   void Apply(const Schedule& sch) const;
   /*!
+   * \brief Apply the trace to the schedule
+   * \param sch The schedule to be applied
+   * \param decision_provider Provide decision to each instruction
+   */
+  void Apply(const Schedule& sch,
+             const std::function<Optional<ObjectRef>(const Instruction& inst,
+                                                     const Array<Optional<ObjectRef>>& inputs)>&
+                 decision_provider) const;
+  /*!
    * \brief Export the trace into JSON format
    */
   ObjectRef Serialize() const;
@@ -94,6 +103,11 @@ class TraceNode : public runtime::Object {
    * \return The simplified trace
    */
   Trace Simplified(bool remove_postproc) const;
+  /*!
+   * \brief Stringify the trace as applying a sequence of schedule primitives
+   * \return A string, the sequence of schedule primitives
+   */
+  String Stringify() const;
 
   static constexpr const char* _type_key = "meta_schedule.Trace";
   TVM_DECLARE_FINAL_OBJECT_INFO(TraceNode, Object);

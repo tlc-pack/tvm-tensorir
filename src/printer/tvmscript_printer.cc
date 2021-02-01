@@ -1070,12 +1070,12 @@ Doc TVMScriptPrinter::PrintBuffer(const BufferNode* op) {
   return meta_.InMeta(buffer) ? meta_.GetMetaNode(buffer) : AllocBuf(buffer);
 }
 
-TVM_REGISTER_GLOBAL("script.AsTVMScript")
-    .set_body_typed<std::string(const ObjectRef&, bool)>([](const ObjectRef& functions,
-                                                            bool show_meta) {
-      CHECK(functions.as<PrimFuncNode>() != nullptr || functions.as<IRModuleNode>() != nullptr);
-      return "@tvm.script.tir\n" + TVMScriptPrinter(show_meta).Print(functions).str() + "\n";
-    });
+String AsTVMScript(const ObjectRef& functions, bool show_meta_data) {
+  CHECK(functions.as<PrimFuncNode>() != nullptr || functions.as<IRModuleNode>() != nullptr);
+  return "@tvm.script.tir\n" + TVMScriptPrinter(show_meta_data).Print(functions).str() + "\n";
+}
+
+TVM_REGISTER_GLOBAL("script.AsTVMScript").set_body_typed(AsTVMScript);
 
 }  // namespace tir
 }  // namespace tvm
