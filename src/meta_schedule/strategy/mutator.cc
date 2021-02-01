@@ -18,6 +18,7 @@
  */
 #include "./mutator.h"  // NOLINT(build/include)
 
+#include "../analysis.h"
 #include "../utils.h"
 
 namespace tvm {
@@ -153,6 +154,86 @@ Mutator MutateTileSize() {
   return Mutator("mutate_tile_size", f_apply);
 }
 
+/********** MutateComputeLocation **********/
+
+class MutatorComputeLocation {
+ public:
+  struct Candidate {
+    /*! \brief The SampleComputeLocation instruction */
+    Instruction inst;
+    /*! \brief The candidate compute locations */
+    std::vector<int> locs;
+
+    explicit Candidate(Instruction inst, std::vector<int> locs)
+        : inst(std::move(inst)), locs(std::move(locs)) {}
+  };
+
+  /*!
+   * \brief Find instruction `SamplePerfectTile` whose extent > 1 and n_splits > 1
+   * \param trace The trace from which to find the instructions
+   * \param workload The workload
+   * \return All the candidate instructions
+   */
+  std::vector<Candidate> FindCandidates(const Trace& trace, const tir::PrimFunc& workload) {
+    std::vector<Candidate> candidates;
+    Schedule sch(workload);
+    auto f_provide_decision = [&trace, &candidates, &sch](
+                                  const Instruction& inst,
+                                  const Array<Optional<ObjectRef>>& inputs) -> Optional<ObjectRef> {
+      Optional<ObjectRef> decision = trace->decisions.Get(inst);
+      if (inst->inst_attrs->IsInstance<SampleComputeLocationAttrs>()) {
+        // The decision made
+        int decided = Downcast<Integer>(decision)->value;
+        // Extract the inputs
+        CHECK_EQ(inputs.size(), 1);
+        BlockRV block_rv = Downcast<BlockRV>(inputs[0]);
+        tir::StmtSRef block_sref = sch->Eval(block_rv);
+        // Extract locations that can be computed at
+        Array<tir::StmtSRef> loop_srefs = CollectComputeLocation(sch->sch, block_sref);
+        std::vector<int> locs{-2, -1};
+        {
+          int i = 0;
+          for (const tir::StmtSRef& loop_sref : loop_srefs) {
+            int64_t extent = GetLoopIntExtent(loop_sref).value_or(-1)->value;
+            if (extent != 1) {
+              locs.push_back(i);
+            }
+            ++i;
+          }
+        }
+        // Remove `decided`
+        std::vector<int>::iterator rm = std::find(locs.begin(), locs.end(), decided);
+        CHECK(rm != locs.end());
+        locs.erase(rm);
+        // Add the candidate
+        CHECK(!locs.empty());
+        candidates.emplace_back(inst, std::move(locs));
+      }
+      return decision;
+    };
+    trace->Apply(sch, f_provide_decision);
+    return candidates;
+  }
+
+  Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler) {
+    std::vector<Candidate> candidates = FindCandidates(trace, task->workload);
+    if (candidates.empty()) {
+      return NullOpt;
+    }
+    const Candidate& candidate = candidates[sampler->SampleInt(0, candidates.size())];
+    int loc = candidate.locs[sampler->SampleInt(0, candidate.locs.size())];
+    return trace->WithDecision(candidate.inst, Integer(loc), /*remove_postproc=*/true);
+  }
+};
+
+Mutator MutateComputeLocation() {
+  auto f_apply = [](SearchTask task, Trace trace, void* sampler) -> Optional<Trace> {
+    MutatorComputeLocation mutator;
+    return mutator.Apply(task, trace, static_cast<Sampler*>(sampler));
+  };
+  return Mutator("mutate_compute_location", f_apply);
+}
+
 /********** FFI **********/
 
 struct Internal {
@@ -173,6 +254,8 @@ struct Internal {
 TVM_REGISTER_NODE_TYPE(MutatorNode);
 TVM_REGISTER_GLOBAL("meta_schedule.mutator.Apply").set_body_typed(Internal::Apply);
 TVM_REGISTER_GLOBAL("meta_schedule.mutator.MutateTileSize").set_body_typed(MutateTileSize);
+TVM_REGISTER_GLOBAL("meta_schedule.mutator.MutateComputeLocation")
+    .set_body_typed(MutateComputeLocation);
 
 }  // namespace meta_schedule
 }  // namespace tvm
