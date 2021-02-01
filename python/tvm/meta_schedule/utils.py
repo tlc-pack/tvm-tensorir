@@ -25,7 +25,7 @@ import tempfile
 import time
 import traceback
 from threading import Thread
-from typing import Any, List
+from typing import Any, List, Callable
 
 import psutil
 from tvm import ir, rpc
@@ -302,31 +302,17 @@ def realize_arguments(
     args: List[NDArray]
         A list of arguments fed to the TVM runtime module built
     """
-    from .measure import get_special_buffer
     args = []
     ndarrays = []
     analyzer = arith.Analyzer()
 
-    if 'tag' in func.attrs and func.attrs['tag'] == 'sparse_dense_bsr':
-        sparse_data, sparse_indices, sparse_indptr = [func.buffer_map[arg] for arg in func.params[1:4]]
-
     for arg in func.params:
         if arg.dtype == "handle":
             buffer = func.buffer_map[arg]
-            if buffer == sparse_data:
-                array = ndarray.array(get_special_buffer('sparse_dense_bsr_data'), ctx=ctx)
-                args.append(array)
-            elif buffer == sparse_indices:
-                array = ndarray.array(get_special_buffer('sparse_dense_bsr_indices'), ctx=ctx)
-                args.append(array)
-            elif buffer == sparse_indptr:
-                array = ndarray.array(get_special_buffer('sparse_dense_bsr_indptr'), ctx=ctx)
-                args.append(array)
-            else:
-                shape = [analyzer.simplify(d) for d in buffer.shape]
-                array = ndarray.empty(shape=shape, dtype=buffer.dtype, ctx=ctx)
-                args.append(array)
-                ndarrays.append(array)
+            shape = [analyzer.simplify(d) for d in buffer.shape]
+            array = ndarray.empty(shape=shape, dtype=buffer.dtype, ctx=ctx)
+            args.append(array)
+            ndarrays.append(array)
         else:
             raise NotImplementedError("Unsupported type in realize_arguments: " + str(arg.dtype))
     try:
@@ -514,6 +500,7 @@ def rpc_runner_run(
     min_repeat_ms: int = 0,
     cooldown_interval: float = 0.0,
     enable_cpu_cache_flush: bool = False,
+    f_create_args = None,
     verbose: int = 1,
 ) -> List[MeasureResult]:
     """Run function of RPCRunner to test the performance of the input BuildResults.
@@ -561,6 +548,9 @@ def rpc_runner_run(
         its actual latency during end-to-end inference.
         To make this option effective, the argument `number` should also be set to 1.
         This is only has effect on CPU task.
+    f_create_args: Callable[[TVMContext], List[NDArray]] = None
+        Optional callback to create arguments for functions to measure. This can be used for sparse
+        workloads when we cannot use random tensors for measurment.
     verbose: int = 1
         Verbosity level. 0 for silent, 1 to output information during program measuring.
 
@@ -583,6 +573,7 @@ def rpc_runner_run(
         min_repeat_ms,
         cooldown_interval,
         enable_cpu_cache_flush,
+        f_create_args,
         verbose,
     )
 
@@ -614,6 +605,7 @@ def rpc_runner_worker(
     min_repeat_ms: int,
     cooldown_interval: float,
     enable_cpu_cache_flush: bool,
+    f_create_args: Callable[[TVMContext], List[NDArray]],
     verbose: int,
 ) -> MeasureResult.TYPE:
     """ RPC worker for ProgramRunner """
@@ -665,10 +657,15 @@ def rpc_runner_worker(
                     rpc_eval_repeat = 5
                 else:
                     rpc_eval_repeat = 1
-                args_set = [
-                    realize_arguments(remote, ctx, measure_input.task.workload)
-                    for _ in range(rpc_eval_repeat)
-                ]
+                if f_create_args is not None:
+                    args_set = [
+                        f_create_args(ctx) for _ in range (rpc_eval_repeat)
+                    ]
+                else:
+                    args_set = [
+                        realize_arguments(remote, ctx, measure_input.task.workload)
+                        for _ in range(rpc_eval_repeat)
+                    ]
                 ctx.sync()
                 costs = sum([time_f(*args).results for args in args_set], ())
                 # clean up remote files
