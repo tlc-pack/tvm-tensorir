@@ -168,7 +168,6 @@ def test_sparse_dense():
                 func = func.specialize(N_blocks, N // BS_R).remove_const_param(N_blocks)
 
                 def f_create_args(ctx):
-                    print('create args')
                     X = tvm.nd.array(X_np, ctx=ctx)
                     W_data = tvm.nd.array(W_sp_np.data, ctx=ctx)
                     W_indices = tvm.nd.array(W_sp_np.indices, ctx=ctx)

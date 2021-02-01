@@ -304,13 +304,11 @@ def realize_arguments(
     """
     args = []
     ndarrays = []
-    analyzer = arith.Analyzer()
 
     for arg in func.params:
         if arg.dtype == "handle":
             buffer = func.buffer_map[arg]
-            shape = [analyzer.simplify(d) for d in buffer.shape]
-            array = ndarray.empty(shape=shape, dtype=buffer.dtype, ctx=ctx)
+            array = ndarray.empty(shape=buffer.shape, dtype=buffer.dtype, ctx=ctx)
             args.append(array)
             ndarrays.append(array)
         else:
