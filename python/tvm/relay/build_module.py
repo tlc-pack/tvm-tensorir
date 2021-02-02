@@ -101,6 +101,8 @@ class BuildModule(object):
         self._set_params_func = self.mod["set_params"]
         self._get_params_func = self.mod["get_params"]
         self._get_function_metadata = self.mod["get_function_metadata"]
+        self._get_primfunc = self.mod["get_primfunc"]
+        self._set_tune_result = self.mod["set_tune_result"]
 
     def build(
         self, mod, target=None, target_host=None, params=None, executor="graph", mod_name=None
@@ -177,7 +179,7 @@ class BuildModule(object):
         params = self.get_params()
         executor_config = self.get_graph_json() if executor == "graph" else None
 
-        return executor_config, mod, params
+        return executor_config, mod, params, tir_func
 
     def optimize(self, mod, target=None, params=None):
         """
@@ -312,6 +314,10 @@ def build(ir_mod, target=None, target_host=None, params=None, mod_name="default"
     mod_name: Optional[str]
         The module name we will build
 
+    tune_result: dict of str to (dict of primfunc to primfunc)
+        The results of auto tuning.
+        The key of the outer dict is the target
+        The inner dict is from the original primfunc to the tuned primfunc
     Returns
     -------
     factory_module : tvm.relay.backend.executor_factory.ExecutorFactoryModule
@@ -371,6 +377,76 @@ def build(ir_mod, target=None, target_host=None, params=None, mod_name="default"
             assert False, "Executor " + executor + " not supported"
 
         return executor_factory
+
+
+def build_primfunc(mod, target=None, target_host=None, params=None, mod_name="default"):
+    """Helper function that builds a Relay function to a TIR PrimFuncs.
+
+    Parameters
+    ----------
+    mod : :py:class:`~tvm.IRModule`
+        The IR module to build. Using relay.Function is deprecated.
+
+    target : str, :any:`tvm.target.Target`, or dict of str(i.e. device/context
+    name) to str/tvm.target.Target, optional
+        For heterogeneous compilation, it is a dictionary indicating context to
+        target mapping. For homogeneous compilation, it is a build target.
+
+    target_host : str or :any:`tvm.target.Target`, optional
+        Host compilation target, if target is device.
+        When TVM compiles device specific program such as CUDA,
+        we also need host(CPU) side code to interact with the driver
+        setup the dimensions and parameters correctly.
+        target_host is used to specify the host side codegen target.
+        By default, llvm is used if it is enabled,
+        otherwise a stackvm intepreter is used.
+
+    params : dict of str to NDArray
+        Input parameters to the graph that do not change
+        during inference time. Used for constant folding.
+
+    mod_name: Optional[str]
+        The module name we will build
+
+    Returns
+    -------
+    tir_func: dict of str to (dict of primfunc to primfunc)
+        The PrimFuncs we build.
+        The key of outer dict is target str.
+        The inner dict is from the primfunc built to itself which is designed
+        to be consistent with the type of argument tune_result in function build.
+    """
+    if not isinstance(mod, (IRModule, _function.Function)):
+        raise ValueError("Type of input parameter mod must be tvm.IRModule")
+
+    if isinstance(mod, _function.Function):
+        if params:
+            mod = bind_params_by_name(mod, params)
+        mod = IRModule.from_expr(mod)
+        warnings.warn(
+            "Please use input parameter mod (tvm.IRModule) "
+            "instead of deprecated parameter mod (tvm.relay.function.Function)",
+            DeprecationWarning,
+        )
+
+    target = _update_target(target)
+
+    if isinstance(target_host, (str, Target)):
+        target_host = Target(target_host)
+    elif target_host:
+        raise ValueError("target host must be the type of str, " + "tvm.target.Target, or None")
+
+    # If current dispatch context is fallback context (the default root context),
+    # then load pre-tuned parameters from TopHub
+    if isinstance(autotvm.DispatchContext.current, autotvm.FallbackContext):
+        tophub_context = autotvm.tophub.context(list(target.values()))
+    else:
+        tophub_context = autotvm.util.EmptyContext()
+
+    with tophub_context:
+        bld_mod = BuildModule()
+        _, _, _, tir_func = bld_mod.build(mod, target, target_host, params)
+        return tir_func
 
 
 def optimize(mod, target=None, params=None):
