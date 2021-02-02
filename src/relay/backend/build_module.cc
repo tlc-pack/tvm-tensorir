@@ -79,6 +79,12 @@ struct GraphCodegen {
     return CallFunc<Map<String, IRModule>>("get_irmodule", nullptr);
   }
 
+  Map<String, Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>> GetSchedule() {
+    return CallFunc<
+        Map<String, Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>>>(
+        "get_schedule", nullptr);
+  }
+
   std::unordered_map<std::string, tvm::runtime::NDArray> GetParams() {
     std::unordered_map<std::string, tvm::runtime::NDArray> ret;
     auto names = CallFunc<Array<runtime::String>>("list_params_name", nullptr);
@@ -165,6 +171,16 @@ class RelayBuildModule : public runtime::ModuleNode {
       return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
         ICHECK_EQ(args.num_args, 2);
         *rv = this->Optimize(args[0], args[1], this->params_);
+      });
+    } else if (name == "get_primfunc") {
+      return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
+        *rv = this->graph_codegen_->GetSchedule();
+      });
+    } else if (name == "set_tune_result") {
+      return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
+        Map<String, Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>>
+            tune_result = args[0];
+        CompileEngine::Global()->SetTunedResult(tune_result);
       });
     } else {
       LOG(FATAL) << "Unknown packed function: " << name;
