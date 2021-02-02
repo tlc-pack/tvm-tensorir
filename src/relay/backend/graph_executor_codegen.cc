@@ -56,6 +56,15 @@ using GraphObjectPtr = std::shared_ptr<GraphNode>;
 using GraphInputObjectPtr = std::shared_ptr<GraphInputNode>;
 using GraphOpObjectPtr = std::shared_ptr<GraphOpNode>;
 
+/*! \brief Lowered outputs */
+struct LoweredOutput {
+  std::string graph_json;
+  Map<String, IRModule> lowered_funcs;
+  Map<String, Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>> schedules;
+  Array<tvm::runtime::Module> external_mods;
+  std::unordered_map<std::string, std::pair<int, const tvm::runtime::NDArray>> params;
+};
+
 /*! \brief Node types */
 enum GraphNodeType {
   kGraphNop,
@@ -594,6 +603,10 @@ class GraphExecutorCodegen : public backend::MemoizedExprTranslator<std::vector<
   String mod_name_;
   /*! \brief function metadata */
   Map<String, FunctionInfo> function_metadata_;
+  /*! \brief schedules */
+  std::unordered_map<std::string,
+                     Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>>
+      schedules_;
   /*! \brief name map */
   std::unordered_map<std::string, size_t> name_map_;
 };
@@ -662,6 +675,9 @@ class GraphExecutorCodegenModule : public runtime::ModuleNode {
     } else if (name == "get_function_metadata") {
       return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
         *rv = this->output_.function_metadata;
+    } else if(name=="get_schedule") {
+      return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
+        *rv = this->output_.schedules;
       });
     } else {
       return PackedFunc([](TVMArgs args, TVMRetValue* rv) {});

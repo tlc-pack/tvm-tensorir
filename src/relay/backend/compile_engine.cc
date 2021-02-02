@@ -35,6 +35,7 @@
 #include <tvm/te/operation.h>
 #include <tvm/te/schedule.h>
 #include <tvm/te/schedule_pass.h>
+#include <tvm/tir/function.h>
 #include <tvm/topi/tags.h>
 
 #include <functional>
@@ -69,6 +70,18 @@ class CompileEngineImpl : public CompileEngineNode {
     return Lower(key, mangle_fn);
   }
 
+  void SetTunedResult(
+      const Map<String, Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>>
+          tune_result) {
+    for (const auto& kv : tune_result) {
+      std::string target = kv.first;
+      std::unordered_map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual> func_map;
+      for (const auto kv2 : kv.second) {
+        func_map[kv2.first] = kv2.second;
+      }
+      this->tune_result[target] = func_map;
+    }
+  }
   // For now, build one module per function.
   PackedFunc JIT(const CCacheKey& key) final {
     auto mangle_fn = [](String name) { return name; };
@@ -302,6 +315,12 @@ TVM_REGISTER_GLOBAL("relay.backend._make_CCacheKey")
 TVM_REGISTER_GLOBAL("relay.backend._CompileEngineGlobal").set_body_typed([]() {
   return CompileEngine::Global();
 });
+
+TVM_REGISTER_GLOBAL("relay.backend._CompileEngineSetTuneResult")
+    .set_body_typed(
+        [](CompileEngine self,
+           Map<String, Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>>
+               tune_result) { self->SetTunedResult(tune_result); });
 
 TVM_REGISTER_GLOBAL("relay.backend._CompileEngineClear").set_body_typed([](CompileEngine self) {
   self->Clear();
