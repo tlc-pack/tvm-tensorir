@@ -104,7 +104,6 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
     if (current_sref == loop_sref) inner = false;
   }
   arith::Analyzer analyzer;
-  LOG(INFO) << "blockize";
   auto division = arith::SubspaceDivision(block->iter_vars, block_realize->binding_values, iters,
                                           inner_iters, block_realize->predicate, &analyzer);
   if (division.empty()) {

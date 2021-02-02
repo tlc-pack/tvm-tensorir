@@ -111,16 +111,16 @@ def test_integration_matmul():
         sch.tensorize(loop, "wmma_sync")
         loop = sch.get_axes(block_read_a)[-2]
         sch.tensorize(loop, "wmma_load_a")
-        # loop = sch.get_axes(block_read_b)[-2]
-        # sch.tensorize(loop, "wmma_load_b")
+        loop = sch.get_axes(block_read_b)[-2]
+        sch.tensorize(loop, "wmma_load_b")
         loop = sch.get_axes(block_init_c)[-2]
         sch.tensorize(loop, "wmma_fill")
         loop = sch.get_axes(block_write_c)[-2]
         sch.tensorize(loop, "wmma_store")
-        print(tvm.script.asscript(sch.sch.func))
 
     sch = ms.Schedule(func=workload, seed=1024)
     schedule(sch)
+    print(tvm.script.asscript(sch.sch.func))
 
 
 def test_integration_conv2d_nchwc():
@@ -231,4 +231,4 @@ def test_integration_conv2d_nchwc():
 
 if __name__ == "__main__":
     test_integration_matmul()
-    # test_integration_conv2d_nchwc()
+    test_integration_conv2d_nchwc()

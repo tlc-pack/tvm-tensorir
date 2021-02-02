@@ -409,7 +409,10 @@ class IterMapRewriter : public ExprMutator {
       iters.push_back(splits[j]);
       expected_lower_factor = splits[j]->lower_factor * splits[j]->extent;
     }
-    if (!CanProveEqual(expected_lower_factor, mark->extent)) return Array<IterSplitExpr>();
+    if ((!all_data_par && !CanProveEqual(expected_lower_factor, mark->extent)) ||
+        (all_data_par && !CanProveDivisible(mark->extent, expected_lower_factor))) {
+      return Array<IterSplitExpr>();
+    }
     return Array<IterSplitExpr>(iters.rbegin(), iters.rend());
   }
 
@@ -1258,7 +1261,6 @@ Array<DivisionForm> SubspaceDivision(const Array<IterVar>& leaf_iters,
                                      const Map<Var, Range>& root_iters, const Array<Var>& sub_iters,
                                      const PrimExpr& predicate, arith::Analyzer* analyzer) {
   const auto& maps = DetectIterMap(leaf_iters, bindings, root_iters, predicate, analyzer);
-  LOG(INFO) << maps;
   if (maps.empty()) return {};
 
   std::unordered_set<const VarNode*> inner_iter_set;
