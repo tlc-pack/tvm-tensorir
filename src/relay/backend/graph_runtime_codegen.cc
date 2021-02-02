@@ -55,6 +55,7 @@ using TargetsMap = std::unordered_map<int, Target>;
 struct LoweredOutput {
   std::string graph_json;
   Map<String, IRModule> lowered_funcs;
+  Map<String, Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>> schedules;
   Array<tvm::runtime::Module> external_mods;
   std::unordered_map<std::string, tvm::runtime::NDArray> params;
 };
@@ -212,6 +213,13 @@ class GraphRuntimeCodegen : public backend::MemoizedExprTranslator<std::vector<G
       auto& mod = ret.lowered_funcs[kv.first];
       mod->Update(kv.second);
       ret.lowered_funcs.Set(kv.first, mod);
+    }
+    for (auto& kv : schedules_) {
+      if (ret.schedules.count(kv.first) == 0) {
+        ret.schedules.Set(kv.first,
+                          Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>());
+      }
+      ret.schedules.Set(kv.first,kv.second);
     }
     ret.external_mods = compile_engine_->LowerExternalFunctions();
     return ret;
@@ -404,8 +412,13 @@ class GraphRuntimeCodegen : public backend::MemoizedExprTranslator<std::vector<G
     CachedFunc lowered_func = (*pf1)(compile_engine_, key);
     if (!lowered_funcs_.count(target->str())) {
       lowered_funcs_[target->str()] = IRModule(Map<GlobalVar, BaseFunc>({}));
+      schedules_[target->str()] =
+          Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>();
     }
     lowered_funcs_[target->str()]->Update(lowered_func->funcs);
+    if(lowered_func->prim_func.defined()) {
+      schedules_[target->str()].Set(lowered_func->prim_func, lowered_func->prim_func);
+    }
     return GraphAddCallNode(op, _GetUniqueName(lowered_func->func_name), lowered_func->func_name);
   }
 
@@ -544,6 +557,10 @@ class GraphRuntimeCodegen : public backend::MemoizedExprTranslator<std::vector<G
   Map<Expr, Array<IntegerArray>> storage_device_map_;
   /*! \brief lowered funcs */
   std::unordered_map<std::string, IRModule> lowered_funcs_;
+  /*! \brief schedules */
+  std::unordered_map<std::string,
+                     Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>>
+      schedules_;
   /*! \brief name map */
   std::unordered_map<std::string, size_t> name_map_;
   /*! \brief compile engine */
@@ -598,6 +615,10 @@ class GraphRuntimeCodegenModule : public runtime::ModuleNode {
     } else if (name == "get_external_modules") {
       return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
         *rv = this->output_.external_mods;
+      });
+    } else if(name=="get_schedule") {
+      return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
+        *rv = this->output_.schedules;
       });
     } else {
       return PackedFunc([](TVMArgs args, TVMRetValue* rv) {});
