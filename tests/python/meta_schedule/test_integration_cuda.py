@@ -15,6 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 """Integration test for CUDA"""
+import logging
+
 # pylint: disable=missing-function-docstring
 import os
 
@@ -23,6 +25,9 @@ import te_workload
 import tvm
 from tvm import meta_schedule as ms
 from tvm import te
+
+logging.basicConfig()
+logging.getLogger("meta_schedule").setLevel(logging.DEBUG)
 
 RPC_KEY = "jetson-agx-xavier"
 TARGET = tvm.target.Target("nvidia/jetson-agx-xavier")
