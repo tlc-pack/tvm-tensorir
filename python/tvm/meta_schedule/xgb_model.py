@@ -132,20 +132,16 @@ class PackSum:
             self.dmatrix = xgb.DMatrix(data=xs, label=ys)
             self.dmatrix.set_weight(ys)
 
-    def predict_with_booster(self, booster: xgb.Booster) -> np.ndarray:
-        pred = booster.predict(self.dmatrix)
-        return np.bincount(self.ids, weights=pred)
-
     def predict_with_score(self, pred: np.ndarray) -> np.ndarray:
         return np.bincount(self.ids, weights=pred)
 
-    def square_error(self, xs_pred: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def obj_square_error(self, ys_pred: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Implement square error loss on pack-sum format as
         a custom objective function for xgboost.
 
         Parameters
         ----------
-        xs_pred: np.ndarray
+        ys_pred: np.ndarray
             The predictions
 
         Returns
@@ -156,21 +152,21 @@ class PackSum:
             The hessian according to the xgboost format
         """
         # Making prediction
-        xs_pred = self.predict_with_score(xs_pred)
+        ys_pred = self.predict_with_score(ys_pred)
         # Propagate prediction to each block
-        xs_pred = xs_pred[self.ids]
+        ys_pred = ys_pred[self.ids]
         # The gradient and hessian
         ys = self.dmatrix.get_label()  # pylint: disable=invalid-name
-        gradient = xs_pred - ys
+        gradient = ys_pred - ys
         hessian = np.ones_like(gradient)
         return gradient * ys, hessian * ys
 
-    def rmse(self, xs_pred: np.ndarray) -> Tuple[str, float]:
+    def rmse(self, ys_pred: np.ndarray) -> Tuple[str, float]:
         """Evaluate RMSE (rooted mean square error) in the pack-sum format
 
         Parameters
         ----------
-        xs_pred: np.ndarray
+        ys_pred: np.ndarray
             The raw predictions
 
         Returns
@@ -181,26 +177,26 @@ class PackSum:
             The score of the metric
         """
         # Making prediction
-        xs_pred = self.predict_with_score(xs_pred)
+        ys_pred = self.predict_with_score(ys_pred)
         # Propagate prediction to each block
-        xs_pred = xs_pred[self.ids]
+        ys_pred = ys_pred[self.ids]
         # The RMSE
         ys = self.dmatrix.get_label()  # pylint: disable=invalid-name
-        square_error = np.square(xs_pred - ys)
+        square_error = np.square(ys_pred - ys)
         rmse = np.sqrt(square_error.mean())
         return "p-rmse", rmse
 
     def average_peak_score(
-        self, xs_pred: np.ndarray, n: int
+        self,
+        ys_pred: np.ndarray,
+        n: int,
     ) -> Tuple[str, float]:  # pylint: disable=invalid-name
         """Evaluate average-peak-score@N in the pack-sum format
 
         Parameters
         ----------
-        xs_pred: np.ndarray
+        ys_pred: np.ndarray
             The raw prediction
-        d_train: xgb.DMatrix
-            The ground-truth label matrix
         n : int
             The N in average-peak-score@N
 
@@ -211,12 +207,12 @@ class PackSum:
         score: float
             The score of the metric
         """
-        xs_pred = self.predict_with_score(xs_pred)
+        ys_pred = self.predict_with_score(ys_pred)
         labels = self.predict_with_score(self.dmatrix.get_label())
         labels = labels / np.unique(self.ids, return_counts=True)[1]
-        trials = np.argsort(xs_pred)[::-1][:n]
-        trial_scores = xs_pred[trials]
-        curve = max_curve(trial_scores) / np.max(xs_pred)
+        trials = np.argsort(ys_pred)[::-1][:n]
+        trial_scores = labels[trials]
+        curve = max_curve(trial_scores) / np.max(labels)
         score = np.mean(curve)
         return "a-peak@%d" % n, score
 
@@ -277,17 +273,17 @@ class XGBModel(PyCostModel):
         if len(inputs) == 0:
             return
 
-        def obj(xs_pred: np.ndarray, d_train: xgb.DMatrix):
+        def obj(ys_pred: np.ndarray, d_train: xgb.DMatrix):
             d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
-            return d_train.square_error(xs_pred)
+            return d_train.obj_square_error(ys_pred)
 
-        def rmse(xs_pred: np.ndarray, d_train: xgb.DMatrix):
+        def rmse(ys_pred: np.ndarray, d_train: xgb.DMatrix):
             d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
-            return d_train.rmse(xs_pred)
+            return d_train.rmse(ys_pred)
 
-        def average_peak_score(xs_pred: np.ndarray, d_train: xgb.DMatrix):
+        def average_peak_score(ys_pred: np.ndarray, d_train: xgb.DMatrix):
             d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
-            return d_train.average_peak_score(xs_pred, self.plan_size)
+            return d_train.average_peak_score(ys_pred, self.plan_size)
 
         # extract feature
         self.cached_features.extend(per_block_feature(x.sch) for x in inputs)
@@ -339,7 +335,8 @@ class XGBModel(PyCostModel):
         if self.booster is not None and n_measured > self.num_warmup_sample:
             features = [per_block_feature(x) for x in schedules]
             d_test = PackSum(xs=features, ys=None)
-            ret = d_test.predict_with_booster(self.booster)
+            pred = self.booster.predict(self.dmatrix)
+            ret = d_test.predict_with_score(pred)
         else:
             n = len(schedules)
             ret = np.random.uniform(0, 1, (n,))
