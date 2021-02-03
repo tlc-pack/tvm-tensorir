@@ -317,8 +317,8 @@ class XGBModel(PyCostModel):
             ],
         )
         # Update the model file if it has been set
-        # if self.model_file:
-        #     self.save(self.model_file)
+        if self.model_file:
+            self.save(self.model_file)
 
     def predict(self, task: SearchTask, schedules: List[Schedule]) -> np.ndarray:
         """Predict the scores of states
@@ -345,6 +345,29 @@ class XGBModel(PyCostModel):
             ret = np.random.uniform(0, 1, (n,))
         ret = ret.astype("float64")
         return ret
+
+    def load(self, path: str):
+        """Load the model from a file
+
+        Parameters
+        ----------
+        path: str
+            The filename
+        """
+        if self.booster is None:
+            self.bst = xgb.Booster(self.xgb_params)
+        self.booster.load_model(path)
+        self.num_warmup_sample = -1
+
+    def save(self, path: str):
+        """Save the model to a file
+
+        Parameters
+        ----------
+        path: str
+            The filename
+        """
+        self.booster.save_model(path)
 
 
 def custom_callback(
