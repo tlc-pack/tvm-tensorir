@@ -73,6 +73,18 @@ Optional<Instruction> TraceNode::Pop() {
 /**************** Serialization ****************/
 
 void TraceNode::Apply(const Schedule& sch) const {
+  this->Apply(sch,
+              [this](const Instruction& inst,
+                     const Array<Optional<ObjectRef>>& inputs) -> Optional<ObjectRef> {
+                // Keep the original decision
+                return this->decisions.Get(inst);
+              });
+}
+
+void TraceNode::Apply(const Schedule& sch,
+                      const std::function<Optional<ObjectRef>(
+                          const Instruction& inst, const Array<Optional<ObjectRef>>& inputs)>&
+                          decision_provider) const {
   // Maps an old random variable to its corresponding new random variable in the re-sampling
   std::unordered_map<const Object*, const Object*> var_map;
   // Utility function to convert an old tir::Var to the new one, according to `var_map`
@@ -102,16 +114,21 @@ void TraceNode::Apply(const Schedule& sch) const {
       break;
     }
     // Step 1. Extract old inputs and construct new inputs
-    const Array<ObjectRef>& old_inputs = inst->inputs;
-    Array<ObjectRef> new_inputs;
+    const Array<Optional<ObjectRef>>& old_inputs = inst->inputs;
+    Array<Optional<ObjectRef>> new_inputs;
     {
       new_inputs.reserve(old_inputs.size());
-      for (const ObjectRef& old_input : old_inputs) {
-        new_inputs.push_back(f_var_map(old_input));
+      for (const Optional<ObjectRef>& old_input : old_inputs) {
+        if (old_input.defined()) {
+          new_inputs.push_back(f_var_map(old_input.value()));
+        } else {
+          new_inputs.push_back(NullOpt);
+        }
       }
     }
     // Step 2. Apply the instruction to the schedule to get new outputs
-    Array<ObjectRef> new_outputs = inst->inst_attrs->Apply(sch, new_inputs, decisions.Get(inst));
+    Array<ObjectRef> new_outputs =
+        inst->inst_attrs->Apply(sch, new_inputs, decision_provider(inst, new_inputs));
     // Step 3. Step up the correspondence between old outputs and construct new outputs
     {
       const Array<ObjectRef>& old_outputs = inst->outputs;
@@ -192,7 +209,11 @@ struct DefUseSites {
         }
       }
       // Record use
-      for (const ObjectRef& use : inst->inputs) {
+      for (const Optional<ObjectRef>& opt_use : inst->inputs) {
+        if (!opt_use.defined()) {
+          continue;
+        }
+        ObjectRef use = opt_use.value();
         // Case 1. If the use is a random variable
         if (IsRV(use)) {
           result[use.get()].use.push_back(i);
@@ -246,6 +267,14 @@ Array<String> TraceNode::AsPython() const {
   return result;
 }
 
+String TraceNode::Stringify() const {
+  std::ostringstream os;
+  for (const String& line : AsPython()) {
+    os << line << '\n';
+  }
+  return os.str();
+}
+
 /**************** New trace creators ****************/
 
 Trace TraceNode::WithDecision(const Instruction& inst,    //
@@ -290,7 +319,11 @@ Trace TraceNode::Simplified(bool remove_postproc) const {
     }
     inst_dead[i] = 1;
     // For each variable used by the instruction, remove their use site
-    for (const ObjectRef& use : inst->inputs) {
+    for (const Optional<ObjectRef>& opt_use : inst->inputs) {
+      if (!opt_use.defined()) {
+        continue;
+      }
+      ObjectRef use = opt_use.value();
       // Case 1. If the use is a random variable
       if (IsRV(use)) {
         def_use[use.get()].use.pop_back();

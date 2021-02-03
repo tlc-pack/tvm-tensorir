@@ -275,7 +275,7 @@ inline void AddAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const St
   // Check if the annotation already exists
   for (const tir::Annotation& ann : *annotations) {
     if (ann->attr_key == ann_key) {
-      LOG(FATAL) << "ValueError: Already annotated with key: " << ann_key;
+      return;
     }
   }
   // Add the new annotation
@@ -299,18 +299,19 @@ inline void AddAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const St
 
 /**************** AsArray<TSrc, TDst> ****************/
 
+namespace details {
 template <class TSrc, class TDst>
-struct AsArray {};
+struct AsArrayImpl {};
 
 template <class TSrc>
-struct AsArray<TSrc, TSrc> {
+struct AsArrayImpl<TSrc, TSrc> {
   inline Array<TSrc> operator()(const std::vector<TSrc>& vec) const {
     return Array<TSrc>(vec.begin(), vec.end());
   }
 };
 
 template <class TDstObjectRef>
-struct AsArray<int, TDstObjectRef> {
+struct AsArrayImpl<int, TDstObjectRef> {
   inline Array<TDstObjectRef> operator()(const std::vector<int>& vec) const {
     Array<TDstObjectRef> result;
     result.reserve(vec.size());
@@ -322,7 +323,7 @@ struct AsArray<int, TDstObjectRef> {
 };
 
 template <class TDstObjectRef>
-struct AsArray<double, TDstObjectRef> {
+struct AsArrayImpl<double, TDstObjectRef> {
   inline Array<TDstObjectRef> operator()(const std::vector<double>& vec) const {
     Array<TDstObjectRef> result;
     result.reserve(vec.size());
@@ -332,21 +333,29 @@ struct AsArray<double, TDstObjectRef> {
     return result;
   }
 };
+}  // namespace details
+
+template <class TSrc, class TDst>
+inline Array<TDst> AsArray(const std::vector<TSrc>& vec) {
+  return details::AsArrayImpl<TSrc, TDst>()(vec);
+}
 
 /**************** AsVector<TSrc, TDst> ****************/
 
+namespace details {
+
 template <class TSrc, class TDst>
-struct AsVector {};
+struct AsVectorImpl {};
 
 template <class TSrc>
-struct AsVector<TSrc, TSrc> {
+struct AsVectorImpl<TSrc, TSrc> {
   inline std::vector<TSrc> operator()(const Array<TSrc>& vec) const {
     return std::vector<TSrc>(vec.begin(), vec.end());
   }
 };
 
 template <class TSrcObjectRef>
-struct AsVector<TSrcObjectRef, int> {
+struct AsVectorImpl<TSrcObjectRef, int> {
   inline std::vector<int> operator()(const Array<TSrcObjectRef>& vec) const {
     std::vector<int> results;
     for (const TSrcObjectRef& x : vec) {
@@ -359,7 +368,7 @@ struct AsVector<TSrcObjectRef, int> {
 };
 
 template <class TSrcObjectRef>
-struct AsVector<TSrcObjectRef, int64_t> {
+struct AsVectorImpl<TSrcObjectRef, int64_t> {
   inline std::vector<int64_t> operator()(const Array<TSrcObjectRef>& vec) const {
     std::vector<int64_t> results;
     for (const TSrcObjectRef& x : vec) {
@@ -372,7 +381,7 @@ struct AsVector<TSrcObjectRef, int64_t> {
 };
 
 template <class TSrcObjectRef>
-struct AsVector<TSrcObjectRef, double> {
+struct AsVectorImpl<TSrcObjectRef, double> {
   inline std::vector<double> operator()(const Array<TSrcObjectRef>& array) const {
     std::vector<double> results;
     for (const TSrcObjectRef& x : array) {
@@ -383,6 +392,12 @@ struct AsVector<TSrcObjectRef, double> {
     return results;
   }
 };
+}  // namespace details
+
+template <class TSrc, class TDst>
+inline std::vector<TDst> AsVector(const Array<TSrc>& vec) {
+  return details::AsVectorImpl<TSrc, TDst>()(vec);
+}
 
 /**************** I/O ****************/
 

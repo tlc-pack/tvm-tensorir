@@ -223,8 +223,11 @@ ObjectRef ScheduleNode::EvalLoopExtended(const LoopRV& loop) {
   CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding LoopRV: " << loop;
   const Optional<ObjectRef>& obj = (*iter).second;
   CHECK(obj.defined()) << "ValueError: Corresponding LoopRV's value is not defined: " << loop;
-  if (obj.same_as(inline_rv) || obj.same_as(root_rv)) {
-    return obj;
+  if (obj.same_as(inline_rv)) {
+    return inline_rv;
+  }
+  if (obj.same_as(root_rv)) {
+    return root_rv;
   }
   if (const auto* sref = obj.as<tir::StmtSRefNode>()) {
     CHECK(sref->stmt) << "ValueError: The LoopRV has expired";
@@ -285,8 +288,8 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
   }
   // Sample the output
   std::vector<int> samples =
-      decision.defined()                                  //
-          ? AsVector<ObjectRef, int>()(decision.value())  //
+      decision.defined()                                //
+          ? AsVector<ObjectRef, int>(decision.value())  //
           : sampler.SamplePerfectTile(n_splits, extent, max_innermost_factor);
   // Create the output random variable
   String name_prefix = tir_loop->loop_var->name_hint + ".";
@@ -299,7 +302,7 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
   }
   // Record the instruction
   this->trace->Append(SamplePerfectTileAttrs::Make(n_splits, loop, max_innermost_factor, outputs),
-                      AsArray<int, ObjectRef>()(samples));
+                      AsArray<int, ObjectRef>(samples));
   return outputs;
 }
 
@@ -319,8 +322,8 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
     }
   }
   // Sample the output
-  std::vector<int> samples = decision.defined()                                  //
-                                 ? AsVector<ObjectRef, int>()(decision.value())  //
+  std::vector<int> samples = decision.defined()                                //
+                                 ? AsVector<ObjectRef, int>(decision.value())  //
                                  : sampler.SampleTileFactor(n_splits, extent, candidates);
   // Create the output random variable
   String name_prefix = tir_loop->loop_var->name_hint + ".";
@@ -333,7 +336,7 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
   }
   // Record the instruction
   this->trace->Append(SampleTileFactorAttrs::Make(n_splits, loop, where, outputs),
-                      AsArray<int, ObjectRef>()(samples));
+                      AsArray<int, ObjectRef>(samples));
   return outputs;
 }
 
@@ -379,23 +382,54 @@ tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
 LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block,
                                            const Optional<ObjectRef>& decision) {
   tir::StmtSRef block_sref = Eval(block);
-  Array<tir::StmtSRef> loop_srefs = sch->GetLoopsInScope(block_sref);
-  int n = loop_srefs.size();
-  int i = decision.defined()                                //
-              ? Downcast<Integer>(decision.value())->value  //
-              : sampler.SampleInt(-2, n);
+  Array<tir::StmtSRef> loop_srefs = CollectComputeLocation(sch, block_sref);
+  // Extract the extents of loops
+  std::vector<int> non_unit_loop_indices;
+  {
+    int i = 0;
+    for (const tir::StmtSRef& loop_sref : loop_srefs) {
+      int64_t extent = GetLoopIntExtent(loop_sref).value_or(-1)->value;
+      if (extent != 1) {
+        non_unit_loop_indices.push_back(i);
+      }
+      ++i;
+    }
+  }
   // Create the output random variable
   LoopRV output;
+  int idx = -1;  // the decision made, by default it is -1
+  // If the decision has been defined
+  if (decision.defined()) {
+    int decided = Downcast<Integer>(decision)->value;
+    if (decided == -2) {
+      idx = decided;
+      this->sym_tab.Set(output, LoopRV::ComputeInlineRV());
+    } else if (decided == -1) {
+      idx = decided;
+      this->sym_tab.Set(output, LoopRV::ComputeRootRV());
+    } else {
+      // Find the last loop that is before or at the decision
+      for (int i : non_unit_loop_indices) {
+        if (i <= decided) {
+          idx = i;
+        } else {
+          break;
+        }
+      }
+    }
+  } else {
+    idx = sampler.SampleInt(-2, non_unit_loop_indices.size());
+  }
   // Update the symbol table
-  if (i == -2) {
+  if (idx == -2) {
     this->sym_tab.Set(output, LoopRV::ComputeInlineRV());
-  } else if (i == -1) {
+  } else if (idx == -1) {
     this->sym_tab.Set(output, LoopRV::ComputeRootRV());
   } else {
-    this->sym_tab.Set(output, loop_srefs[i]);
+    this->sym_tab.Set(output, loop_srefs[idx]);
   }
   // Record the instruction
-  this->trace->Append(SampleComputeLocationAttrs::Make(block, output), Integer(i));
+  this->trace->Append(SampleComputeLocationAttrs::Make(block, output), Integer(idx));
   return output;
 }
 
@@ -674,16 +708,17 @@ void ScheduleNode::Reorder(const Array<LoopRV>& after_axes) {
 void ScheduleNode::ComputeAt(const BlockRV& block, const LoopRV& loop) {
   ObjectRef loop_eval = this->EvalLoopExtended(loop);
   if (loop_eval.same_as(LoopRV::ComputeInlineRV())) {
-    ComputeInline(block);
-    return;
+    // Find the inputs to TIR
+    tir::StmtSRef block_sref = this->Eval(block);
+    this->sch->compute_inline(block_sref);
+  } else if (loop_eval.same_as(LoopRV::ComputeRootRV())) {
+    // Do nothing
+  } else {
+    // Find the inputs to TIR
+    tir::StmtSRef block_sref = this->Eval(block);
+    tir::StmtSRef loop_sref = Downcast<tir::StmtSRef>(loop_eval);
+    this->sch->compute_at(block_sref, loop_sref, true);
   }
-  if (loop_eval.same_as(LoopRV::ComputeRootRV())) {
-    return;
-  }
-  // Find the inputs to TIR
-  tir::StmtSRef block_sref = this->Eval(block);
-  tir::StmtSRef loop_sref = Downcast<tir::StmtSRef>(loop_eval);
-  this->sch->compute_at(block_sref, loop_sref, true);
   // Record the instruction
   this->trace->Append(ComputeAtAttrs::Make(block, loop));
 }
@@ -691,16 +726,17 @@ void ScheduleNode::ComputeAt(const BlockRV& block, const LoopRV& loop) {
 void ScheduleNode::ReverseComputeAt(const BlockRV& block, const LoopRV& loop) {
   ObjectRef loop_eval = this->EvalLoopExtended(loop);
   if (loop_eval.same_as(LoopRV::ComputeInlineRV())) {
-    ReverseComputeInline(block);
-    return;
+    // Find the inputs to TIR
+    tir::StmtSRef block_sref = this->Eval(block);
+    this->sch->reverse_compute_inline(block_sref);
+  } else if (loop_eval.same_as(LoopRV::ComputeRootRV())) {
+    // Do nothing
+  } else {
+    // Find the inputs to TIR
+    tir::StmtSRef block_sref = this->Eval(block);
+    tir::StmtSRef loop_sref = Downcast<tir::StmtSRef>(loop_eval);
+    this->sch->reverse_compute_at(block_sref, loop_sref, true);
   }
-  if (loop_eval.same_as(LoopRV::ComputeRootRV())) {
-    return;
-  }
-  // Find the inputs to TIR
-  tir::StmtSRef block_sref = this->Eval(block);
-  tir::StmtSRef loop_sref = Downcast<tir::StmtSRef>(loop_eval);
-  this->sch->reverse_compute_at(block_sref, loop_sref, true);
   // Record the instruction
   this->trace->Append(ReverseComputeAtAttrs::Make(block, loop));
 }

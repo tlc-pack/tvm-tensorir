@@ -294,12 +294,15 @@ class ProgramMeasurerNode : public Object {
   Array<MeasureCallback> callbacks;
   /*! \brief The database of measured programs. */
   Database db;
+  /*! \brief Number of measurement done so far */
+  int num_measures;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("builder", &builder);
     v->Visit("runner", &runner);
     v->Visit("callbacks", &callbacks);
     v->Visit("db", &db);
+    v->Visit("num_measures", &num_measures);
   }
 
   /*!
@@ -349,9 +352,10 @@ class ProgramMeasurer : public ObjectRef {
    * \param runner The program runner
    * \param callbacks The callbacks invoked after measurement
    * \param db The database of measured programs.
+   * \param num_measures Number of measurement done so far
    */
   explicit ProgramMeasurer(ProgramBuilder builder, ProgramRunner runner,
-                           Array<MeasureCallback> callbacks, Database db);
+                           Array<MeasureCallback> callbacks, Database db, int num_measures);
   /*!
    * \brief Simplified constructor
    * \param builder The program builder

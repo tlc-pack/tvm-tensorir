@@ -36,7 +36,7 @@ def sparse_dense_bsr(x: ty.handle, data: ty.handle, indices: ty.handle, indptr: 
     num_blocks = tir.var("int32")
     bs_r = tir.var("int32")
     bs_c = tir.var("int32")
-    tir.func_attr({"flop_ct": 2 * M * num_blocks * bs_r * K, "tag": "sparse_dense_bsr", "tir.noalias": True})
+    tir.func_attr({"flop_ct": 2 * M * num_blocks * bs_r * K, "tir.noalias": True})
 
     X = tir.match_buffer(x, [M, K], "float32")
     W_data = tir.match_buffer(data, [num_blocks, bs_r, bs_c], "float32")
