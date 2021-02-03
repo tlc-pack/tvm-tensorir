@@ -138,7 +138,6 @@ class TVMScriptPrinter : public StmtFunctor<Doc(const Stmt&)>,
   Doc VisitStmt_(const BlockRealizeNode* op) override;
   Doc VisitStmt_(const LoopNode* op) override;
   Doc VisitStmt_(const BufferAllocateNode* op) override;
-  Doc VisitStmt_(const ReduceStepNode* op) override;
   Doc VisitStmtDefault_(const Object* op) override;
 
   Doc VisitType_(const PrimTypeNode* node) override;
@@ -649,17 +648,6 @@ Doc TVMScriptPrinter::VisitStmt_(const IfThenElseNode* op) {
   return doc;
 }
 
-Doc TVMScriptPrinter::VisitStmt_(const ReduceStepNode* op) {
-  Doc doc;
-  const auto& it = memo_reducer_.find(op->comm_reducer.get());
-  if (it == memo_reducer_.end()) {
-    memo_reducer_[op->comm_reducer.get()] = GetUniqueName("reducer");
-  }
-  doc << memo_reducer_[op->comm_reducer.get()] << ".step(";
-  doc << Print(op->lhs) << ", " << Print(op->rhs) << ")";
-  return doc;
-}
-
 Doc TVMScriptPrinter::VisitStmt_(const SeqStmtNode* op) {
   std::vector<Doc> stmts;
   for (Stmt stmt : op->seq) {
@@ -733,7 +721,7 @@ Doc TVMScriptPrinter::VisitType_(const TupleTypeNode* node) {
 }
 
 Doc TVMScriptPrinter::VisitStmt_(const BlockRealizeNode* op) {
-  const BlockNode* block_op = (op->block).as<BlockNode>();
+  const auto* block_op = op->block.as<BlockNode>();
   // print block name and block vars
   Doc doc;
   doc << "with tir.block([";
@@ -792,6 +780,12 @@ Doc TVMScriptPrinter::VisitStmt_(const BlockRealizeNode* op) {
   body << Doc::NewLine();
   for (const auto& allocate : block_op->allocations) {
     body << Print(allocate) << Doc::NewLine();
+  }
+  if (block_op->init.defined()) {
+    Doc init_block;
+    init_block << "with tir.init():";
+    init_block << Doc::Indent(4, Doc::NewLine() << PrintBody(block_op->init.value()));
+    body << init_block << Doc::NewLine();
   }
   body << PrintBody(block_op->body);
   doc << Doc::Indent(4, block_attr_doc << body);

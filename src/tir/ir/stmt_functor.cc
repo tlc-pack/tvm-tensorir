@@ -114,6 +114,9 @@ void StmtVisitor::VisitStmt_(const EvaluateNode* op) { this->VisitExpr(op->value
 
 void StmtVisitor::VisitStmt_(const BlockNode* op) {
   VisitArray(op->allocations, [this](const Stmt& s) { this->VisitStmt(s); });
+  if (op->init.defined()) {
+    this->VisitStmt(op->init.value());
+  }
   this->VisitStmt(op->body);
 }
 
@@ -130,11 +133,6 @@ void StmtVisitor::VisitStmt_(const LoopNode* op) {
 }
 
 void StmtVisitor::VisitStmt_(const BufferAllocateNode* op) {}
-
-void StmtVisitor::VisitStmt_(const ReduceStepNode* op) {
-  this->VisitExpr(op->lhs);
-  this->VisitExpr(op->rhs);
-}
 
 class StmtMutator::Internal {
  public:
@@ -448,9 +446,13 @@ Stmt StmtMutator::VisitStmt_(const BlockNode* op) {
   Array<TensorRegion> writes = MutateArray(op->writes, fmutate_tensor_region);
   Array<IterVar> block_vars = MutateArray(op->iter_vars, fmutate_iter_var);
   Array<Annotation> annotations = MutateArray(op->annotations, fmutate_annotation);
+  Optional<Stmt> init = NullOpt;
+  if (op->init.defined()) {
+    init = VisitStmt(op->init.value());
+  }
   Stmt body = VisitStmt(op->body);
   if (reads.same_as(op->reads) && writes.same_as(op->writes) && block_vars.same_as(op->iter_vars) &&
-      body.same_as(op->body) && annotations.same_as(op->annotations)) {
+      body.same_as(op->body) && annotations.same_as(op->annotations) && init.same_as(op->init)) {
     return GetRef<Block>(op);
   } else {
     auto n = CopyOnWrite(op);
@@ -459,6 +461,7 @@ Stmt StmtMutator::VisitStmt_(const BlockNode* op) {
     n->iter_vars = std::move(block_vars);
     n->annotations = std::move(annotations);
     n->body = std::move(body);
+    n->init = std::move(init);
     return Stmt(n);
   }
 }
@@ -495,19 +498,6 @@ Stmt StmtMutator::VisitStmt_(const LoopNode* op) {
 }
 
 Stmt StmtMutator::VisitStmt_(const BufferAllocateNode* op) { return GetRef<Stmt>(op); }
-
-Stmt StmtMutator::VisitStmt_(const ReduceStepNode* op) {
-  PrimExpr lhs = this->VisitExpr(op->lhs);
-  PrimExpr rhs = this->VisitExpr(op->rhs);
-  if (lhs.same_as(op->lhs) && rhs.same_as(op->rhs)) {
-    return GetRef<Stmt>(op);
-  } else {
-    auto n = CopyOnWrite(op);
-    n->lhs = std::move(lhs);
-    n->rhs = std::move(rhs);
-    return Stmt(n);
-  }
-}
 
 // Implementations of IRTransform, PostOrderVisit and Substitute
 class IRApplyVisit : public StmtExprVisitor {

@@ -85,7 +85,8 @@ Block MakeCacheStage(const TensorRegion& cache_region, CacheStageInfo* info,
       BufferStore(info->write_buffer, BufferLoad(info->read_buffer, copy_indices), copy_indices),
       /*allocations=*/{},
       /*annotations=*/{},
-      /*tag=*/cache_region->buffer->name + "_" + storage_scope);
+      /*tag=*/cache_region->buffer->name + "_" + storage_scope,
+      /*init=*/NullOpt);
   // Create the block realize node
   Stmt body = BlockRealize(/*binding_values=*/binding_values,
                            /*predicate=*/Bool(true),

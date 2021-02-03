@@ -27,10 +27,11 @@ namespace tir {
  * \param block_realize The block realize node under the loop. It is possible that there are
  * multiple blocks, and in this case, we should invoke this function multiple times.
  * \param schedule The schedule object
+ * \param anno_value The annotation anno_value
  * \return A boolean indicating if the loop var is parallelizable
  */
 bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
-                             const ScheduleNode* schedule) {
+                             const ScheduleNode* schedule, const std::string& anno_value) {
   const BlockRealizeNode* realize = block_realize.as<BlockRealizeNode>();
   CHECK(realize != nullptr)
       << "InternalError: in IsLoopVarParallelizable, expect BlockRealize, but get type: "
@@ -47,7 +48,11 @@ bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
   for (int i = 0; i < n; ++i) {
     const IterVar& iter_var = block->iter_vars[i];
     const PrimExpr& binding = realize->binding_values[i];
-    if (iter_var->iter_type != kDataPar && StmtExprContainsVar(binding, loop_var)) {
+    bool contains = StmtExprContainsVar(binding, loop_var);
+    if (contains && iter_var->iter_type != kDataPar && iter_var->iter_type != kCommReduce) {
+      return false;
+    }
+    if (contains && iter_var->iter_type == kCommReduce && anno_value.substr(0, 9) != "threadIdx") {
       return false;
     }
   }
@@ -111,7 +116,7 @@ void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const Annotation& 
   // Now only support:
   //   1. All the blocks are complete below
   //   2. A single block below the loop
-  // TODO(bohan): support reduction later
+  const String& anno_value = Downcast<StringImm>(annotation->value)->value;
   bool is_compact_dataflow = GetParentScope(loop_sref).IsCompactDataFlow(loop_sref, this);
   if (!is_compact_dataflow) {
     Array<Stmt> single_child = GetChildren(GetRef<Stmt>(loop), true);
@@ -123,14 +128,14 @@ void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const Annotation& 
     const auto* realize = single_child[0].as<BlockRealizeNode>();
     CHECK(realize != nullptr) << "TypeError: Expects 'BlockRealizeNode', but gets: "
                               << single_child[0]->GetTypeKey();
-    CHECK(IsLoopVarParallelizable(loop->loop_var, GetRef<Stmt>(realize), this))
+    CHECK(IsLoopVarParallelizable(loop->loop_var, GetRef<Stmt>(realize), this, anno_value))
         << "ValueError: loop with variable \"" << loop->loop_var
         << "\" cannot be parallelized because of block:\n"
         << GetRef<Stmt>(realize);
   } else {
-    PreOrderVisit(GetRef<Stmt>(loop), [&loop, this](const ObjectRef& node) {
+    PreOrderVisit(GetRef<Stmt>(loop), [&loop, this, anno_value](const ObjectRef& node) {
       if (const auto* realize = node.as<BlockRealizeNode>()) {
-        CHECK(IsLoopVarParallelizable(loop->loop_var, GetRef<Stmt>(realize), this))
+        CHECK(IsLoopVarParallelizable(loop->loop_var, GetRef<Stmt>(realize), this, anno_value))
             << "ValueError: loop with variable \"" << loop->loop_var
             << "\" cannot be parallelized because of block:\n"
             << GetRef<Stmt>(realize);

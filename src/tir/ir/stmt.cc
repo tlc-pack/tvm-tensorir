@@ -739,7 +739,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 // Block
 Block::Block(Array<IterVar> iter_vars, Array<TensorRegion> reads, Array<TensorRegion> writes,
              Stmt body, Array<BufferAllocate> allocations, Array<Annotation> annotations,
-             std::string tag) {
+             std::string tag, Optional<Stmt> init) {
   ObjectPtr<BlockNode> node = make_object<BlockNode>();
   node->iter_vars = std::move(iter_vars);
   node->reads = std::move(reads);
@@ -748,16 +748,17 @@ Block::Block(Array<IterVar> iter_vars, Array<TensorRegion> reads, Array<TensorRe
   node->allocations = std::move(allocations);
   node->annotations = std::move(annotations);
   node->tag = std::move(tag);
+  node->init = std::move(init);
   data_ = std::move(node);
 }
 
 TVM_REGISTER_GLOBAL("tir.Block")
     .set_body_typed<Block(Array<IterVar>, Array<TensorRegion>, Array<TensorRegion>, Stmt,
-                          Array<BufferAllocate>, Array<Annotation>, std::string)>(
+                          Array<BufferAllocate>, Array<Annotation>, std::string, Optional<Stmt>)>(
         [](Array<IterVar> iter_vars, Array<TensorRegion> reads, Array<TensorRegion> writes,
            Stmt body, Array<BufferAllocate> allocates, Array<Annotation> annotations,
-           std::string tag) {
-          return Block(iter_vars, reads, writes, body, allocates, annotations, tag);
+           std::string tag, Optional<Stmt> init) {
+          return Block(iter_vars, reads, writes, body, allocates, annotations, tag, init);
         });
 
 TVM_REGISTER_NODE_TYPE(BlockNode);
@@ -816,6 +817,10 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->indent += 2;
       for (const auto& allocate : op->allocations) {
         p->Print(allocate);
+      }
+      if (op->init.defined()) {
+        // print the block init statement
+        p->Print(op->init.value());
       }
       p->Print(op->body);
       p->indent -= 2;
@@ -913,86 +918,6 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->indent -= 2;
       p->PrintIndent();
       p->stream << "}\n";
-    });
-
-// ReduceStep
-ReduceStep::ReduceStep(CommReducer comm_reducer, PrimExpr lhs, PrimExpr rhs) {
-  ObjectPtr<ReduceStepNode> node = make_object<ReduceStepNode>();
-  node->comm_reducer = std::move(comm_reducer);
-  node->lhs = std::move(lhs);
-  node->rhs = std::move(rhs);
-  data_ = std::move(node);
-}
-
-PrimExpr ReduceStepNode::ApplyCombiner() const { return ApplyCombiner(this->lhs, this->rhs); }
-
-PrimExpr ReduceStepNode::ApplyCombiner(const PrimExpr& lhs, const PrimExpr& rhs) const {
-  CHECK_EQ(comm_reducer->lhs.size(), 1);
-  CHECK_EQ(comm_reducer->rhs.size(), 1);
-  CHECK_EQ(comm_reducer->result.size(), 1);
-  auto vmap = [&](const Var& v) -> Optional<PrimExpr> {
-    if (v.same_as(comm_reducer->lhs[0])) {
-      return lhs;
-    } else if (v.same_as(comm_reducer->rhs[0])) {
-      return rhs;
-    } else {
-      return v;
-    }
-  };
-  return Substitute(comm_reducer->result[0], vmap);
-}
-
-std::tuple<bool, PrimExpr, PrimExpr> ReducerMatched(const CommReducer& reducer,
-                                                    const PrimExpr& init, const PrimExpr update) {
-  ExprDeepEqual equal;
-  if (!equal(reducer->identity_element[0], init))
-    return std::make_tuple(false, NullValue<PrimExpr>(), NullValue<PrimExpr>());
-  PatternMatcher pattern_matcher(reducer->result[0]);
-  pattern_matcher.Match(update);
-  return std::make_tuple(pattern_matcher.Success(), pattern_matcher.Eval(reducer->lhs[0]),
-                         pattern_matcher.Eval(reducer->rhs[0]));
-}
-
-Stmt ReduceStep::FromInitUpdate(const Array<CommReducer>& patterns, const PrimExpr& init,
-                                const BufferStore& update) {
-  ExprDeepEqual equal;
-  const auto& lhs = BufferLoad(update->buffer, update->indices);
-  // Check user defined patterns
-  for (const auto& reducer : patterns) {
-    const auto& res = ReducerMatched(reducer, init, update->value);
-    if (std::get<0>(res) && equal(lhs, std::get<1>(res))) {
-      return ReduceStep(reducer, std::get<1>(res), std::get<2>(res));
-    }
-  }
-  // Check default patterns
-  for (const auto& reducer : default_reducer::default_reducers) {
-    const auto& res = ReducerMatched(reducer.GetReducer(init.dtype()), init, update->value);
-    if (std::get<0>(res) && equal(lhs, std::get<1>(res))) {
-      return ReduceStep(reducer.GetReducer(init.dtype()), std::get<1>(res), std::get<2>(res));
-    }
-  }
-  LOG(FATAL) << "No reducer pattern matched for " << init << " " << update;
-  return NullValue<ReduceStep>();
-}
-
-TVM_REGISTER_GLOBAL("tir.ReduceStep")
-    .set_body_typed<ReduceStep(CommReducer, PrimExpr, PrimExpr)>([](CommReducer comm_reducer,
-                                                                    PrimExpr lhs, PrimExpr rhs) {
-      return ReduceStep(comm_reducer, lhs, rhs);
-    });
-
-TVM_REGISTER_NODE_TYPE(ReduceStepNode);
-
-TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-    .set_dispatch<ReduceStepNode>([](const ObjectRef& node, ReprPrinter* p) {
-      auto* op = static_cast<const ReduceStepNode*>(node.get());
-
-      p->PrintIndent();
-      p->stream << "reduce_step(";
-      p->Print(op->lhs);
-      p->stream << ", ";
-      p->Print(op->rhs);
-      p->stream << ")\n";
     });
 
 PrimExpr TypeAnnotation(DataType dtype, Span span) {

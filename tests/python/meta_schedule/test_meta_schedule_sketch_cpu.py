@@ -90,7 +90,6 @@ def _matmul_sketch_0(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, [512, 512], elem_offset=0, align=128, offset_factor=1)
     B = tir.match_buffer(b, [512, 512], elem_offset=0, align=128, offset_factor=1)
     A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
         tir.reads([])
@@ -112,7 +111,9 @@ def _matmul_sketch_0(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                                     tir.bind(vk, ((i2_outer*2) + i2_inner))
                                                     tir.reads([C_local[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vk:(vk + 1), vj:(vj + 1)]])
                                                     tir.writes([C_local[vi:(vi + 1), vj:(vj + 1)]])
-                                                    reducer.step(C_local[vi, vj], (A[vi, vk]*B[vk, vj]))
+                                                    with tir.init():
+                                                        C_local[vi, vj] = 0.0
+                                                    C_local[vi, vj] = C_local[vi, vj] + A[vi, vk]*B[vk, vj]
                         for ax0 in range(0, 16):
                             for ax1 in range(0, 32):
                                 with tir.block([512, 512], "") as [v0, v1]:
@@ -128,7 +129,6 @@ def _matmul_sketch_1(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, [512, 512], elem_offset=0, align=128, offset_factor=1)
     B = tir.match_buffer(b, [512, 512], elem_offset=0, align=128, offset_factor=1)
     A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
         tir.reads([])
@@ -150,7 +150,9 @@ def _matmul_sketch_1(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                                     tir.bind(vk, ((i2_outer*2) + i2_inner))
                                                     tir.reads([C_local[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vk:(vk + 1), vj:(vj + 1)]])
                                                     tir.writes([C_local[vi:(vi + 1), vj:(vj + 1)]])
-                                                    reducer.step(C_local[vi, vj], (A[vi, vk]*B[vk, vj]))
+                                                    with tir.init():
+                                                        C_local[vi, vj] = 0.0
+                                                    C_local[vi, vj] = C_local[vi, vj] + A[vi, vk] * B[vk, vj]
                 for ax0 in range(0, 16):
                     for ax1 in range(0, 256):
                         with tir.block([512, 512], "") as [v0, v1]:
@@ -166,7 +168,6 @@ def _matmul_sketch_2(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, [512, 512], elem_offset=0, align=128, offset_factor=1)
     B = tir.match_buffer(b, [512, 512], elem_offset=0, align=128, offset_factor=1)
     A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
         tir.reads([])
@@ -187,7 +188,9 @@ def _matmul_sketch_2(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                                     tir.bind(vk, ((i2_outer*2) + i2_inner))
                                                     tir.reads([C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vk:(vk + 1), vj:(vj + 1)]])
                                                     tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
-                                                    reducer.step(C[vi, vj], (A[vi, vk]*B[vk, vj]))
+                                                    with tir.init():
+                                                        C[vi, vj] = 0.0
+                                                    C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
 
 
 # fmt: on
@@ -241,7 +244,6 @@ def _matmul_relu_sketch_0(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     B = tir.match_buffer(b, [512, 512], elem_offset=0, align=128, offset_factor=1)
     D = tir.match_buffer(d, [512, 512], elem_offset=0, align=128, offset_factor=1)
     A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
         tir.reads([])
@@ -263,7 +265,9 @@ def _matmul_relu_sketch_0(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
                                                     tir.bind(vk, i2_outer)
                                                     tir.reads([C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vk:(vk + 1), vj:(vj + 1)]])
                                                     tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
-                                                    reducer.step(C[vi, vj], (A[vi, vk]*B[vk, vj]))
+                                                    with tir.init():
+                                                        C[vi, vj] = 0.0
+                                                    C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
                         for ax0 in range(0, 256):
                             for ax1 in range(0, 64):
                                 with tir.block([512, 512], "relu") as [vi_1, vj_1]:
@@ -279,7 +283,6 @@ def _matmul_relu_sketch_1(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     D = tir.match_buffer(d, [512, 512], elem_offset=0, align=128, offset_factor=1)
     B = tir.match_buffer(b, [512, 512], elem_offset=0, align=128, offset_factor=1)
     A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
         tir.reads([])
@@ -301,7 +304,9 @@ def _matmul_relu_sketch_1(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
                                                     tir.bind(vk, i2_outer)
                                                     tir.reads([C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vk:(vk + 1), vj:(vj + 1)]])
                                                     tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
-                                                    reducer.step(C[vi, vj], (A[vi, vk]*B[vk, vj]))
+                                                    with tir.init():
+                                                        C[vi, vj] = 0.0
+                                                    C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
                 for ax0 in range(0, 512):
                     for ax1 in range(0, 128):
                         with tir.block([512, 512], "relu") as [vi_1, vj_1]:
@@ -317,7 +322,6 @@ def _matmul_relu_sketch_2(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     D = tir.match_buffer(d, [512, 512], elem_offset=0, align=128, offset_factor=1)
     B = tir.match_buffer(b, [512, 512], elem_offset=0, align=128, offset_factor=1)
     A = tir.match_buffer(a, [512, 512], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
         tir.reads([])
@@ -339,7 +343,9 @@ def _matmul_relu_sketch_2(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
                                                     tir.bind(vk, i2_outer)
                                                     tir.reads([C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vk:(vk + 1), vj:(vj + 1)]])
                                                     tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
-                                                    reducer.step(C[vi, vj], (A[vi, vk]*B[vk, vj]))
+                                                    with tir.init():
+                                                        C[vi, vj] = 0.0
+                                                    C[vi, vj] = C[vi, vj] + A[vi, vk]*B[vk, vj]
         for i0 in range(0, 512):
             for i1 in range(0, 512):
                 with tir.block([512, 512], "relu") as [vi_1, vj_1]:
@@ -403,7 +409,6 @@ def _conv2d_nchw_sketch_0(var_X: ty.handle, var_W: ty.handle, var_compute: ty.ha
     compute = tir.match_buffer(var_compute, [1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
     X = tir.match_buffer(var_X, [1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
     W = tir.match_buffer(var_W, [512, 512, 3, 3], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
         tir.reads([])
@@ -438,7 +443,9 @@ def _conv2d_nchw_sketch_0(var_X: ty.handle, var_W: ty.handle, var_compute: ty.ha
                                     tir.bind(rx, i6_outer)
                                     tir.reads([compute_local[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
                                     tir.writes([compute_local[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
-                                    reducer.step(compute_local[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
+                                    with tir.init():
+                                        compute_local[nn, ff, yy, xx] = 0.0
+                                    compute_local[nn, ff, yy, xx] = compute_local[nn, ff, yy, xx] + pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]
                 for ax0 in range(0, 1):
                     for ax1 in range(0, 32):
                         for ax2 in range(0, 14):
@@ -460,7 +467,6 @@ def _conv2d_nchw_sketch_1(var_X: ty.handle, var_W: ty.handle, var_compute: ty.ha
     compute = tir.match_buffer(var_compute, [1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
     X = tir.match_buffer(var_X, [1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
     W = tir.match_buffer(var_W, [512, 512, 3, 3], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
         tir.reads([])
@@ -495,7 +501,9 @@ def _conv2d_nchw_sketch_1(var_X: ty.handle, var_W: ty.handle, var_compute: ty.ha
                                     tir.bind(rx, i6_outer)
                                     tir.reads([compute_local[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
                                     tir.writes([compute_local[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
-                                    reducer.step(compute_local[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
+                                    with tir.init():
+                                        compute_local[nn, ff, yy, xx] = 0.0
+                                    compute_local[nn, ff, yy, xx] = compute_local[nn, ff, yy, xx] + pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]
             for ax0 in range(0, 1):
                 for ax1 in range(0, 256):
                     for ax2 in range(0, 28):
@@ -517,7 +525,6 @@ def _conv2d_nchw_sketch_2(var_X: ty.handle, var_W: ty.handle, var_compute: ty.ha
     compute = tir.match_buffer(var_compute, [1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
     X = tir.match_buffer(var_X, [1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
     W = tir.match_buffer(var_W, [512, 512, 3, 3], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
         tir.reads([])
@@ -551,7 +558,9 @@ def _conv2d_nchw_sketch_2(var_X: ty.handle, var_W: ty.handle, var_compute: ty.ha
                                     tir.bind(rx, i6_inner)
                                     tir.reads([compute[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
                                     tir.writes([compute[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
-                                    reducer.step(compute[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
+                                    with tir.init():
+                                        compute[nn, ff, yy, xx] = 0.0
+                                    compute[nn, ff, yy, xx] = compute[nn, ff, yy, xx] + pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]
 
 # fmt: on
 # pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg,unused-variable
@@ -633,7 +642,6 @@ def _conv2d_nchw_bias_bn_relu_sketch_0(var_X: ty.handle, var_W: ty.handle, var_B
     X = tir.match_buffer(var_X, [1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
     bn_scale = tir.match_buffer(var_bn_scale, [512, 1, 1], elem_offset=0, align=128, offset_factor=1)
     W = tir.match_buffer(var_W, [512, 512, 3, 3], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
         tir.reads([])
@@ -668,7 +676,9 @@ def _conv2d_nchw_bias_bn_relu_sketch_0(var_X: ty.handle, var_W: ty.handle, var_B
                                     tir.bind(rx, i6_inner)
                                     tir.reads([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
                                     tir.writes([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
-                                    reducer.step(compute_1[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
+                                    with tir.init():
+                                        compute_1[nn, ff, yy, xx] = 0.0
+                                    compute_1[nn, ff, yy, xx] = compute_1[nn, ff, yy, xx] + pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]
                 for ax0 in range(0, 1):
                     for ax1 in range(0, 16):
                         for ax2 in range(0, 56):
@@ -693,7 +703,6 @@ def _conv2d_nchw_bias_bn_relu_sketch_1(var_X: ty.handle, var_W: ty.handle, var_B
     X = tir.match_buffer(var_X, [1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
     bn_scale = tir.match_buffer(var_bn_scale, [512, 1, 1], elem_offset=0, align=128, offset_factor=1)
     W = tir.match_buffer(var_W, [512, 512, 3, 3], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
         tir.reads([])
@@ -728,7 +737,9 @@ def _conv2d_nchw_bias_bn_relu_sketch_1(var_X: ty.handle, var_W: ty.handle, var_B
                                     tir.bind(rx, i6_inner)
                                     tir.reads([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
                                     tir.writes([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
-                                    reducer.step(compute_1[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
+                                    with tir.init():
+                                        compute_1[nn, ff, yy, xx] = 0.0
+                                    compute_1[nn, ff, yy, xx] = compute_1[nn, ff, yy, xx] + pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]
             for ax0 in range(0, 1):
                 for ax1 in range(0, 128):
                     for ax2 in range(0, 56):
@@ -753,7 +764,6 @@ def _conv2d_nchw_bias_bn_relu_sketch_2(var_X: ty.handle, var_W: ty.handle, var_B
     X = tir.match_buffer(var_X, [1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
     bn_scale = tir.match_buffer(var_bn_scale, [512, 1, 1], elem_offset=0, align=128, offset_factor=1)
     W = tir.match_buffer(var_W, [512, 512, 3, 3], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
         tir.reads([])
@@ -788,7 +798,9 @@ def _conv2d_nchw_bias_bn_relu_sketch_2(var_X: ty.handle, var_W: ty.handle, var_B
                                     tir.bind(rx, i6_inner)
                                     tir.reads([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
                                     tir.writes([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
-                                    reducer.step(compute_1[nn, ff, yy, xx], (pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]))
+                                    with tir.init():
+                                        compute_1[nn, ff, yy, xx] = 0.0
+                                    compute_1[nn, ff, yy, xx] = compute_1[nn, ff, yy, xx] + pad_temp[nn, rc, (yy + ry), (xx + rx)]*W[ff, rc, ry, rx]
         for i0_6 in range(0, 1):
             for i1_6 in range(0, 512):
                 for i2_6 in range(0, 56):
