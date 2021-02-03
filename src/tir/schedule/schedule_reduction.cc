@@ -21,7 +21,7 @@
 namespace tvm {
 namespace tir {
 
-bool ListContains(const Array<StmtSRef>& list, const StmtSRef& element) {
+bool ListContainsElement(const Array<StmtSRef>& list, const StmtSRef& element) {
   for (const StmtSRef& ele : list) {
     if (ele.same_as(element)) {
       return true;
@@ -52,19 +52,12 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
   CHECK(loop != nullptr)
       << "TypeError: 'decompose_reduction' expect a loop as second argument, but get type: "
       << loop_sref->stmt->GetTypeKey();
-  const auto* reduce_step = block->body.as<ReduceStepNode>();
-  CHECK(reduce_step != nullptr) << "TypeError: 'decompose_reduction' expects the body of the block "
-                                   "is ReduceStep, but get type: "
-                                << block->body->GetTypeKey();
-  const auto* buffer_load = reduce_step->lhs.as<BufferLoadNode>();
-  CHECK(buffer_load != nullptr)
-      << "TypeError: 'decompose_reduction' expects the body of the reduce step "
-         "is BufferLoad, but get type: "
-      << reduce_step->lhs->GetTypeKey();
+  CHECK(block->init.defined()) << "ValueError: 'decompose_reduction' expect a reduction block, "
+                                  "but the block has no init block";
   Array<StmtSRef> loops = GetLoopsInScope(block_sref);
   const BlockRealizeNode* realize = GetBlockRealize(block_sref).get();
   // Cond 0. Check loop_sref is an ancestor of block_sref
-  CHECK(ListContains(loops, loop_sref))
+  CHECK(ListContainsElement(loops, loop_sref))
       << "ValueError: 'decompose_reduction' expect the loop to be an ancestor of block";
   // Cond 1. Check block is reduction
   CHECK(GetParentScope(block_sref).IsReduction(block_sref))
@@ -118,10 +111,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
     block_var_map[iter_var->var.get()] = new_iter_var->var.get();
   }
   // Step 2. After copying block vars, substitute them in init block
-  init_block->body = SubstituteInScope(
-      BufferStore(buffer_load->buffer, reduce_step->comm_reducer->identity_element[0],
-                  buffer_load->indices),
-      block_var_map);
+  init_block->body = SubstituteInScope(block->init.value(), block_var_map);
   for (const TensorRegion& write : block->writes) {
     init_block->writes.push_back(SubstituteTensorRegion(write, block_var_map));
   }
@@ -165,7 +155,8 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
                             /*body=*/SeqStmt::Flatten(Array<Stmt>{body, parent->body}),
                             /*allocations=*/parent->allocations,
                             /*annotations=*/parent->annotations,
-                            /*tag=*/parent->tag);
+                            /*tag=*/parent->tag,
+                            /*init=*/NullOpt);
     this->Replace(GetRef<StmtSRef>(loop_sref->parent), new_block,
                   {{new_block, GetRef<Block>(parent)}});
   } else {
@@ -178,10 +169,11 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
       /*iter_vars=*/block->iter_vars,
       /*reads=*/block->reads,
       /*writes=*/block->writes,
-      /*body=*/BufferStore(buffer_load->buffer, reduce_step->ApplyCombiner(), buffer_load->indices),
+      /*body=*/block->body,
       /*allocations=*/block->allocations,
       /*annotations=*/block->annotations,
-      /*tag=*/block->tag + "_update");
+      /*tag=*/block->tag + "_update",
+      /*init=*/NullOpt);
   this->Replace(block_sref, update_block, {{update_block, GetRef<Block>(block)}});
   // Update scope information
   UpdateScope(GetParentBlockSRef(block_sref)->stmt, this->stmt2ref, &this->scopes);
@@ -191,7 +183,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
 void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& update_sref) {
   /*!
    * Check
-   *   - init_block is under the same scope with update_sref
+   *   - init_sref is under the same scope with update_sref
    *   - LCA is higher than all the loops related to update_block's reduce block var
    *   - init_block's write region is the same as update_block's write region under LCA
    *   - the merged block is decomposable (i.e satisfying the check's of decompose_reduction)
@@ -209,6 +201,21 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
       << update_sref->stmt->GetTypeKey();
   const auto* init_body = init->body.as<BufferStoreNode>();
   const auto* update_body = update->body.as<BufferStoreNode>();
+  CHECK(init_body != nullptr && update_body != nullptr)
+      << "ValueError: 'merge_reduction' expects the body of init and update block to be "
+         "BufferStore";
+  Optional<CommReducer> reducer;
+  Optional<PrimExpr> reducer_lhs, reducer_rhs;
+  CommReducer::FromInitUpdate(init_body->value, GetRef<BufferStore>(update_body),
+      reducer, reducer_lhs, reducer_rhs);
+  CHECK(reducer.defined())
+      << "ValueError: 'merge_reduction' pattern detect failed. No reducer pattern matched for "
+      << init_body->value << " and " << GetRef<BufferStore>(update_body);
+  const BlockRealizeNode* init_realize = GetBlockRealize(init_sref).get();
+  const BlockRealizeNode* update_realize = GetBlockRealize(update_sref).get();
+  ExprDeepEqual equal;
+  CHECK(equal(init_realize->predicate, update_realize->predicate))
+      << "ValueError: 'merge_reduction' expects the predicate of init and update to be the same";
   const StmtSRef& scope = GetParentBlockSRef(init_sref);
   StmtSRef lca = LowestCommonAncestor({init_sref, update_sref}, scope);
   // Cond 1. Check init_block is under the same scope with update_sref
@@ -226,7 +233,6 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
         << "ValueError: 'merge_reduction' has inconsistent ranks between the write region of "
            "'init' and that of 'update'";
     for (size_t i = 0; i < init_region->region.size(); ++i) {
-      ExprDeepEqual equal;
       CHECK(equal(init_region->region[i]->min, update_region->region[i]->min) &&
             equal(init_region->region[i]->extent, update_region->region[i]->extent))
           << "ValueError: 'merge_reduction' has inconsistent write domain on axis " << i;
@@ -236,7 +242,6 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   CHECK(this->scopes.at(scope).CanMergeReduction(init_sref, update_sref));
   // Cond 2. Check LCA is higher than all the loops related to update_block's reduce block var
   if (!scope.same_as(lca)) {
-    const BlockRealizeNode* update_realize = GetBlockRealize(update_sref).get();
     for (const StmtSRef& higher_loop : GetLoopsInScope(update_sref)) {
       if (higher_loop.same_as(lca)) {
         break;
@@ -260,16 +265,17 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   std::pair<Stmt, Stmt> removed = RemoveLeaf(init_sref, scope);
   this->Replace(lca, removed.second);
   // Step 2. Change the update block to reduction block
+  BufferStore new_init = GetRef<BufferStore>(update_body);
+  new_init.CopyOnWrite()->value = init_body->value;
   Block merged(
       /*iter_vars=*/update->iter_vars,
       /*reads=*/update->reads,
       /*writes=*/update->writes,
-      /*body=*/
-      ReduceStep::FromInitUpdate(this->reducers_, init_body->value,
-                                 GetRef<BufferStore>(update_body)),
+      /*body=*/update->body,
       /*allocations=*/update->allocations,
       /*annotations=*/update->annotations,
-      /*tag=*/update->tag);
+      /*tag=*/update->tag,
+      /*init=*/new_init);
   this->Replace(update_sref, merged, {{merged, GetRef<Block>(update)}});
   // Update scope information
   UpdateScope(GetParentBlockSRef(update_sref)->stmt, this->stmt2ref, &this->scopes);
@@ -314,9 +320,21 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
       CollectVars(reduce_loops, block_realize->binding_values[i]);
     }
   }
-  // Get the ReduceStep inside the block
-  const auto* step = block->body.as<ReduceStepNode>();
-  CHECK(step) << "ValueError: the body of the block ought to be a ReduceStep stmt";
+  // Get the init BufferStore and update buffer store
+  const auto* init = block->init.as<BufferStoreNode>();
+  const auto* update = block->body.as<BufferStoreNode>();
+  CHECK(init) << "ValueError: the init of the block ought to be a BufferStore stmt";
+  CHECK(update) << "ValueError: the body of the block ought to be a BufferStore stmt";
+  Optional<CommReducer> reducer;
+  Optional<PrimExpr> reducer_lhs, reducer_rhs;
+  CommReducer::FromInitUpdate(init->value, GetRef<BufferStore>(update),
+      reducer, reducer_lhs, reducer_rhs);
+  CHECK(reducer.defined()) << "ValueError: 'merge_reduction' pattern detect failed. "
+                           << "No reducer pattern matched for " << init->value
+                           << " and " << GetRef<BufferStore>(update);
+  CHECK(reducer_lhs.defined() && reducer_rhs.defined());
+  PrimExpr lhs = reducer_lhs.value();
+  PrimExpr rhs = reducer_rhs.value();
   // Get the loops outside the block
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> iters;
   auto loops = GetLoopsInScope(block_sref);
@@ -364,26 +382,25 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   }
   rf_bindings.push_back(loop->loop_var);
   rf_iters.push_back(rf_iter);
-  const auto* write_position = step->lhs.as<BufferLoadNode>();
-  CHECK(write_position) << "InternalError: invalid ReduceStep stmt";
-  CHECK(0 <= factor_axis && factor_axis <= write_position->buffer->shape.size())
-      << "ValueError: factor_axis should be in range [0, " << write_position->buffer->shape.size()
-      << "]";
-  Array<PrimExpr> rf_shape = write_position->buffer->shape;
-  Array<PrimExpr> rf_indices = write_position->indices;
+  CHECK(0 <= factor_axis && factor_axis <= (int) update->buffer->shape.size())
+      << "ValueError: factor_axis should be in range [0, " << update->buffer->shape.size() << "]";
+  Array<PrimExpr> rf_shape = update->buffer->shape;
+  Array<PrimExpr> rf_indices = update->indices;
   rf_shape.insert(rf_shape.begin() + factor_axis, loop->extent);
   rf_indices.insert(rf_indices.begin() + factor_axis, rf_iter->var);
-  Buffer rf_buf = write_position->buffer;
+  Buffer rf_buf = update->buffer;
   rf_buf.CopyOnWrite()->shape = rf_shape;
   rf_buf.CopyOnWrite()->name = rf_buf->name + "_rf";
   rf_buf.CopyOnWrite()->data = rf_buf->data.copy_with_suffix("_rf");
-  ReduceStep rf_step = GetRef<ReduceStep>(step);
-  rf_step.CopyOnWrite()->lhs = BufferLoad(rf_buf, rf_indices);
-
+  BufferStore rf_update = GetRef<BufferStore>(update);
+  rf_update.CopyOnWrite()->buffer = rf_buf;
+  rf_update.CopyOnWrite()->indices = rf_indices;
+  rf_update.CopyOnWrite()->value =
+      reducer.value().get()->operator()({BufferLoad(rf_buf, rf_indices)}, {rhs})[0];
   std::vector<TensorRegion> rf_reads, rf_writes;
   auto rf_region = [&](Array<TensorRegion> regions, std::vector<TensorRegion>& rf_regions) {
     for (const auto& t_region : regions) {
-      if (t_region->buffer.same_as(write_position->buffer)) {
+      if (t_region->buffer.same_as(update->buffer)) {
         Region region = t_region->region;
         region.insert(region.begin() + factor_axis, Range::FromMinExtent(rf_iter->var, 1));
         rf_regions.emplace_back(rf_buf, region);
@@ -394,10 +411,11 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   };
   rf_region(rf_block->reads, rf_reads);
   rf_region(rf_block->writes, rf_writes);
-  rf_block.CopyOnWrite()->body = Substitute((Stmt)rf_step, var_map);
+  rf_block.CopyOnWrite()->body = Substitute((Stmt)rf_update, var_map);
   rf_block.CopyOnWrite()->iter_vars = rf_iters;
   rf_block.CopyOnWrite()->reads = rf_reads;
   rf_block.CopyOnWrite()->writes = rf_writes;
+  rf_block.CopyOnWrite()->init = BufferStore(rf_buf, init->value, rf_indices);
   rf_block_realize.CopyOnWrite()->block = rf_block;
   rf_block_realize.CopyOnWrite()->binding_values = rf_bindings;
   // create write back block
@@ -424,13 +442,17 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
     for (const auto& index : load->indices) region.push_back(Range::FromMinExtent(index, 1));
     return TensorRegion(load->buffer, region);
   };
-  ReduceStep wb_step = GetRef<ReduceStep>(step);
-  wb_step.CopyOnWrite()->rhs = rf_step->lhs;
-  wb_step = Downcast<ReduceStep>(Substitute((Stmt)wb_step, var_map));
-  wb_block.CopyOnWrite()->body = wb_step;
-  wb_block.CopyOnWrite()->reads = {wb_region(Downcast<BufferLoad>(wb_step->rhs))};
-  wb_block.CopyOnWrite()->writes = {wb_region(Downcast<BufferLoad>(wb_step->lhs))};
+  BufferStore wb_update = GetRef<BufferStore>(update);
+  BufferLoad wb_lhs = Downcast<BufferLoad>(Substitute((PrimExpr)lhs, var_map));
+  BufferLoad wb_rhs = Downcast<BufferLoad>(
+      Substitute((PrimExpr)BufferLoad(rf_update->buffer, rf_update->indices), var_map));
+  wb_update.CopyOnWrite()->value = reducer.value().get()->operator()({wb_lhs}, {wb_rhs})[0];
+  wb_update = Downcast<BufferStore>(Substitute((Stmt)wb_update, var_map));
+  wb_block.CopyOnWrite()->body = wb_update;
+  wb_block.CopyOnWrite()->reads = {wb_region(wb_lhs), wb_region(wb_rhs)};
+  wb_block.CopyOnWrite()->writes = {wb_region(wb_lhs)};
   wb_block.CopyOnWrite()->iter_vars = wb_iters;
+  wb_block.CopyOnWrite()->init = BufferStore(wb_update->buffer, init->value, wb_update->indices);
   wb_block_realize.CopyOnWrite()->block = wb_block;
   wb_block_realize.CopyOnWrite()->binding_values = wb_bindings;
   // create loops outside write back block and rfactor bclok
@@ -438,13 +460,12 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   Var wb_loop_var = loop->loop_var.copy_with_suffix("");
   wb_body = Loop(wb_loop_var, loop->min, loop->extent, loop->annotations,
                  SubstituteInScope(wb_body, {{loop->loop_var.get(), wb_loop_var.get()}}));
-
   Optional<StmtSRef> top;
   for (int i = loops.size() - 1; i >= 0; --i) {
     const auto* l = loops[i]->GetStmt<LoopNode>();
     CHECK(l) << "InternalError: GetLoopsInScope returns a block sref";
     if (l->body->IsInstance<SeqStmtNode>()) {
-      CHECK(i != loops.size() - 1) << "ValueError: can not rfactor";
+      CHECK(i != (int) loops.size() - 1) << "ValueError: can not rfactor";
       top = loops[i + 1];
       break;
     }
@@ -487,7 +508,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   } else if (const auto* parent = top.value()->parent->GetStmt<BlockNode>()) {
     SeqStmt parent_body = insert(parent->body, top.value()->seq_index, {rf_body, wb_body});
     Block new_block = Block(parent->iter_vars, parent->reads, parent->writes, parent_body,
-                            parent->allocations, parent->annotations, parent->tag);
+                            parent->allocations, parent->annotations, parent->tag, NullOpt);
     this->Replace(GetRef<StmtSRef>(top.value()->parent), new_block,
                   {{new_block, GetRef<Block>(parent)}, {wb_block, block}});
   }

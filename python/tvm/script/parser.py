@@ -596,7 +596,7 @@ class TVMScriptParser(ast.NodeVisitor):
 
         Now only 3 types of Expr stmt is allowed:
             1. Intrin representing Stmt without body
-                reducer.step()/tir.store()
+                tir.store()
             2. with scope handlers with concise scoping without var def
                 tir.attr()/tir.assert()/tir.allocate()/tir.realize()
             3. special stmt without var def

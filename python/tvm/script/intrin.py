@@ -194,15 +194,3 @@ class StoreIntrin(Intrin):
             return tvm.tir.Store(var, value, index, predicate)
 
         super().__init__(store, stmt=True)
-
-
-class StepIntrin(Intrin):
-    def __init__(self, reducer):
-        def intrin(lhs, rhs):
-            return tvm.tir.ReduceStep(self.reducer.reducer, lhs, rhs)
-
-        super().__init__(intrin, stmt=True)
-        self.reducer = reducer
-
-    def signature(self):
-        return "TVMScriptReducer.step", get_param_list(self.intrin)

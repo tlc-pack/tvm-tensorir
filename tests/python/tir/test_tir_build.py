@@ -16,6 +16,7 @@
 # under the License.
 
 import tvm
+import tvm.testing
 from tvm import tir
 import numpy as np
 import util

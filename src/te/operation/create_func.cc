@@ -119,6 +119,7 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
       Array<PrimExpr> indices;
       for (const auto& iter_var : compute_op->axis) indices.push_back(iter_var->var);
 
+      Optional<Stmt> init = NullOpt;
       Stmt body;
       Array<PrimExpr> simplified_indices;
 
@@ -127,10 +128,12 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
       }
       if (const auto* reduce = expr.as<ReduceNode>()) {
         CHECK_EQ(reduce->source.size(), 1);
-        PrimExpr lhs = BufferLoad(buffer, indices), rhs = translator(reduce->source[0]);
+        PrimExpr lhs = BufferLoad(buffer, simplified_indices);
+        PrimExpr rhs = analyzer.Simplify(translator(reduce->source[0]));
         CHECK(lhs->dtype == rhs->dtype);
-        body = ReduceStep(reduce->combiner, BufferLoad(buffer, simplified_indices),
-                          analyzer.Simplify(translator(reduce->source[0])));
+        body = BufferStore(buffer, reduce->combiner.get()->operator()({lhs}, {rhs})[0],
+                           simplified_indices);
+        init = BufferStore(buffer, reduce->combiner->identity_element[0], simplified_indices);
       } else {
         body = BufferStore(buffer, analyzer.Simplify(translator(expr)), simplified_indices);
       }
@@ -146,7 +149,7 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
       }
 
       Block block(block_vars, NullValue<Array<TensorRegion>>(), NullValue<Array<TensorRegion>>(),
-                  body, {}, {}, GetUniqueName(op->name, &name_map));
+                  body, {}, {}, GetUniqueName(op->name, &name_map), init);
       Array<PrimExpr> null_bindings;
       for (size_t i = 0; i < block_vars.size(); i++) null_bindings.push_back(NullValue<PrimExpr>());
       BlockRealize realize(null_bindings, Bool(true), block, "");

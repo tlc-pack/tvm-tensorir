@@ -28,24 +28,26 @@ from tvm.script import ty
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
 # fmt: off
 
+
 @tvm.script.tir
 def plus_one_matmul(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     A = tir.match_buffer(a, (1024, 1024), "float32")
     B = tir.match_buffer(b, (1024, 1024), "float32")
     D = tir.match_buffer(d, (1024, 1024), "float32")
     C = tir.buffer_allocate((1024, 1024), "float32")
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
     with tir.block([1024, 1024], "plus_one") as [vi, vj]:
         C[vi, vj] = A[vi, vj] + 1.0
     with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
-        reducer.step(D[vi, vj], C[vi, vk] * B[vk, vj])
+        with tir.init():
+            D[vi, vj] = 0.0
+        D[vi, vj] = D[vi, vj] + C[vi, vk] * B[vk, vj]
+
 
 @tvm.script.tir
 def plus_one_matmul_fused(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     A = tir.match_buffer(a, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
     B = tir.match_buffer(b, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
     D = tir.match_buffer(d, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
         tir.reads([])
@@ -67,7 +69,10 @@ def plus_one_matmul_fused(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
                         tir.bind(vk, i2)
                         tir.reads([D[vi_1:(vi_1 + 1), vj_1:(vj_1 + 1)], C[vi_1:(vi_1 + 1), vk:(vk + 1)], B[vk:(vk + 1), vj_1:(vj_1 + 1)]])
                         tir.writes([D[vi_1:(vi_1 + 1), vj_1:(vj_1 + 1)]])
-                        reducer.step(D[vi_1, vj_1], (C[vi_1, vk]*B[vk, vj_1]))
+                        with tir.init():
+                            D[vi_1, vj_1] = 0.0
+                        D[vi_1, vj_1] = D[vi_1, vj_1] + C[vi_1, vk] * B[vk, vj_1]
+
 
 @tvm.script.tir
 def matmul_blockized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
@@ -76,7 +81,6 @@ def matmul_blockized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
     A = tir.match_buffer(a, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
     B = tir.match_buffer(b, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
         tir.reads([])
@@ -93,6 +97,8 @@ def matmul_blockized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                         B[0:1024, vj : (vj + 1)],
                     ])
                     tir.writes([C[vi : (vi + 1), vj : (vj + 1)]])
+                    with tir.init():
+                        C[vi, vj] = 0.0
                     for i2 in range(0, 1024):
                         with tir.block([tir.reduce_axis(0, 1024)], "C") as [vk]:
                             tir.bind(vk, i2)
@@ -102,7 +108,7 @@ def matmul_blockized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                 B[vk : (vk + 1), vj : (vj + 1)],
                             ])
                             tir.writes([C[vi : (vi + 1), vj : (vj + 1)]])
-                            reducer.step(C[vi, vj], (A[vi, vk] * B[vk, vj]))
+                            C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
 
 
 
@@ -140,7 +146,6 @@ def matmul_relu_fused(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     D = tir.match_buffer(d, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
     A = tir.match_buffer(a, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
     B = tir.match_buffer(b, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
     # body
     with tir.block([], "root") as []:
         tir.reads([])
@@ -159,7 +164,9 @@ def matmul_relu_fused(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
                             B[vk : (vk + 1), vj : (vj + 1)],
                         ])
                         tir.writes([C[vi : (vi + 1), vj : (vj + 1)]])
-                        reducer.step(C[vi, vj], (A[vi, vk] * B[vk, vj]))
+                        with tir.init():
+                            C[vi, vj] = 0.0
+                        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
                 for ax0 in range(0, 1):  # pylint: disable=unused-variable
                     for ax1 in range(0, 1):  # pylint: disable=unused-variable
                         with tir.block([1024, 1024], "relu") as [vi_1, vj_1]:
@@ -169,12 +176,12 @@ def matmul_relu_fused(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
                             tir.writes([D[vi_1 : (vi_1 + 1), vj_1 : (vj_1 + 1)]])
                             D[vi_1, vj_1] = tir.max(C[vi_1, vj_1], tir.float32(0))
 
+
 @tvm.script.tir
 def matmul_cache_read(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
     A = tir.match_buffer(a, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
     B = tir.match_buffer(b, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
         tir.reads([])
@@ -206,7 +213,10 @@ def matmul_cache_read(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                         tir.bind(vk, i2)
                         tir.reads([C[vi:(vi + 1), vj:(vj + 1)], A_local[vi:(vi + 1), vk:(vk + 1)], B_local[vk:(vk + 1), vj:(vj + 1)]])
                         tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
-                        reducer.step(C[vi, vj], (A_local[vi, vk]*B_local[vk, vj]))
+                        with tir.init():
+                            C[vi, vj] = 0.0
+                        C[vi, vj] = C[vi, vj] + A_local[vi, vk]*B_local[vk, vj]
+
 
 @tvm.script.tir
 def matmul_cache_write(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
@@ -215,7 +225,6 @@ def matmul_cache_write(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
     A = tir.match_buffer(a, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
     B = tir.match_buffer(b, [1024, 1024], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
     # body
     with tir.block([], "root") as []:
         tir.reads([])
@@ -234,7 +243,9 @@ def matmul_cache_write(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                             B[vk : (vk + 1), vj : (vj + 1)],
                         ])
                         tir.writes([C_local[vi : (vi + 1), vj : (vj + 1)]])
-                        reducer.step(C_local[vi, vj], (A[vi, vk] * B[vk, vj]))
+                        with tir.init():
+                            C_local[vi, vj] = 0.0
+                        C_local[vi, vj] = C_local[vi, vj] + A[vi, vk] * B[vk, vj]
         for ax0 in range(0, 1024):
             for ax1 in range(0, 1024):
                 with tir.block([1024, 1024], "") as [v0, v1]:

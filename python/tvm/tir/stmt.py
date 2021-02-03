@@ -425,11 +425,13 @@ class Block(Stmt):
     tag: str
         the tag of the block.
 
+    init: Optional[Stmt]
+        The init block of the reduction block
     """
 
-    def __init__(self, iter_vars, reads, writes, body, allocations, annotations, tag):
+    def __init__(self, iter_vars, reads, writes, body, allocations, annotations, tag, init=None):
         self.__init_handle_by_constructor__(
-            _ffi_api.Block, iter_vars, reads, writes, body, allocations, annotations, tag
+            _ffi_api.Block, iter_vars, reads, writes, body, allocations, annotations, tag, init
         )
 
 
@@ -474,26 +476,6 @@ class BufferAllocate(Stmt):
 
     def __init__(self, buffer, scope):
         self.__init_handle_by_constructor__(_ffi_api.BufferAllocate, buffer, scope)
-
-
-@tvm._ffi.register_object
-class ReduceStep(Stmt):
-    """Reduction node
-
-    Parameters
-    ----------
-    comm_reducer : CommReducer
-        the reducer used in Reduction
-
-    lhs : PrimExpr
-        lhs expression
-
-    rhs : PrimExpr
-        rhs expression
-    """
-
-    def __init__(self, comm_reducer, lhs, rhs):
-        self.__init_handle_by_constructor__(_ffi_api.ReduceStep, comm_reducer, lhs, rhs)
 
 
 @tvm._ffi.register_object

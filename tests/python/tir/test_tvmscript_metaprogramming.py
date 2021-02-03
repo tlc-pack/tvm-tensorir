@@ -26,10 +26,11 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle, n: ty.int32) -> None:
     A = tir.match_buffer(a, [m, n])
     B = tir.match_buffer(b, [m, n])
     C = tir.match_buffer(c, [m, m])
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
     with tir.block([m, m, tir.reduce_axis(0, n)], "update") as [vi, vj, vk]:
-        reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
+        with tir.init():
+            C[vi, vj] = 0.0
+        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
 @tvm.script.tir
@@ -37,10 +38,11 @@ def matmul_128(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, [128, 128])
     B = tir.match_buffer(b, [128, 128])
     C = tir.match_buffer(c, [128, 128])
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
     with tir.block([128, 128, tir.reduce_axis(0, 128)], "update") as [vi, vj, vk]:
-        reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
+        with tir.init():
+            C[vi, vj] = 0.0
+        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
 @tvm.script.tir
@@ -49,11 +51,12 @@ def matmul_128_n(a: ty.handle, b: ty.handle, c: ty.handle, n: ty.int32) -> None:
     A = tir.match_buffer(a, [m, 128])
     B = tir.match_buffer(b, [m, 128])
     C = tir.match_buffer(c, [m, m])
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
     assert (n == 128), "violate specialize constraint"
     with tir.block([m, m, tir.reduce_axis(0, n)], "update") as [vi, vj, vk]:
-        reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
+        with tir.init():
+            C[vi, vj] = 0.0
+        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
 @tvm.script.tir
@@ -62,10 +65,11 @@ def matmul_128_n_removed(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, [m, 128])
     B = tir.match_buffer(b, [m, 128])
     C = tir.match_buffer(c, [m, m])
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
     with tir.block([m, m, tir.reduce_axis(0, 128)], "update") as [vi, vj, vk]:
-        reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
+        with tir.init():
+            C[vi, vj] = 0.0
+        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
 @tvm.script.tir
@@ -75,11 +79,12 @@ def matmul_128_n_8x(a: ty.handle, b: ty.handle, c: ty.handle, n: ty.int32) -> No
     A = tir.match_buffer(a, [m, x*8])
     B = tir.match_buffer(b, [m, x*8])
     C = tir.match_buffer(c, [m, m])
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
     assert (n == x*8), "violate specialize constraint"
     with tir.block([m, m, tir.reduce_axis(0, n)], "update") as [vi, vj, vk]:
-        reducer.step(C[vi, vj], A[vi, vk] * B[vj, vk])
+        with tir.init():
+            C[vi, vj] = 0.0
+        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
 def test_tensor_dimension_invariant_code_matmul():

@@ -429,12 +429,6 @@ class AutoTensorizeComparator : public tir::TensorizeComparator {
   bool VisitStmt(const tir::Stmt& n, const tir::Stmt& rhs) override {
     if (n.same_as(rhs)) return true;
     tir::Stmt lhs = n;
-    if (const auto* reduce_step = n.as<tir::ReduceStepNode>()) {
-      const auto* buffer_load = reduce_step->lhs.as<tir::BufferLoadNode>();
-      lhs = tir::BufferStore(/*buffer=*/buffer_load->buffer,
-                             /*value=*/reduce_step->ApplyCombiner(),
-                             /*indices=*/buffer_load->indices);
-    }
     if (lhs->type_index() != rhs->type_index()) {
       return false;
     }
@@ -693,7 +687,14 @@ double CountFlop(const tir::PrimFunc& func) {
       return VisitStmt(block->block->body);
     }
 
-    TResult VisitStmt_(const tir::BlockNode* block) override { return VisitStmt(block->body); }
+    TResult VisitStmt_(const tir::BlockNode* block) override {
+      TResult result;
+      if (block->init.defined()) {
+        result += VisitStmt(block->init.value());
+      }
+      result += VisitStmt(block->body);
+      return result;
+    }
 
     TResult VisitStmt_(const tir::LoopNode* loop) override {
       TResult result = VisitStmt(loop->body);
@@ -701,19 +702,6 @@ double CountFlop(const tir::PrimFunc& func) {
       CHECK(int_imm) << "TypeError: Expect the extent of a loop to be IntImm, but gets: "
                      << loop->extent->GetTypeKey();
       result *= int_imm->value;
-      return result;
-    }
-
-    TResult VisitStmt_(const tir::ReduceStepNode* reduce) override {
-      CHECK(reduce->lhs->IsInstance<tir::BufferLoadNode>())
-          << "TypeError: Expect ReduceStep's lhs to be BufferLoad, but gets: "
-          << reduce->lhs->GetTypeKey();
-      TResult result;
-      for (const PrimExpr& i : reduce->comm_reducer->result) {
-        result += VisitExpr(i);
-      }
-      result += VisitExpr(reduce->lhs);
-      result += VisitExpr(reduce->rhs);
       return result;
     }
 

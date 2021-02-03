@@ -121,6 +121,7 @@ class Block(WithScopeHandler):
                 block_info.allocates,
                 block_info.annotations,
                 name,
+                block_info.init
             )
             # create block var binding
             if not block_info.binding:
@@ -136,7 +137,6 @@ class Block(WithScopeHandler):
                     if block_var not in block_info.binding:
                         self.context.report_error("Missing block var binding for " + block_var.name)
                 values = [block_info.binding[block_var] for block_var in self.block_vars]
-
             body = tvm.tir.BlockRealize(values, block_info.predicate, inner, exec_scope)
             return body
 
@@ -151,6 +151,16 @@ class Block(WithScopeHandler):
         self.block_vars = [tvm.te.var(name) for name in var_names]
         for block_var in self.block_vars:
             context.update_symbol(block_var.name, block_var)
+
+
+@register
+class InitBlock(WithScopeHandler):
+    def __init__(self):
+        def init():
+            self.context.block_info_stack[-2].init = self.body
+            return None
+
+        super().__init__(func=init, concise_scope=False, def_symbol=True)
 
 
 @register
