@@ -48,7 +48,7 @@ class AllReduceTransformer : public StmtExprMutator {
       stmt_stack_.push_back(GetRef<Stmt>(op));                                                     \
       Stmt res_stmt = StmtMutator::VisitStmt_(op);                                                 \
       const auto* res = res_stmt.as<Type>();                                                       \
-      CHECK(res);                                                                                  \
+      CHECK(res != nullptr);                                                                       \
       CHECK(!stmt_stack_.empty()) << "Size of stmt_stack_ is expected to be positive, but it is 0";\
       stmt_stack_.pop_back();                                                                      \
                                                                                                    \
@@ -76,7 +76,7 @@ class AllReduceTransformer : public StmtExprMutator {
       stmt_stack_.push_back(GetRef<Stmt>(op));
       Stmt res_stmt = StmtMutator::VisitStmt_(op);
       const auto* res = res_stmt.as<IfThenElseNode>();
-      CHECK(res);
+      CHECK(res != nullptr);
       CHECK(!stmt_stack_.empty()) << "Size of stmt_stack_ is expected to be positive, but it is 0";
       stmt_stack_.pop_back();
 
@@ -94,7 +94,7 @@ class AllReduceTransformer : public StmtExprMutator {
       stmt_stack_.push_back(GetRef<Stmt>(op));
       Stmt res_stmt = StmtMutator::VisitStmt_(op);
       const auto* res = res_stmt.as<SeqStmtNode>();
-      CHECK(res);
+      CHECK(res != nullptr);
       CHECK(!stmt_stack_.empty()) << "Size of stmt_stack_ is expected to be positive, but it is 0";
       stmt_stack_.pop_back();
 
@@ -148,7 +148,7 @@ class AllReduceTransformer : public StmtExprMutator {
       stmt_stack_.push_back(GetRef<Stmt>(op));
       Stmt res_stmt = StmtMutator::VisitStmt_(op);
       const auto* res = res_stmt.as<BlockNode>();
-      CHECK(res);
+      CHECK(res != nullptr);
       CHECK_EQ(stmt_stack_.size(), 1);
       std::swap(stmt_stack_, tmp_stmt_stack_);
 
@@ -168,12 +168,12 @@ class AllReduceTransformer : public StmtExprMutator {
       // Mutate body, init, reads and writes.
       ObjectPtr<BlockNode> n = CopyOnWrite(op);
       // 1. Mutate body.
-      CHECK(op->body.as<BufferStoreNode>());
+      CHECK(op->body.as<BufferStoreNode>() != nullptr);
       Stmt body = this->VisitStmt(op->body);
 
       // 2. Mutate init.
-      CHECK(op->init);
-      CHECK(op->init.value().as<BufferStoreNode>());
+      CHECK(op->init.defined());
+      CHECK(op->init.value().as<BufferStoreNode>() != nullptr);
       Stmt init = this->VisitStmt(op->init.value());
 
       // 3. Mutate reads.
@@ -231,7 +231,7 @@ class AllReduceTransformer : public StmtExprMutator {
     const auto* block_op = op->block.as<BlockNode>();
 
     // Step 1. Check whether it is a reduction block.
-    if (block_op->init == nullptr) {
+    if (!block_op->init.defined()) {
       return StmtMutator::VisitStmt_(op);
     }
 
@@ -240,8 +240,8 @@ class AllReduceTransformer : public StmtExprMutator {
     for (size_t i = 0; i < block_op->iter_vars.size(); ++i) {
       const IterVar& block_var = block_op->iter_vars[i];
       const PrimExpr& binding_value = op->binding_values[i];
-      CHECK(block_var.as<IterVarNode>());
-      CHECK(binding_value.as<PrimExprNode>());
+      CHECK(block_var.as<IterVarNode>() != nullptr);
+      CHECK(binding_value.as<PrimExprNode>() != nullptr);
 
       if (block_var->iter_type == kCommReduce) {
         PreOrderVisit(binding_value, [&reduction_relative_] (const ObjectRef& node) {
@@ -342,7 +342,7 @@ class AllReduceTransformer : public StmtExprMutator {
     const Stmt& par_stmt = stmt_stack_[par_idx];
     Loop red_loop = GetRef<Loop>(stmt_stack_[par_idx + 1].as<LoopNode>());
     const auto* top_block = stmt_stack_[0].as<BlockNode>();
-    CHECK(top_block);
+    CHECK(top_block != nullptr);
 
     // Step 9. Create buffers of normal_reduce and reduce_temp.
     std::vector<BufferAllocate>& allos = bufs_to_allo_[par_stmt][red_loop];
@@ -364,17 +364,17 @@ class AllReduceTransformer : public StmtExprMutator {
       // Step a. Mutate the original block if normal_reduce is needed.
       status = kMutatingBlock_nor_red;
       Stmt mutate_res = this->VisitStmt(op->block);
-      CHECK(mutate_res.as<SeqStmtNode>());
+      CHECK(mutate_res.as<SeqStmtNode>() != nullptr);
       SeqStmt mutate_stmts = Downcast<SeqStmt>(mutate_res);
       CHECK(mutate_stmts->seq.size() == 2);
-      CHECK(mutate_stmts->seq[1].as<BlockNode>());
+      CHECK(mutate_stmts->seq[1].as<BlockNode>() != nullptr);
 
       Block reduction_block = Downcast<Block>(mutate_stmts->seq[1]);
       ObjectPtr<BlockRealizeNode> n = CopyOnWrite(op);
       n->block = reduction_block;
       status = kDetecting;
 
-      CHECK(mutate_stmts->seq[0].as<BufferStoreNode>());
+      CHECK(mutate_stmts->seq[0].as<BufferStoreNode>() != nullptr);
       BufferStore reduction_init = Downcast<BufferStore>(mutate_stmts->seq[0]);
       std::vector<BufferStore>& inits = inits_to_add_[par_stmt][red_loop];
       inits.emplace_back(reduction_init);
@@ -394,7 +394,7 @@ class AllReduceTransformer : public StmtExprMutator {
       reduce_args.emplace_back(reduce_temp.value()->data);
       for (size_t i = par_idx + 1; i < stmt_stack_.size(); ++i) {
         const auto* loop = stmt_stack_[i].as<LoopNode>();
-        CHECK(loop);
+        CHECK(loop != nullptr);
         for (const Annotation& annotation : loop->annotations) {
           if (annotation->attr_key == attr::loop_type) {
             std::string thread_tag = Downcast<StringImm>(annotation->value)->value;
@@ -420,8 +420,8 @@ class AllReduceTransformer : public StmtExprMutator {
       for (size_t i = 0; i < block_op->iter_vars.size(); ++i) {
         const auto* iter_var = block_op->iter_vars[i].as<IterVarNode>();
         const auto* value = op->binding_values[i].as<PrimExprNode>();
-        CHECK(iter_var);
-        CHECK(value);
+        CHECK(iter_var != nullptr);
+        CHECK(value != nullptr);
         if (iter_var->iter_type == kCommReduce) {
           continue;
         }
@@ -463,7 +463,7 @@ class AllReduceTransformer : public StmtExprMutator {
       reduce_args.emplace_back(reduce_temp.value()->data);
       for (size_t i = par_idx + 1; i < stmt_stack_.size(); ++i) {
         const auto* loop = stmt_stack_[i].as<LoopNode>();
-        CHECK(loop);
+        CHECK(loop != nullptr);
         reduce_args.emplace_back(loop->loop_var);
         loops.emplace_back(GetRef<Loop>(loop));
         already_bound_loop_vars_.insert(loop->loop_var);
@@ -490,8 +490,8 @@ class AllReduceTransformer : public StmtExprMutator {
       for (size_t i = 0; i < block_op->iter_vars.size(); ++i) {
         const auto* iter_var = block_op->iter_vars[i].as<IterVarNode>();
         const auto* value = op->binding_values[i].as<PrimExprNode>();
-        CHECK(iter_var);
-        CHECK(value);
+        CHECK(iter_var != nullptr);
+        CHECK(value != nullptr);
         if (iter_var->iter_type == kCommReduce) {
           continue;
         }
@@ -596,7 +596,7 @@ class AllReduceTransformer : public StmtExprMutator {
   void AddStatements(const Stmt& op_stmt, const Stmt& loop_stmt,
                      const Stmt& stmt_ori, Stmt& stmt) {
     const auto* loop = loop_stmt.as<LoopNode>();
-    if (loop) {
+    if (loop != nullptr) {
       Loop loop_stmt_ = Downcast<Loop>(loop_stmt);
       const std::vector<Stmt>& new_stmts_ = stmts_to_append_[op_stmt][loop_stmt_];
       const std::vector<Loop>& loops = loops_to_bind_[op_stmt][loop_stmt_];
