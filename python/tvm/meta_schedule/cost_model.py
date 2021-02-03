@@ -99,7 +99,7 @@ class PyCostModel(CostModel):
 
         def predict_func(task: SearchTask, schedules: List[Schedule], return_ptr):
             n = len(schedules)
-            return_ptr = ctypes.cast(return_ptr, ctypes.POINTER(ctypes.c_float))
+            return_ptr = ctypes.cast(return_ptr, ctypes.POINTER(ctypes.c_double))
             array_wrapper = np.ctypeslib.as_array(return_ptr, shape=(n,))
             array_wrapper[:] = self.predict(task, schedules)
 
