@@ -687,7 +687,14 @@ double CountFlop(const tir::PrimFunc& func) {
       return VisitStmt(block->block->body);
     }
 
-    TResult VisitStmt_(const tir::BlockNode* block) override { return VisitStmt(block->body); }
+    TResult VisitStmt_(const tir::BlockNode* block) override {
+      TResult result;
+      if (block->init.defined()) {
+        result += VisitStmt(block->init.value());
+      }
+      result += VisitStmt(block->body);
+      return result;
+    }
 
     TResult VisitStmt_(const tir::LoopNode* loop) override {
       TResult result = VisitStmt(loop->body);
