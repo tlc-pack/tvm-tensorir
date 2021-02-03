@@ -427,6 +427,14 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
         buffer_touched_under_loop_[loop][buffer].push_back(numel);
       }
     }
+    if (n_loops == 0) {
+      // In this case, the `access_shape` is not calculated
+      for (auto& it : buffer_info) {
+        const tir::BufferNode* buffer = it.first;
+        BufferInfo& info = it.second;
+        info.access_shape = std::vector<int64_t>(buffer->shape.size(), 1);
+      }
+    }
     // Part 2. Stride-related features
     // For each buffer, we find the loop stride on it
     for (auto& it : buffer_info) {
