@@ -23,14 +23,16 @@ from tvm.script import ty
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
 # fmt: off
 
+
 @tvm.script.tir
 def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (1024, 1024), "float32")
     B = tir.match_buffer(b, (1024, 1024), "float32")
     C = tir.match_buffer(c, (1024, 1024), "float32")
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
     with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
-        reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
+        with tir.init():
+            C[vi, vj] = 0.0
+        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
 
 
 @tvm.script.tir
@@ -39,9 +41,10 @@ def matmul_relu(a: ty.handle, b: ty.handle, d: ty.handle) -> None:
     B = tir.match_buffer(b, (1024, 1024), "float32")
     D = tir.match_buffer(d, (1024, 1024), "float32")
     C = tir.buffer_allocate((1024, 1024), "float32")
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
     with tir.block([1024, 1024, tir.reduce_axis(0, 1024)], "matmul") as [vi, vj, vk]:
-        reducer.step(C[vi, vj], A[vi, vk] * B[vk, vj])
+        with tir.init():
+            C[vi, vj] = 0.0
+        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
     with tir.block([1024, 1024], "relu") as [vi, vj]:
         D[vi, vj] = tir.max(C[vi, vj], 0.0)
 
@@ -51,9 +54,10 @@ def batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, [16, 128, 128])
     B = tir.match_buffer(b, [16, 128, 128])
     C = tir.match_buffer(c, [16, 128, 128])
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     with tir.block([16, 128, 128, tir.reduce_axis(0, 128)], "update") as [vn, vi, vj, vk]:
-        reducer.step(C[vn, vi, vj], (A[vn, vi, vk] * B[vn, vj, vk]))
+        with tir.init():
+            C[vn, vi, vj] = 0.0
+        C[vn, vi, vj] = C[vn, vi, vj] + A[vn, vi, vk] * B[vn, vj, vk]
 
 
 # fmt: on

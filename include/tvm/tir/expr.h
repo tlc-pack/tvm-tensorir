@@ -32,6 +32,7 @@
 #include <tvm/runtime/container.h>
 #include <tvm/runtime/data_type.h>
 #include <tvm/tir/buffer.h>
+#include <tvm/tir/stmt.h>
 #include <tvm/tir/var.h>
 
 #include <algorithm>
@@ -1041,6 +1042,15 @@ class CommReducer : public ObjectRef {
                       Array<PrimExpr> identity_element, Span span = Span());
 
   TVM_DEFINE_OBJECT_REF_METHODS(CommReducer, ObjectRef, CommReducerNode);
+
+  static void FromInitUpdate(const PrimExpr& init, const BufferStore& update,
+                             Optional<CommReducer>& res,
+                             Optional<PrimExpr>& lhs, Optional<PrimExpr>& rhs);
+
+ private:
+  static bool ReducerMatched(const CommReducer& reducer, const PrimExpr& init,
+                             const PrimExpr& update,
+                             Optional<PrimExpr>& lhs, Optional<PrimExpr>& rhs);
 };
 
 /*! \brief Reduction operator operator */
