@@ -25,6 +25,7 @@
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/stmt_functor.h>
+#include <tvm/tir/transform.h>
 
 #include <utility>
 
@@ -274,7 +275,17 @@ PrimFunc GenerateNewFunc(PrimFunc func, const VarMapType& internal_var_map,
   PrimFunc new_func = buffer_mutator.MutatePrimFunc(func);
   // replace vars in body
   new_func.CopyOnWrite()->body = Substitute(new_func->body, internal_var_map);
+  auto &attr_dict = new_func.CopyOnWrite()->attrs.CopyOnWrite()->dict;
+  for (auto& kv : attr_dict) {
+    if (kv.second.as<PrimExprNode>()) {
+      attr_dict.Set(kv.first, Substitute(Downcast<PrimExpr>(kv.second), internal_var_map));
+    }
+  }
   new_func = ExertSpecializeConstraint(param_var_map, new_func);
+  GlobalVar main("main");
+  IRModule mod({{main, new_func}});
+  new_func = Downcast<PrimFunc>(transform::Simplify()(mod)->Lookup(main));
+
   return new_func;
 }
 

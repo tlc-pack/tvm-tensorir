@@ -34,12 +34,12 @@ We implement these in python to utilize python's multiprocessing and error handl
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, Callable, List, Optional, Union
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
 
-from ..runtime import ndarray
+from ..runtime import ndarray, NDArray, TVMContext
 from . import _ffi_api
 from .measure_record import BuildResult, MeasureInput, MeasureResult
 from .schedule import Schedule
@@ -195,6 +195,7 @@ class RPCRunner(ProgramRunner):
         min_repeat_ms: int = 40,
         cooldown_interval: float = 0.0,
         enable_cpu_cache_flush: bool = False,
+        f_create_args: Optional[Callable[[TVMContext], List[NDArray]]] = None
     ):
         if key is None:
             key = os.environ.get("TVM_TRACKER_KEY", None)
@@ -237,6 +238,7 @@ class RPCRunner(ProgramRunner):
             min_repeat_ms,
             cooldown_interval,
             enable_cpu_cache_flush,
+            f_create_args,
         )
 
 
