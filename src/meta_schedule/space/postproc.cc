@@ -95,12 +95,7 @@ class PostprocRewriteTensorize {
       Array<tir::StmtSRef> loop_srefs = sch->sch->GetLoopsInScope(block_sref);
       // Decompose Reduction
       {
-        const auto* block = block_sref->GetStmt<tir::BlockNode>();
-        CHECK(block) << "TypeError: Expects BlockNode, but gets: "
-                     << block_sref->stmt->GetTypeKey();
-        if (block->body->IsInstance<tir::ReduceStepNode>()) {
-          sch->sch->decompose_reduction(block_sref, loop_srefs[0]);
-        }
+        // (TODO) bohan
       }
       // Tensorize
       for (const tir::TensorIntrin& intrin : tensor_intrins) {
@@ -475,44 +470,26 @@ Postproc RewriteUnboundBlocks() {
 
 class PostprocRewriteReduceStep {
  public:
-  class Finder : public tir::StmtVisitor {
-   public:
-    Finder() : result_(nullptr), stack_() {}
-
-    static const tir::BlockNode* Find(const tir::Stmt& stmt) {
-      Finder finder;
-      finder.VisitStmt(stmt);
-      return finder.result_;
-    }
-
-   private:
-    void VisitStmt_(const tir::BlockNode* block) override {
-      if (!result_) {
-        stack_.push_back(block);
-        tir::StmtVisitor::VisitStmt_(block);
-        stack_.pop_back();
+  static const tir::BlockNode* Find(const tir::Stmt& body) {
+    const tir::BlockNode* res = nullptr;
+    tir::PreOrderVisit(body, [&res] (const ObjectRef& node) {
+      if (res) {
+        return false;
       }
-    }
-
-    void VisitStmt_(const tir::LoopNode* loop) override {
-      if (!result_) {
-        tir::StmtVisitor::VisitStmt_(loop);
+      if (const auto* block = node.as<tir::BlockNode>()) {
+        if (block->init.defined()) {
+          res = block;
+          return false;
+        }
       }
-    }
-
-    void VisitStmt_(const tir::ReduceStepNode* reduce_step) override {
-      if (!result_) {
-        result_ = stack_.back();
-      }
-    }
-
-   private:
-    const tir::BlockNode* result_ = nullptr;
-    std::vector<const tir::BlockNode*> stack_;
-  };
+      return true;
+    });
+    CHECK(res == nullptr || res->init.defined());
+    return res;
+  }
 
   bool Proc(const Schedule& sch) const {
-    while (const tir::BlockNode* block = Finder::Find(sch->sch->func->body)) {
+    while (const tir::BlockNode* block = Find(sch->sch->func->body)) {
       BlockRV block_rv = sch->GetBlock(block->tag);
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
       int n_loops = loop_rvs.size();
@@ -520,6 +497,7 @@ class PostprocRewriteReduceStep {
         const LoopRV& loop_rv = loop_rvs[i];
         tir::StmtSRef loop_sref = sch->Eval(loop_rv);
         if (GetLoopIterType(sch->sch, loop_sref) != tir::kDataPar) {
+          // Insert the initializing block above the first loop which is not data parallel.
           BlockRV init = sch->DecomposeReduction(block_rv, loop_rvs[i]);
           Array<LoopRV> loops = sch->GetAxes(init);
           if (!loops.empty()) {
@@ -559,6 +537,7 @@ class PostprocVerifyGPUCode {
   static tir::transform::Sequential MakePasses(const Target& target) {
     return tir::transform::Sequential(
         {tir::transform::InjectPrefetch(),       //
+         tir::transform::AllreduceTransform(),   //
          tir::transform::BufferFlatten(),        //
          tir::transform::NarrowDataType(32),     //
          tir::transform::Simplify(),             //

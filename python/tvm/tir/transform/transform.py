@@ -530,6 +530,19 @@ def VerifyMemory():
     return _ffi_api.VerifyMemory()
 
 
+def AllreduceTransform():
+    """Detect the allreduce pattern, and apply transformation
+    when allreduce is needed. (When a reduction axis of a
+    reduction block is bound to threadIdx, allreduce is needed.)
+
+    Returns
+    -------
+    fpass : tvm.transform.Pass
+        The result pass
+    """
+    return _ffi_api.AllreduceTransform()
+
+
 def BufferFlatten():
     """Flatten the multi-dimensional BufferLoad and BufferStore
     to single dimensional Load/Store. Also remove Block so that
