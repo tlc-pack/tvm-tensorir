@@ -73,8 +73,11 @@ def test_meta_schedule_xgb_model_rmse(batch):
         [5],
     ],
 )
-def test_meta_schedule_xgb_model_average_peak_score(batch):
-    n = 32
+@pytest.mark.parametrize(
+    "n",
+    [1, 2, 4, 6, 10, 32],
+)
+def test_meta_schedule_xgb_model_average_peak_score(batch, n):
     ansor_dmatrix, ms_dmatrix, ys_pred = _get_dmatrix(batch)
     _, ms_result = ms_dmatrix.average_peak_score(ys_pred, n=n)
     _, ansor_result = ansor_xgb_model.pack_sum_average_peak_score(N=n)(ys_pred, ansor_dmatrix)
@@ -84,4 +87,4 @@ def test_meta_schedule_xgb_model_average_peak_score(batch):
 if __name__ == "__main__":
     test_meta_schedule_xgb_model_obj_square_error([2, 3, 5])
     test_meta_schedule_xgb_model_rmse([2, 3, 5])
-    test_meta_schedule_xgb_model_average_peak_score([2, 3, 5])
+    test_meta_schedule_xgb_model_average_peak_score([2, 3, 5], 32)
