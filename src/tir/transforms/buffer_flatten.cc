@@ -35,35 +35,28 @@ namespace tvm {
 namespace tir {
 
 /*!
- * \brief Transform reduction call into actual computation
+ * \brief Transform block with init into actual computation
  */
 class ReductionTransformer : public StmtExprMutator {
  public:
   ReductionTransformer() = default;
 
   Stmt VisitStmt_(const BlockNode* op) override {
-    const BlockNode* block = op;
-    std::swap(current_block_, block);
-    Stmt res = StmtMutator::VisitStmt_(op);
-    std::swap(current_block_, block);
-    return res;
-  }
-
-  Stmt VisitStmt_(const ReduceStepNode* op) override {
-    const auto& init = op->comm_reducer->identity_element[0];
-    const auto* lhs = op->lhs.as<BufferLoadNode>();
-    PrimExpr cond = make_const(DataType::Bool(1), true);
-    for (const auto& iter_var : current_block_->iter_vars)
-      if (iter_var->iter_type == IterVarType::kCommReduce) {
-        cond = cond && (iter_var == 0);
+    Block res = Downcast<Block>(StmtMutator::VisitStmt_(op));
+    if (op->init) {
+      PrimExpr condition = Bool(true);
+      for (const auto& var : res->iter_vars) {
+        if (var->iter_type == IterVarType::kCommReduce) {
+          condition = And(condition, EQ(var, var->dom->min));
+        }
       }
-    return BufferStore(lhs->buffer,
-                       if_then_else(cond, op->ApplyCombiner(init, op->rhs), op->ApplyCombiner()),
-                       lhs->indices);
+      Stmt init = op->init.value();
+      if (!is_one(condition)) init = IfThenElse(condition, init);
+      res.CopyOnWrite()->body = SeqStmt::Flatten(init, op->body);
+      res.CopyOnWrite()->init = NullOpt;
+    }
+    return std::move(res);
   }
-
- private:
-  const BlockNode* current_block_{nullptr};
 };
 
 /*!
@@ -193,10 +186,10 @@ class RegionGatherer : public StmtExprVisitor {
   }
 
   void VisitStmt_(const BlockNode* op) final {
-    for (const auto& tensor_region: op->reads) {
+    for (const auto& tensor_region : op->reads) {
       VisitBufferRegion(tensor_region);
     }
-    for (const auto& tensor_region: op->writes) {
+    for (const auto& tensor_region : op->writes) {
       VisitBufferRegion(tensor_region);
     }
     StmtExprVisitor::VisitStmt_(op);
@@ -208,16 +201,6 @@ class RegionGatherer : public StmtExprVisitor {
     buffers_region_[op->buffer] = empty_region;
     StmtExprVisitor::VisitStmt_(op);
   }
-
-//  void VisitStmt_(const BufferStoreNode* op) final {
-//    VisitBuffer(op);
-//    StmtExprVisitor::VisitStmt_(op);
-//  }
-//
-//  void VisitExpr_(const BufferLoadNode* op) final {
-//    VisitBuffer(op);
-//    StmtExprVisitor::VisitExpr_(op);
-//  }
 
   /*! \brief The used region of each Buffer */
   std::unordered_map<Buffer, std::vector<arith::IntSet>, ObjectPtrHash, ObjectPtrEqual>
@@ -271,7 +254,7 @@ class RegionGatherer : public StmtExprVisitor {
     return region;
   }
 
-  bool IsThreadBinded(const Loop& loop) {
+  static bool IsThreadBinded(const Loop& loop) {
     for (const auto& annotation : loop->annotations)
       if (annotation->attr_key == attr::loop_type) {
         std::string thread_tag = Downcast<StringImm>(annotation->value)->value;
@@ -312,8 +295,28 @@ class BufferFlattener : public StmtExprMutator {
     CHECK(block_op != nullptr);
     for (size_t i = block_op->allocations.size(); i > 0; --i) {
       const auto& buffer = block_op->allocations[i - 1]->buffer;
+      const std::string name = std::string(buffer->name);
+      if (name.substr(0, 18) == "normal_reduce_temp" || name.substr(0, 11) == "reduce_temp") {
+        continue;
+      }
       if (buffers_lca_.at(buffer).defined()) {
         pending_allocate_[buffer] = block_op->allocations[i - 1];
+      }
+    }
+    for (size_t i = 0; i < block_op->iter_vars.size(); ++i) {
+      const IterVar& block_var = block_op->iter_vars[i];
+      const PrimExpr& binding_value = op->binding_values[i];
+      CHECK(block_var.as<IterVarNode>());
+      CHECK(binding_value.as<PrimExprNode>());
+
+      if (block_var->iter_type == kCommReduce) {
+        PreOrderVisit(binding_value, [this] (const ObjectRef& node) {
+          if (const auto* var = node.as<VarNode>()) {
+            this->reduction_relative_.insert(GetRef<Var>(var));
+            return false;
+          }
+          return true;
+        });
       }
     }
     // visit body
@@ -330,6 +333,10 @@ class BufferFlattener : public StmtExprMutator {
 
     for (size_t i = block_op->allocations.size(); i > 0; --i) {
       const auto& n = block_op->allocations[i - 1];
+      const std::string name = std::string(n->buffer->name);
+      if (name.substr(0, 18) == "normal_reduce_temp" || name.substr(0, 11) == "reduce_temp") {
+        continue;
+      }
       if (!buffers_lca_.at(n->buffer).defined() || buffers_lca_.at(n->buffer).same_as(old_stmt)) {
         PrimExpr extents = 1;
         for (const auto& extent : buffers_region_.at(n->buffer)) {
@@ -363,7 +370,7 @@ class BufferFlattener : public StmtExprMutator {
     op = stmt.as<LoopNode>();
     CHECK(op != nullptr);
 
-    std::string thread_tag = "";
+    std::string thread_tag;
     bool thread_binded = false;
 
     ForType for_type = ForType::Serial;
@@ -403,9 +410,14 @@ class BufferFlattener : public StmtExprMutator {
 
     Stmt for_stmt;
     if (thread_binded) {
-      for_stmt = AttrStmt(
-          IterVar(Range(op->min, op->extent), op->loop_var, IterVarType::kThreadIndex, thread_tag),
-          thread_tag == "vthread" ? attr::virtual_thread : attr::thread_extent, op->extent, body);
+      if (!reduction_relative_.count(op->loop_var)) {
+        for_stmt = AttrStmt(IterVar(Range(op->min, op->extent), op->loop_var,
+                                    IterVarType::kThreadIndex, thread_tag),
+                            thread_tag == "vthread" ? attr::virtual_thread : attr::thread_extent,
+                            op->extent, body);
+      } else {
+        for_stmt = body;
+      }
     } else if (is_one(op->extent) && op->annotations.empty()) {
       return body;
     } else {
@@ -469,6 +481,7 @@ class BufferFlattener : public StmtExprMutator {
   const std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual>& arg_buffers_;
 
   std::unordered_map<Buffer, BufferAllocate, ObjectPtrHash, ObjectPtrEqual> pending_allocate_;
+  std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual> reduction_relative_;
 
   /*!
    * \brief Create a buffer with alternative shape

@@ -299,7 +299,6 @@ class BlockReadWriteCollector : public StmtExprVisitor {
               const Buffer& buffer, const std::vector<arith::IntSet>& region);
   void VisitExpr_(const BufferLoadNode* op) override;
   void VisitStmt_(const BufferStoreNode* op) override;
-  void VisitStmt_(const ReduceStepNode* op) override;
   void VisitStmt_(const BlockRealizeNode* op) override;
 };
 

@@ -34,7 +34,6 @@ def conv2d(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     W = tir.match_buffer(w, (512, 512, 3, 3), "float32")
     X_padded = tir.buffer_allocate((1, 512, 9, 9), "float32")
     Y = tir.match_buffer(y, [1, 512, 7, 7], "float32")
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
     with tir.block([1, 512, 9, 9], "conv2d_pad_x") as [i_n, i_ci, i_h, i_w]:
         X_padded[i_n, i_ci, i_h, i_w] = tir.if_then_else(  # pylint: disable=unexpected-keyword-arg
             # guard
@@ -58,10 +57,9 @@ def conv2d(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
         ],
         "conv2d_nchw",
     ) as [i_n, i_co, i_h, i_w, i_ci, i_kh, i_kw]:
-        reducer.step(
-            Y[i_n, i_co, i_h, i_w],
-            X_padded[i_n, i_ci, i_h + i_kh, i_w + i_kw] * W[i_co, i_ci, i_kh, i_kw],
-        )
+        with tir.init():
+            Y[i_n, i_co, i_h, i_w] = 0.0
+        Y[i_n, i_co, i_h, i_w] = Y[i_n, i_co, i_h, i_w] + X_padded[i_n, i_ci, i_h + i_kh, i_w + i_kw] * W[i_co, i_ci, i_kh, i_kw]
 
 
 @tvm.script.tir
@@ -71,7 +69,6 @@ def conv2d_relu(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     X_padded = tir.buffer_allocate((1, 512, 9, 9), "float32")
     Y_i = tir.buffer_allocate((1, 512, 7, 7), "float32")
     Y = tir.match_buffer(y, [1, 512, 7, 7], "float32")
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
     with tir.block([1, 512, 9, 9], "conv2d_pad_x") as [i_n, i_ci, i_h, i_w]:
         X_padded[i_n, i_ci, i_h, i_w] = tir.if_then_else(  # pylint: disable=unexpected-keyword-arg
             # guard
@@ -95,10 +92,9 @@ def conv2d_relu(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
         ],
         "conv2d_nchw",
     ) as [i_n, i_co, i_h, i_w, i_ci, i_kh, i_kw]:
-        reducer.step(
-            Y_i[i_n, i_co, i_h, i_w],
-            X_padded[i_n, i_ci, i_h + i_kh, i_w + i_kw] * W[i_co, i_ci, i_kh, i_kw],
-        )
+        with tir.init():
+            Y_i[i_n, i_co, i_h, i_w] = 0.0
+        Y_i[i_n, i_co, i_h, i_w] = Y_i[i_n, i_co, i_h, i_w] + X_padded[i_n, i_ci, i_h + i_kh, i_w + i_kw] * W[i_co, i_ci, i_kh, i_kw]
 
     with tir.block([1, 512, 7, 7], "relu") as [i_n, i_co, i_h, i_w]:
         Y[i_n, i_co, i_h, i_w] = tir.max(Y_i[i_n, i_co, i_h, i_w], 0.0)
@@ -112,7 +108,6 @@ def conv2d_relu_plus_one(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     Y_i = tir.buffer_allocate((1, 512, 7, 7), "float32")
     Y_j = tir.buffer_allocate((1, 512, 7, 7), "float32")
     Y = tir.match_buffer(y, [1, 512, 7, 7], "float32")
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
     with tir.block([1, 512, 9, 9], "conv2d_pad_x") as [i_n, i_ci, i_h, i_w]:
         X_padded[i_n, i_ci, i_h, i_w] = tir.if_then_else(  # pylint: disable=unexpected-keyword-arg
             # guard
@@ -136,10 +131,9 @@ def conv2d_relu_plus_one(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
         ],
         "conv2d_nchw",
     ) as [i_n, i_co, i_h, i_w, i_ci, i_kh, i_kw]:
-        reducer.step(
-            Y_i[i_n, i_co, i_h, i_w],
-            X_padded[i_n, i_ci, i_h + i_kh, i_w + i_kw] * W[i_co, i_ci, i_kh, i_kw],
-        )
+        with tir.init():
+            Y_i[i_n, i_co, i_h, i_w] = 0.0
+        Y_i[i_n, i_co, i_h, i_w] = Y_i[i_n, i_co, i_h, i_w] + X_padded[i_n, i_ci, i_h + i_kh, i_w + i_kw] * W[i_co, i_ci, i_kh, i_kw]
 
     with tir.block([1, 512, 7, 7], "relu") as [i_n, i_co, i_h, i_w]:
         Y_j[i_n, i_co, i_h, i_w] = tir.max(Y_i[i_n, i_co, i_h, i_w], 0.0)

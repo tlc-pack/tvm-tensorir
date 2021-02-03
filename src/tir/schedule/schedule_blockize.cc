@@ -147,6 +147,7 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
   }
   Block inner_block = block;
   inner_block.CopyOnWrite()->iter_vars = inner_block_vars;
+  inner_block.CopyOnWrite()->init = NullOpt;
   BlockRealize inner_br = block_realize;
   inner_br.CopyOnWrite()->binding_values = inner_bindings;
   inner_br.CopyOnWrite()->predicate = division.back()->inner_extent;
@@ -158,7 +159,42 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
     loop_node->body = body;
     body = Loop(loop_node);
   }
-  // Calculate outer block's read/write region
+  // Regenerate init for outer block
+  Optional<Stmt> new_init = NullOpt;
+  if (block->init.defined()) {
+    std::vector<Loop> init_loops;
+    std::vector<size_t> init_block_vars;
+    std::vector<PrimExpr> init_bindings;
+    std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> binding_replace_map;
+    std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> var_replace_map;
+    for (size_t i = 0; i < inner_block_vars.size(); ++i) {
+      if (inner_block_vars[i]->iter_type == IterVarType::kDataPar &&
+          StmtExprContainsVar(block->init.value(), inner_block_vars[i]->var)) {
+        init_block_vars.push_back(i);
+      }
+    }
+    for (const LoopNode* inner_loop : inner_loops) {
+      for (size_t i = 0; i < init_block_vars.size(); ++i) {
+        if (StmtExprContainsVar(inner_bindings[i], inner_loop->loop_var)) {
+          Loop init_loop = GetRef<Loop>(inner_loop);
+          init_loop.CopyOnWrite()->loop_var = inner_loop->loop_var.copy_with_suffix("");
+          binding_replace_map[inner_loop->loop_var] = init_loop->loop_var;
+          init_loops.push_back(init_loop);
+        }
+      }
+    }
+    for (size_t index : init_block_vars) {
+      var_replace_map[inner_block_vars[index]->var] =
+          Substitute(inner_bindings[index], binding_replace_map);
+    }
+    new_init = Substitute(block->init.value(), var_replace_map);
+    for (const auto& init_loop : init_loops) {
+      Loop new_init_loop = init_loop;
+      new_init_loop.CopyOnWrite()->body = new_init.value();
+      new_init = new_init_loop;
+    }
+  }
+  // Calculate outer block's IO region
   auto rewrite_range = [&](const Range& range) -> Range {
     auto res = arith::DetectIter(range->min, bv_iters, &analyzer);
     CHECK(bool(res));
@@ -184,7 +220,7 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
   rewrite_region(&writes, block->writes);
   // Generate a new outer block
   auto outer_block = Block(outer_block_vars, reads, writes, body, Array<BufferAllocate>(),
-                           Array<Annotation>(), "blockized_" + block->tag);
+                           Array<Annotation>(), "blockized_" + block->tag, new_init);
   auto outer_realize =
       BlockRealize(outer_bindings, division.back()->outer_extent, outer_block, exec_scope);
 

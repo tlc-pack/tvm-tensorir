@@ -51,7 +51,6 @@ def conv(a: ty.handle, w: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, (2, 14, 14, 4, 16, 16), "float32")
     A = tir.match_buffer(a, (2, 14, 14, 2, 16, 16), "float16")
     W = tir.match_buffer(w, (3, 3, 2, 4, 16, 16), "float16")
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
     Apad = tir.buffer_allocate([2, 16, 16, 2, 16, 16], "float16")
     with tir.block([2, 16, 16, 2, 16, 16], "A_pad") as [n, h, w, i, nn, ii]:
@@ -61,9 +60,11 @@ def conv(a: ty.handle, w: ty.handle, c: ty.handle) -> None:
     with tir.block([2, 14, 14, 4, tir.reduce_axis(0, 2), tir.reduce_axis(0, 3),
                     tir.reduce_axis(0, 3), 16, 16, tir.reduce_axis(0, 16)], "Conv") as \
             [n, h, w, o, ic, kh, kw, nn, oo, ii]:
-        reducer.step(C[n, h, w, o, nn, oo],
-                     tir.cast(Apad[n, h + kh, w + kw, ic, nn, ii], "float32") *
-                     tir.cast(W[kh, kw, ic, o, ii, oo], "float32"))
+        with tir.init():
+            C[n, h, w, o, nn, oo] = tir.float32(0)
+        C[n, h, w, o, nn, oo] = C[n, h, w, o, nn, oo] \
+                                + tir.cast(Apad[n, h + kh, w + kw, ic, nn, ii], "float32") \
+                                * tir.cast(W[kh, kw, ic, o, ii, oo], "float32")
 
 
 @tvm.script.tir
