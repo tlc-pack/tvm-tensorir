@@ -104,7 +104,6 @@ def _matmul_sketch_0(var_A: ty.handle, var_B: ty.handle, var_C: ty.handle) -> No
     A = tir.match_buffer(var_A, [512, 512], elem_offset=0, align=128, offset_factor=1)
     B = tir.match_buffer(var_B, [512, 512], elem_offset=0, align=128, offset_factor=1)
     C = tir.match_buffer(var_C, [512, 512], elem_offset=0, align=128, offset_factor=1)
-    reducer = tir.comm_reducer(lambda x, y: (x + y), tir.float32(0))
     # body
     with tir.block([], "root") as []:
         tir.reads([])
@@ -144,7 +143,9 @@ def _matmul_sketch_0(var_A: ty.handle, var_B: ty.handle, var_C: ty.handle) -> No
                                                     tir.bind(k, (((i2_outer_outer*64) + (i2_outer_inner*4)) + i2_inner))
                                                     tir.reads([C_local[i:(i + 1), j:(j + 1)], A_shared[i:(i + 1), k:(k + 1)], B_shared[k:(k + 1), j:(j + 1)]])
                                                     tir.writes([C_local[i:(i + 1), j:(j + 1)]])
-                                                    reducer.step(C_local[i, j], (A_shared[i, k]*B_shared[k, j]))
+                                                    with tir.init():
+                                                        C_local[i, j] = 0.0
+                                                    C_local[i, j] = C_local[i, j] + A_shared[i, k]*B_shared[k, j]
                     for ax0 in range(0, 32):
                         for ax1 in range(0, 64):
                             with tir.block([512, 512], "C_local") as [v0_2, v1_2]:

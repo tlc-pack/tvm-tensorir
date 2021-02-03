@@ -80,7 +80,7 @@ bool Scope::IsDominate(const StmtSRef& block_sref) const {
 }
 
 bool Scope::IsComplete(const StmtSRef& block_sref) const {
-  const BlockNode* block = block_sref->GetStmt<BlockNode>();
+  const auto* block = block_sref->GetStmt<BlockNode>();
   CHECK(block != nullptr)
       << "InternalError: Scope::IsComplete only accepts tir::Block, but get type: "
       << block_sref->stmt->GetTypeKey();
@@ -94,7 +94,6 @@ bool Scope::IsComplete(const StmtSRef& block_sref) const {
       return false;
     }
   }
-  /*
   // Cond 3. Check if there is no overlap between buffers read and buffers written
   for (const TensorRegion& write : block->writes) {
     const Buffer& buffer = write->buffer;
@@ -104,7 +103,6 @@ bool Scope::IsComplete(const StmtSRef& block_sref) const {
       }
     }
   }
-  */
   return true;
 }
 
@@ -138,9 +136,7 @@ bool CheckReductionInstance(const Array<IterVar>& iter_vars,
 }
 
 bool Scope::IsReduction(const StmtSRef& block_sref) const {
-  // TODO(@spectrometerHBH): change the definition of reduction block
-  return true;
-  const BlockNode* block = block_sref->GetStmt<BlockNode>();
+  const auto* block = block_sref->GetStmt<BlockNode>();
   CHECK(block != nullptr)
       << "InternalError: Scope::IsReduction only accepts tir::Block, but get type: "
       << block_sref->stmt->GetTypeKey();
@@ -152,16 +148,36 @@ bool Scope::IsReduction(const StmtSRef& block_sref) const {
   if (!IsDominate(block_sref)) {
     return false;
   }
-  // Cond 2. Check the block body is reduction
-  const auto* reduce = block->body.as<ReduceStepNode>();
-  if (reduce == nullptr) {
+  // Cond 2. Check whether the block body has init.
+  if (block->init == nullptr) {
     return false;
   }
-  // Cond 3. All block vars are either data parallel or reduction, and reduction vars should not
-  // affect indexing the output buffer
-  const auto* buffer_load = reduce->lhs.as<BufferLoadNode>();
-  CHECK(buffer_load != nullptr) << "InternalError: ReduceStepNode::lhs should be BufferLoadNode";
-  return CheckReductionInstance(block->iter_vars, buffer_load->indices);
+  // Cond 3. All block vars are either data parallel or reduction
+  for (const IterVar& iter_var : block->iter_vars) {
+    if (iter_var->iter_type != kDataPar && iter_var->iter_type != kCommReduce) {
+      return false;
+    }
+  }
+  // Cond 4. All Reduction vars should not affect indexing the output buffer
+  bool not_affected = true;
+  PreOrderVisit(GetRef<Block>(block), [block, &not_affected] (const ObjectRef& node) {
+    if (!not_affected) {
+      return false;
+    }
+    if (const auto* var = node.as<BufferStoreNode>()) {
+      for (const TensorRegion& write_region : block->writes) {
+        if (var->buffer.same_as(write_region->buffer)) {
+          if (!CheckReductionInstance(block->iter_vars, var->indices)) {
+            not_affected = false;
+            break;
+          }
+        }
+      }
+      return false;
+    }
+    return true;
+  });
+  return not_affected;
 }
 
 bool Scope::IsCompactDataFlow(const StmtSRef& subtree_sref, const ScheduleNode* schedule) const {
