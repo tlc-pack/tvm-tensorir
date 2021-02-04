@@ -18,17 +18,14 @@
 # pylint: disable=missing-function-docstring
 import os
 
+import numpy as np
 import pytest
 import tvm
-from tvm import meta_schedule as ms
-from tvm import te
-import numpy as np
-
-
-
-from tvm.contrib import graph_runtime as runtime
 import tvm.relay.testing
-from tvm import relay
+from tvm import meta_schedule as ms
+from tvm import relay, te
+from tvm.contrib import graph_runtime as runtime
+
 # import logging
 # logging.basicConfig(level=logging.DEBUG)  # to dump TVM IR after fusion
 
