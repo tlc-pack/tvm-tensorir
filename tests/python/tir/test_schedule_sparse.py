@@ -17,13 +17,10 @@
 
 import numpy as np
 import scipy.sparse as sp
-
 import tvm
 import tvm.testing
 import tvm.topi.testing
-from tvm import te
-from tvm import tir
-from tvm import topi
+from tvm import te, tir, topi
 from tvm.script import ty
 
 

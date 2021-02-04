@@ -15,12 +15,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import pytest
 import numpy as np
-
+import pytest
 import tvm
-from tvm.contrib import graph_runtime as runtime
 from tvm import relay
+from tvm.contrib import graph_runtime as runtime
 
 # import logging
 # logging.basicConfig(level=logging.DEBUG)  # to dump TVM IR after fusion

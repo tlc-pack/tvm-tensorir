@@ -16,7 +16,6 @@
 # under the License.
 
 import pytest
-
 import tvm
 import util
 from tvm import tir

@@ -17,9 +17,9 @@
 # under the License.
 
 import tvm
+import util
 from tvm import tir
 from tvm.script import ty
-import util
 
 
 @tvm.script.tir
