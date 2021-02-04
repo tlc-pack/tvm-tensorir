@@ -53,12 +53,31 @@ def matmul_decompose0(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
+@tvm.script.tir
+def matmul_decompose1(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, [128, 128])
+    B = tir.match_buffer(b, [128, 128])
+    C = tir.match_buffer(c, [128, 128])
+
+    with tir.block([128, 128, tir.reduce_axis(0, 128)], "update") as [vi, vj, vk]:
+        if vk == 0:
+            C[vi, vj] = 0.0
+        C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
+
+
 def test_reduction_decompose():
+    # Test 1
     s = tir.create_schedule(matmul)
     C = s.get_block("update")
     i, j, k = s.get_axes(C)
     s.decompose_reduction(C, i)
     tvm.ir.assert_structural_equal(matmul_decompose0, s.func)
+
+    # Test 2
+    s = tir.create_schedule(matmul)
+    C = s.get_block("update")
+    s.decompose_reduction(C, None)
+    tvm.ir.assert_structural_equal(matmul_decompose1, s.func)
 
 
 def test_reduction_merge():
