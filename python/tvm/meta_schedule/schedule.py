@@ -537,7 +537,8 @@ class Schedule(Object):
         block: BlockRV
             The block that contains the reduction
         loop: LoopRV
-            The loop that the initialization should be under
+            The loop that the initialization should be under,or the original
+            block if loop is None.
 
         Returns
         -------
