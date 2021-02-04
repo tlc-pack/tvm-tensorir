@@ -15,11 +15,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import numpy as np
+import pytest
 import tvm
 import util
 from tvm import tir
 from tvm.script import ty
-import numpy as np
 
 
 @tvm.script.tir
@@ -86,7 +87,7 @@ def matmul_blockzied(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                     for i1 in range(0, 128):
                         C[vi, i1] = tir.float32(0)
                 with tir.block([128, tir.reduce_axis(0, 128)], "update") as [vj, vk]:
-                    C[vi, vj] = (C[vi, vj] + (A[vi, vk]*B[vj, vk]))
+                    C[vi, vj] = C[vi, vj] + (A[vi, vk] * B[vj, vk])
 
 
 def test_reduction_blockize():
@@ -127,7 +128,7 @@ def matmul_scale_inline(a: ty.handle, b: ty.handle, e: ty.handle) -> None:
     with tir.block([128, 128, tir.reduce_axis(0, 128)], "C") as [vi, vj, vk]:
         with tir.init():
             C[vi, vj] = 0.0
-        C[vi, vj] = C[vi, vj] + (A[vi, vk]*2.0) * B[vj, vk]
+        C[vi, vj] = C[vi, vj] + (A[vi, vk] * 2.0) * B[vj, vk]
 
     with tir.block([128, 128], "E") as [vi, vj]:
         E[vi, vj] = C[vi, vj] + 1.0
@@ -152,14 +153,23 @@ def matmul_rfactor(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             for i1 in range(0, 128):
                 for i2_outer in range(0, 4):
                     for i2_inner_outer in range(0, 8):
-                        with tir.block([128, 128, tir.reduce_axis(0, 32), 4], "update") as [vi, vj, vk, vi2_inner_inner]:
+                        with tir.block([128, 128, tir.reduce_axis(0, 32), 4], "update") as [
+                            vi,
+                            vj,
+                            vk,
+                            vi2_inner_inner,
+                        ]:
                             tir.bind(vi, i0)
                             tir.bind(vj, i1)
                             tir.bind(vk, ((i2_outer * 8) + i2_inner_outer))
                             tir.bind(vi2_inner_inner, i2_inner_inner)
                             with tir.init():
                                 C_rf[vi2_inner_inner, vi, vj] = 0.0
-                            C_rf[vi2_inner_inner, vi, vj] = C_rf[vi2_inner_inner, vi, vj] + A[vi, ((vk * 4) + vi2_inner_inner)] * B[vj, ((vk * 4) + vi2_inner_inner)]
+                            C_rf[vi2_inner_inner, vi, vj] = (
+                                C_rf[vi2_inner_inner, vi, vj]
+                                + A[vi, ((vk * 4) + vi2_inner_inner)]
+                                * B[vj, ((vk * 4) + vi2_inner_inner)]
+                            )
 
     with tir.block([128, 128, tir.reduce_axis(0, 4)], "update") as [vi, vj, vi2_inner_inner]:
         with tir.init():
@@ -182,7 +192,7 @@ def test_reduction_rfactor():
 @tvm.script.tir
 def rowsum_allreduce(a: ty.handle, b: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16, 16), "float32")
-    B = tir.match_buffer(b, (16, ), "float32")
+    B = tir.match_buffer(b, (16,), "float32")
 
     with tir.block([16, tir.reduce_axis(0, 16), tir.reduce_axis(0, 16)], "B") as [vii, vi, vj]:
         with tir.init():
@@ -190,6 +200,7 @@ def rowsum_allreduce(a: ty.handle, b: ty.handle) -> None:
         B[vii] = B[vii] + A[vii, vi, vj]
 
 
+@pytest.mark.skip("Needs GPU")
 def test_reduction_allreduce():
     ctx = tvm.gpu(0)
     # Test 1
@@ -202,10 +213,10 @@ def test_reduction_allreduce():
     s.bind(ax_j, thread_x)
     s.bind(ax_i, thread_y)
 
-    f = tvm.build(s.func, target='cuda')
+    f = tvm.build(s.func, target="cuda")
     a_np = np.random.uniform(size=(16, 16, 16)).astype("float32")
     a = tvm.nd.array(a_np, ctx)
-    b = tvm.nd.array(np.zeros((16, ), dtype="float32"), ctx)
+    b = tvm.nd.array(np.zeros((16,), dtype="float32"), ctx)
     f(a, b)
     b_np = np.sum(a_np, axis=(1, 2))
     np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-4, atol=1e-4)
@@ -218,10 +229,10 @@ def test_reduction_allreduce():
     ax_ii, ax_i, ax_j = s.get_axes(B_block)
     s.bind(ax_j, thread_x)
 
-    f = tvm.build(s.func, target='cuda')
+    f = tvm.build(s.func, target="cuda")
     a_np = np.random.uniform(size=(16, 16, 16)).astype("float32")
     a = tvm.nd.array(a_np, ctx)
-    b = tvm.nd.array(np.zeros((16, ), dtype="float32"), ctx)
+    b = tvm.nd.array(np.zeros((16,), dtype="float32"), ctx)
     f(a, b)
     b_np = np.sum(a_np, axis=(1, 2))
     np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-4, atol=1e-4)
@@ -234,10 +245,10 @@ def test_reduction_allreduce():
     ax_ii, ax_i, ax_j = s.get_axes(B_block)
     s.bind(ax_i, thread_x)
 
-    f = tvm.build(s.func, target='cuda')
+    f = tvm.build(s.func, target="cuda")
     a_np = np.random.uniform(size=(16, 16, 16)).astype("float32")
     a = tvm.nd.array(a_np, ctx)
-    b = tvm.nd.array(np.zeros((16, ), dtype="float32"), ctx)
+    b = tvm.nd.array(np.zeros((16,), dtype="float32"), ctx)
     f(a, b)
     b_np = np.sum(a_np, axis=(1, 2))
     np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-4, atol=1e-4)

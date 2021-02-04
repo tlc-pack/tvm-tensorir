@@ -15,12 +15,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import numpy as np
 import tvm
 import tvm.testing
 import util
 from tvm import tir
-
-import numpy as np
 from tvm.script import ty
 
 

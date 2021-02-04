@@ -27,10 +27,8 @@ import traceback
 from threading import Thread
 from typing import Any, Callable, List, Tuple
 
-
 import psutil
-from tvm import ir, rpc
-from tvm import arith
+from tvm import arith, ir, rpc
 from tvm._ffi import register_func
 from tvm.autotvm.measure.measure_methods import set_cuda_target_arch
 from tvm.contrib import ndk as build_func_ndk

@@ -15,9 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 """Test XGB cost model"""
+import numpy as np
+
 # pylint: disable=missing-function-docstring
 import pytest
-import numpy as np
 from tvm.auto_scheduler.cost_model import xgb_model as ansor_xgb_model
 from tvm.meta_schedule import xgb_model as ms_xgb_model
 

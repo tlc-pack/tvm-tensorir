@@ -14,21 +14,24 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+# pylint: disable=missing-function-docstring
+import os
 
 import numpy as np
 import pytest
 import scipy.sparse as sp
-
 import tvm
 import tvm.testing
 import tvm.topi.testing
-from tvm import te
-from tvm import tir
-from tvm import topi
 from tvm import meta_schedule as ms
+from tvm import te, tir, topi
+from tvm._ffi.base import TVMError
 from tvm.script import ty
-from tvm.topi.util import get_const_tuple
 
+RPC_KEY = "test"
+
+# fmt: off
+# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
 
 @tvm.script.tir
 def sparse_dense_bsr(x: ty.handle, data: ty.handle, indices: ty.handle, indptr: ty.handle, bsrmm: ty.handle, N_blocks: ty.int32) -> None:
@@ -62,7 +65,7 @@ _sparse_dense_implement_te = {
 def meta_schedule_sparse_dense_llvm(func, f_create_args):
     def schedule_sparse_dense(s: ms.Schedule):
         sparse_dense = s.get_block("sparse_dense")
-        sparse_dense_local = s.cache_write(sparse_dense, 0, 'local')
+        sparse_dense_local = s.cache_write(sparse_dense, 0, "local")
         i, j, offset, k = s.get_axes(sparse_dense_local)
         i_tiles = s.sample_perfect_tile(n_splits=4, loop=i)
         j_tiles = s.sample_perfect_tile(n_splits=4, loop=j)
@@ -76,8 +79,11 @@ def meta_schedule_sparse_dense_llvm(func, f_create_args):
         s.mark_loop(outer_fused, "unroll_explicit", tir.IntImm("int32", 1))
         s.decompose_reduction(sparse_dense_local, offset)
         s.vectorize(j_3)
-        j_init = s.get_axes(s.get_block('sparse_dense_init'))[-1]
-        s.vectorize(j_init)
+        try:
+            j_init = s.get_axes(s.get_block("sparse_dense_init"))[-1]
+            s.vectorize(j_init)
+        except:  # pylint: disable=bare-except
+            pass
 
     task = ms.SearchTask(func, task_name=sparse_dense_bsr.__qualname__)
     runner = ms.measure.RPCRunner(f_create_args=f_create_args)
@@ -87,8 +93,9 @@ def meta_schedule_sparse_dense_llvm(func, f_create_args):
     sch = ms.autotune(task=task, space=space, strategy=strategy, measurer=measurer, verbose=False)
     return sch
 
+
 def random_bsr_matrix(M, N, BS_R, BS_C, density, dtype):
-    import itertools
+    import itertools  # pylint: disable=import-outside-toplevel
 
     Y = np.zeros((M, N), dtype=dtype)
     assert M % BS_R == 0
@@ -112,6 +119,7 @@ def random_bsr_matrix(M, N, BS_R, BS_C, density, dtype):
 
 @pytest.mark.skip(reason="needs RPC")
 def test_sparse_dense():
+    os.environ["TVM_TRACKER_KEY"] = RPC_KEY
     for _ in range(1):
         # BERT
         M = 128
@@ -146,7 +154,7 @@ def test_sparse_dense():
                 Y = fcompute(X, W_data, W_indices, W_indptr)
                 s = fschedule([Y])
                 func = tvm.build(s, [X, W_data, W_indices, W_indptr, Y])
-                Y_tvm = tvm.nd.array( np.zeros(Y_np.shape, dtype=Y_np.dtype), ctx=ctx)
+                Y_tvm = tvm.nd.array(np.zeros(Y_np.shape, dtype=Y_np.dtype), ctx=ctx)
                 func(
                     tvm.nd.array(X_np, ctx=ctx),
                     tvm.nd.array(W_sp_np.data, ctx=ctx),
@@ -156,11 +164,19 @@ def test_sparse_dense():
                 )
                 tvm.testing.assert_allclose(Y_tvm.asnumpy(), Y_np, atol=1e-4, rtol=1e-4)
                 evaluator = func.time_evaluator(func.entry_name, ctx, number=10)
-                print("sparse dense te schedule: %f ms" % (evaluator(tvm.nd.array(X_np, ctx=ctx),
-                                                                     tvm.nd.array(W_sp_np.data, ctx=ctx),
-                                                                     tvm.nd.array(W_sp_np.indices, ctx=ctx),
-                                                                     tvm.nd.array(W_sp_np.indptr, ctx=ctx),
-                                                                     Y_tvm).mean * 1e3))
+                print(
+                    "sparse dense te schedule: %f ms"
+                    % (
+                        evaluator(
+                            tvm.nd.array(X_np, ctx=ctx),
+                            tvm.nd.array(W_sp_np.data, ctx=ctx),
+                            tvm.nd.array(W_sp_np.indices, ctx=ctx),
+                            tvm.nd.array(W_sp_np.indptr, ctx=ctx),
+                            Y_tvm,
+                        ).mean
+                        * 1e3
+                    )
+                )
 
             # auto tir schedule
             with tvm.target.Target(device):
@@ -188,15 +204,24 @@ def test_sparse_dense():
                     tvm.nd.array(W_sp_np.data, ctx=ctx),
                     tvm.nd.array(W_sp_np.indices, ctx=ctx),
                     tvm.nd.array(W_sp_np.indptr, ctx=ctx),
-                    Y_tvm
+                    Y_tvm,
                 )
                 tvm.testing.assert_allclose(Y_tvm.asnumpy(), Y_np, atol=1e-5, rtol=1e-5)
                 evaluator = func.time_evaluator(func.entry_name, ctx, number=10)
-                print("sparse dense auto tir schedule: %f ms" % (evaluator(tvm.nd.array(X_np, ctx=ctx),
-                                                                           tvm.nd.array(W_sp_np.data, ctx=ctx),
-                                                                           tvm.nd.array(W_sp_np.indices, ctx=ctx),
-                                                                           tvm.nd.array(W_sp_np.indptr, ctx=ctx),
-                                                                           Y_tvm).mean * 1e3))
+                print(
+                    "sparse dense auto tir schedule: %f ms"
+                    % (
+                        evaluator(
+                            tvm.nd.array(X_np, ctx=ctx),
+                            tvm.nd.array(W_sp_np.data, ctx=ctx),
+                            tvm.nd.array(W_sp_np.indices, ctx=ctx),
+                            tvm.nd.array(W_sp_np.indptr, ctx=ctx),
+                            Y_tvm,
+                        ).mean
+                        * 1e3
+                    )
+                )
+
         for device in ["llvm"]:
             check_device(device)
 
