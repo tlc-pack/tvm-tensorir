@@ -25,10 +25,12 @@ import tempfile
 import time
 import traceback
 from threading import Thread
-from typing import Any, List, Tuple
+from typing import Any, Callable, List, Tuple
+
 
 import psutil
 from tvm import ir, rpc
+from tvm import arith
 from tvm._ffi import register_func
 from tvm.autotvm.measure.measure_methods import set_cuda_target_arch
 from tvm.contrib import ndk as build_func_ndk
@@ -301,6 +303,7 @@ def realize_arguments(
     """
     args = []
     ndarrays = []
+
     for arg in func.params:
         if arg.dtype == "handle":
             buffer = func.buffer_map[arg]
@@ -494,6 +497,7 @@ def rpc_runner_run(
     min_repeat_ms: int = 0,
     cooldown_interval: float = 0.0,
     enable_cpu_cache_flush: bool = False,
+    f_create_args = None,
     verbose: int = 1,
 ) -> List[MeasureResult]:
     """Run function of RPCRunner to test the performance of the input BuildResults.
@@ -541,6 +545,9 @@ def rpc_runner_run(
         its actual latency during end-to-end inference.
         To make this option effective, the argument `number` should also be set to 1.
         This is only has effect on CPU task.
+    f_create_args: Callable[[TVMContext], List[NDArray]] = None
+        Optional callback to create arguments for functions to measure. This can be used for sparse
+        workloads when we cannot use random tensors for measurment.
     verbose: int = 1
         Verbosity level. 0 for silent, 1 to output information during program measuring.
 
@@ -563,6 +570,7 @@ def rpc_runner_run(
         min_repeat_ms,
         cooldown_interval,
         enable_cpu_cache_flush,
+        f_create_args,
         verbose,
     )
 
@@ -594,6 +602,7 @@ def rpc_runner_worker(
     min_repeat_ms: int,
     cooldown_interval: float,
     enable_cpu_cache_flush: bool,
+    f_create_args: Callable[[TVMContext], List[NDArray]],
     verbose: int,
 ) -> MeasureResult.TYPE:
     """ RPC worker for ProgramRunner """
@@ -645,10 +654,15 @@ def rpc_runner_worker(
                     rpc_eval_repeat = 5
                 else:
                     rpc_eval_repeat = 1
-                args_set = [
-                    realize_arguments(remote, ctx, measure_input.task.workload)
-                    for _ in range(rpc_eval_repeat)
-                ]
+                if f_create_args is not None:
+                    args_set = [
+                        f_create_args(ctx) for _ in range (rpc_eval_repeat)
+                    ]
+                else:
+                    args_set = [
+                        realize_arguments(remote, ctx, measure_input.task.workload)
+                        for _ in range(rpc_eval_repeat)
+                    ]
                 ctx.sync()
                 costs = sum([time_f(*args).results for args in args_set], ())
                 # clean up remote files
