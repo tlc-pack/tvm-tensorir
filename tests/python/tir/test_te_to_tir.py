@@ -15,13 +15,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import numpy as np
 import tvm
 import tvm.testing
-from tvm import tir
-from tvm import te
-from tvm.script import ty
 import util
-import numpy as np
+from tvm import te, tir
+from tvm.script import ty
 from tvm.topi.testing import conv2d_nhwc_python
 
 M = 128

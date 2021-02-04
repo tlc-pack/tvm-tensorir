@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Callable, List, Optional, Union
 from tvm._ffi import register_object
 from tvm.runtime import Object
 
-from ..runtime import ndarray, NDArray, TVMContext
+from ..runtime import NDArray, TVMContext, ndarray
 from . import _ffi_api
 from .measure_record import BuildResult, MeasureInput, MeasureResult
 from .schedule import Schedule

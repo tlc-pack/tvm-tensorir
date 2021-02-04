@@ -20,8 +20,8 @@ import numpy as np
 import tvm
 import tvm.testing
 from tvm import tir
-from tvm.script import ty
 from tvm.meta_schedule.measure import ProgramTester
+from tvm.script import ty
 
 VERIFY = True
 
