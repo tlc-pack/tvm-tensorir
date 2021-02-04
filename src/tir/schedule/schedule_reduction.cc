@@ -34,7 +34,8 @@ void ScheduleNode::register_reducer(const CommReducer& comm_reducer) {
   this->reducers_.push_back(comm_reducer);
 }
 
-StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const StmtSRef& loop_sref) {
+StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
+                                           const Optional<StmtSRef>& loop_sref_opt) {
   /*!
    *  Check
    *    - block is reduction
@@ -50,8 +51,9 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
   CHECK(block_sref.defined())
       << "ValueError: 'decompose_reduction' expect a block as first argument, but get value 'None'";
   const auto* block = block_sref->GetStmt<BlockNode>();
-  if (loop_sref.defined()) {
+  if (loop_sref_opt) {
     // 'loop' is not 'None'.
+    StmtSRef loop_sref = loop_sref_opt.value();
     const auto* loop = loop_sref->GetStmt<LoopNode>();
     CHECK(block != nullptr)
         << "TypeError: 'decompose_reduction' expect a block as first argument, but get type: "
@@ -211,8 +213,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
         /*allocations=*/block->allocations,
         /*annotations=*/block->annotations,
         /*tag=*/block->tag + "_update",
-        /*init=*/NullOpt
-        );
+        /*init=*/NullOpt);
     this->Replace(block_sref, new_block, {{new_block, GetRef<Block>(block)}});
     // Update scope information
     UpdateScope(GetParentBlockSRef(block_sref)->stmt, this->stmt2ref, &this->scopes);

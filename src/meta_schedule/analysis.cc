@@ -760,7 +760,7 @@ double CountFlop(const tir::PrimFunc& func) {
   if (auto flop_count_expr = func->GetAttr<PrimExpr>("flop_ct")) {
     arith::Analyzer analyzer;
     PrimExpr flop_count = analyzer.Simplify(flop_count_expr.value());
-    if (const auto *flop_count_imm = flop_count.as<IntImmNode>()) {
+    if (const auto* flop_count_imm = flop_count.as<IntImmNode>()) {
       return static_cast<double>(flop_count_imm->value);
     } else {
       LOG(FATAL) << "ValueError: Unable to evaluate flop count";

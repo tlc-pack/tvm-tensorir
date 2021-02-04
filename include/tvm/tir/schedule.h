@@ -203,7 +203,8 @@ class ScheduleNode : public Object {
    * \param loop_sref the position where init block_sref will be
    * \return the sref of init block
    */
-  StmtSRef decompose_reduction(const StmtSRef& block_sref, const StmtSRef& loop_sref);
+  StmtSRef decompose_reduction(const StmtSRef& block_sref,
+                               const Optional<StmtSRef>& loop_sref = NullOpt);
 
   /*!
    * \brief Merge init and reduction block into reduction block

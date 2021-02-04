@@ -101,11 +101,14 @@ def test_integration_matmul():
         sch.compute_at(block_read_a, loop)
         sch.compute_at(block_read_b, loop)
         # Step 3.2. Cache write
-        block_write_c = sch.cache_write(block_inner, 0, "wmma.accumulator")
-        block_inner, block_write_c = block_write_c, block_inner
+        print(sch.evaluate(block_outer))
+        block_write_c = sch.cache_write(block_outer, 0, "wmma.accumulator")
+        block_outer, block_write_c = block_write_c, block_outer
+        print(sch.evaluate(block_outer))
+        sch.reverse_compute_at(block_write_c, loop)
+        print(sch.evaluate(block_outer))
         # Step 3.3. Decompose
-        loop, _, _ = sch.get_axes(block_inner)
-        block_init_c = sch.decompose_reduction(block_inner, loop)
+        block_init_c = sch.decompose_reduction(block_outer)
         # Step 3.4. Tensorize
         loop = sch.get_axes(block_inner)[-3]
         sch.tensorize(loop, "wmma_sync")

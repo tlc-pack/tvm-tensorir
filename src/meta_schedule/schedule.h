@@ -284,7 +284,7 @@ class ScheduleNode : public Object {
    * \param loop The loop to be decomposed at
    * \return The block random variable indicating the decomposition result
    */
-  BlockRV DecomposeReduction(const BlockRV& block, const LoopRV& loop);
+  BlockRV DecomposeReduction(const BlockRV& block, const Optional<LoopRV>& loop);
   /*!
    * \brief Tensorize the computation enclosed by loop with tensor_intrin
    * \param loop The loop under which to be tensorized

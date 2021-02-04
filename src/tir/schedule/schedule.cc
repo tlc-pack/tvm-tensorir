@@ -605,8 +605,9 @@ TVM_REGISTER_GLOBAL("tir.schedule.SchedulePragma")
         });
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDecomposeReduction")
-    .set_body_typed<StmtSRef(Schedule, StmtSRef, StmtSRef)>([](Schedule schedule, StmtSRef block,
-                                                               StmtSRef loop) {
+    .set_body_typed<StmtSRef(Schedule, StmtSRef, Optional<StmtSRef>)>([](Schedule schedule,
+                                                                         StmtSRef block,
+                                                                         Optional<StmtSRef> loop) {
       return schedule->decompose_reduction(block, loop);
     });
 
