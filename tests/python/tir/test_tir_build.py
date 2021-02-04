@@ -15,11 +15,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import numpy as np
 import tvm
 import tvm.testing
-from tvm import tir
-import numpy as np
 import util
+from tvm import tir
 
 
 def test_element_wise():
