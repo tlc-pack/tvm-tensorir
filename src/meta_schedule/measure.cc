@@ -44,7 +44,7 @@ LocalBuilder::LocalBuilder(int timeout, int n_parallel, String build_func) {
 
 RPCRunner::RPCRunner(String key, String host, int port, int priority, int n_parallel, int timeout,
                      int number, int repeat, int min_repeat_ms, double cooldown_interval,
-                     bool enable_cpu_cache_flush) {
+                     bool enable_cpu_cache_flush, FCreateArgs f_create_args) {
   ObjectPtr<RPCRunnerNode> n = make_object<RPCRunnerNode>();
   n->key = std::move(key);
   n->host = std::move(host);
@@ -57,6 +57,7 @@ RPCRunner::RPCRunner(String key, String host, int port, int priority, int n_para
   n->min_repeat_ms = min_repeat_ms;
   n->cooldown_interval = cooldown_interval;
   n->enable_cpu_cache_flush = enable_cpu_cache_flush;
+  n->f_create_args = f_create_args;
   data_ = std::move(n);
 }
 
@@ -96,7 +97,7 @@ Array<MeasureResult> RPCRunnerNode::Run(const Array<MeasureInput>& inputs,
   if (const auto* f = runtime::Registry::Get("meta_schedule.rpc_runner.run")) {
     Array<MeasureResult> results =
         (*f)(inputs, build_results, key, host, port, priority, n_parallel, timeout, number, repeat,
-             min_repeat_ms, cooldown_interval, enable_cpu_cache_flush, verbose);
+             min_repeat_ms, cooldown_interval, enable_cpu_cache_flush, f_create_args, verbose);
     return results;
   }
   LOG(FATAL) << "meta_schedule.rpc_runner.run is not registered. "
@@ -226,9 +227,10 @@ struct Internal {
    */
   static RPCRunner RPCRunnerNew(String key, String host, int port, int priority, int n_parallel,
                                 int timeout, int number, int repeat, int min_repeat_ms,
-                                double cooldown_interval, bool enable_cpu_cache_flush) {
+                                double cooldown_interval, bool enable_cpu_cache_flush,
+                                FCreateArgs f_create_args) {
     return RPCRunner(key, host, port, priority, n_parallel, timeout, number, repeat, min_repeat_ms,
-                     cooldown_interval, enable_cpu_cache_flush);
+                     cooldown_interval, enable_cpu_cache_flush, f_create_args);
   }
   /*!
    * \brief Constructor of ProgramMeasurerNew
