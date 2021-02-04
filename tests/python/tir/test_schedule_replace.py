@@ -15,10 +15,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import tvm
-from tvm import tir
-import util
 import gc
+
+import tvm
+import util
+from tvm import tir
 
 
 def replace_ir_builder():

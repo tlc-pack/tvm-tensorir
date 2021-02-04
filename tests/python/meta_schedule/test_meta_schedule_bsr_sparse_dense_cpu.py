@@ -14,20 +14,24 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+# pylint: disable=missing-function-docstring
+import os
 
 import numpy as np
+import pytest
 import scipy.sparse as sp
-
 import tvm
 import tvm.testing
 import tvm.topi.testing
-from tvm import te
-from tvm import tir
-from tvm import topi
 from tvm import meta_schedule as ms
+from tvm import te, tir, topi
+from tvm._ffi.base import TVMError
 from tvm.script import ty
-from tvm.topi.util import get_const_tuple
 
+RPC_KEY = "test"
+
+# fmt: off
+# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
 
 @tvm.script.tir
 def sparse_dense_bsr(x: ty.handle, data: ty.handle, indices: ty.handle, indptr: ty.handle, bsrmm: ty.handle, N_blocks: ty.int32) -> None:
@@ -43,12 +47,16 @@ def sparse_dense_bsr(x: ty.handle, data: ty.handle, indices: ty.handle, indptr: 
     W_indices = tir.match_buffer(indices, [num_blocks], "int32")
     W_indptr = tir.match_buffer(indptr, [N_blocks + 1], "int32")
     BSRmm = tir.match_buffer(bsrmm, [M, N_blocks*bs_r], "float32")
-    reducer = tir.comm_reducer(lambda x, y: x + y, tir.float32(0))
 
     for i, j in tir.grid(M, N_blocks*bs_r):
         for block_offset, k in tir.grid(W_indptr[tir.floordiv(j, bs_r) + 1] - W_indptr[tir.floordiv(j, bs_r)], bs_c):
             with tir.block([M, N_blocks*bs_r, tir.reduce_axis(0, W_indptr[j + 1] - W_indptr[j]), tir.reduce_axis(0, bs_c)], "sparse_dense") as [m, n, offset, kk]:
-                reducer.step(BSRmm[m, n], W_data[offset + W_indptr[tir.floordiv(n, bs_r)], tir.floormod(n, bs_r), kk]*X[m, bs_c*W_indices[offset+W_indptr[tir.floordiv(n, bs_r)]]+kk])
+                with tir.init():
+                    BSRmm[m, n] = 0.0
+                BSRmm[m, n] = BSRmm[m, n] + W_data[offset + W_indptr[tir.floordiv(n, bs_r)], tir.floormod(n, bs_r), kk]*X[m, bs_c*W_indices[offset+W_indptr[tir.floordiv(n, bs_r)]]+kk]
+
+# fmt: on
+# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks
 
 
 _sparse_dense_implement_te = {
@@ -60,7 +68,7 @@ _sparse_dense_implement_te = {
 def meta_schedule_sparse_dense_llvm(func, f_create_args):
     def schedule_sparse_dense(s: ms.Schedule):
         sparse_dense = s.get_block("sparse_dense")
-        sparse_dense_local = s.cache_write(sparse_dense, 0, 'local')
+        sparse_dense_local = s.cache_write(sparse_dense, 0, "local")
         i, j, offset, k = s.get_axes(sparse_dense_local)
         i_tiles = s.sample_perfect_tile(n_splits=4, loop=i)
         j_tiles = s.sample_perfect_tile(n_splits=4, loop=j)
@@ -74,8 +82,11 @@ def meta_schedule_sparse_dense_llvm(func, f_create_args):
         s.mark_loop(outer_fused, "unroll_explicit", tir.IntImm("int32", 1))
         s.decompose_reduction(sparse_dense_local, offset)
         s.vectorize(j_3)
-        j_init = s.get_axes(s.get_block('sparse_dense_init'))[-1]
-        s.vectorize(j_init)
+        try:
+            j_init = s.get_axes(s.get_block("sparse_dense_init"))[-1]
+            s.vectorize(j_init)
+        except:  # pylint: disable=bare-except
+            pass
 
     task = ms.SearchTask(func, task_name=sparse_dense_bsr.__qualname__)
     runner = ms.measure.RPCRunner(f_create_args=f_create_args)
@@ -85,8 +96,9 @@ def meta_schedule_sparse_dense_llvm(func, f_create_args):
     sch = ms.autotune(task=task, space=space, strategy=strategy, measurer=measurer, verbose=False)
     return sch
 
+
 def random_bsr_matrix(M, N, BS_R, BS_C, density, dtype):
-    import itertools
+    import itertools  # pylint: disable=import-outside-toplevel
 
     Y = np.zeros((M, N), dtype=dtype)
     assert M % BS_R == 0
@@ -108,7 +120,9 @@ def random_bsr_matrix(M, N, BS_R, BS_C, density, dtype):
     return s
 
 
+@pytest.mark.skip("Needs RPC")
 def test_sparse_dense():
+    os.environ["TVM_TRACKER_KEY"] = RPC_KEY
     for _ in range(1):
         # BERT
         M = 128
@@ -136,28 +150,36 @@ def test_sparse_dense():
             if not tvm.testing.device_enabled(device):
                 print("Skip because %s is not enabled" % device)
                 return
-            print("Running on target: %s" % device)
-            # te schedule
-            with tvm.target.Target(device):
-                fcompute, fschedule = tvm.topi.testing.dispatch(device, _sparse_dense_implement_te)
-                Y = fcompute(X, W_data, W_indices, W_indptr)
-                s = fschedule([Y])
-                func = tvm.build(s, [X, W_data, W_indices, W_indptr, Y])
-                Y_tvm = tvm.nd.array( np.zeros(Y_np.shape, dtype=Y_np.dtype), ctx=ctx)
-                func(
-                    tvm.nd.array(X_np, ctx=ctx),
-                    tvm.nd.array(W_sp_np.data, ctx=ctx),
-                    tvm.nd.array(W_sp_np.indices, ctx=ctx),
-                    tvm.nd.array(W_sp_np.indptr, ctx=ctx),
-                    Y_tvm,
-                )
-                tvm.testing.assert_allclose(Y_tvm.asnumpy(), Y_np, atol=1e-4, rtol=1e-4)
-                evaluator = func.time_evaluator(func.entry_name, ctx, number=10)
-                print("sparse dense te schedule: %f ms" % (evaluator(tvm.nd.array(X_np, ctx=ctx),
-                                                                     tvm.nd.array(W_sp_np.data, ctx=ctx),
-                                                                     tvm.nd.array(W_sp_np.indices, ctx=ctx),
-                                                                     tvm.nd.array(W_sp_np.indptr, ctx=ctx),
-                                                                     Y_tvm).mean * 1e3))
+            # print("Running on target: %s" % device)
+            # # te schedule
+            # with tvm.target.Target(device):
+            #     fcompute, fschedule = tvm.topi.testing.dispatch(device, _sparse_dense_implement_te)
+            #     Y = fcompute(X, W_data, W_indices, W_indptr)
+            #     s = fschedule([Y])
+            #     func = tvm.build(s, [X, W_data, W_indices, W_indptr, Y])
+            #     Y_tvm = tvm.nd.array(np.zeros(Y_np.shape, dtype=Y_np.dtype), ctx=ctx)
+            #     func(
+            #         tvm.nd.array(X_np, ctx=ctx),
+            #         tvm.nd.array(W_sp_np.data, ctx=ctx),
+            #         tvm.nd.array(W_sp_np.indices, ctx=ctx),
+            #         tvm.nd.array(W_sp_np.indptr, ctx=ctx),
+            #         Y_tvm,
+            #     )
+            #     tvm.testing.assert_allclose(Y_tvm.asnumpy(), Y_np, atol=1e-4, rtol=1e-4)
+            #     evaluator = func.time_evaluator(func.entry_name, ctx, number=10)
+            #     print(
+            #         "sparse dense te schedule: %f ms"
+            #         % (
+            #             evaluator(
+            #                 tvm.nd.array(X_np, ctx=ctx),
+            #                 tvm.nd.array(W_sp_np.data, ctx=ctx),
+            #                 tvm.nd.array(W_sp_np.indices, ctx=ctx),
+            #                 tvm.nd.array(W_sp_np.indptr, ctx=ctx),
+            #                 Y_tvm,
+            #             ).mean
+            #             * 1e3
+            #         )
+            #     )
 
             # auto tir schedule
             with tvm.target.Target(device):
@@ -185,15 +207,24 @@ def test_sparse_dense():
                     tvm.nd.array(W_sp_np.data, ctx=ctx),
                     tvm.nd.array(W_sp_np.indices, ctx=ctx),
                     tvm.nd.array(W_sp_np.indptr, ctx=ctx),
-                    Y_tvm
+                    Y_tvm,
                 )
                 tvm.testing.assert_allclose(Y_tvm.asnumpy(), Y_np, atol=1e-5, rtol=1e-5)
                 evaluator = func.time_evaluator(func.entry_name, ctx, number=10)
-                print("sparse dense auto tir schedule: %f ms" % (evaluator(tvm.nd.array(X_np, ctx=ctx),
-                                                                           tvm.nd.array(W_sp_np.data, ctx=ctx),
-                                                                           tvm.nd.array(W_sp_np.indices, ctx=ctx),
-                                                                           tvm.nd.array(W_sp_np.indptr, ctx=ctx),
-                                                                           Y_tvm).mean * 1e3))
+                print(
+                    "sparse dense auto tir schedule: %f ms"
+                    % (
+                        evaluator(
+                            tvm.nd.array(X_np, ctx=ctx),
+                            tvm.nd.array(W_sp_np.data, ctx=ctx),
+                            tvm.nd.array(W_sp_np.indices, ctx=ctx),
+                            tvm.nd.array(W_sp_np.indptr, ctx=ctx),
+                            Y_tvm,
+                        ).mean
+                        * 1e3
+                    )
+                )
+
         for device in ["llvm"]:
             check_device(device)
 

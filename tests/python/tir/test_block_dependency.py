@@ -17,9 +17,9 @@
 
 import pytest
 import tvm
+import util
 from tvm import tir
 from tvm.script import ty
-import util
 
 
 def test_element_wise_dependency():
