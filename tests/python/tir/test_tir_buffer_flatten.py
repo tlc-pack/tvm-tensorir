@@ -14,10 +14,10 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-import util
 import tvm
-from tvm.script import ty
+import util
 from tvm import tir
+from tvm.script import ty
 
 
 def test_no_allocate():
