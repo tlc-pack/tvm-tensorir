@@ -196,6 +196,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
         condition = And(condition, EQ(var, var->dom->min));
       }
     }
+    condition = arith::Analyzer().Simplify(condition);
     Stmt body;
     if (is_one(condition)) {
       body = block->body;
