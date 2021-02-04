@@ -109,7 +109,7 @@ class PackSum:
     def __init__(
         self,
         xs: List[np.ndarray],
-        ys: Optional[List[np.ndarray]],
+        ys: Optional[List[float]],
     ):
         """Create PackSum format given a batch of samples
 
@@ -117,7 +117,7 @@ class PackSum:
         ----------
         xs : List[np.ndarray]
             A batch of input samples
-        ys : Optional[List[np.ndarray]]
+        ys : Optional[List[float]]
             A batch of labels. None means no lables available.
         """
         import xgboost as xgb  # pylint: disable=import-outside-toplevel
@@ -132,20 +132,16 @@ class PackSum:
             self.dmatrix = xgb.DMatrix(data=xs, label=ys)
             self.dmatrix.set_weight(ys)
 
-    def predict_with_booster(self, booster: xgb.Booster) -> np.ndarray:
-        pred = booster.predict(self.dmatrix)
-        return np.bincount(self.ids, weights=pred)
-
     def predict_with_score(self, pred: np.ndarray) -> np.ndarray:
         return np.bincount(self.ids, weights=pred)
 
-    def square_error(self, xs_pred: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def obj_square_error(self, ys_pred: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Implement square error loss on pack-sum format as
         a custom objective function for xgboost.
 
         Parameters
         ----------
-        xs_pred: np.ndarray
+        ys_pred: np.ndarray
             The predictions
 
         Returns
@@ -156,21 +152,21 @@ class PackSum:
             The hessian according to the xgboost format
         """
         # Making prediction
-        xs_pred = self.predict_with_score(xs_pred)
+        ys_pred = self.predict_with_score(ys_pred)
         # Propagate prediction to each block
-        xs_pred = xs_pred[self.ids]
+        ys_pred = ys_pred[self.ids]
         # The gradient and hessian
         ys = self.dmatrix.get_label()  # pylint: disable=invalid-name
-        gradient = xs_pred - ys
+        gradient = ys_pred - ys
         hessian = np.ones_like(gradient)
         return gradient * ys, hessian * ys
 
-    def rmse(self, xs_pred: np.ndarray) -> Tuple[str, float]:
+    def rmse(self, ys_pred: np.ndarray) -> Tuple[str, float]:
         """Evaluate RMSE (rooted mean square error) in the pack-sum format
 
         Parameters
         ----------
-        xs_pred: np.ndarray
+        ys_pred: np.ndarray
             The raw predictions
 
         Returns
@@ -181,26 +177,26 @@ class PackSum:
             The score of the metric
         """
         # Making prediction
-        xs_pred = self.predict_with_score(xs_pred)
+        ys_pred = self.predict_with_score(ys_pred)
         # Propagate prediction to each block
-        xs_pred = xs_pred[self.ids]
+        ys_pred = ys_pred[self.ids]
         # The RMSE
         ys = self.dmatrix.get_label()  # pylint: disable=invalid-name
-        square_error = np.square(xs_pred - ys)
+        square_error = np.square(ys_pred - ys)
         rmse = np.sqrt(square_error.mean())
         return "p-rmse", rmse
 
     def average_peak_score(
-        self, xs_pred: np.ndarray, n: int
+        self,
+        ys_pred: np.ndarray,
+        n: int,
     ) -> Tuple[str, float]:  # pylint: disable=invalid-name
         """Evaluate average-peak-score@N in the pack-sum format
 
         Parameters
         ----------
-        xs_pred: np.ndarray
+        ys_pred: np.ndarray
             The raw prediction
-        d_train: xgb.DMatrix
-            The ground-truth label matrix
         n : int
             The N in average-peak-score@N
 
@@ -211,12 +207,12 @@ class PackSum:
         score: float
             The score of the metric
         """
-        xs_pred = self.predict_with_score(xs_pred)
+        ys_pred = self.predict_with_score(ys_pred)
         labels = self.predict_with_score(self.dmatrix.get_label())
         labels = labels / np.unique(self.ids, return_counts=True)[1]
-        trials = np.argsort(xs_pred)[::-1][:n]
-        trial_scores = xs_pred[trials]
-        curve = max_curve(trial_scores) / np.max(xs_pred)
+        trials = np.argsort(ys_pred)[::-1][:n]
+        trial_scores = labels[trials]
+        curve = max_curve(trial_scores) / np.max(labels)
         score = np.mean(curve)
         return "a-peak@%d" % n, score
 
@@ -227,7 +223,7 @@ class XGBModel(PyCostModel):
     booster: Optional[xgb.Booster]
     xgb_params: Dict[str, Any]
     plan_size: int
-    num_warmup_sample: int
+    num_warmup_samples: int
     verbose_eval: int
     model_file: Optional[str]
 
@@ -237,7 +233,7 @@ class XGBModel(PyCostModel):
     def __init__(
         self,
         verbose_eval: int = 25,
-        num_warmup_sample: int = 100,
+        num_warmup_samples: int = 100,
         model_file: Optional[str] = None,
         seed: int = 43,
     ):
@@ -255,7 +251,7 @@ class XGBModel(PyCostModel):
         }
         self.booster = None
         self.plan_size = 32
-        self.num_warmup_sample = num_warmup_sample
+        self.num_warmup_samples = num_warmup_samples
         self.verbose_eval = verbose_eval
         self.model_file = model_file
         self.cached_features = []
@@ -264,6 +260,7 @@ class XGBModel(PyCostModel):
     def update(self, inputs: List[MeasureInput], results: List[MeasureResult]) -> None:
         """Update the cost model according to new measurement results (training data).
         XGBoost does not support incremental training, so we re-train a new model every time.
+
         Parameters
         ----------
         inputs : List[MeasureInput]
@@ -277,21 +274,26 @@ class XGBModel(PyCostModel):
         if len(inputs) == 0:
             return
 
-        def obj(xs_pred: np.ndarray, d_train: xgb.DMatrix):
+        def obj(ys_pred: np.ndarray, d_train: xgb.DMatrix):
             d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
-            return d_train.square_error(xs_pred)
+            return d_train.obj_square_error(ys_pred)
 
-        def rmse(xs_pred: np.ndarray, d_train: xgb.DMatrix):
+        def rmse(ys_pred: np.ndarray, d_train: xgb.DMatrix):
             d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
-            return d_train.rmse(xs_pred)
+            return d_train.rmse(ys_pred)
 
-        def average_peak_score(xs_pred: np.ndarray, d_train: xgb.DMatrix):
+        def average_peak_score(ys_pred: np.ndarray, d_train: xgb.DMatrix):
             d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
-            return d_train.average_peak_score(xs_pred, self.plan_size)
+            return d_train.average_peak_score(ys_pred, self.plan_size)
 
         # extract feature
-        self.cached_features.extend(per_block_feature(x.sch) for x in inputs)
-        self.cached_mean_costs = np.append(self.cached_mean_costs, [x.mean_cost() for x in results])
+        new_features = [per_block_feature(x.sch) for x in inputs]
+        new_mean_costs = [x.mean_cost() for x in results]
+        self.validate(new_features, new_mean_costs)
+
+        # use together with previous features
+        self.cached_features.extend(new_features)
+        self.cached_mean_costs = np.append(self.cached_mean_costs, new_mean_costs)
         features = self.cached_features
         mean_costs = self.cached_mean_costs.min() / self.cached_mean_costs
         # train xgb model
@@ -336,15 +338,49 @@ class XGBModel(PyCostModel):
             The predicted scores for all states
         """
         n_measured = len(self.cached_features)
-        if self.booster is not None and n_measured > self.num_warmup_sample:
+        if self.booster is not None and n_measured >= self.num_warmup_samples:
             features = [per_block_feature(x) for x in schedules]
             d_test = PackSum(xs=features, ys=None)
-            ret = d_test.predict_with_booster(self.booster)
+            pred = self.booster.predict(d_test.dmatrix)
+            ret = d_test.predict_with_score(pred)
         else:
             n = len(schedules)
             ret = np.random.uniform(0, 1, (n,))
         ret = ret.astype("float64")
         return ret
+
+    def validate(  # pylint: disable=invalid-name
+        self,
+        xs: List[np.ndarray],
+        ys: List[float],
+    ) -> None:
+        """Evaluate the score of states
+
+        Parameters
+        ----------
+        xs : List[np.ndarray]
+            A batch of input samples
+        ys : List[float]
+            A batch of labels
+
+        Returns
+        -------
+        scores: np.ndarray
+            The predicted scores for all states
+        """
+        d_valid = PackSum(xs=xs, ys=ys)
+        if self.booster is None:
+            logger.debug("XGB validation: skipped because no booster is trained yet")
+            return
+        ys_pred = self.booster.predict(d_valid.dmatrix)
+        info = "\t".join(
+            "%s: %.6f" % feval(ys_pred)
+            for feval in (
+                d_valid.rmse,
+                lambda ys_pred: d_valid.average_peak_score(ys_pred, n=self.plan_size),
+            )
+        )
+        logger.debug("XGB validation: %s", info)
 
     def load(self, path: str):
         """Load the model from a file
@@ -467,7 +503,7 @@ def custom_callback(
                 if "null" in key:
                     continue
                 infos.append("%s: %.6f" % (key, mean))
-            logger.info("\t".join(infos))
+            logger.debug("\t".join(infos))
 
         ##### Choose score and do early stopping #####
         score = None
@@ -494,7 +530,7 @@ def custom_callback(
         elif env.iteration - best_iteration >= stopping_rounds:
             best_msg = state["best_msg"]
             if verbose_eval and env.rank == 0:
-                logger.info("XGB stopped. Best iteration: %s ", best_msg)
+                logger.debug("XGB stopped. Best iteration: %s ", best_msg)
             raise EarlyStopException(best_iteration)
 
     return callback
