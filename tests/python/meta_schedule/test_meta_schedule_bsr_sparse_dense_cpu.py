@@ -147,36 +147,36 @@ def test_sparse_dense():
             if not tvm.testing.device_enabled(device):
                 print("Skip because %s is not enabled" % device)
                 return
-            # print("Running on target: %s" % device)
-            # # te schedule
-            # with tvm.target.Target(device):
-            #     fcompute, fschedule = tvm.topi.testing.dispatch(device, _sparse_dense_implement_te)
-            #     Y = fcompute(X, W_data, W_indices, W_indptr)
-            #     s = fschedule([Y])
-            #     func = tvm.build(s, [X, W_data, W_indices, W_indptr, Y])
-            #     Y_tvm = tvm.nd.array(np.zeros(Y_np.shape, dtype=Y_np.dtype), ctx=ctx)
-            #     func(
-            #         tvm.nd.array(X_np, ctx=ctx),
-            #         tvm.nd.array(W_sp_np.data, ctx=ctx),
-            #         tvm.nd.array(W_sp_np.indices, ctx=ctx),
-            #         tvm.nd.array(W_sp_np.indptr, ctx=ctx),
-            #         Y_tvm,
-            #     )
-            #     tvm.testing.assert_allclose(Y_tvm.asnumpy(), Y_np, atol=1e-4, rtol=1e-4)
-            #     evaluator = func.time_evaluator(func.entry_name, ctx, number=10)
-            #     print(
-            #         "sparse dense te schedule: %f ms"
-            #         % (
-            #             evaluator(
-            #                 tvm.nd.array(X_np, ctx=ctx),
-            #                 tvm.nd.array(W_sp_np.data, ctx=ctx),
-            #                 tvm.nd.array(W_sp_np.indices, ctx=ctx),
-            #                 tvm.nd.array(W_sp_np.indptr, ctx=ctx),
-            #                 Y_tvm,
-            #             ).mean
-            #             * 1e3
-            #         )
-            #     )
+            print("Running on target: %s" % device)
+            # te schedule
+            with tvm.target.Target(device):
+                fcompute, fschedule = tvm.topi.testing.dispatch(device, _sparse_dense_implement_te)
+                Y = fcompute(X, W_data, W_indices, W_indptr)
+                s = fschedule([Y])
+                func = tvm.build(s, [X, W_data, W_indices, W_indptr, Y])
+                Y_tvm = tvm.nd.array(np.zeros(Y_np.shape, dtype=Y_np.dtype), ctx=ctx)
+                func(
+                    tvm.nd.array(X_np, ctx=ctx),
+                    tvm.nd.array(W_sp_np.data, ctx=ctx),
+                    tvm.nd.array(W_sp_np.indices, ctx=ctx),
+                    tvm.nd.array(W_sp_np.indptr, ctx=ctx),
+                    Y_tvm,
+                )
+                tvm.testing.assert_allclose(Y_tvm.asnumpy(), Y_np, atol=1e-4, rtol=1e-4)
+                evaluator = func.time_evaluator(func.entry_name, ctx, number=10)
+                print(
+                    "sparse dense te schedule: %f ms"
+                    % (
+                        evaluator(
+                            tvm.nd.array(X_np, ctx=ctx),
+                            tvm.nd.array(W_sp_np.data, ctx=ctx),
+                            tvm.nd.array(W_sp_np.indices, ctx=ctx),
+                            tvm.nd.array(W_sp_np.indptr, ctx=ctx),
+                            Y_tvm,
+                        ).mean
+                        * 1e3
+                    )
+                )
 
             # auto tir schedule
             with tvm.target.Target(device):
