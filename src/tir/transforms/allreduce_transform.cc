@@ -439,10 +439,25 @@ class AllReduceTransformer : public StmtExprMutator {
         writes.push_back(GetRef<TensorRegion>(new_write.get()));
       }
 
+      // Add store predicate.
+      PrimExpr predicate = op->predicate;
+      for (size_t i = par_idx + 1; i < stmt_stack_.size(); ++i) {
+        const auto* loop = stmt_stack_[i].as<LoopNode>();
+        CHECK(loop != nullptr);
+        for (const Annotation& annotation : loop->annotations) {
+          if (annotation->attr_key == attr::loop_type) {
+            std::string thread_tag = Downcast<StringImm>(annotation->value)->value;
+            if (thread_tag.substr(0, 9) == "threadIdx") {
+              predicate = And(predicate, EQ(loop->loop_var, loop->min));
+            }
+          }
+        }
+      }
+
       Stmt body1 = BufferStore(write_buffer, BufferLoad(reduce_temp.value(), {0}),
                                update_body->indices);
       body1 = Block(iter_vars, reads, writes, body1, {}, {}, block_name, NullOpt);
-      body1 = BlockRealize(binding_values, op->predicate,
+      body1 = BlockRealize(binding_values, predicate,
                            GetRef<Block>(body1.as<BlockNode>()), exec_scope);
 
       // Step d. Append the stmts above to the list.
@@ -509,10 +524,18 @@ class AllReduceTransformer : public StmtExprMutator {
         writes.push_back(GetRef<TensorRegion>(new_write.get()));
       }
 
+      // Add store predicate.
+      PrimExpr predicate = op->predicate;
+      for (size_t i = par_idx + 1; i < stmt_stack_.size(); ++i) {
+        const auto* loop = stmt_stack_[i].as<LoopNode>();
+        CHECK(loop != nullptr);
+        predicate = And(predicate, EQ(loop->loop_var, loop->min));
+      }
+
       Stmt body = BufferStore(write_buffer, BufferLoad(reduce_temp.value(), {0}),
                               update_body->indices);
       body = Block(iter_vars, reads, writes, body, {}, {}, block_name, NullOpt);
-      body = BlockRealize(binding_values, op->predicate,
+      body = BlockRealize(binding_values, predicate,
                           GetRef<Block>(body.as<BlockNode>()), exec_scope);
 
       // Step c. Append the stmt above to the list.
