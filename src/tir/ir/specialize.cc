@@ -275,10 +275,12 @@ PrimFunc GenerateNewFunc(PrimFunc func, const VarMapType& internal_var_map,
   PrimFunc new_func = buffer_mutator.MutatePrimFunc(func);
   // replace vars in body
   new_func.CopyOnWrite()->body = Substitute(new_func->body, internal_var_map);
-  auto &attr_dict = new_func.CopyOnWrite()->attrs.CopyOnWrite()->dict;
-  for (auto& kv : attr_dict) {
-    if (kv.second.as<PrimExprNode>()) {
-      attr_dict.Set(kv.first, Substitute(Downcast<PrimExpr>(kv.second), internal_var_map));
+  if (new_func->attrs.defined()) {
+    auto &attr_dict = new_func.CopyOnWrite()->attrs.CopyOnWrite()->dict;
+    for (auto& kv : attr_dict) {
+      if (kv.second.as<PrimExprNode>()) {
+        attr_dict.Set(kv.first, Substitute(Downcast<PrimExpr>(kv.second), internal_var_map));
+      }
     }
   }
   new_func = ExertSpecializeConstraint(param_var_map, new_func);
