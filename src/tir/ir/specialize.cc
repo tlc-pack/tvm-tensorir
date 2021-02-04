@@ -25,6 +25,7 @@
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/stmt_functor.h>
+#include <tvm/tir/transform.h>
 
 #include <functional>
 
