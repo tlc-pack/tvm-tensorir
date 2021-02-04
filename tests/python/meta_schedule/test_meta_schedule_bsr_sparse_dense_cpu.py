@@ -52,11 +52,8 @@ def sparse_dense_bsr(x: ty.handle, data: ty.handle, indices: ty.handle, indptr: 
         for block_offset, k in tir.grid(W_indptr[tir.floordiv(j, bs_r) + 1] - W_indptr[tir.floordiv(j, bs_r)], bs_c):
             with tir.block([M, N_blocks*bs_r, tir.reduce_axis(0, W_indptr[j + 1] - W_indptr[j]), tir.reduce_axis(0, bs_c)], "sparse_dense") as [m, n, offset, kk]:
                 with tir.init():
-                    BSRmm[m, n] = 0.0
+                    BSRmm[m, n] = tir.float32(0)
                 BSRmm[m, n] = BSRmm[m, n] + W_data[offset + W_indptr[tir.floordiv(n, bs_r)], tir.floormod(n, bs_r), kk]*X[m, bs_c*W_indices[offset+W_indptr[tir.floordiv(n, bs_r)]]+kk]
-
-# fmt: on
-# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks
 
 
 _sparse_dense_implement_te = {
@@ -120,7 +117,7 @@ def random_bsr_matrix(M, N, BS_R, BS_C, density, dtype):
     return s
 
 
-@pytest.mark.skip("Needs RPC")
+@pytest.mark.skip(reason="needs RPC")
 def test_sparse_dense():
     os.environ["TVM_TRACKER_KEY"] = RPC_KEY
     for _ in range(1):
