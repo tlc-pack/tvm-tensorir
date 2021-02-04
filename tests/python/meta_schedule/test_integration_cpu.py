@@ -83,7 +83,7 @@ def test_matmul_post_order_apply():
                 ms.mutator.mutate_compute_location(): 0.05,
             },
             cost_model=ms.XGBModel(
-                num_warmup_sample=0,
+                num_warmup_samples=0,
             ),
             eps_greedy=0.05,
         ),
@@ -122,7 +122,7 @@ def test_matmul_relu_post_order_apply():
                 ms.mutator.mutate_compute_location(): 0.05,
             },
             cost_model=ms.XGBModel(
-                num_warmup_sample=0,
+                num_warmup_samples=0,
             ),
             eps_greedy=0.05,
         ),
@@ -161,7 +161,7 @@ def test_conv1d_post_order_apply():
                 ms.mutator.mutate_compute_location(): 0.05,
             },
             cost_model=ms.XGBModel(
-                num_warmup_sample=0,
+                num_warmup_samples=0,
             ),
             eps_greedy=0.05,
         ),

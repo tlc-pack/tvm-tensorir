@@ -109,7 +109,7 @@ class PackSum:
     def __init__(
         self,
         xs: List[np.ndarray],
-        ys: Optional[List[np.ndarray]],
+        ys: Optional[List[float]],
     ):
         """Create PackSum format given a batch of samples
 
@@ -117,7 +117,7 @@ class PackSum:
         ----------
         xs : List[np.ndarray]
             A batch of input samples
-        ys : Optional[List[np.ndarray]]
+        ys : Optional[List[float]]
             A batch of labels. None means no lables available.
         """
         import xgboost as xgb  # pylint: disable=import-outside-toplevel
@@ -223,7 +223,7 @@ class XGBModel(PyCostModel):
     booster: Optional[xgb.Booster]
     xgb_params: Dict[str, Any]
     plan_size: int
-    num_warmup_sample: int
+    num_warmup_samples: int
     verbose_eval: int
     model_file: Optional[str]
 
@@ -233,7 +233,7 @@ class XGBModel(PyCostModel):
     def __init__(
         self,
         verbose_eval: int = 25,
-        num_warmup_sample: int = 100,
+        num_warmup_samples: int = 100,
         model_file: Optional[str] = None,
         seed: int = 43,
     ):
@@ -251,7 +251,7 @@ class XGBModel(PyCostModel):
         }
         self.booster = None
         self.plan_size = 32
-        self.num_warmup_sample = num_warmup_sample
+        self.num_warmup_samples = num_warmup_samples
         self.verbose_eval = verbose_eval
         self.model_file = model_file
         self.cached_features = []
@@ -260,6 +260,7 @@ class XGBModel(PyCostModel):
     def update(self, inputs: List[MeasureInput], results: List[MeasureResult]) -> None:
         """Update the cost model according to new measurement results (training data).
         XGBoost does not support incremental training, so we re-train a new model every time.
+
         Parameters
         ----------
         inputs : List[MeasureInput]
@@ -286,8 +287,13 @@ class XGBModel(PyCostModel):
             return d_train.average_peak_score(ys_pred, self.plan_size)
 
         # extract feature
-        self.cached_features.extend(per_block_feature(x.sch) for x in inputs)
-        self.cached_mean_costs = np.append(self.cached_mean_costs, [x.mean_cost() for x in results])
+        new_features = [per_block_feature(x.sch) for x in inputs]
+        new_mean_costs = [x.mean_cost() for x in results]
+        self.validate(new_features, new_mean_costs)
+
+        # use together with previous features
+        self.cached_features.extend(new_features)
+        self.cached_mean_costs = np.append(self.cached_mean_costs, new_mean_costs)
         features = self.cached_features
         mean_costs = self.cached_mean_costs.min() / self.cached_mean_costs
         # train xgb model
@@ -332,16 +338,49 @@ class XGBModel(PyCostModel):
             The predicted scores for all states
         """
         n_measured = len(self.cached_features)
-        if self.booster is not None and n_measured > self.num_warmup_sample:
+        if self.booster is not None and n_measured >= self.num_warmup_samples:
             features = [per_block_feature(x) for x in schedules]
             d_test = PackSum(xs=features, ys=None)
-            pred = self.booster.predict(self.dmatrix)
+            pred = self.booster.predict(d_test.dmatrix)
             ret = d_test.predict_with_score(pred)
         else:
             n = len(schedules)
             ret = np.random.uniform(0, 1, (n,))
         ret = ret.astype("float64")
         return ret
+
+    def validate(  # pylint: disable=invalid-name
+        self,
+        xs: List[np.ndarray],
+        ys: List[float],
+    ) -> None:
+        """Evaluate the score of states
+
+        Parameters
+        ----------
+        xs : List[np.ndarray]
+            A batch of input samples
+        ys : List[float]
+            A batch of labels
+
+        Returns
+        -------
+        scores: np.ndarray
+            The predicted scores for all states
+        """
+        d_valid = PackSum(xs=xs, ys=ys)
+        if self.booster is None:
+            logger.debug("XGB validation: skipped because no booster is trained yet")
+            return
+        ys_pred = self.booster.predict(d_valid.dmatrix)
+        info = "\t".join(
+            "%s: %.6f" % feval(ys_pred)
+            for feval in (
+                d_valid.rmse,
+                lambda ys_pred: d_valid.average_peak_score(ys_pred, n=self.plan_size),
+            )
+        )
+        logger.debug("XGB validation: %s", info)
 
     def load(self, path: str):
         """Load the model from a file

@@ -78,7 +78,7 @@ def test_integration_matmul():
                 ms.mutator.mutate_tile_size(): 1.0,
             },
             cost_model=ms.XGBModel(
-                num_warmup_sample=0,
+                num_warmup_samples=0,
             ),
             eps_greedy=0.05,
         ),
