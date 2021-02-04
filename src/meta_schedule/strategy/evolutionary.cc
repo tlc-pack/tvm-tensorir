@@ -468,8 +468,8 @@ Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const Search
     // `bests`: The best schedules according to the cost mode when explore the space using mutators
     LOG(INFO) << "Evolving...";
     Array<Trace> bests = EvolveWithCostModel(inits, task, space, sampler);
-    LOG(INFO) << "Ranking by the cost model, the number of samples picked: " << bests.size();
     // Pick candidates with eps greedy
+    LOG(INFO) << "Picking with epsilon greedy where epsilon = " << eps_greedy;
     Array<Trace> picks = PickWithEpsGreedy(inits, bests, task, space, sampler);
     // Run measurement, update cost model
     LOG(INFO) << "Sending " << picks.size() << " samples for measurement";
@@ -632,6 +632,23 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
   results.reserve(this->num_measures_per_iteration);
   for (const CachedTrace& item : heap.heap) {
     results.push_back(GetRef<Trace>(item.trace));
+  }
+  {
+    constexpr int kNumScoresPerLine = 10;
+    std::ostringstream os;
+    int n = heap.heap.size();
+    for (int st = 0; st < n; st += kNumScoresPerLine) {
+      os << std::endl;
+      int ed = std::min(st + kNumScoresPerLine, n);
+      os << "[" << (st + 1) << ":" << ed << "]:\t";
+      for (int i = st; i < ed; ++i) {
+        if (i != st) {
+          os << "  ";
+        }
+        os << std::fixed << std::setprecision(4) << heap.heap[i].throughput;
+      }
+    }
+    LOG(INFO) << "Scores of the best " << n << " candidates:" << os.str();
   }
   return results;
 }

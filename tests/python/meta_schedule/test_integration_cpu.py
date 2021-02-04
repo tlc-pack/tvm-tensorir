@@ -15,6 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Test multi-level tiling """
+import logging
+
 # pylint: disable=missing-function-docstring
 import os
 
@@ -24,6 +26,10 @@ import tvm
 from tvm import meta_schedule as ms
 from tvm import te
 from tvm.tir import testing
+
+logging.basicConfig()
+logging.getLogger("meta_schedule").setLevel(logging.DEBUG)
+
 
 RPC_KEY = "test"
 TARGET = tvm.target.Target("llvm --num_cores 16")
@@ -77,7 +83,7 @@ def test_matmul_post_order_apply():
                 ms.mutator.mutate_compute_location(): 0.05,
             },
             cost_model=ms.XGBModel(
-                num_warmup_sample=0,
+                num_warmup_samples=0,
             ),
             eps_greedy=0.05,
         ),
@@ -116,7 +122,7 @@ def test_matmul_relu_post_order_apply():
                 ms.mutator.mutate_compute_location(): 0.05,
             },
             cost_model=ms.XGBModel(
-                num_warmup_sample=0,
+                num_warmup_samples=0,
             ),
             eps_greedy=0.05,
         ),
@@ -155,7 +161,7 @@ def test_conv1d_post_order_apply():
                 ms.mutator.mutate_compute_location(): 0.05,
             },
             cost_model=ms.XGBModel(
-                num_warmup_sample=0,
+                num_warmup_samples=0,
             ),
             eps_greedy=0.05,
         ),
