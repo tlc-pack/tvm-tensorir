@@ -38,146 +38,186 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
   /*!
    *  Check
    *    - block is reduction
-   *    - loop is higher than all the loops related to reduce block var
+   *    - loop is higher than all the loops related to reduce block var, or loop is None
    *  Mutate
-   *    - generate loops related to data par block vars
-   *    - generate corresponding init block and update block
+   *    - If loop is not None:
+   *      - generate loops related to data par block vars
+   *      - generate corresponding init block and update block
+   *    - If loop is None:
+   *      - substitute `tir.init()` with IfThenElse statement
    */
   // A bunch of type checking
+  CHECK(block_sref.defined())
+      << "ValueError: 'decompose_reduction' expect a block as first argument, but get value 'None'";
   const auto* block = block_sref->GetStmt<BlockNode>();
-  const auto* loop = loop_sref->GetStmt<LoopNode>();
-  CHECK(block != nullptr)
-      << "TypeError: 'decompose_reduction' expect a block as first argument, but get type: "
-      << block_sref->stmt->GetTypeKey();
-  CHECK(loop != nullptr)
-      << "TypeError: 'decompose_reduction' expect a loop as second argument, but get type: "
-      << loop_sref->stmt->GetTypeKey();
-  CHECK(block->init.defined()) << "ValueError: 'decompose_reduction' expect a reduction block, "
-                                  "but the block has no init block";
-  Array<StmtSRef> loops = GetLoopsInScope(block_sref);
-  const BlockRealizeNode* realize = GetBlockRealize(block_sref).get();
-  // Cond 0. Check loop_sref is an ancestor of block_sref
-  CHECK(ListContainsElement(loops, loop_sref))
-      << "ValueError: 'decompose_reduction' expect the loop to be an ancestor of block";
-  // Cond 1. Check block is reduction
-  CHECK(GetParentScope(block_sref).IsReduction(block_sref))
-      << "decompose_reduction expect the block to be a reduction block";
-  // Cond 2. Check 'loop' is higher than all the loops related to block var of type reduction
-  for (int i = 0, n = block->iter_vars.size(); i < n; ++i) {
-    // For each block var of type kCommReduce, check its binding
-    const IterVar& iter_var = block->iter_vars[i];
-    const PrimExpr& binding = realize->binding_values[i];
-    if (iter_var->iter_type != IterVarType::kCommReduce) {
-      continue;
-    }
-    for (const StmtSRef& higher_loop : loops) {
-      // Only check loops higher than the target loop
-      if (higher_loop.same_as(loop_sref)) {
-        break;
-      }
-      // loop_var of a higher loop shouldn't contain loop var
-      const Var& loop_var = higher_loop->GetStmt<LoopNode>()->loop_var;
-      CHECK(!StmtExprContainsVar(binding, loop_var))
-          << "ValueError: 'decompose_reduction' expect the loop to be higher "
-             "than all the loops related to reduce block var";
-    }
-  }
-  // Mutate
-  ObjectPtr<BlockNode> init_block = make_object<BlockNode>();
-  ObjectPtr<BlockRealizeNode> init_realize = make_object<BlockRealizeNode>();
-  init_block->tag = block->tag + "_init";
-  init_realize->binding_values = {};
-  init_realize->predicate = realize->predicate;
-  init_realize->block = Block(init_block);
-  // Step 1. Create new block vars and their bindings
-  // Maps an old block var to the new corresponding block var
-  std::unordered_map<const VarNode*, const VarNode*> block_var_map;
-  for (int i = 0, n = block->iter_vars.size(); i < n; ++i) {
-    const IterVar& iter_var = block->iter_vars[i];
-    const PrimExpr& binding = realize->binding_values[i];
-    // Only process data parallel block vars
-    if (iter_var->iter_type != IterVarType::kDataPar) {
-      continue;
-    }
-    // Create a new block var
-    IterVar new_iter_var(/*dom=*/iter_var->dom,
-                         /*var=*/iter_var->var.copy_with_suffix("_init"),
-                         /*iter_type=*/iter_var->iter_type,
-                         /*thread_tag=*/iter_var->thread_tag);
-    // Add a block var and its binding
-    init_block->iter_vars.push_back(new_iter_var);
-    init_realize->binding_values.push_back(binding);
-    // Add a mapping from old block vars to new block vars
-    block_var_map[iter_var->var.get()] = new_iter_var->var.get();
-  }
-  // Step 2. After copying block vars, substitute them in init block
-  init_block->body = SubstituteInScope(block->init.value(), block_var_map);
-  for (const TensorRegion& write : block->writes) {
-    init_block->writes.push_back(SubstituteTensorRegion(write, block_var_map));
-  }
-  // Step 3. Create loops above the init block
-  Stmt body = BlockRealize(init_realize);
-  for (int i = static_cast<int>(loops.size()) - 1; i >= 0; --i) {
-    const auto* higher_loop = loops[i]->GetStmt<LoopNode>();
-    for (const PrimExpr& expr : init_realize->binding_values) {
-      // Skip irrelevant loops
-      if (!StmtExprContainsVar(expr, higher_loop->loop_var)) {
+  if (loop_sref.defined()) {
+    // 'loop' is not 'None'.
+    const auto* loop = loop_sref->GetStmt<LoopNode>();
+    CHECK(block != nullptr)
+        << "TypeError: 'decompose_reduction' expect a block as first argument, but get type: "
+        << block_sref->stmt->GetTypeKey();
+    CHECK(loop != nullptr)
+        << "TypeError: 'decompose_reduction' expect a loop as second argument, but get type: "
+        << loop_sref->stmt->GetTypeKey();
+    CHECK(block->init.defined()) << "ValueError: 'decompose_reduction' expect a reduction block, "
+                                    "but the block has no init block";
+    Array<StmtSRef> loops = GetLoopsInScope(block_sref);
+    const BlockRealizeNode* realize = GetBlockRealize(block_sref).get();
+    // Cond 0. Check loop_sref is an ancestor of block_sref
+    CHECK(ListContainsElement(loops, loop_sref))
+        << "ValueError: 'decompose_reduction' expect the loop to be an ancestor of block";
+    // Cond 1. Check block is reduction
+    CHECK(GetParentScope(block_sref).IsReduction(block_sref))
+        << "decompose_reduction expect the block to be a reduction block";
+    // Cond 2. Check 'loop' is higher than all the loops related to block var of type reduction
+    for (int i = 0, n = block->iter_vars.size(); i < n; ++i) {
+      // For each block var of type kCommReduce, check its binding
+      const IterVar& iter_var = block->iter_vars[i];
+      const PrimExpr& binding = realize->binding_values[i];
+      if (iter_var->iter_type != IterVarType::kCommReduce) {
         continue;
       }
-      // Create a new equivalent to the loop
-      Var old_loop_var = higher_loop->loop_var;
-      Var new_loop_var = old_loop_var.copy_with_suffix("_init");
-      std::unordered_map<const VarNode*, const VarNode*> var_map = {
-          {old_loop_var.get(), new_loop_var.get()}};
-      body = Loop(/*loop_var=*/new_loop_var,
-                  /*min=*/higher_loop->min,
-                  /*extent=*/higher_loop->extent,
-                  /*annotations=*/{},
-                  /*body=body*/ SubstituteInScope(body, var_map));
+      for (const StmtSRef& higher_loop : loops) {
+        // Only check loops higher than the target loop
+        if (higher_loop.same_as(loop_sref)) {
+          break;
+        }
+        // loop_var of a higher loop shouldn't contain loop var
+        const Var& loop_var = higher_loop->GetStmt<LoopNode>()->loop_var;
+        CHECK(!StmtExprContainsVar(binding, loop_var))
+            << "ValueError: 'decompose_reduction' expect the loop to be higher "
+               "than all the loops related to reduce block var";
+      }
     }
-    // Only consider loops higher than the given loop
-    if (loops[i].same_as(loop_sref)) {
-      break;
+    // Mutate
+    ObjectPtr<BlockNode> init_block = make_object<BlockNode>();
+    ObjectPtr<BlockRealizeNode> init_realize = make_object<BlockRealizeNode>();
+    init_block->tag = block->tag + "_init";
+    init_realize->binding_values = {};
+    init_realize->predicate = realize->predicate;
+    init_realize->block = Block(init_block);
+    // Step 1. Create new block vars and their bindings
+    // Maps an old block var to the new corresponding block var
+    std::unordered_map<const VarNode*, const VarNode*> block_var_map;
+    for (int i = 0, n = block->iter_vars.size(); i < n; ++i) {
+      const IterVar& iter_var = block->iter_vars[i];
+      const PrimExpr& binding = realize->binding_values[i];
+      // Only process data parallel block vars
+      if (iter_var->iter_type != IterVarType::kDataPar) {
+        continue;
+      }
+      // Create a new block var
+      IterVar new_iter_var(/*dom=*/iter_var->dom,
+                           /*var=*/iter_var->var.copy_with_suffix("_init"),
+                           /*iter_type=*/iter_var->iter_type,
+                           /*thread_tag=*/iter_var->thread_tag);
+      // Add a block var and its binding
+      init_block->iter_vars.push_back(new_iter_var);
+      init_realize->binding_values.push_back(binding);
+      // Add a mapping from old block vars to new block vars
+      block_var_map[iter_var->var.get()] = new_iter_var->var.get();
     }
-  }
-  // Step 4. Create the parent of the new loop
-  if (const auto* parent = loop_sref->parent->GetStmt<LoopNode>()) {
-    this->Replace(GetRef<StmtSRef>(loop_sref->parent),
-                  Loop(/*loop_var=*/parent->loop_var,
-                       /*min=*/parent->min,
-                       /*extent=*/parent->extent,
-                       /*annotations=*/parent->annotations,
-                       /*body=*/SeqStmt::Flatten(Array<Stmt>{body, parent->body})));
-  } else if (const auto* parent = loop_sref->parent->GetStmt<BlockNode>()) {
-    Block new_block = Block(/*iter_vars=*/parent->iter_vars,
-                            /*reads=*/parent->reads,
-                            /*writes=*/parent->writes,
-                            /*body=*/SeqStmt::Flatten(Array<Stmt>{body, parent->body}),
-                            /*allocations=*/parent->allocations,
-                            /*annotations=*/parent->annotations,
-                            /*tag=*/parent->tag,
-                            /*init=*/NullOpt);
-    this->Replace(GetRef<StmtSRef>(loop_sref->parent), new_block,
-                  {{new_block, GetRef<Block>(parent)}});
+    // Step 2. After copying block vars, substitute them in init block
+    init_block->body = SubstituteInScope(block->init.value(), block_var_map);
+    for (const TensorRegion& write : block->writes) {
+      init_block->writes.push_back(SubstituteTensorRegion(write, block_var_map));
+    }
+    // Step 3. Create loops above the init block
+    Stmt body = BlockRealize(init_realize);
+    for (int i = static_cast<int>(loops.size()) - 1; i >= 0; --i) {
+      const auto* higher_loop = loops[i]->GetStmt<LoopNode>();
+      for (const PrimExpr& expr : init_realize->binding_values) {
+        // Skip irrelevant loops
+        if (!StmtExprContainsVar(expr, higher_loop->loop_var)) {
+          continue;
+        }
+        // Create a new equivalent to the loop
+        Var old_loop_var = higher_loop->loop_var;
+        Var new_loop_var = old_loop_var.copy_with_suffix("_init");
+        std::unordered_map<const VarNode*, const VarNode*> var_map = {
+            {old_loop_var.get(), new_loop_var.get()}};
+        body = Loop(/*loop_var=*/new_loop_var,
+                    /*min=*/higher_loop->min,
+                    /*extent=*/higher_loop->extent,
+                    /*annotations=*/{},
+                    /*body=body*/ SubstituteInScope(body, var_map));
+      }
+      // Only consider loops higher than the given loop
+      if (loops[i].same_as(loop_sref)) {
+        break;
+      }
+    }
+    // Step 4. Create the parent of the new loop
+    if (const auto* parent = loop_sref->parent->GetStmt<LoopNode>()) {
+      this->Replace(GetRef<StmtSRef>(loop_sref->parent),
+                    Loop(/*loop_var=*/parent->loop_var,
+                         /*min=*/parent->min,
+                         /*extent=*/parent->extent,
+                         /*annotations=*/parent->annotations,
+                         /*body=*/SeqStmt::Flatten(Array<Stmt>{body, parent->body})));
+    } else if (const auto* parent = loop_sref->parent->GetStmt<BlockNode>()) {
+      Block new_block = Block(/*iter_vars=*/parent->iter_vars,
+                              /*reads=*/parent->reads,
+                              /*writes=*/parent->writes,
+                              /*body=*/SeqStmt::Flatten(Array<Stmt>{body, parent->body}),
+                              /*allocations=*/parent->allocations,
+                              /*annotations=*/parent->annotations,
+                              /*tag=*/parent->tag,
+                              /*init=*/NullOpt);
+      this->Replace(GetRef<StmtSRef>(loop_sref->parent), new_block,
+                    {{new_block, GetRef<Block>(parent)}});
+    } else {
+      LOG(FATAL)
+          << "TypeError: 'decompose_reduction' is applied to loop whose parent's type is not "
+             "unsupported: "
+          << loop_sref->parent->stmt->GetTypeKey();
+    }
+    // Step 5. Change the reduction block to update block
+    Block update_block(
+        /*iter_vars=*/block->iter_vars,
+        /*reads=*/block->reads,
+        /*writes=*/block->writes,
+        /*body=*/block->body,
+        /*allocations=*/block->allocations,
+        /*annotations=*/block->annotations,
+        /*tag=*/block->tag + "_update",
+        /*init=*/NullOpt);
+    this->Replace(block_sref, update_block, {{update_block, GetRef<Block>(block)}});
+    // Update scope information
+    UpdateScope(GetParentBlockSRef(block_sref)->stmt, this->stmt2ref, &this->scopes);
+    return stmt2ref.at(init_block.get());
   } else {
-    LOG(FATAL) << "TypeError: 'decompose_reduction' is applied to loop whose parent's type is not "
-                  "unsupported: "
-               << loop_sref->parent->stmt->GetTypeKey();
+    // 'loop' is 'None'. Convert `tir.init()` to a conjunction of conditions.
+    CHECK(block->init.defined()) << "ValueError: 'decompose_reduction' expect a reduction block, "
+                                    "but the block has no init block";
+    PrimExpr condition = const_true();
+    for (const IterVar& var : block->iter_vars) {
+      if (var->iter_type == IterVarType::kCommReduce) {
+        condition = And(condition, EQ(var, var->dom->min));
+      }
+    }
+    condition = arith::Analyzer().Simplify(condition);
+    Stmt body;
+    if (is_one(condition)) {
+      body = block->body;
+    } else {
+      body = SeqStmt({IfThenElse(condition, block->init.value()), block->body});
+    }
+    Block new_block(
+        /*iter_vars=*/block->iter_vars,
+        /*reads=*/block->reads,
+        /*writes=*/block->writes,
+        /*body=*/body,
+        /*allocations=*/block->allocations,
+        /*annotations=*/block->annotations,
+        /*tag=*/block->tag + "_update",
+        /*init=*/NullOpt
+        );
+    this->Replace(block_sref, new_block, {{new_block, GetRef<Block>(block)}});
+    // Update scope information
+    UpdateScope(GetParentBlockSRef(block_sref)->stmt, this->stmt2ref, &this->scopes);
+    return stmt2ref.at(new_block.get());
   }
-  // Step 5. Change the reduction block to update block
-  Block update_block(
-      /*iter_vars=*/block->iter_vars,
-      /*reads=*/block->reads,
-      /*writes=*/block->writes,
-      /*body=*/block->body,
-      /*allocations=*/block->allocations,
-      /*annotations=*/block->annotations,
-      /*tag=*/block->tag + "_update",
-      /*init=*/NullOpt);
-  this->Replace(block_sref, update_block, {{update_block, GetRef<Block>(block)}});
-  // Update scope information
-  UpdateScope(GetParentBlockSRef(block_sref)->stmt, this->stmt2ref, &this->scopes);
-  return stmt2ref.at(init_block.get());
 }
 
 void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& update_sref) {
