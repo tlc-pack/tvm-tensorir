@@ -246,8 +246,8 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
          "BufferStore";
   Optional<CommReducer> reducer;
   Optional<PrimExpr> reducer_lhs, reducer_rhs;
-  CommReducer::FromInitUpdate(init_body->value, GetRef<BufferStore>(update_body),
-      reducer, reducer_lhs, reducer_rhs);
+  CommReducer::FromInitUpdate(init_body->value, GetRef<BufferStore>(update_body), reducer,
+                              reducer_lhs, reducer_rhs);
   CHECK(reducer.defined())
       << "ValueError: 'merge_reduction' pattern detect failed. No reducer pattern matched for "
       << init_body->value << " and " << GetRef<BufferStore>(update_body);
@@ -367,11 +367,11 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   CHECK(update) << "ValueError: the body of the block ought to be a BufferStore stmt";
   Optional<CommReducer> reducer;
   Optional<PrimExpr> reducer_lhs, reducer_rhs;
-  CommReducer::FromInitUpdate(init->value, GetRef<BufferStore>(update),
-      reducer, reducer_lhs, reducer_rhs);
+  CommReducer::FromInitUpdate(init->value, GetRef<BufferStore>(update), reducer, reducer_lhs,
+                              reducer_rhs);
   CHECK(reducer.defined()) << "ValueError: 'merge_reduction' pattern detect failed. "
-                           << "No reducer pattern matched for " << init->value
-                           << " and " << GetRef<BufferStore>(update);
+                           << "No reducer pattern matched for " << init->value << " and "
+                           << GetRef<BufferStore>(update);
   CHECK(reducer_lhs.defined() && reducer_rhs.defined());
   PrimExpr lhs = reducer_lhs.value();
   PrimExpr rhs = reducer_rhs.value();
@@ -423,7 +423,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   }
   rf_bindings.push_back(loop->loop_var);
   rf_iters.push_back(rf_iter);
-  CHECK(0 <= factor_axis && factor_axis <= (int) update->buffer->shape.size())
+  CHECK(0 <= factor_axis && factor_axis <= (int)update->buffer->shape.size())
       << "ValueError: factor_axis should be in range [0, " << update->buffer->shape.size() << "]";
   Array<PrimExpr> rf_shape = update->buffer->shape;
   Array<PrimExpr> rf_indices = update->indices;
@@ -506,7 +506,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
     const auto* l = loops[i]->GetStmt<LoopNode>();
     CHECK(l) << "InternalError: GetLoopsInScope returns a block sref";
     if (l->body->IsInstance<SeqStmtNode>()) {
-      CHECK(i != (int) loops.size() - 1) << "ValueError: can not rfactor";
+      CHECK(i != (int)loops.size() - 1) << "ValueError: can not rfactor";
       top = loops[i + 1];
       break;
     }
