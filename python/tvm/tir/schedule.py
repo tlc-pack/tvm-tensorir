@@ -374,12 +374,18 @@ class Schedule(Object):
         ----------
         block: Block
             The reduction block
-        loop: Loop
-            The position where init block will be
+        loop: Loop or None
+            If loop is not None, it means the position where init
+            block will be. Otherwise `decompose_reduction` will substitute
+            `tir.init()` with the initialization condition.
         Returns
         -------
-        init: Block
-            The init block
+        If loop is not None, return
+            init: Block
+                The init block
+        Otherwise, return
+            block: Block
+                The input block
         """
         return _ffi_api_schedule.ScheduleDecomposeReduction(self, block, loop)
 
