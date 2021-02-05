@@ -207,12 +207,13 @@ class PackSum:
         score: float
             The score of the metric
         """
+        ys = self.dmatrix.get_label()  # pylint: disable=invalid-name
+        ys = self.predict_with_score(ys)  # pylint: disable=invalid-name
+        ys = ys / np.unique(self.ids, return_counts=True)[1]  # pylint: disable=invalid-name
         ys_pred = self.predict_with_score(ys_pred)
-        labels = self.predict_with_score(self.dmatrix.get_label())
-        labels = labels / np.unique(self.ids, return_counts=True)[1]
         trials = np.argsort(ys_pred)[::-1][:n]
-        trial_scores = labels[trials]
-        curve = max_curve(trial_scores) / np.max(labels)
+        trial_scores = ys[trials]
+        curve = max_curve(trial_scores) / np.max(ys)
         score = np.mean(curve)
         return "a-peak@%d" % n, score
 
@@ -376,8 +377,8 @@ class XGBModel(PyCostModel):
         info = "\t".join(
             "%s: %.6f" % feval(ys_pred)
             for feval in (
-                d_valid.rmse,
                 lambda ys_pred: d_valid.average_peak_score(ys_pred, n=self.plan_size),
+                d_valid.rmse,
             )
         )
         logger.debug("XGB validation: %s", info)

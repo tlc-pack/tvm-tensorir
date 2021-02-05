@@ -634,13 +634,13 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
     results.push_back(GetRef<Trace>(item.trace));
   }
   {
-    constexpr int kNumScoresPerLine = 10;
+    constexpr int kNumScoresPerLine = 16;
     std::ostringstream os;
     int n = heap.heap.size();
     for (int st = 0; st < n; st += kNumScoresPerLine) {
       os << std::endl;
       int ed = std::min(st + kNumScoresPerLine, n);
-      os << "[" << (st + 1) << ":" << ed << "]:\t";
+      os << "[" << (st + 1) << " : " << ed << "]:\t";
       for (int i = st; i < ed; ++i) {
         if (i != st) {
           os << "  ";
