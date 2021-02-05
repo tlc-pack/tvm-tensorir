@@ -169,10 +169,10 @@ class MutatorComputeLocation {
   };
 
   /*!
-   * \brief Find instruction `SamplePerfectTile` whose extent > 1 and n_splits > 1
+   * \brief Find instruction `SampleComputeLocation`
    * \param trace The trace from which to find the instructions
    * \param workload The workload
-   * \return All the candidate instructions
+   * \return All the candidate instructions together with the candidate compute locations
    */
   std::vector<Candidate> FindCandidates(const Trace& trace, const tir::PrimFunc& workload) {
     std::vector<Candidate> candidates;
