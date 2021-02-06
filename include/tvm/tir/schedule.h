@@ -265,6 +265,12 @@ class ScheduleNode : public Object {
   void pragma(const StmtSRef& loop_sref, const String& pragma_type, const PrimExpr& pragma_value);
 
   /*!
+   * \brief add double_buffer annotation to a complete block
+   * \param block_sref the block of interest
+   */
+  void double_buffer(const StmtSRef& block_sref);
+
+  /*!
    * \brief validate sref tree and scope information
    */
   bool ValidateSRef() const;

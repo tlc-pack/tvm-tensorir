@@ -93,8 +93,8 @@ ko, ki = s.split(k, factor=8)
 kt, ki = s.split(ki, factor=1)
 s.reorder(ko, kt, ki, y, x)
 decompose_pos = ko
+s.unroll(kt)
 
-print(tvm.script.asscript(s.func))
 s.compute_at(AL, kt)
 s.compute_at(BL, kt)
 s.compute_at(AA, ko)
@@ -107,6 +107,7 @@ tx, xi = s.split(xi, nparts=num_thread)
 s.bind(ty, thread_y)
 s.bind(tx, thread_x)
 s.vectorize(xi)
+s.double_buffer(AA)
 
 x, y = s.get_axes(BB)[-2:]
 ty, xi = s.split(x, nparts=num_thread)
@@ -115,6 +116,7 @@ tx, xi = s.split(xi, nparts=num_thread)
 s.bind(ty, thread_y)
 s.bind(tx, thread_x)
 s.vectorize(xi)
+s.double_buffer(BB)
 
 s.decompose_reduction(CC, decompose_pos)
 
