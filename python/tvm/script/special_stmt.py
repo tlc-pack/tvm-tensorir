@@ -154,6 +154,12 @@ class BlockWrites(SpecialStmt):
 class BlockAttr(SpecialStmt):
     def __init__(self):
         def block_attr(attrs):
+            attrs = [
+                tvm.tir.Annotation(
+                    key, tvm.runtime.convert(val) if isinstance(val, str) else val
+                )
+                for key, val in attrs.items()
+            ]
             self.context.block_scope().annotations = attrs
 
         super().__init__(block_attr, def_symbol=False)
