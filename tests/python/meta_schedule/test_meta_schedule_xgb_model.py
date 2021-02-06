@@ -15,12 +15,18 @@
 # specific language governing permissions and limitations
 # under the License.
 """Test XGB cost model"""
+from typing import Tuple, List
+import pathlib
 import numpy as np
-
-# pylint: disable=missing-function-docstring
 import pytest
+import logging
 from tvm.auto_scheduler.cost_model import xgb_model as ansor_xgb_model
 from tvm.meta_schedule import xgb_model as ms_xgb_model
+from tvm import meta_schedule as ms
+
+# pylint: disable=missing-function-docstring
+
+logging.basicConfig()
 
 
 def _get_dmatrix(batch):
@@ -85,7 +91,57 @@ def test_meta_schedule_xgb_model_average_peak_score(batch, n):
     np.testing.assert_allclose(actual=ms_result, desired=ansor_result, rtol=1e-5, atol=1e-5)
 
 
+def test_meta_schedule_train_validate():
+
+    logging.getLogger("meta_schedule").setLevel(logging.DEBUG)
+
+    def _extract(x: np.ndarray) -> np.ndarray:
+        x0 = x[:, 0:49]
+        x1 = x[:, 50:157]
+        x2 = x[:, 161:]
+        x = np.concatenate([x0, x1, x2], axis=1)
+        return x
+
+    def _load_features() -> Tuple[List[np.ndarray], List[float]]:
+        path = pathlib.Path(__file__).parent / "xgb_features.npz"
+        npz = np.load(path, allow_pickle=True)
+        xs, ys = [_extract(x) for x in npz["xs"]], npz["ys"]  # pylint: disable=invalid-name
+        assert len(xs) == 1024
+        return xs, ys
+
+    # Load features
+    xs, ys = _load_features()  # pylint: disable=invalid-name
+    # Normalizer for throughputs
+    split = 800
+    norm = ys[:split].min()
+    # Train the model
+    model = ms.XGBModel()
+    model._train(  # pylint: disable=protected-access
+        xs=xs[:split],
+        ys=norm / ys[:split],
+    )
+    # Gather evaluation metrics for training and validation set
+    train_metric = dict(
+        model._validate(  # pylint: disable=protected-access
+            xs=xs[:split],
+            ys=norm / ys[:split],
+        )
+    )
+    valid_metric = dict(
+        model._validate(  # pylint: disable=protected-access
+            xs=xs[split:],
+            ys=norm / ys[split:],
+        )
+    )
+    # Do checks
+    assert train_metric["p-rmse"] < 0.1
+    assert valid_metric["p-rmse"] < 0.1
+    assert train_metric["a-peak@32"] > 0.95
+    assert valid_metric["a-peak@32"] > 0.95
+
+
 if __name__ == "__main__":
-    test_meta_schedule_xgb_model_obj_square_error([2, 3, 5])
-    test_meta_schedule_xgb_model_rmse([2, 3, 5])
-    test_meta_schedule_xgb_model_average_peak_score([2, 3, 5], 32)
+    # test_meta_schedule_xgb_model_obj_square_error([2, 3, 5])
+    # test_meta_schedule_xgb_model_rmse([2, 3, 5])
+    # test_meta_schedule_xgb_model_average_peak_score([2, 3, 5], 32)
+    test_meta_schedule_train_validate()

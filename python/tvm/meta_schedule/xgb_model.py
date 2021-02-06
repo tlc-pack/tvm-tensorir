@@ -39,12 +39,28 @@ if TYPE_CHECKING:
 logger = logging.getLogger("meta_schedule")
 
 
+def _make_metric_sorter(focused_metric):
+    def metric_name_for_sort(name):
+        if focused_metric == name:
+            return "!" + name
+        return name
+
+    def sort_key(key):
+        key, _ = key
+        return metric_name_for_sort(key)
+
+    return sort_key
+
+
 class XGBDMatrixContext:
     """A global context to hold additional attributes of xgb.DMatrix"""
 
     context_dict: defaultdict
 
     def __init__(self):
+        self.context_dict = defaultdict(dict)
+
+    def clear(self) -> None:
         self.context_dict = defaultdict(dict)
 
     def get(
@@ -269,55 +285,30 @@ class XGBModel(PyCostModel):
         results : List[MeasureResult]
             The measurement results
         """
-        import xgboost as xgb  # pylint: disable=import-outside-toplevel
-
         assert len(inputs) == len(results)
         if len(inputs) == 0:
             return
-
-        def obj(ys_pred: np.ndarray, d_train: xgb.DMatrix):
-            d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
-            return d_train.obj_square_error(ys_pred)
-
-        def rmse(ys_pred: np.ndarray, d_train: xgb.DMatrix):
-            d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
-            return d_train.rmse(ys_pred)
-
-        def average_peak_score(ys_pred: np.ndarray, d_train: xgb.DMatrix):
-            d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
-            return d_train.average_peak_score(ys_pred, self.plan_size)
-
-        # extract feature
+        # extract feature and do validation
         new_features = [per_block_feature(x.sch) for x in inputs]
         new_mean_costs = [x.mean_cost() for x in results]
-        self.validate(new_features, new_mean_costs)
-
+        if self.booster is not None:
+            logger.debug(
+                "XGB validation: %s",
+                "\t".join(
+                    "%s: %.6f" % (key, score)
+                    for key, score in self._validate(
+                        xs=new_features,
+                        ys=new_mean_costs,
+                    )
+                ),
+            )
         # use together with previous features
         self.cached_features.extend(new_features)
         self.cached_mean_costs = np.append(self.cached_mean_costs, new_mean_costs)
-        features = self.cached_features
-        mean_costs = self.cached_mean_costs.min() / self.cached_mean_costs
         # train xgb model
-        d_train = PackSum(xs=features, ys=mean_costs)
-        xgb_dmatrix_context.set("pack-sum", d_train.dmatrix, d_train)
-
-        self.booster = xgb.train(
-            self.xgb_params,
-            d_train.dmatrix,
-            num_boost_round=10000,
-            obj=obj,
-            callbacks=[
-                custom_callback(
-                    stopping_rounds=50,
-                    metric="tr-p-rmse",
-                    fevals=[
-                        rmse,
-                        average_peak_score,
-                    ],
-                    evals=[(d_train.dmatrix, "tr")],
-                    verbose_eval=self.verbose_eval,
-                )
-            ],
+        self._train(
+            xs=self.cached_features,
+            ys=np.min(self.cached_mean_costs) / self.cached_mean_costs,
         )
         # Update the model file if it has been set
         if self.model_file:
@@ -340,21 +331,68 @@ class XGBModel(PyCostModel):
         """
         n_measured = len(self.cached_features)
         if self.booster is not None and n_measured >= self.num_warmup_samples:
-            features = [per_block_feature(x) for x in schedules]
-            d_test = PackSum(xs=features, ys=None)
-            pred = self.booster.predict(d_test.dmatrix)
-            ret = d_test.predict_with_score(pred)
+            ret = self._predict(xs=[per_block_feature(x) for x in schedules])
         else:
             n = len(schedules)
-            ret = np.random.uniform(0, 1, (n,))
-        ret = ret.astype("float64")
+            ret = np.random.uniform(0, 1, (n,)).astype("float64")
         return ret
 
-    def validate(  # pylint: disable=invalid-name
+    def _train(  # pylint: disable=invalid-name
         self,
         xs: List[np.ndarray],
         ys: List[float],
     ) -> None:
+        import xgboost as xgb  # pylint: disable=import-outside-toplevel
+
+        d_train = PackSum(xs=xs, ys=ys)
+        xgb_dmatrix_context.set("pack-sum", d_train.dmatrix, d_train)
+
+        def obj(ys_pred: np.ndarray, d_train: xgb.DMatrix):
+            d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
+            return d_train.obj_square_error(ys_pred)
+
+        def rmse(ys_pred: np.ndarray, d_train: xgb.DMatrix):
+            d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
+            return d_train.rmse(ys_pred)
+
+        def average_peak_score(ys_pred: np.ndarray, d_train: xgb.DMatrix):
+            d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
+            return d_train.average_peak_score(ys_pred, self.plan_size)
+
+        self.booster = xgb.train(
+            self.xgb_params,
+            d_train.dmatrix,
+            num_boost_round=10000,
+            obj=obj,
+            callbacks=[
+                custom_callback(
+                    stopping_rounds=50,
+                    metric="tr-p-rmse",
+                    fevals=[
+                        rmse,
+                        average_peak_score,
+                    ],
+                    evals=[(d_train.dmatrix, "tr")],
+                    verbose_eval=self.verbose_eval,
+                )
+            ],
+        )
+        xgb_dmatrix_context.clear()
+
+    def _predict(  # pylint: disable=invalid-name
+        self,
+        xs: List[np.ndarray],
+    ) -> np.ndarray:
+        d_test = PackSum(xs=xs, ys=None)
+        pred = self.booster.predict(d_test.dmatrix)
+        ret = d_test.predict_with_score(pred)
+        return ret.astype("float64")
+
+    def _validate(  # pylint: disable=invalid-name
+        self,
+        xs: List[np.ndarray],
+        ys: List[float],
+    ) -> List[Tuple[str, float]]:
         """Evaluate the score of states
 
         Parameters
@@ -369,19 +407,24 @@ class XGBModel(PyCostModel):
         scores: np.ndarray
             The predicted scores for all states
         """
-        d_valid = PackSum(xs=xs, ys=ys)
         if self.booster is None:
-            logger.debug("XGB validation: skipped because no booster is trained yet")
-            return
+            return []
+
+        d_valid = PackSum(xs=xs, ys=ys)
+
+        def average_peak_score(ys_pred: np.ndarray):
+            return d_valid.average_peak_score(ys_pred, n=self.plan_size)
+
         ys_pred = self.booster.predict(d_valid.dmatrix)
-        info = "\t".join(
-            "%s: %.6f" % feval(ys_pred)
+        eval_result: List[Tuple[str, float]] = [
+            feval(ys_pred)
             for feval in (
-                lambda ys_pred: d_valid.average_peak_score(ys_pred, n=self.plan_size),
+                average_peak_score,
                 d_valid.rmse,
             )
-        )
-        logger.debug("XGB validation: %s", info)
+        ]
+        eval_result.sort(key=_make_metric_sorter("p-rmse"))
+        return eval_result
 
     def load(self, path: str):
         """Load the model from a file
@@ -426,17 +469,9 @@ def custom_callback(
         from xgboost.callback import _aggcv as aggcv
     # pylint: enable=import-outside-toplevel
 
+    sort_key = _make_metric_sorter(focused_metric=metric)
+
     state = {}
-    metric_shortname = metric.split("-")[1]
-
-    def metric_name_for_sort(name):
-        if metric_shortname in name:
-            return "a" + name
-        return name
-
-    def sort_key(key):
-        key, _ = key
-        return metric_name_for_sort(key)
 
     def init(env: xgb.core.CallbackEnv):
         """Internal function"""
@@ -456,14 +491,13 @@ def custom_callback(
             booster.set_attr(best_score=str(state["best_score"]))
 
     def callback(env: xgb.core.CallbackEnv):
-        """internal function"""
         if not state:
             init(env)
         booster: xgb.Booster = env.model
         iteration: int = env.iteration
         cvfolds: List[xgb.training.CVPack] = env.cvfolds
         ##### Evaluation #####
-        # `eval_result` is a list of (key, mean)
+        # `eval_result` is a list of (key, score)
         eval_result: List[Tuple[str, float]] = []
         if cvfolds is None:
             eval_result = itertools_chain.from_iterable(
@@ -472,7 +506,7 @@ def custom_callback(
                     for key, value in map(
                         lambda x: x.split(":"),
                         booster.eval_set(
-                            evals,
+                            evals=evals,
                             iteration=iteration,
                             feval=feval,
                         ).split()[1:],
@@ -483,8 +517,8 @@ def custom_callback(
         else:
             eval_result = itertools_chain.from_iterable(
                 [
-                    (key, mean)
-                    for key, mean, _std in aggcv(
+                    (key, score)
+                    for key, score, _std in aggcv(
                         fold.eval(
                             iteration=iteration,
                             feval=feval,
@@ -499,18 +533,18 @@ def custom_callback(
 
         ##### Print eval result #####
         if verbose_eval and iteration % verbose_eval == 0:
-            infos = ["XGB iter: %3d" % iteration]
-            for key, mean in eval_result:
+            info = []
+            for key, score in eval_result:
                 if "null" in key:
                     continue
-                infos.append("%s: %.6f" % (key, mean))
-            logger.debug("\t".join(infos))
+                info.append("%s: %.6f" % (key, score))
+            logger.debug("XGB iter %3d: %s", iteration, "\t".join(info))
 
         ##### Choose score and do early stopping #####
         score = None
-        for key, mean in eval_result:
+        for key, _score in eval_result:
             if key == metric:
-                score = mean
+                score = _score
                 break
         assert score is not None
 
