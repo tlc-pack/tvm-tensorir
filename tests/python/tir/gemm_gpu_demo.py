@@ -61,21 +61,16 @@ thread_xz = tir.thread_axis((0, 2), "vthread", name="vx")
 thread_yz = tir.thread_axis((0, 2), "vthread", name="vy")
 
 s = tir.create_schedule(original_func)
-A = original_func.buffer_map[original_func.params[0]]
-B = original_func.buffer_map[original_func.params[1]]
-C = original_func.buffer_map[original_func.params[2]]
 
-C_block = s.get_block("C")
+C = s.get_block("C")
 
-AA = s.cache_read(A, "shared")
-BB = s.cache_read(B, "shared")
-Block_AA = tir.schedule.get_stmt(AA)
-Block_BB = tir.schedule.get_stmt(BB)
-AL = s.cache_read(Block_AA.writes[0].buffer, "local")
-BL = s.cache_read(Block_BB.writes[0].buffer, "local")
-CC = s.cache_write(C, "local")
+AA = s.cache_read(C, 1, "shared")
+BB = s.cache_read(C, 2, "shared")
+AL = s.cache_read(C, 1, "local")
+BL = s.cache_read(C, 2, "local")
+CC = s.cache_write(C, 0, "local")
 
-y, x = s.get_axes(C_block)
+y, x = s.get_axes(C)
 by, yi = s.split(y, factor=block_factor)
 bx, xi = s.split(x, factor=block_factor)
 s.reorder(by, bx, yi, xi)
@@ -99,6 +94,7 @@ kt, ki = s.split(ki, factor=1)
 s.reorder(ko, kt, ki, y, x)
 decompose_pos = ko
 
+print(tvm.script.asscript(s.func))
 s.compute_at(AL, kt)
 s.compute_at(BL, kt)
 s.compute_at(AA, ko)
