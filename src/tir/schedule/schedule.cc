@@ -306,8 +306,13 @@ class LoopCollector : public StmtVisitor {
       : stmt2ref_(stmt2_ref) {}
 
   void VisitStmt_(const LoopNode* op) final {
-    loop_var2sref[op->loop_var.get()] = (*stmt2ref_)[op];
+    loop_var2sref[op->loop_var.get()] = stmt2ref_->at(op);
     StmtVisitor::VisitStmt_(op);
+  }
+
+  void VisitStmt_(const BlockNode* op) final {
+    // do not collect loops inside block's init
+    this->VisitStmt(op->body);
   }
 
  private:
@@ -316,7 +321,129 @@ class LoopCollector : public StmtVisitor {
   std::unordered_map<const VarNode*, StmtSRef> loop_var2sref;
 };
 
+static String Repr(const tir::PrimFunc& func) {
+  static const auto* f = runtime::Registry::Get("script.AsTVMScript");
+  CHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
+  return (*f)(func, false).operator String();
+}
+
+void ValidateSRefs(const Schedule& sch) {
+  class PreOrder : public StmtExprVisitor {
+   public:
+    explicit PreOrder(const std::function<bool(const ObjectRef&)>& f) : f(f) {}
+
+    static void Visit(const ObjectRef& node, const std::function<bool(const ObjectRef&)>& f_visit) {
+      PreOrder visitor(f_visit);
+      if (const auto* stmt = node.as<StmtNode>()) {
+        visitor(GetRef<Stmt>(stmt));
+      } else if (const auto* expr = node.as<PrimExprNode>()) {
+        visitor(GetRef<PrimExpr>(expr));
+      } else {
+        LOG(FATAL) << "InternalError: PreOrderVisit does not accept object with type: "
+                   << node->GetTypeKey();
+      }
+    }
+
+    void VisitStmt_(const BlockNode* block) final {
+      for (const BufferAllocate& alloc : block->allocations) {
+        this->VisitStmt(alloc);
+      }
+      this->VisitStmt(block->body);
+    }
+
+    void VisitExpr(const PrimExpr& expr) final {
+      if (visited.count(expr.get()) == 0) {
+        visited.insert(expr.get());
+        if (f(expr)) {
+          ExprVisitor::VisitExpr(expr);
+        }
+      }
+    }
+
+    void VisitStmt(const Stmt& stmt) final {
+      if (visited.count(stmt.get()) == 0) {
+        visited.insert(stmt.get());
+        if (f(stmt)) {
+          StmtVisitor::VisitStmt(stmt);
+        }
+      }
+    }
+
+    const std::function<bool(const ObjectRef&)>& f;
+    std::unordered_set<const Object*> visited;
+  };
+
+  std::unordered_set<const StmtNode*> visited;
+  auto f_check_children = [sch](const StmtSRef& sref, const Stmt& body) -> void {
+    auto f_visit = [sch, sref](const ObjectRef& obj) -> bool {
+      if (const auto* loop = obj.as<tir::LoopNode>()) {
+        CHECK_EQ(sch->stmt2ref.count(loop), 1);
+        StmtSRef loop_sref = sch->stmt2ref.at(loop);
+        CHECK(loop_sref->parent == sref.get());
+      } else if (const auto* loop = obj.as<tir::BlockNode>()) {
+        CHECK_EQ(sch->stmt2ref.count(loop), 1);
+        StmtSRef block_sref = sch->stmt2ref.at(loop);
+        CHECK(block_sref->parent == sref.get());
+      } else {
+        return true;
+      }
+      return false;
+    };
+    PreOrder::Visit(body, f_visit);
+  };
+  auto f_visit = [sch, &f_check_children, &visited](const ObjectRef& obj) -> bool {
+    if (const auto* loop = obj.as<tir::LoopNode>()) {
+      CHECK(!visited.count(loop));
+      visited.insert(loop);
+      CHECK_EQ(sch->stmt2ref.count(loop), 1) << "\n" << GetRef<Loop>(loop);
+      StmtSRef loop_sref = sch->stmt2ref.at(loop);
+      f_check_children(loop_sref, loop->body);
+    } else if (const auto* block = obj.as<tir::BlockNode>()) {
+      CHECK(!visited.count(block));
+      visited.insert(block);
+      CHECK_EQ(sch->stmt2ref.count(block), 1) << GetRef<Block>(block);
+      StmtSRef block_sref = sch->stmt2ref.at(block);
+      f_check_children(block_sref, block->body);
+    }
+    return true;
+  };
+  PreOrder::Visit(sch->func->body, f_visit);
+  {
+    bool failed = false;
+    // LOG(INFO) << "OK1";
+    for (const auto& kv : sch->stmt2ref) {
+      const StmtNode* stmt = kv.first;
+      // LOG(INFO) << "TABLE:\n" << GetRef<Stmt>(stmt);
+      if (visited.count(stmt)) {
+        continue;
+      }
+      failed = true;
+      LOG(INFO) << "Not in visited:\n" << GetRef<Stmt>(stmt);
+    }
+    for (const StmtNode* stmt : visited) {
+      if (sch->stmt2ref.count(stmt)) {
+        continue;
+      }
+      failed = true;
+      LOG(FATAL) << "Not in stmt2ref:\n" << GetRef<Stmt>(stmt);
+    }
+    if (failed) {
+      LOG(FATAL) << "\n" << Repr(sch->func);
+    }
+  }
+}
+
 void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_map) {
+  std::vector<Stmt> stmt_holder;
+  std::vector<StmtSRef> sref_holder;
+  for (const auto& kv : this->stmt2ref) {
+    stmt_holder.push_back(GetRef<Stmt>(kv.first));
+    sref_holder.push_back(kv.second);
+  }
+  StmtSRef ref_holder = ref;
+  Stmt target_holder = target;
+  Map<Block, Block> block_sref_map_holder = block_sref_map;
+
   // Note that old_ref is only a temporary SRef
   StmtSRef old_ref = StmtSRef(ref->stmt, ref->parent);
   auto root_node = root->stmt;
@@ -360,6 +487,7 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
       // if one node has been direct write, there is no need to
       // update its parent and the function
       remover(old_stmt);
+      ValidateSRefs(GetRef<Schedule>(this));
       return;
     }
     target = new_stmt;
@@ -373,6 +501,7 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
     UpdateSRef(root.operator->(), target);
   }
   func = UpdateFuncBody(func.operator->(), target);
+  ValidateSRefs(GetRef<Schedule>(this));
 }
 
 void ScheduleNode::UpdateSRef(StmtSRefNode* sref, const Stmt& stmt) {
