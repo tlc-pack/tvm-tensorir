@@ -141,7 +141,7 @@ def test_meta_schedule_train_validate():
 
 
 if __name__ == "__main__":
-    # test_meta_schedule_xgb_model_obj_square_error([2, 3, 5])
-    # test_meta_schedule_xgb_model_rmse([2, 3, 5])
-    # test_meta_schedule_xgb_model_average_peak_score([2, 3, 5], 32)
+    test_meta_schedule_xgb_model_obj_square_error([2, 3, 5])
+    test_meta_schedule_xgb_model_rmse([2, 3, 5])
+    test_meta_schedule_xgb_model_average_peak_score([2, 3, 5], 32)
     test_meta_schedule_train_validate()
