@@ -288,6 +288,29 @@ class BufferFlattener : public StmtExprMutator {
     return body;
   }
 
+  Stmt VisitStmt_(const SeqStmtNode* op) final {
+    Array<Stmt> seq;
+    for (const Stmt& stmt : op->seq) {
+      std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual> double_buffer;
+      std::swap(double_buffer, double_buffer_);
+      Stmt body = VisitStmt(stmt);
+      std::swap(double_buffer, double_buffer_);
+
+      for (const Buffer& buffer : double_buffer) {
+        ObjectRef lca = buffers_lca_.at(buffer);
+        if (lca.defined() && lca.same_as(parent_scope_)) {
+          body = AttrStmt(buffer->data, tir::attr::double_buffer_scope, 1, body);
+        } else {
+          double_buffer_.insert(buffer);
+        }
+      }
+
+      seq.push_back(body);
+    }
+
+    return SeqStmt(seq);
+  }
+
   Stmt VisitStmt_(const BlockRealizeNode* op) final {
     // Handle allocations
     const auto* block_op = op->block.as<BlockNode>();
@@ -320,7 +343,10 @@ class BufferFlattener : public StmtExprMutator {
       }
     }
     // visit body
+    Stmt parent_scope = op->block;
+    std::swap(parent_scope, parent_scope_);
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
+    std::swap(parent_scope, parent_scope_);
     op = stmt.as<BlockRealizeNode>();
     CHECK(op != nullptr);
     block_op = op->block.as<BlockNode>();
@@ -329,6 +355,13 @@ class BufferFlattener : public StmtExprMutator {
     // Handle block predicate
     if (!is_one(op->predicate)) {
       body = IfThenElse(op->predicate, body);
+    }
+
+    for (const Annotation& anno : block_op->annotations) {
+      if (anno->attr_key == tir::attr::double_buffer_scope && is_one(anno->value)) {
+        CHECK_EQ(block_op->writes.size(), 1);
+        double_buffer_.insert(block_op->writes[0]->buffer);
+      }
     }
 
     for (size_t i = block_op->allocations.size(); i > 0; --i) {
@@ -365,8 +398,10 @@ class BufferFlattener : public StmtExprMutator {
 
   Stmt VisitStmt_(const LoopNode* op) final {
     Stmt old_stmt = GetRef<Stmt>(op);
-
+    std::swap(old_stmt, parent_scope_);
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
+    std::swap(old_stmt, parent_scope_);
+
     op = stmt.as<LoopNode>();
     CHECK(op != nullptr);
 
@@ -482,6 +517,8 @@ class BufferFlattener : public StmtExprMutator {
 
   std::unordered_map<Buffer, BufferAllocate, ObjectPtrHash, ObjectPtrEqual> pending_allocate_;
   std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual> reduction_relative_;
+  std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual> double_buffer_;
+  Stmt parent_scope_;
 
   /*!
    * \brief Create a buffer with alternative shape
