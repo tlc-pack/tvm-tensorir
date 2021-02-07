@@ -93,5 +93,33 @@ void parallel_for(int begin, int end, const std::function<void(int)>& f, int ste
   }
 }
 
+void parallel_persist_for(int begin, int end, const std::function<void(int, int)>& f,
+                          int num_threads) {
+  // Check interval [begin, end)
+  if (begin == end) {
+    return;
+  }
+  CHECK_LT(begin, end) << "ValueError: The interval [begin, end) requires `begin <= end`";
+  // Check `num_threads`
+  if (num_threads == -1) {
+    num_threads = std::thread::hardware_concurrency();
+  }
+  CHECK_GT(num_threads, 0) << "ValueError: `num_threads` should be positive";
+  // Make a special case for serial loop
+  if (num_threads == 1) {
+    for (int i = begin; i < end; ++i) {
+      f(0, i);
+    }
+    return;
+  }
+  // Usec `support::parallel_for` to launch persistent threads
+  std::atomic<int> counter{begin};
+  parallel_for(0, num_threads, [&counter, &end, &f](int thread_id) {
+    for (int task_id; (task_id = counter++) < end;) {
+      f(thread_id, task_id);
+    }
+  });
+}
+
 }  // namespace support
 }  // namespace tvm

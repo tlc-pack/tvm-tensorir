@@ -26,15 +26,10 @@
 namespace tvm {
 namespace meta_schedule {
 
-class PrimFuncFeature {
- public:
-  runtime::NDArray AsNDArray();
+TVM_DLL runtime::NDArray PerBlockFeature(const Schedule& sch, int max_num_buffer_access_features);
 
-  std::vector<double> feature;
-  std::vector<int64_t> shape;
-};
-
-TVM_DLL PrimFuncFeature PerBlockFeature(const Schedule& sch, int max_num_buffer_access_features);
+TVM_DLL Array<runtime::NDArray> PerBlockFeatureBatched(const Array<Schedule>& schs,
+                                                       int max_num_buffer_access_features);
 
 TVM_DLL Array<String> PerBlockFeatureNames(int max_num_buffer_access_features);
 
