@@ -17,6 +17,7 @@
  * under the License.
  */
 #include <tvm/arith/int_set.h>
+#include <tvm/support/parallel_for.h>
 #include <tvm/tir/analysis.h>
 
 #include <algorithm>
@@ -998,6 +999,43 @@ inline double slog(double x) {
   return std::log2(x + 1);
 }
 
+struct DoubleNDArrayPusher {
+  explicit DoubleNDArrayPusher(const std::vector<int64_t>& shape)
+      : array(runtime::NDArray::Empty(/*shape=*/shape, /*dtype=*/DLDataType{kDLFloat, 64, 1},
+                                      /*ctx=*/DLContext{kDLCPU, 0})),
+        back(static_cast<double*>(array->data)) {}
+
+  template <class TIter>
+  void Push(TIter begin, TIter end) {
+    while (begin != end) {
+      *back = *begin;
+      ++back;
+      ++begin;
+    }
+  }
+
+  void PushRepeat(int n, double value) {
+    while (n-- > 0) {
+      *back = value;
+      ++back;
+    }
+  }
+
+  runtime::NDArray Done() {
+    int64_t* shape = array->shape;
+    int64_t array_size = 1;
+    for (int i = 0, ndim = array->ndim; i < ndim; ++i) {
+      array_size *= shape[i];
+    }
+    int64_t written_size = back - static_cast<double*>(array->data);
+    CHECK_EQ(array_size, written_size);
+    return std::move(array);
+  }
+
+  runtime::NDArray array;
+  double* back;
+};
+
 #define TVM_FEATURE_ADD_ANN_ITER(s)                      \
   slog(s.num), slog(s.prod), slog(s.len), /**/           \
       static_cast<double>(static_cast<int>(s.pos) == 0), \
@@ -1009,8 +1047,7 @@ inline double slog(double x) {
       static_cast<double>(static_cast<int>(s.pos) == 6), \
       static_cast<double>(static_cast<int>(s.pos) == 7)
 
-void PerBlockFeature(const Schedule& sch, int max_num_buffer_access_features,
-                     PrimFuncFeature* prim_func_feature) {
+runtime::NDArray PerBlockFeature(const Schedule& sch, int max_num_buffer_access_features) {
   constexpr size_t kNumFeatureGroup1 = 8 * 2 + 11 * 3 + 7;
   constexpr size_t kNumFeatureGroup2Subgroup = 18;
   constexpr size_t kNumFeatureGroup3 = FeatureSet::NUM_SAMPLE_ARITH_INTENSITY_CURVE;
@@ -1021,14 +1058,8 @@ void PerBlockFeature(const Schedule& sch, int max_num_buffer_access_features,
   const tir::PrimFunc& func = sch->sch->func;
   std::vector<FeatureSet> feature_map = PerBlockFeatureExtractor::Extract(func);
 
-  std::vector<double>& ret = prim_func_feature->feature;
-  // Set up the shape of the returned feature
-  {
-    int64_t shape[] = {static_cast<int64_t>(feature_map.size()), static_cast<int64_t>(kNumFeature)};
-    ret.clear();
-    ret.reserve(shape[0] * shape[1]);
-    prim_func_feature->shape = std::vector<int64_t>(std::begin(shape), std::end(shape));
-  }
+  DoubleNDArrayPusher ret(
+      {static_cast<int64_t>(feature_map.size()), static_cast<int64_t>(kNumFeature)});
 
   for (const FeatureSet& feature : feature_map) {
     /***** Group 1: Computation related features *****/
@@ -1061,7 +1092,7 @@ void PerBlockFeature(const Schedule& sch, int max_num_buffer_access_features,
         slog(feature.vthread_len),
     };
     CHECK_EQ(std::end(group1) - std::begin(group1), kNumFeatureGroup1);
-    ret.insert(ret.end(), std::begin(group1), std::end(group1));
+    ret.Push(std::begin(group1), std::end(group1));
     /***** Group 2: Buffer access related features *****/
     const std::vector<FeatureSet::BufferAccess>& accesses = feature.buffer_accesses;
     int n_accesses = accesses.size();
@@ -1105,27 +1136,25 @@ void PerBlockFeature(const Schedule& sch, int max_num_buffer_access_features,
           slog(access.stride),
       };
       CHECK_EQ(std::end(group2_sub) - std::begin(group2_sub), kNumFeatureGroup2Subgroup);
-      ret.insert(ret.end(), std::begin(group2_sub), std::end(group2_sub));
+      ret.Push(std::begin(group2_sub), std::end(group2_sub));
     }
     // Pad to `max_num_buffer_access_features`
     if (max_num_buffer_access_features > n_accesses) {
       int n_pad = (max_num_buffer_access_features - n_accesses) * kNumFeatureGroup2Subgroup;
-      ret.insert(ret.end(), n_pad, 0.0);
+      ret.PushRepeat(n_pad, 0.0);
     }
     /***** Group 3: Arithmetic intensity related features *****/
-    ret.insert(ret.end(),                                  //
-               std::begin(feature.arith_intensity_curve),  //
-               std::end(feature.arith_intensity_curve));
+    ret.Push(std::begin(feature.arith_intensity_curve),  //
+             std::end(feature.arith_intensity_curve));
     /***** Group 5: Outer scope related features *****/
     double group5[] = {
         slog(feature.outer_prod),
         slog(feature.num_loops),
         slog(feature.auto_unroll_max_step),
     };
-    ret.insert(ret.end(), std::begin(group5), std::end(group5));
+    ret.Push(std::begin(group5), std::end(group5));
   }
-  // Finally check the shape of the return
-  CHECK_EQ(ret.size(), prim_func_feature->shape[0] * prim_func_feature->shape[1]);
+  return ret.Done();
 }
 
 #undef TVM_FEATURE_ADD_ANN_ITER
@@ -1233,22 +1262,20 @@ Array<String> PerBlockFeatureNames(int max_num_buffer_access_features) {
   return {result.begin(), result.end()};
 }
 
-PrimFuncFeature PerBlockFeature(const Schedule& sch, int max_num_buffer_access_features) {
-  PrimFuncFeature result;
-  PerBlockFeature(sch, max_num_buffer_access_features, &result);
+Array<runtime::NDArray> PerBlockFeatureBatched(const Array<Schedule>& schs,
+                                               int max_num_buffer_access_features) {
+  int n = schs.size();
+  std::vector<runtime::NDArray> result;
+  result.resize(n);
+  auto worker = [&result, &schs, &max_num_buffer_access_features](int thread_id, int i) {
+    result[i] = PerBlockFeature(schs[i], max_num_buffer_access_features);
+  };
+  support::parallel_persist_for(0, n, worker);
   return result;
 }
 
-struct Internal {
-  static runtime::NDArray PerBlockFeature(const Schedule& sch, int max_num_buffer_access_features) {
-    static thread_local PrimFuncFeature* result =
-        new PrimFuncFeature();  // persists till the program offloading
-    tvm::meta_schedule::PerBlockFeature(sch, max_num_buffer_access_features, result);
-    return result->AsNDArray();
-  }
-};
-
-TVM_REGISTER_GLOBAL("meta_schedule.PerBlockFeature").set_body_typed(Internal::PerBlockFeature);
+TVM_REGISTER_GLOBAL("meta_schedule.PerBlockFeature").set_body_typed(PerBlockFeature);
+TVM_REGISTER_GLOBAL("meta_schedule.PerBlockFeatureBatched").set_body_typed(PerBlockFeatureBatched);
 TVM_REGISTER_GLOBAL("meta_schedule.PerBlockFeatureNames").set_body_typed(PerBlockFeatureNames);
 
 }  // namespace meta_schedule

@@ -150,10 +150,11 @@ class InMemoryDBNode : public DatabaseNode {
       int n_loaded = loaded.size();
       LOG(INFO) << "Converting tuning records to meta schedule trace...";
       std::vector<Entry> records(n_loaded);
-      support::parallel_for(0, n_loaded, [&loaded, &records, &task](int i) -> void {
+      auto worker = [&loaded, &records, &task](int thread_id, int i) -> void {
         const ObjectRef& record_obj = loaded[i];
         records[i] = json_io::RecordToEntry(record_obj, task);
-      });
+      };
+      support::parallel_persist_for(0, n_loaded, worker);
       int total_valid = 0;
       for (int i = 0; i < n_loaded; ++i) {
         const Entry& entry = records[i];

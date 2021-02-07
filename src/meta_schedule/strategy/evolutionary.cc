@@ -494,9 +494,9 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
   for (const Database::Entry& entry : database->GetTopK(num_measured)) {
     results.push_back(entry.trace.value());
   }
-  auto f_proc_measured = [this, num_threads, &results, &thread_samplers, &task,
-                          &space](int i) -> void {
-    Sampler* sampler = &thread_samplers[i % num_threads];
+  auto f_proc_measured = [this, num_threads, &results, &thread_samplers, &task, &space](
+                             int thread_id, int i) -> void {
+    Sampler* sampler = &thread_samplers[thread_id];
     const Trace& trace = results[i];
     if (Optional<Schedule> opt_sch = ReplayTrace(trace, task, space, sampler)) {
       Schedule sch = opt_sch.value();
@@ -506,11 +506,11 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
       throw;
     }
   };
-  support::parallel_for(0, results.size(), f_proc_measured);
+  support::parallel_persist_for(0, results.size(), f_proc_measured);
   // Pick unmeasured states
-  auto f_proc_unmeasured = [this, num_threads, &results, &thread_samplers, &task, &space,
-                            &support](int i) -> void {
-    Sampler* sampler = &thread_samplers[i % num_threads];
+  auto f_proc_unmeasured = [this, num_threads, &results, &thread_samplers, &task, &space, &support](
+                               int thread_id, int i) -> void {
+    Sampler* sampler = &thread_samplers[thread_id];
     for (;;) {
       const Trace& support_trace = support[sampler->SampleInt(0, support.size())]->trace;
       // Remove most of the decisions, i.e. random replay
@@ -529,7 +529,7 @@ Array<Trace> EvolutionaryNode::SampleInitPopulation(const Array<Schedule>& suppo
   };
   num_measured = results.size();
   results.resize(this->population, Trace(nullptr));
-  support::parallel_for(num_measured, this->population, f_proc_unmeasured);
+  support::parallel_persist_for(num_measured, this->population, f_proc_unmeasured);
   return results;
 }
 
@@ -584,13 +584,12 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
     // The worker function
     auto f_find_candidate = [num_threads, &thread_samplers, &thread_trace_samplers,
                              &thread_mutator_samplers, &trace_used, &trace_used_mutex, &sch_curr,
-                             &sch_next, &task, &space, this](int i) {
-      int thread_idx = i % num_threads;
+                             &sch_next, &task, &space, this](int thread_id, int i) {
       // Prepare samplers
-      Sampler* sampler = &thread_samplers[thread_idx];
-      const std::function<int()>& trace_sampler = thread_trace_samplers[thread_idx];
+      Sampler* sampler = &thread_samplers[thread_id];
+      const std::function<int()>& trace_sampler = thread_trace_samplers[thread_id];
       const std::function<Optional<Mutator>()>& mutator_sampler =
-          thread_mutator_samplers[thread_idx];
+          thread_mutator_samplers[thread_id];
       // Loop until success
       for (;;) {
         int trace_idx = trace_sampler();
@@ -622,7 +621,7 @@ Array<Trace> EvolutionaryNode::EvolveWithCostModel(const Array<Trace>& inits,
     };
     sch_next.clear();
     sch_next.resize(this->population);
-    support::parallel_for(0, this->population, f_find_candidate);
+    support::parallel_persist_for(0, this->population, f_find_candidate);
     sch_curr.clear();
     sch_curr.swap(sch_next);
   }
