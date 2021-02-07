@@ -99,7 +99,7 @@ Optional<Schedule> ReplayNode::Search(const SearchTask& task, const SearchSpace&
     thread_samplers.emplace_back(sampler->ForkSeed());
     thread_measure_inputs.emplace_back(nullptr);
   }
-  auto worker = [&task, &space, &thread_samplers, &thread_measure_inputs](int i) {
+  auto worker = [&task, &space, &thread_samplers, &thread_measure_inputs](int thread_id, int i) {
     Sampler* sampler = &thread_samplers[i];
     for (;;) {
       Schedule sch = space->SampleSchedule(task, sampler);
@@ -111,11 +111,7 @@ Optional<Schedule> ReplayNode::Search(const SearchTask& task, const SearchSpace&
   };
   for (int st = 0; st < num_trials; st += batch_size) {
     int count = std::min(st + batch_size, num_trials) - st;
-    if (count == 1) {
-      worker(0);
-    } else {
-      support::parallel_for(0, count, worker);
-    }
+    support::parallel_persist_for(0, count, worker);
     Array<MeasureInput> measure_inputs{thread_measure_inputs.begin(),
                                        thread_measure_inputs.begin() + count};
     measurer->BatchMeasure(measure_inputs, count, verbose);

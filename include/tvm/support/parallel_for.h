@@ -57,7 +57,7 @@ TVM_DLL std::vector<std::vector<int>> rr_partitioner(int begin, int end, int ste
  *   });
  * \param begin The start index of this parallel loop(inclusive).
  * \param end The end index of this parallel loop(exclusive).
- * \param f The task function to be excuted. Assert to take an int index as input with no output.
+ * \param f The task function to be executed. Assert to take an int index as input with no output.
  * \param step The traversal step to the index.
  * \param partitioner A partition function to split tasks to different threads. Use Round-robin
  * partitioner by default.
@@ -66,6 +66,18 @@ TVM_DLL std::vector<std::vector<int>> rr_partitioner(int begin, int end, int ste
  */
 TVM_DLL void parallel_for(int begin, int end, const std::function<void(int)>& f, int step = 1,
                           const PartitionerFuncType partitioner = rr_partitioner);
+
+/*!
+ * \brief An API to launch persistent threads to run functions in parallel
+ * \param begin The start index of this parallel loop(inclusive).
+ * \param end The end index of this parallel loop(exclusive).
+ * \param f The task function to be executed. Takes the thread index and the task index as
+ * input with no output.
+ * \param num_threads Number of threads to be used. If it is -1, defaults to
+ * `std::thread::hardware_concurrency()` instead
+ */
+TVM_DLL void parallel_persist_for(int begin, int end, const std::function<void(int, int)>& f,
+                                  int num_threads = -1);
 
 }  // namespace support
 }  // namespace tvm
