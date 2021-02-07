@@ -113,24 +113,24 @@ def test_meta_schedule_train_validate():
     xs, ys = _load_features()  # pylint: disable=invalid-name
     # Normalizer for throughputs
     split = 800
-    norm = ys[:split].min()
     # Train the model
     model = ms.XGBModel()
+    model.cached_normalizer = ys[:split].min()
     model._train(  # pylint: disable=protected-access
         xs=xs[:split],
-        ys=norm / ys[:split],
+        ys=ys[:split],
     )
     # Gather evaluation metrics for training and validation set
     train_metric = dict(
         model._validate(  # pylint: disable=protected-access
             xs=xs[:split],
-            ys=norm / ys[:split],
+            ys=ys[:split],
         )
     )
     valid_metric = dict(
         model._validate(  # pylint: disable=protected-access
             xs=xs[split:],
-            ys=norm / ys[split:],
+            ys=ys[split:],
         )
     )
     # Do checks
