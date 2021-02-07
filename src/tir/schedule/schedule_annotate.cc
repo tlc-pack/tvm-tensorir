@@ -67,9 +67,9 @@ bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
  */
 Loop WithAnnotation(const LoopNode* loop, const Annotation& annotation) {
   bool found = false;
-  int n = loop->annotations.size();
+  size_t n = loop->annotations.size();
   Array<Annotation> annotations = loop->annotations;
-  for (int i = 0; i < n; ++i) {
+  for (size_t i = 0; i < n; ++i) {
     const Annotation& ann = annotations[i];
     if (ann->attr_key == annotation->attr_key) {
       annotations.Set(i, annotation);
@@ -83,6 +83,32 @@ Loop WithAnnotation(const LoopNode* loop, const Annotation& annotation) {
   ObjectPtr<LoopNode> new_loop = make_object<LoopNode>(*loop);
   new_loop->annotations = std::move(annotations);
   return Loop(new_loop);
+}
+
+/*!
+ * \brief Create a new block with the given annotation added
+ * \param block The block with original annotation
+ * \param annotation The annotation to be added
+ * \return A new block with the given annotation as its last annotation
+ */
+Block WithAnnotation(const BlockNode* block, const Annotation& annotation) {
+  bool found = false;
+  size_t n = block->annotations.size();
+  Array<Annotation> annotations = block->annotations;
+  for (size_t i = 0; i < n; ++i) {
+    const Annotation& ann = annotations[i];
+    if (ann->attr_key == annotation->attr_key) {
+      annotations.Set(i, annotation);
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    annotations.push_back(annotation);
+  }
+  ObjectPtr<BlockNode> new_block = make_object<BlockNode>(*block);
+  new_block->annotations = std::move(annotations);
+  return Block(new_block);
 }
 
 void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const Annotation& annotation) {
@@ -180,6 +206,26 @@ void ScheduleNode::pragma(const StmtSRef& loop_sref, const String& pragma_type,
   CHECK(loop_ptr) << "TypeError: pragma expects a Loop as its first argument";
   this->Replace(loop_sref,
                 WithAnnotation(loop_ptr, Annotation("pragma_" + pragma_type, pragma_value)));
+}
+
+void ScheduleNode::double_buffer(const StmtSRef& block_sref) {
+  const auto* block_ptr = block_sref->GetStmt<BlockNode>();
+  CHECK(block_ptr) << "TypeError: double_buffer expects 'block' as its argument";
+  const StmtSRef& parent_block_sref = GetParentBlockSRef(block_sref);
+  const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
+  const Scope& scope = scopes.at(parent_block_sref);
+  CHECK(scope.IsComplete(block_sref))
+      << "ValueError: 'double_buffer' expects 'block' to be a complete block";
+  for (const TensorRegion& parent_write : parent_block->writes) {
+    for (const TensorRegion& write : block_ptr->writes) {
+      CHECK_NE(write->buffer.get(), parent_write->buffer.get())
+          << "ValueError: 'double_buffer' does not work on an output block";
+    }
+  }
+  CHECK_EQ(block_ptr->writes.size(), 1)
+    << "ValueError: 'double_buffer' expects 'block' with only one write buffer";
+  Block new_block = WithAnnotation(block_ptr, Annotation(tir::attr::double_buffer_scope, 1));
+  this->Replace(block_sref, new_block, {{new_block, GetRef<Block>(block_ptr)}});
 }
 
 }  // namespace tir

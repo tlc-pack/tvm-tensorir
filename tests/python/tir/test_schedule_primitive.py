@@ -693,6 +693,30 @@ def test_pragma():
     tvm.ir.assert_structural_equal(matmul_pragma, s.func)
 
 
+@tvm.script.tir
+def element_wise_double_buffer(a: ty.handle, c: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128))
+    C = tir.match_buffer(c, (128, 128))
+    B = tir.buffer_allocate((128, 128))
+
+    with tir.block([128, 128], "B") as [vi, vj]:
+        tir.block_attr({"double_buffer_scope": 1})
+        B[vi, vj] = A[vi, vj] * 2.0
+
+    with tir.block([128, 128], "C") as [vi, vj]:
+        C[vi, vj] = B[vi, vj] + 1.0
+
+
+def test_double_buffer():
+    func = util.element_wise_stmt()
+
+    s = tir.create_schedule(func)
+    B = s.get_block("B")
+    s.double_buffer(B)
+
+    tvm.ir.assert_structural_equal(element_wise_double_buffer, s.func)
+
+
 if __name__ == "__main__":
     test_fuse()
     test_split_fuse()
@@ -710,3 +734,4 @@ if __name__ == "__main__":
     test_blockize()
     test_blockize_schedule()
     test_pragma()
+    test_double_buffer()

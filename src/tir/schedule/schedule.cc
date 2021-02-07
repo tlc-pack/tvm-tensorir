@@ -604,6 +604,11 @@ TVM_REGISTER_GLOBAL("tir.schedule.SchedulePragma")
           schedule->pragma(loop_sref, pragma_type, pragma_value);
         });
 
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDoubleBuffer")
+    .set_body_typed<void(Schedule, StmtSRef)>([](Schedule schedule, StmtSRef block_sref) {
+      schedule->double_buffer(block_sref);
+    });
+
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDecomposeReduction")
     .set_body_typed<StmtSRef(Schedule, StmtSRef, StmtSRef)>([](Schedule schedule, StmtSRef block,
                                                                StmtSRef loop) {
