@@ -246,6 +246,7 @@ class XGBModel(PyCostModel):
 
     cached_features: List[np.ndarray]
     cached_mean_costs: np.ndarray
+    cached_normalizer: Optional[float]
 
     def __init__(
         self,
@@ -273,6 +274,7 @@ class XGBModel(PyCostModel):
         self.model_file = model_file
         self.cached_features = []
         self.cached_mean_costs = np.empty((0,), dtype="float64")
+        self.cached_normalizer = None
 
     def update(self, inputs: List[MeasureInput], results: List[MeasureResult]) -> None:
         """Update the cost model according to new measurement results (training data).
@@ -305,10 +307,11 @@ class XGBModel(PyCostModel):
         # use together with previous features
         self.cached_features.extend(new_features)
         self.cached_mean_costs = np.append(self.cached_mean_costs, new_mean_costs)
+        self.cached_normalizer = np.min(self.cached_mean_costs)
         # train xgb model
         self._train(
             xs=self.cached_features,
-            ys=np.min(self.cached_mean_costs) / self.cached_mean_costs,
+            ys=self.cached_mean_costs,
         )
         # Update the model file if it has been set
         if self.model_file:
@@ -344,7 +347,11 @@ class XGBModel(PyCostModel):
     ) -> None:
         import xgboost as xgb  # pylint: disable=import-outside-toplevel
 
-        d_train = PackSum(xs=xs, ys=ys)
+        d_train = PackSum(
+            xs=xs,
+            ys=self.cached_normalizer / ys,
+        )
+
         xgb_dmatrix_context.set("pack-sum", d_train.dmatrix, d_train)
 
         def obj(ys_pred: np.ndarray, d_train: xgb.DMatrix):
@@ -407,10 +414,13 @@ class XGBModel(PyCostModel):
         scores: np.ndarray
             The predicted scores for all states
         """
-        if self.booster is None:
+        if self.booster is None or self.cached_normalizer is None:
             return []
 
-        d_valid = PackSum(xs=xs, ys=ys)
+        d_valid = PackSum(
+            xs=xs,
+            ys=self.cached_normalizer / ys,
+        )
 
         def average_peak_score(ys_pred: np.ndarray):
             return d_valid.average_peak_score(ys_pred, n=self.plan_size)
