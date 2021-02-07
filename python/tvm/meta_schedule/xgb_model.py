@@ -26,7 +26,7 @@ import numpy as np
 
 from ..autotvm.tuner.metric import max_curve
 from .cost_model import PyCostModel
-from .feature import per_block_feature
+from .feature import per_block_feature_batched
 from .measure_record import MeasureInput, MeasureResult
 from .schedule import Schedule
 from .search import SearchTask
@@ -237,42 +237,64 @@ class PackSum:
 class XGBModel(PyCostModel):
     """XGBoost model"""
 
-    booster: Optional[xgb.Booster]
-    xgb_params: Dict[str, Any]
-    plan_size: int
+    # model-related
+    xgb_max_depth: int
+    xgb_gamma: float
+    xgb_min_child_weight: float
+    xgb_eta: float
+    xgb_seed: int
+    # serialization-related
+    path: Optional[str]
+    # behavior of randomness
     num_warmup_samples: int
+    # evaluation
+    early_stopping_rounds: int
     verbose_eval: int
-    model_file: Optional[str]
-
+    average_peak_n: int
+    # states
     cached_features: List[np.ndarray]
     cached_mean_costs: np.ndarray
+    cached_normalizer: Optional[float]
+    booster: Optional[xgb.Booster]
 
     def __init__(
         self,
-        verbose_eval: int = 25,
+        *,
+        # model-related
+        xgb_max_depth: int = 10,
+        xgb_gamma: float = 0.001,
+        xgb_min_child_weight: float = 0,
+        xgb_eta: float = 0.2,
+        xgb_seed: int = 43,
+        # serialization-related
+        path: Optional[str] = None,
+        # behavior of randomness
         num_warmup_samples: int = 100,
-        model_file: Optional[str] = None,
-        seed: int = 43,
+        # evaluation
+        early_stopping_rounds: int = 50,
+        verbose_eval: int = 25,
+        average_peak_n: int = 32,
     ):
         super().__init__()
-        self.xgb_params = {
-            "max_depth": 10,
-            "gamma": 0.001,
-            "min_child_weight": 0,
-            "eta": 0.2,
-            "n_gpus": 0,
-            "nthread": cpu_count(False),
-            "verbosity": 0,
-            "seed": seed,
-            "disable_default_eval_metric": 1,
-        }
-        self.booster = None
-        self.plan_size = 32
+        # model-related
+        self.xgb_max_depth = xgb_max_depth
+        self.xgb_gamma = xgb_gamma
+        self.xgb_min_child_weight = xgb_min_child_weight
+        self.xgb_eta = xgb_eta
+        self.xgb_seed = xgb_seed
+        # serialization-related
+        self.path = path
+        # behavior of randomness
         self.num_warmup_samples = num_warmup_samples
+        # evaluation
+        self.early_stopping_rounds = early_stopping_rounds
         self.verbose_eval = verbose_eval
-        self.model_file = model_file
+        self.average_peak_n = average_peak_n
+        # states
         self.cached_features = []
         self.cached_mean_costs = np.empty((0,), dtype="float64")
+        self.cached_normalizer = None
+        self.booster = None
 
     def update(self, inputs: List[MeasureInput], results: List[MeasureResult]) -> None:
         """Update the cost model according to new measurement results (training data).
@@ -289,9 +311,9 @@ class XGBModel(PyCostModel):
         if len(inputs) == 0:
             return
         # extract feature and do validation
-        new_features = [per_block_feature(x.sch) for x in inputs]
+        new_features = per_block_feature_batched([x.sch for x in inputs])
         new_mean_costs = [x.mean_cost() for x in results]
-        if self.booster is not None:
+        if self.booster is not None and self.cached_normalizer is not None:
             logger.debug(
                 "XGB validation: %s",
                 "\t".join(
@@ -305,14 +327,15 @@ class XGBModel(PyCostModel):
         # use together with previous features
         self.cached_features.extend(new_features)
         self.cached_mean_costs = np.append(self.cached_mean_costs, new_mean_costs)
+        self.cached_normalizer = np.min(self.cached_mean_costs)
         # train xgb model
         self._train(
             xs=self.cached_features,
-            ys=np.min(self.cached_mean_costs) / self.cached_mean_costs,
+            ys=self.cached_mean_costs,
         )
         # Update the model file if it has been set
-        if self.model_file:
-            self.save(self.model_file)
+        if self.path:
+            self.save(self.path)
 
     def predict(self, task: SearchTask, schedules: List[Schedule]) -> np.ndarray:
         """Predict the scores of states
@@ -331,11 +354,27 @@ class XGBModel(PyCostModel):
         """
         n_measured = len(self.cached_features)
         if self.booster is not None and n_measured >= self.num_warmup_samples:
-            ret = self._predict(xs=[per_block_feature(x) for x in schedules])
+            ret = self._predict(xs=per_block_feature_batched(schedules))
         else:
-            n = len(schedules)
-            ret = np.random.uniform(0, 1, (n,)).astype("float64")
+            ret = np.random.uniform(  # TODO(@junrushao1994): leaked source of randomness (?)
+                low=0,
+                high=1,
+                size=(len(schedules),),
+            ).astype("float64")
         return ret
+
+    def _xgb_params(self) -> Dict[str, Any]:
+        return {
+            "max_depth": self.xgb_max_depth,
+            "gamma": self.xgb_gamma,
+            "min_child_weight": self.xgb_min_child_weight,
+            "eta": self.xgb_eta,
+            "seed": self.xgb_seed,
+            "nthread": cpu_count(False),
+            "n_gpus": 0,
+            "verbosity": 0,
+            "disable_default_eval_metric": 1,
+        }
 
     def _train(  # pylint: disable=invalid-name
         self,
@@ -344,36 +383,39 @@ class XGBModel(PyCostModel):
     ) -> None:
         import xgboost as xgb  # pylint: disable=import-outside-toplevel
 
-        d_train = PackSum(xs=xs, ys=ys)
+        d_train = PackSum(
+            xs=xs,
+            ys=self.cached_normalizer / ys,
+        )
+
         xgb_dmatrix_context.set("pack-sum", d_train.dmatrix, d_train)
 
+        def _get(d_train: xgb.DMatrix) -> PackSum:
+            return xgb_dmatrix_context.get("pack-sum", d_train)
+
         def obj(ys_pred: np.ndarray, d_train: xgb.DMatrix):
-            d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
-            return d_train.obj_square_error(ys_pred)
+            return _get(d_train).obj_square_error(ys_pred)
 
         def rmse(ys_pred: np.ndarray, d_train: xgb.DMatrix):
-            d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
-            return d_train.rmse(ys_pred)
+            return _get(d_train).rmse(ys_pred)
 
         def average_peak_score(ys_pred: np.ndarray, d_train: xgb.DMatrix):
-            d_train: PackSum = xgb_dmatrix_context.get("pack-sum", d_train)
-            return d_train.average_peak_score(ys_pred, self.plan_size)
+            return _get(d_train).average_peak_score(ys_pred, self.average_peak_n)
 
         self.booster = xgb.train(
-            self.xgb_params,
+            self._xgb_params(),
             d_train.dmatrix,
             num_boost_round=10000,
             obj=obj,
             callbacks=[
                 custom_callback(
-                    stopping_rounds=50,
-                    metric="tr-p-rmse",
+                    early_stopping_rounds=self.early_stopping_rounds,
+                    verbose_eval=self.verbose_eval,
                     fevals=[
                         rmse,
                         average_peak_score,
                     ],
                     evals=[(d_train.dmatrix, "tr")],
-                    verbose_eval=self.verbose_eval,
                 )
             ],
         )
@@ -407,13 +449,16 @@ class XGBModel(PyCostModel):
         scores: np.ndarray
             The predicted scores for all states
         """
-        if self.booster is None:
+        if self.booster is None or self.cached_normalizer is None:
             return []
 
-        d_valid = PackSum(xs=xs, ys=ys)
+        d_valid = PackSum(
+            xs=xs,
+            ys=self.cached_normalizer / ys,
+        )
 
         def average_peak_score(ys_pred: np.ndarray):
-            return d_valid.average_peak_score(ys_pred, n=self.plan_size)
+            return d_valid.average_peak_score(ys_pred, n=self.average_peak_n)
 
         ys_pred = self.booster.predict(d_valid.dmatrix)
         eval_result: List[Tuple[str, float]] = [
@@ -426,7 +471,7 @@ class XGBModel(PyCostModel):
         eval_result.sort(key=_make_metric_sorter("p-rmse"))
         return eval_result
 
-    def load(self, path: str):
+    def load(self, path: str) -> XGBModel:
         """Load the model from a file
 
         Parameters
@@ -435,11 +480,12 @@ class XGBModel(PyCostModel):
             The filename
         """
         if self.booster is None:
-            self.bst = xgb.Booster(self.xgb_params)
+            self.bst = xgb.Booster(self._xgb_params())
         self.booster.load_model(path)
-        self.num_warmup_sample = -1
+        self.num_warmup_sample = 0
+        return self
 
-    def save(self, path: str):
+    def save(self, path: str) -> XGBModel:
         """Save the model to a file
 
         Parameters
@@ -448,14 +494,15 @@ class XGBModel(PyCostModel):
             The filename
         """
         self.booster.save_model(path)
+        return self
 
 
 def custom_callback(
-    stopping_rounds: int,
-    metric: str,
+    early_stopping_rounds: int,
+    verbose_eval: int,
     fevals: List[Callable],
     evals: List[Tuple[xgb.DMatrix, str]],
-    verbose_eval: int,
+    focused_metric: str = "tr-p-rmse",
 ):
     """Callback function for xgboost to support multiple custom evaluation functions"""
     # pylint: disable=import-outside-toplevel
@@ -469,7 +516,7 @@ def custom_callback(
         from xgboost.callback import _aggcv as aggcv
     # pylint: enable=import-outside-toplevel
 
-    sort_key = _make_metric_sorter(focused_metric=metric)
+    sort_key = _make_metric_sorter(focused_metric=focused_metric)
 
     state = {}
 
@@ -543,7 +590,7 @@ def custom_callback(
         ##### Choose score and do early stopping #####
         score = None
         for key, _score in eval_result:
-            if key == metric:
+            if key == focused_metric:
                 score = _score
                 break
         assert score is not None
@@ -562,7 +609,7 @@ def custom_callback(
                     best_iteration=str(state["best_iteration"]),
                     best_msg=state["best_msg"],
                 )
-        elif env.iteration - best_iteration >= stopping_rounds:
+        elif env.iteration - best_iteration >= early_stopping_rounds:
             best_msg = state["best_msg"]
             if verbose_eval and env.rank == 0:
                 logger.debug("XGB stopped. Best iteration: %s ", best_msg)
