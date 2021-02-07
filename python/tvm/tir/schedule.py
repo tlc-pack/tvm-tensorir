@@ -230,6 +230,20 @@ class Schedule(Object):
         """
         _ffi_api_schedule.ScheduleUnroll(self, loop)
 
+    def double_buffer(self, block):
+        """Compute the current block via double buffering.
+
+        This can only be applied to intermediate stage.
+        This will double the storage cost of the current stage.
+        Can be useful to hide load latency.
+
+        Parameters
+        ----------
+        block : Block
+            The block of interest
+        """
+        _ffi_api_schedule.ScheduleDoubleBuffer(self, block)
+
     def cache_read(self, block, index, scope):
         """Create a cache read of original tensor for readers.
         Parameters
