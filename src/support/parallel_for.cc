@@ -93,5 +93,53 @@ void parallel_for(int begin, int end, const std::function<void(int)>& f, int ste
   }
 }
 
+void parallel_persist_for(int begin, int end, const std::function<void(int, int)>& f,
+                          int num_threads) {
+  // Check interval [begin, end)
+  if (begin == end) {
+    return;
+  }
+  CHECK_LT(begin, end) << "ValueError: The interval [begin, end) requires `begin <= end`";
+  // Check `num_threads`
+  if (num_threads == -1) {
+    num_threads = std::thread::hardware_concurrency();
+  }
+  CHECK_GT(num_threads, 0) << "ValueError: `num_threads` should be positive";
+  // Make a special case for serial loop
+  if (num_threads == 1) {
+    for (int i = begin; i < end; ++i) {
+      f(0, i);
+    }
+    return;
+  }
+  // Launch threads
+  std::atomic<int> counter{begin};
+  std::vector<std::future<void>> futures;
+  std::vector<std::thread> threads;
+  futures.reserve(end - begin);
+  threads.reserve(end - begin);
+  for (int thread_id = 0; thread_id < num_threads; ++thread_id) {
+    std::packaged_task<void()> task([thread_id, end, &counter, &f]() -> void {
+      for (int task_id; (task_id = counter++) < end;) {
+        f(thread_id, task_id);
+      }
+    });
+    futures.emplace_back(task.get_future());
+    threads.emplace_back(std::move(task));
+  }
+  // Join threads
+  for (auto&& thread : threads) {
+    thread.join();
+  }
+  // Check exceptions
+  try {
+    for (auto&& future : futures) {
+      future.get();
+    }
+  } catch (const std::exception& e) {
+    LOG(FATAL) << "Parallel_for error with " << e.what();
+  }
+}
+
 }  // namespace support
 }  // namespace tvm
