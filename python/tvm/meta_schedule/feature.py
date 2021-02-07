@@ -43,6 +43,30 @@ def per_block_feature(sch: Schedule, max_num_buffer_access_features: int = 5) ->
     ).asnumpy()
 
 
+def per_block_feature_batched(
+    schs: List[Schedule],
+    max_num_buffer_access_features: int = 5,
+) -> List[np.ndarray]:
+    """Calculate the per-block feature in a batch
+
+    Parameters
+    ----------
+    sch : Schedule
+        The meta schedule class
+    max_num_buffer_access_features : int
+        The maximum number of buffer accesses
+
+    Returns
+    -------
+    features: np.ndarray
+        A 2d matrix, the feature vectors for each block
+    """
+    result = _ffi_api.PerBlockFeatureBatched(  # pylint: disable=no-member
+        schs, max_num_buffer_access_features
+    )
+    return [x.asnumpy() for x in result]
+
+
 def per_bloc_feature_names(max_num_buffer_access_features: int = 5) -> List[str]:
     return _ffi_api.PerBlockFeatureNames(  # pylint: disable=no-member
         max_num_buffer_access_features

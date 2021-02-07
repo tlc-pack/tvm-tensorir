@@ -64,7 +64,10 @@ def conv2d(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     ) as [i_n, i_co, i_h, i_w, i_ci, i_kh, i_kw]:
         with tir.init():
             Y[i_n, i_co, i_h, i_w] = 0.0
-        Y[i_n, i_co, i_h, i_w] = Y[i_n, i_co, i_h, i_w] + X_padded[i_n, i_ci, i_h + i_kh, i_w + i_kw] * W[i_co, i_ci, i_kh, i_kw]
+        Y[i_n, i_co, i_h, i_w] = (
+            Y[i_n, i_co, i_h, i_w]
+            + X_padded[i_n, i_ci, i_h + i_kh, i_w + i_kw] * W[i_co, i_ci, i_kh, i_kw]
+        )
 
 
 @tvm.script.tir
@@ -99,7 +102,10 @@ def conv2d_relu(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     ) as [i_n, i_co, i_h, i_w, i_ci, i_kh, i_kw]:
         with tir.init():
             Y_i[i_n, i_co, i_h, i_w] = 0.0
-        Y_i[i_n, i_co, i_h, i_w] = Y_i[i_n, i_co, i_h, i_w] + X_padded[i_n, i_ci, i_h + i_kh, i_w + i_kw] * W[i_co, i_ci, i_kh, i_kw]
+        Y_i[i_n, i_co, i_h, i_w] = (
+            Y_i[i_n, i_co, i_h, i_w]
+            + X_padded[i_n, i_ci, i_h + i_kh, i_w + i_kw] * W[i_co, i_ci, i_kh, i_kw]
+        )
 
     with tir.block([1, 512, 7, 7], "relu") as [i_n, i_co, i_h, i_w]:
         Y[i_n, i_co, i_h, i_w] = tir.max(Y_i[i_n, i_co, i_h, i_w], 0.0)
@@ -138,7 +144,10 @@ def conv2d_relu_plus_one(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     ) as [i_n, i_co, i_h, i_w, i_ci, i_kh, i_kw]:
         with tir.init():
             Y_i[i_n, i_co, i_h, i_w] = 0.0
-        Y_i[i_n, i_co, i_h, i_w] = Y_i[i_n, i_co, i_h, i_w] + X_padded[i_n, i_ci, i_h + i_kh, i_w + i_kw] * W[i_co, i_ci, i_kh, i_kw]
+        Y_i[i_n, i_co, i_h, i_w] = (
+            Y_i[i_n, i_co, i_h, i_w]
+            + X_padded[i_n, i_ci, i_h + i_kh, i_w + i_kw] * W[i_co, i_ci, i_kh, i_kw]
+        )
 
     with tir.block([1, 512, 7, 7], "relu") as [i_n, i_co, i_h, i_w]:
         Y_j[i_n, i_co, i_h, i_w] = tir.max(Y_i[i_n, i_co, i_h, i_w], 0.0)
@@ -406,7 +415,7 @@ def test_matmul_evolutionary_xgb():
                 ms.mutator.mutate_compute_location(): 0.05,
             },
             cost_model=ms.XGBModel(
-                num_warmup_sample=0,
+                num_warmup_samples=0,
             ),
             eps_greedy=0.07,
         ),
