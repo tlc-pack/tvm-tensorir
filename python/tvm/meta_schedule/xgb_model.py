@@ -577,7 +577,6 @@ def custom_callback(
             )
         eval_result = list(eval_result)
         eval_result.sort(key=sort_key)
-        print(eval_result)
 
         ##### Print eval result #####
         if verbose_eval and iteration % verbose_eval == 0:
