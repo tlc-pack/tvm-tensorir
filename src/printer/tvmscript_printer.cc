@@ -773,7 +773,15 @@ Doc TVMScriptPrinter::VisitStmt_(const BlockRealizeNode* op) {
   block_attr_doc << Doc::NewLine() << "tir.reads(" << Print(block_op->reads) << ")";
   block_attr_doc << Doc::NewLine() << "tir.writes(" << Print(block_op->writes) << ")";
   if (!block_op->annotations.empty()) {
-    block_attr_doc << Doc::NewLine() << "tir.block_attr(" << Print(block_op->annotations) << ")";
+    block_attr_doc << Doc::NewLine() << "tir.block_attr({";
+    for (size_t i = 0; i < block_op->annotations.size(); ++i) {
+      if (i != 0) {
+        block_attr_doc << ", ";
+      }
+      block_attr_doc << "\"" << block_op->annotations[i]->attr_key
+                     << "\":" << Print(block_op->annotations[i]->value);
+    }
+    block_attr_doc << "})";
   }
   // print body
   Doc body;
