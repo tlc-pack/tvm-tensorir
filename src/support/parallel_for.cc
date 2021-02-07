@@ -112,13 +112,33 @@ void parallel_persist_for(int begin, int end, const std::function<void(int, int)
     }
     return;
   }
-  // Usec `support::parallel_for` to launch persistent threads
+  // Launch threads
   std::atomic<int> counter{begin};
-  parallel_for(0, num_threads, [&counter, &end, &f](int thread_id) {
-    for (int task_id; (task_id = counter++) < end;) {
-      f(thread_id, task_id);
+  std::vector<std::future<void>> futures;
+  std::vector<std::thread> threads;
+  futures.reserve(end - begin);
+  threads.reserve(end - begin);
+  for (int thread_id = 0; thread_id < num_threads; ++thread_id) {
+    std::packaged_task<void()> task([thread_id, end, &counter, &f]() -> void {
+      for (int task_id; (task_id = counter++) < end;) {
+        f(thread_id, task_id);
+      }
+    });
+    futures.emplace_back(task.get_future());
+    threads.emplace_back(std::move(task));
+  }
+  // Join threads
+  for (auto&& thread : threads) {
+    thread.join();
+  }
+  // Check exceptions
+  try {
+    for (auto&& future : futures) {
+      future.get();
     }
-  });
+  } catch (const std::exception& e) {
+    LOG(FATAL) << "Parallel_for error with " << e.what();
+  }
 }
 
 }  // namespace support
