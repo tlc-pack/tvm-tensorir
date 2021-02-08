@@ -160,7 +160,7 @@ bool Scope::IsReduction(const StmtSRef& block_sref) const {
   }
   // Cond 4. All Reduction vars should not affect indexing the output buffer
   bool not_affected = true;
-  PreOrderVisit(GetRef<Block>(block), [block, &not_affected] (const ObjectRef& node) {
+  PreOrderVisit(GetRef<Block>(block), [block, &not_affected](const ObjectRef& node) {
     if (!not_affected) {
       return false;
     }

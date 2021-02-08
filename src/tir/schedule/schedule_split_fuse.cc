@@ -59,7 +59,8 @@ class BlockRealizeRewriter : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const BlockRealizeNode* op) final {
-    auto v = arith::IterMapRewriteSimplify(op->binding_values, loop_map_, op->predicate);
+    auto v =
+        arith::IterMapSimplify(op->block->iter_vars, op->binding_values, loop_map_, op->predicate);
     if (v.same_as(op->binding_values)) {
       return GetRef<Stmt>(op);
     } else {

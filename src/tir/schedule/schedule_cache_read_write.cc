@@ -244,7 +244,7 @@ class CacheLocDetector : public StmtVisitor {
     // Only we visited the writing block and any one of the related blocks
     // That means that we have found the lowest ancestor
     // of the block and any one of the related ones
-    if (visited_block_ && visited_related_) {
+    if (visited_block_ && visited_related_ && loc_pos_ == -1) {
       loc_pos_ = pos;
     }
   }

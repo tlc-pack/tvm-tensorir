@@ -34,7 +34,8 @@ void ScheduleNode::register_reducer(const CommReducer& comm_reducer) {
   this->reducers_.push_back(comm_reducer);
 }
 
-StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const StmtSRef& loop_sref) {
+StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
+                                           const Optional<StmtSRef>& loop_sref_opt) {
   /*!
    *  Check
    *    - block is reduction
@@ -50,8 +51,9 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
   CHECK(block_sref.defined())
       << "ValueError: 'decompose_reduction' expect a block as first argument, but get value 'None'";
   const auto* block = block_sref->GetStmt<BlockNode>();
-  if (loop_sref.defined()) {
+  if (loop_sref_opt) {
     // 'loop' is not 'None'.
+    StmtSRef loop_sref = loop_sref_opt.value();
     const auto* loop = loop_sref->GetStmt<LoopNode>();
     CHECK(block != nullptr)
         << "TypeError: 'decompose_reduction' expect a block as first argument, but get type: "
@@ -211,8 +213,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref, const Stm
         /*allocations=*/block->allocations,
         /*annotations=*/block->annotations,
         /*tag=*/block->tag + "_update",
-        /*init=*/NullOpt
-        );
+        /*init=*/NullOpt);
     this->Replace(block_sref, new_block, {{new_block, GetRef<Block>(block)}});
     // Update scope information
     UpdateScope(GetParentBlockSRef(block_sref)->stmt, this->stmt2ref, &this->scopes);
@@ -246,8 +247,8 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
          "BufferStore";
   Optional<CommReducer> reducer;
   Optional<PrimExpr> reducer_lhs, reducer_rhs;
-  CommReducer::FromInitUpdate(init_body->value, GetRef<BufferStore>(update_body),
-      reducer, reducer_lhs, reducer_rhs);
+  CommReducer::FromInitUpdate(init_body->value, GetRef<BufferStore>(update_body), reducer,
+                              reducer_lhs, reducer_rhs);
   CHECK(reducer.defined())
       << "ValueError: 'merge_reduction' pattern detect failed. No reducer pattern matched for "
       << init_body->value << " and " << GetRef<BufferStore>(update_body);
@@ -367,11 +368,11 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   CHECK(update) << "ValueError: the body of the block ought to be a BufferStore stmt";
   Optional<CommReducer> reducer;
   Optional<PrimExpr> reducer_lhs, reducer_rhs;
-  CommReducer::FromInitUpdate(init->value, GetRef<BufferStore>(update),
-      reducer, reducer_lhs, reducer_rhs);
+  CommReducer::FromInitUpdate(init->value, GetRef<BufferStore>(update), reducer, reducer_lhs,
+                              reducer_rhs);
   CHECK(reducer.defined()) << "ValueError: 'merge_reduction' pattern detect failed. "
-                           << "No reducer pattern matched for " << init->value
-                           << " and " << GetRef<BufferStore>(update);
+                           << "No reducer pattern matched for " << init->value << " and "
+                           << GetRef<BufferStore>(update);
   CHECK(reducer_lhs.defined() && reducer_rhs.defined());
   PrimExpr lhs = reducer_lhs.value();
   PrimExpr rhs = reducer_rhs.value();
@@ -387,8 +388,9 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   }
   // Do subspace division with subspace {loop}
   arith::Analyzer analyzer;
-  auto division = arith::SubspaceDivision(block_realize->binding_values, iters, {loop->loop_var},
-                                          block_realize->predicate, &analyzer);
+  auto division =
+      arith::SubspaceDivision(block_realize->block->iter_vars, block_realize->binding_values, iters,
+                              {loop->loop_var}, block_realize->predicate, &analyzer);
   arith::IterVarMapConverter converter(&analyzer);
   CHECK(is_one(division.back()->inner_extent))
       << "ValueError: can not rfactor a loop related with predicate";
@@ -422,7 +424,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   }
   rf_bindings.push_back(loop->loop_var);
   rf_iters.push_back(rf_iter);
-  CHECK(0 <= factor_axis && factor_axis <= (int) update->buffer->shape.size())
+  CHECK(0 <= factor_axis && factor_axis <= (int)update->buffer->shape.size())
       << "ValueError: factor_axis should be in range [0, " << update->buffer->shape.size() << "]";
   Array<PrimExpr> rf_shape = update->buffer->shape;
   Array<PrimExpr> rf_indices = update->indices;
@@ -505,7 +507,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
     const auto* l = loops[i]->GetStmt<LoopNode>();
     CHECK(l) << "InternalError: GetLoopsInScope returns a block sref";
     if (l->body->IsInstance<SeqStmtNode>()) {
-      CHECK(i != (int) loops.size() - 1) << "ValueError: can not rfactor";
+      CHECK(i != (int)loops.size() - 1) << "ValueError: can not rfactor";
       top = loops[i + 1];
       break;
     }
