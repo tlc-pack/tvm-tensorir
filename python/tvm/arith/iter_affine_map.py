@@ -96,8 +96,8 @@ def detect_iter_map(indices, input_iters, predicate=True, require_bijective=Fals
     indices : List[PrimExpr]
         The input indices
 
-    input_iters : Map[Var, Range]
-        The domain of each input iterators.
+    root_iters : Map[Var, Range]
+        The domain of each root iterators.
 
     predicate : PrimExpr
         The predicate constraints on the input iterators

@@ -627,6 +627,7 @@ class IterMapRewriter : public ExprMutator {
   }
 
   bool CanProveDivisible(const PrimExpr& lhs, const PrimExpr& rhs) {
+    if (CanProveEqual(lhs, rhs)) return true;
     const auto* clhs = lhs.as<IntImmNode>();
     const auto* crhs = rhs.as<IntImmNode>();
     if (clhs && crhs) return clhs->value % crhs->value == 0;
@@ -746,8 +747,8 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
   if (!rewriter.CheckConstraints()) return Array<IterSumExpr>();
   // Step0.1: rewrite indices
   Array<IterSumExpr> results;
-  for (PrimExpr value : indices) {
-    results.push_back(rewriter.Rewrite(value));
+  for (PrimExpr binding : bindings) {
+    results.push_back(rewriter.Rewrite(binding));
     if (rewriter.unresolved_count() != 0) return Array<IterSumExpr>();
   }
   // Step1: IterIndependenceChecker checks if the iterator are independent.
@@ -755,6 +756,13 @@ Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, 
 
   return results;
 }
+
+TVM_REGISTER_GLOBAL("arith.DetectIterMap")
+    .set_body_typed([](const Array<IterVar>& leaf_iters, const Array<PrimExpr>& bindings,
+                       const Map<Var, Range>& root_iters, const PrimExpr& predicate) {
+      arith::Analyzer ana;
+      return DetectIterMap(leaf_iters, bindings, root_iters, predicate, &ana);
+    });
 
 Optional<IterSumExpr> DetectIter(const PrimExpr& index, const Map<Var, Range>& input_iters,
                                  arith::Analyzer* analyzer) {
@@ -776,10 +784,10 @@ Array<PrimExpr> IterMapRewriteSimplify(const Array<PrimExpr>& indices,
                                        const Map<Var, Range>& input_iters,
                                        const PrimExpr& predicate) {
   Analyzer analyzer;
-  auto rewrite = DetectIterMap(indices, input_iters, predicate, &analyzer);
-  if (rewrite.empty())
-    return indices;
-  else {
+  auto rewrite = DetectIterMap(leaf_iters, bindings, root_iters, predicate, &analyzer);
+  if (rewrite.empty()) {
+    return bindings;
+  } else {
     std::vector<PrimExpr> res;
     IterVarMapConverter converter(&analyzer);
     for (const auto& expr : rewrite) res.push_back(converter.Convert(expr));
@@ -1080,10 +1088,6 @@ bool DivisionFormNode::IsOuter() const { return is_one(inner_extent); }
 
 bool DivisionFormNode::IsInner() const { return is_one(outer_extent); }
 
-bool DivisionFormNode::OuterIsSplit() const { return outer->IsInstance<IterSplitExprNode>(); }
-
-bool DivisionFormNode::InnerIsSplit() const { return inner->IsInstance<IterSplitExprNode>(); }
-
 TVM_REGISTER_GLOBAL("arith.DivisionForm")
     .set_body_typed([](IterMapExpr outer, PrimExpr outer_extent, IterMapExpr inner,
                        PrimExpr inner_extent) {
@@ -1309,11 +1313,11 @@ class SubspaceDivider {
   std::unordered_map<IterSplitExpr, DivisionForm, ObjectPtrHash, ObjectPtrEqual> split_map_;
 };
 
-Array<DivisionForm> SubspaceDivision(const Array<PrimExpr>& indices,
-                                     const Map<Var, Range>& iter_range_map,
-                                     const Array<Var>& sub_iters, const PrimExpr& predicate,
-                                     arith::Analyzer* analyzer) {
-  const auto& maps = DetectIterMap(indices, iter_range_map, predicate, analyzer);
+Array<DivisionForm> SubspaceDivision(const Array<IterVar>& leaf_iters,
+                                     const Array<PrimExpr>& bindings,
+                                     const Map<Var, Range>& root_iters, const Array<Var>& sub_iters,
+                                     const PrimExpr& predicate, arith::Analyzer* analyzer) {
+  const auto& maps = DetectIterMap(leaf_iters, bindings, root_iters, predicate, analyzer);
   if (maps.empty()) return {};
 
   std::unordered_set<const VarNode*> inner_iter_set;
@@ -1331,7 +1335,6 @@ Array<DivisionForm> SubspaceDivision(const Array<PrimExpr>& indices,
 
   results.emplace_back(IterSumExpr({}, 0), subspace_divider.outer_preds, IterSumExpr({}, 0),
                        subspace_divider.inner_preds);
-
   return results;
 }
 

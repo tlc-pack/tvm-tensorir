@@ -262,7 +262,7 @@ class IterSumExpr : public IterMapExpr {
  * \brief Detect if indices can be written as
  *  [y_0 + c_0, y_1 + c_1, ..., y_n + c_n]
  *
- *  Here y = some-quasi-affine-iter-map(input_iters)
+ *  Here y = some-quasi-affine-iter-map(root_iters)
  *  and c are symbolic constants.
  *
  *  We also requires that y_i and y_j to be independent for i != j.

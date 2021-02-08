@@ -91,8 +91,8 @@ class StatementInliner : public StmtExprMutator {
       reads = block_read_write_collector.reads();
     }
 
-    Block block(op->iter_vars, reads, op->writes, op->body, allocations, op->annotations,
-                op->tag, op->init);
+    Block block(op->iter_vars, reads, op->writes, op->body, allocations, op->annotations, op->tag,
+                op->init);
 
     block_sref_map_->Set(block, origin_block);
     return std::move(block);
