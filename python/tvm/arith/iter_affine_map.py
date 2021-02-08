@@ -95,16 +95,19 @@ class DivisionForm(Object):
                                             inner_extent)
 
 
-def detect_iter_map(indices, input_iters, predicate=True):
-    """Detect if indices can be written mapped iters from input_iters.
+def detect_iter_map(leaf_iters, bindings, root_iters, predicate=True):
+    """Detect if bindings can be written mapped iters from root iters
 
     Parameters
     ----------
-    indices : List[PrimExpr]
-        The input indices.
+    leaf_iters : List[IterVar]
+        The list of leaf iterators
 
-    input_iters : Map[Var, Range]
-        The domain of each input iterators.
+    bindings : List[PrimExpr]
+        The bindings of leaf iterators
+
+    root_iters : Map[Var, Range]
+        The domain of each root iterators.
 
     predicate : PrimExpr
         The predicate tht input iterators follow
@@ -115,10 +118,10 @@ def detect_iter_map(indices, input_iters, predicate=True):
         The iter map matching result.
         Empty array if no match can be found.
     """
-    return _ffi_api.DetectIterMap(indices, input_iters, predicate)
+    return _ffi_api.DetectIterMap(leaf_iters, bindings, root_iters, predicate)
 
 
-def subspace_division(indices, input_iters, sub_iters, predicate=True):
+def subspace_division(leaf_iters, bindings, root_iters, sub_iters, predicate=True):
     """Detect if indices can be written as y*extent(x),
     where y, x are mapped iters from input_iters.
     What's more, y is a mapped iter from input_iters \setminus sub_iters
@@ -129,10 +132,13 @@ def subspace_division(indices, input_iters, sub_iters, predicate=True):
 
     Parameters
     ----------
-    indices : List[PrimExpr]
+    leaf_iters : List[IterVar]
+        The list of leaf iterators
+
+    bindings : List[PrimExpr]
         The input indices.
 
-    input_iters : Map[Var, Range]
+    root_iters : Map[Var, Range]
         The domain of each input iterators, which is the basis of the whole space
 
     sub_iters : Array[Var]
@@ -149,7 +155,7 @@ def subspace_division(indices, input_iters, sub_iters, predicate=True):
         The second expr is the basis of the subspace.
         Empty array if no match can be found.
     """
-    return _ffi_api.SubspaceDivision(indices, input_iters, sub_iters, predicate)
+    return _ffi_api.SubspaceDivision(leaf_iters, bindings, root_iters, sub_iters, predicate)
 
 
 def iter_map_convert(expr):

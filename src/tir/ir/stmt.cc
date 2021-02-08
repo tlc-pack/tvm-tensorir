@@ -914,6 +914,10 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       for (const auto& allocate : op->allocations) {
         p->Print(allocate);
       }
+      if (op->init.defined()) {
+        // print the block init statement
+        p->Print(op->init.value());
+      }
       p->Print(op->body);
       p->indent -= 2;
       p->PrintIndent();

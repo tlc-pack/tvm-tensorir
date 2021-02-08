@@ -381,7 +381,7 @@ class Schedule(Object):
         """
         _ffi_api_schedule.ScheduleTensorize(self, loop, intrinsic)
 
-    def decompose_reduction(self, block, loop):
+    def decompose_reduction(self, block, loop=None):
         """Decompose reduction block into init&update blocks
 
         Parameters

@@ -51,7 +51,8 @@ class LoopValidator : public StmtVisitor {
     }
     std::vector<PrimExpr> bindings{realize->binding_values.begin(), realize->binding_values.end()};
     arith::Analyzer analyzer;
-    auto results = arith::DetectIterMap(bindings, loop_vars, realize->predicate, &analyzer);
+    auto results = arith::DetectIterMap(realize->block->iter_vars, bindings, loop_vars,
+                                        realize->predicate, &analyzer);
     if (!results.empty()) {
       for (const auto& sum_expr : results) {
         if (!sum_expr->args.empty() && !is_one(sum_expr->args[0]->scale)) {
