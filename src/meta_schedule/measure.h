@@ -40,6 +40,7 @@
 #define SRC_META_SCHEDULE_MEASURE_H_
 
 #include <tvm/runtime/ndarray.h>
+
 #include "./database.h"
 #include "./measure_record.h"
 #include "./schedule.h"
@@ -240,10 +241,9 @@ class RPCRunner : public ProgramRunner {
    * \param enable_cpu_cache_flush Whether to flush cache on CPU between repeated measurements.
    * \param f_create_args Callback function to create arguments.
    */
-   explicit RPCRunner(String key, String host, int port, int priority, int n_parallel,
-                         int timeout, int number, int repeat, int min_repeat_ms,
-                         double cooldown_interval, bool enable_cpu_cache_flush,
-                         FCreateArgs f_create_args);
+  explicit RPCRunner(String key, String host, int port, int priority, int n_parallel, int timeout,
+                     int number, int repeat, int min_repeat_ms, double cooldown_interval,
+                     bool enable_cpu_cache_flush, FCreateArgs f_create_args);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(RPCRunner, ProgramRunner, RPCRunnerNode);
 };

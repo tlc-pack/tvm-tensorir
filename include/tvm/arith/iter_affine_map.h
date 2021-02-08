@@ -259,11 +259,11 @@ class IterSumExpr : public IterMapExpr {
 };
 
 /*!
- * \brief Detect if indices can be written as
+ * \brief Detect if bindings can be written as
  *
  *  [y_0 + c_0, y_1 + c_1, ..., y_n + c_n]
  *
- *  Here y = some-quasi-affine-iter-map(input_iters)
+ *  Here y = some-quasi-affine-iter-map(root_iters)
  *  and c are symbolic constants.
  *
  *  We also requires that y_i and y_j to be independent for i != j.
@@ -271,29 +271,29 @@ class IterSumExpr : public IterMapExpr {
  *  For returned value rv, the following is always true:
  *  - rv[i]->args.size() <=1: only one iterator per element.
  *
- * \param indices The indices to detect pattern for.
- * \param input_iters Map from variable to iterator's range.
- * \param predicate The predicate input_iters should follow
+ * \param bindings The bindings to detect pattern for.
+ * \param root_iters Map from variable to iterator's range.
+ * \param predicate The predicate root_iters should follow
  * \param analyzer Analyzer used to get context information.
  *
  * \return The detected pattern if a match exists,
  *         otherwise return an empty array.
  */
-Array<IterSumExpr> DetectIterMap(const Array<PrimExpr>& indices, const Map<Var, Range>& input_iters,
-                                 const PrimExpr& predicate, arith::Analyzer* analyzer);
+Array<IterSumExpr> DetectIterMap(const Array<IterVar>& leaf_iters, const Array<PrimExpr>& bindings,
+                                 const Map<Var, Range>& root_iters, const PrimExpr& predicate,
+                                 arith::Analyzer* analyzer);
 
 /*!
- * \brief Use IterVarMap detector to rewrite and simplify the indices
+ * \brief Use IterVarMap detector to rewrite and simplify the bindings
  *
- * \param indices The indices to detect pattern for.
- * \param input_iters Map from variable to iterator's range
- * \param predicate The predicate input_iters should follow
+ * \param bindings The bindings to detect pattern for.
+ * \param root_iters Map from variable to iterator's range
+ * \param predicate The predicate root_iters should follow
  *
- * \return The indices after rewrite
+ * \return The bindings after rewrite
  */
-Array<PrimExpr> IterMapRewriteSimplify(const Array<PrimExpr>& indices,
-                                       const Map<Var, Range>& input_iters,
-                                       const PrimExpr& predicate);
+Array<PrimExpr> IterMapSimplify(const Array<IterVar>& leaf_iters, const Array<PrimExpr>& bindings,
+                                const Map<Var, Range>& root_iters, const PrimExpr& predicate);
 
 Optional<IterSumExpr> DetectIter(const PrimExpr& index, const Map<Var, Range>& input_iters,
                                  arith::Analyzer* analyzer);
@@ -347,8 +347,6 @@ class DivisionFormNode : public Object {
 
   bool IsOuter() const;
   bool IsInner() const;
-  bool OuterIsSplit() const;
-  bool InnerIsSplit() const;
 
   static IterSplitExpr GetAsSplit(const IterMapExpr& expr, const PrimExpr& extent);
   IterSplitExpr GetOuterAsSplit() const;
@@ -388,17 +386,17 @@ class DivisionForm : public ObjectRef {
 };
 
 /*!
- * \brief Detect if indices can be written as
+ * \brief Detect if bindings can be written as
  *
  * [a_0*e_0 + b_0 + c_0, a_1*e_1 + b_1, ..., a_n*e_n + b_n]
  *
- * where a = some-quasi-affine-iter-map(iter_range_map \set_minus sub_iters)
+ * where a = some-quasi-affine-iter-map(root_iters \set_minus sub_iters)
  *       b = some-quasi-affine-iter-map(sub_iters)
  *       c is constant symbols
  *       e is the extent of b
  *
- * \param indices The indices to detect pattern for.
- * \param iter_range_map Map from variable to iterator's range.
+ * \param bindings The bindings to detect pattern for.
+ * \param root_iters Map from variable to iterator's range.
  * \param sub_iters Iterators of subspace
  * \param predicate The predicate for input_inters
  * \param analyzer Analyzer used to get context information.
@@ -406,10 +404,10 @@ class DivisionForm : public ObjectRef {
  * \return The detected a and b if a match exists,
  *         otherwise return an empty array.
  */
-Array<DivisionForm> SubspaceDivision(const Array<PrimExpr>& indices,
-                                     const Map<Var, Range>& iter_range_map,
-                                     const Array<Var>& sub_iters, const PrimExpr& predicate,
-                                     arith::Analyzer* analyzer);
+Array<DivisionForm> SubspaceDivision(const Array<IterVar>& leaf_iters,
+                                     const Array<PrimExpr>& bindings,
+                                     const Map<Var, Range>& root_iters, const Array<Var>& sub_iters,
+                                     const PrimExpr& predicate, arith::Analyzer* analyzer);
 
 }  // namespace arith
 }  // namespace tvm

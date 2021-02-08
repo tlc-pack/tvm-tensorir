@@ -436,7 +436,7 @@ Instruction BlockizeAttrs::Make(const LoopRV& loop, const String& exec_scope,
                      /*attrs=*/InstAttrs(std::move(n)));
 }
 
-Instruction DecomposeReductionAttrs::Make(const BlockRV& block, const LoopRV& loop,
+Instruction DecomposeReductionAttrs::Make(const BlockRV& block, const Optional<LoopRV>& loop,
                                           const BlockRV& output) {
   ObjectPtr<DecomposeReductionAttrs> n = make_object<DecomposeReductionAttrs>();
   return Instruction(/*inputs=*/{block, loop},

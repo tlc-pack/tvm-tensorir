@@ -721,7 +721,8 @@ struct DecomposeReductionAttrs : public InstAttrsNode {
    * \param output The output of the instruction
    * \return The instruction created
    */
-  static Instruction Make(const BlockRV& block, const LoopRV& loop, const BlockRV& output);
+  static Instruction Make(const BlockRV& block, const Optional<LoopRV>& loop,
+                          const BlockRV& output);
 
   TVM_META_SCHEDULE_DEFINE_INST_ATTRS(DecomposeReductionAttrs,                        //
                                       "meta_schedule.attrs.DecomposeReductionAttrs",  //
