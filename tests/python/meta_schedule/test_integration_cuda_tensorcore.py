@@ -18,11 +18,111 @@
 # pylint: disable=missing-function-docstring
 import te_workload
 import tvm
-from tir_tensor_intrin import TENSORCORE_WMMA
+import tir_tensor_intrin  # pylint: disable=unused-import
 from tvm import meta_schedule as ms
 from tvm import te
 
 TARGET = tvm.target.Target("nvidia/rtx2080ti")
+
+
+def test_integration_matmul():
+    workload = te_workload.matmul_fp16(n=512, m=512, k=512)
+    workload = te.create_func(workload)
+
+    def schedule(sch):
+        block = sch.get_block("C")
+        i, j, k = sch.get_axes(block)
+        # Step 1. Rule-Auto-Tensorize
+        # pylint: disable=invalid-name
+        i, i_tc = sch.split(i, factors=[None, 16])
+        j, j_tc = sch.split(j, factors=[None, 16])
+        k, k_tc = sch.split(k, factors=[None, 16])
+        sch.reorder(
+            after_axes=[
+                # fmt: off
+                i, j, k,
+                # tensor core
+                i_tc, j_tc, k_tc,
+                # fmt: on
+            ]
+        )
+        block_inner = sch.blockize(i_tc)
+        block_outer, block_inner = block_inner, block
+        del block
+        # Step 2. Rule-Multi-Level-Tiling
+        i0, i1, i2, i3, i4 = sch.split(i, sch.sample_perfect_tile(5, i))
+        j0, j1, j2, j3, j4 = sch.split(j, sch.sample_perfect_tile(5, j))
+        k0, k1, k2 = sch.split(k, sch.sample_perfect_tile(3, k))
+        # pylint: enable=invalid-name
+        sch.reorder(
+            after_axes=[
+                # fmt: off
+                i0, j0,   # S => blockIdx.x
+                i1, j1,   # S => vthread
+                i2, j2,   # S => threadIdx.x
+                # cache_write here
+                k0,       # R
+                # vectorized cooperative fetching here
+                k1,       # R
+                i3, j3,   # S
+                k2,       # R
+                i4, j4,
+                # S
+                # fmt: on
+            ]
+        )
+        block_idx = sch.fuse([i0, j0])
+        vthread = sch.fuse([i1, j1])
+        thread_idx = sch.fuse([i2, j2])
+        sch.bind(block_idx, "blockIdx.x")
+        sch.bind(vthread, "vthread")
+        sch.bind(thread_idx, "threadIdx.x")
+
+        block_write_c = sch.cache_write(block_outer, 0, "local")
+        block_outer, block_write_c = block_write_c, block_outer
+        sch.reverse_compute_at(block_write_c, thread_idx)
+
+        def fetch_to_shared(block, idx, ndim):
+            block_read = sch.cache_read(block, idx, "shared")
+            sch.compute_at(block_read, k0)
+            fused = sch.fuse(sch.get_axes(block_read)[-ndim:])
+            fused_0, fused_1 = sch.split(fused, [None, 4])
+            sch.mark_loop(fused_0, "loop_type", "lazy_cooperative_fetch")
+            sch.vectorize(fused_1)
+
+        fetch_to_shared(block_outer, 1, 2)
+        fetch_to_shared(block_outer, 2, 2)
+
+        # Step 3. Postproc-Rewrite-Tensorize
+        # Step 3.1. Cache read
+        loop = sch.get_axes(block_outer)[-1]
+        block_read_a = sch.cache_read(block_inner, 1, "wmma.matrix_a")
+        block_read_b = sch.cache_read(block_inner, 2, "wmma.matrix_b")
+        sch.compute_at(block_read_a, loop)
+        sch.compute_at(block_read_b, loop)
+        # Step 3.2. Cache write
+        block_write_c = sch.cache_write(block_outer, 0, "wmma.accumulator")
+        block_outer, block_write_c = block_write_c, block_outer
+        sch.reverse_compute_at(block_write_c, loop)
+        # Step 3.3. Decompose
+        loop = sch.get_axes(block_outer)[3]
+        block_init_c = sch.decompose_reduction(block_outer, loop)
+        print(tvm.script.asscript(sch.sch.func))
+        # Step 3.4. Tensorize
+        loop = sch.get_axes(block_inner)[-3]
+        sch.tensorize(loop, "wmma_sync")
+        loop = sch.get_axes(block_read_a)[-2]
+        sch.tensorize(loop, "wmma_load_a")
+        loop = sch.get_axes(block_read_b)[-2]
+        sch.tensorize(loop, "wmma_load_b")
+        # loop = sch.get_axes(block_init_c)[-2]
+        # sch.tensorize(loop, "wmma_fill")
+        loop = sch.get_axes(block_write_c)[-2]
+        sch.tensorize(loop, "wmma_store")
+
+    sch = ms.Schedule(func=workload, seed=1024)
+    schedule(sch)
+    print(tvm.script.asscript(sch.sch.func))
 
 
 def test_integration_conv2d_nchwc():
@@ -132,4 +232,5 @@ def test_integration_conv2d_nchwc():
 
 
 if __name__ == "__main__":
+    test_integration_matmul()
     test_integration_conv2d_nchwc()

@@ -528,7 +528,7 @@ class Schedule(Object):
     def decompose_reduction(
         self,
         block: BlockRV,
-        loop: LoopRV,
+        loop: LoopRV = None,
     ) -> BlockRV:
         """Decompose the reduction in the specific block under the specific loop
 

@@ -76,7 +76,7 @@ def test_reduction_decompose():
     # Test 2
     s = tir.create_schedule(matmul)
     C = s.get_block("update")
-    s.decompose_reduction(C, None)
+    s.decompose_reduction(C)
     tvm.ir.assert_structural_equal(matmul_decompose1, s.func)
 
 
