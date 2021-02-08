@@ -16,6 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include <thread>  // NOLINT(build/c++11)
+
 #include "./mutator.h"  // NOLINT(build/include)
 
 #include "../analysis.h"
@@ -234,6 +236,160 @@ Mutator MutateComputeLocation() {
   return Mutator("mutate_compute_location", f_apply);
 }
 
+/********** MutateAutoUnroll **********/
+
+class MutatorAutoUnroll {
+ public:
+  MutatorAutoUnroll() = default;
+
+  struct Candidate {
+    /*! \brief The SampleCategorical instruction */
+    Instruction inst;
+    /*! \brief The candidate values of the categorical distribution */
+    std::vector<int> values;
+    /*! \brief The corresponding probabilities(weights) of the categorical distribution */
+    std::vector<double> weights;
+
+    explicit Candidate(Instruction inst, std::vector<int> values, std::vector<double> weights)
+        : inst(std::move(inst)), values(std::move(values)), weights(std::move(weights)) {}
+  };
+
+  /*!
+   * \brief Find instruction `SampleCategorical` whose output is used by `auto_unroll`
+   * \param trace The trace from which to find the instructions
+   * \return All the candidate instructions
+   */
+  std::vector<Candidate> FindCandidates(const Trace& trace) {
+    std::vector<Candidate> candidates;
+    for (int i = 0; i < (int) trace->insts.size(); ++i) {
+      const Instruction& mark_inst = trace->insts[i];
+      // Step 1. Find the `MarkBlockAttr` with key `auto_unroll`.
+      if (mark_inst->inst_attrs->IsInstance<MarkBlockAttrs>()) {
+        CHECK_EQ(mark_inst->inputs.size(), 2);
+        const auto* mark_attr = mark_inst->inst_attrs.as<MarkBlockAttrs>();
+        if (mark_attr->ann_key == tir::attr::auto_unroll_explicit
+            || mark_attr->ann_key == tir::attr::auto_unroll_implicit) {
+          auto sample_output = Downcast<tir::Var>(mark_inst->inputs[1]);
+          // Step 2. Back to find the corresponding `SampleCategorical` instruction.
+          for (int j = i - 1; j >= 0; --j) {
+            const Instruction& sample_inst = trace->insts[j];
+            if (sample_inst->outputs.size() == 1 && sample_inst->outputs.same_as(sample_output)) {
+              CHECK(sample_inst->inst_attrs->IsInstance<SampleCategoricalAttrs>());
+              const auto* sample_attr = sample_inst->inst_attrs.as<SampleCategoricalAttrs>();
+              std::vector<int> values;
+              std::vector<double> weights;
+              CHECK_EQ(sample_attr->candidates.size(), sample_attr->probs.size());
+              int decision = Downcast<Integer>(trace->decisions.Get(sample_inst))->value;
+              // Step 3. Remove the current decision from the sampling candidates.
+              for (int k = 0; k < (int) sample_attr->candidates.size(); ++k) {
+                if (sample_attr->candidates[k] != decision) {
+                  values.emplace_back(sample_attr->candidates[k]);
+                  weights.emplace_back(sample_attr->probs[k]->value);
+                }
+              }
+              // Step 4. Add a new candidate if `values` is not empty.
+              if (!values.empty()) {
+                candidates.emplace_back(sample_inst, values, weights);
+              }
+              break;
+            }
+          }
+        }
+      }
+    }
+    return candidates;
+  }
+
+  Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler) {
+    std::vector<Candidate> candidates = FindCandidates(trace);
+    if (candidates.empty()) {
+      return NullOpt;
+    }
+    const Candidate& candidate = candidates[sampler->SampleInt(0, candidates.size())];
+    int result = candidate.values[sampler->MakeMultinomial(candidate.weights)()];
+    return trace->WithDecision(candidate.inst, Integer(result), /*remove_postproc=*/true);
+  }
+};
+
+Mutator MutateAutoUnroll() {
+  auto f_apply = [](SearchTask task, Trace trace, void* sampler) -> Optional<Trace> {
+    MutatorAutoUnroll mutator;
+    return mutator.Apply(task, trace, static_cast<Sampler*>(sampler));
+  };
+  return Mutator("mutate_unroll_depth", f_apply);
+}
+
+/********** MutateParallel **********/
+
+class MutatorParallel {
+ public:
+  MutatorParallel() = default;
+
+  struct Candidate {
+    /*! \brief The MarkBlock instruction */
+    Instruction inst;
+    /*! \brief The parallel size */
+    int parallel_size;
+
+    explicit Candidate(Instruction inst, int parallel_size)
+        : inst(std::move(inst)), parallel_size(parallel_size) {}
+  };
+
+  /*!
+   * \brief Find instruction `MarkBlock` with annotation key `auto_parallel`
+   * \param trace The trace from which to find the instructions
+   * \return All the candidate instructions
+   */
+  std::vector<Candidate> FindCandidates(const Trace& trace) {
+    std::vector<Candidate> candidates;
+    for (const Instruction& inst : trace->insts) {
+      if (inst->inst_attrs->IsInstance<MarkBlockAttrs>()) {
+        CHECK_EQ(inst->inputs.size(), 2);
+        const auto* attr = inst->inst_attrs.as<MarkBlockAttrs>();
+        if (attr->ann_key == tir::attr::auto_parallel_extent) {
+          int cur_para_size = Downcast<Integer>(inst->inputs[1])->value;
+          int num_threads = (int) std::thread::hardware_concurrency();
+          if (cur_para_size > num_threads) {
+            candidates.emplace_back(inst, cur_para_size - num_threads);
+          }
+        }
+      }
+    }
+    return candidates;
+  }
+
+  Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler) {
+    std::vector<Candidate> candidates = FindCandidates(trace);
+    if (candidates.empty()) {
+      return NullOpt;
+    }
+    const Candidate& candidate = candidates[sampler->SampleInt(0, candidates.size())];
+    const BlockRV& block = Downcast<BlockRV>(candidate.inst->inputs[0]);
+    const int& parallel_size = candidate.parallel_size;
+
+    std::vector<Instruction> new_insts;
+    for (int i = 0; i < (int) trace->insts.size()
+                    && !trace->insts[i]->inst_attrs->IsInstance<EnterPostProcAttrs>(); ++i) {
+      new_insts.emplace_back(trace->insts[i]);
+    }
+    for (Instruction& new_inst : new_insts) {
+      if (new_inst.same_as(candidate.inst)) {
+        new_inst = MarkBlockAttrs::Make(block, tir::attr::auto_parallel_extent, parallel_size);
+        break;
+      }
+    }
+    return Trace(new_insts, trace->decisions);
+  }
+};
+
+Mutator MutateParallel() {
+  auto f_apply = [](SearchTask task, Trace trace, void* sampler) -> Optional<Trace> {
+    MutatorParallel mutator;
+    return mutator.Apply(task, trace, static_cast<Sampler*>(sampler));
+  };
+  return Mutator("mutate_parallel", f_apply);
+}
+
 /********** FFI **********/
 
 struct Internal {
@@ -256,6 +412,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.mutator.Apply").set_body_typed(Internal::Appl
 TVM_REGISTER_GLOBAL("meta_schedule.mutator.MutateTileSize").set_body_typed(MutateTileSize);
 TVM_REGISTER_GLOBAL("meta_schedule.mutator.MutateComputeLocation")
     .set_body_typed(MutateComputeLocation);
+TVM_REGISTER_GLOBAL("meta_schedule.mutator.MutateAutoUnroll").set_body_typed(MutateAutoUnroll);
+TVM_REGISTER_GLOBAL("meta_schedule.mutator.MutateParallel").set_body_typed(MutateParallel);
 
 }  // namespace meta_schedule
 }  // namespace tvm
