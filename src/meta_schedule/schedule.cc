@@ -794,9 +794,11 @@ BlockRV ScheduleNode::Blockize(const LoopRV& loop_rv, const String& exec_scope) 
   return output;
 }
 
-BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const LoopRV& loop) {
+BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const Optional<LoopRV>& loop) {
   // Find the output from TIR
-  tir::StmtSRef tir_result = this->sch->decompose_reduction(Eval(block), Eval(loop));
+  Optional<tir::StmtSRef> loop_sref =
+      bool(loop) ? Eval(loop.value()) : Optional<tir::StmtSRef>(NullOpt);
+  tir::StmtSRef tir_result = this->sch->decompose_reduction(Eval(block), loop_sref);
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
@@ -1058,7 +1060,7 @@ struct Internal {
    * \brief FFI function, corresponds to ScheduleNode::DecomposeReduction
    * \sa ScheduleNode::DecomposeReduction
    */
-  static BlockRV DecomposeReduction(Schedule sch, BlockRV block, LoopRV loop) {
+  static BlockRV DecomposeReduction(Schedule sch, BlockRV block, Optional<LoopRV> loop) {
     return sch->DecomposeReduction(block, loop);
   }
   /*!

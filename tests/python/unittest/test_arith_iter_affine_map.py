@@ -55,6 +55,11 @@ def var_dom(iters):
     return {var: tvm.ir.Range(0, ext) for var, ext in iters}
 
 
+def iter_var_par(ranges):
+    """Return a list of iter vars with iter type data par"""
+    return [tvm.tir.IterVar(tvm.ir.Range(ext[0], ext[1]), tvm.tir.Var("x", "int32"), 0) for ext in ranges]
+
+
 def assert_iter_sum_pattern(sum_expr, extent, base, scale=1):
     """Check the sum expr have the right pattern."""
     assert isinstance(sum_expr, tvm.arith.IterSumExpr)
@@ -71,7 +76,9 @@ def test_trivial():
     x = tvm.tir.Var("x", "int32"), 3
     y = tvm.tir.Var("y", "int32"), 4
 
-    res = tvm.arith.detect_iter_map([x[0], y[0], 3], var_dom([x, y]))
+    res = tvm.arith.detect_iter_map(iter_var_par([(0, 3), (0, 4), (0, 1)]),
+                                    [x[0], y[0], 3],
+                                    var_dom([x, y]))
 
     assert len(res) == 3
     assert_iter_sum_pattern(res[0], 3, 0)
@@ -84,7 +91,9 @@ def test_trivial():
     assert_iter_sum_pattern(res[1], 1, 3)
 
     # not independent
-    res = tvm.arith.detect_iter_map([x[0], x[0], 3], var_dom([x, y]))
+    res = tvm.arith.detect_iter_map(iter_var_par([(0, 3), (0, 3), (0, 1)]),
+                                    [x[0], x[0], 3],
+                                    var_dom([x, y]))
     assert len(res) == 0
 
 
@@ -94,29 +103,41 @@ def test_fuse():
     c = tvm.tir.SizeVar("c", "int32")
     c0 = tvm.tir.SizeVar("c0", "int32")
 
-    res = tvm.arith.detect_iter_map([y * 3 + 1 + c + x], var_dom([(x, 3), (y, 4)]))
+    res = tvm.arith.detect_iter_map(iter_var_par([(1+c, 13+c)]),
+                                    [y * 3 + 1 + c + x],
+                                    var_dom([(x, 3), (y, 4)]))
     assert len(res) == 1
     assert_iter_sum_pattern(res[0], 12, 1 + c)
 
-    res = tvm.arith.detect_iter_map([ifuse([(x, 3), (y, 4)])[0]], var_dom([(x, 3), (y, 4)]))
+    res = tvm.arith.detect_iter_map(iter_var_par([(0, 12)]),
+                                    [ifuse([(x, 3), (y, 4)])[0]],
+                                    var_dom([(x, 3), (y, 4)]))
     assert len(res) == 1
     assert_iter_sum_pattern(res[0], 12, 0)
 
     # fuse with symbolic factor
-    res = tvm.arith.detect_iter_map([(y + 1) * c + x], var_dom([(x, c), (y, 4)]))
+    res = tvm.arith.detect_iter_map(iter_var_par([(c, 4*c+c)]),
+                                    [(y + 1) * c + x],
+                                    var_dom([(x, c), (y, 4)]))
     assert len(res) == 1
     assert_iter_sum_pattern(res[0], 4 * c, c)
 
     # duplication
-    res = tvm.arith.detect_iter_map([y * 3 + x, y], var_dom([(x, 3), (y, 4)]))
+    res = tvm.arith.detect_iter_map(iter_var_par([(0, 12), (0, 4)]),
+                                    [y * 3 + x, y],
+                                    var_dom([(x, 3), (y, 4)]))
     assert len(res) == 0
 
     # duplication 2
-    res = tvm.arith.detect_iter_map([y, x + 1, y], var_dom([(x, 3), (y, 4)]))
+    res = tvm.arith.detect_iter_map(iter_var_par([(0, 4), (0, 3), (0, 4)]),
+                                    [y, x + 1, y],
+                                    var_dom([(x, 3), (y, 4)]))
     assert len(res) == 0
 
     # factor mismatch
-    res = tvm.arith.detect_iter_map([y * 4 + x], var_dom([(x, 3), (y, 4)]))
+    res = tvm.arith.detect_iter_map(iter_var_par([(0, 12)]),
+                                    [y * 4 + x],
+                                    var_dom([(x, 3), (y, 4)]))
     assert len(res) == 0
 
     # simple stride pattern
@@ -138,13 +159,17 @@ def test_split():
     fld = tvm.tir.floordiv
     flm = tvm.tir.floormod
 
-    res = tvm.arith.detect_iter_map([fld(x, 3), flm(x, 3) + c1], var_dom([(x, 24)]))
+    res = tvm.arith.detect_iter_map(iter_var_par([(0, 8), (c1, c1+3)]),
+                                    [fld(x, 3), flm(x, 3) + c1],
+                                    var_dom([(x, 24)]))
 
     assert len(res) == 2
     assert_iter_sum_pattern(res[0], 8, 0)
     assert_iter_sum_pattern(res[1], 3, c1, 1)
 
-    res = tvm.arith.detect_iter_map([fld(x, 6), fld(flm(x, 6), 2), flm(x, 2)], var_dom([(x, 24)]))
+    res = tvm.arith.detect_iter_map(iter_var_par([(0, 4), (0, 3), (0, 2)]),
+                                    [fld(x, 6), fld(flm(x, 6), 2), flm(x, 2)],
+                                    var_dom([(x, 24)]))
 
     assert len(res) == 3
     assert_iter_sum_pattern(res[0], 4, 0)
@@ -154,19 +179,24 @@ def test_split():
     # simple symbolic bound
     # TODO(tvm-team) improve symbolic divisible check to enable
     # more complicated symbolic bound
-    res = tvm.arith.detect_iter_map([fld(x, c0), flm(x, c0)], var_dom([(x, c1 * c0)]))
-
+    res = tvm.arith.detect_iter_map(iter_var_par([(0, c1), (0, c0)]),
+                                    [fld(x, c0), flm(x, c0)],
+                                    var_dom([(x, c1 * c0)]))
     assert len(res) == 2
     assert_iter_sum_pattern(res[0], c1, 0)
     assert_iter_sum_pattern(res[1], c0, 0)
 
     # simple stride pattern
-    res = tvm.arith.detect_iter_map([x * 4 + y * 2], var_dom([(x, 3), (y, 2)]))
+    res = tvm.arith.detect_iter_map(iter_var_par([(0, 6)]),
+                                    [x * 4 + y * 2],
+                                    var_dom([(x, 3), (y, 2)]))
     assert len(res) == 1
     assert_iter_sum_pattern(res[0], 6, 0, scale=2)
 
     # simple stride pattern with symbolic
-    res = tvm.arith.detect_iter_map([x*2*c0 + y*2], var_dom([(x, 3), (y, c0)]))
+    res = tvm.arith.detect_iter_map(iter_var_par([(0, 3*c0)]),
+                                    [x*2*c0 + y*2],
+                                    var_dom([(x, 3), (y, c0)]))
     assert len(res) == 1
     assert_iter_sum_pattern(res[0], 3*c0, 0, scale=2)
 
@@ -193,7 +223,9 @@ def test_compound():
     yo, yi = isplit(y, 3)
     z = ifuse([yo, xo, yi])
 
-    res = tvm.arith.detect_iter_map([z[0], xi[0]], var_dom([x, y]))
+    res = tvm.arith.detect_iter_map(iter_var_par([(0, 18), (0, 5)]),
+                                    [z[0], xi[0]],
+                                    var_dom([x, y]))
 
     assert len(res) == 2
     assert_iter_sum_pattern(res[0], 18, 0)
@@ -370,9 +402,13 @@ def test_subspace_division():
     tvm.ir.assert_structural_equal(res[1][0], floormod(j0[0], 4))
     tvm.ir.assert_structural_equal(res[1][1], i3[0])
 
-    res1 = tvm.arith.detect_iter_map([res[0][1], res[1][1]], var_dom([i3]))
+    res1 = tvm.arith.detect_iter_map(iter_var_par([(0, 1), (0, 2)]),
+                                     [res[0][1], res[1][1]],
+                                     var_dom([i3]))
     assert len(res1) == 2
-    res2 = tvm.arith.detect_iter_map([res[0][0], res[1][0]], var_dom([i0, j0]))
+    res2 = tvm.arith.detect_iter_map(iter_var_par([(0, 8), (0, 4)]),
+                                     [res[0][0], res[1][0]],
+                                     var_dom([i0, j0]))
     assert len(res2) == 2
 
     # compound 1.2
@@ -384,9 +420,13 @@ def test_subspace_division():
     tvm.ir.assert_structural_equal(res[1][0], 0)
     tvm.ir.assert_structural_equal(res[1][1], (floormod(j0[0], 4) * 2) + i3[0])
 
-    res1 = tvm.arith.detect_iter_map([res[0][1], res[1][1]], var_dom([j0, i3]))
+    res1 = tvm.arith.detect_iter_map(iter_var_par([(0, 8), (0, 2)]),
+                                     [res[0][1], res[1][1]],
+                                     var_dom([j0, i3]))
     assert len(res1) == 2
-    res2 = tvm.arith.detect_iter_map([res[0][0], res[1][0]], var_dom([i0]))
+    res2 = tvm.arith.detect_iter_map(iter_var_par([(0, 1), (0, 1)]),
+                                     [res[0][0], res[1][0]],
+                                     var_dom([i0]))
     assert len(res2) == 2
 
     # compound 1.3
@@ -405,9 +445,13 @@ def test_subspace_division():
     tvm.ir.assert_structural_equal(res[2][0], (i0[0] * 2) + floordiv(j0[0], 4) < 7)
     tvm.ir.assert_structural_equal(res[2][1], True)
 
-    res1 = tvm.arith.detect_iter_map([res[0][1], res[1][1]], var_dom([i3]))
+    res1 = tvm.arith.detect_iter_map(iter_var_par([(0, 1), (0, 2)]),
+                                     [res[0][1], res[1][1]],
+                                     var_dom([i3]))
     assert len(res1) == 2
-    res2 = tvm.arith.detect_iter_map([res[0][0], res[1][0]], var_dom([i0, j0]))
+    res2 = tvm.arith.detect_iter_map(iter_var_par([(0, 8), (0, 4)]),
+                                     [res[0][0], res[1][0]],
+                                     var_dom([i0, j0]))
     assert len(res2) == 2
 
     # compound 1.5
@@ -423,9 +467,13 @@ def test_subspace_division():
     tvm.ir.assert_structural_equal(res[2][0], True)
     tvm.ir.assert_structural_equal(res[2][1], (floormod(j0[0], 4) * 2) + i3[0] < 7)
 
-    res1 = tvm.arith.detect_iter_map([res[0][1], res[1][1]], var_dom([j0, i3]))
+    res1 = tvm.arith.detect_iter_map(iter_var_par([(0, 2), (0, 8)]),
+                                     [res[0][1], res[1][1]],
+                                     var_dom([j0, i3]))
     assert len(res1) == 2
-    res2 = tvm.arith.detect_iter_map([res[0][0], res[1][0]], var_dom([i0]))
+    res2 = tvm.arith.detect_iter_map(iter_var_par([(0, 4), (0, 1)]),
+                                     [res[0][0], res[1][0]],
+                                     var_dom([i0]))
     assert len(res2) == 2
 
     # compound 1.6
@@ -460,9 +508,13 @@ def test_subspace_division():
     tvm.ir.assert_structural_equal(res[2][0], 0)
     tvm.ir.assert_structural_equal(res[2][1], (floormod(l1[0], 3) * 3) + j3[0])
 
-    res1 = tvm.arith.detect_iter_map([res[0][1], res[1][1], res[2][1]], var_dom([l1, j3]))
+    res1 = tvm.arith.detect_iter_map(iter_var_par([(0, 1), (0, 2), (0, 9)]),
+                                     [res[0][1], res[1][1], res[2][1]],
+                                     var_dom([l1, j3]))
     assert len(res1) == 3
-    res2 = tvm.arith.detect_iter_map([res[0][0], res[1][0], res[2][0]], var_dom([j0, l0]))
+    res2 = tvm.arith.detect_iter_map(iter_var_par([(0, 8), (0, 1), (0, 1)]),
+                                     [res[0][0], res[1][0], res[2][0]],
+                                     var_dom([j0, l0]))
     assert len(res2) == 3
 
     # compound 2.2
@@ -478,9 +530,13 @@ def test_subspace_division():
     tvm.ir.assert_structural_equal(res[2][0], 0)
     tvm.ir.assert_structural_equal(res[2][1], (floormod(l0[0] * 6 + l1[0], 3) * 3) + j3[0])
 
-    res1 = tvm.arith.detect_iter_map([res[0][1], res[1][1], res[2][1]], var_dom([l0, l1, j3]))
+    res1 = tvm.arith.detect_iter_map(iter_var_par([(0, 2), (0, 2), (0, 9)]),
+                                     [res[0][1], res[1][1], res[2][1]],
+                                     var_dom([l0, l1, j3]))
     assert len(res1) == 3
-    res2 = tvm.arith.detect_iter_map([res[0][0], res[1][0], res[2][0]], var_dom([j0]))
+    res2 = tvm.arith.detect_iter_map(iter_var_par([(0, 4), (0, 1), (0, 1)]),
+                                     [res[0][0], res[1][0], res[2][0]],
+                                     var_dom([j0]))
     assert len(res2) == 3
 
     # compound 2.3
@@ -508,9 +564,13 @@ def test_subspace_division():
     tvm.ir.assert_structural_equal(res[3][0], (j0[0] * 2) + l0[0] < 7)
     tvm.ir.assert_structural_equal(res[3][1], (floormod(l1[0], 3) * 3) + j3[0] < 8)
 
-    res1 = tvm.arith.detect_iter_map([res[0][1], res[1][1], res[2][1]], var_dom([l1, j3]))
+    res1 = tvm.arith.detect_iter_map(iter_var_par([(0, 1), (0, 2), (0, 9)]),
+                                     [res[0][1], res[1][1], res[2][1]],
+                                     var_dom([l1, j3]))
     assert len(res1) == 3
-    res2 = tvm.arith.detect_iter_map([res[0][0], res[1][0], res[2][0]], var_dom([j0, l0]))
+    res2 = tvm.arith.detect_iter_map(iter_var_par([(0, 8), (0, 1), (0, 1)]),
+                                     [res[0][0], res[1][0], res[2][0]],
+                                     var_dom([j0, l0]))
     assert len(res2) == 3
 
     # compound 2.5
@@ -638,9 +698,13 @@ def test_complex():
         ),
     )
 
-    res1 = tvm.arith.detect_iter_map([res[0][1], res[1][1]], var_dom([n0, n1, m1, l3]), res[2][1])
+    res1 = tvm.arith.detect_iter_map(iter_var_par([(0, 32), (0, 15)]),
+                                     [res[0][1], res[1][1]],
+                                     var_dom([n0, n1, m1, l3]), res[2][1])
     assert len(res1) == 2
-    res2 = tvm.arith.detect_iter_map([res[0][0], res[1][0]], var_dom([l0, l1]))
+    res2 = tvm.arith.detect_iter_map(iter_var_par([(0, 7), (0, 4)]),
+                                     [res[0][0], res[1][0]],
+                                     var_dom([l0, l1]))
     assert len(res2) == 2
 
 
