@@ -434,15 +434,15 @@ void ValidateSRefs(const Schedule& sch) {
 }
 
 void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_map) {
-  std::vector<Stmt> stmt_holder;
-  std::vector<StmtSRef> sref_holder;
-  for (const auto& kv : this->stmt2ref) {
-    stmt_holder.push_back(GetRef<Stmt>(kv.first));
-    sref_holder.push_back(kv.second);
-  }
-  StmtSRef ref_holder = ref;
-  Stmt target_holder = target;
-  Map<Block, Block> block_sref_map_holder = block_sref_map;
+//  std::vector<Stmt> stmt_holder;
+//  std::vector<StmtSRef> sref_holder;
+//  for (const auto& kv : this->stmt2ref) {
+//    stmt_holder.push_back(GetRef<Stmt>(kv.first));
+//    sref_holder.push_back(kv.second);
+//  }
+//  StmtSRef ref_holder = ref;
+//  Stmt target_holder = target;
+//  Map<Block, Block> block_sref_map_holder = block_sref_map;
 
   // Note that old_ref is only a temporary SRef
   StmtSRef old_ref = StmtSRef(ref->stmt, ref->parent);
@@ -487,7 +487,7 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
       // if one node has been direct write, there is no need to
       // update its parent and the function
       remover(old_stmt);
-      ValidateSRefs(GetRef<Schedule>(this));
+      // ValidateSRefs(GetRef<Schedule>(this));
       return;
     }
     target = new_stmt;
@@ -501,7 +501,7 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
     UpdateSRef(root.operator->(), target);
   }
   func = UpdateFuncBody(func.operator->(), target);
-  ValidateSRefs(GetRef<Schedule>(this));
+  // ValidateSRefs(GetRef<Schedule>(this));
 }
 
 void ScheduleNode::UpdateSRef(StmtSRefNode* sref, const Stmt& stmt) {
