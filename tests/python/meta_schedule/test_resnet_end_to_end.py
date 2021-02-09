@@ -76,6 +76,7 @@ def get_network(name, batch_size, dtype="float32"):
 
     return mod, params, input_shape, output_shape
 
+
 RPC_KEY = "test"
 TARGET = tvm.target.Target("llvm")
 TARGET_HOST = tvm.target.Target("llvm")
@@ -101,9 +102,10 @@ SPACE = ms.space.PostOrderApply(
     ],
     postprocs=[
         ms.postproc.rewrite_parallel_vectorize_unroll(),
-        ms.postproc.rewrite_reduce_step()
+        ms.postproc.rewrite_reduction_block(),
     ],
 )
+
 
 @pytest.mark.skip(reason="needs RPC")
 def test_end_to_end_resnet(log):
@@ -137,6 +139,7 @@ def test_end_to_end_resnet(log):
                 space=SPACE,
                 strategy=ms.strategy.Evolutionary(
                     total_measures=32,
+                    num_measures_per_iter=16,
                     population=16,
                     init_measured_ratio=0.2,
                     genetic_algo_iters=10,
@@ -145,7 +148,7 @@ def test_end_to_end_resnet(log):
                         ms.mutator.mutate_tile_size(): 1.0,
                     },
                     cost_model=ms.XGBModel(
-                        num_warmup_sample=0,
+                        num_warmup_samples=0,
                     ),
                     eps_greedy=0.05,
                 ),
@@ -176,8 +179,6 @@ def test_end_to_end_resnet(log):
     std = run_module(lib_std).asnumpy()
     out = run_module(lib).asnumpy()
     np.testing.assert_allclose(out, std, rtol=1e-4, atol=1e-4)
-
-
 
 
 if __name__ == "__main__":

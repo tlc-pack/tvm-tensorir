@@ -302,7 +302,7 @@ def test_matmul_evolutionary_step_by_step():
         ],
         postprocs=[
             ms.postproc.rewrite_parallel_vectorize_unroll(),
-            ms.postproc.rewrite_reduce_step(),
+            ms.postproc.rewrite_reduction_block(),
         ],
     )
     support = space.get_support(task=task)
@@ -349,7 +349,7 @@ def test_matmul_evolutionary_end_to_end():
             ],
             postprocs=[
                 ms.postproc.rewrite_parallel_vectorize_unroll(),
-                ms.postproc.rewrite_reduce_step(),
+                ms.postproc.rewrite_reduction_block(),
             ],
         ),
         strategy=ms.strategy.Evolutionary(
@@ -400,7 +400,7 @@ def test_matmul_evolutionary_xgb():
             ],
             postprocs=[
                 ms.postproc.rewrite_parallel_vectorize_unroll(),
-                ms.postproc.rewrite_reduce_step(),
+                ms.postproc.rewrite_reduction_block(),
             ],
         ),
         strategy=ms.strategy.Evolutionary(
