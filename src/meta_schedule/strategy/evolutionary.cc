@@ -141,8 +141,6 @@ class EvolutionaryNode : public SearchStrategyNode {
                             const ProgramMeasurer& measurer, Sampler* sampler,
                             int verbose) override;
 
-  void Init(const SearchTask& task) override;
-
   /********** Stages in evolutionary search **********/
 
   /*!
@@ -450,8 +448,6 @@ Evolutionary::Evolutionary(int total_measures, int num_measures_per_iteration, i
 }
 
 /********** Search **********/
-
-void EvolutionaryNode::Init(const SearchTask& task) {}
 
 Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const SearchSpace& space,
                                             const ProgramMeasurer& measurer, Sampler* sampler,

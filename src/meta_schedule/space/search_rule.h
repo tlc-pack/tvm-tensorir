@@ -78,7 +78,7 @@ class SearchRule : public ObjectRef {
    */
   explicit SearchRule(String name, FApply apply);
 
-  TVM_DEFINE_OBJECT_REF_METHODS(SearchRule, ObjectRef, SearchRuleNode);
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchRule, ObjectRef, SearchRuleNode);
 };
 
 /*!
