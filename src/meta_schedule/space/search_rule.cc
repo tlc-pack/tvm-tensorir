@@ -72,19 +72,34 @@ class RuleInlinePureSpatial {
   /*! \brief Default constructor */
   explicit RuleInlinePureSpatial(bool strict_mode) : strict_mode(strict_mode) {}
 
+  bool NeedsInline(const tir::Schedule& sch, const tir::StmtSRef& block_sref) const {
+    if (!IsSubrootBlock(sch, block_sref)) {
+      return false;
+    }
+    if (!IsSpatial(sch, block_sref)) {
+      return false;
+    }
+    if (IsOutputBlock(sch, block_sref)) {
+      return false;
+    }
+    if (strict_mode && !IsStrictlyInlineable(sch, block_sref)) {
+      return false;
+    }
+    Array<tir::StmtSRef> loop_srefs = sch->GetLoopsInScope(block_sref);
+    for (const tir::StmtSRef& loop_sref : loop_srefs) {
+      if (!HasSingleChild(loop_sref)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /*! \brief Rule application */
   Array<Schedule> Apply(const SearchTask& task, const Schedule& sch,
                         const BlockRV& block_rv) const {
     tir::StmtSRef block_sref = sch->Eval(block_rv);
-    if (!IsSpatial(sch->sch, block_sref)) {
-      return {sch};
-    }
-    if (IsOutputBlock(sch->sch, block_sref)) {
-      return {sch};
-    }
-    if (!strict_mode || IsStrictlyInlineable(sch->sch, block_sref)) {
+    if (NeedsInline(sch->sch, block_sref)) {
       sch->ComputeInline(block_rv);
-      return {sch};
     }
     return {sch};
   }
@@ -480,9 +495,7 @@ class RuleRandomComputeLocation {
     }
     Array<tir::StmtSRef> loop_srefs = sch->GetLoopsInScope(block_sref);
     for (const tir::StmtSRef& loop_sref : loop_srefs) {
-      const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
-      CHECK(loop) << "TypeError: Expects Loop, but gets: " << loop_sref->stmt->GetTypeKey();
-      if (loop->body->IsInstance<tir::SeqStmtNode>()) {
+      if (!HasSingleChild(loop_sref)) {
         return false;
       }
     }
