@@ -29,6 +29,7 @@ namespace tvm {
 namespace meta_schedule {
 
 class SearchTask;
+class TuneContextNode;
 
 /*! \brief An abstract database storing all the tuning records. */
 class DatabaseNode : public runtime::Object {
@@ -55,6 +56,9 @@ class DatabaseNode : public runtime::Object {
 
   /*! \brief Initialize the database */
   virtual void Init(const SearchTask& task) = 0;
+
+  /*! \brief Initialize the database */
+  virtual void Init(TuneContextNode* tune_context) {}
 
   /*!
    * \brief Add a schedule into the database
