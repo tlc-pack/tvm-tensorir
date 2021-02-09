@@ -89,14 +89,15 @@ class ProgramBuilder : public ObjectRef {
 
 /********** ProgramRunner **********/
 
-/*!
- * \brief Callback function to create arguments for functions to measure. This can be used for
- * sparse workloads when we cannot use random tensors for measurement.
- */
-using FCreateArgs = runtime::TypedPackedFunc<Array<runtime::NDArray>(TVMContext)>;
-
 /*! \brief ProgramRunner that runs the built programs and measure the time cost. */
 class ProgramRunnerNode : public Object {
+ public:
+  /*!
+   * \brief Callback function to create arguments for functions to measure. This can be used for
+   * sparse workloads when we cannot use random tensors for measurement.
+   */
+  using FCreateArgs = runtime::TypedPackedFunc<Array<runtime::NDArray>(TVMContext)>;
+
  public:
   /*! \brief Timeout of a run. */
   int timeout;
@@ -137,121 +138,8 @@ class ProgramRunnerNode : public Object {
  */
 class ProgramRunner : public ObjectRef {
  public:
+  using FCreateArgs = ProgramRunnerNode::FCreateArgs;
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(ProgramRunner, ObjectRef, ProgramRunnerNode);
-};
-
-/********** LocalBuilder: ProgramBuilder **********/
-
-/*! \brief LocalBuilder use local CPU cores to build programs in parallel */
-class LocalBuilderNode : public ProgramBuilderNode {
- public:
-  /*! \brief Build function, can be `tar` or `ndk`. */
-  String build_func;
-
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("n_parallel", &n_parallel);
-    v->Visit("timeout", &timeout);
-    v->Visit("build_func", &build_func);
-  }
-
-  /*! \brief Default destructor */
-  ~LocalBuilderNode() = default;
-
-  Array<BuildResult> Build(const Array<MeasureInput>& inputs, int verbose) const override;
-
-  static constexpr const char* _type_key = "meta_schedule.LocalBuilder";
-  TVM_DECLARE_FINAL_OBJECT_INFO(LocalBuilderNode, ProgramBuilderNode);
-};
-
-/*!
- * \brief Managed reference to LocalBuilderNode.
- * \sa LocalBuilderNode
- */
-class LocalBuilder : public ProgramBuilder {
- public:
-  /*!
-   * \brief The constructor.
-   * \param timeout The timeout limit (in second) for each build process.
-   * This will be used in a wrapper of the multiprocessing.Process.join().
-   * \param n_parallel The number of threads used to build in parallel.
-   * \param build_func The name of the registered build function.
-   */
-  explicit LocalBuilder(int timeout, int n_parallel, String build_func);
-
-  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(LocalBuilder, ProgramBuilder, LocalBuilderNode);
-};
-
-/********** RPCRunner: ProgramRunner **********/
-
-/*!
- * \brief RPCRunner that uses RPC call to measures the time cost of programs on remote devices.
- * Or sometime we may need to use RPC even in local running to insulate the thread environment.
- * (e.g. running CUDA programs)
- */
-class RPCRunnerNode : public ProgramRunnerNode {
- public:
-  /*! \brief The key of the device registered in the RPC tracker. */
-  String key;
-  /*! \brief The host address of the RPC tracker. */
-  String host;
-  /*! \brief The port of RPC tracker */
-  int port;
-  /*! \brief The priority of this run request, larger is more prior. */
-  int priority;
-  /*! \brief The number of tasks run in parallel. */
-  int n_parallel;
-
-  void VisitAttrs(tvm::AttrVisitor* v) {
-    v->Visit("timeout", &timeout);
-    v->Visit("number", &number);
-    v->Visit("repeat", &repeat);
-    v->Visit("min_repeat_ms", &min_repeat_ms);
-    v->Visit("cooldown_interval", &cooldown_interval);
-    v->Visit("enable_cpu_cache_flush", &enable_cpu_cache_flush);
-    v->Visit("key", &key);
-    v->Visit("host", &host);
-    v->Visit("port", &port);
-    v->Visit("priority", &priority);
-    v->Visit("n_parallel", &n_parallel);
-  }
-
-  /*! \brief Default destructor */
-  ~RPCRunnerNode() = default;
-
-  Array<MeasureResult> Run(const Array<MeasureInput>& inputs,
-                           const Array<BuildResult>& build_results, int verbose) const override;
-
-  static constexpr const char* _type_key = "meta_schedule.RPCRunner";
-  TVM_DECLARE_FINAL_OBJECT_INFO(RPCRunnerNode, ProgramRunnerNode);
-};
-
-/*!
- * \brief Managed reference to RPCRunnerNode.
- * \sa RPCRunnerNode
- */
-class RPCRunner : public ProgramRunner {
- public:
-  /*!
-   * \brief The constructor. See the corresponding class in python/tvm/meta_schedule/measure.py
-   * for more detailed parameter explanation.
-   * \param key The key of the device registered in the RPC tracker.
-   * \param host The host address of the RPC Tracker.
-   * \param port The port of RPC Tracker.
-   * \param priority The priority of this run request, larger is more prior.
-   * \param n_parallel The number of tasks run in parallel.
-   * \param timeout Timeout of a run.
-   * \param number The number of times to run the generated code for taking average.
-   * \param repeat The number of times to repeat the measurement.
-   * \param min_repeat_ms The minimum duration of one repeat in milliseconds.
-   * \param cooldown_interval The cool down interval between two measurements.
-   * \param enable_cpu_cache_flush Whether to flush cache on CPU between repeated measurements.
-   * \param f_create_args Callback function to create arguments.
-   */
-  explicit RPCRunner(String key, String host, int port, int priority, int n_parallel, int timeout,
-                     int number, int repeat, int min_repeat_ms, double cooldown_interval,
-                     bool enable_cpu_cache_flush, FCreateArgs f_create_args);
-
-  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(RPCRunner, ProgramRunner, RPCRunnerNode);
 };
 
 /********** MeasureCallback **********/

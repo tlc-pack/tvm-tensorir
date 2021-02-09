@@ -57,21 +57,21 @@ void TuneContextNode::Init(Optional<Integer> seed) {
 /**************** FFI ****************/
 
 struct Internal {
-  TuneContext New(Optional<SearchTask> task,                 //
-                  Optional<SearchSpace> space,               //
-                  Optional<SearchStrategy> strategy,         //
-                  Optional<ProgramBuilder> builder,          //
-                  Optional<ProgramRunner> runner,            //
-                  Optional<Database> database,               //
-                  Optional<CostModel> cost_model,            //
-                  Array<Postproc> postprocs,                 //
-                  Array<MeasureCallback> measure_callbacks,  //
-                  int num_threads,                           //
-                  Optional<Integer> seed) {
+  static TuneContext New(Optional<SearchTask> task,                 //
+                         Optional<SearchSpace> space,               //
+                         Optional<SearchStrategy> strategy,         //
+                         Optional<ProgramBuilder> builder,          //
+                         Optional<ProgramRunner> runner,            //
+                         Optional<Database> database,               //
+                         Optional<CostModel> cost_model,            //
+                         Array<Postproc> postprocs,                 //
+                         Array<MeasureCallback> measure_callbacks,  //
+                         int num_threads,                           //
+                         Optional<Integer> seed) {
     return TuneContext(task, space, strategy, builder, runner, database, cost_model, postprocs,
                        measure_callbacks, num_threads, seed);
   }
-  void Init(TuneContext self, Optional<Integer> seed) { self->Init(seed); }
+  static void Init(TuneContext self, Optional<Integer> seed) { self->Init(seed); }
 };
 
 TVM_REGISTER_NODE_TYPE(TuneContextNode);
