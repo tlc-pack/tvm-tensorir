@@ -18,6 +18,8 @@
  */
 #include "./autotune.h"  // NOLINT(build/include)
 
+#include "./utils.h"
+
 namespace tvm {
 namespace meta_schedule {
 
@@ -52,6 +54,73 @@ void TuneContextNode::Init(Optional<Integer> seed) {
   for (const MeasureCallback& callback : measure_callbacks) {
     callback->Init(this);
   }
+}
+
+bool TuneContextNode::Postprocess(const Schedule& sch) {
+  sch->EnterPostProc();
+  for (const Postproc& postproc : postprocs) {
+    if (!postproc->Apply(task.value(), sch, &sampler)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+Array<MeasureResult> TuneContextNode::Measure(const Array<MeasureInput>& measure_inputs) {
+  constexpr int verbose = 1;
+  CHECK(this->task.defined()) << "ValueError: `task` is not defined";
+  CHECK(this->builder.defined()) << "ValueError: `builder` is not defined";
+  CHECK(this->runner.defined()) << "ValueError: `runner` is not defined";
+  CHECK(this->database.defined()) << "ValueError: `database` is not defined";
+  DatabaseNode* db = this->database.value().operator->();
+  int n = measure_inputs.size();
+  // Build & Measure
+  Array<BuildResult> build_results = builder.value()->Build(measure_inputs, verbose);
+  Array<MeasureResult> measure_results =
+      runner.value()->Run(measure_inputs, build_results, verbose);
+  // Add to database
+  for (int i = 0; i < n; ++i) {
+    const MeasureInput& measure_input = measure_inputs[i];
+    const MeasureResult& measure_result = measure_results[i];
+    MeasureErrorNO error_no = static_cast<MeasureErrorNO>(measure_result->error_no);
+    ++num_measured;
+    if (error_no == MeasureErrorNO::kNoError) {
+      db->Add(measure_input->sch->trace, Repr(measure_input->sch),
+              AsVector<FloatImm, double>(measure_result->costs));
+    }
+    for (const MeasureCallback& callback : this->measure_callbacks) {
+      callback->Callback(measure_input, measure_result);
+    }
+  }
+  return measure_results;
+}
+
+Optional<Schedule> Autotune(SearchTask task,                           //
+                            Optional<SearchSpace> space,               //
+                            Optional<SearchStrategy> strategy,         //
+                            Optional<ProgramBuilder> builder,          //
+                            Optional<ProgramRunner> runner,            //
+                            Database database,                         //
+                            Optional<CostModel> cost_model,            //
+                            Array<Postproc> postprocs,                 //
+                            Array<MeasureCallback> measure_callbacks,  //
+                            int num_threads,                           //
+                            Optional<Integer> seed) {
+  TuneContext tune_context(task, space, strategy, builder, runner, database, cost_model, postprocs,
+                           measure_callbacks, num_threads, seed);
+  if (strategy.defined()) {
+    strategy.value()->Search();
+  }
+  DatabaseNode::Entry best = database->GetBest();
+  if (!best.trace.defined()) {
+    return NullOpt;
+  }
+  Schedule sch(task->workload);
+  best.trace.value()->Apply(sch);
+  if (!tune_context->Postprocess(sch)) {
+    LOG(FATAL) << "ValueError: The best schedule cannot be postprocessed all of a sudden";
+  }
+  return sch;
 }
 
 /**************** FFI ****************/

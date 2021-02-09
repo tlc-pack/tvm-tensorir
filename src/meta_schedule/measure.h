@@ -162,6 +162,10 @@ class MeasureCallbackNode : public Object {
    * \param results An Array of MeasureResult.
    */
   virtual void Callback(const Array<MeasureInput>& inputs, const Array<MeasureResult>& results) = 0;
+
+  virtual void Callback(const MeasureInput& input, const MeasureResult& result) {
+    LOG(FATAL) << "NotImplemented";
+  }
   static constexpr const char* _type_key = "meta_schedule.MeasureCallback";
   TVM_DECLARE_BASE_OBJECT_INFO(MeasureCallbackNode, Object);
 };

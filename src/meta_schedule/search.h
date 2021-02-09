@@ -158,6 +158,8 @@ class SearchStrategyNode : public Object {
   virtual Optional<Schedule> Search(const SearchTask& task, const SearchSpace& space,
                                     const ProgramMeasurer& measurer, Sampler* sampler,
                                     int verbose) = 0;
+  /*! \brief Explore the search space */
+  virtual void Search() { LOG(FATAL) << "NotImplemented"; }
 
   static constexpr const char* _type_key = "meta_schedule.SearchStrategy";
   TVM_DECLARE_BASE_OBJECT_INFO(SearchStrategyNode, Object);
