@@ -83,7 +83,6 @@ Array<MeasureResult> TuneContextNode::Measure(const Array<MeasureInput>& measure
     const MeasureInput& measure_input = measure_inputs[i];
     const MeasureResult& measure_result = measure_results[i];
     MeasureErrorNO error_no = static_cast<MeasureErrorNO>(measure_result->error_no);
-    ++num_measured;
     if (error_no == MeasureErrorNO::kNoError) {
       db->Add(measure_input->sch->trace, Repr(measure_input->sch),
               AsVector<FloatImm, double>(measure_result->costs));

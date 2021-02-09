@@ -144,7 +144,7 @@ class ProgramRunner : public ObjectRef {
 
 /********** MeasureCallback **********/
 
-/*! \brief Bass class of measurement callbacks */
+/*! \brief Base class of measurement callbacks */
 class MeasureCallbackNode : public Object {
  public:
   virtual ~MeasureCallbackNode() = default;

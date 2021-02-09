@@ -45,7 +45,6 @@ class TuneContextNode : public runtime::Object {
   Array<MeasureCallback> measure_callbacks;
   int num_threads;
   Sampler sampler;
-  int num_measured;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("task", &task);
@@ -59,7 +58,6 @@ class TuneContextNode : public runtime::Object {
     v->Visit("measure_callbacks", &measure_callbacks);
     v->Visit("num_threads", &num_threads);
     // `sampler` is not visited
-    v->Visit("num_measured", &num_measured);
   }
 
   void Init(Optional<Integer> seed = NullOpt);
@@ -97,7 +95,6 @@ class TuneContext : public runtime::ObjectRef {
     n->measure_callbacks = measure_callbacks;
     n->num_threads = num_threads;
     // `n->sampler` is not initialized
-    n->num_measured = 0;
     data_ = std::move(n);
     (*this)->Init(seed);
   }
