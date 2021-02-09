@@ -80,10 +80,10 @@ class Postproc : public ObjectRef {
 TVM_DLL Postproc RewriteParallelizeVectorizeUnroll();
 
 /*!
- * \brief Creates a postprocessor that decomposes ReduceStep
+ * \brief Creates a postprocessor that decomposes reduction blocks
  * \return The postprocessor created
  */
-TVM_DLL Postproc RewriteReduceStep();
+TVM_DLL Postproc RewriteReductionBlock();
 
 /*!
  * \brief Creates a postprocessor that matches the region that is marked as auto tensorized
