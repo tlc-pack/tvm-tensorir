@@ -16,8 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include <thread>  // NOLINT(build/c++11)
-
 #include "./mutator.h"  // NOLINT(build/include)
 
 #include "../analysis.h"
