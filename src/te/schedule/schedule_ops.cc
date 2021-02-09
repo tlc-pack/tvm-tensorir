@@ -319,29 +319,6 @@ class SchedulePostProc : public StmtExprMutator {
 };
 
 
-// <bojian/TVM-SymbolicTuning>
-// #if defined(SYMTUNE_SCHED_OPT_SPLIT_BLOCKIDX)
-class BlockIdxSplitter : public StmtExprMutator {
- public:
-  Stmt VisitStmt(const Stmt& input_stmt) override final {
-    LOG(INFO) << "Visiting stmt=" << input_stmt;
-    Stmt stmt = StmtMutator::VisitStmt(input_stmt);
-    return stmt;
-  }
-  Stmt VisitStmt_(const ProducerRealizeNode* op) override final {
-    Tensor t = Downcast<Tensor>(op->producer);
-    if (t->op->name == "T_dense") {
-      LOG(INFO) << "Tensor T_dense is captured";
-      // return IfThenElse(likely())
-    }
-    return StmtExprMutator::VisitStmt_(op);
-  }
-  Stmt VisitStmt_(const IfThenElseNode* op) override final {
-    LOG(INFO) << "Visiting if_then_else op " << GetRef<Stmt>(op);
-    return StmtExprMutator::VisitStmt_(op);
-  }
-};
-
 Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_trivial_loop) {
   Stmt body = Stmt();
   std::unordered_map<IterVar, Range> dom_map = as_unordered_map(dom_map_);
@@ -416,17 +393,6 @@ Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_tri
   post_proc.Init(sch);
 
   return post_proc(std::move(body));
-//   if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
-//     BlockIdxSplitter blockidx_splitter;
-//     body = post_proc(std::move(body));
-//     blockidx_splitter(body);
-//     if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
-//       LOG(INFO) << "BodyStmt after PostProc=" << body;
-//     }
-//     return body;
-//   } else {
-//     return post_proc(std::move(body));
-//   }
 }
 
 TVM_REGISTER_GLOBAL("schedule.ScheduleOps").set_body([](TVMArgs args, TVMRetValue* ret) {
