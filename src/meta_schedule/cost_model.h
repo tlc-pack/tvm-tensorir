@@ -27,11 +27,16 @@
 namespace tvm {
 namespace meta_schedule {
 
+class TuneContextNode;
+
 /*! \brief The base class for cost model */
 class CostModelNode : public Object {
  public:
   /*! \brief Base destructor */
   virtual ~CostModelNode() = default;
+
+  /*! \brief Initialize the database */
+  virtual void Init(TuneContextNode* tune_context) {}
 
   /*!
    * \brief Update the cost model according to new measurement results (training data).
