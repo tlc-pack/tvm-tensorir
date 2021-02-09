@@ -28,6 +28,8 @@ namespace meta_schedule {
 
 class ProgramMeasurer;
 
+class TuneContextNode;
+
 /********** SearchTask **********/
 
 /*! \brief Descrption of a search task */
@@ -55,6 +57,8 @@ class SearchTaskNode : public Object {
     v->Visit("flop_ct", &flop_ct);
   }
 
+  void Init(TuneContextNode* tune_context) {}
+
   static constexpr const char* _type_key = "meta_schedule.SearchTask";
   TVM_DECLARE_FINAL_OBJECT_INFO(SearchTaskNode, Object);
 };
@@ -75,7 +79,7 @@ class SearchTask : public ObjectRef {
    */
   explicit SearchTask(tir::PrimFunc workload, String task_name, Target target, Target target_host,
                       Optional<String> log_file);
-  TVM_DEFINE_OBJECT_REF_METHODS(SearchTask, ObjectRef, SearchTaskNode);
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(SearchTask, ObjectRef, SearchTaskNode);
 };
 
 /********** SearchSpace **********/
@@ -90,7 +94,9 @@ class SearchSpaceNode : public runtime::Object {
   /*! \brief Virtual destructor */
   virtual ~SearchSpaceNode() = default;
   /*! \brief Initialize the search space */
-  virtual void Init(const SearchTask& task) = 0;
+  virtual void Init(const SearchTask& task) {}
+  /*! \brief Initialize the search space */
+  virtual void Init(TuneContextNode* tune_context) {}
   /*!
    * \brief Apply postprocessors onto the schedule
    * \param task The search task
@@ -138,7 +144,9 @@ class SearchStrategyNode : public Object {
   /*! \brief Virtual destructor */
   virtual ~SearchStrategyNode() = default;
   /*! \brief Initialize the search strategy */
-  virtual void Init(const SearchTask& task) = 0;
+  virtual void Init(const SearchTask& task) {}
+  /*! \brief Initialize the search strategy */
+  virtual void Init(TuneContextNode* tune_context) {}
   /*!
    * \brief Explore the search space and find the best schedule
    * \param task The search task

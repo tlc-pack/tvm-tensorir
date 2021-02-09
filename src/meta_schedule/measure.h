@@ -48,6 +48,8 @@
 namespace tvm {
 namespace meta_schedule {
 
+class TuneContextNode;
+
 static constexpr const char* kLogVersion = "v0.0.1";
 
 /********** ProgramBuilder **********/
@@ -61,6 +63,8 @@ class ProgramBuilderNode : public Object {
   int timeout;
   /*! \brief Virtual destructor */
   virtual ~ProgramBuilderNode() = default;
+  /*! \brief Initialize the program builder */
+  virtual void Init(TuneContextNode* tune_context) {}
   /*!
    * \brief Build programs and return results.
    * \param inputs An Array of MeasureInput.
@@ -87,7 +91,7 @@ class ProgramBuilder : public ObjectRef {
 
 /*!
  * \brief Callback function to create arguments for functions to measure. This can be used for
- * sparse workloads when we cannot use random tensors for measurment.
+ * sparse workloads when we cannot use random tensors for measurement.
  */
 using FCreateArgs = runtime::TypedPackedFunc<Array<runtime::NDArray>(TVMContext)>;
 
@@ -110,6 +114,8 @@ class ProgramRunnerNode : public Object {
   FCreateArgs f_create_args;
   /*! \brief Virtual destructor */
   virtual ~ProgramRunnerNode() = default;
+  /*! \brief Initialize the program runner */
+  virtual void Init(TuneContextNode* tune_context) {}
   /*!
    * \brief Run measurement and return results.
    * \param inputs An Array of MeasureInput.
@@ -172,7 +178,7 @@ class LocalBuilder : public ProgramBuilder {
    */
   explicit LocalBuilder(int timeout, int n_parallel, String build_func);
 
-  TVM_DEFINE_OBJECT_REF_METHODS(LocalBuilder, ProgramBuilder, LocalBuilderNode);
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(LocalBuilder, ProgramBuilder, LocalBuilderNode);
 };
 
 /********** RPCRunner: ProgramRunner **********/
@@ -259,6 +265,8 @@ class MeasureCallbackNode : public Object {
    * \param task The search task
    */
   virtual void Init(const SearchTask& task) = 0;
+  /*! \brief Initialize the callback */
+  virtual void Init(TuneContextNode* tune_context) {}
   /*!
    * \brief Callback function that will be called on measurement input/result pairs
    * after each measurement batch.
