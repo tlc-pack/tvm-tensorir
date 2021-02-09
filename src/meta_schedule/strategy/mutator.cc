@@ -243,13 +243,13 @@ class MutatorAutoUnroll {
   struct Candidate {
     /*! \brief The SampleCategorical instruction */
     Instruction inst;
-    /*! \brief The candidate values of the categorical distribution */
-    std::vector<int> values;
-    /*! \brief The corresponding probabilities(weights) of the categorical distribution */
+    /*! \brief The weights of the categorical distribution */
     std::vector<double> weights;
+    /*! \brief The original decision */
+    int ori_decision;
 
-    explicit Candidate(Instruction inst, std::vector<int> values, std::vector<double> weights)
-        : inst(std::move(inst)), values(std::move(values)), weights(std::move(weights)) {}
+    explicit Candidate(Instruction inst, std::vector<double> weights, int ori_decision)
+        : inst(std::move(inst)), weights(std::move(weights)), ori_decision(ori_decision) {}
   };
 
   /*!
@@ -271,23 +271,22 @@ class MutatorAutoUnroll {
           // Step 2. Back to find the corresponding `SampleCategorical` instruction.
           for (int j = i - 1; j >= 0; --j) {
             const Instruction& sample_inst = trace->insts[j];
-            if (sample_inst->outputs.size() == 1 && sample_inst->outputs.same_as(sample_output)) {
+            if (sample_inst->outputs.size() == 1
+                && sample_inst->outputs[0].same_as(sample_output)) {
               CHECK(sample_inst->inst_attrs->IsInstance<SampleCategoricalAttrs>());
               const auto* sample_attr = sample_inst->inst_attrs.as<SampleCategoricalAttrs>();
-              std::vector<int> values;
               std::vector<double> weights;
               CHECK_EQ(sample_attr->candidates.size(), sample_attr->probs.size());
               int decision = Downcast<Integer>(trace->decisions.Get(sample_inst))->value;
               // Step 3. Remove the current decision from the sampling candidates.
               for (int k = 0; k < static_cast<int>(sample_attr->candidates.size()); ++k) {
-                if (sample_attr->candidates[k] != decision) {
-                  values.emplace_back(sample_attr->candidates[k]);
+                if (k != decision) {
                   weights.emplace_back(sample_attr->probs[k]->value);
                 }
               }
-              // Step 4. Add a new candidate if `values` is not empty.
-              if (!values.empty()) {
-                candidates.emplace_back(sample_inst, values, weights);
+              // Step 4. Add a new candidate if `weights` is not empty.
+              if (!weights.empty()) {
+                candidates.emplace_back(sample_inst, weights, decision);
               }
               break;
             }
@@ -304,7 +303,10 @@ class MutatorAutoUnroll {
       return NullOpt;
     }
     const Candidate& candidate = candidates[sampler->SampleInt(0, candidates.size())];
-    int result = candidate.values[sampler->MakeMultinomial(candidate.weights)()];
+    int result = sampler->MakeMultinomial(candidate.weights)();
+    if (result >= candidate.ori_decision) {
+      result++;
+    }
     return trace->WithDecision(candidate.inst, Integer(result), /*remove_postproc=*/true);
   }
 };
