@@ -466,13 +466,13 @@ Postproc RewriteUnboundBlocks() {
   return Postproc("rewrite_unbound_blocks", f_proc);
 }
 
-/********** RewriteReduceStep **********/
+/********** RewriteReductionBlock **********/
 
-class PostprocRewriteReduceStep {
+class PostprocRewriteReductionBlock {
  public:
   static const tir::BlockNode* Find(const tir::Stmt& body) {
     const tir::BlockNode* res = nullptr;
-    tir::PreOrderVisit(body, [&res] (const ObjectRef& node) {
+    tir::PreOrderVisit(body, [&res](const ObjectRef& node) {
       if (res) {
         return false;
       }
@@ -515,11 +515,11 @@ class PostprocRewriteReduceStep {
   }
 };
 
-Postproc RewriteReduceStep() {
+Postproc RewriteReductionBlock() {
   auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
-    return PostprocRewriteReduceStep().Proc(sch);
+    return PostprocRewriteReductionBlock().Proc(sch);
   };
-  return Postproc("rewrite_reduce_step", f_proc);
+  return Postproc("rewrite_reduction_block", f_proc);
 }
 
 /********** VerifyGPUCode **********/
@@ -599,7 +599,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteUnboundBlocks")
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteParallelizeVectorizeUnroll")
     .set_body_typed(RewriteParallelizeVectorizeUnroll);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.VerifyGPUCode").set_body_typed(VerifyGPUCode);
-TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteReduceStep").set_body_typed(RewriteReduceStep);
+TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteReductionBlock")
+    .set_body_typed(RewriteReductionBlock);
 
 }  // namespace meta_schedule
 }  // namespace tvm
