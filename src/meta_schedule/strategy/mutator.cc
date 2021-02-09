@@ -261,7 +261,7 @@ class MutatorAutoUnroll {
    */
   std::vector<Candidate> FindCandidates(const Trace& trace) {
     std::vector<Candidate> candidates;
-    for (int i = 0; i < (int) trace->insts.size(); ++i) {
+    for (int i = 0; i < static_cast<int>(trace->insts.size()); ++i) {
       const Instruction& mark_inst = trace->insts[i];
       // Step 1. Find the `MarkBlockAttr` with key `auto_unroll`.
       if (mark_inst->inst_attrs->IsInstance<MarkBlockAttrs>()) {
@@ -281,7 +281,7 @@ class MutatorAutoUnroll {
               CHECK_EQ(sample_attr->candidates.size(), sample_attr->probs.size());
               int decision = Downcast<Integer>(trace->decisions.Get(sample_inst))->value;
               // Step 3. Remove the current decision from the sampling candidates.
-              for (int k = 0; k < (int) sample_attr->candidates.size(); ++k) {
+              for (int k = 0; k < static_cast<int>(sample_attr->candidates.size()); ++k) {
                 if (sample_attr->candidates[k] != decision) {
                   values.emplace_back(sample_attr->candidates[k]);
                   weights.emplace_back(sample_attr->probs[k]->value);
@@ -340,7 +340,7 @@ class MutatorParallel {
    * \param trace The trace from which to find the instructions
    * \return All the candidate instructions
    */
-  std::vector<Candidate> FindCandidates(const Trace& trace) {
+  std::vector<Candidate> FindCandidates(const Trace& trace, const int& num_cores) {
     std::vector<Candidate> candidates;
     for (const Instruction& inst : trace->insts) {
       if (inst->inst_attrs->IsInstance<MarkBlockAttrs>()) {
@@ -348,9 +348,8 @@ class MutatorParallel {
         const auto* attr = inst->inst_attrs.as<MarkBlockAttrs>();
         if (attr->ann_key == tir::attr::auto_parallel_extent) {
           int cur_para_size = Downcast<Integer>(inst->inputs[1])->value;
-          int num_threads = (int) std::thread::hardware_concurrency();
-          if (cur_para_size > num_threads) {
-            candidates.emplace_back(inst, cur_para_size - num_threads);
+          if (cur_para_size > num_cores) {
+            candidates.emplace_back(inst, cur_para_size - num_cores);
           }
         }
       }
@@ -359,7 +358,8 @@ class MutatorParallel {
   }
 
   Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler) {
-    std::vector<Candidate> candidates = FindCandidates(trace);
+    int num_cores = GetTargetNumCores(task->target, nullptr);
+    std::vector<Candidate> candidates = FindCandidates(trace, num_cores);
     if (candidates.empty()) {
       return NullOpt;
     }
@@ -368,7 +368,7 @@ class MutatorParallel {
     const int& parallel_size = candidate.parallel_size;
 
     std::vector<Instruction> new_insts;
-    for (int i = 0; i < (int) trace->insts.size()
+    for (int i = 0; i < static_cast<int>(trace->insts.size())
                     && !trace->insts[i]->inst_attrs->IsInstance<EnterPostProcAttrs>(); ++i) {
       new_insts.emplace_back(trace->insts[i]);
     }

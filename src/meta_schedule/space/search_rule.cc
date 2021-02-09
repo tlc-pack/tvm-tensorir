@@ -617,21 +617,7 @@ class RuleParallelizeVectorizeUnroll {
         warned_num_cores_missing(false) {}
 
   int GetMaxParallelExtent(const Target& target) const {
-    int num_cores = target->GetAttr<Integer>("num_cores").value_or(-1);
-    if (num_cores == -1) {
-      static const auto* f_cpu_count = runtime::Registry::Get("meta_schedule._cpu_count");
-      CHECK(f_cpu_count)
-          << "ValueError: Cannot find the packed function \"meta_schedule._cpu_count\"";
-      num_cores = (*f_cpu_count)(false);
-      if (!warned_num_cores_missing) {
-        LOG(WARNING) << "Warning: Target does not have attribute \"num_cores\", falling back the "
-                        "number of CPU cores on the local machine. The inaccuracy in number of "
-                        "cores may lead to dramatically inferior performance. Falling back to "
-                        "assuming "
-                     << num_cores << " CPU core(s)";
-        warned_num_cores_missing = true;
-      }
-    }
+    int num_cores = GetTargetNumCores(target, &warned_num_cores_missing);
     return num_cores * max_jobs_per_core;
   }
 
