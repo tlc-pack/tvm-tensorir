@@ -50,6 +50,7 @@ SPACE = ms.space.PostOrderApply(
     postprocs=[
         ms.postproc.rewrite_cooperative_fetch(),
         ms.postproc.rewrite_unbound_blocks(),
+        ms.postproc.rewrite_reduction_block(),
         ms.postproc.verify_gpu_code(),
     ],
 )
