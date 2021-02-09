@@ -27,7 +27,6 @@ from tvm.script import ty
 TARGET = tvm.target.Target("cuda")
 SPACE = ms.space.PostOrderApply(
     stages=[
-        ms.rule.inline_pure_spatial(strict_mode=False),
         ms.rule.multi_level_tiling(
             structure="SSSRRSRS",
             must_cache_read=True,
@@ -39,6 +38,7 @@ SPACE = ms.space.PostOrderApply(
             vector_load_max_len=4,
             tile_binds=["blockIdx.x", "vthread", "threadIdx.x"],
         ),
+        ms.rule.inline_pure_spatial(strict_mode=False),
     ],
     postprocs=[
         ms.postproc.rewrite_cooperative_fetch(),
