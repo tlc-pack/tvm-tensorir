@@ -113,7 +113,7 @@ def verify_gpu_code() -> Postproc:
     return _ffi_api_postproc.VerifyGPUCode()  # pylint: disable=no-member
 
 
-def rewrite_reduce_step() -> Postproc:
+def rewrite_reduction_block() -> Postproc:
     """Creates a postprocessor that decomposes ReduceStep
 
     Returns
@@ -121,4 +121,4 @@ def rewrite_reduce_step() -> Postproc:
     postproc: Postproc
         The postprocessor created
     """
-    return _ffi_api_postproc.RewriteReduceStep()  # pylint: disable=no-member
+    return _ffi_api_postproc.RewriteReductionBlock()  # pylint: disable=no-member
