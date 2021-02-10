@@ -168,9 +168,9 @@ class PostprocRewriteCooperativeFetch {
         }
       }
       // Split the loop
-      Array<LoopRV> split = sch->Split(loop_rv, {thread_idx_extent, NullOpt});
+      Array<LoopRV> split = sch->Split(loop_rv, {NullOpt, thread_idx_extent});
       CHECK_EQ(split.size(), 2);
-      sch->Bind(split[0], "threadIdx.x");
+      sch->Bind(split[1], "threadIdx.x");
     }
     return true;
   }
