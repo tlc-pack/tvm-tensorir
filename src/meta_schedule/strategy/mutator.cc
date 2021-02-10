@@ -261,35 +261,42 @@ class MutatorAutoUnroll {
     std::vector<Candidate> candidates;
     for (int i = 0; i < static_cast<int>(trace->insts.size()); ++i) {
       const Instruction& mark_inst = trace->insts[i];
-      // Step 1. Find the `MarkBlockAttr` with key `auto_unroll`.
-      if (mark_inst->inst_attrs->IsInstance<MarkBlockAttrs>()) {
+      // Step 1. Find the `MarkBlockAttr` whose attr_key is `auto_unroll`
+      //         and whose unroll depth is a `tir::VarNode`.
+      if (const auto* mark_attr = mark_inst->inst_attrs.as<MarkBlockAttrs>()) {
         CHECK_EQ(mark_inst->inputs.size(), 2);
-        const auto* mark_attr = mark_inst->inst_attrs.as<MarkBlockAttrs>();
-        if (mark_attr->ann_key == tir::attr::auto_unroll_explicit
-            || mark_attr->ann_key == tir::attr::auto_unroll_implicit) {
-          auto sample_output = Downcast<tir::Var>(mark_inst->inputs[1]);
-          // Step 2. Back to find the corresponding `SampleCategorical` instruction.
-          for (int j = i - 1; j >= 0; --j) {
-            const Instruction& sample_inst = trace->insts[j];
-            if (sample_inst->outputs.size() == 1
-                && sample_inst->outputs[0].same_as(sample_output)) {
-              CHECK(sample_inst->inst_attrs->IsInstance<SampleCategoricalAttrs>());
-              const auto* sample_attr = sample_inst->inst_attrs.as<SampleCategoricalAttrs>();
-              std::vector<double> weights;
-              CHECK_EQ(sample_attr->candidates.size(), sample_attr->probs.size());
-              int decision = Downcast<Integer>(trace->decisions.Get(sample_inst))->value;
-              // Step 3. Remove the current decision from the sampling candidates.
-              for (int k = 0; k < static_cast<int>(sample_attr->candidates.size()); ++k) {
-                if (k != decision) {
-                  weights.emplace_back(sample_attr->probs[k]->value);
-                }
-              }
-              // Step 4. Add a new candidate if `weights` is not empty.
-              if (!weights.empty()) {
-                candidates.emplace_back(sample_inst, weights, decision);
-              }
+        if (mark_attr->ann_key != tir::attr::auto_unroll_explicit
+            && mark_attr->ann_key != tir::attr::auto_unroll_implicit) {
+          continue;
+        }
+        const auto* sample_output = mark_inst->inputs[1].as<tir::VarNode>();
+        if (!sample_output) {
+          continue;
+        }
+        // Step 2. Back to find the corresponding `SampleCategorical` instruction.
+        for (int j = i - 1; j >= 0; --j) {
+          const Instruction& sample_inst = trace->insts[j];
+          if (sample_inst->outputs.size() == 1
+              && sample_inst->outputs[0].same_as(GetRef<tir::Var>(sample_output))) {
+            const auto* sample_attr = sample_inst->inst_attrs.as<SampleCategoricalAttrs>();
+            if (!sample_attr) {
+              // The unroll depth is not created by a `SampleCategorical`. So skip.
               break;
             }
+            std::vector<double> weights;
+            CHECK_EQ(sample_attr->candidates.size(), sample_attr->probs.size());
+            int decision = Downcast<Integer>(trace->decisions.Get(sample_inst))->value;
+            // Step 3. Remove the current decision from the sampling candidates.
+            for (int k = 0; k < static_cast<int>(sample_attr->candidates.size()); ++k) {
+              if (k != decision) {
+                weights.emplace_back(sample_attr->probs[k]->value);
+              }
+            }
+            // Step 4. Add a new candidate if `weights` is not empty.
+            if (!weights.empty()) {
+              candidates.emplace_back(sample_inst, weights, decision);
+            }
+            break;
           }
         }
       }
@@ -323,7 +330,9 @@ Mutator MutateAutoUnroll() {
 
 class MutatorParallel {
  public:
-  MutatorParallel() = default;
+  mutable bool warned_num_cores_missing;
+
+  MutatorParallel() : warned_num_cores_missing(false) {}
 
   struct Candidate {
     /*! \brief The MarkBlock instruction */
@@ -358,7 +367,7 @@ class MutatorParallel {
   }
 
   Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler) {
-    int num_cores = GetTargetNumCores(task->target, nullptr);
+    int num_cores = GetTargetNumCores(task->target, &warned_num_cores_missing);
     std::vector<Candidate> candidates = FindCandidates(trace, num_cores);
     if (candidates.empty()) {
       return NullOpt;

@@ -92,7 +92,7 @@ TVM_DLL Mutator MutateComputeLocation();
 TVM_DLL Mutator MutateAutoUnroll();
 
 /*!
- * \brief Create a mutator that randomly mutate the size of auto parallel
+ * \brief Create a mutator that randomly mutate the max extent of parallelization
  * \return The mutator created
  */
 TVM_DLL Mutator MutateParallel();

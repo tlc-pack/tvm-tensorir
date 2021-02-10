@@ -89,7 +89,7 @@ def mutate_auto_unroll() -> Mutator:
 
 
 def mutate_parallel() -> Mutator:
-    """Create a mutator that randomly mutate the depth of auto unroll
+    """Create a mutator that randomly mutate the max extent of parallelization
 
     Returns
     ----------
