@@ -88,7 +88,7 @@ def mutate_auto_unroll() -> Mutator:
     return _ffi_api_mutator.MutateAutoUnroll()  # pylint: disable=no-member
 
 
-def mutate_parallel() -> Mutator:
+def mutate_parallel(max_jobs_per_core: int) -> Mutator:
     """Create a mutator that randomly mutate the max extent of parallelization
 
     Returns
@@ -96,4 +96,4 @@ def mutate_parallel() -> Mutator:
     mutator: Mutator
         The mutator created
     """
-    return _ffi_api_mutator.MutateParallel()  # pylint: disable=no-member
+    return _ffi_api_mutator.MutateParallel(max_jobs_per_core)  # pylint: disable=no-member

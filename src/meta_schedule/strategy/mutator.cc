@@ -330,18 +330,20 @@ Mutator MutateAutoUnroll() {
 
 class MutatorParallel {
  public:
-  mutable bool warned_num_cores_missing;
+  int max_jobs_per_core;
+  mutable std::atomic<bool> warned_num_cores_missing;
 
-  MutatorParallel() : warned_num_cores_missing(false) {}
+  explicit MutatorParallel(int max_jobs_per_core)
+      : max_jobs_per_core(max_jobs_per_core), warned_num_cores_missing(false) {}
 
   struct Candidate {
     /*! \brief The MarkBlock instruction */
     Instruction inst;
-    /*! \brief The parallel size */
-    int parallel_size;
+    /*! \brief The extent candidates */
+    std::vector<int> extent_candidates;
 
-    explicit Candidate(Instruction inst, int parallel_size)
-        : inst(std::move(inst)), parallel_size(parallel_size) {}
+    explicit Candidate(Instruction inst, std::vector<int> extent_candidates)
+        : inst(std::move(inst)), extent_candidates(std::move(extent_candidates)) {}
   };
 
   /*!
@@ -349,32 +351,79 @@ class MutatorParallel {
    * \param trace The trace from which to find the instructions
    * \return All the candidate instructions
    */
-  std::vector<Candidate> FindCandidates(const Trace& trace, const int& num_cores) {
+  std::vector<Candidate> FindCandidates(const Trace& trace, const tir::PrimFunc& workload,
+                                        const int& max_extent) {
     std::vector<Candidate> candidates;
-    for (const Instruction& inst : trace->insts) {
-      if (inst->inst_attrs->IsInstance<MarkBlockAttrs>()) {
+    Schedule sch(workload);
+    auto f_provide_decision = [&trace, &sch, &candidates, &max_extent](
+            const Instruction& inst,
+            const Array<Optional<ObjectRef>>& inputs) -> Optional<ObjectRef> {
+      Optional<ObjectRef> decision = trace->decisions.Get(inst);
+      // Step 1. Find the `MarkBlockAttr` whose ann_key is `auto_parallel_extent`
+      //         and whose parallel extent is given by an integer.
+      if (const auto* attr = inst->inst_attrs.as<MarkBlockAttrs>()) {
         CHECK_EQ(inst->inputs.size(), 2);
-        const auto* attr = inst->inst_attrs.as<MarkBlockAttrs>();
-        if (attr->ann_key == tir::attr::auto_parallel_extent) {
-          int cur_para_size = Downcast<Integer>(inst->inputs[1])->value;
-          if (cur_para_size > num_cores) {
-            candidates.emplace_back(inst, cur_para_size - num_cores);
+        if (attr->ann_key != tir::attr::auto_parallel_extent
+            || !inst->inputs[1]->IsInstance<IntImmNode>()) {
+          return decision;
+        }
+        // Step 2. Fetch the block and the loops above it. Furthermore, get their loop types.
+        BlockRV block_rv = Downcast<BlockRV>(inputs[0]);
+        tir::StmtSRef block_sref = sch->Eval(block_rv);
+        Array<tir::StmtSRef> loop_srefs = sch->sch->GetLoopsInScope(block_sref);
+        std::vector<int> loop_types;
+        for (const tir::StmtSRef& loop_sref : loop_srefs) {
+          loop_types.emplace_back(GetLoopIterType(sch->sch, loop_sref));
+        }
+        // Step 3. Get the original parallel extent.
+        int ori_extent = inst->inputs[1].as<IntImmNode>()->value;
+        // Step 4. Find extent candidates.
+        int prod_extent = 1;
+        std::vector<int> extent_candidates;
+        for (int i = 0; i < static_cast<int>(loop_srefs.size())
+                        && loop_types[i] == tir::IterVarType::kDataPar; ++i) {
+          const tir::StmtSRef& loop_sref = loop_srefs[i];
+          if (HasAnyAnn(loop_sref)) {
+            break;
+          }
+          // Check if the loop extent is valid
+          Optional<Integer> extent = GetLoopIntExtent(loop_sref);
+          if (!extent.defined()) {
+            break;
+          }
+          // Then we can fuse it in. Moreover, if extent is not 1 and extent does not
+          // equal the original extent, then it is a valid candidate.
+          if (extent.value()->value != 1 && extent.value()->value != ori_extent) {
+            prod_extent *= extent.value()->value;
+            extent_candidates.emplace_back(prod_extent);
+          }
+          // Check if we need to break.
+          if (prod_extent > max_extent || !HasSingleChild(loop_sref)) {
+            break;
           }
         }
+
+        if (!extent_candidates.empty()) {
+          candidates.emplace_back(inst, extent_candidates);
+        }
       }
-    }
+      return decision;
+    };
+    trace->Apply(sch, f_provide_decision);
     return candidates;
   }
 
   Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler) {
-    int num_cores = GetTargetNumCores(task->target, &warned_num_cores_missing);
-    std::vector<Candidate> candidates = FindCandidates(trace, num_cores);
+    int max_extent = GetMaxParallelExtent(task->target, max_jobs_per_core,
+                                          &warned_num_cores_missing) - 1;
+    std::vector<Candidate> candidates = FindCandidates(trace, task->workload, max_extent);
     if (candidates.empty()) {
       return NullOpt;
     }
     const Candidate& candidate = candidates[sampler->SampleInt(0, candidates.size())];
     const BlockRV& block = Downcast<BlockRV>(candidate.inst->inputs[0]);
-    const int& parallel_size = candidate.parallel_size;
+    const std::vector<int>& extent_candidates = candidate.extent_candidates;
+    const int& parallel_size = extent_candidates[sampler->SampleInt(0, extent_candidates.size())];
 
     std::vector<Instruction> new_insts;
     for (int i = 0; i < static_cast<int>(trace->insts.size())
@@ -391,9 +440,10 @@ class MutatorParallel {
   }
 };
 
-Mutator MutateParallel() {
-  auto f_apply = [](SearchTask task, Trace trace, void* sampler) -> Optional<Trace> {
-    MutatorParallel mutator;
+Mutator MutateParallel(const int& max_jobs_per_core) {
+  auto f_apply = [max_jobs_per_core](SearchTask task, Trace trace,
+                                     void* sampler) -> Optional<Trace> {
+    MutatorParallel mutator(max_jobs_per_core);
     return mutator.Apply(task, trace, static_cast<Sampler*>(sampler));
   };
   return Mutator("mutate_parallel", f_apply);

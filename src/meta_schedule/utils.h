@@ -448,7 +448,8 @@ inline std::vector<int> FindCharPos(const String& str, char c) {
 
 /**************** Target Hardware Concurrency ****************/
 
-inline int GetTargetNumCores(const Target& target, bool* warned_num_cores_missing) {
+inline int GetMaxParallelExtent(const Target& target, const int& max_jobs_per_core,
+                                bool* warned_num_cores_missing) {
   int num_cores = target->GetAttr<Integer>("num_cores").value_or(-1);
   if (num_cores == -1) {
     static const auto* f_cpu_count = runtime::Registry::Get("meta_schedule._cpu_count");
@@ -466,7 +467,7 @@ inline int GetTargetNumCores(const Target& target, bool* warned_num_cores_missin
       }
     }
   }
-  return num_cores;
+  return num_cores * max_jobs_per_core;
 }
 
 }  // namespace meta_schedule
