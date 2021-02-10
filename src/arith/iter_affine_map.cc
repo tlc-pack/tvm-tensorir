@@ -583,8 +583,8 @@ class IterMapRewriter : public ExprMutator {
     return analyzer_->CanProve(floormod(lhs, rhs) == 0);
   }
 
-  PrimExpr SplitFloorDivConst(IterSplitExpr lhs, PrimExpr rhs);
-  PrimExpr SplitFloorModConst(IterSplitExpr lhs, PrimExpr rhs);
+  PrimExpr SplitFloorDivConst(IterSplitExpr lhs, PrimExpr rhs, const PrimExpr &orig);
+  PrimExpr SplitFloorModConst(IterSplitExpr lhs, PrimExpr rhs, const PrimExpr &orig);
 
   static void AddToLhs(IterSumExprNode* lhs, IterSplitExpr rhs, int sign) {
     tir::ExprDeepEqual equal;
@@ -825,7 +825,7 @@ PrimExpr IterMapRewriter::VisitExpr_(const MulNode* op) {
   if (a->IsInstance<IterMapExprNode>() && b->IsInstance<IterMapExprNode>()) {
     // cannot multiply two iterators, mark as unresolved.
     ++unresolved_count_;
-    return Mul(a, b);
+    return GetRef<PrimExpr>(op);
   }
 
   if (!a->IsInstance<IterMapExprNode>()) {
@@ -844,7 +844,7 @@ PrimExpr IterMapRewriter::VisitExpr_(const MulNode* op) {
   }
 }
 
-PrimExpr IterMapRewriter::SplitFloorDivConst(IterSplitExpr lhs, PrimExpr rhs) {
+PrimExpr IterMapRewriter::SplitFloorDivConst(IterSplitExpr lhs, PrimExpr rhs, const PrimExpr &orig) {
   // floordiv(x*scale, rhs)
   if (is_one(rhs)) return std::move(lhs);
   if (!is_one(lhs->scale)) {
@@ -860,7 +860,7 @@ PrimExpr IterMapRewriter::SplitFloorDivConst(IterSplitExpr lhs, PrimExpr rhs) {
       } else {
         // mark as unresolved.
         ++unresolved_count_;
-        return floordiv(lhs, rhs);
+        return orig;
       }
     }
   }
@@ -882,7 +882,7 @@ PrimExpr IterMapRewriter::SplitFloorDivConst(IterSplitExpr lhs, PrimExpr rhs) {
   } else {
     // mark as unresolved.
     ++unresolved_count_;
-    return floordiv(lhs, rhs);
+    return orig;
   }
 }
 
@@ -910,7 +910,7 @@ PrimExpr IterMapRewriter::VisitExpr_(const FloorDivNode* op) {
   if (b->IsInstance<IterMapExprNode>()) {
     // cannot divide an iterator, mark as unresolved.
     ++unresolved_count_;
-    return FloorDiv(a, b);
+    return GetRef<PrimExpr>(op);
   }
 
   if (a->IsInstance<IterSumExprNode>()) {
@@ -918,27 +918,27 @@ PrimExpr IterMapRewriter::VisitExpr_(const FloorDivNode* op) {
     PrimExpr base = ret->base;
     if (!CanProveDivisible(base, b)) {
       ++unresolved_count_;
-      return FloorDiv(a, b);
+      return GetRef<PrimExpr>(op);
     }
     ret.CopyOnWrite()->base = 0;
     if (auto opt = TryFuseIters(ret)) {
-      auto res = SplitFloorDivConst(opt.value(), b);
+      auto res = SplitFloorDivConst(opt.value(), b, GetRef<PrimExpr>(op));
       auto res_op = res.as<IterSplitExprNode>();
       return res_op && !is_zero(base)
                  ? IterSumExpr({GetRef<IterSplitExpr>(res_op)}, analyzer_->Simplify(base / b))
                  : res + analyzer_->Simplify(base / b);
     } else {
       ++unresolved_count_;
-      return FloorDiv(a, b);
+      return GetRef<PrimExpr>(op);
     }
   } else {
     CHECK(a->IsInstance<IterSplitExprNode>());
     IterSplitExpr ret = Downcast<IterSplitExpr>(std::move(a));
-    return SplitFloorDivConst(ret, b);
+    return SplitFloorDivConst(ret, b, GetRef<PrimExpr>(op));
   }
 }
 
-PrimExpr IterMapRewriter::SplitFloorModConst(IterSplitExpr lhs, PrimExpr rhs) {
+PrimExpr IterMapRewriter::SplitFloorModConst(IterSplitExpr lhs, PrimExpr rhs, const PrimExpr &orig) {
   // floormod(x*scale, rhs)
   if (is_one(rhs)) return make_zero(lhs->dtype);
   if (!is_one(lhs->scale)) {
@@ -952,7 +952,7 @@ PrimExpr IterMapRewriter::SplitFloorModConst(IterSplitExpr lhs, PrimExpr rhs) {
       } else {
         // mark as unresolved.
         ++unresolved_count_;
-        return floormod(lhs, rhs);
+        return orig;
       }
     }
   }
@@ -966,7 +966,7 @@ PrimExpr IterMapRewriter::SplitFloorModConst(IterSplitExpr lhs, PrimExpr rhs) {
   } else {
     // mark as unresolved.
     ++unresolved_count_;
-    return floormod(lhs, rhs);
+    return orig;
   }
 }
 
@@ -994,7 +994,7 @@ PrimExpr IterMapRewriter::VisitExpr_(const FloorModNode* op) {
   if (b->IsInstance<IterMapExprNode>()) {
     // cannot mod an iterator, mark as unresolved.
     ++unresolved_count_;
-    return FloorMod(a, b);
+    return GetRef<PrimExpr>(op);
   }
 
   if (a->IsInstance<IterSumExprNode>()) {
@@ -1002,19 +1002,19 @@ PrimExpr IterMapRewriter::VisitExpr_(const FloorModNode* op) {
     PrimExpr base = ret->base;
     if (!CanProveDivisible(base, b)) {
       ++unresolved_count_;
-      return FloorMod(a, b);
+      return GetRef<PrimExpr>(op);
     }
     ret.CopyOnWrite()->base = 0;
     if (auto opt = TryFuseIters(ret)) {
-      return SplitFloorModConst(opt.value(), b);
+      return SplitFloorModConst(opt.value(), b, GetRef<PrimExpr>(op));
     } else {
       ++unresolved_count_;
-      return FloorMod(a, b);
+      return GetRef<PrimExpr>(op);
     }
   } else {
     CHECK(a->IsInstance<IterSplitExprNode>());
     IterSplitExpr ret = Downcast<IterSplitExpr>(std::move(a));
-    return SplitFloorModConst(ret, b);
+    return SplitFloorModConst(ret, b, GetRef<PrimExpr>(op));
   }
 }
 
