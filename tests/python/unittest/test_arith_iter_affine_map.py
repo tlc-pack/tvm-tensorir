@@ -214,6 +214,10 @@ def test_split():
     res = tvm.arith.detect_iter_map([fld(x, flm(flm(y, 8), 6))], var_dom([(x, 24), (y, 8)]))
     assert len(res) == 0
 
+    res = tvm.arith.detect_iter_map(iter_var_par([(0, 4)]), [fld(x, flm(flm(y, 8), 6))],
+                                    var_dom([(x, 24), (y, 8)]))
+    assert len(res) == 0
+
 
 def test_compound():
     x = tvm.tir.Var("x", "int32"), 10
