@@ -331,7 +331,7 @@ Mutator MutateAutoUnroll() {
 class MutatorParallel {
  public:
   int max_jobs_per_core;
-  mutable std::atomic<bool> warned_num_cores_missing;
+  bool warned_num_cores_missing;
 
   explicit MutatorParallel(int max_jobs_per_core)
       : max_jobs_per_core(max_jobs_per_core), warned_num_cores_missing(false) {}
