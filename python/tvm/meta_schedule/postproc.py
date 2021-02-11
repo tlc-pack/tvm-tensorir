@@ -102,6 +102,17 @@ def rewrite_parallel_vectorize_unroll() -> Postproc:
     return _ffi_api_postproc.RewriteParallelizeVectorizeUnroll()  # pylint: disable=no-member
 
 
+def disallow_dynamic_loops() -> Postproc:
+    """Create a postprocessor that checks if all loops are static
+
+    Returns
+    ----------
+    postproc: Postproc
+        The postprocessor created
+    """
+    return _ffi_api_postproc.DisallowDynamicLoops()  # pylint: disable=no-member
+
+
 def verify_gpu_code() -> Postproc:
     """Creates a postprocessor that do block/vthread/thread binding for cuda
 
