@@ -280,17 +280,18 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
                                                 const Optional<Array<ObjectRef>>& decision) {
   const auto* tir_loop = Eval(loop)->GetStmt<tir::LoopNode>();
   CHECK(tir_loop);
-  int64_t extent;
-  {
-    const auto* p_extent = tir_loop->extent.as<IntImmNode>();
-    CHECK(p_extent);
-    extent = p_extent->value;
+  std::vector<int> samples;
+  const auto* p_extent = tir_loop->extent.as<IntImmNode>();
+  if (p_extent) {
+    int64_t extent = p_extent->value;
+    // Sample the output
+    samples = decision.defined()                                //
+                  ? AsVector<ObjectRef, int>(decision.value())  //
+                  : sampler.SamplePerfectTile(n_splits, extent, max_innermost_factor);
+  } else {
+    samples = std::vector<int>(n_splits, 1);
+    samples[0] = -1;
   }
-  // Sample the output
-  std::vector<int> samples =
-      decision.defined()                                //
-          ? AsVector<ObjectRef, int>(decision.value())  //
-          : sampler.SamplePerfectTile(n_splits, extent, max_innermost_factor);
   // Create the output random variable
   String name_prefix = tir_loop->loop_var->name_hint + ".";
   Array<tir::Var> outputs;

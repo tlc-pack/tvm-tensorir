@@ -152,6 +152,7 @@ def multi_level_tiling(
     must_cache_write: bool,
     cache_write_scope: str,
     fusion_levels: List[int],
+    max_innermost_factor: int = 16,
     vector_load_max_len: Optional[int] = None,
     tile_binds: Optional[List[str]] = None,
 ) -> SearchRule:
@@ -163,6 +164,8 @@ def multi_level_tiling(
     structure : str
         Structure of tiling. On CPU, recommended to use 'SSRSRS';
         On GPU, recommended to use 'SSSRRSRS'
+    max_innermost_factor : int
+        The maximum size of the innermost factor
     must_cache_read : bool
         Add cache_read before the multi-level tiling
     can_cache_write : bool
@@ -183,6 +186,7 @@ def multi_level_tiling(
     """
     return _ffi_api_search_rule.MultiLevelTiling(  # pylint: disable=no-member
         structure,
+        max_innermost_factor,
         must_cache_read,
         cache_read_scope,
         can_cache_write,
