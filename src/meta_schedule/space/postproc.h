@@ -105,6 +105,12 @@ TVM_DLL Postproc RewriteCooperativeFetch();
 TVM_DLL Postproc RewriteUnboundBlocks();
 
 /*!
+ * \brief Create a postprocessor that checks if all loops are static
+ * \return The postprocessor created
+ */
+TVM_DLL Postproc DisallowDynamicLoops();
+
+/*!
  * \brief Creates a postprocessor that verifies if the GPU code is correct
  * \return The postprocessor created
  */

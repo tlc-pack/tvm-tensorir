@@ -524,6 +524,36 @@ Postproc RewriteReductionBlock() {
 
 /********** VerifyGPUCode **********/
 
+class PostprocDisallowDynamicLoops {
+ public:
+  bool Proc(const Schedule& sch) const {
+    bool has_dyn_ext = false;
+    auto f_visit = [&has_dyn_ext](const ObjectRef& obj) -> bool {
+      if (has_dyn_ext) {
+        return false;
+      }
+      if (const auto* loop = obj.as<tir::LoopNode>()) {
+        if (!loop->extent->IsInstance<IntImmNode>()) {
+          has_dyn_ext = true;
+          return false;
+        }
+      }
+      return true;
+    };
+    tir::PreOrderVisit(sch->sch->func->body, f_visit);
+    return !has_dyn_ext;
+  }
+};
+
+Postproc DisallowDynamicLoops() {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
+    return PostprocDisallowDynamicLoops().Proc(sch);
+  };
+  return Postproc("disallow_dynamic_loops", f_proc);
+}
+
+/********** VerifyGPUCode **********/
+
 class PostprocVerifyGPUCode {
  public:
   static Integer Extract(const Target& target, const char* name) {
@@ -598,6 +628,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteUnboundBlocks")
     .set_body_typed(RewriteUnboundBlocks);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteParallelizeVectorizeUnroll")
     .set_body_typed(RewriteParallelizeVectorizeUnroll);
+TVM_REGISTER_GLOBAL("meta_schedule.postproc.DisallowDynamicLoops")
+    .set_body_typed(DisallowDynamicLoops);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.VerifyGPUCode").set_body_typed(VerifyGPUCode);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteReductionBlock")
     .set_body_typed(RewriteReductionBlock);
