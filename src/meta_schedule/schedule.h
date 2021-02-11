@@ -118,7 +118,7 @@ class ScheduleNode : public Object {
    * \param max_innermost_factor The maximum factor in the innermost loop
    * \return An array of random variables, the result of sampling
    */
-  Array<tir::Var> SamplePerfectTile(int n_splits, const LoopRV& loop, int max_innermost_factor = 16,
+  Array<tir::Var> SamplePerfectTile(int n_splits, const LoopRV& loop, int max_innermost_factor,
                                     const Optional<Array<ObjectRef>>& decision = NullOpt);
   /*!
    * \brief Apply the instruction SampleTileFactor
