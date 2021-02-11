@@ -102,6 +102,7 @@ TVM_DLL SearchRule InlinePureSpatial(bool strict_mode);
  * \brief Create a rule that does multi-level tiling if there is sufficient amount of data reuse.
  * Optionally add read cache and write cache, do fusion if possible
  * \param structure The tiling structure
+ * \param max_innermost_factor The maximum size of the innermost factor
  * \param must_cache_read Add cache_read before the multi-level tiling
  * \param can_cache_write Add cache_write after the multi-level tiling
  * \param must_cache_write Must add cache_write after the multi-level tiling
@@ -111,7 +112,8 @@ TVM_DLL SearchRule InlinePureSpatial(bool strict_mode);
  * \param tile_binds The marks to be used on each tile
  * \return The rule created
  */
-TVM_DLL SearchRule MultiLevelTiling(String structure, bool must_cache_read, String cache_read_scope,
+TVM_DLL SearchRule MultiLevelTiling(String structure, int max_innermost_factor,
+                                    bool must_cache_read, String cache_read_scope,
                                     bool can_cache_write, bool must_cache_write,
                                     String cache_write_scope, Array<Integer> fusion_levels,
                                     Optional<Integer> vector_load_max_len,

@@ -125,6 +125,8 @@ class RuleMultiLevelTiling {
    * - 'SSSRRSRS' on GPU
    */
   String structure;
+  /*! \brief The maximum size of the innermost factor */
+  int max_innermost_factor;
   /*! \brief Whether we must cache_read the inputs */
   bool must_cache_read;
   /*! \brief The storage scope of cache_read */
@@ -228,12 +230,14 @@ class RuleMultiLevelTiling {
     return sch->Fuse(to_fuse);
   }
 
-  explicit RuleMultiLevelTiling(String structure, bool must_cache_read, String cache_read_scope,
-                                bool can_cache_write, bool must_cache_write,
-                                String cache_write_scope, Array<Integer> fusion_levels_,
+  explicit RuleMultiLevelTiling(String structure, int max_innermost_factor, bool must_cache_read,
+                                String cache_read_scope, bool can_cache_write,
+                                bool must_cache_write, String cache_write_scope,
+                                Array<Integer> fusion_levels_,
                                 Optional<Integer> vector_load_max_len,
                                 Optional<Array<String>> tile_binds)
       : structure(structure),
+        max_innermost_factor(max_innermost_factor),
         must_cache_read(must_cache_read),
         cache_read_scope(cache_read_scope),
         can_cache_write(can_cache_write),
@@ -381,7 +385,8 @@ class RuleMultiLevelTiling {
       // Number of splits to be made
       int n_tiles = idx->size();
       // Do the split
-      Array<tir::Var> factors = sch->SamplePerfectTile(/*n=*/n_tiles, /*loop=*/axes[i]);
+      Array<tir::Var> factors = sch->SamplePerfectTile(
+          /*n=*/n_tiles, /*loop=*/axes[i], /*max_innermost_factor=*/max_innermost_factor);
       Array<LoopRV> splits =
           sch->Split(/*loop=*/axes[i], /*factors=*/{factors.begin(), factors.end()});
       // Put every tile to its slot
@@ -467,17 +472,18 @@ class RuleMultiLevelTiling {
 #undef TVM_SEARCH_RULE_APPLY_SUBRULE
 };
 
-SearchRule MultiLevelTiling(String structure, bool must_cache_read, String cache_read_scope,
-                            bool can_cache_write, bool must_cache_write, String cache_write_scope,
-                            Array<Integer> fusion_levels, Optional<Integer> vector_load_max_len,
+SearchRule MultiLevelTiling(String structure, int max_innermost_factor, bool must_cache_read,
+                            String cache_read_scope, bool can_cache_write, bool must_cache_write,
+                            String cache_write_scope, Array<Integer> fusion_levels,
+                            Optional<Integer> vector_load_max_len,
                             Optional<Array<String>> tile_binds) {
   if (!can_cache_write && must_cache_write) {
     LOG(FATAL) << "ValueError: Conflict options, cannot have can_cache_write = false, and "
                   "must_cache_write = true at the same time";
   }
-  RuleMultiLevelTiling rule(structure, must_cache_read, cache_read_scope, can_cache_write,
-                            must_cache_write, cache_write_scope, fusion_levels, vector_load_max_len,
-                            tile_binds);
+  RuleMultiLevelTiling rule(structure, max_innermost_factor, must_cache_read, cache_read_scope,
+                            can_cache_write, must_cache_write, cache_write_scope, fusion_levels,
+                            vector_load_max_len, tile_binds);
   auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch,
                                          BlockRV block) -> Array<Schedule> {
     return rule.Apply(task, sch, block);
