@@ -19,6 +19,7 @@ from ..tir.schedule import RAND_VAR_TYPE, BlockRV, ExprRV, LoopRV, VarRV
 from . import analysis, feature, instruction, mutator
 from . import search_rule as rule
 from . import space, strategy
+from . import relay_integration
 from .auto_tune import autotune
 from .cost_model import RandCostModel
 from .measure import (
@@ -33,3 +34,4 @@ from .schedule import Schedule
 from .search import SearchSpace, SearchStrategy, SearchTask
 from .trace import Trace
 from .xgb_model import XGBModel
+from .dispatcher import DispatchContext, ApplyHistoryBest

@@ -312,6 +312,15 @@ inline bool IsCompileEngineCacheDisabled() {
       .value();
 }
 
+/*!
+ * \brief Return whether the auto scheduler is enabled in the pass context.
+ */
+inline bool IsMetaSchedulerEnabled() {
+  return transform::PassContext::Current()
+      ->GetConfig<Bool>("relay.backend.use_meta_schedule", Bool(false))
+      .value();
+}
+
 }  // namespace backend
 }  // namespace relay
 }  // namespace tvm

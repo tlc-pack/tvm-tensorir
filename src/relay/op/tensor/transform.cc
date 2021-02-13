@@ -3120,6 +3120,54 @@ RELAY_REGISTER_OP("auto_scheduler_layout_transform")
     .set_attr<FTVMCompute>("FTVMCompute", AutoSchedulerLayoutTransformCompute);
 
 // relay._contrib_reverse_reshape
+// relay.meta_schedule_layout_transform
+TVM_REGISTER_NODE_TYPE(MetaSchedulerLayoutTransformAttrs);
+
+Array<te::Tensor> MetaSchedulerLayoutTransformCompute(const Attrs& attrs,
+                                                      const Array<te::Tensor>& inputs,
+                                                      const Type& out_type) {
+  const auto* param = attrs.as<MetaSchedulerLayoutTransformAttrs>();
+  CHECK(param != nullptr);
+  return Array<te::Tensor>{
+      topi::meta_schedule_layout_transform(inputs[0], param->extents, param->reorder)};
+}
+
+bool MetaSchedulerLayoutTransformRel(const Array<Type>& types, int num_inputs, const Attrs& attrs,
+                                     const TypeReporter& reporter) {
+  const auto* data = types[0].as<TensorTypeNode>();
+  CHECK(data != nullptr);
+  const MetaSchedulerLayoutTransformAttrs* params = attrs.as<MetaSchedulerLayoutTransformAttrs>();
+
+  Array<IndexExpr> new_shape;
+
+  topi::getNewShape(params->extents, params->reorder, new_shape);
+
+  reporter->Assign(types[1], TensorType(new_shape, data->dtype));
+  return true;
+}
+
+Expr MakeMetaSchedulerLayoutTransform(Expr data, Array<Integer> extents, Array<Integer> reorder) {
+  auto attrs = make_object<MetaSchedulerLayoutTransformAttrs>();
+  attrs->extents = std::move(extents);
+  attrs->reorder = std::move(reorder);
+  static const Op& op = Op::Get("meta_schedule_layout_transform");
+  return Call(op, {data}, Attrs(attrs), {});
+}
+
+TVM_REGISTER_GLOBAL("relay.op._make.meta_schedule_layout_transform")
+    .set_body_typed(MakeMetaSchedulerLayoutTransform);
+
+RELAY_REGISTER_OP("meta_schedule_layout_transform")
+    .describe(R"code(Transform the input kernel layout.
+)code" TVM_ADD_FILELINE)
+    .set_attrs_type<MetaSchedulerLayoutTransformAttrs>()
+    .set_num_inputs(1)
+    .add_argument("data", "Tensor", "The input tensor.")
+    .add_type_rel("meta_schedule_layout_transform", MetaSchedulerLayoutTransformRel)
+    .set_support_level(5)
+    .set_attr<FTVMCompute>("FTVMCompute", MetaSchedulerLayoutTransformCompute);
+
+/* relay._contrib_reverse_reshape */
 Expr MakeReverseReshape(Expr data, Array<Integer> newshape) {
   auto attrs = make_object<ReshapeAttrs>();
   attrs->newshape = std::move(newshape);

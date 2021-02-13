@@ -55,7 +55,7 @@ class DatabaseNode : public runtime::Object {
   virtual ~DatabaseNode() = default;
 
   /*! \brief Initialize the database */
-  virtual void Init(const SearchTask& task) = 0;
+  virtual void Init() = 0;
 
   /*! \brief Initialize the database */
   virtual void Init(TuneContextNode* tune_context) {}
@@ -66,27 +66,28 @@ class DatabaseNode : public runtime::Object {
    * \param repr The string representation of the schedule
    * \param times The running time of the schedule
    */
-  virtual void Add(const Trace& trace, const String& repr, const std::vector<double>& times) = 0;
+  virtual void Add(const Trace& trace, const String& repr, const std::vector<double>& times,
+                   const SearchTask& task) = 0;
 
   /*!
    * \brief Check if a schedule already exists in the database
    * \param repr The string representation of the schedule
    * \return A boolean indicating if the schedule exists in the database
    */
-  virtual bool Has(const String& repr) const = 0;
+  virtual bool Has(const String& repr, const SearchTask& task) const = 0;
 
   /*!
    * \brief Get the top-k entries
    * \param top_k The top-k entries to be queried
    * \return A list of at most `top_k` elements
    */
-  virtual std::vector<Entry> GetTopK(int top_k) const = 0;
+  virtual std::vector<Entry> GetTopK(int top_k, const SearchTask& task) const = 0;
 
   /*!
    * \brief Get the best entry
    * \return An entry, nullable
    */
-  virtual Entry GetBest() const = 0;
+  virtual Entry GetBest(const SearchTask& task) = 0;
 
   /*!
    * \brief Number of records in the database

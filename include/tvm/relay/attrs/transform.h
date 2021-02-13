@@ -368,6 +368,19 @@ struct AutoSchedulerLayoutTransformAttrs
   }
 };
 
+/*! \brief Attributes for MetaScheduleLayoutTransform operator */
+struct MetaSchedulerLayoutTransformAttrs
+    : public tvm::AttrsNode<MetaSchedulerLayoutTransformAttrs> {
+  Array<Integer> extents;
+  Array<Integer> reorder;
+
+  TVM_DECLARE_ATTRS(MetaSchedulerLayoutTransformAttrs,
+                    "relay.attrs.MetaSchedulerLayoutTransformAttrs") {
+    TVM_ATTR_FIELD(extents).describe("The extents of the new layout");
+    TVM_ATTR_FIELD(reorder).describe("The order of the extents");
+  }
+};
+
 /*! \brief Attributes for ShapeOf operator */
 struct ShapeOfAttrs : public tvm::AttrsNode<ShapeOfAttrs> {
   DataType dtype;

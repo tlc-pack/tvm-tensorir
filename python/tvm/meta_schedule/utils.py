@@ -36,6 +36,7 @@ from tvm.contrib import tar as build_func_tar
 from tvm.driver import build as tvm_build
 from tvm.runtime import NDArray, TVMContext, ndarray
 from tvm.tir import FloatImm, IntImm, PrimFunc
+import tvm
 
 from .measure_record import BuildResult, MeasureErrorNo, MeasureInput, MeasureResult
 
@@ -656,7 +657,7 @@ def rpc_runner_worker(
                     args_set = [f_create_args(ctx) for _ in range(rpc_eval_repeat)]
                 else:
                     args_set = [
-                        realize_arguments(remote, ctx, measure_input.task.workload)
+                        realize_arguments(remote, ctx, measure_input.sch.sch.module)
                         for _ in range(rpc_eval_repeat)
                     ]
                 ctx.sync()

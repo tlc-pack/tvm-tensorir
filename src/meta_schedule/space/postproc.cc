@@ -23,6 +23,7 @@
 
 #include "../../tir/schedule/primitives/primitives.h"
 #include "../../tir/schedule/utils.h"
+#include "../../relay/transforms/meta_schedule_layout_rewrite.h"
 #include "../analysis.h"
 #include "../utils.h"
 
@@ -743,6 +744,231 @@ Postproc VerifyGPUCode() {
   return Postproc("verify_gpu_code", f_proc);
 }
 
+class PostProcRewriteLayout {
+ private:
+  class IterVarMapCollector {
+   public:
+    IterVarMapCollector(Array<arith::IterSplitExpr>& splitexprs) : splitexprs(splitexprs) {}
+
+    void CollectIterSplitExpr(const arith::IterSplitExpr& expr) {
+      if (const auto* op = expr->source->source.as<tir::VarNode>()) {
+        splitexprs.push_back(
+            arith::IterSplitExpr(expr->source, expr->lower_factor, expr->extent, expr->scale));
+      } else if (const auto& op = expr->source->source.as<arith::IterSumExprNode>()) {
+        CollectIterSumExpr(GetRef<arith::IterSumExpr>(op));
+      }
+    }
+    void CollectIterSumExpr(const arith::IterSumExpr& expr) {
+      for (const auto& arg : expr->args) {
+        CollectIterSplitExpr(arg);
+      }
+    }
+    void Collect(const arith::IterMapExpr& expr) {
+      if (const auto* op = expr.as<arith::IterSplitExprNode>()) {
+        CollectIterSplitExpr(GetRef<arith::IterSplitExpr>(op));
+      } else if (const auto* op = expr.as<arith::IterSumExprNode>()) {
+        CollectIterSumExpr(GetRef<arith::IterSumExpr>(op));
+      } else {
+        LOG(FATAL);
+      }
+    }
+
+   private:
+    Array<arith::IterSplitExpr>& splitexprs;
+  };
+
+  class IterVarResolver : public tir::StmtExprVisitor {
+    bool visited = false;
+    tir::BlockRealize realize;
+    Map<tir::Var, PrimExpr> binding_map{};
+    const Schedule& sch;
+    const tir::Buffer& buffer;
+    LayoutRewriteHint& hint;
+    tir::Block block_to_rewrite;
+
+    void VisitStmt_(const tir::BlockRealizeNode* op) {
+      realize = GetRef<tir::BlockRealize>(op);
+      for (int i = 0; i < realize->binding_values.size(); i++) {
+        binding_map.Set(realize->block->iter_vars[i]->var, realize->binding_values[i]);
+      }
+      VisitStmt(op->block->body);
+    }
+    // true if expr1<expr2
+    static bool compare(
+        const arith::IterSplitExpr& expr1, const arith::IterSplitExpr& expr2,
+        const std::unordered_map<tir::Var, int, ObjectPtrHash, ObjectPtrEqual>& loop_order) {
+      tir::Var var1 = Downcast<tir::Var>(expr1->source->source);
+      tir::Var var2 = Downcast<tir::Var>(expr2->source->source);
+      if (loop_order.at(var1) < loop_order.at(var2)) {
+        return true;
+      } else if (loop_order.at(var1) == loop_order.at(var2)) {
+        int factor1 = Downcast<IntImm>(expr1->lower_factor)->value;
+        int factor2 = Downcast<IntImm>(expr2->lower_factor)->value;
+        if (factor1 > factor2) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    void VisitExpr_(const tir::BufferLoadNode* op) {
+      if (buffer.same_as(op->buffer)) {
+        CHECK(!visited);
+        block_to_rewrite = realize->block;
+        visited = true;
+        PrimExpr sum = 0;
+        PrimExpr flatten_shape = 1;
+        for (int i = 0; i < op->indices.size(); i++) {
+          sum *= op->buffer->shape[i];
+          flatten_shape *= op->buffer->shape[i];
+          tir::Var var = Downcast<tir::Var>(op->indices[i]);
+          CHECK(var.defined());
+          auto bind = binding_map.Get(var);
+          CHECK(bind.defined());
+          sum += bind.value();
+        }
+        arith::Analyzer analyzer;
+        auto loops = sch->GetAxes(sch->state()->stmt2ref.at(realize->block.get()));
+        std::unordered_map<tir::Var, Range, ObjectPtrHash, ObjectPtrEqual> loop_vars;
+        std::unordered_map<tir::Var, int, ObjectPtrHash, ObjectPtrEqual> loop_order;
+        for (int i = 0; i < loops.size(); i++) {
+          const auto* loop = loops[i]->GetStmt<tir::ForNode>();
+          loop_vars.emplace(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+          loop_order.emplace(loop->loop_var, i);
+        }
+
+        auto results = arith::DetectIterMap(
+            Array<tir::IterVar>{
+                tir::IterVar(Range::FromMinExtent(0, flatten_shape), tir::Var(), tir::kDataPar)},
+            Array<PrimExpr>{analyzer.Simplify(sum)}, loop_vars, realize->predicate, &analyzer);
+        Array<arith::IterSplitExpr> splitexprs;
+        IterVarMapCollector collector(splitexprs);
+        for (int i = 0; i < results.size(); i++) {
+          collector.Collect(results[i]);
+        }
+        for (const auto& splitexpr : splitexprs) {
+          IntImm extent = Downcast<IntImm>(splitexpr->extent);
+          if (extent.defined()) {
+            hint.extents.push_back(extent->value);
+          } else {
+            LOG(FATAL) << "dynamic layout";
+          }
+        }
+        hint.reorder.resize(hint.extents.size());
+        for (int i = 0; i < hint.extents.size(); i++) {
+          int idx = 0;
+          for (const auto& other : splitexprs) {
+            if (compare(other, splitexprs[i], loop_order)) {
+              idx++;
+            }
+          }
+          hint.reorder[idx] = Integer(i);
+        }
+      }
+    }
+
+   public:
+    IterVarResolver(const Schedule& sch, const tir::Buffer& buffer, LayoutRewriteHint& hint)
+        : sch(sch), buffer(buffer), hint(hint) {}
+
+    tir::Block getBufferIterInfo(const tir::Stmt& body) {
+      visited = false;
+      VisitStmt(body);
+      return block_to_rewrite;
+    }
+  };
+
+ public:
+  class IndexRewriter : public tir::StmtExprMutator {
+    const LayoutRewriteHint& hint;
+    const tir::Buffer& buffer_to_rewrite;
+    const tir::Buffer& new_buffer;
+    const tir::Block& block;
+
+   public:
+    IndexRewriter(const LayoutRewriteHint& hint, const tir::Buffer& buffer_to_rewrite,
+                  const tir::Block& block, const tir::Buffer& new_buffer)
+        : hint(hint), buffer_to_rewrite(buffer_to_rewrite), block(block), new_buffer(new_buffer) {}
+
+    tir::Stmt Rewrite(const tir::Stmt& stmt) { return this->VisitStmt(stmt); }
+
+    tir::Stmt VisitStmt_(const tir::BlockNode* op) final {
+      tir::Block mutated_block = Downcast<tir::Block>(StmtMutator::VisitStmt_(op));
+      if (GetRef<tir::Block>(op).same_as(block)) {
+        tir::BlockReadWriteCollector block_read_write_collector(mutated_block->alloc_buffers);
+        block_read_write_collector(mutated_block->body);
+        auto n = CopyOnWrite(mutated_block.operator->());
+        n->reads = block_read_write_collector.reads();
+        return tir::Block(n);
+      }
+      return mutated_block;
+    }
+
+    PrimExpr VisitExpr_(const tir::BufferLoadNode* op) final {
+      if (op->buffer.same_as(buffer_to_rewrite)) {
+        PrimExpr sum = 0;
+        for (int i = 0; i < op->indices.size(); i++) {
+          sum *= op->buffer->shape[i];
+          sum += op->indices[i];
+        }
+        Array<PrimExpr> r_new_indices;
+        arith::Analyzer analyzer;
+        for (int i = hint.extents.size() - 1; i >= 0; i--) {
+          r_new_indices.push_back(analyzer.Simplify(floormod(sum, hint.extents[i])));
+          sum = floordiv(sum, hint.extents[i]);
+        }
+        Array<PrimExpr> new_indices(r_new_indices.rbegin(), r_new_indices.rend());
+        Array<PrimExpr> reordered_indices;
+        for (int i = 0; i < hint.extents.size(); i++) {
+          reordered_indices.push_back(new_indices[hint.reorder[i]]);
+        }
+
+        return tir::BufferLoad(new_buffer, reordered_indices);
+      }
+      return GetRef<PrimExpr>(op);
+    }
+  };
+
+ public:
+  bool Proc(Schedule& sch, SearchTask& task) const {
+    auto buffer_to_rewrite =
+        sch->sch->state->func->GetAttr("layout_free_placeholders", Array<tir::Var>());
+    for (const auto& input_var : buffer_to_rewrite.value()) {
+      //      LOG(INFO) << "doing layout rewrite for task: " << task->task_name;
+      tir::Buffer buffer = sch->sch->state->func->buffer_map.Get(input_var).value();
+      LayoutRewriteHint hint;
+      IterVarResolver resolver(sch, buffer, hint);
+      const tir::Stmt& body = sch->sch->state->func->body;
+      auto block = resolver.getBufferIterInfo(body);
+      Array<PrimExpr> new_shape;
+      for (int i = 0; i < hint.extents.size(); i++) {
+        new_shape.push_back(hint.extents[hint.reorder[i]]);
+      }
+      tir::Buffer new_buffer(buffer->data, buffer->dtype, new_shape, Array<PrimExpr>(),
+                             buffer->elem_offset, buffer->name, buffer->scope,
+                             buffer->data_alignment, buffer->offset_factor, buffer->buffer_type);
+      IndexRewriter rewriter(hint, buffer, block, new_buffer);
+      sch->sch->state->Replace(sch->sch->state->stmt2ref.at(block.get()), rewriter.Rewrite(block),
+                               {});
+      auto new_buffer_map = Map<tir::Var, tir::Buffer>(sch->sch->state->func->buffer_map);
+      new_buffer_map.Set(input_var, new_buffer);
+      sch->sch->state->func = tir::PrimFunc(
+          sch->sch->state->func->params, sch->sch->state->func->body,
+          sch->sch->state->func->ret_type, new_buffer_map, sch->sch->state->func->attrs);
+      std::lock_guard<std::mutex> lock(::tvm::relay::MetaSchedulerLayoutRewriter::mutex);
+
+      ::tvm::relay::MetaSchedulerLayoutRewriter::global_layout_rewrite_queue.push_back(hint);
+    }
+    return true;
+  }
+};
+Postproc RewriteLayout() {
+  auto f_proc = [](SearchTask task, Schedule sch, void* _sampler) -> bool {
+    return PostProcRewriteLayout().Proc(sch, task);
+  };
+  return Postproc("rewrite_layout", f_proc);
+}
+
 /********** FFI **********/
 
 struct Internal {
@@ -773,6 +999,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.postproc.DisallowDynamicLoops")
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.VerifyGPUCode").set_body_typed(VerifyGPUCode);
 TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteReductionBlock")
     .set_body_typed(RewriteReductionBlock);
+TVM_REGISTER_GLOBAL("meta_schedule.postproc.RewriteLayout").set_body_typed(RewriteLayout);
 
 }  // namespace meta_schedule
 }  // namespace tvm

@@ -31,8 +31,12 @@ namespace meta_schedule {
 SearchTask::SearchTask(tir::PrimFunc workload, String task_name, Target target, Target target_host,
                        Optional<String> log_file) {
   ObjectPtr<SearchTaskNode> n = make_object<SearchTaskNode>();
+  if (task_name == "") {
+    n->task_name = "func" + std::to_string(StructuralHash()(workload));
+  } else {
+    n->task_name = std::move(task_name);
+  }
   n->workload = std::move(workload);
-  n->task_name = std::move(task_name);
   n->target = std::move(target);
   n->target_host = std::move(target_host);
   n->log_file = std::move(log_file);

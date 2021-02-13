@@ -122,6 +122,9 @@ struct Conv2DAttrs : public tvm::AttrsNode<Conv2DAttrs> {
   tvm::String out_layout;
   tvm::String auto_scheduler_rewritten_layout;  // The layout after auto-scheduler's layout rewrite
   DataType out_dtype;
+  Array<Integer> meta_schedule_layout_rewrite_extents;
+  Array<Integer> meta_schedule_layout_rewrite_reorder;
+  Array<PrimExpr> meta_schedule_original_shape;
 
   TVM_DECLARE_ATTRS(Conv2DAttrs, "relay.attrs.Conv2DAttrs") {
     TVM_ATTR_FIELD(strides)

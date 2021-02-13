@@ -84,7 +84,9 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
 
   // name map for unique block name
   std::unordered_map<std::string, int> name_map;
-
+  Map<String, ObjectRef> func_attr;
+  Array<tir::Var> layout_free;
+  std::unordered_map<te::Operation, tir::Var, ObjectPtrHash, ObjectPtrEqual> op2arg;
   for (const auto& op : order) {
     CHECK_EQ(op->num_outputs(), 1);
     const te::Tensor& tensor = op.output(0);
@@ -92,9 +94,18 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
       Var arg("var_" + placeholder->name, PrimType(DataType::Handle()));
       Buffer input_buffer = decl_buffer(placeholder->shape, placeholder->dtype, placeholder->name);
       op2buffers[op] = input_buffer;
+      op2arg[op] = arg;
       parameters.push_back(arg);
       buffer_map.Set(arg, input_buffer);
     } else if (const auto& compute_op = op.as<te::ComputeOpNode>()) {
+      if (compute_op->attrs.count("layout_free_placeholders")) {
+        auto free_placeholders =
+            Downcast<Array<te::Tensor>>(compute_op->attrs.Get("layout_free_placeholders").value());
+        for (const auto& tensor : free_placeholders) {
+          layout_free.push_back(op2arg.at(tensor->op));
+        }
+      }
+
       Array<IterVar> block_vars;
       arith::Analyzer analyzer;
 
@@ -149,7 +160,7 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
         // Add allocation
         allocations.push_back(buffer);
       }
-      Map<String, ObjectRef> annotations = op->attrs;
+      Map<String, ObjectRef> annotations = {};
       annotations.Set("script_detect_access", IntImm(DataType::Int(32), 3));
       Block block(/*iter_vars=*/block_vars,
                   /*reads=*/{}, /*writes=*/{}, /*name_hint=*/GetUniqueName(op->name, &name_map),
@@ -166,7 +177,8 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
     }
   }
 
-  PrimFunc func = PrimFunc(parameters, SeqStmt::Flatten(seq), VoidType(), buffer_map);
+  PrimFunc func = PrimFunc(parameters, SeqStmt::Flatten(seq), VoidType(), buffer_map,
+                           DictAttrs(Map<String, ObjectRef>{{"layout_free_placeholders", layout_free}}));
 
   const auto* complete = runtime::Registry::Get("script.Complete");
   ICHECK(complete);

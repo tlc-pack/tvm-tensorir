@@ -1428,6 +1428,57 @@ inline Tensor layout_transform(const Tensor& src, const std::string& src_layout,
       },
       name, tag);
 }
+/*! \brief Utility function for meta_schedule_layout_transform */
+
+inline void getNewShape(const Array<Integer>& extents, const Array<Integer>& reorder,
+                        Array<PrimExpr>& new_shape) {
+  new_shape.clear();
+  for (int i = 0; i < extents.size(); i++) {
+    new_shape.push_back(extents[reorder[i]]);
+  }
+}
+
+/*!
+ * \brief Transform the auto-scheduler generated layout according to
+ *        \p extents and\p layout
+ * \param src the source input.
+ * \param extents the new layout extents.
+ * \param reorder the new layout order.
+ * \param name output tensor name.
+ * \param tag output tensor tag.
+ * \return A tensor with shape in \p dst_layout
+ */
+inline Tensor meta_schedule_layout_transform(const Tensor& src, const Array<Integer>& extents,
+                                             const Array<Integer>& reorder,
+                                             const String name = "T_meta_schedule_layout_trans",
+                                             const String tag = kInjective) {
+  Array<PrimExpr> new_shape;
+  getNewShape(extents, reorder, new_shape);
+  LOG(INFO) << new_shape;
+  return compute(
+      new_shape,
+      [&](const Array<Var>& dst_indices) {
+        Array<PrimExpr> dst_indices_expr(dst_indices.begin(), dst_indices.end());
+        std::vector<PrimExpr> reorder_buf;
+        std::vector<PrimExpr> reverse_src_indices;
+        reorder_buf.resize(dst_indices.size());
+        for (size_t i = 0; i < dst_indices.size(); i++) {
+          reorder_buf[reorder[i]] = dst_indices[i];
+        }
+        PrimExpr sum = 0;
+        for (int i = 0; i < dst_indices.size(); i++) {
+          sum *= extents[i];
+          sum += reorder_buf[i];
+        }
+        for (int i = static_cast<int>(src->shape.size()) - 1; i >= 0; i--) {
+          reverse_src_indices.push_back(floormod(sum, src->shape[i]));
+          sum = floordiv(sum, src->shape[i]);
+        }
+        Array<PrimExpr> src_indices(reverse_src_indices.rbegin(), reverse_src_indices.rend());
+        return src(src_indices);
+      },
+      name, tag);
+}
 
 /*! \brief Utility function for auto_scheduler_layout_transform */
 inline void parse_auto_scheduler_layout(const String& layout, Array<PrimExpr>* shape,

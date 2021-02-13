@@ -62,16 +62,17 @@ def conv1d_nlc(  # pylint: disable=invalid-name
         (batch_size, out_len, out_channel),
         lambda n, l, co: te.sum(
             (
-                padded[
-                    n,
-                    l * stride + rl * dilation,
-                    co // out_channel_per_group * channel_per_group + rc,
-                ]
-                * weight[rl, rc, co]
+                    padded[
+                        n,
+                        l * stride + rl * dilation,
+                        co // out_channel_per_group * channel_per_group + rc,
+                    ]
+                    * weight[rl, rc, co]
             ),
             axis=[rl, rc],
         ),
         name="conv1d_nlc",
+        attrs={"layout_free_placeholders": [weight]},
     )
     return (inputs, weight, output)
 
@@ -116,6 +117,7 @@ def conv2d_nhwc(  # pylint: disable=invalid-name
             axis=[rh, rw, rc],
         ),
         name="conv2d_nhwc",
+        attrs={"layout_free_placeholders": [weight]},
     )
     return (inputs, weight, output)
 

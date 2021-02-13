@@ -142,6 +142,11 @@ def conv2d_strategy_cpu(attrs, inputs, out_type, target):
                 wrap_topi_schedule(topi.x86.schedule_conv2d_nhwc),
                 name="conv2d_nhwc.x86",
             )
+            strategy.add_tir_implementation(
+                wrap_compute_conv2d(topi.nn.conv2d_nhwc, need_meta_schedule_layout=True),
+                wrap_topi_schedule(topi.generic.default_tir_schedule),
+                name="conv2d_nhwc.x86"
+            )
 
             judge_winograd_auto_scheduler = False
             if len(kernel.shape) == 4:

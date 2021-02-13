@@ -22,6 +22,10 @@ from collections import namedtuple
 import tvm
 from tvm import te, auto_scheduler
 
+from tvm.te.tensor import Tensor
+from tvm.runtime import convert_to_object
+from tvm.tir import expr as _expr
+
 from .pad import pad
 from .utils import get_pad_tuple
 from ..utils import simplify, get_const_tuple, get_const_int, tag
@@ -282,6 +286,26 @@ def conv2d_nchw(Input, Filter, stride, padding, dilation, out_dtype=None):
     )
 
 
+def rewrite_compute_body(compute_tensor, new_layout):
+    """Rewrite the body of a ComputeOp according to a new layout of a placeholder"""
+    op = compute_tensor.op
+
+    # Get layout free placeholders
+    layout_free_placeholders = op.attrs["layout_free_placeholders"]
+    assert len(layout_free_placeholders) == 1, "Only support one layout free placeholder"
+    placeholder_op = layout_free_placeholders[0].op
+
+    # Rewrite the index expression in body
+    body = []
+    for b in op.body:
+        body.append(_ffi_api.RewriteIndexForNewLayout(placeholder_op, new_layout, b))
+    op_node = tvm.te._ffi_api.ComputeOp(op.name, op.tag, op.attrs, op.axis, body)
+
+    num = op_node.num_outputs
+    outputs = tuple(op_node.output(i) for i in range(num))
+    return outputs[0] if num == 1 else outputs
+
+
 def conv2d_hwcn(Input, Filter, stride, padding, dilation, out_dtype=None):
     """Convolution operator in HWCN layout.
 
@@ -356,14 +380,17 @@ def conv2d_hwcn(Input, Filter, stride, padding, dilation, out_dtype=None):
     return Output
 
 
+
+
 def conv2d_nhwc(
-    Input,
-    Filter,
-    stride,
-    padding,
-    dilation,
-    out_dtype="float32",
-    auto_scheduler_rewritten_layout="",
+        Input,
+        Filter,
+        stride,
+        padding,
+        dilation,
+        out_dtype="float32",
+        auto_scheduler_rewritten_layout="",
+        original_shape=[],
 ):
     """Convolution operator in NHWC layout.
 
@@ -415,6 +442,10 @@ def conv2d_nhwc(
         kernel_h, kernel_w, channel, num_filter = auto_scheduler.get_shape_from_rewritten_layout(
             auto_scheduler_rewritten_layout, ["ry", "rx", "rc", "ff"]
         )
+        auto_scheduler.remove_index_check(Filter)
+    elif len(original_shape) != 0:
+        kernel_h, kernel_w, channel, num_filter = original_shape
+        Filter = te.placeholder((kernel_h, kernel_w, channel, num_filter), name=Filter.name)
         auto_scheduler.remove_index_check(Filter)
     else:
         kernel_h, kernel_w, channel, num_filter = Filter.shape
