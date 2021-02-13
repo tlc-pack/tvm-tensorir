@@ -34,6 +34,7 @@ SPACE = ms.space.PostOrderApply(
             can_cache_write=True,
             must_cache_write=True,
             cache_write_scope="local",
+            consumer_inline_strict=False,
             fusion_levels=[3],
             vector_load_max_len=4,
             tile_binds=["blockIdx.x", "vthread", "threadIdx.x"],
@@ -43,6 +44,9 @@ SPACE = ms.space.PostOrderApply(
     postprocs=[
         ms.postproc.rewrite_cooperative_fetch(),
         ms.postproc.rewrite_unbound_blocks(),
+        ms.postproc.rewrite_parallel_vectorize_unroll(),
+        ms.postproc.rewrite_reduction_block(),
+        ms.postproc.disallow_dynamic_loops(),
         ms.postproc.verify_gpu_code(),
     ],
 )
@@ -174,5 +178,115 @@ def test_meta_schedule_sketch_cuda_matmul():
     )
 
 
+# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unused-variable,unexpected-keyword-arg,misplaced-comparison-constant
+# fmt: off
+
+@tvm.script.tir
+def _conv2d_nchw_bias_bn_relu_sketch_0(var_X: ty.handle, var_W: ty.handle, var_B: ty.handle, var_bn_scale: ty.handle, var_bn_offset: ty.handle, var_compute: ty.handle) -> None:
+    X = tir.match_buffer(var_X, [1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
+    bn_scale = tir.match_buffer(var_bn_scale, [512, 1, 1], elem_offset=0, align=128, offset_factor=1)
+    W = tir.match_buffer(var_W, [512, 512, 3, 3], elem_offset=0, align=128, offset_factor=1)
+    B = tir.match_buffer(var_B, [512, 1, 1], elem_offset=0, align=128, offset_factor=1)
+    bn_offset = tir.match_buffer(var_bn_offset, [512, 1, 1], elem_offset=0, align=128, offset_factor=1)
+    compute = tir.match_buffer(var_compute, [1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
+    # body
+    with tir.block([], "root") as []:
+        tir.reads([])
+        tir.writes([])
+        compute_1 = tir.buffer_allocate([1, 512, 56, 56], elem_offset=0, align=128, offset_factor=1)
+        W_shared = tir.buffer_allocate([512, 512, 3, 3], elem_offset=0, scope="shared", align=128, offset_factor=1)
+        pad_temp_shared = tir.buffer_allocate([1, 512, 58, 58], elem_offset=0, scope="shared", align=128, offset_factor=1)
+        for i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused_i2_outer_outer_outer_outer_fused_i3_outer_outer_outer_outer_fused in range(0, 64, annotation = {"loop_type":"blockIdx.x"}):
+            for i0_outer_outer_outer_inner_i1_outer_outer_outer_inner_fused_i2_outer_outer_outer_inner_fused_i3_outer_outer_outer_inner_fused in range(0, 1, annotation = {"loop_type":"vthread"}):
+                for i0_outer_outer_inner_i1_outer_outer_inner_fused_i2_outer_outer_inner_fused_i3_outer_outer_inner_fused in range(0, 14, annotation = {"loop_type":"threadIdx.x"}):
+                    for i4_outer_outer, i5_outer_outer, i6_outer_outer in tir.grid(8, 1, 1):
+                        for ax0_ax1_fused_ax2_fused_ax3_fused_outer in range(0, 15360, annotation = {"loop_type":"lazy_cooperative_fetch"}):
+                            for ax0_ax1_fused_ax2_fused_ax3_fused_inner in range(0, 2, annotation = {"loop_type":"vectorize"}):
+                                with tir.block([1, 512, 58, 58], "pad_temp_shared") as [v0, v1, v2, v3]:
+                                    tir.bind(v0, 0)
+                                    tir.bind(v1, ((i4_outer_outer*64) + tir.floormod(tir.floordiv(tir.floordiv(((ax0_ax1_fused_ax2_fused_ax3_fused_outer*2) + ax0_ax1_fused_ax2_fused_ax3_fused_inner), 16), 30), 64)))
+                                    tir.bind(v2, ((tir.floordiv(tir.floormod(i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused_i2_outer_outer_outer_outer_fused_i3_outer_outer_outer_outer_fused, 8), 4)*28) + tir.floormod(tir.floordiv(((ax0_ax1_fused_ax2_fused_ax3_fused_outer*2) + ax0_ax1_fused_ax2_fused_ax3_fused_inner), 16), 30)))
+                                    tir.bind(v3, ((tir.floormod(i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused_i2_outer_outer_outer_outer_fused_i3_outer_outer_outer_outer_fused, 4)*14) + tir.floormod(((ax0_ax1_fused_ax2_fused_ax3_fused_outer*2) + ax0_ax1_fused_ax2_fused_ax3_fused_inner), 16)))
+                                    tir.reads([X[v0:(v0 + 1), v1:(v1 + 1), (v2 - 1):((v2 - 1) + 1), (v3 - 1):((v3 - 1) + 1)]])
+                                    tir.writes([pad_temp_shared[v0:(v0 + 1), v1:(v1 + 1), v2:(v2 + 1), v3:(v3 + 1)]])
+                                    pad_temp_shared[v0, v1, v2, v3] = tir.if_then_else(((((1 <= v2) and (v2 < 57)) and (1 <= v3)) and (v3 < 57)), X[v0, v1, (v2 - 1), (v3 - 1)], tir.float32(0), dtype="float32")
+                        for ax0_ax1_fused_ax2_fused_ax3_fused_outer_1 in range(0, 12288, annotation = {"loop_type":"lazy_cooperative_fetch"}):
+                            for ax0_ax1_fused_ax2_fused_ax3_fused_inner_1 in range(0, 3, annotation = {"loop_type":"vectorize"}):
+                                with tir.block([512, 512, 3, 3], "W_shared") as [v0_1, v1_1, v2_1, v3_1]:
+                                    tir.bind(v0_1, ((tir.floordiv(i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused_i2_outer_outer_outer_outer_fused_i3_outer_outer_outer_outer_fused, 8)*64) + tir.floordiv(((ax0_ax1_fused_ax2_fused_ax3_fused_outer_1*3) + ax0_ax1_fused_ax2_fused_ax3_fused_inner_1), 576)))
+                                    tir.bind(v1_1, ((i4_outer_outer*64) + tir.floormod(tir.floordiv(((ax0_ax1_fused_ax2_fused_ax3_fused_outer_1*3) + ax0_ax1_fused_ax2_fused_ax3_fused_inner_1), 9), 64)))
+                                    tir.bind(v2_1, tir.floormod(tir.floordiv(((ax0_ax1_fused_ax2_fused_ax3_fused_outer_1*3) + ax0_ax1_fused_ax2_fused_ax3_fused_inner_1), 3), 3))
+                                    tir.bind(v3_1, tir.floormod(((ax0_ax1_fused_ax2_fused_ax3_fused_outer_1*3) + ax0_ax1_fused_ax2_fused_ax3_fused_inner_1), 3))
+                                    tir.reads([W[v0_1:(v0_1 + 1), v1_1:(v1_1 + 1), v2_1:(v2_1 + 1), v3_1:(v3_1 + 1)]])
+                                    tir.writes([W_shared[v0_1:(v0_1 + 1), v1_1:(v1_1 + 1), v2_1:(v2_1 + 1), v3_1:(v3_1 + 1)]])
+                                    W_shared[v0_1, v1_1, v2_1, v3_1] = W[v0_1, v1_1, v2_1, v3_1]
+                        for i4_outer_inner, i5_outer_inner, i6_outer_inner, i0_outer_inner, i1_outer_inner, i2_outer_inner, i3_outer_inner, i4_inner, i5_inner, i6_inner, i0_inner, i1_inner, i2_inner, i3_inner in tir.grid(16, 3, 3, 1, 8, 2, 1, 4, 1, 1, 1, 8, 2, 7):
+                            with tir.block([1, 512, 56, 56, tir.reduce_axis(0, 512), tir.reduce_axis(0, 3), tir.reduce_axis(0, 3)], "compute") as [nn, ff, yy, xx, rc, ry, rx]:
+                                tir.bind(nn, 0)
+                                tir.bind(ff, (((tir.floordiv(i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused_i2_outer_outer_outer_outer_fused_i3_outer_outer_outer_outer_fused, 8)*64) + (i1_outer_inner*8)) + i1_inner))
+                                tir.bind(yy, ((((tir.floormod(tir.floordiv(i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused_i2_outer_outer_outer_outer_fused_i3_outer_outer_outer_outer_fused, 4), 2)*28) + (tir.floordiv(i0_outer_outer_inner_i1_outer_outer_inner_fused_i2_outer_outer_inner_fused_i3_outer_outer_inner_fused, 2)*4)) + (i2_outer_inner*2)) + i2_inner))
+                                tir.bind(xx, (((tir.floormod(i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused_i2_outer_outer_outer_outer_fused_i3_outer_outer_outer_outer_fused, 4)*14) + (tir.floormod(i0_outer_outer_inner_i1_outer_outer_inner_fused_i2_outer_outer_inner_fused_i3_outer_outer_inner_fused, 2)*7)) + i3_inner))
+                                tir.bind(rc, (((i4_outer_outer*64) + (i4_outer_inner*4)) + i4_inner))
+                                tir.bind(ry, i5_outer_inner)
+                                tir.bind(rx, i6_outer_inner)
+                                tir.reads([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)], pad_temp_shared[nn:(nn + 1), rc:(rc + 1), (yy + ry):((yy + ry) + 1), (xx + rx):((xx + rx) + 1)], W_shared[ff:(ff + 1), rc:(rc + 1), ry:(ry + 1), rx:(rx + 1)]])
+                                tir.writes([compute_1[nn:(nn + 1), ff:(ff + 1), yy:(yy + 1), xx:(xx + 1)]])
+                                with tir.init():
+                                    compute_1[nn, ff, yy, xx] = tir.float32(0)
+                                compute_1[nn, ff, yy, xx] = (compute_1[nn, ff, yy, xx] + (pad_temp_shared[nn, rc, (yy + ry), (xx + rx)]*W_shared[ff, rc, ry, rx]))
+                    for ax0, ax1, ax2, ax3 in tir.grid(1, 64, 4, 7):
+                        with tir.block([1, 512, 56, 56], "compute_1") as [i0, i1, i2, i3]:
+                            tir.bind(i0, 0)
+                            tir.bind(i1, ((tir.floordiv(i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused_i2_outer_outer_outer_outer_fused_i3_outer_outer_outer_outer_fused, 8)*64) + ax1))
+                            tir.bind(i2, (((tir.floordiv(tir.floormod(i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused_i2_outer_outer_outer_outer_fused_i3_outer_outer_outer_outer_fused, 8), 4)*28) + (tir.floordiv(i0_outer_outer_inner_i1_outer_outer_inner_fused_i2_outer_outer_inner_fused_i3_outer_outer_inner_fused, 2)*4)) + ax2))
+                            tir.bind(i3, (((tir.floormod(i0_outer_outer_outer_outer_i1_outer_outer_outer_outer_fused_i2_outer_outer_outer_outer_fused_i3_outer_outer_outer_outer_fused, 4)*14) + (tir.floormod(i0_outer_outer_inner_i1_outer_outer_inner_fused_i2_outer_outer_inner_fused_i3_outer_outer_inner_fused, 2)*7)) + ax3))
+                            tir.reads([compute_1[i0:(i0 + 1), i1:(i1 + 1), i2:(i2 + 1), i3:(i3 + 1)], B[i1:(i1 + 1), 0:1, 0:1], bn_scale[i1:(i1 + 1), 0:1, 0:1], bn_offset[i1:(i1 + 1), 0:1, 0:1]])
+                            tir.writes([compute[i0:(i0 + 1), i1:(i1 + 1), i2:(i2 + 1), i3:(i3 + 1)]])
+                            compute[i0, i1, i2, i3] = tir.max((((compute_1[i0, i1, i2, i3] + B[i1, 0, 0])*bn_scale[i1, 0, 0]) + bn_offset[i1, 0, 0]), tir.float32(0))
+
+
+# fmt: on
+# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unused-variable,unexpected-keyword-arg,misplaced-comparison-constant
+
+
+def test_meta_schedule_sketch_cuda_conv2d_nchw_bias_bn_relu():  # pylint: disable=invalid-name
+    func = te.create_func(
+        te_workload.conv2d_nchw_bias_bn_relu(
+            n=1,
+            h=56,
+            w=56,
+            ci=512,
+            co=512,
+            kh=3,
+            kw=3,
+            stride=1,
+            padding=1,
+        )
+    )
+    support = _get_support(func=func, task_name="conv2d_nchw_bias_bn_relu")
+    expected = [_conv2d_nchw_bias_bn_relu_sketch_0]
+    assert len(support) == 1
+    possible_decisions = [
+        [
+            [1, 1, 1, 1, 1],
+            [8, 1, 1, 8, 8],
+            [2, 1, 7, 2, 2],
+            [4, 1, 2, 1, 7],
+            [8, 16, 4],
+            [1, 3, 1],
+            [1, 3, 1],
+            [12288, 3],
+            [15360, 2],
+        ],
+    ]
+    assert len(support) == 1
+    _fix_sampling_tile_size(
+        sch=support[0],
+        possible_decisions=possible_decisions,
+        expected=expected,
+    )
+
+
 if __name__ == "__main__":
     test_meta_schedule_sketch_cuda_matmul()
+    test_meta_schedule_sketch_cuda_conv2d_nchw_bias_bn_relu()
