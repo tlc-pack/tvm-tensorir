@@ -43,6 +43,7 @@ def _make_space(tensor_intrin: tvm.tir.TensorIntrin) -> ms.SearchSpace:
                 can_cache_write=True,
                 must_cache_write=False,
                 cache_write_scope="global",
+                consumer_inline_strict=True,
                 fusion_levels=[1, 2],
             ),
         ],

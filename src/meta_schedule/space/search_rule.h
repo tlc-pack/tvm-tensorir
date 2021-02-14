@@ -115,7 +115,8 @@ TVM_DLL SearchRule InlinePureSpatial(bool strict_mode);
 TVM_DLL SearchRule MultiLevelTiling(String structure, int max_innermost_factor,
                                     bool must_cache_read, String cache_read_scope,
                                     bool can_cache_write, bool must_cache_write,
-                                    String cache_write_scope, Array<Integer> fusion_levels,
+                                    String cache_write_scope, bool consumer_inline_strict,
+                                    Array<Integer> fusion_levels,
                                     Optional<Integer> vector_load_max_len,
                                     Optional<Array<String>> tile_binds);
 
