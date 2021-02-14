@@ -167,15 +167,18 @@ Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* 
         const auto* block = block_sref->GetStmt<tir::BlockNode>();
         CHECK(block) << "TypeError: Expects BlockNode, but gets: "
                      << block_sref->stmt->GetTypeKey();
-        // apply the rule to the block
-        Array<Schedule> applied = rule->Apply(task, sch, /*block=*/sch->GetBlock(block->tag));
-        // append the newly got schedules to the top of the stack
-        for (const Schedule& sch : applied) {
-          stack.emplace_back(sch, unvisited);
+        // TODO(@junrushao1994): replace this quick hack
+        if (!sch->sch->GetBlock(block->tag).empty()) {
+          // apply the rule to the block
+          Array<Schedule> applied = rule->Apply(task, sch, /*block=*/sch->GetBlock(block->tag));
+          // append the newly got schedules to the top of the stack
+          for (const Schedule& sch : applied) {
+            stack.emplace_back(sch, unvisited);
+          }
+          continue;
         }
-      } else {
-        stack.emplace_back(sch, unvisited);
       }
+      stack.emplace_back(sch, unvisited);
     }
     curr = next;
   }
