@@ -41,6 +41,7 @@ SPACE = ms.space.PostOrderApply(
             can_cache_write=True,
             must_cache_write=True,
             cache_write_scope="local",
+            consumer_inline_strict=False,
             fusion_levels=[3],
             vector_load_max_len=4,
             tile_binds=["blockIdx.x", "vthread", "threadIdx.x"],
@@ -58,6 +59,7 @@ SPACE = ms.space.PostOrderApply(
         ms.postproc.rewrite_unbound_blocks(),
         ms.postproc.rewrite_parallel_vectorize_unroll(),
         ms.postproc.rewrite_reduction_block(),
+        ms.postproc.disallow_dynamic_loops(),
         ms.postproc.verify_gpu_code(),
     ],
 )
