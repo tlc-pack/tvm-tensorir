@@ -284,16 +284,61 @@ class RuleMultiLevelTiling {
   };
 
   std::vector<State> AddWriteCache(State state) const {
-    Schedule sch = state.sch;
-    BlockRV block_rv = state.block_rv;
-    tir::StmtSRef block_sref = sch->Eval(block_rv);
-    // Check the only consumer of the block can be treated as write cache
-    // If so, check if we can continuously inline a chain of only consumers for better locality
+    if (!can_cache_write) {
+      return {std::move(state)};
+    }
+    std::vector<State> result;
+    // Case 1. Do not add write cache, then fusion won't happen later either
+    if (!must_cache_write) {
+      // Check the only consumer of the block can be treated as write cache
+      // If so, check if we can continuously inline a chain of only consumers for better locality
+      Schedule sch = state.sch;
+      BlockRV block_rv = state.block_rv;
+      tir::StmtSRef block_sref = sch->Eval(block_rv);
+      for (;;) {
+        Array<BlockRV> consumers = sch->GetConsumers(state.block_rv);
+        if (consumers.size() != 1) {
+          break;
+        }
+        BlockRV consumer_rv = consumers[0];
+        tir::StmtSRef consumer_sref = sch->Eval(consumer_rv);
+        if (!IsSpatial(sch->sch, block_sref) && !IsSpatial(sch->sch, consumer_sref)) {
+          break;
+        }
+        if (!IsElementWiseMatch(sch->sch, block_sref, consumer_sref)) {
+          break;
+        }
+        // Then `consumer_rv` must be an elementwise-matched consumer of `block_rv`
+        if (RuleInlinePureSpatial::NeedsInline(sch->sch, consumer_sref,
+                                               this->consumer_inline_strict)) {
+          // If the elementwise-matched consumer of `block_rv` can be inlined, then inline it
+          sch->ComputeInline(consumer_rv);
+        } else {
+          // Otherwise, it cannot be inlined, let it act as a write cache,
+          // and take a short cut and avoid generate sketches that have a cache_write in it
+          state.write_cache = consumer_rv;
+          state.write_cache_is_added = false;
+          return {std::move(state)};
+        }
+      }
+      // In this case, it doesn't have an elementwise-matched consumer
+      result.push_back(state);
+    }
+    // Case 2. Add a write cache
+    // If the program comes to this point, then there are two possibilities
+    // 1) `must_cache_write = True`
+    // 2) The elementwise-matched consumer doesn't exist
+    // Fork a new schedule
+    state.sch = state.sch->Copy(state.sch->sampler.ForkSeed());
+    // The original block to tiled
+    state.block_rv = state.sch->CacheWrite(state.block_rv, 0, cache_write_scope);
+    tir::StmtSRef block_sref = state.sch->Eval(state.block_rv);
     for (;;) {
-      Array<BlockRV> consumers = sch->GetConsumers(state.block_rv);
+      Array<BlockRV> consumers = state.sch->GetConsumers(state.block_rv);
       if (consumers.size() != 1) {
         break;
       }
+      Schedule sch = state.sch;
       BlockRV consumer_rv = consumers[0];
       tir::StmtSRef consumer_sref = sch->Eval(consumer_rv);
       if (!IsSpatial(sch->sch, block_sref) && !IsSpatial(sch->sch, consumer_sref)) {
@@ -302,31 +347,20 @@ class RuleMultiLevelTiling {
       if (!IsElementWiseMatch(sch->sch, block_sref, consumer_sref)) {
         break;
       }
+      // Then `consumer_rv` must be an elementwise-matched consumer of `block_rv`
       if (RuleInlinePureSpatial::NeedsInline(sch->sch, consumer_sref,
                                              this->consumer_inline_strict)) {
+        // If the elementwise-matched consumer of `block_rv` can be inlined, then inline it
         sch->ComputeInline(consumer_rv);
       } else {
+        // Otherwise, it cannot be inlined, let it act as a write cache,
+        // and take a short cut and avoid generate sketches that have a cache_write in it
         state.write_cache = consumer_rv;
-        state.write_cache_is_added = false;
-        return {state};
+        state.write_cache_is_added = true;
+        break;
       }
     }
-    std::vector<State> result;
-    // Case 0. Do not add write cache, then fusion won't happen later either
-    if (!must_cache_write) {
-      result.push_back(state);
-    }
-    // Case 1. Add a write cache
-    if (can_cache_write) {
-      // Fork a new schedule
-      state.sch = sch->Copy(sch->sampler.ForkSeed());
-      // The original block to tiled
-      state.block_rv = state.sch->CacheWrite(block_rv, 0, cache_write_scope);
-      // The cache write block
-      state.write_cache = block_rv;
-      state.write_cache_is_added = true;
-      result.push_back(std::move(state));
-    }
+    result.push_back(std::move(state));
     return result;
   }
 
