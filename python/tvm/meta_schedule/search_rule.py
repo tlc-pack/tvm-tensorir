@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 """Search rules in meta schedule"""
-from typing import Any, Callable, List, Optional
+from typing import Callable, List, Optional
 
 from tvm._ffi import register_object
 from tvm.runtime import Object
@@ -151,6 +151,7 @@ def multi_level_tiling(
     can_cache_write: bool,
     must_cache_write: bool,
     cache_write_scope: str,
+    consumer_inline_strict: bool,
     fusion_levels: List[int],
     max_innermost_factor: int = 16,
     vector_load_max_len: Optional[int] = None,
@@ -192,6 +193,7 @@ def multi_level_tiling(
         can_cache_write,
         must_cache_write,
         cache_write_scope,
+        consumer_inline_strict,
         fusion_levels,
         vector_load_max_len,
         tile_binds,

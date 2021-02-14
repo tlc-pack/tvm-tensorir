@@ -72,10 +72,8 @@ class RuleInlinePureSpatial {
   /*! \brief Default constructor */
   explicit RuleInlinePureSpatial(bool strict_mode) : strict_mode(strict_mode) {}
 
-  bool NeedsInline(const tir::Schedule& sch, const tir::StmtSRef& block_sref) const {
-    if (!IsSubrootBlock(sch, block_sref)) {
-      return false;
-    }
+  static bool NeedsInline(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
+                          bool strict_mode) {
     if (!IsSpatial(sch, block_sref)) {
       return false;
     }
@@ -98,7 +96,7 @@ class RuleInlinePureSpatial {
   Array<Schedule> Apply(const SearchTask& task, const Schedule& sch,
                         const BlockRV& block_rv) const {
     tir::StmtSRef block_sref = sch->Eval(block_rv);
-    if (NeedsInline(sch->sch, block_sref)) {
+    if (IsSubrootBlock(sch->sch, block_sref) && NeedsInline(sch->sch, block_sref, strict_mode)) {
       sch->ComputeInline(block_rv);
     }
     return {sch};
@@ -137,6 +135,8 @@ class RuleMultiLevelTiling {
   bool must_cache_write;
   /*! \brief The storage scope of cache_write */
   String cache_write_scope;
+  /*! \brief Whether to use strict mode when inlining consumers */
+  bool consumer_inline_strict;
   /*! \brief Which levels of tiles the consumer is fused into */
   std::vector<int> fusion_levels;
   /*! \brief The length of vectorized cooperative fetching */
@@ -218,13 +218,11 @@ class RuleMultiLevelTiling {
    * \param buffer The buffer that is cache_read
    * \return The fused loop
    */
-  static LoopRV FuseBufferAxes(const Schedule& sch, const BlockRV& block_rv,
-                               const tir::Buffer& buffer) {
+  static LoopRV FuseBufferAxes(const Schedule& sch, const BlockRV& block_rv, int buffer_ndim) {
     Array<LoopRV> to_fuse;
     Array<LoopRV> axes = sch->GetAxes(block_rv);
     int n_axes = axes.size();
-    int ndim = buffer->shape.size();
-    for (int i = n_axes - ndim; i < n_axes; ++i) {
+    for (int i = n_axes - buffer_ndim; i < n_axes; ++i) {
       to_fuse.push_back(axes[i]);
     }
     return sch->Fuse(to_fuse);
@@ -233,7 +231,7 @@ class RuleMultiLevelTiling {
   explicit RuleMultiLevelTiling(String structure, int max_innermost_factor, bool must_cache_read,
                                 String cache_read_scope, bool can_cache_write,
                                 bool must_cache_write, String cache_write_scope,
-                                Array<Integer> fusion_levels_,
+                                bool consumer_inline_strict, Array<Integer> fusion_levels_,
                                 Optional<Integer> vector_load_max_len,
                                 Optional<Array<String>> tile_binds)
       : structure(structure),
@@ -243,6 +241,7 @@ class RuleMultiLevelTiling {
         can_cache_write(can_cache_write),
         must_cache_write(must_cache_write),
         cache_write_scope(cache_write_scope),
+        consumer_inline_strict(consumer_inline_strict),
         fusion_levels(AsVector<Integer, int>(fusion_levels_)),
         vector_load_max_len(vector_load_max_len),
         tile_binds(tile_binds.value_or(Array<String>{})),
@@ -288,15 +287,25 @@ class RuleMultiLevelTiling {
     Schedule sch = state.sch;
     BlockRV block_rv = state.block_rv;
     tir::StmtSRef block_sref = sch->Eval(block_rv);
-    // Find the only-consumer for the block
-    // If the only-consumer can be fused, then do not add any write cache
-    Array<BlockRV> consumers = sch->GetConsumers(state.block_rv);
-    if (consumers.size() == 1) {
+    // Check the only consumer of the block can be treated as write cache
+    // If so, check if we can continuously inline a chain of only consumers for better locality
+    for (;;) {
+      Array<BlockRV> consumers = sch->GetConsumers(state.block_rv);
+      if (consumers.size() != 1) {
+        break;
+      }
       BlockRV consumer_rv = consumers[0];
       tir::StmtSRef consumer_sref = sch->Eval(consumer_rv);
-      // Check if it can be directly fused
-      if ((IsSpatial(sch->sch, block_sref) || IsSpatial(sch->sch, consumer_sref)) &&
-          IsElementWiseMatch(sch->sch, block_sref, consumer_sref)) {
+      if (!IsSpatial(sch->sch, block_sref) && !IsSpatial(sch->sch, consumer_sref)) {
+        break;
+      }
+      if (!IsElementWiseMatch(sch->sch, block_sref, consumer_sref)) {
+        break;
+      }
+      if (RuleInlinePureSpatial::NeedsInline(sch->sch, consumer_sref,
+                                             this->consumer_inline_strict)) {
+        sch->ComputeInline(consumer_rv);
+      } else {
         state.write_cache = consumer_rv;
         state.write_cache_is_added = false;
         return {state};
@@ -333,8 +342,8 @@ class RuleMultiLevelTiling {
     std::vector<int> read_buffer_indices = GetReadBufferIndices(block_sref);
     // Enumerate all buffers that are read but not written
     for (int i : read_buffer_indices) {
-      const auto* block = block_sref->GetStmt<tir::BlockNode>();
-      const tir::Buffer& buffer = block->reads[i]->buffer;
+      tir::Buffer buffer = block_sref->GetStmt<tir::BlockNode>()->reads[i]->buffer;
+      int buffer_ndim = buffer->shape.size();
       // Do cache_read
       BlockRV cache_read_block = sch->CacheRead(block_rv, i, cache_read_scope);
       // Insert cache_read block to the proper place
@@ -342,7 +351,7 @@ class RuleMultiLevelTiling {
       CHECK(!r_tiles.empty()) << "ValueError: Cannot find any reduction loop in the block";
       sch->ComputeAt(cache_read_block, r_tiles.back());
       // Fuse the iterators of the cache_read
-      LoopRV fused = FuseBufferAxes(sch, cache_read_block, buffer);
+      LoopRV fused = FuseBufferAxes(sch, cache_read_block, buffer_ndim);
       // Do cooperative fetching
       if (vector_load_max_len.defined()) {
         int max_vec_len = vector_load_max_len.value();
@@ -413,9 +422,10 @@ class RuleMultiLevelTiling {
     }
     std::vector<State> result;
     // Special case.
-    // `cache_write` must be fused at some level, otherwise it has no benefit
-    // On the other hand, If the only consumer is not cache_write, then we may choose not to fuse
-    if (!state.write_cache_is_added) {
+    //    Stages added by `cache_write` must be fused at some level, otherwise it has no benefit.
+    //    On the other hand, If the consumer stage is not added by  `cache_write`,
+    //    we may choose not to fuse by setting `must_cache_write = False`
+    if (!state.write_cache_is_added && !must_cache_write) {
       result.push_back(state);
     }
     Schedule sch = state.sch;
@@ -474,16 +484,16 @@ class RuleMultiLevelTiling {
 
 SearchRule MultiLevelTiling(String structure, int max_innermost_factor, bool must_cache_read,
                             String cache_read_scope, bool can_cache_write, bool must_cache_write,
-                            String cache_write_scope, Array<Integer> fusion_levels,
-                            Optional<Integer> vector_load_max_len,
+                            String cache_write_scope, bool consumer_inline_strict,
+                            Array<Integer> fusion_levels, Optional<Integer> vector_load_max_len,
                             Optional<Array<String>> tile_binds) {
   if (!can_cache_write && must_cache_write) {
     LOG(FATAL) << "ValueError: Conflict options, cannot have can_cache_write = false, and "
                   "must_cache_write = true at the same time";
   }
   RuleMultiLevelTiling rule(structure, max_innermost_factor, must_cache_read, cache_read_scope,
-                            can_cache_write, must_cache_write, cache_write_scope, fusion_levels,
-                            vector_load_max_len, tile_binds);
+                            can_cache_write, must_cache_write, cache_write_scope,
+                            consumer_inline_strict, fusion_levels, vector_load_max_len, tile_binds);
   auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch,
                                          BlockRV block) -> Array<Schedule> {
     return rule.Apply(task, sch, block);

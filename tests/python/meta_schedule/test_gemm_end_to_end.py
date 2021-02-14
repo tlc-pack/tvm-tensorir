@@ -290,6 +290,7 @@ def test_matmul_evolutionary_step_by_step():
                 can_cache_write=True,
                 must_cache_write=False,
                 cache_write_scope="global",
+                consumer_inline_strict=True,
                 fusion_levels=[1, 2],
             ),
             ms.rule.parallelize_vectorize_unroll(
@@ -337,6 +338,7 @@ def test_matmul_evolutionary_end_to_end():
                     can_cache_write=True,
                     must_cache_write=False,
                     cache_write_scope="global",
+                    consumer_inline_strict=True,
                     fusion_levels=[1, 2],
                 ),
                 ms.rule.parallelize_vectorize_unroll(
@@ -388,6 +390,7 @@ def test_matmul_evolutionary_xgb():
                     can_cache_write=True,
                     must_cache_write=False,
                     cache_write_scope="global",
+                    consumer_inline_strict=True,
                     fusion_levels=[1, 2],
                 ),
                 ms.rule.parallelize_vectorize_unroll(
