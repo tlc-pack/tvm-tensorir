@@ -163,12 +163,17 @@ Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* 
       // otherwise, get the last block that is not visited
       tir::StmtSRef block_sref = unvisited[0];
       unvisited.erase(unvisited.begin());
-      const auto* block = block_sref->GetStmt<tir::BlockNode>();
-      CHECK(block) << "TypeError: Expects BlockNode, but gets: " << block_sref->stmt->GetTypeKey();
-      // apply the rule to the block
-      Array<Schedule> applied = rule->Apply(task, sch, /*block=*/sch->GetBlock(block->tag));
-      // append the newly got schedules to the top of the stack
-      for (const Schedule& sch : applied) {
+      if (block_sref->stmt != nullptr) {
+        const auto* block = block_sref->GetStmt<tir::BlockNode>();
+        CHECK(block) << "TypeError: Expects BlockNode, but gets: "
+                     << block_sref->stmt->GetTypeKey();
+        // apply the rule to the block
+        Array<Schedule> applied = rule->Apply(task, sch, /*block=*/sch->GetBlock(block->tag));
+        // append the newly got schedules to the top of the stack
+        for (const Schedule& sch : applied) {
+          stack.emplace_back(sch, unvisited);
+        }
+      } else {
         stack.emplace_back(sch, unvisited);
       }
     }
