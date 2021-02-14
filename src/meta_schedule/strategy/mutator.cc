@@ -331,10 +331,8 @@ Mutator MutateAutoUnroll() {
 class MutatorParallel {
  public:
   int max_jobs_per_core;
-  bool warned_num_cores_missing;
 
-  explicit MutatorParallel(int max_jobs_per_core)
-      : max_jobs_per_core(max_jobs_per_core), warned_num_cores_missing(false) {}
+  explicit MutatorParallel(int max_jobs_per_core) : max_jobs_per_core(max_jobs_per_core) {}
 
   struct Candidate {
     /*! \brief The MarkBlock instruction */
@@ -413,9 +411,11 @@ class MutatorParallel {
     return candidates;
   }
 
-  Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler) {
+  Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler,
+                        std::atomic<int>& warned_num_cores_missing) {
+    bool warned = static_cast<bool>(warned_num_cores_missing.fetch_add(1));
     int max_extent = GetMaxParallelExtent(task->target, max_jobs_per_core,
-                                          &warned_num_cores_missing) - 1;
+                                          &warned) - 1;
     std::vector<Candidate> candidates = FindCandidates(trace, task->workload, max_extent);
     if (candidates.empty()) {
       return NullOpt;
@@ -441,10 +441,11 @@ class MutatorParallel {
 };
 
 Mutator MutateParallel(const int& max_jobs_per_core) {
-  auto f_apply = [max_jobs_per_core](SearchTask task, Trace trace,
-                                     void* sampler) -> Optional<Trace> {
+  std::atomic<int> warned_num_cores_missing(0);
+  auto f_apply = [max_jobs_per_core, &warned_num_cores_missing](SearchTask task, Trace trace,
+                                                                void* sampler) -> Optional<Trace> {
     MutatorParallel mutator(max_jobs_per_core);
-    return mutator.Apply(task, trace, static_cast<Sampler*>(sampler));
+    return mutator.Apply(task, trace, static_cast<Sampler*>(sampler), warned_num_cores_missing);
   };
   return Mutator("mutate_parallel", f_apply);
 }
