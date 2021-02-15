@@ -16,6 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include <tvm/runtime/registry.h>
+
 #include "../search.h"
 #include "./postproc.h"
 

@@ -42,12 +42,19 @@ Schedule::Schedule(tir::PrimFunc orig_func, tir::Schedule sch, Trace trace, TSym
 }
 
 Schedule::Schedule(tir::PrimFunc orig_func, int seed)
-    : Schedule(/*orig_func=*/orig_func, /*sch=*/tir::ScheduleNode::Create(orig_func),
+    : Schedule(/*orig_func=*/orig_func, /*sch=*/tir::Schedule(orig_func),
                /*trace=*/Trace(), /*sym_tab=*/{}, /*seed=*/Integer(seed)) {}
 
 Schedule::Schedule(tir::PrimFunc orig_func)
-    : Schedule(/*orig_func=*/orig_func, /*sch=*/tir::ScheduleNode::Create(orig_func),
+    : Schedule(/*orig_func=*/orig_func, /*sch=*/tir::Schedule(orig_func),
                /*trace=*/Trace(), /*sym_tab=*/{}, /*seed=*/Optional<Integer>(NullOpt)) {}
+
+String Repr(const Schedule& sch) {
+  const auto* f = runtime::Registry::Get("script.AsTVMScript");
+  CHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
+  String s = (*f)(sch->sch->func, false);
+  return s;
+}
 
 /**************** Utility ****************/
 
@@ -495,7 +502,7 @@ BlockRV ScheduleNode::GetBlock(const String& name) {
 
 Array<LoopRV> ScheduleNode::GetAxes(const BlockRV& block) {
   // Find the output from TIR
-  Array<tir::StmtSRef> tir_result = this->sch->GetLoopsInScope(Eval(block));
+  Array<tir::StmtSRef> tir_result = this->sch->GetAxes(Eval(block));
   // Create the output random variable
   Array<LoopRV> outputs;
   for (const tir::StmtSRef& axis : tir_result) {

@@ -19,22 +19,18 @@
 
 #ifndef TVM_TIR_SCHEDULE_H_
 #define TVM_TIR_SCHEDULE_H_
-#include <tvm/ir/attrs.h>
-#include <tvm/te/tensor.h>
-#include <tvm/tir/buffer.h>
+
 #include <tvm/tir/function.h>
 #include <tvm/tir/scope.h>
-#include <tvm/tir/stmt_sref.h>
 
-#include <string>
 #include <unordered_map>
-#include <utility>
-#include <vector>
 
 namespace tvm {
 namespace tir {
 
 class Schedule;
+class Buffer;
+
 class ScheduleNode : public Object {
  public:
   /*! \brief The function to be scheduled */
@@ -48,18 +44,16 @@ class ScheduleNode : public Object {
   std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
   /*! \brief The block scopes of each block */
   std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual> scopes;
+  /*! \brief The reducer list for reduction pattern matching */
+  Array<CommReducer> reducers;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("func", &func);
     v->Visit("root", &root);
+    // `stmt2ref` is not visited
+    // `scopes` is not visited
+    v->Visit("reducers", &reducers);
   }
-
-  /*!
-   * \brief Create a new schedule
-   * \param function The function to be scheduled
-   * \return The schedule
-   */
-  static Schedule Create(PrimFunc function);
 
   /*!
    * \brief replace part of AST with new stmt
@@ -67,15 +61,14 @@ class ScheduleNode : public Object {
    * \param target The new stmt
    * \param block_sref_map The Sref remapping of blocks
    */
-  void Replace(StmtSRef ref, Stmt target,
-               Map<Block, Block> block_sref_map = NullValue<Map<Block, Block> >());
+  void Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_map);
 
   /*!
    * \brief Get block from its tag
    * \param tag The query tag
    * \return the block schedulable reference list
    */
-  Array<StmtSRef> GetBlock(const std::string& tag) const;
+  Array<StmtSRef> GetBlock(const String& tag) const;
 
   /*!
    * \brief Get block from its output tensor
@@ -104,7 +97,7 @@ class ScheduleNode : public Object {
    * \param block The query block
    * \return the loop sref list
    */
-  Array<StmtSRef> GetLoopsInScope(const StmtSRef& block) const;
+  Array<StmtSRef> GetAxes(const StmtSRef& block) const;
 
   /*!
    * \brief Get the parent block sref of the given sref
@@ -203,8 +196,7 @@ class ScheduleNode : public Object {
    * \param loop_sref the position where init block_sref will be
    * \return the sref of init block
    */
-  StmtSRef decompose_reduction(const StmtSRef& block_sref,
-                               const Optional<StmtSRef>& loop_sref = NullOpt);
+  StmtSRef decompose_reduction(const StmtSRef& block_sref, const Optional<StmtSRef>& loop_sref);
 
   /*!
    * \brief Merge init and reduction block into reduction block
@@ -219,7 +211,7 @@ class ScheduleNode : public Object {
    * \param i The index of the buffer in block's read region
    * \param storage_scope The storage scope
    */
-  StmtSRef cache_read(StmtSRef block_sref, int i, const std::string& storage_scope);
+  StmtSRef cache_read(StmtSRef block_sref, int i, const String& storage_scope);
 
   /*!
    * \brief Create a cache write of original tensor, before storing into tensor.
@@ -227,14 +219,14 @@ class ScheduleNode : public Object {
    * \param i The index of the buffer in block's write region
    * \param storage_scope The storage scope
    */
-  StmtSRef cache_write(StmtSRef block_sref, int i, const std::string& storage_scope);
+  StmtSRef cache_write(StmtSRef block_sref, int i, const String& storage_scope);
 
   /*!
    * \brief make subtree rooted by loop_sref into a block
    * \param loop_sref the subtree root
    * \return the loop_sref of new block
    */
-  StmtSRef blockize(const StmtSRef& loop_sref, const String& exec_scope = "");
+  StmtSRef blockize(const StmtSRef& loop_sref, const String& exec_scope);
 
   /*!
    * \brief Tensorize the computation enclosed by loop with tensor_intrin
@@ -286,13 +278,6 @@ class ScheduleNode : public Object {
 
  private:
   /*!
-   * \brief Update the sref to make it point to new Block/Loop
-   * \param sref The outdated sref
-   * \param stmt The new stmt
-   */
-  void UpdateSRef(StmtSRefNode* sref, const Stmt& stmt);
-
-  /*!
    * \brief Help function for checking and mutating loops to do parallel computation
    *        For now it is only used for vectorize, bind and parallel
    * \param loop_sref the loop to be annotated
@@ -318,12 +303,18 @@ class ScheduleNode : public Object {
    */
   bool ValidateRegionCover(const StmtSRef& consumer) const;
 
-  /*! \brief The reducer list for reduction pattern matching */
-  std::vector<CommReducer> reducers_;
+  friend class Schedule;
+  friend class ScheduleHelper;
 };
 
 class Schedule : public ObjectRef {
  public:
+  /*!
+   * \brief Construct a schedule from a PrimFunc
+   * \param func The PrimFunc to be created
+   */
+  explicit Schedule(PrimFunc func);
+
   /*!
    * \brief Constructor
    * \param func The function to be scheduled

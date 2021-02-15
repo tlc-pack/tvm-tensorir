@@ -83,7 +83,7 @@ class RuleInlinePureSpatial {
     if (strict_mode && !IsStrictlyInlineable(sch, block_sref)) {
       return false;
     }
-    Array<tir::StmtSRef> loop_srefs = sch->GetLoopsInScope(block_sref);
+    Array<tir::StmtSRef> loop_srefs = sch->GetAxes(block_sref);
     for (const tir::StmtSRef& loop_sref : loop_srefs) {
       if (!HasSingleChild(loop_sref)) {
         return false;
@@ -543,7 +543,7 @@ class RuleRandomComputeLocation {
     if (!IsSubrootBlock(sch, block_sref)) {
       return false;
     }
-    Array<tir::StmtSRef> loop_srefs = sch->GetLoopsInScope(block_sref);
+    Array<tir::StmtSRef> loop_srefs = sch->GetAxes(block_sref);
     for (const tir::StmtSRef& loop_sref : loop_srefs) {
       if (!HasSingleChild(loop_sref)) {
         return false;

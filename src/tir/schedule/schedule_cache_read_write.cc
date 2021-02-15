@@ -517,7 +517,7 @@ class CacheWriteRewriter : public StmtExprMutator {
   CacheStageInfo* info_;
 };
 
-StmtSRef ScheduleNode::cache_read(StmtSRef block_sref, int i, const std::string& storage_scope) {
+StmtSRef ScheduleNode::cache_read(StmtSRef block_sref, int i, const String& storage_scope) {
   /*!
    * Check:
    *   - check the buffer has only one writing block
@@ -567,7 +567,7 @@ StmtSRef ScheduleNode::cache_read(StmtSRef block_sref, int i, const std::string&
   return stmt2ref.at(cache_read_stage.get());
 }
 
-StmtSRef ScheduleNode::cache_write(StmtSRef block_sref, int i, const std::string& storage_scope) {
+StmtSRef ScheduleNode::cache_write(StmtSRef block_sref, int i, const String& storage_scope) {
   /*!
    * Check:
    *   - check the buffer has only one writing block
@@ -614,6 +614,18 @@ StmtSRef ScheduleNode::cache_write(StmtSRef block_sref, int i, const std::string
   this->Replace(scope_sref, new_scope, block_map);
   return stmt2ref.at(cache_write_stage.get());
 }
+
+struct Internal {
+  static StmtSRef CacheRead(Schedule self, StmtSRef block, int i, String scope) {
+    return self->cache_read(block, i, scope);
+  }
+  static StmtSRef CacheWrite(Schedule self, StmtSRef block, int i, String scope) {
+    return self->cache_write(block, i, scope);
+  }
+};
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheRead").set_body_typed(Internal::CacheRead);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheWrite").set_body_typed(Internal::CacheWrite);
 
 }  // namespace tir
 }  // namespace tvm

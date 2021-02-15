@@ -43,7 +43,7 @@ class LoopValidator : public StmtVisitor {
   /*! \brief Validate the binding of a given block */
   bool ValidateBlockBinding(const BlockRealizeNode* realize) {
     // validate the bindings to loop variables
-    auto loops = schedule_node_->GetLoopsInScope(stmt2ref_->at(realize->block.get()));
+    auto loops = schedule_node_->GetAxes(stmt2ref_->at(realize->block.get()));
     std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> loop_vars;
     for (const auto& loop_sref : loops) {
       const auto* loop = loop_sref->GetStmt<LoopNode>();
