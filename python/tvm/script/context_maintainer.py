@@ -43,7 +43,7 @@ class ContextMaintainer:
             self.loop_stack.pop()
             return self.block_info_stack.pop()
 
-    def new_scope(self, nodes=None):
+    def new_scope(self, is_block=False, nodes=None):
         """Creating a new scope"""
         if nodes is None:
             nodes = []
@@ -51,7 +51,7 @@ class ContextMaintainer:
         self.symbols.append(dict())
         if is_block:
             self.loop_stack.append([])
-            self.block_info_stack.append(ScopeEmitter.BlockInfo())
+            self.block_info_stack.append(ContextMaintainer.BlockInfo())
 
     def update_symbol(self, name, symbol):
         """Append a symbol into current scope"""
