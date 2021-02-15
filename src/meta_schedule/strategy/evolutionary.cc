@@ -458,9 +458,9 @@ Optional<Schedule> EvolutionaryNode::Search(const SearchTask& task, const Search
     LOG(INFO) << "Evolutionary search: Iteration #" << iter << " | Measured: " << num_measured
               << "/" << this->total_measures;
     // `inits`: Sampled initial population, whose size is at most `this->population`
-    LOG(INFO) << "Sampling inital population...";
+    LOG(INFO) << "Sampling initial population...";
     Array<Trace> inits = SampleInitPopulation(support, task, space, sampler);
-    LOG(INFO) << "Inital population size: " << inits.size();
+    LOG(INFO) << "Initial population size: " << inits.size();
     // `bests`: The best schedules according to the cost mode when explore the space using mutators
     LOG(INFO) << "Evolving...";
     Array<Trace> bests = EvolveWithCostModel(inits, task, space, sampler);
