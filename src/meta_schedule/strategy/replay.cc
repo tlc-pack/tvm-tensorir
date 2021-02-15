@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include <tvm/runtime/registry.h>
 #include <tvm/support/parallel_for.h>
 
 #include "../measure.h"
