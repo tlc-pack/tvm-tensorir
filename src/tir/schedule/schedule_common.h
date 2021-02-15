@@ -26,6 +26,7 @@
 #include <tvm/arith/analyzer.h>
 #include <tvm/arith/iter_affine_map.h>
 #include <tvm/tir/analysis.h>
+#include <tvm/tir/op.h>
 #include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
 

@@ -349,12 +349,7 @@ class Schedule : public ObjectRef {
  * \param sch The schedule to be stringified
  * \return The string representation of a schedule
  */
-inline String Repr(const Schedule& sch) {
-  const auto* f = runtime::Registry::Get("script.AsTVMScript");
-  CHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
-  String s = (*f)(sch->sch->func, false);
-  return s;
-}
+String Repr(const Schedule& sch);
 
 }  // namespace meta_schedule
 }  // namespace tvm

@@ -75,7 +75,7 @@ class Schedule(Object):
         axes: List of StmtSRef or StmtSRef
             The axes of the block
         """
-        axes = _ffi_api_schedule.ScheduleGetLoopsInScope(self, block)
+        axes = _ffi_api_schedule.ScheduleGetAxes(self, block)
         if len(axes) == 1:
             axes = axes[0]
         return axes
@@ -357,7 +357,7 @@ class Schedule(Object):
         """
         _ffi_api_schedule.ScheduleBind(self, loop, thread_ivar)
 
-    def blockize(self, loop):
+    def blockize(self, loop, exec_scope=""):
         """make subtree rooted by sref into a block
         Parameters
         ----------
@@ -368,7 +368,7 @@ class Schedule(Object):
         block: Block
             The new block
         """
-        return _ffi_api_schedule.ScheduleBlockize(self, loop)
+        return _ffi_api_schedule.ScheduleBlockize(self, loop, exec_scope)
 
     def tensorize(self, loop, intrinsic):
         """Tensorize the computation enclosed by loop with tensor_intrin
