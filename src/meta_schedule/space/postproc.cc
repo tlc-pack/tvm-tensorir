@@ -18,6 +18,7 @@
  */
 #include "./postproc.h"  // NOLINT(build/include)
 
+#include <tvm/tir/analysis.h>
 #include <tvm/tir/transform.h>
 
 #include "../../tir/schedule/schedule_common.h"
@@ -564,35 +565,41 @@ class PostprocVerifyGPUCode {
     throw;
   }
 
-  static tir::transform::Sequential MakePasses(const Target& target) {
-    return tir::transform::Sequential(
-        {tir::transform::InjectPrefetch(),       //
-         tir::transform::AllreduceTransform(),   //
-         tir::transform::BufferFlatten(),        //
-         tir::transform::NarrowDataType(32),     //
-         tir::transform::Simplify(),             //
-         tir::transform::VectorizeLoop(true),    //
-         tir::transform::InjectVirtualThread(),  //
-         tir::transform::StorageRewrite(),       //
-         tir::transform::Simplify(),             //
-         tir::transform::VerifyGPUCode({
-             {"max_shared_memory_per_block", Extract(target, "shared_memory_per_block")},
-             {"max_local_memory_per_block", Extract(target, "registers_per_block")},
-             {"max_threads_per_block", Extract(target, "max_threads_per_block")},
-             {"max_vector_bytes", Extract(target, "vector_unit_bytes")},
-             {"max_vthread", Integer(8)},
-         })});
+  static tir::transform::Sequential MakePasses() {
+    return tir::transform::Sequential({
+        tir::transform::InjectPrefetch(),       //
+        tir::transform::AllreduceTransform(),   //
+        tir::transform::BufferFlatten(),        //
+        tir::transform::NarrowDataType(32),     //
+        tir::transform::Simplify(),             //
+        tir::transform::VectorizeLoop(true),    //
+        tir::transform::InjectVirtualThread(),  //
+        tir::transform::StorageRewrite(),       //
+        tir::transform::Simplify()              //
+    });
+  }
+
+  static bool VerifyGPU(const tir::PrimFunc& func, const Target& target) {
+    Map<String, PrimExpr> constraints{
+        {"max_shared_memory_per_block", Extract(target, "shared_memory_per_block")},
+        {"max_local_memory_per_block", Extract(target, "registers_per_block")},
+        {"max_threads_per_block", Extract(target, "max_threads_per_block")},
+        {"max_vector_bytes", Extract(target, "vector_unit_bytes")},
+        {"max_vthread", Integer(8)},
+    };
+    return tir::VerifyGPUCode(func, constraints);
   }
 
   bool Proc(const SearchTask& task, const Schedule& sch) const {
-    tir::transform::Sequential passes = MakePasses(task->target);
-    IRModule mod({{GlobalVar("main"), sch->sch->func}});
+    static tir::transform::Sequential passes = MakePasses();
+    GlobalVar main_func("main");
+    IRModule mod({{main_func, sch->sch->func}});
     try {
-      passes(std::move(mod));
+      mod = passes(std::move(mod));
     } catch (const dmlc::Error& e) {
       return false;
     }
-    return true;
+    return VerifyGPU(Downcast<tir::PrimFunc>(mod->Lookup(main_func)), task->target);
   }
 };
 
