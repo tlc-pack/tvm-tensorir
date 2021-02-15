@@ -331,8 +331,14 @@ Mutator MutateAutoUnroll() {
 class MutatorParallel {
  public:
   int max_jobs_per_core;
+  mutable std::atomic<int> warned_num_cores_missing;
 
-  explicit MutatorParallel(int max_jobs_per_core) : max_jobs_per_core(max_jobs_per_core) {}
+  explicit MutatorParallel(int max_jobs_per_core)
+      : max_jobs_per_core(max_jobs_per_core), warned_num_cores_missing(0) {}
+
+  MutatorParallel(const MutatorParallel& other)
+      : max_jobs_per_core(other.max_jobs_per_core),
+        warned_num_cores_missing(other.warned_num_cores_missing.load()) {}
 
   struct Candidate {
     /*! \brief The MarkBlock instruction */
@@ -350,7 +356,7 @@ class MutatorParallel {
    * \return All the candidate instructions
    */
   std::vector<Candidate> FindCandidates(const Trace& trace, const tir::PrimFunc& workload,
-                                        const int& max_extent) {
+                                        const int& max_extent) const {
     std::vector<Candidate> candidates;
     Schedule sch(workload);
     auto f_provide_decision = [&trace, &sch, &candidates, &max_extent](
@@ -411,8 +417,7 @@ class MutatorParallel {
     return candidates;
   }
 
-  Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler,
-                        std::atomic<int>& warned_num_cores_missing) {
+  Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler) const {
     bool warned = static_cast<bool>(warned_num_cores_missing.fetch_add(1));
     int max_extent = GetTargetNumCores(task->target, &warned) * max_jobs_per_core - 1;
     std::vector<Candidate> candidates = FindCandidates(trace, task->workload, max_extent);
@@ -440,11 +445,10 @@ class MutatorParallel {
 };
 
 Mutator MutateParallel(const int& max_jobs_per_core) {
-  std::atomic<int> warned_num_cores_missing(0);
-  auto f_apply = [max_jobs_per_core, &warned_num_cores_missing](SearchTask task, Trace trace,
-                                                                void* sampler) -> Optional<Trace> {
-    MutatorParallel mutator(max_jobs_per_core);
-    return mutator.Apply(task, trace, static_cast<Sampler*>(sampler), warned_num_cores_missing);
+  MutatorParallel mutator(max_jobs_per_core);
+  auto f_apply = [mutator](SearchTask task, Trace trace,
+                                                void* sampler) -> Optional<Trace> {
+    return mutator.Apply(task, trace, static_cast<Sampler*>(sampler));
   };
   return Mutator("mutate_parallel", f_apply);
 }
