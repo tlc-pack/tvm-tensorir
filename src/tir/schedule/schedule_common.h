@@ -24,10 +24,10 @@
 #define TVM_TIR_SCHEDULE_SCHEDULE_COMMON_H_
 
 #include <tvm/arith/analyzer.h>
+#include <tvm/arith/iter_affine_map.h>
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
-#include <tvm/arith/iter_affine_map.h>
 
 #include <algorithm>
 #include <set>
@@ -89,10 +89,8 @@ TensorRegion SubstituteTensorRegion(
  * \param var_map the mapping of var
  * \return The converted tensor region
  */
-TensorRegion SubstituteTensorRegion(
-    const TensorRegion& tensor_region,
-    const std::unordered_map<const VarNode*, PrimExpr>& var_map);
-
+TensorRegion SubstituteTensorRegion(const TensorRegion& tensor_region,
+                                    const std::unordered_map<const VarNode*, PrimExpr>& var_map);
 
 /*!
  * \brief Get BlockRealize with by Block
@@ -170,7 +168,6 @@ bool StmtExprContainsVar(const ObjectRef& obj, const std::vector<Var>& vars);
  * \return Whether the stmt/expr contains any var of vars
  */
 bool StmtExprContainsVar(const ObjectRef& obj, const std::unordered_set<const VarNode*>& vars);
-
 
 /*!
  * \brief Update the scope (dependency) information of a given block statement

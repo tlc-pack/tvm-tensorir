@@ -69,7 +69,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
     CHECK(ListContainsElement(loops, loop_sref))
         << "ValueError: 'decompose_reduction' expect the loop to be an ancestor of block";
     // Cond 1. Check block is reduction
-    CHECK(GetParentScope(block_sref).IsReduction(block_sref))
+    CHECK(GetParentScope(block_sref)->IsReduction(block_sref))
         << "decompose_reduction expect the block to be a reduction block";
     // Cond 2. Check 'loop' is higher than all the loops related to block var of type reduction
     for (int i = 0, n = block->iter_vars.size(); i < n; ++i) {
@@ -280,7 +280,7 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
     }
   }
   // Cond 4. Check the merged block is decomposable
-  CHECK(this->scopes.at(scope).CanMergeReduction(init_sref, update_sref));
+  CHECK(this->scopes.at(scope)->CanMergeReduction(init_sref, update_sref));
   // Cond 2. Check LCA is higher than all the loops related to update_block's reduce block var
   if (!scope.same_as(lca)) {
     for (const StmtSRef& higher_loop : GetLoopsInScope(update_sref)) {
@@ -351,7 +351,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   Block block = block_realize->block;
   // Check the block is reduction block
   Scope scope = GetParentScope(block_sref);
-  CHECK(scope.IsReduction(block_sref)) << "ValueError: can only rfactor a reduction block";
+  CHECK(scope->IsReduction(block_sref)) << "ValueError: can only rfactor a reduction block";
   // Collect the info of loop&block iter relation
   std::unordered_set<const VarNode*> data_par_loops, reduce_loops;
   for (size_t i = 0; i < block->iter_vars.size(); ++i) {

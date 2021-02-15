@@ -143,7 +143,7 @@ void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const Annotation& 
   //   1. All the blocks are complete below
   //   2. A single block below the loop
   const String& anno_value = Downcast<StringImm>(annotation->value)->value;
-  bool is_compact_dataflow = GetParentScope(loop_sref).IsCompactDataFlow(loop_sref, this);
+  bool is_compact_dataflow = GetParentScope(loop_sref)->IsCompactDataFlow(loop_sref, this);
   if (!is_compact_dataflow) {
     Array<Stmt> single_child = GetChildren(GetRef<Stmt>(loop), true);
     // TODO(@junrushao1994): I am not super convinced by the checks here, revisit later
@@ -214,7 +214,7 @@ void ScheduleNode::double_buffer(const StmtSRef& block_sref) {
   const StmtSRef& parent_block_sref = GetParentBlockSRef(block_sref);
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
   const Scope& scope = scopes.at(parent_block_sref);
-  CHECK(scope.IsComplete(block_sref))
+  CHECK(scope->IsComplete(block_sref))
       << "ValueError: 'double_buffer' expects 'block' to be a complete block";
   for (const TensorRegion& parent_write : parent_block->writes) {
     for (const TensorRegion& write : block_ptr->writes) {
@@ -223,7 +223,7 @@ void ScheduleNode::double_buffer(const StmtSRef& block_sref) {
     }
   }
   CHECK_EQ(block_ptr->writes.size(), 1)
-    << "ValueError: 'double_buffer' expects 'block' with only one write buffer";
+      << "ValueError: 'double_buffer' expects 'block' with only one write buffer";
   Block new_block = WithAnnotation(block_ptr, Annotation(tir::attr::double_buffer_scope, 1));
   this->Replace(block_sref, new_block, {{new_block, GetRef<Block>(block_ptr)}});
 }
