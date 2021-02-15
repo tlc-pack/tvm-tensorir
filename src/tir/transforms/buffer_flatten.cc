@@ -408,16 +408,16 @@ class BufferFlattener : public StmtExprMutator {
     std::string thread_tag;
     bool thread_binded = false;
 
-    ForType for_type = ForType::Serial;
+    ForKind for_type = ForKind::kSerial;
     for (const auto& annotation : op->annotations) {
       if (annotation->attr_key == tir::attr::loop_type) {
         std::string type = Downcast<StringImm>(annotation->value)->value;
         if (type == "unroll") {
-          for_type = ForType::Unrolled;
+          for_type = ForKind::kUnrolled;
         } else if (type == "vectorize") {
-          for_type = ForType::Vectorized;
+          for_type = ForKind::kVectorized;
         } else if (type == "parallel") {
-          for_type = ForType::Parallel;
+          for_type = ForKind::kParallel;
         } else {
           thread_binded = true;
           thread_tag = Downcast<StringImm>(annotation->value)->value;
@@ -456,7 +456,7 @@ class BufferFlattener : public StmtExprMutator {
     } else if (is_one(op->extent) && op->annotations.empty()) {
       return body;
     } else {
-      for_stmt = For(op->loop_var, op->min, op->extent, for_type, DeviceAPI::None, body);
+      for_stmt = For(op->loop_var, op->min, op->extent, for_type, body);
     }
 
     for (const auto& annotation : op->annotations) {

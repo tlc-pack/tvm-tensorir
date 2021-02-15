@@ -373,26 +373,26 @@ namespace default_reducer {
 class DefaultReducer {
  public:
   explicit DefaultReducer(const std::function<PrimExpr(Var, Var)>& combiner,
-                          std::function<PrimExpr(DataType)> identity)
+                          std::function<PrimExpr(DataType, Span)> identity)
       : lhs_("x"), rhs_("y"), identity_(std::move(identity)) {
     result_ = combiner(lhs_, rhs_);
   }
 
-  CommReducer GetReducer(DataType dtype) const {
-    return CommReducer({lhs_}, {rhs_}, {result_}, {identity_(dtype)});
+  CommReducer GetReducer(DataType dtype, Span span) const {
+    return CommReducer({lhs_}, {rhs_}, {result_}, {identity_(dtype, span)});
   }
 
  private:
   Var lhs_, rhs_;
   PrimExpr result_;
-  const std::function<PrimExpr(DataType)> identity_;
+  const std::function<PrimExpr(DataType, Span)> identity_;
 };
 
 static DefaultReducer default_reducers[4] = {
     DefaultReducer([](const Var& x, const Var& y) { return x + y; },
-                   [](DataType dtype) { return make_const(dtype, 0); }),
+                   [](DataType dtype, Span span) { return make_const(dtype, 0, span); }),
     DefaultReducer([](const Var& x, const Var& y) { return x * y; },
-                   [](DataType dtype) { return make_const(dtype, 1); }),
+                   [](DataType dtype, Span span) { return make_const(dtype, 1, span); }),
     DefaultReducer([](const Var& x, const Var& y) { return min(x, y); }, max_value),
     DefaultReducer([](const Var& x, const Var& y) { return max(x, y); }, min_value)};
 
