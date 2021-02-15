@@ -150,7 +150,7 @@ class CompileEngineImpl : public CompileEngineNode {
     return ret;
   }
 
-  void Clear() final { cache_.clear(); }
+  void Clear() final { cache_.clear(); tune_result.clear(); }
 
   // List all items in the cache.
   Array<ObjectRef> ListItems() {
@@ -287,6 +287,10 @@ class CompileEngineImpl : public CompileEngineNode {
   std::unordered_map<CCacheKey, CCacheValue> shape_func_cache_;
   /*! \brief the cache key of the function that is being lowered currently*/
   CCacheKey cur_ccache_key_;
+  /*! \brief primfuncs tuned by meta schedule*/
+  std::unordered_map<std::string, std::unordered_map<tir::PrimFunc, tir::PrimFunc, StructuralHash,
+                                                     StructuralEqual>>
+      tune_result;
   /*! \brief whether use tir schedule */
   bool with_tir_schedule_;
 };

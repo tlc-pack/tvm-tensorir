@@ -929,7 +929,7 @@ class VectorAllocRewriter : public StmtExprMutator {
         extents.Set(extents.size() - 1,
                     extents[extents.size() - 1] / make_const(extents[0].dtype(), factor));
         // create a new buffer var
-        DataType new_dtype = tvec[0];
+        DataType new_dtype = t_vec[0];
         Var new_buffer_var(op->buffer_var->name_hint,
                            PointerType(PrimType(new_dtype), GetPtrStorageScope(op->buffer_var)));
         // update the remap req.

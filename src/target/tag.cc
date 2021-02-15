@@ -78,22 +78,6 @@ Target TargetTag::AddTag(String name, Map<String, ObjectRef> config, bool overri
       {"registers_per_block", Integer(RegPerBlock)},              \
       {"max_threads_per_block", Integer(1024)},                   \
       {"thread_warp_size", Integer(32)},                          \
-        {"shared_memory_per_block", Integer(49152)},
-        {"registers_per_block", Integer(65536)},
-        {"max_threads_per_block", Integer(1024)},
-        {"vector_unit_bytes", Integer(16)},
-        {"thread_warp_size", Integer(32)},
-    });
-
-TVM_REGISTER_TARGET_TAG("nvidia/jetson-agx-xavier")
-    .set_config({
-        {"kind", String("cuda")},
-        {"arch", String("sm_72")},
-        {"shared_memory_per_block", Integer(49152)},
-        {"registers_per_block", Integer(65536)},
-        {"max_threads_per_block", Integer(1024)},
-        {"vector_unit_bytes", Integer(16)},
-        {"thread_warp_size", Integer(32)},
     });
 
 TVM_REGISTER_CUDA_TAG("nvidia/tesla-k80", "sm_37", 49152, 65536);
