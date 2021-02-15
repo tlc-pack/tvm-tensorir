@@ -391,7 +391,7 @@ class ScopeUpdater : public StmtVisitor {
       : stmt2ref(stmt2ref) {}
 
   void VisitStmt_(const BlockNode* block) override {
-    scope.AddChildBlock(stmt2ref.at(block), &buffer_readers);
+    scope->AddChildBlock(stmt2ref.at(block), &buffer_readers);
   }
 
   Scope scope;
