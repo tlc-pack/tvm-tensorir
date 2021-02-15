@@ -315,7 +315,7 @@ class AllReduceTransformer : public StmtExprMutator {
     Optional<CommReducer> optional_reducer;
     Optional<PrimExpr> reducer_lhs, reducer_rhs;
     CommReducer::FromInitUpdate(init_body->value, GetRef<BufferStore>(update_body),
-                                optional_reducer, reducer_lhs, reducer_rhs);
+                                optional_reducer, reducer_lhs, reducer_rhs, Span());
     CHECK(optional_reducer.defined())
         << "Cannot find a commutative reducer when allreduce is needed.";
     const auto* reducer = optional_reducer.value().as<CommReducerNode>();

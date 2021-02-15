@@ -248,7 +248,7 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   Optional<CommReducer> reducer;
   Optional<PrimExpr> reducer_lhs, reducer_rhs;
   CommReducer::FromInitUpdate(init_body->value, GetRef<BufferStore>(update_body), reducer,
-                              reducer_lhs, reducer_rhs);
+                              reducer_lhs, reducer_rhs, Span());
   CHECK(reducer.defined())
       << "ValueError: 'merge_reduction' pattern detect failed. No reducer pattern matched for "
       << init_body->value << " and " << GetRef<BufferStore>(update_body);
@@ -369,7 +369,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   Optional<CommReducer> reducer;
   Optional<PrimExpr> reducer_lhs, reducer_rhs;
   CommReducer::FromInitUpdate(init->value, GetRef<BufferStore>(update), reducer, reducer_lhs,
-                              reducer_rhs);
+                              reducer_rhs, Span());
   CHECK(reducer.defined()) << "ValueError: 'merge_reduction' pattern detect failed. "
                            << "No reducer pattern matched for " << init->value << " and "
                            << GetRef<BufferStore>(update);
