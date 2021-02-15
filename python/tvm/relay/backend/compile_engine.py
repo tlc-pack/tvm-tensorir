@@ -195,7 +195,6 @@ def select_implementation(op, attrs, inputs, out_type, target, use_autotvm=True)
     all_impls = get_valid_implementations(op, attrs, inputs, out_type, target)
     best_plevel_impl = max(all_impls, key=lambda x: x.plevel)
     with_tir = PassContext.current().config.get("relay.with_tir_schedule", False)
-    if not use_autotvm or with_tir:
 
     # Disable autotvm if auto_scheduler is enabled.
     # (i.e., always return the implementation with the highest priority for auto-scheduler).
@@ -203,7 +202,7 @@ def select_implementation(op, attrs, inputs, out_type, target, use_autotvm=True)
         use_autotvm = False
 
     # If not use autotvm, always return the implementation with the highest priority
-    if not use_autotvm:
+    if not use_autotvm or with_tir:
         logger.info(
             "Using %s for %s based on highest priority (%d)",
             best_plevel_impl.name,
