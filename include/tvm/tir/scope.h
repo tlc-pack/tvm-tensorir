@@ -84,14 +84,6 @@ class ScopeNode : public Object {
 
   void VisitAttrs(AttrVisitor* v) {}
 
-  static constexpr const char* _type_key = "Scope";
-  TVM_DECLARE_FINAL_OBJECT_INFO(ScopeNode, Object);
-};
-
-class Scope : public ObjectRef {
- public:
-  /*! \brief Constructor */
-  Scope();
   /*!
    * \brief Add a dependency edge.
    * \param from The departure of the edge
@@ -175,6 +167,15 @@ class Scope : public ObjectRef {
    * \param buffer_readers Maps a buffer to a list of blocks that reads it
    */
   void ReplaceChildBlock(const StmtSRef& old_sref, const StmtSRef& new_sref);
+
+  static constexpr const char* _type_key = "Scope";
+  TVM_DECLARE_FINAL_OBJECT_INFO(ScopeNode, Object);
+};
+
+class Scope : public ObjectRef {
+ public:
+  /*! \brief Constructor */
+  Scope();
 
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(Scope, ObjectRef, ScopeNode);
 };
