@@ -105,27 +105,27 @@ void parallel_persist_for(int begin, int end, const std::function<void(int, int)
     num_threads = std::thread::hardware_concurrency();
   }
   CHECK_GT(num_threads, 0) << "ValueError: `num_threads` should be positive";
-  // Make a special case for serial loop
-  if (num_threads == 1) {
-    for (int i = begin; i < end; ++i) {
-      f(0, i);
-    }
-    return;
-  }
-  // Launch threads
+  // Launch worker 1 to worker `num_threads - 1`
   std::atomic<int> counter{begin};
   std::vector<std::future<void>> futures;
   std::vector<std::thread> threads;
-  futures.reserve(end - begin);
-  threads.reserve(end - begin);
-  for (int thread_id = 0; thread_id < num_threads; ++thread_id) {
-    std::packaged_task<void()> task([thread_id, end, &counter, &f]() -> void {
-      for (int task_id; (task_id = counter++) < end;) {
-        f(thread_id, task_id);
-      }
-    });
+  futures.reserve(num_threads - 1);
+  threads.reserve(num_threads - 1);
+  auto worker = [end, &counter, &f](int thread_id) -> void {
+    for (int task_id; (task_id = counter++) < end;) {
+      f(thread_id, task_id);
+    }
+  };
+  for (int thread_id = 1; thread_id < num_threads; ++thread_id) {
+    std::packaged_task<void(int)> task(worker);
     futures.emplace_back(task.get_future());
-    threads.emplace_back(std::move(task));
+    threads.emplace_back(std::move(task), thread_id);
+  }
+  // Launch worker 0 inplace
+  try {
+    worker(0);
+  } catch (const std::exception& e) {
+    LOG(FATAL) << "Parallel_for error with " << e.what();
   }
   // Join threads
   for (auto&& thread : threads) {
