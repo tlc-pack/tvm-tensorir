@@ -16,19 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include <tvm/arith/analyzer.h>
-#include <tvm/runtime/registry.h>
-#include <tvm/tir/analysis.h>
-#include <tvm/tir/schedule.h>
-#include <tvm/tir/stmt_functor.h>
-
 #include "./schedule_common.h"
 
 namespace tvm {
 namespace tir {
-
-TVM_REGISTER_NODE_TYPE(ScheduleNode);
-TVM_REGISTER_NODE_TYPE(StmtSRefNode);
 
 Schedule::Schedule(PrimFunc func, StmtSRef root,
                    std::unordered_map<const StmtNode*, StmtSRef> stmt2ref,
@@ -38,16 +29,6 @@ Schedule::Schedule(PrimFunc func, StmtSRef root,
   n->root = std::move(root);
   n->stmt2ref = std::move(stmt2ref);
   n->scopes = std::move(scopes);
-  data_ = std::move(n);
-}
-
-StmtSRef::StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index,
-                   bool binding_valid) {
-  ObjectPtr<StmtSRefNode> n = make_object<StmtSRefNode>();
-  n->stmt = stmt;
-  n->parent = parent;
-  n->seq_index = seq_index;
-  n->binding_valid = binding_valid;
   data_ = std::move(n);
 }
 
@@ -321,118 +302,6 @@ class LoopCollector : public StmtVisitor {
   std::unordered_map<const VarNode*, StmtSRef> loop_var2sref;
 };
 
-static String Repr(const tir::PrimFunc& func) {
-  static const auto* f = runtime::Registry::Get("script.AsTVMScript");
-  CHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
-  return (*f)(func, false).operator String();
-}
-
-void ValidateSRefs(const Schedule& sch) {
-  class PreOrder : public StmtExprVisitor {
-   public:
-    explicit PreOrder(const std::function<bool(const ObjectRef&)>& f) : f(f) {}
-
-    static void Visit(const ObjectRef& node, const std::function<bool(const ObjectRef&)>& f_visit) {
-      PreOrder visitor(f_visit);
-      if (const auto* stmt = node.as<StmtNode>()) {
-        visitor(GetRef<Stmt>(stmt));
-      } else if (const auto* expr = node.as<PrimExprNode>()) {
-        visitor(GetRef<PrimExpr>(expr));
-      } else {
-        LOG(FATAL) << "InternalError: PreOrderVisit does not accept object with type: "
-                   << node->GetTypeKey();
-      }
-    }
-
-    void VisitStmt_(const BlockNode* block) final {
-      for (const BufferAllocate& alloc : block->allocations) {
-        this->VisitStmt(alloc);
-      }
-      this->VisitStmt(block->body);
-    }
-
-    void VisitExpr(const PrimExpr& expr) final {
-      if (visited.count(expr.get()) == 0) {
-        visited.insert(expr.get());
-        if (f(expr)) {
-          ExprVisitor::VisitExpr(expr);
-        }
-      }
-    }
-
-    void VisitStmt(const Stmt& stmt) final {
-      if (visited.count(stmt.get()) == 0) {
-        visited.insert(stmt.get());
-        if (f(stmt)) {
-          StmtVisitor::VisitStmt(stmt);
-        }
-      }
-    }
-
-    const std::function<bool(const ObjectRef&)>& f;
-    std::unordered_set<const Object*> visited;
-  };
-
-  std::unordered_set<const StmtNode*> visited;
-  auto f_check_children = [sch](const StmtSRef& sref, const Stmt& body) -> void {
-    auto f_visit = [sch, sref](const ObjectRef& obj) -> bool {
-      if (const auto* loop = obj.as<tir::LoopNode>()) {
-        CHECK_EQ(sch->stmt2ref.count(loop), 1);
-        StmtSRef loop_sref = sch->stmt2ref.at(loop);
-        CHECK(loop_sref->parent == sref.get());
-      } else if (const auto* loop = obj.as<tir::BlockNode>()) {
-        CHECK_EQ(sch->stmt2ref.count(loop), 1);
-        StmtSRef block_sref = sch->stmt2ref.at(loop);
-        CHECK(block_sref->parent == sref.get());
-      } else {
-        return true;
-      }
-      return false;
-    };
-    PreOrder::Visit(body, f_visit);
-  };
-  auto f_visit = [sch, &f_check_children, &visited](const ObjectRef& obj) -> bool {
-    if (const auto* loop = obj.as<tir::LoopNode>()) {
-      CHECK(!visited.count(loop));
-      visited.insert(loop);
-      CHECK_EQ(sch->stmt2ref.count(loop), 1) << "\n" << GetRef<Loop>(loop);
-      StmtSRef loop_sref = sch->stmt2ref.at(loop);
-      f_check_children(loop_sref, loop->body);
-    } else if (const auto* block = obj.as<tir::BlockNode>()) {
-      CHECK(!visited.count(block));
-      visited.insert(block);
-      CHECK_EQ(sch->stmt2ref.count(block), 1) << GetRef<Block>(block);
-      StmtSRef block_sref = sch->stmt2ref.at(block);
-      f_check_children(block_sref, block->body);
-    }
-    return true;
-  };
-  PreOrder::Visit(sch->func->body, f_visit);
-  {
-    bool failed = false;
-    // LOG(INFO) << "OK1";
-    for (const auto& kv : sch->stmt2ref) {
-      const StmtNode* stmt = kv.first;
-      // LOG(INFO) << "TABLE:\n" << GetRef<Stmt>(stmt);
-      if (visited.count(stmt)) {
-        continue;
-      }
-      failed = true;
-      LOG(INFO) << "Not in visited:\n" << GetRef<Stmt>(stmt);
-    }
-    for (const StmtNode* stmt : visited) {
-      if (sch->stmt2ref.count(stmt)) {
-        continue;
-      }
-      failed = true;
-      LOG(FATAL) << "Not in stmt2ref:\n" << GetRef<Stmt>(stmt);
-    }
-    if (failed) {
-      LOG(FATAL) << "\n" << Repr(sch->func);
-    }
-  }
-}
-
 void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_map) {
   // Note that old_ref is only a temporary SRef
   StmtSRef old_ref = StmtSRef(ref->stmt, ref->parent);
@@ -477,7 +346,6 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
       // if one node has been direct write, there is no need to
       // update its parent and the function
       remover(old_stmt);
-      // ValidateSRefs(GetRef<Schedule>(this));
       return;
     }
     target = new_stmt;
@@ -491,7 +359,6 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
     UpdateSRef(root.operator->(), target);
   }
   func = UpdateFuncBody(func.operator->(), target);
-  // ValidateSRefs(GetRef<Schedule>(this));
 }
 
 void ScheduleNode::UpdateSRef(StmtSRefNode* sref, const Stmt& stmt) {
@@ -501,7 +368,7 @@ void ScheduleNode::UpdateSRef(StmtSRefNode* sref, const Stmt& stmt) {
   sref->stmt = stmt.operator->();
 }
 
-Array<StmtSRef> ScheduleNode::GetBlock(const std::string& tag) const {
+Array<StmtSRef> ScheduleNode::GetBlock(const String& tag) const {
   std::vector<StmtSRef> ret, scope_stack;
   scope_stack.push_back(root);
   while (!scope_stack.empty()) {
@@ -589,6 +456,10 @@ Array<StmtSRef> ScheduleNode::GetLoopsInScope(const StmtSRef& block) const {
   return Array<StmtSRef>(ret.rbegin(), ret.rend());
 }
 
+void ScheduleNode::register_reducer(const CommReducer& comm_reducer) {
+  this->reducers_.push_back(comm_reducer);
+}
+
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<StmtSRefNode>([](const ObjectRef& node, ReprPrinter* p) {
       const auto* op = static_cast<const StmtSRefNode*>(node.get());
@@ -605,6 +476,8 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       }
     });
 
+TVM_REGISTER_NODE_TYPE(ScheduleNode);
+
 TVM_REGISTER_GLOBAL("tir.schedule.Replace")
     .set_body_typed<void(Schedule, StmtSRef, Stmt, Map<Block, Block>)>(
         [](Schedule schedule, StmtSRef ref, Stmt target, Map<Block, Block> block_sref_map) {
@@ -619,11 +492,6 @@ TVM_REGISTER_GLOBAL("tir.schedule.GetStmtSRef")
 TVM_REGISTER_GLOBAL("tir.schedule.GetStmt").set_body_typed<Stmt(StmtSRef)>([](StmtSRef sref) {
   return GetRef<Stmt>(sref->stmt);
 });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBlocks")
-    .set_body_typed<Array<StmtSRef>(Schedule, StmtSRef)>([](Schedule schedule, StmtSRef scope) {
-      return schedule->Blocks(scope);
-    });
 
 TVM_REGISTER_GLOBAL("tir.schedule.GetBlocksFromTag")
     .set_body_typed<Array<StmtSRef>(Schedule, std::string)>([](Schedule schedule, std::string tag) {
@@ -644,132 +512,6 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetLoopsInScope")
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleRegisterReducer")
     .set_body_typed<void(Schedule, CommReducer)>([](Schedule schedule, CommReducer comm_reducer) {
       schedule->register_reducer(comm_reducer);
-    });
-
-// schedule primitive
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleFuse")
-    .set_body_typed<StmtSRef(Schedule, StmtSRef, StmtSRef)>([](Schedule schedule, StmtSRef outer,
-                                                               StmtSRef inner) {
-      return schedule->fuse(outer, inner);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSplitByFactor")
-    .set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, PrimExpr)>([](Schedule schedule,
-                                                                      StmtSRef node,
-                                                                      PrimExpr factor) {
-      const auto* loop = GetRef<Stmt>(node->stmt).as<LoopNode>();
-      return schedule->split(node, floordiv(loop->extent + factor - 1, factor), factor);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSplitByNParts")
-    .set_body_typed<Array<StmtSRef>(Schedule, StmtSRef, PrimExpr)>([](Schedule schedule,
-                                                                      StmtSRef node,
-                                                                      PrimExpr nparts) {
-      const auto* loop = GetRef<Stmt>(node->stmt).as<LoopNode>();
-      return schedule->split(node, nparts, floordiv(loop->extent + nparts - 1, nparts));
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleReorder")
-    .set_body_typed<void(Schedule, Array<StmtSRef>)>([](Schedule schedule, Array<StmtSRef> order) {
-      return schedule->reorder(order);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleComputeAt")
-    .set_body_typed<void(Schedule, StmtSRef, StmtSRef)>([](Schedule schedule, StmtSRef block_sref,
-                                                           StmtSRef loop_sref) {
-      return schedule->compute_at(block_sref, loop_sref);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleReverseComputeAt")
-    .set_body_typed<void(Schedule, StmtSRef, StmtSRef)>([](Schedule schedule, StmtSRef block_sref,
-                                                           StmtSRef loop_sref) {
-      return schedule->reverse_compute_at(block_sref, loop_sref);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleComputeInline")
-    .set_body_typed<void(Schedule, StmtSRef)>([](Schedule schedule, StmtSRef block_sref) {
-      return schedule->compute_inline(block_sref);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleReverseComputeInline")
-    .set_body_typed<void(Schedule, StmtSRef)>([](Schedule schedule, StmtSRef block_sref) {
-      return schedule->reverse_compute_inline(block_sref);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleVectorize")
-    .set_body_typed<void(Schedule, StmtSRef)>([](Schedule schedule, StmtSRef node) {
-      schedule->vectorize(node);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleParallel")
-    .set_body_typed<void(Schedule, StmtSRef)>([](Schedule schedule, StmtSRef node) {
-      schedule->parallel(node);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBind")
-    .set_body_typed<void(Schedule, StmtSRef, IterVar)>([](Schedule schedule, StmtSRef loop,
-                                                          IterVar thread) {
-      schedule->bind(loop, thread);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnroll")
-    .set_body_typed<void(Schedule, StmtSRef)>([](Schedule schedule, StmtSRef node) {
-      schedule->unroll(node);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.SchedulePragma")
-    .set_body_typed<void(Schedule, StmtSRef, String, PrimExpr)>(
-        [](Schedule schedule, StmtSRef loop_sref, String pragma_type, PrimExpr pragma_value) {
-          schedule->pragma(loop_sref, pragma_type, pragma_value);
-        });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDoubleBuffer")
-    .set_body_typed<void(Schedule, StmtSRef)>([](Schedule schedule, StmtSRef block_sref) {
-      schedule->double_buffer(block_sref);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDecomposeReduction")
-    .set_body_typed<StmtSRef(Schedule, StmtSRef, Optional<StmtSRef>)>([](Schedule schedule,
-                                                                         StmtSRef block,
-                                                                         Optional<StmtSRef> loop) {
-      return schedule->decompose_reduction(block, loop);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheWrite")
-    .set_body_typed<StmtSRef(Schedule, StmtSRef, int, std::string)>([](Schedule schedule,
-                                                                       StmtSRef block, int i,
-                                                                       std::string scope) {
-      return schedule->cache_write(block, i, scope);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheRead")
-    .set_body_typed<StmtSRef(Schedule, StmtSRef, int, std::string)>([](Schedule schedule,
-                                                                       StmtSRef block, int i,
-                                                                       std::string scope) {
-      return schedule->cache_read(block, i, scope);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleMergeReduction")
-    .set_body_typed<void(Schedule, StmtSRef, StmtSRef)>([](Schedule schedule, StmtSRef init,
-                                                           StmtSRef update) {
-      schedule->merge_reduction(init, update);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleRfactor")
-    .set_body_typed<StmtSRef(Schedule, StmtSRef, int)>([](Schedule schedule, StmtSRef loop_sref,
-                                                          int factor_axis) {
-      return schedule->rfactor(loop_sref, factor_axis);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleTensorize")
-    .set_body_typed<void(Schedule, StmtSRef, TensorIntrin)>([](Schedule schedule, StmtSRef sref,
-                                                               TensorIntrin intrinsic) {
-      return schedule->tensorize(sref, intrinsic);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBlockize")
-    .set_body_typed<StmtSRef(Schedule, StmtSRef)>([](Schedule schedule, StmtSRef sref) {
-      return schedule->blockize(sref, "");
     });
 
 // dependency graph

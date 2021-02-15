@@ -19,22 +19,18 @@
 
 #ifndef TVM_TIR_SCHEDULE_H_
 #define TVM_TIR_SCHEDULE_H_
-#include <tvm/ir/attrs.h>
-#include <tvm/te/tensor.h>
-#include <tvm/tir/buffer.h>
+
 #include <tvm/tir/function.h>
 #include <tvm/tir/scope.h>
-#include <tvm/tir/stmt_sref.h>
 
-#include <string>
 #include <unordered_map>
-#include <utility>
-#include <vector>
 
 namespace tvm {
 namespace tir {
 
 class Schedule;
+class Buffer;
+
 class ScheduleNode : public Object {
  public:
   /*! \brief The function to be scheduled */
@@ -55,13 +51,6 @@ class ScheduleNode : public Object {
   }
 
   /*!
-   * \brief Create a new schedule
-   * \param function The function to be scheduled
-   * \return The schedule
-   */
-  static Schedule Create(PrimFunc function);
-
-  /*!
    * \brief replace part of AST with new stmt
    * \param ref The schedulable reference of the old stmt
    * \param target The new stmt
@@ -75,7 +64,7 @@ class ScheduleNode : public Object {
    * \param tag The query tag
    * \return the block schedulable reference list
    */
-  Array<StmtSRef> GetBlock(const std::string& tag) const;
+  Array<StmtSRef> GetBlock(const String& tag) const;
 
   /*!
    * \brief Get block from its output tensor
@@ -219,7 +208,7 @@ class ScheduleNode : public Object {
    * \param i The index of the buffer in block's read region
    * \param storage_scope The storage scope
    */
-  StmtSRef cache_read(StmtSRef block_sref, int i, const std::string& storage_scope);
+  StmtSRef cache_read(StmtSRef block_sref, int i, const String& storage_scope);
 
   /*!
    * \brief Create a cache write of original tensor, before storing into tensor.
@@ -227,7 +216,7 @@ class ScheduleNode : public Object {
    * \param i The index of the buffer in block's write region
    * \param storage_scope The storage scope
    */
-  StmtSRef cache_write(StmtSRef block_sref, int i, const std::string& storage_scope);
+  StmtSRef cache_write(StmtSRef block_sref, int i, const String& storage_scope);
 
   /*!
    * \brief make subtree rooted by loop_sref into a block
@@ -319,11 +308,19 @@ class ScheduleNode : public Object {
   bool ValidateRegionCover(const StmtSRef& consumer) const;
 
   /*! \brief The reducer list for reduction pattern matching */
-  std::vector<CommReducer> reducers_;
+  Array<CommReducer> reducers_;
+
+  friend class Schedule;
 };
 
 class Schedule : public ObjectRef {
  public:
+  /*!
+   * \brief Construct a schedule from a PrimFunc
+   * \param func The PrimFunc to be created
+   */
+  explicit Schedule(PrimFunc func);
+
   /*!
    * \brief Constructor
    * \param func The function to be scheduled

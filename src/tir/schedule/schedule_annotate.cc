@@ -228,5 +228,25 @@ void ScheduleNode::double_buffer(const StmtSRef& block_sref) {
   this->Replace(block_sref, new_block, {{new_block, GetRef<Block>(block_ptr)}});
 }
 
+struct Internal {
+  static void Vectorize(Schedule self, StmtSRef loop_sref) { self->vectorize(loop_sref); }
+  static void Parallel(Schedule self, StmtSRef loop_sref) { self->parallel(loop_sref); }
+  static void Unroll(Schedule self, StmtSRef loop_sref) { self->unroll(loop_sref); }
+  static void DoubleBuffer(Schedule self, StmtSRef loop_sref) { self->double_buffer(loop_sref); }
+  static void Bind(Schedule self, StmtSRef loop_sref, IterVar thread) {
+    self->bind(loop_sref, thread);
+  }
+  static void Pragma(Schedule self, StmtSRef loop_sref, String pragma_type, PrimExpr pragma_value) {
+    self->pragma(loop_sref, pragma_type, pragma_value);
+  }
+};
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleVectorize").set_body_typed(Internal::Vectorize);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleParallel").set_body_typed(Internal::Parallel);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnroll").set_body_typed(Internal::Unroll);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDoubleBuffer").set_body_typed(Internal::DoubleBuffer);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBind").set_body_typed(Internal::Bind);
+TVM_REGISTER_GLOBAL("tir.schedule.SchedulePragma").set_body_typed(Internal::Pragma);
+
 }  // namespace tir
 }  // namespace tvm

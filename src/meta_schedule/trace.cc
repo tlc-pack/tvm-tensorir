@@ -18,6 +18,7 @@
  */
 #include "./trace.h"  // NOLINT(build/include)
 
+#include <tvm/runtime/registry.h>
 #include <tvm/tir/stmt_functor.h>
 
 #include "./schedule.h"

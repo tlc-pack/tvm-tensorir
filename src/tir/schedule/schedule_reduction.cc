@@ -30,10 +30,6 @@ bool ListContainsElement(const Array<StmtSRef>& list, const StmtSRef& element) {
   return false;
 }
 
-void ScheduleNode::register_reducer(const CommReducer& comm_reducer) {
-  this->reducers_.push_back(comm_reducer);
-}
-
 StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
                                            const Optional<StmtSRef>& loop_sref_opt) {
   /*!
@@ -497,7 +493,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   wb_block.CopyOnWrite()->init = BufferStore(wb_update->buffer, init->value, wb_update->indices);
   wb_block_realize.CopyOnWrite()->block = wb_block;
   wb_block_realize.CopyOnWrite()->binding_values = wb_bindings;
-  // create loops outside write back block and rfactor bclok
+  // create loops outside write back block and rfactor block
   Stmt rf_body = rf_block_realize, wb_body = wb_block_realize;
   Var wb_loop_var = loop->loop_var.copy_with_suffix("");
   wb_body = Loop(wb_loop_var, loop->min, loop->extent, loop->annotations,
@@ -565,6 +561,24 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
 
   return stmt2ref.at(rf_block.get());
 }
+
+struct Internal {
+  static StmtSRef DecomposeReduction(Schedule self, StmtSRef block_sref,
+                                     Optional<StmtSRef> loop_sref) {
+    return self->decompose_reduction(block_sref, loop_sref);
+  }
+  static void MergeReduction(Schedule self, StmtSRef init_block_sref, StmtSRef update_block_sref) {
+    self->merge_reduction(init_block_sref, update_block_sref);
+  }
+  static StmtSRef RFactor(Schedule self, StmtSRef loop_sref, int factor_axis) {
+    return self->rfactor(loop_sref, factor_axis);
+  }
+};
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDecomposeReduction")
+    .set_body_typed(Internal::DecomposeReduction);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleMergeReduction").set_body_typed(Internal::MergeReduction);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleRfactor").set_body_typed(Internal::RFactor);
 
 }  // namespace tir
 }  // namespace tvm
