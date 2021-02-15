@@ -20,6 +20,9 @@
 
 #include <dmlc/memory_io.h>
 #include <tvm/node/serialization.h>
+#include <tvm/runtime/registry.h>
+
+#include <fstream>
 
 #include "../support/base64.h"
 

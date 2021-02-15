@@ -249,7 +249,7 @@ inline void DelAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const St
   if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
     ObjectPtr<tir::LoopNode> n = make_object<tir::LoopNode>(*loop);
     n->annotations = std::move(new_ann);
-    sch->Replace(sref, tir::Loop(n));
+    sch->Replace(sref, tir::Loop(n), {});
   } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
     ObjectPtr<tir::BlockNode> n = make_object<tir::BlockNode>(*block);
     n->annotations = std::move(new_ann);
@@ -285,7 +285,7 @@ inline void AddAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const St
   if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
     ObjectPtr<tir::LoopNode> n = make_object<tir::LoopNode>(*loop);
     n->annotations = std::move(new_ann);
-    sch->Replace(sref, tir::Loop(n));
+    sch->Replace(sref, tir::Loop(n), {});
   } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
     ObjectPtr<tir::BlockNode> n = make_object<tir::BlockNode>(*block);
     n->annotations = std::move(new_ann);

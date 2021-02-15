@@ -33,7 +33,7 @@ bool IsTrivialBinding(const tir::Schedule& sch, const tir::StmtSRef& block_sref)
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   tir::BlockRealize realize = tir::GetBlockRealize(block_sref);
-  Array<tir::StmtSRef> loops = sch->GetLoopsInScope(block_sref);
+  Array<tir::StmtSRef> loops = sch->GetAxes(block_sref);
   const Array<PrimExpr>& bindings = realize->binding_values;
   if (loops.size() != bindings.size()) {
     return false;
@@ -798,7 +798,7 @@ bool HasSingleChild(const tir::StmtSRef& loop_or_block_sref) {
 
 Array<tir::StmtSRef> CollectComputeLocation(const tir::Schedule& sch,
                                             const tir::StmtSRef& block_sref) {
-  Array<tir::StmtSRef> loop_srefs = sch->GetLoopsInScope(block_sref);
+  Array<tir::StmtSRef> loop_srefs = sch->GetAxes(block_sref);
   Array<tir::StmtSRef> result;
   result.reserve(loop_srefs.size());
   bool visited_reduce = false;

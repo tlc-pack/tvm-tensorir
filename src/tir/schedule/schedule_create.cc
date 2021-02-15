@@ -140,7 +140,7 @@ class ScopeMapCreator : public StmtVisitor {
   std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual> scopes_;
 };
 
-Schedule ScheduleNode::Create(PrimFunc func) {
+Schedule::Schedule(PrimFunc func) {
   const BlockRealizeNode* realize = func->body.as<BlockRealizeNode>();
   CHECK(realize != nullptr) << "TypeError: body of PrimFunc is expected to be BlockRealize";
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
@@ -152,10 +152,14 @@ Schedule ScheduleNode::Create(PrimFunc func) {
   for (const auto& it : n->scopes) {
     n->ValidateRegionCover(it.first);
   }
-  return Schedule(n);
+  data_ = std::move(n);
 }
 
-TVM_REGISTER_GLOBAL("tir.schedule.CreateSchedule").set_body_typed(ScheduleNode::Create);
+struct Internal {
+  static Schedule New(PrimFunc func) { return Schedule(func); }
+};
+
+TVM_REGISTER_GLOBAL("tir.schedule.CreateSchedule").set_body_typed(Internal::New);
 
 }  // namespace tir
 }  // namespace tvm
