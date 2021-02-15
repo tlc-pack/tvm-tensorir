@@ -134,6 +134,9 @@ int Sampler::ForkSeed() {
 void Sampler::Seed(int seed) { this->rand.seed(seed); }
 
 int Sampler::SampleInt(int min_inclusive, int max_exclusive) {
+  if (min_inclusive + 1 == max_exclusive) {
+    return min_inclusive;
+  }
   std::uniform_int_distribution<> dist(min_inclusive, max_exclusive - 1);
   return dist(rand);
 }
