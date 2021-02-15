@@ -414,8 +414,7 @@ class MutatorParallel {
   Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler,
                         std::atomic<int>& warned_num_cores_missing) {
     bool warned = static_cast<bool>(warned_num_cores_missing.fetch_add(1));
-    int max_extent = GetMaxParallelExtent(task->target, max_jobs_per_core,
-                                          &warned) - 1;
+    int max_extent = GetTargetNumCores(task->target, &warned) * max_jobs_per_core - 1;
     std::vector<Candidate> candidates = FindCandidates(trace, task->workload, max_extent);
     if (candidates.empty()) {
       return NullOpt;

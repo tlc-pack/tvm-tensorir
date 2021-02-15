@@ -649,8 +649,8 @@ class RuleParallelizeVectorizeUnroll {
     bool is_leaf = IsLeafBlock(sch->sch, block_sref);
     // Parallelization
     if (max_jobs_per_core != -1 && is_leftmost_root) {
-      int max_extent = GetMaxParallelExtent(task->target, max_jobs_per_core,
-                                            &warned_num_cores_missing);
+      int max_extent =
+          GetTargetNumCores(task->target, &warned_num_cores_missing) * max_jobs_per_core;
       sch->MarkBlock(block_rv, tir::attr::auto_parallel_extent, max_extent);
     }
     // Vectorization
