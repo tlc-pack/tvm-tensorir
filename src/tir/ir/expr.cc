@@ -884,8 +884,8 @@ CommReducer::CommReducer(Array<Var> lhs, Array<Var> rhs, Array<PrimExpr> result,
 }
 
 bool CommReducer::ReducerMatched(const CommReducer& reducer, const PrimExpr& init,
-                                 const PrimExpr& update,
-                                 Optional<PrimExpr>& lhs, Optional<PrimExpr>& rhs) {
+                                 const PrimExpr& update, Optional<PrimExpr>& lhs,
+                                 Optional<PrimExpr>& rhs) {
   ExprDeepEqual equal;
   if (!equal(reducer->identity_element[0], init)) {
     lhs = rhs = NullOpt;
@@ -900,15 +900,15 @@ bool CommReducer::ReducerMatched(const CommReducer& reducer, const PrimExpr& ini
 
 void CommReducer::FromInitUpdate(const PrimExpr& init, const BufferStore& update,
                                  Optional<CommReducer>& res, Optional<PrimExpr>& lhs,
-                                 Optional<PrimExpr>& rhs) {
+                                 Optional<PrimExpr>& rhs, Span span) {
   ExprDeepEqual equal;
   const auto& buf_load = BufferLoad(update->buffer, update->indices);
   // Check default patterns
   for (const auto& reducer : default_reducer::default_reducers) {
-    bool success = ReducerMatched(reducer.GetReducer(init.dtype()), init,
-                                  update->value, lhs, rhs);
+    bool success =
+        ReducerMatched(reducer.GetReducer(init.dtype(), span), init, update->value, lhs, rhs);
     if (success && equal(buf_load, lhs.value())) {
-      res = reducer.GetReducer(init.dtype());
+      res = reducer.GetReducer(init.dtype(), span);
       return;
     }
   }

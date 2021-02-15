@@ -1045,7 +1045,7 @@ class CommReducer : public ObjectRef {
 
   static void FromInitUpdate(const PrimExpr& init, const BufferStore& update,
                              Optional<CommReducer>& res, Optional<PrimExpr>& lhs,
-                             Optional<PrimExpr>& rhs);
+                             Optional<PrimExpr>& rhs, Span span);
 
  private:
   static bool ReducerMatched(const CommReducer& reducer, const PrimExpr& init,
