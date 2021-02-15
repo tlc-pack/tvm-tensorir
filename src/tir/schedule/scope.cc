@@ -33,16 +33,16 @@ DepEdge::DepEdge(StmtSRef dst, DepType type) {
 
 Scope::Scope() { data_ = make_object<ScopeNode>(); }
 
-void Scope::AddEdge(const StmtSRef& from, const StmtSRef& to, DepType type) {
+void ScopeNode::AddEdge(const StmtSRef& from, const StmtSRef& to, DepType type) {
   if (!from.same_as(to)) {
-    ScopeNode* self = operator->();
-    self->forward_edges[from].push_back(DepEdge(to, type));
-    self->backward_edges[to].push_back(DepEdge(from, type));
+    this->forward_edges[from].push_back(DepEdge(to, type));
+    this->backward_edges[to].push_back(DepEdge(from, type));
   }
 }
 
-Array<DepEdge> Scope::GetSuccessors(const StmtSRef& block_sref) const {
-  const auto& edges = (*this)->forward_edges;
+Array<DepEdge> ScopeNode::GetSuccessors(const StmtSRef& block_sref) const {
+  const std::unordered_map<StmtSRef, Array<DepEdge>, ObjectPtrHash, ObjectPtrEqual>& edges =
+      this->forward_edges;
   auto iter = edges.find(block_sref);
   if (iter != edges.end()) {
     return iter->second;
@@ -51,8 +51,9 @@ Array<DepEdge> Scope::GetSuccessors(const StmtSRef& block_sref) const {
   }
 }
 
-Array<DepEdge> Scope::GetPredecessors(const StmtSRef& block_sref) const {
-  const auto& edges = (*this)->backward_edges;
+Array<DepEdge> ScopeNode::GetPredecessors(const StmtSRef& block_sref) const {
+  const std::unordered_map<StmtSRef, Array<DepEdge>, ObjectPtrHash, ObjectPtrEqual>& edges =
+      this->backward_edges;
   auto iter = edges.find(block_sref);
   if (iter != edges.end()) {
     return iter->second;
@@ -61,11 +62,12 @@ Array<DepEdge> Scope::GetPredecessors(const StmtSRef& block_sref) const {
   }
 }
 
-bool Scope::IsDominate(const StmtSRef& block_sref) const {
+bool ScopeNode::IsDominate(const StmtSRef& block_sref) const {
   const BlockNode* block = block_sref->GetStmt<BlockNode>();
   CHECK(block != nullptr) << "InternalError: Scope::IsDominate only works on tir::Block";
   // Condition: Block is the only writer to its outputs
-  const auto& buffer_writers = (*this)->buffer_writers;
+  const std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual>& buffer_writers =
+      this->buffer_writers;
   for (const TensorRegion& write_region : block->writes) {
     CHECK(buffer_writers.count(write_region->buffer))
         << "InternalError: buffer \"" << write_region->buffer->name
@@ -79,7 +81,7 @@ bool Scope::IsDominate(const StmtSRef& block_sref) const {
   return true;
 }
 
-bool Scope::IsComplete(const StmtSRef& block_sref) const {
+bool ScopeNode::IsComplete(const StmtSRef& block_sref) const {
   const auto* block = block_sref->GetStmt<BlockNode>();
   CHECK(block != nullptr)
       << "InternalError: Scope::IsComplete only accepts tir::Block, but get type: "
@@ -135,7 +137,7 @@ bool CheckReductionInstance(const Array<IterVar>& iter_vars,
   return true;
 }
 
-bool Scope::IsReduction(const StmtSRef& block_sref) const {
+bool ScopeNode::IsReduction(const StmtSRef& block_sref) const {
   const auto* block = block_sref->GetStmt<BlockNode>();
   CHECK(block != nullptr)
       << "InternalError: Scope::IsReduction only accepts tir::Block, but get type: "
@@ -180,7 +182,8 @@ bool Scope::IsReduction(const StmtSRef& block_sref) const {
   return not_affected;
 }
 
-bool Scope::IsCompactDataFlow(const StmtSRef& subtree_sref, const ScheduleNode* schedule) const {
+bool ScopeNode::IsCompactDataFlow(const StmtSRef& subtree_sref,
+                                  const ScheduleNode* schedule) const {
   for (const StmtSRef& block : schedule->GetChildBlocks(subtree_sref)) {
     if (!IsComplete(block) && !IsReduction(block)) {
       return false;
@@ -189,7 +192,7 @@ bool Scope::IsCompactDataFlow(const StmtSRef& subtree_sref, const ScheduleNode* 
   return true;
 }
 
-bool Scope::CanMergeReduction(const StmtSRef& init_sref, const StmtSRef& update_sref) const {
+bool ScopeNode::CanMergeReduction(const StmtSRef& init_sref, const StmtSRef& update_sref) const {
   const auto* init = init_sref->GetStmt<BlockNode>();
   const auto* update = update_sref->GetStmt<BlockNode>();
   CHECK(init != nullptr) << "InternalError: Scope::CanMergeReduction only accepts tir::Block as "
@@ -204,7 +207,7 @@ bool Scope::CanMergeReduction(const StmtSRef& init_sref, const StmtSRef& update_
   }
   // Cond 2. Check init_block and update_block are the only two producers for their output buffer
   for (const TensorRegion& write_region : update->writes) {
-    const Array<StmtSRef>& writers = (*this)->buffer_writers.at(write_region->buffer);
+    const Array<StmtSRef>& writers = this->buffer_writers.at(write_region->buffer);
     if (writers.size() != 2) {
       return false;
     }
@@ -235,13 +238,15 @@ bool Scope::CanMergeReduction(const StmtSRef& init_sref, const StmtSRef& update_
   return CheckReductionInstance(update->iter_vars, update_body->indices);
 }
 
-void Scope::AddChildBlock(
+void ScopeNode::AddChildBlock(
     const StmtSRef& child_sref,
     std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual>* _buffer_readers) {
   const BlockNode* block = child_sref->GetStmt<BlockNode>();
   CHECK(block) << "InternalError: Scope::AddChildBlock only accepts a Block as child_sref";
-  auto& buffer_readers = *_buffer_readers;
-  auto& buffer_writers = (*this)->buffer_writers;
+  std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual>& buffer_readers =
+      *_buffer_readers;
+  std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual>& buffer_writers =
+      this->buffer_writers;
   // Step 1. Update `buffer_readers` and `buffer_writer` for each buffer
   for (const TensorRegion& region : block->writes) {
     buffer_writers[region->buffer].push_back(child_sref);
