@@ -21,8 +21,15 @@
 namespace tvm {
 namespace tir {
 
-TVM_REGISTER_NODE_TYPE(ScopeNode);
-TVM_REGISTER_NODE_TYPE(DepEdgeNode);
+StmtSRef::StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index,
+                   bool binding_valid) {
+  ObjectPtr<StmtSRefNode> n = make_object<StmtSRefNode>();
+  n->stmt = stmt;
+  n->parent = parent;
+  n->seq_index = seq_index;
+  n->binding_valid = binding_valid;
+  data_ = std::move(n);
+}
 
 DepEdge::DepEdge(StmtSRef dst, DepType type) {
   ObjectPtr<DepEdgeNode> node = make_object<DepEdgeNode>();
@@ -281,6 +288,10 @@ void ScopeNode::AddChildBlock(
     }
   }
 }
+
+TVM_REGISTER_NODE_TYPE(StmtSRefNode);
+TVM_REGISTER_NODE_TYPE(ScopeNode);
+TVM_REGISTER_NODE_TYPE(DepEdgeNode);
 
 }  // namespace tir
 }  // namespace tvm
