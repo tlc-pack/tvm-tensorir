@@ -96,14 +96,6 @@ class SpecialStmt:
 
 @register
 class MatchBuffer(SpecialStmt):
-    """Special Stmt match_buffer(var, shape, dtype, data, strides, elem_offset, scope, align,
-                                 offset_factor, buffer_type)
-    Example
-    -------
-    .. code-block:: python
-        A = tir.match_buffer(a, (128, 128), dtype="float32")
-    """
-
     def __init__(self):
         def match_buffer(
             param,
@@ -152,20 +144,8 @@ class MatchBuffer(SpecialStmt):
         super().__init__(match_buffer, def_symbol=True)
 
 
-@register_special_stmt()
-def buffer_allocate(
-    parser,
-    node,
-    shape,
-    dtype="float32",
-    data=None,
-    strides=None,
-    elem_offset=None,
-    scope="global",
-    align=-1,
-    offset_factor=0,
-    buffer_type="default",
-):
+@register
+class BufferAllocate(SpecialStmt):
     """Special function buffer_allocate(shape, dtype, data, strides, elem_offset, scope, align,
                                          offset_factor, buffer_type)
 
@@ -176,60 +156,95 @@ def buffer_allocate(
         A = tir.buffer_allocate((128, 128), dtype="float32")
 
     """
+    def __init__(self):
+        def buffer_allocate(
+            shape,
+            dtype="float32",
+            data=None,
+            strides=None,
+            elem_offset=None,
+            scope="",
+            align=-1,
+            offset_factor=0,
+            buffer_type="default",
+        ):
+            assert isinstance(self.node, ast.Assign)
 
-    if strides is None:
-        strides = []
-    align = align.value if not isinstance(align, int) else align
-    offset_factor = offset_factor.value if not isinstance(offset_factor, int) else offset_factor
-    buffer = tvm.tir.decl_buffer(
-        shape,
-        dtype,
-        parser.target[0],
-        data,
-        strides,
-        elem_offset,
-        scope,
-        align,
-        offset_factor,
-        buffer_type,
-    )
-    parser.scope_emitter.block_scope().allocates.append(tvm.tir.BufferAllocate(buffer, scope))
-    return buffer
+            if strides is None:
+                strides = []
+            align = align.value if not isinstance(align, int) else align
+            offset_factor = (
+                offset_factor.value if not isinstance(offset_factor, int) else offset_factor
+            )
+            buffer = tvm.tir.decl_buffer(
+                shape,
+                dtype,
+                self.node.targets[0].id,
+                data,
+                strides,
+                elem_offset,
+                scope,
+                align,
+                offset_factor,
+                buffer_type,
+            )
+            self.context.block_scope().allocates.append(tvm.tir.BufferAllocate(buffer, scope))
+            self.context.update_symbol(self.node.targets[0].id, buffer)
 
-
-@register_special_stmt()
-def bind(parser, node, block_var, binding):
-    parser.scope_emitter.block_scope().binding[block_var] = binding
-
-
-@register_special_stmt()
-def reads(parser, node, reads):
-    parser.scope_emitter.block_scope().reads = [reads] if not isinstance(reads, list) else reads
-
-
-@register_special_stmt()
-def writes(parser, node, writes):
-    parser.scope_emitter.block_scope().writes = [writes] if not isinstance(writes, list) else writes
-
-
-@register_special_stmt()
-def block_attr(parser, node, attrs):
-    parser.scope_emitter.block_scope().annotations = attrs
+        super().__init__(buffer_allocate, def_symbol=True)
 
 
-@register_special_stmt()
-def where(parser, node, predicate):
-    parser.scope_emitter.block_scope().predicate = predicate
+@register
+class BlockVarBind(SpecialStmt):
+    def __init__(self):
+        def bind(block_var, binding):
+            self.context.block_scope().binding[block_var] = binding
+
+        super().__init__(bind, def_symbol=False)
 
 
-    """Special function buffer_decl(shape, dtype, data, strides, elem_offset, scope, align,
-                                         offset_factor, buffer_type)
-    Example
-    -------
-    .. code-block:: python
+@register
+class BlockReads(SpecialStmt):
+    def __init__(self):
+        def reads(reads):
+            self.context.block_scope().reads = [reads] if not isinstance(reads, list) else reads
 
-        A = tir.buffer_decl((128, 128), dtype="float32")
-    """
+        super().__init__(reads, def_symbol=False)
+
+
+@register
+class BlockWrites(SpecialStmt):
+    def __init__(self):
+        def writes(writes):
+            self.context.block_scope().writes = [writes] if not isinstance(writes, list) else writes
+
+        super().__init__(writes, def_symbol=False)
+
+
+@register
+class BlockAttr(SpecialStmt):
+    def __init__(self):
+        def block_attr(attrs):
+            attrs = [
+                tvm.tir.Annotation(
+                    key, tvm.runtime.convert(val) if isinstance(val, str) else val
+                )
+                for key, val in attrs.items()
+            ]
+            self.context.block_scope().annotations = attrs
+
+        super().__init__(block_attr, def_symbol=False)
+
+
+@register
+class BlockPredicate(SpecialStmt):
+    def __init__(self):
+        def where(predicate):
+            self.context.block_scope().predicate = predicate
+
+        super().__init__(where, def_symbol=False)
+
+
 @register
 class BufferDeclare(SpecialStmt):
     """Special Stmt buffer_decl(shape, dtype, data, strides, elem_offset, scope, align,
@@ -583,6 +598,14 @@ class EnvThread(SpecialStmt):
             self.context.update_symbol(v.name, v, self.node)
 
         super().__init__(env_thread, def_symbol=True)
+
+
+class TVMScriptLambda:
+    """TVM Script Lambda, used in lambda expression"""
+
+    def __init__(self, args, body):
+        self.args = args
+        self.body = body
 
 
 @register

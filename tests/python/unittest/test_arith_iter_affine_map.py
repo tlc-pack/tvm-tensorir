@@ -140,16 +140,6 @@ def test_fuse():
                                     var_dom([(x, 3), (y, 4)]))
     assert len(res) == 0
 
-    # simple stride pattern
-    res = tvm.arith.detect_iter_map([x * 4 + y * 2], var_dom([(x, 3), (y, 2)]))
-    assert len(res) == 1
-    assert_iter_sum_pattern(res[0], 6, 0, scale=2)
-
-    # simple stride pattern with symbolic
-    res = tvm.arith.detect_iter_map([x * 2 * c0 + y * 2], var_dom([(x, 3), (y, c0)]))
-    assert len(res) == 1
-    assert_iter_sum_pattern(res[0], 3 * c0, 0, scale=2)
-
 
 def test_split():
     x = tvm.tir.Var("x", "int32")
@@ -199,20 +189,6 @@ def test_split():
                                     var_dom([(x, 3), (y, c0)]))
     assert len(res) == 1
     assert_iter_sum_pattern(res[0], 3*c0, 0, scale=2)
-
-    res = tvm.arith.detect_iter_map([fld(x * 2, 4), flm(x * 2, 4)], var_dom([(x, 8)]))
-
-    assert len(res) == 2
-    assert_iter_sum_pattern(res[0], 4, 0, scale=1)
-    assert_iter_sum_pattern(res[1], 2, 0, scale=2)
-
-    res = tvm.arith.detect_iter_map([fld(x * 2, 4) * 4 + flm(x * 2, 4)], var_dom([(x, 8)]))
-
-    assert len(res) == 1
-    assert_iter_sum_pattern(res[0], 8, 0, scale=2)
-
-    res = tvm.arith.detect_iter_map([fld(x, flm(flm(y, 8), 6))], var_dom([(x, 24), (y, 8)]))
-    assert len(res) == 0
 
     res = tvm.arith.detect_iter_map(iter_var_par([(0, 4)]), [fld(x, flm(flm(y, 8), 6))],
                                     var_dom([(x, 24), (y, 8)]))
