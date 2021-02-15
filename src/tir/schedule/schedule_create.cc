@@ -120,7 +120,7 @@ class ScopeMapCreator : public StmtVisitor {
     // Update parent scope if exists
     if (!frames_.empty()) {
       auto& top = frames_.back();
-      top.scope.AddChildBlock(sref, &top.buffer_readers);
+      top.scope->AddChildBlock(sref, &top.buffer_readers);
     }
   }
 

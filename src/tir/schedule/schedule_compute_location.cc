@@ -357,20 +357,20 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
   const StmtSRef& parent_block_sref = GetParentBlockSRef(block_sref);
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
   const Scope& scope = scopes.at(parent_block_sref);
-  Array<DepEdge> edges_to_pred = scope.GetPredecessors(block_sref);
-  Array<DepEdge> edges_to_succ = scope.GetSuccessors(block_sref);
+  Array<DepEdge> edges_to_pred = scope->GetPredecessors(block_sref);
+  Array<DepEdge> edges_to_succ = scope->GetSuccessors(block_sref);
   // Cond 0. `block` and `loop` are in the same scope
   CHECK_EQ(parent_block_sref.get(), GetParentBlockSRef(loop_sref).get())
       << "ValueError: 'compute_at' expects 'block' and 'loop' be in the same block";
   // Cond 1. 'block' is complete/reduction block
-  CHECK(scope.IsComplete(block_sref) || scope.IsReduction(block_sref))
+  CHECK(scope->IsComplete(block_sref) || scope->IsReduction(block_sref))
       << "ValueError: 'compute_at' expects 'block' to be a complete or reduction block";
   // Cond 2. Check all RAW successors are in the subtree rooted by loop_sref
   CHECK(EachEdgePointsToABlock(edges_to_succ, GetChildBlocks(loop_sref), /*raw_edge_only=*/true))
       << "ValueError: 'compute_at' does not apply to a block that some other "
       << "blocks outside the scope depends on";
   // Cond 3. The subtree has compact data flow
-  CHECK(scope.IsCompactDataFlow(GetSubTreeOfParent(block_sref), this))
+  CHECK(scope->IsCompactDataFlow(GetSubTreeOfParent(block_sref), this))
       << "ValueError: 'compute_at' expects the subtree of 'block' to have compact dataflow";
   // Cond 4. Check the block is not a output block
   for (const TensorRegion& parent_write : parent_block->writes) {
@@ -454,26 +454,26 @@ void ScheduleNode::reverse_compute_at(const StmtSRef& block_sref, const StmtSRef
   const StmtSRef& parent_block_sref = GetParentBlockSRef(block_sref);
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
   const Scope& scope = scopes.at(parent_block_sref);
-  Array<DepEdge> edges_to_pred = scope.GetPredecessors(block_sref);
-  Array<DepEdge> edges_to_succ = scope.GetSuccessors(block_sref);
+  Array<DepEdge> edges_to_pred = scope->GetPredecessors(block_sref);
+  Array<DepEdge> edges_to_succ = scope->GetSuccessors(block_sref);
   // Cond 0. `block` and `loop` are in the same scope
   CHECK_EQ(parent_block_sref.get(), GetParentBlockSRef(loop_sref).get())
       << "ValueError: 'reverse_compute_at' expects 'block' and 'loop' be in the same block";
   // Cond 1. 'block' is complete/reduction block
-  CHECK(scope.IsComplete(block_sref) || scope.IsReduction(block_sref))
+  CHECK(scope->IsComplete(block_sref) || scope->IsReduction(block_sref))
       << "ValueError: 'reverse_compute_at' expects 'block' to be a complete or reduction block";
   // Cond 2. Check all RAW predecessors are in the subtree rooted by loop_sref
   CHECK(EachEdgePointsToABlock(edges_to_pred, GetChildBlocks(loop_sref), /*raw_edge_only=*/true))
       << "ValueError: 'reverse_compute_at' does not apply to a block that some other "
       << "blocks outside the scope depends on";
   // Cond 3. The subtree has compact data flow
-  CHECK(scope.IsCompactDataFlow(GetSubTreeOfParent(block_sref), this))
+  CHECK(scope->IsCompactDataFlow(GetSubTreeOfParent(block_sref), this))
       << "ValueError: 'reverse_compute_at' expects the subtree of 'block' to have compact dataflow";
   // Cond 4. Check there is only one RAW predecessor
   CHECK_EQ(edges_to_pred.size(), 1)
       << "ValueError: 'reverse_compute_at' expects only one producer of current block";
   // Cond 5. Check the RAW predecessor is complete/reduction block
-  CHECK(scope.IsComplete(edges_to_pred[0]->dst) || scope.IsReduction(edges_to_pred[0]->dst))
+  CHECK(scope->IsComplete(edges_to_pred[0]->dst) || scope->IsReduction(edges_to_pred[0]->dst))
       << "ValueError: 'reverse_compute_at' expects producers of 'block' to be a complete or "
          "reduction block";
   // Mutation
