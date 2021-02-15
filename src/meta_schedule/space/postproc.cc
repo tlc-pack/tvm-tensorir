@@ -93,7 +93,7 @@ class PostprocRewriteTensorize {
       // Remove the annotation
       DelAnn(sch->sch, block_sref, tir::attr::auto_tensorize);
       // Get the surrounding loops
-      Array<tir::StmtSRef> loop_srefs = sch->sch->GetLoopsInScope(block_sref);
+      Array<tir::StmtSRef> loop_srefs = sch->sch->GetAxes(block_sref);
       // Decompose Reduction
       {
         // (TODO) bohan

@@ -25,7 +25,6 @@
 #define TVM_TIR_SCOPE_H_
 
 #include <tvm/tir/stmt.h>
-#include <tvm/tir/stmt_sref.h>
 
 #include <unordered_map>
 #include <vector>
@@ -34,6 +33,49 @@ namespace tvm {
 namespace tir {
 
 class ScheduleNode;
+
+/*! \brief The container of stmt schedulable ref. */
+class StmtSRefNode : public Object {
+ public:
+  /*! \brief The corresponding stmt node */
+  const StmtNode* stmt;
+  /*! \brief The parent sref */
+  StmtSRefNode* parent;
+  /*! \brief The location in an array if parent contains SeqStmt. */
+  int64_t seq_index;
+  /*! \brief Whether the loop bindings are validatable */
+  bool binding_valid;
+
+  /*!
+   * \brief Get the referenced statement with type checking. It serves the same purpose as
+   * ObjectRef::as, but does not require strong reference to `stmt`
+   * \tparam StmtType The type that `this->stmt` is assumed to be
+   * \return nullptr if type check fails, otherwise the type casted from `this->stmt`
+   */
+  template <typename StmtType>
+  const StmtType* GetStmt() const {
+    if (stmt != nullptr && stmt->IsInstance<StmtType>()) {
+      return static_cast<const StmtType*>(stmt);
+    } else {
+      return nullptr;
+    }
+  }
+
+  void VisitAttrs(AttrVisitor* v) {}
+
+  static constexpr const char* _type_key = "StmtSRef";
+  TVM_DECLARE_FINAL_OBJECT_INFO(StmtSRefNode, Object);
+};
+
+/*!
+ * \brief The stmt schedulable ref.
+ */
+class StmtSRef : public ObjectRef {
+ public:
+  explicit StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index = -1,
+                    bool binding_valid = false);
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(StmtSRef, ObjectRef, StmtSRefNode);
+};
 
 enum class DepType : int {
   kRAW = 0,

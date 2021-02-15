@@ -170,7 +170,7 @@ void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const Annotation& 
       return true;
     });
   }
-  this->Replace(loop_sref, WithAnnotation(loop, annotation));
+  this->Replace(loop_sref, WithAnnotation(loop, annotation), {});
 }
 
 void ScheduleNode::vectorize(const StmtSRef& loop_sref) {
@@ -197,7 +197,8 @@ void ScheduleNode::unroll(const StmtSRef& loop_sref) {
   const auto* loop = loop_sref->GetStmt<LoopNode>();
   CHECK(loop != nullptr) << "TypeError: Unroll expects a loop, but get type: "
                          << loop_sref->stmt->GetTypeKey();
-  this->Replace(loop_sref, WithAnnotation(loop, Annotation(attr::loop_type, StringImm("unroll"))));
+  this->Replace(loop_sref, WithAnnotation(loop, Annotation(attr::loop_type, StringImm("unroll"))),
+                {});
 }
 
 void ScheduleNode::pragma(const StmtSRef& loop_sref, const String& pragma_type,
@@ -205,7 +206,7 @@ void ScheduleNode::pragma(const StmtSRef& loop_sref, const String& pragma_type,
   const auto* loop_ptr = loop_sref->GetStmt<LoopNode>();
   CHECK(loop_ptr) << "TypeError: pragma expects a Loop as its first argument";
   this->Replace(loop_sref,
-                WithAnnotation(loop_ptr, Annotation("pragma_" + pragma_type, pragma_value)));
+                WithAnnotation(loop_ptr, Annotation("pragma_" + pragma_type, pragma_value)), {});
 }
 
 void ScheduleNode::double_buffer(const StmtSRef& block_sref) {
@@ -227,6 +228,26 @@ void ScheduleNode::double_buffer(const StmtSRef& block_sref) {
   Block new_block = WithAnnotation(block_ptr, Annotation(tir::attr::double_buffer_scope, 1));
   this->Replace(block_sref, new_block, {{new_block, GetRef<Block>(block_ptr)}});
 }
+
+struct Internal {
+  static void Vectorize(Schedule self, StmtSRef loop_sref) { self->vectorize(loop_sref); }
+  static void Parallel(Schedule self, StmtSRef loop_sref) { self->parallel(loop_sref); }
+  static void Unroll(Schedule self, StmtSRef loop_sref) { self->unroll(loop_sref); }
+  static void DoubleBuffer(Schedule self, StmtSRef loop_sref) { self->double_buffer(loop_sref); }
+  static void Bind(Schedule self, StmtSRef loop_sref, IterVar thread) {
+    self->bind(loop_sref, thread);
+  }
+  static void Pragma(Schedule self, StmtSRef loop_sref, String pragma_type, PrimExpr pragma_value) {
+    self->pragma(loop_sref, pragma_type, pragma_value);
+  }
+};
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleVectorize").set_body_typed(Internal::Vectorize);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleParallel").set_body_typed(Internal::Parallel);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnroll").set_body_typed(Internal::Unroll);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDoubleBuffer").set_body_typed(Internal::DoubleBuffer);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBind").set_body_typed(Internal::Bind);
+TVM_REGISTER_GLOBAL("tir.schedule.SchedulePragma").set_body_typed(Internal::Pragma);
 
 }  // namespace tir
 }  // namespace tvm
