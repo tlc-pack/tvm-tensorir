@@ -777,7 +777,7 @@ void ScheduleNode::tensorize(const StmtSRef& loop_sref, const TensorIntrin& intr
       return it->second;
   });
   // Replace
-  this->Replace(stmt2ref.at(block_realize->block->body.get()), new_body);
+  this->Replace(stmt2ref.at(block_realize->block->body.get()), new_body, {});
 }
 
 struct Internal {

@@ -75,7 +75,7 @@ class Schedule(Object):
         axes: List of StmtSRef or StmtSRef
             The axes of the block
         """
-        axes = _ffi_api_schedule.ScheduleGetLoopsInScope(self, block)
+        axes = _ffi_api_schedule.ScheduleGetAxes(self, block)
         if len(axes) == 1:
             axes = axes[0]
         return axes

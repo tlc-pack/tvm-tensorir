@@ -170,7 +170,7 @@ void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const Annotation& 
       return true;
     });
   }
-  this->Replace(loop_sref, WithAnnotation(loop, annotation));
+  this->Replace(loop_sref, WithAnnotation(loop, annotation), {});
 }
 
 void ScheduleNode::vectorize(const StmtSRef& loop_sref) {
@@ -197,7 +197,8 @@ void ScheduleNode::unroll(const StmtSRef& loop_sref) {
   const auto* loop = loop_sref->GetStmt<LoopNode>();
   CHECK(loop != nullptr) << "TypeError: Unroll expects a loop, but get type: "
                          << loop_sref->stmt->GetTypeKey();
-  this->Replace(loop_sref, WithAnnotation(loop, Annotation(attr::loop_type, StringImm("unroll"))));
+  this->Replace(loop_sref, WithAnnotation(loop, Annotation(attr::loop_type, StringImm("unroll"))),
+                {});
 }
 
 void ScheduleNode::pragma(const StmtSRef& loop_sref, const String& pragma_type,
@@ -205,7 +206,7 @@ void ScheduleNode::pragma(const StmtSRef& loop_sref, const String& pragma_type,
   const auto* loop_ptr = loop_sref->GetStmt<LoopNode>();
   CHECK(loop_ptr) << "TypeError: pragma expects a Loop as its first argument";
   this->Replace(loop_sref,
-                WithAnnotation(loop_ptr, Annotation("pragma_" + pragma_type, pragma_value)));
+                WithAnnotation(loop_ptr, Annotation("pragma_" + pragma_type, pragma_value)), {});
 }
 
 void ScheduleNode::double_buffer(const StmtSRef& block_sref) {

@@ -59,7 +59,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
         << loop_sref->stmt->GetTypeKey();
     CHECK(block->init.defined()) << "ValueError: 'decompose_reduction' expect a reduction block, "
                                     "but the block has no init block";
-    Array<StmtSRef> loops = GetLoopsInScope(block_sref);
+    Array<StmtSRef> loops = GetAxes(block_sref);
     const BlockRealizeNode* realize = GetBlockRealize(block_sref).get();
     // Cond 0. Check loop_sref is an ancestor of block_sref
     CHECK(ListContainsElement(loops, loop_sref))
@@ -152,7 +152,8 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
                          /*min=*/parent->min,
                          /*extent=*/parent->extent,
                          /*annotations=*/parent->annotations,
-                         /*body=*/SeqStmt::Flatten(Array<Stmt>{body, parent->body})));
+                         /*body=*/SeqStmt::Flatten(Array<Stmt>{body, parent->body})),
+                    {});
     } else if (const auto* parent = loop_sref->parent->GetStmt<BlockNode>()) {
       Block new_block = Block(/*iter_vars=*/parent->iter_vars,
                               /*reads=*/parent->reads,
@@ -279,7 +280,7 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   CHECK(this->scopes.at(scope)->CanMergeReduction(init_sref, update_sref));
   // Cond 2. Check LCA is higher than all the loops related to update_block's reduce block var
   if (!scope.same_as(lca)) {
-    for (const StmtSRef& higher_loop : GetLoopsInScope(update_sref)) {
+    for (const StmtSRef& higher_loop : GetAxes(update_sref)) {
       if (higher_loop.same_as(lca)) {
         break;
       }
@@ -300,7 +301,7 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   // Mutate
   // Step 1. Delete init block and its single-branched ancestors
   std::pair<Stmt, Stmt> removed = RemoveLeaf(init_sref, scope);
-  this->Replace(lca, removed.second);
+  this->Replace(lca, removed.second, {});
   // Step 2. Change the update block to reduction block
   BufferStore new_init = GetRef<BufferStore>(update_body);
   new_init.CopyOnWrite()->value = init_body->value;
@@ -374,10 +375,10 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   PrimExpr rhs = reducer_rhs.value();
   // Get the loops outside the block
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> iters;
-  auto loops = GetLoopsInScope(block_sref);
+  auto loops = GetAxes(block_sref);
   for (auto it = loops.rbegin(); it != loops.rend(); ++it) {
     const auto* l = (*it)->GetStmt<LoopNode>();
-    CHECK(l) << "InternalError: GetLoopsInScope returns a block sref";
+    CHECK(l) << "InternalError: GetAxes returns a block sref";
     CHECK(!data_par_loops.count(l->loop_var.get()) || !reduce_loops.count(l->loop_var.get()))
         << "ValueError: loop " << l->loop_var << " is related with both data_par and reduce iters ";
     iters[l->loop_var] = Range::FromMinExtent(l->min, l->extent);
@@ -501,7 +502,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   Optional<StmtSRef> top;
   for (int i = loops.size() - 1; i >= 0; --i) {
     const auto* l = loops[i]->GetStmt<LoopNode>();
-    CHECK(l) << "InternalError: GetLoopsInScope returns a block sref";
+    CHECK(l) << "InternalError: GetAxes returns a block sref";
     if (l->body->IsInstance<SeqStmtNode>()) {
       CHECK(i != (int)loops.size() - 1) << "ValueError: can not rfactor";
       top = loops[i + 1];

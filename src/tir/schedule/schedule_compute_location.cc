@@ -437,7 +437,7 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
   if (const auto* replaced_block = replaced.as<BlockNode>()) {
     this->Replace(lca, replaced, {{GetRef<Block>(replaced_block), GetRef<Block>(parent_block)}});
   } else {
-    this->Replace(lca, replaced);
+    this->Replace(lca, replaced, {});
   }
 }
 
@@ -534,7 +534,7 @@ void ScheduleNode::reverse_compute_at(const StmtSRef& block_sref, const StmtSRef
   if (const auto* replaced_block = replaced.as<BlockNode>()) {
     this->Replace(lca, replaced, {{GetRef<Block>(replaced_block), GetRef<Block>(parent_block)}});
   } else {
-    this->Replace(lca, replaced);
+    this->Replace(lca, replaced, {});
   }
 }
 

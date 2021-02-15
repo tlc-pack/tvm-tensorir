@@ -502,7 +502,7 @@ BlockRV ScheduleNode::GetBlock(const String& name) {
 
 Array<LoopRV> ScheduleNode::GetAxes(const BlockRV& block) {
   // Find the output from TIR
-  Array<tir::StmtSRef> tir_result = this->sch->GetLoopsInScope(Eval(block));
+  Array<tir::StmtSRef> tir_result = this->sch->GetAxes(Eval(block));
   // Create the output random variable
   Array<LoopRV> outputs;
   for (const tir::StmtSRef& axis : tir_result) {

@@ -44,10 +44,15 @@ class ScheduleNode : public Object {
   std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
   /*! \brief The block scopes of each block */
   std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual> scopes;
+  /*! \brief The reducer list for reduction pattern matching */
+  Array<CommReducer> reducers;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("func", &func);
     v->Visit("root", &root);
+    // `stmt2ref` is not visited
+    // `scopes` is not visited
+    v->Visit("reducers", &reducers);
   }
 
   /*!
@@ -56,8 +61,7 @@ class ScheduleNode : public Object {
    * \param target The new stmt
    * \param block_sref_map The Sref remapping of blocks
    */
-  void Replace(StmtSRef ref, Stmt target,
-               Map<Block, Block> block_sref_map = NullValue<Map<Block, Block> >());
+  void Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_map);
 
   /*!
    * \brief Get block from its tag
@@ -93,7 +97,7 @@ class ScheduleNode : public Object {
    * \param block The query block
    * \return the loop sref list
    */
-  Array<StmtSRef> GetLoopsInScope(const StmtSRef& block) const;
+  Array<StmtSRef> GetAxes(const StmtSRef& block) const;
 
   /*!
    * \brief Get the parent block sref of the given sref
@@ -192,8 +196,7 @@ class ScheduleNode : public Object {
    * \param loop_sref the position where init block_sref will be
    * \return the sref of init block
    */
-  StmtSRef decompose_reduction(const StmtSRef& block_sref,
-                               const Optional<StmtSRef>& loop_sref = NullOpt);
+  StmtSRef decompose_reduction(const StmtSRef& block_sref, const Optional<StmtSRef>& loop_sref);
 
   /*!
    * \brief Merge init and reduction block into reduction block
@@ -223,7 +226,7 @@ class ScheduleNode : public Object {
    * \param loop_sref the subtree root
    * \return the loop_sref of new block
    */
-  StmtSRef blockize(const StmtSRef& loop_sref, const String& exec_scope = "");
+  StmtSRef blockize(const StmtSRef& loop_sref, const String& exec_scope);
 
   /*!
    * \brief Tensorize the computation enclosed by loop with tensor_intrin
@@ -275,13 +278,6 @@ class ScheduleNode : public Object {
 
  private:
   /*!
-   * \brief Update the sref to make it point to new Block/Loop
-   * \param sref The outdated sref
-   * \param stmt The new stmt
-   */
-  void UpdateSRef(StmtSRefNode* sref, const Stmt& stmt);
-
-  /*!
    * \brief Help function for checking and mutating loops to do parallel computation
    *        For now it is only used for vectorize, bind and parallel
    * \param loop_sref the loop to be annotated
@@ -307,10 +303,8 @@ class ScheduleNode : public Object {
    */
   bool ValidateRegionCover(const StmtSRef& consumer) const;
 
-  /*! \brief The reducer list for reduction pattern matching */
-  Array<CommReducer> reducers_;
-
   friend class Schedule;
+  friend class ScheduleHelper;
 };
 
 class Schedule : public ObjectRef {

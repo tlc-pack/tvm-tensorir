@@ -109,7 +109,7 @@ Array<StmtSRef> ScheduleNode::split(const StmtSRef& loop_sref, const PrimExpr& n
   // Equivalence
   // - The total repeat number has not changed for each direct child block with updating predicate.
   // - The execution order has not changed. (The block executes with the same args and the same
-  // order with before.)
+  // order with before.
   const auto* loop = loop_sref->GetStmt<LoopNode>();
   CHECK(loop != nullptr) << "TypeError: 'split' expects a loop, but get type: "
                          << loop_sref->stmt->GetTypeKey();
@@ -145,8 +145,8 @@ Array<StmtSRef> ScheduleNode::split(const StmtSRef& loop_sref, const PrimExpr& n
   // Step 3. Generate two nested loops to replace the original loop
   Loop inner_loop(inner_var, inner_min, inner_extent, loop->annotations, new_loop_body);
   Loop outer_loop(outer_var, outer_min, outer_extent, loop->annotations, inner_loop);
-  outer_loop = Downcast<Loop>(RewriteBindings(outer_loop, GetLoopsInScope(loop_sref)));
-  this->Replace(loop_sref, outer_loop);
+  outer_loop = Downcast<Loop>(RewriteBindings(outer_loop, GetAxes(loop_sref)));
+  this->Replace(loop_sref, outer_loop, {});
   return {stmt2ref.at(outer_loop.get()), stmt2ref.at(outer_loop->body.get())};
 }
 
@@ -199,8 +199,8 @@ StmtSRef ScheduleNode::fuse(const StmtSRef& outer_sref, const StmtSRef& inner_sr
   PrimExpr fused_min = 0;
   PrimExpr fused_extent = analyzer.Simplify(outer->extent * inner->extent);
   Loop fused_loop = Loop(fused_var, fused_min, fused_extent, outer->annotations, new_loop_body);
-  fused_loop = Downcast<Loop>(RewriteBindings(fused_loop, GetLoopsInScope(outer_sref)));
-  this->Replace(outer_sref, fused_loop);
+  fused_loop = Downcast<Loop>(RewriteBindings(fused_loop, GetAxes(outer_sref)));
+  this->Replace(outer_sref, fused_loop, {});
   return stmt2ref.at(fused_loop.get());
 }
 
@@ -296,7 +296,7 @@ void ScheduleNode::reorder(const Array<StmtSRef>& order) {
     }
     return Stmt(n);
   };
-  this->Replace(GetRef<StmtSRef>(top), f_reorder(top, 0));
+  this->Replace(GetRef<StmtSRef>(top), f_reorder(top, 0), {});
 }
 
 struct Internal {
