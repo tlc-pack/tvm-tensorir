@@ -440,7 +440,7 @@ Array<BlockRV> ScheduleNode::GetProducers(const BlockRV& block) {
   // Find the output from TIR
   tir::StmtSRef block_sref = Eval(block);
   Array<tir::DepEdge> pred_edges =
-      this->sch->GetParentScope(block_sref).GetPredecessors(block_sref);
+      this->sch->GetParentScope(block_sref)->GetPredecessors(block_sref);
   // Create the output random variable
   Array<BlockRV> outputs;
   outputs.reserve(pred_edges.size());
@@ -461,7 +461,7 @@ Array<BlockRV> ScheduleNode::GetProducers(const BlockRV& block) {
 Array<BlockRV> ScheduleNode::GetConsumers(const BlockRV& block) {
   // Find the output from TIR
   tir::StmtSRef block_sref = Eval(block);
-  Array<tir::DepEdge> succ_edges = this->sch->GetParentScope(block_sref).GetSuccessors(block_sref);
+  Array<tir::DepEdge> succ_edges = this->sch->GetParentScope(block_sref)->GetSuccessors(block_sref);
   // Create the output random variable
   Array<BlockRV> outputs;
   outputs.reserve(succ_edges.size());

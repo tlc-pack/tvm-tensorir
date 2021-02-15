@@ -139,7 +139,7 @@ void ScheduleNode::compute_inline(const StmtSRef& block_sref) {
       << "ValueError: 'compute_inline' can only inline single assignment statement";
   CHECK_EQ(block->writes.size(), 1)
       << "ValueError: 'compute_inline' can only inline statement with one output";
-  CHECK(scope.IsComplete(block_sref))
+  CHECK(scope->IsComplete(block_sref))
       << "ValueError: 'compute_inline' can only inline a complete block";
 
   // Remove leaf
@@ -274,20 +274,20 @@ void ScheduleNode::reverse_compute_inline(const StmtSRef& block_sref) {
   const auto* scope_block = scope_block_sref->GetStmt<BlockNode>();
   const Scope& scope = scopes.at(scope_block_sref);
   // Cond 1. Check block_sref is complete
-  CHECK(scope.IsComplete(block_sref))
+  CHECK(scope->IsComplete(block_sref))
       << "ValueError: 'reverse_compute_inline' expects the 'block' to be a complete block";
   // Cond 2. The inner stmt of block_sref if a BufferStore
   CHECK(block->body.as<BufferStoreNode>())
       << "ValueError: 'reverse_compute_inline' expects the 'block' contains a single BufferStore";
   // Cond 3. block_sref has only one RAW producer
-  const auto& producers = scope.GetPredecessors(block_sref);
+  const auto& producers = scope->GetPredecessors(block_sref);
   CHECK_EQ(producers.size(), 1)
       << "ValueError: 'reverse_compute_inline' expects the 'block' has only one producer";
   CHECK(producers[0]->type == DepType::kRAW)
       << "ValueError: 'reverse_compute_inline' expects the 'block' has only one producer";
   const StmtSRef& producer_sref = producers[0]->dst;
   // Cond 4. The producer is complete
-  CHECK(scope.IsComplete(producer_sref))
+  CHECK(scope->IsComplete(producer_sref))
       << "ValueError: 'reverse_compute_inline' expects the producer of 'block' to be complete";
   // Cond 5. The inner stmt of producer is a BufferStore
   const auto* producer = producer_sref->GetStmt<BlockNode>();
@@ -295,7 +295,7 @@ void ScheduleNode::reverse_compute_inline(const StmtSRef& block_sref) {
       << "ValueError: 'reverse_compute_inline' expects the producer of 'block' to contain a single "
          "BufferStore";
   // Cond 6. The producer has only one consumer(which is block_sref)
-  const auto& consumers = scope.GetSuccessors(producer_sref);
+  const auto& consumers = scope->GetSuccessors(producer_sref);
   CHECK_EQ(consumers.size(), 1) << "ValueError: 'reverse_compute_inline' expects 'block' is the "
                                    "only consumer of its producer";
   CHECK_EQ(consumers[0]->dst, block_sref) << "ValueError: 'reverse_compute_inline' expects 'block' "

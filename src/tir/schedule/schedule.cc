@@ -434,16 +434,6 @@ void ValidateSRefs(const Schedule& sch) {
 }
 
 void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_map) {
-//  std::vector<Stmt> stmt_holder;
-//  std::vector<StmtSRef> sref_holder;
-//  for (const auto& kv : this->stmt2ref) {
-//    stmt_holder.push_back(GetRef<Stmt>(kv.first));
-//    sref_holder.push_back(kv.second);
-//  }
-//  StmtSRef ref_holder = ref;
-//  Stmt target_holder = target;
-//  Map<Block, Block> block_sref_map_holder = block_sref_map;
-
   // Note that old_ref is only a temporary SRef
   StmtSRef old_ref = StmtSRef(ref->stmt, ref->parent);
   auto root_node = root->stmt;
@@ -787,14 +777,14 @@ TVM_REGISTER_GLOBAL("tir.schedule.GetSuccessors")
     .set_body_typed<Array<DepEdge>(Schedule, StmtSRef, StmtSRef)>([](Schedule schedule,
                                                                      StmtSRef scope,
                                                                      StmtSRef block) {
-      return schedule->scopes[scope].GetSuccessors(block);
+      return schedule->scopes[scope]->GetSuccessors(block);
     });
 
 TVM_REGISTER_GLOBAL("tir.schedule.GetPredecessors")
     .set_body_typed<Array<DepEdge>(Schedule, StmtSRef, StmtSRef)>([](Schedule schedule,
                                                                      StmtSRef scope,
                                                                      StmtSRef block) {
-      return schedule->scopes[scope].GetPredecessors(block);
+      return schedule->scopes[scope]->GetPredecessors(block);
     });
 
 }  // namespace tir

@@ -99,7 +99,7 @@ bool ScheduleNode::ValidateRegionCover(const StmtSRef& consumer_block_sref) cons
   // Maps a buffer var to its producers
   std::unordered_map<const VarNode*, std::vector<Producer>> buffer_producers;
   // Collect all producers to a buffer by enumerating all RAW predecessors of the consumer
-  for (const DepEdge& edge : scopes.at(parent_block_sref).GetPredecessors(consumer_block_sref)) {
+  for (const DepEdge& edge : scopes.at(parent_block_sref)->GetPredecessors(consumer_block_sref)) {
     if (edge->type != DepType::kRAW) {
       continue;
     }
