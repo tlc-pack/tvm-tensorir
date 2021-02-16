@@ -78,6 +78,13 @@ int StepsHighestNonUniqueAncestor(const StmtSRef& sref, bool func_is_unique) {
   return result;
 }
 
+struct Info {
+  /*! \brief The srefs that are reused */
+  std::unordered_set<StmtSRef, ObjectPtrHash, ObjectPtrEqual> reused;
+  /*! \brief The srefs whose subtrees that are unchanged and their parents */
+  std::unordered_map<StmtSRef, StmtSRefNode*, ObjectPtrHash, ObjectPtrEqual> intact;
+};
+
 /*!
  * \brief A helper that creates new srefs for newly-added blocks and loops.
  *
@@ -96,10 +103,11 @@ int StepsHighestNonUniqueAncestor(const StmtSRef& sref, bool func_is_unique) {
  */
 class SRefCreator : public StmtVisitor {
  public:
-  explicit SRefCreator(ScheduleNode* self, const Map<Block, Block>& block_sref_map,
-                       StmtSRefNode* parent)
-      : self(self), parents({parent}), block_sref_map(block_sref_map) {
-    // Set `loop_var2sref` properly
+  static Info Create(ScheduleNode* self, const Map<Block, Block>& block_sref_map,
+                     StmtSRefNode* parent, const Stmt& new_stmt) {
+    // For each loop var, find its corresponding sref
+    // `block_sref_map` and `loop_var2sref` work together providing information to detect sref reuse
+    std::unordered_map<const VarNode*, StmtSRef> loop_var2sref;
     loop_var2sref.reserve(self->stmt2ref.size());
     for (const auto& iter : self->stmt2ref) {
       const StmtNode* stmt = iter.first;
@@ -109,14 +117,28 @@ class SRefCreator : public StmtVisitor {
         loop_var2sref.emplace(loop->loop_var.get(), sref);
       }
     }
+    // Then construct a SRefCreator
+    SRefCreator creator(self, block_sref_map, loop_var2sref, parent);
+    creator(new_stmt);
+    return std::move(creator.result);
   }
+
+ private:
+  explicit SRefCreator(ScheduleNode* self,                                                 //
+                       const Map<Block, Block>& block_sref_map,                            //
+                       const std::unordered_map<const VarNode*, StmtSRef>& loop_var2sref,  //
+                       StmtSRefNode* parent)
+      : self(self),
+        block_sref_map(block_sref_map),
+        loop_var2sref(loop_var2sref),
+        parents({parent}) {}
 
   void VisitStmt_(const LoopNode* op) override {
     StmtSRef& sref = self->stmt2ref[op];
     StmtSRefNode* parent = parents.back();
     // Case 1. The subtree has been tracked by the stmt2ref
     if (sref.defined()) {
-      used_border_parent_[sref] = parent;
+      result.intact.emplace(sref, parent);
       return;
     }
     // Case 2. We are replace an existing loop,
@@ -126,7 +148,7 @@ class SRefCreator : public StmtVisitor {
       sref = it->second;
       sref->stmt = op;
       sref->parent = parent;
-      reuse_sref_.insert(sref);
+      result.reused.insert(sref);
     } else {
       // Case 3. Replacing an existing loop with a new one
       sref = StmtSRef(op, parent, /*seq_index=*/-1, /*binding_valid=*/true);
@@ -141,7 +163,7 @@ class SRefCreator : public StmtVisitor {
     StmtSRefNode* parent = parents.back();
     // Case 1. The subtree has been tracked by the stmt2ref
     if (sref.defined()) {
-      used_border_parent_[sref] = parent;
+      result.intact.emplace(sref, parent);
       return;
     }
     // Case 2. We are replace an existing block,
@@ -151,7 +173,7 @@ class SRefCreator : public StmtVisitor {
       sref = self->stmt2ref.at((*it).second.get());
       sref->stmt = op;
       sref->parent = parent;
-      reuse_sref_.insert(sref);
+      result.reused.insert(sref);
     } else {
       // Case 3. Replacing an existing block with a new one
       sref = StmtSRef(op, parent, /*seq_index=*/-1, /*binding_valid=*/true);
@@ -164,12 +186,11 @@ class SRefCreator : public StmtVisitor {
   }
 
   ScheduleNode* self;
-  std::vector<StmtSRefNode*> parents;
   const Map<Block, Block>& block_sref_map;
-  std::unordered_map<const VarNode*, StmtSRef> loop_var2sref;
+  const std::unordered_map<const VarNode*, StmtSRef>& loop_var2sref;
+  std::vector<StmtSRefNode*> parents;
 
-  std::unordered_set<StmtSRef, ObjectPtrHash, ObjectPtrEqual> reuse_sref_;
-  std::unordered_map<StmtSRef, StmtSRefNode*, ObjectPtrHash, ObjectPtrEqual> used_border_parent_;
+  Info result;
 };
 
 /*!
@@ -188,15 +209,17 @@ class SRefCreator : public StmtVisitor {
  */
 class SRefRemover : public StmtVisitor {
  public:
-  explicit SRefRemover(ScheduleNode* self,
-                       std::unordered_map<StmtSRef, StmtSRefNode*, ObjectPtrHash, ObjectPtrEqual>&&
-                           used_border_parent,
-                       std::unordered_set<StmtSRef, ObjectPtrHash, ObjectPtrEqual>&& reuse_sref)
-      : self(self), reuse_sref_(reuse_sref), used_border_parent_(used_border_parent) {}
+  static void Remove(ScheduleNode* self, const Info& info, const Stmt& stmt) {
+    SRefRemover remover(self, info);
+    remover(stmt);
+  }
+
+ private:
+  explicit SRefRemover(ScheduleNode* self, const Info& info) : self(self), info(info) {}
 
   bool CheckIntactSubtree(const StmtSRef& sref) const {
-    auto itr = used_border_parent_.find(sref);
-    if (itr == used_border_parent_.end()) {
+    auto itr = info.intact.find(sref);
+    if (itr == info.intact.end()) {
       return false;
     }
     sref->parent = itr->second;
@@ -204,7 +227,7 @@ class SRefRemover : public StmtVisitor {
   }
 
   bool CheckReused(const StmtSRef& sref) const {
-    if (reuse_sref_.count(sref)) {
+    if (info.reused.count(sref)) {
       return true;
     }
     sref->stmt = nullptr;
@@ -234,42 +257,34 @@ class SRefRemover : public StmtVisitor {
     VisitStmt(op->body);
   }
 
- private:
   ScheduleNode* self;
-  std::unordered_set<StmtSRef, ObjectPtrHash, ObjectPtrEqual> reuse_sref_;
-  std::unordered_map<StmtSRef, StmtSRefNode*, ObjectPtrHash, ObjectPtrEqual> used_border_parent_;
+  Info info;
 };
 
-class SubReplacer : protected StmtMutator {
+class ParentMutator : protected StmtMutator {
  public:
-  explicit SubReplacer(StmtSRefNode* sref, const Stmt& target,
-                       std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref)
-      : src_sref(sref), tgt_stmt(target), stmt2ref_(stmt2ref), is_first_stmt(true) {}
-
-  /*!
-   * \brief mutate weakref
-   * \param weakref The statement to be mutated.
-   * \param allow_copy_on_write Whether we allow copy on write in the weakref.
-   *        That means weakref is only referenced once, and all its
-   *        parents are also only referenced once.
-   * \return The result of the mutation.
-   */
-  Stmt operator()(const StmtNode* weakref, bool allow_copy_on_write) {
-    this->allow_copy_on_write_ = allow_copy_on_write;
-    Stmt stmt{nullptr};
-    if (weakref->IsInstance<LoopNode>()) {
-      return StmtMutator::VisitStmt_(static_cast<const LoopNode*>(weakref));
-    } else if (weakref->IsInstance<BlockNode>()) {
-      return StmtMutator::VisitStmt_(static_cast<const BlockNode*>(weakref));
+  static Stmt Mutate(ScheduleNode* self, StmtSRefNode* src_sref, const Stmt& tgt_stmt,
+                     bool allow_copy_on_write) {
+    ParentMutator mutator(self, src_sref, tgt_stmt);
+    mutator.allow_copy_on_write_ = allow_copy_on_write;
+    const StmtNode* parent_stmt = src_sref->parent->stmt;
+    if (parent_stmt->IsInstance<LoopNode>()) {
+      return mutator.VisitStmt_(static_cast<const LoopNode*>(parent_stmt));
+    } else if (parent_stmt->IsInstance<BlockNode>()) {
+      return mutator.VisitStmt_(static_cast<const BlockNode*>(parent_stmt));
     }
-    LOG(FATAL) << "Unreachable";
+    LOG(FATAL) << "TypeError: Unknown type: " << (parent_stmt ? "None" : parent_stmt->GetTypeKey());
     throw;
   }
 
+ private:
+  explicit ParentMutator(ScheduleNode* self, StmtSRefNode* src_sref, const Stmt& tgt_stmt)
+      : self(self), src_sref(src_sref), tgt_stmt(tgt_stmt), is_first_stmt(true) {}
+
   Stmt VisitStmt(const Stmt& stmt) override {
     if (stmt.get() == src_sref->stmt) {
-      // if the statement matches the replace target
-      // just return the target stmt
+      // if the statement matches the replace tgt_stmt
+      // just return the tgt_stmt
       return tgt_stmt;
     } else {
       return StmtMutator::VisitStmt(stmt);
@@ -296,19 +311,19 @@ class SubReplacer : protected StmtMutator {
   }
 
   Stmt VisitStmt_(const SeqStmtNode* stmt) override {
-    int64_t seq_index = src_sref->seq_index;
+    int i = src_sref->seq_index;
     // fast path
-    if (seq_index >= 0 && is_son(stmt->seq[seq_index], src_sref->stmt)) {
-      auto n = CopyOnWrite(stmt);
-      if (tgt_stmt->IsInstance<SeqStmtNode>()) {
-        // note that nested SeqStmt is not allowed, so we flatten target here
-        const Array<Stmt>& target_seq = tgt_stmt.as<SeqStmtNode>()->seq;
-        n->seq.erase(n->seq.begin() + seq_index);
-        n->seq.insert(n->seq.begin() + seq_index, target_seq.begin(), target_seq.end());
-        for (size_t i = 0; i < target_seq.size(); i++)
-          (*stmt2ref_)[target_seq[i].get()]->seq_index = i + seq_index;
+    if (i >= 0 && is_same(stmt->seq[i], src_sref->stmt)) {
+      ObjectPtr<SeqStmtNode> n = CopyOnWrite(stmt);
+      if (const auto* tgt_stmt_seq = tgt_stmt.as<SeqStmtNode>()) {
+        const Array<Stmt>& target_seq = tgt_stmt_seq->seq;
+        n->seq.erase(n->seq.begin() + i);
+        n->seq.insert(n->seq.begin() + i, target_seq.begin(), target_seq.end());
+        for (const Stmt& stmt : target_seq) {
+          self->stmt2ref[stmt.get()]->seq_index = i++;
+        }
       } else {
-        n->seq.Set(seq_index, tgt_stmt);
+        n->seq.Set(i, tgt_stmt);
       }
       return Stmt(n);
     } else {
@@ -317,55 +332,53 @@ class SubReplacer : protected StmtMutator {
   }
 
  private:
-  // target is Block/Loop, But son of SeqStmt may be the BlockRealize
-  static bool is_son(const Stmt& son, const StmtNode* parent) {
-    if (son.as<LoopNode>()) {
-      return son.get() == parent;
+  static bool is_same(const Stmt& son, const StmtNode* expected) {
+    if (son->IsInstance<LoopNode>()) {
+      return son.get() == expected;
     } else {
       const auto* ptr = son.as<BlockRealizeNode>();
       CHECK(ptr != nullptr);
-      return ptr->block.get() == parent;
+      return ptr->block.get() == expected;
     }
   }
 
+  ScheduleNode* self;
   StmtSRefNode* src_sref;
   const Stmt& tgt_stmt;
-  std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
 
   bool is_first_stmt;
 };
 
-void ScheduleNode::Replace(StmtSRef sref, Stmt tgt_stmt, Map<Block, Block> block_sref_map) {
+void ScheduleNode::Replace(StmtSRef sref, Stmt tgt_stmt, const Map<Block, Block>& block_sref_map) {
   // Reset sref as a new sref so that its content won't be affected by subsequent changes
   sref = StmtSRef(sref->stmt, sref->parent);
-  Stmt old_stmt = GetRef<Stmt>(sref->stmt);
+  Stmt src_stmt = GetRef<Stmt>(sref->stmt);
   const StmtNode* root_stmt = this->root->stmt;
-  // Create SRef tree for the incoming target Stmt
-  // Initialize old SRef remover
-  SRefCreator creator(this, block_sref_map, sref->parent);
-  creator(tgt_stmt);
-  SRefRemover remover(this, std::move(creator.used_border_parent_), std::move(creator.reuse_sref_));
+  // Create sref tree for the incoming tgt_stmt
+  Info creation_info = SRefCreator::Create(this, block_sref_map, sref->parent, tgt_stmt);
   // The maximum number of hops until we don't need to copy
   int num_copy_steps = StepsHighestNonUniqueAncestor(sref, /*func_is_unique=*/this->func.unique());
   StmtSRefNode* src_sref = sref.get();
   for (int i = 0; i <= num_copy_steps && src_sref->stmt != root_stmt; ++i) {
     bool parent_is_uniquely_referenced = (i == num_copy_steps);
-    StmtSRefNode* parent_sref = src_sref->parent;
-    // Replace `src_sref` with target and return a new parent Stmt)
-    Stmt new_stmt = SubReplacer(src_sref, tgt_stmt, &this->stmt2ref)(parent_sref->stmt,
-                                                                     parent_is_uniquely_referenced);
+    // Within the child/children of `src_sref->parent`,
+    // replace `src_sref` with `tgt_stmt`,
+    // and return the new parent stmt
+    Stmt new_parent_stmt =
+        ParentMutator::Mutate(this, src_sref, tgt_stmt, parent_is_uniquely_referenced);
     if (i != 0) {
+      // If `i == 0`, `src_sref` is `sref`, a local temporary object and we should not update it
       UpdateSRef(this, src_sref, tgt_stmt.get());
     }
-    tgt_stmt = new_stmt;
+    tgt_stmt = new_parent_stmt;
     if (parent_is_uniquely_referenced) {
       // If the node can be directly mutated inplace,
       // then there is no need to update its parent and the function
       break;
     }
-    src_sref = parent_sref;
+    src_sref = src_sref->parent;
   }
-  remover(old_stmt);
+  SRefRemover::Remove(this, creation_info, src_stmt);
   if (src_sref->stmt == root_stmt) {
     if (sref->stmt == root_stmt) {
       // Replacing the root is easier
@@ -374,14 +387,15 @@ void ScheduleNode::Replace(StmtSRef sref, Stmt tgt_stmt, Map<Block, Block> block
       // Replacing a non-root
       UpdateSRef(this, this->root.get(), tgt_stmt.get());
     }
+    // Update the body of the `this->func`
     this->func = UpdatePrimFunc(&this->func, tgt_stmt);
   }
 }
 
 struct Internal {
-  static void Replace(Schedule self, StmtSRef sref, Stmt target,
+  static void Replace(Schedule self, StmtSRef sref, Stmt tgt_stmt,
                       Optional<Map<Block, Block>> block_sref_map) {
-    return self->Replace(sref, target, block_sref_map.value_or({}));
+    return self->Replace(sref, tgt_stmt, block_sref_map.value_or({}));
   }
 };
 
