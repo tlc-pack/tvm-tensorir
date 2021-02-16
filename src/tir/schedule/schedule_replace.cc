@@ -155,14 +155,26 @@ class SubReplacer : protected StmtMutator {
 };
 
 /*!
- * \brief create schedulable reference during Schedule.Replace
- * \note This Visitor will create schedulable reference corresponding
- *       AST node in target stmt.
+ * \brief A helper that creates new srefs for newly-added blocks and loops.
+ *
+ * Algorithm:
+ *   1) Recursively visit the AST to be replaced to
+ *   2) If a node is already tracked in `ScheduleNode::stmt2ref`,
+ *   then stop recursion because the entire subtree has been properly tracked.
+ *   In this case, set `used_border_parent_` of this node to its parent recorded in the recursion,
+ *   3) If not, it means we need to either reuse an old sref or create a new sref
+ *   (a) If the loop/block to be replaced to can be proved to be a subtitute of an old one,
+ *   then reuse the existing sref to make sure it won't expire on users' side
+ *   (b) Otherwise, create a new sref
+ *
+ * Change:
+ *   `ScheduleNode::stmt2ref` and `ScheduleNode::scopes`.
  */
 class SRefCreator : public StmtVisitor {
  public:
-  SRefCreator(ScheduleNode* self, const Map<Block, Block>& block_sref_map, StmtSRefNode* parent)
-      : self(self), block_sref_map(block_sref_map), parents({parent}) {
+  explicit SRefCreator(ScheduleNode* self, const Map<Block, Block>& block_sref_map,
+                       StmtSRefNode* parent)
+      : self(self), parents({parent}), block_sref_map(block_sref_map) {
     // Set `loop_var2sref` properly
     loop_var2sref.reserve(self->stmt2ref.size());
     for (const auto& iter : self->stmt2ref) {
@@ -177,14 +189,24 @@ class SRefCreator : public StmtVisitor {
 
   void VisitStmt_(const LoopNode* op) final {
     StmtSRef& sref = self->stmt2ref[op];
+    StmtSRefNode* parent = parents.back();
+    // Case 1. The subtree has been tracked by the stmt2ref
     if (sref.defined()) {
-      used_border_parent_[sref] = parents.back();
+      used_border_parent_[sref] = parent;
       return;
     }
-    // Create corresponding StmtSRef
-    // note that we only create the StmtSRef whose node is not
-    // in the AST and reuse those StmtSRef when node is in the AST.
-    sref = CreateLoopSRef(op);
+    // Case 2. We are replace an existing loop,
+    // reuse the existing sref so that users don't get an expired one
+    auto it = loop_var2sref.find(op->loop_var.get());
+    if (it != loop_var2sref.end()) {
+      sref = it->second;
+      sref->stmt = op;
+      sref->parent = parent;
+      reuse_sref_.insert(sref);
+    } else {
+      // Case 3. Replacing an existing loop with a new one
+      sref = StmtSRef(op, parent, /*seq_index=*/-1, /*binding_valid=*/true);
+    }
     parents.push_back(sref.operator->());
     VisitStmt(op->body);
     parents.pop_back();
@@ -192,53 +214,38 @@ class SRefCreator : public StmtVisitor {
 
   void VisitStmt_(const BlockNode* op) final {
     StmtSRef& sref = self->stmt2ref[op];
+    StmtSRefNode* parent = parents.back();
+    // Case 1. The subtree has been tracked by the stmt2ref
     if (sref.defined()) {
-      used_border_parent_[sref] = parents.back();
+      used_border_parent_[sref] = parent;
       return;
     }
-    // Create corresponding StmtSRef
-    // note that we only create the StmtSRef whose node is not
-    // in the AST and reuse those StmtSRef when node is in the AST.
-    sref = CreateBlockSRef(op);
+    // Case 2. We are replace an existing block,
+    // reuse the existing sref so that users don't get an expired one
+    auto it = block_sref_map.find(GetRef<Block>(op));
+    if (it != block_sref_map.end()) {
+      sref = self->stmt2ref.at((*it).second.get());
+      sref->stmt = op;
+      sref->parent = parent;
+      reuse_sref_.insert(sref);
+    } else {
+      // Case 3. Replacing an existing block with a new one
+      sref = StmtSRef(op, parent, /*seq_index=*/-1, /*binding_valid=*/true);
+    }
     parents.push_back(sref.operator->());
     VisitStmt(op->body);
     parents.pop_back();
+    // Additionally, need to update the scope because the block is changed
     UpdateScope(op, self->stmt2ref, &self->scopes);
   }
 
  private:
-  StmtSRef CreateLoopSRef(const LoopNode* op) {
-    StmtSRefNode* parent = parents.back();
-    auto it = loop_var2sref.find(op->loop_var.get());
-    if (it != loop_var2sref.end()) {
-      StmtSRef reuse_sref = it->second;
-      reuse_sref->stmt = op;
-      reuse_sref->parent = parent;
-      reuse_sref_.insert(reuse_sref);
-      return reuse_sref;
-    }
-    return StmtSRef(op, parent, /*seq_index=*/-1, /*binding_valid=*/true);
-  }
-
-  StmtSRef CreateBlockSRef(const BlockNode* op) {
-    StmtSRefNode* parent = parents.back();
-    auto it = block_sref_map.find(GetRef<Block>(op));
-    if (it != block_sref_map.end()) {
-      StmtSRef reuse_sref = self->stmt2ref.at((*it).second.get());
-      reuse_sref->stmt = op;
-      reuse_sref->parent = parent;
-      reuse_sref_.insert(reuse_sref);
-      return reuse_sref;
-    }
-    return StmtSRef(op, parent, /*seq_index=*/-1, /*binding_valid=*/true);
-  }
-
   friend class ScheduleNode;
   ScheduleNode* self;
-  Map<Block, Block> block_sref_map;
+  std::vector<StmtSRefNode*> parents;
+  const Map<Block, Block>& block_sref_map;
   std::unordered_map<const VarNode*, StmtSRef> loop_var2sref;
 
-  std::vector<StmtSRefNode*> parents;
   std::unordered_set<StmtSRef, ObjectPtrHash, ObjectPtrEqual> reuse_sref_;
   std::unordered_map<StmtSRef, StmtSRefNode*, ObjectPtrHash, ObjectPtrEqual> used_border_parent_;
 };
