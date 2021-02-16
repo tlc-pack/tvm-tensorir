@@ -54,25 +54,6 @@ PrimFunc UpdatePrimFunc(PrimFunc* func, const Stmt& new_body) {
   return GetRef<PrimFunc>(new_func);
 }
 
-/*!
- * \brief Return a mapping from loop variables to loop srefs
- * \param sch The schedule class
- * \return The mapping
- */
-std::unordered_map<const VarNode*, StmtSRef> MapLoopVar2SRef(const ScheduleNode* sch) {
-  std::unordered_map<const VarNode*, StmtSRef> result;
-  result.reserve(sch->stmt2ref.size());
-  for (const auto& iter : sch->stmt2ref) {
-    const StmtNode* stmt = iter.first;
-    const StmtSRef& sref = iter.second;
-    if (stmt->IsInstance<tir::LoopNode>()) {
-      const LoopNode* loop = static_cast<const LoopNode*>(stmt);
-      result.emplace(loop->loop_var.get(), sref);
-    }
-  }
-  return result;
-}
-
 class SubReplacer : protected StmtMutator {
  public:
   SubReplacer(StmtSRefNode* sref, const Stmt& target,
@@ -180,86 +161,84 @@ class SubReplacer : protected StmtMutator {
  */
 class SRefCreator : public StmtVisitor {
  public:
-  SRefCreator(std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref,
-              std::unordered_map<const VarNode*, StmtSRef>&& loop_var2ref,
-              std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual>* block_scopes,
-              Map<Block, Block>&& block_sref_map, StmtSRefNode* parent)
-      : parent_(parent),
-        stmt2ref_(stmt2ref),
-        loop_var2ref_(loop_var2ref),
-        block_scopes_(block_scopes),
-        block_sref_map_(block_sref_map) {}
+  SRefCreator(ScheduleNode* self, const Map<Block, Block>& block_sref_map, StmtSRefNode* parent)
+      : self(self), block_sref_map(block_sref_map), parents({parent}) {
+    // Set `loop_var2sref` properly
+    loop_var2sref.reserve(self->stmt2ref.size());
+    for (const auto& iter : self->stmt2ref) {
+      const StmtNode* stmt = iter.first;
+      const StmtSRef& sref = iter.second;
+      if (stmt->IsInstance<tir::LoopNode>()) {
+        const LoopNode* loop = static_cast<const LoopNode*>(stmt);
+        loop_var2sref.emplace(loop->loop_var.get(), sref);
+      }
+    }
+  }
 
   void VisitStmt_(const LoopNode* op) final {
-    auto itr = stmt2ref_->find(op);
-    if (itr != stmt2ref_->end()) {
-      used_border_parent_[itr->second] = parent_;
+    StmtSRef& sref = self->stmt2ref[op];
+    if (sref.defined()) {
+      used_border_parent_[sref] = parents.back();
       return;
     }
     // Create corresponding StmtSRef
     // note that we only create the StmtSRef whose node is not
     // in the AST and reuse those StmtSRef when node is in the AST.
-    StmtSRef ref = CreateNewSRef(op);
-    (*stmt2ref_)[op] = ref;
-    StmtSRefNode* current = ref.operator->();
-    std::swap(current, parent_);
+    sref = CreateLoopSRef(op);
+    parents.push_back(sref.operator->());
     VisitStmt(op->body);
-    std::swap(current, parent_);
+    parents.pop_back();
   }
 
   void VisitStmt_(const BlockNode* op) final {
-    auto itr = stmt2ref_->find(op);
-    if (itr != stmt2ref_->end()) {
-      used_border_parent_[itr->second] = parent_;
+    StmtSRef& sref = self->stmt2ref[op];
+    if (sref.defined()) {
+      used_border_parent_[sref] = parents.back();
       return;
     }
     // Create corresponding StmtSRef
     // note that we only create the StmtSRef whose node is not
     // in the AST and reuse those StmtSRef when node is in the AST.
-    StmtSRef ref = CreateNewSRef(op);
-    (*stmt2ref_)[op] = ref;
-    StmtSRefNode* current = ref.operator->();
-    std::swap(current, parent_);
+    sref = CreateBlockSRef(op);
+    parents.push_back(sref.operator->());
     VisitStmt(op->body);
-    std::swap(current, parent_);
-    UpdateScope(op, *stmt2ref_, block_scopes_);
+    parents.pop_back();
+    UpdateScope(op, self->stmt2ref, &self->scopes);
   }
 
  private:
-  StmtSRef CreateNewSRef(const StmtNode* stmt_ptr) {
-    if (stmt_ptr->IsInstance<LoopNode>()) {
-      const auto* op = GetRef<Stmt>(stmt_ptr).as<LoopNode>();
-      auto it = loop_var2ref_.find(op->loop_var.get());
-      if (it != loop_var2ref_.end()) {
-        StmtSRef reuse_sref = it->second;
-        reuse_sref->stmt = stmt_ptr;
-        reuse_sref->parent = parent_;
-        reuse_sref_.insert(reuse_sref);
-        return reuse_sref;
-      }
-    } else if (block_sref_map_.defined()) {
-      Block block = Downcast<Block>(GetRef<Stmt>(stmt_ptr));
-      auto it = block_sref_map_.find(block);
-      if (it != block_sref_map_.end()) {
-        StmtSRef reuse_sref = stmt2ref_->at((*it).second.as<BlockNode>());
-        reuse_sref->stmt = stmt_ptr;
-        reuse_sref->parent = parent_;
-        reuse_sref_.insert(reuse_sref);
-        return reuse_sref;
-      }
+  StmtSRef CreateLoopSRef(const LoopNode* op) {
+    StmtSRefNode* parent = parents.back();
+    auto it = loop_var2sref.find(op->loop_var.get());
+    if (it != loop_var2sref.end()) {
+      StmtSRef reuse_sref = it->second;
+      reuse_sref->stmt = op;
+      reuse_sref->parent = parent;
+      reuse_sref_.insert(reuse_sref);
+      return reuse_sref;
     }
-    StmtSRef sref = StmtSRef(stmt_ptr, parent_);
-    sref->binding_valid = true;
-    return sref;
+    return StmtSRef(op, parent, /*seq_index=*/-1, /*binding_valid=*/true);
+  }
+
+  StmtSRef CreateBlockSRef(const BlockNode* op) {
+    StmtSRefNode* parent = parents.back();
+    auto it = block_sref_map.find(GetRef<Block>(op));
+    if (it != block_sref_map.end()) {
+      StmtSRef reuse_sref = self->stmt2ref.at((*it).second.get());
+      reuse_sref->stmt = op;
+      reuse_sref->parent = parent;
+      reuse_sref_.insert(reuse_sref);
+      return reuse_sref;
+    }
+    return StmtSRef(op, parent, /*seq_index=*/-1, /*binding_valid=*/true);
   }
 
   friend class ScheduleNode;
-  StmtSRefNode* parent_{nullptr};
-  std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
-  std::unordered_map<const VarNode*, StmtSRef> loop_var2ref_;
-  std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual>* block_scopes_;
-  Map<Block, Block> block_sref_map_;
+  ScheduleNode* self;
+  Map<Block, Block> block_sref_map;
+  std::unordered_map<const VarNode*, StmtSRef> loop_var2sref;
 
+  std::vector<StmtSRefNode*> parents;
   std::unordered_set<StmtSRef, ObjectPtrHash, ObjectPtrEqual> reuse_sref_;
   std::unordered_map<StmtSRef, StmtSRefNode*, ObjectPtrHash, ObjectPtrEqual> used_border_parent_;
 };
@@ -319,11 +298,8 @@ void ScheduleNode::Replace(StmtSRef sref, Stmt target, Map<Block, Block> block_s
   Stmt old_stmt = GetRef<Stmt>(sref->stmt);
   StmtSRef old_ref = StmtSRef(sref->stmt, sref->parent);
   const StmtNode* root_stmt = this->root->stmt;
-  // Collect loop_var to Loop mapping under old stmt
-  std::unordered_map<const VarNode*, StmtSRef> loop_var2sref = MapLoopVar2SRef(this);
   // Create SRef tree for the incoming target Stmt
-  SRefCreator creator(&stmt2ref, std::move(loop_var2sref), &scopes, std::move(block_sref_map),
-                      old_ref->parent);
+  SRefCreator creator(this, block_sref_map, old_ref->parent);
   creator(target);
   // Initialize old SRef remover
   SRefRemover remover(&stmt2ref, std::move(creator.used_border_parent_), &scopes,
@@ -375,6 +351,15 @@ void ScheduleNode::Replace(StmtSRef sref, Stmt target, Map<Block, Block> block_s
   }
   this->func = UpdatePrimFunc(&func, target);
 }
+
+struct Internal {
+  static void Replace(Schedule self, StmtSRef sref, Stmt target,
+                      Optional<Map<Block, Block>> block_sref_map) {
+    return self->Replace(sref, target, block_sref_map.value_or({}));
+  }
+};
+
+TVM_REGISTER_GLOBAL("tir.schedule.Replace").set_body_typed(Internal::Replace);
 
 }  // namespace tir
 }  // namespace tvm
