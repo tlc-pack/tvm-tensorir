@@ -190,9 +190,40 @@ class SRefCreator : public StmtVisitor {
         block_scopes_(block_scopes),
         block_sref_map_(block_sref_map) {}
 
-  void VisitStmt_(const LoopNode* op) final { VisitSRefStmt(op); }
+  void VisitStmt_(const LoopNode* op) final {
+    auto itr = stmt2ref_->find(op);
+    if (itr != stmt2ref_->end()) {
+      used_border_parent_[itr->second] = parent_;
+      return;
+    }
+    // Create corresponding StmtSRef
+    // note that we only create the StmtSRef whose node is not
+    // in the AST and reuse those StmtSRef when node is in the AST.
+    StmtSRef ref = CreateNewSRef(op);
+    (*stmt2ref_)[op] = ref;
+    StmtSRefNode* current = ref.operator->();
+    std::swap(current, parent_);
+    VisitStmt(op->body);
+    std::swap(current, parent_);
+  }
 
-  void VisitStmt_(const BlockNode* op) final { VisitSRefStmt(op); }
+  void VisitStmt_(const BlockNode* op) final {
+    auto itr = stmt2ref_->find(op);
+    if (itr != stmt2ref_->end()) {
+      used_border_parent_[itr->second] = parent_;
+      return;
+    }
+    // Create corresponding StmtSRef
+    // note that we only create the StmtSRef whose node is not
+    // in the AST and reuse those StmtSRef when node is in the AST.
+    StmtSRef ref = CreateNewSRef(op);
+    (*stmt2ref_)[op] = ref;
+    StmtSRefNode* current = ref.operator->();
+    std::swap(current, parent_);
+    VisitStmt(op->body);
+    std::swap(current, parent_);
+    UpdateScope(op, *stmt2ref_, block_scopes_);
+  }
 
  private:
   StmtSRef CreateNewSRef(const StmtNode* stmt_ptr) {
@@ -220,28 +251,6 @@ class SRefCreator : public StmtVisitor {
     StmtSRef sref = StmtSRef(stmt_ptr, parent_);
     sref->binding_valid = true;
     return sref;
-  }
-
-  template <typename T>
-  void VisitSRefStmt(const T* op) {
-    const auto* stmt_ptr = GetRef<Stmt>(op).operator->();
-    if (stmt2ref_->count(stmt_ptr) == 0) {
-      // Create corresponding StmtSRef
-      // note that we only create the StmtSRef whose node is not
-      // in the AST and reuse those StmtSRef when node is in the AST.
-      StmtSRef ref = CreateNewSRef(stmt_ptr);
-      (*stmt2ref_)[stmt_ptr] = ref;
-      StmtSRefNode* current = ref.operator->();
-      std::swap(current, parent_);
-      VisitStmt(op->body);
-      std::swap(current, parent_);
-      if (stmt_ptr->template IsInstance<BlockNode>()) {
-        UpdateScope(stmt_ptr, *stmt2ref_, block_scopes_);
-      }
-    } else {
-      // Mark the border of reused StmtSRef
-      used_border_parent_[stmt2ref_->at(stmt_ptr)] = parent_;
-    }
   }
 
   friend class ScheduleNode;
@@ -305,10 +314,10 @@ class SRefRemover : public StmtVisitor {
   std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual>* block_scopes_;
 };
 
-void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_map) {
+void ScheduleNode::Replace(StmtSRef sref, Stmt target, Map<Block, Block> block_sref_map) {
   // Note that old_ref is only a temporary SRef
-  Stmt old_stmt = GetRef<Stmt>(ref->stmt);
-  StmtSRef old_ref = StmtSRef(ref->stmt, ref->parent);
+  Stmt old_stmt = GetRef<Stmt>(sref->stmt);
+  StmtSRef old_ref = StmtSRef(sref->stmt, sref->parent);
   const StmtNode* root_stmt = this->root->stmt;
   // Collect loop_var to Loop mapping under old stmt
   std::unordered_map<const VarNode*, StmtSRef> loop_var2sref = MapLoopVar2SRef(this);

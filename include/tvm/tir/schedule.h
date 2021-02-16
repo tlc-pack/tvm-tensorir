@@ -59,7 +59,7 @@ class ScheduleNode : public Object {
    * \brief replace part of AST with new stmt
    * \param ref The schedulable reference of the old stmt
    * \param target The new stmt
-   * \param block_sref_map The Sref remapping of blocks
+   * \param block_sref_map The sref remapping of blocks
    */
   void Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_map);
 
