@@ -82,7 +82,7 @@ class SubReplacer : protected StmtMutator {
     }
     std::swap(allow_copy_on_write, allow_copy_on_write_);
     if (allow_copy_on_write) {
-      CHECK(stmt.operator->() == weakref);
+      CHECK(stmt.get() == weakref);
     }
     return stmt;
   }
@@ -112,7 +112,7 @@ class SubReplacer : protected StmtMutator {
         n->seq.erase(n->seq.begin() + seq_index);
         n->seq.insert(n->seq.begin() + seq_index, target_seq.begin(), target_seq.end());
         for (size_t i = 0; i < target_seq.size(); i++)
-          (*stmt2ref_)[target_seq[i].operator->()]->seq_index = i + seq_index;
+          (*stmt2ref_)[target_seq[i].get()]->seq_index = i + seq_index;
       } else {
         n->seq.Set(seq_index, target_);
       }
@@ -207,7 +207,7 @@ class SRefCreator : public StmtVisitor {
       // Case 3. Replacing an existing loop with a new one
       sref = StmtSRef(op, parent, /*seq_index=*/-1, /*binding_valid=*/true);
     }
-    parents.push_back(sref.operator->());
+    parents.push_back(sref.get());
     VisitStmt(op->body);
     parents.pop_back();
   }
@@ -232,7 +232,7 @@ class SRefCreator : public StmtVisitor {
       // Case 3. Replacing an existing block with a new one
       sref = StmtSRef(op, parent, /*seq_index=*/-1, /*binding_valid=*/true);
     }
-    parents.push_back(sref.operator->());
+    parents.push_back(sref.get());
     VisitStmt(op->body);
     parents.pop_back();
     // Additionally, need to update the scope because the block is changed
@@ -323,8 +323,7 @@ void ScheduleNode::Replace(StmtSRef sref, Stmt target, Map<Block, Block> block_s
   int curr_step = 0;
   int num_copy_steps = -1;
   // Find the highest non-unique Stmt
-  for (const StmtSRefNode* ptr = old_ref.operator->(); ptr != nullptr;
-       ptr = ptr->parent, ++curr_step) {
+  for (const StmtSRefNode* ptr = old_ref.get(); ptr != nullptr; ptr = ptr->parent, ++curr_step) {
     if (!ptr->stmt->unique()) {
       num_copy_steps = curr_step;
     }
@@ -334,8 +333,7 @@ void ScheduleNode::Replace(StmtSRef sref, Stmt target, Map<Block, Block> block_s
   }
   // Update the function body
   curr_step = 0;
-  for (StmtSRefNode* ptr = old_ref.operator->(); ptr->stmt != root_stmt;
-       ptr = ptr->parent, ++curr_step) {
+  for (StmtSRefNode* ptr = old_ref.get(); ptr->stmt != root_stmt; ptr = ptr->parent, ++curr_step) {
     StmtSRefNode* parent = ptr->parent;
     // parent_step = current_step + 1
     // if parent_step <= num_copy_step, then it implies
@@ -359,10 +357,10 @@ void ScheduleNode::Replace(StmtSRef sref, Stmt target, Map<Block, Block> block_s
   remover(old_stmt);
   if (old_ref->stmt == root_stmt) {
     // The replace point is root, we directly use the sref tree created by SRefCreator
-    root = stmt2ref[target.operator->()];
+    root = stmt2ref[target.get()];
   } else {
     // Otherwise we reuse root sref
-    UpdateSRef(this, root.operator->(), target.get());
+    UpdateSRef(this, this->root.get(), target.get());
   }
   this->func = UpdatePrimFunc(&func, target);
 }
