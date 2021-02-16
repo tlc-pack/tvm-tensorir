@@ -21,28 +21,56 @@
 namespace tvm {
 namespace tir {
 
-void UpdateSRef(ScheduleNode* sch, StmtSRefNode* sref, const Stmt& stmt) {
-  CHECK(stmt->IsInstance<BlockNode>() || stmt->IsInstance<LoopNode>());
-  sch->stmt2ref[stmt.operator->()] = GetRef<StmtSRef>(sref);
+/*!
+ * \brief Update the sref information on the schedule class, as well as the statement of sref itself
+ * \param sch The schedule class to be updated
+ * \param sref The sref to be updated
+ * \param new_stmt The statement that replaces the statement inside the sref
+ */
+void UpdateSRef(ScheduleNode* sch, StmtSRefNode* sref, const StmtNode* new_stmt) {
+  CHECK(new_stmt->IsInstance<BlockNode>() || new_stmt->IsInstance<LoopNode>());
+  const StmtNode* old_stmt = sref->stmt;
+  CHECK_NE(new_stmt, old_stmt);
+  sch->stmt2ref[new_stmt] = GetRef<StmtSRef>(sref);
   sch->stmt2ref.erase(sref->stmt);
-  sref->stmt = stmt.operator->();
+  sref->stmt = new_stmt;
 }
 
-PrimFunc UpdateFuncBody(const PrimFuncNode* func, const Stmt& new_body) {
-  CHECK(func->body.as<BlockRealizeNode>());
-  CHECK(new_body->IsInstance<BlockNode>());
+/*!
+ * \brief Update the body of the PrimFunc
+ * \param func The PrimFunc to be updated
+ * \param new_body The new body to be updated to
+ * \return The new PrimFunc
+ */
+PrimFunc UpdatePrimFunc(PrimFunc* func, const Stmt& new_body) {
+  const auto* realize = (*func)->body.as<BlockRealizeNode>();
+  const auto* block = new_body.as<BlockNode>();
+  CHECK(realize);
+  CHECK(block);
+  ObjectPtr<BlockRealizeNode> new_realize = make_object<BlockRealizeNode>(*realize);
+  PrimFuncNode* new_func = func->CopyOnWrite();
+  new_realize->block = GetRef<Block>(block);
+  new_func->body = BlockRealize(new_realize);
+  return GetRef<PrimFunc>(new_func);
+}
 
-  if (func->unique()) {
-    auto root_br = const_cast<BlockRealizeNode*>(func->body.as<BlockRealizeNode>());
-    root_br->block = Downcast<Block>(new_body);
-    return GetRef<PrimFunc>(func);
-  } else {
-    auto n_br = make_object<BlockRealizeNode>(*(func->body.as<BlockRealizeNode>()));
-    n_br->block = Downcast<Block>(new_body);
-    auto n_func = make_object<PrimFuncNode>(*func);
-    n_func->body = Stmt(n_br);
-    return PrimFunc(n_func);
+/*!
+ * \brief Return a mapping from loop variables to loop srefs
+ * \param sch The schedule class
+ * \return The mapping
+ */
+std::unordered_map<const VarNode*, StmtSRef> MapLoopVar2SRef(const ScheduleNode* sch) {
+  std::unordered_map<const VarNode*, StmtSRef> result;
+  result.reserve(sch->stmt2ref.size());
+  for (const auto& iter : sch->stmt2ref) {
+    const StmtNode* stmt = iter.first;
+    const StmtSRef& sref = iter.second;
+    if (stmt->IsInstance<tir::LoopNode>()) {
+      const LoopNode* loop = static_cast<const LoopNode*>(stmt);
+      result.emplace(loop->loop_var.get(), sref);
+    }
   }
+  return result;
 }
 
 class SubReplacer : protected StmtMutator {
@@ -143,27 +171,6 @@ class SubReplacer : protected StmtMutator {
   StmtSRefNode* sref_;
   const Stmt& target_;
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
-};
-
-class LoopCollector : public StmtVisitor {
- public:
-  explicit LoopCollector(std::unordered_map<const StmtNode*, StmtSRef>* stmt2_ref)
-      : stmt2ref_(stmt2_ref) {}
-
-  void VisitStmt_(const LoopNode* op) final {
-    loop_var2sref[op->loop_var.get()] = stmt2ref_->at(op);
-    StmtVisitor::VisitStmt_(op);
-  }
-
-  void VisitStmt_(const BlockNode* op) final {
-    // do not collect loops inside block's init
-    this->VisitStmt(op->body);
-  }
-
- private:
-  friend class ScheduleNode;
-  std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
-  std::unordered_map<const VarNode*, StmtSRef> loop_var2sref;
 };
 
 /*!
@@ -300,15 +307,14 @@ class SRefRemover : public StmtVisitor {
 
 void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_map) {
   // Note that old_ref is only a temporary SRef
+  Stmt old_stmt = GetRef<Stmt>(ref->stmt);
   StmtSRef old_ref = StmtSRef(ref->stmt, ref->parent);
-  auto root_node = root->stmt;
-  const Stmt& old_stmt = GetRef<Stmt>(ref->stmt);
+  const StmtNode* root_stmt = this->root->stmt;
   // Collect loop_var to Loop mapping under old stmt
-  LoopCollector collector(&stmt2ref);
-  collector(old_stmt);
+  std::unordered_map<const VarNode*, StmtSRef> loop_var2sref = MapLoopVar2SRef(this);
   // Create SRef tree for the incoming target Stmt
-  SRefCreator creator(&stmt2ref, std::move(collector.loop_var2sref), &scopes,
-                      std::move(block_sref_map), old_ref->parent);
+  SRefCreator creator(&stmt2ref, std::move(loop_var2sref), &scopes, std::move(block_sref_map),
+                      old_ref->parent);
   creator(target);
   // Initialize old SRef remover
   SRefRemover remover(&stmt2ref, std::move(creator.used_border_parent_), &scopes,
@@ -323,10 +329,12 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
       num_copy_steps = curr_step;
     }
   }
-  if (!func.unique()) num_copy_steps = curr_step;
+  if (!func.unique()) {
+    num_copy_steps = curr_step;
+  }
   // Update the function body
   curr_step = 0;
-  for (StmtSRefNode* ptr = old_ref.operator->(); ptr->stmt != root_node;
+  for (StmtSRefNode* ptr = old_ref.operator->(); ptr->stmt != root_stmt;
        ptr = ptr->parent, ++curr_step) {
     StmtSRefNode* parent = ptr->parent;
     // parent_step = current_step + 1
@@ -336,7 +344,9 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
     // replace ptr(son of parent->node) with target and return a new parent Stmt)
     Stmt new_stmt =
         SubReplacer(ptr, target, &stmt2ref)(parent->stmt, parent_is_uniquely_referenced);
-    if (curr_step != 0) UpdateSRef(this, ptr, target);
+    if (curr_step != 0) {
+      UpdateSRef(this, ptr, target.get());
+    }
     if (parent_is_uniquely_referenced) {
       CHECK(new_stmt.get() == parent->stmt);
       // if one node has been direct write, there is no need to
@@ -347,14 +357,14 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
     target = new_stmt;
   }
   remover(old_stmt);
-  if (old_ref->stmt == root_node) {
+  if (old_ref->stmt == root_stmt) {
     // The replace point is root, we directly use the sref tree created by SRefCreator
     root = stmt2ref[target.operator->()];
   } else {
     // Otherwise we reuse root sref
-    UpdateSRef(this, root.operator->(), target);
+    UpdateSRef(this, root.operator->(), target.get());
   }
-  func = UpdateFuncBody(func.operator->(), target);
+  this->func = UpdatePrimFunc(&func, target);
 }
 
 }  // namespace tir
