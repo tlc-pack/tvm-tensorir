@@ -402,7 +402,8 @@ class TVMScriptParser(Transformer):
         """
 
         self.init_function_parsing_env()
-        self.context.new_scope(nodes=node.body.stmts)
+        # New Scope : PrimFunc
+        self.context.new_scope()
 
         # add parameters of function
         for arg in node.params:
@@ -410,13 +411,27 @@ class TVMScriptParser(Transformer):
             self.context.update_symbol(arg.name, arg_var)
             self.context.func_params.append(arg_var)
 
-        # fetch the body and return a tir.PrimFunc
+        # New Scope : Implicit root block
+        self.context.new_scope(is_block=True, nodes=node.body.stmts)
+
+        # fetch the body of root block
+        body = self.parse_body(node.body)
+        # Emit Scope : Implicit root block
+        root_info = self.context.block_scope()
+        self.context.pop_scope(is_block=True)
+        # Fix the body
+        # 1. generate root block if necessary
+        # 2. generate surrounding loops for blocks if necessary
+        body = _ffi_api.AutoComplete(body, root_info.allocates)
+
+        # return a tir.PrimFunc
+        dict_attr = self.context.func_dict_attr
         func = tvm.tir.PrimFunc(
             self.context.func_params,
-            self.parse_body(node.body),
+            body,
             ret_type=self.parse_type(node.ret_type, node),
             buffer_map=self.context.func_buffer_map,
-            attrs=tvm.ir.make_node("DictAttrs", **self.context.func_dict_attr),
+            attrs=tvm.ir.make_node("DictAttrs", **dict_attr) if dict_attr else None,
             span=from_synr_span(node.span),
         )
 
@@ -562,7 +577,7 @@ class TVMScriptParser(Transformer):
             withitem = (expr context_expr, expr? optional_vars)
         By now 2 patterns of With is supported:
             1. with scope handler with symbol def
-                with tir.allocate() as targets:
+                with with tir.block(*axes)/tir.allocate() as targets:
             2. with scope handler without symbol def
                 with tir.let()/tir.Assert()/tir.attr()//tir.realize()
         """
@@ -583,14 +598,14 @@ class TVMScriptParser(Transformer):
         old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
         self.current_lineno = node.body.span.start_line
         self.current_col_offset = node.body.span.start_column
-        self.context.new_scope(nodes=node.body.stmts)
+        self.context.new_scope(is_block=True, nodes=node.body.stmts)
         # with scope handler process the scope
         arg_list = self.parse_arg_list(func, node.rhs)
         func.enter_scope(node, self.context, arg_list, node.rhs.func_name.span)
         func.body = self.parse_body(node)
         res = func.exit_scope(node, self.context, arg_list, node.rhs.func_name.span)
         # exit the scope
-        self.context.pop_scope()
+        self.context.pop_scope(is_block=True)
         self.current_lineno, self.current_col_offset = old_lineno, old_col_offset
         return res
 
@@ -729,7 +744,8 @@ class TVMScriptParser(Transformer):
         By now only 2 types of Subscript are supported:
             1. Buffer[index, index, ...], Buffer element access(BufferLoad & BufferStore)
                Var[index] Buffer element access()
-            2. meta[type_key][index], Meta info access
+            2. Buffer[slice, slice, ...], TensorRegion
+            3. meta[type_key][index], Meta info access
         """
 
         symbol = self.transform(node.params[0])
@@ -737,8 +753,10 @@ class TVMScriptParser(Transformer):
             self.report_error(f"Variable {node.value.id} is not defined.", node.params[0].span)
 
         indexes = [self.transform(x) for x in node.params[1].values]
-        if isinstance(indexes[0], tvm.ir.Range):
-            return symbol, indexes
+
+        for index in indexes:
+            if isinstance(index, tvm.ir.Range):
+                return symbol, indexes
 
         if isinstance(symbol, tvm.tir.expr.Var):
             return tvm.tir.Load("float32", symbol, indexes, True, span=from_synr_span(node.span))

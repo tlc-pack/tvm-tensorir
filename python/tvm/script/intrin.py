@@ -35,67 +35,67 @@ class Intrin:
 
 @register
 def bool(imm, span):
-    return tvm.tir.Cast("bool", imm, span)
+    return tvm.tir.const(imm.value, "bool", span)
 
 
 @register
 def int8(imm, span):
-    return tvm.tir.Cast("int8", imm, span)
+    return tvm.tir.const(imm.value, "int8", span)
 
 
 @register
 def int16(imm, span):
-    return tvm.tir.Cast("int16", imm, span)
+    return tvm.tir.const(imm.value, "int16", span)
 
 
 @register
 def int32(imm, span):
-    return tvm.tir.Cast("int32", imm, span)
+    return tvm.tir.const(imm.value, "int32", span)
 
 
 @register
 def int64(imm, span):
-    return tvm.tir.Cast("int64", imm, span)
+    return tvm.tir.const(imm.value, "int64", span)
 
 
 @register
 def uint8(imm, span):
-    return tvm.tir.Cast("uint8", imm, span)
+    return tvm.tir.const(imm.value, "uint8", span)
 
 
 @register
 def uint16(imm, span):
-    return tvm.tir.Cast("uint16", imm, span)
+    return tvm.tir.const(imm.value, "uint16", span)
 
 
 @register
 def uint32(imm, span):
-    return tvm.tir.Cast("uint32", imm, span)
+    return tvm.tir.const(imm.value, "uint32", span)
 
 
 @register
 def uint64(imm, span):
-    return tvm.tir.Cast("uint64", imm, span)
+    return tvm.tir.const(imm.value, "uint64", span)
 
 
 @register
 def float8(imm, span):
-    return tvm.tir.Cast("float8", imm, span)
+    return tvm.tir.const(imm.value, "float8", span)
 
 
 @register
 def float16(imm, span):
-    return tvm.tir.Cast("float16", imm, span)
+    return tvm.tir.const(imm.value, "float16", span)
 
 
 @register
 def float32(imm, span):
-    return tvm.tir.Cast("float32", imm, span)
+    return tvm.tir.const(imm.value, "float32", span)
 
 
 @register
 def float64(imm, span):
-    return tvm.tir.Cast("float64", imm, span)
+    return tvm.tir.const(imm.value, "float64", span)
 
 
 @register
@@ -155,7 +155,7 @@ def get_axis(begin, end, iter_type, span):
     block_var_dom = tvm.ir.Range.from_min_extent(begin, extent)
 
     iter_type_dict = {"data_par": 0, "reduce": 2, "scan": 3, "opaque": 4}
-    return tvm.tir.IterVar(block_var_dom, "bv", iter_type_dict[iter_type], span)
+    return tvm.tir.IterVar(block_var_dom, "bv", iter_type_dict[iter_type], span=span)
 
 
 @register

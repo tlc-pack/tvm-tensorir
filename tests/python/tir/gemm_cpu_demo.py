@@ -196,10 +196,9 @@ print('Opt4: %f' % build_and_test(s.func))
 #
 
 s = tir.create_schedule(packed_func)
-buffer_C = packed_func.buffer_map[packed_func.params[2]]
 packedB = s.get_block("packed")
 update = s.get_block("C")
-cached_update = s.cache_write(buffer_C, 'global')
+cached_update = s.cache_write(update, 0, 'global')
 
 i, j = s.get_axes(update)
 i_o, i_i = s.split(i, bn)

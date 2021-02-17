@@ -23,9 +23,21 @@ from tvm.te import schedule
 class ContextMaintainer:
     """Maintain all the necessary context info"""
 
+    class BlockInfo:
+        def __init__(self):
+            self.allocates = []
+            self.binding = dict()
+            self.reads = None
+            self.writes = None
+            self.annotations = []
+            self.predicate = tvm.runtime.convert(True)
+            self.init = None
+
     def __init__(self, parser):
         # scope context
         self.node_stack = []  # AST nodes of scopes
+        self.block_info_stack = []  # Block info of scopes
+        self.loop_stack = []  # stack of loop vars
         self.symbols = []  # symbols of scopes
         # function context
         self.func_params = []  # parameter list of function
@@ -41,7 +53,7 @@ class ContextMaintainer:
         self.node_stack.pop()
         if is_block:
             self.loop_stack.pop()
-            return self.block_info_stack.pop()
+            self.block_info_stack.pop()
 
     def new_scope(self, is_block=False, nodes=None):
         """Creating a new scope"""

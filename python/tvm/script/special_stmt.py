@@ -113,6 +113,7 @@ class BufferAllocate(SpecialStmt):
             align=-1,
             offset_factor=0,
             buffer_type="default",
+            span=None
         ):
             assert isinstance(self.node, ast.Assign)
 
@@ -125,7 +126,7 @@ class BufferAllocate(SpecialStmt):
             buffer = tvm.tir.decl_buffer(
                 shape,
                 dtype,
-                self.node.targets[0].id,
+                self.node.lhs.id.name,
                 data,
                 strides,
                 elem_offset,
@@ -133,9 +134,10 @@ class BufferAllocate(SpecialStmt):
                 align,
                 offset_factor,
                 buffer_type,
+                span=span
             )
             self.context.block_scope().allocates.append(tvm.tir.BufferAllocate(buffer, scope))
-            self.context.update_symbol(self.node.targets[0].id, buffer)
+            self.context.update_symbol(self.node.lhs.id.name, buffer)
 
         super().__init__(buffer_allocate, def_symbol=True)
 
@@ -143,7 +145,7 @@ class BufferAllocate(SpecialStmt):
 @register
 class BlockVarBind(SpecialStmt):
     def __init__(self):
-        def bind(block_var, binding):
+        def bind(block_var, binding, span=None):
             self.context.block_scope().binding[block_var] = binding
 
         super().__init__(bind, def_symbol=False)
@@ -152,7 +154,7 @@ class BlockVarBind(SpecialStmt):
 @register
 class BlockReads(SpecialStmt):
     def __init__(self):
-        def reads(reads):
+        def reads(reads, span=None):
             self.context.block_scope().reads = [reads] if not isinstance(reads, list) else reads
 
         super().__init__(reads, def_symbol=False)
@@ -161,7 +163,7 @@ class BlockReads(SpecialStmt):
 @register
 class BlockWrites(SpecialStmt):
     def __init__(self):
-        def writes(writes):
+        def writes(writes, span=None):
             self.context.block_scope().writes = [writes] if not isinstance(writes, list) else writes
 
         super().__init__(writes, def_symbol=False)
@@ -170,7 +172,7 @@ class BlockWrites(SpecialStmt):
 @register
 class BlockAttr(SpecialStmt):
     def __init__(self):
-        def block_attr(attrs):
+        def block_attr(attrs, span=None):
             attrs = [
                 tvm.tir.Annotation(
                     key, tvm.runtime.convert(val) if isinstance(val, str) else val
@@ -185,7 +187,7 @@ class BlockAttr(SpecialStmt):
 @register
 class BlockPredicate(SpecialStmt):
     def __init__(self):
-        def where(predicate):
+        def where(predicate, span=None):
             self.context.block_scope().predicate = predicate
 
         super().__init__(where, def_symbol=False)

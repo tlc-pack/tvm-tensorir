@@ -24,7 +24,7 @@ def get_param_list(func):
     """Get the parameter list from definition of function"""
     full_arg_spec = inspect.getfullargspec(func)
 
-    args, defaults = full_arg_spec.args, full_arg_spec.defaults
+    args, defaults, kwonlyargs = full_arg_spec.args, full_arg_spec.defaults, full_arg_spec.kwonlyargs
 
     if defaults is None:
         defaults = tuple()
@@ -33,7 +33,9 @@ def get_param_list(func):
         raise RuntimeError(
             "TVM Script register error : variable keyword argument is not supported now"
         )
-    if not len(full_arg_spec.kwonlyargs) == 0:
+    if len(kwonlyargs) == 1 and kwonlyargs[0] == 'span':
+        pass
+    elif not len(kwonlyargs) == 0:
         raise RuntimeError("TVM Script register error : keyword only argument is not supported now")
 
     pos_only = list()
