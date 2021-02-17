@@ -54,7 +54,7 @@ def conv(a: ty.handle, w: ty.handle, c: ty.handle) -> None:
 
     Apad = tir.buffer_allocate([2, 16, 16, 2, 16, 16], "float16")
     with tir.block([2, 16, 16, 2, 16, 16], "A_pad") as [n, h, w, i, nn, ii]:
-        Apad[n, h, w, i, nn, ii] = tir.if_then_else(1 <= h < 15 and 1 <= w < 15,
+        Apad[n, h, w, i, nn, ii] = tir.if_then_else(1 <= h and h < 15 and 1 <= w and w < 15,
                                                     A[n, h - 1, w - 1, i, nn, ii], tir.float16(0),
                                                     dtype="float16")
     with tir.block([2, 14, 14, 4, tir.reduce_axis(0, 2), tir.reduce_axis(0, 3),
