@@ -42,7 +42,7 @@ def conv2d(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     with tir.block([1, 512, 9, 9], "conv2d_pad_x") as [i_n, i_ci, i_h, i_w]:
         X_padded[i_n, i_ci, i_h, i_w] = tir.if_then_else(  # pylint: disable=unexpected-keyword-arg
             # guard
-            ((1 <= i_h < 8) and (1 <= i_w < 8)),
+            ((1 <= i_h) and (i_h < 8) and (1 <= i_w) and (i_w < 8)),
             # the value from input
             X[i_n, i_ci, i_h - 1, i_w - 1],
             # the value padded
@@ -80,7 +80,7 @@ def conv2d_relu(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     with tir.block([1, 512, 9, 9], "conv2d_pad_x") as [i_n, i_ci, i_h, i_w]:
         X_padded[i_n, i_ci, i_h, i_w] = tir.if_then_else(  # pylint: disable=unexpected-keyword-arg
             # guard
-            ((1 <= i_h < 8) and (1 <= i_w < 8)),
+            ((1 <= i_h) and (i_h < 8) and (1 <= i_w) and (i_w < 8)),
             # the value from input
             X[i_n, i_ci, i_h - 1, i_w - 1],
             # the value padded
@@ -122,7 +122,7 @@ def conv2d_relu_plus_one(x: ty.handle, w: ty.handle, y: ty.handle) -> None:
     with tir.block([1, 512, 9, 9], "conv2d_pad_x") as [i_n, i_ci, i_h, i_w]:
         X_padded[i_n, i_ci, i_h, i_w] = tir.if_then_else(  # pylint: disable=unexpected-keyword-arg
             # guard
-            ((1 <= i_h < 8) and (1 <= i_w < 8)),
+            ((1 <= i_h) and (i_h < 8) and (1 <= i_w) and (i_w < 8)),
             # the value from input
             X[i_n, i_ci, i_h - 1, i_w - 1],
             # the value padded
