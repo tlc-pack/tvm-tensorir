@@ -33,6 +33,7 @@ def _get_dmatrix(batch):
     xs = [np.random.rand(b, 159) for b in batch]  # pylint: disable=invalid-name
     ys = np.random.rand(len(batch))  # pylint: disable=invalid-name
     ys_pred = np.random.rand(sum(batch))
+    ansor_xgb = ansor_xgb_model.XGBModel()
     ansor_dmatrix = ansor_xgb_model.pack_sum_xgbmatrix(xs=xs, ys=ys, weights=ys)
     ms_dmatrix = ms_xgb_model.PackSum(xs=xs, ys=ys)
     return ansor_dmatrix, ms_dmatrix, ys_pred

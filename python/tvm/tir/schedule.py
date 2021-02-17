@@ -467,6 +467,8 @@ class Schedule(Object):
         pragma_value : PrimExpr
             the attr value
         """
+        if isinstance(pragma_value, bool):
+            pragma_value = tvm.tir.const(pragma_value, "bool")
         return _ffi_api_schedule.SchedulePragma(self, loop, pragma_type, pragma_value)
 
 

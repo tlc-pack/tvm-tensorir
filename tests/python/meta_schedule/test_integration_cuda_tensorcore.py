@@ -22,7 +22,7 @@ import tir_tensor_intrin  # pylint: disable=unused-import
 from tvm import meta_schedule as ms
 from tvm import te
 
-TARGET = tvm.target.Target("nvidia/rtx2080ti")
+TARGET = tvm.target.Target("nvidia/geforce-rtx-2080-ti")
 
 
 def test_integration_matmul():
