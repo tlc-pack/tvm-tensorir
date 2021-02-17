@@ -605,7 +605,7 @@ class RuleParallelizeVectorizeUnroll {
   Array<Integer> unroll_max_steps;
   bool unroll_explicit;
 
-  mutable bool warned_num_cores_missing;
+  mutable std::atomic<int> warned_num_cores_missing;
 
   explicit RuleParallelizeVectorizeUnroll(int max_jobs_per_core, int max_vectorize_extent,
                                           const Array<Integer>& unroll_max_steps,
@@ -614,25 +614,14 @@ class RuleParallelizeVectorizeUnroll {
         max_vectorize_extent(max_vectorize_extent),
         unroll_max_steps(unroll_max_steps),
         unroll_explicit(unroll_explicit),
-        warned_num_cores_missing(false) {}
+        warned_num_cores_missing(0) {}
 
-  int GetMaxParallelExtent(const Target& target) const {
-    int num_cores = target->GetAttr<Integer>("num_cores").value_or(-1);
-    if (num_cores == -1) {
-      static const auto* f_cpu_count = runtime::Registry::Get("meta_schedule._cpu_count");
-      CHECK(f_cpu_count)
-          << "ValueError: Cannot find the packed function \"meta_schedule._cpu_count\"";
-      num_cores = (*f_cpu_count)(false);
-      if (!warned_num_cores_missing) {
-        LOG(WARNING) << "Warning: Target does not have attribute \"num_cores\", falling back the "
-                        "number of CPU cores on the local machine. The inaccuracy in number of "
-                        "cores may lead to dramatically inferior performance. Falling back to "
-                        "assuming "
-                     << num_cores << " CPU core(s)";
-        warned_num_cores_missing = true;
-      }
-    }
-    return num_cores * max_jobs_per_core;
+  RuleParallelizeVectorizeUnroll(const RuleParallelizeVectorizeUnroll& other) noexcept
+      : max_jobs_per_core(other.max_jobs_per_core),
+        max_vectorize_extent(other.max_vectorize_extent),
+        unroll_max_steps(other.unroll_max_steps),
+        unroll_explicit(other.unroll_explicit),
+        warned_num_cores_missing(static_cast<int>(other.warned_num_cores_missing)) {
   }
 
   static bool IsLeftmostSubroot(const tir::Schedule& sch, tir::StmtSRef block_sref) {
@@ -668,7 +657,8 @@ class RuleParallelizeVectorizeUnroll {
     bool is_leaf = IsLeafBlock(sch->sch, block_sref);
     // Parallelization
     if (max_jobs_per_core != -1 && is_leftmost_root) {
-      int max_extent = GetMaxParallelExtent(task->target);
+      int max_extent =
+          GetTargetNumCores(task->target, &warned_num_cores_missing) * max_jobs_per_core;
       sch->MarkBlock(block_rv, tir::attr::auto_parallel_extent, max_extent);
     }
     // Vectorization
@@ -695,7 +685,7 @@ SearchRule ParallelizeVectorizeUnroll(int max_jobs_per_core, int max_vectorize_e
                                       Array<Integer> unroll_max_steps, bool unroll_explicit) {
   RuleParallelizeVectorizeUnroll rule(max_jobs_per_core, max_vectorize_extent, unroll_max_steps,
                                       unroll_explicit);
-  auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch,
+  auto f_apply = [rule](SearchTask task, Schedule sch,
                                          BlockRV block) -> Array<Schedule> {
     return rule.Apply(task, sch, block);
   };

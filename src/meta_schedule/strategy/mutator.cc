@@ -234,6 +234,220 @@ Mutator MutateComputeLocation() {
   return Mutator("mutate_compute_location", f_apply);
 }
 
+/********** MutateAutoUnroll **********/
+
+class MutatorAutoUnroll {
+ public:
+  MutatorAutoUnroll() = default;
+
+  struct Candidate {
+    /*! \brief The SampleCategorical instruction */
+    Instruction inst;
+    /*! \brief The weights of the categorical distribution */
+    std::vector<double> weights;
+    /*! \brief The original decision */
+    int ori_decision;
+
+    explicit Candidate(Instruction inst, std::vector<double> weights, int ori_decision)
+        : inst(std::move(inst)), weights(std::move(weights)), ori_decision(ori_decision) {}
+  };
+
+  /*!
+   * \brief Find instruction `SampleCategorical` whose output is used by `auto_unroll`
+   * \param trace The trace from which to find the instructions
+   * \return All the candidate instructions
+   */
+  std::vector<Candidate> FindCandidates(const Trace& trace) {
+    std::vector<Candidate> candidates;
+    for (int i = 0; i < static_cast<int>(trace->insts.size()); ++i) {
+      const Instruction& mark_inst = trace->insts[i];
+      // Step 1. Find the `MarkBlockAttr` whose attr_key is `auto_unroll`
+      //         and whose unroll depth is a `tir::VarNode`.
+      if (const auto* mark_attr = mark_inst->inst_attrs.as<MarkBlockAttrs>()) {
+        CHECK_EQ(mark_inst->inputs.size(), 2);
+        if (mark_attr->ann_key != tir::attr::auto_unroll_explicit
+            && mark_attr->ann_key != tir::attr::auto_unroll_implicit) {
+          continue;
+        }
+        const auto* sample_output = mark_inst->inputs[1].as<tir::VarNode>();
+        if (!sample_output) {
+          continue;
+        }
+        // Step 2. Back to find the corresponding `SampleCategorical` instruction.
+        for (int j = i - 1; j >= 0; --j) {
+          const Instruction& sample_inst = trace->insts[j];
+          if (sample_inst->outputs.size() == 1 && sample_inst->outputs[0].get() == sample_output) {
+            const auto* sample_attr = sample_inst->inst_attrs.as<SampleCategoricalAttrs>();
+            if (!sample_attr) {
+              // The unroll depth is not created by a `SampleCategorical`. So skip.
+              break;
+            }
+            CHECK_EQ(sample_attr->candidates.size(), sample_attr->probs.size());
+            int decision = Downcast<Integer>(trace->decisions.Get(sample_inst))->value;
+            // Step 3. Remove the current decision from the sampling candidates.
+            std::vector<double> weights = AsVector<FloatImm, double>(sample_attr->probs);
+            weights.erase(weights.begin() + decision);
+            // Step 4. Add a new candidate if `weights` is not empty.
+            if (!weights.empty()) {
+              candidates.emplace_back(sample_inst, weights, decision);
+            }
+            break;
+          }
+        }
+      }
+    }
+    return candidates;
+  }
+
+  Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler) {
+    std::vector<Candidate> candidates = FindCandidates(trace);
+    if (candidates.empty()) {
+      return NullOpt;
+    }
+    const Candidate& candidate = candidates[sampler->SampleInt(0, candidates.size())];
+    int result = sampler->MakeMultinomial(candidate.weights)();
+    if (result >= candidate.ori_decision) {
+      result++;
+    }
+    return trace->WithDecision(candidate.inst, Integer(result), /*remove_postproc=*/true);
+  }
+};
+
+Mutator MutateAutoUnroll() {
+  auto f_apply = [](SearchTask task, Trace trace, void* sampler) -> Optional<Trace> {
+    MutatorAutoUnroll mutator;
+    return mutator.Apply(task, trace, static_cast<Sampler*>(sampler));
+  };
+  return Mutator("mutate_unroll_depth", f_apply);
+}
+
+/********** MutateParallel **********/
+
+class MutatorParallel {
+ public:
+  int max_jobs_per_core;
+  mutable std::atomic<int> warned_num_cores_missing;
+
+  explicit MutatorParallel(int max_jobs_per_core)
+      : max_jobs_per_core(max_jobs_per_core), warned_num_cores_missing(0) {}
+
+  MutatorParallel(const MutatorParallel& other)
+      : max_jobs_per_core(other.max_jobs_per_core),
+        warned_num_cores_missing(other.warned_num_cores_missing.load()) {}
+
+  struct Candidate {
+    /*! \brief The MarkBlock instruction */
+    Instruction inst;
+    /*! \brief The extent candidates */
+    std::vector<int> extent_candidates;
+
+    explicit Candidate(Instruction inst, std::vector<int> extent_candidates)
+        : inst(std::move(inst)), extent_candidates(std::move(extent_candidates)) {}
+  };
+
+  /*!
+   * \brief Find instruction `MarkBlock` with annotation key `auto_parallel`
+   * \param trace The trace from which to find the instructions
+   * \return All the candidate instructions
+   */
+  std::vector<Candidate> FindCandidates(const Trace& trace, const tir::PrimFunc& workload,
+                                        const int& max_extent) const {
+    std::vector<Candidate> candidates;
+    Schedule sch(workload);
+    auto f_provide_decision = [&trace, &sch, &candidates, &max_extent](
+            const Instruction& inst,
+            const Array<Optional<ObjectRef>>& inputs) -> Optional<ObjectRef> {
+      Optional<ObjectRef> decision = trace->decisions.Get(inst);
+      // Step 1. Find the `MarkBlockAttr` whose ann_key is `auto_parallel_extent`
+      //         and whose parallel extent is given by an integer.
+      if (const auto* attr = inst->inst_attrs.as<MarkBlockAttrs>()) {
+        CHECK_EQ(inst->inputs.size(), 2);
+        if (attr->ann_key != tir::attr::auto_parallel_extent
+            || !inst->inputs[1]->IsInstance<IntImmNode>()) {
+          return decision;
+        }
+        // Step 2. Fetch the block and the loops above it. Furthermore, get their loop types.
+        BlockRV block_rv = Downcast<BlockRV>(inputs[0]);
+        tir::StmtSRef block_sref = sch->Eval(block_rv);
+        Array<tir::StmtSRef> loop_srefs = sch->sch->GetAxes(block_sref);
+        std::vector<int> loop_types;
+        for (const tir::StmtSRef& loop_sref : loop_srefs) {
+          loop_types.emplace_back(GetLoopIterType(sch->sch, loop_sref));
+        }
+        // Step 3. Get the original parallel extent.
+        int ori_extent = inst->inputs[1].as<IntImmNode>()->value;
+        // Step 4. Find extent candidates.
+        int prod_extent = 1;
+        std::vector<int> extent_candidates;
+        for (int i = 0; i < static_cast<int>(loop_srefs.size())
+                        && loop_types[i] == tir::IterVarType::kDataPar; ++i) {
+          const tir::StmtSRef& loop_sref = loop_srefs[i];
+          if (HasAnyAnn(loop_sref)) {
+            break;
+          }
+          // Check if the loop extent is valid
+          Optional<Integer> extent = GetLoopIntExtent(loop_sref);
+          if (!extent.defined()) {
+            break;
+          }
+          // Then we can fuse it in. Moreover, if extent is not 1 and extent does not
+          // equal the original extent, then it is a valid candidate.
+          if (extent.value()->value != 1 && extent.value()->value != ori_extent) {
+            prod_extent *= extent.value()->value;
+            extent_candidates.emplace_back(prod_extent);
+          }
+          // Check if we need to break.
+          if (prod_extent > max_extent || !HasSingleChild(loop_sref)) {
+            break;
+          }
+        }
+
+        if (!extent_candidates.empty()) {
+          candidates.emplace_back(inst, extent_candidates);
+        }
+      }
+      return decision;
+    };
+    trace->Apply(sch, f_provide_decision);
+    return candidates;
+  }
+
+  Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler) const {
+    int max_extent = GetTargetNumCores(task->target, &warned_num_cores_missing)
+                         * max_jobs_per_core - 1;
+    std::vector<Candidate> candidates = FindCandidates(trace, task->workload, max_extent);
+    if (candidates.empty()) {
+      return NullOpt;
+    }
+    const Candidate& candidate = candidates[sampler->SampleInt(0, candidates.size())];
+    const BlockRV& block = Downcast<BlockRV>(candidate.inst->inputs[0]);
+    const std::vector<int>& extent_candidates = candidate.extent_candidates;
+    const int& parallel_size = extent_candidates[sampler->SampleInt(0, extent_candidates.size())];
+
+    std::vector<Instruction> new_insts;
+    for (int i = 0; i < static_cast<int>(trace->insts.size())
+                    && !trace->insts[i]->inst_attrs->IsInstance<EnterPostProcAttrs>(); ++i) {
+      new_insts.emplace_back(trace->insts[i]);
+    }
+    for (Instruction& new_inst : new_insts) {
+      if (new_inst.same_as(candidate.inst)) {
+        new_inst = MarkBlockAttrs::Make(block, tir::attr::auto_parallel_extent, parallel_size);
+        break;
+      }
+    }
+    return Trace(new_insts, trace->decisions);
+  }
+};
+
+Mutator MutateParallel(const int& max_jobs_per_core) {
+  MutatorParallel mutator(max_jobs_per_core);
+  auto f_apply = [mutator](SearchTask task, Trace trace,
+                                                void* sampler) -> Optional<Trace> {
+    return mutator.Apply(task, trace, static_cast<Sampler*>(sampler));
+  };
+  return Mutator("mutate_parallel", f_apply);
+}
+
 /********** FFI **********/
 
 struct Internal {
@@ -256,6 +470,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.mutator.Apply").set_body_typed(Internal::Appl
 TVM_REGISTER_GLOBAL("meta_schedule.mutator.MutateTileSize").set_body_typed(MutateTileSize);
 TVM_REGISTER_GLOBAL("meta_schedule.mutator.MutateComputeLocation")
     .set_body_typed(MutateComputeLocation);
+TVM_REGISTER_GLOBAL("meta_schedule.mutator.MutateAutoUnroll").set_body_typed(MutateAutoUnroll);
+TVM_REGISTER_GLOBAL("meta_schedule.mutator.MutateParallel").set_body_typed(MutateParallel);
 
 }  // namespace meta_schedule
 }  // namespace tvm
