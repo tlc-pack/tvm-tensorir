@@ -60,7 +60,7 @@ class PostOrderApplyNode : public SearchSpaceNode {
    * \brief Get support of the search space
    * \param task The search task to be sampled from
    * \return An array with a single element returned from SampleSchedule
-   * \sa ScheduleFnNode::SampleSchedule
+   * \sa PostOrderApplyNode::SampleSchedule
    */
   Array<Schedule> GetSupport(const SearchTask& task, Sampler* sampler) override;
 

@@ -75,3 +75,25 @@ def mutate_compute_location() -> Mutator:
         The mutator created
     """
     return _ffi_api_mutator.MutateComputeLocation()  # pylint: disable=no-member
+
+
+def mutate_auto_unroll() -> Mutator:
+    """Create a mutator that randomly mutate the depth of auto unroll
+
+    Returns
+    ----------
+    mutator: Mutator
+        The mutator created
+    """
+    return _ffi_api_mutator.MutateAutoUnroll()  # pylint: disable=no-member
+
+
+def mutate_parallel(max_jobs_per_core: int) -> Mutator:
+    """Create a mutator that randomly mutate the max extent of parallelization
+
+    Returns
+    ----------
+    mutator: Mutator
+        The mutator created
+    """
+    return _ffi_api_mutator.MutateParallel(max_jobs_per_core)  # pylint: disable=no-member
