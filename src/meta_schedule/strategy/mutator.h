@@ -85,6 +85,18 @@ TVM_DLL Mutator MutateTileSize();
  */
 TVM_DLL Mutator MutateComputeLocation();
 
+/*!
+ * \brief Create a mutator that randomly mutate the depth of auto unroll
+ * \return The mutator created
+ */
+TVM_DLL Mutator MutateAutoUnroll();
+
+/*!
+ * \brief Create a mutator that randomly mutate the max extent of parallelization
+ * \return The mutator created
+ */
+TVM_DLL Mutator MutateParallel(const int& max_jobs_per_core);
+
 }  // namespace meta_schedule
 }  // namespace tvm
 
