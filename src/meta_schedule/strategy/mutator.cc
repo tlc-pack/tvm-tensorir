@@ -276,22 +276,17 @@ class MutatorAutoUnroll {
         // Step 2. Back to find the corresponding `SampleCategorical` instruction.
         for (int j = i - 1; j >= 0; --j) {
           const Instruction& sample_inst = trace->insts[j];
-          if (sample_inst->outputs.size() == 1
-              && sample_inst->outputs[0].same_as(GetRef<tir::Var>(sample_output))) {
+          if (sample_inst->outputs.size() == 1 && sample_inst->outputs[0].get() == sample_output) {
             const auto* sample_attr = sample_inst->inst_attrs.as<SampleCategoricalAttrs>();
             if (!sample_attr) {
               // The unroll depth is not created by a `SampleCategorical`. So skip.
               break;
             }
-            std::vector<double> weights;
             CHECK_EQ(sample_attr->candidates.size(), sample_attr->probs.size());
             int decision = Downcast<Integer>(trace->decisions.Get(sample_inst))->value;
             // Step 3. Remove the current decision from the sampling candidates.
-            for (int k = 0; k < static_cast<int>(sample_attr->candidates.size()); ++k) {
-              if (k != decision) {
-                weights.emplace_back(sample_attr->probs[k]->value);
-              }
-            }
+            std::vector<double> weights = AsVector<FloatImm, double>(sample_attr->probs);
+            weights.erase(weights.begin() + decision);
             // Step 4. Add a new candidate if `weights` is not empty.
             if (!weights.empty()) {
               candidates.emplace_back(sample_inst, weights, decision);
@@ -418,8 +413,8 @@ class MutatorParallel {
   }
 
   Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler) const {
-    bool warned = static_cast<bool>(warned_num_cores_missing.fetch_add(1));
-    int max_extent = GetTargetNumCores(task->target, &warned) * max_jobs_per_core - 1;
+    int max_extent = GetTargetNumCores(task->target, &warned_num_cores_missing)
+                         * max_jobs_per_core - 1;
     std::vector<Candidate> candidates = FindCandidates(trace, task->workload, max_extent);
     if (candidates.empty()) {
       return NullOpt;

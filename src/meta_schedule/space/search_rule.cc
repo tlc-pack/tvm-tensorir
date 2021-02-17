@@ -605,7 +605,7 @@ class RuleParallelizeVectorizeUnroll {
   Array<Integer> unroll_max_steps;
   bool unroll_explicit;
 
-  mutable bool warned_num_cores_missing;
+  mutable std::atomic<int> warned_num_cores_missing;
 
   explicit RuleParallelizeVectorizeUnroll(int max_jobs_per_core, int max_vectorize_extent,
                                           const Array<Integer>& unroll_max_steps,
@@ -614,7 +614,15 @@ class RuleParallelizeVectorizeUnroll {
         max_vectorize_extent(max_vectorize_extent),
         unroll_max_steps(unroll_max_steps),
         unroll_explicit(unroll_explicit),
-        warned_num_cores_missing(false) {}
+        warned_num_cores_missing(0) {}
+
+  RuleParallelizeVectorizeUnroll(const RuleParallelizeVectorizeUnroll& other) noexcept
+      : max_jobs_per_core(other.max_jobs_per_core),
+        max_vectorize_extent(other.max_vectorize_extent),
+        unroll_max_steps(other.unroll_max_steps),
+        unroll_explicit(other.unroll_explicit),
+        warned_num_cores_missing(static_cast<int>(other.warned_num_cores_missing)) {
+  }
 
   static bool IsLeftmostSubroot(const tir::Schedule& sch, tir::StmtSRef block_sref) {
     if (!IsSubrootBlock(sch, block_sref)) {
@@ -677,7 +685,7 @@ SearchRule ParallelizeVectorizeUnroll(int max_jobs_per_core, int max_vectorize_e
                                       Array<Integer> unroll_max_steps, bool unroll_explicit) {
   RuleParallelizeVectorizeUnroll rule(max_jobs_per_core, max_vectorize_extent, unroll_max_steps,
                                       unroll_explicit);
-  auto f_apply = [rule{std::move(rule)}](SearchTask task, Schedule sch,
+  auto f_apply = [rule](SearchTask task, Schedule sch,
                                          BlockRV block) -> Array<Schedule> {
     return rule.Apply(task, sch, block);
   };
