@@ -321,7 +321,7 @@ class ParentMutator : protected StmtMutator {
         n->seq.insert(n->seq.begin() + i, target_seq.begin(), target_seq.end());
         for (int end = n->seq.size(); i < end; ++i) {
           const Stmt& stmt = n->seq[i];
-          self->stmt2ref[stmt.get()]->seq_index = i++;
+          self->stmt2ref[stmt.get()]->seq_index = i;
         }
       } else {
         n->seq.Set(i, tgt_stmt);
