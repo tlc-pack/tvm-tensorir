@@ -369,7 +369,7 @@ class MutatorParallel {
         // Step 2. Fetch the block and the loops above it. Furthermore, get their loop types.
         BlockRV block_rv = Downcast<BlockRV>(inputs[0]);
         tir::StmtSRef block_sref = sch->Eval(block_rv);
-        Array<tir::StmtSRef> loop_srefs = sch->sch->GetLoopsInScope(block_sref);
+        Array<tir::StmtSRef> loop_srefs = sch->sch->GetAxes(block_sref);
         std::vector<int> loop_types;
         for (const tir::StmtSRef& loop_sref : loop_srefs) {
           loop_types.emplace_back(GetLoopIterType(sch->sch, loop_sref));
