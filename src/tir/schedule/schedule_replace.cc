@@ -319,8 +319,9 @@ class ParentMutator : protected StmtMutator {
         const Array<Stmt>& target_seq = tgt_stmt_seq->seq;
         n->seq.erase(n->seq.begin() + i);
         n->seq.insert(n->seq.begin() + i, target_seq.begin(), target_seq.end());
-        for (const Stmt& stmt : target_seq) {
-          self->stmt2ref[stmt.get()]->seq_index = i++;
+        for (int end = n->seq.size(); i < end; ++i) {
+          const Stmt& stmt = n->seq[i];
+          self->stmt2ref[stmt.get()]->seq_index = i;
         }
       } else {
         n->seq.Set(i, tgt_stmt);
@@ -354,22 +355,43 @@ void ScheduleNode::Replace(StmtSRef sref, Stmt tgt_stmt, const Map<Block, Block>
   sref = StmtSRef(sref->stmt, sref->parent);
   Stmt src_stmt = GetRef<Stmt>(sref->stmt);
   const StmtNode* root_stmt = this->root->stmt;
-  // Create sref tree for the incoming tgt_stmt
+  // Step 1. Create all the nodes needed for the new sref tree.
+  //   The `SRefCreator` visits the AST `tgt_stmt`, creating new nodes along the way.
+  //   It deals with 3 cases:
+  //
+  //   Case 1.1: Visiting a node already present in the old AST
+  //     It means we can skip the entire subtree, leaving it untouched
+  //     Mark those nodes as `intact`
+  //   Case 1.2: Can somehow infer the node being visited is mutated from the old AST, including
+  //     (a) The loop var appears in the old AST
+  //     (b) The node is explicitly present in `block_sref_map`
+  //     It means we need to retain and reuse the sref, so that those srefs users hold won't expire
+  //     Mark those nodes as `reuse`
+  //   Case 1.3: It is a completely new node
+  //     Create a new node for it
+  //
+  // After creation, it is guaranteed that
+  //   all the srefs in the AST `tgt_stmt` have proper `parent`s, except for those `intact` nodes.
   Info creation_info = SRefCreator::Create(this, block_sref_map, sref->parent, tgt_stmt);
+  // Step 2. Set the ancestors' children properly
+  //   Iteratively visit the ancestors, creating new ones whose `body`s are properly fixed.
+  //   The visit stops when all the ancestors are uniquely referenced, i.e. can mutate inplace.
+  //   Along the way, because we create a new ancestor path,
+  //   we need to update those sref points from old ancestors to newly created ones
+  StmtSRefNode* src_sref = sref.get();
   // The maximum number of hops until we don't need to copy
   int num_copy_steps = StepsHighestNonUniqueAncestor(sref, /*func_is_unique=*/this->func.unique());
-  StmtSRefNode* src_sref = sref.get();
   for (int i = 0; i <= num_copy_steps && src_sref->stmt != root_stmt; ++i) {
     bool parent_is_uniquely_referenced = (i == num_copy_steps);
-    // Within the child/children of `src_sref->parent`,
-    // replace `src_sref` with `tgt_stmt`,
-    // and return the new parent stmt
+    // Step 2.1. Create a new parent stmt, by mutating the body of `src_sref->parent`.
     Stmt new_parent_stmt =
         ParentMutator::Mutate(this, src_sref, tgt_stmt, parent_is_uniquely_referenced);
+    // Step 2.2. Update those sref points from old ancestors to newly created ones
     if (i != 0) {
       // If `i == 0`, `src_sref` is `sref`, a local temporary object and we should not update it
       UpdateSRef(this, src_sref, tgt_stmt.get());
     }
+    // Step 2.3. Go to next parent
     tgt_stmt = new_parent_stmt;
     if (parent_is_uniquely_referenced) {
       // If the node can be directly mutated inplace,
@@ -378,7 +400,10 @@ void ScheduleNode::Replace(StmtSRef sref, Stmt tgt_stmt, const Map<Block, Block>
     }
     src_sref = src_sref->parent;
   }
+  // Step 3. Remove the statements from the old AST that are not used any more
+  // i.e. those are not reused or intact
   SRefRemover::Remove(this, creation_info, src_stmt);
+  // Step 4. Handle the case that we mutate the root
   if (src_sref->stmt == root_stmt) {
     if (sref->stmt == root_stmt) {
       // Replacing the root is easier
