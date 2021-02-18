@@ -83,6 +83,7 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
   // name map for unique block name
   std::unordered_map<std::string, int> name_map;
 
+  Map<BlockRealize, Map<String, ObjectRef>> op_attrs;
   for (const auto& op : order) {
     CHECK_EQ(op->num_outputs(), 1);
     const te::Tensor& tensor = op.output(0);
@@ -153,13 +154,14 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
       Array<PrimExpr> null_bindings;
       for (size_t i = 0; i < block_vars.size(); i++) null_bindings.push_back(NullValue<PrimExpr>());
       BlockRealize realize(null_bindings, Bool(true), block);
+      op_attrs.Set(realize, op->attrs);
       seq.push_back(realize);
     } else {
       LOG(FATAL) << "Unsupported OperationNode";
     }
   }
 
-  Stmt root = auto_complete(SeqStmt::Flatten(seq), allocations);
+  Stmt root = auto_complete(SeqStmt::Flatten(seq), allocations, op_attrs);
 
   return PrimFunc(parameters, root, VoidType(), buffer_map);
 }

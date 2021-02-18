@@ -263,3 +263,14 @@ def mark_tensorize(tensor_intrins: List[TensorIntrin]) -> SearchRule:
         The rule created
     """
     return _ffi_api_search_rule.MarkTensorize(tensor_intrins)  # pylint: disable=no-member
+
+
+def simplify_compute_with_const_tensor() -> SearchRule:
+    """Simplify compute with const tensor by unrolling indices of the const tensor.
+
+    Returns
+    -------
+    rule: SearchRUle
+        The rule created
+    """
+    return _ffi_api_search_rule.SimplifyComputeWithConstTensor()  # pylint: disable=no-member

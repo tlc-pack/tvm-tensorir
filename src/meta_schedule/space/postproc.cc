@@ -435,14 +435,16 @@ class PostprocRewriteUnboundBlocks {
     // TODO(@junrushao1994): check if each loop has only one children, otherwise we cannot fuse
     int n_spatial_loops = 0;
     for (const LoopRV& loop_rv : loop_rvs) {
-      tir::IterVarType iter_type = GetLoopIterType(sch->sch, sch->Eval(loop_rv));
-      if (iter_type != tir::kDataPar) {
+      tir::StmtSRef loop_sref = sch->Eval(loop_rv);
+      tir::IterVarType iter_type = GetLoopIterType(sch->sch, loop_sref);
+      if (iter_type != tir::kDataPar || HasAnn(loop_sref, tir::attr::loop_type, "unroll")) {
         break;
       }
       ++n_spatial_loops;
     }
     CHECK_GT(n_spatial_loops, 0) << "ValueError: not supported when spatial loop doesn't exist";
     // Fuse the spatial loops
+    // LOG(INFO) << "block: " << block->tag << " n_spatial: " << n_spatial_loops;
     LoopRV fused = sch->Fuse({loop_rvs.begin(), loop_rvs.begin() + n_spatial_loops});
     Array<LoopRV> splits = sch->Split(fused, {NullOpt, Integer(32)});
     CHECK_EQ(splits.size(), 2);

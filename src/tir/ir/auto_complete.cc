@@ -23,6 +23,7 @@
  */
 
 #include <tvm/arith/int_set.h>
+#include <tvm/auto_scheduler/search_policy.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/stmt.h>
 #include <tvm/tir/stmt_functor.h>
@@ -132,6 +133,7 @@ void BlockReadWriteCollector::VisitStmt_(const BlockRealizeNode* op) {
 class AutoCompleter : public StmtMutator {
  public:
   bool contains_block = false;
+  AutoCompleter(const Map<BlockRealize, Map<String, ObjectRef>>& op_attrs) : op_attrs_(op_attrs) { }
 
  private:
   Stmt VisitStmt_(const BlockRealizeNode* op) override {
@@ -145,9 +147,21 @@ class AutoCompleter : public StmtMutator {
       }
       block_with_binding->binding_values = bindings;
       body = BlockRealize(block_with_binding);
+
+      Array<String> const_tensor_indices;
+      Map<String, ObjectRef> attrs = op_attrs_.at(GetRef<BlockRealize>(op));
+      auto it = attrs.find(tvm::auto_scheduler::SearchPolicyKey::simplify_const_tensor_indices);
+      if (it != attrs.end()) {
+        const_tensor_indices = Downcast<Array<String>>((*it).second);
+      }
       for (int i = op->binding_values.size() - 1; i >= 0; --i) {
+        Array<Annotation> annotations;
+        auto axis_name = op->block->iter_vars[i]->var->name_hint;
+        if (std::find(const_tensor_indices.begin(), const_tensor_indices.end(), axis_name) != const_tensor_indices.end()) {
+          annotations.push_back(Annotation{tvm::auto_scheduler::SearchPolicyKey::simplify_const_tensor_indices, StringImm("")});
+        }
         body = For(Downcast<Var>(bindings[i]), op->block->iter_vars[i]->dom->min,
-                    op->block->iter_vars[i]->dom->extent, {}, body);
+                    op->block->iter_vars[i]->dom->extent, annotations, body);
       }
     }
     return body;
@@ -166,10 +180,13 @@ class AutoCompleter : public StmtMutator {
       return std::move(block);
     }
   }
+
+  // attributes imported from TE compute op
+  Map<BlockRealize, Map<String, ObjectRef>> op_attrs_;
 };
 
-Stmt auto_complete(const Stmt& body, const Array<Buffer>& root_allocates) {
-  AutoCompleter auto_completer;
+Stmt auto_complete(const Stmt& body, const Array<Buffer>& root_allocates, const Map<BlockRealize, Map<String, ObjectRef>>& op_attrs) {
+  AutoCompleter auto_completer(op_attrs);
   // generate surrounding loops automatically
   Stmt res = auto_completer(body);
   // generate root block automatically

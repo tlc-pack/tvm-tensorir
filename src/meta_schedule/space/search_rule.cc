@@ -18,6 +18,7 @@
  */
 #include "./search_rule.h"  // NOLINT(build/include)
 
+#include <tvm/auto_scheduler/search_policy.h>
 #include "../../tir/schedule/schedule_common.h"
 #include "../analysis.h"
 #include "../utils.h"
@@ -794,6 +795,41 @@ SearchRule MarkTensorize(Array<tir::TensorIntrin> tensor_intrins) {
   return SearchRule("mark_tensorize", f_apply);
 }
 
+/********** SimplifyComputeWithConstTensor **********/
+class RuleSimplifyComputeWithConstTensor {
+ public:
+  Array<Schedule> Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv) {
+    Array<LoopRV> axes = sch->GetAxes(block_rv);
+    bool found_const_indices = false;
+    Array<LoopRV> new_axes_order;
+    new_axes_order.reserve(axes.size());
+    Array<LoopRV> unrolled_axes;
+    for (const LoopRV& ax: axes) {
+      auto loop_sref = sch->Eval(ax);
+      if (HasAnn(loop_sref, tvm::auto_scheduler::SearchPolicyKey::simplify_const_tensor_indices, "")) {
+        found_const_indices = true;
+        sch->Unroll(ax);
+        DelAnn(sch->sch, loop_sref, tvm::auto_scheduler::SearchPolicyKey::simplify_const_tensor_indices);
+        unrolled_axes.push_back(ax);
+      } else {
+        new_axes_order.push_back(ax);
+      }
+    }
+    if (found_const_indices) {
+    std::copy(unrolled_axes.begin(), unrolled_axes.end(), std::back_inserter(new_axes_order));
+    sch->Reorder(new_axes_order);
+    }
+    return {sch};
+  }
+};
+
+SearchRule SimplifyComputeWithConstTensor() {
+  auto f_apply = [](SearchTask task, Schedule sch, BlockRV block) -> Array<Schedule> {
+    return RuleSimplifyComputeWithConstTensor().Apply(task, sch, block);
+  };
+  return SearchRule("simplify_compute_with_const_tensor", f_apply);
+}
+
 /********** FFI **********/
 
 struct Internal {
@@ -842,6 +878,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.search_rule.RandomComputeLocation")
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.ParallelizeVectorizeUnroll")
     .set_body_typed(ParallelizeVectorizeUnroll);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkTensorize").set_body_typed(MarkTensorize);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.SimplifyComputeWithConstTensor")
+    .set_body_typed(SimplifyComputeWithConstTensor);
 
 }  // namespace meta_schedule
 }  // namespace tvm
