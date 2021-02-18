@@ -374,6 +374,56 @@ std::pair<Stmt, Stmt> RemoveLeaf(const StmtSRef& block_sref, const StmtSRef& roo
   throw;
 }
 
+bool AddLeafBlockRemover(const StmtSRef& block_sref, const StmtSRef& root_block_sref,
+                         Map<Stmt, Stmt>* replace_plan) {
+  CHECK(root_block_sref->stmt->IsInstance<BlockNode>());
+  CHECK_NE(block_sref.get(), root_block_sref.get());
+  // go upwards until find a father with more than two children
+  StmtSRefNode* root = root_block_sref.get();
+  StmtSRefNode* child = block_sref.get();
+  StmtSRefNode* parent = child->parent;
+  for (; parent != root; child = parent, parent = parent->parent) {
+    const auto* parent_loop = parent->GetStmt<LoopNode>();
+    if (!parent_loop) {
+      break;
+    }
+    if (const auto* seq_stmt = parent_loop->body.as<SeqStmtNode>()) {
+      CHECK_GE(seq_stmt->size(), 2);
+      ObjectPtr<LoopNode> new_loop = make_object<LoopNode>(*parent_loop);
+      new_loop->body = EvictStmt(seq_stmt->seq, child->stmt);
+      replace_plan->Set(GetRef<Stmt>(parent->stmt), Loop(new_loop));
+      return true;
+    }
+  }
+  CHECK(parent->stmt != nullptr && parent->stmt->IsInstance<BlockNode>());
+  const auto* block = static_cast<const BlockNode*>(parent->stmt);
+  if (const auto* seq_stmt = block->body.as<SeqStmtNode>()) {
+    CHECK_GE(seq_stmt->size(), 2);
+    ObjectPtr<BlockNode> new_block = make_object<BlockNode>(*block);
+    new_block->body = EvictStmt(seq_stmt->seq, child->stmt);
+    replace_plan->Set(GetRef<Stmt>(parent->stmt), Block(new_block));
+    return true;
+  }
+  return false;
+}
+
+Stmt Substitute(const Stmt& stmt, const Map<Stmt, Stmt>& replace_plan) {
+  class Mutator : public StmtMutator {
+   public:
+    explicit Mutator(const Map<Stmt, Stmt>& replace_plan) : replace_plan(replace_plan) {}
+    Stmt VisitStmt(const Stmt& stmt) override {
+      auto it = replace_plan.find(stmt);
+      if (it == replace_plan.end()) {
+        return StmtMutator::VisitStmt(stmt);
+      } else {
+        return StmtMutator::VisitStmt((*it).second);
+      }
+    }
+    const Map<Stmt, Stmt>& replace_plan;
+  };
+  return Mutator(replace_plan)(stmt);
+}
+
 class ScopeUpdater : public StmtVisitor {
  public:
   explicit ScopeUpdater(const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref)

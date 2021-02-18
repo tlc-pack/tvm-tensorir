@@ -157,6 +157,26 @@ TensorRegion RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
 std::pair<Stmt, Stmt> RemoveLeaf(const StmtSRef& sref, const StmtSRef& root);
 
 /*!
+ * \brief Create a substitution plan (old_stmt => new_stmt) to remove the leaf block,
+ * and add this mapping to replace_map
+ * \param block_sref The sref of the leaf block to be planned removal
+ * \param root_block_sref The sref to the root of a subtree of planning, i.e. removal plan cannot be
+ * higher than that node
+ * \param replace_plan Where the substition plan to be added into
+ * \return A boolean flag indicating if the plan is found successfully
+ */
+bool AddLeafBlockRemover(const StmtSRef& block_sref, const StmtSRef& root_block_sref,
+                         Map<Stmt, Stmt>* replace_plan);
+
+/*!
+ * \brief Substitute subtrees of the AST given the replace plan
+ * \param stmt The AST to be substituted
+ * \param replace_plan A mapping from old AST to new AST
+ * \return The new AST after substitution
+ */
+Stmt Substitute(const Stmt& stmt, const Map<Stmt, Stmt>& replace_plan);
+
+/*!
  * \brief Inspect whether the stmt/expr contains any var of vars
  * \param obj the expected stmt/expr
  * \param vars the expected expr with vars
