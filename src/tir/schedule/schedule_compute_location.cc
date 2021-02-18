@@ -540,9 +540,9 @@ void ScheduleNode::reverse_compute_at(const StmtSRef& block_sref, const StmtSRef
 
 class StatementInliner : public StmtExprMutator {
  public:
-  explicit StatementInliner(const BlockNode* block, Map<Block, Block>* block_sref_map,
+  explicit StatementInliner(const BlockNode* block, Map<Block, Block>* block_reuse,
                             const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map)
-      : block_(block), block_sref_map_(block_sref_map), replace_map_(replace_map) {
+      : block_(block), block_reuse_(block_reuse), replace_map_(replace_map) {
     const auto store = block_->body.as<BufferStoreNode>();
     value_ = store->value;
     CHECK_EQ(block_->writes.size(), 1);
@@ -596,7 +596,7 @@ class StatementInliner : public StmtExprMutator {
     Block block(op->iter_vars, reads, op->writes, op->body, allocations, op->annotations, op->tag,
                 op->init);
 
-    block_sref_map_->Set(block, origin_block);
+    block_reuse_->Set(block, origin_block);
     return std::move(block);
   }
 
@@ -621,7 +621,7 @@ class StatementInliner : public StmtExprMutator {
   /*! The buffer store value*/
   PrimExpr value_;
   /*! The block sref map using in Replace */
-  Map<Block, Block>* block_sref_map_;
+  Map<Block, Block>* block_reuse_;
   const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map_;
   /*! Whether this block is the scope block (first visited block)*/
   bool is_scope_block_ = true;
@@ -653,18 +653,18 @@ void ScheduleNode::compute_inline(const StmtSRef& block_sref) {
   Stmt replaced = StmtReplacer(replace_map)(GetRef<Stmt>(scope_block));
 
   // Inline
-  Map<Block, Block> block_sref_map;
-  StatementInliner inliner(block, &block_sref_map, replace_map);
+  Map<Block, Block> block_reuse;
+  StatementInliner inliner(block, &block_reuse, replace_map);
   Stmt inlined_stmt = inliner(replaced);
 
-  this->Replace(scope_block_sref, inlined_stmt, block_sref_map);
+  this->Replace(scope_block_sref, inlined_stmt, block_reuse);
 }
 
 class ReverseStatementInliner : public StmtExprMutator {
  public:
   explicit ReverseStatementInliner(const BlockNode* block, const BlockNode* producer,
-                                   Map<Block, Block>* block_sref_map)
-      : block_(block), producer_(producer), block_sref_map_(block_sref_map) {
+                                   Map<Block, Block>* block_reuse)
+      : block_(block), producer_(producer), block_reuse_(block_reuse) {
     // Check BufferStore of producer is like Buffer[v0, v1, ...]
     const auto* store = producer_->body.as<BufferStoreNode>();
     value_ = store->value;
@@ -703,7 +703,7 @@ class ReverseStatementInliner : public StmtExprMutator {
     Block block(op->iter_vars, block_read_write_collector.reads(),
                 block_read_write_collector.writes(), op->body, allocations, op->annotations,
                 op->tag, op->init);
-    if (is_producer) block_sref_map_->Set(block, origin_producer);
+    if (is_producer) block_reuse_->Set(block, origin_producer);
     return std::move(Block(block));
   }
 
@@ -757,7 +757,7 @@ class ReverseStatementInliner : public StmtExprMutator {
   /*! The buffer store value*/
   PrimExpr value_;
   /*! The block sref map using in Replace */
-  Map<Block, Block>* block_sref_map_;
+  Map<Block, Block>* block_reuse_;
 };
 
 void ScheduleNode::reverse_compute_inline(const StmtSRef& block_sref) {
@@ -811,10 +811,10 @@ void ScheduleNode::reverse_compute_inline(const StmtSRef& block_sref) {
       {removed.first.get(), removed.second.get()}};
   Stmt replaced = StmtReplacer(replace_map)(GetRef<Stmt>(scope_block));
   // Inline
-  Map<Block, Block> block_sref_map;
-  ReverseStatementInliner inliner(block, producer, &block_sref_map);
+  Map<Block, Block> block_reuse;
+  ReverseStatementInliner inliner(block, producer, &block_reuse);
   Stmt inlined_stmt = inliner(replaced);
-  this->Replace(scope_block_sref, inlined_stmt, block_sref_map);
+  this->Replace(scope_block_sref, inlined_stmt, block_reuse);
 }
 
 struct Internal {
