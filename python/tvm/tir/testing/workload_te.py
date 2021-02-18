@@ -478,14 +478,14 @@ def transpose_batch_matmul(  # pylint: disable=invalid-name
 
 
 def conv2d_winograd_nhwc(
-    N: int, 
-    H: int, 
-    W: int, 
-    CI: int, 
-    CO: int, 
-    kernel_size: 
-    int, stride: int = 1, 
-    padding: int = 0, 
+    N: int,
+    H: int,
+    W: int,
+    CI: int,
+    CO: int,
+    kernel_size: int,
+    stride: int = 1,
+    padding: int = 0,
     dilation: int = 1
 ) -> Tuple[te.Tensor, te.Tensor, te.Tensor]:
     # TODO: implement tile_size
