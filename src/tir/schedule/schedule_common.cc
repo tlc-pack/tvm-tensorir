@@ -347,11 +347,14 @@ std::pair<Stmt, Stmt> RemoveLeaf(const StmtSRef& block_sref, const StmtSRef& roo
   CHECK(root_block_sref->stmt->IsInstance<BlockNode>());
   CHECK_NE(block_sref.get(), root_block_sref.get());
   // go upwards until find a father with more than two children
-  StmtSRefNode* parent = block_sref->parent;
+  StmtSRefNode* root = root_block_sref.get();
   StmtSRefNode* child = block_sref.get();
-  for (; parent != root_block_sref.get() && parent->stmt->IsInstance<LoopNode>();
-       child = parent, parent = parent->parent) {
-    const auto* parent_loop = static_cast<const LoopNode*>(parent->stmt);
+  StmtSRefNode* parent = child->parent;
+  for (; parent != root; child = parent, parent = parent->parent) {
+    const auto* parent_loop = parent->GetStmt<LoopNode>();
+    if (!parent_loop) {
+      break;
+    }
     if (const auto* seq_stmt = parent_loop->body.as<SeqStmtNode>()) {
       CHECK_GE(seq_stmt->size(), 2);
       ObjectPtr<LoopNode> new_loop = make_object<LoopNode>(*parent_loop);
