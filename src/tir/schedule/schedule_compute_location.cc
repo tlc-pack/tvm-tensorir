@@ -541,8 +541,8 @@ void ScheduleNode::reverse_compute_at(const StmtSRef& block_sref, const StmtSRef
 class StatementInliner : public StmtExprMutator {
  public:
   explicit StatementInliner(const BlockNode* block, Map<Block, Block>* block_reuse,
-                            const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map)
-      : block_(block), block_reuse_(block_reuse), replace_map_(replace_map) {
+                            const Map<Stmt, Stmt>& replace_plan)
+      : block_(block), block_reuse_(block_reuse), replace_plan_(replace_plan) {
     const auto store = block_->body.as<BufferStoreNode>();
     value_ = store->value;
     CHECK_EQ(block_->writes.size(), 1);
@@ -565,9 +565,9 @@ class StatementInliner : public StmtExprMutator {
     bool is_scope_block = is_scope_block_;
     is_scope_block_ = false;
     const StmtNode* node = op;
-    for (const auto& pair : replace_map_) {
-      if (pair.second == op) {
-        node = pair.first;
+    for (const auto& pair : replace_plan_) {
+      if (pair.second.get() == op) {
+        node = pair.first.get();
         break;
       }
     }
@@ -622,7 +622,7 @@ class StatementInliner : public StmtExprMutator {
   PrimExpr value_;
   /*! The block sref map using in Replace */
   Map<Block, Block>* block_reuse_;
-  const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map_;
+  const Map<Stmt, Stmt>& replace_plan_;
   /*! Whether this block is the scope block (first visited block)*/
   bool is_scope_block_ = true;
 };
@@ -635,8 +635,8 @@ void ScheduleNode::compute_inline(const StmtSRef& block_sref) {
    */
   const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
   const StmtSRef& scope_block_sref = GetParentBlockSRef(block_sref);
-  const auto* scope_block = TVM_SREF_TO_BLOCK(scope_block, scope_block_sref);
-  const Scope& scope = scopes.at(scope_block_sref);
+  const Scope& scope = this->scopes.at(scope_block_sref);
+  Map<Stmt, Stmt> replace_plan;
 
   CHECK(block->body->IsInstance<BufferStoreNode>())
       << "ValueError: 'compute_inline' can only inline single assignment statement";
@@ -644,17 +644,13 @@ void ScheduleNode::compute_inline(const StmtSRef& block_sref) {
       << "ValueError: 'compute_inline' can only inline statement with one output";
   CHECK(scope->IsComplete(block_sref))
       << "ValueError: 'compute_inline' can only inline a complete block";
+  CHECK(AddLeafBlockRemover(block_sref, scope_block_sref, &replace_plan))
+      << "ValueError: 'compute_inline' doesn't work on the only child of a block";
 
-  // Remove leaf
-  std::pair<Stmt, Stmt> removed = RemoveLeaf(block_sref, scope_block_sref);
-  std::unordered_map<const StmtNode*, const StmtNode*> replace_map{
-      {removed.first.get(), removed.second.get()}  //
-  };
-  Stmt replaced = StmtReplacer(replace_map)(GetRef<Stmt>(scope_block));
+  Stmt replaced = Substitute(scope_block_sref->stmt, replace_plan);
 
-  // Inline
   Map<Block, Block> block_reuse;
-  StatementInliner inliner(block, &block_reuse, replace_map);
+  StatementInliner inliner(block, &block_reuse, replace_plan);
   Stmt inlined_stmt = inliner(replaced);
 
   this->Replace(scope_block_sref, inlined_stmt, block_reuse);

@@ -176,6 +176,10 @@ bool AddLeafBlockRemover(const StmtSRef& block_sref, const StmtSRef& root_block_
  */
 Stmt Substitute(const Stmt& stmt, const Map<Stmt, Stmt>& replace_plan);
 
+inline Stmt Substitute(const StmtNode* stmt, const Map<Stmt, Stmt>& replace_plan) {
+  return Substitute(GetRef<Stmt>(stmt), replace_plan);
+}
+
 /*!
  * \brief Inspect whether the stmt/expr contains any var of vars
  * \param obj the expected stmt/expr
