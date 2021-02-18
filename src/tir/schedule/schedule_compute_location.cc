@@ -633,11 +633,12 @@ void ScheduleNode::compute_inline(const StmtSRef& block_sref) {
    *    1. The inner stmt of block_sref if a BufferStore
    *    2. block_sref if a complete Block
    */
-  const auto* block = block_sref->GetStmt<BlockNode>();
+  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
   const StmtSRef& scope_block_sref = GetParentBlockSRef(block_sref);
-  const auto* scope_block = scope_block_sref->GetStmt<BlockNode>();
+  const auto* scope_block = TVM_SREF_TO_BLOCK(scope_block, scope_block_sref);
   const Scope& scope = scopes.at(scope_block_sref);
-  CHECK(block->body.as<BufferStoreNode>())
+
+  CHECK(block->body->IsInstance<BufferStoreNode>())
       << "ValueError: 'compute_inline' can only inline single assignment statement";
   CHECK_EQ(block->writes.size(), 1)
       << "ValueError: 'compute_inline' can only inline statement with one output";
@@ -646,8 +647,9 @@ void ScheduleNode::compute_inline(const StmtSRef& block_sref) {
 
   // Remove leaf
   std::pair<Stmt, Stmt> removed = RemoveLeaf(block_sref, scope_block_sref);
-  std::unordered_map<const StmtNode*, const StmtNode*> replace_map = {
-      {removed.first.get(), removed.second.get()}};
+  std::unordered_map<const StmtNode*, const StmtNode*> replace_map{
+      {removed.first.get(), removed.second.get()}  //
+  };
   Stmt replaced = StmtReplacer(replace_map)(GetRef<Stmt>(scope_block));
 
   // Inline

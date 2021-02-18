@@ -40,6 +40,16 @@
 namespace tvm {
 namespace tir {
 
+#define TVM_SREF_TO_BLOCK(Result, SRef)                     \
+  SRef->GetStmt<::tvm::tir::BlockNode>();                   \
+  CHECK(Result) << "TypeError: Expects `Block`, but gets: " \
+                << (SRef->stmt ? SRef->stmt->GetTypeKey() : "None");
+
+#define TVM_SREF_TO_LOOP(Result, SRef)                     \
+  SRef->GetStmt<::tvm::tir::LoopNode>();                   \
+  CHECK(Result) << "TypeError: Expects `Loop`, but gets: " \
+                << (SRef->stmt ? SRef->stmt->GetTypeKey() : "None");
+
 /*!
  * \brief Get the direct child Schedulable Stmt (Block and Loop)
  * \param stmt the parent stmt.
@@ -144,7 +154,7 @@ TensorRegion RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
  * \param root The AST root
  * \return The orginal stmt and the removed stmt of the subtree rooted by the parent node
  */
-std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root);
+std::pair<Stmt, Stmt> RemoveLeaf(const StmtSRef& sref, const StmtSRef& root);
 
 /*!
  * \brief Inspect whether the stmt/expr contains any var of vars
@@ -185,7 +195,14 @@ class StmtReplacer : public StmtMutator {
   explicit StmtReplacer(const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map)
       : replace_map(replace_map) {}
 
-  Stmt VisitStmt(const Stmt& stmt) override;
+  Stmt VisitStmt(const Stmt& stmt) override {
+    auto it = replace_map.find(stmt.get());
+    if (it == replace_map.end()) {
+      return StmtMutator::VisitStmt(stmt);
+    } else {
+      return StmtMutator::VisitStmt(GetRef<Stmt>(it->second));
+    }
+  }
 
   const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map;
 };
