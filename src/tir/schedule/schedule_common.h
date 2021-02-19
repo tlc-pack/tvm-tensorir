@@ -50,6 +50,11 @@ namespace tir {
   CHECK(Result) << "TypeError: Expects `Loop`, but gets: " \
                 << (SRef->stmt ? SRef->stmt->GetTypeKey() : "None");
 
+#define TVM_TYPE_AS(Result, From, Type)                      \
+  From.as<Type>();                                           \
+  CHECK(Result) << "TypeError: Expects `" << Type::_type_key \
+                << "`, but gets: " << (From.defined() ? From->GetTypeKey() : "None")
+
 /*!
  * \brief Get the direct child Schedulable Stmt (Block and Loop)
  * \param stmt the parent stmt.

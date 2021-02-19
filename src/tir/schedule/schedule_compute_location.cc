@@ -36,6 +36,26 @@ Array<Var> GatherVars(const ObjectRef& stmt_or_expr) {
   return std::vector<Var>(result.begin(), result.end());
 }
 
+std::vector<Var> VarsUsed(const ObjectRef& stmt_or_expr) {
+  std::vector<Var> result;
+  PostOrderVisit(stmt_or_expr, [&result](const ObjectRef& obj) -> void {
+    if (const auto* var = obj.as<VarNode>()) {
+      result.emplace_back(GetRef<Var>(var));
+    }
+  });
+  return result;
+}
+
+template <class T>
+bool Contains(const std::vector<T>& list, const T& element) {
+  for (const T& e : list) {
+    if (e.same_as(element)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /*!
  * \brief Helper function to check if there is any edge points to the given set of blocks
  * \param edges A list of edges to be check
@@ -538,94 +558,118 @@ void ScheduleNode::reverse_compute_at(const StmtSRef& block_sref, const StmtSRef
   }
 }
 
-class StatementInliner : public StmtExprMutator {
- public:
-  explicit StatementInliner(const BlockNode* block, Map<Block, Block>* block_reuse,
-                            const Map<Stmt, Stmt>& replace_plan)
-      : block_(block), block_reuse_(block_reuse), replace_plan_(replace_plan) {
-    const auto store = block_->body.as<BufferStoreNode>();
-    value_ = store->value;
-    CHECK_EQ(block_->writes.size(), 1);
-    for (const auto& index : store->indices) {
-      const auto* variable = index.as<VarNode>();
-      CHECK(variable) << "Only support inline direct access block";
-      Var var = GetRef<Var>(variable);
-      vars_.push_back(var);
-    }
-    Array<Var> value_vars = GatherVars(value_);
-    for (const auto& x : value_vars) {
-      CHECK(std::find_if(vars_.begin(), vars_.end(),
-                         [=](const Var& var) -> bool { return var.same_as(x); }) != vars_.end())
-          << "Not All variable in value can be replaced by index vars";
-    }
+Stmt InlineStatement(const Stmt& stmt,                     //
+                     const BlockNode* block_to_inline,     //
+                     const Map<Stmt, Stmt>& replace_plan,  //
+                     Map<Block, Block>* block_reuse) {
+  // The buffer to be inlined
+  const Buffer& buffer = block_to_inline->writes[0]->buffer;
+  const auto* store = TVM_TYPE_AS(store, block_to_inline->body, BufferStoreNode);
+  // Step 1. Extract store indices as Vars
+  std::vector<Var> index_vars;
+  index_vars.reserve(store->indices.size());
+  for (const PrimExpr& i : store->indices) {
+    const auto* var = i.as<VarNode>();
+    CHECK(var != nullptr) << "ValueError: `compute_inline` requires indices to be variables";
+    index_vars.push_back(GetRef<Var>(var));
+  }
+  // Step 2. Check if every variable used in right-hand-side are index variables
+  for (const Var& var : VarsUsed(store->value)) {
+    CHECK(Contains(index_vars, var)) << "ValueError: 'compute_inline' requires all variables on "
+                                        "the right-hand-side to appear as index variables";
   }
 
-  Stmt VisitStmt_(const BlockNode* op) final {
-    // Find the original block before leaf removing
-    bool is_scope_block = is_scope_block_;
-    is_scope_block_ = false;
-    const StmtNode* node = op;
-    for (const auto& pair : replace_plan_) {
-      if (pair.second.get() == op) {
-        node = pair.first.get();
-        break;
+  class Inliner : public StmtExprMutator {
+   public:
+    explicit Inliner(Map<Block, Block>* block_reuse,      //
+                     const Buffer& buffer,                //
+                     const std::vector<Var>& index_vars,  //
+                     const BufferStoreNode* store,        //
+                     const Map<Stmt, Stmt>& replace_plan)
+        : is_scope_block(true),
+          block_reuse(block_reuse),
+          buffer(buffer),
+          index_vars(index_vars),
+          store(store),
+          replace_plan(replace_plan) {}
+
+    // Step 3. Define how to substitute `BufferLoad(A[...])` if `A[...] = ...` is inlined
+    PrimExpr VisitExpr_(const BufferLoadNode* load) final {
+      if (!buffer.same_as(load->buffer)) {
+        return StmtExprMutator::VisitExpr_(load);
       }
-    }
-    Block origin_block = Downcast<Block>(GetRef<Stmt>(node));
-    Stmt stmt = StmtExprMutator::VisitStmt_(op);
-    op = stmt.as<BlockNode>();
-    CHECK(op != nullptr);
-
-    // Update Allocation
-    const Buffer& buffer = block_->writes[0]->buffer;
-    Array<BufferAllocate> allocations;
-    for (const auto allocate : op->allocations) {
-      if (allocate->buffer != buffer) allocations.push_back(allocate);
-    }
-
-    Array<TensorRegion> reads(nullptr);
-    if (is_scope_block) {
-      reads = op->reads;
-    } else {
-      // Update read region only for none-scope block
-      BlockReadWriteCollector block_read_write_collector(allocations);
-      block_read_write_collector(op->body);
-      reads = block_read_write_collector.reads();
-    }
-
-    Block block(op->iter_vars, reads, op->writes, op->body, allocations, op->annotations, op->tag,
-                op->init);
-
-    block_reuse_->Set(block, origin_block);
-    return std::move(block);
-  }
-
-  PrimExpr VisitExpr_(const BufferLoadNode* op) final {
-    const Buffer& buffer = block_->writes[0]->buffer;
-    if (buffer.same_as(op->buffer)) {
-      std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> v_map;
-      for (size_t i = 0; i < op->indices.size(); ++i) {
-        v_map[vars_[i]] = op->indices[i];
+      // We replace the BufferLoad to the rhs of `A[...] = ...`
+      Map<Var, PrimExpr> sub_map;
+      CHECK_EQ(load->indices.size(), index_vars.size());
+      for (int i = 0, n = index_vars.size(); i < n; ++i) {
+        sub_map.Set(index_vars[i], load->indices[i]);
       }
-      return Substitute(value_, v_map);
-    } else {
-      return StmtExprMutator::VisitExpr_(op);
+      return Substitute(store->value, sub_map);
     }
-  }
 
- private:
-  /*! The block realize of the block to be inlined*/
-  const BlockNode* block_;
-  /*! The block vars of the block to be inlined*/
-  Array<Var> vars_;
-  /*! The buffer store value*/
-  PrimExpr value_;
-  /*! The block sref map using in Replace */
-  Map<Block, Block>* block_reuse_;
-  const Map<Stmt, Stmt>& replace_plan_;
-  /*! Whether this block is the scope block (first visited block)*/
-  bool is_scope_block_ = true;
-};
+    Stmt VisitStmt_(const BlockNode* tgt_block) final {
+      // Step 4. Define how to find src_block given tgt_block in the replacement plan
+      auto f_find_src_block = [this](const BlockNode* tgt_block) -> const BlockNode* {
+        for (const auto& kv : replace_plan) {
+          if (kv.second.get() == tgt_block) {
+            const StmtNode* src_block = kv.first.get();
+            CHECK(src_block->IsInstance<BlockNode>());
+            return static_cast<const BlockNode*>(src_block);
+          }
+        }
+        return tgt_block;
+      };
+      // Step 5. Define how to remove the inlined buffer from block allocations
+      auto f_remove_alloc = [this](const BlockNode* block) -> Array<BufferAllocate> {
+        Array<BufferAllocate> allocations;
+        allocations.reserve(block->allocations.size());
+        for (const BufferAllocate& alloc : block->allocations) {
+          if (!alloc->buffer.same_as(buffer)) {
+            allocations.push_back(alloc);
+          }
+        }
+        return allocations;
+      };
+      // Step 6. Define how to re-create read buffers
+      auto f_create_reads = [this](
+                                const BlockNode* block,
+                                const Array<BufferAllocate>& allocations) -> Array<TensorRegion> {
+        // TODO(@junrushao1994): didn't look into `BlockReadWriteCollector` yet
+        BlockReadWriteCollector block_read_write_collector(allocations);
+        block_read_write_collector(block->body);
+        return block_read_write_collector.reads();
+      };
+      // Apply Step 4, 5, 6
+      bool is_scope = this->is_scope_block;
+      this->is_scope_block = false;
+      // Apply Step 4
+      const BlockNode* src_block = f_find_src_block(tgt_block);
+      // Do mutation recursively
+      Stmt mutated_stmt = StmtExprMutator::VisitStmt_(tgt_block);
+      const BlockNode* op = mutated_stmt.as<BlockNode>();
+      CHECK(op != nullptr);
+      // Apply Step 5
+      Array<BufferAllocate> allocations = f_remove_alloc(op);
+      // Apply Step 6
+      Array<TensorRegion> reads = is_scope ? op->reads : f_create_reads(op, allocations);
+      // Assemble the result
+      Block result_block(op->iter_vars, reads, op->writes, op->body, allocations, op->annotations,
+                         op->tag, op->init);
+      block_reuse->Set(result_block, GetRef<Block>(src_block));
+      return result_block;
+    }
+
+   private:
+    bool is_scope_block;
+    Map<Block, Block>* block_reuse;
+    const Buffer& buffer;
+    const std::vector<Var>& index_vars;
+    const BufferStoreNode* store;
+    const Map<Stmt, Stmt>& replace_plan;
+  };
+
+  return Inliner(block_reuse, buffer, index_vars, store, replace_plan)(stmt);
+}
 
 void ScheduleNode::compute_inline(const StmtSRef& block_sref) {
   /*!
@@ -647,13 +691,10 @@ void ScheduleNode::compute_inline(const StmtSRef& block_sref) {
   CHECK(AddLeafBlockRemover(block_sref, scope_block_sref, &replace_plan))
       << "ValueError: 'compute_inline' doesn't work on the only child of a block";
 
-  Stmt replaced = Substitute(scope_block_sref->stmt, replace_plan);
-
   Map<Block, Block> block_reuse;
-  StatementInliner inliner(block, &block_reuse, replace_plan);
-  Stmt inlined_stmt = inliner(replaced);
-
-  this->Replace(scope_block_sref, inlined_stmt, block_reuse);
+  Stmt replaced = Substitute(scope_block_sref->stmt, replace_plan);
+  replaced = InlineStatement(replaced, block, replace_plan, &block_reuse);
+  this->Replace(scope_block_sref, replaced, block_reuse);
 }
 
 class ReverseStatementInliner : public StmtExprMutator {
