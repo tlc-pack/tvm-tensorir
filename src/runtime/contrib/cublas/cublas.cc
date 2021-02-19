@@ -39,7 +39,8 @@ inline void CUBLASTryEnableTensorCore(cublasHandle_t hdl) {
   // TensorCores are only supported in cublas 9.0 or higher
   int version;
   CHECK_CUBLAS_ERROR(cublasGetVersion(hdl, &version));
-  if (version >= 9000) CHECK_CUBLAS_ERROR(cublasSetMathMode(hdl, CUBLAS_TENSOR_OP_MATH));
+  // <bojian/TVM-SymbolicTuning> Disabled tensor cores for fair comparison.
+  // if (version >= 9000) CHECK_CUBLAS_ERROR(cublasSetMathMode(hdl, CUBLAS_TENSOR_OP_MATH));
 }
 
 struct CublasHgemmOp {

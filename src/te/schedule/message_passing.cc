@@ -601,6 +601,8 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
         if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
           if (prev_predicate.defined()) {
+            LOG(INFO) << "prev_prediate=" << prev_predicate;
+            LOG(INFO) << value;
             if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
               LOG(WARNING) << "Predicate (" << value << "<" << dom->extent << ") "
                            << "is assumed to be a subset of "
@@ -614,7 +616,9 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
 
         // <bojian/TVM-SymbolicTuning>
         if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
+          LOG(INFO) << "prev_prediate=" << prev_predicate;
           prev_predicate = value < dom->extent;
+          LOG(INFO) << "prev_prediate=" << prev_predicate;
         }
         if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
           LOG(INFO) << "Inserting predicate (" << value << "<" << dom->extent 
@@ -643,6 +647,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
         if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
           if (stage->origin_op->name.find(".local") !=
               std::string::npos) {
+            LOG(INFO) << value;
             if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
               LOG(WARNING) << "\'.local\' spotted in " << stage << ". Assuming it is a cache write "
                               "whose boundary check can be neglected";
