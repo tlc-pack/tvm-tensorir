@@ -59,7 +59,7 @@ class ScheduleNode : public Object {
    * \brief Replace part of AST with new statement
    * \param src_sref The sref of the statement to be replaced
    * \param tgt_stmt The statement to be replaced to
-   * \param block_reuse Maps an old block (to be replaced) to a new block (replaced to),
+   * \param block_reuse Maps an new block (replaced to) back to an old block (to be replaced),
    * and enforces reuse of srefs between them (rather than create new srefs)
    * i.e. after being replaced, the sref that points to the old block will point to the new one
    * \note `loop_reuse` will be automatically detected via loop vars
