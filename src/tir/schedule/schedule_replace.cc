@@ -352,7 +352,7 @@ class ParentMutator : protected StmtMutator {
 
 void ScheduleNode::Replace(StmtSRef sref, Stmt tgt_stmt, const Map<Block, Block>& block_sref_map) {
   // Reset sref as a new sref so that its content won't be affected by subsequent changes
-  sref = StmtSRef(sref->stmt, sref->parent);
+  sref = StmtSRef(sref->stmt, sref->parent, sref->seq_index);
   Stmt src_stmt = GetRef<Stmt>(sref->stmt);
   const StmtNode* root_stmt = this->root->stmt;
   // Step 1. Create all the nodes needed for the new sref tree.
