@@ -103,35 +103,32 @@ struct Info {
  */
 class SRefCreator : public StmtVisitor {
  public:
-  static Info Create(ScheduleNode* self, const Map<Block, Block>& block_sref_map,
-                     StmtSRefNode* parent, const Stmt& new_stmt) {
+  static Info Create(ScheduleNode* self, const Map<Block, Block>& block_reuse, StmtSRefNode* parent,
+                     const Stmt& new_stmt) {
     // For each loop var, find its corresponding sref
-    // `block_sref_map` and `loop_var2sref` work together providing information to detect sref reuse
-    std::unordered_map<const VarNode*, StmtSRef> loop_var2sref;
-    loop_var2sref.reserve(self->stmt2ref.size());
+    // `block_reuse` and `loop_reuse` work together providing information to detect sref reuse
+    std::unordered_map<const VarNode*, StmtSRef> loop_reuse;
+    loop_reuse.reserve(self->stmt2ref.size());
     for (const auto& iter : self->stmt2ref) {
       const StmtNode* stmt = iter.first;
       const StmtSRef& sref = iter.second;
       if (stmt->IsInstance<tir::LoopNode>()) {
         const LoopNode* loop = static_cast<const LoopNode*>(stmt);
-        loop_var2sref.emplace(loop->loop_var.get(), sref);
+        loop_reuse.emplace(loop->loop_var.get(), sref);
       }
     }
     // Then construct a SRefCreator
-    SRefCreator creator(self, block_sref_map, loop_var2sref, parent);
+    SRefCreator creator(self, block_reuse, loop_reuse, parent);
     creator(new_stmt);
     return std::move(creator.result);
   }
 
  private:
-  explicit SRefCreator(ScheduleNode* self,                                                 //
-                       const Map<Block, Block>& block_sref_map,                            //
-                       const std::unordered_map<const VarNode*, StmtSRef>& loop_var2sref,  //
+  explicit SRefCreator(ScheduleNode* self,                                              //
+                       const Map<Block, Block>& block_reuse,                            //
+                       const std::unordered_map<const VarNode*, StmtSRef>& loop_reuse,  //
                        StmtSRefNode* parent)
-      : self(self),
-        block_sref_map(block_sref_map),
-        loop_var2sref(loop_var2sref),
-        parents({parent}) {}
+      : self(self), block_reuse(block_reuse), loop_reuse(loop_reuse), parents({parent}) {}
 
   void VisitStmt_(const LoopNode* op) override {
     StmtSRef& sref = self->stmt2ref[op];
@@ -143,8 +140,8 @@ class SRefCreator : public StmtVisitor {
     }
     // Case 2. We are replace an existing loop,
     // reuse the existing sref so that users don't get an expired one
-    auto it = loop_var2sref.find(op->loop_var.get());
-    if (it != loop_var2sref.end()) {
+    auto it = loop_reuse.find(op->loop_var.get());
+    if (it != loop_reuse.end()) {
       sref = it->second;
       sref->stmt = op;
       sref->parent = parent;
@@ -168,8 +165,8 @@ class SRefCreator : public StmtVisitor {
     }
     // Case 2. We are replace an existing block,
     // reuse the existing sref so that users don't get an expired one
-    auto it = block_sref_map.find(GetRef<Block>(op));
-    if (it != block_sref_map.end()) {
+    auto it = block_reuse.find(GetRef<Block>(op));
+    if (it != block_reuse.end()) {
       sref = self->stmt2ref.at((*it).second.get());
       sref->stmt = op;
       sref->parent = parent;
@@ -186,8 +183,8 @@ class SRefCreator : public StmtVisitor {
   }
 
   ScheduleNode* self;
-  const Map<Block, Block>& block_sref_map;
-  const std::unordered_map<const VarNode*, StmtSRef>& loop_var2sref;
+  const Map<Block, Block>& block_reuse;
+  const std::unordered_map<const VarNode*, StmtSRef>& loop_reuse;
   std::vector<StmtSRefNode*> parents;
 
   Info result;
@@ -350,7 +347,7 @@ class ParentMutator : protected StmtMutator {
   bool is_first_stmt;
 };
 
-void ScheduleNode::Replace(StmtSRef sref, Stmt tgt_stmt, const Map<Block, Block>& block_sref_map) {
+void ScheduleNode::Replace(StmtSRef sref, Stmt tgt_stmt, const Map<Block, Block>& block_reuse) {
   // Reset sref as a new sref so that its content won't be affected by subsequent changes
   sref = StmtSRef(sref->stmt, sref->parent, sref->seq_index);
   Stmt src_stmt = GetRef<Stmt>(sref->stmt);
@@ -364,7 +361,7 @@ void ScheduleNode::Replace(StmtSRef sref, Stmt tgt_stmt, const Map<Block, Block>
   //     Mark those nodes as `intact`
   //   Case 1.2: Can somehow infer the node being visited is mutated from the old AST, including
   //     (a) The loop var appears in the old AST
-  //     (b) The node is explicitly present in `block_sref_map`
+  //     (b) The node is explicitly present in `block_reuse`
   //     It means we need to retain and reuse the sref, so that those srefs users hold won't expire
   //     Mark those nodes as `reuse`
   //   Case 1.3: It is a completely new node
@@ -372,7 +369,7 @@ void ScheduleNode::Replace(StmtSRef sref, Stmt tgt_stmt, const Map<Block, Block>
   //
   // After creation, it is guaranteed that
   //   all the srefs in the AST `tgt_stmt` have proper `parent`s, except for those `intact` nodes.
-  Info creation_info = SRefCreator::Create(this, block_sref_map, sref->parent, tgt_stmt);
+  Info creation_info = SRefCreator::Create(this, block_reuse, sref->parent, tgt_stmt);
   // Step 2. Set the ancestors' children properly
   //   Iteratively visit the ancestors, creating new ones whose `body`s are properly fixed.
   //   The visit stops when all the ancestors are uniquely referenced, i.e. can mutate inplace.
@@ -419,8 +416,8 @@ void ScheduleNode::Replace(StmtSRef sref, Stmt tgt_stmt, const Map<Block, Block>
 
 struct Internal {
   static void Replace(Schedule self, StmtSRef sref, Stmt tgt_stmt,
-                      Optional<Map<Block, Block>> block_sref_map) {
-    return self->Replace(sref, tgt_stmt, block_sref_map.value_or({}));
+                      Optional<Map<Block, Block>> block_reuse) {
+    return self->Replace(sref, tgt_stmt, block_reuse.value_or({}));
   }
 };
 

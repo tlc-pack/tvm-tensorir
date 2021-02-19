@@ -40,6 +40,21 @@
 namespace tvm {
 namespace tir {
 
+#define TVM_SREF_TO_BLOCK(Result, SRef)                     \
+  SRef->GetStmt<::tvm::tir::BlockNode>();                   \
+  CHECK(Result) << "TypeError: Expects `Block`, but gets: " \
+                << (SRef->stmt ? SRef->stmt->GetTypeKey() : "None");
+
+#define TVM_SREF_TO_LOOP(Result, SRef)                     \
+  SRef->GetStmt<::tvm::tir::LoopNode>();                   \
+  CHECK(Result) << "TypeError: Expects `Loop`, but gets: " \
+                << (SRef->stmt ? SRef->stmt->GetTypeKey() : "None");
+
+#define TVM_TYPE_AS(Result, From, Type)                      \
+  From.as<Type>();                                           \
+  CHECK(Result) << "TypeError: Expects `" << Type::_type_key \
+                << "`, but gets: " << (From.defined() ? From->GetTypeKey() : "None")
+
 /*!
  * \brief Get the direct child Schedulable Stmt (Block and Loop)
  * \param stmt the parent stmt.
@@ -144,7 +159,31 @@ TensorRegion RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
  * \param root The AST root
  * \return The orginal stmt and the removed stmt of the subtree rooted by the parent node
  */
-std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root);
+std::pair<Stmt, Stmt> RemoveLeaf(const StmtSRef& sref, const StmtSRef& root);
+
+/*!
+ * \brief Create a substitution plan (old_stmt => new_stmt) to remove the leaf block,
+ * and add this mapping to replace_map
+ * \param block_sref The sref of the leaf block to be planned removal
+ * \param root_block_sref The sref to the root of a subtree of planning, i.e. removal plan cannot be
+ * higher than that node
+ * \param replace_plan Where the substition plan to be added into
+ * \return A boolean flag indicating if the plan is found successfully
+ */
+bool AddLeafBlockRemover(const StmtSRef& block_sref, const StmtSRef& root_block_sref,
+                         Map<Stmt, Stmt>* replace_plan);
+
+/*!
+ * \brief Substitute subtrees of the AST given the replace plan
+ * \param stmt The AST to be substituted
+ * \param replace_plan A mapping from old AST to new AST
+ * \return The new AST after substitution
+ */
+Stmt Substitute(const Stmt& stmt, const Map<Stmt, Stmt>& replace_plan);
+
+inline Stmt Substitute(const StmtNode* stmt, const Map<Stmt, Stmt>& replace_plan) {
+  return Substitute(GetRef<Stmt>(stmt), replace_plan);
+}
 
 /*!
  * \brief Inspect whether the stmt/expr contains any var of vars
@@ -185,7 +224,14 @@ class StmtReplacer : public StmtMutator {
   explicit StmtReplacer(const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map)
       : replace_map(replace_map) {}
 
-  Stmt VisitStmt(const Stmt& stmt) override;
+  Stmt VisitStmt(const Stmt& stmt) override {
+    auto it = replace_map.find(stmt.get());
+    if (it == replace_map.end()) {
+      return StmtMutator::VisitStmt(stmt);
+    } else {
+      return StmtMutator::VisitStmt(GetRef<Stmt>(it->second));
+    }
+  }
 
   const std::unordered_map<const StmtNode*, const StmtNode*>& replace_map;
 };
