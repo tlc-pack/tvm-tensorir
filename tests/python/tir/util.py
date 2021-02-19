@@ -61,6 +61,23 @@ def element_wise(a: ty.handle, c: ty.handle) -> None:
 
 
 @tvm.script.tir
+def element_wise_multiple(a: ty.handle, d: ty.handle) -> None:
+    A = tir.match_buffer(a, (128, 128), "float32")
+    D = tir.match_buffer(d, (128, 128), "float32")
+    B = tir.buffer_allocate((128, 128), "float32")
+    C = tir.buffer_allocate((128, 128), "float32")
+
+    with tir.block([128, 128], "B") as [vi, vj]:
+        B[vi, vj] = A[vi, vj] * 2.0
+
+    with tir.block([128, 128], "C") as [vi, vj]:
+        C[vi, vj] = B[vi, vj] + 1.0
+
+    with tir.block([128, 128], "D") as [vi, vj]:
+        D[vi, vj] = C[vi, vj] + 1.0
+
+
+@tvm.script.tir
 def predicate(b: ty.handle, c: ty.handle) -> None:
     B = tir.match_buffer(b, (16, 16), "float32")
     C = tir.match_buffer(c, (16, 16), "float32")
@@ -85,6 +102,11 @@ def matmul_stmt_original():
 def element_wise_stmt():
     mod = tvm.script.create_module({"element_wise": element_wise})
     return mod["element_wise"]
+
+
+def element_wise_multiple_stmt():
+    mod = tvm.script.create_module({"element_wise_multiple": element_wise_multiple})
+    return mod["element_wise_multiple"]
 
 
 def predicate_stmt():

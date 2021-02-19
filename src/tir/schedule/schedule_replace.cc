@@ -182,6 +182,16 @@ class SRefCreator : public StmtVisitor {
     UpdateScope(op, self->stmt2ref, &self->scopes);
   }
 
+  void VisitStmt_(const SeqStmtNode* op) override {
+    StmtVisitor::VisitStmt_(op);
+    // Update seq_index of children
+    for (size_t i = 0; i < op->seq.size(); i++) {
+      const Stmt& child = op->seq[i];
+      StmtSRef& sref = self->stmt2ref.at(child.get());
+      sref->seq_index = i;
+    }
+  }
+
   ScheduleNode* self;
   const Map<Block, Block>& block_reuse;
   const std::unordered_map<const VarNode*, StmtSRef>& loop_reuse;
