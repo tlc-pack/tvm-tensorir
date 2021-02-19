@@ -171,7 +171,7 @@ ObjectRef TraceNode::Serialize() const {
     }
     json.push_back(inst->Serialize(rv_names, decisions.Get(inst)));
   }
-  return json;
+  return std::move(json);
 }
 
 void TraceNode::Deserialize(const ObjectRef& json, const Schedule& sch) {

@@ -177,7 +177,7 @@ class RelayBuildModule : public runtime::ModuleNode {
         *rv = this->graph_codegen_->GetSchedule();
       });
     } else if (name == "set_tune_result") {
-      return PackedFunc([sptr_to_self, this](TVMArgs args, TVMRetValue* rv) {
+      return PackedFunc([sptr_to_self](TVMArgs args, TVMRetValue* rv) {
         Map<String, Map<tir::PrimFunc, tir::PrimFunc, StructuralHash, StructuralEqual>>
             tune_result = args[0];
         CompileEngine::Global()->SetTunedResult(tune_result);

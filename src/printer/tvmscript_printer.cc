@@ -579,7 +579,6 @@ Doc TVMScriptPrinter::VisitStmt_(const AttrStmtNode* op) {
   // concise thread env
   if (op->node->IsInstance<IterVarNode>() && op->attr_key == "thread_extent") {
     const auto* iter_var = Downcast<IterVar>(op->node).get();
-    ICHECK(!iter_var->dom.defined());
     var_not_in_headers.insert(iter_var->var.get());
     var_env_map_[iter_var->var] = iter_var->thread_tag;
     if (current_num_ != num_child_ - 1) {
