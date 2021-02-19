@@ -296,6 +296,7 @@ class RuleMultiLevelTiling {
       Schedule sch = state.sch;
       BlockRV block_rv = state.block_rv;
       tir::StmtSRef block_sref = sch->Eval(block_rv);
+      // HACK
       for (;;) {
         Array<BlockRV> consumers = sch->GetConsumers(state.block_rv);
         if (consumers.size() != 1) {
@@ -331,11 +332,14 @@ class RuleMultiLevelTiling {
     // 2) The elementwise-matched consumer doesn't exist
     // Fork a new schedule
     state.sch = state.sch->Copy(state.sch->sampler.ForkSeed());
+    BlockRV cache_write = state.block_rv; // block that copies data back after cache write
     // The original block to tiled
     state.block_rv = state.sch->CacheWrite(state.block_rv, 0, cache_write_scope);
-    tir::StmtSRef block_sref = state.sch->Eval(state.block_rv);
+    tir::StmtSRef block_sref = state.sch->Eval(cache_write);
+    state.write_cache = cache_write;
+    state.write_cache_is_added = true;
     for (;;) {
-      Array<BlockRV> consumers = state.sch->GetConsumers(state.block_rv);
+      Array<BlockRV> consumers = state.sch->GetConsumers(cache_write);
       if (consumers.size() != 1) {
         break;
       }
@@ -352,11 +356,11 @@ class RuleMultiLevelTiling {
       if (RuleInlinePureSpatial::NeedsInline(sch->sch, consumer_sref,
                                              this->consumer_inline_strict)) {
         // If the elementwise-matched consumer of `block_rv` can be inlined, then inline it
-        sch->ComputeInline(consumer_rv);
+        sch->ReverseComputeInline(consumer_rv);
       } else {
         // Otherwise, it cannot be inlined, let it act as a write cache,
         // and take a short cut and avoid generate sketches that have a cache_write in it
-        state.write_cache = consumer_rv;
+        state.write_cache = cache_write;
         state.write_cache_is_added = true;
         break;
       }
@@ -798,34 +802,60 @@ SearchRule MarkTensorize(Array<tir::TensorIntrin> tensor_intrins) {
 /********** SimplifyComputeWithConstTensor **********/
 class RuleSimplifyComputeWithConstTensor {
  public:
+   /*! \brief The maximum size of the innermost factor */
+  int max_innermost_factor;
+
+  explicit RuleSimplifyComputeWithConstTensor(int max_innermost_factor) : max_innermost_factor(max_innermost_factor) { }
   Array<Schedule> Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv) {
     Array<LoopRV> axes = sch->GetAxes(block_rv);
     bool found_const_indices = false;
-    Array<LoopRV> new_axes_order;
-    new_axes_order.reserve(axes.size());
-    Array<LoopRV> unrolled_axes;
+
+    Array<LoopRV> unrolled_inner_iters;
+    Array<LoopRV> outer_iters;
+
+    size_t tile_level = 2;
+
     for (const LoopRV& ax: axes) {
       auto loop_sref = sch->Eval(ax);
+      outer_iters.push_back(ax);
       if (HasAnn(loop_sref, tvm::auto_scheduler::SearchPolicyKey::simplify_const_tensor_indices, "")) {
         found_const_indices = true;
         sch->Unroll(ax);
         DelAnn(sch->sch, loop_sref, tvm::auto_scheduler::SearchPolicyKey::simplify_const_tensor_indices);
-        unrolled_axes.push_back(ax);
+        unrolled_inner_iters.push_back(ax);
       } else {
-        new_axes_order.push_back(ax);
+        outer_iters.push_back(ax);
       }
     }
+
     if (found_const_indices) {
-    std::copy(unrolled_axes.begin(), unrolled_axes.end(), std::back_inserter(new_axes_order));
-    sch->Reorder(new_axes_order);
+      Array<Array<LoopRV>> tiled_outer_iters;
+      // tile spatial axes
+      for (const LoopRV& ax : outer_iters) {
+        Array<Optional<PrimExpr>> factors;
+        for (const tir::Var& factor: sch->SamplePerfectTile(tile_level, ax, max_innermost_factor)) {
+         factors.push_back(factor); 
+        }
+        tiled_outer_iters.push_back(sch->Split(ax, factors));
+      }
+      Array<LoopRV> new_loop_order;
+      new_loop_order.reserve(tiled_outer_iters.size() * tile_level + unrolled_inner_iters.size());
+      for (size_t i = 0; i < tile_level; i++) {
+        for (size_t j = 0; j < tiled_outer_iters.size(); j++) {
+          new_loop_order.push_back(tiled_outer_iters[j][i]);
+        }
+      }
+      std::copy(unrolled_inner_iters.begin(), unrolled_inner_iters.end(),
+                std::back_inserter(new_loop_order));
+      sch->Reorder(new_loop_order);
     }
     return {sch};
   }
 };
 
-SearchRule SimplifyComputeWithConstTensor() {
-  auto f_apply = [](SearchTask task, Schedule sch, BlockRV block) -> Array<Schedule> {
-    return RuleSimplifyComputeWithConstTensor().Apply(task, sch, block);
+SearchRule SimplifyComputeWithConstTensor(int max_innermost_factor) {
+  auto f_apply = [max_innermost_factor](SearchTask task, Schedule sch, BlockRV block) -> Array<Schedule> {
+    return RuleSimplifyComputeWithConstTensor(max_innermost_factor).Apply(task, sch, block);
   };
   return SearchRule("simplify_compute_with_const_tensor", f_apply);
 }
