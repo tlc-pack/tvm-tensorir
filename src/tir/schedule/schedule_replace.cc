@@ -186,9 +186,14 @@ class SRefCreator : public StmtVisitor {
     StmtVisitor::VisitStmt_(op);
     // Update seq_index of children
     for (size_t i = 0; i < op->seq.size(); i++) {
-      const Stmt& child = op->seq[i];
-      StmtSRef& sref = self->stmt2ref.at(child.get());
-      sref->seq_index = i;
+      const Stmt& stmt = op->seq[i];
+      if (const auto* realize = stmt.as<BlockRealizeNode>()) {
+        const StmtNode* node = realize->block.get();
+        self->stmt2ref.at(node)->seq_index = i;
+      } else if (const auto* loop = stmt.as<LoopNode>()) {
+        const StmtNode* node = loop;
+        self->stmt2ref.at(node)->seq_index = i;
+      }
     }
   }
 
@@ -272,6 +277,7 @@ class ParentMutator : protected StmtMutator {
  public:
   static Stmt Mutate(ScheduleNode* self, StmtSRefNode* src_sref, const Stmt& tgt_stmt,
                      bool allow_copy_on_write) {
+                       LOG(INFO) << "PM SRC " << GetRef<Stmt>(src_sref->stmt) << " TGT " << tgt_stmt;
     ParentMutator mutator(self, src_sref, tgt_stmt);
     mutator.allow_copy_on_write_ = allow_copy_on_write;
     const StmtNode* parent_stmt = src_sref->parent->stmt;
@@ -362,6 +368,7 @@ void ScheduleNode::Replace(StmtSRef sref, Stmt tgt_stmt, const Map<Block, Block>
   sref = StmtSRef(sref->stmt, sref->parent, sref->seq_index);
   Stmt src_stmt = GetRef<Stmt>(sref->stmt);
   const StmtNode* root_stmt = this->root->stmt;
+  LOG(INFO) << "Replace";
   // Step 1. Create all the nodes needed for the new sref tree.
   //   The `SRefCreator` visits the AST `tgt_stmt`, creating new nodes along the way.
   //   It deals with 3 cases:
@@ -391,6 +398,7 @@ void ScheduleNode::Replace(StmtSRef sref, Stmt tgt_stmt, const Map<Block, Block>
   for (int i = 0; i <= num_copy_steps && src_sref->stmt != root_stmt; ++i) {
     bool parent_is_uniquely_referenced = (i == num_copy_steps);
     // Step 2.1. Create a new parent stmt, by mutating the body of `src_sref->parent`.
+    LOG(INFO) << "Mutt";
     Stmt new_parent_stmt =
         ParentMutator::Mutate(this, src_sref, tgt_stmt, parent_is_uniquely_referenced);
     // Step 2.2. Update those sref points from old ancestors to newly created ones
