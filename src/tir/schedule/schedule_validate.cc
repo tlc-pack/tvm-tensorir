@@ -309,6 +309,16 @@ class SRefValidator : public StmtVisitor {
     StmtVisitor::VisitStmt_(loop);
     ancestors.pop_back();
   }
+
+  // Validate seq_index
+  void VisitStmt_(const SeqStmtNode* seq_stmt) override {
+    for (size_t i = 0; i < seq_stmt->seq.size(); i++) {
+      const Stmt& child = seq_stmt->seq[i];
+      const StmtSRef& sref = sch->stmt2ref.at(child.get());
+      CHECK_EQ(sref->seq_index, i) << "InternalError: A StmtSRef has incorrect seq_index";
+    }
+  }
+
   /*! \brief The schedule it belongs to */
   const ScheduleNode* sch;
   /*! \brief Parent information during the visit */
