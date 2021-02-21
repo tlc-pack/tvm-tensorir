@@ -146,7 +146,7 @@ class PostprocRewriteCooperativeFetch {
       // Extract block info
       tir::StmtSRef block_sref = opt_block_sref.value();
       const auto* block = block_sref->GetStmt<tir::BlockNode>();
-      BlockRV block_rv = sch->GetBlock(block->tag);
+      BlockRV block_rv = sch->GetBlock(block->name_hint);
       // Extract loop info
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
       int n_loops = loop_rvs.size();
@@ -333,7 +333,7 @@ class PostprocRewriteParallelizeVectorizeUnroll {
       tir::StmtSRef block_sref = opt_block_sref.value();
       RemoveParsedAnn(sch->sch, block_sref, parsed);
       const auto* block = block_sref->GetStmt<tir::BlockNode>();
-      BlockRV block_rv = sch->GetBlock(block->tag);
+      BlockRV block_rv = sch->GetBlock(block->name_hint);
       // Extract loop info
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
       int n_loops = loop_rvs.size();
@@ -428,7 +428,7 @@ class PostprocRewriteUnboundBlocks {
     // Extract the block
     const auto* block = block_sref->GetStmt<tir::BlockNode>();
     CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
-    BlockRV block_rv = sch->GetBlock(block->tag);
+    BlockRV block_rv = sch->GetBlock(block->name_hint);
     // Extract loops
     Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
     // Find the outer spatial loops
@@ -491,7 +491,7 @@ class PostprocRewriteReductionBlock {
 
   bool Proc(const Schedule& sch) const {
     while (const tir::BlockNode* block = Find(sch->sch->func->body)) {
-      BlockRV block_rv = sch->GetBlock(block->tag);
+      BlockRV block_rv = sch->GetBlock(block->name_hint);
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
       int n_loops = loop_rvs.size();
       for (int i = 0; i < n_loops; ++i) {

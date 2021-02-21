@@ -523,11 +523,11 @@ Array<BufferRV> ScheduleNode::GetReadBuffers(const BlockRV& block_rv) {
                           << block_sref->stmt->GetTypeKey();
   // Create the output random variable
   Array<BufferRV> outputs;
-  for (const tir::TensorRegion& tensor_region : block->reads) {
+  for (const tir::BufferRegion& buffer_region : block->reads) {
     BufferRV output;
     outputs.push_back(output);
     // Update the symbol table
-    this->sym_tab.Set(output, tensor_region->buffer);
+    this->sym_tab.Set(output, buffer_region->buffer);
   }
   // Record the instruction
   this->trace->Append(GetReadBuffersAttrs::Make(block_rv, outputs));
@@ -541,11 +541,11 @@ Array<BufferRV> ScheduleNode::GetWriteBuffers(const BlockRV& block_rv) {
                           << block_sref->stmt->GetTypeKey();
   // Create the output random variable
   Array<BufferRV> outputs;
-  for (const tir::TensorRegion& tensor_region : block->writes) {
+  for (const tir::BufferRegion& buffer_region : block->writes) {
     BufferRV output;
     outputs.push_back(output);
     // Update the symbol table
-    this->sym_tab.Set(output, tensor_region->buffer);
+    this->sym_tab.Set(output, buffer_region->buffer);
   }
   // Record the instruction
   this->trace->Append(GetWriteBuffersAttrs::Make(block_rv, outputs));

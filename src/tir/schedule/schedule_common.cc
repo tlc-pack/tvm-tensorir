@@ -150,27 +150,27 @@ PrimExpr SubstituteInScope(const PrimExpr& expr,
   return IRSubstitueInScope(vmap)(expr);
 }
 
-TensorRegion SubstituteTensorRegion(
-    const TensorRegion& tensor_region,
+BufferRegion SubstituteBufferRegion(
+    const BufferRegion& buffer_region,
     const std::unordered_map<const VarNode*, const VarNode*>& var_map) {
-  auto new_tensor_region = make_object<TensorRegionNode>(*tensor_region.operator->());
-  new_tensor_region->region = Array<Range>(make_object<ArrayNode>());
-  for (const auto& range : tensor_region->region) {
-    new_tensor_region->region.push_back(Range::FromMinExtent(
+  auto new_buffer_region = make_object<BufferRegionNode>(*buffer_region.operator->());
+  new_buffer_region->region = Array<Range>(make_object<ArrayNode>());
+  for (const auto& range : buffer_region->region) {
+    new_buffer_region->region.push_back(Range::FromMinExtent(
         SubstituteInScope(range->min, var_map), SubstituteInScope(range->extent, var_map)));
   }
-  return TensorRegion(new_tensor_region);
+  return BufferRegion(new_buffer_region);
 }
 
-TensorRegion SubstituteTensorRegion(const TensorRegion& tensor_region,
+BufferRegion SubstituteBufferRegion(const BufferRegion& buffer_region,
                                     const std::unordered_map<const VarNode*, PrimExpr>& var_map) {
-  auto new_tensor_region = make_object<TensorRegionNode>(*tensor_region.operator->());
-  new_tensor_region->region = Array<Range>(make_object<ArrayNode>());
-  for (const auto& range : tensor_region->region) {
-    new_tensor_region->region.push_back(Range::FromMinExtent(
+  auto new_buffer_region = make_object<BufferRegionNode>(*buffer_region.operator->());
+  new_buffer_region->region = Array<Range>(make_object<ArrayNode>());
+  for (const auto& range : buffer_region->region) {
+    new_buffer_region->region.push_back(Range::FromMinExtent(
         SubstituteInScope(range->min, var_map), SubstituteInScope(range->extent, var_map)));
   }
-  return TensorRegion(new_tensor_region);
+  return BufferRegion(new_buffer_region);
 }
 
 // Only Block and Loop are allowed here.
@@ -250,7 +250,7 @@ StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef
   return root;
 }
 
-std::function<TensorRegion(const TensorRegion)> RelaxGenerator(
+std::function<BufferRegion(const BufferRegion)> RelaxGenerator(
     const StmtSRef& block_sref, const StmtSRef& root,
     std::unordered_map<const VarNode*, PrimExpr>* vmap,
     std::unordered_map<const VarNode*, arith::IntSet>* dom_map) {
@@ -274,24 +274,24 @@ std::function<TensorRegion(const TensorRegion)> RelaxGenerator(
     sref = GetRef<StmtSRef>(sref->parent);
   }
 
-  return [vmap, dom_map](const TensorRegion& tensor_region) {
+  return [vmap, dom_map](const BufferRegion& buffer_region) {
     arith::Analyzer analyzer;
-    auto n = make_object<TensorRegionNode>();
+    auto n = make_object<BufferRegionNode>();
     Array<Range> region;
-    n->buffer = tensor_region->buffer;
-    for (auto range : tensor_region->region) {
+    n->buffer = buffer_region->buffer;
+    for (auto range : buffer_region->region) {
       range = Range::FromMinExtent(Substitute(range->min, *vmap), Substitute(range->extent, *vmap));
       auto int_set = arith::EvalSet(range, *dom_map);
       region.push_back(Range::FromMinExtent(analyzer.Simplify(int_set.min()),
                                             analyzer.Simplify(int_set.max() - int_set.min() + 1)));
     }
     n->region = std::move(region);
-    return TensorRegion(n);
+    return BufferRegion(n);
   };
 }
 
-void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root, std::vector<TensorRegion>* reads,
-                 std::vector<TensorRegion>* writes,
+void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root, std::vector<BufferRegion>* reads,
+                 std::vector<BufferRegion>* writes,
                  const std::unordered_map<const VarNode*, Range>& relax_vars) {
   std::unordered_map<const VarNode*, PrimExpr> vmap;
   std::unordered_map<const VarNode*, arith::IntSet> dom_map;
@@ -301,19 +301,19 @@ void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root, std::vector<T
   }
   const auto* block = block_sref->GetStmt<BlockNode>();
   if (reads != nullptr) {
-    for (const auto& tensor_region : block->reads) {
-      reads->push_back(relax(tensor_region));
+    for (const auto& buffer_region : block->reads) {
+      reads->push_back(relax(buffer_region));
     }
   }
   if (writes != nullptr) {
-    for (const auto& tensor_region : block->writes) {
-      writes->push_back(relax(tensor_region));
+    for (const auto& buffer_region : block->writes) {
+      writes->push_back(relax(buffer_region));
     }
   }
 }
 
-TensorRegion RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
-                         const TensorRegion& region) {
+BufferRegion RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
+                         const BufferRegion& region) {
   std::unordered_map<const VarNode*, PrimExpr> vmap;
   std::unordered_map<const VarNode*, arith::IntSet> dom_map;
   auto relax = RelaxGenerator(block_sref, root, &vmap, &dom_map);

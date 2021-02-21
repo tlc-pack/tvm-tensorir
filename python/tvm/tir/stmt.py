@@ -490,10 +490,10 @@ class Block(Stmt):
     iter_vars : list of IterVar
         The block Variable.
 
-    reads : list of TensorRegion
+    reads : list of BufferRegion
         The read tensor region of the block.
 
-    writes: list of TensorRegion
+    writes: list of BufferRegion
         The write tensor region of the block.
 
     body: Stmt
@@ -512,9 +512,11 @@ class Block(Stmt):
         The init block of the reduction block
     """
 
-    def __init__(self, iter_vars, reads, writes, body, allocations, annotations, tag, init=None):
+    def __init__(self, iter_vars, reads, writes, body, allocations, annotations, tag, exec_scope,
+                 init=None):
         self.__init_handle_by_constructor__(
-            _ffi_api.Block, iter_vars, reads, writes, body, allocations, annotations, tag, init
+            _ffi_api.Block, iter_vars, reads, writes, body, allocations, annotations, tag,
+            exec_scope, init
         )
 
 
@@ -533,37 +535,19 @@ class BlockRealize(Stmt):
     block : Block
         The block to realize
 
-    exe_scope: str
+    exec_scope: str
         Execution scope of the block
     """
 
-    def __init__(self, values, predicate, block, exe_scope=""):
+    def __init__(self, values, predicate, block):
         self.__init_handle_by_constructor__(
-            _ffi_api.BlockRealize, values, predicate, block, exe_scope
+            _ffi_api.BlockRealize, values, predicate, block
         )
 
 
 @tvm._ffi.register_object
-class BufferAllocate(Stmt):
-    """BufferAllocate node.
-
-    Parameters
-    ----------
-    buffer : Buffer
-        The buffer to be allocated
-
-    scope : Str
-        The buffer scope
-
-    """
-
-    def __init__(self, buffer, scope):
-        self.__init_handle_by_constructor__(_ffi_api.BufferAllocate, buffer, scope)
-
-
-@tvm._ffi.register_object
-class TensorRegion(Object):
-    """TensorRegion Node
+class BufferRegion(Object):
+    """BufferRegion Node
 
     Parameters
     ----------
@@ -575,7 +559,7 @@ class TensorRegion(Object):
     """
 
     def __init__(self, buffer, region):
-        self.__init_handle_by_constructor__(_ffi_api.TensorRegion, buffer, region)
+        self.__init_handle_by_constructor__(_ffi_api.BufferRegion, buffer, region)
 
 
 def stmt_seq(*args):

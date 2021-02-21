@@ -69,27 +69,25 @@ class BufferMutator : public StmtExprMutator {
         return Range(n);
       }
     };
-    auto fmutate_buffer_allocate = [&](const BufferAllocate& buffer_allocate) {
-      Buffer buf = fmutate_(buffer_allocate->buffer);
-      if (buf.same_as(buffer_allocate->buffer)) {
-        return buffer_allocate;
+    auto fmutate_buffer_allocate = [&](const Buffer& alloc_buf) {
+      Buffer buf = fmutate_(alloc_buf);
+      if (buf.same_as(alloc_buf)) {
+        return alloc_buf;
       } else {
-        buffer_map_[buffer_allocate->buffer] = buf;
-        auto n = CopyOnWrite(buffer_allocate.get());
-        n->buffer = std::move(buf);
-        return BufferAllocate(n);
+        buffer_map_[alloc_buf] = buf;
+        return buf;
       }
     };
-    auto fmutate_tensor_region = [&](const TensorRegion& tensor_region) {
-      auto it = buffer_map_.find(tensor_region->buffer);
-      Array<Range> region = MutateArray(tensor_region->region, fmutate_range);
-      if (it == buffer_map_.end() && region.same_as(tensor_region->region)) {
-        return tensor_region;
+    auto fmutate_buffer_region = [&](const BufferRegion& buffer_region) {
+      auto it = buffer_map_.find(buffer_region->buffer);
+      Array<Range> region = MutateArray(buffer_region->region, fmutate_range);
+      if (it == buffer_map_.end() && region.same_as(buffer_region->region)) {
+        return buffer_region;
       } else {
-        auto n = CopyOnWrite(tensor_region.get());
+        auto n = CopyOnWrite(buffer_region.get());
         n->buffer = it->second;
         n->region = std::move(region);
-        return TensorRegion(n);
+        return BufferRegion(n);
       }
     };
     auto fmutate_iter_var = [&](const IterVar& iter_var) {
@@ -110,9 +108,9 @@ class BufferMutator : public StmtExprMutator {
         return Annotation(annotation->attr_key, annotation->value);
       }
     };
-    Array<BufferAllocate> allocations = MutateArray(op->allocations, fmutate_buffer_allocate);
-    Array<TensorRegion> reads = MutateArray(op->reads, fmutate_tensor_region);
-    Array<TensorRegion> writes = MutateArray(op->writes, fmutate_tensor_region);
+    Array<Buffer> allocations = MutateArray(op->allocations, fmutate_buffer_allocate);
+    Array<BufferRegion> reads = MutateArray(op->reads, fmutate_buffer_region);
+    Array<BufferRegion> writes = MutateArray(op->writes, fmutate_buffer_region);
     Array<IterVar> block_vars = MutateArray(op->iter_vars, fmutate_iter_var);
     Array<Annotation> annotations = MutateArray(op->annotations, fmutate_annotation);
     Optional<Stmt> init = NullOpt;

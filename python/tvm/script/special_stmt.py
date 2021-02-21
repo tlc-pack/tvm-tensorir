@@ -136,7 +136,7 @@ class BufferAllocate(SpecialStmt):
                 buffer_type,
                 span=span
             )
-            self.context.block_scope().allocates.append(tvm.tir.BufferAllocate(buffer, scope))
+            self.context.block_scope().allocates.append(buffer)
             self.context.update_symbol(self.node.lhs.id.name, buffer)
 
         super().__init__(buffer_allocate, def_symbol=True)

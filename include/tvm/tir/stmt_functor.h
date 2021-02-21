@@ -99,7 +99,6 @@ class StmtFunctor<R(const Stmt& n, Args... args)> {
   virtual R VisitStmt_(const BlockNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
   virtual R VisitStmt_(const BlockRealizeNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
   virtual R VisitStmt_(const LoopNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
-  virtual R VisitStmt_(const BufferAllocateNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
   virtual R VisitStmtDefault_(const Object* op, Args...) {
     LOG(FATAL) << "Do not have a default for " << op->GetTypeKey();
     return R();
@@ -126,7 +125,6 @@ class StmtFunctor<R(const Stmt& n, Args... args)> {
     IR_STMT_FUNCTOR_DISPATCH(BlockNode);
     IR_STMT_FUNCTOR_DISPATCH(BlockRealizeNode);
     IR_STMT_FUNCTOR_DISPATCH(LoopNode);
-    IR_STMT_FUNCTOR_DISPATCH(BufferAllocateNode);
     return vtable;
   }
 };
@@ -169,7 +167,6 @@ class TVM_DLL StmtVisitor : protected StmtFunctor<void(const Stmt&)> {
   void VisitStmt_(const BlockNode* op) override;
   void VisitStmt_(const BlockRealizeNode* op) override;
   void VisitStmt_(const LoopNode* op) override;
-  void VisitStmt_(const BufferAllocateNode* op) override;
 };
 
 /*!
@@ -264,7 +261,6 @@ class TVM_DLL StmtMutator : protected StmtFunctor<Stmt(const Stmt&)> {
   Stmt VisitStmt_(const BlockNode* op) override;
   Stmt VisitStmt_(const BlockRealizeNode* op) override;
   Stmt VisitStmt_(const LoopNode* op) override;
-  Stmt VisitStmt_(const BufferAllocateNode* op) override;
   /*!
    * \brief Alternative advance method for SeqStmtNode.
    *

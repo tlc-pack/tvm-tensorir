@@ -1005,7 +1005,7 @@ class Loop : public Stmt {
 /*!
  * \brief A sub-region of a specific tensor.
  */
-class TensorRegionNode : public Object {
+class BufferRegionNode : public Object {
  public:
   /*! \brief The tensor of the tensor region. */
   Buffer buffer;
@@ -1017,7 +1017,7 @@ class TensorRegionNode : public Object {
     v->Visit("region", &region);
   }
 
-  bool SEqualReduce(const TensorRegionNode* other, SEqualReducer equal) const {
+  bool SEqualReduce(const BufferRegionNode* other, SEqualReducer equal) const {
     return equal(buffer, other->buffer) && equal(region, other->region);
   }
 
@@ -1028,55 +1028,17 @@ class TensorRegionNode : public Object {
 
   static constexpr const bool _type_has_method_sequal_reduce = true;
   static constexpr const bool _type_has_method_shash_reduce = true;
-  static constexpr const char* _type_key = "TensorRegion";
-  TVM_DECLARE_FINAL_OBJECT_INFO(TensorRegionNode, Object);
+  static constexpr const char* _type_key = "BufferRegion";
+  TVM_DECLARE_FINAL_OBJECT_INFO(BufferRegionNode, Object);
 };
 
-class TensorRegion : public ObjectRef {
+class BufferRegion : public ObjectRef {
  public:
-  TVM_DLL explicit TensorRegion(Buffer buffer);
-  TVM_DLL explicit TensorRegion(Buffer buffer, Array<Range> region);
-  TVM_DEFINE_OBJECT_REF_METHODS(TensorRegion, ObjectRef, TensorRegionNode);
+  TVM_DLL explicit BufferRegion(Buffer buffer);
+  TVM_DLL explicit BufferRegion(Buffer buffer, Array<Range> region);
+  TVM_DEFINE_OBJECT_REF_METHODS(BufferRegion, ObjectRef, BufferRegionNode);
 };
 
-/*!
- * \brief Allocate a new buffer in TIR
- * \code
- *
- * BufferAllocate(buffer[shape], type)
- *
- * \endcode
- */
-class BufferAllocateNode : public StmtNode {
- public:
-  /*! \brief The buffer to be allocated. */
-  Buffer buffer;
-  std::string scope;
-
-  void VisitAttrs(AttrVisitor* v) {
-    v->Visit("buffer", &buffer);
-    v->Visit("scope", &scope);
-  }
-
-  bool SEqualReduce(const BufferAllocateNode* other, SEqualReducer equal) const {
-    return equal(buffer, other->buffer) && equal(scope, other->scope);
-  }
-
-  void SHashReduce(SHashReducer hash_reduce) const {
-    hash_reduce(buffer);
-    hash_reduce(scope);
-  }
-
-  static constexpr const char* _type_key = "BufferAllocate";
-  TVM_DECLARE_FINAL_OBJECT_INFO(BufferAllocateNode, StmtNode);
-};
-
-class BufferAllocate : public Stmt {
- public:
-  TVM_DLL explicit BufferAllocate(Buffer buffer, std::string scope);
-
-  TVM_DEFINE_OBJECT_REF_METHODS(BufferAllocate, Stmt, BufferAllocateNode);
-};
 
 /*!
  * \brief A block is the basic schedule unit in tensor expression
@@ -1098,19 +1060,21 @@ class BlockNode : public StmtNode {
   /*! \brief The variables of the block. */
   Array<IterVar> iter_vars;
   /*! \brief The read tensor region of the block. */
-  Array<TensorRegion> reads;
+  Array<BufferRegion> reads;
   /*! \brief The write tensor region of the block. */
-  Array<TensorRegion> writes;
+  Array<BufferRegion> writes;
   /*! \brief The buffer allocated in the block. */
-  Array<BufferAllocate> allocations;
+  Array<Buffer> allocations;
   /*! \brief The annotation of the block. */
   Array<Annotation> annotations;
   /*! \brief The body of the block. */
   Stmt body;
   /*! \brief The init part of reduction block */
   Optional<Stmt> init;
+  /*! \brief The block execution scope. */
+  String exec_scope;
   /*! \brief The tag of the block. */
-  std::string tag;
+  std::string name_hint;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("body", &body);
@@ -1119,14 +1083,16 @@ class BlockNode : public StmtNode {
     v->Visit("writes", &writes);
     v->Visit("allocations", &allocations);
     v->Visit("annotations", &annotations);
-    v->Visit("tag", &tag);
+    v->Visit("name_hint", &name_hint);
     v->Visit("init", &init);
+    v->Visit("exec_scope", &exec_scope);
   }
 
   bool SEqualReduce(const BlockNode* other, SEqualReducer equal) const {
     return equal.DefEqual(iter_vars, other->iter_vars) && equal(allocations, other->allocations) &&
            equal(body, other->body) && equal(annotations, other->annotations) &&
-           equal(reads, other->reads) && equal(writes, other->writes) && equal(init, other->init);
+           equal(reads, other->reads) && equal(writes, other->writes) && equal(init, other->init) &&
+           equal(exec_scope, other->exec_scope);
   }
 
   void SHashReduce(SHashReducer hash_reduce) const {
@@ -1137,6 +1103,7 @@ class BlockNode : public StmtNode {
     hash_reduce(annotations);
     hash_reduce(body);
     hash_reduce(init);
+    hash_reduce(exec_scope);
   }
 
   static constexpr const char* _type_key = "Block";
@@ -1145,9 +1112,10 @@ class BlockNode : public StmtNode {
 
 class Block : public Stmt {
  public:
-  TVM_DLL explicit Block(Array<IterVar> iter_vars, Array<TensorRegion> reads,
-                         Array<TensorRegion> writes, Stmt body, Array<BufferAllocate> allocations,
-                         Array<Annotation> annotations, std::string tag, Optional<Stmt> init);
+  TVM_DLL explicit Block(Array<IterVar> iter_vars, Array<BufferRegion> reads,
+                         Array<BufferRegion> writes, Stmt body, Array<Buffer> allocations,
+                         Array<Annotation> annotations, String name_hint, String exec_scope,
+                         Optional<Stmt> init);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Block, Stmt, BlockNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(BlockNode);
@@ -1158,32 +1126,28 @@ class Block : public Stmt {
  */
 class BlockRealizeNode : public StmtNode {
  public:
-  /*! \brief The corresponding value of the iter vars. */
+  BlockRealizeNode() {} /*! \brief The corresponding value of the iter vars. */
   Array<PrimExpr> binding_values;
   /*! \brief The predicates of the block. */
   PrimExpr predicate;
   /*! \brief The block to be realized. */
   Block block;
-  /*! \brief The block execution scope. */
-  String exec_scope;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("binding_values", &binding_values);
     v->Visit("predicate", &predicate);
     v->Visit("block", &block);
-    v->Visit("exec_scope", &exec_scope);
   }
 
   bool SEqualReduce(const BlockRealizeNode* other, SEqualReducer equal) const {
     return equal(binding_values, other->binding_values) && equal(predicate, other->predicate) &&
-           equal(block, other->block) && equal(exec_scope, other->exec_scope);
+           equal(block, other->block);
   }
 
   void SHashReduce(SHashReducer hash_reduce) const {
     hash_reduce(binding_values);
     hash_reduce(predicate);
     hash_reduce(block);
-    hash_reduce(exec_scope);
   }
 
   static constexpr const char* _type_key = "BlockRealize";
@@ -1196,8 +1160,7 @@ class BlockRealizeNode : public StmtNode {
  */
 class BlockRealize : public Stmt {
  public:
-  TVM_DLL explicit BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block,
-                                String exe_scope);
+  TVM_DLL explicit BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block);
 
   TVM_DEFINE_OBJECT_REF_METHODS(BlockRealize, Stmt, BlockRealizeNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(BlockRealizeNode);
@@ -1364,7 +1327,7 @@ TVM_DLL std::ostream& operator<<(std::ostream& os, ForKind kind);
  * \param body The body stmt
  * \return root_allocates The allocations under root block
  */
-TVM_DLL Stmt auto_complete(const Stmt& body, const Array<BufferAllocate>& root_allocates);
+TVM_DLL Stmt auto_complete(const Stmt& body, const Array<Buffer>& root_allocates);
 
 }  // namespace tir
 }  // namespace tvm

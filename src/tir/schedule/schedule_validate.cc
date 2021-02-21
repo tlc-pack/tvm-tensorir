@@ -91,9 +91,9 @@ bool ScheduleNode::ValidateRegionCover(const StmtSRef& consumer_block_sref) cons
     /*! \brief The block that writes the buffer */
     StmtSRef block_sref;
     /*! \brief The region the buffer is written */
-    TensorRegion region;
+    BufferRegion region;
     /*! \brief Constructor */
-    Producer(const StmtSRef& block_sref, const TensorRegion& region)
+    Producer(const StmtSRef& block_sref, const BufferRegion& region)
         : block_sref(block_sref), region(region) {}
   };
   // Maps a buffer var to its producers
@@ -105,13 +105,13 @@ bool ScheduleNode::ValidateRegionCover(const StmtSRef& consumer_block_sref) cons
     }
     // i.e. the RAW predecessor is producer
     const StmtSRef& producer_block_sref = edge->dst;
-    for (const TensorRegion& output_region : producer_block_sref->GetStmt<BlockNode>()->writes) {
+    for (const BufferRegion& output_region : producer_block_sref->GetStmt<BlockNode>()->writes) {
       const VarNode* buffer_var = output_region->buffer->data.get();
       buffer_producers[buffer_var].emplace_back(producer_block_sref, output_region);
     }
   }
   // Check the region cover property for each buffer that the consumer reads
-  for (const TensorRegion& consumer_region : consumer_block->reads) {
+  for (const BufferRegion& consumer_region : consumer_block->reads) {
     const VarNode* buffer_var = consumer_region->buffer->data.get();
     if (!buffer_producers.count(buffer_var)) {
       continue;
@@ -129,11 +129,11 @@ bool ScheduleNode::ValidateRegionCover(const StmtSRef& consumer_block_sref) cons
     }();
     arith::Analyzer analyzer;
     // Relax the read region with the loops under LCA
-    TensorRegion read = RelaxRegion(consumer_block_sref, lca, consumer_region);
+    BufferRegion read = RelaxRegion(consumer_block_sref, lca, consumer_region);
     int ndim = read->region.size();
     for (const Producer& producer : producers) {
       // Relax the write region with the loops under LCA
-      TensorRegion write = RelaxRegion(producer.block_sref, lca, producer.region);
+      BufferRegion write = RelaxRegion(producer.block_sref, lca, producer.region);
       CHECK_EQ(read->region.size(), write->region.size())
           << "InternalError: Inconsistent rank of the same buffer between reads and writes";
       // Check if the write domain covers the read domain
@@ -217,8 +217,8 @@ class GPUValidator : public StmtVisitor {
     }
   }
 
-  void VisitStmt_(const BlockRealizeNode* realize) final {
-    std::string exec_scope = realize->exec_scope;
+  void VisitStmt_(const BlockNode* block) final {
+    std::string exec_scope = block->exec_scope;
     std::string current_scope;
     std::swap(current_scope, current_scope_);
 
@@ -238,7 +238,7 @@ class GPUValidator : public StmtVisitor {
       CHECK(!contain_thread_x_);
     }
     current_scope_ = exec_scope;
-    StmtVisitor::VisitStmt_(realize);
+    StmtVisitor::VisitStmt_(block);
     std::swap(current_scope, current_scope_);
   }
 
