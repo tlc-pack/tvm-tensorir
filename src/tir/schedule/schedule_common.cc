@@ -712,5 +712,152 @@ void PatternMatcher::VisitExpr_(const BufferLoadNode* op) {
   }
 }
 
+class ScheduleHelper {
+ public:
+  struct NodeInfo {
+    int index = -1;
+    Stmt stmt{nullptr};
+    const StmtNode* parent = nullptr;
+    String name = "<UNK>";
+    std::vector<const StmtNode*> children = {};
+  };
+
+  struct ASTInfo {
+    std::vector<NodeInfo> nodes;
+    std::unordered_map<const StmtNode*, int> stmt2idx;
+
+    void AddNode(const StmtNode* stmt) {
+      CHECK(stmt);
+      CHECK(!stmt2idx.count(stmt));
+      int idx = stmt2idx.size();
+      NodeInfo new_node;
+      new_node.index = idx;
+      new_node.stmt = GetRef<Stmt>(stmt);
+      if (stmt->IsInstance<BlockNode>()) {
+        const auto* block = static_cast<const BlockNode*>(stmt);
+        new_node.name = "Block(" + block->tag + ")";
+      } else if (stmt->IsInstance<LoopNode>()) {
+        const auto* loop = static_cast<const LoopNode*>(stmt);
+        new_node.name = "Loop(" + loop->loop_var->name_hint + ")";
+      } else {
+        LOG(FATAL) << "TypeError: stmt has wrong type: " << stmt->GetTypeKey();
+        throw;
+      }
+      nodes.emplace_back(std::move(new_node));
+      stmt2idx[stmt] = idx;
+    }
+
+    void AddEdge(const StmtNode* parent, const StmtNode* child) {
+      CHECK(stmt2idx.count(child));
+      int child_idx = stmt2idx.at(child);
+      nodes.at(child_idx).parent = parent;
+      if (parent) {
+        CHECK(stmt2idx.count(parent));
+        int parent_idx = stmt2idx.at(parent);
+        nodes.at(parent_idx).children.push_back(child);
+      }
+    }
+  };
+
+  static ASTInfo IndexedAST(PrimFunc func) {
+    struct AddChildren : public StmtVisitor {
+      explicit AddChildren(ASTInfo* info) : info(info), parents({nullptr}) {}
+      void VisitStmt_(const BlockNode* block) {
+        info->AddNode(block);
+        info->AddEdge(parents.back(), block);
+        parents.push_back(block);
+        VisitStmt(block->body);
+        parents.pop_back();
+      }
+      void VisitStmt_(const LoopNode* loop) {
+        info->AddNode(loop);
+        info->AddEdge(parents.back(), loop);
+        parents.push_back(loop);
+        VisitStmt(loop->body);
+        parents.pop_back();
+      }
+      ASTInfo* info;
+      std::vector<const StmtNode*> parents;
+    };
+    ASTInfo info;
+    (AddChildren(&info))(func->body);
+    return info;
+  }
+
+  static void PrintSTree(Schedule sch) {
+    struct SRefInfo {
+      const StmtSRefNode* sref;
+      std::vector<int> indices;
+      String GetName() const {
+        if (indices.empty()) {
+          return "sref #(invalid)\n";
+        }
+        std::ostringstream os;
+        os << "sref #(";
+        for (int i = 0, n = indices.size(); i < n; ++i) {
+          if (i > 0) {
+            os << ", ";
+          }
+          os << indices[i];
+        }
+        os << "): seq_index = " << sref->seq_index << ", binding_valid = " << sref->binding_valid;
+        return os.str();
+      }
+    };
+    ASTInfo info = IndexedAST(sch->func);
+    std::unordered_map<const StmtSRefNode*, SRefInfo> sref_idx;
+    for (const auto& kv : sch->stmt2ref) {
+      const StmtNode* stmt = kv.first;
+      StmtSRef sref = kv.second;
+      SRefInfo& sref_info = sref_idx[sref.get()];
+      int idx = info.stmt2idx.count(stmt) ? info.stmt2idx.at(stmt) : -1;
+      sref_info.sref = sref.get();
+      sref_info.indices.push_back(idx);
+    }
+    std::ostringstream os;
+    for (const NodeInfo& node : info.nodes) {
+      os << "Stmt #" << node.index << ": " << node.name << ". Parent = Stmt #";
+      if (node.parent) {
+        os << info.stmt2idx.at(node.parent);
+      } else {
+        os << "(None)";
+      }
+      os << std::endl;
+      os << "  children:";
+      if (node.children.empty()) {
+        os << " (None)";
+      } else {
+        for (const StmtNode* ch : node.children) {
+          os << ' ' << info.stmt2idx.at(ch);
+        }
+      }
+      os << std::endl;
+      if (sch->stmt2ref.count(node.stmt.get())) {
+        StmtSRef sref = sch->stmt2ref.at(node.stmt.get());
+        SRefInfo sref_info = sref_idx[sref.get()];
+        os << "  " << sref_info.GetName();
+        int sref_parent_idx = -1;
+        if (sref->parent && sref->parent->stmt) {
+          const StmtNode* sref_parent = sref->parent->stmt;
+          if (info.stmt2idx.count(sref_parent)) {
+            sref_parent_idx = info.stmt2idx.at(sref_parent);
+          }
+        }
+        if (sref_parent_idx != -1) {
+          os << ", parent = " << sref_parent_idx;
+        } else {
+          os << ", parent = (None)";
+        }
+        os << std::endl;
+      } else {
+        os << "  (sref not exist)" << std::endl;
+      }
+    }
+    LOG(INFO) << "STree:\n" << os.str();
+  }
+};
+
+TVM_REGISTER_GLOBAL("tir.schedule.PrintSTree").set_body_typed(ScheduleHelper::PrintSTree);
+
 }  // namespace tir
 }  // namespace tvm
