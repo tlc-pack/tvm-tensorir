@@ -68,7 +68,7 @@ class Buffer(ObjectGeneric):
                 if isinstance(extent, _expr.PrimExpr):
                     extent = _pass.Simplify(x.stop - x.start)
                 doms.append(_make.range_by_min_extent(x.start, extent))
-            return _make.TensorRegion(self._buffer, doms)
+            return _make.BufferRegion(self._buffer, doms)
         return _make.BufferLoad(self._content_type, self._buffer, index)
 
     def __setitem__(self, index, value):
@@ -587,10 +587,10 @@ class IRBuilder(object):
         values: list of PrimExpr
             The value of block var.
 
-        reads : list of TensorRegion
+        reads : list of BufferRegion
             The input tensor regions of the block
 
-        writes : list of TensorRegion
+        writes : list of BufferRegion
             The output tensor regions of the block
 
         predicate: optional, PrimExpr

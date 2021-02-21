@@ -75,7 +75,7 @@ bool ScopeNode::IsDominate(const StmtSRef& block_sref) const {
   // Condition: Block is the only writer to its outputs
   const std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual>& buffer_writers =
       this->buffer_writers;
-  for (const TensorRegion& write_region : block->writes) {
+  for (const BufferRegion& write_region : block->writes) {
     CHECK(buffer_writers.count(write_region->buffer))
         << "InternalError: buffer \"" << write_region->buffer->name
         << "\" does not exist in the current scope, when querying block:\n"
@@ -104,9 +104,9 @@ bool ScopeNode::IsComplete(const StmtSRef& block_sref) const {
     }
   }
   // Cond 3. Check if there is no overlap between buffers read and buffers written
-  for (const TensorRegion& write : block->writes) {
+  for (const BufferRegion& write : block->writes) {
     const Buffer& buffer = write->buffer;
-    for (const TensorRegion& read : block->reads) {
+    for (const BufferRegion& read : block->reads) {
       if (buffer.same_as(read->buffer)) {
         return false;
       }
@@ -174,7 +174,7 @@ bool ScopeNode::IsReduction(const StmtSRef& block_sref) const {
       return false;
     }
     if (const auto* var = node.as<BufferStoreNode>()) {
-      for (const TensorRegion& write_region : block->writes) {
+      for (const BufferRegion& write_region : block->writes) {
         if (var->buffer.same_as(write_region->buffer)) {
           if (!CheckReductionInstance(block->iter_vars, var->indices)) {
             not_affected = false;
@@ -213,7 +213,7 @@ bool ScopeNode::CanMergeReduction(const StmtSRef& init_sref, const StmtSRef& upd
     return false;
   }
   // Cond 2. Check init_block and update_block are the only two producers for their output buffer
-  for (const TensorRegion& write_region : update->writes) {
+  for (const BufferRegion& write_region : update->writes) {
     const Array<StmtSRef>& writers = this->buffer_writers.at(write_region->buffer);
     if (writers.size() != 2) {
       return false;
@@ -255,16 +255,16 @@ void ScopeNode::AddChildBlock(
   std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual>& buffer_writers =
       this->buffer_writers;
   // Step 1. Update `buffer_readers` and `buffer_writer` for each buffer
-  for (const TensorRegion& region : block->writes) {
+  for (const BufferRegion& region : block->writes) {
     buffer_writers[region->buffer].push_back(child_sref);
   }
-  for (const TensorRegion& region : block->reads) {
+  for (const BufferRegion& region : block->reads) {
     buffer_readers[region->buffer].push_back(child_sref);
   }
   // Check and update block dependencies: RAW, WAW, WAR.
   // Note: AddEdge is effectively NOP on self-loops
   // Step 2. Update RAW dependency
-  for (const TensorRegion& region : block->reads) {
+  for (const BufferRegion& region : block->reads) {
     if (buffer_writers.count(region->buffer)) {
       for (const StmtSRef& from : buffer_writers[region->buffer]) {
         this->AddEdge(from, child_sref, DepType::kRAW);
@@ -272,7 +272,7 @@ void ScopeNode::AddChildBlock(
     }
   }
   // Step 3. Update WAW dependency
-  for (const TensorRegion& region : block->writes) {
+  for (const BufferRegion& region : block->writes) {
     if (buffer_writers.count(region->buffer)) {
       for (const StmtSRef& from : buffer_writers[region->buffer]) {
         this->AddEdge(from, child_sref, DepType::kWAW);
@@ -280,7 +280,7 @@ void ScopeNode::AddChildBlock(
     }
   }
   // Step 4. Check WAR dependency: not allowed in the IR
-  for (const TensorRegion& region : block->writes) {
+  for (const BufferRegion& region : block->writes) {
     if (buffer_readers.count(region->buffer)) {
       for (const StmtSRef& from : buffer_readers[region->buffer]) {
         CHECK(from.same_as(child_sref)) << "TypeError: WAR dependency is not allowed";

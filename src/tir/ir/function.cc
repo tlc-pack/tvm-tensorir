@@ -75,10 +75,11 @@ TensorIntrin::TensorIntrin(PrimFunc desc_func, PrimFunc intrin_func) {
   const auto* intrin_realize = intrin_func->body.as<BlockRealizeNode>();
   CHECK(desc_realize != nullptr);
   CHECK(intrin_realize != nullptr);
-  CHECK_EQ(desc_realize->exec_scope, intrin_realize->exec_scope);
 
   const Block& desc_block = desc_realize->block;
   const Block& intrin_block = intrin_realize->block;
+  CHECK_EQ(desc_block->exec_scope, intrin_block->exec_scope);
+
 
   // check block var number and iter type
   CHECK_EQ(desc_block->iter_vars.size(), intrin_block->iter_vars.size());

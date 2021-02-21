@@ -40,7 +40,7 @@ Array<StmtSRef> ScheduleNode::GetBlock(const String& tag) const {
     scope_stack.pop_back();
     CHECK(GetRef<Stmt>(scope->stmt).as<BlockNode>());
     for (const auto& block : Blocks(scope)) {
-      if (GetRef<Stmt>(block->stmt).as<BlockNode>()->tag == tag) {
+      if (GetRef<Stmt>(block->stmt).as<BlockNode>()->name_hint == tag) {
         ret.push_back(block);
       }
       scope_stack.push_back(block);
