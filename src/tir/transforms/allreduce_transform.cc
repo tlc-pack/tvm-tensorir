@@ -153,12 +153,12 @@ class AllReduceTransformer : public StmtExprMutator {
       std::swap(stmt_stack_, tmp_stmt_stack_);
 
       ObjectPtr<BlockNode> n = CopyOnWrite(res);
-      std::vector<BufferAllocate> allocations;
-      for (const BufferAllocate& allocation : res->allocations) {
+      std::vector<Buffer> allocations;
+      for (const Buffer& allocation : res->allocations) {
         allocations.emplace_back(allocation);
       }
-      const std::vector<BufferAllocate>& new_allos = new_allocations_[GetRef<Block>(op)];
-      for (const BufferAllocate& allocation : new_allos) {
+      const std::vector<Buffer>& new_allos = new_allocations_[GetRef<Block>(op)];
+      for (const Buffer& allocation : new_allos) {
         allocations.emplace_back(allocation);
       }
       n->allocations = allocations;
@@ -178,10 +178,10 @@ class AllReduceTransformer : public StmtExprMutator {
 
       // 3. Mutate reads.
       CHECK(normal_reduce.defined());
-      std::vector<TensorRegion> reads;
-      for (const TensorRegion& region : op->reads) {
+      std::vector<BufferRegion> reads;
+      for (const BufferRegion& region : op->reads) {
         if (region->buffer.same_as(write_buffer)) {
-          reads.emplace_back(TensorRegion(normal_reduce.value(), {Range(0, 1)}));
+          reads.emplace_back(BufferRegion(normal_reduce.value(), {Range(0, 1)}));
         } else {
           reads.emplace_back(region);
         }
@@ -194,15 +194,15 @@ class AllReduceTransformer : public StmtExprMutator {
       n->body = body;
       n->init = NullOpt;
       n->reads = reads;
-      n->writes = {TensorRegion(normal_reduce.value(), {Range(0, 1)})};
-      n->tag = nor_red_name;
+      n->writes = {BufferRegion(normal_reduce.value(), {Range(0, 1)})};
+      n->name_hint = nor_red_name;
       return SeqStmt({init, Stmt(n)});
     } else if (status == kMutatingBlock_red_tmp) {
       ObjectPtr<BlockNode> n = CopyOnWrite(op);
 
       // 1. reads: remove the original write buffer
-      std::vector<TensorRegion> reads;
-      for (const TensorRegion& region : op->reads) {
+      std::vector<BufferRegion> reads;
+      for (const BufferRegion& region : op->reads) {
         if (!region->buffer.same_as(write_buffer)) {
           reads.emplace_back(region);
         }
@@ -211,14 +211,14 @@ class AllReduceTransformer : public StmtExprMutator {
 
       // 2. writes: reduce_temp[0]
       CHECK(reduce_temp.defined());
-      n->writes = {TensorRegion(reduce_temp.value(), {Range(0, 1)})};
+      n->writes = {BufferRegion(reduce_temp.value(), {Range(0, 1)})};
 
       // 3. body: red_tmp_block_body
       // 4. init: NullOpt
       // 5. tag: red_tmp_name
       n->body = red_tmp_block_body.value();
       n->init = NullOpt;
-      n->tag = red_tmp_name;
+      n->name_hint = red_tmp_name;
       return Stmt(n);
     } else {
       LOG(FATAL);
@@ -345,8 +345,8 @@ class AllReduceTransformer : public StmtExprMutator {
     CHECK(top_block != nullptr);
 
     // Step 9. Create buffers of normal_reduce and reduce_temp.
-    std::vector<BufferAllocate>& allos = bufs_to_allo_[par_stmt][red_loop];
-    std::vector<BufferAllocate>& allocations_ = new_allocations_[GetRef<Block>(top_block)];
+    std::vector<Buffer>& allos = bufs_to_allo_[par_stmt][red_loop];
+    std::vector<Buffer>& allocations_ = new_allocations_[GetRef<Block>(top_block)];
     write_buffer = block_op->writes[0]->buffer;
 
     DataType dtype = write_buffer->dtype;
@@ -358,8 +358,8 @@ class AllReduceTransformer : public StmtExprMutator {
     reduce_temp = AddBufferAllocation(red_tmp_name, allos, allocations_, dtype);
     allreduce_id++;
 
-    std::string block_name = block_op->tag;
-    std::string exec_scope = op->exec_scope;
+    std::string block_name = block_op->name_hint;
+    std::string exec_scope = block_op->exec_scope;
     if (need_normal_reduce) {
       // Step a. Mutate the original block if normal_reduce is needed.
       status = kMutatingBlock_nor_red;
@@ -381,10 +381,10 @@ class AllReduceTransformer : public StmtExprMutator {
 
       // Step b. Create a block/blockRealize: normal_reduce -> reduce_temp.
       CHECK(normal_reduce.defined());
-      Array<TensorRegion> reads = {TensorRegion(normal_reduce.value(), {Range(0, 1)})};
+      Array<BufferRegion> reads = {BufferRegion(normal_reduce.value(), {Range(0, 1)})};
 
       CHECK(reduce_temp.defined());
-      Array<TensorRegion> writes = {TensorRegion(reduce_temp.value(), {Range(0, 1)})};
+      Array<BufferRegion> writes = {BufferRegion(reduce_temp.value(), {Range(0, 1)})};
 
       std::vector<Loop>& loops = loops_to_bind_[par_stmt][red_loop];
       std::vector<PrimExpr> reduce_args;
@@ -410,8 +410,8 @@ class AllReduceTransformer : public StmtExprMutator {
       Stmt body0 = Evaluate(call);
       body0 = AttrStmt(GetRef<CommReducer>(reducer), tir::attr::reduce_scope,
                        make_zero(DataType::Handle()), body0);
-      body0 = Block({}, reads, writes, body0, {}, {}, red_tmp_name, NullOpt);
-      body0 = BlockRealize({}, const_true(), GetRef<Block>(body0.as<BlockNode>()), "");
+      body0 = Block({}, reads, writes, body0, {}, {}, red_tmp_name, "", NullOpt);
+      body0 = BlockRealize({}, const_true(), GetRef<Block>(body0.as<BlockNode>()));
 
       // Step c. Create block/blockRealize: reduce_temp -> the original write buffer.
       std::vector<IterVar> iter_vars;
@@ -431,12 +431,12 @@ class AllReduceTransformer : public StmtExprMutator {
         binding_values.emplace_back(GetRef<PrimExpr>(value));
       }
 
-      reads = {TensorRegion(reduce_temp.value(), {Range(0, 1)})};
+      reads = {BufferRegion(reduce_temp.value(), {Range(0, 1)})};
 
       writes.clear();
-      for (const TensorRegion& write : block_op->writes) {
-        auto new_write = make_object<TensorRegionNode>(*write.as<TensorRegionNode>());
-        writes.push_back(GetRef<TensorRegion>(new_write.get()));
+      for (const BufferRegion& write : block_op->writes) {
+        auto new_write = make_object<BufferRegionNode>(*write.as<BufferRegionNode>());
+        writes.push_back(GetRef<BufferRegion>(new_write.get()));
       }
 
       // Add store predicate.
@@ -456,9 +456,9 @@ class AllReduceTransformer : public StmtExprMutator {
 
       Stmt body1 = BufferStore(write_buffer, BufferLoad(reduce_temp.value(), {0}),
                                update_body->indices);
-      body1 = Block(iter_vars, reads, writes, body1, {}, {}, block_name, NullOpt);
+      body1 = Block(iter_vars, reads, writes, body1, {}, {}, block_name, exec_scope, NullOpt);
       body1 = BlockRealize(binding_values, predicate,
-                           GetRef<Block>(body1.as<BlockNode>()), exec_scope);
+                           GetRef<Block>(body1.as<BlockNode>()));
 
       // Step d. Append the stmts above to the list.
       std::vector<Stmt>& new_stmts_ = stmts_to_append_[par_stmt][red_loop];
@@ -494,7 +494,6 @@ class AllReduceTransformer : public StmtExprMutator {
       ObjectPtr<BlockRealizeNode> n = CopyOnWrite(op);
       n->block = reduction_block;
       n->predicate = const_true();
-      n->exec_scope = "";
       red_tmp_block_body = NullOpt;
       status = kDetecting;
 
@@ -516,12 +515,12 @@ class AllReduceTransformer : public StmtExprMutator {
         binding_values.emplace_back(GetRef<PrimExpr>(value));
       }
 
-      Array<TensorRegion> reads = {TensorRegion(reduce_temp.value(), {Range(0, 1)})};
+      Array<BufferRegion> reads = {BufferRegion(reduce_temp.value(), {Range(0, 1)})};
 
-      std::vector<TensorRegion> writes;
-      for (const TensorRegion& write : block_op->writes) {
-        auto new_write = make_object<TensorRegionNode>(*write.as<TensorRegionNode>());
-        writes.push_back(GetRef<TensorRegion>(new_write.get()));
+      std::vector<BufferRegion> writes;
+      for (const BufferRegion& write : block_op->writes) {
+        auto new_write = make_object<BufferRegionNode>(*write.as<BufferRegionNode>());
+        writes.push_back(GetRef<BufferRegion>(new_write.get()));
       }
 
       // Add store predicate.
@@ -534,9 +533,9 @@ class AllReduceTransformer : public StmtExprMutator {
 
       Stmt body = BufferStore(write_buffer, BufferLoad(reduce_temp.value(), {0}),
                               update_body->indices);
-      body = Block(iter_vars, reads, writes, body, {}, {}, block_name, NullOpt);
+      body = Block(iter_vars, reads, writes, body, {}, {}, block_name, "", NullOpt);
       body = BlockRealize(binding_values, predicate,
-                          GetRef<Block>(body.as<BlockNode>()), exec_scope);
+                          GetRef<Block>(body.as<BlockNode>()));
 
       // Step c. Append the stmt above to the list.
       std::vector<Stmt>& new_stmts_ = stmts_to_append_[par_stmt][red_loop];
@@ -593,26 +592,25 @@ class AllReduceTransformer : public StmtExprMutator {
 
   /*! \brief The map/set to save the statements to be inserted. */
   std::unordered_map<Block,
-  std::vector<BufferAllocate>, ObjectPtrHash, ObjectPtrEqual> new_allocations_;
+  std::vector<Buffer>, ObjectPtrHash, ObjectPtrEqual> new_allocations_;
   std::unordered_map<Stmt, std::unordered_map<Loop, std::vector<BufferStore>,
   ObjectPtrHash, ObjectPtrEqual>, ObjectPtrHash, ObjectPtrEqual> inits_to_add_;
   std::unordered_map<Stmt, std::unordered_map<Loop, std::vector<Stmt>,
   ObjectPtrHash, ObjectPtrEqual>, ObjectPtrHash, ObjectPtrEqual> stmts_to_append_;
   std::unordered_map<Stmt, std::unordered_map<Loop, std::vector<Loop>,
   ObjectPtrHash, ObjectPtrEqual>, ObjectPtrHash, ObjectPtrEqual> loops_to_bind_;
-  std::unordered_map<Stmt, std::unordered_map<Loop, std::vector<BufferAllocate>,
+  std::unordered_map<Stmt, std::unordered_map<Loop, std::vector<Buffer>,
   ObjectPtrHash, ObjectPtrEqual>, ObjectPtrHash, ObjectPtrEqual> bufs_to_allo_;
 
   static Buffer AddBufferAllocation(const std::string& name,
-                                    std::vector<BufferAllocate>& allos,
-                                    std::vector<BufferAllocate>& allocations_,
+                                    std::vector<Buffer>& allos,
+                                    std::vector<Buffer>& allocations_,
                                     const DataType& dtype) {
     Var var(name, PointerType(PrimType(dtype)));
     Buffer buf(var, dtype, {1}, {1}, PrimExpr(), name, "local", 0, 0, kDefault);
-    BufferAllocate allo(buf, "local");
 
-    allos.emplace_back(allo);
-    allocations_.emplace_back(allo);
+    allos.emplace_back(buf);
+    allocations_.emplace_back(buf);
     return buf;
   }
 
@@ -624,7 +622,7 @@ class AllReduceTransformer : public StmtExprMutator {
       const std::vector<Stmt>& new_stmts_ = stmts_to_append_[op_stmt][loop_stmt_];
       const std::vector<Loop>& loops = loops_to_bind_[op_stmt][loop_stmt_];
       const std::vector<BufferStore>& inits = inits_to_add_[op_stmt][loop_stmt_];
-      const std::vector<BufferAllocate>& allos = bufs_to_allo_[op_stmt][loop_stmt_];
+      const std::vector<Buffer>& allos = bufs_to_allo_[op_stmt][loop_stmt_];
       if (!new_stmts_.empty()) {
         std::vector<Stmt> stmts;
         // Add init to the very beginning.
@@ -641,10 +639,10 @@ class AllReduceTransformer : public StmtExprMutator {
         // Wrap the result with allocation statements.
         CHECK(!allos.empty());
         for (auto it = allos.rbegin(); it != allos.rend(); it++) {
-          BufferAllocate allo = *it;
-          stmt = Allocate(allo->buffer->data, allo->buffer->dtype, {1}, const_true(), stmt);
+          Buffer allo = *it;
+          stmt = Allocate(allo->data, allo->dtype, {1}, const_true(), stmt);
           std::string scope = allo->scope;
-          stmt = AttrStmt(allo->buffer->data, attr::storage_scope, StringImm(scope), stmt);
+          stmt = AttrStmt(allo->data, attr::storage_scope, StringImm(scope), stmt);
         }
         // Wrap the result with loop binding attributes.
         CHECK(!loops.empty());

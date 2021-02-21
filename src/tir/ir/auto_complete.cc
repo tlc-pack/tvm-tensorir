@@ -34,8 +34,8 @@
 namespace tvm {
 namespace tir {
 
-Array<TensorRegion> BlockReadWriteCollector::reads() {
-  std::vector<TensorRegion> res;
+Array<BufferRegion> BlockReadWriteCollector::reads() {
+  std::vector<BufferRegion> res;
   for (size_t i = 0; i < read_regions_.size(); ++i) {
     std::vector<Range> region;
     for (const auto& range : read_regions_[i])
@@ -45,8 +45,8 @@ Array<TensorRegion> BlockReadWriteCollector::reads() {
   return res;
 }
 
-Array<TensorRegion> BlockReadWriteCollector::writes() {
-  std::vector<TensorRegion> res;
+Array<BufferRegion> BlockReadWriteCollector::writes() {
+  std::vector<BufferRegion> res;
   for (size_t i = 0; i < write_regions_.size(); ++i) {
     std::vector<Range> region;
     for (const auto& range : write_regions_[i])
@@ -168,15 +168,15 @@ class AutoCompleter : public StmtMutator {
   }
 };
 
-Stmt auto_complete(const Stmt& body, const Array<BufferAllocate>& root_allocates) {
+Stmt auto_complete(const Stmt& body, const Array<Buffer>& root_allocates) {
   AutoCompleter auto_completer;
   // generate surrounding loops automatically
   Stmt res = auto_completer(body);
   // generate root block automatically
   if (auto_completer.contains_block &&
       (!res->IsInstance<BlockRealizeNode>() || !root_allocates.empty())) {
-    res = Block({}, {}, {}, res, root_allocates, {}, "root", NullOpt);
-    res = BlockRealize({}, Bool(true), Downcast<Block>(res), String(""));
+    res = Block({}, {}, {}, res, root_allocates, {}, "root", "", NullOpt);
+    res = BlockRealize({}, Bool(true), Downcast<Block>(res));
   }
   return res;
 }

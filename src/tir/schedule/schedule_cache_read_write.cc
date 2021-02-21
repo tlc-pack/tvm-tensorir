@@ -28,7 +28,7 @@ struct CacheStageInfo {
   /*! \brief The buffer to be written */
   Buffer write_buffer;
   /*! \brief The buffer allocation statement to be inserted */
-  BufferAllocate alloc;
+  Buffer alloc;
   /*! \brief The AST node whose body is where the cache stage should be inserted */
   StmtSRef loc_sref;
   /*! \brief The index to insert the cache_read/cache_write stage */
@@ -46,7 +46,7 @@ struct CacheStageInfo {
  * \param info Put the cache stage created into the info
  * \returns A block indicating the body of the loop nesting.
  * */
-Block MakeCacheStage(const TensorRegion& cache_region, CacheStageInfo* info,
+Block MakeCacheStage(const BufferRegion& cache_region, CacheStageInfo* info,
                      const String& storage_scope) {
   // loop variables
   std::vector<Var> loop_vars;
@@ -79,19 +79,19 @@ Block MakeCacheStage(const TensorRegion& cache_region, CacheStageInfo* info,
   //     write_buffer[copy_indices] = read_buffer[copy_indices]
   Block block(
       /*iter_vars=*/block_vars,
-      /*reads=*/{TensorRegion(info->read_buffer, access_region)},
-      /*writes=*/{TensorRegion(info->write_buffer, access_region)},
+      /*reads=*/{BufferRegion(info->read_buffer, access_region)},
+      /*writes=*/{BufferRegion(info->write_buffer, access_region)},
       /*body=*/
       BufferStore(info->write_buffer, BufferLoad(info->read_buffer, copy_indices), copy_indices),
       /*allocations=*/{},
       /*annotations=*/{},
       /*tag=*/cache_region->buffer->name + "_" + storage_scope,
+      /*exec_scope=*/"",
       /*init=*/NullOpt);
   // Create the block realize node
   Stmt body = BlockRealize(/*binding_values=*/binding_values,
                            /*predicate=*/Bool(true),
-                           /*block=*/block,
-                           /*exe_scope=*/"");
+                           /*block=*/block);
   // Create surrounding loops
   for (int i = static_cast<int>(loop_vars.size()) - 1; i >= 0; --i) {
     body = Loop(/*loop_var=*/loop_vars[i],
@@ -109,7 +109,7 @@ Block MakeCacheStage(const TensorRegion& cache_region, CacheStageInfo* info,
  * \param block_sref The block to be queried
  * \return The only region the block writes
  */
-TensorRegion GetOnlyWriteRegion(const StmtSRef& block_sref) {
+BufferRegion GetOnlyWriteRegion(const StmtSRef& block_sref) {
   const auto* block = block_sref->GetStmt<BlockNode>();
   CHECK(block != nullptr) << "TypeError: Expect a block, but gets: "
                           << block_sref->stmt->GetTypeKey();
@@ -130,8 +130,8 @@ bool IsOutputBlock(const StmtSRef& block_sref, const StmtSRef& scope_sref) {
   const auto* scope = scope_sref->GetStmt<BlockNode>();
   CHECK(scope != nullptr) << "TypeError: Expect a block, but gets: "
                           << scope_sref->stmt->GetTypeKey();
-  for (const TensorRegion& x : block->writes) {
-    for (const TensorRegion& y : scope->writes) {
+  for (const BufferRegion& x : block->writes) {
+    for (const BufferRegion& y : scope->writes) {
       if (x->buffer.same_as(y->buffer)) {
         return true;
       }
@@ -167,14 +167,14 @@ SeqStmt InsertCacheStage(const Stmt& stmts, int pos, const Stmt& stage) {
  * \param to The buffer to be replaced to
  * \return The new sequence of regions after replacement
  */
-Array<TensorRegion> ReplaceBuffer(const Array<TensorRegion>& regions, const Buffer& from,
+Array<BufferRegion> ReplaceBuffer(const Array<BufferRegion>& regions, const Buffer& from,
                                   const Buffer& to) {
-  Array<TensorRegion> copy = regions;
-  copy.MutateByApply([&from, &to](TensorRegion region) -> TensorRegion {
+  Array<BufferRegion> copy = regions;
+  copy.MutateByApply([&from, &to](BufferRegion region) -> BufferRegion {
     if (region->buffer.same_as(from)) {
-      ObjectPtr<TensorRegionNode> n = make_object<TensorRegionNode>(*region.get());
+      ObjectPtr<BufferRegionNode> n = make_object<BufferRegionNode>(*region.get());
       n->buffer = to;
-      return TensorRegion(n);
+      return BufferRegion(n);
     }
     return region;
   });
@@ -331,7 +331,7 @@ class CacheLocDetector : public StmtVisitor {
   int loc_pos_{-1};
 };
 
-bool RelatedWithBuffer(const Array<TensorRegion>& buffer_regions, const Buffer& buffer) {
+bool RelatedWithBuffer(const Array<BufferRegion>& buffer_regions, const Buffer& buffer) {
   for (const auto& region : buffer_regions) {
     if (region->buffer.same_as(buffer)) return true;
   }
@@ -541,10 +541,10 @@ StmtSRef ScheduleNode::cache_read(StmtSRef block_sref, int i, const String& stor
   // Create corresponding the buffer to be written, i.e. result of cache_read
   info.write_buffer = read_buffer->WithScope(storage_scope);
   // Create the corresponding buffer allocation
-  info.alloc = BufferAllocate(info.write_buffer, storage_scope);
+  info.alloc = info.write_buffer;
   // Find the innermost writer to the read buffer
   StmtSRef scope_sref{nullptr};
-  TensorRegion cache_region(nullptr);
+  BufferRegion cache_region(nullptr);
   if (!block_sref.same_as(this->root)) {
     // Find the parent scope
     scope_sref = GetParentBlockSRef(block_sref);
@@ -558,7 +558,7 @@ StmtSRef ScheduleNode::cache_read(StmtSRef block_sref, int i, const String& stor
     info.loc_sref = this->root;
     info.loc_pos = 0;
     scope_sref = this->root;
-    cache_region = TensorRegion(read_buffer);
+    cache_region = BufferRegion(read_buffer);
   }
   Block cache_read_stage = MakeCacheStage(/*cache_region=*/cache_region, /*info=*/&info,
                                           /*storage_scope=*/storage_scope);
@@ -587,7 +587,7 @@ StmtSRef ScheduleNode::cache_write(StmtSRef block_sref, int i, const String& sto
   // Create corresponding the buffer to be read, i.e. result of cache_write
   info.read_buffer = write_buffer->WithScope(storage_scope);
   // Create the corresponding buffer allocation
-  info.alloc = BufferAllocate(info.read_buffer, storage_scope);
+  info.alloc = info.read_buffer;
   CHECK(!block_sref.same_as(this->root))
       << "ValueError: `cache_write` cannot be applied to an input buffer";
   // Find the parent scope

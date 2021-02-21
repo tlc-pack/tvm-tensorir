@@ -99,9 +99,9 @@ Stmt TIRMetaMutator::VisitStmt_(const BlockNode* op) {
   auto* node = StmtMutator::VisitStmt_(op).as<BlockNode>();
   auto node_ptr = runtime::GetObjectPtr<BlockNode>(const_cast<BlockNode*>(node));
 
-  auto fmutate = [this](const TensorRegion& e) { return Downcast<TensorRegion>(this->Mutate(e)); };
-  Array<TensorRegion> reads = MutateArray(op->reads, fmutate);
-  Array<TensorRegion> writes = MutateArray(op->writes, fmutate);
+  auto fmutate = [this](const BufferRegion& e) { return Downcast<BufferRegion>(this->Mutate(e)); };
+  Array<BufferRegion> reads = MutateArray(op->reads, fmutate);
+  Array<BufferRegion> writes = MutateArray(op->writes, fmutate);
   node_ptr->reads = std::move(reads);
   node_ptr->writes = std::move(writes);
   return Block(node_ptr);
@@ -117,15 +117,15 @@ Stmt TIRMetaMutator::VisitStmt_(const BufferStoreNode* op) {
 }
 
 TVM_STATIC_IR_FUNCTOR(TIRMetaMutator, vtable)
-    .set_dispatch<TensorRegionNode>([](const ObjectRef& node, TIRMetaMutator* p) -> ObjectRef {
-      auto* op = node.as<TensorRegionNode>();
-      auto node_ptr = runtime::GetObjectPtr<TensorRegionNode>(const_cast<TensorRegionNode*>(op));
+    .set_dispatch<BufferRegionNode>([](const ObjectRef& node, TIRMetaMutator* p) -> ObjectRef {
+      auto* op = node.as<BufferRegionNode>();
+      auto node_ptr = runtime::GetObjectPtr<BufferRegionNode>(const_cast<BufferRegionNode*>(op));
 
       ObjectRef symbol = p->Lookup(op->buffer->name);
       node_ptr->buffer = Downcast<Buffer>(symbol);
       auto fmutate = [p](const Range& e) { return Downcast<Range>(p->Mutate(e)); };
       node_ptr->region = MutateArray(op->region, fmutate);
-      return TensorRegion(node_ptr);
+      return BufferRegion(node_ptr);
     });
 
 TVM_STATIC_IR_FUNCTOR(TIRMetaMutator, vtable)

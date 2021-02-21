@@ -90,7 +90,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
     // Mutate
     ObjectPtr<BlockNode> init_block = make_object<BlockNode>();
     ObjectPtr<BlockRealizeNode> init_realize = make_object<BlockRealizeNode>();
-    init_block->tag = block->tag + "_init";
+    init_block->name_hint = block->name_hint + "_init";
     init_realize->binding_values = {};
     init_realize->predicate = realize->predicate;
     init_realize->block = Block(init_block);
@@ -117,8 +117,8 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
     }
     // Step 2. After copying block vars, substitute them in init block
     init_block->body = SubstituteInScope(block->init.value(), block_var_map);
-    for (const TensorRegion& write : block->writes) {
-      init_block->writes.push_back(SubstituteTensorRegion(write, block_var_map));
+    for (const BufferRegion& write : block->writes) {
+      init_block->writes.push_back(SubstituteBufferRegion(write, block_var_map));
     }
     // Step 3. Create loops above the init block
     Stmt body = BlockRealize(init_realize);
@@ -161,7 +161,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
                               /*body=*/SeqStmt::Flatten(Array<Stmt>{body, parent->body}),
                               /*allocations=*/parent->allocations,
                               /*annotations=*/parent->annotations,
-                              /*tag=*/parent->tag,
+                              /*tag=*/parent->name_hint, String(),
                               /*init=*/NullOpt);
       this->Replace(GetRef<StmtSRef>(loop_sref->parent), new_block,
                     {{new_block, GetRef<Block>(parent)}});
@@ -179,7 +179,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
         /*body=*/block->body,
         /*allocations=*/block->allocations,
         /*annotations=*/block->annotations,
-        /*tag=*/block->tag + "_update",
+        /*tag=*/block->name_hint + "_update", String(),
         /*init=*/NullOpt);
     this->Replace(block_sref, update_block, {{update_block, GetRef<Block>(block)}});
     // Update scope information
@@ -209,7 +209,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
         /*body=*/body,
         /*allocations=*/block->allocations,
         /*annotations=*/block->annotations,
-        /*tag=*/block->tag + "_update",
+        /*tag=*/block->name_hint + "_update", String(),
         /*init=*/NullOpt);
     this->Replace(block_sref, new_block, {{new_block, GetRef<Block>(block)}});
     // Update scope information
@@ -265,8 +265,8 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
         << "ValueError: 'merge_reduction' expects 'init' with only one write region";
     CHECK_EQ(update->writes.size(), 1)
         << "ValueError: 'merge_reduction' expects 'update' with only one write region";
-    TensorRegion init_region = RelaxRegion(init_sref, lca, init->writes[0]);
-    TensorRegion update_region = RelaxRegion(update_sref, lca, update->writes[0]);
+    BufferRegion init_region = RelaxRegion(init_sref, lca, init->writes[0]);
+    BufferRegion update_region = RelaxRegion(update_sref, lca, update->writes[0]);
     CHECK_EQ(init_region->region.size(), update_region->region.size())
         << "ValueError: 'merge_reduction' has inconsistent ranks between the write region of "
            "'init' and that of 'update'";
@@ -312,7 +312,7 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
       /*body=*/update->body,
       /*allocations=*/update->allocations,
       /*annotations=*/update->annotations,
-      /*tag=*/update->tag,
+      /*tag=*/update->name_hint, String(),
       /*init=*/new_init);
   this->Replace(update_sref, merged, {{merged, GetRef<Block>(update)}});
   // Update scope information
@@ -436,15 +436,15 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   rf_update.CopyOnWrite()->indices = rf_indices;
   rf_update.CopyOnWrite()->value =
       reducer.value().get()->operator()({BufferLoad(rf_buf, rf_indices)}, {rhs})[0];
-  std::vector<TensorRegion> rf_reads, rf_writes;
-  auto rf_region = [&](Array<TensorRegion> regions, std::vector<TensorRegion>& rf_regions) {
+  std::vector<BufferRegion> rf_reads, rf_writes;
+  auto rf_region = [&](Array<BufferRegion> regions, std::vector<BufferRegion>& rf_regions) {
     for (const auto& t_region : regions) {
       if (t_region->buffer.same_as(update->buffer)) {
         Region region = t_region->region;
         region.insert(region.begin() + factor_axis, Range::FromMinExtent(rf_iter->var, 1));
         rf_regions.emplace_back(rf_buf, region);
       } else {
-        rf_regions.push_back(SubstituteTensorRegion(t_region, var_map));
+        rf_regions.push_back(SubstituteBufferRegion(t_region, var_map));
       }
     }
   };
@@ -479,7 +479,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   auto wb_region = [&](const BufferLoad& load) {
     std::vector<Range> region;
     for (const auto& index : load->indices) region.push_back(Range::FromMinExtent(index, 1));
-    return TensorRegion(load->buffer, region);
+    return BufferRegion(load->buffer, region);
   };
   BufferStore wb_update = GetRef<BufferStore>(update);
   BufferLoad wb_lhs = Downcast<BufferLoad>(Substitute((PrimExpr)lhs, var_map));
@@ -546,8 +546,9 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
         {{wb_block, block}});
   } else if (const auto* parent = top.value()->parent->GetStmt<BlockNode>()) {
     SeqStmt parent_body = insert(parent->body, top.value()->seq_index, {rf_body, wb_body});
-    Block new_block = Block(parent->iter_vars, parent->reads, parent->writes, parent_body,
-                            parent->allocations, parent->annotations, parent->tag, NullOpt);
+    Block new_block =
+        Block(parent->iter_vars, parent->reads, parent->writes, parent_body, parent->allocations,
+              parent->annotations, parent->name_hint, String(), NullOpt);
     this->Replace(GetRef<StmtSRef>(top.value()->parent), new_block,
                   {{new_block, GetRef<Block>(parent)}, {wb_block, block}});
   }
@@ -555,7 +556,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   StmtSRef scope_sref = GetParentBlockSRef(block_sref);
   Block scope_block = GetRef<Block>(scope_sref->GetStmt<BlockNode>()),
         new_scope_block = scope_block;
-  new_scope_block.CopyOnWrite()->allocations.push_back(BufferAllocate(rf_buf, ""));
+  new_scope_block.CopyOnWrite()->allocations.push_back(rf_buf);
   this->Replace(scope_sref, new_scope_block, {{new_scope_block, scope_block}});
   // Update scope information
   UpdateScope(scope_sref->stmt, this->stmt2ref, &this->scopes);
