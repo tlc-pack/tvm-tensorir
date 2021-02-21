@@ -217,8 +217,8 @@ void ScheduleNode::double_buffer(const StmtSRef& block_sref) {
   const Scope& scope = scopes.at(parent_block_sref);
   CHECK(scope->IsComplete(block_sref))
       << "ValueError: 'double_buffer' expects 'block' to be a complete block";
-  for (const TensorRegion& parent_write : parent_block->writes) {
-    for (const TensorRegion& write : block_ptr->writes) {
+  for (const BufferRegion& parent_write : parent_block->writes) {
+    for (const BufferRegion& write : block_ptr->writes) {
       CHECK_NE(write->buffer.get(), parent_write->buffer.get())
           << "ValueError: 'double_buffer' does not work on an output block";
     }

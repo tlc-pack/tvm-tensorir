@@ -144,7 +144,7 @@ bool IsOutputBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
   CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   CHECK(parent) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   if (parent_sref.get() == sch->root.get()) {
-    for (const tir::TensorRegion& write : block->writes) {
+    for (const tir::BufferRegion& write : block->writes) {
       for (const auto& kv : sch->func->buffer_map) {
         if (write->buffer.get() == kv.second.get()) {
           return true;
@@ -152,8 +152,8 @@ bool IsOutputBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
       }
     }
   } else {
-    for (const tir::TensorRegion& write : block->writes) {
-      for (const tir::TensorRegion& parent_write : parent->writes) {
+    for (const tir::BufferRegion& write : block->writes) {
+      for (const tir::BufferRegion& parent_write : parent->writes) {
         if (write->buffer.get() == parent_write->buffer.get()) {
           return true;
         }
@@ -278,27 +278,27 @@ bool IsElementWiseMatch(const tir::Schedule& sch, const tir::StmtSRef& producer_
   // Cond 1: size of the read/write regions match
   std::unordered_set<const tir::BufferNode*> buffer_produced;
   {
-    std::vector<tir::TensorRegion> producer_reads, producer_writes;
-    std::vector<tir::TensorRegion> consumer_reads, consumer_writes;
+    std::vector<tir::BufferRegion> producer_reads, producer_writes;
+    std::vector<tir::BufferRegion> consumer_reads, consumer_writes;
     tir::RelaxRegion(producer_sref, parent_sref, &producer_reads, &producer_writes);
     tir::RelaxRegion(consumer_sref, parent_sref, &consumer_reads, &consumer_writes);
     const Array<Range>& region = producer_writes.at(0)->region;
     // Cond 1.1: check all producer's write regions share the same shape
-    for (const tir::TensorRegion& write : producer_writes) {
+    for (const tir::BufferRegion& write : producer_writes) {
       buffer_produced.insert(write->buffer.get());
       if (!DomainEqual(write->region, region)) {
         return false;
       }
     }
     // Cond 1.2: check all consumer's write regions share the same shape
-    for (const tir::TensorRegion& write : consumer_writes) {
+    for (const tir::BufferRegion& write : consumer_writes) {
       if (!DomainEqual(write->region, region)) {
         return false;
       }
     }
     // Cond 1.3: check if the consumer reads the entire region the producer produces
-    for (const tir::TensorRegion& write : producer_writes) {
-      for (const tir::TensorRegion& read : consumer_reads) {
+    for (const tir::BufferRegion& write : producer_writes) {
+      for (const tir::BufferRegion& read : consumer_reads) {
         if (write->buffer.get() == read->buffer.get()) {
           if (!DomainEqual(write->region, read->region)) {
             return false;
@@ -309,7 +309,7 @@ bool IsElementWiseMatch(const tir::Schedule& sch, const tir::StmtSRef& producer_
   }
   // Cond 2: The read is elementwise
   const Array<tir::IterVar>& block_vars = consumer->iter_vars;
-  for (const tir::TensorRegion& read : consumer->reads) {
+  for (const tir::BufferRegion& read : consumer->reads) {
     if (!buffer_produced.count(read->buffer.get())) {
       continue;
     }
@@ -351,7 +351,7 @@ bool NeedsMultiLevelTiling(const tir::Schedule& sch, const tir::StmtSRef& block_
     return false;
   }
   std::vector<int> n_missing_block_vars;
-  for (const tir::TensorRegion& region : block->reads) {
+  for (const tir::BufferRegion& region : block->reads) {
     int n_missing = 0;
     std::unordered_set<const tir::VarNode*> vars_in_load;
     for (const Range& range : region->region) {
@@ -398,7 +398,7 @@ bool IsStrictlyInlineable(const tir::Schedule& sch, const tir::StmtSRef& block_s
     return false;
   }
   // Check if it is ordered-injective mapping
-  for (const tir::TensorRegion& region : block->reads) {
+  for (const tir::BufferRegion& region : block->reads) {
     Array<PrimExpr> read_axes;
     read_axes.reserve(region->region.size());
     for (const Range& range : region->region) {
