@@ -618,7 +618,30 @@ struct UnrollAttrs : public InstAttrsNode {
                                       "unroll", false);
 };
 
-/*! \brief Attrs of the instruction that applies unroll */
+/*! \brief Attrs of the instruction that applies rfactor */
+struct RfactorAttrs : public InstAttrsNode {
+  /*! \brief The factor_axis in the result buffer */
+  int factor_axis;
+
+  void VisitAttrs(tvm::AttrVisitor* v) {
+    v->Visit("factor_axis", &factor_axis);
+  }
+
+  /*!
+   * \brief Create instruction given the inputs and outputs
+   * \param loop The loop to be applied rfactor
+   * \param factor_axis The factor_axis in the result buffer
+   * \param output The output of the instruction
+   * \return The instruction created
+   */
+  static Instruction Make(const LoopRV& loop, int factor_axis, const BlockRV& output);
+
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(RfactorAttrs,                       //
+                                      "meta_schedule.attrs.RfactorAttrs", //
+                                      "rfactor", false);
+};
+
+/*! \brief Attrs of the instruction that applies bind */
 struct BindAttrs : public InstAttrsNode {
   String thread_axis;
 
