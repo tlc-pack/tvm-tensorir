@@ -277,7 +277,7 @@ class ScheduleNode : public Object {
    * \param exec_scope The execution scope
    * \return A block random variable pointing to the new block
    */
-  BlockRV Blockize(const LoopRV& loop, const String& exe_scope);
+  BlockRV Blockize(const LoopRV& loop, const String& exec_scope);
   /*!
    * \brief Apply the instruction DecomposeReduction
    * \param block The block to be decomposed

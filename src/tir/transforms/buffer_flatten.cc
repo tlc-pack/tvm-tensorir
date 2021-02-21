@@ -186,19 +186,18 @@ class RegionGatherer : public StmtExprVisitor {
   }
 
   void VisitStmt_(const BlockNode* op) final {
-    for (const auto& tensor_region : op->reads) {
-      VisitBufferRegion(tensor_region);
+    for (const auto& buffer_region : op->reads) {
+      VisitBufferRegion(buffer_region);
     }
-    for (const auto& tensor_region : op->writes) {
-      VisitBufferRegion(tensor_region);
+    for (const auto& buffer_region : op->writes) {
+      VisitBufferRegion(buffer_region);
     }
-    StmtExprVisitor::VisitStmt_(op);
-  }
-
-  void VisitStmt_(const BufferAllocateNode* op) final {
-    std::vector<arith::IntSet> empty_region(op->buffer->shape.size(), arith::IntSet::Nothing());
-    // Initialize the buffer region with empty region.
-    buffers_region_[op->buffer] = empty_region;
+    for (const auto& alloc_buf : op->allocations) {
+      std::vector<arith::IntSet> empty_region(alloc_buf->shape.size(), arith::IntSet::Nothing());
+      // Initialize the buffer region with empty region.
+      buffers_region_[alloc_buf] = empty_region;
+      StmtExprVisitor::VisitStmt_(op);
+    }
     StmtExprVisitor::VisitStmt_(op);
   }
 
@@ -216,23 +215,23 @@ class RegionGatherer : public StmtExprVisitor {
   /*! \brief The loops from the current node up to the root */
   std::vector<Loop> loop_stack_;
 
-  void VisitBufferRegion(const TensorRegion& tensor_region) {
-    auto it = buffers_region_.find(tensor_region->buffer);
+  void VisitBufferRegion(const BufferRegion& buffer_region) {
+    auto it = buffers_region_.find(buffer_region->buffer);
     CHECK(it != buffers_region_.end());
-    const auto& region = GatherRegion(tensor_region);
-    auto& buffer_region = it->second;
-    CHECK_EQ(buffer_region.size(), region.size());
+    const auto& region = GatherRegion(buffer_region);
+    auto& buffer_new_region = it->second;
+    CHECK_EQ(buffer_new_region.size(), region.size());
     for (size_t i = 0; i < region.size(); ++i) {
-      buffer_region[i] = arith::Union({buffer_region[i], region[i]});
+      buffer_new_region[i] = arith::Union({buffer_new_region[i], region[i]});
     }
   }
 
   /*!
    * \brief Gather used buffer region
    */
-  std::vector<arith::IntSet> GatherRegion(const TensorRegion& tensor_region) {
+  std::vector<arith::IntSet> GatherRegion(const BufferRegion& buffer_region) {
     std::unordered_map<const VarNode*, arith::IntSet> dom_map;
-    auto it = buffers_lca_.find(tensor_region->buffer);
+    auto it = buffers_lca_.find(buffer_region->buffer);
     CHECK(it != buffers_lca_.end());
     const auto& lca = it->second;
     // Every loop will be relaxed if the lca is the root
@@ -240,13 +239,13 @@ class RegionGatherer : public StmtExprVisitor {
     for (size_t i = 0; i < loop_stack_.size(); ++i) {
       const Loop& loop = loop_stack_[i];
       const VarNode* var = loop->loop_var.get();
-      if (need_relax || (tensor_region->buffer->scope == "shared" && IsThreadBinded(loop))) {
+      if (need_relax || (buffer_region->buffer->scope == "shared" && IsThreadBinded(loop))) {
         dom_map[var] = arith::IntSet::FromRange(Range::FromMinExtent(loop->min, loop->extent));
       }
       if (loop.same_as(lca)) need_relax = true;
     }
     std::vector<arith::IntSet> region;
-    for (const auto& range : tensor_region->region) {
+    for (const auto& range : buffer_region->region) {
       Range r = Range::FromMinExtent(Substitute(Substitute(range->min, block_var_), unit_loops_),
                                      Substitute(Substitute(range->extent, block_var_), unit_loops_));
       region.push_back(arith::EvalSet(r, dom_map));
@@ -317,7 +316,7 @@ class BufferFlattener : public StmtExprMutator {
     Stmt old_stmt = GetRef<Stmt>(block_op);
     CHECK(block_op != nullptr);
     for (size_t i = block_op->allocations.size(); i > 0; --i) {
-      const auto& buffer = block_op->allocations[i - 1]->buffer;
+      const auto& buffer = block_op->allocations[i - 1];
       const std::string name = std::string(buffer->name);
       if (name.substr(0, 18) == "normal_reduce_temp" || name.substr(0, 11) == "reduce_temp") {
         continue;
@@ -365,21 +364,21 @@ class BufferFlattener : public StmtExprMutator {
     }
 
     for (size_t i = block_op->allocations.size(); i > 0; --i) {
-      const auto& n = block_op->allocations[i - 1];
-      const std::string name = std::string(n->buffer->name);
+      const auto& alloc_buf = block_op->allocations[i - 1];
+      const std::string name = std::string(alloc_buf->name);
       if (name.substr(0, 18) == "normal_reduce_temp" || name.substr(0, 11) == "reduce_temp") {
         continue;
       }
-      if (!buffers_lca_.at(n->buffer).defined() || buffers_lca_.at(n->buffer).same_as(old_stmt)) {
+      if (!buffers_lca_.at(alloc_buf).defined() || buffers_lca_.at(alloc_buf).same_as(old_stmt)) {
         PrimExpr extents = 1;
-        for (const auto& extent : buffers_region_.at(n->buffer)) {
+        for (const auto& extent : buffers_region_.at(alloc_buf)) {
           extents *= extent.max() - extent.min() + 1;
         }
-        body = Allocate(n->buffer->data, n->buffer->dtype, {extents}, const_true(), body);
+        body = Allocate(alloc_buf->data, alloc_buf->dtype, {extents}, const_true(), body);
 
         // Change empty scope into global
-        std::string scope = n->scope.empty() ? "global" : n->scope;
-        body = AttrStmt(n->buffer->data, attr::storage_scope, StringImm(scope), body);
+        std::string scope = alloc_buf->scope.empty() ? "global" : alloc_buf->scope;
+        body = AttrStmt(alloc_buf->data, attr::storage_scope, StringImm(scope), body);
       }
     }
 
@@ -429,14 +428,14 @@ class BufferFlattener : public StmtExprMutator {
     for (auto it = pending_allocate_.begin(); it != pending_allocate_.end();) {
       if (old_stmt.same_as(buffers_lca_.at(it->first))) {
         PrimExpr extents = 1;
-        const auto& n = it->second;
-        for (const auto& extent : buffers_region_.at(n->buffer)) {
+        const auto& alloc_buf = it->second;
+        for (const auto& extent : buffers_region_.at(alloc_buf)) {
           extents *= extent.max() - extent.min() + 1;
         }
-        body = Allocate(n->buffer->data, n->buffer->dtype, {extents}, const_true(), body);
+        body = Allocate(alloc_buf->data, alloc_buf->dtype, {extents}, const_true(), body);
         // Change empty scope into global
-        std::string scope = n->scope.empty() ? "global" : n->scope;
-        body = AttrStmt(n->buffer->data, attr::storage_scope, StringImm(scope), body);
+        std::string scope = alloc_buf->scope.empty() ? "global" : alloc_buf->scope;
+        body = AttrStmt(alloc_buf->data, attr::storage_scope, StringImm(scope), body);
         pending_allocate_.erase(it++);
       } else {
         it++;
@@ -515,7 +514,7 @@ class BufferFlattener : public StmtExprMutator {
   const std::unordered_map<Buffer, ObjectRef, ObjectPtrHash, ObjectPtrEqual>& buffers_lca_;
   const std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual>& arg_buffers_;
 
-  std::unordered_map<Buffer, BufferAllocate, ObjectPtrHash, ObjectPtrEqual> pending_allocate_;
+  std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual> pending_allocate_;
   std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual> reduction_relative_;
   std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual> double_buffer_;
   Stmt parent_scope_;

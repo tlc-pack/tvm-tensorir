@@ -219,23 +219,24 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
     }
     return Range::FromMinExtent(normalized_expr->base, extent * range->extent);
   };
-  std::vector<TensorRegion> reads, writes;
-  auto rewrite_region = [&](std::vector<TensorRegion>* regions, Array<TensorRegion> old_regions) {
-    for (auto tensor_region : old_regions) {
+  std::vector<BufferRegion> reads, writes;
+  auto rewrite_region = [&](std::vector<BufferRegion>* regions, Array<BufferRegion> old_regions) {
+    for (auto buffer_region : old_regions) {
       std::vector<Range> region;
-      for (const auto& range : tensor_region->region) {
+      for (const auto& range : buffer_region->region) {
         region.push_back(rewrite_range(range));
       }
-      (*regions).emplace_back(tensor_region->buffer, region);
+      (*regions).emplace_back(buffer_region->buffer, region);
     }
   };
   rewrite_region(&reads, block->reads);
   rewrite_region(&writes, block->writes);
   // Generate a new outer block
-  auto outer_block = Block(outer_block_vars, reads, writes, body, Array<BufferAllocate>(),
-                           Array<Annotation>(), "blockized_" + block->tag, new_init);
+  auto outer_block =
+      Block(outer_block_vars, reads, writes, body, Array<Buffer>(), Array<Annotation>(),
+            "blockized_" + block->name_hint, exec_scope, new_init);
   auto outer_realize =
-      BlockRealize(outer_bindings, division.back()->outer_extent, outer_block, exec_scope);
+      BlockRealize(outer_bindings, division.back()->outer_extent, outer_block);
 
   this->Replace(loop_sref, outer_realize, {{inner_block, block}});
   UpdateScope(GetParentBlockSRef(this->stmt2ref.at(outer_block.get()))->stmt, this->stmt2ref,
@@ -269,11 +270,6 @@ bool TensorizeComparator::VisitStmt_(const LoopNode* op, const Stmt& other) {
 bool TensorizeComparator::VisitStmt_(const SeqStmtNode* op, const Stmt& other) {
   const auto* rhs = other.as<SeqStmtNode>();
   return CompareArray(op->seq, rhs->seq, &TensorizeComparator::VisitStmt);
-}
-
-bool TensorizeComparator::VisitStmt_(const BufferAllocateNode* op, const Stmt& other) {
-  const auto* rhs = other.as<BufferAllocateNode>();
-  return CompareBuffer(op->buffer, rhs->buffer) && op->scope == rhs->scope;
 }
 
 bool TensorizeComparator::VisitStmt_(const BufferStoreNode* op, const Stmt& other) {
@@ -340,8 +336,7 @@ bool TensorizeComparator::VisitStmt_(const BlockRealizeNode* op, const Stmt& oth
     }
   }
 
-  return VisitExpr(op->predicate, rhs->predicate) && op->exec_scope == rhs->exec_scope &&
-         VisitStmt(op->block, rhs->block);
+  return VisitExpr(op->predicate, rhs->predicate) && VisitStmt(op->block, rhs->block);
 }
 
 bool TensorizeComparator::VisitStmt_(const BlockNode* op, const Stmt& other) {
@@ -369,14 +364,19 @@ bool TensorizeComparator::VisitStmt_(const BlockNode* op, const Stmt& other) {
     }
   }
 
+  if (op->exec_scope != rhs->exec_scope) return false;
+
   if (!is_scope_block) {
-    if (!CompareArray(op->writes, rhs->writes, &TensorizeComparator::CompareTensorRegion)) {
+    if (!CompareArray(op->writes, rhs->writes, &TensorizeComparator::CompareBufferRegion)) {
       return false;
     }
-    if (!CompareArray(op->reads, rhs->reads, &TensorizeComparator::CompareTensorRegion)) {
+    if (!CompareArray(op->reads, rhs->reads, &TensorizeComparator::CompareBufferRegion)) {
       return false;
     }
     if (!CompareArray(op->annotations, rhs->annotations, &TensorizeComparator::CompareAnnotation)) {
+      return false;
+    }
+    if (!CompareArray(op->allocations, rhs->allocations, &TensorizeComparator::CompareBuffer)) {
       return false;
     }
   }
@@ -468,7 +468,7 @@ bool TensorizeComparator::CompareBuffer(const Buffer& lhs, const Buffer& rhs) {
   return equal;
 }
 
-bool TensorizeComparator::CompareTensorRegion(const TensorRegion& lhs, const TensorRegion& rhs) {
+bool TensorizeComparator::CompareBufferRegion(const BufferRegion& lhs, const BufferRegion& rhs) {
   // Only for block region declaration
   if (!CompareBuffer(lhs->buffer, rhs->buffer)) return false;
   // Number of indices in desc_block must be smaller than it in AST
@@ -659,11 +659,11 @@ class BufferReplacer : public StmtExprMutator {
   const std::unordered_map<Buffer, std::vector<PrimExpr>, ObjectPtrHash, ObjectPtrEqual>&
       buffer_indices_;
 
-  Array<TensorRegion> UpdateBufferViaMap(const Array<TensorRegion>& tensor_regions) {
-    auto f_mutate = [this](const TensorRegion& tensor_region) {
-      auto it = buffer_map_.find(tensor_region->buffer);
+  Array<BufferRegion> UpdateBufferViaMap(const Array<BufferRegion>& buffer_regions) {
+    auto f_mutate = [this](const BufferRegion& buffer_region) {
+      auto it = buffer_map_.find(buffer_region->buffer);
       if (it != buffer_map_.end()) {
-        auto n = CopyOnWrite(tensor_region.operator->());
+        auto n = CopyOnWrite(buffer_region.operator->());
         n->buffer = it->second;
         auto it2 = buffer_indices_.find(n->buffer);
         if (it2 != buffer_indices_.end()) {
@@ -673,12 +673,12 @@ class BufferReplacer : public StmtExprMutator {
           }
           n->region.insert(n->region.begin(), region.begin(), region.end());
         }
-        return TensorRegion(n);
+        return BufferRegion(n);
       } else {
-        return tensor_region;
+        return buffer_region;
       }
     };
-    return MutateArray(tensor_regions, f_mutate, allow_copy_on_write_);
+    return MutateArray(buffer_regions, f_mutate, allow_copy_on_write_);
   }
 };
 
@@ -702,7 +702,7 @@ void ScheduleNode::tensorize(const StmtSRef& loop_sref, const TensorIntrin& intr
   const auto* impl_block_realize = intrinsic->implementation->body.as<BlockRealizeNode>();
   const Block& impl_block = impl_block_realize->block;
 
-  const StmtSRef& block_sref = blockize(loop_sref, impl_block_realize->exec_scope);
+  const StmtSRef& block_sref = blockize(loop_sref, impl_block->exec_scope);
   const BlockRealize& block_realize = GetBlockRealize(block_sref);
 
   TensorizeComparator comparator;
@@ -734,8 +734,8 @@ void ScheduleNode::tensorize(const StmtSRef& loop_sref, const TensorIntrin& intr
                                  comparator.buffer_indices_)(impl_block_realize->block);
   const auto* block_node = new_stmt.as<BlockNode>();
   std::unordered_map<const VarNode*, PrimExpr> element_offset;
-  auto get_element_offset = [&element_offset](const Array<TensorRegion>& old_regions,
-                                              const Array<TensorRegion>& new_regions) {
+  auto get_element_offset = [&element_offset](const Array<BufferRegion>& old_regions,
+                                              const Array<BufferRegion>& new_regions) {
     CHECK_EQ(old_regions.size(), new_regions.size());
     for (size_t i = 0; i < old_regions.size(); ++i) {
       Array<PrimExpr> indices;

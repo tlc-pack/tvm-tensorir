@@ -75,22 +75,22 @@ Stmt SubstituteInScope(const Stmt& stmt,
                        const std::unordered_map<const VarNode*, PrimExpr>& var_map);
 
 /*!
- * \brief Substitute the var in TensorRegion
- * \param tensor_region The source TensorRegion to be substituted
+ * \brief Substitute the var in BufferRegion
+ * \param buffer_region The source BufferRegion to be substituted
  * \param var_map the mapping of var
  * \return The converted tensor region
  */
-TensorRegion SubstituteTensorRegion(
-    const TensorRegion& tensor_region,
+BufferRegion SubstituteBufferRegion(
+    const BufferRegion& buffer_region,
     const std::unordered_map<const VarNode*, const VarNode*>& var_map);
 
 /*!
- * \brief Substitute the var in TensorRegion
- * \param tensor_region The source TensorRegion to be substituted
+ * \brief Substitute the var in BufferRegion
+ * \param buffer_region The source BufferRegion to be substituted
  * \param var_map the mapping of var
  * \return The converted tensor region
  */
-TensorRegion SubstituteTensorRegion(const TensorRegion& tensor_region,
+BufferRegion SubstituteBufferRegion(const BufferRegion& buffer_region,
                                     const std::unordered_map<const VarNode*, PrimExpr>& var_map);
 
 /*!
@@ -109,7 +109,7 @@ BlockRealize GetBlockRealize(const StmtSRef& block_sref);
 StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef& root);
 
 /*!
- * \brief Relax the TensorRegion with the loops under root
+ * \brief Relax the BufferRegion with the loops under root
  * \param block_sref The block sref
  * \param root The root node
  * \param reads The vector to store the reads result
@@ -123,20 +123,20 @@ StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef
  *       Block(reads=A[i: i+1])
  *   After relax, the relaxed region would be A[0: 10]
  */
-void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root, std::vector<TensorRegion>* reads,
-                 std::vector<TensorRegion>* writes,
+void RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root, std::vector<BufferRegion>* reads,
+                 std::vector<BufferRegion>* writes,
                  const std::unordered_map<const VarNode*, Range>& relax_vars =
                      std::unordered_map<const VarNode*, Range>());
 
 /*!
- * \brief Relax the TensorRegion with the loops under root
+ * \brief Relax the BufferRegion with the loops under root
  * \param block_sref The block sref
  * \param root The root node
  * \param region The region to be relaxed
  * \return The relaxed region
  */
-TensorRegion RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
-                         const TensorRegion& region);
+BufferRegion RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
+                         const BufferRegion& region);
 
 /*!
  * \brief remove the AST leaf and its parent subtree which has only one leaf
@@ -279,12 +279,12 @@ class PatternMatcher : public ExprVisitor {
 /* \brief Auto calculate the block read write region */
 class BlockReadWriteCollector : public StmtExprVisitor {
  public:
-  explicit BlockReadWriteCollector(const Array<BufferAllocate>& allocations) {
-    for (const auto& allocate : allocations) inner_buffers_.insert(allocate->buffer.get());
+  explicit BlockReadWriteCollector(const Array<Buffer>& allocations) {
+    for (const auto& allocate : allocations) inner_buffers_.insert(allocate.get());
   }
 
-  Array<TensorRegion> reads();
-  Array<TensorRegion> writes();
+  Array<BufferRegion> reads();
+  Array<BufferRegion> writes();
 
  private:
   std::unordered_map<const VarNode*, arith::IntSet> dom_map_;
@@ -321,7 +321,6 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
 
   bool VisitStmt_(const LoopNode* op, const Stmt& other) override;
   bool VisitStmt_(const SeqStmtNode* op, const Stmt& other) override;
-  bool VisitStmt_(const BufferAllocateNode* op, const Stmt& other) override;
   bool VisitStmt_(const BufferStoreNode* op, const Stmt& other) override;
   bool VisitStmt_(const BlockRealizeNode* op, const Stmt& other) override;
   bool VisitStmt_(const BlockNode* op, const Stmt& other) override;
@@ -352,7 +351,7 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
   bool DefEqual(const ObjectRef& lhs, const ObjectRef& rhs);
   bool CompareAnnotation(const Annotation& lhs, const Annotation& rhs);
   virtual bool CompareBuffer(const Buffer& lhs, const Buffer& rhs);
-  bool CompareTensorRegion(const TensorRegion& lhs, const TensorRegion& rhs);
+  bool CompareBufferRegion(const BufferRegion& lhs, const BufferRegion& rhs);
   template <typename T>
   bool CompareBufferAccess(const T* lhs, const T* rhs);
   template <typename T, typename F>

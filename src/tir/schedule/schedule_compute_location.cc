@@ -116,13 +116,13 @@ std::vector<arith::IntSet> SolveCover(const BlockNode* block, const BufferRegion
   }
   // Collect the ranges written in the producer block
   BufferRegionMap produces;
-  const auto& tensor_regions = gather_write ? block->writes : block->reads;
-  for (const TensorRegion& tensor_region : tensor_regions) {
+  const auto& buffer_regions = gather_write ? block->writes : block->reads;
+  for (const BufferRegion& buffer_region : buffer_regions) {
     std::vector<Range> region;
-    for (const Range& range : tensor_region->region) {
+    for (const Range& range : buffer_region->region) {
       region.push_back(range);
     }
-    produces[tensor_region->buffer] = std::move(region);
+    produces[buffer_region->buffer] = std::move(region);
   }
   // Fit requirements one by one
   // i.e. range that the producer writes vs. range that the consumer reads
@@ -145,7 +145,7 @@ std::vector<arith::IntSet> SolveCover(const BlockNode* block, const BufferRegion
           min = consume->min;
           extent = consume->extent;
         } else {
-          LOG(FATAL) << "ValueError: TensorRegion pattern match failed";
+          LOG(FATAL) << "ValueError: BufferRegion pattern match failed";
         }
         const auto* var = v.Eval().get();
         if (iter_var_indexer.count(var)) {
@@ -232,7 +232,7 @@ Loop RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& loop_sref, int 
  * \param buf The buffer in interest
  * \return Required with the same order as produce_regions
  */
-BufferRegionMap GatherRequirements(const Array<TensorRegion>& produced_regions,
+BufferRegionMap GatherRequirements(const Array<BufferRegion>& produced_regions,
                                    const StmtSRef& lca_loop_sref,
                                    const std::vector<StmtSRef>& consumer_blocks,
                                    const std::unordered_map<const VarNode*, Range>& relax_vars,
@@ -240,20 +240,20 @@ BufferRegionMap GatherRequirements(const Array<TensorRegion>& produced_regions,
   // For write domain in produce_regions, initiate an empty IntSet for it
   std::unordered_map<Buffer, std::vector<arith::IntSet>, ObjectPtrHash, ObjectPtrEqual>
       produced_region_reads;
-  for (const TensorRegion& region : produced_regions) {
+  for (const BufferRegion& region : produced_regions) {
     std::vector<arith::IntSet> produced_region_read(region->region.size(),
                                                     arith::IntSet::Nothing());
     produced_region_reads[region->buffer] = std::move(produced_region_read);
   }
   // For each consumer's reading region
   for (const StmtSRef& block_sref : consumer_blocks) {
-    std::vector<TensorRegion> relaxed;
+    std::vector<BufferRegion> relaxed;
     if (gather_read) {
       RelaxRegion(block_sref, lca_loop_sref, &relaxed, nullptr, relax_vars);
     } else {
       RelaxRegion(block_sref, lca_loop_sref, nullptr, &relaxed, relax_vars);
     }
-    for (const TensorRegion& region : relaxed) {
+    for (const BufferRegion& region : relaxed) {
       if (produced_region_reads.count(region->buffer)) {
         // Accumulate the read range into its corresponding buffer
         for (size_t i = 0; i < region->region.size(); ++i) {
@@ -299,11 +299,10 @@ std::unordered_map<const VarNode*, Range> RelaxForExecScope(const StmtSRef& loop
                                                             const StmtSRef& block_sref) {
   std::unordered_map<const VarNode*, Range> relax_var;
   const auto* block = block_sref->GetStmt<BlockNode>();
-  const BlockRealize& realize = GetBlockRealize(block_sref);
-  const String& exe_scope = realize->exec_scope;
+  const String& exec_scope = block->exec_scope;
   StmtSRef sref = loop_sref;
 
-  auto update_for_gpu = [&block, &exe_scope](const LoopNode* loop) -> bool {
+  auto update_for_gpu = [&block, &exec_scope](const LoopNode* loop) -> bool {
     CHECK_EQ(block->writes.size(), 1)
         << "InternalError: Only block with one write buffer can be compute_at";
     std::string write_scope = block->writes[0]->buffer->scope;
@@ -313,7 +312,7 @@ std::unordered_map<const VarNode*, Range> RelaxForExecScope(const StmtSRef& loop
       if (annotation->attr_key == attr::loop_type) {
         thread_tag = Downcast<StringImm>(annotation->value)->value;
       }
-    if (exe_scope == "gpu_thread" || exe_scope.empty()) {
+    if (exec_scope == "gpu_thread" || exec_scope.empty()) {
       if (write_scope == "shared" &&
           (thread_tag.substr(0, 9) == "threadIdx" || thread_tag == "vthread")) {
         return true;
@@ -384,8 +383,8 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
   CHECK(scope->IsCompactDataFlow(GetSubTreeOfParent(block_sref), this))
       << "ValueError: 'compute_at' expects the subtree of 'block' to have compact dataflow";
   // Cond 4. Check the block is not a output block
-  for (const TensorRegion& parent_write : parent_block->writes) {
-    for (const TensorRegion& write : block->writes) {
+  for (const BufferRegion& parent_write : parent_block->writes) {
+    for (const BufferRegion& write : block->writes) {
       CHECK_NE(write->buffer.get(), parent_write->buffer.get())
           << "ValueError: 'compute_at' does not work on an output block";
     }
@@ -578,12 +577,12 @@ class StatementInliner : public StmtExprMutator {
 
     // Update Allocation
     const Buffer& buffer = block_->writes[0]->buffer;
-    Array<BufferAllocate> allocations;
-    for (const auto allocate : op->allocations) {
-      if (allocate->buffer != buffer) allocations.push_back(allocate);
+    Array<Buffer> allocations;
+    for (const auto alloc_buf : op->allocations) {
+      if (alloc_buf != buffer) allocations.push_back(alloc_buf);
     }
 
-    Array<TensorRegion> reads(nullptr);
+    Array<BufferRegion> reads(nullptr);
     if (is_scope_block) {
       reads = op->reads;
     } else {
@@ -593,8 +592,8 @@ class StatementInliner : public StmtExprMutator {
       reads = block_read_write_collector.reads();
     }
 
-    Block block(op->iter_vars, reads, op->writes, op->body, allocations, op->annotations, op->tag,
-                op->init);
+    Block block(op->iter_vars, reads, op->writes, op->body, allocations, op->annotations,
+                op->name_hint, op->exec_scope, op->init);
 
     block_sref_map_->Set(block, origin_block);
     return std::move(block);
@@ -691,16 +690,16 @@ class ReverseStatementInliner : public StmtExprMutator {
     CHECK(op != nullptr);
     // update allocation
     const Buffer& buffer = producer_->writes[0]->buffer;
-    Array<BufferAllocate> allocations;
-    for (const auto allocate : op->allocations) {
-      if (allocate->buffer != buffer) allocations.push_back(allocate);
+    Array<Buffer> allocations;
+    for (const auto alloc_buf : op->allocations) {
+      if (alloc_buf != buffer) allocations.push_back(alloc_buf);
     }
     // update read/write region
     BlockReadWriteCollector block_read_write_collector(allocations);
     block_read_write_collector(op->body);
     Block block(op->iter_vars, block_read_write_collector.reads(),
                 block_read_write_collector.writes(), op->body, allocations, op->annotations,
-                op->tag, op->init);
+                op->name_hint, op->exec_scope, op->init);
     if (is_producer) block_sref_map_->Set(block, origin_producer);
     return std::move(Block(block));
   }

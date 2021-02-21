@@ -618,10 +618,10 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     std::vector<int> is_write_update(n_writes, 0);
     for (int i_r = 0; i_r < n_reads; ++i_r) {
       // Enumerate each read region
-      const tir::TensorRegion& r = realize->block->reads[i_r];
+      const tir::BufferRegion& r = realize->block->reads[i_r];
       for (int i_w = 0; i_w < n_writes; ++i_w) {
         // Enumerate each write region
-        const tir::TensorRegion& w = realize->block->writes[i_w];
+        const tir::BufferRegion& w = realize->block->writes[i_w];
         if (r->buffer.same_as(w->buffer)) {
           const Array<Range>& r_region = r->region;
           const Array<Range>& w_region = w->region;
@@ -696,13 +696,13 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       if (is_read_update[i]) {
         continue;
       }
-      const tir::TensorRegion& region = realize->block->reads[i];
+      const tir::BufferRegion& region = realize->block->reads[i];
       BufferInfo& info = result[region->buffer.get()];
       info.access_type = FeatureSet::BufferAccess::AccessType::kRead;
       info.regions.push_back(f_make_int_set(region->region));
     }
     for (int i = 0; i < n_writes; ++i) {
-      const tir::TensorRegion& region = realize->block->writes[i];
+      const tir::BufferRegion& region = realize->block->writes[i];
       BufferInfo& info = result[region->buffer.get()];
       if (is_write_update[i] || info.access_type == FeatureSet::BufferAccess::AccessType::kRead) {
         info.access_type = FeatureSet::BufferAccess::AccessType::kReadWrite;
