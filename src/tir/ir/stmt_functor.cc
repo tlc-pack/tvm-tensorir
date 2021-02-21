@@ -394,36 +394,19 @@ Stmt StmtMutator::VisitStmt_(const EvaluateNode* op) {
 
 Stmt StmtMutator::VisitStmt_(const BlockNode* op) {
   auto fmutate_range = [&](const Range& range) {
-    PrimExpr min = this->VisitExpr(range->min);
-    PrimExpr extent = this->VisitExpr(range->extent);
-    if (min.same_as(range->min) && extent.same_as(range->extent)) {
-      return range;
-    } else {
-      auto n = CopyOnWrite(range.get());
-      n->min = std::move(min);
-      n->extent = std::move(extent);
-      return Range(n);
-    }
+    return Range::FromMinExtent(this->VisitExpr(range->min), this->VisitExpr(range->extent));
   };
   auto fmutate_buffer_region = [&](const BufferRegion& buffer_region) {
-    Array<Range> region = MutateArray(buffer_region->region, fmutate_range);
-    if (region.same_as(buffer_region->region)) {
-      return buffer_region;
-    } else {
-      auto n = CopyOnWrite(buffer_region.get());
-      n->region = std::move(region);
-      return BufferRegion(n);
-    }
+    std::vector<Range> region;
+    for (const auto& range : buffer_region->region) region.push_back(fmutate_range(range));
+    return BufferRegion(buffer_region->buffer, region);
   };
   auto fmutate_iter_var = [&](const IterVar& iter_var) {
-    Range range = fmutate_range(iter_var->dom);
-    if (range.same_as(iter_var->dom)) {
-      return iter_var;
-    } else {
-      auto n = CopyOnWrite(iter_var.get());
-      n->dom = std::move(range);
-      return IterVar(n);
-    }
+    return IterVar(fmutate_range(iter_var->dom), iter_var->var, iter_var->iter_type,
+                   iter_var->thread_tag);
+  };
+  auto fmutate_annotation = [this](const Annotation& annotation) {
+    return Annotation(annotation->attr_key, this->VisitExpr(annotation->value));
   };
   Array<BufferRegion> reads = MutateArray(op->reads, fmutate_buffer_region);
   Array<BufferRegion> writes = MutateArray(op->writes, fmutate_buffer_region);

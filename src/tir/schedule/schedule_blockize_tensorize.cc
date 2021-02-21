@@ -177,30 +177,41 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
   if (block->init.defined()) {
     std::vector<For> init_loops;
     std::vector<size_t> init_block_vars;
+    std::vector<IterVar> init_block_vars_copy;
     std::vector<PrimExpr> init_bindings;
     std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> binding_replace_map;
-    std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> var_replace_map;
+    std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> bv_replace_map;
     for (size_t i = 0; i < inner_block_vars.size(); ++i) {
       if (inner_block_vars[i]->iter_type == IterVarType::kDataPar &&
           StmtExprContainsVar(block->init.value(), inner_block_vars[i]->var)) {
+        // copy init block vars and ignore reduce block vars
         init_block_vars.push_back(i);
+        IterVar init_block_var = inner_block_vars[i];
+        init_block_var.CopyOnWrite()->var = inner_block_vars[i]->var.copy_with_suffix("_init");
+        init_block_vars_copy.push_back(init_block_var);
+        bv_replace_map[inner_block_vars[i]->var] = init_block_var->var;
       }
     }
     for (const ForNode* inner_loop : inner_loops) {
       for (size_t i = 0; i < init_block_vars.size(); ++i) {
         if (StmtExprContainsVar(inner_bindings[i], inner_loop->loop_var)) {
+          // copy loops related to init block vars
           For init_loop = GetRef<For>(inner_loop);
           init_loop.CopyOnWrite()->loop_var = inner_loop->loop_var.copy_with_suffix("");
+          // replace loop vars with copied loop vars
           binding_replace_map[inner_loop->loop_var] = init_loop->loop_var;
           init_loops.push_back(init_loop);
         }
       }
     }
-    for (size_t index : init_block_vars) {
-      var_replace_map[inner_block_vars[index]->var] =
-          Substitute(inner_bindings[index], binding_replace_map);
+    for (size_t i = 0; i < init_block_vars.size(); ++i) {
+      init_bindings.push_back(Substitute(inner_bindings[init_block_vars[i]], binding_replace_map));
     }
-    new_init = Substitute(block->init.value(), var_replace_map);
+    new_init = Substitute(Block(init_block_vars_copy, {}, block->writes, block->init.value(), {},
+                                {}, block->name_hint + "_init", NullOpt),
+                          bv_replace_map);
+    new_init = BlockRealize(init_bindings, division.back()->inner_extent,
+                            Downcast<Block>(new_init.value()));
     for (const auto& init_loop : init_loops) {
       For new_init_loop = init_loop;
       new_init_loop.CopyOnWrite()->body = new_init.value();
