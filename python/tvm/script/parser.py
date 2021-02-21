@@ -744,7 +744,7 @@ class TVMScriptParser(Transformer):
         By now only 2 types of Subscript are supported:
             1. Buffer[index, index, ...], Buffer element access(BufferLoad & BufferStore)
                Var[index] Buffer element access()
-            2. Buffer[slice, slice, ...], TensorRegion
+            2. Buffer[slice, slice, ...], BufferRegion
             3. meta[type_key][index], Meta info access
         """
 

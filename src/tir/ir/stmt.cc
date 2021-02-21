@@ -667,35 +667,35 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->stream << "}\n";
     });
 
-// TensorRegion
-TensorRegion::TensorRegion(Buffer buffer, Array<Range> region) {
-  ObjectPtr<TensorRegionNode> node = make_object<TensorRegionNode>();
+// BufferRegion
+BufferRegion::BufferRegion(Buffer buffer, Array<Range> region) {
+  ObjectPtr<BufferRegionNode> node = make_object<BufferRegionNode>();
   node->buffer = std::move(buffer);
   node->region = std::move(region);
   data_ = std::move(node);
 }
 
-TensorRegion::TensorRegion(Buffer buffer) {
+BufferRegion::BufferRegion(Buffer buffer) {
   Array<Range> region;
   for (const PrimExpr& extent : buffer->shape) {
     region.push_back(Range::FromMinExtent(0, extent));
   }
-  ObjectPtr<TensorRegionNode> node = make_object<TensorRegionNode>();
+  ObjectPtr<BufferRegionNode> node = make_object<BufferRegionNode>();
   node->buffer = std::move(buffer);
   node->region = std::move(region);
   data_ = std::move(node);
 }
 
-TVM_REGISTER_GLOBAL("tir.TensorRegion")
-    .set_body_typed<TensorRegion(Buffer, Array<Range>)>([](Buffer buffer, Array<Range> region) {
-      return TensorRegion(buffer, region);
+TVM_REGISTER_GLOBAL("tir.BufferRegion")
+    .set_body_typed<BufferRegion(Buffer, Array<Range>)>([](Buffer buffer, Array<Range> region) {
+      return BufferRegion(buffer, region);
     });
 
-TVM_REGISTER_NODE_TYPE(TensorRegionNode);
+TVM_REGISTER_NODE_TYPE(BufferRegionNode);
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-    .set_dispatch<TensorRegionNode>([](const ObjectRef& node, ReprPrinter* p) {
-      auto* op = static_cast<const TensorRegionNode*>(node.get());
+    .set_dispatch<BufferRegionNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const BufferRegionNode*>(node.get());
       p->Print(op->buffer->data);
       p->stream << "[";
       for (size_t i = 0; i < op->region.size(); ++i) {
@@ -710,36 +710,10 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->stream << "]";
     });
 
-// BufferAllocate
-BufferAllocate::BufferAllocate(Buffer buffer, std::string scope) {
-  ObjectPtr<BufferAllocateNode> node = make_object<BufferAllocateNode>();
-  node->buffer = std::move(buffer);
-  node->scope = std::move(scope);
-  data_ = std::move(node);
-}
-
-TVM_REGISTER_GLOBAL("tir.BufferAllocate")
-    .set_body_typed<BufferAllocate(Buffer, std::string)>([](Buffer buffer, std::string scope) {
-      return BufferAllocate(buffer, scope);
-    });
-
-TVM_REGISTER_NODE_TYPE(BufferAllocateNode);
-
-TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-    .set_dispatch<BufferAllocateNode>([](const ObjectRef& node, ReprPrinter* p) {
-      auto* op = static_cast<const BufferAllocateNode*>(node.get());
-      p->PrintIndent();
-      p->stream << "BufferAllocate(";
-      p->stream << op->buffer->name;
-      p->Print(op->buffer->shape);
-      p->stream << ", " << op->buffer->dtype;
-      p->stream << ", \"" << op->scope << "\")\n";
-    });
-
 // Block
-Block::Block(Array<IterVar> iter_vars, Array<TensorRegion> reads, Array<TensorRegion> writes,
-             Stmt body, Array<BufferAllocate> allocations, Array<Annotation> annotations,
-             std::string tag, Optional<Stmt> init) {
+Block::Block(Array<IterVar> iter_vars, Array<BufferRegion> reads, Array<BufferRegion> writes,
+             Stmt body, Array<Buffer> allocations, Array<Annotation> annotations, String name_hint,
+             String exec_scope, Optional<Stmt> init) {
   ObjectPtr<BlockNode> node = make_object<BlockNode>();
   node->iter_vars = std::move(iter_vars);
   node->reads = std::move(reads);
@@ -747,18 +721,20 @@ Block::Block(Array<IterVar> iter_vars, Array<TensorRegion> reads, Array<TensorRe
   node->body = std::move(body);
   node->allocations = std::move(allocations);
   node->annotations = std::move(annotations);
-  node->tag = std::move(tag);
+  node->name_hint = std::move(name_hint);
   node->init = std::move(init);
+  node->exec_scope = std::move(exec_scope);
   data_ = std::move(node);
 }
 
 TVM_REGISTER_GLOBAL("tir.Block")
-    .set_body_typed<Block(Array<IterVar>, Array<TensorRegion>, Array<TensorRegion>, Stmt,
-                          Array<BufferAllocate>, Array<Annotation>, std::string, Optional<Stmt>)>(
-        [](Array<IterVar> iter_vars, Array<TensorRegion> reads, Array<TensorRegion> writes,
-           Stmt body, Array<BufferAllocate> allocates, Array<Annotation> annotations,
-           std::string tag, Optional<Stmt> init) {
-          return Block(iter_vars, reads, writes, body, allocates, annotations, tag, init);
+    .set_body_typed<Block(Array<IterVar>, Array<BufferRegion>, Array<BufferRegion>, Stmt,
+                          Array<Buffer>, Array<Annotation>, String, String, Optional<Stmt>)>(
+        [](Array<IterVar> iter_vars, Array<BufferRegion> reads, Array<BufferRegion> writes,
+           Stmt body, Array<Buffer> allocates, Array<Annotation> annotations, String name_hint,
+           String exec_scope, Optional<Stmt> init) {
+          return Block(iter_vars, reads, writes, body, allocates, annotations, name_hint, exec_scope,
+                       init);
         });
 
 TVM_REGISTER_NODE_TYPE(BlockNode);
@@ -769,7 +745,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
       // print block name and block vars
       p->PrintIndent();
-      p->stream << "block " << op->tag << "(";
+      p->stream << "block " << op->name_hint << "(";
       for (size_t i = 0; i < op->iter_vars.size(); ++i) {
         const auto& iter_var = op->iter_vars[i];
         if (iter_var->iter_type != kDataPar) {
@@ -829,26 +805,24 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     });
 
 // BlockRealize
-BlockRealize::BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block,
-                           String exe_scope) {
+BlockRealize::BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block) {
   CHECK_EQ(block->iter_vars.size(), values.size());
   ObjectPtr<BlockRealizeNode> node = make_object<BlockRealizeNode>();
   node->binding_values = std::move(values);
   node->predicate = std::move(predicate);
   node->block = std::move(block);
-  node->exec_scope = std::move(exe_scope);
   data_ = std::move(node);
 }
 
 TVM_REGISTER_GLOBAL("tir.BlockRealize")
-    .set_body_typed<BlockRealize(Array<PrimExpr>, PrimExpr, Block, String)>(
-        [](Array<PrimExpr> values, PrimExpr predicate, Block block, String exe_scope) {
+    .set_body_typed<BlockRealize(Array<PrimExpr>, PrimExpr, Block)>(
+        [](Array<PrimExpr> values, PrimExpr predicate, Block block) {
           if (!predicate.dtype().is_bool()) {
             // To support python ir_builder
             CHECK(is_one(predicate));
             predicate = IntImm(DataType::Bool(), 1);
           }
-          return BlockRealize(values, predicate, block, exe_scope);
+          return BlockRealize(values, predicate, block);
         });
 
 TVM_REGISTER_NODE_TYPE(BlockRealizeNode);
@@ -860,7 +834,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
       // print block name and block vars
       p->PrintIndent();
-      p->stream << "block " << op->tag << "(";
+      p->stream << "block " << op->name_hint << "(";
       for (size_t i = 0; i < op->iter_vars.size(); ++i) {
         const auto& iter_var = op->iter_vars[i];
         if (iter_var->iter_type != kDataPar) {

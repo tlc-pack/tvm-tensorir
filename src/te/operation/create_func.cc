@@ -77,7 +77,7 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
   Translator translator(op2buffers);
 
   // root allocation and body(seq_stmt) for root block
-  Array<BufferAllocate> allocations;
+  Array<Buffer> allocations;
   Array<Stmt> seq;
 
   // name map for unique block name
@@ -145,14 +145,14 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
         buffer_map.Set(arg, buffer);
       } else {
         // Add allocation
-        allocations.push_back(BufferAllocate(buffer, ""));
+        allocations.push_back(buffer);
       }
 
-      Block block(block_vars, NullValue<Array<TensorRegion>>(), NullValue<Array<TensorRegion>>(),
-                  body, {}, {}, GetUniqueName(op->name, &name_map), init);
+      Block block(block_vars, NullValue<Array<BufferRegion>>(), NullValue<Array<BufferRegion>>(),
+                  body, {}, {}, GetUniqueName(op->name, &name_map), "", init);
       Array<PrimExpr> null_bindings;
       for (size_t i = 0; i < block_vars.size(); i++) null_bindings.push_back(NullValue<PrimExpr>());
-      BlockRealize realize(null_bindings, Bool(true), block, "");
+      BlockRealize realize(null_bindings, Bool(true), block);
       seq.push_back(realize);
     } else {
       LOG(FATAL) << "Unsupported OperationNode";

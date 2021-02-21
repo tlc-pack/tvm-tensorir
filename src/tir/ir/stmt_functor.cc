@@ -113,7 +113,6 @@ void StmtVisitor::VisitStmt_(const SeqStmtNode* op) {
 void StmtVisitor::VisitStmt_(const EvaluateNode* op) { this->VisitExpr(op->value); }
 
 void StmtVisitor::VisitStmt_(const BlockNode* op) {
-  VisitArray(op->allocations, [this](const Stmt& s) { this->VisitStmt(s); });
   if (op->init.defined()) {
     this->VisitStmt(op->init.value());
   }
@@ -131,8 +130,6 @@ void StmtVisitor::VisitStmt_(const LoopNode* op) {
   this->VisitExpr(op->extent);
   this->VisitStmt(op->body);
 }
-
-void StmtVisitor::VisitStmt_(const BufferAllocateNode* op) {}
 
 class StmtMutator::Internal {
  public:
@@ -414,14 +411,14 @@ Stmt StmtMutator::VisitStmt_(const BlockNode* op) {
       return Range(n);
     }
   };
-  auto fmutate_tensor_region = [&](const TensorRegion& tensor_region) {
-    Array<Range> region = MutateArray(tensor_region->region, fmutate_range);
-    if (region.same_as(tensor_region->region)) {
-      return tensor_region;
+  auto fmutate_buffer_region = [&](const BufferRegion& buffer_region) {
+    Array<Range> region = MutateArray(buffer_region->region, fmutate_range);
+    if (region.same_as(buffer_region->region)) {
+      return buffer_region;
     } else {
-      auto n = CopyOnWrite(tensor_region.get());
+      auto n = CopyOnWrite(buffer_region.get());
       n->region = std::move(region);
-      return TensorRegion(n);
+      return BufferRegion(n);
     }
   };
   auto fmutate_iter_var = [&](const IterVar& iter_var) {
@@ -442,8 +439,8 @@ Stmt StmtMutator::VisitStmt_(const BlockNode* op) {
       return Annotation(annotation->attr_key, annotation->value);
     }
   };
-  Array<TensorRegion> reads = MutateArray(op->reads, fmutate_tensor_region);
-  Array<TensorRegion> writes = MutateArray(op->writes, fmutate_tensor_region);
+  Array<BufferRegion> reads = MutateArray(op->reads, fmutate_buffer_region);
+  Array<BufferRegion> writes = MutateArray(op->writes, fmutate_buffer_region);
   Array<IterVar> block_vars = MutateArray(op->iter_vars, fmutate_iter_var);
   Array<Annotation> annotations = MutateArray(op->annotations, fmutate_annotation);
   Optional<Stmt> init = NullOpt;
@@ -496,8 +493,6 @@ Stmt StmtMutator::VisitStmt_(const LoopNode* op) {
     return Stmt(n);
   }
 }
-
-Stmt StmtMutator::VisitStmt_(const BufferAllocateNode* op) { return GetRef<Stmt>(op); }
 
 // Implementations of IRTransform, PostOrderVisit and Substitute
 class IRApplyVisit : public StmtExprVisitor {

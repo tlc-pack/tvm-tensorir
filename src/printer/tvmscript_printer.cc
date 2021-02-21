@@ -137,7 +137,6 @@ class TVMScriptPrinter : public StmtFunctor<Doc(const Stmt&)>,
   Doc VisitStmt_(const EvaluateNode* op) override;
   Doc VisitStmt_(const BlockRealizeNode* op) override;
   Doc VisitStmt_(const LoopNode* op) override;
-  Doc VisitStmt_(const BufferAllocateNode* op) override;
   Doc VisitStmtDefault_(const Object* op) override;
 
   Doc VisitType_(const PrimTypeNode* node) override;
@@ -147,7 +146,7 @@ class TVMScriptPrinter : public StmtFunctor<Doc(const Stmt&)>,
   Doc PrintBody(const Stmt& body);
   Doc PrintIRModule(const IRModule& module);
   Doc PrintPrimFunc(const PrimFunc& primFunc);
-  Doc PrintTensorRegion(const TensorRegionNode* op);
+  Doc PrintBufferRegion(const BufferRegionNode* op);
   Doc PrintAnnotation(const AnnotationNode* op);
   Doc PrintIterVar(const IterVarNode* op);
   Doc PrintRange(const RangeNode* op);
@@ -331,8 +330,8 @@ Doc TVMScriptPrinter::Print(const ObjectRef& node) {
     return PrintIRModule(Downcast<IRModule>(node));
   } else if (node->IsInstance<ArrayNode>()) {
     return PrintArray(node.as<ArrayNode>());
-  } else if (node->IsInstance<TensorRegionNode>()) {
-    return PrintTensorRegion(node.as<TensorRegionNode>());
+  } else if (node->IsInstance<BufferRegionNode>()) {
+    return PrintBufferRegion(node.as<BufferRegionNode>());
   } else if (node->IsInstance<AnnotationNode>()) {
     return PrintAnnotation(node.as<AnnotationNode>());
   } else if (node->IsInstance<BufferNode>()) {
@@ -754,7 +753,7 @@ Doc TVMScriptPrinter::VisitStmt_(const BlockRealizeNode* op) {
     block_var_docs.push_back(block_var_doc);
   }
   doc << PrintSep(block_var_docs, Doc::Text(", ")) << "], ";
-  doc << Doc::StrLiteral(block_op->tag) << ")";
+  doc << Doc::StrLiteral(block_op->name_hint) << ")";
   std::vector<Doc> block_var_names;
   for (const auto& iter_var : block_op->iter_vars) {
     var_not_in_headers.insert(iter_var->var.get());
@@ -785,8 +784,9 @@ Doc TVMScriptPrinter::VisitStmt_(const BlockRealizeNode* op) {
   // print body
   Doc body;
   body << Doc::NewLine();
-  for (const auto& allocate : block_op->allocations) {
-    body << Print(allocate) << Doc::NewLine();
+  for (const auto& alloc_buf : block_op->allocations) {
+    buf_not_in_headers.insert(alloc_buf.get());
+    body << Print(alloc_buf) << " = tir.buffer_allocate(" << memo_buf_decl_[alloc_buf] << ")" << Doc::NewLine();
   }
   if (block_op->init.defined()) {
     Doc init_block;
@@ -857,13 +857,6 @@ Doc TVMScriptPrinter::VisitStmt_(const LoopNode* op) {
   } else {
     doc << Doc::Indent(4, Doc::NewLine() << PrintBody(op->body));
   }
-  return doc;
-}
-
-Doc TVMScriptPrinter::VisitStmt_(const BufferAllocateNode* op) {
-  Doc doc;
-  buf_not_in_headers.insert(op->buffer.get());
-  doc << Print(op->buffer) << " = tir.buffer_allocate(" << memo_buf_decl_[op->buffer] << ")";
   return doc;
 }
 
@@ -1019,7 +1012,7 @@ Doc TVMScriptPrinter::PrintPrimFunc(const PrimFunc& primFunc) {
   return doc;
 }
 
-Doc TVMScriptPrinter::PrintTensorRegion(const TensorRegionNode* op) {
+Doc TVMScriptPrinter::PrintBufferRegion(const BufferRegionNode* op) {
   Doc doc;
   doc << Print(op->buffer) << "[";
   for (size_t i = 0; i < op->region.size(); ++i) {
