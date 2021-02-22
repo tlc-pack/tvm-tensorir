@@ -30,7 +30,18 @@ namespace tvm {
 namespace meta_schedule {
 
 /*!
- * \brief Checks if
+ * \brief Check if a block needs to be inlined
+ * \param sch The TIR schedule class
+ * \param block_sref The block to be analyzed
+ * \param strict_mode A boolean indicating that whether the pure spatial block is required
+ *        to be strictly-inlineable
+ * \return A boolean flag indicating if the block needs multi-level tiling
+ */
+TVM_DLL bool NeedsInline(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
+                         bool strict_mode);
+
+/*!
+ * \brief Check if
  * 1) number of blocks vars equals to number of loop vars
  * 2) each block var is bound to a loop var directly
  * 3) the order is preserved, i.e. the i-th block var is the i-th loop var
@@ -57,7 +68,7 @@ TVM_DLL bool IsSubrootBlock(const tir::ScheduleState& self, const tir::StmtSRef&
 TVM_DLL bool IsLeafBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
 
 /*!
- * \brief Returns the IterVarType of each block var
+ * \brief Return the IterVarType of each block var
  * \param self The TIR schedule class
  * \param block_sref The block to be analyzed
  * \return An array of integers, the IterVarTypes corresponding to each block var in order
@@ -75,7 +86,7 @@ TVM_DLL Array<Integer> GetBlockVarTypes(const tir::ScheduleState& self,
 TVM_DLL bool IsSpatial(const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
 
 /*!
- * \brief Checks if a block is output block
+ * \brief Check if a block is output block
  * \param self The TIR schedule class
  * \param block_sref The block to be analyzed
  * \return A boolean flag indicating if it is an output block
@@ -104,7 +115,7 @@ TVM_DLL int CountOp(const tir::ScheduleState& self, const tir::StmtSRef& block_s
 TVM_DLL bool HasBranch(const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
 
 /*!
- * \brief Checks whether the producer and consumer matches in elementwise way.
+ * \brief Check whether the producer and consumer matches in elementwise way.
  * Assuming consumer_sref is the only consumer of producer_sref.
  * \param self The meta schedule class
  * \param producer_sref The producer block
@@ -115,7 +126,7 @@ TVM_DLL bool IsElementWiseMatch(const tir::ScheduleState& self, const tir::StmtS
                                 const tir::StmtSRef& consumer_sref);
 
 /*!
- * \brief Checks if a block needs multi-level tiling
+ * \brief Check if a block needs multi-level tiling
  * \param self The TIR schedule class
  * \param block_sref The block to be analyzed
  * \return A boolean flag indicating if the block needs multi-level tiling
@@ -123,7 +134,7 @@ TVM_DLL bool IsElementWiseMatch(const tir::ScheduleState& self, const tir::StmtS
 TVM_DLL bool NeedsMultiLevelTiling(const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
 
 /*!
- * \brief Checks if a block can be inlined
+ * \brief Check if a block can be inlined
  * \param self The TIR schedule class
  * \param block_sref The block to be analyzed
  * \return A boolean flag indicating if the block needs multi-level tiling

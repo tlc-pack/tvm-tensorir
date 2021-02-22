@@ -30,6 +30,25 @@
 namespace tvm {
 namespace meta_schedule {
 
+bool NeedsInline(const tir::Schedule& sch, const tir::StmtSRef& block_sref, bool strict_mode) {
+  if (!IsSpatial(sch, block_sref)) {
+    return false;
+  }
+  if (IsOutputBlock(sch, block_sref)) {
+    return false;
+  }
+  if (strict_mode && !IsStrictlyInlineable(sch, block_sref)) {
+    return false;
+  }
+  Array<tir::StmtSRef> loop_srefs = sch->GetAxes(block_sref);
+  for (const tir::StmtSRef& loop_sref : loop_srefs) {
+    if (!HasSingleChild(loop_sref)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool IsTrivialBinding(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   ICHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
