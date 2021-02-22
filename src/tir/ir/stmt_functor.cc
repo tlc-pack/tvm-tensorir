@@ -127,14 +127,50 @@ void StmtVisitor::VisitStmt_(const BlockRealizeNode* op) {
 
 class StmtMutator::Internal {
  public:
+  /*!
+   * \brief Mutate array's element by fmutate function.
+   *
+   * \note Use extra care for copy on write setting.
+   *
+   * In particular, consider the following case of two reference chains:
+   * - strongref0 -> loop0 -> loop1 -> loop2
+   * - strongref1 -> loop3 -> loop1 -> loop2
+   *
+   * Think of the case of calling MutateArray on loop1->loop2(as const reference).
+   * When both strongref0 and strongref1 exists, the context does not allow copy
+   * on write, even though loop1 uniquely refers to loop2.
+   *
+   * \param self The pointer to the mutator.
+   * \param arr Array to be mutated, const reference is used to allow copy on write
+   *            mutation in a recursive visitor.
+   * \param fmutate The mutator function.
+   * \return The mutated array, a new copy can be created.
+   */
+  template <typename T, typename F>
+  static Array<T> MutateArray(StmtMutator* self, const Array<T>& arr, F fmutate) {
+    if (self->allow_copy_on_write_ && arr.unique()) {
+      // if we allow copy on write, we can directly
+      // call the inplace mutate function.
+      const_cast<Array<T>&>(arr).MutateByApply(fmutate);
+      return arr;
+    } else {
+      bool allow_cow = false;
+      Array<T> copy = arr;
+      std::swap(allow_cow, self->allow_copy_on_write_);
+      copy.MutateByApply(fmutate);
+      std::swap(allow_cow, self->allow_copy_on_write_);
+      return copy;
+    }
+  }
+
   static Array<PrimExpr> Mutate(StmtMutator* self, const Array<PrimExpr>& arr) {
     auto fmutate = [self](const PrimExpr& e) { return self->VisitExpr(e); };
-    return MutateArray(arr, fmutate, self->allow_copy_on_write_);
+    return MutateArray(self, arr, fmutate);
   }
 
   static Array<Stmt> Mutate(StmtMutator* self, const Array<Stmt>& arr) {
     auto fmutate = [self](const Stmt& s) { return self->VisitStmt(s); };
-    return MutateArray(arr, fmutate, self->allow_copy_on_write_);
+    return MutateArray(self, arr, fmutate);
   }
 
   static Array<Range> Mutate(StmtMutator* self, const Array<Range>& arr) {
@@ -147,7 +183,7 @@ class StmtMutator::Internal {
         return Range::FromMinExtent(min, extent);
       }
     };
-    return MutateArray(arr, fmutate, self->allow_copy_on_write_);
+    return MutateArray(self, arr, fmutate);
   }
 };
 
@@ -336,7 +372,7 @@ Stmt StmtMutator::VisitSeqStmt_(const SeqStmtNode* op, bool flatten_before_visit
   }
   // function to run the visit.
   auto frunvisit = [&](const SeqStmtNode* op) {
-    Array<Stmt> seq = fmutate != nullptr ? MutateArray(op->seq, fmutate, allow_copy_on_write_)
+    Array<Stmt> seq = fmutate != nullptr ? Internal::MutateArray(this, op->seq, fmutate)
                                          : Internal::Mutate(this, op->seq);
     if (seq.same_as(op->seq)) {
       return GetRef<Stmt>(op);
@@ -394,23 +430,48 @@ Stmt StmtMutator::VisitStmt_(const EvaluateNode* op) {
 
 Stmt StmtMutator::VisitStmt_(const BlockNode* op) {
   auto fmutate_range = [&](const Range& range) {
-    return Range::FromMinExtent(this->VisitExpr(range->min), this->VisitExpr(range->extent));
+    PrimExpr min = this->VisitExpr(range->min);
+    PrimExpr extent = this->VisitExpr(range->extent);
+    if (min.same_as(range->min) && extent.same_as(range->extent)) {
+      return range;
+    } else {
+      auto n = CopyOnWrite(range.get());
+      n->min = std::move(min);
+      n->extent = std::move(extent);
+      return Range(n);
+    }
   };
   auto fmutate_buffer_region = [&](const BufferRegion& buffer_region) {
-    std::vector<Range> region;
-    for (const auto& range : buffer_region->region) region.push_back(fmutate_range(range));
-    return BufferRegion(buffer_region->buffer, region);
+    Array<Range> region = Internal::MutateArray(this, buffer_region->region, fmutate_range);
+    if (region.same_as(buffer_region->region)) {
+      return buffer_region;
+    } else {
+      auto n = CopyOnWrite(buffer_region.get());
+      n->region = std::move(region);
+      return BufferRegion(n);
+    }
   };
   auto fmutate_iter_var = [&](const IterVar& iter_var) {
-    return IterVar(fmutate_range(iter_var->dom), iter_var->var, iter_var->iter_type,
-                   iter_var->thread_tag);
+    Range range = fmutate_range(iter_var->dom);
+    if (range.same_as(iter_var->dom)) {
+      return iter_var;
+    } else {
+      auto n = CopyOnWrite(iter_var.get());
+      n->dom = std::move(range);
+      return IterVar(n);
+    }
   };
   auto fmutate_annotation = [this](const Annotation& annotation) {
-    return Annotation(annotation->attr_key, this->VisitExpr(annotation->value));
+    PrimExpr value = this->VisitExpr(annotation->value);
+    if (value.same_as(annotation->value)) {
+      return annotation;
+    } else {
+      return Annotation(annotation->attr_key, annotation->value);
+    }
   };
-  Array<BufferRegion> reads = MutateArray(op->reads, fmutate_buffer_region);
-  Array<BufferRegion> writes = MutateArray(op->writes, fmutate_buffer_region);
-  Array<IterVar> block_vars = MutateArray(op->iter_vars, fmutate_iter_var);
+  Array<BufferRegion> reads = Internal::MutateArray(this, op->reads, fmutate_buffer_region);
+  Array<BufferRegion> writes = Internal::MutateArray(this, op->writes, fmutate_buffer_region);
+  Array<IterVar> block_vars = Internal::MutateArray(this, op->iter_vars, fmutate_iter_var);
   Optional<Stmt> init = NullOpt;
   if (op->init.defined()) {
     init = VisitStmt(op->init.value());
@@ -432,7 +493,7 @@ Stmt StmtMutator::VisitStmt_(const BlockNode* op) {
 
 Stmt StmtMutator::VisitStmt_(const BlockRealizeNode* op) {
   auto fmutate = [this](const PrimExpr& e) { return this->VisitExpr(e); };
-  Array<PrimExpr> v = MutateArray(op->binding_values, fmutate);
+  Array<PrimExpr> v = Internal::MutateArray(this, op->binding_values, fmutate);
   PrimExpr pred = this->VisitExpr(op->predicate);
   Stmt block = this->VisitStmt(op->block);
   if (v.same_as(op->binding_values) && pred.same_as(op->predicate) && block.same_as(op->block)) {
@@ -500,6 +561,11 @@ class PreOrderVisitor : public StmtExprVisitor {
         StmtVisitor::VisitStmt(stmt);
       }
     }
+  }
+
+ private:
+  void VisitStmt_(const BlockNode* op) override {
+    this->VisitStmt(op->body);
   }
 
   const std::function<bool(const ObjectRef&)>& f;

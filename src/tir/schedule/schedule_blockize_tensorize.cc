@@ -719,7 +719,7 @@ class BufferReplacer : public StmtExprMutator {
         return buffer_region;
       }
     };
-    return MutateArray(buffer_regions, f_mutate, allow_copy_on_write_);
+    return MutateArray(buffer_regions, f_mutate);
   }
 };
 

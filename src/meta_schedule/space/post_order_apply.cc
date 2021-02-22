@@ -132,7 +132,7 @@ class BlockCollector : public tir::StmtVisitor {
     if (block != sch_->root->stmt) {
       result_.push_back(sch_->stmt2ref.at(block));
     }
-    tir::StmtVisitor::VisitStmt_(block);
+    this->VisitStmt(block->body);
   }
 
   /*! \brief The schedule to be collected */
