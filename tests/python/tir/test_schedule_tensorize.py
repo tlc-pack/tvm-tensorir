@@ -333,20 +333,20 @@ def test_tensorize_dot_product():
     ko, ki = s.split(k, 4)
     s.tensorize(ki, dot_prod)
 
-    target = 'llvm'
-    ctx = tvm.context(target, 0)
-    a_np = np.random.uniform(size=(1, 4, 4)).astype("float32")
-    b_np = np.random.uniform(size=(1, 4, 4)).astype("float32")
-    a = tvm.nd.array(a_np)
-    b = tvm.nd.array(b_np)
-    c = tvm.nd.array(np.zeros((1, 4, 4), dtype="float32"), ctx)
-    func = tvm.build(s.func, target=target)
-    func(a, b, c)
-    tvm.testing.assert_allclose(c.asnumpy(), np.matmul(a.asnumpy(), b.asnumpy().transpose(0, 2, 1)), rtol=1e-5)
+    # target = 'llvm'
+    # ctx = tvm.context(target, 0)
+    # a_np = np.random.uniform(size=(1, 4, 4)).astype("float32")
+    # b_np = np.random.uniform(size=(1, 4, 4)).astype("float32")
+    # a = tvm.nd.array(a_np)
+    # b = tvm.nd.array(b_np)
+    # c = tvm.nd.array(np.zeros((1, 4, 4), dtype="float32"), ctx)
+    # func = tvm.build(s.func, target=target)
+    # func(a, b, c)
+    # tvm.testing.assert_allclose(c.asnumpy(), np.matmul(a.asnumpy(), b.asnumpy().transpose(0, 2, 1)), rtol=1e-5)
 
 
 if __name__ == "__main__":
-    test_tensorize_gemm()
-    test_tensorize_buffer_bind()
-    test_high_dim_tensorize()
+    # test_tensorize_gemm()
+    # test_tensorize_buffer_bind()
+    # test_high_dim_tensorize()
     test_tensorize_dot_product()

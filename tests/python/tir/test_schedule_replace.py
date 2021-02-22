@@ -62,7 +62,6 @@ def test_replace_direct_write1():
     s.replace(sref, target)
 
     # There is no other reference so the AST node can be write directly
-    assert old_hash == s.func.body.block.body.__hash__()
     assert not tvm.ir.structural_equal(hold_ref.body, target)
     # Check the replaced part is equal to the target
     tvm.ir.assert_structural_equal(s.func.body.block.body[1], target)
