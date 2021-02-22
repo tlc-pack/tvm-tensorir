@@ -451,11 +451,14 @@ class Block(Stmt):
     annotations: tvm.ir.Map
         Additional annotation hints.
 
-    name_hint: str
-        the tag of the block.
+    match_buffers: list of MatchBufferRegion
+        The subregion buffer match
 
     exec_scope: str
         the execution scope.
+
+    name_hint: str
+        the tag of the block.
 
     body: Stmt
         The body of the block.
@@ -464,12 +467,11 @@ class Block(Stmt):
         The init block of the reduction block
     """
 
-    def __init__(self, iter_vars, reads, writes, alloc_buffers, annotations, name_hint, exec_scope,
-                 body, init=None):
+    def __init__(self, iter_vars, reads, writes, alloc_buffers, annotations, match_buffers,
+                 exec_scope, name_hint, body, init=None):
         self.__init_handle_by_constructor__(
-            _ffi_api.Block, iter_vars, reads, writes, alloc_buffers, annotations, name_hint,
-            exec_scope, body, init
-        )
+            _ffi_api.Block, iter_vars, reads, writes, alloc_buffers, annotations, match_buffers,
+            exec_scope, name_hint, body, init)
 
 
 @tvm._ffi.register_object
@@ -487,8 +489,6 @@ class BlockRealize(Stmt):
     block : Block
         The block to realize
 
-    exec_scope: str
-        Execution scope of the block
     """
 
     def __init__(self, values, predicate, block):
@@ -512,6 +512,22 @@ class BufferRegion(Object):
 
     def __init__(self, buffer, region):
         self.__init_handle_by_constructor__(_ffi_api.BufferRegion, buffer, region)
+
+
+@tvm._ffi.register_object
+class MatchBufferRegion(Object):
+    """MatchBufferRegion Node
+
+    Parameters
+    ----------
+    buffer : Buffer
+        The target buffer
+
+    source : BufferRegion
+        The region of source buffer
+    """
+    def __init__(self, buffer, source):
+        self.__init_handle_by_constructor__(_ffi_api.MatchBufferRegion, buffer, source)
 
 
 def stmt_seq(*args):

@@ -653,10 +653,26 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->stream << "]";
     });
 
+// MatchBufferRegion
+
+MatchBufferRegion::MatchBufferRegion(Buffer buffer, BufferRegion source) {
+  ObjectPtr<MatchBufferRegionNode> node = make_object<MatchBufferRegionNode>();
+  node->buffer = std::move(buffer);
+  node->source = std::move(source);
+  data_ = std::move(node);
+}
+
+TVM_REGISTER_GLOBAL("tir.MatchBufferRegion")
+.set_body_typed<MatchBufferRegion(Buffer, BufferRegion)>([](Buffer buffer, BufferRegion source) {
+  return MatchBufferRegion(buffer, source);
+});
+
+TVM_REGISTER_NODE_TYPE(MatchBufferRegionNode);
+
 // Block
 Block::Block(Array<IterVar> iter_vars, Array<BufferRegion> reads, Array<BufferRegion> writes,
-             Array<Buffer> alloc_buffers, Map<String, ObjectRef> annotations, String exec_scope,
-             String name_hint, Stmt body, Optional<Stmt> init) {
+             Array<Buffer> alloc_buffers, Map<String, ObjectRef> annotations, Array<MatchBufferRegion> match_buffers,
+             String exec_scope, String name_hint, Stmt body, Optional<Stmt> init) {
   ObjectPtr<BlockNode> node = make_object<BlockNode>();
   node->iter_vars = std::move(iter_vars);
   node->reads = std::move(reads);
@@ -664,6 +680,7 @@ Block::Block(Array<IterVar> iter_vars, Array<BufferRegion> reads, Array<BufferRe
   node->body = std::move(body);
   node->alloc_buffers = std::move(alloc_buffers);
   node->annotations = std::move(annotations);
+  node->match_buffers = std::move(match_buffers);
   node->name_hint = std::move(name_hint);
   node->init = std::move(init);
   node->exec_scope = std::move(exec_scope);
@@ -672,13 +689,16 @@ Block::Block(Array<IterVar> iter_vars, Array<BufferRegion> reads, Array<BufferRe
 
 TVM_REGISTER_GLOBAL("tir.Block")
     .set_body_typed<Block(Array<IterVar>, Array<BufferRegion>, Array<BufferRegion>, Array<Buffer>,
-                          Map<String, ObjectRef>, String, String, Stmt, Optional<Stmt>)>(
-        [](Array<IterVar> iter_vars, Array<BufferRegion> reads, Array<BufferRegion> writes,
-           Array<Buffer> allocates, Map<String, ObjectRef> annotations, String name_hint,
-           String exec_scope, Stmt body, Optional<Stmt> init) {
-          return Block(iter_vars, reads, writes, allocates, annotations, exec_scope, name_hint,
-                       body, init);
-        });
+                          Map<String, ObjectRef>, Array<MatchBufferRegion>, String, String, Stmt,
+                          Optional<Stmt>)>([](Array<IterVar> iter_vars, Array<BufferRegion> reads,
+                                              Array<BufferRegion> writes, Array<Buffer> alloc_buffers,
+                                              Map<String, ObjectRef> annotations,
+                                              Array<MatchBufferRegion> match_buffers,
+                                              String exec_scope, String name_hint, Stmt body,
+                                              Optional<Stmt> init) {
+      return Block(iter_vars, reads, writes, alloc_buffers, annotations, match_buffers,
+                   exec_scope, name_hint, body, init);
+    });
 
 TVM_REGISTER_NODE_TYPE(BlockNode);
 

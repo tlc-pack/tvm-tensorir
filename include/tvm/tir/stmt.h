@@ -908,7 +908,7 @@ class Prefetch : public Stmt {
 };
 
 /*!
- * \brief A sub-region of a specific tensor.
+ * \brief A sub-region of a specific buffer.
  */
 class BufferRegionNode : public Object {
  public:
@@ -944,6 +944,41 @@ class BufferRegion : public ObjectRef {
   TVM_DEFINE_OBJECT_REF_METHODS(BufferRegion, ObjectRef, BufferRegionNode);
 };
 
+/*!
+ * \brief Match part of buffer region into a target buffer
+ */
+class MatchBufferRegionNode : public Object {
+ public:
+  /*! \brief The target buffer. */
+  Buffer buffer;
+  /*! \brief The source buffer region. */
+  BufferRegion source;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("buffer", &buffer);
+    v->Visit("source", &source);
+  }
+
+  bool SEqualReduce(const MatchBufferRegionNode* other, SEqualReducer equal) const {
+    return equal(buffer, other->buffer) && equal(source, other->source);
+  }
+
+  void SHashReduce(SHashReducer hash_reduce) const {
+    hash_reduce(buffer);
+    hash_reduce(source);
+  }
+
+  static constexpr const bool _type_has_method_sequal_reduce = true;
+  static constexpr const bool _type_has_method_shash_reduce = true;
+  static constexpr const char* _type_key = "MatchBufferRegion";
+  TVM_DECLARE_FINAL_OBJECT_INFO(MatchBufferRegionNode, Object);
+};
+
+class MatchBufferRegion : public ObjectRef {
+ public:
+  TVM_DLL explicit MatchBufferRegion(Buffer buffer, BufferRegion);
+  TVM_DEFINE_OBJECT_REF_METHODS(MatchBufferRegion, ObjectRef, MatchBufferRegionNode);
+};
 
 /*!
  * \brief A block is the basic schedule unit in tensor expression
@@ -972,6 +1007,8 @@ class BlockNode : public StmtNode {
   Array<Buffer> alloc_buffers;
   /*! \brief The annotation of the block. */
   Map<String, ObjectRef> annotations;
+  /*! \brief The match buffer regions. */
+  Array<MatchBufferRegion> match_buffers;
   /*! \brief The block execution scope. */
   String exec_scope;
   /*! \brief The tag of the block. */
@@ -994,8 +1031,9 @@ class BlockNode : public StmtNode {
   }
 
   bool SEqualReduce(const BlockNode* other, SEqualReducer equal) const {
-    return equal.DefEqual(iter_vars, other->iter_vars) && equal(alloc_buffers, other->alloc_buffers) &&
-           equal(body, other->body) && equal(annotations, other->annotations) &&
+    return equal.DefEqual(iter_vars, other->iter_vars) &&
+           equal(alloc_buffers, other->alloc_buffers) && equal(body, other->body) &&
+           equal(match_buffers, other->match_buffers) && equal(annotations, other->annotations) &&
            equal(reads, other->reads) && equal(writes, other->writes) && equal(init, other->init) &&
            equal(exec_scope, other->exec_scope);
   }
@@ -1019,7 +1057,8 @@ class Block : public Stmt {
  public:
   TVM_DLL explicit Block(Array<IterVar> iter_vars, Array<BufferRegion> reads,
                          Array<BufferRegion> writes, Array<Buffer> alloc_buffers,
-                         Map<String, ObjectRef> annotations, String exec_scope, String name_hint,
+                         Map<String, ObjectRef> annotations, Array<MatchBufferRegion> match_buffers,
+                         String exec_scope, String name_hint,
                          Stmt body, Optional<Stmt> init);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Block, Stmt, BlockNode);
