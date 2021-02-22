@@ -24,6 +24,7 @@ from tir_workload import matmul, matmul_relu
 from tvm import meta_schedule as ms
 from tvm import tir
 from tvm.script import ty
+from tvm.tir.stmt import ForKind
 
 # pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks
 # fmt: off
@@ -567,9 +568,9 @@ def test_meta_schedule_mark_loop():
     def check_annotation(sch, loop):
         loop = sch.evaluate(loop).stmt
         assert len(loop.annotations) == 1
-        (ann,) = loop.annotations
-        assert ann.attr_key == "ann_key"
-        assert ann.value == "ann_val"
+        attr_key, value = loop.annotations.items()[0]
+        assert attr_key == "ann_key"
+        assert value == "ann_val"
 
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
@@ -583,9 +584,9 @@ def test_meta_schedule_mark_block():
     def check_annotation(sch, block):
         block = sch.evaluate(block).stmt
         assert len(block.annotations) == 1
-        (ann,) = block.annotations
-        assert ann.attr_key == "ann_key"
-        assert ann.value == "1"
+        attr_key, value = block.annotations.items()[0]
+        assert attr_key == "ann_key"
+        assert value == "1"
 
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
@@ -710,10 +711,7 @@ def test_meta_schedule_tensorize():
 def test_meta_schedule_parallel():
     def check_annotation(sch, loop):
         loop = sch.evaluate(loop).stmt
-        assert len(loop.annotations) == 1
-        (ann,) = loop.annotations
-        assert ann.attr_key == "loop_type"
-        assert ann.value == "parallel"
+        assert loop.kind == ForKind.PARALLEL
 
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
@@ -726,10 +724,7 @@ def test_meta_schedule_parallel():
 def test_meta_schedule_vectorize():
     def check_annotation(sch, loop):
         loop = sch.evaluate(loop).stmt
-        assert len(loop.annotations) == 1
-        (ann,) = loop.annotations
-        assert ann.attr_key == "loop_type"
-        assert ann.value == "vectorize"
+        assert loop.kind == ForKind.VECTORIZED
 
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
@@ -742,10 +737,7 @@ def test_meta_schedule_vectorize():
 def test_meta_schedule_unroll():
     def check_annotation(sch, loop):
         loop = sch.evaluate(loop).stmt
-        assert len(loop.annotations) == 1
-        (ann,) = loop.annotations
-        assert ann.attr_key == "loop_type"
-        assert ann.value == "unroll"
+        assert loop.kind == ForKind.UNROLLED
 
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
@@ -758,10 +750,8 @@ def test_meta_schedule_unroll():
 def test_meta_schedule_bind():
     def check_annotation(sch, loop):
         loop = sch.evaluate(loop).stmt
-        assert len(loop.annotations) == 1
-        (ann,) = loop.annotations
-        assert ann.attr_key == "loop_type"
-        assert ann.value == "threadIdx.x"
+        assert loop.kind == ForKind.THREAD_BINDING
+        assert loop.thread_binding.thread_tag == "threadIdx.x"
 
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")

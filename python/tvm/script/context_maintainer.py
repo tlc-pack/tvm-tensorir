@@ -29,7 +29,7 @@ class ContextMaintainer:
             self.binding = dict()
             self.reads = None
             self.writes = None
-            self.annotations = []
+            self.annotations = {}
             self.predicate = tvm.runtime.convert(True)
             self.init = None
 

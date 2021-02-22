@@ -429,57 +429,6 @@ class Prefetch(Stmt):
         self.__init_handle_by_constructor__(_ffi_api.Prefetch, buffer, bounds, span)
 
 
-@tvm._ffi.register_object
-class Annotation(Stmt):
-    """Annotation node.
-
-    Parameters
-    ----------
-    key : str
-        attr key
-    value : PrimExpr
-        the value of annotation
-    """
-
-    def __init__(self, key, value):
-        self.__init_handle_by_constructor__(_ffi_api.Annotation, key, value)
-
-
-@tvm._ffi.register_object
-class Loop(Stmt):
-    """Loop node.
-
-    Parameters
-    ----------
-    loop_var : Var
-        The loop variable.
-
-    min_val : Expr
-        The begining value.
-
-    extent : Expr
-        The length of the loop.
-
-    iter_type : int
-        The iter type.
-
-    annotations : List
-        The list of annotations.
-
-    body : Stmt
-        The body statement.
-    """
-
-    DataPar = 0
-    Reduce = 1
-    Scan = 2
-    Opaque = 3
-
-    def __init__(self, loop_var, min_val, extent, annotations, body):
-        self.__init_handle_by_constructor__(
-            _ffi_api.Loop, loop_var, min_val, extent, annotations, body
-        )
-
 
 @tvm._ffi.register_object
 class Block(Stmt):
@@ -496,27 +445,30 @@ class Block(Stmt):
     writes: list of BufferRegion
         The write tensor region of the block.
 
-    body: Stmt
-        The body of the block.
-
-    allocations: list of BufferAllocation
+    alloc_buffers: list of BufferAllocation
         The buffer allocations
 
-    annotations: list of Annotation
-        The annotation of the block.
+    annotations: tvm.ir.Map
+        Additional annotation hints.
 
-    tag: str
+    name_hint: str
         the tag of the block.
+
+    exec_scope: str
+        the execution scope.
+
+    body: Stmt
+        The body of the block.
 
     init: Optional[Stmt]
         The init block of the reduction block
     """
 
-    def __init__(self, iter_vars, reads, writes, body, allocations, annotations, tag, exec_scope,
-                 init=None):
+    def __init__(self, iter_vars, reads, writes, alloc_buffers, annotations, name_hint, exec_scope,
+                 body, init=None):
         self.__init_handle_by_constructor__(
-            _ffi_api.Block, iter_vars, reads, writes, body, allocations, annotations, tag,
-            exec_scope, init
+            _ffi_api.Block, iter_vars, reads, writes, alloc_buffers, annotations, name_hint,
+            exec_scope, body, init
         )
 
 

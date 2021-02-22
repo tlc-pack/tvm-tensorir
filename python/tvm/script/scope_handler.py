@@ -137,11 +137,11 @@ class Block(WithScopeHandler):
                 block_iters,
                 reads,
                 writes,
-                self.body,
                 block_info.allocates,
                 block_info.annotations,
                 name,
                 exec_scope,
+                self.body,
                 block_info.init
             )
             # create block var binding
@@ -398,6 +398,28 @@ class Unroll(ForScopeHandler):
 
 
 @register
+class ThreadBinding(ForScopeHandler):
+    """ For scope handler tir.thread_binding(begin, end)"""
+
+    def __init__(self):
+        def thread_binding(begin, end, thread, span):
+            if len(self.loop_vars) != 1:
+                self.context.report_error("Expect exact 1 loop var")
+
+            """
+            (Range(op->min, op->extent), op->loop_var,
+                                    IterVarType::kThreadIndex, thread_tag"""
+            ana = tvm.arith.Analyzer()
+            extent = end if begin == 0 else ana.simplify(end - begin)
+            thread_binding = tvm.tir.IterVar(None, None, 1, thread, span=span)
+            return tvm.tir.For(self.loop_vars[0], begin, extent, 4, self.body,
+                               thread_binding=thread_binding, span=span)
+
+        super().__init__(thread_binding)
+
+
+
+@register
 class RangeHandler(ForScopeHandler):
     def __init__(self):
         def Range(begin, end, annotation=None, span=None):
@@ -406,15 +428,14 @@ class RangeHandler(ForScopeHandler):
             ana = tvm.arith.Analyzer()
             extent = end if begin == 0 else ana.simplify(end - begin)
             if annotation is None:
-                annotation = []
+                annotation = {}
             else:
-                annotation = [
-                    tvm.tir.Annotation(
-                        key, tvm.runtime.convert(val) if isinstance(val, str) else val
-                    )
+                annotation = {
+                    key: tvm.tir.StringImm(val) if isinstance(val, str) else val
                     for key, val in annotation.items()
-                ]
-            return tvm.tir.Loop(self.loop_vars[0], begin, extent, annotation, self.body)
+                }
+            return tvm.tir.For(self.loop_vars[0], begin, extent, 0, self.body,
+                               annotations=annotation, span=span)
 
         super().__init__(Range)
 
@@ -430,7 +451,7 @@ class Grid(ForScopeHandler):
                 self.context.report_error("Inconsistent number of loop vars and extents")
             body = self.body
             for loop_var, extent in zip(reversed(self.loop_vars), reversed(extents)):
-                body = tvm.tir.Loop(loop_var, 0, extent, [], body)
+                body = tvm.tir.For(loop_var, 0, extent, 0, body, span=span)
             return body
 
         super().__init__(grid)

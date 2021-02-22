@@ -100,35 +100,25 @@ class BufferMutator : public StmtExprMutator {
         return IterVar(n);
       }
     };
-    auto fmutate_annotation = [this](const Annotation& annotation) {
-      PrimExpr value = this->VisitExpr(annotation->value);
-      if (value.same_as(annotation->value)) {
-        return annotation;
-      } else {
-        return Annotation(annotation->attr_key, annotation->value);
-      }
-    };
-    Array<Buffer> allocations = MutateArray(op->allocations, fmutate_buffer_allocate);
+    Array<Buffer> allocations = MutateArray(op->alloc_buffers, fmutate_buffer_allocate);
     Array<BufferRegion> reads = MutateArray(op->reads, fmutate_buffer_region);
     Array<BufferRegion> writes = MutateArray(op->writes, fmutate_buffer_region);
     Array<IterVar> block_vars = MutateArray(op->iter_vars, fmutate_iter_var);
-    Array<Annotation> annotations = MutateArray(op->annotations, fmutate_annotation);
     Optional<Stmt> init = NullOpt;
     if (op->init.defined()) {
       init = VisitStmt(op->init.value());
     }
     Stmt body = VisitStmt(op->body);
-    if (allocations.same_as(op->allocations) && reads.same_as(op->reads) &&
+    if (allocations.same_as(op->alloc_buffers) && reads.same_as(op->reads) &&
         writes.same_as(op->writes) && block_vars.same_as(op->iter_vars) && body.same_as(op->body) &&
-        annotations.same_as(op->annotations) && init.same_as(op->init)) {
+        init.same_as(op->init)) {
       return GetRef<Block>(op);
     } else {
       auto n = CopyOnWrite(op);
-      n->allocations = std::move(allocations);
+      n->alloc_buffers = std::move(allocations);
       n->reads = std::move(reads);
       n->writes = std::move(writes);
       n->iter_vars = std::move(block_vars);
-      n->annotations = std::move(annotations);
       n->body = std::move(body);
       n->init = std::move(init);
       return Stmt(n);

@@ -23,7 +23,7 @@ namespace tir {
 
 Schedule::Schedule(PrimFunc func, StmtSRef root,
                    std::unordered_map<const StmtNode*, StmtSRef> stmt2ref,
-                   std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual> scopes) {
+                   std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual> scopes) {
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
   n->func = std::move(func);
   n->root = std::move(root);
@@ -103,7 +103,7 @@ StmtSRef ScheduleNode::GetParentBlockSRef(const StmtSRef& sref) const {
   throw;
 }
 
-Scope ScheduleNode::GetParentScope(const StmtSRef& sref) const {
+BlockScope ScheduleNode::GetParentScope(const StmtSRef& sref) const {
   return scopes.at(GetParentBlockSRef(sref));
 }
 
@@ -112,7 +112,7 @@ Array<StmtSRef> ScheduleNode::GetAxes(const StmtSRef& block) const {
   Array<StmtSRef> ret;
   StmtSRef sref = GetRef<StmtSRef>(block->parent);
   while (!GetRef<Stmt>(sref->stmt).as<BlockNode>()) {
-    if (GetRef<Stmt>(sref->stmt).as<LoopNode>()) {
+    if (GetRef<Stmt>(sref->stmt).as<ForNode>()) {
       ret.push_back(sref);
     }
     sref = GetRef<StmtSRef>(sref->parent);
@@ -127,7 +127,7 @@ void ScheduleNode::register_reducer(const CommReducer& comm_reducer) {
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<StmtSRefNode>([](const ObjectRef& node, ReprPrinter* p) {
       const auto* op = static_cast<const StmtSRefNode*>(node.get());
-      if (const auto* loop = GetRef<Stmt>(op->stmt).as<LoopNode>()) {
+      if (const auto* loop = GetRef<Stmt>(op->stmt).as<ForNode>()) {
         p->PrintIndent();
         p->stream << "for ";
         p->Print(loop->loop_var);
