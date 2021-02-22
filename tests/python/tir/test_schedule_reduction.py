@@ -279,10 +279,10 @@ def test_reduction_allreduce():
 
 
 if __name__ == "__main__":
-    # test_reduction_roundtrip()
-    # test_reduction_decompose()
-    # test_reduction_merge()
-    # test_reduction_blockize()
+    test_reduction_roundtrip()
+    test_reduction_decompose()
+    test_reduction_merge()
+    test_reduction_blockize()
     test_reduction_compute_inline()
-    # test_reduction_rfactor()
-    # test_reduction_allreduce()
+    test_reduction_rfactor()
+    test_reduction_allreduce()
