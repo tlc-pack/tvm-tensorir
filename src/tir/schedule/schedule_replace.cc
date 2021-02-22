@@ -155,6 +155,7 @@ class SRefCreator : public StmtVisitor {
     StmtSRefNode* parent = parents.back();
     // Case 1. The subtree has been tracked by the stmt2ref
     if (sref.defined()) {
+      sref->seq_index = -1;
       result.intact.emplace(sref, parent);
       return;
     }
@@ -181,6 +182,7 @@ class SRefCreator : public StmtVisitor {
     StmtSRefNode* parent = parents.back();
     // Case 1. The subtree has been tracked by the stmt2ref
     if (sref.defined()) {
+      sref->seq_index = -1;
       result.intact.emplace(sref, parent);
       return;
     }
@@ -363,10 +365,11 @@ class ParentMutator : private StmtMutator {
   }
 };
 
-void ScheduleNode::Replace(StmtSRef sref, Stmt tgt_stmt, const Map<Block, Block>& block_reuse) {
+void ScheduleNode::Replace(StmtSRef src_sref, Stmt tgt_stmt, const Map<Block, Block>& block_reuse) {
   // Reset sref as a new sref so that its content won't be affected by subsequent changes
-  sref = StmtSRef(sref->stmt, sref->parent, sref->seq_index);
-  Stmt src_stmt = GetRef<Stmt>(sref->stmt);
+  src_sref =
+      StmtSRef(src_sref->stmt, src_sref->parent, src_sref->seq_index, /*binding_valid=*/false);
+  Stmt src_stmt = GetRef<Stmt>(src_sref->stmt);
   const StmtNode* root_stmt = this->root->stmt;
   // Step 1. Create all the nodes needed for the new sref tree.
   //   The `SRefCreator` visits the AST `tgt_stmt`, creating new nodes along the way.
@@ -385,16 +388,17 @@ void ScheduleNode::Replace(StmtSRef sref, Stmt tgt_stmt, const Map<Block, Block>
   //
   // After creation, it is guaranteed that
   //   all the srefs in the AST `tgt_stmt` have proper `parent`s, except for those `intact` nodes.
-  Info creation_info = SRefCreator::Create(this, block_reuse, sref->parent, tgt_stmt);
+  Info creation_info = SRefCreator::Create(this, block_reuse, src_sref->parent, tgt_stmt);
   // Step 2. Set the ancestors' children properly
   //   Iteratively visit the ancestors, creating new ones whose `body`s are properly fixed.
   //   The visit stops when all the ancestors are uniquely referenced, i.e. can mutate inplace.
   //   Along the way, because we create a new ancestor path,
   //   we need to update those sref points from old ancestors to newly created ones
-  StmtSRefNode* child_sref = sref.get();
+  StmtSRefNode* child_sref = src_sref.get();
   Stmt child_stmt = tgt_stmt;
   // The maximum number of hops until we don't need to copy
-  int num_copy_steps = StepsHighestNonUniqueAncestor(sref, /*func_is_unique=*/this->func.unique());
+  int num_copy_steps =
+      StepsHighestNonUniqueAncestor(src_sref, /*func_is_unique=*/this->func.unique());
   for (int i = 0; i <= num_copy_steps && child_sref->stmt != root_stmt; ++i) {
     bool parent_is_uniquely_referenced = (i == num_copy_steps);
     // Figure out parent_stmt => new_parent_stmt
@@ -416,7 +420,7 @@ void ScheduleNode::Replace(StmtSRef sref, Stmt tgt_stmt, const Map<Block, Block>
   SRefRemover::Remove(this, creation_info, src_stmt);
   // Step 4. Handle the case that we mutate the root
   if (child_sref->stmt == root_stmt) {
-    if (sref->stmt == root_stmt) {
+    if (src_sref->stmt == root_stmt) {
       // Replacing the root is easier
       this->root = this->stmt2ref[child_stmt.get()];
     } else {
@@ -431,9 +435,9 @@ void ScheduleNode::Replace(StmtSRef sref, Stmt tgt_stmt, const Map<Block, Block>
 }
 
 struct Internal {
-  static void Replace(Schedule self, StmtSRef sref, Stmt tgt_stmt,
+  static void Replace(Schedule self, StmtSRef src_sref, Stmt tgt_stmt,
                       Optional<Map<Block, Block>> block_reuse) {
-    return self->Replace(sref, tgt_stmt, block_reuse.value_or({}));
+    return self->Replace(src_sref, tgt_stmt, block_reuse.value_or({}));
   }
 };
 
