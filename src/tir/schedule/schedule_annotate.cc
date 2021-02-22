@@ -31,7 +31,8 @@ namespace tir {
  * \return A boolean indicating if the loop var is parallelizable
  */
 bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
-                             const ScheduleNode* schedule, const std::string& anno_value) {
+                             const ScheduleNode* schedule,
+                             const Optional<IterVar>& thread_binding) {
   const BlockRealizeNode* realize = block_realize.as<BlockRealizeNode>();
   CHECK(realize != nullptr)
       << "InternalError: in IsLoopVarParallelizable, expect BlockRealize, but get type: "
@@ -45,6 +46,7 @@ bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
       << "InternalError: BlockRealize is inconsistent with its Block";
   int n = realize->binding_values.size();
   // Cond 2. For each iter var that is not data parallel, the binding does not involve loop_var
+  std::string thread_tag = thread_binding.defined() ? thread_binding.value()->thread_tag : "";
   for (int i = 0; i < n; ++i) {
     const IterVar& iter_var = block->iter_vars[i];
     const PrimExpr& binding = realize->binding_values[i];
@@ -52,7 +54,7 @@ bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
     if (contains && iter_var->iter_type != kDataPar && iter_var->iter_type != kCommReduce) {
       return false;
     }
-    if (contains && iter_var->iter_type == kCommReduce && anno_value.substr(0, 9) != "threadIdx") {
+    if (contains && iter_var->iter_type == kCommReduce && thread_tag.substr(0, 9) != "threadIdx") {
       return false;
     }
   }
@@ -62,56 +64,35 @@ bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
 /*!
  * \brief Create a new loop with the given annotation added
  * \param loop The loop with original annotation
- * \param annotation The annotation to be added
+ * \param attr_key The annotation key to be added
+ * \param attr_value The annotation value to be added
  * \return A new loop with the given annotation as its last annotation
  */
-Loop WithAnnotation(const LoopNode* loop, const Annotation& annotation) {
-  bool found = false;
-  size_t n = loop->annotations.size();
-  Array<Annotation> annotations = loop->annotations;
-  for (size_t i = 0; i < n; ++i) {
-    const Annotation& ann = annotations[i];
-    if (ann->attr_key == annotation->attr_key) {
-      annotations.Set(i, annotation);
-      found = true;
-      break;
-    }
-  }
-  if (!found) {
-    annotations.push_back(annotation);
-  }
-  ObjectPtr<LoopNode> new_loop = make_object<LoopNode>(*loop);
+For WithAnnotation(const ForNode* loop, const String& attr_key, const ObjectRef& attr_value) {
+  Map<String, ObjectRef> annotations = loop->annotations;
+  annotations.Set(attr_key, attr_value);
+  ObjectPtr<ForNode> new_loop = make_object<ForNode>(*loop);
   new_loop->annotations = std::move(annotations);
-  return Loop(new_loop);
+  return For(new_loop);
 }
 
 /*!
  * \brief Create a new block with the given annotation added
  * \param block The block with original annotation
- * \param annotation The annotation to be added
+ * \param attr_key The annotation key to be added
+ * \param attr_value The annotation value to be added
  * \return A new block with the given annotation as its last annotation
  */
-Block WithAnnotation(const BlockNode* block, const Annotation& annotation) {
-  bool found = false;
-  size_t n = block->annotations.size();
-  Array<Annotation> annotations = block->annotations;
-  for (size_t i = 0; i < n; ++i) {
-    const Annotation& ann = annotations[i];
-    if (ann->attr_key == annotation->attr_key) {
-      annotations.Set(i, annotation);
-      found = true;
-      break;
-    }
-  }
-  if (!found) {
-    annotations.push_back(annotation);
-  }
+Block WithAnnotation(const BlockNode* block, const String& attr_key, const ObjectRef& attr_value) {
+  Map<String, ObjectRef> annotations = block->annotations;
+  annotations.Set(attr_key, attr_value);
   ObjectPtr<BlockNode> new_block = make_object<BlockNode>(*block);
   new_block->annotations = std::move(annotations);
   return Block(new_block);
 }
 
-void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const Annotation& annotation) {
+void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const ForKind& for_kind,
+                                        const Optional<IterVar>& thread_binding) {
   /*!
    * Check:
    * - 1. check the block under is complete block or reduction block
@@ -136,13 +117,12 @@ void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const Annotation& 
    * - If the producer is reduction. Producer instances under `input_loop=j` will never write the
    * positions that new instances under `input_loop=j` may read. Hence no data flow.
    */
-  const auto* loop = loop_sref->GetStmt<LoopNode>();
+  const auto* loop = loop_sref->GetStmt<ForNode>();
   CHECK(loop != nullptr) << "TypeError: Parallel compute applies only to a loop, but get: "
                          << loop_sref->stmt->GetTypeKey();
   // Now only support:
   //   1. All the blocks are complete below
   //   2. A single block below the loop
-  const String& anno_value = Downcast<StringImm>(annotation->value)->value;
   bool is_compact_dataflow = GetParentScope(loop_sref)->IsCompactDataFlow(loop_sref, this);
   if (!is_compact_dataflow) {
     Array<Stmt> single_child = GetChildren(GetRef<Stmt>(loop), true);
@@ -154,14 +134,14 @@ void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const Annotation& 
     const auto* realize = single_child[0].as<BlockRealizeNode>();
     CHECK(realize != nullptr) << "TypeError: Expects 'BlockRealizeNode', but gets: "
                               << single_child[0]->GetTypeKey();
-    CHECK(IsLoopVarParallelizable(loop->loop_var, GetRef<Stmt>(realize), this, anno_value))
+    CHECK(IsLoopVarParallelizable(loop->loop_var, GetRef<Stmt>(realize), this, thread_binding))
         << "ValueError: loop with variable \"" << loop->loop_var
         << "\" cannot be parallelized because of block:\n"
         << GetRef<Stmt>(realize);
   } else {
-    PreOrderVisit(GetRef<Stmt>(loop), [&loop, this, anno_value](const ObjectRef& node) {
+    PreOrderVisit(GetRef<Stmt>(loop), [&loop, this, thread_binding](const ObjectRef& node) {
       if (const auto* realize = node.as<BlockRealizeNode>()) {
-        CHECK(IsLoopVarParallelizable(loop->loop_var, GetRef<Stmt>(realize), this, anno_value))
+        CHECK(IsLoopVarParallelizable(loop->loop_var, GetRef<Stmt>(realize), this, thread_binding))
             << "ValueError: loop with variable \"" << loop->loop_var
             << "\" cannot be parallelized because of block:\n"
             << GetRef<Stmt>(realize);
@@ -170,43 +150,47 @@ void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const Annotation& 
       return true;
     });
   }
-  this->Replace(loop_sref, WithAnnotation(loop, annotation), {});
+  ObjectPtr<ForNode> new_loop = make_object<ForNode>(*loop);
+  new_loop->kind = for_kind;
+  if (thread_binding.defined())
+    new_loop->thread_binding = thread_binding;
+  this->Replace(loop_sref, For(new_loop), {});
 }
 
 void ScheduleNode::vectorize(const StmtSRef& loop_sref) {
-  if (is_one(loop_sref->GetStmt<LoopNode>()->extent)) return;
-  ParallelCompute(loop_sref, Annotation(attr::loop_type, StringImm("vectorize")));
+  if (is_one(loop_sref->GetStmt<ForNode>()->extent)) return;
+  ParallelCompute(loop_sref, ForKind::kVectorized);
 }
 
 void ScheduleNode::parallel(const StmtSRef& loop_sref) {
-  ParallelCompute(loop_sref, Annotation(attr::loop_type, StringImm("parallel")));
+  ParallelCompute(loop_sref, ForKind::kParallel);
 }
 
 void ScheduleNode::bind(const StmtSRef& loop_sref, const IterVar& thread) {
-  const auto* loop = loop_sref->GetStmt<LoopNode>();
+  const auto* loop = loop_sref->GetStmt<ForNode>();
   CHECK(loop != nullptr) << "Parallel-like compute expect a loop";
   if (thread->dom.defined()) {
     CHECK(ExprDeepEqual()(loop->extent, thread->dom->extent))
         << "Thread axis extent and loop extent mismatch";
   }
-  Annotation annotation(attr::loop_type, StringImm(thread->thread_tag));
-  ParallelCompute(loop_sref, annotation);
+  ParallelCompute(loop_sref, ForKind::kThreadBinding, thread);
 }
 
 void ScheduleNode::unroll(const StmtSRef& loop_sref) {
-  const auto* loop = loop_sref->GetStmt<LoopNode>();
+  const auto* loop = loop_sref->GetStmt<ForNode>();
   CHECK(loop != nullptr) << "TypeError: Unroll expects a loop, but get type: "
                          << loop_sref->stmt->GetTypeKey();
-  this->Replace(loop_sref, WithAnnotation(loop, Annotation(attr::loop_type, StringImm("unroll"))),
-                {});
+  ObjectPtr<ForNode> new_loop = make_object<ForNode>(*loop);
+  new_loop->kind = ForKind::kUnrolled;
+  this->Replace(loop_sref, For(new_loop), {});
 }
 
 void ScheduleNode::pragma(const StmtSRef& loop_sref, const String& pragma_type,
                           const PrimExpr& pragma_value) {
-  const auto* loop_ptr = loop_sref->GetStmt<LoopNode>();
+  const auto* loop_ptr = loop_sref->GetStmt<ForNode>();
   CHECK(loop_ptr) << "TypeError: pragma expects a Loop as its first argument";
   this->Replace(loop_sref,
-                WithAnnotation(loop_ptr, Annotation("pragma_" + pragma_type, pragma_value)), {});
+                WithAnnotation(loop_ptr, "pragma_" + pragma_type, pragma_value), {});
 }
 
 void ScheduleNode::double_buffer(const StmtSRef& block_sref) {
@@ -225,7 +209,8 @@ void ScheduleNode::double_buffer(const StmtSRef& block_sref) {
   }
   CHECK_EQ(block_ptr->writes.size(), 1)
       << "ValueError: 'double_buffer' expects 'block' with only one write buffer";
-  Block new_block = WithAnnotation(block_ptr, Annotation(tir::attr::double_buffer_scope, 1));
+  Block new_block =
+      WithAnnotation(block_ptr, tir::attr::double_buffer_scope, IntImm(DataType::Int(32), 1));
   this->Replace(block_sref, new_block, {{new_block, GetRef<Block>(block_ptr)}});
 }
 

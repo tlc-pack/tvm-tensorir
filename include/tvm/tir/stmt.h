@@ -860,6 +860,7 @@ class For : public Stmt {
               Map<String, ObjectRef> annotations = Map<String, ObjectRef>(), Span span = Span());
 
   TVM_DEFINE_OBJECT_REF_METHODS(For, Stmt, ForNode);
+  TVM_DEFINE_OBJECT_REF_COW_METHOD(ForNode);
 };
 
 /*!
@@ -904,102 +905,6 @@ class Prefetch : public Stmt {
   TVM_DLL explicit Prefetch(Buffer buffer, Array<Range> bounds, Span span = Span());
 
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(Prefetch, Stmt, PrefetchNode);
-};
-
-/*!
- * \brief A loop annotation node to show attribute to the loop
- */
-class AnnotationNode : public Object {
- public:
-  /*! \brief the type key of the attribute */
-  std::string attr_key;
-  /*! \brief The attribute value, value is well defined at current scope. */
-  PrimExpr value;
-
-  void VisitAttrs(AttrVisitor* v) {
-    v->Visit("attr_key", &attr_key);
-    v->Visit("value", &value);
-  }
-
-  bool SEqualReduce(const AnnotationNode* other, SEqualReducer equal) const {
-    return equal(attr_key, other->attr_key) && equal(value, other->value);
-  }
-
-  void SHashReduce(SHashReducer hash_reduce) const {
-    hash_reduce(attr_key);
-    hash_reduce(value);
-  }
-
-  static constexpr const bool _type_has_method_sequal_reduce = true;
-  static constexpr const bool _type_has_method_shash_reduce = true;
-  static constexpr const char* _type_key = "Annotation";
-  TVM_DECLARE_FINAL_OBJECT_INFO(AnnotationNode, Object);
-};
-
-class Annotation : public ObjectRef {
- public:
-  TVM_DLL explicit Annotation(std::string attr_key, PrimExpr value);
-  TVM_DEFINE_OBJECT_REF_METHODS(Annotation, ObjectRef, AnnotationNode)
-};
-
-/*!
- * \brief A for loop, with annotations and loop type.
- *
- * \code
- *
- *  for loop_var = min to min+extent (loop_type,
- *    attr: [attr_key0: attr_value0, ..., attr_key_m: attr_value_m]) {
- *    // body
- *  }
- *
- * \endcode
- */
-class LoopNode : public StmtNode {
- public:
-  /*! \brief The loop variable. */
-  Var loop_var;
-  /*! \brief The minimum value of iteration. */
-  PrimExpr min;
-  /*! \brief The extent of the iteration. */
-  PrimExpr extent;
-  /*! \brief Loop annotations. */
-  Array<Annotation> annotations;
-  /*! \brief The body of the for loop. */
-  Stmt body;
-
-  void VisitAttrs(AttrVisitor* v) {
-    v->Visit("loop_var", &loop_var);
-    v->Visit("min", &min);
-    v->Visit("extent", &extent);
-    v->Visit("annotations", &annotations);
-    v->Visit("body", &body);
-  }
-
-  bool SEqualReduce(const LoopNode* other, SEqualReducer equal) const {
-    return equal.DefEqual(loop_var, other->loop_var) && equal(min, other->min) &&
-           equal(extent, other->extent) && equal(annotations, other->annotations) &&
-           equal(body, other->body);
-  }
-
-  void SHashReduce(SHashReducer hash_reduce) const {
-    hash_reduce.DefHash(loop_var);
-    hash_reduce(min);
-    hash_reduce(extent);
-    hash_reduce(annotations);
-    hash_reduce(body);
-  }
-
-  static constexpr const char* _type_key = "Loop";
-  TVM_DECLARE_FINAL_OBJECT_INFO(LoopNode, StmtNode);
-};
-
-class Loop : public Stmt {
- public:
-  TVM_DLL explicit Loop(Var loop_var, PrimExpr min, PrimExpr extent, Array<Annotation> annotations,
-                        Stmt body);
-
-  TVM_DEFINE_OBJECT_REF_METHODS(Loop, Stmt, LoopNode);
-  TVM_DEFINE_OBJECT_REF_COW_METHOD(LoopNode);
 };
 
 /*!
@@ -1066,7 +971,7 @@ class BlockNode : public StmtNode {
   /*! \brief The buffer allocated in the block. */
   Array<Buffer> allocations;
   /*! \brief The annotation of the block. */
-  Array<Annotation> annotations;
+  Map<String, ObjectRef> annotations;
   /*! \brief The body of the block. */
   Stmt body;
   /*! \brief The init part of reduction block */
@@ -1114,7 +1019,7 @@ class Block : public Stmt {
  public:
   TVM_DLL explicit Block(Array<IterVar> iter_vars, Array<BufferRegion> reads,
                          Array<BufferRegion> writes, Stmt body, Array<Buffer> allocations,
-                         Array<Annotation> annotations, String name_hint, String exec_scope,
+                         Map<String, ObjectRef> annotations, String name_hint, String exec_scope,
                          Optional<Stmt> init);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Block, Stmt, BlockNode);

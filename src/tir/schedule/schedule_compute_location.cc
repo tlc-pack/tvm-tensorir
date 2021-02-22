@@ -178,9 +178,9 @@ std::vector<arith::IntSet> SolveCover(const BlockNode* block, const BufferRegion
  * \param preserve_trivial_loop Keep the trivial loops whose extent is 1
  * \return The Updated parent loop
  */
-Loop RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& loop_sref, int insert_pos,
+For RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& loop_sref, int insert_pos,
                      const std::vector<arith::IntSet>& iter_domain, bool preserve_trivial_loop) {
-  const auto* loop = loop_sref->GetStmt<LoopNode>();
+  const auto* loop = loop_sref->GetStmt<ForNode>();
   int n_iter_domain = iter_domain.size();
   // Step 1. Construct loop variables
   std::vector<Var> loop_vars;
@@ -209,16 +209,16 @@ Loop RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& loop_sref, int 
     PrimExpr extent = analyzer.Simplify(domain.max() - domain.min() + 1);
     if (preserve_trivial_loop || !is_one(extent)) {
       // TODO(Siyuan): support for loop with annotations
-      body = Loop(loop_vars[i - 1], 0, extent, {}, body);
+      body = For(loop_vars[i - 1], 0, extent, {}, body);
     }
   }
   // Step 3. Insert the new statement into the children of the loop
   Array<Stmt> stmts = GetChildren(GetRef<Stmt>(loop), true);
   stmts.insert(stmts.begin() + insert_pos, body);
   // Step 4. Create a new loop with those statements as new children to substitute loop_sref->stmt
-  ObjectPtr<LoopNode> n = make_object<LoopNode>(*loop);
+  ObjectPtr<ForNode> n = make_object<ForNode>(*loop);
   n->body = SeqStmt(stmts);
-  return Loop(n);
+  return For(n);
 }
 
 /*!
@@ -302,16 +302,13 @@ std::unordered_map<const VarNode*, Range> RelaxForExecScope(const StmtSRef& loop
   const String& exec_scope = block->exec_scope;
   StmtSRef sref = loop_sref;
 
-  auto update_for_gpu = [&block, &exec_scope](const LoopNode* loop) -> bool {
+  auto update_for_gpu = [&block, &exec_scope](const ForNode* loop) -> bool {
     CHECK_EQ(block->writes.size(), 1)
         << "InternalError: Only block with one write buffer can be compute_at";
     std::string write_scope = block->writes[0]->buffer->scope;
 
-    std::string thread_tag;
-    for (const auto& annotation : loop->annotations)
-      if (annotation->attr_key == attr::loop_type) {
-        thread_tag = Downcast<StringImm>(annotation->value)->value;
-      }
+    std::string thread_tag =
+        loop->thread_binding.defined() ? loop->thread_binding.value()->thread_tag : "";
     if (exec_scope == "gpu_thread" || exec_scope.empty()) {
       if (write_scope == "shared" &&
           (thread_tag.substr(0, 9) == "threadIdx" || thread_tag == "vthread")) {
@@ -326,7 +323,7 @@ std::unordered_map<const VarNode*, Range> RelaxForExecScope(const StmtSRef& loop
   };
 
   while (sref.defined()) {
-    if (const auto* loop = sref->GetStmt<LoopNode>()) {
+    if (const auto* loop = sref->GetStmt<ForNode>()) {
       if (update_for_gpu(loop)) {
         relax_var[loop->loop_var.get()] = Range::FromMinExtent(loop->min, loop->extent);
       }
@@ -359,7 +356,7 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
    *     read the same input as before.
    */
   const auto* block = block_sref->GetStmt<BlockNode>();
-  const auto* loop = loop_sref->GetStmt<LoopNode>();
+  const auto* loop = loop_sref->GetStmt<ForNode>();
   CHECK(block != nullptr) << "TypeError: 'compute_at' expects 'block' to be a block, but get type: "
                           << block_sref->stmt->GetTypeKey();
   CHECK(loop != nullptr) << "TypeError: 'compute_at' expects 'loop' to be a loop, but get type: "
@@ -414,7 +411,7 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
         << "ValueError: 'compute_at' cannot find an insertion point that satisfies dependency";
   }
   // Generate new LoopNode to substitute loop_sref->stmt
-  Loop new_loop = RegenerateLoops(
+  For new_loop = RegenerateLoops(
       block_sref, loop_sref, insert_pos,
       SolveCover(block,
                  GatherRequirements(/*produced_regions=*/block->writes,
@@ -454,7 +451,7 @@ void ScheduleNode::reverse_compute_at(const StmtSRef& block_sref, const StmtSRef
    *     input_loop after all the predecessors
    */
   const auto* block = block_sref->GetStmt<BlockNode>();
-  const auto* loop = loop_sref->GetStmt<LoopNode>();
+  const auto* loop = loop_sref->GetStmt<ForNode>();
   CHECK(block != nullptr)
       << "TypeError: 'reverse_compute_at' expects 'block' to be a block, but get type: "
       << block_sref->stmt->GetTypeKey();
@@ -511,7 +508,7 @@ void ScheduleNode::reverse_compute_at(const StmtSRef& block_sref, const StmtSRef
                                        "point that satisfies dependency";
   }
   // Generate new LoopNode to substitute loop_sref->stmt
-  Loop new_loop =
+  For new_loop =
       RegenerateLoops(block_sref, loop_sref, insert_pos,
                       SolveCover(block,
                                  GatherRequirements(/*produced_regions=*/block->reads,

@@ -56,7 +56,7 @@ Array<BufferRegion> BlockReadWriteCollector::writes() {
   return res;
 }
 
-void BlockReadWriteCollector::VisitStmt_(const LoopNode* op) {
+void BlockReadWriteCollector::VisitStmt_(const ForNode* op) {
   Range range = Range::FromMinExtent(op->min, op->extent);
   dom_map_[op->loop_var.get()] = arith::IntSet::FromRange(range);
   StmtVisitor::VisitStmt_(op);
@@ -146,7 +146,7 @@ class AutoCompleter : public StmtMutator {
       block_with_binding->binding_values = bindings;
       body = BlockRealize(block_with_binding);
       for (int i = op->binding_values.size() - 1; i >= 0; --i) {
-        body = Loop(Downcast<Var>(bindings[i]), op->block->iter_vars[i]->dom->min,
+        body = For(Downcast<Var>(bindings[i]), op->block->iter_vars[i]->dom->min,
                     op->block->iter_vars[i]->dom->extent, {}, body);
       }
     }

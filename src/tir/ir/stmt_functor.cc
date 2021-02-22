@@ -125,12 +125,6 @@ void StmtVisitor::VisitStmt_(const BlockRealizeNode* op) {
   this->VisitStmt(op->block);
 }
 
-void StmtVisitor::VisitStmt_(const LoopNode* op) {
-  this->VisitExpr(op->min);
-  this->VisitExpr(op->extent);
-  this->VisitStmt(op->body);
-}
-
 class StmtMutator::Internal {
  public:
   static Array<PrimExpr> Mutate(StmtMutator* self, const Array<PrimExpr>& arr) {
@@ -431,32 +425,22 @@ Stmt StmtMutator::VisitStmt_(const BlockNode* op) {
       return IterVar(n);
     }
   };
-  auto fmutate_annotation = [this](const Annotation& annotation) {
-    PrimExpr value = this->VisitExpr(annotation->value);
-    if (value.same_as(annotation->value)) {
-      return annotation;
-    } else {
-      return Annotation(annotation->attr_key, annotation->value);
-    }
-  };
   Array<BufferRegion> reads = MutateArray(op->reads, fmutate_buffer_region);
   Array<BufferRegion> writes = MutateArray(op->writes, fmutate_buffer_region);
   Array<IterVar> block_vars = MutateArray(op->iter_vars, fmutate_iter_var);
-  Array<Annotation> annotations = MutateArray(op->annotations, fmutate_annotation);
   Optional<Stmt> init = NullOpt;
   if (op->init.defined()) {
     init = VisitStmt(op->init.value());
   }
   Stmt body = VisitStmt(op->body);
   if (reads.same_as(op->reads) && writes.same_as(op->writes) && block_vars.same_as(op->iter_vars) &&
-      body.same_as(op->body) && annotations.same_as(op->annotations) && init.same_as(op->init)) {
+      body.same_as(op->body) && init.same_as(op->init)) {
     return GetRef<Block>(op);
   } else {
     auto n = CopyOnWrite(op);
     n->reads = std::move(reads);
     n->writes = std::move(writes);
     n->iter_vars = std::move(block_vars);
-    n->annotations = std::move(annotations);
     n->body = std::move(body);
     n->init = std::move(init);
     return Stmt(n);
@@ -475,21 +459,6 @@ Stmt StmtMutator::VisitStmt_(const BlockRealizeNode* op) {
     n->binding_values = std::move(v);
     n->predicate = std::move(pred);
     n->block = Downcast<Block>(block);
-    return Stmt(n);
-  }
-}
-
-Stmt StmtMutator::VisitStmt_(const LoopNode* op) {
-  PrimExpr min = this->VisitExpr(op->min);
-  PrimExpr extent = this->VisitExpr(op->extent);
-  Stmt body = this->VisitStmt(op->body);
-  if (min.same_as(op->min) && extent.same_as(op->extent) && body.same_as(op->body)) {
-    return GetRef<Stmt>(op);
-  } else {
-    auto n = CopyOnWrite(op);
-    n->min = std::move(min);
-    n->extent = std::move(extent);
-    n->body = std::move(body);
     return Stmt(n);
   }
 }

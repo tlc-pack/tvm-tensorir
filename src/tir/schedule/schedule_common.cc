@@ -36,7 +36,7 @@ Array<Stmt> GetChildren(const Stmt& stmt, bool keep_realize) {
   Stmt body;
   if (const auto* block = stmt.as<BlockNode>()) {
     body = block->body;
-  } else if (const auto* loop = stmt.as<LoopNode>()) {
+  } else if (const auto* loop = stmt.as<ForNode>()) {
     body = loop->body;
   } else {
     return Array<Stmt>();
@@ -215,7 +215,7 @@ BlockRealize GetBlockRealize(const StmtSRef& block_sref) {
 
   if (const auto* block = parent_stmt.as<BlockNode>()) {
     return Downcast<BlockRealize>(GetStmtFromSeq(block, s, f_equal, block_sref->seq_index));
-  } else if (const auto* loop = parent_stmt.as<LoopNode>()) {
+  } else if (const auto* loop = parent_stmt.as<ForNode>()) {
     return Downcast<BlockRealize>(GetStmtFromSeq(loop, s, f_equal, block_sref->seq_index));
   } else {
     LOG(FATAL) << "Unknown SRef Type";
@@ -266,7 +266,7 @@ std::function<BufferRegion(const BufferRegion)> RelaxGenerator(
   // Gather iteration domain
   auto sref = GetRef<StmtSRef>(block_sref->parent);
   while (sref.defined() && !sref.same_as(root)) {
-    const auto* loop = sref->GetStmt<LoopNode>();
+    const auto* loop = sref->GetStmt<ForNode>();
     // The root may not be a loop
     if (loop == nullptr) break;
     Range range = Range::FromMinExtent(loop->min, loop->extent);
@@ -334,7 +334,7 @@ std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root) {
   sref = GetRef<StmtSRef>(sref->parent);
   Stmt stmt = GetRef<Stmt>(sref->stmt);
   while (!sref.same_as(root) && stmt.as<BlockNode>() == nullptr) {
-    const auto* loop = stmt.as<LoopNode>();
+    const auto* loop = stmt.as<ForNode>();
     CHECK(loop != nullptr);
     const auto* seq = loop->body.as<SeqStmtNode>();
     if (seq != nullptr && seq->size() > 1) break;
@@ -364,10 +364,10 @@ std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root) {
     auto node = make_object<BlockNode>(*block);
     node->body = get_body(seq);
     return std::make_pair(stmt, Stmt(node));
-  } else if (const auto* loop = stmt.as<LoopNode>()) {
+  } else if (const auto* loop = stmt.as<ForNode>()) {
     const auto* seq = loop->body.as<SeqStmtNode>();
     CHECK(seq != nullptr);
-    auto node = make_object<LoopNode>(*loop);
+    auto node = make_object<ForNode>(*loop);
     node->body = get_body(seq);
     return std::make_pair(stmt, Stmt(node));
   } else {

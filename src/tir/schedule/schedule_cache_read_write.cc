@@ -85,19 +85,19 @@ Block MakeCacheStage(const BufferRegion& cache_region, CacheStageInfo* info,
       BufferStore(info->write_buffer, BufferLoad(info->read_buffer, copy_indices), copy_indices),
       /*allocations=*/{},
       /*annotations=*/{},
-      /*tag=*/cache_region->buffer->name + "_" + storage_scope,
+      /*name_hint=*/cache_region->buffer->name + "_" + storage_scope,
       /*exec_scope=*/"",
       /*init=*/NullOpt);
   // Create the block realize node
-  Stmt body = BlockRealize(/*binding_values=*/binding_values,
+  Stmt body = BlockRealize(/*values=*/binding_values,
                            /*predicate=*/Bool(true),
                            /*block=*/block);
   // Create surrounding loops
   for (int i = static_cast<int>(loop_vars.size()) - 1; i >= 0; --i) {
-    body = Loop(/*loop_var=*/loop_vars[i],
+    body = For(/*loop_var=*/loop_vars[i],
                 /*min=*/0,
                 /*extent=*/cache_region->region[i]->extent,
-                /*annotations=*/{},
+                /*kind=*/ForKind::kSerial,
                 /*body=*/body);
   }
   info->cache_stage = std::move(body);
@@ -277,7 +277,7 @@ class CacheLocDetector : public StmtVisitor {
     }
   }
 
-  void VisitStmt_(const LoopNode* loop) final {
+  void VisitStmt_(const ForNode* loop) final {
     StmtVisitor::VisitStmt_(loop);
     if (visited_block_ && visited_related_ && !loc_sref_.defined() && loc_pos_ != -1) {
       loc_sref_ = sch_->stmt2ref.at(loop);
@@ -349,12 +349,12 @@ class CacheReadRewriter : public StmtExprMutator {
   explicit CacheReadRewriter(const StmtSRef& scope_sref, CacheStageInfo* info)
       : scope_sref_(scope_sref), info_(info) {}
 
-  Stmt VisitStmt_(const LoopNode* loop) override {
+  Stmt VisitStmt_(const ForNode* loop) override {
     Stmt stmt = StmtMutator::VisitStmt_(loop);
     // Check the insertion point
     if (loop == info_->loc_sref->stmt) {
       // Insert cache stage into the loop if it is the right place
-      ObjectPtr<LoopNode> n = make_object<LoopNode>(*stmt.as<LoopNode>());
+      ObjectPtr<ForNode> n = make_object<ForNode>(*stmt.as<ForNode>());
       n->body = InsertCacheStage(n->body, info_->loc_pos, info_->cache_stage);
       stmt = Stmt(n);
     }
@@ -433,12 +433,12 @@ class CacheWriteRewriter : public StmtExprMutator {
   explicit CacheWriteRewriter(const StmtSRef& scope_sref, CacheStageInfo* info)
       : scope_sref_(scope_sref), info_(info) {}
 
-  Stmt VisitStmt_(const LoopNode* loop) override {
+  Stmt VisitStmt_(const ForNode* loop) override {
     Stmt stmt = StmtMutator::VisitStmt_(loop);
     // Check the insertion point
     if (loop == info_->loc_sref->stmt) {
       // Insert cache stage into the loop if it is the right place
-      ObjectPtr<LoopNode> n = make_object<LoopNode>(*stmt.as<LoopNode>());
+      ObjectPtr<ForNode> n = make_object<ForNode>(*stmt.as<ForNode>());
       n->body = InsertCacheStage(n->body, info_->loc_pos, info_->cache_stage);
       stmt = Stmt(n);
     }

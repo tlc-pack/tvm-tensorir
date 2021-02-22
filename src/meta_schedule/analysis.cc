@@ -41,7 +41,7 @@ bool IsTrivialBinding(const tir::Schedule& sch, const tir::StmtSRef& block_sref)
   int n = loops.size();
   for (int i = 0; i < n; ++i) {
     const PrimExpr& bind = bindings[i];
-    const auto* loop = loops[i]->GetStmt<tir::LoopNode>();
+    const auto* loop = loops[i]->GetStmt<tir::ForNode>();
     CHECK(loop) << "TypeError: Expects Loop, but gets: " << loops[i]->stmt->GetTypeKey();
     if (bind.as<tir::VarNode>() != loop->loop_var.get()) {
       return false;
@@ -73,7 +73,7 @@ bool IsLeafBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
 
 tir::IterVarType GetLoopIterType(const tir::Schedule& sch, const tir::StmtSRef& loop_sref) {
   int n_spatial = 0, n_reduce = 0, n_other = 0;
-  const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+  const auto* loop = loop_sref->GetStmt<tir::ForNode>();
   CHECK(loop) << "TypeError: Expects loop, but gets: " << loop_sref->stmt->GetTypeKey();
   auto f_visit = [&loop, &n_spatial, &n_reduce, &n_other](const ObjectRef& obj) -> bool {
     if (const auto* realize = obj.as<tir::BlockRealizeNode>()) {
@@ -462,7 +462,7 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::Schedule& sch,
   const tir::BlockRealize& block = tir::GetBlockRealize(block_sref);
   // Step 1. Analyze desc_func, extract its block, loops and loop vars
   const tir::BlockRealizeNode* desc_block = nullptr;
-  std::vector<const tir::LoopNode*> desc_loops;
+  std::vector<const tir::ForNode*> desc_loops;
   std::unordered_set<const tir::VarNode*> desc_loop_vars;
   {
     auto f_visit = [&desc_block, &desc_loops, &desc_loop_vars,
@@ -473,7 +473,7 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::Schedule& sch,
         return false;
       }
       // Extract the loops
-      if (const auto* loop = obj.as<tir::LoopNode>()) {
+      if (const auto* loop = obj.as<tir::ForNode>()) {
         desc_loops.push_back(loop);
         desc_loop_vars.insert(loop->loop_var.get());
         if (!analyzer.CanProve(loop->min == 0)) {
@@ -494,11 +494,11 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::Schedule& sch,
     return NullOpt;
   }
   // Step 3. Extract the loops on top of the block. It is a mirror step of Step 1
-  std::vector<const tir::LoopNode*> block_loops;
+  std::vector<const tir::ForNode*> block_loops;
   std::unordered_set<const tir::VarNode*> block_loop_vars;
   {
     for (const tir::StmtSRefNode* loop_sref = block_sref->parent;; loop_sref = loop_sref->parent) {
-      const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+      const auto* loop = loop_sref->GetStmt<tir::ForNode>();
       if (loop == nullptr || loop->body->IsInstance<tir::SeqStmtNode>()) {
         break;
       }
@@ -528,7 +528,7 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::Schedule& sch,
     const PrimExpr& block_bind = block->binding_values[i_block];
     const PrimExpr& desc_bind = desc_block->binding_values[i_desc];
     // Step 4.1. Find the corresponding loop of the i-th block var of block
-    const tir::LoopNode* block_loop = nullptr;
+    const tir::ForNode* block_loop = nullptr;
     for (int i = 0, n = block_loops.size(); i < n; ++i) {
       // Check if block_bind = block_loops[i]->loop_var + stuff-irrelevant-of-loop-vars
       PrimExpr r = analyzer.Simplify(block_bind - block_loops[i]->loop_var);
@@ -541,7 +541,7 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::Schedule& sch,
       return NullOpt;
     }
     // Step 4.2. Find the corresponding loop of the i-th block var of desc
-    const tir::LoopNode* desc_loop = nullptr;
+    const tir::ForNode* desc_loop = nullptr;
     for (int i = 0, n = desc_loops.size(); i < n; ++i) {
       // Check if desc_bind = loops[i]->loop_var + stuff-irrelevant-of-loop-vars
       PrimExpr r = analyzer.Simplify(desc_bind - desc_loops[i]->loop_var);
@@ -571,13 +571,13 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::Schedule& sch,
     const tir::StmtSRef& block_loop_sref = sch->stmt2ref[block_loop];
     auto it = ret->loop_map.find(block_loop_sref);
     if (it == ret->loop_map.end()) {
-      ret->loop_map.Set(block_loop_sref, GetRef<tir::Loop>(desc_loop));
+      ret->loop_map.Set(block_loop_sref, GetRef<tir::For>(desc_loop));
     } else if ((*it).second.get() != desc_loop) {
       return NullOpt;
     }
   }
   for (int i = 0, n = desc_loops.size(); i < n; ++i) {
-    ret->desc_loop_indexer.Set(GetRef<tir::Loop>(desc_loops[i]), Integer(i));
+    ret->desc_loop_indexer.Set(GetRef<tir::For>(desc_loops[i]), Integer(i));
   }
   return TensorizeInfo(ret);
 }
@@ -696,7 +696,7 @@ double CountFlop(const tir::PrimFunc& func) {
       return result;
     }
 
-    TResult VisitStmt_(const tir::LoopNode* loop) override {
+    TResult VisitStmt_(const tir::ForNode* loop) override {
       TResult result = VisitStmt(loop->body);
       const auto* int_imm = loop->extent.as<IntImmNode>();
       CHECK(int_imm) << "TypeError: Expect the extent of a loop to be IntImm, but gets: "
@@ -781,7 +781,7 @@ double CountFlop(const tir::PrimFunc& func) {
 
 bool HasSingleChild(const tir::StmtSRef& loop_or_block_sref) {
   const tir::StmtNode* body = nullptr;
-  if (const auto* loop = loop_or_block_sref->GetStmt<tir::LoopNode>()) {
+  if (const auto* loop = loop_or_block_sref->GetStmt<tir::ForNode>()) {
     body = loop->body.get();
   } else if (const auto* block = loop_or_block_sref->GetStmt<tir::BlockNode>()) {
     body = block->body.get();
@@ -803,7 +803,7 @@ Array<tir::StmtSRef> CollectComputeLocation(const tir::Schedule& sch,
   result.reserve(loop_srefs.size());
   bool visited_reduce = false;
   for (const tir::StmtSRef& loop_sref : loop_srefs) {
-    const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+    const auto* loop = loop_sref->GetStmt<tir::ForNode>();
     CHECK(loop) << "TypeError: Expects 'Loop', but gets: " << loop_sref->stmt->GetTypeKey();
     tir::IterVarType iter_type = GetLoopIterType(sch, loop_sref);
     if (iter_type == tir::IterVarType::kDataPar) {

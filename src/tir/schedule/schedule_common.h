@@ -292,7 +292,7 @@ class BlockReadWriteCollector : public StmtExprVisitor {
   std::vector<std::vector<tvm::arith::IntSet>> read_regions_, write_regions_;
   std::unordered_set<const BufferNode*> inner_buffers_;
 
-  void VisitStmt_(const LoopNode* op) override;
+  void VisitStmt_(const ForNode* op) override;
   void Update(std::vector<Buffer>* buffers, std::vector<std::vector<arith::IntSet>>* regions,
               const Buffer& buffer, const std::vector<arith::IntSet>& region);
   void VisitExpr_(const BufferLoadNode* op) override;
@@ -319,7 +319,7 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
   bool VisitExpr(const PrimExpr& n, const PrimExpr& other) override;
   bool VisitStmt(const Stmt& n, const Stmt& other) override;
 
-  bool VisitStmt_(const LoopNode* op, const Stmt& other) override;
+  bool VisitStmt_(const ForNode* op, const Stmt& other) override;
   bool VisitStmt_(const SeqStmtNode* op, const Stmt& other) override;
   bool VisitStmt_(const BufferStoreNode* op, const Stmt& other) override;
   bool VisitStmt_(const BlockRealizeNode* op, const Stmt& other) override;
@@ -349,9 +349,12 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
   bool VisitExpr_(const BufferLoadNode* op, const PrimExpr& other) override;
 
   bool DefEqual(const ObjectRef& lhs, const ObjectRef& rhs);
-  bool CompareAnnotation(const Annotation& lhs, const Annotation& rhs);
   virtual bool CompareBuffer(const Buffer& lhs, const Buffer& rhs);
   bool CompareBufferRegion(const BufferRegion& lhs, const BufferRegion& rhs);
+  bool CompareAnnotation(const std::pair<String, ObjectRef>& lhs,
+                         const std::pair<String, ObjectRef>& rhs);
+  bool CompareAnnotationMap(const Map<String, ObjectRef>& lhs,
+                            const Map<String, ObjectRef>& rhs);
   template <typename T>
   bool CompareBufferAccess(const T* lhs, const T* rhs);
   template <typename T, typename F>

@@ -30,7 +30,7 @@ def replace_ir_builder():
     # The target stmt
     target = tvm.tir.Block(
         [], [], [], s.func.body.block.body[1],
-        [], [], 'target', '')
+        [], {}, 'target', '')
 
     # It's important to collect garbage explicitly to make
     # sure that there is only one reference of the function

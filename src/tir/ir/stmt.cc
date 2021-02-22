@@ -190,6 +190,14 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->Print(op->min);
       p->stream << ", ";
       p->Print(op->extent);
+      if (op->thread_binding.defined()) {
+        p->stream << ", binding: ";
+        p->Print(op->thread_binding.value());
+      }
+      if (!op->annotations.empty()) {
+        p->stream << ", attr: ";
+        p->Print(op->annotations);
+      }
       p->stream << ") {\n";
 
       p->indent += 2;
@@ -601,71 +609,6 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->stream << "}\n";
     });
 
-// Annotation
-Annotation::Annotation(std::string attr_key, PrimExpr value) {
-  ObjectPtr<AnnotationNode> node = make_object<AnnotationNode>();
-  node->attr_key = std::move(attr_key);
-  node->value = std::move(value);
-  data_ = std::move(node);
-}
-
-TVM_REGISTER_GLOBAL("tir.Annotation")
-    .set_body_typed<Annotation(std::string, PrimExpr)>([](std::string attr_key, PrimExpr value) {
-      return Annotation(attr_key, value);
-    });
-
-TVM_REGISTER_NODE_TYPE(AnnotationNode);
-
-TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-    .set_dispatch<AnnotationNode>([](const ObjectRef& node, ReprPrinter* p) {
-      auto* op = static_cast<const AnnotationNode*>(node.get());
-      p->stream << op->attr_key << ": ";
-      p->Print(op->value);
-    });
-
-// Loop
-Loop::Loop(Var loop_var, PrimExpr min, PrimExpr extent, Array<Annotation> annotations, Stmt body) {
-  ObjectPtr<LoopNode> node = make_object<LoopNode>();
-  node->loop_var = std::move(loop_var);
-  node->min = std::move(min);
-  node->extent = std::move(extent);
-  node->annotations = std::move(annotations);
-  node->body = std::move(body);
-  data_ = std::move(node);
-}
-
-TVM_REGISTER_GLOBAL("tir.Loop")
-    .set_body_typed<Loop(Var, PrimExpr, PrimExpr, Array<Annotation>, Stmt)>(
-        [](Var loop_var, PrimExpr min, PrimExpr extent, Array<Annotation> annotations, Stmt body) {
-          return Loop(loop_var, min, extent, annotations, body);
-        });
-
-TVM_REGISTER_NODE_TYPE(LoopNode);
-
-TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-    .set_dispatch<LoopNode>([](const ObjectRef& node, ReprPrinter* p) {
-      auto* op = static_cast<const LoopNode*>(node.get());
-
-      // print loop and annotations
-      p->PrintIndent();
-      p->stream << "for (" << op->loop_var << ", ";
-      p->Print(op->min);
-      p->stream << ", ";
-      p->Print(op->extent);
-      if (!op->annotations.empty()) {
-        p->stream << ", attr: ";
-        p->Print(op->annotations);
-        p->stream << ")";
-      }
-      p->stream << ") {\n";
-
-      // print body
-      p->indent += 2;
-      p->Print(op->body);
-      p->indent -= 2;
-      p->PrintIndent();
-      p->stream << "}\n";
-    });
 
 // BufferRegion
 BufferRegion::BufferRegion(Buffer buffer, Array<Range> region) {
@@ -712,7 +655,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
 // Block
 Block::Block(Array<IterVar> iter_vars, Array<BufferRegion> reads, Array<BufferRegion> writes,
-             Stmt body, Array<Buffer> allocations, Array<Annotation> annotations, String name_hint,
+             Stmt body, Array<Buffer> allocations, Map<String, ObjectRef> annotations, String name_hint,
              String exec_scope, Optional<Stmt> init) {
   ObjectPtr<BlockNode> node = make_object<BlockNode>();
   node->iter_vars = std::move(iter_vars);
@@ -729,9 +672,9 @@ Block::Block(Array<IterVar> iter_vars, Array<BufferRegion> reads, Array<BufferRe
 
 TVM_REGISTER_GLOBAL("tir.Block")
     .set_body_typed<Block(Array<IterVar>, Array<BufferRegion>, Array<BufferRegion>, Stmt,
-                          Array<Buffer>, Array<Annotation>, String, String, Optional<Stmt>)>(
+                          Array<Buffer>, Map<String, ObjectRef>, String, String, Optional<Stmt>)>(
         [](Array<IterVar> iter_vars, Array<BufferRegion> reads, Array<BufferRegion> writes,
-           Stmt body, Array<Buffer> allocates, Array<Annotation> annotations, String name_hint,
+           Stmt body, Array<Buffer> allocates, Map<String, ObjectRef> annotations, String name_hint,
            String exec_scope, Optional<Stmt> init) {
           return Block(iter_vars, reads, writes, body, allocates, annotations, name_hint, exec_scope,
                        init);

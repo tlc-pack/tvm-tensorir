@@ -74,7 +74,7 @@ class LCADetector : public StmtExprVisitor {
 
   // Update parent and depth information for each AST node
 
-  void VisitStmt_(const LoopNode* op) final {
+  void VisitStmt_(const ForNode* op) final {
     Stmt n = GetRef<Stmt>(op);
     ast_scopes_info_[n] = ScopeInfo{scope_, depth_};
     ++depth_;
@@ -165,8 +165,8 @@ class RegionGatherer : public StmtExprVisitor {
     }
   }
 
-  void VisitStmt_(const LoopNode* op) final {
-    Loop loop = GetRef<Loop>(op);
+  void VisitStmt_(const ForNode* op) final {
+    auto loop = GetRef<For>(op);
     loop_stack_.push_back(loop);
     if (op->annotations.empty() && is_one(op->extent)) {
       unit_loops_[op->loop_var.get()] = op->min;
@@ -196,7 +196,6 @@ class RegionGatherer : public StmtExprVisitor {
       std::vector<arith::IntSet> empty_region(alloc_buf->shape.size(), arith::IntSet::Nothing());
       // Initialize the buffer region with empty region.
       buffers_region_[alloc_buf] = empty_region;
-      StmtExprVisitor::VisitStmt_(op);
     }
     StmtExprVisitor::VisitStmt_(op);
   }
@@ -213,7 +212,7 @@ class RegionGatherer : public StmtExprVisitor {
   const std::unordered_map<Buffer, ObjectRef, ObjectPtrHash, ObjectPtrEqual>& buffers_lca_;
 
   /*! \brief The loops from the current node up to the root */
-  std::vector<Loop> loop_stack_;
+  std::vector<For> loop_stack_;
 
   void VisitBufferRegion(const BufferRegion& buffer_region) {
     auto it = buffers_region_.find(buffer_region->buffer);
@@ -237,7 +236,7 @@ class RegionGatherer : public StmtExprVisitor {
     // Every loop will be relaxed if the lca is the root
     bool need_relax = !lca.defined();
     for (size_t i = 0; i < loop_stack_.size(); ++i) {
-      const Loop& loop = loop_stack_[i];
+      const For& loop = loop_stack_[i];
       const VarNode* var = loop->loop_var.get();
       if (need_relax || (buffer_region->buffer->scope == "shared" && IsThreadBinded(loop))) {
         dom_map[var] = arith::IntSet::FromRange(Range::FromMinExtent(loop->min, loop->extent));
@@ -253,14 +252,10 @@ class RegionGatherer : public StmtExprVisitor {
     return region;
   }
 
-  static bool IsThreadBinded(const Loop& loop) {
-    for (const auto& annotation : loop->annotations)
-      if (annotation->attr_key == attr::loop_type) {
-        std::string thread_tag = Downcast<StringImm>(annotation->value)->value;
-        if (thread_tag.substr(0, 9) == "threadIdx" || thread_tag.substr(0, 7) == "vthread")
-          return true;
-      }
-    return false;
+  static bool IsThreadBinded(const For& loop) {
+    if (loop->kind != ForKind::kThreadBinding || !loop->thread_binding.defined()) return false;
+    std::string thread_tag = loop->thread_binding.value()->thread_tag;
+    return (thread_tag.substr(0, 9) == "threadIdx" || thread_tag.substr(0, 7) == "vthread");
   }
 };
 
@@ -356,8 +351,8 @@ class BufferFlattener : public StmtExprMutator {
       body = IfThenElse(op->predicate, body);
     }
 
-    for (const Annotation& anno : block_op->annotations) {
-      if (anno->attr_key == tir::attr::double_buffer_scope && is_one(anno->value)) {
+    for (const auto& anno : block_op->annotations) {
+      if (anno.first == tir::attr::double_buffer_scope && is_one(Downcast<PrimExpr>(anno.second))) {
         CHECK_EQ(block_op->writes.size(), 1);
         double_buffer_.insert(block_op->writes[0]->buffer);
       }
@@ -395,34 +390,18 @@ class BufferFlattener : public StmtExprMutator {
     }
   }
 
-  Stmt VisitStmt_(const LoopNode* op) final {
+  Stmt VisitStmt_(const ForNode* op) final {
     Stmt old_stmt = GetRef<Stmt>(op);
     std::swap(old_stmt, parent_scope_);
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     std::swap(old_stmt, parent_scope_);
 
-    op = stmt.as<LoopNode>();
+    op = stmt.as<ForNode>();
     CHECK(op != nullptr);
 
-    std::string thread_tag;
-    bool thread_binded = false;
-
-    ForKind for_type = ForKind::kSerial;
-    for (const auto& annotation : op->annotations) {
-      if (annotation->attr_key == tir::attr::loop_type) {
-        std::string type = Downcast<StringImm>(annotation->value)->value;
-        if (type == "unroll") {
-          for_type = ForKind::kUnrolled;
-        } else if (type == "vectorize") {
-          for_type = ForKind::kVectorized;
-        } else if (type == "parallel") {
-          for_type = ForKind::kParallel;
-        } else {
-          thread_binded = true;
-          thread_tag = Downcast<StringImm>(annotation->value)->value;
-        }
-      }
-    }
+    ForKind kind = op->kind;
+    if (op->kind == ForKind::kThreadBinding)
+      kind = ForKind::kSerial;
 
     Stmt body = op->body;
     for (auto it = pending_allocate_.begin(); it != pending_allocate_.end();) {
@@ -443,7 +422,9 @@ class BufferFlattener : public StmtExprMutator {
     }
 
     Stmt for_stmt;
-    if (thread_binded) {
+    if (op->kind == ForKind::kThreadBinding) {
+      CHECK(op->thread_binding.defined());
+      String thread_tag = op->thread_binding.value()->thread_tag;
       if (!reduction_relative_.count(op->loop_var)) {
         for_stmt = AttrStmt(IterVar(Range(op->min, op->extent), op->loop_var,
                                     IterVarType::kThreadIndex, thread_tag),
@@ -455,22 +436,17 @@ class BufferFlattener : public StmtExprMutator {
     } else if (is_one(op->extent) && op->annotations.empty()) {
       return body;
     } else {
-      for_stmt = For(op->loop_var, op->min, op->extent, for_type, body);
+      for_stmt = For(op->loop_var, op->min, op->extent, op->kind, body);
     }
 
     for (const auto& annotation : op->annotations) {
-      if (attr::IsPragmaKey(annotation->attr_key)) {
-        for_stmt = AttrStmt(op->loop_var, annotation->attr_key, annotation->value, for_stmt);
+      if (attr::IsPragmaKey(annotation.first)) {
+        for_stmt = AttrStmt(op->loop_var, annotation.first, Downcast<PrimExpr>(annotation.second),
+                            for_stmt);
       }
     }
 
     return for_stmt;
-  }
-
-  // TODO(Siyuan): add support for For and AttrStmt
-  Stmt VisitStmt_(const ForNode* op) final {
-    LOG(FATAL) << "For is not allowed in TIR schedule for now.";
-    return Stmt();
   }
 
   Stmt VisitStmt_(const AttrStmtNode* op) final {

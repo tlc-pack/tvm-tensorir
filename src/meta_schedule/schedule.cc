@@ -285,7 +285,7 @@ int ScheduleNode::Eval(const PrimExpr& expr) {
 Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop,
                                                 int max_innermost_factor,
                                                 const Optional<Array<ObjectRef>>& decision) {
-  const auto* tir_loop = Eval(loop)->GetStmt<tir::LoopNode>();
+  const auto* tir_loop = Eval(loop)->GetStmt<tir::ForNode>();
   CHECK(tir_loop);
   std::vector<int> samples;
   const auto* p_extent = tir_loop->extent.as<IntImmNode>();
@@ -317,7 +317,7 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
 Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
                                                const Array<Integer>& where,
                                                const Optional<Array<ObjectRef>>& decision) {
-  const auto* tir_loop = Eval(loop)->GetStmt<tir::LoopNode>();
+  const auto* tir_loop = Eval(loop)->GetStmt<tir::ForNode>();
   CHECK(tir_loop);
   int64_t extent;
   std::vector<int> candidates;
@@ -666,7 +666,7 @@ Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<Optional<PrimE
   if (none_idx == -1 || none_idx == 0) {
     tir::StmtSRef tir_loop = Eval(loop);
     for (int i = n_splits - 1; i >= 1; --i) {
-      const PrimExpr& extent = tir_loop->GetStmt<tir::LoopNode>()->extent;
+      const PrimExpr& extent = tir_loop->GetStmt<tir::ForNode>()->extent;
       int factor = this->Eval(factors[i].value());
       PrimExpr nparts = floordiv(extent + factor - 1, factor);
       Array<tir::StmtSRef> split_result = this->sch->split(tir_loop, nparts, factor);
@@ -679,7 +679,7 @@ Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<Optional<PrimE
   } else {
     tir::StmtSRef tir_loop = Eval(loop);
     for (int i = 0; i < n_splits - 1; ++i) {
-      const PrimExpr& extent = tir_loop->GetStmt<tir::LoopNode>()->extent;
+      const PrimExpr& extent = tir_loop->GetStmt<tir::ForNode>()->extent;
       int nparts = this->Eval(factors[i].value());
       PrimExpr factor = floordiv(extent + nparts - 1, nparts);
       Array<tir::StmtSRef> split_result = this->sch->split(tir_loop, nparts, factor);

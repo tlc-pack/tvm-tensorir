@@ -56,7 +56,7 @@ class SRefMapCreator : public StmtVisitor {
     PopSRef();
   }
   // Create a StmtSRef for LoopNode
-  void VisitStmt_(const LoopNode* stmt) override {
+  void VisitStmt_(const ForNode* stmt) override {
     PushSRef(stmt);
     StmtVisitor::VisitStmt_(stmt);
     PopSRef();
@@ -69,7 +69,7 @@ class SRefMapCreator : public StmtVisitor {
       if (const auto* realize = stmt.as<BlockRealizeNode>()) {
         const StmtNode* node = realize->block.get();
         stmt2ref_.at(node)->seq_index = index++;
-      } else if (const auto* loop = stmt.as<LoopNode>()) {
+      } else if (const auto* loop = stmt.as<ForNode>()) {
         const StmtNode* node = loop;
         stmt2ref_.at(node)->seq_index = index++;
       } else {
