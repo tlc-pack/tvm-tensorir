@@ -64,7 +64,8 @@ class ScheduleNode : public Object {
    * i.e. after being replaced, the sref that points to the old block will point to the new one
    * \note `loop_reuse` will be automatically detected via loop vars
    */
-  void Replace(StmtSRef src_sref, Stmt tgt_stmt, const Map<Block, Block>& block_reuse);
+  void Replace(const StmtSRef& src_sref, const Stmt& tgt_stmt,
+               const Map<Block, Block>& block_reuse);
 
   /*!
    * \brief Get block from its tag
