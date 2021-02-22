@@ -28,7 +28,7 @@ def replace_ir_builder():
     s = tir.create_schedule(new_func)
 
     # The target stmt
-    target = tvm.tir.Block([], [], [], [], {}, 'target', '', s.func.body.block.body[1])
+    target = tvm.tir.Block([], [], [], [], {}, [], '', 'target', s.func.body.block.body[1])
 
     # It's important to collect garbage explicitly to make
     # sure that there is only one reference of the function

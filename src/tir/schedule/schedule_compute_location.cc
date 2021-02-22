@@ -574,9 +574,9 @@ class StatementInliner : public StmtExprMutator {
 
     // Update Allocation
     const Buffer& buffer = block_->writes[0]->buffer;
-    Array<Buffer> allocations;
+    Array<Buffer> alloc_buffers;
     for (const auto alloc_buf : op->alloc_buffers) {
-      if (alloc_buf != buffer) allocations.push_back(alloc_buf);
+      if (alloc_buf != buffer) alloc_buffers.push_back(alloc_buf);
     }
 
     Array<BufferRegion> reads(nullptr);
@@ -584,13 +584,15 @@ class StatementInliner : public StmtExprMutator {
       reads = op->reads;
     } else {
       // Update read region only for none-scope block
-      BlockReadWriteCollector block_read_write_collector(allocations);
+      BlockReadWriteCollector block_read_write_collector(alloc_buffers);
       block_read_write_collector(op->body);
       reads = block_read_write_collector.reads();
     }
 
-    Block block(op->iter_vars, reads, op->writes, allocations, op->annotations, op->exec_scope,
-                op->name_hint, op->body, op->init);
+    auto block_node = make_object<BlockNode>(*op);
+    block_node->reads = reads;
+    block_node->alloc_buffers = alloc_buffers;
+    Block block(block_node);
 
     block_sref_map_->Set(block, origin_block);
     return std::move(block);
@@ -687,16 +689,20 @@ class ReverseStatementInliner : public StmtExprMutator {
     CHECK(op != nullptr);
     // update allocation
     const Buffer& buffer = producer_->writes[0]->buffer;
-    Array<Buffer> allocations;
+    Array<Buffer> alloc_buffers;
     for (const auto alloc_buf : op->alloc_buffers) {
-      if (alloc_buf != buffer) allocations.push_back(alloc_buf);
+      if (alloc_buf != buffer) alloc_buffers.push_back(alloc_buf);
     }
     // update read/write region
-    BlockReadWriteCollector block_read_write_collector(allocations);
+    BlockReadWriteCollector block_read_write_collector(alloc_buffers);
     block_read_write_collector(op->body);
-    Block block(op->iter_vars, block_read_write_collector.reads(),
-                block_read_write_collector.writes(), allocations, op->annotations, op->exec_scope,
-                op->name_hint, op->body, op->init);
+
+    auto block_node = make_object<BlockNode>(*op);
+    block_node->reads = block_read_write_collector.reads();
+    block_node->writes = block_read_write_collector.writes();
+    block_node->alloc_buffers = alloc_buffers;
+    Block block(block_node);
+
     if (is_producer) block_sref_map_->Set(block, origin_producer);
     return std::move(Block(block));
   }
