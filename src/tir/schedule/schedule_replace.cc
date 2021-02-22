@@ -21,17 +21,23 @@
 namespace tvm {
 namespace tir {
 
-void SetSeqIndex(ScheduleNode* self, const Stmt& stmt, int seq_idx) {
+/*!
+ * \brief Set the `StmtSRefNode::seq_index` field for stmt
+ * \param self The schedule class
+ * \param stmt The statement, or the realize node of the statement whose sref to be set
+ * \param seq_index The seq_index to be set
+ */
+void SetSeqIndex(ScheduleNode* self, const Stmt& stmt, int seq_index) {
   if (const auto* realize = stmt.as<BlockRealizeNode>()) {
     const BlockNode* block = realize->block.get();
     CHECK(self->stmt2ref.count(block));
-    self->stmt2ref.at(block)->seq_index = seq_idx;
+    self->stmt2ref.at(block)->seq_index = seq_index;
   } else if (const auto* block = stmt.as<BlockNode>()) {
     CHECK(self->stmt2ref.count(block));
-    self->stmt2ref.at(block)->seq_index = seq_idx;
+    self->stmt2ref.at(block)->seq_index = seq_index;
   } else if (const auto* loop = stmt.as<LoopNode>()) {
     CHECK(self->stmt2ref.count(loop));
-    self->stmt2ref.at(loop)->seq_index = seq_idx;
+    self->stmt2ref.at(loop)->seq_index = seq_index;
   } else if (stmt->IsInstance<IfThenElseNode>() || stmt->IsInstance<BufferStoreNode>() ||
              stmt->IsInstance<EvaluateNode>()) {
     // do nothing
@@ -92,13 +98,23 @@ int StepsHighestNonUniqueAncestor(const StmtSRef& sref, bool func_is_unique) {
       result = i;
     }
   }
+  // If the function itself is not unique, then we assume the root is not unique
   if (!func_is_unique) {
     result = i;
   }
   return result;
 }
 
-struct Info {
+/*!
+ * \brief For a new AST, the SRefCreator creates 3 kinds of srefs
+ * 1) Reused: it means we found a correspondence between a stmt to an old one
+ * (although they are not the same object), and thus decide to reuse that old sref
+ * 2) Intact: it means we found an old statement, i.e. the same object,
+ * it means we do not even need to visit into the subtree of the old statement,
+ * which is intact.
+ * 3) New: a complete new stmt which has a completely new sref
+ */
+struct CreationInfo {
   /*! \brief The srefs that are reused */
   std::unordered_set<StmtSRef, ObjectPtrHash, ObjectPtrEqual> reused;
   /*! \brief The srefs whose subtrees that are unchanged and their parents */
@@ -123,8 +139,8 @@ struct Info {
  */
 class SRefCreator : public StmtVisitor {
  public:
-  static Info Create(ScheduleNode* self, const Map<Block, Block>& block_reuse, StmtSRefNode* parent,
-                     const Stmt& new_stmt) {
+  static CreationInfo Create(ScheduleNode* self, const Map<Block, Block>& block_reuse,
+                             StmtSRefNode* parent, const Stmt& new_stmt) {
     // For each loop var, find its corresponding sref
     // `block_reuse` and `loop_reuse` work together providing information to detect sref reuse
     std::unordered_map<const VarNode*, StmtSRef> loop_reuse;
@@ -219,7 +235,7 @@ class SRefCreator : public StmtVisitor {
   const std::unordered_map<const VarNode*, StmtSRef>& loop_reuse;
   std::vector<StmtSRefNode*> parents;
 
-  Info result;
+  CreationInfo result;
 };
 
 /*!
@@ -238,13 +254,13 @@ class SRefCreator : public StmtVisitor {
  */
 class SRefRemover : public StmtVisitor {
  public:
-  static void Remove(ScheduleNode* self, const Info& info, const Stmt& stmt) {
+  static void Remove(ScheduleNode* self, const CreationInfo& info, const Stmt& stmt) {
     SRefRemover remover(self, info);
     remover(stmt);
   }
 
  private:
-  explicit SRefRemover(ScheduleNode* self, const Info& info) : self(self), info(info) {}
+  explicit SRefRemover(ScheduleNode* self, const CreationInfo& info) : self(self), info(info) {}
 
   bool CheckIntactSubtree(const StmtSRef& sref) const {
     auto itr = info.intact.find(sref);
@@ -287,7 +303,7 @@ class SRefRemover : public StmtVisitor {
   }
 
   ScheduleNode* self;
-  Info info;
+  CreationInfo info;
 };
 
 class ParentMutator : private StmtMutator {
@@ -389,7 +405,7 @@ void ScheduleNode::Replace(const StmtSRef& _src_sref, const Stmt& tgt_stmt,
   //
   // After creation, it is guaranteed that
   //   all the srefs in the AST `tgt_stmt` have proper `parent`s, except for those `intact` nodes.
-  Info creation_info = SRefCreator::Create(this, block_reuse, src_sref->parent, tgt_stmt);
+  CreationInfo creation_info = SRefCreator::Create(this, block_reuse, src_sref->parent, tgt_stmt);
   // Step 2. Set the ancestors' children properly
   //   Iteratively visit the ancestors, creating new ones whose `body`s are properly fixed.
   //   The visit stops when all the ancestors are uniquely referenced, i.e. can mutate inplace.
