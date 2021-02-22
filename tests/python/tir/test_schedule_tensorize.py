@@ -96,13 +96,27 @@ def lower_intrin_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         tir.bind(vi, 0)
         tir.bind(vj, 0)
         tir.bind(vk, 0)
-        tir.reads([C[vi:vi + 16, vj:vj + 16], A[vi:vi + 16, vk:vk + 16], B[vj:vj + 16, vk:vk + 16]])
-        tir.writes(C[vi:vi + 16, vj:vj + 16])
-        tir.evaluate(tir.tvm_mma_sync(C.data, C.elem_offset // 256,
-                                      A.data, A.elem_offset // 256,
-                                      B.data, B.elem_offset // 256,
-                                      C.data, C.elem_offset // 256,
-                                      dtype="handle"))
+        tir.reads(
+            [
+                C[vi : vi + 16, vj : vj + 16],
+                A[vi : vi + 16, vk : vk + 16],
+                B[vj : vj + 16, vk : vk + 16],
+            ]
+        )
+        tir.writes(C[vi : vi + 16, vj : vj + 16])
+        tir.evaluate(
+            tir.tvm_mma_sync(
+                C.data,
+                C.elem_offset // 256,
+                A.data,
+                A.elem_offset // 256,
+                B.data,
+                B.elem_offset // 256,
+                C.data,
+                C.elem_offset // 256,
+                dtype="handle",
+            )
+        )
 
 
 @tvm.script.tir
@@ -123,14 +137,27 @@ def tensorized_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                 tir.bind(vi, i_outer)
                 tir.bind(vj, j_outer)
                 tir.bind(vk, k_outer)
-                tir.reads([C[vi*16:vi*16 + 16, vj*16:vj*16 + 16], A[vi*16:vi*16 + 16, vk*16:vk*16 + 16], B[vj*16:vj*16 + 16, vk*16:vk*16 + 16]])
-                tir.writes(C[vi*16:vi*16 + 16, vj*16:vj*16 + 16])
+                tir.reads(
+                    [
+                        C[vi * 16 : vi * 16 + 16, vj * 16 : vj * 16 + 16],
+                        A[vi * 16 : vi * 16 + 16, vk * 16 : vk * 16 + 16],
+                        B[vj * 16 : vj * 16 + 16, vk * 16 : vk * 16 + 16],
+                    ]
+                )
+                tir.writes(C[vi * 16 : vi * 16 + 16, vj * 16 : vj * 16 + 16])
                 tir.evaluate(
-                    tir.tvm_mma_sync(C.data, tir.floordiv(tir.get_elem_offset(C[vi*16, vj*16], dtype="int32"), 256),
-                                     A.data, tir.floordiv(tir.get_elem_offset(A[vi*16, vk*16], dtype="int32"), 256),
-                                     B.data, tir.floordiv(tir.get_elem_offset(B[vj*16, vk*16], dtype="int32"), 256),
-                                     C.data, tir.floordiv(tir.get_elem_offset(C[vi*16, vj*16], dtype="int32"), 256),
-                                     dtype="handle"))
+                    tir.tvm_mma_sync(
+                        C.data,
+                        tir.floordiv(tir.get_elem_offset(C[vi * 16, vj * 16], dtype="int32"), 256),
+                        A.data,
+                        tir.floordiv(tir.get_elem_offset(A[vi * 16, vk * 16], dtype="int32"), 256),
+                        B.data,
+                        tir.floordiv(tir.get_elem_offset(B[vj * 16, vk * 16], dtype="int32"), 256),
+                        C.data,
+                        tir.floordiv(tir.get_elem_offset(C[vi * 16, vj * 16], dtype="int32"), 256),
+                        dtype="handle",
+                    )
+                )
 
 
 def test_tensorize_buffer_bind():
@@ -182,15 +209,35 @@ def tensorized_batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                 tir.bind(vi, i)
                 tir.bind(vj, j)
                 tir.bind(vk, k)
-                tir.reads([C[vn:vn + 1, vi*16:vi*16 + 16, vj*16:vj*16 + 16], A[vn:vn + 1, vi*16:vi*16 + 16, vk*16:vk*16 + 16],
-                           B[vn:vn + 1, vj*16:vj*16 + 16, vk*16:vk*16 + 16]])
-                tir.writes(C[vn:vn + 1, vi*16:vi*16 + 16, vj*16:vj*16 + 16])
+                tir.reads(
+                    [
+                        C[vn : vn + 1, vi * 16 : vi * 16 + 16, vj * 16 : vj * 16 + 16],
+                        A[vn : vn + 1, vi * 16 : vi * 16 + 16, vk * 16 : vk * 16 + 16],
+                        B[vn : vn + 1, vj * 16 : vj * 16 + 16, vk * 16 : vk * 16 + 16],
+                    ]
+                )
+                tir.writes(C[vn : vn + 1, vi * 16 : vi * 16 + 16, vj * 16 : vj * 16 + 16])
                 tir.evaluate(
-                    tir.tvm_mma_sync(C.data, tir.floordiv(tir.get_elem_offset(C[vn, vi*16, vj*16], dtype="int32"), 256),
-                                     A.data, tir.floordiv(tir.get_elem_offset(A[vn, vi*16, vk*16], dtype="int32"), 256),
-                                     B.data, tir.floordiv(tir.get_elem_offset(B[vn, vj*16, vk*16], dtype="int32"), 256),
-                                     C.data, tir.floordiv(tir.get_elem_offset(C[vn, vi*16, vj*16], dtype="int32"), 256),
-                                     dtype="handle"))
+                    tir.tvm_mma_sync(
+                        C.data,
+                        tir.floordiv(
+                            tir.get_elem_offset(C[vn, vi * 16, vj * 16], dtype="int32"), 256
+                        ),
+                        A.data,
+                        tir.floordiv(
+                            tir.get_elem_offset(A[vn, vi * 16, vk * 16], dtype="int32"), 256
+                        ),
+                        B.data,
+                        tir.floordiv(
+                            tir.get_elem_offset(B[vn, vj * 16, vk * 16], dtype="int32"), 256
+                        ),
+                        C.data,
+                        tir.floordiv(
+                            tir.get_elem_offset(C[vn, vi * 16, vj * 16], dtype="int32"), 256
+                        ),
+                        dtype="handle",
+                    )
+                )
 
 
 def test_high_dim_tensorize():
@@ -215,11 +262,13 @@ def batch_matmul_dot_product(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, [1, 4, 4], "float32")
 
     t = tir.var("int32")
-    tir.attr(tir.iter_var(t, None, "DataPar", ""), "pragma_import_llvm",
-             "; ModuleID = '/tmp/tmpur44d1nu/input0.cc'\n\
-source_filename = \"/tmp/tmpur44d1nu/input0.cc\"\n\
-target datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128\"\n\
-target triple = \"x86_64-pc-linux-gnu\"\n\
+    tir.attr(
+        tir.iter_var(t, None, "DataPar", ""),
+        "pragma_import_llvm",
+        '; ModuleID = \'/tmp/tmpur44d1nu/input0.cc\'\n\
+source_filename = "/tmp/tmpur44d1nu/input0.cc"\n\
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"\n\
+target triple = "x86_64-pc-linux-gnu"\n\
 \n\
 ; Function Attrs: noinline nounwind optnone uwtable\n\
 define dso_local i32 @vec4add(float* %0, i32 %1, float* %2, i32 %3, float* %4, i32 %5) #0 {\n\
@@ -279,15 +328,16 @@ define dso_local i32 @vec4add(float* %0, i32 %1, float* %2, i32 %3, float* %4, i
   ret i32 0\n\
 }\n\
 \n\
-attributes #0 = { noinline nounwind optnone uwtable \"correctly-rounded-divide-sqrt-fp-math\"=\"false\" \"disable-tail-calls\"=\"false\" \"frame-pointer\"=\"all\" \"less-precise-fpmad\"=\"false\" \"min-legal-vector-width\"=\"0\" \"no-infs-fp-math\"=\"false\" \"no-jump-tables\"=\"false\" \"no-nans-fp-math\"=\"false\" \"no-signed-zeros-fp-math\"=\"false\" \"no-trapping-math\"=\"true\" \"stack-protector-buffer-size\"=\"8\" \"target-cpu\"=\"x86-64\" \"target-features\"=\"+cx8,+fxsr,+mmx,+sse,+sse2,+x87\" \"unsafe-fp-math\"=\"false\" \"use-soft-float\"=\"false\" }\n\
+attributes #0 = { noinline nounwind optnone uwtable "correctly-rounded-divide-sqrt-fp-math"="false" "disable-tail-calls"="false" "frame-pointer"="all" "less-precise-fpmad"="false" "min-legal-vector-width"="0" "no-infs-fp-math"="false" "no-jump-tables"="false" "no-nans-fp-math"="false" "no-signed-zeros-fp-math"="false" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "unsafe-fp-math"="false" "use-soft-float"="false" }\n\
 \n\
 !llvm.module.flags = !{!0}\n\
 !llvm.ident = !{!1}\n\
 \n\
-!0 = !{i32 1, !\"wchar_size\", i32 4}\n\
-!1 = !{!\"Ubuntu clang version 11.0.0-++20200928083541+eb83b551d3e-1~exp1~20200928184208.110\"}\n\
+!0 = !{i32 1, !"wchar_size", i32 4}\n\
+!1 = !{!"Ubuntu clang version 11.0.0-++20200928083541+eb83b551d3e-1~exp1~20200928184208.110"}\n\
 \n\
-             ")
+             ',
+    )
 
     for i, j, k in tir.grid(1, 4, 4):
         with tir.block([1, 4, 4]) as [vn, vi, vj]:
@@ -319,9 +369,20 @@ def dot_product_impl(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
     with tir.block([tir.reduce_axis(0, 4)], "root") as [v0]:
         tir.bind(v0, 0)
-        tir.reads([C[0 : 1], A[v0 : v0 + 4], B[v0 : v0 + 4]])
-        tir.writes([C[0 : 1]])
-        tir.evaluate(tir.call_extern("vec4add", C.data, C.elem_offset, A.data, A.elem_offset, B.data, B.elem_offset, dtype="int32"))
+        tir.reads([C[0:1], A[v0 : v0 + 4], B[v0 : v0 + 4]])
+        tir.writes([C[0:1]])
+        tir.evaluate(
+            tir.call_extern(
+                "vec4add",
+                C.data,
+                C.elem_offset,
+                A.data,
+                A.elem_offset,
+                B.data,
+                B.elem_offset,
+                dtype="int32",
+            )
+        )
 
 
 def test_tensorize_dot_product():
@@ -333,20 +394,24 @@ def test_tensorize_dot_product():
     ko, ki = s.split(k, 4)
     s.tensorize(ki, dot_prod)
 
-    # target = 'llvm'
-    # ctx = tvm.context(target, 0)
-    # a_np = np.random.uniform(size=(1, 4, 4)).astype("float32")
-    # b_np = np.random.uniform(size=(1, 4, 4)).astype("float32")
-    # a = tvm.nd.array(a_np)
-    # b = tvm.nd.array(b_np)
-    # c = tvm.nd.array(np.zeros((1, 4, 4), dtype="float32"), ctx)
-    # func = tvm.build(s.func, target=target)
-    # func(a, b, c)
-    # tvm.testing.assert_allclose(c.asnumpy(), np.matmul(a.asnumpy(), b.asnumpy().transpose(0, 2, 1)), rtol=1e-5)
+    target = "llvm"
+    ctx = tvm.context(target, 0)
+    a_np = np.random.uniform(size=(1, 4, 4)).astype("float32")
+    b_np = np.random.uniform(size=(1, 4, 4)).astype("float32")
+    a = tvm.nd.array(a_np)
+    b = tvm.nd.array(b_np)
+    c = tvm.nd.array(np.zeros((1, 4, 4), dtype="float32"), ctx)
+    func = tvm.build(s.func, target=target)
+    func(a, b, c)
+    tvm.testing.assert_allclose(
+        c.asnumpy(),
+        np.matmul(a.asnumpy(), b.asnumpy().transpose(0, 2, 1)),
+        rtol=1e-5,
+    )
 
 
 if __name__ == "__main__":
-    # test_tensorize_gemm()
-    # test_tensorize_buffer_bind()
-    # test_high_dim_tensorize()
+    test_tensorize_gemm()
+    test_tensorize_buffer_bind()
+    test_high_dim_tensorize()
     test_tensorize_dot_product()
