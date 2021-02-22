@@ -208,7 +208,7 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
       init_bindings.push_back(Substitute(inner_bindings[init_block_vars[i]], binding_replace_map));
     }
     new_init = Substitute(Block(init_block_vars_copy, {}, block->writes, block->init.value(), {},
-                                {}, block->name_hint + "_init", NullOpt),
+                                {}, block->name_hint + "_init", block->exec_scope, NullOpt),
                           bv_replace_map);
     new_init = BlockRealize(init_bindings, division.back()->inner_extent,
                             Downcast<Block>(new_init.value()));
