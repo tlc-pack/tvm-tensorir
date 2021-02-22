@@ -66,12 +66,12 @@ def matmul_decompose1(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 def test_reduction_decompose():
-    # Test 1
-    s = tir.create_schedule(matmul)
-    C = s.get_block("update")
-    i, j, k = s.get_axes(C)
-    s.decompose_reduction(C, i)
-    tvm.ir.assert_structural_equal(matmul_decompose0, s.func)
+    # # Test 1
+    # s = tir.create_schedule(matmul)
+    # C = s.get_block("update")
+    # i, j, k = s.get_axes(C)
+    # s.decompose_reduction(C, i)
+    # tvm.ir.assert_structural_equal(matmul_decompose0, s.func)
 
     # Test 2
     s = tir.create_schedule(matmul)

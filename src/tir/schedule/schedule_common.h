@@ -442,6 +442,9 @@ static DefaultReducer default_reducers[4] = {
 
 }  // namespace default_reducer
 
+void PrintSTree(Schedule sch);
+String ReprFunc(PrimFunc func);
+
 }  // namespace tir
 }  // namespace tvm
 #endif  // TVM_TIR_SCHEDULE_SCHEDULE_COMMON_H_

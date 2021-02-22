@@ -21,6 +21,43 @@
 namespace tvm {
 namespace tir {
 
+std::string ToString(const StmtSRef& sref) {
+  if (!sref->stmt) {
+    return "(None)";
+  }
+  std::ostringstream os;
+  os << sref->stmt->GetTypeKey();
+  if (const auto* block = sref->GetStmt<BlockNode>()) {
+    os << "(" << block->tag;
+  } else if (const auto* loop = sref->GetStmt<LoopNode>()) {
+    os << "(" << loop->loop_var->name_hint;
+  } else {
+    os << "(invalid";
+  }
+  os << ", seq_index = " << sref->seq_index << " @ " << sref->stmt << ")";
+  return os.str();
+}
+
+void SetSeqIndex(ScheduleNode* self, const Stmt& stmt, int seq_idx) {
+  if (const auto* realize = stmt.as<BlockRealizeNode>()) {
+    const BlockNode* block = realize->block.get();
+    CHECK(self->stmt2ref.count(block));
+    self->stmt2ref.at(block)->seq_index = seq_idx;
+  } else if (const auto* block = stmt.as<BlockNode>()) {
+    CHECK(self->stmt2ref.count(block));
+    self->stmt2ref.at(block)->seq_index = seq_idx;
+  } else if (const auto* loop = stmt.as<LoopNode>()) {
+    CHECK(self->stmt2ref.count(loop));
+    self->stmt2ref.at(loop)->seq_index = seq_idx;
+  } else if (stmt->IsInstance<IfThenElseNode>() || stmt->IsInstance<BufferStoreNode>() ||
+             stmt->IsInstance<EvaluateNode>()) {
+    // do nothing
+  } else {
+    LOG(FATAL) << "TypeError: Unexpected type: " << stmt->GetTypeKey();
+    throw;
+  }
+}
+
 /*!
  * \brief Update the sref information on the schedule class, as well as the statement of sref itself
  * More specifically, update
@@ -37,6 +74,7 @@ void UpdateSRef(ScheduleNode* sch, StmtSRefNode* sref, const StmtNode* new_stmt)
   sch->stmt2ref[new_stmt] = GetRef<StmtSRef>(sref);
   sch->stmt2ref.erase(sref->stmt);
   sref->stmt = new_stmt;
+  LOG(INFO) << "old_stmt = " << old_stmt << ", new_stmt = " << new_stmt;
 }
 
 /*!
@@ -185,15 +223,8 @@ class SRefCreator : public StmtVisitor {
   void VisitStmt_(const SeqStmtNode* op) override {
     StmtVisitor::VisitStmt_(op);
     // Update seq_index of children
-    for (size_t i = 0; i < op->seq.size(); i++) {
-      const Stmt& stmt = op->seq[i];
-      if (const auto* realize = stmt.as<BlockRealizeNode>()) {
-        const StmtNode* node = realize->block.get();
-        self->stmt2ref.at(node)->seq_index = i;
-      } else if (const auto* loop = stmt.as<LoopNode>()) {
-        const StmtNode* node = loop;
-        self->stmt2ref.at(node)->seq_index = i;
-      }
+    for (int i = 0, n = op->seq.size(); i < n; ++i) {
+      SetSeqIndex(self, op->seq[i], i);
     }
   }
 
@@ -273,98 +304,74 @@ class SRefRemover : public StmtVisitor {
   Info info;
 };
 
-class ParentMutator : protected StmtMutator {
+class ParentMutator {
  public:
-  static Stmt Mutate(ScheduleNode* self, StmtSRefNode* src_sref, const Stmt& tgt_stmt,
-                     bool allow_copy_on_write) {
-    ParentMutator mutator(self, src_sref, tgt_stmt);
-    mutator.allow_copy_on_write_ = allow_copy_on_write;
-    const StmtNode* parent_stmt = src_sref->parent->stmt;
-    if (parent_stmt->IsInstance<LoopNode>()) {
-      return mutator.VisitStmt_(static_cast<const LoopNode*>(parent_stmt));
-    } else if (parent_stmt->IsInstance<BlockNode>()) {
-      return mutator.VisitStmt_(static_cast<const BlockNode*>(parent_stmt));
+  static Stmt MutateBody(ScheduleNode* self, const Stmt& body, const StmtNode* src_stmt,
+                         const Stmt& tgt_stmt, Array<Stmt>* children) {
+    Array<Stmt>& result = *children;
+    // Step 1. Extract the body
+    if (const auto* body_seq = body.as<SeqStmtNode>()) {
+      result = body_seq->seq;
+    } else {
+      result = Array<Stmt>{body};
     }
-    LOG(FATAL) << "TypeError: Unknown type: " << (parent_stmt ? "None" : parent_stmt->GetTypeKey());
+    // Step 2. Find the `src_stmt` and replace it with `tgt_stmt`
+    int i = 0;
+    for (const Stmt& stmt : result) {
+      bool found = false;
+      if (stmt.get() == src_stmt) {
+        found = true;
+      } else if (const auto* realize = stmt.as<BlockRealizeNode>()) {
+        if (realize->block.get() == src_stmt) {
+          found = true;
+        }
+      }
+      if (!found) {
+        ++i;
+        continue;
+      }
+      // Warning: here we mutate the `result` array within iteration
+      // It won't be problematic in this particular case, because it exits the loop immediately
+      if (const auto* tgt_seq_stmt = tgt_stmt.as<SeqStmtNode>()) {
+        result.erase(result.begin() + i);
+        result.insert(result.begin() + i, tgt_seq_stmt->seq.begin(), tgt_seq_stmt->seq.end());
+      } else if (const auto* tgt_block = tgt_stmt.as<BlockNode>()) {
+        if (const auto* src_realize = stmt.as<BlockRealizeNode>()) {
+          ObjectPtr<BlockRealizeNode> tgt_realize = make_object<BlockRealizeNode>(*src_realize);
+          tgt_realize->block = GetRef<Block>(tgt_block);
+          result.Set(i, BlockRealize(tgt_realize));
+        } else if (stmt->IsInstance<BlockNode>() || stmt->IsInstance<LoopNode>()) {
+          result.Set(i, tgt_stmt);
+        } else {
+          LOG(FATAL) << "TypeError: Unhandled type: " << stmt->GetTypeKey();
+        }
+      } else {
+        result.Set(i, tgt_stmt);
+      }
+      return result.size() == 1 ? result[0] : SeqStmt(result);
+    }
+    LOG(FATAL) << "InternalError: NOT FOUND!";
     throw;
   }
 
- private:
-  explicit ParentMutator(ScheduleNode* self, StmtSRefNode* src_sref, const Stmt& tgt_stmt)
-      : self(self), src_sref(src_sref), tgt_stmt(tgt_stmt), is_first_stmt(true) {}
-
-  Stmt VisitStmt(const Stmt& stmt) override {
-    if (stmt.get() == src_sref->stmt) {
-      // if the statement matches the replace tgt_stmt
-      // just return the tgt_stmt
-      return tgt_stmt;
-    } else {
-      return StmtMutator::VisitStmt(stmt);
-    }
+  template <typename TNode>
+  static ObjectPtr<TNode> CopyOnWrite(const TNode* node, bool allow_copy_on_write) {
+    ObjectPtr<TNode> result = allow_copy_on_write
+                                  ? runtime::GetObjectPtr<TNode>(const_cast<TNode*>(node))
+                                  : runtime::make_object<TNode>(*node);
+    LOG(INFO) << "node = " << node << ", new_node = " << result.get();
+    return result;
   }
-
-  Stmt VisitStmt_(const BlockNode* op) override {
-    if (is_first_stmt) {
-      is_first_stmt = false;
-      // It is okay to visit the init block now, because it won't take any effect
-      return StmtMutator::VisitStmt_(op);
-    } else {
-      return GetRef<Stmt>(op);
-    }
-  }
-
-  Stmt VisitStmt_(const LoopNode* op) override {
-    if (is_first_stmt) {
-      is_first_stmt = false;
-      return StmtMutator::VisitStmt_(op);
-    } else {
-      return GetRef<Stmt>(op);
-    }
-  }
-
-  Stmt VisitStmt_(const SeqStmtNode* stmt) override {
-    int i = src_sref->seq_index;
-    // fast path
-    if (i >= 0 && is_same(stmt->seq[i], src_sref->stmt)) {
-      ObjectPtr<SeqStmtNode> n = CopyOnWrite(stmt);
-      if (const auto* tgt_stmt_seq = tgt_stmt.as<SeqStmtNode>()) {
-        const Array<Stmt>& target_seq = tgt_stmt_seq->seq;
-        n->seq.erase(n->seq.begin() + i);
-        n->seq.insert(n->seq.begin() + i, target_seq.begin(), target_seq.end());
-        for (int end = n->seq.size(); i < end; ++i) {
-          const Stmt& stmt = n->seq[i];
-          self->stmt2ref[stmt.get()]->seq_index = i;
-        }
-      } else {
-        n->seq.Set(i, tgt_stmt);
-      }
-      return Stmt(n);
-    } else {
-      return StmtMutator::VisitStmt_(stmt);
-    }
-  }
-
- private:
-  static bool is_same(const Stmt& son, const StmtNode* expected) {
-    if (son->IsInstance<LoopNode>()) {
-      return son.get() == expected;
-    } else {
-      const auto* ptr = son.as<BlockRealizeNode>();
-      CHECK(ptr != nullptr);
-      return ptr->block.get() == expected;
-    }
-  }
-
-  ScheduleNode* self;
-  StmtSRefNode* src_sref;
-  const Stmt& tgt_stmt;
-
-  bool is_first_stmt;
 };
 
 void ScheduleNode::Replace(StmtSRef sref, Stmt tgt_stmt, const Map<Block, Block>& block_reuse) {
   // Reset sref as a new sref so that its content won't be affected by subsequent changes
+  LOG(INFO) << "Replace start";
+  LOG(INFO) << "sch:\n" << ReprFunc(this->func);
+  PrintSTree(GetRef<Schedule>(this));
+
   sref = StmtSRef(sref->stmt, sref->parent, sref->seq_index);
+  LOG(INFO) << "sref = " << ToString(sref) << ", tgt_stmt =\n" << tgt_stmt;
   Stmt src_stmt = GetRef<Stmt>(sref->stmt);
   const StmtNode* root_stmt = this->root->stmt;
   // Step 1. Create all the nodes needed for the new sref tree.
@@ -394,20 +401,69 @@ void ScheduleNode::Replace(StmtSRef sref, Stmt tgt_stmt, const Map<Block, Block>
   // The maximum number of hops until we don't need to copy
   int num_copy_steps = StepsHighestNonUniqueAncestor(sref, /*func_is_unique=*/this->func.unique());
   for (int i = 0; i <= num_copy_steps && src_sref->stmt != root_stmt; ++i) {
+    LOG(INFO) << "######## i = " << i;
     bool parent_is_uniquely_referenced = (i == num_copy_steps);
+    StmtSRefNode* parent_sref = src_sref->parent;
+    const StmtNode* parent_stmt = parent_sref->stmt;
+    // Figure out parent_stmt => new_parent_stmt
+    Array<Stmt> children{nullptr};
+    Stmt new_parent_stmt{nullptr};
+    if (parent_stmt->IsInstance<BlockNode>()) {
+      const auto* block = static_cast<const BlockNode*>(parent_stmt);
+      ObjectPtr<BlockNode> new_block =
+          ParentMutator::CopyOnWrite(block, parent_is_uniquely_referenced);
+      new_block->body =
+          ParentMutator::MutateBody(this, block->body, src_sref->stmt, tgt_stmt, &children);
+      new_parent_stmt = Block(std::move(new_block));
+    } else if (parent_stmt->IsInstance<LoopNode>()) {
+      const auto* loop = static_cast<const LoopNode*>(parent_stmt);
+      ObjectPtr<LoopNode> new_loop =
+          ParentMutator::CopyOnWrite(loop, parent_is_uniquely_referenced);
+      new_loop->body =
+          ParentMutator::MutateBody(this, loop->body, src_sref->stmt, tgt_stmt, &children);
+      new_parent_stmt = Loop(std::move(new_loop));
+    } else {
+      LOG(FATAL) << "TypeError: Unexpected type: " << parent_stmt->GetTypeKey();
+    }
+
     // Step 2.1. Create a new parent stmt, by mutating the body of `src_sref->parent`.
-    Stmt new_parent_stmt =
-        ParentMutator::Mutate(this, src_sref, tgt_stmt, parent_is_uniquely_referenced);
+    LOG(INFO) << "src_sref = " << ToString(GetRef<StmtSRef>(src_sref))
+              << ", parent_sref = " << ToString(GetRef<StmtSRef>(src_sref->parent))
+              << "\nparent_stmt @ " << parent_stmt << "\n"
+              << GetRef<Stmt>(parent_stmt) << "\nnew_parent_stmt @ " << new_parent_stmt.get()
+              << "\n"
+              << new_parent_stmt;
+    for (int i = 0, n = children.size(); i < n; ++i) {
+      LOG(INFO) << "children[" << i << "], type = " << children[i]->GetTypeKey() << ", content =\n"
+                << children[i];
+    }
+    // Stmt new_parent_stmt =
+    //     ParentMutator::Mutate(this, src_sref, tgt_stmt, parent_is_uniquely_referenced);
     // Step 2.2. Update those sref points from old ancestors to newly created ones
     if (i != 0) {
+      LOG(INFO) << "Substitute Stmt " << src_sref->stmt << " with " << tgt_stmt.get() << "\n"
+                << GetRef<Stmt>(src_sref->stmt) << "\n\n"
+                << tgt_stmt;
       // If `i == 0`, `src_sref` is `sref`, a local temporary object and we should not update it
       UpdateSRef(this, src_sref, tgt_stmt.get());
+    }
+
+    if (children.size() == 1) {
+      const Stmt& stmt = children[0];
+      SetSeqIndex(this, children[0], -1);
+    } else {
+      int i = 0;
+      for (const Stmt& stmt : children) {
+        SetSeqIndex(this, stmt, i);
+        ++i;
+      }
     }
     // Step 2.3. Go to next parent
     tgt_stmt = new_parent_stmt;
     if (parent_is_uniquely_referenced) {
       // If the node can be directly mutated inplace,
       // then there is no need to update its parent and the function
+      LOG(INFO) << "Break";
       break;
     }
     src_sref = src_sref->parent;
@@ -419,14 +475,24 @@ void ScheduleNode::Replace(StmtSRef sref, Stmt tgt_stmt, const Map<Block, Block>
   if (src_sref->stmt == root_stmt) {
     if (sref->stmt == root_stmt) {
       // Replacing the root is easier
+      LOG(INFO) << "Substitute root " << this->root->stmt << " with " << tgt_stmt.get() << "\n"
+                << GetRef<Stmt>(this->root->stmt) << "\n\n"
+                << tgt_stmt;
       this->root = this->stmt2ref[tgt_stmt.get()];
     } else {
       // Replacing a non-root
+      LOG(INFO) << "Substitute root2 " << this->root->stmt << " with " << tgt_stmt.get() << "\n"
+                << GetRef<Stmt>(this->root->stmt) << "\n\n"
+                << tgt_stmt;
       UpdateSRef(this, this->root.get(), tgt_stmt.get());
     }
     // Update the body of the `this->func`
     this->func = UpdatePrimFunc(&this->func, tgt_stmt);
   }
+  LOG(INFO) << "Replace done";
+  LOG(INFO) << "sch:\n" << ReprFunc(this->func);
+  PrintSTree(GetRef<Schedule>(this));
+  this->ValidateSRef();
 }
 
 struct Internal {

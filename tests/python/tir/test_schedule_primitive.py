@@ -87,8 +87,14 @@ def test_split_fuse():
     C = s.get_block("C")
     outer, inner = s.get_axes(B)
     s.split(outer, factor=16)
+    print(tvm.script.asscript(s.func))
+    tvm.tir.schedule._ffi_api_schedule.PrintSTree(s)
+    assert s.validate_sref()
     outer, inner = s.get_axes(C)
     s.split(inner, nparts=10)
+    print(tvm.script.asscript(s.func))
+    tvm.tir.schedule._ffi_api_schedule.PrintSTree(s)
+    assert s.validate_sref()
 
     mod = tvm.script.create_module({"split_element_wise": split_element_wise})
     split_func = mod["split_element_wise"]
@@ -256,7 +262,7 @@ def test_compute_inline():
 def test_compute_inline_multiple():
     func = util.element_wise_multiple_stmt()
     s = tir.create_schedule(func)
-    s.compute_inline(s.get_block('B'))
+    s.compute_inline(s.get_block("B"))
     assert s.validate_sref()
 
 
@@ -674,18 +680,26 @@ def matmul_pragma(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     with tir.block([], "root") as []:
         tir.reads([])
         tir.writes([])
-        for i0 in range(0, 128, annotation = {"pragma_auto_unroll_max_step":16, "pragma_unroll_explicit":False}):
+        for i0 in range(
+            0, 128, annotation={"pragma_auto_unroll_max_step": 16, "pragma_unroll_explicit": False}
+        ):
             for i1 in range(0, 128):
                 for i2 in range(0, 128):
                     with tir.block([128, 128, tir.reduce_axis(0, 128)], "update") as [vi, vj, vk]:
                         tir.bind(vi, i0)
                         tir.bind(vj, i1)
                         tir.bind(vk, i2)
-                        tir.reads([C[vi:(vi + 1), vj:(vj + 1)], A[vi:(vi + 1), vk:(vk + 1)], B[vj:(vj + 1), vk:(vk + 1)]])
-                        tir.writes([C[vi:(vi + 1), vj:(vj + 1)]])
+                        tir.reads(
+                            [
+                                C[vi : (vi + 1), vj : (vj + 1)],
+                                A[vi : (vi + 1), vk : (vk + 1)],
+                                B[vj : (vj + 1), vk : (vk + 1)],
+                            ]
+                        )
+                        tir.writes([C[vi : (vi + 1), vj : (vj + 1)]])
                         with tir.init():
                             C[vi, vj] = 0.0
-                        C[vi, vj] = C[vi, vj] + (A[vi, vk]*B[vj, vk])
+                        C[vi, vj] = C[vi, vj] + (A[vi, vk] * B[vj, vk])
 
 
 def test_pragma():

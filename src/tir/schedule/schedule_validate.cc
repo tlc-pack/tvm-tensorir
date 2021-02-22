@@ -272,9 +272,12 @@ void ScheduleNode::ValidateHierarchy(const PrimFunc& f) {
 class SRefValidator : public StmtVisitor {
  public:
   /*! \brief Constructor */
-  explicit SRefValidator(const ScheduleNode* sch) : sch(sch), ancestors({nullptr}) {}
+  explicit SRefValidator(const ScheduleNode* sch)
+      : sch(sch), ancestors({nullptr}), is_in_init_block(0) {}
+
   // Valida each block
   void VisitStmt_(const BlockNode* block) override {
+    CHECK(!is_in_init_block);
     CHECK(sch->stmt2ref.count(block))
         << "InternalError: A BlockNode should appear in sref map, but it didn't\n"
         << GetRef<Stmt>(block);
@@ -289,11 +292,22 @@ class SRefValidator : public StmtVisitor {
         << (sref->parent ? Optional<Stmt>(GetRef<Stmt>(sref->parent->stmt))
                          : Optional<Stmt>(NullOpt));
     ancestors.push_back(sref.operator->());
-    StmtVisitor::VisitStmt_(block);
+    if (block->init.defined()) {
+      ++is_in_init_block;
+      VisitStmt(block->init.value());
+      --is_in_init_block;
+    }
+    VisitStmt(block->body);
     ancestors.pop_back();
   }
+
   // Validate each loop
   void VisitStmt_(const LoopNode* loop) override {
+    if (is_in_init_block) {
+      CHECK(!sch->stmt2ref.count(loop));
+      StmtVisitor::VisitStmt_(loop);
+      return;
+    }
     CHECK(sch->stmt2ref.count(loop))
         << "InternalError: A LoopNode should appear in sref map, but it didn't\n"
         << GetRef<Stmt>(loop);
@@ -312,17 +326,34 @@ class SRefValidator : public StmtVisitor {
 
   // Validate seq_index
   void VisitStmt_(const SeqStmtNode* seq_stmt) override {
+    if (is_in_init_block) {
+      StmtVisitor::VisitStmt_(seq_stmt);
+      return;
+    }
     for (size_t i = 0; i < seq_stmt->seq.size(); i++) {
       const Stmt& child = seq_stmt->seq[i];
-      const StmtSRef& sref = sch->stmt2ref.at(child.get());
+      StmtSRef sref{nullptr};
+      if (const auto* realize = child.as<BlockRealizeNode>()) {
+        const auto* block = realize->block.get();
+        CHECK(sch->stmt2ref.count(block));
+        sref = sch->stmt2ref.at(block);
+      } else if (child->IsInstance<LoopNode>()) {
+        CHECK(sch->stmt2ref.count(child.get()));
+        sref = sch->stmt2ref.at(child.get());
+      } else {
+        continue;
+      }
       CHECK_EQ(sref->seq_index, i) << "InternalError: A StmtSRef has incorrect seq_index";
     }
+    StmtVisitor::VisitStmt_(seq_stmt);
   }
 
   /*! \brief The schedule it belongs to */
   const ScheduleNode* sch;
   /*! \brief Parent information during the visit */
   std::vector<const StmtSRefNode*> ancestors;
+  /*! \brief If the visitor is currently in the init block */
+  int is_in_init_block;
 };
 
 bool ScheduleNode::ValidateSRef() const {
