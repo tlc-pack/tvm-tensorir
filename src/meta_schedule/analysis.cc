@@ -16,11 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "./analysis.h"  // NOLINT(build/include)
-
-#include <tvm/arith/analyzer.h>
-#include <tvm/tir/stmt_functor.h>
-
 #include <numeric>
 
 #include "../tir/schedule/analysis.h"
@@ -66,6 +61,11 @@ bool IsTrivialBinding(const tir::ScheduleState& self, const tir::StmtSRef& block
     if (bind.as<tir::VarNode>() != loop->loop_var.get()) {
       return false;
     }
+  }
+  // If the block has trivial binding, then the axes must be either spatial axis or reduction axis.
+  for (const tir::StmtSRef& loop_sref : loops) {
+    const tir::IterVarType& type = GetLoopIterType(sch, loop_sref);
+    CHECK(type == tir::kDataPar || type == tir::kCommReduce);
   }
   return true;
 }
@@ -790,50 +790,55 @@ std::pair<int, int> GetCumulativeSpaceAndReductionLength(const tir::Schedule& sc
 bool NeedsRfactor(const SearchTask& task, const tir::Schedule& sch,
                   const tir::StmtSRef& block_sref,
                   const int& max_jobs_per_core, std::atomic<int>* warned_num_cores_missing) {
+  const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   Array<tir::StmtSRef> loops = sch->GetAxes(block_sref);
 
-  // Cond 1. The reduction loops are innermost, and there is no opaque loop.
-  bool appear = false;
-  for (const tir::StmtSRef& loop_sref : loops) {
-    tir::IterVarType type = GetLoopIterType(sch, loop_sref);
-    if (type == tir::kCommReduce) {
-      appear = true;
-    }
-    if ((type == tir::kDataPar && appear) || type == tir::kOpaque) {
-      return false;
-    }
+  // Cond 1. The block has trivial binding.
+  if (!IsTrivialBinding(sch, block_sref)) {
+    return false;
   }
 
-  // Cond 2. The loops are continuous, and the body of the innermost loop is exactly the block.
+  // Cond 2. If there is at least one reduction loop.
+  // Cond 3. The loops are continuous, and the body of the innermost loop is exactly the block.
+  bool has_reduction_loop = false;
   for (int i = 0; i < static_cast<int>(loops.size()); ++i) {
+    // Cond 2.
+    if (GetLoopIterType(sch, loops[i]) == tir::kCommReduce) {
+      has_reduction_loop = true;
+    }
+
+    // Cond 3.
     const auto* loop_i = loops[i]->GetStmt<tir::LoopNode>();
     if (i < static_cast<int>(loops.size()) - 1) {
       const auto* loop_i1 = loops[i + 1]->GetStmt<tir::LoopNode>();
-      if (!loop_i->body.same_as(GetRef<tir::Loop>(loop_i1))) {
+      if (loop_i->body.get() != loop_i1) {
         return false;
       }
     } else {
-      const auto* block = block_sref->GetStmt<tir::BlockNode>();
       const auto* block_realize = loop_i->body.as<tir::BlockRealizeNode>();
       if (!block_realize) {
         return false;
       }
-      if (!block_realize->block.same_as(GetRef<tir::Block>(block))) {
+      if (block_realize->block.get() != block) {
         return false;
       }
     }
   }
+  if (!has_reduction_loop) {
+    return false;
+  }
 
-  // Cond 3. Successfully calculating the cumulative loop length.
+  // Cond 4. Can successfully calculating the cumulative loop length.
   int cum_space_len, cum_reduce_len;
   std::tie(cum_space_len, cum_reduce_len) = GetCumulativeSpaceAndReductionLength(sch, block_sref);
   if (cum_space_len == -1 || cum_reduce_len == -1) {
     return false;
   }
 
-  // Cond 4.
+  // Cond 5.
   if (NeedsMultiLevelTiling(sch, block_sref)) {
-    // Do not use rfactor if we have enough parallelism on spacial loops.
+    // Do not use rfactor if we have enough parallelism on spatial loops.
     if (cum_space_len > cum_reduce_len ||
         cum_space_len > GetTargetNumCores(task->target, warned_num_cores_missing)
                             * max_jobs_per_core) {
@@ -842,7 +847,7 @@ bool NeedsRfactor(const SearchTask& task, const tir::Schedule& sch,
       return true;
     }
   } else if (cum_reduce_len > 1) {
-    // Always try rfactor for reduction ops
+    // Always try rfactor for reduction ops.
     return cum_reduce_len > GetTargetNumCores(task->target, warned_num_cores_missing);
   }
 
