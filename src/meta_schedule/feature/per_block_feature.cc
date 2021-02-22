@@ -326,9 +326,9 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       if (stmt == scope) {
         break;
       }
-      CHECK(stmt->IsInstance<tir::LoopNode>());
+      CHECK(stmt->IsInstance<tir::ForNode>());
       prod_loop_extent *=
-          GetLoopIntExtent(static_cast<const tir::LoopNode*>(stmt)).value_or(1)->value;
+          GetLoopIntExtent(static_cast<const tir::ForNode*>(stmt)).value_or(1)->value;
     }
     // Add the math_ops to the parent
     FeatureSet::MathOps& parent_math_ops = per_block_feature_[scope].math_ops;
@@ -355,7 +355,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   }
 
   void AddLoopFeature(FeatureSet::AnnIter* ann,
-                      const std::vector<const tir::LoopNode*>& loops) const {
+                      const std::vector<const tir::ForNode*>& loops) const {
     if (loops.empty()) {
       ann->num = 0;
       ann->len = 0;
@@ -393,7 +393,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   using BufferInfoMap = ObjMap<tir::BufferNode, BufferInfo>;
 
   BufferInfoMap CalcBufferInfo(const tir::BlockRealizeNode* realize,
-                               const std::vector<const tir::LoopNode*>& loops,
+                               const std::vector<const tir::ForNode*>& loops,
                                std::vector<int64_t>* for_touched_bytes_) {
     // Initialize the data structures used for the features
     int n_loops = loops.size();
@@ -407,13 +407,13 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     // Part 1. Area-related features
     // Step 1.1. we bind all the loop variables to a constant
     for (int i = 0; i < n_loops; ++i) {
-      const tir::LoopNode* loop = loops[i];
+      const tir::ForNode* loop = loops[i];
       analyzer_.Bind(loop->loop_var, loop->min, /*allow_override=*/true);
     }
     // Step 1.2. we gradually bind the loops from inner to outer,
     // calculate the area the loops touch on each buffer
     for (int i = 0; i < n_loops; ++i) {
-      const tir::LoopNode* loop = loops[i];
+      const tir::ForNode* loop = loops[i];
       analyzer_.Bind(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent),
                      /*allow_override=*/true);
       int64_t& touched_bytes = for_touched_bytes[i] = 0;
@@ -504,7 +504,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       }
       // Step 3.2. Enumerate loops from inner to outer, find the first loop with reuse
       for (int i = 0; i < n_loops; ++i) {
-        const tir::LoopNode* loop = loops[i];
+        const tir::ForNode* loop = loops[i];
         // Case 1. Find an invariant loop, i.e. reuse with kLoopMultipleRead
         if (!region_vars.count(loop->loop_var.get())) {
           reuse_type = FeatureSet::BufferAccess::ReuseType::kLoopMultipleRead;
@@ -558,7 +558,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   }
 
   void CalcBufferAccessFeature(const tir::BlockRealizeNode* realize, FeatureSet* feature_,
-                               const std::vector<const tir::LoopNode*>& loops,
+                               const std::vector<const tir::ForNode*>& loops,
                                const BufferInfoMap& buffer_info) const {
     constexpr int64_t kCacheLineBytes = 64;
     std::vector<FeatureSet::BufferAccess>& buffer_features = feature_->buffer_accesses;
@@ -770,7 +770,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   /******** Group 3: Arithmetic intensity related features ********/
 
   void CalcAritheticIntensityFeature(const tir::BlockRealizeNode* realize, FeatureSet* feature,
-                                     const std::vector<const tir::LoopNode*>& loops,
+                                     const std::vector<const tir::ForNode*>& loops,
                                      const std::vector<int64_t>& for_touched_bytes,
                                      const FeatureSet::MathOps& math_ops) const {
     CHECK_EQ(loops.size(), for_touched_bytes.size());
@@ -848,11 +848,11 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       return;
     }
     // Get the ancestor loops from inner to outer, up to the parent scope
-    std::vector<const tir::LoopNode*> loops;
+    std::vector<const tir::ForNode*> loops;
     for (auto iter = dfs_path_.rbegin(); iter != dfs_path_.rend(); ++iter) {
       const tir::StmtNode* stmt = *iter;
-      if (stmt->IsInstance<tir::LoopNode>()) {
-        loops.push_back(static_cast<const tir::LoopNode*>(stmt));
+      if (stmt->IsInstance<tir::ForNode>()) {
+        loops.push_back(static_cast<const tir::ForNode*>(stmt));
       } else {
         break;
       }
@@ -871,46 +871,46 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     CalcOuterScopeFeature(realize, &feature);
   }
 
-  void VisitStmt_(const tir::LoopNode* loop) override {
+  void VisitStmt_(const tir::ForNode* loop) override {
     int64_t extent = GetLoopIntExtent(loop).value_or(1)->value;
     int64_t auto_unroll = -1;
     // Handling annotated loops
-    std::vector<const tir::LoopNode*>* ref_loops = nullptr;
+    std::vector<const tir::ForNode*>* ref_loops = nullptr;
     if (!loop->annotations.empty()) {
-      std::unordered_set<std::string> annotations;
-      for (const tir::Annotation& ann : loop->annotations) {
-        if (ann->attr_key == tir::attr::loop_type) {
-          CHECK_EQ(ann->attr_key, tir::attr::loop_type)
-              << "ValueError: Expects loop annotation to be 'loop_type', but gets: " << ann;
-          const auto* value = ann->value.as<tir::StringImmNode>();
-          CHECK(value) << "ValueError: Expevt loop annotation to be a string, but gets: " << ann;
-          annotations.insert(value->value);
-        } else if (ann->attr_key == "pragma_auto_unroll_max_step") {
-          auto_unroll = Downcast<Integer>(ann->value)->value;
+      for (const auto& ann : loop->annotations) {
+        if (ann.first == "pragma_auto_unroll_max_step") {
+          auto_unroll = Downcast<Integer>(ann.second)->value;
         }
       }
-      if (annotations.count("parallel")) {
-        ref_loops = &parallel_;
-      } else if (annotations.count("vectorize")) {
-        ref_loops = &vectorize_;
-      } else if (annotations.count("unroll")) {
-        ref_loops = &unroll_;
-      } else if (annotations.count("blockIdx.x")) {
+    }
+
+
+  if (loop->kind == tir::ForKind::kParallel) {
+      ref_loops = &parallel_;
+    } else if (loop->kind == tir::ForKind::kVectorized) {
+      ref_loops = &vectorize_;
+    } else if (loop->kind == tir::ForKind::kUnrolled) {
+      ref_loops = &unroll_;
+    } else if (loop->kind == tir::ForKind::kThreadBinding) {
+      CHECK(loop->thread_binding.defined());
+      std::string thread_tag = loop->thread_binding.value()->thread_tag;
+      if (thread_tag == "blockIdx.x") {
         ref_loops = &blockIdx_x_;
-      } else if (annotations.count("blockIdx.y")) {
+      } else if (thread_tag == "blockIdx.y") {
         ref_loops = &blockIdx_y_;
-      } else if (annotations.count("blockIdx.z")) {
+      } else if (thread_tag == "blockIdx.z") {
         ref_loops = &blockIdx_z_;
-      } else if (annotations.count("threadIdx.x")) {
+      } else if (thread_tag == "threadIdx.x") {
         ref_loops = &threadIdx_x_;
-      } else if (annotations.count("threadIdx.y")) {
+      } else if (thread_tag == "threadIdx.y") {
         ref_loops = &threadIdx_y_;
-      } else if (annotations.count("threadIdx.z")) {
+      } else if (thread_tag == "threadIdx.z") {
         ref_loops = &threadIdx_z_;
-      } else if (annotations.count("vthread")) {
+      } else if (thread_tag == "vthread") {
         ref_loops = &vthread_;
       }
     }
+
     if (ref_loops != nullptr) {
       ref_loops->push_back(loop);
     }
@@ -944,15 +944,15 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   }
 
  private:
-  static int64_t ProdLoopExtent(const std::vector<const tir::LoopNode*>& loops) {
+  static int64_t ProdLoopExtent(const std::vector<const tir::ForNode*>& loops) {
     int64_t prod = 1;
-    for (const tir::LoopNode* loop : loops) {
+    for (const tir::ForNode* loop : loops) {
       prod *= GetLoopIntExtent(loop).value_or(1)->value;
     }
     return prod;
   }
 
-  static int64_t FirstLoopExtent(const std::vector<const tir::LoopNode*>& loops) {
+  static int64_t FirstLoopExtent(const std::vector<const tir::ForNode*>& loops) {
     return loops.empty() ? 1 : GetLoopIntExtent(loops[0]).value_or(1)->value;
   }
 
@@ -963,17 +963,17 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   /*! \brief The loop / block-realize visited up-down in the DFS path */
   std::vector<const tir::StmtNode*> dfs_path_;
   // The stacks to store different kinds of for-loops
-  std::vector<const tir::LoopNode*> loops_;
-  std::vector<const tir::LoopNode*> parallel_;
-  std::vector<const tir::LoopNode*> vectorize_;
-  std::vector<const tir::LoopNode*> unroll_;
-  std::vector<const tir::LoopNode*> blockIdx_x_;
-  std::vector<const tir::LoopNode*> blockIdx_y_;
-  std::vector<const tir::LoopNode*> blockIdx_z_;
-  std::vector<const tir::LoopNode*> threadIdx_x_;
-  std::vector<const tir::LoopNode*> threadIdx_y_;
-  std::vector<const tir::LoopNode*> threadIdx_z_;
-  std::vector<const tir::LoopNode*> vthread_;
+  std::vector<const tir::ForNode*> loops_;
+  std::vector<const tir::ForNode*> parallel_;
+  std::vector<const tir::ForNode*> vectorize_;
+  std::vector<const tir::ForNode*> unroll_;
+  std::vector<const tir::ForNode*> blockIdx_x_;
+  std::vector<const tir::ForNode*> blockIdx_y_;
+  std::vector<const tir::ForNode*> blockIdx_z_;
+  std::vector<const tir::ForNode*> threadIdx_x_;
+  std::vector<const tir::ForNode*> threadIdx_y_;
+  std::vector<const tir::ForNode*> threadIdx_z_;
+  std::vector<const tir::ForNode*> vthread_;
   std::vector<int64_t> auto_unroll_;
   /*! \brief The persistent analyzer */
   mutable arith::Analyzer analyzer_;
@@ -984,7 +984,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
    * The information is preserved across different blocks and is used for detecting serial buffer
    * reuse
    */
-  ObjPairMap<tir::LoopNode, tir::BufferNode, std::vector<int64_t>> buffer_touched_under_loop_;
+  ObjPairMap<tir::ForNode, tir::BufferNode, std::vector<int64_t>> buffer_touched_under_loop_;
   /*! \brief The output: features for each BlockRealizeNode */
   ObjMap<tir::BlockRealizeNode, FeatureSet> per_block_feature_;
   /*! \brief The pre-order visit order of all the BlockRealizeNodes */

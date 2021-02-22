@@ -115,7 +115,7 @@ class DepEdge : public ObjectRef {
  *       necessary element (but not all the element) before A under the Lowest
  *       Common Ancestor (LCA) Loop of the A and B.
  */
-class ScopeNode : public Object {
+class BlockScopeNode : public Object {
  public:
   /*! \brief The forward dependency edges of the block */
   std::unordered_map<StmtSRef, Array<DepEdge>, ObjectPtrHash, ObjectPtrEqual> forward_edges;
@@ -211,15 +211,15 @@ class ScopeNode : public Object {
   void ReplaceChildBlock(const StmtSRef& old_sref, const StmtSRef& new_sref);
 
   static constexpr const char* _type_key = "Scope";
-  TVM_DECLARE_FINAL_OBJECT_INFO(ScopeNode, Object);
+  TVM_DECLARE_FINAL_OBJECT_INFO(BlockScopeNode, Object);
 };
 
-class Scope : public ObjectRef {
+class BlockScope : public ObjectRef {
  public:
   /*! \brief Constructor */
-  Scope();
+  BlockScope();
 
-  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(Scope, ObjectRef, ScopeNode);
+  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(BlockScope, ObjectRef, BlockScopeNode);
 };
 
 }  // namespace tir

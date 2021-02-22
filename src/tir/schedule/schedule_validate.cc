@@ -46,7 +46,7 @@ class LoopValidator : public StmtVisitor {
     auto loops = schedule_node_->GetAxes(stmt2ref_->at(realize->block.get()));
     std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> loop_vars;
     for (const auto& loop_sref : loops) {
-      const auto* loop = loop_sref->GetStmt<LoopNode>();
+      const auto* loop = loop_sref->GetStmt<ForNode>();
       loop_vars.emplace(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
     }
     std::vector<PrimExpr> bindings{realize->binding_values.begin(), realize->binding_values.end()};
@@ -159,13 +159,10 @@ bool ScheduleNode::ValidateRegionCover(const StmtSRef& consumer_block_sref) cons
 
 class GPUValidator : public StmtVisitor {
  public:
-  void VisitStmt_(const LoopNode* loop) final {
-    std::string thread_tag;
-    for (const auto& annotation : loop->annotations) {
-      if (annotation->attr_key == attr::loop_type) {
-        thread_tag = Downcast<StringImm>(annotation->value)->value;
-      }
-    }
+  void VisitStmt_(const ForNode* loop) final {
+    std::string thread_tag = "";
+    if (loop->kind == ForKind::kThreadBinding && loop->thread_binding.defined())
+      thread_tag = loop->thread_binding.value()->thread_tag;
 
     bool new_kernel = false;
     if ((IsBlockIdx(thread_tag) || IsThreadIdx(thread_tag)) && thread_tag != "vthread") {
@@ -293,7 +290,7 @@ class SRefValidator : public StmtVisitor {
     ancestors.pop_back();
   }
   // Validate each loop
-  void VisitStmt_(const LoopNode* loop) override {
+  void VisitStmt_(const ForNode* loop) override {
     CHECK(sch->stmt2ref.count(loop))
         << "InternalError: A LoopNode should appear in sref map, but it didn't\n"
         << GetRef<Stmt>(loop);

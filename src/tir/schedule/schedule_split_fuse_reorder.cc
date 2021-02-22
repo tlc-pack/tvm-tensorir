@@ -51,7 +51,7 @@ class BlockRealizeRewriter : public StmtExprMutator {
     loop_map_.insert(loop_map.begin(), loop_map.end());
   }
 
-  Stmt VisitStmt_(const LoopNode* op) final {
+  Stmt VisitStmt_(const ForNode* op) final {
     loop_map_[op->loop_var] = Range::FromMinExtent(op->min, op->extent);
     Stmt res = StmtMutator::VisitStmt_(op);
     loop_map_.erase(op->loop_var);
@@ -77,7 +77,7 @@ class BlockRealizeRewriter : public StmtExprMutator {
 Stmt RewriteBindings(const Stmt& stmt, const Array<StmtSRef>& loops) {
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> loop_map;
   for (const auto& sref : loops) {
-    const auto* loop = sref->GetStmt<LoopNode>();
+    const auto* loop = sref->GetStmt<ForNode>();
     loop_map[loop->loop_var] = Range::FromMinExtent(loop->min, loop->extent);
   }
   BlockRealizeRewriter rewriter(loop_map);
@@ -94,7 +94,7 @@ std::vector<const StmtSRefNode*> GetLoopsPostOrder(const StmtSRef& root_sref,
       return false;
     }
     // Collects every LoopNode
-    if (const auto* loop = node.as<LoopNode>()) {
+    if (const auto* loop = node.as<ForNode>()) {
       loops.push_back(sch->stmt2ref.at(loop).operator->());
     }
     return true;
@@ -110,7 +110,7 @@ Array<StmtSRef> ScheduleNode::split(const StmtSRef& loop_sref, const PrimExpr& n
   // - The total repeat number has not changed for each direct child block with updating predicate.
   // - The execution order has not changed. (The block executes with the same args and the same
   // order with before.
-  const auto* loop = loop_sref->GetStmt<LoopNode>();
+  const auto* loop = loop_sref->GetStmt<ForNode>();
   CHECK(loop != nullptr) << "TypeError: 'split' expects a loop, but get type: "
                          << loop_sref->stmt->GetTypeKey();
   // Currently, can not split Loops with annotations
@@ -143,9 +143,9 @@ Array<StmtSRef> ScheduleNode::split(const StmtSRef& loop_sref, const PrimExpr& n
     new_loop_body = PredicateUpdater(predicate)(new_loop_body);
   }
   // Step 3. Generate two nested loops to replace the original loop
-  Loop inner_loop(inner_var, inner_min, inner_extent, loop->annotations, new_loop_body);
-  Loop outer_loop(outer_var, outer_min, outer_extent, loop->annotations, inner_loop);
-  outer_loop = Downcast<Loop>(RewriteBindings(outer_loop, GetAxes(loop_sref)));
+  For inner_loop(inner_var, inner_min, inner_extent, loop->kind, new_loop_body);
+  For outer_loop(outer_var, outer_min, outer_extent, loop->kind, inner_loop);
+  outer_loop = Downcast<For>(RewriteBindings(outer_loop, GetAxes(loop_sref)));
   this->Replace(loop_sref, outer_loop, {});
   return {stmt2ref.at(outer_loop.get()), stmt2ref.at(outer_loop->body.get())};
 }
@@ -159,8 +159,8 @@ StmtSRef ScheduleNode::fuse(const StmtSRef& outer_sref, const StmtSRef& inner_sr
   // Can only fuse neighbor loop without any extra branches.
   // Future enhancement: this condition can be eliminated by lifting all siblings of inner
   // as the children of the father of outer
-  const auto* outer = outer_sref->GetStmt<LoopNode>();
-  const auto* inner = inner_sref->GetStmt<LoopNode>();
+  const auto* outer = outer_sref->GetStmt<ForNode>();
+  const auto* inner = inner_sref->GetStmt<ForNode>();
   CHECK(outer != nullptr) << "TypeError: 'fuse' expects 'outer' as a loop, but get type: "
                           << outer_sref->stmt->GetTypeKey();
   CHECK(inner != nullptr) << "TypeError: 'fuse' expects 'inner' as a loop, but get type: "
@@ -198,8 +198,8 @@ StmtSRef ScheduleNode::fuse(const StmtSRef& outer_sref, const StmtSRef& inner_sr
   // Step 3. Generate a loop to replace the original two nested loops
   PrimExpr fused_min = 0;
   PrimExpr fused_extent = analyzer.Simplify(outer->extent * inner->extent);
-  Loop fused_loop = Loop(fused_var, fused_min, fused_extent, outer->annotations, new_loop_body);
-  fused_loop = Downcast<Loop>(RewriteBindings(fused_loop, GetAxes(outer_sref)));
+  For fused_loop = For(fused_var, fused_min, fused_extent, outer->kind, new_loop_body);
+  fused_loop = Downcast<For>(RewriteBindings(fused_loop, GetAxes(outer_sref)));
   this->Replace(outer_sref, fused_loop, {});
   return stmt2ref.at(fused_loop.get());
 }
@@ -217,7 +217,7 @@ void ScheduleNode::reorder(const Array<StmtSRef>& order) {
   std::unordered_set<const StmtSRefNode*> loops;
   for (const StmtSRef& loop_sref : order) {
     // type check
-    const auto* loop = loop_sref->GetStmt<LoopNode>();
+    const auto* loop = loop_sref->GetStmt<ForNode>();
     CHECK(loop) << "TypeError: 'reorder' expects an array of loops, but get type: "
                 << loop_sref->stmt->GetTypeKey();
     // uniqueness check
@@ -284,12 +284,12 @@ void ScheduleNode::reorder(const Array<StmtSRef>& order) {
       [&bottom, &loops, &successor, &order, &f_reorder](const StmtSRefNode* loop,
                                                         int index) -> Stmt {
     // The order list maybe incomplete, so we may copy the old_loop rather than order
-    const LoopNode* copy =
-        loops.count(loop) ? order[index++]->GetStmt<LoopNode>() : loop->GetStmt<LoopNode>();
-    ObjectPtr<LoopNode> n = make_object<LoopNode>(*copy);
+    const ForNode* copy =
+        loops.count(loop) ? order[index++]->GetStmt<ForNode>() : loop->GetStmt<ForNode>();
+    ObjectPtr<ForNode> n = make_object<ForNode>(*copy);
     if (loop == bottom) {
       // bottom loop
-      n->body = loop->GetStmt<LoopNode>()->body;
+      n->body = loop->GetStmt<ForNode>()->body;
     } else {
       // reorder recursively
       n->body = f_reorder(successor.at(loop), index);
@@ -304,11 +304,11 @@ struct Internal {
     return self->fuse(outer, inner);
   }
   static Array<StmtSRef> SplitByFactor(Schedule self, StmtSRef loop_sref, PrimExpr factor) {
-    const auto* loop = loop_sref->GetStmt<LoopNode>();
+    const auto* loop = loop_sref->GetStmt<ForNode>();
     return self->split(loop_sref, floordiv(loop->extent + factor - 1, factor), factor);
   }
   static Array<StmtSRef> SplitByNParts(Schedule self, StmtSRef loop_sref, PrimExpr nparts) {
-    const auto* loop = loop_sref->GetStmt<LoopNode>();
+    const auto* loop = loop_sref->GetStmt<ForNode>();
     return self->split(loop_sref, nparts, floordiv(loop->extent + nparts - 1, nparts));
   }
   static void Reorder(Schedule self, Array<StmtSRef> order) { self->reorder(order); }

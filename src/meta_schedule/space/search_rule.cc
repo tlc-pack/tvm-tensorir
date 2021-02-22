@@ -631,7 +631,7 @@ class RuleParallelizeVectorizeUnroll {
     tir::StmtSRefNode* child_sref = block_sref.operator->();
     for (tir::StmtSRefNode* parent_sref = child_sref->parent;;
          child_sref = parent_sref, parent_sref = child_sref->parent) {
-      const auto* parent_loop = parent_sref->GetStmt<tir::LoopNode>();
+      const auto* parent_loop = parent_sref->GetStmt<tir::ForNode>();
       if (parent_loop == nullptr) {
         return true;
       }
@@ -720,8 +720,8 @@ class RuleMarkTensorize {
     for (const auto& kv : info->loop_map) {
       // Extract mapping (block_loop => desc_loop)
       const tir::StmtSRef& block_loop_sref = kv.first;
-      const tir::LoopNode* block_loop = block_loop_sref->GetStmt<tir::LoopNode>();
-      const tir::LoopNode* desc_loop = kv.second.get();
+      const tir::ForNode* block_loop = block_loop_sref->GetStmt<tir::ForNode>();
+      const tir::ForNode* desc_loop = kv.second.get();
       CHECK(block_loop != nullptr && desc_loop != nullptr);
       // Extract the loop extent
       PrimExpr block_extent = analyzer.Simplify(block_loop->extent);
@@ -740,7 +740,7 @@ class RuleMarkTensorize {
       CHECK_EQ(split.size(), 2);
       inner_loops.insert(sch->Eval(split[1]).operator->());
       // The inner split will be reordered to the loop domain that is tensorized
-      int desc_loop_index = info->desc_loop_indexer.at(GetRef<tir::Loop>(desc_loop));
+      int desc_loop_index = info->desc_loop_indexer.at(GetRef<tir::For>(desc_loop));
       reorder_suffix[desc_loop_index] = split[1];
     }
     // Reorder the loops
