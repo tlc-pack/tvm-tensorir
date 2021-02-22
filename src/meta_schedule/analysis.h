@@ -143,9 +143,9 @@ TVM_DLL bool IsStrictlyInlineable(const tir::Schedule& sch, const tir::StmtSRef&
 class TensorizeInfoNode : public Object {
  public:
   /*! \brief Maps block loops to desc loops */
-  Map<tir::StmtSRef, tir::Loop> loop_map;
+  Map<tir::StmtSRef, tir::For> loop_map;
   /*! \brief Maps loops in desc to its index, outer to inner */
-  Map<tir::Loop, Integer> desc_loop_indexer;
+  Map<tir::For, Integer> desc_loop_indexer;
 
   void VisitAttrs(tvm::AttrVisitor* v) {
     v->Visit("loop_map", &loop_map);

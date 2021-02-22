@@ -43,7 +43,7 @@ class ScheduleNode : public Object {
    */
   std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
   /*! \brief The block scopes of each block */
-  std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual> scopes;
+  std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual> scopes;
   /*! \brief The reducer list for reduction pattern matching */
   Array<CommReducer> reducers;
 
@@ -111,7 +111,7 @@ class ScheduleNode : public Object {
    * \param sref The queried node
    * \return The scope of the parent block
    */
-  Scope GetParentScope(const StmtSRef& sref) const;
+  BlockScope GetParentScope(const StmtSRef& sref) const;
 
   /*!
    * \brief Fuse two consecutive loops of one computation.
@@ -281,9 +281,11 @@ class ScheduleNode : public Object {
    * \brief Help function for checking and mutating loops to do parallel computation
    *        For now it is only used for vectorize, bind and parallel
    * \param loop_sref the loop to be annotated
-   * \param annotation the annotation
+   * \param for_kind the for loop iteration type
+   * \param thread_binding the optional thread binding
    */
-  void ParallelCompute(const StmtSRef& loop_sref, const Annotation& annotation);
+  void ParallelCompute(const StmtSRef& loop_sref, const ForKind& for_kind,
+                       const Optional<IterVar>& thread_binding = NullOpt);
 
   /*!
    * \brief Validate Tir, now the ValidateLoops pass contains the following checks
@@ -324,7 +326,7 @@ class Schedule : public ObjectRef {
    */
   explicit Schedule(PrimFunc func, StmtSRef root,
                     std::unordered_map<const StmtNode*, StmtSRef> stmt2ref,
-                    std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual> scopes);
+                    std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual> scopes);
 
   TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(Schedule, ObjectRef, ScheduleNode);
 };

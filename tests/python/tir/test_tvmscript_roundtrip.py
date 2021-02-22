@@ -526,11 +526,11 @@ def test_matmul_original():
     tvm.ir.assert_structural_equal(func, rt_func)
 
     assert isinstance(rt_func.body.block, tir.stmt.Block)
-    assert isinstance(rt_func.body.block.body, tir.stmt.Loop)
-    assert isinstance(rt_func.body.block.body.body, tir.stmt.Loop)
+    assert isinstance(rt_func.body.block.body, tir.stmt.For)
+    assert isinstance(rt_func.body.block.body.body, tir.stmt.For)
     assert isinstance(rt_func.body.block.body.body.body, tir.stmt.SeqStmt)
     assert isinstance(rt_func.body.block.body.body.body[0].block, tir.stmt.Block)
-    assert isinstance(rt_func.body.block.body.body.body[1], tir.stmt.Loop)
+    assert isinstance(rt_func.body.block.body.body.body[1], tir.stmt.For)
     assert isinstance(rt_func.body.block.body.body.body[1].body.block, tir.stmt.Block)
 
 
@@ -541,12 +541,12 @@ def test_element_wise():
 
     assert isinstance(rt_func.body.block, tir.stmt.Block)
     assert isinstance(rt_func.body.block.body, tir.stmt.SeqStmt)
-    assert isinstance(rt_func.body.block.body[0], tir.stmt.Loop)
-    assert isinstance(rt_func.body.block.body[0].body, tir.stmt.Loop)
+    assert isinstance(rt_func.body.block.body[0], tir.stmt.For)
+    assert isinstance(rt_func.body.block.body[0].body, tir.stmt.For)
     assert isinstance(rt_func.body.block.body[0].body.body.block, tir.stmt.Block)
 
-    assert isinstance(rt_func.body.block.body[1], tir.stmt.Loop)
-    assert isinstance(rt_func.body.block.body[1].body, tir.stmt.Loop)
+    assert isinstance(rt_func.body.block.body[1], tir.stmt.For)
+    assert isinstance(rt_func.body.block.body[1].body, tir.stmt.For)
     assert isinstance(rt_func.body.block.body[1].body.body.block, tir.stmt.Block)
 
 
@@ -556,9 +556,9 @@ def test_predicate():
     tvm.ir.assert_structural_equal(func, rt_func)
 
     assert isinstance(rt_func.body.block, tir.stmt.Block)
-    assert isinstance(rt_func.body.block.body, tir.stmt.Loop)
-    assert isinstance(rt_func.body.block.body.body, tir.stmt.Loop)
-    assert isinstance(rt_func.body.block.body.body.body, tir.stmt.Loop)
+    assert isinstance(rt_func.body.block.body, tir.stmt.For)
+    assert isinstance(rt_func.body.block.body.body, tir.stmt.For)
+    assert isinstance(rt_func.body.block.body.body.body, tir.stmt.For)
     assert isinstance(rt_func.body.block.body.body.body.body.block, tir.stmt.Block)
 
 

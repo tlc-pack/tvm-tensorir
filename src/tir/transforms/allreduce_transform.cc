@@ -67,7 +67,6 @@ class AllReduceTransformer : public StmtExprMutator {
   TVM_ALLREDUCE_VISIT_SIMPLE_BODY(BufferRealizeNode);
   TVM_ALLREDUCE_VISIT_SIMPLE_BODY(AssertStmtNode);
   TVM_ALLREDUCE_VISIT_SIMPLE_BODY(ProducerRealizeNode);
-  TVM_ALLREDUCE_VISIT_SIMPLE_BODY(LoopNode);
 
 #undef TVM_ALLREDUCE_VISIT_SIMPLE_BODY
 
@@ -154,14 +153,14 @@ class AllReduceTransformer : public StmtExprMutator {
 
       ObjectPtr<BlockNode> n = CopyOnWrite(res);
       std::vector<Buffer> allocations;
-      for (const Buffer& allocation : res->allocations) {
+      for (const Buffer& allocation : res->alloc_buffers) {
         allocations.emplace_back(allocation);
       }
       const std::vector<Buffer>& new_allos = new_allocations_[GetRef<Block>(op)];
       for (const Buffer& allocation : new_allos) {
         allocations.emplace_back(allocation);
       }
-      n->allocations = allocations;
+      n->alloc_buffers = allocations;
 
       return Stmt(n);
     } else if (status == kMutatingBlock_nor_red) {
@@ -261,7 +260,7 @@ class AllReduceTransformer : public StmtExprMutator {
     size_t num_bound_rela = 0;
     size_t num_tot_rela = 0;
     for (const Stmt& stmt : stmt_stack_) {
-      const auto* loop = stmt.as<LoopNode>();
+      const auto* loop = stmt.as<ForNode>();
       if (loop == nullptr) {
         continue;
       }
@@ -275,15 +274,12 @@ class AllReduceTransformer : public StmtExprMutator {
 
       appear = true;
       num_tot_rela++;
-      for (const Annotation& annotation : loop->annotations) {
-        if (annotation->attr_key == attr::loop_type) {
-          std::string thread_tag = Downcast<StringImm>(annotation->value)->value;
-          if (thread_tag.substr(0, 9) == "threadIdx") {
-            CHECK(thread_tag == "threadIdx.x" || thread_tag == "threadIdx.y"
-                  || thread_tag == "threadIdx.z");
-            num_bound_rela++;
-          }
-        }
+      std::string thread_tag =
+          loop->thread_binding.defined() ? loop->thread_binding.value()->thread_tag : "";
+      if (thread_tag.substr(0, 9) == "threadIdx") {
+        CHECK(thread_tag == "threadIdx.x" || thread_tag == "threadIdx.y"
+              || thread_tag == "threadIdx.z");
+        num_bound_rela++;
       }
     }
     CHECK_LE(num_bound_rela, num_tot_rela);
@@ -330,7 +326,7 @@ class AllReduceTransformer : public StmtExprMutator {
     size_t par_idx;
     CHECK_GE(stmt_stack_.size(), 1);
     for (par_idx = 0; par_idx + 1 < stmt_stack_.size(); ++par_idx) {
-      const auto* loop = stmt_stack_[par_idx + 1].as<LoopNode>();
+      const auto* loop = stmt_stack_[par_idx + 1].as<ForNode>();
       if (loop == nullptr) {
         continue;
       }
@@ -340,7 +336,7 @@ class AllReduceTransformer : public StmtExprMutator {
     }
     CHECK_LT(par_idx + 1, stmt_stack_.size());
     const Stmt& par_stmt = stmt_stack_[par_idx];
-    Loop red_loop = GetRef<Loop>(stmt_stack_[par_idx + 1].as<LoopNode>());
+    auto red_loop = Downcast<For>(stmt_stack_[par_idx + 1]);
     const auto* top_block = stmt_stack_[0].as<BlockNode>();
     CHECK(top_block != nullptr);
 
@@ -386,31 +382,28 @@ class AllReduceTransformer : public StmtExprMutator {
       CHECK(reduce_temp.defined());
       Array<BufferRegion> writes = {BufferRegion(reduce_temp.value(), {Range(0, 1)})};
 
-      std::vector<Loop>& loops = loops_to_bind_[par_stmt][red_loop];
+      std::vector<For>& loops = loops_to_bind_[par_stmt][red_loop];
       std::vector<PrimExpr> reduce_args;
       reduce_args.emplace_back(make_const(DataType::UInt(32), static_cast<uint32_t>(1)));
       reduce_args.emplace_back(BufferLoad(normal_reduce.value(), {0}));
       reduce_args.emplace_back(const_true());
       reduce_args.emplace_back(reduce_temp.value()->data);
       for (size_t i = par_idx + 1; i < stmt_stack_.size(); ++i) {
-        const auto* loop = stmt_stack_[i].as<LoopNode>();
+        const auto* loop = stmt_stack_[i].as<ForNode>();
         CHECK(loop != nullptr);
-        for (const Annotation& annotation : loop->annotations) {
-          if (annotation->attr_key == attr::loop_type) {
-            std::string thread_tag = Downcast<StringImm>(annotation->value)->value;
-            if (thread_tag.substr(0, 9) == "threadIdx") {
-              reduce_args.emplace_back(loop->loop_var);
-              loops.emplace_back(GetRef<Loop>(loop));
-              already_bound_loop_vars_.insert(loop->loop_var);
-            }
-          }
+        std::string thread_tag =
+            loop->thread_binding.defined() ? loop->thread_binding.value()->thread_tag : "";
+        if (thread_tag.substr(0, 9) == "threadIdx") {
+          reduce_args.emplace_back(loop->loop_var);
+          loops.emplace_back(GetRef<For>(loop));
+          already_bound_loop_vars_.insert(loop->loop_var);
         }
       }
       PrimExpr call = Call(DataType::Handle(), tir::builtin::tvm_thread_allreduce(), reduce_args);
       Stmt body0 = Evaluate(call);
       body0 = AttrStmt(GetRef<CommReducer>(reducer), tir::attr::reduce_scope,
                        make_zero(DataType::Handle()), body0);
-      body0 = Block({}, reads, writes, body0, {}, {}, red_tmp_name, "", NullOpt);
+      body0 = Block({}, reads, writes, {}, {}, "", red_tmp_name, body0, NullOpt);
       body0 = BlockRealize({}, const_true(), GetRef<Block>(body0.as<BlockNode>()));
 
       // Step c. Create block/blockRealize: reduce_temp -> the original write buffer.
@@ -442,21 +435,18 @@ class AllReduceTransformer : public StmtExprMutator {
       // Add store predicate.
       PrimExpr predicate = op->predicate;
       for (size_t i = par_idx + 1; i < stmt_stack_.size(); ++i) {
-        const auto* loop = stmt_stack_[i].as<LoopNode>();
+        const auto* loop = stmt_stack_[i].as<ForNode>();
         CHECK(loop != nullptr);
-        for (const Annotation& annotation : loop->annotations) {
-          if (annotation->attr_key == attr::loop_type) {
-            std::string thread_tag = Downcast<StringImm>(annotation->value)->value;
-            if (thread_tag.substr(0, 9) == "threadIdx") {
-              predicate = And(predicate, EQ(loop->loop_var, loop->min));
-            }
-          }
+        std::string thread_tag =
+            loop->thread_binding.defined() ? loop->thread_binding.value()->thread_tag : "";
+        if (thread_tag.substr(0, 9) == "threadIdx") {
+          predicate = And(predicate, EQ(loop->loop_var, loop->min));
         }
       }
 
       Stmt body1 = BufferStore(write_buffer, BufferLoad(reduce_temp.value(), {0}),
                                update_body->indices);
-      body1 = Block(iter_vars, reads, writes, body1, {}, {}, block_name, exec_scope, NullOpt);
+      body1 = Block(iter_vars, reads, writes, {}, {}, exec_scope, block_name, body1, NullOpt);
       body1 = BlockRealize(binding_values, predicate,
                            GetRef<Block>(body1.as<BlockNode>()));
 
@@ -469,7 +459,7 @@ class AllReduceTransformer : public StmtExprMutator {
     } else {
       CHECK(reduce_temp.defined());
       // Step a. Mutate op and block_op to become the original read buffer -> reduce_temp.
-      std::vector<Loop>& loops = loops_to_bind_[par_stmt][red_loop];
+      std::vector<For>& loops = loops_to_bind_[par_stmt][red_loop];
       std::vector<PrimExpr> reduce_args;
       std::unordered_map<const VarNode*, PrimExpr> loop_var_map_;
       reduce_args.emplace_back(make_const(DataType::UInt(32), static_cast<uint32_t>(1)));
@@ -477,10 +467,10 @@ class AllReduceTransformer : public StmtExprMutator {
       reduce_args.emplace_back(const_true());
       reduce_args.emplace_back(reduce_temp.value()->data);
       for (size_t i = par_idx + 1; i < stmt_stack_.size(); ++i) {
-        const auto* loop = stmt_stack_[i].as<LoopNode>();
+        const auto* loop = stmt_stack_[i].as<ForNode>();
         CHECK(loop != nullptr);
         reduce_args.emplace_back(loop->loop_var);
-        loops.emplace_back(GetRef<Loop>(loop));
+        loops.emplace_back(GetRef<For>(loop));
         already_bound_loop_vars_.insert(loop->loop_var);
       }
       PrimExpr call = Call(DataType::Handle(), tir::builtin::tvm_thread_allreduce(), reduce_args);
@@ -526,14 +516,14 @@ class AllReduceTransformer : public StmtExprMutator {
       // Add store predicate.
       PrimExpr predicate = op->predicate;
       for (size_t i = par_idx + 1; i < stmt_stack_.size(); ++i) {
-        const auto* loop = stmt_stack_[i].as<LoopNode>();
+        const auto* loop = stmt_stack_[i].as<ForNode>();
         CHECK(loop != nullptr);
         predicate = And(predicate, EQ(loop->loop_var, loop->min));
       }
 
       Stmt body = BufferStore(write_buffer, BufferLoad(reduce_temp.value(), {0}),
                               update_body->indices);
-      body = Block(iter_vars, reads, writes, body, {}, {}, block_name, "", NullOpt);
+      body = Block(iter_vars, reads, writes, {}, {}, "", block_name, body, NullOpt);
       body = BlockRealize(binding_values, predicate,
                           GetRef<Block>(body.as<BlockNode>()));
 
@@ -593,13 +583,13 @@ class AllReduceTransformer : public StmtExprMutator {
   /*! \brief The map/set to save the statements to be inserted. */
   std::unordered_map<Block,
   std::vector<Buffer>, ObjectPtrHash, ObjectPtrEqual> new_allocations_;
-  std::unordered_map<Stmt, std::unordered_map<Loop, std::vector<BufferStore>,
+  std::unordered_map<Stmt, std::unordered_map<For, std::vector<BufferStore>,
   ObjectPtrHash, ObjectPtrEqual>, ObjectPtrHash, ObjectPtrEqual> inits_to_add_;
-  std::unordered_map<Stmt, std::unordered_map<Loop, std::vector<Stmt>,
+  std::unordered_map<Stmt, std::unordered_map<For, std::vector<Stmt>,
   ObjectPtrHash, ObjectPtrEqual>, ObjectPtrHash, ObjectPtrEqual> stmts_to_append_;
-  std::unordered_map<Stmt, std::unordered_map<Loop, std::vector<Loop>,
+  std::unordered_map<Stmt, std::unordered_map<For, std::vector<For>,
   ObjectPtrHash, ObjectPtrEqual>, ObjectPtrHash, ObjectPtrEqual> loops_to_bind_;
-  std::unordered_map<Stmt, std::unordered_map<Loop, std::vector<Buffer>,
+  std::unordered_map<Stmt, std::unordered_map<For, std::vector<Buffer>,
   ObjectPtrHash, ObjectPtrEqual>, ObjectPtrHash, ObjectPtrEqual> bufs_to_allo_;
 
   static Buffer AddBufferAllocation(const std::string& name,
@@ -616,11 +606,11 @@ class AllReduceTransformer : public StmtExprMutator {
 
   void AddStatements(const Stmt& op_stmt, const Stmt& loop_stmt,
                      const Stmt& stmt_ori, Stmt& stmt) {
-    const auto* loop = loop_stmt.as<LoopNode>();
+    const auto* loop = loop_stmt.as<ForNode>();
     if (loop != nullptr) {
-      Loop loop_stmt_ = Downcast<Loop>(loop_stmt);
+      For loop_stmt_ = Downcast<For>(loop_stmt);
       const std::vector<Stmt>& new_stmts_ = stmts_to_append_[op_stmt][loop_stmt_];
-      const std::vector<Loop>& loops = loops_to_bind_[op_stmt][loop_stmt_];
+      const std::vector<For>& loops = loops_to_bind_[op_stmt][loop_stmt_];
       const std::vector<BufferStore>& inits = inits_to_add_[op_stmt][loop_stmt_];
       const std::vector<Buffer>& allos = bufs_to_allo_[op_stmt][loop_stmt_];
       if (!new_stmts_.empty()) {
@@ -647,16 +637,13 @@ class AllReduceTransformer : public StmtExprMutator {
         // Wrap the result with loop binding attributes.
         CHECK(!loops.empty());
         for (auto it = loops.rbegin(); it != loops.rend(); it++) {
-          Loop loop_ = *it;
-          for (const Annotation& annotation : loop_->annotations) {
-            if (annotation->attr_key == attr::loop_type) {
-              std::string thread_tag = Downcast<StringImm>(annotation->value)->value;
-              if (thread_tag.substr(0, 9) == "threadIdx") {
-                stmt = AttrStmt(IterVar(Range(loop_->min, loop_->extent), loop_->loop_var,
-                                        IterVarType::kThreadIndex, thread_tag),
-                                attr::thread_extent, loop_->extent, stmt);
-              }
-            }
+          For loop_ = *it;
+          std::string thread_tag =
+              loop_->thread_binding.defined() ? loop_->thread_binding.value()->thread_tag : "";
+          if (thread_tag.substr(0, 9) == "threadIdx") {
+            stmt = AttrStmt(IterVar(Range(loop_->min, loop_->extent), loop_->loop_var,
+                                    IterVarType::kThreadIndex, thread_tag),
+                            attr::thread_extent, loop_->extent, stmt);
           }
         }
       }
