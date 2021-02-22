@@ -148,6 +148,12 @@ TVM_DLL SearchRule ParallelizeVectorizeUnroll(int max_jobs_per_core, int max_vec
  */
 TVM_DLL SearchRule MarkTensorize(Array<tir::TensorIntrin> tensor_intrins);
 
+/*!
+ * \brief Add rfactor to some blocks if needed
+ * \return The rule created
+ */
+TVM_DLL SearchRule AddRfactor(int max_jobs_per_core);
+
 }  // namespace meta_schedule
 }  // namespace tvm
 

@@ -742,6 +742,136 @@ double CountFlop(const tir::PrimFunc& func) {
   return cnt;
 }
 
+std::pair<int, int> GetCumulativeSpaceAndReductionLength(const tir::Schedule& sch,
+                                                         const tir::StmtSRef& block_sref) {
+  Array<tir::StmtSRef> loops = sch->GetAxes(block_sref);
+  int cum_space_len = 1, cum_reduce_len = 1;
+  // The case is invalid if there is any loop with type other than kDataPar and kCommReduce.
+  for (const tir::StmtSRef& loop_sref : loops) {
+    tir::IterVarType type = GetLoopIterType(sch, loop_sref);
+    if (type == tir::kDataPar) {
+      if (const auto* p_int = GetLoopExtent(loop_sref).as<IntImmNode>()) {
+        cum_space_len *= p_int->value;
+      } else {
+        return std::make_pair(-1, -1);
+      }
+    } else if (type == tir::kCommReduce) {
+      if (const auto* p_int = GetLoopExtent(loop_sref).as<IntImmNode>()) {
+        cum_reduce_len *= p_int->value;
+      } else {
+        return std::make_pair(-1, -1);
+      }
+    } else {
+      return std::make_pair(-1, -1);
+    }
+  }
+  return std::make_pair(cum_space_len, cum_reduce_len);
+}
+
+bool NeedsRfactor(const SearchTask& task, const tir::Schedule& sch,
+                  const tir::StmtSRef& block_sref,
+                  const int& max_jobs_per_core, std::atomic<int>* warned_num_cores_missing) {
+  Array<tir::StmtSRef> loops = sch->GetAxes(block_sref);
+
+  // Cond 1. The reduction loops are innermost, and there is no opaque loop.
+  bool appear = false;
+  for (const tir::StmtSRef& loop_sref : loops) {
+    tir::IterVarType type = GetLoopIterType(sch, loop_sref);
+    if (type == tir::kCommReduce) {
+      appear = true;
+    }
+    if ((type == tir::kDataPar && appear) || type == tir::kOpaque) {
+      return false;
+    }
+  }
+
+  // Cond 2. The loops are continuous, and the body of the innermost loop is exactly the block.
+  for (int i = 0; i < static_cast<int>(loops.size()); ++i) {
+    const auto* loop_i = loops[i]->GetStmt<tir::LoopNode>();
+    if (i < static_cast<int>(loops.size()) - 1) {
+      const auto* loop_i1 = loops[i + 1]->GetStmt<tir::LoopNode>();
+      if (!loop_i->body.same_as(GetRef<tir::Loop>(loop_i1))) {
+        return false;
+      }
+    } else {
+      const auto* block = block_sref->GetStmt<tir::BlockNode>();
+      const auto* block_realize = loop_i->body.as<tir::BlockRealizeNode>();
+      if (!block_realize) {
+        return false;
+      }
+      if (!block_realize->block.same_as(GetRef<tir::Block>(block))) {
+        return false;
+      }
+    }
+  }
+
+  // Cond 3. Successfully calculating the cumulative loop length.
+  int cum_space_len, cum_reduce_len;
+  std::tie(cum_space_len, cum_reduce_len) = GetCumulativeSpaceAndReductionLength(sch, block_sref);
+  if (cum_space_len == -1 || cum_reduce_len == -1) {
+    return false;
+  }
+
+  // Cond 4.
+  if (NeedsMultiLevelTiling(sch, block_sref)) {
+    // Do not use rfactor if we have enough parallelism on spacial loops.
+    if (cum_space_len > cum_reduce_len ||
+        cum_space_len > GetTargetNumCores(task->target, warned_num_cores_missing)
+                            * max_jobs_per_core) {
+      return false;
+    } else {
+      return true;
+    }
+  } else if (cum_reduce_len > 1) {
+    // Always try rfactor for reduction ops
+    return cum_reduce_len > GetTargetNumCores(task->target, warned_num_cores_missing);
+  }
+
+  return false;
+}
+
+bool HasCacheWriteBlock(const Schedule& sch, const BlockRV& block_rv) {
+  // We've made sure that the block has only one write buffer. So here we don't need check the `i`
+  // of `CacheWrite`.
+  for (const Instruction& inst : sch->trace->insts) {
+    if (inst->inst_attrs->IsInstance<CacheWriteAttrs>()) {
+      CHECK_EQ(inst->inputs.size(), 1);
+      const BlockRV& input_rv = Downcast<BlockRV>(inst->inputs[0]);
+      if (block_rv.same_as(input_rv)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+Schedule FuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
+                            LoopRV* fused_reduce_loop, int* num_spatial_loops) {
+  // All the loops are made sure to be either spatial loops or reduction loops.
+  // All the reduction loops are made sure to be continuous and innermost.
+  Array<LoopRV> loops = sch->GetAxes(block_rv);
+  Array<LoopRV> reduction_loops;
+  *num_spatial_loops = 0;
+  for (const LoopRV& loop_rv : loops) {
+    tir::IterVarType type = GetLoopIterType(sch->sch, sch->Eval(loop_rv));
+    if (type == tir::kDataPar) {
+      (*num_spatial_loops)++;
+    } else {
+      CHECK_EQ(type, tir::kCommReduce);
+      reduction_loops.push_back(loop_rv);
+    }
+  }
+
+  CHECK(!reduction_loops.empty()) << "ValueError: There should be at least one reduction loop";
+  Schedule res = sch;
+  if (reduction_loops.size() > 1) {
+    *fused_reduce_loop = res->Fuse(reduction_loops);
+  } else {
+    *fused_reduce_loop = reduction_loops[0];
+  }
+  return res;
+}
+
 TVM_REGISTER_NODE_TYPE(TensorizeInfoNode);
 
 TVM_REGISTER_GLOBAL("meta_schedule.analysis.IsTrivialBinding").set_body_typed(IsTrivialBinding);

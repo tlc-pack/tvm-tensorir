@@ -279,3 +279,23 @@ def simplify_compute_with_const_tensor(max_innermost_factor: int = 16) -> Search
         The rule created
     """
     return _ffi_api_search_rule.SimplifyComputeWithConstTensor(max_innermost_factor)  # pylint: disable=no-member
+
+
+def add_rfactor(
+    max_jobs_per_core: int = 16
+) -> SearchRule:
+    """Add rfactor to some blocks if needed
+
+    Parameters
+    ----------
+    max_jobs_per_core: int
+        The maximum number of jobs to be launched per CPU core. It sets the uplimit of CPU
+        parallelism, i.e. `num_cores * max_jobs_per_core`.
+        Use -1 to disable parallelism.
+
+    Returns
+    -------
+    rule: SearchRule
+        The rule created
+    """
+    return _ffi_api_search_rule.AddRFactor(max_jobs_per_core)  # pylint: disable=no-member

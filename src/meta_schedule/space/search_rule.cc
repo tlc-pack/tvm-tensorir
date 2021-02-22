@@ -891,6 +891,71 @@ SearchRule SimplifyComputeWithConstTensor(int max_innermost_factor) {
   return SearchRule("simplify_compute_with_const_tensor", f_apply);
 }
 
+/********** AddRfactor **********/
+
+class RuleAddRfactor {
+ public:
+  int max_jobs_per_core;
+  mutable std::atomic<int> warned_num_cores_missing;
+
+  explicit RuleAddRfactor(int max_jobs_per_core)
+      : max_jobs_per_core(max_jobs_per_core), warned_num_cores_missing(0) {}
+
+  RuleAddRfactor(const RuleAddRfactor& other) noexcept
+      : max_jobs_per_core(other.max_jobs_per_core),
+        warned_num_cores_missing(static_cast<int>(other.warned_num_cores_missing)) {}
+
+  /*! \brief Rule application */
+  Array<Schedule> Apply(const SearchTask& task,
+                        const Schedule& sch, const BlockRV& block_rv) const {
+    tir::StmtSRef block_sref = sch->Eval(block_rv);
+    if (HasAnyAnn(block_sref)) {
+      return {sch};
+    }
+    if (block_sref->GetStmt<tir::BlockNode>()->writes.size() != 1) {
+      return {sch};
+    }
+    if (!NeedsRfactor(task, sch->sch, block_sref, max_jobs_per_core, &warned_num_cores_missing)
+        || HasCacheWriteBlock(sch, block_rv)) {
+      return {sch};
+    }
+
+    int num_spatial_loops;
+    LoopRV fused_reduce_loop;
+    Schedule base_sch = FuseReductionLoops(sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
+    const Array<LoopRV>& split_res = base_sch->Split(fused_reduce_loop, {Integer(1)});
+    Array<Schedule> res;
+    for (const LoopRV& split_loop : split_res) {
+      const Schedule& sch_tmp = base_sch;
+      const BlockRV& block_rf = sch_tmp->Rfactor(fused_reduce_loop, num_spatial_loops);
+      Array<LoopRV> axes = sch_tmp->GetAxes(block_rf);
+      CHECK_GT(static_cast<int>(axes.size()), num_spatial_loops);
+
+      if (split_loop.same_as(split_res[1])) {
+        Array<LoopRV> new_order;
+        for (int i = 0; i < static_cast<int>(axes.size()); ++i) {
+          if (i != num_spatial_loops) {
+            new_order.push_back(axes[i]);
+          }
+        }
+        new_order.push_back(axes[num_spatial_loops]);
+        sch_tmp->Reorder(new_order);
+      }
+      res.push_back(sch_tmp);
+    }
+
+    return res;
+  }
+};
+
+SearchRule AddRfactor(int max_jobs_per_core) {
+  RuleAddRfactor rule(max_jobs_per_core);
+  auto f_apply = [rule](SearchTask task, Schedule sch, BlockRV block) -> Array<Schedule> {
+    return rule.Apply(task, sch, block);
+  };
+  return SearchRule("add_rfactor", f_apply);
+};
+
 /********** FFI **********/
 
 struct Internal {
@@ -941,6 +1006,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.search_rule.ParallelizeVectorizeUnroll")
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkTensorize").set_body_typed(MarkTensorize);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.SimplifyComputeWithConstTensor")
     .set_body_typed(SimplifyComputeWithConstTensor);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AddRFactor").set_body_typed(AddRfactor);
 
 }  // namespace meta_schedule
 }  // namespace tvm

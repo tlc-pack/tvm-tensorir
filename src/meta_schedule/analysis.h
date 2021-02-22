@@ -24,6 +24,7 @@
 #include "../tir/schedule/analysis.h"
 #include "../tir/schedule/utils.h"
 #include "./schedule.h"
+#include "./search.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -174,6 +175,47 @@ TVM_DLL Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::ScheduleState
  * \return The number of floating point operations
  */
 TVM_DLL double CountFlop(const tir::PrimFunc& func);
+
+/*!
+ * \brief Calculate the product of extent of all spatial and reduction loop axes.
+ * \param sch The TIR schedule
+ * \param block_sref The block to be analyzed
+ * \return A pair indicating the cumulative length of spacial and reduction loop axes. Or (-1, -1)
+ *         if invalid.
+ */
+TVM_DLL std::pair<int, int> GetCumulativeSpaceAndReductionLength(const tir::Schedule& sch,
+                                                                 const tir::StmtSRef& block_sref);
+
+/*!
+ * \brief Check if the block needs rfactor
+ * \param sch The TIR schedule
+ * \param block_sref The block to be analyzed
+ * \return A boolean indicating if it needs rfactor
+ */
+TVM_DLL bool NeedsRfactor(const SearchTask& task, const tir::Schedule& sch,
+                          const tir::StmtSRef& block_sref,
+                          const int& max_jobs_per_core, std::atomic<int>* warned_num_cores_missing);
+
+/*!
+ * \brief Check if the block has its cache-write block
+ * \param sch The TIR schedule
+ * \param block_rv The block to be analyzed
+ * \return A boolean indicating if it has cache-write block
+ * \note Before calling this function, make sure block_rv has only one write buffer.
+ */
+TVM_DLL bool HasCacheWriteBlock(const Schedule& sch, const BlockRV& block_rv);
+
+/*!
+ * \brief Fuse all the reduction loops, and get the number of spatial loops and the loop after
+ *        fusion in the mean time.
+ * \param sch The Meta-Schedule schedule
+ * \param block_rv The block where to apply the fusion
+ * \param fused_reduce_loop The fusion result loop to return.
+ * \param num_spatial_loops The number of spatial loops to return.
+ * \note All the reduction loops are made sure to be continuous and innermost.
+ */
+TVM_DLL Schedule FuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
+                                    LoopRV* fused_reduce_loop, int* num_spatial_loops);
 
 }  // namespace meta_schedule
 }  // namespace tvm
