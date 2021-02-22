@@ -175,7 +175,7 @@ Stmt auto_complete(const Stmt& body, const Array<Buffer>& root_allocates) {
   // generate root block automatically
   if (auto_completer.contains_block &&
       (!res->IsInstance<BlockRealizeNode>() || !root_allocates.empty())) {
-    res = Block({}, {}, {}, root_allocates, {}, "", "root", res, NullOpt);
+    res = Block({}, {}, {}, root_allocates, {}, {}, "", "root", res, NullOpt);
     res = BlockRealize({}, Bool(true), Downcast<Block>(res));
   }
   return res;
