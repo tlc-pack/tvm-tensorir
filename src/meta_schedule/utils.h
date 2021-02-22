@@ -129,12 +129,12 @@ inline String Repr(const tir::PrimFunc& func) {
 }
 
 inline PrimExpr GetLoopExtent(const tir::StmtSRef& loop_sref) {
-  const auto* loop = loop_sref->GetStmt<tir::LoopNode>();
+  const auto* loop = loop_sref->GetStmt<tir::ForNode>();
   CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
   return loop->extent;
 }
 
-inline Optional<Integer> GetLoopIntExtent(const tir::LoopNode* loop) {
+inline Optional<Integer> GetLoopIntExtent(const tir::ForNode* loop) {
   const auto* int_extent = loop->extent.as<IntImmNode>();
   return int_extent ? Integer(int_extent->value) : Optional<Integer>(NullOpt);
 }
@@ -191,17 +191,17 @@ inline Optional<tir::StmtSRef> FindBlockSRef(const tir::Schedule& sch, FPredicat
 /**************** TIR Annotation ****************/
 
 inline Optional<String> GetAnn(const tir::StmtSRef& sref, const String& ann_key) {
-  const Array<tir::Annotation>* annotations = nullptr;
-  if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
+  const Map<String, ObjectRef>* annotations = nullptr;
+  if (const auto* loop = sref->GetStmt<tir::ForNode>()) {
     annotations = &loop->annotations;
   } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
     annotations = &block->annotations;
   } else {
     LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
   }
-  for (const tir::Annotation& ann : *annotations) {
-    if (ann->attr_key == ann_key) {
-      if (const auto* str_imm = ann->value.as<tir::StringImmNode>()) {
+  for (const auto& ann : *annotations) {
+    if (ann.first == ann_key) {
+      if (const auto* str_imm = ann.second.as<tir::StringImmNode>()) {
         return str_imm->value;
       }
     }
@@ -215,7 +215,7 @@ inline bool HasAnn(const tir::StmtSRef& sref, const String& ann_key, const Strin
 }
 
 inline bool HasAnyAnn(const tir::StmtSRef& sref) {
-  if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
+  if (const auto* loop = sref->GetStmt<tir::ForNode>()) {
     return !loop->annotations.empty();
   } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
     return !block->annotations.empty();
@@ -226,8 +226,8 @@ inline bool HasAnyAnn(const tir::StmtSRef& sref) {
 
 inline void DelAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const String& ann_key) {
   // Extract annotation
-  const Array<tir::Annotation>* annotations = nullptr;
-  if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
+  const Map<String, ObjectRef>* annotations = nullptr;
+  if (const auto* loop = sref->GetStmt<tir::ForNode>()) {
     annotations = &loop->annotations;
   } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
     annotations = &block->annotations;
@@ -235,22 +235,16 @@ inline void DelAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const St
     LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
   }
   // Remove the annotation
-  Array<tir::Annotation> new_ann;
-  int n = annotations->size();
-  new_ann.reserve(n - 1);
-  for (int i = 0; i < n; ++i) {
-    const tir::Annotation& ann = annotations->operator[](i);
-    if (ann->attr_key != ann_key) {
-      new_ann.push_back(ann);
-    }
-  }
-  CHECK_NE(annotations->size(), new_ann.size())
+  CHECK(annotations->find(ann_key) != annotations->end())
       << "IndexError: Cannot find annotation key: " << ann_key;
+  Map<String, ObjectRef> new_ann(*annotations);
+  new_ann.erase(ann_key);
+
   // Create the new stmt
-  if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
-    ObjectPtr<tir::LoopNode> n = make_object<tir::LoopNode>(*loop);
+  if (const auto* loop = sref->GetStmt<tir::ForNode>()) {
+    ObjectPtr<tir::ForNode> n = make_object<tir::ForNode>(*loop);
     n->annotations = std::move(new_ann);
-    sch->Replace(sref, tir::Loop(n), {});
+    sch->Replace(sref, tir::For(n), {});
   } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
     ObjectPtr<tir::BlockNode> n = make_object<tir::BlockNode>(*block);
     n->annotations = std::move(new_ann);
@@ -265,8 +259,8 @@ inline void DelAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const St
 inline void AddAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const String& ann_key,
                    const PrimExpr& ann_val) {
   // Extract annotation
-  const Array<tir::Annotation>* annotations = nullptr;
-  if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
+  const Map<String, ObjectRef>* annotations = nullptr;
+  if (const auto* loop = sref->GetStmt<tir::ForNode>()) {
     annotations = &loop->annotations;
   } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
     annotations = &block->annotations;
@@ -274,19 +268,17 @@ inline void AddAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const St
     LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
   }
   // Check if the annotation already exists
-  for (const tir::Annotation& ann : *annotations) {
-    if (ann->attr_key == ann_key) {
-      return;
-    }
+  if (annotations->find(ann_key) != annotations->end()) {
+    return;
   }
   // Add the new annotation
-  Array<tir::Annotation> new_ann(*annotations);
-  new_ann.push_back(tir::Annotation(ann_key, ann_val));
+  Map<String, ObjectRef> new_ann(*annotations);
+  new_ann.Set(ann_key, ann_val);
   // Create the new stmt
-  if (const auto* loop = sref->GetStmt<tir::LoopNode>()) {
-    ObjectPtr<tir::LoopNode> n = make_object<tir::LoopNode>(*loop);
+  if (const auto* loop = sref->GetStmt<tir::ForNode>()) {
+    ObjectPtr<tir::ForNode> n = make_object<tir::ForNode>(*loop);
     n->annotations = std::move(new_ann);
-    sch->Replace(sref, tir::Loop(n), {});
+    sch->Replace(sref, tir::For(n), {});
   } else if (const auto* block = sref->GetStmt<tir::BlockNode>()) {
     ObjectPtr<tir::BlockNode> n = make_object<tir::BlockNode>(*block);
     n->annotations = std::move(new_ann);

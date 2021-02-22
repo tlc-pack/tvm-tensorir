@@ -84,7 +84,7 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
    *   - extra block var from the only block
    *   - Update block binding
    */
-  const auto* loop = loop_sref->GetStmt<LoopNode>();
+  const auto* loop = loop_sref->GetStmt<ForNode>();
   CHECK(loop) << "TypeError: Only support blockize a loop for now, but get type: "
               << loop_sref->stmt->GetTypeKey();
   // check there exists no SeqStmt under loop
@@ -96,14 +96,14 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
   BlockRealize block_realize = GetBlockRealize(block_sref);
   Block block = block_realize->block;
   // collect loops inside/outside loop_sref
-  std::vector<const LoopNode*> outer_loops, inner_loops;
+  std::vector<const ForNode*> outer_loops, inner_loops;
   std::vector<Var> outer_iters, inner_iters;
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> iters;
   bool inner = true;
   for (StmtSRef current_sref = block_sref;;) {
     current_sref = GetRef<StmtSRef>(current_sref->parent);
     if (!current_sref.defined()) break;
-    const auto* current_loop = current_sref->GetStmt<LoopNode>();
+    const auto* current_loop = current_sref->GetStmt<ForNode>();
     if (!current_loop) break;
     if (inner) {
       inner_loops.push_back(current_loop);
@@ -168,14 +168,14 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
   // Regenerate inner_loops
   Stmt body = inner_br;
   for (const auto& inner_loop : inner_loops) {
-    auto loop_node = make_object<LoopNode>(*inner_loop);
+    auto loop_node = make_object<ForNode>(*inner_loop);
     loop_node->body = body;
-    body = Loop(loop_node);
+    body = For(loop_node);
   }
   // Regenerate init for outer block
   Optional<Stmt> new_init = NullOpt;
   if (block->init.defined()) {
-    std::vector<Loop> init_loops;
+    std::vector<For> init_loops;
     std::vector<size_t> init_block_vars;
     std::vector<PrimExpr> init_bindings;
     std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> binding_replace_map;
@@ -186,10 +186,10 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
         init_block_vars.push_back(i);
       }
     }
-    for (const LoopNode* inner_loop : inner_loops) {
+    for (const ForNode* inner_loop : inner_loops) {
       for (size_t i = 0; i < init_block_vars.size(); ++i) {
         if (StmtExprContainsVar(inner_bindings[i], inner_loop->loop_var)) {
-          Loop init_loop = GetRef<Loop>(inner_loop);
+          For init_loop = GetRef<For>(inner_loop);
           init_loop.CopyOnWrite()->loop_var = inner_loop->loop_var.copy_with_suffix("");
           binding_replace_map[inner_loop->loop_var] = init_loop->loop_var;
           init_loops.push_back(init_loop);
@@ -202,7 +202,7 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
     }
     new_init = Substitute(block->init.value(), var_replace_map);
     for (const auto& init_loop : init_loops) {
-      Loop new_init_loop = init_loop;
+      For new_init_loop = init_loop;
       new_init_loop.CopyOnWrite()->body = new_init.value();
       new_init = new_init_loop;
     }
@@ -233,8 +233,8 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
   rewrite_region(&writes, block->writes);
   // Generate a new outer block
   auto outer_block =
-      Block(outer_block_vars, reads, writes, body, Array<Buffer>(), Array<Annotation>(),
-            "blockized_" + block->name_hint, exec_scope, new_init);
+      Block(outer_block_vars, reads, writes, Array<Buffer>(), Map<String, ObjectRef>(), exec_scope,
+            "blockized_" + block->name_hint, body, new_init);
   auto outer_realize =
       BlockRealize(outer_bindings, division.back()->outer_extent, outer_block);
 
@@ -258,13 +258,18 @@ bool TensorizeComparator::VisitStmt(const Stmt& n, const Stmt& other) {
   return equal;
 }
 
-bool TensorizeComparator::VisitStmt_(const LoopNode* op, const Stmt& other) {
-  const auto* rhs = other.as<LoopNode>();
+bool TensorizeComparator::VisitStmt_(const ForNode* op, const Stmt& other) {
+  const auto* rhs = other.as<ForNode>();
   if (!DefEqual(op->loop_var, rhs->loop_var)) return false;
   if (!VisitExpr(op->min, rhs->min)) return false;
   if (!VisitExpr(op->extent, rhs->extent)) return false;
   if (!VisitStmt(op->body, rhs->body)) return false;
-  return CompareArray(op->annotations, rhs->annotations, &TensorizeComparator::CompareAnnotation);
+  if (op->kind != rhs->kind) return false;
+  if (op->thread_binding.defined() ^ rhs->thread_binding.defined()) return false;
+  if (op->thread_binding.defined() &&
+      !VisitExpr(op->thread_binding.value(), rhs->thread_binding.value()))
+    return false;
+  return CompareAnnotationMap(op->annotations, rhs->annotations);
 }
 
 bool TensorizeComparator::VisitStmt_(const SeqStmtNode* op, const Stmt& other) {
@@ -373,10 +378,10 @@ bool TensorizeComparator::VisitStmt_(const BlockNode* op, const Stmt& other) {
     if (!CompareArray(op->reads, rhs->reads, &TensorizeComparator::CompareBufferRegion)) {
       return false;
     }
-    if (!CompareArray(op->annotations, rhs->annotations, &TensorizeComparator::CompareAnnotation)) {
+    if (!CompareAnnotationMap(op->annotations, rhs->annotations)) {
       return false;
     }
-    if (!CompareArray(op->allocations, rhs->allocations, &TensorizeComparator::CompareBuffer)) {
+    if (!CompareArray(op->alloc_buffers, rhs->alloc_buffers, &TensorizeComparator::CompareBuffer)) {
       return false;
     }
   }
@@ -449,9 +454,34 @@ bool TensorizeComparator::DefEqual(const ObjectRef& lhs, const ObjectRef& rhs) {
   return true;
 }
 
-bool TensorizeComparator::CompareAnnotation(const Annotation& lhs, const Annotation& rhs) {
+bool TensorizeComparator::CompareAnnotation(const std::pair<String, ObjectRef>& lhs,
+                                            const std::pair<String, ObjectRef>& rhs) {
+  if (lhs.first != rhs.first) return false;
+  if (!lhs.second.same_as(rhs.second)) return false;
+  return VisitExpr(Downcast<PrimExpr>(lhs.second), Downcast<PrimExpr>(rhs.second));
+}
+
+bool TensorizeComparator::CompareAnnotationMap(const Map<String, ObjectRef>& lhs,
+                                               const Map<String, ObjectRef>& rhs) {
   if (lhs.same_as(rhs)) return true;
-  return VisitExpr(lhs->value, rhs->value) && lhs->attr_key == rhs->attr_key;
+  if (lhs.size() != rhs.size()) return false;
+
+  auto sort_map = [](const Map<String, ObjectRef>& map) -> std::vector<std::pair<String, ObjectRef>> {
+    std::vector<std::pair<String, ObjectRef>> ret;
+    ret.reserve(map.size());
+    for (const auto& pair : map) {
+      ret.emplace_back(pair);
+    }
+    sort(ret.begin(), ret.end());
+    return ret;
+  };
+
+  auto lhs_array = sort_map(lhs), rhs_array = sort_map(rhs);
+
+  for (size_t i = 0; i < lhs.size(); ++i) {
+    if (!CompareAnnotation(lhs_array[i], rhs_array[i])) return false;
+  }
+  return true;
 }
 
 bool TensorizeComparator::CompareBuffer(const Buffer& lhs, const Buffer& rhs) {
@@ -694,7 +724,7 @@ void ScheduleNode::tensorize(const StmtSRef& loop_sref, const TensorIntrin& intr
    *   - Mutate implement function with buffer binding
    *   - Replace the sub tree with the mutated function.
    */
-  const auto* loop = loop_sref->GetStmt<LoopNode>();
+  const auto* loop = loop_sref->GetStmt<ForNode>();
   CHECK(loop) << "Only support tensorize a loop for now";
 
   const auto* desc_block_realize = intrinsic->description->body.as<BlockRealizeNode>();
