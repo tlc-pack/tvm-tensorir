@@ -233,7 +233,7 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
   rewrite_region(&writes, block->writes);
   // Generate a new outer block
   auto outer_block =
-      Block(outer_block_vars, reads, writes, Array<Buffer>(), Map<String, ObjectRef>(), exec_scope,
+      Block(outer_block_vars, reads, writes, {}, {}, {}, exec_scope,
             "blockized_" + block->name_hint, body, new_init);
   auto outer_realize =
       BlockRealize(outer_bindings, division.back()->outer_extent, outer_block);
