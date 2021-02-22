@@ -223,8 +223,8 @@ def parallelize_vectorize_unroll(
     ----------
     max_jobs_per_core: int
         The maximum number of jobs to be launched per CPU core. It sets the uplimit of CPU
-        parallism, i.e. `num_cores * max_jobs_per_core`.
-        Use -1 to disable parallism.
+        parallelism, i.e. `num_cores * max_jobs_per_core`.
+        Use -1 to disable parallelism.
     max_vectorize_extent: int
         The maximum extent to be vectorized. It sets the uplimit of the CPU vectorization.
         Use -1 to disable vectorization.
