@@ -288,5 +288,5 @@ def test_meta_schedule_sketch_cuda_conv2d_nchw_bias_bn_relu():  # pylint: disabl
 
 
 if __name__ == "__main__":
-    # test_meta_schedule_sketch_cuda_matmul()
+    test_meta_schedule_sketch_cuda_matmul()
     test_meta_schedule_sketch_cuda_conv2d_nchw_bias_bn_relu()

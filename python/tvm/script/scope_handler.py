@@ -137,10 +137,11 @@ class Block(WithScopeHandler):
                 block_iters,
                 reads,
                 writes,
-                block_info.allocates,
+                block_info.alloc_buffers,
                 block_info.annotations,
-                name,
+                block_info.match_buffers,
                 exec_scope,
+                name,
                 self.body,
                 block_info.init
             )

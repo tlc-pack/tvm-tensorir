@@ -25,7 +25,8 @@ class ContextMaintainer:
 
     class BlockInfo:
         def __init__(self):
-            self.allocates = []
+            self.alloc_buffers = []
+            self.match_buffers = []
             self.binding = dict()
             self.reads = None
             self.writes = None
