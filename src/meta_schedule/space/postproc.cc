@@ -78,8 +78,8 @@ class PostprocRewriteTensorize {
     arith::Analyzer analyzer;
     for (const auto& kv : info->loop_map) {
       const tir::StmtSRef& block_loop_sref = kv.first;
-      const auto* block_loop = block_loop_sref->GetStmt<tir::LoopNode>();
-      const tir::Loop& desc_loop = kv.second;
+      const auto* block_loop = block_loop_sref->GetStmt<tir::ForNode>();
+      const tir::For& desc_loop = kv.second;
       if (!analyzer.CanProve(block_loop->extent == desc_loop->extent)) {
         return false;
       }
@@ -127,7 +127,7 @@ class PostprocRewriteCooperativeFetch {
     return [sch, idx](const tir::BlockNode* block) -> bool {
       const tir::StmtSRefNode* sref = sch->stmt2ref.at(block)->parent;
       for (int& i = *idx = 0; sref != nullptr; sref = sref->parent, ++i) {
-        const tir::LoopNode* loop = sref->GetStmt<tir::LoopNode>();
+        const tir::ForNode* loop = sref->GetStmt<tir::ForNode>();
         if (!loop) {
           break;
         }
@@ -159,10 +159,10 @@ class PostprocRewriteCooperativeFetch {
       PrimExpr thread_idx_extent{nullptr};
       for (const tir::StmtSRefNode* sref = loop_sref->parent;; sref = sref->parent) {
         CHECK(sref) << "ValueError: Cannot find loops above with threadIdx.x";
-        if (const tir::LoopNode* loop = sref->GetStmt<tir::LoopNode>()) {
+        if (const tir::ForNode* loop = sref->GetStmt<tir::ForNode>()) {
           if (HasAnn(GetRef<tir::StmtSRef>(sref), tir::attr::loop_type, "threadIdx.x")) {
             CHECK(tir::is_zero(loop->min)) << "ValueError: Expect loops to start from 0, but gets: "
-                                           << GetRef<tir::Loop>(loop);
+                                           << GetRef<tir::For>(loop);
             thread_idx_extent = loop->extent;
             break;
           }
@@ -201,25 +201,25 @@ class PostprocRewriteParallelizeVectorizeUnroll {
     return [parsed](const tir::BlockNode* block) -> bool {
       bool found = false;
       *parsed = Parsed{-1, -1, -1, -1, -1, -1};
-      for (const tir::Annotation& ann : block->annotations) {
-        if (ann->attr_key == tir::attr::auto_parallel_extent) {
+      for (const auto& ann : block->annotations) {
+        if (ann.first == tir::attr::auto_parallel_extent) {
           found = true;
-          if (const auto* str_imm = ann->value.as<tir::StringImmNode>()) {
+          if (const auto* str_imm = ann.second.as<tir::StringImmNode>()) {
             parsed->max_parallel_extent = std::atoi(str_imm->value.c_str());
           }
-        } else if (ann->attr_key == tir::attr::auto_vectorize_extent) {
+        } else if (ann.first == tir::attr::auto_vectorize_extent) {
           found = true;
-          if (const auto* str_imm = ann->value.as<tir::StringImmNode>()) {
+          if (const auto* str_imm = ann.second.as<tir::StringImmNode>()) {
             parsed->max_vectorize_extent = std::atoi(str_imm->value.c_str());
           }
-        } else if (ann->attr_key == tir::attr::auto_unroll_explicit) {
+        } else if (ann.first == tir::attr::auto_unroll_explicit) {
           found = true;
-          if (const auto* str_imm = ann->value.as<tir::StringImmNode>()) {
+          if (const auto* str_imm = ann.second.as<tir::StringImmNode>()) {
             parsed->unroll_explicit = std::atoi(str_imm->value.c_str());
           }
-        } else if (ann->attr_key == tir::attr::auto_unroll_implicit) {
+        } else if (ann.first == tir::attr::auto_unroll_implicit) {
           found = true;
-          if (const auto* str_imm = ann->value.as<tir::StringImmNode>()) {
+          if (const auto* str_imm = ann.second.as<tir::StringImmNode>()) {
             parsed->unroll_implicit = std::atoi(str_imm->value.c_str());
           }
         }
@@ -399,7 +399,7 @@ class PostprocRewriteUnboundBlocks {
    private:
     explicit UnboundBlockFinder(const tir::Schedule& sch) : sch_(sch), block_(nullptr) {}
 
-    void VisitStmt_(const tir::LoopNode* loop) override {
+    void VisitStmt_(const tir::ForNode* loop) override {
       if (block_) {
         return;
       }
@@ -533,7 +533,7 @@ class PostprocDisallowDynamicLoops {
       if (has_dyn_ext) {
         return false;
       }
-      if (const auto* loop = obj.as<tir::LoopNode>()) {
+      if (const auto* loop = obj.as<tir::ForNode>()) {
         if (!loop->extent->IsInstance<IntImmNode>()) {
           has_dyn_ext = true;
           return false;

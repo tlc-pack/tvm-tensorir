@@ -38,16 +38,16 @@ DepEdge::DepEdge(StmtSRef dst, DepType type) {
   data_ = std::move(node);
 }
 
-Scope::Scope() { data_ = make_object<ScopeNode>(); }
+BlockScope::BlockScope() { data_ = make_object<BlockScopeNode>(); }
 
-void ScopeNode::AddEdge(const StmtSRef& from, const StmtSRef& to, DepType type) {
+void BlockScopeNode::AddEdge(const StmtSRef& from, const StmtSRef& to, DepType type) {
   if (!from.same_as(to)) {
     this->forward_edges[from].push_back(DepEdge(to, type));
     this->backward_edges[to].push_back(DepEdge(from, type));
   }
 }
 
-Array<DepEdge> ScopeNode::GetSuccessors(const StmtSRef& block_sref) const {
+Array<DepEdge> BlockScopeNode::GetSuccessors(const StmtSRef& block_sref) const {
   const std::unordered_map<StmtSRef, Array<DepEdge>, ObjectPtrHash, ObjectPtrEqual>& edges =
       this->forward_edges;
   auto iter = edges.find(block_sref);
@@ -58,7 +58,7 @@ Array<DepEdge> ScopeNode::GetSuccessors(const StmtSRef& block_sref) const {
   }
 }
 
-Array<DepEdge> ScopeNode::GetPredecessors(const StmtSRef& block_sref) const {
+Array<DepEdge> BlockScopeNode::GetPredecessors(const StmtSRef& block_sref) const {
   const std::unordered_map<StmtSRef, Array<DepEdge>, ObjectPtrHash, ObjectPtrEqual>& edges =
       this->backward_edges;
   auto iter = edges.find(block_sref);
@@ -69,7 +69,7 @@ Array<DepEdge> ScopeNode::GetPredecessors(const StmtSRef& block_sref) const {
   }
 }
 
-bool ScopeNode::IsDominate(const StmtSRef& block_sref) const {
+bool BlockScopeNode::IsDominate(const StmtSRef& block_sref) const {
   const BlockNode* block = block_sref->GetStmt<BlockNode>();
   CHECK(block != nullptr) << "InternalError: Scope::IsDominate only works on tir::Block";
   // Condition: Block is the only writer to its outputs
@@ -88,7 +88,7 @@ bool ScopeNode::IsDominate(const StmtSRef& block_sref) const {
   return true;
 }
 
-bool ScopeNode::IsComplete(const StmtSRef& block_sref) const {
+bool BlockScopeNode::IsComplete(const StmtSRef& block_sref) const {
   const auto* block = block_sref->GetStmt<BlockNode>();
   CHECK(block != nullptr)
       << "InternalError: Scope::IsComplete only accepts tir::Block, but get type: "
@@ -144,7 +144,7 @@ bool CheckReductionInstance(const Array<IterVar>& iter_vars,
   return true;
 }
 
-bool ScopeNode::IsReduction(const StmtSRef& block_sref) const {
+bool BlockScopeNode::IsReduction(const StmtSRef& block_sref) const {
   const auto* block = block_sref->GetStmt<BlockNode>();
   CHECK(block != nullptr)
       << "InternalError: Scope::IsReduction only accepts tir::Block, but get type: "
@@ -189,7 +189,7 @@ bool ScopeNode::IsReduction(const StmtSRef& block_sref) const {
   return not_affected;
 }
 
-bool ScopeNode::IsCompactDataFlow(const StmtSRef& subtree_sref,
+bool BlockScopeNode::IsCompactDataFlow(const StmtSRef& subtree_sref,
                                   const ScheduleNode* schedule) const {
   for (const StmtSRef& block : schedule->GetChildBlocks(subtree_sref)) {
     if (!IsComplete(block) && !IsReduction(block)) {
@@ -199,7 +199,7 @@ bool ScopeNode::IsCompactDataFlow(const StmtSRef& subtree_sref,
   return true;
 }
 
-bool ScopeNode::CanMergeReduction(const StmtSRef& init_sref, const StmtSRef& update_sref) const {
+bool BlockScopeNode::CanMergeReduction(const StmtSRef& init_sref, const StmtSRef& update_sref) const {
   const auto* init = init_sref->GetStmt<BlockNode>();
   const auto* update = update_sref->GetStmt<BlockNode>();
   CHECK(init != nullptr) << "InternalError: Scope::CanMergeReduction only accepts tir::Block as "
@@ -245,7 +245,7 @@ bool ScopeNode::CanMergeReduction(const StmtSRef& init_sref, const StmtSRef& upd
   return CheckReductionInstance(update->iter_vars, update_body->indices);
 }
 
-void ScopeNode::AddChildBlock(
+void BlockScopeNode::AddChildBlock(
     const StmtSRef& child_sref,
     std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual>* _buffer_readers) {
   const BlockNode* block = child_sref->GetStmt<BlockNode>();
@@ -290,7 +290,7 @@ void ScopeNode::AddChildBlock(
 }
 
 TVM_REGISTER_NODE_TYPE(StmtSRefNode);
-TVM_REGISTER_NODE_TYPE(ScopeNode);
+TVM_REGISTER_NODE_TYPE(BlockScopeNode);
 TVM_REGISTER_NODE_TYPE(DepEdgeNode);
 
 }  // namespace tir
