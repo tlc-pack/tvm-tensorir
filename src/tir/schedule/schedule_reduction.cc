@@ -151,19 +151,14 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
                     For(/*loop_var=*/parent->loop_var,
                         /*min=*/parent->min,
                         /*extent=*/parent->extent,
-                        /*annotations=*/ForKind::kSerial,
+                        /*kind=*/ForKind::kSerial,
                         /*body=*/SeqStmt::Flatten(Array<Stmt>{body, parent->body})),
                     {});
     } else if (const auto* parent = loop_sref->parent->GetStmt<BlockNode>()) {
-      Block new_block = Block(/*iter_vars=*/parent->iter_vars,
-                              /*reads=*/parent->reads,
-                              /*writes=*/parent->writes,
-                              /*allocations=*/parent->alloc_buffers,
-                              /*annotations=*/parent->annotations,
-                              /*exec_scope=*/"",
-                              /*name_hint=*/parent->name_hint,
-                              /*body=*/SeqStmt::Flatten(Array<Stmt>{body, parent->body}),
-                              /*init=*/NullOpt);
+      auto block_node = make_object<BlockNode>(*parent);
+      block_node->body = SeqStmt::Flatten(Array<Stmt>{body, parent->body});
+      block_node->init = NullOpt;
+      Block new_block = Block(block_node);
       this->Replace(GetRef<StmtSRef>(loop_sref->parent), new_block,
                     {{new_block, GetRef<Block>(parent)}});
     } else {
@@ -173,15 +168,11 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
           << loop_sref->parent->stmt->GetTypeKey();
     }
     // Step 5. Change the reduction block to update block
-    Block update_block(
-        /*iter_vars=*/block->iter_vars,
-        /*reads=*/block->reads,
-        /*writes=*/block->writes,
-        /*allocations=*/block->alloc_buffers,
-        /*annotations=*/block->annotations, String(),
-        /*tag=*/block->name_hint + "_update",
-        /*body=*/block->body,
-        /*init=*/NullOpt);
+    auto update_block_node = make_object<BlockNode>(*block);
+    update_block_node->name_hint = block->name_hint + "_update";
+    update_block_node->init = NullOpt;
+    Block update_block(update_block_node);
+
     this->Replace(block_sref, update_block, {{update_block, GetRef<Block>(block)}});
     // Update scope information
     UpdateScope(GetParentBlockSRef(block_sref)->stmt, this->stmt2ref, &this->scopes);
@@ -203,16 +194,12 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
     } else {
       body = SeqStmt({IfThenElse(condition, block->init.value()), block->body});
     }
-    Block new_block(
-        /*iter_vars=*/block->iter_vars,
-        /*reads=*/block->reads,
-        /*writes=*/block->writes,
-        /*allocations=*/block->alloc_buffers,
-        /*annotations=*/block->annotations,
-        /*exec_scope=*/"",
-        /*name_hint=*/block->name_hint + "_update",
-        /*body=*/body,
-        /*init=*/NullOpt);
+    auto block_node = make_object<BlockNode>(*block);
+    block_node->name_hint = block->name_hint + "_update";
+    block_node->init = NullOpt;
+    block_node->body = body;
+    Block new_block(block_node);
+
     this->Replace(block_sref, new_block, {{new_block, GetRef<Block>(block)}});
     // Update scope information
     UpdateScope(GetParentBlockSRef(block_sref)->stmt, this->stmt2ref, &this->scopes);
@@ -307,15 +294,9 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   // Step 2. Change the update block to reduction block
   BufferStore new_init = GetRef<BufferStore>(update_body);
   new_init.CopyOnWrite()->value = init_body->value;
-  Block merged(
-      /*iter_vars=*/update->iter_vars,
-      /*reads=*/update->reads,
-      /*writes=*/update->writes,
-      /*allocations=*/update->alloc_buffers,
-      /*annotations=*/update->annotations, String(),
-      /*tag=*/update->name_hint,
-      /*body=*/update->body,
-      /*init=*/new_init);
+  auto merged_node = make_object<BlockNode>(*update);
+  merged_node->init = new_init;
+  Block merged(merged_node);
   this->Replace(update_sref, merged, {{merged, GetRef<Block>(update)}});
   // Update scope information
   UpdateScope(GetParentBlockSRef(update_sref)->stmt, this->stmt2ref, &this->scopes);
@@ -547,8 +528,10 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
                   {{wb_block, block}});
   } else if (const auto* parent = top.value()->parent->GetStmt<BlockNode>()) {
     SeqStmt parent_body = insert(parent->body, top.value()->seq_index, {rf_body, wb_body});
-    Block new_block = Block(parent->iter_vars, parent->reads, parent->writes, parent->alloc_buffers,
-                            parent->annotations, String(), parent->name_hint, parent_body, NullOpt);
+    auto block_node = make_object<BlockNode>(*parent);
+    block_node->body = parent_body;
+    block_node->init = NullOpt;
+    Block new_block = Block(block_node);
     this->Replace(GetRef<StmtSRef>(top.value()->parent), new_block,
                   {{new_block, GetRef<Block>(parent)}, {wb_block, block}});
   }
