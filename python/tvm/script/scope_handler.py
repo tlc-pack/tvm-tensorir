@@ -137,11 +137,11 @@ class Block(WithScopeHandler):
                 block_iters,
                 reads,
                 writes,
-                self.body,
                 block_info.allocates,
                 block_info.annotations,
                 name,
                 exec_scope,
+                self.body,
                 block_info.init
             )
             # create block var binding

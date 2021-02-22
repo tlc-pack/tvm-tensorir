@@ -969,32 +969,32 @@ class BlockNode : public StmtNode {
   /*! \brief The write tensor region of the block. */
   Array<BufferRegion> writes;
   /*! \brief The buffer allocated in the block. */
-  Array<Buffer> allocations;
+  Array<Buffer> alloc_buffers;
   /*! \brief The annotation of the block. */
   Map<String, ObjectRef> annotations;
-  /*! \brief The body of the block. */
-  Stmt body;
-  /*! \brief The init part of reduction block */
-  Optional<Stmt> init;
   /*! \brief The block execution scope. */
   String exec_scope;
   /*! \brief The tag of the block. */
   std::string name_hint;
+  /*! \brief The body of the block. */
+  Stmt body;
+  /*! \brief The init part of reduction block */
+  Optional<Stmt> init;
 
   void VisitAttrs(AttrVisitor* v) {
-    v->Visit("body", &body);
     v->Visit("iter_vars", &iter_vars);
     v->Visit("reads", &reads);
     v->Visit("writes", &writes);
-    v->Visit("allocations", &allocations);
+    v->Visit("alloc_buffers", &alloc_buffers);
     v->Visit("annotations", &annotations);
-    v->Visit("name_hint", &name_hint);
-    v->Visit("init", &init);
     v->Visit("exec_scope", &exec_scope);
+    v->Visit("name_hint", &name_hint);
+    v->Visit("body", &body);
+    v->Visit("init", &init);
   }
 
   bool SEqualReduce(const BlockNode* other, SEqualReducer equal) const {
-    return equal.DefEqual(iter_vars, other->iter_vars) && equal(allocations, other->allocations) &&
+    return equal.DefEqual(iter_vars, other->iter_vars) && equal(alloc_buffers, other->alloc_buffers) &&
            equal(body, other->body) && equal(annotations, other->annotations) &&
            equal(reads, other->reads) && equal(writes, other->writes) && equal(init, other->init) &&
            equal(exec_scope, other->exec_scope);
@@ -1004,7 +1004,7 @@ class BlockNode : public StmtNode {
     hash_reduce.DefHash(iter_vars);
     hash_reduce(reads);
     hash_reduce(writes);
-    hash_reduce(allocations);
+    hash_reduce(alloc_buffers);
     hash_reduce(annotations);
     hash_reduce(body);
     hash_reduce(init);
@@ -1018,9 +1018,9 @@ class BlockNode : public StmtNode {
 class Block : public Stmt {
  public:
   TVM_DLL explicit Block(Array<IterVar> iter_vars, Array<BufferRegion> reads,
-                         Array<BufferRegion> writes, Stmt body, Array<Buffer> allocations,
-                         Map<String, ObjectRef> annotations, String name_hint, String exec_scope,
-                         Optional<Stmt> init);
+                         Array<BufferRegion> writes, Array<Buffer> alloc_buffers,
+                         Map<String, ObjectRef> annotations, String exec_scope, String name_hint,
+                         Stmt body, Optional<Stmt> init);
 
   TVM_DEFINE_OBJECT_REF_METHODS(Block, Stmt, BlockNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(BlockNode);

@@ -156,7 +156,7 @@ class AutoCompleter : public StmtMutator {
   Stmt VisitStmt_(const BlockNode* op) override {
     Block block = Downcast<Block>(StmtMutator::VisitStmt_(op));
     if (!block->reads.defined() || !block->writes.defined()) {
-      BlockReadWriteCollector block_read_write_collector(block->allocations);
+      BlockReadWriteCollector block_read_write_collector(block->alloc_buffers);
       block_read_write_collector(block->body);
       auto n = CopyOnWrite(block.operator->());
       if (!n->reads.defined()) n->reads = block_read_write_collector.reads();
@@ -175,7 +175,7 @@ Stmt auto_complete(const Stmt& body, const Array<Buffer>& root_allocates) {
   // generate root block automatically
   if (auto_completer.contains_block &&
       (!res->IsInstance<BlockRealizeNode>() || !root_allocates.empty())) {
-    res = Block({}, {}, {}, res, root_allocates, {}, "root", "", NullOpt);
+    res = Block({}, {}, {}, root_allocates, {}, "", "root", res, NullOpt);
     res = BlockRealize({}, Bool(true), Downcast<Block>(res));
   }
   return res;

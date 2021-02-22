@@ -198,7 +198,7 @@ void ScheduleNode::double_buffer(const StmtSRef& block_sref) {
   CHECK(block_ptr) << "TypeError: double_buffer expects 'block' as its argument";
   const StmtSRef& parent_block_sref = GetParentBlockSRef(block_sref);
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
-  const Scope& scope = scopes.at(parent_block_sref);
+  const BlockScope& scope = scopes.at(parent_block_sref);
   CHECK(scope->IsComplete(block_sref))
       << "ValueError: 'double_buffer' expects 'block' to be a complete block";
   for (const BufferRegion& parent_write : parent_block->writes) {

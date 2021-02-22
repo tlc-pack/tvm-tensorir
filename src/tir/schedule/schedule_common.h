@@ -178,7 +178,7 @@ bool StmtExprContainsVar(const ObjectRef& obj, const std::unordered_set<const Va
  */
 void UpdateScope(const StmtNode* stmt,
                  const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref,
-                 std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual>* scopes);
+                 std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual>* scopes);
 
 class StmtReplacer : public StmtMutator {
  public:

@@ -831,7 +831,7 @@ Doc TVMScriptPrinter::VisitStmt_(const BlockRealizeNode* op) {
   // print body
   Doc body;
   body << Doc::NewLine();
-  for (const auto& alloc_buf : block_op->allocations) {
+  for (const auto& alloc_buf : block_op->alloc_buffers) {
     buf_not_in_headers.insert(alloc_buf.get());
     body << Print(alloc_buf) << " = tir.buffer_allocate(" << memo_buf_decl_[alloc_buf] << ")" << Doc::NewLine();
   }

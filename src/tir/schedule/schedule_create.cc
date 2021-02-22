@@ -94,12 +94,12 @@ class ScopeMapCreator : public StmtVisitor {
    * \param realize The body of the TIR PrimFunc
    * \return The ScheduleNode::scopes created
    */
-  static std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual> Create(
+  static std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual> Create(
       const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref,
       const BlockRealizeNode* realize) {
     ScopeMapCreator creator(stmt2ref);
     creator(realize->block);
-    std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual> ret =
+    std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual> ret =
         std::move(creator.scopes_);
     return ret;
   }
@@ -128,7 +128,7 @@ class ScopeMapCreator : public StmtVisitor {
   /*! \brief A stack frame indicating the information being gathered but not completed */
   struct Frame {
     /*! \brief The scope to be created. */
-    Scope scope;
+    BlockScope scope;
     /*! \brief ScopeNode::buffer_writers exists, but ScopeNode::buffer_readers does not. */
     std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual> buffer_readers;
   };
@@ -137,7 +137,7 @@ class ScopeMapCreator : public StmtVisitor {
   /*! \brief Stack frame of the DFS visit. */
   std::vector<Frame> frames_;
   /*! \brief The result ScheduleNode::scopes being created. */
-  std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual> scopes_;
+  std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual> scopes_;
 };
 
 Schedule::Schedule(PrimFunc func) {

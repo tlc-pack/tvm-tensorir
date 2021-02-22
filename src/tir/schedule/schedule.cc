@@ -23,7 +23,7 @@ namespace tir {
 
 Schedule::Schedule(PrimFunc func, StmtSRef root,
                    std::unordered_map<const StmtNode*, StmtSRef> stmt2ref,
-                   std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual> scopes) {
+                   std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual> scopes) {
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
   n->func = std::move(func);
   n->root = std::move(root);
@@ -103,7 +103,7 @@ StmtSRef ScheduleNode::GetParentBlockSRef(const StmtSRef& sref) const {
   throw;
 }
 
-Scope ScheduleNode::GetParentScope(const StmtSRef& sref) const {
+BlockScope ScheduleNode::GetParentScope(const StmtSRef& sref) const {
   return scopes.at(GetParentBlockSRef(sref));
 }
 

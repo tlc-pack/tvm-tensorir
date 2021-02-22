@@ -175,7 +175,7 @@ class SRefCreator : public StmtVisitor {
  public:
   SRefCreator(std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref,
               std::unordered_map<const VarNode*, StmtSRef>&& loop_var2ref,
-              std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual>* block_scopes,
+              std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual>* block_scopes,
               Map<Block, Block>&& block_sref_map, StmtSRefNode* parent)
       : parent_(parent),
         stmt2ref_(stmt2ref),
@@ -241,7 +241,7 @@ class SRefCreator : public StmtVisitor {
   StmtSRefNode* parent_{nullptr};
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
   std::unordered_map<const VarNode*, StmtSRef> loop_var2ref_;
-  std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual>* block_scopes_;
+  std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual>* block_scopes_;
   Map<Block, Block> block_sref_map_;
 
   std::unordered_set<StmtSRef, ObjectPtrHash, ObjectPtrEqual> reuse_sref_;
@@ -258,7 +258,7 @@ class SRefRemover : public StmtVisitor {
   SRefRemover(std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref,
               std::unordered_map<StmtSRef, StmtSRefNode*, ObjectPtrHash, ObjectPtrEqual>&&
                   used_border_parent,
-              std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual>* block_scopes,
+              std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual>* block_scopes,
               std::unordered_set<StmtSRef, ObjectPtrHash, ObjectPtrEqual>&& reuse_sref)
       : reuse_sref_(reuse_sref),
         used_border_parent_(used_border_parent),
@@ -295,7 +295,7 @@ class SRefRemover : public StmtVisitor {
   std::unordered_set<StmtSRef, ObjectPtrHash, ObjectPtrEqual> reuse_sref_;
   std::unordered_map<StmtSRef, StmtSRefNode*, ObjectPtrHash, ObjectPtrEqual> used_border_parent_;
   std::unordered_map<const StmtNode*, StmtSRef>* stmt2ref_;
-  std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual>* block_scopes_;
+  std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual>* block_scopes_;
 };
 
 void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_map) {

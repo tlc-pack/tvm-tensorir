@@ -394,14 +394,14 @@ class ScopeUpdater : public StmtVisitor {
     scope->AddChildBlock(stmt2ref.at(block), &buffer_readers);
   }
 
-  Scope scope;
+  BlockScope scope;
   std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual> buffer_readers;
   const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref;
 };
 
 void UpdateScope(const StmtNode* stmt,
                  const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref,
-                 std::unordered_map<StmtSRef, Scope, ObjectPtrHash, ObjectPtrEqual>* scopes) {
+                 std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual>* scopes) {
   CHECK(stmt->IsInstance<BlockNode>()) << "InternalError: scope is only defined on a block";
   const BlockNode* block = static_cast<const BlockNode*>(stmt);
   ScopeUpdater visitor(stmt2ref);

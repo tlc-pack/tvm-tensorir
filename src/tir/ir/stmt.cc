@@ -655,14 +655,14 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
 // Block
 Block::Block(Array<IterVar> iter_vars, Array<BufferRegion> reads, Array<BufferRegion> writes,
-             Stmt body, Array<Buffer> allocations, Map<String, ObjectRef> annotations, String name_hint,
-             String exec_scope, Optional<Stmt> init) {
+             Array<Buffer> alloc_buffers, Map<String, ObjectRef> annotations, String exec_scope,
+             String name_hint, Stmt body, Optional<Stmt> init) {
   ObjectPtr<BlockNode> node = make_object<BlockNode>();
   node->iter_vars = std::move(iter_vars);
   node->reads = std::move(reads);
   node->writes = std::move(writes);
   node->body = std::move(body);
-  node->allocations = std::move(allocations);
+  node->alloc_buffers = std::move(alloc_buffers);
   node->annotations = std::move(annotations);
   node->name_hint = std::move(name_hint);
   node->init = std::move(init);
@@ -671,13 +671,13 @@ Block::Block(Array<IterVar> iter_vars, Array<BufferRegion> reads, Array<BufferRe
 }
 
 TVM_REGISTER_GLOBAL("tir.Block")
-    .set_body_typed<Block(Array<IterVar>, Array<BufferRegion>, Array<BufferRegion>, Stmt,
-                          Array<Buffer>, Map<String, ObjectRef>, String, String, Optional<Stmt>)>(
+    .set_body_typed<Block(Array<IterVar>, Array<BufferRegion>, Array<BufferRegion>, Array<Buffer>,
+                          Map<String, ObjectRef>, String, String, Stmt, Optional<Stmt>)>(
         [](Array<IterVar> iter_vars, Array<BufferRegion> reads, Array<BufferRegion> writes,
-           Stmt body, Array<Buffer> allocates, Map<String, ObjectRef> annotations, String name_hint,
-           String exec_scope, Optional<Stmt> init) {
-          return Block(iter_vars, reads, writes, body, allocates, annotations, name_hint, exec_scope,
-                       init);
+           Array<Buffer> allocates, Map<String, ObjectRef> annotations, String name_hint,
+           String exec_scope, Stmt body, Optional<Stmt> init) {
+          return Block(iter_vars, reads, writes, allocates, annotations, exec_scope, name_hint,
+                       body, init);
         });
 
 TVM_REGISTER_NODE_TYPE(BlockNode);
@@ -734,7 +734,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       // print body
       p->stream << " {\n";
       p->indent += 2;
-      for (const auto& allocate : op->allocations) {
+      for (const auto& allocate : op->alloc_buffers) {
         p->Print(allocate);
       }
       if (op->init.defined()) {
@@ -828,7 +828,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       // print body
       p->stream << " {\n";
       p->indent += 2;
-      for (const auto& allocate : op->allocations) {
+      for (const auto& allocate : op->alloc_buffers) {
         p->Print(allocate);
       }
       if (op->init.defined()) {

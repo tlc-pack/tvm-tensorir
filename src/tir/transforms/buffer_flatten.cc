@@ -192,7 +192,7 @@ class RegionGatherer : public StmtExprVisitor {
     for (const auto& buffer_region : op->writes) {
       VisitBufferRegion(buffer_region);
     }
-    for (const auto& alloc_buf : op->allocations) {
+    for (const auto& alloc_buf : op->alloc_buffers) {
       std::vector<arith::IntSet> empty_region(alloc_buf->shape.size(), arith::IntSet::Nothing());
       // Initialize the buffer region with empty region.
       buffers_region_[alloc_buf] = empty_region;
@@ -310,14 +310,14 @@ class BufferFlattener : public StmtExprMutator {
     const auto* block_op = op->block.as<BlockNode>();
     Stmt old_stmt = GetRef<Stmt>(block_op);
     CHECK(block_op != nullptr);
-    for (size_t i = block_op->allocations.size(); i > 0; --i) {
-      const auto& buffer = block_op->allocations[i - 1];
+    for (size_t i = block_op->alloc_buffers.size(); i > 0; --i) {
+      const auto& buffer = block_op->alloc_buffers[i - 1];
       const std::string name = std::string(buffer->name);
       if (name.substr(0, 18) == "normal_reduce_temp" || name.substr(0, 11) == "reduce_temp") {
         continue;
       }
       if (buffers_lca_.at(buffer).defined()) {
-        pending_allocate_[buffer] = block_op->allocations[i - 1];
+        pending_allocate_[buffer] = block_op->alloc_buffers[i - 1];
       }
     }
     for (size_t i = 0; i < block_op->iter_vars.size(); ++i) {
@@ -358,8 +358,8 @@ class BufferFlattener : public StmtExprMutator {
       }
     }
 
-    for (size_t i = block_op->allocations.size(); i > 0; --i) {
-      const auto& alloc_buf = block_op->allocations[i - 1];
+    for (size_t i = block_op->alloc_buffers.size(); i > 0; --i) {
+      const auto& alloc_buf = block_op->alloc_buffers[i - 1];
       const std::string name = std::string(alloc_buf->name);
       if (name.substr(0, 18) == "normal_reduce_temp" || name.substr(0, 11) == "reduce_temp") {
         continue;

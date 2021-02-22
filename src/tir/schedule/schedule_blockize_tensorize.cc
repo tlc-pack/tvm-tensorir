@@ -233,8 +233,8 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
   rewrite_region(&writes, block->writes);
   // Generate a new outer block
   auto outer_block =
-      Block(outer_block_vars, reads, writes, body, Array<Buffer>(), Map<String, ObjectRef>(),
-            "blockized_" + block->name_hint, exec_scope, new_init);
+      Block(outer_block_vars, reads, writes, Array<Buffer>(), Map<String, ObjectRef>(), exec_scope,
+            "blockized_" + block->name_hint, body, new_init);
   auto outer_realize =
       BlockRealize(outer_bindings, division.back()->outer_extent, outer_block);
 
@@ -381,7 +381,7 @@ bool TensorizeComparator::VisitStmt_(const BlockNode* op, const Stmt& other) {
     if (!CompareAnnotationMap(op->annotations, rhs->annotations)) {
       return false;
     }
-    if (!CompareArray(op->allocations, rhs->allocations, &TensorizeComparator::CompareBuffer)) {
+    if (!CompareArray(op->alloc_buffers, rhs->alloc_buffers, &TensorizeComparator::CompareBuffer)) {
       return false;
     }
   }

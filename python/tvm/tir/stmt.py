@@ -445,27 +445,30 @@ class Block(Stmt):
     writes: list of BufferRegion
         The write tensor region of the block.
 
-    body: Stmt
-        The body of the block.
-
-    allocations: list of BufferAllocation
+    alloc_buffers: list of BufferAllocation
         The buffer allocations
 
     annotations: tvm.ir.Map
         Additional annotation hints.
 
-    tag: str
+    name_hint: str
         the tag of the block.
+
+    exec_scope: str
+        the execution scope.
+
+    body: Stmt
+        The body of the block.
 
     init: Optional[Stmt]
         The init block of the reduction block
     """
 
-    def __init__(self, iter_vars, reads, writes, body, allocations, annotations, tag, exec_scope,
-                 init=None):
+    def __init__(self, iter_vars, reads, writes, alloc_buffers, annotations, name_hint, exec_scope,
+                 body, init=None):
         self.__init_handle_by_constructor__(
-            _ffi_api.Block, iter_vars, reads, writes, body, allocations, annotations, tag,
-            exec_scope, init
+            _ffi_api.Block, iter_vars, reads, writes, alloc_buffers, annotations, name_hint,
+            exec_scope, body, init
         )
 
 

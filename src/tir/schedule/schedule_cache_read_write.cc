@@ -81,12 +81,12 @@ Block MakeCacheStage(const BufferRegion& cache_region, CacheStageInfo* info,
       /*iter_vars=*/block_vars,
       /*reads=*/{BufferRegion(info->read_buffer, access_region)},
       /*writes=*/{BufferRegion(info->write_buffer, access_region)},
-      /*body=*/
-      BufferStore(info->write_buffer, BufferLoad(info->read_buffer, copy_indices), copy_indices),
       /*allocations=*/{},
       /*annotations=*/{},
-      /*name_hint=*/cache_region->buffer->name + "_" + storage_scope,
       /*exec_scope=*/"",
+      /*name_hint=*/cache_region->buffer->name + "_" + storage_scope,
+      /*body=*/
+      BufferStore(info->write_buffer, BufferLoad(info->read_buffer, copy_indices), copy_indices),
       /*init=*/NullOpt);
   // Create the block realize node
   Stmt body = BlockRealize(/*values=*/binding_values,
@@ -191,7 +191,7 @@ Array<BufferRegion> ReplaceBuffer(const Array<BufferRegion>& regions, const Buff
 StmtSRef GetInnermostWriterBlock(const ScheduleNode* sch, const Buffer& buffer) {
   StmtSRef sref = sch->root;
   for (;;) {
-    Scope scope = sch->scopes.at(sref);
+    BlockScope scope = sch->scopes.at(sref);
     auto it = scope->buffer_writers.find(buffer);
     if (it == scope->buffer_writers.end()) {
       break;
@@ -380,7 +380,7 @@ class CacheReadRewriter : public StmtExprMutator {
     if (block == scope_sref_->stmt) {
       // If so, put buffer allocation on the parent scope
       ObjectPtr<BlockNode> n = make_object<BlockNode>(*stmt.as<BlockNode>());
-      n->allocations.push_back(info_->alloc);
+      n->alloc_buffers.push_back(info_->alloc);
       stmt = Block(n);
     } else {
       // Otherwise, update read/write regions
@@ -462,7 +462,7 @@ class CacheWriteRewriter : public StmtExprMutator {
     // Put buffer allocation on the parent scope
     if (block == scope_sref_->stmt) {
       ObjectPtr<BlockNode> n = make_object<BlockNode>(*stmt.as<BlockNode>());
-      n->allocations.push_back(info_->alloc);
+      n->alloc_buffers.push_back(info_->alloc);
       stmt = Block(n);
     } else {
       // Since cache_write changes the block, we need to update the buffer it writes

@@ -67,7 +67,7 @@ struct SRefTranslator {
   using StmtSRefNode = tir::StmtSRefNode;
   using DepEdge = tir::DepEdge;
   using Buffer = tir::Buffer;
-  using Scope = tir::Scope;
+  using BlockScope = tir::BlockScope;
 
   template <class K, class V>
   using SMap = std::unordered_map<K, V, ObjectPtrHash, ObjectPtrEqual>;
@@ -122,10 +122,10 @@ struct SRefTranslator {
   }
 
   /*! \brief Translate SMap<StmtSRef, Scope> */
-  SMap<StmtSRef, Scope> Trans(const SMap<StmtSRef, Scope>& scopes) {
-    SMap<StmtSRef, Scope> result;
+  SMap<StmtSRef, BlockScope> Trans(const SMap<StmtSRef, BlockScope>& scopes) {
+    SMap<StmtSRef, BlockScope> result;
     for (const auto& kv : scopes) {
-      Scope& scope = result[Trans(kv.first)] = Scope();
+      BlockScope& scope = result[Trans(kv.first)] = BlockScope();
       scope->forward_edges = Trans(kv.second->forward_edges);
       scope->backward_edges = Trans(kv.second->backward_edges);
       scope->buffer_writers = Trans(kv.second->buffer_writers);

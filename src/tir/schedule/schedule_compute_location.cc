@@ -363,7 +363,7 @@ void ScheduleNode::compute_at(const StmtSRef& block_sref, const StmtSRef& loop_s
                          << loop_sref->stmt->GetTypeKey();
   const StmtSRef& parent_block_sref = GetParentBlockSRef(block_sref);
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
-  const Scope& scope = scopes.at(parent_block_sref);
+  const BlockScope& scope = scopes.at(parent_block_sref);
   Array<DepEdge> edges_to_pred = scope->GetPredecessors(block_sref);
   Array<DepEdge> edges_to_succ = scope->GetSuccessors(block_sref);
   // Cond 0. `block` and `loop` are in the same scope
@@ -460,7 +460,7 @@ void ScheduleNode::reverse_compute_at(const StmtSRef& block_sref, const StmtSRef
       << loop_sref->stmt->GetTypeKey();
   const StmtSRef& parent_block_sref = GetParentBlockSRef(block_sref);
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
-  const Scope& scope = scopes.at(parent_block_sref);
+  const BlockScope& scope = scopes.at(parent_block_sref);
   Array<DepEdge> edges_to_pred = scope->GetPredecessors(block_sref);
   Array<DepEdge> edges_to_succ = scope->GetSuccessors(block_sref);
   // Cond 0. `block` and `loop` are in the same scope
@@ -575,7 +575,7 @@ class StatementInliner : public StmtExprMutator {
     // Update Allocation
     const Buffer& buffer = block_->writes[0]->buffer;
     Array<Buffer> allocations;
-    for (const auto alloc_buf : op->allocations) {
+    for (const auto alloc_buf : op->alloc_buffers) {
       if (alloc_buf != buffer) allocations.push_back(alloc_buf);
     }
 
@@ -589,8 +589,8 @@ class StatementInliner : public StmtExprMutator {
       reads = block_read_write_collector.reads();
     }
 
-    Block block(op->iter_vars, reads, op->writes, op->body, allocations, op->annotations,
-                op->name_hint, op->exec_scope, op->init);
+    Block block(op->iter_vars, reads, op->writes, allocations, op->annotations, op->exec_scope,
+                op->name_hint, op->body, op->init);
 
     block_sref_map_->Set(block, origin_block);
     return std::move(block);
@@ -632,7 +632,7 @@ void ScheduleNode::compute_inline(const StmtSRef& block_sref) {
   const auto* block = block_sref->GetStmt<BlockNode>();
   const StmtSRef& scope_block_sref = GetParentBlockSRef(block_sref);
   const auto* scope_block = scope_block_sref->GetStmt<BlockNode>();
-  const Scope& scope = scopes.at(scope_block_sref);
+  const BlockScope& scope = scopes.at(scope_block_sref);
   CHECK(block->body.as<BufferStoreNode>())
       << "ValueError: 'compute_inline' can only inline single assignment statement";
   CHECK_EQ(block->writes.size(), 1)
@@ -688,15 +688,15 @@ class ReverseStatementInliner : public StmtExprMutator {
     // update allocation
     const Buffer& buffer = producer_->writes[0]->buffer;
     Array<Buffer> allocations;
-    for (const auto alloc_buf : op->allocations) {
+    for (const auto alloc_buf : op->alloc_buffers) {
       if (alloc_buf != buffer) allocations.push_back(alloc_buf);
     }
     // update read/write region
     BlockReadWriteCollector block_read_write_collector(allocations);
     block_read_write_collector(op->body);
     Block block(op->iter_vars, block_read_write_collector.reads(),
-                block_read_write_collector.writes(), op->body, allocations, op->annotations,
-                op->name_hint, op->exec_scope, op->init);
+                block_read_write_collector.writes(), allocations, op->annotations, op->exec_scope,
+                op->name_hint, op->body, op->init);
     if (is_producer) block_sref_map_->Set(block, origin_producer);
     return std::move(Block(block));
   }
@@ -770,7 +770,7 @@ void ScheduleNode::reverse_compute_inline(const StmtSRef& block_sref) {
       << block_sref->stmt->GetTypeKey();
   const StmtSRef& scope_block_sref = GetParentBlockSRef(block_sref);
   const auto* scope_block = scope_block_sref->GetStmt<BlockNode>();
-  const Scope& scope = scopes.at(scope_block_sref);
+  const BlockScope& scope = scopes.at(scope_block_sref);
   // Cond 1. Check block_sref is complete
   CHECK(scope->IsComplete(block_sref))
       << "ValueError: 'reverse_compute_inline' expects the 'block' to be a complete block";

@@ -153,14 +153,14 @@ class AllReduceTransformer : public StmtExprMutator {
 
       ObjectPtr<BlockNode> n = CopyOnWrite(res);
       std::vector<Buffer> allocations;
-      for (const Buffer& allocation : res->allocations) {
+      for (const Buffer& allocation : res->alloc_buffers) {
         allocations.emplace_back(allocation);
       }
       const std::vector<Buffer>& new_allos = new_allocations_[GetRef<Block>(op)];
       for (const Buffer& allocation : new_allos) {
         allocations.emplace_back(allocation);
       }
-      n->allocations = allocations;
+      n->alloc_buffers = allocations;
 
       return Stmt(n);
     } else if (status == kMutatingBlock_nor_red) {
@@ -403,7 +403,7 @@ class AllReduceTransformer : public StmtExprMutator {
       Stmt body0 = Evaluate(call);
       body0 = AttrStmt(GetRef<CommReducer>(reducer), tir::attr::reduce_scope,
                        make_zero(DataType::Handle()), body0);
-      body0 = Block({}, reads, writes, body0, {}, {}, red_tmp_name, "", NullOpt);
+      body0 = Block({}, reads, writes, {}, {}, "", red_tmp_name, body0, NullOpt);
       body0 = BlockRealize({}, const_true(), GetRef<Block>(body0.as<BlockNode>()));
 
       // Step c. Create block/blockRealize: reduce_temp -> the original write buffer.
@@ -446,7 +446,7 @@ class AllReduceTransformer : public StmtExprMutator {
 
       Stmt body1 = BufferStore(write_buffer, BufferLoad(reduce_temp.value(), {0}),
                                update_body->indices);
-      body1 = Block(iter_vars, reads, writes, body1, {}, {}, block_name, exec_scope, NullOpt);
+      body1 = Block(iter_vars, reads, writes, {}, {}, exec_scope, block_name, body1, NullOpt);
       body1 = BlockRealize(binding_values, predicate,
                            GetRef<Block>(body1.as<BlockNode>()));
 
@@ -523,7 +523,7 @@ class AllReduceTransformer : public StmtExprMutator {
 
       Stmt body = BufferStore(write_buffer, BufferLoad(reduce_temp.value(), {0}),
                               update_body->indices);
-      body = Block(iter_vars, reads, writes, body, {}, {}, block_name, "", NullOpt);
+      body = Block(iter_vars, reads, writes, {}, {}, "", block_name, body, NullOpt);
       body = BlockRealize(binding_values, predicate,
                           GetRef<Block>(body.as<BlockNode>()));
 
