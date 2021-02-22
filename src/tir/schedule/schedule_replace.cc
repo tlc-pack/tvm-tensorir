@@ -136,6 +136,17 @@ struct CreationInfo {
  *
  * Change:
  *   `ScheduleNode::stmt2ref` and `ScheduleNode::scopes`.
+ *
+ * Assumption:
+ *  If the root is block/loop, then it is not intact
+ *
+ * Effect of the visitor:
+ *   1) For the block/loop root:
+ *   - `StmtSRefNode::parent` is set properly
+ *   - `StmtSRefNode::seq_index` is set to -1
+ *   2) For internal nodes:
+ *   - `StmtSRefNode::parent` is set properly
+ *   - `StmtSRefNode::seq_index` is set properly
  */
 class SRefCreator : public StmtVisitor {
  public:
@@ -239,6 +250,94 @@ class SRefCreator : public StmtVisitor {
 };
 
 /*!
+ * \brief A helper that
+ * 1) returns a new copy of `child_sref->parent->stmt`,
+ * where `child_sref->stmt` is replaced with `child_stmt`.
+ * 2) Then it points `child_sref` to `child_stmt`.
+ * 3) Finally it makes the subtree of the srefs pointing to the returned AST correct,
+ * except for the root.
+ */
+class ChildReplacer : private StmtMutator {
+ public:
+  static Stmt Mutate(ScheduleNode* self, StmtSRefNode* child_sref, const Stmt& child_stmt,
+                     bool allow_copy_on_write, bool update_child_sref) {
+    Stmt* body = nullptr;
+    Stmt result{nullptr};
+    // Step 1. Copy-on-write the `parent_stmt` and extract its `body`
+    const StmtNode* parent_stmt = child_sref->parent->stmt;
+    if (parent_stmt->IsInstance<BlockNode>()) {
+      const auto* block = static_cast<const BlockNode*>(parent_stmt);
+      ObjectPtr<BlockNode> new_block = CopyOnWrite(block, allow_copy_on_write);
+      body = &new_block->body;
+      result = Block(std::move(new_block));
+    } else if (parent_stmt->IsInstance<LoopNode>()) {
+      const auto* loop = static_cast<const LoopNode*>(parent_stmt);
+      ObjectPtr<LoopNode> new_loop = CopyOnWrite(loop, allow_copy_on_write);
+      body = &new_loop->body;
+      result = Loop(std::move(new_loop));
+    } else {
+      LOG(FATAL) << "TypeError: Unexpected type: " << parent_stmt->GetTypeKey();
+      throw;
+    }
+    // Step 2. Mutate the `result->body`, searching for `child_sref->stmt`
+    // and replace it with `child_stmt`
+    *body = (ChildReplacer(child_sref->stmt, child_stmt))(*body);
+    // Step 3. Link `child_sref` to `child_stmt`
+    if (update_child_sref) {
+      UpdateSRef(self, child_sref, child_stmt.get());
+    }
+    // Step 4. Make `seq_index` correct for the subtree (except for the root)
+    ResetSeqIndex(self, *body);
+    return result;
+  }
+
+ private:
+  static void ResetSeqIndex(ScheduleNode* self, const Stmt& stmt) {
+    class SeqIndexResetter : public StmtVisitor {
+     public:
+      explicit SeqIndexResetter(ScheduleNode* self) : self(self) {}
+      void VisitStmt_(const BlockNode* op) override { self->stmt2ref.at(op)->seq_index = -1; }
+      void VisitStmt_(const LoopNode* op) override { self->stmt2ref.at(op)->seq_index = -1; }
+      void VisitStmt_(const SeqStmtNode* op) override {
+        int i = 0;
+        for (const Stmt& stmt : op->seq) {
+          SetSeqIndex(self, stmt, i);
+          ++i;
+        }
+      }
+      ScheduleNode* self;
+    };
+    (SeqIndexResetter(self))(stmt);
+  }
+
+  explicit ChildReplacer(const StmtNode* src_stmt, const Stmt& tgt_stmt)
+      : src_stmt(src_stmt), tgt_stmt(tgt_stmt) {}
+
+  Stmt VisitStmt(const Stmt& stmt) override {
+    if (stmt.get() == src_stmt) {
+      // if the statement matches the replace tgt_stmt
+      // just return the tgt_stmt
+      return tgt_stmt;
+    } else {
+      return StmtMutator::VisitStmt(stmt);
+    }
+  }
+
+  Stmt VisitStmt_(const BlockNode* op) override { return GetRef<Stmt>(op); }
+  Stmt VisitStmt_(const LoopNode* op) override { return GetRef<Stmt>(op); }
+  Stmt VisitStmt_(const SeqStmtNode* stmt) override { return VisitSeqStmt_(stmt, false); }
+
+  const StmtNode* src_stmt;
+  const Stmt& tgt_stmt;
+
+  template <typename TNode>
+  static ObjectPtr<TNode> CopyOnWrite(const TNode* node, bool allow_copy_on_write) {
+    return allow_copy_on_write ? runtime::GetObjectPtr<TNode>(const_cast<TNode*>(node))
+                               : runtime::make_object<TNode>(*node);
+  }
+};
+
+/*!
  * \brief A helper that removes stale srefs that are useless after the replacement
  *
  * Algorithm:
@@ -306,83 +405,12 @@ class SRefRemover : public StmtVisitor {
   CreationInfo info;
 };
 
-class ParentMutator : private StmtMutator {
- public:
-  static Stmt Mutate(ScheduleNode* self, StmtSRefNode* child_sref, const Stmt& child_stmt,
-                     bool allow_copy_on_write, bool update_src_sref) {
-    Stmt* body = nullptr;
-    Stmt result{nullptr};
-    const StmtNode* parent_stmt = child_sref->parent->stmt;
-    if (parent_stmt->IsInstance<BlockNode>()) {
-      const auto* block = static_cast<const BlockNode*>(parent_stmt);
-      ObjectPtr<BlockNode> new_block = CopyOnWrite(block, allow_copy_on_write);
-      body = &new_block->body;
-      result = Block(std::move(new_block));
-    } else if (parent_stmt->IsInstance<LoopNode>()) {
-      const auto* loop = static_cast<const LoopNode*>(parent_stmt);
-      ObjectPtr<LoopNode> new_loop = CopyOnWrite(loop, allow_copy_on_write);
-      body = &new_loop->body;
-      result = Loop(std::move(new_loop));
-    } else {
-      LOG(FATAL) << "TypeError: Unexpected type: " << parent_stmt->GetTypeKey();
-      throw;
-    }
-    *body = (ParentMutator(child_sref->stmt, child_stmt))(*body);
-    if (update_src_sref) {
-      UpdateSRef(self, child_sref, child_stmt.get());
-    }
-    ResetSeqIndex(self, *body);
-    return result;
-  }
-
- private:
-  static void ResetSeqIndex(ScheduleNode* self, const Stmt& stmt) {
-    class SeqIndexResetter : public StmtVisitor {
-     public:
-      explicit SeqIndexResetter(ScheduleNode* self) : self(self) {}
-      void VisitStmt_(const BlockNode* op) override { self->stmt2ref.at(op)->seq_index = -1; }
-      void VisitStmt_(const LoopNode* op) override { self->stmt2ref.at(op)->seq_index = -1; }
-      void VisitStmt_(const SeqStmtNode* op) override {
-        int i = 0;
-        for (const Stmt& stmt : op->seq) {
-          SetSeqIndex(self, stmt, i);
-          ++i;
-        }
-      }
-      ScheduleNode* self;
-    };
-    (SeqIndexResetter(self))(stmt);
-  }
-
-  explicit ParentMutator(const StmtNode* src_stmt, const Stmt& tgt_stmt)
-      : src_stmt(src_stmt), tgt_stmt(tgt_stmt) {}
-
-  Stmt VisitStmt(const Stmt& stmt) override {
-    if (stmt.get() == src_stmt) {
-      // if the statement matches the replace tgt_stmt
-      // just return the tgt_stmt
-      return tgt_stmt;
-    } else {
-      return StmtMutator::VisitStmt(stmt);
-    }
-  }
-
-  Stmt VisitStmt_(const BlockNode* op) override { return GetRef<Stmt>(op); }
-  Stmt VisitStmt_(const LoopNode* op) override { return GetRef<Stmt>(op); }
-  Stmt VisitStmt_(const SeqStmtNode* stmt) override { return VisitSeqStmt_(stmt, false); }
-
-  const StmtNode* src_stmt;
-  const Stmt& tgt_stmt;
-
-  template <typename TNode>
-  static ObjectPtr<TNode> CopyOnWrite(const TNode* node, bool allow_copy_on_write) {
-    return allow_copy_on_write ? runtime::GetObjectPtr<TNode>(const_cast<TNode*>(node))
-                               : runtime::make_object<TNode>(*node);
-  }
-};
-
 void ScheduleNode::Replace(const StmtSRef& _src_sref, const Stmt& tgt_stmt,
                            const Map<Block, Block>& block_reuse) {
+  // Rule out the case that no replacement happens
+  if (_src_sref->stmt == tgt_stmt.get()) {
+    return;
+  }
   // Reset sref as a new sref so that its content won't be affected by subsequent changes
   StmtSRef src_sref =
       StmtSRef(_src_sref->stmt, _src_sref->parent, _src_sref->seq_index, /*binding_valid=*/false);
@@ -411,25 +439,38 @@ void ScheduleNode::Replace(const StmtSRef& _src_sref, const Stmt& tgt_stmt,
   //   The visit stops when all the ancestors are uniquely referenced, i.e. can mutate inplace.
   //   Along the way, because we create a new ancestor path,
   //   we need to update those sref points from old ancestors to newly created ones
-  // The maximum number of hops until we don't need to copy
+  // `num_copy_steps` is the maximum number of hops until we need to copy
+  // To reach a node that can be mutated in-place, it needs `num_copy_steps + 1` hops
   int num_copy_steps =
       StepsHighestNonUniqueAncestor(src_sref, /*func_is_unique=*/this->func.unique());
+  // Loop invariant:
+  //
+  // Before step `i`:
+  // 1) `child_sref` is `src_sref` going up by `i` steps
+  // 2) `child_stmt` is the subtree that `child_sref` should correspond to after replacement
+  // 3) except for the subtree root, all srefs that point to the subtree of `child_stmt` are correct
+  // 4) for the subtree root of `child_stmt`, `child_sref` has not pointed to it yet
+  //
+  // During step `i`:
+  // 1) Create `parent_stmt` that corresponds to `child_sref->parent
+  // 2) Point `child_sref` to `child_stmt`
   StmtSRefNode* child_sref = src_sref.get();
   Stmt child_stmt = std::move(tgt_stmt);
   for (int i = 0; i <= num_copy_steps && child_sref->stmt != root_stmt; ++i) {
-    bool parent_is_uniquely_referenced = (i == num_copy_steps);
-    // Figure out parent_stmt => new_parent_stmt
-    // Step 2.1. Create a new parent stmt, by mutating the body of `child_sref->parent`.
-    // Step 2.2. Update those sref points from old ancestors to newly created ones
-    Stmt new_parent_stmt =
-        ParentMutator::Mutate(this, child_sref, child_stmt, parent_is_uniquely_referenced, i != 0);
+    bool parent_unique = (i == num_copy_steps);
+    // Step 2.1. Create `parent_stmt`, by mutating the body of `parent_sref->stmt`,
+    // replacing `child_sref->stmt` to `child_stmt`.
+    // Step 2.2. Link `child_sref` to `child_stmt`
+    Stmt parent_stmt =
+        ChildReplacer::Mutate(this, child_sref, child_stmt,
+                              /*allow_copy_on_write=*/parent_unique, /*update_child_sref=*/i != 0);
     // Step 2.3. Go to next parent
-    if (parent_is_uniquely_referenced) {
+    if (parent_unique) {
       // If the node can be directly mutated inplace,
       // then there is no need to update its parent and the function
       break;
     }
-    child_stmt = std::move(new_parent_stmt);
+    child_stmt = std::move(parent_stmt);
     child_sref = child_sref->parent;
   }
   // Step 3. Remove the statements from the old AST that are not used any more
@@ -437,9 +478,11 @@ void ScheduleNode::Replace(const StmtSRef& _src_sref, const Stmt& tgt_stmt,
   SRefRemover::Remove(this, creation_info, src_stmt);
   // Step 4. Handle the case that we mutate the root
   if (child_sref->stmt == root_stmt) {
+    // From the loop invariant, upon exit, while its subtree is properly set,
+    // `child_sref` is not properly to `child_stmt` yet.
     if (src_sref->stmt == root_stmt) {
       // Replacing the root
-      this->root = this->stmt2ref[child_stmt.get()];
+      this->root = this->stmt2ref.at(child_stmt.get());
     } else {
       // Replacing a non-root
       UpdateSRef(this, this->root.get(), child_stmt.get());
@@ -447,8 +490,8 @@ void ScheduleNode::Replace(const StmtSRef& _src_sref, const Stmt& tgt_stmt,
     // Update the body of the `this->func`
     this->func = UpdatePrimFunc(&this->func, child_stmt);
   }
-  // TODO
-  this->ValidateSRef();
+  // TODO(@junrushao1994): provide a configurable way to turn it on
+  // this->ValidateSRef();
 }
 
 struct Internal {
