@@ -147,7 +147,7 @@ class AutoCompleter : public StmtMutator {
       body = BlockRealize(block_with_binding);
       for (int i = op->binding_values.size() - 1; i >= 0; --i) {
         body = For(Downcast<Var>(bindings[i]), op->block->iter_vars[i]->dom->min,
-                    op->block->iter_vars[i]->dom->extent, {}, body);
+                   op->block->iter_vars[i]->dom->extent, {}, body);
       }
     }
     return body;

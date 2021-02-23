@@ -104,9 +104,14 @@ def matmul_blockzied(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                 tir.bind(vko, 0)
                 with tir.init():
                     for i1 in range(0, 128):
-                        C[vi, i1] = tir.float32(0)
-                with tir.block([128, tir.reduce_axis(0, 128)], "update") as [vj, vk]:
-                    C[vi, vj] = C[vi, vj] + (A[vi, vk] * B[vj, vk])
+                        with tir.block([128], "update_init") as [vj_init]:
+                            tir.bind(vj_init, i1)
+                            C[vi, vj_init] = tir.float32(0)
+                for i1, i2 in tir.grid(128, 128):
+                    with tir.block([128, tir.reduce_axis(0, 128)], "update") as [vj, vk]:
+                        tir.bind(vj, i1)
+                        tir.bind(vk, i2)
+                        C[vi, vj] = C[vi, vj] + (A[vi, vk] * B[vj, vk])
 
 
 def test_reduction_blockize():
