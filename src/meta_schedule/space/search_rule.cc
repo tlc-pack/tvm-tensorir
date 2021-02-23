@@ -174,9 +174,9 @@ class RuleMultiLevelTiling {
                    << structure;
       }
     }
-    CHECK(!s_idx->empty())
+    ICHECK(!s_idx->empty())
         << "ValueError: Invalid tiling structure, cannot find any 'S' in the format";
-    CHECK(!r_idx->empty())
+    ICHECK(!r_idx->empty())
         << "ValueError: Invalid tiling structure, cannot find any 'R' in the format";
     return num_s_in_prefix;
   }
@@ -188,7 +188,7 @@ class RuleMultiLevelTiling {
    */
   static std::vector<int> GetReadBufferIndices(const tir::StmtSRef& block_sref) {
     const auto* block = block_sref->GetStmt<tir::BlockNode>();
-    CHECK(block) << "TypeError: Expects 'Block', but gets: " << block_sref->stmt->GetTypeKey();
+    ICHECK(block) << "TypeError: Expects 'Block', but gets: " << block_sref->stmt->GetTypeKey();
     std::vector<int> result;
     int n_reads = block->reads.size();
     int n_writes = block->writes.size();
@@ -382,7 +382,7 @@ class RuleMultiLevelTiling {
       BlockRV cache_read_block = sch->CacheRead(block_rv, i, cache_read_scope);
       // Insert cache_read block to the proper place
       const Array<LoopRV>& r_tiles = state.tiles[r_idx.front()];
-      CHECK(!r_tiles.empty()) << "ValueError: Cannot find any reduction loop in the block";
+      ICHECK(!r_tiles.empty()) << "ValueError: Cannot find any reduction loop in the block";
       sch->ComputeAt(cache_read_block, r_tiles.back());
       // Fuse the iterators of the cache_read
       LoopRV fused = FuseBufferAxes(sch, cache_read_block, buffer_ndim);
@@ -392,9 +392,9 @@ class RuleMultiLevelTiling {
         // cooperative fetch + vectorized loading
         // Split into inner and outer
         Array<tir::Var> factors = sch->SamplePerfectTile(2, fused, max_vec_len);
-        CHECK_EQ(factors.size(), 2);
+        ICHECK_EQ(factors.size(), 2);
         Array<LoopRV> splits = sch->Split(fused, {factors[0], factors[1]});
-        CHECK_EQ(splits.size(), 2);
+        ICHECK_EQ(splits.size(), 2);
         // Vectorize the inner loop
         sch->Vectorize(splits[1]);
         fused = splits[0];
@@ -414,7 +414,7 @@ class RuleMultiLevelTiling {
     // TODO: fix
     Array<Integer> iter_types = GetBlockVarTypes(sch->sch, sch->Eval(block_rv));
     Array<LoopRV> axes = sch->GetAxes(block_rv);
-    CHECK_EQ(axes.size(), iter_types.size());
+    ICHECK_EQ(axes.size(), iter_types.size());
     // For each loop axis, tile it
     for (int i = 0, n = axes.size(); i < n; ++i) {
       const std::vector<int>* idx = nullptr;
@@ -722,22 +722,22 @@ class RuleMarkTensorize {
       const tir::StmtSRef& block_loop_sref = kv.first;
       const tir::ForNode* block_loop = block_loop_sref->GetStmt<tir::ForNode>();
       const tir::ForNode* desc_loop = kv.second.get();
-      CHECK(block_loop != nullptr && desc_loop != nullptr);
+      ICHECK(block_loop != nullptr && desc_loop != nullptr);
       // Extract the loop extent
       PrimExpr block_extent = analyzer.Simplify(block_loop->extent);
       PrimExpr desc_extent = analyzer.Simplify(desc_loop->extent);
       const auto* int_block_extent = block_extent.as<IntImmNode>();
       const auto* int_desc_extent = desc_extent.as<IntImmNode>();
-      CHECK(int_block_extent != nullptr && int_desc_extent != nullptr);
+      ICHECK(int_block_extent != nullptr && int_desc_extent != nullptr);
       // Check divisibility
       int64_t total = int_block_extent->value;
       int64_t inner = int_desc_extent->value;
-      CHECK_EQ(total % inner, 0);
+      ICHECK_EQ(total % inner, 0);
       int64_t outer = int_block_extent->value / int_desc_extent->value;
       // Do the split
       Array<LoopRV> split =
           sch->Split(loop2rv.at(block_loop_sref), {Integer(outer), Integer(inner)});
-      CHECK_EQ(split.size(), 2);
+      ICHECK_EQ(split.size(), 2);
       inner_loops.insert(sch->Eval(split[1]).operator->());
       // The inner split will be reordered to the loop domain that is tensorized
       int desc_loop_index = info->desc_loop_indexer.at(GetRef<tir::For>(desc_loop));

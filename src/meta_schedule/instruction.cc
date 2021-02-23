@@ -88,7 +88,7 @@ Array<ObjectRef> InstructionNode::Serialize(const Map<ObjectRef, String>& rv_nam
     Array<ObjectRef> names;
     names.reserve(this->outputs.size());
     for (const ObjectRef& rv : this->outputs) {
-      CHECK(rv.defined());
+      ICHECK(rv.defined());
       if (const auto* integer = rv.as<IntImmNode>()) {
         names.push_back(GetRef<IntImm>(integer));
       } else if (rv_names.count(rv)) {
@@ -161,7 +161,7 @@ Array<ObjectRef> InstructionNode::Deserialize(const Array<ObjectRef>& record,
         inputs.push_back(GetRef<Integer>(integer));
       } else if (const auto* str_obj = obj.as<StringObj>()) {
         String str = GetRef<String>(str_obj);
-        CHECK(named_rvs->count(str)) << "IndexError: Cannot find variable: " << str;
+        ICHECK(named_rvs->count(str)) << "IndexError: Cannot find variable: " << str;
         inputs.push_back(named_rvs->at(str));
       } else {
         LOG(FATAL) << "TypeError: Cannot deal with type '" << obj->GetTypeKey()
@@ -176,7 +176,7 @@ Array<ObjectRef> InstructionNode::Deserialize(const Array<ObjectRef>& record,
   InstAttrs inst_attrs = vtable.at(attrs_name)(record, &decision);
   // Step 6. Calculate the new outputs, and translate record_outputs to outputs
   Array<ObjectRef> outputs = inst_attrs->Apply(sch, inputs, decision);
-  CHECK_EQ(record_outputs.size(), outputs.size());
+  ICHECK_EQ(record_outputs.size(), outputs.size());
   int n = record_outputs.size();
   for (int i = 0; i < n; ++i) {
     named_rvs->Set(record_outputs[i], outputs[i]);
@@ -198,7 +198,7 @@ void InstructionNode::AsPython(std::ostream& os, const Map<ObjectRef, String>& r
       return name.value();
     }
     const auto* prim_expr = obj.as<PrimExprNode>();
-    CHECK(prim_expr) << "TypeError: Cannot handle type: " << obj->GetTypeKey();
+    ICHECK(prim_expr) << "TypeError: Cannot handle type: " << obj->GetTypeKey();
     std::ostringstream oss;
     oss << tir::Substitute(GetRef<PrimExpr>(prim_expr), rename_expr);
     return oss.str();
@@ -488,7 +488,7 @@ Instruction EnterPostProcAttrs::Make() {
 /**************** Apply  ****************/
 
 #define TVM_META_SCHEDULE_INST_CAST(CastType, VarName, Input)                    \
-  CHECK(!Input.defined() || Input->IsInstance<CastType::ContainerType>())        \
+  ICHECK(!Input.defined() || Input->IsInstance<CastType::ContainerType>())        \
       << "TypeError: Cannot downcast to '" << CastType::ContainerType::_type_key \
       << "' from: " << Input->GetTypeKey();                                      \
   CastType VarName = Input.defined() ? Downcast<CastType>(Input) : CastType(nullptr);
@@ -503,7 +503,7 @@ Array<ObjectRef> AdaptOutputs(const Array<T>& outputs) {
 Array<ObjectRef> SamplePerfectTileAttrs::Apply(const Schedule& sch,
                                                const Array<Optional<ObjectRef>>& inputs,
                                                const Optional<ObjectRef>& decision) const {
-  CHECK_EQ(inputs.size(), 1);
+  ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   Optional<Array<ObjectRef>> casted_decision = NullOpt;
   if (decision.defined()) {
@@ -516,7 +516,7 @@ Array<ObjectRef> SamplePerfectTileAttrs::Apply(const Schedule& sch,
 Array<ObjectRef> SampleTileFactorAttrs::Apply(const Schedule& sch,
                                               const Array<Optional<ObjectRef>>& inputs,
                                               const Optional<ObjectRef>& decision) const {
-  CHECK_EQ(inputs.size(), 1);
+  ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   Optional<Array<ObjectRef>> casted_decision = NullOpt;
   if (decision.defined()) {
@@ -528,7 +528,7 @@ Array<ObjectRef> SampleTileFactorAttrs::Apply(const Schedule& sch,
 Array<ObjectRef> SampleIntAttrs::Apply(const Schedule& sch,
                                        const Array<Optional<ObjectRef>>& inputs,
                                        const Optional<ObjectRef>& decision) const {
-  CHECK_EQ(inputs.size(), 2);
+  ICHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(PrimExpr, min_inclusive, inputs[0]);
   TVM_META_SCHEDULE_INST_CAST(PrimExpr, max_exclusive, inputs[1]);
   return {sch->SampleInt(min_inclusive, max_exclusive, decision)};
@@ -537,14 +537,14 @@ Array<ObjectRef> SampleIntAttrs::Apply(const Schedule& sch,
 Array<ObjectRef> SampleCategoricalAttrs::Apply(const Schedule& sch,
                                                const Array<Optional<ObjectRef>>& inputs,
                                                const Optional<ObjectRef>& decision) const {
-  CHECK_EQ(inputs.size(), 0);
+  ICHECK_EQ(inputs.size(), 0);
   return {sch->SampleCategorical(candidates, probs, decision)};
 }
 
 Array<ObjectRef> SampleComputeLocationAttrs::Apply(const Schedule& sch,
                                                    const Array<Optional<ObjectRef>>& inputs,
                                                    const Optional<ObjectRef>& decision) const {
-  CHECK_EQ(inputs.size(), 1);
+  ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return {sch->SampleComputeLocation(block, decision)};
 }
@@ -554,8 +554,8 @@ Array<ObjectRef> SampleComputeLocationAttrs::Apply(const Schedule& sch,
 Array<ObjectRef> GetProducersAttrs::Apply(const Schedule& sch,
                                           const Array<Optional<ObjectRef>>& inputs,
                                           const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 1);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetProducers(block));
 }
@@ -563,8 +563,8 @@ Array<ObjectRef> GetProducersAttrs::Apply(const Schedule& sch,
 Array<ObjectRef> GetConsumersAttrs::Apply(const Schedule& sch,
                                           const Array<Optional<ObjectRef>>& inputs,
                                           const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 1);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetConsumers(block));
 }
@@ -572,16 +572,16 @@ Array<ObjectRef> GetConsumersAttrs::Apply(const Schedule& sch,
 Array<ObjectRef> GetBlockAttrs::Apply(const Schedule& sch,  //
                                       const Array<Optional<ObjectRef>>& inputs,
                                       const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 0);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 0);
   return {sch->GetBlock(name)};
 }
 
 Array<ObjectRef> GetAxesAttrs::Apply(const Schedule& sch,  //
                                      const Array<Optional<ObjectRef>>& inputs,
                                      const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 1);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetAxes(block));
 }
@@ -589,8 +589,8 @@ Array<ObjectRef> GetAxesAttrs::Apply(const Schedule& sch,  //
 Array<ObjectRef> GetReadBuffersAttrs::Apply(const Schedule& sch,
                                             const Array<Optional<ObjectRef>>& inputs,
                                             const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 1);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetReadBuffers(block));
 }
@@ -598,8 +598,8 @@ Array<ObjectRef> GetReadBuffersAttrs::Apply(const Schedule& sch,
 Array<ObjectRef> GetWriteBuffersAttrs::Apply(const Schedule& sch,
                                              const Array<Optional<ObjectRef>>& inputs,
                                              const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 1);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetWriteBuffers(block));
 }
@@ -607,16 +607,16 @@ Array<ObjectRef> GetWriteBuffersAttrs::Apply(const Schedule& sch,
 Array<ObjectRef> GetRootBlocksAttrs::Apply(const Schedule& sch,
                                            const Array<Optional<ObjectRef>>& inputs,
                                            const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 0);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 0);
   return AdaptOutputs(sch->GetRootBlocks());
 }
 
 Array<ObjectRef> GetLeafBlocksAttrs::Apply(const Schedule& sch,
                                            const Array<Optional<ObjectRef>>& inputs,
                                            const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 0);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 0);
   return AdaptOutputs(sch->GetLeafBlocks());
 }
 
@@ -625,15 +625,15 @@ Array<ObjectRef> GetLeafBlocksAttrs::Apply(const Schedule& sch,
 Array<ObjectRef> MarkLoopAttrs::Apply(const Schedule& sch,  //
                                       const Array<Optional<ObjectRef>>& inputs,
                                       const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK(inputs.size() == 1 || inputs.size() == 2);
+  ICHECK(!decision.defined());
+  ICHECK(inputs.size() == 1 || inputs.size() == 2);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   if (ann_val == "") {
-    CHECK_EQ(inputs.size(), 2);
+    ICHECK_EQ(inputs.size(), 2);
     TVM_META_SCHEDULE_INST_CAST(PrimExpr, val, inputs[1]);
     sch->MarkLoop(loop, ann_key, val);
   } else {
-    CHECK_EQ(inputs.size(), 1);
+    ICHECK_EQ(inputs.size(), 1);
     sch->MarkLoop(loop, ann_key, tir::StringImm(ann_val));
   }
   return {};
@@ -642,8 +642,8 @@ Array<ObjectRef> MarkLoopAttrs::Apply(const Schedule& sch,  //
 Array<ObjectRef> MarkBlockAttrs::Apply(const Schedule& sch,
                                        const Array<Optional<ObjectRef>>& inputs,
                                        const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 2);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   TVM_META_SCHEDULE_INST_CAST(PrimExpr, ann_val, inputs[1]);
   sch->MarkBlock(block, ann_key, ann_val);
@@ -653,7 +653,7 @@ Array<ObjectRef> MarkBlockAttrs::Apply(const Schedule& sch,
 Array<ObjectRef> FuseAttrs::Apply(const Schedule& sch,  //
                                   const Array<Optional<ObjectRef>>& inputs,
                                   const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
+  ICHECK(!decision.defined());
   int n_loops = inputs.size();
   Array<LoopRV> loops;
   loops.reserve(n_loops);
@@ -667,7 +667,7 @@ Array<ObjectRef> FuseAttrs::Apply(const Schedule& sch,  //
 Array<ObjectRef> SplitAttrs::Apply(const Schedule& sch,  //
                                    const Array<Optional<ObjectRef>>& inputs,
                                    const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
+  ICHECK(!decision.defined());
   CHECK_GE(inputs.size(), 3);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   Array<Optional<PrimExpr>> factors;
@@ -685,7 +685,7 @@ Array<ObjectRef> SplitAttrs::Apply(const Schedule& sch,  //
 Array<ObjectRef> ReorderAttrs::Apply(const Schedule& sch,  //
                                      const Array<Optional<ObjectRef>>& inputs,
                                      const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
+  ICHECK(!decision.defined());
   Array<LoopRV> after_axes;
   for (const ObjectRef& obj : inputs) {
     if (const auto* loop = obj.as<LoopRVNode>()) {
@@ -701,8 +701,8 @@ Array<ObjectRef> ReorderAttrs::Apply(const Schedule& sch,  //
 Array<ObjectRef> ComputeAtAttrs::Apply(const Schedule& sch,
                                        const Array<Optional<ObjectRef>>& inputs,
                                        const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 2);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[1]);
   sch->ComputeAt(block, loop);
@@ -712,8 +712,8 @@ Array<ObjectRef> ComputeAtAttrs::Apply(const Schedule& sch,
 Array<ObjectRef> ReverseComputeAtAttrs::Apply(const Schedule& sch,
                                               const Array<Optional<ObjectRef>>& inputs,
                                               const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 2);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[1]);
   sch->ReverseComputeAt(block, loop);
@@ -723,8 +723,8 @@ Array<ObjectRef> ReverseComputeAtAttrs::Apply(const Schedule& sch,
 Array<ObjectRef> ComputeInlineAttrs::Apply(const Schedule& sch,
                                            const Array<Optional<ObjectRef>>& inputs,
                                            const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 1);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   sch->ComputeInline(block);
   return {};
@@ -733,8 +733,8 @@ Array<ObjectRef> ComputeInlineAttrs::Apply(const Schedule& sch,
 Array<ObjectRef> ReverseComputeInlineAttrs::Apply(const Schedule& sch,
                                                   const Array<Optional<ObjectRef>>& inputs,
                                                   const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 1);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   sch->ReverseComputeInline(block);
   return {};
@@ -743,8 +743,8 @@ Array<ObjectRef> ReverseComputeInlineAttrs::Apply(const Schedule& sch,
 Array<ObjectRef> CacheReadAttrs::Apply(const Schedule& sch,
                                        const Array<Optional<ObjectRef>>& inputs,
                                        const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 1);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return {sch->CacheRead(block, i, storage_scope)};
 }
@@ -752,8 +752,8 @@ Array<ObjectRef> CacheReadAttrs::Apply(const Schedule& sch,
 Array<ObjectRef> CacheWriteAttrs::Apply(const Schedule& sch,
                                         const Array<Optional<ObjectRef>>& inputs,
                                         const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 1);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return {sch->CacheWrite(block, i, storage_scope)};
 }
@@ -761,8 +761,8 @@ Array<ObjectRef> CacheWriteAttrs::Apply(const Schedule& sch,
 Array<ObjectRef> BlockizeAttrs::Apply(const Schedule& sch,  //
                                       const Array<Optional<ObjectRef>>& inputs,
                                       const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 1);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   return {sch->Blockize(loop, exec_scope)};
 }
@@ -770,8 +770,8 @@ Array<ObjectRef> BlockizeAttrs::Apply(const Schedule& sch,  //
 Array<ObjectRef> DecomposeReductionAttrs::Apply(const Schedule& sch,
                                                 const Array<Optional<ObjectRef>>& inputs,
                                                 const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 2);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[1]);
   return {sch->DecomposeReduction(block, loop)};
@@ -780,8 +780,8 @@ Array<ObjectRef> DecomposeReductionAttrs::Apply(const Schedule& sch,
 Array<ObjectRef> TensorizeAttrs::Apply(const Schedule& sch,
                                        const Array<Optional<ObjectRef>>& inputs,
                                        const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 1);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   sch->Tensorize(loop, this->tensor_intrin_name);
   return {};
@@ -790,8 +790,8 @@ Array<ObjectRef> TensorizeAttrs::Apply(const Schedule& sch,
 Array<ObjectRef> ParallelAttrs::Apply(const Schedule& sch,  //
                                       const Array<Optional<ObjectRef>>& inputs,
                                       const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 1);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   sch->Parallel(loop);
   return {};
@@ -800,8 +800,8 @@ Array<ObjectRef> ParallelAttrs::Apply(const Schedule& sch,  //
 Array<ObjectRef> VectorizeAttrs::Apply(const Schedule& sch,
                                        const Array<Optional<ObjectRef>>& inputs,
                                        const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 1);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   sch->Vectorize(loop);
   return {};
@@ -810,8 +810,8 @@ Array<ObjectRef> VectorizeAttrs::Apply(const Schedule& sch,
 Array<ObjectRef> UnrollAttrs::Apply(const Schedule& sch,  //
                                     const Array<Optional<ObjectRef>>& inputs,
                                     const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 1);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   sch->Unroll(loop);
   return {};
@@ -820,8 +820,8 @@ Array<ObjectRef> UnrollAttrs::Apply(const Schedule& sch,  //
 Array<ObjectRef> BindAttrs::Apply(const Schedule& sch,  //
                                   const Array<Optional<ObjectRef>>& inputs,
                                   const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 1);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
   sch->Bind(loop, thread_axis);
   return {};
@@ -830,8 +830,8 @@ Array<ObjectRef> BindAttrs::Apply(const Schedule& sch,  //
 Array<ObjectRef> EnterPostProcAttrs::Apply(const Schedule& sch,
                                            const Array<Optional<ObjectRef>>& inputs,
                                            const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
-  CHECK_EQ(inputs.size(), 0);
+  ICHECK(!decision.defined());
+  ICHECK_EQ(inputs.size(), 0);
   sch->EnterPostProc();
   return {};
 }
@@ -1275,51 +1275,51 @@ void SampleComputeLocationAttrs::Serialize(Array<ObjectRef>* record,
 /**************** (Serialize) Block/Loop Relationship  ****************/
 
 void GetBlockAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
+  ICHECK(!decision.defined());
   record->push_back(name);
 }
 
 /**************** (Serialize) Scheduling Primitives  ****************/
 
 void MarkLoopAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
+  ICHECK(!decision.defined());
   record->push_back(this->ann_key);
   record->push_back(this->ann_val);
 }
 
 void MarkBlockAttrs::Serialize(Array<ObjectRef>* record,
                                const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
+  ICHECK(!decision.defined());
   record->push_back(this->ann_key);
 }
 
 void CacheReadAttrs::Serialize(Array<ObjectRef>* record,
                                const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
+  ICHECK(!decision.defined());
   record->push_back(Integer(i));
   record->push_back(this->storage_scope);
 }
 
 void CacheWriteAttrs::Serialize(Array<ObjectRef>* record,
                                 const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
+  ICHECK(!decision.defined());
   record->push_back(Integer(i));
   record->push_back(this->storage_scope);
 }
 
 void BlockizeAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
+  ICHECK(!decision.defined());
   record->push_back(this->exec_scope);
 }
 
 void TensorizeAttrs::Serialize(Array<ObjectRef>* record,
                                const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
+  ICHECK(!decision.defined());
   record->push_back(this->tensor_intrin_name);
 }
 
 void BindAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const {
-  CHECK(!decision.defined());
+  ICHECK(!decision.defined());
   record->push_back(this->thread_axis);
 }
 
@@ -1441,7 +1441,7 @@ InstAttrs BindAttrs::Deserialize(const Array<ObjectRef>& record, Optional<Object
 
 #define TVM_META_SCHEDULE_INST_IO_EMPTY(AttrsType)                                                 \
   void AttrsType::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const { \
-    CHECK(!decision.defined());                                                                    \
+    ICHECK(!decision.defined());                                                                    \
   }                                                                                                \
   InstAttrs AttrsType::Deserialize(const Array<ObjectRef>& record,                                 \
                                    Optional<ObjectRef>* decision) {                                \
