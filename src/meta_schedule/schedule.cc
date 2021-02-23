@@ -616,6 +616,30 @@ Array<BlockRV> ScheduleNode::GetLeafBlocks() {
   return outputs;
 }
 
+Array<BlockRV> ScheduleNode::GetChildBlocks(const BlockRV& input_block) {
+  Array<tir::StmtSRef> tir_result;
+  Array<BlockRV> outputs;
+  const auto* block_ptr = this->Eval(input_block)->GetStmt<tir::BlockNode>();
+  CHECK(block_ptr) << "TypeError: Expects Block, but gets: " << block_ptr;
+  tir::PreOrderVisit(block_ptr->body, [&tir_result, &outputs, this](const ObjectRef& obj) -> bool {
+    if (const auto* block = obj.as<tir::BlockNode>()) {
+      // Found the output from TIR
+      tir::StmtSRef block_sref = this->sch->stmt2ref.at(block);
+      tir_result.push_back(block_sref);
+      // Create the output random variable
+      BlockRV block_rv;
+      outputs.push_back(block_rv);
+      // Update the symbol table
+      this->sym_tab.Set(block_rv, block_sref);
+      return false;
+    }
+    return true;
+  });
+  // Record the instruction
+  this->trace->Append(GetRootBlocksAttrs::Make(outputs));
+  return outputs;
+}
+
 /**************** Schedule Primitives ****************/
 
 void ScheduleNode::MarkLoop(const LoopRV& loop, const String& ann_key, const PrimExpr& ann_val) {
@@ -983,6 +1007,13 @@ struct Internal {
    * \sa ScheduleNode::GetLeafBlocks
    */
   static Array<BlockRV> GetLeafBlocks(Schedule sch) { return sch->GetLeafBlocks(); }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::GetChildBlocks
+   * \sa ScheduleNode::GetChildBlocks
+   */
+  static Array<BlockRV> GetChildBlocks(Schedule sch, BlockRV block) {
+    return sch->GetChildBlocks(block);
+  }
   /**************** Scheduling Primitives ****************/
   /*!
    * \brief FFI function, corresponds to ScheduleNode::MarkLoop
@@ -1124,6 +1155,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetWriteBuffers")
     .set_body_typed(Internal::GetWriteBuffers);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetRootBlocks").set_body_typed(Internal::GetRootBlocks);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetLeafBlocks").set_body_typed(Internal::GetLeafBlocks);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetChildBlocks").set_body_typed(Internal::GetChildBlocks);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkLoop").set_body_typed(Internal::MarkLoop);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkBlock").set_body_typed(Internal::MarkBlock);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleFuse").set_body_typed(Internal::Fuse);
