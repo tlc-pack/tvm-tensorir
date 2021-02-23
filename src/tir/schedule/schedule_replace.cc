@@ -246,32 +246,40 @@ class ChildReplacer : private StmtMutator {
   static Stmt Mutate(ScheduleNode* self, const StmtNode* parent_stmt,
                      const StmtNode* child_src_stmt, const Stmt& child_tgt_stmt,
                      bool allow_copy_on_write) {
+    // Check the invariant
+    CHECK(child_tgt_stmt->IsInstance<BlockNode>() ||  //
+          child_tgt_stmt->IsInstance<LoopNode>() ||   //
+          child_tgt_stmt->IsInstance<BlockRealizeNode>());
+    ChildReplacer replacer(child_src_stmt, child_tgt_stmt, allow_copy_on_write);
+    // Step 1. Copy-on-write the `parent_stmt` and extract its `body`,
+    // where `body` means the body of either a block or a loop
     Stmt* body = nullptr;
-    Stmt result{nullptr};
-    // Step 1. Copy-on-write the `parent_stmt` and extract its `body`
-    if (parent_stmt->IsInstance<BlockNode>()) {
-      const auto* block = static_cast<const BlockNode*>(parent_stmt);
-      ObjectPtr<BlockNode> new_block = CopyOnWrite(block, allow_copy_on_write);
-      body = &new_block->body;
-      result = Block(std::move(new_block));
-    } else if (parent_stmt->IsInstance<LoopNode>()) {
-      const auto* loop = static_cast<const LoopNode*>(parent_stmt);
-      ObjectPtr<LoopNode> new_loop = CopyOnWrite(loop, allow_copy_on_write);
-      body = &new_loop->body;
-      result = Loop(std::move(new_loop));
-    } else {
-      LOG(FATAL) << "TypeError: Unexpected type: " << parent_stmt->GetTypeKey();
-      throw;
-    }
+    Stmt result = replacer.CopyOnWriteWithBody(parent_stmt, &body);
     // Step 2. Mutate the `result->body`, searching for `child_old_stmt`
     // and replace it with `child_tgt_stmt`
-    *body = ChildReplacer(child_src_stmt, child_tgt_stmt, allow_copy_on_write).VisitStmt(*body);
+    *body = replacer.VisitStmt(*body);
     // Step 4. Make `seq_index` correct for the subtree (except for the root)
     ResetSeqIndex(self, *body);
     return result;
   }
 
  private:
+  Stmt CopyOnWriteWithBody(const StmtNode* stmt, Stmt** body) {
+    if (stmt->IsInstance<BlockNode>()) {
+      auto* block = const_cast<BlockNode*>(static_cast<const BlockNode*>(stmt));
+      ObjectPtr<BlockNode> new_block = CopyOnWrite(block);
+      *body = &new_block->body;
+      return Block(std::move(new_block));
+    } else if (stmt->IsInstance<LoopNode>()) {
+      auto* loop = const_cast<LoopNode*>(static_cast<const LoopNode*>(stmt));
+      ObjectPtr<LoopNode> new_loop = CopyOnWrite(loop);
+      *body = &new_loop->body;
+      return Loop(std::move(new_loop));
+    }
+    LOG(FATAL) << "TypeError: Unexpected type: " << stmt->GetTypeKey();
+    throw;
+  }
+
   static void ResetSeqIndex(ScheduleNode* self, const Stmt& stmt) {
     class SeqIndexResetter : public StmtVisitor {
      public:
@@ -310,12 +318,6 @@ class ChildReplacer : private StmtMutator {
 
   const StmtNode* src_stmt;
   const Stmt& tgt_stmt;
-
-  template <typename TNode>
-  static ObjectPtr<TNode> CopyOnWrite(const TNode* node, bool allow_copy_on_write) {
-    return allow_copy_on_write ? runtime::GetObjectPtr<TNode>(const_cast<TNode*>(node))
-                               : runtime::make_object<TNode>(*node);
-  }
 };
 
 /*!
