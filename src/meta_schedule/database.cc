@@ -66,12 +66,12 @@ Optional<Array<ObjectRef>> LoadTuningRecords(const String& path) {
       runtime::Registry::Get("meta_schedule._deserialize_tuning_records");
   LOG(INFO) << "Found " << count << " tuning record(s)";
   LOG(INFO) << "Deserializing JSON tuning records...";
-  CHECK(f_deserialize)
+  ICHECK(f_deserialize)
       << "IndexError: Cannot find packed function \""
          "meta_schedule._deserialize_tuning_records\", which should be registered in python";
   ObjectRef parsed = (*f_deserialize)(os.str());
   const ArrayNode* array = parsed.as<runtime::ArrayNode>();
-  CHECK(array);
+  ICHECK(array);
   return GetRef<Array<ObjectRef>>(array);
 }
 
@@ -82,7 +82,7 @@ Optional<Array<ObjectRef>> LoadTuningRecords(const String& path) {
  */
 Database::Entry RecordToEntry(const ObjectRef& record_obj, const SearchTask& task) {
   const auto* record = record_obj.as<ArrayNode>();
-  CHECK_EQ(record->size(), 7);
+  ICHECK_EQ(record->size(), 7);
   String task_name = Downcast<String>(record->at(0));
   Map<String, ObjectRef> target = Downcast<Map<String, ObjectRef>>(record->at(1));
   Map<String, ObjectRef> target_host = Downcast<Map<String, ObjectRef>>(record->at(2));
@@ -189,7 +189,7 @@ class InMemoryDBNode : public DatabaseNode {
    * \param time The running time of the schedule
    */
   void Add(const Trace& trace, const String& repr, const std::vector<double>& times) override {
-    CHECK(!times.empty());
+    ICHECK(!times.empty());
     Database::Entry& entry = entries_[repr];
     double time = std::accumulate(times.begin(), times.end(), 0.0) / times.size();
     if (!entry.repr.empty()) {

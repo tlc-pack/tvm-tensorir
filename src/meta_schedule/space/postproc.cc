@@ -158,10 +158,10 @@ class PostprocRewriteCooperativeFetch {
       // Find the threadIdx.x binding
       PrimExpr thread_idx_extent{nullptr};
       for (const tir::StmtSRefNode* sref = loop_sref->parent;; sref = sref->parent) {
-        CHECK(sref) << "ValueError: Cannot find loops above with threadIdx.x";
+        ICHECK(sref) << "ValueError: Cannot find loops above with threadIdx.x";
         if (const tir::ForNode* loop = sref->GetStmt<tir::ForNode>()) {
           if (HasAnn(GetRef<tir::StmtSRef>(sref), tir::attr::loop_type, "threadIdx.x")) {
-            CHECK(tir::is_zero(loop->min)) << "ValueError: Expect loops to start from 0, but gets: "
+            ICHECK(tir::is_zero(loop->min)) << "ValueError: Expect loops to start from 0, but gets: "
                                            << GetRef<tir::For>(loop);
             thread_idx_extent = loop->extent;
             break;
@@ -170,7 +170,7 @@ class PostprocRewriteCooperativeFetch {
       }
       // Split the loop
       Array<LoopRV> split = sch->Split(loop_rv, {NullOpt, thread_idx_extent});
-      CHECK_EQ(split.size(), 2);
+      ICHECK_EQ(split.size(), 2);
       sch->Bind(split[1], "threadIdx.x");
     }
     return true;
@@ -359,7 +359,7 @@ class PostprocRewriteParallelizeVectorizeUnroll {
       }
       // AutoUnroll
       if (parsed.unroll_explicit != -1 || parsed.unroll_implicit != -1) {
-        CHECK(!(parsed.unroll_explicit != -1 && parsed.unroll_implicit != -1))
+        ICHECK(!(parsed.unroll_explicit != -1 && parsed.unroll_implicit != -1))
             << "ValueError: `auto_unroll_explicit` and `auto_unroll_explicit` cannot co-exist";
         int unroll_explicit = parsed.unroll_explicit != -1;
         int max_step = parsed.unroll_explicit + parsed.unroll_implicit + 1;
@@ -427,7 +427,7 @@ class PostprocRewriteUnboundBlocks {
   void BindThreadAxes(const Schedule& sch, const tir::StmtSRef& block_sref) const {
     // Extract the block
     const auto* block = block_sref->GetStmt<tir::BlockNode>();
-    CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
+    ICHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
     BlockRV block_rv = sch->GetBlock(block->name_hint);
     // Extract loops
     Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
@@ -445,14 +445,14 @@ class PostprocRewriteUnboundBlocks {
     // Fuse the spatial loops
     LoopRV fused = sch->Fuse({loop_rvs.begin(), loop_rvs.begin() + n_spatial_loops});
     Array<LoopRV> splits = sch->Split(fused, {NullOpt, Integer(32)});
-    CHECK_EQ(splits.size(), 2);
+    ICHECK_EQ(splits.size(), 2);
     sch->Bind(splits[0], "blockIdx.x");
     sch->Bind(splits[1], "threadIdx.x");
   }
 
   bool Proc(const SearchTask& task, const Schedule& sch) const {
     int warp_size = task->target->GetAttr<Integer>("thread_warp_size").value_or(Integer(-1));
-    CHECK(warp_size != -1) << "ValueError: Target does not have attribute \"thread_warp_size\"";
+    ICHECK(warp_size != -1) << "ValueError: Target does not have attribute \"thread_warp_size\"";
     while (Optional<tir::StmtSRef> opt_block_sref = UnboundBlockFinder::Find(sch->sch)) {
       BindThreadAxes(sch, opt_block_sref.value());
     }
@@ -485,7 +485,7 @@ class PostprocRewriteReductionBlock {
       }
       return true;
     });
-    CHECK(res == nullptr || res->init.defined());
+    ICHECK(res == nullptr || res->init.defined());
     return res;
   }
 
