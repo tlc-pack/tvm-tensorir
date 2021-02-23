@@ -801,16 +801,31 @@ class RuleSimplifyComputeWithConstTensor {
    /*! \brief The maximum size of the innermost factor */
   int max_innermost_factor;
 
+  explicit RuleSimplifyComputeWithConstTensor(int max_innermost_factor) :
+      max_innermost_factor(max_innermost_factor) { }
+
   Array<Schedule> Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv) {
     auto block_sref = sch->Eval(block_rv);
-    const tir::Block& block = tir::GetBlockRealize(block_sref)->block;
-    auto it = block->annotations.find(tvm::auto_scheduler::SearchPolicyKey::simplify_const_tensor_indices);
+    const tir::BlockRealize& block_realize = tir::GetBlockRealize(block_sref);
+    const tir::Block& block = block_realize->block;
+    auto it = block->annotations.find(
+      tvm::auto_scheduler::SearchPolicyKey::simplify_const_tensor_indices);
     if (it == block->annotations.end()) {
       return {sch};
     }
 
     // indices of the const tensor
     Array<String> const_indices = Downcast<Array<String>>((*it).second);
+    // find the corresponding loops
+    std::unordered_set<const tir::VarNode *> unrolled_loop_vars;
+    for (size_t i = 0; i < block->iter_vars.size(); i++) {
+      const auto& var_name = block->iter_vars[i]->var->name_hint;
+      // only consider simple bindings
+      if (std::find(const_indices.begin(), const_indices.end(), var_name) != const_indices.end() &&
+          block_realize->binding_values[i].as<tir::VarNode>()) {
+        unrolled_loop_vars.insert(block_realize->binding_values[i].as<tir::VarNode>());
+      }
+    }
 
     Array<LoopRV> axes = sch->GetAxes(block_rv);
     Array<LoopRV> unrolled_inner_iters;
@@ -818,12 +833,11 @@ class RuleSimplifyComputeWithConstTensor {
 
     size_t tile_level = 2;
 
+    // unroll the loops of the const tensor indices
     for (const LoopRV& ax: axes) {
       auto loop_sref = sch->Eval(ax);
       const auto *for_node = loop_sref->GetStmt<tir::ForNode>();
-      LOG(INFO) << for_node->loop_var->name_hint;
-      if (std::find(const_indices.begin(), const_indices.end(), for_node->loop_var->name_hint) != const_indices.end()) {
-        LOG(INFO) << "UNROLL";
+      if (unrolled_loop_vars.count(for_node->loop_var.get())) {
         sch->Unroll(ax);
         unrolled_inner_iters.push_back(ax);
       } else {
