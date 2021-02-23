@@ -461,14 +461,6 @@ Stmt StmtMutator::VisitStmt_(const BlockNode* op) {
       return IterVar(n);
     }
   };
-  auto fmutate_annotation = [this](const Annotation& annotation) {
-    PrimExpr value = this->VisitExpr(annotation->value);
-    if (value.same_as(annotation->value)) {
-      return annotation;
-    } else {
-      return Annotation(annotation->attr_key, annotation->value);
-    }
-  };
   Array<BufferRegion> reads = Internal::MutateArray(this, op->reads, fmutate_buffer_region);
   Array<BufferRegion> writes = Internal::MutateArray(this, op->writes, fmutate_buffer_region);
   Array<IterVar> block_vars = Internal::MutateArray(this, op->iter_vars, fmutate_iter_var);
@@ -564,9 +556,7 @@ class PreOrderVisitor : public StmtExprVisitor {
   }
 
  private:
-  void VisitStmt_(const BlockNode* op) override {
-    this->VisitStmt(op->body);
-  }
+  void VisitStmt_(const BlockNode* op) override { this->VisitStmt(op->body); }
 
   const std::function<bool(const ObjectRef&)>& f;
   std::unordered_set<const Object*> visited;

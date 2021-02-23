@@ -207,9 +207,10 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
     for (size_t i = 0; i < init_block_vars.size(); ++i) {
       init_bindings.push_back(Substitute(inner_bindings[init_block_vars[i]], binding_replace_map));
     }
-    new_init = Substitute(Block(init_block_vars_copy, {}, block->writes, block->init.value(), {},
-                                {}, block->name_hint + "_init", block->exec_scope, NullOpt),
-                          bv_replace_map);
+    new_init =
+        Substitute(Block(init_block_vars_copy, {}, block->writes, {}, {}, {}, block->exec_scope,
+                         block->name_hint + "_init", block->init.value(), NullOpt),
+                   bv_replace_map);
     new_init = BlockRealize(init_bindings, division.back()->inner_extent,
                             Downcast<Block>(new_init.value()));
     for (const auto& init_loop : init_loops) {
@@ -243,11 +244,9 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
   rewrite_region(&reads, block->reads);
   rewrite_region(&writes, block->writes);
   // Generate a new outer block
-  auto outer_block =
-      Block(outer_block_vars, reads, writes, {}, {}, {}, exec_scope,
-            "blockized_" + block->name_hint, body, new_init);
-  auto outer_realize =
-      BlockRealize(outer_bindings, division.back()->outer_extent, outer_block);
+  auto outer_block = Block(outer_block_vars, reads, writes, {}, {}, {}, exec_scope,
+                           "blockized_" + block->name_hint, body, new_init);
+  auto outer_realize = BlockRealize(outer_bindings, division.back()->outer_extent, outer_block);
 
   this->Replace(loop_sref, outer_realize, {{inner_block, block}});
   UpdateScope(GetParentBlockSRef(this->stmt2ref.at(outer_block.get()))->stmt, this->stmt2ref,
@@ -477,7 +476,8 @@ bool TensorizeComparator::CompareAnnotationMap(const Map<String, ObjectRef>& lhs
   if (lhs.same_as(rhs)) return true;
   if (lhs.size() != rhs.size()) return false;
 
-  auto sort_map = [](const Map<String, ObjectRef>& map) -> std::vector<std::pair<String, ObjectRef>> {
+  auto sort_map =
+      [](const Map<String, ObjectRef>& map) -> std::vector<std::pair<String, ObjectRef>> {
     std::vector<std::pair<String, ObjectRef>> ret;
     ret.reserve(map.size());
     for (const auto& pair : map) {
