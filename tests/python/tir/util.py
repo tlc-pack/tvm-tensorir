@@ -89,6 +89,23 @@ def predicate(b: ty.handle, c: ty.handle) -> None:
             C[vi, vj] = B[vi, vj] + 1.0
 
 
+@tvm.script.tir
+def block_in_opaque_block(a: ty.handle, b: ty.handle) -> None:
+    # TODO
+    A = tir.match_buffer(a, (128, 128), "float32")
+    B = tir.match_buffer(b, (128, 128), "float32")
+    with tir.block([128], "B") as vi:
+        B[vi, 0] = A[vi, 0]
+        if A[vi, 0] == 0.0:
+            with tir.block([], "C") as ():
+                with tir.block([128], "D") as vj:
+                    B[vi, vj] = A[vi, vj] * 3.0
+        else:
+            with tir.block([], "E") as ():
+                with tir.block([128], "F") as vj:
+                    B[vi, vj] = A[vi, vj] * 2.0
+
+
 def matmul_stmt():
     mod = tvm.script.create_module({"matmul": matmul})
     return mod["matmul"]
