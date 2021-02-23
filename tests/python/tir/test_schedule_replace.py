@@ -28,9 +28,7 @@ def replace_ir_builder():
     s = tir.create_schedule(new_func)
 
     # The target stmt
-    target = tvm.tir.Block(
-        [], [], [], s.func.body.block.body[1],
-        [], [], 'target')
+    target = tvm.tir.Block([], [], [], s.func.body.block.body[1], [], [], "target")
 
     # It's important to collect garbage explicitly to make
     # sure that there is only one reference of the function
@@ -65,7 +63,7 @@ def test_replace_direct_write1():
 
     # There is no other reference so the AST node can be write directly
     assert old_hash == s.func.body.block.body.__hash__()
-    assert not tvm.ir.structural_equal(hold_ref.body, target)
+    assert not tvm.ir.structural_equal(hold_ref, target)
     # Check the replaced part is equal to the target
     tvm.ir.assert_structural_equal(s.func.body.block.body[1], target)
     # The target reuse the sref's stmt, so the sref won't be none

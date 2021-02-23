@@ -281,7 +281,7 @@ class ChildReplacer : private StmtMutator {
     }
     // Step 2. Mutate the `result->body`, searching for `child_sref->stmt`
     // and replace it with `child_stmt`
-    *body = (ChildReplacer(child_sref->stmt, child_stmt))(*body);
+    *body = ChildReplacer(child_sref->stmt, child_stmt, allow_copy_on_write).VisitStmt(*body);
     // Step 3. Link `child_sref` to `child_stmt`
     if (update_child_sref) {
       UpdateSRef(self, child_sref, child_stmt.get());
@@ -310,8 +310,10 @@ class ChildReplacer : private StmtMutator {
     (SeqIndexResetter(self))(stmt);
   }
 
-  explicit ChildReplacer(const StmtNode* src_stmt, const Stmt& tgt_stmt)
-      : src_stmt(src_stmt), tgt_stmt(tgt_stmt) {}
+  explicit ChildReplacer(const StmtNode* src_stmt, const Stmt& tgt_stmt, bool allow_copy_on_write)
+      : src_stmt(src_stmt), tgt_stmt(tgt_stmt) {
+    this->allow_copy_on_write_ = allow_copy_on_write;
+  }
 
   Stmt VisitStmt(const Stmt& stmt) override {
     if (stmt.get() == src_stmt) {
@@ -325,7 +327,6 @@ class ChildReplacer : private StmtMutator {
 
   Stmt VisitStmt_(const BlockNode* op) override { return GetRef<Stmt>(op); }
   Stmt VisitStmt_(const LoopNode* op) override { return GetRef<Stmt>(op); }
-  Stmt VisitStmt_(const SeqStmtNode* stmt) override { return VisitSeqStmt_(stmt, false); }
 
   const StmtNode* src_stmt;
   const Stmt& tgt_stmt;
