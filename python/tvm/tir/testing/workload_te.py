@@ -491,7 +491,7 @@ def conv2d_winograd_nhwc(
     # TODO: implement tile_size
     tile_size = 4 #_infer_tile_size(data, kernel)
     inputs = te.placeholder((N, H, W, CI), name='inputs')
-    N, H, W, CI = topi.util.get_const_tuple(inputs.shape)
+    N, H, W, CI = topi.utils.get_const_tuple(inputs.shape)
     if isinstance(dilation, int):
         dilation_h = dilation_w = dilation
     else:
