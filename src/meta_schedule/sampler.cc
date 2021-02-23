@@ -72,7 +72,7 @@ struct PrimeTable {
         }
       }
     }
-    CHECK_EQ(static_cast<int>(primes.size()), kNumPrimes);
+    ICHECK_EQ(static_cast<int>(primes.size()), kNumPrimes);
     // Calculate the power table for each prime number
     pow_tab.reserve(primes.size());
     for (int prime : primes) {

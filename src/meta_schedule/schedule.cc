@@ -51,7 +51,7 @@ Schedule::Schedule(tir::PrimFunc orig_func)
 
 String Repr(const Schedule& sch) {
   const auto* f = runtime::Registry::Get("script.AsTVMScript");
-  CHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
+  ICHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
   String s = (*f)(sch->sch->func, false);
   return s;
 }
@@ -168,13 +168,13 @@ struct SRefTranslator {
       StmtSRef& sref = kv.second;
       if (parent == nullptr) {
         sref->parent = nullptr;
-        CHECK(!root.defined()) << "InternalError: Two roots are found";
+        ICHECK(!root.defined()) << "InternalError: Two roots are found";
         root = sref;
       } else {
         sref->parent = Trans(parent).operator->();
       }
     }
-    CHECK(root.defined()) << "InternalError: No root is found";
+    ICHECK(root.defined()) << "InternalError: No root is found";
     result->func = sch->func;
     result->scopes = Trans(sch->scopes);
     return tir::Schedule(result);
@@ -199,11 +199,11 @@ Schedule ScheduleNode::Copy(int new_seed) const {
 
 tir::StmtSRef ScheduleNode::Eval(const BlockRV& block) {
   auto iter = this->sym_tab.find(block);
-  CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding BlockRV: " << block;
+  ICHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding BlockRV: " << block;
   const Optional<ObjectRef>& obj = (*iter).second;
-  CHECK(obj.defined()) << "ValueError: Corresponding BlockRV's value is not defined: " << block;
+  ICHECK(obj.defined()) << "ValueError: Corresponding BlockRV's value is not defined: " << block;
   if (const auto* sref = obj.as<tir::StmtSRefNode>()) {
-    CHECK(sref->stmt) << "ValueError: The BlockRV has expired";
+    ICHECK(sref->stmt) << "ValueError: The BlockRV has expired";
     return GetRef<tir::StmtSRef>(sref);
   }
   LOG(FATAL) << "TypeError: BlockRV's corresponding type is invalid: " << obj->GetTypeKey();
@@ -212,11 +212,11 @@ tir::StmtSRef ScheduleNode::Eval(const BlockRV& block) {
 
 tir::StmtSRef ScheduleNode::Eval(const LoopRV& loop) {
   auto iter = this->sym_tab.find(loop);
-  CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding LoopRV: " << loop;
+  ICHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding LoopRV: " << loop;
   const Optional<ObjectRef>& obj = (*iter).second;
-  CHECK(obj.defined()) << "ValueError: Corresponding LoopRV's value is not defined: " << loop;
+  ICHECK(obj.defined()) << "ValueError: Corresponding LoopRV's value is not defined: " << loop;
   if (const auto* sref = obj.as<tir::StmtSRefNode>()) {
-    CHECK(sref->stmt) << "ValueError: The LoopRV has expired";
+    ICHECK(sref->stmt) << "ValueError: The LoopRV has expired";
     return GetRef<tir::StmtSRef>(sref);
   }
   LOG(FATAL) << "TypeError: LoopRV's corresponding type is invalid: " << obj->GetTypeKey();
@@ -246,10 +246,10 @@ ObjectRef ScheduleNode::EvalLoopExtended(const LoopRV& loop) {
 
 tir::Buffer ScheduleNode::Eval(const BufferRV& buffer) {
   auto iter = this->sym_tab.find(buffer);
-  CHECK(iter != this->sym_tab.end())
+  ICHECK(iter != this->sym_tab.end())
       << "IndexError: Cannot find corresponding BufferRV: " << buffer;
   const Optional<ObjectRef>& obj = (*iter).second;
-  CHECK(obj.defined()) << "ValueError: Corresponding BufferRV's value is not defined: " << buffer;
+  ICHECK(obj.defined()) << "ValueError: Corresponding BufferRV's value is not defined: " << buffer;
   if (const auto* sref = obj.as<tir::BufferNode>()) {
     return GetRef<tir::Buffer>(sref);
   }
@@ -262,10 +262,10 @@ int ScheduleNode::Eval(const PrimExpr& expr) {
   // Replace all the tir::Var with their corresponding value in the symbol table
   PrimExpr transformed = tir::Substitute(expr, [this](const tir::Var& var) -> Optional<PrimExpr> {
     auto iter = this->sym_tab.find(var);
-    CHECK(iter != this->sym_tab.end())
+    ICHECK(iter != this->sym_tab.end())
         << "IndexError: Cannot find corresponding ExprRV: " << var << '@' << var.get();
     const Optional<ObjectRef>& obj = (*iter).second;
-    CHECK(obj.defined()) << "ValueError: Variable \"" << var->name_hint
+    ICHECK(obj.defined()) << "ValueError: Variable \"" << var->name_hint
                          << "\" is not defined in the meta scheduling";
     if (const auto* expr = obj.as<PrimExprNode>()) {
       return GetRef<PrimExpr>(expr);
@@ -275,7 +275,7 @@ int ScheduleNode::Eval(const PrimExpr& expr) {
   });
   PrimExpr simplified = analyzer.Simplify(transformed);
   const auto* result = simplified.as<IntImmNode>();
-  CHECK(result) << "ValueError: Expects Integer, but gets type: " << simplified->GetTypeKey()
+  ICHECK(result) << "ValueError: Expects Integer, but gets type: " << simplified->GetTypeKey()
                 << ", value = " << simplified;
   return result->value;
 }
@@ -286,7 +286,7 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
                                                 int max_innermost_factor,
                                                 const Optional<Array<ObjectRef>>& decision) {
   const auto* tir_loop = Eval(loop)->GetStmt<tir::ForNode>();
-  CHECK(tir_loop);
+  ICHECK(tir_loop);
   std::vector<int> samples;
   const auto* p_extent = tir_loop->extent.as<IntImmNode>();
   if (p_extent) {
@@ -318,12 +318,12 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
                                                const Array<Integer>& where,
                                                const Optional<Array<ObjectRef>>& decision) {
   const auto* tir_loop = Eval(loop)->GetStmt<tir::ForNode>();
-  CHECK(tir_loop);
+  ICHECK(tir_loop);
   int64_t extent;
   std::vector<int> candidates;
   {
     const auto* p_extent = tir_loop->extent.as<IntImmNode>();
-    CHECK(p_extent);
+    ICHECK(p_extent);
     extent = p_extent->value;
     for (const Integer& item : where) {
       candidates.push_back(item);
@@ -368,7 +368,7 @@ tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
                                          const Array<FloatImm>& probs,
                                          const Optional<ObjectRef>& decision) {
   // Sample the output
-  CHECK_EQ(candidates.size(), probs.size()) << "ValueError: When sampling ";
+  ICHECK_EQ(candidates.size(), probs.size()) << "ValueError: When sampling ";
   std::vector<double> probs_vec;
   probs_vec.reserve(probs.size());
   for (const FloatImm& prob : probs) {
@@ -489,8 +489,8 @@ Array<BlockRV> ScheduleNode::GetConsumers(const BlockRV& block) {
 BlockRV ScheduleNode::GetBlock(const String& name) {
   // Find the output from TIR
   Array<tir::StmtSRef> tir_result = this->sch->GetBlock(name);
-  CHECK(!tir_result.empty()) << "ValueError: Cannot get a block with name: " << name;
-  CHECK_EQ(tir_result.size(), 1) << "ValueError: Multiple blocks with the same name: " << name;
+  ICHECK(!tir_result.empty()) << "ValueError: Cannot get a block with name: " << name;
+  ICHECK_EQ(tir_result.size(), 1) << "ValueError: Multiple blocks with the same name: " << name;
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
@@ -619,7 +619,7 @@ Array<BlockRV> ScheduleNode::GetLeafBlocks() {
 /**************** Schedule Primitives ****************/
 
 void ScheduleNode::MarkLoop(const LoopRV& loop, const String& ann_key, const PrimExpr& ann_val) {
-  CHECK(ann_val->IsInstance<tir::StringImmNode>() || ann_val->IsInstance<IntImmNode>())
+  ICHECK(ann_val->IsInstance<tir::StringImmNode>() || ann_val->IsInstance<IntImmNode>())
       << "TypeError: Only StringImm and IntImm are supported for now, but gets: "
       << ann_val->GetTypeKey();
   AddAnn(this->sch, this->Eval(loop), ann_key, ann_val);
@@ -657,7 +657,7 @@ Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<Optional<PrimE
   int none_idx = -1;
   for (int i = 0, n = factors.size(); i < n; ++i) {
     if (!factors[i].defined()) {
-      CHECK_EQ(none_idx, -1) << "ValueError: `split` allows only at most one tile size to be None";
+      ICHECK_EQ(none_idx, -1) << "ValueError: `split` allows only at most one tile size to be None";
       CHECK(i == 0 || i == n - 1)
           << "ValueError: `split` only allows None to appear at the start or end of the factors";
       none_idx = i;
@@ -670,7 +670,7 @@ Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<Optional<PrimE
       int factor = this->Eval(factors[i].value());
       PrimExpr nparts = floordiv(extent + factor - 1, factor);
       Array<tir::StmtSRef> split_result = this->sch->split(tir_loop, nparts, factor);
-      CHECK_EQ(split_result.size(), 2);
+      ICHECK_EQ(split_result.size(), 2);
       tir_result.push_back(split_result[1]);
       tir_loop = split_result[0];
     }
@@ -683,7 +683,7 @@ Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<Optional<PrimE
       int nparts = this->Eval(factors[i].value());
       PrimExpr factor = floordiv(extent + nparts - 1, nparts);
       Array<tir::StmtSRef> split_result = this->sch->split(tir_loop, nparts, factor);
-      CHECK_EQ(split_result.size(), 2);
+      ICHECK_EQ(split_result.size(), 2);
       tir_result.push_back(split_result[0]);
       tir_loop = split_result[1];
     }

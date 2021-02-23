@@ -769,7 +769,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
 // BlockRealize
 BlockRealize::BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block, Span span) {
-  CHECK_EQ(block->iter_vars.size(), values.size());
+  ICHECK_EQ(block->iter_vars.size(), values.size());
   ObjectPtr<BlockRealizeNode> node = make_object<BlockRealizeNode>();
   node->binding_values = std::move(values);
   node->predicate = std::move(predicate);

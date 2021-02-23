@@ -34,7 +34,7 @@ bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
                              const ScheduleNode* schedule,
                              const Optional<IterVar>& thread_binding) {
   const BlockRealizeNode* realize = block_realize.as<BlockRealizeNode>();
-  CHECK(realize != nullptr)
+  ICHECK(realize != nullptr)
       << "InternalError: in IsLoopVarParallelizable, expect BlockRealize, but get type: "
       << block_realize->GetTypeKey();
   const BlockNode* block = realize->block.get();

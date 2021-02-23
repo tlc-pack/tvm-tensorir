@@ -34,7 +34,7 @@ namespace meta_schedule {
 RecordToFile::RecordToFile() { data_ = make_object<RecordToFileNode>(); }
 
 void RecordToFileNode::Init(const SearchTask& task) {
-  CHECK(!task->log_file.value_or("").empty())
+  ICHECK(!task->log_file.value_or("").empty())
       << "ValueError: log_file is not specified in SeachTask";
   this->log_file = task->log_file.value();
   this->task_name = task->task_name;
@@ -55,11 +55,11 @@ void RecordToFileNode::Init(const SearchTask& task) {
 void RecordToFileNode::Callback(const Array<MeasureInput>& inputs,
                                 const Array<MeasureResult>& results) {
   static const auto* f_serialize = runtime::Registry::Get("meta_schedule._serialize_json");
-  CHECK(f_serialize) << "IndexError: Cannot find packed function \""
+  ICHECK(f_serialize) << "IndexError: Cannot find packed function \""
                         "meta_schedule._serialize_json\", which should be registered in python";
   CHECK(!this->log_file.empty()) << "ValueError: empty log_file for measure logs";
   std::ofstream ofs(this->log_file, std::ofstream::app);
-  CHECK_EQ(inputs.size(), results.size());
+  ICHECK_EQ(inputs.size(), results.size());
   for (int i = 0, n = inputs.size(); i < n; ++i) {
     const MeasureInput& measure_input = inputs[i];
     const MeasureResult& measure_result = results[i];

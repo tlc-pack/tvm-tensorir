@@ -38,7 +38,7 @@ Array<StmtSRef> ScheduleNode::GetBlock(const String& tag) const {
   while (!scope_stack.empty()) {
     StmtSRef scope = scope_stack.back();
     scope_stack.pop_back();
-    CHECK(GetRef<Stmt>(scope->stmt).as<BlockNode>());
+    ICHECK(GetRef<Stmt>(scope->stmt).as<BlockNode>());
     for (const auto& block : Blocks(scope)) {
       if (GetRef<Stmt>(block->stmt).as<BlockNode>()->name_hint == tag) {
         ret.push_back(block);
@@ -53,8 +53,8 @@ Array<StmtSRef> ScheduleNode::GetBlock(const Buffer& buffer, StmtSRef scope) con
   if (!scope.defined()) {
     scope = root;
   }
-  CHECK(GetRef<Stmt>(scope->stmt).as<BlockNode>());
-  CHECK_GT(scopes.count(scope), 0);
+  ICHECK(GetRef<Stmt>(scope->stmt).as<BlockNode>());
+  ICHECK_GT(scopes.count(scope), 0);
   const auto& buffer_writers = scopes.at(scope)->buffer_writers;
   if (buffer_writers.count(buffer)) {
     return buffer_writers.at(buffer);
@@ -67,8 +67,8 @@ Array<StmtSRef> ScheduleNode::Blocks(StmtSRef scope) const {
   if (!scope.defined()) {
     scope = root;
   }
-  CHECK(scope->stmt->IsInstance<BlockNode>());
-  CHECK_GT(scopes.count(scope), 0);
+  ICHECK(scope->stmt->IsInstance<BlockNode>());
+  ICHECK_GT(scopes.count(scope), 0);
   const auto& buffer_writers = scopes.at(scope)->buffer_writers;
   std::unordered_set<StmtSRef, ObjectPtrHash, ObjectPtrEqual> collect;
   for (const auto& x : buffer_writers) {

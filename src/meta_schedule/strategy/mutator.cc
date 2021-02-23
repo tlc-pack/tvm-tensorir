@@ -185,7 +185,7 @@ class MutatorComputeLocation {
         // The decision made
         int decided = Downcast<Integer>(decision)->value;
         // Extract the inputs
-        CHECK_EQ(inputs.size(), 1);
+        ICHECK_EQ(inputs.size(), 1);
         BlockRV block_rv = Downcast<BlockRV>(inputs[0]);
         tir::StmtSRef block_sref = sch->Eval(block_rv);
         // Extract locations that can be computed at
@@ -203,10 +203,10 @@ class MutatorComputeLocation {
         }
         // Remove `decided`
         std::vector<int>::iterator rm = std::find(locs.begin(), locs.end(), decided);
-        CHECK(rm != locs.end());
+        ICHECK(rm != locs.end());
         locs.erase(rm);
         // Add the candidate
-        CHECK(!locs.empty());
+        ICHECK(!locs.empty());
         candidates.emplace_back(inst, std::move(locs));
       }
       return decision;
@@ -264,7 +264,7 @@ class MutatorAutoUnroll {
       // Step 1. Find the `MarkBlockAttr` whose attr_key is `auto_unroll`
       //         and whose unroll depth is a `tir::VarNode`.
       if (const auto* mark_attr = mark_inst->inst_attrs.as<MarkBlockAttrs>()) {
-        CHECK_EQ(mark_inst->inputs.size(), 2);
+        ICHECK_EQ(mark_inst->inputs.size(), 2);
         if (mark_attr->ann_key != tir::attr::auto_unroll_explicit
             && mark_attr->ann_key != tir::attr::auto_unroll_implicit) {
           continue;
@@ -282,7 +282,7 @@ class MutatorAutoUnroll {
               // The unroll depth is not created by a `SampleCategorical`. So skip.
               break;
             }
-            CHECK_EQ(sample_attr->candidates.size(), sample_attr->probs.size());
+            ICHECK_EQ(sample_attr->candidates.size(), sample_attr->probs.size());
             int decision = Downcast<Integer>(trace->decisions.Get(sample_inst))->value;
             // Step 3. Remove the current decision from the sampling candidates.
             std::vector<double> weights = AsVector<FloatImm, double>(sample_attr->probs);
@@ -361,7 +361,7 @@ class MutatorParallel {
       // Step 1. Find the `MarkBlockAttr` whose ann_key is `auto_parallel_extent`
       //         and whose parallel extent is given by an integer.
       if (const auto* attr = inst->inst_attrs.as<MarkBlockAttrs>()) {
-        CHECK_EQ(inst->inputs.size(), 2);
+        ICHECK_EQ(inst->inputs.size(), 2);
         if (attr->ann_key != tir::attr::auto_parallel_extent
             || !inst->inputs[1]->IsInstance<IntImmNode>()) {
           return decision;

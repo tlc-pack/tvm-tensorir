@@ -182,7 +182,7 @@ class SpecializeConstraintRemover : public StmtMutator {
 };
 
 PrimFunc RemoveSpecializeConstraint(const PrimFunc& f, const tir::Var& param) {
-  CHECK(f->body->IsInstance<BlockRealizeNode>())
+  ICHECK(f->body->IsInstance<BlockRealizeNode>())
       << "ValueError: The body of PrimFunc ought to be block";
   SpecializeConstraintRemover specialize_constraint_remover(param);
   PrimFunc new_f = f;
@@ -194,7 +194,7 @@ PrimFunc RemoveSpecializeConstraint(const PrimFunc& f, const tir::Var& param) {
 }
 
 PrimExpr FetchSpecializeConstraint(const PrimFunc& f, const tir::Var& param) {
-  CHECK(f->body->IsInstance<BlockRealizeNode>())
+  ICHECK(f->body->IsInstance<BlockRealizeNode>())
       << "ValueError: The body of PrimFunc ought to be block";
   PrimExpr result(nullptr);
   tir::PreOrderVisit(f->body.as<BlockRealizeNode>()->block->body,
@@ -214,12 +214,12 @@ PrimExpr FetchSpecializeConstraint(const PrimFunc& f, const tir::Var& param) {
 }
 
 PrimFunc ExertSpecializeConstraint(const VarMapType& param_var_map, const PrimFunc& f) {
-  CHECK(f->body->IsInstance<BlockRealizeNode>())
+  ICHECK(f->body->IsInstance<BlockRealizeNode>())
       << "ValueError: The body of PrimFunc ought to be block";
   Stmt body = f->body.as<BlockRealizeNode>()->block->body;
   for (const auto& it : param_var_map) {
     PrimExpr old_constraint = FetchSpecializeConstraint(f, it.first);
-    CHECK(!old_constraint.defined())
+    ICHECK(!old_constraint.defined())
         << "ValueError: param " << it.first << "has already been specialized";
   }
   for (const auto& it : param_var_map) {
@@ -282,30 +282,30 @@ PrimFunc GenerateNewFunc(PrimFunc func, const VarMapType& internal_var_map,
 PrimFunc Specialize(PrimFunc func, const tir::Var& param, const Buffer& specific_buf) {
   tir::ExprDeepEqual equal;
   VarMapType internal_var_map, param_var_map, all_var_map;
-  CHECK_GT(func->buffer_map.count(param), 0)
+  ICHECK_GT(func->buffer_map.count(param), 0)
       << "ValueError: specialize expects param to be in PrimFunc's buffer_map";
   const Buffer& buf_to_specialize = func->buffer_map[param];
   // build var mapping using specific_buf's parameters
   auto build_var_mapping = [&](const PrimExpr& new_expr, const PrimExpr& old_expr) {
     if (!equal(new_expr, old_expr)) {
-      CHECK(old_expr->IsInstance<tir::VarNode>());
+      ICHECK(old_expr->IsInstance<tir::VarNode>());
       const Var& var = Downcast<tir::Var>(old_expr);
       std::unordered_map<tir::Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual>& var_map =
           InParams(func, var) ? param_var_map : internal_var_map;
       auto it = var_map.find(var);
       if (it != var_map.end()) {
-        CHECK(equal(it->second, new_expr));
+        ICHECK(equal(it->second, new_expr));
       } else {
         var_map[var] = new_expr;
         all_var_map[var] = new_expr;
       }
     }
   };
-  CHECK_EQ(specific_buf->shape.size(), buf_to_specialize->shape.size());
+  ICHECK_EQ(specific_buf->shape.size(), buf_to_specialize->shape.size());
   for (size_t i = 0; i < specific_buf->shape.size(); ++i) {
     build_var_mapping(specific_buf->shape[i], buf_to_specialize->shape[i]);
   }
-  CHECK_EQ(specific_buf->strides.size(), buf_to_specialize->strides.size());
+  ICHECK_EQ(specific_buf->strides.size(), buf_to_specialize->strides.size());
   for (size_t i = 0; i < specific_buf->strides.size(); ++i) {
     build_var_mapping(specific_buf->strides[i], buf_to_specialize->strides[i]);
   }
@@ -338,14 +338,14 @@ PrimFunc RemoveConstantParam(PrimFunc func, const tir::Var& param) {
                            [&](const tir::Var& var) { return var.same_as(param); });
     return it != func->params.end();
   };
-  CHECK(in_params(param));
+  ICHECK(in_params(param));
   // Check param is constant
   // Cond 1. Buffer map has no param
   for (const auto& it : func->buffer_map) {
-    CHECK(!it.first.same_as(param));
-    for (const auto& expr : it.second->shape) CHECK(!StmtExprContainsVar(expr, {param}));
-    for (const auto& expr : it.second->strides) CHECK(!StmtExprContainsVar(expr, {param}));
-    CHECK(!StmtExprContainsVar(it.second->elem_offset, {param}));
+    ICHECK(!it.first.same_as(param));
+    for (const auto& expr : it.second->shape) ICHECK(!StmtExprContainsVar(expr, {param}));
+    for (const auto& expr : it.second->strides) ICHECK(!StmtExprContainsVar(expr, {param}));
+    ICHECK(!StmtExprContainsVar(it.second->elem_offset, {param}));
   }
   // Cond 2. body contains no param or param is constantly specialized
   PrimExpr constraint = FetchSpecializeConstraint(func, param);
@@ -359,7 +359,7 @@ PrimFunc RemoveConstantParam(PrimFunc func, const tir::Var& param) {
     return expr->IsInstance<IntImmNode>() || expr->IsInstance<FloatImmNode>();
   };
   bool needs_substitute = StmtExprContainsVar(func->body, param);
-  CHECK(is_constant(constraint) || !needs_substitute);
+  ICHECK(is_constant(constraint) || !needs_substitute);
   // Remove
   PrimFunc new_f = func;
   if (constraint.defined()) {

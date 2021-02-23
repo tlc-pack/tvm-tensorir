@@ -71,12 +71,12 @@ Array<DepEdge> BlockScopeNode::GetPredecessors(const StmtSRef& block_sref) const
 
 bool BlockScopeNode::IsDominate(const StmtSRef& block_sref) const {
   const BlockNode* block = block_sref->GetStmt<BlockNode>();
-  CHECK(block != nullptr) << "InternalError: Scope::IsDominate only works on tir::Block";
+  ICHECK(block != nullptr) << "InternalError: Scope::IsDominate only works on tir::Block";
   // Condition: Block is the only writer to its outputs
   const std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual>& buffer_writers =
       this->buffer_writers;
   for (const BufferRegion& write_region : block->writes) {
-    CHECK(buffer_writers.count(write_region->buffer))
+    ICHECK(buffer_writers.count(write_region->buffer))
         << "InternalError: buffer \"" << write_region->buffer->name
         << "\" does not exist in the current scope, when querying block:\n"
         << GetRef<Block>(block);
@@ -90,7 +90,7 @@ bool BlockScopeNode::IsDominate(const StmtSRef& block_sref) const {
 
 bool BlockScopeNode::IsComplete(const StmtSRef& block_sref) const {
   const auto* block = block_sref->GetStmt<BlockNode>();
-  CHECK(block != nullptr)
+  ICHECK(block != nullptr)
       << "InternalError: Scope::IsComplete only accepts tir::Block, but get type: "
       << block_sref->stmt->GetTypeKey();
   // Cond 1. A complete block must be dominate
@@ -146,7 +146,7 @@ bool CheckReductionInstance(const Array<IterVar>& iter_vars,
 
 bool BlockScopeNode::IsReduction(const StmtSRef& block_sref) const {
   const auto* block = block_sref->GetStmt<BlockNode>();
-  CHECK(block != nullptr)
+  ICHECK(block != nullptr)
       << "InternalError: Scope::IsReduction only accepts tir::Block, but get type: "
       << block_sref->stmt->GetTypeKey();
   // Cond 0. Block binding is valid
@@ -202,10 +202,10 @@ bool BlockScopeNode::IsCompactDataFlow(const StmtSRef& subtree_sref,
 bool BlockScopeNode::CanMergeReduction(const StmtSRef& init_sref, const StmtSRef& update_sref) const {
   const auto* init = init_sref->GetStmt<BlockNode>();
   const auto* update = update_sref->GetStmt<BlockNode>();
-  CHECK(init != nullptr) << "InternalError: Scope::CanMergeReduction only accepts tir::Block as "
+  ICHECK(init != nullptr) << "InternalError: Scope::CanMergeReduction only accepts tir::Block as "
                             "init_block, but get type:"
                          << init_sref->stmt->GetTypeKey();
-  CHECK(update != nullptr) << "InternalError: Scope::CanMergeReduction only accepts tir::Block as "
+  ICHECK(update != nullptr) << "InternalError: Scope::CanMergeReduction only accepts tir::Block as "
                               "update_block, but get type:"
                            << update_sref->stmt->GetTypeKey();
   // Cond 1. Check the binding of update block is valid
@@ -228,17 +228,17 @@ bool BlockScopeNode::CanMergeReduction(const StmtSRef& init_sref, const StmtSRef
   // Cond 3. init and update share the same buffer
   const auto* init_body = init->body.as<BufferStoreNode>();
   const auto* update_body = update->body.as<BufferStoreNode>();
-  CHECK(init_body != nullptr)
+  ICHECK(init_body != nullptr)
       << "InternalError: init_block should contain only a BufferStore as its lhs, but get type: "
       << init->body->GetTypeKey();
-  CHECK(update_body != nullptr)
+  ICHECK(update_body != nullptr)
       << "InternalError: update_block should contain only a BufferStore as its lhs, but get type:"
       << update->body->GetTypeKey();
   if (!init_body->buffer.same_as(update_body->buffer)) {
     return false;
   }
   // Access must be the same dimensional
-  CHECK_EQ(init_body->indices.size(), update_body->indices.size())
+  ICHECK_EQ(init_body->indices.size(), update_body->indices.size())
       << "InternalError: indexing to the same buffer with different dimensions";
   // Cond 4. All block vars of update_block are either data parallel or reduction,
   // and reduction vars of update_block should not affect indexing the output buffer
@@ -249,7 +249,7 @@ void BlockScopeNode::AddChildBlock(
     const StmtSRef& child_sref,
     std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual>* _buffer_readers) {
   const BlockNode* block = child_sref->GetStmt<BlockNode>();
-  CHECK(block) << "InternalError: Scope::AddChildBlock only accepts a Block as child_sref";
+  ICHECK(block) << "InternalError: Scope::AddChildBlock only accepts a Block as child_sref";
   std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual>& buffer_readers =
       *_buffer_readers;
   std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual>& buffer_writers =
