@@ -306,7 +306,7 @@ class EvolutionaryNode : public SearchStrategyNode {
    */
   CachedTrace GetCachedTrace(const Trace& trace) const {
     auto iter = trace_cache_.find(trace);
-    CHECK(iter != trace_cache_.end());
+    ICHECK(iter != trace_cache_.end());
     return iter->second;
   }
 
@@ -705,7 +705,7 @@ Array<MeasureResult> EvolutionaryNode::MeasureAndUpdateCostModel(const SearchTas
   Array<MeasureResult> measure_results =
       measurer->BatchMeasure(measure_inputs, measure_inputs.size(), verbose);
   // Record the measurement result
-  CHECK_EQ(measure_inputs.size(), measure_results.size());
+  ICHECK_EQ(measure_inputs.size(), measure_results.size());
   // Update the measure
   for (int i = 0, n = measure_inputs.size(); i < n; ++i) {
     const MeasureResult& measure_result = measure_results[i];

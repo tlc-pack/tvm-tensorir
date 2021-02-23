@@ -68,10 +68,10 @@ bool TuneContextNode::Postprocess(const Schedule& sch) {
 
 Array<MeasureResult> TuneContextNode::Measure(const Array<MeasureInput>& measure_inputs) {
   constexpr int verbose = 1;
-  CHECK(this->task.defined()) << "ValueError: `task` is not defined";
-  CHECK(this->builder.defined()) << "ValueError: `builder` is not defined";
-  CHECK(this->runner.defined()) << "ValueError: `runner` is not defined";
-  CHECK(this->database.defined()) << "ValueError: `database` is not defined";
+  ICHECK(this->task.defined()) << "ValueError: `task` is not defined";
+  ICHECK(this->builder.defined()) << "ValueError: `builder` is not defined";
+  ICHECK(this->runner.defined()) << "ValueError: `runner` is not defined";
+  ICHECK(this->database.defined()) << "ValueError: `database` is not defined";
   DatabaseNode* db = this->database.value().operator->();
   int n = measure_inputs.size();
   // Build & Measure

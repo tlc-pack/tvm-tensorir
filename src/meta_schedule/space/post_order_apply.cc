@@ -107,7 +107,7 @@ bool PostOrderApplyNode::Postprocess(const SearchTask& task, const Schedule& sch
 
 Schedule PostOrderApplyNode::SampleSchedule(const SearchTask& task, Sampler* sampler) {
   Array<Schedule> support = GetSupport(task, sampler);
-  CHECK(!support.empty()) << "ValueError: Found null support";
+  ICHECK(!support.empty()) << "ValueError: Found null support";
   int i = sampler->SampleInt(0, support.size());
   return support[i];
 }
@@ -166,7 +166,7 @@ Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* 
       unvisited.pop_back();
       if (block_sref->stmt != nullptr) {
         const auto* block = block_sref->GetStmt<tir::BlockNode>();
-        CHECK(block) << "TypeError: Expects BlockNode, but gets: "
+        ICHECK(block) << "TypeError: Expects BlockNode, but gets: "
                      << block_sref->stmt->GetTypeKey();
         // TODO(@junrushao1994): replace this quick hack
         if (!sch->sch->GetBlock(block->name_hint).empty()) {

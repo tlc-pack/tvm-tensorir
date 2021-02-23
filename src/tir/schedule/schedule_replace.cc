@@ -22,15 +22,15 @@ namespace tvm {
 namespace tir {
 
 void UpdateSRef(ScheduleNode* sch, StmtSRefNode* sref, const Stmt& stmt) {
-  CHECK(stmt->IsInstance<BlockNode>() || stmt->IsInstance<ForNode>());
+  ICHECK(stmt->IsInstance<BlockNode>() || stmt->IsInstance<ForNode>());
   sch->stmt2ref[stmt.operator->()] = GetRef<StmtSRef>(sref);
   sch->stmt2ref.erase(sref->stmt);
   sref->stmt = stmt.operator->();
 }
 
 PrimFunc UpdateFuncBody(const PrimFuncNode* func, const Stmt& new_body) {
-  CHECK(func->body.as<BlockRealizeNode>());
-  CHECK(new_body->IsInstance<BlockNode>());
+  ICHECK(func->body.as<BlockRealizeNode>());
+  ICHECK(new_body->IsInstance<BlockNode>());
 
   if (func->unique()) {
     auto root_br = const_cast<BlockRealizeNode*>(func->body.as<BlockRealizeNode>());
@@ -61,7 +61,7 @@ class SubReplacer : protected StmtMutator {
   Stmt operator()(const StmtNode* weakref, bool allow_copy_on_write) {
     std::swap(allow_copy_on_write, allow_copy_on_write_);
     if (allow_copy_on_write_) {
-      CHECK(weakref->unique()) << GetRef<Stmt>(weakref);
+      ICHECK(weakref->unique()) << GetRef<Stmt>(weakref);
     }
     Stmt stmt;
     if (weakref->IsInstance<ForNode>()) {
@@ -73,7 +73,7 @@ class SubReplacer : protected StmtMutator {
     }
     std::swap(allow_copy_on_write, allow_copy_on_write_);
     if (allow_copy_on_write) {
-      CHECK(stmt.operator->() == weakref);
+      ICHECK(stmt.operator->() == weakref);
     }
     return stmt;
   }
@@ -130,7 +130,7 @@ class SubReplacer : protected StmtMutator {
       return son.get() == target;
     } else {
       const auto* ptr = son.as<BlockRealizeNode>();
-      CHECK(ptr != nullptr);
+      ICHECK(ptr != nullptr);
       return ptr->block.get() == target;
     }
   }
@@ -274,7 +274,7 @@ class SRefRemover : public StmtVisitor {
   void VisitSRefStmt(const T* op) {
     const auto* stmt_ptr = GetRef<Stmt>(op).operator->();
     // Remove useless StmtSRef until the border
-    CHECK(stmt2ref_->count(stmt_ptr));
+    ICHECK(stmt2ref_->count(stmt_ptr));
     StmtSRef sref = stmt2ref_->at(stmt_ptr);
     if (used_border_parent_.count(sref) == 0) {
       // If we will reuse the sref later, we don't remove it
@@ -338,7 +338,7 @@ void ScheduleNode::Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sr
         SubReplacer(ptr, target, &stmt2ref)(parent->stmt, parent_is_uniquely_referenced);
     if (curr_step != 0) UpdateSRef(this, ptr, target);
     if (parent_is_uniquely_referenced) {
-      CHECK(new_stmt.get() == parent->stmt);
+      ICHECK(new_stmt.get() == parent->stmt);
       // if one node has been direct write, there is no need to
       // update its parent and the function
       remover(old_stmt);

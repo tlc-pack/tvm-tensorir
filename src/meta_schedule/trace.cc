@@ -95,7 +95,7 @@ void TraceNode::Apply(const Schedule& sch,
       return NullOpt;
     }
     const Object* dst = var_map.at(var.get());
-    CHECK(dst->IsInstance<tir::VarNode>());
+    ICHECK(dst->IsInstance<tir::VarNode>());
     return GetRef<tir::Var>(static_cast<const tir::VarNode*>(dst));
   };
   // Utility function to convert an old expression to the one, according to `var_map`
@@ -104,7 +104,7 @@ void TraceNode::Apply(const Schedule& sch,
       return tir::Substitute(GetRef<PrimExpr>(expr), f_var_convert);
     }
     const Object* src = obj.get();
-    CHECK(var_map.count(src));
+    ICHECK(var_map.count(src));
     const Object* dst = var_map.at(src);
     return GetRef<ObjectRef>(dst);
   };
@@ -133,7 +133,7 @@ void TraceNode::Apply(const Schedule& sch,
     // Step 3. Step up the correspondence between old outputs and construct new outputs
     {
       const Array<ObjectRef>& old_outputs = inst->outputs;
-      CHECK_EQ(old_outputs.size(), new_outputs.size()) << "ValueError: Output size mismatch";
+      ICHECK_EQ(old_outputs.size(), new_outputs.size()) << "ValueError: Output size mismatch";
       for (int i = 0, n = new_outputs.size(); i < n; ++i) {
         var_map[old_outputs[i].get()] = new_outputs[i].get();
       }
@@ -147,7 +147,7 @@ ObjectRef TraceNode::Serialize() const {
   for (const Instruction& inst : this->insts) {
     for (const ObjectRef& output : inst->outputs) {
       int i = rv_names.size();
-      CHECK(!rv_names.count(output));
+      ICHECK(!rv_names.count(output));
       if (output->IsInstance<BlockRVNode>()) {
         rv_names.Set(output, "b" + std::to_string(i));
       } else if (output->IsInstance<LoopRVNode>()) {
@@ -176,14 +176,14 @@ ObjectRef TraceNode::Serialize() const {
 
 void TraceNode::Deserialize(const ObjectRef& json, const Schedule& sch) {
   const ArrayNode* array = json.as<ArrayNode>();
-  CHECK(array) << "TypeError: Expects Array, but gets: " << json->GetTypeKey();
+  ICHECK(array) << "TypeError: Expects Array, but gets: " << json->GetTypeKey();
   // Random variables created on the fly
   Map<String, ObjectRef> named_rvs{{"None", ObjectRef(nullptr)}};
   // For each instruction
   for (auto iter = array->begin(), end = array->end(); iter != end; ++iter) {
     // Extract the serialized JSON array for the instruction
     const ArrayNode* inst = (*iter).as<ArrayNode>();
-    CHECK(inst) << "TypeError: Expects Array, but gets: " << (*iter)->GetTypeKey();
+    ICHECK(inst) << "TypeError: Expects Array, but gets: " << (*iter)->GetTypeKey();
     // Deserialize it
     InstructionNode::Deserialize(GetRef<Array<ObjectRef>>(inst), &named_rvs, sch);
   }
@@ -243,7 +243,7 @@ Array<String> TraceNode::AsPython() const {
   for (const Instruction& inst : this->insts) {
     for (const ObjectRef& output : inst->outputs) {
       int i = rv_names.size();
-      CHECK(!rv_names.count(output));
+      ICHECK(!rv_names.count(output));
       if (output->IsInstance<BlockRVNode>()) {
         rv_names.Set(output, "b" + std::to_string(i));
       } else if (output->IsInstance<LoopRVNode>()) {

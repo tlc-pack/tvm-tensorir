@@ -139,7 +139,7 @@ bool ScheduleNode::ValidateRegionCover(const StmtSRef& consumer_block_sref) cons
     for (const Producer& producer : producers) {
       // Relax the write region with the loops under LCA
       BufferRegion write = RelaxRegion(producer.block_sref, lca, producer.region);
-      CHECK_EQ(read->region.size(), write->region.size())
+      ICHECK_EQ(read->region.size(), write->region.size())
           << "InternalError: Inconsistent rank of the same buffer between reads and writes";
       // Check if the write domain covers the read domain
       for (int i = 0; i < ndim; ++i) {
@@ -237,7 +237,7 @@ class GPUValidator : public StmtVisitor {
     }
     if (exec_scope == "gpu_warp") {
       check_thread_x_ = true;
-      CHECK(!contain_thread_x_);
+      ICHECK(!contain_thread_x_);
     }
     current_scope_ = exec_scope;
     StmtVisitor::VisitStmt_(block);
@@ -277,14 +277,14 @@ class SRefValidator : public StmtVisitor {
   explicit SRefValidator(const ScheduleNode* sch) : sch(sch), ancestors({nullptr}) {}
   // Valida each block
   void VisitStmt_(const BlockNode* block) override {
-    CHECK(sch->stmt2ref.count(block))
+    ICHECK(sch->stmt2ref.count(block))
         << "InternalError: A BlockNode should appear in sref map, but it didn't\n"
         << GetRef<Stmt>(block);
     const StmtSRef& sref = sch->stmt2ref.at(block);
-    CHECK(sch->scopes.count(sref))
+    ICHECK(sch->scopes.count(sref))
         << "InternalError: Cannot find scope information of the BlockNode:\n"
         << GetRef<Stmt>(block);
-    CHECK(sref->parent == ancestors.back())
+    ICHECK(sref->parent == ancestors.back())
         << "InternalError: Parent information mismatch for BlockNode:\n"
         << GetRef<Stmt>(block) << "\nIts parent is supposed to be:\n"
         << GetRef<Stmt>(ancestors.back()->stmt) << "\nHowever, its parent is incorrect and is:\n"
@@ -296,12 +296,12 @@ class SRefValidator : public StmtVisitor {
   }
   // Validate each loop
   void VisitStmt_(const ForNode* loop) override {
-    CHECK(sch->stmt2ref.count(loop))
+    ICHECK(sch->stmt2ref.count(loop))
         << "InternalError: A LoopNode should appear in sref map, but it didn't\n"
         << GetRef<Stmt>(loop);
     const StmtSRef& sref = sch->stmt2ref.at(loop);
     Optional<Stmt> stmt = NullOpt;
-    CHECK(sref->parent == ancestors.back())
+    ICHECK(sref->parent == ancestors.back())
         << "InternalError: Parent information mismatch for LoopNode:\n"
         << GetRef<Stmt>(loop) << "\nIts parent is supposed to be:\n"
         << GetRef<Stmt>(ancestors.back()->stmt) << "\nHowever, its parent is incorrect and is:\n"

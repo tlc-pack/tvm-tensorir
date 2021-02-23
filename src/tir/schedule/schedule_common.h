@@ -263,8 +263,8 @@ class PatternMatcher : public ExprVisitor {
 
   PrimExpr Eval(const Var& var) {
     auto it = filled_map_.find(var.operator->());
-    CHECK(it != filled_map_.end()) << "Unknown pattern variable";
-    CHECK(match_success_) << "Match failed";
+    ICHECK(it != filled_map_.end()) << "Unknown pattern variable";
+    ICHECK(match_success_) << "Match failed";
     return it->second;
   }
 

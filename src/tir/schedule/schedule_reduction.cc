@@ -44,7 +44,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
    *      - substitute `tir.init()` with IfThenElse statement
    */
   // A bunch of type checking
-  CHECK(block_sref.defined())
+  ICHECK(block_sref.defined())
       << "ValueError: 'decompose_reduction' expect a block as first argument, but get value 'None'";
   const auto* block = block_sref->GetStmt<BlockNode>();
   if (loop_sref_opt) {
@@ -353,7 +353,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   CHECK(reducer.defined()) << "ValueError: 'merge_reduction' pattern detect failed. "
                            << "No reducer pattern matched for " << init->value << " and "
                            << GetRef<BufferStore>(update);
-  CHECK(reducer_lhs.defined() && reducer_rhs.defined());
+  ICHECK(reducer_lhs.defined() && reducer_rhs.defined());
   PrimExpr lhs = reducer_lhs.value();
   PrimExpr rhs = reducer_rhs.value();
   // Get the loops outside the block
@@ -361,7 +361,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   auto loops = GetAxes(block_sref);
   for (auto it = loops.rbegin(); it != loops.rend(); ++it) {
     const auto* l = (*it)->GetStmt<ForNode>();
-    CHECK(l) << "InternalError: GetAxes returns a block sref";
+    ICHECK(l) << "InternalError: GetAxes returns a block sref";
     CHECK(!data_par_loops.count(l->loop_var.get()) || !reduce_loops.count(l->loop_var.get()))
         << "ValueError: loop " << l->loop_var << " is related with both data_par and reduce iters ";
     iters[l->loop_var] = Range::FromMinExtent(l->min, l->extent);
@@ -485,7 +485,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   Optional<StmtSRef> top;
   for (int i = loops.size() - 1; i >= 0; --i) {
     const auto* l = loops[i]->GetStmt<ForNode>();
-    CHECK(l) << "InternalError: GetAxes returns a block sref";
+    ICHECK(l) << "InternalError: GetAxes returns a block sref";
     if (l->body->IsInstance<SeqStmtNode>()) {
       CHECK(i != (int)loops.size() - 1) << "ValueError: can not rfactor";
       top = loops[i + 1];
