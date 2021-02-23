@@ -177,30 +177,42 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
   if (block->init.defined()) {
     std::vector<For> init_loops;
     std::vector<size_t> init_block_vars;
+    std::vector<IterVar> init_block_vars_copy;
     std::vector<PrimExpr> init_bindings;
     std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> binding_replace_map;
-    std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> var_replace_map;
+    std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> bv_replace_map;
     for (size_t i = 0; i < inner_block_vars.size(); ++i) {
       if (inner_block_vars[i]->iter_type == IterVarType::kDataPar &&
           StmtExprContainsVar(block->init.value(), inner_block_vars[i]->var)) {
+        // copy init block vars and ignore reduce block vars
         init_block_vars.push_back(i);
+        IterVar init_block_var = inner_block_vars[i];
+        init_block_var.CopyOnWrite()->var = inner_block_vars[i]->var.copy_with_suffix("_init");
+        init_block_vars_copy.push_back(init_block_var);
+        bv_replace_map[inner_block_vars[i]->var] = init_block_var->var;
       }
     }
     for (const ForNode* inner_loop : inner_loops) {
       for (size_t i = 0; i < init_block_vars.size(); ++i) {
         if (StmtExprContainsVar(inner_bindings[i], inner_loop->loop_var)) {
+          // copy loops related to init block vars
           For init_loop = GetRef<For>(inner_loop);
           init_loop.CopyOnWrite()->loop_var = inner_loop->loop_var.copy_with_suffix("");
+          // replace loop vars with copied loop vars
           binding_replace_map[inner_loop->loop_var] = init_loop->loop_var;
           init_loops.push_back(init_loop);
         }
       }
     }
-    for (size_t index : init_block_vars) {
-      var_replace_map[inner_block_vars[index]->var] =
-          Substitute(inner_bindings[index], binding_replace_map);
+    for (size_t i = 0; i < init_block_vars.size(); ++i) {
+      init_bindings.push_back(Substitute(inner_bindings[init_block_vars[i]], binding_replace_map));
     }
-    new_init = Substitute(block->init.value(), var_replace_map);
+    new_init =
+        Substitute(Block(init_block_vars_copy, {}, block->writes, {}, {}, {}, block->exec_scope,
+                         block->name_hint + "_init", block->init.value(), NullOpt),
+                   bv_replace_map);
+    new_init = BlockRealize(init_bindings, division.back()->inner_extent,
+                            Downcast<Block>(new_init.value()));
     for (const auto& init_loop : init_loops) {
       For new_init_loop = init_loop;
       new_init_loop.CopyOnWrite()->body = new_init.value();
@@ -232,11 +244,9 @@ StmtSRef ScheduleNode::blockize(const StmtSRef& loop_sref, const String& exec_sc
   rewrite_region(&reads, block->reads);
   rewrite_region(&writes, block->writes);
   // Generate a new outer block
-  auto outer_block =
-      Block(outer_block_vars, reads, writes, {}, {}, {}, exec_scope,
-            "blockized_" + block->name_hint, body, new_init);
-  auto outer_realize =
-      BlockRealize(outer_bindings, division.back()->outer_extent, outer_block);
+  auto outer_block = Block(outer_block_vars, reads, writes, {}, {}, {}, exec_scope,
+                           "blockized_" + block->name_hint, body, new_init);
+  auto outer_realize = BlockRealize(outer_bindings, division.back()->outer_extent, outer_block);
 
   this->Replace(loop_sref, outer_realize, {{inner_block, block}});
   UpdateScope(GetParentBlockSRef(this->stmt2ref.at(outer_block.get()))->stmt, this->stmt2ref,
@@ -466,7 +476,8 @@ bool TensorizeComparator::CompareAnnotationMap(const Map<String, ObjectRef>& lhs
   if (lhs.same_as(rhs)) return true;
   if (lhs.size() != rhs.size()) return false;
 
-  auto sort_map = [](const Map<String, ObjectRef>& map) -> std::vector<std::pair<String, ObjectRef>> {
+  auto sort_map =
+      [](const Map<String, ObjectRef>& map) -> std::vector<std::pair<String, ObjectRef>> {
     std::vector<std::pair<String, ObjectRef>> ret;
     ret.reserve(map.size());
     for (const auto& pair : map) {
@@ -708,7 +719,7 @@ class BufferReplacer : public StmtExprMutator {
         return buffer_region;
       }
     };
-    return MutateArray(buffer_regions, f_mutate, allow_copy_on_write_);
+    return MutateArray(buffer_regions, f_mutate);
   }
 };
 

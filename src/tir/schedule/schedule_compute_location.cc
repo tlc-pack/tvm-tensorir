@@ -179,7 +179,7 @@ std::vector<arith::IntSet> SolveCover(const BlockNode* block, const BufferRegion
  * \return The Updated parent loop
  */
 For RegenerateLoops(const StmtSRef& block_sref, const StmtSRef& loop_sref, int insert_pos,
-                     const std::vector<arith::IntSet>& iter_domain, bool preserve_trivial_loop) {
+                    const std::vector<arith::IntSet>& iter_domain, bool preserve_trivial_loop) {
   const auto* loop = loop_sref->GetStmt<ForNode>();
   int n_iter_domain = iter_domain.size();
   // Step 1. Construct loop variables
