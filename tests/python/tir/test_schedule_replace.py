@@ -39,7 +39,7 @@ def replace_ir_builder(deep_copy=False):
 
 
 def test_replace_direct_write0():
-    return
+    # return
     s, target = replace_ir_builder()
 
     old_hash = s.func.__hash__()
@@ -57,7 +57,7 @@ def test_replace_direct_write0():
 
 
 def test_replace_direct_write1():
-    return
+    # return
     s, target = replace_ir_builder()
 
     old_hash = s.func.body.block.body.__hash__()
@@ -77,7 +77,7 @@ def test_replace_direct_write1():
 
 
 def test_replace_copy():
-    return
+    # return
     s, target = replace_ir_builder(deep_copy=True)
 
     old_hash = s.func.__hash__()
@@ -99,7 +99,7 @@ def test_replace_copy():
 
 
 def test_replace_partial_copy0():
-    return
+    # return
     s, target = replace_ir_builder(deep_copy=True)
 
     func_old_hash = s.func.__hash__()
@@ -178,7 +178,7 @@ def test_replace_root_copy0():
 
 
 def test_replace_root_copy1():
-    return
+    # return
     s, target = replace_ir_builder(deep_copy=True)
 
     old_hash = s.func.body.block.__hash__()

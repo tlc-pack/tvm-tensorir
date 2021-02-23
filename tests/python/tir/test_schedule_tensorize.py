@@ -134,7 +134,7 @@ def tensorized_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 def test_tensorize_buffer_bind():
-    return
+    # return
     func = util.matmul_stmt()
     # schedule
     s = tir.create_schedule(func)
@@ -195,7 +195,7 @@ def tensorized_batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 def test_high_dim_tensorize():
-    return
+    # return
     s = tir.create_schedule(batch_matmul)
     update = s.get_block("update")
     n, i, j, k = s.get_axes(update)
@@ -327,7 +327,7 @@ def dot_product_impl(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 def test_tensorize_dot_product():
-    return
+    # return
     dot_prod = tvm.tir.TensorIntrin(dot_product_desc, dot_product_impl)
 
     s = tir.create_schedule(batch_matmul_dot_product)
