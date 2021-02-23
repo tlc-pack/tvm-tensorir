@@ -149,7 +149,7 @@ class SRefCreator : public StmtVisitor {
     // Then construct a SRefCreator
     SRefCreator creator(self, block_reuse, loop_reuse, parent);
     creator.VisitStmt(new_stmt);
-    return std::move(creator.result);
+    return std::move(creator.result_);
   }
 
  private:
@@ -157,62 +157,62 @@ class SRefCreator : public StmtVisitor {
                        const Map<Block, Block>& block_reuse,                            //
                        const std::unordered_map<const VarNode*, StmtSRef>& loop_reuse,  //
                        StmtSRefNode* parent)
-      : self(self), block_reuse(block_reuse), loop_reuse(loop_reuse), parents({parent}) {}
+      : self_(self), block_reuse_(block_reuse), loop_reuse_(loop_reuse), parents_({parent}) {}
 
   void VisitStmt_(const LoopNode* op) override {
-    StmtSRef& sref = self->stmt2ref[op];
-    StmtSRefNode* parent = parents.back();
+    StmtSRef& sref = self_->stmt2ref[op];
+    StmtSRefNode* parent = parents_.back();
     // Case 1. The subtree has been tracked by the stmt2ref
     if (sref.defined()) {
       sref->seq_index = -1;
-      result.intact.emplace(sref, parent);
+      result_.intact.emplace(sref, parent);
       return;
     }
     // Case 2. We are replace an existing loop,
     // reuse the existing sref so that users don't get an expired one
-    auto it = loop_reuse.find(op->loop_var.get());
-    if (it != loop_reuse.end()) {
+    auto it = loop_reuse_.find(op->loop_var.get());
+    if (it != loop_reuse_.end()) {
       sref = it->second;
       sref->stmt = op;
       sref->parent = parent;
       sref->seq_index = -1;
-      result.reused.insert(sref);
+      result_.reused.insert(sref);
     } else {
       // Case 3. Replacing an existing loop with a new one
       sref = StmtSRef(op, parent, /*seq_index=*/-1, /*binding_valid=*/true);
     }
-    parents.push_back(sref.get());
+    parents_.push_back(sref.get());
     VisitStmt(op->body);
-    parents.pop_back();
+    parents_.pop_back();
   }
 
   void VisitStmt_(const BlockNode* op) override {
-    StmtSRef& sref = self->stmt2ref[op];
-    StmtSRefNode* parent = parents.back();
+    StmtSRef& sref = self_->stmt2ref[op];
+    StmtSRefNode* parent = parents_.back();
     // Case 1. The subtree has been tracked by the stmt2ref
     if (sref.defined()) {
       sref->seq_index = -1;
-      result.intact.emplace(sref, parent);
+      result_.intact.emplace(sref, parent);
       return;
     }
     // Case 2. We are replace an existing block,
     // reuse the existing sref so that users don't get an expired one
-    auto it = block_reuse.find(GetRef<Block>(op));
-    if (it != block_reuse.end()) {
-      sref = self->stmt2ref.at((*it).second.get());
+    auto it = block_reuse_.find(GetRef<Block>(op));
+    if (it != block_reuse_.end()) {
+      sref = self_->stmt2ref.at((*it).second.get());
       sref->stmt = op;
       sref->parent = parent;
       sref->seq_index = -1;
-      result.reused.insert(sref);
+      result_.reused.insert(sref);
     } else {
       // Case 3. Replacing an existing block with a new one
       sref = StmtSRef(op, parent, /*seq_index=*/-1, /*binding_valid=*/true);
     }
-    parents.push_back(sref.get());
+    parents_.push_back(sref.get());
     VisitStmt(op->body);
-    parents.pop_back();
+    parents_.pop_back();
     // Additionally, need to update the scope because the block is changed
-    UpdateScope(op, self->stmt2ref, &self->scopes);
+    UpdateScope(op, self_->stmt2ref, &self_->scopes);
   }
 
   void VisitStmt_(const SeqStmtNode* op) override {
@@ -220,17 +220,17 @@ class SRefCreator : public StmtVisitor {
     // Update seq_index of children
     int i = 0;
     for (const Stmt& stmt : op->seq) {
-      SetSeqIndex(self, stmt, i);
+      SetSeqIndex(self_, stmt, i);
       ++i;
     }
   }
 
-  ScheduleNode* self;
-  const Map<Block, Block>& block_reuse;
-  const std::unordered_map<const VarNode*, StmtSRef>& loop_reuse;
-  std::vector<StmtSRefNode*> parents;
+  ScheduleNode* self_;
+  const Map<Block, Block>& block_reuse_;
+  const std::unordered_map<const VarNode*, StmtSRef>& loop_reuse_;
 
-  CreationInfo result;
+  std::vector<StmtSRefNode*> parents_;
+  CreationInfo result_;
 };
 
 /*!
@@ -265,6 +265,54 @@ class ChildReplacer : private StmtMutator {
   }
 
  private:
+  explicit ChildReplacer(const StmtNode* src_stmt, const Stmt& tgt_stmt, int seq_index)
+      : src_stmt_(src_stmt), tgt_stmt_(tgt_stmt), seq_index_(seq_index) {}
+
+  Stmt VisitStmt(const Stmt& stmt) override {
+    if (stmt.get() == src_stmt_) {
+      // if the statement matches the replace tgt_stmt
+      // just return the tgt_stmt
+      return tgt_stmt_;
+    } else {
+      return StmtMutator::VisitStmt(stmt);
+    }
+  }
+
+  Stmt VisitStmt_(const BlockNode* op) override { return GetRef<Stmt>(op); }
+  Stmt VisitStmt_(const LoopNode* op) override { return GetRef<Stmt>(op); }
+
+  Stmt VisitStmt_(const SeqStmtNode* op) override {
+    int i = this->seq_index_;
+    int n = op->seq.size();
+    if (0 <= i && i < n) {
+      const Stmt& stmt = op->seq[i];
+      Optional<Stmt> new_stmt = NullOpt;
+      // `stmt` can be Loop or BlockRealize
+      // `src_stmt` can be Loop or Block
+      // so the match from `stmt` to `src_stmt` can be
+      // 1) Loop -> Loop
+      // 2) BlockRealize -> Block
+      if (stmt.get() == this->src_stmt_) {
+        // Case 1. src_stmt is Loop, stmt is Loop
+        new_stmt = tgt_stmt_;
+      } else if (const auto* realize = stmt.as<BlockRealizeNode>()) {
+        // Case 2. stmt is BlockRealize, src_stmt is Block
+        if (realize->block.get() == src_stmt_) {
+          ObjectPtr<BlockRealizeNode> new_realize = make_object<BlockRealizeNode>(*realize);
+          new_realize->block = GetRef<Block>(static_cast<const BlockNode*>(src_stmt_));
+          new_stmt = BlockRealize(std::move(new_realize));
+        }
+      }
+      // Move new_stmt to position i
+      if (new_stmt.defined()) {
+        ObjectPtr<SeqStmtNode> new_seq_stmt = CopyOnWrite(op);
+        new_seq_stmt->seq.Set(i, new_stmt.value());
+        return SeqStmt(std::move(new_seq_stmt));
+      }
+    }
+    return StmtMutator::VisitStmt_(op);
+  }
+
   Stmt CopyOnWriteWithBody(const StmtNode* stmt, Stmt** body) {
     if (stmt->IsInstance<BlockNode>()) {
       auto* block = const_cast<BlockNode*>(static_cast<const BlockNode*>(stmt));
@@ -281,57 +329,9 @@ class ChildReplacer : private StmtMutator {
     throw;
   }
 
-  explicit ChildReplacer(const StmtNode* src_stmt, const Stmt& tgt_stmt, int seq_index)
-      : src_stmt(src_stmt), tgt_stmt(tgt_stmt), seq_index(seq_index) {}
-
-  Stmt VisitStmt(const Stmt& stmt) override {
-    if (stmt.get() == src_stmt) {
-      // if the statement matches the replace tgt_stmt
-      // just return the tgt_stmt
-      return tgt_stmt;
-    } else {
-      return StmtMutator::VisitStmt(stmt);
-    }
-  }
-
-  Stmt VisitStmt_(const BlockNode* op) override { return GetRef<Stmt>(op); }
-  Stmt VisitStmt_(const LoopNode* op) override { return GetRef<Stmt>(op); }
-
-  Stmt VisitStmt_(const SeqStmtNode* op) override {
-    int i = this->seq_index;
-    int n = op->seq.size();
-    if (0 <= i && i < n) {
-      const Stmt& stmt = op->seq[i];
-      Optional<Stmt> new_stmt = NullOpt;
-      // `stmt` can be Loop or BlockRealize
-      // `src_stmt` can be Loop or Block
-      // so the match from `stmt` to `src_stmt` can be
-      // 1) Loop -> Loop
-      // 2) BlockRealize -> Block
-      if (stmt.get() == this->src_stmt) {
-        // Case 1. src_stmt is Loop, stmt is Loop
-        new_stmt = tgt_stmt;
-      } else if (const auto* realize = stmt.as<BlockRealizeNode>()) {
-        // Case 2. stmt is BlockRealize, src_stmt is Block
-        if (realize->block.get() == src_stmt) {
-          ObjectPtr<BlockRealizeNode> new_realize = make_object<BlockRealizeNode>(*realize);
-          new_realize->block = GetRef<Block>(static_cast<const BlockNode*>(src_stmt));
-          new_stmt = BlockRealize(std::move(new_realize));
-        }
-      }
-      // Move new_stmt to position i
-      if (new_stmt.defined()) {
-        ObjectPtr<SeqStmtNode> new_seq_stmt = CopyOnWrite(op);
-        new_seq_stmt->seq.Set(i, new_stmt.value());
-        return SeqStmt(std::move(new_seq_stmt));
-      }
-    }
-    return StmtMutator::VisitStmt_(op);
-  }
-
-  const StmtNode* src_stmt;
-  const Stmt& tgt_stmt;
-  int seq_index;
+  const StmtNode* src_stmt_;
+  const Stmt& tgt_stmt_;
+  int seq_index_;
 };
 
 /*!
@@ -356,11 +356,11 @@ class SRefRemover : public StmtVisitor {
   }
 
  private:
-  explicit SRefRemover(ScheduleNode* self, const CreationInfo& info) : self(self), info(info) {}
+  explicit SRefRemover(ScheduleNode* self, const CreationInfo& info) : self_(self), info_(info) {}
 
   bool CheckIntactSubtree(const StmtSRef& sref) const {
-    auto itr = info.intact.find(sref);
-    if (itr == info.intact.end()) {
+    auto itr = info_.intact.find(sref);
+    if (itr == info_.intact.end()) {
       return false;
     }
     sref->parent = itr->second;
@@ -368,7 +368,7 @@ class SRefRemover : public StmtVisitor {
   }
 
   bool CheckReused(const StmtSRef& sref) const {
-    if (info.reused.count(sref)) {
+    if (info_.reused.count(sref)) {
       return true;
     }
     sref->stmt = nullptr;
@@ -377,29 +377,29 @@ class SRefRemover : public StmtVisitor {
   }
 
   void VisitStmt_(const LoopNode* op) override {
-    StmtSRef sref = self->stmt2ref.at(op);
+    StmtSRef sref = self_->stmt2ref.at(op);
     if (CheckIntactSubtree(sref)) {
       return;
     }
     CheckReused(sref);
-    self->stmt2ref.erase(op);
+    self_->stmt2ref.erase(op);
     VisitStmt(op->body);
   }
 
   void VisitStmt_(const BlockNode* op) override {
-    StmtSRef sref = self->stmt2ref.at(op);
+    StmtSRef sref = self_->stmt2ref.at(op);
     if (CheckIntactSubtree(sref)) {
       return;
     }
     if (!CheckReused(sref)) {
-      self->scopes.erase(sref);
+      self_->scopes.erase(sref);
     }
-    self->stmt2ref.erase(op);
+    self_->stmt2ref.erase(op);
     VisitStmt(op->body);
   }
 
-  ScheduleNode* self;
-  CreationInfo info;
+  ScheduleNode* self_;
+  CreationInfo info_;
 };
 
 void ScheduleNode::Replace(const StmtSRef& _src_sref, const Stmt& tgt_stmt,
