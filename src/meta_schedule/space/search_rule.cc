@@ -21,6 +21,7 @@
 #include "../../tir/schedule/schedule_common.h"
 #include "../analysis.h"
 #include "../utils.h"
+#include "../../printer/text_printer.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -296,7 +297,7 @@ class RuleMultiLevelTiling {
       BlockRV block_rv = state.block_rv;
       Array<BlockRV> consumer_chain = GetInlineableConsumerChain(sch, block_rv);
       if (!consumer_chain.empty()) {
-        for (size_t i = 0; i + 1 < consumer_chain.size(); i++) {
+        for (size_t i = 0; i < consumer_chain.size(); i++) {
           sch->ReverseComputeInline(consumer_chain[i]);
         }
         // let the last consumer act as a write cache
@@ -317,13 +318,20 @@ class RuleMultiLevelTiling {
     BlockRV write_cache = state.block_rv;
     // The original block to tiled
     state.block_rv = state.sch->CacheWrite(state.block_rv, 0, cache_write_scope);
+    // LOG(INFO) << "BLOCKRV" <<tir::GetBlockRealize(state.sch->Eval(block_rv))->block->name_hint;
     Array<BlockRV> consumer_chain = GetInlineableConsumerChain(state.sch, write_cache);
     if (!consumer_chain.empty()) {
-      for (size_t i = 0; i + 1 < consumer_chain.size(); i++) {
+      for (size_t i = 0; i < consumer_chain.size(); i++) {
+        LOG(INFO) << AsTVMScript(state.sch->sch->func, false);
+        LOG(INFO) << tir::GetBlockRealize(state.sch->Eval(state.block_rv))->block->name_hint;
+        LOG(INFO) << "Reverse Compute Inline " << tir::GetBlockRealize(state.sch->Eval(consumer_chain[i]))->block->name_hint;
         state.sch->ReverseComputeInline(consumer_chain[i]);
+        LOG(INFO) << AsTVMScript(state.sch->sch->func, false);
       }
       // let the last consumer act as a write cache
       state.write_cache = consumer_chain.back();
+      CHECK(state.sch->Eval(state.block_rv).defined());
+      LOG(INFO) << "EVAL OK";
     } else {
       state.write_cache = write_cache;
     }
@@ -342,6 +350,11 @@ class RuleMultiLevelTiling {
   Array<BlockRV> GetInlineableConsumerChain(Schedule& sch, const BlockRV& producer_block_rv) const {
     Array<BlockRV> result;
     BlockRV cur = producer_block_rv;
+
+    if (!RuleInlinePureSpatial::NeedsInline(sch->sch, sch->Eval(producer_block_rv),
+                                            this->consumer_inline_strict)) {
+      return {};
+    }
     while (true) {
       Array<BlockRV> consumers = sch->GetConsumers(cur);
       if (consumers.size() != 1) {
@@ -349,6 +362,8 @@ class RuleMultiLevelTiling {
       }
       BlockRV consumer_rv = consumers[0];
       tir::StmtSRef consumer_sref = sch->Eval(consumer_rv);
+      LOG(INFO ) << "Producer: " << tir::GetBlockRealize(sch->Eval(cur))->block->name_hint << " "
+      << tir::GetBlockRealize(consumer_sref)->block->name_hint;
       if (!IsSpatial(sch->sch, consumer_sref)) {
         break;
       }
@@ -359,11 +374,15 @@ class RuleMultiLevelTiling {
       if (!RuleInlinePureSpatial::NeedsInline(sch->sch, consumer_sref,
                                               this->consumer_inline_strict)) {
         if (IsOutputBlock(sch->sch, consumer_sref)) {
+          LOG(INFO) << "CHADD " << tir::GetBlockRealize(sch->Eval(consumer_rv))->block->name_hint;
           result.push_back(consumer_rv);
         }
         break;
       }
+
+      LOG(INFO) << "CHADD " << tir::GetBlockRealize(sch->Eval(consumer_rv))->block->name_hint;
       result.push_back(consumer_rv);
+      cur = consumer_rv;
     }
     return result;
   }
@@ -376,6 +395,8 @@ class RuleMultiLevelTiling {
     Schedule& sch = state.sch;
     BlockRV& block_rv = state.block_rv;
     tir::StmtSRef block_sref = sch->Eval(block_rv);
+    LOG(INFO) << "ADD READ CACHE" << AsTVMScript(state.sch->sch->func, false);
+    LOG(INFO) << "Add Read cache to " << tir::GetBlockRealize(block_sref)->block->name_hint;
     // Find all indices of the read buffers
     std::vector<int> read_buffer_indices = GetReadBufferIndices(block_sref);
     // Enumerate all buffers that are read but not written
@@ -473,6 +494,7 @@ class RuleMultiLevelTiling {
       const LoopRV& loop = state.tiles[level - 1].back();
       State new_state = state;
       new_state.sch = state.sch->Copy(sch->sampler.ForkSeed());
+      LOG(INFO) << "ReverseComputeAt "  << tir::GetBlockRealize(sch->Eval(consumer))->block->name_hint << " " << tir::GetBlockRealize(sch->Eval(state.block_rv))->block->name_hint;
       new_state.sch->ReverseComputeAt(consumer, loop);
       result.push_back(new_state);
     }
@@ -499,6 +521,7 @@ class RuleMultiLevelTiling {
     if (!NeedsMultiLevelTiling(sch->sch, block_sref)) {
       return {sch};
     }
+    LOG(INFO) << "Apply on " << tir::GetBlockRealize(sch->Eval(block_rv))->block->name_hint;
     // States
     std::vector<State> states{State(sch, block_rv)};
     // Add write cache
