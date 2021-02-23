@@ -869,8 +869,36 @@ bool HasCacheWriteBlock(const Schedule& sch, const BlockRV& block_rv) {
   return false;
 }
 
-Schedule FuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
-                            LoopRV* fused_reduce_loop, int* num_spatial_loops) {
+void ReorderReductionLoops(const Schedule& sch, const BlockRV& block_rv) {
+  Array<LoopRV> loops = sch->GetAxes(block_rv);
+  Array<LoopRV> new_order;
+  // Step 1. Add spatial loops.
+  for (const LoopRV& loop_rv : loops) {
+    if (GetLoopIterType(sch->sch, sch->Eval(loop_rv)) == tir::kDataPar) {
+      new_order.push_back(loop_rv);
+    }
+  }
+  // Step 2. Add reduction loops.
+  for (const LoopRV& loop_rv : loops) {
+    if (GetLoopIterType(sch->sch, sch->Eval(loop_rv)) == tir::kCommReduce) {
+      new_order.push_back(loop_rv);
+    }
+  }
+  // Step 3. Apply reordering if new_order differs from the original order.
+  CHECK_EQ(new_order.size(), loops.size());
+  bool need_reorder = false;
+  for (int i = 0; i < static_cast<int>(loops.size()); ++i) {
+    if (!new_order[i].same_as(loops[i])) {
+      need_reorder = true;
+    }
+  }
+  if (need_reorder) {
+    sch->Reorder(new_order);
+  }
+}
+
+void FuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
+                        LoopRV* fused_reduce_loop, int* num_spatial_loops) {
   // All the loops are made sure to be either spatial loops or reduction loops.
   // All the reduction loops are made sure to be continuous and innermost.
   Array<LoopRV> loops = sch->GetAxes(block_rv);
@@ -887,13 +915,11 @@ Schedule FuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
   }
 
   CHECK(!reduction_loops.empty()) << "ValueError: There should be at least one reduction loop";
-  Schedule res = sch;
   if (reduction_loops.size() > 1) {
-    *fused_reduce_loop = res->Fuse(reduction_loops);
+    *fused_reduce_loop = sch->Fuse(reduction_loops);
   } else {
     *fused_reduce_loop = reduction_loops[0];
   }
-  return res;
 }
 
 TVM_REGISTER_NODE_TYPE(TensorizeInfoNode);

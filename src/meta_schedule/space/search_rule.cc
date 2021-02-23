@@ -908,6 +908,7 @@ class RuleAddRfactor {
   /*! \brief Rule application */
   Array<Schedule> Apply(const SearchTask& task,
                         const Schedule& sch, const BlockRV& block_rv) const {
+    // Check the conditions of the rule.
     tir::StmtSRef block_sref = sch->Eval(block_rv);
     if (HasAnyAnn(block_sref)) {
       return {sch};
@@ -920,14 +921,17 @@ class RuleAddRfactor {
       return {sch};
     }
 
+    // Reorder the loop axes if reduction loops are not innermost.
+    ReorderReductionLoops(sch, block_rv);
+
     int num_spatial_loops;
     LoopRV fused_reduce_loop;
-    Schedule base_sch = FuseReductionLoops(sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
-    const Array<LoopRV>& split_res = base_sch->Split(fused_reduce_loop, {Integer(1)});
+    FuseReductionLoops(sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
+    const Array<LoopRV>& split_res = sch->Split(fused_reduce_loop, {NullOpt, Integer(1)});
     Array<Schedule> res;
     for (const LoopRV& split_loop : split_res) {
-      const Schedule& sch_tmp = base_sch;
-      const BlockRV& block_rf = sch_tmp->Rfactor(fused_reduce_loop, num_spatial_loops);
+      const Schedule& sch_tmp = sch;
+      const BlockRV& block_rf = sch_tmp->Rfactor(split_loop, num_spatial_loops);
       Array<LoopRV> axes = sch_tmp->GetAxes(block_rf);
       CHECK_GT(static_cast<int>(axes.size()), num_spatial_loops);
 

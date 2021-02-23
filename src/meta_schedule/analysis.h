@@ -217,6 +217,13 @@ TVM_DLL bool NeedsRfactor(const SearchTask& task, const tir::Schedule& sch,
 TVM_DLL bool HasCacheWriteBlock(const Schedule& sch, const BlockRV& block_rv);
 
 /*!
+ * \brief Reorder the reduction loops to innermost positions if needed.
+ * \param sch The Meta-Schedule schedule
+ * \param block_rv The block where to apply the reorder
+ */
+TVM_DLL void ReorderReductionLoops(const Schedule& sch, const BlockRV& block_rv);
+
+/*!
  * \brief Fuse all the reduction loops, and get the number of spatial loops and the loop after
  *        fusion in the mean time.
  * \param sch The Meta-Schedule schedule
@@ -225,8 +232,8 @@ TVM_DLL bool HasCacheWriteBlock(const Schedule& sch, const BlockRV& block_rv);
  * \param num_spatial_loops The number of spatial loops to return.
  * \note All the reduction loops are made sure to be continuous and innermost.
  */
-TVM_DLL Schedule FuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
-                                    LoopRV* fused_reduce_loop, int* num_spatial_loops);
+TVM_DLL void FuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
+                                LoopRV* fused_reduce_loop, int* num_spatial_loops);
 
 }  // namespace meta_schedule
 }  // namespace tvm
