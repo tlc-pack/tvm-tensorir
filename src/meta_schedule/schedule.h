@@ -198,6 +198,12 @@ class ScheduleNode : public Object {
    * \note It is not useful, should remove
    */
   Array<BlockRV> GetLeafBlocks();
+  /*!
+   * \brief et the child blocks of the input_block
+   * \param input_block The input_block
+   * \return A list of blocks that are children of the input_block
+   */
+  Array<BlockRV> GetChildBlocks(const BlockRV& input_block);
   /**************** Scheduling Primitives ****************/
   /*!
    * \brief Mark a loop
