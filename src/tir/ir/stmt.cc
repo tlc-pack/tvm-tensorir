@@ -672,7 +672,7 @@ TVM_REGISTER_NODE_TYPE(MatchBufferRegionNode);
 // Block
 Block::Block(Array<IterVar> iter_vars, Array<BufferRegion> reads, Array<BufferRegion> writes,
              Array<Buffer> alloc_buffers, Map<String, ObjectRef> annotations, Array<MatchBufferRegion> match_buffers,
-             String exec_scope, String name_hint, Stmt body, Optional<Stmt> init) {
+             String exec_scope, String name_hint, Stmt body, Optional<Stmt> init, Span span) {
   ObjectPtr<BlockNode> node = make_object<BlockNode>();
   node->iter_vars = std::move(iter_vars);
   node->reads = std::move(reads);
@@ -684,21 +684,21 @@ Block::Block(Array<IterVar> iter_vars, Array<BufferRegion> reads, Array<BufferRe
   node->name_hint = std::move(name_hint);
   node->init = std::move(init);
   node->exec_scope = std::move(exec_scope);
+  node->span = std::move(span);
   data_ = std::move(node);
 }
 
 TVM_REGISTER_GLOBAL("tir.Block")
     .set_body_typed<Block(Array<IterVar>, Array<BufferRegion>, Array<BufferRegion>, Array<Buffer>,
                           Map<String, ObjectRef>, Array<MatchBufferRegion>, String, String, Stmt,
-                          Optional<Stmt>)>([](Array<IterVar> iter_vars, Array<BufferRegion> reads,
-                                              Array<BufferRegion> writes, Array<Buffer> alloc_buffers,
-                                              Map<String, ObjectRef> annotations,
-                                              Array<MatchBufferRegion> match_buffers,
-                                              String exec_scope, String name_hint, Stmt body,
-                                              Optional<Stmt> init) {
-      return Block(iter_vars, reads, writes, alloc_buffers, annotations, match_buffers,
-                   exec_scope, name_hint, body, init);
-    });
+                          Optional<Stmt>, Span)>(
+        [](Array<IterVar> iter_vars, Array<BufferRegion> reads, Array<BufferRegion> writes,
+           Array<Buffer> alloc_buffers, Map<String, ObjectRef> annotations,
+           Array<MatchBufferRegion> match_buffers, String exec_scope, String name_hint, Stmt body,
+           Optional<Stmt> init, Span span) {
+          return Block(iter_vars, reads, writes, alloc_buffers, annotations, match_buffers,
+                       exec_scope, name_hint, body, init, span);
+        });
 
 TVM_REGISTER_NODE_TYPE(BlockNode);
 
@@ -768,24 +768,25 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     });
 
 // BlockRealize
-BlockRealize::BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block) {
+BlockRealize::BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block, Span span) {
   CHECK_EQ(block->iter_vars.size(), values.size());
   ObjectPtr<BlockRealizeNode> node = make_object<BlockRealizeNode>();
   node->binding_values = std::move(values);
   node->predicate = std::move(predicate);
   node->block = std::move(block);
+  node->span = std::move(span);
   data_ = std::move(node);
 }
 
 TVM_REGISTER_GLOBAL("tir.BlockRealize")
-    .set_body_typed<BlockRealize(Array<PrimExpr>, PrimExpr, Block)>(
-        [](Array<PrimExpr> values, PrimExpr predicate, Block block) {
+    .set_body_typed<BlockRealize(Array<PrimExpr>, PrimExpr, Block, Span)>(
+        [](Array<PrimExpr> values, PrimExpr predicate, Block block, Span span) {
           if (!predicate.dtype().is_bool()) {
             // To support python ir_builder
             CHECK(is_one(predicate));
             predicate = IntImm(DataType::Bool(), 1);
           }
-          return BlockRealize(values, predicate, block);
+          return BlockRealize(values, predicate, block, span);
         });
 
 TVM_REGISTER_NODE_TYPE(BlockRealizeNode);

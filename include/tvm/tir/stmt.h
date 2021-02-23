@@ -1059,7 +1059,7 @@ class Block : public Stmt {
                          Array<BufferRegion> writes, Array<Buffer> alloc_buffers,
                          Map<String, ObjectRef> annotations, Array<MatchBufferRegion> match_buffers,
                          String exec_scope, String name_hint,
-                         Stmt body, Optional<Stmt> init);
+                         Stmt body, Optional<Stmt> init, Span = Span());
 
   TVM_DEFINE_OBJECT_REF_METHODS(Block, Stmt, BlockNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(BlockNode);
@@ -1104,7 +1104,8 @@ class BlockRealizeNode : public StmtNode {
  */
 class BlockRealize : public Stmt {
  public:
-  TVM_DLL explicit BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block);
+  TVM_DLL explicit BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block,
+                                Span = Span());
 
   TVM_DEFINE_OBJECT_REF_METHODS(BlockRealize, Stmt, BlockRealizeNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(BlockRealizeNode);

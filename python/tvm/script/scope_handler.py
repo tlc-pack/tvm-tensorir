@@ -143,7 +143,8 @@ class Block(WithScopeHandler):
                 exec_scope,
                 name,
                 self.body,
-                block_info.init
+                block_info.init,
+                span
             )
             # create block var binding
             if not block_info.binding:
@@ -161,7 +162,7 @@ class Block(WithScopeHandler):
                         self.context.report_error("Missing block var binding for " + block_var.name,
                                                   span=self.node.span)
                 values = [block_info.binding[block_var] for block_var in self.block_vars]
-            body = tvm.tir.BlockRealize(values, block_info.predicate, inner)
+            body = tvm.tir.BlockRealize(values, block_info.predicate, inner, span)
             return body
 
         super().__init__(func=block, concise_scope=False, def_symbol=True)
