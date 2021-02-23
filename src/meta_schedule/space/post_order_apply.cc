@@ -162,8 +162,8 @@ Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* 
         continue;
       }
       // otherwise, get the last block that is not visited
-      tir::StmtSRef block_sref = unvisited[0];
-      unvisited.erase(unvisited.begin());
+      tir::StmtSRef block_sref = unvisited.back();
+      unvisited.pop_back();
       if (block_sref->stmt != nullptr) {
         const auto* block = block_sref->GetStmt<tir::BlockNode>();
         CHECK(block) << "TypeError: Expects BlockNode, but gets: "
