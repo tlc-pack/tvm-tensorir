@@ -303,21 +303,6 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   UpdateScope(GetParentBlockSRef(update_sref)->stmt, this->stmt2ref, &this->scopes);
 }
 
-class VarCollector : public StmtExprVisitor {
- public:
-  explicit VarCollector(std::unordered_set<const VarNode*>& res) : res(res) {}
-
-  void VisitExpr_(const VarNode* op) override { res.insert(op); }
-
- private:
-  std::unordered_set<const VarNode*>& res;
-};
-
-void CollectVars(std::unordered_set<const VarNode*>& res, const PrimExpr& expr) {
-  VarCollector collector(res);
-  collector(expr);
-}
-
 StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   const auto* loop = loop_sref->GetStmt<ForNode>();
   CHECK(loop) << "TypeError: Only support rfactor a loop for now, but get type: "
@@ -336,10 +321,20 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   // Collect the info of loop&block iter relation
   std::unordered_set<const VarNode*> data_par_loops, reduce_loops;
   for (size_t i = 0; i < block->iter_vars.size(); ++i) {
+    std::unordered_set<const VarNode*>* set = nullptr;
     if (block->iter_vars[i]->iter_type == IterVarType::kDataPar) {
-      CollectVars(data_par_loops, block_realize->binding_values[i]);
+      set = &data_par_loops;
     } else if (block->iter_vars[i]->iter_type == IterVarType::kCommReduce) {
-      CollectVars(reduce_loops, block_realize->binding_values[i]);
+      set = &reduce_loops;
+    }
+    if (set != nullptr) {
+      PreOrderVisit(block_realize->binding_values[i], [set] (const ObjectRef& node) {
+        if (const auto* var = node.as<VarNode>()) {
+          set->insert(var);
+          return false;
+        }
+        return true;
+      });
     }
   }
   // Get the init BufferStore and update buffer store
@@ -359,7 +354,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   PrimExpr rhs = reducer_rhs.value();
   // Get the loops outside the block
   std::unordered_map<Var, Range, ObjectPtrHash, ObjectPtrEqual> iters;
-  auto loops = GetAxes(block_sref);
+  Array<StmtSRef> loops = GetAxes(block_sref);
   for (auto it = loops.rbegin(); it != loops.rend(); ++it) {
     const auto* l = (*it)->GetStmt<ForNode>();
     ICHECK(l) << "InternalError: GetAxes returns a block sref";
