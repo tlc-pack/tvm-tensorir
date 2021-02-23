@@ -99,7 +99,12 @@ def matmul_blockized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                     ])
                     tir.writes([C[vi : (vi + 1), vj : (vj + 1)]])
                     with tir.init():
-                        C[vi, vj] = 0.0
+                        with tir.block([], "matmul_init") as []:
+                            tir.reads([])
+                            tir.writes([
+                                C[vi : (vi + 1), vj : (vj + 1)]
+                            ])
+                            C[vi, vj] = tir.float32(0)
                     for i2 in range(0, 1024):
                         with tir.block([tir.reduce_axis(0, 1024)], "C") as [vk]:
                             tir.bind(vk, i2)
@@ -110,7 +115,6 @@ def matmul_blockized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                             ])
                             tir.writes([C[vi : (vi + 1), vj : (vj + 1)]])
                             C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
-
 
 
 @tvm.script.tir

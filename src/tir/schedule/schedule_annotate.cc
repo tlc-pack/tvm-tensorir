@@ -92,7 +92,7 @@ Block WithAnnotation(const BlockNode* block, const String& attr_key, const Objec
 }
 
 void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const ForKind& for_kind,
-                                        const Optional<IterVar>& thread_binding) {
+                                   const Optional<IterVar>& thread_binding) {
   /*!
    * Check:
    * - 1. check the block under is complete block or reduction block
@@ -152,8 +152,7 @@ void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const ForKind& for
   }
   ObjectPtr<ForNode> new_loop = make_object<ForNode>(*loop);
   new_loop->kind = for_kind;
-  if (thread_binding.defined())
-    new_loop->thread_binding = thread_binding;
+  if (thread_binding.defined()) new_loop->thread_binding = thread_binding;
   this->Replace(loop_sref, For(new_loop), {});
 }
 
@@ -189,8 +188,7 @@ void ScheduleNode::pragma(const StmtSRef& loop_sref, const String& pragma_type,
                           const PrimExpr& pragma_value) {
   const auto* loop_ptr = loop_sref->GetStmt<ForNode>();
   CHECK(loop_ptr) << "TypeError: pragma expects a Loop as its first argument";
-  this->Replace(loop_sref,
-                WithAnnotation(loop_ptr, "pragma_" + pragma_type, pragma_value), {});
+  this->Replace(loop_sref, WithAnnotation(loop_ptr, "pragma_" + pragma_type, pragma_value), {});
 }
 
 void ScheduleNode::double_buffer(const StmtSRef& block_sref) {

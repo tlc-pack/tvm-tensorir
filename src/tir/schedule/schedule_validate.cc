@@ -40,6 +40,11 @@ class LoopValidator : public StmtVisitor {
     StmtVisitor::VisitStmt_(realize);
   }
 
+  void VisitStmt_(const BlockNode* block) final {
+    // ignore init of block
+    this->VisitStmt(block->body);
+  }
+
   /*! \brief Validate the binding of a given block */
   bool ValidateBlockBinding(const BlockRealizeNode* realize) {
     // validate the bindings to loop variables

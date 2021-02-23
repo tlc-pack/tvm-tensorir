@@ -609,7 +609,6 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->stream << "}\n";
     });
 
-
 // BufferRegion
 BufferRegion::BufferRegion(Buffer buffer, Array<Range> region) {
   ObjectPtr<BufferRegionNode> node = make_object<BufferRegionNode>();
@@ -663,16 +662,18 @@ MatchBufferRegion::MatchBufferRegion(Buffer buffer, BufferRegion source) {
 }
 
 TVM_REGISTER_GLOBAL("tir.MatchBufferRegion")
-.set_body_typed<MatchBufferRegion(Buffer, BufferRegion)>([](Buffer buffer, BufferRegion source) {
-  return MatchBufferRegion(buffer, source);
-});
+    .set_body_typed<MatchBufferRegion(Buffer, BufferRegion)>([](Buffer buffer,
+                                                                BufferRegion source) {
+      return MatchBufferRegion(buffer, source);
+    });
 
 TVM_REGISTER_NODE_TYPE(MatchBufferRegionNode);
 
 // Block
 Block::Block(Array<IterVar> iter_vars, Array<BufferRegion> reads, Array<BufferRegion> writes,
-             Array<Buffer> alloc_buffers, Map<String, ObjectRef> annotations, Array<MatchBufferRegion> match_buffers,
-             String exec_scope, String name_hint, Stmt body, Optional<Stmt> init, Span span) {
+             Array<Buffer> alloc_buffers, Map<String, ObjectRef> annotations,
+             Array<MatchBufferRegion> match_buffers, String exec_scope, String name_hint, Stmt body,
+             Optional<Stmt> init, Span span) {
   ObjectPtr<BlockNode> node = make_object<BlockNode>();
   node->iter_vars = std::move(iter_vars);
   node->reads = std::move(reads);

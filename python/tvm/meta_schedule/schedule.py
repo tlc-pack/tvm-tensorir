@@ -332,6 +332,21 @@ class Schedule(Object):
         """
         return _ffi_api.ScheduleGetLeafBlocks(self)  # pylint: disable=no-member
 
+    def get_child_blocks(self, block: BlockRV) -> List[BlockRV]:
+        """Get the child blocks of the block
+
+        Parameters
+        ----------
+        block : BlockRV
+            The block to be queried
+
+        Returns
+        -------
+        blocks : List[BlockRV]
+            A list of blocks that are children of the block
+        """
+        return _ffi_api.ScheduleGetChildBlocks(self, block)  # pylint: disable=no-member
+
     ########## Scheduling Primitives ##########
 
     def mark_loop(
