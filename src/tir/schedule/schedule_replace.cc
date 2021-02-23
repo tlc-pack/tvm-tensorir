@@ -244,13 +244,16 @@ class SRefCreator : public StmtVisitor {
 class ChildReplacer : private StmtMutator {
  public:
   static Stmt Mutate(ScheduleNode* self, const StmtNode* parent_stmt,
-                     const StmtNode* child_src_stmt, const Stmt& child_tgt_stmt,
+                     const StmtNode* child_src_stmt, const Stmt& child_tgt_stmt, int seq_index,
                      bool allow_copy_on_write) {
     // Check the invariant
+    CHECK(child_src_stmt->IsInstance<BlockNode>() ||  //
+          child_src_stmt->IsInstance<LoopNode>());
     CHECK(child_tgt_stmt->IsInstance<BlockNode>() ||  //
           child_tgt_stmt->IsInstance<LoopNode>() ||   //
           child_tgt_stmt->IsInstance<BlockRealizeNode>());
-    ChildReplacer replacer(child_src_stmt, child_tgt_stmt, allow_copy_on_write);
+    ChildReplacer replacer(child_src_stmt, child_tgt_stmt, seq_index);
+    replacer.allow_copy_on_write_ = allow_copy_on_write;
     // Step 1. Copy-on-write the `parent_stmt` and extract its `body`,
     // where `body` means the body of either a block or a loop
     Stmt* body = nullptr;
@@ -258,8 +261,6 @@ class ChildReplacer : private StmtMutator {
     // Step 2. Mutate the `result->body`, searching for `child_old_stmt`
     // and replace it with `child_tgt_stmt`
     *body = replacer.VisitStmt(*body);
-    // Step 4. Make `seq_index` correct for the subtree (except for the root)
-    ResetSeqIndex(self, *body);
     return result;
   }
 
@@ -280,28 +281,8 @@ class ChildReplacer : private StmtMutator {
     throw;
   }
 
-  static void ResetSeqIndex(ScheduleNode* self, const Stmt& stmt) {
-    class SeqIndexResetter : public StmtVisitor {
-     public:
-      explicit SeqIndexResetter(ScheduleNode* self) : self(self) {}
-      void VisitStmt_(const BlockNode* op) override { self->stmt2ref.at(op)->seq_index = -1; }
-      void VisitStmt_(const LoopNode* op) override { self->stmt2ref.at(op)->seq_index = -1; }
-      void VisitStmt_(const SeqStmtNode* op) override {
-        int i = 0;
-        for (const Stmt& stmt : op->seq) {
-          SetSeqIndex(self, stmt, i);
-          ++i;
-        }
-      }
-      ScheduleNode* self;
-    };
-    (SeqIndexResetter(self))(stmt);
-  }
-
-  explicit ChildReplacer(const StmtNode* src_stmt, const Stmt& tgt_stmt, bool allow_copy_on_write)
-      : src_stmt(src_stmt), tgt_stmt(tgt_stmt) {
-    this->allow_copy_on_write_ = allow_copy_on_write;
-  }
+  explicit ChildReplacer(const StmtNode* src_stmt, const Stmt& tgt_stmt, int seq_index)
+      : src_stmt(src_stmt), tgt_stmt(tgt_stmt), seq_index(seq_index) {}
 
   Stmt VisitStmt(const Stmt& stmt) override {
     if (stmt.get() == src_stmt) {
@@ -316,8 +297,41 @@ class ChildReplacer : private StmtMutator {
   Stmt VisitStmt_(const BlockNode* op) override { return GetRef<Stmt>(op); }
   Stmt VisitStmt_(const LoopNode* op) override { return GetRef<Stmt>(op); }
 
+  Stmt VisitStmt_(const SeqStmtNode* op) override {
+    int i = this->seq_index;
+    int n = op->seq.size();
+    if (0 <= i && i < n) {
+      const Stmt& stmt = op->seq[i];
+      Optional<Stmt> new_stmt = NullOpt;
+      // `stmt` can be Loop or BlockRealize
+      // `src_stmt` can be Loop or Block
+      // so the match from `stmt` to `src_stmt` can be
+      // 1) Loop -> Loop
+      // 2) BlockRealize -> Block
+      if (stmt.get() == this->src_stmt) {
+        // Case 1. src_stmt is Loop, stmt is Loop
+        new_stmt = tgt_stmt;
+      } else if (const auto* realize = stmt.as<BlockRealizeNode>()) {
+        // Case 2. stmt is BlockRealize, src_stmt is Block
+        if (realize->block.get() == src_stmt) {
+          ObjectPtr<BlockRealizeNode> new_realize = make_object<BlockRealizeNode>(*realize);
+          new_realize->block = GetRef<Block>(static_cast<const BlockNode*>(src_stmt));
+          new_stmt = BlockRealize(std::move(new_realize));
+        }
+      }
+      // Move new_stmt to position i
+      if (new_stmt.defined()) {
+        ObjectPtr<SeqStmtNode> new_seq_stmt = CopyOnWrite(op);
+        new_seq_stmt->seq.Set(i, new_stmt.value());
+        return SeqStmt(std::move(new_seq_stmt));
+      }
+    }
+    return StmtMutator::VisitStmt_(op);
+  }
+
   const StmtNode* src_stmt;
   const Stmt& tgt_stmt;
+  int seq_index;
 };
 
 /*!
@@ -338,7 +352,7 @@ class SRefRemover : public StmtVisitor {
  public:
   static void Remove(ScheduleNode* self, const CreationInfo& info, const Stmt& stmt) {
     SRefRemover remover(self, info);
-    remover(stmt);
+    remover.VisitStmt(stmt);
   }
 
  private:
@@ -390,7 +404,7 @@ class SRefRemover : public StmtVisitor {
 
 void ScheduleNode::Replace(const StmtSRef& _src_sref, const Stmt& tgt_stmt,
                            const Map<Block, Block>& block_reuse) {
-  if (false) {
+  {
     const StmtNode* src_stmt = _src_sref->stmt;
     bool input_correct =
         (src_stmt->IsInstance<LoopNode>() && tgt_stmt->IsInstance<LoopNode>()) ||
@@ -460,11 +474,14 @@ void ScheduleNode::Replace(const StmtSRef& _src_sref, const Stmt& tgt_stmt,
     const StmtNode* parent_stmt = child_sref->parent->stmt;
     const StmtNode* child_src_stmt = child_sref->stmt;
     // Step 2.1. Link `child_sref` to `child_tgt_stmt`
-    if (i != 0) {
+    if (i == 0) {
+      SetSeqIndex(this, child_tgt_stmt, child_sref->seq_index);
+    } else {
       UpdateSRef(this, child_sref, child_tgt_stmt.get());
     }
     // Step 2.2. Create `new_parent_stmt`, by mutating the body of `parent_stmt`,
     Stmt new_parent_stmt = ChildReplacer::Mutate(this, parent_stmt, child_src_stmt, child_tgt_stmt,
+                                                 /*seq_index=*/child_sref->seq_index,
                                                  /*allow_copy_on_write=*/parent_unique);
     // Step 2.3. Go to next parent
     if (parent_unique) {
