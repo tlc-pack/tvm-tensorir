@@ -321,7 +321,7 @@ class PostprocRewriteParallelizeVectorizeUnroll {
     // Prefer num_vectorize to num_parallel
     if (parsed->num_parallel_loops != -1 && parsed->num_vectorize_loops != -1) {
       parsed->num_parallel_loops = std::min(parsed->num_parallel_loops,  //
-                                            n_loops - parsed->num_parallel_loops);
+                                            n_loops - parsed->num_vectorize_loops);
     }
   }
 
