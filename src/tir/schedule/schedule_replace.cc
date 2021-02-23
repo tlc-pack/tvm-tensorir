@@ -408,13 +408,26 @@ class SRefRemover : public StmtVisitor {
 
 void ScheduleNode::Replace(const StmtSRef& _src_sref, const Stmt& tgt_stmt,
                            const Map<Block, Block>& block_reuse) {
+  {
+    const StmtNode* src_stmt = _src_sref->stmt;
+    bool input_correct =
+        (src_stmt->IsInstance<LoopNode>() && tgt_stmt->IsInstance<LoopNode>()) ||
+        (src_stmt->IsInstance<LoopNode>() && tgt_stmt->IsInstance<BlockRealizeNode>()) ||
+        (src_stmt->IsInstance<BlockNode>() && tgt_stmt->IsInstance<BlockNode>());
+    if (!input_correct) {
+      LOG(FATAL) << "TypeError: src_stmt has type: " << src_stmt->GetTypeKey()
+                 << ". tgt_stmt has type: " << tgt_stmt->GetTypeKey() << ".\nsrc_stmt:\n"
+                 << GetRef<Stmt>(src_stmt) << "\ntgt_stmt:\n"
+                 << tgt_stmt;
+    }
+  }
   // Rule out the case that no replacement happens
   if (_src_sref->stmt == tgt_stmt.get()) {
     return;
   }
   // Reset sref as a new sref so that its content won't be affected by subsequent changes
-  StmtSRef src_sref =
-      StmtSRef(_src_sref->stmt, _src_sref->parent, _src_sref->seq_index, /*binding_valid=*/false);
+  StmtSRef src_sref(_src_sref->stmt, _src_sref->parent, _src_sref->seq_index,
+                    /*binding_valid=*/false);
   Stmt src_stmt = GetRef<Stmt>(src_sref->stmt);
   const StmtNode* root_stmt = this->root->stmt;
   // Step 1. Create all the nodes needed for the new sref tree.

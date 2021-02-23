@@ -56,7 +56,11 @@ class ScheduleNode : public Object {
   }
 
   /*!
-   * \brief Replace part of AST with new statement
+   * \brief Replace part of AST with new statement. Only 3 replacement types are allowed from
+   * `src_sref->stmt` to `tgt_stmt`.
+   * 1) Block -> Block
+   * 2) Loop -> Loop
+   * 3) Loop -> BlockRealize
    * \param src_sref The sref of the statement to be replaced
    * \param tgt_stmt The statement to be replaced to
    * \param block_reuse Maps an new block (replaced to) back to an old block (to be replaced),
