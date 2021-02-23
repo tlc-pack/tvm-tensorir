@@ -587,7 +587,7 @@ bool TensorizeComparator::CompareType(const DataType& lhs, const DataType& rhs) 
 
 void BufferRemap(const TensorIntrin& intrinsic,
                  std::unordered_map<Buffer, Buffer, ObjectPtrHash, ObjectPtrEqual>* buffer_map) {
-  CHECK_EQ(intrinsic->description->params.size(), intrinsic->implementation->params.size());
+  ICHECK_EQ(intrinsic->description->params.size(), intrinsic->implementation->params.size());
   for (size_t i = 0; i < intrinsic->description->params.size(); ++i) {
     const auto& lhs_var = intrinsic->description->params[i];
     const auto& lhs_buffer = intrinsic->description->buffer_map[lhs_var];
@@ -777,7 +777,7 @@ void ScheduleNode::tensorize(const StmtSRef& loop_sref, const TensorIntrin& intr
   std::unordered_map<const VarNode*, PrimExpr> element_offset;
   auto get_element_offset = [&element_offset](const Array<BufferRegion>& old_regions,
                                               const Array<BufferRegion>& new_regions) {
-    CHECK_EQ(old_regions.size(), new_regions.size());
+    ICHECK_EQ(old_regions.size(), new_regions.size());
     for (size_t i = 0; i < old_regions.size(); ++i) {
       Array<PrimExpr> indices;
       const auto& old_region = old_regions[i];

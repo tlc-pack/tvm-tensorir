@@ -112,7 +112,7 @@ Block MakeCacheStage(const BufferRegion& cache_region, CacheStageInfo* info,
  */
 BufferRegion GetOnlyWriteRegion(const StmtSRef& block_sref) {
   const auto* block = block_sref->GetStmt<BlockNode>();
-  CHECK(block != nullptr) << "TypeError: Expect a block, but gets: "
+  ICHECK(block != nullptr) << "TypeError: Expect a block, but gets: "
                           << block_sref->stmt->GetTypeKey();
   CHECK_EQ(block->writes.size(), 1) << "ValueError: Only one write buffer is allowed in the block";
   return block->writes[0];
@@ -126,10 +126,10 @@ BufferRegion GetOnlyWriteRegion(const StmtSRef& block_sref) {
  */
 bool IsOutputBlock(const StmtSRef& block_sref, const StmtSRef& scope_sref) {
   const auto* block = block_sref->GetStmt<BlockNode>();
-  CHECK(block != nullptr) << "TypeError: Expect a block, but gets: "
+  ICHECK(block != nullptr) << "TypeError: Expect a block, but gets: "
                           << block_sref->stmt->GetTypeKey();
   const auto* scope = scope_sref->GetStmt<BlockNode>();
-  CHECK(scope != nullptr) << "TypeError: Expect a block, but gets: "
+  ICHECK(scope != nullptr) << "TypeError: Expect a block, but gets: "
                           << scope_sref->stmt->GetTypeKey();
   for (const BufferRegion& x : block->writes) {
     for (const BufferRegion& y : scope->writes) {
@@ -157,7 +157,7 @@ SeqStmt InsertCacheStage(const Stmt& stmts, int pos, const Stmt& stage) {
   if (pos == 0) {
     return SeqStmt({stage, stmts});
   }
-  CHECK_EQ(pos, 1);
+  ICHECK_EQ(pos, 1);
   return SeqStmt({stmts, stage});
 }
 
@@ -550,7 +550,7 @@ StmtSRef ScheduleNode::cache_read(StmtSRef block_sref, int i, const String& stor
     // Find the parent scope
     scope_sref = GetParentBlockSRef(block_sref);
     // Check the block is not a output block
-    CHECK(!IsOutputBlock(block_sref, scope_sref));
+    ICHECK(!IsOutputBlock(block_sref, scope_sref));
     // Find the region to be cache_read
     cache_region = RelaxRegion(block_sref, scope_sref, GetOnlyWriteRegion(block_sref));
     // Detect insert position
@@ -589,7 +589,7 @@ StmtSRef ScheduleNode::cache_write(StmtSRef block_sref, int i, const String& sto
   info.read_buffer = write_buffer->WithScope(storage_scope);
   // Create the corresponding buffer allocation
   info.alloc = info.read_buffer;
-  CHECK(!block_sref.same_as(this->root))
+  ICHECK(!block_sref.same_as(this->root))
       << "ValueError: `cache_write` cannot be applied to an input buffer";
   // Find the parent scope
   StmtSRef scope_sref = GetParentBlockSRef(block_sref);

@@ -124,13 +124,13 @@ inline Optional<tir::Var> IsVarPlusMinusConst(const PrimExpr& expr) {
 
 inline String Repr(const tir::PrimFunc& func) {
   static const auto* f = runtime::Registry::Get("script.AsTVMScript");
-  CHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
+  ICHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
   return (*f)(func, false).operator String();
 }
 
 inline PrimExpr GetLoopExtent(const tir::StmtSRef& loop_sref) {
   const auto* loop = loop_sref->GetStmt<tir::ForNode>();
-  CHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
+  ICHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
   return loop->extent;
 }
 
@@ -235,7 +235,7 @@ inline void DelAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const St
     LOG(FATAL) << "TypeError: Unknown type of sref: " << sref->stmt->GetTypeKey();
   }
   // Remove the annotation
-  CHECK(annotations->find(ann_key) != annotations->end())
+  ICHECK(annotations->find(ann_key) != annotations->end())
       << "IndexError: Cannot find annotation key: " << ann_key;
   Map<String, ObjectRef> new_ann(*annotations);
   new_ann.erase(ann_key);
@@ -353,7 +353,7 @@ struct AsVectorImpl<TSrcObjectRef, int> {
     std::vector<int> results;
     for (const TSrcObjectRef& x : vec) {
       const auto* n = x.template as<IntImmNode>();
-      CHECK(n) << "TypeError: Expects IntImm, but gets: " << x->GetTypeKey();
+      ICHECK(n) << "TypeError: Expects IntImm, but gets: " << x->GetTypeKey();
       results.push_back(n->value);
     }
     return results;
@@ -366,7 +366,7 @@ struct AsVectorImpl<TSrcObjectRef, int64_t> {
     std::vector<int64_t> results;
     for (const TSrcObjectRef& x : vec) {
       const auto* n = x.template as<IntImmNode>();
-      CHECK(n) << "TypeError: Expects IntImm, but gets: " << x->GetTypeKey();
+      ICHECK(n) << "TypeError: Expects IntImm, but gets: " << x->GetTypeKey();
       results.push_back(n->value);
     }
     return results;
@@ -379,7 +379,7 @@ struct AsVectorImpl<TSrcObjectRef, double> {
     std::vector<double> results;
     for (const TSrcObjectRef& x : array) {
       const auto* n = x.template as<FloatImmNode>();
-      CHECK(n) << "TypeError: Expects FloatImm, but gets: " << x->GetTypeKey();
+      ICHECK(n) << "TypeError: Expects FloatImm, but gets: " << x->GetTypeKey();
       results.push_back(n->value);
     }
     return results;
@@ -444,7 +444,7 @@ inline int GetTargetNumCores(const Target& target, std::atomic<int>* warned_num_
   int num_cores = target->GetAttr<Integer>("num_cores").value_or(-1);
   if (num_cores == -1) {
     static const auto* f_cpu_count = runtime::Registry::Get("meta_schedule._cpu_count");
-    CHECK(f_cpu_count)
+    ICHECK(f_cpu_count)
       << "ValueError: Cannot find the packed function \"meta_schedule._cpu_count\"";
     num_cores = (*f_cpu_count)(false);
     if (warned_num_cores_missing != nullptr && warned_num_cores_missing->fetch_add(1) == 0) {

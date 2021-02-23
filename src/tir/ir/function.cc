@@ -73,19 +73,23 @@ TensorIntrin::TensorIntrin(PrimFunc desc_func, PrimFunc intrin_func) {
   // check both functions' bodies are directly block
   const auto* desc_realize = desc_func->body.as<BlockRealizeNode>();
   const auto* intrin_realize = intrin_func->body.as<BlockRealizeNode>();
-  CHECK(desc_realize != nullptr);
-  CHECK(intrin_realize != nullptr);
+  CHECK(desc_realize != nullptr) << "description function's body expect a directly block";
+  CHECK(intrin_realize != nullptr) << "intrinsic function's body expect a directly block";
 
   const Block& desc_block = desc_realize->block;
   const Block& intrin_block = intrin_realize->block;
-  CHECK_EQ(desc_block->exec_scope, intrin_block->exec_scope);
+  CHECK_EQ(desc_block->exec_scope, intrin_block->exec_scope)
+      << "Exec_scope of both description and intrinsic block should be the same";
 
   // check block var number and iter type
-  CHECK_EQ(desc_block->iter_vars.size(), intrin_block->iter_vars.size());
+  CHECK_EQ(desc_block->iter_vars.size(), intrin_block->iter_vars.size())
+      << "Two blocks should have the same number of block vars";
   for (size_t i = 0; i < desc_block->iter_vars.size(); i++) {
     const IterVar& desc_var = desc_block->iter_vars[i];
     const IterVar& intrin_var = intrin_block->iter_vars[i];
-    CHECK(desc_var->iter_type == intrin_var->iter_type);
+    CHECK(desc_var->iter_type == intrin_var->iter_type)
+        << "Block iter_type mismatch between " << desc_var->iter_type << " and "
+        << intrin_var->iter_type;
   }
 
   auto n = make_object<TensorIntrinNode>();
@@ -106,7 +110,7 @@ class TensorIntrinManager {
 
 TensorIntrin TensorIntrin::Register(String name, PrimFunc desc_func, PrimFunc intrin_func) {
   TensorIntrinManager* manager = TensorIntrinManager::Global();
-  CHECK_EQ(manager->reg.count(name), 0)
+  ICHECK_EQ(manager->reg.count(name), 0)
       << "ValueError: TensorIntrin '" << name << "' has already been registered";
   TensorIntrin intrin(desc_func, intrin_func);
   manager->reg.Set(name, intrin);
@@ -115,7 +119,7 @@ TensorIntrin TensorIntrin::Register(String name, PrimFunc desc_func, PrimFunc in
 
 TensorIntrin TensorIntrin::Get(String name) {
   const TensorIntrinManager* manager = TensorIntrinManager::Global();
-  CHECK_EQ(manager->reg.count(name), 1)
+  ICHECK_EQ(manager->reg.count(name), 1)
       << "ValueError: TensorIntrin '" << name << "' is not registered";
   return manager->reg.at(name);
 }

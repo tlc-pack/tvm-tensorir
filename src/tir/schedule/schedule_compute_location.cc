@@ -130,7 +130,7 @@ std::vector<arith::IntSet> SolveCover(const BlockNode* block, const BufferRegion
   for (auto it : produces) {
     auto itt = consumes.find(it.first);
     if (itt != consumes.end()) {
-      CHECK_EQ(it.second.size(), itt->second.size());
+      ICHECK_EQ(it.second.size(), itt->second.size());
       for (size_t i = 0; i < it.second.size(); ++i) {
         const Range& produce = it.second[i];
         const Range& consume = itt->second[i];
@@ -152,8 +152,8 @@ std::vector<arith::IntSet> SolveCover(const BlockNode* block, const BufferRegion
           arith::IntSet& iset = iter_domain[iter_var_indexer[var]];
           iset = arith::Union({iset, arith::IntSet::FromRange(Range::FromMinExtent(min, extent))});
         } else {
-          CHECK(analyzer.CanProve(produce->min - consume->min == 0));
-          CHECK(analyzer.CanProve(produce->extent - produce->extent == 0));
+          ICHECK(analyzer.CanProve(produce->min - consume->min == 0));
+          ICHECK(analyzer.CanProve(produce->extent - produce->extent == 0));
         }
       }
     }
@@ -304,7 +304,7 @@ std::unordered_map<const VarNode*, Range> RelaxForExecScope(const StmtSRef& loop
 
   auto update_for_gpu = [&block, &exec_scope](const ForNode* loop) -> bool {
     CHECK_EQ(block->writes.size(), 1)
-        << "InternalError: Only block with one write buffer can be compute_at";
+        << "ValueError: Only block with one write buffer can be compute_at";
     std::string write_scope = block->writes[0]->buffer->scope;
 
     std::string thread_tag =
@@ -541,7 +541,7 @@ class StatementInliner : public StmtExprMutator {
       : block_(block), block_sref_map_(block_sref_map), replace_map_(replace_map) {
     const auto store = block_->body.as<BufferStoreNode>();
     value_ = store->value;
-    CHECK_EQ(block_->writes.size(), 1);
+    ICHECK_EQ(block_->writes.size(), 1);
     for (const auto& index : store->indices) {
       const auto* variable = index.as<VarNode>();
       CHECK(variable) << "Only support inline direct access block";
@@ -550,7 +550,7 @@ class StatementInliner : public StmtExprMutator {
     }
     Array<Var> value_vars = GatherVars(value_);
     for (const auto& x : value_vars) {
-      CHECK(std::find_if(vars_.begin(), vars_.end(),
+      ICHECK(std::find_if(vars_.begin(), vars_.end(),
                          [=](const Var& var) -> bool { return var.same_as(x); }) != vars_.end())
           << "Not All variable in value can be replaced by index vars";
     }
@@ -570,7 +570,7 @@ class StatementInliner : public StmtExprMutator {
     Block origin_block = Downcast<Block>(GetRef<Stmt>(node));
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     op = stmt.as<BlockNode>();
-    CHECK(op != nullptr);
+    ICHECK(op != nullptr);
 
     // Update Allocation
     const Buffer& buffer = block_->writes[0]->buffer;
@@ -664,7 +664,7 @@ class ReverseStatementInliner : public StmtExprMutator {
     // Check BufferStore of producer is like Buffer[v0, v1, ...]
     const auto* store = producer_->body.as<BufferStoreNode>();
     value_ = store->value;
-    CHECK_EQ(producer_->writes.size(), 1);
+    ICHECK_EQ(producer_->writes.size(), 1);
     for (const auto& index : store->indices) {
       const auto* variable = index.as<VarNode>();
       CHECK(variable)
@@ -675,7 +675,7 @@ class ReverseStatementInliner : public StmtExprMutator {
     }
     Array<Var> value_vars = GatherVars(store->value);
     for (const auto& x : value_vars) {
-      CHECK(std::find_if(new_vars_.begin(), new_vars_.end(),
+      ICHECK(std::find_if(new_vars_.begin(), new_vars_.end(),
                          [=](const Var& var) -> bool { return var.same_as(x); }) != new_vars_.end())
           << "ValueError: Not all variable in value can be replaced by index vars";
     }
@@ -686,7 +686,7 @@ class ReverseStatementInliner : public StmtExprMutator {
     Block origin_producer = Downcast<Block>(GetRef<Stmt>(producer_));
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     op = stmt.as<BlockNode>();
-    CHECK(op != nullptr);
+    ICHECK(op != nullptr);
     // update allocation
     const Buffer& buffer = producer_->writes[0]->buffer;
     Array<Buffer> alloc_buffers;
@@ -733,11 +733,11 @@ class ReverseStatementInliner : public StmtExprMutator {
     if (buffer.same_as(op->buffer)) {
       for (size_t i = 0; i < op->indices.size(); ++i) {
         const auto* var = op->indices[i].as<VarNode>();
-        CHECK(var) << "ValueError: indices not match";
+        ICHECK(var) << "ValueError: indices not match";
         if (!old_vars_[i].defined()) {
           old_vars_[i] = GetRef<Var>(var);
         } else {
-          CHECK(old_vars_[i].same_as(GetRef<Var>(var))) << "ValueError: indices not match";
+          ICHECK(old_vars_[i].same_as(GetRef<Var>(var))) << "ValueError: indices not match";
         }
       }
       return value_;
