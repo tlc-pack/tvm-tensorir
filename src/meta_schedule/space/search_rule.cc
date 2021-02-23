@@ -296,7 +296,6 @@ class RuleMultiLevelTiling {
       Schedule sch = state.sch;
       BlockRV block_rv = state.block_rv;
       tir::StmtSRef block_sref = sch->Eval(block_rv);
-      // HACK
       for (;;) {
         Array<BlockRV> consumers = sch->GetConsumers(state.block_rv);
         if (consumers.size() != 1) {
@@ -332,14 +331,11 @@ class RuleMultiLevelTiling {
     // 2) The elementwise-matched consumer doesn't exist
     // Fork a new schedule
     state.sch = state.sch->Copy(state.sch->sampler.ForkSeed());
-    BlockRV cache_write = state.block_rv; // block that copies data back after cache write
     // The original block to tiled
     state.block_rv = state.sch->CacheWrite(state.block_rv, 0, cache_write_scope);
-    tir::StmtSRef block_sref = state.sch->Eval(cache_write);
-    state.write_cache = cache_write;
-    state.write_cache_is_added = true;
+    tir::StmtSRef block_sref = state.sch->Eval(state.block_rv);
     for (;;) {
-      Array<BlockRV> consumers = state.sch->GetConsumers(cache_write);
+      Array<BlockRV> consumers = state.sch->GetConsumers(state.block_rv);
       if (consumers.size() != 1) {
         break;
       }
@@ -356,11 +352,11 @@ class RuleMultiLevelTiling {
       if (RuleInlinePureSpatial::NeedsInline(sch->sch, consumer_sref,
                                              this->consumer_inline_strict)) {
         // If the elementwise-matched consumer of `block_rv` can be inlined, then inline it
-        sch->ReverseComputeInline(consumer_rv);
+        sch->ComputeInline(consumer_rv);
       } else {
         // Otherwise, it cannot be inlined, let it act as a write cache,
         // and take a short cut and avoid generate sketches that have a cache_write in it
-        state.write_cache = cache_write;
+        state.write_cache = consumer_rv;
         state.write_cache_is_added = true;
         break;
       }

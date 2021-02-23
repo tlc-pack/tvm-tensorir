@@ -391,21 +391,10 @@ bool NeedsMultiLevelTiling(const tir::Schedule& sch, const tir::StmtSRef& block_
 bool IsStrictlyInlineable(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
   static const Op& op_tir_exp = Op::Get("tir.exp");
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
-  // for (const auto& annotation: block->annotations) {
-  //   if (annotation->attr_key == "const_matrix") {
-  //     return true;
-  //   }
-  // }
-  /// hack
-  if (block->tag.find("const_matrix_") == 0) {
-    LOG(INFO) << "Inline Const block_tag: " << block->tag << "\n" << GetRef<tir::Block>(block);
-    return true;
-  }
+  // Const tensors are strictly inlineable
   if (block->reads.empty()) {
-    LOG(INFO) << "ConstMatrix";
     return true;
   }
-  ///
 
   if (HasBranch(sch, block_sref)) {
     return false;

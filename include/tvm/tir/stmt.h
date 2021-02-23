@@ -1269,12 +1269,9 @@ TVM_DLL std::ostream& operator<<(std::ostream& os, ForKind kind);
 /*!
  * \brief Auto Complete helper for TIR blocks
  * \param body The body stmt
- * \param root_allocates buffers in the root
- * \param op_attrs Loop annotations for each BlockRealize
  * \return root_allocates The allocations under root block
  */
-TVM_DLL Stmt auto_complete(const Stmt& body, const Array<Buffer>& root_allocates,
-                           const Map<BlockRealize, Map<String, ObjectRef>>& op_attrs);
+TVM_DLL Stmt auto_complete(const Stmt& body, const Array<Buffer>& root_allocates);
 
 }  // namespace tir
 }  // namespace tvm

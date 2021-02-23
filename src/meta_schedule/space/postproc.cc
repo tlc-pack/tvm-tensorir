@@ -437,14 +437,13 @@ class PostprocRewriteUnboundBlocks {
     for (const LoopRV& loop_rv : loop_rvs) {
       tir::StmtSRef loop_sref = sch->Eval(loop_rv);
       tir::IterVarType iter_type = GetLoopIterType(sch->sch, loop_sref);
-      if (iter_type != tir::kDataPar || HasAnn(loop_sref, tir::attr::loop_type, "unroll")) {
+      if (iter_type != tir::kDataPar || GetAnn(loop_sref, tir::attr::loop_type).defined()) {
         break;
       }
       ++n_spatial_loops;
     }
     CHECK_GT(n_spatial_loops, 0) << "ValueError: not supported when spatial loop doesn't exist";
     // Fuse the spatial loops
-    // LOG(INFO) << "block: " << block->tag << " n_spatial: " << n_spatial_loops;
     LoopRV fused = sch->Fuse({loop_rvs.begin(), loop_rvs.begin() + n_spatial_loops});
     Array<LoopRV> splits = sch->Split(fused, {NullOpt, Integer(32)});
     CHECK_EQ(splits.size(), 2);

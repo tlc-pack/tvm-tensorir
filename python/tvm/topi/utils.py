@@ -337,11 +337,7 @@ def const_matrix(matrix, name="const_matrix"):
                 )
         return now
 
-<<<<<<< HEAD:python/tvm/topi/utils.py
     return te.compute(matrix.shape, select_array, name=name, attrs={"const_matrix": True})
-=======
-    return te.compute(matrix.shape, select_array, name="const_matrix_"+name, attrs={"const_matrix": True})
->>>>>>> 2ddb81af1... RuleSimplifyComputeWithConstTensor:python/tvm/topi/util.py
 
 
 def get_max_power2_factor(n, max_value=None):
