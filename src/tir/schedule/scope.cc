@@ -190,7 +190,7 @@ bool BlockScopeNode::IsReduction(const StmtSRef& block_sref) const {
 }
 
 bool BlockScopeNode::IsCompactDataFlow(const StmtSRef& subtree_sref,
-                                  const ScheduleNode* schedule) const {
+                                       const ScheduleNode* schedule) const {
   for (const StmtSRef& block : schedule->GetChildBlocks(subtree_sref)) {
     if (!IsComplete(block) && !IsReduction(block)) {
       return false;
@@ -199,7 +199,8 @@ bool BlockScopeNode::IsCompactDataFlow(const StmtSRef& subtree_sref,
   return true;
 }
 
-bool BlockScopeNode::CanMergeReduction(const StmtSRef& init_sref, const StmtSRef& update_sref) const {
+bool BlockScopeNode::CanMergeReduction(const StmtSRef& init_sref,
+                                       const StmtSRef& update_sref) const {
   const auto* init = init_sref->GetStmt<BlockNode>();
   const auto* update = update_sref->GetStmt<BlockNode>();
   CHECK(init != nullptr) << "InternalError: Scope::CanMergeReduction only accepts tir::Block as "

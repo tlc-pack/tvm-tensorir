@@ -96,10 +96,10 @@ Block MakeCacheStage(const BufferRegion& cache_region, CacheStageInfo* info,
   // Create surrounding loops
   for (int i = static_cast<int>(loop_vars.size()) - 1; i >= 0; --i) {
     body = For(/*loop_var=*/loop_vars[i],
-                /*min=*/0,
-                /*extent=*/cache_region->region[i]->extent,
-                /*kind=*/ForKind::kSerial,
-                /*body=*/body);
+               /*min=*/0,
+               /*extent=*/cache_region->region[i]->extent,
+               /*kind=*/ForKind::kSerial,
+               /*body=*/body);
   }
   info->cache_stage = std::move(body);
   return block;

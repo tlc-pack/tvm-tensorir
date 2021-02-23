@@ -80,7 +80,6 @@ TensorIntrin::TensorIntrin(PrimFunc desc_func, PrimFunc intrin_func) {
   const Block& intrin_block = intrin_realize->block;
   CHECK_EQ(desc_block->exec_scope, intrin_block->exec_scope);
 
-
   // check block var number and iter type
   CHECK_EQ(desc_block->iter_vars.size(), intrin_block->iter_vars.size());
   for (size_t i = 0; i < desc_block->iter_vars.size(); i++) {
