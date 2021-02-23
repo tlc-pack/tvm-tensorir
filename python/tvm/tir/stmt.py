@@ -468,10 +468,10 @@ class Block(Stmt):
     """
 
     def __init__(self, iter_vars, reads, writes, alloc_buffers, annotations, match_buffers,
-                 exec_scope, name_hint, body, init=None):
+                 exec_scope, name_hint, body, init=None, span=None):
         self.__init_handle_by_constructor__(
             _ffi_api.Block, iter_vars, reads, writes, alloc_buffers, annotations, match_buffers,
-            exec_scope, name_hint, body, init)
+            exec_scope, name_hint, body, init, span)
 
 
 @tvm._ffi.register_object
@@ -491,9 +491,9 @@ class BlockRealize(Stmt):
 
     """
 
-    def __init__(self, values, predicate, block):
+    def __init__(self, values, predicate, block, span=None):
         self.__init_handle_by_constructor__(
-            _ffi_api.BlockRealize, values, predicate, block
+            _ffi_api.BlockRealize, values, predicate, block, span
         )
 
 
