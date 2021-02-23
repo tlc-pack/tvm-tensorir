@@ -429,6 +429,131 @@ class Prefetch(Stmt):
         self.__init_handle_by_constructor__(_ffi_api.Prefetch, buffer, bounds, span)
 
 
+@tvm._ffi.register_object
+class Block(Stmt):
+    """Block node.
+
+    Parameters
+    ----------
+    iter_vars : list of IterVar
+        The block Variable.
+
+    reads : list of BufferRegion
+        The read tensor region of the block.
+
+    writes: list of BufferRegion
+        The write tensor region of the block.
+
+    name_hint: str
+        the tag of the block.
+
+    body: Stmt
+        The body of the block.
+
+    alloc_buffers: Optional[list of Buffer]
+        The buffer allocations
+
+    annotations: Optional[tvm.ir.Map]
+        Additional annotation hints.
+
+    match_buffers: Optional[list of MatchBufferRegion]
+        The subregion buffer match
+
+    exec_scope: Optional[str]
+        the execution scope.
+
+    init: Optional[Stmt]
+        The init block of the reduction block
+
+    span: span : Optional[Span]
+        The location of this block in the source code.
+    """
+
+    def __init__(
+        self,
+        iter_vars,
+        reads,
+        writes,
+        name_hint,
+        body,
+        alloc_buffers=None,
+        annotations=None,
+        match_buffers=None,
+        exec_scope="",
+        init=None,
+        span=None,
+    ):
+        self.__init_handle_by_constructor__(
+            _ffi_api.Block,
+            iter_vars,
+            reads,
+            writes,
+            name_hint,
+            body,
+            alloc_buffers,
+            annotations,
+            match_buffers,
+            exec_scope,
+            init,
+            span,
+        )
+
+
+@tvm._ffi.register_object
+class BlockRealize(Stmt):
+    """BlockRealize node.
+
+    Parameters
+    ----------
+    values : list of Expr
+        The binding value of the block var.
+
+    predicate : Expr
+        The predicates of the block.
+
+    block : Block
+        The block to realize
+
+    """
+
+    def __init__(self, values, predicate, block, span=None):
+        self.__init_handle_by_constructor__(_ffi_api.BlockRealize, values, predicate, block, span)
+
+
+@tvm._ffi.register_object
+class BufferRegion(Object):
+    """BufferRegion Node
+
+    Parameters
+    ----------
+    buffer : Buffer
+        The tensor of the buffer region
+
+    region : list of Range
+        The region array of the buffer region
+    """
+
+    def __init__(self, buffer, region):
+        self.__init_handle_by_constructor__(_ffi_api.BufferRegion, buffer, region)
+
+
+@tvm._ffi.register_object
+class MatchBufferRegion(Object):
+    """MatchBufferRegion Node
+
+    Parameters
+    ----------
+    buffer : Buffer
+        The target buffer
+
+    source : BufferRegion
+        The region of source buffer
+    """
+
+    def __init__(self, buffer, source):
+        self.__init_handle_by_constructor__(_ffi_api.MatchBufferRegion, buffer, source)
+
+
 def stmt_seq(*args):
     """Make sequence of statements
 

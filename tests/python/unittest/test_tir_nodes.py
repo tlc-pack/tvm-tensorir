@@ -364,6 +364,28 @@ def test_intimm_cond():
     assert x == 1
 
 
+def test_block_blockrealize():
+    x = tvm.tir.Var("x")
+    y = tvm.tir.Var("y")
+    vx = tvm.tir.IterVar((16, 16), "vx", 0)
+    vy = tvm.tir.IterVar((16, 16), "vy", 0)
+    A = tvm.tir.decl_buffer((16, 16), "float32")
+    B = tvm.tir.decl_buffer((16, 16), "float32")
+    body = tvm.tir.BufferStore(
+        A,
+        tvm.tir.BufferLoad(B, [vx, vy]),
+        [vx, vy],
+    )
+    reads = tvm.tir.BufferRegion(A, [(vx, vx + 1), (vy, vy + 1)])
+    writes = tvm.tir.BufferRegion(B, [(vx, vx + 1), (vy, vy + 1)])
+
+    block = tvm.tir.Block([vx, vy], reads, writes, "block", body)
+    block_realize = tvm.tir.BlockRealize([x, y], True, block)
+
+    assert isinstance(block, tvm.tir.Block)
+    assert isinstance(block_realize, tvm.tir.BlockRealize)
+
+
 if __name__ == "__main__":
     test_intimm_cond()
     test_buffer_load_store()
