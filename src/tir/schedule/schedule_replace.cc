@@ -66,24 +66,6 @@ void UpdateSRef(ScheduleNode* sch, StmtSRefNode* sref, const StmtNode* new_stmt)
 }
 
 /*!
- * \brief Update the body of the PrimFunc
- * \param func The PrimFunc to be updated
- * \param new_body The new body to be updated to
- * \return The new PrimFunc
- */
-PrimFunc UpdatePrimFunc(PrimFunc* func, const Stmt& new_body) {
-  const auto* realize = (*func)->body.as<BlockRealizeNode>();
-  const auto* block = new_body.as<BlockNode>();
-  CHECK(realize);
-  CHECK(block);
-  ObjectPtr<BlockRealizeNode> new_realize = make_object<BlockRealizeNode>(*realize);
-  PrimFuncNode* new_func = func->CopyOnWrite();
-  new_realize->block = GetRef<Block>(block);
-  new_func->body = BlockRealize(new_realize);
-  return GetRef<PrimFunc>(new_func);
-}
-
-/*!
  * \brief To a specific sref, count the number of steps to its highest non-unique ancestor.
  *
  * If the sref itself is the highest, then the result is 0.
@@ -464,10 +446,12 @@ void ScheduleNode::Replace(const StmtSRef& _src_sref, const Stmt& tgt_stmt,
   // 2) `child_stmt` is the subtree that `child_sref` should correspond to after replacement
   // 3) except for the subtree root, all srefs that point to the subtree of `child_stmt` are correct
   // 4) for the subtree root of `child_stmt`, `child_sref` has not pointed to it yet
+  // 5) `tgt_stmt` is of type Loop, Block or BlockRealize
   //
   // During step `i`:
   // 1) Create `parent_stmt` that corresponds to `child_sref->parent
   // 2) Point `child_sref` to `child_stmt`
+  // 3) `tgt_stmt` is of type Loop or Block
   StmtSRefNode* child_sref = src_sref.get();
   Stmt child_stmt = std::move(tgt_stmt);
   for (int i = 0; i <= num_copy_steps && child_sref->stmt != root_stmt; ++i) {
@@ -502,7 +486,14 @@ void ScheduleNode::Replace(const StmtSRef& _src_sref, const Stmt& tgt_stmt,
       UpdateSRef(this, this->root.get(), child_stmt.get());
     }
     // Update the body of the `this->func`
-    this->func = UpdatePrimFunc(&this->func, child_stmt);
+    PrimFuncNode* new_func = this->func.CopyOnWrite();
+    // Assign `child_stmt`, which is a Block, to the root block
+    const auto* realize = TVM_TYPE_AS(realize, func->body, BlockRealizeNode);
+    const auto* child_block = TVM_TYPE_AS(child_block, child_stmt, BlockNode);
+    ObjectPtr<BlockRealizeNode> new_realize = make_object<BlockRealizeNode>(*realize);
+    new_realize->block = GetRef<Block>(child_block);
+    new_func->body = BlockRealize(std::move(new_realize));
+    this->func = GetRef<PrimFunc>(new_func);
   }
   // TODO(@junrushao1994): provide a configurable way to turn it on
   // this->ValidateSRef();
