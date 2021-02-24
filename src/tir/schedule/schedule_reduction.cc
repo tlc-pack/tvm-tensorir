@@ -473,7 +473,9 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
 
   auto wb_region = [&](const BufferLoad& load) {
     std::vector<Range> region;
-    for (const auto& index : load->indices) region.push_back(Range::FromMinExtent(index, 1));
+    for (const auto& index : load->indices) {
+      region.push_back(Range::FromMinExtent(index, 1));
+    }
     return BufferRegion(load->buffer, region);
   };
   BufferStore wb_update = GetRef<BufferStore>(update);
@@ -519,14 +521,20 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   For rf_loop = GetRef<For>(loop);
   rf_loop.CopyOnWrite()->body = rf_body;
   rf_body = rf_loop;
-  if (!top) top = loops[0];
+  if (!top) {
+    top = loops[0];
+  }
 
   // insert rf block and wb block under top
   auto insert = [](Stmt body, int64_t pos, std::vector<Stmt> input) -> SeqStmt {
-    if (pos == -1) return SeqStmt(input);
+    if (pos == -1) {
+      return SeqStmt(input);
+    }
     std::vector<Stmt> res;
     if (const auto* op = body.as<SeqStmtNode>()) {
-      for (const auto& stmt : op->seq) res.push_back(stmt);
+      for (const auto& stmt : op->seq) {
+        res.push_back(stmt);
+      }
     } else {
       LOG(FATAL);
     }
