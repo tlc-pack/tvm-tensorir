@@ -401,7 +401,7 @@ class TVMScriptParser(Transformer):
         """
 
         self.init_function_parsing_env()
-        self.context.new_scope(nodes=node.body.stmts)
+        self.context.enter_scope(nodes=node.body.stmts)
 
         # add parameters of function
         for arg in node.params:
@@ -409,17 +409,31 @@ class TVMScriptParser(Transformer):
             self.context.update_symbol(arg.name, arg_var)
             self.context.func_params.append(arg_var)
 
-        # fetch the body and return a tir.PrimFunc
+        # New Scope : Implicit root block
+        self.context.enter_block_scope(nodes=node.body.stmts)
+
+        # fetch the body of root block
+        body = self.parse_body(node.body)
+        # Emit Scope : Implicit root block
+        root_info = self.context.block_scope()
+        self.context.exit_block_scope()
+        # Fix the body
+        # 1. generate root block if necessary
+        # 2. generate surrounding loops for blocks if necessary
+        body = _ffi_api.AutoComplete(body, root_info.alloc_buffers)
+
+        # return a tir.PrimFunc
+        dict_attr = self.context.func_dict_attr
         func = tvm.tir.PrimFunc(
             self.context.func_params,
-            self.parse_body(node.body),
+            body,
             ret_type=self.parse_type(node.ret_type, node),
             buffer_map=self.context.func_buffer_map,
-            attrs=tvm.ir.make_node("DictAttrs", **self.context.func_dict_attr),
+            attrs=tvm.ir.make_node("DictAttrs", **dict_attr) if dict_attr else None,
             span=from_synr_span(node.span),
         )
 
-        self.context.pop_scope()
+        self.context.exit_scope()
         return func
 
     def transform_Assign(self, node):
@@ -529,7 +543,8 @@ class TVMScriptParser(Transformer):
             For(expr target, expr iter, stmt* body, stmt* orelse, string? type_comment)
         By now 1 pattern of For is supported:
             1. for scope handler
-                for name in tir.serial()/tir.parallel()/tir.vectorized()/tir.unroll()
+                for name in tir.serial()/tir.parallel()/tir.vectorized()/tir.unroll()/tir.range()/
+                            tir.grid()/tir.thread_binding()
         """
 
         if not isinstance(node.rhs, ast.Call):
@@ -543,14 +558,14 @@ class TVMScriptParser(Transformer):
         old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
         self.current_lineno = node.span.start_line
         self.current_col_offset = node.span.start_column
-        self.context.new_scope(nodes=node.body.stmts)
+        self.context.enter_scope(nodes=node.body.stmts)
         # for scope handler process the scope
         arg_list = self.parse_arg_list(func, node.rhs)
         func.enter_scope(node, self.context, arg_list, node.rhs.func_name.span)
         func.body = self.parse_body(node)
         res = func.exit_scope(node, self.context, arg_list, node.rhs.func_name.span)
         # exit the scope
-        self.context.pop_scope()
+        self.context.exit_scope()
         self.current_lineno, self.current_col_offset = old_lineno, old_col_offset
         return res
 
@@ -561,7 +576,7 @@ class TVMScriptParser(Transformer):
             withitem = (expr context_expr, expr? optional_vars)
         By now 2 patterns of With is supported:
             1. with scope handler with symbol def
-                with tir.allocate() as targets:
+                with tir.block(*axes)/tir.allocate() as targets:
             2. with scope handler without symbol def
                 with tir.let()/tir.Assert()/tir.attr()//tir.realize()
         """
@@ -582,14 +597,14 @@ class TVMScriptParser(Transformer):
         old_lineno, old_col_offset = self.current_lineno, self.current_col_offset
         self.current_lineno = node.body.span.start_line
         self.current_col_offset = node.body.span.start_column
-        self.context.new_scope(nodes=node.body.stmts)
+        self.context.enter_block_scope(nodes=node.body.stmts)
         # with scope handler process the scope
         arg_list = self.parse_arg_list(func, node.rhs)
         func.enter_scope(node, self.context, arg_list, node.rhs.func_name.span)
         func.body = self.parse_body(node)
         res = func.exit_scope(node, self.context, arg_list, node.rhs.func_name.span)
         # exit the scope
-        self.context.pop_scope()
+        self.context.exit_block_scope()
         self.current_lineno, self.current_col_offset = old_lineno, old_col_offset
         return res
 
@@ -601,15 +616,15 @@ class TVMScriptParser(Transformer):
 
         condition = self.transform(node.condition)
         # then body
-        self.context.new_scope(nodes=node.true.stmts)
+        self.context.enter_scope(nodes=node.true.stmts)
         then_body = self.parse_body(node)
-        self.context.pop_scope()
+        self.context.exit_scope()
 
         # else body
         if len(node.false.stmts) > 0:
-            self.context.new_scope(nodes=node.false.stmts)
+            self.context.enter_scope(nodes=node.false.stmts)
             else_body = self.parse_body(node)
-            self.context.pop_scope()
+            self.context.exit_scope()
         else:
             else_body = None
 

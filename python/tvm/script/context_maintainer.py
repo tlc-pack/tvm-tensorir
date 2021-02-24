@@ -16,59 +16,106 @@
 # under the License.
 """TVM Script Context Maintainer for TIR"""
 
-from tvm.te import schedule
+from typing import List, Mapping, Union, Optional, Dict
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .parser import TVMScriptParser
+
+import tvm
+from tvm.tir import Var, Buffer
+from tvm.runtime import Object
+
+import synr
+
+
+class BlockInfo:
+    """Information for block and block_realize signature"""
+
+    def __init__(self):
+        self.alloc_buffers = []
+        self.match_buffers = []
+        self.exec_scope = ""
+        self.binding = {}
+        self.reads = None
+        self.writes = None
+        self.annotations = {}
+        self.predicate = tvm.tir.const(True, "bool")
+        self.init = None
 
 
 class ContextMaintainer:
     """Maintain all the necessary context info"""
 
-    def __init__(self, parser):
+    def __init__(self, parser: "TVMScriptParser"):
         # scope context
-        self.node_stack = []  # AST nodes of scopes
-        self.symbols = []  # symbols of scopes
+        self.node_stack: List[List[synr.ast.Node]] = []  # AST nodes of scopes
+        self.block_info_stack: List[BlockInfo] = []  # Block info of scopes
+        self.loop_stack: List[List[Var]] = []  # stack of loop vars
+        self.symbols: List[Dict[str, Union[Var, Buffer]]] = []  # symbols of scopes
+
         # function context
-        self.func_params = []  # parameter list of function
-        self.func_buffer_map = {}  # buffer_map of function
-        self.func_dict_attr = {}  # func_attr of function
-        self.func_var_env_dict = {}  # map from var to env_name
+        self.func_params: List[Var] = []  # parameter list of function
+        self.func_buffer_map: Mapping[Var, Buffer] = {}  # buffer_map of function
+        self.func_dict_attr: Mapping[str, Object] = {}  # func_attr of function
+        self.func_var_env_dict: Mapping[Var, str] = {}  # map from var to env_name
         # parser
-        self.parser = parser
+        self.parser: "TVMScriptParser" = parser
 
-    def pop_scope(self):
-        """Pop the inner most scope"""
-        self.symbols.pop()
-        self.node_stack.pop()
-
-    def new_scope(self, nodes=None):
+    def enter_scope(self, nodes: Optional[List[synr.ast.Node]] = None):
         """Creating a new scope"""
         if nodes is None:
             nodes = []
         self.node_stack.append(list(reversed(nodes)))
         self.symbols.append(dict())
 
-    def update_symbol(self, name, symbol):
+    def enter_block_scope(self, nodes: Optional[List[synr.ast.Node]] = None):
+        """Creating a new block scope"""
+        self.enter_scope(nodes)
+        # Create a new loop stack for the new block
+        self.loop_stack.append([])
+        # Create a new BlockInfo for the new block
+        self.block_info_stack.append(BlockInfo())
+
+    def exit_scope(self):
+        """Pop the inner most scope"""
+        self.symbols.pop()
+        self.node_stack.pop()
+
+    def exit_block_scope(self):
+        """Pop the inner most block scope"""
+        self.exit_scope()
+        # Pop loop stack
+        self.loop_stack.pop()
+        # Pop block_info
+        self.block_info_stack.pop()
+
+    def update_symbol(self, name: str, symbol: Union[Buffer, Var]):
         """Append a symbol into current scope"""
-        if isinstance(symbol, schedule.Buffer):
+        if isinstance(symbol, Buffer):
             if name in self.symbols[0]:
-                self.parser.report_error("Duplicate Buffer name")
+                raise RuntimeError("Duplicate Buffer name: " + symbol.name)
             self.symbols[0][name] = symbol
         else:
             self.symbols[-1][name] = symbol
 
-    def remove_symbol(self, name):
+    def remove_symbol(self, name: str):
         """Remove a symbol"""
+        symbol: str
         for symbols in reversed(self.symbols):
             if name in symbols:
                 symbols.pop(name)
                 return
         raise RuntimeError("Internal error of tvm script parser: no symbol named" + name)
 
-    def lookup_symbol(self, name):
+    def lookup_symbol(self, name: str) -> Optional[Union[Buffer, Var]]:
         """Look up symbol by name"""
         for symbols in reversed(self.symbols):
             if name in symbols:
                 return symbols[name]
         return None
 
-    def report_error(self, message, span):
+    def report_error(self, message: str, span: synr.ast.Span):
         self.parser.report_error(message, span)
+
+    def block_scope(self) -> BlockInfo:
+        return self.block_info_stack[-1]

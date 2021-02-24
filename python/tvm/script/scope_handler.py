@@ -16,21 +16,24 @@
 # under the License.
 """TVM Script Parser Scope Handler Classes"""
 # pylint: disable=redefined-builtin, unused-argument, invalid-name, relative-beyond-top-level
-
+import synr as synr
 from synr import ast
 import tvm.tir
+
+from .context_maintainer import ContextMaintainer
 from .utils import get_param_list, from_synr_span
 from .registry import register
+from typing import Tuple, Any, Callable, Optional
 
 
 class ScopeHandler:
     """Base class for all scope handlers"""
 
-    def __init__(self, func):
-        self.func = func
-        self.body = None
-        self.node = None
-        self.context = None
+    def __init__(self, func: Callable):
+        self.func: Callable = func
+        self.body:  = None
+        self.node: Optional[synr.ast.Node] = None
+        self.context: Optional[ContextMaintainer] = None
 
     def signature(self):
         return "tir." + self.func.__name__, get_param_list(self.func)
@@ -58,15 +61,15 @@ class WithScopeHandler(ScopeHandler):
         assert isinstance(node, ast.With)
 
         var_names = None
-        if isinstance(node.items[0].optional_vars, ast.Name):
-            var_names = [node.items[0].optional_vars.id]
-        elif isinstance(node.items[0].optional_vars, (ast.List, ast.Tuple)):
-            for var in node.items[0].optional_vars.elts:
-                if not isinstance(var, ast.Name):
-                    context.report_error("Invalid optional var definition")
-            var_names = [var.id for var in node.items[0].optional_vars.elts]
+        if isinstance(node.lhs, ast.Name):
+            var_names = [node.lhs.id]
+        elif isinstance(node.lhs, (ast.ArrayLiteral, ast.Tuple)):
+            for var in node.lhs.values:
+                if not isinstance(var, ast.Var):
+                    context.report_error("Invalid optional var definition", node.span)
+            var_names = [var.id.name for var in node.lhs.values]
         else:
-            context.report_error("Invalid optional var definition")
+            context.report_error("Invalid optional var definition", node.span)
         return var_names
 
 
@@ -185,6 +188,128 @@ class Let(WithScopeHandler):
         super().__init__(let, concise_scope=False, def_symbol=False)
 
 
+@register
+class Block(WithScopeHandler):
+    """ With scope handler tir.block(extents, name) as iter_vars"""
+
+    def __init__(self):
+        def block(axes=None, name="", span=None):
+            block_info = self.context.block_info_stack[-1]
+            if axes is None:
+                axes = []
+            if len(axes) != len(self.block_vars):
+                self.context.report_error("Inconsistent number of block vars", span=self.node.span)
+            block_iters = []
+            for i in range(len(axes)):
+                axis = tvm.runtime.convert(axes[i])
+                if isinstance(axis, tvm.tir.PrimExpr):
+                    block_var_dom = tvm.ir.Range.from_min_extent(0, axis)
+                    block_iters.append(tvm.tir.IterVar(block_var_dom, self.block_vars[i], 0))
+                elif isinstance(axis, tvm.ir.Range):
+                    block_iters.append(tvm.tir.IterVar(axis, self.block_vars[i], 0))
+                elif isinstance(axis, tvm.tir.IterVar):
+                    block_iters.append(
+                        tvm.tir.IterVar(axis.dom, self.block_vars[i], axis.iter_type)
+                    )
+                else:
+                    self.context.report_error(
+                        "Invalid argument of tir.block()", span=self.node.span
+                    )
+            # create block IO info
+            if block_info.reads is None:
+                reads = None
+            else:
+                reads = []
+                for read in block_info.reads:
+                    doms = []
+                    if isinstance(read, tvm.tir.BufferLoad):
+                        buffer = read.buffer
+                        for index in read.indices:
+                            doms.append(tvm.ir.Range.from_min_extent(index, 1))
+                    else:
+                        buffer, region = read
+                        for index in region:
+                            if isinstance(index, tvm.ir.Range):
+                                doms.append(index)
+                            else:
+                                doms.append(tvm.ir.Range.from_min_extent(index, 1))
+                    reads.append(tvm.tir.BufferRegion(buffer, doms))
+            if block_info.writes is None:
+                writes = None
+            else:
+                writes = []
+                for write in block_info.writes:
+                    doms = []
+                    if isinstance(write, tvm.tir.BufferLoad):
+                        buffer = write.buffer
+                        for index in write.indices:
+                            doms.append(tvm.ir.Range.from_min_extent(index, 1))
+                    else:
+                        buffer, region = write
+                        for index in region:
+                            if isinstance(index, tvm.ir.Range):
+                                doms.append(index)
+                            else:
+                                doms.append(tvm.ir.Range.from_min_extent(index, 1))
+                    writes.append(tvm.tir.BufferRegion(buffer, doms))
+            inner = tvm.tir.Block(
+                block_iters,
+                reads,
+                writes,
+                name,
+                self.body,
+                block_info.init,
+                block_info.exec_scope,
+                block_info.alloc_buffers,
+                block_info.match_buffers,
+                block_info.annotations,
+                span,
+            )
+            # create block var binding
+            if not block_info.binding:
+                values = self.context.loop_stack[-2].copy()
+                if len(values) == 0:
+                    values = [None] * len(block_iters)
+                elif len(values) != len(block_iters):
+                    self.context.report_error(
+                        "Autocomplete block var binding expect larger number of loops",
+                        span=self.node.span,
+                    )
+            else:
+                for block_var in self.block_vars:
+                    if block_var not in block_info.binding:
+                        self.context.report_error(
+                            "Missing block var binding for " + block_var.name, span=self.node.span
+                        )
+                values = [block_info.binding[block_var] for block_var in self.block_vars]
+            body = tvm.tir.BlockRealize(values, block_info.predicate, inner, span)
+            return body
+
+        super().__init__(func=block, concise_scope=False, def_symbol=True)
+        self.block_vars = None
+
+    def enter_scope(self, node, context, arg_list, span):
+        # define block vars
+        assert isinstance(node, ast.With)
+
+        var_names = WithScopeHandler.get_optional_var_names(node, context)
+        self.block_vars = [tvm.te.var(name) for name in var_names]
+        for block_var in self.block_vars:
+            context.update_symbol(block_var.name, block_var)
+
+
+@register
+class InitBlock(WithScopeHandler):
+    """ With scope handler tir.init()"""
+
+    def __init__(self):
+        def init(span=None):
+            self.context.block_info_stack[-2].init = self.body
+            return None
+
+        super().__init__(func=init, concise_scope=False, def_symbol=True)
+
+
 class ForScopeHandler(ScopeHandler):
     """Base class for all for scope handlers"""
 
@@ -214,6 +339,12 @@ class ForScopeHandler(ScopeHandler):
         ]
         for loop_var in self.loop_vars:
             context.update_symbol(loop_var.name, loop_var)
+            context.loop_stack[-1].append(loop_var)
+
+    def exit_scope(self, node, context, arg_list, span):
+        for loop_var in self.loop_vars:
+            context.loop_stack[-1].pop()
+        return super().exit_scope(node, context, arg_list, span)
 
 
 @register
@@ -274,3 +405,74 @@ class Unroll(ForScopeHandler):
             return tvm.tir.For(self.loop_vars[0], begin, extent, 3, self.body, span=span)
 
         super().__init__(unroll)
+
+
+@register
+class ThreadBinding(ForScopeHandler):
+    """ For scope handler tir.thread_binding(begin, end, thread)"""
+
+    def __init__(self):
+        def thread_binding(begin, end, thread, span):
+            if len(self.loop_vars) != 1:
+                self.context.report_error("Expect exact 1 loop var")
+
+            """
+            (Range(op->min, op->extent), op->loop_var,
+                                    IterVarType::kThreadIndex, thread_tag"""
+            ana = tvm.arith.Analyzer()
+            extent = end if begin == 0 else ana.simplify(end - begin)
+            thread_binding = tvm.tir.IterVar(None, None, 1, thread, span=span)
+            return tvm.tir.For(
+                self.loop_vars[0],
+                begin,
+                extent,
+                4,
+                self.body,
+                thread_binding=thread_binding,
+                span=span,
+            )
+
+        super().__init__(thread_binding)
+
+
+@register
+class RangeHandler(ForScopeHandler):
+    """ For scope handler tir.range(begin, end, annotation)"""
+
+    def __init__(self):
+        def Range(begin, end, annotation=None, span=None):
+            if len(self.loop_vars) != 1:
+                self.context.report_error("Expect exact 1 loop var")
+            ana = tvm.arith.Analyzer()
+            extent = end if begin == 0 else ana.simplify(end - begin)
+            if annotation is None:
+                annotation = {}
+            else:
+                annotation = {
+                    key: tvm.tir.StringImm(val) if isinstance(val, str) else val
+                    for key, val in annotation.items()
+                }
+            return tvm.tir.For(
+                self.loop_vars[0], begin, extent, 0, self.body, annotations=annotation, span=span
+            )
+
+        super().__init__(Range)
+
+    def signature(self):
+        return "range", get_param_list(self.func)
+
+
+@register
+class Grid(ForScopeHandler):
+    """ For scope handler tir.grid(extents)"""
+
+    def __init__(self):
+        def grid(*extents, span=None):
+            if len(self.loop_vars) != len(extents):
+                self.context.report_error("Inconsistent number of loop vars and extents")
+            body = self.body
+            for loop_var, extent in zip(reversed(self.loop_vars), reversed(extents)):
+                body = tvm.tir.For(loop_var, 0, extent, 0, body, span=span)
+            return body
+
+        super().__init__(grid)

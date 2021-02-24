@@ -18,13 +18,21 @@
 
 import inspect
 from ..ir import Span, SourceName
+from typing import Callable, List, Any, Optional, Tuple
 
 
-def get_param_list(func):
+def get_param_list(func: Callable) -> Tuple[List[str], List[Tuple[str, Tuple[Any, ...]]], Optional[str]]:
     """Get the parameter list from definition of function"""
-    full_arg_spec = inspect.getfullargspec(func)
+    full_arg_spec: inspect.FullArgSpec = inspect.getfullargspec(func)
 
-    args, defaults = full_arg_spec.args, full_arg_spec.defaults
+    args: List[str]
+    defaults: Optional[Tuple[Any, ...]]
+    kwonlyargs: List[str]
+    args, defaults, kwonlyargs = (
+        full_arg_spec.args,
+        full_arg_spec.defaults,
+        full_arg_spec.kwonlyargs,
+    )
 
     if defaults is None:
         defaults = tuple()
@@ -33,14 +41,17 @@ def get_param_list(func):
         raise RuntimeError(
             "TVM Script register error : variable keyword argument is not supported now"
         )
-    if not len(full_arg_spec.kwonlyargs) == 0:
+
+    if len(kwonlyargs) == 1 and kwonlyargs[0] == "span":
+        pass
+    elif not len(kwonlyargs) == 0:
         raise RuntimeError("TVM Script register error : keyword only argument is not supported now")
 
-    pos_only = list()
+    pos_only: List[str] = list()
     for arg in args[: len(args) - len(defaults)]:
         if arg != "span":
             pos_only.append(arg)
-    kwargs = list()
+    kwargs: List[Tuple[str, Tuple[Any, ...]]] = list()
     for default, arg in zip(defaults, args[len(args) - len(defaults) :]):
         if arg != "span":
             kwargs.append((arg, default))
