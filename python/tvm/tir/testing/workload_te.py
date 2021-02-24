@@ -391,10 +391,10 @@ def conv2d_nhwc_without_layout_rewrite(  # pylint: disable=invalid-name
         padding, (dilated_kernel_h, dilated_kernel_w)
     )
     out_channel = num_filter
-    out_height = topi.util.simplify(
+    out_height = topi.utils.simplify(
         (in_height - dilated_kernel_h + pad_top + pad_down) // stride_h + 1
     )
-    out_width = topi.util.simplify(
+    out_width = topi.utils.simplify(
         (in_width - dilated_kernel_w + pad_left + pad_right) // stride_w + 1
     )
     pad_before = [0, pad_top, pad_left, 0]
@@ -491,7 +491,7 @@ def conv2d_winograd_nhwc(
     # TODO: implement tile_size
     tile_size = 4 #_infer_tile_size(data, kernel)
     inputs = te.placeholder((N, H, W, CI), name='inputs')
-    N, H, W, CI = topi.util.get_const_tuple(inputs.shape)
+    N, H, W, CI = topi.utils.get_const_tuple(inputs.shape)
     if isinstance(dilation, int):
         dilation_h = dilation_w = dilation
     else:
