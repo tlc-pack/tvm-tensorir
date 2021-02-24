@@ -26,11 +26,15 @@ Each statement node have subfields that can be visited from python side.
     assert isinstance(st, tvm.tir.stmt.Store)
     assert(st.buffer_var == a)
 """
+from typing import Dict, List, Optional
 from enum import IntEnum
 import tvm._ffi
 
 from tvm.runtime import Object
 from . import _ffi_api
+from .buffer import Buffer
+from tvm.ir import Span, PrimExpr, Range
+from .expr import IterVar
 
 
 class Stmt(Object):
@@ -429,19 +433,59 @@ class Prefetch(Stmt):
         self.__init_handle_by_constructor__(_ffi_api.Prefetch, buffer, bounds, span)
 
 
+@tvm._ffi.register_object("tir.BufferRegion")
+class BufferRegion(Object):
+    """BufferRegion Node
+
+    Parameters
+    ----------
+    buffer : Buffer
+        The tensor of the buffer region
+
+    region : List[Range]
+        The region array of the buffer region
+    """
+
+    buffer: Buffer
+    region: List[Range]
+
+    def __init__(self, buffer, region):
+        self.__init_handle_by_constructor__(_ffi_api.BufferRegion, buffer, region)
+
+
+@tvm._ffi.register_object("tir.MatchBufferRegion")
+class MatchBufferRegion(Object):
+    """MatchBufferRegion Node
+
+    Parameters
+    ----------
+    buffer : Buffer
+        The target buffer
+
+    source : BufferRegion
+        The region of source buffer
+    """
+
+    buffer: Buffer
+    source: BufferRegion
+
+    def __init__(self, buffer, source):
+        self.__init_handle_by_constructor__(_ffi_api.MatchBufferRegion, buffer, source)
+
+
 @tvm._ffi.register_object("tir.Block")
 class Block(Stmt):
     """Block node.
 
     Parameters
     ----------
-    iter_vars : list of IterVar
+    iter_vars : List[IterVar]
         The block Variable.
 
-    reads : list of BufferRegion
+    reads : List[BufferRegion]
         The read buffer region of the block.
 
-    writes: list of BufferRegion
+    writes: List[BufferRegion]
         The write buffer region of the block.
 
     name_hint: str
@@ -456,18 +500,30 @@ class Block(Stmt):
     exec_scope: Optional[str]
         the execution scope.
 
-    alloc_buffers: Optional[list of Buffer]
+    alloc_buffers: Optional[list[Buffer]]
         The buffer allocations
 
-    match_buffers: Optional[list of MatchBufferRegion]
+    match_buffers: Optional[List[MatchBufferRegion]]
         The subregion buffer match
 
-    annotations: Optional[tvm.ir.Map]
+    annotations: Optional[Dict[str, Object]]
         Additional annotation hints.
 
     span: span : Optional[Span]
         The location of this block in the source code.
     """
+
+    iter_vars: List[IterVar]
+    reads: List[BufferRegion]
+    writes: List[BufferRegion]
+    name_hint: str
+    body: Stmt
+    init: Optional[Stmt]
+    exec_scope: Optional[str]
+    alloc_buffers: Optional[List[Buffer]]
+    match_buffers: Optional[List[MatchBufferRegion]]
+    annotations: Optional[Dict[str, Object]]
+    span: Optional[Span]
 
     def __init__(
         self,
@@ -505,10 +561,10 @@ class BlockRealize(Stmt):
 
     Parameters
     ----------
-    values : list of Expr
+    values : List[PrimExpr]
         The binding value of the block var.
 
-    predicate : Expr
+    predicate : PrimExpr
         The predicate of the block.
 
     block : Block
@@ -516,42 +572,12 @@ class BlockRealize(Stmt):
 
     """
 
+    values: List[PrimExpr]
+    predicate: PrimExpr
+    block: Block
+
     def __init__(self, values, predicate, block, span=None):
         self.__init_handle_by_constructor__(_ffi_api.BlockRealize, values, predicate, block, span)
-
-
-@tvm._ffi.register_object("tir.BufferRegion")
-class BufferRegion(Object):
-    """BufferRegion Node
-
-    Parameters
-    ----------
-    buffer : Buffer
-        The tensor of the buffer region
-
-    region : list of Range
-        The region array of the buffer region
-    """
-
-    def __init__(self, buffer, region):
-        self.__init_handle_by_constructor__(_ffi_api.BufferRegion, buffer, region)
-
-
-@tvm._ffi.register_object("tir.MatchBufferRegion")
-class MatchBufferRegion(Object):
-    """MatchBufferRegion Node
-
-    Parameters
-    ----------
-    buffer : Buffer
-        The target buffer
-
-    source : BufferRegion
-        The region of source buffer
-    """
-
-    def __init__(self, buffer, source):
-        self.__init_handle_by_constructor__(_ffi_api.MatchBufferRegion, buffer, source)
 
 
 def stmt_seq(*args):

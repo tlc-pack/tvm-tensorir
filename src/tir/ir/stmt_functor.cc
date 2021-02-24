@@ -125,7 +125,6 @@ void StmtVisitor::VisitStmt_(const BlockRealizeNode* op) {
   this->VisitStmt(op->block);
 }
 
-
 class StmtMutator::Internal {
  public:
   /*!
