@@ -318,20 +318,14 @@ class RuleMultiLevelTiling {
     BlockRV write_cache = state.block_rv;
     // The original block to tiled
     state.block_rv = state.sch->CacheWrite(state.block_rv, 0, cache_write_scope);
-    // LOG(INFO) << "BLOCKRV" <<tir::GetBlockRealize(state.sch->Eval(block_rv))->block->name_hint;
     Array<BlockRV> consumer_chain = GetInlineableConsumerChain(state.sch, write_cache);
     if (!consumer_chain.empty()) {
-      for (size_t i = 0; i < consumer_chain.size(); i++) {
-        LOG(INFO) << AsTVMScript(state.sch->sch->func, false);
-        LOG(INFO) << tir::GetBlockRealize(state.sch->Eval(state.block_rv))->block->name_hint;
-        LOG(INFO) << "Reverse Compute Inline " << tir::GetBlockRealize(state.sch->Eval(consumer_chain[i]))->block->name_hint;
-        state.sch->ReverseComputeInline(consumer_chain[i]);
-        LOG(INFO) << AsTVMScript(state.sch->sch->func, false);
+      state.sch->ComputeInline(write_cache);
+      for (size_t i = 0; i + 1< consumer_chain.size(); i++) {
+        state.sch->ComputeInline(consumer_chain[i]);
       }
       // let the last consumer act as a write cache
       state.write_cache = consumer_chain.back();
-      CHECK(state.sch->Eval(state.block_rv).defined());
-      LOG(INFO) << "EVAL OK";
     } else {
       state.write_cache = write_cache;
     }
