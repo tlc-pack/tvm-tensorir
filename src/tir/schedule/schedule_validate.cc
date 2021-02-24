@@ -282,6 +282,9 @@ class SRefValidator : public StmtVisitor {
     for (const auto& kv : sch->scopes) {
       const StmtSRef& sref = kv.first;
       ICHECK(sref->stmt != nullptr);
+      ICHECK(sch->stmt2ref.count(sref->stmt));
+      const StmtSRef sref2 = sch->stmt2ref.at(sref->stmt);
+      ICHECK(sref.same_as(sref2));
     }
     ICHECK_EQ(n_block_sref_visited, static_cast<int>(sch->scopes.size()));
   }
