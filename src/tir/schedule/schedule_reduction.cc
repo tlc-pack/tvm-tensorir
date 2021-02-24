@@ -151,8 +151,10 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
                     For(/*loop_var=*/parent->loop_var,
                         /*min=*/parent->min,
                         /*extent=*/parent->extent,
-                        /*kind=*/ForKind::kSerial,
-                        /*body=*/SeqStmt::Flatten(Array<Stmt>{body, parent->body})),
+                        /*kind=*/parent->kind,
+                        /*body=*/SeqStmt::Flatten(Array<Stmt>{body, parent->body}),
+                        /*thread_binding*/parent->thread_binding,
+                        /*annotations*/parent->annotations),
                     {});
     } else if (const auto* parent = loop_sref->parent->GetStmt<BlockNode>()) {
       auto block_node = make_object<BlockNode>(*parent);
@@ -172,7 +174,6 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
     update_block_node->name_hint = block->name_hint + "_update";
     update_block_node->init = NullOpt;
     Block update_block(update_block_node);
-
     this->Replace(block_sref, update_block, {{update_block, GetRef<Block>(block)}});
     // Update scope information
     UpdateScope(GetParentBlockSRef(block_sref)->stmt, this->stmt2ref, &this->scopes);
