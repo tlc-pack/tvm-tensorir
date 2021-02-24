@@ -201,7 +201,42 @@ def matmul_rfactor(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         C[vi, vj] = C[vi, vj] + C_rf[vi2_inner_inner, vi, vj]
 
 
+@tvm.script.tir
+def square_sum(a: ty.handle, d: ty.handle) -> None:
+    A = tir.match_buffer(a, [16, 256, 256])
+    C = tir.match_buffer(d, [16])
+
+    with tir.block([16, tir.reduce_axis(0, 256), tir.reduce_axis(0, 256)], "C") as [b, i, j]:
+        with tir.init():
+            C[b] = tir.float32(0)
+        C[b] = C[b] + A[b, i, j] * A[b, i, j]
+
+
+@tvm.script.tir
+def square_sum_rfactor(a: ty.handle, d: ty.handle) -> None:
+    C = tir.match_buffer(d, [16])
+    A = tir.match_buffer(a, [16, 256, 256])
+    # body
+    C_rf = tir.buffer_allocate([16, 256])
+    for i2, i0, i1 in tir.grid(256, 16, 256):
+        with tir.block([16, tir.reduce_axis(0, 256), 256], "C") as [b, i, vi2]:
+            tir.bind(b, i0)
+            tir.bind(i, i1)
+            tir.bind(vi2, i2)
+            with tir.init():
+                C_rf[b, vi2] = tir.float32(0)
+            C_rf[b, vi2] = (C_rf[b, vi2] + (A[b, i, vi2]*A[b, i, vi2]))
+    for i0_1, i2_1 in tir.grid(16, 256):
+        with tir.block([16, tir.reduce_axis(0, 256)], "C") as [b_1, vi2_1]:
+            tir.bind(b_1, i0_1)
+            tir.bind(vi2_1, i2_1)
+            with tir.init():
+                C[b_1] = tir.float32(0)
+            C[b_1] = (C[b_1] + C_rf[b_1, vi2_1])
+
+
 def test_reduction_rfactor():
+    # Test 1
     func = util.matmul_stmt()
 
     s = tir.create_schedule(func)
@@ -211,6 +246,12 @@ def test_reduction_rfactor():
     kio, kii = s.split(ki, 4)
     wb = s.rfactor(kii, 0)
     tvm.ir.assert_structural_equal(s.func, matmul_rfactor)
+
+    s = tir.create_schedule(square_sum)
+    C = s.get_block("C")
+    b, i, j = s.get_axes(C)
+    wb = s.rfactor(j, 1)
+    tvm.ir.assert_structural_equal(s.func, square_sum_rfactor)
 
 
 @tvm.script.tir
