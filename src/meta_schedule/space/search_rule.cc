@@ -21,7 +21,6 @@
 #include "../../tir/schedule/schedule_common.h"
 #include "../analysis.h"
 #include "../utils.h"
-#include "../../printer/text_printer.h"
 
 namespace tvm {
 namespace meta_schedule {
@@ -337,48 +336,44 @@ class RuleMultiLevelTiling {
   }
 
   /*!
-   * \brief Get a chain of elementwise-matched consumers of the producer block.
+   * \brief Get a chain of elementwise-matched consumers of the producer block, such that the
+   * producer and all but the last consumer can be inlined into one stage and the last consumer can
+   * act as a write cache.
    * \param sch The schedule
    * \param producer_block_rv The producer block
-   * \return The chain of elementwise-matched consumers where the last consumer is either the output
-   * block or followed by a non-compatiable block. The last consumer can act as write cache.
+   * \return The chain of elementwise-matched consumers.
    */
   Array<BlockRV> GetInlineableConsumerChain(Schedule& sch, const BlockRV& producer_block_rv) const {
-    Array<BlockRV> result;
-    BlockRV cur = producer_block_rv;
-
     if (!RuleInlinePureSpatial::NeedsInline(sch->sch, sch->Eval(producer_block_rv),
                                             this->consumer_inline_strict)) {
       return {};
     }
+    Array<BlockRV> result;
+    BlockRV current_block_rv = producer_block_rv;  // current producer block
     while (true) {
-      Array<BlockRV> consumers = sch->GetConsumers(cur);
+      Array<BlockRV> consumers = sch->GetConsumers(current_block_rv);
       if (consumers.size() != 1) {
         break;
       }
       BlockRV consumer_rv = consumers[0];
       tir::StmtSRef consumer_sref = sch->Eval(consumer_rv);
-      LOG(INFO ) << "Producer: " << tir::GetBlockRealize(sch->Eval(cur))->block->name_hint << " "
-      << tir::GetBlockRealize(consumer_sref)->block->name_hint;
       if (!IsSpatial(sch->sch, consumer_sref)) {
         break;
       }
-      if (!IsElementWiseMatch(sch->sch, sch->Eval(cur), consumer_sref)) {
+      if (!IsElementWiseMatch(sch->sch, sch->Eval(current_block_rv), consumer_sref)) {
         break;
       }
       // Then `consumer_rv` must be an elementwise-matched consumer of `block_rv`
       if (!RuleInlinePureSpatial::NeedsInline(sch->sch, consumer_sref,
                                               this->consumer_inline_strict)) {
         if (IsOutputBlock(sch->sch, consumer_sref)) {
-          LOG(INFO) << "CHADD " << tir::GetBlockRealize(sch->Eval(consumer_rv))->block->name_hint;
           result.push_back(consumer_rv);
         }
         break;
       }
 
-      LOG(INFO) << "CHADD " << tir::GetBlockRealize(sch->Eval(consumer_rv))->block->name_hint;
       result.push_back(consumer_rv);
-      cur = consumer_rv;
+      current_block_rv = consumer_rv;  // check the next consumer
     }
     return result;
   }
@@ -391,8 +386,6 @@ class RuleMultiLevelTiling {
     Schedule& sch = state.sch;
     BlockRV& block_rv = state.block_rv;
     tir::StmtSRef block_sref = sch->Eval(block_rv);
-    LOG(INFO) << "ADD READ CACHE" << AsTVMScript(state.sch->sch->func, false);
-    LOG(INFO) << "Add Read cache to " << tir::GetBlockRealize(block_sref)->block->name_hint;
     // Find all indices of the read buffers
     std::vector<int> read_buffer_indices = GetReadBufferIndices(block_sref);
     // Enumerate all buffers that are read but not written
@@ -490,7 +483,6 @@ class RuleMultiLevelTiling {
       const LoopRV& loop = state.tiles[level - 1].back();
       State new_state = state;
       new_state.sch = state.sch->Copy(sch->sampler.ForkSeed());
-      LOG(INFO) << "ReverseComputeAt "  << tir::GetBlockRealize(sch->Eval(consumer))->block->name_hint << " " << tir::GetBlockRealize(sch->Eval(state.block_rv))->block->name_hint;
       new_state.sch->ReverseComputeAt(consumer, loop);
       result.push_back(new_state);
     }
@@ -517,7 +509,6 @@ class RuleMultiLevelTiling {
     if (!NeedsMultiLevelTiling(sch->sch, block_sref)) {
       return {sch};
     }
-    LOG(INFO) << "Apply on " << tir::GetBlockRealize(sch->Eval(block_rv))->block->name_hint;
     // States
     std::vector<State> states{State(sch, block_rv)};
     // Add write cache
