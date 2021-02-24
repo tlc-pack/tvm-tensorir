@@ -362,6 +362,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
         << "ValueError: loop " << l->loop_var << " is related with both data_par and reduce iters ";
     iters[l->loop_var] = Range::FromMinExtent(l->min, l->extent);
   }
+
   // Do subspace division with subspace {loop}
   arith::Analyzer analyzer;
   Array<arith::DivisionForm> division =
@@ -382,38 +383,34 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
     if (block->iter_vars[i]->iter_type == IterVarType::kDataPar) {
       CHECK(division[i]->IsOuter())
           << "ValueError: can not rfactor a loop that touches data par block vars";
-      if (!division[i]->IsInner()) {
+    }
+
+    if (division[i]->IsOuter()) {
+      if (division[i]->IsInner()) {
+        // outer & inner
+        var_map[block->iter_vars[i]->var.get()] = 0;
+      } else {
+        // outer & n-inner
         rf_bindings.push_back(converter.Convert(division[i]->outer));
         IterVar new_iter = block->iter_vars[i];
         new_iter.CopyOnWrite()->dom = Range::FromMinExtent(0, division[i]->outer_extent);
         rf_iters.push_back(new_iter);
-      } else {
-        var_map[block->iter_vars[i]->var.get()] = 0;
       }
     } else {
-      if (!division[i]->IsOuter()) {
-        if (!division[i]->IsInner()) {
-          var_map[block->iter_vars[i]->var.get()] =
-              block->iter_vars[i] * division[i]->inner_extent +
-              Substitute(converter.Convert(division[i]->inner), {{loop->loop_var, rf_iter->var}});
-
-          rf_bindings.push_back(converter.Convert(division[i]->outer));
-          IterVar new_iter = block->iter_vars[i];
-          new_iter.CopyOnWrite()->dom = Range::FromMinExtent(0, division[i]->outer_extent);
-          rf_iters.push_back(new_iter);
-        } else {
-          var_map[block->iter_vars[i]->var.get()] =
-              Substitute(converter.Convert(division[i]->inner), {{loop->loop_var, rf_iter->var}});
-        }
+      if (division[i]->IsInner()) {
+        // n-outer & inner
+        var_map[block->iter_vars[i]->var.get()] =
+            Substitute(converter.Convert(division[i]->inner), {{loop->loop_var, rf_iter->var}});
       } else {
-        if (!division[i]->IsInner()) {
-          rf_bindings.push_back(converter.Convert(division[i]->outer));
-          IterVar new_iter = block->iter_vars[i];
-          new_iter.CopyOnWrite()->dom = Range::FromMinExtent(0, division[i]->outer_extent);
-          rf_iters.push_back(new_iter);
-        } else {
-          var_map[block->iter_vars[i]->var.get()] = 0;
-        }
+        // n-outer & n-inner
+        rf_bindings.push_back(converter.Convert(division[i]->outer));
+        IterVar new_iter = block->iter_vars[i];
+        new_iter.CopyOnWrite()->dom = Range::FromMinExtent(0, division[i]->outer_extent);
+        rf_iters.push_back(new_iter);
+
+        var_map[block->iter_vars[i]->var.get()] =
+            block->iter_vars[i] * division[i]->inner_extent +
+            Substitute(converter.Convert(division[i]->inner), {{loop->loop_var, rf_iter->var}});
       }
     }
   }
