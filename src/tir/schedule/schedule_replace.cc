@@ -194,9 +194,9 @@ class SRefTreePruner : public StmtVisitor {
   static std::unordered_map<const Object*, StmtSRef> Prune(ScheduleNode* self,
                                                            const ReuseInfo& reuse_info,
                                                            const Stmt& src_stmt) {
-    SRefTreePruner remover(self, reuse_info);
-    remover.VisitStmt(src_stmt);
-    return std::move(remover.reused_srefs_);
+    SRefTreePruner pruner(self, reuse_info);
+    pruner.VisitStmt(src_stmt);
+    return std::move(pruner.reused_srefs_);
   }
 
  private:
@@ -242,6 +242,7 @@ class SRefTreePruner : public StmtVisitor {
       sref->stmt = nullptr;
       sref->parent = nullptr;
       sref->seq_index = -1;
+      self_->scopes.erase(sref);
     }
     // erase the statement
     self_->stmt2ref.erase(it);

@@ -55,6 +55,13 @@ namespace tir {
   ICHECK(Result) << "TypeError: Expects `" << #From << "` to have type `" << Type::_type_key \
                  << "`, but gets: " << (From.defined() ? From->GetTypeKey() : "None")
 
+inline String ReprFunc(PrimFunc func) {
+  const auto* f = runtime::Registry::Get("script.AsTVMScript");
+  CHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
+  String s = (*f)(func, true);
+  return s;
+}
+
 /*!
  * \brief Get the direct child Schedulable Stmt (Block and Loop)
  * \param stmt the parent stmt.

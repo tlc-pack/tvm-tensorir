@@ -22,13 +22,17 @@ import util
 from tvm import tir
 
 
-def replace_ir_builder():
+def replace_ir_builder(deep_copy=False, realize=False):
     func = util.element_wise_stmt()
     new_func = tvm.script.from_source(tvm.script.asscript(func))
     s = tir.create_schedule(new_func)
 
     # The target stmt
     target = tvm.tir.Block([], [], [], [], {}, [], "", "target", s.func.body.block.body[1])
+    if realize:
+        target = tvm.tir.BlockRealize([], 1, target)
+    if deep_copy:
+        target.__setstate__(target.__getstate__())
 
     # It's important to collect garbage explicitly to make
     # sure that there is only one reference of the function
@@ -44,8 +48,7 @@ def replace_ir_builder_with_opaque():
 
 
 def test_replace_direct_write0():
-    return  # TODO
-    s, target = replace_ir_builder()
+    s, target = replace_ir_builder(realize=True)
 
     old_hash = s.func.__hash__()
     sref = s.get_sref(s.func.body.block.body[1])
@@ -62,8 +65,7 @@ def test_replace_direct_write0():
 
 
 def test_replace_direct_write1():
-    return  # TODO
-    s, target = replace_ir_builder()
+    s, target = replace_ir_builder(realize=True)
 
     old_hash = s.func.body.block.body.__hash__()
     hold_ref = s.func.body.block.body[1]
@@ -82,8 +84,7 @@ def test_replace_direct_write1():
 
 
 def test_replace_copy():
-    return  # TODO
-    s, target = replace_ir_builder()
+    s, target = replace_ir_builder(deep_copy=True, realize=True)
 
     old_hash = s.func.__hash__()
     # We hold another reference of func
@@ -100,12 +101,11 @@ def test_replace_copy():
     # The replaced AST node will be deleted, so the ref will be None
     assert tir.schedule.get_stmt(sref) is None
     # Validate sref and scope information
-    # assert s.validate_sref()
+    assert s.validate_sref()
 
 
 def test_replace_partial_copy0():
-    return  # TODO
-    s, target = replace_ir_builder()
+    s, target = replace_ir_builder(deep_copy=True, realize=True)
 
     func_old_hash = s.func.__hash__()
     hold_ref = s.func.body.block.body[0]
@@ -125,11 +125,11 @@ def test_replace_partial_copy0():
     # The replaced AST node will be deleted, so the ref will be None
     assert tir.schedule.get_stmt(sref) is None
     # Validate sref and scope information
-    # assert s.validate_sref()
+    assert s.validate_sref()
 
 
 def test_replace_partial_copy1():
-    s, target = replace_ir_builder()
+    s, target = replace_ir_builder(deep_copy=True)
 
     func_old_hash = s.func.__hash__()
     hold_ref = s.func.body.block.body[0].body
@@ -149,7 +149,7 @@ def test_replace_partial_copy1():
     # The replaced AST node will be deleted, so the ref will be None
     assert tir.schedule.get_stmt(sref) is None
     # Validate sref and scope information
-    # assert s.validate_sref()
+    assert s.validate_sref()
 
 
 def test_replace_root_write():
@@ -166,7 +166,7 @@ def test_replace_root_write():
 
 
 def test_replace_root_copy0():
-    s, target = replace_ir_builder()
+    s, target = replace_ir_builder(deep_copy=True)
 
     old_hash = s.func.__hash__()
     func_ref = s.func
@@ -179,12 +179,11 @@ def test_replace_root_copy0():
     assert old_hash == func_ref.__hash__()
     assert not tvm.ir.structural_equal(func_ref.body, target)
     # Validate sref and scope information
-    # assert s.validate_sref()
+    assert s.validate_sref()
 
 
 def test_replace_root_copy1():
-    return  # TODO
-    s, target = replace_ir_builder()
+    s, target = replace_ir_builder(deep_copy=True, realize=True)
 
     old_hash = s.func.body.block.__hash__()
     func_ref = s.func.body.block
@@ -197,7 +196,7 @@ def test_replace_root_copy1():
     assert old_hash == func_ref.__hash__()
     assert not tvm.ir.structural_equal(func_ref.body, target)
     # Validate sref and scope information
-    # assert s.validate_sref()
+    assert s.validate_sref()
 
 
 def test_replace_block_remap():
