@@ -74,6 +74,7 @@ class StmtSRef : public ObjectRef {
  public:
   explicit StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index = -1,
                     bool binding_valid = false);
+  StmtSRefNode* get() const { return static_cast<StmtSRefNode*>(data_.get()); }
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(StmtSRef, ObjectRef, StmtSRefNode);
 };
 
