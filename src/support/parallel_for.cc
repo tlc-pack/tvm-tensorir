@@ -125,6 +125,9 @@ void parallel_persist_for(int begin, int end, const std::function<void(int, int)
   try {
     worker(0);
   } catch (const std::exception& e) {
+    for (auto&& thread : threads) {
+      thread.join();
+    }
     LOG(FATAL) << "Parallel_for error with " << e.what();
   }
   // Join threads
