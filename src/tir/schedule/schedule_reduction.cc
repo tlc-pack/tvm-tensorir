@@ -364,7 +364,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   }
   // Do subspace division with subspace {loop}
   arith::Analyzer analyzer;
-  auto division =
+  Array<arith::DivisionForm> division =
       arith::SubspaceDivision(block_realize->block->iter_vars, block_realize->binding_values, iters,
                               {loop->loop_var}, block_realize->predicate, &analyzer);
   arith::IterVarMapConverter converter(&analyzer);
@@ -382,25 +382,44 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
     if (block->iter_vars[i]->iter_type == IterVarType::kDataPar) {
       CHECK(division[i]->IsOuter())
           << "ValueError: can not rfactor a loop that touches data par block vars";
+      if (!division[i]->IsInner()) {
+        rf_bindings.push_back(converter.Convert(division[i]->outer));
+        IterVar new_iter = block->iter_vars[i];
+        new_iter.CopyOnWrite()->dom = Range::FromMinExtent(0, division[i]->outer_extent);
+        rf_iters.push_back(new_iter);
+      } else {
+        var_map[block->iter_vars[i]->var.get()] = 0;
+      }
     } else {
       if (!division[i]->IsOuter()) {
-        var_map[block->iter_vars[i]->var.get()] =
-            block->iter_vars[i] * division[i]->inner_extent +
-            Substitute(converter.Convert(division[i]->inner), {{loop->loop_var, rf_iter->var}});
+        if (!division[i]->IsInner()) {
+          var_map[block->iter_vars[i]->var.get()] =
+              block->iter_vars[i] * division[i]->inner_extent +
+              Substitute(converter.Convert(division[i]->inner), {{loop->loop_var, rf_iter->var}});
+
+          rf_bindings.push_back(converter.Convert(division[i]->outer));
+          IterVar new_iter = block->iter_vars[i];
+          new_iter.CopyOnWrite()->dom = Range::FromMinExtent(0, division[i]->outer_extent);
+          rf_iters.push_back(new_iter);
+        } else {
+          var_map[block->iter_vars[i]->var.get()] =
+              Substitute(converter.Convert(division[i]->inner), {{loop->loop_var, rf_iter->var}});
+        }
+      } else {
+        if (!division[i]->IsInner()) {
+          rf_bindings.push_back(converter.Convert(division[i]->outer));
+          IterVar new_iter = block->iter_vars[i];
+          new_iter.CopyOnWrite()->dom = Range::FromMinExtent(0, division[i]->outer_extent);
+          rf_iters.push_back(new_iter);
+        } else {
+          var_map[block->iter_vars[i]->var.get()] = 0;
+        }
       }
-    }
-    if (!is_one(division[i]->outer_extent)) {
-      rf_bindings.push_back(converter.Convert(division[i]->outer));
-      IterVar new_iter = block->iter_vars[i];
-      new_iter.CopyOnWrite()->dom = Range::FromMinExtent(0, division[i]->outer_extent);
-      rf_iters.push_back(new_iter);
-    } else {
-      var_map[block->iter_vars[i]->var.get()] = 0;
     }
   }
   rf_bindings.push_back(loop->loop_var);
   rf_iters.push_back(rf_iter);
-  CHECK(0 <= factor_axis && factor_axis <= (int)update->buffer->shape.size())
+  CHECK(0 <= factor_axis && factor_axis <= static_cast<int>(update->buffer->shape.size()))
       << "ValueError: factor_axis should be in range [0, " << update->buffer->shape.size() << "]";
   Array<PrimExpr> rf_shape = update->buffer->shape;
   Array<PrimExpr> rf_indices = update->indices;
