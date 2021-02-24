@@ -1099,7 +1099,7 @@ class Block : public Stmt {
  */
 class BlockRealizeNode : public StmtNode {
  public:
-  BlockRealizeNode() {} /*! \brief The corresponding value of the iter vars. */
+  /*! \brief The corresponding value of the iter vars. */
   Array<PrimExpr> binding_values;
   /*! \brief The predicate of the block. */
   PrimExpr predicate;

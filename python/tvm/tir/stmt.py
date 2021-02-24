@@ -509,7 +509,7 @@ class BlockRealize(Stmt):
         The binding value of the block var.
 
     predicate : Expr
-        The predicates of the block.
+        The predicate of the block.
 
     block : Block
         The block to realize
