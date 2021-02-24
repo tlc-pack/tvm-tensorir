@@ -278,19 +278,18 @@ class SRefValidator : public StmtVisitor {
 
   void Validate(const Stmt& stmt) {
     VisitStmt(stmt);
-    CHECK_EQ(n_sref_visited, static_cast<int>(sch->stmt2ref.size()));
-    CHECK_EQ(n_sref_visited, static_cast<int>(sch->stmt2ref.size()));
+    ICHECK_EQ(n_sref_visited, static_cast<int>(sch->stmt2ref.size()));
     for (const auto& kv : sch->scopes) {
       const StmtSRef& sref = kv.first;
-      CHECK(sref->stmt != nullptr);
+      ICHECK(sref->stmt != nullptr);
     }
-    CHECK_EQ(n_block_sref_visited, static_cast<int>(sch->scopes.size()));
+    ICHECK_EQ(n_block_sref_visited, static_cast<int>(sch->scopes.size()));
   }
 
   // Valida each block
   void VisitStmt_(const BlockNode* block) override {
     if (is_in_init_block) {
-      CHECK(!sch->stmt2ref.count(block));
+      ICHECK(!sch->stmt2ref.count(block));
       StmtVisitor::VisitStmt_(block);
       return;
     }
@@ -322,7 +321,7 @@ class SRefValidator : public StmtVisitor {
   // Validate each loop
   void VisitStmt_(const ForNode* loop) override {
     if (is_in_init_block) {
-      CHECK(!sch->stmt2ref.count(loop));
+      ICHECK(!sch->stmt2ref.count(loop));
       StmtVisitor::VisitStmt_(loop);
       return;
     }
@@ -354,10 +353,10 @@ class SRefValidator : public StmtVisitor {
       StmtSRef sref{nullptr};
       if (const auto* realize = child.as<BlockRealizeNode>()) {
         const auto* block = realize->block.get();
-        CHECK(sch->stmt2ref.count(block));
+        ICHECK(sch->stmt2ref.count(block));
         sref = sch->stmt2ref.at(block);
       } else if (child->IsInstance<ForNode>()) {
-        CHECK(sch->stmt2ref.count(child.get()));
+        ICHECK(sch->stmt2ref.count(child.get()));
         sref = sch->stmt2ref.at(child.get());
       } else {
         continue;
