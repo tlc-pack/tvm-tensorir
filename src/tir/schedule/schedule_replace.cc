@@ -35,13 +35,13 @@ namespace tir {
 void SetSeqIndex(ScheduleNode* self, const Stmt& stmt, int seq_index) {
   if (const auto* realize = stmt.as<BlockRealizeNode>()) {
     const BlockNode* block = realize->block.get();
-    CHECK(self->stmt2ref.count(block));
+    ICHECK(self->stmt2ref.count(block));
     self->stmt2ref.at(block)->seq_index = seq_index;
   } else if (const auto* block = stmt.as<BlockNode>()) {
-    CHECK(self->stmt2ref.count(block));
+    ICHECK(self->stmt2ref.count(block));
     self->stmt2ref.at(block)->seq_index = seq_index;
   } else if (const auto* loop = stmt.as<ForNode>()) {
-    CHECK(self->stmt2ref.count(loop));
+    ICHECK(self->stmt2ref.count(loop));
     self->stmt2ref.at(loop)->seq_index = seq_index;
   } else {
     // do nothing
@@ -58,9 +58,9 @@ void SetSeqIndex(ScheduleNode* self, const Stmt& stmt, int seq_index) {
  * \param new_stmt The statement that replaces the statement inside the sref
  */
 void UpdateSRef(ScheduleNode* sch, StmtSRefNode* sref, const StmtNode* new_stmt) {
-  CHECK(new_stmt->IsInstance<BlockNode>() || new_stmt->IsInstance<ForNode>());
+  ICHECK(new_stmt->IsInstance<BlockNode>() || new_stmt->IsInstance<ForNode>());
   const StmtNode* old_stmt = sref->stmt;
-  CHECK_NE(new_stmt, old_stmt);
+  ICHECK_NE(new_stmt, old_stmt);
   sch->stmt2ref[new_stmt] = GetRef<StmtSRef>(sref);
   sch->stmt2ref.erase(sref->stmt);
   sref->stmt = new_stmt;
@@ -194,9 +194,9 @@ class SRefTreePruner : public StmtVisitor {
   static std::unordered_map<const Object*, StmtSRef> Prune(ScheduleNode* self,
                                                            const ReuseInfo& reuse_info,
                                                            const Stmt& src_stmt) {
-    SRefTreePruner remover(self, reuse_info);
-    remover.VisitStmt(src_stmt);
-    return std::move(remover.reused_srefs_);
+    SRefTreePruner pruner(self, reuse_info);
+    pruner.VisitStmt(src_stmt);
+    return std::move(pruner.reused_srefs_);
   }
 
  private:
@@ -242,6 +242,7 @@ class SRefTreePruner : public StmtVisitor {
       sref->stmt = nullptr;
       sref->parent = nullptr;
       sref->seq_index = -1;
+      self_->scopes.erase(sref);
     }
     // erase the statement
     self_->stmt2ref.erase(it);
@@ -361,11 +362,11 @@ class ChildReplacer : private StmtMutator {
   static Stmt Mutate(const StmtNode* parent_stmt, const StmtNode* child_src_stmt,
                      const Stmt& child_tgt_stmt, int seq_index, bool allow_copy_on_write) {
     // Check the invariant
-    CHECK(child_src_stmt->IsInstance<BlockNode>() ||  //
-          child_src_stmt->IsInstance<ForNode>());
-    CHECK(child_tgt_stmt->IsInstance<BlockNode>() ||  //
-          child_tgt_stmt->IsInstance<ForNode>() ||    //
-          child_tgt_stmt->IsInstance<BlockRealizeNode>());
+    ICHECK(child_src_stmt->IsInstance<BlockNode>() ||  //
+           child_src_stmt->IsInstance<ForNode>());
+    ICHECK(child_tgt_stmt->IsInstance<BlockNode>() ||  //
+           child_tgt_stmt->IsInstance<ForNode>() ||    //
+           child_tgt_stmt->IsInstance<BlockRealizeNode>());
     ChildReplacer replacer(child_src_stmt, child_tgt_stmt, seq_index);
     replacer.allow_copy_on_write_ = allow_copy_on_write;
     // Step 1. Copy-on-write the `parent_stmt` and extract its `body`,
