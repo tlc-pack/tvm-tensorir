@@ -56,12 +56,20 @@ class ScheduleNode : public Object {
   }
 
   /*!
-   * \brief replace part of AST with new stmt
-   * \param ref The schedulable reference of the old stmt
-   * \param target The new stmt
-   * \param block_sref_map The Sref remapping of blocks
+   * \brief Replace part of AST with new statement. Only 3 replacement types are allowed from
+   * `src_sref->stmt` to `tgt_stmt`.
+   * 1) Block -> Block
+   * 2) Loop -> Loop
+   * 3) Loop -> BlockRealize
+   * \param src_sref The sref of the statement to be replaced
+   * \param tgt_stmt The statement to be replaced to
+   * \param block_sref_reuse Maps an new block (replaced to) back to an old block (to be replaced),
+   * and enforces reuse of srefs between them (rather than create new srefs)
+   * i.e. after being replaced, the sref that points to the old block will point to the new one
+   * \note `loop_sref_reuse` will be automatically detected via loop vars
    */
-  void Replace(StmtSRef ref, Stmt target, Map<Block, Block> block_sref_map);
+  void Replace(const StmtSRef& src_sref, const Stmt& tgt_stmt,
+               const Map<Block, Block>& block_sref_reuse);
 
   /*!
    * \brief Get block from its tag

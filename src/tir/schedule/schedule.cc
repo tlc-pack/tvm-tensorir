@@ -142,12 +142,6 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
 TVM_REGISTER_NODE_TYPE(ScheduleNode);
 
-TVM_REGISTER_GLOBAL("tir.schedule.Replace")
-    .set_body_typed<void(Schedule, StmtSRef, Stmt, Map<Block, Block>)>(
-        [](Schedule schedule, StmtSRef ref, Stmt target, Map<Block, Block> block_sref_map) {
-          return schedule->Replace(ref, target, block_sref_map);
-        });
-
 TVM_REGISTER_GLOBAL("tir.schedule.GetStmtSRef")
     .set_body_typed<StmtSRef(Schedule, Stmt)>([](Schedule schedule, Stmt stmt) {
       return schedule->stmt2ref.at(stmt.operator->());

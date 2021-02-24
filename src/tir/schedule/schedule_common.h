@@ -40,6 +40,21 @@
 namespace tvm {
 namespace tir {
 
+#define TVM_SREF_TO_BLOCK(Result, SRef)                                                       \
+  SRef->GetStmt<::tvm::tir::BlockNode>();                                                     \
+  ICHECK(Result) << "TypeError: Expects SRef `" << #SRef << "` points to `Block`, but gets: " \
+                 << (SRef->stmt ? SRef->stmt->GetTypeKey() : "None");
+
+#define TVM_SREF_TO_LOOP(Result, SRef)                                                       \
+  SRef->GetStmt<::tvm::tir::LoopNode>();                                                     \
+  ICHECK(Result) << "TypeError: Expects SRef `" << #SRef << "` points to `Loop`, but gets: " \
+                 << (SRef->stmt ? SRef->stmt->GetTypeKey() : "None");
+
+#define TVM_TYPE_AS(Result, From, Type)                                                      \
+  From.as<Type>();                                                                           \
+  ICHECK(Result) << "TypeError: Expects `" << #From << "` to have type `" << Type::_type_key \
+                 << "`, but gets: " << (From.defined() ? From->GetTypeKey() : "None")
+
 /*!
  * \brief Get the direct child Schedulable Stmt (Block and Loop)
  * \param stmt the parent stmt.
@@ -353,8 +368,7 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
   bool CompareBufferRegion(const BufferRegion& lhs, const BufferRegion& rhs);
   bool CompareAnnotation(const std::pair<String, ObjectRef>& lhs,
                          const std::pair<String, ObjectRef>& rhs);
-  bool CompareAnnotationMap(const Map<String, ObjectRef>& lhs,
-                            const Map<String, ObjectRef>& rhs);
+  bool CompareAnnotationMap(const Map<String, ObjectRef>& lhs, const Map<String, ObjectRef>& rhs);
   template <typename T>
   bool CompareBufferAccess(const T* lhs, const T* rhs);
   template <typename T, typename F>

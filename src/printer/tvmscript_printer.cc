@@ -638,6 +638,7 @@ Doc TVMScriptPrinter::VisitStmt_(const IfThenElseNode* op) {
   doc << "if " << Print(op->condition) << ":";
   doc << Doc::Indent(4, Doc::NewLine() << PrintBody(op->then_case));
   if (!is_one(op->condition) && op->else_case.defined()) {
+    doc << Doc::NewLine();
     doc << "else:" << Doc::Indent(4, Doc::NewLine() << PrintBody(op->else_case));
   }
   return doc;
@@ -678,8 +679,8 @@ Doc TVMScriptPrinter::VisitStmt_(const ForNode* op) {
   Doc doc;
   auto print_loop = [&](const For& loop) -> Doc {
     Doc res;
-    res << "for " << Print(loop->loop_var) << " in tir." + std::string(ForKind2String(loop->kind)) + "("
-        << Print(loop->min) << ", "
+    res << "for " << Print(loop->loop_var)
+        << " in tir." + std::string(ForKind2String(loop->kind)) + "(" << Print(loop->min) << ", "
         << Print(arith::Analyzer().Simplify(loop->min + loop->extent));
     if (loop->thread_binding.defined()) {
       res << ", thread = ";
@@ -833,7 +834,8 @@ Doc TVMScriptPrinter::VisitStmt_(const BlockRealizeNode* op) {
   body << Doc::NewLine();
   for (const auto& alloc_buf : block_op->alloc_buffers) {
     buf_not_in_headers.insert(alloc_buf.get());
-    body << Print(alloc_buf) << " = tir.buffer_allocate(" << memo_buf_decl_[alloc_buf] << ")" << Doc::NewLine();
+    body << Print(alloc_buf) << " = tir.buffer_allocate(" << memo_buf_decl_[alloc_buf] << ")"
+         << Doc::NewLine();
   }
   if (block_op->init.defined()) {
     Doc init_block;
@@ -1063,7 +1065,6 @@ Doc TVMScriptPrinter::PrintAnnotations(const Map<String, ObjectRef>& annotations
   }
   return res;
 }
-
 
 String AsTVMScript(const ObjectRef& functions, bool show_meta) {
   ICHECK(functions.as<PrimFuncNode>() != nullptr || functions.as<IRModuleNode>() != nullptr);
