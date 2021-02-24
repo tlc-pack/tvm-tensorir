@@ -365,19 +365,21 @@ def test_intimm_cond():
 
 
 def test_block_blockrealize():
-    x = tvm.tir.Var("x")
-    y = tvm.tir.Var("y")
+    x = tvm.tir.Var("x", "int32")
+    y = tvm.tir.Var("y", "int32")
     vx = tvm.tir.IterVar((16, 16), "vx", 0)
+    vx_var = vx.var
     vy = tvm.tir.IterVar((16, 16), "vy", 0)
+    vy_var = vy.var
     A = tvm.tir.decl_buffer((16, 16), "float32")
     B = tvm.tir.decl_buffer((16, 16), "float32")
     body = tvm.tir.BufferStore(
         A,
-        tvm.tir.BufferLoad(B, [vx, vy]),
-        [vx, vy],
+        tvm.tir.BufferLoad(B, [vx_var, vy_var]),
+        [vx_var, vy_var],
     )
-    reads = tvm.tir.BufferRegion(A, [(vx, vx + 1), (vy, vy + 1)])
-    writes = tvm.tir.BufferRegion(B, [(vx, vx + 1), (vy, vy + 1)])
+    reads = [tvm.tir.BufferRegion(A, [tvm.ir.Range(vx_var, 1), tvm.ir.Range(vy_var, 1)])]
+    writes = [tvm.tir.BufferRegion(B, [tvm.ir.Range(vx_var, 1), tvm.ir.Range(vy_var, 1)])]
 
     block = tvm.tir.Block([vx, vy], reads, writes, "block", body)
     block_realize = tvm.tir.BlockRealize([x, y], True, block)
@@ -411,3 +413,4 @@ if __name__ == "__main__":
     test_isnan()
     test_equality()
     test_equality_string_imm()
+    test_block_blockrealize()

@@ -429,7 +429,7 @@ class Prefetch(Stmt):
         self.__init_handle_by_constructor__(_ffi_api.Prefetch, buffer, bounds, span)
 
 
-@tvm._ffi.register_object
+@tvm._ffi.register_object("tir.Block")
 class Block(Stmt):
     """Block node.
 
@@ -439,31 +439,31 @@ class Block(Stmt):
         The block Variable.
 
     reads : list of BufferRegion
-        The read tensor region of the block.
+        The read buffer region of the block.
 
     writes: list of BufferRegion
-        The write tensor region of the block.
+        The write buffer region of the block.
 
     name_hint: str
-        the tag of the block.
+        the name_hint of the block.
 
     body: Stmt
         The body of the block.
 
-    alloc_buffers: Optional[list of Buffer]
-        The buffer allocations
-
-    annotations: Optional[tvm.ir.Map]
-        Additional annotation hints.
-
-    match_buffers: Optional[list of MatchBufferRegion]
-        The subregion buffer match
+    init: Optional[Stmt]
+        The init block of the reduction block
 
     exec_scope: Optional[str]
         the execution scope.
 
-    init: Optional[Stmt]
-        The init block of the reduction block
+    alloc_buffers: Optional[list of Buffer]
+        The buffer allocations
+
+    match_buffers: Optional[list of MatchBufferRegion]
+        The subregion buffer match
+
+    annotations: Optional[tvm.ir.Map]
+        Additional annotation hints.
 
     span: span : Optional[Span]
         The location of this block in the source code.
@@ -476,11 +476,11 @@ class Block(Stmt):
         writes,
         name_hint,
         body,
-        alloc_buffers=None,
-        annotations=None,
-        match_buffers=None,
-        exec_scope="",
         init=None,
+        exec_scope="",
+        alloc_buffers=None,
+        match_buffers=None,
+        annotations=None,
         span=None,
     ):
         self.__init_handle_by_constructor__(
@@ -490,16 +490,16 @@ class Block(Stmt):
             writes,
             name_hint,
             body,
-            alloc_buffers,
-            annotations,
-            match_buffers,
-            exec_scope,
             init,
+            exec_scope,
+            alloc_buffers,
+            match_buffers,
+            annotations,
             span,
         )
 
 
-@tvm._ffi.register_object
+@tvm._ffi.register_object("tir.BlockRealize")
 class BlockRealize(Stmt):
     """BlockRealize node.
 
@@ -520,7 +520,7 @@ class BlockRealize(Stmt):
         self.__init_handle_by_constructor__(_ffi_api.BlockRealize, values, predicate, block, span)
 
 
-@tvm._ffi.register_object
+@tvm._ffi.register_object("tir.BufferRegion")
 class BufferRegion(Object):
     """BufferRegion Node
 
@@ -537,7 +537,7 @@ class BufferRegion(Object):
         self.__init_handle_by_constructor__(_ffi_api.BufferRegion, buffer, region)
 
 
-@tvm._ffi.register_object
+@tvm._ffi.register_object("tir.MatchBufferRegion")
 class MatchBufferRegion(Object):
     """MatchBufferRegion Node
 
