@@ -297,8 +297,9 @@ class RuleMultiLevelTiling {
       BlockRV block_rv = state.block_rv;
       Array<BlockRV> consumer_chain = GetInlineableConsumerChain(sch, block_rv);
       if (!consumer_chain.empty()) {
-        for (size_t i = 0; i < consumer_chain.size(); i++) {
-          sch->ReverseComputeInline(consumer_chain[i]);
+        // inline all but the last consumer
+        for (size_t i = 0; i + 1 < consumer_chain.size(); i++) {
+          sch->ComputeInline(consumer_chain[i]);
         }
         // let the last consumer act as a write cache
         state.write_cache = consumer_chain.back();
@@ -320,8 +321,9 @@ class RuleMultiLevelTiling {
     state.block_rv = state.sch->CacheWrite(state.block_rv, 0, cache_write_scope);
     Array<BlockRV> consumer_chain = GetInlineableConsumerChain(state.sch, write_cache);
     if (!consumer_chain.empty()) {
+      // inline the cache write copy stage and all but the last consumer
       state.sch->ComputeInline(write_cache);
-      for (size_t i = 0; i + 1< consumer_chain.size(); i++) {
+      for (size_t i = 0; i + 1 < consumer_chain.size(); i++) {
         state.sch->ComputeInline(consumer_chain[i]);
       }
       // let the last consumer act as a write cache
