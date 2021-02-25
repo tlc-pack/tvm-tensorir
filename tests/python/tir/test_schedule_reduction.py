@@ -167,38 +167,30 @@ def test_reduction_compute_inline():
 
 @tvm.script.tir
 def matmul_rfactor(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
-    B = tir.match_buffer(b, [128, 128], elem_offset=0, align=128, offset_factor=1)
-    A = tir.match_buffer(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
-    C = tir.match_buffer(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
-    # body
-    C_rf = tir.buffer_allocate([4, 128, 128], elem_offset=0, align=128, offset_factor=1)
-    for i2_inner_inner in range(0, 4):
-        for i0 in range(0, 128):
-            for i1 in range(0, 128):
-                for i2_outer in range(0, 4):
-                    for i2_inner_outer in range(0, 8):
-                        with tir.block([128, 128, tir.reduce_axis(0, 32), 4], "update") as [
-                            vi,
-                            vj,
-                            vk,
-                            vi2_inner_inner,
-                        ]:
-                            tir.bind(vi, i0)
-                            tir.bind(vj, i1)
-                            tir.bind(vk, ((i2_outer * 8) + i2_inner_outer))
-                            tir.bind(vi2_inner_inner, i2_inner_inner)
-                            with tir.init():
-                                C_rf[vi2_inner_inner, vi, vj] = 0.0
-                            C_rf[vi2_inner_inner, vi, vj] = (
-                                C_rf[vi2_inner_inner, vi, vj]
-                                + A[vi, ((vk * 4) + vi2_inner_inner)]
-                                * B[vj, ((vk * 4) + vi2_inner_inner)]
-                            )
+    A = tir.match_buffer(a, [128, 128])
+    B = tir.match_buffer(b, [128, 128])
+    C = tir.match_buffer(c, [128, 128])
+    C_rf = tir.buffer_allocate([4, 128, 128])
 
-    with tir.block([128, 128, tir.reduce_axis(0, 4)], "update") as [vi, vj, vi2_inner_inner]:
-        with tir.init():
-            C[vi, vj] = 0.0
-        C[vi, vj] = C[vi, vj] + C_rf[vi2_inner_inner, vi, vj]
+    for i2_inner_inner, i0, i1, i2_outer, i2_inner_outer in tir.grid(4, 128, 128, 4, 8):
+        with tir.block([4, 128, 128, tir.reduce_axis(0, 4), tir.reduce_axis(0, 8)], "update_rf") as [vi2_inner_inner, vi, vj, vi2_outer, vi2_inner_outer]:
+            tir.bind(vi2_inner_inner, i2_inner_inner)
+            tir.bind(vi, i0)
+            tir.bind(vj, i1)
+            tir.bind(vi2_outer, i2_outer)
+            tir.bind(vi2_inner_outer, i2_inner_outer)
+            with tir.init():
+                C_rf[vi2_inner_inner, vi, vj] = tir.float32(0)
+            C_rf[vi2_inner_inner, vi, vj] = (C_rf[vi2_inner_inner, vi, vj] + (A[vi, (((vi2_outer*32) + (vi2_inner_outer*4)) + vi2_inner_inner)]*B[vj, (((vi2_outer*32) + (vi2_inner_outer*4)) + vi2_inner_inner)]))
+
+    for i0_1, i1_1, i2_inner_inner_1 in tir.grid(128, 128, 4):
+        with tir.block([128, 128, tir.reduce_axis(0, 4)], "update") as [vi_1, vj_1, vi2_inner_inner_1]:
+            tir.bind(vi_1, i0_1)
+            tir.bind(vj_1, i1_1)
+            tir.bind(vi2_inner_inner_1, i2_inner_inner_1)
+            with tir.init():
+                C[vi_1, vj_1] = tir.float32(0)
+            C[vi_1, vj_1] = (C[vi_1, vj_1] + C_rf[vi2_inner_inner_1, vi_1, vj_1])
 
 
 @tvm.script.tir
@@ -214,18 +206,19 @@ def square_sum(a: ty.handle, d: ty.handle) -> None:
 
 @tvm.script.tir
 def square_sum_rfactor(a: ty.handle, d: ty.handle) -> None:
-    C = tir.match_buffer(d, [16])
     A = tir.match_buffer(a, [16, 256, 256])
-    # body
+    C = tir.match_buffer(d, [16])
     C_rf = tir.buffer_allocate([16, 256])
+
     for i2, i0, i1 in tir.grid(256, 16, 256):
-        with tir.block([16, tir.reduce_axis(0, 256), 256], "C") as [b, i, vi2]:
+        with tir.block([256, 16, tir.reduce_axis(0, 256)], "C_rf") as [vi2, b, i]:
+            tir.bind(vi2, i2)
             tir.bind(b, i0)
             tir.bind(i, i1)
-            tir.bind(vi2, i2)
             with tir.init():
                 C_rf[b, vi2] = tir.float32(0)
             C_rf[b, vi2] = (C_rf[b, vi2] + (A[b, i, vi2]*A[b, i, vi2]))
+
     for i0_1, i2_1 in tir.grid(16, 256):
         with tir.block([16, tir.reduce_axis(0, 256)], "C") as [b_1, vi2_1]:
             tir.bind(b_1, i0_1)
@@ -247,11 +240,30 @@ def test_reduction_rfactor():
     wb = s.rfactor(kii, 0)
     tvm.ir.assert_structural_equal(s.func, matmul_rfactor)
 
+    f = tvm.build(s.func, target="llvm")
+    a_np = np.random.uniform(size=(128, 128)).astype("float32")
+    b_np = np.random.uniform(size=(128, 128)).astype("float32")
+    a = tvm.nd.array(a_np)
+    b = tvm.nd.array(b_np)
+    c = tvm.nd.array(np.zeros((128, 128), dtype="float32"))
+    f(a, b, c)
+    c_np = np.matmul(a_np, b_np.T)
+    np.testing.assert_allclose(c.asnumpy(), c_np, rtol=1e-4, atol=1e-4)
+
+    # Test 2
     s = tir.create_schedule(square_sum)
     C = s.get_block("C")
     b, i, j = s.get_axes(C)
     wb = s.rfactor(j, 1)
     tvm.ir.assert_structural_equal(s.func, square_sum_rfactor)
+
+    f = tvm.build(s.func, target="llvm")
+    a_np = np.random.uniform(size=(16, 256, 256)).astype("float32")
+    a = tvm.nd.array(a_np)
+    c = tvm.nd.array(np.zeros((16, ), dtype="float32"))
+    f(a, c)
+    c_np = np.sum(a_np * a_np, axis=(1, 2))
+    np.testing.assert_allclose(c.asnumpy(), c_np, rtol=1e-4, atol=1e-4)
 
 
 @tvm.script.tir
