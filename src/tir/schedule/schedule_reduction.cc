@@ -541,12 +541,12 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   Var wb_loop_var = loop->loop_var.copy_with_suffix("");
   wb_body = For(wb_loop_var, loop->min, loop->extent, ForKind::kSerial,
                 SubstituteInScope(wb_body, {{loop->loop_var.get(), wb_loop_var.get()}}));
-  Optional<StmtSRef> top;
+  Optional<StmtSRef> top = NullOpt;
   for (int i = static_cast<int>(loops.size()) - 1; i >= 0; --i) {
     const auto* l = loops[i]->GetStmt<ForNode>();
     ICHECK(l) << "InternalError: GetAxes returns a block sref";
     if (l->body->IsInstance<SeqStmtNode>()) {
-      CHECK(i != (int)loops.size() - 1) << "ValueError: can not rfactor";
+      CHECK(i != static_cast<int>(loops.size()) - 1) << "ValueError: can not rfactor";
       top = loops[i + 1];
       break;
     }
@@ -580,6 +580,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
       for (const Stmt& stmt : op->seq) {
         res.push_back(stmt);
       }
+      res.erase(res.begin() + pos);
     } else {
       LOG(FATAL);
     }
@@ -600,6 +601,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
     this->Replace(GetRef<StmtSRef>(top.value()->parent), new_block,
                   {{new_block, GetRef<Block>(parent)}, {wb_block, block}});
   }
+
   // Insert the rfactor buffer into the scope block's allocation.
   StmtSRef scope_sref = GetParentBlockSRef(block_sref);
   Block scope_block = GetRef<Block>(scope_sref->GetStmt<BlockNode>()),
