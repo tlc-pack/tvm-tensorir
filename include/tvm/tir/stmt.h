@@ -1146,7 +1146,7 @@ class BlockRealizeNode : public StmtNode {
 class BlockRealize : public Stmt {
  public:
   TVM_DLL explicit BlockRealize(Array<PrimExpr> iter_values, PrimExpr predicate, Block block,
-                                Span = Span());
+                                Span span = Span());
 
   TVM_DEFINE_OBJECT_REF_METHODS(BlockRealize, Stmt, BlockRealizeNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(BlockRealizeNode);
