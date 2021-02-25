@@ -194,9 +194,9 @@ def matmul_rfactor(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 @tvm.script.tir
-def square_sum(a: ty.handle, d: ty.handle) -> None:
+def square_sum(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, [16, 256, 256])
-    C = tir.match_buffer(d, [16])
+    C = tir.match_buffer(c, [16])
 
     with tir.block([16, tir.reduce_axis(0, 256), tir.reduce_axis(0, 256)], "C") as [b, i, j]:
         with tir.init():
@@ -205,9 +205,9 @@ def square_sum(a: ty.handle, d: ty.handle) -> None:
 
 
 @tvm.script.tir
-def square_sum_rfactor(a: ty.handle, d: ty.handle) -> None:
+def square_sum_rfactor(a: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, [16, 256, 256])
-    C = tir.match_buffer(d, [16])
+    C = tir.match_buffer(c, [16])
     C_rf = tir.buffer_allocate([16, 256])
 
     for i2, i0, i1 in tir.grid(256, 16, 256):
@@ -226,6 +226,52 @@ def square_sum_rfactor(a: ty.handle, d: ty.handle) -> None:
             with tir.init():
                 C[b_1] = tir.float32(0)
             C[b_1] = (C[b_1] + C_rf[b_1, vi2_1])
+
+
+@tvm.script.tir
+def square_sum_square_root(a: ty.handle, d: ty.handle) -> None:
+    A = tir.match_buffer(a, [16, 256, 256])
+    D = tir.match_buffer(d, [16])
+    C = tir.buffer_allocate([16])
+
+    with tir.block([16, tir.reduce_axis(0, 256), tir.reduce_axis(0, 256)], "C") as [b, i, j]:
+        with tir.init():
+            C[b] = tir.float32(0)
+        C[b] = C[b] + A[b, i, j] * A[b, i, j]
+
+    with tir.block([16], "D") as [b]:
+        D[b] = tir.sqrt(C[b], dtype="float32")
+
+
+@tvm.script.tir
+def square_sum_square_root_rfactor(a: ty.handle, d: ty.handle) -> None:
+    A = tir.match_buffer(a, [16, 256, 256])
+    D = tir.match_buffer(d, [16])
+    C = tir.buffer_allocate([16])
+    C_rf = tir.buffer_allocate([1, 16])
+
+    for i1_i2_fused_inner, i0, i1_i2_fused_outer in tir.grid(1, 16, 65536):
+        with tir.block([1, 16, tir.reduce_axis(0, 256), tir.reduce_axis(0, 256)], "C_rf") as [vi1_i2_fused_inner, b, i, j]:
+            tir.bind(vi1_i2_fused_inner, i1_i2_fused_inner)
+            tir.bind(b, i0)
+            tir.bind(i, tir.floordiv(i1_i2_fused_outer, 256))
+            tir.bind(j, tir.floormod(i1_i2_fused_outer, 256))
+            with tir.init():
+                C_rf[vi1_i2_fused_inner, b] = tir.float32(0)
+            C_rf[vi1_i2_fused_inner, b] = (C_rf[vi1_i2_fused_inner, b] + (A[b, i, j]*A[b, i, j]))
+
+    for i0_1, i1_i2_fused_inner_1 in tir.grid(16, 1):
+        with tir.block([16, tir.reduce_axis(0, 1)], "C") as [b_1, vi1_i2_fused_inner_1]:
+            tir.bind(b_1, i0_1)
+            tir.bind(vi1_i2_fused_inner_1, i1_i2_fused_inner_1)
+            with tir.init():
+                C[b_1] = tir.float32(0)
+            C[b_1] = (C[b_1] + C_rf[vi1_i2_fused_inner_1, b_1])
+
+    for i0_2 in tir.serial(0, 16):
+        with tir.block([16], "D") as [b_2]:
+            tir.bind(b_2, i0_2)
+            D[b_2] = tir.sqrt(C[b_2], dtype="float32")
 
 
 def test_reduction_rfactor():
@@ -248,7 +294,7 @@ def test_reduction_rfactor():
     c = tvm.nd.array(np.zeros((128, 128), dtype="float32"))
     f(a, b, c)
     c_np = np.matmul(a_np, b_np.T)
-    np.testing.assert_allclose(c.asnumpy(), c_np, rtol=1e-4, atol=1e-4)
+    tvm.testing.assert_allclose(c.asnumpy(), c_np, rtol=1e-4, atol=1e-4)
 
     # Test 2
     s = tir.create_schedule(square_sum)
@@ -263,7 +309,24 @@ def test_reduction_rfactor():
     c = tvm.nd.array(np.zeros((16, ), dtype="float32"))
     f(a, c)
     c_np = np.sum(a_np * a_np, axis=(1, 2))
-    np.testing.assert_allclose(c.asnumpy(), c_np, rtol=1e-4, atol=1e-4)
+    tvm.testing.assert_allclose(c.asnumpy(), c_np, rtol=1e-4, atol=1e-4)
+
+    # Test 3
+    s = tir.create_schedule(square_sum_square_root)
+    C = s.get_block("C")
+    b, i, j = s.get_axes(C)
+    fuse = s.fuse(i, j)
+    fo, fi = s.split(fuse, factor=1)
+    wb = s.rfactor(fi, 0)
+    tvm.ir.assert_structural_equal(s.func, square_sum_square_root_rfactor)
+
+    f = tvm.build(s.func, target="llvm")
+    a_np = np.random.uniform(size=(16, 256, 256)).astype("float32")
+    a = tvm.nd.array(a_np)
+    c = tvm.nd.array(np.zeros((16, ), dtype="float32"))
+    f(a, c)
+    c_np = np.sqrt(np.sum(a_np * a_np, axis=(1, 2)))
+    tvm.testing.assert_allclose(c.asnumpy(), c_np, rtol=1e-4, atol=1e-4)
 
 
 @tvm.script.tir
