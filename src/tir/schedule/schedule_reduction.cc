@@ -566,7 +566,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   For rf_loop = GetRef<For>(loop);
   rf_loop.CopyOnWrite()->body = rf_body;
   rf_body = rf_loop;
-  if (!top) {
+  if (!top.defined()) {
     top = loops[0];
   }
 
