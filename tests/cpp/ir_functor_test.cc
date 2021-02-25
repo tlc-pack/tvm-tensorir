@@ -229,6 +229,17 @@ TEST(IRF, StmtMutator) {
     // the seq get flattened
     ICHECK(body.as<SeqStmtNode>()->seq[0].as<AllocateNode>()->extents.get() != extentptr);
   }
+
+  {
+    Stmt body = fmakealloc();
+    // construct block and block_realize
+    Block block = Block({}, {}, {}, "block", body, body);
+    Stmt block_realize = BlockRealize({}, IntImm(DataType::Int(1), 1), block);
+    body = v(std::move(block_realize));
+    // the body should be changed
+    ICHECK(body.as<BlockRealizeNode>()->block->body.as<AllocateNode>()->extents[1].same_as(x));
+    ICHECK(body.as<BlockRealizeNode>()->block->init.as<AllocateNode>()->extents[1].same_as(x));
+  }
 }
 
 int main(int argc, char** argv) {

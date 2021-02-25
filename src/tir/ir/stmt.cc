@@ -606,15 +606,12 @@ BufferRegion::BufferRegion(Buffer buffer, Array<Range> region) {
   data_ = std::move(node);
 }
 
-BufferRegion::BufferRegion(Buffer buffer) {
+BufferRegion BufferRegion::FullRegion(Buffer buffer) {
   Array<Range> region;
   for (const PrimExpr& extent : buffer->shape) {
     region.push_back(Range::FromMinExtent(0, extent));
   }
-  ObjectPtr<BufferRegionNode> node = make_object<BufferRegionNode>();
-  node->buffer = std::move(buffer);
-  node->region = std::move(region);
-  data_ = std::move(node);
+  return BufferRegion(buffer, region);
 }
 
 TVM_REGISTER_GLOBAL("tir.BufferRegion").set_body_typed([](Buffer buffer, Array<Range> region) {
@@ -680,7 +677,7 @@ TVM_REGISTER_NODE_TYPE(BlockNode);
 BlockRealize::BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block, Span span) {
   ICHECK_EQ(block->iter_vars.size(), values.size());
   ObjectPtr<BlockRealizeNode> node = make_object<BlockRealizeNode>();
-  node->binding_values = std::move(values);
+  node->iter_values = std::move(values);
   node->predicate = std::move(predicate);
   node->block = std::move(block);
   node->span = std::move(span);
@@ -688,13 +685,8 @@ BlockRealize::BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block blo
 }
 
 TVM_REGISTER_GLOBAL("tir.BlockRealize")
-    .set_body_typed([](Array<PrimExpr> values, PrimExpr predicate, Block block, Span span) {
-      if (!predicate.dtype().is_bool()) {
-        // To support python ir_builder
-        CHECK(is_one(predicate));
-        predicate = IntImm(DataType::Bool(), 1);
-      }
-      return BlockRealize(values, predicate, block, span);
+    .set_body_typed([](Array<PrimExpr> iter_values, PrimExpr predicate, Block block, Span span) {
+      return BlockRealize(iter_values, predicate, block, span);
     });
 
 TVM_REGISTER_NODE_TYPE(BlockRealizeNode);

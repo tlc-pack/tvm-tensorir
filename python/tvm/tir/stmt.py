@@ -26,14 +26,14 @@ Each statement node have subfields that can be visited from python side.
     assert isinstance(st, tvm.tir.stmt.Store)
     assert(st.buffer_var == a)
 """
-from typing import Dict, List, Optional
+from typing import List, Optional, Mapping
 from enum import IntEnum
 import tvm._ffi
 
 from tvm.runtime import Object
+from tvm.ir import Span, PrimExpr, Range
 from . import _ffi_api
 from .buffer import Buffer
-from tvm.ir import Span, PrimExpr, Range
 from .expr import IterVar
 
 
@@ -446,10 +446,7 @@ class BufferRegion(Object):
         The region array of the buffer region
     """
 
-    buffer: Buffer
-    region: List[Range]
-
-    def __init__(self, buffer, region):
+    def __init__(self, buffer: Buffer, region: List[Range]):
         self.__init_handle_by_constructor__(_ffi_api.BufferRegion, buffer, region)
 
 
@@ -466,10 +463,7 @@ class MatchBufferRegion(Object):
         The region of source buffer
     """
 
-    buffer: Buffer
-    source: BufferRegion
-
-    def __init__(self, buffer, source):
+    def __init__(self, buffer: Buffer, source: BufferRegion):
         self.__init_handle_by_constructor__(_ffi_api.MatchBufferRegion, buffer, source)
 
 
@@ -506,38 +500,26 @@ class Block(Stmt):
     match_buffers: Optional[List[MatchBufferRegion]]
         The subregion buffer match
 
-    annotations: Optional[Dict[str, Object]]
+    annotations: Optional[Mapping[str, Object]]
         Additional annotation hints.
 
-    span: span : Optional[Span]
+    span : Optional[Span]
         The location of this block in the source code.
     """
 
-    iter_vars: List[IterVar]
-    reads: List[BufferRegion]
-    writes: List[BufferRegion]
-    name_hint: str
-    body: Stmt
-    init: Optional[Stmt]
-    exec_scope: Optional[str]
-    alloc_buffers: Optional[List[Buffer]]
-    match_buffers: Optional[List[MatchBufferRegion]]
-    annotations: Optional[Dict[str, Object]]
-    span: Optional[Span]
-
     def __init__(
         self,
-        iter_vars,
-        reads,
-        writes,
-        name_hint,
-        body,
-        init=None,
-        exec_scope="",
-        alloc_buffers=None,
-        match_buffers=None,
-        annotations=None,
-        span=None,
+        iter_vars: List[IterVar],
+        reads: List[BufferRegion],
+        writes: List[BufferRegion],
+        name_hint: str,
+        body: Stmt,
+        init: Optional[Stmt] = None,
+        exec_scope: Optional[str] = "",
+        alloc_buffers: Optional[List[Buffer]] = None,
+        match_buffers: Optional[List[MatchBufferRegion]] = None,
+        annotations: Optional[Mapping[str, Object]] = None,
+        span: Optional[Span] = None,
     ):
         self.__init_handle_by_constructor__(
             _ffi_api.Block,
@@ -561,7 +543,7 @@ class BlockRealize(Stmt):
 
     Parameters
     ----------
-    values : List[PrimExpr]
+    iter_values : List[PrimExpr]
         The binding value of the block var.
 
     predicate : PrimExpr
@@ -570,14 +552,20 @@ class BlockRealize(Stmt):
     block : Block
         The block to realize
 
+    span : Optional[Span]
+        The location of this block_realize in the source code.
     """
 
-    values: List[PrimExpr]
-    predicate: PrimExpr
-    block: Block
-
-    def __init__(self, values, predicate, block, span=None):
-        self.__init_handle_by_constructor__(_ffi_api.BlockRealize, values, predicate, block, span)
+    def __init__(
+        self,
+        iter_values: List[PrimExpr],
+        predicate: PrimExpr,
+        block: Block,
+        span: Optional[Span] = None,
+    ):
+        self.__init_handle_by_constructor__(
+            _ffi_api.BlockRealize, iter_values, predicate, block, span
+        )
 
 
 def stmt_seq(*args):

@@ -906,7 +906,7 @@ class Prefetch : public Stmt {
 };
 
 /*!
- * \brief A sub-region of a specific buffer.
+ * \brief A specific buffer to represent multi-dimensional region access.
  */
 class BufferRegionNode : public Object {
  public:
@@ -941,13 +941,20 @@ class BufferRegionNode : public Object {
  */
 class BufferRegion : public ObjectRef {
  public:
-  TVM_DLL explicit BufferRegion(Buffer buffer);
   TVM_DLL explicit BufferRegion(Buffer buffer, Array<Range> region);
+  /*! \brief Create a BufferRegion which is full of the buffer. */
+  static BufferRegion FullRegion(Buffer buffer);
   TVM_DEFINE_OBJECT_REF_METHODS(BufferRegion, ObjectRef, BufferRegionNode);
 };
 
 /*!
- * \brief Match part of buffer region into a target buffer
+ * \brief Match introduces a constraint that the source buffer region can be remapped to the data
+ * layout specified by the buffer field. The constraint can be checked in later part of lowering (or
+ * optionally during runtime).
+ *
+ * MatchBufferRegion provides a mechanism to represent data layout and compactness constraints in
+ * low-level hardware primitives in the IR and defer the check after the sequence of
+ * transformations.
  */
 class MatchBufferRegionNode : public Object {
  public:
@@ -987,7 +994,7 @@ class MatchBufferRegion : public ObjectRef {
 };
 
 /*!
- * \brief A block is the basic schedule unit in tir schedule
+ * \brief A block is a basic schedule unit in TIR.
  * \code
  *
  *  with tir.block([extent0, extent1, ...], name) as [v0, v1, ...]:
@@ -1021,7 +1028,11 @@ class BlockNode : public StmtNode {
   std::string name_hint;
   /*! \brief The body of the block. */
   Stmt body;
-  /*! \brief The init part of reduction block */
+  /*! \brief The init statement is executed during the first iteration of reduction loops in a
+   *  reduction block. The optional init field allows us to represent initialization and
+   *  reduction update in a single block and transform them collectively.
+   *  We also provide primitives to decompose the init into a separate block during lowering.
+   */
   Optional<Stmt> init;
   /*! \brief The block execution scope. */
   String exec_scope;
@@ -1095,30 +1106,31 @@ class Block : public Stmt {
 };
 
 /*!
- * \brief A block realization node storing the parameters to realize a block
+ * \brief A block realization node represents execution of the block at the binding values.
  */
 class BlockRealizeNode : public StmtNode {
  public:
   /*! \brief The corresponding value of the iter vars. */
-  Array<PrimExpr> binding_values;
-  /*! \brief The predicate of the block. */
+  Array<PrimExpr> iter_values;
+  /*! \brief The predicate of the block realization, the block will only be executed when the
+   * predicate is true. */
   PrimExpr predicate;
   /*! \brief The block to be realized. */
   Block block;
 
   void VisitAttrs(AttrVisitor* v) {
-    v->Visit("binding_values", &binding_values);
+    v->Visit("iter_values", &iter_values);
     v->Visit("predicate", &predicate);
     v->Visit("block", &block);
   }
 
   bool SEqualReduce(const BlockRealizeNode* other, SEqualReducer equal) const {
-    return equal(binding_values, other->binding_values) && equal(predicate, other->predicate) &&
+    return equal(iter_values, other->iter_values) && equal(predicate, other->predicate) &&
         equal(block, other->block);
   }
 
   void SHashReduce(SHashReducer hash_reduce) const {
-    hash_reduce(binding_values);
+    hash_reduce(iter_values);
     hash_reduce(predicate);
     hash_reduce(block);
   }
@@ -1133,7 +1145,7 @@ class BlockRealizeNode : public StmtNode {
  */
 class BlockRealize : public Stmt {
  public:
-  TVM_DLL explicit BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block,
+  TVM_DLL explicit BlockRealize(Array<PrimExpr> iter_values, PrimExpr predicate, Block block,
                                 Span = Span());
 
   TVM_DEFINE_OBJECT_REF_METHODS(BlockRealize, Stmt, BlockRealizeNode);
