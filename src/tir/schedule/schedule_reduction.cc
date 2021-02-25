@@ -324,7 +324,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   std::unordered_set<const VarNode*> data_par_iters, reduce_iters;
   /*! \brief The index of block vars which touch the rfactor loop. */
   std::unordered_set<int> touch_rfactor_loop;
-  for (size_t i = 0; i < block->iter_vars.size(); ++i) {
+  for (int i = 0; i < static_cast<int>(block->iter_vars.size()); ++i) {
     std::unordered_set<const VarNode*>* set = nullptr;
     if (block->iter_vars[i]->iter_type == IterVarType::kDataPar) {
       set = &data_par_iters;
@@ -392,7 +392,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   rf_bindings.push_back(loop->loop_var);
 
   // Create other new block vars.
-  for (size_t i = 0; i < block->iter_vars.size(); ++i) {
+  for (int i = 0; i < static_cast<int>(block->iter_vars.size()); ++i) {
     if (block->iter_vars[i]->iter_type == IterVarType::kDataPar) {
       if (is_one(block->iter_vars[i]->dom->extent)) {
         // If the extent of this block var is 1, we can replace the block var with its min.
@@ -489,28 +489,31 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   rf_block_realize.CopyOnWrite()->binding_values = rf_bindings;
   // Finish constructing the rfactor block.
 
-  // Start creating the write back block.
-  BlockRealize wb_block_realize = block_realize;
-  Block wb_block = block;
+  // Start constructing the write back block.
+  // The new block vars and their bindings of the write back block.
+  std::vector<IterVar> wb_block_iters;
   std::vector<PrimExpr> wb_bindings;
-  std::vector<IterVar> wb_iters;
   var_map.clear();
-  for (size_t i = 0; i < block->iter_vars.size(); ++i) {
+
+  // Create new block vars.
+  for (int i = 0; i < static_cast<int>(block->iter_vars.size()); ++i) {
     if (block->iter_vars[i]->iter_type == IterVarType::kDataPar) {
-      wb_iters.emplace_back(block->iter_vars[i]->dom, block->iter_vars[i]->var.copy_with_suffix(""),
-                            block->iter_vars[i]->iter_type);
+      wb_block_iters.emplace_back(block->iter_vars[i]->dom,
+                                  block->iter_vars[i]->var.copy_with_suffix(""),
+                                  block->iter_vars[i]->iter_type);
       wb_bindings.push_back(block_realize->binding_values[i]);
-      var_map[block->iter_vars[i]->var.get()] = wb_iters.back();
+      var_map[block->iter_vars[i]->var.get()] = wb_block_iters.back();
     }
   }
-  wb_iters.emplace_back(Range::FromMinExtent(loop->min, loop->extent),
-                        Var("v" + loop->loop_var->name_hint), IterVarType::kCommReduce);
+  wb_block_iters.emplace_back(Range::FromMinExtent(loop->min, loop->extent),
+                              Var("v" + loop->loop_var->name_hint), IterVarType::kCommReduce);
   wb_bindings.push_back(loop->loop_var);
-  var_map[rf_block_var->var.get()] = wb_iters.back();
+  var_map[rf_block_var->var.get()] = wb_block_iters.back();
 
+  // Create other parts of the write back block/block_realize.
   auto wb_region = [&](const BufferLoad& load) {
     std::vector<Range> region;
-    for (const auto& index : load->indices) {
+    for (const PrimExpr& index : load->indices) {
       region.push_back(Range::FromMinExtent(index, 1));
     }
     return BufferRegion(load->buffer, region);
@@ -521,20 +524,23 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
       Substitute((PrimExpr)BufferLoad(rf_update->buffer, rf_update->indices), var_map));
   wb_update.CopyOnWrite()->value = reducer.value().get()->operator()({wb_lhs}, {wb_rhs})[0];
   wb_update = Downcast<BufferStore>(Substitute((Stmt)wb_update, var_map));
+  BlockRealize wb_block_realize = block_realize;
+  Block wb_block = block;
   wb_block.CopyOnWrite()->body = wb_update;
   wb_block.CopyOnWrite()->reads = {wb_region(wb_lhs), wb_region(wb_rhs)};
   wb_block.CopyOnWrite()->writes = {wb_region(wb_lhs)};
-  wb_block.CopyOnWrite()->iter_vars = wb_iters;
+  wb_block.CopyOnWrite()->iter_vars = wb_block_iters;
   wb_block.CopyOnWrite()->init = BufferStore(wb_update->buffer, init->value, wb_update->indices);
   wb_block_realize.CopyOnWrite()->block = wb_block;
   wb_block_realize.CopyOnWrite()->binding_values = wb_bindings;
-  // create loops outside write back block and rfactor block
+
+  // Create loops outside the write back block and rfactor block.
   Stmt rf_body = rf_block_realize, wb_body = wb_block_realize;
   Var wb_loop_var = loop->loop_var.copy_with_suffix("");
   wb_body = For(wb_loop_var, loop->min, loop->extent, ForKind::kSerial,
                 SubstituteInScope(wb_body, {{loop->loop_var.get(), wb_loop_var.get()}}));
   Optional<StmtSRef> top;
-  for (int i = loops.size() - 1; i >= 0; --i) {
+  for (int i = static_cast<int>(loops.size()) - 1; i >= 0; --i) {
     const auto* l = loops[i]->GetStmt<ForNode>();
     ICHECK(l) << "InternalError: GetAxes returns a block sref";
     if (l->body->IsInstance<SeqStmtNode>()) {
@@ -543,13 +549,13 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
       break;
     }
     if (l != loop) {
-      // copy this loop outside rfactor block
+      // Copy this loop outside rfactor block.
       For rf_loop = GetRef<For>(l);
       rf_loop.CopyOnWrite()->body = rf_body;
       rf_body = rf_loop;
     }
     if (data_par_iters.count(l->loop_var.get())) {
-      // copy this loop outside write back block
+      // Copy this loop outside write back block.
       wb_loop_var = l->loop_var.copy_with_suffix("");
       wb_body = For(wb_loop_var, l->min, l->extent, ForKind::kSerial,
                     SubstituteInScope(wb_body, {{l->loop_var.get(), wb_loop_var.get()}}));
@@ -562,14 +568,14 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
     top = loops[0];
   }
 
-  // insert rf block and wb block under top
-  auto insert = [](Stmt body, int64_t pos, std::vector<Stmt> input) -> SeqStmt {
+  // Insert the rfactor block and the write back block under the top block.
+  auto insert = [](const Stmt& body, int64_t pos, std::vector<Stmt> input) -> SeqStmt {
     if (pos == -1) {
       return SeqStmt(input);
     }
     std::vector<Stmt> res;
     if (const auto* op = body.as<SeqStmtNode>()) {
-      for (const auto& stmt : op->seq) {
+      for (const Stmt& stmt : op->seq) {
         res.push_back(stmt);
       }
     } else {
@@ -592,13 +598,13 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
     this->Replace(GetRef<StmtSRef>(top.value()->parent), new_block,
                   {{new_block, GetRef<Block>(parent)}, {wb_block, block}});
   }
-  // insert rf buffer into scope block's allocation
+  // Insert the rfactor buffer into the scope block's allocation.
   StmtSRef scope_sref = GetParentBlockSRef(block_sref);
   Block scope_block = GetRef<Block>(scope_sref->GetStmt<BlockNode>()),
         new_scope_block = scope_block;
   new_scope_block.CopyOnWrite()->alloc_buffers.push_back(rf_buf);
   this->Replace(scope_sref, new_scope_block, {{new_scope_block, scope_block}});
-  // Update scope information
+  // Update scope information.
   UpdateScope(scope_sref->stmt, this->stmt2ref, &this->scopes);
 
   return stmt2ref.at(rf_block.get());
