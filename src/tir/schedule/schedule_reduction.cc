@@ -153,8 +153,8 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
                         /*extent=*/parent->extent,
                         /*kind=*/parent->kind,
                         /*body=*/SeqStmt::Flatten(Array<Stmt>{body, parent->body}),
-                        /*thread_binding*/parent->thread_binding,
-                        /*annotations*/parent->annotations),
+                        /*thread_binding*/ parent->thread_binding,
+                        /*annotations*/ parent->annotations),
                     {});
     } else if (const auto* parent = loop_sref->parent->GetStmt<BlockNode>()) {
       auto block_node = make_object<BlockNode>(*parent);
@@ -370,7 +370,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
     const auto* l = l_sref->GetStmt<ForNode>();
     ICHECK(l) << "InternalError: GetAxes returns a block sref";
     CHECK(!data_par_iters.count(l->loop_var.get()) || !reduce_iters.count(l->loop_var.get()))
-      << "ValueError: loop " << l->loop_var << " is related with both data_par and reduce iters ";
+        << "ValueError: loop " << l->loop_var << " is related with both data_par and reduce iters ";
     loop_vars[l->loop_var.get()] = GetRef<For>(l);
   }
 
@@ -400,8 +400,8 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
       } else {
         // Otherwise, create a new data_par block var and its corresponding binding.
         IterVar new_block_var = block->iter_vars[i];
-        new_block_var.CopyOnWrite()->dom = Range::FromMinExtent(block->iter_vars[i]->dom->min,
-                                                           block->iter_vars[i]->dom->extent);
+        new_block_var.CopyOnWrite()->dom =
+            Range::FromMinExtent(block->iter_vars[i]->dom->min, block->iter_vars[i]->dom->extent);
         rf_block_iters.push_back(new_block_var);
         rf_bindings.push_back(block_realize->binding_values[i]);
       }
@@ -410,27 +410,28 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
       if (touch_rfactor_loop.find(i) != touch_rfactor_loop.end()) {
         // This block var touches the rfactor loop.
         const PrimExpr& binding = block_realize->binding_values[i];
-        PreOrderVisit(binding, [&loop_vars, &iter_map, &rf_block_iters, &rf_bindings] (const ObjectRef& node) {
-          if (const auto* var = node.as<VarNode>()) {
-            auto it = loop_vars.find(var);
-            if (it == loop_vars.end()) {
-              // `var` is not a loop var. So go back.
-              return false;
-            }
-            const For& l = it->second;
-            if (iter_map.find(var) == iter_map.end()) {
-              // Haven't created the new block var for `var`. So here we create it and append it
-              // and its binding to `rf_block_iters` and `rf_bindings`.
-              IterVar new_iter_var(Range::FromMinExtent(l->min, l->extent),
-                                   Var("v" + l->loop_var->name_hint), IterVarType::kCommReduce);
-              iter_map[var] = new_iter_var;
-              rf_block_iters.push_back(new_iter_var);
-              rf_bindings.push_back(GetRef<Var>(var));
-            }
-            return false;
-          }
-          return true;
-        });
+        PreOrderVisit(
+            binding, [&loop_vars, &iter_map, &rf_block_iters, &rf_bindings](const ObjectRef& node) {
+              if (const auto* var = node.as<VarNode>()) {
+                auto it = loop_vars.find(var);
+                if (it == loop_vars.end()) {
+                  // `var` is not a loop var. So go back.
+                  return false;
+                }
+                const For& l = it->second;
+                if (iter_map.find(var) == iter_map.end()) {
+                  // Haven't created the new block var for `var`. So here we create it and append it
+                  // and its binding to `rf_block_iters` and `rf_bindings`.
+                  IterVar new_iter_var(Range::FromMinExtent(l->min, l->extent),
+                                       Var("v" + l->loop_var->name_hint), IterVarType::kCommReduce);
+                  iter_map[var] = new_iter_var;
+                  rf_block_iters.push_back(new_iter_var);
+                  rf_bindings.push_back(GetRef<Var>(var));
+                }
+                return false;
+              }
+              return true;
+            });
         // Substitute the original binding with new block vars. Store the result expression
         // in `var_map` for future substitution.
         var_map[block->iter_vars[i]->var.get()] = Substitute(binding, iter_map);
@@ -438,8 +439,8 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
         // This block var doesn't the rfactor loop. So create a new data_par block var and its
         // corresponding binding.
         IterVar new_block_var = block->iter_vars[i];
-        new_block_var.CopyOnWrite()->dom = Range::FromMinExtent(block->iter_vars[i]->dom->min,
-                                                                block->iter_vars[i]->dom->extent);
+        new_block_var.CopyOnWrite()->dom =
+            Range::FromMinExtent(block->iter_vars[i]->dom->min, block->iter_vars[i]->dom->extent);
         rf_block_iters.push_back(new_block_var);
         rf_bindings.push_back(block_realize->binding_values[i]);
       }
@@ -533,6 +534,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   wb_block.CopyOnWrite()->init = BufferStore(wb_update->buffer, init->value, wb_update->indices);
   wb_block_realize.CopyOnWrite()->block = wb_block;
   wb_block_realize.CopyOnWrite()->binding_values = wb_bindings;
+  // Finish constructing the write back block.
 
   // Create loops outside the write back block and rfactor block.
   Stmt rf_body = rf_block_realize, wb_body = wb_block_realize;
