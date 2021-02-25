@@ -450,6 +450,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   rf_block.CopyOnWrite()->reads = rf_reads;
   rf_block.CopyOnWrite()->writes = rf_writes;
   rf_block.CopyOnWrite()->init = BufferStore(rf_buf, init->value, rf_indices);
+  rf_block.CopyOnWrite()->name_hint = rf_block->name_hint + "_rf";
   rf_block_realize.CopyOnWrite()->block = rf_block;
   rf_block_realize.CopyOnWrite()->binding_values = rf_bindings;
   // create write back block
