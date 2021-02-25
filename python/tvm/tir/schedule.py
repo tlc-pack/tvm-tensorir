@@ -451,7 +451,7 @@ class Schedule(Object):
         new_block : StmtSRef
              the sref of new block
         """
-        return _ffi_api_schedule.ScheduleRfactor(self, loop, factor_axis)
+        return _ffi_api_schedule.ScheduleRFactor(self, loop, factor_axis)
 
     def pragma(self, loop, pragma_type, pragma_value):
         """add annotation to a loop

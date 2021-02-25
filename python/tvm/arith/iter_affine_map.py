@@ -128,7 +128,7 @@ def subspace_division(leaf_iters, bindings, root_iters, sub_iters, predicate=Tru
                  x is a mapped iter from sub_ters
 
     For example, z*12 + y*3 + x + c = (z*4+y)*3 + x, if sub_iters={x}
-    This operation can used in blockize, tensorize, rfactor
+    This operation can used in blockize, tensorize
 
     Parameters
     ----------
