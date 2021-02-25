@@ -942,8 +942,14 @@ class BufferRegionNode : public Object {
 class BufferRegion : public ObjectRef {
  public:
   TVM_DLL explicit BufferRegion(Buffer buffer, Array<Range> region);
-  /*! \brief Create a BufferRegion which is full of the buffer. */
-  static BufferRegion FullRegion(Buffer buffer);
+
+  /*!
+   * \brief Create a BufferRegion which is full of the buffer.
+   * \param buffer The buffer to generate full BufferRegion.
+   * \return The bufferRegion which covers all region of the given buffer
+   */
+  TVM_DLL static BufferRegion FullRegion(Buffer buffer);
+
   TVM_DEFINE_OBJECT_REF_METHODS(BufferRegion, ObjectRef, BufferRegionNode);
 };
 
@@ -990,6 +996,7 @@ class MatchBufferRegionNode : public Object {
 class MatchBufferRegion : public ObjectRef {
  public:
   TVM_DLL explicit MatchBufferRegion(Buffer buffer, BufferRegion);
+
   TVM_DEFINE_OBJECT_REF_METHODS(MatchBufferRegion, ObjectRef, MatchBufferRegionNode);
 };
 
@@ -1028,7 +1035,8 @@ class BlockNode : public StmtNode {
   std::string name_hint;
   /*! \brief The body of the block. */
   Stmt body;
-  /*! \brief The init statement is executed during the first iteration of reduction loops in a
+  /*!
+   * \brief The init statement is executed during the first iteration of reduction loops in a
    *  reduction block. The optional init field allows us to represent initialization and
    *  reduction update in a single block and transform them collectively.
    *  We also provide primitives to decompose the init into a separate block during lowering.
@@ -1112,8 +1120,10 @@ class BlockRealizeNode : public StmtNode {
  public:
   /*! \brief The corresponding value of the iter vars. */
   Array<PrimExpr> iter_values;
-  /*! \brief The predicate of the block realization, the block will only be executed when the
-   * predicate is true. */
+  /*!
+   * \brief The predicate of the block realization, the block will only be executed when the
+   * predicate is true.
+   */
   PrimExpr predicate;
   /*! \brief The block to be realized. */
   Block block;

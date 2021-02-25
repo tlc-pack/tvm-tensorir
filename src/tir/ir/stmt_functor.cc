@@ -168,7 +168,11 @@ class StmtMutator::Internal {
       PrimExpr min = self->VisitExpr(iter_var->dom->min);
       PrimExpr extent = self->VisitExpr(iter_var->dom->extent);
       Range dom = Range(min, extent);
-      return IterVar(dom, iter_var->var, iter_var->iter_type, iter_var->thread_tag);
+      if (min.same_as(iter_var->dom->min) && extent.same_as(iter_var->dom->extent)) {
+        return iter_var;
+      } else {
+        return IterVar(dom, iter_var->var, iter_var->iter_type, iter_var->thread_tag);
+      }
     };
     return MutateArray(self, arr, fmutate);
   }
@@ -199,7 +203,11 @@ class StmtMutator::Internal {
   static Array<BufferRegion> Mutate(StmtMutator* self, const Array<BufferRegion>& arr) {
     auto fmutate = [self](const BufferRegion& buffer_region) {
       Array<Range> region = Mutate(self, buffer_region->region);
-      return BufferRegion(buffer_region->buffer, region);
+      if (region.same_as(buffer_region->region)) {
+        return buffer_region;
+      } else {
+        return BufferRegion(buffer_region->buffer, region);
+      }
     };
     return MutateArray(self, arr, fmutate);
   }

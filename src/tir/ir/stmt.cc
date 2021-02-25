@@ -608,7 +608,7 @@ BufferRegion::BufferRegion(Buffer buffer, Array<Range> region) {
 
 BufferRegion BufferRegion::FullRegion(Buffer buffer) {
   Array<Range> region;
-  for (const PrimExpr& extent : buffer->shape) {
+  for (PrimExpr extent : buffer->shape) {
     region.push_back(Range::FromMinExtent(0, extent));
   }
   return BufferRegion(buffer, region);
