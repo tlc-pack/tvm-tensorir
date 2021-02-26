@@ -113,7 +113,7 @@ Block MakeCacheStage(const BufferRegion& cache_region, CacheStageInfo* info,
 BufferRegion GetOnlyWriteRegion(const StmtSRef& block_sref) {
   const auto* block = block_sref->GetStmt<BlockNode>();
   ICHECK(block != nullptr) << "TypeError: Expect a block, but gets: "
-                          << block_sref->stmt->GetTypeKey();
+                           << block_sref->stmt->GetTypeKey();
   CHECK_EQ(block->writes.size(), 1) << "ValueError: Only one write buffer is allowed in the block";
   return block->writes[0];
 }
@@ -127,10 +127,10 @@ BufferRegion GetOnlyWriteRegion(const StmtSRef& block_sref) {
 bool IsOutputBlock(const StmtSRef& block_sref, const StmtSRef& scope_sref) {
   const auto* block = block_sref->GetStmt<BlockNode>();
   ICHECK(block != nullptr) << "TypeError: Expect a block, but gets: "
-                          << block_sref->stmt->GetTypeKey();
+                           << block_sref->stmt->GetTypeKey();
   const auto* scope = scope_sref->GetStmt<BlockNode>();
   ICHECK(scope != nullptr) << "TypeError: Expect a block, but gets: "
-                          << scope_sref->stmt->GetTypeKey();
+                           << scope_sref->stmt->GetTypeKey();
   for (const BufferRegion& x : block->writes) {
     for (const BufferRegion& y : scope->writes) {
       if (x->buffer.same_as(y->buffer)) {
