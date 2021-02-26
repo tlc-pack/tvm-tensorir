@@ -809,9 +809,9 @@ bool NeedsRfactor(const SearchTask& task, const tir::Schedule& sch,
     }
 
     // Cond 3.
-    const auto* loop_i = loops[i]->GetStmt<tir::LoopNode>();
+    const auto* loop_i = loops[i]->GetStmt<tir::ForNode>();
     if (i < static_cast<int>(loops.size()) - 1) {
-      const auto* loop_i1 = loops[i + 1]->GetStmt<tir::LoopNode>();
+      const auto* loop_i1 = loops[i + 1]->GetStmt<tir::ForNode>();
       if (loop_i->body.get() != loop_i1) {
         return false;
       }
