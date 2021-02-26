@@ -204,11 +204,11 @@ bool BlockScopeNode::CanMergeReduction(const StmtSRef& init_sref,
   const auto* init = init_sref->GetStmt<BlockNode>();
   const auto* update = update_sref->GetStmt<BlockNode>();
   ICHECK(init != nullptr) << "InternalError: Scope::CanMergeReduction only accepts tir::Block as "
-                            "init_block, but get type:"
-                         << init_sref->stmt->GetTypeKey();
+                             "init_block, but get type:"
+                          << init_sref->stmt->GetTypeKey();
   ICHECK(update != nullptr) << "InternalError: Scope::CanMergeReduction only accepts tir::Block as "
-                              "update_block, but get type:"
-                           << update_sref->stmt->GetTypeKey();
+                               "update_block, but get type:"
+                            << update_sref->stmt->GetTypeKey();
   // Cond 1. Check the binding of update block is valid
   if (!update_sref->binding_valid) {
     return false;
