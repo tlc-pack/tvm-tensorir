@@ -799,8 +799,6 @@ void ScheduleNode::tensorize(const StmtSRef& loop_sref, const TensorIntrin& intr
   };
   get_element_offset(block_node->reads, impl_block->reads);
   get_element_offset(block_node->writes, impl_block->writes);
-  Block new_block = Downcast<Block>(Substitute(new_stmt, element_offset));
-
   std::unordered_map<Var, PrimExpr, ObjectPtrHash, ObjectPtrEqual> bv_map;
   for (size_t i = 0; i < desc_block->iter_vars.size(); ++i) {
     auto it = comparator.equal_map_.find(desc_block->iter_vars[i]->var);
@@ -810,15 +808,20 @@ void ScheduleNode::tensorize(const StmtSRef& loop_sref, const TensorIntrin& intr
       bv_map[impl_block->iter_vars[i]->var] = 0;
     }
   }
-  Stmt new_body = SubstituteInScope(new_block->body, [&](const VarNode* var) -> PrimExpr {
-    auto it = bv_map.find(GetRef<Var>(var));
-    if (it == bv_map.end())
-      return GetRef<Var>(var);
-    else
-      return it->second;
-  });
+  Stmt new_body = SubstituteInScope(Downcast<Block>(Substitute(new_stmt, element_offset))->body,
+                                    [&](const VarNode* var) -> PrimExpr {
+                                      auto it = bv_map.find(GetRef<Var>(var));
+                                      if (it == bv_map.end())
+                                        return GetRef<Var>(var);
+                                      else
+                                        return it->second;
+                                    });
   // Replace
-  this->Replace(stmt2ref.at(block_realize->block->body.get()), new_body, {});
+  ObjectPtr<BlockNode> new_block_ptr = make_object<BlockNode>(*block_realize->block.get());
+  new_block_ptr->body = new_body;
+  Block new_block(new_block_ptr);
+  this->Replace(stmt2ref.at(block_realize->block.get()), new_block,
+                {{new_block, block_realize->block}});
 }
 
 struct Internal {
