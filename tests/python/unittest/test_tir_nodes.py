@@ -443,6 +443,10 @@ def test_block_blockrealize():
     assert block_realize.predicate == tvm.tir.const(True, "bool")
     assert block_realize.block == block
 
+    # make sure we can print
+    str(block)
+    str(block_realize)
+
 
 if __name__ == "__main__":
     test_intimm_cond()

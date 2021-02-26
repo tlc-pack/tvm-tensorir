@@ -620,6 +620,22 @@ TVM_REGISTER_GLOBAL("tir.BufferRegion").set_body_typed([](Buffer buffer, Array<R
 
 TVM_REGISTER_NODE_TYPE(BufferRegionNode);
 
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+.set_dispatch<BufferRegionNode>([](const ObjectRef& node, ReprPrinter* p) {
+  auto* op = static_cast<const BufferRegionNode*>(node.get());
+  p->stream << op->buffer->name;
+  p->stream << "[";
+  for (size_t i = 0; i < op->region.size(); ++i) {
+    const auto& range = op->region[i];
+    p->Print(range->min);
+    p->stream << ":";
+    p->Print(range->min + range->extent);
+    if (i != op->region.size() - 1) p->stream << ", ";
+  }
+  p->stream << "]";
+
+});
+
 // MatchBufferRegion
 MatchBufferRegion::MatchBufferRegion(Buffer buffer, BufferRegion source) {
   ObjectPtr<MatchBufferRegionNode> node = make_object<MatchBufferRegionNode>();
@@ -633,6 +649,15 @@ TVM_REGISTER_GLOBAL("tir.MatchBufferRegion").set_body_typed([](Buffer buffer, Bu
 });
 
 TVM_REGISTER_NODE_TYPE(MatchBufferRegionNode);
+
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+.set_dispatch<MatchBufferRegionNode>([](const ObjectRef& node, ReprPrinter* p) {
+  auto* op = static_cast<const MatchBufferRegionNode*>(node.get());
+  p->PrintIndent();
+  p->stream << "match_buffer_region " << op->buffer->name << "(";
+  p->Print(op->source);
+  p->stream << ")\n";
+});
 
 // Block
 Block::Block(Array<IterVar> iter_vars,
@@ -673,6 +698,84 @@ TVM_REGISTER_GLOBAL("tir.Block")
 
 TVM_REGISTER_NODE_TYPE(BlockNode);
 
+void PrintBlockTitle(const BlockNode* op, ReprPrinter* p) {
+  p->stream << "block " << op->name_hint << "(";
+  for (size_t i = 0; i < op->iter_vars.size(); i++) {
+    p->Print(op->iter_vars[i]);
+    if (i < op->iter_vars.size() - 1) p->stream << ", ";
+  }
+  p->stream << ")";
+}
+
+void PrintBlockElement(const BlockNode* op, ReprPrinter* p) {
+  // print read/write regions
+  p->PrintIndent();
+  p->stream << "reads(";
+  p->Print(op->reads);
+  p->stream << ")\n";
+  p->PrintIndent();
+  p->stream << "writes(";
+  p->Print(op->writes);
+  p->stream << ")\n";
+  // Print exec_scope
+  if (!op->exec_scope.empty()) {
+    p->PrintIndent();
+    p->stream << "exec_scope(\"" << op->exec_scope << "\")\n";
+  }
+  // Print alloc_buffers
+  for (const auto& alloc_buf : op->alloc_buffers) {
+    p->PrintIndent();
+    p->stream << "alloc_buffer " << alloc_buf->name << "(" << alloc_buf->dtype << "[";
+    for (size_t i = 0; i < alloc_buf->shape.size(); ++i) {
+      if (i > 0) p->stream << ", ";
+      p->Print(alloc_buf->shape[i]);
+    }
+    p->stream << "])\n";
+  }
+  // Print match_buffer_regions
+  for (const auto& match_buf : op->match_buffers) {
+    p->Print(match_buf);
+  }
+  p->PrintIndent();
+  if (!op->annotations.empty()) {
+    p->stream << "attrs(" << op->annotations << ")\n";
+  }
+}
+
+void PrintBlockBody(const BlockNode* op, ReprPrinter* p) {
+  // Print init
+  if (op->init.defined()) {
+    p->PrintIndent();
+    p->stream << "with init() {\n";
+    p->indent += 2;
+    p->Print(op->init.value());
+    p->indent -= 2;
+    p->PrintIndent();
+    p->stream << "}\n";
+  }
+  // Print body
+  p->Print(op->body);
+
+}
+
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+.set_dispatch<BlockNode>([](const ObjectRef& node, ReprPrinter* p) {
+  auto* op = static_cast<const BlockNode*>(node.get());
+  p->PrintIndent();
+  PrintBlockTitle(op, p);
+  p->stream << "{\n";
+  p->indent += 2;
+
+  // Print block elements (e.g. reads/writes, exec_scope, etc)
+  PrintBlockElement(op, p);
+  // Print block init and body
+  PrintBlockBody(op, p);
+
+  p->indent -= 2;
+  p->PrintIndent();
+  p->stream << "}\n";
+});
+
 // BlockRealize
 BlockRealize::BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block, Span span) {
   CHECK_EQ(block->iter_vars.size(), values.size())
@@ -692,7 +795,40 @@ TVM_REGISTER_GLOBAL("tir.BlockRealize")
 
 TVM_REGISTER_NODE_TYPE(BlockRealizeNode);
 
-// TODO(Siyuan): Repr Printer for block/block_realize
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+.set_dispatch<BlockRealizeNode>([](const ObjectRef& node, ReprPrinter* p) {
+  auto* op = static_cast<const BlockRealizeNode*>(node.get());
+  auto* block_op = op->block.get();
+  p->PrintIndent();
+  PrintBlockTitle(block_op, p);
+  p->stream << "{\n";
+  p->indent += 2;
+
+  // Print binding iter_values
+  for (size_t i = 0; i < block_op->iter_vars.size(); ++i) {
+    p->PrintIndent();
+    p->stream << "bind(";
+    p->Print(block_op->iter_vars[i]->var);
+    p->stream << ", ";
+    p->Print(op->iter_values[i]);
+    p->stream << ")\n";
+  }
+  // Print predicate
+  if (!is_one(op->predicate)) {
+    p->PrintIndent();
+    p->stream << "where(";
+    p->Print(op->predicate);
+    p->stream << ")\n";
+  }
+  // Print block elements (e.g. reads/writes, exec_scope, etc)
+  PrintBlockElement(block_op, p);
+  // Print block init and body
+  PrintBlockBody(block_op, p);
+
+  p->indent -= 2;
+  p->PrintIndent();
+  p->stream << "}\n";
+});
 
 PrimExpr TypeAnnotation(DataType dtype, Span span) {
   static auto op = Op::Get("tir.type_annotation");
