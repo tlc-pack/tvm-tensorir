@@ -277,6 +277,34 @@ def test_reduction_allreduce():
     b_np = np.sum(a_np, axis=(1, 2))
     np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-4, atol=1e-4)
 
+    # Test 4
+    s = tir.create_schedule(rowsum_allreduce)
+    thread_x = tir.thread_axis((0, 16), "threadIdx.x")
+
+    B_block = s.get_block("B")
+    ax_ii, ax_i, ax_j = s.get_axes(B_block)
+
+    B_rf = s.rfactor(ax_i, 0)
+    ax_i_rf, ax_ii_rf, ax_j_rf = s.get_axes(B_rf)
+    s.reorder(ax_ii_rf, ax_i_rf, ax_j_rf)
+    ax_i_rf_o, ax_i_rf_i = s.split(ax_i_rf, factor=4)
+
+    s.bind(ax_ii_rf, tir.thread_axis('blockIdx.x'))
+    s.bind(ax_i_rf_o, tir.thread_axis('threadIdx.x'))
+
+    B_rf_local = s.cache_write(B_rf, 0, 'local')
+    s.compute_inline(B_rf)
+
+    s.reverse_compute_at(B_block, ax_i_rf_o)
+
+    f = tvm.build(s.func, target="cuda")
+    a_np = np.random.uniform(size=(16, 16, 16)).astype("float32")
+    a = tvm.nd.array(a_np, ctx)
+    b = tvm.nd.array(np.zeros((16,), dtype="float32"), ctx)
+    f(a, b)
+    b_np = np.sum(a_np, axis=(1, 2))
+    np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-4, atol=1e-4)
+
 
 if __name__ == "__main__":
     test_reduction_roundtrip()
