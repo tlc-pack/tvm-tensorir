@@ -28,7 +28,7 @@
 
 // <bojian/TVM-SymbolicTuning>
 #include "../symtune.h"
-
+#include <tvm/tir/expr_functor.h>
 
 namespace tvm {
 namespace te {
@@ -553,6 +553,19 @@ bool IsRangeSame(const Range input_1, const Range input_2) {
           analyzer.CanProve(input_1->extent == input_2->extent));
 }
 
+// <bojian/TVM-SymbolicTuning>
+bool HasThreadIdx = false;
+
+class ContainsBlockIdx : public ExprVisitor {
+ protected:
+  void VisitExpr_(const VarNode* op) override {
+    if (op->name_hint == "threadIdx.x") {
+      LOG(INFO) << op->name_hint << " located";
+      HasThreadIdx = true;
+    }
+  }
+};
+
 std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Range>& dom_map,
                                      const std::unordered_map<IterVar, PrimExpr>& value_map,
                                      bool skip_ivar_domain,
@@ -591,6 +604,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
   // <bojian/TVM-SymbolicTuning>
   // #if defined(SYMTUNE_SCHED_OPT_NO_DUP_IF_CHECKS)
   PrimExpr prev_predicate;
+  ContainsBlockIdx BlockIdxChecker;
 
   for (const IterVar& iv : stage->all_iter_vars) {
     if (skip_iter.count(iv) || iv->iter_type == kOpaque) continue;
@@ -647,6 +661,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
         if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
           if (stage->origin_op->name.find(".local") !=
               std::string::npos) {
+            BlockIdxChecker(value);
             LOG(INFO) << value;
             if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
               LOG(WARNING) << "\'.local\' spotted in " << stage << ". Assuming it is a cache write "
