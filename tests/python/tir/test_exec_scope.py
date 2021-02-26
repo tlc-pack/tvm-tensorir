@@ -196,14 +196,13 @@ def warp_testcase(a: ty.handle, b: ty.handle) -> None:
                 with tir.block([32, 32], "GPU_Block", exec_scope="gpu_block") as [bx, by]:
                     tir.bind(bx, ax1_outer)
                     tir.bind(by, ax0_outer)
-                    for ty in range(0, 32, annotation={"loop_type": "threadIdx.y"}):
+                    for ty_loop in range(0, 32, annotation={"loop_type": "threadIdx.y"}):
                         with tir.block([32, 2048], "", exec_scope="gpu_warp") as [wx, wy]:
                             tir.bind(wx, bx)
-                            tir.bind(wy, by * 32 + ty)
-                            for tx in range(0, 32, annotation={"loop_type": "threadIdx.x"}):
-                                with tir.block([2048, 2048], "", exec_scope="gpu_thread") as [tx,
-                                                                                              ty]:
-                                    tir.bind(tx, wx * 32 + tx)
+                            tir.bind(wy, by * 32 + ty_loop)
+                            for tx_loop in range(0, 32, annotation={"loop_type": "threadIdx.x"}):
+                                with tir.block([2048, 2048], "", exec_scope="gpu_thread") as [tx, ty]:
+                                    tir.bind(tx, wx * 32 + tx_loop)
                                     tir.bind(ty, wy)
                                     B[tx, ty] = A[tx, ty] + 1.0
 
@@ -221,14 +220,13 @@ def warp_fail_case_1(a: ty.handle, b: ty.handle) -> None:
                 with tir.block([32, 32], "GPU_Block", exec_scope="gpu_block") as [bx, by]:
                     tir.bind(bx, ax1_outer)
                     tir.bind(by, ax0_outer)
-                    for ty in range(0, 64, annotation={"loop_type": "threadIdx.y"}):
+                    for ty_loop in range(0, 64, annotation={"loop_type": "threadIdx.y"}):
                         with tir.block([32, 2048], "", exec_scope="gpu_warp") as [wx, wy]:
                             tir.bind(wx, bx)
-                            tir.bind(wy, by * 32 + ty)
-                            for tx in range(0, 64, annotation={"loop_type": "threadIdx.x"}):
-                                with tir.block([2048, 2048], "", exec_scope="gpu_thread") as [tx,
-                                                                                              ty]:
-                                    tir.bind(tx, wx * 32 + tx)
+                            tir.bind(wy, by * 32 + ty_loop)
+                            for tx_loop in range(0, 64, annotation={"loop_type": "threadIdx.x"}):
+                                with tir.block([2048, 2048], "", exec_scope="gpu_thread") as [tx, ty]:
+                                    tir.bind(tx, wx * 32 + tx_loop)
                                     tir.bind(ty, wy)
                                     B[tx, ty] = A[tx, ty] + 1.0
 
@@ -246,11 +244,11 @@ def warp_fail_case_2(a: ty.handle, b: ty.handle) -> None:
                 with tir.block([32, 32], "GPU_Block", exec_scope="gpu_block") as [bx, by]:
                     tir.bind(bx, ax1_outer)
                     tir.bind(by, ax0_outer)
-                    for ty in range(0, 32, annotation={"loop_type": "threadIdx.y"}):
-                        for tx in range(0, 32, annotation={"loop_type": "threadIdx.x"}):
+                    for ty_loop in range(0, 32, annotation={"loop_type": "threadIdx.y"}):
+                        for tx_loop in range(0, 32, annotation={"loop_type": "threadIdx.x"}):
                             with tir.block([2048, 2048], "", exec_scope="gpu_warp") as [wx, wy]:
-                                tir.bind(wx, bx * 32 + tx)
-                                tir.bind(wy, by * 32 + ty)
+                                tir.bind(wx, bx * 32 + tx_loop)
+                                tir.bind(wy, by * 32 + ty_loop)
                                 with tir.block([2048, 2048], "", exec_scope="gpu_thread") as [tx, ty]:
                                     tir.bind(tx, wx)
                                     tir.bind(ty, wy)
