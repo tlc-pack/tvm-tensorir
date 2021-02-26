@@ -440,11 +440,14 @@ class BufferRegion(Object):
     Parameters
     ----------
     buffer : Buffer
-        The tensor of the buffer region
+        The buffer of the buffer region
 
     region : List[Range]
         The region array of the buffer region
     """
+
+    buffer: Buffer
+    region: List[Range]
 
     def __init__(self, buffer: Buffer, region: List[Range]):
         self.__init_handle_by_constructor__(_ffi_api.BufferRegion, buffer, region)
@@ -463,6 +466,9 @@ class MatchBufferRegion(Object):
         The region of source buffer
     """
 
+    buffer: Buffer
+    source: BufferRegion
+
     def __init__(self, buffer: Buffer, source: BufferRegion):
         self.__init_handle_by_constructor__(_ffi_api.MatchBufferRegion, buffer, source)
 
@@ -477,10 +483,10 @@ class Block(Stmt):
         The block Variable.
 
     reads : List[BufferRegion]
-        The read buffer region of the block.
+        The read buffer regions of the block.
 
     writes: List[BufferRegion]
-        The write buffer region of the block.
+        The write buffer regions of the block.
 
     name_hint: str
         the name_hint of the block.
@@ -507,6 +513,18 @@ class Block(Stmt):
         The location of this block in the source code.
     """
 
+    iter_vars: List[IterVar]
+    reads: List[BufferRegion]
+    writes: List[BufferRegion]
+    name_hint: str
+    body: Stmt
+    init: Optional[Stmt]
+    exec_scope: Optional[str]
+    alloc_buffers: Optional[List[Buffer]]
+    match_buffers: Optional[List[MatchBufferRegion]]
+    annotations: Optional[Mapping[str, Object]]
+    span: Optional[Span]
+
     def __init__(
         self,
         iter_vars: List[IterVar],
@@ -521,6 +539,12 @@ class Block(Stmt):
         annotations: Optional[Mapping[str, Object]] = None,
         span: Optional[Span] = None,
     ):
+        if alloc_buffers is None:
+            alloc_buffers = []
+        if match_buffers is None:
+            match_buffers = []
+        if annotations is None:
+            annotations = {}
         self.__init_handle_by_constructor__(
             _ffi_api.Block,
             iter_vars,
@@ -544,7 +568,7 @@ class BlockRealize(Stmt):
     Parameters
     ----------
     iter_values : List[PrimExpr]
-        The binding value of the block var.
+        The binding values of the block var.
 
     predicate : PrimExpr
         The predicate of the block.
@@ -555,6 +579,11 @@ class BlockRealize(Stmt):
     span : Optional[Span]
         The location of this block_realize in the source code.
     """
+
+    iter_values: List[PrimExpr]
+    predicate: PrimExpr
+    block: Block
+    span: Optional[Span]
 
     def __init__(
         self,

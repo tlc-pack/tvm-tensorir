@@ -929,8 +929,6 @@ class BufferRegionNode : public Object {
     hash_reduce(region);
   }
 
-  static constexpr const bool _type_has_method_sequal_reduce = true;
-  static constexpr const bool _type_has_method_shash_reduce = true;
   static constexpr const char* _type_key = "tir.BufferRegion";
   TVM_DECLARE_FINAL_OBJECT_INFO(BufferRegionNode, Object);
 };
@@ -944,9 +942,9 @@ class BufferRegion : public ObjectRef {
   TVM_DLL explicit BufferRegion(Buffer buffer, Array<Range> region);
 
   /*!
-   * \brief Create a BufferRegion which is full of the buffer.
+   * \brief Create a BufferRegion which is full region of the given buffer..
    * \param buffer The buffer to generate full BufferRegion.
-   * \return The bufferRegion which covers all region of the given buffer
+   * \return The BufferRegion which covers all region of the given buffer
    */
   TVM_DLL static BufferRegion FullRegion(Buffer buffer);
 
@@ -983,8 +981,6 @@ class MatchBufferRegionNode : public Object {
     hash_reduce(source);
   }
 
-  static constexpr const bool _type_has_method_sequal_reduce = true;
-  static constexpr const bool _type_has_method_shash_reduce = true;
   static constexpr const char* _type_key = "tir.MatchBufferRegion";
   TVM_DECLARE_FINAL_OBJECT_INFO(MatchBufferRegionNode, Object);
 };
@@ -995,7 +991,7 @@ class MatchBufferRegionNode : public Object {
  */
 class MatchBufferRegion : public ObjectRef {
  public:
-  TVM_DLL explicit MatchBufferRegion(Buffer buffer, BufferRegion);
+  TVM_DLL explicit MatchBufferRegion(Buffer buffer, BufferRegion source);
 
   TVM_DEFINE_OBJECT_REF_METHODS(MatchBufferRegion, ObjectRef, MatchBufferRegionNode);
 };
@@ -1011,14 +1007,12 @@ class MatchBufferRegion : public ObjectRef {
  *      tir.reads([buffer0[start:end, ...], ...])
  *      tir.writes([buffer1[start:end, ...], ...])
  *      tir.where(predicate)
- *      buffer3 = tir.alloc_buffer(shape, dtype)
- *      buffer4 = tir.match_buffer(source_buffer[start:end, ...])
+ *      buffer2 = tir.alloc_buffer(shape, dtype)
+ *      buffer3 = tir.match_buffer(source_buffer[start:end, ...])
  *      tir.attr({attr_key: attr_value, ...})
  *      tir.exec_scope(exec_scope)
- *
  *      with tir.init():
  *          // init body
- *
  *      // body
  *
  * \endcode
@@ -1027,19 +1021,19 @@ class BlockNode : public StmtNode {
  public:
   /*! \brief The variables of the block. */
   Array<IterVar> iter_vars;
-  /*! \brief The read buffer region of the block. */
+  /*! \brief The read buffer regions of the block. */
   Array<BufferRegion> reads;
-  /*! \brief The write buffer region of the block. */
+  /*! \brief The write buffer regions of the block. */
   Array<BufferRegion> writes;
   /*! \brief The name_hint of the block. */
-  std::string name_hint;
+  String name_hint;
   /*! \brief The body of the block. */
   Stmt body;
   /*!
    * \brief The init statement is executed during the first iteration of reduction loops in a
    *  reduction block. The optional init field allows us to represent initialization and
    *  reduction update in a single block and transform them collectively.
-   *  We also provide primitives to decompose the init into a separate block during lowering.
+   *  We also provide primitives to decompose the init into a separate block during scheduling.
    */
   Optional<Stmt> init;
   /*! \brief The block execution scope. */
@@ -1118,7 +1112,7 @@ class Block : public Stmt {
  */
 class BlockRealizeNode : public StmtNode {
  public:
-  /*! \brief The corresponding value of the iter vars. */
+  /*! \brief The corresponding values of the iter vars. */
   Array<PrimExpr> iter_values;
   /*!
    * \brief The predicate of the block realization, the block will only be executed when the

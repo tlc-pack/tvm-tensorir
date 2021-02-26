@@ -675,7 +675,8 @@ TVM_REGISTER_NODE_TYPE(BlockNode);
 
 // BlockRealize
 BlockRealize::BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block, Span span) {
-  ICHECK_EQ(block->iter_vars.size(), values.size());
+  CHECK_EQ(block->iter_vars.size(), values.size())
+      << "ValueError: BlockRealize needs to have the same number of iter_vars and binding values";
   ObjectPtr<BlockRealizeNode> node = make_object<BlockRealizeNode>();
   node->iter_values = std::move(values);
   node->predicate = std::move(predicate);
