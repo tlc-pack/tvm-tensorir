@@ -832,7 +832,11 @@ Doc TVMScriptPrinter::VisitStmt_(const BlockRealizeNode* op) {
     block_var_docs.push_back(block_var_doc);
   }
   doc << PrintSep(block_var_docs, Doc::Text(", ")) << "], ";
-  doc << Doc::StrLiteral(block_op->name_hint) << ")";
+  doc << Doc::StrLiteral(block_op->name_hint);
+  if (block_op->exec_scope.defined() && !block_op->exec_scope.empty()) {
+    doc << ", exec_scope=\"" << block_op->exec_scope << "\"";
+  }
+  doc << ")";
   std::vector<Doc> block_var_names;
   for (const auto& iter_var : block_op->iter_vars) {
     var_not_in_headers.insert(iter_var->var.get());
