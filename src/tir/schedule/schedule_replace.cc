@@ -414,7 +414,7 @@ class ChildReplacer : private StmtMutator {
         // Case 2. stmt is BlockRealize, src_stmt is Block
         if (realize->block.get() == src_stmt_) {
           ObjectPtr<BlockRealizeNode> new_realize = make_object<BlockRealizeNode>(*realize);
-          new_realize->block = GetRef<Block>(static_cast<const BlockNode*>(src_stmt_));
+          new_realize->block = GetRef<Block>(static_cast<const BlockNode*>(tgt_stmt_.get()));
           new_stmt = BlockRealize(std::move(new_realize));
         }
       }
