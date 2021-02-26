@@ -617,7 +617,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
         // <bojian/TVM-SymbolicTuning>
         if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
           LOG(INFO) << "prev_prediate=" << prev_predicate;
-          prev_predicate = value < dom->extent;
+          prev_predicate = preds.back();
           LOG(INFO) << "prev_prediate=" << prev_predicate;
         }
         if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
@@ -652,7 +652,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
               LOG(WARNING) << "\'.local\' spotted in " << stage << ". Assuming it is a cache write "
                               "whose boundary check can be neglected";
             }
-            continue;
+            // continue;
           }
         }
 
