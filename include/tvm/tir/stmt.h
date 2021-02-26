@@ -1040,7 +1040,12 @@ class BlockNode : public StmtNode {
    *  We also provide primitives to decompose the init into a separate block during scheduling.
    */
   Optional<Stmt> init;
-  /*! \brief The block execution scope. */
+  /*!
+   * \brief The block execution scope.
+   * Currently allowed execution scope.
+   *   - "": local execution scope
+   *   - "warp": warp execution scope.
+   */
   String exec_scope;
   /*! \brief The buffer allocated in the block. */
   Array<Buffer> alloc_buffers;

@@ -654,7 +654,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 .set_dispatch<MatchBufferRegionNode>([](const ObjectRef& node, ReprPrinter* p) {
   auto* op = static_cast<const MatchBufferRegionNode*>(node.get());
   p->PrintIndent();
-  p->stream << "match_buffer_region " << op->buffer->name << "(";
+  p->stream << op->buffer->name << " = match_buffer_region(";
   p->Print(op->source);
   p->stream << ")\n";
 });
@@ -725,7 +725,7 @@ void PrintBlockElement(const BlockNode* op, ReprPrinter* p) {
   // Print alloc_buffers
   for (const auto& alloc_buf : op->alloc_buffers) {
     p->PrintIndent();
-    p->stream << "alloc_buffer " << alloc_buf->name << "(" << alloc_buf->dtype << "[";
+    p->stream << alloc_buf->name << " = alloc_buffer(" << alloc_buf->dtype << "[";
     for (size_t i = 0; i < alloc_buf->shape.size(); ++i) {
       if (i > 0) p->stream << ", ";
       p->Print(alloc_buf->shape[i]);
@@ -738,7 +738,7 @@ void PrintBlockElement(const BlockNode* op, ReprPrinter* p) {
   }
   p->PrintIndent();
   if (!op->annotations.empty()) {
-    p->stream << "attrs(" << op->annotations << ")\n";
+    p->stream << "annotations(" << op->annotations << ")\n";
   }
 }
 
@@ -790,6 +790,8 @@ BlockRealize::BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block blo
 
 TVM_REGISTER_GLOBAL("tir.BlockRealize")
     .set_body_typed([](Array<PrimExpr> iter_values, PrimExpr predicate, Block block, Span span) {
+      CHECK(predicate.dtype().is_bool())
+          << "TypeError: Expect Block.predicate to be a bool expression";
       return BlockRealize(iter_values, predicate, block, span);
     });
 

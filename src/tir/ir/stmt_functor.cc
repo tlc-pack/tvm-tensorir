@@ -211,6 +211,19 @@ class StmtMutator::Internal {
     };
     return MutateArray(self, arr, fmutate);
   }
+
+  static Array<MatchBufferRegion> Mutate(StmtMutator* self, const Array<MatchBufferRegion>& arr) {
+    auto fmutate = [self](const MatchBufferRegion& match_buffer_region) {
+      Array<Range> region = Mutate(self, match_buffer_region->source->region);
+      if (region.same_as(match_buffer_region->source->region)) {
+        return match_buffer_region;
+      } else {
+        return MatchBufferRegion(match_buffer_region->buffer,
+                                 BufferRegion(match_buffer_region->source->buffer, region));
+      }
+    };
+    return MutateArray(self, arr, fmutate);
+  }
 };
 
 Stmt StmtMutator::VisitStmt_(const AttrStmtNode* op) {
@@ -455,24 +468,27 @@ Stmt StmtMutator::VisitStmt_(const EvaluateNode* op) {
 }
 
 Stmt StmtMutator::VisitStmt_(const BlockNode* op) {
+  Array<IterVar> iter_vars = Internal::Mutate(this, op->iter_vars);
   Array<BufferRegion> reads = Internal::Mutate(this, op->reads);
   Array<BufferRegion> writes = Internal::Mutate(this, op->writes);
-  Array<IterVar> iter_vars = Internal::Mutate(this, op->iter_vars);
+  Array<MatchBufferRegion> match_buffers = Internal::Mutate(this, op->match_buffers);
   Optional<Stmt> init = NullOpt;
   if (op->init.defined()) {
     init = VisitStmt(op->init.value());
   }
   Stmt body = VisitStmt(op->body);
-  if (reads.same_as(op->reads) && writes.same_as(op->writes) && iter_vars.same_as(op->iter_vars) &&
-      body.same_as(op->body) && init.same_as(op->init)) {
+  if (iter_vars.same_as(op->iter_vars) && reads.same_as(op->reads) && writes.same_as(op->writes) &&
+      body.same_as(op->body) && init.same_as(op->init) &&
+      match_buffers.same_as(op->match_buffers)) {
     return GetRef<Block>(op);
   } else {
     auto n = CopyOnWrite(op);
+    n->iter_vars = std::move(iter_vars);
     n->reads = std::move(reads);
     n->writes = std::move(writes);
-    n->iter_vars = std::move(iter_vars);
     n->body = std::move(body);
     n->init = std::move(init);
+    n->match_buffers = std::move(match_buffers);
     return Stmt(n);
   }
 }
