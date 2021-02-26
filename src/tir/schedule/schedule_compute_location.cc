@@ -551,7 +551,7 @@ class StatementInliner : public StmtExprMutator {
     Array<Var> value_vars = GatherVars(value_);
     for (const auto& x : value_vars) {
       ICHECK(std::find_if(vars_.begin(), vars_.end(),
-                         [=](const Var& var) -> bool { return var.same_as(x); }) != vars_.end())
+                          [=](const Var& var) -> bool { return var.same_as(x); }) != vars_.end())
           << "Not All variable in value can be replaced by index vars";
     }
   }
@@ -676,7 +676,8 @@ class ReverseStatementInliner : public StmtExprMutator {
     Array<Var> value_vars = GatherVars(store->value);
     for (const auto& x : value_vars) {
       ICHECK(std::find_if(new_vars_.begin(), new_vars_.end(),
-                         [=](const Var& var) -> bool { return var.same_as(x); }) != new_vars_.end())
+                          [=](const Var& var) -> bool { return var.same_as(x); }) !=
+             new_vars_.end())
           << "ValueError: Not all variable in value can be replaced by index vars";
     }
   }
