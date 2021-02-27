@@ -16,10 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "./schedule_common.h"
+#include "../analysis.h"
+#include "../schedule_common.h"
+#include "./primitives.h"
 
 namespace tvm {
 namespace tir {
+namespace schedule {
 
 /*!
  * \brief Checks if a loop variable is parallelizable.
@@ -30,16 +33,15 @@ namespace tir {
  * \param anno_value The annotation anno_value
  * \return A boolean indicating if the loop var is parallelizable
  */
-bool IsLoopVarParallelizable(const Var& loop_var, const Stmt& block_realize,
-                             const ScheduleNode* schedule,
-                             const Optional<IterVar>& thread_binding) {
+bool IsLoopVarParallelizable(const ScheduleState self, const Var& loop_var,
+                             const Stmt& block_realize, const Optional<IterVar>& thread_binding) {
   const BlockRealizeNode* realize = block_realize.as<BlockRealizeNode>();
   ICHECK(realize != nullptr)
       << "InternalError: in IsLoopVarParallelizable, expect BlockRealize, but get type: "
       << block_realize->GetTypeKey();
   const BlockNode* block = realize->block.get();
   // Cond 1. Binding is validated
-  if (!schedule->stmt2ref.at(block)->binding_valid) {
+  if (!self->stmt2ref.at(block)->binding_valid) {
     return false;
   }
   CHECK_EQ(realize->binding_values.size(), block->iter_vars.size())
@@ -91,8 +93,8 @@ Block WithAnnotation(const BlockNode* block, const String& attr_key, const Objec
   return Block(new_block);
 }
 
-void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const ForKind& for_kind,
-                                   const Optional<IterVar>& thread_binding) {
+void ParallelCompute(ScheduleState self, const StmtSRef& loop_sref, const ForKind& for_kind,
+                     const Optional<IterVar>& thread_binding) {
   /*!
    * Check:
    * - 1. check the block under is complete block or reduction block
@@ -123,7 +125,8 @@ void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const ForKind& for
   // Now only support:
   //   1. All the blocks are complete below
   //   2. A single block below the loop
-  bool is_compact_dataflow = GetParentScope(loop_sref)->IsCompactDataFlow(loop_sref, this);
+  const BlockScope& scope = self->scopes.at(GetScopeSRef(loop_sref));
+  bool is_compact_dataflow = scope->IsCompactDataFlow(loop_sref, GetChildBlocks(self, loop_sref));
   if (!is_compact_dataflow) {
     Array<Stmt> single_child = GetChildren(GetRef<Stmt>(loop), true);
     // TODO(@junrushao1994): I am not super convinced by the checks here, revisit later
@@ -134,14 +137,14 @@ void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const ForKind& for
     const auto* realize = single_child[0].as<BlockRealizeNode>();
     CHECK(realize != nullptr) << "TypeError: Expects 'BlockRealizeNode', but gets: "
                               << single_child[0]->GetTypeKey();
-    CHECK(IsLoopVarParallelizable(loop->loop_var, GetRef<Stmt>(realize), this, thread_binding))
+    CHECK(IsLoopVarParallelizable(self, loop->loop_var, GetRef<Stmt>(realize), thread_binding))
         << "ValueError: loop with variable \"" << loop->loop_var
         << "\" cannot be parallelized because of block:\n"
         << GetRef<Stmt>(realize);
   } else {
-    PreOrderVisit(GetRef<Stmt>(loop), [&loop, this, thread_binding](const ObjectRef& node) {
+    PreOrderVisit(GetRef<Stmt>(loop), [self, &loop, thread_binding](const ObjectRef& node) {
       if (const auto* realize = node.as<BlockRealizeNode>()) {
-        CHECK(IsLoopVarParallelizable(loop->loop_var, GetRef<Stmt>(realize), this, thread_binding))
+        CHECK(IsLoopVarParallelizable(self, loop->loop_var, GetRef<Stmt>(realize), thread_binding))
             << "ValueError: loop with variable \"" << loop->loop_var
             << "\" cannot be parallelized because of block:\n"
             << GetRef<Stmt>(realize);
@@ -152,51 +155,55 @@ void ScheduleNode::ParallelCompute(const StmtSRef& loop_sref, const ForKind& for
   }
   ObjectPtr<ForNode> new_loop = make_object<ForNode>(*loop);
   new_loop->kind = for_kind;
-  if (thread_binding.defined()) new_loop->thread_binding = thread_binding;
-  this->Replace(loop_sref, For(new_loop), {});
+  if (thread_binding.defined()) {
+    new_loop->thread_binding = thread_binding;
+  }
+  self->Replace(loop_sref, For(new_loop), {});
 }
 
-void ScheduleNode::vectorize(const StmtSRef& loop_sref) {
-  if (is_one(loop_sref->GetStmt<ForNode>()->extent)) return;
-  ParallelCompute(loop_sref, ForKind::kVectorized);
+void Vectorize(ScheduleState self, const StmtSRef& loop_sref) {
+  if (is_one(loop_sref->GetStmt<ForNode>()->extent)) {
+    return;
+  }
+  ParallelCompute(self, loop_sref, ForKind::kVectorized, NullOpt);
 }
 
-void ScheduleNode::parallel(const StmtSRef& loop_sref) {
-  ParallelCompute(loop_sref, ForKind::kParallel);
+void Parallel(ScheduleState self, const StmtSRef& loop_sref) {
+  ParallelCompute(self, loop_sref, ForKind::kParallel, NullOpt);
 }
 
-void ScheduleNode::bind(const StmtSRef& loop_sref, const IterVar& thread) {
+void Unroll(ScheduleState self, const StmtSRef& loop_sref) {
+  const auto* loop = loop_sref->GetStmt<ForNode>();
+  CHECK(loop != nullptr) << "TypeError: Unroll expects a loop, but get type: "
+                         << loop_sref->stmt->GetTypeKey();
+  ObjectPtr<ForNode> new_loop = make_object<ForNode>(*loop);
+  new_loop->kind = ForKind::kUnrolled;
+  self->Replace(loop_sref, For(new_loop), {});
+}
+
+void Bind(ScheduleState self, const StmtSRef& loop_sref, const IterVar& thread) {
   const auto* loop = loop_sref->GetStmt<ForNode>();
   CHECK(loop != nullptr) << "Parallel-like compute expect a loop";
   if (thread->dom.defined()) {
     CHECK(ExprDeepEqual()(loop->extent, thread->dom->extent))
         << "Thread axis extent and loop extent mismatch";
   }
-  ParallelCompute(loop_sref, ForKind::kThreadBinding, thread);
+  ParallelCompute(self, loop_sref, ForKind::kThreadBinding, thread);
 }
 
-void ScheduleNode::unroll(const StmtSRef& loop_sref) {
-  const auto* loop = loop_sref->GetStmt<ForNode>();
-  CHECK(loop != nullptr) << "TypeError: Unroll expects a loop, but get type: "
-                         << loop_sref->stmt->GetTypeKey();
-  ObjectPtr<ForNode> new_loop = make_object<ForNode>(*loop);
-  new_loop->kind = ForKind::kUnrolled;
-  this->Replace(loop_sref, For(new_loop), {});
-}
-
-void ScheduleNode::pragma(const StmtSRef& loop_sref, const String& pragma_type,
-                          const PrimExpr& pragma_value) {
+void Pragma(ScheduleState self, const StmtSRef& loop_sref, const String& pragma_type,
+            const PrimExpr& pragma_value) {
   const auto* loop_ptr = loop_sref->GetStmt<ForNode>();
   CHECK(loop_ptr) << "TypeError: pragma expects a Loop as its first argument";
-  this->Replace(loop_sref, WithAnnotation(loop_ptr, "pragma_" + pragma_type, pragma_value), {});
+  self->Replace(loop_sref, WithAnnotation(loop_ptr, "pragma_" + pragma_type, pragma_value), {});
 }
 
-void ScheduleNode::double_buffer(const StmtSRef& block_sref) {
+void DoubleBuffer(ScheduleState self, const StmtSRef& block_sref) {
   const auto* block_ptr = block_sref->GetStmt<BlockNode>();
   CHECK(block_ptr) << "TypeError: double_buffer expects 'block' as its argument";
-  const StmtSRef& parent_block_sref = GetParentBlockSRef(block_sref);
+  const StmtSRef& parent_block_sref = GetScopeSRef(block_sref);
   const auto* parent_block = parent_block_sref->GetStmt<BlockNode>();
-  const BlockScope& scope = scopes.at(parent_block_sref);
+  const BlockScope& scope = self->scopes.at(parent_block_sref);
   CHECK(scope->IsComplete(block_sref))
       << "ValueError: 'double_buffer' expects 'block' to be a complete block";
   for (const BufferRegion& parent_write : parent_block->writes) {
@@ -209,28 +216,9 @@ void ScheduleNode::double_buffer(const StmtSRef& block_sref) {
       << "ValueError: 'double_buffer' expects 'block' with only one write buffer";
   Block new_block =
       WithAnnotation(block_ptr, tir::attr::double_buffer_scope, IntImm(DataType::Int(32), 1));
-  this->Replace(block_sref, new_block, {{new_block, GetRef<Block>(block_ptr)}});
+  self->Replace(block_sref, new_block, {{new_block, GetRef<Block>(block_ptr)}});
 }
 
-struct Internal {
-  static void Vectorize(Schedule self, StmtSRef loop_sref) { self->vectorize(loop_sref); }
-  static void Parallel(Schedule self, StmtSRef loop_sref) { self->parallel(loop_sref); }
-  static void Unroll(Schedule self, StmtSRef loop_sref) { self->unroll(loop_sref); }
-  static void DoubleBuffer(Schedule self, StmtSRef loop_sref) { self->double_buffer(loop_sref); }
-  static void Bind(Schedule self, StmtSRef loop_sref, IterVar thread) {
-    self->bind(loop_sref, thread);
-  }
-  static void Pragma(Schedule self, StmtSRef loop_sref, String pragma_type, PrimExpr pragma_value) {
-    self->pragma(loop_sref, pragma_type, pragma_value);
-  }
-};
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleVectorize").set_body_typed(Internal::Vectorize);
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleParallel").set_body_typed(Internal::Parallel);
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnroll").set_body_typed(Internal::Unroll);
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDoubleBuffer").set_body_typed(Internal::DoubleBuffer);
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBind").set_body_typed(Internal::Bind);
-TVM_REGISTER_GLOBAL("tir.schedule.SchedulePragma").set_body_typed(Internal::Pragma);
-
+}  // namespace schedule
 }  // namespace tir
 }  // namespace tvm

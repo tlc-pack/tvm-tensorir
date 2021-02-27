@@ -24,10 +24,11 @@
 #include <tvm/arith/int_set.h>
 #include <tvm/ir/attrs.h>
 #include <tvm/runtime/registry.h>
+#include <tvm/tir/analysis.h>
 #include <tvm/tir/builtin.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
-#include <tvm/tir/schedule.h>
+#include <tvm/tir/schedule/schedule.h>
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
 
@@ -205,7 +206,7 @@ class RegionGatherer : public StmtExprVisitor {
       buffers_region_;
   /*! \brief The map from block vars to the expr value */
   std::unordered_map<const VarNode*, PrimExpr> block_var_;
-  /*! \brief The map from unit lopo vars to the expr value */
+  /*! \brief The map from unit loop vars to the expr value */
   std::unordered_map<const VarNode*, PrimExpr> unit_loops_;
 
  private:
@@ -245,8 +246,9 @@ class RegionGatherer : public StmtExprVisitor {
     }
     std::vector<arith::IntSet> region;
     for (const auto& range : buffer_region->region) {
-      Range r = Range::FromMinExtent(Substitute(Substitute(range->min, block_var_), unit_loops_),
-                                     Substitute(Substitute(range->extent, block_var_), unit_loops_));
+      Range r =
+          Range::FromMinExtent(Substitute(Substitute(range->min, block_var_), unit_loops_),
+                               Substitute(Substitute(range->extent, block_var_), unit_loops_));
       region.push_back(arith::EvalSet(r, dom_map));
     }
     return region;
@@ -268,7 +270,7 @@ class BufferFlattener : public StmtExprMutator {
       const std::unordered_map<const VarNode*, PrimExpr>& block_var,
       const std::unordered_map<const VarNode*, PrimExpr>& unit_loops,
       const std::unordered_map<Buffer, std::vector<arith::IntSet>, ObjectPtrHash, ObjectPtrEqual>&
-      buffers_region,
+          buffers_region,
       const std::unordered_map<Buffer, ObjectRef, ObjectPtrHash, ObjectPtrEqual>& buffers_lca,
       const std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual>& arg_buffers)
       : buffers_region_(buffers_region),
@@ -327,7 +329,7 @@ class BufferFlattener : public StmtExprMutator {
       ICHECK(binding_value.as<PrimExprNode>());
 
       if (block_var->iter_type == kCommReduce) {
-        PreOrderVisit(binding_value, [this] (const ObjectRef& node) {
+        PreOrderVisit(binding_value, [this](const ObjectRef& node) {
           if (const auto* var = node.as<VarNode>()) {
             this->reduction_relative_.insert(GetRef<Var>(var));
             return false;
@@ -400,8 +402,7 @@ class BufferFlattener : public StmtExprMutator {
     ICHECK(op != nullptr);
 
     ForKind kind = op->kind;
-    if (op->kind == ForKind::kThreadBinding)
-      kind = ForKind::kSerial;
+    if (op->kind == ForKind::kThreadBinding) kind = ForKind::kSerial;
 
     Stmt body = op->body;
     for (auto it = pending_allocate_.begin(); it != pending_allocate_.end();) {
@@ -449,9 +450,7 @@ class BufferFlattener : public StmtExprMutator {
     return for_stmt;
   }
 
-  Stmt VisitStmt_(const AttrStmtNode* op) final {
-    return StmtMutator::VisitStmt_(op);
-  }
+  Stmt VisitStmt_(const AttrStmtNode* op) final { return StmtMutator::VisitStmt_(op); }
 
   Stmt VisitStmt_(const BufferStoreNode* op) final {
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
@@ -534,7 +533,7 @@ PrimFunc BufferFlatten(PrimFunc f) {
   auto fptr = f.CopyOnWrite();
 
   // Check memory and execution hierarchy
-  ScheduleNode::ValidateHierarchy(f);
+  VerifyExecScope(f);
 
   // Transform the reduction calls to BufferStore
   ReductionTransformer reduction_transformer;

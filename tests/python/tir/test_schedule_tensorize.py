@@ -14,14 +14,17 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
+# pylint: disable=missing-function-docstring,missing-module-docstring
 import numpy as np
 import tvm
 import tvm.testing
-import util
 from tvm import tir
 from tvm.script import ty
 
+import util
+
+# fmt: off
+# pylint: disable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name,redundant-keyword-arg
 
 @tvm.script.tir
 def desc_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
@@ -58,32 +61,6 @@ def intrin_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                 tir.bind(vkk, vk + k)
                 C[vii, vjj] = C[vii, vjj] + B[vjj, vkk] * A[vii, vkk]
 
-
-def test_tensorize_gemm():
-    func = util.matmul_stmt()
-    # schedule
-    s = tir.create_schedule(func)
-    update = s.get_block("update")
-    i, j, k = s.get_axes(update)
-    io, ii = s.split(i, 16)
-    jo, ji = s.split(j, 16)
-    ko, ki = s.split(k, 16)
-    s.reorder(io, jo, ko, ii, ji, ki)
-    s.decompose_reduction(update, ko)
-
-    tensor_intrin = tvm.tir.TensorIntrin(desc_func, intrin_func)
-
-    s.tensorize(ii, tensor_intrin)
-
-    func = tvm.build(s.func)
-
-    a_np = np.random.uniform(size=(128, 128)).astype("float32")
-    b_np = np.random.uniform(size=(128, 128)).astype("float32")
-    a = tvm.nd.array(a_np)
-    b = tvm.nd.array(b_np)
-    c = tvm.nd.array(np.zeros((128, 128)).astype("float32"))
-    func(a, b, c)
-    tvm.testing.assert_allclose(c.asnumpy(), np.dot(a_np, b_np.transpose()), rtol=1e-6)
 
 
 @tvm.script.tir
@@ -133,25 +110,6 @@ def tensorized_func(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                      dtype="handle"))
 
 
-def test_tensorize_buffer_bind():
-    return  # TODO
-    func = util.matmul_stmt()
-    # schedule
-    s = tir.create_schedule(func)
-    update = s.get_block("update")
-    i, j, k = s.get_axes(update)
-    io, ii = s.split(i, 16)
-    jo, ji = s.split(j, 16)
-    ko, ki = s.split(k, 16)
-    s.reorder(io, jo, ko, ii, ji, ki)
-    s.decompose_reduction(update, ko)
-
-    tensor_intrin = tvm.tir.TensorIntrin(desc_func, lower_intrin_func)
-    s.tensorize(ii, tensor_intrin)
-
-    tvm.ir.assert_structural_equal(tensorized_func, s.func)
-
-
 @tvm.script.tir
 def batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, [16, 128, 128])
@@ -192,22 +150,6 @@ def tensorized_batch_matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                                      B.data, tir.floordiv(tir.get_elem_offset(B[vn, vj*16, vk*16], dtype="int32"), 256),
                                      C.data, tir.floordiv(tir.get_elem_offset(C[vn, vi*16, vj*16], dtype="int32"), 256),
                                      dtype="handle"))
-
-
-def test_high_dim_tensorize():
-    return  # TODO
-    s = tir.create_schedule(batch_matmul)
-    update = s.get_block("update")
-    n, i, j, k = s.get_axes(update)
-    io, ii = s.split(i, 16)
-    jo, ji = s.split(j, 16)
-    ko, ki = s.split(k, 16)
-    s.reorder(io, jo, ko, ii, ji, ki)
-
-    tensor_intrin = tvm.tir.TensorIntrin(desc_func, lower_intrin_func)
-    s.tensorize(ii, tensor_intrin)
-
-    tvm.ir.assert_structural_equal(tensorized_batch_matmul, s.func)
 
 
 @tvm.script.tir
@@ -326,26 +268,89 @@ def dot_product_impl(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         tir.evaluate(tir.call_extern("vec4add", C.data, C.elem_offset, A.data, A.elem_offset, B.data, B.elem_offset, dtype="int32"))
 
 
+# pylint: enable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name,redundant-keyword-arg
+# fmt: on
+
+# pylint: disable=invalid-name
+
+
+def test_tensorize_gemm():
+    func = util.matmul_stmt()
+    # schedule
+    s = tir.Schedule(func, debug_mode=True)
+    update = s.get_block("update")
+    i, j, k = s.get_axes(update)
+    io, ii = s.split(i, factor=16)
+    jo, ji = s.split(j, factor=16)
+    ko, ki = s.split(k, factor=16)
+    s.reorder(io, jo, ko, ii, ji, ki)
+    s.decompose_reduction(update, ko)
+
+    tensor_intrin = tvm.tir.TensorIntrin(desc_func, intrin_func)
+
+    s.tensorize(ii, tensor_intrin)
+
+    func = tvm.build(s.module)
+
+    a_np = np.random.uniform(size=(128, 128)).astype("float32")
+    b_np = np.random.uniform(size=(128, 128)).astype("float32")
+    a = tvm.nd.array(a_np)
+    b = tvm.nd.array(b_np)
+    c = tvm.nd.array(np.zeros((128, 128)).astype("float32"))
+    func(a, b, c)
+    tvm.testing.assert_allclose(c.asnumpy(), np.dot(a_np, b_np.transpose()), rtol=1e-6)
+
+
+def test_tensorize_buffer_bind():
+    func = util.matmul_stmt()
+    # schedule
+    s = tir.Schedule(func, debug_mode=True)
+    update = s.get_block("update")
+    i, j, k = s.get_axes(update)
+    io, ii = s.split(i, factor=16)
+    jo, ji = s.split(j, factor=16)
+    ko, ki = s.split(k, factor=16)
+    s.reorder(io, jo, ko, ii, ji, ki)
+    s.decompose_reduction(update, ko)
+    tensor_intrin = tvm.tir.TensorIntrin(desc_func, lower_intrin_func)
+    s.tensorize(ii, tensor_intrin)
+    tvm.ir.assert_structural_equal(tensorized_func, s.module)
+
+
+def test_high_dim_tensorize():
+    s = tir.Schedule(batch_matmul, debug_mode=True)
+    update = s.get_block("update")
+    _, i, j, k = s.get_axes(update)
+    io, ii = s.split(i, factor=16)
+    jo, ji = s.split(j, factor=16)
+    ko, ki = s.split(k, factor=16)
+    s.reorder(io, jo, ko, ii, ji, ki)
+    tensor_intrin = tvm.tir.TensorIntrin(desc_func, lower_intrin_func)
+    s.tensorize(ii, tensor_intrin)
+    tvm.ir.assert_structural_equal(tensorized_batch_matmul, s.module)
+
+
 def test_tensorize_dot_product():
-    return  # TODO
     dot_prod = tvm.tir.TensorIntrin(dot_product_desc, dot_product_impl)
-
-    s = tir.create_schedule(batch_matmul_dot_product)
+    s = tir.Schedule(batch_matmul_dot_product, debug_mode=True)
     C = s.get_block("update")
-    n, i, j, k = s.get_axes(C)
-    ko, ki = s.split(k, 4)
+    _, _, _, k = s.get_axes(C)
+    _, ki = s.split(k, factor=4)
     s.tensorize(ki, dot_prod)
-
-    target = 'llvm'
+    target = "llvm"
     ctx = tvm.context(target, 0)
     a_np = np.random.uniform(size=(1, 4, 4)).astype("float32")
     b_np = np.random.uniform(size=(1, 4, 4)).astype("float32")
     a = tvm.nd.array(a_np)
     b = tvm.nd.array(b_np)
     c = tvm.nd.array(np.zeros((1, 4, 4), dtype="float32"), ctx)
-    func = tvm.build(s.func, target=target)
+    func = tvm.build(s.module, target=target)
     func(a, b, c)
-    tvm.testing.assert_allclose(c.asnumpy(), np.matmul(a.asnumpy(), b.asnumpy().transpose(0, 2, 1)), rtol=1e-5)
+    tvm.testing.assert_allclose(
+        c.asnumpy(),
+        np.matmul(a.asnumpy(), b.asnumpy().transpose(0, 2, 1)),
+        rtol=1e-5,
+    )
 
 
 if __name__ == "__main__":

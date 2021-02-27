@@ -363,7 +363,7 @@ def _check_serialization(sch, func) -> ms.Schedule:
     record = sch.trace.serialize()
     new_sch = ms.Schedule(func)
     ms.Trace.deserialize(record, new_sch)
-    assert tvm.ir.structural_equal(new_sch.sch.func, sch.sch.func)
+    assert tvm.ir.structural_equal(new_sch.sch.module, sch.sch.module)
     py_repr = "\n".join(sch.trace.as_python())
     new_py_repr = "\n".join(new_sch.trace.as_python())
     assert py_repr == new_py_repr
@@ -372,7 +372,7 @@ def _check_serialization(sch, func) -> ms.Schedule:
 
 def test_meta_schedule_creation():
     sch = ms.Schedule(func=matmul)
-    assert tvm.ir.structural_equal(sch.orig_func, sch.sch.func)
+    assert tvm.ir.structural_equal(sch.orig_func, sch.sch.module)
     assert len(sch.trace.insts) == 0
     _check_serialization(sch, func=matmul)
 
@@ -471,7 +471,10 @@ def test_meta_schedule_sample_compute_location():
         sch = ms.Schedule(func=matmul)
         block = sch.get_block("matmul")
         loop = sch.sample_compute_location(block=block)
-        counter[str(sch.evaluate(loop))] += 1
+        loop = sch.evaluate(loop)
+        if not isinstance(loop, ms.LoopRV):
+            loop = loop.stmt
+        counter[str(loop)] += 1
         new_sch = _check_serialization(sch, func=matmul)
         old_decision = int(sch.trace.decisions[sch.trace.insts[-1]])
         new_decision = int(new_sch.trace.decisions[new_sch.trace.insts[-1]])
@@ -612,9 +615,9 @@ def test_meta_schedule_split():
     sch = ms.Schedule(func=matmul)
     i, _, _ = sch.get_axes(sch.get_block("matmul"))
     i_0, i_1, i_2 = [sch.evaluate(i).stmt for i in sch.split(loop=i, factors=[4, 8, 32])]
-    assert tvm.ir.structural_equal(i_0, sch.sch.func.body.block.body)
-    assert tvm.ir.structural_equal(i_1, sch.sch.func.body.block.body.body)
-    assert tvm.ir.structural_equal(i_2, sch.sch.func.body.block.body.body.body)
+    assert tvm.ir.structural_equal(i_0, sch.sch.module.body.block.body)
+    assert tvm.ir.structural_equal(i_1, sch.sch.module.body.block.body.body)
+    assert tvm.ir.structural_equal(i_2, sch.sch.module.body.block.body.body.body)
     _check_serialization(sch, func=matmul)
 
 
@@ -624,7 +627,7 @@ def test_meta_schedule_reorder():
     sch.reorder(after_axes=[i_2, i_1, i_0])
     i_0, i_1, i_2 = [sch.evaluate(i).stmt for i in [i_0, i_1, i_2]]
 
-    tir_sch = tir.create_schedule(func=matmul)
+    tir_sch = tir.Schedule(func=matmul, debug_mode=True)
     ti_0, ti_1, ti_2 = tir_sch.get_axes(tir_sch.get_block("matmul"))
     tir_sch.reorder(ti_2, ti_1, ti_0)
 
@@ -640,7 +643,7 @@ def test_meta_schedule_compute_at():
     matmul_block = sch.get_block("matmul")
     _, _, i_2 = sch.get_axes(matmul_block)
     sch.compute_at(plus_one_block, i_2)
-    assert tvm.ir.structural_equal(sch.sch.func, plus_one_matmul_fused)
+    assert tvm.ir.structural_equal(sch.sch.module, plus_one_matmul_fused)
     _check_serialization(sch, func=plus_one_matmul)
 
 
@@ -650,7 +653,7 @@ def test_meta_schedule_reverse_compute_at():
     matmul_block = sch.get_block("matmul")
     _, i_1, _ = sch.get_axes(matmul_block)
     sch.reverse_compute_at(relu_block, i_1)
-    assert tvm.ir.structural_equal(sch.sch.func, matmul_relu_fused)
+    assert tvm.ir.structural_equal(sch.sch.module, matmul_relu_fused)
     _check_serialization(sch, func=matmul_relu)
 
 
@@ -658,7 +661,7 @@ def test_meta_schedule_compute_inline():
     sch = ms.Schedule(func=elementwise)
     block = sch.get_block(name="B")
     sch.compute_inline(block=block)
-    assert tvm.ir.structural_equal(sch.sch.func, elementwise_inlined)
+    assert tvm.ir.structural_equal(sch.sch.module, elementwise_inlined)
     _check_serialization(sch, func=elementwise)
 
 
@@ -667,7 +670,7 @@ def test_meta_schedule_cache_read():
     block = sch.get_block("matmul")
     sch.cache_read(block, i=1, storage_scope="local")
     sch.cache_read(block, i=2, storage_scope="local")
-    assert tvm.ir.structural_equal(sch.sch.func, matmul_cache_read)
+    assert tvm.ir.structural_equal(sch.sch.module, matmul_cache_read)
     _check_serialization(sch, func=matmul)
 
 
@@ -675,7 +678,7 @@ def test_meta_schedule_cache_write():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
     sch.cache_write(block, i=0, storage_scope="local")
-    assert tvm.ir.structural_equal(sch.sch.func, matmul_cache_write)
+    assert tvm.ir.structural_equal(sch.sch.module, matmul_cache_write)
     _check_serialization(sch, func=matmul)
 
 
@@ -684,7 +687,7 @@ def test_meta_schedule_blockize():
     block = sch.get_block("matmul")
     _, _, k = sch.get_axes(block)
     sch.blockize(k)
-    assert tvm.ir.structural_equal(sch.sch.func, matmul_blockized)
+    assert tvm.ir.structural_equal(sch.sch.module, matmul_blockized)
     _check_serialization(sch, func=matmul)
 
 
@@ -693,7 +696,7 @@ def test_meta_schedule_decompose_reduction():
     block = sch.get_block("matmul")
     _, _, k = sch.get_axes(block)
     sch.decompose_reduction(block, k)
-    assert tvm.ir.structural_equal(sch.sch.func, matmul_decomposed)
+    assert tvm.ir.structural_equal(sch.sch.module, matmul_decomposed)
     _check_serialization(sch, func=matmul)
 
 
@@ -708,7 +711,7 @@ def test_meta_schedule_tensorize():
     sch.reorder([i_o, j_o, k_o, i_i, j_i, k_i])
     sch.decompose_reduction(block, k_o)
     sch.tensorize(i_i, "ms_test.tensor_intrin")
-    assert tvm.ir.structural_equal(sch.sch.func, matmul_tensorized)
+    assert tvm.ir.structural_equal(sch.sch.module, matmul_tensorized)
     _check_serialization(sch, func=matmul)
 
 
@@ -766,35 +769,35 @@ def test_meta_schedule_bind():
 
 
 if __name__ == "__main__":
-    test_meta_schedule_creation()
-    test_meta_schedule_copy()
-    test_meta_schedule_sample_tile_factor()
-    test_meta_schedule_sample_perfect_tile()
-    test_meta_schedule_sample_int()
-    test_meta_schedule_sample_categorical()
+    # test_meta_schedule_creation()
+    # test_meta_schedule_copy()
+    # test_meta_schedule_sample_tile_factor()
+    # test_meta_schedule_sample_perfect_tile()
+    # test_meta_schedule_sample_int()
+    # test_meta_schedule_sample_categorical()
     test_meta_schedule_sample_compute_location()
-    test_meta_schedule_get_producers()
-    test_meta_schedule_get_consumers()
-    test_meta_schedule_get_block()
-    test_meta_schedule_get_axes()
-    test_meta_schedule_get_read_buffers()
-    test_meta_schedule_get_write_buffers()
-    test_meta_schedule_get_root_blocks()
-    test_meta_schedule_get_leaf_blocks()
-    test_meta_schedule_mark_loop()
-    test_meta_schedule_mark_block()
-    test_meta_schedule_fuse()
-    test_meta_schedule_split()
-    test_meta_schedule_reorder()
-    test_meta_schedule_compute_at()
-    test_meta_schedule_reverse_compute_at()
-    test_meta_schedule_compute_inline()
-    test_meta_schedule_cache_read()
-    test_meta_schedule_cache_write()
-    test_meta_schedule_blockize()
-    test_meta_schedule_decompose_reduction()
-    test_meta_schedule_tensorize()
-    test_meta_schedule_parallel()
-    test_meta_schedule_vectorize()
-    test_meta_schedule_unroll()
-    test_meta_schedule_bind()
+    # test_meta_schedule_get_producers()
+    # test_meta_schedule_get_consumers()
+    # test_meta_schedule_get_block()
+    # test_meta_schedule_get_axes()
+    # test_meta_schedule_get_read_buffers()
+    # test_meta_schedule_get_write_buffers()
+    # test_meta_schedule_get_root_blocks()
+    # test_meta_schedule_get_leaf_blocks()
+    # test_meta_schedule_mark_loop()
+    # test_meta_schedule_mark_block()
+    # test_meta_schedule_fuse()
+    # test_meta_schedule_split()
+    # test_meta_schedule_reorder()
+    # test_meta_schedule_compute_at()
+    # test_meta_schedule_reverse_compute_at()
+    # test_meta_schedule_compute_inline()
+    # test_meta_schedule_cache_read()
+    # test_meta_schedule_cache_write()
+    # test_meta_schedule_blockize()
+    # test_meta_schedule_decompose_reduction()
+    # test_meta_schedule_tensorize()
+    # test_meta_schedule_parallel()
+    # test_meta_schedule_vectorize()
+    # test_meta_schedule_unroll()
+    # test_meta_schedule_bind()
