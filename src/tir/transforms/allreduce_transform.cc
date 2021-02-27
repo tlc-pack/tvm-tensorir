@@ -90,12 +90,10 @@ class AllReduceTransformer : public StmtExprMutator {
 
   Stmt VisitStmt_(const SeqStmtNode* op) override {
     if (status == kDetecting) {
-      stmt_stack_.push_back(GetRef<Stmt>(op));
       Stmt res_stmt = StmtMutator::VisitStmt_(op);
       const auto* res = res_stmt.as<SeqStmtNode>();
       ICHECK(res != nullptr);
       ICHECK(!stmt_stack_.empty()) << "Size of stmt_stack_ is expected to be positive, but it is 0";
-      stmt_stack_.pop_back();
 
       std::vector<Stmt> seq;
       for (const Stmt& stmt : res->seq) {
