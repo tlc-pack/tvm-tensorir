@@ -190,6 +190,17 @@ inline Optional<tir::StmtSRef> FindBlockSRef(const tir::Schedule& sch, FPredicat
 
 /**************** TIR Annotation ****************/
 
+inline bool HasBinding(const tir::StmtSRef& sref, const String& thread_binding) {
+  const auto* loop = sref->GetStmt<tir::ForNode>();
+  ICHECK(loop) << "ValueError: Expect loop sref here";
+  if (loop->thread_binding) {
+    ICHECK(loop->thread_binding.value()->iter_type == tir::IterVarType::kThreadIndex);
+    return loop->thread_binding.value()->thread_tag == thread_binding;
+  } else {
+    return false;
+  }
+}
+
 inline Optional<String> GetAnn(const tir::StmtSRef& sref, const String& ann_key) {
   const Map<String, ObjectRef>* annotations = nullptr;
   if (const auto* loop = sref->GetStmt<tir::ForNode>()) {
