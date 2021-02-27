@@ -432,7 +432,7 @@ def local_builder_worker(
         filename = os.path.join(tempfile.mkdtemp(), "tmp_func." + build_func.output_format)
         try:
             func = tvm_build(
-                measure_input.sch.sch.func,
+                measure_input.sch.sch.module,
                 target=measure_input.task.target,
                 target_host=measure_input.task.target_host,
             )
@@ -495,7 +495,7 @@ def rpc_runner_run(
     min_repeat_ms: int = 0,
     cooldown_interval: float = 0.0,
     enable_cpu_cache_flush: bool = False,
-    f_create_args = None,
+    f_create_args=None,
     verbose: int = 1,
 ) -> List[MeasureResult]:
     """Run function of RPCRunner to test the performance of the input BuildResults.
@@ -653,9 +653,7 @@ def rpc_runner_worker(
                 else:
                     rpc_eval_repeat = 1
                 if f_create_args is not None:
-                    args_set = [
-                        f_create_args(ctx) for _ in range (rpc_eval_repeat)
-                    ]
+                    args_set = [f_create_args(ctx) for _ in range(rpc_eval_repeat)]
                 else:
                     args_set = [
                         realize_arguments(remote, ctx, measure_input.task.workload)

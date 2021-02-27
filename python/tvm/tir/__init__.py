@@ -47,7 +47,7 @@ from .op import div, indexdiv, indexmod, truncdiv, truncmod, floordiv, floormod
 from .op import comm_reducer, min, max, sum, thread_axis
 from .op import q_multiply_shift
 
-from .schedule import create_schedule, Schedule, validate_hierarchy, StmtSRef
+from .schedule import Schedule, StmtSRef, ScheduleState
 
 from . import ir_builder
 from . import transform

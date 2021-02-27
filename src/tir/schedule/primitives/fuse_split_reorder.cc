@@ -16,12 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include <tvm/arith/iter_affine_map.h>
-
-#include "./schedule_common.h"
+#include "../analysis.h"
+#include "../schedule_common.h"
+#include "./primitives.h"
 
 namespace tvm {
 namespace tir {
+namespace schedule {
 
 /*! \brief Append a new predicate to the each children of type BlockRealize */
 class PredicateUpdater : public StmtMutator {
@@ -84,18 +85,18 @@ Stmt RewriteBindings(const Stmt& stmt, const Array<StmtSRef>& loops) {
   return rewriter(stmt);
 }
 
-std::vector<const StmtSRefNode*> GetLoopsPostOrder(const StmtSRef& root_sref,
-                                                   const ScheduleNode* sch) {
+std::vector<const StmtSRefNode*> GetLoopsPostOrder(const ScheduleState self,
+                                                   const StmtSRef& root_sref) {
   std::vector<const StmtSRefNode*> loops;
   // Gather all the loops under parent_block
-  PreOrderVisit(root_sref->GetStmt<BlockNode>()->body, [&loops, sch](const ObjectRef& node) {
+  PreOrderVisit(root_sref->GetStmt<BlockNode>()->body, [&loops, self](const ObjectRef& node) {
     // Stops at a new BlockNode
     if (node->IsInstance<BlockNode>()) {
       return false;
     }
     // Collects every LoopNode
     if (const auto* loop = node.as<ForNode>()) {
-      loops.push_back(sch->stmt2ref.at(loop).operator->());
+      loops.push_back(self->stmt2ref.at(loop).operator->());
     }
     return true;
   });
@@ -104,8 +105,8 @@ std::vector<const StmtSRefNode*> GetLoopsPostOrder(const StmtSRef& root_sref,
   return loops;
 }
 
-Array<StmtSRef> ScheduleNode::split(const StmtSRef& loop_sref, const PrimExpr& nparts,
-                                    const PrimExpr& factor) {
+Array<StmtSRef> Split(ScheduleState self, const StmtSRef& loop_sref, const PrimExpr& nparts,
+                      const PrimExpr& factor) {
   // Equivalence
   // - The total repeat number has not changed for each direct child block with updating predicate.
   // - The execution order has not changed. (The block executes with the same args and the same
@@ -145,12 +146,12 @@ Array<StmtSRef> ScheduleNode::split(const StmtSRef& loop_sref, const PrimExpr& n
   // Step 3. Generate two nested loops to replace the original loop
   For inner_loop(inner_var, inner_min, inner_extent, loop->kind, new_loop_body);
   For outer_loop(outer_var, outer_min, outer_extent, loop->kind, inner_loop);
-  outer_loop = Downcast<For>(RewriteBindings(outer_loop, GetAxes(loop_sref)));
-  this->Replace(loop_sref, outer_loop, {});
-  return {stmt2ref.at(outer_loop.get()), stmt2ref.at(outer_loop->body.get())};
+  outer_loop = Downcast<For>(RewriteBindings(outer_loop, GetAxes(self, loop_sref)));
+  self->Replace(loop_sref, outer_loop, {});
+  return {self->stmt2ref.at(outer_loop.get()), self->stmt2ref.at(outer_loop->body.get())};
 }
 
-StmtSRef ScheduleNode::fuse(const StmtSRef& outer_sref, const StmtSRef& inner_sref) {
+StmtSRef Fuse(ScheduleState self, const StmtSRef& outer_sref, const StmtSRef& inner_sref) {
   // Equivalence
   // - The total repeat number has not changed for each direct child block.
   // - The execution order has not changed. (The block executes with the same
@@ -177,7 +178,7 @@ StmtSRef ScheduleNode::fuse(const StmtSRef& outer_sref, const StmtSRef& inner_sr
   Array<Stmt> outer_children = GetChildren(GetRef<Stmt>(outer));
   CHECK(outer_children.size() == 1 && outer_children[0].get() == inner)
       << "ValueError: 'fuse' expects 'inner' to be the only child of 'outer'";
-  CHECK(GetParentBlockSRef(outer_sref).get() == GetParentBlockSRef(inner_sref).get())
+  CHECK(GetScopeSRef(outer_sref).get() == GetScopeSRef(inner_sref).get())
       << "ValueError: 'fuse' expects 'inner' and 'outer' to be in the same block scope";
   // Step 2. Create fused loop var and replace the loop var used in inner and outer loop
   arith::Analyzer analyzer;
@@ -199,12 +200,12 @@ StmtSRef ScheduleNode::fuse(const StmtSRef& outer_sref, const StmtSRef& inner_sr
   PrimExpr fused_min = 0;
   PrimExpr fused_extent = analyzer.Simplify(outer->extent * inner->extent);
   For fused_loop = For(fused_var, fused_min, fused_extent, outer->kind, new_loop_body);
-  fused_loop = Downcast<For>(RewriteBindings(fused_loop, GetAxes(outer_sref)));
-  this->Replace(outer_sref, fused_loop, {});
-  return stmt2ref.at(fused_loop.get());
+  fused_loop = Downcast<For>(RewriteBindings(fused_loop, GetAxes(self, outer_sref)));
+  self->Replace(outer_sref, fused_loop, {});
+  return self->stmt2ref.at(fused_loop.get());
 }
 
-void ScheduleNode::reorder(const Array<StmtSRef>& order) {
+void Reorder(ScheduleState self, const Array<StmtSRef>& order) {
   /*
    * Check:
    * - check loops are in the same line and are single-branch
@@ -243,7 +244,7 @@ void ScheduleNode::reorder(const Array<StmtSRef>& order) {
   std::unordered_map<const StmtSRefNode*, const StmtSRefNode*> successor;
   // Gather all the loops under parent_block
   int n_loops_not_found = order.size();
-  for (const StmtSRefNode* loop : GetLoopsPostOrder(GetParentBlockSRef(order[0]), this)) {
+  for (const StmtSRefNode* loop : GetLoopsPostOrder(self, GetScopeSRef(order[0]))) {
     bool is_in_reorder_list = loops.count(loop);
     bool has_inner_loop = successor.count(loop);
     if (is_in_reorder_list || has_inner_loop) {
@@ -271,7 +272,7 @@ void ScheduleNode::reorder(const Array<StmtSRef>& order) {
   for (const StmtSRefNode* loop = top; !(block = loop->GetStmt<BlockNode>());) {
     Array<Stmt> children = GetChildren(GetRef<Stmt>(loop->stmt));
     CHECK_EQ(children.size(), 1) << "ValueError: 'reorder' expects the loops to be single-branch";
-    loop = stmt2ref[children[0].get()].operator->();
+    loop = self->stmt2ref.at(children[0].get()).operator->();
   }
   // Check 5. the block below has all its block_var to be data_par or reduce
   for (const IterVar& iter_var : block->iter_vars) {
@@ -296,28 +297,9 @@ void ScheduleNode::reorder(const Array<StmtSRef>& order) {
     }
     return Stmt(n);
   };
-  this->Replace(GetRef<StmtSRef>(top), f_reorder(top, 0), {});
+  self->Replace(GetRef<StmtSRef>(top), f_reorder(top, 0), {});
 }
 
-struct Internal {
-  static StmtSRef Fuse(Schedule self, StmtSRef outer, StmtSRef inner) {
-    return self->fuse(outer, inner);
-  }
-  static Array<StmtSRef> SplitByFactor(Schedule self, StmtSRef loop_sref, PrimExpr factor) {
-    const auto* loop = loop_sref->GetStmt<ForNode>();
-    return self->split(loop_sref, floordiv(loop->extent + factor - 1, factor), factor);
-  }
-  static Array<StmtSRef> SplitByNParts(Schedule self, StmtSRef loop_sref, PrimExpr nparts) {
-    const auto* loop = loop_sref->GetStmt<ForNode>();
-    return self->split(loop_sref, nparts, floordiv(loop->extent + nparts - 1, nparts));
-  }
-  static void Reorder(Schedule self, Array<StmtSRef> order) { self->reorder(order); }
-};
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleFuse").set_body_typed(Internal::Fuse);
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSplitByFactor").set_body_typed(Internal::SplitByFactor);
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSplitByNParts").set_body_typed(Internal::SplitByNParts);
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleReorder").set_body_typed(Internal::Reorder);
-
+}  // namespace schedule
 }  // namespace tir
 }  // namespace tvm

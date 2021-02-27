@@ -14,12 +14,16 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
+# pylint: disable=missing-function-docstring,missing-module-docstring
 import pytest
 import tvm
-import util
 from tvm import tir
 from tvm.script import ty
+
+import util
+
+# fmt: off
+# pylint: disable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name
 
 
 @tvm.script.tir
@@ -44,19 +48,6 @@ def predicate_unroll(b: ty.handle, c: ty.handle) -> None:
                 tir.bind(vi, i)
                 tir.bind(vj, (jo * 4) + ji)
                 C[vi, vj] = (B[vi, vj] + tir.float32(1))
-
-
-def test_vectorize_normal():
-    func = util.predicate_stmt()
-
-    s = tir.create_schedule(func)
-    B = s.get_block("update")
-    i, jo, ji = s.get_axes(B)
-    s.vectorize(ji)
-
-    mod = tvm.script.create_module(
-        {"predicate_vectorize": predicate_vectorize})
-    tvm.ir.assert_structural_equal(s.func, mod["predicate_vectorize"])
 
 
 @tvm.script.tir
@@ -87,28 +78,39 @@ def element_wise_compute_at_vectorize(a: ty.handle, c: ty.handle) -> None:
                 tir.bind(vj, (j_outer * 4) + j_inner)
                 C[vi, vj] = (B[vi, vj] + tir.float32(1))
 
+# pylint: enable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name
+# fmt: on
+# pylint: disable=invalid-name
+
+
+def test_vectorize_normal():
+    func = util.predicate_stmt()
+    s = tir.Schedule(func, debug_mode=True)
+    B = s.get_block("update")
+    _, _, ji = s.get_axes(B)
+    s.vectorize(ji)
+    mod = tvm.script.create_module({"predicate_vectorize": predicate_vectorize})
+    tvm.ir.assert_structural_equal(s.module, mod["predicate_vectorize"])
+
 
 def test_vectorize_complete():
-    mod = tvm.script.create_module(
-        {"element_wise_compute_at": element_wise_compute_at})
+    mod = tvm.script.create_module({"element_wise_compute_at": element_wise_compute_at})
     func = mod["element_wise_compute_at"]
-
     # schedule
-    s = tir.create_schedule(func)
+    s = tir.Schedule(func, debug_mode=True)
     C = s.get_block("C")
-    outer, inner = s.get_axes(C)
-    i_o, i_i = s.split(inner, 4)
+    _, inner = s.get_axes(C)
+    _, i_i = s.split(inner, factor=4)
     s.vectorize(i_i)
-
     mod = tvm.script.create_module(
-        {"element_wise_compute_at_vectorize": element_wise_compute_at_vectorize})
-    tvm.ir.assert_structural_equal(
-        s.func, mod["element_wise_compute_at_vectorize"])
+        {"element_wise_compute_at_vectorize": element_wise_compute_at_vectorize}
+    )
+    tvm.ir.assert_structural_equal(s.module, mod["element_wise_compute_at_vectorize"])
 
 
 def test_vectorize_fail_on_reduce_var():
     func = util.matmul_stmt()
-    s = tir.create_schedule(func)
+    s = tir.Schedule(func, debug_mode=True)
     update = s.get_block("update")
     _, _, k = s.get_axes(update)
     with pytest.raises(ValueError):
@@ -117,14 +119,12 @@ def test_vectorize_fail_on_reduce_var():
 
 def test_unroll_normal():
     func = util.predicate_stmt()
-
-    s = tir.create_schedule(func)
+    s = tir.Schedule(func, debug_mode=True)
     B = s.get_block("update")
-    i, jo, ji = s.get_axes(B)
+    _, _, ji = s.get_axes(B)
     s.unroll(ji)
-
     mod = tvm.script.create_module({"predicate_unroll": predicate_unroll})
-    tvm.ir.assert_structural_equal(s.func, mod["predicate_unroll"])
+    tvm.ir.assert_structural_equal(s.module, mod["predicate_unroll"])
 
 
 if __name__ == "__main__":
