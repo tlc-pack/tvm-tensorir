@@ -167,7 +167,7 @@ class StmtMutator::Internal {
     auto fmutate = [self](const IterVar& iter_var) {
       PrimExpr min = self->VisitExpr(iter_var->dom->min);
       PrimExpr extent = self->VisitExpr(iter_var->dom->extent);
-      Range dom = Range(min, extent);
+      Range dom(min, extent);
       if (min.same_as(iter_var->dom->min) && extent.same_as(iter_var->dom->extent)) {
         return iter_var;
       } else {

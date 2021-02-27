@@ -628,8 +628,10 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
   for (size_t i = 0; i < op->region.size(); ++i) {
     const auto& range = op->region[i];
     p->Print(range->min);
-    p->stream << ":";
-    p->Print(range->min + range->extent);
+    if (!is_one(range->extent)) {
+      p->stream << ":";
+      p->Print(range->min + range->extent);
+    }
     if (i != op->region.size() - 1) p->stream << ", ";
   }
   p->stream << "]";
@@ -707,7 +709,7 @@ void PrintBlockTitle(const BlockNode* op, ReprPrinter* p) {
   p->stream << ")";
 }
 
-void PrintBlockElement(const BlockNode* op, ReprPrinter* p) {
+void PrintBlockSignature(const BlockNode* op, ReprPrinter* p) {
   // print read/write regions
   p->PrintIndent();
   p->stream << "reads(";
@@ -736,8 +738,8 @@ void PrintBlockElement(const BlockNode* op, ReprPrinter* p) {
   for (const auto& match_buf : op->match_buffers) {
     p->Print(match_buf);
   }
-  p->PrintIndent();
   if (!op->annotations.empty()) {
+    p->PrintIndent();
     p->stream << "annotations(" << op->annotations << ")\n";
   }
 }
@@ -767,7 +769,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
   p->indent += 2;
 
   // Print block elements (e.g. reads/writes, exec_scope, etc)
-  PrintBlockElement(op, p);
+  PrintBlockSignature(op, p);
   // Print block init and body
   PrintBlockBody(op, p);
 
@@ -780,6 +782,8 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 BlockRealize::BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block block, Span span) {
   CHECK_EQ(block->iter_vars.size(), values.size())
       << "ValueError: BlockRealize needs to have the same number of iter_vars and binding values";
+  CHECK(predicate.dtype().is_bool())
+    << "TypeError: Expect Block.predicate to be a bool expression";
   ObjectPtr<BlockRealizeNode> node = make_object<BlockRealizeNode>();
   node->iter_values = std::move(values);
   node->predicate = std::move(predicate);
@@ -790,8 +794,6 @@ BlockRealize::BlockRealize(Array<PrimExpr> values, PrimExpr predicate, Block blo
 
 TVM_REGISTER_GLOBAL("tir.BlockRealize")
     .set_body_typed([](Array<PrimExpr> iter_values, PrimExpr predicate, Block block, Span span) {
-      CHECK(predicate.dtype().is_bool())
-          << "TypeError: Expect Block.predicate to be a bool expression";
       return BlockRealize(iter_values, predicate, block, span);
     });
 
@@ -823,7 +825,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     p->stream << ")\n";
   }
   // Print block elements (e.g. reads/writes, exec_scope, etc)
-  PrintBlockElement(block_op, p);
+  PrintBlockSignature(block_op, p);
   // Print block init and body
   PrintBlockBody(block_op, p);
 

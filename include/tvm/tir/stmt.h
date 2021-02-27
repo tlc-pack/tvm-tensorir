@@ -862,7 +862,7 @@ class For : public Stmt {
 };
 
 /*!
- * \brief A prefetch hint for abuffer
+ * \brief A prefetch hint for a buffer
  */
 class PrefetchNode : public StmtNode {
  public:
@@ -906,7 +906,7 @@ class Prefetch : public Stmt {
 };
 
 /*!
- * \brief A specific buffer to represent multi-dimensional region access.
+ * \brief Representing the region of multi-dimensional buffer access.
  */
 class BufferRegionNode : public Object {
  public:
@@ -1002,6 +1002,7 @@ class MatchBufferRegion : public ObjectRef {
 
 /*!
  * \brief A block is a basic schedule unit in TIR.
+ * \note Block's body is parameterized by iter vars.
  * \code
  *
  *  with tir.block([extent0, extent1, ...], name) as [v0, v1, ...]:
@@ -1038,13 +1039,18 @@ class BlockNode : public StmtNode {
    *  reduction block. The optional init field allows us to represent initialization and
    *  reduction update in a single block and transform them collectively.
    *  We also provide primitives to decompose the init into a separate block during scheduling.
+   *  Init field is None if there is no reduction iter_vars
    */
   Optional<Stmt> init;
   /*!
    * \brief The block execution scope.
-   * Currently allowed execution scope.
+   * \note Execution scope describes which hardware hierarchy the block executes on.
+   * Currently allowed execution scope:
    *   - "": local execution scope
-   *   - "warp": warp execution scope.
+   *   - "gpu_block": block execution scope on GPU
+   *   - "gpu_warp": warp execution scope on GPU
+   *   - "gpu_thread": thread execution scope on GPU
+   * It is easy to extend for new hardware by introducing an new scope name.
    */
   String exec_scope;
   /*! \brief The buffer allocated in the block. */

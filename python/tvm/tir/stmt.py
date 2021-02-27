@@ -435,7 +435,7 @@ class Prefetch(Stmt):
 
 @tvm._ffi.register_object("tir.BufferRegion")
 class BufferRegion(Object):
-    """BufferRegion Node
+    """BufferRegion node.
 
     Parameters
     ----------
@@ -455,7 +455,7 @@ class BufferRegion(Object):
 
 @tvm._ffi.register_object("tir.MatchBufferRegion")
 class MatchBufferRegion(Object):
-    """MatchBufferRegion Node
+    """MatchBufferRegion node.
 
     Parameters
     ----------
@@ -533,7 +533,7 @@ class Block(Stmt):
         name_hint: str,
         body: Stmt,
         init: Optional[Stmt] = None,
-        exec_scope: Optional[str] = "",
+        exec_scope: str = "",
         alloc_buffers: Optional[List[Buffer]] = None,
         match_buffers: Optional[List[MatchBufferRegion]] = None,
         annotations: Optional[Mapping[str, Object]] = None,
