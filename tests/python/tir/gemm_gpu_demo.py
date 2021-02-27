@@ -60,7 +60,7 @@ thread_y = tir.thread_axis((0, num_thread), "threadIdx.y")
 thread_xz = tir.thread_axis((0, 2), "vthread", name="vx")
 thread_yz = tir.thread_axis((0, 2), "vthread", name="vy")
 
-s = tir.create_schedule(original_func)
+s = tir.Schedule(original_func, debug_mode=True)
 
 C = s.get_block("C")
 
@@ -122,4 +122,4 @@ s.decompose_reduction(CC, decompose_pos)
 
 with tvm.transform.PassContext(
         config={"tir.UnrollLoop": {"auto_max_step": 128, "explicit_unroll": device != "cuda"}}):
-    build_and_test(s.func)
+    build_and_test(s.module)

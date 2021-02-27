@@ -18,8 +18,8 @@
 import numpy as np
 import tvm
 import tvm.testing
+
 import util
-from tvm import tir
 
 
 def test_element_wise():

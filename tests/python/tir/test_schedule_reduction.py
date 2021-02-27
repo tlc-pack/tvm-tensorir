@@ -14,14 +14,18 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
+# pylint: disable=missing-function-docstring,missing-module-docstring
 import numpy as np
 import pytest
 import tvm
-import util
+import tvm.testing
 from tvm import tir
 from tvm.script import ty
 
+import util
+
+# fmt: off
+# pylint: disable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name,unexpected-keyword-arg
 
 @tvm.script.tir
 def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
@@ -33,11 +37,6 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         with tir.init():
             C[vi, vj] = 0.0
         C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
-
-
-def test_reduction_roundtrip():
-    func_rt = tvm.script.from_source(tvm.script.asscript(matmul))
-    tvm.ir.assert_structural_equal(matmul, func_rt)
 
 
 @tvm.script.tir
@@ -65,31 +64,8 @@ def matmul_decompose1(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
-def test_reduction_decompose():
-    # Test 1
-    s = tir.create_schedule(matmul)
-    C = s.get_block("update")
-    i, j, k = s.get_axes(C)
-    s.decompose_reduction(C, i)
-    tvm.ir.assert_structural_equal(matmul_decompose0, s.func)
-
-    # Test 2
-    s = tir.create_schedule(matmul)
-    C = s.get_block("update")
-    s.decompose_reduction(C)
-    tvm.ir.assert_structural_equal(matmul_decompose1, s.func)
-
-
-def test_reduction_merge():
-    s = tir.create_schedule(matmul_decompose0)
-    init = s.get_block("init")
-    update = s.get_block("update")
-    s.merge_reduction(init, update)
-    tvm.ir.assert_structural_equal(matmul, s.func)
-
-
 @tvm.script.tir
-def matmul_blockzied(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
+def matmul_blockized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     C = tir.match_buffer(c, [128, 128], elem_offset=0, align=128, offset_factor=1)
     B = tir.match_buffer(b, [128, 128], elem_offset=0, align=128, offset_factor=1)
     A = tir.match_buffer(a, [128, 128], elem_offset=0, align=128, offset_factor=1)
@@ -112,14 +88,6 @@ def matmul_blockzied(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                         tir.bind(vj, i1)
                         tir.bind(vk, i2)
                         C[vi, vj] = C[vi, vj] + (A[vi, vk] * B[vj, vk])
-
-
-def test_reduction_blockize():
-    s = tir.create_schedule(matmul)
-    C = s.get_block("update")
-    i, j, k = s.get_axes(C)
-    s.blockize(j)
-    tvm.ir.assert_structural_equal(matmul_blockzied, s.func)
 
 
 @tvm.script.tir
@@ -156,13 +124,6 @@ def matmul_scale_inline(a: ty.handle, b: ty.handle, e: ty.handle) -> None:
 
     with tir.block([128, 128], "E") as [vi, vj]:
         E[vi, vj] = C[vi, vj] + 1.0
-
-
-def test_reduction_compute_inline():
-    s = tir.create_schedule(matmul_scale)
-    D = s.get_block("D")
-    s.compute_inline(D)
-    tvm.ir.assert_structural_equal(s.func, matmul_scale_inline)
 
 
 @tvm.script.tir
@@ -274,61 +235,6 @@ def square_sum_square_root_rfactor(a: ty.handle, d: ty.handle) -> None:
             D[b_2] = tir.sqrt(C[b_2], dtype="float32")
 
 
-def test_reduction_rfactor():
-    # Test 1
-    func = util.matmul_stmt()
-
-    s = tir.create_schedule(func)
-    C = s.get_block("update")
-    i, j, k = s.get_axes(C)
-    ko, ki = s.split(k, 32)
-    kio, kii = s.split(ki, 4)
-    wb = s.rfactor(kii, 0)
-    tvm.ir.assert_structural_equal(s.func, matmul_rfactor)
-
-    f = tvm.build(s.func, target="llvm")
-    a_np = np.random.uniform(size=(128, 128)).astype("float32")
-    b_np = np.random.uniform(size=(128, 128)).astype("float32")
-    a = tvm.nd.array(a_np)
-    b = tvm.nd.array(b_np)
-    c = tvm.nd.array(np.zeros((128, 128), dtype="float32"))
-    f(a, b, c)
-    c_np = np.matmul(a_np, b_np.T)
-    tvm.testing.assert_allclose(c.asnumpy(), c_np, rtol=1e-4, atol=1e-4)
-
-    # Test 2
-    s = tir.create_schedule(square_sum)
-    C = s.get_block("C")
-    b, i, j = s.get_axes(C)
-    wb = s.rfactor(j, 1)
-    tvm.ir.assert_structural_equal(s.func, square_sum_rfactor)
-
-    f = tvm.build(s.func, target="llvm")
-    a_np = np.random.uniform(size=(16, 256, 256)).astype("float32")
-    a = tvm.nd.array(a_np)
-    c = tvm.nd.array(np.zeros((16, ), dtype="float32"))
-    f(a, c)
-    c_np = np.sum(a_np * a_np, axis=(1, 2))
-    tvm.testing.assert_allclose(c.asnumpy(), c_np, rtol=1e-4, atol=1e-4)
-
-    # Test 3
-    s = tir.create_schedule(square_sum_square_root)
-    C = s.get_block("C")
-    b, i, j = s.get_axes(C)
-    fuse = s.fuse(i, j)
-    fo, fi = s.split(fuse, factor=1)
-    wb = s.rfactor(fi, 0)
-    tvm.ir.assert_structural_equal(s.func, square_sum_square_root_rfactor)
-
-    f = tvm.build(s.func, target="llvm")
-    a_np = np.random.uniform(size=(16, 256, 256)).astype("float32")
-    a = tvm.nd.array(a_np)
-    c = tvm.nd.array(np.zeros((16, ), dtype="float32"))
-    f(a, c)
-    c_np = np.sqrt(np.sum(a_np * a_np, axis=(1, 2)))
-    tvm.testing.assert_allclose(c.asnumpy(), c_np, rtol=1e-4, atol=1e-4)
-
-
 @tvm.script.tir
 def rowsum_allreduce(a: ty.handle, b: ty.handle) -> None:
     A = tir.match_buffer(a, (16, 16, 16), "float32")
@@ -340,20 +246,123 @@ def rowsum_allreduce(a: ty.handle, b: ty.handle) -> None:
         B[vii] = B[vii] + A[vii, vi, vj]
 
 
+# fmt: on
+# pylint: enable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name,unexpected-keyword-arg
+
+
+# pylint: disable=invalid-name
+
+
+def test_reduction_roundtrip():
+    func_rt = tvm.script.from_source(tvm.script.asscript(matmul))
+    tvm.ir.assert_structural_equal(matmul, func_rt)
+
+
+def test_reduction_decompose():
+    # Test 1
+    s = tir.Schedule(matmul, debug_mode=True)
+    C = s.get_block("update")
+    i, _, _ = s.get_axes(C)
+    s.decompose_reduction(C, i)
+    tvm.ir.assert_structural_equal(matmul_decompose0, s.module)
+    # Test 2
+    s = tir.Schedule(matmul, debug_mode=True)
+    C = s.get_block("update")
+    s.decompose_reduction(C, loop=None)
+    tvm.ir.assert_structural_equal(matmul_decompose1, s.module)
+
+
+def test_reduction_merge():
+    s = tir.Schedule(matmul_decompose0, debug_mode=True)
+    init = s.get_block("init")
+    update = s.get_block("update")
+    s.merge_reduction(init, update)
+    tvm.ir.assert_structural_equal(matmul, s.module)
+
+
+def test_reduction_blockize():
+    s = tir.Schedule(matmul, debug_mode=True)
+    C = s.get_block("update")
+    _, j, _ = s.get_axes(C)
+    s.blockize(j)
+    tvm.ir.assert_structural_equal(matmul_blockized, s.module)
+
+
+def test_reduction_compute_inline():
+    s = tir.Schedule(matmul_scale, debug_mode=True)
+    D = s.get_block("D")
+    s.compute_inline(D)
+    tvm.ir.assert_structural_equal(s.module, matmul_scale_inline)
+
+
+def test_reduction_rfactor():
+    # Test 1
+    func = util.matmul_stmt()
+    s = tir.Schedule(func, debug_mode=True)
+    C = s.get_block("update")
+    i, j, k = s.get_axes(C)
+    _, ki = s.split(k, factor=32)
+    _, kii = s.split(ki, factor=4)
+    _ = s.rfactor(kii, factor=0)
+    tvm.ir.assert_structural_equal(s.module, matmul_rfactor)
+
+    f = tvm.build(s.module, target="llvm")
+    a_np = np.random.uniform(size=(128, 128)).astype("float32")
+    b_np = np.random.uniform(size=(128, 128)).astype("float32")
+    a = tvm.nd.array(a_np)
+    b = tvm.nd.array(b_np)
+    c = tvm.nd.array(np.zeros((128, 128), dtype="float32"))
+    f(a, b, c)
+    c_np = np.matmul(a_np, b_np.T)
+    tvm.testing.assert_allclose(c.asnumpy(), c_np, rtol=1e-4, atol=1e-4)
+
+    # Test 2
+    s = tir.Schedule(square_sum, debug_mode=True)
+    C = s.get_block("C")
+    b, i, j = s.get_axes(C)
+    _ = s.rfactor(j, 1)
+    tvm.ir.assert_structural_equal(s.module, square_sum_rfactor)
+
+    f = tvm.build(s.module, target="llvm")
+    a_np = np.random.uniform(size=(16, 256, 256)).astype("float32")
+    a = tvm.nd.array(a_np)
+    c = tvm.nd.array(np.zeros((16,), dtype="float32"))
+    f(a, c)
+    c_np = np.sum(a_np * a_np, axis=(1, 2))
+    tvm.testing.assert_allclose(c.asnumpy(), c_np, rtol=1e-4, atol=1e-4)
+
+    # Test 3
+    s = tir.Schedule(square_sum_square_root, debug_mode=True)
+    C = s.get_block("C")
+    b, i, j = s.get_axes(C)
+    fuse = s.fuse(i, j)
+    _, fi = s.split(fuse, factor=1)
+    _ = s.rfactor(fi, 0)
+    tvm.ir.assert_structural_equal(s.module, square_sum_square_root_rfactor)
+
+    f = tvm.build(s.module, target="llvm")
+    a_np = np.random.uniform(size=(16, 256, 256)).astype("float32")
+    a = tvm.nd.array(a_np)
+    c = tvm.nd.array(np.zeros((16,), dtype="float32"))
+    f(a, c)
+    c_np = np.sqrt(np.sum(a_np * a_np, axis=(1, 2)))
+    tvm.testing.assert_allclose(c.asnumpy(), c_np, rtol=1e-4, atol=1e-4)
+
+
 @pytest.mark.skip("Needs GPU")
 def test_reduction_allreduce():
     ctx = tvm.gpu(0)
     # Test 1
-    s = tir.create_schedule(rowsum_allreduce)
+    s = tir.Schedule(rowsum_allreduce, debug_mode=True)
     thread_x = tir.thread_axis((0, 16), "threadIdx.x")
     thread_y = tir.thread_axis((0, 16), "threadIdx.y")
 
     B_block = s.get_block("B")
-    ax_ii, ax_i, ax_j = s.get_axes(B_block)
+    _, ax_i, ax_j = s.get_axes(B_block)
     s.bind(ax_j, thread_x)
     s.bind(ax_i, thread_y)
 
-    f = tvm.build(s.func, target="cuda")
+    f = tvm.build(s.module, target="cuda")
     a_np = np.random.uniform(size=(16, 16, 16)).astype("float32")
     a = tvm.nd.array(a_np, ctx)
     b = tvm.nd.array(np.zeros((16,), dtype="float32"), ctx)
@@ -362,14 +371,14 @@ def test_reduction_allreduce():
     np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-4, atol=1e-4)
 
     # Test 2
-    s = tir.create_schedule(rowsum_allreduce)
+    s = tir.Schedule(rowsum_allreduce, debug_mode=True)
     thread_x = tir.thread_axis((0, 16), "threadIdx.x")
 
     B_block = s.get_block("B")
-    ax_ii, ax_i, ax_j = s.get_axes(B_block)
+    _, ax_i, ax_j = s.get_axes(B_block)
     s.bind(ax_j, thread_x)
 
-    f = tvm.build(s.func, target="cuda")
+    f = tvm.build(s.module, target="cuda")
     a_np = np.random.uniform(size=(16, 16, 16)).astype("float32")
     a = tvm.nd.array(a_np, ctx)
     b = tvm.nd.array(np.zeros((16,), dtype="float32"), ctx)
@@ -378,14 +387,14 @@ def test_reduction_allreduce():
     np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-4, atol=1e-4)
 
     # Test 3
-    s = tir.create_schedule(rowsum_allreduce)
+    s = tir.Schedule(rowsum_allreduce, debug_mode=True)
     thread_x = tir.thread_axis((0, 16), "threadIdx.x")
 
     B_block = s.get_block("B")
-    ax_ii, ax_i, ax_j = s.get_axes(B_block)
+    _, ax_i, ax_j = s.get_axes(B_block)
     s.bind(ax_i, thread_x)
 
-    f = tvm.build(s.func, target="cuda")
+    f = tvm.build(s.module, target="cuda")
     a_np = np.random.uniform(size=(16, 16, 16)).astype("float32")
     a = tvm.nd.array(a_np, ctx)
     b = tvm.nd.array(np.zeros((16,), dtype="float32"), ctx)
@@ -394,26 +403,26 @@ def test_reduction_allreduce():
     np.testing.assert_allclose(b.asnumpy(), b_np, rtol=1e-4, atol=1e-4)
 
     # Test 4
-    s = tir.create_schedule(rowsum_allreduce)
+    s = tir.Schedule(rowsum_allreduce, debug_mode=True)
     thread_x = tir.thread_axis((0, 16), "threadIdx.x")
 
     B_block = s.get_block("B")
-    ax_ii, ax_i, ax_j = s.get_axes(B_block)
+    _, ax_i, ax_j = s.get_axes(B_block)
 
     B_rf = s.rfactor(ax_i, 0)
     ax_i_rf, ax_ii_rf, ax_j_rf = s.get_axes(B_rf)
     s.reorder(ax_ii_rf, ax_i_rf, ax_j_rf)
-    ax_i_rf_o, ax_i_rf_i = s.split(ax_i_rf, factor=4)
+    ax_i_rf_o, _ = s.split(ax_i_rf, factor=4)
 
-    s.bind(ax_ii_rf, tir.thread_axis('blockIdx.x'))
-    s.bind(ax_i_rf_o, tir.thread_axis('threadIdx.x'))
+    s.bind(ax_ii_rf, tir.thread_axis("blockIdx.x"))
+    s.bind(ax_i_rf_o, tir.thread_axis("threadIdx.x"))
 
-    B_rf_local = s.cache_write(B_rf, 0, 'local')
+    _ = s.cache_write(B_rf, 0, "local")
     s.compute_inline(B_rf)
 
     s.reverse_compute_at(B_block, ax_i_rf_o)
 
-    f = tvm.build(s.func, target="cuda")
+    f = tvm.build(s.module, target="cuda")
     a_np = np.random.uniform(size=(16, 16, 16)).astype("float32")
     a = tvm.nd.array(a_np, ctx)
     b = tvm.nd.array(np.zeros((16,), dtype="float32"), ctx)

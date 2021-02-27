@@ -43,7 +43,7 @@ LOCAL_RUN = ProgramTester(
     rpc_port=None,
 )
 
-# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg
+# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg,chained-comparison,misplaced-comparison-constant
 # fmt: off
 
 @tvm.script.tir
@@ -239,7 +239,8 @@ def load_b_intrin(a: ty.handle, c: ty.handle) -> None:
 
 
 # fmt: on
-# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg
+# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg,chained-comparison,misplaced-comparison-constant
+# pylint: disable=invalid-name
 
 
 def build_and_test(local_func, rpc_func):
@@ -258,7 +259,7 @@ def test_tensorcore():
     mod = tvm.script.create_module({"conv": conv})
     original_func = mod["conv"]
 
-    s = tir.create_schedule(original_func)
+    s = tir.Schedule(original_func, debug_mode=True)
 
     Conv = s.get_block("Conv")
 
@@ -332,9 +333,9 @@ def test_tensorcore():
     s.tensorize(s.get_axes(AF)[-2], tir.TensorIntrin(load_a_desc, load_a_intrin))
     s.tensorize(s.get_axes(WF)[-2], tir.TensorIntrin(load_b_desc, load_b_intrin))
 
-    print(tvm.script.asscript(s.func))
-    print(tvm.lower(s.func, None, simple_mode=True))
-    build_and_test(conv, s.func)
+    print(tvm.script.asscript(s.module))
+    print(tvm.lower(s.module, None, simple_mode=True))
+    build_and_test(conv, s.module)
 
 
 if __name__ == "__main__":

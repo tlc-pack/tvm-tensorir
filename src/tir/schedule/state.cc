@@ -44,10 +44,7 @@ void SetSeqIndex(ScheduleStateNode* self, const Stmt& stmt, int seq_index) {
   } else if (const auto* loop = stmt.as<ForNode>()) {
     ICHECK(self->stmt2ref.count(loop));
     self->stmt2ref.at(loop)->seq_index = seq_index;
-  } else {
     // do nothing
-  }
-}
 
 /*!
  * \brief Update seq_index of the children of a SeqStmt
@@ -122,8 +119,6 @@ class StateCreator : private StmtVisitor {
     ScheduleStateNode* self = n.get();
     // Set `n->mod`
     n->mod = std::move(mod);
-    // Set `n->debug_mode`
-    n->debug_mode = debug_mode;
     // Set `n->stmt2ref` and `n->block_info`
     StateCreator creator(self);
     for (const auto& kv : n->mod->functions) {
@@ -132,31 +127,6 @@ class StateCreator : private StmtVisitor {
         creator.VisitStmt(func->body);
       }
     }
-    return n;
-  }
-
- private:
-  explicit StateCreator(ScheduleStateNode* self)
-      : self_(self), srefs_{}, realizes_{}, block_frames_{} {
-    block_frames_.emplace({});
-  }
-
-  /*!
-   * \brief Add a new statement to the stack, which becomes the current scope
-   * \param stmt A for-loop statement or a block statement
-   * \return A sref to the stmt
-   */
-  StmtSRef PushSRef(const StmtNode* stmt) {
-    if (srefs_.empty()) {
-      srefs_.push_back(
-          StmtSRef(stmt,
-                   /*parent=*/nullptr,
-                   /*seq_index=*/-1));  // `seq_index` will be set properly in SetSeqIndex
-    } else {
-      StmtSRefNode* parent = srefs_.back().get();
-      srefs_.push_back(
-          StmtSRef(stmt, parent,
-                   /*seq_index=*/-1));  // `seq_index` will be set properly in SetSeqIndex
     }
     return srefs_.back();
   }
@@ -167,21 +137,6 @@ class StateCreator : private StmtVisitor {
     self_->stmt2ref[sref->stmt] = sref;
     srefs_.pop_back();
     return sref;
-  }
-
-  void MakeBlockInfo(StmtSRef scope_root) {
-    // Calculate `BlockInfo::scope`
-    Array<StmtSRef> child_block_srefs = std::move(block_frames_.back());
-    BlockInfo& info =
-        self_->block_info.emplace(std::move(scope_root), BlockInfo(BlockScope(child_block_srefs)))
-            .first->second;
-    // TODO(@junrushao1994): calculate the flags
-    // Set `affine_binding`
-    info.affine_binding = false;
-    // Set `region_cover`
-    info.region_cover = false;
-    // Set `stage_pipeline`
-    info.scope->stage_pipeline = false;
   }
 
   void VisitStmt_(const ForNode* loop) final {
@@ -208,7 +163,6 @@ class StateCreator : private StmtVisitor {
 
   void VisitStmt_(const SeqStmtNode* seq_stmt) final {
     // Set `seq_index` information for SeqStmtNode
-    StmtVisitor::VisitStmt_(seq_stmt);
     SetSeqIndexInChildren(self_, seq_stmt);
   }
 
