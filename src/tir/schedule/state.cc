@@ -125,10 +125,7 @@ void SetSeqIndex(ScheduleStateNode* self, const Stmt& stmt, int seq_index) {
   } else if (const auto* loop = stmt.as<ForNode>()) {
     ICHECK(self->stmt2ref.count(loop));
     self->stmt2ref.at(loop)->seq_index = seq_index;
-  } else {
     // do nothing
-  }
-}
 
 /*!
  * \brief Update seq_index of the children of a SeqStmt
@@ -203,8 +200,6 @@ class StateCreator : private StmtVisitor {
     ScheduleStateNode* self = n.get();
     // Set `n->mod`
     n->mod = std::move(mod);
-    // Set `n->debug_mode`
-    n->debug_mode = debug_mode;
     // Set `n->stmt2ref` and `n->block_info`
     StateCreator creator(self);
     for (const auto& kv : n->mod->functions) {
@@ -421,7 +416,6 @@ class StateCreator : private StmtVisitor {
 
   void VisitStmt_(const SeqStmtNode* seq_stmt) final {
     // Set `seq_index` information for SeqStmtNode
-    StmtVisitor::VisitStmt_(seq_stmt);
     SetSeqIndexInChildren(self_, seq_stmt);
   }
 

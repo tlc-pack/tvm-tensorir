@@ -53,7 +53,7 @@ def test_meta_schedule_search_space_post_order_apply():
         reduce_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "R"]
         order = [list() for _ in TILING_FORMAT]
         axes = sch.get_axes(block=block)
-        iter_types = ms.analysis.get_block_var_types(sch.sch, sch.evaluate(block))
+        iter_types = ms.analysis.get_block_var_types(sch.sch.state, sch.evaluate(block))
         assert len(axes) == len(iter_types)
         for axis, iter_type in zip(axes, iter_types):
             for expect_iter_type, indices in [

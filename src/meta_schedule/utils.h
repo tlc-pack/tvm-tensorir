@@ -22,7 +22,7 @@
 #include <tvm/arith/analyzer.h>
 #include <tvm/target/target.h>
 #include <tvm/tir/expr.h>
-#include <tvm/tir/schedule.h>
+#include <tvm/tir/schedule/schedule.h>
 #include <tvm/tir/stmt_functor.h>
 
 #include <set>
@@ -171,7 +171,7 @@ inline bool DomainEqual(const Array<Range>& lhs, const Array<Range>& rhs) {
 }
 
 template <class FPredicate>
-inline Optional<tir::StmtSRef> FindBlockSRef(const tir::Schedule& sch, FPredicate predicate) {
+inline Optional<tir::StmtSRef> FindBlockSRef(const tir::ScheduleState& sch, FPredicate predicate) {
   Optional<tir::StmtSRef> result = NullOpt;
   tir::PreOrderVisit(sch->func->body, [&sch, &result, &predicate](const ObjectRef& obj) -> bool {
     if (result.defined()) {
@@ -235,7 +235,8 @@ inline bool HasAnyAnn(const tir::StmtSRef& sref) {
   throw;
 }
 
-inline void DelAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const String& ann_key) {
+inline void DelAnn(const tir::ScheduleState& sch, const tir::StmtSRef& sref,
+                   const String& ann_key) {
   // Extract annotation
   const Map<String, ObjectRef>* annotations = nullptr;
   if (const auto* loop = sref->GetStmt<tir::ForNode>()) {
@@ -267,7 +268,7 @@ inline void DelAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const St
   }
 }
 
-inline void AddAnn(const tir::Schedule& sch, const tir::StmtSRef& sref, const String& ann_key,
+inline void AddAnn(const tir::ScheduleState& sch, const tir::StmtSRef& sref, const String& ann_key,
                    const PrimExpr& ann_val) {
   // Extract annotation
   const Map<String, ObjectRef>* annotations = nullptr;
@@ -456,7 +457,7 @@ inline int GetTargetNumCores(const Target& target, std::atomic<int>* warned_num_
   if (num_cores == -1) {
     static const auto* f_cpu_count = runtime::Registry::Get("meta_schedule._cpu_count");
     ICHECK(f_cpu_count)
-      << "ValueError: Cannot find the packed function \"meta_schedule._cpu_count\"";
+        << "ValueError: Cannot find the packed function \"meta_schedule._cpu_count\"";
     num_cores = (*f_cpu_count)(false);
     if (warned_num_cores_missing != nullptr && warned_num_cores_missing->fetch_add(1) == 0) {
       LOG(WARNING) << "Warning: Target does not have attribute \"num_cores\", falling back the "

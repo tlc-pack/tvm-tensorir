@@ -21,6 +21,9 @@ from . import _ffi_api
 from ..function import PrimFunc
 from .. import Buffer, Stmt
 
+if TYPE_CHECKING:
+    from ..function import PrimFunc
+
 
 def expr_deep_equal(lhs, rhs):
     """Deeply compare two nested expressions.

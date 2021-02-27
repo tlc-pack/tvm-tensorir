@@ -1055,7 +1055,7 @@ runtime::NDArray PerBlockFeature(const Schedule& sch, int max_num_buffer_access_
   size_t kNumFeature = kNumFeatureGroup1 +
                        kNumFeatureGroup2Subgroup * max_num_buffer_access_features +
                        kNumFeatureGroup3 + kNumFeatureGroup5;
-  const tir::PrimFunc& func = sch->sch->func;
+  const tir::PrimFunc& func = sch->sch->state->func;
   std::vector<FeatureSet> feature_map = PerBlockFeatureExtractor::Extract(func);
 
   DoubleNDArrayPusher ret(

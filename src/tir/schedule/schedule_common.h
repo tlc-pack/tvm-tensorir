@@ -27,7 +27,8 @@
 #include <tvm/arith/iter_affine_map.h>
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/op.h>
-#include <tvm/tir/schedule.h>
+#include <tvm/tir/schedule/schedule.h>
+#include <tvm/tir/schedule/state.h>
 #include <tvm/tir/stmt_functor.h>
 
 #include <algorithm>
@@ -40,20 +41,28 @@
 namespace tvm {
 namespace tir {
 
-#define TVM_SREF_TO_BLOCK(Result, SRef)                                                       \
-  SRef->GetStmt<::tvm::tir::BlockNode>();                                                     \
-  ICHECK(Result) << "TypeError: Expects SRef `" << #SRef << "` points to `Block`, but gets: " \
-                 << (SRef->stmt ? SRef->stmt->GetTypeKey() : "None");
+#define TVM_SREF_TO_E(Result, SRef, Type) \
+  SRef->GetStmt<Type>();                  \
+  ICHECK(Result)
 
-#define TVM_SREF_TO_LOOP(Result, SRef)                                                       \
-  SRef->GetStmt<::tvm::tir::LoopNode>();                                                     \
-  ICHECK(Result) << "TypeError: Expects SRef `" << #SRef << "` points to `Loop`, but gets: " \
-                 << (SRef->stmt ? SRef->stmt->GetTypeKey() : "None");
+#define TVM_SREF_TO_BLOCK(Result, SRef)              \
+  TVM_SREF_TO_E(Result, SRef, ::tvm::tir::BlockNode) \
+      << "TypeError: Expects StmtSRef `" << #SRef    \
+      << "` points to `Block`, but gets: " << (SRef->stmt ? SRef->stmt->GetTypeKey() : "None");
 
-#define TVM_TYPE_AS(Result, From, Type)                                                      \
-  From.as<Type>();                                                                           \
-  ICHECK(Result) << "TypeError: Expects `" << #From << "` to have type `" << Type::_type_key \
-                 << "`, but gets: " << (From.defined() ? From->GetTypeKey() : "None")
+#define TVM_SREF_TO_FOR(Result, SRef)              \
+  TVM_SREF_TO_E(Result, SRef, ::tvm::tir::ForNode) \
+      << "TypeError: Expects StmtSRef `" << #SRef  \
+      << "` points to `Loop`, but gets: " << (SRef->stmt ? SRef->stmt->GetTypeKey() : "None");
+
+#define TVM_TYPE_AS_E(Result, From, Type) \
+  From.as<Type>();                        \
+  ICHECK(Result)
+
+#define TVM_TYPE_AS(Result, From, Type)                                           \
+  TVM_TYPE_AS_E(Result, From, Type)                                               \
+      << "TypeError: Expects `" << #From << "` to have type `" << Type::_type_key \
+      << "`, but gets: " << (From.defined() ? From->GetTypeKey() : "None")
 
 inline String ReprFunc(PrimFunc func) {
   const auto* f = runtime::Registry::Get("script.AsTVMScript");
@@ -213,8 +222,6 @@ class StmtReplacer : public StmtMutator {
 };
 
 bool CheckOneLine(const Stmt& s);
-
-void CollectVars(std::unordered_set<const VarNode*>& res, const PrimExpr& expr);
 
 /*!
  * \brief PrimExpr pattern matcher.

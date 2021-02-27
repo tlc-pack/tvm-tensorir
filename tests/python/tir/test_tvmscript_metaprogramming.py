@@ -14,10 +14,14 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
+# pylint: disable=missing-function-docstring,missing-module-docstring
 import tvm
 from tvm import te, tir
 from tvm.script import ty
+
+
+# fmt: off
+# pylint: disable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name
 
 
 @tvm.script.tir
@@ -87,21 +91,6 @@ def matmul_128_n_8x(a: ty.handle, b: ty.handle, c: ty.handle, n: ty.int32) -> No
         C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vj, vk]
 
 
-def test_tensor_dimension_invariant_code_matmul():
-    a, b, c, n = matmul.params
-    func = matmul.specialize(a, tir.decl_buffer((128, 128))).remove_const_param(n)
-    tvm.ir.assert_structural_equal(func, matmul_128)
-
-    func = matmul.specialize(n, 128)
-    tvm.ir.assert_structural_equal(func, matmul_128_n)
-
-    func = matmul.specialize(n, 128).remove_const_param(n)
-    tvm.ir.assert_structural_equal(func, matmul_128_n_removed)
-
-    func = matmul.specialize(n, te.var("x")*8)
-    tvm.ir.assert_structural_equal(func, matmul_128_n_8x)
-
-
 @tvm.script.tir
 def element_wise(a: ty.handle, c: ty.handle) -> None:
     m = tir.var("int32")
@@ -145,18 +134,34 @@ def element_wise_128_n(a: ty.handle, c: ty.handle) -> None:
         C[vi, vj] = B[vi, vj] + 1.0
 
 
+# pylint: enable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name
+# fmt: on
+# pylint: disable=invalid-name
+
+
+def test_tensor_dimension_invariant_code_matmul():
+    a, _, _, n = matmul.params
+    func = matmul.specialize(a, tir.decl_buffer((128, 128))).remove_const_param(n)
+    tvm.ir.assert_structural_equal(func, matmul_128)
+    func = matmul.specialize(n, 128)
+    tvm.ir.assert_structural_equal(func, matmul_128_n)
+    func = matmul.specialize(n, 128).remove_const_param(n)
+    tvm.ir.assert_structural_equal(func, matmul_128_n_removed)
+    func = matmul.specialize(n, te.var("x") * 8)
+    tvm.ir.assert_structural_equal(func, matmul_128_n_8x)
+
+
 def test_tensor_dimension_invariant_code_elemwise():
     # fully specialized
     a, c = element_wise.params
     func1 = element_wise.specialize(a, tir.decl_buffer((128, 64)))
     tvm.ir.assert_structural_equal(func1, element_wise_128_64)
-
     # partially specialized
     C = element_wise.buffer_map[c]
     func2 = element_wise.specialize(c, tir.decl_buffer((128, C.shape[1])))
     tvm.ir.assert_structural_equal(func2, element_wise_128_n)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_tensor_dimension_invariant_code_matmul()
     test_tensor_dimension_invariant_code_elemwise()
