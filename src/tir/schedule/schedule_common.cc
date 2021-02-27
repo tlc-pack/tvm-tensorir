@@ -21,7 +21,6 @@
 
 #include <tvm/arith/analyzer.h>
 #include <tvm/tir/analysis.h>
-#include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
 
 #include <unordered_map>
@@ -248,6 +247,18 @@ StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef
   }
 
   return root;
+}
+
+bool CheckOneLine(const Stmt& s) {
+  bool legal = true, meet_block = false;
+  PostOrderVisit(s, [&legal, &meet_block](const ObjectRef& obj) {
+    if (obj->IsInstance<SeqStmtNode>() && !meet_block) {
+      legal = false;
+    } else if (obj->IsInstance<BlockRealizeNode>()) {
+      meet_block = true;
+    }
+  });
+  return legal;
 }
 
 std::function<BufferRegion(const BufferRegion)> RelaxGenerator(

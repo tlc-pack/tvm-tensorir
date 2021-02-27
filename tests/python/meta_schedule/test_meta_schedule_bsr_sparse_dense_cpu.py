@@ -195,7 +195,7 @@ def test_sparse_dense():
                     return [X, W_data, W_indices, W_indptr, Y]
 
                 sch = meta_schedule_sparse_dense_llvm(func, f_create_args)
-                func = sch.sch.func
+                func = sch.sch.module
 
                 func = tvm.build(func)
                 Y_tvm = tvm.nd.array(np.zeros(Y_np.shape, dtype=Y_np.dtype), ctx=ctx)

@@ -16,15 +16,27 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include "./analysis.h"
 #include "./schedule_common.h"
 
 namespace tvm {
 namespace tir {
 
-// TODO(@junrushao1994):
-// 1) invariant: SeqStmt is non-recursive
-// 2) change `block_sref_map` from new->old to old->new
-// 3) revisit init block: it doesn't have sref right now
+/**************** Constructor ****************/
+
+ScheduleState::ScheduleState(
+    PrimFunc func, StmtSRef root,
+    std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual> scopes,
+    std::unordered_map<const StmtNode*, StmtSRef> stmt2ref, bool debug_mode) {
+  ObjectPtr<ScheduleStateNode> n = make_object<ScheduleStateNode>();
+  n->func = std::move(func);
+  n->root = std::move(root);
+  n->scopes = std::move(scopes);
+  n->stmt2ref = std::move(stmt2ref);
+  this->data_ = std::move(n);
+}
+
+/**************** Utility functions ****************/
 
 /*!
  * \brief Set the `StmtSRefNode::seq_index` field for stmt
@@ -32,7 +44,7 @@ namespace tir {
  * \param stmt The statement, or the realize node of the statement whose sref to be set
  * \param seq_index The seq_index to be set
  */
-void SetSeqIndex(ScheduleNode* self, const Stmt& stmt, int seq_index) {
+void SetSeqIndex(ScheduleStateNode* self, const Stmt& stmt, int seq_index) {
   if (const auto* realize = stmt.as<BlockRealizeNode>()) {
     const BlockNode* block = realize->block.get();
     ICHECK(self->stmt2ref.count(block));
@@ -49,44 +61,159 @@ void SetSeqIndex(ScheduleNode* self, const Stmt& stmt, int seq_index) {
 }
 
 /*!
- * \brief Update the sref information on the schedule class, as well as the statement of sref itself
- * More specifically, update
- *  `sref->stmt` to `new_stmt`
- *  `sch->stmt2ref`, remove the old statement that sref points to, and add the new statement
- * \param sch The schedule class to be updated
- * \param sref The sref to be updated
- * \param new_stmt The statement that replaces the statement inside the sref
+ * \brief Update seq_index of the children of a SeqStmt
+ * \param self The schedule class
+ * \param seq_stmt The SeqStmt whose childrens needs updating
  */
-void UpdateSRef(ScheduleNode* sch, StmtSRefNode* sref, const StmtNode* new_stmt) {
-  ICHECK(new_stmt->IsInstance<BlockNode>() || new_stmt->IsInstance<ForNode>());
-  const StmtNode* old_stmt = sref->stmt;
-  ICHECK_NE(new_stmt, old_stmt);
-  sch->stmt2ref[new_stmt] = GetRef<StmtSRef>(sref);
-  sch->stmt2ref.erase(sref->stmt);
-  sref->stmt = new_stmt;
+void SetSeqIndex(ScheduleStateNode* self, const SeqStmtNode* seq_stmt) {
+  int i = 0;
+  for (const Stmt& stmt : seq_stmt->seq) {
+    SetSeqIndex(self, stmt, i);
+    ++i;
+  }
 }
 
 /*!
- * \brief To a specific sref, count the number of steps to its highest non-unique ancestor.
- *
- * If the sref itself is the highest, then the result is 0.
- * If the parent of the sref is the highest, then the result is 1.
- * ...
+ * \brief Update the sref information on the schedule class, as well as the statement of sref itself
+ * More specifically, update
+ *  `sref->stmt` to `new_stmt`
+ *  `self->stmt2ref`, remove the old statement that sref points to, and add the new statement
+ * \param self The schedule class to be updated
+ * \param sref The sref to be updated
+ * \param new_stmt The statement that replaces the statement inside the sref
  */
-int StepsHighestNonUniqueAncestor(const StmtSRef& sref, bool func_is_unique) {
-  int result = -1;
-  int i = 0;
-  for (const StmtSRefNode* ptr = sref.get(); ptr != nullptr; ptr = ptr->parent, ++i) {
-    if (!ptr->stmt->unique()) {
-      result = i;
+void UpdateSRef(ScheduleStateNode* self, StmtSRefNode* sref, const StmtNode* new_stmt) {
+  ICHECK(new_stmt->IsInstance<BlockNode>() || new_stmt->IsInstance<ForNode>());
+  const StmtNode* old_stmt = sref->stmt;
+  ICHECK_NE(new_stmt, old_stmt);
+  self->stmt2ref[new_stmt] = GetRef<StmtSRef>(sref);
+  self->stmt2ref.erase(sref->stmt);
+  sref->stmt = new_stmt;
+}
+
+/**************** Creation ****************/
+
+/*! \brief A helper class to create a new ScheduleStateNode */
+class StateCreator : private StmtVisitor {
+ public:
+  /*!
+   * \brief The entry function
+   * \param self The schedule state to be completed
+   */
+  static ObjectPtr<ScheduleStateNode> Create(PrimFunc func, bool debug_mode) {
+    ObjectPtr<ScheduleStateNode> n = make_object<ScheduleStateNode>();
+    ScheduleStateNode* self = n.get();
+    // Set `n->func`
+    n->func = std::move(func);
+    // Set `n->debug_mode`
+    n->debug_mode = debug_mode;
+    // Set `n->stmt2ref`
+    // Set `n->scopes`
+    (StateCreator(self)).VisitStmt(self->func->body);
+    // Set `n->root`
+    const auto* realize = TVM_TYPE_AS(realize, self->func->body, BlockRealizeNode);
+    self->root = self->stmt2ref.at(realize->block.get());
+    return n;
+  }
+
+ private:
+  explicit StateCreator(ScheduleStateNode* self) : self_(self), srefs_{} {}
+
+  /*!
+   * \brief Add a new statement to the stack, which becomes the current scope
+   * \param stmt A loop statement or a block statement
+   */
+  StmtSRef PushSRef(const StmtNode* stmt) {
+    if (srefs_.empty()) {
+      srefs_.push_back(StmtSRef(stmt, nullptr, -1, false));
+      self_->root = srefs_.back();
+    } else {
+      StmtSRefNode* parent = srefs_.back().operator->();
+      srefs_.push_back(StmtSRef(stmt, parent, -1, false));
+    }
+    return srefs_.back();
+  }
+
+  /*! \brief Pop the top of the scope and record it in stmt2ref map */
+  StmtSRef PopSRef() {
+    StmtSRef sref = std::move(srefs_.back());
+    self_->stmt2ref[sref->stmt] = sref;
+    srefs_.pop_back();
+    return sref;
+  }
+
+  void VisitStmt_(const BlockNode* block) final {
+    PushSRef(block);
+    block_frames_.emplace_back();
+    // `stmt->init` is not visited
+    VisitStmt(block->body);
+    StmtSRef sref = PopSRef();
+    // Set up `binding_valid`
+    Map<Var, Range> loop_var_ranges;
+    for (StmtSRefNode* parent = sref->parent; parent && parent->stmt->IsInstance<ForNode>();
+         parent = parent->parent) {
+      const auto* loop = static_cast<const ForNode*>(parent->stmt);
+      loop_var_ranges.Set(loop->loop_var, Range::FromMinExtent(loop->min, loop->extent));
+    }
+    sref->binding_valid =
+        ValidateBlockBinding(GetRef<BlockRealize>(realizes_.back()), loop_var_ranges);
+    // Collect `scopes` info
+    self_->scopes[sref] = std::move(block_frames_.back().scope);
+    // Pop stack
+    block_frames_.pop_back();
+    // Update parent scope if exists
+    if (!block_frames_.empty()) {
+      BlockFrame& top = block_frames_.back();
+      top.scope->AddChildBlock(sref, &top.buffer_readers);
     }
   }
-  // If the function itself is not unique, then we assume the root is not unique
-  if (!func_is_unique) {
-    result = i;
+
+  void VisitStmt_(const ForNode* loop) final {
+    PushSRef(loop);
+    VisitStmt(loop->body);
+    PopSRef();
   }
-  return result;
+
+  void VisitStmt_(const BlockRealizeNode* realize) final {
+    realizes_.push_back(realize);
+    VisitStmt(realize->block);
+    realizes_.pop_back();
+  }
+
+  void VisitStmt_(const SeqStmtNode* seq_stmt) final {
+    // Set `seq_index` information for SeqStmtNode
+    StmtVisitor::VisitStmt_(seq_stmt);
+    SetSeqIndex(self_, seq_stmt);
+  }
+
+  /*! \brief A stack frame containing the block information being gathered but not completed */
+  struct BlockFrame {
+    /*! \brief The scope to be created. */
+    BlockScope scope;
+    /*! \brief ScopeNode::buffer_writers exists, but ScopeNode::buffer_readers does not. */
+    std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual> buffer_readers;
+  };
+
+  /*! \brief The result stmt2ref */
+  ScheduleStateNode* self_;
+  /*! \brief The stack frame used to indicate the current scope */
+  std::vector<StmtSRef> srefs_;
+  /*! \brief The BlockRealize in the ancestors */
+  std::vector<const BlockRealizeNode*> realizes_;
+  /*! \brief The stack frames of blocks in the DFS visit. */
+  std::vector<BlockFrame> block_frames_;
+};
+
+ScheduleState::ScheduleState(PrimFunc func, bool debug_mode) {
+  data_ = StateCreator::Create(func, debug_mode);
+  // Verify the region cover
+  for (const auto& it : (*this)->scopes) {
+    const StmtSRef& sref = it.first;
+    VerifyRegionCover(GetRef<ScheduleState>(this->get()), sref);
+  }
 }
+
+/**************** Replace ****************/
 
 /*!
  * \brief Record the different sref reuse types in the replacement
@@ -128,7 +255,7 @@ struct ReuseInfo {
  */
 class ReuseCollector : public StmtVisitor {
  public:
-  static ReuseInfo Collect(ScheduleNode* self, const Stmt& tgt_stmt,
+  static ReuseInfo Collect(ScheduleStateNode* self, const Stmt& tgt_stmt,
                            const Map<Block, Block>& block_sref_reverse_reuse) {
     ReuseCollector collector(self);
     collector.VisitStmt(tgt_stmt);
@@ -144,7 +271,7 @@ class ReuseCollector : public StmtVisitor {
   }
 
  private:
-  explicit ReuseCollector(ScheduleNode* self) : self_(self) {}
+  explicit ReuseCollector(ScheduleStateNode* self) : self_(self) {}
 
   void VisitStmt_(const ForNode* op) final {
     if (self_->stmt2ref.count(op)) {
@@ -164,7 +291,7 @@ class ReuseCollector : public StmtVisitor {
     }
   }
 
-  ScheduleNode* self_;
+  ScheduleStateNode* self_;
   std::vector<const StmtNode*> intact_;
   std::vector<const VarNode*> loop_vars_;
 };
@@ -191,7 +318,7 @@ class SRefTreePruner : public StmtVisitor {
    * where the block comes from the subtree of `tgt_stmt`
    * 3) Intact reuse: not returned
    */
-  static std::unordered_map<const Object*, StmtSRef> Prune(ScheduleNode* self,
+  static std::unordered_map<const Object*, StmtSRef> Prune(ScheduleStateNode* self,
                                                            const ReuseInfo& reuse_info,
                                                            const Stmt& src_stmt) {
     SRefTreePruner pruner(self, reuse_info);
@@ -200,7 +327,7 @@ class SRefTreePruner : public StmtVisitor {
   }
 
  private:
-  explicit SRefTreePruner(ScheduleNode* self, const ReuseInfo& reuse_info)
+  explicit SRefTreePruner(ScheduleStateNode* self, const ReuseInfo& reuse_info)
       : self_(self), reuse_info_(reuse_info) {}
 
   void VisitStmt_(const ForNode* op) final {
@@ -208,7 +335,9 @@ class SRefTreePruner : public StmtVisitor {
       return;
     }
     auto it = self_->stmt2ref.find(op);
-    ICHECK(it != self_->stmt2ref.end());
+    ICHECK(it != self_->stmt2ref.end())
+        << "IndexError: Cannot find correpsonding StmtSRef for the loop:\n"
+        << GetRef<For>(op);
     StmtSRef& sref = it->second;
     // Detect reuse
     const VarNode* loop_var = op->loop_var.get();
@@ -231,7 +360,9 @@ class SRefTreePruner : public StmtVisitor {
       return;
     }
     auto it = self_->stmt2ref.find(op);
-    ICHECK(it != self_->stmt2ref.end());
+    ICHECK(it != self_->stmt2ref.end())
+        << "IndexError: Cannot find correpsonding StmtSRef for the block:\n"
+        << GetRef<Block>(op);
     StmtSRef& sref = it->second;
     // Detect reuse
     auto reuse_it = reuse_info_.block_sref_reuse.find(op);
@@ -251,7 +382,7 @@ class SRefTreePruner : public StmtVisitor {
     VisitStmt(op->body);
   }
 
-  ScheduleNode* self_;
+  ScheduleStateNode* self_;
   const ReuseInfo& reuse_info_;
   /*!
    * \brief Reused srefs:
@@ -271,14 +402,14 @@ class SRefTreePruner : public StmtVisitor {
  */
 class SRefUpdater : public StmtVisitor {
  public:
-  static void Update(ScheduleNode* self, StmtSRefNode* root_parent,
+  static void Update(ScheduleStateNode* self, StmtSRefNode* root_parent,
                      const std::unordered_map<const Object*, StmtSRef>& reused_srefs,
                      const Stmt& tgt_stmt) {
     SRefUpdater(self, root_parent, reused_srefs).VisitStmt(tgt_stmt);
   }
 
  private:
-  explicit SRefUpdater(ScheduleNode* self, StmtSRefNode* root_parent,
+  explicit SRefUpdater(ScheduleStateNode* self, StmtSRefNode* root_parent,
                        const std::unordered_map<const Object*, StmtSRef>& reused_srefs)
       : self_(self), parents_{root_parent}, reused_srefs_(reused_srefs) {}
 
@@ -334,17 +465,12 @@ class SRefUpdater : public StmtVisitor {
     UpdateScope(op, self_->stmt2ref, &self_->scopes);
   }
 
-  void VisitStmt_(const SeqStmtNode* op) final {
-    StmtVisitor::VisitStmt_(op);
-    // Update seq_index of children
-    int i = 0;
-    for (const Stmt& stmt : op->seq) {
-      SetSeqIndex(self_, stmt, i);
-      ++i;
-    }
+  void VisitStmt_(const SeqStmtNode* seq_stmt) final {
+    StmtVisitor::VisitStmt_(seq_stmt);
+    SetSeqIndex(self_, seq_stmt);
   }
 
-  ScheduleNode* self_;
+  ScheduleStateNode* self_;
   std::vector<StmtSRefNode*> parents_;
   const std::unordered_map<const Object*, StmtSRef>& reused_srefs_;
 };
@@ -413,8 +539,9 @@ class ChildReplacer : private StmtMutator {
       } else if (const auto* realize = stmt.as<BlockRealizeNode>()) {
         // Case 2. stmt is BlockRealize, src_stmt is Block
         if (realize->block.get() == src_stmt_) {
+          const auto* tgt_block = TVM_TYPE_AS(tgt_block, tgt_stmt_, BlockNode);
           ObjectPtr<BlockRealizeNode> new_realize = make_object<BlockRealizeNode>(*realize);
-          new_realize->block = GetRef<Block>(static_cast<const BlockNode*>(tgt_stmt_.get()));
+          new_realize->block = GetRef<Block>(tgt_block);
           new_stmt = BlockRealize(std::move(new_realize));
         }
       }
@@ -449,8 +576,8 @@ class ChildReplacer : private StmtMutator {
   int seq_index_;
 };
 
-void ScheduleNode::Replace(const StmtSRef& _src_sref, const Stmt& tgt_stmt,
-                           const Map<Block, Block>& block_reuse) {
+void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_stmt,
+                                const Map<Block, Block>& block_sref_reuse) {
   {
     const StmtNode* src_stmt = _src_sref->stmt;
     bool input_correct =
@@ -482,7 +609,7 @@ void ScheduleNode::Replace(const StmtSRef& _src_sref, const Stmt& tgt_stmt,
   //     Mark those nodes as `intact`
   //   Case 1.2: Can somehow infer the node being visited is mutated from the old AST, including
   //     (a) The loop var appears in the old AST
-  //     (b) The node is explicitly present in `block_reuse`
+  //     (b) The node is explicitly present in `block_sref_reuse`
   //     It means we need to retain and reuse the sref, so that those srefs users hold won't expire
   //     Mark those nodes as `reuse`
   //   Case 1.3: It is a completely new node
@@ -496,7 +623,7 @@ void ScheduleNode::Replace(const StmtSRef& _src_sref, const Stmt& tgt_stmt,
     // Step 1.1. Collect info for different kinds of reuses
     // 1) intact
     // 2) loop/block reuse
-    ReuseInfo reuse_info = ReuseCollector::Collect(this, tgt_stmt, block_reuse);
+    ReuseInfo reuse_info = ReuseCollector::Collect(this, tgt_stmt, block_sref_reuse);
     // Step 1.2. Collect loop/block reuse to their corresponding srefs
     // and remove those srefs in the `src_stmt` that are no longer used after replacement
     std::unordered_map<const Object*, StmtSRef> reused_srefs =
@@ -512,8 +639,19 @@ void ScheduleNode::Replace(const StmtSRef& _src_sref, const Stmt& tgt_stmt,
   //   we need to update those sref points from old ancestors to newly created ones
   // `num_copy_steps` is the maximum number of hops until we need to copy
   // To reach a node that can be mutated in-place, it needs `num_copy_steps + 1` hops
-  int num_copy_steps =
-      StepsHighestNonUniqueAncestor(src_sref, /*func_is_unique=*/this->func.unique());
+  int num_copy_steps = -1;
+  {
+    int i = 0;
+    for (const StmtSRefNode* ptr = src_sref.get(); ptr != nullptr; ptr = ptr->parent, ++i) {
+      if (!ptr->stmt->unique()) {
+        num_copy_steps = i;
+      }
+    }
+    // If the function itself is not unique, then we assume the root is not unique
+    if (!this->func.unique()) {
+      num_copy_steps = i;
+    }
+  }
   // Loop invariant:
   //
   // Before step `i`:
@@ -576,18 +714,48 @@ void ScheduleNode::Replace(const StmtSRef& _src_sref, const Stmt& tgt_stmt,
     new_func->body = BlockRealize(std::move(new_realize));
     this->func = GetRef<PrimFunc>(new_func);
   }
-  // TODO(@junrushao1994): provide a configurable way to turn it on
-  // this->ValidateSRef();
+  if (this->debug_mode) {
+    VerifySRefTree(GetRef<ScheduleState>(this));
+  }
 }
 
-struct Internal {
-  static void Replace(Schedule self, StmtSRef src_sref, Stmt tgt_stmt,
-                      Optional<Map<Block, Block>> block_reuse) {
-    return self->Replace(src_sref, tgt_stmt, block_reuse.value_or({}));
-  }
-};
+/**************** FFI ****************/
 
-TVM_REGISTER_GLOBAL("tir.schedule.Replace").set_body_typed(Internal::Replace);
+TVM_REGISTER_NODE_TYPE(ScheduleStateNode);
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleState")
+    .set_body_typed([](PrimFunc func, bool debug_mode) { return ScheduleState(func, debug_mode); });
+
+TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefStmt")
+    .set_body_typed([](StmtSRef sref) -> Optional<Stmt> {
+      if (sref->stmt == nullptr) {
+        return NullOpt;
+      }
+      return GetRef<Stmt>(sref->stmt);
+    });
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetSRef")
+    .set_body_typed([](ScheduleState self, Stmt stmt) -> Optional<StmtSRef> {
+      auto it = self->stmt2ref.find(stmt.get());
+      if (it != self->stmt2ref.end()) {
+        return it->second;
+      }
+      return NullOpt;
+    });
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetScope")
+    .set_body_typed([](ScheduleState self, StmtSRef block_sref) {
+      auto it = self->scopes.find(block_sref);
+      CHECK(it != self->scopes.end())
+          << "ValueError: Cannot find corresponding scope for: " << block_sref;
+      return it->second;
+    });
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateReplace")
+    .set_body_typed([](ScheduleState self, tir::StmtSRef src_sref, Stmt tgt_stmt,
+                       Map<Block, Block> block_sref_reuse) {
+      self->Replace(src_sref, tgt_stmt, block_sref_reuse);
+    });
 
 }  // namespace tir
 }  // namespace tvm

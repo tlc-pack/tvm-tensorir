@@ -190,8 +190,8 @@ bool BlockScopeNode::IsReduction(const StmtSRef& block_sref) const {
 }
 
 bool BlockScopeNode::IsCompactDataFlow(const StmtSRef& subtree_sref,
-                                       const ScheduleNode* schedule) const {
-  for (const StmtSRef& block : schedule->GetChildBlocks(subtree_sref)) {
+                                       const Array<StmtSRef>& child_blocks) const {
+  for (const StmtSRef& block : child_blocks) {
     if (!IsComplete(block) && !IsReduction(block)) {
       return false;
     }
@@ -291,8 +291,18 @@ void BlockScopeNode::AddChildBlock(
 }
 
 TVM_REGISTER_NODE_TYPE(StmtSRefNode);
-TVM_REGISTER_NODE_TYPE(BlockScopeNode);
 TVM_REGISTER_NODE_TYPE(DepEdgeNode);
+TVM_REGISTER_NODE_TYPE(BlockScopeNode);
+
+TVM_REGISTER_GLOBAL("tir.schedule.BlockScopeGetPredecessors")
+    .set_body_typed([](BlockScope self, StmtSRef block_sref) {
+      return self->GetPredecessors(block_sref);
+    });
+
+TVM_REGISTER_GLOBAL("tir.schedule.BlockScopeGetSuccessor")
+    .set_body_typed([](BlockScope self, StmtSRef block_sref) {
+      return self->GetSuccessors(block_sref);
+    });
 
 }  // namespace tir
 }  // namespace tvm

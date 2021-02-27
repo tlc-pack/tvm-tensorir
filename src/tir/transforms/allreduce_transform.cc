@@ -27,7 +27,7 @@
 #include <tvm/tir/builtin.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
-#include <tvm/tir/schedule.h>
+#include <tvm/tir/schedule/schedule.h>
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
 
@@ -42,22 +42,23 @@ class AllReduceTransformer : public StmtExprMutator {
   AllReduceTransformer() = default;
 
  public:
-#define TVM_ALLREDUCE_VISIT_SIMPLE_BODY(Type)                                                      \
-  Stmt VisitStmt_(const Type* op) override {                                                       \
-    if (status == kDetecting) {                                                                    \
-      stmt_stack_.push_back(GetRef<Stmt>(op));                                                     \
-      Stmt res_stmt = StmtMutator::VisitStmt_(op);                                                 \
-      const auto* res = res_stmt.as<Type>();                                                       \
-      ICHECK(res != nullptr);                                                                       \
-      ICHECK(!stmt_stack_.empty()) << "Size of stmt_stack_ is expected to be positive, but it is 0";\
-      stmt_stack_.pop_back();                                                                      \
-                                                                                                   \
-      ObjectPtr<Type> n = CopyOnWrite(res);                                                        \
-      AddStatements(GetRef<Stmt>(op), op->body, res->body, n->body);                               \
-      return Stmt(n);                                                                              \
-    } else {                                                                                       \
-      return StmtMutator::VisitStmt_(op);                                                          \
-    }                                                                                              \
+#define TVM_ALLREDUCE_VISIT_SIMPLE_BODY(Type)                               \
+  Stmt VisitStmt_(const Type* op) override {                                \
+    if (status == kDetecting) {                                             \
+      stmt_stack_.push_back(GetRef<Stmt>(op));                              \
+      Stmt res_stmt = StmtMutator::VisitStmt_(op);                          \
+      const auto* res = res_stmt.as<Type>();                                \
+      ICHECK(res != nullptr);                                               \
+      ICHECK(!stmt_stack_.empty())                                          \
+          << "Size of stmt_stack_ is expected to be positive, but it is 0"; \
+      stmt_stack_.pop_back();                                               \
+                                                                            \
+      ObjectPtr<Type> n = CopyOnWrite(res);                                 \
+      AddStatements(GetRef<Stmt>(op), op->body, res->body, n->body);        \
+      return Stmt(n);                                                       \
+    } else {                                                                \
+      return StmtMutator::VisitStmt_(op);                                   \
+    }                                                                       \
   }
 
   TVM_ALLREDUCE_VISIT_SIMPLE_BODY(AttrStmtNode);
@@ -241,7 +242,7 @@ class AllReduceTransformer : public StmtExprMutator {
       ICHECK(binding_value.as<PrimExprNode>() != nullptr);
 
       if (block_var->iter_type == kCommReduce) {
-        PreOrderVisit(binding_value, [&reduction_relative_] (const ObjectRef& node) {
+        PreOrderVisit(binding_value, [&reduction_relative_](const ObjectRef& node) {
           if (const auto* var = node.as<VarNode>()) {
             reduction_relative_.insert(GetRef<Var>(var));
             return false;
@@ -253,7 +254,7 @@ class AllReduceTransformer : public StmtExprMutator {
 
     // Step 3. Check whether any of the reduction relative loops is bound to threadIdx.
     //         If so, allreduce is needed.
-    bool appear = false; // Whether a reduction relative loop is met.
+    bool appear = false;  // Whether a reduction relative loop is met.
     bool deep_normal_loop = false;
     size_t num_bound_rela = 0;
     size_t num_tot_rela = 0;
@@ -275,8 +276,8 @@ class AllReduceTransformer : public StmtExprMutator {
       std::string thread_tag =
           loop->thread_binding.defined() ? loop->thread_binding.value()->thread_tag : "";
       if (thread_tag.substr(0, 9) == "threadIdx") {
-        ICHECK(thread_tag == "threadIdx.x" || thread_tag == "threadIdx.y"
-              || thread_tag == "threadIdx.z");
+        ICHECK(thread_tag == "threadIdx.x" || thread_tag == "threadIdx.y" ||
+               thread_tag == "threadIdx.z");
         num_bound_rela++;
       }
     }
@@ -316,8 +317,7 @@ class AllReduceTransformer : public StmtExprMutator {
     ICHECK(reducer_lhs.defined() && reducer_rhs.defined());
     PrimExpr update_value = reducer_rhs.value();
 
-
-    const bool need_normal_reduce = num_bound_rela < num_tot_rela; // In this case, buffer
+    const bool need_normal_reduce = num_bound_rela < num_tot_rela;  // In this case, buffer
     // normal_reduce is needed.
 
     // Step 8. Take the stmt above the first reduction relative loop.
@@ -442,11 +442,10 @@ class AllReduceTransformer : public StmtExprMutator {
         }
       }
 
-      Stmt body1 = BufferStore(write_buffer, BufferLoad(reduce_temp.value(), {0}),
-                               update_body->indices);
+      Stmt body1 =
+          BufferStore(write_buffer, BufferLoad(reduce_temp.value(), {0}), update_body->indices);
       body1 = Block(iter_vars, reads, writes, {}, {}, {}, exec_scope, block_name, body1, NullOpt);
-      body1 = BlockRealize(binding_values, predicate,
-                           GetRef<Block>(body1.as<BlockNode>()));
+      body1 = BlockRealize(binding_values, predicate, GetRef<Block>(body1.as<BlockNode>()));
 
       // Step d. Append the stmts above to the list.
       std::vector<Stmt>& new_stmts_ = stmts_to_append_[par_stmt][red_loop];
@@ -519,11 +518,10 @@ class AllReduceTransformer : public StmtExprMutator {
         predicate = And(predicate, EQ(loop->loop_var, loop->min));
       }
 
-      Stmt body = BufferStore(write_buffer, BufferLoad(reduce_temp.value(), {0}),
-                              update_body->indices);
+      Stmt body =
+          BufferStore(write_buffer, BufferLoad(reduce_temp.value(), {0}), update_body->indices);
       body = Block(iter_vars, reads, writes, {}, {}, {}, "", block_name, body, NullOpt);
-      body = BlockRealize(binding_values, predicate,
-                          GetRef<Block>(body.as<BlockNode>()));
+      body = BlockRealize(binding_values, predicate, GetRef<Block>(body.as<BlockNode>()));
 
       // Step c. Append the stmt above to the list.
       std::vector<Stmt>& new_stmts_ = stmts_to_append_[par_stmt][red_loop];
@@ -552,13 +550,8 @@ class AllReduceTransformer : public StmtExprMutator {
   std::unordered_set<Var, ObjectPtrHash, ObjectPtrEqual> already_bound_loop_vars_;
 
  private:
-
   /*! \brief Three states indicating the status of the mutating process. */
-  enum MutatorStatus {
-    kDetecting,
-    kMutatingBlock_nor_red,
-    kMutatingBlock_red_tmp
-  };
+  enum MutatorStatus { kDetecting, kMutatingBlock_nor_red, kMutatingBlock_red_tmp };
   MutatorStatus status = kDetecting;
 
   /*! \brief A stack recording the statements above the current statement. */
@@ -579,21 +572,25 @@ class AllReduceTransformer : public StmtExprMutator {
   Optional<Stmt> red_tmp_block_body = NullOpt;
 
   /*! \brief The map/set to save the statements to be inserted. */
-  std::unordered_map<Block,
-  std::vector<Buffer>, ObjectPtrHash, ObjectPtrEqual> new_allocations_;
-  std::unordered_map<Stmt, std::unordered_map<For, std::vector<BufferStore>,
-  ObjectPtrHash, ObjectPtrEqual>, ObjectPtrHash, ObjectPtrEqual> inits_to_add_;
-  std::unordered_map<Stmt, std::unordered_map<For, std::vector<Stmt>,
-  ObjectPtrHash, ObjectPtrEqual>, ObjectPtrHash, ObjectPtrEqual> stmts_to_append_;
-  std::unordered_map<Stmt, std::unordered_map<For, std::vector<For>,
-  ObjectPtrHash, ObjectPtrEqual>, ObjectPtrHash, ObjectPtrEqual> loops_to_bind_;
-  std::unordered_map<Stmt, std::unordered_map<For, std::vector<Buffer>,
-  ObjectPtrHash, ObjectPtrEqual>, ObjectPtrHash, ObjectPtrEqual> bufs_to_allo_;
+  std::unordered_map<Block, std::vector<Buffer>, ObjectPtrHash, ObjectPtrEqual> new_allocations_;
+  std::unordered_map<
+      Stmt, std::unordered_map<For, std::vector<BufferStore>, ObjectPtrHash, ObjectPtrEqual>,
+      ObjectPtrHash, ObjectPtrEqual>
+      inits_to_add_;
+  std::unordered_map<Stmt,
+                     std::unordered_map<For, std::vector<Stmt>, ObjectPtrHash, ObjectPtrEqual>,
+                     ObjectPtrHash, ObjectPtrEqual>
+      stmts_to_append_;
+  std::unordered_map<Stmt, std::unordered_map<For, std::vector<For>, ObjectPtrHash, ObjectPtrEqual>,
+                     ObjectPtrHash, ObjectPtrEqual>
+      loops_to_bind_;
+  std::unordered_map<Stmt,
+                     std::unordered_map<For, std::vector<Buffer>, ObjectPtrHash, ObjectPtrEqual>,
+                     ObjectPtrHash, ObjectPtrEqual>
+      bufs_to_allo_;
 
-  static Buffer AddBufferAllocation(const std::string& name,
-                                    std::vector<Buffer>& allos,
-                                    std::vector<Buffer>& allocations_,
-                                    const DataType& dtype) {
+  static Buffer AddBufferAllocation(const std::string& name, std::vector<Buffer>& allos,
+                                    std::vector<Buffer>& allocations_, const DataType& dtype) {
     Var var(name, PointerType(PrimType(dtype)));
     Buffer buf(var, dtype, {1}, {1}, PrimExpr(), name, "local", 0, 0, kDefault);
 
@@ -602,8 +599,7 @@ class AllReduceTransformer : public StmtExprMutator {
     return buf;
   }
 
-  void AddStatements(const Stmt& op_stmt, const Stmt& loop_stmt,
-                     const Stmt& stmt_ori, Stmt& stmt) {
+  void AddStatements(const Stmt& op_stmt, const Stmt& loop_stmt, const Stmt& stmt_ori, Stmt& stmt) {
     const auto* loop = loop_stmt.as<ForNode>();
     if (loop != nullptr) {
       For loop_stmt_ = Downcast<For>(loop_stmt);

@@ -35,13 +35,14 @@ def _check_sketch(result, expected):
     for x in result:
         found = False
         for y in expected:
-            if tvm.ir.structural_equal(x.sch.func, y):
+            if tvm.ir.structural_equal(x.sch.module, y):
                 found = True
                 break
         assert found
 
 
-# pylint: disable=invalid-name,no-member
+# fmt: off
+# pylint: disable=invalid-name,no-member,redundant-keyword-arg,line-too-long
 
 
 @tvm.script.tir
@@ -107,7 +108,8 @@ def dot_product_tensorized(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
                     tir.evaluate(tir.call_extern("vec4add", C.data, 0, A.data, 0, B.data, 0, dtype="int32"))
 
 
-# pylint: enable=invalid-name,no-member
+# pylint: enable=invalid-name,no-member,redundant-keyword-arg,line-too-long
+# fmt: on
 
 
 def test_auto_tensorize_rule_tensorcore():

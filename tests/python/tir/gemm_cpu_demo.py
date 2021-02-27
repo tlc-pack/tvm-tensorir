@@ -14,13 +14,15 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
+# pylint: disable=missing-function-docstring,missing-module-docstring
 import numpy as np
 import tvm
 import tvm.testing
 from tvm import tir
 from tvm.script import ty
 
+# fmt: off
+# pylint: disable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name
 
 @tvm.script.tir
 def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
@@ -34,6 +36,10 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
         C[vi, vj] = C[vi, vj] + A[vi, vk] * B[vk, vj]
 
 
+# pylint: enable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name
+# fmt: on
+
+
 ################################################################################################
 # Preparation and Baseline
 # ------------------------
@@ -43,7 +49,7 @@ def matmul(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 
 
 M, N, K = 1024, 1024, 1024
-target = 'llvm'
+target = "llvm"
 ctx = tvm.context(target, 0)
 
 original_func = matmul
@@ -71,24 +77,24 @@ print(tvm.script.asscript(original_func))
 # Blocking
 # --------
 # A important trick to enhance the cache hit rate is blocking --- data chunk will be computed
-# block by block. The memory access inside the block is a small neighbourhood which is with high
+# block by block. The memory access inside the block is a small neighborhood which is with high
 # memory locality. In this tutorial, I picked up 32 as the blocking factor. So the block will
 # fill 32 * 32 * sizeof(float) which is 4KB in the cache whose total size is 32KB (L1 data cache)
 
 bn = 32
 
-s = tir.create_schedule(original_func)
+s = tir.Schedule(original_func, debug_mode=True)
 
 update = s.get_block("C")
 i, j, k = s.get_axes(update)
-i_o, i_i = s.split(i, bn)
-j_o, j_i = s.split(j, bn)
-k_o, k_i = s.split(k, 4)
+i_o, i_i = s.split(i, factor=bn)
+j_o, j_i = s.split(j, factor=bn)
+k_o, k_i = s.split(k, factor=4)
 s.reorder(i_o, j_o, k_o, k_i, i_i, j_i)
-func_opt1 = s.func
+func_opt1 = s.module
 
 # s.decompose_reduction(update, j_o)
-print('Opt1: %f' % build_and_test(s.func))
+print("Opt1: %f" % build_and_test(s.module))
 
 ################################################################################################
 # Vectorization
@@ -100,15 +106,15 @@ print('Opt1: %f' % build_and_test(s.func))
 #
 # In this tutorial, we chose to vectorize the inner loop row data since it is cache friendly.
 
-s = tir.create_schedule(func_opt1)
+s = tir.Schedule(func_opt1, debug_mode=True)
 update = s.get_block("C")
 i_o, j_o, k_o, k_i, i_i, j_i = s.get_axes(update)
 
 s.vectorize(j_i)
-func_opt2 = s.func
+func_opt2 = s.module
 
 s.decompose_reduction(update, j_o)
-print('Opt2: %f' % build_and_test(s.func))
+print("Opt2: %f" % build_and_test(s.module))
 
 ################################################################################################
 # Loop Permutation
@@ -119,16 +125,16 @@ print('Opt2: %f' % build_and_test(s.func))
 # which is not cache friendly. If we change the nested loop order of ki and inner axes xi,
 # the access pattern for A matrix is more cache friendly.
 
-s = tir.create_schedule(func_opt2)
+s = tir.Schedule(func_opt2, debug_mode=True)
 update = s.get_block("C")
 i_o, j_o, k_o, k_i, i_i, j_i = s.get_axes(update)
 
 s.reorder(i_o, j_o, k_o, i_i, k_i, j_i)
-func_opt3 = s.func
+func_opt3 = s.module
 
 s.decompose_reduction(update, j_o)
 
-print('Opt3: %f' % build_and_test(s.func))
+print("Opt3: %f" % build_and_test(s.module))
 
 
 ################################################################################################
@@ -153,6 +159,9 @@ print('Opt3: %f' % build_and_test(s.func))
 
 # We have to re-write the algorithm slightly.
 
+# fmt: off
+# pylint: disable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name
+
 @tvm.script.tir
 def matmul_packed(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
     A = tir.match_buffer(a, (1024, 1024), "float32")
@@ -168,24 +177,27 @@ def matmul_packed(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             C[vi, vj] = 0.0
         C[vi, vj] = C[vi, vj] + A[vi, vk] * packedB[vj // 32, vk, vj % 32]
 
+# pylint: enable=no-member,invalid-name,unused-variable,line-too-long,redefined-outer-name
+# fmt: on
+
 
 packed_func = matmul_packed
 
-s = tir.create_schedule(packed_func)
+s = tir.Schedule(packed_func, debug_mode=True)
 packedB = s.get_block("packed")
 k = s.get_axes(packedB)[-1]
 s.vectorize(k)
 update = s.get_block("C")
 i, j, k = s.get_axes(update)
-i_o, i_i = s.split(i, bn)
-j_o, j_i = s.split(j, bn)
-k_o, k_i = s.split(k, 4)
+i_o, i_i = s.split(i, factor=bn)
+j_o, j_i = s.split(j, factor=bn)
+k_o, k_i = s.split(k, factor=4)
 s.reorder(i_o, j_o, k_o, i_i, k_i, j_i)
 s.vectorize(j_i)
-func_opt3 = s.func
+func_opt3 = s.module
 
 s.decompose_reduction(update, j_o)
-print('Opt4: %f' % build_and_test(s.func))
+print("Opt4: %f" % build_and_test(s.module))
 
 ################################################################################################
 # Write cache for blocks
@@ -195,19 +207,19 @@ print('Opt4: %f' % build_and_test(s.func))
 # write to C when all the block results are ready.
 #
 
-s = tir.create_schedule(packed_func)
+s = tir.Schedule(packed_func, debug_mode=True)
 packedB = s.get_block("packed")
 update = s.get_block("C")
-cached_update = s.cache_write(update, 0, 'global')
+cached_update = s.cache_write(update, 0, "global")
 
 i, j = s.get_axes(update)
-i_o, i_i = s.split(i, bn)
-j_o, j_i = s.split(j, bn)
+i_o, i_i = s.split(i, factor=bn)
+j_o, j_i = s.split(j, factor=bn)
 s.reorder(j_o, i_i)
 s.compute_at(cached_update, j_o)
 
 i, j, k = s.get_axes(cached_update)[-3:]
-k_o, k_i = s.split(k, 4)
+k_o, k_i = s.split(k, factor=4)
 s.reorder(k_o, i, k_i, j)
 s.unroll(k_i)
 s.vectorize(j)
@@ -215,10 +227,10 @@ s.vectorize(j)
 x, y, z = s.get_axes(packedB)
 s.vectorize(z)
 s.parallel(x)
-func_opt5 = s.func
+func_opt5 = s.module
 
 s.decompose_reduction(cached_update, j_o)
-print('Opt5: %f' % build_and_test(s.func))
+print("Opt5: %f" % build_and_test(s.module))
 
 ###################################################################################################
 # Parallel
@@ -226,13 +238,13 @@ print('Opt5: %f' % build_and_test(s.func))
 # Futhermore, we can also utilize multi-core processors to do the thread-level parallelization.
 
 
-s = tir.create_schedule(func_opt5)
+s = tir.Schedule(func_opt5, debug_mode=True)
 cached_update = s.get_block("C")
 i_o, j_o, k_o, k_i, i_i, j_i = s.get_axes(cached_update)
 s.parallel(i_o)
 
 s.decompose_reduction(cached_update, j_o)
-print('Opt6: %f' % build_and_test(s.func))
+print("Opt6: %f" % build_and_test(s.module))
 
 ###################################################################################################
 
@@ -243,4 +255,4 @@ print('Opt6: %f' % build_and_test(s.func))
 # our generated code can achieve 60% of the `numpy` performance with MKL.
 # Note that the outputs on the web page reflect the running times on a non-exclusive
 # Docker container, thereby they are *unreliable*. It is highly encouraged to run the
-# tutorial by yourself to observe the performance gain acheived by TVM.
+# tutorial by yourself to observe the performance gain achieved by TVM.

@@ -19,7 +19,7 @@
 
 /*!
  * \file tvm/tir/analysis.h
- * \brief Analysis utilitie and passes for TIR.
+ * \brief Analysis utilities and passes for TIR.
  */
 #ifndef TVM_TIR_ANALYSIS_H_
 #define TVM_TIR_ANALYSIS_H_

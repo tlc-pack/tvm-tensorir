@@ -16,8 +16,12 @@
 # under the License.
 """Wrapping existing analysis utils."""
 # pylint: disable=invalid-name
-
+from __future__ import annotations
+from typing import TYPE_CHECKING
 from . import _ffi_api
+
+if TYPE_CHECKING:
+    from ..function import PrimFunc
 
 
 def expr_deep_equal(lhs, rhs):
