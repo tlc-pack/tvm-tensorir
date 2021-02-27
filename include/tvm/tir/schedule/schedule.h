@@ -97,6 +97,10 @@ class ScheduleNode : public runtime::Object {
   static constexpr const char* _type_key = "tir.Schedule";
   TVM_DECLARE_BASE_OBJECT_INFO(ScheduleNode, runtime::Object);
 
+  StmtSRef GetSRef(const BlockRV& block_rv) const;
+
+  StmtSRef GetSRef(const LoopRV& loop_rv) const;
+
  public:
   /*! \brief Get the IRModule associated with this schedule. */
   virtual IRModule mod() const { return state()->mod; }
