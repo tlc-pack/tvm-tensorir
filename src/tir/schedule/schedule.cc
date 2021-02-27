@@ -33,40 +33,152 @@ Schedule::Schedule(ScheduleState state, TSymbolTable symbol_table) {
 
 Schedule::Schedule(PrimFunc func, bool debug_mode) : Schedule(ScheduleState(func, debug_mode)) {}
 
+/******** Copy ********/
+
+/*! \brief Helper class to do StmtSRef translation */
+struct SRefTranslator {
+  using TSymbolTable = ScheduleNode::TSymbolTable;
+  template <class K, class V>
+  using UMap = std::unordered_map<K, V>;
+  template <class K, class V>
+  using SMap = std::unordered_map<K, V, ObjectPtrHash, ObjectPtrEqual>;
+
+  /*! \brief Create the translator and properly set up the translation table */
+  explicit SRefTranslator(const ScheduleState& state) : trans_() {
+    // Create SRef tree without parents
+    for (const auto& kv : state->stmt2ref) {
+      const StmtSRefNode* sref = kv.second.operator->();
+      trans_.emplace(sref,                                    // the old StmtSRef
+                     StmtSRef(/*stmt=*/sref->stmt,            // the new StmtSRef
+                              /*parent=*/nullptr,             // parent is not set yet
+                              /*seq_index=*/sref->seq_index,  //
+                              /*binding_valid=*/sref->binding_valid));
+    }
+    // Fill in the parent field
+    // Find out the root along the way
+    for (auto& kv : trans_) {
+      const StmtSRefNode* parent = kv.first->parent;
+      StmtSRef& sref = kv.second;
+      sref->parent = parent ? trans_.at(parent).get() : nullptr;
+    }
+  }
+
+  /*! \brief Translate StmtSRef */
+  StmtSRef Trans(const StmtSRef& sref) { return trans_.at(sref.operator->()); }
+
+  /*! \brief Translate StmtSRefNode */
+  StmtSRef Trans(const StmtSRefNode* sref) {
+    if (trans_.count(sref)) {
+      return trans_.at(sref);
+    }
+    // Handle expired sref
+    return trans_[sref] = StmtSRef(nullptr, nullptr, -1, false);
+  }
+
+  /*! \brief Translate Array<StmtSRef> */
+  Array<StmtSRef> Trans(const Array<StmtSRef>& list) {
+    Array<StmtSRef> result;
+    result.reserve(list.size());
+    for (const StmtSRef& elem : list) {
+      result.push_back(Trans(elem));
+    }
+    return result;
+  }
+
+  /*! \brief Translate Array<DepEdge> */
+  Array<DepEdge> Trans(const Array<DepEdge>& list) {
+    Array<DepEdge> result;
+    result.reserve(list.size());
+    for (const DepEdge& elem : list) {
+      result.push_back(DepEdge(Trans(elem->dst), elem->type));
+    }
+    return result;
+  }
+
+  /*! \brief Translate SMap<StmtSRef, Array<DepEdge>> */
+  SMap<StmtSRef, Array<DepEdge>> Trans(const SMap<StmtSRef, Array<DepEdge>>& map) {
+    SMap<StmtSRef, Array<DepEdge>> result;
+    result.reserve(map.size());
+    for (const auto& kv : map) {
+      result[Trans(kv.first)] = Trans(kv.second);
+    }
+    return result;
+  }
+
+  /*! \brief Translate SMap<Buffer, Array<StmtSRef>> */
+  SMap<Buffer, Array<StmtSRef>> Trans(const SMap<Buffer, Array<StmtSRef>>& map) {
+    SMap<Buffer, Array<StmtSRef>> result;
+    result.reserve(map.size());
+    for (const auto& kv : map) {
+      result[kv.first] = Trans(kv.second);
+    }
+    return result;
+  }
+
+  /*! \brief Translate SMap<StmtSRef, Scope> */
+  SMap<StmtSRef, BlockScope> Trans(const SMap<StmtSRef, BlockScope>& scopes) {
+    SMap<StmtSRef, BlockScope> result;
+    result.reserve(scopes.size());
+    for (const auto& kv : scopes) {
+      BlockScope& scope = result[Trans(kv.first)] = BlockScope();
+      scope->forward_edges = Trans(kv.second->forward_edges);
+      scope->backward_edges = Trans(kv.second->backward_edges);
+      scope->buffer_writers = Trans(kv.second->buffer_writers);
+    }
+    return result;
+  }
+
+  /*! \brief Translate the stmt2ref */
+  UMap<const StmtNode*, StmtSRef> Trans(const UMap<const StmtNode*, StmtSRef>& stmt2ref) {
+    UMap<const StmtNode*, StmtSRef> result;
+    result.reserve(stmt2ref.size());
+    for (const auto& kv : stmt2ref) {
+      const StmtNode* stmt = kv.first;
+      const StmtSRef& sref = kv.second;
+      result.emplace(stmt, Trans(sref));
+    }
+    return result;
+  }
+
+  /*! \brief Translate the symbol table */
+  TSymbolTable Trans(const TSymbolTable& tab) {
+    TSymbolTable result;
+    for (const auto& kv : tab) {
+      ObjectRef entry = kv.second;
+      if (const auto* sref = entry.as<StmtSRefNode>()) {
+        entry = Trans(sref);
+      }
+      result.Set(kv.first, entry);
+    }
+    return result;
+  }
+
+ private:
+  std::unordered_map<const StmtSRefNode*, StmtSRef> trans_;
+};
+
+Schedule ScheduleNode::Copy() const {
+  const ScheduleState& src_state = this->state;
+  SRefTranslator trans(src_state);
+  ObjectPtr<ScheduleStateNode> n = make_object<ScheduleStateNode>();
+  n->func = src_state->func;
+  n->root = trans.Trans(src_state->root);
+  n->scopes = trans.Trans(src_state->scopes);
+  n->stmt2ref = trans.Trans(src_state->stmt2ref);
+  n->debug_mode = src_state->debug_mode;
+  return Schedule(ScheduleState(n), trans.Trans(this->symbol_table));
+}
+
 /******** Lookup random variables ********/
 
 Block ScheduleNode::Get(const BlockRV& block_rv) const {
-  auto it = this->symbol_table.find(block_rv);
-  if (it == this->symbol_table.end()) {
-    LOG(FATAL) << "IndexError: Cannot find corresponding BlockRV: " << block_rv;
-  }
-  const ObjectRef& obj = (*it).second;
-  const auto* sref = obj.as<StmtSRefNode>();
-  if (sref == nullptr) {
-    LOG(FATAL) << "ValueError: BlockRV's corresponding type is invalid: "
-               << (obj.defined() ? obj->GetTypeKey() : "None");
-  }
-  if (sref->stmt) {
-    LOG(FATAL) << "ValueError: The StmtSRef has expired";
-  }
+  StmtSRef sref = this->GetSRef(block_rv);
   const auto* block = TVM_SREF_TO_BLOCK(block, sref);
   return GetRef<Block>(block);
 }
 
 For ScheduleNode::Get(const LoopRV& loop_rv) const {
-  auto it = this->symbol_table.find(loop_rv);
-  if (it == this->symbol_table.end()) {
-    LOG(FATAL) << "IndexError: Cannot find corresponding LoopRV: " << loop_rv;
-  }
-  const ObjectRef& obj = (*it).second;
-  const auto* sref = obj.as<StmtSRefNode>();
-  if (sref == nullptr) {
-    LOG(FATAL) << "ValueError: LoopRV's corresponding type is invalid: "
-               << (obj.defined() ? obj->GetTypeKey() : "None");
-  }
-  if (sref->stmt) {
-    LOG(FATAL) << "ValueError: The StmtSRef has expired";
-  }
+  StmtSRef sref = this->GetSRef(loop_rv);
   const auto* loop = TVM_SREF_TO_FOR(loop, sref);
   return GetRef<For>(loop);
 }
@@ -86,16 +198,50 @@ int64_t ScheduleNode::Get(const Var& var_rv) const {
 }
 
 int64_t ScheduleNode::Get(const ExprRV& expr_rv) const {
-  // Replace all the tir::Var with their corresponding value in the symbol table
-  PrimExpr transformed = tir::Substitute(
-      expr_rv,
-      [this](const tir::Var& var) -> Optional<PrimExpr> { return Integer(this->Get(var)); });
+  // Replace all the Var with their corresponding value in the symbol table
+  PrimExpr transformed = Substitute(
+      expr_rv, [this](const Var& var) -> Optional<PrimExpr> { return Integer(this->Get(var)); });
   PrimExpr result = arith::Analyzer().Simplify(transformed);
   const auto* int_imm = result.as<IntImmNode>();
   ICHECK(int_imm) << "ValueError: Expects Integer, but gets type: " << result->GetTypeKey()
                   << ", value = " << result;
   return int_imm->value;
 }
+
+StmtSRef ScheduleNode::GetSRef(const BlockRV& block_rv) const {
+  auto it = this->symbol_table.find(block_rv);
+  if (it == this->symbol_table.end()) {
+    LOG(FATAL) << "IndexError: Cannot find corresponding BlockRV: " << block_rv;
+  }
+  const ObjectRef& obj = (*it).second;
+  const auto* sref = obj.as<StmtSRefNode>();
+  if (sref == nullptr) {
+    LOG(FATAL) << "ValueError: BlockRV's corresponding type is invalid: "
+               << (obj.defined() ? obj->GetTypeKey() : "None");
+  }
+  if (sref->stmt) {
+    LOG(FATAL) << "ValueError: The StmtSRef has expired";
+  }
+  return GetRef<StmtSRef>(sref);
+}
+
+StmtSRef ScheduleNode::GetSRef(const LoopRV& loop_rv) const {
+  auto it = this->symbol_table.find(loop_rv);
+  if (it == this->symbol_table.end()) {
+    LOG(FATAL) << "IndexError: Cannot find corresponding LoopRV: " << loop_rv;
+  }
+  const ObjectRef& obj = (*it).second;
+  const auto* sref = obj.as<StmtSRefNode>();
+  if (sref == nullptr) {
+    LOG(FATAL) << "ValueError: LoopRV's corresponding type is invalid: "
+               << (obj.defined() ? obj->GetTypeKey() : "None");
+  }
+  if (sref->stmt) {
+    LOG(FATAL) << "ValueError: The StmtSRef has expired";
+  }
+  return GetRef<StmtSRef>(sref);
+}
+
 /******** Block/Loop relation ********/
 
 Array<StmtSRef> ScheduleNode::GetBlock(const String& name) const {

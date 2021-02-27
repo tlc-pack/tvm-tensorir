@@ -72,10 +72,11 @@ class LoopRV : public runtime::ObjectRef {
 
 /**************** The schedule class ****************/
 
+class Schedule;
+
 class ScheduleNode : public runtime::Object {
- private:
+ public:
   using TSymbolTable = Map<ObjectRef, ObjectRef>;
-  friend class Schedule;
 
  public:
   ScheduleState state;
@@ -89,7 +90,15 @@ class ScheduleNode : public runtime::Object {
   static constexpr const char* _type_key = "tir.Schedule";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleNode, Object);
 
-  // TODO(@junrushao1994): add Copy
+ public:
+  /*!
+   * \brief Copy the schedule and guarantee that
+   * 1) SRef tree is completely reconstructed
+   * 2) Schedule function is untouched
+   * 3) For all the random variables, they are valid in both original copy and the new copy, but
+   * points to different StmtSRefs, because the SRef tree is reconstructed
+   */
+  virtual Schedule Copy() const;
 
  public:
   /******** Lookup random variables ********/
@@ -101,6 +110,10 @@ class ScheduleNode : public runtime::Object {
 
   int64_t Get(const ExprRV& expr_rv) const;
 
+  StmtSRef GetSRef(const BlockRV& block_rv) const;
+
+  StmtSRef GetSRef(const LoopRV& loop_rv) const;
+
  public:
   /******** Block/Loop relation ********/
   /*!
@@ -108,19 +121,19 @@ class ScheduleNode : public runtime::Object {
    * \param tag The query tag
    * \return the block schedulable reference list
    */
-  Array<StmtSRef> GetBlock(const String& name) const;
+  virtual Array<StmtSRef> GetBlock(const String& name) const;
   /*!
    * \brief Get loops of the block
    * \param block The query block
    * \return the loop sref list
    */
-  Array<StmtSRef> GetAxes(const StmtSRef& block) const;
+  virtual Array<StmtSRef> GetAxes(const StmtSRef& block) const;
   /*!
    * \brief Get the child blocks of a specific parent block/loop
    * \param parent_sref The StmtSRef that points to the parent block/loop
    * \return A list of child blocks
    */
-  Array<StmtSRef> GetChildBlocks(const StmtSRef& parent_sref) const;
+  virtual Array<StmtSRef> GetChildBlocks(const StmtSRef& parent_sref) const;
 
   /******** Schedule: loops ********/
   /*!
@@ -129,7 +142,7 @@ class ScheduleNode : public runtime::Object {
    * \param inner_sref The inner loop
    * \return The fused loop
    */
-  StmtSRef Fuse(const StmtSRef& outer_sref, const StmtSRef& inner_sref);
+  virtual StmtSRef Fuse(const StmtSRef& outer_sref, const StmtSRef& inner_sref);
   /*!
    * \brief Split a specified loop into two loops by factor.
    * \param loop_sref The loop to be split
@@ -137,12 +150,13 @@ class ScheduleNode : public runtime::Object {
    * \param factor The extent of the new inner loop
    * \return The loops after splitting
    */
-  Array<StmtSRef> Split(const StmtSRef& loop_sref, const PrimExpr& nparts, const PrimExpr& factor);
+  virtual Array<StmtSRef> Split(const StmtSRef& loop_sref, const PrimExpr& nparts,
+                                const PrimExpr& factor);
   /*!
    * \brief reorder a list of loops
    * \param order the order of loops
    */
-  void Reorder(const Array<StmtSRef>& order);
+  virtual void Reorder(const Array<StmtSRef>& order);
 
   /******** Schedule: compute location ********/
   /*!
@@ -151,59 +165,61 @@ class ScheduleNode : public runtime::Object {
    * \param loop_sref The target loop
    * \param preserve_unit_loop Keep the trivial loops whose extent is 1
    */
-  void ComputeAt(const StmtSRef& block_sref, const StmtSRef& loop_sref, bool preserve_unit_loop);
+  virtual void ComputeAt(const StmtSRef& block_sref, const StmtSRef& loop_sref,
+                         bool preserve_unit_loop);
   /*!
    * \brief Move the block under the loop and regenerate the loops to cover the producing region.
    * \param block_sref The block to be moved
    * \param loop_sref The target loop
    * \param preserve_unit_loop Keep the trivial loops whose extent is 1
    */
-  void ReverseComputeAt(const StmtSRef& block_sref, const StmtSRef& loop_sref,
-                        bool preserve_unit_loop);
+  virtual void ReverseComputeAt(const StmtSRef& block_sref, const StmtSRef& loop_sref,
+                                bool preserve_unit_loop);
   /*!
    * \brief Make the block inline
    * \param block_sref The sref of the block
    */
-  void ComputeInline(const StmtSRef& block_sref);
+  virtual void ComputeInline(const StmtSRef& block_sref);
   /*!
    * \brief Make the block inline
    * \param block_sref The sref of block
    */
-  void ReverseComputeInline(const StmtSRef& block_sref);
+  virtual void ReverseComputeInline(const StmtSRef& block_sref);
 
   /******** Schedule: parallelize / annotate ********/
   /*!
    * \brief vectorize a loop
    * \param loop_sref the loop to be vectorized
    */
-  void Vectorize(const StmtSRef& loop_sref);
+  virtual void Vectorize(const StmtSRef& loop_sref);
   /*!
    * \brief parallelize a loop
    * \param loop_sref the loop to be paralleled
    */
-  void Parallel(const StmtSRef& loop_sref);
+  virtual void Parallel(const StmtSRef& loop_sref);
   /*!
    * \brief unroll a loop
    * \param loop_sref the loop to be unrolled
    */
-  void Unroll(const StmtSRef& loop_sref);
+  virtual void Unroll(const StmtSRef& loop_sref);
   /*!
    * \brief parallel a loop
    * \param loop_sref the loop to be paralleled
    */
-  void Bind(const StmtSRef& loop_sref, const IterVar& thread);
+  virtual void Bind(const StmtSRef& loop_sref, const IterVar& thread);
   /*!
    * \brief add double_buffer annotation to a complete block
    * \param block_sref the block of interest
    */
-  void DoubleBuffer(const StmtSRef& block_sref);
+  virtual void DoubleBuffer(const StmtSRef& block_sref);
   /*!
    * \brief add annotation to a loop
    * \param loop_sref the loop of interest
    * \param pragma_type the attribute key
    * \param pragma_value the attribute value
    */
-  void Pragma(const StmtSRef& loop_sref, const String& pragma_type, const PrimExpr& pragma_value);
+  virtual void Pragma(const StmtSRef& loop_sref, const String& pragma_type,
+                      const PrimExpr& pragma_value);
 
   /******** Schedule: cache read/write ********/
   /*!
@@ -212,14 +228,14 @@ class ScheduleNode : public runtime::Object {
    * \param i The index of the buffer in block's read region
    * \param storage_scope The storage scope
    */
-  StmtSRef CacheRead(const StmtSRef& block_sref, int i, const String& storage_scope);
+  virtual StmtSRef CacheRead(const StmtSRef& block_sref, int i, const String& storage_scope);
   /*!
    * \brief Create a cache write of original tensor, before storing into tensor.
    * \param block_sref The producer of the buffer
    * \param i The index of the buffer in block's write region
    * \param storage_scope The storage scope
    */
-  StmtSRef CacheWrite(const StmtSRef& block_sref, int i, const String& storage_scope);
+  virtual StmtSRef CacheWrite(const StmtSRef& block_sref, int i, const String& storage_scope);
 
   /******** Schedule: reduction ********/
   /*!
@@ -229,20 +245,21 @@ class ScheduleNode : public runtime::Object {
    * \return the sref of new block
    * TODO(@junrushao1994): do we need a concrete integer here?
    */
-  StmtSRef RFactor(const StmtSRef& loop_sref, int factor_axis);
+  virtual StmtSRef RFactor(const StmtSRef& loop_sref, int factor_axis);
   /*!
    * \brief Decompose reduction block_sref into init&update blocks
    * \param block_sref the reduction block_sref
    * \param loop_sref the position where init block_sref will be
    * \return the sref of init block
    */
-  StmtSRef DecomposeReduction(const StmtSRef& block_sref, const Optional<StmtSRef>& loop_sref);
+  virtual StmtSRef DecomposeReduction(const StmtSRef& block_sref,
+                                      const Optional<StmtSRef>& loop_sref);
   /*!
    * \brief Merge init and reduction block into reduction block
    * \param init_sref the init block
    * \param update_sref the update block
    */
-  void MergeReduction(const StmtSRef& init_sref, const StmtSRef& update_sref);
+  virtual void MergeReduction(const StmtSRef& init_sref, const StmtSRef& update_sref);
 
   /******** Blockize / Tensorize ********/
   /*!
@@ -250,13 +267,13 @@ class ScheduleNode : public runtime::Object {
    * \param loop_sref the subtree root
    * \return the loop_sref of new block
    */
-  StmtSRef Blockize(const StmtSRef& loop_sref, const String& exec_scope);
+  virtual StmtSRef Blockize(const StmtSRef& loop_sref, const String& exec_scope);
   /*!
    * \brief Tensorize the computation enclosed by loop with tensor_intrin
    * \param loop_sref the loop/block to be tensorized
    * \param intrinsic the tensor intrinsic
    */
-  void Tensorize(const StmtSRef& loop_sref, const TensorIntrin& intrinsic);
+  virtual void Tensorize(const StmtSRef& loop_sref, const TensorIntrin& intrinsic);
 };
 
 class Schedule : public runtime::ObjectRef {
