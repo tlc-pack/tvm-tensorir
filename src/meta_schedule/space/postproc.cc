@@ -160,7 +160,7 @@ class PostprocRewriteCooperativeFetch {
       for (const tir::StmtSRefNode* sref = loop_sref->parent;; sref = sref->parent) {
         ICHECK(sref) << "ValueError: Cannot find loops above with threadIdx.x";
         if (const tir::ForNode* loop = sref->GetStmt<tir::ForNode>()) {
-          if (HasAnn(GetRef<tir::StmtSRef>(sref), tir::attr::loop_type, "threadIdx.x")) {
+          if (HasBinding(GetRef<tir::StmtSRef>(sref), "threadIdx.x")) {
             ICHECK(tir::is_zero(loop->min)) << "ValueError: Expect loops to start from 0, but gets: "
                                            << GetRef<tir::For>(loop);
             thread_idx_extent = loop->extent;
