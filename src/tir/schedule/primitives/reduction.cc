@@ -16,10 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "./schedule_common.h"
+#include "../analysis.h"
+#include "../schedule_common.h"
+#include "./primitives.h"
 
 namespace tvm {
 namespace tir {
+namespace schedule {
 
 bool ListContainsElement(const Array<StmtSRef>& list, const StmtSRef& element) {
   for (const StmtSRef& ele : list) {
@@ -30,8 +33,8 @@ bool ListContainsElement(const Array<StmtSRef>& list, const StmtSRef& element) {
   return false;
 }
 
-StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
-                                           const Optional<StmtSRef>& loop_sref_opt) {
+StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
+                            const Optional<StmtSRef>& loop_sref_opt) {
   /*!
    *  Check
    *    - block is reduction
@@ -59,13 +62,13 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
         << loop_sref->stmt->GetTypeKey();
     CHECK(block->init.defined()) << "ValueError: 'decompose_reduction' expect a reduction block, "
                                     "but the block has no init block";
-    Array<StmtSRef> loops = GetAxes(block_sref);
+    Array<StmtSRef> loops = schedule::GetAxes(self, block_sref);
     const BlockRealizeNode* realize = GetBlockRealize(block_sref).get();
     // Cond 0. Check loop_sref is an ancestor of block_sref
     CHECK(ListContainsElement(loops, loop_sref))
         << "ValueError: 'decompose_reduction' expect the loop to be an ancestor of block";
     // Cond 1. Check block is reduction
-    CHECK(GetParentScope(block_sref)->IsReduction(block_sref))
+    CHECK(self->scopes.at(GetScopeSRef(block_sref))->IsReduction(block_sref))
         << "decompose_reduction expect the block to be a reduction block";
     // Cond 2. Check 'loop' is higher than all the loops related to block var of type reduction
     for (int i = 0, n = block->iter_vars.size(); i < n; ++i) {
@@ -147,7 +150,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
     }
     // Step 4. Create the parent of the new loop
     if (const auto* parent = loop_sref->parent->GetStmt<ForNode>()) {
-      this->Replace(GetRef<StmtSRef>(loop_sref->parent),
+      self->Replace(GetRef<StmtSRef>(loop_sref->parent),
                     For(/*loop_var=*/parent->loop_var,
                         /*min=*/parent->min,
                         /*extent=*/parent->extent,
@@ -161,7 +164,7 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
       block_node->body = SeqStmt::Flatten(Array<Stmt>{body, parent->body});
       block_node->init = NullOpt;
       Block new_block = Block(block_node);
-      this->Replace(GetRef<StmtSRef>(loop_sref->parent), new_block,
+      self->Replace(GetRef<StmtSRef>(loop_sref->parent), new_block,
                     {{new_block, GetRef<Block>(parent)}});
     } else {
       LOG(FATAL)
@@ -174,10 +177,10 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
     update_block_node->name_hint = block->name_hint + "_update";
     update_block_node->init = NullOpt;
     Block update_block(update_block_node);
-    this->Replace(block_sref, update_block, {{update_block, GetRef<Block>(block)}});
+    self->Replace(block_sref, update_block, {{update_block, GetRef<Block>(block)}});
     // Update scope information
-    UpdateScope(GetParentBlockSRef(block_sref)->stmt, this->stmt2ref, &this->scopes);
-    return stmt2ref.at(init_block.get());
+    UpdateScope(GetScopeSRef(block_sref)->stmt, self->stmt2ref, &self->scopes);
+    return self->stmt2ref.at(init_block.get());
   } else {
     // 'loop' is 'None'. Convert `tir.init()` to a conjunction of conditions.
     CHECK(block->init.defined()) << "ValueError: 'decompose_reduction' expect a reduction block, "
@@ -201,14 +204,14 @@ StmtSRef ScheduleNode::decompose_reduction(const StmtSRef& block_sref,
     block_node->body = body;
     Block new_block(block_node);
 
-    this->Replace(block_sref, new_block, {{new_block, GetRef<Block>(block)}});
+    self->Replace(block_sref, new_block, {{new_block, GetRef<Block>(block)}});
     // Update scope information
-    UpdateScope(GetParentBlockSRef(block_sref)->stmt, this->stmt2ref, &this->scopes);
-    return stmt2ref.at(new_block.get());
+    UpdateScope(GetScopeSRef(block_sref)->stmt, self->stmt2ref, &self->scopes);
+    return self->stmt2ref.at(new_block.get());
   }
 }
 
-void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& update_sref) {
+void MergeReduction(ScheduleState self, const StmtSRef& init_sref, const StmtSRef& update_sref) {
   /*!
    * Check
    *   - init_sref is under the same scope with update_sref
@@ -244,10 +247,10 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   ExprDeepEqual equal;
   CHECK(equal(init_realize->predicate, update_realize->predicate))
       << "ValueError: 'merge_reduction' expects the predicate of init and update to be the same";
-  const StmtSRef& scope = GetParentBlockSRef(init_sref);
+  const StmtSRef& scope = GetScopeSRef(init_sref);
   StmtSRef lca = LowestCommonAncestor({init_sref, update_sref}, scope);
   // Cond 1. Check init_block is under the same scope with update_sref
-  CHECK_EQ(scope.get(), GetParentBlockSRef(update_sref).get())
+  CHECK_EQ(scope.get(), GetScopeSRef(update_sref).get())
       << "TypeError: 'merge_reduction' expects the 'init' and 'update' to be under the same scope";
   // Cond 3. Write region of 'init' is the same as that of 'update' under LCA
   {
@@ -267,10 +270,10 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
     }
   }
   // Cond 4. Check the merged block is decomposable
-  CHECK(this->scopes.at(scope)->CanMergeReduction(init_sref, update_sref));
+  CHECK(self->scopes.at(scope)->CanMergeReduction(init_sref, update_sref));
   // Cond 2. Check LCA is higher than all the loops related to update_block's reduce block var
   if (!scope.same_as(lca)) {
-    for (const StmtSRef& higher_loop : GetAxes(update_sref)) {
+    for (const StmtSRef& higher_loop : GetAxes(self, update_sref)) {
       if (higher_loop.same_as(lca)) {
         break;
       }
@@ -291,19 +294,34 @@ void ScheduleNode::merge_reduction(const StmtSRef& init_sref, const StmtSRef& up
   // Mutate
   // Step 1. Delete init block and its single-branched ancestors
   std::pair<Stmt, Stmt> removed = RemoveLeaf(init_sref, scope);
-  this->Replace(lca, removed.second, {});
+  self->Replace(lca, removed.second, {});
   // Step 2. Change the update block to reduction block
   BufferStore new_init = GetRef<BufferStore>(update_body);
   new_init.CopyOnWrite()->value = init_body->value;
   auto merged_node = make_object<BlockNode>(*update);
   merged_node->init = new_init;
   Block merged(merged_node);
-  this->Replace(update_sref, merged, {{merged, GetRef<Block>(update)}});
+  self->Replace(update_sref, merged, {{merged, GetRef<Block>(update)}});
   // Update scope information
-  UpdateScope(GetParentBlockSRef(update_sref)->stmt, this->stmt2ref, &this->scopes);
+  UpdateScope(GetScopeSRef(update_sref)->stmt, self->stmt2ref, &self->scopes);
 }
 
-StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
+class VarCollector : public StmtExprVisitor {
+ public:
+  explicit VarCollector(std::unordered_set<const VarNode*>* res) : res(res) {}
+
+  void VisitExpr_(const VarNode* op) override { res->insert(op); }
+
+ private:
+  std::unordered_set<const VarNode*>* res;
+};
+
+void CollectVars(std::unordered_set<const VarNode*>* res, const PrimExpr& expr) {
+  VarCollector collector(res);
+  collector(expr);
+}
+
+StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis) {
   const auto* loop = loop_sref->GetStmt<ForNode>();
 
   // Check the conditions of rfactor.
@@ -311,12 +329,12 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
               << loop_sref->stmt->GetTypeKey();
   CHECK(CheckOneLine(GetRef<Stmt>(loop_sref->stmt)))
       << "ValueError: Only one line subtree can be rfactor";
-  Array<StmtSRef> child_blocks = GetChildBlocks(loop_sref);
+  Array<StmtSRef> child_blocks = GetChildBlocks(self, loop_sref);
   CHECK_EQ(child_blocks.size(), 1) << "ValueError: Only one line subtree can be rfactor";
   StmtSRef block_sref = child_blocks[0];
   BlockRealize block_realize = GetBlockRealize(block_sref);
   Block block = block_realize->block;
-  BlockScope scope = GetParentScope(block_sref);
+  BlockScope scope = self->scopes.at(GetScopeSRef(block_sref));
   CHECK(scope->IsReduction(block_sref)) << "ValueError: can only rfactor a reduction block";
 
   // Collect the information of loops and blocks.
@@ -365,7 +383,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   // Collect the loop vars outside the block.
   /*! \brief The loop vars outside the block */
   std::unordered_map<const VarNode*, For> loop_vars;
-  Array<StmtSRef> loops = GetAxes(block_sref);
+  Array<StmtSRef> loops = GetAxes(self, block_sref);
   for (const StmtSRef& l_sref : loops) {
     const auto* l = l_sref->GetStmt<ForNode>();
     ICHECK(l) << "InternalError: GetAxes returns a block sref";
@@ -589,7 +607,7 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
   };
   if (const auto* parent = top.value()->parent->GetStmt<ForNode>()) {
     SeqStmt parent_body = insert(parent->body, top.value()->seq_index, {rf_body, wb_body});
-    this->Replace(GetRef<StmtSRef>(top.value()->parent),
+    self->Replace(GetRef<StmtSRef>(top.value()->parent),
                   For(parent->loop_var, parent->min, parent->extent, ForKind::kSerial, parent_body),
                   {{wb_block, block}});
   } else if (const auto* parent = top.value()->parent->GetStmt<BlockNode>()) {
@@ -598,39 +616,21 @@ StmtSRef ScheduleNode::rfactor(const StmtSRef& loop_sref, int factor_axis) {
     block_node->body = parent_body;
     block_node->init = NullOpt;
     Block new_block = Block(block_node);
-    this->Replace(GetRef<StmtSRef>(top.value()->parent), new_block,
+    self->Replace(GetRef<StmtSRef>(top.value()->parent), new_block,
                   {{new_block, GetRef<Block>(parent)}, {wb_block, block}});
   }
 
   // Insert the rfactor buffer into the scope block's allocation.
-  StmtSRef scope_sref = GetParentBlockSRef(block_sref);
+  StmtSRef scope_sref = GetScopeSRef(block_sref);
   Block scope_block = GetRef<Block>(scope_sref->GetStmt<BlockNode>()),
         new_scope_block = scope_block;
   new_scope_block.CopyOnWrite()->alloc_buffers.push_back(rf_buf);
-  this->Replace(scope_sref, new_scope_block, {{new_scope_block, scope_block}});
+  self->Replace(scope_sref, new_scope_block, {{new_scope_block, scope_block}});
   // Update scope information.
-  UpdateScope(scope_sref->stmt, this->stmt2ref, &this->scopes);
-
-  return stmt2ref.at(rf_block.get());
+  UpdateScope(scope_sref->stmt, self->stmt2ref, &self->scopes);
+  return self->stmt2ref.at(rf_block.get());
 }
 
-struct Internal {
-  static StmtSRef DecomposeReduction(Schedule self, StmtSRef block_sref,
-                                     Optional<StmtSRef> loop_sref) {
-    return self->decompose_reduction(block_sref, loop_sref);
-  }
-  static void MergeReduction(Schedule self, StmtSRef init_block_sref, StmtSRef update_block_sref) {
-    self->merge_reduction(init_block_sref, update_block_sref);
-  }
-  static StmtSRef RFactor(Schedule self, StmtSRef loop_sref, int factor_axis) {
-    return self->rfactor(loop_sref, factor_axis);
-  }
-};
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDecomposeReduction")
-    .set_body_typed(Internal::DecomposeReduction);
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleMergeReduction").set_body_typed(Internal::MergeReduction);
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleRFactor").set_body_typed(Internal::RFactor);
-
+}  // namespace schedule
 }  // namespace tir
 }  // namespace tvm
