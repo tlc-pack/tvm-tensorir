@@ -149,7 +149,7 @@ PrimFunc create_tir(const Array<te::Tensor>& tensors) {
       }
 
       Block block(block_vars, NullValue<Array<BufferRegion>>(), NullValue<Array<BufferRegion>>(),
-                  {}, {}, {}, "", GetUniqueName(op->name, &name_map), body, init);
+                  {}, op->attrs, {}, "", GetUniqueName(op->name, &name_map), body, init);
       Array<PrimExpr> null_bindings;
       for (size_t i = 0; i < block_vars.size(); i++) null_bindings.push_back(NullValue<PrimExpr>());
       BlockRealize realize(null_bindings, Bool(true), block);

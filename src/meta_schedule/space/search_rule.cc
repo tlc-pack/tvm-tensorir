@@ -18,6 +18,7 @@
  */
 #include "./search_rule.h"  // NOLINT(build/include)
 
+#include <tvm/auto_scheduler/search_policy.h>
 #include "../../tir/schedule/schedule_common.h"
 #include "../analysis.h"
 #include "../utils.h"
@@ -793,6 +794,86 @@ SearchRule MarkTensorize(Array<tir::TensorIntrin> tensor_intrins) {
   return SearchRule("mark_tensorize", f_apply);
 }
 
+/********** SimplifyComputeWithConstTensor **********/
+class RuleSimplifyComputeWithConstTensor {
+ public:
+   /*! \brief The maximum size of the innermost factor */
+  int max_innermost_factor;
+
+  explicit RuleSimplifyComputeWithConstTensor(int max_innermost_factor) :
+      max_innermost_factor(max_innermost_factor) { }
+
+  Array<Schedule> Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv) {
+    auto block_sref = sch->Eval(block_rv);
+    const tir::BlockRealize& block_realize = tir::GetBlockRealize(block_sref);
+    const tir::Block& block = block_realize->block;
+    auto it = block->annotations.find(
+      tvm::auto_scheduler::SearchPolicyKey::simplify_const_tensor_indices);
+    if (it == block->annotations.end()) {
+      return {sch};
+    }
+
+    // indices of the const tensor
+    Array<String> const_indices = Downcast<Array<String>>((*it).second);
+    // find the corresponding loops
+    std::unordered_set<const tir::VarNode *> unrolled_loop_vars;
+    for (size_t i = 0; i < block->iter_vars.size(); i++) {
+      const auto& var_name = block->iter_vars[i]->var->name_hint;
+      // only consider simple bindings
+      if (std::find(const_indices.begin(), const_indices.end(), var_name) != const_indices.end() &&
+          block_realize->binding_values[i].as<tir::VarNode>()) {
+        unrolled_loop_vars.insert(block_realize->binding_values[i].as<tir::VarNode>());
+      }
+    }
+
+    Array<LoopRV> axes = sch->GetAxes(block_rv);
+    Array<LoopRV> unrolled_inner_iters;
+    Array<LoopRV> outer_iters;
+
+    size_t tile_level = 2;
+
+    // unroll the loops of the const tensor indices
+    for (const LoopRV& ax: axes) {
+      auto loop_sref = sch->Eval(ax);
+      const auto *for_node = loop_sref->GetStmt<tir::ForNode>();
+      if (unrolled_loop_vars.count(for_node->loop_var.get())) {
+        sch->Unroll(ax);
+        unrolled_inner_iters.push_back(ax);
+      } else {
+        outer_iters.push_back(ax);
+      }
+    }
+
+    Array<Array<LoopRV>> tiled_outer_iters;
+    // tile spatial axes
+    for (const LoopRV& ax : outer_iters) {
+      Array<Optional<PrimExpr>> factors;
+      for (const tir::Var& factor: sch->SamplePerfectTile(tile_level, ax, max_innermost_factor)) {
+       factors.push_back(factor);
+      }
+      tiled_outer_iters.push_back(sch->Split(ax, factors));
+    }
+    Array<LoopRV> new_loop_order;
+    new_loop_order.reserve(tiled_outer_iters.size() * tile_level + unrolled_inner_iters.size());
+    for (size_t i = 0; i < tile_level; i++) {
+      for (size_t j = 0; j < tiled_outer_iters.size(); j++) {
+        new_loop_order.push_back(tiled_outer_iters[j][i]);
+      }
+    }
+    std::copy(unrolled_inner_iters.begin(), unrolled_inner_iters.end(),
+              std::back_inserter(new_loop_order));
+    sch->Reorder(new_loop_order);
+    return {sch};
+  }
+};
+
+SearchRule SimplifyComputeWithConstTensor(int max_innermost_factor) {
+  auto f_apply = [max_innermost_factor](SearchTask task, Schedule sch, BlockRV block) -> Array<Schedule> {
+    return RuleSimplifyComputeWithConstTensor(max_innermost_factor).Apply(task, sch, block);
+  };
+  return SearchRule("simplify_compute_with_const_tensor", f_apply);
+}
+
 /********** FFI **********/
 
 struct Internal {
@@ -841,6 +922,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.search_rule.RandomComputeLocation")
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.ParallelizeVectorizeUnroll")
     .set_body_typed(ParallelizeVectorizeUnroll);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkTensorize").set_body_typed(MarkTensorize);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.SimplifyComputeWithConstTensor")
+    .set_body_typed(SimplifyComputeWithConstTensor);
 
 }  // namespace meta_schedule
 }  // namespace tvm
