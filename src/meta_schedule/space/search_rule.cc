@@ -296,32 +296,16 @@ class RuleMultiLevelTiling {
       // If so, check if we can continuously inline a chain of only consumers for better locality
       Schedule sch = state.sch;
       BlockRV block_rv = state.block_rv;
-      tir::StmtSRef block_sref = sch->Eval(block_rv);
-      for (;;) {
-        Array<BlockRV> consumers = sch->GetConsumers(state.block_rv);
-        if (consumers.size() != 1) {
-          break;
+      Array<BlockRV> consumer_chain = GetInlineableConsumerChain(sch, block_rv);
+      if (!consumer_chain.empty()) {
+        // inline all but the last consumer
+        for (size_t i = 0; i + 1 < consumer_chain.size(); i++) {
+          sch->ComputeInline(consumer_chain[i]);
         }
-        BlockRV consumer_rv = consumers[0];
-        tir::StmtSRef consumer_sref = sch->Eval(consumer_rv);
-        if (!IsSpatial(sch->sch->state, block_sref) && !IsSpatial(sch->sch->state, consumer_sref)) {
-          break;
-        }
-        if (!IsElementWiseMatch(sch->sch->state, block_sref, consumer_sref)) {
-          break;
-        }
-        // Then `consumer_rv` must be an elementwise-matched consumer of `block_rv`
-        if (RuleInlinePureSpatial::NeedsInline(sch->sch, consumer_sref,
-                                               this->consumer_inline_strict)) {
-          // If the elementwise-matched consumer of `block_rv` can be inlined, then inline it
-          sch->ComputeInline(consumer_rv);
-        } else {
-          // Otherwise, it cannot be inlined, let it act as a write cache,
-          // and take a short cut and avoid generate sketches that have a cache_write in it
-          state.write_cache = consumer_rv;
-          state.write_cache_is_added = false;
-          return {std::move(state)};
-        }
+        // let the last consumer act as a write cache
+        state.write_cache = consumer_chain.back();
+        state.write_cache_is_added = false;
+        return {std::move(state)};
       }
       // In this case, it doesn't have an elementwise-matched consumer
       result.push_back(state);
@@ -332,37 +316,67 @@ class RuleMultiLevelTiling {
     // 2) The elementwise-matched consumer doesn't exist
     // Fork a new schedule
     state.sch = state.sch->Copy(state.sch->sampler.ForkSeed());
+    // the copy block after calling cache write
+    BlockRV write_cache = state.block_rv;
     // The original block to tiled
     state.block_rv = state.sch->CacheWrite(state.block_rv, 0, cache_write_scope);
-    tir::StmtSRef block_sref = state.sch->Eval(state.block_rv);
-    for (;;) {
-      Array<BlockRV> consumers = state.sch->GetConsumers(state.block_rv);
+    Array<BlockRV> consumer_chain = GetInlineableConsumerChain(state.sch, write_cache);
+    if (!consumer_chain.empty()) {
+      // inline the cache write copy stage and all but the last consumer
+      state.sch->ComputeInline(write_cache);
+      for (size_t i = 0; i + 1 < consumer_chain.size(); i++) {
+        state.sch->ComputeInline(consumer_chain[i]);
+      }
+      // let the last consumer act as a write cache
+      state.write_cache = consumer_chain.back();
+    } else {
+      state.write_cache = write_cache;
+    }
+    state.write_cache_is_added = true;
+    result.push_back(std::move(state));
+    return result;
+  }
+
+  /*!
+   * \brief Get a chain of elementwise-matched consumers of the producer block, such that the
+   * producer and all but the last consumer can be inlined into one stage and the last consumer can
+   * act as a write cache.
+   * \param sch The schedule
+   * \param producer_block_rv The producer block
+   * \return The chain of elementwise-matched consumers.
+   */
+  Array<BlockRV> GetInlineableConsumerChain(Schedule& sch, const BlockRV& producer_block_rv) const {
+    if (!RuleInlinePureSpatial::NeedsInline(sch->sch, sch->Eval(producer_block_rv),
+                                            this->consumer_inline_strict)) {
+      return {};
+    }
+    Array<BlockRV> result;
+    BlockRV current_block_rv = producer_block_rv;  // current producer block
+    while (true) {
+      Array<BlockRV> consumers = sch->GetConsumers(current_block_rv);
       if (consumers.size() != 1) {
         break;
       }
-      Schedule sch = state.sch;
       BlockRV consumer_rv = consumers[0];
       tir::StmtSRef consumer_sref = sch->Eval(consumer_rv);
-      if (!IsSpatial(sch->sch->state, block_sref) && !IsSpatial(sch->sch->state, consumer_sref)) {
+      if (!IsSpatial(sch->sch->state, consumer_sref)) {
         break;
       }
-      if (!IsElementWiseMatch(sch->sch->state, block_sref, consumer_sref)) {
+      if (!IsElementWiseMatch(sch->sch->state, sch->Eval(current_block_rv), consumer_sref)) {
         break;
       }
       // Then `consumer_rv` must be an elementwise-matched consumer of `block_rv`
-      if (RuleInlinePureSpatial::NeedsInline(sch->sch, consumer_sref,
-                                             this->consumer_inline_strict)) {
-        // If the elementwise-matched consumer of `block_rv` can be inlined, then inline it
-        sch->ComputeInline(consumer_rv);
-      } else {
-        // Otherwise, it cannot be inlined, let it act as a write cache,
-        // and take a short cut and avoid generate sketches that have a cache_write in it
-        state.write_cache = consumer_rv;
-        state.write_cache_is_added = true;
+      if (!RuleInlinePureSpatial::NeedsInline(sch->sch, consumer_sref,
+                                              this->consumer_inline_strict)) {
+        if (IsOutputBlock(sch->sch->state, consumer_sref)) {
+          result.push_back(consumer_rv);
+        }
         break;
       }
+
+      result.push_back(consumer_rv);
+      current_block_rv = consumer_rv;  // check the next consumer
     }
-    result.push_back(std::move(state));
     return result;
   }
 
