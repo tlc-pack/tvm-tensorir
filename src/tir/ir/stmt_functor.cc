@@ -116,11 +116,10 @@ void StmtVisitor::VisitStmt_(const BlockNode* op) {
   auto fvisit_buffer_region = [this](const BufferRegion& s) {
     for (const auto& range : s->region) {
       this->VisitExpr(range->min);
-      this->VisitExpr(range->min);
+      this->VisitExpr(range->extent);
     }
   };
   VisitArray(op->iter_vars, [this](const IterVar& iter_var) {
-    this->VisitExpr(iter_var->var);
     this->VisitExpr(iter_var->dom->min);
     this->VisitExpr(iter_var->dom->extent);
   });
@@ -184,11 +183,11 @@ class StmtMutator::Internal {
     auto fmutate = [self](const IterVar& iter_var) {
       PrimExpr min = self->VisitExpr(iter_var->dom->min);
       PrimExpr extent = self->VisitExpr(iter_var->dom->extent);
-      Range dom(min, extent);
       if (min.same_as(iter_var->dom->min) && extent.same_as(iter_var->dom->extent)) {
         return iter_var;
       } else {
-        return IterVar(dom, iter_var->var, iter_var->iter_type, iter_var->thread_tag);
+        return IterVar(Range(min, extent), iter_var->var, iter_var->iter_type,
+                       iter_var->thread_tag);
       }
     };
     return MutateArray(self, arr, fmutate);
