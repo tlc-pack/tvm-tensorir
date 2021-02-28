@@ -21,7 +21,6 @@
 
 #include <tvm/arith/analyzer.h>
 #include <tvm/tir/analysis.h>
-#include <tvm/tir/schedule.h>
 #include <tvm/tir/stmt_functor.h>
 
 #include <unordered_map>
@@ -181,7 +180,7 @@ Stmt GetStmtFromSeq(const T* op, const Stmt& target,
   if (const auto* seq = op->body.template as<SeqStmtNode>()) {
     if (seq_index >= 0) {
       // fast path
-      CHECK(f_equal((*seq)[seq_index], target));
+      ICHECK(f_equal((*seq)[seq_index], target));
       return (*seq)[seq_index];
     } else {
       // apply slow path when seq_index == -1
@@ -191,7 +190,7 @@ Stmt GetStmtFromSeq(const T* op, const Stmt& target,
       LOG(FATAL) << "Can not find target stmt";
     }
   } else {
-    CHECK(f_equal(op->body, target));
+    ICHECK(f_equal(op->body, target));
     return op->body;
   }
   return NullValue<Stmt>();
@@ -199,12 +198,12 @@ Stmt GetStmtFromSeq(const T* op, const Stmt& target,
 
 BlockRealize GetBlockRealize(const StmtSRef& block_sref) {
   Stmt s = GetRef<Stmt>(block_sref->stmt);
-  CHECK(GetRef<Stmt>(block_sref->stmt).as<BlockNode>());
+  ICHECK(GetRef<Stmt>(block_sref->stmt).as<BlockNode>());
   const auto* parent = block_sref->parent;
   Stmt parent_stmt = GetRef<Stmt>(parent->stmt);
 
   auto f_equal = [](const Stmt& s, const Stmt& target) {
-    CHECK(target.as<BlockNode>());
+    ICHECK(target.as<BlockNode>());
     const auto* block_realize = s.as<BlockRealizeNode>();
     if (block_realize != nullptr) {
       return block_realize->block.same_as(target);
@@ -225,7 +224,7 @@ BlockRealize GetBlockRealize(const StmtSRef& block_sref) {
 
 StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef& root) {
   // alg: count the visit times for each node from the bottom to the root
-  CHECK_GE(nodes.size(), 2);
+  ICHECK_GE(nodes.size(), 2);
   std::unordered_map<StmtSRef, size_t, ObjectHash, ObjectEqual> visit_cnt;
 
   auto f_visit = [&visit_cnt](const StmtSRef& node) {
@@ -250,13 +249,25 @@ StmtSRef LowestCommonAncestor(const std::vector<StmtSRef>& nodes, const StmtSRef
   return root;
 }
 
+bool CheckOneLine(const Stmt& s) {
+  bool legal = true, meet_block = false;
+  PostOrderVisit(s, [&legal, &meet_block](const ObjectRef& obj) {
+    if (obj->IsInstance<SeqStmtNode>() && !meet_block) {
+      legal = false;
+    } else if (obj->IsInstance<BlockRealizeNode>()) {
+      meet_block = true;
+    }
+  });
+  return legal;
+}
+
 std::function<BufferRegion(const BufferRegion)> RelaxGenerator(
     const StmtSRef& block_sref, const StmtSRef& root,
     std::unordered_map<const VarNode*, PrimExpr>* vmap,
     std::unordered_map<const VarNode*, arith::IntSet>* dom_map) {
   const auto* block = block_sref->GetStmt<BlockNode>();
   const auto* block_realize = GetBlockRealize(block_sref).operator->();
-  CHECK(block != nullptr);
+  ICHECK(block != nullptr);
 
   // Update block_var map
   for (size_t i = 0; i < block->iter_vars.size(); ++i) {
@@ -327,7 +338,7 @@ BufferRegion RelaxRegion(const StmtSRef& block_sref, const StmtSRef& root,
  * \return The original stmt and the removed stmt of the subtree rooted by the parent node
  */
 std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root) {
-  CHECK(sref != root);
+  ICHECK(sref != root);
 
   // go upwards until find a father with more than two children
   Stmt last = GetRef<Stmt>(sref->stmt);
@@ -335,7 +346,7 @@ std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root) {
   Stmt stmt = GetRef<Stmt>(sref->stmt);
   while (!sref.same_as(root) && stmt.as<BlockNode>() == nullptr) {
     const auto* loop = stmt.as<ForNode>();
-    CHECK(loop != nullptr);
+    ICHECK(loop != nullptr);
     const auto* seq = loop->body.as<SeqStmtNode>();
     if (seq != nullptr && seq->size() > 1) break;
 
@@ -345,7 +356,7 @@ std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root) {
   }
 
   auto get_body = [&last](const SeqStmtNode* seq) {
-    CHECK_GT(seq->size(), 1);
+    ICHECK_GT(seq->size(), 1);
     std::vector<Stmt> stmts;
     for (const auto& s : seq->seq) {
       const auto* ptr = s.as<BlockRealizeNode>();
@@ -360,13 +371,13 @@ std::pair<Stmt, Stmt> RemoveLeaf(StmtSRef sref, const StmtSRef& root) {
 
   if (const auto* block = stmt.as<BlockNode>()) {
     const auto* seq = block->body.as<SeqStmtNode>();
-    CHECK(seq != nullptr);
+    ICHECK(seq != nullptr);
     auto node = make_object<BlockNode>(*block);
     node->body = get_body(seq);
     return std::make_pair(stmt, Stmt(node));
   } else if (const auto* loop = stmt.as<ForNode>()) {
     const auto* seq = loop->body.as<SeqStmtNode>();
-    CHECK(seq != nullptr);
+    ICHECK(seq != nullptr);
     auto node = make_object<ForNode>(*loop);
     node->body = get_body(seq);
     return std::make_pair(stmt, Stmt(node));
@@ -402,7 +413,7 @@ class ScopeUpdater : public StmtVisitor {
 void UpdateScope(const StmtNode* stmt,
                  const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref,
                  std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual>* scopes) {
-  CHECK(stmt->IsInstance<BlockNode>()) << "InternalError: scope is only defined on a block";
+  ICHECK(stmt->IsInstance<BlockNode>()) << "InternalError: scope is only defined on a block";
   const BlockNode* block = static_cast<const BlockNode*>(stmt);
   ScopeUpdater visitor(stmt2ref);
   visitor(block->body);

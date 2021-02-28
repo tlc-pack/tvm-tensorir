@@ -16,8 +16,12 @@
 # under the License.
 """Wrapping existing analysis utils."""
 # pylint: disable=invalid-name
-
+from __future__ import annotations
+from typing import TYPE_CHECKING
 from . import _ffi_api
+
+if TYPE_CHECKING:
+    from ..function import PrimFunc
 
 
 def expr_deep_equal(lhs, rhs):
@@ -106,3 +110,19 @@ def verify_gpu_code(func, constraints):
         The result of verification.
     """
     return _ffi_api.verify_gpu_code(func, constraints)
+
+
+def verify_exec_scope(func: PrimFunc):
+    """Validate whether a func satisfies the hierarchy constraints
+
+    Parameters
+    ----------
+    func: PrimFunc
+        The function to be checked
+
+    Returns
+    -------
+    result : bool
+        True if it passes verification, otherwise the function returns false or throws an exception
+    """
+    return _ffi_api.VerifyExecScope(func)

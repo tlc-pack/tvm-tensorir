@@ -27,7 +27,8 @@
 #include <tvm/arith/iter_affine_map.h>
 #include <tvm/tir/analysis.h>
 #include <tvm/tir/op.h>
-#include <tvm/tir/schedule.h>
+#include <tvm/tir/schedule/schedule.h>
+#include <tvm/tir/schedule/state.h>
 #include <tvm/tir/stmt_functor.h>
 
 #include <algorithm>
@@ -39,6 +40,36 @@
 
 namespace tvm {
 namespace tir {
+
+#define TVM_SREF_TO_E(Result, SRef, Type) \
+  SRef->GetStmt<Type>();                  \
+  ICHECK(Result)
+
+#define TVM_SREF_TO_BLOCK(Result, SRef)              \
+  TVM_SREF_TO_E(Result, SRef, ::tvm::tir::BlockNode) \
+      << "TypeError: Expects StmtSRef `" << #SRef    \
+      << "` points to `Block`, but gets: " << (SRef->stmt ? SRef->stmt->GetTypeKey() : "None");
+
+#define TVM_SREF_TO_FOR(Result, SRef)              \
+  TVM_SREF_TO_E(Result, SRef, ::tvm::tir::ForNode) \
+      << "TypeError: Expects StmtSRef `" << #SRef  \
+      << "` points to `Loop`, but gets: " << (SRef->stmt ? SRef->stmt->GetTypeKey() : "None");
+
+#define TVM_TYPE_AS_E(Result, From, Type) \
+  From.as<Type>();                        \
+  ICHECK(Result)
+
+#define TVM_TYPE_AS(Result, From, Type)                                           \
+  TVM_TYPE_AS_E(Result, From, Type)                                               \
+      << "TypeError: Expects `" << #From << "` to have type `" << Type::_type_key \
+      << "`, but gets: " << (From.defined() ? From->GetTypeKey() : "None")
+
+inline String ReprFunc(PrimFunc func) {
+  const auto* f = runtime::Registry::Get("script.AsTVMScript");
+  CHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
+  String s = (*f)(func, true);
+  return s;
+}
 
 /*!
  * \brief Get the direct child Schedulable Stmt (Block and Loop)
@@ -192,8 +223,6 @@ class StmtReplacer : public StmtMutator {
 
 bool CheckOneLine(const Stmt& s);
 
-void CollectVars(std::unordered_set<const VarNode*>& res, const PrimExpr& expr);
-
 /*!
  * \brief PrimExpr pattern matcher.
  *
@@ -263,8 +292,8 @@ class PatternMatcher : public ExprVisitor {
 
   PrimExpr Eval(const Var& var) {
     auto it = filled_map_.find(var.operator->());
-    CHECK(it != filled_map_.end()) << "Unknown pattern variable";
-    CHECK(match_success_) << "Match failed";
+    ICHECK(it != filled_map_.end()) << "Unknown pattern variable";
+    ICHECK(match_success_) << "Match failed";
     return it->second;
   }
 
@@ -353,8 +382,7 @@ class TensorizeComparator : public ExprComparator, public StmtComparator {
   bool CompareBufferRegion(const BufferRegion& lhs, const BufferRegion& rhs);
   bool CompareAnnotation(const std::pair<String, ObjectRef>& lhs,
                          const std::pair<String, ObjectRef>& rhs);
-  bool CompareAnnotationMap(const Map<String, ObjectRef>& lhs,
-                            const Map<String, ObjectRef>& rhs);
+  bool CompareAnnotationMap(const Map<String, ObjectRef>& lhs, const Map<String, ObjectRef>& rhs);
   template <typename T>
   bool CompareBufferAccess(const T* lhs, const T* rhs);
   template <typename T, typename F>

@@ -15,503 +15,280 @@
 # specific language governing permissions and limitations
 # under the License.
 """Schedule nodes and APIs in TIR schedule"""
-import tvm
-from . import _ffi_api_schedule
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+
+from tvm._ffi import register_object as _register_object
+from tvm.ir import PrimExpr
 from tvm.runtime import Object
 
+from . import _ffi_api_schedule
+from .expr import IntImm
 
-@tvm._ffi.register_object("tir.Schedule")
-class Schedule(Object):
-    """The schedule node for TIR"""
+if TYPE_CHECKING:
+    from tvm.tir import Block, For, IterVar, PrimFunc, Stmt, TensorIntrin
 
-    # Utils
-    def blocks(self, scope=None):
-        """Return all blocks in the schedule
-        Returns
-        -------
-        blocks : List of Block or Block
-            The blocks in the schedule
-        scope: StmtSRef, optional
-            The scope block stmt sref
-        """
-        blocks = _ffi_api_schedule.ScheduleBlocks(self, scope)
-        if not blocks:
-            return None
-        if len(blocks) == 1:
-            blocks = blocks[0]
-        return blocks
 
-    def get_block(self, arg, scope=None):
-        """Return blocks with queried patten
-        Parameters
-        ----------
-        arg: str or Buffer
-            The queried arguments
-        scope: StmtSRef, optional
-            The scope block stmt sref
-        Returns
-        -------
-        blocks : List of StmtSRef or StmtSRef
-            The blocks sref that match the arguments
-        """
-        if isinstance(arg, str):
-            blocks = _ffi_api_schedule.GetBlocksFromTag(self, arg)
-        else:
-            blocks = _ffi_api_schedule.GetBlocksFromBuffer(self, arg, scope)
-        if not blocks:
-            return None
-        if len(blocks) == 1:
-            blocks = blocks[0]
-        return blocks
-
-    def get_axes(self, block):
-        """Return all axes of the specific block
-        Parameters
-        ----------
-        block: StmtSRef
-            The queried block sref
-        Returns
-        -------
-        axes: List of StmtSRef or StmtSRef
-            The axes of the block
-        """
-        axes = _ffi_api_schedule.ScheduleGetAxes(self, block)
-        if len(axes) == 1:
-            axes = axes[0]
-        return axes
-
-    def get_sref(self, stmt):
-        """Get the stmt schedulable reference of the specific stmt
-        Parameters
-        ----------
-        stmt: Stmt
-            The Stmt to be queried
-        Returns
-        -------
-        sref : StmtSRef
-            The stmt schedulable reference
-        """
-        return _ffi_api_schedule.GetStmtSRef(self, stmt)
-
-    def replace(self, sref, target_stmt, block_sref_map=None):
-        """Replace a subtree of AST with new stmt
-        and auto maintain the schedulable reference tree
-        Parameters
-        ----------
-        sref: StmtSRef
-            The stmt schedulable reference of the Stmt to be replaced
-        target_stmt: Stmt
-            The target stmt
-        block_sref_map: Map
-            The remap of block_sref
-        """
-        return _ffi_api_schedule.Replace(self, sref, target_stmt, block_sref_map)
-
-    def validate_sref(self):
-        return _ffi_api_schedule.ValidateSRef(self)
-
-    # Dependency
-    def get_successors(self, block, scope=None):
-        """Get the dependency successors of the block
-        Parameters
-        ----------
-        block: StmtSRef
-            The queried block
-        scope: StmtSRef
-            The scope
-        Returns
-        -------
-        blocks: List of StmtSRef or StmtSRef
-            The successors of the block
-        """
-
-        if scope is None:
-            scope = self.root
-        return _ffi_api_schedule.GetSuccessors(self, scope, block)
-
-    def get_predecessors(self, block, scope=None):
-        """Get the dependency predecessors of the block
-        Parameters
-        ----------
-        block: StmtSRef
-            The queried block
-        scope: StmtSRef
-            The scope
-        Returns
-        -------
-        blocks: List of StmtSRef or StmtSRef
-            The predecessors of the block
-        """
-
-        if scope is None:
-            scope = self.root
-        return _ffi_api_schedule.GetPredecessors(self, scope, block)
-
-    def reorder(self, *args):
-        """reorder the arguments in the specified order
-        Parameters
-        ----------
-        args: list of Loop
-            The order to be ordered
-        """
-
-        _ffi_api_schedule.ScheduleReorder(self, args)
-
-    def fuse(self, outer_loop, inner_loop):
-        """Return all axes of the specific block
-        Parameters
-        ----------
-        outer_loop: Loop
-            The outer loop
-
-        inner_loop: Loop
-            The inner loop
-
-        Returns
-        -------
-        loop: Loop
-            The fused loop
-        """
-        return _ffi_api_schedule.ScheduleFuse(self, outer_loop, inner_loop)
-
-    def split(self, loop, factor=None, nparts=None):
-        """split a specified loop into two loops by factor or nparts
-
-        Parameters
-        ----------
-        loop: Loop
-            The loop to be split
-
-        factor : Expr, optional
-             The splitting factor
-        nparts : Expr, optional
-             The number of outer parts.
-        Returns
-        -------
-        outer : Loop
-            The outer loop.
-        inner : Loop
-            The inner loop.
-        """
-        if nparts is not None:
-            if factor is not None:
-                raise ValueError("Do not need to provide both outer and nparts")
-            outer, inner = _ffi_api_schedule.ScheduleSplitByNParts(self, loop, nparts)
-        else:
-            if factor is None:
-                raise ValueError("Either nparts or factor need to be provided")
-            outer, inner = _ffi_api_schedule.ScheduleSplitByFactor(self, loop, factor)
-        return outer, inner
-
-    def vectorize(self, loop):
-        """vectorize a loop
-        Parameters
-        ----------
-        loop : Loop
-            The loop to be vectorized
-        """
-        _ffi_api_schedule.ScheduleVectorize(self, loop)
-
-    def parallel(self, loop):
-        """parallel a loop
-        Parameters
-        ----------
-        loop : Loop
-            The loop to be paralleled
-        """
-        _ffi_api_schedule.ScheduleParallel(self, loop)
-
-    def unroll(self, loop):
-        """unroll a loop
-        Parameters
-        ----------
-        loop : Loop
-            The loop to be unrolled
-        """
-        _ffi_api_schedule.ScheduleUnroll(self, loop)
-
-    def double_buffer(self, block):
-        """Compute the current block via double buffering.
-
-        This can only be applied to intermediate stage.
-        This will double the storage cost of the current stage.
-        Can be useful to hide load latency.
-
-        Parameters
-        ----------
-        block : Block
-            The block of interest
-        """
-        _ffi_api_schedule.ScheduleDoubleBuffer(self, block)
-
-    def cache_read(self, block, index, scope):
-        """Create a cache read of original tensor for readers.
-        Parameters
-        ----------
-        block : Block
-            The consumer of the buffer
-        index : int
-            The index of the buffer in block's read region
-        scope : str
-            The storage scope
-        """
-        return _ffi_api_schedule.ScheduleCacheRead(self, block, index, scope)
-
-    def cache_write(self, block, index, scope):
-        """Create a cache write of original tensor, before storing into tensor.
-        Parameters
-        ----------
-        block : Block
-            The write block of the buffer to be cache_writte
-        index : int
-            The index of the buffer in block's write region
-        scope : str
-            The storage scope
-        """
-        return _ffi_api_schedule.ScheduleCacheWrite(self, block, index, scope)
-
-    def compute_inline(self, block):
-        """Mark one block as inline, then the body of computation will be expanded and
-        inserted at the address where the tensor is required.
-        Parameters
-        ----------
-        block: Block
-            The Block to be inlined
-        """
-        return _ffi_api_schedule.ScheduleComputeInline(self, block)
-
-    def reverse_compute_inline(self, block):
-        """Mark one block as inline, then the body of computation will be expanded and
-        inserted at the address where the tensor is required.
-        Parameters
-        ----------
-        block: Block
-            The Block to be inlined
-        """
-        return _ffi_api_schedule.ScheduleReverseComputeInline(self, block)
-
-    def compute_at(self, block, loop):
-        """Attach one block under specific loop and cover the required region.
-        Node that only complete block can do compute_at
-
-        Parameters
-        ----------
-        block: Block
-            The Block to be compute_at
-
-        loop: Loop
-            The target loop
-
-        """
-        _ffi_api_schedule.ScheduleComputeAt(self, block, loop)
-
-    def reverse_compute_at(self, block, loop):
-        """Attach one block under specific loop and cover the required region.
-        Node that only complete block can do reverse_compute_at
-
-        Parameters
-        ----------
-        block: Block
-            The Block to be reverse_compute_at
-
-        loop: Loop
-            The target loop
-
-        Example
-        -------
-        .. code-block:: python
-
-            for i0_outer, i1_outer, i0_inner, i1_inner in tir.grid(8, 8, 16, 16):
-                with tir.block([128, 128], "B") as [vi, vj]:
-                    tir.bind(vi, ((i0_outer*16) + i0_inner))
-                    tir.bind(vj, ((i1_outer*16) + i1_inner))
-                    B[vi, vj] = A[vi, vj] * 2 .0
-            with tir.block([128, 128], "C") as [vi, vj]:
-                C[vi, vj] = B[vi, vj] + 1.0
-
-        After reverse_compute_at(C, i0_inner)
-        .. code-block:: python
-
-            for i0_outer, i1_outer, i1_inner in tir.grid(8, 8, 16):
-                for i1_inner in range(0, 16):
-                    with tir.block([128, 128], "B") as [vi, vj]:
-                        tir.bind(vi, ((i0_outer*16) + i0_inner))
-                        tir.bind(vj, ((i1_outer*16) + i1_inner))
-                        B[vi, vj] = A[vi, vj] * 2.0
-                for ax1 in range(0, 16):
-                    with tir.block([128, 128], "C") as [vi, vj]:
-                        tir.bind(vi, ((i0_outer*16) + i0_inner))
-                        tir.bind(vj, ((i1_outer*16) + ax1))
-                        C[vi, vj] = B[vi, vj] + 1.0
-        """
-        _ffi_api_schedule.ScheduleReverseComputeAt(self, block, loop)
-
-    def bind(self, loop, thread_ivar):
-        """Bind ivar to thread index thread_ivar
-        Parameters
-        ----------
-        loop : Loop
-            The loop to be binded to thread.
-        thread_ivar : IterVar
-            The thread to be binded.
-        """
-        _ffi_api_schedule.ScheduleBind(self, loop, thread_ivar)
-
-    def blockize(self, loop, exec_scope=""):
-        """make subtree rooted by sref into a block
-        Parameters
-        ----------
-        loop: Loop
-            the subtree root
-        Returns
-        -------
-        block: Block
-            The new block
-        """
-        return _ffi_api_schedule.ScheduleBlockize(self, loop, exec_scope)
-
-    def tensorize(self, loop, intrinsic):
-        """Tensorize the computation enclosed by loop with tensor_intrin
-        Parameters
-        ----------
-        loop: Loop
-            the subtree root
-        intrinsic: Intrinsic
-            the tensor intrinsic
-        """
-        _ffi_api_schedule.ScheduleTensorize(self, loop, intrinsic)
-
-    def decompose_reduction(self, block, loop=None):
-        """Decompose reduction block into init&update blocks
-
-        Parameters
-        ----------
-        block: Block
-            The reduction block
-        loop: Loop or None
-            If loop is not None, it means the position where init
-            block will be. Otherwise `decompose_reduction` will substitute
-            `tir.init()` with the initialization condition.
-        Returns
-        -------
-        If loop is not None, return
-            init: Block
-                The init block
-        Otherwise, return
-            block: Block
-                The input block
-        """
-        return _ffi_api_schedule.ScheduleDecomposeReduction(self, block, loop)
-
-    def merge_reduction(self, init, update):
-        """Merge init&update block into reduction block
-
-        Parameters
-        ----------
-        init: Block
-            The init Block
-        update: Block
-            The update Block
-        """
-        _ffi_api_schedule.ScheduleMergeReduction(self, init, update)
-
-    def register_reducer(self, fcombine, identity):
-        """Register a reducer into schedule
-
-        Parameters
-        ----------
-        fcombine : lambda expression
-            the combiner function of reducer
-        identity : PrimExpr
-            the identity of reducer
-        """
-        code = fcombine.__code__
-        lvar = tvm.te.var(code.co_varnames[0])
-        rvar = tvm.te.var(code.co_varnames[1])
-        lhs = tvm.runtime.convert([lvar])
-        rhs = tvm.runtime.convert([rvar])
-        result = tvm.runtime.convert([fcombine(lvar, rvar)])
-        id_elem = tvm.runtime.convert([identity])
-        combiner = tvm.tir.CommReducer(lhs, rhs, result, id_elem)
-        _ffi_api_schedule.ScheduleRegisterReducer(self, combiner)
-
-    def rfactor(self, loop, factor_axis):
-        """rfactor a reduction block using loop
-
-        Parameters
-        ----------
-        loop : StmtSRef
-            the loop outside block we want to do rfactor
-
-        factor_axis : int
-            the position where the new axis is placed
-
-        Returns
-        -------
-        new_block : StmtSRef
-             the sref of new block
-        """
-        return _ffi_api_schedule.ScheduleRfactor(self, loop, factor_axis)
-
-    def pragma(self, loop, pragma_type, pragma_value):
-        """add annotation to a loop
-
-        Parameters
-        ----------
-        loop : StmtSRef
-            the loop of interest
-
-        pragma_type : str
-            the attr key
-
-        pragma_value : PrimExpr
-            the attr value
-        """
-        if isinstance(pragma_value, bool):
-            pragma_value = tvm.tir.const(pragma_value, "bool")
-        return _ffi_api_schedule.SchedulePragma(self, loop, pragma_type, pragma_value)
-
-
-def create_schedule(func):
-    """Create a schedule for a function
-    Parameters
-    ----------
-    func: TIRFunction
-    Returns
-    ------
-    schedule: tir.Schedule
-    """
-    return _ffi_api_schedule.CreateSchedule(func)
-
-
-def validate_hierarchy(func):
-    """Validate whether a func satisfies the hierarchy constraints
-    Parameters
-    ----------
-    func: TIRFunction
-    """
-    _ffi_api_schedule.ValidateHierarchy(func)
-
-
-def get_stmt(sref):
-    """Get Stmt from sref
-    Parameters
-    ----------
-    sref: StmtSRef
-    Returns
-    ------
-    stmt: stmt
-    """
-    return _ffi_api_schedule.GetStmt(sref)
-
-
-@tvm._ffi.register_object
+@_register_object("tir.StmtSRef")
 class StmtSRef(Object):
     """The schedulable reference node for TIR"""
 
     @property
-    def stmt(self):
-        return _ffi_api_schedule.GetStmt(self)
+    def stmt(self) -> Optional[Union[Block, For]]:
+        return _ffi_api_schedule.StmtSRefStmt(self)  # pylint: disable=no-member
 
 
-tvm._ffi._init_api("tir.schedule", __name__)
+@_register_object("tir.DepEdge")
+class DepEdge(Object):
+    """An edge in the dependency graph"""
+
+    kRAW = 0
+    kWAW = 1
+    kWAR = 2
+    kOpaque = 3
+
+    dst: StmtSRef
+    type: int
+
+
+@_register_object("tir.BlockScope")
+class BlockScope(Object):
+    """Dependency Graph that stores read/write dependency between Blocks"""
+
+    def get_predecessors(self, block: StmtSRef) -> List[DepEdge]:
+        """Get the dependency predecessors of the block
+
+        Parameters
+        ----------
+        block: StmtSRef
+            The queried block
+
+        Returns
+        -------
+        blocks: List of DepEdge
+            The predecessors of the block
+        """
+        return _ffi_api_schedule.BlockScopeGetPredecessors(self, block)  # pylint: disable=no-member
+
+    def get_successor(self, block: StmtSRef) -> List[DepEdge]:
+        """Get the dependency successor of the block
+
+        Parameters
+        ----------
+        block: StmtSRef
+            The queried block
+
+        Returns
+        -------
+        blocks: List of DepEdge
+            The predecessors of the block
+        """
+        return _ffi_api_schedule.BlockScopeGetSuccessor(self, block)  # pylint: disable=no-member
+
+
+@_register_object("tir.ScheduleState")
+class ScheduleState(Object):
+    """The state of scheduling"""
+
+    func: PrimFunc
+    root: StmtSRef
+    debug_mode: bool
+
+    def __init__(self, func: PrimFunc, debug_mode: bool):
+        self.__init_handle_by_constructor__(
+            _ffi_api_schedule.ScheduleState,  # pylint: disable=no-member
+            func,
+            debug_mode,
+        )
+
+    def get_sref(self, stmt: Stmt) -> Optional[StmtSRef]:
+        return _ffi_api_schedule.ScheduleStateGetSRef(self, stmt)  # pylint: disable=no-member
+
+    def scope(self, block: StmtSRef) -> BlockScope:
+        return _ffi_api_schedule.ScheduleStateGetScope(self, block)  # pylint: disable=no-member
+
+    def replace(
+        self,
+        src_sref: StmtSRef,
+        tgt_stmt: Stmt,
+        block_sref_reuse: Optional[Dict[Block, Block]] = None,
+    ) -> None:
+        if block_sref_reuse is None:
+            block_sref_reuse = {}
+        _ffi_api_schedule.ScheduleStateReplace(  # pylint: disable=no-member
+            self,
+            src_sref,
+            tgt_stmt,
+            block_sref_reuse,
+        )
+
+
+@_register_object("tir.LoopRV")
+class LoopRV(Object):
+    """A random variable that refers to a loop"""
+
+
+@_register_object("tir.BlockRV")
+class BlockRV(Object):
+    """A random variable that refers to a block"""
+
+
+ExprRV = PrimExpr
+
+
+@_register_object("tir.Schedule")
+class Schedule(Object):
+    """The schedule node for TIR"""
+
+    state: ScheduleState
+    symbol_table: Dict[
+        Union[LoopRV, BlockRV, ExprRV],
+        Union[int, StmtSRef],
+    ]
+
+    def __init__(self, func: PrimFunc, debug_mode: bool = False):
+        self.__init_handle_by_constructor__(
+            _ffi_api_schedule.Schedule,  # pylint: disable=no-member
+            func,
+            debug_mode,
+        )
+
+    @property
+    def module(self) -> PrimFunc:
+        return self.state.func
+
+    def copy(self) -> Schedule:
+        raise NotImplementedError
+
+    def show(self, rand_var: Union[LoopRV, BlockRV, ExprRV]) -> str:
+        # TODO(@junrushao1994): complete it
+        return str(self.get(rand_var))
+
+    def get(self, rand_var: Union[LoopRV, BlockRV, ExprRV]) -> Union[int, Block, For]:
+        if isinstance(rand_var, StmtSRef):
+            return rand_var.stmt
+        return _ffi_api_schedule.ScheduleGet(self, rand_var)  # pylint: disable=no-member
+
+    ########## Block/Loop relation ##########
+
+    def get_block(self, name: str) -> Union[BlockRV, List[BlockRV]]:
+        blocks = _ffi_api_schedule.ScheduleGetBlock(self, name)  # pylint: disable=no-member
+        return blocks[0] if len(blocks) == 1 else list(blocks)
+
+    def get_axes(self, block: BlockRV) -> List[LoopRV]:
+        return _ffi_api_schedule.ScheduleGetAxes(self, block)  # pylint: disable=no-member
+
+    def get_child_blocks(self, block_or_loop: Union[BlockRV, LoopRV]) -> List[BlockRV]:
+        return _ffi_api_schedule.ScheduleGetChildBlocks(  # pylint: disable=no-member
+            self, block_or_loop
+        )
+
+    ########## Schedule: loops ##########
+
+    def fuse(self, outer: LoopRV, inner: LoopRV) -> LoopRV:
+        return _ffi_api_schedule.ScheduleFuse(self, outer, inner)  # pylint: disable=no-member
+
+    def split(
+        self,
+        loop: LoopRV,
+        *,
+        nparts: Optional[ExprRV] = None,
+        factor: Optional[ExprRV] = None,
+    ) -> Tuple[LoopRV, LoopRV]:
+        if nparts is not None and factor is not None:
+            raise ValueError("Only one of `nparts` and `factor` can be specified")
+        result = _ffi_api_schedule.ScheduleSplit(  # pylint: disable=no-member
+            self, loop, nparts, factor
+        )
+        return tuple(result)
+
+    def reorder(self, *loops: List[LoopRV]) -> None:
+        _ffi_api_schedule.ScheduleReorder(self, loops)  # pylint: disable=no-member
+
+    ########## Schedule: compute location ##########
+
+    def compute_at(
+        self,
+        block: BlockRV,
+        loop: LoopRV,
+        preserve_unit_loop: bool = False,
+    ) -> None:
+        _ffi_api_schedule.ScheduleComputeAt(  # pylint: disable=no-member
+            self, block, loop, preserve_unit_loop
+        )
+
+    def reverse_compute_at(
+        self,
+        block: BlockRV,
+        loop: LoopRV,
+        preserve_unit_loop: bool = False,
+    ) -> None:
+        _ffi_api_schedule.ScheduleReverseComputeAt(  # pylint: disable=no-member
+            self, block, loop, preserve_unit_loop
+        )
+
+    def compute_inline(self, block: BlockRV) -> None:
+        _ffi_api_schedule.ScheduleComputeInline(self, block)  # pylint: disable=no-member
+
+    def reverse_compute_inline(self, block: BlockRV) -> None:
+        _ffi_api_schedule.ScheduleReverseComputeInline(self, block)  # pylint: disable=no-member
+
+    ########## Schedule: parallelize / annotate ##########
+
+    def vectorize(self, loop: LoopRV) -> None:
+        _ffi_api_schedule.ScheduleVectorize(self, loop)  # pylint: disable=no-member
+
+    def parallel(self, loop: LoopRV) -> None:
+        _ffi_api_schedule.ScheduleParallel(self, loop)  # pylint: disable=no-member
+
+    def unroll(self, loop: LoopRV) -> None:
+        _ffi_api_schedule.ScheduleUnroll(self, loop)  # pylint: disable=no-member
+
+    def bind(self, loop: LoopRV, thread: Union[str, IterVar]) -> None:
+        _ffi_api_schedule.ScheduleBind(self, loop, thread)  # pylint: disable=no-member
+
+    def double_buffer(self, block: BlockRV) -> None:
+        _ffi_api_schedule.ScheduleDoubleBuffer(self, block)  # pylint: disable=no-member
+
+    def pragma(self, loop: LoopRV, pragma_type: str, pragma_value: ExprRV) -> None:
+        if isinstance(pragma_value, bool):
+            pragma_value = IntImm("bool", pragma_value)
+        _ffi_api_schedule.SchedulePragma(  # pylint: disable=no-member
+            self, loop, pragma_type, pragma_value
+        )
+
+    ########## Schedule: cache read/write ##########
+
+    def cache_read(self, block: BlockRV, i: int, storage_scope: str) -> BlockRV:
+        return _ffi_api_schedule.ScheduleCacheRead(  # pylint: disable=no-member
+            self, block, i, storage_scope
+        )
+
+    def cache_write(self, block: BlockRV, i: int, storage_scope: str) -> BlockRV:
+        return _ffi_api_schedule.ScheduleCacheWrite(  # pylint: disable=no-member
+            self, block, i, storage_scope
+        )
+
+    ########## Schedule: reduction ##########
+
+    def rfactor(self, loop: LoopRV, factor: int) -> LoopRV:
+        return _ffi_api_schedule.ScheduleRFactor(self, loop, factor)  # pylint: disable=no-member
+
+    def decompose_reduction(self, block: BlockRV, loop: Optional[LoopRV]) -> BlockRV:
+        return _ffi_api_schedule.ScheduleDecomposeReduction(  # pylint: disable=no-member
+            self, block, loop
+        )
+
+    def merge_reduction(self, init: BlockRV, update: BlockRV) -> None:
+        _ffi_api_schedule.ScheduleMergeReduction(self, init, update)  # pylint: disable=no-member
+
+    ########## Schedule: blockize / tensorize ##########
+
+    def blockize(self, loop: LoopRV, exec_scope: str = "") -> BlockRV:
+        return _ffi_api_schedule.ScheduleBlockize(  # pylint: disable=no-member
+            self, loop, exec_scope
+        )
+
+    def tensorize(self, loop: LoopRV, intrin: TensorIntrin) -> None:
+        _ffi_api_schedule.ScheduleTensorize(self, loop, intrin)  # pylint: disable=no-member

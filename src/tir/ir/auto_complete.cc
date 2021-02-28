@@ -72,7 +72,7 @@ void BlockReadWriteCollector::Update(std::vector<Buffer>* buffers,
   for (size_t i = 0; i < regions->size(); ++i)
     if ((*buffers)[i].same_as(buffer)) {
       find = true;
-      CHECK_EQ((*regions)[i].size(), region.size()) << "Inconsistent buffer dimension";
+      ICHECK_EQ((*regions)[i].size(), region.size()) << "Inconsistent buffer dimension";
       for (size_t j = 0; j < region.size(); ++j) {
         (*regions)[i][j] = arith::Union({(*regions)[i][j], region[j]});
       }
@@ -147,7 +147,7 @@ class AutoCompleter : public StmtMutator {
       body = BlockRealize(block_with_binding);
       for (int i = op->binding_values.size() - 1; i >= 0; --i) {
         body = For(Downcast<Var>(bindings[i]), op->block->iter_vars[i]->dom->min,
-                    op->block->iter_vars[i]->dom->extent, {}, body);
+                   op->block->iter_vars[i]->dom->extent, {}, body);
       }
     }
     return body;

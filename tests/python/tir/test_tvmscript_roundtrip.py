@@ -1,4 +1,3 @@
-
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -15,12 +14,15 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
+# pylint: disable=missing-function-docstring,missing-module-docstring
 import tvm
 import util
 from tvm import tir
 from tvm.script import ty
 
+
+# pylint: disable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg,chained-comparison,misplaced-comparison-constant,no-self-argument,redundant-keyword-arg,missing-class-docstring,redefined-outer-name
+# fmt: off
 
 @tvm.script.tir
 class Module1:
@@ -99,7 +101,7 @@ def test_opt_gemm_lower():
 
 @tvm.script.tir
 class Module3:
-    def mmult(args: ty.handle, arg_type_ids: ty.handle, num_args: ty.int32, out_ret_value: ty.handle, out_ret_tcode: ty.handle) -> ty.int32:
+    def mmult(args: ty.handle, arg_type_ids: ty.handle, num_args: ty.int32, _out_ret_value: ty.handle, _out_ret_tcode: ty.handle) -> ty.int32:
         # function attr dict
         tir.func_attr({"tir.noalias": True, "global_symbol": "mmult", "tir.is_entry_func": True, "calling_conv": 1})
         # var definition
@@ -398,7 +400,7 @@ def test_opt_conv_tensorcore_lower():
 
 
 @tvm.script.tir
-def opt_conv_tensorcore_mod_host(args: ty.handle, arg_type_ids: ty.handle, num_args: ty.int32, out_ret_value: ty.handle, out_ret_tcode: ty.handle, resource_handle: ty.handle) -> ty.int32:
+def opt_conv_tensorcore_mod_host(args: ty.handle, arg_type_ids: ty.handle, num_args: ty.int32, _out_ret_value: ty.handle, _out_ret_tcode: ty.handle, _resource_handle: ty.handle) -> ty.int32:
     # function attr dict
     tir.func_attr({"tir.noalias": True, "global_symbol": "default_function", "tir.is_entry_func": True, "calling_conv": 1})
     # body
@@ -498,6 +500,10 @@ def opt_conv_tensorcore_mod_host(args: ty.handle, arg_type_ids: ty.handle, num_a
     tir.evaluate(tir.tvm_call_packed_lowered("default_function_kernel0", stack_value, stack_tcode, 0, 9, dtype="int32"))
 
 
+# fmt: on
+# pylint: enable=invalid-name,no-member,line-too-long,too-many-nested-blocks,unexpected-keyword-arg,chained-comparison,misplaced-comparison-constant,no-self-argument,redundant-keyword-arg,missing-class-docstring,redefined-outer-name
+
+
 def test_opt_conv_tensorcore_mod_host():
     mod = opt_conv_tensorcore_mod_host
     rt_mod = tvm.script.from_source(tvm.script.asscript(mod, True))
@@ -510,7 +516,8 @@ def test_module_define():
     func3 = util.predicate_stmt()
     mod1 = tvm.script.create_module({"func1": func1, "func2": func2, "func3": func3})
     mod2 = tvm.script.create_module(
-        {"func1": util.matmul, "func2": util.element_wise, "func3": util.predicate})
+        {"func1": util.matmul, "func2": util.element_wise, "func3": util.predicate}
+    )
     tvm.ir.assert_structural_equal(mod1, mod2)
 
 
@@ -562,7 +569,7 @@ def test_predicate():
     assert isinstance(rt_func.body.block.body.body.body.body.block, tir.stmt.Block)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test_opt_gemm_normalize()
     test_opt_gemm_mod_host()
     test_opt_gemm_lower()

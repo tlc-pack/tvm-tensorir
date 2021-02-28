@@ -21,6 +21,7 @@
 #include <tvm/arith/analyzer.h>
 #include <tvm/tir/stmt_functor.h>
 
+#include "../tir/schedule/analysis.h"
 #include "./analysis.h"
 #include "./sampler.h"
 #include "./utils.h"
@@ -51,8 +52,8 @@ Schedule::Schedule(tir::PrimFunc orig_func)
 
 String Repr(const Schedule& sch) {
   const auto* f = runtime::Registry::Get("script.AsTVMScript");
-  CHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
-  String s = (*f)(sch->sch->func, false);
+  ICHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
+  String s = (*f)(sch->sch->state->func, false);
   return s;
 }
 
@@ -150,8 +151,8 @@ struct SRefTranslator {
    * \brief Translate tir::Schedule
    * \note This method must be called to initialize translation table before other translation
    */
-  tir::Schedule Trans(const tir::Schedule& sch) {
-    ObjectPtr<tir::ScheduleNode> result = make_object<tir::ScheduleNode>();
+  tir::ScheduleState Trans(const tir::ScheduleState& sch) {
+    ObjectPtr<tir::ScheduleStateNode> result = make_object<tir::ScheduleStateNode>();
     // Create the translation table
     // Fill in result->stmt2ref
     for (const auto& kv : sch->stmt2ref) {
@@ -168,16 +169,16 @@ struct SRefTranslator {
       StmtSRef& sref = kv.second;
       if (parent == nullptr) {
         sref->parent = nullptr;
-        CHECK(!root.defined()) << "InternalError: Two roots are found";
+        ICHECK(!root.defined()) << "InternalError: Two roots are found";
         root = sref;
       } else {
         sref->parent = Trans(parent).operator->();
       }
     }
-    CHECK(root.defined()) << "InternalError: No root is found";
+    ICHECK(root.defined()) << "InternalError: No root is found";
     result->func = sch->func;
     result->scopes = Trans(sch->scopes);
-    return tir::Schedule(result);
+    return tir::ScheduleState(result);
   }
 
  private:
@@ -187,9 +188,9 @@ struct SRefTranslator {
 Schedule ScheduleNode::Copy(int new_seed) const {
   // TODO(@junrushao1994): translate this->decisions too
   SRefTranslator translator;
-  tir::Schedule tir_sch = translator.Trans(this->sch);
+  tir::ScheduleState tir_state = translator.Trans(this->sch->state);
   return Schedule(/*orig_func=*/this->orig_func,
-                  /*sch=*/tir_sch,
+                  /*sch=*/tir::Schedule(tir_state, {}),
                   /*trace=*/Trace(this->trace->insts, this->trace->decisions),
                   /*sym_tab=*/translator.Trans(this->sym_tab),
                   /*seed=*/Integer(new_seed));
@@ -199,11 +200,11 @@ Schedule ScheduleNode::Copy(int new_seed) const {
 
 tir::StmtSRef ScheduleNode::Eval(const BlockRV& block) {
   auto iter = this->sym_tab.find(block);
-  CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding BlockRV: " << block;
+  ICHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding BlockRV: " << block;
   const Optional<ObjectRef>& obj = (*iter).second;
-  CHECK(obj.defined()) << "ValueError: Corresponding BlockRV's value is not defined: " << block;
+  ICHECK(obj.defined()) << "ValueError: Corresponding BlockRV's value is not defined: " << block;
   if (const auto* sref = obj.as<tir::StmtSRefNode>()) {
-    CHECK(sref->stmt) << "ValueError: The BlockRV has expired";
+    ICHECK(sref->stmt) << "ValueError: The BlockRV has expired";
     return GetRef<tir::StmtSRef>(sref);
   }
   LOG(FATAL) << "TypeError: BlockRV's corresponding type is invalid: " << obj->GetTypeKey();
@@ -212,11 +213,11 @@ tir::StmtSRef ScheduleNode::Eval(const BlockRV& block) {
 
 tir::StmtSRef ScheduleNode::Eval(const LoopRV& loop) {
   auto iter = this->sym_tab.find(loop);
-  CHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding LoopRV: " << loop;
+  ICHECK(iter != this->sym_tab.end()) << "IndexError: Cannot find corresponding LoopRV: " << loop;
   const Optional<ObjectRef>& obj = (*iter).second;
-  CHECK(obj.defined()) << "ValueError: Corresponding LoopRV's value is not defined: " << loop;
+  ICHECK(obj.defined()) << "ValueError: Corresponding LoopRV's value is not defined: " << loop;
   if (const auto* sref = obj.as<tir::StmtSRefNode>()) {
-    CHECK(sref->stmt) << "ValueError: The LoopRV has expired";
+    ICHECK(sref->stmt) << "ValueError: The LoopRV has expired";
     return GetRef<tir::StmtSRef>(sref);
   }
   LOG(FATAL) << "TypeError: LoopRV's corresponding type is invalid: " << obj->GetTypeKey();
@@ -246,10 +247,10 @@ ObjectRef ScheduleNode::EvalLoopExtended(const LoopRV& loop) {
 
 tir::Buffer ScheduleNode::Eval(const BufferRV& buffer) {
   auto iter = this->sym_tab.find(buffer);
-  CHECK(iter != this->sym_tab.end())
+  ICHECK(iter != this->sym_tab.end())
       << "IndexError: Cannot find corresponding BufferRV: " << buffer;
   const Optional<ObjectRef>& obj = (*iter).second;
-  CHECK(obj.defined()) << "ValueError: Corresponding BufferRV's value is not defined: " << buffer;
+  ICHECK(obj.defined()) << "ValueError: Corresponding BufferRV's value is not defined: " << buffer;
   if (const auto* sref = obj.as<tir::BufferNode>()) {
     return GetRef<tir::Buffer>(sref);
   }
@@ -262,11 +263,11 @@ int ScheduleNode::Eval(const PrimExpr& expr) {
   // Replace all the tir::Var with their corresponding value in the symbol table
   PrimExpr transformed = tir::Substitute(expr, [this](const tir::Var& var) -> Optional<PrimExpr> {
     auto iter = this->sym_tab.find(var);
-    CHECK(iter != this->sym_tab.end())
+    ICHECK(iter != this->sym_tab.end())
         << "IndexError: Cannot find corresponding ExprRV: " << var << '@' << var.get();
     const Optional<ObjectRef>& obj = (*iter).second;
-    CHECK(obj.defined()) << "ValueError: Variable \"" << var->name_hint
-                         << "\" is not defined in the meta scheduling";
+    ICHECK(obj.defined()) << "ValueError: Variable \"" << var->name_hint
+                          << "\" is not defined in the meta scheduling";
     if (const auto* expr = obj.as<PrimExprNode>()) {
       return GetRef<PrimExpr>(expr);
     }
@@ -275,8 +276,8 @@ int ScheduleNode::Eval(const PrimExpr& expr) {
   });
   PrimExpr simplified = analyzer.Simplify(transformed);
   const auto* result = simplified.as<IntImmNode>();
-  CHECK(result) << "ValueError: Expects Integer, but gets type: " << simplified->GetTypeKey()
-                << ", value = " << simplified;
+  ICHECK(result) << "ValueError: Expects Integer, but gets type: " << simplified->GetTypeKey()
+                 << ", value = " << simplified;
   return result->value;
 }
 
@@ -286,7 +287,7 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(int n_splits, const LoopRV& loop
                                                 int max_innermost_factor,
                                                 const Optional<Array<ObjectRef>>& decision) {
   const auto* tir_loop = Eval(loop)->GetStmt<tir::ForNode>();
-  CHECK(tir_loop);
+  ICHECK(tir_loop);
   std::vector<int> samples;
   const auto* p_extent = tir_loop->extent.as<IntImmNode>();
   if (p_extent) {
@@ -318,12 +319,12 @@ Array<tir::Var> ScheduleNode::SampleTileFactor(int n_splits, const LoopRV& loop,
                                                const Array<Integer>& where,
                                                const Optional<Array<ObjectRef>>& decision) {
   const auto* tir_loop = Eval(loop)->GetStmt<tir::ForNode>();
-  CHECK(tir_loop);
+  ICHECK(tir_loop);
   int64_t extent;
   std::vector<int> candidates;
   {
     const auto* p_extent = tir_loop->extent.as<IntImmNode>();
-    CHECK(p_extent);
+    ICHECK(p_extent);
     extent = p_extent->value;
     for (const Integer& item : where) {
       candidates.push_back(item);
@@ -368,7 +369,7 @@ tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
                                          const Array<FloatImm>& probs,
                                          const Optional<ObjectRef>& decision) {
   // Sample the output
-  CHECK_EQ(candidates.size(), probs.size()) << "ValueError: When sampling ";
+  ICHECK_EQ(candidates.size(), probs.size()) << "ValueError: When sampling ";
   std::vector<double> probs_vec;
   probs_vec.reserve(probs.size());
   for (const FloatImm& prob : probs) {
@@ -390,7 +391,7 @@ tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,
 LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block,
                                            const Optional<ObjectRef>& decision) {
   tir::StmtSRef block_sref = Eval(block);
-  Array<tir::StmtSRef> loop_srefs = CollectComputeLocation(sch, block_sref);
+  Array<tir::StmtSRef> loop_srefs = CollectComputeLocation(sch->state, block_sref);
   // Extract the extents of loops
   std::vector<int> non_unit_loop_indices;
   {
@@ -447,7 +448,7 @@ Array<BlockRV> ScheduleNode::GetProducers(const BlockRV& block) {
   // Find the output from TIR
   tir::StmtSRef block_sref = Eval(block);
   Array<tir::DepEdge> pred_edges =
-      this->sch->GetParentScope(block_sref)->GetPredecessors(block_sref);
+      this->sch->state->scopes.at(tir::GetScopeSRef(block_sref))->GetPredecessors(block_sref);
   // Create the output random variable
   Array<BlockRV> outputs;
   outputs.reserve(pred_edges.size());
@@ -468,7 +469,8 @@ Array<BlockRV> ScheduleNode::GetProducers(const BlockRV& block) {
 Array<BlockRV> ScheduleNode::GetConsumers(const BlockRV& block) {
   // Find the output from TIR
   tir::StmtSRef block_sref = Eval(block);
-  Array<tir::DepEdge> succ_edges = this->sch->GetParentScope(block_sref)->GetSuccessors(block_sref);
+  Array<tir::DepEdge> succ_edges =
+      this->sch->state->scopes.at(tir::GetScopeSRef(block_sref))->GetSuccessors(block_sref);
   // Create the output random variable
   Array<BlockRV> outputs;
   outputs.reserve(succ_edges.size());
@@ -489,8 +491,8 @@ Array<BlockRV> ScheduleNode::GetConsumers(const BlockRV& block) {
 BlockRV ScheduleNode::GetBlock(const String& name) {
   // Find the output from TIR
   Array<tir::StmtSRef> tir_result = this->sch->GetBlock(name);
-  CHECK(!tir_result.empty()) << "ValueError: Cannot get a block with name: " << name;
-  CHECK_EQ(tir_result.size(), 1) << "ValueError: Multiple blocks with the same name: " << name;
+  ICHECK(!tir_result.empty()) << "ValueError: Cannot get a block with name: " << name;
+  ICHECK_EQ(tir_result.size(), 1) << "ValueError: Multiple blocks with the same name: " << name;
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
@@ -555,12 +557,12 @@ Array<BufferRV> ScheduleNode::GetWriteBuffers(const BlockRV& block_rv) {
 Array<BlockRV> ScheduleNode::GetRootBlocks() {
   Array<tir::StmtSRef> tir_result;
   Array<BlockRV> outputs;
-  const auto* root_block = this->sch->root->GetStmt<tir::BlockNode>();
+  const auto* root_block = this->sch->state->root->GetStmt<tir::BlockNode>();
   CHECK(root_block) << "TypeError: Expects Block, but gets: " << root_block;
   tir::PreOrderVisit(root_block->body, [&tir_result, &outputs, this](const ObjectRef& obj) -> bool {
     if (const auto* block = obj.as<tir::BlockNode>()) {
       // Found the output from TIR
-      tir::StmtSRef block_sref = this->sch->stmt2ref.at(block);
+      tir::StmtSRef block_sref = this->sch->state->stmt2ref.at(block);
       tir_result.push_back(block_sref);
       // Create the output random variable
       BlockRV block_rv;
@@ -592,7 +594,7 @@ Array<BlockRV> ScheduleNode::GetLeafBlocks() {
     std::unordered_map<const tir::BlockNode*, int> children_counter;
     std::vector<const tir::BlockNode*> stack;
   } v;
-  const auto* root_block = this->sch->root->GetStmt<tir::BlockNode>();
+  const auto* root_block = this->sch->state->root->GetStmt<tir::BlockNode>();
   CHECK(root_block) << "TypeError: Expects Block, but gets: " << root_block;
   v(GetRef<tir::Block>(root_block));
 
@@ -603,7 +605,7 @@ Array<BlockRV> ScheduleNode::GetLeafBlocks() {
       continue;
     }
     // Found the output from TIR
-    tir::StmtSRef block_sref = this->sch->stmt2ref.at(kv.first);
+    tir::StmtSRef block_sref = this->sch->state->stmt2ref.at(kv.first);
     tir_result.push_back(block_sref);
     // Create the output random variable
     BlockRV block_rv;
@@ -616,20 +618,44 @@ Array<BlockRV> ScheduleNode::GetLeafBlocks() {
   return outputs;
 }
 
+Array<BlockRV> ScheduleNode::GetChildBlocks(const BlockRV& input_block) {
+  Array<tir::StmtSRef> tir_result;
+  Array<BlockRV> outputs;
+  const auto* block_ptr = this->Eval(input_block)->GetStmt<tir::BlockNode>();
+  CHECK(block_ptr) << "TypeError: Expects Block, but gets: " << block_ptr;
+  tir::PreOrderVisit(block_ptr->body, [&tir_result, &outputs, this](const ObjectRef& obj) -> bool {
+    if (const auto* block = obj.as<tir::BlockNode>()) {
+      // Found the output from TIR
+      tir::StmtSRef block_sref = this->sch->state->stmt2ref.at(block);
+      tir_result.push_back(block_sref);
+      // Create the output random variable
+      BlockRV block_rv;
+      outputs.push_back(block_rv);
+      // Update the symbol table
+      this->sym_tab.Set(block_rv, block_sref);
+      return false;
+    }
+    return true;
+  });
+  // Record the instruction
+  this->trace->Append(GetRootBlocksAttrs::Make(outputs));
+  return outputs;
+}
+
 /**************** Schedule Primitives ****************/
 
 void ScheduleNode::MarkLoop(const LoopRV& loop, const String& ann_key, const PrimExpr& ann_val) {
-  CHECK(ann_val->IsInstance<tir::StringImmNode>() || ann_val->IsInstance<IntImmNode>())
+  ICHECK(ann_val->IsInstance<tir::StringImmNode>() || ann_val->IsInstance<IntImmNode>())
       << "TypeError: Only StringImm and IntImm are supported for now, but gets: "
       << ann_val->GetTypeKey();
-  AddAnn(this->sch, this->Eval(loop), ann_key, ann_val);
+  AddAnn(this->sch->state, this->Eval(loop), ann_key, ann_val);
   // Record the instruction
   this->trace->Append(MarkLoopAttrs::Make(loop, ann_key, ann_val));
 }
 
 void ScheduleNode::MarkBlock(const BlockRV& block, const String& ann_key, const PrimExpr& ann_val) {
   int value = this->Eval(ann_val);
-  AddAnn(this->sch, this->Eval(block), ann_key, tir::StringImm(std::to_string(value)));
+  AddAnn(this->sch->state, this->Eval(block), ann_key, tir::StringImm(std::to_string(value)));
   // Record the instruction
   this->trace->Append(MarkBlockAttrs::Make(block, ann_key, ann_val));
 }
@@ -639,7 +665,7 @@ LoopRV ScheduleNode::Fuse(const Array<LoopRV>& loops) {
   // Output from TIR
   tir::StmtSRef loop_sref = this->Eval(loops[0]);
   for (int i = 1, n = loops.size(); i < n; ++i) {
-    loop_sref = this->sch->fuse(loop_sref, this->Eval(loops[i]));
+    loop_sref = this->sch->Fuse(loop_sref, this->Eval(loops[i]));
   }
   // Create the output random variable
   LoopRV output;
@@ -657,7 +683,7 @@ Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<Optional<PrimE
   int none_idx = -1;
   for (int i = 0, n = factors.size(); i < n; ++i) {
     if (!factors[i].defined()) {
-      CHECK_EQ(none_idx, -1) << "ValueError: `split` allows only at most one tile size to be None";
+      ICHECK_EQ(none_idx, -1) << "ValueError: `split` allows only at most one tile size to be None";
       CHECK(i == 0 || i == n - 1)
           << "ValueError: `split` only allows None to appear at the start or end of the factors";
       none_idx = i;
@@ -669,8 +695,8 @@ Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<Optional<PrimE
       const PrimExpr& extent = tir_loop->GetStmt<tir::ForNode>()->extent;
       int factor = this->Eval(factors[i].value());
       PrimExpr nparts = floordiv(extent + factor - 1, factor);
-      Array<tir::StmtSRef> split_result = this->sch->split(tir_loop, nparts, factor);
-      CHECK_EQ(split_result.size(), 2);
+      Array<tir::StmtSRef> split_result = this->sch->Split(tir_loop, nparts, factor);
+      ICHECK_EQ(split_result.size(), 2);
       tir_result.push_back(split_result[1]);
       tir_loop = split_result[0];
     }
@@ -682,8 +708,8 @@ Array<LoopRV> ScheduleNode::Split(const LoopRV& loop, const Array<Optional<PrimE
       const PrimExpr& extent = tir_loop->GetStmt<tir::ForNode>()->extent;
       int nparts = this->Eval(factors[i].value());
       PrimExpr factor = floordiv(extent + nparts - 1, nparts);
-      Array<tir::StmtSRef> split_result = this->sch->split(tir_loop, nparts, factor);
-      CHECK_EQ(split_result.size(), 2);
+      Array<tir::StmtSRef> split_result = this->sch->Split(tir_loop, nparts, factor);
+      ICHECK_EQ(split_result.size(), 2);
       tir_result.push_back(split_result[0]);
       tir_loop = split_result[1];
     }
@@ -708,7 +734,7 @@ void ScheduleNode::Reorder(const Array<LoopRV>& after_axes) {
   for (const LoopRV& loop : after_axes) {
     tir_inputs.push_back(Eval(loop));
   }
-  this->sch->reorder(tir_inputs);
+  this->sch->Reorder(tir_inputs);
   // Record the instruction
   this->trace->Append(ReorderAttrs::Make(after_axes));
 }
@@ -718,14 +744,14 @@ void ScheduleNode::ComputeAt(const BlockRV& block, const LoopRV& loop) {
   if (loop_eval.same_as(LoopRV::ComputeInlineRV())) {
     // Find the inputs to TIR
     tir::StmtSRef block_sref = this->Eval(block);
-    this->sch->compute_inline(block_sref);
+    this->sch->ComputeInline(block_sref);
   } else if (loop_eval.same_as(LoopRV::ComputeRootRV())) {
     // Do nothing
   } else {
     // Find the inputs to TIR
     tir::StmtSRef block_sref = this->Eval(block);
     tir::StmtSRef loop_sref = Downcast<tir::StmtSRef>(loop_eval);
-    this->sch->compute_at(block_sref, loop_sref, true);
+    this->sch->ComputeAt(block_sref, loop_sref, true);
   }
   // Record the instruction
   this->trace->Append(ComputeAtAttrs::Make(block, loop));
@@ -736,14 +762,14 @@ void ScheduleNode::ReverseComputeAt(const BlockRV& block, const LoopRV& loop) {
   if (loop_eval.same_as(LoopRV::ComputeInlineRV())) {
     // Find the inputs to TIR
     tir::StmtSRef block_sref = this->Eval(block);
-    this->sch->reverse_compute_inline(block_sref);
+    this->sch->ReverseComputeInline(block_sref);
   } else if (loop_eval.same_as(LoopRV::ComputeRootRV())) {
     // Do nothing
   } else {
     // Find the inputs to TIR
     tir::StmtSRef block_sref = this->Eval(block);
     tir::StmtSRef loop_sref = Downcast<tir::StmtSRef>(loop_eval);
-    this->sch->reverse_compute_at(block_sref, loop_sref, true);
+    this->sch->ReverseComputeAt(block_sref, loop_sref, true);
   }
   // Record the instruction
   this->trace->Append(ReverseComputeAtAttrs::Make(block, loop));
@@ -752,7 +778,7 @@ void ScheduleNode::ReverseComputeAt(const BlockRV& block, const LoopRV& loop) {
 void ScheduleNode::ComputeInline(const BlockRV& block) {
   // Find the inputs to TIR
   tir::StmtSRef block_sref = this->Eval(block);
-  this->sch->compute_inline(block_sref);
+  this->sch->ComputeInline(block_sref);
   // Record the instruction
   this->trace->Append(ComputeInlineAttrs::Make(block));
 }
@@ -760,14 +786,14 @@ void ScheduleNode::ComputeInline(const BlockRV& block) {
 void ScheduleNode::ReverseComputeInline(const BlockRV& block) {
   // Find the inputs to TIR
   tir::StmtSRef block_sref = this->Eval(block);
-  this->sch->reverse_compute_inline(block_sref);
+  this->sch->ReverseComputeInline(block_sref);
   // Record the instruction
   this->trace->Append(ReverseComputeInlineAttrs::Make(block));
 }
 
 BlockRV ScheduleNode::CacheRead(const BlockRV& block, int i, const String& storage_scope) {
   // Find the output from TIR
-  tir::StmtSRef tir_result = this->sch->cache_read(Eval(block), i, storage_scope);
+  tir::StmtSRef tir_result = this->sch->CacheRead(Eval(block), i, storage_scope);
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
@@ -779,7 +805,7 @@ BlockRV ScheduleNode::CacheRead(const BlockRV& block, int i, const String& stora
 
 BlockRV ScheduleNode::CacheWrite(const BlockRV& block, int i, const String& storage_scope) {
   // Find the output from TIR
-  tir::StmtSRef tir_result = this->sch->cache_write(Eval(block), i, storage_scope);
+  tir::StmtSRef tir_result = this->sch->CacheWrite(Eval(block), i, storage_scope);
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
@@ -792,7 +818,7 @@ BlockRV ScheduleNode::CacheWrite(const BlockRV& block, int i, const String& stor
 BlockRV ScheduleNode::Blockize(const LoopRV& loop_rv, const String& exec_scope) {
   // Find the output from TIR
   tir::StmtSRef loop_sref = this->Eval(loop_rv);
-  tir::StmtSRef tir_result = this->sch->blockize(loop_sref, exec_scope);
+  tir::StmtSRef tir_result = this->sch->Blockize(loop_sref, exec_scope);
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
@@ -805,8 +831,8 @@ BlockRV ScheduleNode::Blockize(const LoopRV& loop_rv, const String& exec_scope) 
 BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const Optional<LoopRV>& loop) {
   // Find the output from TIR
   Optional<tir::StmtSRef> loop_sref =
-      bool(loop) ? Eval(loop.value()) : Optional<tir::StmtSRef>(NullOpt);
-  tir::StmtSRef tir_result = this->sch->decompose_reduction(Eval(block), loop_sref);
+      loop.defined() ? Eval(loop.value()) : Optional<tir::StmtSRef>(NullOpt);
+  tir::StmtSRef tir_result = this->sch->DecomposeReduction(Eval(block), loop_sref);
   // Create the output random variable
   BlockRV output;
   // Update the symbol table
@@ -817,27 +843,27 @@ BlockRV ScheduleNode::DecomposeReduction(const BlockRV& block, const Optional<Lo
 }
 
 void ScheduleNode::Tensorize(const LoopRV& loop, const String& tensor_intrin_name) {
-  sch->tensorize(Eval(loop), tir::TensorIntrin::Get(tensor_intrin_name));
+  sch->Tensorize(Eval(loop), tir::TensorIntrin::Get(tensor_intrin_name));
   this->trace->Append(TensorizeAttrs::Make(loop, tensor_intrin_name));
 }
 
 void ScheduleNode::Parallel(const LoopRV& loop) {
   tir::StmtSRef loop_sref = this->Eval(loop);
-  sch->parallel(loop_sref);
+  sch->Parallel(loop_sref);
   // Record the instruction
   this->trace->Append(ParallelAttrs::Make(loop));
 }
 
 void ScheduleNode::Vectorize(const LoopRV& loop) {
   tir::StmtSRef loop_sref = this->Eval(loop);
-  sch->vectorize(loop_sref);
+  sch->Vectorize(loop_sref);
   // Record the instruction
   this->trace->Append(VectorizeAttrs::Make(loop));
 }
 
 void ScheduleNode::Unroll(const LoopRV& loop) {
   tir::StmtSRef loop_sref = this->Eval(loop);
-  sch->unroll(loop_sref);
+  sch->Unroll(loop_sref);
   // Record the instruction
   this->trace->Append(UnrollAttrs::Make(loop));
 }
@@ -846,7 +872,7 @@ void ScheduleNode::Bind(const LoopRV& loop, const String& thread_axis) {
   tir::StmtSRef loop_sref = this->Eval(loop);
   tir::IterVar iter_var =
       tir::IterVar(Range(nullptr), tir::Var(thread_axis), tir::kThreadIndex, thread_axis);
-  sch->bind(loop_sref, iter_var);
+  sch->Bind(loop_sref, iter_var);
   // Record the instruction
   this->trace->Append(BindAttrs::Make(loop, thread_axis));
 }
@@ -983,6 +1009,13 @@ struct Internal {
    * \sa ScheduleNode::GetLeafBlocks
    */
   static Array<BlockRV> GetLeafBlocks(Schedule sch) { return sch->GetLeafBlocks(); }
+  /*!
+   * \brief FFI function, corresponds to ScheduleNode::GetChildBlocks
+   * \sa ScheduleNode::GetChildBlocks
+   */
+  static Array<BlockRV> GetChildBlocks(Schedule sch, BlockRV block) {
+    return sch->GetChildBlocks(block);
+  }
   /**************** Scheduling Primitives ****************/
   /*!
    * \brief FFI function, corresponds to ScheduleNode::MarkLoop
@@ -1124,6 +1157,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetWriteBuffers")
     .set_body_typed(Internal::GetWriteBuffers);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetRootBlocks").set_body_typed(Internal::GetRootBlocks);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetLeafBlocks").set_body_typed(Internal::GetLeafBlocks);
+TVM_REGISTER_GLOBAL("meta_schedule.ScheduleGetChildBlocks")
+    .set_body_typed(Internal::GetChildBlocks);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkLoop").set_body_typed(Internal::MarkLoop);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleMarkBlock").set_body_typed(Internal::MarkBlock);
 TVM_REGISTER_GLOBAL("meta_schedule.ScheduleFuse").set_body_typed(Internal::Fuse);

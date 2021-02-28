@@ -24,10 +24,11 @@
 #include <tvm/arith/int_set.h>
 #include <tvm/ir/attrs.h>
 #include <tvm/runtime/registry.h>
+#include <tvm/tir/analysis.h>
 #include <tvm/tir/builtin.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/op.h>
-#include <tvm/tir/schedule.h>
+#include <tvm/tir/schedule/schedule.h>
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/transform.h>
 
@@ -131,8 +132,8 @@ class LCADetector : public StmtExprVisitor {
 
   ObjectRef LowestCommonAncestor(ObjectRef lhs, ObjectRef rhs) {
     if (!lhs.defined() || !rhs.defined()) return NullValue<ObjectRef>();
-    CHECK(ast_scopes_info_.count(lhs));
-    CHECK(ast_scopes_info_.count(rhs));
+    ICHECK(ast_scopes_info_.count(lhs));
+    ICHECK(ast_scopes_info_.count(rhs));
     while (ast_scopes_info_[lhs].depth > ast_scopes_info_[rhs].depth) {
       lhs = ast_scopes_info_[lhs].parent_scope;
     }
@@ -205,7 +206,7 @@ class RegionGatherer : public StmtExprVisitor {
       buffers_region_;
   /*! \brief The map from block vars to the expr value */
   std::unordered_map<const VarNode*, PrimExpr> block_var_;
-  /*! \brief The map from unit lopo vars to the expr value */
+  /*! \brief The map from unit loop vars to the expr value */
   std::unordered_map<const VarNode*, PrimExpr> unit_loops_;
 
  private:
@@ -216,10 +217,10 @@ class RegionGatherer : public StmtExprVisitor {
 
   void VisitBufferRegion(const BufferRegion& buffer_region) {
     auto it = buffers_region_.find(buffer_region->buffer);
-    CHECK(it != buffers_region_.end());
+    ICHECK(it != buffers_region_.end());
     const auto& region = GatherRegion(buffer_region);
     auto& buffer_new_region = it->second;
-    CHECK_EQ(buffer_new_region.size(), region.size());
+    ICHECK_EQ(buffer_new_region.size(), region.size());
     for (size_t i = 0; i < region.size(); ++i) {
       buffer_new_region[i] = arith::Union({buffer_new_region[i], region[i]});
     }
@@ -231,7 +232,7 @@ class RegionGatherer : public StmtExprVisitor {
   std::vector<arith::IntSet> GatherRegion(const BufferRegion& buffer_region) {
     std::unordered_map<const VarNode*, arith::IntSet> dom_map;
     auto it = buffers_lca_.find(buffer_region->buffer);
-    CHECK(it != buffers_lca_.end());
+    ICHECK(it != buffers_lca_.end());
     const auto& lca = it->second;
     // Every loop will be relaxed if the lca is the root
     bool need_relax = !lca.defined();
@@ -245,8 +246,9 @@ class RegionGatherer : public StmtExprVisitor {
     }
     std::vector<arith::IntSet> region;
     for (const auto& range : buffer_region->region) {
-      Range r = Range::FromMinExtent(Substitute(Substitute(range->min, block_var_), unit_loops_),
-                                     Substitute(Substitute(range->extent, block_var_), unit_loops_));
+      Range r =
+          Range::FromMinExtent(Substitute(Substitute(range->min, block_var_), unit_loops_),
+                               Substitute(Substitute(range->extent, block_var_), unit_loops_));
       region.push_back(arith::EvalSet(r, dom_map));
     }
     return region;
@@ -268,7 +270,7 @@ class BufferFlattener : public StmtExprMutator {
       const std::unordered_map<const VarNode*, PrimExpr>& block_var,
       const std::unordered_map<const VarNode*, PrimExpr>& unit_loops,
       const std::unordered_map<Buffer, std::vector<arith::IntSet>, ObjectPtrHash, ObjectPtrEqual>&
-      buffers_region,
+          buffers_region,
       const std::unordered_map<Buffer, ObjectRef, ObjectPtrHash, ObjectPtrEqual>& buffers_lca,
       const std::unordered_set<Buffer, ObjectPtrHash, ObjectPtrEqual>& arg_buffers)
       : buffers_region_(buffers_region),
@@ -309,7 +311,7 @@ class BufferFlattener : public StmtExprMutator {
     // Handle allocations
     const auto* block_op = op->block.as<BlockNode>();
     Stmt old_stmt = GetRef<Stmt>(block_op);
-    CHECK(block_op != nullptr);
+    ICHECK(block_op != nullptr);
     for (size_t i = block_op->alloc_buffers.size(); i > 0; --i) {
       const auto& buffer = block_op->alloc_buffers[i - 1];
       const std::string name = std::string(buffer->name);
@@ -323,11 +325,11 @@ class BufferFlattener : public StmtExprMutator {
     for (size_t i = 0; i < block_op->iter_vars.size(); ++i) {
       const IterVar& block_var = block_op->iter_vars[i];
       const PrimExpr& binding_value = op->binding_values[i];
-      CHECK(block_var.as<IterVarNode>());
-      CHECK(binding_value.as<PrimExprNode>());
+      ICHECK(block_var.as<IterVarNode>());
+      ICHECK(binding_value.as<PrimExprNode>());
 
       if (block_var->iter_type == kCommReduce) {
-        PreOrderVisit(binding_value, [this] (const ObjectRef& node) {
+        PreOrderVisit(binding_value, [this](const ObjectRef& node) {
           if (const auto* var = node.as<VarNode>()) {
             this->reduction_relative_.insert(GetRef<Var>(var));
             return false;
@@ -342,9 +344,9 @@ class BufferFlattener : public StmtExprMutator {
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     std::swap(parent_scope, parent_scope_);
     op = stmt.as<BlockRealizeNode>();
-    CHECK(op != nullptr);
+    ICHECK(op != nullptr);
     block_op = op->block.as<BlockNode>();
-    CHECK(block_op != nullptr);
+    ICHECK(block_op != nullptr);
     Stmt body = block_op->body;
     // Handle block predicate
     if (!is_one(op->predicate)) {
@@ -353,7 +355,7 @@ class BufferFlattener : public StmtExprMutator {
 
     for (const auto& anno : block_op->annotations) {
       if (anno.first == tir::attr::double_buffer_scope && is_one(Downcast<PrimExpr>(anno.second))) {
-        CHECK_EQ(block_op->writes.size(), 1);
+        ICHECK_EQ(block_op->writes.size(), 1);
         double_buffer_.insert(block_op->writes[0]->buffer);
       }
     }
@@ -397,11 +399,10 @@ class BufferFlattener : public StmtExprMutator {
     std::swap(old_stmt, parent_scope_);
 
     op = stmt.as<ForNode>();
-    CHECK(op != nullptr);
+    ICHECK(op != nullptr);
 
     ForKind kind = op->kind;
-    if (op->kind == ForKind::kThreadBinding)
-      kind = ForKind::kSerial;
+    if (op->kind == ForKind::kThreadBinding) kind = ForKind::kSerial;
 
     Stmt body = op->body;
     for (auto it = pending_allocate_.begin(); it != pending_allocate_.end();) {
@@ -423,7 +424,7 @@ class BufferFlattener : public StmtExprMutator {
 
     Stmt for_stmt;
     if (op->kind == ForKind::kThreadBinding) {
-      CHECK(op->thread_binding.defined());
+      ICHECK(op->thread_binding.defined());
       String thread_tag = op->thread_binding.value()->thread_tag;
       if (!reduction_relative_.count(op->loop_var)) {
         for_stmt = AttrStmt(IterVar(Range(op->min, op->extent), op->loop_var,
@@ -449,14 +450,12 @@ class BufferFlattener : public StmtExprMutator {
     return for_stmt;
   }
 
-  Stmt VisitStmt_(const AttrStmtNode* op) final {
-    return StmtMutator::VisitStmt_(op);
-  }
+  Stmt VisitStmt_(const AttrStmtNode* op) final { return StmtMutator::VisitStmt_(op); }
 
   Stmt VisitStmt_(const BufferStoreNode* op) final {
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     op = stmt.as<BufferStoreNode>();
-    CHECK(op != nullptr);
+    ICHECK(op != nullptr);
     auto begins = ComputeRelativeIndices(op->buffer, op->indices);
     Buffer new_buffer = ReshapeBuffer(op->buffer, this->buffers_region_.at(op->buffer));
     return new_buffer.vstore(begins, op->value);
@@ -472,9 +471,9 @@ class BufferFlattener : public StmtExprMutator {
 
   PrimExpr VisitExpr_(const CallNode* op) final {
     if (op->op.same_as(builtin::get_elem_offset())) {
-      CHECK_EQ(op->args.size(), 1);
+      ICHECK_EQ(op->args.size(), 1);
       const auto* buffer_load = op->args[0].as<BufferLoadNode>();
-      CHECK(buffer_load != nullptr);
+      ICHECK(buffer_load != nullptr);
       Load load = Downcast<Load>(VisitExpr(op->args[0]));
       return load->index;
     } else {
@@ -516,7 +515,7 @@ class BufferFlattener : public StmtExprMutator {
   std::vector<PrimExpr> ComputeRelativeIndices(const Buffer& buffer,
                                                const Array<PrimExpr>& indices) {
     auto it = buffers_region_.find(buffer);
-    CHECK(it != buffers_region_.end());
+    ICHECK(it != buffers_region_.end());
     const auto& region = it->second;
     std::vector<PrimExpr> new_indices;
     for (size_t i = 0; i < region.size(); ++i) {
@@ -534,7 +533,7 @@ PrimFunc BufferFlatten(PrimFunc f) {
   auto fptr = f.CopyOnWrite();
 
   // Check memory and execution hierarchy
-  ScheduleNode::ValidateHierarchy(f);
+  VerifyExecScope(f);
 
   // Transform the reduction calls to BufferStore
   ReductionTransformer reduction_transformer;

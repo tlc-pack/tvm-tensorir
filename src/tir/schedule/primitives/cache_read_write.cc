@@ -16,10 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "./schedule_common.h"
+#include "../analysis.h"
+#include "../schedule_common.h"
+#include "./primitives.h"
 
 namespace tvm {
 namespace tir {
+namespace schedule {
 
 /*! \brief The auxilary info used for the insertion point and content of the cache stage */
 struct CacheStageInfo {
@@ -35,7 +38,7 @@ struct CacheStageInfo {
   int loc_pos;
   /*! \brief The cache_read/cache_write stage to be inserted */
   Stmt cache_stage;
-  /*! \brief The map used for ScheduleNode::Replace */
+  /*! \brief The map used for ScheduleStateNode::Replace */
   std::unordered_map<Block, Block, ObjectPtrHash, ObjectPtrEqual> block_map;
 };
 
@@ -96,10 +99,10 @@ Block MakeCacheStage(const BufferRegion& cache_region, CacheStageInfo* info,
   // Create surrounding loops
   for (int i = static_cast<int>(loop_vars.size()) - 1; i >= 0; --i) {
     body = For(/*loop_var=*/loop_vars[i],
-                /*min=*/0,
-                /*extent=*/cache_region->region[i]->extent,
-                /*kind=*/ForKind::kSerial,
-                /*body=*/body);
+               /*min=*/0,
+               /*extent=*/cache_region->region[i]->extent,
+               /*kind=*/ForKind::kSerial,
+               /*body=*/body);
   }
   info->cache_stage = std::move(body);
   return block;
@@ -112,8 +115,8 @@ Block MakeCacheStage(const BufferRegion& cache_region, CacheStageInfo* info,
  */
 BufferRegion GetOnlyWriteRegion(const StmtSRef& block_sref) {
   const auto* block = block_sref->GetStmt<BlockNode>();
-  CHECK(block != nullptr) << "TypeError: Expect a block, but gets: "
-                          << block_sref->stmt->GetTypeKey();
+  ICHECK(block != nullptr) << "TypeError: Expect a block, but gets: "
+                           << block_sref->stmt->GetTypeKey();
   CHECK_EQ(block->writes.size(), 1) << "ValueError: Only one write buffer is allowed in the block";
   return block->writes[0];
 }
@@ -126,11 +129,11 @@ BufferRegion GetOnlyWriteRegion(const StmtSRef& block_sref) {
  */
 bool IsOutputBlock(const StmtSRef& block_sref, const StmtSRef& scope_sref) {
   const auto* block = block_sref->GetStmt<BlockNode>();
-  CHECK(block != nullptr) << "TypeError: Expect a block, but gets: "
-                          << block_sref->stmt->GetTypeKey();
+  ICHECK(block != nullptr) << "TypeError: Expect a block, but gets: "
+                           << block_sref->stmt->GetTypeKey();
   const auto* scope = scope_sref->GetStmt<BlockNode>();
-  CHECK(scope != nullptr) << "TypeError: Expect a block, but gets: "
-                          << scope_sref->stmt->GetTypeKey();
+  ICHECK(scope != nullptr) << "TypeError: Expect a block, but gets: "
+                           << scope_sref->stmt->GetTypeKey();
   for (const BufferRegion& x : block->writes) {
     for (const BufferRegion& y : scope->writes) {
       if (x->buffer.same_as(y->buffer)) {
@@ -157,7 +160,7 @@ SeqStmt InsertCacheStage(const Stmt& stmts, int pos, const Stmt& stage) {
   if (pos == 0) {
     return SeqStmt({stage, stmts});
   }
-  CHECK_EQ(pos, 1);
+  ICHECK_EQ(pos, 1);
   return SeqStmt({stmts, stage});
 }
 
@@ -189,10 +192,10 @@ Array<BufferRegion> ReplaceBuffer(const Array<BufferRegion>& regions, const Buff
  * \return Schedule root if the block has no writer, or the innermost the sref to the writer block
  * \note This method also checks whether the block is dominate. If not, an exception will be thrown
  */
-StmtSRef GetInnermostWriterBlock(const ScheduleNode* sch, const Buffer& buffer) {
-  StmtSRef sref = sch->root;
+StmtSRef GetInnermostWriterBlock(const ScheduleState self, const Buffer& buffer) {
+  StmtSRef sref = self->root;
   for (;;) {
-    BlockScope scope = sch->scopes.at(sref);
+    BlockScope scope = self->scopes.at(sref);
     auto it = scope->buffer_writers.find(buffer);
     if (it == scope->buffer_writers.end()) {
       break;
@@ -210,15 +213,15 @@ class CacheLocDetector : public StmtVisitor {
  public:
   /*!
    * \brief Constructor
-   * \param sch The schedule class
+   * \param self The schedule class
    * \param block_sref The dominate block which write the buffer
    * \param scope_sref The parent scope of the dominate block
    * \param related_blocks Producer blocks for cache_write and consumer blocks for cache_read
    * \param kind Kind of insertion: for cache_read or cache_write
    */
-  CacheLocDetector(const ScheduleNode* sch, const StmtSRef& block_sref, const StmtSRef& scope_sref,
+  CacheLocDetector(const ScheduleState self, const StmtSRef& block_sref, const StmtSRef& scope_sref,
                    const std::vector<StmtSRef>& related_blocks)
-      : sch_(sch),
+      : self_(self),
         block_sref_(block_sref),
         scope_sref_(scope_sref),
         related_blocks_(related_blocks) {}
@@ -257,7 +260,7 @@ class CacheLocDetector : public StmtVisitor {
       StmtVisitor::VisitStmt_(block);
       // Handling cache_read for input buffer
       if (visited_block_ && visited_related_ && !loc_sref_.defined()) {
-        loc_sref_ = sch_->stmt2ref.at(block);
+        loc_sref_ = self_->stmt2ref.at(block);
         if (loc_pos_ == -1) {
           loc_pos_ = 1;
         }
@@ -281,7 +284,7 @@ class CacheLocDetector : public StmtVisitor {
   void VisitStmt_(const ForNode* loop) final {
     StmtVisitor::VisitStmt_(loop);
     if (visited_block_ && visited_related_ && !loc_sref_.defined() && loc_pos_ != -1) {
-      loc_sref_ = sch_->stmt2ref.at(loop);
+      loc_sref_ = self_->stmt2ref.at(loop);
     }
   }
 
@@ -293,16 +296,16 @@ class CacheLocDetector : public StmtVisitor {
    * \param kind Kind of the cache stage, i.e. cache_read or cache_write
    * \return The location to insert the cache stage
    */
-  static void Detect(const ScheduleNode* sch, const StmtSRef& block_sref,
+  static void Detect(const ScheduleState self, const StmtSRef& block_sref,
                      const StmtSRef& scope_sref, CacheStageInfo* info) {
     std::vector<StmtSRef> related_blocks;
-    for (const DepEdge& x : sch->scopes.at(scope_sref)->GetSuccessors(block_sref)) {
+    for (const DepEdge& x : self->scopes.at(scope_sref)->GetSuccessors(block_sref)) {
       if (x->type == DepType::kRAW) {
         related_blocks.push_back(x->dst);
       }
     }
     if (!related_blocks.empty()) {
-      CacheLocDetector detector(sch, block_sref, scope_sref, related_blocks);
+      CacheLocDetector detector(self, block_sref, scope_sref, related_blocks);
       detector(GetRef<Stmt>(scope_sref->stmt));
       info->loc_sref = detector.loc_sref_;
       info->loc_pos = detector.loc_pos_;
@@ -315,7 +318,7 @@ class CacheLocDetector : public StmtVisitor {
 
  private:
   /*! \brief The schedule class */
-  const ScheduleNode* sch_;
+  const ScheduleState self_;
   /*! \brief The dominate block which write the buffer */
   const StmtSRef& block_sref_;
   /*! \brief The parent scope of the dominate block */
@@ -518,7 +521,8 @@ class CacheWriteRewriter : public StmtExprMutator {
   CacheStageInfo* info_;
 };
 
-StmtSRef ScheduleNode::cache_read(StmtSRef block_sref, int i, const String& storage_scope) {
+StmtSRef CacheRead(ScheduleState self, const StmtSRef& _block_sref, int i,
+                   const String& storage_scope) {
   /*!
    * Check:
    *   - check the buffer has only one writing block
@@ -531,12 +535,13 @@ StmtSRef ScheduleNode::cache_read(StmtSRef block_sref, int i, const String& stor
    */
   Buffer read_buffer{nullptr};
   {
-    const auto* block = block_sref->GetStmt<BlockNode>();
+    const auto* block = _block_sref->GetStmt<BlockNode>();
     CHECK(block) << "ValueError: `cache_read` expects a block as the first argument";
     CHECK_LT(i, block->reads.size()) << "ValueError: index out of range";
     read_buffer = block->reads[i]->buffer;
   }
-  block_sref = GetInnermostWriterBlock(this, read_buffer);  // TODO(@junrushao1994): change it
+  StmtSRef block_sref =
+      GetInnermostWriterBlock(self, read_buffer);  // TODO(@junrushao1994): change it
   CacheStageInfo info;
   info.read_buffer = read_buffer;
   // Create corresponding the buffer to be written, i.e. result of cache_read
@@ -546,29 +551,30 @@ StmtSRef ScheduleNode::cache_read(StmtSRef block_sref, int i, const String& stor
   // Find the innermost writer to the read buffer
   StmtSRef scope_sref{nullptr};
   BufferRegion cache_region(nullptr);
-  if (!block_sref.same_as(this->root)) {
+  if (!block_sref.same_as(self->root)) {
     // Find the parent scope
-    scope_sref = GetParentBlockSRef(block_sref);
+    scope_sref = GetScopeSRef(block_sref);
     // Check the block is not a output block
-    CHECK(!IsOutputBlock(block_sref, scope_sref));
+    ICHECK(!IsOutputBlock(block_sref, scope_sref));
     // Find the region to be cache_read
     cache_region = RelaxRegion(block_sref, scope_sref, GetOnlyWriteRegion(block_sref));
     // Detect insert position
-    CacheLocDetector::Detect(this, block_sref, scope_sref, &info);
+    CacheLocDetector::Detect(self, block_sref, scope_sref, &info);
   } else {
-    info.loc_sref = this->root;
+    info.loc_sref = self->root;
     info.loc_pos = 0;
-    scope_sref = this->root;
+    scope_sref = self->root;
     cache_region = BufferRegion(read_buffer);
   }
   Block cache_read_stage = MakeCacheStage(/*cache_region=*/cache_region, /*info=*/&info,
                                           /*storage_scope=*/storage_scope);
   Stmt new_scope = CacheReadRewriter::Rewrite(/*scope_sref=*/scope_sref, /*info=*/&info);
-  this->Replace(scope_sref, new_scope, info.block_map);
-  return stmt2ref.at(cache_read_stage.get());
+  self->Replace(scope_sref, new_scope, info.block_map);
+  return self->stmt2ref.at(cache_read_stage.get());
 }
 
-StmtSRef ScheduleNode::cache_write(StmtSRef block_sref, int i, const String& storage_scope) {
+StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int i,
+                    const String& storage_scope) {
   /*!
    * Check:
    *   - check the buffer has only one writing block
@@ -589,11 +595,11 @@ StmtSRef ScheduleNode::cache_write(StmtSRef block_sref, int i, const String& sto
   info.read_buffer = write_buffer->WithScope(storage_scope);
   // Create the corresponding buffer allocation
   info.alloc = info.read_buffer;
-  CHECK(!block_sref.same_as(this->root))
+  ICHECK(!block_sref.same_as(self->root))
       << "ValueError: `cache_write` cannot be applied to an input buffer";
   // Find the parent scope
-  StmtSRef scope_sref = GetParentBlockSRef(block_sref);
-  CacheLocDetector::Detect(this, block_sref, scope_sref, &info);
+  StmtSRef scope_sref = GetScopeSRef(block_sref);
+  CacheLocDetector::Detect(self, block_sref, scope_sref, &info);
   // Generate cache buffer
   Block cache_write_stage = MakeCacheStage(
       /*cache_region=*/RelaxRegion(block_sref, scope_sref, GetOnlyWriteRegion(block_sref)),
@@ -612,21 +618,10 @@ StmtSRef ScheduleNode::cache_write(StmtSRef block_sref, int i, const String& sto
       break;
     }
   }
-  this->Replace(scope_sref, new_scope, block_map);
-  return stmt2ref.at(cache_write_stage.get());
+  self->Replace(scope_sref, new_scope, block_map);
+  return self->stmt2ref.at(cache_write_stage.get());
 }
 
-struct Internal {
-  static StmtSRef CacheRead(Schedule self, StmtSRef block, int i, String scope) {
-    return self->cache_read(block, i, scope);
-  }
-  static StmtSRef CacheWrite(Schedule self, StmtSRef block, int i, String scope) {
-    return self->cache_write(block, i, scope);
-  }
-};
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheRead").set_body_typed(Internal::CacheRead);
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheWrite").set_body_typed(Internal::CacheWrite);
-
+}  // namespace schedule
 }  // namespace tir
 }  // namespace tvm

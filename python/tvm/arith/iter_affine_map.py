@@ -91,8 +91,9 @@ class IterSumExpr(IterMapExpr):
 @tvm._ffi.register_object("arith.DivisionForm")
 class DivisionForm(Object):
     def __init__(self, outer, outer_extent, inner, inner_extent):
-        self.__init_handle_by_constructor__(_ffi_api.DivisionForm, outer, outer_extent, inner,
-                                            inner_extent)
+        self.__init_handle_by_constructor__(
+            _ffi_api.DivisionForm, outer, outer_extent, inner, inner_extent
+        )
 
 
 def detect_iter_map(leaf_iters, bindings, root_iters, predicate=True):
@@ -124,11 +125,11 @@ def detect_iter_map(leaf_iters, bindings, root_iters, predicate=True):
 def subspace_division(leaf_iters, bindings, root_iters, sub_iters, predicate=True):
     """Detect if indices can be written as y*extent(x),
     where y, x are mapped iters from input_iters.
-    What's more, y is a mapped iter from input_iters \setminus sub_iters
-                 x is a mapped iter from sub_ters
+    What's more, y is a mapped iter from input_iters \\setminus sub_iters
+                 x is a mapped iter from sub_iters
 
     For example, z*12 + y*3 + x + c = (z*4+y)*3 + x, if sub_iters={x}
-    This operation can used in blockize, tensorize, rfactor
+    This operation can used in blockize, tensorize
 
     Parameters
     ----------

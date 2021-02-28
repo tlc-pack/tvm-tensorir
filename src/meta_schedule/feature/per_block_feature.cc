@@ -326,7 +326,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       if (stmt == scope) {
         break;
       }
-      CHECK(stmt->IsInstance<tir::ForNode>());
+      ICHECK(stmt->IsInstance<tir::ForNode>());
       prod_loop_extent *=
           GetLoopIntExtent(static_cast<const tir::ForNode*>(stmt)).value_or(1)->value;
     }
@@ -455,7 +455,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
       {
         int64_t& num_continuous_bytes = info.num_continuous_bytes = 1;
         const std::vector<int64_t>& access_shape = info.access_shape;
-        CHECK_EQ(access_shape.size(), buffer_shape.size());
+        ICHECK_EQ(access_shape.size(), buffer_shape.size());
         for (int i = ndim - 1; i >= 0; --i) {
           if (access_shape[i] == buffer_shape[i]) {
             num_continuous_bytes = buffer_shape[i] * buffer->dtype.bytes();
@@ -666,7 +666,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     }
     // Step 2.2. Substitute block vars to its binding
     {
-      CHECK_EQ(realize->binding_values.size(), realize->block->iter_vars.size());
+      ICHECK_EQ(realize->binding_values.size(), realize->block->iter_vars.size());
       int n = realize->binding_values.size();
       for (int i = 0; i < n; ++i) {
         const tir::Var& lhs = realize->block->iter_vars[i]->var;
@@ -752,7 +752,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     // Calculate the min stride possible
     int64_t result = kNotFound;
     for (const NDIntSet& region : regions) {
-      CHECK_EQ(region.size(), buffer_stride.size());
+      ICHECK_EQ(region.size(), buffer_stride.size());
       // Find the rightest dimension that contains the given variable
       for (int i = ndim - 1; i >= 0; --i) {
         PrimExpr idx = region[i].min();
@@ -773,7 +773,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
                                      const std::vector<const tir::ForNode*>& loops,
                                      const std::vector<int64_t>& for_touched_bytes,
                                      const FeatureSet::MathOps& math_ops) const {
-    CHECK_EQ(loops.size(), for_touched_bytes.size());
+    ICHECK_EQ(loops.size(), for_touched_bytes.size());
     int n_loops = loops.size();
     // Calculate `memory_bytes`
     std::vector<double> memory_bytes;
@@ -892,7 +892,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
     } else if (loop->kind == tir::ForKind::kUnrolled) {
       ref_loops = &unroll_;
     } else if (loop->kind == tir::ForKind::kThreadBinding) {
-      CHECK(loop->thread_binding.defined());
+      ICHECK(loop->thread_binding.defined());
       std::string thread_tag = loop->thread_binding.value()->thread_tag;
       if (thread_tag == "blockIdx.x") {
         ref_loops = &blockIdx_x_;
@@ -938,7 +938,7 @@ class PerBlockFeatureExtractor : public tir::StmtExprVisitor {
   }
 
   void VisitStmt_(const tir::BufferStoreNode* store) override {
-    CHECK(!scopes_.empty());
+    ICHECK(!scopes_.empty());
     FeatureSet::MathOps math_ops = MathOpCounter::Count(store->value);
     AddMathOpsToScope(&math_ops);
   }
@@ -1028,7 +1028,7 @@ struct DoubleNDArrayPusher {
       array_size *= shape[i];
     }
     int64_t written_size = back - static_cast<double*>(array->data);
-    CHECK_EQ(array_size, written_size);
+    ICHECK_EQ(array_size, written_size);
     return std::move(array);
   }
 
@@ -1055,7 +1055,7 @@ runtime::NDArray PerBlockFeature(const Schedule& sch, int max_num_buffer_access_
   size_t kNumFeature = kNumFeatureGroup1 +
                        kNumFeatureGroup2Subgroup * max_num_buffer_access_features +
                        kNumFeatureGroup3 + kNumFeatureGroup5;
-  const tir::PrimFunc& func = sch->sch->func;
+  const tir::PrimFunc& func = sch->sch->state->func;
   std::vector<FeatureSet> feature_map = PerBlockFeatureExtractor::Extract(func);
 
   DoubleNDArrayPusher ret(
@@ -1091,7 +1091,7 @@ runtime::NDArray PerBlockFeature(const Schedule& sch, int max_num_buffer_access_
         slog(feature.threadIdx_z_len),
         slog(feature.vthread_len),
     };
-    CHECK_EQ(std::end(group1) - std::begin(group1), kNumFeatureGroup1);
+    ICHECK_EQ(std::end(group1) - std::begin(group1), kNumFeatureGroup1);
     ret.Push(std::begin(group1), std::end(group1));
     /***** Group 2: Buffer access related features *****/
     const std::vector<FeatureSet::BufferAccess>& accesses = feature.buffer_accesses;
@@ -1135,7 +1135,7 @@ runtime::NDArray PerBlockFeature(const Schedule& sch, int max_num_buffer_access_
           slog(access.unique_lines_d_reuse_ct),
           slog(access.stride),
       };
-      CHECK_EQ(std::end(group2_sub) - std::begin(group2_sub), kNumFeatureGroup2Subgroup);
+      ICHECK_EQ(std::end(group2_sub) - std::begin(group2_sub), kNumFeatureGroup2Subgroup);
       ret.Push(std::begin(group2_sub), std::end(group2_sub));
     }
     // Pad to `max_num_buffer_access_features`
@@ -1258,7 +1258,7 @@ Array<String> PerBlockFeatureNames(int max_num_buffer_access_features) {
   result.push_back(("num_loops"));
   result.push_back(("auto_unroll_max_step"));
   // section total: 3
-  CHECK_EQ(result.size(), kTotal);
+  ICHECK_EQ(result.size(), kTotal);
   return {result.begin(), result.end()};
 }
 

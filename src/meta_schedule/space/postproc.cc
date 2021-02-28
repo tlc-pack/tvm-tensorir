@@ -54,9 +54,9 @@ class PostprocRewriteTensorize {
 
   Optional<tir::StmtSRef> FindTensorized(const Schedule& sch) {
     Optional<tir::StmtSRef> result = NullOpt;
-    tir::PreOrderVisit(sch->sch->func->body, [&result, &sch](const ObjectRef& obj) -> bool {
+    tir::PreOrderVisit(sch->sch->state->func->body, [&result, &sch](const ObjectRef& obj) -> bool {
       if (const auto* block = obj.as<tir::BlockNode>()) {
-        tir::StmtSRef block_sref = sch->sch->stmt2ref.at(block);
+        tir::StmtSRef block_sref = sch->sch->state->stmt2ref.at(block);
         if (HasAnn(block_sref, tir::attr::auto_tensorize, "1")) {
           result = block_sref;
           return false;
@@ -70,7 +70,7 @@ class PostprocRewriteTensorize {
   bool CanTensorize(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
                     const tir::TensorIntrin& intrin) {
     Optional<TensorizeInfo> opt_tensorize_info =
-        GetTensorizeLoopMapping(sch, block_sref, intrin->description);
+        GetTensorizeLoopMapping(sch->state, block_sref, intrin->description);
     if (!opt_tensorize_info.defined()) {
       return false;
     }
@@ -91,7 +91,7 @@ class PostprocRewriteTensorize {
     while (Optional<tir::StmtSRef> opt_block_sref = FindTensorized(sch)) {
       tir::StmtSRef block_sref = opt_block_sref.value();
       // Remove the annotation
-      DelAnn(sch->sch, block_sref, tir::attr::auto_tensorize);
+      DelAnn(sch->sch->state, block_sref, tir::attr::auto_tensorize);
       // Get the surrounding loops
       Array<tir::StmtSRef> loop_srefs = sch->sch->GetAxes(block_sref);
       // Decompose Reduction
@@ -101,7 +101,7 @@ class PostprocRewriteTensorize {
       // Tensorize
       for (const tir::TensorIntrin& intrin : tensor_intrins) {
         if (CanTensorize(sch->sch, block_sref, intrin)) {
-          sch->sch->tensorize(loop_srefs[0], intrin);
+          sch->sch->Tensorize(loop_srefs[0], intrin);
           return true;
         }
       }
@@ -125,13 +125,13 @@ class PostprocRewriteCooperativeFetch {
   static std::function<bool(const tir::BlockNode* block)> MakeBlockFinder(const tir::Schedule& sch,
                                                                           int* idx) {
     return [sch, idx](const tir::BlockNode* block) -> bool {
-      const tir::StmtSRefNode* sref = sch->stmt2ref.at(block)->parent;
+      const tir::StmtSRefNode* sref = sch->state->stmt2ref.at(block)->parent;
       for (int& i = *idx = 0; sref != nullptr; sref = sref->parent, ++i) {
         const tir::ForNode* loop = sref->GetStmt<tir::ForNode>();
         if (!loop) {
           break;
         }
-        if (HasAnn(sch->stmt2ref.at(loop), tir::attr::loop_type, "lazy_cooperative_fetch")) {
+        if (HasAnn(sch->state->stmt2ref.at(loop), tir::attr::loop_type, "lazy_cooperative_fetch")) {
           return true;
         }
       }
@@ -142,7 +142,7 @@ class PostprocRewriteCooperativeFetch {
   bool Proc(const Schedule& sch) const {
     int idx = 0;
     while (Optional<tir::StmtSRef> opt_block_sref =
-               FindBlockSRef(sch->sch, MakeBlockFinder(sch->sch, &idx))) {
+               FindBlockSRef(sch->sch->state, MakeBlockFinder(sch->sch, &idx))) {
       // Extract block info
       tir::StmtSRef block_sref = opt_block_sref.value();
       const auto* block = block_sref->GetStmt<tir::BlockNode>();
@@ -154,15 +154,15 @@ class PostprocRewriteCooperativeFetch {
       LoopRV loop_rv = loop_rvs[n_loops - 1 - idx];
       tir::StmtSRef loop_sref = sch->Eval(loop_rv);
       // Remove the annotation
-      DelAnn(sch->sch, loop_sref, tir::attr::loop_type);
+      DelAnn(sch->sch->state, loop_sref, tir::attr::loop_type);
       // Find the threadIdx.x binding
       PrimExpr thread_idx_extent{nullptr};
       for (const tir::StmtSRefNode* sref = loop_sref->parent;; sref = sref->parent) {
-        CHECK(sref) << "ValueError: Cannot find loops above with threadIdx.x";
+        ICHECK(sref) << "ValueError: Cannot find loops above with threadIdx.x";
         if (const tir::ForNode* loop = sref->GetStmt<tir::ForNode>()) {
-          if (HasAnn(GetRef<tir::StmtSRef>(sref), tir::attr::loop_type, "threadIdx.x")) {
-            CHECK(tir::is_zero(loop->min)) << "ValueError: Expect loops to start from 0, but gets: "
-                                           << GetRef<tir::For>(loop);
+          if (HasBinding(GetRef<tir::StmtSRef>(sref), "threadIdx.x")) {
+            ICHECK(tir::is_zero(loop->min))
+                << "ValueError: Expect loops to start from 0, but gets: " << GetRef<tir::For>(loop);
             thread_idx_extent = loop->extent;
             break;
           }
@@ -170,7 +170,7 @@ class PostprocRewriteCooperativeFetch {
       }
       // Split the loop
       Array<LoopRV> split = sch->Split(loop_rv, {NullOpt, thread_idx_extent});
-      CHECK_EQ(split.size(), 2);
+      ICHECK_EQ(split.size(), 2);
       sch->Bind(split[1], "threadIdx.x");
     }
     return true;
@@ -231,16 +231,16 @@ class PostprocRewriteParallelizeVectorizeUnroll {
   static void RemoveParsedAnn(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
                               const Parsed& parsed) {
     if (parsed.max_parallel_extent != -1) {
-      DelAnn(sch, block_sref, tir::attr::auto_parallel_extent);
+      DelAnn(sch->state, block_sref, tir::attr::auto_parallel_extent);
     }
     if (parsed.max_vectorize_extent != -1) {
-      DelAnn(sch, block_sref, tir::attr::auto_vectorize_extent);
+      DelAnn(sch->state, block_sref, tir::attr::auto_vectorize_extent);
     }
     if (parsed.unroll_explicit != -1) {
-      DelAnn(sch, block_sref, tir::attr::auto_unroll_explicit);
+      DelAnn(sch->state, block_sref, tir::attr::auto_unroll_explicit);
     }
     if (parsed.unroll_implicit != -1) {
-      DelAnn(sch, block_sref, tir::attr::auto_unroll_implicit);
+      DelAnn(sch->state, block_sref, tir::attr::auto_unroll_implicit);
     }
   }
 
@@ -258,7 +258,7 @@ class PostprocRewriteParallelizeVectorizeUnroll {
       loop_types.reserve(n_loops);
       for (const LoopRV& loop_rv : loop_rvs) {
         loop_srefs.push_back(sch->Eval(loop_rv));
-        loop_types.push_back(GetLoopIterType(sch->sch, loop_srefs.back()));
+        loop_types.push_back(GetLoopIterType(sch->sch->state, loop_srefs.back()));
       }
     }
     // Calculate the parallelize extent
@@ -321,14 +321,14 @@ class PostprocRewriteParallelizeVectorizeUnroll {
     // Prefer num_vectorize to num_parallel
     if (parsed->num_parallel_loops != -1 && parsed->num_vectorize_loops != -1) {
       parsed->num_parallel_loops = std::min(parsed->num_parallel_loops,  //
-                                            n_loops - parsed->num_parallel_loops);
+                                            n_loops - parsed->num_vectorize_loops);
     }
   }
 
   bool Proc(const Schedule& sch) const {
     Parsed parsed;
     while (Optional<tir::StmtSRef> opt_block_sref =
-               FindBlockSRef(sch->sch, MakeAnnParser(&parsed))) {
+               FindBlockSRef(sch->sch->state, MakeAnnParser(&parsed))) {
       // Extract block info
       tir::StmtSRef block_sref = opt_block_sref.value();
       RemoveParsedAnn(sch->sch, block_sref, parsed);
@@ -359,7 +359,7 @@ class PostprocRewriteParallelizeVectorizeUnroll {
       }
       // AutoUnroll
       if (parsed.unroll_explicit != -1 || parsed.unroll_implicit != -1) {
-        CHECK(!(parsed.unroll_explicit != -1 && parsed.unroll_implicit != -1))
+        ICHECK(!(parsed.unroll_explicit != -1 && parsed.unroll_implicit != -1))
             << "ValueError: `auto_unroll_explicit` and `auto_unroll_explicit` cannot co-exist";
         int unroll_explicit = parsed.unroll_explicit != -1;
         int max_step = parsed.unroll_explicit + parsed.unroll_implicit + 1;
@@ -391,9 +391,9 @@ class PostprocRewriteUnboundBlocks {
     /*! \brief Find the first block that is not bound to any thread axes */
     static Optional<tir::StmtSRef> Find(const tir::Schedule& sch) {
       UnboundBlockFinder finder(sch);
-      finder(GetRef<tir::Stmt>(sch->root->stmt));
+      finder(GetRef<tir::Stmt>(sch->state->root->stmt));
       return finder.block_ == nullptr ? Optional<tir::StmtSRef>(NullOpt)
-                                      : sch->stmt2ref.at(finder.block_);
+                                      : sch->state->stmt2ref.at(finder.block_);
     }
 
    private:
@@ -403,7 +403,7 @@ class PostprocRewriteUnboundBlocks {
       if (block_) {
         return;
       }
-      if (Optional<String> opt_ann = GetAnn(sch_->stmt2ref.at(loop), tir::attr::loop_type)) {
+      if (Optional<String> opt_ann = GetAnn(sch_->state->stmt2ref.at(loop), tir::attr::loop_type)) {
         String ann = opt_ann.value();
         if (ann == "threadIdx.x" || ann == "blockIdx.x" || ann == "vthread") {
           return;
@@ -413,7 +413,7 @@ class PostprocRewriteUnboundBlocks {
     }
 
     void VisitStmt_(const tir::BlockNode* block) override {
-      if (block == sch_->root->stmt) {
+      if (block == sch_->state->root->stmt) {
         tir::StmtExprVisitor::VisitStmt_(block);
       } else if (!block_) {
         block_ = block;
@@ -427,7 +427,7 @@ class PostprocRewriteUnboundBlocks {
   void BindThreadAxes(const Schedule& sch, const tir::StmtSRef& block_sref) const {
     // Extract the block
     const auto* block = block_sref->GetStmt<tir::BlockNode>();
-    CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
+    ICHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
     BlockRV block_rv = sch->GetBlock(block->name_hint);
     // Extract loops
     Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
@@ -435,8 +435,7 @@ class PostprocRewriteUnboundBlocks {
     // TODO(@junrushao1994): check if each loop has only one children, otherwise we cannot fuse
     int n_spatial_loops = 0;
     for (const LoopRV& loop_rv : loop_rvs) {
-      tir::StmtSRef loop_sref = sch->Eval(loop_rv);
-      tir::IterVarType iter_type = GetLoopIterType(sch->sch, loop_sref);
+      tir::IterVarType iter_type = GetLoopIterType(sch->sch->state, sch->Eval(loop_rv));
       if (iter_type != tir::kDataPar || GetAnn(loop_sref, tir::attr::loop_type).defined()) {
         break;
       }
@@ -446,14 +445,14 @@ class PostprocRewriteUnboundBlocks {
     // Fuse the spatial loops
     LoopRV fused = sch->Fuse({loop_rvs.begin(), loop_rvs.begin() + n_spatial_loops});
     Array<LoopRV> splits = sch->Split(fused, {NullOpt, Integer(32)});
-    CHECK_EQ(splits.size(), 2);
+    ICHECK_EQ(splits.size(), 2);
     sch->Bind(splits[0], "blockIdx.x");
     sch->Bind(splits[1], "threadIdx.x");
   }
 
   bool Proc(const SearchTask& task, const Schedule& sch) const {
     int warp_size = task->target->GetAttr<Integer>("thread_warp_size").value_or(Integer(-1));
-    CHECK(warp_size != -1) << "ValueError: Target does not have attribute \"thread_warp_size\"";
+    ICHECK(warp_size != -1) << "ValueError: Target does not have attribute \"thread_warp_size\"";
     while (Optional<tir::StmtSRef> opt_block_sref = UnboundBlockFinder::Find(sch->sch)) {
       BindThreadAxes(sch, opt_block_sref.value());
     }
@@ -486,19 +485,19 @@ class PostprocRewriteReductionBlock {
       }
       return true;
     });
-    CHECK(res == nullptr || res->init.defined());
+    ICHECK(res == nullptr || res->init.defined());
     return res;
   }
 
   bool Proc(const Schedule& sch) const {
-    while (const tir::BlockNode* block = Find(sch->sch->func->body)) {
+    while (const tir::BlockNode* block = Find(sch->sch->state->func->body)) {
       BlockRV block_rv = sch->GetBlock(block->name_hint);
       Array<LoopRV> loop_rvs = sch->GetAxes(block_rv);
       int n_loops = loop_rvs.size();
       for (int i = 0; i < n_loops; ++i) {
         const LoopRV& loop_rv = loop_rvs[i];
         tir::StmtSRef loop_sref = sch->Eval(loop_rv);
-        if (GetLoopIterType(sch->sch, loop_sref) != tir::kDataPar) {
+        if (GetLoopIterType(sch->sch->state, loop_sref) != tir::kDataPar) {
           // Insert the initializing block above the first loop which is not data parallel.
           BlockRV init = sch->DecomposeReduction(block_rv, loop_rvs[i]);
           Array<LoopRV> loops = sch->GetAxes(init);
@@ -542,7 +541,7 @@ class PostprocDisallowDynamicLoops {
       }
       return true;
     };
-    tir::PreOrderVisit(sch->sch->func->body, f_visit);
+    tir::PreOrderVisit(sch->sch->state->func->body, f_visit);
     return !has_dyn_ext;
   }
 };
@@ -594,7 +593,7 @@ class PostprocVerifyGPUCode {
   bool Proc(const SearchTask& task, const Schedule& sch) const {
     static tir::transform::Sequential passes = MakePasses();
     GlobalVar main_func("main");
-    IRModule mod({{main_func, sch->sch->func}});
+    IRModule mod({{main_func, sch->sch->state->func}});
     try {
       mod = passes(std::move(mod));
     } catch (const dmlc::Error& e) {

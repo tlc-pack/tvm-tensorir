@@ -107,7 +107,7 @@ bool PostOrderApplyNode::Postprocess(const SearchTask& task, const Schedule& sch
 
 Schedule PostOrderApplyNode::SampleSchedule(const SearchTask& task, Sampler* sampler) {
   Array<Schedule> support = GetSupport(task, sampler);
-  CHECK(!support.empty()) << "ValueError: Found null support";
+  ICHECK(!support.empty()) << "ValueError: Found null support";
   int i = sampler->SampleInt(0, support.size());
   return support[i];
 }
@@ -117,22 +117,22 @@ class BlockCollector : public tir::StmtVisitor {
  public:
   /*! \brief Constructor */
   explicit BlockCollector(const tir::Schedule& sch) : sch_(sch) {
-    result_.reserve(sch->stmt2ref.size());
+    result_.reserve(sch->state->stmt2ref.size());
   }
 
   /*! \brief Entry point */
   Array<tir::StmtSRef> Run() {
-    VisitStmt(sch_->func->body);
+    VisitStmt(sch_->state->func->body);
     Array<tir::StmtSRef> result = std::move(result_);
     return result;
   }
 
  private:
   void VisitStmt_(const tir::BlockNode* block) override {
-    if (block != sch_->root->stmt) {
-      result_.push_back(sch_->stmt2ref.at(block));
+    if (block != sch_->state->root->stmt) {
+      result_.push_back(sch_->state->stmt2ref.at(block));
     }
-    tir::StmtVisitor::VisitStmt_(block);
+    this->VisitStmt(block->body);
   }
 
   /*! \brief The schedule to be collected */
@@ -162,16 +162,17 @@ Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* 
         continue;
       }
       // otherwise, get the last block that is not visited
-      tir::StmtSRef block_sref = unvisited[0];
-      unvisited.erase(unvisited.begin());
+      tir::StmtSRef block_sref = unvisited.back();
+      unvisited.pop_back();
       if (block_sref->stmt != nullptr) {
         const auto* block = block_sref->GetStmt<tir::BlockNode>();
-        CHECK(block) << "TypeError: Expects BlockNode, but gets: "
-                     << block_sref->stmt->GetTypeKey();
+        ICHECK(block) << "TypeError: Expects BlockNode, but gets: "
+                      << block_sref->stmt->GetTypeKey();
         // TODO(@junrushao1994): replace this quick hack
         if (!sch->sch->GetBlock(block->name_hint).empty()) {
           // apply the rule to the block
-          Array<Schedule> applied = rule->Apply(task, sch, /*block=*/sch->GetBlock(block->name_hint));
+          Array<Schedule> applied =
+              rule->Apply(task, sch, /*block=*/sch->GetBlock(block->name_hint));
           // append the newly got schedules to the top of the stack
           for (const Schedule& sch : applied) {
             stack.emplace_back(sch, unvisited);

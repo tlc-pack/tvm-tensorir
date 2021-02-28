@@ -185,11 +185,11 @@ class MutatorComputeLocation {
         // The decision made
         int decided = Downcast<Integer>(decision)->value;
         // Extract the inputs
-        CHECK_EQ(inputs.size(), 1);
+        ICHECK_EQ(inputs.size(), 1);
         BlockRV block_rv = Downcast<BlockRV>(inputs[0]);
         tir::StmtSRef block_sref = sch->Eval(block_rv);
         // Extract locations that can be computed at
-        Array<tir::StmtSRef> loop_srefs = CollectComputeLocation(sch->sch, block_sref);
+        Array<tir::StmtSRef> loop_srefs = CollectComputeLocation(sch->sch->state, block_sref);
         std::vector<int> locs{-2, -1};
         {
           int i = 0;
@@ -203,10 +203,10 @@ class MutatorComputeLocation {
         }
         // Remove `decided`
         std::vector<int>::iterator rm = std::find(locs.begin(), locs.end(), decided);
-        CHECK(rm != locs.end());
+        ICHECK(rm != locs.end());
         locs.erase(rm);
         // Add the candidate
-        CHECK(!locs.empty());
+        ICHECK(!locs.empty());
         candidates.emplace_back(inst, std::move(locs));
       }
       return decision;
@@ -264,9 +264,9 @@ class MutatorAutoUnroll {
       // Step 1. Find the `MarkBlockAttr` whose attr_key is `auto_unroll`
       //         and whose unroll depth is a `tir::VarNode`.
       if (const auto* mark_attr = mark_inst->inst_attrs.as<MarkBlockAttrs>()) {
-        CHECK_EQ(mark_inst->inputs.size(), 2);
-        if (mark_attr->ann_key != tir::attr::auto_unroll_explicit
-            && mark_attr->ann_key != tir::attr::auto_unroll_implicit) {
+        ICHECK_EQ(mark_inst->inputs.size(), 2);
+        if (mark_attr->ann_key != tir::attr::auto_unroll_explicit &&
+            mark_attr->ann_key != tir::attr::auto_unroll_implicit) {
           continue;
         }
         const auto* sample_output = mark_inst->inputs[1].as<tir::VarNode>();
@@ -282,7 +282,7 @@ class MutatorAutoUnroll {
               // The unroll depth is not created by a `SampleCategorical`. So skip.
               break;
             }
-            CHECK_EQ(sample_attr->candidates.size(), sample_attr->probs.size());
+            ICHECK_EQ(sample_attr->candidates.size(), sample_attr->probs.size());
             int decision = Downcast<Integer>(trace->decisions.Get(sample_inst))->value;
             // Step 3. Remove the current decision from the sampling candidates.
             std::vector<double> weights = AsVector<FloatImm, double>(sample_attr->probs);
@@ -355,15 +355,15 @@ class MutatorParallel {
     std::vector<Candidate> candidates;
     Schedule sch(workload);
     auto f_provide_decision = [&trace, &sch, &candidates, &max_extent](
-            const Instruction& inst,
-            const Array<Optional<ObjectRef>>& inputs) -> Optional<ObjectRef> {
+                                  const Instruction& inst,
+                                  const Array<Optional<ObjectRef>>& inputs) -> Optional<ObjectRef> {
       Optional<ObjectRef> decision = trace->decisions.Get(inst);
       // Step 1. Find the `MarkBlockAttr` whose ann_key is `auto_parallel_extent`
       //         and whose parallel extent is given by an integer.
       if (const auto* attr = inst->inst_attrs.as<MarkBlockAttrs>()) {
-        CHECK_EQ(inst->inputs.size(), 2);
-        if (attr->ann_key != tir::attr::auto_parallel_extent
-            || !inst->inputs[1]->IsInstance<IntImmNode>()) {
+        ICHECK_EQ(inst->inputs.size(), 2);
+        if (attr->ann_key != tir::attr::auto_parallel_extent ||
+            !inst->inputs[1]->IsInstance<IntImmNode>()) {
           return decision;
         }
         // Step 2. Fetch the block and the loops above it. Furthermore, get their loop types.
@@ -372,15 +372,16 @@ class MutatorParallel {
         Array<tir::StmtSRef> loop_srefs = sch->sch->GetAxes(block_sref);
         std::vector<int> loop_types;
         for (const tir::StmtSRef& loop_sref : loop_srefs) {
-          loop_types.emplace_back(GetLoopIterType(sch->sch, loop_sref));
+          loop_types.emplace_back(GetLoopIterType(sch->sch->state, loop_sref));
         }
         // Step 3. Get the original parallel extent.
         int ori_extent = inst->inputs[1].as<IntImmNode>()->value;
         // Step 4. Find extent candidates.
         int prod_extent = 1;
         std::vector<int> extent_candidates;
-        for (int i = 0; i < static_cast<int>(loop_srefs.size())
-                        && loop_types[i] == tir::IterVarType::kDataPar; ++i) {
+        for (int i = 0;
+             i < static_cast<int>(loop_srefs.size()) && loop_types[i] == tir::IterVarType::kDataPar;
+             ++i) {
           const tir::StmtSRef& loop_sref = loop_srefs[i];
           if (HasAnyAnn(loop_sref)) {
             break;
@@ -413,8 +414,8 @@ class MutatorParallel {
   }
 
   Optional<Trace> Apply(const SearchTask& task, const Trace& trace, Sampler* sampler) const {
-    int max_extent = GetTargetNumCores(task->target, &warned_num_cores_missing)
-                         * max_jobs_per_core - 1;
+    int max_extent =
+        GetTargetNumCores(task->target, &warned_num_cores_missing) * max_jobs_per_core - 1;
     std::vector<Candidate> candidates = FindCandidates(trace, task->workload, max_extent);
     if (candidates.empty()) {
       return NullOpt;
@@ -425,8 +426,9 @@ class MutatorParallel {
     const int& parallel_size = extent_candidates[sampler->SampleInt(0, extent_candidates.size())];
 
     std::vector<Instruction> new_insts;
-    for (int i = 0; i < static_cast<int>(trace->insts.size())
-                    && !trace->insts[i]->inst_attrs->IsInstance<EnterPostProcAttrs>(); ++i) {
+    for (int i = 0; i < static_cast<int>(trace->insts.size()) &&
+                    !trace->insts[i]->inst_attrs->IsInstance<EnterPostProcAttrs>();
+         ++i) {
       new_insts.emplace_back(trace->insts[i]);
     }
     for (Instruction& new_inst : new_insts) {
@@ -441,8 +443,7 @@ class MutatorParallel {
 
 Mutator MutateParallel(const int& max_jobs_per_core) {
   MutatorParallel mutator(max_jobs_per_core);
-  auto f_apply = [mutator](SearchTask task, Trace trace,
-                                                void* sampler) -> Optional<Trace> {
+  auto f_apply = [mutator](SearchTask task, Trace trace, void* sampler) -> Optional<Trace> {
     return mutator.Apply(task, trace, static_cast<Sampler*>(sampler));
   };
   return Mutator("mutate_parallel", f_apply);

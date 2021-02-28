@@ -32,27 +32,27 @@ namespace meta_schedule {
  * 1) number of blocks vars equals to number of loop vars
  * 2) each block var is bound to a loop var directly
  * 3) the order is preserved, i.e. the i-th block var is the i-th loop var
- * \param sch The TIR schedule class
+ * \param self The TIR schedule class
  * \param block_sref The block to be analyzed
  * \return A boolean indicating if the block binding is trivial
  */
-TVM_DLL bool IsTrivialBinding(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
+TVM_DLL bool IsTrivialBinding(const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
 
 /*!
  * \brief Check if a block is the direct children of the root block
- * \param sch The TIR schedule class
+ * \param self The TIR schedule class
  * \param block_sref The block to be analyzed
  * \return A boolean flag indicating if the block is the subroot block
  */
-TVM_DLL bool IsSubrootBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
+TVM_DLL bool IsSubrootBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
 
 /*!
  * \brief Check if a block has no child block
- * \param sch The TIR schedule class
+ * \param self The TIR schedule class
  * \param block_sref The block to be analyzed
  * \return A boolean flag indicating if the block is a leaf block
  */
-TVM_DLL bool IsLeafBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
+TVM_DLL bool IsLeafBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
 
 /*!
  * \brief Given the specific loop var, find its iteration type by checking its related block var.
@@ -60,45 +60,47 @@ TVM_DLL bool IsLeafBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sr
  * 1) IterVarType::kDataPar    = 0
  * 2) IterVarType::kCommReduce = 2
  * 3) IterVarType::kOpaque     = 4
- * \param sch The TIR schedule class
+ * \param self The TIR schedule class
  * \param loops_sref The loops to be analyzed
  * \return The type of the iteration variable
  */
-TVM_DLL tir::IterVarType GetLoopIterType(const tir::Schedule& sch, const tir::StmtSRef& loop_sref);
+TVM_DLL tir::IterVarType GetLoopIterType(const tir::ScheduleState& self,
+                                         const tir::StmtSRef& loop_sref);
 
 /*!
  * \brief Returns the IterVarType of each block var
- * \param sch The TIR schedule class
+ * \param self The TIR schedule class
  * \param block_sref The block to be analyzed
  * \return An array of integers, the IterVarTypes corresponding to each block var in order
  * \sa tir::IterVarType
  */
-TVM_DLL Array<Integer> GetBlockVarTypes(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
+TVM_DLL Array<Integer> GetBlockVarTypes(const tir::ScheduleState& self,
+                                        const tir::StmtSRef& block_sref);
 
 /*!
  * \brief Check if the iter types of all block vars are data parallel
- * \param sch The TIR schedule class
+ * \param self The TIR schedule class
  * \param block_sref The block to be analyzed
  * \return A boolean indicating if the block is spatial
  */
-TVM_DLL bool IsSpatial(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
+TVM_DLL bool IsSpatial(const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
 
 /*!
  * \brief Checks if a block is output block
- * \param sch The TIR schedule class
+ * \param self The TIR schedule class
  * \param block_sref The block to be analyzed
  * \return A boolean flag indicating if it is an output block
  */
-TVM_DLL bool IsOutputBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
+TVM_DLL bool IsOutputBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
 
 /*!
  * \brief Count the number of occurrence of an operator, i.e. tir.exp
- * \param sch The TIR schedule class
+ * \param self The TIR schedule class
  * \param block_sref The block to be analyzed
  * \param op The operator to be counted
  * \return An integer indicating the number of its occurrence
  */
-TVM_DLL int CountOp(const tir::Schedule& sch, const tir::StmtSRef& block_sref, const Op& op);
+TVM_DLL int CountOp(const tir::ScheduleState& self, const tir::StmtSRef& block_sref, const Op& op);
 
 /*!
  * \brief Check if there is any branch in the given block, which includes
@@ -106,38 +108,38 @@ TVM_DLL int CountOp(const tir::Schedule& sch, const tir::StmtSRef& block_sref, c
  * 2) if-then-else statement
  * 3) select expression
  * 4) if-then-else operator
- * \param sch The TIR schedule class
+ * \param self The TIR schedule class
  * \param block_sref The block to be analyzed
  * \return A boolean indicating there is at least a branch in the given block
  */
-TVM_DLL bool HasBranch(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
+TVM_DLL bool HasBranch(const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
 
 /*!
  * \brief Checks whether the producer and consumer matches in elementwise way.
  * Assuming consumer_sref is the only consumer of producer_sref.
- * \param sch The meta schedule class
+ * \param self The meta schedule class
  * \param producer_sref The producer block
  * \param consumer_sref The consumer block
  * \return A boolean flag indicating if they match
  */
-TVM_DLL bool IsElementWiseMatch(const tir::Schedule& sch, const tir::StmtSRef& producer_sref,
+TVM_DLL bool IsElementWiseMatch(const tir::ScheduleState& self, const tir::StmtSRef& producer_sref,
                                 const tir::StmtSRef& consumer_sref);
 
 /*!
  * \brief Checks if a block needs multi-level tiling
- * \param sch The TIR schedule class
+ * \param self The TIR schedule class
  * \param block_sref The block to be analyzed
  * \return A boolean flag indicating if the block needs multi-level tiling
  */
-TVM_DLL bool NeedsMultiLevelTiling(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
+TVM_DLL bool NeedsMultiLevelTiling(const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
 
 /*!
  * \brief Checks if a block can be inlined
- * \param sch The TIR schedule class
+ * \param self The TIR schedule class
  * \param block_sref The block to be analyzed
  * \return A boolean flag indicating if the block needs multi-level tiling
  */
-TVM_DLL bool IsStrictlyInlineable(const tir::Schedule& sch, const tir::StmtSRef& block_sref);
+TVM_DLL bool IsStrictlyInlineable(const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
 
 /*! \brief Necessary information used for tensorization */
 class TensorizeInfoNode : public Object {
@@ -168,13 +170,13 @@ class TensorizeInfo : public ObjectRef {
 /*!
  * \brief Check if the given block can be tensorized, and in the meantime gather the necessary
  * information for tensorization
- * \param sch The TIR schedule
+ * \param self The TIR schedule
  * \param block_sref The block to be analyzed
  * \param desc_func The target function for tensorization
  * \return The necessary information used for tensorization, or NullOpt if the block cannot be
  * tensorized
  */
-TVM_DLL Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::Schedule& sch,
+TVM_DLL Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::ScheduleState& self,
                                                         const tir::StmtSRef& block_sref,
                                                         const tir::PrimFunc& desc_func);
 
@@ -194,11 +196,11 @@ TVM_DLL bool HasSingleChild(const tir::StmtSRef& loop_or_block_sref);
 
 /*!
  * \brief Collect all the loops that can be computed at
- * \param sch The TIR schedule
+ * \param self The TIR schedule
  * \param block_sref The block where the loops should be collected from
  * \return An array of possible compute-at location
  */
-TVM_DLL Array<tir::StmtSRef> CollectComputeLocation(const tir::Schedule& sch,
+TVM_DLL Array<tir::StmtSRef> CollectComputeLocation(const tir::ScheduleState& self,
                                                     const tir::StmtSRef& block_sref);
 
 }  // namespace meta_schedule

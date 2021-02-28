@@ -14,53 +14,15 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
+# pylint: disable=missing-function-docstring,missing-module-docstring
 import pytest
 import tvm
-import util
 from tvm import tir
 from tvm.script import ty
 
+import util
 
-def test_element_wise_dependency():
-    func = util.element_wise_stmt()
-    s = tir.create_schedule(func)
-
-    block_B = s.get_block("B")
-    block_C = s.get_block("C")
-    predecessor_c = s.get_predecessors(block_C)
-    assert len(predecessor_c) == 1
-    assert predecessor_c[0].dst == block_B
-    assert predecessor_c[0].type == 0
-
-    successor_b = s.get_successors(block_B)
-    assert len(successor_b) == 1
-    assert successor_b[0].dst == block_C
-    assert predecessor_c[0].type == 0
-
-
-def test_matmul_dependency():
-    func = util.matmul_stmt_original()
-    s = tir.create_schedule(func)
-    buffer_c = func.buffer_map[func.params[2]]
-
-    block_C = s.get_block(buffer_c)
-    assert len(block_C) == 2
-    init, update = block_C
-
-    predecessor_update = s.get_predecessors(update)
-    assert len(predecessor_update) == 2
-    assert predecessor_update[0].dst == init
-    assert predecessor_update[1].dst == init
-    # Both WAW and RAW
-    assert predecessor_update[0].type + predecessor_update[1].type == 1
-
-    successor_init = s.get_successors(init)
-    assert len(successor_init) == 2
-    assert successor_init[0].dst == update
-    assert successor_init[1].dst == update
-    # Both WAW and RAW
-    assert successor_init[0].type + successor_init[1].type == 1
+# pylint: disable=no-member,invalid-name,unused-variable
 
 
 @tvm.script.tir
@@ -76,15 +38,58 @@ def test_WAR(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
             B[vi, vj] = A[vi, vj] * 2.0
 
 
+# pylint: enable=no-member,invalid-name,unused-variable
+
+# pylint: disable=invalid-name
+
+
+def test_element_wise_dependency():
+    func = util.element_wise_stmt()
+    s = tir.Schedule(func, debug_mode=True)
+    block_b = s.get_block("B")
+    block_c = s.get_block("C")
+    # Check get_predecessors
+    (predecessor_c,) = s.state.scope(s.state.root).get_predecessors(block_c)
+    assert predecessor_c.dst.same_as(block_b)
+    assert predecessor_c.type == tir.schedule.DepEdge.kRAW
+    # Check get_successor
+    (successor_b,) = s.state.scope(s.state.root).get_successor(block_b)
+    assert successor_b.dst.same_as(block_c)
+    assert predecessor_c.type == tir.schedule.DepEdge.kRAW
+
+
+def test_matmul_dependency():
+    func = util.matmul_stmt_original()
+    s = tir.Schedule(func, debug_mode=True)
+    init = s.get_block("init")
+    update = s.get_block("update")
+    # Check predecessors
+    p0, p1 = s.state.scope(s.state.root).get_predecessors(update)
+    assert p0.dst.same_as(init)
+    assert p1.dst.same_as(init)
+    # WAW and RAW
+    assert (p0.type == tir.schedule.DepEdge.kRAW and p1.type == tir.schedule.DepEdge.kWAW) or (
+        p0.type == tir.schedule.DepEdge.kWAW and p1.type == tir.schedule.DepEdge.kRAW
+    )
+    # Check successors
+    p0, p1 = s.state.scope(s.state.root).get_successor(init)
+    assert p0.dst == update
+    assert p1.dst == update
+    # WAW and RAW
+    assert (p0.type == tir.schedule.DepEdge.kRAW and p1.type == tir.schedule.DepEdge.kWAW) or (
+        p0.type == tir.schedule.DepEdge.kWAW and p1.type == tir.schedule.DepEdge.kRAW
+    )
+
+
 def test_WAR_dependency():
     mod = tvm.script.create_module({"test_WAR": test_WAR})
     func = mod["test_WAR"]
     with pytest.raises(TypeError) as excinfo:
-        tir.create_schedule(func)
+        tir.Schedule(func, debug_mode=True)
     assert "WAR dependency is not allowed" in str(excinfo.value)
 
 
 if __name__ == "__main__":
-    # test_element_wise_dependency()
+    test_element_wise_dependency()
     test_matmul_dependency()
-    # test_WAR_dependency()
+    test_WAR_dependency()

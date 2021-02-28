@@ -159,7 +159,7 @@ def test_end_to_end_resnet(log):
                     ]
                 ),
             )
-            tuned_result[target][func] = sch.sch.func
+            tuned_result[target][func] = sch.sch.module
 
     with tvm.transform.PassContext(config={"relay.with_tir_schedule": True}):
         lib = relay.build_module.build(mod, TARGET, params=params, tune_result=tuned_result)
