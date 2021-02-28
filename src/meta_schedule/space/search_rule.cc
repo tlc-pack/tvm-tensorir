@@ -368,7 +368,7 @@ class RuleMultiLevelTiling {
       // Then `consumer_rv` must be an elementwise-matched consumer of `block_rv`
       if (!RuleInlinePureSpatial::NeedsInline(sch->sch, consumer_sref,
                                               this->consumer_inline_strict)) {
-        if (IsOutputBlock(sch->sch, consumer_sref)) {
+        if (IsOutputBlock(sch->sch->state, consumer_sref)) {
           result.push_back(consumer_rv);
         }
         break;
