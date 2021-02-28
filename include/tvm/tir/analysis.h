@@ -19,7 +19,7 @@
 
 /*!
  * \file tvm/tir/analysis.h
- * \brief Analysis utilitie and passes for TIR.
+ * \brief Analysis utilities and passes for TIR.
  */
 #ifndef TVM_TIR_ANALYSIS_H_
 #define TVM_TIR_ANALYSIS_H_
@@ -140,6 +140,14 @@ TVM_DLL bool VerifyMemory(const PrimFunc& func);
  *
  */
 TVM_DLL bool VerifyGPUCode(const PrimFunc& func, Map<String, PrimExpr> constraints);
+
+/*!
+ * \brief Validate whether a func satisfies the hierarchy constraints
+ * \param func The function to be checked
+ * \return True if it passes verification, otherwise the function returns false or throws an
+ * exception
+ */
+TVM_DLL bool VerifyExecScope(const PrimFunc& func);
 
 // Pass variants of verification analysis
 // directly throws RuntimeError when verification fails.

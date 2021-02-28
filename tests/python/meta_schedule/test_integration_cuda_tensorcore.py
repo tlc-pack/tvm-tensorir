@@ -122,7 +122,7 @@ def test_integration_matmul():
 
     sch = ms.Schedule(func=workload, seed=1024)
     schedule(sch)
-    print(tvm.script.asscript(sch.sch.func))
+    print(tvm.script.asscript(sch.sch.module))
 
 
 def test_integration_conv2d_nchwc():
@@ -225,7 +225,7 @@ def test_integration_conv2d_nchwc():
         # Decompose reduction
         sch.decompose_reduction(block, thread_idx)
         # sch.tensorize(i_tc, "test.tensorcore.wmma")
-        print(tvm.script.asscript(sch.sch.func))
+        print(tvm.script.asscript(sch.sch.module))
 
     sch = ms.Schedule(func=workload)
     schedule(sch)

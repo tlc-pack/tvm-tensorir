@@ -16,26 +16,20 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
-/*!
- *  \brief Scope information using in TIR
- */
-
-#ifndef TVM_TIR_SCOPE_H_
-#define TVM_TIR_SCOPE_H_
+#ifndef TVM_TIR_SCHEDULE_BLOCK_SCOPE_H_
+#define TVM_TIR_SCHEDULE_BLOCK_SCOPE_H_
 
 #include <tvm/tir/stmt.h>
 
 #include <unordered_map>
-#include <vector>
 
 namespace tvm {
 namespace tir {
 
-class ScheduleNode;
+// TODO(@junrushao1994): Change std::unordered_map to Map
 
 /*! \brief The container of stmt schedulable ref. */
-class StmtSRefNode : public Object {
+class StmtSRefNode : public runtime::Object {
  public:
   /*! \brief The corresponding stmt node */
   const StmtNode* stmt;
@@ -63,17 +57,17 @@ class StmtSRefNode : public Object {
 
   void VisitAttrs(AttrVisitor* v) {}
 
-  static constexpr const char* _type_key = "StmtSRef";
+  static constexpr const char* _type_key = "tir.StmtSRef";
   TVM_DECLARE_FINAL_OBJECT_INFO(StmtSRefNode, Object);
 };
 
 /*!
  * \brief The stmt schedulable ref.
  */
-class StmtSRef : public ObjectRef {
+class StmtSRef : public runtime::ObjectRef {
  public:
-  explicit StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index = -1,
-                    bool binding_valid = false);
+  explicit StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index,
+                    bool binding_valid);
   StmtSRefNode* get() const { return static_cast<StmtSRefNode*>(data_.get()); }
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(StmtSRef, ObjectRef, StmtSRefNode);
 };
@@ -85,7 +79,7 @@ enum class DepType : int {
   kOpaque = 3,
 };
 
-class DepEdgeNode : public Object {
+class DepEdgeNode : public runtime::Object {
  public:
   /*! \brief The destination block */
   StmtSRef dst;
@@ -93,15 +87,15 @@ class DepEdgeNode : public Object {
   DepType type;
 
   void VisitAttrs(AttrVisitor* v) {
-    v->Visit("type", &type);
     v->Visit("dst", &dst);
+    v->Visit("type", &type);
   }
 
-  static constexpr const char* _type_key = "DepEdge";
+  static constexpr const char* _type_key = "tir.DepEdge";
   TVM_DECLARE_FINAL_OBJECT_INFO(DepEdgeNode, Object);
 };
 
-class DepEdge : public ObjectRef {
+class DepEdge : public runtime::ObjectRef {
  public:
   explicit DepEdge(StmtSRef dst, DepType type);
 
@@ -116,7 +110,7 @@ class DepEdge : public ObjectRef {
  *       necessary element (but not all the element) before A under the Lowest
  *       Common Ancestor (LCA) Loop of the A and B.
  */
-class BlockScopeNode : public Object {
+class BlockScopeNode : public runtime::Object {
  public:
   /*! \brief The forward dependency edges of the block */
   std::unordered_map<StmtSRef, Array<DepEdge>, ObjectPtrHash, ObjectPtrEqual> forward_edges;
@@ -180,12 +174,13 @@ class BlockScopeNode : public Object {
    *          - Suppose Bi reads Bj's output buffer(j < i) and Loop k is the LCA of Bi and
    *            Bj, Bj's output region covers Bi's input under Loop k
    * \param subtree_sref The subtree to be checked
-   * \param schedule The schedule that the scope is in
+   * \param child_blocks The schedule that the scope is in
    * \return A boolean indicating if the subtree satisfies the one-way fine-grained data flow check
    * \note Condition 2 and 3 are global condition of a schedulable IR,
    *       so it is omitted in the check.
    */
-  bool IsCompactDataFlow(const StmtSRef& subtree_sref, const ScheduleNode* schedule) const;
+  bool IsCompactDataFlow(const StmtSRef& subtree_sref, const Array<StmtSRef>& child_blocks) const;
+
   /*!
    * \brief Check the merged block of init_block and update_block is a reduction block
    * \param init_sref the query init block
@@ -202,7 +197,6 @@ class BlockScopeNode : public Object {
   void AddChildBlock(
       const StmtSRef& child_sref,
       std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual>* buffer_readers);
-
   /*!
    * \brief Declare a new child block, update the `buffer_writes`, `buffer_readers` and the
    *        dependency graph
@@ -211,11 +205,11 @@ class BlockScopeNode : public Object {
    */
   void ReplaceChildBlock(const StmtSRef& old_sref, const StmtSRef& new_sref);
 
-  static constexpr const char* _type_key = "Scope";
+  static constexpr const char* _type_key = "tir.BlockScope";
   TVM_DECLARE_FINAL_OBJECT_INFO(BlockScopeNode, Object);
 };
 
-class BlockScope : public ObjectRef {
+class BlockScope : public runtime::ObjectRef {
  public:
   /*! \brief Constructor */
   BlockScope();
@@ -226,4 +220,4 @@ class BlockScope : public ObjectRef {
 }  // namespace tir
 }  // namespace tvm
 
-#endif  // TVM_TIR_SCOPE_H_
+#endif  // TVM_TIR_SCHEDULE_BLOCK_SCOPE_H_

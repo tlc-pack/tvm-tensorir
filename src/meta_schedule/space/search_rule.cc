@@ -18,6 +18,7 @@
  */
 #include "./search_rule.h"  // NOLINT(build/include)
 
+#include <tvm/auto_scheduler/search_policy.h>
 #include "../../tir/schedule/schedule_common.h"
 #include "../analysis.h"
 #include "../utils.h"
@@ -74,13 +75,13 @@ class RuleInlinePureSpatial {
 
   static bool NeedsInline(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
                           bool strict_mode) {
-    if (!IsSpatial(sch, block_sref)) {
+    if (!IsSpatial(sch->state, block_sref)) {
       return false;
     }
-    if (IsOutputBlock(sch, block_sref)) {
+    if (IsOutputBlock(sch->state, block_sref)) {
       return false;
     }
-    if (strict_mode && !IsStrictlyInlineable(sch, block_sref)) {
+    if (strict_mode && !IsStrictlyInlineable(sch->state, block_sref)) {
       return false;
     }
     Array<tir::StmtSRef> loop_srefs = sch->GetAxes(block_sref);
@@ -96,7 +97,8 @@ class RuleInlinePureSpatial {
   Array<Schedule> Apply(const SearchTask& task, const Schedule& sch,
                         const BlockRV& block_rv) const {
     tir::StmtSRef block_sref = sch->Eval(block_rv);
-    if (IsSubrootBlock(sch->sch, block_sref) && NeedsInline(sch->sch, block_sref, strict_mode)) {
+    if (IsSubrootBlock(sch->sch->state, block_sref) &&
+        NeedsInline(sch->sch, block_sref, strict_mode)) {
       sch->ComputeInline(block_rv);
     }
     return {sch};
@@ -357,10 +359,10 @@ class RuleMultiLevelTiling {
       }
       BlockRV consumer_rv = consumers[0];
       tir::StmtSRef consumer_sref = sch->Eval(consumer_rv);
-      if (!IsSpatial(sch->sch, consumer_sref)) {
+      if (!IsSpatial(sch->sch->state, consumer_sref)) {
         break;
       }
-      if (!IsElementWiseMatch(sch->sch, sch->Eval(current_block_rv), consumer_sref)) {
+      if (!IsElementWiseMatch(sch->sch->state, sch->Eval(current_block_rv), consumer_sref)) {
         break;
       }
       // Then `consumer_rv` must be an elementwise-matched consumer of `block_rv`
@@ -426,7 +428,7 @@ class RuleMultiLevelTiling {
     std::vector<Array<LoopRV>> tiles(structure.size());
     // Get block vars and loop axes
     // TODO: fix
-    Array<Integer> iter_types = GetBlockVarTypes(sch->sch, sch->Eval(block_rv));
+    Array<Integer> iter_types = GetBlockVarTypes(sch->sch->state, sch->Eval(block_rv));
     Array<LoopRV> axes = sch->GetAxes(block_rv);
     ICHECK_EQ(axes.size(), iter_types.size());
     // For each loop axis, tile it
@@ -506,7 +508,7 @@ class RuleMultiLevelTiling {
     if (HasAnyAnn(block_sref)) {
       return {sch};
     }
-    if (!NeedsMultiLevelTiling(sch->sch, block_sref)) {
+    if (!NeedsMultiLevelTiling(sch->sch->state, block_sref)) {
       return {sch};
     }
     // States
@@ -554,7 +556,7 @@ SearchRule MultiLevelTiling(String structure, int max_innermost_factor, bool mus
 class RuleRandomComputeLocation {
  public:
   bool IsFreeBlock(const tir::Schedule sch, const tir::StmtSRef& block_sref) const {
-    if (!IsSubrootBlock(sch, block_sref)) {
+    if (!IsSubrootBlock(sch->state, block_sref)) {
       return false;
     }
     Array<tir::StmtSRef> loop_srefs = sch->GetAxes(block_sref);
@@ -635,11 +637,10 @@ class RuleParallelizeVectorizeUnroll {
         max_vectorize_extent(other.max_vectorize_extent),
         unroll_max_steps(other.unroll_max_steps),
         unroll_explicit(other.unroll_explicit),
-        warned_num_cores_missing(static_cast<int>(other.warned_num_cores_missing)) {
-  }
+        warned_num_cores_missing(static_cast<int>(other.warned_num_cores_missing)) {}
 
   static bool IsLeftmostSubroot(const tir::Schedule& sch, tir::StmtSRef block_sref) {
-    if (!IsSubrootBlock(sch, block_sref)) {
+    if (!IsSubrootBlock(sch->state, block_sref)) {
       return false;
     }
     tir::StmtSRefNode* child_sref = block_sref.operator->();
@@ -668,7 +669,7 @@ class RuleParallelizeVectorizeUnroll {
     tir::StmtSRef block_sref = sch->Eval(block_rv);
     // Check if the block is root and leaf
     bool is_leftmost_root = IsLeftmostSubroot(sch->sch, block_sref);
-    bool is_leaf = IsLeafBlock(sch->sch, block_sref);
+    bool is_leaf = IsLeafBlock(sch->sch->state, block_sref);
     // Parallelization
     if (max_jobs_per_core != -1 && is_leftmost_root) {
       int max_extent =
@@ -699,8 +700,7 @@ SearchRule ParallelizeVectorizeUnroll(int max_jobs_per_core, int max_vectorize_e
                                       Array<Integer> unroll_max_steps, bool unroll_explicit) {
   RuleParallelizeVectorizeUnroll rule(max_jobs_per_core, max_vectorize_extent, unroll_max_steps,
                                       unroll_explicit);
-  auto f_apply = [rule](SearchTask task, Schedule sch,
-                                         BlockRV block) -> Array<Schedule> {
+  auto f_apply = [rule](SearchTask task, Schedule sch, BlockRV block) -> Array<Schedule> {
     return rule.Apply(task, sch, block);
   };
   return SearchRule("parallelize_vectorize_unroll", f_apply);
@@ -789,7 +789,7 @@ class RuleMarkTensorize {
       }
       Schedule cur_sch = next_sch.value();
       if (Optional<TensorizeInfo> opt_tensorize_info =
-              GetTensorizeLoopMapping(cur_sch->sch, block_sref, intrin->description)) {
+              GetTensorizeLoopMapping(cur_sch->sch->state, block_sref, intrin->description)) {
         BlockizeAndMark(cur_sch, block_rv, intrin->description, opt_tensorize_info.value().get());
         result.push_back(cur_sch);
         next_sch = NullOpt;
@@ -806,6 +806,86 @@ SearchRule MarkTensorize(Array<tir::TensorIntrin> tensor_intrins) {
     return rule.Apply(task, sch, block);
   };
   return SearchRule("mark_tensorize", f_apply);
+}
+
+/********** SimplifyComputeWithConstTensor **********/
+class RuleSimplifyComputeWithConstTensor {
+ public:
+   /*! \brief The maximum size of the innermost factor */
+  int max_innermost_factor;
+
+  explicit RuleSimplifyComputeWithConstTensor(int max_innermost_factor) :
+      max_innermost_factor(max_innermost_factor) { }
+
+  Array<Schedule> Apply(const SearchTask& task, const Schedule& sch, const BlockRV& block_rv) {
+    auto block_sref = sch->Eval(block_rv);
+    const tir::BlockRealize& block_realize = tir::GetBlockRealize(block_sref);
+    const tir::Block& block = block_realize->block;
+    auto it = block->annotations.find(
+      tvm::auto_scheduler::SearchPolicyKey::simplify_const_tensor_indices);
+    if (it == block->annotations.end()) {
+      return {sch};
+    }
+
+    // indices of the const tensor
+    Array<String> const_indices = Downcast<Array<String>>((*it).second);
+    // find the corresponding loops
+    std::unordered_set<const tir::VarNode *> unrolled_loop_vars;
+    for (size_t i = 0; i < block->iter_vars.size(); i++) {
+      const auto& var_name = block->iter_vars[i]->var->name_hint;
+      // only consider simple bindings
+      if (std::find(const_indices.begin(), const_indices.end(), var_name) != const_indices.end() &&
+          block_realize->binding_values[i].as<tir::VarNode>()) {
+        unrolled_loop_vars.insert(block_realize->binding_values[i].as<tir::VarNode>());
+      }
+    }
+
+    Array<LoopRV> axes = sch->GetAxes(block_rv);
+    Array<LoopRV> unrolled_inner_iters;
+    Array<LoopRV> outer_iters;
+
+    size_t tile_level = 2;
+
+    // unroll the loops of the const tensor indices
+    for (const LoopRV& ax: axes) {
+      auto loop_sref = sch->Eval(ax);
+      const auto *for_node = loop_sref->GetStmt<tir::ForNode>();
+      if (unrolled_loop_vars.count(for_node->loop_var.get())) {
+        sch->Unroll(ax);
+        unrolled_inner_iters.push_back(ax);
+      } else {
+        outer_iters.push_back(ax);
+      }
+    }
+
+    Array<Array<LoopRV>> tiled_outer_iters;
+    // tile spatial axes
+    for (const LoopRV& ax : outer_iters) {
+      Array<Optional<PrimExpr>> factors;
+      for (const tir::Var& factor: sch->SamplePerfectTile(tile_level, ax, max_innermost_factor)) {
+       factors.push_back(factor);
+      }
+      tiled_outer_iters.push_back(sch->Split(ax, factors));
+    }
+    Array<LoopRV> new_loop_order;
+    new_loop_order.reserve(tiled_outer_iters.size() * tile_level + unrolled_inner_iters.size());
+    for (size_t i = 0; i < tile_level; i++) {
+      for (size_t j = 0; j < tiled_outer_iters.size(); j++) {
+        new_loop_order.push_back(tiled_outer_iters[j][i]);
+      }
+    }
+    std::copy(unrolled_inner_iters.begin(), unrolled_inner_iters.end(),
+              std::back_inserter(new_loop_order));
+    sch->Reorder(new_loop_order);
+    return {sch};
+  }
+};
+
+SearchRule SimplifyComputeWithConstTensor(int max_innermost_factor) {
+  auto f_apply = [max_innermost_factor](SearchTask task, Schedule sch, BlockRV block) -> Array<Schedule> {
+    return RuleSimplifyComputeWithConstTensor(max_innermost_factor).Apply(task, sch, block);
+  };
+  return SearchRule("simplify_compute_with_const_tensor", f_apply);
 }
 
 /********** FFI **********/
@@ -856,6 +936,8 @@ TVM_REGISTER_GLOBAL("meta_schedule.search_rule.RandomComputeLocation")
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.ParallelizeVectorizeUnroll")
     .set_body_typed(ParallelizeVectorizeUnroll);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkTensorize").set_body_typed(MarkTensorize);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.SimplifyComputeWithConstTensor")
+    .set_body_typed(SimplifyComputeWithConstTensor);
 
 }  // namespace meta_schedule
 }  // namespace tvm

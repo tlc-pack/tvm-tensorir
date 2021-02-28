@@ -19,7 +19,7 @@
 #ifndef SRC_META_SCHEDULE_SCHEDULE_H_
 #define SRC_META_SCHEDULE_SCHEDULE_H_
 
-#include <tvm/tir/schedule.h>
+#include <tvm/tir/schedule/schedule.h>
 
 #include <unordered_map>
 

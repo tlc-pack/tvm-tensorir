@@ -23,17 +23,19 @@
 
 #include <numeric>
 
+#include "../tir/schedule/analysis.h"
+#include "../tir/schedule/primitives/primitives.h"
 #include "../tir/schedule/schedule_common.h"
 #include "./utils.h"
 
 namespace tvm {
 namespace meta_schedule {
 
-bool IsTrivialBinding(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
+bool IsTrivialBinding(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   ICHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   tir::BlockRealize realize = tir::GetBlockRealize(block_sref);
-  Array<tir::StmtSRef> loops = sch->GetAxes(block_sref);
+  Array<tir::StmtSRef> loops = tir::schedule::GetAxes(self, block_sref);
   const Array<PrimExpr>& bindings = realize->binding_values;
   if (loops.size() != bindings.size()) {
     return false;
@@ -50,12 +52,12 @@ bool IsTrivialBinding(const tir::Schedule& sch, const tir::StmtSRef& block_sref)
   return true;
 }
 
-bool IsSubrootBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
-  tir::StmtSRef parent_block_sref = sch->GetParentBlockSRef(block_sref);
-  return sch->root.get() == parent_block_sref.get();
+bool IsSubrootBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
+  tir::StmtSRef parent_block_sref = GetScopeSRef(block_sref);
+  return self->root.get() == parent_block_sref.get();
 }
 
-bool IsLeafBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
+bool IsLeafBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   bool no_child = true;
   tir::PreOrderVisit(block->body, [&no_child](const ObjectRef& obj) -> bool {
@@ -71,7 +73,7 @@ bool IsLeafBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
   return no_child;
 }
 
-tir::IterVarType GetLoopIterType(const tir::Schedule& sch, const tir::StmtSRef& loop_sref) {
+tir::IterVarType GetLoopIterType(const tir::ScheduleState& self, const tir::StmtSRef& loop_sref) {
   int n_spatial = 0, n_reduce = 0, n_other = 0;
   const auto* loop = loop_sref->GetStmt<tir::ForNode>();
   ICHECK(loop) << "TypeError: Expects loop, but gets: " << loop_sref->stmt->GetTypeKey();
@@ -115,7 +117,7 @@ tir::IterVarType GetLoopIterType(const tir::Schedule& sch, const tir::StmtSRef& 
   return tir::IterVarType::kDataPar;
 }
 
-Array<Integer> GetBlockVarTypes(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
+Array<Integer> GetBlockVarTypes(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   ICHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   Array<Integer> result;
@@ -126,7 +128,7 @@ Array<Integer> GetBlockVarTypes(const tir::Schedule& sch, const tir::StmtSRef& b
   return result;
 }
 
-bool IsSpatial(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
+bool IsSpatial(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   ICHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   for (const tir::IterVar& iter_var : block->iter_vars) {
@@ -137,15 +139,15 @@ bool IsSpatial(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
   return true;
 }
 
-bool IsOutputBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
-  tir::StmtSRef parent_sref = sch->GetParentBlockSRef(block_sref);
+bool IsOutputBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
+  tir::StmtSRef parent_sref = tir::GetScopeSRef(block_sref);
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   const auto* parent = parent_sref->GetStmt<tir::BlockNode>();
   ICHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   ICHECK(parent) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
-  if (parent_sref.get() == sch->root.get()) {
+  if (parent_sref.get() == self->root.get()) {
     for (const tir::BufferRegion& write : block->writes) {
-      for (const auto& kv : sch->func->buffer_map) {
+      for (const auto& kv : self->func->buffer_map) {
         if (write->buffer.get() == kv.second.get()) {
           return true;
         }
@@ -163,7 +165,7 @@ bool IsOutputBlock(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
   return false;
 }
 
-int CountOp(const tir::Schedule& sch, const tir::StmtSRef& block_sref, const Op& op) {
+int CountOp(const tir::ScheduleState& self, const tir::StmtSRef& block_sref, const Op& op) {
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   ICHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   int count = 0;
@@ -177,7 +179,7 @@ int CountOp(const tir::Schedule& sch, const tir::StmtSRef& block_sref, const Op&
   return count;
 }
 
-bool HasBranch(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
+bool HasBranch(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   ICHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   bool has_branch = false;
@@ -264,10 +266,10 @@ Optional<Array<Bool>> GetReadPattern(const Array<tir::IterVar>& block_vars,
   return Array<Bool>{Bool(surjective), Bool(injective), Bool(ordered)};
 }
 
-bool IsElementWiseMatch(const tir::Schedule& sch, const tir::StmtSRef& producer_sref,
+bool IsElementWiseMatch(const tir::ScheduleState& self, const tir::StmtSRef& producer_sref,
                         const tir::StmtSRef& consumer_sref) {
   // Assume consumer is the only consumer of the producer
-  tir::StmtSRef parent_sref = sch->GetParentBlockSRef(producer_sref);
+  tir::StmtSRef parent_sref = tir::GetScopeSRef(producer_sref);
   const auto* producer = producer_sref->GetStmt<tir::BlockNode>();
   const auto* consumer = consumer_sref->GetStmt<tir::BlockNode>();
   ICHECK(producer) << "TypeError: Expects Block, but gets: " << producer_sref->stmt->GetTypeKey();
@@ -336,9 +338,9 @@ bool IsElementWiseMatch(const tir::Schedule& sch, const tir::StmtSRef& producer_
   return true;
 }
 
-bool NeedsMultiLevelTiling(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
+bool NeedsMultiLevelTiling(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
   // Right now it only works with trivial binding
-  if (!IsTrivialBinding(sch, block_sref)) {
+  if (!IsTrivialBinding(self, block_sref)) {
     return false;
   }
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
@@ -373,7 +375,7 @@ bool NeedsMultiLevelTiling(const tir::Schedule& sch, const tir::StmtSRef& block_
     }
     n_missing_block_vars.push_back(n_missing);
   }
-  bool is_spatial = IsSpatial(sch, block_sref);
+  bool is_spatial = IsSpatial(self, block_sref);
   int min_n_missing = *std::min_element(n_missing_block_vars.begin(), n_missing_block_vars.end());
   int sum_n_missing = std::accumulate(n_missing_block_vars.begin(), n_missing_block_vars.end(), 0);
   if (is_spatial && min_n_missing == 0) {
@@ -385,16 +387,21 @@ bool NeedsMultiLevelTiling(const tir::Schedule& sch, const tir::StmtSRef& block_
   if (sum_n_missing == 0) {
     return false;
   }
-  return !IsSpatial(sch, block_sref);
+  return !IsSpatial(self, block_sref);
 }
 
-bool IsStrictlyInlineable(const tir::Schedule& sch, const tir::StmtSRef& block_sref) {
+bool IsStrictlyInlineable(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
   static const Op& op_tir_exp = Op::Get("tir.exp");
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
-  if (HasBranch(sch, block_sref)) {
+  // Const tensors are strictly inlineable
+  if (block->reads.empty()) {
+    return true;
+  }
+
+  if (HasBranch(self, block_sref)) {
     return false;
   }
-  if (CountOp(sch, block_sref, op_tir_exp)) {
+  if (CountOp(self, block_sref, op_tir_exp)) {
     return false;
   }
   // Check if it is ordered-injective mapping
@@ -434,8 +441,8 @@ class AutoTensorizeComparator : public tir::TensorizeComparator {
     }
     bool equal = tir::StmtComparator::VisitStmt(lhs, rhs);
     ICHECK(equal || !assert_mode_) << "Statements are not matching between:\n"
-                                  << n << "\nand\n"
-                                  << rhs;
+                                   << n << "\nand\n"
+                                   << rhs;
     return equal;
   }
 
@@ -450,7 +457,7 @@ class AutoTensorizeComparator : public tir::TensorizeComparator {
   }
 };
 
-Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::Schedule& sch,
+Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::ScheduleState& self,
                                                 const tir::StmtSRef& block_sref,
                                                 const tir::PrimFunc& desc_func) {
   // Try to do tiling automatically if possible
@@ -568,7 +575,7 @@ Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::Schedule& sch,
       return NullOpt;
     }
     // Step 4.4. Maps the result of Step 4.1 to Step 4.2
-    const tir::StmtSRef& block_loop_sref = sch->stmt2ref[block_loop];
+    const tir::StmtSRef& block_loop_sref = self->stmt2ref[block_loop];
     auto it = ret->loop_map.find(block_loop_sref);
     if (it == ret->loop_map.end()) {
       ret->loop_map.Set(block_loop_sref, GetRef<tir::For>(desc_loop));
@@ -700,7 +707,7 @@ double CountFlop(const tir::PrimFunc& func) {
       TResult result = VisitStmt(loop->body);
       const auto* int_imm = loop->extent.as<IntImmNode>();
       ICHECK(int_imm) << "TypeError: Expect the extent of a loop to be IntImm, but gets: "
-                     << loop->extent->GetTypeKey();
+                      << loop->extent->GetTypeKey();
       result *= int_imm->value;
       return result;
     }
@@ -796,16 +803,16 @@ bool HasSingleChild(const tir::StmtSRef& loop_or_block_sref) {
   return true;
 }
 
-Array<tir::StmtSRef> CollectComputeLocation(const tir::Schedule& sch,
+Array<tir::StmtSRef> CollectComputeLocation(const tir::ScheduleState& self,
                                             const tir::StmtSRef& block_sref) {
-  Array<tir::StmtSRef> loop_srefs = sch->GetAxes(block_sref);
+  Array<tir::StmtSRef> loop_srefs = tir::schedule::GetAxes(self, block_sref);
   Array<tir::StmtSRef> result;
   result.reserve(loop_srefs.size());
   bool visited_reduce = false;
   for (const tir::StmtSRef& loop_sref : loop_srefs) {
     const auto* loop = loop_sref->GetStmt<tir::ForNode>();
     ICHECK(loop) << "TypeError: Expects 'Loop', but gets: " << loop_sref->stmt->GetTypeKey();
-    tir::IterVarType iter_type = GetLoopIterType(sch, loop_sref);
+    tir::IterVarType iter_type = GetLoopIterType(self, loop_sref);
     if (iter_type == tir::IterVarType::kDataPar) {
       if (visited_reduce) {
         break;

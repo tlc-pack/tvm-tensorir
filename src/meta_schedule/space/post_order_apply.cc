@@ -117,20 +117,20 @@ class BlockCollector : public tir::StmtVisitor {
  public:
   /*! \brief Constructor */
   explicit BlockCollector(const tir::Schedule& sch) : sch_(sch) {
-    result_.reserve(sch->stmt2ref.size());
+    result_.reserve(sch->state->stmt2ref.size());
   }
 
   /*! \brief Entry point */
   Array<tir::StmtSRef> Run() {
-    VisitStmt(sch_->func->body);
+    VisitStmt(sch_->state->func->body);
     Array<tir::StmtSRef> result = std::move(result_);
     return result;
   }
 
  private:
   void VisitStmt_(const tir::BlockNode* block) override {
-    if (block != sch_->root->stmt) {
-      result_.push_back(sch_->stmt2ref.at(block));
+    if (block != sch_->state->root->stmt) {
+      result_.push_back(sch_->state->stmt2ref.at(block));
     }
     this->VisitStmt(block->body);
   }
@@ -167,11 +167,12 @@ Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* 
       if (block_sref->stmt != nullptr) {
         const auto* block = block_sref->GetStmt<tir::BlockNode>();
         ICHECK(block) << "TypeError: Expects BlockNode, but gets: "
-                     << block_sref->stmt->GetTypeKey();
+                      << block_sref->stmt->GetTypeKey();
         // TODO(@junrushao1994): replace this quick hack
         if (!sch->sch->GetBlock(block->name_hint).empty()) {
           // apply the rule to the block
-          Array<Schedule> applied = rule->Apply(task, sch, /*block=*/sch->GetBlock(block->name_hint));
+          Array<Schedule> applied =
+              rule->Apply(task, sch, /*block=*/sch->GetBlock(block->name_hint));
           // append the newly got schedules to the top of the stack
           for (const Schedule& sch : applied) {
             stack.emplace_back(sch, unvisited);
