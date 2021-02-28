@@ -393,6 +393,11 @@ bool NeedsMultiLevelTiling(const tir::ScheduleState& self, const tir::StmtSRef& 
 bool IsStrictlyInlineable(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
   static const Op& op_tir_exp = Op::Get("tir.exp");
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
+  // Const tensors are strictly inlineable
+  if (block->reads.empty()) {
+    return true;
+  }
+
   if (HasBranch(self, block_sref)) {
     return false;
   }
