@@ -1015,7 +1015,6 @@ class MatchBufferRegion : public ObjectRef {
  *      buffer2 = tir.alloc_buffer(shape, dtype)
  *      buffer3 = tir.match_buffer(source_buffer[start:end, ...])
  *      tir.attr({attr_key: attr_value, ...})
- *      tir.exec_scope(exec_scope)
  *      with tir.init():
  *          // init body
  *      // body
@@ -1042,17 +1041,6 @@ class BlockNode : public StmtNode {
    *  Init field is None if there is no reduction iter_vars
    */
   Optional<Stmt> init;
-  /*!
-   * \brief The block execution scope.
-   * \note Execution scope describes which hardware hierarchy the block executes on.
-   * Currently allowed execution scope:
-   *   - "": local execution scope
-   *   - "gpu_block": block execution scope on GPU
-   *   - "gpu_warp": warp execution scope on GPU
-   *   - "gpu_thread": thread execution scope on GPU
-   * It is easy to extend for new hardware by introducing an new scope name.
-   */
-  String exec_scope;
   /*! \brief The buffer allocated in the block. */
   Array<Buffer> alloc_buffers;
   /*! \brief The match buffer regions. */
@@ -1067,7 +1055,6 @@ class BlockNode : public StmtNode {
     v->Visit("name_hint", &name_hint);
     v->Visit("body", &body);
     v->Visit("init", &init);
-    v->Visit("exec_scope", &exec_scope);
     v->Visit("alloc_buffers", &alloc_buffers);
     v->Visit("match_buffers", &match_buffers);
     v->Visit("annotations", &annotations);
@@ -1080,7 +1067,6 @@ class BlockNode : public StmtNode {
            equal(match_buffers, other->match_buffers) &&
            equal(reads, other->reads) && equal(writes, other->writes) &&
            equal(body, other->body) && equal(init, other->init) &&
-           equal(exec_scope, other->exec_scope) &&
            equal(annotations, other->annotations);
   }
 
@@ -1092,7 +1078,6 @@ class BlockNode : public StmtNode {
     hash_reduce(writes);
     hash_reduce(body);
     hash_reduce(init);
-    hash_reduce(exec_scope);
     hash_reduce(annotations);
   }
 
@@ -1112,7 +1097,6 @@ class Block : public Stmt {
                          String name_hint,
                          Stmt body,
                          Optional<Stmt> init = NullOpt,
-                         String exec_scope = "",
                          Array<Buffer> alloc_buffers = Array<Buffer>(),
                          Array<MatchBufferRegion> match_buffers = Array<MatchBufferRegion>(),
                          Map<String, ObjectRef> annotations = Map<String, ObjectRef>(),

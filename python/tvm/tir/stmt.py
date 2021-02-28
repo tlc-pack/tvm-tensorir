@@ -497,9 +497,6 @@ class Block(Stmt):
     init: Optional[Stmt]
         The init block of the reduction block
 
-    exec_scope: Optional[str]
-        the execution scope.
-
     alloc_buffers: Optional[list[Buffer]]
         The buffer allocations
 
@@ -519,7 +516,6 @@ class Block(Stmt):
     name_hint: str
     body: Stmt
     init: Optional[Stmt]
-    exec_scope: Optional[str]
     alloc_buffers: Optional[List[Buffer]]
     match_buffers: Optional[List[MatchBufferRegion]]
     annotations: Optional[Mapping[str, Object]]
@@ -533,7 +529,6 @@ class Block(Stmt):
         name_hint: str,
         body: Stmt,
         init: Optional[Stmt] = None,
-        exec_scope: str = "",
         alloc_buffers: Optional[List[Buffer]] = None,
         match_buffers: Optional[List[MatchBufferRegion]] = None,
         annotations: Optional[Mapping[str, Object]] = None,
@@ -553,7 +548,6 @@ class Block(Stmt):
             name_hint,
             body,
             init,
-            exec_scope,
             alloc_buffers,
             match_buffers,
             annotations,

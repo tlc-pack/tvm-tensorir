@@ -668,7 +668,6 @@ Block::Block(Array<IterVar> iter_vars,
              String name_hint,
              Stmt body,
              Optional<Stmt> init,
-             String exec_scope,
              Array<Buffer> alloc_buffers,
              Array<MatchBufferRegion> match_buffers,
              Map<String, ObjectRef> annotations,
@@ -680,7 +679,6 @@ Block::Block(Array<IterVar> iter_vars,
   node->name_hint = std::move(name_hint);
   node->body = std::move(body);
   node->init = std::move(init);
-  node->exec_scope = std::move(exec_scope);
   node->alloc_buffers = std::move(alloc_buffers);
   node->match_buffers = std::move(match_buffers);
   node->annotations = std::move(annotations);
@@ -691,10 +689,10 @@ Block::Block(Array<IterVar> iter_vars,
 TVM_REGISTER_GLOBAL("tir.Block")
     .set_body_typed([](Array<IterVar> iter_vars, Array<BufferRegion> reads,
                        Array<BufferRegion> writes, String name_hint, Stmt body, Optional<Stmt> init,
-                       String exec_scope, Array<Buffer> alloc_buffers,
+                       Array<Buffer> alloc_buffers,
                        Array<MatchBufferRegion> match_buffers, Map<String, ObjectRef> annotations,
                        Span span) {
-      return Block(iter_vars, reads, writes, name_hint, body, init, exec_scope, alloc_buffers,
+      return Block(iter_vars, reads, writes, name_hint, body, init, alloc_buffers,
                    match_buffers, annotations, span);
     });
 
@@ -719,11 +717,6 @@ void PrintBlockSignature(const BlockNode* op, ReprPrinter* p) {
   p->stream << "writes(";
   p->Print(op->writes);
   p->stream << ")\n";
-  // Print exec_scope
-  if (!op->exec_scope.empty()) {
-    p->PrintIndent();
-    p->stream << "exec_scope(\"" << op->exec_scope << "\")\n";
-  }
   // Print alloc_buffers
   for (const auto& alloc_buf : op->alloc_buffers) {
     p->PrintIndent();
@@ -768,7 +761,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
   p->stream << "{\n";
   p->indent += 2;
 
-  // Print block elements (e.g. reads/writes, exec_scope, etc)
+  // Print block elements (e.g. reads/writes, etc)
   PrintBlockSignature(op, p);
   // Print block init and body
   PrintBlockBody(op, p);
@@ -824,7 +817,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     p->Print(op->predicate);
     p->stream << ")\n";
   }
-  // Print block elements (e.g. reads/writes, exec_scope, etc)
+  // Print block elements (e.g. reads/writes, etc)
   PrintBlockSignature(block_op, p);
   // Print block init and body
   PrintBlockBody(block_op, p);

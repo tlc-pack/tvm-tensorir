@@ -398,7 +398,6 @@ def test_block_blockrealize():
         "block",
         body,
         init=init_body,
-        exec_scope="",
         alloc_buffers=[alloc_buffer],
         match_buffers=[match_buffer_region],
         annotations={"attr_key": "attr_value"},
@@ -424,8 +423,6 @@ def test_block_blockrealize():
     assert block.body == body
     # Checking init
     assert block.init == init_body
-    # Checking exec_scope
-    assert block.exec_scope == ""
     # Checking alloc_buffers
     assert block.alloc_buffers[0] == alloc_buffer
     # Checking match_buffers

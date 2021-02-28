@@ -113,6 +113,23 @@ void StmtVisitor::VisitStmt_(const SeqStmtNode* op) {
 void StmtVisitor::VisitStmt_(const EvaluateNode* op) { this->VisitExpr(op->value); }
 
 void StmtVisitor::VisitStmt_(const BlockNode* op) {
+  auto fvisit_buffer_region = [this](const BufferRegion& s) {
+    for (const auto& range : s->region) {
+      this->VisitExpr(range->min);
+      this->VisitExpr(range->min);
+    }
+  };
+  VisitArray(op->iter_vars, [this](const IterVar& iter_var) {
+    this->VisitExpr(iter_var->var);
+    this->VisitExpr(iter_var->dom->min);
+    this->VisitExpr(iter_var->dom->extent);
+  });
+  VisitArray(op->reads, fvisit_buffer_region);
+  VisitArray(op->writes, fvisit_buffer_region);
+  VisitArray(op->match_buffers,
+             [fvisit_buffer_region](const MatchBufferRegion& match_buffer_region) {
+               fvisit_buffer_region(match_buffer_region->source);
+             });
   if (op->init.defined()) {
     this->VisitStmt(op->init.value());
   }
