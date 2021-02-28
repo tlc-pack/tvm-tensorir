@@ -435,8 +435,9 @@ class PostprocRewriteUnboundBlocks {
     // TODO(@junrushao1994): check if each loop has only one children, otherwise we cannot fuse
     int n_spatial_loops = 0;
     for (const LoopRV& loop_rv : loop_rvs) {
-      tir::IterVarType iter_type = GetLoopIterType(sch->sch->state, sch->Eval(loop_rv));
-      if (iter_type != tir::kDataPar) {
+      tir::StmtSRef loop_sref = sch->Eval(loop_rv);
+      tir::IterVarType iter_type = GetLoopIterType(sch->sch->state, loop_sref);
+      if (iter_type != tir::kDataPar || GetAnn(loop_sref, tir::attr::loop_type).defined()) {
         break;
       }
       ++n_spatial_loops;
