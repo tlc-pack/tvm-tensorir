@@ -398,7 +398,7 @@ bool IsStrictlyInlineable(const tir::ScheduleState& self, const tir::StmtSRef& b
     return true;
   }
 
-  if (HasBranch(sch, block_sref)) {
+  if (HasBranch(self, block_sref)) {
     return false;
   }
   if (CountOp(self, block_sref, op_tir_exp)) {
