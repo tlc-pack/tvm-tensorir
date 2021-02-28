@@ -1038,7 +1038,7 @@ class BlockNode : public StmtNode {
    *  reduction block. The optional init field allows us to represent initialization and
    *  reduction update in a single block and transform them collectively.
    *  We also provide primitives to decompose the init into a separate block during scheduling.
-   *  Init field is None if there is no reduction iter_vars
+   *  Init field is `NullOpt` if there is no reduction iter_vars
    */
   Optional<Stmt> init;
   /*! \brief The buffer allocated in the block. */
