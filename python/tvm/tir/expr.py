@@ -354,6 +354,13 @@ class Var(PrimExprWithOp):
         self.__init_handle_by_constructor__(_ffi_api.Var, name, dtype, span)
 
 
+@tvm._ffi_register_object("tir.DynamicAxis")
+class DynamicAxis(PrimExprWithOp):
+    def __init__(self, name, possible_values):
+        self.__init_handle_by_constructor__(_ffi_api.DynamicAxis, name,
+                                            possible_values)
+
+
 @tvm._ffi.register_object("tir.SizeVar")
 class SizeVar(Var):
     """Symbolic variable to represent a tensor index size
