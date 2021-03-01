@@ -355,13 +355,11 @@ class Var(PrimExprWithOp):
 
 
 # <bojian/TVM-SymbolicTuning>
-@tvm._ffi_register_object("tir.DynamicAxis")
-class DynamicAxis(PrimExprWithOp):
+@tvm._ffi.register_object("tir.DyAxis")
+class DyAxis(PrimExprWithOp):
     def __init__(self, name, possible_values):
-        sorted_possible_values = sorted(possible_values)
-        sorted_possible_values = [IntImm("int32", i) for i in sorted_possible_values]
-        self.__init_handle_by_constructor__(_ffi_api.DynamicAxis, name,
-                                            sorted_possible_values)
+        self.__init_handle_by_constructor__(_ffi_api.DyAxis, name,
+                                            [IntImm("int32", i) for i in sorted(possible_values)])
 
 
 @tvm._ffi.register_object("tir.SizeVar")

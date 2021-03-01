@@ -7,27 +7,27 @@ namespace tvm {
 namespace tir {
 
 
-class DynamicAxisNode : public VarNode {
+class DyAxisNode : public VarNode {
  public:
   Array<IntImm> possible_values;
 
-  static constexpr const char* _type_key = "tir.DynamicAxis";
-  TVM_DECLARE_FINAL_OBJECT_INFO(DynamicAxisNode, VarNode);
+  static constexpr const char* _type_key = "tir.DyAxis";
+  TVM_DECLARE_FINAL_OBJECT_INFO(DyAxisNode, VarNode);
 };
 
 
-class DynamicAxis : public Var {
+class DyAxis : public Var {
  public:
-  TVM_DLL DynamicAxis(String name, Array<IntImm> possible_values);
+  TVM_DLL DyAxis(String name, Array<IntImm> possible_values);
 
-  const DynamicAxisNode* operator->() const {
+  const DyAxisNode* operator->() const {
     return get();
   }
-  const DynamicAxisNode* get() const {
-    return static_cast<const DynamicAxisNode*>(data_.get());
+  const DyAxisNode* get() const {
+    return static_cast<const DyAxisNode*>(data_.get());
   }
 
-  using ContainerType = DynamicAxisNode;
+  using ContainerType = DyAxisNode;
 };
 
 
