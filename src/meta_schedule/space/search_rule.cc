@@ -916,8 +916,8 @@ class RuleAddRfactor {
     if (block_sref->GetStmt<tir::BlockNode>()->writes.size() != 1) {
       return {sch};
     }
-    if (!NeedsRfactor(task, sch->sch->state, block_sref, max_jobs_per_core, &warned_num_cores_missing)
-        || HasCacheWriteBlock(sch, block_rv)) {
+    if (!NeedsRFactor(task, sch->sch->state, block_sref, max_jobs_per_core,
+                      &warned_num_cores_missing) || HasCacheWriteBlock(sch, block_rv)) {
       return {sch};
     }
 
@@ -931,7 +931,7 @@ class RuleAddRfactor {
     Array<Schedule> res;
     for (const LoopRV& split_loop : split_res) {
       const Schedule& sch_tmp = sch;
-      const BlockRV& block_rf = sch_tmp->Rfactor(split_loop, num_spatial_loops);
+      const BlockRV& block_rf = sch_tmp->RFactor(split_loop, num_spatial_loops);
       Array<LoopRV> axes = sch_tmp->GetAxes(block_rf);
       CHECK_GT(static_cast<int>(axes.size()), num_spatial_loops);
 

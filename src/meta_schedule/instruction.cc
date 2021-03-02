@@ -727,7 +727,7 @@ Array<ObjectRef> RfactorAttrs::Apply(const Schedule& sch, //
   CHECK(!decision.defined());
   CHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
-  return {sch->Rfactor(loop, factor_axis)};
+  return {sch->RFactor(loop, factor_axis)};
 }
 
 Array<ObjectRef> BindAttrs::Apply(const Schedule& sch,  //

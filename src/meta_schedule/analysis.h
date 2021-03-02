@@ -204,7 +204,7 @@ TVM_DLL std::pair<int, int> GetCumulativeSpaceAndReductionLength(const tir::Sche
  * \param block_sref The block to be analyzed
  * \return A boolean indicating if it needs rfactor
  */
-TVM_DLL bool NeedsRfactor(const SearchTask& task, const tir::ScheduleState& self,
+TVM_DLL bool NeedsRFactor(const SearchTask& task, const tir::ScheduleState& self,
                           const tir::StmtSRef& block_sref,
                           const int& max_jobs_per_core, std::atomic<int>* warned_num_cores_missing);
 

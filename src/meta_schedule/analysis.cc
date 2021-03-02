@@ -770,19 +770,20 @@ std::pair<int, int> GetCumulativeSpaceAndReductionLength(const tir::Schedule& sc
   return std::make_pair(cum_space_len, cum_reduce_len);
 }
 
-bool NeedsRfactor(const SearchTask& task, const tir::ScheduleState& self,
+bool NeedsRFactor(const SearchTask& task, const tir::ScheduleState& self,
                   const tir::StmtSRef& block_sref,
                   const int& max_jobs_per_core, std::atomic<int>* warned_num_cores_missing) {
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   Array<tir::StmtSRef> loops = tir::schedule::GetAxes(self, block_sref);
 
-  // Cond 1. The block has trivial binding.
-  if (!IsTrivialBinding(self, block_sref)) {
+  // Cond 1. The block is a reduction block and has trivial binding.
+  if (self->scopes.at(GetScopeSRef(block_sref))->IsReduction(block_sref)
+      && !IsTrivialBinding(self, block_sref)) {
     return false;
   }
 
-  // Cond 2. If there is at least one reduction loop.
+  // Cond 2. Whether there is at least one reduction loop.
   // Cond 3. The loops are continuous, and the body of the innermost loop is exactly the block.
   bool has_reduction_loop = false;
   for (int i = 0; i < static_cast<int>(loops.size()); ++i) {
@@ -823,8 +824,8 @@ bool NeedsRfactor(const SearchTask& task, const tir::ScheduleState& self,
   if (NeedsMultiLevelTiling(self, block_sref)) {
     // Do not use rfactor if we have enough parallelism on spatial loops.
     if (cum_space_len > cum_reduce_len ||
-        cum_space_len > GetTargetNumCores(task->target, warned_num_cores_missing)
-                            * max_jobs_per_core) {
+        cum_space_len >
+            GetTargetNumCores(task->target, warned_num_cores_missing) * max_jobs_per_core) {
       return false;
     } else {
       return true;
