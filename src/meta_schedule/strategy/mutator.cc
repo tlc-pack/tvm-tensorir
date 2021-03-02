@@ -190,6 +190,7 @@ class MutatorComputeLocation {
         tir::StmtSRef block_sref = sch->Eval(block_rv);
         // Extract locations that can be computed at
         Array<tir::StmtSRef> loop_srefs = CollectComputeLocation(sch->sch->state, block_sref);
+        // -2 means ComputeInline, and -1 means ComputeRoot.
         std::vector<int> locs{-2, -1};
         {
           int i = 0;
@@ -202,7 +203,7 @@ class MutatorComputeLocation {
           }
         }
         // Remove `decided`
-        std::vector<int>::iterator rm = std::find(locs.begin(), locs.end(), decided);
+        auto rm = std::find(locs.begin(), locs.end(), decided);
         ICHECK(rm != locs.end());
         locs.erase(rm);
         // Add the candidate
