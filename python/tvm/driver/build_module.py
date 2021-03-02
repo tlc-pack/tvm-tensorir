@@ -80,6 +80,11 @@ def get_binds(args, compact=False, binds=None):
             arg_list.append(x)
         elif isinstance(x, tvm.tir.Var):
             arg_list.append(x)
+
+        # <bojian/TVM-SymbolicTuning>
+        elif isinstance(x, tvm.tir.DyAxis):
+            arg_list.append(x)
+
         else:
             raise ValueError("args must be Tensor, Buffer or Var")
     return binds, arg_list
