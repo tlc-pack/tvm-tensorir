@@ -121,7 +121,7 @@ class ExprFunctor<R(const PrimExpr& n, Args...)> {
   virtual R VisitExpr_(const SizeVarNode* op, Args... args) {
     return VisitExpr_(static_cast<const VarNode*>(op), std::forward<Args>(args)...);
   }
-  virtual R VisitExpr_(const DyAxis* op, Args... args) {
+  virtual R VisitExpr_(const DyAxisNode* op, Args... args) {
     return VisitExpr_(static_cast<const VarNode*>(op),
                       std::forward<Args>(args)...);
   }
