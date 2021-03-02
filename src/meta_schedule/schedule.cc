@@ -238,7 +238,7 @@ BlockRV ScheduleNode::RFactor(const LoopRV& loop_rv, int factor_axis) {
   BlockRV result = tir::ConcreteScheduleNode::RFactor(loop_rv, factor_axis);
 
   // Find the output from TIR
-  tir::StmtSRef tir_result = sch->rfactor(Eval(loop), factor_axis);
+  tir::StmtSRef tir_result = this->sch->RFactor(Eval(loop), factor_axis);
   // Create the output random variable
   BlockRV output;
   // Update the symbol table

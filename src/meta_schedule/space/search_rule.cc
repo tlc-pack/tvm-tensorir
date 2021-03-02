@@ -916,7 +916,7 @@ class RuleAddRfactor {
     if (block_sref->GetStmt<tir::BlockNode>()->writes.size() != 1) {
       return {sch};
     }
-    if (!NeedsRfactor(task, sch->sch, block_sref, max_jobs_per_core, &warned_num_cores_missing)
+    if (!NeedsRfactor(task, sch->sch->state, block_sref, max_jobs_per_core, &warned_num_cores_missing)
         || HasCacheWriteBlock(sch, block_rv)) {
       return {sch};
     }

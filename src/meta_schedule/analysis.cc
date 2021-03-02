@@ -16,33 +16,16 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include "../tir/schedule/analysis.h"
+
 #include <numeric>
 
-#include "../tir/schedule/analysis.h"
 #include "../tir/schedule/primitives/primitives.h"
 #include "./utils.h"
+#include "analysis.h"
 
 namespace tvm {
 namespace meta_schedule {
-
-bool NeedsInline(const tir::Schedule& sch, const tir::StmtSRef& block_sref, bool strict_mode) {
-  if (!IsSpatial(sch, block_sref)) {
-    return false;
-  }
-  if (IsOutputBlock(sch, block_sref)) {
-    return false;
-  }
-  if (strict_mode && !IsStrictlyInlineable(sch, block_sref)) {
-    return false;
-  }
-  Array<tir::StmtSRef> loop_srefs = sch->GetAxes(block_sref);
-  for (const tir::StmtSRef& loop_sref : loop_srefs) {
-    if (!HasSingleChild(loop_sref)) {
-      return false;
-    }
-  }
-  return true;
-}
 
 bool IsTrivialBinding(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
@@ -64,7 +47,7 @@ bool IsTrivialBinding(const tir::ScheduleState& self, const tir::StmtSRef& block
   }
   // If the block has trivial binding, then the axes must be either spatial axis or reduction axis.
   for (const tir::StmtSRef& loop_sref : loops) {
-    const tir::IterVarType& type = GetLoopIterType(sch, loop_sref);
+    const tir::IterVarType& type = GetLoopIterType(self, loop_sref);
     CHECK(type == tir::kDataPar || type == tir::kCommReduce);
   }
   return true;
@@ -763,11 +746,11 @@ double CountFlop(const tir::PrimFunc& func) {
 
 std::pair<int, int> GetCumulativeSpaceAndReductionLength(const tir::Schedule& sch,
                                                          const tir::StmtSRef& block_sref) {
-  Array<tir::StmtSRef> loops = sch->GetAxes(block_sref);
+  Array<tir::StmtSRef> loops = tir::schedule::GetAxes(self, block_sref);
   int cum_space_len = 1, cum_reduce_len = 1;
   // The case is invalid if there is any loop with type other than kDataPar and kCommReduce.
   for (const tir::StmtSRef& loop_sref : loops) {
-    tir::IterVarType type = GetLoopIterType(sch, loop_sref);
+    tir::IterVarType type = GetLoopIterType(self, loop_sref);
     if (type == tir::kDataPar) {
       if (const auto* p_int = GetLoopExtent(loop_sref).as<IntImmNode>()) {
         cum_space_len *= p_int->value;
@@ -787,15 +770,15 @@ std::pair<int, int> GetCumulativeSpaceAndReductionLength(const tir::Schedule& sc
   return std::make_pair(cum_space_len, cum_reduce_len);
 }
 
-bool NeedsRfactor(const SearchTask& task, const tir::Schedule& sch,
+bool NeedsRfactor(const SearchTask& task, const tir::ScheduleState& self,
                   const tir::StmtSRef& block_sref,
                   const int& max_jobs_per_core, std::atomic<int>* warned_num_cores_missing) {
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
-  Array<tir::StmtSRef> loops = sch->GetAxes(block_sref);
+  Array<tir::StmtSRef> loops = tir::schedule::GetAxes(self, block_sref);
 
   // Cond 1. The block has trivial binding.
-  if (!IsTrivialBinding(sch, block_sref)) {
+  if (!IsTrivialBinding(self, block_sref)) {
     return false;
   }
 
@@ -804,7 +787,7 @@ bool NeedsRfactor(const SearchTask& task, const tir::Schedule& sch,
   bool has_reduction_loop = false;
   for (int i = 0; i < static_cast<int>(loops.size()); ++i) {
     // Cond 2.
-    if (GetLoopIterType(sch, loops[i]) == tir::kCommReduce) {
+    if (GetLoopIterType(self, loops[i]) == tir::kCommReduce) {
       has_reduction_loop = true;
     }
 
@@ -831,13 +814,13 @@ bool NeedsRfactor(const SearchTask& task, const tir::Schedule& sch,
 
   // Cond 4. Can successfully calculating the cumulative loop length.
   int cum_space_len, cum_reduce_len;
-  std::tie(cum_space_len, cum_reduce_len) = GetCumulativeSpaceAndReductionLength(sch, block_sref);
+  std::tie(cum_space_len, cum_reduce_len) = GetCumulativeSpaceAndReductionLength(self, block_sref);
   if (cum_space_len == -1 || cum_reduce_len == -1) {
     return false;
   }
 
   // Cond 5.
-  if (NeedsMultiLevelTiling(sch, block_sref)) {
+  if (NeedsMultiLevelTiling(self, block_sref)) {
     // Do not use rfactor if we have enough parallelism on spatial loops.
     if (cum_space_len > cum_reduce_len ||
         cum_space_len > GetTargetNumCores(task->target, warned_num_cores_missing)
@@ -874,13 +857,13 @@ void ReorderReductionLoops(const Schedule& sch, const BlockRV& block_rv) {
   Array<LoopRV> new_order;
   // Step 1. Add spatial loops.
   for (const LoopRV& loop_rv : loops) {
-    if (GetLoopIterType(sch->sch, sch->Eval(loop_rv)) == tir::kDataPar) {
+    if (GetLoopIterType(sch->sch->state, sch->Eval(loop_rv)) == tir::kDataPar) {
       new_order.push_back(loop_rv);
     }
   }
   // Step 2. Add reduction loops.
   for (const LoopRV& loop_rv : loops) {
-    if (GetLoopIterType(sch->sch, sch->Eval(loop_rv)) == tir::kCommReduce) {
+    if (GetLoopIterType(sch->sch->state, sch->Eval(loop_rv)) == tir::kCommReduce) {
       new_order.push_back(loop_rv);
     }
   }
@@ -905,7 +888,7 @@ void FuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
   Array<LoopRV> reduction_loops;
   *num_spatial_loops = 0;
   for (const LoopRV& loop_rv : loops) {
-    tir::IterVarType type = GetLoopIterType(sch->sch, sch->Eval(loop_rv));
+    tir::IterVarType type = GetLoopIterType(sch->sch->state, sch->Eval(loop_rv));
     if (type == tir::kDataPar) {
       (*num_spatial_loops)++;
     } else {

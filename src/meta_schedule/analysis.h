@@ -189,21 +189,22 @@ TVM_DLL double CountFlop(const tir::PrimFunc& func);
 
 /*!
  * \brief Calculate the product of extent of all spatial and reduction loop axes.
- * \param sch The TIR schedule
+ * \param self The TIR schedule
  * \param block_sref The block to be analyzed
  * \return A pair indicating the cumulative length of spacial and reduction loop axes. Or (-1, -1)
  *         if invalid.
  */
-TVM_DLL std::pair<int, int> GetCumulativeSpaceAndReductionLength(const tir::Schedule& sch,
+TVM_DLL std::pair<int, int> GetCumulativeSpaceAndReductionLength(const tir::ScheduleState& self,
                                                                  const tir::StmtSRef& block_sref);
 
 /*!
  * \brief Check if the block needs rfactor
- * \param sch The TIR schedule
+ * \param task The search task
+ * \param self The TIR schedule
  * \param block_sref The block to be analyzed
  * \return A boolean indicating if it needs rfactor
  */
-TVM_DLL bool NeedsRfactor(const SearchTask& task, const tir::Schedule& sch,
+TVM_DLL bool NeedsRfactor(const SearchTask& task, const tir::ScheduleState& self,
                           const tir::StmtSRef& block_sref,
                           const int& max_jobs_per_core, std::atomic<int>* warned_num_cores_missing);
 
