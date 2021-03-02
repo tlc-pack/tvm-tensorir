@@ -16,13 +16,11 @@
 # under the License.
 """TVM Script Context Maintainer for TIR"""
 
-from typing import List, Mapping, Union, Optional, Dict
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from .parser import TVMScriptParser
+from typing import List, Mapping, Union, Optional, Dict, Callable, Tuple, Any
 
 import tvm
-from tvm.tir import Var, Buffer
+from tvm.ir import Range
+from tvm.tir import Var, Buffer, MatchBufferRegion, PrimExpr, Stmt, BufferRegion, BufferLoad
 from tvm.runtime import Object
 
 import synr
@@ -32,34 +30,44 @@ class BlockInfo:
     """Information for block and block_realize signature"""
 
     def __init__(self):
-        self.alloc_buffers = []
-        self.match_buffers = []
-        self.exec_scope = ""
+        self.alloc_buffers: List[Buffer] = []
+        self.match_buffers: List[MatchBufferRegion] = []
         self.binding = {}
-        self.reads = None
-        self.writes = None
-        self.annotations = {}
-        self.predicate = tvm.tir.const(True, "bool")
-        self.init = None
+        """We need to handle following four types of BufferRegion representing:
+            - None: waiting for auto-complete to deduce the access region from block body 
+            - buffer[i, j]: will be parsed as BufferLoad
+            - buffer[i: i + extent, j: j + extent]: will be parsed as Tuple[Buffer, List[Range]]
+            - buffer[i, j: j + extent]: will be parsed as Tuple[Buffer, List[Union[Range, PrimExpr]]
+        """
+        self.reads: Optional[
+            List[Union[BufferLoad, Tuple[Buffer, List[Union[Range, PrimExpr]]]]]
+        ] = None
+        self.writes: Optional[
+            List[Union[BufferLoad, Tuple[Buffer, List[Union[Range, PrimExpr]]]]]
+        ] = None
+        self.annotations: Mapping[str, Object] = {}
+        self.predicate: PrimExpr = tvm.tir.const(True, "bool")
+        self.init: Optional[Stmt] = None
 
 
 class ContextMaintainer:
     """Maintain all the necessary context info"""
 
-    def __init__(self, parser: "TVMScriptParser"):
+    def __init__(self, report_error: Callable[[str, synr.ast.Span], None]):
         # scope context
         self.node_stack: List[List[synr.ast.Node]] = []  # AST nodes of scopes
         self.block_info_stack: List[BlockInfo] = []  # Block info of scopes
         self.loop_stack: List[List[Var]] = []  # stack of loop vars
         self.symbols: List[Dict[str, Union[Var, Buffer]]] = []  # symbols of scopes
-
         # function context
         self.func_params: List[Var] = []  # parameter list of function
         self.func_buffer_map: Mapping[Var, Buffer] = {}  # buffer_map of function
         self.func_dict_attr: Mapping[str, Object] = {}  # func_attr of function
         self.func_var_env_dict: Mapping[Var, str] = {}  # map from var to env_name
         # parser
-        self.parser: "TVMScriptParser" = parser
+        self._report_error: Callable[[str, synr.ast.Span], None] = report_error
+        # analyzer
+        self.analyzer: tvm.arith.Analyzer = tvm.arith.Analyzer()
 
     def enter_scope(self, nodes: Optional[List[synr.ast.Node]] = None):
         """Creating a new scope"""
@@ -89,11 +97,11 @@ class ContextMaintainer:
         # Pop block_info
         self.block_info_stack.pop()
 
-    def update_symbol(self, name: str, symbol: Union[Buffer, Var]):
+    def update_symbol(self, name: str, symbol: Union[Buffer, Var], node: synr.ast.Node):
         """Append a symbol into current scope"""
         if isinstance(symbol, Buffer):
             if name in self.symbols[0]:
-                raise RuntimeError("Duplicate Buffer name: " + symbol.name)
+                raise self.report_error("Duplicate Buffer name: " + symbol.name, node.span)
             self.symbols[0][name] = symbol
         else:
             self.symbols[-1][name] = symbol
@@ -105,7 +113,7 @@ class ContextMaintainer:
             if name in symbols:
                 symbols.pop(name)
                 return
-        raise RuntimeError("Internal error of tvm script parser: no symbol named" + name)
+        raise RuntimeError("Internal error of tvm script parser: no symbol named " + name)
 
     def lookup_symbol(self, name: str) -> Optional[Union[Buffer, Var]]:
         """Look up symbol by name"""
@@ -115,7 +123,7 @@ class ContextMaintainer:
         return None
 
     def report_error(self, message: str, span: synr.ast.Span):
-        self.parser.report_error(message, span)
+        self._report_error(message, span)
 
     def block_scope(self) -> BlockInfo:
         return self.block_info_stack[-1]

@@ -17,27 +17,37 @@
 """TVM Script Parser Special Stmt Classes"""
 # pylint: disable=unused-argument, no-self-argument, inconsistent-return-statements
 # pylint: disable=relative-beyond-top-level
+import synr
 from synr import ast
 
 import tvm.tir
 from tvm import te
 from .utils import get_param_list, from_synr_span
 from .registry import register
+from .context_maintainer import ContextMaintainer
+
+from typing import Callable, List, Optional, Tuple, Any, Union
 
 
 class SpecialStmt:
     """Base class for all Special Stmts"""
 
-    def __init__(self, func, def_symbol):
-        self.func = func
-        self.def_symbol = def_symbol
-        self.node = None
-        self.context = None
+    def __init__(self, func: Callable, def_symbol: bool):
+        self.func: Callable = func
+        self.def_symbol: bool = def_symbol
+        self.node: Optional[synr.ast.Node] = None
+        self.context: Optional[ContextMaintainer] = None
 
-    def signature(self):
+    def signature(self) -> Tuple[str, Tuple[list, list, Any]]:
         return "tir." + self.func.__name__, get_param_list(self.func)
 
-    def handle(self, node, context, arg_list, span):
+    def handle(
+        self,
+        node: ast.Node,
+        context: ContextMaintainer,
+        arg_list: List[Any],
+        span: synr.ast.Span,
+    ):
         self.node = node
         self.context = context
         return self.func(*arg_list, span=from_synr_span(span))
@@ -93,7 +103,7 @@ class MatchBuffer(SpecialStmt):
                 span=span,
             )
             self.context.func_buffer_map[param] = buffer
-            self.context.update_symbol(self.node.lhs.id.name, buffer)
+            self.context.update_symbol(self.node.lhs.id.name, buffer, self.node)
 
         super().__init__(match_buffer, def_symbol=True)
 
@@ -142,7 +152,7 @@ class BufferDeclare(SpecialStmt):
                 buffer_type,
                 span=span,
             )
-            self.context.update_symbol(self.node.lhs.id.name, buffer)
+            self.context.update_symbol(self.node.lhs.id.name, buffer, self.node)
             return buffer
 
         super().__init__(buffer_decl, def_symbol=True)
@@ -196,7 +206,7 @@ class AllocBuffer(SpecialStmt):
                 span=span,
             )
             self.context.block_scope().alloc_buffers.append(buffer)
-            self.context.update_symbol(self.node.lhs.id.name, buffer)
+            self.context.update_symbol(self.node.lhs.id.name, buffer, self.node)
 
         super().__init__(alloc_buffer, def_symbol=True)
 
@@ -233,8 +243,8 @@ class BlockReads(SpecialStmt):
     """
 
     def __init__(self):
-        def reads(reads, span=None):
-            self.context.block_scope().reads = [reads] if not isinstance(reads, list) else reads
+        def reads(read_regions, span=None):
+            self.context.block_scope().reads = [read_regions] if not isinstance(read_regions, list) else read_regions
 
         super().__init__(reads, def_symbol=False)
 
@@ -337,7 +347,8 @@ class BlockMatchBufferRegion(SpecialStmt):
                 or not isinstance(source[0], tvm.tir.Buffer)
             ):
                 self.context.report_error(
-                    "match_buffer_region needs a buffer region as source", span=self.node.span
+                    "match_buffer_region needs a buffer region as source",
+                    span=self.node.span,
                 )
             source_buffer, ranges = source
             region = []
@@ -350,7 +361,8 @@ class BlockMatchBufferRegion(SpecialStmt):
                     region.append(tvm.ir.Range.from_min_extent(index, 1))
                 else:
                     self.context.report_error(
-                        "error during handling source buffer region", span=self.node.span
+                        "error during handling source buffer region",
+                        span=self.node.span,
                     )
             buffer_region = tvm.tir.BufferRegion(source_buffer, region)
             buffer = tvm.tir.decl_buffer(
@@ -368,39 +380,9 @@ class BlockMatchBufferRegion(SpecialStmt):
             self.context.block_scope().match_buffers.append(
                 tvm.tir.MatchBufferRegion(buffer, buffer_region)
             )
-            self.context.update_symbol(self.node.lhs.id.name, buffer)
+            self.context.update_symbol(self.node.lhs.id.name, buffer, self.node)
 
         super().__init__(match_buffer_region, def_symbol=True)
-
-
-@register
-class ExecScope(SpecialStmt):
-    """Special function match_buffer_region(source, strides, elem_offset, align, offset_factor)
-
-    Example
-    -------
-    .. code-block:: python
-
-        B = tir.match_buffer_region(A[0: 4])
-
-    """
-
-    def __init__(self):
-        def exec_scope(scope, span=None):
-            if not isinstance(scope, str):
-                self.context.report_error(
-                    "exec_scope expects a str as parameter, but get " + str(type(scope)),
-                    span=self.node.span,
-                )
-            if self.context.block_scope().exec_scope != "":
-                self.context.report_error(
-                    "get duplicate exec_scope, previous definition is "
-                    + self.context.block_scope().exec_scope,
-                    span=self.node.span,
-                )
-            self.context.block_scope().exec_scope = scope
-
-        super().__init__(exec_scope, def_symbol=False)
 
 
 @register
@@ -411,7 +393,7 @@ class VarDef(SpecialStmt):
         def var(dtype, span):
             assert isinstance(self.node, ast.Assign)
             v = te.var(self.node.lhs.id.name, dtype, span=span)
-            self.context.update_symbol(v.name, v)
+            self.context.update_symbol(v.name, v, self.node)
 
         super().__init__(var, def_symbol=True)
 
@@ -425,7 +407,7 @@ class EnvThread(SpecialStmt):
             assert isinstance(self.node, ast.Assign)
             v = te.var(self.node.lhs.id.name, span=span)
             self.context.func_var_env_dict[v] = env_name
-            self.context.update_symbol(v.name, v)
+            self.context.update_symbol(v.name, v, self.node)
 
         super().__init__(env_thread, def_symbol=True)
 

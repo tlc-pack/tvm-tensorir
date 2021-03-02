@@ -2805,7 +2805,6 @@ def block_elements(a: ty.handle, b: ty.handle) -> None:
         tir.where(True)
         tir.reads(A[0:16, 0:16])
         tir.writes(B[0, 0])
-        tir.exec_scope("GPU_block")
         tir.block_attr({"attr_key": "attr_value"})
         C = tir.alloc_buffer((4, 4), dtype="float32")
         D = tir.match_buffer_region(A[0:4, 0])
@@ -2822,7 +2821,6 @@ def test_block_elements():
     assert isinstance(rt_func.body.block, tir.stmt.Block)
     assert isinstance(rt_func.body.block.body, tir.stmt.BufferStore)
     assert isinstance(rt_func.body.block.init, tir.stmt.BufferStore)
-    assert rt_func.body.block.exec_scope == "GPU_block"
     assert len(rt_func.body.block.annotations) == 1
     assert rt_func.body.block.annotations["attr_key"] == "attr_value"
 

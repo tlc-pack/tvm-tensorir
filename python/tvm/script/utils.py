@@ -17,11 +17,14 @@
 """Helper functions in TVM Script Parser"""
 
 import inspect
+import synr
 from ..ir import Span, SourceName
 from typing import Callable, List, Any, Optional, Tuple
 
 
-def get_param_list(func: Callable) -> Tuple[List[str], List[Tuple[str, Tuple[Any, ...]]], Optional[str]]:
+def get_param_list(
+    func: Callable,
+) -> Tuple[List[str], List[Tuple[str, Tuple[Any, ...]]], Optional[str]]:
     """Get the parameter list from definition of function"""
     full_arg_spec: inspect.FullArgSpec = inspect.getfullargspec(func)
 
@@ -59,10 +62,21 @@ def get_param_list(func: Callable) -> Tuple[List[str], List[Tuple[str, Tuple[Any
     return pos_only, kwargs, full_arg_spec.varargs
 
 
-def from_synr_span(span):
+def from_synr_span(span: synr.ast.Span) -> Span:
     """Convert a synr span to a TVM span"""
     return Span(
         SourceName(span.filename),
+        span.start_line,
+        span.end_line,
+        span.start_column,
+        span.end_column,
+    )
+
+
+def to_synr_span(span: Span) -> synr.ast.Span:
+    """Convert a TVM span to a TVM span"""
+    return synr.ast.Span(
+        span.filename,
         span.start_line,
         span.end_line,
         span.start_column,

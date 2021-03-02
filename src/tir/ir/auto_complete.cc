@@ -162,7 +162,7 @@ class AutoCompleter : public StmtMutator {
   Stmt VisitStmt_(const BlockRealizeNode* op) override {
     contains_block = true;
     Stmt body = StmtMutator::VisitStmt_(op);
-    if (!op->iter_values.empty() && !op->iter_values[0].defined()) {
+    if (!op->iter_values.empty() && !op->iter_values[0].dtype().is_int()) {
       auto block_with_binding = CopyOnWrite(Downcast<BlockRealize>(body).get());
       std::vector<PrimExpr> bindings;
       for (size_t i = 0; i < op->iter_values.size(); ++i) {
@@ -180,7 +180,7 @@ class AutoCompleter : public StmtMutator {
 
   Stmt VisitStmt_(const BlockNode* op) override {
     Block block = Downcast<Block>(StmtMutator::VisitStmt_(op));
-    if (!block->reads.defined() || !block->writes.defined()) {
+    if (block->reads.empty() || block->writes.empty()) {
       BlockReadWriteCollector block_read_write_collector(block->alloc_buffers);
       block_read_write_collector(block->body);
       auto n = CopyOnWrite(block.operator->());
@@ -200,7 +200,7 @@ Stmt AutoComplete(const Stmt& body, const Array<Buffer>& root_allocates) {
   // generate root block automatically
   if (auto_completer.contains_block &&
       (!res->IsInstance<BlockRealizeNode>() || !root_allocates.empty())) {
-    res = Block({}, {}, {}, "root", res, NullOpt, "", root_allocates);
+    res = Block({}, {}, {}, "root", res, NullOpt, root_allocates);
     res = BlockRealize({}, Bool(true), Downcast<Block>(res));
   }
   return res;

@@ -158,7 +158,7 @@ class TVMScriptParser(Transformer):
 
     def init_function_parsing_env(self):
         """Initialize function parsing environment"""
-        self.context = context_maintainer.ContextMaintainer(self)  # scope emitter
+        self.context = context_maintainer.ContextMaintainer(self.report_error)  # scope emitter
 
     def init_meta(self, meta_dict):
         if meta_dict is not None:
@@ -406,7 +406,7 @@ class TVMScriptParser(Transformer):
         # add parameters of function
         for arg in node.params:
             arg_var = tvm.te.var(arg.name, self.parse_type(arg.ty, arg))
-            self.context.update_symbol(arg.name, arg_var)
+            self.context.update_symbol(arg.name, arg_var, node)
             self.context.func_params.append(arg_var)
 
         # New Scope : Implicit root block
@@ -486,7 +486,7 @@ class TVMScriptParser(Transformer):
                     self.parse_type(node.ty, node.lhs),
                     span=from_synr_span(node.lhs.span),
                 )
-                self.context.update_symbol(var.name, var)
+                self.context.update_symbol(var.name, var, node)
                 body = self.parse_body(node)
                 self.context.remove_symbol(var.name)
                 return tvm.tir.LetStmt(var, value, body, span=from_synr_span(node.span))

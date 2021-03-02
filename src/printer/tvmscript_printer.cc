@@ -845,7 +845,7 @@ Doc TVMScriptPrinter::VisitStmt_(const BlockRealizeNode* op) {
   }
   doc << " as [" << PrintSep(block_var_names, Doc::Text(", ")) << "]:";
   Doc block_attr_doc;
-  // print predicate, binding, read/write tensor region, exec_scope, annotations
+  // print predicate, binding, read/write tensor region, annotations
   if (!is_one(op->predicate)) {
     block_attr_doc << Doc::NewLine() << "tir.where(" << Print(op->predicate) << ")";
   }
@@ -854,7 +854,6 @@ Doc TVMScriptPrinter::VisitStmt_(const BlockRealizeNode* op) {
                    << Print(op->iter_values[i]) << ")";
   block_attr_doc << Doc::NewLine() << "tir.reads(" << Print(block_op->reads) << ")";
   block_attr_doc << Doc::NewLine() << "tir.writes(" << Print(block_op->writes) << ")";
-  block_attr_doc << Doc::NewLine() << "tir.exec_scope(" << Print(block_op->exec_scope) << ")";
   if (!block_op->annotations.empty()) {
     block_attr_doc << Doc::NewLine() << "tir.block_attr({";
     bool first = true;
