@@ -589,7 +589,7 @@ class RuleRandomComputeLocation {
     for (;;) {
       LoopRV compute_at_loc = sch->SampleComputeLocation(consumer);
       try {
-        sch->ComputeAt(block_rv, compute_at_loc);
+        sch->ComputeAt(consumer, compute_at_loc);
       } catch (const dmlc::Error& e) {
         // ComputeAt fails, cleanup the following before re-try:
         // 1) sym_tab
