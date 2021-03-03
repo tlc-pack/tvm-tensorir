@@ -166,13 +166,13 @@ def test_matmul_schedule_fn():
     def schedule_matmul(sch):
         block = sch.get_block(name="matmul")
         i, j, k = sch.get_axes(block=block)
-        i_tiles = sch.sample_perfect_tile(n_splits=4, loop=i)
-        j_tiles = sch.sample_perfect_tile(n_splits=4, loop=j)
-        k_tiles = sch.sample_perfect_tile(n_splits=2, loop=k)
+        i_tiles = sch.sample_perfect_tile(i, n=4)
+        j_tiles = sch.sample_perfect_tile(j, n=4)
+        k_tiles = sch.sample_perfect_tile(k, n=2)
         i_0, i_1, i_2, i_3 = sch.split(loop=i, factors=i_tiles)
         j_0, j_1, j_2, j_3 = sch.split(loop=j, factors=j_tiles)
         k_0, k_1 = sch.split(loop=k, factors=k_tiles)
-        sch.reorder(after_axes=[i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3])
+        sch.reorder(i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3)
 
     sch = ms.autotune(
         task=matmul,
@@ -182,7 +182,7 @@ def test_matmul_schedule_fn():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.asscript(sch.sch.module))
+        print(tvm.script.asscript(sch.module))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -192,13 +192,13 @@ def test_matmul_relu_schedule_fn():
     def schedule_matmul(sch: ms.Schedule):
         matmul_block = sch.get_block(name="matmul")
         i, j, k = sch.get_axes(block=matmul_block)
-        i_tiles = sch.sample_perfect_tile(n_splits=4, loop=i)
-        j_tiles = sch.sample_perfect_tile(n_splits=4, loop=j)
-        k_tiles = sch.sample_perfect_tile(n_splits=2, loop=k)
+        i_tiles = sch.sample_perfect_tile(i, n=4)
+        j_tiles = sch.sample_perfect_tile(j, n=4)
+        k_tiles = sch.sample_perfect_tile(k, n=2)
         i_0, i_1, i_2, i_3 = sch.split(loop=i, factors=i_tiles)
         j_0, j_1, j_2, j_3 = sch.split(loop=j, factors=j_tiles)
         k_0, k_1 = sch.split(loop=k, factors=k_tiles)
-        sch.reorder(after_axes=[i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3])
+        sch.reorder(i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3)
         relu_block = sch.get_block(name="relu")
         sch.reverse_compute_at(relu_block, j_0)
 
@@ -210,7 +210,7 @@ def test_matmul_relu_schedule_fn():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.asscript(sch.sch.module))
+        print(tvm.script.asscript(sch.module))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -221,33 +221,36 @@ def test_conv2d_schedule_fn():
         block = sch.get_block(name="conv2d_nchw")
         i_n, i_co, i_h, i_w, i_ci, i_kh, i_kw = sch.get_axes(block=block)
 
-        factors = sch.sample_perfect_tile(n_splits=4, loop=i_n)
+        factors = sch.sample_perfect_tile(i_n, 4)
         i_n_0, i_n_1, i_n_2, i_n_3 = sch.split(loop=i_n, factors=factors)
 
-        factors = sch.sample_perfect_tile(n_splits=4, loop=i_co)
+        factors = sch.sample_perfect_tile(i_co, 4)
         i_co_0, i_co_1, i_co_2, i_co_3 = sch.split(loop=i_co, factors=factors)
 
-        factors = sch.sample_perfect_tile(n_splits=4, loop=i_h)
+        factors = sch.sample_perfect_tile(i_h, 4)
         i_h_0, i_h_1, i_h_2, i_h_3 = sch.split(loop=i_h, factors=factors)
 
-        factors = sch.sample_perfect_tile(n_splits=4, loop=i_w)
+        factors = sch.sample_perfect_tile(i_w, 4)
         i_w_0, i_w_1, i_w_2, i_w_3 = sch.split(loop=i_w, factors=factors)
 
-        factors = sch.sample_perfect_tile(n_splits=2, loop=i_ci)
+        factors = sch.sample_perfect_tile(i_ci, 2)
         i_ci_0, i_ci_1 = sch.split(loop=i_ci, factors=factors)
 
-        factors = sch.sample_perfect_tile(n_splits=2, loop=i_kh)
+        factors = sch.sample_perfect_tile(i_kh, 2)
         i_kh_0, i_kh_1 = sch.split(loop=i_kh, factors=factors)
 
-        factors = sch.sample_perfect_tile(n_splits=2, loop=i_kw)
+        factors = sch.sample_perfect_tile(i_kw, 2)
         i_kw_0, i_kw_1 = sch.split(loop=i_kw, factors=factors)
         sch.reorder(
-            [i_n_0, i_co_0, i_h_0, i_w_0]  # S
-            + [i_n_1, i_co_1, i_h_1, i_w_1]  # S
-            + [i_ci_0, i_kh_0, i_kw_0]  # R
-            + [i_n_2, i_co_2, i_h_2, i_w_2]  # S
-            + [i_ci_1, i_kh_1, i_kw_1]  # R
-            + [i_n_3, i_co_3, i_h_3, i_w_3],  # S
+            # fmt: off
+            i_n_0, i_co_0, i_h_0, i_w_0,  # S
+            i_n_1, i_co_1, i_h_1, i_w_1,  # S
+            i_ci_0, i_kh_0, i_kw_0,  # R
+            i_n_2, i_co_2, i_h_2, i_w_2,  # S
+            i_ci_1, i_kh_1, i_kw_1,  # R
+            i_n_3, i_co_3, i_h_3, i_w_3,
+            # S
+            # fmt: on
         )
 
     sch = ms.autotune(
@@ -258,7 +261,7 @@ def test_conv2d_schedule_fn():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.asscript(sch.sch.module))
+        print(tvm.script.asscript(sch.module))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -372,7 +375,7 @@ def test_matmul_evolutionary_end_to_end():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.asscript(sch.sch.module))
+        print(tvm.script.asscript(sch.module))
 
 
 @pytest.mark.skip(reason="needs RPC")
@@ -426,7 +429,7 @@ def test_matmul_evolutionary_xgb():
     if sch is None:
         print("No valid schedule found")
     else:
-        print(tvm.script.asscript(sch.sch.module))
+        print(tvm.script.asscript(sch.module))
 
 
 if __name__ == "__main__":

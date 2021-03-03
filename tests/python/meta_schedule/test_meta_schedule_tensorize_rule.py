@@ -35,7 +35,7 @@ def _check_sketch(result, expected):
     for x in result:
         found = False
         for y in expected:
-            if tvm.ir.structural_equal(x.sch.module, y):
+            if tvm.ir.structural_equal(x.module, y):
                 found = True
                 break
         assert found

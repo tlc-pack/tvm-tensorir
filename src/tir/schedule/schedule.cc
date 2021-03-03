@@ -99,96 +99,22 @@ struct SRefTranslator {
     return result;
   }
 
-  /*! \brief Translate Array<DepEdge> */
-  Array<DepEdge> Trans(const Array<DepEdge>& list) {
-    Array<DepEdge> result;
-    result.reserve(list.size());
-    for (const DepEdge& elem : list) {
-      result.push_back(DepEdge(Trans(elem->dst), elem->type));
-    }
-    return result;
-  }
+LoopRV::LoopRV() { this->data_ = make_object<LoopRVNode>(); }
 
-  /*! \brief Translate SMap<StmtSRef, Array<DepEdge>> */
-  SMap<StmtSRef, Array<DepEdge>> Trans(const SMap<StmtSRef, Array<DepEdge>>& map) {
-    SMap<StmtSRef, Array<DepEdge>> result;
-    result.reserve(map.size());
-    for (const auto& kv : map) {
-      result[Trans(kv.first)] = Trans(kv.second);
-    }
-    return result;
-  }
+/**************** Printer ****************/
 
-  /*! \brief Translate SMap<Buffer, Array<StmtSRef>> */
-  SMap<Buffer, Array<StmtSRef>> Trans(const SMap<Buffer, Array<StmtSRef>>& map) {
-    SMap<Buffer, Array<StmtSRef>> result;
-    result.reserve(map.size());
-    for (const auto& kv : map) {
-      result[kv.first] = Trans(kv.second);
-    }
-    return result;
-  }
-
-  /*! \brief Translate SMap<StmtSRef, Scope> */
-  SMap<StmtSRef, BlockScope> Trans(const SMap<StmtSRef, BlockScope>& scopes) {
-    SMap<StmtSRef, BlockScope> result;
-    result.reserve(scopes.size());
-    for (const auto& kv : scopes) {
-      BlockScope& scope = result[Trans(kv.first)] = BlockScope();
-      scope->forward_edges = Trans(kv.second->forward_edges);
-      scope->backward_edges = Trans(kv.second->backward_edges);
-      scope->buffer_writers = Trans(kv.second->buffer_writers);
-    }
-    return result;
-  }
-
-  /*! \brief Translate the stmt2ref */
-  UMap<const StmtNode*, StmtSRef> Trans(const UMap<const StmtNode*, StmtSRef>& stmt2ref) {
-    UMap<const StmtNode*, StmtSRef> result;
-    result.reserve(stmt2ref.size());
-    for (const auto& kv : stmt2ref) {
-      const StmtNode* stmt = kv.first;
-      const StmtSRef& sref = kv.second;
-      result.emplace(stmt, Trans(sref));
-    }
-    return result;
-  }
-
-  /*! \brief Translate the symbol table */
-  TSymbolTable Trans(const TSymbolTable& tab) {
-    TSymbolTable result;
-    for (const auto& kv : tab) {
-      ObjectRef entry = kv.second;
-      if (const auto* sref = entry.as<StmtSRefNode>()) {
-        entry = Trans(sref);
-      }
-      result.Set(kv.first, entry);
-    }
-    return result;
-  }
-
- private:
-  std::unordered_map<const StmtSRefNode*, StmtSRef> trans_;
-};
-
-Schedule ScheduleNode::Copy() const {
-  const ScheduleState& src_state = this->state;
-  SRefTranslator trans(src_state);
-  ObjectPtr<ScheduleStateNode> n = make_object<ScheduleStateNode>();
-  n->func = src_state->func;
-  n->root = trans.Trans(src_state->root);
-  n->scopes = trans.Trans(src_state->scopes);
-  n->stmt2ref = trans.Trans(src_state->stmt2ref);
-  n->debug_mode = src_state->debug_mode;
-  return Schedule(ScheduleState(n), trans.Trans(this->symbol_table));
+String Repr(const PrimFunc& func) {
+  const auto* f = runtime::Registry::Get("script.AsTVMScript");
+  ICHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
+  String s = (*f)(func, false);
+  return s;
 }
 
-/******** Lookup random variables ********/
-
-Block ScheduleNode::Get(const BlockRV& block_rv) const {
-  StmtSRef sref = this->GetSRef(block_rv);
-  const auto* block = TVM_SREF_TO_BLOCK(block, sref);
-  return GetRef<Block>(block);
+String Repr(const IRModule& mod) {
+  const auto* f = runtime::Registry::Get("script.AsTVMScript");
+  ICHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
+  String s = (*f)(mod, false);
+  return s;
 }
 
 For ScheduleNode::Get(const LoopRV& loop_rv) const {
@@ -381,16 +307,24 @@ StmtSRef ScheduleNode::Blockize(const StmtSRef& loop_sref, const String& exec_sc
 void ScheduleNode::Tensorize(const StmtSRef& loop_sref, const TensorIntrin& intrinsic) {
   schedule::Tensorize(this->state, loop_sref, intrinsic);
 }
+TVM_DLL String Repr(const Schedule& self) { return Repr(self->Module()); }
 
 /**************** FFI ****************/
 
 TVM_REGISTER_NODE_TYPE(BlockRVNode);
 TVM_REGISTER_NODE_TYPE(LoopRVNode);
-TVM_REGISTER_NODE_TYPE(ScheduleNode);
+TVM_REGISTER_OBJECT_TYPE(ScheduleNode);
 
-TVM_REGISTER_GLOBAL("tir.schedule.Schedule").set_body_typed([](PrimFunc func, bool debug_mode) {
-  return Schedule(func, debug_mode);
-});
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetClassName")  //
+    .set_body_method<Schedule>(&ScheduleNode::GetClassName);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCopy")  //
+    .set_body_method<Schedule>(&ScheduleNode::Copy);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSeed")  //
+    .set_body_method<Schedule>(&ScheduleNode::Seed);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleModule")  //
+    .set_body_method<Schedule>(&ScheduleNode::Module);
+
+/******** (FFI) Lookup random variables ********/
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGet")
     .set_body_typed([](Schedule self, ObjectRef obj) -> ObjectRef {
@@ -401,55 +335,59 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGet")
         return self->Get(GetRef<BlockRV>(block_rv));
       }
       if (const auto* expr_rv = obj.as<PrimExprNode>()) {
-        int64_t result = self->Get(GetRef<PrimExpr>(expr_rv));
-        return IntImm(DataType::Int(64), result);
+        return self->Get(GetRef<PrimExpr>(expr_rv));
       }
       LOG(FATAL) << "TypeError: Cannot evaluate the random variable of type: " << obj->GetTypeKey()
                  << ". Its value is: " << obj;
       throw;
     });
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetSRef")
+    .set_body_typed([](Schedule self, ObjectRef obj) -> Optional<ObjectRef> {
+      if (const auto* loop_rv = obj.as<LoopRVNode>()) {
+        return self->GetSRef(GetRef<LoopRV>(loop_rv));
+      }
+      if (const auto* block_rv = obj.as<BlockRVNode>()) {
+        return self->GetSRef(GetRef<BlockRV>(block_rv));
+      }
+      if (const auto* stmt = obj.as<StmtNode>()) {
+        return self->GetSRef(GetRef<Stmt>(stmt));
+      }
+      LOG(FATAL) << "TypeError: Invalid type: " << obj->GetTypeKey();
+      throw;
+    });
 
-/***** Block/Loop relation *****/
+/***** (FFI) Sampling *****/
 
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetBlock").set_body_typed([](Schedule self, String name) {
-  return self->GetBlock(name);
-});
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSamplePerfectTile")
+    .set_body_method<Schedule>(&ScheduleNode::SamplePerfectTile);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSampleCategorical")
+    .set_body_method<Schedule>(&ScheduleNode::SampleCategorical);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSampleComputeLocation")
+    .set_body_method<Schedule>(&ScheduleNode::SampleComputeLocation);
 
+/***** (FFI) Block/Loop relation *****/
+
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetBlock")
+    .set_body_method<Schedule>(&ScheduleNode::GetBlock);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetAxes")
-    .set_body_typed([](Schedule self, StmtSRef block) { return self->GetAxes(block); });
-
+    .set_body_method<Schedule>(&ScheduleNode::GetAxes);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetChildBlocks")
-    .set_body_typed([](Schedule self, StmtSRef block_or_loop) {
-      return self->GetChildBlocks(block_or_loop);
-    });
-
-/***** Schedule: loops *****/
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleFuse")
-    .set_body_typed([](Schedule self, StmtSRef outer, StmtSRef inner) {
-      return self->Fuse(outer, inner);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSplit")
-    .set_body_typed([](Schedule self, StmtSRef loop_sref, Optional<PrimExpr> nparts,
-                       Optional<PrimExpr> factor) {
-      const auto* loop = loop_sref->GetStmt<ForNode>();
-      if (nparts.defined() && factor.defined()) {
-        LOG(FATAL) << "ValueError: `nparts` and `factor` cannot be specified at the same time";
+    .set_body_typed([](Schedule self, ObjectRef rv) {
+      if (const auto* block_rv = rv.as<BlockRVNode>()) {
+        return self->GetChildBlocks(GetRef<BlockRV>(block_rv));
       }
-      if (!nparts.defined() && !factor.defined()) {
-        LOG(FATAL) << "ValueError: neither `nparts` nor `factor` is specified";
-      }
-      if (!nparts.defined()) {
-        PrimExpr factor_ = factor.value();
-        return self->Split(loop_sref, floordiv(loop->extent + factor_ - 1, factor_), factor_);
-      } else {
-        PrimExpr nparts_ = nparts.value();
-        return self->Split(loop_sref, nparts_, floordiv(loop->extent + nparts_ - 1, nparts_));
+      if (const auto* loop_rv = rv.as<LoopRVNode>()) {
+        return self->GetChildBlocks(GetRef<LoopRV>(loop_rv));
       }
       return Schedule::Concrete(mod, debug_mode,
                                 static_cast<ScheduleErrorRenderLevel>(error_render_level));
     });
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetProducers")
+    .set_body_method<Schedule>(&ScheduleNode::GetProducers);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetConsumers")
+    .set_body_method<Schedule>(&ScheduleNode::GetConsumers);
+
+/***** (FFI) Schedule: loops *****/
 
 /******** (FFI) Lookup random variables ********/
 
@@ -504,94 +442,74 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetBlock")
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetLoops")
     .set_body_method<Schedule>(&ScheduleNode::GetLoops);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleReorder")
-    .set_body_typed([](Schedule self, Array<StmtSRef> order) { self->Reorder(order); });
+    .set_body_method<Schedule>(&ScheduleNode::Reorder);
 
-/***** Schedule: compute location *****/
+/***** (FFI) Schedule: compute location *****/
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleComputeAt")
-    .set_body_typed([](Schedule self, const StmtSRef& block_sref, const StmtSRef& loop_sref,
-                       bool preserve_unit_loop) {
-      self->ComputeAt(block_sref, loop_sref, preserve_unit_loop);
-    });
-
+    .set_body_method<Schedule>(&ScheduleNode::ComputeAt);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleReverseComputeAt")
-    .set_body_typed([](Schedule self, StmtSRef block_sref, StmtSRef loop_sref,
-                       bool preserve_unit_loop) {
-      self->ReverseComputeAt(block_sref, loop_sref, preserve_unit_loop);
-    });
-
+    .set_body_method<Schedule>(&ScheduleNode::ReverseComputeAt);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleComputeInline")
-    .set_body_typed([](Schedule self, StmtSRef block_sref) { self->ComputeInline(block_sref); });
-
+    .set_body_method<Schedule>(&ScheduleNode::ComputeInline);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleReverseComputeInline")
-    .set_body_typed([](Schedule self, StmtSRef block_sref) {
-      self->ReverseComputeInline(block_sref);
-    });
+    .set_body_method<Schedule>(&ScheduleNode::ReverseComputeInline);
 
-/***** Schedule: parallelize / annotate *****/
+/***** (FFI) Schedule: parallelize / annotate *****/
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleVectorize")
-    .set_body_typed([](Schedule self, StmtSRef loop_sref) { self->Vectorize(loop_sref); });
-
+    .set_body_method<Schedule>(&ScheduleNode::Vectorize);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleParallel")
-    .set_body_typed([](Schedule self, StmtSRef loop_sref) { self->Parallel(loop_sref); });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnroll")
-    .set_body_typed([](Schedule self, StmtSRef loop_sref) { self->Unroll(loop_sref); });
-
+    .set_body_method<Schedule>(&ScheduleNode::Parallel);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleUnroll")  //
+    .set_body_method<Schedule>(&ScheduleNode::Unroll);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBind")
-    .set_body_typed([](Schedule self, StmtSRef loop_sref, IterVar thread) {
-      self->Bind(loop_sref, thread);
+    .set_body_typed([](Schedule self, LoopRV loop_rv, ObjectRef thread) {
+      if (const auto* iter_var = thread.as<IterVarNode>()) {
+        return self->Bind(loop_rv, GetRef<IterVar>(iter_var));
+      }
+      if (const auto* str = thread.as<StringObj>()) {
+        return self->Bind(loop_rv, GetRef<String>(str));
+      }
+      LOG(FATAL) << "TypeError: Schedule.Bind doesn't support type: " << thread->GetTypeKey()
+                 << ", and the value is: " << thread;
+      throw;
     });
-
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDoubleBuffer")
-    .set_body_typed([](Schedule self, StmtSRef block_sref) { self->DoubleBuffer(block_sref); });
+    .set_body_method<Schedule>(&ScheduleNode::DoubleBuffer);
+TVM_REGISTER_GLOBAL("tir.schedule.SchedulePragma")  //
+    .set_body_method<Schedule>(&ScheduleNode::Pragma);
 
-TVM_REGISTER_GLOBAL("tir.schedule.SchedulePragma")
-    .set_body_typed([](Schedule self, StmtSRef loop_sref, String pragma_type,
-                       PrimExpr pragma_value) {
-      self->Pragma(loop_sref, pragma_type, pragma_value);
-    });
-
-/***** Schedule: cache read/write *****/
+/***** (FFI) Schedule: cache read/write *****/
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheRead")
-    .set_body_typed([](Schedule self, StmtSRef block_sref, int i, String storage_scope) {
-      return self->CacheRead(block_sref, i, storage_scope);
-    });
-
+    .set_body_method<Schedule>(&ScheduleNode::CacheRead);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCacheWrite")
-    .set_body_typed([](Schedule self, StmtSRef block_sref, int i, String storage_scope) {
-      return self->CacheWrite(block_sref, i, storage_scope);
-    });
+    .set_body_method<Schedule>(&ScheduleNode::CacheWrite);
 
-/***** Schedule: reduction *****/
+/***** (FFI) Schedule: reduction *****/
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleRFactor")
-    .set_body_typed([](Schedule self, StmtSRef loop_sref, int factor_axis) {
-      return self->RFactor(loop_sref, factor_axis);
-    });
-
+    .set_body_method<Schedule>(&ScheduleNode::RFactor);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleDecomposeReduction")
-    .set_body_typed([](Schedule self, StmtSRef block_sref, Optional<StmtSRef> loop_sref) {
-      return self->DecomposeReduction(block_sref, loop_sref);
-    });
-
+    .set_body_method<Schedule>(&ScheduleNode::DecomposeReduction);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleMergeReduction")
-    .set_body_typed([](Schedule self, StmtSRef init_sref, StmtSRef update_sref) {
-      return self->MergeReduction(init_sref, update_sref);
-    });
+    .set_body_method<Schedule>(&ScheduleNode::MergeReduction);
 
-/***** Schedule: blockize / tensorize *****/
+/***** (FFI) Schedule: blockize / tensorize *****/
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleBlockize")
-    .set_body_typed([](Schedule self, StmtSRef loop_sref, String exec_scope) {
-      return self->Blockize(loop_sref, exec_scope);
-    });
-
+    .set_body_method<Schedule>(&ScheduleNode::Blockize);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleTensorize")
-    .set_body_typed([](Schedule self, StmtSRef loop_sref, TensorIntrin intrinsic) {
-      self->Tensorize(loop_sref, intrinsic);
+    .set_body_typed([](Schedule self, LoopRV loop_rv, ObjectRef intrin) {
+      if (const auto* str = intrin.as<runtime::StringObj>()) {
+        return self->Tensorize(loop_rv, GetRef<String>(str));
+      }
+      if (const auto* p_intrin = intrin.as<TensorIntrinNode>()) {
+        return self->Tensorize(loop_rv, GetRef<TensorIntrin>(p_intrin));
+      }
+      LOG(FATAL) << "TypeError: Cannot handle type: " << intrin->GetTypeKey();
+      throw;
     });
 
 }  // namespace tir

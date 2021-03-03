@@ -29,7 +29,7 @@ def test_integration_matmul():
     workload = te_workload.matmul_fp16(n=512, m=512, k=512)
     workload = te.create_func(workload)
 
-    def schedule(sch):
+    def schedule(sch: ms.Schedule):
         block = sch.get_block("C")
         i, j, k = sch.get_axes(block)
         # Step 1. Rule-Auto-Tensorize
@@ -38,42 +38,38 @@ def test_integration_matmul():
         j, j_tc = sch.split(j, factors=[None, 16])
         k, k_tc = sch.split(k, factors=[None, 16])
         sch.reorder(
-            after_axes=[
-                # fmt: off
-                i, j, k,
-                # tensor core
-                i_tc, j_tc, k_tc,
-                # fmt: on
-            ]
+            # fmt: off
+            i, j, k,
+            # tensor core
+            i_tc, j_tc, k_tc,
+            # fmt: on
         )
         block_inner = sch.blockize(i_tc)
         block_outer, block_inner = block_inner, block
         del block
         # Step 2. Rule-Multi-Level-Tiling
-        i0, i1, i2, i3, i4 = sch.split(i, sch.sample_perfect_tile(5, i))
-        j0, j1, j2, j3, j4 = sch.split(j, sch.sample_perfect_tile(5, j))
-        k0, k1, k2 = sch.split(k, sch.sample_perfect_tile(3, k))
+        i0, i1, i2, i3, i4 = sch.split(i, factors=sch.sample_perfect_tile(i, n=5))
+        j0, j1, j2, j3, j4 = sch.split(j, factors=sch.sample_perfect_tile(j, n=5))
+        k0, k1, k2 = sch.split(k, factors=sch.sample_perfect_tile(k, n=3))
         # pylint: enable=invalid-name
         sch.reorder(
-            after_axes=[
-                # fmt: off
-                i0, j0,   # S => blockIdx.x
-                i1, j1,   # S => vthread
-                i2, j2,   # S => threadIdx.x
-                # cache_write here
-                k0,       # R
-                # vectorized cooperative fetching here
-                k1,       # R
-                i3, j3,   # S
-                k2,       # R
-                i4, j4,
-                # S
-                # fmt: on
-            ]
+            # fmt: off
+            i0, j0,   # S => blockIdx.x
+            i1, j1,   # S => vthread
+            i2, j2,   # S => threadIdx.x
+            # cache_write here
+            k0,       # R
+            # vectorized cooperative fetching here
+            k1,       # R
+            i3, j3,   # S
+            k2,       # R
+            i4, j4,
+            # S
+            # fmt: on
         )
-        block_idx = sch.fuse([i0, j0])
-        vthread = sch.fuse([i1, j1])
-        thread_idx = sch.fuse([i2, j2])
+        block_idx = sch.fuse(i0, j0)
+        vthread = sch.fuse(i1, j1)
+        thread_idx = sch.fuse(i2, j2)
         sch.bind(block_idx, "blockIdx.x")
         sch.bind(vthread, "vthread")
         sch.bind(thread_idx, "threadIdx.x")
@@ -85,8 +81,8 @@ def test_integration_matmul():
         def fetch_to_shared(block, idx, ndim):
             block_read = sch.cache_read(block, idx, "shared")
             sch.compute_at(block_read, k0)
-            fused = sch.fuse(sch.get_axes(block_read)[-ndim:])
-            fused_0, fused_1 = sch.split(fused, [None, 4])
+            fused = sch.fuse(*sch.get_axes(block_read)[-ndim:])
+            fused_0, fused_1 = sch.split(fused, factors=[None, 4])
             sch.mark_loop(fused_0, "loop_type", "lazy_cooperative_fetch")
             sch.vectorize(fused_1)
 
@@ -122,7 +118,7 @@ def test_integration_matmul():
 
     sch = ms.Schedule(func=workload, seed=1024)
     schedule(sch)
-    print(tvm.script.asscript(sch.sch.module))
+    print(tvm.script.asscript(sch.module))
 
 
 def test_integration_conv2d_nchwc():
@@ -146,7 +142,7 @@ def test_integration_conv2d_nchwc():
     assert list(workload.shape) == [1, 12, 96, 96, 16]
     workload = te.create_func(workload)
 
-    def schedule(sch):
+    def schedule(sch: ms.Schedule):
         block = sch.get_block("conv2d_nchwc")
         # pylint: disable=invalid-name
         n, c0, h, w, c1, rc, rh, rw = sch.get_axes(block)
@@ -155,52 +151,48 @@ def test_integration_conv2d_nchwc():
         rc, k_tc = sch.split(rc, factors=[6, 16])
         # pylint: enable=invalid-name
         sch.reorder(
-            after_axes=[
-                n,  # 1
-                c0,  # 12
-                h,  # 96
-                w,  # 6
-                c1,  # 1
-                rc,  # 6
-                rh,  # 3
-                rw,  # 3
-                # for tensor core
-                i_tc,
-                j_tc,
-                k_tc,
-            ]
+            n,  # 1
+            c0,  # 12
+            h,  # 96
+            w,  # 6
+            c1,  # 1
+            rc,  # 6
+            rh,  # 3
+            rw,  # 3
+            # for tensor core
+            i_tc,
+            j_tc,
+            k_tc,
         )
         # Multi-level tiling: `SSSRRSRS`
         # pylint: disable=invalid-name
-        c00, c01, c02, c03, c04 = sch.split(c0, sch.sample_perfect_tile(5, c0))
-        h0, h1, h2, h3, h4 = sch.split(h, sch.sample_perfect_tile(5, h))
-        w0, w1, w2, w3, w4 = sch.split(w, sch.sample_perfect_tile(5, w))
-        c10, c11, c12, c13, c14 = sch.split(c1, sch.sample_perfect_tile(5, c1))
-        rc0, rc1, rc2 = sch.split(rc, sch.sample_perfect_tile(3, rc))
-        rh0, rh1, rh2 = sch.split(rh, sch.sample_perfect_tile(3, rh))
-        rw0, rw1, rw2 = sch.split(rw, sch.sample_perfect_tile(3, rw))
+        c00, c01, c02, c03, c04 = sch.split(c0, factors=sch.sample_perfect_tile(c0, n=5))
+        h0, h1, h2, h3, h4 = sch.split(h, factors=sch.sample_perfect_tile(h, n=5))
+        w0, w1, w2, w3, w4 = sch.split(w, factors=sch.sample_perfect_tile(w, n=5))
+        c10, c11, c12, c13, c14 = sch.split(c1, factors=sch.sample_perfect_tile(c1, n=5))
+        rc0, rc1, rc2 = sch.split(rc, factors=sch.sample_perfect_tile(rc, n=3))
+        rh0, rh1, rh2 = sch.split(rh, factors=sch.sample_perfect_tile(rh, n=3))
+        rw0, rw1, rw2 = sch.split(rw, factors=sch.sample_perfect_tile(rw, n=3))
         # pylint: enable=invalid-name
         sch.reorder(
-            after_axes=[
-                # fmt: off
-                c00, h0, w0, c10,   # S => blockIdx.x
-                c01, h1, w1, c11,   # S => vthread
-                c02, h2, w2, c12,   # S => threadIdx.x
-                # cache_write here
-                rc0, rh0, rw0,      # R
-                # vectorized cooperative fetching here
-                rc1, rh1, rw1,      # R
-                c03, h3, w3, c13,   # S
-                rc2, rh2, rw2,      # R
-                c04, h4, w4, c14,   # S
-                # tensor core
-                i_tc, j_tc, k_tc,
-                # fmt: on
-            ]
+            # fmt: off
+            c00, h0, w0, c10,   # S => blockIdx.x
+            c01, h1, w1, c11,   # S => vthread
+            c02, h2, w2, c12,   # S => threadIdx.x
+            # cache_write here
+            rc0, rh0, rw0,      # R
+            # vectorized cooperative fetching here
+            rc1, rh1, rw1,      # R
+            c03, h3, w3, c13,   # S
+            rc2, rh2, rw2,      # R
+            c04, h4, w4, c14,   # S
+            # tensor core
+            i_tc, j_tc, k_tc,
+            # fmt: on
         )
-        block_idx = sch.fuse([c00, h0, w0, c10])
-        vthread = sch.fuse([c01, h1, w1, c11])
-        thread_idx = sch.fuse([c02, h2, w2, c12])
+        block_idx = sch.fuse(c00, h0, w0, c10)
+        vthread = sch.fuse(c01, h1, w1, c11)
+        thread_idx = sch.fuse(c02, h2, w2, c12)
         sch.bind(block_idx, "blockIdx.x")
         sch.bind(vthread, "vthread")
         sch.bind(thread_idx, "threadIdx.x")
@@ -211,21 +203,21 @@ def test_integration_conv2d_nchwc():
         # W: vectorized cooperative fetching
         w_read = sch.cache_read(block, 2, "shared")
         sch.compute_at(w_read, rw0)
-        fused = sch.fuse(sch.get_axes(w_read)[-6:])
-        fused_0, fused_1 = sch.split(fused, [None, 4])
+        fused = sch.fuse(*sch.get_axes(w_read)[-6:])
+        fused_0, fused_1 = sch.split(fused, factors=[None, 4])
         sch.mark_loop(fused_0, "loop_type", "lazy_cooperative_fetch")
         sch.vectorize(fused_1)
         # X: vectorized cooperative fetching
         x_read = sch.cache_read(block, 1, "shared")
         sch.compute_at(x_read, rw0)
-        fused = sch.fuse(sch.get_axes(x_read)[-5:])
-        fused_0, fused_1 = sch.split(fused, [None, 4])
+        fused = sch.fuse(*sch.get_axes(x_read)[-5:])
+        fused_0, fused_1 = sch.split(fused, factors=[None, 4])
         sch.mark_loop(fused_0, "loop_type", "lazy_cooperative_fetch")
         sch.vectorize(fused_1)
         # Decompose reduction
         sch.decompose_reduction(block, thread_idx)
         # sch.tensorize(i_tc, "test.tensorcore.wmma")
-        print(tvm.script.asscript(sch.sch.module))
+        print(tvm.script.asscript(sch.module))
 
     sch = ms.Schedule(func=workload)
     schedule(sch)

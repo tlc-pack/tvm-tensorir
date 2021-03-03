@@ -18,36 +18,8 @@
 from typing import List, Union
 
 from tvm._ffi import register_object
-from tvm.ir import PrimExpr as ExprRV  # pylint: disable=unused-import
 from tvm.runtime import Object
-
-from . import _ffi_api
-
-########## Random Variables ##########
-
-
-@register_object("meta_schedule.BlockRV")
-class BlockRV(Object):
-    """ A random variable that evaluates to a TIR block """
-
-
-@register_object("meta_schedule.LoopRV")
-class LoopRV(Object):
-    """ A random variable that evaluates to a TIR loop axis """
-
-    @staticmethod
-    def inline_rv() -> "LoopRV":
-        return _ffi_api.LoopRVComputeInlineRV()  # pylint: disable=no-member
-
-    @staticmethod
-    def root_rv() -> "LoopRV":
-        return _ffi_api.LoopRVComputeRootRV()  # pylint: disable=no-member
-
-
-@register_object("meta_schedule.BufferRV")
-class BufferRV(Object):
-    """ A random variable that evaluates to a TIR buffer """
-
+from tvm.tir.schedule import BlockRV, ExprRV, LoopRV
 
 RAND_VAR_TYPE = Union[ExprRV, BlockRV, LoopRV]  # pylint: disable=invalid-name
 
@@ -90,19 +62,6 @@ class SamplePerfectTileAttrs(InstAttrs):
     max_innermost_factor: int
 
 
-@register_object("meta_schedule.attrs.SampleTileFactorAttrs")
-class SampleTileFactorAttrs(InstAttrs):
-    """Attrs of the instruction to sample tiling factors"""
-
-    n_splits: int
-    where: List[int]
-
-
-@register_object("meta_schedule.attrs.SampleIntAttrs")
-class SampleIntAttrs(InstAttrs):
-    """Attrs of the instruction to sample an integer in [min_inclusive, max_exclusive)"""
-
-
 @register_object("meta_schedule.attrs.SampleCategoricalAttrs")
 class SampleCategoricalAttrs(InstAttrs):
     """Attrs of the instruction to sample from a categorical distribution"""
@@ -139,26 +98,6 @@ class GetBlockAttrs(InstAttrs):
 @register_object("meta_schedule.attrs.GetAxesAttrs")
 class GetAxesAttrs(InstAttrs):
     """Attrs of the instruction that gets loop axes on top of a specifc block"""
-
-
-@register_object("meta_schedule.attrs.GetReadBuffersAttrs")
-class GetReadBuffersAttrs(InstAttrs):
-    """Attrs of the instruction that gets the buffers the block reads"""
-
-
-@register_object("meta_schedule.attrs.GetWriteBuffersAttrs")
-class GetWriteBuffersAttrs(InstAttrs):
-    """Attrs of the instruction that gets the buffers the block writes"""
-
-
-@register_object("meta_schedule.attrs.GetRootBlocksAttrs")
-class GetRootBlocksAttrs(InstAttrs):
-    """Attrs of the instruction to get all the subroot blocks"""
-
-
-@register_object("meta_schedule.attrs.GetLeafBlocksAttrs")
-class GetLeafBlocksAttrs(InstAttrs):
-    """Attrs of the instruction to get all the leaf blocks"""
 
 
 ########## Scheduling Primitives ##########

@@ -17,7 +17,7 @@
  * under the License.
  */
 #include "../analysis.h"
-#include "../schedule_common.h"
+#include "../utils.h"
 #include "./primitives.h"
 
 namespace tvm {
@@ -126,7 +126,8 @@ void ParallelCompute(ScheduleState self, const StmtSRef& loop_sref, const ForKin
   //   1. All the blocks are complete below
   //   2. A single block below the loop
   const BlockScope& scope = self->scopes.at(GetScopeSRef(loop_sref));
-  bool is_compact_dataflow = scope->IsCompactDataFlow(loop_sref, GetChildBlocks(self, loop_sref));
+  bool is_compact_dataflow =
+      scope->IsCompactDataFlow(loop_sref, GetChildBlocks(self, loop_sref, false));
   if (!is_compact_dataflow) {
     Array<Stmt> single_child = GetChildren(GetRef<Stmt>(loop), true);
     // TODO(@junrushao1994): I am not super convinced by the checks here, revisit later

@@ -15,12 +15,12 @@
 # specific language governing permissions and limitations
 # under the License.
 """ Meta Schedule """
+from ..tir.schedule import RAND_VAR_TYPE, BlockRV, ExprRV, LoopRV, VarRV
 from . import analysis, feature, instruction, mutator
 from . import search_rule as rule
 from . import space, strategy
 from .auto_tune import autotune
 from .cost_model import RandCostModel
-from .instruction import BlockRV, BufferRV, LoopRV
 from .measure import (
     LocalBuilder,
     ProgramBuilder,
