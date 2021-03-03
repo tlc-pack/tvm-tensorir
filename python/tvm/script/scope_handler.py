@@ -16,18 +16,19 @@
 # under the License.
 """TVM Script Parser Scope Handler Classes"""
 # pylint: disable=redefined-builtin, unused-argument, invalid-name, relative-beyond-top-level
-import synr as synr
+from typing import Tuple, Any, Callable, Optional, List, Union, Mapping
+
+import synr
 from synr import ast
 import tvm.tir
 from tvm.runtime import Object
 from tvm.ir import Span, Range
 from tvm.tir import Stmt, PrimExpr, IterVar, Var
-from tvm.tir import Buffer, BufferLoad, BufferRegion
+from tvm.tir import Buffer, BufferRegion, BufferSlice
 
 from .context_maintainer import ContextMaintainer
 from .utils import get_param_list, from_synr_span
 from .registry import register
-from typing import Tuple, Any, Callable, Optional, List, Union, Mapping
 
 
 class ScopeHandler:
@@ -158,8 +159,19 @@ class Realize(WithScopeHandler):
     """ With scope handler tir.realize(buffer_bounds, scope, condition) """
 
     def __init__(self):
-        def realize(buffer_bounds, scope, condition=True, span=None):
-            buffer, bounds = buffer_bounds
+        def realize(
+            buffer_slice: BufferSlice, scope: str, condition: bool = True, span: bool = None
+        ):
+            assert self.context
+            buffer: Buffer = buffer_slice.buffer
+            bounds: List[Range] = []
+            for s in buffer_slice.slices:
+                min: Union[PrimExpr, int] = s.start
+                extent: Union[PrimExpr, int] = 1 if s.stop is None else s.stop - s.start
+                if isinstance(extent, PrimExpr):
+                    extent = self.context.analyzer.simplify(extent)
+                bounds.append(Range.from_min_extent(min, extent, span=s.span))
+
             scope = tvm.runtime.convert(scope, span=span)
             return tvm.tir.AttrStmt(
                 buffer,
@@ -222,10 +234,8 @@ class Block(WithScopeHandler):
             if len(axes) != len(self.block_vars):
                 self.context.report_error("Inconsistent number of block vars", self.node.span)
             block_iters: List[IterVar] = []
-            reads: List[BufferRegion] = []
-            writes: List[BufferRegion] = []
-            for i in range(len(axes)):
-                axis = tvm.runtime.convert(axes[i])
+            for i, axis in enumerate(axes):
+                axis = tvm.runtime.convert(axis)
                 if isinstance(axis, tvm.tir.PrimExpr):
                     block_var_dom = Range.from_min_extent(0, axis)
                     block_iters.append(IterVar(block_var_dom, self.block_vars[i], 0))
@@ -237,34 +247,12 @@ class Block(WithScopeHandler):
                     self.context.report_error("Invalid argument of tir.block()", self.node.span)
 
             # create block read/write regions
-
-            def create_buffer_region(
-                inputs: Union[BufferLoad, Tuple[Buffer, List[Union[Range, PrimExpr]]]]
-            ) -> BufferRegion:
-                region: List[Range] = []
-                if isinstance(inputs, tvm.tir.BufferLoad):
-                    buffer = inputs.buffer
-                    for index in inputs.indices:
-                        region.append(Range.from_min_extent(index, 1))
-                else:
-                    buffer, indices = inputs
-                    for index in indices:
-                        if isinstance(index, Range):
-                            region.append(index)
-                        else:
-                            region.append(Range.from_min_extent(index, 1))
-                return BufferRegion(buffer, region)
-
-            if block_info.reads is None:
-                reads = []
-            else:
-                reads = [create_buffer_region(read) for read in block_info.reads]
-
-            if block_info.writes is None:
-                writes = []
-            else:
-                writes = [create_buffer_region(write) for write in block_info.writes]
-
+            reads: List[BufferRegion] = [
+                BufferRegion.from_buffer_slice(read) for read in block_info.reads
+            ]
+            writes: List[BufferRegion] = [
+                BufferRegion.from_buffer_slice(write) for write in block_info.writes
+            ]
             inner = tvm.tir.Block(
                 block_iters,
                 reads,
@@ -375,7 +363,7 @@ class ForScopeHandler(ScopeHandler):
         span: synr.ast.Span,
     ):
         assert self.loop_vars
-        for loop_var in self.loop_vars:
+        for _ in self.loop_vars:
             context.loop_stack[-1].pop()
         return super().exit_scope(node, context, arg_list, span)
 
@@ -387,7 +375,35 @@ class ForScopeHandler(ScopeHandler):
         thread_binding: Optional[str] = None,
         annotations: Optional[Mapping[str, Object]] = None,
         span: Optional[Span] = None,
-    ):
+    ) -> tvm.tir.For:
+        """
+        Helper function for creating For in TVM Script parser.
+
+        Parameters
+        ----------
+        begin : PrimExpr
+            The beginning value.
+
+        end : PrimExpr
+            The endding value.
+
+        kind : ForKind
+            The type of the for.
+
+        thread_binding: Optional[str]
+            The thread this loop binds to.
+
+        annotations : Optional[Mapping[str, Object]]
+            Additional annotation hints.
+
+        span : Optional[Span]
+            The location of this for in the source code.
+
+        Returns
+        -------
+        for : For
+            The constructed For.
+        """
         assert self.node
         assert self.context
         assert self.loop_vars
@@ -510,7 +526,7 @@ class RangeHandler(ForScopeHandler):
     """
 
     def __init__(self):
-        def Range(
+        def for_range(
             begin: PrimExpr,
             end: PrimExpr,
             annotations: Optional[Mapping[str, Object]] = None,
@@ -518,7 +534,7 @@ class RangeHandler(ForScopeHandler):
         ):
             return self.create_loop(begin, end, 0, annotations=annotations, span=span)
 
-        super().__init__(Range)
+        super().__init__(for_range)
 
     def signature(self):
         return "range", get_param_list(self.func)

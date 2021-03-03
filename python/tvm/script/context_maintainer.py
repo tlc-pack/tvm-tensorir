@@ -16,11 +16,10 @@
 # under the License.
 """TVM Script Context Maintainer for TIR"""
 
-from typing import List, Mapping, Union, Optional, Dict, Callable, Tuple, Any
+from typing import List, Mapping, Union, Optional, Dict, Callable
 
 import tvm
-from tvm.ir import Range
-from tvm.tir import Var, Buffer, MatchBufferRegion, PrimExpr, Stmt, BufferRegion, BufferLoad
+from tvm.tir import Var, Buffer, PrimExpr, Stmt, MatchBufferRegion, BufferSlice
 from tvm.runtime import Object
 
 import synr
@@ -33,18 +32,8 @@ class BlockInfo:
         self.alloc_buffers: List[Buffer] = []
         self.match_buffers: List[MatchBufferRegion] = []
         self.binding = {}
-        """We need to handle following four types of BufferRegion representing:
-            - None: waiting for auto-complete to deduce the access region from block body 
-            - buffer[i, j]: will be parsed as BufferLoad
-            - buffer[i: i + extent, j: j + extent]: will be parsed as Tuple[Buffer, List[Range]]
-            - buffer[i, j: j + extent]: will be parsed as Tuple[Buffer, List[Union[Range, PrimExpr]]
-        """
-        self.reads: Optional[
-            List[Union[BufferLoad, Tuple[Buffer, List[Union[Range, PrimExpr]]]]]
-        ] = None
-        self.writes: Optional[
-            List[Union[BufferLoad, Tuple[Buffer, List[Union[Range, PrimExpr]]]]]
-        ] = None
+        self.reads: List[BufferSlice] = []
+        self.writes: List[BufferSlice] = []
         self.annotations: Mapping[str, Object] = {}
         self.predicate: PrimExpr = tvm.tir.const(True, "bool")
         self.init: Optional[Stmt] = None
@@ -108,7 +97,6 @@ class ContextMaintainer:
 
     def remove_symbol(self, name: str):
         """Remove a symbol"""
-        symbol: str
         for symbols in reversed(self.symbols):
             if name in symbols:
                 symbols.pop(name)

@@ -16,10 +16,11 @@
 # under the License.
 """TVM Script Parser Intrinsic Classes"""
 # pylint: disable=redefined-builtin, relative-beyond-top-level
+from typing import List, Any
+
 import tvm.tir
 from .registry import register
 from .utils import get_param_list, from_synr_span
-from typing import List, Any
 
 
 class Intrin:

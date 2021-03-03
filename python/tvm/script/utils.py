@@ -16,10 +16,11 @@
 # under the License.
 """Helper functions in TVM Script Parser"""
 
+from typing import Callable, List, Any, Optional, Tuple
+
 import inspect
 import synr
 from ..ir import Span, SourceName
-from typing import Callable, List, Any, Optional, Tuple
 
 
 def get_param_list(
@@ -66,17 +67,6 @@ def from_synr_span(span: synr.ast.Span) -> Span:
     """Convert a synr span to a TVM span"""
     return Span(
         SourceName(span.filename),
-        span.start_line,
-        span.end_line,
-        span.start_column,
-        span.end_column,
-    )
-
-
-def to_synr_span(span: Span) -> synr.ast.Span:
-    """Convert a TVM span to a TVM span"""
-    return synr.ast.Span(
-        span.filename,
         span.start_line,
         span.end_line,
         span.start_column,

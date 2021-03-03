@@ -17,6 +17,8 @@
 """TVM Script Parser Special Stmt Classes"""
 # pylint: disable=unused-argument, no-self-argument, inconsistent-return-statements
 # pylint: disable=relative-beyond-top-level
+from typing import Callable, List, Optional, Tuple, Any
+
 import synr
 from synr import ast
 
@@ -25,8 +27,6 @@ from tvm import te
 from .utils import get_param_list, from_synr_span
 from .registry import register
 from .context_maintainer import ContextMaintainer
-
-from typing import Callable, List, Optional, Tuple, Any, Union
 
 
 class SpecialStmt:
@@ -244,7 +244,9 @@ class BlockReads(SpecialStmt):
 
     def __init__(self):
         def reads(read_regions, span=None):
-            self.context.block_scope().reads = [read_regions] if not isinstance(read_regions, list) else read_regions
+            self.context.block_scope().reads = (
+                [read_regions] if not isinstance(read_regions, list) else read_regions
+            )
 
         super().__init__(reads, def_symbol=False)
 
@@ -340,39 +342,21 @@ class BlockMatchBufferRegion(SpecialStmt):
                 offset_factor.value if not isinstance(offset_factor, int) else offset_factor
             )
 
-            shape = []
-            if (
-                not isinstance(source, tuple)
-                or len(source) != 2
-                or not isinstance(source[0], tvm.tir.Buffer)
-            ):
+            if not isinstance(source, tvm.tir.BufferSlice):
                 self.context.report_error(
                     "match_buffer_region needs a buffer region as source",
                     span=self.node.span,
                 )
-            source_buffer, ranges = source
-            region = []
-            for index in ranges:
-                if isinstance(index, tvm.ir.Range):
-                    shape.append(index.extent)
-                    region.append(index)
-                elif isinstance(index, tvm.tir.PrimExpr):
-                    shape.append(1)
-                    region.append(tvm.ir.Range.from_min_extent(index, 1))
-                else:
-                    self.context.report_error(
-                        "error during handling source buffer region",
-                        span=self.node.span,
-                    )
-            buffer_region = tvm.tir.BufferRegion(source_buffer, region)
+            buffer_region = tvm.tir.BufferRegion.from_buffer_slice(source)
+            shape = [r.extent for r in buffer_region.region]
             buffer = tvm.tir.decl_buffer(
                 shape,
-                source_buffer.dtype,
+                buffer_region.buffer.dtype,
                 self.node.lhs.id.name,
                 data=None,
                 strides=strides,
                 elem_offset=elem_offset,
-                scope=source_buffer.scope,
+                scope=buffer_region.buffer.scope,
                 data_alignment=align,
                 offset_factor=offset_factor,
                 span=span,

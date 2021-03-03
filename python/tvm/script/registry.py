@@ -16,7 +16,6 @@
 # under the License.
 """TVM Script Parser Function Registry """
 # pylint: disable=inconsistent-return-statements, relative-beyond-top-level, import-outside-toplevel
-import inspect
 import types
 from typing import Union, Callable, Dict, Optional, Any
 

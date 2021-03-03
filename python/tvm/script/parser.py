@@ -511,7 +511,7 @@ class TVMScriptParser(Transformer):
             if len(indexes) != 1:
                 self.report_error(
                     f"Store is only allowed with one index, but {len(indexes)} were provided.",
-                    Span.union([x.span for x in indexes]),
+                    tvm.ir.Span.union([x.span for x in indexes]),
                 )
             # Store
             return tvm.tir.Store(
@@ -731,11 +731,7 @@ class TVMScriptParser(Transformer):
         end = self.transform(node.end)
         if not (isinstance(node.step, ast.Constant) and node.step.value == 1):
             self.report_error("Only step size 1 is supported for slices.", node.step.span)
-        extent = end - start
-        if isinstance(extent, tvm.tir.PrimExpr):
-            ana = tvm.arith.Analyzer()
-            extent = ana.simplify(extent)
-        return tvm.ir.Range.from_min_extent(start, extent, span=from_synr_span(node.span))
+        return tvm.tir.Slice(start, end)
 
     def transform_Subscript(self, node):
         """Array access visitor.
@@ -743,7 +739,7 @@ class TVMScriptParser(Transformer):
         By now only 2 types of Subscript are supported:
             1. Buffer[index, index, ...], Buffer element access(BufferLoad & BufferStore)
                Var[index] Buffer element access()
-            2. meta[type_key][index], Meta info access
+            2. Buffer[start: stop, start: stop, ...], Realize
         """
 
         symbol = self.transform(node.params[0])
@@ -751,19 +747,22 @@ class TVMScriptParser(Transformer):
             self.report_error(f"Variable {node.value.id} is not defined.", node.params[0].span)
 
         indexes = [self.transform(x) for x in node.params[1].values]
-        if isinstance(indexes[0], tvm.ir.Range):
-            return symbol, indexes
-
         if isinstance(symbol, tvm.tir.expr.Var):
+            for index in indexes:
+                if not isinstance(index, (tvm.tir.PrimExpr, int)):
+                    self.report_error(
+                        "Buffer load indexes expect int or PrimExpr, but get " + type(index),
+                        node.span,
+                    )
             return tvm.tir.Load("float32", symbol, indexes, True, span=from_synr_span(node.span))
-        if isinstance(symbol, tvm.tir.Buffer):
-            return tvm.tir.BufferLoad(symbol, indexes, span=from_synr_span(node.span))
-
-        self.report_error(
-            f"Cannot subscript from a {type(symbol).__name__}. Only variables and "
-            "buffers are supported.",
-            node.params[0].span,
-        )
+        elif isinstance(symbol, tvm.tir.Buffer):
+            return tvm.tir.BufferSlice(symbol, indexes, span=from_synr_span(node.span))
+        else:
+            self.report_error(
+                f"Cannot subscript from a {type(symbol).__name__}. Only variables and "
+                "buffers are supported.",
+                node.params[0].span,
+            )
 
     def transform_Attr(self, node):
         """Visitor for field access of the form `x.y`.

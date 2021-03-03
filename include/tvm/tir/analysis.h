@@ -35,6 +35,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace tvm {
@@ -152,7 +153,7 @@ TVM_DLL bool VerifyGPUCode(const PrimFunc& func, Map<String, PrimExpr> constrain
  */
 class BlockReadWriteDetector : public StmtExprVisitor {
  public:
-  explicit BlockReadWriteDetector() = default;
+  BlockReadWriteDetector() = default;
 
   /*! \brief Return read regions of the block */
   Array<BufferRegion> CollectReads();
