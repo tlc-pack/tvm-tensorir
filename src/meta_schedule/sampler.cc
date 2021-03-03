@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "./sampler.h"  // NOLINT(build/include)
+#include "./sampler.h"
 
 #include <random>
 
@@ -124,21 +124,21 @@ struct PrimeTable {
 };
 
 int Sampler::ForkSeed() {
-  uint32_t a = this->rand();
-  uint32_t b = this->rand();
-  uint32_t c = this->rand();
-  uint32_t d = this->rand();
+  uint32_t a = this->rand_();
+  uint32_t b = this->rand_();
+  uint32_t c = this->rand_();
+  uint32_t d = this->rand_();
   return (a ^ b) * (c ^ d) % 1145141;
 }
 
-void Sampler::Seed(int seed) { this->rand.seed(seed); }
+void Sampler::Seed(int seed) { this->rand_.seed(seed); }
 
 int Sampler::SampleInt(int min_inclusive, int max_exclusive) {
   if (min_inclusive + 1 == max_exclusive) {
     return min_inclusive;
   }
   std::uniform_int_distribution<> dist(min_inclusive, max_exclusive - 1);
-  return dist(rand);
+  return dist(rand_);
 }
 
 std::vector<int> Sampler::SampleInts(int n, int min_inclusive, int max_exclusive) {
@@ -146,7 +146,7 @@ std::vector<int> Sampler::SampleInts(int n, int min_inclusive, int max_exclusive
   std::vector<int> result;
   result.reserve(n);
   for (int i = 0; i < n; ++i) {
-    result.push_back(dist(rand));
+    result.push_back(dist(rand_));
   }
   return result;
 }
@@ -156,14 +156,14 @@ std::vector<double> Sampler::SampleUniform(int n, double min, double max) {
   std::vector<double> result;
   result.reserve(n);
   for (int i = 0; i < n; ++i) {
-    result.push_back(dist(rand));
+    result.push_back(dist(rand_));
   }
   return result;
 }
 
 bool Sampler::SampleBernoulli(double p) {
   std::bernoulli_distribution dist(p);
-  return dist(rand);
+  return dist(rand_);
 }
 
 std::function<int()> Sampler::MakeMultinomial(const std::vector<double>& weights) {
@@ -175,7 +175,7 @@ std::function<int()> Sampler::MakeMultinomial(const std::vector<double>& weights
   }
   std::uniform_real_distribution<double> dist(0.0, sum);
   auto sampler = [this, dist = std::move(dist), sums = std::move(sums)]() mutable -> int {
-    double p = dist(rand);
+    double p = dist(rand_);
     int idx = std::lower_bound(sums.begin(), sums.end(), p) - sums.begin();
     int n = sums.size();
     CHECK_LE(0, idx);
@@ -217,7 +217,7 @@ std::vector<int> Sampler::SampleTileFactor(int n, int extent, const std::vector<
   for (int trial = 0; trial < kMaxTrials; ++trial) {
     int64_t product = 1;
     for (int i = 1; i < n; ++i) {
-      int value = candidates[dist(rand)];
+      int value = candidates[dist(rand_)];
       product *= value;
       if (product > extent) {
         break;

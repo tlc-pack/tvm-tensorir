@@ -74,7 +74,7 @@ def _fix_sampling_tile_size(
         trace = ms.Trace(sch.trace.insts, new_decisions)
         new_sch = ms.Schedule(sch.orig_func)
         trace.apply(new_sch)
-        results = [tvm.ir.structural_equal(new_sch.sch.module, i) for i in expected]
+        results = [tvm.ir.structural_equal(new_sch.module, i) for i in expected]
         if sum(results) >= 1:
             return
     assert False
@@ -94,7 +94,7 @@ def _get_support(func: tir.PrimFunc, task_name: str):
 def _debug(support: List[ms.Schedule]):
     for i, sch in enumerate(support):
         print(f"###### {i}")
-        print(tvm.script.asscript(sch.sch.module))
+        print(tvm.script.asscript(sch.module))
         for inst in sch.trace.insts:
             if inst in sch.trace.decisions:
                 print(sch.trace.decisions[inst], ",")

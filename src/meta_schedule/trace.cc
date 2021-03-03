@@ -50,6 +50,16 @@ int IndexPostproc(const Array<Instruction>& insts) {
   return -1;
 }
 
+inline bool IsRV(const ObjectRef& obj) {
+  if (obj->IsInstance<IntImmNode>() || obj->IsInstance<FloatImmNode>()) {
+    return false;
+  }
+  return obj->IsInstance<BlockRVNode>() || obj->IsInstance<LoopRVNode>() ||
+         obj->IsInstance<tir::VarNode>();
+}
+
+inline bool IsRVExpr(const ObjectRef& obj) { return obj->IsInstance<PrimExprNode>(); }
+
 /**************** Mutation ****************/
 
 void TraceNode::Append(const Instruction& inst) { insts.push_back(inst); }
@@ -152,8 +162,6 @@ ObjectRef TraceNode::Serialize() const {
         rv_names.Set(output, "b" + std::to_string(i));
       } else if (output->IsInstance<LoopRVNode>()) {
         rv_names.Set(output, "l" + std::to_string(i));
-      } else if (output->IsInstance<BufferRVNode>()) {
-        rv_names.Set(output, "c" + std::to_string(i));
       } else if (output->IsInstance<tir::VarNode>()) {
         rv_names.Set(output, "v" + std::to_string(i));
       } else {
@@ -248,8 +256,6 @@ Array<String> TraceNode::AsPython() const {
         rv_names.Set(output, "b" + std::to_string(i));
       } else if (output->IsInstance<LoopRVNode>()) {
         rv_names.Set(output, "l" + std::to_string(i));
-      } else if (output->IsInstance<BufferRVNode>()) {
-        rv_names.Set(output, "c" + std::to_string(i));
       } else if (output->IsInstance<tir::VarNode>()) {
         rv_names.Set(output, "v" + std::to_string(i));
       } else {
@@ -357,61 +363,28 @@ Trace TraceNode::Simplified(bool remove_postproc) const {
 
 /**************** FFI ****************/
 
-struct Internal {
-  /*!
-   * \brief Constructor, which corresponds to Trace
-   * \sa Trace::Trace
-   */
-  static Trace New(Optional<Array<Instruction>> insts,
-                   Optional<Map<Instruction, ObjectRef>> decisions) {
-    return Trace(insts.value_or({}), decisions.value_or({}));
-  }
-  /*!
-   * \brief FFI function for TraceNode::Append
-   * \sa TraceNode::Append
-   */
-  static void Append(Trace self, Instruction inst, Optional<ObjectRef> decision) {
-    if (decision.defined()) {
-      self->Append(inst, decision.value());
-    } else {
-      self->Append(inst);
-    }
-  }
-  /*!
-   * \brief FFI function for TraceNode::Pop
-   * \sa TraceNode::Pop
-   */
-  static Optional<Instruction> Pop(Trace self) { return self->Pop(); }
-  /*!
-   * \brief FFI function for TraceNode::Apply
-   * \sa TraceNode::Apply
-   */
-  static void Apply(Trace self, Schedule sch) { self->Apply(sch); }
-  /*!
-   * \brief FFI function for TraceNode::Serialize
-   * \sa TraceNode::Serialize
-   */
-  static ObjectRef Serialize(Trace self) { return self->Serialize(); }
-  /*!
-   * \brief FFI function for TraceNode::Deserialize
-   * \sa TraceNode::Deserialize
-   */
-  static void Deserialize(ObjectRef json, Schedule sch) { TraceNode::Deserialize(json, sch); }
-  /*!
-   * \brief FFI function for TraceNode::AsPython
-   */
-  static Array<String> AsPython(Trace trace) { return trace->AsPython(); }
-};
-
 TVM_REGISTER_NODE_TYPE(TraceNode);
 
-TVM_REGISTER_GLOBAL("meta_schedule.Trace").set_body_typed(Internal::New);
-TVM_REGISTER_GLOBAL("meta_schedule.TraceAppend").set_body_typed(Internal::Append);
-TVM_REGISTER_GLOBAL("meta_schedule.TracePop").set_body_typed(Internal::Pop);
-TVM_REGISTER_GLOBAL("meta_schedule.TraceApply").set_body_typed(Internal::Apply);
-TVM_REGISTER_GLOBAL("meta_schedule.TraceSerialize").set_body_typed(Internal::Serialize);
-TVM_REGISTER_GLOBAL("meta_schedule.TraceDeserialize").set_body_typed(Internal::Deserialize);
-TVM_REGISTER_GLOBAL("meta_schedule.TraceAsPython").set_body_typed(Internal::AsPython);
+TVM_REGISTER_GLOBAL("meta_schedule.Trace")
+    .set_body_typed([](Optional<Array<Instruction>> insts,
+                       Optional<Map<Instruction, ObjectRef>> decisions) {
+      return Trace(insts.value_or({}), decisions.value_or({}));
+    });
+TVM_REGISTER_GLOBAL("meta_schedule.TraceAppend")
+    .set_body_typed([](Trace self, Instruction inst, Optional<ObjectRef> decision) {
+      if (decision.defined()) {
+        self->Append(inst, decision.value());
+      } else {
+        self->Append(inst);
+      }
+    });
+TVM_REGISTER_GLOBAL("meta_schedule.TracePop").set_body_method<Trace>(&TraceNode::Pop);
+TVM_REGISTER_GLOBAL("meta_schedule.TraceApply").set_body_typed([](Trace self, Schedule sch) {
+  self->Apply(sch);
+});
+TVM_REGISTER_GLOBAL("meta_schedule.TraceSerialize").set_body_method<Trace>(&TraceNode::Serialize);
+TVM_REGISTER_GLOBAL("meta_schedule.TraceDeserialize").set_body_typed(TraceNode::Deserialize);
+TVM_REGISTER_GLOBAL("meta_schedule.TraceAsPython").set_body_method<Trace>(&TraceNode::AsPython);
 
 }  // namespace meta_schedule
 }  // namespace tvm

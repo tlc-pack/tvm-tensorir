@@ -30,7 +30,7 @@
 #include <memory>
 
 #include "../../support/str_escape.h"
-#include "../schedule/schedule_common.h"
+#include "../schedule/utils.h"
 
 namespace tvm {
 namespace tir {

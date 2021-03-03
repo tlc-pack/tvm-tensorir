@@ -16,8 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#ifndef SRC_META_SCHEDULE_SAMPLER_H_
-#define SRC_META_SCHEDULE_SAMPLER_H_
+#ifndef TVM_META_SCHEDULE_SAMPLER_H_
+#define TVM_META_SCHEDULE_SAMPLER_H_
 
 #include <tvm/node/node.h>
 
@@ -107,14 +107,14 @@ class Sampler {
    * \brief Constructor. Construct a sampler seeded with the specific integer
    * \param seed The random seed
    */
-  explicit Sampler(int seed) : rand(seed) {}
+  explicit Sampler(int seed) : rand_(seed) {}
 
  private:
   /*! \brief The random number generator */
-  std::minstd_rand rand;
+  std::minstd_rand rand_;
 };
 
 }  // namespace meta_schedule
 }  // namespace tvm
 
-#endif  // SRC_META_SCHEDULE_SAMPLER_H_
+#endif  // TVM_TIR_SCHEDULE_SAMPLER_H_
