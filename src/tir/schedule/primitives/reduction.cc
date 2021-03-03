@@ -483,12 +483,12 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   rf_update.CopyOnWrite()->value =
       reducer.value().get()->operator()({BufferLoad(rf_buf, rf_indices)}, {rhs})[0];
   std::vector<BufferRegion> rf_reads, rf_writes;
-  auto rf_region = [&](const Array<BufferRegion>& regions, std::vector<BufferRegion>& rf_regions) {
+  auto f_rf_region = [&](const Array<BufferRegion>& regions, std::vector<BufferRegion>& rf_regions) {
     for (const BufferRegion& t_region : regions) {
       if (t_region->buffer.same_as(update->buffer)) {
         Region region = t_region->region;
         region.insert(region.begin() + factor_axis, Range::FromMinExtent(rf_block_var->var, 1));
-        rf_regions.emplace_back(rf_buf, region);
+        rf_regions.emplace_back(SubstituteBufferRegion(BufferRegion(rf_buf, region), var_map));
       } else {
         rf_regions.push_back(SubstituteBufferRegion(t_region, var_map));
       }
@@ -496,14 +496,15 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   };
   BlockRealize rf_block_realize = block_realize;
   Block rf_block = block;
-  rf_region(rf_block->reads, rf_reads);
-  rf_region(rf_block->writes, rf_writes);
-  rf_block.CopyOnWrite()->body = Substitute((Stmt)rf_update, var_map);
+  f_rf_region(rf_block->reads, rf_reads);
+  f_rf_region(rf_block->writes, rf_writes);
+  rf_block.CopyOnWrite()->body = Substitute(static_cast<Stmt>(rf_update), var_map);
   rf_block.CopyOnWrite()->iter_vars = rf_block_iters;
   rf_block.CopyOnWrite()->reads = rf_reads;
   rf_block.CopyOnWrite()->writes = rf_writes;
-  rf_block.CopyOnWrite()->init = BufferStore(rf_buf, init->value, rf_indices);
-  rf_block.CopyOnWrite()->name_hint = rf_block->name_hint + "_rf";
+  rf_block.CopyOnWrite()->init =
+      Substitute(static_cast<Stmt>(BufferStore(rf_buf, init->value, rf_indices)), var_map);
+  rf_block.CopyOnWrite()->name_hint = rf_block->name_hint + ".rf";
   rf_block_realize.CopyOnWrite()->block = rf_block;
   rf_block_realize.CopyOnWrite()->binding_values = rf_bindings;
   // Finish constructing the rfactor block.
