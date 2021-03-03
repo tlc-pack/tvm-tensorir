@@ -31,11 +31,15 @@
 #include <vector>
 
 #include "../arith/pattern_match.h"
+#include "../tir/schedule/utils.h"
 
 namespace tvm {
 namespace meta_schedule {
 
 /**************** Array Handling ****************/
+
+using tir::AsArray;
+using tir::AsVector;
 
 /*!
  * \brief Compute mean of a FloatImm array.
@@ -121,29 +125,6 @@ inline Optional<tir::Var> IsVarPlusMinusConst(const PrimExpr& expr) {
 }
 
 /**************** TIR Misc ****************/
-
-inline String Repr(const tir::PrimFunc& func) {
-  static const auto* f = runtime::Registry::Get("script.AsTVMScript");
-  ICHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
-  return (*f)(func, false).operator String();
-}
-
-inline PrimExpr GetLoopExtent(const tir::StmtSRef& loop_sref) {
-  const auto* loop = loop_sref->GetStmt<tir::ForNode>();
-  ICHECK(loop) << "TypeError: Expects LoopNode, but gets: " << loop_sref->stmt->GetTypeKey();
-  return loop->extent;
-}
-
-inline Optional<Integer> GetLoopIntExtent(const tir::ForNode* loop) {
-  const auto* int_extent = loop->extent.as<IntImmNode>();
-  return int_extent ? Integer(int_extent->value) : Optional<Integer>(NullOpt);
-}
-
-inline Optional<Integer> GetLoopIntExtent(const tir::StmtSRef& loop_sref) {
-  PrimExpr extent = GetLoopExtent(loop_sref);
-  const auto* int_extent = extent.as<IntImmNode>();
-  return int_extent ? Integer(int_extent->value) : Optional<Integer>(NullOpt);
-}
 
 /*!
  * \brief Compare two domains and check if they are equal
@@ -302,108 +283,6 @@ inline void AddAnn(const tir::ScheduleState& sch, const tir::StmtSRef& sref, con
   }
 }
 
-/**************** AsArray<TSrc, TDst> ****************/
-
-namespace details {
-template <class TSrc, class TDst>
-struct AsArrayImpl {};
-
-template <class TSrc>
-struct AsArrayImpl<TSrc, TSrc> {
-  inline Array<TSrc> operator()(const std::vector<TSrc>& vec) const {
-    return Array<TSrc>(vec.begin(), vec.end());
-  }
-};
-
-template <class TDstObjectRef>
-struct AsArrayImpl<int, TDstObjectRef> {
-  inline Array<TDstObjectRef> operator()(const std::vector<int>& vec) const {
-    Array<TDstObjectRef> result;
-    result.reserve(vec.size());
-    for (int x : vec) {
-      result.push_back(Integer(x));
-    }
-    return result;
-  }
-};
-
-template <class TDstObjectRef>
-struct AsArrayImpl<double, TDstObjectRef> {
-  inline Array<TDstObjectRef> operator()(const std::vector<double>& vec) const {
-    Array<TDstObjectRef> result;
-    result.reserve(vec.size());
-    for (double x : vec) {
-      result.push_back(FloatImm(tvm::DataType::Float(64), x));
-    }
-    return result;
-  }
-};
-}  // namespace details
-
-template <class TSrc, class TDst>
-inline Array<TDst> AsArray(const std::vector<TSrc>& vec) {
-  return details::AsArrayImpl<TSrc, TDst>()(vec);
-}
-
-/**************** AsVector<TSrc, TDst> ****************/
-
-namespace details {
-
-template <class TSrc, class TDst>
-struct AsVectorImpl {};
-
-template <class TSrc>
-struct AsVectorImpl<TSrc, TSrc> {
-  inline std::vector<TSrc> operator()(const Array<TSrc>& vec) const {
-    return std::vector<TSrc>(vec.begin(), vec.end());
-  }
-};
-
-template <class TSrcObjectRef>
-struct AsVectorImpl<TSrcObjectRef, int> {
-  inline std::vector<int> operator()(const Array<TSrcObjectRef>& vec) const {
-    std::vector<int> results;
-    for (const TSrcObjectRef& x : vec) {
-      const auto* n = x.template as<IntImmNode>();
-      ICHECK(n) << "TypeError: Expects IntImm, but gets: " << x->GetTypeKey();
-      results.push_back(n->value);
-    }
-    return results;
-  }
-};
-
-template <class TSrcObjectRef>
-struct AsVectorImpl<TSrcObjectRef, int64_t> {
-  inline std::vector<int64_t> operator()(const Array<TSrcObjectRef>& vec) const {
-    std::vector<int64_t> results;
-    for (const TSrcObjectRef& x : vec) {
-      const auto* n = x.template as<IntImmNode>();
-      ICHECK(n) << "TypeError: Expects IntImm, but gets: " << x->GetTypeKey();
-      results.push_back(n->value);
-    }
-    return results;
-  }
-};
-
-template <class TSrcObjectRef>
-struct AsVectorImpl<TSrcObjectRef, double> {
-  inline std::vector<double> operator()(const Array<TSrcObjectRef>& array) const {
-    std::vector<double> results;
-    for (const TSrcObjectRef& x : array) {
-      const auto* n = x.template as<FloatImmNode>();
-      ICHECK(n) << "TypeError: Expects FloatImm, but gets: " << x->GetTypeKey();
-      results.push_back(n->value);
-    }
-    return results;
-  }
-};
-}  // namespace details
-
-template <class TSrc, class TDst>
-inline std::vector<TDst> AsVector(const Array<TSrc>& vec) {
-  return details::AsVectorImpl<TSrc, TDst>()(vec);
-}
-
 /**************** I/O ****************/
 
 /*!
@@ -468,6 +347,20 @@ inline int GetTargetNumCores(const Target& target, std::atomic<int>* warned_num_
     }
   }
   return num_cores;
+}
+
+/**************** Module-related ****************/
+
+inline tir::PrimFunc GetOnlyFunc(const IRModule& mod) {
+  const Map<GlobalVar, BaseFunc>& funcs = mod->functions;
+  CHECK_EQ(funcs.size(), 1);
+  for (const auto& kv : funcs) {
+    const BaseFunc& base_func = kv.second;
+    if (const auto* prim_func = base_func.as<tir::PrimFuncNode>()) {
+      return GetRef<tir::PrimFunc>(prim_func);
+    }
+  }
+  throw;
 }
 
 }  // namespace meta_schedule

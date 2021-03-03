@@ -43,16 +43,6 @@ bool ValidateBlockBinding(const BlockRealize& realize, const Map<Var, Range>& lo
   return true;
 }
 
-StmtSRef GetScopeSRef(const StmtSRef& sref) {
-  for (const StmtSRefNode* p = sref->parent; p != nullptr; p = p->parent) {
-    if (p->stmt->IsInstance<BlockNode>()) {
-      return GetRef<StmtSRef>(p);
-    }
-  }
-  ICHECK(false) << "Cannot get a scope block of a root block";
-  throw;
-}
-
 void VerifyRegionCover(const ScheduleState& self, const StmtSRef& consumer_block_sref) {
   if (consumer_block_sref->parent == nullptr) {
     return;
@@ -253,6 +243,177 @@ void VerifySRefTree(const ScheduleState& self) {
     int n_block_sref_visited_;
   };
   SRefTreeVerifier::Verify(self.get());
+}
+
+StmtSRef GetScopeSRef(const StmtSRef& sref) {
+  for (const StmtSRefNode* p = sref->parent; p != nullptr; p = p->parent) {
+    if (p->stmt->IsInstance<BlockNode>()) {
+      return GetRef<StmtSRef>(p);
+    }
+  }
+  ICHECK(false) << "Cannot get a scope block of a root block";
+  throw;
+}
+
+Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name) {
+  Array<StmtSRef> result;
+  for (const auto& kv : self->scopes) {
+    const StmtSRef& block_sref = kv.first;
+    const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
+    if (block->name_hint == name) {
+      result.push_back(block_sref);
+    }
+  }
+  return result;
+}
+
+Array<StmtSRef> GetAxes(const ScheduleState& self, const StmtSRef& block_sref) {
+  std::vector<StmtSRef> result;
+  for (StmtSRefNode* parent = block_sref->parent; parent && parent->stmt->IsInstance<ForNode>();
+       parent = parent->parent) {
+    result.push_back(GetRef<StmtSRef>(parent));
+  }
+  return {result.rbegin(), result.rend()};
+}
+
+Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent_sref,
+                               bool inclusive) {
+  struct Collector : public StmtVisitor {
+   private:
+    void VisitStmt_(const BlockNode* block) final { result.push_back(self->stmt2ref.at(block)); }
+
+   public:
+    explicit Collector(const ScheduleState& self) : self(self) {}
+
+    const ScheduleState& self;
+    Array<StmtSRef> result;
+  };
+  Collector collector(self);
+  if (inclusive) {
+    collector(GetRef<Stmt>(parent_sref->stmt));
+  } else if (parent_sref->stmt->IsInstance<ForNode>()) {
+    const auto* loop = static_cast<const ForNode*>(parent_sref->stmt);
+    collector(loop->body);
+  } else if (parent_sref->stmt->IsInstance<BlockNode>()) {
+    const auto* block = static_cast<const BlockNode*>(parent_sref->stmt);
+    collector(block->body);
+  }
+  return std::move(collector.result);
+}
+
+Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sref) {
+  Array<DepEdge> pred_edges = self->scopes
+                                  .at(GetScopeSRef(block_sref))  //
+                                  ->GetPredecessors(block_sref);
+  Array<StmtSRef> results;
+  results.reserve(pred_edges.size());
+  for (const DepEdge edge : pred_edges) {
+    if (edge->type == DepType::kRAW || edge->type == DepType::kWAW) {
+      results.push_back(edge->dst);
+    }
+  }
+  return results;
+}
+
+Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sref) {
+  Array<DepEdge> succ_edges = self->scopes
+                                  .at(GetScopeSRef(block_sref))  //
+                                  ->GetSuccessors(block_sref);
+  Array<StmtSRef> results;
+  results.reserve(succ_edges.size());
+  for (const DepEdge edge : succ_edges) {
+    if (edge->type == DepType::kRAW || edge->type == DepType::kWAW) {
+      results.push_back(edge->dst);
+    }
+  }
+  return results;
+}
+
+bool HasSingleChild(const StmtSRef& loop_or_block_sref) {
+  const StmtNode* body = nullptr;
+  if (const auto* loop = loop_or_block_sref->GetStmt<ForNode>()) {
+    body = loop->body.get();
+  } else if (const auto* block = loop_or_block_sref->GetStmt<BlockNode>()) {
+    body = block->body.get();
+  } else {
+    LOG(FATAL) << "TypeError: Unable to recognize the type of `loop_or_block_sref`: "
+               << loop_or_block_sref->stmt->GetTypeKey();
+  }
+  if (body->IsInstance<SeqStmtNode>()) {
+    const auto* seq_stmt = static_cast<const SeqStmtNode*>(body);
+    return seq_stmt->seq.size() == 1;
+  }
+  return true;
+}
+
+IterVarType GetLoopIterType(const ScheduleState& self, const StmtSRef& loop_sref) {
+  int n_spatial = 0;
+  int n_reduce = 0;
+  int n_other = 0;
+  const auto* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+  const Var& loop_var = loop->loop_var;
+  auto f_visit = [&loop_var, &n_spatial, &n_reduce, &n_other](const ObjectRef& obj) -> bool {
+    if (const auto* realize = obj.as<BlockRealizeNode>()) {
+      const BlockNode* block = realize->block.get();
+      // Number of block vars and their bindings
+      ICHECK_EQ(realize->binding_values.size(), block->iter_vars.size());
+      int n = realize->binding_values.size();
+      for (int i = 0; i < n; ++i) {
+        const IterVar& iter_var = block->iter_vars[i];
+        const PrimExpr& binding = realize->binding_values[i];
+        // Categorize the current block var
+        int* ref = nullptr;
+        if (iter_var->iter_type == IterVarType::kDataPar) {
+          ref = &n_spatial;
+        } else if (iter_var->iter_type == IterVarType::kCommReduce) {
+          ref = &n_reduce;
+        } else {
+          ref = &n_other;
+        }
+        // Visit the binding to see if `loop_var` appears
+        PostOrderVisit(binding, [&ref, &loop_var](const ObjectRef& obj) -> void {
+          if (obj.same_as(loop_var)) {
+            (*ref) += 1;
+          }
+        });
+      }
+      return false;
+    }
+    return true;
+  };
+  PreOrderVisit(loop->body, f_visit);
+  if (n_other) {
+    return IterVarType::kOpaque;
+  } else if (n_spatial && n_reduce) {
+    return IterVarType::kOpaque;
+  } else if (n_reduce) {
+    return IterVarType::kCommReduce;
+  }
+  return IterVarType::kDataPar;
+}
+
+Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef& block_sref) {
+  Array<StmtSRef> loop_srefs = GetAxes(self, block_sref);
+  Array<StmtSRef> result;
+  result.reserve(loop_srefs.size());
+  bool visited_reduce = false;
+  for (const StmtSRef& loop_sref : loop_srefs) {
+    const auto* loop = TVM_SREF_TO_FOR(loop, loop_sref);
+    IterVarType iter_type = GetLoopIterType(self, loop_sref);
+    if (iter_type == IterVarType::kDataPar) {
+      if (visited_reduce) {
+        break;
+      }
+    } else {
+      visited_reduce = true;
+    }
+    result.push_back(loop_sref);
+    // If the loop has multiple children, then do not go into it anymore
+    if (!HasSingleChild(loop_sref)) {
+      break;
+    }
+  }
+  return result;
 }
 
 }  // namespace tir

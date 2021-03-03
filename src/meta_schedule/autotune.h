@@ -25,7 +25,6 @@
 #include "./database.h"
 #include "./measure.h"
 #include "./measure_callback.h"
-#include "./sampler.h"
 #include "./search.h"
 #include "./space/postproc.h"
 

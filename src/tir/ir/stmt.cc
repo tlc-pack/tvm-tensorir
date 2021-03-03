@@ -26,7 +26,7 @@
 #include <tvm/tir/op_attr_types.h>
 #include <tvm/tir/stmt.h>
 
-#include "../schedule/schedule_common.h"
+#include "../schedule/utils.h"
 
 namespace tvm {
 namespace tir {

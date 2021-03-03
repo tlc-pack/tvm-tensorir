@@ -21,33 +21,11 @@
 
 #include <tvm/tir/schedule/schedule.h>
 
+#include <vector>
+
 namespace tvm {
 namespace tir {
 namespace schedule {
-
-/******** Block/Loop relation ********/
-
-/*!
- * \brief Get block from its tag
- * \param tag The query tag
- * \return the block schedulable reference list
- */
-TVM_DLL Array<StmtSRef> GetBlock(const ScheduleState& self, const String& name);
-
-/*!
- * \brief Get loops of the block
- * \param block The query block
- * \return the loop sref list
- */
-TVM_DLL Array<StmtSRef> GetAxes(const ScheduleState& self, const StmtSRef& block_sref);
-
-/*!
- * \brief Get the child blocks of a specific parent block/loop
- * \param parent_sref The StmtSRef that points to the parent block/loop
- * \return A list of child blocks
- * TODO(@junrushao1994): figure out a better name
- */
-TVM_DLL Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent_sref);
 
 /******** Schedule: loops ********/
 

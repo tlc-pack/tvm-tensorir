@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "./schedule_common.h"
+#include "./utils.h"
 
 namespace tvm {
 namespace tir {
@@ -29,6 +29,16 @@ StmtSRef::StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index
   n->seq_index = seq_index;
   n->binding_valid = binding_valid;
   data_ = std::move(n);
+}
+
+StmtSRef StmtSRef::InlineMark() {
+  static StmtSRef result(nullptr, nullptr, -1, false);
+  return result;
+}
+
+StmtSRef StmtSRef::RootMark() {
+  static StmtSRef result(nullptr, nullptr, -1, false);
+  return result;
 }
 
 DepEdge::DepEdge(StmtSRef dst, DepType type) {
