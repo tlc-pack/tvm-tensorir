@@ -89,7 +89,7 @@ class WithScopeHandler(ScopeHandler):
 
 @register
 class Allocate(WithScopeHandler):
-    """ With scope handler tir.alloc_with_scope(var, extents, dtype, scope, condition) """
+    """ With scope handler tir.allocate(extents, dtype, scope, condition) """
 
     def __init__(self):
         def allocate(extents, dtype, scope, condition=True, span=None):
@@ -232,7 +232,11 @@ class Block(WithScopeHandler):
             if axes is None:
                 axes = []
             if len(axes) != len(self.block_vars):
-                self.context.report_error("Inconsistent number of block vars", self.node.span)
+                self.context.report_error(
+                    "Inconsistent number of block vars, "
+                    + f"gets {len(axes)} axes but {len(self.block_vars)} block vars.",
+                    self.node.span,
+                )
             block_iters: List[IterVar] = []
             for i, axis in enumerate(axes):
                 axis = tvm.runtime.convert(axis)
@@ -244,7 +248,11 @@ class Block(WithScopeHandler):
                 elif isinstance(axis, IterVar):
                     block_iters.append(IterVar(axis.dom, self.block_vars[i], axis.iter_type))
                 else:
-                    self.context.report_error("Invalid argument of tir.block()", self.node.span)
+                    self.context.report_error(
+                        "Invalid argument of tir.block(), "
+                        + f"expects PrimExpr, Range or IterVar, but gets {type(axis)}",
+                        self.node.span,
+                    )
 
             # create block read/write regions
             reads: List[BufferRegion] = [
@@ -408,7 +416,9 @@ class ForScopeHandler(ScopeHandler):
         assert self.context
         assert self.loop_vars
         if len(self.loop_vars) != 1:
-            self.context.report_error("Expect exact 1 loop var", self.node.span)
+            self.context.report_error(
+                f"Expect exact only one loop var, but get {self.loop_vars}", self.node.span
+            )
         extent = end if begin == 0 else self.context.analyzer.simplify(end - begin)
         annos: Mapping[str, Object]
         if annotations is None:

@@ -916,8 +916,7 @@ def from_source(src):
     ----------
     src : [str, function, class]
         Pruned source of original script
-    func_lineno : Optional[int]
-        The line number of the first line of the script to be parsed
+
     Returns
     -------
     functions : PrimFunc or IRModule

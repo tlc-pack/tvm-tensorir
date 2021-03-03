@@ -144,6 +144,83 @@ def test_no_body():
     check_error(no_body, 3)
 
 
+def allocate_with_buffers():
+    with tir.allocate([1], "float32", "") as [A, B]:  # error
+        tir.evaluate(1.0)
+
+
+def test_allocate_with_buffers():
+    check_error(allocate_with_buffers, 2)
+
+
+def inconsistent_binding():
+    with tir.block([128, 128], "init") as [vi]:  # error
+        tir.evaluate(1.0)
+
+
+def test_inconsistent_binding():
+    check_error(inconsistent_binding, 2)
+
+
+def invalid_block_axes(a: ty.handle):
+    A = tir.match_buffer(a, (16, 16), "float32")
+    with tir.block([A], "init") as [vi]:  # error
+        tir.evaluate(1.0)
+
+
+def test_invalid_block_axes():
+    check_error(invalid_block_axes, 3)
+
+
+def miss_block_bind():
+    with tir.block([16, 16], "init") as [vi, vj]:  # error
+        tir.bind(vi, 1)
+        tir.evaluate(1.0)
+
+
+def test_miss_block_bind():
+    check_error(miss_block_bind, 2)
+
+
+def invalid_loop_var():
+    for i, j in range(0, 16):  # error
+        tir.evaluate(1.0)
+
+
+def test_invalid_loop_var():
+    check_error(invalid_loop_var, 2)
+
+
+def inconsistent_grid():
+    for i in tir.grid(16, 16):  # error
+        tir.evaluate(1.0)
+
+
+def test_inconsistent_grid():
+    check_error(inconsistent_grid, 2)
+
+
+def invalid_match_buffer_region():
+    with tir.block([16, 16], "init") as [vi, vj]:
+        A = tir.match_buffer_region(vi)  # error
+        tir.evaluate(1.0)
+
+
+def test_invalid_match_buffer_region():
+    check_error(invalid_match_buffer_region, 3)
+
+
+def duplicate_buffer():
+    A = tir.alloc_buffer((128, 128), "float32")
+    with tir.block([16, 16], "init") as [vi, vj]:
+        A = tir.alloc_buffer((128, 128), "float32")  # error
+        tir.evaluate(1.0)
+
+
+def test_duplicate_buffer():
+    check_error(duplicate_buffer, 4)
+
+
 def check_error(module, rel_lineno):
     # Override the default renderer to accumulate errors
     _, start_line = inspect.getsourcelines(module)
@@ -180,3 +257,11 @@ if __name__ == "__main__":
     test_return_not_allowed()
     test_tir_assert()
     test_no_body()
+    test_allocate_with_buffers()
+    test_inconsistent_binding()
+    test_invalid_block_axes()
+    test_miss_block_bind()
+    test_invalid_loop_var()
+    test_inconsistent_grid()
+    test_invalid_match_buffer_region()
+    test_duplicate_buffer()
