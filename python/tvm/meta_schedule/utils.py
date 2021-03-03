@@ -432,7 +432,7 @@ def local_builder_worker(
         filename = os.path.join(tempfile.mkdtemp(), "tmp_func." + build_func.output_format)
         try:
             func = tvm_build(
-                measure_input.sch.sch.module,
+                measure_input.sch.module,
                 target=measure_input.task.target,
                 target_host=measure_input.task.target_host,
             )

@@ -19,7 +19,9 @@
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/stmt_functor.h>
 
+#include "../../tir/schedule/analysis.h"
 #include "../search.h"
+#include "../utils.h"
 #include "./postproc.h"
 #include "./search_rule.h"
 
@@ -117,20 +119,21 @@ class BlockCollector : public tir::StmtVisitor {
  public:
   /*! \brief Constructor */
   explicit BlockCollector(const tir::Schedule& sch) : sch_(sch) {
-    result_.reserve(sch->state->stmt2ref.size());
+    const auto* realize = GetOnlyFunc(sch->Module())->body.as<tir::BlockRealizeNode>();
+    root_block_ = realize->block.get();
   }
 
   /*! \brief Entry point */
   Array<tir::StmtSRef> Run() {
-    VisitStmt(sch_->state->func->body);
+    VisitStmt(GetOnlyFunc(sch_->Module())->body);
     Array<tir::StmtSRef> result = std::move(result_);
     return result;
   }
 
  private:
   void VisitStmt_(const tir::BlockNode* block) override {
-    if (block != sch_->state->root->stmt) {
-      result_.push_back(sch_->state->stmt2ref.at(block));
+    if (block != root_block_) {
+      result_.push_back(sch_->GetSRef(block));
     }
     this->VisitStmt(block->body);
   }
@@ -139,6 +142,8 @@ class BlockCollector : public tir::StmtVisitor {
   const tir::Schedule& sch_;
   /*! \brief Result of collection */
   Array<tir::StmtSRef> result_;
+  /*! \brief The */
+  const tir::BlockNode* root_block_;
 };
 
 Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* sampler) {
@@ -148,7 +153,7 @@ Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* 
     std::vector<ScheduleAndUnvisitedBlocks> stack;
     stack.reserve(curr.size());
     for (const Schedule& sch : curr) {
-      stack.emplace_back(sch, BlockCollector(sch->sch).Run());
+      stack.emplace_back(sch, BlockCollector(sch).Run());
     }
     Array<Schedule> next;
     while (!stack.empty()) {
@@ -169,7 +174,7 @@ Array<Schedule> PostOrderApplyNode::GetSupport(const SearchTask& task, Sampler* 
         ICHECK(block) << "TypeError: Expects BlockNode, but gets: "
                       << block_sref->stmt->GetTypeKey();
         // TODO(@junrushao1994): replace this quick hack
-        if (!sch->sch->GetBlock(block->name_hint).empty()) {
+        if (!tir::GetBlocks(sch->state, block->name_hint).empty()) {
           // apply the rule to the block
           Array<Schedule> applied =
               rule->Apply(task, sch, /*block=*/sch->GetBlock(block->name_hint));

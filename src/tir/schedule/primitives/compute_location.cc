@@ -18,7 +18,7 @@
  */
 #include "../../../arith/pattern_match.h"
 #include "../analysis.h"
-#include "../schedule_common.h"
+#include "../utils.h"
 #include "./primitives.h"
 
 namespace tvm {
@@ -340,7 +340,7 @@ std::unordered_map<const VarNode*, Range> RelaxForExecScope(const StmtSRef& loop
 bool CheckCompactDataFlow(const ScheduleState& self, const BlockScope& scope,
                           const StmtSRef& block_sref) {
   StmtSRef subtree_sref = GetSubTreeOfParent(block_sref);
-  Array<StmtSRef> children = GetChildBlocks(self, subtree_sref);
+  Array<StmtSRef> children = GetChildBlocks(self, subtree_sref, true);
   return scope->IsCompactDataFlow(subtree_sref, children);
 }
 
@@ -579,7 +579,7 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
   CHECK(scope->IsComplete(block_sref) || scope->IsReduction(block_sref))
       << "ValueError: 'compute_at' expects 'block' to be a complete or reduction block";
   // Cond 2. Check all RAW successors are in the subtree rooted by loop_sref
-  CHECK(EachEdgePointsToABlock(edges_to_succ, GetChildBlocks(self, loop_sref),
+  CHECK(EachEdgePointsToABlock(edges_to_succ, GetChildBlocks(self, loop_sref, true),
                                /*raw_edge_only=*/true))
       << "ValueError: 'compute_at' does not apply to a block that some other "
       << "blocks outside the scope depends on";
@@ -602,7 +602,8 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
     int n_stmts = loop_body.size();
     for (insert_pos = n_stmts; insert_pos > 0; --insert_pos) {
       const StmtNode* stmt = loop_body[insert_pos - 1].get();
-      if (AnyEdgePointsToABlock(edges_to_pred, GetChildBlocks(self, self->stmt2ref.at(stmt)))) {
+      if (AnyEdgePointsToABlock(edges_to_pred,
+                                GetChildBlocks(self, self->stmt2ref.at(stmt), true))) {
         break;
       }
     }
@@ -610,7 +611,8 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
     int before_pos;
     for (before_pos = 0; before_pos < n_stmts; before_pos++) {
       const StmtNode* stmt = loop_body[before_pos].get();
-      if (AnyEdgePointsToABlock(edges_to_succ, GetChildBlocks(self, self->stmt2ref.at(stmt)))) {
+      if (AnyEdgePointsToABlock(edges_to_succ,
+                                GetChildBlocks(self, self->stmt2ref.at(stmt), true))) {
         break;
       }
     }
@@ -677,7 +679,7 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
   CHECK(scope->IsComplete(block_sref) || scope->IsReduction(block_sref))
       << "ValueError: 'reverse_compute_at' expects 'block' to be a complete or reduction block";
   // Cond 2. Check all RAW predecessors are in the subtree rooted by loop_sref
-  CHECK(EachEdgePointsToABlock(edges_to_pred, GetChildBlocks(self, loop_sref),
+  CHECK(EachEdgePointsToABlock(edges_to_pred, GetChildBlocks(self, loop_sref, true),
                                /*raw_edge_only=*/true))
       << "ValueError: 'reverse_compute_at' does not apply to a block that some other "
       << "blocks outside the scope depends on";
@@ -700,7 +702,8 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
     int n_stmts = loop_body.size();
     for (insert_pos = n_stmts; insert_pos > 0; --insert_pos) {
       const StmtNode* stmt = loop_body[insert_pos - 1].get();
-      if (AnyEdgePointsToABlock(edges_to_pred, GetChildBlocks(self, self->stmt2ref.at(stmt)))) {
+      if (AnyEdgePointsToABlock(edges_to_pred,
+                                GetChildBlocks(self, self->stmt2ref.at(stmt), true))) {
         break;
       }
     }
@@ -708,7 +711,8 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
     int before_pos;
     for (before_pos = 0; before_pos < n_stmts; before_pos++) {
       const StmtNode* stmt = loop_body[before_pos].get();
-      if (AnyEdgePointsToABlock(edges_to_succ, GetChildBlocks(self, self->stmt2ref.at(stmt)))) {
+      if (AnyEdgePointsToABlock(edges_to_succ,
+                                GetChildBlocks(self, self->stmt2ref.at(stmt), true))) {
         break;
       }
     }

@@ -69,6 +69,19 @@ class StmtSRef : public runtime::ObjectRef {
   explicit StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index,
                     bool binding_valid);
   StmtSRefNode* get() const { return static_cast<StmtSRefNode*>(data_.get()); }
+
+  /*!
+   * \return A special StmtSRef, which doesn't point to any stmt in the AST,
+   * only serving as a "mark" to hint compute-at to do the work of compute-inline
+   */
+  static StmtSRef InlineMark();
+
+  /*!
+   * \return A special StmtSRef, which doesn't point to any stmt in the AST,
+   * only serving as a "mark" to hint compute-at to do nothing
+   */
+  static StmtSRef RootMark();
+
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(StmtSRef, ObjectRef, StmtSRefNode);
 };
 

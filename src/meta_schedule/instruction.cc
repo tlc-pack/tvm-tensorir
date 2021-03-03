@@ -22,27 +22,16 @@
 #include <tvm/tir/stmt_functor.h>
 
 #include "./schedule.h"
+#include "./utils.h"
 
 namespace tvm {
 namespace meta_schedule {
 
+using BlockRV = tir::BlockRV;
+using LoopRV = tir::LoopRV;
+using ExprRV = tir::ExprRV;
+
 /**************** Constructors ****************/
-
-BlockRV::BlockRV() { data_ = make_object<BlockRVNode>(); }
-
-LoopRV::LoopRV() { data_ = make_object<LoopRVNode>(); }
-
-LoopRV LoopRV::ComputeInlineRV() {
-  static LoopRV loop_rv;
-  return loop_rv;
-}
-
-LoopRV LoopRV::ComputeRootRV() {
-  static LoopRV loop_rv;
-  return loop_rv;
-}
-
-BufferRV::BufferRV() { data_ = make_object<BufferRVNode>(); }
 
 Instruction::Instruction(Array<Optional<ObjectRef>> inputs, Array<ObjectRef> outputs,
                          InstAttrs inst_attrs) {
@@ -115,18 +104,12 @@ Array<ObjectRef> InstructionNode::Deserialize(const Array<ObjectRef>& record,
       String, std::function<InstAttrs(const Array<ObjectRef>&, Optional<ObjectRef>*)>>
       vtable = {
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SamplePerfectTileAttrs),
-          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleTileFactorAttrs),
-          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleIntAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleCategoricalAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(SampleComputeLocationAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetProducersAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetConsumersAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetBlockAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetAxesAttrs),
-          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetReadBuffersAttrs),
-          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetWriteBuffersAttrs),
-          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetRootBlocksAttrs),
-          TVM_META_SCHEDULE_INST_VTABLE_ENTRY(GetLeafBlocksAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(MarkLoopAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(MarkBlockAttrs),
           TVM_META_SCHEDULE_INST_VTABLE_ENTRY(FuseAttrs),
@@ -223,32 +206,14 @@ void InstructionNode::AsPython(std::ostream& os, const Map<ObjectRef, String>& r
 /**************** Make  ****************/
 /**************** (Make) Sampling  ****************/
 
-Instruction SamplePerfectTileAttrs::Make(int n_splits, const LoopRV& loop, int max_innermost_factor,
+Instruction SamplePerfectTileAttrs::Make(const LoopRV& loop, int n, int max_innermost_factor,
                                          const Array<tir::Var>& outputs) {
-  ObjectPtr<SamplePerfectTileAttrs> n = make_object<SamplePerfectTileAttrs>();
-  n->n_splits = n_splits;
-  n->max_innermost_factor = max_innermost_factor;
+  ObjectPtr<SamplePerfectTileAttrs> n_ = make_object<SamplePerfectTileAttrs>();
+  n_->n = n;
+  n_->max_innermost_factor = max_innermost_factor;
   return Instruction(/*inputs=*/{loop},
                      /*outputs=*/{outputs.begin(), outputs.end()},
-                     /*attrs=*/InstAttrs(std::move(n)));
-}
-
-Instruction SampleTileFactorAttrs::Make(int n_splits, const LoopRV& loop,
-                                        const Array<Integer>& where,
-                                        const Array<tir::Var>& outputs) {
-  ObjectPtr<SampleTileFactorAttrs> n = make_object<SampleTileFactorAttrs>();
-  n->n_splits = n_splits;
-  n->where = where;
-  return Instruction(/*inputs=*/{loop},
-                     /*outputs=*/{outputs.begin(), outputs.end()},
-                     /*attrs=*/InstAttrs(std::move(n)));
-}
-
-Instruction SampleIntAttrs::Make(const PrimExpr& min_inclusive, const PrimExpr& max_exclusive,
-                                 const tir::Var& output) {
-  return Instruction(/*inputs=*/{min_inclusive, max_exclusive},
-                     /*outputs=*/{output},
-                     /*attrs=*/InstAttrs(make_object<SampleIntAttrs>()));
+                     /*attrs=*/InstAttrs(std::move(n_)));
 }
 
 Instruction SampleCategoricalAttrs::Make(const Array<Integer>& candidates,
@@ -295,34 +260,6 @@ Instruction GetBlockAttrs::Make(const String& name, const BlockRV& output) {
 Instruction GetAxesAttrs::Make(const BlockRV& block, const Array<LoopRV>& outputs) {
   ObjectPtr<GetAxesAttrs> n = make_object<GetAxesAttrs>();
   return Instruction(/*inputs=*/{block},
-                     /*outputs=*/{outputs.begin(), outputs.end()},
-                     /*attrs=*/InstAttrs(std::move(n)));
-}
-
-Instruction GetReadBuffersAttrs::Make(const BlockRV& block, const Array<BufferRV>& outputs) {
-  ObjectPtr<GetReadBuffersAttrs> n = make_object<GetReadBuffersAttrs>();
-  return Instruction(/*inputs=*/{block},
-                     /*outputs=*/{outputs.begin(), outputs.end()},
-                     /*attrs=*/InstAttrs(std::move(n)));
-}
-
-Instruction GetWriteBuffersAttrs::Make(const BlockRV& block, const Array<BufferRV>& outputs) {
-  ObjectPtr<GetWriteBuffersAttrs> n = make_object<GetWriteBuffersAttrs>();
-  return Instruction(/*inputs=*/{block},
-                     /*outputs=*/{outputs.begin(), outputs.end()},
-                     /*attrs=*/InstAttrs(std::move(n)));
-}
-
-Instruction GetRootBlocksAttrs::Make(const Array<BlockRV>& outputs) {
-  ObjectPtr<GetRootBlocksAttrs> n = make_object<GetRootBlocksAttrs>();
-  return Instruction(/*inputs=*/{},
-                     /*outputs=*/{outputs.begin(), outputs.end()},
-                     /*attrs=*/InstAttrs(std::move(n)));
-}
-
-Instruction GetLeafBlocksAttrs::Make(const Array<BlockRV>& outputs) {
-  ObjectPtr<GetLeafBlocksAttrs> n = make_object<GetLeafBlocksAttrs>();
-  return Instruction(/*inputs=*/{},
                      /*outputs=*/{outputs.begin(), outputs.end()},
                      /*attrs=*/InstAttrs(std::move(n)));
 }
@@ -488,7 +425,7 @@ Instruction EnterPostProcAttrs::Make() {
 /**************** Apply  ****************/
 
 #define TVM_META_SCHEDULE_INST_CAST(CastType, VarName, Input)                    \
-  ICHECK(!Input.defined() || Input->IsInstance<CastType::ContainerType>())        \
+  ICHECK(!Input.defined() || Input->IsInstance<CastType::ContainerType>())       \
       << "TypeError: Cannot downcast to '" << CastType::ContainerType::_type_key \
       << "' from: " << Input->GetTypeKey();                                      \
   CastType VarName = Input.defined() ? Downcast<CastType>(Input) : CastType(nullptr);
@@ -509,29 +446,7 @@ Array<ObjectRef> SamplePerfectTileAttrs::Apply(const Schedule& sch,
   if (decision.defined()) {
     casted_decision = Downcast<Array<ObjectRef>>(decision.value());
   }
-  return AdaptOutputs(
-      sch->SamplePerfectTile(n_splits, loop, max_innermost_factor, casted_decision));
-}
-
-Array<ObjectRef> SampleTileFactorAttrs::Apply(const Schedule& sch,
-                                              const Array<Optional<ObjectRef>>& inputs,
-                                              const Optional<ObjectRef>& decision) const {
-  ICHECK_EQ(inputs.size(), 1);
-  TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
-  Optional<Array<ObjectRef>> casted_decision = NullOpt;
-  if (decision.defined()) {
-    casted_decision = Downcast<Array<ObjectRef>>(decision.value());
-  }
-  return AdaptOutputs(sch->SampleTileFactor(n_splits, loop, where, casted_decision));
-}
-
-Array<ObjectRef> SampleIntAttrs::Apply(const Schedule& sch,
-                                       const Array<Optional<ObjectRef>>& inputs,
-                                       const Optional<ObjectRef>& decision) const {
-  ICHECK_EQ(inputs.size(), 2);
-  TVM_META_SCHEDULE_INST_CAST(PrimExpr, min_inclusive, inputs[0]);
-  TVM_META_SCHEDULE_INST_CAST(PrimExpr, max_exclusive, inputs[1]);
-  return {sch->SampleInt(min_inclusive, max_exclusive, decision)};
+  return AdaptOutputs(sch->SamplePerfectTile(loop, n, max_innermost_factor, casted_decision));
 }
 
 Array<ObjectRef> SampleCategoricalAttrs::Apply(const Schedule& sch,
@@ -584,40 +499,6 @@ Array<ObjectRef> GetAxesAttrs::Apply(const Schedule& sch,  //
   ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   return AdaptOutputs(sch->GetAxes(block));
-}
-
-Array<ObjectRef> GetReadBuffersAttrs::Apply(const Schedule& sch,
-                                            const Array<Optional<ObjectRef>>& inputs,
-                                            const Optional<ObjectRef>& decision) const {
-  ICHECK(!decision.defined());
-  ICHECK_EQ(inputs.size(), 1);
-  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
-  return AdaptOutputs(sch->GetReadBuffers(block));
-}
-
-Array<ObjectRef> GetWriteBuffersAttrs::Apply(const Schedule& sch,
-                                             const Array<Optional<ObjectRef>>& inputs,
-                                             const Optional<ObjectRef>& decision) const {
-  ICHECK(!decision.defined());
-  ICHECK_EQ(inputs.size(), 1);
-  TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
-  return AdaptOutputs(sch->GetWriteBuffers(block));
-}
-
-Array<ObjectRef> GetRootBlocksAttrs::Apply(const Schedule& sch,
-                                           const Array<Optional<ObjectRef>>& inputs,
-                                           const Optional<ObjectRef>& decision) const {
-  ICHECK(!decision.defined());
-  ICHECK_EQ(inputs.size(), 0);
-  return AdaptOutputs(sch->GetRootBlocks());
-}
-
-Array<ObjectRef> GetLeafBlocksAttrs::Apply(const Schedule& sch,
-                                           const Array<Optional<ObjectRef>>& inputs,
-                                           const Optional<ObjectRef>& decision) const {
-  ICHECK(!decision.defined());
-  ICHECK_EQ(inputs.size(), 0);
-  return AdaptOutputs(sch->GetLeafBlocks());
 }
 
 /**************** (Apply) Scheduling Primitives  ****************/
@@ -688,7 +569,7 @@ Array<ObjectRef> ReorderAttrs::Apply(const Schedule& sch,  //
   ICHECK(!decision.defined());
   Array<LoopRV> after_axes;
   for (const ObjectRef& obj : inputs) {
-    if (const auto* loop = obj.as<LoopRVNode>()) {
+    if (const auto* loop = obj.as<tir::LoopRVNode>()) {
       after_axes.push_back(GetRef<LoopRV>(loop));
     } else {
       LOG(FATAL) << "TypeError: Expects LoopRV, but gets: " << obj->GetTypeKey();
@@ -705,7 +586,7 @@ Array<ObjectRef> ComputeAtAttrs::Apply(const Schedule& sch,
   ICHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[1]);
-  sch->ComputeAt(block, loop);
+  sch->ComputeAt(block, loop, true);
   return {};
 }
 
@@ -716,7 +597,7 @@ Array<ObjectRef> ReverseComputeAtAttrs::Apply(const Schedule& sch,
   ICHECK_EQ(inputs.size(), 2);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[1]);
-  sch->ReverseComputeAt(block, loop);
+  sch->ReverseComputeAt(block, loop, true);
   return {};
 }
 
@@ -928,34 +809,11 @@ void SamplePerfectTileAttrs::AsPython(std::ostream& os, const Array<String>& inp
                                       const Array<String>& outputs,
                                       const Optional<ObjectRef>& decision) const {
   PythonAPICall py("sample_perfect_tile");
-  py.AddArgAttr("n_splits", this->n_splits);
+  py.AddArgAttr("n", this->n);
   py.AddArgInput("loop", inputs[0]);
   py.AddArgAttr("max_innermost_factor", this->max_innermost_factor);
   py.AddDecision(decision);
   py.AddOutputs(outputs);
-  py.Print(os);
-}
-
-void SampleTileFactorAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
-                                     const Array<String>& outputs,
-                                     const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("sample_tile_factor");
-  py.AddArgAttr("n_splits", this->n_splits);
-  py.AddArgInput("loop", inputs[0]);
-  py.AddArgAttr("where", this->where);
-  py.AddDecision(decision);
-  py.AddOutputs(outputs);
-  py.Print(os);
-}
-
-void SampleIntAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
-                              const Array<String>& outputs,
-                              const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("sample_int");
-  py.AddArgInput("min_inclusive", inputs[0]);
-  py.AddArgInput("max_exclusive", inputs[1]);
-  py.AddDecision(decision);
-  py.AddOutput(outputs[0]);
   py.Print(os);
 }
 
@@ -1014,40 +872,6 @@ void GetAxesAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
                             const Optional<ObjectRef>& decision) const {
   PythonAPICall py("get_axes");
   py.AddArgInput("block", inputs[0]);
-  py.AddOutputs(outputs);
-  py.Print(os);
-}
-
-void GetReadBuffersAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
-                                   const Array<String>& outputs,
-                                   const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("get_read_buffers");
-  py.AddArgInput("block", inputs[0]);
-  py.AddOutputs(outputs);
-  py.Print(os);
-}
-
-void GetWriteBuffersAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
-                                    const Array<String>& outputs,
-                                    const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("get_write_buffers");
-  py.AddArgInput("block", inputs[0]);
-  py.AddOutputs(outputs);
-  py.Print(os);
-}
-
-void GetRootBlocksAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
-                                  const Array<String>& outputs,
-                                  const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("get_root_blocks");
-  py.AddOutputs(outputs);
-  py.Print(os);
-}
-
-void GetLeafBlocksAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
-                                  const Array<String>& outputs,
-                                  const Optional<ObjectRef>& decision) const {
-  PythonAPICall py("get_leaf_blocks");
   py.AddOutputs(outputs);
   py.Print(os);
 }
@@ -1233,24 +1057,8 @@ void EnterPostProcAttrs::AsPython(std::ostream& os, const Array<String>& inputs,
 
 void SamplePerfectTileAttrs::Serialize(Array<ObjectRef>* record,
                                        const Optional<ObjectRef>& decision) const {
-  record->push_back(Integer(n_splits));
+  record->push_back(Integer(n));
   record->push_back(Integer(max_innermost_factor));
-  if (decision.defined()) {
-    record->push_back(decision.value());
-  }
-}
-
-void SampleTileFactorAttrs::Serialize(Array<ObjectRef>* record,
-                                      const Optional<ObjectRef>& decision) const {
-  record->push_back(Integer(n_splits));
-  record->push_back(where);
-  if (decision.defined()) {
-    record->push_back(decision.value());
-  }
-}
-
-void SampleIntAttrs::Serialize(Array<ObjectRef>* record,
-                               const Optional<ObjectRef>& decision) const {
   if (decision.defined()) {
     record->push_back(decision.value());
   }
@@ -1329,31 +1137,12 @@ void BindAttrs::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& d
 InstAttrs SamplePerfectTileAttrs::Deserialize(const Array<ObjectRef>& record,
                                               Optional<ObjectRef>* decision) {
   ObjectPtr<SamplePerfectTileAttrs> n = make_object<SamplePerfectTileAttrs>();
-  n->n_splits = Downcast<Integer>(record[3]);
+  n->n = Downcast<Integer>(record[3]);
   n->max_innermost_factor = Downcast<Integer>(record[4]);
   if (record.size() > 5) {
     *decision = Downcast<Array<Integer>>(record[5]);
   }
   return InstAttrs(std::move(n));
-}
-
-InstAttrs SampleTileFactorAttrs::Deserialize(const Array<ObjectRef>& record,
-                                             Optional<ObjectRef>* decision) {
-  ObjectPtr<SampleTileFactorAttrs> n = make_object<SampleTileFactorAttrs>();
-  n->n_splits = Downcast<Integer>(record[3]);
-  n->where = Downcast<Array<Integer>>(record[4]);
-  if (record.size() > 5) {
-    *decision = Downcast<Array<Integer>>(record[5]);
-  }
-  return InstAttrs(std::move(n));
-}
-
-InstAttrs SampleIntAttrs::Deserialize(const Array<ObjectRef>& record,
-                                      Optional<ObjectRef>* decision) {
-  if (record.size() > 3) {
-    *decision = Downcast<Integer>(record[3]);
-  }
-  return InstAttrs(make_object<SampleIntAttrs>());
 }
 
 InstAttrs SampleCategoricalAttrs::Deserialize(const Array<ObjectRef>& record,
@@ -1441,7 +1230,7 @@ InstAttrs BindAttrs::Deserialize(const Array<ObjectRef>& record, Optional<Object
 
 #define TVM_META_SCHEDULE_INST_IO_EMPTY(AttrsType)                                                 \
   void AttrsType::Serialize(Array<ObjectRef>* record, const Optional<ObjectRef>& decision) const { \
-    ICHECK(!decision.defined());                                                                    \
+    ICHECK(!decision.defined());                                                                   \
   }                                                                                                \
   InstAttrs AttrsType::Deserialize(const Array<ObjectRef>& record,                                 \
                                    Optional<ObjectRef>* decision) {                                \
@@ -1451,10 +1240,6 @@ InstAttrs BindAttrs::Deserialize(const Array<ObjectRef>& record, Optional<Object
 TVM_META_SCHEDULE_INST_IO_EMPTY(GetProducersAttrs);
 TVM_META_SCHEDULE_INST_IO_EMPTY(GetConsumersAttrs);
 TVM_META_SCHEDULE_INST_IO_EMPTY(GetAxesAttrs);
-TVM_META_SCHEDULE_INST_IO_EMPTY(GetReadBuffersAttrs);
-TVM_META_SCHEDULE_INST_IO_EMPTY(GetWriteBuffersAttrs);
-TVM_META_SCHEDULE_INST_IO_EMPTY(GetRootBlocksAttrs);
-TVM_META_SCHEDULE_INST_IO_EMPTY(GetLeafBlocksAttrs);
 TVM_META_SCHEDULE_INST_IO_EMPTY(FuseAttrs);
 TVM_META_SCHEDULE_INST_IO_EMPTY(SplitAttrs);
 TVM_META_SCHEDULE_INST_IO_EMPTY(ReorderAttrs);
@@ -1472,24 +1257,15 @@ TVM_META_SCHEDULE_INST_IO_EMPTY(UnrollAttrs);
 
 /**************** FFI ****************/
 
-TVM_REGISTER_NODE_TYPE(BlockRVNode);
-TVM_REGISTER_NODE_TYPE(LoopRVNode);
-TVM_REGISTER_NODE_TYPE(BufferRVNode);
 TVM_REGISTER_OBJECT_TYPE(InstAttrsNode);
 TVM_REGISTER_NODE_TYPE(InstructionNode);
 TVM_REGISTER_NODE_TYPE(SamplePerfectTileAttrs);
-TVM_REGISTER_NODE_TYPE(SampleTileFactorAttrs);
-TVM_REGISTER_NODE_TYPE(SampleIntAttrs);
 TVM_REGISTER_NODE_TYPE(SampleCategoricalAttrs);
 TVM_REGISTER_NODE_TYPE(SampleComputeLocationAttrs);
 TVM_REGISTER_NODE_TYPE(GetProducersAttrs);
 TVM_REGISTER_NODE_TYPE(GetConsumersAttrs);
 TVM_REGISTER_NODE_TYPE(GetBlockAttrs);
 TVM_REGISTER_NODE_TYPE(GetAxesAttrs);
-TVM_REGISTER_NODE_TYPE(GetReadBuffersAttrs);
-TVM_REGISTER_NODE_TYPE(GetWriteBuffersAttrs);
-TVM_REGISTER_NODE_TYPE(GetRootBlocksAttrs);
-TVM_REGISTER_NODE_TYPE(GetLeafBlocksAttrs);
 TVM_REGISTER_NODE_TYPE(MarkLoopAttrs);
 TVM_REGISTER_NODE_TYPE(MarkBlockAttrs);
 TVM_REGISTER_NODE_TYPE(FuseAttrs);
@@ -1509,9 +1285,6 @@ TVM_REGISTER_NODE_TYPE(VectorizeAttrs);
 TVM_REGISTER_NODE_TYPE(UnrollAttrs);
 TVM_REGISTER_NODE_TYPE(BindAttrs);
 TVM_REGISTER_NODE_TYPE(EnterPostProcAttrs);
-
-TVM_REGISTER_GLOBAL("meta_schedule.LoopRVComputeInlineRV").set_body_typed(LoopRV::ComputeInlineRV);
-TVM_REGISTER_GLOBAL("meta_schedule.LoopRVComputeRootRV").set_body_typed(LoopRV::ComputeRootRV);
 
 }  // namespace meta_schedule
 }  // namespace tvm

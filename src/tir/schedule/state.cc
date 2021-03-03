@@ -17,7 +17,7 @@
  * under the License.
  */
 #include "./analysis.h"
-#include "./schedule_common.h"
+#include "./utils.h"
 
 namespace tvm {
 namespace tir {
@@ -733,6 +733,9 @@ TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefStmt")
       }
       return GetRef<Stmt>(sref->stmt);
     });
+
+TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefRootMark").set_body_typed(StmtSRef::RootMark);
+TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefInlineMark").set_body_typed(StmtSRef::InlineMark);
 
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetSRef")
     .set_body_typed([](ScheduleState self, Stmt stmt) -> Optional<StmtSRef> {
