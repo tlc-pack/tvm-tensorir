@@ -19,7 +19,8 @@
 #include "./search_rule.h"  // NOLINT(build/include)
 
 #include <tvm/auto_scheduler/search_policy.h>
-#include "../../tir/schedule/schedule_common.h"
+
+#include "../../tir/schedule/analysis.h"
 #include "../analysis.h"
 #include "../utils.h"
 
@@ -557,6 +558,9 @@ class RuleRandomComputeLocation {
  public:
   bool IsFreeBlock(const tir::Schedule sch, const tir::StmtSRef& block_sref) const {
     if (!IsSubrootBlock(sch->state, block_sref)) {
+      return false;
+    }
+    if (!sch->state->scopes.at(tir::GetScopeSRef(block_sref))->IsComplete(block_sref)) {
       return false;
     }
     Array<tir::StmtSRef> loop_srefs = sch->GetAxes(block_sref);
