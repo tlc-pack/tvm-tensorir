@@ -472,6 +472,20 @@ Postproc RewriteUnboundBlocks() {
 
 class PostprocRewriteReductionBlock {
  public:
+  /*!
+   * \brief Check if the block has at least one reduction block var
+   * \param block_sref The block to be checked
+   * \return A boolean indicating if it has at least one reduction block var
+   */
+  static bool HasReductionIterVar(const tir::BlockNode* block) {
+    for (const tir::IterVar& var : block->iter_vars) {
+      if (var->iter_type == tir::kCommReduce) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   static const tir::BlockNode* Find(const tir::Stmt& body) {
     const tir::BlockNode* res = nullptr;
     tir::PreOrderVisit(body, [&res](const ObjectRef& node) {
@@ -479,14 +493,15 @@ class PostprocRewriteReductionBlock {
         return false;
       }
       if (const auto* block = node.as<tir::BlockNode>()) {
-        if (block->init.defined()) {
+        // If a block doesn't have any reduction block var, there is no need to decompose reduction.
+        if (block->init.defined() && HasReductionIterVar(block)) {
           res = block;
           return false;
         }
       }
       return true;
     });
-    ICHECK(res == nullptr || res->init.defined());
+    ICHECK(res == nullptr || (res->init.defined() && HasReductionIterVar(res)));
     return res;
   }
 
