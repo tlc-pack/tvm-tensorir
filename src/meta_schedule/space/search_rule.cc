@@ -930,7 +930,7 @@ class RuleAddRfactor {
     const Array<LoopRV>& split_res = sch->Split(fused_reduce_loop, {NullOpt, Integer(1)});
     Array<Schedule> res;
     for (const LoopRV& split_loop : split_res) {
-      const Schedule& sch_tmp = sch;
+      Schedule sch_tmp = sch->Copy(sch->sampler.ForkSeed());
       const BlockRV& block_rf = sch_tmp->RFactor(split_loop, num_spatial_loops);
       Array<LoopRV> axes = sch_tmp->GetAxes(block_rf);
       CHECK_GT(static_cast<int>(axes.size()), num_spatial_loops);
