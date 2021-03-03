@@ -504,7 +504,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   rf_block.CopyOnWrite()->writes = rf_writes;
   rf_block.CopyOnWrite()->init =
       Substitute(static_cast<Stmt>(BufferStore(rf_buf, init->value, rf_indices)), var_map);
-  rf_block.CopyOnWrite()->name_hint = rf_block->name_hint + ".rf";
+  rf_block.CopyOnWrite()->name_hint = rf_block->name_hint + "_rf";
   rf_block_realize.CopyOnWrite()->block = rf_block;
   rf_block_realize.CopyOnWrite()->binding_values = rf_bindings;
   // Finish constructing the rfactor block.
