@@ -930,6 +930,9 @@ struct AvgPool3DAttrs : public tvm::AttrsNode<AvgPool3DAttrs> {
 struct DenseAttrs : public tvm::AttrsNode<DenseAttrs> {
   IndexExpr units;
   tvm::String auto_scheduler_rewritten_layout;  // The layout after auto-scheduler's layout rewrite
+  Array<Integer> meta_schedule_layout_rewrite_extents;
+  Array<Integer> meta_schedule_layout_rewrite_reorder;
+  Array<PrimExpr> meta_schedule_original_shape;
   DataType out_dtype;
 
   TVM_DECLARE_ATTRS(DenseAttrs, "relay.attrs.DenseAttrs") {

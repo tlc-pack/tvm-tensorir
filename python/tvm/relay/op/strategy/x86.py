@@ -21,6 +21,7 @@ import logging
 import re
 from tvm import topi
 from tvm.auto_scheduler import is_auto_scheduler_enabled
+from tvm.meta_schedule import is_meta_schedule_enabled
 from tvm.te import SpecializedCondition
 from tvm.relay.ty import is_dynamic
 from .generic import *
@@ -412,8 +413,8 @@ def dense_strategy_cpu(attrs, inputs, out_type, target):
     strategy.add_tir_implementation(
         wrap_compute_dense(topi.x86.dense_nopack),
         wrap_topi_schedule(topi.generic.default_tir_schedule),
-        name="dense.generic",
-        plevel=10,
+        name="dense_nopack.x86",
+        plevel=5,
     )
 
     if is_auto_scheduler_enabled():
@@ -424,6 +425,13 @@ def dense_strategy_cpu(attrs, inputs, out_type, target):
             plevel=11,
         )
 
+    if is_meta_schedule_enabled():
+        strategy.add_tir_implementation(
+            wrap_compute_dense(topi.nn.dense, need_meta_schedule_layout=True),
+            wrap_topi_schedule(topi.generic.default_tir_schedule),
+            name="dense.generic",
+            plevel=11,
+        )
     if "cblas" in target.libs:
         with SpecializedCondition(same_type and dtype in ["float32", "float64"]):
             strategy.add_implementation(

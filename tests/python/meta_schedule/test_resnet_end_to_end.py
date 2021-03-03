@@ -136,7 +136,8 @@ def test_end_to_end_resnet(log):
     data = np.random.uniform(-1, 1, size=input_shape).astype("float32")
 
     lib_std = relay.build_module.build(mod, TARGET, params=params)
-    with tvm.transform.PassContext(opt_level=3, config={"relay.with_tir_schedule": True}):
+    with tvm.transform.PassContext(opt_level=3, config={"relay.with_tir_schedule": True,
+                                                        "relay.backend.use_meta_schedule": True}):
         tir_func = relay.build_module.build_primfunc(mod, TARGET, params=params)
 
     tuned_result = {}
@@ -157,7 +158,7 @@ def test_end_to_end_resnet(log):
                 ),
                 space=SPACE,
                 strategy=ms.strategy.Evolutionary(
-                    total_measures=1024,
+                    total_measures=2048,
                     num_measures_per_iter=64,
                     population=2048,
                     init_measured_ratio=0.2,

@@ -224,10 +224,6 @@ def schedule_bitpack(attrs, outs, target):
         return topi.generic.schedule_bitpack(outs)
 
 
-get_meta_schedule_rewritten_layout = _ffi.get_global_func(
-    "relay.attrs.get_meta_schedule_rewritten_layout"
-)
-
 
 get_auto_scheduler_rewritten_layout = _ffi.get_global_func(
     "relay.attrs.get_auto_scheduler_rewritten_layout"
@@ -255,7 +251,6 @@ def wrap_compute_conv2d(
         out_layout = attrs.get_str("out_layout")
         out_dtype = attrs.out_dtype
         out_dtype = inputs[0].dtype if out_dtype in ("same", "") else out_dtype
-        meta_schedule_rewritten_layout = get_meta_schedule_rewritten_layout(attrs)
         meta_schedule_original_layout = get_meta_schedule_original_layout(attrs)
         args = [inputs[0], inputs[1], strides, padding, dilation]
         if has_groups:
@@ -752,7 +747,7 @@ def dilation2d_strategy(attrs, inputs, out_type, target):
 
 
 # dense
-def wrap_compute_dense(topi_compute, need_auto_scheduler_layout=False):
+def wrap_compute_dense(topi_compute, need_auto_scheduler_layout=False, need_meta_schedule_layout=False):
     """wrap dense topi compute"""
 
     def _compute_dense(attrs, inputs, out_type):
@@ -762,6 +757,12 @@ def wrap_compute_dense(topi_compute, need_auto_scheduler_layout=False):
         args = [inputs[0], inputs[1], None, out_dtype]
         if need_auto_scheduler_layout:
             args.append(get_auto_scheduler_rewritten_layout(attrs))
+        elif need_meta_schedule_layout:
+            args.append("")
+
+        if need_meta_schedule_layout:
+            args.append(get_meta_schedule_original_layout(attrs))
+
         return [topi_compute(*args)]
 
     return _compute_dense

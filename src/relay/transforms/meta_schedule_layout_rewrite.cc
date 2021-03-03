@@ -68,7 +68,9 @@ class MetaScheduleFuncMutator : public ExprMutator {
     auto new_n = ExprMutator::VisitExpr_(n);
 
     const auto* call = new_n.as<CallNode>();
-
+    if (call && call->op.as<OpNode>() && n->op.as<OpNode>()->name == "nn.dense") {
+      LOG(INFO) << "have dense";
+    }
     if (call && call->op.as<OpNode>() &&
         (std::find(target_ops_.begin(), target_ops_.end(), n->op.as<OpNode>()->name) !=
          target_ops_.end()) &&
@@ -94,6 +96,8 @@ class MetaScheduleFuncMutator : public ExprMutator {
       Attrs updated_attrs;
       if (auto pattr = call->attrs.as<Conv2DAttrs>()) {
         updated_attrs = CopyAttrsWithNewLayout(pattr, extents, reorder, type->shape);
+      } else if (auto pattr = call->attrs.as<DenseAttrs>()) {
+        updated_attrs = CopyAttrsWithNewLayout(pattr, extents, reorder, type->shape);
       } else {
         LOG(FATAL) << "Unhandled attribute: " << call->attrs;
       }
@@ -105,7 +109,7 @@ class MetaScheduleFuncMutator : public ExprMutator {
  public:
   std::deque<meta_schedule::LayoutRewriteHint> layout_rewrite_queue_;
 
-  std::vector<std::string> target_ops_{"nn.conv2d"};
+  std::vector<std::string> target_ops_{"nn.conv2d", "nn.dense"};
 };
 
 Expr MetaSchedulerLayoutRewriter::VisitExpr_(const CallNode* n) {
@@ -149,24 +153,25 @@ Pass MetaSchedulerLayoutRewrite() {
 TVM_REGISTER_GLOBAL("relay._transform.MetaSchedulerLayoutRewrite")
     .set_body_typed(MetaSchedulerLayoutRewrite);
 
-TVM_REGISTER_GLOBAL("relay.attrs.get_meta_schedule_rewritten_layout")
-    .set_body_typed([](const Attrs& attrs) {
-      if (attrs->IsInstance<Conv2DAttrs>()) {
-        Array<Array<Integer>> ret;
-        ret.push_back(attrs.as<Conv2DAttrs>()->meta_schedule_layout_rewrite_extents);
-        ret.push_back(attrs.as<Conv2DAttrs>()->meta_schedule_layout_rewrite_reorder);
-
-        return ret;
-      } else {
-        LOG(FATAL) << "Unhandled attribute: " << attrs;
-      }
-      return Array<Array<Integer>>();
-    });
+// TVM_REGISTER_GLOBAL("relay.attrs.get_meta_schedule_rewritten_layout")
+//    .set_body_typed([](const Attrs& attrs) {
+//      if (attrs->IsInstance<Conv2DAttrs>()) {
+//        Array<Array<Integer>> ret;
+//        ret.push_back(attrs.as<Conv2DAttrs>()->meta_schedule_layout_rewrite_extents);
+//        ret.push_back(attrs.as<Conv2DAttrs>()->meta_schedule_layout_rewrite_reorder);
+//        return ret;
+//      } else {
+//        LOG(FATAL) << "Unhandled attribute: " << attrs;
+//      }
+//      return Array<Array<Integer>>();
+//    });
 
 TVM_REGISTER_GLOBAL("relay.attrs.get_meta_schedule_original_layout")
     .set_body_typed([](const Attrs& attrs) {
       if (attrs->IsInstance<Conv2DAttrs>()) {
         return attrs.as<Conv2DAttrs>()->meta_schedule_original_shape;
+      } else if (attrs->IsInstance<DenseAttrs>()) {
+        return attrs.as<DenseAttrs>()->meta_schedule_original_shape;
       } else {
         LOG(FATAL) << "Unhandled attribute: " << attrs;
       }

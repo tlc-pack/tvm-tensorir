@@ -27,6 +27,7 @@ from tvm import relay, te
 from tvm.contrib import graph_runtime as runtime
 
 
+
 # import logging
 # logging.basicConfig(level=logging.DEBUG)  # to dump TVM IR after fusion
 
@@ -76,6 +77,17 @@ def get_relay_conv2d(
     return mod, data, weight
 
 
+def get_relay_dense(m=128, n=128, k=128):
+    dtype = "float32"
+    d = relay.var("data", shape=(m, k), dtype=dtype)
+    w = relay.var("weight", shape=(n, k), dtype=dtype)
+    y = relay.nn.dense(d, w, units=n)
+    mod = tvm.IRModule()
+    mod["main"] = relay.Function([d, w], y)
+    data, weight = get_np_array(d, dtype), get_np_array(w, dtype)
+    return mod, data, weight
+
+
 RPC_KEY = "test"
 TARGET = tvm.target.Target("llvm")
 TARGET_HOST = tvm.target.Target("llvm")
@@ -109,15 +121,15 @@ SPACE = ms.space.PostOrderApply(
 
 
 @pytest.mark.skip(reason="needs RPC")
-def test_end_to_end_resnet(log):
+def tune_and_check(log, mod, data, weight):
     os.environ["TVM_TRACKER_KEY"] = RPC_KEY
-    mod, data, weight = get_relay_conv2d()
 
     ctx = tvm.context("llvm", 0)
 
     lib_std = relay.build_module.build(mod, TARGET, params={"weight": weight})
 
-    with tvm.transform.PassContext(config={"relay.with_tir_schedule": True}):
+    with tvm.transform.PassContext(opt_level=3, config={"relay.with_tir_schedule": True,
+                                                        "relay.backend.use_meta_schedule": True}):
         tir_func = relay.build_module.build_primfunc(mod, TARGET, params={"weight": weight})
 
     tuned_result = {}
@@ -180,5 +192,16 @@ def test_end_to_end_resnet(log):
     np.testing.assert_allclose(out, std, rtol=1e-4, atol=1e-4)
 
 
+def test_conv2d():
+    mod, data, weight = get_relay_conv2d()
+    tune_and_check("conv2d.json", mod, data, weight)
+
+
+def test_dense():
+    mod, data, weight = get_relay_dense()
+    tune_and_check("dense.json", mod, data, weight)
+
+
 if __name__ == "__main__":
-    test_end_to_end_resnet("layout_rewrite.json")
+    test_conv2d()
+    test_dense()
