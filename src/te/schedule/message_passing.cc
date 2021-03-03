@@ -554,7 +554,7 @@ bool IsRangeSame(const Range input_1, const Range input_2) {
 }
 
 // <bojian/TVM-SymbolicTuning>
-bool HasBlockIdx = false;
+static bool HasBlockIdx = false;
 
 class ContainsBlockIdx : public ExprVisitor {
  protected:
@@ -562,6 +562,16 @@ class ContainsBlockIdx : public ExprVisitor {
     if (op->name_hint == "blockIdx.x") {
       HasBlockIdx = true;
     }
+  }
+};
+
+class DyAxisMinReplacer : public ExprMutator {
+ protected:
+  PrimExpr VisitExpr_(const DyAxisNode* op) override {
+    LOG(INFO) << "Dynamic axis " << op->name_hint << " encountered. "
+              << "Replacing it with its minimum value "
+              << op->possible_values[0];
+    return op->possible_values[0];
   }
 };
 
@@ -604,6 +614,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
   // #if defined(SYMTUNE_SCHED_OPT_NO_DUP_IF_CHECKS)
   PrimExpr prev_predicate;
   ContainsBlockIdx BlockIdxChecker;
+  DyAxisMinReplacer dyaxis_min_replacer;
 
   for (const IterVar& iv : stage->all_iter_vars) {
     if (skip_iter.count(iv) || iv->iter_type == kOpaque) continue;
@@ -611,12 +622,13 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       Range dom = dom_map.at(iv);
       PrimExpr value = value_map.at(iv) - dom->min;
       PrimExpr vmax = analyzer.int_set(value, iset_dmap).max();
-      if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
+      if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dyaxis_min_replacer(dom->extent))) {
         if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
           if (prev_predicate.defined()) {
             LOG(WARNING) << "Predicate (" << value << "<" << dom->extent << ") "
                          << "is assumed to be a subset of "
-                         << "(" << prev_predicate << ")";
+                         << "(" << prev_predicate << ") in stage "
+                         << stage->origin_op->name;
             continue;
           }
         }
@@ -648,7 +660,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       if (vmin.dtype() != value.dtype() || !analyzer.CanProve(vmin >= 0)) {
         preds.emplace_back(value >= 0);
       }
-      if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < iv->dom->extent)) {
+      if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dyaxis_min_replacer(iv->dom->extent))) {
 
         // <bojian/TVM-SymbolicTuning>
         if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
@@ -659,8 +671,9 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
             HasBlockIdx = false;
             BlockIdxChecker(value);
             if (HasBlockIdx) {
-              LOG(WARNING) << "\'.local/shared\' spotted in " << stage << ". "
+              LOG(WARNING) << "\'.local/shared\' spotted in " << stage->origin_op->name << ". "
                               "Assuming it is a cache write whose boundary check "
+                              "(" << value << "<" << iv->dom->extent << ") "
                               "can be neglected.";
               continue;
             } else {
