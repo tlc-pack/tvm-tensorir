@@ -24,14 +24,18 @@
 #ifndef TVM_TIR_ANALYSIS_H_
 #define TVM_TIR_ANALYSIS_H_
 
+#include <tvm/arith/int_set.h>
 #include <tvm/ir/module.h>
 #include <tvm/ir/transform.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/op_attr_types.h>
 #include <tvm/tir/stmt.h>
+#include <tvm/tir/stmt_functor.h>
 
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace tvm {
 namespace tir {
@@ -140,6 +144,53 @@ TVM_DLL bool VerifyMemory(const PrimFunc& func);
  *
  */
 TVM_DLL bool VerifyGPUCode(const PrimFunc& func, Map<String, PrimExpr> constraints);
+
+/*!
+ * \brief Auto detect the block read write region
+ *        It will detect the read/write region as an array in order of appearance in AST
+ * \note This detector only accepts to visit a block and will not visit child blocks recursively
+ */
+class BlockReadWriteDetector : public StmtExprVisitor {
+ public:
+  explicit BlockReadWriteDetector() = default;
+
+  /*! \brief Return read regions of the block */
+  Array<BufferRegion> CollectReads();
+  /*! \brief Return write regions of the block */
+  Array<BufferRegion> CollectWrites();
+  /*! \brief overload operator() to make sure it accepts a block node */
+  void operator()(const Stmt &stmt);
+
+ private:
+  /*! \brief Iteration range for loop_vars */
+  std::unordered_map<const VarNode*, arith::IntSet> dom_map_;
+  /*! \brief The buffers that the current block reads */
+  std::vector<Buffer> read_buffers_;
+  /*! \brief The buffers that the current block writes */
+  std::vector<Buffer> writes_buffers_;
+  /*! \brief The read regions of the current block */
+  std::vector<std::vector<tvm::arith::IntSet>> read_regions_;
+  /*! \brief The write regions of the current block */
+  std::vector<std::vector<tvm::arith::IntSet>> write_regions_;
+  /*! \brief The buffer allocated inside the block, which will not been shown in the reads/writes */
+  std::unordered_set<const BufferNode*> inner_buffers_;
+
+  /*!
+   * \brief Update read/write buffers and regions with provided buffer and region
+   * \param buffers The buffers should be updated
+   * \param regions The access regions should be updated
+   * \param buffer The provided buffer
+   * \param region The provided region
+   */
+  void Update(std::vector<Buffer>* buffers, std::vector<std::vector<arith::IntSet>>* regions,
+              const Buffer& buffer, const std::vector<arith::IntSet>& region);
+
+  void VisitStmt_(const ForNode* op) override;
+  void VisitExpr_(const BufferLoadNode* op) override;
+  void VisitStmt_(const BufferStoreNode* op) override;
+  void VisitStmt_(const BlockRealizeNode* op) override;
+  void VisitStmt_(const BlockNode* op) override;
+};
 
 // Pass variants of verification analysis
 // directly throws RuntimeError when verification fails.

@@ -420,7 +420,7 @@ class TVMScriptParser(Transformer):
         # Fix the body
         # 1. generate root block if necessary
         # 2. generate surrounding loops for blocks if necessary
-        body = _ffi_api.AutoComplete(body, root_info.alloc_buffers)
+        body = _ffi_api.Complete(body, root_info.alloc_buffers)
 
         # return a tir.PrimFunc
         dict_attr = self.context.func_dict_attr
