@@ -17,7 +17,7 @@
  * under the License.
  */
 #include "../analysis.h"
-#include "../schedule_common.h"
+#include "../utils.h"
 #include "./primitives.h"
 
 namespace tvm {
@@ -62,7 +62,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
         << loop_sref->stmt->GetTypeKey();
     CHECK(block->init.defined()) << "ValueError: 'decompose_reduction' expect a reduction block, "
                                     "but the block has no init block";
-    Array<StmtSRef> loops = schedule::GetAxes(self, block_sref);
+    Array<StmtSRef> loops = GetAxes(self, block_sref);
     const BlockRealizeNode* realize = GetBlockRealize(block_sref).get();
     // Cond 0. Check loop_sref is an ancestor of block_sref
     CHECK(ListContainsElement(loops, loop_sref))
@@ -329,7 +329,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
               << loop_sref->stmt->GetTypeKey();
   CHECK(CheckOneLine(GetRef<Stmt>(loop_sref->stmt)))
       << "ValueError: Only one line subtree can be rfactor";
-  Array<StmtSRef> child_blocks = GetChildBlocks(self, loop_sref);
+  Array<StmtSRef> child_blocks = GetChildBlocks(self, loop_sref, false);
   CHECK_EQ(child_blocks.size(), 1) << "ValueError: Only one line subtree can be rfactor";
   StmtSRef block_sref = child_blocks[0];
   BlockRealize block_realize = GetBlockRealize(block_sref);

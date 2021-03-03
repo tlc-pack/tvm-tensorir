@@ -17,7 +17,7 @@
  * under the License.
  */
 #include "../analysis.h"
-#include "../schedule_common.h"
+#include "../utils.h"
 #include "./primitives.h"
 
 namespace tvm {

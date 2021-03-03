@@ -21,10 +21,10 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 from tvm._ffi import register_object as _register_object
 from tvm.ir import PrimExpr
-from tvm.runtime import Object
+from tvm.runtime import Object, String
 
 from . import _ffi_api_schedule
-from .expr import IntImm
+from .expr import IntImm, Var
 
 if TYPE_CHECKING:
     from tvm.tir import Block, For, IterVar, PrimFunc, Stmt, TensorIntrin
@@ -37,6 +37,14 @@ class StmtSRef(Object):
     @property
     def stmt(self) -> Optional[Union[Block, For]]:
         return _ffi_api_schedule.StmtSRefStmt(self)  # pylint: disable=no-member
+
+    @staticmethod
+    def root() -> StmtSRef:
+        return _ffi_api_schedule.StmtSRefRootMark()  # pylint: disable=no-member
+
+    @staticmethod
+    def inline() -> StmtSRef:
+        return _ffi_api_schedule.StmtSRefInlineMark()  # pylint: disable=no-member
 
 
 @_register_object("tir.DepEdge")
@@ -134,7 +142,11 @@ class BlockRV(Object):
     """A random variable that refers to a block"""
 
 
+VarRV = Var
+
 ExprRV = PrimExpr
+
+RAND_VAR_TYPE = Union[ExprRV, BlockRV, LoopRV]  # pylint: disable=invalid-name
 
 
 @_register_object("tir.Schedule")
@@ -142,15 +154,12 @@ class Schedule(Object):
     """The schedule node for TIR"""
 
     state: ScheduleState
-    symbol_table: Dict[
-        Union[LoopRV, BlockRV, ExprRV],
-        Union[int, StmtSRef],
-    ]
 
     def __init__(self, func: PrimFunc, debug_mode: bool = False):
         self.__init_handle_by_constructor__(
             _ffi_api_schedule.Schedule,  # pylint: disable=no-member
             func,
+            -1,  # seed
             debug_mode,
         )
 
@@ -158,23 +167,78 @@ class Schedule(Object):
     def module(self) -> PrimFunc:
         return self.state.func
 
-    def copy(self) -> Schedule:
-        raise NotImplementedError
-
     def show(self, rand_var: Union[LoopRV, BlockRV, ExprRV]) -> str:
         # TODO(@junrushao1994): complete it
         return str(self.get(rand_var))
 
-    def get(self, rand_var: Union[LoopRV, BlockRV, ExprRV]) -> Union[int, Block, For]:
+    ########## Utilities ##########
+
+    def copy(self) -> Schedule:
+        return _ffi_api_schedule.ScheduleCopy(self)  # pylint: disable=no-member
+
+    def seed(self, seed: int) -> Schedule:
+        return _ffi_api_schedule.ScheduleSeed(self, seed)  # pylint: disable=no-member
+
+    ########## Lookup ##########
+
+    def get(self, rand_var: Union[LoopRV, BlockRV, ExprRV]) -> Optional[Union[int, Block, For]]:
         if isinstance(rand_var, StmtSRef):
             return rand_var.stmt
-        return _ffi_api_schedule.ScheduleGet(self, rand_var)  # pylint: disable=no-member
+        result = _ffi_api_schedule.ScheduleGet(self, rand_var)  # pylint: disable=no-member
+        if isinstance(result, IntImm):
+            result = result.value
+        return result
+
+    def get_sref(self, rand_var_or_stmt: Union[BlockRV, LoopRV, Stmt]) -> Optional[StmtSRef]:
+        return _ffi_api_schedule.ScheduleGetSRef(  # pylint: disable=no-member
+            self, rand_var_or_stmt
+        )
+
+    ########## Sampling ##########
+
+    def sample_perfect_tile(
+        self,
+        loop: LoopRV,
+        n: int,
+        max_innermost_factor: int = 16,
+        decision: Optional[List[int]] = None,
+    ) -> List[VarRV]:
+        return _ffi_api_schedule.ScheduleSamplePerfectTile(  # pylint: disable=no-member
+            self,
+            loop,
+            n,
+            max_innermost_factor,
+            decision,
+        )
+
+    def sample_categorical(
+        self,
+        candidates: List[int],
+        probs: List[float],
+        decision: Optional[int] = None,
+    ) -> VarRV:
+        return _ffi_api_schedule.ScheduleSampleCategorical(  # pylint: disable=no-member
+            self,
+            candidates,
+            probs,
+            decision,
+        )
+
+    def sample_compute_location(
+        self,
+        block: BlockRV,
+        decision: Optional[int] = None,
+    ) -> LoopRV:
+        return _ffi_api_schedule.ScheduleSampleComputeLocation(  # pylint: disable=no-member
+            self,
+            block,
+            decision,
+        )
 
     ########## Block/Loop relation ##########
 
-    def get_block(self, name: str) -> Union[BlockRV, List[BlockRV]]:
-        blocks = _ffi_api_schedule.ScheduleGetBlock(self, name)  # pylint: disable=no-member
-        return blocks[0] if len(blocks) == 1 else list(blocks)
+    def get_block(self, name: str) -> BlockRV:
+        return _ffi_api_schedule.ScheduleGetBlock(self, name)  # pylint: disable=no-member
 
     def get_axes(self, block: BlockRV) -> List[LoopRV]:
         return _ffi_api_schedule.ScheduleGetAxes(self, block)  # pylint: disable=no-member
@@ -184,10 +248,16 @@ class Schedule(Object):
             self, block_or_loop
         )
 
+    def get_producers(self, block: BlockRV) -> List[BlockRV]:
+        return _ffi_api_schedule.ScheduleGetProducers(self, block)  # pylint: disable=no-member
+
+    def get_consumers(self, block: BlockRV) -> List[BlockRV]:
+        return _ffi_api_schedule.ScheduleGetConsumers(self, block)  # pylint: disable=no-member
+
     ########## Schedule: loops ##########
 
-    def fuse(self, outer: LoopRV, inner: LoopRV) -> LoopRV:
-        return _ffi_api_schedule.ScheduleFuse(self, outer, inner)  # pylint: disable=no-member
+    def fuse(self, *loops: List[LoopRV]) -> LoopRV:
+        return _ffi_api_schedule.ScheduleFuse(self, loops)  # pylint: disable=no-member
 
     def split(
         self,
@@ -195,13 +265,18 @@ class Schedule(Object):
         *,
         nparts: Optional[ExprRV] = None,
         factor: Optional[ExprRV] = None,
+        factors: Optional[List[ExprRV]] = None,
     ) -> Tuple[LoopRV, LoopRV]:
-        if nparts is not None and factor is not None:
-            raise ValueError("Only one of `nparts` and `factor` can be specified")
-        result = _ffi_api_schedule.ScheduleSplit(  # pylint: disable=no-member
-            self, loop, nparts, factor
-        )
-        return tuple(result)
+        if factors is not None:
+            if (nparts is not None) or (factor is not None):
+                raise ValueError("`nparts`/`factor` are not allowed when `factors` is specified")
+        elif (nparts is None) and (factor is None):
+            raise ValueError("None of the `nparts`, `factor` and `factors` are specified")
+        elif (nparts is not None) and (factor is not None):
+            raise ValueError("Only one of the `nparts`, `factor` are allowed to be specified")
+        else:
+            factors = [nparts, factor]
+        return _ffi_api_schedule.ScheduleSplit(self, loop, factors)  # pylint: disable=no-member
 
     def reorder(self, *loops: List[LoopRV]) -> None:
         _ffi_api_schedule.ScheduleReorder(self, loops)  # pylint: disable=no-member
@@ -246,6 +321,8 @@ class Schedule(Object):
         _ffi_api_schedule.ScheduleUnroll(self, loop)  # pylint: disable=no-member
 
     def bind(self, loop: LoopRV, thread: Union[str, IterVar]) -> None:
+        if isinstance(thread, str):
+            thread = String(thread)
         _ffi_api_schedule.ScheduleBind(self, loop, thread)  # pylint: disable=no-member
 
     def double_buffer(self, block: BlockRV) -> None:
@@ -290,5 +367,7 @@ class Schedule(Object):
             self, loop, exec_scope
         )
 
-    def tensorize(self, loop: LoopRV, intrin: TensorIntrin) -> None:
+    def tensorize(self, loop: LoopRV, intrin: Union[str, TensorIntrin]) -> None:
+        if isinstance(intrin, str):
+            intrin = String(intrin)
         _ffi_api_schedule.ScheduleTensorize(self, loop, intrin)  # pylint: disable=no-member

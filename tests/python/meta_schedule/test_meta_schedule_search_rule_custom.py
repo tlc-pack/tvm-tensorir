@@ -34,7 +34,7 @@ def do_mlt(_task: ms.SearchTask, sch: ms.Schedule, block: ms.BlockRV):
     reduce_indices = [i for i, c in enumerate(TILING_FORMAT) if c == "R"]
     order = [list() for _ in TILING_FORMAT]
     axes = sch.get_axes(block=block)
-    iter_types = ms.analysis.get_block_var_types(sch.sch.state, sch.evaluate(block))
+    iter_types = ms.analysis.get_block_var_types(sch.state, sch.get_sref(block))
     assert len(axes) == len(iter_types)
     for axis, iter_type in zip(axes, iter_types):
         for expect_iter_type, indices in [
@@ -42,11 +42,11 @@ def do_mlt(_task: ms.SearchTask, sch: ms.Schedule, block: ms.BlockRV):
             ("reduce", reduce_indices),
         ]:
             if iter_type == expect_iter_type:
-                tiles = sch.sample_perfect_tile(n_splits=len(indices), loop=axis)
+                tiles = sch.sample_perfect_tile(axis, n=len(indices))
                 splits = sch.split(loop=axis, factors=tiles)
                 for i, split in zip(indices, splits):
                     order[i].append(split)
-    sch.reorder(after_axes=sum(order, []))
+    sch.reorder(*sum(order, []))
     return sch
 
 
@@ -63,9 +63,9 @@ def test_meta_schedule_rule_do_mlt():
     sch = ms.Schedule(func=matmul)
     args = do_mlt(task, sch, sch.get_block("matmul"))
     assert len(args) == 1
-    sch = args[0].sch
+    sch = args[0]
     i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
-        i.stmt.extent for i in sch.get_axes(sch.get_block("matmul"))
+        sch.get(i).extent for i in sch.get_axes(sch.get_block("matmul"))
     ]
     assert i_0 * i_1 * i_2 * i_3 == 1024
     assert j_0 * j_1 * j_2 * j_3 == 1024
@@ -84,9 +84,9 @@ def test_meta_schedule_rule_composite_0():
     sch = ms.Schedule(func=matmul)
     args = rule(task, sch, sch.get_block("matmul"))
     assert len(args) == 1
-    sch: tir.Schedule = args[0].sch
+    sch = args[0]
     i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
-        i.stmt.extent for i in sch.get_axes(sch.get_block("matmul"))
+        sch.get(i).extent for i in sch.get_axes(sch.get_block("matmul"))
     ]
     assert i_0 * i_1 * i_2 * i_3 == 1024
     assert j_0 * j_1 * j_2 * j_3 == 1024
@@ -105,9 +105,9 @@ def test_meta_schedule_rule_composite_1():
     sch = ms.Schedule(func=matmul)
     args = rule(task, sch, sch.get_block("matmul"))
     assert len(args) == 1
-    sch: tir.Schedule = args[0].sch
+    sch = args[0]
     i_0, j_0, i_1, j_1, k_0, i_2, j_2, k_1, i_3, j_3 = [
-        i.stmt.extent for i in sch.get_axes(sch.get_block("matmul"))
+        sch.get(i).extent for i in sch.get_axes(sch.get_block("matmul"))
     ]
     assert i_0 * i_1 * i_2 * i_3 == 1024
     assert j_0 * j_1 * j_2 * j_3 == 1024

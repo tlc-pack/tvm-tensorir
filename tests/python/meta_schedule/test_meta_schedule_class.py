@@ -363,7 +363,7 @@ def _check_serialization(sch, func) -> ms.Schedule:
     record = sch.trace.serialize()
     new_sch = ms.Schedule(func)
     ms.Trace.deserialize(record, new_sch)
-    assert tvm.ir.structural_equal(new_sch.sch.module, sch.sch.module)
+    assert tvm.ir.structural_equal(new_sch.module, sch.module)
     py_repr = "\n".join(sch.trace.as_python())
     new_py_repr = "\n".join(new_sch.trace.as_python())
     assert py_repr == new_py_repr
@@ -372,7 +372,7 @@ def _check_serialization(sch, func) -> ms.Schedule:
 
 def test_meta_schedule_creation():
     sch = ms.Schedule(func=matmul)
-    assert tvm.ir.structural_equal(sch.orig_func, sch.sch.module)
+    assert tvm.ir.structural_equal(sch.orig_func, sch.module)
     assert len(sch.trace.insts) == 0
     _check_serialization(sch, func=matmul)
 
@@ -380,75 +380,41 @@ def test_meta_schedule_creation():
 def test_meta_schedule_copy():
     sch = ms.Schedule(func=matmul)
     i, j, k = sch.get_axes(sch.get_block("matmul"))
-    sch_copy: ms.Schedule = sch.copy(seed=42)
-    assert not sch.evaluate(i).same_as(sch_copy.evaluate(i))
-    assert not sch.evaluate(j).same_as(sch_copy.evaluate(j))
-    assert not sch.evaluate(k).same_as(sch_copy.evaluate(k))
-    assert sch.evaluate(i).stmt.same_as(sch_copy.evaluate(i).stmt)
-    assert sch.evaluate(j).stmt.same_as(sch_copy.evaluate(j).stmt)
-    assert sch.evaluate(k).stmt.same_as(sch_copy.evaluate(k).stmt)
-    i_0, i_1 = sch.split(i, [2, 512])
-    j_0, j_1 = sch_copy.split(j, [4, 256])
+    sch_copy = sch.copy(seed=42)
+    assert not sch.get_sref(i).same_as(sch_copy.get_sref(i))
+    assert not sch.get_sref(j).same_as(sch_copy.get_sref(j))
+    assert not sch.get_sref(k).same_as(sch_copy.get_sref(k))
+    assert sch.get_sref(i).stmt.same_as(sch_copy.get_sref(i).stmt)
+    assert sch.get_sref(j).stmt.same_as(sch_copy.get_sref(j).stmt)
+    assert sch.get_sref(k).stmt.same_as(sch_copy.get_sref(k).stmt)
+    i_0, i_1 = sch.split(i, factor=512)
+    j_0, j_1 = sch_copy.split(j, factors=[-1, 256])
 
-    assert sch.evaluate(i_0).stmt.extent == 2
-    assert sch.evaluate(i_1).stmt.extent == 512
+    assert sch.get_sref(i_0).stmt.extent == 2
+    assert sch.get_sref(i_1).stmt.extent == 512
     with pytest.raises(IndexError):
-        sch_copy.evaluate(i_0)
+        sch_copy.get_sref(i_0)
     with pytest.raises(IndexError):
-        sch_copy.evaluate(i_1)
+        sch_copy.get_sref(i_1)
 
     with pytest.raises(IndexError):
-        sch.evaluate(j_0)
+        sch.get_sref(j_0)
     with pytest.raises(IndexError):
-        sch.evaluate(j_1)
-    assert sch_copy.evaluate(j_0).stmt.extent == 4
-    assert sch_copy.evaluate(j_1).stmt.extent == 256
+        sch.get_sref(j_1)
+    assert sch_copy.get_sref(j_0).stmt.extent == 4
+    assert sch_copy.get_sref(j_1).stmt.extent == 256
     _check_serialization(sch, func=matmul)
     _check_serialization(sch_copy, func=matmul)
 
 
-def test_meta_schedule_sample_tile_factor():
-    from functools import reduce  # pylint: disable=import-outside-toplevel
-
-    where = [1, 2, 4]
-    sch = ms.Schedule(func=matmul)
-    i, _, _ = sch.get_axes(sch.get_block("matmul"))
-    factors = sch.sample_tile_factor(n_splits=4, loop=i, where=where)
-    factors = [sch.evaluate(i) for i in factors]
-    for i in factors[1:]:
-        assert i in where
-    prod = reduce(lambda x, y: x * y, factors)
-    assert prod == 1024
-    _check_serialization(sch, func=matmul)
-
-
 def test_meta_schedule_sample_perfect_tile():
-    from functools import reduce  # pylint: disable=import-outside-toplevel
-
     sch = ms.Schedule(func=matmul)
     i, _, _ = sch.get_axes(sch.get_block("matmul"))
-    factors = sch.sample_perfect_tile(n_splits=4, loop=i)
-    factors = [sch.evaluate(i) for i in factors]
-    prod = reduce(lambda x, y: x * y, factors)
+    factors = sch.sample_perfect_tile(i, n=4)
+    factors = [sch.get(i) for i in factors]
+    prod = factors[0] * factors[1] * factors[2] * factors[3]
     assert prod == 1024
     _check_serialization(sch, func=matmul)
-
-
-def test_meta_schedule_sample_int():
-    n = 20
-    counter = defaultdict(int)
-    for _ in range(n):
-        sch = ms.Schedule(func=matmul)
-        v = sch.sample_int(9, 12)
-        counter[int(sch.evaluate(v))] += 1
-        new_sch = _check_serialization(sch, func=matmul)
-        old_decision = int(sch.trace.decisions[sch.trace.insts[-1]])
-        new_decision = int(new_sch.trace.decisions[new_sch.trace.insts[-1]])
-        assert old_decision == new_decision
-    assert len(counter) == 3
-    assert 9 in counter
-    assert 10 in counter
-    assert 11 in counter
 
 
 def test_meta_schedule_sample_categorical():
@@ -458,7 +424,7 @@ def test_meta_schedule_sample_categorical():
     candidates = [5, 2, 7, 1]
     probs = [0.15, 0.55, 0.05, 0.25]
     for _ in range(n):
-        v = sch.evaluate(sch.sample_categorical(candidates, probs))
+        v = sch.get(sch.sample_categorical(candidates, probs))
         counter[v] += 1
     for i, prob in enumerate(probs):
         assert (prob - 0.07) * n <= counter[candidates[i]] <= (prob + 0.07) * n
@@ -467,21 +433,19 @@ def test_meta_schedule_sample_categorical():
 
 def test_meta_schedule_sample_compute_location():
     counter = defaultdict(int)
+    sch = ms.Schedule(func=matmul)
+    block = sch.get_block("matmul")
     for _ in range(100):
-        sch = ms.Schedule(func=matmul)
-        block = sch.get_block("matmul")
         loop = sch.sample_compute_location(block=block)
-        loop = sch.evaluate(loop)
-        if not isinstance(loop, ms.LoopRV):
-            loop = loop.stmt
+        loop = sch.get_sref(loop)
         counter[str(loop)] += 1
         new_sch = _check_serialization(sch, func=matmul)
         old_decision = int(sch.trace.decisions[sch.trace.insts[-1]])
         new_decision = int(new_sch.trace.decisions[new_sch.trace.insts[-1]])
         assert old_decision == new_decision
     assert len(counter) == 5
-    assert str(ms.LoopRV.root_rv()) in counter
-    assert str(ms.LoopRV.inline_rv()) in counter
+    assert str(tir.schedule.StmtSRef.root()) in counter
+    assert str(tir.schedule.StmtSRef.inline()) in counter
 
 
 def test_meta_schedule_get_producers():
@@ -489,8 +453,8 @@ def test_meta_schedule_get_producers():
     block = sch.get_block("relu")
     (producer,) = sch.get_producers(block)
     assert tvm.ir.structural_equal(
-        sch.evaluate(producer).stmt,
-        sch.evaluate(sch.get_block("matmul")).stmt,
+        sch.get_sref(producer).stmt,
+        sch.get_sref(sch.get_block("matmul")).stmt,
     )
     _check_serialization(sch, func=matmul_relu)
 
@@ -500,8 +464,8 @@ def test_meta_schedule_get_consumers():
     block = sch.get_block("matmul")
     (consumer,) = sch.get_consumers(block)
     assert tvm.ir.structural_equal(
-        sch.evaluate(consumer).stmt,
-        sch.evaluate(sch.get_block("relu")).stmt,
+        sch.get_sref(consumer).stmt,
+        sch.get_sref(sch.get_block("relu")).stmt,
     )
     _check_serialization(sch, func=matmul_relu)
 
@@ -510,7 +474,7 @@ def test_meta_schedule_get_block():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
     assert tvm.ir.structural_equal(
-        sch.evaluate(block).stmt,
+        sch.get_sref(block).stmt,
         matmul.body.block.body.body.body.body.block,
     )
     _check_serialization(sch, func=matmul)
@@ -520,60 +484,16 @@ def test_meta_schedule_get_axes():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
     axes = sch.get_axes(block)
-    i_0, i_1, i_2 = [sch.evaluate(i).stmt for i in axes]
+    i_0, i_1, i_2 = [sch.get_sref(i).stmt for i in axes]
     assert tvm.ir.structural_equal(i_0, matmul.body.block.body)
     assert tvm.ir.structural_equal(i_1, matmul.body.block.body.body)
     assert tvm.ir.structural_equal(i_2, matmul.body.block.body.body.body)
     _check_serialization(sch, func=matmul)
 
 
-def test_meta_schedule_get_read_buffers():
-    sch = ms.Schedule(func=matmul)
-    block = sch.get_block("matmul")
-    buffers = sch.get_read_buffers(block)
-    buffers = [sch.evaluate(b) for b in buffers]
-    assert len(buffers) == 3
-    assert buffers[0].name == "C"
-    assert buffers[1].name == "A"
-    assert buffers[2].name == "B"
-    _check_serialization(sch, func=matmul)
-
-
-def test_meta_schedule_get_write_buffers():
-    sch = ms.Schedule(func=matmul)
-    block = sch.get_block("matmul")
-    buffers = sch.get_write_buffers(block)
-    buffers = [sch.evaluate(b) for b in buffers]
-    assert len(buffers) == 1
-    assert buffers[0].name == "C"
-    _check_serialization(sch, func=matmul)
-
-
-def test_meta_schedule_get_root_blocks():
-    sch = ms.Schedule(func=matmul)
-    blocks = sch.get_root_blocks()
-    assert len(blocks) == 1
-    _check_serialization(sch, func=matmul)
-    sch = ms.Schedule(func=matmul_relu)
-    blocks = sch.get_root_blocks()
-    assert len(blocks) == 2
-    _check_serialization(sch, func=matmul_relu)
-
-
-def test_meta_schedule_get_leaf_blocks():
-    sch = ms.Schedule(func=matmul)
-    blocks = sch.get_leaf_blocks()
-    assert len(blocks) == 1
-    _check_serialization(sch, func=matmul)
-    sch = ms.Schedule(func=matmul_relu)
-    blocks = sch.get_leaf_blocks()
-    assert len(blocks) == 2
-    _check_serialization(sch, func=matmul_relu)
-
-
 def test_meta_schedule_mark_loop():
     def check_annotation(sch, loop):
-        loop = sch.evaluate(loop).stmt
+        loop = sch.get_sref(loop).stmt
         assert len(loop.annotations) == 1
         attr_key, value = loop.annotations.items()[0]
         assert attr_key == "ann_key"
@@ -589,7 +509,7 @@ def test_meta_schedule_mark_loop():
 
 def test_meta_schedule_mark_block():
     def check_annotation(sch, block):
-        block = sch.evaluate(block).stmt
+        block = sch.get_sref(block).stmt
         assert len(block.annotations) == 1
         attr_key, value = block.annotations.items()[0]
         assert attr_key == "ann_key"
@@ -606,7 +526,7 @@ def test_meta_schedule_fuse():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
     i, j, _ = sch.get_axes(block)
-    sch.fuse(loops=[i, j])
+    sch.fuse(i, j)
     assert len(sch.get_axes(block)) == 2
     _check_serialization(sch, func=matmul)
 
@@ -614,26 +534,26 @@ def test_meta_schedule_fuse():
 def test_meta_schedule_split():
     sch = ms.Schedule(func=matmul)
     i, _, _ = sch.get_axes(sch.get_block("matmul"))
-    i_0, i_1, i_2 = [sch.evaluate(i).stmt for i in sch.split(loop=i, factors=[4, 8, 32])]
-    assert tvm.ir.structural_equal(i_0, sch.sch.module.body.block.body)
-    assert tvm.ir.structural_equal(i_1, sch.sch.module.body.block.body.body)
-    assert tvm.ir.structural_equal(i_2, sch.sch.module.body.block.body.body.body)
+    i_0, i_1, i_2 = [sch.get_sref(i).stmt for i in sch.split(i, factors=[-1, 8, 32])]
+    assert tvm.ir.structural_equal(i_0, sch.module.body.block.body)
+    assert tvm.ir.structural_equal(i_1, sch.module.body.block.body.body)
+    assert tvm.ir.structural_equal(i_2, sch.module.body.block.body.body.body)
     _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_reorder():
     sch = ms.Schedule(func=matmul)
     i_0, i_1, i_2 = sch.get_axes(sch.get_block("matmul"))
-    sch.reorder(after_axes=[i_2, i_1, i_0])
-    i_0, i_1, i_2 = [sch.evaluate(i).stmt for i in [i_0, i_1, i_2]]
+    sch.reorder(i_2, i_1, i_0)
+    i_0, i_1, i_2 = [sch.get_sref(i).stmt for i in [i_0, i_1, i_2]]
 
     tir_sch = tir.Schedule(func=matmul, debug_mode=True)
     ti_0, ti_1, ti_2 = tir_sch.get_axes(tir_sch.get_block("matmul"))
     tir_sch.reorder(ti_2, ti_1, ti_0)
 
-    assert tvm.ir.structural_equal(i_0, ti_0.stmt)
-    assert tvm.ir.structural_equal(i_1, ti_1.stmt)
-    assert tvm.ir.structural_equal(i_2, ti_2.stmt)
+    assert tvm.ir.structural_equal(i_0, tir_sch.get(ti_0))
+    assert tvm.ir.structural_equal(i_1, tir_sch.get(ti_1))
+    assert tvm.ir.structural_equal(i_2, tir_sch.get(ti_2))
     _check_serialization(sch, func=matmul)
 
 
@@ -643,7 +563,7 @@ def test_meta_schedule_compute_at():
     matmul_block = sch.get_block("matmul")
     _, _, i_2 = sch.get_axes(matmul_block)
     sch.compute_at(plus_one_block, i_2)
-    assert tvm.ir.structural_equal(sch.sch.module, plus_one_matmul_fused)
+    assert tvm.ir.structural_equal(sch.module, plus_one_matmul_fused)
     _check_serialization(sch, func=plus_one_matmul)
 
 
@@ -653,7 +573,7 @@ def test_meta_schedule_reverse_compute_at():
     matmul_block = sch.get_block("matmul")
     _, i_1, _ = sch.get_axes(matmul_block)
     sch.reverse_compute_at(relu_block, i_1)
-    assert tvm.ir.structural_equal(sch.sch.module, matmul_relu_fused)
+    assert tvm.ir.structural_equal(sch.module, matmul_relu_fused)
     _check_serialization(sch, func=matmul_relu)
 
 
@@ -661,7 +581,7 @@ def test_meta_schedule_compute_inline():
     sch = ms.Schedule(func=elementwise)
     block = sch.get_block(name="B")
     sch.compute_inline(block=block)
-    assert tvm.ir.structural_equal(sch.sch.module, elementwise_inlined)
+    assert tvm.ir.structural_equal(sch.module, elementwise_inlined)
     _check_serialization(sch, func=elementwise)
 
 
@@ -670,7 +590,7 @@ def test_meta_schedule_cache_read():
     block = sch.get_block("matmul")
     sch.cache_read(block, i=1, storage_scope="local")
     sch.cache_read(block, i=2, storage_scope="local")
-    assert tvm.ir.structural_equal(sch.sch.module, matmul_cache_read)
+    assert tvm.ir.structural_equal(sch.module, matmul_cache_read)
     _check_serialization(sch, func=matmul)
 
 
@@ -678,7 +598,7 @@ def test_meta_schedule_cache_write():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
     sch.cache_write(block, i=0, storage_scope="local")
-    assert tvm.ir.structural_equal(sch.sch.module, matmul_cache_write)
+    assert tvm.ir.structural_equal(sch.module, matmul_cache_write)
     _check_serialization(sch, func=matmul)
 
 
@@ -687,7 +607,7 @@ def test_meta_schedule_blockize():
     block = sch.get_block("matmul")
     _, _, k = sch.get_axes(block)
     sch.blockize(k)
-    assert tvm.ir.structural_equal(sch.sch.module, matmul_blockized)
+    assert tvm.ir.structural_equal(sch.module, matmul_blockized)
     _check_serialization(sch, func=matmul)
 
 
@@ -696,7 +616,7 @@ def test_meta_schedule_decompose_reduction():
     block = sch.get_block("matmul")
     _, _, k = sch.get_axes(block)
     sch.decompose_reduction(block, k)
-    assert tvm.ir.structural_equal(sch.sch.module, matmul_decomposed)
+    assert tvm.ir.structural_equal(sch.module, matmul_decomposed)
     _check_serialization(sch, func=matmul)
 
 
@@ -705,19 +625,19 @@ def test_meta_schedule_tensorize():
     sch = ms.Schedule(func=matmul)
     block = sch.get_block("matmul")
     i, j, k = sch.get_axes(block)
-    i_o, i_i = sch.split(i, [None, 16])
-    j_o, j_i = sch.split(j, [None, 16])
-    k_o, k_i = sch.split(k, [None, 16])
-    sch.reorder([i_o, j_o, k_o, i_i, j_i, k_i])
+    i_o, i_i = sch.split(i, factor=16)
+    j_o, j_i = sch.split(j, factor=16)
+    k_o, k_i = sch.split(k, factor=16)
+    sch.reorder(i_o, j_o, k_o, i_i, j_i, k_i)
     sch.decompose_reduction(block, k_o)
     sch.tensorize(i_i, "ms_test.tensor_intrin")
-    assert tvm.ir.structural_equal(sch.sch.module, matmul_tensorized)
+    assert tvm.ir.structural_equal(sch.module, matmul_tensorized)
     _check_serialization(sch, func=matmul)
 
 
 def test_meta_schedule_parallel():
     def check_annotation(sch, loop):
-        loop = sch.evaluate(loop).stmt
+        loop = sch.get_sref(loop).stmt
         assert loop.kind == ForKind.PARALLEL
 
     sch = ms.Schedule(func=matmul)
@@ -730,7 +650,7 @@ def test_meta_schedule_parallel():
 
 def test_meta_schedule_vectorize():
     def check_annotation(sch, loop):
-        loop = sch.evaluate(loop).stmt
+        loop = sch.get_sref(loop).stmt
         assert loop.kind == ForKind.VECTORIZED
 
     sch = ms.Schedule(func=matmul)
@@ -743,7 +663,7 @@ def test_meta_schedule_vectorize():
 
 def test_meta_schedule_unroll():
     def check_annotation(sch, loop):
-        loop = sch.evaluate(loop).stmt
+        loop = sch.get_sref(loop).stmt
         assert loop.kind == ForKind.UNROLLED
 
     sch = ms.Schedule(func=matmul)
@@ -756,7 +676,7 @@ def test_meta_schedule_unroll():
 
 def test_meta_schedule_bind():
     def check_annotation(sch, loop):
-        loop = sch.evaluate(loop).stmt
+        loop = sch.get_sref(loop).stmt
         assert loop.kind == ForKind.THREAD_BINDING
         assert loop.thread_binding.thread_tag == "threadIdx.x"
 
@@ -769,35 +689,29 @@ def test_meta_schedule_bind():
 
 
 if __name__ == "__main__":
-    # test_meta_schedule_creation()
-    # test_meta_schedule_copy()
-    # test_meta_schedule_sample_tile_factor()
-    # test_meta_schedule_sample_perfect_tile()
-    # test_meta_schedule_sample_int()
-    # test_meta_schedule_sample_categorical()
+    test_meta_schedule_creation()
+    test_meta_schedule_copy()
+    test_meta_schedule_sample_perfect_tile()
+    test_meta_schedule_sample_categorical()
     test_meta_schedule_sample_compute_location()
-    # test_meta_schedule_get_producers()
-    # test_meta_schedule_get_consumers()
-    # test_meta_schedule_get_block()
-    # test_meta_schedule_get_axes()
-    # test_meta_schedule_get_read_buffers()
-    # test_meta_schedule_get_write_buffers()
-    # test_meta_schedule_get_root_blocks()
-    # test_meta_schedule_get_leaf_blocks()
-    # test_meta_schedule_mark_loop()
-    # test_meta_schedule_mark_block()
-    # test_meta_schedule_fuse()
-    # test_meta_schedule_split()
-    # test_meta_schedule_reorder()
-    # test_meta_schedule_compute_at()
-    # test_meta_schedule_reverse_compute_at()
-    # test_meta_schedule_compute_inline()
-    # test_meta_schedule_cache_read()
-    # test_meta_schedule_cache_write()
-    # test_meta_schedule_blockize()
-    # test_meta_schedule_decompose_reduction()
-    # test_meta_schedule_tensorize()
-    # test_meta_schedule_parallel()
-    # test_meta_schedule_vectorize()
-    # test_meta_schedule_unroll()
-    # test_meta_schedule_bind()
+    test_meta_schedule_get_producers()
+    test_meta_schedule_get_consumers()
+    test_meta_schedule_get_block()
+    test_meta_schedule_get_axes()
+    test_meta_schedule_mark_loop()
+    test_meta_schedule_mark_block()
+    test_meta_schedule_fuse()
+    test_meta_schedule_split()
+    test_meta_schedule_reorder()
+    test_meta_schedule_compute_at()
+    test_meta_schedule_reverse_compute_at()
+    test_meta_schedule_compute_inline()
+    test_meta_schedule_cache_read()
+    test_meta_schedule_cache_write()
+    test_meta_schedule_blockize()
+    test_meta_schedule_decompose_reduction()
+    test_meta_schedule_tensorize()
+    test_meta_schedule_parallel()
+    test_meta_schedule_vectorize()
+    test_meta_schedule_unroll()
+    test_meta_schedule_bind()

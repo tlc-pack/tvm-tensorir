@@ -46,8 +46,8 @@ def test_WAR(a: ty.handle, b: ty.handle, c: ty.handle) -> None:
 def test_element_wise_dependency():
     func = util.element_wise_stmt()
     s = tir.Schedule(func, debug_mode=True)
-    block_b = s.get_block("B")
-    block_c = s.get_block("C")
+    block_b = s.get_sref(s.get_block("B"))
+    block_c = s.get_sref(s.get_block("C"))
     # Check get_predecessors
     (predecessor_c,) = s.state.scope(s.state.root).get_predecessors(block_c)
     assert predecessor_c.dst.same_as(block_b)
@@ -61,8 +61,8 @@ def test_element_wise_dependency():
 def test_matmul_dependency():
     func = util.matmul_stmt_original()
     s = tir.Schedule(func, debug_mode=True)
-    init = s.get_block("init")
-    update = s.get_block("update")
+    init = s.get_sref(s.get_block("init"))
+    update = s.get_sref(s.get_block("update"))
     # Check predecessors
     p0, p1 = s.state.scope(s.state.root).get_predecessors(update)
     assert p0.dst.same_as(init)

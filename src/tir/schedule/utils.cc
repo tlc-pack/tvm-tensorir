@@ -17,7 +17,7 @@
  * under the License.
  */
 
-#include "schedule_common.h"
+#include "./utils.h"
 
 #include <tvm/arith/analyzer.h>
 #include <tvm/tir/analysis.h>

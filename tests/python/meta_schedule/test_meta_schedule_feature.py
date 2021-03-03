@@ -34,9 +34,9 @@ def test_meta_schedule_per_block_feature_cpu_matmul():
         sch = ms.Schedule(func)
         block = sch.get_block("C")
         i, j, k = sch.get_axes(block)
-        i_o, i_i = sch.split(i, factors=[32, 16])
-        j_o, j_i = sch.split(j, factors=[64, 8])
-        sch.reorder(after_axes=[i_o, j_o, k, j_i, i_i])
+        i_o, i_i = sch.split(i, factors=[-1, 16])  # outer: 32
+        j_o, j_i = sch.split(j, factors=[-1, 8])  # outer: 64
+        sch.reorder(i_o, j_o, k, j_i, i_i)
         sch.vectorize(j_i)
         sch.parallel(i_o)
         sch.parallel(j_o)
@@ -368,12 +368,12 @@ def test_meta_schedule_per_block_feature_gpu():
         c_local = sch.cache_write(c, 0, "local")
         i, j, k = sch.get_axes(c_local)
         # pylint: disable=invalid-name
-        i0, i1, i2, i3, i4 = sch.split(i, factors=[1, 1, 16, 32, 1])
-        j0, j1, j2, j3, j4 = sch.split(j, factors=[8, 4, 1, 1, 16])
-        k0, k1, k2 = sch.split(k, factors=[256, 1, 2])
+        i0, i1, i2, i3, i4 = sch.split(i, factors=[-1, 1, 16, 32, 1])  # outer: 1
+        j0, j1, j2, j3, j4 = sch.split(j, factors=[-1, 4, 1, 1, 16])  # outer: 8
+        k0, k1, k2 = sch.split(k, factors=[-1, 1, 2])  # outer: 256
         # pylint: enable=invalid-name
         # fmt: off
-        sch.reorder(after_axes=[
+        sch.reorder(
             i0, j0,  # S
             i1, j1,  # S
             i2, j2,  # S
@@ -382,12 +382,12 @@ def test_meta_schedule_per_block_feature_gpu():
             i3, j3,  # S
             k2,      # R
             i4, j4,  # S
-        ])
+        )
         # fmt: on
         # thread binding
-        i0_j0 = sch.fuse(loops=[i0, j0])
-        i1_j1 = sch.fuse(loops=[i1, j1])
-        i2_j2 = sch.fuse(loops=[i2, j2])
+        i0_j0 = sch.fuse(i0, j0)
+        i1_j1 = sch.fuse(i1, j1)
+        i2_j2 = sch.fuse(i2, j2)
         sch.bind(i0_j0, "blockIdx.x")
         sch.bind(i1_j1, "vthread")
         sch.bind(i2_j2, "threadIdx.x")
@@ -397,15 +397,15 @@ def test_meta_schedule_per_block_feature_gpu():
         b_shared = sch.cache_read(c_local, 2, "shared")
         sch.compute_at(b_shared, k0)
         _, _, _, _, b_i, b_j = sch.get_axes(b_shared)
-        b_ij = sch.fuse(loops=[b_i, b_j])
-        _, b_j = sch.split(b_ij, factors=[8, 16])
+        b_ij = sch.fuse(b_i, b_j)
+        _, b_j = sch.split(b_ij, factors=[-1, 16])  # outer: 8
         sch.bind(b_j, "threadIdx.x")
         # cache read 'A'
         a_shared = sch.cache_read(c_local, 1, "shared")
         sch.compute_at(a_shared, k0)
         _, _, _, _, a_i, a_j = sch.get_axes(a_shared)
-        a_ij = sch.fuse(loops=[a_i, a_j])
-        _, a_j = sch.split(a_ij, factors=[64, 16])
+        a_ij = sch.fuse(a_i, a_j)
+        _, a_j = sch.split(a_ij, factors=[-1, 16])  # outer: 64
         sch.bind(a_j, "threadIdx.x")
         # auto unroll
         sch.mark_loop(i0_j0, "pragma_auto_unroll_max_step", tir.IntImm("int32", 1024))

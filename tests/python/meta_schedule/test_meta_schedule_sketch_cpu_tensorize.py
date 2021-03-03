@@ -59,7 +59,7 @@ def test_meta_schedule_sketch_cpu_matmul_dot():
     schs = space.get_support(task=task)
     for sch in schs:
         space.postprocess(task, sch)
-        print(tvm.script.asscript(sch.sch.module))
+        print(tvm.script.asscript(sch.module))
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@
 #ifndef TVM_TIR_SCHEDULE_SCHEDULE_H_
 #define TVM_TIR_SCHEDULE_SCHEDULE_H_
 
+#include <tvm/ir/module.h>
 #include <tvm/tir/schedule/state.h>
 
 namespace tvm {
@@ -51,6 +52,7 @@ class BlockRV : public runtime::ObjectRef {
 class LoopRVNode : public runtime::Object {
  public:
   void VisitAttrs(tvm::AttrVisitor* v) {}
+
   static constexpr const char* _type_key = "tir.LoopRV";
   TVM_DECLARE_FINAL_OBJECT_INFO(LoopRVNode, runtime::Object);
 };
@@ -87,9 +89,41 @@ class ScheduleNode : public runtime::Object {
   static constexpr const char* _type_key = "tir.Schedule";
   TVM_DECLARE_BASE_OBJECT_INFO(ScheduleNode, runtime::Object);
 
-  StmtSRef GetSRef(const BlockRV& block_rv) const;
+  virtual StmtSRef GetSRef(const LoopRV& loop_rv) const = 0;
 
-  StmtSRef GetSRef(const LoopRV& loop_rv) const;
+  virtual StmtSRef GetSRef(const Stmt& stmt) const = 0;
+
+  virtual StmtSRef GetSRef(const StmtNode* stmt) const = 0;
+
+ public:
+  /******** Sampling ********/
+  /*!
+   * \brief Apply the instruction SamplePerfectTile
+   * \param n The number of loops after tiling
+   * \param loop_rv The loop to be tiled
+   * \param max_innermost_factor The maximum factor in the innermost loop, -1 if disabled
+   * \return An array of random variables, the result of sampling
+   */
+  virtual Array<Var> SamplePerfectTile(const LoopRV& loop_rv,     //
+                                       int n,                     //
+                                       int max_innermost_factor,  //
+                                       Optional<Array<ObjectRef>> decision = NullOpt) = 0;
+  /*!
+   * \brief Sample an integer given the probability distribution
+   * \param candidates The candidates
+   * \param probs The probability distribution of the candidates
+   * \return The random variable
+   */
+  virtual Var SampleCategorical(const Array<Integer>& candidates,  //
+                                const Array<FloatImm>& probs,      //
+                                Optional<ObjectRef> decision = NullOpt) = 0;
+  /*!
+   * \brief Sample a compute-at location from a block
+   * \param block A block to be computed at
+   * \return The loop to be computed at
+   */
+  virtual LoopRV SampleComputeLocation(const BlockRV& block_rv,
+                                       Optional<ObjectRef> decision = NullOpt) = 0;
 
  public:
   /*! \brief Get the IRModule associated with this schedule. */
@@ -224,6 +258,10 @@ class Schedule : public runtime::ObjectRef {
   TVM_DLL static Schedule Concrete(IRModule mod, int debug_mode);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, runtime::ObjectRef, ScheduleNode);
 };
+
+TVM_DLL String Repr(const PrimFunc& func);
+TVM_DLL String Repr(const IRModule& mod);
+TVM_DLL String Repr(const Schedule& self);
 
 }  // namespace tir
 }  // namespace tvm

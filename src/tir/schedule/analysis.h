@@ -56,6 +56,56 @@ Array<StmtSRef> GetLoops(const StmtSRef& block_sref);
  */
 Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent_sref);
 
+/*!
+ * \brief Get the sref to the scope root block, exclusive
+ * \param sref The block or loop sref to be retrieved
+ * \return The sref to the scope root block
+ */
+TVM_DLL StmtSRef GetScopeSRef(const StmtSRef& sref);
+
+/*!
+ * \brief Get block from its tag
+ * \param tag The query tag
+ * \return the block schedulable reference list
+ */
+TVM_DLL Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name);
+
+/*!
+ * \brief Get loops of the block
+ * \param block The query block
+ * \return the loop sref list
+ */
+TVM_DLL Array<StmtSRef> GetAxes(const ScheduleState& self, const StmtSRef& block_sref);
+
+/*!
+ * \brief Get the child blocks of a specific parent block/loop
+ * \param parent_sref The StmtSRef that points to the parent block/loop
+ * \param inclusive If true and parent_sref is a block, return a single-element list containing
+ * parent_sref
+ * \return A list of child blocks
+ */
+TVM_DLL Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent_sref,
+                                       bool inclusive);
+
+/*!
+ * \brief Get the producer of a specific block
+ * \return The producers
+ */
+TVM_DLL Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sref);
+
+/*!
+ * \brief Get the consumers of a specific block
+ * \return The consumers
+ */
+TVM_DLL Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sref);
+
+TVM_DLL bool HasSingleChild(const StmtSRef& loop_or_block_sref);
+
+TVM_DLL IterVarType GetLoopIterType(const ScheduleState& self, const StmtSRef& loop_sref);
+
+TVM_DLL Array<StmtSRef> CollectComputeLocation(const ScheduleState& self,
+                                               const StmtSRef& block_sref);
+
 }  // namespace tir
 }  // namespace tvm
 
