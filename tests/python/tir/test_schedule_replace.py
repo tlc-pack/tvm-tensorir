@@ -190,9 +190,9 @@ def test_replace_block_remap():
     s = tir.Schedule(func, debug_mode=True)
     # The target stmt
     target = util.matmul_stmt_original().body.block.body.body.body[0].block
-    sref = s.state.get_sref(s.module.body.block.body[0].body.body.block)
+    sref = s.get_sref(s.module.body.block.body[0].body.body.block)
     s.state.replace(sref, target, {target: s.module.body.block.body[0].body.body.block})
-    sref_new = s.get_block("init")
+    sref_new = s.get_sref(s.get_block("init"))
     # Check the original sref has been remapped
     assert sref.__hash__() == sref_new.__hash__()
     tvm.ir.assert_structural_equal(sref.stmt, target)

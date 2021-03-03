@@ -21,7 +21,8 @@
 
 #include <vector>
 
-#include "../tir/schedule/schedule_common.h"
+#include "../tir/schedule/analysis.h"
+#include "../tir/schedule/utils.h"
 #include "./schedule.h"
 
 namespace tvm {
@@ -53,19 +54,6 @@ TVM_DLL bool IsSubrootBlock(const tir::ScheduleState& self, const tir::StmtSRef&
  * \return A boolean flag indicating if the block is a leaf block
  */
 TVM_DLL bool IsLeafBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref);
-
-/*!
- * \brief Given the specific loop var, find its iteration type by checking its related block var.
- * The return value can be one of the following
- * 1) IterVarType::kDataPar    = 0
- * 2) IterVarType::kCommReduce = 2
- * 3) IterVarType::kOpaque     = 4
- * \param self The TIR schedule class
- * \param loops_sref The loops to be analyzed
- * \return The type of the iteration variable
- */
-TVM_DLL tir::IterVarType GetLoopIterType(const tir::ScheduleState& self,
-                                         const tir::StmtSRef& loop_sref);
 
 /*!
  * \brief Returns the IterVarType of each block var
@@ -186,22 +174,6 @@ TVM_DLL Optional<TensorizeInfo> GetTensorizeLoopMapping(const tir::ScheduleState
  * \return The number of floating point operations
  */
 TVM_DLL double CountFlop(const tir::PrimFunc& func);
-
-/*!
- * \brief Checks if the loop/block has only one child
- * \param loop_or_block_sref The loop/block to be checked
- * \return A boolean indicating if it has only one child
- */
-TVM_DLL bool HasSingleChild(const tir::StmtSRef& loop_or_block_sref);
-
-/*!
- * \brief Collect all the loops that can be computed at
- * \param self The TIR schedule
- * \param block_sref The block where the loops should be collected from
- * \return An array of possible compute-at location
- */
-TVM_DLL Array<tir::StmtSRef> CollectComputeLocation(const tir::ScheduleState& self,
-                                                    const tir::StmtSRef& block_sref);
 
 }  // namespace meta_schedule
 }  // namespace tvm

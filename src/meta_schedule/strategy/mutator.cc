@@ -36,11 +36,7 @@ Mutator::Mutator(String name, FApply apply) {
 /********** Mutator **********/
 
 Optional<Trace> MutatorNode::Apply(const SearchTask& task, const Trace& trace, Sampler* sampler) {
-  try {
-    return apply_(task, trace, sampler);
-  } catch (dmlc::Error& error) {
-    return NullOpt;
-  }
+  return apply_(task, trace, sampler);
 }
 
 /********** MutateTileSize **********/
@@ -66,7 +62,7 @@ class MutatorTileSize {
     for (const auto& kv : trace->decisions) {
       const Instruction& inst = kv.first;
       if (const auto* attrs = inst->inst_attrs.as<SamplePerfectTileAttrs>()) {
-        if (attrs->n_splits <= 1) {
+        if (attrs->n <= 1) {
           continue;
         }
         std::vector<int> tiles = CastDecision(kv.second);
@@ -187,15 +183,15 @@ class MutatorComputeLocation {
         // Extract the inputs
         ICHECK_EQ(inputs.size(), 1);
         BlockRV block_rv = Downcast<BlockRV>(inputs[0]);
-        tir::StmtSRef block_sref = sch->Eval(block_rv);
+        tir::StmtSRef block_sref = sch->GetSRef(block_rv);
         // Extract locations that can be computed at
-        Array<tir::StmtSRef> loop_srefs = CollectComputeLocation(sch->sch->state, block_sref);
+        Array<tir::StmtSRef> loop_srefs = CollectComputeLocation(sch->state, block_sref);
         std::vector<int> locs{-2, -1};
         {
           int i = 0;
           for (const tir::StmtSRef& loop_sref : loop_srefs) {
-            int64_t extent = GetLoopIntExtent(loop_sref).value_or(-1)->value;
-            if (extent != 1) {
+            int64_t extent = GetLoopIntExtent(loop_sref);
+            if (extent != 1 && extent != -1) {
               locs.push_back(i);
             }
             ++i;
@@ -368,11 +364,11 @@ class MutatorParallel {
         }
         // Step 2. Fetch the block and the loops above it. Furthermore, get their loop types.
         BlockRV block_rv = Downcast<BlockRV>(inputs[0]);
-        tir::StmtSRef block_sref = sch->Eval(block_rv);
-        Array<tir::StmtSRef> loop_srefs = sch->sch->GetAxes(block_sref);
+        tir::StmtSRef block_sref = sch->GetSRef(block_rv);
+        Array<tir::StmtSRef> loop_srefs = tir::GetAxes(sch->state, block_sref);
         std::vector<int> loop_types;
         for (const tir::StmtSRef& loop_sref : loop_srefs) {
-          loop_types.emplace_back(GetLoopIterType(sch->sch->state, loop_sref));
+          loop_types.emplace_back(GetLoopIterType(sch->state, loop_sref));
         }
         // Step 3. Get the original parallel extent.
         int ori_extent = inst->inputs[1].as<IntImmNode>()->value;
@@ -387,14 +383,14 @@ class MutatorParallel {
             break;
           }
           // Check if the loop extent is valid
-          Optional<Integer> extent = GetLoopIntExtent(loop_sref);
-          if (!extent.defined()) {
+          int64_t extent = GetLoopIntExtent(loop_sref);
+          if (extent == -1) {
             break;
           }
           // Then we can fuse it in. Moreover, if extent is not 1 and extent does not
           // equal the original extent, then it is a valid candidate.
-          if (extent.value()->value != 1 && extent.value()->value != ori_extent) {
-            prod_extent *= extent.value()->value;
+          if (extent != 1 && extent != ori_extent) {
+            prod_extent *= extent;
             extent_candidates.emplace_back(prod_extent);
           }
           // Check if we need to break.

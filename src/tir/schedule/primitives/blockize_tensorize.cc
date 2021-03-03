@@ -19,7 +19,7 @@
 #include "../../../arith/pattern_match.h"
 #include "../../ir/functor_common.h"
 #include "../analysis.h"
-#include "../schedule_common.h"
+#include "../utils.h"
 #include "./primitives.h"
 
 namespace tvm {
@@ -399,7 +399,7 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref, const String& e
   // check there exists no SeqStmt under loop
   CHECK(CheckOneLine(GetRef<Stmt>(loop))) << "ValueError: Only one line subtree can be blockize";
   // get the inner Block, BlockRealize and StmtSRef
-  Array<StmtSRef> child_blocks = GetChildBlocks(self, loop_sref);
+  Array<StmtSRef> child_blocks = GetChildBlocks(self, loop_sref, false);
   CHECK_EQ(child_blocks.size(), 1) << "ValueError: Only one line subtree can be blockize";
   StmtSRef block_sref = child_blocks[0];
   BlockRealize block_realize = GetBlockRealize(block_sref);

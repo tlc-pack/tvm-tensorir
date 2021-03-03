@@ -36,8 +36,8 @@ def test_unique_name():
     C = te.compute((M, N), lambda x, y: B[x, y] + 1, name="main")
     func = te.create_func([C])
     s = tir.Schedule(func, debug_mode=True)
-    assert isinstance(s.get_block("main"), tir.schedule.StmtSRef)
-    assert isinstance(s.get_block("main_1"), tir.schedule.StmtSRef)
+    assert isinstance(s.get_sref(s.get_block("main")), tir.schedule.StmtSRef)
+    assert isinstance(s.get_sref(s.get_block("main_1")), tir.schedule.StmtSRef)
 
 
 def test_matmul():
