@@ -32,11 +32,6 @@ Schedule Schedule::Concrete(PrimFunc func, int64_t seed, bool debug_mode) {
   return Schedule(std::move(n));
 }
 
-String ConcreteScheduleNode::GetClassName() const {
-  static String name = "ConcreteSchedule";
-  return name;
-}
-
 /******** Copy ********/
 
 /*! \brief Helper class to do StmtSRef translation */
@@ -124,10 +119,13 @@ struct SRefTranslator {
     SMap<StmtSRef, BlockScope> result;
     result.reserve(scopes.size());
     for (const auto& kv : scopes) {
-      BlockScope& scope = result[Trans(kv.first)] = BlockScope();
-      scope->forward_edges = Trans(kv.second->forward_edges);
-      scope->backward_edges = Trans(kv.second->backward_edges);
-      scope->buffer_writers = Trans(kv.second->buffer_writers);
+      const StmtSRef& old_sref = kv.first;
+      const BlockScope& old_scope = kv.second;
+      ObjectPtr<BlockScopeNode> scope = make_object<BlockScopeNode>();
+      scope->forward_edges = Trans(old_scope->forward_edges);
+      scope->backward_edges = Trans(old_scope->backward_edges);
+      scope->buffer_writers = Trans(old_scope->buffer_writers);
+      result[Trans(old_sref)] = BlockScope(std::move(scope));
     }
     return result;
   }

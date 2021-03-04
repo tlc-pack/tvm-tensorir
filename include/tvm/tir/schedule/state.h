@@ -16,9 +16,22 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+/*!
+ * \brief This file defines ScheduleState, the core data structure of TensorIR scheduling.
+ * The data structure contains the following
+ * 1) The AST of the function that is being scheduled (mod)
+ * 2) The sref tree of schedulable statements
+ * 3) A reverse mapping from the AST nodes to that in the sref tree (stmt2ref)
+ * 4) The dependency information of each block scope (scopes)
+ * 5) A debug flag, if set, extra checking is enabled (debug_mode)
+ *
+ * \sa ScheduleStateNode
+ * \sa ScheduleState
+ */
 #ifndef TVM_TIR_SCHEDULE_STATE_H_
 #define TVM_TIR_SCHEDULE_STATE_H_
 
+#include <tvm/ir/module.h>
 #include <tvm/tir/function.h>
 #include <tvm/tir/schedule/block_scope.h>
 
@@ -29,17 +42,21 @@ namespace tir {
 
 // TODO(@junrushao1994): change `std::unordered_map` to `Map`?
 
+/*!
+ * \brief The state of scheduling, which provides a primitive `Replace` as an interface of all the
+ * scheduling primitives to transform the TensorIR.
+ */
 class ScheduleStateNode : public runtime::Object {
  public:
   /*! \brief The function to be scheduled */
-  PrimFunc func;
-  /*! \brief The root of schedulable reference tree */
+  PrimFunc func;  // TODO(@junrushao1994): change to IRModule
+  /*! \brief The root of sref tree */
   StmtSRef root;
-  /*! \brief The block scopes of each block */
+  /*! \brief The block scopes of each block sref */
   std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual> scopes;
-  /*! \brief The mapping from stmt to its schedulable reference node */
+  /*! \brief The mapping from block/for stmt to its sref */
   std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
-  /*! \brief In debug mode, we will check correctness after each replacement */
+  /*! \brief In debug mode, we do extra correctness checking after each replacement */
   bool debug_mode;
 
   void VisitAttrs(AttrVisitor* v) {
@@ -51,20 +68,22 @@ class ScheduleStateNode : public runtime::Object {
   }
 
   /*!
-   * \brief Replace part of pointed by `src_sref` AST with a new statement `tgt_stmt`.
-   * Only 3 replacement types are allowed from `src_sref->stmt` to `tgt_stmt`.
+   * \brief Replace the part of the AST, as being pointed to by `src_sref`,
+   * with a specific statement `tgt_stmt`, and maintain the sref tree accordingly.
+   *
+   * Only 3 types of replacements are allowed: from `src_sref->stmt` to `tgt_stmt`.
    * 1) Block -> Block
    * 2) Loop -> Loop
    * 3) Loop -> BlockRealize
-   * \param src_sref The sref of the statement to be replaced
+   *
+   * \param src_sref The sref to the statement to be replaced
    * \param tgt_stmt The statement to be replaced to
    * \param block_sref_reuse Maps an new block (replaced to) back to an old block (to be replaced),
    * and enforces reuse of srefs between them (rather than create new srefs)
    * i.e. after being replaced, the sref that points to the old block will point to the new one
    * \note `loop_sref_reuse` will be automatically detected via loop vars
    *
-   * TODO(@junrushao1994): change the semantic of `block_sref_reuse`
-   * from "new -> old" to "old -> new"
+   * TODO(@junrushao1994): change `block_sref_reuse` from "new -> old" to "old -> new"
    */
   TVM_DLL void Replace(const tir::StmtSRef& src_sref, const Stmt& tgt_stmt,
                        const Map<Block, Block>& block_sref_reuse);
@@ -73,6 +92,10 @@ class ScheduleStateNode : public runtime::Object {
   TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleStateNode, runtime::Object);
 };
 
+/*!
+ * \brief Managed reference to ScheduleStateNode
+ * \sa ScheduleStateNode
+ */
 class ScheduleState : public runtime::ObjectRef {
  public:
   /*!
@@ -80,17 +103,6 @@ class ScheduleState : public runtime::ObjectRef {
    * \param func The PrimFunc to be created
    */
   TVM_DLL explicit ScheduleState(PrimFunc func, bool debug_mode);
-  /*!
-   * \brief Constructor
-   * \param func The function to be scheduled
-   * \param root brief The root of schedulable reference tree
-   * \param scopes The mapping from stmt to its schedulable reference node
-   * \param stmt2ref The block scopes of each block
-   */
-  TVM_DLL explicit ScheduleState(
-      PrimFunc func, StmtSRef root,
-      std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual> scopes,
-      std::unordered_map<const StmtNode*, StmtSRef> stmt2ref, bool debug_mode);
 
   ScheduleStateNode* get() { return static_cast<ScheduleStateNode*>(data_.get()); }
   const ScheduleStateNode* get() const {

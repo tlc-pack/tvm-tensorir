@@ -47,8 +47,6 @@ class ConcreteScheduleNode : public ScheduleNode {
   TVM_DECLARE_BASE_OBJECT_INFO(ConcreteScheduleNode, ScheduleNode);
 
  public:
-  String GetClassName() const override;
-
   Schedule Copy() const override;
 
   void Seed(int64_t seed = -1) override;
@@ -79,19 +77,20 @@ class ConcreteScheduleNode : public ScheduleNode {
   Array<Var> SamplePerfectTile(const LoopRV& loop_rv,     //
                                int n,                     //
                                int max_innermost_factor,  //
-                               Optional<Array<ObjectRef>> decision) override {
+                               Optional<Array<Integer>> decision = NullOpt) override {
     LOG(FATAL) << "NotImplemented";
     throw;
   }
 
   Var SampleCategorical(const Array<Integer>& candidates,  //
                         const Array<FloatImm>& probs,      //
-                        Optional<ObjectRef> decision) override {
+                        Optional<Integer> decision = NullOpt) override {
     LOG(FATAL) << "NotImplemented";
     throw;
   }
 
-  LoopRV SampleComputeLocation(const BlockRV& block_rv, Optional<ObjectRef> decision) override {
+  LoopRV SampleComputeLocation(const BlockRV& block_rv,
+                               Optional<Integer> decision = NullOpt) override {
     LOG(FATAL) << "NotImplemented";
     throw;
   }

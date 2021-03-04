@@ -558,9 +558,8 @@ StmtSRef Blockize(ScheduleState self, const StmtSRef& loop_sref, const String& e
   auto outer_realize = BlockRealize(outer_bindings, division.back()->outer_extent, outer_block);
 
   self->Replace(loop_sref, outer_realize, {{inner_block, block}});
-  UpdateScope(GetScopeSRef(self->stmt2ref.at(outer_block.get()))->stmt, self->stmt2ref,
-              &self->scopes);
-  UpdateScope(outer_block.get(), self->stmt2ref, &self->scopes);
+  UpdateScope(self, GetScopeSRef(self->stmt2ref.at(outer_block.get())));
+  UpdateScope(self, self->stmt2ref.at(outer_block.get()));
   // Check loop binding
 
   {

@@ -29,7 +29,7 @@ namespace meta_schedule {
 std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, Sampler* sampler,
                                        const tir::StmtSRef& loop_sref, int n,
                                        int max_innermost_factor,
-                                       Optional<Array<ObjectRef>>* decision) {
+                                       Optional<Array<Integer>>* decision) {
   const auto* loop = TVM_SREF_TO_FOR(loop, loop_sref);
   int64_t extent = GetLoopIntExtent(loop);
   std::vector<int64_t> result;
@@ -39,14 +39,14 @@ std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, Sampler* sampler
     result[0] = -1;
   } else if (decision->defined()) {
     // Case 2. Use previous decision
-    result = AsVector<ObjectRef, int64_t>(decision->value());
+    result = AsVector<Integer, int64_t>(decision->value());
   } else {
     // Case 3. Use fresh new sampling result
     std::vector<int> sampled = sampler->SamplePerfectTile(n, extent);
     result = std::vector<int64_t>(sampled.begin(), sampled.end());
   }
   // Record the new decision
-  Array<ObjectRef> new_decision;
+  Array<Integer> new_decision;
   new_decision.reserve(result.size());
   for (int64_t i : result) {
     new_decision.push_back(Integer(i));
@@ -57,7 +57,7 @@ std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, Sampler* sampler
 
 int64_t SampleCategorical(tir::ScheduleState self, Sampler* sampler,
                           const Array<Integer>& candidates, const Array<FloatImm>& probs,
-                          Optional<ObjectRef>* decision) {
+                          Optional<Integer>* decision) {
   int i = -1;
   int n = candidates.size();
   if (decision->defined()) {
@@ -74,8 +74,7 @@ int64_t SampleCategorical(tir::ScheduleState self, Sampler* sampler,
 }
 
 tir::StmtSRef SampleComputeLocation(tir::ScheduleState self, Sampler* sampler,
-                                    const tir::StmtSRef& block_sref,
-                                    Optional<ObjectRef>* decision) {
+                                    const tir::StmtSRef& block_sref, Optional<Integer>* decision) {
   // Find all possible compute-at locations
   Array<tir::StmtSRef> loop_srefs = tir::CollectComputeLocation(self, block_sref);
   int n = loop_srefs.size();
