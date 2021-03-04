@@ -189,11 +189,11 @@ Array<BufferRegion> ReplaceBuffer(const Array<BufferRegion>& regions, const Buff
  * \brief Get the innermost block who writes the buffer
  * \param sch The schedule class
  * \param buffer The buffer to be retrieved
+ * \param sref The root of the sref
  * \return Schedule root if the block has no writer, or the innermost the sref to the writer block
  * \note This method also checks whether the block is dominate. If not, an exception will be thrown
  */
-StmtSRef GetInnermostWriterBlock(const ScheduleState self, const Buffer& buffer) {
-  StmtSRef sref = self->root;
+StmtSRef GetInnermostWriterBlock(const ScheduleState self, const Buffer& buffer, StmtSRef sref) {
   for (;;) {
     BlockScope scope = self->scopes.at(sref);
     auto it = scope->buffer_writers.find(buffer);
@@ -540,8 +540,9 @@ StmtSRef CacheRead(ScheduleState self, const StmtSRef& _block_sref, int i,
     CHECK_LT(i, block->reads.size()) << "ValueError: index out of range";
     read_buffer = block->reads[i]->buffer;
   }
-  StmtSRef block_sref =
-      GetInnermostWriterBlock(self, read_buffer);  // TODO(@junrushao1994): change it
+  StmtSRef root = GetSRefTreeRoot(_block_sref);
+  // TODO(@junrushao1994): change it
+  StmtSRef block_sref = GetInnermostWriterBlock(self, read_buffer, root);
   CacheStageInfo info;
   info.read_buffer = read_buffer;
   // Create corresponding the buffer to be written, i.e. result of cache_read
@@ -551,7 +552,7 @@ StmtSRef CacheRead(ScheduleState self, const StmtSRef& _block_sref, int i,
   // Find the innermost writer to the read buffer
   StmtSRef scope_sref{nullptr};
   BufferRegion cache_region(nullptr);
-  if (!block_sref.same_as(self->root)) {
+  if (!block_sref.same_as(root)) {
     // Find the parent scope
     scope_sref = GetScopeSRef(block_sref);
     // Check the block is not a output block
@@ -561,9 +562,9 @@ StmtSRef CacheRead(ScheduleState self, const StmtSRef& _block_sref, int i,
     // Detect insert position
     CacheLocDetector::Detect(self, block_sref, scope_sref, &info);
   } else {
-    info.loc_sref = self->root;
+    info.loc_sref = root;
     info.loc_pos = 0;
-    scope_sref = self->root;
+    scope_sref = root;
     cache_region = BufferRegion(read_buffer);
   }
   Block cache_read_stage = MakeCacheStage(/*cache_region=*/cache_region, /*info=*/&info,
@@ -595,7 +596,7 @@ StmtSRef CacheWrite(ScheduleState self, const StmtSRef& block_sref, int i,
   info.read_buffer = write_buffer->WithScope(storage_scope);
   // Create the corresponding buffer allocation
   info.alloc = info.read_buffer;
-  ICHECK(!block_sref.same_as(self->root))
+  ICHECK(block_sref->parent != nullptr)
       << "ValueError: `cache_write` cannot be applied to an input buffer";
   // Find the parent scope
   StmtSRef scope_sref = GetScopeSRef(block_sref);
