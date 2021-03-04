@@ -77,6 +77,17 @@ def rewrite_cooperative_fetch() -> Postproc:
     return _ffi_api_postproc.RewriteCooperativeFetch()  # pylint: disable=no-member
 
 
+def rewrite_cooperative_fetch_tensorcore() -> Postproc:
+    """Creates a postprocessor rewrites "lazy_cooperative_fetch" with the threadIdx==32
+
+    Returns
+    ----------
+    postproc: Postproc
+        The postprocessor created
+    """
+    return _ffi_api_postproc.RewriteCooperativeFetchTensorCore()  # pylint: disable=no-member
+
+
 def rewrite_unbound_blocks() -> Postproc:
     """Creates a postprocessor that finds each block that is not bound to thread axes,
     and bind them to `blockIdx.x` and `threadIdx.x`
