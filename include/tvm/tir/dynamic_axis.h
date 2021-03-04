@@ -21,14 +21,7 @@ class DyAxis : public Var {
  public:
   TVM_DLL DyAxis(String name, Array<IntImm> possible_values);
 
-  const DyAxisNode* operator->() const {
-    return get();
-  }
-  const DyAxisNode* get() const {
-    return static_cast<const DyAxisNode*>(data_.get());
-  }
-
-  using ContainerType = DyAxisNode;
+  TVM_DEFINE_OBJECT_REF_METHODS(DyAxis, Var, DyAxisNode);
 };
 
 
