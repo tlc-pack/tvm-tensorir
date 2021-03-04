@@ -558,7 +558,7 @@ bool IsRangeSame(const Range input_1, const Range input_2) {
 // <bojian/TVM-SymbolicTuning>
 class ContainsBlockIdx : public ExprVisitor {
  public:
-  static bool hasBlockIdx = false;
+  bool hasBlockIdx = false;
  protected:
   void VisitExpr_(const VarNode* op) override {
     if (op->name_hint == "blockIdx.x") {
