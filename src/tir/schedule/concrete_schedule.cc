@@ -132,7 +132,6 @@ class ScheduleCopier {
     SMap<StmtSRef, BlockInfo> result;
     for (const auto& kv : scopes) {
       const StmtSRef& old_sref = kv.first;
-      const BlockInfo& old_info = kv.second;
       BlockInfo new_info = old_info;
       ObjectPtr<BlockScopeNode> scope = make_object<BlockScopeNode>();
       scope->src2deps = Copy(old_info.scope->src2deps);
@@ -142,14 +141,6 @@ class ScheduleCopier {
       new_info.scope = BlockScope(std::move(scope));
       result[Copy(old_sref)] = std::move(new_info);
     }
-    return result;
-  }
-
-  /*! \brief Copy the stmt2ref */
-  UMap<const StmtNode*, StmtSRef> Copy(const UMap<const StmtNode*, StmtSRef>& stmt2ref) {
-    UMap<const StmtNode*, StmtSRef> result;
-    result.reserve(stmt2ref.size());
-    for (const auto& kv : stmt2ref) {
       const StmtNode* stmt = kv.first;
       const StmtSRef& sref = kv.second;
       result.emplace(stmt, Copy(sref));

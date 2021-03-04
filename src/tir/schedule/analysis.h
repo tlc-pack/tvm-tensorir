@@ -148,21 +148,22 @@ Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent
  * \param sref The block or loop sref to be retrieved
  * \return The sref to the scope root block
  */
-TVM_DLL StmtSRef GetScopeSRef(const StmtSRef& sref);
+StmtSRef GetScopeSRef(const StmtSRef& sref);
 
+/******** Block-loop relation ********/
 /*!
  * \brief Get block from its tag
  * \param tag The query tag
  * \return the block schedulable reference list
  */
-TVM_DLL Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name);
+Array<StmtSRef> GetBlocks(const ScheduleState& self, const String& name);
 
 /*!
  * \brief Get loops of the block
  * \param block The query block
  * \return the loop sref list
  */
-TVM_DLL Array<StmtSRef> GetAxes(const ScheduleState& self, const StmtSRef& block_sref);
+Array<StmtSRef> GetAxes(const ScheduleState& self, const StmtSRef& block_sref);
 
 /*!
  * \brief Get the child blocks of a specific parent block/loop
@@ -171,27 +172,26 @@ TVM_DLL Array<StmtSRef> GetAxes(const ScheduleState& self, const StmtSRef& block
  * parent_sref
  * \return A list of child blocks
  */
-TVM_DLL Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent_sref,
-                                       bool inclusive);
+Array<StmtSRef> GetChildBlocks(const ScheduleState& self, const StmtSRef& parent_sref,
+                               bool inclusive = false);
 
 /*!
  * \brief Get the producer of a specific block
  * \return The producers
  */
-TVM_DLL Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sref);
+Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sref);
 
 /*!
  * \brief Get the consumers of a specific block
  * \return The consumers
  */
-TVM_DLL Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sref);
+Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sref);
 
-TVM_DLL bool HasSingleChild(const StmtSRef& loop_or_block_sref);
+/******** Misc ********/
 
-TVM_DLL IterVarType GetLoopIterType(const ScheduleState& self, const StmtSRef& loop_sref);
+bool HasSingleChild(const StmtSRef& loop_or_block_sref);
 
-TVM_DLL Array<StmtSRef> CollectComputeLocation(const ScheduleState& self,
-                                               const StmtSRef& block_sref);
+Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef& block_sref);
 
 }  // namespace tir
 }  // namespace tvm
