@@ -39,11 +39,11 @@ class StmtSRef(Object):
         return _ffi_api_schedule.StmtSRefStmt(self)  # pylint: disable=no-member
 
     @staticmethod
-    def root() -> StmtSRef:
+    def root_mark() -> StmtSRef:
         return _ffi_api_schedule.StmtSRefRootMark()  # pylint: disable=no-member
 
     @staticmethod
-    def inline() -> StmtSRef:
+    def inline_mark() -> StmtSRef:
         return _ffi_api_schedule.StmtSRefInlineMark()  # pylint: disable=no-member
 
 
@@ -100,7 +100,6 @@ class ScheduleState(Object):
     """The state of scheduling"""
 
     func: PrimFunc
-    root: StmtSRef
     debug_mode: bool
 
     def __init__(self, func: PrimFunc, debug_mode: bool):
