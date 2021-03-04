@@ -236,17 +236,7 @@ BlockRV ScheduleNode::CacheWrite(const BlockRV& block_rv, int i, const String& s
 
 BlockRV ScheduleNode::RFactor(const LoopRV& loop_rv, int factor_axis) {
   BlockRV result = tir::ConcreteScheduleNode::RFactor(loop_rv, factor_axis);
-
-  // Find the output from TIR
-  tir::StmtSRef tir_result = this->sch->RFactor(Eval(loop), factor_axis);
-  // Create the output random variable
-  BlockRV output;
-  // Update the symbol table
-  this->sym_tab.Set(output, tir_result);
-  // Record the instruction
-  this->trace->Append(RfactorAttrs::Make(loop, factor_axis, output));
-  return output;
-  // TODO
+  this->trace->Append(RfactorAttrs::Make(loop_rv, factor_axis, result));
   return result;
 }
 

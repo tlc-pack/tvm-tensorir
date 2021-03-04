@@ -744,22 +744,24 @@ double CountFlop(const tir::PrimFunc& func) {
   return cnt;
 }
 
-std::pair<int, int> GetCumulativeSpaceAndReductionLength(const tir::Schedule& sch,
+std::pair<int, int> GetCumulativeSpaceAndReductionLength(const tir::ScheduleState& self,
                                                          const tir::StmtSRef& block_sref) {
-  Array<tir::StmtSRef> loops = tir::schedule::GetAxes(self, block_sref);
+  Array<tir::StmtSRef> loops = tir::GetAxes(self, block_sref);
   int cum_space_len = 1, cum_reduce_len = 1;
   // The case is invalid if there is any loop with type other than kDataPar and kCommReduce.
   for (const tir::StmtSRef& loop_sref : loops) {
     tir::IterVarType type = GetLoopIterType(self, loop_sref);
     if (type == tir::kDataPar) {
-      if (const auto* p_int = GetLoopExtent(loop_sref).as<IntImmNode>()) {
-        cum_space_len *= p_int->value;
+      int64_t extent = GetLoopIntExtent(loop_sref);
+      if (extent != -1) {
+        cum_space_len *= extent;
       } else {
         return std::make_pair(-1, -1);
       }
     } else if (type == tir::kCommReduce) {
-      if (const auto* p_int = GetLoopExtent(loop_sref).as<IntImmNode>()) {
-        cum_reduce_len *= p_int->value;
+      int64_t extent = GetLoopIntExtent(loop_sref);
+      if (extent != -1) {
+        cum_reduce_len *= extent;
       } else {
         return std::make_pair(-1, -1);
       }
@@ -775,7 +777,7 @@ bool NeedsRFactor(const SearchTask& task, const tir::ScheduleState& self,
                   const int& max_jobs_per_core, std::atomic<int>* warned_num_cores_missing) {
   const auto* block = block_sref->GetStmt<tir::BlockNode>();
   CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
-  Array<tir::StmtSRef> loops = tir::schedule::GetAxes(self, block_sref);
+  Array<tir::StmtSRef> loops = tir::GetAxes(self, block_sref);
 
   // Cond 1. The block is a reduction block and has trivial binding.
   if (self->scopes.at(GetScopeSRef(block_sref))->IsReduction(block_sref)
@@ -858,13 +860,13 @@ void ReorderReductionLoops(const Schedule& sch, const BlockRV& block_rv) {
   Array<LoopRV> new_order;
   // Step 1. Add spatial loops.
   for (const LoopRV& loop_rv : loops) {
-    if (GetLoopIterType(sch->sch->state, sch->Eval(loop_rv)) == tir::kDataPar) {
+    if (GetLoopIterType(sch->state, sch->GetSRef(loop_rv)) == tir::kDataPar) {
       new_order.push_back(loop_rv);
     }
   }
   // Step 2. Add reduction loops.
   for (const LoopRV& loop_rv : loops) {
-    if (GetLoopIterType(sch->sch->state, sch->Eval(loop_rv)) == tir::kCommReduce) {
+    if (GetLoopIterType(sch->state, sch->GetSRef(loop_rv)) == tir::kCommReduce) {
       new_order.push_back(loop_rv);
     }
   }
@@ -889,7 +891,7 @@ void FuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
   Array<LoopRV> reduction_loops;
   *num_spatial_loops = 0;
   for (const LoopRV& loop_rv : loops) {
-    tir::IterVarType type = GetLoopIterType(sch->sch->state, sch->Eval(loop_rv));
+    tir::IterVarType type = GetLoopIterType(sch->state, sch->GetSRef(loop_rv));
     if (type == tir::kDataPar) {
       (*num_spatial_loops)++;
     } else {

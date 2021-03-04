@@ -909,14 +909,14 @@ class RuleAddRfactor {
   Array<Schedule> Apply(const SearchTask& task,
                         const Schedule& sch, const BlockRV& block_rv) const {
     // Check the conditions of the rule.
-    tir::StmtSRef block_sref = sch->Eval(block_rv);
+    tir::StmtSRef block_sref = sch->GetSRef(block_rv);
     if (HasAnyAnn(block_sref)) {
       return {sch};
     }
     if (block_sref->GetStmt<tir::BlockNode>()->writes.size() != 1) {
       return {sch};
     }
-    if (!NeedsRFactor(task, sch->sch->state, block_sref, max_jobs_per_core,
+    if (!NeedsRFactor(task, sch->state, block_sref, max_jobs_per_core,
                       &warned_num_cores_missing) || HasCacheWriteBlock(sch, block_rv)) {
       return {sch};
     }
