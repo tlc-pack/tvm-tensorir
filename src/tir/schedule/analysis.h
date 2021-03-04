@@ -100,6 +100,8 @@ Array<StmtSRef> GetProducers(const ScheduleState& self, const StmtSRef& block_sr
  */
 Array<StmtSRef> GetConsumers(const ScheduleState& self, const StmtSRef& block_sref);
 
+StmtSRef GetSRefTreeRoot(const StmtSRef& sref);
+
 /******** Misc ********/
 
 bool HasSingleChild(const StmtSRef& loop_or_block_sref);
