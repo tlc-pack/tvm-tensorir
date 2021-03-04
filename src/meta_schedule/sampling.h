@@ -32,16 +32,16 @@ TVM_DLL std::vector<int64_t> SamplePerfectTile(tir::ScheduleState self, Sampler*
                                                const tir::StmtSRef& loop_sref,  //
                                                int n,                           //
                                                int max_innermost_factor,        //
-                                               Optional<Array<ObjectRef>>* decision);
+                                               Optional<Array<Integer>>* decision);
 
 TVM_DLL int64_t SampleCategorical(tir::ScheduleState self, Sampler* sampler,  //
                                   const Array<Integer>& candidates,           //
                                   const Array<FloatImm>& probs,               //
-                                  Optional<ObjectRef>* decision);
+                                  Optional<Integer>* decision);
 
 TVM_DLL tir::StmtSRef SampleComputeLocation(tir::ScheduleState self, Sampler* sampler,  //
                                             const tir::StmtSRef& block_sref,            //
-                                            Optional<ObjectRef>* decision);
+                                            Optional<Integer>* decision);
 
 }  // namespace meta_schedule
 }  // namespace tvm

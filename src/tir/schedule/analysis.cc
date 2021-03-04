@@ -16,10 +16,43 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "./analysis.h"
+#include "./utils.h"
 
 namespace tvm {
 namespace tir {
+
+/******** ContainsVar ********/
+
+bool ContainsVar(const ObjectRef& stmt_or_expr, const Array<Var>& vars) {
+  std::unordered_set<const VarNode*> vars_set;
+  vars_set.reserve(vars.size());
+  for (const Var& var : vars) {
+    vars_set.insert(var.get());
+  }
+  return ContainsVar(stmt_or_expr, vars_set);
+}
+
+bool ContainsVar(const ObjectRef& stmt_or_expr, const Var& var) {
+  return ContainsVar(stmt_or_expr, {var.get()});
+}
+
+bool ContainsVar(const ObjectRef& stmt_or_expr, const std::unordered_set<const VarNode*>& vars) {
+  bool found = false;
+  auto f_find = [&found, &vars](const ObjectRef& obj) -> bool {
+    if (found) {
+      return false;
+    }
+    if (const VarNode* var = obj.as<VarNode>()) {
+      if (vars.count(var)) {
+        found = true;
+        return false;
+      }
+    }
+    return true;
+  };
+  PreOrderVisit(stmt_or_expr, f_find);
+  return found;
+}
 
 bool ValidateBlockBinding(const BlockRealize& realize, const Map<Var, Range>& loop_var_ranges) {
   arith::Analyzer analyzer;

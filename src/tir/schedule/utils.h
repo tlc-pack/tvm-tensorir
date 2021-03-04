@@ -34,6 +34,8 @@
 #include <utility>
 #include <vector>
 
+#include "./analysis.h"
+
 namespace tvm {
 namespace tir {
 
@@ -60,12 +62,21 @@ namespace tir {
       << "TypeError: Expects `" << #From << "` to have type `" << Type::_type_key \
       << "`, but gets: " << (From.defined() ? From->GetTypeKey() : "None")
 
-inline String ReprFunc(PrimFunc func) {
+inline String Repr(const IRModule& mod) {
   const auto* f = runtime::Registry::Get("script.AsTVMScript");
-  CHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
-  String s = (*f)(func, true);
+  ICHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
+  String s = (*f)(mod, false);
   return s;
 }
+
+inline String Repr(const PrimFunc& func) {
+  const auto* f = runtime::Registry::Get("script.AsTVMScript");
+  ICHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
+  String s = (*f)(func, false);
+  return s;
+}
+
+inline String Repr(const Schedule& self) { return Repr(self->Module()); }
 
 /*!
  * \brief Convert a tvm::runtime::Array to std::vector
@@ -215,15 +226,9 @@ bool StmtExprContainsVar(const ObjectRef& obj, const std::vector<Var>& vars);
  */
 bool StmtExprContainsVar(const ObjectRef& obj, const std::unordered_set<const VarNode*>& vars);
 
-/*!
- * \brief Update the scope (dependency) information of a given block statement
- * \param stmt The block statement to be updated
- * \param stmt2ref The ScheduleNode::stmt2ref from ScheduleNode
- * \param scopes The ScheduleNode::stmt2ref from ScheduleNode that is to be updated
- */
-void UpdateScope(const StmtNode* stmt,
-                 const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref,
-                 std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual>* scopes);
+inline void UpdateScope(ScheduleState self, const StmtSRef& sref) {
+  self->scopes[sref] = BlockScope(tir::GetChildBlocks(self, sref));
+}
 
 class StmtReplacer : public StmtMutator {
  public:

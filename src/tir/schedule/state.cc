@@ -16,25 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-#include "./analysis.h"
 #include "./utils.h"
 
 namespace tvm {
 namespace tir {
-
-/**************** Constructor ****************/
-
-ScheduleState::ScheduleState(
-    PrimFunc func, StmtSRef root,
-    std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual> scopes,
-    std::unordered_map<const StmtNode*, StmtSRef> stmt2ref, bool debug_mode) {
-  ObjectPtr<ScheduleStateNode> n = make_object<ScheduleStateNode>();
-  n->func = std::move(func);
-  n->root = std::move(root);
-  n->scopes = std::move(scopes);
-  n->stmt2ref = std::move(stmt2ref);
-  this->data_ = std::move(n);
-}
 
 /**************** Utility functions ****************/
 
@@ -158,13 +143,11 @@ class StateCreator : private StmtVisitor {
     sref->binding_valid =
         ValidateBlockBinding(GetRef<BlockRealize>(realizes_.back()), loop_var_ranges);
     // Collect `scopes` info
-    self_->scopes[sref] = std::move(block_frames_.back().scope);
-    // Pop stack
+    self_->scopes[sref] = BlockScope(std::move(block_frames_.back().leaf_blocks));
     block_frames_.pop_back();
     // Update parent scope if exists
     if (!block_frames_.empty()) {
-      BlockFrame& top = block_frames_.back();
-      top.scope->AddChildBlock(sref, &top.buffer_readers);
+      block_frames_.back().leaf_blocks.push_back(sref);
     }
   }
 
@@ -186,12 +169,10 @@ class StateCreator : private StmtVisitor {
     SetSeqIndex(self_, seq_stmt);
   }
 
-  /*! \brief A stack frame containing the block information being gathered but not completed */
+  /*! \brief A stack frame gathering the block scope information */
   struct BlockFrame {
-    /*! \brief The scope to be created. */
-    BlockScope scope;
-    /*! \brief ScopeNode::buffer_writers exists, but ScopeNode::buffer_readers does not. */
-    std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual> buffer_readers;
+    /*! \brief The leaf blocks of the current scope. */
+    Array<StmtSRef> leaf_blocks;
   };
 
   /*! \brief The result stmt2ref */
@@ -204,12 +185,15 @@ class StateCreator : private StmtVisitor {
   std::vector<BlockFrame> block_frames_;
 };
 
+/**************** Constructor ****************/
+
 ScheduleState::ScheduleState(PrimFunc func, bool debug_mode) {
   data_ = StateCreator::Create(func, debug_mode);
   // Verify the region cover
-  for (const auto& it : (*this)->scopes) {
+  ScheduleState self = GetRef<ScheduleState>(get());
+  for (const auto& it : self->scopes) {
     const StmtSRef& sref = it.first;
-    VerifyRegionCover(GetRef<ScheduleState>(this->get()), sref);
+    VerifyRegionCover(self, sref);
   }
 }
 
@@ -411,7 +395,7 @@ class SRefUpdater : public StmtVisitor {
  private:
   explicit SRefUpdater(ScheduleStateNode* self, StmtSRefNode* root_parent,
                        const std::unordered_map<const Object*, StmtSRef>& reused_srefs)
-      : self_(self), parents_{root_parent}, reused_srefs_(reused_srefs) {}
+      : self_(GetRef<ScheduleState>(self)), parents_{root_parent}, reused_srefs_(reused_srefs) {}
 
   void VisitStmt_(const ForNode* op) final {
     StmtSRef& sref = self_->stmt2ref[op];
@@ -462,15 +446,15 @@ class SRefUpdater : public StmtVisitor {
     VisitStmt(op->body);
     parents_.pop_back();
     // Additionally, need to update the scope because the block is changed
-    UpdateScope(op, self_->stmt2ref, &self_->scopes);
+    self_->scopes[sref] = BlockScope(tir::GetChildBlocks(self_, sref));
   }
 
   void VisitStmt_(const SeqStmtNode* seq_stmt) final {
     StmtVisitor::VisitStmt_(seq_stmt);
-    SetSeqIndex(self_, seq_stmt);
+    SetSeqIndex(self_.get(), seq_stmt);
   }
 
-  ScheduleStateNode* self_;
+  ScheduleState self_;
   std::vector<StmtSRefNode*> parents_;
   const std::unordered_map<const Object*, StmtSRef>& reused_srefs_;
 };
@@ -722,42 +706,19 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
 /**************** FFI ****************/
 
 TVM_REGISTER_NODE_TYPE(ScheduleStateNode);
-
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleState")
     .set_body_typed([](PrimFunc func, bool debug_mode) { return ScheduleState(func, debug_mode); });
-
-TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefStmt")
-    .set_body_typed([](StmtSRef sref) -> Optional<Stmt> {
-      if (sref->stmt == nullptr) {
-        return NullOpt;
-      }
-      return GetRef<Stmt>(sref->stmt);
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefRootMark").set_body_typed(StmtSRef::RootMark);
-TVM_REGISTER_GLOBAL("tir.schedule.StmtSRefInlineMark").set_body_typed(StmtSRef::InlineMark);
-
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateReplace")
+    .set_body_method<ScheduleState>(&ScheduleStateNode::Replace);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetSRef")
     .set_body_typed([](ScheduleState self, Stmt stmt) -> Optional<StmtSRef> {
       auto it = self->stmt2ref.find(stmt.get());
-      if (it != self->stmt2ref.end()) {
-        return it->second;
-      }
-      return NullOpt;
+      return it != self->stmt2ref.end() ? it->second : Optional<StmtSRef>(NullOpt);
     });
-
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetScope")
-    .set_body_typed([](ScheduleState self, StmtSRef block_sref) {
+    .set_body_typed([](ScheduleState self, StmtSRef block_sref) -> Optional<BlockScope> {
       auto it = self->scopes.find(block_sref);
-      CHECK(it != self->scopes.end())
-          << "ValueError: Cannot find corresponding scope for: " << block_sref;
-      return it->second;
-    });
-
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateReplace")
-    .set_body_typed([](ScheduleState self, tir::StmtSRef src_sref, Stmt tgt_stmt,
-                       Map<Block, Block> block_sref_reuse) {
-      self->Replace(src_sref, tgt_stmt, block_sref_reuse);
+      return it != self->scopes.end() ? it->second : Optional<BlockScope>(NullOpt);
     });
 
 }  // namespace tir
