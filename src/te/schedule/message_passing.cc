@@ -613,7 +613,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
   // <bojian/TVM-SymbolicTuning>
   // #if defined(SYMTUNE_SCHED_OPT_NO_DUP_IF_CHECKS)
   PrimExpr prev_predicate;
-  ContainsBlockIdx BlockIdxChecker;
+  ContainsBlockIdx blockidx_checker;
   DyAxisMinReplacer dyaxis_min_replacer;
 
   for (const IterVar& iv : stage->all_iter_vars) {
@@ -669,7 +669,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
               stage->origin_op->name.find("shared") !=
               std::string::npos) {
             HasBlockIdx = false;
-            BlockIdxChecker(value);
+            blockidx_checker(value);
             if (HasBlockIdx) {
               LOG(WARNING) << "\'.local/shared\' spotted in " << stage->origin_op->name << ". "
                               "Assuming it is a cache write whose boundary check "
