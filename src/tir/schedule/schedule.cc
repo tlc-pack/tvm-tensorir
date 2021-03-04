@@ -27,23 +27,17 @@ BlockRV::BlockRV() { this->data_ = make_object<BlockRVNode>(); }
 
 LoopRV::LoopRV() { this->data_ = make_object<LoopRVNode>(); }
 
-/**************** Printer ****************/
+/**************** GetSRef ****************/
 
-String Repr(const PrimFunc& func) {
-  const auto* f = runtime::Registry::Get("script.AsTVMScript");
-  ICHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
-  String s = (*f)(func, false);
-  return s;
+StmtSRef ScheduleNode::GetSRef(const StmtNode* stmt) const {
+  auto it = this->state->stmt2ref.find(stmt);
+  if (it == this->state->stmt2ref.end()) {
+    LOG(FATAL) << "IndexError: The stmt doesn't exist in the IR";
+  }
+  return it->second;
 }
 
-String Repr(const IRModule& mod) {
-  const auto* f = runtime::Registry::Get("script.AsTVMScript");
-  ICHECK(f) << "IndexError: global function \"script.AsTVMScript\" not found";
-  String s = (*f)(mod, false);
-  return s;
-}
-
-TVM_DLL String Repr(const Schedule& self) { return Repr(self->Module()); }
+StmtSRef ScheduleNode::GetSRef(const Stmt& stmt) const { return GetSRef(stmt.get()); }
 
 /**************** FFI ****************/
 
@@ -51,14 +45,12 @@ TVM_REGISTER_NODE_TYPE(BlockRVNode);
 TVM_REGISTER_NODE_TYPE(LoopRVNode);
 TVM_REGISTER_OBJECT_TYPE(ScheduleNode);
 
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleGetClassName")  //
-    .set_body_method<Schedule>(&ScheduleNode::GetClassName);
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCopy")  //
-    .set_body_method<Schedule>(&ScheduleNode::Copy);
-TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSeed")  //
-    .set_body_method<Schedule>(&ScheduleNode::Seed);
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleModule")  //
     .set_body_method<Schedule>(&ScheduleNode::Module);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleSeed")  //
+    .set_body_method<Schedule>(&ScheduleNode::Seed);
+TVM_REGISTER_GLOBAL("tir.schedule.ScheduleCopy")  //
+    .set_body_method<Schedule>(&ScheduleNode::Copy);
 
 /******** (FFI) Lookup random variables ********/
 

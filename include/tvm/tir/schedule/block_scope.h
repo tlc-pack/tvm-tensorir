@@ -16,6 +16,27 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+/*!
+ * \brief This file defines two pillar data structure for TensorIR scheduling
+ *
+ * 1) StmtSRef, aka sref: An object that references to schedulable statements in the TensorIR.
+ * The schedulable elements of the TensorIR are blocks and for loops, so there are two kinds of
+ * srefs, block sref and loop sref.
+ * An sref also records the sref to the closest schedulable statement in its ancestors as its
+ * parent. The parent-relationship of StmtSRefs form a tree, named sref tree.
+ *
+ * 2) BlockScope. In the sref tree, each block sref has its correpsonding block scope.
+ * A scope is a contiguous subtree of the sref tree, whose root and leaves are block srefs, and
+ * the internal nodes are loop srefs. Those leaf blocks are called child blocks of the root.
+ * A BlockScope object records the producer-consuer relationships between the child blocks inside
+ * the scope, and therefore could provide property checks for a leaf block, e.g. whether a block is
+ * dominant, complete, reduction, etc.
+ *
+ * \sa StmtSRefNode
+ * \sa StmtSRef
+ * \sa BlockScopeNode
+ * \sa BlockScope
+ */
 #ifndef TVM_TIR_SCHEDULE_BLOCK_SCOPE_H_
 #define TVM_TIR_SCHEDULE_BLOCK_SCOPE_H_
 
@@ -26,24 +47,24 @@
 namespace tvm {
 namespace tir {
 
-// TODO(@junrushao1994): Change std::unordered_map to Map
-
-/*! \brief The container of stmt schedulable ref. */
+/*! \brief An object that references to schedulable statements in the TensorIR */
 class StmtSRefNode : public runtime::Object {
  public:
-  /*! \brief The corresponding stmt node */
+  /*! \brief The corresponding stmt node, can be either block or for loop. */
   const StmtNode* stmt;
-  /*! \brief The parent sref */
+  /*! \brief The parent sref. */
   StmtSRefNode* parent;
-  /*! \brief The location in an array if parent contains SeqStmt. */
+  /*! \brief The location in an array if the parent of the stmt contains multiple children. */
   int64_t seq_index;
-  /*! \brief Whether the loop bindings are validatable */
+  /*! \brief If true, the block bindings are semi-affine maps. */
   bool binding_valid;
 
+  void VisitAttrs(AttrVisitor* v) {}
+
   /*!
-   * \brief Get the referenced statement with type checking. It serves the same purpose as
-   * ObjectRef::as, but does not require strong reference to `stmt`
-   * \tparam StmtType The type that `this->stmt` is assumed to be
+   * \brief Get the referenced statement with proper type checking.
+   * It serves the same purpose as `ObjectRef::as`, but does not acquire strong reference to `stmt`
+   * \tparam StmtType The type that `this->stmt` to be downcasted to
    * \return nullptr if type check fails, otherwise the type casted from `this->stmt`
    */
   template <typename StmtType>
@@ -55,43 +76,51 @@ class StmtSRefNode : public runtime::Object {
     }
   }
 
-  void VisitAttrs(AttrVisitor* v) {}
-
   static constexpr const char* _type_key = "tir.StmtSRef";
   TVM_DECLARE_FINAL_OBJECT_INFO(StmtSRefNode, Object);
 };
 
 /*!
- * \brief The stmt schedulable ref.
+ * \brief Managed reference to StmtSRefNode
+ * \sa StmtSRefNode
  */
 class StmtSRef : public runtime::ObjectRef {
  public:
+  /*!
+   * \brief The constructor
+   * \param stmt The corresponding stmt node, can be either block or for loop.
+   * \param parent The parent sref.
+   * \param seq_index The location in an array if the parent of the stmt contains multiple children.
+   * \param binding_valid If true, the block bindings are semi-affine maps.
+   */
   explicit StmtSRef(const StmtNode* stmt, StmtSRefNode* parent, int64_t seq_index,
                     bool binding_valid);
+  /*! \return The mutable pointer to the StmtSRefNode */
   StmtSRefNode* get() const { return static_cast<StmtSRefNode*>(data_.get()); }
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(StmtSRef, ObjectRef, StmtSRefNode);
 
+ public:
   /*!
    * \return A special StmtSRef, which doesn't point to any stmt in the AST,
    * only serving as a "mark" to hint compute-at to do the work of compute-inline
    */
   static StmtSRef InlineMark();
-
   /*!
    * \return A special StmtSRef, which doesn't point to any stmt in the AST,
    * only serving as a "mark" to hint compute-at to do nothing
    */
   static StmtSRef RootMark();
-
-  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(StmtSRef, ObjectRef, StmtSRefNode);
 };
 
-enum class DepType : int {
+/*! \brief Type of dependency */
+enum class DepType : int32_t {
   kRAW = 0,
   kWAW = 1,
   kWAR = 2,
   kOpaque = 3,
 };
 
+/*! \brief An edge representing certain types of dependency, e.g. read-after-write */
 class DepEdgeNode : public runtime::Object {
  public:
   /*! \brief The destination block */
@@ -108,23 +137,21 @@ class DepEdgeNode : public runtime::Object {
   TVM_DECLARE_FINAL_OBJECT_INFO(DepEdgeNode, Object);
 };
 
+/*!
+ * \brief Managed reference to DepEdgeNode
+ * \sa DepEdgeNode
+ */
 class DepEdge : public runtime::ObjectRef {
  public:
+  /*! \brief Constructor */
   explicit DepEdge(StmtSRef dst, DepType type);
-
   TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(DepEdge, ObjectRef, DepEdgeNode);
 };
 
-/*!
- * \brief Dependency Graph that stores read/write dependency between Blocks
- * \note It is not a traditional and complete dependency graph, but only a
- *       dependency hint. If there is an edge from A to B, iff B writes at
- *       least one of the read tensors of A. That's means B must produce the
- *       necessary element (but not all the element) before A under the Lowest
- *       Common Ancestor (LCA) Loop of the A and B.
- */
+/*! \brief An object recording the producer-consumer dependency between child blocks of a scope */
 class BlockScopeNode : public runtime::Object {
  public:
+  // TODO(@junrushao1994): Change std::unordered_map to Map
   /*! \brief The forward dependency edges of the block */
   std::unordered_map<StmtSRef, Array<DepEdge>, ObjectPtrHash, ObjectPtrEqual> forward_edges;
   /*! \brief The backward dependency edges of the block */
@@ -134,100 +161,93 @@ class BlockScopeNode : public runtime::Object {
 
   void VisitAttrs(AttrVisitor* v) {}
 
+  static constexpr const char* _type_key = "tir.BlockScope";
+  TVM_DECLARE_FINAL_OBJECT_INFO(BlockScopeNode, runtime::Object);
+
+ public:
+  /******** Dependency ********/
   /*!
-   * \brief Add a dependency edge.
-   * \param from The departure of the edge
-   * \param to The destination of the edge
+   * \brief Get all blocks the block depends on
+   * \param block_sref The queried block
+   * \return The predecessors edges
    */
-  void AddEdge(const StmtSRef& from, const StmtSRef& to, DepType type);
+  TVM_DLL Array<DepEdge> GetPredecessors(const StmtSRef& block_sref) const;
   /*!
-   * \brief get all blocks that this block dependent on.
-   * \param block_sref The query block
-   * \return The successor blocks
+   * \brief Get all blocks that depends on the block
+   * \param block_sref The queried block
+   * \return The successor edges
    */
-  Array<DepEdge> GetSuccessors(const StmtSRef& block_sref) const;
-  /*!
-   * \brief Get all blocks that are dependent on block.
-   * \param block_sref The query block
-   * \return The predecessors blocks
-   */
-  Array<DepEdge> GetPredecessors(const StmtSRef& block_sref) const;
+  TVM_DLL Array<DepEdge> GetSuccessors(const StmtSRef& block_sref) const;
+
+  /******** Property of a block ********/
   /*!
    * \brief Check whether the block is a dominate block under the scope
    * \note A block is complete iff the block is the only producer
-   *       for each tensor it produces.
+   * for each tensor it produces.
    * \param block_sref The query block
    * \return Whether is a dominate block
    */
-  bool IsDominate(const StmtSRef& block_sref) const;
+  TVM_DLL bool IsDominate(const StmtSRef& block_sref) const;
   /*!
    * \brief Check whether the block is a complete block under the scope
    * \note A block is complete iff the block is the only producer
-   *       for each tensor it produces and its args must be data parallel.
-   *       Also, the block can not read its output buffer.
+   * for each tensor it produces and its args must be data parallel.
+   * Also, the block can not read its output buffer.
    * \param block The query block
    * \return Whether is a complete block
    */
-  bool IsComplete(const StmtSRef& block_sref) const;
+  TVM_DLL bool IsComplete(const StmtSRef& block_sref) const;
   /*!
    * \brief Check whether the block is a reduction block under the scope
    * \note A block is reduction iff the block is the only producer
-   *       for each tensor it produces, its args must be data parallel/reduce
+   * for each tensor it produces, its args must be data parallel/reduce
    * \param block The query block
    * \return Whether is a complete block
    */
-  bool IsReduction(const StmtSRef& block_sref) const;
+  TVM_DLL bool IsReduction(const StmtSRef& block_sref) const;
+
+  /******** Inter-block properties ********/
   /*!
    * \brief Check whether a subtree satisfies the one-way fine-grained data flow check
    * \details Suppose a loop tree has several blocks on the leaves.
-   *          We can sort them by DFS order as B1, B2, ...., Bn.
-   *          The subtree satisfies compact data flow if
-   *          - All the blocks are complete/reduction
-   *          - Bi doesn't read the buffers that Bi+1, Bi+2, ... Bn will write
-   *          - Suppose Bi reads Bj's output buffer(j < i) and Loop k is the LCA of Bi and
-   *            Bj, Bj's output region covers Bi's input under Loop k
+   * We can sort them by DFS order as B1, B2, ...., Bn.
+   * The subtree satisfies compact data flow if
+   * - All the blocks are complete/reduction
+   * - Bi doesn't read the buffers that Bi+1, Bi+2, ... Bn will write
+   * - Suppose Bi reads Bj's output buffer(j < i) and Loop k is the LCA of Bi and
+   * Bj, Bj's output region covers Bi's input under Loop k
    * \param subtree_sref The subtree to be checked
    * \param child_blocks The schedule that the scope is in
    * \return A boolean indicating if the subtree satisfies the one-way fine-grained data flow check
    * \note Condition 2 and 3 are global condition of a schedulable IR,
-   *       so it is omitted in the check.
+   * so it is omitted in the check.
    */
-  bool IsCompactDataFlow(const StmtSRef& subtree_sref, const Array<StmtSRef>& child_blocks) const;
-
+  TVM_DLL bool IsCompactDataFlow(const StmtSRef& subtree_sref,
+                                 const Array<StmtSRef>& child_blocks) const;
   /*!
    * \brief Check the merged block of init_block and update_block is a reduction block
    * \param init_sref the query init block
    * \param update_sref the query update block
    * \return Whether the merged block of init_block and update_block is a reduction block
    */
-  bool CanMergeReduction(const StmtSRef& init_sref, const StmtSRef& update_sref) const;
-  /*!
-   * \brief Declare a new child block, update the `buffer_writes`, `buffer_readers` and the
-   *        dependency graph
-   * \param child_sref The child block to be added
-   * \param buffer_readers Maps a buffer to a list of blocks that reads it
-   */
-  void AddChildBlock(
-      const StmtSRef& child_sref,
-      std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual>* buffer_readers);
-  /*!
-   * \brief Declare a new child block, update the `buffer_writes`, `buffer_readers` and the
-   *        dependency graph
-   * \param child_sref The child block to be added
-   * \param buffer_readers Maps a buffer to a list of blocks that reads it
-   */
-  void ReplaceChildBlock(const StmtSRef& old_sref, const StmtSRef& new_sref);
-
-  static constexpr const char* _type_key = "tir.BlockScope";
-  TVM_DECLARE_FINAL_OBJECT_INFO(BlockScopeNode, Object);
+  TVM_DLL bool CanMergeReduction(const StmtSRef& init_sref, const StmtSRef& update_sref) const;
 };
 
+/*!
+ * \brief Managed reference to BlockScopeNode
+ * \sa BlockScopeNode
+ */
 class BlockScope : public runtime::ObjectRef {
  public:
-  /*! \brief Constructor */
-  BlockScope();
+  /*! \brief The constructor creating an empty block scope. */
+  TVM_DLL BlockScope();
+  /*!
+   * \brief Create the block scope given the leaf blocks
+   * \param leaf_block_srefs The srefs to the leaf blocks, from left to right
+   */
+  TVM_DLL BlockScope(const Array<StmtSRef>& leaf_block_srefs);
 
-  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(BlockScope, ObjectRef, BlockScopeNode);
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BlockScope, ObjectRef, BlockScopeNode);
 };
 
 }  // namespace tir

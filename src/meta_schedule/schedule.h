@@ -81,7 +81,7 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
   Array<tir::Var> SamplePerfectTile(const LoopRV& loop_rv,     //
                                     int n,                     //
                                     int max_innermost_factor,  //
-                                    Optional<Array<ObjectRef>> decision = NullOpt) final;
+                                    Optional<Array<Integer>> decision = NullOpt) final;
   /*!
    * \brief Sample an integer given the probability distribution
    * \param candidates The candidates
@@ -90,14 +90,13 @@ class ScheduleNode : public tir::ConcreteScheduleNode {
    */
   tir::Var SampleCategorical(const Array<Integer>& candidates,  //
                              const Array<FloatImm>& probs,      //
-                             Optional<ObjectRef> decision = NullOpt) final;
+                             Optional<Integer> decision = NullOpt) final;
   /*!
    * \brief Sample a compute-at location from a block
    * \param block_rv A block to be computed at
    * \return The loop to be computed at
    */
-  LoopRV SampleComputeLocation(const BlockRV& block_rv,
-                               Optional<ObjectRef> decision = NullOpt) final;
+  LoopRV SampleComputeLocation(const BlockRV& block_rv, Optional<Integer> decision = NullOpt) final;
   /**************** Block/Loop Relationship ****************/
   /*!
    * \brief Apply the instruction GetBlock

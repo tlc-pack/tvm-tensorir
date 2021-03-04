@@ -442,9 +442,15 @@ Array<ObjectRef> SamplePerfectTileAttrs::Apply(const Schedule& sch,
                                                const Optional<ObjectRef>& decision) const {
   ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(LoopRV, loop, inputs[0]);
-  Optional<Array<ObjectRef>> casted_decision = NullOpt;
+  Optional<Array<Integer>> casted_decision = NullOpt;
   if (decision.defined()) {
-    casted_decision = Downcast<Array<ObjectRef>>(decision.value());
+    const auto* array = decision.as<ArrayNode>();
+    Array<Integer> result;
+    result.reserve(array->size());
+    for (const ObjectRef& obj : *array) {
+      result.push_back(Downcast<Integer>(obj));
+    }
+    casted_decision = std::move(result);
   }
   return AdaptOutputs(sch->SamplePerfectTile(loop, n, max_innermost_factor, casted_decision));
 }
@@ -453,7 +459,11 @@ Array<ObjectRef> SampleCategoricalAttrs::Apply(const Schedule& sch,
                                                const Array<Optional<ObjectRef>>& inputs,
                                                const Optional<ObjectRef>& decision) const {
   ICHECK_EQ(inputs.size(), 0);
-  return {sch->SampleCategorical(candidates, probs, decision)};
+  Optional<Integer> casted_decision = NullOpt;
+  if (decision.defined()) {
+    casted_decision = Downcast<Integer>(decision);
+  }
+  return {sch->SampleCategorical(candidates, probs, casted_decision)};
 }
 
 Array<ObjectRef> SampleComputeLocationAttrs::Apply(const Schedule& sch,
@@ -461,7 +471,11 @@ Array<ObjectRef> SampleComputeLocationAttrs::Apply(const Schedule& sch,
                                                    const Optional<ObjectRef>& decision) const {
   ICHECK_EQ(inputs.size(), 1);
   TVM_META_SCHEDULE_INST_CAST(BlockRV, block, inputs[0]);
-  return {sch->SampleComputeLocation(block, decision)};
+  Optional<Integer> casted_decision = NullOpt;
+  if (decision.defined()) {
+    casted_decision = Downcast<Integer>(decision);
+  }
+  return {sch->SampleComputeLocation(block, casted_decision)};
 }
 
 /**************** (Apply) Block/Loop Relationship  ****************/

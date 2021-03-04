@@ -19,24 +19,19 @@
 #ifndef TVM_TIR_SCHEDULE_SCHEDULE_H_
 #define TVM_TIR_SCHEDULE_SCHEDULE_H_
 
-#include <tvm/ir/module.h>
 #include <tvm/tir/schedule/state.h>
 
 namespace tvm {
 namespace tir {
 
-/**************** Random variable: ExprRV ****************/
-
-using ExprRV = PrimExpr;
-
 /**************** Random variable: BlockRV ****************/
 
-/*! \brief A random variable that evaluates to a TIR block */
+/*! \brief A random variable that evaluates to a TensorIR block */
 class BlockRVNode : public runtime::Object {
  public:
   void VisitAttrs(tvm::AttrVisitor* v) {}
   static constexpr const char* _type_key = "tir.BlockRV";
-  TVM_DECLARE_FINAL_OBJECT_INFO(BlockRVNode, Object);
+  TVM_DECLARE_FINAL_OBJECT_INFO(BlockRVNode, runtime::Object);
 };
 
 /*!
@@ -47,18 +42,17 @@ class BlockRV : public runtime::ObjectRef {
  public:
   /*! \brief Constructor */
   TVM_DLL BlockRV();
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BlockRV, ObjectRef, BlockRVNode);
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BlockRV, runtime::ObjectRef, BlockRVNode);
 };
 
 /**************** Random variable: LoopRV ****************/
 
-/*! \brief A random variable that evaluates to a TIR loop axis */
+/*! \brief A random variable that evaluates to a TensorIR for loop */
 class LoopRVNode : public runtime::Object {
  public:
   void VisitAttrs(tvm::AttrVisitor* v) {}
-
   static constexpr const char* _type_key = "tir.LoopRV";
-  TVM_DECLARE_FINAL_OBJECT_INFO(LoopRVNode, Object);
+  TVM_DECLARE_FINAL_OBJECT_INFO(LoopRVNode, runtime::Object);
 };
 
 /*!
@@ -69,14 +63,24 @@ class LoopRV : public runtime::ObjectRef {
  public:
   /*! \brief Constructor */
   TVM_DLL LoopRV();
-
-  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LoopRV, ObjectRef, LoopRVNode);
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(LoopRV, runtime::ObjectRef, LoopRVNode);
 };
+
+/**************** Random variable: ExprRV ****************/
+
+/*! \brief A random variable, an integer */
+using VarRV = Var;
+
+/*! \brief An random variable of expressions */
+using ExprRV = PrimExpr;
 
 /**************** The schedule class ****************/
 
 class Schedule;
 
+/*!
+ * \brief The user-facing abstract schedule class
+ */
 class ScheduleNode : public runtime::Object {
  public:
   /*! \brief The internal state of scheduling */
@@ -85,139 +89,175 @@ class ScheduleNode : public runtime::Object {
   virtual ~ScheduleNode() = default;
 
   static constexpr const char* _type_key = "tir.Schedule";
-  TVM_DECLARE_BASE_OBJECT_INFO(ScheduleNode, Object);
+  TVM_DECLARE_BASE_OBJECT_INFO(ScheduleNode, runtime::Object);
 
  public:
-  /*! \brief Get the actual concrete name of the class */
-  virtual String GetClassName() const = 0;
-
-  /*!
-   * \brief Copy the schedule and guarantee that
-   * 1) SRef tree is completely reconstructed
-   * 2) Schedule function is untouched
-   * 3) For all the random variables, they are valid in both original copy and the new copy, but
-   * points to different StmtSRefs, because the SRef tree is reconstructed
-   */
-  virtual Schedule Copy() const = 0;
-  /*!
-   * \brief Seed the randomness
-   * \param seed The new random seed
-   */
-  virtual void Seed(int64_t seed = -1) = 0;
   /*!
    * \brief Take the PrimFunc out of the schedule
    */
   virtual IRModule Module() const = 0;
+  /*!
+   * \brief Seed the randomness
+   * \param seed The new random seed, -1 if use device random
+   */
+  virtual void Seed(int64_t seed = -1) = 0;
+  /*!
+   * \brief Copy the schedule and guarantee that
+   * 1) SRef tree is completely reconstructed
+   * 2) The IRModule being scheduled is untouched
+   * 3) For all the random variables, they keep valid in both original copy and the new copy, but
+   * points to different StmtSRefs, because the SRef tree is reconstructed
+   */
+  virtual Schedule Copy() const = 0;
 
  public:
   /******** Lookup random variables ********/
+  /*!
+   * \brief Get the block corresponding to the specific BlockRV
+   * \param block_rv The BlockRV to be looked up
+   * \return The corresponding block
+   */
   virtual Block Get(const BlockRV& block_rv) const = 0;
-
+  /*!
+   * \brief Get the for loop corresponding to the specific LoopRV
+   * \param loop_rv The LoopRV to be looked up
+   * \return The corresponding for loop
+   */
   virtual For Get(const LoopRV& loop_rv) const = 0;
-
-  virtual int64_t Get(const Var& var_rv) const = 0;
-
+  /*!
+   * \brief Get the value corresponding to the specific random variable
+   * \param var_rv The random variable to be looked up
+   * \return The corresponding value
+   */
+  virtual int64_t Get(const VarRV& var_rv) const = 0;
+  /*!
+   * \brief Get the value corresponding to the specific random variable
+   * \param expr_rv The random variable to be looked up
+   * \return The corresponding value
+   */
   virtual PrimExpr Get(const ExprRV& expr_rv) const = 0;
-
+  /*!
+   * \brief Get the block sref corresponding to the specific BlockRV
+   * \param block_rv The BlockRV to be looked up
+   * \return The corresponding block sref
+   */
   virtual StmtSRef GetSRef(const BlockRV& block_rv) const = 0;
-
+  /*!
+   * \brief Get the loop sref corresponding to the specific LoopRV
+   * \param loop_rv The LoopRV to be looked up
+   * \return The corresponding loop sref
+   */
   virtual StmtSRef GetSRef(const LoopRV& loop_rv) const = 0;
-
-  virtual StmtSRef GetSRef(const Stmt& stmt) const = 0;
-
-  virtual StmtSRef GetSRef(const StmtNode* stmt) const = 0;
+  /*!
+   * \brief Get the block/loop sref corresponding to the specific statement
+   * \param stmt The statement to be looked up
+   * \return The corresponding block/loop sref
+   */
+  virtual StmtSRef GetSRef(const StmtNode* stmt) const;
+  /*!
+   * \brief Get the block/loop sref corresponding to the specific statement
+   * \param stmt The statement to be looked up
+   * \return The corresponding block/loop sref
+   */
+  virtual StmtSRef GetSRef(const Stmt& stmt) const;
 
  public:
   /******** Sampling ********/
   /*!
-   * \brief Apply the instruction SamplePerfectTile
-   * \param n The number of loops after tiling
+   * \brief Sample the factors to perfect tiling a specific LoopRV
    * \param loop_rv The loop to be tiled
+   * \param n The number of loops after tiling
    * \param max_innermost_factor The maximum factor in the innermost loop, -1 if disabled
-   * \return An array of random variables, the result of sampling
+   * \param decision The sampling decision
+   * \return An array of n random variables, the result of sampling
    */
-  virtual Array<Var> SamplePerfectTile(const LoopRV& loop_rv,     //
-                                       int n,                     //
-                                       int max_innermost_factor,  //
-                                       Optional<Array<ObjectRef>> decision = NullOpt) = 0;
+  virtual Array<VarRV> SamplePerfectTile(const LoopRV& loop_rv,     //
+                                         int n,                     //
+                                         int max_innermost_factor,  //
+                                         Optional<Array<Integer>> decision = NullOpt) = 0;
   /*!
    * \brief Sample an integer given the probability distribution
    * \param candidates The candidates
    * \param probs The probability distribution of the candidates
-   * \return The random variable
+   * \param decision The sampling decision
+   * \return The random variable sampled from candidates
    */
-  virtual Var SampleCategorical(const Array<Integer>& candidates,  //
-                                const Array<FloatImm>& probs,      //
-                                Optional<ObjectRef> decision = NullOpt) = 0;
+  virtual VarRV SampleCategorical(const Array<Integer>& candidates,  //
+                                  const Array<FloatImm>& probs,      //
+                                  Optional<Integer> decision = NullOpt) = 0;
   /*!
-   * \brief Sample a compute-at location from a block
-   * \param block A block to be computed at
-   * \return The loop to be computed at
+   * \brief Sample a compute-at location on a BlockRV so that its producer can compute at that loop
+   * \param block_rv The consumer block to be computed at
+   * \return The sampled loop to be computed at
    */
   virtual LoopRV SampleComputeLocation(const BlockRV& block_rv,
-                                       Optional<ObjectRef> decision = NullOpt) = 0;
+                                       Optional<Integer> decision = NullOpt) = 0;
 
  public:
   /******** Block/Loop relation ********/
   /*!
-   * \brief Get block from its tag
-   * \param tag The query tag
-   * \return the block schedulable reference list
+   * \brief Get the block with a specific name
+   * \param name The name of the block to be retrieved
+   * \return The block schedulable reference list
+   * \note If there are 0 or several blocks with the same name, the function will error out
    */
   virtual BlockRV GetBlock(const String& name) = 0;
   /*!
-   * \brief Get loops of the block
-   * \param block The query block
+   * \brief Get loops above the specific block
+   * \param block_rv The query block
    * \return A list of loops, from outer to inner
    */
   virtual Array<LoopRV> GetAxes(const BlockRV& block_rv) = 0;
   /*!
-   * \brief Get the child blocks of a specific parent block/loop
-   * \param block_rv The random variable that points to the parent block
+   * \brief Get the leaf blocks of a specific scope
+   * \param block_rv The block where the scope is rooted
    * \return A list of child blocks
-   * TODO(@junrushao1994): revisit
    */
   virtual Array<BlockRV> GetChildBlocks(const BlockRV& block_rv) = 0;
   /*!
-   * \brief Get the child blocks of a specific parent block/loop
-   * \param loop_rv The random variable that points to the parent loop
+   * \brief Get the leaf blocks of under a specific loop
+   * \param loop_rv The loop under which collecting is conducted
    * \return A list of child blocks
    */
   virtual Array<BlockRV> GetChildBlocks(const LoopRV& loop_rv) = 0;
   /*!
    * \brief Get the producer of a specific block
+   * \param block_rv The block to be queried
    * \return The producers
    */
   virtual Array<BlockRV> GetProducers(const BlockRV& block_rv) = 0;
   /*!
    * \brief Get the consumers of a specific block
+   * \param block_rv The block to be queried
    * \return The consumers
    */
   virtual Array<BlockRV> GetConsumers(const BlockRV& block_rv) = 0;
 
   /******** Schedule: loops ********/
   /*!
-   * \brief Fuse two consecutive loops of one computation.
+   * \brief Fuse consecutive loops into one.
    * \param loop_rvs The loop random variables to be fused
    * \return The fused loop
    */
   virtual LoopRV Fuse(const Array<LoopRV>& loop_rvs) = 0;
   /*!
-   * \brief Split a specified loop into two loops by factor.
+   * \brief Split a specified loop into two or more with the specific factor.
    * \param loop_rv The loop to be split
-   * \param factors The tiling factors, and exactly one of which is NullOpt or -1
+   * \param factors The tiling factors, and at most one of which is NullOpt or -1, which means that
+   * factor is inferred.
    * \return The loops after splitting
    */
   virtual Array<LoopRV> Split(const LoopRV& loop_rv, const Array<Optional<ExprRV>>& factors) = 0;
   /*!
-   * \brief reorder a list of loops
-   * \param order the order of loops
+   * \brief Reorder a list of loops
+   * \param order The order after reordering
    */
   virtual void Reorder(const Array<LoopRV>& order) = 0;
 
   /******** Schedule: compute location ********/
   /*!
-   * \brief Move the block under the loop and regenerate the loops to cover the producing region.
+   * \brief Compute the producer block under its consumer's specific loop,
+   * and regenerate the loops to cover the region needed by the consumer.
    * \param block_rv The block to be moved
    * \param loop_rv The target loop
    * \param preserve_unit_loop Keep the trivial loops whose extent is 1
@@ -225,7 +265,8 @@ class ScheduleNode : public runtime::Object {
   virtual void ComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
                          bool preserve_unit_loop) = 0;
   /*!
-   * \brief Move the block under the loop and regenerate the loops to cover the producing region.
+   * \brief Compute the consumer block under its producer's specific loop,
+   * and regenerate the loops to cover the region needed by the producer.
    * \param block_rv The block to be moved
    * \param loop_rv The target loop
    * \param preserve_unit_loop Keep the trivial loops whose extent is 1
@@ -233,68 +274,70 @@ class ScheduleNode : public runtime::Object {
   virtual void ReverseComputeAt(const BlockRV& block_rv, const LoopRV& loop_rv,
                                 bool preserve_unit_loop) = 0;
   /*!
-   * \brief Make the block inline
-   * \param block_rv The block
+   * \brief Remove the block, and produce the value needed inplace
+   * where it is used on the consumer.
+   * \param block_rv The block to be inlined
    */
   virtual void ComputeInline(const BlockRV& block_rv) = 0;
   /*!
-   * \brief Make the block inline
-   * \param block_rv The block
+   * \brief Remove the block, and produce the value needed inplace
+   * where it is used on the producer.
+   * \param block_rv The block to be reverse-inlined
    */
   virtual void ReverseComputeInline(const BlockRV& block_rv) = 0;
 
   /******** Schedule: parallelize / annotate ********/
   /*!
-   * \brief vectorize a loop
-   * \param loop_rv the loop to be vectorized
+   * \brief Vectorize a loop
+   * \param loop_rv The loop to be vectorized
    */
   virtual void Vectorize(const LoopRV& loop_rv) = 0;
   /*!
-   * \brief parallelize a loop
-   * \param loop_rv the loop to be paralleled
+   * \brief Parallelize a loop
+   * \param loop_rv The loop to be paralleled
    */
   virtual void Parallel(const LoopRV& loop_rv) = 0;
   /*!
-   * \brief unroll a loop
-   * \param loop_rv the loop to be unrolled
+   * \brief Unroll a loop
+   * \param loop_rv The loop to be unrolled
    */
   virtual void Unroll(const LoopRV& loop_rv) = 0;
   /*!
-   * \brief bind a loop to a thread axis
-   * \param loop_rv the loop to be paralleled
+   * \brief Bind a loop to a thread axis
+   * \param loop_rv The loop to be bound
    * \param thread The thread axis
    */
   virtual void Bind(const LoopRV& loop_rv, const IterVar& thread) = 0;
   /*!
-   * \brief parallel a loop
-   * \param loop_rv the loop to be paralleled
+   * \brief Bind a loop to a thread axis
+   * \param loop_rv The loop to be bound
    * \param thread The thread axis
    */
   virtual void Bind(const LoopRV& loop_rv, const String& thread) = 0;
   /*!
-   * \brief add double_buffer annotation to a complete block
-   * \param block_rv the block of interest
+   * \brief Add `double_buffer` annotation to a block
+   * \param block_rv The block to be annotated
    */
   virtual void DoubleBuffer(const BlockRV& block_rv) = 0;
   /*!
-   * \brief add annotation to a loop
-   * \param loop_rv the loop of interest
-   * \param pragma_type the attribute key
-   * \param pragma_value the attribute value
+   * \brief Add a pragma annotation to a specific loop
+   * \param loop_rv The loop to be annotated
+   * \param pragma_type The attribute key
+   * \param pragma_value The attribute value
    */
   virtual void Pragma(const LoopRV& loop_rv, const String& pragma_type,
                       const ExprRV& pragma_value) = 0;
 
   /******** Schedule: cache read/write ********/
   /*!
-   * \brief Create a cache read of original tensor for readers.
+   * \brief Create a block that reads a buffer region into a read cache
    * \param block_rv The consumer of the buffer
    * \param i The index of the buffer in block's read region
    * \param storage_scope The storage scope
    */
   virtual BlockRV CacheRead(const BlockRV& block_rv, int i, const String& storage_scope) = 0;
   /*!
-   * \brief Create a cache write of original tensor, before storing into tensor.
+   * \brief Create a block that writes a buffer region into a write cache
    * \param block_rv The producer of the buffer
    * \param i The index of the buffer in block's write region
    * \param storage_scope The storage scope
@@ -303,32 +346,31 @@ class ScheduleNode : public runtime::Object {
 
   /******** Schedule: reduction ********/
   /*!
-   * \brief rfactor a reduction block using loop
-   * \param loop_rv the loop outside block we want to do rfactor
-   * \param factor_axis the position where the new axis is placed
+   * \brief Factor a reduction axis into an explicit axis.
+   * \param loop_rv The loop to be factorized
+   * \param factor_axis The position where the new axis is placed
    * \return The new block
-   * TODO(@junrushao1994): do we need a concrete integer here?
    */
   virtual BlockRV RFactor(const LoopRV& loop_rv, int factor_axis) = 0;
   /*!
-   * \brief Decompose reduction block_rv into init&update blocks
-   * \param block_rv the reduction block_rv
-   * \param loop_rv the position where init block_rv will be
+   * \brief Decompose a reduction block into init block and update block
+   * \param block_rv The reduction block
+   * \param loop_rv The position where init block is inserted
    * \return The init block
    */
   virtual BlockRV DecomposeReduction(const BlockRV& block_rv, const Optional<LoopRV>& loop_rv) = 0;
   /*!
-   * \brief Merge init and reduction block into reduction block
-   * \param init_block_rv the init block
-   * \param update_block_rv the update block
+   * \brief Construct a reduction block by merging the init and update block
+   * \param init_block_rv The init block
+   * \param update_block_rv The update block
    */
   virtual void MergeReduction(const BlockRV& init_block_rv, const BlockRV& update_block_rv) = 0;
 
   /******** Schedule: blockize / tensorize ********/
   /*!
-   * \brief make subtree rooted by loop_rv into a block
-   * \param loop_rv the subtree root
-   * \return the loop_rv of new block
+   * \brief Make subtree rooted by a specific loop into a block
+   * \param loop_rv The root of the subtree
+   * \return The new block
    */
   virtual BlockRV Blockize(const LoopRV& loop_rv, const String& exec_scope) = 0;
   /*!
@@ -351,10 +393,6 @@ class Schedule : public runtime::ObjectRef {
   TVM_DLL static Schedule Meta(PrimFunc func, int64_t seed, bool debug_mode);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, runtime::ObjectRef, ScheduleNode);
 };
-
-TVM_DLL String Repr(const PrimFunc& func);
-TVM_DLL String Repr(const IRModule& mod);
-TVM_DLL String Repr(const Schedule& self);
 
 }  // namespace tir
 }  // namespace tvm

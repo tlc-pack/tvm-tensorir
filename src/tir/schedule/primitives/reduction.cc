@@ -179,7 +179,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
     Block update_block(update_block_node);
     self->Replace(block_sref, update_block, {{update_block, GetRef<Block>(block)}});
     // Update scope information
-    UpdateScope(GetScopeSRef(block_sref)->stmt, self->stmt2ref, &self->scopes);
+    UpdateScope(self, block_sref);
     return self->stmt2ref.at(init_block.get());
   } else {
     // 'loop' is 'None'. Convert `tir.init()` to a conjunction of conditions.
@@ -206,7 +206,7 @@ StmtSRef DecomposeReduction(ScheduleState self, const StmtSRef& block_sref,
 
     self->Replace(block_sref, new_block, {{new_block, GetRef<Block>(block)}});
     // Update scope information
-    UpdateScope(GetScopeSRef(block_sref)->stmt, self->stmt2ref, &self->scopes);
+    UpdateScope(self, block_sref);
     return self->stmt2ref.at(new_block.get());
   }
 }
@@ -303,7 +303,7 @@ void MergeReduction(ScheduleState self, const StmtSRef& init_sref, const StmtSRe
   Block merged(merged_node);
   self->Replace(update_sref, merged, {{merged, GetRef<Block>(update)}});
   // Update scope information
-  UpdateScope(GetScopeSRef(update_sref)->stmt, self->stmt2ref, &self->scopes);
+  UpdateScope(self, update_sref);
 }
 
 class VarCollector : public StmtExprVisitor {
@@ -483,7 +483,8 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   rf_update.CopyOnWrite()->value =
       reducer.value().get()->operator()({BufferLoad(rf_buf, rf_indices)}, {rhs})[0];
   std::vector<BufferRegion> rf_reads, rf_writes;
-  auto f_rf_region = [&](const Array<BufferRegion>& regions, std::vector<BufferRegion>& rf_regions) {
+  auto f_rf_region = [&](const Array<BufferRegion>& regions,
+                         std::vector<BufferRegion>& rf_regions) {
     for (const BufferRegion& t_region : regions) {
       if (t_region->buffer.same_as(update->buffer)) {
         Region region = t_region->region;
@@ -628,7 +629,7 @@ StmtSRef RFactor(ScheduleState self, const StmtSRef& loop_sref, int factor_axis)
   new_scope_block.CopyOnWrite()->alloc_buffers.push_back(rf_buf);
   self->Replace(scope_sref, new_scope_block, {{new_scope_block, scope_block}});
   // Update scope information.
-  UpdateScope(scope_sref->stmt, self->stmt2ref, &self->scopes);
+  UpdateScope(self, scope_sref);
   return self->stmt2ref.at(rf_block.get());
 }
 
