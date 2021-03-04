@@ -50,8 +50,6 @@ class ScheduleStateNode : public runtime::Object {
  public:
   /*! \brief The function to be scheduled */
   PrimFunc func;  // TODO(@junrushao1994): change to IRModule
-  /*! \brief The root of sref tree */
-  StmtSRef root;
   /*! \brief The block scopes of each block sref */
   std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual> scopes;
   /*! \brief The mapping from block/for stmt to its sref */
@@ -61,7 +59,6 @@ class ScheduleStateNode : public runtime::Object {
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("func", &func);
-    v->Visit("root", &root);
     // `scopes` is not visited
     // `stmt2ref` is not visited
     v->Visit("debug_mode", &debug_mode);

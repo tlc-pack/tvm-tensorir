@@ -164,7 +164,6 @@ Schedule ConcreteScheduleNode::Copy() const {
   SRefTranslator trans(src_state);
   ObjectPtr<ScheduleStateNode> n = make_object<ScheduleStateNode>();
   n->func = src_state->func;
-  n->root = trans.Trans(src_state->root);
   n->scopes = trans.Trans(src_state->scopes);
   n->stmt2ref = trans.Trans(src_state->stmt2ref);
   n->debug_mode = src_state->debug_mode;

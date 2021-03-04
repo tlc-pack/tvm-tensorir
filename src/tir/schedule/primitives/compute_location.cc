@@ -631,13 +631,14 @@ void ComputeAt(ScheduleState self, const StmtSRef& block_sref, const StmtSRef& l
                  true),
       preserve_trivial_loop);
   // Remove leaf
-  std::pair<Stmt, Stmt> removed = RemoveLeaf(block_sref, self->root);
+  StmtSRef root = GetSRefTreeRoot(block_sref);
+  std::pair<Stmt, Stmt> removed = RemoveLeaf(block_sref, root);
   std::unordered_map<const StmtNode*, const StmtNode*> replace_map = {
       {removed.first.get(), removed.second.get()},
       {loop_sref->stmt, new_loop.get()},
   };
   // Mutate the AST with Replace
-  StmtSRef lca = LowestCommonAncestor({block_sref, loop_sref}, self->root);
+  StmtSRef lca = LowestCommonAncestor({block_sref, loop_sref}, root);
   Stmt replaced = StmtReplacer(replace_map)(GetRef<Stmt>(lca->stmt));
   if (const auto* replaced_block = replaced.as<BlockNode>()) {
     self->Replace(lca, replaced, {{GetRef<Block>(replaced_block), GetRef<Block>(parent_block)}});
@@ -731,13 +732,14 @@ void ReverseComputeAt(ScheduleState self, const StmtSRef& block_sref, const Stmt
                                  false),
                       preserve_trivial_loop);
   // Remove leaf
-  std::pair<Stmt, Stmt> removed = RemoveLeaf(block_sref, self->root);
+  StmtSRef root = GetSRefTreeRoot(block_sref);
+  std::pair<Stmt, Stmt> removed = RemoveLeaf(block_sref, root);
   std::unordered_map<const StmtNode*, const StmtNode*> replace_map = {
       {removed.first.get(), removed.second.get()},
       {loop_sref->stmt, new_loop.get()},
   };
   // Mutate the AST with Replace
-  StmtSRef lca = LowestCommonAncestor({block_sref, loop_sref}, self->root);
+  StmtSRef lca = LowestCommonAncestor({block_sref, loop_sref}, root);
   Stmt replaced = StmtReplacer(replace_map)(GetRef<Stmt>(lca->stmt));
   if (const auto* replaced_block = replaced.as<BlockNode>()) {
     self->Replace(lca, replaced, {{GetRef<Block>(replaced_block), GetRef<Block>(parent_block)}});
