@@ -558,11 +558,11 @@ bool IsRangeSame(const Range input_1, const Range input_2) {
 // <bojian/TVM-SymbolicTuning>
 class ContainsBlockIdx : public ExprVisitor {
  public:
-  bool hasBlockIdx = false;
+  bool has_blockIdx = false;
  protected:
   void VisitExpr_(const VarNode* op) override {
     if (op->name_hint == "blockIdx.x") {
-      hasBlockIdx = true;
+      has_blockIdx = true;
     }
   }
 };
@@ -570,8 +570,8 @@ class ContainsBlockIdx : public ExprVisitor {
 class DyAxisMaxReplacer : public ExprMutator {
  protected:
   PrimExpr VisitExpr_(const DyAxisNode* op) override {
-    LOG(INFO) << "Dynamic axis " << op->name_hint << " encountered. "
-              << "Replacing it with its minimum value "
+    LOG(INFO) << GetRef<DyAxis>(op) << " encountered. "
+              << "Replacing it with its MAX value "
               << op->possible_values[op->possible_values.size() - 1];
     return op->possible_values[op->possible_values.size() - 1];
   }
@@ -580,10 +580,24 @@ class DyAxisMaxReplacer : public ExprMutator {
 class DyAxisMinReplacer : public ExprMutator {
  protected:
   PrimExpr VisitExpr_(const DyAxisNode* op) override {
-    LOG(INFO) << "Dynamic axis " << op->name_hint << " encountered. "
-              << "Replacing it with its minimum value "
+    LOG(INFO) << GetRef<DyAxis>(op) << " encountered. "
+              << "Replacing it with its min value "
               << op->possible_values[0];
     return op->possible_values[0];
+  }
+};
+
+class DyAxisSubstituter : public ExprMutator {
+ public:
+  const DyAxisNode* op;
+  int v;
+ protected:
+  PrimExpr VisitExpr_(const DyAxisNode* op) override {
+    if (op == this->op) {
+      return v;
+    } else {
+      return GetRef<DyAxis>(op);
+    }
   }
 };
 
@@ -637,6 +651,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
   ContainsBlockIdx blockidx_checker;
   DyAxisMaxReplacer dyaxis_max_replacer;
   DyAxisMinReplacer dyaxis_min_replacer;
+  DyAxisSubstituter dyaxis_substituter;
   DyAxisFinder dyaxis_finder;
 
   std::ostringstream strout;
@@ -655,7 +670,33 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       Range dom = dom_map.at(iv);
       PrimExpr value = value_map.at(iv) - dom->min;
       PrimExpr vmax = analyzer.int_set(value, iset_dmap).max();
-      if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dyaxis_min_replacer(dom->extent))) {
+
+
+      // <bojian/TVM-SymbolicTuning>
+      dyaxis_finder.dy_axes.clear();
+      dyaxis_finder(vmax < dom->extent);
+      for (const DyAxisNode* dy_axis : dyaxis_finder.dy_axes) {
+        LOG(INFO) << GetRef<DyAxis>(dy_axis);
+      }
+      bool can_ignore_bound_check = true;
+
+      if (dyaxis_finder.dy_axes.empty()) {
+        can_ignore_bound_check = analyzer.CanProve(vmax < dom->extent);
+      } else {
+        for (const DyAxisNode* dy_axis : dyaxis_finder.dy_axes) {
+          for (const IntImm& v : dy_axis->possible_values) {
+            dyaxis_substituter.op = dy_axis;
+            dyaxis_substituter.v = v->value;
+            PrimExpr new_cond = dyaxis_substituter(vmax < dom->extent);
+            LOG(INFO) << "Checking condition " << new_cond;
+            can_ignore_bound_check &= analyzer.CanProve(new_cond);
+          }
+        }
+        LOG(INFO) << "Can ignore bound check? " << can_ignore_bound_check;
+      }
+
+
+      if (vmax.dtype() != value.dtype() || !can_ignore_bound_check) {
         if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
           if (prev_predicate.defined()) {
             LOG(WARNING) << "Predicate (" << value << "<" << dom->extent << ") "
@@ -694,23 +735,40 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
         preds.emplace_back(value >= 0);
       }
 
-      dyaxis_finder.dy_axes.clear();
-      dyaxis_finder(vmax);
-      dyaxis_finder(iv->dom->extent);
 
+      // <bojian/TVM-SymbolicTuning>
+      dyaxis_finder.dy_axes.clear();
+      dyaxis_finder(vmax < iv->dom->extent);
       for (const DyAxisNode* dy_axis : dyaxis_finder.dy_axes) {
         LOG(INFO) << GetRef<DyAxis>(dy_axis);
       }
+      bool can_ignore_bound_check = true;
 
-      if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dyaxis_min_replacer(iv->dom->extent))) {
+      if (dyaxis_finder.dy_axes.empty()) {
+        can_ignore_bound_check = analyzer.CanProve(vmax < iv->dom->extent);
+      } else {
+        for (const DyAxisNode* dy_axis : dyaxis_finder.dy_axes) {
+          for (const IntImm& v : dy_axis->possible_values) {
+            dyaxis_substituter.op = dy_axis;
+            dyaxis_substituter.v = v->value;
+            PrimExpr new_cond = dyaxis_substituter(vmax < iv->dom->extent);
+            LOG(INFO) << "Checking condition " << new_cond;
+            can_ignore_bound_check &= analyzer.CanProve(new_cond);
+          }
+        }
+        LOG(INFO) << "Can ignore bound check? " << can_ignore_bound_check;
+      }
+
+
+      if (vmax.dtype() != value.dtype() || !can_ignore_bound_check) {
 
         // <bojian/TVM-SymbolicTuning>
         if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
           if (stage->origin_op->name.find(".local") != std::string::npos || 
               stage->origin_op->name.find("shared") != std::string::npos) {
-            // blockidx_checker.hasBlockIdx = false;
+            // blockidx_checker.has_blockIdx = false;
             // blockidx_checker(value);
-            // if (blockidx_checker.hasBlockIdx) {
+            // if (blockidx_checker.has_blockIdx) {
             //   LOG(WARNING) << "\'.local/shared\' spotted in " << stage->origin_op->name << ". "
             //                   "Assuming it is a cache write whose boundary check "
             //                   "(" << value << "<" << iv->dom->extent << ") can be neglected.";
