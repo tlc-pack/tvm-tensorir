@@ -631,10 +631,8 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
   for (const std::pair<IterVar, PrimExpr>& iv_expr_pair : value_map) {
     strout << iv_expr_pair.second;
     if (strout.str() == "blockIdx.x") {
-      LOG(INFO) << iv_expr_pair.first << " : "
-                << iv_expr_pair.first->dom;
-      LOG(INFO) << iv_expr_pair.second->GetTypeKey();
-      LOG(INFO) << dom_map.at(iv_expr_pair.first);
+      IntSet iset = iset_dmap.at(Downcast<Var>(iv_expr_pair.second));
+      LOG(INFO) << dyaxis_max_replacer(iset.max());
     }
     strout.str("");
   }
