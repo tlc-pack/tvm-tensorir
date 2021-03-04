@@ -619,7 +619,7 @@ struct UnrollAttrs : public InstAttrsNode {
 };
 
 /*! \brief Attrs of the instruction that applies rfactor */
-struct RfactorAttrs : public InstAttrsNode {
+struct RFactorAttrs : public InstAttrsNode {
   /*! \brief The factor_axis in the result buffer */
   int factor_axis;
 
@@ -636,8 +636,8 @@ struct RfactorAttrs : public InstAttrsNode {
    */
   static Instruction Make(const LoopRV& loop, int factor_axis, const BlockRV& output);
 
-  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(RfactorAttrs,                       //
-                                      "meta_schedule.attrs.RfactorAttrs", //
+  TVM_META_SCHEDULE_DEFINE_INST_ATTRS(RFactorAttrs,                       //
+                                      "meta_schedule.attrs.RFactorAttrs", //
                                       "rfactor", false);
 };
 

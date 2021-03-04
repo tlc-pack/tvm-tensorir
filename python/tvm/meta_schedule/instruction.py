@@ -182,6 +182,6 @@ class VectorizeAttrs(InstAttrs):
     """Attrs of the instruction that applies vectorize"""
 
 
-@register_object("meta_schedule.attrs.RfactorAttrs")
-class RfactorAttrs(InstAttrs):
+@register_object("meta_schedule.attrs.RFactorAttrs")
+class RFactorAttrs(InstAttrs):
     """Attrs of the instruction that applies rfactor"""

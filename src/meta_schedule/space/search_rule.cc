@@ -891,20 +891,20 @@ SearchRule SimplifyComputeWithConstTensor(int max_innermost_factor) {
   return SearchRule("simplify_compute_with_const_tensor", f_apply);
 }
 
-/********** AddRfactor **********/
+/********** AddRFactor **********/
 
-class RuleAddRfactor {
+class RuleAddRFactor {
  public:
   int max_jobs_per_core;
   int max_innermost_factor;
   mutable std::atomic<int> warned_num_cores_missing;
 
-  explicit RuleAddRfactor(int max_jobs_per_core, int max_innermost_factor)
+  explicit RuleAddRFactor(int max_jobs_per_core, int max_innermost_factor)
       : max_jobs_per_core(max_jobs_per_core),
         max_innermost_factor(max_innermost_factor),
         warned_num_cores_missing(0) {}
 
-  RuleAddRfactor(const RuleAddRfactor& other) noexcept
+  RuleAddRFactor(const RuleAddRFactor& other) noexcept
       : max_jobs_per_core(other.max_jobs_per_core),
         warned_num_cores_missing(static_cast<int>(other.warned_num_cores_missing)) {}
 
@@ -959,8 +959,8 @@ class RuleAddRfactor {
   }
 };
 
-SearchRule AddRfactor(int max_jobs_per_core, int max_innermost_factor) {
-  RuleAddRfactor rule(max_jobs_per_core, max_innermost_factor);
+SearchRule AddRFactor(int max_jobs_per_core, int max_innermost_factor) {
+  RuleAddRFactor rule(max_jobs_per_core, max_innermost_factor);
   auto f_apply = [rule](SearchTask task, Schedule sch, BlockRV block) -> Array<Schedule> {
     return rule.Apply(task, sch, block);
   };
@@ -1017,7 +1017,7 @@ TVM_REGISTER_GLOBAL("meta_schedule.search_rule.ParallelizeVectorizeUnroll")
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.MarkTensorize").set_body_typed(MarkTensorize);
 TVM_REGISTER_GLOBAL("meta_schedule.search_rule.SimplifyComputeWithConstTensor")
     .set_body_typed(SimplifyComputeWithConstTensor);
-TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AddRFactor").set_body_typed(AddRfactor);
+TVM_REGISTER_GLOBAL("meta_schedule.search_rule.AddRFactor").set_body_typed(AddRFactor);
 
 }  // namespace meta_schedule
 }  // namespace tvm
