@@ -62,11 +62,10 @@ class ScriptCompleter : public StmtMutator {
   Stmt VisitStmt_(const BlockNode* op) override {
     Block block = Downcast<Block>(StmtMutator::VisitStmt_(op));
     if (block->reads.empty() || block->writes.empty()) {
-      BlockReadWriteDetector block_read_write_detector;
-      block_read_write_detector(block);
+      auto access_region = GetBlockAccessRegion(block);
       auto n = CopyOnWrite(block.operator->());
-      if (!n->reads.defined()) n->reads = block_read_write_detector.CollectReads();
-      if (!n->writes.defined()) n->writes = block_read_write_detector.CollectWrites();
+      if (!n->reads.defined()) n->reads = access_region.first;
+      if (!n->writes.defined()) n->writes = access_region.second;
       return Block(n);
     } else {
       return std::move(block);

@@ -32,6 +32,7 @@ from tvm._ffi.base import TVMError
 from tvm.ir import GlobalVar
 
 from . import context_maintainer, ty
+from .context_maintainer import BlockInfo
 from .meta_unparser import MetaUnparser
 from .registry import Registry
 from .intrin import Intrin
@@ -40,6 +41,7 @@ from .scope_handler import ScopeHandler, WithScopeHandler, ForScopeHandler
 from . import _ffi_api
 from .diagnostics import TVMDiagnosticCtx
 from .utils import from_synr_span
+from .node import Slice, BufferSlice
 
 
 class CallArgumentReader(object):
@@ -415,7 +417,7 @@ class TVMScriptParser(Transformer):
         # fetch the body of root block
         body = self.parse_body(node.body)
         # Emit Scope : Implicit root block
-        root_info = self.context.block_scope()
+        root_info: BlockInfo = self.context.current_block_scope()
         self.context.exit_block_scope()
         # Fix the body
         # 1. generate root block if necessary
@@ -578,7 +580,7 @@ class TVMScriptParser(Transformer):
             1. with scope handler with symbol def
                 with tir.block(*axes)/tir.allocate() as targets:
             2. with scope handler without symbol def
-                with tir.let()/tir.Assert()/tir.attr()//tir.realize()
+                with tir.let()/tir.Assert()/tir.attr()/tir.realize()
         """
 
         if not isinstance(node.rhs, ast.Call):
@@ -731,7 +733,7 @@ class TVMScriptParser(Transformer):
         end = self.transform(node.end)
         if not (isinstance(node.step, ast.Constant) and node.step.value == 1):
             self.report_error("Only step size 1 is supported for slices.", node.step.span)
-        return tvm.tir.Slice(start, end)
+        return Slice(start, end)
 
     def transform_Subscript(self, node):
         """Array access visitor.
@@ -756,7 +758,7 @@ class TVMScriptParser(Transformer):
                     )
             return tvm.tir.Load("float32", symbol, indexes, True, span=from_synr_span(node.span))
         elif isinstance(symbol, tvm.tir.Buffer):
-            return tvm.tir.BufferSlice(symbol, indexes, span=from_synr_span(node.span))
+            return BufferSlice(symbol, indexes, span=from_synr_span(node.span))
         else:
             self.report_error(
                 f"Cannot subscript from a {type(symbol).__name__}. Only variables and "

@@ -67,7 +67,10 @@ class TVMScriptPrinter : public StmtFunctor<Doc(const Stmt&)>,
   std::unordered_map<const BaseFuncNode*, GlobalVar> func2var_;
   /*! \brief var collector (var defined by For/Loop/Block) */
   std::unordered_set<const VarNode*> var_not_in_headers;
-  /*! \brief buffer collector (buffer defined in BufferMap and BufferAllocation)*/
+  /*!
+   * \brief buffer collector
+   *        (buffer defined in BufferMap, BufferAllocation and MatchBufferRegion)
+   */
   std::unordered_set<const BufferNode*> buf_not_in_headers;
   /*! \brief Map from Var to thread env name */
   std::unordered_map<Var, String, ObjectPtrHash, ObjectPtrEqual> var_env_map_;
@@ -157,6 +160,15 @@ class TVMScriptPrinter : public StmtFunctor<Doc(const Stmt&)>,
   Doc GetUniqueName(std::string prefix);
   Doc AllocVar(const Var& var);
   Doc AllocBuf(const Buffer& buffer);
+
+  /*! Helper functions for loop printing. */
+  /*!
+   * \brief Print a single for loop
+   * \param loop The for loop to be printed
+   */
+  Doc PrintLoop(const For& loop);
+  /*! \brief Print all simple loops in stack into one line using tir.grid(). */
+  Doc PrintLoopStack();
 
   /*!
    * \brief Print additional info about expr in comment.
@@ -709,38 +721,6 @@ inline const char* ForKind2String(ForKind t) {
 
 Doc TVMScriptPrinter::VisitStmt_(const ForNode* op) {
   Doc doc;
-  auto print_loop = [&](const For& loop) -> Doc {
-    Doc res;
-    res << "for " << Print(loop->loop_var)
-        << " in tir." + std::string(ForKind2String(loop->kind)) + "(" << Print(loop->min) << ", "
-        << Print(arith::Analyzer().Simplify(loop->min + loop->extent));
-    if (loop->thread_binding.defined()) {
-      res << ", thread = ";
-      res << Print(op->thread_binding.value()->thread_tag);
-    }
-    if (!loop->annotations.empty()) {
-      res << ", annotation = {";
-      res << PrintAnnotations(op->annotations);
-      res << "}";
-    }
-    res << "):";
-    return res;
-  };
-  auto print_loop_stack = [&]() -> Doc {
-    Doc res;
-    if (loop_stack_.size() == 1) {
-      res << print_loop(loop_stack_[0]);
-    } else if (loop_stack_.size() > 1) {
-      std::vector<Doc> vars, extents;
-      for (const auto& loop : loop_stack_) {
-        vars.push_back(Print(loop->loop_var));
-        extents.push_back(Print(loop->extent));
-      }
-      res << "for " << PrintSep(vars, Doc::Text(", ")) << " in tir.grid("
-          << PrintSep(extents, Doc::Text(", ")) << "):";
-    }
-    return res;
-  };
   var_not_in_headers.insert(op->loop_var.get());
   const auto* body = op->body.as<ForNode>();
   bool simple_loop = op->kind == ForKind::kSerial && op->annotations.empty() && is_zero(op->min);
@@ -751,13 +731,13 @@ Doc TVMScriptPrinter::VisitStmt_(const ForNode* op) {
   bool print_above = !loop_stack_.empty();
   // print loops above if needed
   if (print_above) {
-    doc << print_loop_stack();
+    doc << PrintLoopStack();
     loop_stack_.clear();
   }
   if (!simple_loop) {
     // print current loop if needed
     Doc current_loop;
-    current_loop << print_loop(GetRef<For>(op));
+    current_loop << PrintLoop(GetRef<For>(op));
     current_loop << Doc::Indent(4, Doc::NewLine() << PrintBody(op->body));
     doc << (print_above ? Doc::Indent(4, Doc::NewLine() << current_loop) : current_loop);
   } else {
@@ -822,10 +802,10 @@ Doc TVMScriptPrinter::VisitStmt_(const BlockRealizeNode* op) {
           block_var_doc << "reduce_axis";
           break;
         case kOrdered:
-          block_var_doc << "serial_axis";
+          block_var_doc << "scan_axis";
           break;
         case kOpaque:
-          block_var_doc << "opaque";
+          block_var_doc << "opaque_axis";
           break;
         default:
           LOG(FATAL) << "Unknown block var iter type";
@@ -843,7 +823,10 @@ Doc TVMScriptPrinter::VisitStmt_(const BlockRealizeNode* op) {
     var_not_in_headers.insert(iter_var->var.get());
     block_var_names.push_back(Print(iter_var->var));
   }
-  doc << " as [" << PrintSep(block_var_names, Doc::Text(", ")) << "]:";
+  if (!block_var_names.empty()) {
+    doc << " as [" << PrintSep(block_var_names, Doc::Text(", ")) << "]";
+  }
+  doc << ":";
   Doc block_attr_doc;
   // print predicate, binding, read/write tensor region, annotations
   if (!is_one(op->predicate)) {
@@ -856,15 +839,7 @@ Doc TVMScriptPrinter::VisitStmt_(const BlockRealizeNode* op) {
   block_attr_doc << Doc::NewLine() << "tir.writes(" << Print(block_op->writes) << ")";
   if (!block_op->annotations.empty()) {
     block_attr_doc << Doc::NewLine() << "tir.block_attr({";
-    bool first = true;
-    for (const auto& anno_pair : block_op->annotations) {
-      if (!first) {
-        block_attr_doc << ", ";
-      } else {
-        first = true;
-      }
-      block_attr_doc << "\"" << anno_pair.first << "\":" << Print(anno_pair.second);
-    }
+    block_attr_doc << PrintAnnotations(block_op->annotations);
     block_attr_doc << "})";
   }
   // print body
@@ -1070,10 +1045,12 @@ Doc TVMScriptPrinter::PrintBufferRegion(const BufferRegionNode* op) {
   Doc doc;
   doc << Print(op->buffer) << "[";
   for (size_t i = 0; i < op->region.size(); ++i) {
+    if (i != 0) doc << ", ";
     const auto& range = op->region[i];
-    doc << Print(range->min) << ":" << Print(range->min + range->extent);
-    if (i != op->region.size() - 1) {
-      doc << ", ";
+    if (!is_one(range->extent)) {
+      doc << Print(range->min) << ":" << Print(range->min + range->extent);
+    } else {
+      doc << Print(range->min);
     }
   }
   doc << "]";
@@ -1093,6 +1070,40 @@ Doc TVMScriptPrinter::PrintAnnotations(const Map<String, ObjectRef>& annotations
       res << ", ";
     }
     res << "\"" << anno_list[i].first << "\":" << Print(anno_list[i].second);
+  }
+  return res;
+}
+
+Doc TVMScriptPrinter::PrintLoop(const For& loop) {
+  Doc res;
+  res << "for " << Print(loop->loop_var)
+      << " in tir." + std::string(ForKind2String(loop->kind)) + "(" << Print(loop->min) << ", "
+      << Print(arith::Analyzer().Simplify(loop->min + loop->extent));
+  if (loop->thread_binding.defined()) {
+    res << ", thread = ";
+    res << Print(loop->thread_binding.value()->thread_tag);
+  }
+  if (!loop->annotations.empty()) {
+    res << ", annotation = {";
+    res << PrintAnnotations(loop->annotations);
+    res << "}";
+  }
+  res << "):";
+  return res;
+}
+
+Doc TVMScriptPrinter::PrintLoopStack() {
+  Doc res;
+  if (loop_stack_.size() == 1) {
+    res << PrintLoop(loop_stack_[0]);
+  } else if (loop_stack_.size() > 1) {
+    std::vector<Doc> vars, extents;
+    for (const auto& loop : loop_stack_) {
+      vars.push_back(Print(loop->loop_var));
+      extents.push_back(Print(loop->extent));
+    }
+    res << "for " << PrintSep(vars, Doc::Text(", ")) << " in tir.grid("
+        << PrintSep(extents, Doc::Text(", ")) << "):";
   }
   return res;
 }

@@ -23,12 +23,12 @@ from synr import ast
 import tvm.tir
 from tvm.runtime import Object
 from tvm.ir import Span, Range
-from tvm.tir import Stmt, PrimExpr, IterVar, Var
-from tvm.tir import Buffer, BufferRegion, BufferSlice
+from tvm.tir import Stmt, PrimExpr, IterVar, Var, Buffer, BufferRegion
 
 from .context_maintainer import ContextMaintainer
-from .utils import get_param_list, from_synr_span
+from .utils import get_param_list, from_synr_span, from_buffer_slice
 from .registry import register
+from .node import BufferSlice
 
 
 class ScopeHandler:
@@ -255,12 +255,8 @@ class Block(WithScopeHandler):
                     )
 
             # create block read/write regions
-            reads: List[BufferRegion] = [
-                BufferRegion.from_buffer_slice(read) for read in block_info.reads
-            ]
-            writes: List[BufferRegion] = [
-                BufferRegion.from_buffer_slice(write) for write in block_info.writes
-            ]
+            reads: List[BufferRegion] = [from_buffer_slice(read) for read in block_info.reads]
+            writes: List[BufferRegion] = [from_buffer_slice(write) for write in block_info.writes]
             inner = tvm.tir.Block(
                 block_iters,
                 reads,
@@ -531,7 +527,7 @@ class ThreadBinding(ForScopeHandler):
 
 @register
 class RangeHandler(ForScopeHandler):
-    """For scope handler tir.range(begin, end, annotations)
+    """For scope handler range(begin, end, annotations)
     Note that tir.range is totally the same as tir.serial
     """
 

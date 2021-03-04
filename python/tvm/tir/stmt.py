@@ -30,12 +30,11 @@ from typing import List, Optional, Mapping, Union
 from enum import IntEnum
 import tvm._ffi
 
-from tvm.arith import Analyzer
 from tvm.runtime import Object
 from tvm.ir import Span, PrimExpr, Range
 from . import _ffi_api
 from .buffer import Buffer
-from .expr import IterVar, BufferSlice
+from .expr import IterVar
 
 
 class Stmt(Object):
@@ -452,34 +451,6 @@ class BufferRegion(Object):
 
     def __init__(self, buffer: Buffer, region: List[Range]):
         self.__init_handle_by_constructor__(_ffi_api.BufferRegion, buffer, region)
-
-    @staticmethod
-    def from_buffer_slice(buffer_slice: BufferSlice, analyzer: Optional[Analyzer] = None):
-        """Construct BufferRegion from BufferSlice
-
-        Parameters
-        ----------
-        buffer_slice : BufferSlice
-            The input BufferSlice
-
-        analyzer : Optional[tvm.arith.Analyzer]
-            The analyzer for simplifying. If not provided, the method will construct a new one
-
-        Returns
-        -------
-        buffer_region : BufferRegion
-            The constructed BufferRegion.
-        """
-        region: List[Range] = []
-        for s in buffer_slice.slices:
-            start: Union[PrimExpr, int] = s.start
-            extent: Union[PrimExpr, int] = 1 if s.stop is None else s.stop - s.start
-            if not analyzer:
-                analyzer = Analyzer()
-            if isinstance(extent, PrimExpr):
-                extent = analyzer.simplify(extent)
-            region.append(tvm.ir.Range.from_min_extent(start, extent, span=s.span))
-        return BufferRegion(buffer_slice.buffer, region)
 
 
 @tvm._ffi.register_object("tir.MatchBufferRegion")

@@ -24,9 +24,10 @@ from synr import ast
 
 import tvm.tir
 from tvm import te
-from .utils import get_param_list, from_synr_span
+from .utils import get_param_list, from_synr_span, from_buffer_slice
 from .registry import register
 from .context_maintainer import ContextMaintainer
+from .node import BufferSlice
 
 
 class SpecialStmt:
@@ -205,7 +206,7 @@ class AllocBuffer(SpecialStmt):
                 buffer_type,
                 span=span,
             )
-            self.context.block_scope().alloc_buffers.append(buffer)
+            self.context.current_block_scope().alloc_buffers.append(buffer)
             self.context.update_symbol(self.node.lhs.id.name, buffer, self.node)
 
         super().__init__(alloc_buffer, def_symbol=True)
@@ -225,7 +226,7 @@ class BlockVarBind(SpecialStmt):
 
     def __init__(self):
         def bind(block_var, binding, span=None):
-            self.context.block_scope().binding[block_var] = binding
+            self.context.current_block_scope().binding[block_var] = binding
 
         super().__init__(bind, def_symbol=False)
 
@@ -244,7 +245,7 @@ class BlockReads(SpecialStmt):
 
     def __init__(self):
         def reads(read_regions, span=None):
-            self.context.block_scope().reads = (
+            self.context.current_block_scope().reads = (
                 [read_regions] if not isinstance(read_regions, list) else read_regions
             )
 
@@ -265,7 +266,9 @@ class BlockWrites(SpecialStmt):
 
     def __init__(self):
         def writes(writes, span=None):
-            self.context.block_scope().writes = [writes] if not isinstance(writes, list) else writes
+            self.context.current_block_scope().writes = (
+                [writes] if not isinstance(writes, list) else writes
+            )
 
         super().__init__(writes, def_symbol=False)
 
@@ -288,7 +291,7 @@ class BlockAttr(SpecialStmt):
                 key: tvm.tir.StringImm(val) if isinstance(val, str) else val
                 for key, val in attrs.items()
             }
-            self.context.block_scope().annotations = attrs
+            self.context.current_block_scope().annotations = attrs
 
         super().__init__(block_attr, def_symbol=False)
 
@@ -307,7 +310,7 @@ class BlockPredicate(SpecialStmt):
 
     def __init__(self):
         def where(predicate, span=None):
-            self.context.block_scope().predicate = predicate
+            self.context.current_block_scope().predicate = predicate
 
         super().__init__(where, def_symbol=False)
 
@@ -342,12 +345,12 @@ class BlockMatchBufferRegion(SpecialStmt):
                 offset_factor.value if not isinstance(offset_factor, int) else offset_factor
             )
 
-            if not isinstance(source, tvm.tir.BufferSlice):
+            if not isinstance(source, BufferSlice):
                 self.context.report_error(
                     "match_buffer_region needs a buffer region as source",
                     span=self.node.span,
                 )
-            buffer_region = tvm.tir.BufferRegion.from_buffer_slice(source)
+            buffer_region = from_buffer_slice(source)
             shape = [r.extent for r in buffer_region.region]
             buffer = tvm.tir.decl_buffer(
                 shape,
@@ -361,7 +364,7 @@ class BlockMatchBufferRegion(SpecialStmt):
                 offset_factor=offset_factor,
                 span=span,
             )
-            self.context.block_scope().match_buffers.append(
+            self.context.current_block_scope().match_buffers.append(
                 tvm.tir.MatchBufferRegion(buffer, buffer_region)
             )
             self.context.update_symbol(self.node.lhs.id.name, buffer, self.node)

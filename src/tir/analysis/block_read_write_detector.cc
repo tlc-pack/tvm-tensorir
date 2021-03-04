@@ -28,31 +28,78 @@
 namespace tvm {
 namespace tir {
 
+/*!
+ * \brief Auto detect the block read write region
+ *        It will detect the read/write region as an array in order of appearance in AST
+ * \note This detector only accepts to visit a block and will not visit child blocks recursively
+ */
+class BlockReadWriteDetector : public StmtExprVisitor {
+ public:
+  BlockReadWriteDetector() = default;
+
+  /*! \brief Return read regions of the block */
+  Array<BufferRegion> CollectReads();
+  /*! \brief Return write regions of the block */
+  Array<BufferRegion> CollectWrites();
+  /*! \brief overload operator() to make sure it accepts a block node */
+  void operator()(const Stmt &stmt);
+
+ private:
+  /*! \brief Iteration range for loop_vars */
+  std::unordered_map<const VarNode*, arith::IntSet> dom_map_;
+  /*! \brief The buffers that the current block reads */
+  std::vector<Buffer> read_buffers_;
+  /*! \brief The buffers that the current block writes */
+  std::vector<Buffer> writes_buffers_;
+  /*! \brief The read regions of the current block */
+  std::vector<std::vector<tvm::arith::IntSet>> read_regions_;
+  /*! \brief The write regions of the current block */
+  std::vector<std::vector<tvm::arith::IntSet>> write_regions_;
+  /*! \brief The buffer allocated inside the block, which will not been shown in the reads/writes */
+  std::unordered_set<const BufferNode*> inner_buffers_;
+
+  /*!
+   * \brief Update read/write buffers and regions with provided buffer and region
+   * \param buffers The buffers should be updated
+   * \param regions The access regions should be updated
+   * \param buffer The provided buffer
+   * \param region The provided region
+   */
+  void Update(std::vector<Buffer>* buffers, std::vector<std::vector<arith::IntSet>>* regions,
+              const Buffer& buffer, const std::vector<arith::IntSet>& region);
+
+  void VisitStmt_(const ForNode* op) override;
+  void VisitExpr_(const BufferLoadNode* op) override;
+  void VisitStmt_(const BufferStoreNode* op) override;
+  void VisitStmt_(const BlockRealizeNode* op) override;
+  void VisitStmt_(const BlockNode* op) override;
+};
+
 void BlockReadWriteDetector::operator()(const Stmt& stmt) {
   ICHECK(stmt.as<BlockNode>() != nullptr) << "Only allow to visit a block";
   StmtExprVisitor::operator()(stmt);
 }
 
 Array<BufferRegion> BlockReadWriteDetector::CollectReads() {
-  std::vector<BufferRegion> res;
+  Array<BufferRegion> res;
   for (size_t i = 0; i < read_regions_.size(); ++i) {
-    std::vector<Range> region;
+    Array<Range> region;
     for (const auto& range : read_regions_[i]) {
       region.push_back(range.CoverRange(Range::FromMinExtent(0, 0)));
     }
-    res.emplace_back(read_buffers_[i], region);
+    res.push_back(BufferRegion(read_buffers_[i], region));
   }
   return res;
 }
 
 Array<BufferRegion> BlockReadWriteDetector::CollectWrites() {
-  std::vector<BufferRegion> res;
+  Array<BufferRegion> res;
   for (size_t i = 0; i < write_regions_.size(); ++i) {
-    std::vector<Range> region;
+    Array<Range> region;
     for (const auto& range : write_regions_[i]) {
       region.push_back(range.CoverRange(Range::FromMinExtent(0, 0)));
     }
-    res.emplace_back(writes_buffers_[i], region);
+    res.push_back(BufferRegion(writes_buffers_[i], region));
   }
   return res;
 }
@@ -123,19 +170,24 @@ void BlockReadWriteDetector::Update(std::vector<Buffer>* buffers,
                                     const Buffer& buffer,
                                     const std::vector<arith::IntSet>& region) {
   if (inner_buffers_.find(buffer.get()) != inner_buffers_.end()) return;
-  bool find = false;
+  ICHECK_EQ(buffers->size(), regions->size())
+      << " Expect the buffer and regions to have the same size ";
   for (size_t i = 0; i < regions->size(); ++i)
     if ((*buffers)[i].same_as(buffer)) {
-      find = true;
       ICHECK_EQ((*regions)[i].size(), region.size()) << "Inconsistent buffer dimension";
       for (size_t j = 0; j < region.size(); ++j) {
         (*regions)[i][j] = arith::Union({(*regions)[i][j], region[j]});
       }
+      return;
     }
-  if (!find) {
-    buffers->push_back(buffer);
-    regions->push_back(region);
-  }
+  buffers->push_back(buffer);
+  regions->push_back(region);
+}
+
+std::pair<Array<BufferRegion>, Array<BufferRegion>> GetBlockAccessRegion(const Block& block) {
+  BlockReadWriteDetector detector;
+  detector(block);
+  return std::make_pair(detector.CollectReads(), detector.CollectWrites());
 }
 
 }  // namespace tir
