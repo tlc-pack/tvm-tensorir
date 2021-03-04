@@ -444,8 +444,8 @@ def test_meta_schedule_sample_compute_location():
         new_decision = int(new_sch.trace.decisions[new_sch.trace.insts[-1]])
         assert old_decision == new_decision
     assert len(counter) == 5
-    assert str(tir.schedule.StmtSRef.root()) in counter
-    assert str(tir.schedule.StmtSRef.inline()) in counter
+    assert str(tir.schedule.StmtSRef.root_mark()) in counter
+    assert str(tir.schedule.StmtSRef.inline_mark()) in counter
 
 
 def test_meta_schedule_get_producers():

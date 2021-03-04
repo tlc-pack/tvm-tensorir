@@ -53,7 +53,7 @@ bool IsTrivialBinding(const tir::ScheduleState& self, const tir::StmtSRef& block
 
 bool IsSubrootBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
   tir::StmtSRef parent_block_sref = GetScopeSRef(block_sref);
-  return self->root.get() == parent_block_sref.get();
+  return parent_block_sref->parent == nullptr;
 }
 
 bool IsLeafBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sref) {
@@ -100,7 +100,7 @@ bool IsOutputBlock(const tir::ScheduleState& self, const tir::StmtSRef& block_sr
   const auto* parent = parent_sref->GetStmt<tir::BlockNode>();
   ICHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
   ICHECK(parent) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
-  if (parent_sref.get() == self->root.get()) {
+  if (parent_sref->parent == nullptr) {
     for (const tir::BufferRegion& write : block->writes) {
       for (const auto& kv : self->func->buffer_map) {
         if (write->buffer.get() == kv.second.get()) {
