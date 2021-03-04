@@ -95,9 +95,6 @@ class StateCreator : private StmtVisitor {
     // Set `n->stmt2ref`
     // Set `n->scopes`
     (StateCreator(self)).VisitStmt(self->func->body);
-    // Set `n->root`
-    const auto* realize = TVM_TYPE_AS(realize, self->func->body, BlockRealizeNode);
-    self->root = self->stmt2ref.at(realize->block.get());
     return n;
   }
 
@@ -111,7 +108,6 @@ class StateCreator : private StmtVisitor {
   StmtSRef PushSRef(const StmtNode* stmt) {
     if (srefs_.empty()) {
       srefs_.push_back(StmtSRef(stmt, nullptr, -1, false));
-      self_->root = srefs_.back();
     } else {
       StmtSRefNode* parent = srefs_.back().operator->();
       srefs_.push_back(StmtSRef(stmt, parent, -1, false));
@@ -583,7 +579,6 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
   StmtSRef src_sref(_src_sref->stmt, _src_sref->parent, _src_sref->seq_index,
                     /*binding_valid=*/false);
   Stmt src_stmt = GetRef<Stmt>(src_sref->stmt);
-  const StmtNode* root_stmt = this->root->stmt;
   // Step 1. Create all the nodes needed for the new sref tree.
   //   The `SRefCreator` visits the AST `tgt_stmt`, creating new nodes along the way.
   //   It deals with 3 cases:
@@ -651,7 +646,7 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
   // 3) `tgt_stmt` is of type Loop or Block
   StmtSRefNode* child_sref = src_sref.get();
   Stmt child_tgt_stmt = std::move(tgt_stmt);
-  for (int i = 0; i <= num_copy_steps && child_sref->stmt != root_stmt; ++i) {
+  for (int i = 0; i <= num_copy_steps && child_sref->parent != nullptr; ++i) {
     bool parent_unique = (i == num_copy_steps);
     // replacing `child_sref->stmt` to `child_tgt_stmt`.
     const StmtNode* parent_stmt = child_sref->parent->stmt;
@@ -678,15 +673,12 @@ void ScheduleStateNode::Replace(const tir::StmtSRef& _src_sref, const Stmt& tgt_
     child_sref = child_sref->parent;
   }
   // Step 3. Handle the case that we mutate the root
-  if (child_sref->stmt == root_stmt) {
+  if (child_sref->parent == nullptr) {
     // From the loop invariant, upon exit, while its subtree is properly set,
     // `child_sref` is not properly to `child_tgt_stmt` yet.
-    if (src_sref->stmt == root_stmt) {
-      // Replacing the root
-      this->root = this->stmt2ref.at(child_tgt_stmt.get());
-    } else {
-      // Replacing a non-root
-      UpdateSRef(this, this->root.get(), child_tgt_stmt.get());
+    if (src_sref->parent != nullptr) {
+      // Not replacing a root
+      UpdateSRef(this, child_sref, child_tgt_stmt.get());
     }
     // Update the body of the `this->func`
     PrimFuncNode* new_func = this->func.CopyOnWrite();
