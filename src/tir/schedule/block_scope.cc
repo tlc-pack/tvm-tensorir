@@ -16,6 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+#include <tvm/tir/schedule/block_scope.h>
+
 #include "./utils.h"
 
 namespace tvm {

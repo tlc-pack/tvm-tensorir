@@ -396,30 +396,6 @@ Stmt StmtReplacer::VisitStmt(const Stmt& stmt) {
   }
 }
 
-class ScopeUpdater : public StmtVisitor {
- public:
-  explicit ScopeUpdater(const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref)
-      : stmt2ref(stmt2ref) {}
-
-  void VisitStmt_(const BlockNode* block) override {
-    scope->AddChildBlock(stmt2ref.at(block), &buffer_readers);
-  }
-
-  BlockScope scope;
-  std::unordered_map<Buffer, Array<StmtSRef>, ObjectPtrHash, ObjectPtrEqual> buffer_readers;
-  const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref;
-};
-
-void UpdateScope(const StmtNode* stmt,
-                 const std::unordered_map<const StmtNode*, StmtSRef>& stmt2ref,
-                 std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual>* scopes) {
-  ICHECK(stmt->IsInstance<BlockNode>()) << "InternalError: scope is only defined on a block";
-  const BlockNode* block = static_cast<const BlockNode*>(stmt);
-  ScopeUpdater visitor(stmt2ref);
-  visitor(block->body);
-  (*scopes)[stmt2ref.at(stmt)] = std::move(visitor.scope);
-}
-
 // Return whether `expr` contains any variable used in `vars`
 // Return true if `vars` contains no variable
 bool StmtExprContainsVar(const ObjectRef& obj, const std::unordered_set<const VarNode*>& vars) {
