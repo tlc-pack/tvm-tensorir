@@ -449,5 +449,12 @@ Array<StmtSRef> CollectComputeLocation(const ScheduleState& self, const StmtSRef
   return result;
 }
 
+StmtSRef GetSRefTreeRoot(const StmtSRef& sref) {
+  const StmtSRefNode* p = sref.get();
+  for (; p->parent != nullptr; p = p->parent) {
+  }
+  return GetRef<StmtSRef>(p);
+}
+
 }  // namespace tir
 }  // namespace tvm
