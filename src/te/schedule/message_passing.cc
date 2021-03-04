@@ -28,6 +28,8 @@
 
 // <bojian/TVM-SymbolicTuning>
 #include "../symtune.h"
+#include <tvm/node/container.h>
+#include <tvm/tir/dynamic_axis.h>
 #include <tvm/tir/expr_functor.h>
 
 namespace tvm {
@@ -554,13 +556,13 @@ bool IsRangeSame(const Range input_1, const Range input_2) {
 }
 
 // <bojian/TVM-SymbolicTuning>
-static bool HasBlockIdx = false;
-
 class ContainsBlockIdx : public ExprVisitor {
+ public:
+  static bool hasBlockIdx = false;
  protected:
   void VisitExpr_(const VarNode* op) override {
     if (op->name_hint == "blockIdx.x") {
-      HasBlockIdx = true;
+      hasBlockIdx = true;
     }
   }
 };
@@ -582,6 +584,15 @@ class DyAxisMinReplacer : public ExprMutator {
               << "Replacing it with its minimum value "
               << op->possible_values[0];
     return op->possible_values[0];
+  }
+};
+
+class DyAxisFinder : public ExprVisitor {
+ public:
+  std::unordered_set<const DyAxisNode*> dy_axes;
+ protected:
+  void VisitExpr_(const DyAxisNode* op) override {
+    dy_axes.insert(op);
   }
 };
 
@@ -626,13 +637,14 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
   ContainsBlockIdx blockidx_checker;
   DyAxisMaxReplacer dyaxis_max_replacer;
   DyAxisMinReplacer dyaxis_min_replacer;
+  DyAxisFinder dyaxis_finder;
 
   std::ostringstream strout;
   for (const std::pair<IterVar, PrimExpr>& iv_expr_pair : value_map) {
     strout << iv_expr_pair.second;
     if (strout.str() == "blockIdx.x") {
       IntSet iset = iset_dmap.at(Downcast<Var>(iv_expr_pair.second));
-      LOG(INFO) << dyaxis_max_replacer(iset.max());
+      LOG(INFO) << analyzer.Simplify(dyaxis_max_replacer(iset.max()));
     }
     strout.str("");
   }
@@ -681,26 +693,36 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       if (vmin.dtype() != value.dtype() || !analyzer.CanProve(vmin >= 0)) {
         preds.emplace_back(value >= 0);
       }
+
+      dyaxis_finder.dy_axes.clear();
+      dyaxis_finder(vmax);
+      dyaxis_finder(iv->dom->extent);
+
+      for (const DyAxisNode* dy_axis : dyaxis_finder.dy_axes) {
+        LOG(INFO) << GetRef<DyAxis>(dy_axis);
+      }
+
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dyaxis_min_replacer(iv->dom->extent))) {
 
         // <bojian/TVM-SymbolicTuning>
         if (dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
-          if (stage->origin_op->name.find(".local") !=
-              std::string::npos || 
-              stage->origin_op->name.find("shared") !=
-              std::string::npos) {
-            HasBlockIdx = false;
-            blockidx_checker(value);
-            if (HasBlockIdx) {
-              LOG(WARNING) << "\'.local/shared\' spotted in " << stage->origin_op->name << ". "
-                              "Assuming it is a cache write whose boundary check "
-                              "(" << value << "<" << iv->dom->extent << ") "
-                              "can be neglected.";
-              continue;
-            } else {
-              LOG(WARNING) << "The predicate (" << value << "<" << iv->dom->extent
-                           << ")is preserved";
-            }
+          if (stage->origin_op->name.find(".local") != std::string::npos || 
+              stage->origin_op->name.find("shared") != std::string::npos) {
+            // blockidx_checker.hasBlockIdx = false;
+            // blockidx_checker(value);
+            // if (blockidx_checker.hasBlockIdx) {
+            //   LOG(WARNING) << "\'.local/shared\' spotted in " << stage->origin_op->name << ". "
+            //                   "Assuming it is a cache write whose boundary check "
+            //                   "(" << value << "<" << iv->dom->extent << ") can be neglected.";
+            //   continue;
+            // } else {
+            //   LOG(WARNING) << "The predicate (" << value << "<" << iv->dom->extent
+            //                << ")is preserved";
+            // }
+            LOG(WARNING) << "\'.local/shared\' spotted in " << stage->origin_op->name << ". "
+                            "Assuming it is a cache write whose boundary check "
+                            "(" << value << "<" << iv->dom->extent << ") can be neglected.";
+            continue;
           }
         }
 
@@ -708,7 +730,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
 
         // <bojian/TVM-SymbolicTuning>
         if (dmlc::GetEnv("SYMTUNE_DEBUG_TRACE", 0)) {
-          LOG(INFO) << "Inserting predicate (" << value << " < " << iv->dom->extent
+          LOG(INFO) << "Inserting predicate (" << value << "<" << iv->dom->extent
                     << ") for " << stage;
         }
 

@@ -1,4 +1,5 @@
 // <bojian/TVM-SymbolicTuning>
+#pragma once
 
 #include <tvm/tir/var.h>
 
