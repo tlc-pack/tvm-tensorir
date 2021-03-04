@@ -78,6 +78,8 @@ class StmtSRefNode : public Object {
     this->seq_index = -1;
   }
 
+  void VisitAttrs(AttrVisitor* v) {}
+
   /*!
    * \brief Get the referenced statement with proper type checking.
    * It serves the same purpose as `ObjectRef::as`, but does not acquire strong reference to `stmt`
@@ -112,6 +114,7 @@ class StmtSRef : public ObjectRef {
 
   /*! \return The mutable pointer to the StmtSRefNode */
   StmtSRefNode* get() const { return static_cast<StmtSRefNode*>(data_.get()); }
+  TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(StmtSRef, ObjectRef, StmtSRefNode);
 
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(StmtSRef, ObjectRef, StmtSRefNode);
 
@@ -262,7 +265,7 @@ class BlockScope : public ObjectRef {
    */
   TVM_DLL BlockScope(const Array<StmtSRef>& child_block_srefs);
 
-  TVM_DEFINE_MUTABLE_NOTNULLABLE_OBJECT_REF_METHODS(BlockScope, ObjectRef, BlockScopeNode);
+  TVM_DEFINE_NOTNULLABLE_OBJECT_REF_METHODS(BlockScope, ObjectRef, BlockScopeNode);
 };
 
 }  // namespace tir

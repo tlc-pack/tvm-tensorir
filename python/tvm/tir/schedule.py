@@ -92,7 +92,7 @@ class BlockScope(Object):
         blocks: List of DepEdge
             The predecessors of the block
         """
-        return _ffi_api_schedule.BlockScopeGetSuccessor(self, block)  # pylint: disable=no-member
+        return _ffi_api_schedule.BlockScopeGetSuccessors(self, block)  # pylint: disable=no-member
 
 
 @_register_object("tir.ScheduleState")

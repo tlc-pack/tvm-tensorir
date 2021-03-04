@@ -71,7 +71,7 @@ using tir::SetRV;
 
 Array<tir::Var> ScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int n,
                                                 int max_innermost_factor,
-                                                Optional<Array<ObjectRef>> decision) {
+                                                Optional<Array<Integer>> decision) {
   std::vector<int64_t> result = meta_schedule::SamplePerfectTile(
       this->state, &this->sampler, this->GetSRef(loop_rv), n, max_innermost_factor, &decision);
   Array<tir::Var> result_rvs = SetRV(this, AsArray<int64_t, Integer>(result));
@@ -83,7 +83,7 @@ Array<tir::Var> ScheduleNode::SamplePerfectTile(const LoopRV& loop_rv, int n,
 
 tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,  //
                                          const Array<FloatImm>& probs,      //
-                                         Optional<ObjectRef> decision) {
+                                         Optional<Integer> decision) {
   int64_t result =
       meta_schedule::SampleCategorical(this->state, &this->sampler, candidates, probs, &decision);
   tir::Var result_rv = SetRV(this, result);
@@ -91,7 +91,7 @@ tir::Var ScheduleNode::SampleCategorical(const Array<Integer>& candidates,  //
   return result_rv;
 }
 
-LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block_rv, Optional<ObjectRef> decision) {
+LoopRV ScheduleNode::SampleComputeLocation(const BlockRV& block_rv, Optional<Integer> decision) {
   tir::StmtSRef result = meta_schedule::SampleComputeLocation(this->state, &this->sampler,
                                                               this->GetSRef(block_rv), &decision);
   LoopRV result_rv = SetRV<LoopRV>(this, result);

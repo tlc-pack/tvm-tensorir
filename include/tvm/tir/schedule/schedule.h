@@ -19,7 +19,6 @@
 #ifndef TVM_TIR_SCHEDULE_SCHEDULE_H_
 #define TVM_TIR_SCHEDULE_SCHEDULE_H_
 
-#include <tvm/ir/module.h>
 #include <tvm/tir/schedule/state.h>
 
 namespace tvm {
@@ -52,7 +51,6 @@ class BlockRV : public runtime::ObjectRef {
 class LoopRVNode : public runtime::Object {
  public:
   void VisitAttrs(tvm::AttrVisitor* v) {}
-
   static constexpr const char* _type_key = "tir.LoopRV";
   TVM_DECLARE_FINAL_OBJECT_INFO(LoopRVNode, runtime::Object);
 };
@@ -90,40 +88,50 @@ class ScheduleNode : public runtime::Object {
   TVM_DECLARE_BASE_OBJECT_INFO(ScheduleNode, runtime::Object);
 
   virtual StmtSRef GetSRef(const LoopRV& loop_rv) const = 0;
-
-  virtual StmtSRef GetSRef(const Stmt& stmt) const = 0;
-
-  virtual StmtSRef GetSRef(const StmtNode* stmt) const = 0;
+  /*!
+   * \brief Get the block/loop sref corresponding to the specific statement
+   * \param stmt The statement to be looked up
+   * \return The corresponding block/loop sref
+   */
+  virtual StmtSRef GetSRef(const StmtNode* stmt) const;
+  /*!
+   * \brief Get the block/loop sref corresponding to the specific statement
+   * \param stmt The statement to be looked up
+   * \return The corresponding block/loop sref
+   */
+  virtual StmtSRef GetSRef(const Stmt& stmt) const;
 
  public:
   /******** Sampling ********/
   /*!
-   * \brief Apply the instruction SamplePerfectTile
-   * \param n The number of loops after tiling
+   * \brief Sample the factors to perfect tiling a specific LoopRV
    * \param loop_rv The loop to be tiled
+   * \param n The number of loops after tiling
    * \param max_innermost_factor The maximum factor in the innermost loop, -1 if disabled
-   * \return An array of random variables, the result of sampling
+   * \param decision The sampling decision
+   * \return An array of n random variables, the result of sampling
    */
-  virtual Array<Var> SamplePerfectTile(const LoopRV& loop_rv,     //
-                                       int n,                     //
-                                       int max_innermost_factor,  //
-                                       Optional<Array<ObjectRef>> decision = NullOpt) = 0;
+  virtual Array<VarRV> SamplePerfectTile(const LoopRV& loop_rv,     //
+                                         int n,                     //
+                                         int max_innermost_factor,  //
+                                         Optional<Array<Integer>> decision = NullOpt) = 0;
   /*!
    * \brief Sample an integer given the probability distribution
    * \param candidates The candidates
    * \param probs The probability distribution of the candidates
-   * \return The random variable
+   * \param decision The sampling decision
+   * \return The random variable sampled from candidates
    */
-  virtual Var SampleCategorical(const Array<Integer>& candidates,  //
-                                const Array<FloatImm>& probs,      //
-                                Optional<ObjectRef> decision = NullOpt) = 0;
+  virtual VarRV SampleCategorical(const Array<Integer>& candidates,  //
+                                  const Array<FloatImm>& probs,      //
+                                  Optional<Integer> decision = NullOpt) = 0;
   /*!
-   * \brief Sample a compute-at location from a block
-   * \param block A block to be computed at
-   * \return The loop to be computed at
+   * \brief Sample a compute-at location on a BlockRV so that its producer can compute at that loop
+   * \param block_rv The consumer block to be computed at
+   * \return The sampled loop to be computed at
    */
   virtual LoopRV SampleComputeLocation(const BlockRV& block_rv,
-                                       Optional<ObjectRef> decision = NullOpt) = 0;
+                                       Optional<Integer> decision = NullOpt) = 0;
 
  public:
   /*! \brief Get the IRModule associated with this schedule. */
@@ -258,10 +266,6 @@ class Schedule : public runtime::ObjectRef {
   TVM_DLL static Schedule Concrete(IRModule mod, int debug_mode);
   TVM_DEFINE_MUTABLE_OBJECT_REF_METHODS(Schedule, runtime::ObjectRef, ScheduleNode);
 };
-
-TVM_DLL String Repr(const PrimFunc& func);
-TVM_DLL String Repr(const IRModule& mod);
-TVM_DLL String Repr(const Schedule& self);
 
 }  // namespace tir
 }  // namespace tvm

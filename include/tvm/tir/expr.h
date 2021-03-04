@@ -1032,6 +1032,8 @@ class CommReducerNode : public Object {
   TVM_DECLARE_FINAL_OBJECT_INFO(CommReducerNode, Object);
 };
 
+class BufferStore;
+
 /*!
  * \brief Managed reference to CommReducerNode
  * \sa CommReducerNode
