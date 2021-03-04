@@ -896,10 +896,13 @@ SearchRule SimplifyComputeWithConstTensor(int max_innermost_factor) {
 class RuleAddRfactor {
  public:
   int max_jobs_per_core;
+  int max_innermost_factor;
   mutable std::atomic<int> warned_num_cores_missing;
 
-  explicit RuleAddRfactor(int max_jobs_per_core)
-      : max_jobs_per_core(max_jobs_per_core), warned_num_cores_missing(0) {}
+  explicit RuleAddRfactor(int max_jobs_per_core, int max_innermost_factor)
+      : max_jobs_per_core(max_jobs_per_core),
+        max_innermost_factor(max_innermost_factor),
+        warned_num_cores_missing(0) {}
 
   RuleAddRfactor(const RuleAddRfactor& other) noexcept
       : max_jobs_per_core(other.max_jobs_per_core),
@@ -927,7 +930,11 @@ class RuleAddRfactor {
     int num_spatial_loops;
     LoopRV fused_reduce_loop;
     FuseReductionLoops(sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
-    const Array<LoopRV>& split_res = sch->Split(fused_reduce_loop, {NullOpt, Integer(1)});
+    Array<Optional<PrimExpr>> factors;
+    for (const tir::Var& factor : sch->SamplePerfectTile(fused_reduce_loop, 2, max_innermost_factor)) {
+      factors.push_back(factor);
+    }
+    const Array<LoopRV>& split_res = sch->Split(fused_reduce_loop, factors);
     Array<Schedule> res;
     for (const LoopRV& split_loop : split_res) {
       Schedule sch_tmp = sch->Copy(sch->sampler.ForkSeed());
@@ -952,8 +959,8 @@ class RuleAddRfactor {
   }
 };
 
-SearchRule AddRfactor(int max_jobs_per_core) {
-  RuleAddRfactor rule(max_jobs_per_core);
+SearchRule AddRfactor(int max_jobs_per_core, int max_innermost_factor) {
+  RuleAddRfactor rule(max_jobs_per_core, max_innermost_factor);
   auto f_apply = [rule](SearchTask task, Schedule sch, BlockRV block) -> Array<Schedule> {
     return rule.Apply(task, sch, block);
   };
