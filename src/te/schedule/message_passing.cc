@@ -565,6 +565,16 @@ class ContainsBlockIdx : public ExprVisitor {
   }
 };
 
+class DyAxisMaxReplacer : public ExprMutator {
+ protected:
+  PrimExpr VisitExpr_(const DyAxisNode* op) override {
+    LOG(INFO) << "Dynamic axis " << op->name_hint << " encountered. "
+              << "Replacing it with its minimum value "
+              << op->possible_values[op->possible_values.size() - 1];
+    return op->possible_values[op->possible_values.size() - 1];
+  }
+};
+
 class DyAxisMinReplacer : public ExprMutator {
  protected:
   PrimExpr VisitExpr_(const DyAxisNode* op) override {
@@ -614,7 +624,20 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
   // #if defined(SYMTUNE_SCHED_OPT_NO_DUP_IF_CHECKS)
   PrimExpr prev_predicate;
   ContainsBlockIdx blockidx_checker;
+  DyAxisMaxReplacer dyaxis_max_replacer;
   DyAxisMinReplacer dyaxis_min_replacer;
+
+  std::ostringstream strout;
+  for (const std::pair<IterVar, PrimExpr>& iv_expr_pair : value_map) {
+    strout << iv_expr_pair.second;
+    if (strout.str() == "blockIdx.x") {
+      LOG(INFO) << iv_expr_pair.first << " : "
+                << iv_expr_pair.first->dom;
+      LOG(INFO) << iv_expr_pair.second->GetTypeKey();
+      LOG(INFO) << dom_map.at(iv_expr_pair.first);
+    }
+    strout.str("");
+  }
 
   for (const IterVar& iv : stage->all_iter_vars) {
     if (skip_iter.count(iv) || iv->iter_type == kOpaque) continue;
