@@ -687,6 +687,10 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
           for (const IntImm& v : dy_axis->possible_values) {
             dyaxis_substituter.op = dy_axis;
             dyaxis_substituter.v = v->value;
+            LOG(INFO) << value;
+            IntSet s = analyzer.int_set(dyaxis_substituter(value), iset_dmap);
+            // recompute vmax
+            vmax = s.max();
             PrimExpr new_cond = dyaxis_substituter(vmax < dom->extent);
             LOG(INFO) << "Checking condition " << new_cond;
             can_ignore_bound_check &= analyzer.CanProve(new_cond);
@@ -751,6 +755,10 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
           for (const IntImm& v : dy_axis->possible_values) {
             dyaxis_substituter.op = dy_axis;
             dyaxis_substituter.v = v->value;
+            LOG(INFO) << value;
+            s = analyzer.int_set(dyaxis_substituter(value), iset_dmap);
+            // recompute vmax
+            vmax = s.max();
             PrimExpr new_cond = dyaxis_substituter(vmax < iv->dom->extent);
             LOG(INFO) << "Checking condition " << new_cond;
             can_ignore_bound_check &= analyzer.CanProve(new_cond);
