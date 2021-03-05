@@ -570,9 +570,6 @@ class ContainsBlockIdx : public ExprVisitor {
 class DyAxisMaxReplacer : public ExprMutator {
  protected:
   PrimExpr VisitExpr_(const DyAxisNode* op) override {
-    LOG(INFO) << GetRef<DyAxis>(op) << " encountered. "
-              << "Replacing it with its MAX value "
-              << op->possible_values[op->possible_values.size() - 1];
     return op->possible_values[op->possible_values.size() - 1];
   }
 };
@@ -580,9 +577,6 @@ class DyAxisMaxReplacer : public ExprMutator {
 class DyAxisMinReplacer : public ExprMutator {
  protected:
   PrimExpr VisitExpr_(const DyAxisNode* op) override {
-    LOG(INFO) << GetRef<DyAxis>(op) << " encountered. "
-              << "Replacing it with its min value "
-              << op->possible_values[0];
     return op->possible_values[0];
   }
 };
@@ -675,9 +669,9 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       // <bojian/TVM-SymbolicTuning>
       dyaxis_finder.dy_axes.clear();
       dyaxis_finder(vmax < dom->extent);
-      for (const DyAxisNode* dy_axis : dyaxis_finder.dy_axes) {
-        LOG(INFO) << GetRef<DyAxis>(dy_axis);
-      }
+      // for (const DyAxisNode* dy_axis : dyaxis_finder.dy_axes) {
+      //   LOG(INFO) << GetRef<DyAxis>(dy_axis);
+      // }
       bool can_ignore_bound_check = true;
 
       if (dyaxis_finder.dy_axes.empty()) {
@@ -735,17 +729,20 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       PrimExpr vmin = s.min();
       PrimExpr vmax = s.max();
       // The range of `value` resides in [vmin, vmax]
-      if (vmin.dtype() != value.dtype() || !analyzer.CanProve(vmin >= 0)) {
-        preds.emplace_back(value >= 0);
+      // <bojian/TVM-SymbolicTuning>
+      if (!dmlc::GetEnv("SYMTUNE_SCHED_OPT", 0)) {
+        if (vmin.dtype() != value.dtype() || !analyzer.CanProve(vmin >= 0)) {
+          preds.emplace_back(value >= 0);
+        }
+        LOG(INFO) << "Neglecting the bound check (" << value << ">=" << "0)";
       }
-
 
       // <bojian/TVM-SymbolicTuning>
       dyaxis_finder.dy_axes.clear();
       dyaxis_finder(vmax < iv->dom->extent);
-      for (const DyAxisNode* dy_axis : dyaxis_finder.dy_axes) {
-        LOG(INFO) << GetRef<DyAxis>(dy_axis);
-      }
+      // for (const DyAxisNode* dy_axis : dyaxis_finder.dy_axes) {
+      //   LOG(INFO) << GetRef<DyAxis>(dy_axis);
+      // }
       bool can_ignore_bound_check = true;
 
       if (dyaxis_finder.dy_axes.empty()) {
