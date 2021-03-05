@@ -199,8 +199,9 @@ class MutatorComputeLocation {
         }
         // Remove `decided`
         std::vector<int>::iterator rm = std::find(locs.begin(), locs.end(), decided);
-        ICHECK(rm != locs.end());
-        locs.erase(rm);
+        if (rm != locs.end()) {
+          locs.erase(rm);
+        }
         // Add the candidate
         ICHECK(!locs.empty());
         candidates.emplace_back(inst, std::move(locs));
