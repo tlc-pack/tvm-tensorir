@@ -654,15 +654,15 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
   DyAxisSubstituter dyaxis_substituter;
   DyAxisFinder dyaxis_finder;
 
-  std::ostringstream strout;
-  for (const std::pair<IterVar, PrimExpr>& iv_expr_pair : value_map) {
-    strout << iv_expr_pair.second;
-    if (strout.str() == "blockIdx.x") {
-      IntSet iset = iset_dmap.at(Downcast<Var>(iv_expr_pair.second));
-      LOG(INFO) << analyzer.Simplify(dyaxis_max_replacer(iset.max()));
-    }
-    strout.str("");
-  }
+  // std::ostringstream strout;
+  // for (const std::pair<IterVar, PrimExpr>& iv_expr_pair : value_map) {
+  //   strout << iv_expr_pair.second;
+  //   if (strout.str() == "blockIdx.x") {
+  //     IntSet iset = iset_dmap.at(Downcast<Var>(iv_expr_pair.second));
+  //     LOG(INFO) << analyzer.Simplify(dyaxis_max_replacer(iset.max()));
+  //   }
+  //   strout.str("");
+  // }
 
   for (const IterVar& iv : stage->all_iter_vars) {
     if (skip_iter.count(iv) || iv->iter_type == kOpaque) continue;
@@ -687,13 +687,13 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
           for (const IntImm& v : dy_axis->possible_values) {
             dyaxis_substituter.op = dy_axis;
             dyaxis_substituter.v = v->value;
-            LOG(INFO) << value;
-            IntSet s = analyzer.int_set(dyaxis_substituter(value), iset_dmap);
+            // LOG(INFO) << value;
+            // IntSet s = analyzer.int_set(dyaxis_substituter(value), iset_dmap);
             // recompute vmax
-            vmax = s.max();
-            PrimExpr new_cond = dyaxis_substituter(vmax < dom->extent);
-            LOG(INFO) << "Checking condition " << new_cond;
-            can_ignore_bound_check &= analyzer.CanProve(new_cond);
+            // vmax = s.max();
+            // PrimExpr new_cond = dyaxis_substituter(vmax < dom->extent);
+            // LOG(INFO) << "Checking condition " << new_cond;
+            can_ignore_bound_check &= analyzer.CanProve(dyaxis_substituter(vmax < dom->extent));
           }
         }
         LOG(INFO) << "Can ignore bound check? " << can_ignore_bound_check;
@@ -755,13 +755,13 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
           for (const IntImm& v : dy_axis->possible_values) {
             dyaxis_substituter.op = dy_axis;
             dyaxis_substituter.v = v->value;
-            LOG(INFO) << value;
-            s = analyzer.int_set(dyaxis_substituter(value), iset_dmap);
+            // LOG(INFO) << value;
+            // s = analyzer.int_set(dyaxis_substituter(value), iset_dmap);
             // recompute vmax
-            vmax = s.max();
-            PrimExpr new_cond = dyaxis_substituter(vmax < iv->dom->extent);
-            LOG(INFO) << "Checking condition " << new_cond;
-            can_ignore_bound_check &= analyzer.CanProve(new_cond);
+            // vmax = s.max();
+            // PrimExpr new_cond = dyaxis_substituter(vmax < iv->dom->extent);
+            // LOG(INFO) << "Checking condition " << new_cond;
+            can_ignore_bound_check &= analyzer.CanProve(dyaxis_substituter(vmax < iv->dom->extent));
           }
         }
         LOG(INFO) << "Can ignore bound check? " << can_ignore_bound_check;
