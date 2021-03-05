@@ -924,6 +924,8 @@ class RuleAddRFactor {
       return {sch};
     }
 
+    // Make a copy of the original schedule.
+    Schedule ori_sch = sch->Copy(sch->sampler.ForkSeed());
     // Reorder the loop axes if reduction loops are not innermost.
     ReorderReductionLoops(sch, block_rv);
 
@@ -955,6 +957,7 @@ class RuleAddRFactor {
       res.push_back(sch_tmp);
     }
 
+    res.push_back(ori_sch);
     return res;
   }
 };
