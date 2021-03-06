@@ -119,9 +119,8 @@ struct SRefTranslator {
   }
 
   /*! \brief Translate SMap<StmtSRef, Scope> */
-  SMap<StmtSRef, BlockScope> Trans(const SMap<StmtSRef, BlockScope>& scopes) {
-    SMap<StmtSRef, BlockScope> result;
-    result.reserve(scopes.size());
+  Map<StmtSRef, BlockScope> Trans(const Map<StmtSRef, BlockScope>& scopes) {
+    Map<StmtSRef, BlockScope> result;
     for (const auto& kv : scopes) {
       const StmtSRef& old_sref = kv.first;
       const BlockScope& old_scope = kv.second;
@@ -129,7 +128,7 @@ struct SRefTranslator {
       scope->forward_edges = Trans(old_scope->forward_edges);
       scope->backward_edges = Trans(old_scope->backward_edges);
       scope->buffer_writers = Trans(old_scope->buffer_writers);
-      result[Trans(old_sref)] = BlockScope(std::move(scope));
+      result.Set(Trans(old_sref), BlockScope(std::move(scope)));
     }
     return result;
   }

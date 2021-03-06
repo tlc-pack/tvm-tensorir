@@ -145,7 +145,7 @@ class StateCreator : private StmtVisitor {
     sref->binding_valid =
         ValidateBlockBinding(GetRef<BlockRealize>(realizes_.back()), loop_var_ranges);
     // Collect `scopes` info
-    self_->scopes[sref] = BlockScope(std::move(block_frames_.back().leaf_blocks));
+    self_->scopes.Set(sref, BlockScope(std::move(block_frames_.back().leaf_blocks)));
     block_frames_.pop_back();
     // Update parent scope if exists
     if (!block_frames_.empty()) {
@@ -451,7 +451,7 @@ class SRefUpdater : public StmtVisitor {
     VisitStmt(op->body);
     parents_.pop_back();
     // Additionally, need to update the scope because the block is changed
-    self_->scopes[sref] = BlockScope(tir::GetChildBlocks(self_, sref));
+    self_->scopes.Set(sref, BlockScope(tir::GetChildBlocks(self_, sref)));
   }
 
   void VisitStmt_(const SeqStmtNode* seq_stmt) final {
@@ -759,7 +759,7 @@ TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetSRef")
 TVM_REGISTER_GLOBAL("tir.schedule.ScheduleStateGetScope")
     .set_body_typed([](ScheduleState self, StmtSRef block_sref) -> Optional<BlockScope> {
       auto it = self->scopes.find(block_sref);
-      return it != self->scopes.end() ? it->second : Optional<BlockScope>(NullOpt);
+      return it != self->scopes.end() ? (*it).second : Optional<BlockScope>(NullOpt);
     });
 
 }  // namespace tir

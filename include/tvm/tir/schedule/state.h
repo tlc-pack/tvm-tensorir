@@ -51,7 +51,7 @@ class ScheduleStateNode : public runtime::Object {
   /*! \brief The module to be scheduled */
   IRModule mod;
   /*! \brief The block scopes of each block sref */
-  std::unordered_map<StmtSRef, BlockScope, ObjectPtrHash, ObjectPtrEqual> scopes;
+  Map<StmtSRef, BlockScope> scopes;
   /*! \brief The mapping from block/for stmt to its sref */
   std::unordered_map<const StmtNode*, StmtSRef> stmt2ref;
   /*! \brief In debug mode, we do extra correctness checking after each replacement */
@@ -59,7 +59,7 @@ class ScheduleStateNode : public runtime::Object {
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("mod", &mod);
-    // `scopes` is not visited
+    v->Visit("scopes", &scopes);
     // `stmt2ref` is not visited
     v->Visit("debug_mode", &debug_mode);
   }

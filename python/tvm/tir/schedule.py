@@ -100,6 +100,7 @@ class ScheduleState(Object):
     """The state of scheduling"""
 
     mod: IRModule
+    scopes: Dict[StmtSRef, BlockScope]
     debug_mode: bool
 
     def __init__(self, func_or_mod: Union[PrimFunc, IRModule], debug_mode: bool):
