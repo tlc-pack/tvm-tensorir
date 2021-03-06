@@ -771,11 +771,10 @@ std::pair<int, int> GetCumulativeSpaceAndReductionLength(const tir::ScheduleStat
   return std::make_pair(cum_space_len, cum_reduce_len);
 }
 
-bool NeedsRFactor(const SearchTask& task, const tir::ScheduleState& self,
-                  const tir::StmtSRef& block_sref,
-                  const int& max_jobs_per_core, std::atomic<int>* warned_num_cores_missing) {
-  const auto* block = block_sref->GetStmt<tir::BlockNode>();
-  CHECK(block) << "TypeError: Expects Block, but gets: " << block_sref->stmt->GetTypeKey();
+bool NeedsRFactor(const tir::ScheduleState& self, const tir::StmtSRef& block_sref,
+                  const SearchTask& task, const int& max_jobs_per_core,
+                  std::atomic<int>* warned_num_cores_missing) {
+  const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
   Array<tir::StmtSRef> loops = tir::GetAxes(self, block_sref);
 
   // Cond 1. The block is a reduction block and has trivial binding.
@@ -794,18 +793,15 @@ bool NeedsRFactor(const SearchTask& task, const tir::ScheduleState& self,
     }
 
     // Cond 3.
-    const auto* loop_i = loops[i]->GetStmt<tir::ForNode>();
+    const auto* loop_i = TVM_SREF_TO_FOR(loop_i, loops[i]);
     if (i < static_cast<int>(loops.size()) - 1) {
-      const auto* loop_i1 = loops[i + 1]->GetStmt<tir::ForNode>();
+      const auto* loop_i1 = TVM_SREF_TO_FOR(loop_i1, loops[i + 1]);
       if (loop_i->body.get() != loop_i1) {
         return false;
       }
     } else {
       const auto* block_realize = loop_i->body.as<tir::BlockRealizeNode>();
-      if (!block_realize) {
-        return false;
-      }
-      if (block_realize->block.get() != block) {
+      if (!block_realize || block_realize->block.get() != block) {
         return false;
       }
     }
@@ -839,14 +835,12 @@ bool NeedsRFactor(const SearchTask& task, const tir::ScheduleState& self,
   return false;
 }
 
-bool HasCacheWriteBlock(const Schedule& sch, const BlockRV& block_rv) {
-  // We've made sure that the block has only one write buffer. So here we don't need check the `i`
-  // of `CacheWrite`.
+bool HasCacheWriteBlock(const Schedule& sch, const BlockRV& block_rv, const int& i) {
   for (const Instruction& inst : sch->trace->insts) {
-    if (inst->inst_attrs->IsInstance<CacheWriteAttrs>()) {
+    if (const auto inst_attr = inst->inst_attrs.as<CacheWriteAttrs>()) {
       CHECK_EQ(inst->inputs.size(), 1);
       const BlockRV& input_rv = Downcast<BlockRV>(inst->inputs[0]);
-      if (block_rv.same_as(input_rv)) {
+      if (block_rv.same_as(input_rv) && inst_attr->i == i) {
         return true;
       }
     }

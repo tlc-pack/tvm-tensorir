@@ -30,17 +30,6 @@ namespace tvm {
 namespace meta_schedule {
 
 /*!
- * \brief Check if a block needs to be inlined
- * \param sch The TIR schedule class
- * \param block_sref The block to be analyzed
- * \param strict_mode A boolean indicating that whether the pure spatial block is required
- *        to be strictly-inlineable
- * \return A boolean flag indicating if the block needs multi-level tiling
- */
-TVM_DLL bool NeedsInline(const tir::Schedule& sch, const tir::StmtSRef& block_sref,
-                         bool strict_mode);
-
-/*!
  * \brief Check if
  * 1) number of blocks vars equals to number of loop vars
  * 2) each block var is bound to a loop var directly
@@ -204,18 +193,18 @@ TVM_DLL std::pair<int, int> GetCumulativeSpaceAndReductionLength(const tir::Sche
  * \param block_sref The block to be analyzed
  * \return A boolean indicating if it needs rfactor
  */
-TVM_DLL bool NeedsRFactor(const SearchTask& task, const tir::ScheduleState& self,
-                          const tir::StmtSRef& block_sref,
-                          const int& max_jobs_per_core, std::atomic<int>* warned_num_cores_missing);
+TVM_DLL bool NeedsRFactor(const tir::ScheduleState& self, const tir::StmtSRef& block_sref,
+                          const SearchTask& task, const int& max_jobs_per_core,
+                          std::atomic<int>* warned_num_cores_missing);
 
 /*!
  * \brief Check if the block has its cache-write block
  * \param sch The TIR schedule
  * \param block_rv The block to be analyzed
+ * \param i The index of the buffer in block's write region
  * \return A boolean indicating if it has cache-write block
- * \note Before calling this function, make sure block_rv has only one write buffer.
  */
-TVM_DLL bool HasCacheWriteBlock(const Schedule& sch, const BlockRV& block_rv);
+TVM_DLL bool HasCacheWriteBlock(const Schedule& sch, const BlockRV& block_rv, const int& i);
 
 }  // namespace meta_schedule
 }  // namespace tvm

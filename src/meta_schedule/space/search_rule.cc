@@ -897,6 +897,8 @@ SearchRule SimplifyComputeWithConstTensor(int max_innermost_factor) {
  * \brief Reorder the reduction loops to innermost positions if needed.
  * \param sch The Meta-Schedule schedule
  * \param block_rv The block where to apply the reorder
+ * \note Before invoking this helper function, make sure that the block has only spatial and
+ *       reduction loop axes.
  */
 void ReorderReductionLoops(const Schedule& sch, const BlockRV& block_rv) {
   Array<LoopRV> loops = sch->GetAxes(block_rv);
@@ -919,6 +921,7 @@ void ReorderReductionLoops(const Schedule& sch, const BlockRV& block_rv) {
   for (int i = 0; i < static_cast<int>(loops.size()); ++i) {
     if (!new_order[i].same_as(loops[i])) {
       need_reorder = true;
+      break;
     }
   }
   if (need_reorder) {
@@ -927,13 +930,14 @@ void ReorderReductionLoops(const Schedule& sch, const BlockRV& block_rv) {
 }
 
 /*!
- * \brief Fuse all the reduction loops, and get the number of spatial loops and the loop after
- *        fusion in the mean time.
+ * \brief Fuse all the reduction loops, and get the number of spatial loops and the fusion-generated
+ *        loop
  * \param sch The Meta-Schedule schedule
  * \param block_rv The block where to apply the fusion
- * \param fused_reduce_loop The fusion result loop to return.
+ * \param fused_reduce_loop The fusion-generated loop to return.
  * \param num_spatial_loops The number of spatial loops to return.
- * \note All the reduction loops are made sure to be continuous and innermost.
+ * \note Before invoking this helper function, make sure that all the reduction loops continuous
+ *       and innermost.
  */
 void FuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
                         LoopRV* fused_reduce_loop, int* num_spatial_loops) {
@@ -945,6 +949,7 @@ void FuseReductionLoops(const Schedule& sch, const BlockRV& block_rv,
   for (const LoopRV& loop_rv : loops) {
     tir::IterVarType type = GetLoopIterType(sch->state, sch->GetSRef(loop_rv));
     if (type == tir::kDataPar) {
+      CHECK(reduction_loops.empty());
       (*num_spatial_loops)++;
     } else {
       CHECK_EQ(type, tir::kCommReduce);
@@ -982,14 +987,15 @@ class RuleAddRFactor {
                         const Schedule& sch, const BlockRV& block_rv) const {
     // Check the conditions of the rule.
     tir::StmtSRef block_sref = sch->GetSRef(block_rv);
+    const auto* block = TVM_SREF_TO_BLOCK(block, block_sref);
     if (HasAnyAnn(block_sref)) {
       return {sch};
     }
-    if (block_sref->GetStmt<tir::BlockNode>()->writes.size() != 1) {
+    if (block->writes.size() != 1) {
       return {sch};
     }
-    if (!NeedsRFactor(task, sch->state, block_sref, max_jobs_per_core,
-                      &warned_num_cores_missing) || HasCacheWriteBlock(sch, block_rv)) {
+    if (!NeedsRFactor(sch->state, block_sref, task, max_jobs_per_core, &warned_num_cores_missing)
+        || HasCacheWriteBlock(sch, block_rv, 0)) {
       return {sch};
     }
 
@@ -1002,7 +1008,8 @@ class RuleAddRFactor {
     LoopRV fused_reduce_loop;
     FuseReductionLoops(sch, block_rv, &fused_reduce_loop, &num_spatial_loops);
     Array<Optional<PrimExpr>> factors;
-    for (const tir::Var& factor : sch->SamplePerfectTile(fused_reduce_loop, 2, max_innermost_factor)) {
+    for (const tir::Var& factor :
+         sch->SamplePerfectTile(fused_reduce_loop, 2, max_innermost_factor)) {
       factors.push_back(factor);
     }
     const Array<LoopRV>& split_res = sch->Split(fused_reduce_loop, factors);
